@@ -1,0 +1,76 @@
+# ─── 有版权的圣经译本文本 ───────────────────────────────
+# 铁律: RCUVSS(香港圣经公会) / NIV(Biblica) 均有版权,仅限自用。
+# 绝不能进 git 历史 —— 一旦进了,将来 repo 公开时清不干净。
+data/bible/**
+!data/bible/.gitkeep
+!data/bible/*.schema.json
+!data/bible/README.md
+*.bible.json
+*.rcuvss.*
+*.niv.*
+
+# ─── 生成的资产 ─────────────────────────────────────────
+# 所有 AI 生成图、导出文件都在本地,不进 git(体积大且可重生成)
+projects/**/panels/
+projects/**/pages/
+projects/**/references/
+projects/**/exports/
+projects/**/characters/*.png
+projects/**/locations/*.png
+output/
+exports/
+*.psd
+
+# ─── 模型权重 ────────────────────────────────────────────
+# ComfyUI 装在 ~/ComfyUI (repo 外),这里只是防御性排除
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+models/
+
+# ─── 数据库 ──────────────────────────────────────────────
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+prisma/*.db
+prisma/migrations/dev.db*
+
+# ─── 密钥 ────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Node / Next.js ─────────────────────────────────────
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+.turbo/
+
+# ─── Python ─────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ─── 日志与临时文件 ──────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+coverage/
+.cache/
+tmp/
+temp/
+
+# ─── 编辑器 / OS ────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json

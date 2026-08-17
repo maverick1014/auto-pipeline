@@ -1,0 +1,484 @@
+{
+  "episodeId": "rev-01",
+  "variant": 1,
+  "steps": 26,
+  "cfg": 7.5,
+  "panels": [
+    {
+      "panel": "cover",
+      "file": "rev-01_cover_00003_.png",
+      "seed": 202,
+      "framing": "full_body",
+      "size": "512x768",
+      "seconds": 101.7,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, (towering figure engulfed in blinding light:1.4), (backlit silhouette:1.4), (face completely obscured by overwhelming radiance:1.4), (overexposed:1.3), 1man, male focus, solo, long heavy robe reaching the floor, wide golden sash across the chest, white-hot glowing outline, volumetric god rays, lens flare, ancient and immense, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (full body:1.3), (standing full figure:1.2), low angle looking up, blinding golden radiance, deep black surroundings, god rays, heavy chiaroscuro, a radiant figure standing among seven burning golden lampstands, robe flowing, overwhelming holy awe, figure in lower two thirds, large dark empty space at the top for title, symmetrical",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, extreme close-up, cropped head, portrait, 1girl, female, feminine, woman, breasts, young girl, bishounen, pretty boy, anime character design, fantasy character, armor, sword, weapon, staff, cross, crucifix, mask, cape, blue clothes, detailed face, clear facial features, portrait",
+      "history": [
+        {
+          "panel": "cover",
+          "file": "rev-01_cover_00002_.png",
+          "seed": 202,
+          "framing": "full_body",
+          "size": "512x768",
+          "seconds": null,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, 1man, male focus, solo, divine figure, masculine, tall imposing, (snow white hair:1.4), (pure white long hair:1.3), (white beard:1.2), long flowing white robe down to the feet, wide golden sash across the chest, (eyes like flames of fire:1.3), feet like glowing burnished bronze, overwhelming light emanating from face, backlit, awe-inspiring, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (full body:1.3), (standing full figure:1.2), low angle looking up, blinding golden radiance, deep black surroundings, god rays, heavy chiaroscuro, a radiant figure standing among seven burning golden lampstands, robe flowing, overwhelming holy awe, figure in lower two thirds, large dark empty space at the top for title, symmetrical",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, extreme close-up, cropped head, portrait, 1girl, female, feminine, woman, breasts, blonde hair, golden hair, orange hair, brown hair, black hair, young girl",
+          "recovered": true
+        }
+      ]
+    },
+    {
+      "panel": "p01",
+      "file": "rev-01_p01_00004_.png",
+      "seed": 5017,
+      "framing": "extreme_wide",
+      "size": "832x448",
+      "seconds": 107.7,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, no humans, no people, scenery and objects only, deep dark void, empty cosmic space, no architecture, absolute darkness, faint distant stars, (extreme wide shot:1.5), (tiny distant figure:1.4), vast landscape, establishing shot, low angle looking up, one blinding shaft of divine light piercing absolute darkness, a beam of light descending through endless darkness, mystery, awe, single vertical shaft of light, centered, vast darkness, (nothing but darkness and one ray of light:1.5), (empty void:1.4), abstract",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, portrait, face focus, medium shot, cropped, tower, building, structure, castle, spire, city, architecture, person, figure",
+      "history": [
+        {
+          "panel": "p01",
+          "file": "rev-01_p01_00002_.png",
+          "seed": 5017,
+          "framing": "extreme_wide",
+          "size": "832x448",
+          "seconds": null,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, no humans, no people, scenery and objects only, deep dark void, empty cosmic space, no architecture, absolute darkness, faint distant stars, (extreme wide shot:1.5), (tiny distant figure:1.4), vast landscape, establishing shot, low angle looking up, one blinding shaft of divine light piercing absolute darkness, a beam of light descending through endless darkness, mystery, awe, single vertical shaft of light, centered, vast darkness",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, portrait, face focus, medium shot, cropped",
+          "recovered": true
+        },
+        {
+          "panel": "p01",
+          "file": "rev-01_p01_00003_.png",
+          "seed": 5017,
+          "framing": "extreme_wide",
+          "size": "832x448",
+          "seconds": 76.5,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, no humans, no people, scenery and objects only, deep dark void, empty cosmic space, no architecture, absolute darkness, faint distant stars, (extreme wide shot:1.5), (tiny distant figure:1.4), vast landscape, establishing shot, low angle looking up, one blinding shaft of divine light piercing absolute darkness, a beam of light descending through endless darkness, mystery, awe, single vertical shaft of light, centered, vast darkness, (nothing but darkness and one ray of light:1.5), (empty void:1.4), abstract",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, portrait, face focus, medium shot, cropped, tower, building, structure, castle, spire, city, architecture, person, figure"
+        }
+      ]
+    },
+    {
+      "panel": "p02",
+      "file": "rev-01_p02_00002_.png",
+      "seed": 5034,
+      "framing": "insert",
+      "size": "576x512",
+      "seconds": null,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, no humans, no people, scenery and objects only, rocky aegean island, barren cliffs, crashing sea waves, sparse dry shrubs, windswept, desolate exile island, overcast sky, (extreme close-up on the object:1.5), (object fills frame:1.4), detail insert shot, high angle looking down, warm oil lamp light, deep shadows, an unrolled parchment scroll with a reed pen resting on it, solemn, open scroll and reed pen on stone, ink pot",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, face, portrait, wide shot, standing figure, whole person, person, face, hands, figure",
+      "recovered": true
+    },
+    {
+      "panel": "p03",
+      "file": "rev-01_p03_00002_.png",
+      "seed": 101,
+      "framing": "medium",
+      "size": "512x704",
+      "seconds": null,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, 1man, solo, elderly apostle, 85 years old, long white beard, long white hair, deep-set weathered eyes, gaunt lined face, thin frail body, coarse undyed linen robe, rope belt, bare feet, ancient greek island exile, rocky aegean island, barren cliffs, crashing sea waves, sparse dry shrubs, windswept, desolate exile island, overcast sky, (medium shot:1.3), (waist up:1.2), eye level, warm oil lamp light from below, deep shadows, writing on a scroll, head bowed in concentration, solemn concentration, subject right of centre, scroll in foreground",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, extreme wide shot, feet, distant tiny figure",
+      "recovered": true
+    },
+    {
+      "panel": "p04",
+      "file": "rev-01_p04_00002_.png",
+      "seed": 5068,
+      "framing": "extreme_wide",
+      "size": "832x448",
+      "seconds": null,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, no humans, no people, scenery and objects only, rocky aegean island, barren cliffs, crashing sea waves, sparse dry shrubs, windswept, desolate exile island, overcast sky, (extreme wide shot:1.5), (tiny distant figure:1.4), vast landscape, establishing shot, high angle aerial, cold overcast daylight, a small barren rocky island surrounded by open sea, isolation, barren island tiny in frame, endless grey sea",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, portrait, face focus, medium shot, cropped, castle, temple, ruins, building, architecture, city, tower, structure",
+      "recovered": true
+    },
+    {
+      "panel": "p05",
+      "file": "rev-01_p05_00002_.png",
+      "seed": 5085,
+      "framing": "wide",
+      "size": "768x512",
+      "seconds": null,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, no humans, no people, scenery and objects only, rocky aegean island, barren cliffs, crashing sea waves, sparse dry shrubs, windswept, desolate exile island, overcast sky, (wide shot:1.4), (small figure in vast environment:1.3), establishing shot, low angle, cold grey light, white foam, sea waves crashing violently against jagged black rocks, harshness, waves exploding against black rocks, spray filling frame",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, portrait, face focus, cropped, castle, temple, ruins, building, architecture",
+      "recovered": true
+    },
+    {
+      "panel": "p06",
+      "file": "rev-01_p06_00003_.png",
+      "seed": 10108,
+      "framing": "full_body",
+      "size": "512x768",
+      "seconds": 171.3,
+      "prompt": "masterpiece, best quality, highly detailed, (classical religious oil painting:1.3), (renaissance sacred art:1.2), painterly brushwork, soft luminous rendering, warm ivory and gold palette, volumetric god rays, solemn reverent atmosphere, biblical epic, (sea of luminous golden clouds:1.2), (glowing cloudscape:1.1), heavenly light, 1man, male focus, solo, (elderly old man:1.3), 85 years old, (deeply wrinkled weathered face:1.3), long white beard, long white hair, deep-set tired eyes, gaunt lined face, thin frail body, coarse undyed linen robe, rope belt, bare feet, ancient greek island exile, rocky aegean island, barren cliffs, crashing sea waves, sparse dry shrubs, windswept, desolate exile island, overcast sky, (full body:1.3), (standing full figure:1.2), eye level, grey diffused light, strong wind, sitting alone on a rock, robe torn by wind, gazing at the sea, loneliness, endurance, figure small on the left third, vast sea filling the rest",
+      "negative": "lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, letters, modern clothing, glasses, nude, nsfw, exposed, anime, manga, cel shading, flat colors, chibi, multiple views, 2boys, 2girls, close-up, extreme close-up, cropped head, portrait, 1girl, female, young, youthful, smooth skin, child, teenager, handsome young man, beautiful face",
+      "history": [
+        {
+          "panel": "p06",
+          "file": "rev-01_p06_00002_.png",
+          "seed": 101,
+          "framing": "full_body",
+          "size": "512x768",
+          "seconds": null,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, 1man, solo, elderly apostle, 85 years old, long white beard, long white hair, deep-set weathered eyes, gaunt lined face, thin frail body, coarse undyed linen robe, rope belt, bare feet, ancient greek island exile, rocky aegean island, barren cliffs, crashing sea waves, sparse dry shrubs, windswept, desolate exile island, overcast sky, (full body:1.3), (standing full figure:1.2), eye level, grey diffused light, strong wind, sitting alone on a rock, robe torn by wind, gazing at the sea, loneliness, endurance, figure small on the left third, vast sea filling the rest",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, extreme close-up, cropped head, portrait",
+          "recovered": true
+        }
+      ]
+    },
+    {
+      "panel": "p07",
+      "file": "rev-01_p07_00002_.png",
+      "seed": 101,
+      "framing": "close_up",
+      "size": "512x576",
+      "seconds": null,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, 1man, solo, elderly apostle, 85 years old, long white beard, long white hair, deep-set weathered eyes, gaunt lined face, thin frail body, coarse undyed linen robe, rope belt, bare feet, ancient greek island exile, rocky aegean island, barren cliffs, crashing sea waves, sparse dry shrubs, windswept, desolate exile island, overcast sky, (close-up:1.4), (head and shoulders only:1.3), portrait framing, slight low angle, soft grey side light, lined weary face, distant gaze into the horizon, weary but steadfast, weathered face filling the frame, wind-blown white beard",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, wide shot, legs, feet, knees, whole body, distant, small figure",
+      "recovered": true
+    },
+    {
+      "panel": "p08",
+      "file": "rev-01_p08_00002_.png",
+      "seed": 5136,
+      "framing": "insert",
+      "size": "576x512",
+      "seconds": null,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, no humans, no people, scenery and objects only, rocky aegean island, barren cliffs, crashing sea waves, sparse dry shrubs, windswept, desolate exile island, overcast sky, (extreme close-up on the object:1.5), (object fills frame:1.4), detail insert shot, high angle, cold grey light, wet reflections, an aged wrinkled hand resting on a wet rock, quiet suffering, an old wrinkled hand resting open on wet stone",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, face, portrait, wide shot, standing figure, whole person, face, portrait, full body, standing figure",
+      "recovered": true
+    },
+    {
+      "panel": "p09",
+      "file": "rev-01_p09_00002_.png",
+      "seed": 101,
+      "framing": "medium_close_up",
+      "size": "512x640",
+      "seconds": null,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, 1man, solo, elderly apostle, 85 years old, long white beard, long white hair, deep-set weathered eyes, gaunt lined face, thin frail body, coarse undyed linen robe, rope belt, bare feet, ancient greek island exile, rocky aegean island, barren cliffs, crashing sea waves, sparse dry shrubs, windswept, desolate exile island, overcast sky, (medium close-up:1.35), (chest up:1.25), bust shot, eye level, supernatural golden glow washing in from behind, eyes closed, face lifted, overtaken by the Spirit, transported, reverent, centred, golden glow bleeding in from the edges",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, wide shot, legs, feet, knees, whole body, distant",
+      "recovered": true
+    },
+    {
+      "panel": "p10",
+      "file": "rev-01_p10_00003_.png",
+      "seed": 101,
+      "framing": "extreme_close_up",
+      "size": "576x448",
+      "seconds": 49.1,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, 1man, male focus, solo, (elderly old man:1.3), 85 years old, (deeply wrinkled weathered face:1.3), long white beard, long white hair, deep-set tired eyes, gaunt lined face, thin frail body, coarse undyed linen robe, rope belt, bare feet, ancient greek island exile, rocky aegean island, barren cliffs, crashing sea waves, sparse dry shrubs, windswept, desolate exile island, overcast sky, (extreme close-up:1.5), (face fills the entire frame:1.4), macro detail, cropped tight, eye level, golden light reflected in the pupils, aged eyes snapping wide open in shock, sudden alarm, a pair of old eyes snapping wide open, filling the frame",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, wide shot, cowboy shot, medium shot, legs, feet, whole body, distant, small figure, landscape, 1girl, female, young, youthful, smooth skin, child, teenager, handsome young man, beautiful face",
+      "history": [
+        {
+          "panel": "p10",
+          "file": "rev-01_p10_00002_.png",
+          "seed": 101,
+          "framing": "extreme_close_up",
+          "size": "576x448",
+          "seconds": null,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, 1man, solo, elderly apostle, 85 years old, long white beard, long white hair, deep-set weathered eyes, gaunt lined face, thin frail body, coarse undyed linen robe, rope belt, bare feet, ancient greek island exile, rocky aegean island, barren cliffs, crashing sea waves, sparse dry shrubs, windswept, desolate exile island, overcast sky, (extreme close-up:1.5), (face fills the entire frame:1.4), macro detail, cropped tight, eye level, golden light reflected in the pupils, aged eyes snapping wide open in shock, sudden alarm, a pair of old eyes snapping wide open, filling the frame",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, wide shot, cowboy shot, medium shot, legs, feet, whole body, distant, small figure, landscape",
+          "recovered": true
+        }
+      ]
+    },
+    {
+      "panel": "p11",
+      "file": "rev-01_p11_00002_.png",
+      "seed": 101,
+      "framing": "wide",
+      "size": "768x512",
+      "seconds": null,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, 1man, solo, elderly apostle, 85 years old, long white beard, long white hair, deep-set weathered eyes, gaunt lined face, thin frail body, coarse undyed linen robe, rope belt, bare feet, ancient greek island exile, rocky aegean island, barren cliffs, crashing sea waves, sparse dry shrubs, windswept, desolate exile island, overcast sky, (wide shot:1.4), (small figure in vast environment:1.3), establishing shot, eye level, blinding backlight, figure reduced to a silhouette, seen from behind, dwarfed by an explosion of light before him, trembling, small silhouetted figure from behind, overwhelming light bursting ahead",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, portrait, face focus, cropped",
+      "recovered": true
+    },
+    {
+      "panel": "p12",
+      "file": "rev-01_p12_00002_.png",
+      "seed": 101,
+      "framing": "close_up",
+      "size": "512x576",
+      "seconds": null,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, 1man, solo, elderly apostle, 85 years old, long white beard, long white hair, deep-set weathered eyes, gaunt lined face, thin frail body, coarse undyed linen robe, rope belt, bare feet, ancient greek island exile, rocky aegean island, barren cliffs, crashing sea waves, sparse dry shrubs, windswept, desolate exile island, overcast sky, (close-up:1.4), (head and shoulders only:1.3), portrait framing, eye level, harsh rim light on one side of the face, turning his head toward the voice behind him, astonishment, three-quarter rear view of the head, turning toward the light",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, wide shot, legs, feet, knees, whole body, distant, small figure",
+      "recovered": true
+    },
+    {
+      "panel": "p13",
+      "file": "rev-01_p13_00004_.png",
+      "seed": 5221,
+      "framing": "wide",
+      "size": "768x512",
+      "seconds": 128.8,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, no humans, no people, scenery and objects only, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (wide shot:1.4), (small figure in vast environment:1.3), establishing shot, low angle looking up, seven burning flames, deep black void, god rays, seven tall golden lampstands standing in a circle, each burning, overwhelming awe, seven tall golden lampstands arranged in a wide circle, empty centre, (a row of tall golden candlesticks standing on the ground:1.5), (evenly spaced free-standing lampstands:1.4), (flat black void behind:1.3)",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, portrait, face focus, cropped, person, figure, human, face, cathedral, church interior, hall, corridor, ceiling, dome, arches, columns, building, architecture, chandelier, altar, mandala, kaleidoscope, pattern, symmetrical ornament",
+      "history": [
+        {
+          "panel": "p13",
+          "file": "rev-01_p13_00002_.png",
+          "seed": 5221,
+          "framing": "wide",
+          "size": "768x512",
+          "seconds": null,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, no humans, no people, scenery and objects only, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (wide shot:1.4), (small figure in vast environment:1.3), establishing shot, low angle looking up, seven burning flames, deep black void, god rays, seven tall golden lampstands standing in a circle, each burning, overwhelming awe, seven tall golden lampstands arranged in a wide circle, empty centre, (seven golden lampstands:1.5), (seven separate standing candelabra:1.4)",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, portrait, face focus, cropped, person, figure, human, face",
+          "recovered": true
+        },
+        {
+          "panel": "p13",
+          "file": "rev-01_p13_00003_.png",
+          "seed": 5221,
+          "framing": "wide",
+          "size": "768x512",
+          "seconds": 143.4,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, no humans, no people, scenery and objects only, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (wide shot:1.4), (small figure in vast environment:1.3), establishing shot, low angle looking up, seven burning flames, deep black void, god rays, seven tall golden lampstands standing in a circle, each burning, overwhelming awe, seven tall golden lampstands arranged in a wide circle, empty centre, (seven separate free-standing golden candlesticks arranged in a circle:1.6), (seven individual lampstands on the floor:1.4), (empty dark void background:1.3)",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, portrait, face focus, cropped, person, figure, human, face, cathedral, church interior, hall, corridor, ceiling, arches, columns, building, architecture, chandelier, altar"
+        }
+      ]
+    },
+    {
+      "panel": "p14",
+      "file": "rev-01_p14_00002_.png",
+      "seed": 5238,
+      "framing": "insert",
+      "size": "576x512",
+      "seconds": null,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, no humans, no people, scenery and objects only, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (extreme close-up on the object:1.5), (object fills frame:1.4), detail insert shot, eye level, warm flame glow against black, a single ornate golden lampstand burning, sacred stillness, one golden lampstand, its flame filling the upper frame",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, face, portrait, wide shot, standing figure, whole person, person, face, figure, human",
+      "recovered": true
+    },
+    {
+      "panel": "p15",
+      "file": "rev-01_p15_00004_.png",
+      "seed": 10209,
+      "framing": "full_body",
+      "size": "512x768",
+      "seconds": 157.8,
+      "prompt": "masterpiece, best quality, highly detailed, (classical religious oil painting:1.3), (renaissance sacred art:1.2), painterly brushwork, soft luminous rendering, warm ivory and gold palette, volumetric god rays, solemn reverent atmosphere, biblical epic, (sea of luminous golden clouds:1.2), (glowing cloudscape:1.1), heavenly light, (towering figure engulfed in blinding light:1.4), (backlit silhouette:1.4), (face completely obscured by overwhelming radiance:1.4), (overexposed:1.3), 1man, male focus, solo, long heavy robe reaching the floor, wide golden sash across the chest, white-hot glowing outline, volumetric god rays, lens flare, ancient and immense, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (full body:1.3), (standing full figure:1.2), low angle, strong backlight, face washed out by light, standing still, long white robe down to the feet, wide golden sash across the chest, majesty, centred, symmetrical, monumental, robe reaching the floor",
+      "negative": "lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, letters, modern clothing, glasses, nude, nsfw, exposed, anime, manga, cel shading, flat colors, chibi, multiple views, 2boys, 2girls, close-up, extreme close-up, cropped head, portrait, 1girl, female, feminine, woman, breasts, young girl, bishounen, pretty boy, anime character design, fantasy character, armor, sword, weapon, staff, cross, crucifix, mask, cape, blue clothes, detailed face, clear facial features, portrait",
+      "history": [
+        {
+          "panel": "p15",
+          "file": "rev-01_p15_00002_.png",
+          "seed": 202,
+          "framing": "full_body",
+          "size": "512x768",
+          "seconds": null,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, 1man, male focus, solo, divine figure, masculine, tall imposing, (snow white hair:1.4), (pure white long hair:1.3), (white beard:1.2), long flowing white robe down to the feet, wide golden sash across the chest, (eyes like flames of fire:1.3), feet like glowing burnished bronze, overwhelming light emanating from face, backlit, awe-inspiring, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (full body:1.3), (standing full figure:1.2), low angle, strong backlight, face washed out by light, standing still, long white robe down to the feet, wide golden sash across the chest, majesty, centred, symmetrical, monumental, robe reaching the floor",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, extreme close-up, cropped head, portrait, 1girl, female, feminine, woman, breasts, blonde hair, golden hair, orange hair, brown hair, black hair, young girl",
+          "recovered": true
+        },
+        {
+          "panel": "p15",
+          "file": "rev-01_p15_00003_.png",
+          "seed": 202,
+          "framing": "full_body",
+          "size": "512x768",
+          "seconds": 350.4,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, (towering figure engulfed in blinding light:1.4), (backlit silhouette:1.4), (face completely obscured by overwhelming radiance:1.4), (overexposed:1.3), 1man, male focus, solo, long heavy robe reaching the floor, wide golden sash across the chest, white-hot glowing outline, volumetric god rays, lens flare, ancient and immense, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (full body:1.3), (standing full figure:1.2), low angle, strong backlight, face washed out by light, standing still, long white robe down to the feet, wide golden sash across the chest, majesty, centred, symmetrical, monumental, robe reaching the floor",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, extreme close-up, cropped head, portrait, 1girl, female, feminine, woman, breasts, young girl, bishounen, pretty boy, anime character design, fantasy character, armor, sword, weapon, staff, cross, crucifix, mask, cape, blue clothes, detailed face, clear facial features, portrait"
+        }
+      ]
+    },
+    {
+      "panel": "p16",
+      "file": "rev-01_p16_00004_.png",
+      "seed": 5272,
+      "framing": "extreme_close_up",
+      "size": "576x448",
+      "seconds": 70.6,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, (two intense cores of white-hot fire burning in darkness:1.5), roaring flames, ember sparks, abstract, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (extreme close-up:1.5), (face fills the entire frame:1.4), macro detail, cropped tight, eye level, live coals glowing white-hot, everything else pitch black, fire roaring in the dark, two burning cores at its heart, piercing, unbearable, flames filling the entire frame, two brighter cores",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, wide shot, cowboy shot, medium shot, legs, feet, whole body, distant, small figure, landscape, face, head, person, human, figure, eyes, portrait, demon, creature, monster, character",
+      "history": [
+        {
+          "panel": "p16",
+          "file": "rev-01_p16_00002_.png",
+          "seed": 202,
+          "framing": "extreme_close_up",
+          "size": "576x448",
+          "seconds": null,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, 1man, male focus, solo, divine figure, masculine, tall imposing, (snow white hair:1.4), (pure white long hair:1.3), (white beard:1.2), long flowing white robe down to the feet, wide golden sash across the chest, (eyes like flames of fire:1.3), feet like glowing burnished bronze, overwhelming light emanating from face, backlit, awe-inspiring, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (extreme close-up:1.5), (face fills the entire frame:1.4), macro detail, cropped tight, eye level, eyes glowing like live coals, everything else black, eyes burning like flames of fire, piercing, unbearable, a pair of burning eyes filling the frame, snow-white hair around, (eyes like burning fire:1.5), (snow white hair:1.4)",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, wide shot, cowboy shot, medium shot, legs, feet, whole body, distant, small figure, landscape, 1girl, female, feminine, woman, breasts, blonde hair, golden hair, orange hair, brown hair, black hair, young girl",
+          "recovered": true
+        },
+        {
+          "panel": "p16",
+          "file": "rev-01_p16_00003_.png",
+          "seed": 202,
+          "framing": "extreme_close_up",
+          "size": "576x448",
+          "seconds": 55.0,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, (towering figure engulfed in blinding light:1.4), (backlit silhouette:1.4), (face completely obscured by overwhelming radiance:1.4), (overexposed:1.3), 1man, male focus, solo, long heavy robe reaching the floor, wide golden sash across the chest, white-hot glowing outline, volumetric god rays, lens flare, ancient and immense, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (extreme close-up:1.5), (face fills the entire frame:1.4), macro detail, cropped tight, eye level, eyes glowing like live coals, everything else black, eyes burning like flames of fire, piercing, unbearable, a pair of burning eyes filling the frame, snow-white hair around, (eyes like burning fire:1.5), (snow white hair:1.4)",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, wide shot, cowboy shot, medium shot, legs, feet, whole body, distant, small figure, landscape, 1girl, female, feminine, woman, breasts, young girl, bishounen, pretty boy, anime character design, fantasy character, armor, sword, weapon, staff, cross, crucifix, mask, cape, blue clothes, detailed face, clear facial features, portrait"
+        }
+      ]
+    },
+    {
+      "panel": "p17",
+      "file": "rev-01_p17_00001_.png",
+      "seed": 5289,
+      "framing": "insert",
+      "size": "576x512",
+      "seconds": null,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, no humans, no people, scenery and objects only, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (extreme close-up on the object:1.5), (object fills frame:1.4), detail insert shot, low angle, feet radiating like bronze glowing in a furnace, two feet glowing like burnished bronze refined in a furnace, unapproachable, bare feet glowing like molten metal, standing on darkness, (glowing bronze feet:1.5), (molten metal glow:1.3)",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, face, portrait, wide shot, standing figure, whole person, face, portrait, full body, head",
+      "recovered": true
+    },
+    {
+      "panel": "p18",
+      "file": "rev-01_p18_00002_.png",
+      "seed": 15313,
+      "framing": "insert",
+      "size": "576x512",
+      "seconds": 77.7,
+      "prompt": "masterpiece, best quality, highly detailed, (classical religious oil painting:1.3), (renaissance sacred art:1.2), painterly brushwork, soft luminous rendering, warm ivory and gold palette, volumetric god rays, solemn reverent atmosphere, biblical epic, (sea of luminous golden clouds:1.2), (glowing cloudscape:1.1), heavenly light, no humans, no people, scenery and objects only, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (extreme close-up on the object:1.5), (object fills frame:1.4), detail insert shot, eye level, seven tiny stars casting sharp light on the palm, an open right hand with seven small blazing stars floating above the palm, authority, an open right palm, seven small blazing stars hovering above it, (seven small glowing stars floating above an open palm:1.6), (open hand:1.3)",
+      "negative": "lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, letters, modern clothing, glasses, nude, nsfw, exposed, anime, manga, cel shading, flat colors, chibi, multiple views, 2boys, 2girls, full body, face, portrait, wide shot, standing figure, whole person, face, portrait, full body, standing figure, head",
+      "history": [
+        {
+          "panel": "p18",
+          "file": "rev-01_p18_00001_.png",
+          "seed": 5306,
+          "framing": "insert",
+          "size": "576x512",
+          "seconds": null,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, no humans, no people, scenery and objects only, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (extreme close-up on the object:1.5), (object fills frame:1.4), detail insert shot, eye level, seven tiny stars casting sharp light on the palm, an open right hand with seven small blazing stars floating above the palm, authority, an open right palm, seven small blazing stars hovering above it, (seven small glowing stars floating above an open palm:1.6), (open hand:1.3)",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, face, portrait, wide shot, standing figure, whole person, face, portrait, full body, standing figure, head",
+          "recovered": true
+        }
+      ]
+    },
+    {
+      "panel": "p19",
+      "file": "rev-01_p19_00003_.png",
+      "seed": 5323,
+      "framing": "medium_close_up",
+      "size": "512x640",
+      "seconds": 71.7,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, (overwhelming white light flooding the entire frame:1.6), (only the lower hem of a long robe and a golden sash visible at the bottom edge:1.3), volumetric god rays, lens flare, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (medium close-up:1.35), (chest up:1.25), bust shot, extreme low angle from the ground, blinding white radiance, sun at full strength, heavy bloom, light pouring down, a thin blade-shaped beam cutting through it, unapproachable glory, looking up from the ground, the upper frame completely burned out by light",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, wide shot, legs, feet, knees, whole body, distant, face, head, eyes, facial features, portrait, person, character, cross, crucifix, sword, weapon, mask, helmet, armor",
+      "history": [
+        {
+          "panel": "p19",
+          "file": "rev-01_p19_00001_.png",
+          "seed": 202,
+          "framing": "medium_close_up",
+          "size": "512x640",
+          "seconds": null,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, 1man, male focus, solo, divine figure, masculine, tall imposing, (snow white hair:1.4), (pure white long hair:1.3), (white beard:1.2), long flowing white robe down to the feet, wide golden sash across the chest, (eyes like flames of fire:1.3), feet like glowing burnished bronze, overwhelming light emanating from face, backlit, awe-inspiring, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (medium close-up:1.35), (chest up:1.25), bust shot, low angle, face radiating blinding light like the sun at full strength, face shining like the sun, a sharp blade-shaped beam of light before the mouth, unapproachable glory, head and shoulders, face overexposed by light, blade of light before the mouth, (blinding white light from the face:1.4), (sword shaped light beam:1.3), (snow white hair:1.4)",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, wide shot, legs, feet, knees, whole body, distant, 1girl, female, feminine, woman, breasts, blonde hair, golden hair, orange hair, brown hair, black hair, young girl",
+          "recovered": true
+        },
+        {
+          "panel": "p19",
+          "file": "rev-01_p19_00002_.png",
+          "seed": 202,
+          "framing": "medium_close_up",
+          "size": "512x640",
+          "seconds": 69.9,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, (towering figure engulfed in blinding light:1.4), (backlit silhouette:1.4), (face completely obscured by overwhelming radiance:1.4), (overexposed:1.3), 1man, male focus, solo, long heavy robe reaching the floor, wide golden sash across the chest, white-hot glowing outline, volumetric god rays, lens flare, ancient and immense, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (medium close-up:1.35), (chest up:1.25), bust shot, low angle, face radiating blinding light like the sun at full strength, face shining like the sun, a sharp blade-shaped beam of light before the mouth, unapproachable glory, head and shoulders, face overexposed by light, blade of light before the mouth, (face completely lost in blinding white light:1.5), (pure overexposed radiance where the face should be:1.4), (thin blade of light before the mouth:1.2)",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, wide shot, legs, feet, knees, whole body, distant, 1girl, female, feminine, woman, breasts, young girl, bishounen, pretty boy, anime character design, fantasy character, armor, sword, weapon, staff, cross, crucifix, mask, cape, blue clothes, detailed face, clear facial features, portrait, cross, crucifix, sword, weapon, mask, helmet, armor, visible face, facial features, eyes"
+        }
+      ]
+    },
+    {
+      "panel": "p20",
+      "file": "rev-01_p20_00002_.png",
+      "seed": 10108,
+      "framing": "wide",
+      "size": "768x512",
+      "seconds": 144.0,
+      "prompt": "masterpiece, best quality, highly detailed, (classical religious oil painting:1.3), (renaissance sacred art:1.2), painterly brushwork, soft luminous rendering, warm ivory and gold palette, volumetric god rays, solemn reverent atmosphere, biblical epic, (sea of luminous golden clouds:1.2), (glowing cloudscape:1.1), heavenly light, 1man, male focus, solo, (elderly old man:1.3), 85 years old, (deeply wrinkled weathered face:1.3), long white beard, long white hair, deep-set tired eyes, gaunt lined face, thin frail body, coarse undyed linen robe, rope belt, bare feet, ancient greek island exile, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (wide shot:1.4), (small figure in vast environment:1.3), establishing shot, high angle looking down, overwhelming light pouring from above, long shadow, lying face down flat on the ground, arms sprawled, as though dead, terror, total collapse, tiny figure lying flat on the ground at the bottom, vast light above, (lying face down on the ground:1.6), (prostrate on the floor:1.5), (collapsed:1.4)",
+      "negative": "lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, letters, modern clothing, glasses, nude, nsfw, exposed, anime, manga, cel shading, flat colors, chibi, multiple views, 2boys, 2girls, close-up, portrait, face focus, cropped, 1girl, female, young, youthful, smooth skin, child, teenager, handsome young man, beautiful face, standing, walking, upright, sitting",
+      "history": [
+        {
+          "panel": "p20",
+          "file": "rev-01_p20_00001_.png",
+          "seed": 101,
+          "framing": "wide",
+          "size": "768x512",
+          "seconds": null,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, 1man, solo, elderly apostle, 85 years old, long white beard, long white hair, deep-set weathered eyes, gaunt lined face, thin frail body, coarse undyed linen robe, rope belt, bare feet, ancient greek island exile, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (wide shot:1.4), (small figure in vast environment:1.3), establishing shot, high angle looking down, overwhelming light pouring from above, long shadow, lying face down flat on the ground, arms sprawled, as though dead, terror, total collapse, tiny figure lying flat on the ground at the bottom, vast light above, (lying face down on the ground:1.6), (prostrate on the floor:1.5), (collapsed:1.4)",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, portrait, face focus, cropped, standing, walking, upright, sitting",
+          "recovered": true
+        }
+      ]
+    },
+    {
+      "panel": "p21",
+      "file": "rev-01_p21_00003_.png",
+      "seed": 5357,
+      "framing": "medium",
+      "size": "512x704",
+      "seconds": 90.7,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, (a single glowing hand resting on an old man's shoulder:1.6), (close view of just a hand and a shoulder in coarse linen:1.4), warm light from the hand, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (medium shot:1.3), (waist up:1.2), eye level, warm gentle glow from the hand replacing the harsh light, a radiant hand laid gently on a fallen man's shoulder, fear turning to comfort, hand entering from the top edge, shoulder in coarse linen below, nothing else",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, extreme wide shot, feet, distant tiny figure, full body, face, head, portrait, standing figure, whole person, orb, sphere, ball of light, silhouette",
+      "history": [
+        {
+          "panel": "p21",
+          "file": "rev-01_p21_00001_.png",
+          "seed": 202,
+          "framing": "medium",
+          "size": "512x704",
+          "seconds": null,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, 1man, male focus, solo, divine figure, masculine, tall imposing, (snow white hair:1.4), (pure white long hair:1.3), (white beard:1.2), long flowing white robe down to the feet, wide golden sash across the chest, (eyes like flames of fire:1.3), feet like glowing burnished bronze, overwhelming light emanating from face, backlit, awe-inspiring, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (medium shot:1.3), (waist up:1.2), eye level, warm gentle glow replacing the harsh light, a radiant hand laid gently on a fallen man's shoulder, fear turning to comfort, a glowing hand entering from the top of the frame, resting on a shoulder below, (a glowing hand resting on a shoulder:1.5)",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, extreme wide shot, feet, distant tiny figure, 1girl, female, feminine, woman, breasts, blonde hair, golden hair, orange hair, brown hair, black hair, young girl, full body, face, portrait",
+          "recovered": true
+        },
+        {
+          "panel": "p21",
+          "file": "rev-01_p21_00002_.png",
+          "seed": 202,
+          "framing": "medium",
+          "size": "512x704",
+          "seconds": 100.7,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, (towering figure engulfed in blinding light:1.4), (backlit silhouette:1.4), (face completely obscured by overwhelming radiance:1.4), (overexposed:1.3), 1man, male focus, solo, long heavy robe reaching the floor, wide golden sash across the chest, white-hot glowing outline, volumetric god rays, lens flare, ancient and immense, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (medium shot:1.3), (waist up:1.2), eye level, warm gentle glow replacing the harsh light, a radiant hand laid gently on a fallen man's shoulder, fear turning to comfort, a glowing hand entering from the top of the frame, resting on a shoulder below, (a glowing hand resting on a shoulder:1.5)",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, extreme wide shot, feet, distant tiny figure, 1girl, female, feminine, woman, breasts, young girl, bishounen, pretty boy, anime character design, fantasy character, armor, sword, weapon, staff, cross, crucifix, mask, cape, blue clothes, detailed face, clear facial features, portrait, full body, face, portrait"
+        }
+      ]
+    },
+    {
+      "panel": "p22",
+      "file": "rev-01_p22_00001_.png",
+      "seed": 101,
+      "framing": "close_up",
+      "size": "512x576",
+      "seconds": 68.8,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, 1man, solo, elderly apostle, 85 years old, long white beard, long white hair, deep-set weathered eyes, gaunt lined face, thin frail body, coarse undyed linen robe, rope belt, bare feet, ancient greek island exile, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (close-up:1.4), (head and shoulders only:1.3), portrait framing, low angle, golden light from above on the upturned face, lifting his face upward, eyes wet, awe turning to peace, old face lifted upward, light on the cheeks, tears",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, wide shot, legs, feet, knees, whole body, distant, small figure"
+    },
+    {
+      "panel": "p23",
+      "file": "rev-01_p23_00001_.png",
+      "seed": 5391,
+      "framing": "insert",
+      "size": "576x512",
+      "seconds": 56.9,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, no humans, no people, scenery and objects only, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (extreme close-up on the object:1.5), (object fills frame:1.4), detail insert shot, eye level, golden rim light on the key, everything else dark, a glowing hand holding a large ancient iron key, authority, finality, an ancient iron key held in a glowing hand, black background, (ancient iron key:1.6), (holding a key:1.4)",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, full body, face, portrait, wide shot, standing figure, whole person, face, portrait, full body, standing figure"
+    },
+    {
+      "panel": "p24",
+      "file": "rev-01_p24_00002_.png",
+      "seed": 5408,
+      "framing": "wide",
+      "size": "768x512",
+      "seconds": 110.7,
+      "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, no humans, no people, scenery and objects only, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (wide shot:1.4), (small figure in vast environment:1.3), establishing shot, eye level, fading golden light, deep black, seven golden lampstands and seven stars glowing in the darkness, closing, mystery resolved, seven lampstands receding into darkness, seven stars above, (seven glowing stars floating in the dark:1.5), (seven golden lampstands below:1.4), (no people:1.3)",
+      "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, portrait, face focus, cropped, person, face, figure, human, silhouette, man, standing figure, robe",
+      "history": [
+        {
+          "panel": "p24",
+          "file": "rev-01_p24_00001_.png",
+          "seed": 5408,
+          "framing": "wide",
+          "size": "768x512",
+          "seconds": 104.8,
+          "prompt": "masterpiece, best quality, highly detailed, anime style, cinematic composition, dramatic lighting, biblical epic, ancient mediterranean, solemn reverent atmosphere, no humans, no people, scenery and objects only, seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls, (wide shot:1.4), (small figure in vast environment:1.3), establishing shot, eye level, fading golden light, deep black, seven golden lampstands and seven stars glowing in the darkness, closing, mystery resolved, seven lampstands receding into darkness, seven stars above",
+          "negative": "EasyNegativeV2, lowres, bad anatomy, bad hands, missing fingers, extra digits, worst quality, low quality, jpeg artifacts, signature, watermark, text, modern clothing, glasses, nude, nsfw, exposed, multiple views, 2boys, 2girls, close-up, portrait, face focus, cropped, person, face, figure, human"
+        }
+      ]
+    }
+  ]
+}

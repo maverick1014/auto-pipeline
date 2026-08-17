@@ -1,0 +1,99 @@
+{
+  "episodeId": "rev-01",
+  "title": "启示录 第一章 — 人子的异象",
+  "passage": {
+    "book": "REV",
+    "chapter": 1,
+    "verses": "1-20",
+    "translationId": "cuv",
+    "translationName": "Chinese Union Version (和合本 1919)",
+    "license": "public-domain",
+    "note": "工作文本。Maverick 指定的 RCUVSS 有版权,本地无副本;待导入后改 translationId 即可切换,管线代码无需改动。"
+  },
+
+  "analysis": {
+    "synopsis": "使徒约翰因传道被流放拔摩海岛。主日被圣灵感动,听见身后如号筒的大声音命他写信给亚西亚七教会。转身时看见七个金灯台,灯台中间站着好像人子的一位——长衣垂脚、金带束胸、发白如雪、眼如火焰、脚如炼铜、声如众水、右手握七星、口出两刃利剑、面如烈日。约翰仆倒如死,人子按手说『不要惧怕』,自称首先的与末后的,拿着死亡和阴间的钥匙,并解开七星与七灯台的奥秘。",
+    "theme": "被高举的基督向受苦的教会显现",
+    "tone": "敬畏、庄严、超验",
+    "visualChallenge": "本章几乎全是象征性异象。人子的形象由经文明确描述(CANONICAL),但『口中出来两刃利剑』『面如烈日』这类意象直接照画容易失真,需用光影与构图处理。"
+  },
+
+  "characters": [
+    {
+      "id": "john",
+      "name": "约翰",
+      "role": "叙事者 / 见证人",
+      "tier": 1,
+      "seed": 101,
+      "accuracy": {
+        "CANONICAL": ["名为约翰", "在拔摩海岛", "为神的道和耶稣的见证受苦", "仆倒如死"],
+        "INFERRED": ["年老"],
+        "DRAMATIZED": ["具体相貌、发须、服装细节"]
+      },
+      "dna": "1man, male focus, solo, (elderly old man:1.3), 85 years old, (deeply wrinkled weathered face:1.3), long white beard, long white hair, deep-set tired eyes, gaunt lined face, thin frail body, coarse undyed linen robe, rope belt, bare feet, ancient greek island exile",
+      "extraNegative": "1girl, female, young, youthful, smooth skin, child, teenager, handsome young man, beautiful face"
+    },
+    {
+      "id": "son_of_man",
+      "name": "人子",
+      "role": "异象核心",
+      "tier": 1,
+      "seed": 202,
+      "accuracy": {
+        "CANONICAL": [
+          "身穿长衣直垂到脚 (1:13)",
+          "胸间束着金带 (1:13)",
+          "头与发皆白如白羊毛如雪 (1:14)",
+          "眼目如同火焰 (1:14)",
+          "脚好像在炉中锻炼光明的铜 (1:15)",
+          "声音如同众水的声音 (1:15)",
+          "右手拿着七星 (1:16)",
+          "口中出来两刃的利剑 (1:16)",
+          "面貌如同烈日放光 (1:16)"
+        ],
+        "DRAMATIZED": ["面部具体五官(经文未描述,且『面如烈日』暗示不可直视)"]
+      },
+      "designNote": "面部一律用强逆光/过曝处理 —— 既贴合『面貌如同烈日放光』,也避免为基督面容做无经文依据的具体设定。",
+      "dna": "(towering figure engulfed in blinding light:1.4), (backlit silhouette:1.4), (face completely obscured by overwhelming radiance:1.4), (overexposed:1.3), 1man, male focus, solo, long heavy robe reaching the floor, wide golden sash across the chest, white-hot glowing outline, volumetric god rays, lens flare, ancient and immense",
+      "designNote": "v3 修正 —— v2 把 (snow white hair:1.4) 权重拉太高,SD1.5 anime 模型把「白发+白袍」强关联到白发动漫角色原型,出成了持剑的幻想角色。改回「不可直视」的逆光过曝处理: 既贴合『面貌如同烈日放光』(1:16),也从根本上绕开角色原型污染 —— 看不清脸就不会被拉向任何原型。",
+      "extraNegative": "1girl, female, feminine, woman, breasts, young girl, bishounen, pretty boy, anime character design, fantasy character, armor, sword, weapon, staff, cross, crucifix, mask, cape, blue clothes, detailed face, clear facial features, portrait"
+    }
+  ],
+
+  "locations": [
+    {
+      "id": "patmos",
+      "name": "拔摩海岛",
+      "accuracy": { "CANONICAL": ["名叫拔摩的海岛 (1:9)"], "INFERRED": ["爱琴海荒岛地貌"] },
+      "dna": "rocky aegean island, barren cliffs, crashing sea waves, sparse dry shrubs, windswept, desolate exile island, overcast sky"
+    },
+    {
+      "id": "void",
+      "name": "虚空 / 开篇象征空间",
+      "accuracy": { "DRAMATIZED": ["经文未描述,纯视觉化开场"] },
+      "dna": "deep dark void, empty cosmic space, no architecture, absolute darkness, faint distant stars"
+    },
+    {
+      "id": "vision_space",
+      "name": "异象空间",
+      "accuracy": { "CANONICAL": ["七个金灯台 (1:12)"], "DRAMATIZED": ["空间本身的表现方式"] },
+      "dna": "seven tall golden lampstands, burning flames, void of darkness, golden light, ethereal sacred space, no floor no walls"
+    }
+  ],
+
+  "style": {
+    "id": "classical-sacred-painting",
+    "dna": "masterpiece, best quality, highly detailed, (classical religious oil painting:1.3), (renaissance sacred art:1.2), painterly brushwork, soft luminous rendering, warm ivory and gold palette, volumetric god rays, solemn reverent atmosphere, biblical epic",
+    "note": "v5 —— 从 anime 改为古典宗教绘画(依 Maverick 2026-08-13 对样张的选择)。配套换 checkpoint: Counterfeit-V3.0(纯 anime) → DreamShaper 8(绘画向)。",
+    "unifiedBackground": "(sea of luminous golden clouds:1.2), (glowing cloudscape:1.1), heavenly light",
+    "backgroundNote": "样张的关键手法 —— 全篇共用同一片金色云海。统一环境比统一角色脸容易得多,视觉统一感却一样强。所有异象场景强制注入。"
+  },
+
+  "scenes": [
+    { "id": "s1", "title": "序言 — 启示的传递", "verses": "1:1-3",  "mood": "肃穆、开篇" },
+    { "id": "s2", "title": "拔摩海岛",          "verses": "1:9",     "mood": "孤独、荒凉" },
+    { "id": "s3", "title": "号筒之声",          "verses": "1:10-11", "mood": "惊觉、临在" },
+    { "id": "s4", "title": "人子异象",          "verses": "1:12-16", "mood": "敬畏、压倒性" },
+    { "id": "s5", "title": "仆倒与安慰",        "verses": "1:17-20", "mood": "颤栗转为安慰" }
+  ]
+}
