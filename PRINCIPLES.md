@@ -27,12 +27,12 @@ R4. No changelog
 - Git history is the record
 
 R5. Task files
-- `todo.txt` = open tasks only, always current
-- Done → move line to `completed.txt`
+- `agent_todo.txt` = open tasks only, always current
+- Done → move line to `agent_completed.txt`
 - No other task tracking
 
 R6. Ideas file
-- `ideas.txt` = ideas outside the current task
+- `agent_ideas.txt` = ideas outside the current task
 - Agents append, keep it clean and current
 - Human reviews it on his own time
 
@@ -41,7 +41,7 @@ R6. Ideas file
 W1. Finish in one run
 - Never wait for the human
 - Unknown → pick default, log it, continue
-- New ideas → `ideas.txt` (R6), never in the work or the report
+- New ideas → `agent_ideas.txt` (R6), never in the work or the report
 
 W2. UI
 - Clickable mock first (prototype artifact)

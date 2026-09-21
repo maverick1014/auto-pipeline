@@ -70,9 +70,9 @@ fi
 echo
 echo "=== PRINCIPLES.md ==="; cat PRINCIPLES.md
 echo
-echo "=== todo.txt (open tasks) ==="; [ -s todo.txt ] && cat todo.txt || echo "(none)"
+echo "=== agent_todo.txt (open tasks) ==="; [ -s agent_todo.txt ] && cat agent_todo.txt || echo "(none)"
 echo
-echo "=== ideas.txt ==="; echo "$( [ -f ideas.txt ] && grep -c . ideas.txt || echo 0 ) ideas waiting for human review"
+echo "=== agent_ideas.txt ==="; echo "$( [ -f agent_ideas.txt ] && grep -c . agent_ideas.txt || echo 0 ) ideas waiting for human review"
 echo
 cat <<'QUIZ'
 === QUIZ — answer all 16 before any work ===
@@ -89,13 +89,13 @@ Q2. While working you think of a useful feature outside the task.
   A. Build it now
   B. Put it in the final report
   C. Tell the human right away
-  D. Append it to ideas.txt
+  D. Append it to agent_ideas.txt
 
 Q3. You have three questions not related to the current task.
   A. Ask them now, one by one
   B. Drop them
   C. Park them; show them at the end in one table
-  D. Append them to ideas.txt
+  D. Append them to agent_ideas.txt
 
 Q4. Task: build a settings page. Your first step:
   A. Write the component
@@ -140,9 +140,9 @@ Q10. Correct report shape:
   D. Result, what changed, what to decide
 
 Q11. You finished the task "add login".
-  A. Move the line to completed.txt
-  B. Delete the line from todo.txt
-  C. Mark it [x] in todo.txt
+  A. Move the line to agent_completed.txt
+  B. Delete the line from agent_todo.txt
+  C. Mark it [x] in agent_todo.txt
   D. Add it to a changelog
 
 Q12. You need the DB password from .secrets/.
@@ -154,7 +154,7 @@ Q12. You need the DB password from .secrets/.
 Q13. You want to write ARCHITECTURE.md to explain the design.
   A. Write it
   B. Write it in README.md
-  C. Put it in ideas.txt
+  C. Put it in agent_ideas.txt
   D. Do not; only requirement, test and main idea docs are allowed
 
 Q14. Your report compares three libraries.
@@ -167,7 +167,7 @@ Q15. You are two hours into a long task.
   A. Keep progress in memory
   B. Save state to a file as you go
   C. Save only at the end
-  D. Write it in todo.txt
+  D. Write it in agent_todo.txt
 
 Q16. Fast lane task. The human already checked the result on screen. Before merge you:
   A. Run the full suite
