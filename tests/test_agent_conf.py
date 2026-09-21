@@ -39,7 +39,6 @@ REAL_KEYS = [
     "merge_deputy",
     "task_manager",
     "worker",
-    "file_clerk",
     "permission_mode",
 ]
 
@@ -52,7 +51,6 @@ GOOD_CONF_TEXT = (
     "merge_deputy=sonnet-5:medium\n"
     "task_manager=opus-5:xhigh\n"
     "worker=sonnet-5:medium\n"
-    "file_clerk=haiku-4.5:low\n"
     "permission_mode=auto\n"
 )
 
@@ -176,7 +174,6 @@ class TestValidateRoles(unittest.TestCase):
         "merge_deputy",
         "task_manager",
         "worker",
-        "file_clerk",
     ]
 
     def test_all_six_role_keys_accept_a_good_value(self):
@@ -288,7 +285,6 @@ class TestGroups(unittest.TestCase):
                         "merge_deputy",
                         "task_manager",
                         "worker",
-                        "file_clerk",
                     ],
                 ),
                 ("permission", ["permission_mode"]),

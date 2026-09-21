@@ -75,7 +75,6 @@ CONF_TEXT = (
     "merge_deputy=sonnet-5:medium\n"
     "task_manager=opus-5:xhigh\n"
     "worker=sonnet-5:medium\n"
-    "file_clerk=haiku-4.5:low\n"
     "permission_mode=auto\n"
 )
 
@@ -88,7 +87,6 @@ GOOD_FORM = {
     "merge_deputy": "sonnet-5:medium",
     "task_manager": "opus-5:xhigh",
     "worker": "sonnet-5:medium",
-    "file_clerk": "haiku-4.5:low",
     "permission_mode": "auto",
 }
 

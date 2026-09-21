@@ -17,7 +17,6 @@ ROLE_KEYS = [
     "merge_deputy",
     "task_manager",
     "worker",
-    "file_clerk",
 ]
 
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh"]
@@ -34,7 +33,6 @@ HINTS = {
     "merge_deputy": "Model and effort for the merge deputy. Form: model-name:effort.",
     "task_manager": "Model and effort for a task manager. Form: model-name:effort.",
     "worker": "Model and effort for a worker. Form: model-name:effort.",
-    "file_clerk": "Model and effort for the file clerk. Form: model-name:effort.",
     "permission_mode": "How much an agent may do without asking. One of: default, acceptEdits, auto, plan.",
 }
 
