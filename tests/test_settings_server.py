@@ -25,9 +25,11 @@ settings.html is a template. The server replaces these exact comment markers:
     <!--ROWS:limits-->    the rows of that group
     <!--ROWS:roles-->
     <!--ROWS:permission-->
-    <!--ROWS:other-->     unknown keys. "" when there are none. The server also
-                          writes this group's own <h2> heading, so nothing shows
-                          when agent.conf has no unknown keys.
+    <!--ROWS:other-->     unknown keys. "" when there are none. The server writes
+                          this whole section itself -- the heading <h2>Other</h2> and
+                          a <div class="card"> around the rows, exactly like the three
+                          groups above it -- so nothing shows when agent.conf has no
+                          unknown keys.
 
 Row markup the server writes (class names are the contract with settings.html):
 
@@ -203,6 +205,12 @@ class TestGetPage(ServerCase):
         self.assertNotIn('class="err"', page)
         self.assertNotIn("row bad", page)
 
+    def test_no_other_section_when_every_key_is_known(self):
+        _, _, page = self.get("/")
+        self.assertNotIn("<h2>Other</h2>", page)
+        self.assertNotIn("<h2>other</h2>", page)
+        self.assertEqual(page.count('class="card"'), 3)
+
     def test_unknown_path_is_404(self):
         with self.assertRaises(urllib.error.HTTPError) as caught:
             self.get("/nope")
@@ -222,6 +230,23 @@ class TestGetWithUnknownKeys(ServerCase):
     def test_unknown_key_row_is_not_marked_bad(self):
         _, _, page = self.get("/")
         self.assertNotIn("row bad", page)
+
+    def test_unknown_keys_get_their_own_heading_in_simple_words(self):
+        _, _, page = self.get("/")
+        self.assertIn("<h2>Other</h2>", page)
+        self.assertNotIn("<h2>other</h2>", page)
+
+    def test_unknown_key_rows_sit_in_their_own_card(self):
+        _, _, page = self.get("/")
+        self.assertEqual(page.count('class="card"'), 4)
+        after_heading = page.split("<h2>Other</h2>", 1)[1]
+        before_row = after_heading.split('name="some_new_key"', 1)[0]
+        self.assertIn('class="card"', before_row)
+
+    def test_the_other_card_is_closed_before_the_save_button(self):
+        _, _, page = self.get("/")
+        section = page.split("<h2>Other</h2>", 1)[1].split('<div class="actions"', 1)[0]
+        self.assertEqual(section.count("<div"), section.count("</div>"))
 
 
 class TestGetEscaping(ServerCase):
