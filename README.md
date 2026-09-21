@@ -19,6 +19,7 @@ Main manager   (Fable 5.1, xhigh · the main chat · only one with the browser)
 Scripts, not agents (cost no tokens):
   agent-start.sh   RAM/CPU guard, prints the rules, 29-question quiz gate, main-manager lock
   agent-file.sh    the only writer of agent_*.txt
+  agent-settings.sh  show or change agent.conf, validated
 ```
 
 ## Who does what
@@ -58,7 +59,7 @@ Checked in this order, first match wins.
 | `agent_completed.txt` | `agent-file.sh todo done` | Human |
 | `agent_ideas.txt` | `agent-file.sh idea add` | Human, on his own time |
 | `agent_worktree.txt` | `agent-file.sh worktree set` / `rm` | Main manager before every dispatch |
-| `agent.conf` | `/settings` | `agent-start.sh` |
+| `agent.conf` | `./agent-settings.sh` | `agent-start.sh` |
 | `.secrets/` | Human only | Any agent, read only, never printed |
 
 ## Start
@@ -67,7 +68,7 @@ Checked in this order, first match wins.
 ./agent-start.sh                 # rules, resources, quiz. No work until PASS
 /dispatch                        # main manager: route one task
 /merge                           # main manager: E2E, then merge deputy
-/settings                        # change agent.conf from the chat
+./agent-settings.sh              # show or change agent.conf, no agent
 ```
 
 A second Claude session in this repo becomes a task manager under the main manager, by itself.

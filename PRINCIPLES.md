@@ -2,7 +2,7 @@
 
 - Read first. Binding for every agent in this repo.
 - Output reader: Maverick, non-native English. Keep output simple.
-- All numbers, models and effort levels are config values (`agent.conf`, written by `/settings`, S1). Never hard-code.
+- All numbers, models and effort levels are config values (`agent.conf`, written by `./agent-settings.sh`, S1). Never hard-code.
 
 ## A. Repo
 
@@ -23,7 +23,7 @@ R3. Docs
 - `PRINCIPLES.md` = main idea doc
 - Entry files allowed: `CLAUDE.md`, `AGENTS.md` (one line, point to `agent-start.sh`)
 - `README.md` allowed: the picture of the tree and the flow, for people new to the repo
-- Config, not docs, allowed: `.claude/agents/*.md`, `.claude/skills/*/SKILL.md`, `agent-start.sh`, `agent-file.sh`
+- Config, not docs, allowed: `.claude/agents/*.md`, `.claude/skills/*/SKILL.md`, `agent-start.sh`, `agent-file.sh`, `agent-settings.sh`
 
 R4. No changelog
 - Git history is the record
@@ -139,7 +139,7 @@ H4. Tables
 ## D. Auto setup
 
 S1. Settings
-- `/settings` in the chat shows and writes `agent.conf`. No hand editing
+- `./agent-settings.sh` shows and writes `agent.conf`, validated. No hand editing, no agent
 - Holds every config value in this file
 - Also writes the agent-monitor config
 
@@ -183,3 +183,4 @@ S9. Token guard (cost)
 - Passing tests are not re-run. Full suite once, at the end (W4)
 - Quiz once per session start. Not after compaction, not for subagents
 - Briefs, reports, heartbeats: short (H2, H3). One line per heartbeat
+- Mechanical work (settings, file lines, cleanup) → a script, never an agent
