@@ -2,18 +2,36 @@ TASK: settings-page (local web page to view/change every value in agent.conf)
 WORKTREE: /Users/maverick/orca/workspaces/auto-pipeline/settings-page
 BRANCH: Niagawan-mave/settings-page
 
-STEP: 2 of 7 (mock sent, waiting for "mock yes" from auto-pipeline-77)
+STEP: 3 of 7 done. Next: step 4 (spawn workers).
 
 DONE:
 - quiz 27/27 PASS
-- step 1: file clerk appended worktree line (status working, since 2026-09-21 14:31)
-- step 2: mock/settings-mock.html written + committed
+- step 1: file clerk appended worktree line (working, since 2026-09-21 14:31)
+- step 2: mock/settings-mock.html committed 112ba25; main manager replied "mock yes", keep all three decisions
+- step 3: tests/test_agent_conf.py + tests/test_settings_server.py written, both confirmed FAILING
+  (ModuleNotFoundError: agent_conf / settings_server). tests/__init__.py added so
+  `python3 -m unittest tests.test_agent_conf` works.
 
-DECISIONS:
-- D1 Mock shows the Saved banner AND one error state (max_agents=99) at the same time on one static page, so the whole page can be judged in one look. No JS.
-- D2 Keys grouped under three H2: "Limits", "Who does what", "Permission". Simple words per H2 (H2 rule).
-- D3 Layout: key name left (monospace), input middle, plain-English hint below the row.
+DECISIONS (defaults I picked, W1):
+- D1 Mock shows Saved banner AND one error state on one page. Approved.
+- D2 Three H2 groups: "Limits", "Who does what", "Permission". Approved.
+- D3 Hint under the row, no JS. Approved.
+- D4 load() skips blank lines and "#" comment lines. save() writes only key=value.
+     Comments in agent.conf are DROPPED on save. The real agent.conf has none.
+- D5 settings.html is a template. Server replaces <!--SAVED--> and <!--ROWS:limits-->,
+     <!--ROWS:roles-->, <!--ROWS:permission-->, <!--ROWS:other-->. The "other" group's
+     own <h2> is written by the server so it vanishes when there are no unknown keys.
+     This is what lets Worker A (python) and Worker B (html/css) run in parallel.
+- D6 Row markup class names are the A<->B contract: row / row bad / field / hint / err /
+     saved. Server owns the markup, settings.html owns the CSS.
+- D7 make_server(port, conf_path, html_path, quiet) so tests get a free port and a
+     throwaway conf. port=0 picks a free port.
+- D8 Effort levels are case sensitive and lowercase. "sonnet-5:MEDIUM" is rejected.
+- D9 A POST field that is not already a key in agent.conf is ignored. No new keys via the form.
+- D10 A key missing from the POST keeps its current value.
+- D11 On any bad value the whole save is rejected. Good edits in the same POST are lost.
 
-NEXT: wait for "mock yes" -> step 3 write failing tests (tests/test_agent_conf.py, tests/test_settings_server.py).
+NEXT: step 4, spawn Worker A (python) and Worker B (html), max 2 at once, Sonnet 5 medium.
+Check ./agent-start.sh | head -3 RESOURCES before every spawn.
 
 PARKED QUESTIONS: (none yet)
