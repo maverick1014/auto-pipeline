@@ -71,7 +71,7 @@ W6. Roles
 - Main manager (Fable 5.1, xhigh) = the main chat. Assigns tasks, talks to the human, reports, accepts decisions, brainstorms. Nothing else
 - Fast-lane deputy (Sonnet 5, medium) = main manager's subagent, new one per small task. Does the task, no worktree
 - Merge deputy (Sonnet 5, medium) = main manager's subagent. Merges, then deletes branch and worktree
-- Task manager (Opus 5, xhigh) = one agent in its own worktree. Writes the tests, briefs workers, judges, verifies every worker result before reporting done to the main manager. Never writes product code
+- Task manager (Opus 5, xhigh) = one agent per big feature, in its own worktree (exception: human-direct, W10). Writes the tests, briefs workers, judges, verifies every worker result before reporting done to the main manager. Never writes product code
 - Worker (Sonnet 5, medium) = subagent of a task manager. Writes code until the task manager's tests pass
 - File clerk (Haiku 4.5, low) = subagent any manager or deputy spawns to read or write `agent_*.txt` files. Nothing else
 - Managers never write product code. A defect goes back to the worker that wrote it, with evidence
@@ -96,6 +96,17 @@ W9. Task routing (main manager, before every dispatch)
 - Big task, and a live task manager has capacity → that task manager
 - Task manager in final stage (compiling worker results) → do not disturb. Hold the task until it finishes
 - Otherwise → new worktree (W7). Never spawn a worktree for a small task
+
+W10. Second session in the same repo
+- One main manager per repo. `agent-start.sh` keeps a lock in the shared git dir
+- Lock owner alive → this session is a task manager (human-direct). Never a second main manager
+- At start: the script adds a line to `agent_worktree.txt` (status human-direct). Also send the main manager a direct message if a channel exists (Orca)
+- Will change files → open its own worktree first (W7). Only looking → no worktree
+- Human talks to it directly for now. All task manager rules still apply
+- Human says "finish" or "report to main manager" → report done + click path to the main manager, then act as a normal task manager. Merge deputy cleans up
+- Lock owner dead → take over as main manager, run recovery (S7)
+- Talk between sessions: `ListAgents` → find the peer's name → `SendMessage` to that name. Reply to the `from` name. First line of every message = one clear sentence
+- Open a second session: `orca terminal create --worktree path:<repo> --command "claude" --json`, then `orca terminal wait --for tui-idle`
 
 ## C. Human
 

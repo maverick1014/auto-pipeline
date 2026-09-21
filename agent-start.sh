@@ -2,7 +2,7 @@
 # agent-start.sh — every agent runs this first, before any work.
 #
 #   ./agent-start.sh                         resource check + PRINCIPLES + open tasks + quiz
-#   ./agent-start.sh --answer "1A 2D ... 25B"   grade your quiz answers
+#   ./agent-start.sh --answer "1A 2D ... 27B"   grade your quiz answers
 #
 # Rule: no work until the quiz says PASS.
 
@@ -15,9 +15,9 @@ cd "$(dirname "$0")"
 
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
-KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 2c0aa4aa4d1dc695 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 ffa4bdb3449e9897 ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 496f90a01d738ae5 ba6a4831a815a230 d956db8d1ed42790 72241f6e3363d877 64d26f41c9262571 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 a4dfa8b418c5d6de )
-RULE=( _ W1 R6 H1 W2 W3 W4 W5 S4 S5 H3 R5 R2 R3 H4 S7 R1 W7 W6 W8 W5 W7 W9 W9 W9 R7 )
-N=25
+KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 2c0aa4aa4d1dc695 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 ffa4bdb3449e9897 ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 496f90a01d738ae5 ba6a4831a815a230 d956db8d1ed42790 72241f6e3363d877 64d26f41c9262571 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 a4dfa8b418c5d6de 5bc49497d74f49dc 96ebc45b039cdeb7 )
+RULE=( _ W1 R6 H1 W2 W3 W4 W5 S4 S5 H3 R5 R2 R3 H4 S7 R1 W7 W6 W8 W5 W7 W9 W9 W9 R7 W10 W10 )
+N=27
 
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
 h()   { printf '%s' "$1" | sha | cut -c1-16; }
@@ -44,7 +44,7 @@ cpu_used() {
 
 # ---- grade ----
 if [ "${1:-}" = "--answer" ]; then
-  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 25B"'; exit 2; }
+  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 27B"'; exit 2; }
   ok=0; wrong=""
   for q in $(seq 1 $N); do
     tok=$(printf '%s\n' $2 | grep -i "^${q}[a-d]$" | head -1)
@@ -58,6 +58,39 @@ if [ "${1:-}" = "--answer" ]; then
     echo "Re-read those rules in PRINCIPLES.md, then answer again."; exit 1
   fi
 fi
+
+# ---- role: one main manager per repo (W10) ----
+agent_pid() {
+  [ -n "${CLAUDE_PID:-}" ] && { echo "$CLAUDE_PID"; return; }
+  p=$PPID
+  for _ in 1 2 3 4 5 6 7 8; do
+    c=$(ps -o comm= -p "$p" 2>/dev/null | tr -d ' ')
+    case "$c" in *claude*|*codex*|*opencode*|*gemini*) echo "$p"; return;; esac
+    p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' '); [ -z "$p" ] || [ "$p" = 1 ] && break
+  done
+  echo "$PPID"
+}
+GITDIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || git rev-parse --git-common-dir 2>/dev/null || echo .git)
+MAINREPO=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}'); : "${MAINREPO:=$PWD}"
+LOCK="$GITDIR/agent_main.lock"; ME=$(agent_pid); NOW=$(date '+%Y-%m-%d %H:%M')
+role=main
+if [ -f "$LOCK" ]; then
+  read -r lpid lsince < "$LOCK" || true
+  if [ "$lpid" = "$ME" ]; then role=main
+  elif kill -0 "$lpid" 2>/dev/null; then role=second
+  else role=takeover; fi
+fi
+case $role in
+  main)     echo "$ME $NOW" > "$LOCK"; echo "ROLE: main manager (lock: pid $ME)";;
+  takeover) echo "$ME $NOW" > "$LOCK"; echo "ROLE: main manager. Previous main manager (pid $lpid, since $lsince) is dead. Run recovery (S7).";;
+  second)
+    echo "ROLE: task manager, human-direct (W10). Main manager already running: pid $lpid, since $lsince."
+    echo "$PWD | task manager, human-direct | task: (ask the human) | since $NOW" >> "$MAINREPO/agent_worktree.txt"
+    echo "Announced: line added to agent_worktree.txt. Send the main manager a direct message too if Orca is available."
+    echo "Will change files? Open your own worktree first (W7). Human says finish -> report done + click path to the main manager."
+    echo "Reach the main manager: ListAgents -> the earlier peer session of this repo -> SendMessage to that name. Reply to the from name.";;
+esac
+echo
 
 # ---- startup ----
 r=$(ram_used); c=$(cpu_used)
@@ -77,8 +110,8 @@ echo
 echo "=== agent_ideas.txt ==="; echo "$( [ -f agent_ideas.txt ] && grep -c . agent_ideas.txt || echo 0 ) ideas waiting for human review"
 echo
 cat <<'QUIZ'
-=== QUIZ — answer all 25 before any work ===
-Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 25D"
+=== QUIZ — answer all 27 before any work ===
+Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 27D"
 Do not start work until you see PASS.
 
 Q1. Mid-task, part of the spec is unclear.
@@ -230,4 +263,16 @@ Q25. You are the main manager, about to dispatch a task. First:
   B. Open a new worktree
   C. Spawn a deputy
   D. Ask the human which worktree is free
+
+Q26. You start a new session. agent-start.sh says a main manager is already running.
+  A. Become a second main manager
+  B. Exit
+  C. Read only, do nothing
+  D. Become a task manager, tell the main manager you exist, take the human's task
+
+Q27. You are that second session. The human says "report to main manager".
+  A. Report done + click path to the main manager, then act as a normal task manager
+  B. Keep working with the human
+  C. Merge your own work
+  D. Exit
 QUIZ
