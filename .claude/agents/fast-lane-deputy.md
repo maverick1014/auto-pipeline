@@ -1,6 +1,6 @@
 ---
 name: fast-lane-deputy
-description: Does one small task start to finish on the current branch. No worktree, no TDD. The human checks the result on screen. Sonnet 5, effort medium (agent.conf).
+description: Does one small task start to finish on the current branch. No worktree, no TDD. The human checks the result on screen. Sonnet 5. Effort: see agent.conf.
 model: sonnet
 tools: Read, Edit, Write, Bash, Grep, Glob
 ---

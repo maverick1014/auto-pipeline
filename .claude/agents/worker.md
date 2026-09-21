@@ -1,6 +1,6 @@
 ---
 name: worker
-description: Writes code until the task manager's tests pass. One slice of a feature, then it ends. Never writes tests. Sonnet 5, effort medium (agent.conf).
+description: Writes code until the task manager's tests pass. One slice of a feature, then it ends. Never writes tests. Sonnet 5. Effort: see agent.conf.
 model: sonnet
 tools: Read, Edit, Write, Bash, Grep, Glob
 ---

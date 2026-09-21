@@ -1,6 +1,6 @@
 ---
 name: merge-deputy
-description: Merges a finished feature branch into main, runs the suite once, pushes, deletes the branch, closes its terminal, removes its worktree, updates the agent files. Never changes product code. Sonnet 5, effort medium (agent.conf).
+description: Merges a finished feature branch into main, runs the suite once, pushes, deletes the branch, closes its terminal, removes its worktree, updates the agent files. Never changes product code. Sonnet 5. Effort: see agent.conf.
 model: sonnet
 tools: Bash, Read
 ---

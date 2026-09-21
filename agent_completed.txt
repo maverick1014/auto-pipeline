@@ -1,1 +1,2 @@
 settings-page | big | merged to main 9f2d284 | 63 tests OK, E2E pass in Chrome by main manager | done 2026-09-21
+settings-shortcut | big | not started | owner decision 2026-09-21: real settings entry is a shortcut key or slash command, not a web page; the web page is demo only | opened 2026-09-21 | /settings skill: table, pick key, pick value, validate, save. Tested by owner 2026-09-21 | done 2026-09-21 15:47
