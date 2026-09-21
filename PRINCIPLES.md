@@ -22,6 +22,7 @@ R3. Docs
 - Nothing else
 - `PRINCIPLES.md` = main idea doc
 - Entry files allowed: `CLAUDE.md`, `AGENTS.md` (one line, point to `agent-start.sh`)
+- `README.md` allowed: the picture of the tree and the flow, for people new to the repo
 - Config, not docs, allowed: `.claude/agents/*.md`, `.claude/skills/*/SKILL.md`, `agent-start.sh`, `agent-file.sh`
 
 R4. No changelog
