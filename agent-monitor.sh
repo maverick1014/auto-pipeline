@@ -56,7 +56,7 @@ for w in data.get("result", {}).get("worktrees", []):
     path = w.get("path", "")
     agents = w.get("agents") or []
     state = agents[0].get("state") if agents else None
-    lo = w.get("lastOutputAt")
+    lo = w.get("lastActivityAt")
     print("%s\t%s\t%s" % (path, state if state else "none", lo if lo is not None else ""))
 ')
     else
@@ -104,7 +104,7 @@ for w in data.get("result", {}).get("worktrees", []):
       if [ "$verdict" = "STALL" ] && [ -n "$ct" ] && [ "$commit_min" -lt "$stall_min" ]; then verdict="OK"; fi
       if [ "$verdict" = "STALL" ] && [ -n "$lo" ] && [ "$out_min" -lt "$stall_min" ]; then verdict="OK"; fi
 
-      printf '%s | %s | pane %s | commit %s | output %s | %s | %s\n' \
+      printf '%s | %s | pane %s | commit %s | activity %s | %s | %s\n' \
         "$path" "$module" "$pane" "$commit_disp" "$out_disp" "$verdict" "$ts" >> "$tmp"
     done < "$WT"
   fi
