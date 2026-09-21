@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Settings</title>
+<style>
+  :root {
+    --bg: #f5f5f4;
+    --card: #ffffff;
+    --line: #d9d7d3;
+    --text: #1c1b19;
+    --dim: #6b6862;
+    --ok-bg: #e7f5ea;
+    --ok-line: #9cc9a7;
+    --ok-text: #1d6b33;
+    --bad: #b3261e;
+    --bad-bg: #fdecea;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 16px 64px;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: var(--dim); margin: 0 0 24px; }
+  h2 {
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--dim);
+    margin: 28px 0 10px;
+  }
+  .saved {
+    background: var(--ok-bg);
+    border: 1px solid var(--ok-line);
+    color: var(--ok-text);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 20px;
+    font-weight: 600;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 4px 18px;
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    align-items: baseline;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .row:last-child { border-bottom: none; }
+  .row label {
+    flex: 0 0 200px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 14px;
+    word-break: break-all;
+  }
+  .field { flex: 1 1 240px; min-width: 200px; }
+  .field input {
+    width: 100%;
+    padding: 7px 10px;
+    font: inherit;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 14px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: #fff;
+    color: var(--text);
+  }
+  .field input:focus { outline: 2px solid #7a7a7a; outline-offset: -1px; }
+  .hint { flex: 1 0 100%; color: var(--dim); font-size: 13px; }
+  .row.bad input { border-color: var(--bad); background: var(--bad-bg); }
+  .err { color: var(--bad); font-size: 13px; margin-top: 5px; font-weight: 600; }
+  .actions { margin-top: 24px; }
+  button {
+    font: inherit;
+    font-weight: 600;
+    padding: 10px 22px;
+    border: 1px solid #1c1b19;
+    border-radius: 6px;
+    background: #1c1b19;
+    color: #fff;
+    cursor: pointer;
+  }
+  button:hover { background: #333; }
+  .mocknote {
+    background: #fff6d8;
+    border: 1px solid #e0c56a;
+    border-radius: 6px;
+    padding: 8px 14px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    color: #6b5400;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="mocknote">MOCK ONLY — fake values. Shows the "Saved" state at the top and one field in the error state (<code>max_agents</code>).</p>
+
+  <h1>Agent Settings</h1>
+  <p class="sub">Every value in <code>agent.conf</code>. Change it here. Do not edit the file by hand.</p>
+
+  <div class="saved">Saved</div>
+
+  <form method="post" action="/save">
+
+    <h2>Limits</h2>
+    <div class="card">
+
+      <div class="row">
+        <label for="max_usage_percent">max_usage_percent</label>
+        <div class="field"><input id="max_usage_percent" name="max_usage_percent" value="80"></div>
+        <div class="hint">Stop giving new work when RAM or CPU goes above this percent. Whole number, 1 to 100.</div>
+      </div>
+
+      <div class="row">
+        <label for="heavy_test_slots">heavy_test_slots</label>
+        <div class="field"><input id="heavy_test_slots" name="heavy_test_slots" value="1"></div>
+        <div class="hint">How many big test runs may go at the same time. Whole number, 1 to 8.</div>
+      </div>
+
+      <div class="row bad">
+        <label for="max_agents">max_agents</label>
+        <div class="field">
+          <input id="max_agents" name="max_agents" value="99">
+          <div class="err">Must be a whole number from 1 to 16.</div>
+        </div>
+        <div class="hint">How many agents may run at once on this machine. Whole number, 1 to 16.</div>
+      </div>
+
+    </div>
+
+    <h2>Who does what</h2>
+    <div class="card">
+
+      <div class="row">
+        <label for="main_manager">main_manager</label>
+        <div class="field"><input id="main_manager" name="main_manager" value="fable-5.1:xhigh"></div>
+        <div class="hint">The main chat. Gives out tasks and talks to you. Write it as model:effort.</div>
+      </div>
+
+      <div class="row">
+        <label for="fast_lane_deputy">fast_lane_deputy</label>
+        <div class="field"><input id="fast_lane_deputy" name="fast_lane_deputy" value="sonnet-5:medium"></div>
+        <div class="hint">Does one small task, then stops. Write it as model:effort.</div>
+      </div>
+
+      <div class="row">
+        <label for="merge_deputy">merge_deputy</label>
+        <div class="field"><input id="merge_deputy" name="merge_deputy" value="sonnet-5:medium"></div>
+        <div class="hint">Merges finished work, then cleans up the branch. Write it as model:effort.</div>
+      </div>
+
+      <div class="row">
+        <label for="task_manager">task_manager</label>
+        <div class="field"><input id="task_manager" name="task_manager" value="opus-5:xhigh"></div>
+        <div class="hint">Runs one big feature: writes the tests, checks the workers. Write it as model:effort.</div>
+      </div>
+
+      <div class="row">
+        <label for="worker">worker</label>
+        <div class="field"><input id="worker" name="worker" value="sonnet-5:medium"></div>
+        <div class="hint">Writes the code until the tests pass. Write it as model:effort.</div>
+      </div>
+
+      <div class="row">
+        <label for="file_clerk">file_clerk</label>
+        <div class="field"><input id="file_clerk" name="file_clerk" value="haiku-4.5:low"></div>
+        <div class="hint">Only reads and writes the agent_*.txt files. Write it as model:effort.</div>
+      </div>
+
+    </div>
+    <p class="hint" style="margin-top:8px">Effort must be one of: low, medium, high, xhigh.</p>
+
+    <h2>Permission</h2>
+    <div class="card">
+
+      <div class="row">
+        <label for="permission_mode">permission_mode</label>
+        <div class="field"><input id="permission_mode" name="permission_mode" value="auto"></div>
+        <div class="hint">How much an agent may do without asking. One of: default, acceptEdits, auto, plan.</div>
+      </div>
+
+    </div>
+
+    <div class="actions">
+      <button type="submit">Save</button>
+    </div>
+
+  </form>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,19 @@
+TASK: settings-page (local web page to view/change every value in agent.conf)
+WORKTREE: /Users/maverick/orca/workspaces/auto-pipeline/settings-page
+BRANCH: Niagawan-mave/settings-page
+
+STEP: 2 of 7 (mock sent, waiting for "mock yes" from auto-pipeline-77)
+
+DONE:
+- quiz 27/27 PASS
+- step 1: file clerk appended worktree line (status working, since 2026-09-21 14:31)
+- step 2: mock/settings-mock.html written + committed
+
+DECISIONS:
+- D1 Mock shows the Saved banner AND one error state (max_agents=99) at the same time on one static page, so the whole page can be judged in one look. No JS.
+- D2 Keys grouped under three H2: "Limits", "Who does what", "Permission". Simple words per H2 (H2 rule).
+- D3 Layout: key name left (monospace), input middle, plain-English hint below the row.
+
+NEXT: wait for "mock yes" -> step 3 write failing tests (tests/test_agent_conf.py, tests/test_settings_server.py).
+
+PARKED QUESTIONS: (none yet)
