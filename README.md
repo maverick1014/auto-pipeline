@@ -20,6 +20,8 @@ Scripts, not agents (cost no tokens):
   agent-start.sh   RAM/CPU guard, prints the rules, 29-question quiz gate, main-manager lock
   agent-file.sh    the only writer of agent_*.txt
   agent-settings.sh  show or change agent.conf, validated
+  agent-resume.sh    one command to bring the pipeline back after a restart
+  agent-monitor.sh   watches every worktree, writes agent_monitor.txt
 ```
 
 ## Who does what
@@ -60,12 +62,14 @@ Checked in this order, first match wins.
 | `agent_ideas.txt` | `agent-file.sh idea add` | Human, on his own time |
 | `agent_worktree.txt` | `agent-file.sh worktree set` / `rm` | Main manager before every dispatch |
 | `agent.conf` | `./agent-settings.sh` | `agent-start.sh` |
+| `agent_monitor.txt` | `agent-monitor.sh` | Every agent at start |
 | `.secrets/` | Human only | Any agent, read only, never printed |
 
 ## Start
 
 ```
 ./agent-start.sh                 # rules, resources, quiz. No work until PASS
+./agent-resume.sh                # after a restart: relaunch, monitor, one table
 /dispatch                        # main manager: route one task
 /merge                           # main manager: E2E, then merge deputy
 ./agent-settings.sh              # show or change agent.conf, no agent

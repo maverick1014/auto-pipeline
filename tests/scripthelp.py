@@ -169,8 +169,11 @@ class ScriptRepo:
         """
         subprocess.run(["git", "-C", self.dir, "add", "-A"], check=True,
                        capture_output=True)
-        subprocess.run(["git", "-C", self.dir, "commit", "-q", "-m", "scripts"],
-                       check=True, capture_output=True)
+        dirty = subprocess.run(["git", "-C", self.dir, "status", "--porcelain"],
+                               check=True, capture_output=True, text=True).stdout
+        if dirty.strip():
+            subprocess.run(["git", "-C", self.dir, "commit", "-q", "-m", "scripts"],
+                           check=True, capture_output=True)
         worktree = self.dir + "_wt"
         subprocess.run(["git", "-C", self.dir, "worktree", "add", "-q",
                         "-b", "feature", worktree], check=True, capture_output=True)
