@@ -47,8 +47,10 @@ A live pane = the worktree is in `orca worktree ps --json` with a non-empty agen
 An empty agents list means the pane is gone, even when a plain shell is still open.
 
 The agent cap (S6). Before each relaunch, count every live agent pane in
-`orca worktree ps --json`, across every worktree, plus the relaunches this run
-has already made. At or over max_agents from agent.conf:
+`orca worktree ps --json`, across every worktree and every repo, plus the
+relaunches this run has already made. The cap is per device, so panes in other
+repos count. A pane in a worktree the JSON marks "isMainWorktree": true is a
+main manager and does NOT count -- S6 counts spawned agents only. At or over max_agents from agent.conf:
   - the row reads "no, cap reached"
   - and one plain line prints after the table, one per skipped worktree:
         cap reached (<n>/<max>), not relaunching <path>
@@ -349,7 +351,7 @@ class TestTable(ResumeCase):
 class TestAgentCap(ResumeCase):
     """S6: max_agents is a machine limit. Resume must not blow past it."""
 
-    def setup_cap(self, max_agents, dead, live_elsewhere=0):
+    def setup_cap(self, max_agents, dead, live_elsewhere=0, main_managers=0):
         """`dead` worktrees needing a relaunch, plus panes busy somewhere else."""
         self.repo.set_conf("max_agents", str(max_agents))
         paths = [self.repo.make_worktree("dead%d" % i) for i in range(dead)]
@@ -358,6 +360,9 @@ class TestAgentCap(ResumeCase):
         panes = [{"path": p, "agents": []} for p in paths]
         for i in range(live_elsewhere):
             panes.append({"path": "/elsewhere/%d" % i, "agents": ["working"]})
+        for i in range(main_managers):
+            panes.append({"path": "/other-repo/%d" % i, "agents": ["working"],
+                          "is_main": True})
         self.repo.set_panes(panes)
         return paths
 
@@ -433,6 +438,56 @@ class TestAgentCap(ResumeCase):
         self.assertLess(out.index("worktree | status | relaunched"),
                         out.index("cap reached"))
         self.assertLess(out.index("cap reached"), out.index("monitor:"))
+
+
+class TestMainManagersDoNotCount(ResumeCase):
+    """S6: the cap counts spawned agents. A main manager is not one of them.
+
+    This is the real shape of the machine: `orca worktree ps --json` reports
+    every repo Orca manages, and most of those panes are other repos' main
+    managers. Counting them fills the cap before resume even starts.
+    """
+
+    def setup_cap(self, **kwargs):
+        return TestAgentCap.setup_cap(self, **kwargs)
+
+    def test_a_main_manager_pane_does_not_fill_a_slot(self):
+        paths = self.setup_cap(max_agents=1, dead=1, main_managers=3)
+        out = self.assertOk(self.resume())
+        self.assertEqual(self.relaunched_for(out, paths[0]), "yes")
+        self.assertEqual(len(self.repo.create_calls()), 1)
+
+    def test_the_real_shape_of_this_laptop(self):
+        """Three other repos' main managers, one spawned agent, cap 4."""
+        paths = self.setup_cap(max_agents=4, dead=2, live_elsewhere=1,
+                               main_managers=3)
+        out = self.assertOk(self.resume())
+        self.assertEqual(len(self.repo.create_calls()), 2, out)
+        self.assertNotIn("cap reached", out)
+
+    def test_spawned_panes_still_count(self):
+        paths = self.setup_cap(max_agents=2, dead=2, live_elsewhere=2,
+                               main_managers=5)
+        out = self.assertOk(self.resume())
+        self.assertEqual(self.repo.create_calls(), [])
+        self.assertEqual(self.relaunched_for(out, paths[0]), "no, cap reached")
+
+    def test_the_cap_line_leaves_main_managers_out_of_the_count(self):
+        self.setup_cap(max_agents=2, dead=1, live_elsewhere=2, main_managers=4)
+        out = self.assertOk(self.resume())
+        self.assertIn("cap reached (2/2), not relaunching", out)
+
+    def test_a_worktree_of_this_repo_that_is_also_the_main_repo(self):
+        """The main repo can carry a worktree line. Its pane is a main manager."""
+        self.repo.set_conf("max_agents", "1")
+        dead = self.repo.make_worktree("dead")
+        self.repo.set_worktree_lines([(dead, "dead", "working")])
+        self.repo.set_panes([
+            {"path": dead, "agents": []},
+            {"path": self.repo.dir, "agents": ["working"], "is_main": True},
+        ])
+        out = self.assertOk(self.resume())
+        self.assertEqual(self.relaunched_for(out, dead), "yes")
 
 
 class TestOrcaDown(ResumeCase):

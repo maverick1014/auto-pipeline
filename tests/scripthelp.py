@@ -49,7 +49,8 @@ esac
 def ps_json(worktrees):
     """Build the JSON `orca worktree ps --json` prints.
 
-    Each item: {"path": str, "agents": [state, ...], "output_min": int}
+    Each item: {"path": str, "agents": [state, ...], "output_min": int,
+                "is_main": bool}
     """
     now_ms = int(time.time() * 1000)
     rows = []
@@ -58,6 +59,7 @@ def ps_json(worktrees):
         rows.append(
             {
                 "path": item["path"],
+                "isMainWorktree": bool(item.get("is_main", False)),
                 "displayName": item.get("module", os.path.basename(item["path"])),
                 "lastOutputAt": now_ms - int(item.get("output_min", 0)) * 60000,
                 "liveTerminalCount": item.get("terminals", len(states)),
