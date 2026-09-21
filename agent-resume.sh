@@ -78,13 +78,17 @@ data = json.load(sys.stdin)
 for w in data.get("result", {}).get("worktrees", []):
     path = w.get("path", "")
     agents = w.get("agents") or []
-    print("%s\t%d" % (path, len(agents)))
+    is_main = 1 if w.get("isMainWorktree") else 0
+    print("%s\t%d\t%d" % (path, len(agents), is_main))
 ')
 fi
 
+# The cap counts spawned agents, not main managers (rule S6). A main
+# manager pane is still a live pane, so live_pane() must still see it;
+# it just does not fill a cap slot.
 total_live_panes=0
 if [ "$orca_down" -eq 0 ] && [ -n "$ps_tsv" ]; then
-  total_live_panes=$(printf '%s\n' "$ps_tsv" | awk -F'\t' '{sum+=$2} END{print sum+0}')
+  total_live_panes=$(printf '%s\n' "$ps_tsv" | awk -F'\t' '$3!=1{sum+=$2} END{print sum+0}')
 fi
 relaunch_count=0
 cap_lines=""
