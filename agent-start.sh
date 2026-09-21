@@ -74,13 +74,15 @@ GITDIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || gi
 MAINREPO=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}'); : "${MAINREPO:=$PWD}"
 LOCK="$GITDIR/agent_main.lock"; ME=$(agent_pid); NOW=$(date '+%Y-%m-%d %H:%M')
 role=main
-if [ -f "$LOCK" ]; then
+if [ -n "${AGENT_ROLE:-}" ]; then role=spawned
+elif [ -f "$LOCK" ]; then
   read -r lpid lsince < "$LOCK" || true
   if [ "$lpid" = "$ME" ]; then role=main
   elif kill -0 "$lpid" 2>/dev/null; then role=second
   else role=takeover; fi
 fi
 case $role in
+  spawned)  echo "ROLE: $AGENT_ROLE (spawned by an agent, not human-direct). Main manager: pid $(cut -d' ' -f1 "$LOCK" 2>/dev/null || echo ?). Report to it with SendMessage.";;
   main)     echo "$ME $NOW" > "$LOCK"; echo "ROLE: main manager (lock: pid $ME)";;
   takeover) echo "$ME $NOW" > "$LOCK"; echo "ROLE: main manager. Previous main manager (pid $lpid, since $lsince) is dead. Run recovery (S7).";;
   second)
