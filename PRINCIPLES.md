@@ -36,6 +36,11 @@ R6. Ideas file
 - Agents append, keep it clean and current
 - Human reviews it on his own time
 
+R7. Worktree file
+- `agent_worktree.txt` = one line per live worktree: path, task manager, module, status (working | final | idle)
+- Task manager updates its own line. Deputy removes the line after cleanup
+- Main manager reads it before every dispatch (W9)
+
 ## B. Work
 
 W1. Finish in one run
@@ -79,6 +84,15 @@ W8. Merge and cleanup
 - Deputy merges into the integration branch
 - Deputy deletes the branch (local + remote) and the worktree right after merge
 - Never skip cleanup
+- Deputy removes the worktree line from `agent_worktree.txt`
+
+W9. Task routing (main manager, before every dispatch)
+- Read `agent_worktree.txt` first
+- Small task (fast lane) → spawn a new deputy subagent, it does the task. No worktree
+- Task touches a live worktree's module → that worktree's task manager
+- Big task, and a live task manager has capacity → that task manager
+- Task manager in final stage (compiling worker results) → do not disturb. Hold the task until it finishes
+- Otherwise → new worktree (W7). Never spawn a worktree for a small task
 
 ## C. Human
 
