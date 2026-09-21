@@ -100,13 +100,15 @@ W9. Task routing (main manager, before every dispatch)
 W10. Second session in the same repo
 - One main manager per repo. `agent-start.sh` keeps a lock in the shared git dir
 - Lock owner alive → this session is a task manager (human-direct). Never a second main manager
+- Human-direct = only a session the human opened by hand. Agent-spawned agents are never human-direct. They run fully by agent, no human in the loop
 - At start: the script adds a line to `agent_worktree.txt` (status human-direct). Also send the main manager a direct message if a channel exists (Orca)
 - Will change files → open its own worktree first (W7). Only looking → no worktree
 - Human talks to it directly for now. All task manager rules still apply
 - Human says "finish" or "report to main manager" → report done + click path to the main manager, then act as a normal task manager. Merge deputy cleans up
+- Finished with nothing to merge → main manager sends a file clerk to remove its line from `agent_worktree.txt`
 - Lock owner dead → take over as main manager, run recovery (S7)
 - Talk between sessions: `ListAgents` → find the peer's name → `SendMessage` to that name. Reply to the `from` name. First line of every message = one clear sentence
-- Open a second session: `orca terminal create --worktree path:<repo> --command "claude" --json`, then `orca terminal wait --for tui-idle`
+- Open a second session with the same permission mode as the main manager (`permission_mode` in `agent.conf`): `orca terminal create --worktree path:<repo> --command "claude --permission-mode auto" --json`, then `orca terminal wait --for tui-idle`
 
 ## C. Human
 
