@@ -1,0 +1,42 @@
+---
+name: dispatch
+description: Main manager only. Route a new task by W9, open a worktree by W7 when needed, launch the task manager and send its brief. Use when the human gives a task.
+---
+# /dispatch — route one task (PRINCIPLES.md W9, W7)
+
+Run these in order. First match wins.
+
+1. `./agent-file.sh show` and `./agent-start.sh | sed -n 3p` (RESOURCES line).
+2. Small task (fast lane, R1)? → `Agent` with `subagent_type: fast-lane-deputy`. Brief: the task, the file(s), the one test if any. Done.
+3. Touches a live worktree's module? → `SendMessage` the task to that task manager. Status `final` → hold it, tell the human.
+4. Big, and a live task manager has capacity? → `SendMessage` it to that task manager.
+5. Idle or done worktrees in `agent_worktree.txt`? → run `/merge` for each first.
+6. RESOURCES over cap, or spawned agents at `max_agents`? → wait, tell the human.
+7. Otherwise open a worktree:
+   ```
+   ./agent-file.sh todo add "<name>" big "<one line what>"
+   orca worktree create --name <name> --repo path:<main repo> --base-branch main --no-parent --json
+   orca terminal create --worktree path:<worktree path> --title "TM <name>" --command "AGENT_ROLE=task-manager claude --model opus --permission-mode auto" --json
+   orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 90000 --json
+   ```
+   Then `ListAgents`, find the new session, `SendMessage` it the brief below. Keep the terminal handle for `/merge`.
+
+## Task manager brief (fill the <>)
+
+```
+Brief from the main manager (<my session name>): you are the task manager for "<name>".
+WHERE: worktree <worktree path>, branch <branch>. Main repo <main repo> only for ./agent-file.sh.
+FEATURE: <requirement, 5 to 10 lines. Files to produce. What the user sees. Validation rules.>
+STEPS: 1 register: ./agent-file.sh worktree set "<worktree path>" "<name>" working
+ 2 mock first if UI (W2): commit mock/<name>-mock.html, send me the path, STOP until "mock yes"
+ 3 write the failing tests yourself (W3), commit
+ 4 workers: Agent subagent_type worker, max 2 at once, each gets named files + one test command (W4). Check RESOURCES before each spawn (S3, S4)
+ 5 verify every worker result yourself. Full suite once. Defect → back to the worker with evidence. Set status final: ./agent-file.sh worktree set "<worktree path>" "<name>" final
+ 6 commit, git push -u origin <branch>
+ 7 report done, set status done, stay idle
+REPORT: SendMessage to "<my session name>". First line "DONE PASS <name>" or "DONE FAIL <name>: <why>". Then Result (test count), What changed (files), What to decide. Then the E2E click path: start command, URL, exact clicks, expected result, how to restore.
+ASK: first line "QUESTION:". Wait max 10 min, then default + log + continue (W1). Mock gate always waits.
+HEARTBEAT: every 15 min, one line "HEARTBEAT <name>: step <n> of 7, <what runs now>".
+STATE: write agent_state.txt after every step (S7, S8).
+NEVER: Claude in Chrome (W5). Product code. Full suite twice (W4). Files outside the worktree except via ./agent-file.sh.
+```

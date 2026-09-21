@@ -2,7 +2,7 @@
 
 - Read first. Binding for every agent in this repo.
 - Output reader: Maverick, non-native English. Keep output simple.
-- All numbers, models and effort levels are config values (`agent.conf`, written by the settings menu S1). Never hard-code.
+- All numbers, models and effort levels are config values (`agent.conf`, written by `/settings`, S1). Never hard-code.
 
 ## A. Repo
 
@@ -22,6 +22,7 @@ R3. Docs
 - Nothing else
 - `PRINCIPLES.md` = main idea doc
 - Entry files allowed: `CLAUDE.md`, `AGENTS.md` (one line, point to `agent-start.sh`)
+- Config, not docs, allowed: `.claude/agents/*.md`, `.claude/skills/*/SKILL.md`, `agent-start.sh`, `agent-file.sh`
 
 R4. No changelog
 - Git history is the record
@@ -30,6 +31,7 @@ R5. Task files
 - `agent_todo.txt` = open tasks only, always current
 - Done → move line to `agent_completed.txt`
 - No other task tracking
+- All four `agent_*.txt` files are written only through `./agent-file.sh`. No agent for that, it costs tokens
 
 R6. Ideas file
 - `agent_ideas.txt` = ideas outside the current task
@@ -70,11 +72,10 @@ W5. Web UI testing
 
 W6. Roles
 - Main manager (Fable 5.1, xhigh) = the main chat. Assigns tasks, talks to the human, reports, accepts decisions, brainstorms. Nothing else
-- Fast-lane deputy (Sonnet 5, medium) = main manager's subagent, new one per small task. Does the task, no worktree
-- Merge deputy (Sonnet 5, medium) = main manager's subagent. Merges, then deletes branch and worktree
+- Fast-lane deputy (Sonnet 5, medium) = `.claude/agents/fast-lane-deputy.md`, new one per small task. Does the task, no worktree
+- Merge deputy (Sonnet 5, medium) = `.claude/agents/merge-deputy.md`. Merges, then deletes branch and worktree
 - Task manager (Opus 5, xhigh) = one agent per big feature, in its own worktree (exception: human-direct, W10). Writes the tests, briefs workers, judges, verifies every worker result before reporting done to the main manager. Never writes product code
-- Worker (Sonnet 5, medium) = subagent of a task manager. Writes code until the task manager's tests pass
-- File clerk (Haiku 4.5, low) = subagent any manager or deputy spawns to read or write `agent_*.txt` files. Nothing else
+- Worker (Sonnet 5, medium) = `.claude/agents/worker.md`, subagent of a task manager. Writes code until the task manager's tests pass
 - Managers never write product code. A defect goes back to the worker that wrote it, with evidence
 
 W7. Big feature (> 2 hours)
@@ -88,7 +89,7 @@ W8. Merge and cleanup
 - Deputy merges into the integration branch
 - Deputy deletes the branch (local + remote) and the worktree right after merge
 - Never skip cleanup
-- Deputy removes the worktree line from `agent_worktree.txt`
+- Deputy runs `./agent-file.sh worktree rm <path>` and `./agent-file.sh todo done <name> "<result>"`
 
 W9. Task routing (main manager, before every dispatch)
 - Read `agent_worktree.txt` first
@@ -106,7 +107,7 @@ W10. Second session in the same repo
 - Will change files → open its own worktree first (W7). Only looking → no worktree
 - Human talks to it directly for now. All task manager rules still apply
 - Human says "finish" or "report to main manager" → report done + click path to the main manager, then act as a normal task manager. Merge deputy cleans up
-- Finished with nothing to merge → main manager sends a file clerk to remove its line from `agent_worktree.txt`
+- Finished with nothing to merge → main manager runs `./agent-file.sh worktree rm <path>`
 - The main manager closes every human-direct session after the human says finish: `orca terminal close --terminal <handle> --json`. Nothing stays parked
 - Lock owner dead → take over as main manager, run recovery (S7)
 - Talk between sessions: `ListAgents` → find the peer's name → `SendMessage` to that name. Reply to the `from` name. First line of every message = one clear sentence
@@ -136,10 +137,10 @@ H4. Tables
 
 ## D. Auto setup
 
-S1. Settings menu
-- Writes agent-monitor config
-- No hand editing
+S1. Settings
+- `/settings` in the chat shows and writes `agent.conf`. No hand editing
 - Holds every config value in this file
+- Also writes the agent-monitor config
 
 S2. Resume script
 - One command
