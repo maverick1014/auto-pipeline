@@ -201,6 +201,13 @@ class TestGitignore(unittest.TestCase):
             lines = [l.strip() for l in fh]
         self.assertIn("agent_monitor.txt", lines)
 
+    def test_the_half_written_sweep_file_is_ignored_too(self):
+        """A sweep killed mid-write leaves agent_monitor.txt.tmp.<pid> behind."""
+        root = os.path.dirname(HERE)
+        with open(os.path.join(root, ".gitignore")) as fh:
+            lines = [l.strip() for l in fh]
+        self.assertIn("agent_monitor.txt.tmp.*", lines)
+
 
 if __name__ == "__main__":
     unittest.main()

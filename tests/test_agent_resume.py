@@ -46,6 +46,15 @@ Relaunch, one orca call per worktree, with exactly these arguments:
 A live pane = the worktree is in `orca worktree ps --json` with a non-empty agents list.
 An empty agents list means the pane is gone, even when a plain shell is still open.
 
+The agent cap (S6). Before each relaunch, count every live agent pane in
+`orca worktree ps --json`, across every worktree, plus the relaunches this run
+has already made. At or over max_agents from agent.conf:
+  - the row reads "no, cap reached"
+  - and one plain line prints after the table, one per skipped worktree:
+        cap reached (<n>/<max>), not relaunching <path>
+A --dry-run "would" takes a slot too, so the plan it prints is honest.
+The resource cap is checked first: "no, over cap" wins over "no, cap reached".
+
 Resources come from agent-resources.sh, which honours AGENT_FAKE_RAM and AGENT_FAKE_CPU
 so tests never have to measure the real machine.
 """
@@ -335,6 +344,95 @@ class TestTable(ResumeCase):
         out = self.assertOk(self.resume("--dry-run"))
         self.assertIn("todo: 0 open", out)
         self.assertIn("ideas: 0 waiting", out)
+
+
+class TestAgentCap(ResumeCase):
+    """S6: max_agents is a machine limit. Resume must not blow past it."""
+
+    def setup_cap(self, max_agents, dead, live_elsewhere=0):
+        """`dead` worktrees needing a relaunch, plus panes busy somewhere else."""
+        self.repo.set_conf("max_agents", str(max_agents))
+        paths = [self.repo.make_worktree("dead%d" % i) for i in range(dead)]
+        self.repo.set_worktree_lines([(p, "dead%d" % i, "working")
+                                      for i, p in enumerate(paths)])
+        panes = [{"path": p, "agents": []} for p in paths]
+        for i in range(live_elsewhere):
+            panes.append({"path": "/elsewhere/%d" % i, "agents": ["working"]})
+        self.repo.set_panes(panes)
+        return paths
+
+    def test_stops_relaunching_at_the_cap(self):
+        paths = self.setup_cap(max_agents=3, dead=3, live_elsewhere=2)
+        out = self.assertOk(self.resume())
+        self.assertEqual(len(self.repo.create_calls()), 1, out)
+        self.assertEqual(self.relaunched_for(out, paths[0]), "yes")
+        self.assertEqual(self.relaunched_for(out, paths[1]), "no, cap reached")
+        self.assertEqual(self.relaunched_for(out, paths[2]), "no, cap reached")
+
+    def test_relaunches_count_towards_the_cap(self):
+        paths = self.setup_cap(max_agents=2, dead=3, live_elsewhere=0)
+        out = self.assertOk(self.resume())
+        self.assertEqual(len(self.repo.create_calls()), 2, out)
+        self.assertEqual(self.relaunched_for(out, paths[2]), "no, cap reached")
+
+    def test_a_full_cap_relaunches_nothing(self):
+        paths = self.setup_cap(max_agents=1, dead=2, live_elsewhere=1)
+        out = self.assertOk(self.resume())
+        self.assertEqual(self.repo.create_calls(), [])
+        for path in paths:
+            self.assertEqual(self.relaunched_for(out, path), "no, cap reached")
+
+    def test_the_cap_line_names_the_numbers_and_the_path(self):
+        paths = self.setup_cap(max_agents=3, dead=2, live_elsewhere=3)
+        out = self.assertOk(self.resume())
+        for path in paths:
+            self.assertIn("cap reached (3/3), not relaunching %s" % path, out)
+
+    def test_the_cap_line_counts_the_relaunches_it_made(self):
+        paths = self.setup_cap(max_agents=2, dead=3, live_elsewhere=0)
+        out = self.assertOk(self.resume())
+        self.assertIn("cap reached (2/2), not relaunching %s" % paths[2], out)
+
+    def test_no_cap_line_when_nothing_is_capped(self):
+        self.setup_cap(max_agents=4, dead=1, live_elsewhere=0)
+        out = self.assertOk(self.resume())
+        self.assertNotIn("cap reached", out)
+
+    def test_panes_in_worktrees_that_are_not_in_the_file_still_count(self):
+        paths = self.setup_cap(max_agents=2, dead=1, live_elsewhere=2)
+        out = self.assertOk(self.resume())
+        self.assertEqual(self.repo.create_calls(), [])
+        self.assertEqual(self.relaunched_for(out, paths[0]), "no, cap reached")
+
+    def test_dry_run_respects_the_cap_and_launches_nothing(self):
+        paths = self.setup_cap(max_agents=2, dead=3, live_elsewhere=0)
+        out = self.assertOk(self.resume("--dry-run"))
+        self.assertEqual(self.repo.create_calls(), [])
+        self.assertEqual(self.relaunched_for(out, paths[0]), "would")
+        self.assertEqual(self.relaunched_for(out, paths[1]), "would")
+        self.assertEqual(self.relaunched_for(out, paths[2]), "no, cap reached")
+
+    def test_the_resource_cap_is_checked_first(self):
+        paths = self.setup_cap(max_agents=1, dead=1, live_elsewhere=1)
+        out = self.assertOk(self.resume(env={"AGENT_FAKE_RAM": "95"}))
+        self.assertEqual(self.relaunched_for(out, paths[0]), "no, over cap")
+
+    def test_a_live_pane_is_not_a_cap_problem(self):
+        """A worktree that still has its own pane is skipped for that reason."""
+        self.repo.set_conf("max_agents", "1")
+        path = self.repo.make_worktree("alive")
+        self.repo.set_worktree_lines([(path, "alive", "working")])
+        self.repo.set_panes([{"path": path, "agents": ["working"]}])
+        out = self.assertOk(self.resume())
+        self.assertEqual(self.relaunched_for(out, path), "no, pane is live")
+        self.assertNotIn("cap reached", out)
+
+    def test_the_cap_lines_come_after_the_table(self):
+        self.setup_cap(max_agents=1, dead=2, live_elsewhere=1)
+        out = self.assertOk(self.resume())
+        self.assertLess(out.index("worktree | status | relaunched"),
+                        out.index("cap reached"))
+        self.assertLess(out.index("cap reached"), out.index("monitor:"))
 
 
 class TestOrcaDown(ResumeCase):
