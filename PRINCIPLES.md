@@ -69,7 +69,8 @@ W6. Roles
 - Managers never write code or tests. A defect goes back to the worker that wrote it, with evidence
 
 W7. Big feature (> 2 hours)
-- New worktree
+- Before opening a worktree: idle or done worktrees > 0 → deputy cleans them all first (W8)
+- Then new worktree
 - One task manager inside it
 - Task manager spawns workers as needed
 - Every role counts toward `max_agents` (S6)
