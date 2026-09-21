@@ -61,7 +61,8 @@ W3. TDD
 
 W4. Multi-agent tests
 - Run tests for your changed files only
-- Full suite: manager, once, at the end
+- Full suite: manager, once, at the end. Never twice
+- After a bounce: re-run only the tests that failed, not the suite
 
 W5. Web UI testing
 - Claude in Chrome, not Playwright
@@ -164,7 +165,8 @@ S6. Agent cap
 - Counts spawned agents only. The main manager is not counted
 
 S7. Session recovery
-- Each agent saves state to a file while working: task, progress, decisions, next step
+- Each agent saves state to `agent_state.txt` in its own worktree while working: task, progress, decisions, next step
+- `agent_state.txt` is git-ignored. It never merges
 - S2 restores it after crash or shutdown
 
 S8. Context guard (forgetting)
