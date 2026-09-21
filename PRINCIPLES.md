@@ -173,6 +173,7 @@ S7. Session recovery
 
 S8. Context guard (forgetting)
 - Memory is the file, not the chat. Brief, decisions, next step live in `agent_state.txt`. Re-read it before every step, write it after every step
+- First action of every agent: copy its brief into `agent_state.txt`. The main manager keeps one too, in the main repo: open decisions, live sessions and terminal handles
 - After a compaction the startup hook re-prints PRINCIPLES.md and `agent_state.txt`. No quiz then. Continue from the file, not from memory
 - Compacted 2 times → write state, end the session, restart from the file (S2)
 - One worker = one slice, then it ends. A second slice gets a fresh worker

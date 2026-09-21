@@ -27,7 +27,8 @@ Run these in order. First match wins.
 Brief from the main manager (<my session name>): you are the task manager for "<name>".
 WHERE: worktree <worktree path>, branch <branch>. Main repo <main repo> only for ./agent-file.sh.
 FEATURE: <requirement, 5 to 10 lines. Files to produce. What the user sees. Validation rules.>
-STEPS: 1 register: ./agent-file.sh worktree set "<worktree path>" "<name>" working
+STEPS: 0 save this whole brief into agent_state.txt in your worktree, first action (S8)
+ 1 register: ./agent-file.sh worktree set "<worktree path>" "<name>" working
  2 mock first if UI (W2): commit mock/<name>-mock.html, send me the path, STOP until "mock yes"
  3 write the failing tests yourself (W3), commit
  4 workers: Agent subagent_type worker, max 2 at once, each gets named files + one test command (W4). Check RESOURCES before each spawn (S3, S4)
