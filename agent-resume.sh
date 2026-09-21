@@ -36,6 +36,7 @@ esac
 : "${max_usage_percent:=80}"
 : "${task_manager:=opus-5:xhigh}"
 : "${permission_mode:=auto}"
+: "${max_agents:=4}"
 
 . ./agent-resources.sh
 
@@ -81,6 +82,13 @@ for w in data.get("result", {}).get("worktrees", []):
 ')
 fi
 
+total_live_panes=0
+if [ "$orca_down" -eq 0 ] && [ -n "$ps_tsv" ]; then
+  total_live_panes=$(printf '%s\n' "$ps_tsv" | awk -F'\t' '{sum+=$2} END{print sum+0}')
+fi
+relaunch_count=0
+cap_lines=""
+
 live_pane() {
   path=$1
   match=$(printf '%s\n' "$ps_tsv" | awk -F'\t' -v p="$path" '$1==p{print; exit}')
@@ -116,6 +124,10 @@ else
       relaunched="no, pane is live"
     elif [ "$over_cap" -eq 1 ]; then
       relaunched="no, over cap"
+    elif [ "$((total_live_panes + relaunch_count))" -ge "$max_agents" ]; then
+      relaunched="no, cap reached"
+      cap_lines="${cap_lines}cap reached ($((total_live_panes + relaunch_count))/$max_agents), not relaunching $path
+"
     else
       cmd="AGENT_ROLE=task-manager claude --model $MODEL --permission-mode $permission_mode"
       if [ "$DRY_RUN" -eq 1 ]; then
@@ -128,10 +140,12 @@ else
           --json >/dev/null </dev/null
         relaunched="yes"
       fi
+      relaunch_count=$((relaunch_count + 1))
     fi
     echo "$path | $status | $relaunched"
   done < "$WT"
 fi
+printf '%s' "$cap_lines"
 echo
 
 # ---- monitor handover ----
