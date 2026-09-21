@@ -2,7 +2,7 @@
 # agent-start.sh — every agent runs this first, before any work.
 #
 #   ./agent-start.sh                         resource check + PRINCIPLES + open tasks + quiz
-#   ./agent-start.sh --answer "1A 2D ... 27B"   grade your quiz answers
+#   ./agent-start.sh --answer "1A 2D ... 29B"   grade your quiz answers
 #
 # Rule: no work until the quiz says PASS.
 
@@ -15,9 +15,9 @@ cd "$(dirname "$0")"
 
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
-KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 2c0aa4aa4d1dc695 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 ffa4bdb3449e9897 ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 496f90a01d738ae5 ba6a4831a815a230 d956db8d1ed42790 72241f6e3363d877 64d26f41c9262571 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 a4dfa8b418c5d6de 5bc49497d74f49dc 96ebc45b039cdeb7 )
-RULE=( _ W1 R6 H1 W2 W3 W4 W5 S4 S5 H3 R5 R2 R3 H4 S7 R1 W7 W6 W8 W5 W7 W9 W9 W9 R7 W10 W10 )
-N=27
+KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 2c0aa4aa4d1dc695 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 ffa4bdb3449e9897 ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 496f90a01d738ae5 ba6a4831a815a230 d956db8d1ed42790 72241f6e3363d877 64d26f41c9262571 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 a4dfa8b418c5d6de 5bc49497d74f49dc 96ebc45b039cdeb7 0a9317bb53ca4942 5beab162ea6db1e0 )
+RULE=( _ W1 R6 H1 W2 W3 W4 W5 S4 S5 H3 R5 R2 R3 H4 S7 R1 W7 W6 W8 W5 W7 W9 W9 W9 R7 W10 W10 S8 S8 )
+N=29
 
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
 h()   { printf '%s' "$1" | sha | cut -c1-16; }
@@ -44,7 +44,7 @@ cpu_used() {
 
 # ---- grade ----
 if [ "${1:-}" = "--answer" ]; then
-  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 27B"'; exit 2; }
+  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 29B"'; exit 2; }
   ok=0; wrong=""
   for q in $(seq 1 $N); do
     tok=$(printf '%s\n' $2 | grep -i "^${q}[a-d]$" | head -1)
@@ -57,6 +57,15 @@ if [ "${1:-}" = "--answer" ]; then
     echo "QUIZ RESULT: $ok/$N FAIL"; echo "Wrong:$wrong"
     echo "Re-read those rules in PRINCIPLES.md, then answer again."; exit 1
   fi
+fi
+
+# ---- hook input (Claude Code SessionStart passes JSON on stdin) ----
+SRC=startup; SID=""
+if [ ! -t 0 ]; then
+  IN=""; while IFS= read -t 1 -r line; do IN="$IN$line"; done   # read -t: never block on an open pipe
+  [ -n "$IN" ] && eval "$(printf '%s' "$IN" | python3 -c 'import json,sys
+try: d=json.load(sys.stdin); print("SRC=%s; SID=%s" % (d.get("source","startup"), d.get("session_id","")))
+except Exception: print("SRC=startup; SID=")' 2>/dev/null)"
 fi
 
 # ---- role: one main manager per repo (W10) ----
@@ -103,7 +112,16 @@ else
   echo "RESOURCES: RAM ${r}% CPU ${c}% (cap ${max_usage_percent}%) -> OK"
 fi
 echo
+if [ "$SRC" = compact ] && [ -n "$SID" ]; then
+  CF="$GITDIR/agent_compact_$SID"; n=$(( $(cat "$CF" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$CF"
+  echo "COMPACTED $n time(s) this session. Continue from agent_state.txt, not from memory (S8)."
+  [ "$n" -ge 2 ] && echo "LIMIT: compacted $n times. Write agent_state.txt, end this session, restart from the file (S8, S2)."
+  echo
+fi
 echo "=== PRINCIPLES.md ==="; cat PRINCIPLES.md
+echo
+echo "=== agent_state.txt ==="; [ -s agent_state.txt ] && cat agent_state.txt || echo "(none)"
+[ "$SRC" = compact ] && exit 0
 echo
 echo "=== agent_todo.txt (open tasks) ==="; [ -s agent_todo.txt ] && cat agent_todo.txt || echo "(none)"
 echo
@@ -112,8 +130,8 @@ echo
 echo "=== agent_ideas.txt ==="; echo "$( [ -f agent_ideas.txt ] && grep -c . agent_ideas.txt || echo 0 ) ideas waiting for human review"
 echo
 cat <<'QUIZ'
-=== QUIZ — answer all 27 before any work ===
-Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 27D"
+=== QUIZ — answer all 29 before any work ===
+Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 29D"
 Do not start work until you see PASS.
 
 Q1. Mid-task, part of the spec is unclear.
@@ -277,4 +295,16 @@ Q27. You are that second session. The human says "report to main manager".
   B. Keep working with the human
   C. Merge your own work
   D. Exit
+
+Q28. Your context was just compacted. First:
+  A. Continue from what you remember
+  B. Re-read agent_state.txt and the rules the hook printed, continue from the file
+  C. Ask the human what you were doing
+  D. Start the task over
+
+Q29. Your worker finished slice 1. Slice 2 is ready.
+  A. Give slice 2 to the same worker
+  B. Spawn a fresh worker with only slice 2's files
+  C. Write slice 2 yourself
+  D. Wait for the human
 QUIZ

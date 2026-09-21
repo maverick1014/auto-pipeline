@@ -166,3 +166,16 @@ S6. Agent cap
 S7. Session recovery
 - Each agent saves state to a file while working: task, progress, decisions, next step
 - S2 restores it after crash or shutdown
+
+S8. Context guard (forgetting)
+- Memory is the file, not the chat. Brief, decisions, next step live in `agent_state.txt`. Re-read it before every step, write it after every step
+- After a compaction the startup hook re-prints PRINCIPLES.md and `agent_state.txt`. No quiz then. Continue from the file, not from memory
+- Compacted 2 times → write state, end the session, restart from the file (S2)
+- One worker = one slice, then it ends. A second slice gets a fresh worker
+
+S9. Token guard (cost)
+- Cheapest model that can do the job (`agent.conf`). Managers judge, they do not read whole repos
+- A worker gets only the files it needs, named in its brief. No repo-wide reads
+- Passing tests are not re-run. Full suite once, at the end (W4)
+- Quiz once per session start. Not after compaction, not for subagents
+- Briefs, reports, heartbeats: short (H2, H3). One line per heartbeat
