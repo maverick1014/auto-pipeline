@@ -81,7 +81,7 @@ W7. Big feature (> 2 hours)
 - Then new worktree
 - One task manager inside it
 - Task manager spawns workers as needed
-- Every role counts toward `max_agents` (S6)
+- Every spawned agent counts toward `max_agents` (S6). The main manager does not
 
 W8. Merge and cleanup
 - Deputy merges into the integration branch
@@ -147,6 +147,7 @@ S5. Heavy tests
 S6. Agent cap
 - Per device
 - Config `max_agents`: this laptop 4, maverick-pc2 6
+- Counts spawned agents only. The main manager is not counted
 
 S7. Session recovery
 - Each agent saves state to a file while working: task, progress, decisions, next step
