@@ -2,7 +2,7 @@
 
 - Read first. Binding for every agent in this repo.
 - Output reader: Maverick, non-native English. Keep output simple.
-- All numbers are config values (settings menu, S1). Never hard-code.
+- All numbers, models and effort levels are config values (`agent.conf`, written by the settings menu S1). Never hard-code.
 
 ## A. Repo
 
@@ -68,10 +68,12 @@ W5. Web UI testing
 - Main manager only, saves RAM. Others write the click path and hand it to the main manager
 
 W6. Roles
-- Main manager = the main chat. Assigns tasks, talks to the human, reports, accepts decisions, brainstorms. Nothing else
-- Deputy = main manager's subagent. Merges, then deletes branch and worktree
-- Task manager = one agent in its own worktree. Writes the tests, briefs workers, judges, verifies every worker result before reporting done to the main manager. Never writes product code
-- Worker = Sonnet or Haiku subagent of a task manager. Writes code until the task manager's tests pass
+- Main manager (Fable 5.1, xhigh) = the main chat. Assigns tasks, talks to the human, reports, accepts decisions, brainstorms. Nothing else
+- Fast-lane deputy (Sonnet 5, medium) = main manager's subagent, new one per small task. Does the task, no worktree
+- Merge deputy (Sonnet 5, medium) = main manager's subagent. Merges, then deletes branch and worktree
+- Task manager (Opus 5, xhigh) = one agent in its own worktree. Writes the tests, briefs workers, judges, verifies every worker result before reporting done to the main manager. Never writes product code
+- Worker (Sonnet 5, medium) = subagent of a task manager. Writes code until the task manager's tests pass
+- File clerk (Haiku 4.5, low) = subagent any manager or deputy spawns to read or write `agent_*.txt` files. Nothing else
 - Managers never write product code. A defect goes back to the worker that wrote it, with evidence
 
 W7. Big feature (> 2 hours)
