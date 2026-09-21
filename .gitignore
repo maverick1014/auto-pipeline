@@ -2,3 +2,5 @@
 __pycache__/
 *.pyc
 agent_state.txt
+agent_monitor.txt
+agent_monitor.txt.tmp.*

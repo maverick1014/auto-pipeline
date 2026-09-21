@@ -9,6 +9,8 @@ NUMBER_BOUNDS = {
     "max_usage_percent": (1, 100),
     "heavy_test_slots": (1, 8),
     "max_agents": (1, 16),
+    "monitor_interval_min": (1, 60),
+    "stall_min": (1, 120),
 }
 
 ROLE_KEYS = [
@@ -28,6 +30,8 @@ HINTS = {
     "max_usage_percent": "How much RAM or CPU may be used before agents wait. Whole number, 1 to 100.",
     "heavy_test_slots": "How many heavy test runs may run at once. Whole number, 1 to 8.",
     "max_agents": "How many agents may run at once on this machine. Whole number, 1 to 16.",
+    "monitor_interval_min": "How often the monitor checks every worktree. Whole number, 1 to 60.",
+    "stall_min": "How long all three signals may stay quiet before a worktree is called stalled. Whole number, 1 to 120.",
     "main_manager": "Model and effort for the main manager. Form: model-name:effort.",
     "fast_lane_deputy": "Model and effort for the fast-lane deputy. Form: model-name:effort.",
     "merge_deputy": "Model and effort for the merge deputy. Form: model-name:effort.",
@@ -37,7 +41,8 @@ HINTS = {
 }
 
 GROUPS = [
-    ("limits", ["max_usage_percent", "heavy_test_slots", "max_agents"]),
+    ("limits", ["max_usage_percent", "heavy_test_slots", "max_agents",
+                "monitor_interval_min", "stall_min"]),
     ("roles", list(ROLE_KEYS)),
     ("permission", ["permission_mode"]),
 ]

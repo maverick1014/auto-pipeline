@@ -23,24 +23,7 @@ sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi;
 h()   { printf '%s' "$1" | sha | cut -c1-16; }
 
 # ---- resources ----
-ram_used() {
-  if [ "$(uname)" = Darwin ]; then
-    f=$(memory_pressure 2>/dev/null | awk -F': ' '/free percentage/{gsub("%","",$2);print $2}')
-    [ -n "$f" ] && echo $((100 - f)) || echo -1
-  else
-    awk '/MemTotal/{t=$2}/MemAvailable/{a=$2}END{if(t)printf "%d",(t-a)*100/t; else print -1}' /proc/meminfo
-  fi
-}
-cpu_used() {
-  if [ "$(uname)" = Darwin ]; then
-    i=$(top -l 2 -n 0 -s 1 2>/dev/null | awk '/CPU usage/{idle=$7}END{gsub("%","",idle);print idle}')
-    [ -n "$i" ] && printf '%d\n' "${i%.*}" | awk '{print 100-$1}' || echo -1
-  else
-    read -r _ a b c d _ < /proc/stat; sleep 1; read -r _ a2 b2 c2 d2 _ < /proc/stat
-    t=$(( (a2+b2+c2+d2)-(a+b+c+d) )); id=$(( d2-d ))
-    [ "$t" -gt 0 ] && echo $(( (t-id)*100/t )) || echo -1
-  fi
-}
+. ./agent-resources.sh
 
 # ---- grade ----
 if [ "${1:-}" = "--answer" ]; then
@@ -104,13 +87,9 @@ esac
 echo
 
 # ---- startup ----
-r=$(ram_used); c=$(cpu_used)
-if [ "$r" -ge "$max_usage_percent" ] || [ "$c" -ge "$max_usage_percent" ]; then
-  echo "RESOURCES: RAM ${r}% CPU ${c}% (cap ${max_usage_percent}%) -> OVER CAP"
-  echo "Do not start agents or heavy processes. Re-run this script until OK."
-else
-  echo "RESOURCES: RAM ${r}% CPU ${c}% (cap ${max_usage_percent}%) -> OK"
-fi
+resources_read
+resources_line "$max_usage_percent"
+resources_ok "$max_usage_percent" || echo "Do not start agents or heavy processes. Re-run this script until OK."
 echo
 if [ "$SRC" = compact ] && [ -n "$SID" ]; then
   CF="$GITDIR/agent_compact_$SID"; n=$(( $(cat "$CF" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$CF"
@@ -126,6 +105,8 @@ echo
 echo "=== agent_todo.txt (open tasks) ==="; [ -s agent_todo.txt ] && cat agent_todo.txt || echo "(none)"
 echo
 echo "=== agent_worktree.txt (live worktrees) ==="; [ -s agent_worktree.txt ] && cat agent_worktree.txt || echo "(none)"
+echo
+echo "=== agent_monitor.txt (agent health) ==="; [ -s agent_monitor.txt ] && cat agent_monitor.txt || echo "(none)"
 echo
 echo "=== agent_ideas.txt ==="; echo "$( [ -f agent_ideas.txt ] && grep -c . agent_ideas.txt || echo 0 ) ideas waiting for human review"
 echo

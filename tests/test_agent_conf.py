@@ -34,6 +34,8 @@ REAL_KEYS = [
     "max_usage_percent",
     "heavy_test_slots",
     "max_agents",
+    "monitor_interval_min",
+    "stall_min",
     "main_manager",
     "fast_lane_deputy",
     "merge_deputy",
@@ -46,6 +48,8 @@ GOOD_CONF_TEXT = (
     "max_usage_percent=80\n"
     "heavy_test_slots=1\n"
     "max_agents=4\n"
+    "monitor_interval_min=5\n"
+    "stall_min=10\n"
     "main_manager=fable-5.1:xhigh\n"
     "fast_lane_deputy=sonnet-5:medium\n"
     "merge_deputy=sonnet-5:medium\n"
@@ -271,12 +275,60 @@ class TestHints(unittest.TestCase):
         self.assertEqual(agent_conf.hint_for("max_agents"), agent_conf.HINTS["max_agents"])
 
 
+class TestMonitorBounds(unittest.TestCase):
+    """The two keys the monitor and the resume script read (S1, S2)."""
+
+    BOUNDS = {"monitor_interval_min": (1, 60), "stall_min": (1, 120)}
+
+    def test_both_keys_are_numbers_with_bounds(self):
+        for key, bounds in self.BOUNDS.items():
+            with self.subTest(key=key):
+                self.assertEqual(agent_conf.NUMBER_BOUNDS.get(key), bounds)
+
+    def test_good_values_pass(self):
+        for key, (low, high) in self.BOUNDS.items():
+            for value in (low, (low + high) // 2, high):
+                with self.subTest(key=key, value=value):
+                    self.assertIsNone(agent_conf.validate_value(key, str(value)))
+
+    def test_zero_is_refused(self):
+        for key in self.BOUNDS:
+            with self.subTest(key=key):
+                self.assertTrue(agent_conf.validate_value(key, "0"))
+
+    def test_over_the_top_bound_is_refused(self):
+        for key, (_, high) in self.BOUNDS.items():
+            with self.subTest(key=key):
+                self.assertTrue(agent_conf.validate_value(key, str(high + 1)))
+
+    def test_error_message_names_the_range(self):
+        for key, (low, high) in self.BOUNDS.items():
+            with self.subTest(key=key):
+                message = agent_conf.validate_value(key, "0")
+                self.assertIn(str(low), message)
+                self.assertIn(str(high), message)
+
+    def test_both_keys_sit_in_the_limits_group(self):
+        for key in self.BOUNDS:
+            with self.subTest(key=key):
+                self.assertEqual(agent_conf.group_of(key), "limits")
+
+
 class TestGroups(unittest.TestCase):
     def test_group_order_and_membership(self):
         self.assertEqual(
             agent_conf.GROUPS,
             [
-                ("limits", ["max_usage_percent", "heavy_test_slots", "max_agents"]),
+                (
+                    "limits",
+                    [
+                        "max_usage_percent",
+                        "heavy_test_slots",
+                        "max_agents",
+                        "monitor_interval_min",
+                        "stall_min",
+                    ],
+                ),
                 (
                     "roles",
                     [
