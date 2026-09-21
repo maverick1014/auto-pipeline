@@ -58,8 +58,26 @@ W4. Multi-agent tests
 - Full suite: manager, once, at the end
 
 W5. Web UI testing
-- Claude in Chrome
-- Not Playwright
+- Claude in Chrome, not Playwright
+- Main manager only, saves RAM. Others write the click path and hand it to the main manager
+
+W6. Roles
+- Main manager = the main chat. Assigns tasks, talks to the human, reports, accepts decisions, brainstorms. Nothing else
+- Deputy = main manager's subagent. Merges, then deletes branch and worktree
+- Task manager = one agent in its own worktree. Judges, decides, directs its workers. Never does the job
+- Worker = Sonnet or Haiku subagent of a task manager. Does the job
+- Managers never write code or tests. A defect goes back to the worker that wrote it, with evidence
+
+W7. Big feature (> 2 hours)
+- New worktree
+- One task manager inside it
+- Task manager spawns workers as needed
+- Every role counts toward `max_agents` (S6)
+
+W8. Merge and cleanup
+- Deputy merges into the integration branch
+- Deputy deletes the branch (local + remote) and the worktree right after merge
+- Never skip cleanup
 
 ## C. Human
 

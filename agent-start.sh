@@ -2,7 +2,7 @@
 # agent-start.sh — every agent runs this first, before any work.
 #
 #   ./agent-start.sh                         resource check + PRINCIPLES + open tasks + quiz
-#   ./agent-start.sh --answer "1A 2D ... 16B"   grade your quiz answers
+#   ./agent-start.sh --answer "1A 2D ... 20B"   grade your quiz answers
 #
 # Rule: no work until the quiz says PASS.
 
@@ -15,9 +15,9 @@ cd "$(dirname "$0")"
 
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
-KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 2c0aa4aa4d1dc695 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 ffa4bdb3449e9897 ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 496f90a01d738ae5 ba6a4831a815a230 )
-RULE=( _ W1 R6 H1 W2 W3 W4 W5 S4 S5 H3 R5 R2 R3 H4 S7 R1 )
-N=16
+KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 2c0aa4aa4d1dc695 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 ffa4bdb3449e9897 ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 496f90a01d738ae5 ba6a4831a815a230 d956db8d1ed42790 72241f6e3363d877 64d26f41c9262571 8f6fba4ede3f932c )
+RULE=( _ W1 R6 H1 W2 W3 W4 W5 S4 S5 H3 R5 R2 R3 H4 S7 R1 W7 W6 W8 W5 )
+N=20
 
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
 h()   { printf '%s' "$1" | sha | cut -c1-16; }
@@ -44,7 +44,7 @@ cpu_used() {
 
 # ---- grade ----
 if [ "${1:-}" = "--answer" ]; then
-  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 16B"'; exit 2; }
+  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 20B"'; exit 2; }
   ok=0; wrong=""
   for q in $(seq 1 $N); do
     tok=$(printf '%s\n' $2 | grep -i "^${q}[a-d]$" | head -1)
@@ -75,8 +75,8 @@ echo
 echo "=== agent_ideas.txt ==="; echo "$( [ -f agent_ideas.txt ] && grep -c . agent_ideas.txt || echo 0 ) ideas waiting for human review"
 echo
 cat <<'QUIZ'
-=== QUIZ — answer all 16 before any work ===
-Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 16D"
+=== QUIZ — answer all 20 before any work ===
+Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 20D"
 Do not start work until you see PASS.
 
 Q1. Mid-task, part of the spec is unclear.
@@ -174,4 +174,28 @@ Q16. Fast lane task. The human already checked the result on screen. Before merg
   B. Write a failing test first
   C. Run the minimal test
   D. Nothing; the human already verified
+
+Q17. You are the main manager. A new feature will take about a day.
+  A. Do it in this chat
+  B. Spawn workers from this chat
+  C. New worktree with a task manager inside
+  D. Ask the human to do it
+
+Q18. You are a task manager. A worker's code has a bug.
+  A. Fix it yourself
+  B. Skip it
+  C. Ask the main manager to fix it
+  D. Send it back to the worker, with evidence
+
+Q19. A feature branch was just merged. The branch and worktree:
+  A. Leave them for later
+  B. Deputy deletes both now
+  C. The worker deletes them
+  D. The main manager deletes them
+
+Q20. You are a worker. You need to check a web page in the browser.
+  A. Write the click path, hand it to the main manager
+  B. Use Claude in Chrome yourself
+  C. Use Playwright
+  D. Skip the check
 QUIZ
