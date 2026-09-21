@@ -10,6 +10,7 @@ R1. Two lanes
 - Small task → fast lane, no pipeline
 - Big task → full pipeline
 - Task size picks the lane
+- Fast lane: no TDD while doing, human verifies directly, minimal test at merge
 
 R2. Secrets
 - Live in `.secrets/` (git-ignored)
@@ -20,6 +21,7 @@ R3. Docs
 - Allowed: requirement, test, main idea
 - Nothing else
 - `PRINCIPLES.md` = main idea doc
+- Entry files allowed: `CLAUDE.md`, `AGENTS.md` (one line, point to `agent-start.sh`)
 
 R4. No changelog
 - Git history is the record
@@ -49,6 +51,7 @@ W2. UI
 W3. TDD
 - Failing test → code → pass
 - No test = not started
+- Full lane only; fast lane → R1
 
 W4. Multi-agent tests
 - Run tests for your changed files only
