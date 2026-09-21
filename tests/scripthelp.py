@@ -76,6 +76,7 @@ class ScriptRepo:
 
     def __init__(self):
         self.dir = os.path.realpath(tempfile.mkdtemp(prefix="auto_pipeline_"))
+        self.script_dir = self.dir
         self.bin = os.path.join(self.dir, "stubbin")
         self.orca_log = os.path.join(self.dir, "orca_calls.log")
         self.orca_ps = os.path.join(self.dir, "orca_ps.json")
@@ -142,8 +143,8 @@ class ScriptRepo:
             json.dump(ps_json(worktrees), fh)
 
     def set_conf(self, key, value):
-        """Write one key straight into the temp agent.conf."""
-        path = os.path.join(self.dir, "agent.conf")
+        """Write one key straight into the agent.conf the scripts read."""
+        path = os.path.join(self.script_dir, "agent.conf")
         rows, found = [], False
         with open(path) as fh:
             for line in fh:
@@ -159,6 +160,49 @@ class ScriptRepo:
 
     def path(self, *parts):
         return os.path.join(self.dir, *parts)
+
+    def detach_scripts_to_worktree(self):
+        """Put the scripts in a real git worktree and leave the main repo without them.
+
+        After this, ROOT (the main repo) and the script's own directory are two
+        different places, which is how the real repo is laid out.
+        """
+        subprocess.run(["git", "-C", self.dir, "add", "-A"], check=True,
+                       capture_output=True)
+        subprocess.run(["git", "-C", self.dir, "commit", "-q", "-m", "scripts"],
+                       check=True, capture_output=True)
+        worktree = self.dir + "_wt"
+        subprocess.run(["git", "-C", self.dir, "worktree", "add", "-q",
+                        "-b", "feature", worktree], check=True, capture_output=True)
+        for name in COPY:
+            gone = os.path.join(self.dir, name)
+            if os.path.exists(gone) and name != "agent.conf":
+                os.remove(gone)
+        self.script_dir = os.path.realpath(worktree)
+        return self.script_dir
+
+    def stub_orca_down(self):
+        """Make the stub fail the way orca does when the app is not running."""
+        with open(os.path.join(self.bin, "orca"), "w") as fh:
+            fh.write("#!/usr/bin/env bash\n"
+                     "{ printf 'CALL'; for a in \"$@\"; do printf '\\t%s' \"$a\"; done; "
+                     "printf '\\n'; } >> \"$ORCA_STUB_LOG\"\n"
+                     "echo 'orca: daemon not running' >&2\n"
+                     "exit 1\n")
+        os.chmod(os.path.join(self.bin, "orca"), 0o755)
+
+    def stub_orca_reads_stdin(self):
+        """A stub that drains stdin, the way a real command can."""
+        with open(os.path.join(self.bin, "orca"), "w") as fh:
+            fh.write("#!/usr/bin/env bash\n"
+                     "{ printf 'CALL'; for a in \"$@\"; do printf '\\t%s' \"$a\"; done; "
+                     "printf '\\n'; } >> \"$ORCA_STUB_LOG\"\n"
+                     "case \"${1:-} ${2:-}\" in\n"
+                     "  \"worktree ps\") cat \"$ORCA_STUB_PS\";;\n"
+                     "  *) cat >/dev/null 2>&1 || true; "
+                     "printf '{\"ok\":true,\"result\":{}}\\n';;\n"
+                     "esac\n")
+        os.chmod(os.path.join(self.bin, "orca"), 0o755)
 
     def read(self, name):
         full = self.path(name)
@@ -180,8 +224,8 @@ class ScriptRepo:
         env.setdefault("AGENT_FAKE_CPU", "10")
         env.update(kwargs.pop("env", {}) or {})
         return subprocess.run(
-            [self.path(script)] + list(args),
-            cwd=kwargs.pop("cwd", None) or self.dir,
+            [os.path.join(self.script_dir, script)] + list(args),
+            cwd=kwargs.pop("cwd", None) or self.script_dir,
             env=env, capture_output=True, text=True,
             timeout=kwargs.pop("timeout", 90),
         )
@@ -196,7 +240,8 @@ class ScriptRepo:
         env.setdefault("AGENT_FAKE_CPU", "10")
         env.update(kwargs.pop("env", {}) or {})
         return subprocess.Popen(
-            [self.path(script)] + list(args), cwd=self.dir, env=env,
+            [os.path.join(self.script_dir, script)] + list(args),
+            cwd=self.script_dir, env=env,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
 

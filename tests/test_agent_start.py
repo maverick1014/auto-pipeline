@@ -121,6 +121,46 @@ class TestResourcesHelper(StartCase):
         self.assertIn("RESOURCES: RAM 15% CPU 25% (cap 80%) -> OK", out)
         self.assertIn("under", out)
 
+    def test_the_reading_is_taken_once(self):
+        """resources_read fills RAM_USED and CPU_USED. The rest reuse them.
+
+        Reading twice costs about 1.4 seconds each time on a Mac, and the
+        printed line can then disagree with the decision that follows it.
+        """
+        script = self.repo.path("check3.sh")
+        with open(script, "w") as fh:
+            fh.write("#!/usr/bin/env bash\nset -eu\n"
+                     "cd \"$(dirname \"$0\")\"\n"
+                     ". ./agent-resources.sh\n"
+                     "resources_read\n"
+                     "echo \"read: $RAM_USED $CPU_USED\"\n"
+                     "AGENT_FAKE_RAM=99 AGENT_FAKE_CPU=98 resources_line 80\n")
+        os.chmod(script, 0o755)
+        out = self.assertOk(self.repo.run("check3.sh",
+                                          env={"AGENT_FAKE_RAM": "11",
+                                               "AGENT_FAKE_CPU": "22"}))
+        self.assertIn("read: 11 22", out)
+        self.assertIn("RESOURCES: RAM 11% CPU 22% (cap 80%) -> OK", out,
+                      "resources_line measured again instead of reusing the reading")
+
+    def test_agent_start_reads_the_machine_once(self):
+        """One reading for the line and the warning together."""
+        script = self.repo.path("count.sh")
+        with open(script, "w") as fh:
+            fh.write("#!/usr/bin/env bash\nset -eu\n"
+                     "cd \"$(dirname \"$0\")\"\n"
+                     ". ./agent-resources.sh\n"
+                     "resources_read\n"
+                     "resources_line 80 >/dev/null\n"
+                     "resources_ok 80 && echo under || echo over\n"
+                     "echo \"ram=$RAM_USED\"\n")
+        os.chmod(script, 0o755)
+        out = self.assertOk(self.repo.run("count.sh",
+                                          env={"AGENT_FAKE_RAM": "11",
+                                               "AGENT_FAKE_CPU": "22"}))
+        self.assertIn("under", out)
+        self.assertIn("ram=11", out)
+
     def test_resources_ok_fails_over_the_cap(self):
         script = self.repo.path("check2.sh")
         with open(script, "w") as fh:

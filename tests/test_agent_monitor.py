@@ -280,6 +280,10 @@ class TestLifecycle(MonitorCase):
         out = self.assertOk(self.monitor("status"))
         self.assertIn("monitor: not running", out)
 
+    def test_status_says_none_when_there_has_been_no_sweep(self):
+        out = self.assertOk(self.monitor("status"))
+        self.assertIn("last sweep: (none)", out)
+
     def test_start_writes_a_pid_file_in_the_shared_git_dir(self):
         out = self.assertOk(self.monitor("start"))
         self.assertRegex(out, r"monitor: started \(pid \d+\)")
@@ -345,6 +349,51 @@ class TestLifecycle(MonitorCase):
         self.repo.set_conf("monitor_interval_min", "7")
         out = self.assertOk(self.monitor("start"))
         self.assertIn("7 minutes", out)
+
+
+class TestOrcaDown(MonitorCase):
+    """Orca is not always running. A sweep must still produce a file."""
+
+    def test_a_sweep_still_writes_the_file(self):
+        self.one_worktree(panes=["working"])
+        self.repo.stub_orca_down()
+        out = self.assertOk(self.monitor("once"))
+        self.assertIn("orca is not answering", out)
+        rows = self.parsed()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["pane"], "none")
+        self.assertEqual(rows[0]["output"], "none")
+
+    def test_a_fresh_commit_still_keeps_it_ok(self):
+        self.repo.set_conf("stall_min", "10")
+        self.one_worktree(commit_min_ago=0, panes=["working"])
+        self.repo.stub_orca_down()
+        self.assertEqual(self.parsed()[0]["verdict"], "OK")
+
+    def test_no_temp_file_is_left_behind(self):
+        self.one_worktree(panes=["working"])
+        self.repo.stub_orca_down()
+        self.assertOk(self.monitor("once"))
+        left = [n for n in os.listdir(self.repo.dir)
+                if n.startswith("agent_monitor.txt") and n != "agent_monitor.txt"]
+        self.assertEqual(left, [])
+
+    def test_start_still_starts(self):
+        self.repo.stub_orca_down()
+        out = self.assertOk(self.monitor("start"))
+        self.assertRegex(out, r"monitor: started \(pid \d+\)")
+
+
+class TestRunsFromItsOwnDirectory(MonitorCase):
+    def test_works_when_the_main_repo_has_no_scripts(self):
+        self.repo.detach_scripts_to_worktree()
+        path = self.repo.make_worktree("alpha")
+        self.repo.set_worktree_lines([(path, "alpha", "working")])
+        self.repo.set_panes([{"path": path, "agents": ["working"]}])
+        out = self.assertOk(self.monitor("once"))
+        self.assertIn("pane working", out)
+        self.assertTrue(os.path.exists(self.repo.path("agent_monitor.txt")),
+                        "agent_monitor.txt must land in the main repo")
 
 
 class TestUsage(MonitorCase):

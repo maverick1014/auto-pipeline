@@ -337,6 +337,74 @@ class TestTable(ResumeCase):
         self.assertIn("ideas: 0 waiting", out)
 
 
+class TestOrcaDown(ResumeCase):
+    """Orca is not always running. The script must say so in plain English, not crash."""
+
+    def test_orca_down_still_exits_zero(self):
+        path = self.repo.make_worktree("alpha")
+        self.repo.set_worktree_lines([(path, "alpha", "working")])
+        self.repo.stub_orca_down()
+        out = self.assertOk(self.resume())
+        self.assertIn("orca is not answering", out)
+
+    def test_orca_down_relaunches_nothing(self):
+        path = self.repo.make_worktree("alpha")
+        self.repo.set_worktree_lines([(path, "alpha", "working")])
+        self.repo.stub_orca_down()
+        out = self.assertOk(self.resume())
+        self.assertEqual(self.relaunched_for(out, path), "no, orca is down")
+        self.assertEqual(self.repo.create_calls(), [])
+
+    def test_orca_down_still_prints_the_counts(self):
+        self.repo.stub_orca_down()
+        out = self.assertOk(self.resume())
+        self.assertIn("todo: 0 open", out)
+        self.assertIn("ideas: 0 waiting", out)
+
+
+class TestStdinIsSafe(ResumeCase):
+    def test_a_launch_that_reads_stdin_does_not_eat_the_worktree_file(self):
+        """The orca call sits inside a `while read` loop. It must not steal its input."""
+        paths = [self.repo.make_worktree("m%d" % i) for i in range(3)]
+        self.repo.set_worktree_lines([(p, "m%d" % i, "working")
+                                      for i, p in enumerate(paths)])
+        self.repo.set_panes([])
+        self.repo.stub_orca_reads_stdin()
+        out = self.assertOk(self.resume())
+        self.assertEqual(len(self.repo.create_calls()), 3,
+                         "the launch swallowed agent_worktree.txt:\n" + out)
+        for path in paths:
+            self.assertEqual(self.relaunched_for(out, path), "yes")
+
+
+class TestRunsFromItsOwnDirectory(ResumeCase):
+    """The main repo does not carry a copy of the scripts. A worktree does."""
+
+    def test_works_when_the_main_repo_has_no_scripts(self):
+        worktree = self.repo.detach_scripts_to_worktree()
+        self.assertFalse(os.path.exists(os.path.join(self.repo.dir,
+                                                     "agent-resources.sh")))
+        out = self.assertOk(self.resume("--dry-run"))
+        self.assertIn("RESOURCES:", out)
+        self.assertIn("=== resume ===", out)
+        self.assertIn("monitor: would start", out)
+        self.assertTrue(worktree)
+
+    def test_starts_the_monitor_next_to_itself(self):
+        self.repo.detach_scripts_to_worktree()
+        out = self.assertOk(self.resume())
+        self.assertRegex(out, r"monitor: started \(pid \d+\)")
+
+
+class TestCountsAlwaysPrint(ResumeCase):
+    def test_counts_print_after_a_real_start(self):
+        with open(self.repo.path("agent_todo.txt"), "w") as fh:
+            fh.write("a | small | x\n")
+        out = self.assertOk(self.resume())
+        self.assertIn("todo: 1 open", out)
+        self.assertIn("ideas: 0 waiting", out)
+
+
 class TestUsage(ResumeCase):
     def test_help_exits_zero(self):
         result = self.repo.run("agent-resume.sh", "-h")
