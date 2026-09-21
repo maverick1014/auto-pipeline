@@ -16,6 +16,24 @@ Big task = full pipeline. Plan, build, verify, report.
 Task size picks the lane. Never force a small task through the full pipeline.
 > 小任务走快车道，几分钟解决。大任务才走完整流程。任务大小决定走哪条道。
 
+**R2. Secrets stay out of git.**
+Login credentials live in one folder that git ignores (`.secrets/`). Agents may read it. Never write, print, copy or commit it.
+> 登录凭证放在 git 不会推的 `.secrets/`。agent 只能读，不能写、不能打印、不能 commit。
+
+**R3. Only three kinds of docs.**
+The repo holds only: requirement doc, test doc, main idea doc. No other document, ever.
+`PRINCIPLES.md` is the main idea doc.
+> repo 里只允许三种文档：需求、测试、主思路。其他一律不写。本文件就是主思路文档。
+
+**R4. No changelog.**
+No changelog file. Git history is the record.
+> 不写 changelog。git 历史就是记录。
+
+**R5. One todo file, one done file.**
+`todo.txt` = open tasks only, always current. When a task is done, move the line to `completed.txt`.
+Nothing else tracks tasks.
+> `todo.txt` 只放没做完的，随时更新。做完的搬到 `completed.txt`。别的地方不记任务。
+
 ---
 
 ## B. Work principle — how an agent does a task
@@ -39,6 +57,10 @@ No test = task not started.
 When many agents work together, each agent runs only the tests for the files it changed.
 Never the full suite. The full suite runs once, at the end, by the manager.
 > 多个 agent 一起做时，每个 agent 只跑自己改过的部分的测试。不跑全量。全量测试最后由 manager 跑一次。
+
+**W5. Web UI is tested in Claude in Chrome.**
+All web-based work is tested with the Claude in Chrome tools, in the real browser. Not Playwright.
+> 所有网页类工作用 Claude in Chrome 在真浏览器里测。不用 Playwright。
 
 ---
 
@@ -76,8 +98,8 @@ The same menu holds every number in this file (S4, S5, S6).
 
 **S2. One resume script.**
 Run one command on `claude` resume. It loads everything the session needs:
-context, memory, agents, monitor.
-> 一个 resume 脚本，一跑全部就位。
+context, memory, agents, monitor, and every saved agent session (S7).
+> 一个 resume 脚本，一跑全部就位，包括之前存下来的 agent session。
 
 **S3. Resource guard before heavy work.**
 Before starting a new agent or a heavy process: check free RAM and CPU.
@@ -101,6 +123,11 @@ Not a fixed number. Different laptop, different cap.
 Config value: `max_agents` (this laptop: 4, maverick-pc2: 6).
 > 同时能跑几个 agent 由机器配置决定，是可改的设定。不同机器不同上限。
 
+**S7. Every agent session is saved and can be recovered.**
+Each agent writes its state to a file as it works: task, progress, decisions, next step.
+After a shutdown or crash, the resume script (S2) restores every agent from its file.
+> 每个 agent 边做边把状态写进文件：任务、进度、决定、下一步。关机或崩溃后，resume 脚本能把每个 agent 恢复回来。
+
 ---
 
 ## Map: owner's original concern → principle
@@ -122,3 +149,9 @@ Config value: `max_agents` (this laptop: 4, maverick-pc2: 6).
 | 13 | Only one heavy test at a time | S5 |
 | 14 | Each agent tests only its own part | W4 |
 | 15 | Agent cap by device spec, configurable | S6 |
+| 16 | Credentials in a private, read-only-for-agents space | R2 |
+| 17 | Web work tested with Claude in Chrome, not Playwright | W5 |
+| 18 | Track each agent session, recover after shutdown | S7 |
+| 19 | Only requirement / test / main-idea docs in repo | R3 |
+| 20 | No changelog | R4 |
+| 21 | todo.txt always clean; done tasks go to completed.txt | R5 |
