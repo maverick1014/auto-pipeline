@@ -32,7 +32,7 @@ H4. Comparison, series, feature list, task list, options → table. Never prose.
 S1. Settings menu → writes agent-monitor config. No hand editing. Holds every config value in this file.
 S2. One resume script. Loads context, memory, agents, monitor, saved sessions (S7).
 S3. Before new agent or heavy process: check free RAM and CPU. Low → wait or run smaller.
-S4. RAM: keep 80% for the human. Over → no new agent, no heavy process. Config `ram_reserve_percent`=80.
+S4. Usage cap: RAM and CPU each ≤ 80%. Over → no new job to any agent until it drops back. Config `max_usage_percent`=80.
 S5. Heavy tests: one at a time across all agents. Others queue. Config `heavy_test_slots`=1.
 S6. Max agents = per device. Config `max_agents`. This laptop 4, maverick-pc2 6.
 S7. Each agent saves state to a file while working: task, progress, decisions, next step. S2 restores it after crash or shutdown.
@@ -52,7 +52,7 @@ S7. Each agent saves state to a file while working: task, progress, decisions, n
 | 9 | Check memory before agents | S3 |
 | 10 | Fast lane for small tasks | R1 |
 | 11 | TDD | W3 |
-| 12 | 80% RAM for human | S4 |
+| 12 | 80% usage cap, RAM and CPU | S4 |
 | 13 | One heavy test at a time | S5 |
 | 14 | Test own part only | W4 |
 | 15 | Agent cap per device | S6 |
