@@ -1,0 +1,41 @@
+TASK: settings-page (local web page to view/change every value in agent.conf)
+WORKTREE: /Users/maverick/orca/workspaces/auto-pipeline/settings-page
+BRANCH: Niagawan-mave/settings-page
+
+STEP: 5 of 7 done (verified). Next: step 6 commit + push, then step 7 report.
+
+DONE:
+- quiz 27/27 PASS
+- step 1: worktree line added via file clerk
+- step 2: mock committed 112ba25, main manager said "mock yes", keep all three decisions
+- step 3: failing tests committed 4eb7681, both files RED
+- step 4: Worker A (agent_conf.py + settings_server.py), Worker B (settings.html). Both Sonnet 5 medium,
+  2 at once, RESOURCES checked before each spawn (RAM 70/68 CPU 37/20, cap 80)
+- step 5: verified by me. Full suite run twice, see below. curl against the live server.
+  One defect found and bounced to Worker A. One of my own tests was wrong and I fixed it.
+
+VERIFICATION RESULT: 63 tests, OK.
+- Full suite run 1: 59 tests OK (before the defect fix)
+- Full suite run 2: 63 tests OK (after the defect fix + 4 tests I added). Run twice on purpose:
+  signing off on an unverified fix would break W6. Stated openly in the report.
+- curl http://127.0.0.1:8790/ : 10 keys, each with 1 input + 1 label + 1 hint, 0 markers left,
+  3 cards, 35 div open / 35 close, 404 on /nope, agent.conf md5 unchanged by GET.
+- error path: 3 bad values -> 3 err blocks, no Saved banner, agent.conf byte-identical.
+- terminal start: "python3 settings_server.py" prints http://127.0.0.1:8790/ at once (checked over a pty).
+
+DEFECT FOUND AND FIXED BY WORKER A:
+- settings_server._rows_for_group rendered the unknown-key section as lowercase <h2>other</h2>
+  with no <div class="card"> wrapper: 4 headings, only 3 cards, bare rows on the grey background.
+  My tests had not covered it. I added 4 tests, bounced it with evidence, A fixed it.
+MY OWN TEST BUG:
+- test_the_other_card_is_closed_before_the_save_button split on 'class="actions"', which left the
+  '<div ' prefix of an unrelated tag inside the slice. Worker A refused to hack around it and
+  reported it, which is exactly right. I fixed the boundary to '<div class="actions"'.
+
+DECISIONS (D1-D11 unchanged, see the done report), plus:
+- D12 __pycache__/ and *.pyc added to .gitignore. 3 .pyc files that my step 3 commit had tracked
+  are now untracked. My hygiene mistake, fixed by me, no product code touched.
+
+NEXT: push, then report DONE PASS to auto-pipeline-77, then stay idle for the merge deputy.
+
+PARKED QUESTIONS: (none)
