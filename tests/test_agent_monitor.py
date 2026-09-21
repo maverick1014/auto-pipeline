@@ -12,20 +12,23 @@ CONTRACT the worker must implement in agent-monitor.sh (repo root, executable):
 One sweep reads every line of agent_worktree.txt (main repo) and writes
 agent_monitor.txt (main repo), one line per worktree line, in file order:
 
-    <path> | <module> | pane <state> | commit <n>m ago | output <n>m ago | OK or STALL | <time>
+    <path> | <module> | pane <state> | commit <n>m ago | activity <n>m ago | OK or STALL | <time>
 
   pane <state>   from `orca worktree ps --json`: the first agent's state, or
                  "none" when the worktree is missing from the JSON or has no agent
   commit <n>m    whole minutes since the newest commit in that path,
                  or "commit none" when the path is not a git repo
-  output <n>m    whole minutes since lastOutputAt for that worktree in the JSON,
-                 or "output none" when the worktree is missing from the JSON
+  activity <n>m  whole minutes since lastActivityAt for that worktree in the JSON,
+                 or "activity none" when the worktree is missing from the JSON.
+                 lastActivityAt, never lastOutputAt: a Claude Code pane redraws
+                 its screen every few seconds, so its lastOutputAt is always
+                 fresh and would hide every stall
   <time>         "%Y-%m-%d %H:%M"
 
 Three signals. A signal is fresh when:
-    pane    state is "working"
-    commit  age is under stall_min minutes
-    output  age is under stall_min minutes
+    pane      state is "working"
+    commit    age is under stall_min minutes
+    activity  age is under stall_min minutes
 All three quiet -> STALL. Any one fresh -> OK.
 "none" always counts as quiet.
 
@@ -53,7 +56,7 @@ from scripthelp import ScriptCase
 
 LINE_RE = re.compile(
     r"^(?P<path>[^|]+) \| (?P<module>[^|]+) \| pane (?P<pane>\S+) \| "
-    r"commit (?P<commit>\d+m ago|none) \| output (?P<output>\d+m ago|none) \| "
+    r"commit (?P<commit>\d+m ago|none) \| activity (?P<activity>\d+m ago|none) \| "
     r"(?P<verdict>OK|STALL) \| \d{4}-\d\d-\d\d \d\d:\d\d$"
 )
 
@@ -79,12 +82,12 @@ class MonitorCase(ScriptCase):
         return rows
 
     def one_worktree(self, module="alpha", commit_min_ago=0, panes=None,
-                     output_min=0, status="working", in_json=True):
+                     activity_min=0, status="working", in_json=True):
         path = self.repo.make_worktree(module, commit_min_ago=commit_min_ago)
         self.repo.set_worktree_lines([(path, module, status)])
         if in_json:
             self.repo.set_panes([{"path": path, "agents": panes or [],
-                                  "output_min": output_min}])
+                                  "activity_min": activity_min}])
         else:
             self.repo.set_panes([])
         return path
@@ -165,63 +168,78 @@ class TestSignals(MonitorCase):
         self.repo.set_panes([{"path": path, "agents": ["working"]}])
         self.assertEqual(self.parsed()[0]["commit"], "none")
 
-    def test_output_age_in_whole_minutes(self):
-        self.one_worktree(panes=["working"], output_min=17)
-        self.assertEqual(self.parsed()[0]["output"], "17m ago")
+    def test_activity_age_in_whole_minutes(self):
+        self.one_worktree(panes=["working"], activity_min=17)
+        self.assertEqual(self.parsed()[0]["activity"], "17m ago")
 
-    def test_output_none_when_the_worktree_is_not_in_the_json(self):
+    def test_activity_none_when_the_worktree_is_not_in_the_json(self):
         self.one_worktree(in_json=False)
-        self.assertEqual(self.parsed()[0]["output"], "none")
+        self.assertEqual(self.parsed()[0]["activity"], "none")
 
 
 class TestVerdict(MonitorCase):
     def test_stall_when_all_three_are_quiet(self):
         self.repo.set_conf("stall_min", "10")
-        self.one_worktree(commit_min_ago=30, panes=[], output_min=30,
+        self.one_worktree(commit_min_ago=30, panes=[], activity_min=30,
                           in_json=True)
         self.assertEqual(self.parsed()[0]["verdict"], "STALL")
 
     def test_ok_when_the_pane_is_working(self):
         self.repo.set_conf("stall_min", "10")
-        self.one_worktree(commit_min_ago=30, panes=["working"], output_min=30)
+        self.one_worktree(commit_min_ago=30, panes=["working"], activity_min=30)
         self.assertEqual(self.parsed()[0]["verdict"], "OK")
 
     def test_ok_when_the_commit_is_fresh(self):
         self.repo.set_conf("stall_min", "10")
-        self.one_worktree(commit_min_ago=0, panes=["done"], output_min=30)
+        self.one_worktree(commit_min_ago=0, panes=["done"], activity_min=30)
         self.assertEqual(self.parsed()[0]["verdict"], "OK")
 
-    def test_ok_when_the_output_is_fresh(self):
+    def test_ok_when_the_activity_is_fresh(self):
         self.repo.set_conf("stall_min", "10")
-        self.one_worktree(commit_min_ago=30, panes=["done"], output_min=0)
+        self.one_worktree(commit_min_ago=30, panes=["done"], activity_min=0)
         self.assertEqual(self.parsed()[0]["verdict"], "OK")
 
     def test_a_waiting_pane_is_not_fresh(self):
         self.repo.set_conf("stall_min", "10")
-        self.one_worktree(commit_min_ago=30, panes=["permission"], output_min=30)
+        self.one_worktree(commit_min_ago=30, panes=["permission"], activity_min=30)
+        self.assertEqual(self.parsed()[0]["verdict"], "STALL")
+
+    def test_a_redrawing_pane_is_not_fresh(self):
+        """The defect the monitor was built with.
+
+        A Claude Code pane redraws every few seconds, so lastOutputAt is
+        always a few seconds old even when the agent has done nothing for
+        hours. The stub keeps lastOutputAt fresh for every worktree. Only
+        lastActivityAt goes quiet, so only lastActivityAt can be the signal.
+        """
+        self.repo.set_conf("stall_min", "1")
+        self.one_worktree(commit_min_ago=30, panes=["done"], activity_min=5)
+        raw = self.repo.read("orca_ps.json")
+        self.assertIn("lastActivityAt", raw)
+        self.assertEqual(self.parsed()[0]["activity"], "5m ago")
         self.assertEqual(self.parsed()[0]["verdict"], "STALL")
 
     def test_stall_min_comes_from_agent_conf(self):
         self.repo.set_conf("stall_min", "60")
-        self.one_worktree(commit_min_ago=30, panes=[], output_min=30)
+        self.one_worktree(commit_min_ago=30, panes=[], activity_min=30)
         self.assertEqual(self.parsed()[0]["verdict"], "OK")
         self.repo.set_conf("stall_min", "10")
         self.assertEqual(self.parsed()[0]["verdict"], "STALL")
 
     def test_the_boundary_minute_is_a_stall(self):
         self.repo.set_conf("stall_min", "10")
-        self.one_worktree(commit_min_ago=10, panes=[], output_min=10)
+        self.one_worktree(commit_min_ago=10, panes=[], activity_min=10)
         self.assertEqual(self.parsed()[0]["verdict"], "STALL")
 
     def test_one_minute_under_the_bound_is_ok(self):
         self.repo.set_conf("stall_min", "10")
-        self.one_worktree(commit_min_ago=9, panes=[], output_min=9)
+        self.one_worktree(commit_min_ago=9, panes=[], activity_min=9)
         self.assertEqual(self.parsed()[0]["verdict"], "OK")
 
     def test_default_stall_min_is_ten(self):
         path = self.repo.make_worktree("nodefault", commit_min_ago=30)
         self.repo.set_worktree_lines([(path, "nodefault", "working")])
-        self.repo.set_panes([{"path": path, "agents": [], "output_min": 30}])
+        self.repo.set_panes([{"path": path, "agents": [], "activity_min": 30}])
         conf = self.repo.path("agent.conf")
         text = "".join(l for l in open(conf)
                        if not l.startswith("stall_min="))
@@ -248,7 +266,7 @@ class TestAtomicWrite(MonitorCase):
                             "agent_monitor.txt was written in place, not moved")
 
     def test_a_reader_never_sees_a_half_written_file(self):
-        old = "OLD | old | pane none | commit none | output none | OK | 2026-01-01 00:00\n"
+        old = "OLD | old | pane none | commit none | activity none | OK | 2026-01-01 00:00\n"
         with open(self.repo.path("agent_monitor.txt"), "w") as fh:
             fh.write(old)
         self.one_worktree(panes=["working"])
@@ -362,7 +380,7 @@ class TestOrcaDown(MonitorCase):
         rows = self.parsed()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["pane"], "none")
-        self.assertEqual(rows[0]["output"], "none")
+        self.assertEqual(rows[0]["activity"], "none")
 
     def test_a_fresh_commit_still_keeps_it_ok(self):
         self.repo.set_conf("stall_min", "10")

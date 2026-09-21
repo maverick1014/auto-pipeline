@@ -49,8 +49,14 @@ esac
 def ps_json(worktrees):
     """Build the JSON `orca worktree ps --json` prints.
 
-    Each item: {"path": str, "agents": [state, ...], "output_min": int,
+    Each item: {"path": str, "agents": [state, ...], "activity_min": int,
                 "is_main": bool}
+
+    lastActivityAt is the third signal: it moves only when the agent really
+    does something. lastOutputAt is always fresh here on purpose, because a
+    Claude Code pane redraws its screen every few seconds even when nobody is
+    working. Real Orca behaves the same way, so a monitor that reads
+    lastOutputAt never sees a quiet pane.
     """
     now_ms = int(time.time() * 1000)
     rows = []
@@ -61,7 +67,8 @@ def ps_json(worktrees):
                 "path": item["path"],
                 "isMainWorktree": bool(item.get("is_main", False)),
                 "displayName": item.get("module", os.path.basename(item["path"])),
-                "lastOutputAt": now_ms - int(item.get("output_min", 0)) * 60000,
+                "lastActivityAt": now_ms - int(item.get("activity_min", 0)) * 60000,
+                "lastOutputAt": now_ms,
                 "liveTerminalCount": item.get("terminals", len(states)),
                 "status": states[0] if states else "none",
                 "agents": [

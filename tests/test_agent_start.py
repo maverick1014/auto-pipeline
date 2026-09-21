@@ -35,7 +35,7 @@ if HERE not in sys.path:
 from scripthelp import ScriptCase
 
 MONITOR_LINE = ("/tmp/wt | alpha | pane working | commit 2m ago | "
-                "output 0m ago | OK | 2026-09-21 18:00")
+                "activity 0m ago | OK | 2026-09-21 18:00")
 
 
 class StartCase(ScriptCase):
