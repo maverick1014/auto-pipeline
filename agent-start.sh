@@ -105,11 +105,11 @@ Q4. Task: build a settings page. Your first step:
   C. Write a failing test
   D. Ask the human for a design
 
-Q5. Task: add a function. Order of work:
-  A. Code, then test
-  B. Code only; tests later
+Q5. You are a worker. Your brief arrives. First:
+  A. Write your own failing test
+  B. Write code, tests later
   C. Ask if tests are needed
-  D. Failing test, then code, then pass
+  D. Run the task manager's failing tests, then write code until they pass
 
 Q6. You are one of four agents. You changed files under api/auth/. Which tests do you run?
   A. The full suite

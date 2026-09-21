@@ -54,7 +54,8 @@ W2. UI
 - Then real code
 
 W3. TDD
-- Failing test → code → pass
+- Task manager writes the failing tests → worker writes code → tests pass
+- Workers never write tests. Task managers never write product code
 - No test = not started
 - Full lane only; fast lane → R1
 
@@ -69,9 +70,9 @@ W5. Web UI testing
 W6. Roles
 - Main manager = the main chat. Assigns tasks, talks to the human, reports, accepts decisions, brainstorms. Nothing else
 - Deputy = main manager's subagent. Merges, then deletes branch and worktree
-- Task manager = one agent in its own worktree. Judges, decides, directs its workers. Never does the job
-- Worker = Sonnet or Haiku subagent of a task manager. Does the job
-- Managers never write code or tests. A defect goes back to the worker that wrote it, with evidence
+- Task manager = one agent in its own worktree. Writes the tests, briefs workers, judges, verifies every worker result before reporting done to the main manager. Never writes product code
+- Worker = Sonnet or Haiku subagent of a task manager. Writes code until the task manager's tests pass
+- Managers never write product code. A defect goes back to the worker that wrote it, with evidence
 
 W7. Big feature (> 2 hours)
 - Before opening a worktree: idle or done worktrees > 0 → deputy cleans them all first (W8)
