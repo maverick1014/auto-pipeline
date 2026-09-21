@@ -1,0 +1,1 @@
+settings-shortcut | big | not started | owner decision 2026-09-21: real settings entry is a shortcut key or slash command, not a web page; the web page is demo only | opened 2026-09-21

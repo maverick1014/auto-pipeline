@@ -1,0 +1,2 @@
+settings_server.py: if port 8790 is already taken, it dies with a raw Python traceback. A one-line plain-English message would read better for a non-native English reader. Found 2026-09-21 by the settings-page task manager. Outside the current task.
+settings_server.py: the settings page has no link or button to restart the agents after a value changes. A human must remember that a change only takes effect on the next agent start. Found 2026-09-21 by the settings-page task manager. Outside the current task.
