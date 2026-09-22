@@ -91,6 +91,7 @@ Bash(orca terminal close *)
 /auto-pipeline:merge             # main manager: E2E, then merge deputy
 /auto-pipeline:init              # one-time project setup, prints the permissions block
 ./bin/agent-settings.sh          # show or change agent.conf, no agent
+bin/agent-file.sh time              # estimate vs actual for every finished task
 ```
 
 A second Claude session in this repo becomes a task manager under the main manager, by itself.

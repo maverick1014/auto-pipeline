@@ -114,6 +114,13 @@ W10. Second session in the same repo
 - Talk between sessions: `ListAgents` → find the peer's name → `SendMessage` to that name. Reply to the `from` name. First line of every message = one clear sentence
 - Open a second session with the same permission mode and effort as the main manager (`permission_mode` and `main_manager` in `agent.conf`, effort form model:effort): `orca terminal create --worktree path:<repo> --command "claude --permission-mode auto --effort <effort>" --json`, then `orca terminal wait --for tui-idle`
 
+W11. Time
+- Every task gets an estimate in minutes before dispatch, on its todo line
+- Done = merged and cleaned. `bin/agent-file.sh todo done` records the actual minutes
+- Every done report has one line: `TIME: est <n>m, actual <n>m, human <n>m`
+- Actual over 2× estimate → say it in the report, never silent
+- Before a new estimate: `bin/agent-file.sh time`, then pick a rubric row (dispatch skill)
+
 ## C. Human
 
 H1. One topic

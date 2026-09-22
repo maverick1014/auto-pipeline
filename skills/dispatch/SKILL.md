@@ -6,7 +6,7 @@ description: Main manager only. Route a new task by W9, open a worktree by W7 wh
 
 Run these in order. First match wins.
 
-1. `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show` and `${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh | sed -n 3p` (RESOURCES line).
+1. `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show`, `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh time`, and the RESOURCES line. Estimate the task in minutes with this rubric, adjusted by the last ratios: fast lane 5 to 15; one script with tests 45 to 60; feature with a mock gate 60 to 90; moves and multi-script 90 to 120. Bounces add 20 to 40 percent.
 2. Small task (fast lane, R1)? → `Agent` with `subagent_type: fast-lane-deputy`. Brief: the task, the file(s), the one test if any. Done.
 3. Touches a live worktree's module? → `SendMessage` the task to that task manager. Status `final` → hold it, tell the human.
 4. Big, and a live task manager has capacity? → `SendMessage` it to that task manager.
@@ -14,7 +14,7 @@ Run these in order. First match wins.
 6. RESOURCES over cap, or spawned agents at `max_agents`? → wait, tell the human.
 7. Otherwise open a worktree. Read `<model>` and `<effort>` from `task_manager` in the project's `agent.conf` (form model:effort) and `<mode>` from `permission_mode`:
    ```
-   ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<name>" big "<one line what>"
+   ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<name>" big "<one line what>" <est_minutes>
    orca worktree create --name <name> --repo path:<main repo> --base-branch main --no-parent --json
    orca terminal create --worktree path:<worktree path> --title "TM <name>" --command "AGENT_ROLE=task-manager claude --model <model> --effort <effort> --permission-mode <mode>" --json
    orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 90000 --json
@@ -35,7 +35,7 @@ STEPS: 0 save this whole brief into agent_state.txt in your worktree, first acti
  5 verify every worker result yourself. Full suite once. Defect → back to the worker with evidence. Set status final: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" final
  6 commit, git push -u origin <branch>
  7 report done, set status done, stay idle
-REPORT: SendMessage to "<my session name>". First line "DONE PASS <name>" or "DONE FAIL <name>: <why>". Then Result (test count), What changed (files), What to decide. Then the E2E click path: start command, URL, exact clicks, expected result, how to restore.
+REPORT: SendMessage to "<my session name>". First line "DONE PASS <name>" or "DONE FAIL <name>: <why>". Then Result (test count), What changed (files), What to decide. Then the E2E click path: start command, URL, exact clicks, expected result, how to restore. Then one line: TIME: est <n>m, actual <n>m, human <n>m (human = minutes the owner had to be present).
 ASK: first line "QUESTION:". Wait max 10 min, then default + log + continue (W1). Mock gate always waits.
 HEARTBEAT: every 15 min, one line "HEARTBEAT <name>: step <n> of 7, <what runs now>".
 STATE: write agent_state.txt after every step (S7, S8).
