@@ -313,6 +313,9 @@ class TestPs(RuntimeCase):
         self.assertEqual(self.assertOk(self.runtime("ps")).strip(), "")
 
     def test_cloud_is_empty_and_ok(self):
+        # setUp pinned the conf to orca, and the conf wins over the marker, so
+        # this test has to say cloud in the conf as well as in the environment.
+        self.repo.set_conf("runtime", "cloud")
         self.assertEqual(
             self.assertOk(self.runtime("ps", env=self.as_cloud())).strip(), "")
 
