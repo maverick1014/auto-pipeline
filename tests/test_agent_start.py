@@ -180,6 +180,11 @@ class TestTheRootsLine(StartCase):
         self.assertTrue(lines[1].startswith("PROJECT: "), lines[1])
         self.assertTrue(lines[2].startswith("RESOURCES: "), lines[2])
 
+    def test_it_has_a_language_line(self):
+        out = self.assertOk(self.start())
+        lines = [l for l in self.lines(out) if l.startswith("LANGUAGE: ")]
+        self.assertEqual(len(lines), 1, out)
+
     def test_it_follows_the_hook_cwd(self):
         other = self.repo.make_project("other")
         self.repo.git_init(other)

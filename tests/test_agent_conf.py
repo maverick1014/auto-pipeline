@@ -43,6 +43,7 @@ REAL_KEYS = [
     "task_manager",
     "worker",
     "permission_mode",
+    "language",
 ]
 
 GOOD_CONF_TEXT = (
@@ -57,6 +58,7 @@ GOOD_CONF_TEXT = (
     "task_manager=opus-5:xhigh\n"
     "worker=sonnet-5:medium\n"
     "permission_mode=auto\n"
+    "language=en\n"
 )
 
 
@@ -241,6 +243,14 @@ class TestValidatePermissionMode(unittest.TestCase):
             self.assertIn(mode, message)
 
 
+class TestValidateLanguage(unittest.TestCase):
+    def test_zh_is_accepted(self):
+        self.assertIsNone(agent_conf.validate_value("language", "zh"))
+
+    def test_english_is_rejected(self):
+        self.assertTrue(agent_conf.validate_value("language", "english"))
+
+
 class TestValidateUnknownKey(unittest.TestCase):
     def test_unknown_key_is_always_good(self):
         for value in ("", "anything at all", "99999"):
@@ -345,7 +355,7 @@ class TestGroups(unittest.TestCase):
                         "worker",
                     ],
                 ),
-                ("permission", ["permission_mode"]),
+                ("permission", ["permission_mode", "language"]),
             ],
         )
 

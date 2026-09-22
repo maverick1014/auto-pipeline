@@ -329,6 +329,7 @@ print_normal_lines() {
   resources_read
   resources_line "$max_usage_percent"
   resources_ok "$max_usage_percent" || echo "Do not start agents or heavy processes. Re-run this script until OK."
+  echo "LANGUAGE: ${language:-en}. Talk to the human in this language. Code, file names and rule text stay English."
   local name cn
   for name in agent_todo.txt agent_completed.txt agent_ideas.txt agent_worktree.txt; do
     cn=$(count_lines "$PROJECT_ROOT/$name")

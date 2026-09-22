@@ -25,6 +25,7 @@ EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
 PERMISSION_MODES = ["default", "acceptEdits", "auto", "plan"]
 
 ROLE_VALUE_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9.\-]*):(low|medium|high|xhigh|max)$")
+LANGUAGE_RE = re.compile(r"^[a-z]{2}(-[a-z]{2})?$")
 
 HINTS = {
     "max_usage_percent": "How much RAM or CPU may be used before agents wait. Whole number, 1 to 100.",
@@ -38,13 +39,14 @@ HINTS = {
     "task_manager": "Model and effort for a task manager. Form: model-name:effort.",
     "worker": "Model and effort for a worker. Form: model-name:effort.",
     "permission_mode": "How much an agent may do without asking. One of: default, acceptEdits, auto, plan.",
+    "language": "Language for talking to the human, e.g. en, zh, ms. Code and rules stay English.",
 }
 
 GROUPS = [
     ("limits", ["max_usage_percent", "heavy_test_slots", "max_agents",
                 "monitor_interval_min", "stall_min"]),
     ("roles", list(ROLE_KEYS)),
-    ("permission", ["permission_mode"]),
+    ("permission", ["permission_mode", "language"]),
 ]
 
 _GROUP_OF = {}
@@ -112,6 +114,12 @@ def _validate_permission_mode(value):
     return None
 
 
+def _validate_language(value):
+    if not LANGUAGE_RE.match(value):
+        return "Must be a 2-letter lowercase language code, optionally with a region, e.g. en, zh, en-us."
+    return None
+
+
 def validate_value(key, value):
     if key in NUMBER_BOUNDS:
         return _validate_number(key, value)
@@ -119,6 +127,8 @@ def validate_value(key, value):
         return _validate_role(value)
     if key == "permission_mode":
         return _validate_permission_mode(value)
+    if key == "language":
+        return _validate_language(value)
     return None
 
 

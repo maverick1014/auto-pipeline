@@ -132,11 +132,14 @@ H2. Words
 - Short sentences
 - Common words
 - Jargon only for code names
+- Talk to the human in the language set by `language` in agent.conf. Docs, code and rule text stay English
+- Never cite a rule by its code (W6, S8) to the human. Say what the rule means in plain words
 
 H3. Report
 - Result (pass/fail)
 - What changed
 - What to decide
+- Few numbers. One table at most, five rows or fewer, unless the human asks for the full list
 - Nothing else
 
 H4. Tables
