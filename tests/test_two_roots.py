@@ -208,6 +208,27 @@ class TestProjectWorktree(RootsCase):
         self.assertOk(self.start(env={"CLAUDE_PID": "999999"}))
         self.assertIn("human-direct", self.repo.read("agent_worktree.txt"))
 
+    def test_the_second_session_line_is_never_added_twice(self):
+        """agent_worktree.txt is what the main manager reads before every
+        dispatch (W9). A session that restarts, or a hook that fires again,
+        must replace its own line, not pile up another one."""
+        self.assertOk(self.start())
+        for _ in range(3):
+            self.assertOk(self.start(env={"CLAUDE_PID": "999999"}))
+        lines = [line for line in self.repo.read("agent_worktree.txt").splitlines()
+                 if "human-direct" in line]
+        self.assertEqual(len(lines), 1, lines)
+
+    def test_a_second_session_does_not_wipe_another_worktrees_line(self):
+        other = "/somewhere/else"
+        with open(self.repo.path("agent_worktree.txt"), "w") as fh:
+            fh.write("%s | other | working | since 2026-09-22 08:00\n" % other)
+        self.assertOk(self.start())
+        self.assertOk(self.start(env={"CLAUDE_PID": "999999"}))
+        text = self.repo.read("agent_worktree.txt")
+        self.assertIn(other, text)
+        self.assertIn("human-direct", text)
+
 
 class TestAgentFileFromAnywhere(RootsCase):
     script = "agent-file.sh"
