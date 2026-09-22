@@ -30,7 +30,7 @@ R4. No changelog
 
 R5. Task files
 - `agent_todo.txt` = open tasks only, always current
-- Done → move line to `agent_completed.txt`
+- Done → agent_completed.txt: date, name, what, est/actual. No test data, that is report material
 - No other task tracking
 - All four `agent_*.txt` files are written only through `./agent-file.sh`. No agent for that, it costs tokens
 

@@ -14,7 +14,6 @@ description: Main manager only. After a task manager reports DONE PASS, run the 
    worktree path: <path>
    terminal handle: <term_...>
    suite command: <exact command>
-   result text: <one line, e.g. "63 tests OK, E2E pass in Chrome">
    ```
 5. On `MERGE PASS`: `git log --oneline -2`, `git worktree list`, `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show`. All clean → report to the human in H3 shape.
 6. On `MERGE FAIL`: report the first line to the human with the deputy's evidence. Do not retry on your own.

@@ -2,7 +2,7 @@
 # agent-file.sh — the only way to write agent_*.txt. No agent, no tokens, one format.
 #
 #   agent-file.sh todo add  "<name>" "<size>" "<what>" [est_minutes]  -> agent_todo.txt
-#   agent-file.sh todo done "<name>" "<result>"               -> line moves to agent_completed.txt, records actual minutes
+#   agent-file.sh todo done "<name>"                          -> line moves to agent_completed.txt as: date | name | what | est <n>m actual <n>m
 #   agent-file.sh idea add  "<text>"                          -> agent_ideas.txt
 #   agent-file.sh idea list                                   -> print agent_ideas.txt, numbered (cat -n)
 #   agent-file.sh idea rm   <n>                                -> remove line n from agent_ideas.txt
@@ -38,15 +38,21 @@ case "${1:-}:${2:-}" in
     append "$TODO" "$3 | $4 | $what | opened $NOW | by $WHO"
     echo "todo added: $3";;
   todo:done)
-    need 4 "$@"; line=$(first "$TODO" "$3")
+    need 3 "$@"; line=$(first "$TODO" "$3")
     [ -n "$line" ] || { echo "no todo line named: $3" >&2; exit 1; }
+    what=$(printf '%s\n' "$line" | awk -F' \\| ' '{print $3}')
+    est=$(printf '%s' "$line" | grep -o 'est [0-9][0-9]*m' | head -1 | sed 's/est //;s/m//')
+    [ -n "$est" ] || est="-"
     opened=$(printf '%s\n' "$line" | sed -n 's/.*opened \([0-9][0-9-]* [0-9:]*\).*/\1/p')
-    actual="actual ?"
+    actual="-"
     if [ -n "$opened" ]; then
       o=$(to_epoch "$opened"); n=$(to_epoch "$NOW")
-      if [ -n "$o" ] && [ -n "$n" ]; then actual="actual $(( (n - o) / 60 ))m"; fi
+      if [ -n "$o" ] && [ -n "$n" ]; then actual=$(( (n - o) / 60 )); fi
     fi
-    drop "$TODO" "$3"; append "$DONE" "$line | $4 | $actual | done $NOW"
+    [ "$est" = "-" ] && est_disp="-" || est_disp="${est}m"
+    [ "$actual" = "-" ] && actual_disp="-" || actual_disp="${actual}m"
+    date="${NOW%% *}"
+    drop "$TODO" "$3"; append "$DONE" "$date | $3 | $what | est $est_disp actual $actual_disp"
     echo "todo done: $3";;
   idea:add)
     need 3 "$@"; append "$IDEAS" "$3 | $NOW | by $WHO"
@@ -76,9 +82,10 @@ case "${1:-}:${2:-}" in
     [ -s "$DONE" ] || exit 0
     while IFS= read -r ln; do
       [ -n "$ln" ] || continue
-      name=$(printf '%s' "$ln" | awk -F' \\| ' '{print $1}')
-      est=$(printf '%s' "$ln" | grep -o 'est [0-9][0-9]*m' | head -1 | sed 's/est //;s/m//')
-      actual=$(printf '%s' "$ln" | grep -o 'actual [0-9][0-9]*m' | head -1 | sed 's/actual //;s/m//')
+      name=$(printf '%s' "$ln" | awk -F' \\| ' '{print $2}')
+      last=$(printf '%s' "$ln" | awk -F' \\| ' '{print $NF}')
+      est=$(printf '%s' "$last" | grep -o 'est [0-9][0-9]*m' | head -1 | sed 's/est //;s/m//')
+      actual=$(printf '%s' "$last" | grep -o 'actual [0-9][0-9]*m' | head -1 | sed 's/actual //;s/m//')
       [ -n "$est" ] || est="-"
       [ -n "$actual" ] || actual="-"
       if [ "$est" != "-" ] && [ "$actual" != "-" ]; then
