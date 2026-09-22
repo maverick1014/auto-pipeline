@@ -94,6 +94,80 @@ class TestItFitsThePreview(StartCase):
         self.assertEqual(lines[-1], self.quiz_line())
 
 
+class TestItFitsThePreviewOnARealProject(StartCase):
+    """30 lines is not a size. A state file whose first 30 lines are a brief
+    is 8 KB on its own, and the preview cuts it just the same. The whole
+    output stays at or under 2000 bytes, always, by giving the state block
+    whatever budget is left and saying so when it trims."""
+
+    CAP = 2000
+
+    def busy_project(self):
+        long_line = "x" * 400
+        with open(self.repo.path("agent_worktree.txt"), "w") as fh:
+            for i in range(4):
+                fh.write("/very/long/path/to/worktree/number_%d | module_%d | "
+                         "working | since 2026-09-22 10:00\n" % (i, i))
+        with open(self.repo.path("agent_monitor.txt"), "w") as fh:
+            for i in range(4):
+                fh.write("/very/long/path/to/worktree/number_%d | module_%d | "
+                         "pane working | commit 2m ago | activity 1m ago | OK "
+                         "| 2026-09-22 10:00\n" % (i, i))
+        with open(self.repo.path("agent_state.txt"), "w") as fh:
+            for i in range(60):
+                fh.write("%02d %s\n" % (i, long_line))
+        with open(self.repo.path("agent_todo.txt"), "w") as fh:
+            fh.write("alpha | big | one\n")
+
+    def test_a_busy_project_still_fits(self):
+        self.busy_project()
+        out = self.assertOk(self.start())
+        self.assertLessEqual(len(out.encode()), self.CAP,
+                             "the hook is %d bytes:\n%s"
+                             % (len(out.encode()), out[:600]))
+
+    def test_it_says_it_trimmed(self):
+        self.busy_project()
+        out = self.assertOk(self.start())
+        self.assertIn("(truncated, read the file)", out)
+
+    def test_the_two_pointer_lines_are_never_trimmed_away(self):
+        self.busy_project()
+        lines = self.lines(self.assertOk(self.start()))
+        self.assertEqual(lines[-2], self.rules_line())
+        self.assertEqual(lines[-1], self.quiz_line())
+
+    def test_the_worktree_lines_survive(self):
+        """They are what the main manager reads before every dispatch (W9)."""
+        self.busy_project()
+        out = self.assertOk(self.start())
+        self.assertIn("agent_worktree.txt: 4 lines", out)
+        self.assertIn("/very/long/path/to/worktree/number_3", out)
+
+    def test_the_counts_survive(self):
+        self.busy_project()
+        out = self.assertOk(self.start())
+        self.assertIn("agent_todo.txt: 1 lines", out)
+        self.assertIn("agent_state.txt: 60 lines", out)
+
+    def test_a_single_huge_line_does_not_break_the_cap(self):
+        with open(self.repo.path("agent_state.txt"), "w") as fh:
+            fh.write("y" * 9000 + "\n")
+        out = self.assertOk(self.start())
+        self.assertLessEqual(len(out.encode()), self.CAP,
+                             "one long line blew the cap: %d bytes"
+                             % len(out.encode()))
+        self.assertIn("(truncated, read the file)", out)
+
+    def test_the_compact_path_fits_too(self):
+        self.busy_project()
+        out = self.assertOk(self.start(
+            stdin='{"cwd": "%s", "session_id": "s1", "source": "compact"}'
+                  % self.repo.dir))
+        self.assertLessEqual(len(out.encode()), self.CAP,
+                             "compact output is %d bytes" % len(out.encode()))
+
+
 class TestTheRootsLine(StartCase):
     def test_it_names_both_roots(self):
         out = self.assertOk(self.start())
