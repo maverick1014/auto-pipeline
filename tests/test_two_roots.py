@@ -362,6 +362,40 @@ class TestPlainDirectory(RootsCase):
                          "exit %d, stdout %r, stderr %r"
                          % (result.returncode, result.stdout, result.stderr))
 
+    def test_no_fake_git_directory_is_made(self):
+        """`.git` is a name git owns. An empty one makes git call the folder
+        a broken repo, so no script may create it."""
+        plain = self.plain()
+        self.assertOk(self.repo.run("agent-monitor.sh", "once", cwd=plain))
+        self.assertOk(self.start(cwd=plain))
+        self.assertOk(self.repo.run("agent-resume.sh", "--dry-run", cwd=plain))
+        self.assertFalse(os.path.exists(os.path.join(plain, ".git")),
+                         "a .git directory was invented in a plain folder")
+
+    def test_the_private_files_go_in_a_folder_of_our_own(self):
+        plain = self.plain()
+        self.assertOk(self.repo.run("agent-monitor.sh", "once", cwd=plain))
+        self.assertTrue(
+            os.path.exists(os.path.join(plain, ".auto-pipeline",
+                                        "agent_monitor.lastsweep")),
+            "no git dir here, so the pid and sweep files belong in "
+            ".auto-pipeline/")
+
+    def test_the_lock_goes_there_too(self):
+        plain = self.plain()
+        self.assertOk(self.start(cwd=plain))
+        self.assertTrue(os.path.exists(os.path.join(plain, ".auto-pipeline",
+                                                    "agent_main.lock")))
+
+    def test_nothing_complains_about_a_missing_path(self):
+        plain = self.plain()
+        for script, args in (("agent-start.sh", ()),
+                             ("agent-monitor.sh", ("once",)),
+                             ("agent-resume.sh", ("--dry-run",))):
+            with self.subTest(script=script):
+                result = self.repo.run(script, *args, cwd=plain)
+                self.assertNotIn("No such file", result.stderr)
+
     def test_agent_init_needs_no_workaround_of_its_own(self):
         """agent-init.sh must not have to turn `set -e` off around roots_read."""
         with open(self.repo.plugin_path("bin", "agent-init.sh")) as fh:

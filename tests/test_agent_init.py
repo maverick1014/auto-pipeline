@@ -24,6 +24,7 @@ and adds these lines to .gitignore when they are not already there:
     agent_state.txt
     agent_monitor.txt
     agent_monitor.txt.tmp.*
+    .auto-pipeline/            where the private files go when there is no git dir
 
 It never overwrites a file that is already there. It prints one line per file,
 saying created or kept, and ends with the permissions block for the human to
@@ -46,7 +47,7 @@ MADE_FILES = ["agent.conf", "agent_todo.txt", "agent_completed.txt",
               "agent_ideas.txt", "agent_worktree.txt", "AGENTS.md"]
 
 GITIGNORE_LINES = [".secrets/", "agent_state.txt", "agent_monitor.txt",
-                   "agent_monitor.txt.tmp.*"]
+                   "agent_monitor.txt.tmp.*", ".auto-pipeline/"]
 
 ALLOW_RULES = [
     "Bash(git push origin --delete *)",
