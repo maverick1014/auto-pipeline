@@ -4,6 +4,8 @@
 #   agent-file.sh todo add  "<name>" "<size>" "<what>" [est_minutes]  -> agent_todo.txt
 #   agent-file.sh todo done "<name>" "<result>"               -> line moves to agent_completed.txt, records actual minutes
 #   agent-file.sh idea add  "<text>"                          -> agent_ideas.txt
+#   agent-file.sh idea list                                   -> print agent_ideas.txt, numbered (cat -n)
+#   agent-file.sh idea rm   <n>                                -> remove line n from agent_ideas.txt
 #   agent-file.sh worktree set "<path>" "<module>" "<status>" -> agent_worktree.txt (add or replace)
 #   agent-file.sh worktree rm  "<path>"                       -> agent_worktree.txt
 #   agent-file.sh show                                        -> print all four files
@@ -19,7 +21,7 @@ TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agen
 NOW=$(date '+%Y-%m-%d %H:%M'); WHO=${AGENT_ROLE:-main}
 touch "$TODO" "$DONE" "$IDEAS" "$WT"
 
-usage() { sed -n '2,14p' "$0"; exit 2; }
+usage() { sed -n '2,16p' "$0"; exit 2; }
 need()  { [ $# -ge "$1" ] || usage; }
 append(){ printf '%s\n' "$2" >> "$1"; }
 # drop lines whose first field (before " | ") equals $2 from file $1
@@ -49,6 +51,15 @@ case "${1:-}:${2:-}" in
   idea:add)
     need 3 "$@"; append "$IDEAS" "$3 | $NOW | by $WHO"
     echo "idea added";;
+  idea:list)
+    [ -s "$IDEAS" ] && cat -n "$IDEAS" || echo "(empty)";;
+  idea:rm)
+    need 3 "$@"; n="$3"
+    case "$n" in ''|*[!0-9]*) echo "no idea number $n" >&2; exit 1;; esac
+    line=$(sed -n "${n}p" "$IDEAS")
+    [ -n "$line" ] || { echo "no idea number $n" >&2; exit 1; }
+    sed "${n}d" "$IDEAS" > "$IDEAS.tmp" && mv "$IDEAS.tmp" "$IDEAS"
+    printf 'idea %s removed: %s\n' "$n" "$(printf '%s' "$line" | cut -c1-60)";;
   worktree:set)
     need 5 "$@"; old=$(first "$WT" "$3"); since=$(printf '%s' "$old" | awk -F' \\| ' '{print $4}')
     [ -n "$since" ] || since="since $NOW"
