@@ -66,16 +66,20 @@ class RootsCase(ScriptCase):
 
 
 class TestPluginRoot(RootsCase):
-    def test_principles_comes_from_the_plugin(self):
-        self.mark_principles()
+    def test_the_rules_line_points_into_the_plugin(self):
         out = self.assertOk(self.start())
-        self.assertIn("=== PRINCIPLES.md ===", out)
-        self.assertIn(PRINCIPLES_MARK, out)
+        self.assertIn("RULES: read %s/PRINCIPLES.md now (S8)." % self.repo.plugin,
+                      out)
+
+    def test_the_quiz_line_points_into_the_plugin(self):
+        out = self.assertOk(self.start())
+        self.assertIn("QUIZ: run %s/bin/agent-start.sh --quiz" % self.repo.plugin,
+                      out)
 
     def test_it_works_when_the_project_has_no_principles(self):
         self.assertFalse(os.path.exists(self.repo.path("PRINCIPLES.md")))
         out = self.assertOk(self.start())
-        self.assertIn("=== QUIZ", out)
+        self.assertIn("QUIZ:", out)
 
     def test_the_plugin_is_never_written_to(self):
         before = sorted(os.listdir(self.repo.plugin))
@@ -91,11 +95,13 @@ class TestPluginRoot(RootsCase):
 
 
 class TestProjectFromCwd(RootsCase):
-    def test_the_project_files_are_printed(self):
+    def test_the_project_files_are_counted(self):
         with open(self.repo.path("agent_todo.txt"), "w") as fh:
             fh.write("alpha | big | the open task\n")
         out = self.assertOk(self.start())
-        self.assertIn("alpha | big | the open task", out)
+        self.assertIn("PROJECT: %s | PLUGIN: %s" % (self.repo.dir,
+                                                    self.repo.plugin), out)
+        self.assertIn("agent_todo.txt: 1 lines", out)
 
     def test_the_cap_comes_from_the_project_conf(self):
         self.repo.set_conf("max_usage_percent", "30")
@@ -105,10 +111,8 @@ class TestProjectFromCwd(RootsCase):
     def test_a_subdirectory_still_finds_the_project(self):
         sub = self.repo.path("src", "deep")
         os.makedirs(sub)
-        with open(self.repo.path("agent_todo.txt"), "w") as fh:
-            fh.write("alpha | big | the open task\n")
         out = self.assertOk(self.start(cwd=sub))
-        self.assertIn("alpha | big | the open task", out)
+        self.assertIn("PROJECT: %s | " % self.repo.dir, out)
 
     def test_the_lock_lands_in_the_project_git_dir(self):
         self.assertOk(self.start())
@@ -125,7 +129,7 @@ class TestProjectFromHookStdin(RootsCase):
         other = self.second_project()
         out = self.assertOk(self.start(cwd=self.repo.plugin,
                                        stdin=self.hook_json(other)))
-        self.assertIn("only-in-other", out)
+        self.assertIn("PROJECT: %s | " % other, out)
 
     def test_the_other_project_files_are_not_touched(self):
         other = self.second_project()
@@ -147,7 +151,7 @@ class TestProjectFromHookStdin(RootsCase):
         other = self.second_project()
         out = self.assertOk(self.start(cwd=self.repo.plugin,
                                        env={"CLAUDE_PROJECT_DIR": other}))
-        self.assertIn("only-in-other", out)
+        self.assertIn("PROJECT: %s | " % other, out)
 
     def test_stdin_cwd_wins_over_claude_project_dir(self):
         first = self.second_project("one")
@@ -155,14 +159,12 @@ class TestProjectFromHookStdin(RootsCase):
         out = self.assertOk(self.start(cwd=self.repo.plugin,
                                        stdin=self.hook_json(second),
                                        env={"CLAUDE_PROJECT_DIR": first}))
-        self.assertIn("only-in-two", out)
-        self.assertNotIn("only-in-one", out)
+        self.assertIn("PROJECT: %s | " % second, out)
+        self.assertNotIn(first, out)
 
     def test_bad_stdin_json_falls_back_to_the_cwd(self):
-        with open(self.repo.path("agent_todo.txt"), "w") as fh:
-            fh.write("alpha | big | the open task\n")
         out = self.assertOk(self.start(stdin="not json at all"))
-        self.assertIn("alpha | big | the open task", out)
+        self.assertIn("PROJECT: %s | " % self.repo.dir, out)
 
 
 class TestProjectWorktree(RootsCase):
@@ -174,7 +176,8 @@ class TestProjectWorktree(RootsCase):
         with open(self.repo.path("agent_todo.txt"), "w") as fh:
             fh.write("alpha | big | the open task\n")
         out = self.assertOk(self.start(cwd=worktree))
-        self.assertIn("alpha | big | the open task", out)
+        self.assertIn("PROJECT: %s | " % self.repo.dir, out)
+        self.assertIn("agent_todo.txt: 1 lines", out)
 
     def test_agent_file_writes_into_the_main_repo(self):
         worktree = self.repo.detach_scripts_to_worktree()
@@ -189,7 +192,7 @@ class TestProjectWorktree(RootsCase):
         with open(self.repo.path("agent_state.txt"), "w") as fh:
             fh.write("STATE-OF-THE-MAIN-REPO\n")
         out = self.assertOk(self.start(cwd=worktree))
-        self.assertIn("STATE-OF-THE-WORKTREE", out)
+        self.assertIn("  STATE-OF-THE-WORKTREE", out)
         self.assertNotIn("STATE-OF-THE-MAIN-REPO", out)
 
     def test_the_lock_is_shared_between_worktrees(self):
@@ -275,7 +278,7 @@ class TestProjectWithoutAgentConf(RootsCase):
     def test_agent_start_runs_on_the_built_in_defaults(self):
         out = self.assertOk(self.start(env={"AGENT_FAKE_RAM": "90"}))
         self.assertIn("(cap 80%) -> OVER CAP", out)
-        self.assertIn("=== QUIZ", out)
+        self.assertIn("QUIZ:", out)
 
     def test_agent_monitor_runs(self):
         result = self.repo.run("agent-monitor.sh", "once")
@@ -353,7 +356,8 @@ class TestPlainDirectory(RootsCase):
     def test_agent_start_works_there(self):
         plain = self.plain()
         out = self.assertOk(self.start(cwd=plain))
-        self.assertIn("=== QUIZ", out)
+        self.assertIn("QUIZ:", out)
+        self.assertIn("PROJECT: %s | " % plain, out)
 
     def test_agent_monitor_works_there(self):
         plain = self.plain()
