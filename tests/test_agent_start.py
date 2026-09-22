@@ -81,8 +81,9 @@ class TestResourcesHelper(StartCase):
         return self.repo.run("agent-resources.sh", *args, **kwargs)
 
     def test_the_helper_file_exists(self):
-        self.assertTrue(os.path.exists(self.repo.path("agent-resources.sh")),
-                        "agent-resources.sh is missing")
+        self.assertTrue(
+            os.path.exists(self.repo.plugin_path("bin", "agent-resources.sh")),
+            "bin/agent-resources.sh is missing")
 
     def test_agent_start_uses_the_fake_readings(self):
         out = self.assertOk(self.start(env={"AGENT_FAKE_RAM": "12",
@@ -107,14 +108,13 @@ class TestResourcesHelper(StartCase):
         self.assertIn("(cap 30%) -> OVER CAP", out)
 
     def test_the_helper_can_be_sourced_on_its_own(self):
-        script = self.repo.path("check.sh")
-        with open(script, "w") as fh:
-            fh.write("#!/usr/bin/env bash\nset -eu\n"
+        self.repo.write_bin_script(
+            "check.sh",
+            "#!/usr/bin/env bash\nset -eu\n"
                      "cd \"$(dirname \"$0\")\"\n"
                      ". ./agent-resources.sh\n"
                      "resources_line 80\n"
                      "resources_ok 80 && echo under || echo over\n")
-        os.chmod(script, 0o755)
         out = self.assertOk(self.repo.run("check.sh",
                                           env={"AGENT_FAKE_RAM": "15",
                                                "AGENT_FAKE_CPU": "25"}))
@@ -127,15 +127,14 @@ class TestResourcesHelper(StartCase):
         Reading twice costs about 1.4 seconds each time on a Mac, and the
         printed line can then disagree with the decision that follows it.
         """
-        script = self.repo.path("check3.sh")
-        with open(script, "w") as fh:
-            fh.write("#!/usr/bin/env bash\nset -eu\n"
+        self.repo.write_bin_script(
+            "check3.sh",
+            "#!/usr/bin/env bash\nset -eu\n"
                      "cd \"$(dirname \"$0\")\"\n"
                      ". ./agent-resources.sh\n"
                      "resources_read\n"
                      "echo \"read: $RAM_USED $CPU_USED\"\n"
                      "AGENT_FAKE_RAM=99 AGENT_FAKE_CPU=98 resources_line 80\n")
-        os.chmod(script, 0o755)
         out = self.assertOk(self.repo.run("check3.sh",
                                           env={"AGENT_FAKE_RAM": "11",
                                                "AGENT_FAKE_CPU": "22"}))
@@ -145,16 +144,15 @@ class TestResourcesHelper(StartCase):
 
     def test_agent_start_reads_the_machine_once(self):
         """One reading for the line and the warning together."""
-        script = self.repo.path("count.sh")
-        with open(script, "w") as fh:
-            fh.write("#!/usr/bin/env bash\nset -eu\n"
+        self.repo.write_bin_script(
+            "count.sh",
+            "#!/usr/bin/env bash\nset -eu\n"
                      "cd \"$(dirname \"$0\")\"\n"
                      ". ./agent-resources.sh\n"
                      "resources_read\n"
                      "resources_line 80 >/dev/null\n"
                      "resources_ok 80 && echo under || echo over\n"
                      "echo \"ram=$RAM_USED\"\n")
-        os.chmod(script, 0o755)
         out = self.assertOk(self.repo.run("count.sh",
                                           env={"AGENT_FAKE_RAM": "11",
                                                "AGENT_FAKE_CPU": "22"}))
@@ -162,13 +160,12 @@ class TestResourcesHelper(StartCase):
         self.assertIn("ram=11", out)
 
     def test_resources_ok_fails_over_the_cap(self):
-        script = self.repo.path("check2.sh")
-        with open(script, "w") as fh:
-            fh.write("#!/usr/bin/env bash\nset -eu\n"
+        self.repo.write_bin_script(
+            "check2.sh",
+            "#!/usr/bin/env bash\nset -eu\n"
                      "cd \"$(dirname \"$0\")\"\n"
                      ". ./agent-resources.sh\n"
                      "resources_ok 80 && echo under || echo over\n")
-        os.chmod(script, 0o755)
         out = self.assertOk(self.repo.run("check2.sh",
                                           env={"AGENT_FAKE_RAM": "90",
                                                "AGENT_FAKE_CPU": "10"}))

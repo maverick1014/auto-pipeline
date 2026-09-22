@@ -35,13 +35,15 @@ Relaunch, one orca call per worktree, with exactly these arguments:
     orca terminal create
          --worktree path:<path>
          --title "TM <module>"
-         --command "AGENT_ROLE=task-manager claude --model <model> --permission-mode <mode>"
+         --command "AGENT_ROLE=task-manager claude --model <model> --effort <effort> --permission-mode <mode>"
          --json
 
-    <model> = agent.conf task_manager without the ":effort" part, cut down to the
-              family word when it starts with opus, sonnet, haiku or fable
-              (opus-5:xhigh -> opus). Anything else is passed through as it is.
-    <mode>  = agent.conf permission_mode
+    <model>  = agent.conf task_manager without the ":effort" part, cut down to the
+               family word when it starts with opus, sonnet, haiku or fable
+               (opus-5:xhigh -> opus). Anything else is passed through as it is.
+    <effort> = agent.conf task_manager after the ":". `claude --effort` takes
+               low, medium, high, xhigh, max.
+    <mode>   = agent.conf permission_mode
 
 A live pane = the worktree is in `orca worktree ps --json` with a non-empty agents list.
 An empty agents list means the pane is gone, even when a plain shell is still open.
@@ -222,7 +224,8 @@ class TestLaunchCommand(ResumeCase):
             "--worktree", "path:" + path,
             "--title", "TM alpha",
             "--command",
-            "AGENT_ROLE=task-manager claude --model opus --permission-mode auto",
+            "AGENT_ROLE=task-manager claude --model opus --effort xhigh "
+            "--permission-mode auto",
             "--json",
         ])
 
@@ -248,8 +251,28 @@ class TestLaunchCommand(ResumeCase):
         self.repo.clear_calls()
         _, args = self.launch_args(task_manager="mystery-7:high", module="mm")
         command = args[args.index("--command") + 1]
-        self.assertIn("--model mystery-7", command)
-        self.assertNotIn("high", command)
+        self.assertIn("--model mystery-7 ", command + " ")
+        self.assertNotIn("mystery-7:high", command)
+
+    def test_effort_comes_from_agent_conf(self):
+        for value, expected in (
+            ("opus-5:xhigh", "xhigh"),
+            ("sonnet-5:medium", "medium"),
+            ("haiku-4.5:low", "low"),
+            ("opus-5:high", "high"),
+            ("opus-5:max", "max"),
+        ):
+            with self.subTest(value=value):
+                self.repo.clear_calls()
+                _, args = self.launch_args(task_manager=value,
+                                           module="e" + expected)
+                command = args[args.index("--command") + 1]
+                self.assertIn("--effort %s " % expected, command + " ")
+
+    def test_the_effort_flag_comes_after_the_model_flag(self):
+        _, args = self.launch_args()
+        command = args[args.index("--command") + 1]
+        self.assertLess(command.index("--model"), command.index("--effort"))
 
     def test_permission_mode_comes_from_agent_conf(self):
         self.repo.clear_calls()
