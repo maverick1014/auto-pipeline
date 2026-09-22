@@ -28,7 +28,7 @@ if k not in c: sys.exit(f"unknown key: {k}. Keys: {', '.join(c)}")
 c[k] = v
 msg = a.validate_value(k, v)
 if msg: sys.exit(f"not saved. {k}={v} is invalid: {msg}")
-a.save(c, conf_path); print(f"saved: {k}={v}")
+a.save(c, conf_path); print(f"saved: {k}={v}"); print("takes effect at the next agent start; running agents keep the old value")
 PY
 }
 
