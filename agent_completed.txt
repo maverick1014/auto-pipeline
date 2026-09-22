@@ -5,3 +5,4 @@
 2026-09-22 | time | time rule, estimate on todo, actual at done, time table | est 15m actual 2m
 2026-09-22 | language-and-plain-reports | language key + reports without rule codes | est 5m actual 3m
 2026-09-22 | idea-rm | idea list and idea rm in the script | est 5m actual 1m
+2026-09-22 | completed-format | agent_completed.txt = date | est 5m actual 2m
