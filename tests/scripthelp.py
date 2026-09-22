@@ -315,6 +315,14 @@ class ScriptRepo:
             json.dump({"enabledPlugins": {name: True}}, fh)
         return full
 
+    def unset_conf(self, key, path=None):
+        """Drop a key, the way a conf written before that key existed looks."""
+        path = path or os.path.join(self.dir, "agent.conf")
+        with open(path) as fh:
+            rows = [l for l in fh if l.split("=", 1)[0].strip() != key]
+        with open(path, "w") as fh:
+            fh.writelines(rows)
+
     def write_bin_script(self, name, body):
         """Drop a throwaway script next to the plugin's own scripts."""
         full = os.path.join(self.plugin_bin, name)

@@ -188,6 +188,11 @@ class TestTheRootsLine(StartCase):
     def test_it_follows_the_hook_cwd(self):
         other = self.repo.make_project("other")
         self.repo.git_init(other)
+        # A project that is already set up, so the scope guard stays out of the
+        # way and this test keeps proving the one thing it is about: the roots
+        # follow the hook's cwd, not the process's.
+        with open(os.path.join(other, "agent.conf"), "w") as fh:
+            fh.write("language=en\n")
         out = self.assertOk(self.start(
             cwd=self.repo.plugin,
             stdin='{"cwd": "%s", "source": "startup"}' % other))
@@ -658,6 +663,20 @@ class TestUserScopeLeavesTheRepoAlone(BareProjectCase):
         out = self.assertOk(self.repo.run("agent-start.sh", "--quiz"))
         self.assertIn("Q1.", out)
         self.assertEqual(self.names(), [])
+
+
+class TestAConfWrittenBeforeRuntimeExisted(StartCase):
+    def test_the_hook_still_prints_its_normal_output(self):
+        self.repo.unset_conf("runtime")
+        out = self.assertOk(self.start(env={"AGENT_ROLE": "task-manager"}))
+        self.assertIn("RESOURCES:", out)
+        self.assertIn("QUIZ:", out)
+
+    def test_it_does_not_try_to_set_the_project_up_again(self):
+        self.repo.unset_conf("runtime")
+        out = self.assertOk(self.start(env={"AGENT_ROLE": "task-manager"}))
+        self.assertNotIn("first run", out)
+        self.assertNotIn("not set up in this repo", out)
 
 
 if __name__ == "__main__":

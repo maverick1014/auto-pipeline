@@ -387,7 +387,16 @@ class TestLifecycle(MonitorCase):
 
 
 class TestOrcaDown(MonitorCase):
-    """Orca is not always running. A sweep must still produce a file."""
+    """Orca is not always running. A sweep must still produce a file.
+
+    The fault path, and it only exists when agent.conf pins runtime=orca. On
+    `auto` the same machine is simply not an Orca machine -- see
+    TestOrcaDownOnAuto below.
+    """
+
+    def setUp(self):
+        super(TestOrcaDown, self).setUp()
+        self.repo.set_conf("runtime", "orca")
 
     def test_a_sweep_still_writes_the_file(self):
         self.one_worktree(panes=["working"])
@@ -417,6 +426,28 @@ class TestOrcaDown(MonitorCase):
         self.repo.stub_orca_down()
         out = self.assertOk(self.monitor("start"))
         self.assertRegex(out, r"monitor: started \(pid \d+\)")
+
+
+class TestOrcaDownOnAuto(MonitorCase):
+    """orca on PATH but not answering, with no runtime pinned, is plain."""
+
+    def setUp(self):
+        super(TestOrcaDownOnAuto, self).setUp()
+        self.repo.set_conf("runtime", "auto")
+        self.repo.stub_orca_down()
+        self.one_worktree("alpha")
+
+    def test_start_says_plain_mode(self):
+        self.assertIn("monitor: not used in plain mode",
+                      self.assertOk(self.monitor("start")))
+
+    def test_it_does_not_blame_orca(self):
+        self.assertNotIn("orca is not answering",
+                         self.assertOk(self.monitor("once")))
+
+    def test_it_writes_no_sweep_file(self):
+        self.assertOk(self.monitor("once"))
+        self.assertIsNone(self.repo.read("agent_monitor.txt"))
 
 
 class TestRunsFromItsOwnDirectory(MonitorCase):
@@ -541,6 +572,31 @@ class TestAutoStillSweepsWithOrca(MonitorCase):
         self.one_worktree("alpha")
         out = self.assertOk(self.monitor("start"))
         self.assertIn("monitor: not used in plain mode", out)
+
+
+class TestAConfWrittenBeforeRuntimeExisted(MonitorCase):
+    """No `runtime` line at all reads as auto, and `set -u` does not bite."""
+
+    def setUp(self):
+        super(TestAConfWrittenBeforeRuntimeExisted, self).setUp()
+        self.repo.unset_conf("runtime")
+
+    def test_a_sweep_still_runs(self):
+        self.one_worktree("alpha", panes=["working"])
+        self.assertEqual(self.parsed()[0]["pane"], "working")
+
+    def test_it_says_nothing_about_an_unbound_variable(self):
+        self.one_worktree("alpha")
+        self.assertNotIn("unbound", self.monitor("once").stderr.lower())
+
+    def test_status_still_answers(self):
+        self.assertOk(self.monitor("status"))
+
+    def test_it_falls_back_to_plain_with_no_orca(self):
+        self.repo.no_orca()
+        self.one_worktree("alpha")
+        self.assertIn("monitor: not used in plain mode",
+                      self.assertOk(self.monitor("start")))
 
 
 if __name__ == "__main__":

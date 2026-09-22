@@ -530,7 +530,18 @@ class TestMainManagersDoNotCount(ResumeCase):
 
 
 class TestOrcaDown(ResumeCase):
-    """Orca is not always running. The script must say so in plain English, not crash."""
+    """Orca is not always running.
+
+    This is the FAULT path, and it only exists when agent.conf pins
+    runtime=orca: the human said Orca is the runtime, so Orca being down is a
+    fault and gets said out loud. On `auto` the same machine is simply not an
+    Orca machine, which is the normal plain path, not a fault -- see
+    TestOrcaDownOnAuto below.
+    """
+
+    def setUp(self):
+        super(TestOrcaDown, self).setUp()
+        self.repo.set_conf("runtime", "orca")
 
     def test_orca_down_still_exits_zero(self):
         path = self.repo.make_worktree("alpha")
@@ -552,6 +563,29 @@ class TestOrcaDown(ResumeCase):
         out = self.assertOk(self.resume())
         self.assertIn("todo: 0 open", out)
         self.assertIn("ideas: 0 waiting", out)
+
+
+class TestOrcaDownOnAuto(ResumeCase):
+    """orca on PATH but not answering, with no runtime pinned, is plain."""
+
+    def setUp(self):
+        super(TestOrcaDownOnAuto, self).setUp()
+        self.repo.set_conf("runtime", "auto")
+        self.repo.stub_orca_down()
+        self.path = self.repo.make_worktree("alpha")
+        self.repo.set_worktree_lines([(self.path, "alpha", "working")])
+
+    def test_it_is_plain_mode_not_a_fault(self):
+        self.assertEqual(
+            self.relaunched_for(self.assertOk(self.resume()), self.path),
+            "no, plain mode")
+
+    def test_it_does_not_blame_orca(self):
+        self.assertNotIn("orca is not answering", self.assertOk(self.resume()))
+
+    def test_it_starts_no_monitor(self):
+        self.assertIn("monitor: not used in plain mode",
+                      self.assertOk(self.resume()))
 
 
 class TestStdinIsSafe(ResumeCase):
@@ -725,6 +759,38 @@ class TestAutoStillPicksOrca(ResumeCase):
         self.repo.set_worktree_lines([(path, "alpha", "working")])
         self.assertEqual(self.relaunched_for(self.assertOk(self.resume()), path),
                          "no, plain mode")
+
+
+class TestAConfWrittenBeforeRuntimeExisted(ResumeCase):
+    """An agent.conf from an older release has no `runtime` line at all.
+
+    Unset must read as auto, everywhere. These scripts run under `set -u`, so
+    a bare $runtime would kill the whole run instead of defaulting.
+    """
+
+    def setUp(self):
+        super(TestAConfWrittenBeforeRuntimeExisted, self).setUp()
+        self.repo.unset_conf("runtime")
+        self.path = self.repo.make_worktree("alpha")
+        self.repo.set_worktree_lines([(self.path, "alpha", "working")])
+        self.repo.set_panes([])
+
+    def test_it_exits_zero(self):
+        self.assertEqual(self.resume().returncode, 0, self.resume().stderr)
+
+    def test_it_says_nothing_about_an_unbound_variable(self):
+        result = self.resume()
+        self.assertNotIn("unbound", result.stderr.lower())
+
+    def test_it_still_relaunches_through_orca(self):
+        self.assertEqual(
+            self.relaunched_for(self.assertOk(self.resume()), self.path), "yes")
+
+    def test_it_falls_back_to_plain_with_no_orca(self):
+        self.repo.no_orca()
+        self.assertEqual(
+            self.relaunched_for(self.assertOk(self.resume()), self.path),
+            "no, plain mode")
 
 
 if __name__ == "__main__":
