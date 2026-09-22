@@ -13,9 +13,9 @@ CONTRACT. The repo root IS the plugin. After the move it looks like this:
 
   - Nothing named agent-*.sh is left at the root, and .claude/agents and
     .claude/skills are gone.
-  - The repo's own .claude/settings.json keeps a SessionStart hook pointing at
-    ./bin/agent-start.sh, so the repo works on itself without installing, and
-    keeps its six Bash permission rules (a plugin cannot add permissions).
+  - The repo's own .claude/settings.json keeps its six Bash permission rules (a
+    plugin cannot add permissions) and does NOT repeat the SessionStart hook:
+    the installed plugin already runs it, and two copies fire it twice.
   - Every skill and agent file names scripts as ${CLAUDE_PLUGIN_ROOT}/bin/...,
     never ./agent-*.sh.
   - CLAUDE.md and AGENTS.md at the root point at ./bin/agent-start.sh.
@@ -29,16 +29,23 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
+# Scripts a human or a hook runs. These must carry the execute bit.
 SHELL_SCRIPTS = [
     "agent-start.sh",
     "agent-file.sh",
     "agent-settings.sh",
     "agent-resume.sh",
     "agent-monitor.sh",
-    "agent-resources.sh",
     "agent-init.sh",
+    "agent-runtime.sh",
 ]
-BIN_FILES = SHELL_SCRIPTS + ["agent_conf.py", "agent.conf.default"]
+# Sourced only, never run. agent-runtime.sh is in the list above instead,
+# because it is both: sourced by its callers and run by a skill.
+SOURCED_ONLY = [
+    "agent-roots.sh",
+    "agent-resources.sh",
+]
+BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py", "agent.conf.default"]
 
 AGENT_FILES = ["fast-lane-deputy.md", "merge-deputy.md", "worker.md"]
 SKILL_DIRS = ["dispatch", "merge", "init"]
@@ -88,6 +95,14 @@ class TestBin(unittest.TestCase):
                 self.assertTrue(os.access(os.path.join(ROOT, "bin", name), os.X_OK),
                                 "bin/%s is not executable" % name)
 
+    def test_a_sourced_file_is_not_advertised_as_runnable(self):
+        """agent-roots.sh and agent-resources.sh say so in their own header."""
+        for name in SOURCED_ONLY:
+            with self.subTest(name=name):
+                with open(os.path.join(ROOT, "bin", name)) as fh:
+                    head = "".join(fh.readlines()[:6]).lower()
+                self.assertIn("sourced", head)
+
     def test_nothing_is_left_at_the_root(self):
         left = [n for n in os.listdir(ROOT)
                 if n.startswith("agent-") and n.endswith(".sh")]
@@ -131,7 +146,8 @@ class TestPluginManifest(unittest.TestCase):
         data = load_json(".claude-plugin", "plugin.json")
         self.assertEqual(data["name"], "auto-pipeline")
         self.assertTrue(data["description"].strip())
-        self.assertEqual(data["version"], "0.1.0")
+        # The number is the releaser's call, so only the shape is pinned here.
+        self.assertRegex(data["version"], r"^\d+\.\d+\.\d+$")
 
 
 class TestMarketplaceManifest(unittest.TestCase):
@@ -177,14 +193,19 @@ class TestHooksJson(unittest.TestCase):
 
 
 class TestRepoSettings(unittest.TestCase):
-    """The repo still works on itself, with no install."""
+    """The repo still works on itself, with no install.
+
+    The installed plugin already runs the SessionStart hook from
+    hooks/hooks.json. A second copy in the repo's own settings.json would fire
+    it twice, so the repo must not carry one.
+    """
 
     def settings(self):
         return load_json(".claude", "settings.json")
 
-    def test_session_start_points_at_the_local_bin(self):
-        hooks = self.settings()["hooks"]["SessionStart"][0]["hooks"]
-        self.assertEqual(hooks[0]["command"], "./bin/agent-start.sh")
+    def test_the_repo_does_not_duplicate_the_session_start_hook(self):
+        self.assertEqual(self.settings().get("hooks", {}).get("SessionStart"),
+                         None)
 
     def test_the_six_permission_rules_are_still_there(self):
         allow = self.settings()["permissions"]["allow"]
@@ -329,6 +350,194 @@ class TestReadmeInstall(unittest.TestCase):
     def test_the_tree_shows_the_new_paths(self):
         text = read("README.md")
         self.assertIn("bin/agent-start.sh", text)
+
+
+class TestUserConfig(unittest.TestCase):
+    """Claude Code asks these three at enable time, so setup needs no editing.
+
+    Values reach a hook as CLAUDE_PLUGIN_OPTION_<KEY uppercased>.
+    """
+
+    KEYS = {"runtime": "string", "language": "string", "max_agents": "number"}
+    DEFAULTS = {"runtime": "auto", "language": "en", "max_agents": 4}
+
+    def config(self):
+        return load_json(".claude-plugin", "plugin.json")["userConfig"]
+
+    def test_the_three_keys_are_there(self):
+        self.assertEqual(sorted(self.config()), sorted(self.KEYS))
+
+    def test_each_key_has_its_type(self):
+        config = self.config()
+        for key, kind in self.KEYS.items():
+            with self.subTest(key=key):
+                self.assertEqual(config[key]["type"], kind)
+
+    def test_each_key_has_a_title_and_a_description(self):
+        config = self.config()
+        for key in self.KEYS:
+            with self.subTest(key=key):
+                self.assertTrue(config[key]["title"].strip())
+                self.assertTrue(config[key]["description"].strip())
+
+    def test_each_key_has_its_default(self):
+        config = self.config()
+        for key, value in self.DEFAULTS.items():
+            with self.subTest(key=key):
+                self.assertEqual(config[key]["default"], value)
+
+    def test_runtime_offers_the_four_choices(self):
+        self.assertEqual(self.config()["runtime"]["options"],
+                         ["auto", "orca", "plain", "cloud"])
+
+    def test_nothing_here_is_a_secret(self):
+        for key, entry in self.config().items():
+            with self.subTest(key=key):
+                self.assertFalse(entry.get("sensitive", False))
+
+    def test_max_agents_keeps_the_same_bounds_as_agent_conf(self):
+        entry = self.config()["max_agents"]
+        self.assertEqual((entry["min"], entry["max"]), (1, 16))
+
+
+class TestRuntimeReachesEveryCaller(unittest.TestCase):
+    """No skill or agent may call orca without going through the runtime."""
+
+    RUNTIME = "${CLAUDE_PLUGIN_ROOT}/bin/agent-runtime.sh"
+
+    def markdown_files(self):
+        out = []
+        for folder in ("agents", "skills"):
+            for dirpath, _, names in os.walk(os.path.join(ROOT, folder)):
+                out += [os.path.join(dirpath, n) for n in names
+                        if n.endswith(".md")]
+        return out
+
+    def test_every_file_that_says_orca_also_asks_the_runtime(self):
+        for path in self.markdown_files():
+            with open(path) as fh:
+                text = fh.read()
+            if "orca " not in text:
+                continue
+            with self.subTest(path=os.path.relpath(path, ROOT)):
+                self.assertIn("agent-runtime.sh", text,
+                              "calls orca straight out, with no plain branch")
+
+    def test_dispatch_step_seven_asks_the_runtime_first(self):
+        text = read("skills", "dispatch", "SKILL.md")
+        self.assertIn(self.RUNTIME + " kind", text)
+
+    def test_dispatch_has_a_branch_without_terminals(self):
+        text = read("skills", "dispatch", "SKILL.md").lower()
+        self.assertIn("plain", text)
+        self.assertIn("cloud", text)
+        self.assertIn("agent", text)
+
+    def test_the_merge_deputy_closes_through_the_runtime(self):
+        text = read("agents", "merge-deputy.md")
+        self.assertIn(self.RUNTIME + " close", text)
+
+    def test_the_merge_deputy_has_a_branch_without_terminals(self):
+        text = read("agents", "merge-deputy.md").lower()
+        self.assertIn("plain", text)
+
+
+class TestMergeSkillBrowserBranches(unittest.TestCase):
+    """Step 2 may never pass a click path nobody drove."""
+
+    def text(self):
+        return read("skills", "merge", "SKILL.md")
+
+    def test_it_asks_the_runtime_which_browser(self):
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}/bin/agent-runtime.sh browser",
+                      self.text())
+
+    def test_all_three_answers_get_a_branch(self):
+        text = self.text()
+        for answer in ("chrome", "headless", "none"):
+            with self.subTest(answer=answer):
+                self.assertIn(answer, text)
+
+    def test_chrome_still_means_claude_in_chrome(self):
+        self.assertIn("Claude in Chrome", self.text())
+
+    def test_headless_means_playwright_with_a_screenshot_each_step(self):
+        text = self.text().lower()
+        self.assertIn("playwright", text)
+        self.assertIn("screenshot", text)
+
+    def test_none_stops_and_asks_the_human(self):
+        self.assertIn("NEEDS HUMAN E2E", self.text())
+
+    def test_it_forbids_calling_an_undriven_path_verified(self):
+        self.assertIn("verified", self.text().lower())
+
+
+class TestInitSkillTellsTheHumanWhatOnlyHeCanDo(unittest.TestCase):
+    def text(self):
+        return read("skills", "init", "SKILL.md")
+
+    def test_it_keeps_the_permission_sentence(self):
+        lowered = self.text().lower()
+        self.assertIn("cannot add permission", lowered)
+
+    def test_it_says_a_cloud_session_has_no_plugin_command(self):
+        lowered = self.text().lower()
+        self.assertIn("/plugin", lowered)
+        self.assertIn("cloud", lowered)
+        self.assertIn(".claude/settings.json", lowered)
+
+
+class TestPrinciplesRuntimeShape(unittest.TestCase):
+    """W5 and W7 stop assuming Orca and a second terminal."""
+
+    def rule(self, name, nxt):
+        text = read("PRINCIPLES.md")
+        return text[text.index(name):text.index(nxt)]
+
+    def w5(self):
+        return self.rule("W5.", "W6.")
+
+    def w7(self):
+        return self.rule("W7.", "W8.")
+
+    def test_w5_keeps_claude_in_chrome_for_a_local_machine(self):
+        self.assertIn("Claude in Chrome", self.w5())
+
+    def test_w5_names_the_runtime_check(self):
+        self.assertIn("agent-runtime.sh browser", self.w5())
+
+    def test_w5_names_all_three_browser_answers(self):
+        block = self.w5()
+        for answer in ("chrome", "headless", "none"):
+            with self.subTest(answer=answer):
+                self.assertIn(answer, block)
+
+    def test_w5_sends_the_cloud_to_headless_playwright(self):
+        block = self.w5().lower()
+        self.assertIn("cloud", block)
+        self.assertIn("playwright", block)
+
+    def test_w5_forbids_writing_verified_without_driving_it(self):
+        self.assertIn("NEEDS HUMAN E2E", self.w5())
+
+    def test_w7_says_a_worktree_needs_orca(self):
+        block = self.w7().lower()
+        self.assertIn("orca", block)
+
+    def test_w7_gives_the_shape_without_terminals(self):
+        block = self.w7().lower()
+        self.assertIn("plain", block)
+        self.assertIn("cloud", block)
+
+    def test_w7_says_subagents_do_the_work_there(self):
+        self.assertIn("Agent", self.w7())
+
+    def test_no_new_doc_file_was_added(self):
+        """R3 allows requirement, test and main idea docs. Nothing else."""
+        allowed = {"PRINCIPLES.md", "README.md", "CLAUDE.md", "AGENTS.md"}
+        found = {n for n in os.listdir(ROOT) if n.endswith(".md")}
+        self.assertEqual(found - allowed, set())
 
 
 if __name__ == "__main__":

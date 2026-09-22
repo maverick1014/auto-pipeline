@@ -12,14 +12,19 @@ Run these in order. First match wins.
 4. Big, and a live task manager has capacity? → `SendMessage` it to that task manager.
 5. Idle or done worktrees in `agent_worktree.txt`? → run `/merge` for each first.
 6. RESOURCES over cap, or spawned agents at `max_agents`? → wait, tell the human.
-7. Otherwise open a worktree. Read `<model>` and `<effort>` from `task_manager` in the project's `agent.conf` (form model:effort) and `<mode>` from `permission_mode`:
+7. Otherwise, ask `${CLAUDE_PLUGIN_ROOT}/bin/agent-runtime.sh kind` first: orca, plain or cloud.
    ```
    ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<name>" big "<one line what>" <est_minutes>
+   ```
+   **orca** — open a worktree. Read `<model>` and `<effort>` from `task_manager` in the project's `agent.conf` (form model:effort) and `<mode>` from `permission_mode`:
+   ```
    orca worktree create --name <name> --repo path:<main repo> --base-branch main --no-parent --json
    orca terminal create --worktree path:<worktree path> --title "TM <name>" --command "AGENT_ROLE=task-manager claude --model <model> --effort <effort> --permission-mode <mode>" --json
    orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 90000 --json
    ```
    Then `ListAgents`, find the new session, `SendMessage` it the brief below. Keep the terminal handle for `/merge`.
+
+   **plain or cloud** — no terminal can be opened here, so no worktree either. The main manager does the task itself, from the session it is already in, with `Agent` subagents (`subagent_type: worker`), up to `max_agents` at a time. Use the task manager brief below as its own task list and run the steps in order.
 
 ## Task manager brief (fill the <>)
 

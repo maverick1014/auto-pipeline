@@ -24,6 +24,7 @@ ROLE_KEYS = [
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
 PERMISSION_MODES = ["default", "acceptEdits", "auto", "plan"]
 YES_NO = ["yes", "no"]
+RUNTIME_VALUES = ["auto", "orca", "plain", "cloud"]
 
 ROLE_VALUE_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9.\-]*):(low|medium|high|xhigh|max)$")
 LANGUAGE_RE = re.compile(r"^[a-z]{2}(-[a-z]{2})?$")
@@ -42,6 +43,7 @@ HINTS = {
     "permission_mode": "How much an agent may do without asking. One of: default, acceptEdits, auto, plan.",
     "auto_resume": "Run agent-resume.sh by itself when a main manager starts. yes or no.",
     "language": "Language for talking to the human, e.g. en, zh, ms. Code and rules stay English.",
+    "runtime": "How this machine runs agents. One of: auto, orca, plain, cloud.",
 }
 
 GROUPS = [
@@ -49,6 +51,7 @@ GROUPS = [
                 "monitor_interval_min", "stall_min"]),
     ("roles", list(ROLE_KEYS)),
     ("permission", ["permission_mode", "auto_resume", "language"]),
+    ("runtime", ["runtime"]),
 ]
 
 _GROUP_OF = {}
@@ -116,6 +119,12 @@ def _validate_permission_mode(value):
     return None
 
 
+def _validate_runtime(value):
+    if value not in RUNTIME_VALUES:
+        return "Must be one of: auto, orca, plain, cloud."
+    return None
+
+
 def _validate_yes_no(value):
     if value not in YES_NO:
         return "Must be yes or no."
@@ -139,6 +148,8 @@ def validate_value(key, value):
         return _validate_yes_no(value)
     if key == "language":
         return _validate_language(value)
+    if key == "runtime":
+        return _validate_runtime(value)
     return None
 
 

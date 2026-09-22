@@ -61,6 +61,22 @@ The resource cap is checked first: "no, over cap" wins over "no, cap reached".
 
 Resources come from agent-resources.sh, which honours AGENT_FAKE_RAM and AGENT_FAKE_CPU
 so tests never have to measure the real machine.
+
+RUNTIME. Everything above is the orca runtime. `bin/agent-runtime.sh kind` is
+asked first, fresh, every run.
+
+plain and cloud have no terminals, so there is nothing to relaunch and nothing
+to sweep. They are a different shape, not a crippled copy:
+
+  - the table still prints, in file order, so the human can see what is down
+  - <relaunched> reads "no, plain mode" or "no, cloud mode". Never "yes"
+  - after the table, one line per worktree that needs a task manager, naming
+    the path, so the reader knows what to start with the Agent tool
+  - the monitor line reads "monitor: not used in plain mode" (or cloud), and no
+    background loop is started
+  - orca is never called, and "orca is not answering" is never printed: orca
+    being absent is the normal case there, not a fault
+  - the counts still print, and the exit code is 0
 """
 
 import os
@@ -514,7 +530,18 @@ class TestMainManagersDoNotCount(ResumeCase):
 
 
 class TestOrcaDown(ResumeCase):
-    """Orca is not always running. The script must say so in plain English, not crash."""
+    """Orca is not always running.
+
+    This is the FAULT path, and it only exists when agent.conf pins
+    runtime=orca: the human said Orca is the runtime, so Orca being down is a
+    fault and gets said out loud. On `auto` the same machine is simply not an
+    Orca machine, which is the normal plain path, not a fault -- see
+    TestOrcaDownOnAuto below.
+    """
+
+    def setUp(self):
+        super(TestOrcaDown, self).setUp()
+        self.repo.set_conf("runtime", "orca")
 
     def test_orca_down_still_exits_zero(self):
         path = self.repo.make_worktree("alpha")
@@ -536,6 +563,29 @@ class TestOrcaDown(ResumeCase):
         out = self.assertOk(self.resume())
         self.assertIn("todo: 0 open", out)
         self.assertIn("ideas: 0 waiting", out)
+
+
+class TestOrcaDownOnAuto(ResumeCase):
+    """orca on PATH but not answering, with no runtime pinned, is plain."""
+
+    def setUp(self):
+        super(TestOrcaDownOnAuto, self).setUp()
+        self.repo.set_conf("runtime", "auto")
+        self.repo.stub_orca_down()
+        self.path = self.repo.make_worktree("alpha")
+        self.repo.set_worktree_lines([(self.path, "alpha", "working")])
+
+    def test_it_is_plain_mode_not_a_fault(self):
+        self.assertEqual(
+            self.relaunched_for(self.assertOk(self.resume()), self.path),
+            "no, plain mode")
+
+    def test_it_does_not_blame_orca(self):
+        self.assertNotIn("orca is not answering", self.assertOk(self.resume()))
+
+    def test_it_starts_no_monitor(self):
+        self.assertIn("monitor: not used in plain mode",
+                      self.assertOk(self.resume()))
 
 
 class TestStdinIsSafe(ResumeCase):
@@ -595,6 +645,152 @@ class TestUsage(ResumeCase):
         out = self.assertOk(self.repo.run("agent-resume.sh", "--dry-run",
                                           cwd=self.repo.bin))
         self.assertIn("=== resume ===", out)
+
+
+class PlainCase(ResumeCase):
+    """No terminals. Two worktrees that would be relaunched under Orca."""
+
+    KIND = "plain"
+
+    def setUp(self):
+        super(PlainCase, self).setUp()
+        self.repo.set_conf("runtime", self.KIND)
+        self.alpha = self.repo.make_worktree("alpha")
+        self.beta = self.repo.make_worktree("beta")
+        self.repo.set_worktree_lines([
+            (self.alpha, "alpha", "working"),
+            (self.beta, "beta", "idle"),
+        ])
+
+    def out(self):
+        return self.assertOk(self.resume())
+
+
+class TestPlainRelaunchesNothing(PlainCase):
+    def test_it_exits_zero(self):
+        self.assertEqual(self.resume().returncode, 0)
+
+    def test_the_working_row_names_the_mode(self):
+        self.assertEqual(self.relaunched_for(self.out(), self.alpha),
+                         "no, %s mode" % self.KIND)
+
+    def test_no_row_ever_says_yes(self):
+        for row in self.rows(self.out()):
+            with self.subTest(row=row):
+                self.assertNotEqual(row[2], "yes")
+
+    def test_it_calls_orca_never(self):
+        self.out()
+        self.assertEqual(self.repo.calls(), [])
+
+    def test_it_never_blames_orca(self):
+        self.assertNotIn("orca is not answering", self.out())
+
+    def test_the_table_still_lists_every_line(self):
+        rows = self.rows(self.out())
+        self.assertEqual([row[0] for row in rows], [self.alpha, self.beta])
+
+    def test_it_says_what_needs_starting_by_hand(self):
+        out = self.out()
+        after = out[out.index(self.beta):]
+        self.assertIn(self.alpha, after,
+                      "no line telling the reader what to start")
+
+    def test_it_does_not_ask_for_an_idle_worktree_to_be_started(self):
+        out = self.out()
+        after = out[out.index("| idle |"):]
+        self.assertNotIn(self.beta, after.replace("| idle |", "", 1))
+
+    def test_the_counts_still_print(self):
+        out = self.out()
+        self.assertIn("todo: 0 open", out)
+        self.assertIn("ideas: 0 waiting", out)
+
+    def test_the_resources_line_still_comes_first(self):
+        self.assertTrue(self.lines(self.out())[0].startswith("RESOURCES:"))
+
+
+class TestPlainStartsNoMonitor(PlainCase):
+    def test_the_monitor_line_says_it_is_not_used(self):
+        self.assertIn("monitor: not used in %s mode" % self.KIND, self.out())
+
+    def test_no_pid_file_appears(self):
+        self.out()
+        self.assertFalse(os.path.exists(os.path.join(
+            self.repo.dir, ".git", "agent_monitor.pid")))
+
+    def test_it_never_says_started(self):
+        self.assertNotIn("monitor: started", self.out())
+
+
+class TestCloudIsTheSameShape(PlainCase):
+    KIND = "cloud"
+
+    def setUp(self):
+        super(TestCloudIsTheSameShape, self).setUp()
+        self.repo.set_conf("runtime", "cloud")
+
+    def test_the_row_names_the_cloud(self):
+        self.assertEqual(self.relaunched_for(self.out(), self.alpha),
+                         "no, cloud mode")
+
+    def test_the_monitor_line_names_the_cloud(self):
+        self.assertIn("monitor: not used in cloud mode", self.out())
+
+    def test_the_remote_marker_alone_is_enough(self):
+        self.repo.set_conf("runtime", "auto")
+        out = self.assertOk(self.resume(env={"CLAUDE_CODE_REMOTE": "true"}))
+        self.assertEqual(self.relaunched_for(out, self.alpha), "no, cloud mode")
+
+
+class TestAutoStillPicksOrca(ResumeCase):
+    def test_a_machine_with_orca_relaunches_as_before(self):
+        self.repo.set_conf("runtime", "auto")
+        path = self.repo.make_worktree("alpha")
+        self.repo.set_worktree_lines([(path, "alpha", "working")])
+        self.repo.set_panes([])
+        self.assertEqual(self.relaunched_for(self.assertOk(self.resume()), path),
+                         "yes")
+
+    def test_a_machine_without_orca_falls_back_to_plain(self):
+        self.repo.set_conf("runtime", "auto")
+        self.repo.no_orca()
+        path = self.repo.make_worktree("alpha")
+        self.repo.set_worktree_lines([(path, "alpha", "working")])
+        self.assertEqual(self.relaunched_for(self.assertOk(self.resume()), path),
+                         "no, plain mode")
+
+
+class TestAConfWrittenBeforeRuntimeExisted(ResumeCase):
+    """An agent.conf from an older release has no `runtime` line at all.
+
+    Unset must read as auto, everywhere. These scripts run under `set -u`, so
+    a bare $runtime would kill the whole run instead of defaulting.
+    """
+
+    def setUp(self):
+        super(TestAConfWrittenBeforeRuntimeExisted, self).setUp()
+        self.repo.unset_conf("runtime")
+        self.path = self.repo.make_worktree("alpha")
+        self.repo.set_worktree_lines([(self.path, "alpha", "working")])
+        self.repo.set_panes([])
+
+    def test_it_exits_zero(self):
+        self.assertEqual(self.resume().returncode, 0, self.resume().stderr)
+
+    def test_it_says_nothing_about_an_unbound_variable(self):
+        result = self.resume()
+        self.assertNotIn("unbound", result.stderr.lower())
+
+    def test_it_still_relaunches_through_orca(self):
+        self.assertEqual(
+            self.relaunched_for(self.assertOk(self.resume()), self.path), "yes")
+
+    def test_it_falls_back_to_plain_with_no_orca(self):
+        self.repo.no_orca()
+        self.assertEqual(
+            self.relaunched_for(self.assertOk(self.resume()), self.path),
+            "no, plain mode")
 
 
 if __name__ == "__main__":

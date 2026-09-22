@@ -27,9 +27,28 @@ and adds these lines to .gitignore when they are not already there:
     .auto-pipeline/            where the private files go when there is no git dir
 
 It never overwrites a file that is already there. It prints one line per file,
-saying created or kept, and ends with the permissions block for the human to
-paste into the project's .claude/settings.json, plus one line saying why a
-plugin cannot add it itself.
+saying created or kept, then two blocks the human has to paste himself:
+
+    1. the permissions block, for the project's .claude/settings.json, plus one
+       line saying why a plugin cannot add it itself
+    2. the cloud block, for the Setup script of a cloud environment:
+           npx playwright install --with-deps chromium || true
+       plus one line saying to skip it when this repo never runs in the cloud.
+       That is not a repo file, so a plugin cannot set it either.
+
+Both blocks also show in `-h`, so the human can see them without creating
+anything.
+
+A fresh agent.conf is seeded from the plugin's bin/agent.conf.default, then the
+three answers Claude Code collected at enable time are written over it when
+they are set:
+
+    CLAUDE_PLUGIN_OPTION_RUNTIME     -> runtime
+    CLAUDE_PLUGIN_OPTION_LANGUAGE    -> language
+    CLAUDE_PLUGIN_OPTION_MAX_AGENTS  -> max_agents
+
+Unset means the template's own value stands. An agent.conf already in the
+project is kept untouched, env or no env.
 """
 
 import json
@@ -271,7 +290,7 @@ class TestTemplate(InitCase):
 
         conf = agent_conf.load(self.repo.plugin_path("bin", "agent.conf.default"))
         for key in list(agent_conf.NUMBER_BOUNDS) + agent_conf.ROLE_KEYS \
-                + ["permission_mode"]:
+                + ["permission_mode", "runtime", "language", "auto_resume"]:
             with self.subTest(key=key):
                 self.assertIn(key, conf)
 
@@ -281,6 +300,123 @@ class TestTemplate(InitCase):
 
         conf = agent_conf.load(self.repo.plugin_path("bin", "agent.conf.default"))
         self.assertEqual(agent_conf.validate(conf), {})
+
+
+class TestCloudBlock(InitCase):
+    """A cloud session needs a headless browser, and only its Setup script
+    can install one. A plugin cannot reach that field."""
+
+    PLAYWRIGHT = "npx playwright install --with-deps chromium"
+
+    def test_a_real_run_prints_the_playwright_line(self):
+        self.assertIn(self.PLAYWRIGHT, self.assertOk(self.init()))
+
+    def test_help_prints_it_too(self):
+        result = self.init("-h")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(self.PLAYWRIGHT, result.stdout)
+
+    def test_it_says_where_to_paste_it(self):
+        lowered = self.assertOk(self.init()).lower()
+        self.assertIn("setup script", lowered)
+        self.assertIn("cloud", lowered)
+
+    def test_it_says_when_to_skip_it(self):
+        self.assertIn("Skip this if you never run this repo in a cloud session.",
+                      self.assertOk(self.init()))
+
+    def test_it_comes_after_the_permission_block(self):
+        out = self.assertOk(self.init())
+        self.assertLess(out.index("permissions"), out.index(self.PLAYWRIGHT))
+
+    def test_the_permission_block_is_still_the_only_json(self):
+        out = self.assertOk(self.init())
+        block = json.loads(out[out.index("{"):out.rindex("}") + 1])
+        self.assertEqual(block["permissions"]["allow"], ALLOW_RULES)
+
+
+class TestUserConfigSeeding(InitCase):
+    """Zero-touch setup: what Claude Code asked at enable time lands in
+    agent.conf, so nobody has to open a settings script."""
+
+    ENV = {
+        "CLAUDE_PLUGIN_OPTION_RUNTIME": "plain",
+        "CLAUDE_PLUGIN_OPTION_LANGUAGE": "zh",
+        "CLAUDE_PLUGIN_OPTION_MAX_AGENTS": "6",
+    }
+
+    def conf(self, **kwargs):
+        self.assertOk(self.init(**kwargs))
+        out = {}
+        for line in self.read("agent.conf").splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                out[key.strip()] = value.strip()
+        return out
+
+    def template(self):
+        out = {}
+        with open(self.repo.plugin_path("bin", "agent.conf.default")) as fh:
+            for line in fh:
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    out[key.strip()] = value.strip()
+        return out
+
+    def test_each_answer_is_written(self):
+        conf = self.conf(env=dict(self.ENV))
+        self.assertEqual(conf["runtime"], "plain")
+        self.assertEqual(conf["language"], "zh")
+        self.assertEqual(conf["max_agents"], "6")
+
+    def test_one_answer_alone_still_works(self):
+        conf = self.conf(env={"CLAUDE_PLUGIN_OPTION_LANGUAGE": "ms"})
+        self.assertEqual(conf["language"], "ms")
+        self.assertEqual(conf["runtime"], self.template()["runtime"])
+
+    def test_nothing_set_leaves_the_template_alone(self):
+        self.assertEqual(self.conf(), self.template())
+
+    def test_an_empty_answer_counts_as_unset(self):
+        conf = self.conf(env={"CLAUDE_PLUGIN_OPTION_LANGUAGE": ""})
+        self.assertEqual(conf["language"], self.template()["language"])
+
+    def test_no_other_key_is_touched(self):
+        conf = self.conf(env=dict(self.ENV))
+        template = self.template()
+        for key, value in template.items():
+            if key in ("runtime", "language", "max_agents"):
+                continue
+            with self.subTest(key=key):
+                self.assertEqual(conf[key], value)
+
+    def test_the_key_order_does_not_change(self):
+        conf = self.conf(env=dict(self.ENV))
+        self.assertEqual(list(conf), list(self.template()))
+
+    def test_an_existing_conf_is_never_overwritten(self):
+        with open(os.path.join(self.project, "agent.conf"), "w") as fh:
+            fh.write("max_agents=9\n")
+        self.assertOk(self.init(env=dict(self.ENV)))
+        self.assertEqual(self.read("agent.conf"), "max_agents=9\n")
+
+    def test_the_seeded_conf_is_valid(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
+        import agent_conf
+
+        self.assertOk(self.init(env=dict(self.ENV)))
+        conf = agent_conf.load(os.path.join(self.project, "agent.conf"))
+        self.assertEqual(agent_conf.validate(conf), {})
+
+
+class TestRuntimeKeyInTheTemplate(InitCase):
+    def test_the_template_starts_on_auto(self):
+        with open(self.repo.plugin_path("bin", "agent.conf.default")) as fh:
+            self.assertIn("runtime=auto", fh.read())
+
+    def test_a_fresh_project_starts_on_auto(self):
+        self.assertOk(self.init())
+        self.assertIn("runtime=auto", self.read("agent.conf"))
 
 
 if __name__ == "__main__":

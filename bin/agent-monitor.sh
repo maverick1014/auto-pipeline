@@ -9,6 +9,12 @@
 #
 # One sweep reads agent_worktree.txt (main repo) and writes agent_monitor.txt
 # (main repo), one line per worktree line, written atomically (tmp + mv).
+#
+# Orca is not the only runtime (bin/agent-runtime.sh). Plain and cloud have no
+# other terminals to sweep, and a cloud session kills a background process
+# anyway, so start/once/status just say the loop is not used there, no pid
+# file, no sweep, orca never called. `stop` is unchanged in every mode, so a
+# loop left over from an Orca session can still be killed after switching.
 
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
@@ -33,10 +39,22 @@ mkdir -p "$GITDIR" 2>/dev/null || true
 : "${stall_min:=10}"
 : "${monitor_interval_min:=5}"
 
+. "$PLUGIN_ROOT/bin/agent-runtime.sh"
+KIND=$(runtime_kind)
+# Reused for the one-shot work below (the initial sweep in `start`, or the
+# single sweep in `once`). The background loop `start` forks unsets it again
+# before it begins looping: that loop lives for hours and must re-derive the
+# kind on its own, sweep by sweep, never pinned to this one moment.
+export AGENT_RUNTIME="$KIND"
+
 PIDFILE="$GITDIR/agent_monitor.pid"
 LASTSWEEP="$GITDIR/agent_monitor.lastsweep"
 WT="$ROOT/agent_worktree.txt"
 MON="$ROOT/agent_monitor.txt"
+
+not_used_line() {
+  echo "monitor: not used in $KIND mode"
+}
 
 running() {
   [ -f "$PIDFILE" ] || return 1
@@ -45,13 +63,22 @@ running() {
 }
 
 sweep() {
+  # Called straight by the forked loop in `start`, which unsets AGENT_RUNTIME
+  # first and then runs for hours: the kind must be re-derived here, fresh,
+  # every call, never assumed from the moment `start` began.
+  kind=$(runtime_kind)
+  [ "$kind" = "orca" ] || return 0
   ts=$(date '+%Y-%m-%d %H:%M')
   tmp="$ROOT/agent_monitor.txt.tmp.$$"
   : > "$tmp"
   if [ -s "$WT" ]; then
     ps_tsv=""
-    if ps_out=$(orca worktree ps --json 2>/dev/null); then
-      ps_tsv=$(printf '%s' "$ps_out" | python3 -c '
+    if ps_out=$(runtime_ps 2>/dev/null); then
+      # Empty output is orca answering with nothing to say, not a JSON
+      # failure -- feeding it to json.load would raise and, under set -eu,
+      # take the whole loop down with it.
+      if [ -n "$ps_out" ]; then
+        ps_tsv=$(printf '%s' "$ps_out" | python3 -c '
 import json, sys
 data = json.load(sys.stdin)
 for w in data.get("result", {}).get("worktrees", []):
@@ -61,6 +88,7 @@ for w in data.get("result", {}).get("worktrees", []):
     lo = w.get("lastActivityAt")
     print("%s\t%s\t%s" % (path, state if state else "none", lo if lo is not None else ""))
 ')
+      fi
     else
       echo "orca is not answering"
     fi
@@ -115,6 +143,10 @@ for w in data.get("result", {}).get("worktrees", []):
 }
 
 do_once() {
+  if [ "$KIND" != "orca" ]; then
+    not_used_line
+    return 0
+  fi
   sweep
   if [ -s "$MON" ]; then
     cat "$MON"
@@ -124,6 +156,10 @@ do_once() {
 }
 
 do_start() {
+  if [ "$KIND" != "orca" ]; then
+    not_used_line
+    return 0
+  fi
   if running; then
     pid=$(awk '{print $1}' "$PIDFILE")
     echo "monitor: already running (pid $pid)"
@@ -131,6 +167,7 @@ do_start() {
   fi
   sweep
   (
+    unset AGENT_RUNTIME
     trap 'rm -f "$PIDFILE"; exit 0' TERM
     while true; do
       sleep "$((monitor_interval_min * 60))" &
@@ -145,6 +182,8 @@ do_start() {
   echo "sweeping every $monitor_interval_min minutes"
 }
 
+# Unchanged in every mode: a loop started in a previous Orca session must
+# still be stoppable after the owner switches to plain or cloud.
 do_stop() {
   if running; then
     pid=$(awk '{print $1}' "$PIDFILE")
@@ -158,6 +197,10 @@ do_stop() {
 }
 
 do_status() {
+  if [ "$KIND" != "orca" ]; then
+    not_used_line
+    return 0
+  fi
   if running; then
     pid=$(awk '{print $1}' "$PIDFILE")
     echo "monitor: running (pid $pid)"
