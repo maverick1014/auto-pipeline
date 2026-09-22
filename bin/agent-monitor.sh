@@ -63,13 +63,22 @@ running() {
 }
 
 sweep() {
+  # Called straight by the forked loop in `start`, which unsets AGENT_RUNTIME
+  # first and then runs for hours: the kind must be re-derived here, fresh,
+  # every call, never assumed from the moment `start` began.
+  kind=$(runtime_kind)
+  [ "$kind" = "orca" ] || return 0
   ts=$(date '+%Y-%m-%d %H:%M')
   tmp="$ROOT/agent_monitor.txt.tmp.$$"
   : > "$tmp"
   if [ -s "$WT" ]; then
     ps_tsv=""
     if ps_out=$(runtime_ps 2>/dev/null); then
-      ps_tsv=$(printf '%s' "$ps_out" | python3 -c '
+      # Empty output is orca answering with nothing to say, not a JSON
+      # failure -- feeding it to json.load would raise and, under set -eu,
+      # take the whole loop down with it.
+      if [ -n "$ps_out" ]; then
+        ps_tsv=$(printf '%s' "$ps_out" | python3 -c '
 import json, sys
 data = json.load(sys.stdin)
 for w in data.get("result", {}).get("worktrees", []):
@@ -79,6 +88,7 @@ for w in data.get("result", {}).get("worktrees", []):
     lo = w.get("lastActivityAt")
     print("%s\t%s\t%s" % (path, state if state else "none", lo if lo is not None else ""))
 ')
+      fi
     else
       echo "orca is not answering"
     fi
