@@ -369,6 +369,19 @@ class ScriptRepo:
                      "exit 1\n")
         os.chmod(os.path.join(self.bin, "orca"), 0o755)
 
+    def stub_orca_empty(self):
+        """orca answers, successfully, with nothing at all.
+
+        A real failure mode, and the same shape a sweep sees the moment the
+        runtime stops being orca: the call succeeds and the output is empty.
+        """
+        with open(os.path.join(self.bin, "orca"), "w") as fh:
+            fh.write("#!/usr/bin/env bash\n"
+                     "{ printf 'CALL'; for a in \"$@\"; do printf '\\t%s' \"$a\"; done; "
+                     "printf '\\n'; } >> \"$ORCA_STUB_LOG\"\n"
+                     "exit 0\n")
+        os.chmod(os.path.join(self.bin, "orca"), 0o755)
+
     def stub_orca_reads_stdin(self):
         """A stub that drains stdin, the way a real command can."""
         with open(os.path.join(self.bin, "orca"), "w") as fh:

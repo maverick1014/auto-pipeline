@@ -599,5 +599,65 @@ class TestAConfWrittenBeforeRuntimeExisted(MonitorCase):
                       self.assertOk(self.monitor("start")))
 
 
+class TestASweepSurvivesTheRuntimeChanging(MonitorCase):
+    """The loop `start` forks calls sweep() directly, every interval, for hours.
+
+    It unsets AGENT_RUNTIME first, so the kind is re-derived each time -- but
+    sweep() itself has no kind check, and the moment the runtime stops being
+    orca, runtime_ps succeeds with EMPTY output. The JSON parse then gets an
+    empty string, dies, and under `set -eu` takes the whole loop down with it,
+    with nothing printed and a stale pid file left behind. The owner closes
+    Orca and opens the Claude app inside one day, so this is the normal case,
+    not a corner.
+    """
+
+    def test_an_empty_ps_result_does_not_crash_a_sweep(self):
+        self.repo.set_conf("runtime", "orca")
+        self.one_worktree("alpha", panes=["working"])
+        self.repo.stub_orca_empty()
+        result = self.monitor("once")
+        self.assertEqual(result.returncode, 0,
+                         "exit %d, stdout %r, stderr %r"
+                         % (result.returncode, result.stdout, result.stderr))
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertNotIn("JSONDecodeError", result.stderr)
+
+    def test_an_empty_ps_result_still_writes_the_file(self):
+        self.repo.set_conf("runtime", "orca")
+        self.one_worktree("alpha", panes=["working"])
+        self.repo.stub_orca_empty()
+        self.assertOk(self.monitor("once"))
+        rows = self.parsed()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["pane"], "none")
+
+    def test_the_sweep_checks_the_kind_itself(self):
+        """Structural, because the loop cannot be driven inside a test.
+
+        do_once and do_start both guard on KIND before calling sweep. The
+        background loop does not: it calls sweep straight. So the guard has to
+        live inside sweep as well, or the loop is the one caller with no
+        protection at all.
+        """
+        with open(os.path.join(os.path.dirname(HERE),
+                               "bin", "agent-monitor.sh")) as fh:
+            text = fh.read()
+        body = text[text.index("sweep() {"):text.index("do_once() {")]
+        self.assertIn("runtime_kind", body,
+                      "sweep() never asks what runtime it is in, so the "
+                      "background loop keeps sweeping after orca is gone")
+
+    def test_a_sweep_after_orca_goes_away_says_plain_not_a_fault(self):
+        self.repo.set_conf("runtime", "auto")
+        self.one_worktree("alpha", panes=["working"])
+        self.assertOk(self.monitor("once"))
+        self.repo.no_orca()
+        result = self.monitor("once")
+        self.assertEqual(result.returncode, 0,
+                         "exit %d, stderr %r" % (result.returncode, result.stderr))
+        self.assertIn("monitor: not used in plain mode", result.stdout)
+        self.assertNotIn("orca is not answering", result.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
