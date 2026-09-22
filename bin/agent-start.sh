@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # agent-start.sh — every agent runs this first, before any work.
 #
-#   ./agent-start.sh                         resource check + PRINCIPLES + open tasks + quiz
-#   ./agent-start.sh --answer "1A 2D ... 29B"   grade your quiz answers
+#   ./agent-start.sh                          resource check + pointers + open tasks
+#   ./agent-start.sh --quiz                   print the 29 quiz questions
+#   ./agent-start.sh --answer "1A 2D ... 29B"    grade your quiz answers
 #
 # Rule: no work until the quiz says PASS.
 
@@ -18,102 +19,9 @@ N=29
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
 h()   { printf '%s' "$1" | sha | cut -c1-16; }
 
-# ---- resources ----
-. "$PLUGIN_ROOT/bin/agent-resources.sh"
-
-# ---- grade ----
-if [ "${1:-}" = "--answer" ]; then
-  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 29B"'; exit 2; }
-  ok=0; wrong=""
-  for q in $(seq 1 $N); do
-    tok=$(printf '%s\n' $2 | grep -i "^${q}[a-d]$" | head -1)
-    l=$(printf '%s' "${tok#$q}" | tr a-d A-D)
-    if [ -n "$l" ] && [ "$(h "$SALT:$q:$l")" = "${KEY[$q]}" ]; then ok=$((ok+1)); else wrong="$wrong Q$q(${RULE[$q]})"; fi
-  done
-  if [ $ok -eq $N ]; then
-    echo "QUIZ RESULT: $ok/$N PASS"; echo "You may start work."; exit 0
-  else
-    echo "QUIZ RESULT: $ok/$N FAIL"; echo "Wrong:$wrong"
-    echo "Re-read those rules in PRINCIPLES.md, then answer again."; exit 1
-  fi
-fi
-
-# ---- hook input (Claude Code SessionStart passes JSON on stdin) ----
-SRC=startup; SID=""; CWD=""
-if [ ! -t 0 ]; then
-  IN=""; line=""
-  while IFS= read -t 1 -r line || [ -n "$line" ]; do IN="$IN$line"; done   # read -t: never block on an open pipe; || keeps a final line with no trailing newline
-  [ -n "$IN" ] && eval "$(printf '%s' "$IN" | python3 -c 'import json,sys,shlex
-try:
-    d=json.load(sys.stdin)
-    print("SRC=%s; SID=%s; CWD=%s" % (shlex.quote(d.get("source","startup")), shlex.quote(d.get("session_id","")), shlex.quote(d.get("cwd",""))))
-except Exception: print("SRC=startup; SID=; CWD=")' 2>/dev/null)"
-fi
-
-# ---- the two roots (bad or empty stdin JSON falls back to $PWD) ----
-roots_read "$CWD"
-conf_read
-mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
-: "${max_usage_percent:=80}"
-
-# ---- role: one main manager per repo (W10) ----
-agent_pid() {
-  [ -n "${CLAUDE_PID:-}" ] && { echo "$CLAUDE_PID"; return; }
-  p=$PPID
-  for _ in 1 2 3 4 5 6 7 8; do
-    c=$(ps -o comm= -p "$p" 2>/dev/null | tr -d ' ')
-    case "$c" in *claude*|*codex*|*opencode*|*gemini*) echo "$p"; return;; esac
-    p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' '); [ -z "$p" ] || [ "$p" = 1 ] && break
-  done
-  echo "$PPID"
-}
-LOCK="$PROJECT_GITDIR/agent_main.lock"; ME=$(agent_pid); NOW=$(date '+%Y-%m-%d %H:%M')
-role=main
-if [ -n "${AGENT_ROLE:-}" ]; then role=spawned
-elif [ -f "$LOCK" ]; then
-  read -r lpid lsince < "$LOCK" || true
-  if [ "$lpid" = "$ME" ]; then role=main
-  elif kill -0 "$lpid" 2>/dev/null; then role=second
-  else role=takeover; fi
-fi
-case $role in
-  spawned)  echo "ROLE: $AGENT_ROLE (spawned by an agent, not human-direct). Main manager: pid $(cut -d' ' -f1 "$LOCK" 2>/dev/null || echo ?). Report to it with SendMessage.";;
-  main)     echo "$ME $NOW" > "$LOCK"; echo "ROLE: main manager (lock: pid $ME)";;
-  takeover) echo "$ME $NOW" > "$LOCK"; echo "ROLE: main manager. Previous main manager (pid $lpid, since $lsince) is dead. Run recovery (S7).";;
-  second)
-    echo "ROLE: task manager, human-direct (W10). Main manager already running: pid $lpid, since $lsince."
-    echo "$PROJECT_CWD | task manager, human-direct | task: (ask the human) | since $NOW" >> "$PROJECT_ROOT/agent_worktree.txt"
-    echo "Announced: line added to agent_worktree.txt. Send the main manager a direct message too if Orca is available."
-    echo "Will change files? Open your own worktree first (W7). Human says finish -> report done + click path to the main manager."
-    echo "Reach the main manager: ListAgents -> the earlier peer session of this repo -> SendMessage to that name. Reply to the from name.";;
-esac
-echo
-
-# ---- startup ----
-resources_read
-resources_line "$max_usage_percent"
-resources_ok "$max_usage_percent" || echo "Do not start agents or heavy processes. Re-run this script until OK."
-echo
-if [ "$SRC" = compact ] && [ -n "$SID" ]; then
-  CF="$PROJECT_GITDIR/agent_compact_$SID"; n=$(( $(cat "$CF" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$CF"
-  echo "COMPACTED $n time(s) this session. Continue from agent_state.txt, not from memory (S8)."
-  [ "$n" -ge 2 ] && echo "LIMIT: compacted $n times. Write agent_state.txt, end this session, restart from the file (S8, S2)."
-  echo
-fi
-echo "=== PRINCIPLES.md ==="; cat "$PLUGIN_ROOT/PRINCIPLES.md"
-echo
-echo "=== agent_state.txt ==="; [ -s "$STATE_DIR/agent_state.txt" ] && cat "$STATE_DIR/agent_state.txt" || echo "(none)"
-[ "$SRC" = compact ] && exit 0
-echo
-echo "=== agent_todo.txt (open tasks) ==="; [ -s "$PROJECT_ROOT/agent_todo.txt" ] && cat "$PROJECT_ROOT/agent_todo.txt" || echo "(none)"
-echo
-echo "=== agent_worktree.txt (live worktrees) ==="; [ -s "$PROJECT_ROOT/agent_worktree.txt" ] && cat "$PROJECT_ROOT/agent_worktree.txt" || echo "(none)"
-echo
-echo "=== agent_monitor.txt (agent health) ==="; [ -s "$PROJECT_ROOT/agent_monitor.txt" ] && cat "$PROJECT_ROOT/agent_monitor.txt" || echo "(none)"
-echo
-echo "=== agent_ideas.txt ==="; echo "$( [ -f "$PROJECT_ROOT/agent_ideas.txt" ] && grep -c . "$PROJECT_ROOT/agent_ideas.txt" || echo 0 ) ideas waiting for human review"
-echo
-cat <<'QUIZ'
+# ---- --quiz: print the questions only, nothing else, no lock, no roots ----
+if [ "${1:-}" = "--quiz" ]; then
+  cat <<'QUIZ'
 === QUIZ — answer all 29 before any work ===
 Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 29D"
 Do not start work until you see PASS.
@@ -292,3 +200,247 @@ Q29. Your worker finished slice 1. Slice 2 is ready.
   C. Write slice 2 yourself
   D. Wait for the human
 QUIZ
+  exit 0
+fi
+
+# ---- grade ----
+if [ "${1:-}" = "--answer" ]; then
+  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 29B"'; exit 2; }
+  ok=0; wrong=""
+  for q in $(seq 1 $N); do
+    tok=$(printf '%s\n' $2 | grep -i "^${q}[a-d]$" | head -1)
+    l=$(printf '%s' "${tok#$q}" | tr a-d A-D)
+    if [ -n "$l" ] && [ "$(h "$SALT:$q:$l")" = "${KEY[$q]}" ]; then ok=$((ok+1)); else wrong="$wrong Q$q(${RULE[$q]})"; fi
+  done
+  if [ $ok -eq $N ]; then
+    echo "QUIZ RESULT: $ok/$N PASS"; echo "You may start work."; exit 0
+  else
+    echo "QUIZ RESULT: $ok/$N FAIL"; echo "Wrong:$wrong"
+    echo "Re-read those rules in PRINCIPLES.md, then answer again."; exit 1
+  fi
+fi
+
+# ---- resources (defines the functions; reading happens below) ----
+. "$PLUGIN_ROOT/bin/agent-resources.sh"
+
+# ---- hook input (Claude Code SessionStart passes JSON on stdin) ----
+SRC=startup; SID=""; CWD=""
+if [ ! -t 0 ]; then
+  IN=""; line=""
+  while IFS= read -t 1 -r line || [ -n "$line" ]; do IN="$IN$line"; done   # read -t: never block on an open pipe; || keeps a final line with no trailing newline
+  [ -n "$IN" ] && eval "$(printf '%s' "$IN" | python3 -c 'import json,sys,shlex
+try:
+    d=json.load(sys.stdin)
+    print("SRC=%s; SID=%s; CWD=%s" % (shlex.quote(d.get("source","startup")), shlex.quote(d.get("session_id","")), shlex.quote(d.get("cwd",""))))
+except Exception: print("SRC=startup; SID=; CWD=")' 2>/dev/null)"
+fi
+
+# ---- the two roots (bad or empty stdin JSON falls back to $PWD) ----
+roots_read "$CWD"
+conf_read
+mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
+: "${max_usage_percent:=80}"
+
+# ---- role: one main manager per repo (W10) ----
+agent_pid() {
+  [ -n "${CLAUDE_PID:-}" ] && { echo "$CLAUDE_PID"; return; }
+  p=$PPID
+  for _ in 1 2 3 4 5 6 7 8; do
+    c=$(ps -o comm= -p "$p" 2>/dev/null | tr -d ' ')
+    case "$c" in *claude*|*codex*|*opencode*|*gemini*) echo "$p"; return;; esac
+    p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' '); [ -z "$p" ] || [ "$p" = 1 ] && break
+  done
+  echo "$PPID"
+}
+LOCK="$PROJECT_GITDIR/agent_main.lock"; ME=$(agent_pid); NOW=$(date '+%Y-%m-%d %H:%M')
+role=main
+if [ -n "${AGENT_ROLE:-}" ]; then role=spawned
+elif [ -f "$LOCK" ]; then
+  read -r lpid lsince < "$LOCK" || true
+  if [ "$lpid" = "$ME" ]; then role=main
+  elif kill -0 "$lpid" 2>/dev/null; then role=second
+  else role=takeover; fi
+fi
+
+# ---- CAP: the whole output, always, at or under this many bytes. The state
+# block (the unbounded one) gets whatever the fixed parts below leave. ----
+CAP=2000
+
+# Replace, never append: this worktree's own human-direct line in
+# agent_worktree.txt. That file is what the main manager reads before every
+# dispatch (W9); a restarted session, or the hook firing twice, must not
+# pile up copies of the same line. Match on the path (field 1) and only on
+# the human-direct rows (field 2), so a normal registered line for the same
+# path, or any line belonging to another path, keeps its own entry. Written
+# the way agent-file.sh does it: build the new text next to the target, then
+# mv it over, so a half-written file is never left behind.
+announce_human_direct() {
+  local wt tmp
+  wt="$PROJECT_ROOT/agent_worktree.txt"
+  tmp="$wt.tmp"
+  touch "$wt"
+  awk -v p="$PROJECT_CWD" -F' \\| ' \
+    '!($1 == p && $2 == "task manager, human-direct")' "$wt" > "$tmp"
+  printf '%s\n' "$PROJECT_CWD | task manager, human-direct | task: (ask the human) | since $NOW" >> "$tmp"
+  mv "$tmp" "$wt"
+}
+
+print_role_and_project() {
+  case $role in
+    spawned)  echo "ROLE: $AGENT_ROLE (spawned by an agent, not human-direct). Main manager: pid $(cut -d' ' -f1 "$LOCK" 2>/dev/null || echo ?). Report to it with SendMessage.";;
+    main)     echo "$ME $NOW" > "$LOCK"; echo "ROLE: main manager (lock: pid $ME)";;
+    takeover) echo "$ME $NOW" > "$LOCK"; echo "ROLE: main manager. Previous main manager (pid $lpid, since $lsince) is dead. Run recovery (S7).";;
+    second)
+      echo "ROLE: task manager, human-direct (W10). Main manager already running: pid $lpid, since $lsince."
+      announce_human_direct
+      echo "Announced: line added to agent_worktree.txt. Send the main manager a direct message too if Orca is available."
+      echo "Will change files? Open your own worktree first (W7). Human says finish -> report done + click path to the main manager."
+      echo "Reach the main manager: ListAgents -> the earlier peer session of this repo -> SendMessage to that name. Reply to the from name.";;
+  esac
+  echo "PROJECT: $PROJECT_ROOT | PLUGIN: $PLUGIN_ROOT"
+}
+
+# ---- small helpers for the pointer-shaped, byte-budgeted output ----
+count_lines() {
+  if [ -f "$1" ]; then
+    n=$(grep -c . "$1" 2>/dev/null)
+    printf '%s' "${n:-0}"
+  else
+    printf '%s' 0
+  fi
+}
+
+# byte length of $1, plus a trailing newline (what `printf '%s\n' "$1"` costs)
+line_bytes() { printf '%s\n' "$1" | wc -c | tr -d ' '; }
+# byte length of $1 exactly as given (no newline added)
+text_bytes() { printf '%s' "$1" | wc -c | tr -d ' '; }
+
+print_compact_lines() {
+  local CF cn
+  CF="$PROJECT_GITDIR/agent_compact_$SID"
+  cn=$(( $(cat "$CF" 2>/dev/null || echo 0) + 1 ))
+  echo "$cn" > "$CF"
+  echo "COMPACTED $cn time(s) this session. Continue from agent_state.txt, not from memory (S8)."
+  [ "$cn" -ge 2 ] && echo "LIMIT: compacted $cn times. Write agent_state.txt, end this session, restart from the file (S8, S2)."
+  return 0
+}
+
+print_normal_lines() {
+  resources_read
+  resources_line "$max_usage_percent"
+  resources_ok "$max_usage_percent" || echo "Do not start agents or heavy processes. Re-run this script until OK."
+  local name cn
+  for name in agent_todo.txt agent_completed.txt agent_ideas.txt agent_worktree.txt; do
+    cn=$(count_lines "$PROJECT_ROOT/$name")
+    echo "$name: $cn lines"
+    if [ "$name" = agent_worktree.txt ] && [ "$cn" -gt 0 ]; then
+      sed 's/^/  /' "$PROJECT_ROOT/$name"
+    fi
+  done
+  return 0
+}
+
+print_monitor_block() {
+  local f cn
+  f="$PROJECT_ROOT/agent_monitor.txt"
+  if [ -f "$f" ]; then
+    cn=$(count_lines "$f")
+    if [ "$cn" -gt 0 ]; then
+      echo "agent_monitor.txt: $cn lines"
+      sed 's/^/  /' "$f"
+    fi
+  fi
+  return 0
+}
+
+# print_state_block <budget-in-bytes>
+# Header always shows the real total. Content lines are added while the
+# running byte total stays inside the budget, never more than 30 lines.
+# A line too long to fit is cut to fit. Anything left out, for any reason,
+# gets "  (truncated, read the file)" as the last line of the block.
+print_state_block() {
+  local budget f sn header header_bytes marker marker_bytes remaining
+  local total_phys idx line indented ibytes cut_len truncated
+  budget=$1
+  [ "$budget" -lt 0 ] && budget=0
+  f="$STATE_DIR/agent_state.txt"
+  [ -f "$f" ] || return 0
+  sn=$(count_lines "$f")
+  [ "$sn" -gt 0 ] || return 0
+
+  header="agent_state.txt: $sn lines"
+  marker="  (truncated, read the file)"
+  header_bytes=$(line_bytes "$header")
+  marker_bytes=$(line_bytes "$marker")
+
+  printf '%s\n' "$header"
+
+  remaining=$(( budget - header_bytes - marker_bytes ))
+  [ "$remaining" -lt 0 ] && remaining=0
+
+  total_phys=$(awk 'END{print NR}' "$f")
+  [ -z "$total_phys" ] && total_phys=0
+
+  idx=0
+  truncated=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    idx=$((idx+1))
+    if [ "$idx" -gt 30 ]; then
+      truncated=1
+      break
+    fi
+    indented="  $line"
+    ibytes=$(line_bytes "$indented")
+    if [ "$ibytes" -le "$remaining" ]; then
+      printf '%s\n' "$indented"
+      remaining=$(( remaining - ibytes ))
+    else
+      cut_len=$(( remaining - 1 ))
+      if [ "$cut_len" -gt 0 ]; then
+        printf '%s' "$indented" | head -c "$cut_len"
+        printf '\n'
+      fi
+      truncated=1
+      break
+    fi
+  done < "$f"
+
+  if [ "$truncated" -eq 0 ] && [ "$idx" -lt "$total_phys" ]; then
+    truncated=1
+  fi
+
+  [ "$truncated" -eq 1 ] && printf '%s\n' "$marker"
+  return 0
+}
+
+ROLE_TEXT=$(print_role_and_project; printf 'X'); ROLE_TEXT=${ROLE_TEXT%X}
+
+# ---- compaction: short, no resources, no counts, no quiz. Same byte cap. ----
+if [ "$SRC" = compact ] && [ -n "$SID" ]; then
+  COMPACT_TEXT=$(print_compact_lines; printf 'X'); COMPACT_TEXT=${COMPACT_TEXT%X}
+  RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
+  fixed=$(( $(text_bytes "$ROLE_TEXT") + $(text_bytes "$COMPACT_TEXT") + $(line_bytes "$RULES_LINE") ))
+  budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
+  printf '%s' "$ROLE_TEXT"
+  printf '%s' "$COMPACT_TEXT"
+  print_state_block "$budget"
+  printf '%s\n' "$RULES_LINE"
+  exit 0
+fi
+
+# ---- normal start ----
+NORMAL_TEXT=$(print_normal_lines; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
+MON_TEXT=$(print_monitor_block; printf 'X'); MON_TEXT=${MON_TEXT%X}
+RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
+QUIZ_LINE="QUIZ: run $PLUGIN_ROOT/bin/agent-start.sh --quiz, then --answer. No work until PASS."
+
+fixed=$(( $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
+        + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
+budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
+
+printf '%s' "$ROLE_TEXT"
+printf '%s' "$NORMAL_TEXT"
+printf '%s' "$MON_TEXT"
+print_state_block "$budget"
+printf '%s\n' "$RULES_LINE"
+printf '%s\n' "$QUIZ_LINE"
