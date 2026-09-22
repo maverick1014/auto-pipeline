@@ -11,13 +11,24 @@
 # .secrets/ (empty dir) and AGENTS.md (one line pointing at this plugin).
 # Adds .secrets/, agent_state.txt, agent_monitor.txt, agent_monitor.txt.tmp.*
 # and .auto-pipeline/ to .gitignore, creating it when missing. Never
-# overwrites a file already there; ends by printing the Bash permission
-# block a human pastes into the project's .claude/settings.json.
+# overwrites a file already there.
+#
+# A fresh agent.conf is seeded from bin/agent.conf.default, then any of
+# CLAUDE_PLUGIN_OPTION_RUNTIME, CLAUDE_PLUGIN_OPTION_LANGUAGE and
+# CLAUDE_PLUGIN_OPTION_MAX_AGENTS that Claude Code collected at enable time
+# are written over it, key by key, when set and not empty.
+#
+# Ends by printing two blocks a human pastes himself, since a plugin cannot
+# reach either place:
+#   1. the Bash permission block, for the project's .claude/settings.json.
+#   2. the cloud block, for a cloud session's Setup script:
+#          npx playwright install --with-deps chromium || true
+#      skip it if this repo never runs in a cloud session.
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
 
 case "${1:-}" in
-  -h|--help) sed -n '2,15p' "$0"; exit 0;;
+  -h|--help) sed -n '2,26p' "$0"; exit 0;;
 esac
 
 TARGET="${1:-}"
@@ -46,8 +57,50 @@ file_conf() {
     echo "kept: agent.conf"
   else
     cp "$PLUGIN_ROOT/bin/agent.conf.default" "$path"
+    seed_conf_from_env "$path"
     echo "created: agent.conf"
   fi
+}
+
+# Write the enable-time answers Claude Code collected over a freshly copied
+# agent.conf. Only called right after the copy, never when the file was
+# already there. A key with no matching env var, or an empty one, is left as
+# the template set it; every other key and the key order stay untouched. A
+# value that fails agent_conf.validate_value is never written: the template's
+# own value stands, and one line naming the key, the bad value and why goes
+# to stderr, so it can never land inside the permission block a test (or a
+# human) parses as JSON. One bad key never stops the others.
+seed_conf_from_env() {
+  PYTHONPATH="$PLUGIN_ROOT/bin${PYTHONPATH:+:$PYTHONPATH}" python3 - "$1" <<'PY'
+import os
+import sys
+
+import agent_conf
+
+path = sys.argv[1]
+conf = agent_conf.load(path)
+mapping = {
+    "CLAUDE_PLUGIN_OPTION_RUNTIME": "runtime",
+    "CLAUDE_PLUGIN_OPTION_LANGUAGE": "language",
+    "CLAUDE_PLUGIN_OPTION_MAX_AGENTS": "max_agents",
+}
+changed = False
+for env_key, conf_key in mapping.items():
+    value = os.environ.get(env_key, "")
+    if not value:
+        continue
+    error = agent_conf.validate_value(conf_key, value)
+    if error:
+        sys.stderr.write(
+            "agent-init.sh: ignored %s=%s, %s Kept %s.\n"
+            % (env_key, value, error, conf.get(conf_key, ""))
+        )
+        continue
+    conf[conf_key] = value
+    changed = True
+if changed:
+    agent_conf.save(conf, path)
+PY
 }
 
 dir_secrets() {
@@ -116,3 +169,7 @@ BLOCK
 
 echo "Paste that permission block into .claude/settings.json in this project."
 echo "A plugin cannot add permission rules by itself, so a human must paste it."
+
+echo "For cloud sessions (claude.ai/code): paste this into the cloud environment's Setup script, it is not a repo file, a plugin cannot set it:"
+echo "npx playwright install --with-deps chromium || true"
+echo "Skip this if you never run this repo in a cloud session."

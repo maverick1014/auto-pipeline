@@ -68,8 +68,11 @@ W4. Multi-agent tests
 - After a bounce: re-run only the tests that failed, not the suite
 
 W5. Web UI testing
-- Claude in Chrome, not Playwright
+- Claude in Chrome, not Playwright, on orca and plain
 - Main manager only, saves RAM. Others write the click path and hand it to the main manager
+- Ask `agent-runtime.sh browser` first: chrome, headless or none
+- cloud → headless Chromium via Playwright, the extension can never reach a VM
+- none → print the click path under NEEDS HUMAN E2E and stop, wait for the human. Never silent, never forever
 
 W6. Roles
 - Main manager (Fable 5.1, xhigh) = the main chat. Assigns tasks, talks to the human, reports, accepts decisions, brainstorms. Nothing else
@@ -81,9 +84,11 @@ W6. Roles
 
 W7. Big feature (> 2 hours)
 - Before opening a worktree: idle or done worktrees > 0 → deputy cleans them all first (W8)
+- A worktree needs Orca. `agent-runtime.sh kind` picks the shape
 - Then new worktree
 - One task manager inside it
 - Task manager spawns workers as needed
+- plain or cloud → no worktree, no second terminal. Main manager runs the task itself with `Agent` subagents, up to `max_agents`
 - Every spawned agent counts toward `max_agents` (S6). The main manager does not
 
 W8. Merge and cleanup

@@ -290,16 +290,23 @@ class TestProjectWithoutAgentConf(RootsCase):
     """A project that has not run agent-init.sh yet is the first thing the
     plugin meets. Nothing may fail silently there: the scripts fall back to
     their built-in defaults, and the one script that needs a real file says so.
+
+    The repo turns the plugin on itself, which is what makes it this plugin's
+    business at all. agent-start.sh then sets it up on the spot; every other
+    script still meets a project with no agent.conf and has to cope.
     """
 
     def setUp(self):
         super().setUp()
         os.remove(self.repo.path("agent.conf"))
+        self.repo.enable_plugin()
 
-    def test_agent_start_runs_on_the_built_in_defaults(self):
+    def test_agent_start_sets_it_up_and_then_runs_normally(self):
         out = self.assertOk(self.start(env={"AGENT_FAKE_RAM": "90"}))
+        self.assertIn("first run, created agent.conf", out)
         self.assertIn("(cap 80%) -> OVER CAP", out)
         self.assertIn("QUIZ:", out)
+        self.assertTrue(os.path.exists(self.repo.path("agent.conf")))
 
     def test_agent_monitor_runs(self):
         result = self.repo.run("agent-monitor.sh", "once")
@@ -348,8 +355,16 @@ class TestPlainDirectory(RootsCase):
     `set -eu`.
     """
 
-    def plain(self):
-        return self.repo.make_project("plain")
+    def plain(self, name="plain", enabled=True):
+        """A plain folder. Enabled by default: a folder that never turns the
+        plugin on is a different case, and has its own test below."""
+        path = self.repo.make_project(name)
+        if enabled:
+            folder = os.path.join(path, ".claude")
+            os.makedirs(folder, exist_ok=True)
+            with open(os.path.join(folder, "settings.json"), "w") as fh:
+                fh.write('{"enabledPlugins": {"auto-pipeline@auto-pipeline": true}}')
+        return path
 
     def test_roots_read_returns_and_falls_back(self):
         plain = self.plain()
@@ -379,6 +394,14 @@ class TestPlainDirectory(RootsCase):
         out = self.assertOk(self.start(cwd=plain))
         self.assertIn("QUIZ:", out)
         self.assertIn("PROJECT: %s | " % plain, out)
+
+    def test_a_folder_that_never_enabled_the_plugin_is_left_alone(self):
+        """A user-scope install must not leave a trace in an unrelated folder."""
+        plain = self.plain("untouched", enabled=False)
+        before = sorted(os.listdir(plain))
+        out = self.assertOk(self.start(cwd=plain))
+        self.assertIn("not set up in this repo", out)
+        self.assertEqual(sorted(os.listdir(plain)), before)
 
     def test_agent_monitor_works_there(self):
         plain = self.plain()

@@ -11,3 +11,4 @@ worker=sonnet-5:medium
 permission_mode=auto
 auto_resume=yes
 language=en
+runtime=auto

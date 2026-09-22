@@ -238,6 +238,44 @@ fi
 # ---- the two roots (bad or empty stdin JSON falls back to $PWD) ----
 roots_read "$CWD"
 conf_read
+
+# ---- zero-touch setup guard (scope safety). A user-scope install turns
+# this plugin on in every repo the owner opens, so a repo is only set up by
+# itself, never by us, unless that repo's own project settings turn the
+# plugin on. An agent.conf already there means the repo was set up by hand
+# or by us before: nothing new happens, whatever the scope is. No agent.conf
+# and no self-enable: this repo is untouched, print one line and stop, no
+# lock, no monitor, no files, no directories. ----
+SETUP_TEXT=""
+if [ ! -f "$PROJECT_ROOT/agent.conf" ]; then
+  self_enabled=no
+  for sf in "$PROJECT_ROOT/.claude/settings.json" "$PROJECT_ROOT/.claude/settings.local.json"; do
+    [ -f "$sf" ] && grep -qF "auto-pipeline@" "$sf" 2>/dev/null && self_enabled=yes
+  done
+  if [ "$self_enabled" = yes ]; then
+    # Never claim setup happened when it did not: run it, keep the hook
+    # alive either way (|| true), then check the one thing that matters —
+    # agent.conf is really there now — before saying so.
+    init_ok=yes
+    "$PLUGIN_ROOT/bin/agent-init.sh" "$PROJECT_ROOT" >/dev/null 2>&1 || init_ok=no
+    if [ "$init_ok" = yes ] && [ -f "$PROJECT_ROOT/agent.conf" ]; then
+      SETUP_TEXT="auto-pipeline: first run, created agent.conf and the task files
+auto-pipeline: run /auto-pipeline:init once to see the permission block and the cloud setup line to paste
+"
+      printf '%s' "$SETUP_TEXT"
+      conf_read
+    else
+      SETUP_TEXT="auto-pipeline: setup failed, run /auto-pipeline:init by hand
+"
+      printf '%s' "$SETUP_TEXT"
+      exit 0
+    fi
+  else
+    echo "auto-pipeline: not set up in this repo, run /auto-pipeline:init to enable"
+    exit 0
+  fi
+fi
+
 mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
 : "${max_usage_percent:=80}"
 : "${auto_resume:=yes}"
@@ -421,7 +459,7 @@ ROLE_TEXT=$(print_role_and_project; printf 'X'); ROLE_TEXT=${ROLE_TEXT%X}
 if [ "$SRC" = compact ] && [ -n "$SID" ]; then
   COMPACT_TEXT=$(print_compact_lines; printf 'X'); COMPACT_TEXT=${COMPACT_TEXT%X}
   RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
-  fixed=$(( $(text_bytes "$ROLE_TEXT") + $(text_bytes "$COMPACT_TEXT") + $(line_bytes "$RULES_LINE") ))
+  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$COMPACT_TEXT") + $(line_bytes "$RULES_LINE") ))
   budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
   printf '%s' "$ROLE_TEXT"
   printf '%s' "$COMPACT_TEXT"
@@ -444,7 +482,7 @@ if [ "$SRC" = startup ] && { [ "$role" = main ] || [ "$role" = takeover ]; } \
    && [ "$auto_resume" = yes ]; then
   resume_out=$("$PLUGIN_ROOT/bin/agent-resume.sh" 2>&1) || true
   header="=== auto resume ==="
-  other_fixed=$(( $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
+  other_fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
                  + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
   candidate_bytes=$(( $(line_bytes "$header") + $(text_bytes "$resume_out") + 1 ))
   if [ $(( other_fixed + candidate_bytes )) -gt "$CAP" ]; then
@@ -457,7 +495,7 @@ $resume_out
 "
 fi
 
-fixed=$(( $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
+fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
         + $(text_bytes "$RESUME_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
 budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
 
