@@ -262,6 +262,59 @@ class TestMonitorFromAnywhere(RootsCase):
                                                       "agent_monitor.pid")))
 
 
+class TestProjectWithoutAgentConf(RootsCase):
+    """A project that has not run agent-init.sh yet is the first thing the
+    plugin meets. Nothing may fail silently there: the scripts fall back to
+    their built-in defaults, and the one script that needs a real file says so.
+    """
+
+    def setUp(self):
+        super().setUp()
+        os.remove(self.repo.path("agent.conf"))
+
+    def test_agent_start_runs_on_the_built_in_defaults(self):
+        out = self.assertOk(self.start(env={"AGENT_FAKE_RAM": "90"}))
+        self.assertIn("(cap 80%) -> OVER CAP", out)
+        self.assertIn("=== QUIZ", out)
+
+    def test_agent_monitor_runs(self):
+        result = self.repo.run("agent-monitor.sh", "once")
+        self.assertEqual(result.returncode, 0,
+                         "exit %d, stdout %r, stderr %r"
+                         % (result.returncode, result.stdout, result.stderr))
+        self.assertTrue(result.stdout.strip(), "it printed nothing at all")
+
+    def test_agent_resume_runs(self):
+        result = self.repo.run("agent-resume.sh", "--dry-run")
+        self.assertEqual(result.returncode, 0,
+                         "exit %d, stdout %r, stderr %r"
+                         % (result.returncode, result.stdout, result.stderr))
+        self.assertIn("=== resume ===", result.stdout)
+
+    def test_agent_file_still_writes(self):
+        self.assertOk(self.repo.run("agent-file.sh", "idea", "add", "no-conf"))
+        self.assertIn("no-conf", self.repo.read("agent_ideas.txt"))
+
+    def test_agent_settings_says_what_is_missing(self):
+        result = self.repo.run("agent-settings.sh")
+        self.assertEqual(result.returncode, 2)
+        message = result.stdout + result.stderr
+        self.assertIn("agent.conf", message)
+        self.assertIn("agent-init.sh", message)
+
+    def test_nothing_fails_without_a_word(self):
+        """A non-zero exit with an empty output is the worst case of all."""
+        for script, args in (("agent-monitor.sh", ("once",)),
+                             ("agent-resume.sh", ("--dry-run",)),
+                             ("agent-settings.sh", ())):
+            with self.subTest(script=script):
+                result = self.repo.run(script, *args)
+                if result.returncode != 0:
+                    self.assertTrue((result.stdout + result.stderr).strip(),
+                                    "%s exited %d and said nothing"
+                                    % (script, result.returncode))
+
+
 class TestResumeFromAnywhere(RootsCase):
     script = "agent-resume.sh"
 
