@@ -315,6 +315,61 @@ class TestProjectWithoutAgentConf(RootsCase):
                                     % (script, result.returncode))
 
 
+class TestPlainDirectory(RootsCase):
+    """A directory that is not a git repo at all.
+
+    roots_read documents a fallback for it: PROJECT_ROOT becomes the directory
+    itself. The fallback has to actually be reached, so the two git lookups
+    that have no `| awk` after them must not let git's exit 128 escape under
+    `set -eu`.
+    """
+
+    def plain(self):
+        return self.repo.make_project("plain")
+
+    def test_roots_read_returns_and_falls_back(self):
+        plain = self.plain()
+        probe = self.repo.write_bin_script("probe.sh", (
+            "#!/usr/bin/env bash\nset -eu\n"
+            '. "$(dirname "$0")/agent-roots.sh"\n'
+            'roots_read "$1"\n'
+            'echo "REACHED $PROJECT_ROOT $STATE_DIR"\n'))
+        self.assertTrue(probe)
+        result = self.repo.run("probe.sh", plain)
+        self.assertEqual(result.returncode, 0,
+                         "exit %d, stderr %r" % (result.returncode, result.stderr))
+        self.assertIn("REACHED %s %s" % (plain, plain), result.stdout)
+
+    def test_agent_file_works_there(self):
+        plain = self.plain()
+        result = self.repo.run("agent-file.sh", "idea", "add", "plain-dir",
+                               cwd=plain)
+        self.assertEqual(result.returncode, 0,
+                         "exit %d, stdout %r, stderr %r"
+                         % (result.returncode, result.stdout, result.stderr))
+        with open(os.path.join(plain, "agent_ideas.txt")) as fh:
+            self.assertIn("plain-dir", fh.read())
+
+    def test_agent_start_works_there(self):
+        plain = self.plain()
+        out = self.assertOk(self.start(cwd=plain))
+        self.assertIn("=== QUIZ", out)
+
+    def test_agent_monitor_works_there(self):
+        plain = self.plain()
+        result = self.repo.run("agent-monitor.sh", "once", cwd=plain)
+        self.assertEqual(result.returncode, 0,
+                         "exit %d, stdout %r, stderr %r"
+                         % (result.returncode, result.stdout, result.stderr))
+
+    def test_agent_init_needs_no_workaround_of_its_own(self):
+        """agent-init.sh must not have to turn `set -e` off around roots_read."""
+        with open(self.repo.plugin_path("bin", "agent-init.sh")) as fh:
+            text = fh.read()
+        self.assertNotIn("set +e", text,
+                         "the fallback belongs in agent-roots.sh, not here")
+
+
 class TestResumeFromAnywhere(RootsCase):
     script = "agent-resume.sh"
 
