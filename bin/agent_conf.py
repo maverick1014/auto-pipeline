@@ -23,6 +23,7 @@ ROLE_KEYS = [
 
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
 PERMISSION_MODES = ["default", "acceptEdits", "auto", "plan"]
+YES_NO = ["yes", "no"]
 
 ROLE_VALUE_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9.\-]*):(low|medium|high|xhigh|max)$")
 LANGUAGE_RE = re.compile(r"^[a-z]{2}(-[a-z]{2})?$")
@@ -39,6 +40,7 @@ HINTS = {
     "task_manager": "Model and effort for a task manager. Form: model-name:effort.",
     "worker": "Model and effort for a worker. Form: model-name:effort.",
     "permission_mode": "How much an agent may do without asking. One of: default, acceptEdits, auto, plan.",
+    "auto_resume": "Run agent-resume.sh by itself when a main manager starts. yes or no.",
     "language": "Language for talking to the human, e.g. en, zh, ms. Code and rules stay English.",
 }
 
@@ -46,7 +48,7 @@ GROUPS = [
     ("limits", ["max_usage_percent", "heavy_test_slots", "max_agents",
                 "monitor_interval_min", "stall_min"]),
     ("roles", list(ROLE_KEYS)),
-    ("permission", ["permission_mode", "language"]),
+    ("permission", ["permission_mode", "auto_resume", "language"]),
 ]
 
 _GROUP_OF = {}
@@ -114,6 +116,12 @@ def _validate_permission_mode(value):
     return None
 
 
+def _validate_yes_no(value):
+    if value not in YES_NO:
+        return "Must be yes or no."
+    return None
+
+
 def _validate_language(value):
     if not LANGUAGE_RE.match(value):
         return "Must be a 2-letter lowercase language code, optionally with a region, e.g. en, zh, en-us."
@@ -127,6 +135,8 @@ def validate_value(key, value):
         return _validate_role(value)
     if key == "permission_mode":
         return _validate_permission_mode(value)
+    if key == "auto_resume":
+        return _validate_yes_no(value)
     if key == "language":
         return _validate_language(value)
     return None

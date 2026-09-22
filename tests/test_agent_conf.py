@@ -43,6 +43,7 @@ REAL_KEYS = [
     "task_manager",
     "worker",
     "permission_mode",
+    "auto_resume",
     "language",
 ]
 
@@ -58,6 +59,7 @@ GOOD_CONF_TEXT = (
     "task_manager=opus-5:xhigh\n"
     "worker=sonnet-5:medium\n"
     "permission_mode=auto\n"
+    "auto_resume=yes\n"
     "language=en\n"
 )
 
@@ -243,6 +245,17 @@ class TestValidatePermissionMode(unittest.TestCase):
             self.assertIn(mode, message)
 
 
+class TestValidateAutoResume(unittest.TestCase):
+    def test_yes_is_accepted(self):
+        self.assertIsNone(agent_conf.validate_value("auto_resume", "yes"))
+
+    def test_no_is_accepted(self):
+        self.assertIsNone(agent_conf.validate_value("auto_resume", "no"))
+
+    def test_maybe_is_rejected(self):
+        self.assertTrue(agent_conf.validate_value("auto_resume", "maybe"))
+
+
 class TestValidateLanguage(unittest.TestCase):
     def test_zh_is_accepted(self):
         self.assertIsNone(agent_conf.validate_value("language", "zh"))
@@ -355,7 +368,7 @@ class TestGroups(unittest.TestCase):
                         "worker",
                     ],
                 ),
-                ("permission", ["permission_mode", "language"]),
+                ("permission", ["permission_mode", "auto_resume", "language"]),
             ],
         )
 

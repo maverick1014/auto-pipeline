@@ -9,4 +9,5 @@ merge_deputy=sonnet-5:medium
 task_manager=opus-5:xhigh
 worker=sonnet-5:medium
 permission_mode=auto
+auto_resume=yes
 language=en

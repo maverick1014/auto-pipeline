@@ -435,6 +435,42 @@ class TestQuizStillWorks(StartCase):
         self.assertIn("FAIL", result.stdout)
 
 
+class TestAutoResume(StartCase):
+    """The hook runs agent-resume.sh by itself for a main manager, new or
+    taken over, on a real startup, when auto_resume=yes (default)."""
+
+    def test_main_manager_startup_prints_it_and_stays_under_cap(self):
+        out = self.assertOk(self.start())
+        self.assertIn("=== auto resume ===", out)
+        self.assertLessEqual(len(out.encode()), 2000,
+                             "hook is %d bytes" % len(out.encode()))
+
+    def test_it_comes_before_rules_and_quiz(self):
+        out = self.assertOk(self.start())
+        lines = self.lines(out)
+        resume_idx = next(i for i, l in enumerate(lines)
+                          if l == "=== auto resume ===")
+        rules_idx = lines.index(self.rules_line())
+        quiz_idx = lines.index(self.quiz_line())
+        self.assertLess(resume_idx, rules_idx)
+        self.assertLess(rules_idx, quiz_idx)
+
+    def test_spawned_role_does_not_print_it(self):
+        out = self.assertOk(self.start(env={"AGENT_ROLE": "task-manager"}))
+        self.assertNotIn("=== auto resume ===", out)
+
+    def test_auto_resume_no_does_not_print_it(self):
+        self.repo.set_conf("auto_resume", "no")
+        out = self.assertOk(self.start())
+        self.assertNotIn("=== auto resume ===", out)
+
+    def test_compact_path_does_not_print_it(self):
+        out = self.assertOk(self.start(
+            stdin='{"cwd": "%s", "session_id": "s1", "source": "compact"}'
+                  % self.repo.dir))
+        self.assertNotIn("=== auto resume ===", out)
+
+
 class TestGitignore(unittest.TestCase):
     def test_agent_monitor_txt_is_ignored(self):
         root = os.path.dirname(HERE)

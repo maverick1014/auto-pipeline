@@ -86,7 +86,7 @@ Bash(orca terminal close *)
 
 ```
 ./bin/agent-start.sh             # rules, resources, quiz. No work until PASS
-./bin/agent-resume.sh            # after a restart: relaunch, monitor, one table
+./bin/agent-resume.sh            # runs by itself at startup (auto_resume=yes); run by hand only if you turned that off
 /auto-pipeline:dispatch          # main manager: route one task
 /auto-pipeline:merge             # main manager: E2E, then merge deputy
 /auto-pipeline:init              # one-time project setup, prints the permissions block

@@ -240,6 +240,7 @@ roots_read "$CWD"
 conf_read
 mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
 : "${max_usage_percent:=80}"
+: "${auto_resume:=yes}"
 
 # ---- role: one main manager per repo (W10) ----
 agent_pid() {
@@ -435,13 +436,35 @@ MON_TEXT=$(print_monitor_block; printf 'X'); MON_TEXT=${MON_TEXT%X}
 RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
 QUIZ_LINE="QUIZ: run $PLUGIN_ROOT/bin/agent-start.sh --quiz, then --answer. No work until PASS."
 
+# ---- auto resume: real startup, main manager (new or taken over), never
+# spawned, never human-direct (second), and only when auto_resume=yes. A
+# failing resume must never break the hook. ----
+RESUME_TEXT=""
+if [ "$SRC" = startup ] && { [ "$role" = main ] || [ "$role" = takeover ]; } \
+   && [ "$auto_resume" = yes ]; then
+  resume_out=$("$PLUGIN_ROOT/bin/agent-resume.sh" 2>&1) || true
+  header="=== auto resume ==="
+  other_fixed=$(( $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
+                 + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
+  candidate_bytes=$(( $(line_bytes "$header") + $(text_bytes "$resume_out") + 1 ))
+  if [ $(( other_fixed + candidate_bytes )) -gt "$CAP" ]; then
+    resume_out=$(printf '%s\n' "$resume_out" | head -n 6)
+    resume_out="${resume_out}
+(more, run agent-resume.sh)"
+  fi
+  RESUME_TEXT="$header
+$resume_out
+"
+fi
+
 fixed=$(( $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
-        + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
+        + $(text_bytes "$RESUME_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
 budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
 
 printf '%s' "$ROLE_TEXT"
 printf '%s' "$NORMAL_TEXT"
 printf '%s' "$MON_TEXT"
 print_state_block "$budget"
+printf '%s' "$RESUME_TEXT"
 printf '%s\n' "$RULES_LINE"
 printf '%s\n' "$QUIZ_LINE"
