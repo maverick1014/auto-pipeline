@@ -29,18 +29,23 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
+# Scripts a human or a hook runs. These must carry the execute bit.
 SHELL_SCRIPTS = [
     "agent-start.sh",
     "agent-file.sh",
     "agent-settings.sh",
     "agent-resume.sh",
     "agent-monitor.sh",
-    "agent-resources.sh",
     "agent-init.sh",
-    "agent-roots.sh",
     "agent-runtime.sh",
 ]
-BIN_FILES = SHELL_SCRIPTS + ["agent_conf.py", "agent.conf.default"]
+# Sourced only, never run. agent-runtime.sh is in the list above instead,
+# because it is both: sourced by its callers and run by a skill.
+SOURCED_ONLY = [
+    "agent-roots.sh",
+    "agent-resources.sh",
+]
+BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py", "agent.conf.default"]
 
 AGENT_FILES = ["fast-lane-deputy.md", "merge-deputy.md", "worker.md"]
 SKILL_DIRS = ["dispatch", "merge", "init"]
@@ -89,6 +94,14 @@ class TestBin(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertTrue(os.access(os.path.join(ROOT, "bin", name), os.X_OK),
                                 "bin/%s is not executable" % name)
+
+    def test_a_sourced_file_is_not_advertised_as_runnable(self):
+        """agent-roots.sh and agent-resources.sh say so in their own header."""
+        for name in SOURCED_ONLY:
+            with self.subTest(name=name):
+                with open(os.path.join(ROOT, "bin", name)) as fh:
+                    head = "".join(fh.readlines()[:6]).lower()
+                self.assertIn("sourced", head)
 
     def test_nothing_is_left_at_the_root(self):
         left = [n for n in os.listdir(ROOT)
