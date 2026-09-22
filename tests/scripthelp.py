@@ -19,6 +19,19 @@ Stub environment (set by run()):
     ORCA_STUB_LOG    file the stub appends its calls to
     ORCA_STUB_PS     file holding the JSON that `orca worktree ps --json` prints
     ORCA_STUB_SLEEP  seconds the stub waits before printing (slow-call tests)
+
+Runtime detection reads the real machine: whether `orca` is on PATH, whether
+CLAUDE_CODE_REMOTE is set, and whether a Claude in Chrome native host file sits
+under $HOME. A test must be able to say no to each of those on a laptop that
+says yes, so:
+
+    no_orca()        deletes the stub AND drops every PATH directory that holds
+                     a real `orca`, so the detection cannot fall through to the
+                     machine's own install
+    hide_tool(name)  the same for any other executable (chromium, npx, ...)
+    stub_tool(...)   drop a throwaway executable into the stub directory
+    fake_home()      an empty $HOME, so no native host file is found by accident
+    install_native_host(...)  put one there on purpose
 """
 
 import json
@@ -44,6 +57,7 @@ COPY_BIN = [
     "agent-resources.sh",
     "agent-init.sh",
     "agent-roots.sh",
+    "agent-runtime.sh",
     "agent_conf.py",
     "agent.conf.default",
 ]
@@ -120,6 +134,8 @@ class ScriptRepo:
         self.bin = os.path.join(self.dir, "stubbin")
         self.orca_log = os.path.join(self.base, "orca_calls.log")
         self.orca_ps = os.path.join(self.base, "orca_ps.json")
+        self.hidden = []
+        self.home = None
 
         os.makedirs(self.plugin_bin)
         os.makedirs(self.dir)
@@ -217,6 +233,88 @@ class ScriptRepo:
         with open(path, "w") as fh:
             fh.writelines(rows)
 
+    # ---- what the machine looks like from inside a test ----
+
+    def _path(self):
+        """PATH for a test run: the stub directory first, hidden tools removed.
+
+        A laptop with a real /usr/local/bin/orca must not leak into a test that
+        is proving what happens with no orca at all, so every directory holding
+        a hidden executable is dropped from PATH, not just the stub.
+        """
+        parts = [self.bin] + os.environ.get("PATH", "").split(os.pathsep)
+        keep = []
+        for folder in parts:
+            if not folder or folder in keep:
+                continue
+            if any(self._has_exe(folder, name) for name in self.hidden):
+                continue
+            keep.append(folder)
+        return os.pathsep.join(keep)
+
+    @staticmethod
+    def _has_exe(folder, name):
+        full = os.path.join(folder, name)
+        return os.path.isfile(full) and os.access(full, os.X_OK)
+
+    def hide_tool(self, name):
+        """Make `command -v <name>` find nothing, stub or real."""
+        stub = os.path.join(self.bin, name)
+        if os.path.exists(stub):
+            os.remove(stub)
+        if name not in self.hidden:
+            self.hidden.append(name)
+
+    def no_orca(self):
+        """A machine with no Orca at all."""
+        self.hide_tool("orca")
+
+    def stub_tool(self, name, body="#!/usr/bin/env bash\nexit 0\n"):
+        """Put a throwaway executable on PATH, ahead of anything real."""
+        if name in self.hidden:
+            self.hidden.remove(name)
+        full = os.path.join(self.bin, name)
+        with open(full, "w") as fh:
+            fh.write(body)
+        os.chmod(full, 0o755)
+        return full
+
+    def fake_home(self):
+        """An empty $HOME, so no native host file is found by accident."""
+        if self.home is None:
+            self.home = os.path.join(self.base, "home")
+            os.makedirs(self.home, exist_ok=True)
+        return self.home
+
+    # Where Claude in Chrome puts its native messaging host, per browser.
+    NATIVE_HOST = "com.anthropic.claude_code_browser_extension.json"
+    NATIVE_HOST_DIRS = {
+        "chrome": "Library/Application Support/Google/Chrome/NativeMessagingHosts",
+        "edge": "Library/Application Support/Microsoft Edge/NativeMessagingHosts",
+        "chrome-linux": ".config/google-chrome/NativeMessagingHosts",
+        "edge-linux": ".config/microsoft-edge/NativeMessagingHosts",
+    }
+
+    def install_native_host(self, browser="chrome"):
+        """Say yes to Claude in Chrome for one browser."""
+        home = self.fake_home()
+        folder = os.path.join(home, self.NATIVE_HOST_DIRS[browser])
+        os.makedirs(folder, exist_ok=True)
+        full = os.path.join(folder, self.NATIVE_HOST)
+        with open(full, "w") as fh:
+            fh.write('{"name": "%s"}\n' % self.NATIVE_HOST[:-5])
+        return full
+
+    def enable_plugin(self, local=False, name="auto-pipeline@auto-pipeline"):
+        """Write the project-scope settings file that turns this plugin on."""
+        folder = os.path.join(self.dir, ".claude")
+        os.makedirs(folder, exist_ok=True)
+        full = os.path.join(
+            folder, "settings.local.json" if local else "settings.json")
+        with open(full, "w") as fh:
+            json.dump({"enabledPlugins": {name: True}}, fh)
+        return full
+
     def write_bin_script(self, name, body):
         """Drop a throwaway script next to the plugin's own scripts."""
         full = os.path.join(self.plugin_bin, name)
@@ -294,12 +392,18 @@ class ScriptRepo:
 
     def _env(self, extra):
         env = dict(os.environ)
-        env["PATH"] = self.bin + os.pathsep + env["PATH"]
+        env["PATH"] = self._path()
         env["ORCA_STUB_LOG"] = self.orca_log
         env["ORCA_STUB_PS"] = self.orca_ps
         env.pop("ORCA_STUB_SLEEP", None)
         env.pop("AGENT_ROLE", None)
         env.pop("CLAUDE_PROJECT_DIR", None)
+        env.pop("CLAUDE_CODE_REMOTE", None)
+        for key in list(env):
+            if key.startswith("CLAUDE_PLUGIN_OPTION_"):
+                env.pop(key)
+        if self.home is not None:
+            env["HOME"] = self.home
         env.setdefault("AGENT_FAKE_RAM", "10")
         env.setdefault("AGENT_FAKE_CPU", "10")
         env.update(extra or {})

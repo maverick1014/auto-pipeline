@@ -40,6 +40,22 @@ sees a half-written file, and no temp file is left behind.
 `start` writes the loop's pid to <shared git dir>/agent_monitor.pid and sweeps
 every monitor_interval_min minutes. A pid file whose process is gone counts as
 not running.
+
+RUNTIME. All of the above is the orca runtime, and the pane state comes through
+`bin/agent-runtime.sh ps`, never a bare orca call.
+
+plain and cloud have no other terminals to sweep, and a cloud session kills a
+background process anyway, so the loop is not started at all:
+
+    start   "monitor: not used in plain mode" (or cloud), exit 0, no pid file,
+            no background process, no sweep
+    once    the same line, and agent_monitor.txt is not written
+    status  the same line
+    stop    unchanged, so a loop left over from an Orca session can still be
+            killed after switching
+    -h      unchanged
+
+orca is never called in either mode.
 """
 
 import os
@@ -432,6 +448,99 @@ class TestUsage(MonitorCase):
         out = self.assertOk(self.repo.run("agent-monitor.sh", "once",
                                           cwd=self.repo.bin))
         self.assertIn("pane working", out)
+
+
+class NoTerminalsCase(MonitorCase):
+    KIND = "plain"
+
+    def setUp(self):
+        super(NoTerminalsCase, self).setUp()
+        self.repo.set_conf("runtime", self.KIND)
+        self.path = self.one_worktree("alpha")
+
+    def line(self):
+        return "monitor: not used in %s mode" % self.KIND
+
+
+class TestNoLoopWithoutTerminals(NoTerminalsCase):
+    def test_start_says_it_is_not_used(self):
+        self.assertIn(self.line(), self.assertOk(self.monitor("start")))
+
+    def test_start_writes_no_pid_file(self):
+        self.assertOk(self.monitor("start"))
+        self.assertFalse(os.path.exists(os.path.join(
+            self.repo.dir, ".git", "agent_monitor.pid")))
+
+    def test_start_never_says_started(self):
+        self.assertNotIn("monitor: started", self.assertOk(self.monitor("start")))
+
+    def test_start_writes_no_sweep_file(self):
+        self.assertOk(self.monitor("start"))
+        self.assertIsNone(self.repo.read("agent_monitor.txt"))
+
+    def test_once_says_the_same_thing(self):
+        self.assertIn(self.line(), self.assertOk(self.monitor("once")))
+
+    def test_once_writes_no_sweep_file(self):
+        self.assertOk(self.monitor("once"))
+        self.assertIsNone(self.repo.read("agent_monitor.txt"))
+
+    def test_status_says_the_same_thing(self):
+        self.assertIn(self.line(), self.assertOk(self.monitor("status")))
+
+    def test_orca_is_never_called(self):
+        for verb in ("start", "once", "status"):
+            with self.subTest(verb=verb):
+                self.repo.clear_calls()
+                self.assertOk(self.monitor(verb))
+                self.assertEqual(self.repo.calls(), [])
+
+    def test_stop_still_works(self):
+        out = self.assertOk(self.monitor("stop"))
+        self.assertIn("monitor:", out)
+
+    def test_help_is_unchanged(self):
+        out = self.assertOk(self.monitor("-h"))
+        self.assertIn("agent-monitor.sh", out)
+
+    def test_an_unknown_argument_still_exits_two(self):
+        self.assertEqual(self.monitor("teleport").returncode, 2)
+
+
+class TestCloudIsTheSameShape(NoTerminalsCase):
+    KIND = "cloud"
+
+    def test_start_names_the_cloud(self):
+        self.assertIn("monitor: not used in cloud mode",
+                      self.assertOk(self.monitor("start")))
+
+    def test_the_remote_marker_alone_is_enough(self):
+        self.repo.set_conf("runtime", "auto")
+        out = self.assertOk(self.monitor("start",
+                                         env={"CLAUDE_CODE_REMOTE": "true"}))
+        self.assertIn("monitor: not used in cloud mode", out)
+
+
+class TestAutoStillSweepsWithOrca(MonitorCase):
+    def test_a_machine_with_orca_sweeps_as_before(self):
+        self.repo.set_conf("runtime", "auto")
+        self.one_worktree("alpha", panes=["working"])
+        rows = self.parsed()
+        self.assertEqual(rows[0]["pane"], "working")
+
+    def test_the_sweep_asks_the_runtime_once(self):
+        self.repo.set_conf("runtime", "orca")
+        self.one_worktree("alpha", panes=["working"])
+        self.repo.clear_calls()
+        self.assertOk(self.monitor("once"))
+        self.assertEqual(self.repo.calls(), [["worktree", "ps", "--json"]])
+
+    def test_a_machine_without_orca_starts_no_loop(self):
+        self.repo.set_conf("runtime", "auto")
+        self.repo.no_orca()
+        self.one_worktree("alpha")
+        out = self.assertOk(self.monitor("start"))
+        self.assertIn("monitor: not used in plain mode", out)
 
 
 if __name__ == "__main__":

@@ -44,7 +44,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-from scripthelp import ScriptCase
+from scripthelp import ScriptCase, ScriptRepo
 
 MONITOR_LINE = ("/tmp/wt | alpha | pane working | commit 2m ago | "
                 "activity 0m ago | OK | 2026-09-21 18:00")
@@ -484,6 +484,180 @@ class TestGitignore(unittest.TestCase):
         with open(os.path.join(root, ".gitignore")) as fh:
             lines = [l.strip() for l in fh]
         self.assertIn("agent_monitor.txt.tmp.*", lines)
+
+
+SETUP_LINE = ("auto-pipeline: first run, created agent.conf and the task files")
+POINTER_LINE = ("auto-pipeline: run /auto-pipeline:init once to see the "
+                "permission block and the cloud setup line to paste")
+NOT_HERE_LINE = ("auto-pipeline: not set up in this repo, "
+                 "run /auto-pipeline:init to enable")
+
+MADE_FILES = ["agent.conf", "agent_todo.txt", "agent_completed.txt",
+              "agent_ideas.txt", "agent_worktree.txt", "AGENTS.md", ".secrets"]
+
+
+class BareProjectCase(ScriptCase):
+    """A project that has never been set up.
+
+    Scope matters. A user-scope install puts this plugin in every repo the
+    owner opens, and those repos must stay untouched. Only a repo that turns
+    the plugin on itself, in its own .claude/settings.json or
+    .claude/settings.local.json, gets set up without being asked.
+    """
+
+    script = "agent-start.sh"
+
+    def setUp(self):
+        if not os.path.exists(os.path.join(
+                os.path.dirname(HERE), "bin", "agent-start.sh")):
+            self.fail("bin/agent-start.sh does not exist yet. Write it.")
+        self.repo = ScriptRepo(init_project=False)
+        self.addCleanup(self.repo.cleanup)
+        open(self.repo.orca_log, "w").close()
+        self.repo.set_panes([])
+        self.repo.git_init(self.repo.dir)
+
+    def start(self, *args, **kwargs):
+        kwargs.setdefault("env", {})
+        # Keep the hook honest but quiet: a spawned role never auto-resumes,
+        # so no background monitor is left behind by a setup test.
+        kwargs["env"].setdefault("AGENT_ROLE", "task-manager")
+        return self.repo.run("agent-start.sh", *args, **kwargs)
+
+    def names(self):
+        return sorted(n for n in os.listdir(self.repo.dir)
+                      if n not in (".git", "stubbin", "seed.txt"))
+
+
+class TestFirstRunInAnEnabledRepo(BareProjectCase):
+    def test_it_creates_every_file(self):
+        self.repo.enable_plugin()
+        self.assertOk(self.start())
+        for name in MADE_FILES:
+            with self.subTest(name=name):
+                self.assertTrue(
+                    os.path.exists(os.path.join(self.repo.dir, name)),
+                    "%s is missing" % name)
+
+    def test_settings_local_json_counts_too(self):
+        self.repo.enable_plugin(local=True)
+        self.assertOk(self.start())
+        self.assertTrue(os.path.exists(self.repo.path("agent.conf")))
+
+    def test_it_says_what_it_did(self):
+        self.repo.enable_plugin()
+        out = self.assertOk(self.start())
+        self.assertIn(SETUP_LINE, out)
+
+    def test_it_points_at_the_init_skill_for_the_two_blocks(self):
+        self.repo.enable_plugin()
+        out = self.assertOk(self.start())
+        self.assertIn(POINTER_LINE, out)
+
+    def test_the_two_lines_come_first(self):
+        self.repo.enable_plugin()
+        out = self.assertOk(self.start())
+        self.assertEqual(self.lines(out)[:2], [SETUP_LINE, POINTER_LINE])
+
+    def test_the_normal_output_still_follows(self):
+        self.repo.enable_plugin()
+        out = self.assertOk(self.start())
+        self.assertIn("RESOURCES:", out)
+        self.assertIn("agent_todo.txt: 0 lines", out)
+        self.assertIn("QUIZ:", out)
+
+    def test_it_still_fits_the_preview(self):
+        self.repo.enable_plugin()
+        out = self.assertOk(self.start())
+        self.assertLessEqual(len(out.encode()), 2000, out)
+
+    def test_the_second_run_is_quiet(self):
+        self.repo.enable_plugin()
+        self.assertOk(self.start())
+        out = self.assertOk(self.start())
+        self.assertNotIn(SETUP_LINE, out)
+        self.assertNotIn(POINTER_LINE, out)
+
+    def test_the_second_run_changes_nothing(self):
+        self.repo.enable_plugin()
+        self.assertOk(self.start())
+        before = {n: open(self.repo.path(n)).read()
+                  for n in MADE_FILES if os.path.isfile(self.repo.path(n))}
+        self.assertOk(self.start())
+        after = {n: open(self.repo.path(n)).read()
+                 for n in MADE_FILES if os.path.isfile(self.repo.path(n))}
+        self.assertEqual(after, before)
+
+    def test_an_existing_conf_stops_it_firing(self):
+        self.repo.enable_plugin()
+        with open(self.repo.path("agent.conf"), "w") as fh:
+            fh.write("max_agents=9\n")
+        out = self.assertOk(self.start())
+        self.assertNotIn(SETUP_LINE, out)
+        self.assertEqual(open(self.repo.path("agent.conf")).read(),
+                         "max_agents=9\n")
+
+    def test_the_new_conf_is_used_at_once(self):
+        """language is read from the conf the same run that created it."""
+        self.repo.enable_plugin()
+        out = self.assertOk(self.start(
+            env={"CLAUDE_PLUGIN_OPTION_LANGUAGE": "zh"}))
+        self.assertIn("LANGUAGE: zh", out)
+
+
+class TestUserScopeLeavesTheRepoAlone(BareProjectCase):
+    """The owner opens some other repo. Nothing may appear in it."""
+
+    def test_it_says_the_repo_is_not_set_up(self):
+        self.assertIn(NOT_HERE_LINE, self.assertOk(self.start()))
+
+    def test_that_is_the_only_line(self):
+        out = self.assertOk(self.start())
+        self.assertEqual(self.lines(out.strip()), [NOT_HERE_LINE])
+
+    def test_it_exits_zero(self):
+        self.assertEqual(self.start().returncode, 0)
+
+    def test_it_creates_no_file(self):
+        self.assertOk(self.start())
+        self.assertEqual(self.names(), [])
+
+    def test_it_writes_no_lock(self):
+        self.repo.run("agent-start.sh")
+        self.assertFalse(os.path.exists(
+            os.path.join(self.repo.dir, ".git", "agent_main.lock")))
+
+    def test_it_starts_no_monitor(self):
+        self.repo.run("agent-start.sh")
+        self.assertFalse(os.path.exists(
+            os.path.join(self.repo.dir, ".git", "agent_monitor.pid")))
+
+    def test_it_prints_no_quiz_line(self):
+        self.assertNotIn("QUIZ:", self.assertOk(self.start()))
+
+    def test_it_prints_no_resources_line(self):
+        self.assertNotIn("RESOURCES:", self.assertOk(self.start()))
+
+    def test_a_settings_file_without_this_plugin_does_not_count(self):
+        folder = os.path.join(self.repo.dir, ".claude")
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, "settings.json"), "w") as fh:
+            fh.write('{"enabledPlugins": {"something-else@market": true}}')
+        self.assertIn(NOT_HERE_LINE, self.assertOk(self.start()))
+
+    def test_an_agent_conf_beats_the_scope_check(self):
+        """A repo set up by hand keeps working, whatever the scope is."""
+        with open(self.repo.path("agent.conf"), "w") as fh:
+            fh.write("language=en\n")
+        out = self.assertOk(self.start())
+        self.assertNotIn(NOT_HERE_LINE, out)
+        self.assertIn("QUIZ:", out)
+
+    def test_the_quiz_still_works_with_no_setup(self):
+        """--quiz and --answer never touch the project at all."""
+        out = self.assertOk(self.repo.run("agent-start.sh", "--quiz"))
+        self.assertIn("Q1.", out)
+        self.assertEqual(self.names(), [])
 
 
 if __name__ == "__main__":

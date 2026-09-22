@@ -45,6 +45,7 @@ REAL_KEYS = [
     "permission_mode",
     "auto_resume",
     "language",
+    "runtime",
 ]
 
 GOOD_CONF_TEXT = (
@@ -61,6 +62,7 @@ GOOD_CONF_TEXT = (
     "permission_mode=auto\n"
     "auto_resume=yes\n"
     "language=en\n"
+    "runtime=auto\n"
 )
 
 
@@ -369,6 +371,7 @@ class TestGroups(unittest.TestCase):
                     ],
                 ),
                 ("permission", ["permission_mode", "auto_resume", "language"]),
+                ("runtime", ["runtime"]),
             ],
         )
 
@@ -381,6 +384,34 @@ class TestGroups(unittest.TestCase):
         self.assertEqual(agent_conf.group_of("worker"), "roles")
         self.assertEqual(agent_conf.group_of("permission_mode"), "permission")
         self.assertEqual(agent_conf.group_of("some_new_key"), "other")
+
+
+class TestRuntimeKey(unittest.TestCase):
+    """Which shape this machine runs in. auto works it out fresh every time."""
+
+    GOOD = ["auto", "orca", "plain", "cloud"]
+
+    def test_every_good_value_passes(self):
+        for value in self.GOOD:
+            with self.subTest(value=value):
+                self.assertIsNone(agent_conf.validate_value("runtime", value))
+
+    def test_a_bad_value_is_refused(self):
+        for value in ("Orca", "local", "", "auto ", "banana"):
+            with self.subTest(value=value):
+                self.assertTrue(agent_conf.validate_value("runtime", value))
+
+    def test_the_message_names_the_four_choices(self):
+        message = agent_conf.validate_value("runtime", "banana")
+        for value in self.GOOD:
+            with self.subTest(value=value):
+                self.assertIn(value, message)
+
+    def test_it_has_a_hint(self):
+        self.assertTrue(agent_conf.HINTS.get("runtime", "").strip())
+
+    def test_it_sits_in_its_own_group(self):
+        self.assertEqual(agent_conf.group_of("runtime"), "runtime")
 
 
 if __name__ == "__main__":
