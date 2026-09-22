@@ -21,9 +21,9 @@ R3. Docs
 - Allowed: requirement, test, main idea
 - Nothing else
 - `PRINCIPLES.md` = main idea doc
-- Entry files allowed: `CLAUDE.md`, `AGENTS.md` (one line, point to `agent-start.sh`)
+- Entry files allowed: `CLAUDE.md`, `AGENTS.md` (one line, point to `bin/agent-start.sh`)
 - `README.md` allowed: the picture of the tree and the flow, for people new to the repo
-- Config, not docs, allowed: `.claude/agents/*.md`, `.claude/skills/*/SKILL.md`, `agent-start.sh`, `agent-file.sh`, `agent-settings.sh`
+- Config, not docs, allowed: `.claude-plugin/`, `agents/`, `skills/`, `hooks/`, `bin/`
 
 R4. No changelog
 - Git history is the record
@@ -112,7 +112,7 @@ W10. Second session in the same repo
 - The main manager closes every human-direct session after the human says finish: `orca terminal close --terminal <handle> --json`. Nothing stays parked
 - Lock owner dead → take over as main manager, run recovery (S7)
 - Talk between sessions: `ListAgents` → find the peer's name → `SendMessage` to that name. Reply to the `from` name. First line of every message = one clear sentence
-- Open a second session with the same permission mode as the main manager (`permission_mode` in `agent.conf`): `orca terminal create --worktree path:<repo> --command "claude --permission-mode auto" --json`, then `orca terminal wait --for tui-idle`
+- Open a second session with the same permission mode and effort as the main manager (`permission_mode` and `main_manager` in `agent.conf`, effort form model:effort): `orca terminal create --worktree path:<repo> --command "claude --permission-mode auto --effort <effort>" --json`, then `orca terminal wait --for tui-idle`
 
 ## C. Human
 

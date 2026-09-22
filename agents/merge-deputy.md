@@ -15,6 +15,6 @@ Steps, in order. Stop at the first failure.
 4. `git push origin main`.
 5. `git push origin --delete <branch>`.
 6. `orca terminal close --terminal <terminal handle> --json`. Then check `orca worktree ps --json`: the worktree must show 0 agents. A new plain `claude` pane appeared → close it too (Orca sometimes respawns one after a failed close). Then `orca worktree rm --worktree path:<worktree path> --json`, `git worktree prune`, `git branch -d <branch>` (skip if already gone).
-7. `./agent-file.sh worktree rm "<worktree path>"` and `./agent-file.sh todo done "<name>" "<result text>"`.
+7. `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree rm "<worktree path>"` and `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo done "<name>" "<result text>"`.
 
 Report, first line exactly `MERGE PASS <name>` or `MERGE FAIL <name>: <why>`. Then: merge hash, the `Ran N tests` line, push result, what was deleted.

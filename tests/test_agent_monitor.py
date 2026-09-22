@@ -214,7 +214,8 @@ class TestVerdict(MonitorCase):
         """
         self.repo.set_conf("stall_min", "1")
         self.one_worktree(commit_min_ago=30, panes=["done"], activity_min=5)
-        raw = self.repo.read("orca_ps.json")
+        with open(self.repo.orca_ps) as fh:
+            raw = fh.read()
         self.assertIn("lastActivityAt", raw)
         self.assertEqual(self.parsed()[0]["activity"], "5m ago")
         self.assertEqual(self.parsed()[0]["verdict"], "STALL")

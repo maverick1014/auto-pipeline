@@ -1,0 +1,11 @@
+max_usage_percent=80
+heavy_test_slots=1
+max_agents=4
+monitor_interval_min=5
+stall_min=10
+main_manager=fable-5.1:xhigh
+fast_lane_deputy=sonnet-5:medium
+merge_deputy=sonnet-5:medium
+task_manager=opus-5:xhigh
+worker=sonnet-5:medium
+permission_mode=auto

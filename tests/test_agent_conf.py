@@ -24,8 +24,9 @@ import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+BIN = os.path.join(ROOT, "bin")
+if BIN not in sys.path:
+    sys.path.insert(0, BIN)
 
 import agent_conf
 
@@ -186,7 +187,7 @@ class TestValidateRoles(unittest.TestCase):
                 self.assertIsNone(agent_conf.validate_value(key, "sonnet-5:medium"))
 
     def test_every_effort_level_is_accepted(self):
-        for effort in ("low", "medium", "high", "xhigh"):
+        for effort in ("low", "medium", "high", "xhigh", "max"):
             with self.subTest(effort=effort):
                 self.assertIsNone(agent_conf.validate_value("worker", "opus-5:" + effort))
 
@@ -213,8 +214,13 @@ class TestValidateRoles(unittest.TestCase):
     def test_error_message_names_the_effort_levels(self):
         message = agent_conf.validate_value("worker", "sonnet-5:ultra")
         self.assertTrue(message)
-        for effort in ("low", "medium", "high", "xhigh"):
+        for effort in ("low", "medium", "high", "xhigh", "max"):
             self.assertIn(effort, message)
+
+    def test_effort_levels_are_the_ones_claude_takes(self):
+        """`claude --effort` takes these five and nothing else."""
+        self.assertEqual(agent_conf.EFFORT_LEVELS,
+                         ["low", "medium", "high", "xhigh", "max"])
 
 
 class TestValidatePermissionMode(unittest.TestCase):

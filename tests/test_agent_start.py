@@ -1,27 +1,39 @@
-"""Failing tests for the agent-start.sh changes.
+"""Failing tests for the short startup hook. Written by the task manager first.
 
-CONTRACT:
+CONTRACT. The SessionStart hook output has to fit the preview Claude Code
+shows an agent, so it carries pointers, not content. A normal start on an
+empty project is under 2048 bytes.
 
-  1. agent-start.sh prints an agent_monitor.txt section at startup, a section
-     like the other files, right after the agent_worktree.txt section:
+Normal start, in this order:
 
-         === agent_monitor.txt (agent health) ===
-         <the file, or "(none)" when there is nothing to show>
+    ROLE: <...>
+    PROJECT: <project root> | PLUGIN: <plugin root>
+    RESOURCES: RAM <n>% CPU <n>% (cap <n>%) -> OK
+    agent_todo.txt: <n> lines
+    agent_completed.txt: <n> lines
+    agent_ideas.txt: <n> lines
+    agent_worktree.txt: <n> lines
+      <every line of agent_worktree.txt, two spaces in front>
+    agent_state.txt: <n> lines            only when the file has something
+      <its first 30 lines, two spaces in front>
+      (truncated, read the file)          only when it is longer than 30
+    agent_monitor.txt: <n> lines          only when the file has something
+      <every line, two spaces in front>
+    RULES: read <plugin>/PRINCIPLES.md now (S8).
+    QUIZ: run <plugin>/bin/agent-start.sh --quiz, then --answer. No work until PASS.
 
-  2. The RAM and CPU readers move into agent-resources.sh, which agent-start.sh
-     sources. agent-resources.sh gives:
+The last two lines are exactly those. No PRINCIPLES.md text and no quiz
+question ever appears in the hook output.
 
-         ram_used              -> percent, or -1 when it cannot tell
-         cpu_used              -> percent, or -1 when it cannot tell
-         resources_line <cap>  -> "RESOURCES: RAM <n>% CPU <n>% (cap <n>%) -> OK"
-                                  or the same line ending "-> OVER CAP"
-         resources_ok <cap>    -> exit 0 when both are under the cap
+    --quiz    prints the 29 questions and nothing else
+    --answer  unchanged, still grades and still says PASS
 
-     AGENT_FAKE_RAM and AGENT_FAKE_CPU override the real readings, so a test
-     never has to measure the machine.
+Compaction (stdin source "compact"), nothing else at all:
 
-  3. Nothing else about agent-start.sh changes: the quiz still grades, and
-     --answer with all 29 right still says PASS.
+    ROLE, the PROJECT/PLUGIN line, the COMPACTED line, agent_state.txt capped
+    the same way, the RULES line. No RESOURCES, no counts, no QUIZ line.
+
+The resource helper below is unchanged by all this.
 """
 
 import os
@@ -37,6 +49,10 @@ from scripthelp import ScriptCase
 MONITOR_LINE = ("/tmp/wt | alpha | pane working | commit 2m ago | "
                 "activity 0m ago | OK | 2026-09-21 18:00")
 
+RULES_LINE = "RULES: read %s/PRINCIPLES.md now (S8)."
+QUIZ_LINE = ("QUIZ: run %s/bin/agent-start.sh --quiz, then --answer. "
+             "No work until PASS.")
+
 
 class StartCase(ScriptCase):
     script = "agent-start.sh"
@@ -44,36 +60,264 @@ class StartCase(ScriptCase):
     def start(self, *args, **kwargs):
         return self.repo.run("agent-start.sh", *args, **kwargs)
 
+    def rules_line(self):
+        return RULES_LINE % self.repo.plugin
 
-class TestMonitorSection(StartCase):
-    def test_prints_the_section_with_the_file(self):
+    def quiz_line(self):
+        return QUIZ_LINE % self.repo.plugin
+
+
+class TestItFitsThePreview(StartCase):
+    def test_an_empty_project_stays_under_two_kilobytes(self):
+        out = self.assertOk(self.start())
+        self.assertLess(len(out.encode()), 2048,
+                        "the hook is %d bytes, the preview cuts it"
+                        % len(out.encode()))
+
+    def test_no_principles_text(self):
+        self.mark = "PLUGIN-PRINCIPLES-MARKER"
+        with open(self.repo.plugin_path("PRINCIPLES.md"), "a") as fh:
+            fh.write("\n%s\n" % self.mark)
+        out = self.assertOk(self.start())
+        self.assertNotIn(self.mark, out)
+        self.assertNotIn("=== PRINCIPLES.md ===", out)
+
+    def test_no_quiz_question(self):
+        out = self.assertOk(self.start())
+        self.assertNotIn("Q1.", out)
+        self.assertNotIn("=== QUIZ", out)
+
+    def test_it_points_at_both_instead(self):
+        out = self.assertOk(self.start())
+        lines = self.lines(out)
+        self.assertEqual(lines[-2], self.rules_line())
+        self.assertEqual(lines[-1], self.quiz_line())
+
+
+class TestItFitsThePreviewOnARealProject(StartCase):
+    """30 lines is not a size. A state file whose first 30 lines are a brief
+    is 8 KB on its own, and the preview cuts it just the same. The whole
+    output stays at or under 2000 bytes, always, by giving the state block
+    whatever budget is left and saying so when it trims."""
+
+    CAP = 2000
+
+    def busy_project(self):
+        long_line = "x" * 400
+        with open(self.repo.path("agent_worktree.txt"), "w") as fh:
+            for i in range(4):
+                fh.write("/very/long/path/to/worktree/number_%d | module_%d | "
+                         "working | since 2026-09-22 10:00\n" % (i, i))
+        with open(self.repo.path("agent_monitor.txt"), "w") as fh:
+            for i in range(4):
+                fh.write("/very/long/path/to/worktree/number_%d | module_%d | "
+                         "pane working | commit 2m ago | activity 1m ago | OK "
+                         "| 2026-09-22 10:00\n" % (i, i))
+        with open(self.repo.path("agent_state.txt"), "w") as fh:
+            for i in range(60):
+                fh.write("%02d %s\n" % (i, long_line))
+        with open(self.repo.path("agent_todo.txt"), "w") as fh:
+            fh.write("alpha | big | one\n")
+
+    def test_a_busy_project_still_fits(self):
+        self.busy_project()
+        out = self.assertOk(self.start())
+        self.assertLessEqual(len(out.encode()), self.CAP,
+                             "the hook is %d bytes:\n%s"
+                             % (len(out.encode()), out[:600]))
+
+    def test_it_says_it_trimmed(self):
+        self.busy_project()
+        out = self.assertOk(self.start())
+        self.assertIn("(truncated, read the file)", out)
+
+    def test_the_two_pointer_lines_are_never_trimmed_away(self):
+        self.busy_project()
+        lines = self.lines(self.assertOk(self.start()))
+        self.assertEqual(lines[-2], self.rules_line())
+        self.assertEqual(lines[-1], self.quiz_line())
+
+    def test_the_worktree_lines_survive(self):
+        """They are what the main manager reads before every dispatch (W9)."""
+        self.busy_project()
+        out = self.assertOk(self.start())
+        self.assertIn("agent_worktree.txt: 4 lines", out)
+        self.assertIn("/very/long/path/to/worktree/number_3", out)
+
+    def test_the_counts_survive(self):
+        self.busy_project()
+        out = self.assertOk(self.start())
+        self.assertIn("agent_todo.txt: 1 lines", out)
+        self.assertIn("agent_state.txt: 60 lines", out)
+
+    def test_a_single_huge_line_does_not_break_the_cap(self):
+        with open(self.repo.path("agent_state.txt"), "w") as fh:
+            fh.write("y" * 9000 + "\n")
+        out = self.assertOk(self.start())
+        self.assertLessEqual(len(out.encode()), self.CAP,
+                             "one long line blew the cap: %d bytes"
+                             % len(out.encode()))
+        self.assertIn("(truncated, read the file)", out)
+
+    def test_the_compact_path_fits_too(self):
+        self.busy_project()
+        out = self.assertOk(self.start(
+            stdin='{"cwd": "%s", "session_id": "s1", "source": "compact"}'
+                  % self.repo.dir))
+        self.assertLessEqual(len(out.encode()), self.CAP,
+                             "compact output is %d bytes" % len(out.encode()))
+
+
+class TestTheRootsLine(StartCase):
+    def test_it_names_both_roots(self):
+        out = self.assertOk(self.start())
+        self.assertIn("PROJECT: %s | PLUGIN: %s"
+                      % (self.repo.dir, self.repo.plugin), out)
+
+    def test_it_comes_second(self):
+        lines = self.lines(self.assertOk(self.start()))
+        self.assertTrue(lines[0].startswith("ROLE:"), lines[0])
+        self.assertTrue(lines[1].startswith("PROJECT: "), lines[1])
+        self.assertTrue(lines[2].startswith("RESOURCES: "), lines[2])
+
+    def test_it_follows_the_hook_cwd(self):
+        other = self.repo.make_project("other")
+        self.repo.git_init(other)
+        out = self.assertOk(self.start(
+            cwd=self.repo.plugin,
+            stdin='{"cwd": "%s", "source": "startup"}' % other))
+        self.assertIn("PROJECT: %s | PLUGIN: %s" % (other, self.repo.plugin), out)
+
+
+class TestTheCounts(StartCase):
+    def test_every_task_file_gets_one_line(self):
+        out = self.assertOk(self.start())
+        for name in ("agent_todo.txt", "agent_completed.txt",
+                     "agent_ideas.txt", "agent_worktree.txt"):
+            with self.subTest(name=name):
+                self.assertIn("%s: 0 lines" % name, out)
+
+    def test_the_count_is_the_real_one(self):
+        with open(self.repo.path("agent_todo.txt"), "w") as fh:
+            fh.write("a | big | one\nb | big | two\nc | big | three\n")
+        out = self.assertOk(self.start())
+        self.assertIn("agent_todo.txt: 3 lines", out)
+
+    def test_the_task_lines_themselves_are_not_printed(self):
+        with open(self.repo.path("agent_todo.txt"), "w") as fh:
+            fh.write("alpha | big | the open task\n")
+        out = self.assertOk(self.start())
+        self.assertNotIn("the open task", out)
+
+
+class TestTheWorktreeLines(StartCase):
+    LINE = "/tmp/wt_alpha | alpha | working | since 2026-09-21 10:00"
+
+    def test_they_are_printed_in_full(self):
+        with open(self.repo.path("agent_worktree.txt"), "w") as fh:
+            fh.write(self.LINE + "\n")
+        out = self.assertOk(self.start())
+        self.assertIn("agent_worktree.txt: 1 lines", out)
+        self.assertIn("  " + self.LINE, out)
+
+    def test_nothing_is_printed_when_there_are_none(self):
+        out = self.assertOk(self.start())
+        after = out.split("agent_worktree.txt: 0 lines")[1]
+        self.assertFalse(after.strip().startswith("|"), after[:80])
+
+
+class TestTheStateFile(StartCase):
+    def test_a_short_one_is_printed_whole(self):
+        with open(self.repo.path("agent_state.txt"), "w") as fh:
+            fh.write("STEP: 3 of 7\nNEXT: write the tests\n")
+        out = self.assertOk(self.start())
+        self.assertIn("agent_state.txt: 2 lines", out)
+        self.assertIn("  STEP: 3 of 7", out)
+        self.assertIn("  NEXT: write the tests", out)
+        self.assertNotIn("(truncated, read the file)", out)
+
+    def test_a_long_one_is_capped_at_thirty(self):
+        with open(self.repo.path("agent_state.txt"), "w") as fh:
+            fh.write("".join("line %d\n" % i for i in range(1, 51)))
+        out = self.assertOk(self.start())
+        self.assertIn("agent_state.txt: 50 lines", out)
+        self.assertIn("  line 30", out)
+        self.assertNotIn("  line 31", out)
+        self.assertIn("(truncated, read the file)", out)
+
+    def test_nothing_when_there_is_no_state_file(self):
+        out = self.assertOk(self.start())
+        self.assertNotIn("agent_state.txt:", out)
+
+
+class TestTheMonitorFile(StartCase):
+    def test_it_is_printed_when_it_has_something(self):
         with open(self.repo.path("agent_monitor.txt"), "w") as fh:
             fh.write(MONITOR_LINE + "\n")
         out = self.assertOk(self.start())
-        self.assertIn("=== agent_monitor.txt (agent health) ===", out)
-        self.assertIn(MONITOR_LINE, out)
+        self.assertIn("agent_monitor.txt: 1 lines", out)
+        self.assertIn("  " + MONITOR_LINE, out)
 
-    def test_says_none_when_there_is_no_file(self):
+    def test_nothing_when_it_is_missing(self):
         out = self.assertOk(self.start())
-        head, _, tail = out.partition("=== agent_monitor.txt (agent health) ===")
-        self.assertTrue(tail, "the monitor section is missing")
-        self.assertEqual(tail.strip().splitlines()[0], "(none)")
+        self.assertNotIn("agent_monitor.txt:", out)
 
-    def test_says_none_when_the_file_is_empty(self):
-        open(self.repo.path("agent_monitor.txt"), "w").close()
-        out = self.assertOk(self.start())
-        _, _, tail = out.partition("=== agent_monitor.txt (agent health) ===")
-        self.assertEqual(tail.strip().splitlines()[0], "(none)")
 
-    def test_comes_after_the_worktree_section(self):
-        out = self.assertOk(self.start())
-        worktree_at = out.index("=== agent_worktree.txt")
-        monitor_at = out.index("=== agent_monitor.txt")
-        self.assertLess(worktree_at, monitor_at)
+class TestQuizFlag(StartCase):
+    def test_it_prints_all_twenty_nine_questions(self):
+        out = self.assertOk(self.start("--quiz"))
+        for n in range(1, 30):
+            with self.subTest(n=n):
+                self.assertIn("Q%d." % n, out)
 
-    def test_comes_before_the_quiz(self):
-        out = self.assertOk(self.start())
-        self.assertLess(out.index("=== agent_monitor.txt"), out.index("=== QUIZ"))
+    def test_it_says_how_to_answer(self):
+        out = self.assertOk(self.start("--quiz"))
+        self.assertIn("--answer", out)
+
+    def test_it_prints_nothing_else(self):
+        out = self.assertOk(self.start("--quiz"))
+        self.assertNotIn("ROLE:", out)
+        self.assertNotIn("RESOURCES:", out)
+        self.assertNotIn("PROJECT:", out)
+
+    def test_it_writes_no_lock(self):
+        self.assertOk(self.start("--quiz"))
+        self.assertFalse(os.path.exists(self.repo.path(".git",
+                                                       "agent_main.lock")))
+
+
+class TestCompactPath(StartCase):
+    def compact(self, **kwargs):
+        return self.start(
+            stdin='{"cwd": "%s", "session_id": "s1", "source": "compact"}'
+                  % self.repo.dir, **kwargs)
+
+    def test_it_says_it_was_compacted(self):
+        out = self.assertOk(self.compact())
+        self.assertIn("COMPACTED 1 time(s) this session", out)
+
+    def test_it_keeps_the_roots_line(self):
+        out = self.assertOk(self.compact())
+        self.assertIn("PROJECT: %s | PLUGIN: %s"
+                      % (self.repo.dir, self.repo.plugin), out)
+
+    def test_it_keeps_the_rules_line(self):
+        out = self.assertOk(self.compact())
+        self.assertIn(self.rules_line(), out)
+
+    def test_it_has_no_quiz_line_and_no_counts(self):
+        out = self.assertOk(self.compact())
+        self.assertNotIn("QUIZ:", out)
+        self.assertNotIn("agent_todo.txt:", out)
+        self.assertNotIn("RESOURCES:", out)
+
+    def test_the_state_file_is_capped_the_same_way(self):
+        with open(self.repo.path("agent_state.txt"), "w") as fh:
+            fh.write("".join("line %d\n" % i for i in range(1, 51)))
+        out = self.assertOk(self.compact())
+        self.assertIn("  line 30", out)
+        self.assertNotIn("  line 31", out)
+        self.assertIn("(truncated, read the file)", out)
 
 
 class TestResourcesHelper(StartCase):
@@ -81,8 +325,9 @@ class TestResourcesHelper(StartCase):
         return self.repo.run("agent-resources.sh", *args, **kwargs)
 
     def test_the_helper_file_exists(self):
-        self.assertTrue(os.path.exists(self.repo.path("agent-resources.sh")),
-                        "agent-resources.sh is missing")
+        self.assertTrue(
+            os.path.exists(self.repo.plugin_path("bin", "agent-resources.sh")),
+            "bin/agent-resources.sh is missing")
 
     def test_agent_start_uses_the_fake_readings(self):
         out = self.assertOk(self.start(env={"AGENT_FAKE_RAM": "12",
@@ -107,14 +352,13 @@ class TestResourcesHelper(StartCase):
         self.assertIn("(cap 30%) -> OVER CAP", out)
 
     def test_the_helper_can_be_sourced_on_its_own(self):
-        script = self.repo.path("check.sh")
-        with open(script, "w") as fh:
-            fh.write("#!/usr/bin/env bash\nset -eu\n"
+        self.repo.write_bin_script(
+            "check.sh",
+            "#!/usr/bin/env bash\nset -eu\n"
                      "cd \"$(dirname \"$0\")\"\n"
                      ". ./agent-resources.sh\n"
                      "resources_line 80\n"
                      "resources_ok 80 && echo under || echo over\n")
-        os.chmod(script, 0o755)
         out = self.assertOk(self.repo.run("check.sh",
                                           env={"AGENT_FAKE_RAM": "15",
                                                "AGENT_FAKE_CPU": "25"}))
@@ -127,15 +371,14 @@ class TestResourcesHelper(StartCase):
         Reading twice costs about 1.4 seconds each time on a Mac, and the
         printed line can then disagree with the decision that follows it.
         """
-        script = self.repo.path("check3.sh")
-        with open(script, "w") as fh:
-            fh.write("#!/usr/bin/env bash\nset -eu\n"
+        self.repo.write_bin_script(
+            "check3.sh",
+            "#!/usr/bin/env bash\nset -eu\n"
                      "cd \"$(dirname \"$0\")\"\n"
                      ". ./agent-resources.sh\n"
                      "resources_read\n"
                      "echo \"read: $RAM_USED $CPU_USED\"\n"
                      "AGENT_FAKE_RAM=99 AGENT_FAKE_CPU=98 resources_line 80\n")
-        os.chmod(script, 0o755)
         out = self.assertOk(self.repo.run("check3.sh",
                                           env={"AGENT_FAKE_RAM": "11",
                                                "AGENT_FAKE_CPU": "22"}))
@@ -145,16 +388,15 @@ class TestResourcesHelper(StartCase):
 
     def test_agent_start_reads_the_machine_once(self):
         """One reading for the line and the warning together."""
-        script = self.repo.path("count.sh")
-        with open(script, "w") as fh:
-            fh.write("#!/usr/bin/env bash\nset -eu\n"
+        self.repo.write_bin_script(
+            "count.sh",
+            "#!/usr/bin/env bash\nset -eu\n"
                      "cd \"$(dirname \"$0\")\"\n"
                      ". ./agent-resources.sh\n"
                      "resources_read\n"
                      "resources_line 80 >/dev/null\n"
                      "resources_ok 80 && echo under || echo over\n"
                      "echo \"ram=$RAM_USED\"\n")
-        os.chmod(script, 0o755)
         out = self.assertOk(self.repo.run("count.sh",
                                           env={"AGENT_FAKE_RAM": "11",
                                                "AGENT_FAKE_CPU": "22"}))
@@ -162,13 +404,12 @@ class TestResourcesHelper(StartCase):
         self.assertIn("ram=11", out)
 
     def test_resources_ok_fails_over_the_cap(self):
-        script = self.repo.path("check2.sh")
-        with open(script, "w") as fh:
-            fh.write("#!/usr/bin/env bash\nset -eu\n"
+        self.repo.write_bin_script(
+            "check2.sh",
+            "#!/usr/bin/env bash\nset -eu\n"
                      "cd \"$(dirname \"$0\")\"\n"
                      ". ./agent-resources.sh\n"
                      "resources_ok 80 && echo under || echo over\n")
-        os.chmod(script, 0o755)
         out = self.assertOk(self.repo.run("check2.sh",
                                           env={"AGENT_FAKE_RAM": "90",
                                                "AGENT_FAKE_CPU": "10"}))
@@ -187,11 +428,6 @@ class TestQuizStillWorks(StartCase):
         result = self.start("--answer", self.ANSWERS.replace("1A", "1B"))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("FAIL", result.stdout)
-
-    def test_the_rules_are_still_printed(self):
-        out = self.assertOk(self.start())
-        self.assertIn("=== PRINCIPLES.md ===", out)
-        self.assertIn("=== QUIZ", out)
 
 
 class TestGitignore(unittest.TestCase):

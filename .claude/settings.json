@@ -11,7 +11,7 @@
   },
   "hooks": {
     "SessionStart": [
-      { "hooks": [ { "type": "command", "command": "./agent-start.sh" } ] }
+      { "hooks": [ { "type": "command", "command": "./bin/agent-start.sh" } ] }
     ]
   }
 }

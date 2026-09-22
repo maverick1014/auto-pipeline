@@ -17,11 +17,12 @@ Main manager   (Fable 5.1, xhigh · the main chat · only one with the browser)
               └── Worker (Sonnet 5, medium)  code until the tests pass, slice 2
 
 Scripts, not agents (cost no tokens):
-  agent-start.sh   RAM/CPU guard, prints the rules, 29-question quiz gate, main-manager lock
-  agent-file.sh    the only writer of agent_*.txt
-  agent-settings.sh  show or change agent.conf, validated
-  agent-resume.sh    one command to bring the pipeline back after a restart
-  agent-monitor.sh   watches every worktree, writes agent_monitor.txt
+  bin/agent-start.sh   RAM/CPU guard, prints the rules, 29-question quiz gate, main-manager lock
+  bin/agent-file.sh    the only writer of agent_*.txt
+  bin/agent-settings.sh  show or change agent.conf, validated
+  bin/agent-resume.sh    one command to bring the pipeline back after a restart
+  bin/agent-monitor.sh   watches every worktree, writes agent_monitor.txt
+  bin/agent-init.sh      sets a project up: agent.conf, the four task files, .secrets/, .gitignore lines, AGENTS.md, and it prints the permissions block
 ```
 
 ## Who does what
@@ -61,18 +62,35 @@ Checked in this order, first match wins.
 | `agent_completed.txt` | `agent-file.sh todo done` | Human |
 | `agent_ideas.txt` | `agent-file.sh idea add` | Human, on his own time |
 | `agent_worktree.txt` | `agent-file.sh worktree set` / `rm` | Main manager before every dispatch |
-| `agent.conf` | `./agent-settings.sh` | `agent-start.sh` |
-| `agent_monitor.txt` | `agent-monitor.sh` | Every agent at start |
+| `agent.conf` | `./bin/agent-settings.sh` | `agent-start.sh` |
+| `agent_monitor.txt` | `./bin/agent-monitor.sh` | Every agent at start |
 | `.secrets/` | Human only | Any agent, read only, never printed |
+
+## Install
+
+1. `/plugin marketplace add maverick1014/auto-pipeline`
+2. `/plugin install auto-pipeline`
+3. `/auto-pipeline:init`
+4. Paste the permissions block it prints into this project's `.claude/settings.json` yourself — a plugin cannot add permission rules:
+
+```
+Bash(git push origin --delete *)
+Bash(git branch -d *)
+Bash(git worktree remove *)
+Bash(git worktree prune)
+Bash(orca worktree rm *)
+Bash(orca terminal close *)
+```
 
 ## Start
 
 ```
-./agent-start.sh                 # rules, resources, quiz. No work until PASS
-./agent-resume.sh                # after a restart: relaunch, monitor, one table
-/dispatch                        # main manager: route one task
-/merge                           # main manager: E2E, then merge deputy
-./agent-settings.sh              # show or change agent.conf, no agent
+./bin/agent-start.sh             # rules, resources, quiz. No work until PASS
+./bin/agent-resume.sh            # after a restart: relaunch, monitor, one table
+/auto-pipeline:dispatch          # main manager: route one task
+/auto-pipeline:merge             # main manager: E2E, then merge deputy
+/auto-pipeline:init              # one-time project setup, prints the permissions block
+./bin/agent-settings.sh          # show or change agent.conf, no agent
 ```
 
 A second Claude session in this repo becomes a task manager under the main manager, by itself.

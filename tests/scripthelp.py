@@ -1,4 +1,15 @@
-"""Helpers to run this repo's shell scripts against a throwaway git repo.
+"""Helpers to run this plugin's shell scripts against a throwaway project.
+
+Two roots, always separate in a test, because that is how the plugin is used:
+
+    PLUGIN root   the folder above bin/. Holds PRINCIPLES.md, bin/, the quiz,
+                  agent_conf.py, the agent.conf template. Read only.
+    PROJECT root  the repo being worked on. Holds agent.conf, the four
+                  agent_*.txt, agent_monitor.txt, .secrets/ and the lock.
+
+`ScriptRepo.plugin` is the first, `ScriptRepo.dir` the second. A script is
+always started by its absolute path inside the plugin, with the working
+directory somewhere in the project, so every test proves the two-root rule.
 
 No test ever calls the real orca. A stub named `orca` is put first on PATH and
 prints canned JSON. Every call it receives is logged, one tab-separated line
@@ -20,19 +31,35 @@ import time
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BIN = os.path.join(ROOT, "bin")
 
-# Copied into the temp repo when they exist. A script still being written by
-# another worker is simply skipped, so unrelated tests keep running.
-COPY = [
+# Copied into the temp plugin's bin/ when they exist. A script still being
+# written by another worker is simply skipped, so unrelated tests keep running.
+COPY_BIN = [
     "agent-start.sh",
     "agent-file.sh",
     "agent-settings.sh",
     "agent-resume.sh",
     "agent-monitor.sh",
     "agent-resources.sh",
+    "agent-init.sh",
+    "agent-roots.sh",
     "agent_conf.py",
-    "agent.conf",
+    "agent.conf.default",
+]
+
+# Copied into the temp plugin's root.
+COPY_PLUGIN = [
     "PRINCIPLES.md",
+]
+
+# Per-project files. agent.conf is seeded from the repo's own one so a test
+# starts from the real defaults.
+PROJECT_TXT = [
+    "agent_todo.txt",
+    "agent_completed.txt",
+    "agent_ideas.txt",
+    "agent_worktree.txt",
 ]
 
 ORCA_STUB = r"""#!/usr/bin/env bash
@@ -81,35 +108,52 @@ def ps_json(worktrees):
 
 
 class ScriptRepo:
-    """A throwaway git repo holding copies of the repo's scripts."""
+    """A throwaway plugin copy plus a throwaway project git repo."""
 
-    def __init__(self):
-        self.dir = os.path.realpath(tempfile.mkdtemp(prefix="auto_pipeline_"))
-        self.script_dir = self.dir
+    def __init__(self, init_project=True):
+        self.base = os.path.realpath(tempfile.mkdtemp(prefix="auto_pipeline_"))
+        self.plugin = os.path.join(self.base, "plugin")
+        self.plugin_bin = os.path.join(self.plugin, "bin")
+        self.dir = os.path.join(self.base, "project")
+        self.cwd = self.dir
+
         self.bin = os.path.join(self.dir, "stubbin")
-        self.orca_log = os.path.join(self.dir, "orca_calls.log")
-        self.orca_ps = os.path.join(self.dir, "orca_ps.json")
+        self.orca_log = os.path.join(self.base, "orca_calls.log")
+        self.orca_ps = os.path.join(self.base, "orca_ps.json")
 
+        os.makedirs(self.plugin_bin)
+        os.makedirs(self.dir)
         os.mkdir(self.bin)
+
         stub = os.path.join(self.bin, "orca")
         with open(stub, "w") as fh:
             fh.write(ORCA_STUB)
         os.chmod(stub, 0o755)
 
-        for name in COPY:
+        for name in COPY_BIN:
+            src = os.path.join(BIN, name)
+            if os.path.exists(src):
+                shutil.copy2(src, os.path.join(self.plugin_bin, name))
+        for name in COPY_PLUGIN:
             src = os.path.join(ROOT, name)
             if os.path.exists(src):
-                shutil.copy2(src, os.path.join(self.dir, name))
+                shutil.copy2(src, os.path.join(self.plugin, name))
 
-        for name in ("agent_todo.txt", "agent_completed.txt", "agent_ideas.txt",
-                     "agent_worktree.txt"):
+        if init_project:
+            self.seed_project()
+
+    # ---- fixture building ----
+
+    def seed_project(self):
+        """Give the project the per-project files a running pipeline has."""
+        src = os.path.join(ROOT, "agent.conf")
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(self.dir, "agent.conf"))
+        for name in PROJECT_TXT:
             open(os.path.join(self.dir, name), "w").close()
-
         open(self.orca_log, "w").close()
         self.set_panes([])
         self.git_init(self.dir)
-
-    # ---- fixture building ----
 
     def git_init(self, path, commit_min_ago=0):
         subprocess.run(["git", "init", "-q", path], check=True,
@@ -133,10 +177,16 @@ class ScriptRepo:
 
     def make_worktree(self, module, commit_min_ago=0, as_repo=True):
         """Create a directory that stands in for a live worktree."""
-        path = os.path.join(self.dir, "wt_" + module)
+        path = os.path.join(self.base, "wt_" + module)
         os.mkdir(path)
         if as_repo:
             self.git_init(path, commit_min_ago)
+        return path
+
+    def make_project(self, name="other"):
+        """A second, empty project directory. Not a git repo yet."""
+        path = os.path.join(self.base, name)
+        os.mkdir(path)
         return path
 
     def set_worktree_lines(self, lines):
@@ -151,9 +201,9 @@ class ScriptRepo:
         with open(self.orca_ps, "w") as fh:
             json.dump(ps_json(worktrees), fh)
 
-    def set_conf(self, key, value):
-        """Write one key straight into the agent.conf the scripts read."""
-        path = os.path.join(self.script_dir, "agent.conf")
+    def set_conf(self, key, value, path=None):
+        """Write one key straight into the project's agent.conf."""
+        path = path or os.path.join(self.dir, "agent.conf")
         rows, found = [], False
         with open(path) as fh:
             for line in fh:
@@ -167,31 +217,41 @@ class ScriptRepo:
         with open(path, "w") as fh:
             fh.writelines(rows)
 
+    def write_bin_script(self, name, body):
+        """Drop a throwaway script next to the plugin's own scripts."""
+        full = os.path.join(self.plugin_bin, name)
+        with open(full, "w") as fh:
+            fh.write(body)
+        os.chmod(full, 0o755)
+        return full
+
     def path(self, *parts):
+        """A path inside the PROJECT."""
         return os.path.join(self.dir, *parts)
 
-    def detach_scripts_to_worktree(self):
-        """Put the scripts in a real git worktree and leave the main repo without them.
+    def plugin_path(self, *parts):
+        """A path inside the PLUGIN."""
+        return os.path.join(self.plugin, *parts)
 
-        After this, ROOT (the main repo) and the script's own directory are two
-        different places, which is how the real repo is laid out.
+    def detach_scripts_to_worktree(self):
+        """Run from a git worktree of the project instead of its main repo.
+
+        The scripts are never in the project at all, so the only thing left to
+        prove is that a script started from a worktree still writes the shared
+        files into the project's main repo.
         """
         subprocess.run(["git", "-C", self.dir, "add", "-A"], check=True,
                        capture_output=True)
         dirty = subprocess.run(["git", "-C", self.dir, "status", "--porcelain"],
                                check=True, capture_output=True, text=True).stdout
         if dirty.strip():
-            subprocess.run(["git", "-C", self.dir, "commit", "-q", "-m", "scripts"],
+            subprocess.run(["git", "-C", self.dir, "commit", "-q", "-m", "seed2"],
                            check=True, capture_output=True)
         worktree = self.dir + "_wt"
         subprocess.run(["git", "-C", self.dir, "worktree", "add", "-q",
                         "-b", "feature", worktree], check=True, capture_output=True)
-        for name in COPY:
-            gone = os.path.join(self.dir, name)
-            if os.path.exists(gone) and name != "agent.conf":
-                os.remove(gone)
-        self.script_dir = os.path.realpath(worktree)
-        return self.script_dir
+        self.cwd = os.path.realpath(worktree)
+        return self.cwd
 
     def stub_orca_down(self):
         """Make the stub fail the way orca does when the app is not running."""
@@ -225,35 +285,42 @@ class ScriptRepo:
 
     # ---- running ----
 
-    def run(self, script, *args, **kwargs):
+    def script_path(self, script):
+        """Absolute path of a script: the plugin's bin/ first, else the project."""
+        in_bin = os.path.join(self.plugin_bin, script)
+        if os.path.exists(in_bin):
+            return in_bin
+        return os.path.join(self.dir, script)
+
+    def _env(self, extra):
         env = dict(os.environ)
         env["PATH"] = self.bin + os.pathsep + env["PATH"]
         env["ORCA_STUB_LOG"] = self.orca_log
         env["ORCA_STUB_PS"] = self.orca_ps
         env.pop("ORCA_STUB_SLEEP", None)
         env.pop("AGENT_ROLE", None)
+        env.pop("CLAUDE_PROJECT_DIR", None)
         env.setdefault("AGENT_FAKE_RAM", "10")
         env.setdefault("AGENT_FAKE_CPU", "10")
-        env.update(kwargs.pop("env", {}) or {})
+        env.update(extra or {})
+        return env
+
+    def run(self, script, *args, **kwargs):
+        env = self._env(kwargs.pop("env", None))
+        stdin = kwargs.pop("stdin", None)
         return subprocess.run(
-            [os.path.join(self.script_dir, script)] + list(args),
-            cwd=kwargs.pop("cwd", None) or self.script_dir,
+            [self.script_path(script)] + list(args),
+            cwd=kwargs.pop("cwd", None) or self.cwd,
             env=env, capture_output=True, text=True,
+            input=stdin if stdin is not None else "",
             timeout=kwargs.pop("timeout", 90),
         )
 
     def popen(self, script, *args, **kwargs):
-        env = dict(os.environ)
-        env["PATH"] = self.bin + os.pathsep + env["PATH"]
-        env["ORCA_STUB_LOG"] = self.orca_log
-        env["ORCA_STUB_PS"] = self.orca_ps
-        env.pop("AGENT_ROLE", None)
-        env.setdefault("AGENT_FAKE_RAM", "10")
-        env.setdefault("AGENT_FAKE_CPU", "10")
-        env.update(kwargs.pop("env", {}) or {})
+        env = self._env(kwargs.pop("env", None))
         return subprocess.Popen(
-            [os.path.join(self.script_dir, script)] + list(args),
-            cwd=self.script_dir, env=env,
+            [self.script_path(script)] + list(args),
+            cwd=kwargs.pop("cwd", None) or self.cwd, env=env,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
 
@@ -290,17 +357,17 @@ class ScriptRepo:
 
     def cleanup(self):
         self.kill_monitor()
-        shutil.rmtree(self.dir, ignore_errors=True)
+        shutil.rmtree(self.base, ignore_errors=True)
 
 
 class ScriptCase(unittest.TestCase):
-    """Base case: one fresh temp repo per test."""
+    """Base case: one fresh plugin copy and one fresh project per test."""
 
     script = None
 
     def setUp(self):
-        if self.script and not os.path.exists(os.path.join(ROOT, self.script)):
-            self.fail("%s does not exist yet. Write it." % self.script)
+        if self.script and not os.path.exists(os.path.join(BIN, self.script)):
+            self.fail("bin/%s does not exist yet. Write it." % self.script)
         self.repo = ScriptRepo()
         self.addCleanup(self.repo.cleanup)
 

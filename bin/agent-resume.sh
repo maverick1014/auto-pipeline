@@ -9,7 +9,9 @@
 # starts the health monitor if it is not already running.
 
 set -eu
-cd "$(dirname "$0")"
+. "$(dirname "$0")/agent-roots.sh"
+roots_read
+conf_read
 
 usage() {
   cat <<'EOF'
@@ -29,18 +31,17 @@ case "${1:-}" in
   *) usage; exit 2;;
 esac
 
-# agent.conf and the sibling scripts live next to this script. The four
-# agent_*.txt data files live in the main repo (ROOT), which can be a
+# agent.conf lives in PROJECT_ROOT; the sibling scripts live in PLUGIN_ROOT/bin.
+# The four agent_*.txt data files live in the main repo (ROOT), which can be a
 # different place when this script runs from inside a worktree.
-[ -f ./agent.conf ] && . ./agent.conf
 : "${max_usage_percent:=80}"
 : "${task_manager:=opus-5:xhigh}"
 : "${permission_mode:=auto}"
 : "${max_agents:=4}"
 
-. ./agent-resources.sh
+. "$PLUGIN_ROOT/bin/agent-resources.sh"
 
-ROOT=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}'); : "${ROOT:=$PWD}"
+ROOT="$PROJECT_ROOT"
 WT="$ROOT/agent_worktree.txt"
 TODO="$ROOT/agent_todo.txt"
 IDEAS="$ROOT/agent_ideas.txt"
@@ -66,6 +67,7 @@ model_name() {
   esac
 }
 MODEL=$(model_name "$task_manager")
+EFFORT=${task_manager#*:}
 
 # ---- live pane lookup, one orca call. orca may not be running. ----
 orca_down=0
@@ -133,7 +135,7 @@ else
       cap_lines="${cap_lines}cap reached ($((total_live_panes + relaunch_count))/$max_agents), not relaunching $path
 "
     else
-      cmd="AGENT_ROLE=task-manager claude --model $MODEL --permission-mode $permission_mode"
+      cmd="AGENT_ROLE=task-manager claude --model $MODEL --effort $EFFORT --permission-mode $permission_mode"
       if [ "$DRY_RUN" -eq 1 ]; then
         relaunched="would"
       else
@@ -153,8 +155,7 @@ printf '%s' "$cap_lines"
 echo
 
 # ---- monitor handover ----
-GITDIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || git rev-parse --git-common-dir 2>/dev/null || echo .git)
-MON_PID_FILE="$GITDIR/agent_monitor.pid"
+MON_PID_FILE="$PROJECT_GITDIR/agent_monitor.pid"
 monitor_running=0
 if [ -f "$MON_PID_FILE" ]; then
   mpid=$(awk '{print $1}' "$MON_PID_FILE" 2>/dev/null || true)
@@ -165,7 +166,7 @@ if [ "$monitor_running" -eq 1 ]; then
 elif [ "$DRY_RUN" -eq 1 ]; then
   echo "monitor: would start"
 else
-  out=$(./agent-monitor.sh start)
+  out=$("$PLUGIN_ROOT/bin/agent-monitor.sh" start)
   echo "$out" | grep -E "^monitor:" || true
 fi
 echo

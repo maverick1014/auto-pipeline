@@ -21,10 +21,10 @@ ROLE_KEYS = [
     "worker",
 ]
 
-EFFORT_LEVELS = ["low", "medium", "high", "xhigh"]
+EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
 PERMISSION_MODES = ["default", "acceptEdits", "auto", "plan"]
 
-ROLE_VALUE_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9.\-]*):(low|medium|high|xhigh)$")
+ROLE_VALUE_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9.\-]*):(low|medium|high|xhigh|max)$")
 
 HINTS = {
     "max_usage_percent": "How much RAM or CPU may be used before agents wait. Whole number, 1 to 100.",
@@ -102,7 +102,7 @@ def _validate_number(key, value):
 
 def _validate_role(value):
     if not ROLE_VALUE_RE.match(value):
-        return "Must look like model-name:effort, effort one of low, medium, high, xhigh."
+        return "Must look like model-name:effort, effort one of low, medium, high, xhigh, max."
     return None
 
 

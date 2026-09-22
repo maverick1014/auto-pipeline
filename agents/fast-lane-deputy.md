@@ -13,6 +13,6 @@ Do
 
 Never
 - Start agents. Use a browser. Merge. Commit unless the brief says so.
-- Edit agent_*.txt by hand. Use `./agent-file.sh`.
+- Edit agent_*.txt by hand. Use `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh`.
 
 Report (H3), first line exactly `DONE PASS` or `DONE FAIL: <why>`. Then: what changed (files). What to decide (or "nothing"). Say what the human should look at on screen.

@@ -11,7 +11,9 @@
 # Files live in the main repo, never in a worktree. Writes are atomic (tmp + mv).
 
 set -eu
-ROOT=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}'); : "${ROOT:=$PWD}"
+. "$(dirname "$0")/agent-roots.sh"
+roots_read
+ROOT="$PROJECT_ROOT"
 TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agent_ideas.txt"; WT="$ROOT/agent_worktree.txt"
 NOW=$(date '+%Y-%m-%d %H:%M'); WHO=${AGENT_ROLE:-main}
 touch "$TODO" "$DONE" "$IDEAS" "$WT"
