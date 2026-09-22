@@ -18,6 +18,11 @@ also safe to source):
 Sourced, it defines runtime_kind, runtime_ps, runtime_launch, runtime_close and
 runtime_browser, and runs nothing.
 
+Because it is a library that other scripts source, it must keep its own names
+to itself: every variable a function sets is `local`, and no function is named
+something a caller is likely to have. Nothing it does may change a variable the
+caller already had.
+
 KIND. Worked out fresh on every call. Never cached, never written to a file:
 the owner switches between Orca and the Claude app inside one day.
 
@@ -588,6 +593,72 @@ echo DONE
         out = self.assertOk(self.repo.run("quiet.sh"))
         self.assertEqual(self.lines(out.strip()), ["DONE"])
         self.assertEqual(self.repo.calls(), [])
+
+
+class TestItKeepsItsNamesToItself(RuntimeCase):
+    """A sourced library that writes into the caller's variables is a trap.
+
+    agent-resume.sh reads agent_worktree.txt into `path`, `module` and
+    `status`, and calls runtime_launch from inside that loop. A runtime_launch
+    that assigns a bare `path` is one rename away from silently relaunching the
+    wrong worktree, or none. The same goes for a function name: `usage` was
+    already caught clobbering the callers' own `-h`.
+    """
+
+    CALLER_VARS = ["path", "title", "command", "kind", "handle", "name", "dir",
+                   "tmp", "pid", "step", "rc", "value"]
+
+    def probe(self, body):
+        self.repo.set_conf("runtime", "orca")
+        self.repo.write_bin_script("caller.sh", """#!/usr/bin/env bash
+. "$(dirname "$0")/agent-runtime.sh"
+%s
+for v in %s; do
+  printf '%%s=%%s\n' "$v" "${!v}"
+done
+""" % (body, " ".join(self.CALLER_VARS)))
+        seed = "\n".join('%s=MINE_%s' % (v, v) for v in self.CALLER_VARS)
+        out = self.assertOk(self.repo.run("caller.sh"))
+        return dict(line.split("=", 1) for line in self.lines(out) if "=" in line)
+
+    def seeded(self, call):
+        body = "\n".join('%s=MINE_%s' % (v, v) for v in self.CALLER_VARS)
+        return self.probe(body + "\n" + call)
+
+    def test_runtime_kind_changes_nothing(self):
+        for key, value in self.seeded("runtime_kind >/dev/null").items():
+            with self.subTest(var=key):
+                self.assertEqual(value, "MINE_%s" % key)
+
+    def test_runtime_launch_changes_nothing(self):
+        got = self.seeded('runtime_launch /tmp/wt "TM alpha" claude >/dev/null')
+        for key, value in got.items():
+            with self.subTest(var=key):
+                self.assertEqual(value, "MINE_%s" % key)
+
+    def test_runtime_close_changes_nothing(self):
+        for key, value in self.seeded("runtime_close term_1 >/dev/null").items():
+            with self.subTest(var=key):
+                self.assertEqual(value, "MINE_%s" % key)
+
+    def test_runtime_browser_changes_nothing(self):
+        for key, value in self.seeded("runtime_browser >/dev/null").items():
+            with self.subTest(var=key):
+                self.assertEqual(value, "MINE_%s" % key)
+
+    def test_runtime_ps_changes_nothing(self):
+        for key, value in self.seeded("runtime_ps >/dev/null").items():
+            with self.subTest(var=key):
+                self.assertEqual(value, "MINE_%s" % key)
+
+    def test_it_defines_no_function_called_usage(self):
+        self.repo.write_bin_script("ownusage.sh", """#!/usr/bin/env bash
+usage() { echo "the caller's own usage"; }
+. "$(dirname "$0")/agent-runtime.sh"
+usage
+""")
+        out = self.assertOk(self.repo.run("ownusage.sh"))
+        self.assertEqual(out.strip(), "the caller's own usage")
 
 
 class TestUsage(RuntimeCase):
