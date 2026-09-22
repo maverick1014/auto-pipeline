@@ -7,11 +7,7 @@
 # Rule: no work until the quiz says PASS.
 
 set -u
-cd "$(dirname "$0")"
-
-# ---- config (S1 writes this file; S4/S5/S6 values) ----
-[ -f agent.conf ] && . ./agent.conf
-: "${max_usage_percent:=80}"
+. "$(dirname "$0")/agent-roots.sh"
 
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
@@ -23,7 +19,7 @@ sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi;
 h()   { printf '%s' "$1" | sha | cut -c1-16; }
 
 # ---- resources ----
-. ./agent-resources.sh
+. "$PLUGIN_ROOT/bin/agent-resources.sh"
 
 # ---- grade ----
 if [ "${1:-}" = "--answer" ]; then
@@ -43,13 +39,22 @@ if [ "${1:-}" = "--answer" ]; then
 fi
 
 # ---- hook input (Claude Code SessionStart passes JSON on stdin) ----
-SRC=startup; SID=""
+SRC=startup; SID=""; CWD=""
 if [ ! -t 0 ]; then
-  IN=""; while IFS= read -t 1 -r line; do IN="$IN$line"; done   # read -t: never block on an open pipe
-  [ -n "$IN" ] && eval "$(printf '%s' "$IN" | python3 -c 'import json,sys
-try: d=json.load(sys.stdin); print("SRC=%s; SID=%s" % (d.get("source","startup"), d.get("session_id","")))
-except Exception: print("SRC=startup; SID=")' 2>/dev/null)"
+  IN=""; line=""
+  while IFS= read -t 1 -r line || [ -n "$line" ]; do IN="$IN$line"; done   # read -t: never block on an open pipe; || keeps a final line with no trailing newline
+  [ -n "$IN" ] && eval "$(printf '%s' "$IN" | python3 -c 'import json,sys,shlex
+try:
+    d=json.load(sys.stdin)
+    print("SRC=%s; SID=%s; CWD=%s" % (shlex.quote(d.get("source","startup")), shlex.quote(d.get("session_id","")), shlex.quote(d.get("cwd",""))))
+except Exception: print("SRC=startup; SID=; CWD=")' 2>/dev/null)"
 fi
+
+# ---- the two roots (bad or empty stdin JSON falls back to $PWD) ----
+roots_read "$CWD"
+conf_read
+mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
+: "${max_usage_percent:=80}"
 
 # ---- role: one main manager per repo (W10) ----
 agent_pid() {
@@ -62,9 +67,7 @@ agent_pid() {
   done
   echo "$PPID"
 }
-GITDIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || git rev-parse --git-common-dir 2>/dev/null || echo .git)
-MAINREPO=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}'); : "${MAINREPO:=$PWD}"
-LOCK="$GITDIR/agent_main.lock"; ME=$(agent_pid); NOW=$(date '+%Y-%m-%d %H:%M')
+LOCK="$PROJECT_GITDIR/agent_main.lock"; ME=$(agent_pid); NOW=$(date '+%Y-%m-%d %H:%M')
 role=main
 if [ -n "${AGENT_ROLE:-}" ]; then role=spawned
 elif [ -f "$LOCK" ]; then
@@ -79,7 +82,7 @@ case $role in
   takeover) echo "$ME $NOW" > "$LOCK"; echo "ROLE: main manager. Previous main manager (pid $lpid, since $lsince) is dead. Run recovery (S7).";;
   second)
     echo "ROLE: task manager, human-direct (W10). Main manager already running: pid $lpid, since $lsince."
-    echo "$PWD | task manager, human-direct | task: (ask the human) | since $NOW" >> "$MAINREPO/agent_worktree.txt"
+    echo "$PROJECT_CWD | task manager, human-direct | task: (ask the human) | since $NOW" >> "$PROJECT_ROOT/agent_worktree.txt"
     echo "Announced: line added to agent_worktree.txt. Send the main manager a direct message too if Orca is available."
     echo "Will change files? Open your own worktree first (W7). Human says finish -> report done + click path to the main manager."
     echo "Reach the main manager: ListAgents -> the earlier peer session of this repo -> SendMessage to that name. Reply to the from name.";;
@@ -92,23 +95,23 @@ resources_line "$max_usage_percent"
 resources_ok "$max_usage_percent" || echo "Do not start agents or heavy processes. Re-run this script until OK."
 echo
 if [ "$SRC" = compact ] && [ -n "$SID" ]; then
-  CF="$GITDIR/agent_compact_$SID"; n=$(( $(cat "$CF" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$CF"
+  CF="$PROJECT_GITDIR/agent_compact_$SID"; n=$(( $(cat "$CF" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$CF"
   echo "COMPACTED $n time(s) this session. Continue from agent_state.txt, not from memory (S8)."
   [ "$n" -ge 2 ] && echo "LIMIT: compacted $n times. Write agent_state.txt, end this session, restart from the file (S8, S2)."
   echo
 fi
-echo "=== PRINCIPLES.md ==="; cat PRINCIPLES.md
+echo "=== PRINCIPLES.md ==="; cat "$PLUGIN_ROOT/PRINCIPLES.md"
 echo
-echo "=== agent_state.txt ==="; [ -s agent_state.txt ] && cat agent_state.txt || echo "(none)"
+echo "=== agent_state.txt ==="; [ -s "$STATE_DIR/agent_state.txt" ] && cat "$STATE_DIR/agent_state.txt" || echo "(none)"
 [ "$SRC" = compact ] && exit 0
 echo
-echo "=== agent_todo.txt (open tasks) ==="; [ -s agent_todo.txt ] && cat agent_todo.txt || echo "(none)"
+echo "=== agent_todo.txt (open tasks) ==="; [ -s "$PROJECT_ROOT/agent_todo.txt" ] && cat "$PROJECT_ROOT/agent_todo.txt" || echo "(none)"
 echo
-echo "=== agent_worktree.txt (live worktrees) ==="; [ -s agent_worktree.txt ] && cat agent_worktree.txt || echo "(none)"
+echo "=== agent_worktree.txt (live worktrees) ==="; [ -s "$PROJECT_ROOT/agent_worktree.txt" ] && cat "$PROJECT_ROOT/agent_worktree.txt" || echo "(none)"
 echo
-echo "=== agent_monitor.txt (agent health) ==="; [ -s agent_monitor.txt ] && cat agent_monitor.txt || echo "(none)"
+echo "=== agent_monitor.txt (agent health) ==="; [ -s "$PROJECT_ROOT/agent_monitor.txt" ] && cat "$PROJECT_ROOT/agent_monitor.txt" || echo "(none)"
 echo
-echo "=== agent_ideas.txt ==="; echo "$( [ -f agent_ideas.txt ] && grep -c . agent_ideas.txt || echo 0 ) ideas waiting for human review"
+echo "=== agent_ideas.txt ==="; echo "$( [ -f "$PROJECT_ROOT/agent_ideas.txt" ] && grep -c . "$PROJECT_ROOT/agent_ideas.txt" || echo 0 ) ideas waiting for human review"
 echo
 cat <<'QUIZ'
 === QUIZ — answer all 29 before any work ===

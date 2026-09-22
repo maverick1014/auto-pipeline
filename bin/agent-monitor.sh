@@ -11,7 +11,9 @@
 # (main repo), one line per worktree line, written atomically (tmp + mv).
 
 set -eu
-cd "$(dirname "$0")"
+. "$(dirname "$0")/agent-roots.sh"
+roots_read
+conf_read
 
 usage() {
   cat <<'EOF'
@@ -25,9 +27,9 @@ agent-monitor.sh — background health sweep of live worktrees.
 EOF
 }
 
-GITDIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || git rev-parse --git-common-dir 2>/dev/null || echo .git)
-ROOT=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}'); : "${ROOT:=$PWD}"
-[ -f ./agent.conf ] && . ./agent.conf
+GITDIR="$PROJECT_GITDIR"
+ROOT="$PROJECT_ROOT"
+mkdir -p "$GITDIR" 2>/dev/null || true
 : "${stall_min:=10}"
 : "${monitor_interval_min:=5}"
 

@@ -5,20 +5,30 @@
 #   ./agent-settings.sh menu            pick the key and type the value
 # Takes effect at the next agent start.
 set -eu
-cd "$(dirname "$0")"
-CONF=agent.conf
+. "$(dirname "$0")/agent-roots.sh"
+roots_read
+CONF="$PROJECT_ROOT/agent.conf"
+
+case "${1:-}" in
+  -h|--help) sed -n '2,6p' "$0"; exit 0;;
+esac
+
+if [ ! -f "$CONF" ]; then
+  echo "no agent.conf in $PROJECT_ROOT. Run $PLUGIN_ROOT/bin/agent-init.sh first." >&2
+  exit 2
+fi
 
 show() { awk -F= 'NF==2{printf "  %-20s %s\n",$1,$2}' "$CONF"; }
 setv() {
-  python3 - "$1" "$2" <<'PY'
+  PYTHONPATH="$PLUGIN_ROOT/bin${PYTHONPATH:+:$PYTHONPATH}" python3 - "$1" "$2" "$CONF" <<'PY'
 import sys, agent_conf as a
-k, v = sys.argv[1], sys.argv[2]
-c = a.load('agent.conf')
+k, v, conf_path = sys.argv[1], sys.argv[2], sys.argv[3]
+c = a.load(conf_path)
 if k not in c: sys.exit(f"unknown key: {k}. Keys: {', '.join(c)}")
 c[k] = v
 msg = a.validate_value(k, v)
 if msg: sys.exit(f"not saved. {k}={v} is invalid: {msg}")
-a.save(c, 'agent.conf'); print(f"saved: {k}={v}")
+a.save(c, conf_path); print(f"saved: {k}={v}")
 PY
 }
 
