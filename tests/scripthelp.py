@@ -407,6 +407,7 @@ class ScriptRepo:
         env.pop("AGENT_ROLE", None)
         env.pop("CLAUDE_PROJECT_DIR", None)
         env.pop("CLAUDE_CODE_REMOTE", None)
+        env.pop("AGENT_RUNTIME", None)
         for key in list(env):
             if key.startswith("CLAUDE_PLUGIN_OPTION_"):
                 env.pop(key)

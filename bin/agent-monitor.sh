@@ -45,7 +45,7 @@ KIND=$(runtime_kind)
 # single sweep in `once`). The background loop `start` forks unsets it again
 # before it begins looping: that loop lives for hours and must re-derive the
 # kind on its own, sweep by sweep, never pinned to this one moment.
-export RUNTIME_KIND="$KIND"
+export AGENT_RUNTIME="$KIND"
 
 PIDFILE="$GITDIR/agent_monitor.pid"
 LASTSWEEP="$GITDIR/agent_monitor.lastsweep"
@@ -157,7 +157,7 @@ do_start() {
   fi
   sweep
   (
-    unset RUNTIME_KIND
+    unset AGENT_RUNTIME
     trap 'rm -f "$PIDFILE"; exit 0' TERM
     while true; do
       sleep "$((monitor_interval_min * 60))" &

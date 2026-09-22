@@ -61,7 +61,7 @@ KIND=$(runtime_kind)
 # runtime_launch below reuse it instead of asking again per worktree. Unset
 # again before handing off to agent-monitor.sh (below): its background loop
 # lives for hours and must re-derive the kind on its own, sweep by sweep.
-export RUNTIME_KIND="$KIND"
+export AGENT_RUNTIME="$KIND"
 
 # ---- resources line, one reading reused everywhere ----
 resources_read
@@ -190,7 +190,7 @@ echo
 # The one-shot work above is done. Never let a child process (agent-monitor.sh
 # below, whose background loop outlives this run by hours) inherit a kind
 # pinned to this one moment.
-unset RUNTIME_KIND
+unset AGENT_RUNTIME
 
 # ---- monitor handover ----
 if [ "$KIND" = "orca" ]; then

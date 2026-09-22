@@ -16,7 +16,7 @@
 # KIND is worked out fresh on every call, never cached, never written to a
 # file, because the owner switches between Orca and the Claude app inside one
 # day:
-#   0. $RUNTIME_KIND is exactly orca, plain or cloud   -> that one, full stop
+#   0. $AGENT_RUNTIME is exactly orca, plain or cloud   -> that one, full stop
 #   1. agent.conf `runtime` is orca, plain or cloud    -> that one, full stop
 #   2. CLAUDE_CODE_REMOTE=true                         -> cloud
 #   3. orca on PATH and `orca worktree ps --json`
@@ -25,7 +25,7 @@
 # `auto`, an empty value, a missing line, or any other value all fall through
 # to the next step, at either tier.
 #
-# RUNTIME_KIND is something a CALLER sets, never something this script writes
+# AGENT_RUNTIME is something a CALLER sets, never something this script writes
 # or exports itself: a caller that already paid for the probe once (a
 # resume/monitor run working the kind out at the top) can pass it down so
 # every later runtime_ps/runtime_launch/runtime_close is free instead of
@@ -83,8 +83,8 @@ _runtime_probe_orca() {
 
 runtime_kind() {
   local value
-  case "${RUNTIME_KIND:-}" in
-    orca|plain|cloud) printf '%s\n' "$RUNTIME_KIND"; return 0;;
+  case "${AGENT_RUNTIME:-}" in
+    orca|plain|cloud) printf '%s\n' "$AGENT_RUNTIME"; return 0;;
   esac
   value=$(_runtime_conf_value)
   case "$value" in

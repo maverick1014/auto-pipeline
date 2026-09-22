@@ -26,17 +26,17 @@ caller already had.
 KIND. Worked out fresh on every call. Never cached, never written to a file:
 the owner switches between Orca and the Claude app inside one day.
 
-    0. $RUNTIME_KIND is orca, plain or cloud          -> that one, full stop
+    0. $AGENT_RUNTIME is orca, plain or cloud          -> that one, full stop
     1. agent.conf `runtime` is orca, plain or cloud   -> that one, full stop
     2. CLAUDE_CODE_REMOTE=true                        -> cloud
     3. orca on PATH and `orca worktree ps --json`
        answers inside 3 seconds                       -> orca
     4. anything else                                  -> plain
 
-$RUNTIME_KIND is a one-shot override, not a cache: it is something a caller
+$AGENT_RUNTIME is a one-shot override, not a cache: it is something a caller
 SETS, never something this script writes. It exists for two reasons. A human
 can prove either mode without editing agent.conf or uninstalling Orca
-(`RUNTIME_KIND=plain bin/agent-resume.sh`). And a script that has already
+(`AGENT_RUNTIME=plain bin/agent-resume.sh`). And a script that has already
 worked the kind out once can pass it down to the runtime calls it then makes,
 instead of paying for the 3-second probe again on every single call. A value
 that is not one of the three is ignored, exactly like a bad agent.conf value.
@@ -189,42 +189,42 @@ class TestKindFromAgentConf(RuntimeCase):
 
 
 class TestKindFromTheEnvironment(RuntimeCase):
-    """RUNTIME_KIND is a caller's one-shot override. It wins over everything."""
+    """AGENT_RUNTIME is a caller's one-shot override. It wins over everything."""
 
     def test_each_named_kind_is_obeyed(self):
         for want in KINDS:
             with self.subTest(runtime=want):
-                self.assertEqual(self.kind(env={"RUNTIME_KIND": want}), want)
+                self.assertEqual(self.kind(env={"AGENT_RUNTIME": want}), want)
 
     def test_it_beats_agent_conf(self):
         self.repo.set_conf("runtime", "orca")
-        self.assertEqual(self.kind(env={"RUNTIME_KIND": "plain"}), "plain")
+        self.assertEqual(self.kind(env={"AGENT_RUNTIME": "plain"}), "plain")
 
     def test_it_beats_the_cloud_marker(self):
         self.assertEqual(
-            self.kind(env={"RUNTIME_KIND": "plain",
+            self.kind(env={"AGENT_RUNTIME": "plain",
                            "CLAUDE_CODE_REMOTE": "true"}), "plain")
 
     def test_plain_asks_orca_nothing(self):
-        self.kind(env={"RUNTIME_KIND": "plain"})
+        self.kind(env={"AGENT_RUNTIME": "plain"})
         self.assertEqual(self.repo.calls(), [])
 
     def test_orca_is_obeyed_with_no_orca_on_the_machine(self):
         self.as_plain()
-        self.assertEqual(self.kind(env={"RUNTIME_KIND": "orca"}), "orca")
+        self.assertEqual(self.kind(env={"AGENT_RUNTIME": "orca"}), "orca")
 
     def test_an_empty_value_is_ignored(self):
         self.repo.set_conf("runtime", "cloud")
-        self.assertEqual(self.kind(env={"RUNTIME_KIND": ""}), "cloud")
+        self.assertEqual(self.kind(env={"AGENT_RUNTIME": ""}), "cloud")
 
     def test_an_unknown_value_is_ignored(self):
         self.repo.set_conf("runtime", "cloud")
-        self.assertEqual(self.kind(env={"RUNTIME_KIND": "banana"}), "cloud")
+        self.assertEqual(self.kind(env={"AGENT_RUNTIME": "banana"}), "cloud")
 
     def test_it_saves_the_probe_for_every_later_call(self):
         """A caller that already knows the kind must not pay for it again."""
         self.repo.set_conf("runtime", "auto")
-        self.assertOk(self.runtime("ps", env={"RUNTIME_KIND": "orca"}))
+        self.assertOk(self.runtime("ps", env={"AGENT_RUNTIME": "orca"}))
         self.assertEqual(self.repo.calls(), [["worktree", "ps", "--json"]])
 
     def test_the_script_never_sets_it_itself(self):
@@ -237,7 +237,7 @@ class TestKindFromTheEnvironment(RuntimeCase):
         self.repo.write_bin_script("twice_env.sh", """#!/usr/bin/env bash
 . "$(dirname "$0")/agent-runtime.sh"
 runtime_kind
-echo "${RUNTIME_KIND:-unset}"
+echo "${AGENT_RUNTIME:-unset}"
 """)
 
 
