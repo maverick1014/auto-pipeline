@@ -8,10 +8,5 @@
       "Bash(orca worktree rm *)",
       "Bash(orca terminal close *)"
     ]
-  },
-  "hooks": {
-    "SessionStart": [
-      { "hooks": [ { "type": "command", "command": "./bin/agent-start.sh" } ] }
-    ]
   }
 }
