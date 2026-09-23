@@ -8,5 +8,16 @@
       "Bash(orca worktree rm *)",
       "Bash(orca terminal close *)"
     ]
+  },
+  "extraKnownMarketplaces": {
+    "auto-pipeline": {
+      "source": {
+        "source": "github",
+        "repo": "maverick1014/auto-pipeline"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "auto-pipeline@auto-pipeline": true
   }
 }

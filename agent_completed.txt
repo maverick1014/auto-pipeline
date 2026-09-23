@@ -7,3 +7,4 @@
 2026-09-22 | idea-rm | idea list and idea rm in the script | est 5m actual 1m
 2026-09-22 | completed-format | agent_completed.txt = date | est 5m actual 2m
 2026-09-22 | auto-resume | hook runs agent-resume.sh by itself when the session is main manager on a real startup; switch auto_resume in agent.conf | est 10m actual 8m
+2026-09-22 | runtime-modes | zero-touch setup + orca/plain runtime detect and switch, so the plugin works without Orca and on cloud Claude | est 150m actual 155m

@@ -1,0 +1,1 @@
+agent-settings.sh cannot add a key that agent.conf is missing: setv refuses an unknown key, so a project conf written before a new key existed can only be migrated by hand, which S1 forbids. Needs an 'add missing keys from the template' path. | 2026-09-22 15:29 | by task-manager
