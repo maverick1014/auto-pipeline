@@ -67,21 +67,65 @@ Checked in this order, first match wins.
 | `agent_monitor.txt` | `./bin/agent-monitor.sh` | Every agent at start |
 | `.secrets/` | Human only | Any agent, read only, never printed |
 
-## Install
+## Set up in your repo
 
-1. `/plugin marketplace add maverick1014/auto-pipeline`
-2. `/plugin install auto-pipeline`
-3. `/auto-pipeline:init`
-4. Paste the permissions block it prints into this project's `.claude/settings.json` yourself — a plugin cannot add permission rules:
+Two ways. Pick by where you run Claude.
+
+| You | Path |
+|---|---|
+| Claude Code on your own computer, with or without Orca | **A. Plugin** |
+| Claude cloud sessions (claude.ai/code, the Claude app in cloud mode) | **B. Pack** |
+| A team repo where everyone should get it without installing anything | **B. Pack** |
+| You want updates for free (`claude plugin update`) | **A. Plugin** |
+| Both on the same computer | Fine. The hook runs once per session |
+
+### A. Plugin (your computer)
+
+In the repo folder:
 
 ```
-Bash(git push origin --delete *)
-Bash(git branch -d *)
-Bash(git worktree remove *)
-Bash(git worktree prune)
-Bash(orca worktree rm *)
-Bash(orca terminal close *)
+claude plugin marketplace add maverick1014/auto-pipeline --scope project
+claude plugin install auto-pipeline@auto-pipeline -s project
 ```
+
+Answer the three questions (runtime `auto`, your language, max agents). Then open Claude Code in
+that repo. The first session sets the repo up by itself and prints two lines. Run
+`/auto-pipeline:init` once and paste the permissions block it prints into
+`.claude/settings.json` — a plugin cannot add permission rules for you.
+
+Want it on every repo you open? Drop `--scope project` / `-s project`. Repos you have not set up
+only get a one-line hint, nothing is written there.
+
+### B. Pack (cloud, or no plugin)
+
+A cloud session never installs a plugin. It reads only what is committed in the repo. The pack
+puts the same pipeline into the repo as plain files.
+
+1. Open a cloud session on the repo. Paste this, as is:
+   ```
+   git clone https://github.com/maverick1014/auto-pipeline /tmp/ap && /tmp/ap/bin/agent-cloud-pack.sh . --language zh
+   ```
+   (`--language zh` is optional; drop it for English.)
+2. Tell it to commit and push. The Claude GitHub App must be installed on the repo, or the cloud
+   clone has no remote to push to.
+3. Open a **new** session on the repo. It starts with `ROLE:` … `QUIZ:` by itself. The session
+   that installed the pack does not — hooks run at session start, and the files were not there yet.
+
+Already have the plugin on your computer? `/auto-pipeline:cloud-pack` does the same for the
+current repo. Commit and push after.
+
+What lands in the repo:
+
+- `.claude/auto-pipeline/` — `bin/` (every script), `PRINCIPLES.md`, `VERSION`
+- `.claude/skills/<name>/SKILL.md`, `.claude/agents/<name>.md` — every skill and agent, except
+  `init` (the pack already did its job) and `cloud-pack` (runs only from the plugin or a clone)
+- `.claude/settings.json` — the SessionStart hook and the permission rules, merged into yours
+- `CLAUDE.md` — one pointer line, appended once
+- `agent.conf`, the four `agent_*.txt` files, `.secrets/`, `AGENTS.md`, `.gitignore` lines
+
+Update later: same command with `--update` added. It refreshes `bin/`, `PRINCIPLES.md`, `VERSION`
+and the packed skills/agents, and never touches `agent.conf`, `agent_*.txt`, `CLAUDE.md`,
+`AGENTS.md`, `.gitignore`, or your own settings, skills and agents.
 
 ## Start
 
@@ -97,32 +141,3 @@ bin/agent-file.sh time              # estimate vs actual for every finished task
 ```
 
 A second Claude session in this repo becomes a task manager under the main manager, by itself.
-
-## Cloud sessions, or any other repo
-
-A cloud session (claude.ai/code) never installs a plugin — it only reads what is committed in
-the clone. `bin/agent-cloud-pack.sh` lays this pipeline into any repo as plain files, so a cloud
-session (or a plain clone, no plugin at all) gets it too.
-
-What lands in the target repo:
-
-- `.claude/auto-pipeline/` — `bin/` (every script), `PRINCIPLES.md`, `VERSION`
-- `.claude/skills/<name>/SKILL.md`, `.claude/agents/<name>.md` — every skill and agent, except
-  `init` (the pack already did its job) and `cloud-pack` (runs only from the plugin or a clone)
-- `.claude/settings.json` — the SessionStart hook and the permission rules, merged in
-- `CLAUDE.md` — one pointer line, appended once
-
-One-sentence install, from a plain clone of this repo, run inside the target repo:
-
-```
-git clone https://github.com/maverick1014/auto-pipeline /tmp/ap && /tmp/ap/bin/agent-cloud-pack.sh . --language zh
-```
-
-Already have the plugin installed locally? `/auto-pipeline:cloud-pack` does the same thing.
-
-Run the same command again with `--update` added to refresh `bin/`, `PRINCIPLES.md`, `VERSION`
-and the packed skills/agents after this plugin changes. It never touches `agent.conf`,
-`agent_*.txt`, `CLAUDE.md`, `AGENTS.md`, `.gitignore`, or your own settings, skills and agents.
-
-The Claude GitHub App must be installed on the target repo, or the cloud clone has no remote to
-push to.
