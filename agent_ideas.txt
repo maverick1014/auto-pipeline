@@ -1,1 +1,3 @@
 agent-settings.sh cannot add a key that agent.conf is missing: setv refuses an unknown key, so a project conf written before a new key existed can only be migrated by hand, which S1 forbids. Needs an 'add missing keys from the template' path. | 2026-09-22 15:29 | by task-manager
+Cloud default image already ships Playwright 1.56 + Chromium under /opt/pw-browsers (verified 2026-09-23): agent-init.sh's cloud Setup-script line is optional there; soften its wording to 'only if browser returns none'. | 2026-09-23 09:07 | by main
+agent-start.sh leaves one agent_started_<sid> and one agent_compact_<sid> file per session in the git dir forever; a cleanup of markers older than N days would keep .git tidy. | 2026-09-23 10:07 | by task-manager

@@ -1,7 +1,7 @@
 {
   "name": "auto-pipeline",
   "description": "Agent pipeline rules, scripts, agents, skills and a startup quiz gate for any repo",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "userConfig": {
     "runtime": {
       "type": "string",
