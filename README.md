@@ -23,6 +23,7 @@ Scripts, not agents (cost no tokens):
   bin/agent-resume.sh    one command to bring the pipeline back after a restart
   bin/agent-monitor.sh   watches every worktree, writes agent_monitor.txt
   bin/agent-init.sh      sets a project up: agent.conf, the four task files, .secrets/, .gitignore lines, AGENTS.md, and it prints the permissions block
+  bin/agent-cloud-pack.sh  lays this pipeline into a repo as plain files, for cloud sessions
 ```
 
 ## Who does what
@@ -96,3 +97,32 @@ bin/agent-file.sh time              # estimate vs actual for every finished task
 ```
 
 A second Claude session in this repo becomes a task manager under the main manager, by itself.
+
+## Cloud sessions, or any other repo
+
+A cloud session (claude.ai/code) never installs a plugin — it only reads what is committed in
+the clone. `bin/agent-cloud-pack.sh` lays this pipeline into any repo as plain files, so a cloud
+session (or a plain clone, no plugin at all) gets it too.
+
+What lands in the target repo:
+
+- `.claude/auto-pipeline/` — `bin/` (every script), `PRINCIPLES.md`, `VERSION`
+- `.claude/skills/<name>/SKILL.md`, `.claude/agents/<name>.md` — every skill and agent, except
+  `init` (the pack already did its job) and `cloud-pack` (runs only from the plugin or a clone)
+- `.claude/settings.json` — the SessionStart hook and the permission rules, merged in
+- `CLAUDE.md` — one pointer line, appended once
+
+One-sentence install, from a plain clone of this repo, run inside the target repo:
+
+```
+git clone https://github.com/maverick1014/auto-pipeline /tmp/ap && /tmp/ap/bin/agent-cloud-pack.sh . --language zh
+```
+
+Already have the plugin installed locally? `/auto-pipeline:cloud-pack` does the same thing.
+
+Run the same command again with `--update` added to refresh `bin/`, `PRINCIPLES.md`, `VERSION`
+and the packed skills/agents after this plugin changes. It never touches `agent.conf`,
+`agent_*.txt`, `CLAUDE.md`, `AGENTS.md`, `.gitignore`, or your own settings, skills and agents.
+
+The Claude GitHub App must be installed on the target repo, or the cloud clone has no remote to
+push to.

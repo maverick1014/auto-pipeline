@@ -6,6 +6,10 @@
 #   ./agent-start.sh --answer "1A 2D ... 29B"    grade your quiz answers
 #
 # Rule: no work until the quiz says PASS.
+#
+# With a session_id on stdin, the real work runs once per SessionStart event
+# (two hooks, repo-packed plus user-scope, can fire for the same session):
+# see the once-per-session dedupe below (AGENT_START_DEDUPE_SEC, default 60s).
 
 set -u
 . "$(dirname "$0")/agent-roots.sh"
@@ -279,6 +283,74 @@ fi
 mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
 : "${max_usage_percent:=80}"
 : "${auto_resume:=yes}"
+
+# ---- once per session (DEDUPE). A repo can carry the pack's SessionStart
+# hook while the machine also has the plugin on user scope, so two copies can
+# fire for one event. Only when the hook's stdin JSON carried a session_id:
+# marker "$PROJECT_GITDIR/agent_started_$SID", content "<source>
+# <epoch-seconds>", same pattern as agent_compact_$SID. Same source and age
+# under the window -> already ran for this event, exit quiet, write nothing.
+# No marker, a different source (compact, resume, ...), or a marker older
+# than the window -> write the marker and fall through to the normal script
+# (this is what keeps compaction reprints working: a bare "marker exists ->
+# skip" would silence every compaction too). A lock dir serializes two
+# copies starting at the same instant; a lock dir older than ~10s is stale
+# and taken over; if the lock still cannot be taken after a brief poll, run
+# anyway rather than silence the hook or block more than a few seconds. ----
+if [ -n "$SID" ]; then
+  DEDUPE_SEC="${AGENT_START_DEDUPE_SEC:-60}"
+  MARKER="$PROJECT_GITDIR/agent_started_$SID"
+  LOCKDIR="$MARKER.lock"
+
+  # mtime of the lock dir, GNU form first: GNU coreutils' `-f` means "file
+  # system" (no value) and takes the very next word as a file name, so
+  # `stat -f %m x` on Linux prints file-system info instead of a number,
+  # exit 0, no fallback ever runs. `-c %Y` is the GNU form, BSD/macOS stat
+  # rejects -c cleanly (nonzero, no stdout), so the fallback to `-f %m`
+  # (the BSD form) only fires there. Either result is checked for being a
+  # plain number before it reaches arithmetic; anything else (both forms
+  # missing, permission denied, a stub that prints garbage) counts the lock
+  # as just-created rather than crash the hook.
+  lock_mtime_of() {
+    local m
+    m=$(stat -c %Y "$1" 2>/dev/null)
+    case "$m" in ''|*[!0-9]*) m=$(stat -f %m "$1" 2>/dev/null);; esac
+    case "$m" in ''|*[!0-9]*) m="$2";; esac
+    printf '%s' "$m"
+  }
+
+  got_lock=no
+  tries=0
+  while [ "$tries" -lt 60 ]; do
+    if mkdir "$LOCKDIR" 2>/dev/null; then
+      got_lock=yes
+      break
+    fi
+    lock_now=$(date +%s)
+    lock_mtime=$(lock_mtime_of "$LOCKDIR" "$lock_now")
+    if [ $(( lock_now - lock_mtime )) -ge 10 ]; then
+      rmdir "$LOCKDIR" 2>/dev/null || true
+    fi
+    # Always counted, whichever branch ran above: a lock dir that cannot be
+    # removed (not empty, no permission) must never spin here forever.
+    tries=$((tries+1))
+    sleep 0.05
+  done
+
+  skip=no
+  NOWS=$(date +%s)
+  if [ -f "$MARKER" ]; then
+    read -r msrc mts < "$MARKER" 2>/dev/null || true
+    if [ "$msrc" = "$SRC" ] && [ -n "${mts:-}" ] && [ $(( NOWS - mts )) -lt "$DEDUPE_SEC" ]; then
+      skip=yes
+    fi
+  fi
+  [ "$skip" = no ] && printf '%s %s\n' "$SRC" "$NOWS" > "$MARKER"
+
+  [ "$got_lock" = yes ] && rmdir "$LOCKDIR" 2>/dev/null
+
+  [ "$skip" = yes ] && exit 0
+fi
 
 # ---- role: one main manager per repo (W10) ----
 agent_pid() {

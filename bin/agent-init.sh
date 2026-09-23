@@ -8,7 +8,9 @@
 #
 # Creates, only when missing, in the project root: agent.conf (a copy of
 # bin/agent.conf.default), the four agent_*.txt task files (empty),
-# .secrets/ (empty dir) and AGENTS.md (one line pointing at this plugin).
+# .secrets/ (empty dir) and AGENTS.md (one line pointing at this plugin,
+# relative to the project root when the plugin is packed inside it, e.g.
+# .claude/auto-pipeline, absolute otherwise).
 # Adds .secrets/, agent_state.txt, agent_monitor.txt, agent_monitor.txt.tmp.*
 # and .auto-pipeline/ to .gitignore, creating it when missing. Never
 # overwrites a file already there.
@@ -21,14 +23,16 @@
 # Ends by printing two blocks a human pastes himself, since a plugin cannot
 # reach either place:
 #   1. the Bash permission block, for the project's .claude/settings.json.
-#   2. the cloud block, for a cloud session's Setup script:
+#   2. the cloud block, for a cloud session's Setup script. The default
+#      cloud image already ships Playwright and Chromium, so paste this
+#      line only if <plugin>/bin/agent-runtime.sh browser prints none there:
 #          npx playwright install --with-deps chromium || true
-#      skip it if this repo never runs in a cloud session.
+#      Skip it if this repo never runs in a cloud session.
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
 
 case "${1:-}" in
-  -h|--help) sed -n '2,26p' "$0"; exit 0;;
+  -h|--help) sed -n '2,30p' "$0"; exit 0;;
 esac
 
 TARGET="${1:-}"
@@ -115,7 +119,11 @@ dir_secrets() {
 
 file_agents_md() {
   path="$ROOT/AGENTS.md"
-  line="Run $PLUGIN_ROOT/bin/agent-start.sh first. No work until the quiz says PASS."
+  case "$PLUGIN_ROOT" in
+    "$ROOT"/*) plugin_ref="${PLUGIN_ROOT#"$ROOT"/}";;
+    *) plugin_ref="$PLUGIN_ROOT";;
+  esac
+  line="Run $plugin_ref/bin/agent-start.sh first. No work until the quiz says PASS."
   if [ -e "$path" ]; then
     if grep -qF "$line" "$path" 2>/dev/null; then
       echo "kept: AGENTS.md"
@@ -170,6 +178,6 @@ BLOCK
 echo "Paste that permission block into .claude/settings.json in this project."
 echo "A plugin cannot add permission rules by itself, so a human must paste it."
 
-echo "For cloud sessions (claude.ai/code): paste this into the cloud environment's Setup script, it is not a repo file, a plugin cannot set it:"
+echo "For cloud sessions (claude.ai/code): the default cloud image already ships Playwright and Chromium. Paste this into the cloud environment's Setup script only if $PLUGIN_ROOT/bin/agent-runtime.sh browser prints none there, it is not a repo file, a plugin cannot set it:"
 echo "npx playwright install --with-deps chromium || true"
 echo "Skip this if you never run this repo in a cloud session."
