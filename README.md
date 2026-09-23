@@ -67,7 +67,7 @@ Checked in this order, first match wins.
 | `agent_monitor.txt` | `./bin/agent-monitor.sh` | Every agent at start |
 | `.secrets/` | Human only | Any agent, read only, never printed |
 
-## Set up in your repo
+## Install
 
 Two ways. Pick by where you run Claude.
 
@@ -81,17 +81,28 @@ Two ways. Pick by where you run Claude.
 
 ### A. Plugin (your computer)
 
-In the repo folder:
+In the repo folder, from your shell:
 
 ```
 claude plugin marketplace add maverick1014/auto-pipeline --scope project
 claude plugin install auto-pipeline@auto-pipeline -s project
 ```
 
+Or inside Claude Code: `/plugin marketplace add maverick1014/auto-pipeline`, then `/plugin install auto-pipeline`.
+
 Answer the three questions (runtime `auto`, your language, max agents). Then open Claude Code in
 that repo. The first session sets the repo up by itself and prints two lines. Run
 `/auto-pipeline:init` once and paste the permissions block it prints into
-`.claude/settings.json` — a plugin cannot add permission rules for you.
+`.claude/settings.json` — a plugin cannot add permission rules for you:
+
+```
+Bash(git push origin --delete *)
+Bash(git branch -d *)
+Bash(git worktree remove *)
+Bash(git worktree prune)
+Bash(orca worktree rm *)
+Bash(orca terminal close *)
+```
 
 Want it on every repo you open? Drop `--scope project` / `-s project`. Repos you have not set up
 only get a one-line hint, nothing is written there.
