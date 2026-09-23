@@ -148,6 +148,7 @@ and the packed skills/agents, and never touches `agent.conf`, `agent_*.txt`, `CL
 /auto-pipeline:init              # one-time project setup, prints the permissions block
 ./bin/agent-settings.sh          # show or change agent.conf, no agent
 bin/agent-settings.sh language zh   # talk to the human in Chinese
+bin/agent-settings.sh sync          # add any key missing from agent.conf, template value
 bin/agent-file.sh time              # estimate vs actual for every finished task
 ```
 

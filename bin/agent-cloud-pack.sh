@@ -35,9 +35,12 @@
 # --language xx   sets agent.conf's language (validated), new or existing.
 # --update        refreshes bin/, PRINCIPLES.md, VERSION and the packed
 #                 skills/agents to match this source, and drops any bin/
-#                 script the source no longer has. Never touches agent.conf,
-#                 agent_*.txt, CLAUDE.md, AGENTS.md, .gitignore, the user's
-#                 own settings keys, or the user's own skills and agents.
+#                 script the source no longer has. Also runs the packed
+#                 agent-settings.sh sync, so agent.conf gains any key the
+#                 template gained since it was written; every value already
+#                 there is left alone. Never touches agent_*.txt, CLAUDE.md,
+#                 AGENTS.md, .gitignore, the user's own settings keys, or the
+#                 user's own skills and agents.
 #
 # A second run with the same arguments changes not one byte. A pack whose
 # VERSION differs from this source's, run without --update, is left alone:
@@ -305,6 +308,15 @@ if [ "$CONF_EXISTED" -eq 0 ] && [ -n "$LANGUAGE" ]; then
   INIT_OUT=$(CLAUDE_PLUGIN_OPTION_LANGUAGE="$LANGUAGE" "$PACK/bin/agent-init.sh" "$TARGET") || die "agent-init.sh"
 else
   INIT_OUT=$("$PACK/bin/agent-init.sh" "$TARGET") || die "agent-init.sh"
+fi
+
+# ---- --update: agent.conf may be missing a key the template gained since it
+# was written (S1: no hand-editing). The packed agent-settings.sh appends any
+# such key with the template's value; run it from TARGET so PROJECT_ROOT
+# resolves there. ----
+if [ "$UPDATE" -eq 1 ]; then
+  SYNC_OUT=$(cd "$TARGET" && CLAUDE_PROJECT_DIR="$TARGET" "$PACK/bin/agent-settings.sh" sync) || die "agent-settings.sh sync"
+  printf '%s\n' "$SYNC_OUT"
 fi
 
 # ---- show agent-init.sh's file lines and its cloud Setup-script hint, but

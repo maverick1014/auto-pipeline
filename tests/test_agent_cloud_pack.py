@@ -823,5 +823,33 @@ class TestOneSentenceInstall(PackCase):
         self.assertIn("QUIZ:", out)
 
 
+class TestConfSync(PackCase):
+    """agent.conf written before a template key existed gains it via --update
+    (conf-sync), and only via --update."""
+
+    def setUp(self):
+        super().setUp()
+        self.assertOk(self.pack("--language", "zh"))
+        # a repo whose agent.conf predates a template key that later arrives
+        text = "\n".join(line for line in
+                          read_text(self.t("agent.conf")).splitlines()
+                          if not line.startswith("stall_min="))
+        write_text(self.t("agent.conf"), text + "\n")
+        self.set_source_version("9.9.9")
+        with open(self.s("bin", "agent.conf.default"), "a") as fh:
+            fh.write("stall_min=10\n")
+
+    def test_update_adds_the_missing_template_key(self):
+        out = self.assertOk(self.pack("--update"))
+        self.assertIn("added stall_min=10", out)
+        self.assertEqual(conf_dict(self.t("agent.conf"))["stall_min"], "10")
+
+    def test_plain_run_does_not_add_it(self):
+        # without --update the pack is left alone anyway (older VERSION), but
+        # prove sync itself never runs by checking the key stays missing
+        self.pack()
+        self.assertNotIn("stall_min", conf_dict(self.t("agent.conf")))
+
+
 if __name__ == "__main__":
     unittest.main()

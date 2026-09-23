@@ -114,5 +114,55 @@ class TestKeyOrder(SettingsCase):
         self.assertEqual(before, after)
 
 
+class TestSync(SettingsCase):
+    def test_sync_adds_only_the_missing_keys_with_the_template_value(self):
+        before_max_agents = self.conf_value("max_agents")
+        self.repo.unset_conf("monitor_interval_min")
+        self.repo.unset_conf("stall_min")
+        before = open(self.repo.path("agent.conf")).read()
+        out = self.assertOk(self.settings("sync"))
+        self.assertIn("added monitor_interval_min=5", out)
+        self.assertIn("added stall_min=10", out)
+        self.assertEqual(self.conf_value("monitor_interval_min"), "5")
+        self.assertEqual(self.conf_value("stall_min"), "10")
+        # every line that was already there stays byte-identical, in place
+        after = open(self.repo.path("agent.conf")).read()
+        self.assertTrue(after.startswith(before))
+        self.assertEqual(self.conf_value("max_agents"), before_max_agents)
+
+    def test_sync_twice_is_idempotent(self):
+        self.repo.unset_conf("stall_min")
+        self.assertOk(self.settings("sync"))
+        after_first = open(self.repo.path("agent.conf")).read()
+        out = self.assertOk(self.settings("sync"))
+        self.assertEqual(out.strip(), "agent.conf is up to date")
+        after_second = open(self.repo.path("agent.conf")).read()
+        self.assertEqual(after_first, after_second)
+
+    def test_nothing_missing_prints_up_to_date(self):
+        out = self.assertOk(self.settings("sync"))
+        self.assertEqual(out.strip(), "agent.conf is up to date")
+
+
+class TestSetvOnMissingKey(SettingsCase):
+    def test_setv_appends_a_missing_known_key(self):
+        self.repo.unset_conf("stall_min")
+        result = self.settings("stall_min", "20")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("saved: stall_min=20", result.stdout)
+        self.assertEqual(self.conf_value("stall_min"), "20")
+
+    def test_setv_on_a_missing_known_key_still_validates(self):
+        self.repo.unset_conf("stall_min")
+        result = self.settings("stall_min", "0")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIsNone(self.conf_value("stall_min"))
+
+    def test_setv_on_an_unknown_key_still_refuses(self):
+        result = self.settings("no_such_key", "x")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIsNone(self.conf_value("no_such_key"))
+
+
 if __name__ == "__main__":
     unittest.main()
