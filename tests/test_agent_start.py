@@ -604,6 +604,61 @@ class TestOncePerSession(StartCase):
         self.assertOk(self.hook("s1"))
         self.assertIn("QUIZ:", self.assertOk(self.hook("s1", "resume")))
 
+    # GNU coreutils stat, the one a Linux cloud VM has: -f takes no value
+    # (it means "file system"), so `stat -f %m x` treats %m as a file name,
+    # prints the file-system block of x and exits 1. -c <fmt> is the format.
+    GNU_STAT = """#!/usr/bin/env bash
+if [ "$1" = "-c" ]; then
+  shift 2
+  exec python3 -c 'import os,sys; print(int(os.stat(sys.argv[1]).st_mtime))' "$1"
+fi
+if [ "$1" = "-f" ]; then
+  shift; rc=0
+  for a in "$@"; do
+    if [ -e "$a" ]; then printf '  File: "%s"\\n    ID: 0 Namelen: 255 Type: ext2/ext3\\n' "$a"
+    else echo "stat: cannot read file system information for '$a'" >&2; rc=1; fi
+  done
+  exit $rc
+fi
+exec /usr/bin/stat "$@"
+"""
+
+    def lock(self, sid, age_sec, removable=True):
+        path = self.repo.path(".git", "agent_started_%s.lock" % sid)
+        os.mkdir(path)
+        if not removable:
+            with open(os.path.join(path, "held"), "w") as fh:
+                fh.write("x\\n")
+        when = time.time() - age_sec
+        os.utime(path, (when, when))
+        return path
+
+    def test_a_stale_lock_on_linux_stat_never_breaks_the_hook(self):
+        self.repo.stub_tool("stat", self.GNU_STAT)
+        self.lock("s7", 3600)
+        began = time.time()
+        result = self.hook("s7")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("QUIZ:", result.stdout)
+        self.assertLess(time.time() - began, 10)
+
+    def test_a_busy_lock_on_linux_stat_never_breaks_the_hook(self):
+        self.repo.stub_tool("stat", self.GNU_STAT)
+        self.lock("s8", 0)
+        began = time.time()
+        result = self.hook("s8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("QUIZ:", result.stdout)
+        self.assertLess(time.time() - began, 10)
+
+    def test_a_lock_that_cannot_be_removed_never_hangs_the_hook(self):
+        self.lock("s6", 3600, removable=False)
+        began = time.time()
+        result = self.hook("s6")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("QUIZ:", result.stdout)
+        self.assertLess(time.time() - began, 10)
+
     def test_a_leftover_lock_never_silences_the_hook(self):
         for name in os.listdir(self.repo.path(".git")):
             self.assertFalse(name.startswith("agent_started_"))
