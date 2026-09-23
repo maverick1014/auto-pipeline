@@ -672,6 +672,57 @@ exec /usr/bin/stat "$@"
         self.assertLess(time.time() - began, 10)
 
 
+class TestMarkerCleanup(StartCase):
+    """Startup drops stale agent_started_*/agent_compact_* markers so the
+    git dir doesn't collect them forever (AGENT_MARKER_DAYS, default 7)."""
+
+    def hook_json(self, sid, source="startup"):
+        return json.dumps({"cwd": self.repo.dir, "session_id": sid,
+                           "source": source})
+
+    def hook(self, sid, source="startup", env=None):
+        env = dict(env or {})
+        env.setdefault("AGENT_ROLE", "task-manager")
+        return self.start(stdin=self.hook_json(sid, source), env=env)
+
+    def marker(self, name):
+        return self.repo.path(".git", name)
+
+    def age(self, path, days):
+        when = time.time() - days * 86400
+        os.utime(path, (when, when))
+
+    def touch_marker(self, name, days):
+        path = self.marker(name)
+        with open(path, "w") as fh:
+            fh.write("startup 0\n")
+        self.age(path, days)
+        return path
+
+    def test_an_old_marker_is_removed_at_startup(self):
+        old = self.touch_marker("agent_started_old-sid", 8)
+        self.assertOk(self.hook("cur-a"))
+        self.assertFalse(os.path.exists(old))
+
+    def test_a_one_day_old_marker_survives(self):
+        recent = self.touch_marker("agent_started_recent-sid", 1)
+        self.assertOk(self.hook("cur-b"))
+        self.assertTrue(os.path.exists(recent))
+
+    def test_the_current_sessions_own_marker_survives_even_when_old(self):
+        # agent_compact_<sid> for the SID this very run uses is not touched
+        # by a startup run, so it stays exactly as old as we leave it; it
+        # must still be excluded from deletion by name.
+        own = self.touch_marker("agent_compact_cur-c", 8)
+        self.assertOk(self.hook("cur-c"))
+        self.assertTrue(os.path.exists(own))
+
+    def test_a_compact_run_removes_nothing(self):
+        old = self.touch_marker("agent_started_old2-sid", 8)
+        self.assertOk(self.hook("cur-d", "compact"))
+        self.assertTrue(os.path.exists(old))
+
+
 SETUP_LINE = ("auto-pipeline: first run, created agent.conf and the task files")
 POINTER_LINE = ("auto-pipeline: run /auto-pipeline:init once to see the "
                 "permission block and the cloud setup line to paste")

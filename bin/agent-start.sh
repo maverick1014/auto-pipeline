@@ -296,7 +296,9 @@ mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
 # skip" would silence every compaction too). A lock dir serializes two
 # copies starting at the same instant; a lock dir older than ~10s is stale
 # and taken over; if the lock still cannot be taken after a brief poll, run
-# anyway rather than silence the hook or block more than a few seconds. ----
+# anyway rather than silence the hook or block more than a few seconds.
+# Markers older than AGENT_MARKER_DAYS (default 7) days are removed at
+# startup (never on compact); see the cleanup below "normal start". ----
 if [ -n "$SID" ]; then
   DEDUPE_SEC="${AGENT_START_DEDUPE_SEC:-60}"
   MARKER="$PROJECT_GITDIR/agent_started_$SID"
@@ -541,6 +543,24 @@ if [ "$SRC" = compact ] && [ -n "$SID" ]; then
 fi
 
 # ---- normal start ----
+
+# ---- drop stale session markers. Only on a real startup run (never
+# compact, handled above by the earlier `exit 0`). agent_started_*/
+# agent_compact_* older than AGENT_MARKER_DAYS (default 7, env override for
+# tests) days are deleted so they don't pile up in the git dir forever. The
+# current session's own markers are excluded by name, whatever their age.
+# `-mtime +N -delete` works the same on GNU and BSD/macOS find; wrapped in
+# `2>/dev/null || true` so a failure here never breaks the hook. ----
+MARKER_DAYS="${AGENT_MARKER_DAYS:-7}"
+if [ -n "$SID" ]; then
+  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_compact_*' \) \
+    ! -name "agent_started_$SID" ! -name "agent_compact_$SID" \
+    -mtime "+$MARKER_DAYS" -delete 2>/dev/null || true
+else
+  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_compact_*' \) \
+    -mtime "+$MARKER_DAYS" -delete 2>/dev/null || true
+fi
+
 NORMAL_TEXT=$(print_normal_lines; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
 MON_TEXT=$(print_monitor_block; printf 'X'); MON_TEXT=${MON_TEXT%X}
 RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
