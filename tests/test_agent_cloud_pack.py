@@ -694,6 +694,22 @@ class TestTheOutput(PackCase):
         out = self.assertOk(self.pack("--language", "zh"))
         self.assertIn("Claude GitHub App", out)
 
+    def test_it_never_asks_the_human_to_paste_what_it_already_merged(self):
+        out = self.assertOk(self.pack("--language", "zh"))
+        self.assertNotIn("Paste that permission block", out)
+        self.assertNotIn("a human must paste it", out)
+
+    def test_it_still_passes_on_the_cloud_browser_hint(self):
+        out = self.assertOk(self.pack("--language", "zh"))
+        self.assertIn("agent-runtime.sh browser prints none", out)
+
+    def test_each_file_line_names_the_real_repo_path(self):
+        out = self.assertOk(self.pack("--language", "zh"))
+        self.assertIn("created: .claude/auto-pipeline/bin/agent-start.sh", out)
+        self.assertIn("created: .claude/auto-pipeline/PRINCIPLES.md", out)
+        self.assertIn("created: .claude/skills/dispatch/SKILL.md", out)
+        self.assertIn("created: .claude/agents/worker.md", out)
+
     def test_it_says_to_commit_and_push(self):
         lowered = self.assertOk(self.pack("--language", "zh")).lower()
         self.assertIn("commit", lowered)
