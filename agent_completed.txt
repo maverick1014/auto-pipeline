@@ -10,3 +10,4 @@
 2026-09-22 | runtime-modes | zero-touch setup + orca/plain runtime detect and switch, so the plugin works without Orca and on cloud Claude | est 150m actual 155m
 2026-09-23 | cloud-pack | agent-cloud-pack.sh: lay the pipeline into any repo as plain files (bin, hook, skills, agents, init) so cloud sessions and plugin-less machines run it; one-sentence cloud install | est 90m actual 49m
 2026-09-23 | conf-sync | agent-settings.sh sync: add keys missing from agent.conf with template defaults; setv on a known missing key appends; cloud-pack --update runs it | est 30m actual 5m
+2026-09-23 | marker-cleanup | agent-start.sh deletes agent_started_* and agent_compact_* markers older than 7 days from the git dir | est 15m actual 6m
