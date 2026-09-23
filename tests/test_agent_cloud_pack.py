@@ -15,6 +15,9 @@ CONTRACT.
     a .claude/settings.json that is
     not valid JSON                      exit non-zero, message names the file,
                                         writes nothing
+    any later step that fails (agent-init.sh,
+    the settings merge, ...)            exit non-zero, message names the step,
+                                        no success footer
 
 <repo-path> may be any folder inside the repo; the pack goes to its git
 toplevel. The source is the folder above the script's own bin/ (the plugin, or
@@ -729,6 +732,25 @@ class TestUsage(PackCase):
         self.assertOk(self.pack(target=self.t("sub")))
         self.assertTrue(os.path.isfile(self.p("bin", "agent-start.sh")))
         self.assertFalse(os.path.exists(self.t("sub", ".claude")))
+
+
+class TestFailsLoudly(PackCase):
+    """A step that fails mid-way stops the pack with a non-zero exit, and the
+    success footer (the one-sentence install) is never printed after it."""
+
+    def test_a_failing_init_step_stops_the_pack(self):
+        os.makedirs(self.t("AGENTS.md"))   # agent-init.sh cannot write its line
+        result = self.pack("--language", "zh")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(ONE_SENTENCE % "zh", result.stdout)
+        self.assertIn("agent-init.sh", result.stdout + result.stderr)
+
+    def test_a_failing_settings_merge_stops_the_pack(self):
+        write_text(self.t(".claude", "settings.json"), '{"hooks": ["x"]}\n')
+        result = self.pack("--language", "zh")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(ONE_SENTENCE % "zh", result.stdout)
+        self.assertIn("settings.json", result.stdout + result.stderr)
 
 
 class TestOneSentenceInstall(PackCase):
