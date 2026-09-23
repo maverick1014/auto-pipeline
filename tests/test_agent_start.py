@@ -33,11 +33,28 @@ Compaction (stdin source "compact"), nothing else at all:
     ROLE, the PROJECT/PLUGIN line, the COMPACTED line, agent_state.txt capped
     the same way, the RULES line. No RESOURCES, no counts, no QUIZ line.
 
+Once per session (DEDUPE). A repo can carry the pack's SessionStart hook
+while the machine also has the plugin on, so two copies fire for one event.
+When the stdin JSON has a session_id, the real work runs once per event:
+
+    marker   $PROJECT_GITDIR/agent_started_<session_id>   (in the git dir,
+             never in the work tree)
+    same session_id and same source again within AGENT_START_DEDUPE_SEC
+    seconds (default 60)  -> exit 0, print nothing, write nothing
+    a different session_id, or another source (compact, resume) -> runs
+    two copies started at the same moment -> exactly one prints
+    no session_id (a human or an agent running it by hand) -> never deduped
+    a leftover lock from a killed run never silences a later run
+    a repo that is not set up stays untouched: no marker either
+
 The resource helper below is unchanged by all this.
 """
 
+import json
 import os
+import subprocess
 import sys
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -491,6 +508,115 @@ class TestGitignore(unittest.TestCase):
         self.assertIn("agent_monitor.txt.tmp.*", lines)
 
 
+def tree(root):
+    """Every file under root, .git included, with its bytes."""
+    out = {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames.sort()
+        for name in dirnames:
+            out[os.path.relpath(os.path.join(dirpath, name), root) + "/"] = "dir"
+        for name in filenames:
+            full = os.path.join(dirpath, name)
+            with open(full, "rb") as fh:
+                out[os.path.relpath(full, root)] = fh.read()
+    return out
+
+
+class TestOncePerSession(StartCase):
+    """Two SessionStart hooks, one session: the work runs once."""
+
+    def hook_json(self, sid, source="startup"):
+        return json.dumps({"cwd": self.repo.dir, "session_id": sid,
+                           "source": source})
+
+    def hook(self, sid, source="startup", env=None):
+        env = dict(env or {})
+        env.setdefault("AGENT_ROLE", "task-manager")
+        return self.start(stdin=self.hook_json(sid, source), env=env)
+
+    def marker(self, sid):
+        return self.repo.path(".git", "agent_started_%s" % sid)
+
+    def test_the_first_run_prints_as_usual(self):
+        self.assertIn("QUIZ:", self.assertOk(self.hook("s1")))
+
+    def test_the_same_session_again_prints_nothing(self):
+        self.assertOk(self.hook("s1"))
+        result = self.hook("s1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_the_same_session_again_writes_nothing(self):
+        self.assertOk(self.hook("s1"))
+        before = tree(self.repo.dir)
+        self.assertOk(self.hook("s1"))
+        self.assertEqual(tree(self.repo.dir), before)
+
+    def test_a_different_session_runs(self):
+        self.assertOk(self.hook("s1"))
+        self.assertIn("QUIZ:", self.assertOk(self.hook("s2")))
+
+    def test_the_marker_lives_in_the_git_dir(self):
+        self.assertOk(self.hook("s1"))
+        self.assertTrue(os.path.exists(self.marker("s1")))
+        self.assertFalse(os.path.exists(self.repo.path("agent_started_s1")))
+
+    def test_no_session_id_is_never_deduped(self):
+        env = {"AGENT_ROLE": "task-manager"}
+        self.assertIn("QUIZ:", self.assertOk(self.start(env=env)))
+        self.assertIn("QUIZ:", self.assertOk(self.start(env=env)))
+
+    def test_two_copies_started_together_print_once(self):
+        self.repo.set_conf("auto_resume", "no")
+        for round_no in range(3):
+            sid = "together-%d" % round_no
+            procs = [subprocess.Popen(
+                [self.repo.script_path("agent-start.sh")],
+                cwd=self.repo.dir, env=self.repo._env({}),
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True) for _ in range(2)]
+            outs = [p.communicate(self.hook_json(sid), timeout=60) for p in procs]
+            with self.subTest(round=round_no):
+                self.assertEqual([p.returncode for p in procs], [0, 0],
+                                 [o[1] for o in outs])
+                printed = [o[0] for o in outs if o[0].strip()]
+                self.assertEqual(len(printed), 1, outs)
+                self.assertIn("QUIZ:", printed[0])
+
+    def test_compaction_after_startup_still_prints(self):
+        self.assertOk(self.hook("s1"))
+        out = self.assertOk(self.hook("s1", "compact"))
+        self.assertIn("COMPACTED 1 time(s) this session", out)
+
+    def test_two_hooks_on_one_compaction_count_it_once(self):
+        self.assertOk(self.hook("s1", "compact"))
+        self.assertEqual(self.hook("s1", "compact").stdout, "")
+        with open(self.repo.path(".git", "agent_compact_s1")) as fh:
+            self.assertEqual(fh.read().strip(), "1")
+
+    def test_a_later_compaction_counts_again(self):
+        env = {"AGENT_START_DEDUPE_SEC": "0"}
+        self.assertOk(self.hook("s1", "compact", env=env))
+        out = self.assertOk(self.hook("s1", "compact", env=env))
+        self.assertIn("COMPACTED 2 time(s) this session", out)
+
+    def test_a_resumed_session_prints_again(self):
+        self.assertOk(self.hook("s1"))
+        self.assertIn("QUIZ:", self.assertOk(self.hook("s1", "resume")))
+
+    def test_a_leftover_lock_never_silences_the_hook(self):
+        for name in os.listdir(self.repo.path(".git")):
+            self.assertFalse(name.startswith("agent_started_"))
+        stale = self.repo.path(".git", "agent_started_s9.lock")
+        os.mkdir(stale)
+        old = time.time() - 3600
+        os.utime(stale, (old, old))
+        began = time.time()
+        out = self.assertOk(self.hook("s9"))
+        self.assertIn("QUIZ:", out)
+        self.assertLess(time.time() - began, 10)
+
+
 SETUP_LINE = ("auto-pipeline: first run, created agent.conf and the task files")
 POINTER_LINE = ("auto-pipeline: run /auto-pipeline:init once to see the "
                 "permission block and the cloud setup line to paste")
@@ -657,6 +783,15 @@ class TestUserScopeLeavesTheRepoAlone(BareProjectCase):
         out = self.assertOk(self.start())
         self.assertNotIn(NOT_HERE_LINE, out)
         self.assertIn("QUIZ:", out)
+
+    def test_a_session_id_leaves_no_marker_either(self):
+        out = self.assertOk(self.start(
+            stdin='{"cwd": "%s", "session_id": "s1", "source": "startup"}'
+                  % self.repo.dir))
+        self.assertEqual(self.lines(out.strip()), [NOT_HERE_LINE])
+        left = [n for n in os.listdir(os.path.join(self.repo.dir, ".git"))
+                if n.startswith("agent_started_")]
+        self.assertEqual(left, [])
 
     def test_the_quiz_still_works_with_no_setup(self):
         """--quiz and --answer never touch the project at all."""

@@ -38,6 +38,7 @@ SHELL_SCRIPTS = [
     "agent-monitor.sh",
     "agent-init.sh",
     "agent-runtime.sh",
+    "agent-cloud-pack.sh",
 ]
 # Sourced only, never run. agent-runtime.sh is in the list above instead,
 # because it is both: sourced by its callers and run by a skill.
@@ -48,7 +49,7 @@ SOURCED_ONLY = [
 BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py", "agent.conf.default"]
 
 AGENT_FILES = ["fast-lane-deputy.md", "merge-deputy.md", "worker.md"]
-SKILL_DIRS = ["dispatch", "merge", "init"]
+SKILL_DIRS = ["dispatch", "merge", "init", "cloud-pack"]
 
 ALLOW_RULES = [
     "Bash(git push origin --delete *)",
@@ -350,6 +351,43 @@ class TestReadmeInstall(unittest.TestCase):
     def test_the_tree_shows_the_new_paths(self):
         text = read("README.md")
         self.assertIn("bin/agent-start.sh", text)
+
+
+class TestCloudPackSkill(unittest.TestCase):
+    """/auto-pipeline:cloud-pack does for a local plugin user what the
+    one-sentence install does in a cloud session."""
+
+    def text(self):
+        return read("skills", "cloud-pack", "SKILL.md")
+
+    def test_it_runs_the_pack_script_from_the_plugin_root(self):
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}/bin/agent-cloud-pack.sh",
+                      self.text())
+
+    def test_it_passes_the_language(self):
+        self.assertIn("--language", self.text())
+
+    def test_it_knows_the_update_flag(self):
+        self.assertIn("--update", self.text())
+
+    def test_it_shows_the_output_unchanged(self):
+        self.assertIn("unchanged", self.text().lower())
+
+
+class TestReadmeShowsThePack(unittest.TestCase):
+    def test_it_names_the_script(self):
+        self.assertIn("bin/agent-cloud-pack.sh", read("README.md"))
+
+    def test_it_shows_where_the_pack_lands(self):
+        self.assertIn(".claude/auto-pipeline/", read("README.md"))
+
+    def test_it_gives_the_one_sentence_install(self):
+        self.assertIn(
+            "git clone https://github.com/maverick1014/auto-pipeline /tmp/ap"
+            " && /tmp/ap/bin/agent-cloud-pack.sh .", read("README.md"))
+
+    def test_it_names_the_github_app(self):
+        self.assertIn("Claude GitHub App", read("README.md"))
 
 
 class TestUserConfig(unittest.TestCase):

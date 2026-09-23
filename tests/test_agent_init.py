@@ -17,6 +17,10 @@ It is idempotent. It creates, only when missing, in the PROJECT ROOT:
     .secrets/                  empty directory
     AGENTS.md                  one line:
         Run <plugin>/bin/agent-start.sh first. No work until the quiz says PASS.
+                               <plugin> is absolute, except for a plugin
+                               packed inside the project (agent-cloud-pack.sh):
+                               then it is relative to the project root, so the
+                               line still works in any clone.
 
 and adds these lines to .gitignore when they are not already there:
 
@@ -33,8 +37,10 @@ saying created or kept, then two blocks the human has to paste himself:
        line saying why a plugin cannot add it itself
     2. the cloud block, for the Setup script of a cloud environment:
            npx playwright install --with-deps chromium || true
-       plus one line saying to skip it when this repo never runs in the cloud.
-       That is not a repo file, so a plugin cannot set it either.
+       The default cloud image already ships Playwright and Chromium, so the
+       block says to paste it only if <plugin>/bin/agent-runtime.sh browser
+       prints none there, plus one line saying to skip it when this repo never
+       runs in the cloud. That is not a repo file, so a plugin cannot set it.
 
 Both blocks also show in `-h`, so the human can see them without creating
 anything.
@@ -154,6 +160,29 @@ class TestAgentsMd(InitCase):
         text = self.read("AGENTS.md")
         self.assertIn("House rules: never force push.", text)
         self.assertIn("bin/agent-start.sh", text)
+
+
+class TestAgentsMdForAPackedPlugin(InitCase):
+    """The pack puts the plugin inside the repo. An absolute path would be
+    this machine's path, wrong in every other clone."""
+
+    def setUp(self):
+        super().setUp()
+        import shutil
+        self.inside = os.path.join(self.project, ".claude", "auto-pipeline")
+        shutil.copytree(self.repo.plugin, self.inside)
+
+    def test_it_names_the_plugin_relative_to_the_project(self):
+        import subprocess
+        result = subprocess.run(
+            [os.path.join(self.inside, "bin", "agent-init.sh"), self.project],
+            cwd=self.project, env=self.repo._env({}), capture_output=True,
+            text=True, input="")
+        self.assertOk(result)
+        self.assertEqual(
+            self.read("AGENTS.md").strip(),
+            "Run .claude/auto-pipeline/bin/agent-start.sh first. "
+            "No work until the quiz says PASS.")
 
 
 class TestGitignore(InitCase):
@@ -324,6 +353,21 @@ class TestCloudBlock(InitCase):
     def test_it_says_when_to_skip_it(self):
         self.assertIn("Skip this if you never run this repo in a cloud session.",
                       self.assertOk(self.init()))
+
+    def test_it_says_the_default_image_already_has_a_browser(self):
+        lowered = self.assertOk(self.init()).lower()
+        self.assertIn("already", lowered)
+        self.assertIn("playwright", lowered)
+
+    def test_it_says_to_paste_it_only_when_no_browser_is_found(self):
+        out = self.assertOk(self.init())
+        self.assertIn("only if", out.lower())
+        self.assertIn("bin/agent-runtime.sh browser prints none", out)
+
+    def test_help_says_only_when_no_browser_is_found_too(self):
+        result = self.init("-h")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("agent-runtime.sh browser prints none", result.stdout)
 
     def test_it_comes_after_the_permission_block(self):
         out = self.assertOk(self.init())
