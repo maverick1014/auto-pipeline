@@ -24,7 +24,7 @@
 - Top counts stay: 干活, 找总督, 休息, 建成.
 - No frame around the city: no border line, no rounded box.
 - Camera is a perspective camera, not a top-down god view. Default tilt about 30° above the horizon, close to the town hall.
-- Drag up/down tilts (about 15° to 60°), drag left/right orbits, wheel/pinch zooms from near street level to the whole island. Never clips into ground or buildings.
+- Drag up/down tilts (about 15° to 60°), drag left/right orbits, wheel/pinch zooms from near street level to the whole territory. Never clips into ground or buildings.
 - Camera auto-rotates, one turn per 5 min. Stops on drag or zoom, resumes 10 s after. Off under `prefers-reduced-motion`.
 
 ## Interaction
@@ -41,14 +41,18 @@
 - Build order: prove first, with a real session, how an answer or approval reaches it (hook decision or Orca terminal keys). Then build.
 
 ## Growth
-- One island per repo. All islands on one sea.
-- Island size grows with the repo's git-tracked code lines. Not counted: binaries, images, 3D models, vendor, lock files.
-- New repo = tiny island with a small town hall only.
-- Land edge is beach meeting sea. No brown earth block sides.
-- Island shape is uneven: organic coastline, never a square or rectangle. Growth adds land at the edge and keeps it uneven.
-- Same repo → same shape every time (shape seeded from the repo identity), so reopening shows the island the owner remembers.
-- Repo identity = git common dir. Agents in a worktree land on their main repo's island.
-- 5 hand-made town plans. Each plan: coastline, roads, town hall spot, districts, and preset building plots with a growth order.
+- One territory per repo. All territories on one land, not islands on a sea.
+- Territories are split by a natural gap: river, ravine, mountain pass or forest. A bridge or road joins neighbours, so people could cross.
+- Where the land ends it may meet sea (the coast terrain); that is the only sea.
+- Territory size grows with the repo's git-tracked code lines. Not counted: binaries, images, 3D models, vendor, lock files.
+- New repo = tiny territory with a small town hall only.
+- Territory edge is natural: river bank, cliff, forest edge, or beach on the coast. No brown earth block sides, no hard line.
+- Territory shape is uneven: organic edge, never a square or rectangle. Growth adds land at the edge and keeps it uneven.
+- Same repo → same shape every time (shape seeded from the repo identity), so reopening shows the territory the owner remembers.
+- Repo identity = git common dir. Agents in a worktree land on their main repo's territory.
+- 5 hand-made town plans. Each plan: edge line, roads, town hall spot, bridge or road spots to neighbours, districts, and preset building plots with a growth order.
+- Each plan has its own terrain: grassland, mountain, desert, forest, coast. Terrain changes the look only (ground, plants, path material: cactus on desert, pines on mountain, sand paths on coast). Rules are the same on every terrain.
+- Day 0 = bare terrain with a tiny town hall, nothing else. Everything that appears later comes from the repo.
 - Each repo gets one plan, picked from the repo identity (stable, not a new pick each start).
 - Growth unlocks the plan's plots in its order. No building is ever placed off-plan.
 - Building type is picked automatically from the kind of work (files touched): tests → test tower, UI → shop, scripts → workshop, docs → library, other → house.
@@ -56,8 +60,30 @@
 - The 5 plans go through the mock gate: owner sees all 5 before real code.
 - Buildings are permanent. An agent leaving never removes its building.
 
+## Balance
+- The city shows how healthy the repo is, not only how big. 5 kinds of code, each one city system:
+
+| kind | in the repo | in the city | measured by |
+|---|---|---|---|
+| build | feature code | houses, shops, offices | code lines |
+| rules | automated tests, QA docs | traffic lights, signposts, police station | share of source files with a matching test file |
+| beauty | UI components, UI rules | parks, flowers, fountains, painted walls | component count, and how often they are reused |
+| knowledge | requirement, feature, module docs | library, district name signs | share of modules with a doc |
+| infra | scripts, CI, config, DB schema, migrations | power plant, water tower, bridges, paved roads | file count |
+
+- Lines are used for build only. The other kinds use the measure above; lines there mislead.
+- Reward, never punish. Day 0 is clean empty land. A thing appears when its kind exists. A missing kind is absent, not broken: no cones, no cracks, no jaywalking.
+- Each kind is scored healthy / low / missing against build. A 城市平衡 card in the right column, one bar per kind.
+- Click a kind → the list of files it counted. Wrong guess → fix one rule in the city config (`~/.claude/agent-city/rules/<repo>.conf`), never in the repo.
+- Classification runs in the server, by path and file name rules, same result for every viewer and agent. Binaries, vendor, generated files never count.
+- A kind the repo's own rules forbid (e.g. auto-pipeline allows only 3 doc kinds) → "not applicable", never "missing". Per repo setting.
+- Eras: village (wood houses, dirt roads) → town (brick, stone roads, lamps) → city (towers, parks, fountains).
+- Village → town: size, and no kind missing. Town → city: size, and rules and beauty both healthy. Size alone never moves an era.
+- A sign in front of the town hall shows what the next era still needs (e.g. 还差：规则).
+- The city server never runs the repo's tests. Test pass counts: maybe later, only if cheap.
+
 ## Persistence
-- World state (islands, land size, buildings, per repo) lives in one file: `~/.claude/agent-city/world.json`.
+- World state (territories, land size, buildings, per repo) lives in one file: `~/.claude/agent-city/world.json`.
 - Not in `~/.cache` (cleaners wipe it). Never inside a repo (no git noise).
 - Written atomically (tmp + mv). Has a version field `"v"`.
 - Broken or unknown file → move it aside as `world.json.bad-<time>`, start fresh, say so in the page log. Never silent.
