@@ -482,6 +482,7 @@ class TestRepoAndKind(HookCase):
         git(self.shop, "worktree", "add", "-q", "-b", "side", self.wt)
 
     def at(self, cwd, event="UserPromptSubmit", **rest):
+        open(self.events, "w").close()
         return self.one(payload(event, cwd=cwd, **rest))
 
     def edit(self, rel, tool="Edit", cwd=None, root=None):
