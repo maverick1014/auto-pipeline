@@ -31,6 +31,9 @@ CONTRACT
   4. It reads at most the first 4096 bytes of stdin, except for Agent, Task
      and AskUserQuestion, so a 1 MB Write payload costs no more than a small one.
   5. Never prints to stdout or stderr. Always exits 0, even on garbage.
+  6. stdin may be a socket, not a pipe: Node and Bun (which run Claude Code)
+     hand a child its stdin as a socketpair, and /dev/stdin cannot be opened
+     on a socket. Everything above still holds then.
 
   hooks/hooks.json runs it through CITY_COMMAND (below). With the city off that
   command is one `test -f` inside the shell Claude Code already starts: the
@@ -332,6 +335,52 @@ class TestLongText(HookCase):
     def test_newlines_and_tabs(self):
         row = self.check("line1\nline2\tend" * 40)
         self.assertTrue(row["desc"].startswith("line1\nline2"))
+
+
+class TestSocketStdin(HookCase):
+    """Claude Code runs on Node/Bun, which give a hook a socketpair as stdin."""
+
+    def run_socket(self, data):
+        import socket
+        ours, theirs = socket.socketpair()
+        env = {"AGENT_CITY_DIR": self.city, "PATH": self.empty, "HOME": self.base}
+        proc = subprocess.Popen([BASH, HOOK], stdin=theirs, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, env=env)
+        theirs.close()
+        try:
+            ours.sendall(data)
+        except OSError:
+            pass
+        ours.shutdown(socket.SHUT_WR)
+        out, err = proc.communicate(timeout=20)
+        ours.close()
+        return proc.returncode, out, err
+
+    def setUp(self):
+        super().setUp()
+        self.switch_on()
+
+    def test_agent_tool_with_a_long_prompt(self):
+        code, out, err = self.run_socket(payload(
+            "PreToolUse", tool_name="Agent",
+            tool_input={"description": "设置页表单", "prompt": "x" * 20000, "subagent_type": "worker"}))
+        self.assertEqual((code, out, err), (0, b"", b""))
+        row = self.lines()[0]
+        self.assertEqual(row["desc"], "设置页表单")
+        self.assertEqual(row["sub"], "worker")
+
+    def test_ask_user_question(self):
+        code, out, err = self.run_socket(payload(
+            "PreToolUse", ("a1", "worker"), tool_name="AskUserQuestion",
+            tool_input={"questions": [{"question": "用哪个？", "header": "h", "options": []}]}))
+        self.assertEqual((code, out, err), (0, b"", b""))
+        self.assertEqual(self.lines()[0]["q"], "用哪个？")
+
+    def test_plain_event(self):
+        code, out, err = self.run_socket(payload("PostToolUse", ("a1", "worker"), tool_name="Edit",
+                                                 tool_input={"content": "y" * 100000}))
+        self.assertEqual((code, out, err), (0, b"", b""))
+        self.assertEqual(self.lines()[0]["tool"], "Edit")
 
 
 class TestCost(HookCase):

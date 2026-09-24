@@ -11,6 +11,7 @@ CONTRACT
 
   bin/agent-city.html
     A full HTML document (<!doctype html>) with <title>Agent City</title>.
+    <link rel="icon" href="data:,"> so the browser never asks for /favicon.ico.
     Fully offline: no http:// or https:// URL anywhere (no web fonts, no CDN).
     Loads three.js and its loaders from the server, in this order:
       <script src="assets/vendor/three.min.js">
@@ -83,6 +84,9 @@ class TestDocument(unittest.TestCase):
         text = page()
         self.assertTrue(text.lstrip().lower().startswith("<!doctype html>"))
         self.assertIn("<title>Agent City</title>", text)
+
+    def test_no_favicon_request(self):
+        self.assertIn('<link rel="icon" href="data:,">', page())
 
     def test_fully_offline(self):
         self.assertEqual(re.findall(r"https?://[^\s\"')<]+", page()), [])
