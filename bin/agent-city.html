@@ -76,7 +76,7 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .qm span{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#FF6F8B;color:#fff;font:700 17px/1 var(--display);border:2px solid #fff;box-shadow:0 2px 0 rgba(42,43,69,.25);animation:hop .7s ease-in-out infinite}
 .qm:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
 @keyframes hop{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-.wait{display:inline-flex;align-items:center;gap:5px;background:var(--gov-bg);color:var(--gov-ink);border:1.5px solid var(--gov-ink);border-radius:999px;padding:2px 9px;font:600 11px/1.4 var(--mono);white-space:nowrap;font-variant-numeric:tabular-nums;pointer-events:none}
+.gwait{display:inline-flex;align-items:center;gap:5px;background:var(--gov-bg);color:var(--gov-ink);border:1.5px solid var(--gov-ink);border-radius:999px;padding:2px 9px;font:600 11px/1.4 var(--mono);white-space:nowrap;font-variant-numeric:tabular-nums;pointer-events:none}
 .zz{font:700 14px/1 var(--display);color:#8D91B3;letter-spacing:.1em}
 .zz span{display:inline-block;animation:zz 2.4s ease-in-out infinite}
 .zz span:nth-child(2){animation-delay:.4s}
@@ -1214,7 +1214,7 @@ const govBub = ovEl('bub gov'), govTag = ovEl('tagl'), govQm = ovBtn('qm', '<spa
 govTag.style.setProperty('--c', '#FF6F8B'); setText(govTag, '总督 · main manager');
 function ensureOv(c){
   if (c.o) return;
-  c.o = { bub: ovEl('bub'), qm: ovBtn('qm', '<span>?</span>'), wait: ovEl('wait'), zz: ovEl('zz', '<span>z</span><span>z</span><span>Z</span>'), tag: ovEl('tagl') };
+  c.o = { bub: ovEl('bub'), qm: ovBtn('qm', '<span>?</span>'), wait: ovEl('gwait'), zz: ovEl('zz', '<span>z</span><span>z</span><span>Z</span>'), tag: ovEl('tagl') };
   c.o.tag.style.setProperty('--c', c.color);
 }
 function dropOv(c){ if (!c.o) return; for (const k in c.o) c.o[k].remove(); c.o = null; }
@@ -1251,17 +1251,18 @@ function updatePerson(c, t, dt){
   ensureOv(c);
   const [sx, sy] = toScreen(c.x, resting ? .58 : .72, c.y);
   const talk = c.bubble && simT < c.bubble.until;
+  const showBub = c.state === 'asking' || (talk && c.state !== 'to_hall');
   const ask = openAskFor(c.id);
   if (ask) c.o.qm.setAttribute('data-open', ask.id); else c.o.qm.removeAttribute('data-open');
   c.o.qm.setAttribute('aria-label', `${c.task} 等你${ask && ask.kind === 'permission' ? '批' : '回答'}，点开看`);
-  pin(c.o.qm, sx, sy, !!(ask && ask.phase === 'owner') || (DEMO && c.state === 'to_hall' && grow > .5));
+  // above the bubble, never over it: a bubble reserves the spot at (sx, sy).
+  pin(c.o.qm, sx, showBub ? sy - 32 : sy, !!(ask && ask.phase === 'owner') || (DEMO && c.state === 'to_hall' && grow > .5));
   if (ask && ask.phase === 'governor') {
     const left = Math.max(0, (ask.wait || 0) - (Date.now() - (ask.at || Date.now())) / 1000);
     setText(c.o.wait, '总督 ' + Math.ceil(left) + 's');
   }
-  pin(c.o.wait, sx - 26, sy, !!(ask && ask.phase === 'governor'));
+  pin(c.o.wait, sx - 26, showBub ? sy - 32 : sy, !!(ask && ask.phase === 'governor'));
   pin(c.o.zz, sx + 14, sy, resting && pose === 'lie');
-  const showBub = c.state === 'asking' || (talk && c.state !== 'to_hall');
   if (showBub) {
     setText(c.o.bub, c.state === 'asking' ? c.question : c.bubble.text);
     c.o.bub.className = 'bub' + (c.state === 'asking' ? ' ask' : c.state === 'finishing' ? ' done' : '');
@@ -1283,7 +1284,8 @@ function updateGovernor(){
   const gAsk = openAskFor('gov');
   if (gAsk) govQm.setAttribute('data-open', gAsk.id); else govQm.removeAttribute('data-open');
   govQm.setAttribute('aria-label', '总督 等你' + (gAsk && gAsk.kind === 'permission' ? '批' : '回答') + '，点开看');
-  pin(govQm, sx + 30, sy - 6, !!(gAsk && gAsk.phase === 'owner'));
+  // above the bubble, never over it: a bubble reserves the spot at (sx, sy).
+  pin(govQm, sx, talking ? sy - 32 : sy, !!(gAsk && gAsk.phase === 'owner'));
   const [tx, ty] = toScreen(gov.x, 0, gov.y);
   pin(govTag, tx, ty + 38, govV.sel.visible);
 }
