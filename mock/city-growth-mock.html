@@ -132,7 +132,7 @@ td,th{border-bottom:1px solid var(--line);padding:4px 4px;text-align:left;vertic
 </script>
 <script>
 /* ---------- WORLD LAYOUT: reference algorithm (the server ports this to Python) ---------- */
-const CELL = 24, HALF = 12, R0 = 1.9, RMAX = 8.6, L0 = 50, LCAP = 100000, SEA_ROWS = 4;
+const CELL = 26, HALF = 13, R0 = 1.9, RMAX = 8.6, L0 = 50, LCAP = 1000000, SEA_ROWS = 8;
 const KIND_TYPE = { test:'tower', ui:'shop', script:'workshop', doc:'library', other:'house' };
 const TYPES = ['house','shop','tower','workshop','library'];
 const clampW = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -184,7 +184,10 @@ const GAPS = { 'grassland|mountain':'pass', 'desert|grassland':'ravine', 'forest
   'desert|mountain':'ravine', 'forest|mountain':'pass', 'coast|mountain':'river', 'desert|forest':'river', 'coast|desert':'river', 'coast|forest':'forest' };
 function gapOf(ta, tb){ return GAPS[[ta, tb].sort().join('|')] || 'river'; }
 const GAP_CH = { river:'w', ravine:'k', pass:'m', forest:'f' };
-function edgeNoise(a, c){ return 1 + clampW(Math.round(2 + 1.5 * Math.sin(a * .33 + c) + .9 * Math.sin(a * .87 + 2 * c)), 0, 4); }
+/* outer edge depth (1..6 tiles cut from a cell side with no neighbour) and gap belt bend (-2..2), both from the global coordinate along the side */
+function trimDepth(a, c){ return 1 + clampW(Math.round(2.5 + 1.3 * Math.sin(a * .31 + c) + .8 * Math.sin(a * .77 + 2 * c) + .5 * Math.sin(a * 1.53 + 3 * c) + .45 * Math.sin(a * 2.9 + 5 * c)), 0, 5); }
+function beltOffset(a, c){ return clampW(Math.round(1.5 * Math.sin(a * .23 + c) + .8 * Math.sin(a * .61 + 2 * c)), -2, 2); }
+function cornerCut(X, Z){ return 8 + Math.round(2 * Math.sin(X * .5 + Z * .3)); }
 /* whole land as one char grid. ' ' void  . wild  g territory ground  r road  t track  H hall  P open plot
    w river  k ravine  m mountain pass  f forest band  B bridge  b beach  s sea */
 function layout(world, plans){
@@ -207,18 +210,33 @@ function layout(world, plans){
   for (const id of ids) {
     const t = world.territories[id], plan = P(t.plan), [i, j] = t.slot, ox = i * CELL, oz = j * CELL;
     const nb = { N: bySlot.get([i, j - 1] + ''), S: bySlot.get([i, j + 1] + ''), W: bySlot.get([i - 1, j] + ''), E: bySlot.get([i + 1, j] + '') };
+    /* belts: the gap line between two cells, bent; bx / bz = first column / row of the east / south cell */
+    const vBelt = (bx, Z) => { const o = beltOffset(Z, bx * .37); return [bx - 1 + o, bx + o]; };
+    const hBelt = (bz, X) => { const o = beltOffset(X, bz * .41); return [bz - 1 + o, bz + o]; };
     for (let x = -HALF; x < HALF; x++) for (let z = -HALF; z < HALF; z++) {
       const X = ox + x, Z = oz + z, kN = z + HALF, kS = HALF - 1 - z, kW = x + HALF, kE = HALF - 1 - x;
-      const tN = edgeNoise(X, .7), tS = edgeNoise(X, 2.1), tW = edgeNoise(Z, 1.3), tE = edgeNoise(Z, 3.3);
+      const tN = trimDepth(X, .7), tS = trimDepth(X, 2.1), tW = trimDepth(Z, 1.3), tE = trimDepth(Z, 3.3), cc = cornerCut(X, Z);
+      const cut = (!nb.N && kN < tN) || (!nb.W && kW < tW) || (!nb.E && kE < tE) || (!plan.sea && !nb.S && kS < tS)
+        || (!nb.N && !nb.W && kN + kW < cc) || (!nb.N && !nb.E && kN + kE < cc) || (!nb.S && !nb.W && kS + kW < cc) || (!nb.S && !nb.E && kS + kE < cc);
       let c = '.';
-      if (plan.sea && ((!nb.W && kS + kW < 7) || (!nb.E && kS + kE < 7))) c = 's';
-      else if (plan.sea && kS < Math.min(tS, 3)) c = 'b';
-      else if ((!nb.N && kN < tN) || (!nb.S && kS < tS) || (!nb.W && kW < tW) || (!nb.E && kE < tE)
-        || (!nb.N && !nb.W && kN + kW < 9) || (!nb.N && !nb.E && kN + kE < 9) || (!nb.S && !nb.W && kS + kW < 9) || (!nb.S && !nb.E && kS + kE < 9)) c = ' ';
-      else for (const s of ['N', 'S', 'W', 'E']) { const k = { N: kN, S: kS, W: kW, E: kE }[s]; if (nb[s] && k === 0) c = GAP_CH[linkAt(id, nb[s]).gap]; }
+      const seaOk = (nb.E || kE >= trimDepth(Z, 6.1) - 1) && (nb.W || kW >= trimDepth(Z, 6.9) - 1);
+      if (plan.sea && (kS < tS + 1 || (cut && kS < 9))) c = seaOk ? 's' : ' ';
+      else if (cut) c = ' ';
+      else if (plan.sea && kS < tS + 3) c = 'b';
+      else {
+        const belts = [];
+        if (nb.E) belts.push([vBelt(ox + HALF, Z).includes(X), nb.E]);
+        if (nb.W) belts.push([vBelt(ox - HALF, Z).includes(X), nb.W]);
+        if (nb.S) belts.push([hBelt(oz + HALF, X).includes(Z), nb.S]);
+        if (nb.N) belts.push([hBelt(oz - HALF, X).includes(Z), nb.N]);
+        const hit = belts.find(b => b[0]);
+        if (hit) c = GAP_CH[linkAt(id, hit[1]).gap];
+      }
       set(X, Z, c);
     }
-    if (plan.sea) for (let x = -HALF; x < HALF; x++) for (let z = HALF; z < HALF + SEA_ROWS; z++) set(ox + x, oz + z, z === HALF && edgeNoise(ox + x, 4.2) >= 4 ? 'b' : 's');
+    if (plan.sea) for (let x = -HALF; x < HALF; x++) for (let z = HALF; z < HALF + SEA_ROWS; z++)
+      if (z - HALF < 1 + trimDepth(ox + x, 5.5) && get(ox + x, oz + z - 1) === 's'
+        && x + HALF >= trimDepth(oz + z, 6.9) + z - HALF && HALF - 1 - x >= trimDepth(oz + z, 6.1) + z - HALF) set(ox + x, oz + z, 's');
     const tr = territory(plan, id, t.lines);
     for (const k of tr.land) { const [x, z] = k.split(',').map(Number); if (get(ox + x, oz + z) === '.') set(ox + x, oz + z, tr.roads.has(k) ? 'r' : 'g'); }
     plan.plots.slice(0, tr.open).forEach(([x, z]) => set(ox + x, oz + z, 'P'));
@@ -268,8 +286,8 @@ const PAL = {
 };
 const FIX = { t:'#C9A874', w:'#6DB5E6', k:'#5A4A3F', m:'#8E8E8A', f:'#2E6A3A', B:'#A9743F', b:'#F5E2B2', s:'#7CC6E4' };
 const hash2 = (x, z, k) => { let h = Math.imul(x * 374761393 + z * 668265263 + k * 2147483647, 1274126177); h ^= h >>> 13; h = Math.imul(h, 1103515245); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
-const linesOf = v => v <= 0 ? 0 : Math.round(50 * Math.expm1(v / 1000 * Math.log1p(200000 / 50)));
-const sliderOf = l => l <= 0 ? 0 : Math.round(1000 * Math.log1p(l / 50) / Math.log1p(200000 / 50));
+const linesOf = v => v <= 0 ? 0 : Math.round(50 * Math.expm1(v / 1000 * Math.log1p(2000000 / 50)));
+const sliderOf = l => l <= 0 ? 0 : Math.round(1000 * Math.log1p(l / 50) / Math.log1p(2000000 / 50));
 const fmt = n => n.toLocaleString('en-US');
 
 let view = 'plans', planIdx = 0, linesP = 0, ghost = true;
@@ -401,7 +419,7 @@ document.addEventListener('click', e => {
 $('#linesP').addEventListener('input', e => { linesP = linesOf(+e.target.value); planPanel(); render(); });
 $('#linesL').addEventListener('input', e => { const t = world.territories[sel]; if (!t) return; t.lines = linesOf(+e.target.value); saved = JSON.stringify(world); landPanel(); render(); });
 $('#ghost').addEventListener('change', e => { ghost = e.target.checked; render(); });
-$('#presets').innerHTML = [[0, '第 0 天'], [500, '500 行'], [5000, '5 千'], [20000, '2 万'], [100000, '封顶 10 万+']].map(([l, t]) => `<button class="btn" data-preset="${l}">${t}</button>`).join('');
+$('#presets').innerHTML = [[0, '第 0 天'], [500, '500 行'], [5000, '5 千'], [20000, '2 万'], [250000, '25 万'], [1000000, '封顶 100 万+']].map(([l, t]) => `<button class="btn" data-preset="${l}">${t}</button>`).join('');
 cv.addEventListener('click', e => { if (view !== 'land' || !L) return; const r = cv.getBoundingClientRect();
   const X = L.x0 + Math.floor((e.clientX - r.left - offX) / px), Z = L.z0 + Math.floor((e.clientY - r.top - offY) / px);
   const t = L.terr.find(t => Math.abs(X - t.cx) <= HALF && Math.abs(Z - t.cz) <= HALF); if (t) { sel = t.id; refresh(); } });
