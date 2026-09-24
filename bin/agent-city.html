@@ -308,6 +308,13 @@ const TOKEN = (() => { const m = $('meta[name="city-token"]'); return m ? m.cont
 
 function h2r(h){ h = h.replace('#',''); return [0,2,4].map(i => parseInt(h.slice(i,i+2),16)); }
 function r2h(c){ return '#' + c.map(v => Math.round(clamp(v,0,255)).toString(16).padStart(2,'0')).join(''); }
+/* Growth ground/water: a hex colour as 0..1 rgb, for BufferGeometry vertex colours */
+function rgbOf(hex){ const c = h2r(hex); return [c[0] / 255, c[1] / 255, c[2] / 255]; }
+/* Growth ground/water: the terrain of the territory cell a world tile sits in (cell (i, j) = floor((X+13)/26), floor((Z+13)/26)) */
+function terrAtOf(view, X, Z){
+  const cellTerrain = new Map((view.territories || []).map(t => [t.slot[0] + ',' + t.slot[1], t.terrain]));
+  return cellTerrain.get(Math.floor((X + 13) / 26) + ',' + Math.floor((Z + 13) / 26)) || 'grassland';
+}
 function mix(a, b, t){ const A = h2r(a), B = h2r(b); return r2h(A.map((x,i) => x + (B[i]-x)*t)); }
 function sr(seed, i){ const x = Math.sin(seed*12.9898 + i*78.233) * 43758.5453; return x - Math.floor(x); }
 function isDark(){ const t = document.documentElement.getAttribute('data-theme'); if (t === 'dark') return true; if (t === 'light') return false; return matchMedia('(prefers-color-scheme: dark)').matches; }
@@ -897,8 +904,7 @@ const MODELS = [
   'commercial/building-j', 'commercial/building-skyscraper-a', 'commercial/building-skyscraper-b',
   'commercial/building-a', 'commercial/building-b', 'commercial/building-c', 'commercial/building-d',
   'industrial/building-a', 'industrial/building-b',
-  'nature/ground_grass', 'nature/ground_pathTile', 'nature/ground_riverStraight',
-  'nature/cliff_block_rock', 'nature/bridge_wood', 'nature/tree_default', 'nature/tree_oak', 'nature/flower_redA', 'nature/flower_yellowA',
+  'nature/bridge_wood', 'nature/tree_default', 'nature/tree_oak', 'nature/flower_redA', 'nature/flower_yellowA',
   'nature/flower_purpleA', 'nature/plant_bush', 'nature/plant_bushLarge', 'nature/lily_large',
   'nature/cactus_short', 'nature/cactus_tall', 'nature/tree_pineSmallA', 'nature/tree_pineSmallB', 'nature/tree_palmShort',
   'nature/rock_smallA', 'nature/rock_smallB',
@@ -919,15 +925,22 @@ const BUILD_MODELS = {
 };
 const TYPE_ZH = { house:'住宅', shop:'商店', tower:'测试塔', workshop:'工坊', library:'图书馆' };
 const DCOL = { house:'#F4A259', shop:'#FF7593', tower:'#4D7CFE', workshop:'#9C6B4E', library:'#2FB57A' };
-/* Growth: each plan's terrain changes the look only (ground/path colour, and which plants grow on wild tiles) */
+/* Growth: each plan's terrain changes the look only (ground/path colour, and which plants grow on wild tiles).
+   wild = the untouched land before a territory claims it; ground = claimed land, always a different shade. */
 const TERRAIN_LOOK = {
-  grassland: { ground:'#CBE8A9', path:'#E9D8AE', plants:['tree_default','tree_oak','flower_redA','flower_yellowA','flower_purpleA'] },
-  mountain:  { ground:'#C9D0BE', path:'#D8D1C2', plants:['tree_pineSmallA','tree_pineSmallB','rock_smallA','rock_smallB'] },
-  desert:    { ground:'#F4E0AE', path:'#D7B173', plants:['cactus_short','cactus_tall','rock_smallA'] },
-  forest:    { ground:'#A2CE8B', path:'#CFB68A', plants:['tree_pineSmallA','tree_pineSmallB','tree_default'] },
-  coast:     { ground:'#DAEEBB', path:'#F2E4B9', plants:['tree_palmShort','plant_bush'] },
+  grassland: { wild:'#8FC46B', ground:'#CBE8A9', path:'#E9D8AE', plants:['tree_default','tree_oak','flower_redA','flower_yellowA','flower_purpleA'] },
+  mountain:  { wild:'#8CA084', ground:'#C9D0BE', path:'#D8D1C2', plants:['tree_pineSmallA','tree_pineSmallB','rock_smallA','rock_smallB'] },
+  desert:    { wild:'#DEBB74', ground:'#F4E0AE', path:'#D7B173', plants:['cactus_short','cactus_tall','rock_smallA'] },
+  forest:    { wild:'#3F7A3C', ground:'#A2CE8B', path:'#CFB68A', plants:['tree_pineSmallA','tree_pineSmallB','tree_default'] },
+  coast:     { wild:'#9FD37E', ground:'#DAEEBB', path:'#F2E4B9', plants:['tree_palmShort','plant_bush'] },
 };
-const TRACK_COLOR = '#C9A874', BEACH_COLOR = '#F5E2B2';
+const TRACK_COLOR = '#C9A874';
+const BEACH_COLOR = '#F5E2B2';
+const PASS_COLOR = '#8C8C86';
+const FOREST_FLOOR = '#243B24';
+const ROCK_GREY = '#8A8A86';
+const RAVINE_FLOOR = '#33312F';
+const WATER_COLOR = '#3E86C4';
 /* #demo / file://: exactly `python3 bin/agent_city.py demo-world` prints (tests/test_agent_city_world.py) */
 const DEMO_WORLD = {"cell": 26, "x0": -13, "z0": -13, "w": 52, "h": 52, "rows": ["                                                    ", "                          .                         ", "       . .              ..ww               ..       ", "     .......      .   ....ww.  .   .     ....       ", "   .........    . ... ...ww.........   .......      ", "   .....................ww..........g  ggrgggg.     ", "  ......................ww......grggggggPrggggg     ", "   .....................ww.....ggrgPrPgggrPggg      ", "  ......................ww.....ggrPgrgggPrgggr      ", "   .........gr...........ww....gPrgPrPgPgrPgPrg.    ", "    ......rrrrrr.........ww....rrrrrrrrrrrrrrrP.    ", "      ...grggggr........ww....gggrPgrggggrgPgrgg.   ", "      ...rrgHHgrg.......ww....gggrgPrgHHgrPgPrPg    ", "     .....rgHHgrtttttttBBtttt.gggrPgrgHHgrgggrgg.   ", "    ......rggggr.......ww...t.gggrgPrggggrPgPrPg.   ", "    ......rrrrrr.......ww...t.gggrPgrrrrrrgggrgg.   ", "    ........rg.........ww...t..ggrgPrgPgPrPgPrg..   ", "   .........t...........ww..t...grbgrPgPgrgPgrg...  ", "    ........t............wwbttttbbbbrrrrrrrrrr...b  ", "    ........t............wbb.bbbbbsbbgPgPggg...b.   ", "     .......t.............bsbbbbssssbgbgg.bb...bs   ", "   .........t.............ssbssssssssbbbbbbbbbbss   ", "  ..........t.............sssssssssssbsbbbssbbss    ", " ...........tmm...........ssssssssssssssssssssss    ", "  .mmmmmmmmmtmmm..........sssssssssssssssssssssss   ", " .mmmmmmmmmmt..mmm........ssssssssssssssssssssssss  ", "  m.........t...mmmmmmm     ssssssssssssssssssssss  ", "   .........t.....mmmm      ssssssssssssssssssss    ", "    ........tt.......          sssssssssssssssss    ", "    .........t.......           ssssssssssssss      ", "   ..........t.......               s  sssssss      ", "    .........t.......                   sss         ", "    .......rrrr......                    s          ", "     .....ggPgg........                             ", "    .....ggggggg........                            ", "      ...gPgPgPgP........                           ", "      ..rrrrrrrrrr.....                             ", "     ...ggrggggPgPgg....                            ", "   ....ggPrgHHgggggg...                             ", "   ....gggrgHHgggggg....                            ", "   ....ggPrggggPgPg...                              ", "  .....rrrrrrrrrrr.....                             ", "  ......gPgPgPgPg.......                            ", "  ........ggggggg.......                            ", "    ........gggg.......                             ", "   ...........r......                               ", "   ....... ..........                               ", "  .......   ........                                ", "    ....       ..                                   ", "                                                    ", "                                                    ", "                                                    "], "territories": [{"id": "4d5d7e95", "name": "auto-pipeline", "plan": "meadow", "terrain": "grassland", "slot": [0, 0], "cx": 0, "cz": 0, "lines": 500, "size": 0.24212512553021587, "r": 3.522238341052446, "open": 0, "plots_total": 36, "plots": [], "buildings": []}, {"id": "8329562e", "name": "v4-plus", "plan": "harbor", "terrain": "coast", "slot": [1, 0], "cx": 26, "cz": 0, "lines": 1000000, "size": 1.0, "r": 8.6, "open": 35, "plots_total": 35, "plots": [{"k": 0, "x": 22, "z": -1, "d": "workshop"}, {"k": 1, "x": 26, "z": -4, "d": "tower"}, {"k": 2, "x": 29, "z": -1, "d": "house"}, {"k": 3, "x": 22, "z": 1, "d": "workshop"}, {"k": 4, "x": 29, "z": 1, "d": "house"}, {"k": 5, "x": 24, "z": -4, "d": "library"}, {"k": 6, "x": 25, "z": 3, "d": "shop"}, {"k": 7, "x": 21, "z": 0, "d": "workshop"}, {"k": 8, "x": 27, "z": 3, "d": "shop"}, {"k": 9, "x": 30, "z": -2, "d": "house"}, {"k": 10, "x": 21, "z": -2, "d": "workshop"}, {"k": 11, "x": 27, "z": -5, "d": "tower"}, {"k": 12, "x": 29, "z": -4, "d": "tower"}, {"k": 13, "x": 22, "z": -4, "d": "library"}, {"k": 14, "x": 21, "z": 2, "d": "workshop"}, {"k": 15, "x": 31, "z": -1, "d": "house"}, {"k": 16, "x": 22, "z": 3, "d": "workshop"}, {"k": 17, "x": 26, "z": 4, "d": "shop"}, {"k": 18, "x": 29, "z": 3, "d": "shop"}, {"k": 19, "x": 24, "z": 4, "d": "shop"}, {"k": 20, "x": 31, "z": 1, "d": "house"}, {"k": 21, "x": 24, "z": -6, "d": "library"}, {"k": 22, "x": 31, "z": -4, "d": "tower"}, {"k": 23, "x": 27, "z": -7, "d": "tower"}, {"k": 24, "x": 21, "z": -5, "d": "library"}, {"k": 25, "x": 29, "z": -6, "d": "tower"}, {"k": 26, "x": 31, "z": 3, "d": "house"}, {"k": 27, "x": 30, "z": 4, "d": "shop"}, {"k": 28, "x": 22, "z": -6, "d": "library"}, {"k": 29, "x": 33, "z": -1, "d": "house"}, {"k": 30, "x": 19, "z": -4, "d": "library"}, {"k": 31, "x": 33, "z": -3, "d": "house"}, {"k": 32, "x": 33, "z": 1, "d": "house"}, {"k": 33, "x": 25, "z": 6, "d": "shop"}, {"k": 34, "x": 27, "z": 6, "d": "shop"}], "buildings": [{"plot": 6, "type": "shop", "by": "worker", "x": 25, "z": 3}, {"plot": 1, "type": "tower", "by": "worker", "x": 26, "z": -4}]}, {"id": "db8c2db6", "name": "pos-lite", "plan": "ridge", "terrain": "mountain", "slot": [0, 1], "cx": 0, "cz": 26, "lines": 20000, "size": 0.6052343817819053, "r": 5.955070357938764, "open": 15, "plots_total": 37, "plots": [{"k": 0, "x": 2, "z": 24, "d": "workshop"}, {"k": 1, "x": -1, "z": 22, "d": "tower"}, {"k": 2, "x": 2, "z": 27, "d": "shop"}, {"k": 3, "x": 0, "z": 29, "d": "house"}, {"k": 4, "x": -4, "z": 27, "d": "house"}, {"k": 5, "x": -4, "z": 25, "d": "library"}, {"k": 6, "x": -3, "z": 22, "d": "library"}, {"k": 7, "x": 1, "z": 22, "d": "tower"}, {"k": 8, "x": -2, "z": 29, "d": "house"}, {"k": 9, "x": 4, "z": 24, "d": "workshop"}, {"k": 10, "x": 2, "z": 29, "d": "shop"}, {"k": 11, "x": -1, "z": 20, "d": "tower"}, {"k": 12, "x": 4, "z": 27, "d": "shop"}, {"k": 13, "x": -4, "z": 29, "d": "house"}, {"k": 14, "x": 3, "z": 22, "d": "workshop"}], "buildings": [{"plot": 3, "type": "house", "by": "worker", "x": 0, "z": 29}]}], "links": [{"a": "4d5d7e95", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[10, 0], [11, 0]]}, {"a": "4d5d7e95", "b": "db8c2db6", "gap": "pass", "kind": "road", "cross": [[-1, 10], [-1, 11]]}]};
 
@@ -1041,9 +1054,67 @@ function tintedMat(base, hex){
   return m;
 }
 
-/* ---------- the land: one land of territories, drawn from the server's view (requirements/city.md, Growth) ---------- */
+/* ---------- the land: one continuous ground + one continuous water, drawn from the server's view
+   (requirements/city.md, Growth; E2E bounce 2026-09-24: floating tiles, seams, brown-earth edges). ---------- */
 const landGroup = new THREE.Group(); world.add(landGroup);
 const hash2 = (x, z, k) => { let h = Math.imul(x * 374761393 + z * 668265263 + k * 2147483647, 1274126177); h ^= h >>> 13; h = Math.imul(h, 1103515245); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+/* groundGeometry(view) -> {positions, colors, indices}: one mesh, every land tile (all but void/water/ravine)
+   an exact 1x1 square at y 0, coloured by TERRAIN_LOOK / the gap colours; a rock-grey skirt (never brown
+   earth) down the outline next to void or a ravine; the ravine itself gets a dark floor well below ground. */
+function groundGeometry(view){
+  const positions = [], colors = [], indices = [];
+  const at = (X, Z) => { const r = Z - view.z0, c = X - view.x0; if (r < 0 || r >= view.h) return ' '; const row = view.rows[r] || ''; return c >= 0 && c < row.length ? row[c] : ' '; };
+  const gap = ch => ch === ' ' || ch === 'k';
+  const cl = v => v < 0 ? 0 : v > 1 ? 1 : v;
+  const quad = (x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3, rgb) => {
+    const base = positions.length / 3;
+    positions.push(x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3);
+    for (let i = 0; i < 4; i++) colors.push(rgb[0], rgb[1], rgb[2]);
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  };
+  const jitter = (X, Z, rgb) => { const j = (Math.abs(Math.sin(X * 12.9898 + Z * 78.233) * 43758.5453) % 1 - .5) * .05; return [cl(rgb[0] + j), cl(rgb[1] + j), cl(rgb[2] + j)]; };
+  const rock = rgbOf(ROCK_GREY);
+  for (let r = 0; r < view.h; r++) for (let c = 0; c < view.w; c++) {
+    const X = view.x0 + c, Z = view.z0 + r, ch = view.rows[r][c];
+    if (ch === 'k') { quad(X, -1.2, Z, X + 1, -1.2, Z, X + 1, -1.2, Z + 1, X, -1.2, Z + 1, rgbOf(RAVINE_FLOOR)); continue; }
+    if (ch === ' ' || ch === 'w' || ch === 's' || ch === 'B') continue;
+    const look = TERRAIN_LOOK[terrAtOf(view, X, Z)];
+    const rgb = jitter(X, Z,
+      ch === '.' ? rgbOf(look.wild) : ch === 'r' ? rgbOf(look.path) : ch === 't' ? rgbOf(TRACK_COLOR) :
+      ch === 'b' ? rgbOf(BEACH_COLOR) : ch === 'm' ? rgbOf(PASS_COLOR) : ch === 'f' ? rgbOf(FOREST_FLOOR) : rgbOf(look.ground));
+    quad(X, 0, Z, X + 1, 0, Z, X + 1, 0, Z + 1, X, 0, Z + 1, rgb);
+    if (gap(at(X, Z - 1))) quad(X, 0, Z, X + 1, 0, Z, X + 1, -1, Z, X, -1, Z, rock);
+    if (gap(at(X, Z + 1))) quad(X + 1, 0, Z + 1, X, 0, Z + 1, X, -1, Z + 1, X + 1, -1, Z + 1, rock);
+    if (gap(at(X - 1, Z))) quad(X, 0, Z + 1, X, 0, Z, X, -1, Z, X, -1, Z + 1, rock);
+    if (gap(at(X + 1, Z))) quad(X + 1, 0, Z, X + 1, 0, Z + 1, X + 1, -1, Z + 1, X + 1, -1, Z, rock);
+  }
+  return { positions, colors, indices };
+}
+/* waterGeometry(view) -> the same shape of object: one continuous surface over every river/bridge/sea tile */
+function waterGeometry(view){
+  const positions = [], colors = [], indices = [];
+  const rgb = rgbOf(WATER_COLOR);
+  for (let r = 0; r < view.h; r++) for (let c = 0; c < view.w; c++) {
+    const ch = view.rows[r][c]; if (ch !== 'w' && ch !== 's' && ch !== 'B') continue;
+    const X = view.x0 + c, Z = view.z0 + r, base = positions.length / 3;
+    positions.push(X, -.06, Z, X + 1, -.06, Z, X + 1, -.06, Z + 1, X, -.06, Z + 1);
+    for (let i = 0; i < 4; i++) colors.push(rgb[0], rgb[1], rgb[2]);
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+  return { positions, colors, indices };
+}
+function meshFromGeometry(geo, opt){
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(geo.positions), 3));
+  const col = new Float32Array(geo.colors.length), c = new THREE.Color();
+  for (let i = 0; i < geo.colors.length; i += 3) { c.setRGB(geo.colors[i], geo.colors[i + 1], geo.colors[i + 2]).convertSRGBToLinear(); col[i] = c.r; col[i + 1] = c.g; col[i + 2] = c.b; }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(geo.indices);
+  g.computeVertexNormals();
+  const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial(Object.assign({ vertexColors: true }, opt || {})));
+  mesh.receiveShadow = true;
+  return mesh;
+}
 function buildLand(view){
   while (landGroup.children.length) landGroup.remove(landGroup.children[0]);
   occupied.clear();
@@ -1057,32 +1128,23 @@ function buildLand(view){
   labels.length = 0;
   glows.length = 0;
   const territories = view.territories || [];
-  const cellTerrain = new Map(territories.map(t => [t.slot[0] + ',' + t.slot[1], t.terrain]));
-  const terrAt = (X, Z) => cellTerrain.get(Math.floor((X + 13) / 26) + ',' + Math.floor((Z + 13) / 26)) || 'grassland';
+
+  landGroup.add(meshFromGeometry(groundGeometry(view)));
+  const wg = waterGeometry(view);
+  if (wg.positions.length) landGroup.add(meshFromGeometry(wg, { transparent: true, opacity: .92 }));
+
+  // decoration on top of the ground: wild plants, forest-belt pines, mountain-pass rocks, bridge decks
   const by = {};
-  const add = (key, it, tint) => { const gk = key + (tint ? '|' + tint : ''); (by[gk] = by[gk] || { key, tint, items: [] }).items.push(it); };
-  const edge = [], ravine = [], pass = [];
+  const add = (key, it) => (by[key] = by[key] || []).push(it);
   for (let r = 0; r < view.h; r++) for (let c = 0; c < view.w; c++) {
     const ch = view.rows[r][c]; if (ch === ' ') continue;
-    const X = view.x0 + c, Z = view.z0 + r, look = TERRAIN_LOOK[terrAt(X, Z)], it = { x: X + .5, z: Z + .5, y: .05 };
+    const X = view.x0 + c, Z = view.z0 + r, look = TERRAIN_LOOK[terrAtOf(view, X, Z)], it = { x: X + .5, z: Z + .5, y: .03 };
     if (ch === '.') { if (hash2(X, Z, 1) < .2) add(look.plants[Math.floor(hash2(X, Z, 2) * look.plants.length)], Object.assign({}, it, { s: .45 + hash2(X, Z, 3) * .3, ry: hash2(X, Z, 4) * 7 })); }
-    else if (ch === 'g') add('ground_grass', it, look.ground);
-    else if (ch === 'r') add('ground_pathTile', it, look.path);
-    else if (ch === 't') add('ground_pathTile', it, TRACK_COLOR);
-    else if (ch === 'w' || ch === 's') add('ground_riverStraight', it);
-    else if (ch === 'B') { add('ground_riverStraight', it); add('bridge_wood', Object.assign({}, it, { y: .04 })); }
-    else if (ch === 'b') add('ground_pathTile', it, BEACH_COLOR);
-    else if (ch === 'k') ravine.push(Object.assign({}, it, { y: -.9 }));
-    else if (ch === 'm') pass.push(it);
+    else if (ch === 'B') add('bridge_wood', Object.assign({}, it, { y: .02 }));
     else if (ch === 'f') add('tree_pineSmallA', Object.assign({}, it, { s: .8 + hash2(X, Z, 5) * .3, ry: hash2(X, Z, 6) * 7 }));
-    if (ch !== 's' && ch !== 'b' && (tileAt(X - 1, Z) === ' ' || tileAt(X + 1, Z) === ' ' || tileAt(X, Z - 1) === ' ' || tileAt(X, Z + 1) === ' '))
-      edge.push({ x: X + .5, z: Z + .5, y: -1 });
+    else if (ch === 'm') add(hash2(X, Z, 7) < .5 ? 'rock_smallA' : 'rock_smallB', Object.assign({}, it, { ry: hash2(X, Z, 8) * 7 }));
   }
-  for (const gk in by) instanced(by[gk].key, by[gk].items, { keepY: true, shadow: false, parent: landGroup, tint: by[gk].tint });
-  instanced('cliff_block_rock', edge, { keepY: true, shadow: false, behind: true, parent: landGroup });
-  instanced('cliff_block_rock', ravine, { keepY: true, shadow: false, parent: landGroup });
-  instanced('rock_smallA', pass.filter((_, i) => i % 2 === 0), { parent: landGroup });
-  instanced('rock_smallB', pass.filter((_, i) => i % 2 === 1), { parent: landGroup });
+  for (const k in by) instanced(k, by[k], { keepY: true, shadow: false, parent: landGroup });
 
   for (const t of territories) {
     const hs = t.size < .15 ? 1.3 : 1.85;
@@ -1098,6 +1160,7 @@ function buildLand(view){
     for (const bd of t.buildings || []) newBuildingRecord(t.id, bd.plot, bd.type, bd.x, bd.z, bd.by, true);
     const el = ovEl('lbl'); setText(el, t.name); labels.push({ el, x: t.cx, h: 2.1 * (t.size < .15 ? .8 : 1), z: t.cz });
   }
+  updateHome(); // the world changed: look at a town hall, never at the empty middle of the land
   scanTall();
 }
 
@@ -1442,12 +1505,13 @@ function camTarget(){
 let camLiftNow = 0;
 function camLift(){
   const [tx, ty, tz] = camTarget(), sx = Math.sin(cam.az), sz = Math.cos(cam.az), reach = cam.dist * Math.cos(cam.el) + .3;
+  const atLimit = typeof land !== 'undefined' && cam.dist >= distMax() - .05; // at the limit, tall things by the middle must not tilt the view off the land
   let need = cam.el;
-  for (let r = .6; r <= reach; r += .2) {
+  if (!atLimit) for (let r = .6; r <= reach; r += .2) {
     const h = aroundH(tx + sx * r, tz + sz * r);
     if (h > 0) need = Math.max(need, Math.atan2(h + CAM_CLEAR - ty, r));
   }
-  const want = drag || pinch ? 0 : Math.min(need - cam.el, LIFT_MAX);
+  const want = (drag || pinch || atLimit) ? 0 : Math.min(need - cam.el, LIFT_MAX);
   camLiftNow += (want - camLiftNow) * .2;
   return cam.el + camLiftNow;
 }
@@ -1858,8 +1922,10 @@ function connectLive(){
 }
 let lastTouch = -Infinity;
 const camChanged = () => { needFrame = true; lastTouch = performance.now(); };
-$('#zin').addEventListener('click', () => { cam.dist = clamp(cam.dist / 1.25, DIST_MIN, distMax()); camChanged(); });
-$('#zout').addEventListener('click', () => { cam.dist = clamp(cam.dist * 1.25, DIST_MIN, distMax()); camChanged(); });
+/* zoomStep(k): k = +1 zooms out, -1 zooms in; a big enough step that a handful reach distMax() on any land */
+function zoomStep(k){ cam.dist = clamp(cam.dist * Math.pow(1.8, k), DIST_MIN, distMax()); camChanged(); }
+$('#zin').addEventListener('click', () => zoomStep(-1));
+$('#zout').addEventListener('click', () => zoomStep(1));
 $('#rot').addEventListener('click', () => { camTween = { from: cam.az, to: cam.az - Math.PI / 2, t: 0 }; camChanged(); });
 $('#zfit').addEventListener('click', () => { resetCam(); camChanged(); });
 let camTween = null;
@@ -1980,7 +2046,7 @@ Promise.all([
 ]).then(([, ...tex]) => {
   tex.forEach(t => { if (t) variations.push(t); });
   if (DEMO) buildLand(DEMO_WORLD);
-  updateHome(); makeGovernor(); buildLife();
+  makeGovernor(); buildLife();
   if (DEMO) seed(); else connectLive();
   $('#loading').hidden = true;
   new ResizeObserver(() => resize()).observe(stage);
