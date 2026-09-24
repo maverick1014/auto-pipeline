@@ -729,7 +729,7 @@ const scene = new THREE.Scene();
 const world = new THREE.Group();
 world.position.set(-6, 0, -5);
 scene.add(world);
-const camera = new THREE.PerspectiveCamera(FOV, 1, .1, 200);
+const camera = new THREE.PerspectiveCamera(FOV, 1, .25, 150);
 const cam = { az: Math.PI / 4, el: EL_DEFAULT, dist: DIST_DEFAULT, tx: 0, tz: 0 };
 
 const hemi = new THREE.HemisphereLight(0xffffff, 0xffffff, 1);
@@ -814,6 +814,7 @@ function instanced(key, items, opt){
       tmpM.compose(tmpP.set(it.x, y, it.z), tmpQ.setFromEuler(tmpE.set(0, it.ry || 0, 0)), tmpS.set(s, s, s));
       im.setMatrixAt(i, tmpM2.multiplyMatrices(tmpM, n.matrixWorld));
     });
+    if (o.behind) { im.material = n.material.clone(); im.material.polygonOffset = true; im.material.polygonOffsetFactor = 1; im.material.polygonOffsetUnits = 2; }
     im.castShadow = o.shadow !== false; im.receiveShadow = true; im.frustumCulled = false;
     world.add(im);
   });
@@ -836,7 +837,7 @@ function buildIsland(){
   const edge = [];
   for (let y = GY0; y <= GY1; y++) for (let x = 0; x <= GX1; x++)
     if (x === 0 || x === GX1 || y === GY0 || y === GY1) edge.push({ x: x + .5, z: y + .5, y: -1, s: 1 });
-  instanced('cliff_block_rock', edge, { keepY: true, shadow: false });
+  instanced('cliff_block_rock', edge, { keepY: true, shadow: false, behind: true });
 
   instanced('tree_default', TREES.filter((_, i) => i % 2 === 0).map(([x, y]) => ({ x: x + .5, z: y + .5, h: .95, ry: x })));
   instanced('tree_oak', TREES.filter((_, i) => i % 2 === 1).map(([x, y]) => ({ x: x + .5, z: y + .5, h: .9, ry: y })));
@@ -1515,13 +1516,13 @@ function seed(){
 /* ---------- boot: load the ready-made models, then run at a capped frame rate ---------- */
 let lastSim = performance.now(), lastDraw = 0, panelT = 0;
 function busy(){
-  if (drag && drag.moved || pinch || camTween) return true;
+  if (drag && drag.moved || pinch || camTween || autoRotating(performance.now())) return true;
   if (floaters.length) return true;
   return citizens.some(c => c.path.length || c.state === 'building' || c.state === 'spawn' || c.state === 'asking');
 }
+function autoRotating(now){ return !RM && !drag && !pinch && !camTween && now - lastTouch >= AUTO_ROT_IDLE_MS; }
 function autoRotate(now, dt){
-  if (RM || drag || pinch || camTween || now - lastTouch < AUTO_ROT_IDLE_MS) return;
-  cam.az -= dt * Math.PI * 2 / AUTO_ROT_SEC;
+  if (autoRotating(now)) cam.az -= dt * Math.PI * 2 / AUTO_ROT_SEC;
 }
 function frame(now){
   requestAnimationFrame(frame);
