@@ -519,6 +519,10 @@ function leave(c){
   c.rest = null;
   goTo(c, GATE, 'leaving');
 }
+function forceLeave(c){
+  releaseSlot(c);
+  leave(c);
+}
 function autoLeave(c){
   c.leaveFlag = true;
   leave(c);
@@ -563,7 +567,7 @@ function apply(ev){
       for (const old of citizens.slice()) {
         if (seen.has(old.id)) continue;
         old.leaveFlag = true;
-        if (old.state === 'resting') leave(old);
+        if (old.state === 'resting' || !old.doneFlag) forceLeave(old);
       }
       for (const a of agents) if (!byId(a.id)) placeAgent(a);
       if (ev.gov && ev.gov.state) setGovState(ev.gov.state);
@@ -618,7 +622,7 @@ function apply(ev){
     case 'leave': {
       if (!c) return null;
       c.leaveFlag = true;
-      if (c.state === 'resting') leave(c);
+      if (c.state === 'resting' || !c.doneFlag) forceLeave(c);
       log(`${c.task} 下班了`);
       return c;
     }
