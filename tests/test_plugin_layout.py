@@ -39,6 +39,8 @@ SHELL_SCRIPTS = [
     "agent-init.sh",
     "agent-runtime.sh",
     "agent-cloud-pack.sh",
+    "agent-city.sh",
+    "agent-city-hook.sh",
 ]
 # Sourced only, never run. agent-runtime.sh is in the list above instead,
 # because it is both: sourced by its callers and run by a skill.
@@ -46,7 +48,8 @@ SOURCED_ONLY = [
     "agent-roots.sh",
     "agent-resources.sh",
 ]
-BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py", "agent.conf.default"]
+BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py", "agent.conf.default",
+                                            "agent_city.py", "agent-city.html"]
 
 AGENT_FILES = ["fast-lane-deputy.md", "merge-deputy.md", "worker.md"]
 SKILL_DIRS = ["dispatch", "merge", "init", "cloud-pack"]
@@ -191,6 +194,54 @@ class TestHooksJson(unittest.TestCase):
         command = self.command()
         self.assertNotIn("$CLAUDE_PLUGIN_ROOT/", command,
                          "use ${CLAUDE_PLUGIN_ROOT}, with the braces")
+
+
+class TestCityHooks(unittest.TestCase):
+    """The agent city listens to these events, all through one guarded command.
+
+    With the city off, the guard is one `test -f` in the shell Claude Code
+    starts anyway, so the hook script itself never runs.
+    """
+
+    COMMAND = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
+               '"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh"; exit 0')
+    EVENTS = ["PreToolUse", "PostToolUse", "PermissionRequest", "PermissionDenied",
+              "SubagentStart", "SubagentStop", "Notification", "UserPromptSubmit",
+              "Stop", "SessionEnd"]
+
+    def hooks(self):
+        return load_json("hooks", "hooks.json")["hooks"]
+
+    def test_each_event_has_one_city_entry(self):
+        hooks = self.hooks()
+        for event in self.EVENTS:
+            with self.subTest(event=event):
+                entries = hooks.get(event, [])
+                self.assertEqual(len(entries), 1, entries)
+                inner = entries[0]["hooks"]
+                self.assertEqual(inner, [{"type": "command", "command": self.COMMAND,
+                                          "timeout": 5}])
+
+    def test_pre_tool_use_only_for_the_three_tools(self):
+        self.assertEqual(self.hooks()["PreToolUse"][0].get("matcher"),
+                         "Agent|Task|AskUserQuestion")
+
+    def test_the_other_events_have_no_matcher(self):
+        hooks = self.hooks()
+        for event in self.EVENTS[1:]:
+            with self.subTest(event=event):
+                self.assertNotIn("matcher", hooks[event][0])
+
+    def test_session_start_is_still_only_agent_start(self):
+        entries = self.hooks()["SessionStart"]
+        self.assertEqual(len(entries), 1)
+        self.assertNotIn("agent-city", json.dumps(entries))
+
+    def test_nothing_else_is_hooked(self):
+        self.assertEqual(sorted(self.hooks()), sorted(["SessionStart"] + self.EVENTS))
+
+    def test_readme_names_the_city_script(self):
+        self.assertIn("bin/agent-city.sh", read("README.md"))
 
 
 class TestRepoSettings(unittest.TestCase):
