@@ -52,7 +52,7 @@ BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py", "agent.conf.default
                                             "agent_city.py", "agent-city.html"]
 
 AGENT_FILES = ["fast-lane-deputy.md", "merge-deputy.md", "worker.md"]
-SKILL_DIRS = ["dispatch", "merge", "init", "cloud-pack"]
+SKILL_DIRS = ["dispatch", "merge", "init", "cloud-pack", "city"]
 
 ALLOW_RULES = [
     "Bash(git push origin --delete *)",
@@ -314,6 +314,31 @@ class TestSkillFrontmatter(unittest.TestCase):
                 data = frontmatter(read("skills", name, "SKILL.md"))
                 self.assertEqual(data.get("name"), name)
                 self.assertTrue(data.get("description", "").strip())
+
+
+class TestCitySkill(unittest.TestCase):
+    """/auto-pipeline:city starts the agent city in one step.
+
+    The human never types the plugin's install path: the skill runs the
+    start script and hands back the URL, and says how to stop it.
+    """
+
+    def text(self):
+        return read("skills", "city", "SKILL.md")
+
+    def test_it_runs_the_start_script_from_the_plugin_root(self):
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}/bin/agent-city.sh start", self.text())
+
+    def test_it_says_how_to_stop_and_the_demo(self):
+        text = self.text()
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}/bin/agent-city.sh stop", text)
+        self.assertIn("#demo", text)
+
+    def test_it_says_a_new_session_picks_up_the_hooks(self):
+        self.assertIn("new session", self.text().lower())
+
+    def test_readme_lists_the_command(self):
+        self.assertIn("/auto-pipeline:city", read("README.md"))
 
 
 class TestInitSkill(unittest.TestCase):
