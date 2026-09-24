@@ -159,7 +159,12 @@ CONTRACT
       when; another side first: 晚了一步.
     Decisions: fetch('/api/decide') POST, JSON, header 'X-City-Token'. A 409
       shows the closed state. The page never calls /api/gov/ and never
-      offers the governor approving (no 总督批准).
+      offers the governor approving (no 总督批准). Any other failure (network,
+      400, 403) is said in the panel, never swallowed.
+    askClosedLine(view): top-level; may use only esc; view.closed = {by,
+      verb, text, reason, at}. Verb closed (the terminal took it, or a 409
+      whose details are not known yet) is neutral: never 批准, 拒绝 or 回答.
+      Quotes around real text are “ ” as in the rest of the page.
     A red "?" (.qm button with data-open) above an agent whose ask is with
       the owner. renderStats adds <button id="next"> 等你 <n>, which opens the
       oldest. Phone: the @media (max-width: 960px) block has an .ask rule.
@@ -351,7 +356,7 @@ def style():
 def function_source(name):
     """Source of the top-level `function name(...) {...}` in the inline script."""
     text = inline_script()
-    m = re.search(r"^function %s\s*\(" % re.escape(name), text, re.M)
+    m = re.search(r"^(?:async\s+)?function %s\s*\(" % re.escape(name), text, re.M)
     if not m:
         return None
     i = text.index("{", m.end())
@@ -1468,6 +1473,53 @@ class TestInteraction(unittest.TestCase):
                 self.assertNotIn("批了", line)
         self.assertNotIn("理由：", out[8], "a deny without a reason must not show one")
         self.assertNotIn("你", out[9])
+        self.assertIn("“4791”", out[5], "real text goes in “ ” like the rest of the page")
+        for word in ("批准", "拒绝", "回答"):
+            self.assertNotIn(word, out[11], "closed in the terminal is not an approval, denial or answer")
+
+    def test_closed_line(self):
+        fn = function_source("askClosedLine")
+        self.assertIsNotNone(fn, "function askClosedLine(view) not found")
+        esc = function_source("esc") or "const esc = s => String(s).replace(/[&<>\"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '\"':'&quot;' }[ch]));"
+        at = 1790000000000
+        def v(kind, by, verb, text="", reason=""):
+            return {"id": "a1", "kind": kind, "tool": "Bash", "what": "npm test",
+                    "closed": {"by": by, "verb": verb, "text": text, "reason": reason, "at": at}}
+        cases = [
+            v("permission", "terminal", "closed"),
+            v("question", "terminal", "closed"),
+            v("permission", "owner", "closed"),
+            v("permission", "owner", "allow"),
+            v("permission", "owner", "deny", reason="keep dist/"),
+            v("question", "owner", "answer", text="4791"),
+            v("question", "governor", "answer", text="4791"),
+            v("permission", "terminal", "allow"),
+        ]
+        js = ("const fs = require('fs'); const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));\n"
+              + esc + "\n" + fn + "\n"
+              + "process.stdout.write(JSON.stringify(data.map(x => askClosedLine(x).replace(/<[^>]+>/g, ''))));")
+        out = run_node(js, cases)
+        for i in (0, 1, 2):
+            for word in ("批准", "拒绝", "回答"):
+                with self.subTest(case=i, word=word):
+                    self.assertNotIn(word, out[i])
+        self.assertIn("终端", out[0])
+        self.assertIn("晚了一步", out[0])
+        self.assertIn("批准", out[3])
+        self.assertNotIn("晚了一步", out[3])
+        self.assertIn("keep dist/", out[4])
+        self.assertIn("“4791”", out[5])
+        self.assertIn("总督", out[6])
+        self.assertIn("晚了一步", out[6])
+        self.assertIn("终端", out[7])
+        self.assertIn("批准", out[7])
+
+    def test_failures_are_said_not_swallowed(self):
+        body = function_source("decide") or ""
+        self.assertTrue(body, "function decide(...) not found")
+        self.assertNotRegex(body, r"catch\s*\(\s*\w*\s*\)\s*\{\s*(/\*.*?\*/)?\s*\}",
+                            "a failed decision must be shown in the panel")
+        self.assertRegex(body, r"\.ok\b|status\s*[!<>]=?", "non-409 errors must be handled too")
 
 
 if __name__ == "__main__":
