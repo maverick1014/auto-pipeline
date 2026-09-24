@@ -1069,6 +1069,7 @@ function tintedMat(base, hex){
 /* ---------- the land: one continuous ground + one continuous water, drawn from the server's view
    (requirements/city.md, Growth; E2E bounce 2026-09-24: floating tiles, seams, brown-earth edges). ---------- */
 const landGroup = new THREE.Group(); world.add(landGroup);
+let firstViewDone = false; // only the first world sends the camera home; a later one (growth, a recount) never snaps it back
 const hash2 = (x, z, k) => { let h = Math.imul(x * 374761393 + z * 668265263 + k * 2147483647, 1274126177); h ^= h >>> 13; h = Math.imul(h, 1103515245); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 /* groundGeometry(view) -> {positions, colors, indices}: one mesh, every land tile (all but void/water/ravine)
    an exact 1x1 square at y 0, coloured by TERRAIN_LOOK / the gap colours; a rock-grey skirt (never brown
@@ -1181,7 +1182,7 @@ function buildLand(view){
     const el = ovEl('lbl'); setText(el, t.name); labels.push({ el, x: t.cx, h: 2.1 * (t.size < .15 ? .8 : 1), z: t.cz });
   }
   updateHome(); // the world changed: look at a town hall, never at the empty middle of the land
-  if (lastTouch === -Infinity) resetCam(); // the first view: home, not the land's empty middle; never after the user has touched the camera
+  if (!firstViewDone && lastTouch === -Infinity) { firstViewDone = true; resetCam(); } // only the first world goes home; a later one never snaps the camera back
   scanTall();
 }
 
