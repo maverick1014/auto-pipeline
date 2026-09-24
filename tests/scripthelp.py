@@ -60,6 +60,10 @@ COPY_BIN = [
     "agent-runtime.sh",
     "agent_conf.py",
     "agent.conf.default",
+    "agent-city.sh",
+    "agent-city-hook.sh",
+    "agent_city.py",
+    "agent-city.html",
 ]
 
 # Copied into the temp plugin's root.

@@ -1,0 +1,1303 @@
+<title>Agent City</title>
+<meta name="description" content="Clickable mock: every coding agent is a person in a small city. They build on a task, walk to the governor when stuck, and rest when done.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+:root{
+  --paper:#E5EBF0; --panel:#F6F8FA; --panel-2:#ECF0F3; --ink:#15202B; --ink-2:#465665; --ink-3:#768594;
+  --line:#CAD4DD; --accent:#F2B632; --accent-ink:#2E2200; --sign:#1E5B45; --sign-ink:#F3F6F2;
+  --stage:#D3E3EA; --focus:#1F6FB2;
+  --build-bg:#DCE9F5; --build-ink:#1C5A8F; --ask-bg:#F7DEE1; --ask-ink:#9C2735;
+  --rest-bg:#DAF0E3; --rest-ink:#1D7048; --walk-bg:#E6EAEE; --walk-ink:#526170;
+  --gov-bg:#F5E7C4; --gov-ink:#6B4A00;
+  --shadow:0 1px 0 rgba(21,32,43,.04),0 10px 28px -16px rgba(21,32,43,.35);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0D131A; --panel:#141C25; --panel-2:#1A2430; --ink:#E2E8EE; --ink-2:#9CABBA; --ink-3:#6B7B8B;
+    --line:#243140; --sign:#1B5140; --sign-ink:#EEF3EE; --stage:#0F1B24; --focus:#7DB8EA;
+    --build-bg:#16304A; --build-ink:#9CCBF2; --ask-bg:#3D1A21; --ask-ink:#F2A3AE;
+    --rest-bg:#143528; --rest-ink:#8FDDB2; --walk-bg:#1E2833; --walk-ink:#A3B1BF;
+    --gov-bg:#3A2E12; --gov-ink:#F2D489;
+    --shadow:0 10px 28px -16px rgba(0,0,0,.7);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0D131A; --panel:#141C25; --panel-2:#1A2430; --ink:#E2E8EE; --ink-2:#9CABBA; --ink-3:#6B7B8B;
+  --line:#243140; --sign:#1B5140; --sign-ink:#EEF3EE; --stage:#0F1B24; --focus:#7DB8EA;
+  --build-bg:#16304A; --build-ink:#9CCBF2; --ask-bg:#3D1A21; --ask-ink:#F2A3AE;
+  --rest-bg:#143528; --rest-ink:#8FDDB2; --walk-bg:#1E2833; --walk-ink:#A3B1BF;
+  --gov-bg:#3A2E12; --gov-ink:#F2D489;
+  --shadow:0 10px 28px -16px rgba(0,0,0,.7);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.5 "Noto Sans SC",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.app{max-width:1500px;margin-inline:auto;padding-inline:16px;padding-block:12px 20px;display:flex;flex-direction:column;gap:12px;min-height:100dvh}
+
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.sign{display:inline-flex;align-items:baseline;gap:10px;background:var(--sign);color:var(--sign-ink);padding:5px 14px 4px;border-radius:6px;box-shadow:inset 0 0 0 2px var(--sign),inset 0 0 0 3.5px var(--sign-ink)}
+.sign-name{font:800 26px/1.1 "Big Shoulders Display","Noto Sans SC",sans-serif;letter-spacing:.05em;text-transform:uppercase}
+.sign-sub{font:600 11px/1 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;opacity:.85}
+.stats{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
+.stat{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:13px;color:var(--ink-2)}
+.stat b{color:var(--ink);font-variant-numeric:tabular-nums;font-weight:700}
+.stat i{width:8px;height:8px;border-radius:50%;display:block}
+
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:12px;flex:1;min-height:0}
+.stage-col{display:flex;flex-direction:column;gap:8px;min-width:0}
+.stage{position:relative;border-radius:14px;overflow:hidden;background:var(--stage);border:1px solid var(--line);height:calc(100dvh - 142px);min-height:440px}
+.stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.stage canvas.grabbing{cursor:grabbing}
+.stage canvas.pointing{cursor:pointer}
+.tape{position:absolute;inset:0 0 auto 0;height:20px;display:flex;align-items:center;justify-content:center;background:repeating-linear-gradient(-45deg,var(--accent) 0 12px,#1C1C1A 12px 24px);pointer-events:none}
+.tape span{background:var(--accent);color:var(--accent-ink);font:600 11px/1 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.06em;padding:4px 10px;border-radius:3px}
+.zoom{position:absolute;top:30px;right:10px;display:flex;flex-direction:column;gap:4px}
+.zoom .btn{width:34px;justify-content:center;padding:0}
+
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px}
+.group{display:inline-flex;align-items:center;gap:4px}
+.sep{width:1px;height:22px;background:var(--line)}
+.clock{margin-left:auto;font:600 12px/1 "IBM Plex Mono",ui-monospace,monospace;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.btn{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:8px;padding:0 11px;min-height:34px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--ink-3)}
+.btn:focus-visible,select:focus-visible,.row:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.btn[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.primary{background:var(--accent);border-color:#C8921A;color:var(--accent-ink);font-weight:700}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn svg{width:14px;height:14px}
+select{font:inherit;font-size:13px;min-height:34px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:8px;padding:0 8px}
+
+.panel{display:flex;flex-direction:column;gap:12px;min-width:0;max-height:calc(100dvh - 96px);overflow:auto;padding-bottom:2px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.card h2{margin:0 0 8px;display:flex;align-items:baseline;gap:8px;font:700 15px/1.2 "Noto Sans SC",sans-serif;color:var(--ink)}
+.card h2 .en{font:800 13px/1 "Big Shoulders Display",sans-serif;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.intro{margin:0;color:var(--ink-2);font-size:13px}
+
+.hat{--c:#2F7FC1;--h:#F2B632;position:relative;width:22px;height:22px;flex:none}
+.hat::before{content:"";position:absolute;left:4px;right:4px;bottom:1px;height:9px;border-radius:5px 5px 2px 2px;background:var(--c)}
+.hat::after{content:"";position:absolute;left:2px;right:2px;top:3px;height:9px;border-radius:9px 9px 1px 1px;background:var(--h);box-shadow:0 2px 0 -1px color-mix(in srgb,var(--h) 60%,#000)}
+.hat.crown::after{top:2px;left:4px;right:4px;height:9px;border-radius:1px;background:var(--accent);clip-path:polygon(0 100%,0 20%,25% 60%,50% 0,75% 60%,100% 20%,100% 100%);box-shadow:none}
+
+.roster{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.row{width:100%;display:grid;grid-template-columns:22px minmax(0,1fr) auto;align-items:center;gap:10px;padding:6px 8px;border-radius:8px;border:1px solid transparent;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.row:hover{background:var(--panel-2)}
+.row[aria-current="true"]{border-color:var(--ink-3);background:var(--panel-2)}
+.who{min-width:0;display:flex;flex-direction:column}
+.who b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who span{font:12px/1.3 "IBM Plex Mono",ui-monospace,monospace;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{font-size:12px;line-height:1;padding:5px 9px;border-radius:999px;white-space:nowrap;font-weight:500}
+.pill.build{background:var(--build-bg);color:var(--build-ink)}
+.pill.ask{background:var(--ask-bg);color:var(--ask-ink)}
+.pill.rest{background:var(--rest-bg);color:var(--rest-ink)}
+.pill.walk{background:var(--walk-bg);color:var(--walk-ink)}
+.pill.gov{background:var(--gov-bg);color:var(--gov-ink)}
+
+.detail{display:flex;flex-direction:column;gap:10px}
+.d-head{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:10px;align-items:center}
+.d-name{font-weight:700;font-size:16px;line-height:1.3;overflow-wrap:anywhere}
+.d-role{font:12px/1.3 "IBM Plex Mono",ui-monospace,monospace;color:var(--ink-3)}
+.d-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13px;color:var(--ink-2)}
+.track{height:8px;border-radius:4px;background:var(--panel-2);border:1px solid var(--line);overflow:hidden}
+.track i{display:block;height:100%;border-radius:3px;transition:width .4s}
+.d-tools{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0}
+.d-tools div{background:var(--panel-2);border-radius:8px;padding:6px 8px}
+.d-tools dt{font:11px/1.2 "IBM Plex Mono",ui-monospace,monospace;color:var(--ink-3)}
+.d-tools dd{margin:0;font-weight:700;font-variant-numeric:tabular-nums}
+.d-qa{margin:0;display:flex;flex-direction:column;gap:4px;font-size:13px}
+.d-qa p{margin:0;color:var(--ink-2)}
+.d-qa b{color:var(--ink);font-weight:600}
+.d-actions{display:flex;flex-wrap:wrap;gap:6px}
+.d-note{margin:0;font-size:12px;color:var(--ink-3)}
+.hint{margin:0;color:var(--ink-3);font-size:13px}
+
+.log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto}
+.log li{display:grid;grid-template-columns:62px minmax(0,1fr);gap:8px;font-size:13px;line-height:1.45}
+.log time{font:12px/1.45 "IBM Plex Mono",ui-monospace,monospace;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.log .ask{color:var(--ask-ink)}
+.log .done{color:var(--rest-ink)}
+
+.legend{width:100%;border-collapse:collapse;font-size:13px}
+.legend th{text-align:left;font:600 11px/1.2 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.04em;color:var(--ink-3);padding:0 0 6px}
+.legend td{padding:6px 0;border-top:1px solid var(--line);vertical-align:top}
+.legend td:first-child{width:46%;padding-right:10px;font-weight:500}
+.legend td:last-child{color:var(--ink-2)}
+
+@media (max-width: 960px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+  .stage{height:min(64vh,calc(100vw * .9));min-height:320px}
+  .panel{max-height:none;overflow:visible}
+  .stats{margin-left:0}
+}
+@media (prefers-reduced-motion: reduce){ .track i{transition:none} }
+</style>
+
+<div class="app">
+  <header class="bar">
+    <div class="sign"><span class="sign-name">Agent City</span><span class="sign-sub">auto-pipeline</span></div>
+    <div class="stats" id="stats" aria-live="polite"></div>
+  </header>
+
+  <main class="layout">
+    <section class="stage-col" aria-label="城市">
+      <div class="stage" id="stage">
+        <canvas id="city" aria-label="Agent 小城：每个人是一个 agent" role="img"></canvas>
+        <div class="tape"><span>原型 · 模拟数据</span></div>
+        <div class="zoom">
+          <button class="btn" id="zin" type="button" aria-label="放大">+</button>
+          <button class="btn" id="zout" type="button" aria-label="缩小">−</button>
+          <button class="btn" id="zfit" type="button" aria-label="全景">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="toolbar" role="toolbar" aria-label="控制">
+        <button class="btn" id="play" type="button" aria-pressed="false">
+          <svg id="icon-pause" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg>
+          <svg id="icon-play" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" hidden><path d="M4 2.5v11l9-5.5z"/></svg>
+          <span id="play-label">暂停</span>
+        </button>
+        <div class="group" role="group" aria-label="速度">
+          <button class="btn" type="button" data-speed="1" aria-pressed="true">1×</button>
+          <button class="btn" type="button" data-speed="2" aria-pressed="false">2×</button>
+          <button class="btn" type="button" data-speed="4" aria-pressed="false">4×</button>
+        </div>
+        <span class="sep" aria-hidden="true"></span>
+        <div class="group">
+          <label for="role" class="hint" style="margin-right:2px">派一个</label>
+          <select id="role">
+            <option value="worker">worker · 盖房子</option>
+            <option value="task-manager">task manager · 测试塔</option>
+            <option value="fast-lane-deputy">fast-lane deputy · 花园</option>
+            <option value="merge-deputy">merge deputy · 桥</option>
+          </select>
+          <button class="btn primary" id="spawn" type="button">派出</button>
+        </div>
+        <span class="clock" id="clock"></span>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <section class="card">
+        <p class="intro">这是原型，人和任务都是假的。每个小人是一个 agent：分到任务就去盖楼，卡住了就走去市政厅问总督，做完了就去休息。点城里的人看详情。</p>
+      </section>
+      <section class="card detail" id="detail" aria-live="polite"></section>
+      <section class="card">
+        <h2><span class="en">Citizens</span>市民</h2>
+        <ul class="roster" id="roster"></ul>
+      </section>
+      <section class="card">
+        <h2><span class="en">Log</span>动态</h2>
+        <ol class="log" id="log"></ol>
+      </section>
+      <section class="card">
+        <h2><span class="en">Legend</span>怎么看这座城</h2>
+        <table class="legend">
+          <thead><tr><th>城里看到的</th><th>真实 agent 在做的</th></tr></thead>
+          <tbody>
+            <tr><td>从市政厅走出来</td><td>主对话派出一个 agent</td></tr>
+            <tr><td>空地插上小旗</td><td>分到任务，定下做哪一块</td></tr>
+            <tr><td>楼一层一层长高</td><td>改文件（Edit / Write）</td></tr>
+            <tr><td>头上飘出 Bash / Read</td><td>跑命令或测试 / 读文件</td></tr>
+            <tr><td>头顶「？」走去市政厅</td><td>卡住了：要问问题或等权限</td></tr>
+            <tr><td>总督回话，它走回工地</td><td>拿到答案，继续干</td></tr>
+            <tr><td>封顶放烟花，去长椅或咖啡馆</td><td>任务做完</td></tr>
+            <tr><td>走出城门</td><td>agent 结束</td></tr>
+          </tbody>
+        </table>
+        <table class="legend" style="margin-top:12px">
+          <thead><tr><th>谁</th><th>盖什么</th></tr></thead>
+          <tbody>
+            <tr><td>worker（黄帽）</td><td>房子</td></tr>
+            <tr><td>task manager（白帽）</td><td>测试塔，带吊车</td></tr>
+            <tr><td>fast-lane deputy（绿帽）</td><td>花园，小而快</td></tr>
+            <tr><td>merge deputy（橙帽）</td><td>过河的桥，接到 main</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const canvas = $('#city'), ctx = canvas.getContext('2d'), stage = $('#stage');
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const BASE = Date.now();
+
+/* ---------- colour ---------- */
+function h2r(h){ h = h.replace('#',''); return [0,2,4].map(i => parseInt(h.slice(i,i+2),16)); }
+function r2h(c){ return '#' + c.map(v => Math.round(clamp(v,0,255)).toString(16).padStart(2,'0')).join(''); }
+const mixCache = new Map();
+function mix(a, b, t){ const k = a+b+t; let v = mixCache.get(k); if (v) return v; const A = h2r(a), B = h2r(b); v = r2h(A.map((x,i) => x + (B[i]-x)*t)); mixCache.set(k, v); return v; }
+const shade = (c, t) => t < 0 ? mix(c, '#000000', -t) : mix(c, '#ffffff', t);
+function sr(seed, i){ const x = Math.sin(seed*12.9898 + i*78.233) * 43758.5453; return x - Math.floor(x); }
+function isDark(){ const t = document.documentElement.getAttribute('data-theme'); if (t === 'dark') return true; if (t === 'light') return false; return matchMedia('(prefers-color-scheme: dark)').matches; }
+
+const PAL = {
+  day:{ grass:'#9DC77F', grass2:'#95C177', park:'#8BC06D', park2:'#84BA66', road:'#CCC5B6', road2:'#C4BCAB', stripe:'#EFE8D6', plaza:'#DDD4C3', plaza2:'#D4CAB7', water:'#6DB1D8', water2:'#9ACCE8', bank:'#B5D398', dirt:'#8E6E4F', dirt2:'#7A5C41', waterSide:'#3F84AE', shadow:'rgba(25,40,25,.20)', win:'#A8CCE2', winLit:'#FFE39A', trunk:'#7A5A3A', leaf:'#5A9C4B', leaf2:'#73B35E', leafHi:'#98CC7E', text:'#15202B', bubble:'#FFFFFF', bubbleLine:'#15202B', wood:'#B8874A', night:false },
+  night:{ grass:'#2B4535', grass2:'#284131', park:'#29472F', park2:'#26432C', road:'#3A4049', road2:'#353B44', stripe:'#5B626C', plaza:'#444950', plaza2:'#3F444B', water:'#1B3955', water2:'#2F5A80', bank:'#284030', dirt:'#3A2E24', dirt2:'#2F251D', waterSide:'#122A40', shadow:'rgba(0,0,0,.38)', win:'#2A3442', winLit:'#FFD36B', trunk:'#4A3A2A', leaf:'#2D5638', leaf2:'#386644', leafHi:'#4A7A55', text:'#E2E8EE', bubble:'#F4F6F8', bubbleLine:'#0D131A', wood:'#9C7A47', night:true },
+};
+
+/* ---------- roles & words ---------- */
+const ROLES = {
+  'task-manager':     { zh:'任务经理',   color:'#7A5CC7', hat:'#F4F2EA', kind:'tower'  },
+  'worker':           { zh:'工人',       color:'#2F7FC1', hat:'#F2B632', kind:'house'  },
+  'fast-lane-deputy': { zh:'快车道副手', color:'#2E9B68', hat:'#6FD39C', kind:'garden' },
+  'merge-deputy':     { zh:'合并副手',   color:'#E07B39', hat:'#F59B5E', kind:'bridge' },
+};
+const KIND_ZH = { house:'房子', tower:'测试塔', garden:'花园', bridge:'桥' };
+const STATE = {
+  spawn:['walk','出门'], to_plot:['walk','去工地'], building:['build','施工中'],
+  to_hall:['ask','去问总督'], asking:['ask','在问总督'], heard:['ask','拿到答案'],
+  back:['walk','回工地'], finishing:['rest','封顶了'], to_rest:['rest','去休息'],
+  resting:['rest','休息中'], leaving:['walk','下班回家'],
+};
+const TASKS = {
+  'worker':['设置页表单','登录 API','导出 CSV','深色模式','小票打印','搜索框','分页','价格计算','库存提醒','客户列表'],
+  'task-manager':['设置页','登录','报表','打印','库存'],
+  'fast-lane-deputy':['错别字','按钮颜色','图标大小','标题换行','空状态文案'],
+  'merge-deputy':['合并 settings','合并 login','合并 report','合并 print'],
+};
+const QA = [
+  ['测试名不清楚，用哪个？','按默认，记进日志'],
+  ['API 路径用哪个？','用 /api/settings'],
+  ['要不要加分页？','先不加，写进 ideas'],
+  ['默认语言是？','zh，跟 agent.conf'],
+  ['旧数据要迁移吗？','要，先写测试'],
+  ['这个文件能改吗？','能，只改你那份'],
+  ['可以跑这条命令吗？','批了，继续'],
+];
+
+/* ---------- map ---------- */
+const GX1 = 11, GY0 = -2, GY1 = 11;
+const tiles = {};
+const T = (x, y) => tiles[x + ',' + y];
+for (let y = GY0; y <= GY1; y++) for (let x = 0; x <= GX1; x++) {
+  let t = 'grass';
+  if (y === -2) t = 'bank';
+  else if (y === -1) t = 'water';
+  else if (x === 4 || x === 7 || y === 4 || y === 7) t = 'road';
+  else if (x >= 5 && x <= 6 && y >= 5 && y <= 6) t = 'hall';
+  else if (x >= 5 && x <= 6 && y >= 8) t = 'plaza';
+  else if (x >= 8 && y >= 8) t = 'park';
+  tiles[x + ',' + y] = t;
+}
+tiles['5,10'] = 'cafe';
+
+const TREES = [[0,0],[10,1],[0,5],[2,10],[8,11],[11,8],[11,11]];
+const STATIC_BLOCK = new Set(TREES.map(p => p + ''));
+STATIC_BLOCK.add('9,9');
+const PLOTS = [[3,0],[3,2],[0,3],[2,3],[1,1],[5,3],[6,3],[5,1],[6,1],[8,3],[10,3],[9,1],[11,1],[3,5],[3,6],[1,6],[9,6],[11,6],[8,5],[3,9],[3,11],[1,9],[1,11]];
+const INNER = new Set(['1,1','5,1','6,1','9,1','11,1','1,9','1,11','8,5']);
+const PLOT_SET = new Set(PLOTS.map(p => p + ''));
+const BRIDGE_X = [4, 7, 10, 1];
+const LAMPS = [[4.12,4.12],[7.88,4.12],[4.12,7.88],[7.88,7.88],[4.12,1.5],[7.88,1.5],[4.12,10.5],[1.5,4.12],[10.5,4.12],[1.5,7.88],[10.5,7.88]];
+const BENCHES = [[10.5,8.28],[8.5,10.28]];
+const REST = [
+  {x:10.5,y:8.5,pose:'bench'},{x:8.5,y:10.5,pose:'bench'},
+  {x:9.5,y:10.3,pose:'sit'},{x:10.3,y:9.5,pose:'sit'},
+  {x:6.42,y:10.5,pose:'cafe'},{x:6.42,y:11.45,pose:'cafe'},{x:5.5,y:11.5,pose:'cafe'},
+  {x:9.45,y:11.5,pose:'lie'},{x:11.5,y:9.45,pose:'lie'},{x:2.5,y:9.5,pose:'lie'},
+  {x:0.5,y:1.45,pose:'lie'},{x:10.5,y:2.35,pose:'lie'},{x:0.5,y:6.4,pose:'lie'},
+];
+const HALL_SLOTS = [[6.5,8.3],[5.5,8.3],[6.5,9.25],[5.5,9.25],[4.5,8.4]].map(([x,y]) => ({x, y, by:0}));
+const DOOR = {x:6.0, y:7.1};
+const GATE = {x:7.5, y:11.9};
+
+function frontOf(x, y){
+  for (const [a,b] of [[x,y+1],[x+1,y]]) if (T(a,b) === 'road') return [a,b];
+  for (const [a,b] of [[x,y+1],[x+1,y],[x-1,y],[x,y-1]]) {
+    const t = T(a,b);
+    if (t && !['water','hall','cafe','bank'].includes(t) && !PLOT_SET.has(a+','+b) && !STATIC_BLOCK.has(a+','+b)) return [a,b];
+  }
+  return [x, y+1];
+}
+const occupied = new Map();
+function walkable(x, y){
+  const t = T(x, y);
+  if (!t || t === 'water' || t === 'hall' || t === 'cafe' || t === 'bank') return false;
+  const k = x + ',' + y;
+  return !STATIC_BLOCK.has(k) && !occupied.has(k);
+}
+function findPath(sx, sy, tx, ty){
+  const s = [Math.floor(sx), Math.floor(sy)], g = [Math.floor(tx), Math.floor(ty)];
+  const sk = s + '', gk = g + '';
+  if (sk === gk) return [];
+  const prev = { [sk]: null }, q = [s];
+  while (q.length) {
+    const [x, y] = q.shift();
+    if (x + ',' + y === gk) break;
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const nx = x + dx, ny = y + dy, nk = nx + ',' + ny;
+      if (nk in prev) continue;
+      if (nk !== gk && !walkable(nx, ny)) continue;
+      prev[nk] = [x, y]; q.push([nx, ny]);
+    }
+  }
+  if (!(gk in prev)) return null;
+  const out = []; let cur = g;
+  while (cur && cur + '' !== sk) { out.push([cur[0] + .5, cur[1] + .5]); cur = prev[cur + '']; }
+  return out.reverse();
+}
+
+/* ---------- world state ---------- */
+let simT = 0, speed = 1, paused = false;
+const citizens = [], buildings = [], particles = [], floaters = [], logEntries = [];
+let cid = 0, bid = 0;
+let selected = null; // {t:'c', id} | {t:'gov'} | {t:'b', id}
+const gov = { x:6.62, y:7.45, bubble:null, answered:0, dispatched:0 };
+const SKIN = ['#F1C9A5','#E3B089','#C98E63','#9A6444','#F6D9C2'];
+
+function say(o, text, dur){ o.bubble = { text, until: simT + dur }; }
+function logAt(t, text, kind){ logEntries.unshift({ t, text, kind: kind || '' }); if (logEntries.length > 60) logEntries.pop(); dirty.log = true; }
+const log = (text, kind) => logAt(simT, text, kind);
+
+function newBuilding(kind, gx, gy, role){
+  const color = ROLES[role].color;
+  const b = { id:++bid, kind, gx, gy, role, color, wall:mix(color,'#ffffff',.62), roof:mix(color,'#000000',.12),
+    target:0, shown:0, done:false, doneAt:0, seed:Math.random()*1000, name:'', ownerId:0, ownerName:'' };
+  buildings.push(b);
+  occupied.set(gx + ',' + gy, b);
+  return b;
+}
+function removeBuilding(b){
+  const i = buildings.indexOf(b); if (i >= 0) buildings.splice(i, 1);
+  if (occupied.get(b.gx + ',' + b.gy) === b) occupied.delete(b.gx + ',' + b.gy);
+  if (selected && selected.t === 'b' && selected.id === b.id) selected = null;
+}
+function standFor(kind, x, y){
+  if (kind === 'bridge') return { x: x + .5, y: .32 };
+  const [fx, fy] = frontOf(x, y);
+  return { x: fx + .5 + (x - fx) * .3, y: fy + .5 + (y - fy) * .3 };
+}
+function demolishOldest(kind){
+  const cands = buildings.filter(b => b.done && (kind === 'bridge' ? b.kind === 'bridge' : b.kind !== 'bridge') && !citizens.some(c => c.id === b.ownerId));
+  cands.sort((a, b) => a.doneAt - b.doneAt);
+  const b = cands[0]; if (!b) return false;
+  removeBuilding(b);
+  puff(b.gx + .5, b.kind === 'bridge' ? -.5 : b.gy + .5, 14);
+  log(`拆掉最旧的${KIND_ZH[b.kind]}（${b.name}），腾出空地`);
+  return true;
+}
+function allocPlot(kind){
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (kind === 'bridge') {
+      const x = BRIDGE_X.find(x => !occupied.has(x + ',-1'));
+      if (x !== undefined) return { x, y: -1 };
+    } else {
+      let free = PLOTS.filter(p => !occupied.has(p + ''));
+      if (kind === 'garden' && free.some(p => INNER.has(p + ''))) free = free.filter(p => INNER.has(p + ''));
+      if (kind !== 'garden' && free.some(p => !INNER.has(p + ''))) free = free.filter(p => !INNER.has(p + ''));
+      if (free.length) { const p = pick(free); return { x: p[0], y: p[1] }; }
+    }
+    if (!demolishOldest(kind)) return null;
+  }
+  return null;
+}
+function newCitizen(role, task){
+  const R = ROLES[role];
+  return { id:++cid, role, task, color:R.color, hat:R.hat, skin:pick(SKIN), x:DOOR.x, y:DOOR.y, path:[], state:'spawn', stateT:0,
+    alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0}, work:0, bld:null, stand:null, slot:null, rest:null,
+    question:'', answer:'', answered:false, pendingAnswer:'', askT:0, stuck:false, doneFlag:false, leaveFlag:false,
+    qa:[], bubble:null, facing:1, walkT:Math.random()*5, feed:null, gone:false, dustT:0 };
+}
+const byId = id => citizens.find(c => c.id === id);
+
+/* ---------- movement ---------- */
+function goTo(c, target, state){
+  const p = findPath(c.x, c.y, target.x, target.y);
+  c.path = p && p.length ? [...p.slice(0, -1), [target.x, target.y]] : [[target.x, target.y]];
+  c.state = state; c.stateT = 0;
+}
+function move(c, dt){
+  const [tx, ty] = c.path[0];
+  const dx = tx - c.x, dy = ty - c.y, d = Math.hypot(dx, dy), sp = 1.9 * dt;
+  if (Math.abs(dx - dy) > .01) c.facing = (dx - dy) > 0 ? 1 : -1;
+  c.walkT += dt;
+  if (d <= sp) { c.x = tx; c.y = ty; c.path.shift(); if (!c.path.length) onArrive(c); }
+  else { c.x += dx / d * sp; c.y += dy / d * sp; }
+}
+function onArrive(c){
+  switch (c.state) {
+    case 'to_plot': case 'back':
+      c.state = 'building'; c.stateT = 0;
+      if (c.stuck) goHall(c); else if (c.doneFlag) finish(c);
+      break;
+    case 'to_hall': c.state = 'asking'; c.stateT = 0; c.askT = simT; break;
+    case 'to_rest': c.state = 'resting'; c.stateT = 0; if (c.leaveFlag) leave(c); break;
+  }
+}
+function goHall(c){
+  let slot = HALL_SLOTS.find(s => !s.by);
+  if (slot) slot.by = c.id; else slot = { x: 4.5 + Math.random() * .6, y: 8.9 + Math.random() * .6, by: c.id, extra: true };
+  c.slot = slot;
+  goTo(c, slot, 'to_hall');
+}
+function releaseSlot(c){ if (c.slot && !c.slot.extra) c.slot.by = 0; c.slot = null; }
+function giveAnswer(c){
+  say(gov, c.answer, 2.6); gov.answered++;
+  c.qa.push({ q: c.question, a: c.answer });
+  c.state = 'heard'; c.stateT = 0;
+}
+function finish(c){
+  const b = c.bld;
+  if (b) { b.done = true; b.doneAt = simT; b.target = 1; burst(b); }
+  c.state = 'finishing'; c.stateT = 0;
+  say(c, '完工！', 1.4);
+}
+function goRest(c){
+  const free = REST.filter(r => !r.by);
+  let spot = free.length ? pick(free) : null;
+  if (spot) spot.by = c.id;
+  else {
+    const grass = Object.keys(tiles).filter(k => ['grass','park'].includes(tiles[k]) && walkable(...k.split(',').map(Number)));
+    const [gx, gy] = pick(grass).split(',').map(Number);
+    spot = { x: gx + .5, y: gy + .5, pose: 'lie', by: c.id, extra: true };
+  }
+  c.rest = spot;
+  goTo(c, spot, 'to_rest');
+}
+function leave(c){
+  if (c.rest && !c.rest.extra) c.rest.by = 0;
+  c.rest = null;
+  goTo(c, GATE, 'leaving');
+}
+
+/* ---------- events: the same contract the real version will read ---------- */
+const WEIGHT = { Edit:1, Write:1, Bash:.6, Read:.3 };
+const KSCALE = { house:4.5, tower:5.5, garden:2.2, bridge:1.8 };
+function apply(ev){
+  const c = ev.id ? byId(ev.id) : null;
+  switch (ev.type) {
+    case 'spawn': {
+      const R = ROLES[ev.role];
+      const plot = allocPlot(R.kind);
+      if (!plot) { log(`没有空地了：${ev.task} 先等等`); return null; }
+      const n = newCitizen(ev.role, ev.task);
+      const b = newBuilding(R.kind, plot.x, plot.y, ev.role);
+      b.name = ev.task; b.ownerId = n.id; b.ownerName = `${ev.role} · ${ev.task}`;
+      n.bld = b; n.stand = standFor(R.kind, plot.x, plot.y);
+      citizens.push(n);
+      say(gov, `去吧：${ev.task}`, 1.8); gov.dispatched++;
+      log(`总督派出 ${ev.role}：${ev.task}`);
+      return n;
+    }
+    case 'tool': {
+      if (!c) return null;
+      c.tools[ev.tool] = (c.tools[ev.tool] || 0) + 1;
+      c.work += WEIGHT[ev.tool] || .5;
+      if (c.bld && !c.bld.done) c.bld.target = .92 * (1 - Math.exp(-c.work / KSCALE[c.bld.kind]));
+      floaters.push({ text: ev.tool, x: c.x, y: c.y, t0: simT, color: c.color });
+      return c;
+    }
+    case 'stuck': {
+      if (!c) return null;
+      c.stuck = true; c.question = ev.question; c.answered = false; c.answer = '';
+      if (['building','to_plot','back'].includes(c.state)) goHall(c);
+      log(`${c.task} 卡住了：“${ev.question}” → 去问总督`, 'ask');
+      return c;
+    }
+    case 'answer': {
+      if (!c) return null;
+      c.answer = ev.answer; c.answered = true; c.stuck = false;
+      log(`总督回答 ${c.task}：“${ev.answer}”`);
+      return c;
+    }
+    case 'done': {
+      if (!c || c.doneFlag) return null;
+      c.doneFlag = true;
+      if (c.state === 'building') finish(c);
+      log(`${c.task} 完工：${KIND_ZH[ROLES[c.role].kind]}封顶，去休息`, 'done');
+      return c;
+    }
+    case 'leave': {
+      if (!c) return null;
+      c.leaveFlag = true;
+      if (c.state === 'resting') leave(c);
+      log(`${c.task} 下班了`);
+      return c;
+    }
+  }
+  return null;
+}
+const emit = ev => apply(ev);
+
+/* ---------- demo feed (mock only: stands in for real agent events) ---------- */
+function makeFeed(role, stuckChance){
+  const s = [];
+  if (role === 'worker') {
+    s.push('Read'); if (Math.random() < .5) s.push('Read');
+    const n = Math.floor(rnd(6, 11));
+    for (let i = 0; i < n; i++) { s.push(Math.random() < .8 ? 'Edit' : 'Write'); if (i % 3 === 2) s.push('Bash'); }
+    s.push('Bash');
+  } else if (role === 'task-manager') {
+    s.push('Read', 'Read');
+    const n = Math.floor(rnd(5, 8)); for (let i = 0; i < n; i++) s.push('Write');
+    s.push('Bash', 'Bash');
+  } else if (role === 'fast-lane-deputy') {
+    s.push('Read', 'Edit', 'Edit'); if (Math.random() < .5) s.push('Edit');
+  } else {
+    s.push('Bash', 'Bash', 'Bash', 'Bash'); if (Math.random() < .4) s.push('Bash');
+  }
+  const seq = s.map(tool => ({ t:'tool', tool }));
+  const p = stuckChance ?? (role === 'merge-deputy' ? .2 : .4);
+  if (Math.random() < p) { const [q, a] = pick(QA); seq.splice(Math.floor(rnd(1, seq.length - 1)), 0, { t:'stuck', q, a }); }
+  seq.push({ t:'done' }, { t:'leave' });
+  return { steps: seq, next: 0, restSince: 0, restFor: rnd(16, 30) };
+}
+function feed(c){
+  const f = c.feed; if (!f || simT < f.next) return;
+  const s = f.steps[0]; if (!s) return;
+  if (c.doneFlag && s.t !== 'leave') { f.steps = f.steps.filter(x => x.t === 'leave'); return; }
+  if (s.t === 'leave') {
+    if (c.state !== 'resting') return;
+    if (!f.restSince) { f.restSince = simT; return; }
+    if (simT - f.restSince < f.restFor) return;
+    f.steps.shift(); emit({ type:'leave', id:c.id }); return;
+  }
+  if (c.state !== 'building') return;
+  f.steps.shift();
+  if (s.t === 'tool') { emit({ type:'tool', id:c.id, tool:s.tool }); f.next = simT + rnd(.55, 1.35); }
+  else if (s.t === 'stuck') { c.pendingAnswer = s.a; emit({ type:'stuck', id:c.id, question:s.q }); f.next = simT + .6; }
+  else if (s.t === 'done') emit({ type:'done', id:c.id });
+}
+function spawnDemo(role, task){
+  if (!task) {
+    const busy = new Set(citizens.map(c => c.task));
+    const opts = TASKS[role].filter(t => !busy.has(t));
+    task = pick(opts.length ? opts : TASKS[role]);
+  }
+  const c = emit({ type:'spawn', role, task });
+  if (c) c.feed = makeFeed(role);
+  return c;
+}
+let nextSpawn = 6;
+function spawner(){
+  if (simT < nextSpawn) return;
+  nextSpawn = simT + rnd(7, 13);
+  const active = citizens.filter(c => STATE[c.state][0] !== 'rest' && c.state !== 'leaving').length;
+  if (active >= 6) return;
+  const r = Math.random();
+  spawnDemo(r < .5 ? 'worker' : r < .65 ? 'task-manager' : r < .85 ? 'fast-lane-deputy' : 'merge-deputy');
+}
+
+/* ---------- effects ---------- */
+function burst(b){
+  const cx = b.gx + .5, cy = b.kind === 'bridge' ? -.5 : b.gy + .5;
+  const h = b.kind === 'tower' ? 70 : b.kind === 'house' ? 48 : 14;
+  const n = RM ? 6 : 26;
+  for (let i = 0; i < n; i++) particles.push({ x:cx, y:cy, z:h, vx:rnd(-40,40), vz:rnd(40,110), sx:0, life:rnd(.9,1.6), t:0, c:pick(['#F2B632', b.color, '#FFFFFF', '#E8574F']), kind:'spark' });
+}
+function puff(x, y, n){ for (let i = 0; i < n; i++) particles.push({ x, y, z:rnd(2,10), vx:rnd(-18,18), vz:rnd(6,22), sx:0, life:rnd(.5,1), t:0, c:'rgba(160,150,130,.6)', kind:'dust' }); }
+
+/* ---------- update ---------- */
+function update(dt){
+  simT += dt;
+  for (const c of citizens) {
+    c.stateT += dt;
+    if (c.state === 'spawn') { c.alpha = Math.min(1, c.alpha + dt * 2.5); if (c.stateT > .7) { if (c.stuck) goHall(c); else goTo(c, c.stand, 'to_plot'); } }
+    else if (c.path.length) move(c, dt);
+    switch (c.state) {
+      case 'building':
+        if (c.bld) { const bx = c.bld.gx + .5, by = c.bld.kind === 'bridge' ? -.5 : c.bld.gy + .5; c.facing = ((bx - by) - (c.x - c.y)) >= 0 ? 1 : -1; }
+        c.dustT += dt;
+        if (!RM && c.dustT > .9) { c.dustT = 0; const b = c.bld; if (b && !b.done) puff(b.gx + .5, b.kind === 'bridge' ? -.2 : b.gy + .5, 2); }
+        break;
+      case 'asking':
+        if (c.answered && simT - c.askT > .9) giveAnswer(c);
+        else if (!c.answered && simT - c.askT > 1.9) emit({ type:'answer', id:c.id, answer: c.pendingAnswer || pick(QA)[1] });
+        break;
+      case 'heard':
+        if (c.stateT > 1.5) { releaseSlot(c); say(c, '明白！', 1.1); goTo(c, c.stand, 'back'); }
+        break;
+      case 'finishing': if (c.stateT > 1.5) goRest(c); break;
+      case 'leaving': if (!c.path.length) { c.alpha -= dt * 2; if (c.alpha <= 0) c.gone = true; } break;
+    }
+    feed(c);
+  }
+  for (let i = citizens.length - 1; i >= 0; i--) if (citizens[i].gone) {
+    const c = citizens[i];
+    if (selected && selected.t === 'c' && selected.id === c.id) selected = c.bld && buildings.includes(c.bld) ? { t:'b', id:c.bld.id } : null;
+    citizens.splice(i, 1);
+  }
+  for (const b of buildings) {
+    if (b.done) b.shown = Math.min(1, b.shown + dt * 1.2);
+    else { const o = byId(b.ownerId); if (o && o.state === 'building') b.shown += (b.target - b.shown) * Math.min(1, dt * 1.6); }
+  }
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i]; p.t += dt;
+    if (p.t > p.life) { particles.splice(i, 1); continue; }
+    p.sx += p.vx * dt; p.z += p.vz * dt; p.vz -= (p.kind === 'spark' ? 160 : 10) * dt;
+  }
+  for (let i = floaters.length - 1; i >= 0; i--) if (simT - floaters[i].t0 > 1.2) floaters.splice(i, 1);
+  spawner();
+}
+
+/* ---------- view ---------- */
+const S = { tw:48, th:24, u:1, ox:0, oy:0, W:0, H:0, dpr:1 };
+const view = { zoom:1, fx:4.5, fy:3.5, fit:48, user:false };
+function iso(x, y, z = 0){ return [S.ox + (x - y) * S.tw / 2, S.oy + (x + y) * S.th / 2 - z]; }
+function resize(){
+  const r = stage.getBoundingClientRect();
+  S.W = r.width; S.H = r.height; S.dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = Math.round(S.W * S.dpr); canvas.height = Math.round(S.H * S.dpr);
+  view.fit = Math.min(S.W / 13.3, (S.H - 20) / 8.9);
+  if (!view.user) resetView();
+}
+function resetView(){
+  view.zoom = 1; view.fx = 4.5; view.fy = 3.6;
+  if (view.fit < 32) { view.zoom = clamp(36 / view.fit, 1, 2.2); view.fx = 5.2; view.fy = 4.6; }
+}
+function applyView(){
+  view.fx = clamp(view.fx, 0, 12); view.fy = clamp(view.fy, -2, 12);
+  S.tw = view.fit * view.zoom; S.th = S.tw / 2; S.u = S.tw / 48;
+  S.ox = S.W / 2 - (view.fx - view.fy) * S.tw / 2;
+  S.oy = (S.H + 20) / 2 - (view.fx + view.fy) * S.th / 2;
+}
+
+/* ---------- drawing primitives ---------- */
+function poly(pts, fill){ ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); }
+function tile(x0, y0, x1, y1, fill){ const p = [iso(x0,y0), iso(x1,y0), iso(x1,y1), iso(x0,y1)]; poly(p, fill); ctx.strokeStyle = fill; ctx.lineWidth = 1; ctx.stroke(); }
+function box(x0, y0, x1, y1, z0, z1, top, left, right){
+  const a = iso(x0,y0,z1), b = iso(x1,y0,z1), c = iso(x1,y1,z1), d = iso(x0,y1,z1);
+  const b0 = iso(x1,y0,z0), c0 = iso(x1,y1,z0), d0 = iso(x0,y1,z0);
+  poly([b,c,c0,b0], right); poly([d,c,c0,d0], left); poly([a,b,c,d], top);
+}
+const faceY = (y, xa, xb, za, zb, f) => poly([iso(xa,y,zb), iso(xb,y,zb), iso(xb,y,za), iso(xa,y,za)], f);
+const faceX = (x, ya, yb, za, zb, f) => poly([iso(x,ya,zb), iso(x,yb,zb), iso(x,yb,za), iso(x,ya,za)], f);
+function ell(x, y, rx, ry, fill){ ctx.beginPath(); ctx.ellipse(x, y, Math.max(.1,rx), Math.max(.1,ry), 0, 0, Math.PI*2); ctx.fillStyle = fill; ctx.fill(); }
+function line(x0, y0, x1, y1, color, w){ ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.stroke(); }
+function rrect(x, y, w, h, r){ ctx.beginPath(); ctx.moveTo(x+r, y); ctx.arcTo(x+w, y, x+w, y+h, r); ctx.arcTo(x+w, y+h, x, y+h, r); ctx.arcTo(x, y+h, x, y, r); ctx.arcTo(x, y, x+w, y, r); ctx.closePath(); }
+function pyramid(x0, y0, x1, y1, z, h, color, o){
+  const a = iso(x0-o,y0-o,z), b = iso(x1+o,y0-o,z), c = iso(x1+o,y1+o,z), d = iso(x0-o,y1+o,z), ap = iso((x0+x1)/2, (y0+y1)/2, z + h);
+  poly([a,b,ap], shade(color,-.22)); poly([a,d,ap], shade(color,-.1)); poly([d,c,ap], shade(color,.08)); poly([b,c,ap], shade(color,-.14));
+}
+
+/* ---------- ground ---------- */
+function drawGround(P){
+  const u = S.u, sh = 9 * u;
+  for (let y = GY0; y <= GY1; y++) {
+    const t = T(GX1, y), p0 = iso(GX1+1, y), p1 = iso(GX1+1, y+1);
+    poly([p0, p1, [p1[0], p1[1]+sh], [p0[0], p0[1]+sh]], t === 'water' ? P.waterSide : P.dirt2);
+  }
+  for (let x = 0; x <= GX1; x++) {
+    const p0 = iso(x, GY1+1), p1 = iso(x+1, GY1+1);
+    poly([p0, p1, [p1[0], p1[1]+sh], [p0[0], p0[1]+sh]], P.dirt);
+  }
+  for (let y = GY0; y <= GY1; y++) for (let x = 0; x <= GX1; x++) {
+    const t = T(x, y), odd = ((x * 7 + y * 13) % 3) === 0;
+    let f = P.grass;
+    if (t === 'grass') f = odd ? P.grass2 : P.grass;
+    else if (t === 'park') f = (x + y) % 2 ? P.park2 : P.park;
+    else if (t === 'road' || t === 'hall') f = t === 'hall' ? P.plaza2 : P.road;
+    else if (t === 'plaza' || t === 'cafe') f = (x + y) % 2 ? P.plaza2 : P.plaza;
+    else if (t === 'water') f = P.water;
+    else if (t === 'bank') f = P.bank;
+    tile(x, y, x+1, y+1, f);
+    if (t === 'road') {
+      const vx = (x === 4 || x === 7), hy = (y === 4 || y === 7);
+      if (vx && !hy) { const a = iso(x+.5, y+.25), b = iso(x+.5, y+.75); line(a[0], a[1], b[0], b[1], P.stripe, 1.3*u); }
+      if (hy && !vx) { const a = iso(x+.25, y+.5), b = iso(x+.75, y+.5); line(a[0], a[1], b[0], b[1], P.stripe, 1.3*u); }
+    }
+    if (t === 'water' && !RM) {
+      for (let k = 0; k < 2; k++) {
+        const ph = (simT * .25 + sr(x, k) ) % 1, yy = y + .2 + ph * .6, xx = x + .2 + sr(x+k, 3) * .5;
+        const a = iso(xx, yy), b = iso(xx + .22, yy);
+        ctx.globalAlpha = Math.sin(ph * Math.PI) * .8; line(a[0], a[1], b[0], b[1], P.water2, 1.2*u); ctx.globalAlpha = 1;
+      }
+    }
+  }
+  const m = iso(.35, -1.55);
+  ctx.font = `600 ${Math.max(10, 11*u)}px "IBM Plex Mono", monospace`;
+  ctx.fillStyle = P.night ? 'rgba(226,232,238,.75)' : 'rgba(21,32,43,.6)';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText('main', m[0], m[1]);
+}
+
+/* ---------- scenery ---------- */
+function drawTree(x, y, P, scale = 1){
+  const [sx, sy] = iso(x, y), u = S.u * scale;
+  ell(sx, sy, 9*u, 4.5*u, P.shadow);
+  ctx.fillStyle = P.trunk; ctx.fillRect(sx - 1.5*u, sy - 12*u, 3*u, 12*u);
+  ell(sx, sy - 19*u, 9.5*u, 9*u, P.leaf);
+  ell(sx - 4.5*u, sy - 14.5*u, 6.5*u, 6*u, P.leaf2);
+  ell(sx + 4.5*u, sy - 15.5*u, 6*u, 5.5*u, P.leaf2);
+  ell(sx - 3*u, sy - 22*u, 3.2*u, 2.8*u, P.leafHi);
+}
+function drawLamp(x, y, P){
+  const u = S.u, [sx, sy] = iso(x, y);
+  line(sx, sy, sx, sy - 22*u, P.night ? '#8A94A0' : '#5C6670', 1.4*u);
+  ell(sx, sy - 23*u, 2.4*u, 2.4*u, P.night ? '#FFE7A6' : '#E9EDF0');
+}
+function drawBench(x, y, P){
+  const u = S.u, c = P.night ? '#6B5236' : '#A0703F';
+  box(x - .28, y - .06, x + .28, y + .06, 3*u, 4.5*u, shade(c,.1), c, shade(c,-.18));
+  box(x - .28, y - .08, x + .28, y - .04, 4.5*u, 9*u, shade(c,.05), shade(c,-.05), shade(c,-.2));
+}
+function drawFountain(P){
+  const u = S.u, [sx, sy] = iso(9.5, 9.5), rx = .36 * S.tw, ry = rx / 2;
+  const stone = P.night ? '#5A5F66' : '#D8D2C6';
+  ell(sx, sy, rx, ry, shade(stone, -.2));
+  ctx.fillStyle = shade(stone, -.1); ctx.fillRect(sx - rx, sy - 5*u, rx * 2, 5*u);
+  ell(sx, sy - 5*u, rx, ry, stone);
+  ell(sx, sy - 5*u, rx * .82, ry * .82, P.water);
+  ctx.fillStyle = shade(stone, -.05); ctx.fillRect(sx - 2*u, sy - 16*u, 4*u, 11*u);
+  const n = RM ? 0 : 10;
+  for (let i = 0; i < n; i++) {
+    const ph = (simT * .9 + i / n) % 1, ang = i / n * Math.PI * 2;
+    const px = sx + Math.cos(ang) * rx * .6 * ph, py = sy - 16*u - Math.sin(ph * Math.PI) * 9*u + ph * 11*u + Math.sin(ang) * ry * .6 * ph;
+    ell(px, py, 1.3*u, 1.3*u, P.water2);
+  }
+}
+function drawHall(P){
+  const u = S.u, x0 = 5.08, x1 = 6.92, y0 = 5.08, y1 = 6.92, H = 30*u;
+  const wall = P.night ? '#5E5A52' : '#EFE7D8', base = P.night ? '#4A463F' : '#CFC5B3';
+  box(x0 - .05, y0 - .05, x1 + .05, y1 + .05, 0, 5*u, shade(base,.08), base, shade(base,-.15));
+  box(x0, y0, x1, y1, 5*u, H, shade(wall,.06), shade(wall,-.03), shade(wall,-.14));
+  const colC = P.night ? '#77726A' : '#FFFFFF';
+  for (const t of [.1, .28, .72, .9]) faceY(y1 + .01, x0 + (x1-x0)*t - .035, x0 + (x1-x0)*t + .035, 5*u, H - 3*u, colC);
+  for (const t of [.2, .45, .7]) for (const z of [9, 19]) {
+    const lit = P.night && sr(t*10, z) > .2;
+    faceX(x1 + .005, y0 + (y1-y0)*t - .06, y0 + (y1-y0)*t + .06, z*u, (z+6)*u, P.night ? (lit ? P.winLit : P.win) : P.win);
+  }
+  faceY(y1 + .01, 5.84, 6.16, 5*u, 18*u, P.night ? '#2C1F16' : '#6B4127');
+  box(x0 - .08, y0 - .08, x1 + .08, y1 + .08, H, H + 4*u, P.night ? '#7E3540' : '#C44A55', P.night ? '#6A2C35' : '#A83B46', P.night ? '#5A252D' : '#8F3039');
+  const [dx, dy] = iso(6, 6, H + 4*u), dr = 15*u;
+  const dome = P.night ? '#8C6A2E' : '#D9A441';
+  ctx.beginPath(); ctx.ellipse(dx, dy, dr, dr * .5, 0, 0, Math.PI); ctx.fillStyle = shade(dome, -.15); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(dx, dy, dr, dr * 1.05, 0, Math.PI, 0); ctx.fillStyle = dome; ctx.fill();
+  ell(dx - dr * .35, dy - dr * .6, dr * .22, dr * .16, shade(dome, .3));
+  const top = [dx, dy - dr * 1.05], pole = [dx, top[1] - 20*u];
+  line(top[0], top[1], pole[0], pole[1], P.night ? '#9AA3AD' : '#4B5560', 1.3*u);
+  const wv = RM ? 0 : Math.sin(simT * 4) * 1.6*u;
+  poly([[pole[0], pole[1]], [pole[0] + 13*u, pole[1] + 2*u + wv], [pole[0] + 12*u, pole[1] + 7*u + wv], [pole[0], pole[1] + 8*u]], '#C23B4A');
+  const [lx, ly] = iso(6, 6.93, H - 6*u);
+  ctx.font = `700 ${Math.max(9, 10*u)}px "Noto Sans SC", sans-serif`;
+  const w = ctx.measureText('市政厅').width + 10*u;
+  rrect(lx - w/2, ly - 7*u, w, 13*u, 3*u); ctx.fillStyle = P.night ? '#2A2520' : '#15202B'; ctx.fill();
+  ctx.fillStyle = '#F2B632'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('市政厅', lx, ly);
+}
+function drawCafe(P){
+  const u = S.u, x0 = 5.14, x1 = 5.86, y0 = 10.14, y1 = 10.86, H = 21*u;
+  const wall = P.night ? '#5E5347' : '#F3E3CC';
+  box(x0, y0, x1, y1, 0, H, shade(wall,.06), shade(wall,-.04), shade(wall,-.14));
+  faceX(x1 + .005, y0 + .15, y1 - .15, 3*u, 11*u, P.night ? P.winLit : P.win);
+  faceY(y1 + .005, x0 + .4, x0 + .6, 0, 10*u, P.night ? '#2C1F16' : '#6B4127');
+  const stripes = 6, ya = y0 + .02, yb = y1 - .02;
+  for (let i = 0; i < stripes; i++) {
+    const a = ya + (yb - ya) * i / stripes, b = ya + (yb - ya) * (i + 1) / stripes;
+    poly([iso(x1, a, 15*u), iso(x1, b, 15*u), iso(x1 + .2, b, 10*u), iso(x1 + .2, a, 10*u)], i % 2 ? '#FFFFFF' : (P.night ? '#A8413C' : '#E8574F'));
+  }
+  box(x0 - .03, y0 - .03, x1 + .03, y1 + .03, H, H + 3*u, P.night ? '#4A3F35' : '#9C6B45', P.night ? '#3D342B' : '#865A39', P.night ? '#332B24' : '#734C30');
+  const [lx, ly] = iso(5.5, 10.87, H - 7*u);
+  ctx.font = `700 ${Math.max(9, 9.5*u)}px "Noto Sans SC", sans-serif`;
+  ctx.fillStyle = P.night ? '#F2D489' : '#6B4127'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('咖啡', lx, ly);
+}
+function drawTable(x, y, P){
+  const u = S.u, [sx, sy] = iso(x, y);
+  ell(sx, sy, 5*u, 2.5*u, P.shadow);
+  line(sx, sy, sx, sy - 7*u, P.night ? '#777' : '#555', 1.2*u);
+  ell(sx, sy - 7*u, 6*u, 3*u, P.night ? '#8A8F96' : '#FFFFFF');
+}
+
+/* ---------- buildings ---------- */
+function stakes(b, P){
+  const u = S.u, cx = b.gx + .5, cy = b.gy + .5, s = .34;
+  const pts = [[cx-s,cy-s],[cx+s,cy-s],[cx+s,cy+s],[cx-s,cy+s]], col = P.night ? '#B89A6A' : '#8A6A42';
+  ctx.beginPath(); pts.forEach((p, i) => { const q = iso(p[0], p[1], 5*u); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }); ctx.closePath();
+  ctx.setLineDash([3*u, 2*u]); ctx.strokeStyle = '#F2B632'; ctx.lineWidth = 1.1*u; ctx.stroke(); ctx.setLineDash([]);
+  for (const p of pts) { const a = iso(p[0], p[1], 0), c = iso(p[0], p[1], 7*u); line(a[0], a[1], c[0], c[1], col, 1.4*u); }
+  const f = iso(cx + s, cy + s, 7*u), t = iso(cx + s, cy + s, 17*u);
+  line(f[0], f[1], t[0], t[1], col, 1*u);
+  poly([[t[0], t[1]], [t[0] + 8*u, t[1] + 2.5*u], [t[0], t[1] + 5*u]], b.color);
+}
+function scaffold(x0, y0, x1, y1, H, P){
+  const u = S.u, o = .06, col = P.wood, top = H + 6*u;
+  const cs = [[x0-o,y1+o],[x1+o,y1+o],[x1+o,y0-o]];
+  for (const [x, y] of cs) { const a = iso(x, y, 0), c = iso(x, y, top); line(a[0], a[1], c[0], c[1], col, 1.2*u); }
+  for (let z = 6*u; z < top; z += 10*u) {
+    const a = iso(x0-o, y1+o, z), b = iso(x1+o, y1+o, z), c = iso(x1+o, y0-o, z);
+    line(a[0], a[1], b[0], b[1], col, 1*u); line(b[0], b[1], c[0], c[1], col, 1*u);
+  }
+}
+function crane(x, y, H, P){
+  const u = S.u, a = iso(x, y, 0), t = iso(x, y, H + 26*u), col = P.night ? '#C99A3A' : '#E0A526';
+  line(a[0], a[1], t[0], t[1], col, 1.8*u);
+  line(t[0] - 34*u, t[1] + 2*u, t[0] + 12*u, t[1] - 1*u, col, 1.5*u);
+  const hx = t[0] - 20*u + (RM ? 0 : Math.sin(simT * .8) * 7*u);
+  line(hx, t[1] + 1*u, hx, t[1] + 17*u, P.night ? '#999' : '#555', .8*u);
+  ctx.fillStyle = P.night ? '#6B7480' : '#8A96A3'; ctx.fillRect(hx - 3*u, t[1] + 17*u, 6*u, 4*u);
+}
+function drawHouse(b, P){
+  const u = S.u, cx = b.gx + .5, cy = b.gy + .5, s = .34, x0 = cx - s, x1 = cx + s, y0 = cy - s, y1 = cy + s;
+  if (!b.done && b.shown < .02) { stakes(b, P); return; }
+  const fh = 13*u, p = b.done ? 1 : b.shown, H = Math.max(2*u, p * 3 * fh);
+  let wall = P.night ? mix(b.wall, '#18202B', .55) : b.wall;
+  if (!b.done) wall = mix(wall, P.night ? '#3A3F47' : '#DCD6CA', .35);
+  box(x0, y0, x1, y1, 0, H, shade(wall,.1), shade(wall,-.04), shade(wall,-.17));
+  const built = Math.floor(H / fh + .001);
+  for (let f = 0; f < built; f++) {
+    const za = f * fh + 4*u, zb = za + 6*u;
+    for (const [ta, tb] of [[.16,.38],[.62,.84]]) {
+      const litL = P.night && sr(b.seed, f*4 + ta*10) > .3, litR = P.night && sr(b.seed, f*7 + ta*3) > .4;
+      if (!(f === 0 && ta < .5)) faceY(y1 + .005, x0 + (x1-x0)*ta, x0 + (x1-x0)*tb, za, zb, litL ? P.winLit : P.win);
+      faceX(x1 + .005, y0 + (y1-y0)*ta, y0 + (y1-y0)*tb, za, zb, litR ? P.winLit : P.win);
+    }
+  }
+  if (built >= 1) faceY(y1 + .006, x0 + (x1-x0)*.18, x0 + (x1-x0)*.38, 0, 9*u, P.night ? '#2C1F16' : '#7A4E2D');
+  if (b.done) pyramid(x0, y0, x1, y1, H, 13*u * Math.min(1, (b.shown || 1)), P.night ? mix(b.roof, '#0B0F14', .45) : b.roof, .05);
+  else scaffold(x0, y0, x1, y1, H, P);
+}
+function drawTower(b, P){
+  const u = S.u, cx = b.gx + .5, cy = b.gy + .5, s = .29, x0 = cx - s, x1 = cx + s, y0 = cy - s, y1 = cy + s;
+  if (!b.done && b.shown < .02) { stakes(b, P); return; }
+  const fh = 10*u, p = b.done ? 1 : b.shown, H = Math.max(2*u, p * 7 * fh);
+  if (!b.done) crane(x1 + .1, y0 - .1, H, P);
+  let glass = P.night ? mix(b.color, '#0D1520', .62) : mix(b.color, '#E8F2F8', .55);
+  if (!b.done) glass = mix(glass, P.night ? '#3A3F47' : '#DCD6CA', .3);
+  box(x0, y0, x1, y1, 0, H, shade(glass,.14), shade(glass,-.02), shade(glass,-.16));
+  const built = Math.floor(H / fh + .001);
+  for (let f = 0; f < built; f++) {
+    const za = f * fh + 3*u, zb = za + 5*u;
+    const cL = P.night ? (sr(b.seed, f) > .35 ? P.winLit : '#23303D') : mix(b.color, '#FFFFFF', .25);
+    const cR = P.night ? (sr(b.seed, f + 50) > .45 ? P.winLit : '#23303D') : mix(b.color, '#000000', .04);
+    faceY(y1 + .005, x0 + .03, x1 - .03, za, zb, cL); faceX(x1 + .005, y0 + .03, y1 - .03, za, zb, cR);
+  }
+  if (b.done) {
+    box(cx - .1, cy - .1, cx + .1, cy + .1, H, H + 5*u, shade(glass,.22), shade(glass,.02), shade(glass,-.1));
+    const a = iso(cx, cy, H + 5*u), t = iso(cx, cy, H + 22*u);
+    line(a[0], a[1], t[0], t[1], P.night ? '#AAB4BF' : '#56606B', 1.2*u);
+    if (!P.night || Math.sin(simT * 3) > 0) ell(t[0], t[1], 1.9*u, 1.9*u, '#E5484D');
+    const fl = iso(x1, y1, H + 2*u), fp = [fl[0], fl[1] - 12*u];
+    line(fl[0], fl[1], fp[0], fp[1], P.night ? '#AAB4BF' : '#56606B', 1*u);
+    poly([[fp[0], fp[1]], [fp[0] + 9*u, fp[1] + 2.5*u], [fp[0], fp[1] + 5*u]], '#2E9B68');
+  } else scaffold(x0, y0, x1, y1, H, P);
+}
+const FLOWERS = ['#E85D75','#F2B632','#FFFFFF','#9B7FE0','#F08A4B'];
+function drawGarden(b, P){
+  const u = S.u, x = b.gx, y = b.gy, p = b.done ? 1 : b.shown;
+  const turf = P.night ? '#2F5A3A' : '#7DBB5E', soil = P.night ? '#4A3A2A' : '#A5835E';
+  tile(x + .08, y + .08, x + .92, y + .92, p < .12 ? soil : turf);
+  if (!b.done && p < .02) { stakes(b, P); return; }
+  const hh = 5*u * clamp(p * 2, 0, 1), hc = P.night ? '#24452D' : '#4F8F43';
+  if (hh > .5) { box(x+.08, y+.08, x+.92, y+.16, 0, hh, shade(hc,.12), hc, shade(hc,-.15)); box(x+.08, y+.08, x+.16, y+.92, 0, hh, shade(hc,.12), hc, shade(hc,-.15)); }
+  const ts = clamp((p - .45) / .55, 0, 1);
+  if (ts > 0) drawTree(x + .5, y + .42, P, .45 + ts * .4);
+  const n = Math.round(p * 11);
+  for (let i = 0; i < n; i++) {
+    const fx = x + .24 + sr(b.seed, i) * .52, fy = y + .5 + sr(b.seed, i + 20) * .34, q = iso(fx, fy);
+    line(q[0], q[1], q[0], q[1] - 3*u, P.night ? '#3E6B45' : '#3D7A35', .8*u);
+    ell(q[0], q[1] - 3.5*u, 1.7*u, 1.4*u, FLOWERS[i % 5]);
+  }
+  if (hh > .5) { box(x+.08, y+.84, x+.92, y+.92, 0, hh, shade(hc,.12), hc, shade(hc,-.15)); box(x+.84, y+.08, x+.92, y+.92, 0, hh, shade(hc,.12), hc, shade(hc,-.15)); }
+  if (!b.done) { const q = iso(x + .85, y + .85, 0), t = iso(x + .85, y + .85, 12*u); line(q[0], q[1], t[0], t[1], P.wood, 1*u); poly([[t[0], t[1]], [t[0] + 7*u, t[1] + 2*u], [t[0], t[1] + 4*u]], b.color); }
+}
+function drawBridge(b, P){
+  const u = S.u, x = b.gx, p = b.done ? 1 : b.shown, deck = P.night ? '#6B5438' : '#A77B4F';
+  if (!b.done && p < .02) {
+    const q = iso(x + .5, .12, 0), t = iso(x + .5, .12, 13*u);
+    line(q[0], q[1], t[0], t[1], P.wood, 1.3*u);
+    ctx.fillStyle = b.color; ctx.fillRect(t[0] - 6*u, t[1] - 1*u, 12*u, 6*u);
+    return;
+  }
+  const y1 = .06, y0 = .06 - 1.12 * p;
+  if (p > .5) { const st = P.night ? '#4A4F57' : '#9AA0A6'; box(x + .32, -.6, x + .68, -.44, -5*u, 3*u, shade(st,.1), st, shade(st,-.15)); }
+  box(x + .2, y0, x + .8, y1, 3*u, 6*u, shade(deck,.12), shade(deck,-.04), shade(deck,-.2));
+  for (let t = y0 + .08; t < y1; t += .12) { const a = iso(x + .2, t, 6*u), c = iso(x + .8, t, 6*u); line(a[0], a[1], c[0], c[1], shade(deck,-.18), .8*u); }
+  if (b.done) {
+    for (const xx of [x + .22, x + .78]) {
+      const a = iso(xx, y0, 12*u), c = iso(xx, y1, 12*u); line(a[0], a[1], c[0], c[1], shade(deck,-.25), 1*u);
+      for (let t = y0; t <= y1 + .001; t += (y1 - y0) / 4) { const q = iso(xx, t, 6*u), r = iso(xx, t, 12*u); line(q[0], q[1], r[0], r[1], shade(deck,-.25), 1*u); }
+    }
+  }
+}
+function drawBuilding(b, P){
+  if (b.kind === 'house') drawHouse(b, P);
+  else if (b.kind === 'tower') drawTower(b, P);
+  else if (b.kind === 'garden') drawGarden(b, P);
+  else drawBridge(b, P);
+  if (selected && selected.t === 'b' && selected.id === b.id) {
+    const y = b.kind === 'bridge' ? -1 : b.gy;
+    ctx.beginPath(); [[b.gx,y],[b.gx+1,y],[b.gx+1,y+1],[b.gx,y+1]].forEach((q, i) => { const s = iso(q[0], q[1]); i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); });
+    ctx.closePath(); ctx.strokeStyle = '#F2B632'; ctx.lineWidth = 2; ctx.stroke();
+  }
+}
+
+/* ---------- people ---------- */
+const hits = [];
+function drawPerson(c, P, overlay){
+  const u = S.u, [sx, sy] = iso(c.x, c.y);
+  ctx.globalAlpha = clamp(c.alpha, 0, 1);
+  const walking = c.path.length > 0 && c.state !== 'spawn';
+  const bob = walking && !RM ? Math.abs(Math.sin(c.walkT * 9)) * 1.5*u : 0;
+  const resting = c.state === 'resting' && c.rest;
+  const seated = resting && c.rest.pose !== 'lie', lying = resting && c.rest.pose === 'lie';
+  const isSel = selected && selected.t === 'c' && selected.id === c.id;
+  if (isSel) { ctx.beginPath(); ctx.ellipse(sx, sy, 10*u, 5*u, 0, 0, Math.PI*2); ctx.strokeStyle = '#F2B632'; ctx.lineWidth = 2; ctx.stroke(); }
+  ell(sx, sy, 5.5*u, 2.6*u, P.shadow);
+  const f = c.facing;
+  let headY;
+  if (lying) {
+    ell(sx + 1*u*f, sy - 3*u, 8*u, 3.2*u, c.color);
+    ell(sx - 7.5*u*f, sy - 4*u, 3.4*u, 3.2*u, c.skin);
+    headY = sy - 8*u;
+    if (!RM) {
+      ctx.font = `700 ${Math.max(9, 9*u)}px "IBM Plex Mono", monospace`; ctx.fillStyle = P.night ? '#C8D2DC' : '#5C6B7A'; ctx.textAlign = 'center';
+      for (let i = 0; i < 3; i++) { const ph = (simT * .5 + i / 3) % 1; ctx.globalAlpha = clamp(c.alpha, 0, 1) * Math.sin(ph * Math.PI); ctx.fillText('z', sx - 6*u*f + ph * 8*u, sy - 12*u - ph * 14*u); }
+      ctx.globalAlpha = clamp(c.alpha, 0, 1);
+    }
+  } else {
+    const hip = sy - (seated ? 5.5*u : 8*u) - bob;
+    const pants = P.night ? '#1C242E' : '#2A3440';
+    if (seated) {
+      line(sx - 1.5*u, hip, sx - 1.5*u + 4.5*u*f, hip + .5*u, pants, 2.2*u); line(sx - 1.5*u + 4.5*u*f, hip + .5*u, sx - 1.5*u + 4.5*u*f, sy - .5*u, pants, 2.2*u);
+      line(sx + 1.5*u, hip, sx + 1.5*u + 4.5*u*f, hip + .5*u, pants, 2.2*u);
+    } else {
+      const sw = walking && !RM ? Math.sin(c.walkT * 9) * 2.2*u : 0;
+      line(sx - 1.6*u, hip, sx - 1.6*u + sw, sy - .3*u, pants, 2.3*u);
+      line(sx + 1.6*u, hip, sx + 1.6*u - sw, sy - .3*u, pants, 2.3*u);
+    }
+    rrect(sx - 4*u, hip - 10*u, 8*u, 11*u, 3*u); ctx.fillStyle = c.color; ctx.fill();
+    const sh = [sx + 2.6*u*f, hip - 8*u];
+    if (c.state === 'building') {
+      const ang = RM ? -.6 : -1.1 + Math.sin(simT * 13 + c.id) * .9;
+      const hx = sh[0] + Math.cos(ang) * 6*u * f, hy = sh[1] - Math.sin(ang) * 6*u;
+      line(sh[0], sh[1], hx, hy, c.skin, 1.8*u);
+      const tx = hx + Math.cos(ang) * 5*u * f, ty = hy - Math.sin(ang) * 5*u;
+      line(hx, hy, tx, ty, '#6B4A2B', 1.3*u);
+      ctx.save(); ctx.translate(tx, ty); ctx.rotate(-ang * f); ctx.fillStyle = '#6F7A86'; ctx.fillRect(-2.5*u, -1.6*u, 5*u, 3.2*u); ctx.restore();
+    } else if (c.state === 'asking' || c.state === 'to_hall') {
+      line(sh[0], sh[1], sh[0] + 2*u*f, sh[1] - 7*u, c.skin, 1.8*u);
+    } else if (seated && c.rest.pose === 'cafe') {
+      line(sh[0], sh[1], sh[0] + 4*u*f, sh[1] + 2*u, c.skin, 1.8*u);
+      ctx.fillStyle = '#FFFFFF'; ctx.fillRect(sh[0] + 3.5*u*f - 1.5*u, sh[1] - 1*u, 3*u, 3.5*u);
+      if (!RM) for (let i = 0; i < 2; i++) { const ph = (simT * .7 + i * .5) % 1; ctx.globalAlpha = clamp(c.alpha,0,1) * (1 - ph) * .7; line(sh[0] + 3.5*u*f + i*u, sh[1] - 2*u - ph * 7*u, sh[0] + 3.5*u*f + i*u + .8*u, sh[1] - 4*u - ph * 7*u, P.night ? '#CCD' : '#99A', .8*u); ctx.globalAlpha = clamp(c.alpha,0,1); }
+    } else {
+      line(sh[0], sh[1], sh[0] + .8*u*f, sh[1] + 6*u, c.skin, 1.8*u);
+    }
+    const hy = hip - 14*u;
+    ell(sx, hy, 3.6*u, 3.6*u, c.skin);
+    if (resting || c.state === 'to_rest' || c.state === 'leaving') {
+      ctx.beginPath(); ctx.arc(sx, hy - .6*u, 3.7*u, Math.PI, 0); ctx.fillStyle = P.night ? '#1A1410' : '#3A2A1E'; ctx.fill();
+    } else {
+      ctx.beginPath(); ctx.arc(sx, hy - 1*u, 4.3*u, Math.PI, 0); ctx.fillStyle = c.hat; ctx.fill();
+      line(sx - 5.4*u, hy - .9*u, sx + 5.4*u, hy - .9*u, shade(c.hat, -.25), 1.3*u);
+    }
+    headY = hy - 6*u;
+  }
+  ctx.globalAlpha = 1;
+  hits.push({ kind:'c', id:c.id, x:sx, y:sy - 9*u, r:11*u + 4 });
+  if (c.alpha < .3) return;
+  if (c.state === 'to_hall') overlay.push(() => qmark(sx, headY - (RM ? 0 : Math.abs(Math.sin(simT * 5)) * 3*u), P));
+  else if (c.state === 'asking') overlay.push(() => bubble(sx, headY, c.question, 'ask', P));
+  else if (c.bubble && simT < c.bubble.until) overlay.push(() => bubble(sx, headY, c.bubble.text, c.state === 'finishing' ? 'done' : 'plain', P));
+  if (isSel && !(c.state === 'asking')) overlay.push(() => tag(sx, sy + 8*u, `${c.role} · ${c.task}`, c.color));
+}
+function drawGovernor(P, overlay){
+  const u = S.u * 1.12, [sx, sy] = iso(gov.x, gov.y);
+  const isSel = selected && selected.t === 'gov';
+  if (isSel) { ctx.beginPath(); ctx.ellipse(sx, sy, 10*u, 5*u, 0, 0, Math.PI*2); ctx.strokeStyle = '#F2B632'; ctx.lineWidth = 2; ctx.stroke(); }
+  ell(sx, sy, 6*u, 2.8*u, P.shadow);
+  const talking = gov.bubble && simT < gov.bubble.until;
+  const sway = RM ? 0 : Math.sin(simT * 1.5) * .6*u;
+  poly([[sx - 5.5*u, sy - .5*u], [sx + 5.5*u, sy - .5*u], [sx + 3.6*u + sway, sy - 16*u], [sx - 3.6*u + sway, sy - 16*u]], '#C23B4A');
+  line(sx - 3.2*u + sway, sy - 15*u, sx + 3.8*u, sy - 4*u, '#F2B632', 1.4*u);
+  const sh = [sx + 3*u + sway, sy - 13*u];
+  if (talking) line(sh[0], sh[1], sh[0] + 4*u, sh[1] - 6*u + (RM ? 0 : Math.sin(simT * 8) * 1.5*u), '#E3B089', 1.9*u);
+  else line(sh[0], sh[1], sh[0] + 1*u, sh[1] + 7*u, '#E3B089', 1.9*u);
+  const hy = sy - 20*u;
+  ell(sx + sway, hy, 3.9*u, 3.9*u, '#E3B089');
+  const cx = sx + sway, cy = hy - 3.4*u;
+  poly([[cx - 4*u, cy + 1*u], [cx - 4*u, cy - 4*u], [cx - 2*u, cy - 1.5*u], [cx, cy - 5*u], [cx + 2*u, cy - 1.5*u], [cx + 4*u, cy - 4*u], [cx + 4*u, cy + 1*u]], '#F2B632');
+  hits.push({ kind:'gov', x:sx, y:sy - 10*u, r:12*u + 4 });
+  if (talking) overlay.push(() => bubble(sx, hy - 9*u, gov.bubble.text, 'gov', P));
+  if (isSel) overlay.push(() => tag(sx, sy + 8*u, '总督 · main manager', '#C23B4A'));
+}
+function fitText(text, max){ if (ctx.measureText(text).width <= max) return text; let t = text; while (t.length > 1 && ctx.measureText(t + '…').width > max) t = t.slice(0, -1); return t + '…'; }
+function bubble(x, y, text, kind, P){
+  const u = S.u, fs = clamp(11 * u, 10, 14);
+  ctx.font = `500 ${fs}px "Noto Sans SC", sans-serif`;
+  const t = fitText(text, 170), w = ctx.measureText(t).width + 14, h = fs + 10;
+  const bx = clamp(x - w / 2, 4, S.W - w - 4), by = y - h - 7;
+  const edge = kind === 'ask' ? '#C23B4A' : kind === 'gov' ? '#D9A441' : kind === 'done' ? '#2E9B68' : P.bubbleLine;
+  ctx.beginPath(); ctx.moveTo(x - 5, by + h - 1); ctx.lineTo(x, by + h + 6); ctx.lineTo(x + 5, by + h - 1); ctx.closePath(); ctx.fillStyle = P.bubble; ctx.fill(); ctx.strokeStyle = edge; ctx.lineWidth = 1.5; ctx.stroke();
+  rrect(bx, by, w, h, 7); ctx.fillStyle = P.bubble; ctx.fill(); ctx.strokeStyle = edge; ctx.stroke();
+  ctx.fillStyle = P.bubble; ctx.fillRect(x - 4, by + h - 2, 8, 3);
+  ctx.fillStyle = '#15202B'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(t, bx + 7, by + h / 2 + .5);
+}
+function qmark(x, y, P){
+  const r = clamp(8 * S.u, 7, 11);
+  ell(x, y - r, r, r, '#C23B4A');
+  ctx.font = `700 ${r * 1.4}px "IBM Plex Mono", monospace`; ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', x, y - r + 1);
+}
+function tag(x, y, text, color){
+  const fs = clamp(10 * S.u, 10, 12);
+  ctx.font = `600 ${fs}px "IBM Plex Mono", "Noto Sans SC", monospace`;
+  const t = fitText(text, 200), w = ctx.measureText(t).width + 12, h = fs + 8;
+  const bx = clamp(x - w / 2, 4, S.W - w - 4);
+  rrect(bx, y, w, h, h / 2); ctx.fillStyle = color; ctx.fill();
+  ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(t, bx + 6, y + h / 2 + .5);
+}
+
+/* ---------- frame ---------- */
+function render(){
+  const P = isDark() ? PAL.night : PAL.day;
+  applyView();
+  ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
+  ctx.clearRect(0, 0, S.W, S.H);
+  hits.length = 0;
+  drawGround(P);
+  const items = [], overlay = [];
+  for (const [x, y] of TREES) items.push({ d: x + y + 1, f: () => drawTree(x + .5, y + .5, P) });
+  for (const [x, y] of [[2.5,-2+.5],[8.5,-1.5],[11,-1.6]]) items.push({ d: x + y, f: () => drawTree(x, y, P, .7) });
+  for (const [x, y] of LAMPS) items.push({ d: x + y, f: () => drawLamp(x, y, P) });
+  for (const [x, y] of BENCHES) items.push({ d: x + y - .05, f: () => drawBench(x, y, P) });
+  for (const [x, y] of [[6.78,10.5],[6.78,11.45],[5.82,11.55]]) items.push({ d: x + y + .02, f: () => drawTable(x, y, P) });
+  items.push({ d: 19, f: () => drawFountain(P) });
+  items.push({ d: 12, f: () => drawHall(P) });
+  items.push({ d: 16, f: () => drawCafe(P) });
+  for (const b of buildings) items.push({ d: b.kind === 'bridge' ? b.gx : b.gx + b.gy + 1, f: () => drawBuilding(b, P) });
+  for (const c of citizens) items.push({ d: c.x + c.y + .01, f: () => drawPerson(c, P, overlay) });
+  items.push({ d: gov.x + gov.y, f: () => drawGovernor(P, overlay) });
+  items.sort((a, b) => a.d - b.d);
+  for (const it of items) it.f();
+  if (P.night) {
+    ctx.globalCompositeOperation = 'lighter';
+    for (const [x, y] of LAMPS) {
+      const [sx, sy] = iso(x, y), hy = sy - 23 * S.u, r = 34 * S.u;
+      const g = ctx.createRadialGradient(sx, hy, 0, sx, hy, r); g.addColorStop(0, 'rgba(255,214,120,.32)'); g.addColorStop(1, 'rgba(255,214,120,0)');
+      ctx.fillStyle = g; ctx.fillRect(sx - r, hy - r, r * 2, r * 2);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  for (const p of particles) {
+    const [sx, sy] = iso(p.x, p.y, p.z * S.u);
+    ctx.globalAlpha = clamp(1 - p.t / p.life, 0, 1);
+    if (p.kind === 'spark') { ctx.fillStyle = p.c; ctx.fillRect(sx + p.sx * S.u - 1.5*S.u, sy - 1.5*S.u, 3*S.u, 3*S.u); }
+    else ell(sx + p.sx * S.u, sy, 3*S.u * (1 + p.t), 2*S.u * (1 + p.t), p.c);
+  }
+  ctx.globalAlpha = 1;
+  for (const f of floaters) {
+    const k = (simT - f.t0) / 1.2, [sx, sy] = iso(f.x, f.y, (26 + k * 18) * S.u);
+    ctx.globalAlpha = clamp(1.2 - k * 1.2, 0, 1);
+    const fs = clamp(9.5 * S.u, 9, 12);
+    ctx.font = `600 ${fs}px "IBM Plex Mono", monospace`;
+    const w = ctx.measureText(f.text).width + 8;
+    rrect(sx + 6, sy - fs, w, fs + 5, 4); ctx.fillStyle = f.color; ctx.fill();
+    ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(f.text, sx + 10, sy - fs / 2 + 3);
+  }
+  ctx.globalAlpha = 1;
+  for (const o of overlay) o();
+}
+
+/* ---------- panel ---------- */
+const dirty = { log:true };
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[ch]));
+const clock = t => new Date(BASE + t * 1000).toTimeString().slice(0, 8);
+const pct = c => c.bld ? Math.round((c.bld.done ? 1 : c.bld.shown) * 100) : 0;
+const ORDER = { ask:0, build:1, walk:2, rest:3 };
+function renderStats(){
+  let work = 0, ask = 0, rest = 0;
+  for (const c of citizens) { const g = STATE[c.state][0]; if (g === 'ask') ask++; else if (g === 'rest') rest++; else if (c.state !== 'leaving') work++; }
+  const done = buildings.filter(b => b.done).length;
+  const html = [['#2F7FC1','干活',work],['#C23B4A','找总督',ask],['#2E9B68','休息',rest],['#F2B632','建成',done]]
+    .map(([c, l, n]) => `<span class="stat"><i style="background:${c}"></i>${l} <b>${n}</b></span>`).join('');
+  if ($('#stats').innerHTML !== html) $('#stats').innerHTML = html;
+}
+let lastRoster = '';
+function renderRoster(){
+  const list = [...citizens].sort((a, b) => ORDER[STATE[a.state][0]] - ORDER[STATE[b.state][0]] || a.id - b.id);
+  const govBusy = gov.bubble && simT < gov.bubble.until;
+  let html = `<li><button class="row" type="button" data-sel="gov" aria-current="${!!(selected && selected.t === 'gov')}"><span class="hat crown" style="--c:#C23B4A"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govBusy ? '说话中' : '坐镇市政厅'}</span></button></li>`;
+  for (const c of list) {
+    const [g, zh] = STATE[c.state];
+    const sub = g === 'build' ? `${c.role} · ${KIND_ZH[ROLES[c.role].kind]} ${pct(c)}%` : `${c.role} · ${KIND_ZH[ROLES[c.role].kind]}`;
+    html += `<li><button class="row" type="button" data-sel="${c.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === c.id)}"><span class="hat" style="--c:${c.color};--h:${c.hat}"></span><span class="who"><b>${esc(c.task)}</b><span>${esc(sub)}</span></span><span class="pill ${g}">${zh}</span></button></li>`;
+  }
+  if (html !== lastRoster) { $('#roster').innerHTML = html; lastRoster = html; }
+}
+let lastDetailKey = '';
+function renderDetail(){
+  const el = $('#detail');
+  let key = 'none', c = null, b = null;
+  if (selected && selected.t === 'c') { c = byId(selected.id); if (!c) selected = null; else key = `c${c.id}|${c.state}|${c.doneFlag}|${c.stuck}|${c.qa.length}`; }
+  if (selected && selected.t === 'b') { b = buildings.find(x => x.id === selected.id); if (!b) selected = null; else key = `b${b.id}|${b.done}`; }
+  if (selected && selected.t === 'gov') key = `gov|${gov.answered}|${gov.dispatched}`;
+  if (key !== lastDetailKey) {
+    lastDetailKey = key;
+    if (c) {
+      const [g, zh] = STATE[c.state], kind = KIND_ZH[ROLES[c.role].kind];
+      const qa = [...c.qa.map(x => `<p>问：<b>“${esc(x.q)}”</b></p><p>答：<b>“${esc(x.a)}”</b></p>`), (c.stuck ? `<p>问：<b>“${esc(c.question)}”</b> 等回答…</p>` : '')].join('');
+      const canStuck = !c.doneFlag && !c.stuck && ['building','to_plot','back'].includes(c.state);
+      el.innerHTML = `
+        <div class="d-head"><span class="hat" style="--c:${c.color};--h:${c.hat}"></span><div><div class="d-name">${esc(c.task)}</div><div class="d-role">${c.role} · ${ROLES[c.role].zh}</div></div><span class="pill ${g}">${zh}</span></div>
+        <div class="d-bar"><div class="track"><i data-f="bar" style="width:${pct(c)}%;background:${c.color}"></i></div><span data-f="pct">${kind} ${pct(c)}%</span></div>
+        <dl class="d-tools">${['Edit','Write','Bash','Read'].map(t => `<div><dt>${t}</dt><dd data-f="${t}">${c.tools[t]}</dd></div>`).join('')}</dl>
+        ${qa ? `<div class="d-qa">${qa}</div>` : ''}
+        <div class="d-actions">
+          <button class="btn" type="button" data-act="stuck" ${canStuck ? '' : 'disabled'}>让它卡住</button>
+          <button class="btn" type="button" data-act="done" ${c.doneFlag ? 'disabled' : ''}>让它完工</button>
+          <button class="btn" type="button" data-act="leave" ${c.state === 'resting' && !c.leaveFlag ? '' : 'disabled'}>让它下班</button>
+        </div>
+        <p class="d-note">这三个按钮只在原型里有，用来试流程。</p>`;
+    } else if (b) {
+      const owner = byId(b.ownerId);
+      el.innerHTML = `
+        <div class="d-head"><span class="hat" style="--c:${b.color};--h:${ROLES[b.role].hat}"></span><div><div class="d-name">${KIND_ZH[b.kind]} · ${esc(b.name)}</div><div class="d-role">${b.role}</div></div><span class="pill ${b.done ? 'rest' : 'build'}">${b.done ? '建成' : '施工中'}</span></div>
+        <p class="hint">${owner ? `盖它的人还在城里：${esc(owner.task)}。` : `盖它的 ${b.role} 已经下班。`}${b.kind === 'bridge' ? '桥 = 把分支接到 main。' : ''}</p>`;
+    } else if (selected && selected.t === 'gov') {
+      el.innerHTML = `
+        <div class="d-head"><span class="hat crown" style="--c:#C23B4A"></span><div><div class="d-name">总督</div><div class="d-role">main manager · 主对话</div></div><span class="pill gov">市政厅</span></div>
+        <p class="hint">总督就是你正在聊的主对话。它派人出门、回答卡住的问题，自己不盖楼。</p>
+        <dl class="d-tools" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><dt>派出</dt><dd data-f="disp">${gov.dispatched}</dd></div><div><dt>回答</dt><dd data-f="ans">${gov.answered}</dd></div></dl>`;
+    } else {
+      el.innerHTML = `<h2><span class="en">Selected</span>详情</h2><p class="hint">点城里的人、楼，或下面名单里的一行。</p>`;
+    }
+  }
+  if (c) {
+    const bar = el.querySelector('[data-f="bar"]'); if (bar) bar.style.width = pct(c) + '%';
+    const p = el.querySelector('[data-f="pct"]'); if (p) p.textContent = `${KIND_ZH[ROLES[c.role].kind]} ${pct(c)}%`;
+    for (const t of ['Edit','Write','Bash','Read']) { const d = el.querySelector(`[data-f="${t}"]`); if (d && d.textContent !== String(c.tools[t])) d.textContent = c.tools[t]; }
+  }
+}
+function renderLog(){
+  if (!dirty.log) return; dirty.log = false;
+  $('#log').innerHTML = logEntries.slice(0, 40).map(e => `<li><time>${clock(e.t)}</time><span class="${e.kind}">${esc(e.text)}</span></li>`).join('');
+}
+function renderPanel(){ renderStats(); renderRoster(); renderDetail(); renderLog(); $('#clock').textContent = '模拟 ' + clock(simT); }
+
+/* ---------- input ---------- */
+function selectFrom(val){
+  if (val === 'gov') selected = { t:'gov' };
+  else if (val) selected = { t:'c', id:Number(val) };
+  lastDetailKey = ''; lastRoster = ''; renderPanel();
+}
+$('#roster').addEventListener('pointerdown', e => { const r = e.target.closest('[data-sel]'); if (r) selectFrom(r.dataset.sel); });
+$('#roster').addEventListener('click', e => { const r = e.target.closest('[data-sel]'); if (r && e.detail === 0) selectFrom(r.dataset.sel); });
+$('#detail').addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]'); if (!btn || !selected || selected.t !== 'c') return;
+  const c = byId(selected.id); if (!c) return;
+  if (btn.dataset.act === 'stuck') { const [q, a] = pick(QA); c.pendingAnswer = a; emit({ type:'stuck', id:c.id, question:q }); }
+  if (btn.dataset.act === 'done') emit({ type:'done', id:c.id });
+  if (btn.dataset.act === 'leave') emit({ type:'leave', id:c.id });
+  lastDetailKey = ''; renderPanel();
+});
+$('#spawn').addEventListener('click', () => { const c = spawnDemo($('#role').value); if (c) { selected = { t:'c', id:c.id }; lastDetailKey = ''; renderPanel(); } });
+$('#play').addEventListener('click', () => {
+  paused = !paused;
+  $('#play').setAttribute('aria-pressed', String(paused));
+  $('#play-label').textContent = paused ? '继续' : '暂停';
+  $('#icon-pause').hidden = paused; $('#icon-play').hidden = !paused;
+});
+document.querySelectorAll('[data-speed]').forEach(b => b.addEventListener('click', () => {
+  speed = Number(b.dataset.speed);
+  document.querySelectorAll('[data-speed]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+}));
+$('#zin').addEventListener('click', () => { view.zoom = clamp(view.zoom * 1.25, .7, 3.2); view.user = true; });
+$('#zout').addEventListener('click', () => { view.zoom = clamp(view.zoom / 1.25, .7, 3.2); view.user = true; });
+$('#zfit').addEventListener('click', () => { view.user = false; resetView(); });
+
+let drag = null;
+function hitAt(px, py){
+  let best = null, bd = 1e9;
+  for (const h of hits) { const d = Math.hypot(px - h.x, py - h.y); if (d < h.r && d < bd) { best = h; bd = d; } }
+  if (best) return best.kind === 'gov' ? { t:'gov' } : { t:'c', id:best.id };
+  const a = (px - S.ox) / (S.tw / 2), bb = (py - S.oy) / (S.th / 2);
+  const gx = Math.floor((a + bb) / 2), gy = Math.floor((bb - a) / 2);
+  const b = buildings.find(x => x.gx === gx && (x.kind === 'bridge' ? gy === -1 : x.gy === gy));
+  if (b) { const o = byId(b.ownerId); return o ? { t:'c', id:o.id } : { t:'b', id:b.id }; }
+  return null;
+}
+canvas.addEventListener('pointerdown', e => { drag = { x:e.clientX, y:e.clientY, moved:false }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', e => {
+  const r = canvas.getBoundingClientRect();
+  if (!drag) { canvas.classList.toggle('pointing', !!hitAt(e.clientX - r.left, e.clientY - r.top)); return; }
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) < 6) return;
+  drag.moved = true; canvas.classList.add('grabbing'); view.user = true;
+  const a = dx / (S.tw / 2), b = dy / (S.th / 2);
+  view.fx -= (a + b) / 2; view.fy -= (b - a) / 2;
+  drag.x = e.clientX; drag.y = e.clientY;
+});
+canvas.addEventListener('pointerup', e => {
+  if (drag && !drag.moved) { const r = canvas.getBoundingClientRect(); selected = hitAt(e.clientX - r.left, e.clientY - r.top); lastDetailKey = ''; lastRoster = ''; renderPanel(); }
+  drag = null; canvas.classList.remove('grabbing');
+});
+canvas.addEventListener('pointercancel', () => { drag = null; canvas.classList.remove('grabbing'); });
+canvas.addEventListener('wheel', e => { e.preventDefault(); view.zoom = clamp(view.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), .7, 3.2); view.user = true; }, { passive:false });
+
+/* ---------- opening scene: a city mid-day, not an empty map ---------- */
+function placeBuilder(role, task, x, y, tools){
+  const R = ROLES[role], c = newCitizen(role, task), b = newBuilding(R.kind, x, y, role);
+  b.name = task; b.ownerId = c.id; b.ownerName = `${role} · ${task}`;
+  c.bld = b; c.stand = standFor(R.kind, x, y); c.x = c.stand.x; c.y = c.stand.y;
+  c.alpha = 1; c.state = 'building';
+  Object.assign(c.tools, tools);
+  c.work = Object.entries(tools).reduce((s, [k, v]) => s + (WEIGHT[k] || .5) * v, 0);
+  b.target = b.shown = .92 * (1 - Math.exp(-c.work / KSCALE[R.kind]));
+  c.feed = makeFeed(role, 0); c.feed.steps.splice(0, Math.min(4, c.feed.steps.length - 2));
+  citizens.push(c);
+  return c;
+}
+function placeResting(role, task, restIdx, bName){
+  const c = newCitizen(role, task), spot = REST[restIdx];
+  spot.by = c.id; c.rest = spot; c.x = spot.x; c.y = spot.y; c.alpha = 1; c.state = 'resting'; c.doneFlag = true;
+  const b = buildings.find(x => x.name === bName); if (b) { b.ownerId = c.id; c.bld = b; }
+  c.feed = { steps:[{ t:'leave' }], next:0, restSince:0, restFor:rnd(22, 34) };
+  c.facing = restIdx % 2 ? 1 : -1;
+  citizens.push(c);
+  return c;
+}
+function seed(){
+  const hist = [['house',3,0,'worker','价格计算',-420],['tower',5,3,'task-manager','登录',-380],['garden',1,1,'fast-lane-deputy','按钮颜色',-300],
+    ['house',0,3,'worker','导出 CSV',-260],['bridge',4,-1,'merge-deputy','合并 login',-200],['house',9,6,'worker','深色模式',-150],['garden',5,1,'fast-lane-deputy','错别字',-45]];
+  for (const [k, x, y, role, task, t] of hist) { const b = newBuilding(k, x, y, role); b.done = true; b.shown = b.target = 1; b.name = task; b.ownerName = `${role} · ${task}`; b.doneAt = t; }
+  logAt(-420, '总督派出 worker：价格计算');
+  logAt(-300, '按钮颜色 完工：花园封顶，去休息', 'done');
+  logAt(-200, '合并 login 完工：桥封顶，去休息', 'done');
+  logAt(-95, '总督派出 task-manager：设置页');
+  logAt(-82, '总督派出 worker：设置页表单');
+  logAt(-80, '总督派出 worker：设置页 API');
+  logAt(-45, '错别字 完工：花园封顶，去休息', 'done');
+  placeBuilder('worker', '设置页表单', 3, 6, { Read:1, Edit:4, Write:1, Bash:1 });
+  placeBuilder('task-manager', '设置页', 10, 3, { Read:2, Write:3, Bash:1 });
+  const api = placeBuilder('worker', '设置页 API', 8, 3, { Read:2, Edit:2, Bash:1 });
+  placeResting('fast-lane-deputy', '错别字', 0, '错别字');
+  placeResting('worker', '价格计算', 4, '价格计算');
+  api.pendingAnswer = '用 /api/settings';
+  api.x = 7.5; api.y = 5.2;
+  emit({ type:'stuck', id:api.id, question:'API 路径用哪个？' });
+  selected = { t:'c', id:api.id };
+}
+
+/* ---------- boot ---------- */
+seed();
+resize();
+new ResizeObserver(() => resize()).observe(stage);
+let last = performance.now(), panelT = 0;
+function frame(now){
+  const raw = Math.min(.05, (now - last) / 1000); last = now;
+  if (!paused) {
+    let dt = raw * speed;
+    while (dt > 0) { const s = Math.min(dt, .05); update(s); dt -= s; }
+  }
+  render();
+  panelT += raw;
+  if (panelT > .25) { panelT = 0; renderPanel(); }
+  requestAnimationFrame(frame);
+}
+render(); renderPanel();
+requestAnimationFrame(frame);
+})();
+</script>

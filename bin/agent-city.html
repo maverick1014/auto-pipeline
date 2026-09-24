@@ -1,0 +1,1508 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --sky:#CFE6FF; --berry:#FF7593; --berry-deep:#D9506E; --butter:#FFD36E; --mint:#6FD4A8;
+  --focus:#4D7CFE;
+  --build-bg:#E1ECFF; --build-ink:#3160B5; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
+  --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488;
+  --gov-bg:#FFF0C7; --gov-ink:#8A6000;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+    --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
+    --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+    --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
+    --gov-bg:#43381A; --gov-ink:#FFDD8A;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+  --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
+  --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+  --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
+  --gov-bg:#43381A; --gov-ink:#FFDD8A;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.app{max-width:1500px;margin-inline:auto;padding-inline:16px;padding-block:14px 22px;display:flex;flex-direction:column;gap:14px;min-height:100dvh}
+
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.sign{display:inline-flex;align-items:center;gap:10px;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:5px 16px 5px 8px;box-shadow:0 3px 0 var(--ink)}
+.sign-name{font:700 24px/1 var(--display);letter-spacing:.01em}
+.sign-sub{display:block;font:600 10.5px/1.2 var(--mono);color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase;margin-top:3px}
+.stats{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
+.stat{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font-size:13px;color:var(--ink-2)}
+.stat b{color:var(--ink);font:700 14px/1 var(--display);font-variant-numeric:tabular-nums}
+.stat i{width:9px;height:9px;border-radius:50%;display:block}
+
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;flex:1;min-height:0}
+.stage-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.stage{position:relative;border-radius:24px;overflow:hidden;background:var(--sky);border:2px solid var(--line);height:calc(100dvh - 150px);min-height:460px}
+.stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.stage canvas.grabbing{cursor:grabbing}
+.proto{position:absolute;top:12px;left:12px;z-index:3;background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px;box-shadow:0 2px 0 rgba(42,43,69,.18);pointer-events:none}
+.cam{position:absolute;top:12px;right:12px;z-index:3;display:flex;flex-direction:column;gap:6px}
+.cam .btn{width:38px;height:38px;padding:0;justify-content:center;background:var(--panel)}
+.hint-drag{position:absolute;left:12px;bottom:12px;z-index:3;font-size:12px;color:var(--ink-2);background:var(--panel);border-radius:999px;padding:5px 11px;opacity:.92;pointer-events:none}
+
+.ov{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
+.ov > div{position:absolute;left:0;top:0;will-change:transform}
+.bub{background:#FFFFFF;color:#2A2B45;border:2px solid #2A2B45;border-radius:14px;padding:3px 10px;font:600 12.5px/1.4 var(--round);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.bub.ask{border-color:#E4476F}
+.bub.gov{background:#FFF1C9;border-color:#C99A1E}
+.bub.done{border-color:#2FB57A;background:#EFFFF6}
+.qm{width:28px;height:28px}
+.qm span{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#FF6F8B;color:#fff;font:700 17px/1 var(--display);border:2px solid #fff;box-shadow:0 2px 0 rgba(42,43,69,.25);animation:hop .7s ease-in-out infinite}
+@keyframes hop{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.zz{font:700 14px/1 var(--display);color:#8D91B3;letter-spacing:.1em}
+.zz span{display:inline-block;animation:zz 2.4s ease-in-out infinite}
+.zz span:nth-child(2){animation-delay:.4s}
+.zz span:nth-child(3){animation-delay:.8s}
+@keyframes zz{0%{transform:translate(0,0);opacity:0}30%{opacity:1}100%{transform:translate(8px,-14px);opacity:0}}
+.tagl{background:var(--c);color:#fff;border-radius:999px;padding:3px 10px;font:600 11.5px/1.3 var(--mono);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.fl{background:var(--c);color:#fff;border-radius:8px;padding:1px 7px;font:600 11px/1.5 var(--mono)}
+.lbl{background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:2px 10px;font:600 12px/1.5 var(--display);box-shadow:0 2px 0 rgba(42,43,69,.15);white-space:nowrap}
+
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:8px}
+.group{display:inline-flex;align-items:center;gap:5px}
+.sep{width:1.5px;height:22px;background:var(--line);border-radius:1px}
+.clock{margin-left:auto;font:600 12px/1 var(--mono);color:var(--ink-2);font-variant-numeric:tabular-nums;padding-right:4px}
+.btn{font:600 13px/1 var(--round);border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:12px;padding:0 12px;min-height:36px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:transform .12s,box-shadow .12s,border-color .12s}
+.btn:hover{border-color:var(--ink-3)}
+.btn:focus-visible,select:focus-visible,.row:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.btn[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.primary{background:var(--berry);border-color:var(--berry);color:#fff;box-shadow:0 3px 0 var(--berry-deep)}
+.btn.primary:active{transform:translateY(3px);box-shadow:none}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn svg{width:15px;height:15px}
+select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:12px;padding:0 10px}
+.lead{font-size:13px;color:var(--ink-2);margin-right:2px}
+
+.panel{display:flex;flex-direction:column;gap:12px;min-width:0;max-height:calc(100dvh - 100px);overflow:auto;padding-bottom:3px}
+.card{background:var(--panel);border:1.5px solid var(--line);border-radius:20px;padding:14px 16px}
+.card h2{margin:0 0 10px;display:flex;align-items:baseline;gap:8px;font:700 16px/1.2 var(--round);color:var(--ink)}
+.card h2 .en{font:600 12px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.intro{margin:0;color:var(--ink-2);font-size:13.5px}
+
+
+.sign-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--berry);color:#fff;flex:none}
+.sign-icon svg{width:20px;height:20px}
+.btn svg.lucide{width:16px;height:16px}
+.loading{position:absolute;inset:0;z-index:4;display:grid;place-items:center;background:var(--sky);font:600 14px/1.4 var(--display);color:var(--ink-2)}
+.rdot{width:18px;height:18px;border-radius:50%;border:4px solid var(--c);background:var(--panel);flex:none;justify-self:center}
+.rdot.gov{--c:#FFD36E}
+.roster{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.row{width:100%;display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;gap:10px;padding:7px 8px;border-radius:14px;border:1.5px solid transparent;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.row:hover{background:var(--panel-2)}
+.row[aria-current="true"]{border-color:var(--berry);background:var(--panel-2)}
+.who{min-width:0;display:flex;flex-direction:column}
+.who b{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who span{font:12px/1.3 var(--mono);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{font:600 12px/1 var(--round);padding:6px 10px;border-radius:999px;white-space:nowrap}
+.pill.build{background:var(--build-bg);color:var(--build-ink)}
+.pill.ask{background:var(--ask-bg);color:var(--ask-ink)}
+.pill.rest{background:var(--rest-bg);color:var(--rest-ink)}
+.pill.walk{background:var(--walk-bg);color:var(--walk-ink)}
+.pill.gov{background:var(--gov-bg);color:var(--gov-ink)}
+
+.detail{display:flex;flex-direction:column;gap:11px}
+.d-head{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:10px;align-items:center}
+.d-name{font-weight:700;font-size:17px;line-height:1.3;overflow-wrap:anywhere}
+.d-role{font:12px/1.3 var(--mono);color:var(--ink-3)}
+.d-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13px;color:var(--ink-2)}
+.track{height:10px;border-radius:999px;background:var(--panel-2);border:1.5px solid var(--line);overflow:hidden}
+.track i{display:block;height:100%;border-radius:999px;transition:width .4s}
+.d-tools{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0}
+.d-tools div{background:var(--panel-2);border-radius:12px;padding:7px 9px}
+.d-tools dt{font:11px/1.2 var(--mono);color:var(--ink-3)}
+.d-tools dd{margin:0;font:700 16px/1.3 var(--display);font-variant-numeric:tabular-nums}
+.d-qa{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.d-qa p{margin:0;color:var(--ink-2)}
+.d-qa b{color:var(--ink);font-weight:700}
+.d-actions{display:flex;flex-wrap:wrap;gap:6px}
+.d-note,.hint{margin:0;font-size:12.5px;color:var(--ink-3)}
+
+.log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;max-height:260px;overflow:auto}
+.log li{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px;font-size:13px;line-height:1.45}
+.log time{font:12px/1.45 var(--mono);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.log .ask{color:var(--ask-ink)}
+.log .done{color:var(--rest-ink)}
+
+.legend{width:100%;border-collapse:collapse;font-size:13px}
+.legend th{text-align:left;font:600 11px/1.2 var(--mono);letter-spacing:.04em;color:var(--ink-3);padding:0 0 6px}
+.legend td{padding:7px 0;border-top:1.5px solid var(--line);vertical-align:top}
+.legend td:first-child{width:46%;padding-right:10px;font-weight:600}
+.legend td:last-child{color:var(--ink-2)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px;border:1.5px solid rgba(42,43,69,.25)}
+
+@media (max-width: 960px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+  .stage{height:min(66vh,calc(100vw * 1.1));min-height:340px}
+  .panel{max-height:none;overflow:visible}
+  .stats{margin-left:0}
+}
+@media (prefers-reduced-motion: reduce){ .qm span,.zz span{animation:none} .track i,.btn{transition:none} }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="bar">
+    <div class="sign">
+      <span class="sign-icon"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg></span>
+      <div><span class="sign-name">Agent City</span><span class="sign-sub">auto-pipeline · 3D</span></div>
+    </div>
+    <div class="stats" id="stats" aria-live="polite"></div>
+  </header>
+
+  <main class="layout">
+    <section class="stage-col" aria-label="城市">
+      <div class="stage" id="stage">
+        <canvas id="city" role="img" aria-label="3D 小岛：每个小人是一个 agent"></canvas>
+        <div class="ov" id="ov"></div>
+        <div class="proto" id="proto">原型 · 模拟数据</div>
+        <div class="loading" id="loading"><span id="loading-text">正在搬来素材…</span></div>
+        <div class="cam">
+          <button class="btn" id="zin" type="button" aria-label="放大"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+          <button class="btn" id="zout" type="button" aria-label="缩小"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+          <button class="btn" id="rot" type="button" aria-label="转一下"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+          </button>
+          <button class="btn" id="zfit" type="button" aria-label="回到默认视角"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+          </button>
+        </div>
+        <div class="hint-drag" id="hint-drag">拖动转视角 · 滚轮或双指缩放</div>
+      </div>
+      <div class="toolbar" role="toolbar" aria-label="控制">
+        <button class="btn" id="play" type="button" aria-pressed="false">
+          <svg id="icon-pause" class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg>
+          <svg id="icon-play" class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><polygon points="6 3 20 12 6 21 6 3"/></svg>
+          <span id="play-label">暂停</span>
+        </button>
+        <div class="group" role="group" aria-label="速度">
+          <button class="btn" type="button" data-speed="1" aria-pressed="true">1×</button>
+          <button class="btn" type="button" data-speed="2" aria-pressed="false">2×</button>
+          <button class="btn" type="button" data-speed="4" aria-pressed="false">4×</button>
+        </div>
+        <span class="sep" aria-hidden="true" id="spawn-sep"></span>
+        <div class="group" id="spawn-group">
+          <label for="role" class="lead">派一个</label>
+          <select id="role">
+            <option value="worker">worker · 盖房子</option>
+            <option value="task-manager">task manager · 测试塔</option>
+            <option value="fast-lane-deputy">fast-lane deputy · 花园</option>
+            <option value="merge-deputy">merge deputy · 桥</option>
+          </select>
+          <button class="btn primary" id="spawn" type="button">派出</button>
+        </div>
+        <span class="clock" id="clock"></span>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <section class="card">
+        <p class="intro" id="intro">3D 原型，人和任务都是假的。场景里每个模型都是现成的免费素材，不是自己画的。每个小人是一个 agent：分到任务就去盖楼，卡住了就跑去市政厅问总督，做完了就去休息。拖动可以转视角，点小人看详情。</p>
+      </section>
+      <section class="card detail" id="detail" aria-live="polite"></section>
+      <section class="card">
+        <h2><span class="en">Citizens</span>市民</h2>
+        <ul class="roster" id="roster"></ul>
+      </section>
+      <section class="card">
+        <h2><span class="en">Log</span>动态</h2>
+        <ol class="log" id="log"></ol>
+      </section>
+      <section class="card">
+        <h2><span class="en">Legend</span>怎么看这座城</h2>
+        <table class="legend">
+          <thead><tr><th>城里看到的</th><th>真实 agent 在做的</th></tr></thead>
+          <tbody>
+            <tr><td>从市政厅走出来</td><td>主对话派出一个 agent</td></tr>
+            <tr><td>空地摆上路锥</td><td>分到任务，定下做哪一块</td></tr>
+            <tr><td>楼从地面一层层长出来，外面搭着木架</td><td>改文件（Edit / Write）</td></tr>
+            <tr><td>头上飘出 Bash / Read</td><td>跑命令或测试 / 读文件</td></tr>
+            <tr><td>头顶「？」跑去市政厅</td><td>卡住了：要问问题或等权限</td></tr>
+            <tr><td>总督回话，它点点头走回工地</td><td>拿到答案，继续干</td></tr>
+            <tr><td>完工跳一下，去长椅或咖啡馆坐着</td><td>任务做完</td></tr>
+            <tr><td>走出城门</td><td>agent 结束</td></tr>
+          </tbody>
+        </table>
+        <table class="legend" style="margin-top:12px">
+          <thead><tr><th>脚下圆圈</th><th>盖什么</th></tr></thead>
+          <tbody>
+            <tr><td><span class="dot" style="background:#5AA9F0"></span>worker</td><td>小房子</td></tr>
+            <tr><td><span class="dot" style="background:#9C86F2"></span>task manager</td><td>测试塔</td></tr>
+            <tr><td><span class="dot" style="background:#43C58B"></span>fast-lane deputy</td><td>花园，小而快</td></tr>
+            <tr><td><span class="dot" style="background:#FF9A5C"></span>merge deputy</td><td>过河的桥，接到 main</td></tr>
+            <tr><td><span class="dot" style="background:#FFD36E"></span>总督</td><td>不盖楼，站在市政厅门口</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="card">
+        <h2><span class="en">Credits</span>素材来源</h2>
+        <table class="legend">
+          <tbody>
+            <tr><td>3D 模型和动画</td><td>Kenney（kenney.nl），CC0 公共领域：小人、房子、高楼、自然、小镇、生存、道路、森林、宠物 9 个包</td></tr>
+            <tr><td>图标</td><td>Lucide，ISC 许可</td></tr>
+            <tr><td>3D 引擎</td><td>three.js r128，MIT 许可</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<script src="assets/vendor/three.min.js"></script>
+<script src="assets/vendor/GLTFLoader.js"></script>
+<script src="assets/vendor/SkeletonUtils.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const stage = $('#stage'), canvas = $('#city'), ovRoot = $('#ov');
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const BASE = Date.now();
+const FRAME_MS = 33;
+const IDLE_FRAME_MS = 100;
+const MAX_CITIZENS = 40;
+const MAX_LOG = 40;
+const MAX_FLOATERS = 80;
+const LIVE_REST_SEC = 180;
+const DEMO = location.hash === '#demo' || location.protocol === 'file:';
+
+function h2r(h){ h = h.replace('#',''); return [0,2,4].map(i => parseInt(h.slice(i,i+2),16)); }
+function r2h(c){ return '#' + c.map(v => Math.round(clamp(v,0,255)).toString(16).padStart(2,'0')).join(''); }
+function mix(a, b, t){ const A = h2r(a), B = h2r(b); return r2h(A.map((x,i) => x + (B[i]-x)*t)); }
+function sr(seed, i){ const x = Math.sin(seed*12.9898 + i*78.233) * 43758.5453; return x - Math.floor(x); }
+function isDark(){ const t = document.documentElement.getAttribute('data-theme'); if (t === 'dark') return true; if (t === 'light') return false; return matchMedia('(prefers-color-scheme: dark)').matches; }
+
+/* =========================================================
+   Simulation: the same event contract the real city reads
+   (spawn, tool, stuck, answer, done, leave).
+   ========================================================= */
+const ROLES = {
+  'task-manager':     { zh:'任务经理',   color:'#9C86F2', kind:'tower'  },
+  'worker':           { zh:'工人',       color:'#5AA9F0', kind:'house'  },
+  'fast-lane-deputy': { zh:'快车道副手', color:'#43C58B', kind:'garden' },
+  'merge-deputy':     { zh:'合并副手',   color:'#FF9A5C', kind:'bridge' },
+  'other':            { zh:'帮手',       color:'#5FC3C9', kind:'house'  },
+};
+const KIND_ZH = { house:'小房子', tower:'测试塔', garden:'花园', bridge:'桥' };
+const STATE = {
+  spawn:['walk','出门'], to_plot:['walk','去工地'], building:['build','施工中'],
+  to_hall:['ask','去问总督'], asking:['ask','在问总督'], heard:['ask','拿到答案'],
+  back:['walk','回工地'], finishing:['rest','封顶了'], to_rest:['rest','去休息'],
+  resting:['rest','休息中'], leaving:['walk','下班回家'],
+};
+const TASKS = {
+  'worker':['设置页表单','登录 API','导出 CSV','深色模式','小票打印','搜索框','分页','价格计算','库存提醒','客户列表'],
+  'task-manager':['设置页','登录','报表','打印','库存'],
+  'fast-lane-deputy':['错别字','按钮颜色','图标大小','标题换行','空状态文案'],
+  'merge-deputy':['合并 settings','合并 login','合并 report','合并 print'],
+};
+const QA = [
+  ['测试名不清楚，用哪个？','按默认，记进日志'],
+  ['API 路径用哪个？','用 /api/settings'],
+  ['要不要加分页？','先不加，写进 ideas'],
+  ['默认语言是？','zh，跟 agent.conf'],
+  ['旧数据要迁移吗？','要，先写测试'],
+  ['这个文件能改吗？','能，只改你那份'],
+  ['可以跑这条命令吗？','批了，继续'],
+];
+
+const GX1 = 11, GY0 = -2, GY1 = 11;
+const tiles = {};
+const T = (x, y) => tiles[x + ',' + y];
+for (let y = GY0; y <= GY1; y++) for (let x = 0; x <= GX1; x++) {
+  let t = 'grass';
+  if (y === -2) t = 'bank';
+  else if (y === -1) t = 'water';
+  else if (x === 4 || x === 7 || y === 4 || y === 7) t = 'road';
+  else if (x >= 5 && x <= 6 && y >= 5 && y <= 6) t = 'hall';
+  else if (x >= 5 && x <= 6 && y >= 8) t = 'plaza';
+  else if (x >= 8 && y >= 8) t = 'park';
+  tiles[x + ',' + y] = t;
+}
+tiles['5,10'] = 'cafe';
+const TREES = [[0,0],[10,1],[0,5],[2,10],[8,11],[11,8],[11,11]];
+const STATIC_BLOCK = new Set(TREES.map(p => p + ''));
+STATIC_BLOCK.add('9,9');
+const PLOTS = [[3,0],[3,2],[0,3],[2,3],[1,1],[5,3],[6,3],[5,1],[6,1],[8,3],[10,3],[9,1],[11,1],[3,5],[3,6],[1,6],[9,6],[11,6],[8,5],[3,9],[3,11],[1,9],[1,11]];
+const INNER = new Set(['1,1','5,1','6,1','9,1','11,1','1,9','1,11','8,5']);
+const PLOT_SET = new Set(PLOTS.map(p => p + ''));
+const BRIDGE_X = [4, 7, 10, 1];
+const LAMPS = [[4.12,4.12],[7.88,4.12],[4.12,7.88],[7.88,7.88],[4.12,1.5],[7.88,1.5],[4.12,10.5],[1.5,4.12],[10.5,4.12],[1.5,7.88],[10.5,7.88]];
+const BENCHES = [[10.5,8.28],[8.5,10.28]];
+const REST = [
+  {x:10.5,y:8.5,pose:'bench'},{x:8.5,y:10.5,pose:'bench'},
+  {x:9.5,y:10.3,pose:'sit'},{x:10.3,y:9.5,pose:'sit'},
+  {x:6.42,y:10.5,pose:'cafe'},{x:6.42,y:11.45,pose:'cafe'},{x:5.5,y:11.5,pose:'cafe'},
+  {x:9.45,y:11.5,pose:'lie'},{x:11.5,y:9.45,pose:'lie'},{x:2.5,y:9.5,pose:'lie'},
+  {x:0.5,y:1.45,pose:'lie'},{x:10.5,y:2.35,pose:'lie'},{x:0.5,y:6.4,pose:'lie'},
+];
+const HALL_SLOTS = [[6.5,8.3],[5.5,8.3],[6.5,9.25],[5.5,9.25],[4.5,8.4]].map(([x,y]) => ({x, y, by:0}));
+const DOOR = {x:6.0, y:7.12};
+const GATE = {x:7.5, y:11.9};
+
+function frontOf(x, y){
+  for (const [a,b] of [[x,y+1],[x+1,y]]) if (T(a,b) === 'road') return [a,b];
+  for (const [a,b] of [[x,y+1],[x+1,y],[x-1,y],[x,y-1]]) {
+    const t = T(a,b);
+    if (t && !['water','hall','cafe','bank'].includes(t) && !PLOT_SET.has(a+','+b) && !STATIC_BLOCK.has(a+','+b)) return [a,b];
+  }
+  return [x, y+1];
+}
+const occupied = new Map();
+function walkable(x, y){
+  const t = T(x, y);
+  if (!t || t === 'water' || t === 'hall' || t === 'cafe' || t === 'bank') return false;
+  const k = x + ',' + y;
+  return !STATIC_BLOCK.has(k) && !occupied.has(k);
+}
+function findPath(sx, sy, tx, ty){
+  const s = [Math.floor(sx), Math.floor(sy)], g = [Math.floor(tx), Math.floor(ty)];
+  const sk = s + '', gk = g + '';
+  if (sk === gk) return [];
+  const prev = { [sk]: null }, q = [s];
+  while (q.length) {
+    const [x, y] = q.shift();
+    if (x + ',' + y === gk) break;
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const nx = x + dx, ny = y + dy, nk = nx + ',' + ny;
+      if (nk in prev) continue;
+      if (nk !== gk && !walkable(nx, ny)) continue;
+      prev[nk] = [x, y]; q.push([nx, ny]);
+    }
+  }
+  if (!(gk in prev)) return null;
+  const out = []; let cur = g;
+  while (cur && cur + '' !== sk) { out.push([cur[0] + .5, cur[1] + .5]); cur = prev[cur + '']; }
+  return out.reverse();
+}
+
+let simT = 0, speed = 1, paused = false;
+const citizens = [], buildings = [], floaters = [], logEntries = [];
+let cid = 0, bid = 0;
+let selected = null;
+const gov = { x:6.62, y:7.5, bubble:null, answered:0, dispatched:0 };
+const SKIN = ['#FFE0C7','#F7C9A4','#E6AC84','#BF8560','#8E5E40'];
+
+function say(o, text, dur){ o.bubble = { text, until: simT + dur }; }
+function logAt(t, text, kind){ logEntries.unshift({ t, text, kind: kind || '', real: DEMO ? null : Date.now() }); if (logEntries.length > MAX_LOG) logEntries.length = MAX_LOG; dirty.log = true; }
+const log = (text, kind) => logAt(simT, text, kind);
+
+function newBuilding(kind, gx, gy, role, label){
+  const color = ROLES[role].color;
+  const b = { id:++bid, kind, gx, gy, role, label: label || role, color, target:0, shown:0, done:false, doneAt:0, popAt:-99,
+    seed:Math.random()*1000, name:'', ownerId:0 };
+  buildings.push(b);
+  occupied.set(gx + ',' + gy, b);
+  return b;
+}
+function removeBuilding(b){
+  const i = buildings.indexOf(b); if (i >= 0) buildings.splice(i, 1);
+  if (occupied.get(b.gx + ',' + b.gy) === b) occupied.delete(b.gx + ',' + b.gy);
+  if (selected && selected.t === 'b' && selected.id === b.id) selected = null;
+}
+function standFor(kind, x, y){
+  if (kind === 'bridge') return { x: x + .5, y: .34 };
+  const [fx, fy] = frontOf(x, y);
+  return { x: fx + .5 + (x - fx) * .28, y: fy + .5 + (y - fy) * .28 };
+}
+function demolishOldest(kind){
+  const cands = buildings.filter(b => b.done && (kind === 'bridge' ? b.kind === 'bridge' : b.kind !== 'bridge') && !citizens.some(c => c.id === b.ownerId));
+  cands.sort((a, b) => a.doneAt - b.doneAt);
+  const b = cands[0]; if (!b) return false;
+  removeBuilding(b);
+  log(`拆掉最旧的${KIND_ZH[b.kind]}（${b.name}），腾出空地`);
+  return true;
+}
+function allocPlot(kind){
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (kind === 'bridge') {
+      const x = BRIDGE_X.find(x => !occupied.has(x + ',-1'));
+      if (x !== undefined) return { x, y: -1 };
+    } else {
+      let free = PLOTS.filter(p => !occupied.has(p + ''));
+      if (kind === 'garden' && free.some(p => INNER.has(p + ''))) free = free.filter(p => INNER.has(p + ''));
+      if (kind !== 'garden' && free.some(p => !INNER.has(p + ''))) free = free.filter(p => !INNER.has(p + ''));
+      if (free.length) { const p = pick(free); return { x: p[0], y: p[1] }; }
+    }
+    if (!demolishOldest(kind)) return null;
+  }
+  return null;
+}
+function newCitizen(id, role, task){
+  const R = ROLES[role];
+  return { id, role, label:role, task, color:R.color, skin:pick(SKIN), x:DOOR.x, y:DOOR.y, path:[], state:'spawn', stateT:0,
+    alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0,Other:0}, work:0, bld:null, stand:null, slot:null, rest:null,
+    question:'', answer:'', answered:false, pendingAnswer:'', askT:0, stuck:false, doneFlag:false, leaveFlag:false,
+    qa:[], bubble:null, walkT:Math.random()*5, feed:null, gone:false };
+}
+const byId = id => citizens.find(c => c.id === id);
+
+function goTo(c, target, state){
+  const p = findPath(c.x, c.y, target.x, target.y);
+  c.path = p && p.length ? [...p.slice(0, -1), [target.x, target.y]] : [[target.x, target.y]];
+  c.state = state; c.stateT = 0;
+}
+function move(c, dt){
+  const [tx, ty] = c.path[0];
+  const dx = tx - c.x, dy = ty - c.y, d = Math.hypot(dx, dy), sp = (c.state === 'to_hall' ? 2.3 : 1.9) * dt;
+  c.walkT += dt;
+  if (d <= sp) { c.x = tx; c.y = ty; c.path.shift(); if (!c.path.length) onArrive(c); }
+  else { c.x += dx / d * sp; c.y += dy / d * sp; }
+}
+function onArrive(c){
+  switch (c.state) {
+    case 'to_plot': case 'back':
+      c.state = 'building'; c.stateT = 0;
+      if (c.stuck) goHall(c); else if (c.doneFlag) finish(c);
+      break;
+    case 'to_hall': c.state = 'asking'; c.stateT = 0; c.askT = simT; break;
+    case 'to_rest': c.state = 'resting'; c.stateT = 0; if (c.leaveFlag) leave(c); break;
+  }
+}
+function goHall(c){
+  let slot = HALL_SLOTS.find(s => !s.by);
+  if (slot) slot.by = c.id; else slot = { x: 4.5 + Math.random() * .6, y: 8.9 + Math.random() * .6, by: c.id, extra: true };
+  c.slot = slot;
+  goTo(c, slot, 'to_hall');
+}
+function releaseSlot(c){ if (c.slot && !c.slot.extra) c.slot.by = 0; c.slot = null; }
+function giveAnswer(c){
+  say(gov, c.answer, 2.6); gov.answered++;
+  c.qa.push({ q: c.question, a: c.answer });
+  c.state = 'heard'; c.stateT = 0;
+}
+function finish(c){
+  const b = c.bld;
+  if (b) { b.done = true; b.doneAt = simT; b.popAt = simT; b.target = 1; }
+  c.state = 'finishing'; c.stateT = 0;
+  say(c, '完工啦！', 1.5);
+}
+function pickRestSpot(id){
+  const free = REST.filter(r => !r.by);
+  let spot = free.length ? pick(free) : null;
+  if (spot) spot.by = id;
+  else {
+    const grass = Object.keys(tiles).filter(k => ['grass','park'].includes(tiles[k]) && walkable(...k.split(',').map(Number)));
+    const [gx, gy] = pick(grass).split(',').map(Number);
+    spot = { x: gx + .5, y: gy + .5, pose: 'lie', by: id, extra: true };
+  }
+  return spot;
+}
+function goRest(c){
+  const spot = pickRestSpot(c.id);
+  c.rest = spot;
+  goTo(c, spot, 'to_rest');
+}
+function leave(c){
+  if (c.rest && !c.rest.extra) c.rest.by = 0;
+  c.rest = null;
+  goTo(c, GATE, 'leaving');
+}
+function forceLeave(c){
+  releaseSlot(c);
+  leave(c);
+}
+function autoLeave(c){
+  c.leaveFlag = true;
+  leave(c);
+  log(`${c.task} 下班了`);
+}
+
+const WEIGHT = { Edit:1, Write:1, Bash:.6, Read:.3, Other:.3 };
+const KSCALE = { house:4.5, tower:5.5, garden:2.2, bridge:1.8 };
+let govState = 'idle';
+function setGovState(state){ govState = state; if (state !== 'waiting') gov.bubble = null; }
+function roleOrOther(role){ return ROLES[role] ? role : 'other'; }
+function placeAgent(a){
+  const role = roleOrOther(a.role), R = ROLES[role];
+  const plot = allocPlot(R.kind);
+  if (!plot) return null;
+  const c = newCitizen(a.id, role, a.task);
+  c.label = a.label || role;
+  const b = newBuilding(R.kind, plot.x, plot.y, role, c.label);
+  b.name = a.task; b.ownerId = c.id;
+  c.bld = b; c.stand = standFor(R.kind, plot.x, plot.y); c.x = c.stand.x; c.y = c.stand.y; c.alpha = 1; c.state = 'building';
+  const tools = a.tools || {};
+  Object.assign(c.tools, tools);
+  c.work = Object.entries(tools).reduce((s, [k, v]) => s + (WEIGHT[k] || .3) * v, 0);
+  b.target = b.shown = .92 * (1 - Math.exp(-c.work / KSCALE[R.kind]));
+  if (a.done) {
+    b.done = true; b.shown = b.target = 1; c.doneFlag = true;
+    const spot = pickRestSpot(c.id);
+    c.rest = spot; c.x = spot.x; c.y = spot.y; c.state = 'resting';
+  } else if (a.stuck) {
+    c.stuck = true; c.question = '需要你看一下';
+    goHall(c);
+  }
+  citizens.push(c);
+  return c;
+}
+function apply(ev){
+  const c = ev.id ? byId(ev.id) : null;
+  switch (ev.type) {
+    case 'snapshot': {
+      const agents = ev.agents || [];
+      const seen = new Set(agents.map(a => a.id));
+      for (const old of citizens.slice()) {
+        if (seen.has(old.id)) continue;
+        old.leaveFlag = true;
+        if (old.state === 'resting' || !old.doneFlag) forceLeave(old);
+      }
+      for (const a of agents) if (!byId(a.id)) placeAgent(a);
+      if (ev.gov && ev.gov.state) setGovState(ev.gov.state);
+      return null;
+    }
+    case 'spawn': {
+      if (byId(ev.id)) return null;
+      const role = roleOrOther(ev.role), R = ROLES[role];
+      const plot = allocPlot(R.kind);
+      if (!plot) { log(`没有空地了：${ev.task} 先等等`); return null; }
+      if (citizens.length >= MAX_CITIZENS) { const old = citizens.find(x => x.state === 'resting') || citizens[0]; old.gone = true; }
+      const n = newCitizen(ev.id, role, ev.task);
+      n.label = ev.label || role;
+      const b = newBuilding(R.kind, plot.x, plot.y, role, n.label);
+      b.name = ev.task; b.ownerId = n.id;
+      n.bld = b; n.stand = standFor(R.kind, plot.x, plot.y);
+      citizens.push(n);
+      say(gov, `去吧：${ev.task}`, 1.8); gov.dispatched++;
+      log(`总督派出 ${n.label}：${ev.task}`);
+      return n;
+    }
+    case 'tool': {
+      if (!c) return null;
+      c.tools[ev.tool] = (c.tools[ev.tool] || 0) + 1;
+      c.work += WEIGHT[ev.tool] || .3;
+      if (c.bld && !c.bld.done) c.bld.target = .92 * (1 - Math.exp(-c.work / KSCALE[c.bld.kind]));
+      if (floaters.length < MAX_FLOATERS) floaters.push({ text: ev.tool, x: c.x, y: c.y, t0: simT, color: c.color, el: null });
+      return c;
+    }
+    case 'stuck': {
+      if (!c) return null;
+      const text = ev.question || (ev.tool ? `可以用 ${ev.tool} 吗？` : '需要你看一下');
+      c.stuck = true; c.question = text; c.answered = false; c.answer = '';
+      if (['building','to_plot','back'].includes(c.state)) goHall(c);
+      log(`${c.task} 卡住了：“${text}” → 去问总督`, 'ask');
+      return c;
+    }
+    case 'answer': {
+      if (!c) return null;
+      const text = ev.answer || (ev.ok === false ? '不行，换个办法' : '批了，继续');
+      c.answer = text; c.answered = true; c.stuck = false;
+      log(`总督回答 ${c.task}：“${text}”`);
+      return c;
+    }
+    case 'done': {
+      if (!c || c.doneFlag) return null;
+      c.doneFlag = true;
+      if (c.state === 'building') finish(c);
+      log(`${c.task} 完工：${KIND_ZH[ROLES[c.role].kind]}封顶，去休息`, 'done');
+      return c;
+    }
+    case 'leave': {
+      if (!c) return null;
+      c.leaveFlag = true;
+      if (c.state === 'resting' || !c.doneFlag) forceLeave(c);
+      log(`${c.task} 下班了`);
+      return c;
+    }
+    case 'gov': {
+      setGovState(ev.state);
+      return null;
+    }
+  }
+  return null;
+}
+const emit = ev => apply(ev);
+
+function makeFeed(role, stuckChance){
+  const s = [];
+  if (role === 'worker') {
+    s.push('Read'); if (Math.random() < .5) s.push('Read');
+    const n = Math.floor(rnd(6, 11));
+    for (let i = 0; i < n; i++) { s.push(Math.random() < .8 ? 'Edit' : 'Write'); if (i % 3 === 2) s.push('Bash'); }
+    s.push('Bash');
+  } else if (role === 'task-manager') {
+    s.push('Read', 'Read');
+    const n = Math.floor(rnd(5, 8)); for (let i = 0; i < n; i++) s.push('Write');
+    s.push('Bash', 'Bash');
+  } else if (role === 'fast-lane-deputy') {
+    s.push('Read', 'Edit', 'Edit'); if (Math.random() < .5) s.push('Edit');
+  } else {
+    s.push('Bash', 'Bash', 'Bash', 'Bash'); if (Math.random() < .4) s.push('Bash');
+  }
+  const seq = s.map(tool => ({ t:'tool', tool }));
+  const p = stuckChance ?? (role === 'merge-deputy' ? .2 : .4);
+  if (Math.random() < p) { const [q, a] = pick(QA); seq.splice(Math.floor(rnd(1, seq.length - 1)), 0, { t:'stuck', q, a }); }
+  seq.push({ t:'done' }, { t:'leave' });
+  return { steps: seq, next: 0, restSince: 0, restFor: rnd(16, 30) };
+}
+function feed(c){
+  const f = c.feed; if (!f || simT < f.next) return;
+  const s = f.steps[0]; if (!s) return;
+  if (c.doneFlag && s.t !== 'leave') { f.steps = f.steps.filter(x => x.t === 'leave'); return; }
+  if (s.t === 'leave') {
+    if (c.state !== 'resting') return;
+    if (!f.restSince) { f.restSince = simT; return; }
+    if (simT - f.restSince < f.restFor) return;
+    f.steps.shift(); emit({ type:'leave', id:c.id }); return;
+  }
+  if (c.state !== 'building') return;
+  f.steps.shift();
+  if (s.t === 'tool') { emit({ type:'tool', id:c.id, tool:s.tool }); f.next = simT + rnd(.55, 1.35); }
+  else if (s.t === 'stuck') { c.pendingAnswer = s.a; emit({ type:'stuck', id:c.id, question:s.q }); f.next = simT + .6; }
+  else if (s.t === 'done') emit({ type:'done', id:c.id });
+}
+function spawnDemo(role, task){
+  if (!task) {
+    const busy = new Set(citizens.map(c => c.task));
+    const opts = TASKS[role].filter(t => !busy.has(t));
+    task = pick(opts.length ? opts : TASKS[role]);
+  }
+  const c = emit({ type:'spawn', id:'d' + (++cid), role, label:role, task });
+  if (c) c.feed = makeFeed(role);
+  return c;
+}
+let nextSpawn = 6;
+function spawner(){
+  if (simT < nextSpawn) return;
+  nextSpawn = simT + rnd(7, 13);
+  const active = citizens.filter(c => STATE[c.state][0] !== 'rest' && c.state !== 'leaving').length;
+  if (active >= 6) return;
+  const r = Math.random();
+  spawnDemo(r < .5 ? 'worker' : r < .65 ? 'task-manager' : r < .85 ? 'fast-lane-deputy' : 'merge-deputy');
+}
+
+function update(dt){
+  simT += dt;
+  for (const c of citizens) {
+    c.stateT += dt;
+    if (c.state === 'spawn') { c.alpha = Math.min(1, c.alpha + dt * 2.5); if (c.stateT > .7) { if (c.stuck) goHall(c); else goTo(c, c.stand, 'to_plot'); } }
+    else if (c.path.length) move(c, dt);
+    switch (c.state) {
+      case 'asking':
+        if (c.answered && simT - c.askT > .9) giveAnswer(c);
+        else if (DEMO && !c.answered && simT - c.askT > 1.9) emit({ type:'answer', id:c.id, answer: c.pendingAnswer || pick(QA)[1] });
+        break;
+      case 'heard':
+        if (c.stateT > 1.5) { releaseSlot(c); say(c, '明白！', 1.1); goTo(c, c.stand, 'back'); }
+        break;
+      case 'finishing': if (c.stateT > 1.5) goRest(c); break;
+      case 'resting': if (!DEMO && !c.leaveFlag && c.stateT > LIVE_REST_SEC) autoLeave(c); break;
+      case 'leaving': if (!c.path.length) { c.alpha -= dt * 2; if (c.alpha <= 0) c.gone = true; } break;
+    }
+    if (DEMO) feed(c);
+  }
+  for (let i = citizens.length - 1; i >= 0; i--) if (citizens[i].gone) {
+    const c = citizens[i];
+    if (c.rest && !c.rest.extra) c.rest.by = 0;
+    releaseSlot(c);
+    if (selected && selected.t === 'c' && selected.id === c.id) selected = c.bld && buildings.includes(c.bld) ? { t:'b', id:c.bld.id } : null;
+    citizens.splice(i, 1);
+  }
+  for (const b of buildings) {
+    if (b.done) b.shown = Math.min(1, b.shown + dt * 1.2);
+    else { const o = byId(b.ownerId); if (o && o.state === 'building') b.shown += (b.target - b.shown) * Math.min(1, dt * 1.6); }
+  }
+  for (let i = floaters.length - 1; i >= 0; i--) if (simT - floaters[i].t0 > 1.2) { const f = floaters[i]; if (f.el) f.el.remove(); floaters.splice(i, 1); }
+  if (DEMO) spawner();
+}
+
+/* =========================================================
+   3D view. Every model is a ready-made CC0 asset from Kenney
+   (kenney.nl), loaded as-is. Only placement is ours.
+   ========================================================= */
+const ASSET = 'assets/';
+const MODELS = [
+  'characters/character-female-a', 'characters/character-female-c', 'characters/character-female-e',
+  'characters/character-male-a', 'characters/character-male-b', 'characters/character-male-c', 'characters/character-male-e',
+  'suburban/building-type-a', 'suburban/building-type-c', 'suburban/building-type-f', 'suburban/building-type-k', 'suburban/building-type-n', 'suburban/building-type-r',
+  'commercial/building-j', 'commercial/building-skyscraper-a', 'commercial/building-skyscraper-b', 'commercial/detail-parasol-a', 'commercial/detail-parasol-b',
+  'nature/ground_grass', 'nature/ground_pathStraight', 'nature/ground_pathCross', 'nature/ground_pathTile', 'nature/ground_riverStraight',
+  'nature/cliff_block_rock', 'nature/bridge_wood', 'nature/tree_default', 'nature/tree_oak', 'nature/flower_redA', 'nature/flower_yellowA',
+  'nature/flower_purpleA', 'nature/plant_bush', 'nature/plant_bushLarge', 'nature/lily_large',
+  'fantasy/fountain-round', 'fantasy/lantern', 'fantasy/stall-red', 'fantasy/stall-bench',
+  'survival/structure', 'survival/tool-hammer', 'survival/resource-planks', 'survival/signpost-single',
+  'roads/construction-cone', 'forest/flag', 'forest/patch-grass',
+  'pets/animal-chick', 'pets/animal-cat', 'pets/animal-dog',
+];
+const VARIANTS = { 'task-manager':['character-female-c'], worker:['character-male-a','character-female-a','character-male-c'],
+  'fast-lane-deputy':['character-female-e'], 'merge-deputy':['character-male-e'], other:['character-male-c'] };
+const HOUSES = ['building-type-a','building-type-c','building-type-f','building-type-k','building-type-n','building-type-r'];
+const TOWERS = ['building-skyscraper-a','building-skyscraper-b'];
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, powerPreference:'low-power' });
+renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.localClippingEnabled = true;
+const scene = new THREE.Scene();
+const world = new THREE.Group();
+world.position.set(-6, 0, -5);
+scene.add(world);
+const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, .1, 200);
+const cam = { az: Math.PI / 4, el: .64, zoom: 1, tx: 0, tz: 0 };
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0xffffff, 1);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffffff, 1);
+sun.position.set(7, 15, 9);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+Object.assign(sun.shadow.camera, { left:-11, right:11, top:11, bottom:-11, near:1, far:45 });
+sun.shadow.bias = -.0006; sun.shadow.normalBias = .02;
+scene.add(sun); scene.add(sun.target);
+const THEME = {
+  day:   { sky:'#FFFFFF', gnd:'#C7D2E0', hemiI:.55, sun:'#FFF3E0', sunI:.6, night:false },
+  night: { sky:'#7D8BD9', gnd:'#2A2246', hemiI:.32, sun:'#AEBBFF', sunI:.24, night:true },
+};
+let P = THEME.day, themeKey = '';
+
+/* ---------- loading ---------- */
+const lib = {};
+const lambert = new Map();
+function toLambert(m){
+  if (Array.isArray(m)) return m.map(toLambert);
+  let l = lambert.get(m.uuid);
+  if (!l) {
+    l = new THREE.MeshLambertMaterial({ color: m.color ? m.color.clone() : new THREE.Color(0xffffff), map: m.map || null,
+      transparent: m.transparent, opacity: m.opacity, side: m.side, alphaTest: m.alphaTest || 0 });
+    if (!m.map) l.color.convertSRGBToLinear();
+    l.skinning = !!m.skinning;
+    lambert.set(m.uuid, l);
+  }
+  return l;
+}
+function prep(key, gltf){
+  const root = gltf.scene;
+  root.traverse(n => { if (n.isMesh) { n.material = toLambert(n.material); n.castShadow = true; n.receiveShadow = true; } });
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
+  lib[key] = { scene: root, clips: gltf.animations, box, size, skinned: gltf.animations.length > 0 && !!root.getObjectByProperty('type', 'SkinnedMesh') };
+}
+async function loadAll(onStep){
+  const loader = new THREE.GLTFLoader();
+  let done = 0;
+  await Promise.all(MODELS.map(key => new Promise((res, rej) => {
+    const ok = g => { prep(key.split('/')[1], g); onStep(++done, MODELS.length); res(); };
+    loader.load(ASSET + key + '.glb', ok, undefined, rej);
+  })));
+}
+const texLoader = new THREE.TextureLoader();
+function loadTex(path){
+  return new Promise(res => texLoader.load(ASSET + path, t => { t.encoding = THREE.sRGBEncoding; t.flipY = false; res(t); }, undefined, () => res(null)));
+}
+const variations = [];
+
+/* ---------- placing ready-made models ---------- */
+const tmpM = new THREE.Matrix4(), tmpM2 = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3();
+function fitScale(key, target){ const s = lib[key].size; return target / Math.max(s.x, s.z); }
+function scaleOf(key, o){ return o.s != null ? o.s : o.h != null ? o.h / lib[key].size.y : fitScale(key, o.fit || .9); }
+function place(key, x, z, opt){
+  const o = opt || {}, L = lib[key];
+  const g = new THREE.Group();
+  g.position.set(x, o.y || 0, z);
+  g.rotation.y = o.ry || 0;
+  const inner = L.skinned ? THREE.SkeletonUtils.clone(L.scene) : L.scene.clone(true);
+  const s = scaleOf(key, o);
+  inner.scale.setScalar(s);
+  const c = L.box.getCenter(new THREE.Vector3());
+  inner.position.set(-c.x * s, o.keepY ? 0 : -L.box.min.y * s, -c.z * s);
+  g.add(inner);
+  (o.parent || world).add(g);
+  g.userData.s = s;
+  return g;
+}
+function instanced(key, items, opt){
+  const o = opt || {}, L = lib[key];
+  if (!items.length) return;
+  L.scene.traverse(n => {
+    if (!n.isMesh) return;
+    const im = new THREE.InstancedMesh(n.geometry, n.material, items.length);
+    items.forEach((it, i) => {
+      const s = scaleOf(key, it);
+      const y = (it.y || 0) - (o.keepY ? 0 : L.box.min.y * s);
+      tmpM.compose(tmpP.set(it.x, y, it.z), tmpQ.setFromEuler(tmpE.set(0, it.ry || 0, 0)), tmpS.set(s, s, s));
+      im.setMatrixAt(i, tmpM2.multiplyMatrices(tmpM, n.matrixWorld));
+    });
+    im.castShadow = o.shadow !== false; im.receiveShadow = true; im.frustumCulled = false;
+    world.add(im);
+  });
+}
+
+/* ---------- the island, all from the nature kit ---------- */
+function buildIsland(){
+  const tilesBy = { ground_grass:[], ground_pathStraight:[], ground_pathCross:[], ground_pathTile:[], ground_riverStraight:[] };
+  for (let y = GY0; y <= GY1; y++) for (let x = 0; x <= GX1; x++) {
+    const t = T(x, y), it = { x: x + .5, z: y + .5, y: .05, s: 1 };
+    if (t === 'road') {
+      const vx = x === 4 || x === 7, hy = y === 4 || y === 7;
+      if (vx && hy) tilesBy.ground_pathCross.push(it);
+      else { it.ry = vx ? 0 : Math.PI / 2; tilesBy.ground_pathStraight.push(it); }
+    } else if (t === 'water') { it.ry = Math.PI / 2; tilesBy.ground_riverStraight.push(it); }
+    else if (t === 'plaza' || t === 'hall' || t === 'cafe') tilesBy.ground_pathTile.push(it);
+    else tilesBy.ground_grass.push(it);
+  }
+  for (const k in tilesBy) instanced(k, tilesBy[k], { keepY: true, shadow: false });
+  const edge = [];
+  for (let y = GY0; y <= GY1; y++) for (let x = 0; x <= GX1; x++)
+    if (x === 0 || x === GX1 || y === GY0 || y === GY1) edge.push({ x: x + .5, z: y + .5, y: -1, s: 1 });
+  instanced('cliff_block_rock', edge, { keepY: true, shadow: false });
+
+  instanced('tree_default', TREES.filter((_, i) => i % 2 === 0).map(([x, y]) => ({ x: x + .5, z: y + .5, h: .95, ry: x })));
+  instanced('tree_oak', TREES.filter((_, i) => i % 2 === 1).map(([x, y]) => ({ x: x + .5, z: y + .5, h: .9, ry: y })));
+  instanced('tree_oak', [[2.5, -1.5], [8.5, -1.55], [10.9, -1.45], [5.6, -1.6]].map(([x, z]) => ({ x, z, h: .7, ry: x })));
+  instanced('lantern', LAMPS.map(([x, z]) => ({ x, z, h: .62 })));
+  instanced('stall-bench', BENCHES.map(([x, z]) => ({ x, z, s: .62, ry: Math.PI / 2 })));
+  instanced('lily_large', [[1.6, -.6], [5.3, -.35], [9.4, -.7], [11.2, -.4]].map(([x, z]) => ({ x, z, y: .02, s: 1, ry: x })), { keepY: true, shadow: false });
+  const spots = Object.keys(tiles).filter(k => (tiles[k] === 'grass' || tiles[k] === 'park') && !PLOT_SET.has(k) && !STATIC_BLOCK.has(k));
+  const flowerKeys = ['flower_redA', 'flower_yellowA', 'flower_purpleA'];
+  const flowersBy = { flower_redA: [], flower_yellowA: [], flower_purpleA: [] };
+  for (let i = 0; i < 42; i++) {
+    const [x, y] = spots[Math.floor(sr(i, 3) * spots.length)].split(',').map(Number);
+    flowersBy[flowerKeys[i % 3]].push({ x: x + .15 + sr(i, 7) * .7, z: y + .15 + sr(i, 9) * .7, s: .55, ry: i });
+  }
+  for (const k in flowersBy) instanced(k, flowersBy[k], { shadow: false });
+  instanced('plant_bushLarge', [[4.9, 7.25], [7.1, 7.25], [8.25, 8.2], [11.7, 10.4]].map(([x, z]) => ({ x, z, s: .75 })));
+
+  place('building-j', 6, 6, { fit: 1.85 });
+  place('flag', 6.1, 6.25, { y: lib['building-j'].size.y * fitScale('building-j', 1.85), s: .7 });
+  place('fountain-round', 9.5, 9.5, { fit: .98 });
+  place('stall-red', 5.5, 10.5, { h: .72, ry: -Math.PI / 2 });
+  place('detail-parasol-a', 6.78, 10.5, { h: .5 });
+  place('detail-parasol-b', 6.78, 11.45, { h: .5 });
+  place('detail-parasol-a', 5.82, 11.55, { h: .5 });
+  place('signpost-single', 1.2, -1.45, { h: .6, ry: .3 });
+}
+
+/* ---------- river life and pets: animated ready-made models ---------- */
+const mixers = [];
+function playClip(obj, key, name){
+  const clip = THREE.AnimationClip.findByName(lib[key].clips, name);
+  if (!clip) return null;
+  const mixer = new THREE.AnimationMixer(obj);
+  const action = mixer.clipAction(clip); action.play();
+  mixers.push(mixer);
+  return { mixer, action };
+}
+const chicks = [], pets = [];
+function buildLife(){
+  for (const [x, z, sp] of [[2.2, -.55, .22], [8, -.42, .3]]) {
+    const g = place('animal-chick', x, z, { s: .11, ry: Math.PI / 2, y: .01 });
+    playClip(g.children[0], 'animal-chick', 'idle');
+    chicks.push({ g, sp, ph: Math.random() * 6 });
+  }
+  for (const [key, x, z] of [['animal-cat', 10.5, 10.6], ['animal-dog', 8.6, 11.3]]) {
+    const g = place(key, x, z, { s: .13 });
+    const mixer = new THREE.AnimationMixer(g.children[0]); mixers.push(mixer);
+    pets.push({ g, key, mixer, cur: null, target: null, wait: rnd(1, 4), yaw: 0 });
+    petAnim(pets[pets.length - 1], 'idle');
+  }
+}
+function petAnim(p, name){
+  if (p.cur === name) return;
+  const clip = THREE.AnimationClip.findByName(lib[p.key].clips, name); if (!clip) return;
+  const next = p.mixer.clipAction(clip);
+  next.reset().play();
+  if (p.action) next.crossFadeFrom(p.action, .25, false);
+  p.action = next; p.cur = name;
+}
+const PARK = Object.keys(tiles).filter(k => tiles[k] === 'park' && !STATIC_BLOCK.has(k)).map(k => k.split(',').map(Number));
+function updatePets(dt){
+  for (const p of pets) {
+    const pos = p.g.position;
+    if (!p.target) {
+      p.wait -= dt;
+      if (p.wait <= 0) { const [x, y] = pick(PARK); p.target = { x: x + rnd(.2, .8), z: y + rnd(.2, .8) }; petAnim(p, 'walk'); }
+      else if (p.cur === 'walk') petAnim(p, Math.random() < .5 ? 'eat' : 'idle');
+      continue;
+    }
+    const dx = p.target.x - pos.x, dz = p.target.z - pos.z, d = Math.hypot(dx, dz), sp = .45 * dt;
+    let dy = Math.atan2(dx, dz) - p.g.rotation.y; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
+    p.g.rotation.y += dy * .15;
+    if (d < sp) { p.target = null; p.wait = rnd(2, 6); petAnim(p, Math.random() < .5 ? 'eat' : 'idle'); }
+    else { pos.x += dx / d * sp; pos.z += dz / d * sp; }
+  }
+  for (const c of chicks) { const p = c.g.position; p.x += c.sp * dt; if (p.x > 11.8) p.x = .2; p.y = .01 + Math.sin(simT * 2 + c.ph) * .01; }
+}
+
+/* ---------- people: Kenney mini characters with their own animations ---------- */
+const pickables = [];
+const ringGeo = new THREE.RingGeometry(.22, .28, 32);
+const ringMats = new Map();
+function ringMat(color){ let m = ringMats.get(color); if (!m) { m = new THREE.MeshBasicMaterial({ color: new THREE.Color(color), transparent: true, opacity: .85 }); ringMats.set(color, m); } return m; }
+const CHAR_SCALE = .6;
+function makePerson(c){
+  const key = pick(VARIANTS[c.role] || VARIANTS.other);
+  const g = place(key, c.x, c.y, { s: CHAR_SCALE, keepY: true });
+  const body = g.children[0];
+  const mixer = new THREE.AnimationMixer(body); mixers.push(mixer);
+  const hand = body.getObjectByName('arm-right');
+  let hammer = null;
+  if (hand) { hammer = lib['tool-hammer'].scene.clone(true); hammer.scale.setScalar(1.25); hammer.position.set(-.02, -.17, .06); hammer.rotation.set(Math.PI / 2, 0, 0); hand.add(hammer); }
+  const ring = new THREE.Mesh(ringGeo, ringMat(c.color)); ring.rotation.x = -Math.PI / 2; ring.position.y = .015; g.add(ring);
+  const sel = new THREE.Mesh(ringGeo, ringMat('#FF7593')); sel.rotation.x = -Math.PI / 2; sel.position.y = .02; sel.scale.setScalar(1.45); g.add(sel);
+  g.userData.pick = { t:'c', id:c.id };
+  pickables.push(g);
+  c.v = { g, key, mixer, hammer, sel, yaw: 0, cur: null, action: null };
+}
+function anim(v, name, once){
+  if (v.cur === name) return;
+  const clip = THREE.AnimationClip.findByName(lib[v.key].clips, name); if (!clip) return;
+  const next = v.mixer.clipAction(clip);
+  next.reset(); next.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity); next.clampWhenFinished = !!once;
+  next.play();
+  if (v.action) next.crossFadeFrom(v.action, .2, false);
+  v.action = next; v.cur = name;
+}
+let govV;
+function makeGovernor(){
+  const g = place('character-male-b', gov.x, gov.y, { s: CHAR_SCALE * 1.15, keepY: true });
+  const mixer = new THREE.AnimationMixer(g.children[0]); mixers.push(mixer);
+  const sel = new THREE.Mesh(ringGeo, ringMat('#FF7593')); sel.rotation.x = -Math.PI / 2; sel.position.y = .02; sel.scale.setScalar(1.6); g.add(sel);
+  const ring = new THREE.Mesh(ringGeo, ringMat('#FFD36E')); ring.rotation.x = -Math.PI / 2; ring.position.y = .015; ring.scale.setScalar(1.15); g.add(ring);
+  g.userData.pick = { t:'gov' };
+  pickables.push(g);
+  govV = { g, key:'character-male-b', mixer, sel, cur:null, action:null };
+  anim(govV, 'idle');
+}
+
+/* ---------- buildings: ready-made models, revealed floor by floor ---------- */
+function frontYaw(b){
+  if (b.kind === 'bridge') return Math.PI / 2;
+  const [fx, fy] = frontOf(b.gx, b.gy);
+  return Math.atan2(fx - b.gx, fy - b.gy);
+}
+function makeBuilding(b){
+  const x = b.gx + .5, z = b.kind === 'bridge' ? -.5 : b.gy + .5;
+  const g = new THREE.Group(); g.position.set(x, 0, z); world.add(g);
+  const v = { g, meshes: [], plane: null, h: 1 };
+  v.cones = new THREE.Group(); g.add(v.cones);
+  const cz = b.kind === 'bridge' ? [[-.38, .45], [.38, .45]] : [[-.38, -.38], [.38, -.38], [.38, .38], [-.38, .38]];
+  for (const [cx, czz] of cz) place('construction-cone', cx, czz, { s: 1.7, parent: v.cones });
+  let key;
+  if (b.kind === 'house') key = HOUSES[Math.floor(sr(b.seed, 1) * HOUSES.length)];
+  else if (b.kind === 'tower') key = TOWERS[Math.floor(sr(b.seed, 2) * TOWERS.length)];
+  else if (b.kind === 'bridge') key = 'bridge_wood';
+  if (key) {
+    const fit = b.kind === 'tower' ? .82 : b.kind === 'house' ? 1 : 1.05;
+    v.model = place(key, 0, 0, { fit, ry: frontYaw(b), parent: g, y: b.kind === 'bridge' ? -.02 : 0 });
+    v.h = lib[key].size.y * v.model.userData.s;
+    const variation = b.kind === 'house' ? variations[Math.floor(sr(b.seed, 5) * (variations.length + 1))] : null;
+    v.model.traverse(n => { if (n.isMesh) {
+      if (variation && n.material.map) n.material = variantMat(n.material, variation);
+      n.userData.base = n.material; v.meshes.push(n);
+    } });
+  } else {
+    v.model = new THREE.Group(); g.add(v.model);
+    place('patch-grass', 0, 0, { fit: .9, parent: v.model, keepY: true, y: -.12 });
+    v.items = [];
+    const bits = [['plant_bush', -.28, -.28, .55], ['flower_redA', -.05, .1, .6], ['flower_yellowA', .2, -.15, .6], ['plant_bush', .28, .28, .5],
+      ['flower_purpleA', .15, .25, .6], ['flower_redA', -.25, .22, .6], ['tree_oak', .05, -.2, null], ['flower_yellowA', -.3, -.02, .6]];
+    for (const [k, bx, bz, s] of bits) { const it = place(k, bx, bz, { s: s != null ? s : undefined, fit: .38, parent: v.model }); v.items.push(it); }
+  }
+  if (b.kind === 'house' || b.kind === 'tower') {
+    v.scaf = new THREE.Group(); g.add(v.scaf);
+    const per = .42, n = Math.ceil(v.h / per) + 1;
+    for (let i = 0; i < n; i++) { const f = place('structure', 0, 0, { y: i * per, parent: v.scaf, s: 1 }); f.scale.set(1.9, per / .5, 1.9); f.userData.floor = i; }
+    v.planks = place('resource-planks', .55, .35, { s: .8, ry: .6, parent: g });
+  }
+  g.userData.pick = { t:'b', id:b.id };
+  pickables.push(g);
+  b.v = v;
+}
+const varCache = new Map();
+function variantMat(m, tex){
+  const k = m.uuid + tex.uuid;
+  let v = varCache.get(k);
+  if (!v) { v = m.clone(); v.map = tex; varCache.set(k, v); }
+  return v;
+}
+function setClip(b, on){
+  const v = b.v;
+  if (on && !v.plane) {
+    v.plane = b.kind === 'bridge' ? new THREE.Plane(new THREE.Vector3(0, 0, 1), 5) : new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
+    for (const n of v.meshes) { const m = n.userData.base.clone(); m.clippingPlanes = [v.plane]; m.clipShadows = true; n.material = m; }
+  } else if (!on && v.plane) {
+    for (const n of v.meshes) { n.material.dispose(); n.material = n.userData.base; }
+    v.plane = null;
+  }
+}
+function updateBuilding(b, t){
+  const v = b.v, p = b.done ? 1 : b.shown, planned = !b.done && b.shown < .02;
+  v.cones.visible = planned;
+  v.model.visible = !planned;
+  const k = t - b.popAt, pop = k >= 0 && k < 1 ? 1 + .14 * Math.sin(k * 10) * Math.exp(-k * 4) : 1;
+  v.g.scale.set(pop, pop, pop);
+  if (b.kind === 'garden') {
+    const n = Math.round(p * v.items.length);
+    v.items.forEach((it, i) => { it.visible = i < n; });
+    return;
+  }
+  setClip(b, !b.done && !planned);
+  if (v.plane) {
+    if (b.kind === 'bridge') v.plane.constant = 5 + p * 1.1;
+    else v.plane.constant = Math.max(.04, p * v.h);
+  }
+  if (v.scaf) {
+    v.scaf.visible = !b.done && !planned;
+    v.planks.visible = v.scaf.visible;
+    const h = p * v.h;
+    v.scaf.children.forEach(f => { f.visible = f.userData.floor * .42 < h + .05; });
+  }
+}
+
+/* ---------- overlays: crisp HTML labels that follow the scene ---------- */
+let W = 1, H = 1, needFrame = true;
+const tmpV = new THREE.Vector3();
+function toScreen(x, h, z){ tmpV.set(x - 6, h, z - 5).project(camera); return [(tmpV.x + 1) / 2 * W, (1 - tmpV.y) / 2 * H]; }
+function ovEl(cls, html){ const el = document.createElement('div'); el.className = cls; if (html) el.innerHTML = html; el.hidden = true; ovRoot.appendChild(el); return el; }
+function pin(el, x, y, show){ if (!show) { if (!el.hidden) el.hidden = true; return; } if (el.hidden) el.hidden = false; el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
+function setText(el, text){ if (el._t !== text) { el._t = text; el.textContent = text; } }
+const labels = [];
+const govBub = ovEl('bub gov'), govTag = ovEl('tagl');
+govTag.style.setProperty('--c', '#FF6F8B'); setText(govTag, '总督 · main manager');
+function ensureOv(c){
+  if (c.o) return;
+  c.o = { bub: ovEl('bub'), qm: ovEl('qm', '<span>?</span>'), zz: ovEl('zz', '<span>z</span><span>z</span><span>Z</span>'), tag: ovEl('tagl') };
+  c.o.tag.style.setProperty('--c', c.color);
+}
+function dropOv(c){ if (!c.o) return; for (const k in c.o) c.o[k].remove(); c.o = null; }
+
+function updatePerson(c, t, dt){
+  const v = c.v, g = v.g;
+  g.position.set(c.x, 0, c.y);
+  const walking = c.path.length > 0 && c.state !== 'spawn';
+  const resting = c.state === 'resting' && c.rest;
+  const pose = resting ? c.rest.pose : '';
+  let yaw = v.yaw;
+  if (walking) { const [tx, ty] = c.path[0]; const dx = tx - c.x, dz = ty - c.y; if (Math.hypot(dx, dz) > .001) yaw = Math.atan2(dx, dz); }
+  else if (c.state === 'building' && c.bld) { const bz = c.bld.kind === 'bridge' ? -.5 : c.bld.gy + .5; yaw = Math.atan2(c.bld.gx + .5 - c.x, bz - c.y); }
+  else if (c.state === 'asking' || c.state === 'heard') yaw = Math.atan2(gov.x - c.x, gov.y - c.y);
+  else if (pose === 'cafe') yaw = Math.PI / 2;
+  else if (pose === 'bench') yaw = 0;
+  let d = yaw - v.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+  v.yaw += d * .25;
+  g.rotation.y = v.yaw;
+  const grow = c.state === 'spawn' || c.state === 'leaving' ? clamp(c.alpha, 0, 1) : 1;
+  const s = grow < 1 ? grow * (1 + .25 * Math.sin(grow * Math.PI)) : 1;
+  g.scale.setScalar(Math.max(.001, s));
+  g.position.y = pose === 'bench' ? .1 : 0;
+  let a = 'idle', once = false;
+  if (walking) a = c.state === 'to_hall' ? 'sprint' : 'walk';
+  else if (c.state === 'building') a = 'interact-right';
+  else if (c.state === 'heard') { a = 'emote-yes'; once = true; }
+  else if (c.state === 'finishing') { a = 'jump'; }
+  else if (resting) a = 'sit';
+  anim(v, a, once);
+  if (v.hammer) v.hammer.visible = c.state === 'building';
+  v.sel.visible = !!(selected && selected.t === 'c' && selected.id === c.id);
+
+  ensureOv(c);
+  const [sx, sy] = toScreen(c.x, resting ? .58 : .72, c.y);
+  const talk = c.bubble && simT < c.bubble.until;
+  pin(c.o.qm, sx, sy, c.state === 'to_hall' && grow > .5);
+  pin(c.o.zz, sx + 14, sy, resting && pose === 'lie');
+  const showBub = c.state === 'asking' || (talk && c.state !== 'to_hall');
+  if (showBub) {
+    setText(c.o.bub, c.state === 'asking' ? c.question : c.bubble.text);
+    c.o.bub.className = 'bub' + (c.state === 'asking' ? ' ask' : c.state === 'finishing' ? ' done' : '');
+  }
+  pin(c.o.bub, sx, sy, showBub);
+  const [tx, ty] = toScreen(c.x, 0, c.y);
+  setText(c.o.tag, `${c.label} · ${c.task}`);
+  pin(c.o.tag, tx, ty + 34, v.sel.visible && c.state !== 'asking');
+}
+function updateGovernor(){
+  const waiting = !DEMO && govState === 'waiting';
+  const talking = waiting || (gov.bubble && simT < gov.bubble.until);
+  anim(govV, talking ? 'interact-left' : 'idle');
+  govV.sel.visible = !!(selected && selected.t === 'gov');
+  const [sx, sy] = toScreen(gov.x, .9, gov.y);
+  if (waiting) setText(govBub, '等你回话…');
+  else if (talking) setText(govBub, gov.bubble.text);
+  pin(govBub, sx, sy, talking);
+  const [tx, ty] = toScreen(gov.x, 0, gov.y);
+  pin(govTag, tx, ty + 38, govV.sel.visible);
+}
+
+const glowTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, 'rgba(255,214,130,.65)'); r.addColorStop(1, 'rgba(255,214,130,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+})();
+const glows = [];
+function buildGlows(){
+  const m = new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  for (const [x, z] of LAMPS) { const s = new THREE.Sprite(m); s.position.set(x, .62, z); s.scale.set(.9, .9, 1); s.visible = false; world.add(s); glows.push(s); }
+}
+function applyTheme(){
+  const key = isDark() ? 'night' : 'day';
+  if (key === themeKey) return;
+  themeKey = key; P = THEME[key];
+  hemi.color.set(P.sky); hemi.groundColor.set(P.gnd); hemi.intensity = P.hemiI;
+  sun.color.set(P.sun); sun.intensity = P.sunI;
+  glows.forEach(s => { s.visible = P.night; });
+}
+function updateCamera(){
+  const aspect = W / H;
+  let halfW = 9.4, halfH = halfW / aspect;
+  if (halfH < 6.9) { halfH = 6.9; halfW = halfH * aspect; }
+  camera.left = -halfW; camera.right = halfW; camera.top = halfH; camera.bottom = -halfH;
+  camera.zoom = cam.zoom; camera.updateProjectionMatrix();
+  const d = 40, ce = Math.cos(cam.el);
+  camera.position.set(cam.tx + d * ce * Math.sin(cam.az), d * Math.sin(cam.el), cam.tz + d * ce * Math.cos(cam.az));
+  camera.lookAt(cam.tx, .4, cam.tz);
+}
+function resetCam(){ cam.az = Math.PI / 4; cam.el = .64; cam.tx = 0; cam.tz = 0; cam.zoom = W < 560 ? 1.3 : 1; }
+function resize(){
+  const r = stage.getBoundingClientRect();
+  W = Math.max(1, r.width); H = Math.max(1, r.height);
+  renderer.setSize(W, H, false);
+  needFrame = true;
+}
+const goneOv = [];
+function sync(t, dt){
+  const ids = new Set(buildings.map(b => b.id));
+  for (const b of buildings) { if (!b.v) makeBuilding(b); updateBuilding(b, t); }
+  for (let i = pickables.length - 1; i >= 0; i--) {
+    const pk = pickables[i].userData.pick;
+    if ((pk.t === 'b' && !ids.has(pk.id)) || (pk.t === 'c' && !byId(pk.id))) { world.remove(pickables[i]); pickables.splice(i, 1); }
+  }
+  for (const c of citizens) { if (!c.v) makePerson(c); updatePerson(c, t, dt); }
+  for (const c of goneOv) { if (c.v) { const i = mixers.indexOf(c.v.mixer); if (i >= 0) mixers.splice(i, 1); } dropOv(c); }
+  goneOv.length = 0;
+  updateGovernor();
+  if (!RM) updatePets(dt);
+  for (const m of mixers) m.update(dt);
+  for (const f of floaters) {
+    if (!f.el) { f.el = ovEl('fl'); f.el.style.setProperty('--c', f.color); setText(f.el, f.text); }
+    const k = (simT - f.t0) / 1.2, [sx, sy] = toScreen(f.x, .62 + k * .45, f.y);
+    f.el.style.opacity = String(clamp(1.3 - k * 1.3, 0, 1));
+    pin(f.el, sx + 22, sy, true);
+  }
+  for (const l of labels) { const [sx, sy] = toScreen(l.x, l.h, l.z); pin(l.el, sx, sy, true); }
+}
+/* ---------- panel ---------- */
+const dirty = { log:true };
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[ch]));
+const clock = t => new Date(BASE + t * 1000).toTimeString().slice(0, 8);
+const pct = c => c.bld ? Math.round((c.bld.done ? 1 : c.bld.shown) * 100) : 0;
+const ORDER = { ask:0, build:1, walk:2, rest:3 };
+function renderStats(){
+  let work = 0, ask = 0, rest = 0;
+  for (const c of citizens) { const g = STATE[c.state][0]; if (g === 'ask') ask++; else if (g === 'rest') rest++; else if (c.state !== 'leaving') work++; }
+  const done = buildings.filter(b => b.done).length;
+  const html = [['#5AA9F0','干活',work],['#FF6F8B','找总督',ask],['#43C58B','休息',rest],['#FFC23D','建成',done]]
+    .map(([c, l, n]) => `<span class="stat"><i style="background:${c}"></i>${l} <b>${n}</b></span>`).join('');
+  if ($('#stats').innerHTML !== html) $('#stats').innerHTML = html;
+}
+let lastRoster = '';
+function govPillText(){
+  if (!DEMO && govState === 'waiting') return '等你回话';
+  const busy = (!DEMO && govState === 'busy') || (gov.bubble && simT < gov.bubble.until);
+  return busy ? '忙着' : '坐镇市政厅';
+}
+function renderRoster(){
+  const list = [...citizens].sort((a, b) => ORDER[STATE[a.state][0]] - ORDER[STATE[b.state][0]] || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  let html = `<li><button class="row" type="button" data-sel="gov" aria-current="${!!(selected && selected.t === 'gov')}"><span class="rdot gov"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govPillText()}</span></button></li>`;
+  for (const c of list) {
+    const [g, zh] = STATE[c.state];
+    const kind = KIND_ZH[ROLES[c.role].kind];
+    const sub = g === 'build' ? `${c.label} · ${kind} ${pct(c)}%` : `${c.label} · ${kind}`;
+    html += `<li><button class="row" type="button" data-sel="${c.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === c.id)}"><span class="rdot" style="--c:${c.color}"></span><span class="who"><b>${esc(c.task)}</b><span>${esc(sub)}</span></span><span class="pill ${g}">${zh}</span></button></li>`;
+  }
+  if (html !== lastRoster) { $('#roster').innerHTML = html; lastRoster = html; }
+}
+let lastDetailKey = '';
+function renderDetail(){
+  const el = $('#detail');
+  let key = (!DEMO && citizens.length === 0) ? 'empty' : 'none', c = null, b = null;
+  if (selected && selected.t === 'c') { c = byId(selected.id); if (!c) selected = null; else key = `c${c.id}|${c.state}|${c.doneFlag}|${c.stuck}|${c.qa.length}`; }
+  if (selected && selected.t === 'b') { b = buildings.find(x => x.id === selected.id); if (!b) selected = null; else key = `b${b.id}|${b.done}`; }
+  if (selected && selected.t === 'gov') key = `gov|${gov.answered}|${gov.dispatched}`;
+  if (key !== lastDetailKey) {
+    lastDetailKey = key;
+    if (c) {
+      const [g, zh] = STATE[c.state], kind = KIND_ZH[ROLES[c.role].kind];
+      const qa = [...c.qa.map(x => `<p>问：<b>“${esc(x.q)}”</b></p><p>答：<b>“${esc(x.a)}”</b></p>`), (c.stuck ? `<p>问：<b>“${esc(c.question)}”</b> 等回答…</p>` : '')].join('');
+      const canStuck = !c.doneFlag && !c.stuck && ['building','to_plot','back'].includes(c.state);
+      el.innerHTML = `
+        <div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(c.task)}</div><div class="d-role">${esc(c.label)} · ${ROLES[c.role].zh}</div></div><span class="pill ${g}">${zh}</span></div>
+        <div class="d-bar"><div class="track"><i data-f="bar" style="width:${pct(c)}%;background:${c.color}"></i></div><span data-f="pct">${kind} ${pct(c)}%</span></div>
+        <dl class="d-tools">${['Edit','Write','Bash','Read'].map(t => `<div><dt>${t}</dt><dd data-f="${t}">${c.tools[t]}</dd></div>`).join('')}</dl>
+        ${qa ? `<div class="d-qa">${qa}</div>` : ''}
+        ${DEMO ? `
+        <div class="d-actions">
+          <button class="btn" type="button" data-act="stuck" ${canStuck ? '' : 'disabled'}>让它卡住</button>
+          <button class="btn" type="button" data-act="done" ${c.doneFlag ? 'disabled' : ''}>让它完工</button>
+          <button class="btn" type="button" data-act="leave" ${c.state === 'resting' && !c.leaveFlag ? '' : 'disabled'}>让它下班</button>
+        </div>
+        <p class="d-note">这三个按钮只在原型里有，用来试流程。</p>` : ''}`;
+    } else if (b) {
+      const owner = byId(b.ownerId);
+      el.innerHTML = `
+        <div class="d-head"><span class="rdot" style="--c:${b.color}"></span><div><div class="d-name">${KIND_ZH[b.kind]} · ${esc(b.name)}</div><div class="d-role">${esc(b.label)}</div></div><span class="pill ${b.done ? 'rest' : 'build'}">${b.done ? '建成' : '施工中'}</span></div>
+        <p class="hint">${owner ? `盖它的小人还在城里：${esc(owner.task)}。` : `盖它的 ${esc(b.label)} 已经下班。`}${b.kind === 'bridge' ? '桥 = 把分支接到 main。' : ''}</p>`;
+    } else if (selected && selected.t === 'gov') {
+      el.innerHTML = `
+        <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">总督</div><div class="d-role">main manager · 主对话</div></div><span class="pill gov">市政厅</span></div>
+        <p class="hint">总督就是你正在聊的主对话。它派人出门、回答卡住的问题，自己不盖楼。</p>
+        <dl class="d-tools" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><dt>派出</dt><dd>${gov.dispatched}</dd></div><div><dt>回答</dt><dd>${gov.answered}</dd></div></dl>`;
+    } else if (!DEMO && citizens.length === 0) {
+      el.innerHTML = `<h2><span class="en">Selected</span>详情</h2><p class="hint">还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。</p>`;
+    } else {
+      el.innerHTML = `<h2><span class="en">Selected</span>详情</h2><p class="hint">点城里的小人、房子，或下面名单里的一行。</p>`;
+    }
+  }
+  if (c) {
+    const bar = el.querySelector('[data-f="bar"]'); if (bar) bar.style.width = pct(c) + '%';
+    const p = el.querySelector('[data-f="pct"]'); if (p) p.textContent = `${KIND_ZH[ROLES[c.role].kind]} ${pct(c)}%`;
+    for (const t of ['Edit','Write','Bash','Read']) { const d = el.querySelector(`[data-f="${t}"]`); if (d && d.textContent !== String(c.tools[t])) d.textContent = c.tools[t]; }
+  }
+}
+function renderLog(){
+  if (!dirty.log) return; dirty.log = false;
+  $('#log').innerHTML = logEntries.map(e => `<li><time>${e.real ? new Date(e.real).toTimeString().slice(0, 8) : clock(e.t)}</time><span class="${e.kind}">${esc(e.text)}</span></li>`).join('');
+}
+function renderPanel(){ renderStats(); renderRoster(); renderDetail(); renderLog(); $('#clock').textContent = DEMO ? '模拟 ' + clock(simT) : '现在 ' + new Date().toTimeString().slice(0, 8); }
+
+/* ---------- input ---------- */
+function selectFrom(val){
+  if (val === 'gov') selected = { t:'gov' };
+  else if (val) selected = { t:'c', id:val };
+  lastDetailKey = ''; lastRoster = ''; renderPanel(); needFrame = true;
+}
+$('#roster').addEventListener('pointerdown', e => { const r = e.target.closest('[data-sel]'); if (r) selectFrom(r.dataset.sel); });
+$('#roster').addEventListener('click', e => { const r = e.target.closest('[data-sel]'); if (r && e.detail === 0) selectFrom(r.dataset.sel); });
+$('#detail').addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]'); if (!btn || !selected || selected.t !== 'c') return;
+  const c = byId(selected.id); if (!c) return;
+  if (btn.dataset.act === 'stuck') { const [q, a] = pick(QA); c.pendingAnswer = a; emit({ type:'stuck', id:c.id, question:q }); }
+  if (btn.dataset.act === 'done') emit({ type:'done', id:c.id });
+  if (btn.dataset.act === 'leave') emit({ type:'leave', id:c.id });
+  lastDetailKey = ''; renderPanel();
+});
+if (DEMO) {
+  $('#spawn').addEventListener('click', () => { const c = spawnDemo($('#role').value); if (c) { selected = { t:'c', id:c.id }; lastDetailKey = ''; renderPanel(); } });
+} else {
+  $('#spawn-group').hidden = true;
+  $('#spawn-sep').hidden = true;
+  $('#proto').textContent = '实时 · 等服务器';
+  $('#intro').textContent = '这是你电脑上正在跑的 agent。每个小人是一个 agent：分到任务就去盖楼，卡住了就跑去市政厅问总督，做完了就去休息。拖动可以转视角，点小人看详情。';
+}
+function connectLive(){
+  const chip = $('#proto');
+  let everOpen = false;
+  const es = new EventSource('/events');
+  es.onopen = () => { everOpen = true; chip.textContent = '实时 · 已连接'; };
+  es.onerror = () => { chip.textContent = everOpen ? '实时 · 重连中…' : '实时 · 等服务器'; };
+  es.onmessage = e => {
+    let ev;
+    try { ev = JSON.parse(e.data); } catch (err) { return; }
+    apply(ev);
+    needFrame = true;
+  };
+}
+$('#play').addEventListener('click', () => {
+  paused = !paused;
+  $('#play').setAttribute('aria-pressed', String(paused));
+  $('#play-label').textContent = paused ? '继续' : '暂停';
+  $('#icon-pause').hidden = paused; $('#icon-play').hidden = !paused;
+});
+document.querySelectorAll('[data-speed]').forEach(b => b.addEventListener('click', () => {
+  speed = Number(b.dataset.speed);
+  document.querySelectorAll('[data-speed]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+}));
+const camChanged = () => { needFrame = true; hideHint(); };
+$('#zin').addEventListener('click', () => { cam.zoom = clamp(cam.zoom * 1.25, .7, 3.2); camChanged(); });
+$('#zout').addEventListener('click', () => { cam.zoom = clamp(cam.zoom / 1.25, .7, 3.2); camChanged(); });
+$('#rot').addEventListener('click', () => { camTween = { from: cam.az, to: cam.az - Math.PI / 2, t: 0 }; camChanged(); });
+$('#zfit').addEventListener('click', () => { resetCam(); camChanged(); });
+let hintHidden = false;
+function hideHint(){ if (!hintHidden) { hintHidden = true; $('#hint-drag').hidden = true; } }
+let camTween = null;
+
+const pointers = new Map();
+let drag = null, pinch = null;
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function pickAt(px, py){
+  ndc.set(px / W * 2 - 1, -(py / H) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects(pickables, true);
+  for (const h of hits) {
+    let o = h.object;
+    while (o && !o.userData.pick) o = o.parent;
+    if (!o) continue;
+    const pk = o.userData.pick;
+    if (pk.t === 'b') { const b = buildings.find(x => x.id === pk.id); const owner = b && byId(b.ownerId); return owner ? { t:'c', id:owner.id } : pk; }
+    return pk;
+  }
+  return null;
+}
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+  if (pointers.size === 1) drag = { x:e.clientX, y:e.clientY, moved:false, pan: e.button === 2 || e.shiftKey };
+  if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: cam.zoom, mx:(a.x + b.x) / 2, my:(a.y + b.y) / 2 }; drag = null; }
+});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+function panBy(dx, dy){
+  const k = (camera.right - camera.left) / camera.zoom / W;
+  const s = Math.sin(cam.az), c = Math.cos(cam.az);
+  cam.tx = clamp(cam.tx - (dx * c - dy * s * 1.4) * k, -6, 6);
+  cam.tz = clamp(cam.tz - (-dx * s - dy * c * 1.4) * k, -6, 6);
+}
+canvas.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+  if (pinch && pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    cam.zoom = clamp(pinch.z * d / Math.max(20, pinch.d), .7, 3.2);
+    panBy(mx - pinch.mx, my - pinch.my); pinch.mx = mx; pinch.my = my;
+    camChanged(); return;
+  }
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) < 6) return;
+  drag.moved = true; canvas.classList.add('grabbing');
+  if (drag.pan) panBy(dx, dy);
+  else { cam.az -= dx * .008; cam.el = clamp(cam.el + dy * .005, .32, 1.15); }
+  drag.x = e.clientX; drag.y = e.clientY;
+  camChanged();
+});
+function endPointer(e){
+  const wasTap = drag && !drag.moved && pointers.size === 1;
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinch = null;
+  if (wasTap && e.type === 'pointerup') {
+    const r = canvas.getBoundingClientRect();
+    selected = pickAt(e.clientX - r.left, e.clientY - r.top);
+    lastDetailKey = ''; lastRoster = ''; renderPanel(); needFrame = true;
+  }
+  if (!pointers.size) { drag = null; canvas.classList.remove('grabbing'); }
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('wheel', e => { e.preventDefault(); cam.zoom = clamp(cam.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), .7, 3.2); camChanged(); }, { passive:false });
+
+/* ---------- opening scene: a city mid-day, not an empty island ---------- */
+function placeBuilder(role, task, x, y, tools){
+  const R = ROLES[role], c = newCitizen('d' + (++cid), role, task), b = newBuilding(R.kind, x, y, role);
+  b.name = task; b.ownerId = c.id;
+  c.bld = b; c.stand = standFor(R.kind, x, y); c.x = c.stand.x; c.y = c.stand.y;
+  c.alpha = 1; c.state = 'building';
+  Object.assign(c.tools, tools);
+  c.work = Object.entries(tools).reduce((s, [k, v]) => s + (WEIGHT[k] || .5) * v, 0);
+  b.target = b.shown = .92 * (1 - Math.exp(-c.work / KSCALE[R.kind]));
+  c.feed = makeFeed(role, 0); c.feed.steps.splice(0, Math.min(4, c.feed.steps.length - 2));
+  citizens.push(c);
+  return c;
+}
+function placeResting(role, task, restIdx, bName){
+  const c = newCitizen('d' + (++cid), role, task), spot = REST[restIdx];
+  spot.by = c.id; c.rest = spot; c.x = spot.x; c.y = spot.y; c.alpha = 1; c.state = 'resting'; c.doneFlag = true;
+  const b = buildings.find(x => x.name === bName); if (b) { b.ownerId = c.id; c.bld = b; }
+  c.feed = { steps:[{ t:'leave' }], next:0, restSince:0, restFor:rnd(22, 34) };
+  citizens.push(c);
+  return c;
+}
+function seed(){
+  const hist = [['house',3,0,'worker','价格计算',-420],['tower',5,3,'task-manager','登录',-380],['garden',1,1,'fast-lane-deputy','按钮颜色',-300],
+    ['house',0,3,'worker','导出 CSV',-260],['bridge',4,-1,'merge-deputy','合并 login',-200],['house',9,6,'worker','深色模式',-150],['garden',5,1,'fast-lane-deputy','错别字',-45]];
+  for (const [k, x, y, role, task, t] of hist) { const b = newBuilding(k, x, y, role); b.done = true; b.shown = b.target = 1; b.name = task; b.doneAt = t; }
+  logAt(-420, '总督派出 worker：价格计算');
+  logAt(-300, '按钮颜色 完工：花园封顶，去休息', 'done');
+  logAt(-200, '合并 login 完工：桥封顶，去休息', 'done');
+  logAt(-95, '总督派出 task-manager：设置页');
+  logAt(-82, '总督派出 worker：设置页表单');
+  logAt(-80, '总督派出 worker：设置页 API');
+  logAt(-45, '错别字 完工：花园封顶，去休息', 'done');
+  placeBuilder('worker', '设置页表单', 3, 6, { Read:1, Edit:4, Write:1, Bash:1 });
+  placeBuilder('task-manager', '设置页', 10, 3, { Read:2, Write:3, Bash:1 });
+  const api = placeBuilder('worker', '设置页 API', 8, 3, { Read:2, Edit:2, Bash:1 });
+  placeResting('fast-lane-deputy', '错别字', 0, '错别字');
+  placeResting('worker', '价格计算', 4, '价格计算');
+  api.pendingAnswer = '用 /api/settings';
+  api.x = 7.5; api.y = 5.2;
+  emit({ type:'stuck', id:api.id, question:'API 路径用哪个？' });
+  selected = { t:'c', id:api.id };
+}
+
+/* ---------- boot: load the ready-made models, then run at a capped frame rate ---------- */
+let lastSim = performance.now(), lastDraw = 0, panelT = 0;
+function busy(){
+  if (drag && drag.moved || pinch || camTween) return true;
+  if (floaters.length) return true;
+  return citizens.some(c => c.path.length || c.state === 'building' || c.state === 'spawn' || c.state === 'asking');
+}
+function frame(now){
+  requestAnimationFrame(frame);
+  if (document.hidden) { lastSim = now; return; }
+  const interval = busy() || needFrame ? FRAME_MS : IDLE_FRAME_MS;
+  if (now - lastDraw < interval - 2) return;
+  const raw = Math.min(.1, (now - lastSim) / 1000);
+  lastSim = now; lastDraw = now; needFrame = false;
+  let dtScaled = 0;
+  if (!paused) {
+    let dt = dtScaled = raw * speed;
+    const before = new Set(citizens);
+    while (dt > 0) { const s = Math.min(dt, .05); update(s); dt -= s; }
+    for (const c of before) if (!citizens.includes(c)) goneOv.push(c);
+  }
+  if (camTween) {
+    camTween.t = Math.min(1, camTween.t + raw * 2.2);
+    const e = camTween.t < .5 ? 2 * camTween.t * camTween.t : 1 - Math.pow(-2 * camTween.t + 2, 2) / 2;
+    cam.az = camTween.from + (camTween.to - camTween.from) * e;
+    if (camTween.t >= 1) camTween = null;
+  }
+  applyTheme();
+  updateCamera();
+  sync(simT, dtScaled);
+  renderer.render(scene, camera);
+  panelT += raw;
+  if (panelT > .25) { panelT = 0; renderPanel(); }
+}
+resize(); resetCam(); updateCamera();
+Promise.all([
+  loadAll((n, total) => { $('#loading-text').textContent = `正在搬来素材 ${n}/${total}`; }),
+  ...['suburban/Textures/variation-a.png', 'suburban/Textures/variation-b.png', 'suburban/Textures/variation-c.png'].map(loadTex),
+]).then(([, ...tex]) => {
+  tex.forEach(t => { if (t) variations.push(t); });
+  buildIsland(); buildLife(); buildGlows(); makeGovernor();
+  for (const [text, x, h, z] of [['市政厅', 6, 1.95, 6], ['咖啡馆', 5.5, 1.0, 10.5], ['main', 1.2, .85, -1.5]]) { const el = ovEl('lbl'); setText(el, text); labels.push({ el, x, h, z }); }
+  if (DEMO) seed(); else connectLive();
+  $('#loading').hidden = true;
+  new ResizeObserver(() => resize()).observe(stage);
+  applyTheme(); updateCamera(); sync(0, 0); renderer.render(scene, camera); renderPanel();
+  requestAnimationFrame(frame);
+}).catch(err => { $('#loading-text').textContent = '素材没加载成功：' + ((err && err.message) || err); });
+})();
+</script>
+</body>
+</html>

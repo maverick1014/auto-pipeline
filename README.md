@@ -24,6 +24,8 @@ Scripts, not agents (cost no tokens):
   bin/agent-monitor.sh   watches every worktree, writes agent_monitor.txt
   bin/agent-init.sh      sets a project up: agent.conf, the four task files, .secrets/, .gitignore lines, AGENTS.md, and it prints the permissions block
   bin/agent-cloud-pack.sh  lays this pipeline into a repo as plain files, for cloud sessions
+  bin/agent-city.sh       starts/stops the agent city visualiser, a local server
+  bin/agent-city-hook.sh  hook that feeds the city; off costs a `test -f`, on appends one JSON line
 ```
 
 ## Who does what
@@ -151,6 +153,8 @@ and the packed skills/agents, and never touches `agent.conf`, `agent_*.txt`, `CL
 bin/agent-settings.sh language zh   # talk to the human in Chinese
 bin/agent-settings.sh sync          # add any key missing from agent.conf, template value
 bin/agent-file.sh time              # estimate vs actual for every finished task
+./bin/agent-city.sh start           # agent city visualiser, off by default, costs almost nothing
+/auto-pipeline:city              # start the agent city, prints the URL
 ```
 
 A second Claude session in this repo becomes a task manager under the main manager, by itself.

@@ -46,6 +46,8 @@ REAL_KEYS = [
     "auto_resume",
     "language",
     "runtime",
+    "city_port",
+    "city_idle_min",
 ]
 
 GOOD_CONF_TEXT = (
@@ -63,6 +65,8 @@ GOOD_CONF_TEXT = (
     "auto_resume=yes\n"
     "language=en\n"
     "runtime=auto\n"
+    "city_port=4777\n"
+    "city_idle_min=30\n"
 )
 
 
@@ -372,6 +376,7 @@ class TestGroups(unittest.TestCase):
                 ),
                 ("permission", ["permission_mode", "auto_resume", "language"]),
                 ("runtime", ["runtime"]),
+                ("city", ["city_port", "city_idle_min"]),
             ],
         )
 
@@ -412,6 +417,38 @@ class TestRuntimeKey(unittest.TestCase):
 
     def test_it_sits_in_its_own_group(self):
         self.assertEqual(agent_conf.group_of("runtime"), "runtime")
+
+
+
+class TestCityKeys(unittest.TestCase):
+    """The two keys bin/agent-city.sh reads: where the city listens, and how
+    long it lives with no browser open before it quits by itself."""
+
+    BOUNDS = {"city_port": (1024, 65535), "city_idle_min": (1, 240)}
+
+    def test_bounds(self):
+        for key, bounds in self.BOUNDS.items():
+            with self.subTest(key=key):
+                self.assertEqual(agent_conf.NUMBER_BOUNDS.get(key), bounds)
+
+    def test_edges_pass_and_outside_fails(self):
+        for key, (low, high) in self.BOUNDS.items():
+            with self.subTest(key=key):
+                self.assertIsNone(agent_conf.validate_value(key, str(low)))
+                self.assertIsNone(agent_conf.validate_value(key, str(high)))
+                self.assertTrue(agent_conf.validate_value(key, str(low - 1)))
+                self.assertTrue(agent_conf.validate_value(key, str(high + 1)))
+
+    def test_hints_and_group(self):
+        for key in self.BOUNDS:
+            with self.subTest(key=key):
+                self.assertTrue(agent_conf.HINTS.get(key, "").strip())
+                self.assertEqual(agent_conf.group_of(key), "city")
+
+    def test_template_defaults(self):
+        conf = agent_conf.load(os.path.join(ROOT, "bin", "agent.conf.default"))
+        self.assertEqual(conf.get("city_port"), "4777")
+        self.assertEqual(conf.get("city_idle_min"), "30")
 
 
 if __name__ == "__main__":
