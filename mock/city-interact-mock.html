@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City 问答</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --sky:#CFE6FF; --berry:#FF7593; --berry-deep:#D9506E; --butter:#FFD36E; --mint:#6FD4A8;
+  --focus:#4D7CFE;
+  --build-bg:#E1ECFF; --build-ink:#3160B5; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
+  --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488;
+  --gov-bg:#FFF0C7; --gov-ink:#8A6000;
+  --ok:#1E8657; --ok-deep:#146342;
+  --ground:#BFE3A6; --ground-edge:#9CCB86; --road:#F2E3C4;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+    --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
+    --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+    --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
+    --gov-bg:#43381A; --gov-ink:#FFDD8A;
+    --ok:#2FA56F; --ok-deep:#1B7049;
+    --ground:#2E5A3A; --ground-edge:#24482E; --road:#5B5238;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+  --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
+  --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+  --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
+  --gov-bg:#43381A; --gov-ink:#FFDD8A;
+  --ok:#2FA56F; --ok-deep:#1B7049;
+  --ground:#2E5A3A; --ground-edge:#24482E; --road:#5B5238;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.app{max-width:1500px;margin-inline:auto;padding-inline:16px;padding-block:14px 22px;display:flex;flex-direction:column;gap:14px;min-height:100dvh}
+
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.sign{display:inline-flex;align-items:center;gap:10px;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:5px 16px 5px 8px;box-shadow:0 3px 0 var(--ink)}
+.sign-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--berry);color:#fff;flex:none}
+.sign-icon svg{width:20px;height:20px}
+.sign-name{font:700 24px/1 var(--display);letter-spacing:.01em}
+.sign-sub{display:block;font:600 10.5px/1.2 var(--mono);color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase;margin-top:3px}
+.stats{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
+.stat{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font-size:13px;color:var(--ink-2)}
+.stat b{color:var(--ink);font:700 14px/1 var(--display);font-variant-numeric:tabular-nums}
+.stat i{width:9px;height:9px;border-radius:50%;display:block}
+.stat.wait{font:inherit;font-size:13px;cursor:pointer;border-color:var(--berry);background:var(--ask-bg);color:var(--ask-ink)}
+.stat.wait b{color:var(--ask-ink)}
+.stat.wait:disabled{cursor:default;border-color:var(--line);background:var(--panel);color:var(--ink-3)}
+.stat.wait:disabled b{color:var(--ink-3)}
+.stat.wait:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;flex:1;min-height:0}
+.stage-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.stage{position:relative;overflow:hidden;height:calc(100dvh - 150px);min-height:520px;background:var(--sky)}
+.land{position:absolute;inset:0;width:100%;height:100%}
+.proto{position:absolute;top:12px;left:12px;z-index:3;background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px;box-shadow:0 2px 0 rgba(42,43,69,.18);pointer-events:none}
+
+.house{position:absolute;transform:translate(-50%,-100%);width:34px;height:26px;background:#FFF6E6;border:2px solid #2A2B45;border-radius:4px}
+.house::before{content:"";position:absolute;left:-6px;right:-6px;top:-15px;height:15px;background:var(--r,#E8765C);clip-path:polygon(50% 0,100% 100%,0 100%);}
+.hall{position:absolute;left:50%;top:27%;transform:translate(-50%,-100%);width:92px;height:52px;background:#FFF6E6;border:2.5px solid #2A2B45;border-radius:6px}
+.hall::before{content:"";position:absolute;left:-10px;right:-10px;top:-30px;height:30px;background:#FFC23D;clip-path:polygon(50% 0,100% 100%,0 100%)}
+.hall span{position:absolute;left:50%;bottom:-26px;transform:translateX(-50%);white-space:nowrap;background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:2px 10px;font:600 12px/1.5 var(--display);box-shadow:0 2px 0 rgba(42,43,69,.15)}
+
+.person{position:absolute;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;transition:left 1.8s linear,top 1.8s linear;z-index:2}
+.person .fig{all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:center;border-radius:12px;padding:2px}
+.person .fig:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.person .head{width:18px;height:18px;border-radius:50%;background:#FFD9B8;border:2px solid #2A2B45}
+.person .torso{width:24px;height:20px;margin-top:-2px;border-radius:10px 10px 6px 6px;background:var(--c);border:2px solid #2A2B45}
+.person.sel .torso{box-shadow:0 0 0 3px var(--berry)}
+.person .name{margin-top:3px;background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:1px 8px;font:600 11.5px/1.5 var(--display);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.15)}
+.person.gov .torso{background:#FFC23D}
+.above{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:4px}
+.bub{background:#FFFFFF;color:#2A2B45;border:2px solid #2A2B45;border-radius:14px;padding:3px 10px;font:600 12.5px/1.4 var(--round);white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.bub.ask{border-color:#E4476F}
+.bub.gov{background:#FFF1C9;border-color:#C99A1E}
+.bub.done{border-color:#2FB57A;background:#EFFFF6}
+.bub.no{border-color:#E4476F;background:#FFF0F3}
+.qm{all:unset;cursor:pointer;display:grid;place-items:center;width:32px;height:32px;border-radius:50%}
+.qm span{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#FF4F72;color:#fff;font:700 18px/1 var(--display);border:2px solid #fff;box-shadow:0 2px 0 rgba(42,43,69,.3);animation:hop .7s ease-in-out infinite}
+.qm:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+@keyframes hop{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.wait{display:inline-flex;align-items:center;gap:6px;background:#FFF1C9;color:#6B4B00;border:1.5px solid #C99A1E;border-radius:999px;padding:2px 9px 2px 3px;font:600 11.5px/1.4 var(--mono);white-space:nowrap;font-variant-numeric:tabular-nums}
+.wait i{width:16px;height:16px;border-radius:50%;background:conic-gradient(#C99A1E calc(var(--p) * 1turn),#F3DFA6 0)}
+
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:8px}
+.lead{font-size:13px;color:var(--ink-2);margin-right:2px}
+.clock{margin-left:auto;font:600 12px/1 var(--mono);color:var(--ink-2);font-variant-numeric:tabular-nums;padding-right:4px}
+.btn{font:600 13px/1 var(--round);border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:12px;padding:0 12px;min-height:36px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:transform .12s,box-shadow .12s,border-color .12s}
+.btn:hover{border-color:var(--ink-3)}
+.btn:focus-visible,.row:focus-visible,input:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.btn.primary{background:var(--berry);border-color:var(--berry);color:#fff;box-shadow:0 3px 0 var(--berry-deep)}
+.btn.primary:active,.btn.ok:active{transform:translateY(3px);box-shadow:none}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff;box-shadow:0 3px 0 var(--ok-deep)}
+.btn.no{background:var(--panel);border-color:var(--ask-ink);color:var(--ask-ink)}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
+
+/* the "?" panel */
+.ask{position:absolute;right:12px;top:52px;z-index:6;width:min(410px,calc(100% - 24px));max-height:calc(100% - 64px);overflow:auto;background:var(--panel);color:var(--ink);border:2px solid var(--ink);border-radius:20px;box-shadow:0 6px 0 rgba(42,43,69,.22);padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px}
+.ask-head{display:grid;grid-template-columns:24px minmax(0,1fr) auto 32px;gap:10px;align-items:center}
+.ask-title{font-weight:700;font-size:17px;line-height:1.3;overflow-wrap:anywhere;outline:none}
+.ask-role{font:12px/1.3 var(--mono);color:var(--ink-3)}
+.x{all:unset;cursor:pointer;display:grid;place-items:center;width:32px;height:32px;border-radius:10px;color:var(--ink-2)}
+.x:hover{background:var(--panel-2)}
+.x:focus-visible{outline:2.5px solid var(--focus)}
+.x svg{width:18px;height:18px}
+.why{display:flex;gap:8px;align-items:flex-start;background:var(--ask-bg);color:var(--ask-ink);border-radius:12px;padding:8px 10px;font-size:13px;line-height:1.45}
+.why.gov{background:var(--gov-bg);color:var(--gov-ink)}
+.why b{font-weight:700}
+.q{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.q legend{padding:0;margin-bottom:6px;font-weight:700;font-size:15px;line-height:1.4}
+.chip{display:inline-block;font:600 11px/1 var(--mono);letter-spacing:.04em;background:var(--panel-2);color:var(--ink-2);border:1.5px solid var(--line);border-radius:999px;padding:4px 8px;margin-right:6px;vertical-align:2px}
+.opt{display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;align-items:start;border:1.5px solid var(--line);border-radius:14px;padding:8px 10px;cursor:pointer;background:var(--panel)}
+.opt:hover{border-color:var(--ink-3)}
+.opt:has(input:checked){border-color:var(--berry);background:var(--panel-2)}
+.opt input{margin:3px 0 0;accent-color:var(--berry)}
+.opt b{display:block;font-weight:700}
+.opt small{display:block;color:var(--ink-3);font-size:12.5px}
+.opt input[type=text]{width:100%;margin-top:6px;font:14px/1.3 var(--round);color:var(--ink);background:var(--panel-2);border:1.5px solid var(--line);border-radius:10px;padding:8px 10px}
+.perm{display:flex;flex-direction:column;gap:8px}
+.kv{display:grid;grid-template-columns:44px minmax(0,1fr);gap:8px;align-items:baseline;font-size:13px}
+.kv>span{color:var(--ink-3)}
+.kv b{font:700 14px/1.3 var(--mono)}
+.kv code{font:12.5px/1.4 var(--mono);overflow-wrap:anywhere;color:var(--ink-2)}
+.cmd{margin:0;font:13px/1.5 var(--mono);background:var(--panel-2);border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.said{margin:0;font-size:13px;color:var(--ink-2)}
+.field{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--ink-2)}
+.field input{font:14px/1.3 var(--round);color:var(--ink);background:var(--panel-2);border:1.5px solid var(--line);border-radius:10px;padding:9px 10px}
+.acts{display:flex;flex-wrap:wrap;gap:8px}
+.acts .btn{min-height:40px;padding:0 16px;font-size:14px}
+.foot{margin:0;font-size:12.5px;color:var(--ink-3)}
+.closed{display:flex;gap:8px;align-items:flex-start;border-radius:12px;padding:9px 11px;font-size:13.5px;line-height:1.45;background:var(--rest-bg);color:var(--rest-ink)}
+.closed.no{background:var(--ask-bg);color:var(--ask-ink)}
+.closed.late{background:var(--gov-bg);color:var(--gov-ink)}
+.closed svg,.why svg{width:16px;height:16px;flex:none;margin-top:2px}
+
+.panel{display:flex;flex-direction:column;gap:12px;min-width:0;max-height:calc(100dvh - 100px);overflow:auto;padding-bottom:3px}
+.card{background:var(--panel);border:1.5px solid var(--line);border-radius:20px;padding:14px 16px}
+.card-head{margin:0 0 10px;display:flex;align-items:center;gap:8px;font:700 16px/1.2 var(--round)}
+.card-head .en{font:600 12px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.rdot{width:18px;height:18px;border-radius:50%;border:4px solid var(--c);background:var(--panel);flex:none;justify-self:center}
+.rdot.gov{--c:#FFD36E}
+.roster{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.row{width:100%;display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;gap:10px;padding:7px 8px;border-radius:14px;border:1.5px solid transparent;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.row:hover{background:var(--panel-2)}
+.row[aria-current="true"]{border-color:var(--berry);background:var(--panel-2)}
+.who{min-width:0;display:flex;flex-direction:column}
+.who b{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who span{font:12px/1.3 var(--mono);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{font:600 12px/1 var(--round);padding:6px 10px;border-radius:999px;white-space:nowrap}
+.pill.build{background:var(--build-bg);color:var(--build-ink)}
+.pill.ask{background:var(--ask-bg);color:var(--ask-ink)}
+.pill.you{background:#FF4F72;color:#fff}
+.pill.rest{background:var(--rest-bg);color:var(--rest-ink)}
+.pill.walk{background:var(--walk-bg);color:var(--walk-ink)}
+.pill.gov{background:var(--gov-bg);color:var(--gov-ink)}
+.detail{display:flex;flex-direction:column;gap:11px}
+.d-head{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:10px;align-items:center}
+.d-name{font-weight:700;font-size:17px;line-height:1.3;overflow-wrap:anywhere}
+.d-role{font:12px/1.3 var(--mono);color:var(--ink-3)}
+.d-req{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;background:var(--ask-bg);color:var(--ask-ink);border-radius:14px;padding:9px 10px;font-size:13px}
+.d-req.gov{background:var(--gov-bg);color:var(--gov-ink)}
+.d-req b{display:block;font-weight:700}
+.d-req code{font:12px/1.4 var(--mono);overflow-wrap:anywhere}
+.d-qa{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.d-qa p{margin:0;color:var(--ink-2)}
+.d-qa b{color:var(--ink);font-weight:700}
+.hint{margin:0;font-size:12.5px;color:var(--ink-3)}
+.log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;max-height:340px;overflow:auto}
+.log li{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px;font-size:13px;line-height:1.45}
+.log time{font:12px/1.45 var(--mono);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.log code{font:12px/1.4 var(--mono);background:var(--panel-2);border-radius:6px;padding:0 4px;overflow-wrap:anywhere}
+.w-gov{color:var(--gov-ink);font-weight:700}
+.w-you{color:var(--ask-ink);font-weight:700}
+.w-term{color:var(--ink-2);font-weight:700}
+.log .wait-you{color:var(--ask-ink)}
+
+.notes{background:var(--panel);border:1.5px dashed var(--ink-3);border-radius:16px;padding:10px 14px;font-size:13px;color:var(--ink-2)}
+.notes summary{cursor:pointer;font-weight:700;color:var(--ink)}
+.notes ul{margin:8px 0 2px;padding-left:18px}
+.notes li{margin:3px 0}
+
+@media (max-width: 960px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+  .stage{height:min(78vh,calc(100vw * 1.3));min-height:460px}
+  .panel{max-height:none;overflow:visible}
+  .stats{margin-left:0}
+  .ask{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:72%}
+}
+@media (prefers-reduced-motion: reduce){ .qm span{animation:none} .person{transition:none} .btn{transition:none} }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="sign">
+      <span class="sign-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg></span>
+      <div><span class="sign-name">Agent City</span><span class="sign-sub">auto-pipeline · 问答 mock</span></div>
+    </div>
+    <div class="stats" id="stats" aria-live="polite"></div>
+  </header>
+
+  <main class="layout">
+    <section class="stage-col" aria-label="城市">
+      <div class="stage" id="stage">
+        <svg class="land" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M6 30 C10 14 30 8 50 9 C72 8 92 14 95 34 C99 55 94 80 80 91 C64 99 34 99 18 91 C4 82 2 50 6 30 Z" fill="var(--ground)" stroke="var(--ground-edge)" stroke-width=".8"/>
+          <path d="M50 28 C50 44 30 52 20 70 M50 28 C52 46 70 56 82 66 M50 28 C48 50 44 70 34 84 M50 28 C54 52 64 70 68 80 M50 28 C40 36 22 42 14 50" fill="none" stroke="var(--road)" stroke-width="2.4" stroke-linecap="round"/>
+        </svg>
+        <div class="hall" aria-hidden="true"><span>市政厅 · 总督</span></div>
+        <div id="houses" aria-hidden="true"></div>
+        <div id="people"></div>
+        <div class="proto">原型 · 模拟数据</div>
+        <div class="ask" id="ask" role="dialog" aria-modal="false" aria-labelledby="ask-title" hidden></div>
+      </div>
+      <div class="toolbar" role="toolbar" aria-label="试一试（只在 mock 里）">
+        <span class="lead">试一试</span>
+        <button class="btn" type="button" data-sc="q-gov">提问 · 总督回答</button>
+        <button class="btn" type="button" data-sc="q-timeout">提问 · 总督 60 秒没答</button>
+        <button class="btn" type="button" data-sc="q-pass">提问 · 总督定不了</button>
+        <button class="btn" type="button" data-sc="p-bash">要权限 · 命令</button>
+        <button class="btn" type="button" data-sc="p-file">要权限 · 改文件</button>
+        <button class="btn" type="button" data-sc="term">终端抢先回答</button>
+        <button class="btn" type="button" data-sc="reset">重来</button>
+        <span class="clock" id="clock"></span>
+      </div>
+    </section>
+
+    <aside class="panel" aria-label="信息栏">
+      <section class="card"><h2 class="card-head"><span class="en">Selected</span>详情</h2><div class="detail" id="detail" aria-live="polite"></div></section>
+      <section class="card"><h2 class="card-head"><span class="en">Citizens</span>市民</h2><ul class="roster" id="roster"></ul></section>
+      <section class="card"><h2 class="card-head"><span class="en">Log</span>动态</h2><ol class="log" id="log"></ol></section>
+    </aside>
+  </main>
+
+  <details class="notes">
+    <summary>Mock 说明（真页面没有这一块，也没有“试一试”那一行）</summary>
+    <ul>
+      <li>平面小岛只是替身；真页面还是 3D 城市，“?”、气泡、倒计时都挂在 3D 小人头上。</li>
+      <li>问题（AskUserQuestion）：先走到市政厅问总督。总督等 <code>city_governor_wait_sec</code>（默认 60 秒）。mock 里 60 秒 6 秒就走完。</li>
+      <li>总督没答完、或者说“定不了” → 小人头上红色 “?”。点它：看到原题和选项，可以选，也可以自己写。</li>
+      <li>权限请求：总督从不批。马上出 “?”，只有你能批准或拒绝；拒绝理由可以不填，填了就原样告诉 agent。</li>
+      <li>终端里一直也能答。谁先答算谁的（总督、页面、终端），其他地方立刻显示“已关闭”。</li>
+      <li>每一次回答、批准、拒绝都写进“动态”，同时写进 <code>~/.claude/agent-city/decisions.jsonl</code>：谁、什么、什么时候。</li>
+      <li>真页面不编文字：只显示真实答案；不知道答案文字时只写“已回答”。</li>
+      <li>城市没开或者服务器挂了：agent 就用终端里平常的提示，不等。</li>
+    </ul>
+  </details>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const GOV_WAIT = 60;          // city_governor_wait_sec
+const SPEED = 10;             // mock only: shown seconds per real second
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const WALK_MS = RM ? 0 : 1800;
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[ch]));
+const hms = ms => new Date(ms).toTimeString().slice(0, 8);
+const ICON = {
+  x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+  ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
+  no: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+};
+const ROLE_ZH = { 'worker':'worker', 'task-manager':'task manager', 'fast-lane-deputy':'fast-lane deputy' };
+const HALL = [[43,37],[57,37],[39,45],[61,45],[50,47]];
+const HOUSES = [[20,66,'#5AA9F0'],[30,78,'#FF8A5B'],[68,74,'#9B7BFF'],[84,60,'#43C58B'],[14,44,'#E4A11B'],[74,86,'#E8765C'],[40,88,'#5AA9F0']];
+
+let citizens, reqs, logs, selected, openId, seq, timers;
+
+function reset(){
+  (timers || []).forEach(clearTimeout); timers = [];
+  seq = 0; selected = null; openId = null; logs = []; reqs = [];
+  citizens = [
+    { id:'c1', task:'登录页', role:'worker', color:'#5AA9F0', home:[20,70] },
+    { id:'c2', task:'清理构建', role:'worker', color:'#FF8A5B', home:[30,82] },
+    { id:'c3', task:'city-interact', role:'task-manager', color:'#9B7BFF', home:[68,78] },
+    { id:'c4', task:'改文案', role:'fast-lane-deputy', color:'#43C58B', home:[84,64] },
+    { id:'c5', task:'加测试依赖', role:'worker', color:'#E4A11B', home:[14,48] },
+  ].map(c => ({ ...c, x:c.home[0], y:c.home[1], state:'work', bubble:null, qa:[] }));
+  const now = Date.now(), ago = s => now - s * 1000;
+  addLog(ago(490), `<b>登录页</b> 问总督：“API 服务用哪个端口？”`);
+  addLog(ago(485), `<span class="w-gov">总督</span>回答 <b>登录页</b>：“4791”`);
+  byId('c1').qa.push({ q:'API 服务用哪个端口？', a:'4791', by:'总督' });
+  addLog(ago(400), `<b>加测试依赖</b> 要权限：Bash <code>npm test</code> → 等你批`, 'wait-you');
+  addLog(ago(391), `<span class="w-term">终端</span>批准 <b>加测试依赖</b>：Bash <code>npm test</code>`);
+  addLog(ago(252), `<b>改文案</b> 要权限：Write <code>/etc/hosts</code> → 等你批`, 'wait-you');
+  addLog(ago(242), `<span class="w-you">你</span>拒绝 <b>改文案</b>：Write <code>/etc/hosts</code>，理由：“不许改系统文件”`);
+  // two requests already waiting for the owner
+  const c3 = byId('c3');
+  const r1 = newReq(c3, { kind:'q', questions:[
+    { header:'范围', q:'这次先只做问答，还是问答和权限一起做？', options:[{ label:'只做问答', desc:'权限下次再做' },{ label:'一起做', desc:'多花大约 1 小时' }] },
+    { header:'端口', q:'E2E 用哪个端口？', options:[{ label:'4791', desc:'临时城市' },{ label:'4777', desc:'你自己的城市' }] },
+  ]});
+  addLog(ago(95), `<b>city-interact</b> 问总督：“${esc(r1.questions[0].q)}”（共 2 个问题）`);
+  r1.phase = 'owner'; r1.why = 'timeout'; r1.ownerAt = ago(35);
+  addLog(ago(35), `<span class="w-gov">总督</span> ${GOV_WAIT} 秒没回答 <b>city-interact</b> → 等你`, 'wait-you');
+  place(c3, spot()); c3.state = 'owner';
+  const c2 = byId('c2');
+  const r2 = newReq(c2, { kind:'perm', tool:'Bash', cmd:'rm -rf build/ dist/', said:'删掉旧的构建产物', cwd:'~/orca/workspaces/auto-pipeline/city-interact' });
+  r2.phase = 'owner'; r2.why = 'perm'; r2.ownerAt = ago(12);
+  addLog(ago(12), `<b>清理构建</b> 要权限：Bash <code>rm -rf build/ dist/</code> → 等你批`, 'wait-you');
+  place(c2, spot()); c2.state = 'owner';
+  renderHouses(); render();
+}
+
+function byId(id){ return citizens.find(c => c.id === id); }
+function reqOf(c){ return reqs.find(r => r.cid === c.id && r.phase !== 'closed'); }
+function newReq(c, spec){ const r = { id:'r' + (++seq), cid:c.id, phase:'gov', govLeft:GOV_WAIT, openedAt:Date.now(), ...spec }; reqs.push(r); return r; }
+function spot(){ const used = citizens.filter(c => ['to_gov','gov','owner'].includes(c.state)).map(c => c.x + ',' + c.y); return HALL.find(p => !used.includes(p.join(','))) || HALL[4]; }
+function place(c, p){ c.x = p[0]; c.y = p[1]; }
+function addLog(t, html, cls){ logs.unshift({ t, html, cls:cls || '' }); if (logs.length > 60) logs.length = 60; }
+function later(ms, fn){ timers.push(setTimeout(fn, ms)); }
+function what(r){ return r.kind === 'q' ? `“${esc(r.questions[0].q)}”${r.questions.length > 1 ? `（共 ${r.questions.length} 个问题）` : ''}` : `${esc(r.tool)} <code>${esc(r.cmd || r.path)}</code>`; }
+function say(c, text, cls, ms){ c.bubble = { text, cls }; render(); if (ms) later(ms, () => { if (c.bubble && c.bubble.text === text) { c.bubble = null; render(); } }); }
+const gov = { bubble:null };
+function govSay(text, ms){ gov.bubble = text; render(); later(ms, () => { if (gov.bubble === text) { gov.bubble = null; render(); } }); }
+
+/* ---------- flows ---------- */
+function ask(c, spec, govPlan){
+  const r = newReq(c, spec);
+  c.state = 'to_gov'; place(c, spot());
+  if (r.kind === 'q') { say(c, '问：' + r.questions[0].q, 'ask'); addLog(Date.now(), `<b>${esc(c.task)}</b> 问总督：${what(r)}`); }
+  else { addLog(Date.now(), `<b>${esc(c.task)}</b> 要权限：${what(r)} → 等你批`, 'wait-you'); toOwner(r, 'perm'); return; }
+  render();
+  later(WALK_MS, () => {
+    if (r.phase === 'closed') return;
+    c.state = 'gov'; render();
+    const started = Date.now();
+    const tick = () => {
+      if (r.phase !== 'gov') return;
+      r.govLeft = Math.max(0, GOV_WAIT - (Date.now() - started) / 1000 * SPEED);
+      if (govPlan && govPlan.at !== undefined && GOV_WAIT - r.govLeft >= govPlan.at) {
+        if (govPlan.answer) { govSay(govPlan.answer, 2600); close(r, 'gov', { text:govPlan.answer }); return; }
+        if (govPlan.pass) { govSay('这个我定不了，交给主人', 2600); addLog(Date.now(), `<span class="w-gov">总督</span>：这个我定不了 → 等你回答 <b>${esc(c.task)}</b>`, 'wait-you'); toOwner(r, 'pass'); return; }
+      }
+      if (r.govLeft <= 0) { addLog(Date.now(), `<span class="w-gov">总督</span> ${GOV_WAIT} 秒没回答 <b>${esc(c.task)}</b> → 等你`, 'wait-you'); toOwner(r, 'timeout'); return; }
+      render(); later(100, tick);
+    };
+    tick();
+  });
+}
+function toOwner(r, why){
+  const c = byId(r.cid);
+  r.phase = 'owner'; r.why = why; r.ownerAt = Date.now();
+  c.state = 'owner'; c.bubble = null; render();
+}
+// by: 'gov' | 'you' | 'term'; res: { text } for a question, { verb:'allow'|'deny', reason } for a permission
+function close(r, by, res){
+  if (r.phase === 'closed') return false;
+  const c = byId(r.cid);
+  r.phase = 'closed'; r.closed = { by, at:Date.now(), ...res };
+  const who = { gov:'<span class="w-gov">总督</span>', you:'<span class="w-you">你</span>', term:'<span class="w-term">终端</span>' }[by];
+  const byZh = { gov:'总督', you:'你', term:'终端' }[by];
+  if (r.kind === 'q') {
+    const text = res.text || '';
+    addLog(Date.now(), text ? `${who}回答 <b>${esc(c.task)}</b>：“${esc(text)}”` : `${who}已回答 <b>${esc(c.task)}</b>`);
+    c.qa.push({ q:r.questions.map(q => q.q).join(' / '), a:text || '已回答', by:byZh });
+    say(c, text ? '答：' + text : '已回答', 'done', 2600);
+  } else if (res.verb === 'allow') {
+    addLog(Date.now(), `${who}批准 <b>${esc(c.task)}</b>：${what(r)}`);
+    c.qa.push({ q:`${r.tool} ${r.cmd || r.path}`, a:'已批准', by:byZh });
+    say(c, '已批准', 'done', 2600);
+  } else {
+    addLog(Date.now(), `${who}拒绝 <b>${esc(c.task)}</b>：${what(r)}${res.reason ? `，理由：“${esc(res.reason)}”` : '（没写理由）'}`);
+    c.qa.push({ q:`${r.tool} ${r.cmd || r.path}`, a:res.reason ? '已拒绝：' + res.reason : '已拒绝', by:byZh });
+    say(c, '已拒绝', 'no', 2600);
+  }
+  c.state = 'back'; place(c, c.home); render();
+  later(WALK_MS + 50, () => { if (c.state === 'back') { c.state = 'work'; render(); } });
+  return true;
+}
+
+/* ---------- render ---------- */
+const STATE = { work:['build','干活'], to_gov:['ask','找总督'], gov:['ask','找总督'], owner:['you','等你'], back:['walk','回去'], rest:['rest','休息'] };
+function renderHouses(){ $('#houses').innerHTML = HOUSES.map(([x, y, r]) => `<div class="house" style="left:${x}%;top:${y}%;--r:${r}"></div>`).join(''); }
+function renderStats(){
+  let work = 0, gv = 0, rest = 0;
+  for (const c of citizens) { if (c.state === 'work' || c.state === 'back') work++; else if (c.state === 'rest') rest++; else gv++; }
+  const waiting = reqs.filter(r => r.phase === 'owner').length;
+  $('#stats').innerHTML = [['#5AA9F0','干活',work],['#FF6F8B','找总督',gv],['#43C58B','休息',rest],['#FFC23D','建成',7]]
+    .map(([c, l, n]) => `<span class="stat"><i style="background:${c}"></i>${l} <b>${n}</b></span>`).join('')
+    + `<button class="stat wait" type="button" id="next" ${waiting ? '' : 'disabled'} aria-label="等你决定 ${waiting} 个，点开最早的一个">等你 <b>${waiting}</b></button>`;
+}
+function renderPeople(){
+  const govHtml = `<div class="person gov" style="left:50%;top:31%"><div class="above">${gov.bubble ? `<span class="bub gov">${esc(gov.bubble)}</span>` : ''}</div><button class="fig" type="button" data-sel="gov" aria-label="总督"><span class="head"></span><span class="torso"></span></button><span class="name">总督</span></div>`;
+  const html = citizens.map(c => {
+    const r = reqOf(c);
+    let above = '';
+    if (c.bubble) above += `<span class="bub ${c.bubble.cls}">${esc(c.bubble.text)}</span>`;
+    if (r && r.phase === 'gov' && c.state === 'gov') above += `<span class="wait" title="等总督回答"><i style="--p:${(r.govLeft / GOV_WAIT).toFixed(3)}"></i>总督 ${Math.ceil(r.govLeft)}s</span>`;
+    if (r && r.phase === 'owner') above += `<button class="qm" type="button" data-open="${r.id}" aria-label="${esc(c.task)} 等你${r.kind === 'q' ? '回答' : '批'}，点开看"><span>?</span></button>`;
+    return `<div class="person${selected === c.id ? ' sel' : ''}" style="left:${c.x}%;top:${c.y}%;--c:${c.color}"><div class="above">${above}</div><button class="fig" type="button" data-sel="${c.id}" aria-label="${esc(c.task)}"><span class="head"></span><span class="torso"></span></button><span class="name">${esc(c.task)}</span></div>`;
+  }).join('');
+  $('#people').innerHTML = govHtml + html;
+}
+function renderRoster(){
+  const order = { you:0, ask:1, build:2, walk:3, rest:4 };
+  const list = [...citizens].sort((a, b) => order[STATE[a.state][0]] - order[STATE[b.state][0]]);
+  $('#roster').innerHTML = `<li><button class="row" type="button" data-sel="gov" aria-current="${selected === 'gov'}"><span class="rdot gov"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">坐镇市政厅</span></button></li>`
+    + list.map(c => { const [g, zh] = STATE[c.state]; return `<li><button class="row" type="button" data-sel="${c.id}" aria-current="${selected === c.id}"><span class="rdot" style="--c:${c.color}"></span><span class="who"><b>${esc(c.task)}</b><span>${ROLE_ZH[c.role]}</span></span><span class="pill ${g}">${zh}</span></button></li>`; }).join('');
+}
+function renderDetail(){
+  const el = $('#detail');
+  if (selected === 'gov') {
+    const n = reqs.filter(r => r.closed && r.closed.by === 'gov').length + 1;
+    el.innerHTML = `<div class="d-head"><span class="rdot gov"></span><div><div class="d-name">总督</div><div class="d-role">main manager · 主对话</div></div><span class="pill gov">市政厅</span></div>
+      <p class="hint">总督 = 这个 repo 的主对话。它回答 agent 的问题；答不了或 ${GOV_WAIT} 秒没答，就交给你。权限请求只有你能批。</p>
+      <div class="d-qa"><p>今天回答了 <b>${n}</b> 个问题。</p></div>`;
+    return;
+  }
+  const c = selected && byId(selected);
+  if (!c) { el.innerHTML = `<p class="hint">点城里的小人、红色 “?”，或下面名单里的一行。</p>`; return; }
+  const [g, zh] = STATE[c.state], r = reqOf(c);
+  let req = '';
+  if (r && r.phase === 'owner') req = `<div class="d-req"><div><b>${r.kind === 'q' ? '等你回答' : '等你批'}</b>${r.kind === 'q' ? esc(r.questions[0].q) : `${esc(r.tool)} <code>${esc(r.cmd || r.path)}</code>`}</div><button class="btn primary" type="button" data-open="${r.id}">打开</button></div>`;
+  else if (r) req = `<div class="d-req gov"><div><b>等总督回答 · ${Math.ceil(r.govLeft)}s</b>${esc(r.questions[0].q)}</div></div>`;
+  const qa = c.qa.slice(-3).map(x => `<p>问：<b>“${esc(x.q)}”</b></p><p>${esc(x.by)}答：<b>“${esc(x.a)}”</b></p>`).join('');
+  el.innerHTML = `<div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(c.task)}</div><div class="d-role">${ROLE_ZH[c.role]}</div></div><span class="pill ${g}">${zh}</span></div>${req}${qa ? `<div class="d-qa">${qa}</div>` : ''}`;
+}
+function renderLog(){ $('#log').innerHTML = logs.map(e => `<li><time>${hms(e.t)}</time><span class="${e.cls}">${e.html}</span></li>`).join(''); }
+function render(){ renderStats(); renderPeople(); renderRoster(); renderDetail(); renderLog(); if (openId) refreshPanel(); }
+
+/* ---------- the "?" panel ---------- */
+let panelKey = '', returnFocus = null;
+function openPanel(id){
+  const r = reqs.find(x => x.id === id); if (!r) return;
+  returnFocus = document.activeElement;
+  openId = id; selected = r.cid; panelKey = ''; render();
+  $('#ask').hidden = false; $('#ask-title').focus();
+}
+function closePanel(){
+  openId = null; panelKey = ''; $('#ask').hidden = true;
+  if (returnFocus && document.contains(returnFocus)) returnFocus.focus();
+}
+function refreshPanel(){
+  const r = reqs.find(x => x.id === openId); if (!r) return closePanel();
+  const key = r.id + '|' + r.phase;
+  if (key === panelKey) return; // keep what the owner typed
+  panelKey = key;
+  const c = byId(r.cid);
+  const head = `<div class="ask-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="ask-title" id="ask-title" tabindex="-1">${esc(c.task)} ${r.kind === 'q' ? '在问' : '要权限'}</div><div class="ask-role">${ROLE_ZH[c.role]} · ${hms(r.openedAt)} 提出</div></div><span class="pill ${r.phase === 'closed' ? 'rest' : 'you'}">${r.phase === 'closed' ? '已关闭' : (r.kind === 'q' ? '等你回答' : '等你批')}</span><button class="x" type="button" data-close aria-label="收起（不回答）">${ICON.x}</button></div>`;
+  const why = r.why === 'timeout' ? `<div class="why gov">${ICON.clock}<span>总督 <b>${GOV_WAIT} 秒</b>没回答，交给你。</span></div>`
+    : r.why === 'pass' ? `<div class="why gov">${ICON.clock}<span>总督说：<b>这个我定不了</b>，交给你。</span></div>`
+    : `<div class="why">${ICON.lock}<span>权限只由你来批，总督不批。</span></div>`;
+  let body = '';
+  if (r.kind === 'q') {
+    body = `<form id="qform" class="perm" novalidate>` + r.questions.map((q, i) => `
+      <fieldset class="q"><legend><span class="chip">${esc(q.header)}</span>${esc(q.q)}</legend>
+        ${q.options.map(o => `<label class="opt"><input type="radio" name="q${i}" value="${esc(o.label)}"><span><b>${esc(o.label)}</b>${o.desc ? `<small>${esc(o.desc)}</small>` : ''}</span></label>`).join('')}
+        <label class="opt"><input type="radio" name="q${i}" value="" data-other><span><b>其他</b><input type="text" data-text="${i}" placeholder="自己写回答" aria-label="${esc(q.header)}：自己写回答"></span></label>
+      </fieldset>`).join('') + `<div class="acts"><button class="btn primary" type="submit" id="send" disabled>发送回答</button></div></form>`;
+  } else {
+    body = `<div class="perm">
+      <div class="kv"><span>工具</span><b>${esc(r.tool)}</b></div>
+      ${r.cmd ? `<pre class="cmd" aria-label="命令">${esc(r.cmd)}</pre>` : `<div class="kv"><span>文件</span><code>${esc(r.path)}</code></div>${r.change ? `<pre class="cmd" aria-label="改动">${esc(r.change)}</pre>` : ''}`}
+      ${r.said ? `<p class="said">它说：${esc(r.said)}</p>` : ''}
+      <div class="kv"><span>目录</span><code>${esc(r.cwd)}</code></div>
+      <label class="field" for="reason">拒绝理由（可以不填；填了会原样告诉它）<input id="reason" type="text" placeholder="比如：先别删 dist/，里面有发布包"></label>
+      <div class="acts"><button class="btn ok" type="button" data-verb="allow">${ICON.ok}批准</button><button class="btn no" type="button" data-verb="deny">${ICON.no}拒绝</button></div>
+    </div>`;
+  }
+  let closed = '';
+  if (r.phase === 'closed') {
+    const k = r.closed, t = hms(k.at);
+    const byZh = { gov:'总督', you:'你', term:'终端' }[k.by];
+    const text = r.kind === 'q' ? (k.text ? `回答了：“${esc(k.text)}”` : '已回答') : (k.verb === 'allow' ? '批准了' : `拒绝了${k.reason ? `，理由：“${esc(k.reason)}”` : ''}`);
+    const late = k.by !== 'you';
+    closed = `<div class="closed ${late ? 'late' : (k.verb === 'deny' ? 'no' : '')}">${late ? ICON.clock : (k.verb === 'deny' ? ICON.no : ICON.ok)}<span>${late ? `晚了一步：<b>${byZh}</b>在 ${t} 先${text}。这里不用再点了。` : `<b>你</b>在 ${t} ${text}。已记下。`}</span></div>`;
+  }
+  $('#ask').innerHTML = head + why + closed + body + `<p class="foot">终端里也能答，先答的算。每次回答都记在“动态”和 decisions.jsonl。</p>`;
+  if (r.phase === 'closed') $('#ask').querySelectorAll('input,button[type=submit],[data-verb]').forEach(el => { el.disabled = true; });
+  const form = $('#qform');
+  if (form && r.phase !== 'closed') {
+    const answers = () => r.questions.map((q, i) => {
+      const on = form.querySelector(`input[name="q${i}"]:checked`);
+      if (!on) return '';
+      return on.hasAttribute('data-other') ? form.querySelector(`[data-text="${i}"]`).value.trim() : on.value;
+    });
+    const sync = () => { $('#send').disabled = answers().some(a => !a); };
+    form.addEventListener('input', e => { if (e.target.matches('[data-text]')) { const radio = e.target.closest('.opt').querySelector('input[type=radio]'); radio.checked = true; } sync(); });
+    form.addEventListener('change', sync);
+    form.addEventListener('submit', e => { e.preventDefault(); const a = answers(); if (a.some(x => !x)) return; close(r, 'you', { text:a.join('；') }); });
+  }
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-open],[data-sel],[data-close],[data-verb],[data-sc],#next');
+  if (!t) return;
+  if (t.id === 'next') { const r = reqs.filter(x => x.phase === 'owner').sort((a, b) => a.ownerAt - b.ownerAt)[0]; if (r) openPanel(r.id); return; }
+  if (t.dataset.open) { openPanel(t.dataset.open); return; }
+  if (t.hasAttribute('data-close')) { closePanel(); return; }
+  if (t.dataset.verb) { const r = reqs.find(x => x.id === openId); if (!r) return; close(r, 'you', { verb:t.dataset.verb, reason:t.dataset.verb === 'deny' ? $('#reason').value.trim() : '' }); return; }
+  if (t.dataset.sel) {
+    selected = t.dataset.sel;
+    const c = byId(selected), r = c && reqOf(c);
+    if (r && r.phase === 'owner') openPanel(r.id); else render();
+    return;
+  }
+  if (t.dataset.sc) scenario(t.dataset.sc);
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && openId) closePanel(); });
+
+function free(pref){ return byId(pref) && byId(pref).state === 'work' ? byId(pref) : citizens.find(c => c.state === 'work'); }
+function scenario(name){
+  if (name === 'reset') { closePanel(); reset(); return; }
+  if (name === 'term') {
+    // the one open in the panel first (shows the race), else the oldest
+    const r = reqs.find(x => x.id === openId && x.phase !== 'closed') || reqs.filter(x => x.phase !== 'closed').sort((a, b) => a.openedAt - b.openedAt)[0];
+    if (!r) { addLog(Date.now(), '（mock）现在没有等回答的请求'); render(); return; }
+    close(r, 'term', r.kind === 'q' ? { text:r.questions.map(q => q.options[0].label).join('；') } : { verb:'allow' });
+    return;
+  }
+  const c = free({ 'q-gov':'c1', 'q-timeout':'c4', 'q-pass':'c5', 'p-bash':'c1', 'p-file':'c4' }[name]);
+  if (!c) { addLog(Date.now(), '（mock）没有空闲的小人，先答掉一个'); render(); return; }
+  if (name === 'q-gov') ask(c, { kind:'q', questions:[{ header:'文字', q:'登录按钮写“登录”还是“登入”？', options:[{ label:'登录', desc:'大陆常用' },{ label:'登入', desc:'港台常用' }] }] }, { at:25, answer:'登录' });
+  if (name === 'q-timeout') ask(c, { kind:'q', questions:[{ header:'英文', q:'改完中文要不要顺手改英文版？', options:[{ label:'要', desc:'一起改' },{ label:'不要', desc:'下次' }] }] }, null);
+  if (name === 'q-pass') ask(c, { kind:'q', questions:[{ header:'接口', q:'要不要删掉旧的 v1 接口？', options:[{ label:'删', desc:'没人在用了' },{ label:'留着', desc:'再观察一周' }] }] }, { at:20, pass:true });
+  if (name === 'p-bash') ask(c, { kind:'perm', tool:'Bash', cmd:'npm install --save-dev playwright', said:'装 E2E 依赖', cwd:'~/orca/workspaces/auto-pipeline/city-interact' });
+  if (name === 'p-file') ask(c, { kind:'perm', tool:'Edit', path:'/Users/maverick/.zshrc', change:'- export PATH="$HOME/bin:$PATH"\n+ export PATH="$HOME/bin:$HOME/.local/bin:$PATH"', said:'加一个 PATH', cwd:'~/orca/workspaces/auto-pipeline/city-interact' });
+}
+
+setInterval(() => { $('#clock').textContent = '现在 ' + hms(Date.now()); }, 1000);
+$('#clock').textContent = '现在 ' + hms(Date.now());
+reset();
+})();
+</script>
+</body>
+</html>
