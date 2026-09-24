@@ -315,6 +315,18 @@ function terrAtOf(view, X, Z){
   const cellTerrain = new Map((view.territories || []).map(t => [t.slot[0] + ',' + t.slot[1], t.terrain]));
   return cellTerrain.get(Math.floor((X + 13) / 26) + ',' + Math.floor((Z + 13) / 26)) || 'grassland';
 }
+/* hallDecor(t, view) -> [{key, x, z}]: the fountain + lamps around t's hall, each on a 'g' tile (never a
+   road, a plot or the hall itself); [] on day 0 (t.open === 0), so a brand new territory stays bare. */
+function hallDecor(t, view){
+  if (!t.open) return [];
+  const on = (x, z) => tileAt(Math.floor(x), Math.floor(z)) === 'g';
+  const out = [];
+  const fountain = [[t.cx + 2.5, t.cz + 2.5], [t.cx - 2.5, t.cz + 2.5], [t.cx + 2.5, t.cz - 2.5], [t.cx - 2.5, t.cz - 2.5]].find(([x, z]) => on(x, z));
+  if (fountain) out.push({ key: 'fountain-round', x: fountain[0], z: fountain[1] });
+  for (const [x, z] of [[t.cx - 2.4, t.cz + .4], [t.cx + 2.4, t.cz + .4], [t.cx - 2.4, t.cz - .4], [t.cx + 2.4, t.cz - .4]])
+    if (on(x, z) && out.filter(d => d.key === 'lantern').length < 2) out.push({ key: 'lantern', x, z });
+  return out;
+}
 function mix(a, b, t){ const A = h2r(a), B = h2r(b); return r2h(A.map((x,i) => x + (B[i]-x)*t)); }
 function sr(seed, i){ const x = Math.sin(seed*12.9898 + i*78.233) * 43758.5453; return x - Math.floor(x); }
 function isDark(){ const t = document.documentElement.getAttribute('data-theme'); if (t === 'dark') return true; if (t === 'light') return false; return matchMedia('(prefers-color-scheme: dark)').matches; }
@@ -1076,13 +1088,13 @@ function groundGeometry(view){
   const rock = rgbOf(ROCK_GREY);
   for (let r = 0; r < view.h; r++) for (let c = 0; c < view.w; c++) {
     const X = view.x0 + c, Z = view.z0 + r, ch = view.rows[r][c];
-    if (ch === 'k') { quad(X, -1.2, Z, X + 1, -1.2, Z, X + 1, -1.2, Z + 1, X, -1.2, Z + 1, rgbOf(RAVINE_FLOOR)); continue; }
+    if (ch === 'k') { quad(X, -1.2, Z + 1, X + 1, -1.2, Z + 1, X + 1, -1.2, Z, X, -1.2, Z, rgbOf(RAVINE_FLOOR)); continue; }
     if (ch === ' ' || ch === 'w' || ch === 's' || ch === 'B') continue;
     const look = TERRAIN_LOOK[terrAtOf(view, X, Z)];
     const rgb = jitter(X, Z,
       ch === '.' ? rgbOf(look.wild) : ch === 'r' ? rgbOf(look.path) : ch === 't' ? rgbOf(TRACK_COLOR) :
       ch === 'b' ? rgbOf(BEACH_COLOR) : ch === 'm' ? rgbOf(PASS_COLOR) : ch === 'f' ? rgbOf(FOREST_FLOOR) : rgbOf(look.ground));
-    quad(X, 0, Z, X + 1, 0, Z, X + 1, 0, Z + 1, X, 0, Z + 1, rgb);
+    quad(X, 0, Z + 1, X + 1, 0, Z + 1, X + 1, 0, Z, X, 0, Z, rgb); // wound so the top face normal points up (three.js front-face)
     if (gap(at(X, Z - 1))) quad(X, 0, Z, X + 1, 0, Z, X + 1, -1, Z, X, -1, Z, rock);
     if (gap(at(X, Z + 1))) quad(X + 1, 0, Z + 1, X, 0, Z + 1, X, -1, Z + 1, X + 1, -1, Z + 1, rock);
     if (gap(at(X - 1, Z))) quad(X, 0, Z + 1, X, 0, Z, X, -1, Z, X, -1, Z + 1, rock);
@@ -1097,7 +1109,7 @@ function waterGeometry(view){
   for (let r = 0; r < view.h; r++) for (let c = 0; c < view.w; c++) {
     const ch = view.rows[r][c]; if (ch !== 'w' && ch !== 's' && ch !== 'B') continue;
     const X = view.x0 + c, Z = view.z0 + r, base = positions.length / 3;
-    positions.push(X, -.06, Z, X + 1, -.06, Z, X + 1, -.06, Z + 1, X, -.06, Z + 1);
+    positions.push(X, -.06, Z + 1, X + 1, -.06, Z + 1, X + 1, -.06, Z, X, -.06, Z);
     for (let i = 0; i < 4; i++) colors.push(rgb[0], rgb[1], rgb[2]);
     indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
@@ -1152,10 +1164,10 @@ function buildLand(view){
     const flag = place('flag', t.cx - .4, t.cz - .25, { y: lib['building-j'].size.y * fitScale('building-j', hs), s: .7, parent: landGroup });
     const hTiles = [[-1, 0], [0, 0], [-1, 1], [0, 1]].map(([dx, dz]) => (t.cx - mid.x + dx) + ',' + (t.cz - mid.z + dz));
     for (const g of [hall, flag]) fadeables.push({ g, tiles: hTiles, fromLand: true });
-    place('fountain-round', t.cx + 2.5, t.cz + 2.5, { fit: .8, parent: landGroup });
-    const lampSpots = [[t.cx - 2.4, t.cz + .4], [t.cx + 2.4, t.cz + .4]];
-    instanced('lantern', lampSpots.map(([x, z]) => ({ x, z, h: .55 })), { parent: landGroup });
-    for (const [x, z] of lampSpots) { const s = new THREE.Sprite(glowMat); s.position.set(x, .62, z); s.scale.set(.9, .9, 1); s.visible = P.night; landGroup.add(s); glows.push(s); }
+    const decor = hallDecor(t, view), lamps = decor.filter(d => d.key === 'lantern');
+    for (const d of decor) if (d.key !== 'lantern') place(d.key, d.x, d.z, { fit: .8, parent: landGroup });
+    instanced('lantern', lamps.map(({ x, z }) => ({ x, z, h: .55 })), { parent: landGroup });
+    for (const { x, z } of lamps) { const s = new THREE.Sprite(glowMat); s.position.set(x, .62, z); s.scale.set(.9, .9, 1); s.visible = P.night; landGroup.add(s); glows.push(s); }
     for (const p of t.plots || []) place('patch-grass', p.x + .5, p.z + .5, { fit: .85, keepY: true, y: -.1, parent: landGroup });
     for (const bd of t.buildings || []) newBuildingRecord(t.id, bd.plot, bd.type, bd.x, bd.z, bd.by, true);
     const el = ovEl('lbl'); setText(el, t.name); labels.push({ el, x: t.cx, h: 2.1 * (t.size < .15 ? .8 : 1), z: t.cz });
@@ -1177,7 +1189,7 @@ function playClip(obj, key, name){
 const chicks = [], pets = [];
 /* a little river/plaza life near the first territory's hall; purely cosmetic */
 function buildLife(){
-  const t = (map.territories || [])[0]; if (!t) return;
+  const t = (map.territories || []).find(t => t.open > 0); if (!t) return; // day 0 (no open plot yet) is bare
   for (const [dx, dz, sp] of [[-3.2, 3.2, .18], [3.2, 3.3, -.16]]) {
     const g = place('animal-chick', t.cx + dx, t.cz + dz, { s: .11, ry: Math.PI / 2, y: .01 });
     playClip(g.children[0], 'animal-chick', 'idle');
