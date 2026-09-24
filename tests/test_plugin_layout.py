@@ -578,5 +578,18 @@ class TestPrinciplesRuntimeShape(unittest.TestCase):
         self.assertEqual(found - allowed, set())
 
 
+class TestPrinciplesS4NamesRelief(unittest.TestCase):
+    """S4 (usage cap) must tell an over-cap agent to run relief first."""
+
+    def s4(self):
+        text = read("PRINCIPLES.md")
+        start = text.index("S4.")
+        end = text.index("S5.")
+        return text[start:end]
+
+    def test_s4_mentions_relief(self):
+        self.assertIn("relief", self.s4())
+
+
 if __name__ == "__main__":
     unittest.main()

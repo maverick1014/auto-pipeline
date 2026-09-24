@@ -169,6 +169,10 @@ S3. Resource guard
 S4. Usage cap
 - RAM and CPU each ≤ 80%
 - Over → no new job to any agent until it drops back
+- Over → run `bin/agent-resources.sh relief` first, then wait
+- relief stops only what the pipeline owns: monitor loops left by tests, monitors of repos with no live main manager
+- Finished or idle worktrees → merge deputy cleans them (W8). A task manager over cap parks: commit, write state, set idle; the main manager closes its pane; resume brings it back
+- The human's apps, other repos' sessions, Gradle or node runners: never killed by an agent. One table to the human: process · MB · CPU · what · suggestion
 - Config `max_usage_percent`=80
 
 S5. Heavy tests
