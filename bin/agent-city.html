@@ -53,13 +53,12 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 
 .layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;flex:1;min-height:0}
 .stage-col{display:flex;flex-direction:column;gap:10px;min-width:0}
-.stage{position:relative;border-radius:24px;overflow:hidden;background:var(--sky);border:2px solid var(--line);height:calc(100dvh - 150px);min-height:460px}
+.stage{position:relative;overflow:hidden;height:calc(100dvh - 150px);min-height:460px}
 .stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
 .stage canvas.grabbing{cursor:grabbing}
 .proto{position:absolute;top:12px;left:12px;z-index:3;background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px;box-shadow:0 2px 0 rgba(42,43,69,.18);pointer-events:none}
 .cam{position:absolute;top:12px;right:12px;z-index:3;display:flex;flex-direction:column;gap:6px}
 .cam .btn{width:38px;height:38px;padding:0;justify-content:center;background:var(--panel)}
-.hint-drag{position:absolute;left:12px;bottom:12px;z-index:3;font-size:12px;color:var(--ink-2);background:var(--panel);border-radius:999px;padding:5px 11px;opacity:.92;pointer-events:none}
 
 .ov{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
 .ov > div{position:absolute;left:0;top:0;will-change:transform}
@@ -81,7 +80,6 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 
 .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:8px}
 .group{display:inline-flex;align-items:center;gap:5px}
-.sep{width:1.5px;height:22px;background:var(--line);border-radius:1px}
 .clock{margin-left:auto;font:600 12px/1 var(--mono);color:var(--ink-2);font-variant-numeric:tabular-nums;padding-right:4px}
 .btn{font:600 13px/1 var(--round);border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:12px;padding:0 12px;min-height:36px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:transform .12s,box-shadow .12s,border-color .12s}
 .btn:hover{border-color:var(--ink-3)}
@@ -96,15 +94,23 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 
 .panel{display:flex;flex-direction:column;gap:12px;min-width:0;max-height:calc(100dvh - 100px);overflow:auto;padding-bottom:3px}
 .card{background:var(--panel);border:1.5px solid var(--line);border-radius:20px;padding:14px 16px}
-.card h2{margin:0 0 10px;display:flex;align-items:baseline;gap:8px;font:700 16px/1.2 var(--round);color:var(--ink)}
-.card h2 .en{font:600 12px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
-.intro{margin:0;color:var(--ink-2);font-size:13.5px}
+.card-head{margin:0 0 10px;touch-action:none;user-select:none;-webkit-user-select:none}
+.card-head button{all:unset;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:8px;font:700 16px/1.2 var(--round);color:var(--ink);cursor:grab;border-radius:10px}
+.card-head button:focus-visible{outline:2.5px solid var(--focus);outline-offset:3px}
+.card-head .grip{width:14px;height:14px;color:var(--ink-3);flex:none}
+.card-head .chev{width:16px;height:16px;margin-left:auto;color:var(--ink-3);transition:transform .15s;flex:none}
+.card.collapsed .card-head{margin-bottom:0}
+.card.collapsed .card-head .chev{transform:rotate(-90deg)}
+.card.collapsed .card-body{display:none!important}
+.card.dragging{position:relative;z-index:5;box-shadow:0 10px 24px rgba(42,43,69,.22);border-color:var(--ink-3)}
+.card.dragging .card-head button{cursor:grabbing}
+.card-head .en{font:600 12px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
 
 
 .sign-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--berry);color:#fff;flex:none}
 .sign-icon svg{width:20px;height:20px}
 .btn svg.lucide{width:16px;height:16px}
-.loading{position:absolute;inset:0;z-index:4;display:grid;place-items:center;background:var(--sky);font:600 14px/1.4 var(--display);color:var(--ink-2)}
+.loading{position:absolute;inset:0;z-index:4;display:grid;place-items:center;background:var(--paper);font:600 14px/1.4 var(--display);color:var(--ink-2)}
 .rdot{width:18px;height:18px;border-radius:50%;border:4px solid var(--c);background:var(--panel);flex:none;justify-self:center}
 .rdot.gov{--c:#FFD36E}
 .roster{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
@@ -144,12 +150,6 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .log .ask{color:var(--ask-ink)}
 .log .done{color:var(--rest-ink)}
 
-.legend{width:100%;border-collapse:collapse;font-size:13px}
-.legend th{text-align:left;font:600 11px/1.2 var(--mono);letter-spacing:.04em;color:var(--ink-3);padding:0 0 6px}
-.legend td{padding:7px 0;border-top:1.5px solid var(--line);vertical-align:top}
-.legend td:first-child{width:46%;padding-right:10px;font-weight:600}
-.legend td:last-child{color:var(--ink-2)}
-.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px;border:1.5px solid rgba(42,43,69,.25)}
 
 @media (max-width: 960px){
   .layout{grid-template-columns:minmax(0,1fr)}
@@ -157,7 +157,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
   .panel{max-height:none;overflow:visible}
   .stats{margin-left:0}
 }
-@media (prefers-reduced-motion: reduce){ .qm span,.zz span{animation:none} .track i,.btn{transition:none} }
+@media (prefers-reduced-motion: reduce){ .qm span,.zz span{animation:none} .track i,.btn,.card-head .chev{transition:none} }
 </style>
 </head>
 <body>
@@ -186,20 +186,8 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
           <button class="btn" id="zfit" type="button" aria-label="回到默认视角"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
           </button>
         </div>
-        <div class="hint-drag" id="hint-drag">拖动转视角 · 滚轮或双指缩放</div>
       </div>
       <div class="toolbar" role="toolbar" aria-label="控制">
-        <button class="btn" id="play" type="button" aria-pressed="false">
-          <svg id="icon-pause" class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg>
-          <svg id="icon-play" class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><polygon points="6 3 20 12 6 21 6 3"/></svg>
-          <span id="play-label">暂停</span>
-        </button>
-        <div class="group" role="group" aria-label="速度">
-          <button class="btn" type="button" data-speed="1" aria-pressed="true">1×</button>
-          <button class="btn" type="button" data-speed="2" aria-pressed="false">2×</button>
-          <button class="btn" type="button" data-speed="4" aria-pressed="false">4×</button>
-        </div>
-        <span class="sep" aria-hidden="true" id="spawn-sep"></span>
         <div class="group" id="spawn-group">
           <label for="role" class="lead">派一个</label>
           <select id="role">
@@ -214,54 +202,18 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
       </div>
     </section>
 
-    <aside class="panel">
-      <section class="card">
-        <p class="intro" id="intro">3D 原型，人和任务都是假的。场景里每个模型都是现成的免费素材，不是自己画的。每个小人是一个 agent：分到任务就去盖楼，卡住了就跑去市政厅问总督，做完了就去休息。拖动可以转视角，点小人看详情。</p>
+    <aside class="panel" id="panel" aria-label="信息栏">
+      <section class="card" data-card="detail">
+        <h2 class="card-head"><button type="button" aria-expanded="true" aria-controls="detail" title="点一下收起或展开，按住拖动换位置"><svg class="grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg><span class="en">Selected</span>详情<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2>
+        <div class="card-body detail" id="detail" aria-live="polite"></div>
       </section>
-      <section class="card detail" id="detail" aria-live="polite"></section>
-      <section class="card">
-        <h2><span class="en">Citizens</span>市民</h2>
-        <ul class="roster" id="roster"></ul>
+      <section class="card" data-card="citizens">
+        <h2 class="card-head"><button type="button" aria-expanded="true" aria-controls="roster" title="点一下收起或展开，按住拖动换位置"><svg class="grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg><span class="en">Citizens</span>市民<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2>
+        <ul class="card-body roster" id="roster"></ul>
       </section>
-      <section class="card">
-        <h2><span class="en">Log</span>动态</h2>
-        <ol class="log" id="log"></ol>
-      </section>
-      <section class="card">
-        <h2><span class="en">Legend</span>怎么看这座城</h2>
-        <table class="legend">
-          <thead><tr><th>城里看到的</th><th>真实 agent 在做的</th></tr></thead>
-          <tbody>
-            <tr><td>从市政厅走出来</td><td>主对话派出一个 agent</td></tr>
-            <tr><td>空地摆上路锥</td><td>分到任务，定下做哪一块</td></tr>
-            <tr><td>楼从地面一层层长出来，外面搭着木架</td><td>改文件（Edit / Write）</td></tr>
-            <tr><td>头上飘出 Bash / Read</td><td>跑命令或测试 / 读文件</td></tr>
-            <tr><td>头顶「？」跑去市政厅</td><td>卡住了：要问问题或等权限</td></tr>
-            <tr><td>总督回话，它点点头走回工地</td><td>拿到答案，继续干</td></tr>
-            <tr><td>完工跳一下，去长椅或咖啡馆坐着</td><td>任务做完</td></tr>
-            <tr><td>走出城门</td><td>agent 结束</td></tr>
-          </tbody>
-        </table>
-        <table class="legend" style="margin-top:12px">
-          <thead><tr><th>脚下圆圈</th><th>盖什么</th></tr></thead>
-          <tbody>
-            <tr><td><span class="dot" style="background:#5AA9F0"></span>worker</td><td>小房子</td></tr>
-            <tr><td><span class="dot" style="background:#9C86F2"></span>task manager</td><td>测试塔</td></tr>
-            <tr><td><span class="dot" style="background:#43C58B"></span>fast-lane deputy</td><td>花园，小而快</td></tr>
-            <tr><td><span class="dot" style="background:#FF9A5C"></span>merge deputy</td><td>过河的桥，接到 main</td></tr>
-            <tr><td><span class="dot" style="background:#FFD36E"></span>总督</td><td>不盖楼，站在市政厅门口</td></tr>
-          </tbody>
-        </table>
-      </section>
-      <section class="card">
-        <h2><span class="en">Credits</span>素材来源</h2>
-        <table class="legend">
-          <tbody>
-            <tr><td>3D 模型和动画</td><td>Kenney（kenney.nl），CC0 公共领域：小人、房子、高楼、自然、小镇、生存、道路、森林、宠物 9 个包</td></tr>
-            <tr><td>图标</td><td>Lucide，ISC 许可</td></tr>
-            <tr><td>3D 引擎</td><td>three.js r128，MIT 许可</td></tr>
-          </tbody>
-        </table>
+      <section class="card" data-card="log">
+        <h2 class="card-head"><button type="button" aria-expanded="true" aria-controls="log" title="点一下收起或展开，按住拖动换位置"><svg class="grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg><span class="en">Log</span>动态<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2>
+        <ol class="card-body log" id="log"></ol>
       </section>
     </aside>
   </main>
@@ -286,6 +238,21 @@ const MAX_CITIZENS = 40;
 const MAX_LOG = 40;
 const MAX_FLOATERS = 80;
 const LIVE_REST_SEC = 180;
+const WALK_SPEED = 1.9 / 3;
+const SPRINT_SPEED = 2.3 / 3;
+const WALK_ANIM_SCALE = 1 / 3;
+const FOV = 40;
+const EL_MIN = 15 * Math.PI / 180;
+const EL_MAX = 60 * Math.PI / 180;
+const EL_DEFAULT = 30 * Math.PI / 180;
+const DIST_MIN = 2.5;
+const DIST_MAX = 40;
+const DIST_DEFAULT = 9;
+const TARGET_Y = .4;
+const CAM_CLEAR = .35;
+const AUTO_ROT_SEC = 300;
+const AUTO_ROT_IDLE_MS = 10000;
+const CARD_KEY = 'agent-city-cards';
 const DEMO = location.hash === '#demo' || location.protocol === 'file:';
 
 function h2r(h){ h = h.replace('#',''); return [0,2,4].map(i => parseInt(h.slice(i,i+2),16)); }
@@ -398,7 +365,7 @@ function findPath(sx, sy, tx, ty){
   return out.reverse();
 }
 
-let simT = 0, speed = 1, paused = false;
+let simT = 0;
 const citizens = [], buildings = [], floaters = [], logEntries = [];
 let cid = 0, bid = 0;
 let selected = null;
@@ -466,7 +433,7 @@ function goTo(c, target, state){
 }
 function move(c, dt){
   const [tx, ty] = c.path[0];
-  const dx = tx - c.x, dy = ty - c.y, d = Math.hypot(dx, dy), sp = (c.state === 'to_hall' ? 2.3 : 1.9) * dt;
+  const dx = tx - c.x, dy = ty - c.y, d = Math.hypot(dx, dy), sp = (c.state === 'to_hall' ? SPRINT_SPEED : WALK_SPEED) * dt;
   c.walkT += dt;
   if (d <= sp) { c.x = tx; c.y = ty; c.path.shift(); if (!c.path.length) onArrive(c); }
   else { c.x += dx / d * sp; c.y += dy / d * sp; }
@@ -762,8 +729,8 @@ const scene = new THREE.Scene();
 const world = new THREE.Group();
 world.position.set(-6, 0, -5);
 scene.add(world);
-const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, .1, 200);
-const cam = { az: Math.PI / 4, el: .64, zoom: 1, tx: 0, tz: 0 };
+const camera = new THREE.PerspectiveCamera(FOV, 1, .25, 150);
+const cam = { az: Math.PI / 4, el: EL_DEFAULT, dist: DIST_DEFAULT, tx: 0, tz: 0 };
 
 const hemi = new THREE.HemisphereLight(0xffffff, 0xffffff, 1);
 scene.add(hemi);
@@ -847,6 +814,7 @@ function instanced(key, items, opt){
       tmpM.compose(tmpP.set(it.x, y, it.z), tmpQ.setFromEuler(tmpE.set(0, it.ry || 0, 0)), tmpS.set(s, s, s));
       im.setMatrixAt(i, tmpM2.multiplyMatrices(tmpM, n.matrixWorld));
     });
+    if (o.behind) { im.material = n.material.clone(); im.material.polygonOffset = true; im.material.polygonOffsetFactor = 1; im.material.polygonOffsetUnits = 2; }
     im.castShadow = o.shadow !== false; im.receiveShadow = true; im.frustumCulled = false;
     world.add(im);
   });
@@ -869,7 +837,7 @@ function buildIsland(){
   const edge = [];
   for (let y = GY0; y <= GY1; y++) for (let x = 0; x <= GX1; x++)
     if (x === 0 || x === GX1 || y === GY0 || y === GY1) edge.push({ x: x + .5, z: y + .5, y: -1, s: 1 });
-  instanced('cliff_block_rock', edge, { keepY: true, shadow: false });
+  instanced('cliff_block_rock', edge, { keepY: true, shadow: false, behind: true });
 
   instanced('tree_default', TREES.filter((_, i) => i % 2 === 0).map(([x, y]) => ({ x: x + .5, z: y + .5, h: .95, ry: x })));
   instanced('tree_oak', TREES.filter((_, i) => i % 2 === 1).map(([x, y]) => ({ x: x + .5, z: y + .5, h: .9, ry: y })));
@@ -973,6 +941,7 @@ function anim(v, name, once){
   const clip = THREE.AnimationClip.findByName(lib[v.key].clips, name); if (!clip) return;
   const next = v.mixer.clipAction(clip);
   next.reset(); next.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity); next.clampWhenFinished = !!once;
+  next.setEffectiveTimeScale(name === 'walk' || name === 'sprint' ? WALK_ANIM_SCALE : 1);
   next.play();
   if (v.action) next.crossFadeFrom(v.action, .2, false);
   v.action = next; v.cur = name;
@@ -1077,7 +1046,7 @@ function updateBuilding(b, t){
 /* ---------- overlays: crisp HTML labels that follow the scene ---------- */
 let W = 1, H = 1, needFrame = true;
 const tmpV = new THREE.Vector3();
-function toScreen(x, h, z){ tmpV.set(x - 6, h, z - 5).project(camera); return [(tmpV.x + 1) / 2 * W, (1 - tmpV.y) / 2 * H]; }
+function toScreen(x, h, z){ tmpV.set(x - 6, h, z - 5).project(camera); if (tmpV.z > 1) return [-9999, -9999]; return [(tmpV.x + 1) / 2 * W, (1 - tmpV.y) / 2 * H]; }
 function ovEl(cls, html){ const el = document.createElement('div'); el.className = cls; if (html) el.innerHTML = html; el.hidden = true; ovRoot.appendChild(el); return el; }
 function pin(el, x, y, show){ if (!show) { if (!el.hidden) el.hidden = true; return; } if (el.hidden) el.hidden = false; el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
 function setText(el, text){ if (el._t !== text) { el._t = text; el.textContent = text; } }
@@ -1168,17 +1137,54 @@ function applyTheme(){
   sun.color.set(P.sun); sun.intensity = P.sunI;
   glows.forEach(s => { s.visible = P.night; });
 }
-function updateCamera(){
-  const aspect = W / H;
-  let halfW = 9.4, halfH = halfW / aspect;
-  if (halfH < 6.9) { halfH = 6.9; halfW = halfH * aspect; }
-  camera.left = -halfW; camera.right = halfW; camera.top = halfH; camera.bottom = -halfH;
-  camera.zoom = cam.zoom; camera.updateProjectionMatrix();
-  const d = 40, ce = Math.cos(cam.el);
-  camera.position.set(cam.tx + d * ce * Math.sin(cam.az), d * Math.sin(cam.el), cam.tz + d * ce * Math.cos(cam.az));
-  camera.lookAt(cam.tx, .4, cam.tz);
+/* the top of whatever stands on a 1x1 tile, in scene coordinates: static scenery once, buildings live */
+const tall = new Map();
+function markTall(box){
+  if (box.max.y < .35) return;
+  for (let x = Math.floor(box.min.x); x <= Math.floor(box.max.x); x++)
+    for (let z = Math.floor(box.min.z); z <= Math.floor(box.max.z); z++) {
+      const k = x + ',' + z;
+      if ((tall.get(k) || 0) < box.max.y) tall.set(k, box.max.y);
+    }
 }
-function resetCam(){ cam.az = Math.PI / 4; cam.el = .64; cam.tx = 0; cam.tz = 0; cam.zoom = W < 560 ? 1.3 : 1; }
+function scanTall(){
+  world.updateMatrixWorld(true);
+  const box = new THREE.Box3(), m = new THREE.Matrix4();
+  world.traverse(n => {
+    if (!n.isMesh || !n.geometry) return;
+    if (!n.geometry.boundingBox) n.geometry.computeBoundingBox();
+    if (n.isInstancedMesh) for (let i = 0; i < n.count; i++) { n.getMatrixAt(i, m); m.premultiply(n.matrixWorld); markTall(box.copy(n.geometry.boundingBox).applyMatrix4(m)); }
+    else markTall(box.copy(n.geometry.boundingBox).applyMatrix4(n.matrixWorld));
+  });
+}
+function heightAt(x, z){
+  const tx = Math.floor(x), tz = Math.floor(z);
+  let h = tall.get(tx + ',' + tz) || 0;
+  const b = occupied.get((tx + 6) + ',' + (tz + 5));
+  if (b && b.v) h = Math.max(h, b.v.h + .45);
+  return h;
+}
+function aroundH(x, z){ return Math.max(heightAt(x, z), heightAt(x + .3, z), heightAt(x - .3, z), heightAt(x, z + .3), heightAt(x, z - .3)); }
+/* tilt used this frame: the user's tilt, lifted so the view passes over anything between the target and the camera */
+function camLift(){
+  const sx = Math.sin(cam.az), sz = Math.cos(cam.az), reach = cam.dist * Math.cos(cam.el) + .3;
+  let el = cam.el;
+  for (let r = .6; r <= reach; r += .2) {
+    const h = aroundH(cam.tx + sx * r, cam.tz + sz * r);
+    if (h > 0) el = Math.max(el, Math.atan2(h + CAM_CLEAR - TARGET_Y, r));
+  }
+  return Math.min(el, 1.45);
+}
+function updateCamera(){
+  camera.aspect = W / H;
+  camera.updateProjectionMatrix();
+  const el = camLift(), ce = Math.cos(el);
+  const x = cam.tx + cam.dist * ce * Math.sin(cam.az), z = cam.tz + cam.dist * ce * Math.cos(cam.az);
+  const y = Math.max(TARGET_Y + cam.dist * Math.sin(el), aroundH(x, z) + CAM_CLEAR);
+  camera.position.set(x, y, z);
+  camera.lookAt(cam.tx, TARGET_Y, cam.tz);
+}
+function resetCam(){ cam.az = Math.PI / 4; cam.el = EL_DEFAULT; cam.tx = .3; cam.tz = 2.8; cam.dist = W < 560 ? DIST_DEFAULT * 1.35 : DIST_DEFAULT; }
 function resize(){
   const r = stage.getBoundingClientRect();
   W = Math.max(1, r.width); H = Math.max(1, r.height);
@@ -1274,9 +1280,9 @@ function renderDetail(){
         <p class="hint">总督就是你正在聊的主对话。它派人出门、回答卡住的问题，自己不盖楼。</p>
         <dl class="d-tools" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><dt>派出</dt><dd>${gov.dispatched}</dd></div><div><dt>回答</dt><dd>${gov.answered}</dd></div></dl>`;
     } else if (!DEMO && citizens.length === 0) {
-      el.innerHTML = `<h2><span class="en">Selected</span>详情</h2><p class="hint">还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。</p>`;
+      el.innerHTML = `<p class="hint">还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。</p>`;
     } else {
-      el.innerHTML = `<h2><span class="en">Selected</span>详情</h2><p class="hint">点城里的小人、房子，或下面名单里的一行。</p>`;
+      el.innerHTML = `<p class="hint">点城里的小人、房子，或下面名单里的一行。</p>`;
     }
   }
   if (c) {
@@ -1290,6 +1296,70 @@ function renderLog(){
   $('#log').innerHTML = logEntries.map(e => `<li><time>${e.real ? new Date(e.real).toTimeString().slice(0, 8) : clock(e.t)}</time><span class="${e.kind}">${esc(e.text)}</span></li>`).join('');
 }
 function renderPanel(){ renderStats(); renderRoster(); renderDetail(); renderLog(); $('#clock').textContent = DEMO ? '模拟 ' + clock(simT) : '现在 ' + new Date().toTimeString().slice(0, 8); }
+
+/* ---------- right column: collapse, drag to reorder, remembered per browser ---------- */
+const panel = $('#panel');
+const cardEls = () => [...panel.children].filter(el => el.dataset.card);
+function setCollapsed(card, on){
+  card.classList.toggle('collapsed', on);
+  card.querySelector('.card-head button').setAttribute('aria-expanded', String(!on));
+}
+function saveCards(){
+  const cards = cardEls();
+  const state = { order: cards.map(c => c.dataset.card), collapsed: cards.filter(c => c.classList.contains('collapsed')).map(c => c.dataset.card) };
+  try { localStorage.setItem(CARD_KEY, JSON.stringify(state)); } catch (e) { /* storage off: order lasts until reload */ }
+}
+function loadCards(){
+  let state = null;
+  try { state = JSON.parse(localStorage.getItem(CARD_KEY) || 'null'); } catch (e) { state = null; }
+  if (!state || typeof state !== 'object') return;
+  const byName = new Map(cardEls().map(c => [c.dataset.card, c]));
+  const order = Array.isArray(state.order) ? state.order.filter(n => byName.has(n)) : [];
+  for (const n of byName.keys()) if (!order.includes(n)) order.push(n);
+  for (const n of order) panel.appendChild(byName.get(n));
+  const collapsed = Array.isArray(state.collapsed) ? state.collapsed : [];
+  for (const [n, c] of byName) setCollapsed(c, collapsed.includes(n));
+}
+let cardDrag = null, dragJustEnded = false;
+panel.addEventListener('pointerdown', e => {
+  const head = e.target.closest('.card-head');
+  if (!head || e.button > 0 || cardDrag) return;
+  const card = head.closest('[data-card]');
+  head.querySelector('button').setPointerCapture(e.pointerId);
+  cardDrag = { card, head, id: e.pointerId, y0: e.clientY, moved: false };
+});
+panel.addEventListener('pointermove', e => {
+  if (!cardDrag || e.pointerId !== cardDrag.id) return;
+  const d = cardDrag, card = d.card;
+  if (!d.moved && Math.abs(e.clientY - d.y0) < 6) return;
+  if (!d.moved) { d.moved = true; card.classList.add('dragging'); }
+  const cards = cardEls(), i = cards.indexOf(card), top = card.offsetTop;
+  const prev = cards[i - 1], next = cards[i + 1];
+  if (prev && e.clientY < prev.getBoundingClientRect().top + prev.offsetHeight / 2) panel.insertBefore(card, prev);
+  else if (next && e.clientY > next.getBoundingClientRect().top + next.offsetHeight / 2) panel.insertBefore(card, next.nextSibling);
+  d.y0 += card.offsetTop - top;
+  const all = cardEls(), first = all[0], last = all[all.length - 1];
+  const lo = first.offsetTop - card.offsetTop, hi = last.offsetTop + last.offsetHeight - card.offsetTop - card.offsetHeight;
+  card.style.transform = `translateY(${clamp(e.clientY - d.y0, lo, hi)}px)`;
+});
+function endCardDrag(e){
+  if (!cardDrag || e.pointerId !== cardDrag.id) return;
+  const d = cardDrag; cardDrag = null;
+  if (!d.moved) return;
+  d.card.classList.remove('dragging'); d.card.style.transform = '';
+  dragJustEnded = true; setTimeout(() => { dragJustEnded = false; }, 0);
+  saveCards();
+}
+panel.addEventListener('pointerup', endCardDrag);
+panel.addEventListener('pointercancel', endCardDrag);
+panel.addEventListener('click', e => {
+  const head = e.target.closest('.card-head');
+  if (!head || dragJustEnded) return;
+  const card = head.closest('[data-card]');
+  setCollapsed(card, !card.classList.contains('collapsed'));
+  saveCards();
+});
+loadCards();
 
 /* ---------- input ---------- */
 function selectFrom(val){
@@ -1311,9 +1381,7 @@ if (DEMO) {
   $('#spawn').addEventListener('click', () => { const c = spawnDemo($('#role').value); if (c) { selected = { t:'c', id:c.id }; lastDetailKey = ''; renderPanel(); } });
 } else {
   $('#spawn-group').hidden = true;
-  $('#spawn-sep').hidden = true;
   $('#proto').textContent = '实时 · 等服务器';
-  $('#intro').textContent = '这是你电脑上正在跑的 agent。每个小人是一个 agent：分到任务就去盖楼，卡住了就跑去市政厅问总督，做完了就去休息。拖动可以转视角，点小人看详情。';
 }
 function connectLive(){
   const chip = $('#proto');
@@ -1328,23 +1396,12 @@ function connectLive(){
     needFrame = true;
   };
 }
-$('#play').addEventListener('click', () => {
-  paused = !paused;
-  $('#play').setAttribute('aria-pressed', String(paused));
-  $('#play-label').textContent = paused ? '继续' : '暂停';
-  $('#icon-pause').hidden = paused; $('#icon-play').hidden = !paused;
-});
-document.querySelectorAll('[data-speed]').forEach(b => b.addEventListener('click', () => {
-  speed = Number(b.dataset.speed);
-  document.querySelectorAll('[data-speed]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
-}));
-const camChanged = () => { needFrame = true; hideHint(); };
-$('#zin').addEventListener('click', () => { cam.zoom = clamp(cam.zoom * 1.25, .7, 3.2); camChanged(); });
-$('#zout').addEventListener('click', () => { cam.zoom = clamp(cam.zoom / 1.25, .7, 3.2); camChanged(); });
+let lastTouch = -Infinity;
+const camChanged = () => { needFrame = true; lastTouch = performance.now(); };
+$('#zin').addEventListener('click', () => { cam.dist = clamp(cam.dist / 1.25, DIST_MIN, DIST_MAX); camChanged(); });
+$('#zout').addEventListener('click', () => { cam.dist = clamp(cam.dist * 1.25, DIST_MIN, DIST_MAX); camChanged(); });
 $('#rot').addEventListener('click', () => { camTween = { from: cam.az, to: cam.az - Math.PI / 2, t: 0 }; camChanged(); });
 $('#zfit').addEventListener('click', () => { resetCam(); camChanged(); });
-let hintHidden = false;
-function hideHint(){ if (!hintHidden) { hintHidden = true; $('#hint-drag').hidden = true; } }
 let camTween = null;
 
 const pointers = new Map();
@@ -1365,17 +1422,19 @@ function pickAt(px, py){
   return null;
 }
 canvas.addEventListener('pointerdown', e => {
+  lastTouch = performance.now();
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
   if (pointers.size === 1) drag = { x:e.clientX, y:e.clientY, moved:false, pan: e.button === 2 || e.shiftKey };
-  if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: cam.zoom, mx:(a.x + b.x) / 2, my:(a.y + b.y) / 2 }; drag = null; }
+  if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: cam.dist, mx:(a.x + b.x) / 2, my:(a.y + b.y) / 2 }; drag = null; }
 });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 function panBy(dx, dy){
-  const k = (camera.right - camera.left) / camera.zoom / W;
+  const k = 2 * cam.dist * Math.tan(FOV * Math.PI / 360) / H;
   const s = Math.sin(cam.az), c = Math.cos(cam.az);
-  cam.tx = clamp(cam.tx - (dx * c - dy * s * 1.4) * k, -6, 6);
-  cam.tz = clamp(cam.tz - (-dx * s - dy * c * 1.4) * k, -6, 6);
+  const f = 1 / Math.sin(cam.el);
+  cam.tx = clamp(cam.tx - (dx * c - dy * s * f) * k, -6, 6);
+  cam.tz = clamp(cam.tz - (-dx * s - dy * c * f) * k, -6, 6);
 }
 canvas.addEventListener('pointermove', e => {
   if (!pointers.has(e.pointerId)) return;
@@ -1383,7 +1442,7 @@ canvas.addEventListener('pointermove', e => {
   if (pinch && pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-    cam.zoom = clamp(pinch.z * d / Math.max(20, pinch.d), .7, 3.2);
+    cam.dist = clamp(pinch.z * Math.max(20, pinch.d) / Math.max(20, d), DIST_MIN, DIST_MAX);
     panBy(mx - pinch.mx, my - pinch.my); pinch.mx = mx; pinch.my = my;
     camChanged(); return;
   }
@@ -1392,7 +1451,7 @@ canvas.addEventListener('pointermove', e => {
   if (!drag.moved && Math.hypot(dx, dy) < 6) return;
   drag.moved = true; canvas.classList.add('grabbing');
   if (drag.pan) panBy(dx, dy);
-  else { cam.az -= dx * .008; cam.el = clamp(cam.el + dy * .005, .32, 1.15); }
+  else { cam.az -= dx * .008; cam.el = clamp(cam.el + dy * .005, EL_MIN, EL_MAX); }
   drag.x = e.clientX; drag.y = e.clientY;
   camChanged();
 });
@@ -1409,7 +1468,7 @@ function endPointer(e){
 }
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
-canvas.addEventListener('wheel', e => { e.preventDefault(); cam.zoom = clamp(cam.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), .7, 3.2); camChanged(); }, { passive:false });
+canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = clamp(cam.dist * (e.deltaY < 0 ? 1 / 1.1 : 1.1), DIST_MIN, DIST_MAX); camChanged(); }, { passive:false });
 
 /* ---------- opening scene: a city mid-day, not an empty island ---------- */
 function placeBuilder(role, task, x, y, tools){
@@ -1457,9 +1516,13 @@ function seed(){
 /* ---------- boot: load the ready-made models, then run at a capped frame rate ---------- */
 let lastSim = performance.now(), lastDraw = 0, panelT = 0;
 function busy(){
-  if (drag && drag.moved || pinch || camTween) return true;
+  if (drag && drag.moved || pinch || camTween || autoRotating(performance.now())) return true;
   if (floaters.length) return true;
   return citizens.some(c => c.path.length || c.state === 'building' || c.state === 'spawn' || c.state === 'asking');
+}
+function autoRotating(now){ return !RM && !drag && !pinch && !camTween && now - lastTouch >= AUTO_ROT_IDLE_MS; }
+function autoRotate(now, dt){
+  if (autoRotating(now)) cam.az -= dt * Math.PI * 2 / AUTO_ROT_SEC;
 }
 function frame(now){
   requestAnimationFrame(frame);
@@ -1468,13 +1531,10 @@ function frame(now){
   if (now - lastDraw < interval - 2) return;
   const raw = Math.min(.1, (now - lastSim) / 1000);
   lastSim = now; lastDraw = now; needFrame = false;
-  let dtScaled = 0;
-  if (!paused) {
-    let dt = dtScaled = raw * speed;
-    const before = new Set(citizens);
-    while (dt > 0) { const s = Math.min(dt, .05); update(s); dt -= s; }
-    for (const c of before) if (!citizens.includes(c)) goneOv.push(c);
-  }
+  const before = new Set(citizens);
+  for (let dt = raw; dt > 0; dt -= .05) update(Math.min(dt, .05));
+  for (const c of before) if (!citizens.includes(c)) goneOv.push(c);
+  autoRotate(now, raw);
   if (camTween) {
     camTween.t = Math.min(1, camTween.t + raw * 2.2);
     const e = camTween.t < .5 ? 2 * camTween.t * camTween.t : 1 - Math.pow(-2 * camTween.t + 2, 2) / 2;
@@ -1483,7 +1543,7 @@ function frame(now){
   }
   applyTheme();
   updateCamera();
-  sync(simT, dtScaled);
+  sync(simT, raw);
   renderer.render(scene, camera);
   panelT += raw;
   if (panelT > .25) { panelT = 0; renderPanel(); }
@@ -1494,7 +1554,7 @@ Promise.all([
   ...['suburban/Textures/variation-a.png', 'suburban/Textures/variation-b.png', 'suburban/Textures/variation-c.png'].map(loadTex),
 ]).then(([, ...tex]) => {
   tex.forEach(t => { if (t) variations.push(t); });
-  buildIsland(); buildLife(); buildGlows(); makeGovernor();
+  buildIsland(); scanTall(); buildLife(); buildGlows(); makeGovernor();
   for (const [text, x, h, z] of [['市政厅', 6, 1.95, 6], ['咖啡馆', 5.5, 1.0, 10.5], ['main', 1.2, .85, -1.5]]) { const el = ovEl('lbl'); setText(el, text); labels.push({ el, x, h, z }); }
   if (DEMO) seed(); else connectLive();
   $('#loading').hidden = true;
