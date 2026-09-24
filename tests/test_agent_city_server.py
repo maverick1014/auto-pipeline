@@ -33,7 +33,9 @@ CONTRACT: the server
 
   DIR/events.jsonl past --max-log-kb: moved to events.jsonl.1 (replacing any
   older one) and read to its end, so no line is lost and the folder never holds
-  more than on, events.jsonl and events.jsonl.1.
+  more than on, token, events.jsonl and events.jsonl.1.
+  (Interaction: token, the control API and the extra /health fields are in
+  tests/test_agent_city_interact.py.)
 
   No /events client for the idle time -> exit 0. One open client keeps it alive.
   DIR/on already names a live pid -> print "already running" and exit 0 without
@@ -233,7 +235,12 @@ class TestServe(ServerCase):
         status, headers, body = self.get("/health")
         self.assertEqual(status, 200)
         data = json.loads(body)
-        self.assertEqual(data, {"ok": True, "lines": 0, "agents": 0, "clients": 0})
+        # Interaction adds asks, gov_wait_sec and governors
+        # (tests/test_agent_city_interact.py); nothing else.
+        base = {k: data.get(k) for k in ("ok", "lines", "agents", "clients")}
+        self.assertEqual(base, {"ok": True, "lines": 0, "agents": 0, "clients": 0})
+        self.assertLessEqual(set(data), {"ok", "lines", "agents", "clients",
+                                         "asks", "gov_wait_sec", "governors"})
 
     def test_unknown_path_is_404(self):
         self.start()
@@ -426,7 +433,9 @@ class TestBudget(ServerCase):
                         "got %d tool events" % len(client.events("tool")))
         size = os.path.getsize(os.path.join(self.dir, "events.jsonl"))
         self.assertLess(size, 4096 + 30 * 200)
-        self.assertLessEqual(set(os.listdir(self.dir)), {"on", "events.jsonl", "events.jsonl.1"})
+        # token: the per-start control token (tests/test_agent_city_interact.py)
+        self.assertLessEqual(set(os.listdir(self.dir)),
+                             {"on", "token", "events.jsonl", "events.jsonl.1"})
 
     def test_memory_stays_small(self):
         if not os.path.exists("/proc/self/status"):

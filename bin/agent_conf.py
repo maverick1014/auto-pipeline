@@ -13,6 +13,7 @@ NUMBER_BOUNDS = {
     "stall_min": (1, 120),
     "city_port": (1024, 65535),
     "city_idle_min": (1, 240),
+    "city_governor_wait_sec": (5, 3600),
 }
 
 ROLE_KEYS = [
@@ -48,6 +49,7 @@ HINTS = {
     "runtime": "How this machine runs agents. One of: auto, orca, plain, cloud.",
     "city_port": "Port the agent city listens on, on 127.0.0.1 only. Whole number, 1024 to 65535.",
     "city_idle_min": "Minutes the agent city keeps running with no browser open, then it stops by itself. Whole number, 1 to 240.",
+    "city_governor_wait_sec": "Seconds the governor has to answer an agent's question before the owner gets it in the city page. Whole number, 5 to 3600.",
 }
 
 GROUPS = [
@@ -56,7 +58,7 @@ GROUPS = [
     ("roles", list(ROLE_KEYS)),
     ("permission", ["permission_mode", "auto_resume", "language"]),
     ("runtime", ["runtime"]),
-    ("city", ["city_port", "city_idle_min"]),
+    ("city", ["city_port", "city_idle_min", "city_governor_wait_sec"]),
 ]
 
 _GROUP_OF = {}

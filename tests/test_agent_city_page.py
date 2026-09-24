@@ -134,6 +134,69 @@ CONTRACT
       may use $, clamp and CARD_KEY from outside; the test runs it in node
       with a small fake DOM.
 
+  Interaction (approved mock: mock/city-interact-mock.html; the server side
+  is pinned in tests/test_agent_city_interact.py). Everything from Cleanup
+  stays (3D city, cards, camera).
+    <meta name="city-token" content="__CITY_TOKEN__"> in <head>; the server
+      swaps in its token. The script reads it from that meta tag (TOKEN).
+    Handles `case 'ask'`, `case 'ask_phase'` and `case 'ask_closed'` in the
+      same switch, and the snapshot's `asks` list.
+    `case 'answer'`: shows ev.answer when it is a non-empty string, else
+      '已回答'. Live mode never invents text: the `case 'answer'` code has no
+      '批了' and no '不行'. Demo data may keep its own made-up answers.
+    askLine(ev, name): top-level pure function (no DOM, no other globals) ->
+      the Chinese log line for one ask / ask_phase / ask_closed event, name =
+      the asker's task. Who: 总督 (governor), 你 (owner), 终端 (terminal).
+      Always the real text; '已回答' when an answer's text is "". A deny
+      without a reason shows no 理由：.
+    The "?" panel: <div class="ask-panel" id="ask" role="dialog"
+      aria-labelledby="ask-title" hidden>, inside #stage (over the city),
+      never inside the right column. Question: the exact questions and
+      options, a free text per question, 发送回答. Permission: tool, command
+      or path, the agent's own description, folder; 批准 and 拒绝, an optional
+      reason. .btn.ok and .btn.no: white-space:nowrap and a min-width. After
+      a close from any side the form is gone and a .closed line says who and
+      when; another side first: 晚了一步.
+    Decisions: fetch('/api/decide') POST, JSON, header 'X-City-Token'. A 409
+      shows the closed state. The page never calls /api/gov/ and never
+      offers the governor approving (no 总督批准). Any other failure (network,
+      400, 403) is said in the panel, never swallowed.
+    askClosedLine(view): top-level; may use only esc; view.closed = {by,
+      verb, text, reason, at}. Verb closed (the terminal took it, or a 409
+      whose details are not known yet) is neutral: never 批准, 拒绝 or 回答.
+      Quotes around real text are “ ” as in the rest of the page.
+    A red "?" (.qm button with data-open) above an agent whose ask is with
+      the owner. renderStats adds <button id="next"> 等你 <n>, which opens the
+      oldest. Phone: the @media (max-width: 960px) block has an .ask-panel rule.
+    No CSS selector starts with a bare .ask: the older .bub.ask, .pill.ask and
+      `.log .ask` rules (red bubble, pill, log line) stay exactly as they are.
+    One record per ask in live mode: the log lines for questions and
+      permissions come from ask / ask_phase / ask_closed only. The live
+      `case 'stuck'` and `case 'answer'` write no log line (their log calls
+      are behind DEMO), and never say 问总督 for a permission. The governor
+      speaks (say(gov, ...)) and gov.answered counts only in demo or on an
+      ask_closed by the governor, with its real text.
+    stuckText(ev) -> the bubble over a stuck citizen: the question text, or
+      要权限：<tool> for a permission; never 可以用 … 吗 or 问总督.
+    citizenStatus(c) -> [pill class, text] for the roster, from c.state and
+      c.askKind ('question' | 'permission' | '') and c.askPhase ('governor' |
+      'owner' | ''). Permission on the way or at the hall: 等你批. Question
+      with the governor: 在问总督; with the owner: 等你回答. Else STATE's words.
+    Governor presence: `case 'governors'` (count of governors, also in the
+      snapshot). Count 0 in live mode: govPillText() says 不在.
+    Snapshot = live. applyAsk(c, ask): top-level; may use only stuckText.
+      ask = an ask view (or null) -> sets c.askKind, c.askPhase, c.stuck and
+      c.question (stuckText of the ask's tool and first question), or clears
+      the ask fields for null. `case 'ask'` and `case 'snapshot'` both use it;
+      the snapshot first clears every citizen's ask fields (a reconnect may
+      find the ask closed), then applies each open ask to its agent. A page
+      opened while a permission waits shows what an open page shows.
+    citizenStatus(c, governors): with governors === 0 it never says 问总督.
+    The 等你 N chip takes real mouse clicks: no CSS rule that can match the
+      chip (its tag, classes, id) outside :disabled, nor one matching its
+      ancestors (header.bar, #stats.stats), sets pointer-events:none.
+      (A class shared with the 3D countdown chip once did.)
+
   bin/agent-city-assets/
     vendor/three.min.js, vendor/GLTFLoader.js, vendor/SkeletonUtils.js
       (three.js r128, MIT, the licence header kept)
@@ -321,7 +384,7 @@ def style():
 def function_source(name):
     """Source of the top-level `function name(...) {...}` in the inline script."""
     text = inline_script()
-    m = re.search(r"^function %s\s*\(" % re.escape(name), text, re.M)
+    m = re.search(r"^(?:async\s+)?function %s\s*\(" % re.escape(name), text, re.M)
     if not m:
         return None
     i = text.index("{", m.end())
@@ -1287,6 +1350,368 @@ class TestCardsBehaviour(unittest.TestCase):
 
     def test_storage_key(self):
         self.assertIn("'agent-city-cards'", inline_script())
+
+
+# ---------------------------------------------------------------------------
+# Interaction: the "?" panel
+# ---------------------------------------------------------------------------
+
+ASK_LINE_JS = r"""
+const fs = require('fs');
+const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+eval(data.fn);
+process.stdout.write(JSON.stringify(data.cases.map(([ev, name]) => askLine(ev, name))));
+"""
+
+
+def case_block(kind):
+    """The code of `case '<kind>':` up to the next case or the end of the switch."""
+    text = inline_script()
+    m = re.search(r"case\s+'%s'\s*:" % kind, text)
+    if not m:
+        return None
+    rest = text[m.end():]
+    n = re.search(r"\bcase\s+'|\bdefault\s*:", rest)
+    return rest[:n.start() if n else len(rest)]
+
+
+def media_block(query):
+    text = style()
+    i = text.find(query)
+    if i < 0:
+        return ""
+    j = text.index("{", i)
+    depth = 0
+    for k in range(j, len(text)):
+        depth += text[k] == "{"
+        depth -= text[k] == "}"
+        if depth == 0:
+            return text[j:k + 1]
+    return ""
+
+
+class TestInteraction(unittest.TestCase):
+    def test_token_meta_tag(self):
+        head = page().split("</head>")[0]
+        self.assertIn('<meta name="city-token" content="__CITY_TOKEN__">', head)
+        self.assertRegex(inline_script(), r"meta\[name=[\"']?city-token")
+
+    def test_ask_messages_are_handled(self):
+        text = inline_script()
+        for kind in ("ask", "ask_phase", "ask_closed"):
+            with self.subTest(kind=kind):
+                self.assertRegex(text, r"case\s+'%s'\s*:" % kind)
+        self.assertRegex(case_block("snapshot") or "", r"\.asks\b")
+
+    def test_live_answers_are_never_invented(self):
+        block = case_block("answer")
+        self.assertIsNotNone(block)
+        self.assertNotIn("批了", block)
+        self.assertNotIn("不行", block)
+        self.assertIn("已回答", block)
+
+    def test_panel_sits_over_the_city(self):
+        m = markup()
+        i, stage, aside = m.find('id="ask"'), m.find('id="stage"'), m.find('<aside class="panel"')
+        self.assertGreater(i, 0, "no #ask panel in the markup")
+        self.assertTrue(stage < i < aside, "#ask must be inside #stage, not the right column")
+        tag = re.search(r"<div[^>]*id=\"ask\"[^>]*>", m).group(0)
+        for attr in ('class="ask-panel"', 'role="dialog"', 'aria-labelledby="ask-title"', "hidden"):
+            with self.subTest(attr=attr):
+                self.assertIn(attr, tag)
+
+    def test_buttons_never_wrap(self):
+        css = style().replace(" ", "")
+        for sel in (".btn.ok", ".btn.no"):
+            with self.subTest(sel=sel):
+                rules = re.findall(r"([^{}]*)\{([^{}]*)\}", css)
+                body = "".join(b for s, b in rules if sel in s)
+                self.assertIn("white-space:nowrap", body)
+                self.assertIn("min-width", body)
+
+    def test_phone_layout_has_the_panel(self):
+        self.assertIn(".ask-panel", media_block("@media (max-width: 960px)"))
+
+    def test_decisions_go_to_the_page_endpoint_with_the_token(self):
+        text = inline_script()
+        self.assertRegex(text, r"fetch\(\s*'/api/decide'")
+        self.assertIn("'X-City-Token'", text)
+        self.assertIn("409", text)
+        self.assertNotIn("/api/gov", text)
+        self.assertNotIn("总督批准", page())
+
+    def test_owner_waiting_is_visible(self):
+        self.assertIn("data-open", inline_script())
+        stats = function_source("renderStats") or ""
+        self.assertIn("等你", stats)
+        self.assertIn('id="next"', stats)
+
+    def test_closed_state_words(self):
+        text = inline_script()
+        self.assertIn("晚了一步", text)
+        self.assertIn("closed", text)
+
+    def test_no_bare_ask_selector(self):
+        css = re.sub(r"/\*.*?\*/", "", style(), flags=re.S)
+        bad = []
+        for sel_list in re.findall(r"([^{}@]+)\{", css):
+            for sel in sel_list.split(","):
+                first = re.split(r"[\s>+~]+", sel.strip())[0] if sel.strip() else ""
+                if re.fullmatch(r"\.ask(:[\w-]+(\([^)]*\))?)*", first):
+                    bad.append(sel.strip())
+        self.assertEqual(bad, [], "a bare .ask selector also hits the old red bubble, pill and log spans")
+        compact = css.replace(" ", "")
+        for old in (".bub.ask{border-color:#E4476F}", ".pill.ask{background:var(--ask-bg);color:var(--ask-ink)}",
+                    ".log.ask{color:var(--ask-ink)}"):
+            with self.subTest(rule=old):
+                self.assertIn(old, compact)
+
+    def test_live_stuck_and_answer_write_no_log_line(self):
+        for kind in ("stuck", "answer"):
+            block = case_block(kind) or ""
+            with self.subTest(kind=kind):
+                self.assertTrue(block, "no case '%s'" % kind)
+                for line in block.splitlines():
+                    if "log(" in line:
+                        self.assertIn("DEMO", line, "live mode logs asks through ask events only")
+        stuck = case_block("stuck") or ""
+        for line in stuck.splitlines():
+            if "问总督" in line:
+                self.assertIn("DEMO", line)
+
+    def test_governor_speaks_only_its_own_answers(self):
+        give = function_source("giveAnswer") or ""
+        for line in give.splitlines():
+            if "say(gov" in line or "gov.answered" in line:
+                with self.subTest(line=line.strip()):
+                    self.assertIn("DEMO", line)
+        closed = case_block("ask_closed") or ""
+        self.assertIn("say(gov", closed)
+        self.assertIn("'governor'", closed)
+
+    def test_stuck_text_and_citizen_status(self):
+        st = function_source("stuckText")
+        cs = function_source("citizenStatus")
+        self.assertIsNotNone(st, "function stuckText(ev) not found")
+        self.assertIsNotNone(cs, "function citizenStatus(c) not found")
+        state = re.search(r"^const STATE = \{.*?^\};", inline_script(), re.S | re.M)
+        self.assertIsNotNone(state, "const STATE = {...}; not found")
+        js = ("const fs = require('fs'); const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));\n"
+              + state.group(0) + "\n" + st + "\n" + cs + "\n"
+              + "process.stdout.write(JSON.stringify({st: data.st.map(e => stuckText(e)), "
+              + "cs: data.cs.map(c => citizenStatus(c))}));")
+        out = run_node(js, {
+            "st": [{"type": "stuck", "tool": "Bash", "question": ""},
+                   {"type": "stuck", "tool": "AskUserQuestion", "question": "Which port?"}],
+            "cs": [{"state": "to_hall", "askKind": "permission", "askPhase": "owner"},
+                   {"state": "asking", "askKind": "permission", "askPhase": "owner"},
+                   {"state": "asking", "askKind": "question", "askPhase": "governor"},
+                   {"state": "asking", "askKind": "question", "askPhase": "owner"},
+                   {"state": "building", "askKind": "", "askPhase": ""}],
+        })
+        self.assertIn("要权限", out["st"][0])
+        self.assertIn("Bash", out["st"][0])
+        for word in ("可以用", "问总督"):
+            self.assertNotIn(word, out["st"][0])
+        self.assertIn("Which port?", out["st"][1])
+        texts = [pair[1] for pair in out["cs"]]
+        self.assertIn("等你批", texts[0])
+        self.assertIn("等你批", texts[1])
+        self.assertIn("在问总督", texts[2])
+        self.assertIn("等你回答", texts[3])
+        self.assertEqual(texts[4], "施工中")
+        for t in texts[:2]:
+            self.assertNotIn("问总督", t)
+
+    def test_the_waiting_chip_takes_real_clicks(self):
+        stats = function_source("renderStats") or ""
+        m = re.search(r'<button class="([^"]+)"[^>]*id="next"', stats)
+        self.assertIsNotNone(m, 'renderStats must render <button class="..." ... id="next">')
+        chip = ("button", set(m.group(1).split()), "next")
+        head = re.search(r'<header class="([^"]+)"', markup())
+        stats_div = re.search(r'<div class="([^"]+)" id="stats"', markup())
+        self.assertIsNotNone(stats_div, '<div class="stats" id="stats"> not found')
+        chain = [chip, ("div", set(stats_div.group(1).split()), "stats")]
+        if head:
+            chain.append(("header", set(head.group(1).split()), ""))
+        css = re.sub(r"/\*.*?\*/", "", style(), flags=re.S)
+        hits = []
+        for sel_list, body in re.findall(r"([^{}@]+)\{([^{}]*)\}", css):
+            if not re.search(r"pointer-events\s*:\s*none", body):
+                continue
+            for sel in sel_list.split(","):
+                sel = sel.strip()
+                if not sel:
+                    continue
+                last = re.split(r"[\s>+~]+", sel)[-1]
+                mm = re.fullmatch(r"([a-z]+)?((?:[.#][\w-]+|::?[\w-]+(?:\([^)]*\))?|\[[^\]]*\])*)", last)
+                if not mm or not (mm.group(1) or mm.group(2)):
+                    continue
+                parts = re.findall(r"[.#][\w-]+|::?[\w-]+(?:\([^)]*\))?|\[[^\]]*\]", mm.group(2))
+                if ":disabled" in parts:
+                    continue
+                for tag, classes, ident in chain:
+                    if mm.group(1) and mm.group(1) != tag:
+                        continue
+                    if all((p[0] != "." or p[1:] in classes) and (p[0] != "#" or p[1:] == ident)
+                           for p in parts):
+                        hits.append("%s -> %s" % (sel, tag))
+        self.assertEqual(hits, [], "pointer-events:none reaches the 等你 N chip, so a real click does nothing")
+
+    def test_snapshot_shows_what_live_events_show(self):
+        st = function_source("stuckText")
+        cs = function_source("citizenStatus")
+        ap = function_source("applyAsk")
+        self.assertIsNotNone(ap, "function applyAsk(c, ask) not found")
+        state = re.search(r"^const STATE = \{.*?^\};", inline_script(), re.S | re.M).group(0)
+        for kind in ("ask", "snapshot"):
+            with self.subTest(case=kind):
+                self.assertIn("applyAsk(", case_block(kind) or "")
+        js = r"""
+const fs = require('fs'); const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+""" + state + "\n" + st + "\n" + cs + "\n" + ap + r"""
+const out = [];
+for (const ask of data.asks) {
+  // live: the reducer's stuck event first (as it arrives), then the ask event
+  const live = { state: 'asking', stuck: false, question: '', askKind: '', askPhase: '' };
+  live.stuck = true; live.question = stuckText({ tool: ask.tool, question: ask.kind === 'question' ? ask.questions[0].question : '' });
+  applyAsk(live, ask);
+  // snapshot: the reducer only says "stuck"; the open ask comes in the asks list
+  const snap = { state: 'asking', stuck: true, question: '需要你看一下', askKind: 'permission', askPhase: 'owner' };
+  applyAsk(snap, null);
+  applyAsk(snap, ask);
+  const g = ask.phase === 'governor' ? 1 : 0;
+  out.push({ live: [live.question, citizenStatus(live, g)], snap: [snap.question, citizenStatus(snap, g)] });
+}
+const cleared = { state: 'building', stuck: false, question: '', askKind: 'permission', askPhase: 'owner' };
+applyAsk(cleared, null);
+out.push({ cleared: citizenStatus(cleared, 1) });
+const noGov = { state: 'asking', stuck: true, question: '需要你看一下', askKind: '', askPhase: '' };
+out.push({ noGov: citizenStatus(noGov, 0) });
+process.stdout.write(JSON.stringify(out));
+"""
+        asks = [
+            {"id": "a1", "agent": "s:x", "kind": "permission", "phase": "owner", "why": "permission",
+             "tool": "Bash", "what": "touch chip.txt"},
+            {"id": "a2", "agent": "s:x", "kind": "question", "phase": "owner", "why": "no-governor",
+             "tool": "AskUserQuestion", "what": "Which port?", "questions": [{"question": "Which port?"}]},
+            {"id": "a3", "agent": "s:x", "kind": "question", "phase": "governor", "why": "",
+             "tool": "AskUserQuestion", "what": "Which port?", "questions": [{"question": "Which port?"}]},
+        ]
+        out = run_node(js, {"asks": asks})
+        for i, row in enumerate(out[:3]):
+            with self.subTest(ask=asks[i]["id"]):
+                self.assertEqual(row["snap"], row["live"], "a fresh page must show what an open page shows")
+        self.assertEqual(out[0]["snap"][0], "要权限：Bash")
+        self.assertIn("等你批", out[0]["snap"][1][1])
+        self.assertEqual(out[1]["snap"][0], "Which port?")
+        self.assertIn("等你回答", out[1]["snap"][1][1])
+        self.assertIn("在问总督", out[2]["snap"][1][1])
+        self.assertEqual(out[3]["cleared"][1], "施工中")
+        self.assertNotIn("问总督", out[4]["noGov"][1], "no governor: never 问总督")
+
+    def test_governor_presence(self):
+        self.assertRegex(inline_script(), r"case\s+'governors'\s*:")
+        self.assertIn("不在", function_source("govPillText") or "")
+        self.assertRegex(case_block("snapshot") or "", r"\.governors\b")
+
+    def test_ask_line(self):
+        fn = function_source("askLine")
+        self.assertIsNotNone(fn, "function askLine(ev, name) not found")
+        cases = [
+            [{"type": "ask", "kind": "permission", "phase": "owner", "why": "permission",
+              "tool": "Bash", "what": "rm -rf build/"}, "清理构建"],
+            [{"type": "ask", "kind": "question", "phase": "governor", "why": "",
+              "tool": "AskUserQuestion", "what": "Which port?"}, "登录页"],
+            [{"type": "ask", "kind": "question", "phase": "owner", "why": "no-governor",
+              "tool": "AskUserQuestion", "what": "Which port?"}, "登录页"],
+            [{"type": "ask_phase", "kind": "question", "phase": "owner", "why": "timeout", "wait": 60}, "改文案"],
+            [{"type": "ask_phase", "kind": "question", "phase": "owner", "why": "pass", "wait": 60}, "改文案"],
+            [{"type": "ask_closed", "kind": "question", "by": "governor", "verb": "answer", "text": "4791",
+              "tool": "AskUserQuestion", "what": "Which port?", "reason": ""}, "登录页"],
+            [{"type": "ask_closed", "kind": "permission", "by": "owner", "verb": "allow", "text": "",
+              "tool": "Bash", "what": "rm -rf build/", "reason": ""}, "清理构建"],
+            [{"type": "ask_closed", "kind": "permission", "by": "owner", "verb": "deny", "text": "",
+              "tool": "Write", "what": "/etc/hosts", "reason": "不许改系统文件"}, "改文案"],
+            [{"type": "ask_closed", "kind": "permission", "by": "owner", "verb": "deny", "text": "",
+              "tool": "Write", "what": "/etc/hosts", "reason": ""}, "改文案"],
+            [{"type": "ask_closed", "kind": "permission", "by": "terminal", "verb": "allow", "text": "",
+              "tool": "Bash", "what": "npm test", "reason": ""}, "加测试依赖"],
+            [{"type": "ask_closed", "kind": "question", "by": "terminal", "verb": "answer", "text": "",
+              "tool": "AskUserQuestion", "what": "Which port?", "reason": ""}, "登录页"],
+            [{"type": "ask_closed", "kind": "permission", "by": "terminal", "verb": "closed", "text": "",
+              "tool": "Bash", "what": "npm test", "reason": ""}, "加测试依赖"],
+        ]
+        out = run_node(ASK_LINE_JS, {"fn": fn, "cases": cases})
+        want = [
+            ["清理构建", "要权限", "Bash", "rm -rf build/", "等你"],
+            ["登录页", "问总督", "Which port?"],
+            ["登录页", "Which port?", "等你"],
+            ["改文案", "总督", "60", "等你"],
+            ["改文案", "定不了"],
+            ["总督", "登录页", "4791"],
+            ["你", "批准", "清理构建", "rm -rf build/"],
+            ["你", "拒绝", "改文案", "/etc/hosts", "不许改系统文件"],
+            ["你", "拒绝", "改文案", "/etc/hosts"],
+            ["终端", "批准", "加测试依赖", "npm test"],
+            ["终端", "已回答", "登录页"],
+            ["终端", "加测试依赖", "npm test"],
+        ]
+        for i, (line, parts) in enumerate(zip(out, want)):
+            with self.subTest(case=i, line=line):
+                self.assertIsInstance(line, str)
+                for part in parts:
+                    self.assertIn(part, line)
+                self.assertNotIn("批了", line)
+        self.assertNotIn("理由：", out[8], "a deny without a reason must not show one")
+        self.assertNotIn("你", out[9])
+        self.assertIn("“4791”", out[5], "real text goes in “ ” like the rest of the page")
+        for word in ("批准", "拒绝", "回答"):
+            self.assertNotIn(word, out[11], "closed in the terminal is not an approval, denial or answer")
+
+    def test_closed_line(self):
+        fn = function_source("askClosedLine")
+        self.assertIsNotNone(fn, "function askClosedLine(view) not found")
+        esc = function_source("esc") or "const esc = s => String(s).replace(/[&<>\"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '\"':'&quot;' }[ch]));"
+        at = 1790000000000
+        def v(kind, by, verb, text="", reason=""):
+            return {"id": "a1", "kind": kind, "tool": "Bash", "what": "npm test",
+                    "closed": {"by": by, "verb": verb, "text": text, "reason": reason, "at": at}}
+        cases = [
+            v("permission", "terminal", "closed"),
+            v("question", "terminal", "closed"),
+            v("permission", "owner", "closed"),
+            v("permission", "owner", "allow"),
+            v("permission", "owner", "deny", reason="keep dist/"),
+            v("question", "owner", "answer", text="4791"),
+            v("question", "governor", "answer", text="4791"),
+            v("permission", "terminal", "allow"),
+        ]
+        js = ("const fs = require('fs'); const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));\n"
+              + esc + "\n" + fn + "\n"
+              + "process.stdout.write(JSON.stringify(data.map(x => askClosedLine(x).replace(/<[^>]+>/g, ''))));")
+        out = run_node(js, cases)
+        for i in (0, 1, 2):
+            for word in ("批准", "拒绝", "回答"):
+                with self.subTest(case=i, word=word):
+                    self.assertNotIn(word, out[i])
+        self.assertIn("终端", out[0])
+        self.assertIn("晚了一步", out[0])
+        self.assertIn("批准", out[3])
+        self.assertNotIn("晚了一步", out[3])
+        self.assertIn("keep dist/", out[4])
+        self.assertIn("“4791”", out[5])
+        self.assertIn("总督", out[6])
+        self.assertIn("晚了一步", out[6])
+        self.assertIn("终端", out[7])
+        self.assertIn("批准", out[7])
+
+    def test_failures_are_said_not_swallowed(self):
+        body = function_source("decide") or ""
+        self.assertTrue(body, "function decide(...) not found")
+        self.assertNotRegex(body, r"catch\s*\(\s*\w*\s*\)\s*\{\s*(/\*.*?\*/)?\s*\}",
+                            "a failed decision must be shown in the panel")
+        self.assertRegex(body, r"\.ok\b|status\s*[!<>]=?", "non-409 errors must be handled too")
 
 
 if __name__ == "__main__":

@@ -48,6 +48,7 @@ REAL_KEYS = [
     "runtime",
     "city_port",
     "city_idle_min",
+    "city_governor_wait_sec",
 ]
 
 GOOD_CONF_TEXT = (
@@ -67,6 +68,7 @@ GOOD_CONF_TEXT = (
     "runtime=auto\n"
     "city_port=4777\n"
     "city_idle_min=30\n"
+    "city_governor_wait_sec=60\n"
 )
 
 
@@ -376,7 +378,7 @@ class TestGroups(unittest.TestCase):
                 ),
                 ("permission", ["permission_mode", "auto_resume", "language"]),
                 ("runtime", ["runtime"]),
-                ("city", ["city_port", "city_idle_min"]),
+                ("city", ["city_port", "city_idle_min", "city_governor_wait_sec"]),
             ],
         )
 
@@ -421,10 +423,12 @@ class TestRuntimeKey(unittest.TestCase):
 
 
 class TestCityKeys(unittest.TestCase):
-    """The two keys bin/agent-city.sh reads: where the city listens, and how
-    long it lives with no browser open before it quits by itself."""
+    """The keys bin/agent-city.sh reads: where the city listens, how long it
+    lives with no browser open before it quits by itself, and how long the
+    governor has to answer an agent's question before the owner gets it."""
 
-    BOUNDS = {"city_port": (1024, 65535), "city_idle_min": (1, 240)}
+    BOUNDS = {"city_port": (1024, 65535), "city_idle_min": (1, 240),
+              "city_governor_wait_sec": (5, 3600)}
 
     def test_bounds(self):
         for key, bounds in self.BOUNDS.items():
@@ -449,6 +453,13 @@ class TestCityKeys(unittest.TestCase):
         conf = agent_conf.load(os.path.join(ROOT, "bin", "agent.conf.default"))
         self.assertEqual(conf.get("city_port"), "4777")
         self.assertEqual(conf.get("city_idle_min"), "30")
+        self.assertEqual(conf.get("city_governor_wait_sec"), "60")
+
+    def test_no_switch_for_the_governor_approving(self):
+        # Owner decision 2026-09-24: permission requests are the owner's only.
+        conf = agent_conf.load(os.path.join(ROOT, "bin", "agent.conf.default"))
+        self.assertNotIn("city_governor_approves", conf)
+        self.assertNotIn("city_governor_approves", agent_conf.HINTS)
 
 
 if __name__ == "__main__":

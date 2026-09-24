@@ -78,6 +78,7 @@ role=${role//[^A-Za-z0-9._-]/}
 desc=
 sub=
 q=
+klen=
 case "$tool" in
     Agent|Task|AskUserQuestion)
         rest=
@@ -94,10 +95,20 @@ case "$tool" in
                 ;;
         esac
         ;;
+    Bash|Edit|Write|MultiEdit|WebFetch)
+        after4096=${chunk#"$base"}
+        kval=
+        case "$tool" in
+            Bash) kval=$(extract command "$after4096") ;;
+            Edit|Write|MultiEdit) kval=$(extract file_path "$after4096") ;;
+            WebFetch) kval=$(extract url "$after4096") ;;
+        esac
+        [ -n "$kval" ] && klen=${#kval}
+        ;;
 esac
 
-printf '{"ev":"%s","sid":"%s","aid":"%s","at":"%s","tool":"%s","nt":"%s","proj":"%s","role":"%s","desc":"%s","sub":"%s","q":"%s"}\n' \
-    "$ev" "$sid" "$aid" "$at" "$tool" "$nt" "$proj" "$role" "$desc" "$sub" "$q" \
+printf '{"ev":"%s","sid":"%s","aid":"%s","at":"%s","tool":"%s","nt":"%s","proj":"%s","role":"%s","desc":"%s","sub":"%s","q":"%s","klen":"%s"}\n' \
+    "$ev" "$sid" "$aid" "$at" "$tool" "$nt" "$proj" "$role" "$desc" "$sub" "$q" "$klen" \
     >> "$dir/events.jsonl" 2>/dev/null
 
 exit 0

@@ -24,6 +24,9 @@ CONTRACT. The repo root IS the plugin. After the move it looks like this:
 import json
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -212,15 +215,47 @@ class TestCityHooks(unittest.TestCase):
     def hooks(self):
         return load_json("hooks", "hooks.json")["hooks"]
 
+    # Interaction (tests/test_agent_city_interact.py): PermissionRequest also
+    # runs the ask hook, which waits for the owner or the governor while the
+    # terminal dialog stays usable; Stop also runs the governor watcher, in the
+    # background, waking the governor session (no AGENT_ROLE) with exit 2.
+    ASK_COMMAND = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
+                   'python3 "${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py" ask; exit 0')
+    GOV_COMMAND = ('[ -z "${AGENT_ROLE:-}" ] && [ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
+                   'exec python3 "${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py" gov-watch; exit 0')
+    SECOND = {
+        "PermissionRequest": {"hooks": [{"type": "command", "command": ASK_COMMAND, "timeout": 3660}]},
+        "Stop": {"hooks": [{"type": "command", "command": GOV_COMMAND, "async": True,
+                            "asyncRewake": True}]},
+    }
+
     def test_each_event_has_one_city_entry(self):
         hooks = self.hooks()
         for event in self.EVENTS:
             with self.subTest(event=event):
                 entries = hooks.get(event, [])
-                self.assertEqual(len(entries), 1, entries)
+                self.assertEqual(len(entries), 2 if event in self.SECOND else 1, entries)
                 inner = entries[0]["hooks"]
                 self.assertEqual(inner, [{"type": "command", "command": self.COMMAND,
                                           "timeout": 5}])
+
+    def test_permission_request_also_runs_the_ask_hook(self):
+        self.assertEqual(self.hooks()["PermissionRequest"][1], self.SECOND["PermissionRequest"])
+
+    def test_stop_also_runs_the_governor_watcher(self):
+        self.assertEqual(self.hooks()["Stop"][1], self.SECOND["Stop"])
+
+    def test_the_off_path_of_the_new_commands_starts_nothing(self):
+        base = tempfile.mkdtemp(prefix="layout_city_")
+        self.addCleanup(shutil.rmtree, base, True)
+        env = dict(os.environ, AGENT_CITY_DIR=os.path.join(base, "city"),
+                   CLAUDE_PLUGIN_ROOT=os.path.join(base, "no-plugin"), HOME=base)
+        env.pop("AGENT_ROLE", None)
+        for command in (self.ASK_COMMAND, self.GOV_COMMAND):
+            with self.subTest(command=command):
+                result = subprocess.run(["sh", "-c", command], input=b"{}", env=env,
+                                        capture_output=True, timeout=20)
+                self.assertEqual((result.returncode, result.stdout, result.stderr), (0, b"", b""))
 
     def test_pre_tool_use_only_for_the_three_tools(self):
         self.assertEqual(self.hooks()["PreToolUse"][0].get("matcher"),
