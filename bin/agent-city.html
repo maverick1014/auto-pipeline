@@ -406,7 +406,7 @@ const gov = { x:6.62, y:7.5, bubble:null, answered:0, dispatched:0 };
 const SKIN = ['#FFE0C7','#F7C9A4','#E6AC84','#BF8560','#8E5E40'];
 
 function say(o, text, dur){ o.bubble = { text, until: simT + dur }; }
-function logAt(t, text, kind){ logEntries.unshift({ t, text, kind: kind || '' }); if (logEntries.length > MAX_LOG) logEntries.length = MAX_LOG; dirty.log = true; }
+function logAt(t, text, kind){ logEntries.unshift({ t, text, kind: kind || '', real: DEMO ? null : Date.now() }); if (logEntries.length > MAX_LOG) logEntries.length = MAX_LOG; dirty.log = true; }
 const log = (text, kind) => logAt(simT, text, kind);
 
 function newBuilding(kind, gx, gy, role, label){
@@ -1287,9 +1287,9 @@ function renderDetail(){
 }
 function renderLog(){
   if (!dirty.log) return; dirty.log = false;
-  $('#log').innerHTML = logEntries.map(e => `<li><time>${clock(e.t)}</time><span class="${e.kind}">${esc(e.text)}</span></li>`).join('');
+  $('#log').innerHTML = logEntries.map(e => `<li><time>${e.real ? new Date(e.real).toTimeString().slice(0, 8) : clock(e.t)}</time><span class="${e.kind}">${esc(e.text)}</span></li>`).join('');
 }
-function renderPanel(){ renderStats(); renderRoster(); renderDetail(); renderLog(); $('#clock').textContent = '模拟 ' + clock(simT); }
+function renderPanel(){ renderStats(); renderRoster(); renderDetail(); renderLog(); $('#clock').textContent = DEMO ? '模拟 ' + clock(simT) : '现在 ' + new Date().toTimeString().slice(0, 8); }
 
 /* ---------- input ---------- */
 function selectFrom(val){
