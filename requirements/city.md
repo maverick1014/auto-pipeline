@@ -21,13 +21,16 @@
 - Right column cards (详情, 市民, 动态): click header to collapse or open; drag header to reorder, inside the column only.
 - Card order and collapsed state saved per browser (`localStorage`, every access in try/catch).
 - Top counts stay: 干活, 找总督, 休息, 建成.
-- Camera starts about 25% closer than 0.5.0.
+- No frame around the city: no border line, no rounded box.
+- Camera is a perspective camera, not a top-down god view. Default tilt about 30° above the horizon, close to the town hall.
+- Drag up/down tilts (about 15° to 60°), drag left/right orbits, wheel/pinch zooms from near street level to the whole island. Never clips into ground or buildings.
 - Camera auto-rotates, one turn per 5 min. Stops on drag or zoom, resumes 10 s after. Off under `prefers-reduced-motion`.
 
 ## Growth
 - One island per repo. All islands on one sea.
 - Island size grows with the repo's git-tracked code lines. Not counted: binaries, images, 3D models, vendor, lock files.
 - New repo = tiny island with a small town hall only.
+- Land edge is beach meeting sea. No brown earth block sides.
 - Island shape is uneven: organic coastline, never a square or rectangle. Growth adds land at the edge and keeps it uneven.
 - Same repo → same shape every time (shape seeded from the repo identity), so reopening shows the island the owner remembers.
 - Repo identity = git common dir. Agents in a worktree land on their main repo's island.
