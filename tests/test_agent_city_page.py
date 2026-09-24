@@ -231,6 +231,30 @@ CONTRACT
       ground is not grassland ground. Terrain changes the look only.
     MODELS has a bridge, a river piece and a rock or cliff (gaps).
     buildLand() places a town hall ('building-j') for every territory.
+  E2E bounce (real Chrome, 2026-09-24): the first page drew floating tiles.
+    One ground: groundGeometry(view) -> {positions, colors, indices}: ONE
+      continuous mesh for every land tile, in world tile units (the group
+      offset is applied outside). Land tiles = every map char except ' '
+      (void), 'w' 's' 'B' (water) and 'k' (ravine). Each land tile is an
+      exact square [X, X+1] x [Z, Z+1] at y 0 (integer corners, no inset,
+      no gap): no seams, no page background between tiles. Wild '.' tiles
+      are land too, coloured TERRAIN_LOOK[t].wild; 'g' 'H' 'P' ground, 'r'
+      path, 't' a track colour, 'b' sand, 'm' rock, 'f' dark forest floor.
+      The outer outline of the land (next to void or ravine) gets a skirt:
+      side faces down to y <= -0.8, rock grey (never brown earth: the
+      owner's rule), so the land's edge reads as a rock cliff.
+    One water: waterGeometry(view) -> the same shape of object: one
+      continuous surface over every 'w', 's' and 'B' tile (exact squares,
+      integer corners), blue. No river tile models for water.
+    No Kenney cliff_block model at all (brown earth sides).
+    Every .glb loads without GLTFLoader warnings: no KHR_texture_transform
+      (bake the transform into the UVs, or use a model without it).
+    Zoom: zoomStep(k) (k = +1 out, -1 in) is what #zout, #zin call; from
+      the default view, 6 steps out reach distMax() on a land of 5
+      territories. At the zoom-out limit the lift is 0 (tall buildings by
+      the middle must not tilt the view off the land).
+    buildLand() calls updateHome(): ⛶ looks at a town hall, never at the
+      empty middle of the land.
     restSlotsFor(t) -> the rest spots near territory t's town hall ({x, y,
       pose, by}, world tiles), each on a walkable tile: never on a plot, the
       hall, water or the void, so nobody rests inside a building. At least 3
@@ -401,6 +425,20 @@ class TestAssets(unittest.TestCase):
                 self.assertTrue(os.path.exists(path), path)
                 with open(path, encoding="utf-8", errors="replace") as fh:
                     self.assertIn("CC0", fh.read())
+
+    def test_no_model_needs_an_unsupported_extension(self):
+        """E2E bounce G5: 35 GLTFLoader warnings (KHR_texture_transform, custom UV sets)."""
+        for folder, _, files in os.walk(ASSETS):
+            for name in files:
+                if not name.endswith(".glb"):
+                    continue
+                path = os.path.join(folder, name)
+                with open(path, "rb") as fh:
+                    data = fh.read()
+                length = struct.unpack("<I", data[12:16])[0]
+                doc = data[20:20 + length].decode("utf-8")
+                with self.subTest(model=os.path.relpath(path, ASSETS)):
+                    self.assertNotIn("KHR_texture_transform", doc)
 
     def test_size_budget(self):
         total = sum(os.path.getsize(os.path.join(folder, name))
@@ -864,6 +902,23 @@ const clampFn = (v, a, b) => Math.max(a, Math.min(b, v));
         out.zoomLands.push({ hx, hz, W, H, az: k * 15, edge: z.edge, cx: z.cx, cy: z.cy, fill: Math.max(z.w, z.h), same: z.sameFromAnyAngle });
       }
   // tilting while fully zoomed out stays fully out; zooming past the limit is clamped
+  // six steps out from the default view reach the limit on a land of five territories
+  box.W = 874; box.H = 710; box.land = { hx: 39, hz: 39 }; box.home = { x: 0, z: 0 };
+  box.camChanged = () => {};
+  box.resetCam();
+  if (typeof box.zoomStep === 'function') { for (let i = 0; i < 6; i++) box.zoomStep(1); out.sixOut = box.cam.dist / box.distMax(); }
+  else out.sixOut = null;
+  // at the limit, tall things by the middle must not lift the view off the land
+  box.heightAt = (x, z) => (Math.abs(x) < 3 && Math.abs(z) < 3 ? 4 : 0);
+  out.liftAtLimit = [];
+  for (const [W, H, hx, hz] of [[874, 710, 26, 26], [874, 710, 39, 39], [358, 394, 26, 13]]) {
+    box.camLiftNow = 0;
+    const z = fit(W, H, Math.PI / 5, undefined, hx, hz);
+    for (let i = 0; i < 60; i++) box.updateCamera();
+    const again = fit(W, H, Math.PI / 5, undefined, hx, hz);
+    out.liftAtLimit.push({ W, H, hx, hz, lift: box.camLiftNow, edge: again.edge, cx: again.cx, cy: again.cy });
+  }
+  box.heightAt = () => 0; box.camLiftNow = 0;
   box.W = 874; box.H = 710; box.land = { hx: 13, hz: 13 };
   Object.assign(box.cam, { az: 1, el: box.EL_DEFAULT, tx: 0, tz: 0 }); box.cam.dist = box.distMax() * 3; box.updateCamera();
   out.clamped = box.cam.dist <= box.distMax() + 1e-9;
@@ -914,7 +969,7 @@ def unit_results():
             if src is None:
                 raise AssertionError("function %s(...) not found in the page script" % name)
             fns.append(src)
-        for name in ("aroundH", "autoRotating", "fadedOf", "islandSpread", "landSpread", "centreHeight"):
+        for name in ("aroundH", "autoRotating", "fadedOf", "islandSpread", "landSpread", "centreHeight", "zoomStep"):
             src = function_source(name)
             if src is not None:
                 fns.append(src)
@@ -1070,15 +1125,10 @@ class TestSmoothAndSteady(unittest.TestCase):
         self.assertFalse(b["touched"], "right after a touch, with nothing moving, idle rate is fine")
         self.assertFalse(b["reduced"], "reduced motion: no rotation, idle rate")
 
-    def test_edge_cliff_tops_sit_behind_path_and_river_floors(self):
-        text = inline_script()
-        self.assertRegex(text, r"instanced\('cliff_block_rock'[^\n]*\bbehind: true")
-        body = function_source("instanced") or ""
-        self.assertRegex(body, r"o\.behind")
-        self.assertRegex(body, r"polygonOffset = true")
-        factor = re.search(r"polygonOffsetFactor = ([\d.]+)", body)
-        self.assertIsNotNone(factor)
-        self.assertGreaterEqual(float(factor.group(1)), 1)
+    def test_no_brown_earth_block_sides(self):
+        """E2E bounce G3: the owner said no to brown earth blocks twice."""
+        self.assertFalse([m for m in models() if "cliff_block" in m], "cliff_block models are brown earth cubes")
+        self.assertNotIn("cliff_block", inline_script())
 
     def test_depth_range_is_tight(self):
         m = re.search(r"new THREE\.PerspectiveCamera\(\s*\w+,\s*[\w.]+,\s*([\d.]+),\s*([\d.]+)\s*\)", inline_script())
@@ -1175,6 +1225,20 @@ class TestZoomOut(unittest.TestCase):
                 low = 0.3 if max(z["hx"], z["hz"]) >= 3 * min(z["hx"], z["hz"]) else 0.35
                 self.assertGreaterEqual(z["fill"], low, "the land is lost in the middle of the stage")
 
+    def test_six_steps_out_show_the_whole_land(self):
+        """E2E bounce G6: 6 x minus in #demo still cut the land off."""
+        six = unit_results()["sixOut"]
+        self.assertIsNotNone(six, "function zoomStep(k) not found")
+        self.assertAlmostEqual(six, 1.0, delta=1e-6)
+
+    def test_no_lift_at_the_zoom_out_limit(self):
+        for z in unit_results()["liftAtLimit"]:
+            with self.subTest(land=(z["hx"], z["hz"]), stage=(z["W"], z["H"])):
+                self.assertLessEqual(abs(z["lift"]), 0.005)
+                self.assertLessEqual(z["edge"], 0.98)
+                self.assertLessEqual(abs(z["cx"]), 0.1)
+                self.assertLessEqual(abs(z["cy"]), 0.1)
+
     def test_zoom_past_the_limit_is_clamped(self):
         self.assertTrue(unit_results()["clamped"])
 
@@ -1232,10 +1296,11 @@ class TestCamera(unittest.TestCase):
         self.assertLessEqual(c["DIST_MIN"], 3.5)
         text = inline_script()
         self.assertNotIn("DIST_MAX", text)
+        step = function_source("zoomStep") or ""
         for needle in ("$('#zin')", "$('#zout')", "canvas.addEventListener('wheel'"):
             with self.subTest(control=needle):
                 line = next(l for l in text.splitlines() if needle in l)
-                self.assertIn("DIST_MIN, distMax()", line)
+                self.assertTrue("DIST_MIN, distMax()" in line or ("zoomStep(" in line and "DIST_MIN, distMax()" in step), line)
         self.assertRegex(text, r"pinch\.z[^;\n]*DIST_MIN, distMax\(\)")
 
     def test_camera_orbits_the_target_at_the_users_tilt(self):
@@ -1877,6 +1942,109 @@ process.stdout.write(JSON.stringify({ spots: slots.map(r => [r.x, r.y, box.tileA
 """
 
 
+GROUND_JS = r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+// two cells: grassland (slot 0,0) west, desert (slot 1,0) east; void corners, a river with a bridge,
+// a ravine, a beach and sea
+const rows = [
+  ' ....  ',
+  '.gHr.w.',
+  '.gHr.B.',
+  '.tPrkw.',
+  '.bbb.ws',
+  '  .. ss' ];
+const view = { cell: 26, x0: 10, z0: -2, w: 7, h: 6, rows,
+  territories: [{ id: 'a', slot: [0, 0], terrain: 'grassland', cx: 0, cz: 0 }, { id: 'b', slot: [1, 0], terrain: 'desert', cx: 26, cz: 0 }],
+  links: [] };
+const box = Object.assign({ Math, JSON, console, map: view });
+vm.createContext(box);
+vm.runInContext(prelude + '\n' + fns, box);
+const out = {};
+for (const name of ['groundGeometry', 'waterGeometry']) {
+  const g = box[name](view);
+  const P = Array.from(g.positions), C = Array.from(g.colors), I = Array.from(g.indices || []);
+  const idx = I.length ? I : P.map((_, i) => i).filter(i => i < P.length / 3);
+  const top = {}, skirt = [], odd = [];
+  for (let t = 0; t < idx.length; t += 3) {
+    const vs = [idx[t], idx[t + 1], idx[t + 2]].map(i => ({ x: P[3 * i], y: P[3 * i + 1], z: P[3 * i + 2], c: [C[3 * i], C[3 * i + 1], C[3 * i + 2]] }));
+    if (vs.every(v => v.y > -0.2)) {
+      const x0 = Math.min(...vs.map(v => v.x)), z0 = Math.min(...vs.map(v => v.z)), x1 = Math.max(...vs.map(v => v.x)), z1 = Math.max(...vs.map(v => v.z));
+      if (!vs.every(v => Number.isInteger(Math.round(v.x * 1e6) / 1e6) && Number.isInteger(Math.round(v.z * 1e6) / 1e6)) || x1 - x0 !== 1 || z1 - z0 !== 1) odd.push([x0, z0, x1, z1]);
+      const k = x0 + ',' + z0; top[k] = top[k] || vs[0].c.map(v => Math.round(v * 1000) / 1000);
+    } else if (vs.some(v => v.y <= -0.8)) skirt.push(vs.map(v => v.c.map(q => Math.round(q * 1000) / 1000)));
+  }
+  out[name] = { top, skirt: skirt.length, skirtColors: skirt.slice(0, 400).flat(), odd: odd.slice(0, 5) };
+}
+process.stdout.write(JSON.stringify(out));
+"""
+
+
+def ground_results():
+    if "ground" not in _CACHE:
+        fns = ["const TERRAIN_LOOK = %s;" % (const_object("TERRAIN_LOOK") or "{}")]
+        for name in ("groundGeometry", "waterGeometry"):
+            src = function_source(name)
+            if src is None:
+                raise AssertionError("function %s(view) not found in the page script" % name)
+            fns.append(src)
+        for helper in ("h2r", "hexRgb", "rgbOf", "tintOf", "terrAtOf", "cellTerrain", "terrainAt"):
+            src = function_source(helper)
+            if src:
+                fns.append(src)
+        _CACHE["ground"] = run_node(GROUND_JS, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
+    return _CACHE["ground"]
+
+
+GROUND_ROWS = [' ....  ', '.gHr.w.', '.gHr.B.', '.tPrkw.', '.bbb.ws', '  .. ss']
+
+
+def tiles_where(test):
+    out = set()
+    for r, row in enumerate(GROUND_ROWS):
+        for c, ch in enumerate(row):
+            if test(ch):
+                out.add("%d,%d" % (10 + c, -2 + r))
+    return out
+
+
+class TestOneLand(unittest.TestCase):
+    """E2E bounce G1-G4: one continuous ground and one water, no seams, rock edges."""
+
+    def test_every_land_tile_has_ground_as_one_seamless_mesh(self):
+        g = ground_results()["groundGeometry"]
+        self.assertEqual(g["odd"], [], "ground tiles must be exact 1 x 1 squares on integer corners")
+        self.assertEqual(set(g["top"]), tiles_where(lambda ch: ch not in " wsBk"),
+                         "wild land, claimed land, roads, tracks, beach: every land tile has ground")
+
+    def test_wild_land_is_terrain_coloured_and_reads_apart(self):
+        top = ground_results()["groundGeometry"]["top"]
+        wild_grass, wild_desert = top["11,-1"], top["14,-2"]
+        self.assertNotEqual(wild_grass, wild_desert, "desert wild land must not look like grassland")
+        self.assertNotEqual(top["11,-1"], top["11,0"], "claimed ground reads apart from wild land")
+        road, beach = top["13,0"], top["11,2"]
+        self.assertNotEqual(road, top["11,0"])
+        self.assertGreater(beach[0], beach[2], "beach is sand")
+
+    def test_the_land_edge_is_grey_rock_never_brown_earth(self):
+        g = ground_results()["groundGeometry"]
+        self.assertGreater(g["skirt"], 10, "the land edge has side faces (a cliff), it does not float as a sheet")
+        for rgb in g["skirtColors"]:
+            with self.subTest(rgb=rgb):
+                self.assertLessEqual(max(rgb) - min(rgb), 0.12, "edge colour %s is not grey rock" % (rgb,))
+
+    def test_water_is_one_continuous_surface(self):
+        w = ground_results()["waterGeometry"]
+        self.assertEqual(w["odd"], [])
+        self.assertEqual(set(w["top"]), tiles_where(lambda ch: ch in "wsB"))
+        for k, rgb in w["top"].items():
+            self.assertGreater(rgb[2], rgb[0], "water at %s is not blue" % k)
+        self.assertNotIn("ground_riverStraight", inline_script(), "no chopped river tile models for water")
+
+    def test_the_home_view_is_a_town_hall(self):
+        self.assertRegex(function_source("buildLand") or "", r"updateHome\(\)")
+
+
 class TestGrowthPage(unittest.TestCase):
     def test_nobody_rests_inside_a_building(self):
         rest_off = const_object("REST_OFF")
@@ -1944,6 +2112,8 @@ class TestGrowthPage(unittest.TestCase):
         for t, v in look.items():
             with self.subTest(terrain=t):
                 self.assertRegex(v["ground"], r"^#[0-9A-Fa-f]{6}$")
+                self.assertRegex(v.get("wild", ""), r"^#[0-9A-Fa-f]{6}$", "wild land has its own colour")
+                self.assertNotEqual(v["wild"].lower(), v["ground"].lower(), "claimed land must read apart from wild land")
                 self.assertRegex(v["path"], r"^#[0-9A-Fa-f]{6}$")
                 self.assertTrue(v["plants"])
                 self.assertLessEqual(set(v["plants"]), names)
@@ -1956,8 +2126,7 @@ class TestGrowthPage(unittest.TestCase):
     def test_gap_models(self):
         names = " ".join(models())
         self.assertIn("bridge", names)
-        self.assertIn("river", names)
-        self.assertRegex(names, r"rock|cliff")
+        self.assertRegex(names, r"rock")
 
     def test_world_and_build_events_drive_the_page(self):
         text = inline_script()
