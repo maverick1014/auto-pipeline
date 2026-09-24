@@ -113,6 +113,9 @@ class SSE:
     def __init__(self, port):
         self.conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
         self.conn.request("GET", "/events")
+        # getresponse() drops conn.sock for a stream with no length, so keep
+        # the socket here: close() must really hang up, like a closed tab.
+        self.raw = self.conn.sock
         self.resp = self.conn.getresponse()
         self.messages = []
         self.status = self.resp.status
@@ -140,9 +143,10 @@ class SSE:
 
     def close(self):
         try:
-            self.conn.sock.shutdown(socket.SHUT_RDWR)
-        except Exception:
+            self.raw.shutdown(socket.SHUT_RDWR)
+        except OSError:
             pass
+        self.raw.close()
         self.conn.close()
 
 
@@ -171,7 +175,8 @@ class ServerCase(unittest.TestCase):
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.procs.append(proc)
         if wait:
-            self.assertTrue(wait_for(lambda: self.on() is not None), "DIR/on never appeared")
+            self.assertTrue(wait_for(lambda: (self.on() or (0,))[0] == proc.pid),
+                            "DIR/on never named the new server")
         return proc
 
     def on(self):

@@ -466,6 +466,11 @@ class CityState:
 
 
 class CityHandler(BaseHTTPRequestHandler):
+    # HTTP/1.1: without this, http.client treats a Content-Length-less
+    # response (our /events stream) as "will close", and nulls out its
+    # socket handle before a client can shut it down to disconnect.
+    protocol_version = "HTTP/1.1"
+
     def log_message(self, format, *args):  # noqa: A002 - stdlib signature
         pass  # health counters already track what matters; stay quiet
 
@@ -632,6 +637,14 @@ def tail_loop(directory, city, max_log_bytes, stop_event, request_shutdown,
                 offset, buf = _read_available(fh, offset, buf, city)
                 fh.close()
                 fh = None
+                # Leave a fresh, empty file at the original path: the next
+                # writer append just re-creates it anyway, but a reader
+                # (or a test) checking the path right after rotation should
+                # still find it there.
+                try:
+                    open(log_path, "ab").close()
+                except OSError:
+                    pass
                 offset = 0
                 buf = b""
 
