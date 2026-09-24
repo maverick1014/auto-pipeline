@@ -265,7 +265,9 @@ CONTRACT
       background shows as a white line where land meets water.
     First view: when the first world arrives the camera goes home
       (resetCam()) unless the user already moved it; live and demo both
-      open on a town hall, never on the empty middle.
+      open on a town hall, never on the empty middle. Only the first: a
+      one-time flag (if (!flag ...) { flag = true; resetCam(); }), so a
+      later world never snaps the camera back.
     Day 0 is bare: hallDecor(t, view) -> the decorations around territory
       t's hall as [{key, x, z}] (world tiles): [] while t.open is 0 (no
       plot yet); later a fountain and lamps, each on a 'g' tile (never a
@@ -2122,6 +2124,11 @@ class TestOneLand(unittest.TestCase):
         snap = re.search(r"case 'snapshot':(.*?)(?=case '\w+':)", text, re.S).group(1)
         self.assertTrue("resetCam()" in snap or "resetCam()" in (function_source("buildLand") or ""),
                         "the first world must put the camera home (resetCam), not leave it on the land's middle")
+        body = snap + (function_source("buildLand") or "")
+        once = re.search(r"if \(!(\w+)[^)]*\)\s*\{\s*\1 = true;\s*resetCam\(\);", body) or \
+            re.search(r"if \(!(\w+)[^)]*\)\s*\{\s*resetCam\(\);\s*\1 = true;", body)
+        self.assertIsNotNone(once, "only the FIRST world goes home: a later world (a new territory, a recount) "
+                                   "must not snap the camera back or stop the auto-rotation's turn")
 
     def test_day_zero_is_bare(self):
         rest_off = const_object("REST_OFF")
