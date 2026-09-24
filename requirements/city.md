@@ -29,12 +29,12 @@
 
 ## Interaction
 - An agent that asks (AskUserQuestion) or needs a permission walks to the governor. Governor = main manager session of that repo.
-- The governor really answers: it replies to questions and may approve or deny any permission request (owner decision 2026-09-24).
+- The governor really answers questions.
+- ON HOLD: the governor approving or denying another agent's permission request. Owner wanted it (2026-09-24); Claude Code's auto-mode safety check blocks it as a permission bypass (spike, 2026-09-24). Not built, not routed around. Until the owner decides: every permission request goes straight to the owner ("?" at once).
 - Governor cannot decide, or no answer within `city_governor_wait_sec` (default 60) → red "?" above the agent.
 - Owner clicks the "?": sees the exact question or request (tool + command or path) and answers, approves or denies in the page.
 - First answer wins, from any side (governor, page, terminal). The others see it closed.
 - Every answer and approval is logged: who (governor or owner), what, when. In the page log and in `~/.claude/agent-city/decisions.jsonl`. Never silent.
-- Switch in agent.conf: `city_governor_approves` = yes (default, owner decision) | no (governor answers questions only; permissions go to the owner).
 - Control requests: 127.0.0.1 only, a random token per server start on every request, Origin and Host checked. No other website can answer or approve.
 - City off or server down → the agent falls back to its normal terminal prompt, no waiting.
 - Out of scope: Claude Code's own cross-session message hold ("Deliver this message"). Never auto-clicked.
