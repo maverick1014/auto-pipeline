@@ -60,6 +60,7 @@ orca is never called in either mode.
 
 import os
 import re
+import subprocess
 import sys
 import time
 import unittest
@@ -657,6 +658,28 @@ class TestASweepSurvivesTheRuntimeChanging(MonitorCase):
                          "exit %d, stderr %r" % (result.returncode, result.stderr))
         self.assertIn("monitor: not used in plain mode", result.stdout)
         self.assertNotIn("orca is not answering", result.stdout)
+
+
+class TestZZZNoMonitorLoopsSurviveTheSuite(unittest.TestCase):
+    """Guard, not a monitor test: every `agent-monitor.sh start` above must
+    have been stopped by its own fixture's teardown (ScriptRepo.kill_monitor).
+
+    Named to sort last so it runs after every other test in this module (the
+    unittest loader walks a module's classes in dir() order, i.e.
+    alphabetically). Only asserts -- never kills a process itself, so a
+    zombie found here is still there to inspect by hand.
+    """
+
+    def test_no_agent_monitor_process_is_left_running(self):
+        out = subprocess.run(
+            ["pgrep", "-fl",
+             r"auto_pipeline_[a-z0-9_]*/plugin/bin/agent-monitor\.sh"],
+            capture_output=True, text=True,
+        ).stdout
+        self.assertEqual(
+            "", out.strip(),
+            "monitor loop(s) still running after this module's tests:\n%s"
+            % out)
 
 
 if __name__ == "__main__":

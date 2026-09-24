@@ -467,8 +467,45 @@ class ScriptRepo:
     # ---- teardown ----
 
     def kill_monitor(self):
-        for gitdir in (self.path(".git"),):
-            pid_file = os.path.join(gitdir, "agent_monitor.pid")
+        """Stop every monitor loop this repo's tests may have started.
+
+        A test is not limited to `self.dir`: `make_worktree`, `make_project`
+        and a bare `cwd=` on `run()` all let it start a monitor loop rooted
+        somewhere else under `self.base` (see e.g. TestPlainDirectory in
+        test_two_roots.py, whose "plain" folder is not even a git repo, so
+        its pid file lives in "<plain>/.auto-pipeline/", not "<plain>/.git/"
+        -- agent-roots.sh's fallback for a directory with no git at all).
+        So: find every "agent_monitor.pid" anywhere under this repo's own
+        temp tree, not just the one project's.
+
+        For each, ask first, the graceful way: the plugin copy's own
+        `agent-monitor.sh stop`, run with cwd set to the project root that
+        pid file belongs to (same PATH/env a test would use). Safe to call
+        when no monitor ever ran -- `stop` on an already-stopped monitor just
+        says so and exits 0. Then, belt and braces: kill whatever pid is
+        still on file, in case `stop` could not reach it (KIND resolved
+        differently outside a test's own cwd, script missing, etc).
+        """
+        monitor_sh = os.path.join(self.plugin_bin, "agent-monitor.sh")
+        # os.walk, not glob: glob's "**" does not descend into a dot
+        # directory (".git", ".auto-pipeline") by default, which is exactly
+        # where this pid file lives.
+        pid_files = []
+        for dirpath, _dirnames, filenames in os.walk(self.base):
+            if "agent_monitor.pid" in filenames:
+                pid_files.append(os.path.join(dirpath, "agent_monitor.pid"))
+
+        for pid_file in pid_files:
+            gitdir = os.path.dirname(pid_file)
+            project_dir = os.path.dirname(gitdir)  # parent of .git or .auto-pipeline
+
+            if os.path.exists(monitor_sh) and os.path.isdir(project_dir):
+                try:
+                    self.run("agent-monitor.sh", "stop", cwd=project_dir,
+                             timeout=30)
+                except Exception:
+                    pass
+
             if not os.path.exists(pid_file):
                 continue
             try:
