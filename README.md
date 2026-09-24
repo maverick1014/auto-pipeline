@@ -42,6 +42,7 @@ Scripts, not agents (cost no tokens):
 
 Checked in this order, first match wins.
 
+0. Touches another repo → W12: split, send the peer main manager its part, called side first.
 1. Small task → fast-lane deputy. No worktree.
 2. Touches a live worktree's module → that task manager. In final stage → hold.
 3. Big, and a task manager has capacity → that task manager.

@@ -7,6 +7,9 @@ description: Main manager only. Route a new task by W9, open a worktree by W7 wh
 Run these in order. First match wins.
 
 1. `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show`, `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh time`, and the RESOURCES line. Estimate the task in minutes with this rubric, adjusted by the last ratios: fast lane 5 to 15; one script with tests 45 to 60; feature with a mock gate 60 to 90; moves and multi-script 90 to 120. Bounces add 20 to 40 percent.
+
+Touches another repo? → W12: keep your part, send the peer main manager the cross-repo brief below, called side first, hold your todo line until its DONE PASS.
+
 2. Small task (fast lane, R1)? → `Agent` with `subagent_type: fast-lane-deputy`. Brief: the task, the file(s), the one test if any. Done.
 3. Touches a live worktree's module? → `SendMessage` the task to that task manager. Status `final` → hold it, tell the human.
 4. Big, and a live task manager has capacity? → `SendMessage` it to that task manager.
@@ -45,4 +48,15 @@ ASK: first line "QUESTION:". Wait max 10 min, then default + log + continue (W1)
 HEARTBEAT: every 15 min, one line "HEARTBEAT <name>: step <n> of 7, <what runs now>".
 STATE: write agent_state.txt after every step (S7, S8).
 NEVER: Claude in Chrome (W5). Product code. Full suite twice (W4). Files outside the worktree except via ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh.
+```
+
+## Cross-repo brief (W12, fill the <>)
+
+```
+CROSS-REPO TASK <name> from <repo>
+WHAT: <requirement, 5 lines max. What the peer repo must build or change.>
+CONTRACT NEEDED: <what the sender must get back: endpoint, fields, errors>
+REPORT: SendMessage to "<sender session name>". First line "DONE PASS <name>" or "DONE FAIL <name>: <why>". Then the contract.
+ASK: first line "QUESTION:". Wait max 10 min, then default + log + continue (W1).
+HEARTBEAT: every 15 min, one line "HEARTBEAT <name>: <what runs now>".
 ```

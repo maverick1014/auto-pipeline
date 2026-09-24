@@ -126,6 +126,17 @@ W11. Time
 - Actual over 2× estimate → say it in the report, never silent
 - Before a new estimate: `bin/agent-file.sh time`, then pick a rubric row (dispatch skill)
 
+W12. Cross-repo
+- One main manager per repo (W10). Peer = the interactive session in `ListAgents` named after the other repo's folder, whose lock in that repo's git dir is alive
+- A task that touches another repo → never edit that repo. Split it: your part, and a brief for the peer main manager
+- Send the brief with `SendMessage`, first line `CROSS-REPO TASK <name> from <repo>`; same brief shape as the dispatch skill
+- The peer runs it like a human task: `agent-file.sh todo add … <est> <repo>`, its own lane, and reports `DONE PASS <name>` back by SendMessage
+- The sender keeps its todo line open until both sides are done, then one report to the human
+- Called side first: the repo being called (the API) finishes first; its DONE PASS carries the contract (endpoint, fields, errors). The caller (the app) starts from that contract
+- Only main managers cross repos. Task managers and workers never
+- Need to know the other repo's code → ask its main manager. Never read or edit another repo
+- A cross-repo task the human gives to any main manager is routed the same way
+
 ## C. Human
 
 H1. One topic
@@ -169,6 +180,10 @@ S3. Resource guard
 S4. Usage cap
 - RAM and CPU each ≤ 80%
 - Over → no new job to any agent until it drops back
+- Over → run `bin/agent-resources.sh relief` first, then wait
+- relief stops only what the pipeline owns: monitor loops left by tests, monitors of repos with no live main manager
+- Finished or idle worktrees → merge deputy cleans them (W8). A task manager over cap parks: commit, write state, set idle; the main manager closes its pane; resume brings it back
+- The human's apps, other repos' sessions, Gradle or node runners: never killed by an agent. One table to the human: process · MB · CPU · what · suggestion
 - Config `max_usage_percent`=80
 
 S5. Heavy tests
@@ -190,7 +205,8 @@ S8. Context guard (forgetting)
 - Memory is the file, not the chat. Brief, decisions, next step live in `agent_state.txt`. Re-read it before every step, write it after every step
 - First action of every agent: copy its brief into `agent_state.txt`. The main manager keeps one too, in the main repo: open decisions, live sessions and terminal handles
 - After a compaction the startup hook re-prints PRINCIPLES.md and `agent_state.txt`. No quiz then. Continue from the file, not from memory
-- Compacted 2 times → write state, end the session, restart from the file (S2)
+- Compacted 2 times → write state, then `/clear`: the main manager types it into the pane (`orca terminal send --terminal <handle> --text "/clear" --enter`) or the human does; the hook re-prints role, rules and state; continue from the file
+- No pane to type into (plain, cloud) or the send is refused → end the session, restart from the file (S2)
 - One worker = one slice, then it ends. A second slice gets a fresh worker
 
 S9. Token guard (cost)
