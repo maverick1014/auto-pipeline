@@ -44,7 +44,7 @@ esac
 # The four agent_*.txt data files live in the main repo (ROOT), which can be a
 # different place when this script runs from inside a worktree.
 : "${max_usage_percent:=80}"
-: "${task_manager:=opus-5:xhigh}"
+: "${task_manager:=opus-5.5:xhigh}"
 : "${permission_mode:=auto}"
 : "${max_agents:=4}"
 
@@ -71,7 +71,7 @@ echo
 over_cap=0
 if [ "$RAM_USED" -ge "$max_usage_percent" ] || [ "$CPU_USED" -ge "$max_usage_percent" ]; then over_cap=1; fi
 
-# ---- model name: family word only, cut down from opus-5:xhigh style ----
+# ---- model name: family word only, cut down from opus-5.5:xhigh style ----
 model_name() {
   spec=$1
   base=${spec%%:*}
