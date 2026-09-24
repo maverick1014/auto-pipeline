@@ -405,11 +405,13 @@ function hallDecor(t, view){
 /* Balance: how big systemsDecor's items are placed (place()/instanced() 'fit'); unlisted keys use .8. */
 const SYS_FIT = {
   'roads/road-sign-street': .55, 'roads/traffic-light': .55, 'industrial/building-h': .8, 'industrial/building-k': .8,
-  'industrial/water-tower': .85, 'industrial/chimney-large': .8, 'nature/flower_redA': .4, 'nature/flower_yellowA': .4,
-  'nature/flower_purpleA': .4, 'nature/tree_default': .8, 'nature/tree_oak': .8, 'nature/plant_bush': .6,
-  'fantasy/fountain-round': .9,
+  'industrial/water-tower': .85, 'industrial/chimney-large': .8, 'nature/tree_default': .8, 'nature/tree_oak': .8,
+  'nature/plant_bush': .6, 'fantasy/fountain-round': .9,
 };
-/* Balance: 'industrial/building-h' (police station, blue + a white band) and 'industrial/building-k'
+/* Balance: an absolute scale (not a "fit to target size" one) for keys where fit makes them huge on a
+   small-footprint model — the same numbers buildLand already uses for the wild scenery's own flowers. */
+const SYS_SCALE = { 'nature/flower_redA': .55, 'nature/flower_yellowA': .55, 'nature/flower_purpleA': .55 };
+/* Balance: 'industrial/building-h' (police station, blue tint) and 'industrial/building-k'
    (library, green) are plain Kenney buildings with unique bare names (never 'commercial/building-a' or
    'industrial/building-a'/'-b', which the town/city ERA_LOOK already uses under the bare names 'building-a'
    and 'building-b' — lib is keyed by the bare name only, so reusing those would make the police station and
@@ -430,8 +432,10 @@ function systemsDecor(t, view){
   const cx = Math.round(t.cx), cz = Math.round(t.cz);
   const isRoad = (x, z) => tileAt(x, z) === 'r';
   const roadN = (x, z) => (isRoad(x + 1, z) ? 1 : 0) + (isRoad(x - 1, z) ? 1 : 0) + (isRoad(x, z + 1) ? 1 : 0) + (isRoad(x, z - 1) ? 1 : 0);
-  // free 'g' tiles of t, each flagged for whether it sits beside a road junction (3+ road neighbours,
-  // never the plaza itself) — items never land on a road, a plot, the hall or a lamp.
+  // free 'g' tiles of t, each flagged for whether it sits beside a road junction (3+ road neighbours) and
+  // whether it is in the plaza (the hall's own tiles ±2, and the square south of the hall where the
+  // governor stands and the default camera looks — home/hallStand/the sign all sit within a few tiles
+  // south) — items never land on a road, a plot, the hall or a lamp.
   const free = [];
   for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
     const x = cx + dx, z = cz + dz;
@@ -439,9 +443,11 @@ function systemsDecor(t, view){
     const k = x + ',' + z;
     if (avoid.has(k)) continue;
     const junction = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([ddx, ddz]) => isRoad(x + ddx, z + ddz) && roadN(x + ddx, z + ddz) >= 3);
-    free.push({ x: x + .5, z: z + .5, d: dx * dx + dz * dz, k, junction });
+    const plaza = dx >= -3 && dx <= 2 && dz >= -3 && dz <= 3;
+    free.push({ x: x + .5, z: z + .5, d: dx * dx + dz * dz, k, junction, plaza });
   }
-  const near = free.slice().sort((a, b) => a.d - b.d); // police, library: near the hall
+  const near = free.slice().sort((a, b) => a.d - b.d); // near the hall (no plaza restriction)
+  const nearOutPlaza = free.filter(s2 => !s2.plaza).sort((a, b) => a.d - b.d); // police, library: near, never in the plaza/south square
   const far = free.slice().sort((a, b) => b.d - a.d); // water tower, power plant: the outer part of the territory
   const junc = free.filter(s2 => s2.junction).sort((a, b) => a.d - b.d); // signposts, traffic lights: beside a road junction
   const used = new Set();
@@ -451,7 +457,7 @@ function systemsDecor(t, view){
   const st = k => t.balance[k] && t.balance[k].state;
   if (st('rules') === 'low' || st('rules') === 'healthy') {
     put(junc, 'roads/road-sign-street', 'rules'); put(junc, 'roads/road-sign-street', 'rules');
-    put(near, 'industrial/building-h', 'rules'); // police station, near the hall — low already has it (contract table)
+    put(nearOutPlaza, 'industrial/building-h', 'rules'); // police station, near the hall but never in the plaza — low already has it (contract table)
     if (st('rules') === 'healthy') { put(junc, 'roads/traffic-light', 'rules'); put(junc, 'roads/traffic-light', 'rules'); }
   }
   if (st('beauty') === 'low' || st('beauty') === 'healthy') {
@@ -472,7 +478,7 @@ function systemsDecor(t, view){
     }
   }
   if (st('knowledge') === 'low' || st('knowledge') === 'healthy') {
-    put(near, 'industrial/building-k', 'knowledge'); // library, near the hall
+    put(nearOutPlaza, 'industrial/building-k', 'knowledge'); // library, near the hall but never in the plaza
     const districts = new Set((t.plots || []).map(p => p.d)); // every district with an open plot
     const signs = st('knowledge') === 'healthy' ? Math.max(1, districts.size) : 1; // low: 1 sign; healthy: one per district
     for (let n = 0; n < signs; n++) put(near, 'roads/road-sign-street', 'knowledge');
@@ -1441,16 +1447,14 @@ function buildLand(view){
     for (const d of systemsDecor(t, view)) (sysBy[d.key] = sysBy[d.key] || []).push(d);
     for (const key in sysBy) {
       const items = sysBy[key], bare = key.split('/')[1], tint = SYS_TINT[key];
+      // Balance: SYS_SCALE (an absolute scale) for keys a "fit to target size" would blow up on a small
+      // model (the flowers); SYS_FIT (fit) for everything else, .8 if neither says otherwise.
+      const scaleOpt = key in SYS_SCALE ? { s: SYS_SCALE[key] } : { fit: SYS_FIT[key] || .8 };
       if (items.length > 1) {
-        instanced(bare, items.map(it => ({ x: it.x, z: it.z, fit: SYS_FIT[key] || .8 })), Object.assign({ parent: landGroup }, tint ? { tint } : null));
+        instanced(bare, items.map(it => Object.assign({ x: it.x, z: it.z }, scaleOpt)), Object.assign({ parent: landGroup }, tint ? { tint } : null));
       } else {
-        const g = place(bare, items[0].x, items[0].z, { fit: SYS_FIT[key] || .8, parent: landGroup });
-        if (tint) g.traverse(n => { if (n.isMesh) n.material = tintedMat(n.material, tint); });
-        if (key === 'industrial/building-h') { // Balance: the police station gets a white band, like the mock
-          const L = lib[bare], sc = g.userData.s, w = L.size.x * sc, dd = L.size.z * sc, h = L.size.y * sc;
-          const band = new THREE.Mesh(new THREE.BoxGeometry(w * 1.05, h * .16, dd * 1.05), new THREE.MeshLambertMaterial({ color: 0xF3F1E8 }));
-          band.castShadow = true; band.position.y = h * .55; g.add(band);
-        }
+        const g = place(bare, items[0].x, items[0].z, Object.assign({ parent: landGroup }, scaleOpt));
+        if (tint) g.traverse(n => { if (n.isMesh) n.material = tintedMat(n.material, tint); }); // ready-made Kenney model, tint only — never a hand-made shape
       }
     }
     // Balance: one record (and mesh) per building, keyed by plot — never a duplicate across repeated
@@ -1639,7 +1643,9 @@ function updateBuilding(b, t){
   v.g.scale.set(pop, pop, pop);
   setClip(b, !b.done && !planned);
   if (v.plane) v.plane.constant = Math.max(.04, p * v.h);
-  v.scaf.visible = !b.done && !planned;
+  // Balance: also shown while an era show's builders are working this (already-built) building — its own
+  // construction scaffolding, reused rather than a separate generic prop
+  v.scaf.visible = (!b.done && !planned) || !!b.showScaf;
   v.planks.visible = v.scaf.visible;
   const h = p * v.h;
   v.scaf.children.forEach(f => { f.visible = f.userData.floor * .42 < h + .05; });
@@ -1927,10 +1933,11 @@ function makeShowRun(t, view, s){
     }
     builders.push({ legs, mine, delay: i / plan.builders * 6, v: null });
   }
-  const scaf = plan.targets.filter(g => g.what !== 'lamp').map(g => ({
+  // Balance: planks for road targets only (a building target reuses that building's own construction
+  // scaffolding — makeBuilding already built it, sized to its height — via b.showScaf, not a generic prop)
+  const scaf = plan.targets.filter(g => g.what === 'road').map(g => ({
     key: Math.floor(g.x) + ',' + Math.floor(g.z),
-    el: place(g.what === 'road' ? 'resource-planks' : 'structure', g.x, g.z,
-      { s: g.what === 'road' ? .8 : .55, ry: sr(g.x * 7 + g.z, 3) * 6.28, parent: landGroup }),
+    el: place('resource-planks', g.x, g.z, { s: .8, ry: sr(g.x * 7 + g.z, 3) * 6.28, parent: landGroup }),
   }));
   for (const s2 of scaf) s2.el.visible = false;
   return { plan, builders, scaf, reached: new Set(), flipped: false };
@@ -2005,10 +2012,20 @@ function stepShows(now){
       for (let k = 0; k <= st2.arrived; k++) run.reached.add(Math.floor(b.mine[k].x) + ',' + Math.floor(b.mine[k].z));
       updateShowBuilder(b, st2.pos, st2.hammering);
     }
-    for (const s2 of run.scaf) s2.el.visible = run.reached.has(s2.key);
+    if (!run.flipped) {
+      for (const s2 of run.scaf) s2.el.visible = run.reached.has(s2.key); // road planks
+      for (const g2 of run.plan.targets) if (g2.what === 'building') { // reuse that building's own scaffolding
+        const bld = occupied.get(Math.floor(g2.x) + ',' + Math.floor(g2.z));
+        if (bld) bld.showScaf = run.reached.has(Math.floor(g2.x) + ',' + Math.floor(g2.z));
+      }
+    }
     if (!run.flipped && elapsed >= SHOW_FLIP) {
       run.flipped = true;
-      buildLand(map); // one moment: every building, hall, road and lamp of t re-skinned by eraLook (eraShown(t) is now s.to); clears the scaffolding too (landGroup)
+      buildLand(map); // one moment: every building, hall, road and lamp of t re-skinned by eraLook (eraShown(t) is now s.to); clears the road planks too (landGroup)
+      for (const g2 of run.plan.targets) if (g2.what === 'building') { // fresh mesh in the new era: no scaffolding left on it
+        const bld = occupied.get(Math.floor(g2.x) + ',' + Math.floor(g2.z));
+        if (bld) bld.showScaf = false;
+      }
       logAt(simT, t.name + ' 变成' + ERA_ZH[s.to] + '了');
     }
     if (now >= s.end) {
