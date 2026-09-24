@@ -80,7 +80,8 @@ sub=
 q=
 case "$tool" in
     Agent|Task|AskUserQuestion)
-        rest=$(</dev/stdin)
+        rest=
+        IFS= read -r -d '' rest || true
         full=$chunk$rest
         after=${full#"$base"}
         case "$tool" in
