@@ -1,8 +1,9 @@
-<title>Agent City 3D</title>
-<meta name="description" content="Clickable 3D mock built only from ready-made CC0 Kenney models: every coding agent is a little builder on a floating island.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap">
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City</title>
 <style>
 :root{
   --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
@@ -157,11 +158,13 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 }
 @media (prefers-reduced-motion: reduce){ .qm span,.zz span{animation:none} .track i,.btn{transition:none} }
 </style>
+</head>
+<body>
 
 <div class="app">
   <header class="bar">
     <div class="sign">
-      <span class="sign-icon"><svg class="lucide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg></span>
+      <span class="sign-icon"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg></span>
       <div><span class="sign-name">Agent City</span><span class="sign-sub">auto-pipeline · 3D</span></div>
     </div>
     <div class="stats" id="stats" aria-live="polite"></div>
@@ -172,22 +175,22 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
       <div class="stage" id="stage">
         <canvas id="city" role="img" aria-label="3D 小岛：每个小人是一个 agent"></canvas>
         <div class="ov" id="ov"></div>
-        <div class="proto">原型 · 模拟数据</div>
+        <div class="proto" id="proto">原型 · 模拟数据</div>
         <div class="loading" id="loading"><span id="loading-text">正在搬来素材…</span></div>
         <div class="cam">
-          <button class="btn" id="zin" type="button" aria-label="放大"><svg class="lucide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
-          <button class="btn" id="zout" type="button" aria-label="缩小"><svg class="lucide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
-          <button class="btn" id="rot" type="button" aria-label="转一下"><svg class="lucide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+          <button class="btn" id="zin" type="button" aria-label="放大"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+          <button class="btn" id="zout" type="button" aria-label="缩小"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+          <button class="btn" id="rot" type="button" aria-label="转一下"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
           </button>
-          <button class="btn" id="zfit" type="button" aria-label="回到默认视角"><svg class="lucide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+          <button class="btn" id="zfit" type="button" aria-label="回到默认视角"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
           </button>
         </div>
         <div class="hint-drag" id="hint-drag">拖动转视角 · 滚轮或双指缩放</div>
       </div>
       <div class="toolbar" role="toolbar" aria-label="控制">
         <button class="btn" id="play" type="button" aria-pressed="false">
-          <svg id="icon-pause" class="lucide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg>
-          <svg id="icon-play" class="lucide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><polygon points="6 3 20 12 6 21 6 3"/></svg>
+          <svg id="icon-pause" class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg>
+          <svg id="icon-play" class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><polygon points="6 3 20 12 6 21 6 3"/></svg>
           <span id="play-label">暂停</span>
         </button>
         <div class="group" role="group" aria-label="速度">
@@ -195,8 +198,8 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
           <button class="btn" type="button" data-speed="2" aria-pressed="false">2×</button>
           <button class="btn" type="button" data-speed="4" aria-pressed="false">4×</button>
         </div>
-        <span class="sep" aria-hidden="true"></span>
-        <div class="group">
+        <span class="sep" aria-hidden="true" id="spawn-sep"></span>
+        <div class="group" id="spawn-group">
           <label for="role" class="lead">派一个</label>
           <select id="role">
             <option value="worker">worker · 盖房子</option>
@@ -212,7 +215,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 
     <aside class="panel">
       <section class="card">
-        <p class="intro">3D 原型，人和任务都是假的。场景里每个模型都是现成的免费素材，不是自己画的。每个小人是一个 agent：分到任务就去盖楼，卡住了就跑去市政厅问总督，做完了就去休息。拖动可以转视角，点小人看详情。</p>
+        <p class="intro" id="intro">3D 原型，人和任务都是假的。场景里每个模型都是现成的免费素材，不是自己画的。每个小人是一个 agent：分到任务就去盖楼，卡住了就跑去市政厅问总督，做完了就去休息。拖动可以转视角，点小人看详情。</p>
       </section>
       <section class="card detail" id="detail" aria-live="polite"></section>
       <section class="card">
@@ -263,9 +266,9 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
   </main>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
+<script src="assets/vendor/three.min.js"></script>
+<script src="assets/vendor/GLTFLoader.js"></script>
+<script src="assets/vendor/SkeletonUtils.js"></script>
 <script>
 (() => {
 'use strict';
@@ -276,8 +279,13 @@ const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const BASE = Date.now();
-const FRAME_MS = 33, IDLE_FRAME_MS = 100;
-const MAX_CITIZENS = 40, MAX_LOG = 40, MAX_FLOATERS = 80;
+const FRAME_MS = 33;
+const IDLE_FRAME_MS = 100;
+const MAX_CITIZENS = 40;
+const MAX_LOG = 40;
+const MAX_FLOATERS = 80;
+const LIVE_REST_SEC = 180;
+const DEMO = location.hash === '#demo' || location.protocol === 'file:';
 
 function h2r(h){ h = h.replace('#',''); return [0,2,4].map(i => parseInt(h.slice(i,i+2),16)); }
 function r2h(c){ return '#' + c.map(v => Math.round(clamp(v,0,255)).toString(16).padStart(2,'0')).join(''); }
@@ -290,11 +298,11 @@ function isDark(){ const t = document.documentElement.getAttribute('data-theme')
    (spawn, tool, stuck, answer, done, leave).
    ========================================================= */
 const ROLES = {
-  'task-manager':     { zh:'任务经理',   color:'#9C86F2', hat:'#FFFFFF', kind:'tower'  },
-  'worker':           { zh:'工人',       color:'#5AA9F0', hat:'#FFD04D', kind:'house'  },
-  'fast-lane-deputy': { zh:'快车道副手', color:'#43C58B', hat:'#A6F0C6', kind:'garden' },
-  'merge-deputy':     { zh:'合并副手',   color:'#FF9A5C', hat:'#FFC199', kind:'bridge' },
-  'other':            { zh:'帮手',       color:'#5FC3C9', hat:'#D4F4F5', kind:'house'  },
+  'task-manager':     { zh:'任务经理',   color:'#9C86F2', kind:'tower'  },
+  'worker':           { zh:'工人',       color:'#5AA9F0', kind:'house'  },
+  'fast-lane-deputy': { zh:'快车道副手', color:'#43C58B', kind:'garden' },
+  'merge-deputy':     { zh:'合并副手',   color:'#FF9A5C', kind:'bridge' },
+  'other':            { zh:'帮手',       color:'#5FC3C9', kind:'house'  },
 };
 const KIND_ZH = { house:'小房子', tower:'测试塔', garden:'花园', bridge:'桥' };
 const STATE = {
@@ -390,7 +398,7 @@ function findPath(sx, sy, tx, ty){
 }
 
 let simT = 0, speed = 1, paused = false;
-const citizens = [], buildings = [], particles = [], floaters = [], logEntries = [];
+const citizens = [], buildings = [], floaters = [], logEntries = [];
 let cid = 0, bid = 0;
 let selected = null;
 const gov = { x:6.62, y:7.5, bubble:null, answered:0, dispatched:0 };
@@ -400,10 +408,10 @@ function say(o, text, dur){ o.bubble = { text, until: simT + dur }; }
 function logAt(t, text, kind){ logEntries.unshift({ t, text, kind: kind || '' }); if (logEntries.length > MAX_LOG) logEntries.length = MAX_LOG; dirty.log = true; }
 const log = (text, kind) => logAt(simT, text, kind);
 
-function newBuilding(kind, gx, gy, role){
+function newBuilding(kind, gx, gy, role, label){
   const color = ROLES[role].color;
-  const b = { id:++bid, kind, gx, gy, role, color, target:0, shown:0, done:false, doneAt:0, popAt:-99,
-    seed:Math.random()*1000, name:'', ownerId:0, ownerName:'' };
+  const b = { id:++bid, kind, gx, gy, role, label: label || role, color, target:0, shown:0, done:false, doneAt:0, popAt:-99,
+    seed:Math.random()*1000, name:'', ownerId:0 };
   buildings.push(b);
   occupied.set(gx + ',' + gy, b);
   return b;
@@ -423,7 +431,6 @@ function demolishOldest(kind){
   cands.sort((a, b) => a.doneAt - b.doneAt);
   const b = cands[0]; if (!b) return false;
   removeBuilding(b);
-  puff(b.gx + .5, b.kind === 'bridge' ? -.5 : b.gy + .5, 16);
   log(`拆掉最旧的${KIND_ZH[b.kind]}（${b.name}），腾出空地`);
   return true;
 }
@@ -442,12 +449,12 @@ function allocPlot(kind){
   }
   return null;
 }
-function newCitizen(role, task){
+function newCitizen(id, role, task){
   const R = ROLES[role];
-  return { id:++cid, role, label:role, task, color:R.color, hat:R.hat, skin:pick(SKIN), x:DOOR.x, y:DOOR.y, path:[], state:'spawn', stateT:0,
+  return { id, role, label:role, task, color:R.color, skin:pick(SKIN), x:DOOR.x, y:DOOR.y, path:[], state:'spawn', stateT:0,
     alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0,Other:0}, work:0, bld:null, stand:null, slot:null, rest:null,
     question:'', answer:'', answered:false, pendingAnswer:'', askT:0, stuck:false, doneFlag:false, leaveFlag:false,
-    qa:[], bubble:null, walkT:Math.random()*5, feed:null, gone:false, dustT:0 };
+    qa:[], bubble:null, walkT:Math.random()*5, feed:null, gone:false };
 }
 const byId = id => citizens.find(c => c.id === id);
 
@@ -487,19 +494,23 @@ function giveAnswer(c){
 }
 function finish(c){
   const b = c.bld;
-  if (b) { b.done = true; b.doneAt = simT; b.popAt = simT; b.target = 1; burst(b); }
+  if (b) { b.done = true; b.doneAt = simT; b.popAt = simT; b.target = 1; }
   c.state = 'finishing'; c.stateT = 0;
   say(c, '完工啦！', 1.5);
 }
-function goRest(c){
+function pickRestSpot(id){
   const free = REST.filter(r => !r.by);
   let spot = free.length ? pick(free) : null;
-  if (spot) spot.by = c.id;
+  if (spot) spot.by = id;
   else {
     const grass = Object.keys(tiles).filter(k => ['grass','park'].includes(tiles[k]) && walkable(...k.split(',').map(Number)));
     const [gx, gy] = pick(grass).split(',').map(Number);
-    spot = { x: gx + .5, y: gy + .5, pose: 'lie', by: c.id, extra: true };
+    spot = { x: gx + .5, y: gy + .5, pose: 'lie', by: id, extra: true };
   }
+  return spot;
+}
+function goRest(c){
+  const spot = pickRestSpot(c.id);
   c.rest = spot;
   goTo(c, spot, 'to_rest');
 }
@@ -508,24 +519,70 @@ function leave(c){
   c.rest = null;
   goTo(c, GATE, 'leaving');
 }
+function autoLeave(c){
+  c.leaveFlag = true;
+  leave(c);
+  log(`${c.task} 下班了`);
+}
 
 const WEIGHT = { Edit:1, Write:1, Bash:.6, Read:.3, Other:.3 };
 const KSCALE = { house:4.5, tower:5.5, garden:2.2, bridge:1.8 };
+let govState = 'idle';
+function setGovState(state){ govState = state; if (state !== 'waiting') gov.bubble = null; }
+function roleOrOther(role){ return ROLES[role] ? role : 'other'; }
+function placeAgent(a){
+  const role = roleOrOther(a.role), R = ROLES[role];
+  const plot = allocPlot(R.kind);
+  if (!plot) return null;
+  const c = newCitizen(a.id, role, a.task);
+  c.label = a.label || role;
+  const b = newBuilding(R.kind, plot.x, plot.y, role, c.label);
+  b.name = a.task; b.ownerId = c.id;
+  c.bld = b; c.stand = standFor(R.kind, plot.x, plot.y); c.x = c.stand.x; c.y = c.stand.y; c.alpha = 1; c.state = 'building';
+  const tools = a.tools || {};
+  Object.assign(c.tools, tools);
+  c.work = Object.entries(tools).reduce((s, [k, v]) => s + (WEIGHT[k] || .3) * v, 0);
+  b.target = b.shown = .92 * (1 - Math.exp(-c.work / KSCALE[R.kind]));
+  if (a.done) {
+    b.done = true; b.shown = b.target = 1; c.doneFlag = true;
+    const spot = pickRestSpot(c.id);
+    c.rest = spot; c.x = spot.x; c.y = spot.y; c.state = 'resting';
+  } else if (a.stuck) {
+    c.stuck = true; c.question = '需要你看一下';
+    goHall(c);
+  }
+  citizens.push(c);
+  return c;
+}
 function apply(ev){
   const c = ev.id ? byId(ev.id) : null;
   switch (ev.type) {
+    case 'snapshot': {
+      const agents = ev.agents || [];
+      const seen = new Set(agents.map(a => a.id));
+      for (const old of citizens.slice()) {
+        if (seen.has(old.id)) continue;
+        old.leaveFlag = true;
+        if (old.state === 'resting') leave(old);
+      }
+      for (const a of agents) if (!byId(a.id)) placeAgent(a);
+      if (ev.gov && ev.gov.state) setGovState(ev.gov.state);
+      return null;
+    }
     case 'spawn': {
-      const R = ROLES[ev.role];
+      if (byId(ev.id)) return null;
+      const role = roleOrOther(ev.role), R = ROLES[role];
       const plot = allocPlot(R.kind);
       if (!plot) { log(`没有空地了：${ev.task} 先等等`); return null; }
       if (citizens.length >= MAX_CITIZENS) { const old = citizens.find(x => x.state === 'resting') || citizens[0]; old.gone = true; }
-      const n = newCitizen(ev.role, ev.task);
-      const b = newBuilding(R.kind, plot.x, plot.y, ev.role);
-      b.name = ev.task; b.ownerId = n.id; b.ownerName = `${ev.role} · ${ev.task}`;
+      const n = newCitizen(ev.id, role, ev.task);
+      n.label = ev.label || role;
+      const b = newBuilding(R.kind, plot.x, plot.y, role, n.label);
+      b.name = ev.task; b.ownerId = n.id;
       n.bld = b; n.stand = standFor(R.kind, plot.x, plot.y);
       citizens.push(n);
       say(gov, `去吧：${ev.task}`, 1.8); gov.dispatched++;
-      log(`总督派出 ${ev.role}：${ev.task}`);
+      log(`总督派出 ${n.label}：${ev.task}`);
       return n;
     }
     case 'tool': {
@@ -538,15 +595,17 @@ function apply(ev){
     }
     case 'stuck': {
       if (!c) return null;
-      c.stuck = true; c.question = ev.question; c.answered = false; c.answer = '';
+      const text = ev.question || (ev.tool ? `可以用 ${ev.tool} 吗？` : '需要你看一下');
+      c.stuck = true; c.question = text; c.answered = false; c.answer = '';
       if (['building','to_plot','back'].includes(c.state)) goHall(c);
-      log(`${c.task} 卡住了：“${ev.question}” → 去问总督`, 'ask');
+      log(`${c.task} 卡住了：“${text}” → 去问总督`, 'ask');
       return c;
     }
     case 'answer': {
       if (!c) return null;
-      c.answer = ev.answer; c.answered = true; c.stuck = false;
-      log(`总督回答 ${c.task}：“${ev.answer}”`);
+      const text = ev.answer || (ev.ok === false ? '不行，换个办法' : '批了，继续');
+      c.answer = text; c.answered = true; c.stuck = false;
+      log(`总督回答 ${c.task}：“${text}”`);
       return c;
     }
     case 'done': {
@@ -562,6 +621,10 @@ function apply(ev){
       if (c.state === 'resting') leave(c);
       log(`${c.task} 下班了`);
       return c;
+    }
+    case 'gov': {
+      setGovState(ev.state);
+      return null;
     }
   }
   return null;
@@ -612,7 +675,7 @@ function spawnDemo(role, task){
     const opts = TASKS[role].filter(t => !busy.has(t));
     task = pick(opts.length ? opts : TASKS[role]);
   }
-  const c = emit({ type:'spawn', role, task });
+  const c = emit({ type:'spawn', id:'d' + (++cid), role, label:role, task });
   if (c) c.feed = makeFeed(role);
   return c;
 }
@@ -625,8 +688,6 @@ function spawner(){
   const r = Math.random();
   spawnDemo(r < .5 ? 'worker' : r < .65 ? 'task-manager' : r < .85 ? 'fast-lane-deputy' : 'merge-deputy');
 }
-function burst(){}
-function puff(){}
 
 function update(dt){
   simT += dt;
@@ -635,21 +696,18 @@ function update(dt){
     if (c.state === 'spawn') { c.alpha = Math.min(1, c.alpha + dt * 2.5); if (c.stateT > .7) { if (c.stuck) goHall(c); else goTo(c, c.stand, 'to_plot'); } }
     else if (c.path.length) move(c, dt);
     switch (c.state) {
-      case 'building':
-        c.dustT += dt;
-        if (!RM && c.dustT > .9) { c.dustT = 0; const b = c.bld; if (b && !b.done) puff(b.gx + .5, b.kind === 'bridge' ? -.2 : b.gy + .5, 2); }
-        break;
       case 'asking':
         if (c.answered && simT - c.askT > .9) giveAnswer(c);
-        else if (!c.answered && simT - c.askT > 1.9) emit({ type:'answer', id:c.id, answer: c.pendingAnswer || pick(QA)[1] });
+        else if (DEMO && !c.answered && simT - c.askT > 1.9) emit({ type:'answer', id:c.id, answer: c.pendingAnswer || pick(QA)[1] });
         break;
       case 'heard':
         if (c.stateT > 1.5) { releaseSlot(c); say(c, '明白！', 1.1); goTo(c, c.stand, 'back'); }
         break;
       case 'finishing': if (c.stateT > 1.5) goRest(c); break;
+      case 'resting': if (!DEMO && !c.leaveFlag && c.stateT > LIVE_REST_SEC) autoLeave(c); break;
       case 'leaving': if (!c.path.length) { c.alpha -= dt * 2; if (c.alpha <= 0) c.gone = true; } break;
     }
-    feed(c);
+    if (DEMO) feed(c);
   }
   for (let i = citizens.length - 1; i >= 0; i--) if (citizens[i].gone) {
     const c = citizens[i];
@@ -662,22 +720,15 @@ function update(dt){
     if (b.done) b.shown = Math.min(1, b.shown + dt * 1.2);
     else { const o = byId(b.ownerId); if (o && o.state === 'building') b.shown += (b.target - b.shown) * Math.min(1, dt * 1.6); }
   }
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i]; p.t += dt;
-    if (p.t > p.life || (p.h < 0 && p.kind === 'confetti')) { particles.splice(i, 1); continue; }
-    p.x += p.vx * dt; p.z += p.vz * dt; p.h += p.vh * dt;
-    p.vh -= (p.kind === 'confetti' ? 5.5 : .4) * dt;
-    if (p.kind === 'confetti') { p.vx *= .985; p.vz *= .985; }
-  }
   for (let i = floaters.length - 1; i >= 0; i--) if (simT - floaters[i].t0 > 1.2) { const f = floaters[i]; if (f.el) f.el.remove(); floaters.splice(i, 1); }
-  spawner();
+  if (DEMO) spawner();
 }
 
 /* =========================================================
    3D view. Every model is a ready-made CC0 asset from Kenney
    (kenney.nl), loaded as-is. Only placement is ours.
    ========================================================= */
-const ASSET = '../bin/agent-city-assets/';
+const ASSET = 'assets/';
 const MODELS = [
   'characters/character-female-a', 'characters/character-female-c', 'characters/character-female-e',
   'characters/character-male-a', 'characters/character-male-b', 'characters/character-male-c', 'characters/character-male-e',
@@ -746,19 +797,13 @@ function prep(key, gltf){
   const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
   lib[key] = { scene: root, clips: gltf.animations, box, size, skinned: gltf.animations.length > 0 && !!root.getObjectByProperty('type', 'SkinnedMesh') };
 }
-// models.json (every .glb as base64 in one file) is used where plain .glb files
-// cannot be served; otherwise each .glb is loaded as it is.
-function b64ToBuffer(s){ const bin = atob(s), out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out.buffer; }
 async function loadAll(onStep){
   const loader = new THREE.GLTFLoader();
-  let bundle = null, done = 0;
-  try { const r = await fetch(ASSET + 'models.json'); if (r.ok) bundle = await r.json(); } catch (e) { bundle = null; }
+  let done = 0;
   await Promise.all(MODELS.map(key => new Promise((res, rej) => {
     const ok = g => { prep(key.split('/')[1], g); onStep(++done, MODELS.length); res(); };
-    if (bundle && bundle[key]) loader.parse(b64ToBuffer(bundle[key]), ASSET + key.split('/')[0] + '/', ok, rej);
-    else loader.load(ASSET + key + '.glb', ok, undefined, rej);
+    loader.load(ASSET + key + '.glb', ok, undefined, rej);
   })));
-  bundle = null;
 }
 const texLoader = new THREE.TextureLoader();
 function loadTex(path){
@@ -1086,11 +1131,13 @@ function updatePerson(c, t, dt){
   pin(c.o.tag, tx, ty + 34, v.sel.visible && c.state !== 'asking');
 }
 function updateGovernor(){
-  const talking = gov.bubble && simT < gov.bubble.until;
+  const waiting = !DEMO && govState === 'waiting';
+  const talking = waiting || (gov.bubble && simT < gov.bubble.until);
   anim(govV, talking ? 'interact-left' : 'idle');
   govV.sel.visible = !!(selected && selected.t === 'gov');
   const [sx, sy] = toScreen(gov.x, .9, gov.y);
-  if (talking) setText(govBub, gov.bubble.text);
+  if (waiting) setText(govBub, '等你回话…');
+  else if (talking) setText(govBub, gov.bubble.text);
   pin(govBub, sx, sy, talking);
   const [tx, ty] = toScreen(gov.x, 0, gov.y);
   pin(govTag, tx, ty + 38, govV.sel.visible);
@@ -1170,10 +1217,14 @@ function renderStats(){
   if ($('#stats').innerHTML !== html) $('#stats').innerHTML = html;
 }
 let lastRoster = '';
+function govPillText(){
+  if (!DEMO && govState === 'waiting') return '等你回话';
+  const busy = (!DEMO && govState === 'busy') || (gov.bubble && simT < gov.bubble.until);
+  return busy ? '忙着' : '坐镇市政厅';
+}
 function renderRoster(){
-  const list = [...citizens].sort((a, b) => ORDER[STATE[a.state][0]] - ORDER[STATE[b.state][0]] || a.id - b.id);
-  const govBusy = gov.bubble && simT < gov.bubble.until;
-  let html = `<li><button class="row" type="button" data-sel="gov" aria-current="${!!(selected && selected.t === 'gov')}"><span class="rdot gov"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govBusy ? '说话中' : '坐镇市政厅'}</span></button></li>`;
+  const list = [...citizens].sort((a, b) => ORDER[STATE[a.state][0]] - ORDER[STATE[b.state][0]] || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  let html = `<li><button class="row" type="button" data-sel="gov" aria-current="${!!(selected && selected.t === 'gov')}"><span class="rdot gov"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govPillText()}</span></button></li>`;
   for (const c of list) {
     const [g, zh] = STATE[c.state];
     const kind = KIND_ZH[ROLES[c.role].kind];
@@ -1185,7 +1236,7 @@ function renderRoster(){
 let lastDetailKey = '';
 function renderDetail(){
   const el = $('#detail');
-  let key = 'none', c = null, b = null;
+  let key = (!DEMO && citizens.length === 0) ? 'empty' : 'none', c = null, b = null;
   if (selected && selected.t === 'c') { c = byId(selected.id); if (!c) selected = null; else key = `c${c.id}|${c.state}|${c.doneFlag}|${c.stuck}|${c.qa.length}`; }
   if (selected && selected.t === 'b') { b = buildings.find(x => x.id === selected.id); if (!b) selected = null; else key = `b${b.id}|${b.done}`; }
   if (selected && selected.t === 'gov') key = `gov|${gov.answered}|${gov.dispatched}`;
@@ -1200,22 +1251,25 @@ function renderDetail(){
         <div class="d-bar"><div class="track"><i data-f="bar" style="width:${pct(c)}%;background:${c.color}"></i></div><span data-f="pct">${kind} ${pct(c)}%</span></div>
         <dl class="d-tools">${['Edit','Write','Bash','Read'].map(t => `<div><dt>${t}</dt><dd data-f="${t}">${c.tools[t]}</dd></div>`).join('')}</dl>
         ${qa ? `<div class="d-qa">${qa}</div>` : ''}
+        ${DEMO ? `
         <div class="d-actions">
           <button class="btn" type="button" data-act="stuck" ${canStuck ? '' : 'disabled'}>让它卡住</button>
           <button class="btn" type="button" data-act="done" ${c.doneFlag ? 'disabled' : ''}>让它完工</button>
           <button class="btn" type="button" data-act="leave" ${c.state === 'resting' && !c.leaveFlag ? '' : 'disabled'}>让它下班</button>
         </div>
-        <p class="d-note">这三个按钮只在原型里有，用来试流程。</p>`;
+        <p class="d-note">这三个按钮只在原型里有，用来试流程。</p>` : ''}`;
     } else if (b) {
       const owner = byId(b.ownerId);
       el.innerHTML = `
-        <div class="d-head"><span class="rdot" style="--c:${b.color}"></span><div><div class="d-name">${KIND_ZH[b.kind]} · ${esc(b.name)}</div><div class="d-role">${b.role}</div></div><span class="pill ${b.done ? 'rest' : 'build'}">${b.done ? '建成' : '施工中'}</span></div>
-        <p class="hint">${owner ? `盖它的小人还在城里：${esc(owner.task)}。` : `盖它的 ${b.role} 已经下班。`}${b.kind === 'bridge' ? '桥 = 把分支接到 main。' : ''}</p>`;
+        <div class="d-head"><span class="rdot" style="--c:${b.color}"></span><div><div class="d-name">${KIND_ZH[b.kind]} · ${esc(b.name)}</div><div class="d-role">${esc(b.label)}</div></div><span class="pill ${b.done ? 'rest' : 'build'}">${b.done ? '建成' : '施工中'}</span></div>
+        <p class="hint">${owner ? `盖它的小人还在城里：${esc(owner.task)}。` : `盖它的 ${esc(b.label)} 已经下班。`}${b.kind === 'bridge' ? '桥 = 把分支接到 main。' : ''}</p>`;
     } else if (selected && selected.t === 'gov') {
       el.innerHTML = `
         <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">总督</div><div class="d-role">main manager · 主对话</div></div><span class="pill gov">市政厅</span></div>
         <p class="hint">总督就是你正在聊的主对话。它派人出门、回答卡住的问题，自己不盖楼。</p>
         <dl class="d-tools" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><dt>派出</dt><dd>${gov.dispatched}</dd></div><div><dt>回答</dt><dd>${gov.answered}</dd></div></dl>`;
+    } else if (!DEMO && citizens.length === 0) {
+      el.innerHTML = `<h2><span class="en">Selected</span>详情</h2><p class="hint">还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。</p>`;
     } else {
       el.innerHTML = `<h2><span class="en">Selected</span>详情</h2><p class="hint">点城里的小人、房子，或下面名单里的一行。</p>`;
     }
@@ -1235,7 +1289,7 @@ function renderPanel(){ renderStats(); renderRoster(); renderDetail(); renderLog
 /* ---------- input ---------- */
 function selectFrom(val){
   if (val === 'gov') selected = { t:'gov' };
-  else if (val) selected = { t:'c', id:Number(val) };
+  else if (val) selected = { t:'c', id:val };
   lastDetailKey = ''; lastRoster = ''; renderPanel(); needFrame = true;
 }
 $('#roster').addEventListener('pointerdown', e => { const r = e.target.closest('[data-sel]'); if (r) selectFrom(r.dataset.sel); });
@@ -1248,7 +1302,27 @@ $('#detail').addEventListener('click', e => {
   if (btn.dataset.act === 'leave') emit({ type:'leave', id:c.id });
   lastDetailKey = ''; renderPanel();
 });
-$('#spawn').addEventListener('click', () => { const c = spawnDemo($('#role').value); if (c) { selected = { t:'c', id:c.id }; lastDetailKey = ''; renderPanel(); } });
+if (DEMO) {
+  $('#spawn').addEventListener('click', () => { const c = spawnDemo($('#role').value); if (c) { selected = { t:'c', id:c.id }; lastDetailKey = ''; renderPanel(); } });
+} else {
+  $('#spawn-group').hidden = true;
+  $('#spawn-sep').hidden = true;
+  $('#proto').textContent = '实时 · 等服务器';
+  $('#intro').textContent = '这是你电脑上正在跑的 agent。每个小人是一个 agent：分到任务就去盖楼，卡住了就跑去市政厅问总督，做完了就去休息。拖动可以转视角，点小人看详情。';
+}
+function connectLive(){
+  const chip = $('#proto');
+  let everOpen = false;
+  const es = new EventSource('/events');
+  es.onopen = () => { everOpen = true; chip.textContent = '实时 · 已连接'; };
+  es.onerror = () => { chip.textContent = everOpen ? '实时 · 重连中…' : '实时 · 等服务器'; };
+  es.onmessage = e => {
+    let ev;
+    try { ev = JSON.parse(e.data); } catch (err) { return; }
+    apply(ev);
+    needFrame = true;
+  };
+}
 $('#play').addEventListener('click', () => {
   paused = !paused;
   $('#play').setAttribute('aria-pressed', String(paused));
@@ -1334,8 +1408,8 @@ canvas.addEventListener('wheel', e => { e.preventDefault(); cam.zoom = clamp(cam
 
 /* ---------- opening scene: a city mid-day, not an empty island ---------- */
 function placeBuilder(role, task, x, y, tools){
-  const R = ROLES[role], c = newCitizen(role, task), b = newBuilding(R.kind, x, y, role);
-  b.name = task; b.ownerId = c.id; b.ownerName = `${role} · ${task}`;
+  const R = ROLES[role], c = newCitizen('d' + (++cid), role, task), b = newBuilding(R.kind, x, y, role);
+  b.name = task; b.ownerId = c.id;
   c.bld = b; c.stand = standFor(R.kind, x, y); c.x = c.stand.x; c.y = c.stand.y;
   c.alpha = 1; c.state = 'building';
   Object.assign(c.tools, tools);
@@ -1346,7 +1420,7 @@ function placeBuilder(role, task, x, y, tools){
   return c;
 }
 function placeResting(role, task, restIdx, bName){
-  const c = newCitizen(role, task), spot = REST[restIdx];
+  const c = newCitizen('d' + (++cid), role, task), spot = REST[restIdx];
   spot.by = c.id; c.rest = spot; c.x = spot.x; c.y = spot.y; c.alpha = 1; c.state = 'resting'; c.doneFlag = true;
   const b = buildings.find(x => x.name === bName); if (b) { b.ownerId = c.id; c.bld = b; }
   c.feed = { steps:[{ t:'leave' }], next:0, restSince:0, restFor:rnd(22, 34) };
@@ -1356,7 +1430,7 @@ function placeResting(role, task, restIdx, bName){
 function seed(){
   const hist = [['house',3,0,'worker','价格计算',-420],['tower',5,3,'task-manager','登录',-380],['garden',1,1,'fast-lane-deputy','按钮颜色',-300],
     ['house',0,3,'worker','导出 CSV',-260],['bridge',4,-1,'merge-deputy','合并 login',-200],['house',9,6,'worker','深色模式',-150],['garden',5,1,'fast-lane-deputy','错别字',-45]];
-  for (const [k, x, y, role, task, t] of hist) { const b = newBuilding(k, x, y, role); b.done = true; b.shown = b.target = 1; b.name = task; b.ownerName = `${role} · ${task}`; b.doneAt = t; }
+  for (const [k, x, y, role, task, t] of hist) { const b = newBuilding(k, x, y, role); b.done = true; b.shown = b.target = 1; b.name = task; b.doneAt = t; }
   logAt(-420, '总督派出 worker：价格计算');
   logAt(-300, '按钮颜色 完工：花园封顶，去休息', 'done');
   logAt(-200, '合并 login 完工：桥封顶，去休息', 'done');
@@ -1417,7 +1491,7 @@ Promise.all([
   tex.forEach(t => { if (t) variations.push(t); });
   buildIsland(); buildLife(); buildGlows(); makeGovernor();
   for (const [text, x, h, z] of [['市政厅', 6, 1.95, 6], ['咖啡馆', 5.5, 1.0, 10.5], ['main', 1.2, .85, -1.5]]) { const el = ovEl('lbl'); setText(el, text); labels.push({ el, x, h, z }); }
-  seed();
+  if (DEMO) seed(); else connectLive();
   $('#loading').hidden = true;
   new ResizeObserver(() => resize()).observe(stage);
   applyTheme(); updateCamera(); sync(0, 0); renderer.render(scene, camera); renderPanel();
@@ -1425,3 +1499,5 @@ Promise.all([
 }).catch(err => { $('#loading-text').textContent = '素材没加载成功：' + ((err && err.message) || err); });
 })();
 </script>
+</body>
+</html>
