@@ -137,6 +137,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .pill.rest{background:var(--rest-bg);color:var(--rest-ink)}
 .pill.walk{background:var(--walk-bg);color:var(--walk-ink)}
 .pill.gov{background:var(--gov-bg);color:var(--gov-ink)}
+.pill.you{background:#FF4F72;color:#fff}
 
 .detail{display:flex;flex-direction:column;gap:11px}
 .d-head{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:10px;align-items:center}
@@ -163,7 +164,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .log .wait-you{color:var(--ask-ink)}
 
 /* the "?" panel: sits over the city, inside #stage */
-.ask{position:absolute;right:12px;top:12px;z-index:6;width:min(410px,calc(100% - 24px));max-height:calc(100% - 24px);overflow:auto;background:var(--panel);color:var(--ink);border:2px solid var(--ink);border-radius:20px;box-shadow:0 6px 0 rgba(42,43,69,.22);padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px}
+.ask-panel{position:absolute;right:12px;top:12px;z-index:6;width:min(410px,calc(100% - 24px));max-height:calc(100% - 24px);overflow:auto;background:var(--panel);color:var(--ink);border:2px solid var(--ink);border-radius:20px;box-shadow:0 6px 0 rgba(42,43,69,.22);padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px}
 .ask-head{display:grid;grid-template-columns:minmax(0,1fr) auto 32px;gap:10px;align-items:center}
 .ask-title{font-weight:700;font-size:17px;line-height:1.3;overflow-wrap:anywhere;outline:none}
 .ask-role{font:12px/1.3 var(--mono);color:var(--ink-3)}
@@ -202,7 +203,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
   .stage{height:min(66vh,calc(100vw * 1.1));min-height:340px}
   .panel{max-height:none;overflow:visible}
   .stats{margin-left:0}
-  .ask{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:72%}
+  .ask-panel{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:72%}
 }
 @media (prefers-reduced-motion: reduce){ .qm span,.zz span{animation:none} .track i,.btn,.card-head .chev{transition:none} }
 </style>
@@ -233,7 +234,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
           <button class="btn" id="zfit" type="button" aria-label="回到默认视角"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
           </button>
         </div>
-        <div class="ask" id="ask" role="dialog" aria-labelledby="ask-title" hidden></div>
+        <div class="ask-panel" id="ask" role="dialog" aria-labelledby="ask-title" hidden></div>
       </div>
       <div class="toolbar" role="toolbar" aria-label="控制">
         <div class="group" id="spawn-group">
@@ -366,6 +367,21 @@ const STATE = {
   back:['walk','回工地'], finishing:['rest','封顶了'], to_rest:['rest','去休息'],
   resting:['rest','休息中'], leaving:['walk','下班回家'],
 };
+/* stuckText(ev): the bubble over a stuck citizen. Never invents "可以用 …
+   吗" or "问总督" — those belong only to the demo's own made-up lines. */
+function stuckText(ev) {
+  if (ev.tool && ev.tool !== 'AskUserQuestion') return '要权限：' + ev.tool;
+  return ev.question || '需要你看一下';
+}
+/* citizenStatus(c) -> [pill class, text] for the roster/detail, from
+   c.state plus the live ask this citizen is in (c.askKind/c.askPhase, set
+   from ask/ask_phase/ask_closed events for that agent). */
+function citizenStatus(c) {
+  if (c.askKind === 'permission') return ['you', '等你批'];
+  if (c.askKind === 'question' && c.askPhase === 'governor') return ['ask', '在问总督'];
+  if (c.askKind === 'question' && c.askPhase === 'owner') return ['you', '等你回答'];
+  return STATE[c.state];
+}
 const TASKS = {
   'worker':['设置页表单','登录 API','导出 CSV','深色模式','小票打印','搜索框','分页','价格计算','库存提醒','客户列表'],
   'task-manager':['设置页','登录','报表','打印','库存'],
@@ -519,7 +535,7 @@ function newCitizen(id, role, task){
   return { id, role, label:role, task, color:R.color, skin:pick(SKIN), x:DOOR.x, y:DOOR.y, path:[], state:'spawn', stateT:0,
     alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0,Other:0}, work:0, bld:null, stand:null, slot:null, rest:null,
     question:'', answer:'', answered:false, pendingAnswer:'', askT:0, stuck:false, doneFlag:false, leaveFlag:false,
-    qa:[], bubble:null, walkT:Math.random()*5, feed:null, gone:false };
+    askKind:'', askPhase:'', qa:[], bubble:null, walkT:Math.random()*5, feed:null, gone:false };
 }
 const byId = id => citizens.find(c => c.id === id);
 
@@ -553,7 +569,7 @@ function goHall(c){
 }
 function releaseSlot(c){ if (c.slot && !c.slot.extra) c.slot.by = 0; c.slot = null; }
 function giveAnswer(c){
-  say(gov, c.answer, 2.6); gov.answered++;
+  if (DEMO) { say(gov, c.answer, 2.6); gov.answered++; }
   c.qa.push({ q: c.question, a: c.answer });
   c.state = 'heard'; c.stateT = 0;
 }
@@ -597,6 +613,7 @@ function autoLeave(c){
 const WEIGHT = { Edit:1, Write:1, Bash:.6, Read:.3, Other:.3 };
 const KSCALE = { house:4.5, tower:5.5, garden:2.2, bridge:1.8 };
 let govState = 'idle';
+let governorCount = 1; // assume present until a snapshot or a 'governors' event says otherwise
 function setGovState(state){ govState = state; if (state !== 'waiting') gov.bubble = null; }
 function roleOrOther(role){ return ROLES[role] ? role : 'other'; }
 function placeAgent(a){
@@ -636,6 +653,7 @@ function apply(ev){
       }
       for (const a of agents) if (!byId(a.id)) placeAgent(a);
       if (ev.gov && ev.gov.state) setGovState(ev.gov.state);
+      if (typeof ev.governors === 'number') governorCount = ev.governors;
       asks.clear();
       for (const a of ev.asks || []) asks.set(a.id, a);
       return null;
@@ -666,17 +684,17 @@ function apply(ev){
     }
     case 'stuck': {
       if (!c) return null;
-      const text = ev.question || (ev.tool ? `可以用 ${ev.tool} 吗？` : '需要你看一下');
+      const text = stuckText(ev);
       c.stuck = true; c.question = text; c.answered = false; c.answer = '';
       if (['building','to_plot','back'].includes(c.state)) goHall(c);
-      log(`${c.task} 卡住了：“${text}” → 去问总督`, 'ask');
+      if (DEMO) log(`${c.task} 卡住了：“${text}” → 去问总督`, 'ask');
       return c;
     }
     case 'answer': {
       if (!c) return null;
       const text = typeof ev.answer === 'string' && ev.answer ? ev.answer : '已回答';
       c.answer = text; c.answered = true; c.stuck = false;
-      log(`总督回答 ${c.task}：“${text}”`);
+      if (DEMO) log(`总督回答 ${c.task}：“${text}”`);
       return c;
     }
     case 'done': {
@@ -697,8 +715,14 @@ function apply(ev){
       setGovState(ev.state);
       return null;
     }
+    case 'governors': {
+      governorCount = ev.count || 0;
+      return null;
+    }
     case 'ask': {
       asks.set(ev.id, ev);
+      const ac = byId(ev.agent);
+      if (ac) { ac.askKind = ev.kind; ac.askPhase = ev.phase; }
       log(askLine(ev, ev.task || ev.label || ''), ev.phase === 'owner' ? 'wait-you' : 'ask');
       return null;
     }
@@ -706,6 +730,8 @@ function apply(ev){
       const view = asks.get(ev.id);
       const name = view ? (view.task || view.label || '') : '';
       if (view) Object.assign(view, ev);
+      const ac = byId(ev.agent);
+      if (ac) ac.askPhase = ev.phase;
       log(askLine(ev, name), 'wait-you');
       if (openAskId === ev.id) renderAskPanel();
       return null;
@@ -713,7 +739,13 @@ function apply(ev){
     case 'ask_closed': {
       const view = asks.get(ev.id);
       const name = view ? (view.task || view.label || '') : '';
+      const ac = byId(ev.agent);
+      if (ac) { ac.askKind = ''; ac.askPhase = ''; }
       log(askLine(ev, name));
+      if (ev.by === 'governor' && ev.verb === 'answer') {
+        say(gov, ev.text || '已回答', 2.6);
+        gov.answered++;
+      }
       if (openAskId === ev.id && view) {
         view.closed = { by: ev.by, verb: ev.verb, text: ev.text, reason: ev.reason, at: ev.at };
         renderAskPanel();
@@ -1440,6 +1472,7 @@ function renderStats(){
 }
 let lastRoster = '';
 function govPillText(){
+  if (!DEMO && governorCount === 0) return '不在';
   if (!DEMO && govState === 'waiting') return '等你回话';
   const busy = (!DEMO && govState === 'busy') || (gov.bubble && simT < gov.bubble.until);
   return busy ? '忙着' : '坐镇市政厅';
@@ -1448,7 +1481,7 @@ function renderRoster(){
   const list = [...citizens].sort((a, b) => ORDER[STATE[a.state][0]] - ORDER[STATE[b.state][0]] || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   let html = `<li><button class="row" type="button" data-sel="gov" aria-current="${!!(selected && selected.t === 'gov')}"><span class="rdot gov"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govPillText()}</span></button></li>`;
   for (const c of list) {
-    const [g, zh] = STATE[c.state];
+    const [g, zh] = citizenStatus(c);
     const kind = KIND_ZH[ROLES[c.role].kind];
     const sub = g === 'build' ? `${c.label} · ${kind} ${pct(c)}%` : `${c.label} · ${kind}`;
     html += `<li><button class="row" type="button" data-sel="${c.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === c.id)}"><span class="rdot" style="--c:${c.color}"></span><span class="who"><b>${esc(c.task)}</b><span>${esc(sub)}</span></span><span class="pill ${g}">${zh}</span></button></li>`;
@@ -1459,13 +1492,13 @@ let lastDetailKey = '';
 function renderDetail(){
   const el = $('#detail');
   let key = (!DEMO && citizens.length === 0) ? 'empty' : 'none', c = null, b = null;
-  if (selected && selected.t === 'c') { c = byId(selected.id); if (!c) selected = null; else key = `c${c.id}|${c.state}|${c.doneFlag}|${c.stuck}|${c.qa.length}`; }
+  if (selected && selected.t === 'c') { c = byId(selected.id); if (!c) selected = null; else key = `c${c.id}|${c.state}|${c.doneFlag}|${c.stuck}|${c.qa.length}|${c.askKind}|${c.askPhase}`; }
   if (selected && selected.t === 'b') { b = buildings.find(x => x.id === selected.id); if (!b) selected = null; else key = `b${b.id}|${b.done}`; }
-  if (selected && selected.t === 'gov') key = `gov|${gov.answered}|${gov.dispatched}`;
+  if (selected && selected.t === 'gov') key = `gov|${gov.answered}|${gov.dispatched}|${governorCount}`;
   if (key !== lastDetailKey) {
     lastDetailKey = key;
     if (c) {
-      const [g, zh] = STATE[c.state], kind = KIND_ZH[ROLES[c.role].kind];
+      const [g, zh] = citizenStatus(c), kind = KIND_ZH[ROLES[c.role].kind];
       const qa = [...c.qa.map(x => `<p>问：<b>“${esc(x.q)}”</b></p><p>答：<b>“${esc(x.a)}”</b></p>`), (c.stuck ? `<p>问：<b>“${esc(c.question)}”</b> 等回答…</p>` : '')].join('');
       const canStuck = !c.doneFlag && !c.stuck && ['building','to_plot','back'].includes(c.state);
       el.innerHTML = `
@@ -1488,7 +1521,7 @@ function renderDetail(){
     } else if (selected && selected.t === 'gov') {
       el.innerHTML = `
         <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">总督</div><div class="d-role">main manager · 主对话</div></div><span class="pill gov">市政厅</span></div>
-        <p class="hint">总督就是你正在聊的主对话。它派人出门、回答卡住的问题，自己不盖楼。</p>
+        <p class="hint">${!DEMO && governorCount === 0 ? '总督不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等总督。' : '总督就是你正在聊的主对话。它派人出门、回答卡住的问题，自己不盖楼。'}</p>
         <dl class="d-tools" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><dt>派出</dt><dd>${gov.dispatched}</dd></div><div><dt>回答</dt><dd>${gov.answered}</dd></div></dl>`;
     } else if (!DEMO && citizens.length === 0) {
       el.innerHTML = `<p class="hint">还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。</p>`;
