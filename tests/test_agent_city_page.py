@@ -184,6 +184,14 @@ CONTRACT
       with the governor: 在问总督; with the owner: 等你回答. Else STATE's words.
     Governor presence: `case 'governors'` (count of governors, also in the
       snapshot). Count 0 in live mode: govPillText() says 不在.
+    Snapshot = live. applyAsk(c, ask): top-level; may use only stuckText.
+      ask = an ask view (or null) -> sets c.askKind, c.askPhase, c.stuck and
+      c.question (stuckText of the ask's tool and first question), or clears
+      the ask fields for null. `case 'ask'` and `case 'snapshot'` both use it;
+      the snapshot first clears every citizen's ask fields (a reconnect may
+      find the ask closed), then applies each open ask to its agent. A page
+      opened while a permission waits shows what an open page shows.
+    citizenStatus(c, governors): with governors === 0 it never says 问总督.
     The 等你 N chip takes real mouse clicks: no CSS rule that can match the
       chip (its tag, classes, id) outside :disabled, nor one matching its
       ancestors (header.bar, #stats.stats), sets pointer-events:none.
@@ -1549,6 +1557,58 @@ class TestInteraction(unittest.TestCase):
                            for p in parts):
                         hits.append("%s -> %s" % (sel, tag))
         self.assertEqual(hits, [], "pointer-events:none reaches the 等你 N chip, so a real click does nothing")
+
+    def test_snapshot_shows_what_live_events_show(self):
+        st = function_source("stuckText")
+        cs = function_source("citizenStatus")
+        ap = function_source("applyAsk")
+        self.assertIsNotNone(ap, "function applyAsk(c, ask) not found")
+        state = re.search(r"^const STATE = \{.*?^\};", inline_script(), re.S | re.M).group(0)
+        for kind in ("ask", "snapshot"):
+            with self.subTest(case=kind):
+                self.assertIn("applyAsk(", case_block(kind) or "")
+        js = r"""
+const fs = require('fs'); const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+""" + state + "\n" + st + "\n" + cs + "\n" + ap + r"""
+const out = [];
+for (const ask of data.asks) {
+  // live: the reducer's stuck event first (as it arrives), then the ask event
+  const live = { state: 'asking', stuck: false, question: '', askKind: '', askPhase: '' };
+  live.stuck = true; live.question = stuckText({ tool: ask.tool, question: ask.kind === 'question' ? ask.questions[0].question : '' });
+  applyAsk(live, ask);
+  // snapshot: the reducer only says "stuck"; the open ask comes in the asks list
+  const snap = { state: 'asking', stuck: true, question: '需要你看一下', askKind: 'permission', askPhase: 'owner' };
+  applyAsk(snap, null);
+  applyAsk(snap, ask);
+  const g = ask.phase === 'governor' ? 1 : 0;
+  out.push({ live: [live.question, citizenStatus(live, g)], snap: [snap.question, citizenStatus(snap, g)] });
+}
+const cleared = { state: 'building', stuck: false, question: '', askKind: 'permission', askPhase: 'owner' };
+applyAsk(cleared, null);
+out.push({ cleared: citizenStatus(cleared, 1) });
+const noGov = { state: 'asking', stuck: true, question: '需要你看一下', askKind: '', askPhase: '' };
+out.push({ noGov: citizenStatus(noGov, 0) });
+process.stdout.write(JSON.stringify(out));
+"""
+        asks = [
+            {"id": "a1", "agent": "s:x", "kind": "permission", "phase": "owner", "why": "permission",
+             "tool": "Bash", "what": "touch chip.txt"},
+            {"id": "a2", "agent": "s:x", "kind": "question", "phase": "owner", "why": "no-governor",
+             "tool": "AskUserQuestion", "what": "Which port?", "questions": [{"question": "Which port?"}]},
+            {"id": "a3", "agent": "s:x", "kind": "question", "phase": "governor", "why": "",
+             "tool": "AskUserQuestion", "what": "Which port?", "questions": [{"question": "Which port?"}]},
+        ]
+        out = run_node(js, {"asks": asks})
+        for i, row in enumerate(out[:3]):
+            with self.subTest(ask=asks[i]["id"]):
+                self.assertEqual(row["snap"], row["live"], "a fresh page must show what an open page shows")
+        self.assertEqual(out[0]["snap"][0], "要权限：Bash")
+        self.assertIn("等你批", out[0]["snap"][1][1])
+        self.assertEqual(out[1]["snap"][0], "Which port?")
+        self.assertIn("等你回答", out[1]["snap"][1][1])
+        self.assertIn("在问总督", out[2]["snap"][1][1])
+        self.assertEqual(out[3]["cleared"][1], "施工中")
+        self.assertNotIn("问总督", out[4]["noGov"][1], "no governor: never 问总督")
 
     def test_governor_presence(self):
         self.assertRegex(inline_script(), r"case\s+'governors'\s*:")
