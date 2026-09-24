@@ -6,6 +6,9 @@
 #   ./agent-city.sh stop     stop it
 #   ./agent-city.sh status   is it running, and where
 #   ./agent-city.sh demo     same as start, URL opens straight into the demo scene
+#   ./agent-city.sh answer ID TEXT...   the governor answers a question waiting on it
+#   ./agent-city.sh pass ID             the governor hands a question to the owner
+#   ./agent-city.sh pending             list what is waiting in the city
 #   ./agent-city.sh -h       this help
 #
 # City dir: $AGENT_CITY_DIR, default $HOME/.cache/agent-city (the same dir the
@@ -14,6 +17,12 @@
 # plugin template when a key is missing there. Before starting, RAM and CPU
 # are checked against max_usage_percent (bin/agent-resources.sh); over the
 # cap, nothing is started.
+#
+# answer/pass/pending talk to an already-running server (bin/agent_city.py
+# gov-answer / gov-pass / gov-pending). The governor may answer or pass a
+# question; it never touches a permission request — only the owner, from the
+# city page, may allow or deny one (requirements/city.md, "Interaction").
+# decisions.jsonl lives under $AGENT_CITY_HOME, default $HOME/.claude/agent-city.
 
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
@@ -30,16 +39,21 @@ agent-city.sh — start/stop/status/demo for the Agent City playground.
   ./agent-city.sh stop     stop it
   ./agent-city.sh status   is it running, and where
   ./agent-city.sh demo     same as start, URL opens straight into the demo scene
+  ./agent-city.sh answer ID TEXT...   the governor answers a question waiting on it
+  ./agent-city.sh pass ID             the governor hands a question to the owner
+  ./agent-city.sh pending             list what is waiting in the city
   ./agent-city.sh -h       this help
 EOF
 }
 
 CITY_DIR="${AGENT_CITY_DIR:-$HOME/.cache/agent-city}"
+CITY_HOME="${AGENT_CITY_HOME:-$HOME/.claude/agent-city}"
 ON_FILE="$CITY_DIR/on"
 SERVER="$PLUGIN_ROOT/bin/agent_city.py"
 : "${max_usage_percent:=80}"
 : "${city_port:=4777}"
 : "${city_idle_min:=30}"
+: "${city_governor_wait_sec:=60}"
 
 # Prints "pid port" and returns 0 when ON_FILE names a pid that is alive.
 read_on() {
@@ -68,7 +82,8 @@ do_start() {
 
   mkdir -p "$CITY_DIR"
   nohup python3 "$SERVER" serve --dir "$CITY_DIR" --port "$city_port" \
-    --idle-min "$city_idle_min" </dev/null >/dev/null 2>&1 &
+    --idle-min "$city_idle_min" --gov-wait-sec "$city_governor_wait_sec" \
+    --decisions "$CITY_HOME/decisions.jsonl" </dev/null >/dev/null 2>&1 &
   disown "$!" 2>/dev/null || true
 
   step=0
@@ -121,6 +136,29 @@ do_stop() {
   return 0
 }
 
+# The governor may answer or pass a question. It has no verb for a
+# permission request — only the owner, from the city page, decides those
+# (requirements/city.md, "Interaction"). Do not add one.
+do_answer() {
+  shift  # drop the verb
+  id="${1:-}"
+  [ -n "$id" ] || { usage; exit 2; }
+  shift
+  [ $# -ge 1 ] || { usage; exit 2; }
+  python3 "$SERVER" gov-answer --dir "$CITY_DIR" "$id" "$@"
+}
+
+do_pass() {
+  shift
+  id="${1:-}"
+  [ -n "$id" ] || { usage; exit 2; }
+  python3 "$SERVER" gov-pass --dir "$CITY_DIR" "$id"
+}
+
+do_pending() {
+  python3 "$SERVER" gov-pending --dir "$CITY_DIR"
+}
+
 [ $# -eq 0 ] && { usage; exit 2; }
 case "$1" in
   -h|--help) usage; exit 0;;
@@ -128,5 +166,8 @@ case "$1" in
   demo) do_start "/#demo";;
   status) do_status;;
   stop) do_stop;;
+  answer) do_answer "$@";;
+  pass) do_pass "$@";;
+  pending) do_pending;;
   *) usage; exit 2;;
 esac
