@@ -621,6 +621,7 @@ class CityState:
         self.governors = {}       # repo -> {"sid", "last_seen" (monotonic)}
         self.watchers = {}        # governor sid -> current watcher id
         self._ask_seq = 0
+        self._governors_count = 0  # last count checked/broadcast (see _check_governors_count)
 
     # -- SSE clients ----------------------------------------------------
 
@@ -631,7 +632,8 @@ class CityState:
             client = _Client()
             snap = self.reducer.snapshot()
             snap = {"type": "snapshot", "gov": snap["gov"], "agents": snap["agents"],
-                    "asks": [ask.view() for ask in self.open.values()]}
+                    "asks": [ask.view() for ask in self.open.values()],
+                    "governors": self._fresh_governor_count()}
             client.queue.put_nowait(_encode_event(snap))
             self.clients.append(client)
             return client
@@ -649,9 +651,6 @@ class CityState:
 
     def health(self):
         with self.lock:
-            now_mono = time.monotonic()
-            fresh = sum(1 for g in self.governors.values()
-                        if now_mono - g["last_seen"] <= GOV_FRESH_SEC)
             return {
                 "ok": True,
                 "lines": self.lines,
@@ -659,8 +658,25 @@ class CityState:
                 "clients": len(self.clients),
                 "asks": len(self.open),
                 "gov_wait_sec": self.gov_wait_sec,
-                "governors": fresh,
+                "governors": self._fresh_governor_count(),
             }
+
+    def _fresh_governor_count(self):
+        """Caller holds self.lock. Repos with a governor seen in the last
+        GOV_FRESH_SEC, same count /health and the /events snapshot use."""
+        now_mono = time.monotonic()
+        return sum(1 for g in self.governors.values()
+                   if now_mono - g["last_seen"] <= GOV_FRESH_SEC)
+
+    def _check_governors_count(self):
+        """Caller holds self.lock. Broadcast {"type": "governors", "count"}
+        only when the fresh count actually changed since the last check
+        (a new governor seen, or one forgotten) -- the same governor polling
+        again must not fire a duplicate event."""
+        count = self._fresh_governor_count()
+        if count != self._governors_count:
+            self._governors_count = count
+            self._broadcast({"type": "governors", "count": count})
 
     def feed_line(self, obj, now):
         with self.lock:
@@ -689,6 +705,8 @@ class CityState:
         self.watchers.pop(sid, None)
         if changed:
             self.cond.notify_all()
+        if gone_repos:
+            self._check_governors_count()
 
     def _broadcast(self, ev):
         """Push one event to every connected client. Caller holds self.lock."""
@@ -968,6 +986,7 @@ class CityState:
         deadline = time.monotonic() + timeout
         with self.cond:
             self.governors[repo] = {"sid": sid, "last_seen": time.monotonic()}
+            self._check_governors_count()
             info = self.watchers.get(sid)
             if info is None:
                 info = {"current": watcher, "seen": {watcher}}
