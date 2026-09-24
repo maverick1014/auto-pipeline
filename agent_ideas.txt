@@ -1,0 +1,2 @@
+agent-city page in English too (read language from agent.conf); today it is Chinese only | 2026-09-24 06:57 | by main
+agent-city in cloud sessions: no localhost for the human there, so maybe publish the demo page as an artifact instead | 2026-09-24 06:57 | by main
