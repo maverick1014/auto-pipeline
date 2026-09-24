@@ -42,6 +42,15 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && python3 \"${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py\" ask; exit 0",
+            "timeout": 3660
+          }
+        ]
       }
     ],
     "PermissionDenied": [
@@ -106,6 +115,16 @@
             "type": "command",
             "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && \"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh\"; exit 0",
             "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"${AGENT_ROLE:-}\" ] && [ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && exec python3 \"${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py\" gov-watch; exit 0",
+            "async": true,
+            "asyncRewake": true
           }
         ]
       }

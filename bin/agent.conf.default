@@ -14,3 +14,4 @@ language=en
 runtime=auto
 city_port=4777
 city_idle_min=30
+city_governor_wait_sec=60
