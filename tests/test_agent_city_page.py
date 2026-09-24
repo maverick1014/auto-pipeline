@@ -2809,5 +2809,124 @@ class TestEraShow(unittest.TestCase):
                 for word in ("newCitizen(", "citizens.set(", "spawnDemo("):
                     self.assertNotIn(word, body)
 
+
+# ---------------------------------------------------------------------------
+# Balance E2E bounce (main manager, real Chrome, page open through a whole show):
+# 4 "shop" labels, a stale 还差 sign next to the new one (and one visible during
+# the show), and the card still saying 正在升级成镇 after the flip; a reload was
+# right. The live event path added overlays instead of replacing them.
+#
+#   landOverlays(view): buildLand's overlays, no THREE: first removes every
+#     overlay element it made before (the old labels and signs leave the DOM),
+#     then one .lbl (the territory name) and one .era-sign per territory.
+#     buildLand calls it.
+#   pinLandOverlays(): the per-frame part: pins every label, and every sign with
+#     setText(signText(t)), hidden while that text is ''. Called every frame.
+#   renderBalance(): its cache key includes what balanceHtml reads that changes
+#     with time, eraShown(t) and signText(t), so the card changes by itself at
+#     the flip and again when the show ends (renderPanel runs it often).
+#   A page open through a whole show ends with exactly what a fresh page builds
+#   from the snapshot: same labels, same signs, same card.
+# ---------------------------------------------------------------------------
+
+LIVE_SHOW_JS = FAKE_DOM_JS + r"""
+const fs = require('fs'), vm = require('vm');
+Object.defineProperty(El.prototype, 'className', { get(){ return [...this.classList.s].join(' '); },
+  set(v){ this.classList = new CL(String(v).split(/\s+/).filter(Boolean)); } });
+const { prelude, fns, view0, view1 } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+function page(){
+  let T = 0;
+  const ov = new El('div', [], { id: 'ov' }), card = new El('div', ['card-body'], { id: 'balance' });
+  Object.defineProperty(card, 'innerHTML', { get(){ return this._html || ''; }, set(v){ this._html = String(v); } });
+  const box = { Math, JSON, console, Map, Set, Array, Object, String, Number, Boolean,
+    performance: { now: () => T }, document: { createElement: tag => new El(tag) },
+    ovRoot: ov, $: s => (s === '#balance' ? card : s === '#ov' ? ov : null),
+    toScreen: () => [100, 100], logAt(){}, log(){}, simT: 0, needFrame: false, DEMO: false,
+    labels: [], signs: [], shows: new Map(), map: { territories: [] },
+    balanceTerr: null, govTerr: null, balanceOpen: null, lastBalanceKey: '' };
+  vm.createContext(box);
+  vm.runInContext(prelude + '\n' + fns, box);
+  const at = s => { T = s * 1000; };
+  const world = v => { box.map = JSON.parse(JSON.stringify(v)); box.landOverlays(box.map); box.lastBalanceKey = ''; box.renderBalance(); };
+  const frame = () => { box.pinLandOverlays(); box.renderBalance(); };
+  const els = cls => ov.children.filter(e => e.classList.contains(cls));
+  const seen = cls => els(cls).filter(e => !e.hidden).map(e => e.textContent).sort();
+  const state = () => ({ lbl: els('lbl').map(e => e.textContent).sort(), lblSeen: seen('lbl'),
+    sign: els('era-sign').length, signSeen: seen('era-sign'), ovCount: ov.children.length, card: card.innerHTML });
+  return { box, at, world, frame, state };
+}
+const out = {};
+let p = page();
+p.world(view0); p.frame(); out.before = p.state();
+p.box.startShow('t', 'village', 'town', 60);            // the era event...
+p.world(view1); p.frame(); out.started = p.state();     // ...then the world event with the new balance
+p.at(10); p.frame(); out.mid = p.state();
+p.at(30); p.world(view1); p.frame();                    // a recount or a build during the show
+p.at(52.5); p.box.landOverlays(p.box.map); p.frame(); out.flipped = p.state();   // the flip rebuilds the land
+p.at(55); p.world(view1); p.frame();
+p.at(61); p.box.shows.delete('t'); p.frame(); out.after = p.state();             // the show ends
+const f = page(); f.world(view1); f.frame(); out.fresh = f.state();
+process.stdout.write(JSON.stringify(out));
+"""
+
+
+def live_show_results():
+    if "liveshow" not in _CACHE:
+        def terr(tid, name, era, states, nxt, lines):
+            bal = {k: {"state": s, "value": 1, "n": 0 if s == "missing" else 3,
+                       "text": "还没有" if s == "missing" else "x"} for k, s in zip(KINDS, states)}
+            return {"id": tid, "name": name, "era": era, "lines": lines, "open": 6, "size": .4, "cx": 0, "cz": 0,
+                    "terrain": "grassland", "balance": bal, "next": nxt, "rules_note": "", "buildings": []}
+        other = terr("u", "big", "city", ["healthy"] * 5, [], 40000)
+        other.update(cx=26)
+        view0 = {"territories": [terr("t", "shop", "village", ["healthy", "missing", "low", "low", "low"], ["规则"], 2200),
+                                 other]}
+        view1 = {"territories": [terr("t", "shop", "town", ["healthy", "low", "low", "low", "low"],
+                                      ["规模", "规则", "美化"], 2200), other]}
+        fns = page_fns("landOverlays", "pinLandOverlays", "signText", "eraShown", "startShow", "renderBalance",
+                       "balanceHtml", "currentBalanceTerr", "terrOf", "ovEl", "setText", "pin",
+                       optional=("showOf", "eraLook", "kindBar", "barOf"))
+        esc = re.search(r"^const esc = .*;$", inline_script(), re.M)
+        prelude = constants_prelude() + "\n" + consts("KIND_ZH", "STATE_ZH", "ERA_ZH", "ERA_LOOK") + "\n" + \
+            (esc.group(0).replace("const esc", "var esc") if esc else "")
+        _CACHE["liveshow"] = run_node(LIVE_SHOW_JS, {"prelude": prelude, "fns": fns, "view0": view0, "view1": view1})
+    return _CACHE["liveshow"]
+
+
+class TestLiveShowMatchesFreshPage(unittest.TestCase):
+    def test_buildland_uses_the_overlay_functions(self):
+        self.assertIn("landOverlays(", function_source("buildLand") or "")
+        self.assertNotRegex(function_source("buildLand") or "", r"ovEl\(", "buildLand makes overlays only through landOverlays")
+        text = inline_script()
+        self.assertGreaterEqual(len(re.findall(r"pinLandOverlays\(\)", text)), 2, "defined and called every frame")
+
+    def test_before_the_show(self):
+        r = live_show_results()["before"]
+        self.assertEqual(r["lbl"], ["big", "shop"])
+        self.assertEqual(r["signSeen"], ["还差：规则"])
+
+    def test_during_the_show_no_sign_and_the_card_says_upgrading(self):
+        r = live_show_results()
+        for name in ("started", "mid"):
+            with self.subTest(moment=name):
+                self.assertEqual(r[name]["signSeen"], [], "no 还差 sign while the show runs")
+                self.assertEqual(r[name]["lbl"], ["big", "shop"], "one label per territory")
+                self.assertIn("正在升级成镇", r[name]["card"])
+
+    def test_after_the_flip_the_card_is_the_new_era(self):
+        r = live_show_results()["flipped"]
+        self.assertNotIn("正在升级", r["card"], "the card follows the flip by itself")
+        self.assertEqual(r["lbl"], ["big", "shop"])
+
+    def test_an_open_page_ends_like_a_fresh_page(self):
+        r = live_show_results()
+        after, fresh = r["after"], r["fresh"]
+        self.assertEqual(after["lbl"], fresh["lbl"], "labels multiplied on the open page")
+        self.assertEqual(after["sign"], fresh["sign"], "old sign elements left in the page")
+        self.assertEqual(after["signSeen"], fresh["signSeen"])
+        self.assertEqual(fresh["signSeen"], ["还差：规模、规则、美化"])
+        self.assertEqual(after["ovCount"], fresh["ovCount"], "leftover overlay elements")
+        self.assertEqual(after["card"], fresh["card"])
+
 if __name__ == "__main__":
     unittest.main()
