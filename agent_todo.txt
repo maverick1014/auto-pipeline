@@ -1,1 +1,0 @@
-agent-city | big | localhost city playground: each agent is a person; builds on task, walks to the governor when stuck, rests when done | est 150m | opened 2026-09-24 06:23 | by main
