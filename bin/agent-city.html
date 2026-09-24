@@ -14,6 +14,7 @@
   --build-bg:#E1ECFF; --build-ink:#3160B5; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
   --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488;
   --gov-bg:#FFF0C7; --gov-ink:#8A6000; --ok:#1E8657; --ok-deep:#146342;
+  --healthy:#2FB57A; --low:#E8A33A; --missing:#C4C8DD; --na:#9AA0C3;
   --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
   --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
@@ -26,6 +27,7 @@
     --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
     --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
     --gov-bg:#43381A; --gov-ink:#FFDD8A; --ok:#2FA56F; --ok-deep:#1B7049;
+    --missing:#3A4070;
     color-scheme:dark;
   }
 }
@@ -35,6 +37,7 @@
   --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
   --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
   --gov-bg:#43381A; --gov-ink:#FFDD8A; --ok:#2FA56F; --ok-deep:#1B7049;
+  --missing:#3A4070;
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -85,6 +88,7 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .tagl{background:var(--c);color:#fff;border-radius:999px;padding:3px 10px;font:600 11.5px/1.3 var(--mono);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.2)}
 .fl{background:var(--c);color:#fff;border-radius:8px;padding:1px 7px;font:600 11px/1.5 var(--mono)}
 .lbl{background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:2px 10px;font:600 12px/1.5 var(--display);box-shadow:0 2px 0 rgba(42,43,69,.15);white-space:nowrap}
+.era-sign{background:var(--gov-bg);color:var(--gov-ink);border:1.5px solid var(--gov-ink);border-radius:999px;padding:3px 10px;font:600 12px/1.3 var(--round);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.18)}
 
 .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:8px}
 .group{display:inline-flex;align-items:center;gap:5px}
@@ -155,6 +159,32 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .d-qa b{color:var(--ink);font-weight:700}
 .d-actions{display:flex;flex-wrap:wrap;gap:6px}
 .d-note,.hint{margin:0;font-size:12.5px;color:var(--ink-3)}
+
+/* 城市平衡 card (Balance): era line + sign, one bar per kind, its files when clicked open */
+.era{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px;font-size:13px}
+.era b{font-size:15px}
+.note{margin:0 0 10px;font-size:12.5px;color:var(--ink-3)}
+.need{background:var(--panel-2);border-radius:10px;padding:3px 9px;font-weight:600}
+.bterr{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.kinds{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.kind>button{all:unset;box-sizing:border-box;width:100%;display:grid;grid-template-columns:16px 52px minmax(0,1fr) 46px;gap:8px;align-items:center;padding:7px 6px;border-radius:10px;cursor:pointer}
+.kind>button:hover{background:var(--panel-2)}
+.kind>button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.kind .ic{width:14px;height:14px;border-radius:5px}
+.kind .nm{font-weight:700;white-space:nowrap}
+.kind .st{font-size:12px;font-weight:700;text-align:right}
+.kind .val{grid-column:2 / 5;font-size:12px;color:var(--ink-2);margin-top:-2px}
+.st.healthy{color:var(--healthy)} .st.low{color:var(--low)} .st.missing{color:var(--ink-3)} .st.na{color:var(--na)}
+.kind .track i{background:var(--ink-3)}
+.kind[data-state="healthy"] .track i{background:var(--healthy)}
+.kind[data-state="low"] .track i{background:var(--low)}
+.kind[data-state="missing"] .track i{background:var(--missing)}
+.kind[data-state="na"] .track i{background:var(--na)}
+.files{margin:2px 0 8px 24px;padding:8px 10px;background:var(--panel-2);border-radius:10px;font:12px/1.5 var(--mono);max-height:180px;overflow:auto}
+.files ol{margin:0;padding:0 0 0 18px}
+.files p{margin:4px 0 0;font-family:var(--round);color:var(--ink-2)}
+.files p:first-child{margin-top:0}
+.files code{background:var(--panel);border-radius:6px;padding:1px 5px}
 
 .log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;max-height:260px;overflow:auto}
 .log li{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px;font-size:13px;line-height:1.45}
@@ -256,6 +286,10 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
         <h2 class="card-head"><button type="button" aria-expanded="true" aria-controls="detail" title="点一下收起或展开，按住拖动换位置"><svg class="grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg><span class="en">Selected</span>详情<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2>
         <div class="card-body detail" id="detail" aria-live="polite"></div>
       </section>
+      <section class="card" data-card="balance">
+        <h2 class="card-head"><button type="button" aria-expanded="true" aria-controls="balance" title="点一下收起或展开，按住拖动换位置"><svg class="grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg><span class="en">Balance</span>城市平衡<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2>
+        <div class="card-body" id="balance"></div>
+      </section>
       <section class="card" data-card="citizens">
         <h2 class="card-head"><button type="button" aria-expanded="true" aria-controls="roster" title="点一下收起或展开，按住拖动换位置"><svg class="grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg><span class="en">Citizens</span>市民<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2>
         <ul class="card-body roster" id="roster"></ul>
@@ -268,9 +302,9 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
   </main>
 </div>
 
-<script src="assets/vendor/three.min.js"></script>
-<script src="assets/vendor/GLTFLoader.js"></script>
-<script src="assets/vendor/SkeletonUtils.js"></script>
+<script src="assets/vendor/three.min.js?v=__CITY_ASSET_V__"></script>
+<script src="assets/vendor/GLTFLoader.js?v=__CITY_ASSET_V__"></script>
+<script src="assets/vendor/SkeletonUtils.js?v=__CITY_ASSET_V__"></script>
 <script>
 (() => {
 'use strict';
@@ -303,6 +337,8 @@ const CAM_CLEAR = .35;
 const AUTO_ROT_SEC = 300;
 const AUTO_ROT_IDLE_MS = 10000;
 const CARD_KEY = 'agent-city-cards';
+const SHOW_SEC = 60;
+const SHOW_FLIP = 52;
 const DEMO = location.hash === '#demo' || location.protocol === 'file:';
 const TOKEN = (() => { const m = $('meta[name="city-token"]'); return m ? m.content : ''; })();
 
@@ -312,17 +348,49 @@ function r2h(c){ return '#' + c.map(v => Math.round(clamp(v,0,255)).toString(16)
 function rgbOf(hex){ const c = h2r(hex); return [c[0] / 255, c[1] / 255, c[2] / 255]; }
 /* Growth ground/water: the terrain of the territory cell a world tile sits in (cell (i, j) = floor((X+13)/26), floor((Z+13)/26)) */
 function terrAtOf(view, X, Z){
-  const cellTerrain = new Map((view.territories || []).map(t => [t.slot[0] + ',' + t.slot[1], t.terrain]));
-  return cellTerrain.get(Math.floor((X + 13) / 26) + ',' + Math.floor((Z + 13) / 26)) || 'grassland';
+  const bySlot = new Map((view.territories || []).map(t => [t.slot[0] + ',' + t.slot[1], t.terrain]));
+  return bySlot.get(Math.floor((X + 13) / 26) + ',' + Math.floor((Z + 13) / 26)) || 'grassland';
 }
-/* hallDecor(t, view) -> [{key, x, z}]: the fountain + lamps around t's hall, each on a 'g' tile (never a
-   road, a plot or the hall itself); [] on day 0 (t.open === 0), so a brand new territory stays bare. */
+/* Balance: the territory object that owns a world tile's cell (used to pick the era's road colour); same
+   cell math as terrAtOf, but returns the whole territory instead of only its terrain name. */
+function cellTerrain(view, X, Z){
+  const key = Math.floor((X + 13) / 26) + ',' + Math.floor((Z + 13) / 26);
+  return (view.territories || []).find(t => t.slot && (t.slot[0] + ',' + t.slot[1]) === key) || null;
+}
+/* Balance: era shows (village -> town -> city). shows: Map<territory id, {from, to, end}>, set by the
+   'era' event (startShow, next worker's slice); showOf(id) reads it back.
+   eraShown(t): while a show for t is running and less than SHOW_FLIP s in, the OLD look (s.from); once
+   the flip has happened (or no show runs), t's own era (village by default). Never touches `performance`
+   unless a show actually exists, so it stays safe in test harnesses that never populate `shows`. */
+function showOf(id){ return shows.get(id) || null; }
+function eraShown(t){
+  const s = showOf(t.id);
+  if (s && performance.now() < s.end - (SHOW_SEC - SHOW_FLIP) * 1000) return s.from;
+  return t.era || 'village';
+}
+/* Balance: eraLook(t) = ERA_LOOK[eraShown(t)] (models, hall, road colour, lamps for the era shown now) */
+function eraLook(t){ return ERA_LOOK[eraShown(t)]; }
+/* Balance: the road colour for t's era: village keeps the terrain's dirt path, town and city get the
+   era's own paved colour (roadColor(t) itself, all three differ) */
+function roadColor(t){
+  const era = eraShown(t);
+  return era === 'village' ? TERRAIN_LOOK[t.terrain].path : ERA_LOOK[era].road;
+}
+/* Balance: signText(t) -> the .era-sign line in front of t's hall: '' on day 0, once the city era is
+   reached, with nothing left to build, or while t's era show is still running; else '还差：' + t.next */
+function signText(t){
+  if (!t.lines || t.era === 'city' || !(t.next && t.next.length)) return '';
+  const s = showOf(t.id);
+  if (s && performance.now() < s.end) return '';
+  return '还差：' + t.next.join('、');
+}
+/* hallDecor(t, view) -> [{key, x, z}]: lamps around t's hall, each on a 'g' tile (never a road, a plot or
+   the hall itself); [] on day 0 (t.open === 0) and in a village (Balance: the fountain moved to
+   systemsDecor's beauty kind, never hallDecor's). */
 function hallDecor(t, view){
-  if (!t.open) return [];
+  if (!t.open || eraShown(t) === 'village') return [];
   const on = (x, z) => tileAt(Math.floor(x), Math.floor(z)) === 'g';
   const out = [];
-  const fountain = [[t.cx + 2.5, t.cz + 2.5], [t.cx - 2.5, t.cz + 2.5], [t.cx + 2.5, t.cz - 2.5], [t.cx - 2.5, t.cz - 2.5]].find(([x, z]) => on(x, z));
-  if (fountain) out.push({ key: 'fountain-round', x: fountain[0], z: fountain[1] });
   for (const [x, z] of [[t.cx - 2.4, t.cz + .4], [t.cx + 2.4, t.cz + .4], [t.cx - 2.4, t.cz - .4], [t.cx + 2.4, t.cz - .4]])
     if (on(x, z) && out.filter(d => d.key === 'lantern').length < 2) out.push({ key: 'lantern', x, z });
   return out;
@@ -443,6 +511,8 @@ let land = { hx:13, hz:13 };
 let home = { x:0, z:0 };
 const occupied = new Map();
 const blocked = new Set();
+/* Balance: territory id -> its running era show ({from, to, end}), set by the 'era' event (next worker) */
+const shows = new Map();
 function tileAt(x, z){
   const r = z - map.z0, c = x - map.x0;
   if (r < 0 || r >= map.rows.length) return ' ';
@@ -681,6 +751,7 @@ function apply(ev){
       // reconnect may find the ask already closed), place the agents, then
       // apply each still-open ask to its agent — same as the live path.
       if (ev.world) buildLand(ev.world);
+      if (ev.world) { lastBalanceKey = ''; renderBalance(); }
       if (ev.notice) log(ev.notice);
       for (const old of citizens) applyAsk(old, null);
       for (const a of agents) if (!byId(a.id)) placeAgent(a);
@@ -694,6 +765,7 @@ function apply(ev){
     }
     case 'world': {
       buildLand(ev.world);
+      lastBalanceKey = ''; renderBalance();
       if (ev.notice) log(ev.notice);
       return null;
     }
@@ -910,6 +982,7 @@ function update(dt){
    (kenney.nl), loaded as-is. Only placement is ours.
    ========================================================= */
 const ASSET = 'assets/';
+const ASSET_V = '__CITY_ASSET_V__';
 const MODELS = [
   'characters/character-female-a', 'characters/character-female-c', 'characters/character-female-e',
   'characters/character-male-a', 'characters/character-male-b', 'characters/character-male-c', 'characters/character-male-e',
@@ -917,6 +990,9 @@ const MODELS = [
   'commercial/building-j', 'commercial/building-skyscraper-a', 'commercial/building-skyscraper-b',
   'commercial/building-a', 'commercial/building-b', 'commercial/building-c', 'commercial/building-d',
   'industrial/building-a', 'industrial/building-b',
+  'hexagon/building-house', 'hexagon/building-cabin', 'hexagon/unit-house', 'hexagon/building-market',
+  'hexagon/building-tower', 'hexagon/unit-tower', 'hexagon/building-mill', 'hexagon/building-farm',
+  'hexagon/building-wizard-tower', 'hexagon/building-village',
   'nature/bridge_wood', 'nature/tree_default', 'nature/tree_oak', 'nature/flower_redA', 'nature/flower_yellowA',
   'nature/flower_purpleA', 'nature/plant_bush', 'nature/plant_bushLarge', 'nature/lily_large',
   'nature/cactus_short', 'nature/cactus_tall', 'nature/tree_pineSmallA', 'nature/tree_pineSmallB', 'nature/tree_palmShort',
@@ -928,16 +1004,49 @@ const MODELS = [
 ];
 const VARIANTS = { 'task-manager':['character-female-c'], worker:['character-male-a','character-female-a','character-male-c'],
   'fast-lane-deputy':['character-female-e'], 'merge-deputy':['character-male-e'], other:['character-male-c'] };
-/* Growth: building type per kind of work, and each type's model choices (BUILD_MODELS keys after '/', see MODELS) */
-const BUILD_MODELS = {
-  house: ['building-type-a', 'building-type-c', 'building-type-f', 'building-type-k', 'building-type-n', 'building-type-r'],
-  tower: ['building-skyscraper-a', 'building-skyscraper-b'],
-  shop: ['building-a', 'building-b'],
-  workshop: ['building-a', 'building-b'],
-  library: ['building-c', 'building-d'],
-};
 const TYPE_ZH = { house:'住宅', shop:'商店', tower:'测试塔', workshop:'工坊', library:'图书馆' };
 const DCOL = { house:'#F4A259', shop:'#FF7593', tower:'#4D7CFE', workshop:'#9C6B4E', library:'#2FB57A' };
+/* Balance: the 5 kinds of code the city grades, the 4 states a kind can be in, and the 3 eras a territory
+   grows through (requirements/city.md, Balance) */
+const KIND_ZH = { build:'建设', rules:'规则', beauty:'美化', knowledge:'知识', infra:'基建' };
+const STATE_ZH = { healthy:'健康', low:'偏低', missing:'没有', na:'不适用' };
+const ERA_ZH = { village:'村', town:'镇', city:'城' };
+/* Balance: era look, replaces the old single BUILD_MODELS and the fixed 'building-j' hall. Village = wood
+   (Kenney Hexagon Kit), town = brick (unchanged from before Balance), city = towers. Only the house lists
+   need to differ across eras (Balance: "the three eras' house lists share no model"); shop/tower/workshop/
+   library may repeat across eras. eraLook(t) = ERA_LOOK[eraShown(t)]. */
+const ERA_LOOK = {
+  village: {
+    build: {
+      house: ['building-house', 'building-cabin', 'unit-house'],
+      shop: ['building-market'],
+      tower: ['building-tower', 'unit-tower'],
+      workshop: ['building-mill', 'building-farm'],
+      library: ['building-wizard-tower'],
+    },
+    hall: 'building-village', road: '#8C6239', lamps: false,
+  },
+  town: {
+    build: {
+      house: ['building-type-a', 'building-type-c', 'building-type-f', 'building-type-k', 'building-type-n', 'building-type-r'],
+      shop: ['building-a', 'building-b'],
+      tower: ['building-skyscraper-a', 'building-skyscraper-b'],
+      workshop: ['building-a', 'building-b'],
+      library: ['building-c', 'building-d'],
+    },
+    hall: 'building-j', road: '#9C8A73', lamps: true,
+  },
+  city: {
+    build: {
+      house: ['building-a', 'building-b', 'building-c', 'building-d'],
+      shop: ['building-a', 'building-b'],
+      tower: ['building-skyscraper-a', 'building-skyscraper-b'],
+      workshop: ['building-a', 'building-b'],
+      library: ['building-c', 'building-d'],
+    },
+    hall: 'building-skyscraper-a', road: '#5B5E68', lamps: true,
+  },
+};
 /* Growth: each plan's terrain changes the look only (ground/path colour, and which plants grow on wild tiles).
    wild = the untouched land before a territory claims it; ground = claimed land, always a different shade. */
 const TERRAIN_LOOK = {
@@ -1012,12 +1121,12 @@ async function loadAll(onStep){
   let done = 0;
   await Promise.all(MODELS.map(key => new Promise((res, rej) => {
     const ok = g => { prep(key.split('/')[1], g); onStep(++done, MODELS.length); res(); };
-    loader.load(ASSET + key + '.glb', ok, undefined, rej);
+    loader.load(ASSET + key + '.glb?v=' + ASSET_V, ok, undefined, rej);
   })));
 }
 const texLoader = new THREE.TextureLoader();
 function loadTex(path){
-  return new Promise(res => texLoader.load(ASSET + path, t => { t.encoding = THREE.sRGBEncoding; t.flipY = false; res(t); }, undefined, () => res(null)));
+  return new Promise(res => texLoader.load(ASSET + path + '?v=' + ASSET_V, t => { t.encoding = THREE.sRGBEncoding; t.flipY = false; res(t); }, undefined, () => res(null)));
 }
 const variations = [];
 
@@ -1094,8 +1203,12 @@ function groundGeometry(view){
     if (ch === 'k') { quad(X, -1.2, Z + 1, X + 1, -1.2, Z + 1, X + 1, -1.2, Z, X, -1.2, Z, rgbOf(RAVINE_FLOOR)); continue; }
     if (ch === ' ' || ch === 'w' || ch === 's' || ch === 'B') continue;
     const look = TERRAIN_LOOK[terrAtOf(view, X, Z)];
+    // Balance: a claimed 'r' road tile is coloured by its territory's era (roadColor); when that helper
+    // is not around (a bare groundGeometry harness) it falls back to the plain terrain path, as before.
+    const roadRgb = ch === 'r' && typeof roadColor === 'function'
+      ? rgbOf(roadColor(cellTerrain(view, X, Z) || { terrain: terrAtOf(view, X, Z) })) : rgbOf(look.path);
     const rgb = jitter(X, Z,
-      ch === '.' ? rgbOf(look.wild) : ch === 'r' ? rgbOf(look.path) : ch === 't' ? rgbOf(TRACK_COLOR) :
+      ch === '.' ? rgbOf(look.wild) : ch === 'r' ? roadRgb : ch === 't' ? rgbOf(TRACK_COLOR) :
       ch === 'b' ? rgbOf(BEACH_COLOR) : ch === 'm' ? rgbOf(PASS_COLOR) : ch === 'f' ? rgbOf(FOREST_FLOOR) : rgbOf(look.ground));
     quad(X, 0, Z + 1, X + 1, 0, Z + 1, X + 1, 0, Z, X, 0, Z, rgb); // wound so the top face normal points up (three.js front-face)
     if (gap(at(X, Z - 1))) quad(X, 0, Z, X + 1, 0, Z, X + 1, -1, Z, X, -1, Z, rock);
@@ -1149,6 +1262,7 @@ function buildLand(view){
   world.position.set(-mid.x, 0, -mid.z);
   labels.length = 0;
   glows.length = 0;
+  signs.length = 0;
   const territories = view.territories || [];
 
   landGroup.add(meshFromGeometry(groundGeometry(view)));
@@ -1170,8 +1284,9 @@ function buildLand(view){
 
   for (const t of territories) {
     const hs = t.size < .15 ? 1.3 : 1.85;
-    const hall = place('building-j', t.cx - .5, t.cz - .5, { fit: hs, parent: landGroup });
-    const flag = place('flag', t.cx - .4, t.cz - .25, { y: lib['building-j'].size.y * fitScale('building-j', hs), s: .7, parent: landGroup });
+    const hallKey = eraLook(t).hall; // Balance: the hall model follows the era shown (village/town/city)
+    const hall = place(hallKey, t.cx - .5, t.cz - .5, { fit: hs, parent: landGroup });
+    const flag = place('flag', t.cx - .4, t.cz - .25, { y: lib[hallKey].size.y * fitScale(hallKey, hs), s: .7, parent: landGroup });
     const hTiles = [[-1, 0], [0, 0], [-1, 1], [0, 1]].map(([dx, dz]) => (t.cx - mid.x + dx) + ',' + (t.cz - mid.z + dz));
     for (const g of [hall, flag]) fadeables.push({ g, tiles: hTiles, fromLand: true });
     const decor = hallDecor(t, view), lamps = decor.filter(d => d.key === 'lantern');
@@ -1181,6 +1296,8 @@ function buildLand(view){
     for (const p of t.plots || []) place('patch-grass', p.x + .5, p.z + .5, { fit: .85, keepY: true, y: -.1, parent: landGroup });
     for (const bd of t.buildings || []) newBuildingRecord(t.id, bd.plot, bd.type, bd.x, bd.z, bd.by, true);
     const el = ovEl('lbl'); setText(el, t.name); labels.push({ el, x: t.cx, h: 2.1 * (t.size < .15 ? .8 : 1), z: t.cz });
+    // Balance: the "还差：..." sign, in front of the hall (south of its centre, like home/hallStand)
+    const signEl = ovEl('era-sign'); signs.push({ el: signEl, t, x: t.cx, z: t.cz + 1.7 });
   }
   updateHome(); // the world changed: look at a town hall, never at the empty middle of the land
   if (!firstViewDone && lastTouch === -Infinity) { firstViewDone = true; resetCam(); } // only the first world goes home; a later one never snaps the camera back
@@ -1286,14 +1403,16 @@ function frontYaw(b){
   const [fx, fz] = frontOf(b.gx, b.gy);
   return Math.atan2(fx - b.gx, fz - b.gy);
 }
-/* a building of Growth's 5 types, picked from BUILD_MODELS[type]; rises then stays (permanent) */
+/* a building of Growth's 5 types, picked from eraLook(t).build[type] (Balance: replaces BUILD_MODELS); rises then stays (permanent) */
 function makeBuilding(b){
   const x = b.gx + .5, z = b.gy + .5;
   const g = new THREE.Group(); g.position.set(x, 0, z); world.add(g);
   const v = { g, meshes: [], plane: null, h: 1 };
   v.cones = new THREE.Group(); g.add(v.cones);
   for (const [cx, cz] of [[-.38, -.38], [.38, -.38], [.38, .38], [-.38, .38]]) place('construction-cone', cx, cz, { s: 1.7, parent: v.cones });
-  const opts = BUILD_MODELS[b.type] || BUILD_MODELS.house;
+  const bt = terrOf(b.terr) || { id: b.terr, era: 'village' };
+  const build = eraLook(bt).build;
+  const opts = build[b.type] || build.house;
   const key = opts[Math.floor(sr(b.seed, 1) * opts.length)];
   const fit = b.type === 'tower' ? .82 : 1;
   v.model = place(key, 0, 0, { fit, ry: frontYaw(b), parent: g });
@@ -1352,6 +1471,8 @@ function ovBtn(cls, html){ const el = document.createElement('button'); el.type 
 function pin(el, x, y, show){ if (!show) { if (!el.hidden) el.hidden = true; return; } if (el.hidden) el.hidden = false; el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
 function setText(el, text){ if (el._t !== text) { el._t = text; el.textContent = text; } }
 const labels = [];
+/* Balance: one .era-sign overlay per territory, in front of its hall; {el, t, x, z}, filled by buildLand */
+const signs = [];
 const govBub = ovEl('bub gov'), govTag = ovEl('tagl'), govQm = ovBtn('qm', '<span>?</span>');
 govTag.style.setProperty('--c', '#FF6F8B'); setText(govTag, '总督 · main manager');
 function ensureOv(c){
@@ -1605,6 +1726,10 @@ function sync(t, dt){
     pin(f.el, sx + 22, sy, true);
   }
   for (const l of labels) { const [sx, sy] = toScreen(l.x, l.h, l.z); pin(l.el, sx, sy, true); }
+  for (const sg of signs) { // Balance: the "还差：..." sign, hidden while signText(t) is ''
+    const text = signText(sg.t), [sx, sy] = toScreen(sg.x, 1.5, sg.z);
+    setText(sg.el, text); pin(sg.el, sx, sy, !!text);
+  }
 }
 /* ---------- panel ---------- */
 const dirty = { log:true };
@@ -1691,7 +1816,101 @@ function renderLog(){
   if (!dirty.log) return; dirty.log = false;
   $('#log').innerHTML = logEntries.map(e => `<li><time>${e.real ? new Date(e.real).toTimeString().slice(0, 8) : clock(e.t)}</time><span class="${e.kind}">${esc(e.text)}</span></li>`).join('');
 }
-function renderPanel(){ renderStats(); renderRoster(); renderDetail(); renderLog(); $('#clock').textContent = DEMO ? '模拟 ' + clock(simT) : '现在 ' + new Date().toTimeString().slice(0, 8); }
+
+/* ---------- balance card (requirements/city.md, Balance): the 5 kinds, one bar each ---------- */
+/* barOf(state) -> the bar's fill %, a top-level pure helper (used by kindBar) */
+function barOf(state){ return { healthy: 100, low: 45, missing: 0, na: 100 }[state] ?? 0; }
+/* kindBar(k, b, opened) -> the <li class="kind"> for one kind. b = t.balance[k] (or undefined -> missing/
+   还没数过). opened = the open={kind,files,total,rules,error} object when this is the clicked kind. */
+function kindBar(k, b, opened){
+  const KIND_COL = { build: '#F4A259', rules: '#4D7CFE', beauty: '#FF7593', knowledge: '#2FB57A', infra: '#9C6B4E' };
+  const st = b ? b.state : 'missing';
+  const text = b ? b.text : '还没数过';
+  const open = !!(opened && opened.kind === k);
+  let list = '';
+  if (open) {
+    if (opened.demo) list = `<div class="files"><p class="more">演示：没有真实文件</p></div>`;
+    else if (opened.error) list = `<div class="files"><p class="more">文件列表拿不到：${esc(opened.error)}</p></div>`;
+    else if (opened.files === null) list = `<div class="files"><p class="more">正在拿文件列表…</p></div>`;
+    else {
+      const more = opened.total > opened.files.length ? `<p class="more">还有 ${opened.total - opened.files.length} 个</p>` : '';
+      const fix = opened.rules ? `<p class="fix">分错了？改 <code>${esc(opened.rules)}</code>：一行 “路径 = none” 就跳过它</p>` : '';
+      list = `<div class="files"><ol>${opened.files.map(f => `<li>${esc(f)}</li>`).join('')}</ol>${more}${fix}</div>`;
+    }
+  }
+  return `<li class="kind" data-kind="${k}" data-state="${st}">` +
+    `<button type="button" aria-expanded="${open}"><span class="ic" style="background:${KIND_COL[k]}"></span>` +
+    `<span class="nm">${esc(KIND_ZH[k])}</span><span class="track"><i style="width:${barOf(st)}%"></i></span>` +
+    `<span class="st ${st}">${esc(STATE_ZH[st])}</span><span class="val">${esc(text)}</span></button>${list}</li>`;
+}
+/* balanceHtml(t, open, terrs) -> the whole #balance card body for territory t. terrs = [{id, name}]; a
+   picker only shows when there is more than one (data-bterr, aria-pressed on the one shown = t). */
+function balanceHtml(t, open, terrs){
+  const KINDS = ['build', 'rules', 'beauty', 'knowledge', 'infra'];
+  const ORDER = ['village', 'town', 'city'];
+  const era = t.era || 'village';
+  const next = ORDER[ORDER.indexOf(era) + 1];
+  const sign = signText(t);
+  const eraLine = !next
+    ? `<div class="era">时代 <b>${esc(ERA_ZH[era])}</b> · 已经是城</div>`
+    : `<div class="era">时代 <b>${esc(ERA_ZH[era])}</b> → <b>${esc(ERA_ZH[next])}</b>${sign ? `<span class="need">${esc(sign)}</span>` : ''}</div>`;
+  const note = t.rules_note ? `<p class="note">${esc(t.rules_note)}</p>` : '';
+  const picker = terrs && terrs.length > 1
+    ? `<div class="bterr">${terrs.map(x => `<button class="btn" type="button" data-bterr="${esc(x.id)}" aria-pressed="${x.id === t.id}">${esc(x.name)}</button>`).join('')}</div>`
+    : '';
+  const kinds = KINDS.map(k => kindBar(k, t.balance && t.balance[k], open)).join('');
+  return picker + eraLine + note + `<ul class="kinds">${kinds}</ul>`;
+}
+/* openBalanceKind(kind): toggles the clicked kind open/closed; live asks the server for its file list
+   (X-City-Token header), demo never fetches (no real files to list). A failed fetch is shown, never
+   swallowed (network error, non-2xx, or a body that is not JSON). */
+async function openBalanceKind(kind){
+  const t = currentBalanceTerr(); if (!t) return;
+  if (balanceOpen && balanceOpen.kind === kind && balanceOpen.terr === t.id) { balanceOpen = null; renderBalance(); return; }
+  if (DEMO) { balanceOpen = { kind, terr: t.id, demo: true }; renderBalance(); return; }
+  balanceOpen = { kind, terr: t.id, files: null, total: 0, rules: '', error: '' };
+  renderBalance();
+  let res;
+  try {
+    res = await fetch('/api/balance?terr=' + encodeURIComponent(t.id) + '&kind=' + encodeURIComponent(kind), { headers: { 'X-City-Token': TOKEN } });
+  } catch (e) {
+    balanceOpen = Object.assign({}, balanceOpen, { files: [], error: '没连上城市服务器' });
+    renderBalance();
+    return;
+  }
+  if (!res.ok) {
+    balanceOpen = Object.assign({}, balanceOpen, { files: [], error: 'HTTP ' + res.status });
+    renderBalance();
+    return;
+  }
+  const data = await res.json().catch(() => null);
+  if (!data) { balanceOpen = Object.assign({}, balanceOpen, { files: [], error: '数据解析失败' }); renderBalance(); return; }
+  balanceOpen = Object.assign({ kind, terr: t.id }, data);
+  renderBalance();
+}
+let balanceOpen = null, balanceTerr = null;
+/* the territory the balance card shows: whichever the owner picked, else the home/governor territory */
+function currentBalanceTerr(){ return terrOf(balanceTerr) || terrOf(govTerr) || (map.territories || [])[0] || null; }
+let lastBalanceKey = '';
+function renderBalance(){
+  const el = $('#balance'); if (!el) return;
+  const t = currentBalanceTerr();
+  if (!t) { if (el.innerHTML) el.innerHTML = ''; lastBalanceKey = ''; return; }
+  const terrs = (map.territories || []).map(x => ({ id: x.id, name: x.name }));
+  const key = t.id + '|' + (t.era || '') + '|' + JSON.stringify(t.balance) + '|' + (t.next || []).join(',') +
+    '|' + (t.rules_note || '') + '|' + JSON.stringify(balanceOpen) + '|' + terrs.map(x => x.id).join(',');
+  if (key === lastBalanceKey) return;
+  lastBalanceKey = key;
+  el.innerHTML = balanceHtml(t, balanceOpen, terrs);
+}
+$('#balance').addEventListener('click', e => {
+  const bterr = e.target.closest('[data-bterr]');
+  if (bterr) { balanceTerr = bterr.dataset.bterr; balanceOpen = null; lastBalanceKey = ''; renderBalance(); return; }
+  const li = e.target.closest('.kind[data-kind]');
+  if (li && e.target.closest('button')) openBalanceKind(li.dataset.kind);
+});
+
+function renderPanel(){ renderStats(); renderRoster(); renderDetail(); renderLog(); renderBalance(); $('#clock').textContent = DEMO ? '模拟 ' + clock(simT) : '现在 ' + new Date().toTimeString().slice(0, 8); }
 
 /* ---------- right column: collapse, drag to reorder, remembered per browser ---------- */
 const panel = $('#panel');
