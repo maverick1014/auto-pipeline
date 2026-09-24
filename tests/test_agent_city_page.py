@@ -231,6 +231,10 @@ CONTRACT
       ground is not grassland ground. Terrain changes the look only.
     MODELS has a bridge, a river piece and a rock or cliff (gaps).
     buildLand() places a town hall ('building-j') for every territory.
+    restSlotsFor(t) -> the rest spots near territory t's town hall ({x, y,
+      pose, by}, world tiles), each on a walkable tile: never on a plot, the
+      hall, water or the void, so nobody rests inside a building. At least 3
+      when the tiles around the hall allow it.
 
   bin/agent-city-assets/
     vendor/three.min.js, vendor/GLTFLoader.js, vendor/SkeletonUtils.js
@@ -1850,7 +1854,43 @@ def js_value(literal):
     return json.loads(result.stdout)
 
 
+REST_JS = r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+// a territory whose hall sits at (0, 0), plots (P) on some tiles right beside the plaza
+const rows = [
+  '.........',
+  '..ggggg..',
+  '..ggrgg..',
+  '..gHHgg..',
+  '..gHHgg..',
+  '.PggrgPP.',
+  '..PgPgg..',
+  '..ggPg...',
+  '.........' ];
+const view = { cell: 26, x0: -4, z0: -4, w: 9, h: 9, rows, territories: [{ id: 't1', cx: 0, cz: 0 }], links: [] };
+const box = Object.assign({ Math, JSON, console, occupied: new Map(), blocked: new Set(), map: view, restSlotsByTerr: new Map() });
+vm.createContext(box);
+vm.runInContext(prelude + '\n' + fns, box);
+const slots = box.restSlotsFor(view.territories[0]);
+process.stdout.write(JSON.stringify({ spots: slots.map(r => [r.x, r.y, box.tileAt(Math.floor(r.x), Math.floor(r.y)), !!box.walkable(Math.floor(r.x), Math.floor(r.y))]) }));
+"""
+
+
 class TestGrowthPage(unittest.TestCase):
+    def test_nobody_rests_inside_a_building(self):
+        rest_off = const_object("REST_OFF")
+        fns = ["const REST_OFF = %s;" % rest_off if rest_off else ""]
+        for name in ("tileAt", "walkable", "restSlotsFor"):
+            src = function_source(name)
+            self.assertIsNotNone(src, "function %s(...) not found" % name)
+            fns.append(src)
+        out = run_node(REST_JS, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
+        self.assertGreaterEqual(len(out["spots"]), 3, out)
+        for x, z, ch, ok in out["spots"]:
+            with self.subTest(spot=(x, z)):
+                self.assertTrue(ok, "a rest spot on %r at %s" % (ch, (x, z)))
+
     def test_old_fixed_island_is_gone(self):
         text = inline_script()
         for name in ("const PLOTS", "const GX1", "const BRIDGE_X", "function demolishOldest", "function removeBuilding",
