@@ -542,6 +542,22 @@ if [ "$SRC" = compact ] && [ -n "$SID" ]; then
   exit 0
 fi
 
+# ---- /clear: same idea as compact — write state, /clear, keep going from
+# the file instead of ending the session (S8). Short, no resources, no
+# counts, no quiz, no auto-resume. Same byte cap. The compact counter is
+# untouched: a clear is not a compaction. ----
+if [ "$SRC" = clear ] && [ -n "$SID" ]; then
+  CLEARED_LINE="CLEARED. Continue from agent_state.txt, not from memory (S8)."
+  RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
+  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(line_bytes "$CLEARED_LINE") + $(line_bytes "$RULES_LINE") ))
+  budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
+  printf '%s' "$ROLE_TEXT"
+  printf '%s\n' "$CLEARED_LINE"
+  print_state_block "$budget"
+  printf '%s\n' "$RULES_LINE"
+  exit 0
+fi
+
 # ---- normal start ----
 
 # ---- drop stale session markers. Only on a real startup run (never

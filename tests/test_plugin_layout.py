@@ -296,6 +296,19 @@ class TestPrinciplesR3(unittest.TestCase):
                 self.assertIn(rule, text)
 
 
+class TestPrinciplesS8(unittest.TestCase):
+    """S8 clears instead of restarting."""
+
+    def s8(self):
+        text = read("PRINCIPLES.md")
+        start = text.index("S8.")
+        end = text.index("S9.")
+        return text[start:end]
+
+    def test_it_mentions_clear(self):
+        self.assertIn("/clear", self.s8())
+
+
 class TestEffortIsAlwaysPassed(unittest.TestCase):
     """Every launch of a claude session names the effort, read from agent.conf.
 

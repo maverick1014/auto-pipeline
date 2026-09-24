@@ -347,6 +347,45 @@ class TestCompactPath(StartCase):
         self.assertIn("(truncated, read the file)", out)
 
 
+class TestClearPath(StartCase):
+    def clear(self, **kwargs):
+        return self.start(
+            stdin='{"cwd": "%s", "session_id": "s2", "source": "clear"}'
+                  % self.repo.dir, **kwargs)
+
+    def test_it_says_cleared_and_keeps_role_and_rules(self):
+        out = self.assertOk(self.clear())
+        self.assertIn("ROLE:", out)
+        self.assertIn(self.rules_line(), out)
+        self.assertIn(
+            "CLEARED. Continue from agent_state.txt, not from memory (S8).",
+            out)
+
+    def test_it_prints_the_state_block(self):
+        with open(self.repo.path("agent_state.txt"), "w") as fh:
+            fh.write("STEP: 3 of 7\nNEXT: write the tests\n")
+        out = self.assertOk(self.clear())
+        self.assertIn("agent_state.txt: 2 lines", out)
+        self.assertIn("  STEP: 3 of 7", out)
+
+    def test_it_has_no_quiz_no_resources_no_auto_resume(self):
+        out = self.assertOk(self.clear())
+        self.assertNotIn("QUIZ:", out)
+        self.assertNotIn("RESOURCES:", out)
+        self.assertNotIn("agent_todo.txt:", out)
+        self.assertNotIn("=== auto resume ===", out)
+
+    def test_the_compact_counter_is_untouched(self):
+        self.assertOk(self.clear())
+        self.assertFalse(os.path.exists(
+            self.repo.path(".git", "agent_compact_s2")))
+
+    def test_a_second_clear_within_the_window_is_silent(self):
+        self.assertOk(self.clear())
+        out = self.assertOk(self.clear())
+        self.assertEqual(out, "")
+
+
 class TestResourcesHelper(StartCase):
     def helper(self, *args, **kwargs):
         return self.repo.run("agent-resources.sh", *args, **kwargs)
