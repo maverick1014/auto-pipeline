@@ -563,6 +563,7 @@ MAX_CLIENTS = 4
 QUEUE_MAXSIZE = 500
 PING_INTERVAL = 2.0
 TAIL_INTERVAL = 0.25
+RECOUNT_POLL_SEC = 2.0
 
 FALLBACK_PAGE = (
     b"<!doctype html><html><head><meta charset=\"utf-8\">"
@@ -611,7 +612,7 @@ class CityState:
     """Thread-safe home for the Reducer, asks, health counters and SSE clients."""
 
     def __init__(self, max_agents=40, done_ttl=600, gov_wait_sec=60.0,
-                 decisions_path=None, token=""):
+                 decisions_path=None, token="", world_path=None, plans=None, count_fn=None):
         self.lock = threading.Lock()
         self.cond = threading.Condition(self.lock)
         self.reducer = Reducer(max_agents=max_agents, done_ttl=done_ttl)
@@ -632,6 +633,20 @@ class CityState:
         self._ask_seq = 0
         self._governors_count = 0  # last count checked/broadcast (see _check_governors_count)
 
+        # -- world: territories, growth, town plans, persistence ----------
+        self.plans = plans if plans is not None else load_plans()
+        self.count_fn = count_fn or count_lines
+        self.world_path = world_path
+        if world_path is None:
+            self.world, self.notice = new_world(), None
+        else:
+            self.world, self.notice = load_world(world_path, self.plans)
+        self._view_cache = None
+        self.active = {}          # identity -> True since its last count
+        self.last_count = {}      # identity -> the recount() "now" it was last counted at
+        self.agent_terr = {}      # citizen id -> territory id, for the snapshot's agents
+        self.gov_terr = ""        # the governor's current territory id
+
     # -- SSE clients ----------------------------------------------------
 
     def add_client(self):
@@ -640,9 +655,14 @@ class CityState:
                 return None
             client = _Client()
             snap = self.reducer.snapshot()
-            snap = {"type": "snapshot", "gov": snap["gov"], "agents": snap["agents"],
+            gov = dict(snap["gov"], terr=self.gov_terr)
+            agents = [dict(a, terr=self.agent_terr.get(a["id"], "")) for a in snap["agents"]]
+            snap = {"type": "snapshot", "gov": gov, "agents": agents,
                     "asks": [ask.view() for ask in self.open.values()],
-                    "governors": self._fresh_governor_count()}
+                    "governors": self._fresh_governor_count(),
+                    "world": self._view()}
+            if self.notice is not None:
+                snap["notice"] = self.notice
             client.queue.put_nowait(_encode_event(snap))
             self.clients.append(client)
             return client
@@ -690,15 +710,136 @@ class CityState:
     def feed_line(self, obj, now):
         with self.lock:
             self.lines += 1
+            identity = self._identity_of(obj) if isinstance(obj, dict) else None
+            terr = territory_id(identity) if identity is not None else ""
+            if identity is not None:
+                if identity not in self.world["territories"]:
+                    add_territory(self.world, self.plans, identity, repo_name(identity))
+                    self._emit_world_locked()
+                self.active[identity] = True
+
             events = self.reducer.feed(obj, now)
             for ev in events:
+                if ev.get("type") == "spawn":
+                    ev["terr"] = terr
+                    self.agent_terr[ev["id"]] = terr
+                elif ev.get("type") == "gov":
+                    self.gov_terr = terr
+                    ev["terr"] = terr
+                elif ev.get("type") == "leave":
+                    self.agent_terr.pop(ev["id"], None)
                 self._broadcast(ev)
+
             if isinstance(obj, dict):
                 ev_name = obj.get("ev")
                 if ev_name == "PostToolUse":
                     self._maybe_close_from_terminal(obj)
+                    self._maybe_build(obj, identity, terr)
                 elif ev_name == "SessionEnd":
                     self._forget_governor(obj)
+
+    # -- world: territories, growth, town plans, persistence ------------
+
+    def _identity_of(self, obj):
+        repo = obj.get("repo")
+        if isinstance(repo, str) and repo:
+            return repo
+        proj = obj.get("proj")
+        if isinstance(proj, str) and proj:
+            return "dir:" + proj
+        return None
+
+    def _view(self):
+        """Caller holds self.lock. The layout view the page draws, cached
+        until the world changes."""
+        if self._view_cache is None:
+            self._view_cache = layout(self.world, self.plans)
+        return self._view_cache
+
+    def _invalidate_view(self):
+        self._view_cache = None
+
+    def _save_world_locked(self):
+        """Caller holds self.lock. Never crashes: a save failure is one line
+        on stderr, the server keeps running (in-memory only from then on)."""
+        if self.world_path is None:
+            return
+        try:
+            save_world(self.world_path, self.world)
+        except OSError as exc:
+            print("agent_city: could not save world.json: %s" % exc, file=sys.stderr)
+
+    def _emit_world_locked(self):
+        """Caller holds self.lock. The world changed: recompute the view,
+        broadcast it, save at once."""
+        self._invalidate_view()
+        self._broadcast({"type": "world", "world": self._view()})
+        self._save_world_locked()
+
+    def _build_by(self, owner, at, role, is_gov):
+        if is_gov:
+            return "总督"
+        known = self.reducer.agents.get(owner)
+        if known is not None:
+            return known["label"]
+        return at or role
+
+    def _maybe_build(self, obj, identity, terr):
+        """Caller holds self.lock. A PostToolUse line with a known kind
+        builds in its agent's territory. Never counts code lines."""
+        kind = obj.get("kind")
+        if identity is None or not isinstance(kind, str) or kind not in KIND_TYPE:
+            return
+        sid = obj.get("sid") if isinstance(obj.get("sid"), str) else ""
+        aid = obj.get("aid") if isinstance(obj.get("aid"), str) else ""
+        at = obj.get("at") if isinstance(obj.get("at"), str) else ""
+        role = obj.get("role") if isinstance(obj.get("role"), str) else ""
+        is_gov = (not aid) and sid != "" and sid == self.reducer.gov_sid
+        owner = aid or ("s:" + sid)
+        by = self._build_by(owner, at, role, is_gov)
+        b = build(self.world, self.plans, identity, kind, owner, by, time.time())
+        if b is None:
+            return
+        self._invalidate_view()
+        view = self._view()
+        x = z = None
+        for tv in view["territories"]:
+            if tv["id"] == terr:
+                for bv in tv["buildings"]:
+                    if bv["plot"] == b["plot"]:
+                        x, z = bv["x"], bv["z"]
+                break
+        self._broadcast({"type": "build", "id": "gov" if is_gov else owner, "terr": terr,
+                          "plot": b["plot"], "btype": b["type"], "x": x, "z": z, "by": b["by"]})
+        self._save_world_locked()
+
+    def recount(self, now):
+        """Count every territory active since its last count, RECOUNT_SEC
+        or more ago (never counted: due at once). count_fn runs outside the
+        lock. Returns how many territories were counted."""
+        with self.lock:
+            due = [i for i in self.world["territories"]
+                   if i not in self.last_count
+                   or (self.active.get(i) and (now - self.last_count[i]) >= RECOUNT_SEC)]
+        if not due:
+            return 0
+        counted = {i: self.count_fn(i) for i in due}
+        with self.lock:
+            changed = False
+            for i, val in counted.items():
+                t = self.world["territories"].get(i)
+                self.last_count[i] = now
+                self.active[i] = False
+                if t is None:
+                    continue
+                before = (t["lines"], t["peak"])
+                t["lines"] = val
+                t["peak"] = max(t["peak"], val)
+                if (t["lines"], t["peak"]) != before:
+                    changed = True
+            if changed:
+                self._emit_world_locked()
+        return len(due)
 
     def _forget_governor(self, obj):
         """A SessionEnd for a governor's sid forgets it at once: any waiting
@@ -1459,6 +1600,14 @@ def tail_loop(directory, city, max_log_bytes, stop_event, request_shutdown,
         time.sleep(TAIL_INTERVAL)
 
 
+def recount_loop(city, stop_event):
+    """Recount active territories about every RECOUNT_POLL_SEC, with the
+    same clock (time.monotonic()) feed_line gets. Stops with the server."""
+    while not stop_event.is_set():
+        city.recount(time.monotonic())
+        stop_event.wait(RECOUNT_POLL_SEC)
+
+
 # --------------------------------------------------------------------------
 # Hook-side helpers: talking to an already-running server
 # --------------------------------------------------------------------------
@@ -1563,7 +1712,9 @@ def cmd_serve(args):
         initial_skip = 0
 
     decisions_path = args.decisions or os.path.expanduser("~/.claude/agent-city/decisions.jsonl")
-    city = CityState(gov_wait_sec=args.gov_wait_sec, decisions_path=decisions_path, token=token)
+    world_path_arg = args.world if args.world is not None else world_path()
+    city = CityState(gov_wait_sec=args.gov_wait_sec, decisions_path=decisions_path, token=token,
+                      world_path=world_path_arg)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), CityHandler)
     server.daemon_threads = True
     server.city = city
@@ -1596,6 +1747,11 @@ def cmd_serve(args):
         daemon=True,
     )
     tail.start()
+
+    recount_thread = threading.Thread(
+        target=recount_loop, args=(city, stop_event), daemon=True,
+    )
+    recount_thread.start()
 
     try:
         server.serve_forever(poll_interval=0.2)
@@ -1996,8 +2152,6 @@ GAPS = {
     frozenset(("coast", "desert")): "river",
     frozenset(("coast", "forest")): "forest",
 }
-_EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # sha1 of an empty git tree
-
 
 # -- identity and growth: pure numbers, no per-repo state ------------------
 
@@ -2610,10 +2764,21 @@ def count_lines(identity):
     """Added lines of `git --git-dir=IDENTITY diff --numstat <empty tree>
     HEAD`, counting only rows counts_as_code keeps (a binary row's "added"
     is "-", never counted). 0 when IDENTITY is not a git dir, has no
-    commit, or git times out or errors -- runs git only, nothing else."""
+    commit, or git times out or errors -- runs git only, nothing else. The
+    empty tree id comes from git itself (`hash-object -t tree --stdin` on
+    empty input), so SHA-256 repos (a different empty tree id than SHA-1)
+    count too."""
+    try:
+        empty_tree = subprocess.run(
+            ["git", "--git-dir=" + identity, "hash-object", "-t", "tree", "--stdin"],
+            input="", capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return 0
+    if empty_tree.returncode != 0:
+        return 0
     try:
         result = subprocess.run(
-            ["git", "--git-dir=" + identity, "diff", "--numstat", _EMPTY_TREE, "HEAD"],
+            ["git", "--git-dir=" + identity, "diff", "--numstat", empty_tree.stdout.strip(), "HEAD"],
             capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
         return 0
@@ -2671,6 +2836,7 @@ def _build_parser():
     serve.add_argument("--assets", default=None)
     serve.add_argument("--gov-wait-sec", type=float, default=60.0)
     serve.add_argument("--decisions", default=None)
+    serve.add_argument("--world", default=None)
 
     ask_p = sub.add_parser("ask")
     ask_p.add_argument("--max-wait-sec", type=float, default=3600.0)
