@@ -255,6 +255,16 @@ CONTRACT
       the middle must not tilt the view off the land).
     buildLand() calls updateHome(): ⛶ looks at a town hall, never at the
       empty middle of the land.
+  Second E2E pass (headless screenshots): the ground did not show at all.
+    Faces point the right way: every top face of groundGeometry and
+      waterGeometry faces up (normal (b-a) x (c-a) has y > 0, three.js
+      front faces), every skirt face faces out, toward the void or ravine
+      tile beside it.
+    Day 0 is bare: hallDecor(t, view) -> the decorations around territory
+      t's hall as [{key, x, z}] (world tiles): [] while t.open is 0 (no
+      plot yet); later a fountain and lamps, each on a 'g' tile (never a
+      road, plot or the hall). buildLand places exactly these; pets and
+      other life come only to a territory with open plots.
     restSlotsFor(t) -> the rest spots near territory t's town hall ({x, y,
       pose, by}, world tiles), each on a walkable tile: never on a plot, the
       hall, water or the void, so nobody rests inside a building. At least 3
@@ -1965,18 +1975,53 @@ for (const name of ['groundGeometry', 'waterGeometry']) {
   const g = box[name](view);
   const P = Array.from(g.positions), C = Array.from(g.colors), I = Array.from(g.indices || []);
   const idx = I.length ? I : P.map((_, i) => i).filter(i => i < P.length / 3);
-  const top = {}, skirt = [], odd = [];
+  const top = {}, skirt = [], odd = [], down = [], inward = [];
+  const at = (x, z) => { const r = z - view.z0, c = x - view.x0; return r >= 0 && r < view.h && c >= 0 && c < view.w ? view.rows[r][c] : ' '; };
   for (let t = 0; t < idx.length; t += 3) {
     const vs = [idx[t], idx[t + 1], idx[t + 2]].map(i => ({ x: P[3 * i], y: P[3 * i + 1], z: P[3 * i + 2], c: [C[3 * i], C[3 * i + 1], C[3 * i + 2]] }));
+    const ax = vs[1].x - vs[0].x, ay = vs[1].y - vs[0].y, az = vs[1].z - vs[0].z, bx = vs[2].x - vs[0].x, by = vs[2].y - vs[0].y, bz = vs[2].z - vs[0].z;
+    const n = [ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx];
+    if (vs.every(v => Math.abs(v.y - vs[0].y) < 1e-6)) { if (!(n[1] > 0)) down.push([vs[0].x, vs[0].y, vs[0].z]); }
+    else {
+      const cx = (vs[0].x + vs[1].x + vs[2].x) / 3, cz = (vs[0].z + vs[1].z + vs[2].z) / 3, l = Math.hypot(n[0], n[2]) || 1;
+      const ch = at(Math.floor(cx + n[0] / l * .5), Math.floor(cz + n[2] / l * .5));
+      if (!' k'.includes(ch)) inward.push([cx, cz, ch]);
+    }
     if (vs.every(v => v.y > -0.2)) {
       const x0 = Math.min(...vs.map(v => v.x)), z0 = Math.min(...vs.map(v => v.z)), x1 = Math.max(...vs.map(v => v.x)), z1 = Math.max(...vs.map(v => v.z));
       if (!vs.every(v => Number.isInteger(Math.round(v.x * 1e6) / 1e6) && Number.isInteger(Math.round(v.z * 1e6) / 1e6)) || x1 - x0 !== 1 || z1 - z0 !== 1) odd.push([x0, z0, x1, z1]);
       const k = x0 + ',' + z0; top[k] = top[k] || vs[0].c.map(v => Math.round(v * 1000) / 1000);
     } else if (vs.some(v => v.y <= -0.8)) skirt.push(vs.map(v => v.c.map(q => Math.round(q * 1000) / 1000)));
   }
-  out[name] = { top, skirt: skirt.length, skirtColors: skirt.slice(0, 400).flat(), odd: odd.slice(0, 5) };
+  out[name] = { top, skirt: skirt.length, skirtColors: skirt.slice(0, 400).flat(), odd: odd.slice(0, 5), down: down.length, downAt: down.slice(0, 3), inward: inward.slice(0, 5) };
 }
 process.stdout.write(JSON.stringify(out));
+"""
+
+
+DECOR_JS = r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const rows = [
+  '.........',
+  '..ggggg..',
+  '..ggrgg..',
+  '..gHHgg..',
+  '..gHHgg..',
+  '.PggrgPP.',
+  '..PgPgg..',
+  '..ggPg...',
+  '.........' ];
+const view = { cell: 26, x0: -4, z0: -4, w: 9, h: 9, rows, territories: [], links: [] };
+const box = Object.assign({ Math, JSON, console, occupied: new Map(), blocked: new Set(), map: view });
+vm.createContext(box);
+vm.runInContext(prelude + '\n' + fns, box);
+const ch = (x, z) => { const r = Math.floor(z) - view.z0, c = Math.floor(x) - view.x0; return r >= 0 && r < view.h && c >= 0 && c < view.w ? rows[r][c] : ' '; };
+const t0 = { id: 't', cx: 0, cz: 0, open: 0, size: 0 }, t1 = { id: 't', cx: 0, cz: 0, open: 6, size: .4 };
+process.stdout.write(JSON.stringify({
+  day0: box.hallDecor(t0, view),
+  grown: box.hallDecor(t1, view).map(d => [d.key, d.x, d.z, ch(d.x, d.z)]),
+}));
 """
 
 
@@ -2040,6 +2085,33 @@ class TestOneLand(unittest.TestCase):
         for k, rgb in w["top"].items():
             self.assertGreater(rgb[2], rgb[0], "water at %s is not blue" % k)
         self.assertNotIn("ground_riverStraight", inline_script(), "no chopped river tile models for water")
+
+    def test_the_ground_and_water_face_up(self):
+        """Second pass: the top faces were wound clockwise, so three.js culled the whole ground."""
+        for name in ("groundGeometry", "waterGeometry"):
+            with self.subTest(mesh=name):
+                g = ground_results()[name]
+                self.assertEqual(g["down"], 0, "faces pointing down, e.g. at %s" % g["downAt"])
+
+    def test_the_cliff_faces_look_out(self):
+        self.assertEqual(ground_results()["groundGeometry"]["inward"], [], "a skirt face points into the land")
+
+    def test_day_zero_is_bare(self):
+        rest_off = const_object("REST_OFF")
+        src = function_source("hallDecor")
+        self.assertIsNotNone(src, "function hallDecor(t, view) not found")
+        fns = [src]
+        for name in ("tileAt", "walkable"):
+            if function_source(name):
+                fns.append(function_source(name))
+        out = run_node(DECOR_JS, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
+        self.assertEqual(out["day0"], [], "day 0: nothing but the town hall")
+        self.assertTrue(out["grown"], "a town with open plots gets its fountain and lamps")
+        for key, x, z, ch in out["grown"]:
+            with self.subTest(decor=key):
+                self.assertEqual(ch, "g", "%s stands on %r at %s" % (key, ch, (x, z)))
+        self.assertIn("hallDecor(", function_source("buildLand") or "")
+        self.assertNotRegex(function_source("buildLand") or "", r"place\('fountain-round', t\.cx")
 
     def test_the_home_view_is_a_town_hall(self):
         self.assertRegex(function_source("buildLand") or "", r"updateHome\(\)")
