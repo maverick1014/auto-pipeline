@@ -1077,6 +1077,7 @@ function groundGeometry(view){
   const positions = [], colors = [], indices = [];
   const at = (X, Z) => { const r = Z - view.z0, c = X - view.x0; if (r < 0 || r >= view.h) return ' '; const row = view.rows[r] || ''; return c >= 0 && c < row.length ? row[c] : ' '; };
   const gap = ch => ch === ' ' || ch === 'k';
+  const water = ch => ch === 'w' || ch === 's' || ch === 'B';
   const cl = v => v < 0 ? 0 : v > 1 ? 1 : v;
   const quad = (x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3, rgb) => {
     const base = positions.length / 3;
@@ -1099,6 +1100,13 @@ function groundGeometry(view){
     if (gap(at(X, Z + 1))) quad(X + 1, 0, Z + 1, X, 0, Z + 1, X, -1, Z + 1, X + 1, -1, Z + 1, rock);
     if (gap(at(X - 1, Z))) quad(X, 0, Z + 1, X, 0, Z, X, -1, Z, X, -1, Z + 1, rock);
     if (gap(at(X + 1, Z))) quad(X + 1, 0, Z, X + 1, 0, Z + 1, X + 1, -1, Z + 1, X + 1, -1, Z, rock);
+    // a bank down to the water (shallower than a cliff skirt, stays above the y <= -0.8 that flags one): no
+    // white line of page background between the ground (y 0) and the water (y -0.06) where they meet.
+    const bankY = -.3, bankRgb = [rgb[0] * .7, rgb[1] * .7, rgb[2] * .7];
+    if (water(at(X, Z - 1))) quad(X, 0, Z, X + 1, 0, Z, X + 1, bankY, Z, X, bankY, Z, bankRgb);
+    if (water(at(X, Z + 1))) quad(X + 1, 0, Z + 1, X, 0, Z + 1, X, bankY, Z + 1, X + 1, bankY, Z + 1, bankRgb);
+    if (water(at(X - 1, Z))) quad(X, 0, Z + 1, X, 0, Z, X, bankY, Z, X, bankY, Z + 1, bankRgb);
+    if (water(at(X + 1, Z))) quad(X + 1, 0, Z, X + 1, 0, Z + 1, X + 1, bankY, Z + 1, X + 1, bankY, Z, bankRgb);
   }
   return { positions, colors, indices };
 }
@@ -1173,6 +1181,7 @@ function buildLand(view){
     const el = ovEl('lbl'); setText(el, t.name); labels.push({ el, x: t.cx, h: 2.1 * (t.size < .15 ? .8 : 1), z: t.cz });
   }
   updateHome(); // the world changed: look at a town hall, never at the empty middle of the land
+  if (lastTouch === -Infinity) resetCam(); // the first view: home, not the land's empty middle; never after the user has touched the camera
   scanTall();
 }
 
