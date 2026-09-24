@@ -28,12 +28,37 @@ CONTRACT
              bytes; "" for other tools or when not found there. Only the
              length, never the text: it lets the city tell which request a
              terminal answer closed (tests/test_agent_city_interact.py).
+       repo  growth (requirements/city.md): the physical path of the git
+             common dir of cwd, so a linked worktree gives its main repo's
+             .git. Found with builtins only: walk up from cwd to the first
+             folder holding .git; a .git folder is the answer; a .git file
+             ("gitdir: <path>") points at the worktree's git dir, whose
+             "commondir" file (relative to it) points at the common dir.
+             Physical path through `cd -P` and `pwd -P`. JSON-escaped.
+             "" outside git or when cwd does not exist.
+       kind  growth: the kind of work of a file edit, only for PostToolUse of
+             Edit, Write, MultiEdit (tool_input.file_path) and NotebookEdit
+             (tool_input.notebook_path), found in the first 4096 bytes; else
+             "". The path is taken relative to the folder holding .git (a
+             file outside it: its own name), then the first rule that fits:
+               test    a folder test, tests, __tests__, spec, e2e; or a name
+                       test_*, *_test.*, *.test.*, *.spec.*, *_spec.*, *Test.*
+               doc     a name *.md *.markdown *.mdx *.rst *.adoc *.txt; or a
+                       folder docs, doc, requirements
+               ui      a name *.html *.htm *.css *.scss *.sass *.less *.jsx
+                       *.tsx *.vue *.svelte; or a folder components, ui,
+                       views, pages, widgets, screens
+               script  a name *.sh *.bash *.zsh *.fish *.ps1 *.bat *.cmd *.mk,
+                       Makefile, Dockerfile; or a folder bin, scripts, .github
+               other   anything else
+             Only the kind is written, never the path (privacy).
      desc and q: at most 200 bytes, always a valid JSON string.
      Nothing else from the payload is ever written: not tool_input,
      tool_response, prompt, message or last_assistant_message.
      No hook_event_name in the input: write nothing.
   3. Bash builtins only. It works with PATH pointing at an empty folder, so it
-     never starts python, jq, curl, date or cat.
+     never starts python, jq, curl, date, cat or git. Works on bash 3.2
+     (macOS /bin/bash): no ${x,,}, no declare -A, no mapfile.
   4. It reads at most the first 4096 bytes of stdin, except for Agent, Task
      and AskUserQuestion, so a 1 MB Write payload costs no more than a small one.
   5. Never prints to stdout or stderr. Always exits 0, even on garbage.
@@ -58,7 +83,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(ROOT, "bin", "agent-city-hook.sh")
 BASH = shutil.which("bash")
-KEYS = {"ev", "sid", "aid", "at", "tool", "nt", "proj", "role", "desc", "sub", "q", "klen"}
+KEYS = {"ev", "sid", "aid", "at", "tool", "nt", "proj", "role", "desc", "sub", "q", "klen", "repo", "kind"}
 
 CITY_COMMAND = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
                 '"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh"; exit 0')
@@ -172,7 +197,7 @@ class TestOn(HookCase):
         self.assertEqual(row["tool"], "Edit")
         self.assertEqual(row["proj"], "shop-app")
 
-    def test_exactly_the_twelve_keys_all_strings(self):
+    def test_exactly_the_fourteen_keys_all_strings(self):
         row = self.one(payload("PostToolUse", ("a1", "worker"), tool_name="Read",
                                tool_input={"file_path": "/x"}))
         self.assertEqual(set(row), KEYS)
@@ -412,6 +437,143 @@ class TestSocketStdin(HookCase):
                                                  tool_input={"content": "y" * 100000}))
         self.assertEqual((code, out, err), (0, b"", b""))
         self.assertEqual(self.lines()[0]["tool"], "Edit")
+
+
+def git(cwd, *args):
+    env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t",
+               GIT_COMMITTER_EMAIL="t@t", GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull)
+    subprocess.run(["git", "-C", cwd] + list(args), check=True, capture_output=True, env=env,
+                   stdin=subprocess.DEVNULL)
+
+
+KIND_TABLE = [
+    ("tests/test_page.py", "test"), ("src/__tests__/a.js", "test"), ("spec/models/user_spec.rb", "test"),
+    ("pkg/foo_test.go", "test"), ("web/app.test.tsx", "test"), ("web/app.spec.ts", "test"),
+    ("test_util.py", "test"), ("test/helper.js", "test"), ("e2e/login.js", "test"), ("src/FooTest.java", "test"),
+    ("tests/fixtures/page.html", "test"),
+    ("README.md", "doc"), ("docs/guide.html", "doc"), ("requirements/city.md", "doc"), ("notes.txt", "doc"),
+    ("CHANGELOG.rst", "doc"), ("doc/api.adoc", "doc"), ("site/intro.mdx", "doc"),
+    ("bin/agent-city.html", "ui"), ("src/components/Button.js", "ui"), ("styles/site.css", "ui"),
+    ("app/views/home.erb", "ui"), ("lib/ui/theme.dart", "ui"), ("App.vue", "ui"), ("Page.svelte", "ui"),
+    ("a.scss", "ui"), ("src/pages/index.tsx", "ui"), ("lib/screens/login.dart", "ui"),
+    ("bin/agent-city.sh", "script"), ("scripts/deploy.py", "script"), ("Makefile", "script"),
+    ("Dockerfile", "script"), ("tools/x.bash", "script"), (".github/workflows/ci.yml", "script"),
+    ("bin/agent_city.py", "script"), ("build.ps1", "script"),
+    ("src/app.py", "other"), ("lib/x.ts", "other"), ("agent.conf", "other"), ("package.json", "other"),
+    ("db/schema.sql", "other"), ("main.go", "other"), ("latest.py", "other"), ("contest.py", "other"),
+]
+
+
+class TestRepoAndKind(HookCase):
+    """Growth: which territory (repo) and which building (kind), never the path."""
+
+    def setUp(self):
+        super().setUp()
+        self.switch_on()
+        self.shop = os.path.join(self.base, "code", "shop")
+        os.makedirs(os.path.join(self.shop, "src", "deep", "er"))
+        git(self.shop, "init", "-q", "-b", "main")
+        with open(os.path.join(self.shop, "a.py"), "w") as fh:
+            fh.write("x\n")
+        git(self.shop, "add", "a.py")
+        git(self.shop, "commit", "-q", "-m", "init")
+        self.common = os.path.realpath(os.path.join(self.shop, ".git"))
+        self.wt = os.path.join(self.base, "code", "shop-wt")
+        git(self.shop, "worktree", "add", "-q", "-b", "side", self.wt)
+
+    def at(self, cwd, event="UserPromptSubmit", **rest):
+        return self.one(payload(event, cwd=cwd, **rest))
+
+    def edit(self, rel, tool="Edit", cwd=None, root=None):
+        key = "notebook_path" if tool == "NotebookEdit" else "file_path"
+        path = rel if rel.startswith("/") else os.path.join(root or self.shop, rel)
+        self.run_hook(payload("PostToolUse", ("a1", "worker"), cwd=cwd or self.shop, tool_name=tool,
+                              tool_input={key: path, "old_string": "a", "new_string": "b"},
+                              tool_response={"filePath": path}))
+        return self.lines()[-1]
+
+    def test_repo_is_the_git_common_dir(self):
+        self.assertEqual(self.at(self.shop)["repo"], self.common)
+
+    def test_a_subfolder_walks_up(self):
+        self.assertEqual(self.at(os.path.join(self.shop, "src", "deep", "er"))["repo"], self.common)
+
+    def test_a_worktree_lands_on_its_main_repo(self):
+        self.assertEqual(self.at(self.wt)["repo"], self.common)
+        self.assertEqual(self.at(self.wt)["proj"], "shop-wt")
+
+    def test_a_symlinked_cwd_gives_the_physical_path(self):
+        link = os.path.join(self.base, "link")
+        os.symlink(self.shop, link)
+        self.assertEqual(self.at(link)["repo"], self.common)
+
+    def test_outside_git_or_missing_folder_is_empty(self):
+        plain = os.path.join(self.base, "plain")
+        os.makedirs(plain)
+        self.assertEqual(self.at(plain)["repo"], "")
+        self.assertEqual(self.at(os.path.join(self.base, "gone", "x"))["repo"], "")
+
+    def test_odd_folder_names_stay_valid_json(self):
+        odd = os.path.join(self.base, 'we"ird \\ name')
+        os.makedirs(odd)
+        git(odd, "init", "-q")
+        self.assertEqual(self.at(odd)["repo"], os.path.realpath(os.path.join(odd, ".git")))
+
+    def test_kind_of_every_file(self):
+        for rel, kind in KIND_TABLE:
+            with self.subTest(path=rel):
+                self.assertEqual(self.edit(rel)["kind"], kind)
+
+    def test_every_edit_tool(self):
+        for tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
+            with self.subTest(tool=tool):
+                self.assertEqual(self.edit("tests/test_x.py", tool=tool)["kind"], "test")
+
+    def test_the_path_inside_the_repo_decides(self):
+        inner = os.path.join(self.base, "tests", "proj")
+        os.makedirs(os.path.join(inner, "src"))
+        git(inner, "init", "-q")
+        self.assertEqual(self.edit("src/a.py", cwd=inner, root=inner)["kind"], "other",
+                         "a repo that lives under a folder named tests is not all tests")
+
+    def test_a_file_outside_the_repo_goes_by_its_name(self):
+        self.assertEqual(self.edit(os.path.join(self.base, "elsewhere", "notes.md"))["kind"], "doc")
+        self.assertEqual(self.edit(os.path.join(self.base, "tests", "x.py"))["kind"], "other")
+
+    def test_worktree_edits_classify_inside_the_worktree(self):
+        self.assertEqual(self.edit("tests/test_a.py", cwd=self.wt, root=self.wt)["kind"], "test")
+        self.assertEqual(self.edit("ui/a.js", cwd=self.wt, root=self.wt)["kind"], "ui")
+
+    def test_kind_only_for_a_finished_file_edit(self):
+        cases = [("PostToolUse", "Bash", {"command": "vi tests/test_a.py"}),
+                 ("PostToolUse", "Read", {"file_path": os.path.join(self.shop, "tests/test_a.py")}),
+                 ("PermissionRequest", "Edit", {"file_path": os.path.join(self.shop, "tests/test_a.py")}),
+                 ("PostToolUse", "Edit", {"old_string": "no path here"})]
+        for ev, tool, ti in cases:
+            with self.subTest(ev=ev, tool=tool):
+                self.run_hook(payload(ev, ("a1", "worker"), cwd=self.shop, tool_name=tool, tool_input=ti))
+                self.assertEqual(self.lines()[-1]["kind"], "")
+
+    def test_the_path_is_never_written(self):
+        marker = "zz_private_marker_9431"
+        for rel in ("%s/tests/test_q.py" % marker, "src/%s.py" % marker, "docs/%s.md" % marker):
+            self.edit(rel)
+        with open(self.events, "rb") as fh:
+            raw = fh.read()
+        self.assertNotIn(marker.encode(), raw)
+        self.assertEqual([r["kind"] for r in self.lines()], ["test", "other", "doc"])
+
+    def test_still_cheap_deep_in_a_repo(self):
+        deep = os.path.join(self.shop, *["d%d" % i for i in range(12)])
+        os.makedirs(deep)
+        stdin = payload("PostToolUse", ("a1", "worker"), cwd=deep, tool_name="Edit",
+                        tool_input={"file_path": os.path.join(deep, "x.py")})
+        start = time.monotonic()
+        for _ in range(20):
+            self.assert_silent(self.run_hook(stdin))
+        took = time.monotonic() - start
+        self.assertLess(took, 3.0, "20 runs took %.2fs" % took)
+        self.assertEqual(self.lines()[-1]["repo"], self.common)
 
 
 class TestCost(HookCase):
