@@ -90,8 +90,11 @@ CONTRACT (bin/agent_city.py, Python standard library only)
           notice or None); world_path None = memory only, never saved.
           feed_line never calls count_fn. recount(now) calls it (outside the
           lock) for each territory that had a line since its last count and
-          was last counted RECOUNT_SEC or more ago (never counted: due at
-          once), stores lines and peak, returns how many it counted. A count
+          was last counted RECOUNT_SEC or more ago (never counted in this
+          run: due with its first line; a world loaded from the file counts
+          nothing until a line comes; a line that arrives while counting keeps
+          the territory due), stores lines and peak, returns how many it
+          counted. A count
           that changes a territory sends a world event and saves the file.
           The server calls recount from a background thread about every 2 s,
           with the same clock it gives feed_line.
@@ -790,6 +793,31 @@ class TestRecount(unittest.TestCase):
         self.assertEqual(self.state.recount(1302.0), 1, "active again and 300 s passed")
         self.assertEqual(self.calls[-1], "/a/.git")
         self.assertEqual(self.state.recount(1700.0), 0, "no activity since the last count")
+
+    def test_a_restart_counts_nothing_until_there_is_activity(self):
+        ac.save_world(self.path, world_of(("/a/.git", 500), ("/b/.git", 40)))
+        st = ac.CityState(decisions_path=os.path.join(self.base, "d3.jsonl"), world_path=self.path,
+                          plans=plans(), count_fn=lambda i: self.calls.append(i) or 7)
+        self.assertEqual(st.recount(5000.0), 0, "loaded from world.json, no line yet: nothing to count")
+        self.assertEqual(self.calls, [])
+        st.feed_line({"ev": "UserPromptSubmit", "sid": "x", "repo": "/b/.git", "proj": "b"}, 5001.0)
+        self.assertEqual(st.recount(5002.0), 1)
+        self.assertEqual(self.calls, ["/b/.git"])
+
+    def test_a_line_during_a_count_keeps_the_repo_due(self):
+        during = []
+
+        def count(identity):
+            self.calls.append(identity)
+            if not during:
+                during.append(1)
+                self.feed(identity, 1001.5)
+            return 12000
+
+        self.state.count_fn = count
+        self.feed("/a/.git", 1000.0)
+        self.assertEqual(self.state.recount(1001.0), 1)
+        self.assertEqual(self.state.recount(1302.0), 1, "the line that came in while counting was lost")
 
     def test_deleting_code_never_shrinks_the_territory(self):
         self.feed("/a/.git", 1000.0)
