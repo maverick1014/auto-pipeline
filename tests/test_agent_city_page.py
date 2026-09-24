@@ -258,8 +258,14 @@ CONTRACT
   Second E2E pass (headless screenshots): the ground did not show at all.
     Faces point the right way: every top face of groundGeometry and
       waterGeometry faces up (normal (b-a) x (c-a) has y > 0, three.js
-      front faces), every skirt face faces out, toward the void or ravine
-      tile beside it.
+      front faces), every side face faces out, toward the void, ravine or
+      water tile beside it.
+    River bank: every land tile beside water ('w' 's' 'B') gets a side face
+      on that side down below the water surface (y <= -0.1), so no page
+      background shows as a white line where land meets water.
+    First view: when the first world arrives the camera goes home
+      (resetCam()) unless the user already moved it; live and demo both
+      open on a town hall, never on the empty middle.
     Day 0 is bare: hallDecor(t, view) -> the decorations around territory
       t's hall as [{key, x, z}] (world tiles): [] while t.open is 0 (no
       plot yet); later a fountain and lamps, each on a 'g' tile (never a
@@ -1975,7 +1981,7 @@ for (const name of ['groundGeometry', 'waterGeometry']) {
   const g = box[name](view);
   const P = Array.from(g.positions), C = Array.from(g.colors), I = Array.from(g.indices || []);
   const idx = I.length ? I : P.map((_, i) => i).filter(i => i < P.length / 3);
-  const top = {}, skirt = [], odd = [], down = [], inward = [];
+  const top = {}, skirt = [], odd = [], down = [], inward = [], bank = new Set();
   const at = (x, z) => { const r = z - view.z0, c = x - view.x0; return r >= 0 && r < view.h && c >= 0 && c < view.w ? view.rows[r][c] : ' '; };
   for (let t = 0; t < idx.length; t += 3) {
     const vs = [idx[t], idx[t + 1], idx[t + 2]].map(i => ({ x: P[3 * i], y: P[3 * i + 1], z: P[3 * i + 2], c: [C[3 * i], C[3 * i + 1], C[3 * i + 2]] }));
@@ -1985,7 +1991,8 @@ for (const name of ['groundGeometry', 'waterGeometry']) {
     else {
       const cx = (vs[0].x + vs[1].x + vs[2].x) / 3, cz = (vs[0].z + vs[1].z + vs[2].z) / 3, l = Math.hypot(n[0], n[2]) || 1;
       const ch = at(Math.floor(cx + n[0] / l * .5), Math.floor(cz + n[2] / l * .5));
-      if (!' k'.includes(ch)) inward.push([cx, cz, ch]);
+      if (!' kwsB'.includes(ch)) inward.push([cx, cz, ch]);
+      if ('wsB'.includes(ch) && vs.some(v => v.y <= -0.1)) bank.add(Math.floor(cx + n[0] / l * .5) + ',' + Math.floor(cz + n[2] / l * .5) + '<' + Math.floor(cx - n[0] / l * .5) + ',' + Math.floor(cz - n[2] / l * .5));
     }
     if (vs.every(v => v.y > -0.2)) {
       const x0 = Math.min(...vs.map(v => v.x)), z0 = Math.min(...vs.map(v => v.z)), x1 = Math.max(...vs.map(v => v.x)), z1 = Math.max(...vs.map(v => v.z));
@@ -1993,7 +2000,7 @@ for (const name of ['groundGeometry', 'waterGeometry']) {
       const k = x0 + ',' + z0; top[k] = top[k] || vs[0].c.map(v => Math.round(v * 1000) / 1000);
     } else if (vs.some(v => v.y <= -0.8)) skirt.push(vs.map(v => v.c.map(q => Math.round(q * 1000) / 1000)));
   }
-  out[name] = { top, skirt: skirt.length, skirtColors: skirt.slice(0, 400).flat(), odd: odd.slice(0, 5), down: down.length, downAt: down.slice(0, 3), inward: inward.slice(0, 5) };
+  out[name] = { top, skirt: skirt.length, skirtColors: skirt.slice(0, 400).flat(), odd: odd.slice(0, 5), down: down.length, downAt: down.slice(0, 3), inward: inward.slice(0, 5), bank: [...bank] };
 }
 process.stdout.write(JSON.stringify(out));
 """
@@ -2095,6 +2102,26 @@ class TestOneLand(unittest.TestCase):
 
     def test_the_cliff_faces_look_out(self):
         self.assertEqual(ground_results()["groundGeometry"]["inward"], [], "a skirt face points into the land")
+
+    def test_a_bank_where_land_meets_water(self):
+        """Second pass: a white line showed between the ground (y 0) and the water below it."""
+        bank = set(ground_results()["groundGeometry"]["bank"])
+        want = set()
+        for r, row in enumerate(GROUND_ROWS):
+            for c, ch in enumerate(row):
+                if ch in " wsBk":
+                    continue
+                for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    rr, cc = r + dr, c + dc
+                    if 0 <= rr < len(GROUND_ROWS) and 0 <= cc < len(GROUND_ROWS[0]) and GROUND_ROWS[rr][cc] in "wsB":
+                        want.add("%d,%d<%d,%d" % (10 + cc, -2 + rr, 10 + c, -2 + r))
+        self.assertEqual(bank, want)
+
+    def test_the_first_view_is_a_town_hall(self):
+        text = inline_script()
+        snap = re.search(r"case 'snapshot':(.*?)(?=case '\w+':)", text, re.S).group(1)
+        self.assertTrue("resetCam()" in snap or "resetCam()" in (function_source("buildLand") or ""),
+                        "the first world must put the camera home (resetCam), not leave it on the land's middle")
 
     def test_day_zero_is_bare(self):
         rest_off = const_object("REST_OFF")
