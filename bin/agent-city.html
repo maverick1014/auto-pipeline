@@ -373,13 +373,33 @@ function stuckText(ev) {
   if (ev.tool && ev.tool !== 'AskUserQuestion') return '要权限：' + ev.tool;
   return ev.question || '需要你看一下';
 }
-/* citizenStatus(c) -> [pill class, text] for the roster/detail, from
-   c.state plus the live ask this citizen is in (c.askKind/c.askPhase, set
-   from ask/ask_phase/ask_closed events for that agent). */
-function citizenStatus(c) {
+/* applyAsk(c, ask): snapshot = live. With an ask view it sets c.askKind,
+   c.askPhase, c.stuck and c.question the same way the live 'ask' event
+   does; with null it clears the ask fields (a reconnect may find the ask
+   already closed). `case 'ask'` and `case 'snapshot'` both use it, so a
+   page opened after the fact shows exactly what an open page shows. */
+function applyAsk(c, ask) {
+  if (ask) {
+    c.askKind = ask.kind;
+    c.askPhase = ask.phase;
+    c.stuck = true;
+    c.question = stuckText({ tool: ask.tool, question: ask.kind === 'question' && ask.questions && ask.questions[0] ? ask.questions[0].question : '' });
+  } else {
+    c.askKind = ''; c.askPhase = '';
+  }
+}
+/* citizenStatus(c, governors) -> [pill class, text] for the roster/detail,
+   from c.state plus the live ask this citizen is in (c.askKind/c.askPhase,
+   set by applyAsk). governors = the governor count (defaults to present,
+   so the demo — which never sends a 'governors' event — looks as before);
+   with governors === 0 it never says 问总督. */
+function citizenStatus(c, governors = 1) {
   if (c.askKind === 'permission') return ['you', '等你批'];
-  if (c.askKind === 'question' && c.askPhase === 'governor') return ['ask', '在问总督'];
-  if (c.askKind === 'question' && c.askPhase === 'owner') return ['you', '等你回答'];
+  if (c.askKind === 'question') {
+    if (c.askPhase === 'governor') return governors ? ['ask', '在问总督'] : ['you', '等你回答'];
+    if (c.askPhase === 'owner') return ['you', '等你回答'];
+  }
+  if (!governors && (c.state === 'to_hall' || c.state === 'asking')) return ['you', '等你'];
   return STATE[c.state];
 }
 const TASKS = {
@@ -651,11 +671,16 @@ function apply(ev){
         old.leaveFlag = true;
         if (old.state === 'resting' || !old.doneFlag) forceLeave(old);
       }
+      // snapshot = live: clear every citizen's ask fields first (a
+      // reconnect may find the ask already closed), place the agents, then
+      // apply each still-open ask to its agent — same as the live path.
+      for (const old of citizens) applyAsk(old, null);
       for (const a of agents) if (!byId(a.id)) placeAgent(a);
       if (ev.gov && ev.gov.state) setGovState(ev.gov.state);
       if (typeof ev.governors === 'number') governorCount = ev.governors;
       asks.clear();
       for (const a of ev.asks || []) asks.set(a.id, a);
+      for (const a of ev.asks || []) { const ac = byId(a.agent); if (ac) applyAsk(ac, a); }
       return null;
     }
     case 'spawn': {
@@ -722,7 +747,7 @@ function apply(ev){
     case 'ask': {
       asks.set(ev.id, ev);
       const ac = byId(ev.agent);
-      if (ac) { ac.askKind = ev.kind; ac.askPhase = ev.phase; }
+      if (ac) applyAsk(ac, ev);
       log(askLine(ev, ev.task || ev.label || ''), ev.phase === 'owner' ? 'wait-you' : 'ask');
       return null;
     }
@@ -740,7 +765,7 @@ function apply(ev){
       const view = asks.get(ev.id);
       const name = view ? (view.task || view.label || '') : '';
       const ac = byId(ev.agent);
-      if (ac) { ac.askKind = ''; ac.askPhase = ''; }
+      if (ac) applyAsk(ac, null);
       log(askLine(ev, name));
       if (ev.by === 'governor' && ev.verb === 'answer') {
         say(gov, ev.text || '已回答', 2.6);
@@ -1483,7 +1508,7 @@ function renderRoster(){
   const list = [...citizens].sort((a, b) => ORDER[STATE[a.state][0]] - ORDER[STATE[b.state][0]] || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   let html = `<li><button class="row" type="button" data-sel="gov" aria-current="${!!(selected && selected.t === 'gov')}"><span class="rdot gov"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govPillText()}</span></button></li>`;
   for (const c of list) {
-    const [g, zh] = citizenStatus(c);
+    const [g, zh] = citizenStatus(c, governorCount);
     const kind = KIND_ZH[ROLES[c.role].kind];
     const sub = g === 'build' ? `${c.label} · ${kind} ${pct(c)}%` : `${c.label} · ${kind}`;
     html += `<li><button class="row" type="button" data-sel="${c.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === c.id)}"><span class="rdot" style="--c:${c.color}"></span><span class="who"><b>${esc(c.task)}</b><span>${esc(sub)}</span></span><span class="pill ${g}">${zh}</span></button></li>`;
@@ -1494,13 +1519,13 @@ let lastDetailKey = '';
 function renderDetail(){
   const el = $('#detail');
   let key = (!DEMO && citizens.length === 0) ? 'empty' : 'none', c = null, b = null;
-  if (selected && selected.t === 'c') { c = byId(selected.id); if (!c) selected = null; else key = `c${c.id}|${c.state}|${c.doneFlag}|${c.stuck}|${c.qa.length}|${c.askKind}|${c.askPhase}`; }
+  if (selected && selected.t === 'c') { c = byId(selected.id); if (!c) selected = null; else key = `c${c.id}|${c.state}|${c.doneFlag}|${c.stuck}|${c.qa.length}|${c.askKind}|${c.askPhase}|${governorCount}`; }
   if (selected && selected.t === 'b') { b = buildings.find(x => x.id === selected.id); if (!b) selected = null; else key = `b${b.id}|${b.done}`; }
   if (selected && selected.t === 'gov') key = `gov|${gov.answered}|${gov.dispatched}|${governorCount}`;
   if (key !== lastDetailKey) {
     lastDetailKey = key;
     if (c) {
-      const [g, zh] = citizenStatus(c), kind = KIND_ZH[ROLES[c.role].kind];
+      const [g, zh] = citizenStatus(c, governorCount), kind = KIND_ZH[ROLES[c.role].kind];
       const qa = [...c.qa.map(x => `<p>问：<b>“${esc(x.q)}”</b></p><p>答：<b>“${esc(x.a)}”</b></p>`), (c.stuck ? `<p>问：<b>“${esc(c.question)}”</b> 等回答…</p>` : '')].join('');
       const canStuck = !c.doneFlag && !c.stuck && ['building','to_plot','back'].includes(c.state);
       el.innerHTML = `
