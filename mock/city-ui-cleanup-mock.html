@@ -53,7 +53,7 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 
 .layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;flex:1;min-height:0}
 .stage-col{display:flex;flex-direction:column;gap:10px;min-width:0}
-.stage{position:relative;border-radius:24px;overflow:hidden;background:var(--sky);border:2px solid var(--line);height:calc(100dvh - 150px);min-height:460px}
+.stage{position:relative;overflow:hidden;height:calc(100dvh - 150px);min-height:460px}
 .stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
 .stage canvas.grabbing{cursor:grabbing}
 .proto{position:absolute;top:12px;left:12px;z-index:3;background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px;box-shadow:0 2px 0 rgba(42,43,69,.18);pointer-events:none}
@@ -110,7 +110,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .sign-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--berry);color:#fff;flex:none}
 .sign-icon svg{width:20px;height:20px}
 .btn svg.lucide{width:16px;height:16px}
-.loading{position:absolute;inset:0;z-index:4;display:grid;place-items:center;background:var(--sky);font:600 14px/1.4 var(--display);color:var(--ink-2)}
+.loading{position:absolute;inset:0;z-index:4;display:grid;place-items:center;background:var(--paper);font:600 14px/1.4 var(--display);color:var(--ink-2)}
 .rdot{width:18px;height:18px;border-radius:50%;border:4px solid var(--c);background:var(--panel);flex:none;justify-self:center}
 .rdot.gov{--c:#FFD36E}
 .roster{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
@@ -241,7 +241,15 @@ const LIVE_REST_SEC = 180;
 const WALK_SPEED = 1.9 / 3;
 const SPRINT_SPEED = 2.3 / 3;
 const WALK_ANIM_SCALE = 1 / 3;
-const CAM_ZOOM = 1.25;
+const FOV = 40;
+const EL_MIN = 15 * Math.PI / 180;
+const EL_MAX = 60 * Math.PI / 180;
+const EL_DEFAULT = 30 * Math.PI / 180;
+const DIST_MIN = 2.5;
+const DIST_MAX = 40;
+const DIST_DEFAULT = 9;
+const TARGET_Y = .4;
+const CAM_CLEAR = .35;
 const AUTO_ROT_SEC = 300;
 const AUTO_ROT_IDLE_MS = 10000;
 const CARD_KEY = 'agent-city-cards';
@@ -721,8 +729,8 @@ const scene = new THREE.Scene();
 const world = new THREE.Group();
 world.position.set(-6, 0, -5);
 scene.add(world);
-const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, .1, 200);
-const cam = { az: Math.PI / 4, el: .64, zoom: 1, tx: 0, tz: 0 };
+const camera = new THREE.PerspectiveCamera(FOV, 1, .1, 200);
+const cam = { az: Math.PI / 4, el: EL_DEFAULT, dist: DIST_DEFAULT, tx: 0, tz: 0 };
 
 const hemi = new THREE.HemisphereLight(0xffffff, 0xffffff, 1);
 scene.add(hemi);
@@ -1037,7 +1045,7 @@ function updateBuilding(b, t){
 /* ---------- overlays: crisp HTML labels that follow the scene ---------- */
 let W = 1, H = 1, needFrame = true;
 const tmpV = new THREE.Vector3();
-function toScreen(x, h, z){ tmpV.set(x - 6, h, z - 5).project(camera); return [(tmpV.x + 1) / 2 * W, (1 - tmpV.y) / 2 * H]; }
+function toScreen(x, h, z){ tmpV.set(x - 6, h, z - 5).project(camera); if (tmpV.z > 1) return [-9999, -9999]; return [(tmpV.x + 1) / 2 * W, (1 - tmpV.y) / 2 * H]; }
 function ovEl(cls, html){ const el = document.createElement('div'); el.className = cls; if (html) el.innerHTML = html; el.hidden = true; ovRoot.appendChild(el); return el; }
 function pin(el, x, y, show){ if (!show) { if (!el.hidden) el.hidden = true; return; } if (el.hidden) el.hidden = false; el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
 function setText(el, text){ if (el._t !== text) { el._t = text; el.textContent = text; } }
@@ -1128,17 +1136,54 @@ function applyTheme(){
   sun.color.set(P.sun); sun.intensity = P.sunI;
   glows.forEach(s => { s.visible = P.night; });
 }
-function updateCamera(){
-  const aspect = W / H;
-  let halfW = 9.4, halfH = halfW / aspect;
-  if (halfH < 6.9) { halfH = 6.9; halfW = halfH * aspect; }
-  camera.left = -halfW; camera.right = halfW; camera.top = halfH; camera.bottom = -halfH;
-  camera.zoom = cam.zoom; camera.updateProjectionMatrix();
-  const d = 40, ce = Math.cos(cam.el);
-  camera.position.set(cam.tx + d * ce * Math.sin(cam.az), d * Math.sin(cam.el), cam.tz + d * ce * Math.cos(cam.az));
-  camera.lookAt(cam.tx, .4, cam.tz);
+/* the top of whatever stands on a 1x1 tile, in scene coordinates: static scenery once, buildings live */
+const tall = new Map();
+function markTall(box){
+  if (box.max.y < .35) return;
+  for (let x = Math.floor(box.min.x); x <= Math.floor(box.max.x); x++)
+    for (let z = Math.floor(box.min.z); z <= Math.floor(box.max.z); z++) {
+      const k = x + ',' + z;
+      if ((tall.get(k) || 0) < box.max.y) tall.set(k, box.max.y);
+    }
 }
-function resetCam(){ cam.az = Math.PI / 4; cam.el = .64; cam.tx = 0; cam.tz = 0; cam.zoom = (W < 560 ? 1.3 : 1) * CAM_ZOOM; }
+function scanTall(){
+  world.updateMatrixWorld(true);
+  const box = new THREE.Box3(), m = new THREE.Matrix4();
+  world.traverse(n => {
+    if (!n.isMesh || !n.geometry) return;
+    if (!n.geometry.boundingBox) n.geometry.computeBoundingBox();
+    if (n.isInstancedMesh) for (let i = 0; i < n.count; i++) { n.getMatrixAt(i, m); m.premultiply(n.matrixWorld); markTall(box.copy(n.geometry.boundingBox).applyMatrix4(m)); }
+    else markTall(box.copy(n.geometry.boundingBox).applyMatrix4(n.matrixWorld));
+  });
+}
+function heightAt(x, z){
+  const tx = Math.floor(x), tz = Math.floor(z);
+  let h = tall.get(tx + ',' + tz) || 0;
+  const b = occupied.get((tx + 6) + ',' + (tz + 5));
+  if (b && b.v) h = Math.max(h, b.v.h + .45);
+  return h;
+}
+function aroundH(x, z){ return Math.max(heightAt(x, z), heightAt(x + .3, z), heightAt(x - .3, z), heightAt(x, z + .3), heightAt(x, z - .3)); }
+/* tilt used this frame: the user's tilt, lifted so the view passes over anything between the target and the camera */
+function camLift(){
+  const sx = Math.sin(cam.az), sz = Math.cos(cam.az), reach = cam.dist * Math.cos(cam.el) + .3;
+  let el = cam.el;
+  for (let r = .6; r <= reach; r += .2) {
+    const h = aroundH(cam.tx + sx * r, cam.tz + sz * r);
+    if (h > 0) el = Math.max(el, Math.atan2(h + CAM_CLEAR - TARGET_Y, r));
+  }
+  return Math.min(el, 1.45);
+}
+function updateCamera(){
+  camera.aspect = W / H;
+  camera.updateProjectionMatrix();
+  const el = camLift(), ce = Math.cos(el);
+  const x = cam.tx + cam.dist * ce * Math.sin(cam.az), z = cam.tz + cam.dist * ce * Math.cos(cam.az);
+  const y = Math.max(TARGET_Y + cam.dist * Math.sin(el), aroundH(x, z) + CAM_CLEAR);
+  camera.position.set(x, y, z);
+  camera.lookAt(cam.tx, TARGET_Y, cam.tz);
+}
+function resetCam(){ cam.az = Math.PI / 4; cam.el = EL_DEFAULT; cam.tx = .3; cam.tz = 2.8; cam.dist = W < 560 ? DIST_DEFAULT * 1.35 : DIST_DEFAULT; }
 function resize(){
   const r = stage.getBoundingClientRect();
   W = Math.max(1, r.width); H = Math.max(1, r.height);
@@ -1352,8 +1397,8 @@ function connectLive(){
 }
 let lastTouch = -Infinity;
 const camChanged = () => { needFrame = true; lastTouch = performance.now(); };
-$('#zin').addEventListener('click', () => { cam.zoom = clamp(cam.zoom * 1.25, .7, 3.2); camChanged(); });
-$('#zout').addEventListener('click', () => { cam.zoom = clamp(cam.zoom / 1.25, .7, 3.2); camChanged(); });
+$('#zin').addEventListener('click', () => { cam.dist = clamp(cam.dist / 1.25, DIST_MIN, DIST_MAX); camChanged(); });
+$('#zout').addEventListener('click', () => { cam.dist = clamp(cam.dist * 1.25, DIST_MIN, DIST_MAX); camChanged(); });
 $('#rot').addEventListener('click', () => { camTween = { from: cam.az, to: cam.az - Math.PI / 2, t: 0 }; camChanged(); });
 $('#zfit').addEventListener('click', () => { resetCam(); camChanged(); });
 let camTween = null;
@@ -1380,14 +1425,15 @@ canvas.addEventListener('pointerdown', e => {
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
   if (pointers.size === 1) drag = { x:e.clientX, y:e.clientY, moved:false, pan: e.button === 2 || e.shiftKey };
-  if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: cam.zoom, mx:(a.x + b.x) / 2, my:(a.y + b.y) / 2 }; drag = null; }
+  if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: cam.dist, mx:(a.x + b.x) / 2, my:(a.y + b.y) / 2 }; drag = null; }
 });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 function panBy(dx, dy){
-  const k = (camera.right - camera.left) / camera.zoom / W;
+  const k = 2 * cam.dist * Math.tan(FOV * Math.PI / 360) / H;
   const s = Math.sin(cam.az), c = Math.cos(cam.az);
-  cam.tx = clamp(cam.tx - (dx * c - dy * s * 1.4) * k, -6, 6);
-  cam.tz = clamp(cam.tz - (-dx * s - dy * c * 1.4) * k, -6, 6);
+  const f = 1 / Math.sin(cam.el);
+  cam.tx = clamp(cam.tx - (dx * c - dy * s * f) * k, -6, 6);
+  cam.tz = clamp(cam.tz - (-dx * s - dy * c * f) * k, -6, 6);
 }
 canvas.addEventListener('pointermove', e => {
   if (!pointers.has(e.pointerId)) return;
@@ -1395,7 +1441,7 @@ canvas.addEventListener('pointermove', e => {
   if (pinch && pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-    cam.zoom = clamp(pinch.z * d / Math.max(20, pinch.d), .7, 3.2);
+    cam.dist = clamp(pinch.z * Math.max(20, pinch.d) / Math.max(20, d), DIST_MIN, DIST_MAX);
     panBy(mx - pinch.mx, my - pinch.my); pinch.mx = mx; pinch.my = my;
     camChanged(); return;
   }
@@ -1404,7 +1450,7 @@ canvas.addEventListener('pointermove', e => {
   if (!drag.moved && Math.hypot(dx, dy) < 6) return;
   drag.moved = true; canvas.classList.add('grabbing');
   if (drag.pan) panBy(dx, dy);
-  else { cam.az -= dx * .008; cam.el = clamp(cam.el + dy * .005, .32, 1.15); }
+  else { cam.az -= dx * .008; cam.el = clamp(cam.el + dy * .005, EL_MIN, EL_MAX); }
   drag.x = e.clientX; drag.y = e.clientY;
   camChanged();
 });
@@ -1421,7 +1467,7 @@ function endPointer(e){
 }
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
-canvas.addEventListener('wheel', e => { e.preventDefault(); cam.zoom = clamp(cam.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), .7, 3.2); camChanged(); }, { passive:false });
+canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = clamp(cam.dist * (e.deltaY < 0 ? 1 / 1.1 : 1.1), DIST_MIN, DIST_MAX); camChanged(); }, { passive:false });
 
 /* ---------- opening scene: a city mid-day, not an empty island ---------- */
 function placeBuilder(role, task, x, y, tools){
@@ -1507,7 +1553,7 @@ Promise.all([
   ...['suburban/Textures/variation-a.png', 'suburban/Textures/variation-b.png', 'suburban/Textures/variation-c.png'].map(loadTex),
 ]).then(([, ...tex]) => {
   tex.forEach(t => { if (t) variations.push(t); });
-  buildIsland(); buildLife(); buildGlows(); makeGovernor();
+  buildIsland(); scanTall(); buildLife(); buildGlows(); makeGovernor();
   for (const [text, x, h, z] of [['市政厅', 6, 1.95, 6], ['咖啡馆', 5.5, 1.0, 10.5], ['main', 1.2, .85, -1.5]]) { const el = ovEl('lbl'); setText(el, text); labels.push({ el, x, h, z }); }
   if (DEMO) seed(); else connectLive();
   $('#loading').hidden = true;
