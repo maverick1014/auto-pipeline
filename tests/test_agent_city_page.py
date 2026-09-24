@@ -184,6 +184,10 @@ CONTRACT
       with the governor: 在问总督; with the owner: 等你回答. Else STATE's words.
     Governor presence: `case 'governors'` (count of governors, also in the
       snapshot). Count 0 in live mode: govPillText() says 不在.
+    The 等你 N chip takes real mouse clicks: no CSS rule that can match the
+      chip (its tag, classes, id) outside :disabled, nor one matching its
+      ancestors (header.bar, #stats.stats), sets pointer-events:none.
+      (A class shared with the 3D countdown chip once did.)
 
   bin/agent-city-assets/
     vendor/three.min.js, vendor/GLTFLoader.js, vendor/SkeletonUtils.js
@@ -1510,6 +1514,41 @@ class TestInteraction(unittest.TestCase):
         self.assertEqual(texts[4], "施工中")
         for t in texts[:2]:
             self.assertNotIn("问总督", t)
+
+    def test_the_waiting_chip_takes_real_clicks(self):
+        stats = function_source("renderStats") or ""
+        m = re.search(r'<button class="([^"]+)"[^>]*id="next"', stats)
+        self.assertIsNotNone(m, 'renderStats must render <button class="..." ... id="next">')
+        chip = ("button", set(m.group(1).split()), "next")
+        head = re.search(r'<header class="([^"]+)"', markup())
+        stats_div = re.search(r'<div class="([^"]+)" id="stats"', markup())
+        self.assertIsNotNone(stats_div, '<div class="stats" id="stats"> not found')
+        chain = [chip, ("div", set(stats_div.group(1).split()), "stats")]
+        if head:
+            chain.append(("header", set(head.group(1).split()), ""))
+        css = re.sub(r"/\*.*?\*/", "", style(), flags=re.S)
+        hits = []
+        for sel_list, body in re.findall(r"([^{}@]+)\{([^{}]*)\}", css):
+            if not re.search(r"pointer-events\s*:\s*none", body):
+                continue
+            for sel in sel_list.split(","):
+                sel = sel.strip()
+                if not sel:
+                    continue
+                last = re.split(r"[\s>+~]+", sel)[-1]
+                mm = re.fullmatch(r"([a-z]+)?((?:[.#][\w-]+|::?[\w-]+(?:\([^)]*\))?|\[[^\]]*\])*)", last)
+                if not mm or not (mm.group(1) or mm.group(2)):
+                    continue
+                parts = re.findall(r"[.#][\w-]+|::?[\w-]+(?:\([^)]*\))?|\[[^\]]*\]", mm.group(2))
+                if ":disabled" in parts:
+                    continue
+                for tag, classes, ident in chain:
+                    if mm.group(1) and mm.group(1) != tag:
+                        continue
+                    if all((p[0] != "." or p[1:] in classes) and (p[0] != "#" or p[1:] == ident)
+                           for p in parts):
+                        hits.append("%s -> %s" % (sel, tag))
+        self.assertEqual(hits, [], "pointer-events:none reaches the 等你 N chip, so a real click does nothing")
 
     def test_governor_presence(self):
         self.assertRegex(inline_script(), r"case\s+'governors'\s*:")
