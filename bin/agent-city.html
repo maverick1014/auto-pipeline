@@ -376,6 +376,13 @@ function roadColor(t){
   const era = eraShown(t);
   return era === 'village' ? TERRAIN_LOOK[t.terrain].path : ERA_LOOK[era].road;
 }
+/* Balance: trackColor(t) -> TRACK_COLOR normally, a paved colour once t's infra is healthy ("power plant,
+   water tower, bridges, paved roads", requirements/city.md); groundGeometry uses it for that territory's
+   't' (out-of-town track) tiles, found the same way roadColor's 'r' tiles are (cellTerrain). */
+function trackColor(t){
+  const infra = t && t.balance && t.balance.infra;
+  return infra && infra.state === 'healthy' ? TRACK_PAVED_COLOR : TRACK_COLOR;
+}
 /* Balance: signText(t) -> the .era-sign line in front of t's hall: '' on day 0, once the city era is
    reached, with nothing left to build, or while t's era show is still running; else '还差：' + t.next */
 function signText(t){
@@ -394,6 +401,120 @@ function hallDecor(t, view){
   for (const [x, z] of [[t.cx - 2.4, t.cz + .4], [t.cx + 2.4, t.cz + .4], [t.cx - 2.4, t.cz - .4], [t.cx + 2.4, t.cz - .4]])
     if (on(x, z) && out.filter(d => d.key === 'lantern').length < 2) out.push({ key: 'lantern', x, z });
   return out;
+}
+/* Balance: how big systemsDecor's items are placed (place()/instanced() 'fit'); unlisted keys use .8. */
+const SYS_FIT = {
+  'roads/road-sign-street': .55, 'roads/traffic-light': .55, 'industrial/building-h': .8, 'industrial/building-k': .8,
+  'industrial/water-tower': .85, 'industrial/chimney-large': .8, 'nature/flower_redA': .4, 'nature/flower_yellowA': .4,
+  'nature/flower_purpleA': .4, 'nature/tree_default': .8, 'nature/tree_oak': .8, 'nature/plant_bush': .6,
+  'fantasy/fountain-round': .9,
+};
+/* Balance: 'industrial/building-h' (police station, blue + a white band) and 'industrial/building-k'
+   (library, green) are plain Kenney buildings with unique bare names (never 'commercial/building-a' or
+   'industrial/building-a'/'-b', which the town/city ERA_LOOK already uses under the bare names 'building-a'
+   and 'building-b' — lib is keyed by the bare name only, so reusing those would make the police station and
+   the library look like whichever of the two packs' same-named model finished loading last). */
+const SYS_TINT = { 'industrial/building-h': '#3C63D6', 'industrial/building-k': '#2FB57A' };
+/* Balance: systemsDecor(t, view) -> [{key, x, z, kind}], the 5 systems made visible in the world
+   (requirements/city.md, Balance): [] on day 0 (t.open === 0) or with no balance; nothing for a missing
+   or na kind (reward, never punish — a missing kind is absent, never broken: no cones, no cracks). Every
+   item stands on its own free 'g' tile of t, never a hallDecor tile. A healthy kind only ever adds to its
+   low set, never removes from it. rules: signposts, a police station and traffic lights when healthy.
+   beauty: flowers, then a park and the fountain when healthy (painted walls are makeBuilding's job, not
+   an item here). knowledge: a library, then district signs when healthy. infra: a water tower, then a
+   power plant when healthy. build has no item here: its own houses/shops/offices already show it. */
+function systemsDecor(t, view){
+  if (!t.open || !t.balance) return [];
+  const avoid = new Set((hallDecor(t, view) || []).map(d => Math.floor(d.x) + ',' + Math.floor(d.z)));
+  const R = Math.min(24, 6 + Math.round((t.size || .3) * 16));
+  const cx = Math.round(t.cx), cz = Math.round(t.cz);
+  const isRoad = (x, z) => tileAt(x, z) === 'r';
+  const roadN = (x, z) => (isRoad(x + 1, z) ? 1 : 0) + (isRoad(x - 1, z) ? 1 : 0) + (isRoad(x, z + 1) ? 1 : 0) + (isRoad(x, z - 1) ? 1 : 0);
+  // free 'g' tiles of t, each flagged for whether it sits beside a road junction (3+ road neighbours,
+  // never the plaza itself) — items never land on a road, a plot, the hall or a lamp.
+  const free = [];
+  for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+    const x = cx + dx, z = cz + dz;
+    if (tileAt(x, z) !== 'g') continue;
+    const k = x + ',' + z;
+    if (avoid.has(k)) continue;
+    const junction = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([ddx, ddz]) => isRoad(x + ddx, z + ddz) && roadN(x + ddx, z + ddz) >= 3);
+    free.push({ x: x + .5, z: z + .5, d: dx * dx + dz * dz, k, junction });
+  }
+  const near = free.slice().sort((a, b) => a.d - b.d); // police, library: near the hall
+  const far = free.slice().sort((a, b) => b.d - a.d); // water tower, power plant: the outer part of the territory
+  const junc = free.filter(s2 => s2.junction).sort((a, b) => a.d - b.d); // signposts, traffic lights: beside a road junction
+  const used = new Set();
+  const take = list => { for (const s2 of list) if (!used.has(s2.k)) { used.add(s2.k); return s2; } return null; };
+  const out = [];
+  const put = (list, key, kind) => { const s2 = take(list.length ? list : near); if (!s2) return; out.push({ key, x: s2.x, z: s2.z, kind }); };
+  const st = k => t.balance[k] && t.balance[k].state;
+  if (st('rules') === 'low' || st('rules') === 'healthy') {
+    put(junc, 'roads/road-sign-street', 'rules'); put(junc, 'roads/road-sign-street', 'rules');
+    put(near, 'industrial/building-h', 'rules'); // police station, near the hall — low already has it (contract table)
+    if (st('rules') === 'healthy') { put(junc, 'roads/traffic-light', 'rules'); put(junc, 'roads/traffic-light', 'rules'); }
+  }
+  if (st('beauty') === 'low' || st('beauty') === 'healthy') {
+    put(near, 'nature/flower_redA', 'beauty'); put(near, 'nature/flower_yellowA', 'beauty'); put(near, 'nature/flower_purpleA', 'beauty');
+    if (st('beauty') === 'healthy') {
+      // a park: trees and bushes grouped together, not scattered — an anchor tile, then its nearest
+      // still-free neighbours (Chebyshev <= 2)
+      const anchor = take(near);
+      if (anchor) {
+        out.push({ key: 'nature/tree_default', x: anchor.x, z: anchor.z, kind: 'beauty' });
+        for (const parkKey of ['nature/tree_oak', 'nature/plant_bush']) {
+          const near2 = free.filter(s2 => !used.has(s2.k) && Math.max(Math.abs(s2.x - anchor.x), Math.abs(s2.z - anchor.z)) <= 2)
+            .sort((a, b) => Math.hypot(a.x - anchor.x, a.z - anchor.z) - Math.hypot(b.x - anchor.x, b.z - anchor.z));
+          put(near2, parkKey, 'beauty');
+        }
+      }
+      put(near, 'fantasy/fountain-round', 'beauty');
+    }
+  }
+  if (st('knowledge') === 'low' || st('knowledge') === 'healthy') {
+    put(near, 'industrial/building-k', 'knowledge'); // library, near the hall
+    const districts = new Set((t.plots || []).map(p => p.d)); // every district with an open plot
+    const signs = st('knowledge') === 'healthy' ? Math.max(1, districts.size) : 1; // low: 1 sign; healthy: one per district
+    for (let n = 0; n < signs; n++) put(near, 'roads/road-sign-street', 'knowledge');
+  }
+  if (st('infra') === 'low' || st('infra') === 'healthy') {
+    put(far, 'industrial/water-tower', 'infra');
+    if (st('infra') === 'healthy') put(far, 'industrial/chimney-large', 'infra');
+  }
+  return out;
+}
+/* Balance: startShow(terr, from, to, left) -> records t's running era show (shows: Map<id, {from, to,
+   end}>) and asks for a frame; left = seconds still to run (SHOW_SEC for a fresh 'era' event, less for a
+   page that joins mid-show via the snapshot's `shows`). One 动态 line only when it actually starts (never
+   on a rejoin, so left is (about) the full SHOW_SEC). */
+function startShow(terr, from, to, left){
+  shows.set(terr, { from, to, end: performance.now() + left * 1000 });
+  needFrame = true;
+  if (left >= SHOW_SEC - .5) {
+    const name = (typeof terrOf === 'function' && terrOf(terr) && terrOf(terr).name) || terr;
+    const zh = typeof ERA_ZH !== 'undefined' ? ERA_ZH[to] : to;
+    logAt(typeof simT !== 'undefined' ? simT : 0, name + ' 开始升级成' + zh);
+  }
+}
+/* Balance: showPlan(t, view, to) -> {builders, targets: [{what, x, z}]}: one 'building' visit per building
+   of t, every 2nd 'road' tile of t, and the 'lamp' spots of the NEW era `to` (hallDecor with era = to, via
+   a throwaway id so any show already running for t.id never leaks its own from/to into this lookup — [] for
+   a village). builders = clamp(ceil(targets.length / 3), 6, 24). Pure aside from hallDecor/tileAt reads. */
+function showPlan(t, view, to){
+  const targets = [];
+  for (const b of t.buildings || []) targets.push({ what: 'building', x: b.x + .5, z: b.z + .5 });
+  const roadTiles = [];
+  for (let r = 0; r < view.h; r++) for (let c = 0; c < view.w; c++) {
+    if (view.rows[r][c] !== 'r') continue;
+    const X = view.x0 + c, Z = view.z0 + r;
+    if (Math.hypot(X - t.cx, Z - t.cz) > (t.r || 40)) continue; // stay on this territory's own roads
+    roadTiles.push([X + .5, Z + .5]);
+  }
+  roadTiles.forEach((rt, i) => { if (i % 2 === 0) targets.push({ what: 'road', x: rt[0], z: rt[1] }); });
+  const lampT = Object.assign({}, t, { id: t.id + '\u0000plan', era: to });
+  for (const d of hallDecor(lampT, view)) if (d.key === 'lantern') targets.push({ what: 'lamp', x: d.x, z: d.z });
+  const builders = Math.max(6, Math.min(24, Math.ceil(targets.length / 3)));
+  return { builders, targets };
 }
 function mix(a, b, t){ const A = h2r(a), B = h2r(b); return r2h(A.map((x,i) => x + (B[i]-x)*t)); }
 function sr(seed, i){ const x = Math.sin(seed*12.9898 + i*78.233) * 43758.5453; return x - Math.floor(x); }
@@ -750,6 +871,10 @@ function apply(ev){
       // snapshot = live: clear every citizen's ask fields first (a
       // reconnect may find the ask already closed), place the agents, then
       // apply each still-open ask to its agent — same as the live path.
+      // Balance: rejoin every era show still running BEFORE buildLand (a finished show is never replayed:
+      // left > 0 only) — eraShown(t) reads `shows`, so a page opened mid-show must draw the OLD era with
+      // its show running, never jump straight to the new one.
+      for (const sw of ev.shows || []) if (sw.left > 0) startShow(sw.terr, sw.from, sw.to, sw.left);
       if (ev.world) buildLand(ev.world);
       if (ev.world) { lastBalanceKey = ''; renderBalance(); }
       if (ev.notice) log(ev.notice);
@@ -767,6 +892,11 @@ function apply(ev){
       buildLand(ev.world);
       lastBalanceKey = ''; renderBalance();
       if (ev.notice) log(ev.notice);
+      return null;
+    }
+    case 'era': {
+      // Balance: an era show just started for ev.terr (requirements/city.md, Balance)
+      startShow(ev.terr, ev.from, ev.to, ev.left);
       return null;
     }
     case 'spawn': {
@@ -989,7 +1119,8 @@ const MODELS = [
   'suburban/building-type-a', 'suburban/building-type-c', 'suburban/building-type-f', 'suburban/building-type-k', 'suburban/building-type-n', 'suburban/building-type-r',
   'commercial/building-j', 'commercial/building-skyscraper-a', 'commercial/building-skyscraper-b',
   'commercial/building-a', 'commercial/building-b', 'commercial/building-c', 'commercial/building-d',
-  'industrial/building-a', 'industrial/building-b',
+  'industrial/building-a', 'industrial/building-b', 'industrial/building-h', 'industrial/building-k',
+  'industrial/water-tower', 'industrial/chimney-large',
   'hexagon/building-house', 'hexagon/building-cabin', 'hexagon/unit-house', 'hexagon/building-market',
   'hexagon/building-tower', 'hexagon/unit-tower', 'hexagon/building-mill', 'hexagon/building-farm',
   'hexagon/building-wizard-tower', 'hexagon/building-village',
@@ -999,7 +1130,7 @@ const MODELS = [
   'nature/rock_smallA', 'nature/rock_smallB',
   'fantasy/fountain-round', 'fantasy/lantern',
   'survival/structure', 'survival/tool-hammer', 'survival/resource-planks',
-  'roads/construction-cone', 'forest/flag', 'forest/patch-grass',
+  'roads/construction-cone', 'roads/road-sign-street', 'roads/traffic-light', 'forest/flag', 'forest/patch-grass',
   'pets/animal-chick', 'pets/animal-cat', 'pets/animal-dog',
 ];
 const VARIANTS = { 'task-manager':['character-female-c'], worker:['character-male-a','character-female-a','character-male-c'],
@@ -1057,6 +1188,10 @@ const TERRAIN_LOOK = {
   coast:     { wild:'#9FD37E', ground:'#DAEEBB', path:'#F2E4B9', plants:['tree_palmShort','plant_bush'] },
 };
 const TRACK_COLOR = '#C9A874';
+const TRACK_PAVED_COLOR = '#9C9C92';
+/* Balance: makeBuilding paints a few bright wall colours once a territory's beauty is healthy (like the
+   mock's PAINT); never on a missing or low beauty (reward, never punish). */
+const PAINT_COLORS = ['#FF9BB0', '#8FDDBA', '#FFD36E', '#9DB8FF', '#F7B37A'];
 const BEACH_COLOR = '#F5E2B2';
 const PASS_COLOR = '#8C8C86';
 const FOREST_FLOOR = '#243B24';
@@ -1064,7 +1199,7 @@ const ROCK_GREY = '#8A8A86';
 const RAVINE_FLOOR = '#33312F';
 const WATER_COLOR = '#3E86C4';
 /* #demo / file://: exactly `python3 bin/agent_city.py demo-world` prints (tests/test_agent_city_world.py) */
-const DEMO_WORLD = {"cell": 26, "x0": -13, "z0": -13, "w": 52, "h": 52, "rows": ["                                                    ", "                          .                         ", "       . .              ..ww               ..       ", "     .......      .   ....ww.  .   .     ....       ", "   .........    . ... ...ww.........   .......      ", "   .....................ww..........g  ggrgggg.     ", "  ......................ww......grggggggPrggggg     ", "   .....................ww.....ggrgPrPgggrPggg      ", "  ......................ww.....ggrPgrgggPrgggr      ", "   .........gr...........ww....gPrgPrPgPgrPgPrg.    ", "    ......rrrrrr.........ww....rrrrrrrrrrrrrrrP.    ", "      ...grggggr........ww....gggrPgrggggrgPgrgg.   ", "      ...rrgHHgrg.......ww....gggrgPrgHHgrPgPrPg    ", "     .....rgHHgrtttttttBBtttt.gggrPgrgHHgrgggrgg.   ", "    ......rggggr.......ww...t.gggrgPrggggrPgPrPg.   ", "    ......rrrrrr.......ww...t.gggrPgrrrrrrgggrgg.   ", "    ........rg.........ww...t..ggrgPrgPgPrPgPrg..   ", "   .........t...........ww..t...grbgrPgPgrgPgrg...  ", "    ........t............wwbttttbbbbrrrrrrrrrr...b  ", "    ........t............wbb.bbbbbsbbgPgPggg...b.   ", "     .......t.............bsbbbbssssbgbgg.bb...bs   ", "   .........t.............ssbssssssssbbbbbbbbbbss   ", "  ..........t.............sssssssssssbsbbbssbbss    ", " ...........tmm...........ssssssssssssssssssssss    ", "  .mmmmmmmmmtmmm..........sssssssssssssssssssssss   ", " .mmmmmmmmmmt..mmm........ssssssssssssssssssssssss  ", "  m.........t...mmmmmmm     ssssssssssssssssssssss  ", "   .........t.....mmmm      ssssssssssssssssssss    ", "    ........tt.......          sssssssssssssssss    ", "    .........t.......           ssssssssssssss      ", "   ..........t.......               s  sssssss      ", "    .........t.......                   sss         ", "    .......rrrr......                    s          ", "     .....ggPgg........                             ", "    .....ggggggg........                            ", "      ...gPgPgPgP........                           ", "      ..rrrrrrrrrr.....                             ", "     ...ggrggggPgPgg....                            ", "   ....ggPrgHHgggggg...                             ", "   ....gggrgHHgggggg....                            ", "   ....ggPrggggPgPg...                              ", "  .....rrrrrrrrrrr.....                             ", "  ......gPgPgPgPg.......                            ", "  ........ggggggg.......                            ", "    ........gggg.......                             ", "   ...........r......                               ", "   ....... ..........                               ", "  .......   ........                                ", "    ....       ..                                   ", "                                                    ", "                                                    ", "                                                    "], "territories": [{"id": "4d5d7e95", "name": "auto-pipeline", "plan": "meadow", "terrain": "grassland", "slot": [0, 0], "cx": 0, "cz": 0, "lines": 500, "size": 0.24212512553021587, "r": 3.522238341052446, "open": 0, "plots_total": 36, "plots": [], "buildings": []}, {"id": "8329562e", "name": "v4-plus", "plan": "harbor", "terrain": "coast", "slot": [1, 0], "cx": 26, "cz": 0, "lines": 1000000, "size": 1.0, "r": 8.6, "open": 35, "plots_total": 35, "plots": [{"k": 0, "x": 22, "z": -1, "d": "workshop"}, {"k": 1, "x": 26, "z": -4, "d": "tower"}, {"k": 2, "x": 29, "z": -1, "d": "house"}, {"k": 3, "x": 22, "z": 1, "d": "workshop"}, {"k": 4, "x": 29, "z": 1, "d": "house"}, {"k": 5, "x": 24, "z": -4, "d": "library"}, {"k": 6, "x": 25, "z": 3, "d": "shop"}, {"k": 7, "x": 21, "z": 0, "d": "workshop"}, {"k": 8, "x": 27, "z": 3, "d": "shop"}, {"k": 9, "x": 30, "z": -2, "d": "house"}, {"k": 10, "x": 21, "z": -2, "d": "workshop"}, {"k": 11, "x": 27, "z": -5, "d": "tower"}, {"k": 12, "x": 29, "z": -4, "d": "tower"}, {"k": 13, "x": 22, "z": -4, "d": "library"}, {"k": 14, "x": 21, "z": 2, "d": "workshop"}, {"k": 15, "x": 31, "z": -1, "d": "house"}, {"k": 16, "x": 22, "z": 3, "d": "workshop"}, {"k": 17, "x": 26, "z": 4, "d": "shop"}, {"k": 18, "x": 29, "z": 3, "d": "shop"}, {"k": 19, "x": 24, "z": 4, "d": "shop"}, {"k": 20, "x": 31, "z": 1, "d": "house"}, {"k": 21, "x": 24, "z": -6, "d": "library"}, {"k": 22, "x": 31, "z": -4, "d": "tower"}, {"k": 23, "x": 27, "z": -7, "d": "tower"}, {"k": 24, "x": 21, "z": -5, "d": "library"}, {"k": 25, "x": 29, "z": -6, "d": "tower"}, {"k": 26, "x": 31, "z": 3, "d": "house"}, {"k": 27, "x": 30, "z": 4, "d": "shop"}, {"k": 28, "x": 22, "z": -6, "d": "library"}, {"k": 29, "x": 33, "z": -1, "d": "house"}, {"k": 30, "x": 19, "z": -4, "d": "library"}, {"k": 31, "x": 33, "z": -3, "d": "house"}, {"k": 32, "x": 33, "z": 1, "d": "house"}, {"k": 33, "x": 25, "z": 6, "d": "shop"}, {"k": 34, "x": 27, "z": 6, "d": "shop"}], "buildings": [{"plot": 6, "type": "shop", "by": "worker", "x": 25, "z": 3}, {"plot": 1, "type": "tower", "by": "worker", "x": 26, "z": -4}]}, {"id": "db8c2db6", "name": "pos-lite", "plan": "ridge", "terrain": "mountain", "slot": [0, 1], "cx": 0, "cz": 26, "lines": 20000, "size": 0.6052343817819053, "r": 5.955070357938764, "open": 15, "plots_total": 37, "plots": [{"k": 0, "x": 2, "z": 24, "d": "workshop"}, {"k": 1, "x": -1, "z": 22, "d": "tower"}, {"k": 2, "x": 2, "z": 27, "d": "shop"}, {"k": 3, "x": 0, "z": 29, "d": "house"}, {"k": 4, "x": -4, "z": 27, "d": "house"}, {"k": 5, "x": -4, "z": 25, "d": "library"}, {"k": 6, "x": -3, "z": 22, "d": "library"}, {"k": 7, "x": 1, "z": 22, "d": "tower"}, {"k": 8, "x": -2, "z": 29, "d": "house"}, {"k": 9, "x": 4, "z": 24, "d": "workshop"}, {"k": 10, "x": 2, "z": 29, "d": "shop"}, {"k": 11, "x": -1, "z": 20, "d": "tower"}, {"k": 12, "x": 4, "z": 27, "d": "shop"}, {"k": 13, "x": -4, "z": 29, "d": "house"}, {"k": 14, "x": 3, "z": 22, "d": "workshop"}], "buildings": [{"plot": 3, "type": "house", "by": "worker", "x": 0, "z": 29}]}], "links": [{"a": "4d5d7e95", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[10, 0], [11, 0]]}, {"a": "4d5d7e95", "b": "db8c2db6", "gap": "pass", "kind": "road", "cross": [[-1, 10], [-1, 11]]}]};
+const DEMO_WORLD = {"cell": 26, "x0": -13, "z0": -13, "w": 52, "h": 52, "rows": ["                                                    ", "                          .                         ", "       . .              ..ww               ..       ", "     .......      .   ....ww.  .   .     ....       ", "   .........    . ... ...ww.........   .......      ", "   .....................ww..........g  ggrgggg.     ", "  ......................ww......grggggggPrggggg     ", "   .....................ww.....ggrgPrPgggrPggg      ", "  ......................ww.....ggrPgrgggPrgggr      ", "   .........gr...........ww....gPrgPrPgPgrPgPrg.    ", "    ......rrrrrr.........ww....rrrrrrrrrrrrrrrP.    ", "      ...grggggr........ww....gggrPgrggggrgPgrgg.   ", "      ...rrgHHgrg.......ww....gggrgPrgHHgrPgPrPg    ", "     .....rgHHgrtttttttBBtttt.gggrPgrgHHgrgggrgg.   ", "    ......rggggr.......ww...t.gggrgPrggggrPgPrPg.   ", "    ......rrrrrr.......ww...t.gggrPgrrrrrrgggrgg.   ", "    ........rg.........ww...t..ggrgPrgPgPrPgPrg..   ", "   .........t...........ww..t...grbgrPgPgrgPgrg...  ", "    ........t............wwbttttbbbbrrrrrrrrrr...b  ", "    ........t............wbb.bbbbbsbbgPgPggg...b.   ", "     .......t.............bsbbbbssssbgbgg.bb...bs   ", "   .........t.............ssbssssssssbbbbbbbbbbss   ", "  ..........t.............sssssssssssbsbbbssbbss    ", " ...........tmm...........ssssssssssssssssssssss    ", "  .mmmmmmmmmtmmm..........sssssssssssssssssssssss   ", " .mmmmmmmmmmt..mmm........ssssssssssssssssssssssss  ", "  m.........t...mmmmmmm     ssssssssssssssssssssss  ", "   .........t.....mmmm      ssssssssssssssssssss    ", "    ........tt.......          sssssssssssssssss    ", "    .........t.......           ssssssssssssss      ", "   ..........t.......               s  sssssss      ", "    .........t.......                   sss         ", "    .......rrrr......                    s          ", "     .....ggPgg........                             ", "    .....ggggggg........                            ", "      ...gPgPgPgP........                           ", "      ..rrrrrrrrrr.....                             ", "     ...ggrggggPgPgg....                            ", "   ....ggPrgHHgggggg...                             ", "   ....gggrgHHgggggg....                            ", "   ....ggPrggggPgPg...                              ", "  .....rrrrrrrrrrr.....                             ", "  ......gPgPgPgPg.......                            ", "  ........ggggggg.......                            ", "    ........gggg.......                             ", "   ...........r......                               ", "   ....... ..........                               ", "  .......   ........                                ", "    ....       ..                                   ", "                                                    ", "                                                    ", "                                                    "], "territories": [{"id": "4d5d7e95", "name": "auto-pipeline", "plan": "meadow", "terrain": "grassland", "slot": [0, 0], "cx": 0, "cz": 0, "lines": 500, "size": 0.24212512553021587, "r": 3.522238341052446, "open": 0, "plots_total": 36, "plots": [], "buildings": [], "era": "village", "balance": {"build": {"state": "healthy", "value": 500, "n": 3, "text": "500 \u884c\u4ee3\u7801"}, "rules": {"state": "missing", "value": 0, "n": 0, "text": "\u8fd8\u6ca1\u6709"}, "beauty": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 1.0, "n": 1, "text": "1/1 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u6587\u4ef6"}}, "next": ["\u89c4\u6a21", "\u89c4\u5219"], "rules_note": ""}, {"id": "8329562e", "name": "v4-plus", "plan": "harbor", "terrain": "coast", "slot": [1, 0], "cx": 26, "cz": 0, "lines": 1000000, "size": 1.0, "r": 8.6, "open": 35, "plots_total": 35, "plots": [{"k": 0, "x": 22, "z": -1, "d": "workshop"}, {"k": 1, "x": 26, "z": -4, "d": "tower"}, {"k": 2, "x": 29, "z": -1, "d": "house"}, {"k": 3, "x": 22, "z": 1, "d": "workshop"}, {"k": 4, "x": 29, "z": 1, "d": "house"}, {"k": 5, "x": 24, "z": -4, "d": "library"}, {"k": 6, "x": 25, "z": 3, "d": "shop"}, {"k": 7, "x": 21, "z": 0, "d": "workshop"}, {"k": 8, "x": 27, "z": 3, "d": "shop"}, {"k": 9, "x": 30, "z": -2, "d": "house"}, {"k": 10, "x": 21, "z": -2, "d": "workshop"}, {"k": 11, "x": 27, "z": -5, "d": "tower"}, {"k": 12, "x": 29, "z": -4, "d": "tower"}, {"k": 13, "x": 22, "z": -4, "d": "library"}, {"k": 14, "x": 21, "z": 2, "d": "workshop"}, {"k": 15, "x": 31, "z": -1, "d": "house"}, {"k": 16, "x": 22, "z": 3, "d": "workshop"}, {"k": 17, "x": 26, "z": 4, "d": "shop"}, {"k": 18, "x": 29, "z": 3, "d": "shop"}, {"k": 19, "x": 24, "z": 4, "d": "shop"}, {"k": 20, "x": 31, "z": 1, "d": "house"}, {"k": 21, "x": 24, "z": -6, "d": "library"}, {"k": 22, "x": 31, "z": -4, "d": "tower"}, {"k": 23, "x": 27, "z": -7, "d": "tower"}, {"k": 24, "x": 21, "z": -5, "d": "library"}, {"k": 25, "x": 29, "z": -6, "d": "tower"}, {"k": 26, "x": 31, "z": 3, "d": "house"}, {"k": 27, "x": 30, "z": 4, "d": "shop"}, {"k": 28, "x": 22, "z": -6, "d": "library"}, {"k": 29, "x": 33, "z": -1, "d": "house"}, {"k": 30, "x": 19, "z": -4, "d": "library"}, {"k": 31, "x": 33, "z": -3, "d": "house"}, {"k": 32, "x": 33, "z": 1, "d": "house"}, {"k": 33, "x": 25, "z": 6, "d": "shop"}, {"k": 34, "x": 27, "z": 6, "d": "shop"}], "buildings": [{"plot": 6, "type": "shop", "by": "worker", "x": 25, "z": 3}, {"plot": 1, "type": "tower", "by": "worker", "x": 26, "z": -4}], "era": "city", "balance": {"build": {"state": "healthy", "value": 1000000, "n": 400, "text": "1,000,000 \u884c\u4ee3\u7801"}, "rules": {"state": "healthy", "value": 0.8, "n": 320, "text": "80% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 40, "n": 40, "text": "40 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 3.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.9, "n": 36, "text": "36/40 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 20, "n": 20, "text": "20 \u4e2a\u6587\u4ef6"}}, "next": [], "rules_note": ""}, {"id": "db8c2db6", "name": "pos-lite", "plan": "ridge", "terrain": "mountain", "slot": [0, 1], "cx": 0, "cz": 26, "lines": 20000, "size": 0.6052343817819053, "r": 5.955070357938764, "open": 15, "plots_total": 37, "plots": [{"k": 0, "x": 2, "z": 24, "d": "workshop"}, {"k": 1, "x": -1, "z": 22, "d": "tower"}, {"k": 2, "x": 2, "z": 27, "d": "shop"}, {"k": 3, "x": 0, "z": 29, "d": "house"}, {"k": 4, "x": -4, "z": 27, "d": "house"}, {"k": 5, "x": -4, "z": 25, "d": "library"}, {"k": 6, "x": -3, "z": 22, "d": "library"}, {"k": 7, "x": 1, "z": 22, "d": "tower"}, {"k": 8, "x": -2, "z": 29, "d": "house"}, {"k": 9, "x": 4, "z": 24, "d": "workshop"}, {"k": 10, "x": 2, "z": 29, "d": "shop"}, {"k": 11, "x": -1, "z": 20, "d": "tower"}, {"k": 12, "x": 4, "z": 27, "d": "shop"}, {"k": 13, "x": -4, "z": 29, "d": "house"}, {"k": 14, "x": 3, "z": 22, "d": "workshop"}], "buildings": [{"plot": 3, "type": "house", "by": "worker", "x": 0, "z": 29}], "era": "town", "balance": {"build": {"state": "healthy", "value": 20000, "n": 60, "text": "20,000 \u884c\u4ee3\u7801"}, "rules": {"state": "low", "value": 0.3, "n": 18, "text": "30% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 6, "n": 8, "text": "6 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.5 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.6, "n": 12, "text": "12/20 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 4, "n": 4, "text": "4 \u4e2a\u6587\u4ef6"}}, "next": ["\u89c4\u5219"], "rules_note": ""}], "links": [{"a": "4d5d7e95", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[10, 0], [11, 0]]}, {"a": "4d5d7e95", "b": "db8c2db6", "gap": "pass", "kind": "road", "cross": [[-1, 10], [-1, 11]]}]};
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, powerPreference:'low-power' });
 renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
@@ -1207,8 +1342,12 @@ function groundGeometry(view){
     // is not around (a bare groundGeometry harness) it falls back to the plain terrain path, as before.
     const roadRgb = ch === 'r' && typeof roadColor === 'function'
       ? rgbOf(roadColor(cellTerrain(view, X, Z) || { terrain: terrAtOf(view, X, Z) })) : rgbOf(look.path);
+    // Balance: a claimed 't' track tile is coloured by its territory's infra (trackColor); same fallback
+    // pattern as roadRgb when the helper is not around (a bare groundGeometry harness).
+    const trackRgb = ch === 't' && typeof trackColor === 'function'
+      ? rgbOf(trackColor(cellTerrain(view, X, Z) || {})) : rgbOf(TRACK_COLOR);
     const rgb = jitter(X, Z,
-      ch === '.' ? rgbOf(look.wild) : ch === 'r' ? roadRgb : ch === 't' ? rgbOf(TRACK_COLOR) :
+      ch === '.' ? rgbOf(look.wild) : ch === 'r' ? roadRgb : ch === 't' ? trackRgb :
       ch === 'b' ? rgbOf(BEACH_COLOR) : ch === 'm' ? rgbOf(PASS_COLOR) : ch === 'f' ? rgbOf(FOREST_FLOOR) : rgbOf(look.ground));
     quad(X, 0, Z + 1, X + 1, 0, Z + 1, X + 1, 0, Z, X, 0, Z, rgb); // wound so the top face normal points up (three.js front-face)
     if (gap(at(X, Z - 1))) quad(X, 0, Z, X + 1, 0, Z, X + 1, -1, Z, X, -1, Z, rock);
@@ -1294,7 +1433,36 @@ function buildLand(view){
     instanced('lantern', lamps.map(({ x, z }) => ({ x, z, h: .55 })), { parent: landGroup });
     for (const { x, z } of lamps) { const s = new THREE.Sprite(glowMat); s.position.set(x, .62, z); s.scale.set(.9, .9, 1); s.visible = P.night; landGroup.add(s); glows.push(s); }
     for (const p of t.plots || []) place('patch-grass', p.x + .5, p.z + .5, { fit: .85, keepY: true, y: -.1, parent: landGroup });
-    for (const bd of t.buildings || []) newBuildingRecord(t.id, bd.plot, bd.type, bd.x, bd.z, bd.by, true);
+    // Balance: the 5 systems' own things (signposts, flowers, a library, a water tower, ...); grouped by
+    // model so repeats become one InstancedMesh (buildLand: "use instanced() when you can"). systemsDecor's
+    // `key` is 'pack/name' (what the tests and MODELS pin); `lib` (and place()/instanced()) key off the
+    // bare name after '/' (loadAll: prep(key.split('/')[1], g)) — split it here, once, for real placing.
+    const sysBy = {};
+    for (const d of systemsDecor(t, view)) (sysBy[d.key] = sysBy[d.key] || []).push(d);
+    for (const key in sysBy) {
+      const items = sysBy[key], bare = key.split('/')[1], tint = SYS_TINT[key];
+      if (items.length > 1) {
+        instanced(bare, items.map(it => ({ x: it.x, z: it.z, fit: SYS_FIT[key] || .8 })), Object.assign({ parent: landGroup }, tint ? { tint } : null));
+      } else {
+        const g = place(bare, items[0].x, items[0].z, { fit: SYS_FIT[key] || .8, parent: landGroup });
+        if (tint) g.traverse(n => { if (n.isMesh) n.material = tintedMat(n.material, tint); });
+        if (key === 'industrial/building-h') { // Balance: the police station gets a white band, like the mock
+          const L = lib[bare], sc = g.userData.s, w = L.size.x * sc, dd = L.size.z * sc, h = L.size.y * sc;
+          const band = new THREE.Mesh(new THREE.BoxGeometry(w * 1.05, h * .16, dd * 1.05), new THREE.MeshLambertMaterial({ color: 0xF3F1E8 }));
+          band.castShadow = true; band.position.y = h * .55; g.add(band);
+        }
+      }
+    }
+    // Balance: one record (and mesh) per building, keyed by plot — never a duplicate across repeated
+    // buildLand calls (every 'world' event, and the era-flip). A building already known keeps its record;
+    // if its era look changed (eraShown(t) moved on), its old mesh is dropped so sync() remakes it fresh
+    // with the new eraLook. Buildings are still permanent: none is ever removed.
+    for (const bd of t.buildings || []) {
+      const existing = buildings.find(b => b.terr === t.id && b.plot === bd.plot);
+      if (!existing) { newBuildingRecord(t.id, bd.plot, bd.type, bd.x, bd.z, bd.by, true); continue; }
+      occupied.set(bd.x + ',' + bd.z, existing);
+      if (existing.v && existing.builtEra !== eraShown(t)) dropBuildingMesh(existing);
+    }
     const el = ovEl('lbl'); setText(el, t.name); labels.push({ el, x: t.cx, h: 2.1 * (t.size < .15 ? .8 : 1), z: t.cz });
     // Balance: the "还差：..." sign, in front of the hall (south of its centre, like home/hallStand)
     const signEl = ovEl('era-sign'); signs.push({ el: signEl, t, x: t.cx, z: t.cz + 1.7 });
@@ -1411,6 +1579,7 @@ function makeBuilding(b){
   v.cones = new THREE.Group(); g.add(v.cones);
   for (const [cx, cz] of [[-.38, -.38], [.38, -.38], [.38, .38], [-.38, .38]]) place('construction-cone', cx, cz, { s: 1.7, parent: v.cones });
   const bt = terrOf(b.terr) || { id: b.terr, era: 'village' };
+  b.builtEra = eraShown(bt); // Balance: the era this mesh was skinned for — buildLand drops it when this moves on
   const build = eraLook(bt).build;
   const opts = build[b.type] || build.house;
   const key = opts[Math.floor(sr(b.seed, 1) * opts.length)];
@@ -1418,8 +1587,12 @@ function makeBuilding(b){
   v.model = place(key, 0, 0, { fit, ry: frontYaw(b), parent: g });
   v.h = lib[key].size.y * v.model.userData.s;
   const variation = b.type === 'house' ? variations[Math.floor(sr(b.seed, 5) * (variations.length + 1))] : null;
+  // Balance: painted walls once beauty is healthy (like the mock); a few bright colours, seeded per building
+  const paint = bt.balance && bt.balance.beauty && bt.balance.beauty.state === 'healthy'
+    ? PAINT_COLORS[Math.floor(sr(b.seed, 7) * PAINT_COLORS.length)] : null;
   v.model.traverse(n => { if (n.isMesh) {
     if (variation && n.material.map) n.material = variantMat(n.material, variation);
+    if (paint && n.material.map) n.material = tintedMat(n.material, paint);
     n.userData.base = n.material; v.meshes.push(n);
   } });
   v.scaf = new THREE.Group(); g.add(v.scaf);
@@ -1430,6 +1603,16 @@ function makeBuilding(b){
   pickables.push(g);
   fadeables.push({ g, b, tiles: [(b.gx - mid.x) + ',' + (b.gy - mid.z)] });
   b.v = v;
+}
+/* Balance: drops a building's THREE mesh (kept permanent as a logical record — buildLand calls this only
+   when the territory's era moved on) so sync() remakes it fresh with the new eraLook; never touches the
+   building's own record (id/terr/plot/by/...), so its selection and progress survive the re-skin. */
+function dropBuildingMesh(b){
+  if (!b.v) return;
+  world.remove(b.v.g);
+  const pi = pickables.indexOf(b.v.g); if (pi >= 0) pickables.splice(pi, 1);
+  for (let i = fadeables.length - 1; i >= 0; i--) if (fadeables[i].g === b.v.g) fadeables.splice(i, 1);
+  b.v = null;
 }
 const varCache = new Map();
 function variantMat(m, tex){
@@ -1704,6 +1887,136 @@ function resize(){
   W = Math.max(1, r.width); H = Math.max(1, r.height);
   renderer.setSize(W, H, false);
   needFrame = true;
+}
+/* ---------- the era show: builders come out, visit every target, then the flip (requirements/city.md,
+   Balance). Builders are pure decoration, never citizens: they never enter `citizens`, the roster or the
+   top counts. Driven from real time (performance.now(), same clock as `shows`/eraShown), not simT, so a
+   show keeps running at the same wall-clock pace regardless of the sim clock. ---------- */
+const showRuns = new Map();
+const SHOW_WORK_END = 45; // seconds: every target's scaffolding is up by about here (spec)
+const SHOW_WALK_FRAC = .6; // share of a leg's own time budget spent walking; the rest is hammering in place
+/* a point g of the way (0..1) along a poly-line leg, distance-weighted (same idea as the mock's pathAt) */
+function showPathAt(path, g){
+  if (path.length < 2) return path[0] || [0, 0];
+  const seg = []; let tot = 0;
+  for (let i = 1; i < path.length; i++) { seg.push(Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1])); tot += seg[i - 1]; }
+  let want = g * tot;
+  for (let i = 0; i < seg.length; i++) {
+    if (want <= seg[i] || i === seg.length - 1) { const f = seg[i] ? Math.min(1, want / seg[i]) : 1;
+      return [path[i][0] + (path[i + 1][0] - path[i][0]) * f, path[i][1] + (path[i + 1][1] - path[i][1]) * f]; }
+    want -= seg[i];
+  }
+  return path[path.length - 1];
+}
+/* one run's live state for a territory's show: its plan, one walking builder per plan.builders (each with
+   its own door->target->target->...->door legs, findPath used leg by leg), and a (initially hidden)
+   scaffold/planks group per building/road target — parented under landGroup so the flip's buildLand(map)
+   clears them for free. */
+function makeShowRun(t, view, s){
+  const plan = showPlan(t, view, s.to);
+  const door = hallStand(t);
+  const builders = [];
+  for (let i = 0; i < plan.builders; i++) {
+    const mine = plan.targets.filter((_, j) => j % plan.builders === i);
+    const stops = [[door.x, door.y], ...mine.map(g => [g.x, g.z]), [door.x, door.y]];
+    const legs = [];
+    for (let k = 1; k < stops.length; k++) {
+      const [ax, az] = stops[k - 1], [bx, bz] = stops[k];
+      const p = findPath(ax, az, bx, bz);
+      legs.push((p && p.length) ? [[ax, az], ...p] : [[ax, az], [bx, bz]]);
+    }
+    builders.push({ legs, mine, delay: i / plan.builders * 6, v: null });
+  }
+  const scaf = plan.targets.filter(g => g.what !== 'lamp').map(g => ({
+    key: Math.floor(g.x) + ',' + Math.floor(g.z),
+    el: place(g.what === 'road' ? 'resource-planks' : 'structure', g.x, g.z,
+      { s: g.what === 'road' ? .8 : .55, ry: sr(g.x * 7 + g.z, 3) * 6.28, parent: landGroup }),
+  }));
+  for (const s2 of scaf) s2.el.visible = false;
+  return { plan, builders, scaf, reached: new Set(), flipped: false };
+}
+/* where a builder is at elapsed (real) seconds into the show, and whether it is hammering: walk to
+   target 0, hammer there, walk to target 1, hammer there, ... one leg per target, each leg's own time
+   slice inside [delay, SHOW_WORK_END]; hold (still hammering) from SHOW_WORK_END to SHOW_FLIP; walk the
+   last leg home from SHOW_FLIP to SHOW_SEC. `arrived` = index of the last target reached-and-hammered so
+   far (targets 0..arrived have their scaffolding up), -1 before the first arrival. */
+function showBuilderAt(b, elapsed){
+  const M = b.mine.length;
+  if (!M || elapsed < b.delay) return { pos: null, hammering: false, arrived: -1 };
+  if (elapsed < SHOW_FLIP) {
+    const span = Math.max(.001, SHOW_WORK_END - b.delay), segDur = span / M;
+    const t2 = Math.min(elapsed, SHOW_WORK_END) - b.delay;
+    const j = Math.max(0, Math.min(M - 1, Math.floor(t2 / segDur)));
+    const localF = segDur > 0 ? Math.min(1, (t2 - j * segDur) / segDur) : 1;
+    if (localF < SHOW_WALK_FRAC) return { pos: showPathAt(b.legs[j], localF / SHOW_WALK_FRAC), hammering: false, arrived: j - 1 };
+    return { pos: b.legs[j][b.legs[j].length - 1], hammering: true, arrived: j };
+  }
+  const g = Math.min(1, (elapsed - SHOW_FLIP) / Math.max(.001, SHOW_SEC - SHOW_FLIP));
+  return { pos: showPathAt(b.legs[M], g), hammering: false, arrived: M - 1 };
+}
+function updateShowBuilder(b, pos, hammering){
+  if (!pos) { if (b.v) b.v.g.visible = false; return; }
+  if (!b.v) {
+    const key = pick(['character-male-c', 'character-female-a', 'character-male-a']);
+    const g = place(key, pos[0], pos[1], { s: CHAR_SCALE, keepY: true });
+    const mixer = new THREE.AnimationMixer(g.children[0]); mixers.push(mixer);
+    const hand = g.children[0].getObjectByName('arm-right');
+    let hammer = null;
+    if (hand && lib['tool-hammer']) {
+      hammer = lib['tool-hammer'].scene.clone(true); hammer.scale.setScalar(1.25);
+      hammer.position.set(-.02, -.17, .06); hammer.rotation.set(Math.PI / 2, 0, 0); hand.add(hammer);
+    }
+    b.v = { g, key, mixer, hammer, cur: null, action: null, yaw: 0 };
+  }
+  const v = b.v, g = v.g;
+  g.visible = true;
+  const dx = pos[0] - g.position.x, dz = pos[1] - g.position.z;
+  if (Math.hypot(dx, dz) > .001) v.yaw = Math.atan2(dx, dz);
+  g.rotation.y = v.yaw;
+  g.position.set(pos[0], 0, pos[1]);
+  const name = hammering ? 'interact-right' : 'walk';
+  if (v.cur !== name) {
+    const clip = THREE.AnimationClip.findByName(lib[v.key].clips, name);
+    if (clip) {
+      const next = v.mixer.clipAction(clip);
+      next.reset(); next.setEffectiveTimeScale(name === 'walk' ? WALK_ANIM_SCALE : 1); next.play();
+      if (v.action) next.crossFadeFrom(v.action, .2, false);
+      v.action = next; v.cur = name;
+    }
+  }
+  if (v.hammer) v.hammer.visible = hammering;
+}
+function dropShowBuilder(b){
+  if (!b.v) return;
+  world.remove(b.v.g);
+  const mi = mixers.indexOf(b.v.mixer); if (mi >= 0) mixers.splice(mi, 1);
+  b.v = null;
+}
+function stepShows(now){
+  if (!shows.size) return;
+  for (const [id, s] of [...shows]) {
+    const t = terrOf(id);
+    if (!t) { shows.delete(id); showRuns.delete(id); continue; }
+    let run = showRuns.get(id);
+    if (!run) { run = makeShowRun(t, map, s); showRuns.set(id, run); }
+    const elapsed = SHOW_SEC - (s.end - now) / 1000;
+    for (const b of run.builders) {
+      const st2 = showBuilderAt(b, elapsed);
+      for (let k = 0; k <= st2.arrived; k++) run.reached.add(Math.floor(b.mine[k].x) + ',' + Math.floor(b.mine[k].z));
+      updateShowBuilder(b, st2.pos, st2.hammering);
+    }
+    for (const s2 of run.scaf) s2.el.visible = run.reached.has(s2.key);
+    if (!run.flipped && elapsed >= SHOW_FLIP) {
+      run.flipped = true;
+      buildLand(map); // one moment: every building, hall, road and lamp of t re-skinned by eraLook (eraShown(t) is now s.to); clears the scaffolding too (landGroup)
+      logAt(simT, t.name + ' 变成' + ERA_ZH[s.to] + '了');
+    }
+    if (now >= s.end) {
+      for (const b of run.builders) dropShowBuilder(b);
+      shows.delete(id); showRuns.delete(id);
+    }
+    needFrame = true;
+  }
 }
 const goneOv = [];
 function sync(t, dt){
@@ -2250,6 +2563,7 @@ let lastSim = performance.now(), lastDraw = 0, panelT = 0;
 function busy(){
   if (drag && drag.moved || pinch || camTween || autoRotating(performance.now())) return true;
   if (floaters.length) return true;
+  if (typeof shows !== 'undefined' && shows.size) return true; // Balance: an era show is running (builders walking, about to flip)
   return citizens.some(c => c.path.length || c.state === 'building' || c.state === 'spawn' || c.state === 'asking');
 }
 function autoRotating(now){ return !RM && !drag && !pinch && !camTween && now - lastTouch >= AUTO_ROT_IDLE_MS; }
@@ -2276,6 +2590,7 @@ function frame(now){
   applyTheme();
   updateCamera();
   applyFade(viewBlockers(cam.el + camLiftNow));
+  stepShows(now); // Balance: the running era show(s) — builders walking, then the one-moment flip
   sync(simT, raw);
   renderer.render(scene, camera);
   panelT += raw;
