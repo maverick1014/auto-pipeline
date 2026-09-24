@@ -28,6 +28,8 @@
 - One island per repo. All islands on one sea.
 - Island size grows with the repo's git-tracked code lines. Not counted: binaries, images, 3D models, vendor, lock files.
 - New repo = tiny island with a small town hall only.
+- Island shape is uneven: organic coastline, never a square or rectangle. Growth adds land at the edge and keeps it uneven.
+- Same repo → same shape every time (shape seeded from the repo identity), so reopening shows the island the owner remembers.
 - Repo identity = git common dir. Agents in a worktree land on their main repo's island.
 - New land gets buildings. Building type is picked automatically from the kind of work (files touched): tests → test tower, UI → shop, scripts → workshop, docs → library, other → house.
 - Buildings are permanent. An agent leaving never removes its building.
