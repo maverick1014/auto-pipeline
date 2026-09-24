@@ -96,7 +96,9 @@ CONTRACT: server additions (bin/agent_city.py serve)
   decisions.jsonl: one JSON line per close and per pass:
     {"t": local ISO time with offset, "id", "by", "verb" (answer allow deny
      closed pass), "repo", "agent", "task", "tool", "what", "text", "reason"}
-  Snapshot: the first /events message also has "asks": [open views].
+  Snapshot: the first /events message also has "asks": [open views] and
+  "governors": <count>. SSE {"type": "governors", "count": n} whenever that
+  count changes (a new governor seen, one forgotten on SessionEnd).
   /health also has "asks" (open count), "gov_wait_sec", and "governors"
   (repos with a governor seen in the last 15 min).
 
@@ -596,6 +598,27 @@ class TestGovernorGone(InteractCase):
         self.assertEqual(out.get("r", {}).get("state"), "replaced")
         self.assertEqual(self.health()["governors"], 0)
         self.assertEqual(self.view(self.ask(q_body()))["why"], "no-governor")
+
+
+class TestGovernorsCount(InteractCase):
+    def test_count_in_the_snapshot_and_on_change(self):
+        self.start()
+        sse = self.sse()
+        self.assertEqual(sse.messages[0]["governors"], 0)
+        self.gov_next(sid="gs")
+        got = wait_for(lambda: sse.events("governors"))
+        self.assertTrue(got, "no governors event when a governor showed up")
+        self.assertEqual(got[-1]["count"], 1)
+        self.gov_next(sid="gs")
+        time.sleep(0.5)
+        self.assertEqual(len(sse.events("governors")), 1, "same governor again is no change")
+        self.append(json.dumps({"ev": "SessionEnd", "sid": "gs", "aid": "", "at": "", "tool": "",
+                                "nt": "", "proj": "shop", "role": "", "desc": "", "sub": "",
+                                "q": "", "klen": ""}) + "\n")
+        self.assertTrue(wait_for(lambda: len(sse.events("governors")) == 2))
+        self.assertEqual(sse.events("governors")[-1]["count"], 0)
+        late = self.sse()
+        self.assertEqual(late.messages[0]["governors"], 0)
 
 
 class TestGovernorWatcherSlot(InteractCase):
