@@ -65,6 +65,8 @@ GOOD_CONF_TEXT = (
     "auto_resume=yes\n"
     "language=en\n"
     "runtime=auto\n"
+    "city_port=4777\n"
+    "city_idle_min=30\n"
 )
 
 
