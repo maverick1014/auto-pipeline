@@ -246,7 +246,8 @@ const EL_MIN = 15 * Math.PI / 180;
 const EL_MAX = 60 * Math.PI / 180;
 const EL_DEFAULT = 30 * Math.PI / 180;
 const DIST_MIN = 2.5;
-const DIST_MAX = 40;
+const LIFT_MAX = 10 * Math.PI / 180;
+const FADE_OPACITY = .3;
 const DIST_DEFAULT = 9;
 const TARGET_Y = .4;
 const CAM_CLEAR = .35;
@@ -385,6 +386,7 @@ function newBuilding(kind, gx, gy, role, label){
   return b;
 }
 function removeBuilding(b){
+  const fi = fadeables.findIndex(f => f.b === b); if (fi >= 0) fadeables.splice(fi, 1);
   const i = buildings.indexOf(b); if (i >= 0) buildings.splice(i, 1);
   if (occupied.get(b.gx + ',' + b.gy) === b) occupied.delete(b.gx + ',' + b.gy);
   if (selected && selected.t === 'b' && selected.id === b.id) selected = null;
@@ -855,8 +857,9 @@ function buildIsland(){
   for (const k in flowersBy) instanced(k, flowersBy[k], { shadow: false });
   instanced('plant_bushLarge', [[4.9, 7.25], [7.1, 7.25], [8.25, 8.2], [11.7, 10.4]].map(([x, z]) => ({ x, z, s: .75 })));
 
-  place('building-j', 6, 6, { fit: 1.85 });
-  place('flag', 6.1, 6.25, { y: lib['building-j'].size.y * fitScale('building-j', 1.85), s: .7 });
+  const hall = place('building-j', 6, 6, { fit: 1.85 });
+  const flag = place('flag', 6.1, 6.25, { y: lib['building-j'].size.y * fitScale('building-j', 1.85), s: .7 });
+  for (const g of [hall, flag]) fadeables.push({ g, tiles: ['-1,0', '0,0', '-1,1', '0,1'] });
   place('fountain-round', 9.5, 9.5, { fit: .98 });
   place('stall-red', 5.5, 10.5, { h: .72, ry: -Math.PI / 2 });
   place('detail-parasol-a', 6.78, 10.5, { h: .5 });
@@ -1000,6 +1003,7 @@ function makeBuilding(b){
   }
   g.userData.pick = { t:'b', id:b.id };
   pickables.push(g);
+  fadeables.push({ g, b, tiles: [(b.gx - 6) + ',' + (b.gy - 5)] });
   b.v = v;
 }
 const varCache = new Map();
@@ -1015,7 +1019,7 @@ function setClip(b, on){
     v.plane = b.kind === 'bridge' ? new THREE.Plane(new THREE.Vector3(0, 0, 1), 5) : new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
     for (const n of v.meshes) { const m = n.userData.base.clone(); m.clippingPlanes = [v.plane]; m.clipShadows = true; n.material = m; }
   } else if (!on && v.plane) {
-    for (const n of v.meshes) { n.material.dispose(); n.material = n.userData.base; }
+    for (const n of v.meshes) { const src = n.material.userData.fadeSrc; if (src) src.dispose(); n.material.dispose(); n.material = n.userData.base; }
     v.plane = null;
   }
 }
@@ -1165,24 +1169,94 @@ function heightAt(x, z){
   return h;
 }
 function aroundH(x, z){ return Math.max(heightAt(x, z), heightAt(x + .3, z), heightAt(x - .3, z), heightAt(x, z + .3), heightAt(x, z - .3)); }
-/* tilt used this frame: the user's tilt, lifted so the view passes over anything between the target and the camera */
-function camLift(){
-  const sx = Math.sin(cam.az), sz = Math.cos(cam.az), reach = cam.dist * Math.cos(cam.el) + .3;
-  let el = cam.el;
-  for (let r = .6; r <= reach; r += .2) {
-    const h = aroundH(cam.tx + sx * r, cam.tz + sz * r);
-    if (h > 0) el = Math.max(el, Math.atan2(h + CAM_CLEAR - TARGET_Y, r));
+/* the island box (scene x -6..6, y -1.05..0, z -7..7) seen from angle az at the current tilt, looking at (0, ly, 0) from dist:
+   [how much of the stage it fills on its tighter side, how far its middle sits from the stage middle] */
+function islandSpread(az, dist, ly){
+  const t = Math.tan(FOV * Math.PI / 360), a = W / H, ce = Math.cos(cam.el), se = Math.sin(cam.el), sa = Math.sin(az), ca = Math.cos(az);
+  let mx = 0, y0 = Infinity, y1 = -Infinity;
+  for (const x of [-6, 6]) for (const z of [-7, 7]) for (const y of [-1.05, 0]) {
+    const q = y - ly, zc = dist - ce * sa * x - se * q - ce * ca * z, v = (-se * sa * x + ce * q - se * ca * z) / (zc * t);
+    mx = Math.max(mx, Math.abs((ca * x - sa * z) / (zc * t * a)));
+    y0 = Math.min(y0, v); y1 = Math.max(y1, v);
   }
-  return Math.min(el, 1.45);
+  return [Math.max(mx, (y1 - y0) / 2), (y0 + y1) / 2];
+}
+/* look height that puts the island in the middle of the stage */
+function centreHeight(az, dist){
+  let ly = -.5;
+  for (let i = 0; i < 8; i++) ly += islandSpread(az, dist, ly)[1] * dist * Math.tan(FOV * Math.PI / 360) / Math.cos(cam.el);
+  return ly;
+}
+/* how far out the zoom goes: the whole island fills about 80% of the stage at this tilt, from any angle */
+function distMax(){
+  const key = W + '|' + H + '|' + cam.el.toFixed(3), c = distMax.c || (distMax.c = {});
+  if (c.key === key) return c.val;
+  let best = DIST_MIN;
+  for (const az of [0, Math.PI / 4, Math.PI / 2]) {
+    let lo = DIST_MIN, hi = 200;
+    for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (islandSpread(az, mid, centreHeight(az, mid))[0] > .8) lo = mid; else hi = mid; }
+    best = Math.max(best, hi);
+  }
+  c.key = key; c.val = best;
+  return best;
+}
+/* the point the camera looks at, [x, y, z]: the user's target, drawn to the island's middle as the view zooms out */
+function camTarget(){
+  const dm = distMax(), k = clamp((cam.dist - 12) / Math.max(1, dm - 12), 0, 1), s = k * k * (3 - 2 * k);
+  if (s === 0) return [cam.tx, TARGET_Y, cam.tz];
+  return [cam.tx * (1 - s), TARGET_Y * (1 - s) + centreHeight(cam.az, dm) * s, cam.tz * (1 - s)];
+}
+/* tilt used this frame: the user's tilt, lifted at most LIFT_MAX (eased, never while dragging) so the view clears what stands in the way */
+let camLiftNow = 0;
+function camLift(){
+  const [tx, ty, tz] = camTarget(), sx = Math.sin(cam.az), sz = Math.cos(cam.az), reach = cam.dist * Math.cos(cam.el) + .3;
+  let need = cam.el;
+  for (let r = .6; r <= reach; r += .2) {
+    const h = aroundH(tx + sx * r, tz + sz * r);
+    if (h > 0) need = Math.max(need, Math.atan2(h + CAM_CLEAR - ty, r));
+  }
+  const want = drag || pinch ? 0 : Math.min(need - cam.el, LIFT_MAX);
+  camLiftNow += (want - camLiftNow) * .2;
+  return cam.el + camLiftNow;
+}
+/* tiles whose top still stands above the view line at tilt el: what gets faded */
+function viewBlockers(el){
+  const [tx, ty, tz] = camTarget(), sx = Math.sin(cam.az), sz = Math.cos(cam.az), t = Math.tan(el), out = new Set();
+  for (let r = .6; r <= cam.dist * Math.cos(el); r += .2) {
+    const x = tx + sx * r, z = tz + sz * r;
+    if (heightAt(x, z) > ty + r * t) out.add(Math.floor(x) + ',' + Math.floor(z));
+  }
+  return out;
+}
+const fadeables = [];
+const fadedMats = new WeakMap();
+function fadedOf(src){
+  let m = fadedMats.get(src);
+  if (!m) {
+    m = src.clone(); m.transparent = true; m.opacity = src.opacity * FADE_OPACITY; m.depthWrite = false;
+    m.clippingPlanes = src.clippingPlanes; m.userData.fadeSrc = src; fadedMats.set(src, m);
+  }
+  return m;
+}
+function applyFade(blocked){
+  for (const f of fadeables) {
+    const on = f.tiles.some(k => blocked.has(k));
+    f.g.traverse(n => {
+      if (!n.isMesh) return;
+      const src = n.material.userData.fadeSrc || n.material;
+      n.material = on ? fadedOf(src) : src;
+    });
+  }
 }
 function updateCamera(){
   camera.aspect = W / H;
   camera.updateProjectionMatrix();
-  const el = camLift(), ce = Math.cos(el);
-  const x = cam.tx + cam.dist * ce * Math.sin(cam.az), z = cam.tz + cam.dist * ce * Math.cos(cam.az);
-  const y = Math.max(TARGET_Y + cam.dist * Math.sin(el), aroundH(x, z) + CAM_CLEAR);
+  cam.dist = Math.min(cam.dist, distMax());
+  const [tx, ty, tz] = camTarget(), el = camLift(), ce = Math.cos(el);
+  const x = tx + cam.dist * ce * Math.sin(cam.az), z = tz + cam.dist * ce * Math.cos(cam.az);
+  const y = Math.max(ty + cam.dist * Math.sin(el), aroundH(x, z) + CAM_CLEAR);
   camera.position.set(x, y, z);
-  camera.lookAt(cam.tx, TARGET_Y, cam.tz);
+  camera.lookAt(tx, ty, tz);
 }
 function resetCam(){ cam.az = Math.PI / 4; cam.el = EL_DEFAULT; cam.tx = .3; cam.tz = 2.8; cam.dist = W < 560 ? DIST_DEFAULT * 1.35 : DIST_DEFAULT; }
 function resize(){
@@ -1398,8 +1472,8 @@ function connectLive(){
 }
 let lastTouch = -Infinity;
 const camChanged = () => { needFrame = true; lastTouch = performance.now(); };
-$('#zin').addEventListener('click', () => { cam.dist = clamp(cam.dist / 1.25, DIST_MIN, DIST_MAX); camChanged(); });
-$('#zout').addEventListener('click', () => { cam.dist = clamp(cam.dist * 1.25, DIST_MIN, DIST_MAX); camChanged(); });
+$('#zin').addEventListener('click', () => { cam.dist = clamp(cam.dist / 1.25, DIST_MIN, distMax()); camChanged(); });
+$('#zout').addEventListener('click', () => { cam.dist = clamp(cam.dist * 1.25, DIST_MIN, distMax()); camChanged(); });
 $('#rot').addEventListener('click', () => { camTween = { from: cam.az, to: cam.az - Math.PI / 2, t: 0 }; camChanged(); });
 $('#zfit').addEventListener('click', () => { resetCam(); camChanged(); });
 let camTween = null;
@@ -1442,7 +1516,7 @@ canvas.addEventListener('pointermove', e => {
   if (pinch && pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-    cam.dist = clamp(pinch.z * Math.max(20, pinch.d) / Math.max(20, d), DIST_MIN, DIST_MAX);
+    cam.dist = clamp(pinch.z * Math.max(20, pinch.d) / Math.max(20, d), DIST_MIN, distMax());
     panBy(mx - pinch.mx, my - pinch.my); pinch.mx = mx; pinch.my = my;
     camChanged(); return;
   }
@@ -1451,7 +1525,7 @@ canvas.addEventListener('pointermove', e => {
   if (!drag.moved && Math.hypot(dx, dy) < 6) return;
   drag.moved = true; canvas.classList.add('grabbing');
   if (drag.pan) panBy(dx, dy);
-  else { cam.az -= dx * .008; cam.el = clamp(cam.el + dy * .005, EL_MIN, EL_MAX); }
+  else { const out = cam.dist >= distMax() - .01; cam.az -= dx * .008; cam.el = clamp(cam.el + dy * .005, EL_MIN, EL_MAX); if (out) cam.dist = distMax(); }
   drag.x = e.clientX; drag.y = e.clientY;
   camChanged();
 });
@@ -1468,7 +1542,7 @@ function endPointer(e){
 }
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
-canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = clamp(cam.dist * (e.deltaY < 0 ? 1 / 1.1 : 1.1), DIST_MIN, DIST_MAX); camChanged(); }, { passive:false });
+canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = clamp(cam.dist * (e.deltaY < 0 ? 1 / 1.1 : 1.1), DIST_MIN, distMax()); camChanged(); }, { passive:false });
 
 /* ---------- opening scene: a city mid-day, not an empty island ---------- */
 function placeBuilder(role, task, x, y, tools){
@@ -1543,6 +1617,7 @@ function frame(now){
   }
   applyTheme();
   updateCamera();
+  applyFade(viewBlockers(cam.el + camLiftNow));
   sync(simT, raw);
   renderer.render(scene, camera);
   panelT += raw;

@@ -54,19 +54,49 @@ CONTRACT
       OrthographicCamera. cam = {az, el, dist, tx, tz} in scene coordinates
       (world group offset -6, -5; the town hall centre is scene 0, 1).
       Constants: EL_MIN = 15°, EL_MAX = 60°, EL_DEFAULT = 30° (radians,
-      Math.PI allowed), DIST_MIN <= 3.5 (street level), DIST_MAX >= 30 (whole
-      island), DIST_DEFAULT, TARGET_Y, CAM_CLEAR.
+      Math.PI allowed), DIST_MIN <= 3.5 (street level), DIST_DEFAULT,
+      TARGET_Y, CAM_CLEAR, LIFT_MAX = 10°, FADE_OPACITY = .3.
+      distMax(): the zoom-out limit for the stage size W x H and the current
+      tilt, the same from every angle az (so auto-rotation never changes it).
+      At distMax() the whole island (scene x -6..6, z -7..7, y -1.05..0)
+      stays fully inside the stage, fills about 80% of it on its tighter
+      side at the widest angle (.7 to .9), and sits in the middle. May use
+      only W, H, cam.el, FOV, DIST_MIN, Math, clamp, and the helpers
+      islandSpread and centreHeight if present. updateCamera() keeps
+      cam.dist <= distMax(); tilting while fully zoomed out stays fully out.
+      camTarget() -> [x, y, z]: the point the camera looks at: (tx,
+      TARGET_Y, tz) up to dist 12, then drawn smoothly to the island's middle
+      (x 0, z 0, at the height that centres the island), reached at
+      distMax().
       resetCam(): tilt 30°, target within 3.5 of the town hall, dist <= 14,
       phone (W < 560) not closer than wide.
-      updateCamera(): camera on the sphere around (tx, TARGET_Y, tz) at dist,
-      tilt el, direction az (x = tx + dist cos(el) sin(az), z = tz + dist
-      cos(el) cos(az)); lookAt the target. It may raise the camera, never let
-      it sit below heightAt(x, z) + 0.1 within 0.25 of its position, or below
-      the ground. heightAt(x, z) = top of whatever stands on that scene tile
-      (0 on open ground); the test replaces it with a stub. updateCamera may
-      call only heightAt, camLift, aroundH, clamp and Math.
+      updateCamera(): camera on the sphere around camTarget(), at dist, tilt camLift(), direction az (x = tx + dist cos(el)
+      sin(az), z = tz + dist cos(el) cos(az)); lookAt the target. It may raise
+      the camera, never let it sit below heightAt(x, z) + 0.1 within 0.25 of
+      its position, or below the ground. heightAt(x, z) = top of whatever
+      stands on that scene tile (0 on open ground); the test replaces it with
+      a stub. updateCamera may call only heightAt, camLift, camTarget,
+      distMax, aroundH, clamp and Math.
+      camLift(): the tilt used this frame = cam.el + camLiftNow (a top-level
+      `let camLiftNow = 0`). The lift wanted is what clears the tallest thing
+      between target and camera, capped at LIFT_MAX, and 0 while drag or
+      pinch is set; camLiftNow eases toward it (at most about a fifth of the
+      way per frame), so the view never jumps.
+      viewBlockers(el) -> Set of scene tile keys 'x,z' (Math.floor) whose
+      heightAt stands above the view line from camTarget() to the camera at
+      tilt el (samples from 0.6 out to the camera).
+      fadeables: top-level array of {g, tiles}: the town hall and its flag
+      (tiles '-1,0' '0,0' '-1,1' '0,1', pushed in buildIsland), every
+      building (its tile, pushed in makeBuilding, removed in removeBuilding).
+      applyFade(blocked): every mesh under a fadeable whose tiles meet
+      blocked gets a cached faded clone of its own material (transparent,
+      opacity x FADE_OPACITY, depthWrite false, same clippingPlanes array,
+      userData.fadeSrc = the source; the cache, if any, is a top-level
+      WeakMap named fadedMats); others get their source back. Never
+      changes a shared material, never fades twice. frame() calls
+      applyFade(viewBlockers(cam.el + camLiftNow)) after updateCamera().
       Drag up/down: cam.el = clamp(..., EL_MIN, EL_MAX). +/−, wheel, pinch:
-      cam.dist clamped with DIST_MIN, DIST_MAX on the same line.
+      cam.dist clamped with DIST_MIN, distMax() on the same line.
       toScreen() hides points behind the camera (projected z > 1).
       Depth: PerspectiveCamera(FOV, 1, near, far) with number literals,
       near >= 0.2, far <= 200, far/near <= 1000. The edge cliff blocks share
@@ -578,7 +608,7 @@ const clips = ['walk', 'sprint', 'idle', 'interact-right', 'emote-yes', 'jump', 
   const box = ctx({ cam: { az: 0, el: 0, dist: 1, tx: -5, tz: -5 }, W: 1200, H: 800 });
   box.resetCam(); out.viewWide = Object.assign({}, box.cam);
   box.W = 400; box.H = 440; box.resetCam(); out.viewPhone = Object.assign({}, box.cam);
-  out.consts = { FOV: box.FOV, EL_MIN: box.EL_MIN, EL_MAX: box.EL_MAX, DIST_MIN: box.DIST_MIN, DIST_MAX: box.DIST_MAX };
+  out.consts = { FOV: box.FOV, EL_MIN: box.EL_MIN, EL_MAX: box.EL_MAX, DIST_MIN: box.DIST_MIN, LIFT_MAX: box.LIFT_MAX, FADE_OPACITY: box.FADE_OPACITY };
 }
 // camera pose: orbits the target at the user's tilt; never inside the ground or a building
 {
@@ -586,7 +616,7 @@ const clips = ['walk', 'sprint', 'idle', 'interact-right', 'emote-yes', 'jump', 
     position: { x: 0, y: 0, z: 0, set(x, y, z){ this.x = x; this.y = y; this.z = z; return this; } },
     lookAt(x, y, z){ this.look = typeof x === 'object' ? [x.x, x.y, x.z] : [x, y, z]; } };
   const box = ctx({ camera, cam: { az: 0, el: .5, dist: 9, tx: 0, tz: 0 }, W: 1200, H: 800,
-    clamp: (v, a, b) => Math.max(a, Math.min(b, v)) });
+    clamp: (v, a, b) => Math.max(a, Math.min(b, v)), drag: null, pinch: null, camLiftNow: 0, fadeables: [] });
   let ground = () => 0;
   box.heightAt = (x, z) => ground(x, z);
   const pose = (c) => { Object.assign(box.cam, c); box.updateCamera(); const p = camera.position; return { x: p.x, y: p.y, z: p.z, look: camera.look.slice() }; };
@@ -625,6 +655,108 @@ const clips = ['walk', 'sprint', 'idle', 'interact-right', 'emote-yes', 'jump', 
   };
   out.rot.keeps = [box.cam.el, box.cam.dist];
 }
+// lift: small, eased, never while dragging
+function fakeCamera(){
+  return { aspect: 1, fov: 40, look: null, updateProjectionMatrix(){},
+    position: { x: 0, y: 0, z: 0, set(x, y, z){ this.x = x; this.y = y; this.z = z; return this; } },
+    lookAt(x, y, z){ this.look = typeof x === 'object' ? [x.x, x.y, x.z] : [x, y, z]; } };
+}
+const clampFn = (v, a, b) => Math.max(a, Math.min(b, v));
+{
+  const camera = fakeCamera();
+  const box = ctx({ camera, cam: { az: 0, el: .5, dist: 9, tx: 0, tz: 0 }, W: 1200, H: 800, clamp: clampFn,
+    drag: null, pinch: null, camLiftNow: 0, fadeables: [] });
+  let ground = () => 0;
+  box.heightAt = (x, z) => ground(x, z);
+  const tower = (x, z) => (x >= 1 && x < 3 && z >= 1 && z < 3 ? 3.2 : 0);
+  const tilt = () => { const p = camera.position, l = camera.look; return Math.atan2(p.y - l[1], Math.hypot(p.x - l[0], p.z - l[2])); };
+  const base = () => ({ az: Math.PI / 4, el: box.EL_DEFAULT, dist: 9, tx: 0, tz: 0 });
+  const run = (n, c, setup) => { Object.assign(box.cam, c); Object.assign(box, { drag: null, pinch: null }, setup || {}); for (let i = 0; i < n; i++) box.updateCamera(); return tilt(); };
+  run(80, base());
+  ground = tower;
+  out.lift = { el: box.EL_DEFAULT, elMin: box.EL_MIN, liftMax: box.LIFT_MAX };
+  out.lift.firstFrame = run(1, base());
+  out.lift.settled = run(120, base());
+  out.lift.dragging = run(120, base(), { drag: { x: 0, y: 0, moved: true } });
+  out.lift.pinching = run(120, base(), { pinch: { d: 100, z: 9 } });
+  out.lift.userLow = run(120, Object.assign(base(), { el: box.EL_MIN }));
+  Object.assign(box.cam, base());
+  out.blockers = {
+    front: [...box.viewBlockers(box.EL_DEFAULT + box.LIFT_MAX)],
+    steep: [...box.viewBlockers(1.4)],
+  };
+  Object.assign(box.cam, base(), { az: Math.PI / 4 + Math.PI });
+  out.blockers.behind = [...box.viewBlockers(box.EL_DEFAULT)];
+  ground = () => 0;
+  Object.assign(box.cam, base());
+  out.blockers.flat = [...box.viewBlockers(box.EL_DEFAULT)];
+}
+// fade: cached clones, shared materials untouched, restore
+{
+  const box = ctx({ fadeables: [], FADE_OPACITY: .3, fadedMats: new WeakMap() });
+  const plane = { constant: 1 };
+  const mat = () => { const m = { opacity: 1, transparent: false, depthWrite: true, clippingPlanes: [plane], userData: {} };
+    m.clone = function(){ const c = Object.assign({}, this); c.userData = {}; c.clippingPlanes = this.clippingPlanes ? this.clippingPlanes.map(q => Object.assign({}, q)) : null; return c; };
+    return m; };
+  const shared = mat();
+  const mesh = () => ({ isMesh: true, material: shared });
+  const group = meshes => ({ isMesh: false, traverse(fn){ fn(this); meshes.forEach(fn); } });
+  const a1 = mesh(), a2 = mesh(), b1 = mesh();
+  box.fadeables.push({ g: group([a1, a2]), tiles: ['1,1', '1,2'] }, { g: group([b1]), tiles: ['5,5'] });
+  box.applyFade(new Set(['1,2']));
+  out.fade = {
+    faded: a1.material !== shared && a2.material !== shared,
+    opacity: a1.material.opacity, transparent: a1.material.transparent, depthWrite: a1.material.depthWrite,
+    otherUntouched: b1.material === shared,
+    sharedUntouched: shared.opacity === 1 && shared.transparent === false && shared.depthWrite === true,
+    planesShared: !!(a1.material.clippingPlanes && a1.material.clippingPlanes[0] === plane),
+  };
+  box.applyFade(new Set(['1,2']));
+  out.fade.opacityAgain = a1.material.opacity;
+  box.applyFade(new Set());
+  out.fade.restored = a1.material === shared && a2.material === shared && b1.material === shared;
+}
+// zoom out: the whole island fills about 80% of the stage and sits in the middle
+{
+  const camera = fakeCamera();
+  const box = ctx({ camera, cam: { az: 0, el: .5, dist: 9, tx: 0, tz: 0 }, W: 874, H: 710, clamp: clampFn,
+    drag: null, pinch: null, camLiftNow: 0, fadeables: [] });
+  box.heightAt = () => 0;
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const norm = a => { const l = Math.hypot(...a); return a.map(v => v / l); };
+  const fit = (W, H, az, el) => {
+    box.W = W; box.H = H;
+    Object.assign(box.cam, { az, el: el === undefined ? box.EL_DEFAULT : el, tx: .3, tz: 2.8 });
+    box.cam.dist = box.distMax();
+    for (let i = 0; i < 40; i++) box.updateCamera();
+    const P = [camera.position.x, camera.position.y, camera.position.z], L = camera.look;
+    const f = norm(sub(L, P)), r = norm(cross(f, [0, 1, 0])), u = cross(r, f);
+    const t = Math.tan(box.FOV * Math.PI / 360), a = W / H;
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (const x of [-6, 6]) for (const z of [-7, 7]) for (const y of [-1.05, 0]) {
+      const d = sub([x, y, z], P), zc = dot(d, f), nx = dot(d, r) / (zc * t * a), ny = dot(d, u) / (zc * t);
+      x0 = Math.min(x0, nx); x1 = Math.max(x1, nx); y0 = Math.min(y0, ny); y1 = Math.max(y1, ny);
+    }
+    const dm = box.cam.dist;
+    box.cam.az = az + 1.3; box.W = W * (1 + 1e-9); const dm2 = box.distMax(); box.cam.az = az; box.W = W;
+    return { dist: dm, sameFromAnyAngle: Math.abs(dm2 - dm) < 1e-3, look: [L[0], L[2]], w: (x1 - x0) / 2, h: (y1 - y0) / 2,
+      cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, edge: Math.max(-x0, x1, -y0, y1) };
+  };
+  const d = Math.PI / 180;
+  out.zoomOut = { wide: fit(874, 710, Math.PI / 4), phone: fit(358, 394, Math.PI / 4), wideSide: fit(874, 710, 0),
+    broad: fit(1400, 700, Math.PI / 4), wideSteep: fit(874, 710, Math.PI / 4, 60 * d), wideLow: fit(874, 710, Math.PI / 4, 15 * d),
+    broadSteep: fit(1400, 700, Math.PI / 4, 60 * d), phoneSide: fit(358, 394, 0, 45 * d) };
+  // tilting while fully zoomed out stays fully out; zooming past the limit is clamped
+  box.W = 874; box.H = 710;
+  Object.assign(box.cam, { az: 1, el: box.EL_DEFAULT, tx: 0, tz: 0 }); box.cam.dist = box.distMax() * 3; box.updateCamera();
+  out.clamped = box.cam.dist <= box.distMax() + 1e-9;
+  box.W = 874; box.H = 710;
+  Object.assign(box.cam, { az: 1, el: box.EL_DEFAULT, tx: 1, tz: -2, dist: 9 });
+  out.targetNear = box.camTarget();
+  box.cam.dist = 12; out.target12 = box.camTarget();
+  out.targetY = box.TARGET_Y;
+}
 // frame rate: auto-rotation counts as motion, so live with zero agents is not throttled
 {
   const box = ctx({ cam: { az: 0, el: .5, dist: 9, tx: 0, tz: 0 }, drag: null, pinch: null, camTween: null, lastTouch: -Infinity, RM: false,
@@ -660,12 +792,13 @@ _CACHE = {}
 def unit_results():
     if "unit" not in _CACHE:
         fns = []
-        for name in ("move", "anim", "petAnim", "resetCam", "autoRotate", "updateCamera", "busy"):
+        for name in ("move", "anim", "petAnim", "resetCam", "autoRotate", "updateCamera", "busy",
+                     "camLift", "camTarget", "distMax", "viewBlockers", "applyFade"):
             src = function_source(name)
             if src is None:
                 raise AssertionError("function %s(...) not found in the page script" % name)
             fns.append(src)
-        for name in ("camLift", "aroundH", "autoRotating"):
+        for name in ("aroundH", "autoRotating", "fadedOf", "islandSpread", "centreHeight"):
             src = function_source(name)
             if src is not None:
                 fns.append(src)
@@ -840,6 +973,108 @@ class TestSmoothAndSteady(unittest.TestCase):
         self.assertLessEqual(far / near, 1000)
 
 
+class TestLiftAndFade(unittest.TestCase):
+    """E2E bounce: the lift jumped to a near top-down view and overrode the user's tilt."""
+
+    def test_lift_is_at_most_10_degrees(self):
+        l = unit_results()["lift"]
+        self.assertAlmostEqual(unit_results()["consts"]["LIFT_MAX"], 0.1745, delta=0.01)
+        self.assertLessEqual(l["settled"] - l["el"], 0.1745 + 0.01)
+        self.assertGreater(l["settled"] - l["el"], 0.12, "a small lift still helps when a building is in the way")
+
+    def test_lift_never_jumps(self):
+        l = unit_results()["lift"]
+        self.assertLessEqual(l["firstFrame"] - l["el"], 0.0524, "at most about 3 degrees in one frame")
+
+    def test_no_lift_while_the_user_drags_or_pinches(self):
+        l = unit_results()["lift"]
+        self.assertAlmostEqual(l["dragging"], l["el"], delta=0.01)
+        self.assertAlmostEqual(l["pinching"], l["el"], delta=0.01)
+
+    def test_user_low_tilt_stays_low(self):
+        l = unit_results()["lift"]
+        self.assertLessEqual(l["userLow"], l["elMin"] + 0.1745 + 0.01)
+
+    def test_blockers_are_the_tiles_in_the_way(self):
+        b = unit_results()["blockers"]
+        self.assertTrue(set(b["front"]) & {"1,1", "1,2", "2,1", "2,2"}, b["front"])
+        self.assertTrue(set(b["front"]) <= {"1,1", "1,2", "2,1", "2,2"}, b["front"])
+        self.assertEqual(b["steep"], [])
+        self.assertEqual(b["behind"], [])
+        self.assertEqual(b["flat"], [])
+
+    def test_fade_uses_cached_clones_and_restores(self):
+        f = unit_results()["fade"]
+        self.assertTrue(f["faded"])
+        self.assertAlmostEqual(f["opacity"], 0.3, delta=0.05)
+        self.assertTrue(f["transparent"])
+        self.assertFalse(f["depthWrite"])
+        self.assertTrue(f["otherUntouched"])
+        self.assertTrue(f["sharedUntouched"], "a shared material was changed")
+        self.assertTrue(f["planesShared"], "a faded building under construction must keep its moving clip plane")
+        self.assertAlmostEqual(f["opacityAgain"], 0.3, delta=0.05, msg="faded twice")
+        self.assertTrue(f["restored"])
+
+    def test_fade_opacity(self):
+        self.assertAlmostEqual(unit_results()["consts"]["FADE_OPACITY"], 0.3, delta=0.05)
+
+    def test_hall_and_buildings_can_fade(self):
+        self.assertRegex(function_source("buildIsland") or "", r"fadeables\.push\(")
+        self.assertIn("'-1,0'", function_source("buildIsland") or "")
+        self.assertRegex(function_source("makeBuilding") or "", r"fadeables\.push\(")
+        self.assertIn("fadeables", function_source("removeBuilding") or "")
+
+    def test_frame_fades_what_blocks_the_view(self):
+        self.assertRegex(function_source("frame") or "", r"applyFade\(viewBlockers\(cam\.el \+ camLiftNow\)\)")
+
+
+class TestZoomOut(unittest.TestCase):
+    """E2E bounce: fully zoomed out the island took a third of the stage, upper left."""
+
+    def test_island_fills_about_80_percent(self):
+        for name in ("wide", "phone", "broad", "wideSteep", "wideLow", "broadSteep"):
+            with self.subTest(stage=name):
+                z = unit_results()["zoomOut"][name]
+                self.assertGreaterEqual(max(z["w"], z["h"]), 0.7)
+                self.assertLessEqual(max(z["w"], z["h"]), 0.9)
+
+    def test_whole_island_stays_inside(self):
+        for name, z in unit_results()["zoomOut"].items():
+            with self.subTest(stage=name):
+                self.assertLessEqual(z["edge"], 0.98, "part of the island is cut off")
+
+    def test_limit_is_the_same_from_every_angle(self):
+        for name, z in unit_results()["zoomOut"].items():
+            with self.subTest(stage=name):
+                self.assertTrue(z["sameFromAnyAngle"], "auto-rotation would change the zoom")
+
+    def test_zoom_past_the_limit_is_clamped(self):
+        self.assertTrue(unit_results()["clamped"])
+
+    def test_island_sits_in_the_middle(self):
+        for name, z in unit_results()["zoomOut"].items():
+            with self.subTest(stage=name):
+                self.assertLessEqual(abs(z["cx"]), 0.1)
+                self.assertLessEqual(abs(z["cy"]), 0.1)
+
+    def test_zoomed_out_view_aims_at_the_island_centre(self):
+        for name in unit_results()["zoomOut"]:
+            with self.subTest(stage=name):
+                look = unit_results()["zoomOut"][name]["look"]
+                self.assertAlmostEqual(look[0], 0, delta=0.05)
+                self.assertAlmostEqual(look[1], 0, delta=0.05)
+
+    def test_close_views_keep_the_users_target(self):
+        r = unit_results()
+        self.assertEqual(r["targetNear"], [1, r["targetY"], -2])
+        self.assertAlmostEqual(r["target12"][0], 1, delta=0.01)
+        self.assertAlmostEqual(r["target12"][1], r["targetY"], delta=0.01)
+        self.assertAlmostEqual(r["target12"][2], -2, delta=0.01)
+
+    def test_tilting_while_fully_zoomed_out_stays_out(self):
+        self.assertRegex(inline_script(), r"const out = cam\.dist >= distMax\(\)[^\n]*cam\.el = clamp\([^\n]*if \(out\) cam\.dist = distMax\(\)")
+
+
 class TestCamera(unittest.TestCase):
     def test_perspective_not_god_view(self):
         text = inline_script()
@@ -868,13 +1103,13 @@ class TestCamera(unittest.TestCase):
     def test_zoom_from_street_level_to_the_whole_island(self):
         c = unit_results()["consts"]
         self.assertLessEqual(c["DIST_MIN"], 3.5)
-        self.assertGreaterEqual(c["DIST_MAX"], 30)
         text = inline_script()
+        self.assertNotIn("DIST_MAX", text)
         for needle in ("$('#zin')", "$('#zout')", "canvas.addEventListener('wheel'"):
             with self.subTest(control=needle):
                 line = next(l for l in text.splitlines() if needle in l)
-                self.assertIn("DIST_MIN, DIST_MAX", line)
-        self.assertRegex(text, r"pinch\.z[^;\n]*DIST_MIN, DIST_MAX")
+                self.assertIn("DIST_MIN, distMax()", line)
+        self.assertRegex(text, r"pinch\.z[^;\n]*DIST_MIN, distMax\(\)")
 
     def test_camera_orbits_the_target_at_the_users_tilt(self):
         import math
