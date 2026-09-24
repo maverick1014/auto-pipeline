@@ -474,9 +474,29 @@ const REST_OFF = [
   {dx:2.6,dz:.5,pose:'lie'},{dx:-2.6,dz:.5,pose:'lie'},{dx:0,dz:2.6,pose:'sit'},
 ];
 const restSlotsByTerr = new Map();
+/* rest spots near t's hall: only walkable tiles (never a plot, the hall, water or the void), at least 3
+   when the tiles allow it (REST_OFF first, then the walkable ring nearest the hall). A citizen already
+   resting on a tile keeps it reserved (by: -1) across a rebuild, so nobody doubles up on the same spot. */
 function restSlotsFor(t){
   let slots = restSlotsByTerr.get(t.id);
-  if (!slots) { slots = REST_OFF.map(o => ({ x: t.cx + o.dx, y: t.cz + o.dz, pose: o.pose, by: 0 })); restSlotsByTerr.set(t.id, slots); }
+  if (slots) return slots;
+  const restingHere = new Set();
+  if (typeof citizens !== 'undefined') for (const c of citizens) if (c.state === 'resting' && c.terr === t.id && c.rest) restingHere.add(Math.floor(c.rest.x) + ',' + Math.floor(c.rest.y));
+  slots = [];
+  const used = new Set();
+  const add = (x, z, pose) => {
+    const fx = Math.floor(x), fz = Math.floor(z), k = fx + ',' + fz;
+    if (used.has(k) || !walkable(fx, fz)) return;
+    used.add(k);
+    slots.push({ x, y: z, pose, by: restingHere.has(k) ? -1 : 0 });
+  };
+  for (const o of REST_OFF) add(t.cx + o.dx, t.cz + o.dz, o.pose);
+  for (let r = 1; slots.length < 3 && r <= 8; r++)
+    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
+      if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+      add(t.cx + dx + .5, t.cz + dz + .5, 'lie');
+    }
+  restSlotsByTerr.set(t.id, slots);
   return slots;
 }
 
@@ -1029,6 +1049,7 @@ function buildLand(view){
   occupied.clear();
   tall.clear();
   for (let i = fadeables.length - 1; i >= 0; i--) if (fadeables[i].fromLand) fadeables.splice(i, 1);
+  restSlotsByTerr.clear(); // the world changed (a plot may have opened by the hall): rebuilt lazily, keeps who is resting where
   map = view;
   mid = { x: Math.round(view.x0 + view.w / 2), z: Math.round(view.z0 + view.h / 2) };
   land = { hx: view.w / 2, hz: view.h / 2 };
