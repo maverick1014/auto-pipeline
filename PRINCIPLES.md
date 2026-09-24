@@ -126,6 +126,17 @@ W11. Time
 - Actual over 2× estimate → say it in the report, never silent
 - Before a new estimate: `bin/agent-file.sh time`, then pick a rubric row (dispatch skill)
 
+W12. Cross-repo
+- One main manager per repo (W10). Peer = the interactive session in `ListAgents` named after the other repo's folder, whose lock in that repo's git dir is alive
+- A task that touches another repo → never edit that repo. Split it: your part, and a brief for the peer main manager
+- Send the brief with `SendMessage`, first line `CROSS-REPO TASK <name> from <repo>`; same brief shape as the dispatch skill
+- The peer runs it like a human task: `agent-file.sh todo add … <est> <repo>`, its own lane, and reports `DONE PASS <name>` back by SendMessage
+- The sender keeps its todo line open until both sides are done, then one report to the human
+- Called side first: the repo being called (the API) finishes first; its DONE PASS carries the contract (endpoint, fields, errors). The caller (the app) starts from that contract
+- Only main managers cross repos. Task managers and workers never
+- Need to know the other repo's code → ask its main manager. Never read or edit another repo
+- A cross-repo task the human gives to any main manager is routed the same way
+
 ## C. Human
 
 H1. One topic

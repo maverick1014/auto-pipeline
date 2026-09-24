@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # agent-file.sh — the only way to write agent_*.txt. No agent, no tokens, one format.
 #
-#   agent-file.sh todo add  "<name>" "<size>" "<what>" [est_minutes]  -> agent_todo.txt
+#   agent-file.sh todo add  "<name>" "<size>" "<what>" [est_minutes] [by]  -> agent_todo.txt (by defaults to "main")
 #   agent-file.sh todo done "<name>"                          -> line moves to agent_completed.txt as: date | name | what | est <n>m actual <n>m
 #   agent-file.sh idea add  "<text>"                          -> agent_ideas.txt
 #   agent-file.sh idea list                                   -> print agent_ideas.txt, numbered (cat -n)
@@ -35,7 +35,8 @@ case "${1:-}:${2:-}" in
     need 5 "$@"; drop "$TODO" "$3"
     what="$5"
     [ -n "${6:-}" ] && what="$5 | est ${6}m"
-    append "$TODO" "$3 | $4 | $what | opened $NOW | by $WHO"
+    by="${7:-$WHO}"
+    append "$TODO" "$3 | $4 | $what | opened $NOW | by $by"
     echo "todo added: $3";;
   todo:done)
     need 3 "$@"; line=$(first "$TODO" "$3")

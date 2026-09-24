@@ -591,6 +591,43 @@ class TestPrinciplesRuntimeShape(unittest.TestCase):
         self.assertEqual(found - allowed, set())
 
 
+class TestPrinciplesW12CrossRepo(unittest.TestCase):
+    """W12 lets main managers pass work to each other, called side first."""
+
+    def w12(self):
+        text = read("PRINCIPLES.md")
+        start = text.index("W12.")
+        end = text.index("## C. Human")
+        return text[start:end]
+
+    def test_w12_exists_after_w11(self):
+        text = read("PRINCIPLES.md")
+        self.assertIn("W11.", text)
+        self.assertIn("W12. Cross-repo", text)
+        self.assertLess(text.index("W11."), text.index("W12."))
+
+    def test_w12_names_called_side_first(self):
+        self.assertIn("Called side first", self.w12())
+
+    def test_w12_names_send_message(self):
+        self.assertIn("SendMessage", self.w12())
+
+    def test_dispatch_skill_mentions_w12(self):
+        text = read("skills", "dispatch", "SKILL.md")
+        self.assertIn("W12", text)
+
+    def test_dispatch_skill_has_a_cross_repo_brief_template(self):
+        text = read("skills", "dispatch", "SKILL.md")
+        self.assertIn("Cross-repo brief", text)
+        self.assertIn("CROSS-REPO TASK <name> from <repo>", text)
+
+    def test_readme_names_w12_in_routing(self):
+        text = read("README.md")
+        start = text.index("How a task is routed")
+        end = text.index("## One real day")
+        self.assertIn("W12", text[start:end])
+
+
 class TestPrinciplesS4NamesRelief(unittest.TestCase):
     """S4 (usage cap) must tell an over-cap agent to run relief first."""
 
