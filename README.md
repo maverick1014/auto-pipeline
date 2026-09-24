@@ -153,6 +153,7 @@ bin/agent-settings.sh language zh   # talk to the human in Chinese
 bin/agent-settings.sh sync          # add any key missing from agent.conf, template value
 bin/agent-file.sh time              # estimate vs actual for every finished task
 ./bin/agent-city.sh start           # agent city visualiser, off by default, costs almost nothing
+/auto-pipeline:city              # start the agent city, prints the URL
 ```
 
 A second Claude session in this repo becomes a task manager under the main manager, by itself.
