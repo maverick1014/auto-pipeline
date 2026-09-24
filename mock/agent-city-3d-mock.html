@@ -1,0 +1,1523 @@
+<title>Agent City 3D</title>
+<meta name="description" content="Clickable 3D mock: a cute floating island where every coding agent is a little builder.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap">
+<style>
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --sky:#CFE6FF; --berry:#FF7593; --berry-deep:#D9506E; --butter:#FFD36E; --mint:#6FD4A8;
+  --focus:#4D7CFE;
+  --build-bg:#E1ECFF; --build-ink:#3160B5; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
+  --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488;
+  --gov-bg:#FFF0C7; --gov-ink:#8A6000;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+    --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
+    --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+    --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
+    --gov-bg:#43381A; --gov-ink:#FFDD8A;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+  --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
+  --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+  --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
+  --gov-bg:#43381A; --gov-ink:#FFDD8A;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.app{max-width:1500px;margin-inline:auto;padding-inline:16px;padding-block:14px 22px;display:flex;flex-direction:column;gap:14px;min-height:100dvh}
+
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.sign{display:inline-flex;align-items:center;gap:10px;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:5px 16px 5px 8px;box-shadow:0 3px 0 var(--ink)}
+.sign svg{width:34px;height:34px;flex:none}
+.sign-name{font:700 24px/1 var(--display);letter-spacing:.01em}
+.sign-sub{display:block;font:600 10.5px/1.2 var(--mono);color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase;margin-top:3px}
+.stats{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
+.stat{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font-size:13px;color:var(--ink-2)}
+.stat b{color:var(--ink);font:700 14px/1 var(--display);font-variant-numeric:tabular-nums}
+.stat i{width:9px;height:9px;border-radius:50%;display:block}
+
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;flex:1;min-height:0}
+.stage-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.stage{position:relative;border-radius:24px;overflow:hidden;background:var(--sky);border:2px solid var(--line);height:calc(100dvh - 150px);min-height:460px}
+.stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.stage canvas.grabbing{cursor:grabbing}
+.proto{position:absolute;top:12px;left:12px;z-index:3;background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px;box-shadow:0 2px 0 rgba(42,43,69,.18);pointer-events:none}
+.cam{position:absolute;top:12px;right:12px;z-index:3;display:flex;flex-direction:column;gap:6px}
+.cam .btn{width:38px;height:38px;padding:0;justify-content:center;background:var(--panel)}
+.hint-drag{position:absolute;left:12px;bottom:12px;z-index:3;font-size:12px;color:var(--ink-2);background:var(--panel);border-radius:999px;padding:5px 11px;opacity:.92;pointer-events:none}
+
+.ov{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
+.ov > div{position:absolute;left:0;top:0;will-change:transform}
+.bub{background:#FFFFFF;color:#2A2B45;border:2px solid #2A2B45;border-radius:14px;padding:3px 10px;font:600 12.5px/1.4 var(--round);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.bub.ask{border-color:#E4476F}
+.bub.gov{background:#FFF1C9;border-color:#C99A1E}
+.bub.done{border-color:#2FB57A;background:#EFFFF6}
+.qm{width:28px;height:28px}
+.qm span{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#FF6F8B;color:#fff;font:700 17px/1 var(--display);border:2px solid #fff;box-shadow:0 2px 0 rgba(42,43,69,.25);animation:hop .7s ease-in-out infinite}
+@keyframes hop{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.zz{font:700 14px/1 var(--display);color:#8D91B3;letter-spacing:.1em}
+.zz span{display:inline-block;animation:zz 2.4s ease-in-out infinite}
+.zz span:nth-child(2){animation-delay:.4s}
+.zz span:nth-child(3){animation-delay:.8s}
+@keyframes zz{0%{transform:translate(0,0);opacity:0}30%{opacity:1}100%{transform:translate(8px,-14px);opacity:0}}
+.tagl{background:var(--c);color:#fff;border-radius:999px;padding:3px 10px;font:600 11.5px/1.3 var(--mono);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.fl{background:var(--c);color:#fff;border-radius:8px;padding:1px 7px;font:600 11px/1.5 var(--mono)}
+.lbl{background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:2px 10px;font:600 12px/1.5 var(--display);box-shadow:0 2px 0 rgba(42,43,69,.15);white-space:nowrap}
+
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:8px}
+.group{display:inline-flex;align-items:center;gap:5px}
+.sep{width:1.5px;height:22px;background:var(--line);border-radius:1px}
+.clock{margin-left:auto;font:600 12px/1 var(--mono);color:var(--ink-2);font-variant-numeric:tabular-nums;padding-right:4px}
+.btn{font:600 13px/1 var(--round);border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:12px;padding:0 12px;min-height:36px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:transform .12s,box-shadow .12s,border-color .12s}
+.btn:hover{border-color:var(--ink-3)}
+.btn:focus-visible,select:focus-visible,.row:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.btn[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.primary{background:var(--berry);border-color:var(--berry);color:#fff;box-shadow:0 3px 0 var(--berry-deep)}
+.btn.primary:active{transform:translateY(3px);box-shadow:none}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn svg{width:15px;height:15px}
+select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:12px;padding:0 10px}
+.lead{font-size:13px;color:var(--ink-2);margin-right:2px}
+
+.panel{display:flex;flex-direction:column;gap:12px;min-width:0;max-height:calc(100dvh - 100px);overflow:auto;padding-bottom:3px}
+.card{background:var(--panel);border:1.5px solid var(--line);border-radius:20px;padding:14px 16px}
+.card h2{margin:0 0 10px;display:flex;align-items:baseline;gap:8px;font:700 16px/1.2 var(--round);color:var(--ink)}
+.card h2 .en{font:600 12px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.intro{margin:0;color:var(--ink-2);font-size:13.5px}
+
+.hat{--c:#5AA9F0;--h:#FFD04D;position:relative;width:24px;height:24px;flex:none}
+.hat::before{content:"";position:absolute;left:5px;right:5px;bottom:1px;height:10px;border-radius:6px 6px 3px 3px;background:var(--c)}
+.hat::after{content:"";position:absolute;left:2px;right:2px;top:3px;height:10px;border-radius:12px 12px 2px 2px;background:var(--h);box-shadow:0 2px 0 -1px rgba(42,43,69,.35)}
+.hat.crown::before{background:#FF6F8B}
+.hat.crown::after{top:1px;left:5px;right:5px;height:11px;border-radius:1px;background:var(--butter);clip-path:polygon(0 100%,0 20%,25% 60%,50% 0,75% 60%,100% 20%,100% 100%);box-shadow:none}
+
+.roster{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.row{width:100%;display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;gap:10px;padding:7px 8px;border-radius:14px;border:1.5px solid transparent;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.row:hover{background:var(--panel-2)}
+.row[aria-current="true"]{border-color:var(--berry);background:var(--panel-2)}
+.who{min-width:0;display:flex;flex-direction:column}
+.who b{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who span{font:12px/1.3 var(--mono);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{font:600 12px/1 var(--round);padding:6px 10px;border-radius:999px;white-space:nowrap}
+.pill.build{background:var(--build-bg);color:var(--build-ink)}
+.pill.ask{background:var(--ask-bg);color:var(--ask-ink)}
+.pill.rest{background:var(--rest-bg);color:var(--rest-ink)}
+.pill.walk{background:var(--walk-bg);color:var(--walk-ink)}
+.pill.gov{background:var(--gov-bg);color:var(--gov-ink)}
+
+.detail{display:flex;flex-direction:column;gap:11px}
+.d-head{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:10px;align-items:center}
+.d-name{font-weight:700;font-size:17px;line-height:1.3;overflow-wrap:anywhere}
+.d-role{font:12px/1.3 var(--mono);color:var(--ink-3)}
+.d-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13px;color:var(--ink-2)}
+.track{height:10px;border-radius:999px;background:var(--panel-2);border:1.5px solid var(--line);overflow:hidden}
+.track i{display:block;height:100%;border-radius:999px;transition:width .4s}
+.d-tools{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0}
+.d-tools div{background:var(--panel-2);border-radius:12px;padding:7px 9px}
+.d-tools dt{font:11px/1.2 var(--mono);color:var(--ink-3)}
+.d-tools dd{margin:0;font:700 16px/1.3 var(--display);font-variant-numeric:tabular-nums}
+.d-qa{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.d-qa p{margin:0;color:var(--ink-2)}
+.d-qa b{color:var(--ink);font-weight:700}
+.d-actions{display:flex;flex-wrap:wrap;gap:6px}
+.d-note,.hint{margin:0;font-size:12.5px;color:var(--ink-3)}
+
+.log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;max-height:260px;overflow:auto}
+.log li{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px;font-size:13px;line-height:1.45}
+.log time{font:12px/1.45 var(--mono);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.log .ask{color:var(--ask-ink)}
+.log .done{color:var(--rest-ink)}
+
+.legend{width:100%;border-collapse:collapse;font-size:13px}
+.legend th{text-align:left;font:600 11px/1.2 var(--mono);letter-spacing:.04em;color:var(--ink-3);padding:0 0 6px}
+.legend td{padding:7px 0;border-top:1.5px solid var(--line);vertical-align:top}
+.legend td:first-child{width:46%;padding-right:10px;font-weight:600}
+.legend td:last-child{color:var(--ink-2)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px;border:1.5px solid rgba(42,43,69,.25)}
+
+@media (max-width: 960px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+  .stage{height:min(66vh,calc(100vw * 1.1));min-height:340px}
+  .panel{max-height:none;overflow:visible}
+  .stats{margin-left:0}
+}
+@media (prefers-reduced-motion: reduce){ .qm span,.zz span{animation:none} .track i,.btn{transition:none} }
+</style>
+
+<div class="app">
+  <header class="bar">
+    <div class="sign">
+      <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="8" y="17" width="24" height="17" rx="4" fill="#9CD6FF" stroke="#2A2B45" stroke-width="2.4"/><path d="M5 19 20 6l15 13" fill="#FF7593" stroke="#2A2B45" stroke-width="2.4" stroke-linejoin="round"/><rect x="17" y="23" width="7" height="11" rx="2" fill="#FFD36E" stroke="#2A2B45" stroke-width="2"/></svg>
+      <div><span class="sign-name">Agent City</span><span class="sign-sub">auto-pipeline · 3D</span></div>
+    </div>
+    <div class="stats" id="stats" aria-live="polite"></div>
+  </header>
+
+  <main class="layout">
+    <section class="stage-col" aria-label="城市">
+      <div class="stage" id="stage">
+        <canvas id="city" role="img" aria-label="3D 小岛：每个小人是一个 agent"></canvas>
+        <div class="ov" id="ov"></div>
+        <div class="proto">原型 · 模拟数据</div>
+        <div class="cam">
+          <button class="btn" id="zin" type="button" aria-label="放大">+</button>
+          <button class="btn" id="zout" type="button" aria-label="缩小">−</button>
+          <button class="btn" id="rot" type="button" aria-label="转一下">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 2.5v3h-3"/></svg>
+          </button>
+          <button class="btn" id="zfit" type="button" aria-label="回到默认视角">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4"/></svg>
+          </button>
+        </div>
+        <div class="hint-drag" id="hint-drag">拖动转视角 · 滚轮或双指缩放</div>
+      </div>
+      <div class="toolbar" role="toolbar" aria-label="控制">
+        <button class="btn" id="play" type="button" aria-pressed="false">
+          <svg id="icon-pause" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3" y="2" width="3.6" height="12" rx="1.4"/><rect x="9.4" y="2" width="3.6" height="12" rx="1.4"/></svg>
+          <svg id="icon-play" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" hidden><path d="M4 2.5v11l9-5.5z"/></svg>
+          <span id="play-label">暂停</span>
+        </button>
+        <div class="group" role="group" aria-label="速度">
+          <button class="btn" type="button" data-speed="1" aria-pressed="true">1×</button>
+          <button class="btn" type="button" data-speed="2" aria-pressed="false">2×</button>
+          <button class="btn" type="button" data-speed="4" aria-pressed="false">4×</button>
+        </div>
+        <span class="sep" aria-hidden="true"></span>
+        <div class="group">
+          <label for="role" class="lead">派一个</label>
+          <select id="role">
+            <option value="worker">worker · 盖房子</option>
+            <option value="task-manager">task manager · 测试塔</option>
+            <option value="fast-lane-deputy">fast-lane deputy · 花园</option>
+            <option value="merge-deputy">merge deputy · 桥</option>
+          </select>
+          <button class="btn primary" id="spawn" type="button">派出</button>
+        </div>
+        <span class="clock" id="clock"></span>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <section class="card">
+        <p class="intro">3D 原型，人和任务都是假的。每个小人是一个 agent：分到任务就去盖楼，卡住了就走去市政厅问总督，做完了就去休息。拖动可以转视角，点小人看详情。</p>
+      </section>
+      <section class="card detail" id="detail" aria-live="polite"></section>
+      <section class="card">
+        <h2><span class="en">Citizens</span>市民</h2>
+        <ul class="roster" id="roster"></ul>
+      </section>
+      <section class="card">
+        <h2><span class="en">Log</span>动态</h2>
+        <ol class="log" id="log"></ol>
+      </section>
+      <section class="card">
+        <h2><span class="en">Legend</span>怎么看这座城</h2>
+        <table class="legend">
+          <thead><tr><th>城里看到的</th><th>真实 agent 在做的</th></tr></thead>
+          <tbody>
+            <tr><td>从市政厅蹦出来</td><td>主对话派出一个 agent</td></tr>
+            <tr><td>空地插上小旗</td><td>分到任务，定下做哪一块</td></tr>
+            <tr><td>楼一层一层长高</td><td>改文件（Edit / Write）</td></tr>
+            <tr><td>头上飘出 Bash / Read</td><td>跑命令或测试 / 读文件</td></tr>
+            <tr><td>头顶「？」跳着去市政厅</td><td>卡住了：要问问题或等权限</td></tr>
+            <tr><td>总督回话，它走回工地</td><td>拿到答案，继续干</td></tr>
+            <tr><td>封顶撒彩纸，去长椅或咖啡馆</td><td>任务做完</td></tr>
+            <tr><td>走出城门</td><td>agent 结束</td></tr>
+          </tbody>
+        </table>
+        <table class="legend" style="margin-top:12px">
+          <thead><tr><th>谁</th><th>盖什么</th></tr></thead>
+          <tbody>
+            <tr><td><span class="dot" style="background:#FFD04D"></span>worker</td><td>小房子</td></tr>
+            <tr><td><span class="dot" style="background:#FFFFFF"></span>task manager</td><td>测试塔，带吊车</td></tr>
+            <tr><td><span class="dot" style="background:#A6F0C6"></span>fast-lane deputy</td><td>花园，小而快</td></tr>
+            <tr><td><span class="dot" style="background:#FFC199"></span>merge deputy</td><td>过河的桥，接到 main</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const stage = $('#stage'), canvas = $('#city'), ovRoot = $('#ov');
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const BASE = Date.now();
+const FRAME_MS = 33, IDLE_FRAME_MS = 100;
+const MAX_CITIZENS = 40, MAX_LOG = 40, MAX_PARTICLES = 300, MAX_FLOATERS = 80;
+
+function h2r(h){ h = h.replace('#',''); return [0,2,4].map(i => parseInt(h.slice(i,i+2),16)); }
+function r2h(c){ return '#' + c.map(v => Math.round(clamp(v,0,255)).toString(16).padStart(2,'0')).join(''); }
+function mix(a, b, t){ const A = h2r(a), B = h2r(b); return r2h(A.map((x,i) => x + (B[i]-x)*t)); }
+function sr(seed, i){ const x = Math.sin(seed*12.9898 + i*78.233) * 43758.5453; return x - Math.floor(x); }
+function isDark(){ const t = document.documentElement.getAttribute('data-theme'); if (t === 'dark') return true; if (t === 'light') return false; return matchMedia('(prefers-color-scheme: dark)').matches; }
+
+/* =========================================================
+   Simulation: the same event contract the real city reads
+   (spawn, tool, stuck, answer, done, leave).
+   ========================================================= */
+const ROLES = {
+  'task-manager':     { zh:'任务经理',   color:'#9C86F2', hat:'#FFFFFF', kind:'tower'  },
+  'worker':           { zh:'工人',       color:'#5AA9F0', hat:'#FFD04D', kind:'house'  },
+  'fast-lane-deputy': { zh:'快车道副手', color:'#43C58B', hat:'#A6F0C6', kind:'garden' },
+  'merge-deputy':     { zh:'合并副手',   color:'#FF9A5C', hat:'#FFC199', kind:'bridge' },
+  'other':            { zh:'帮手',       color:'#5FC3C9', hat:'#D4F4F5', kind:'house'  },
+};
+const KIND_ZH = { house:'小房子', tower:'测试塔', garden:'花园', bridge:'桥' };
+const STATE = {
+  spawn:['walk','出门'], to_plot:['walk','去工地'], building:['build','施工中'],
+  to_hall:['ask','去问总督'], asking:['ask','在问总督'], heard:['ask','拿到答案'],
+  back:['walk','回工地'], finishing:['rest','封顶了'], to_rest:['rest','去休息'],
+  resting:['rest','休息中'], leaving:['walk','下班回家'],
+};
+const TASKS = {
+  'worker':['设置页表单','登录 API','导出 CSV','深色模式','小票打印','搜索框','分页','价格计算','库存提醒','客户列表'],
+  'task-manager':['设置页','登录','报表','打印','库存'],
+  'fast-lane-deputy':['错别字','按钮颜色','图标大小','标题换行','空状态文案'],
+  'merge-deputy':['合并 settings','合并 login','合并 report','合并 print'],
+};
+const QA = [
+  ['测试名不清楚，用哪个？','按默认，记进日志'],
+  ['API 路径用哪个？','用 /api/settings'],
+  ['要不要加分页？','先不加，写进 ideas'],
+  ['默认语言是？','zh，跟 agent.conf'],
+  ['旧数据要迁移吗？','要，先写测试'],
+  ['这个文件能改吗？','能，只改你那份'],
+  ['可以跑这条命令吗？','批了，继续'],
+];
+
+const GX1 = 11, GY0 = -2, GY1 = 11;
+const tiles = {};
+const T = (x, y) => tiles[x + ',' + y];
+for (let y = GY0; y <= GY1; y++) for (let x = 0; x <= GX1; x++) {
+  let t = 'grass';
+  if (y === -2) t = 'bank';
+  else if (y === -1) t = 'water';
+  else if (x === 4 || x === 7 || y === 4 || y === 7) t = 'road';
+  else if (x >= 5 && x <= 6 && y >= 5 && y <= 6) t = 'hall';
+  else if (x >= 5 && x <= 6 && y >= 8) t = 'plaza';
+  else if (x >= 8 && y >= 8) t = 'park';
+  tiles[x + ',' + y] = t;
+}
+tiles['5,10'] = 'cafe';
+const TREES = [[0,0],[10,1],[0,5],[2,10],[8,11],[11,8],[11,11]];
+const STATIC_BLOCK = new Set(TREES.map(p => p + ''));
+STATIC_BLOCK.add('9,9');
+const PLOTS = [[3,0],[3,2],[0,3],[2,3],[1,1],[5,3],[6,3],[5,1],[6,1],[8,3],[10,3],[9,1],[11,1],[3,5],[3,6],[1,6],[9,6],[11,6],[8,5],[3,9],[3,11],[1,9],[1,11]];
+const INNER = new Set(['1,1','5,1','6,1','9,1','11,1','1,9','1,11','8,5']);
+const PLOT_SET = new Set(PLOTS.map(p => p + ''));
+const BRIDGE_X = [4, 7, 10, 1];
+const LAMPS = [[4.12,4.12],[7.88,4.12],[4.12,7.88],[7.88,7.88],[4.12,1.5],[7.88,1.5],[4.12,10.5],[1.5,4.12],[10.5,4.12],[1.5,7.88],[10.5,7.88]];
+const BENCHES = [[10.5,8.28],[8.5,10.28]];
+const REST = [
+  {x:10.5,y:8.5,pose:'bench'},{x:8.5,y:10.5,pose:'bench'},
+  {x:9.5,y:10.3,pose:'sit'},{x:10.3,y:9.5,pose:'sit'},
+  {x:6.42,y:10.5,pose:'cafe'},{x:6.42,y:11.45,pose:'cafe'},{x:5.5,y:11.5,pose:'cafe'},
+  {x:9.45,y:11.5,pose:'lie'},{x:11.5,y:9.45,pose:'lie'},{x:2.5,y:9.5,pose:'lie'},
+  {x:0.5,y:1.45,pose:'lie'},{x:10.5,y:2.35,pose:'lie'},{x:0.5,y:6.4,pose:'lie'},
+];
+const HALL_SLOTS = [[6.5,8.3],[5.5,8.3],[6.5,9.25],[5.5,9.25],[4.5,8.4]].map(([x,y]) => ({x, y, by:0}));
+const DOOR = {x:6.0, y:7.12};
+const GATE = {x:7.5, y:11.9};
+
+function frontOf(x, y){
+  for (const [a,b] of [[x,y+1],[x+1,y]]) if (T(a,b) === 'road') return [a,b];
+  for (const [a,b] of [[x,y+1],[x+1,y],[x-1,y],[x,y-1]]) {
+    const t = T(a,b);
+    if (t && !['water','hall','cafe','bank'].includes(t) && !PLOT_SET.has(a+','+b) && !STATIC_BLOCK.has(a+','+b)) return [a,b];
+  }
+  return [x, y+1];
+}
+const occupied = new Map();
+function walkable(x, y){
+  const t = T(x, y);
+  if (!t || t === 'water' || t === 'hall' || t === 'cafe' || t === 'bank') return false;
+  const k = x + ',' + y;
+  return !STATIC_BLOCK.has(k) && !occupied.has(k);
+}
+function findPath(sx, sy, tx, ty){
+  const s = [Math.floor(sx), Math.floor(sy)], g = [Math.floor(tx), Math.floor(ty)];
+  const sk = s + '', gk = g + '';
+  if (sk === gk) return [];
+  const prev = { [sk]: null }, q = [s];
+  while (q.length) {
+    const [x, y] = q.shift();
+    if (x + ',' + y === gk) break;
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const nx = x + dx, ny = y + dy, nk = nx + ',' + ny;
+      if (nk in prev) continue;
+      if (nk !== gk && !walkable(nx, ny)) continue;
+      prev[nk] = [x, y]; q.push([nx, ny]);
+    }
+  }
+  if (!(gk in prev)) return null;
+  const out = []; let cur = g;
+  while (cur && cur + '' !== sk) { out.push([cur[0] + .5, cur[1] + .5]); cur = prev[cur + '']; }
+  return out.reverse();
+}
+
+let simT = 0, speed = 1, paused = false;
+const citizens = [], buildings = [], particles = [], floaters = [], logEntries = [];
+let cid = 0, bid = 0;
+let selected = null;
+const gov = { x:6.62, y:7.5, bubble:null, answered:0, dispatched:0 };
+const SKIN = ['#FFE0C7','#F7C9A4','#E6AC84','#BF8560','#8E5E40'];
+
+function say(o, text, dur){ o.bubble = { text, until: simT + dur }; }
+function logAt(t, text, kind){ logEntries.unshift({ t, text, kind: kind || '' }); if (logEntries.length > MAX_LOG) logEntries.length = MAX_LOG; dirty.log = true; }
+const log = (text, kind) => logAt(simT, text, kind);
+
+function newBuilding(kind, gx, gy, role){
+  const color = ROLES[role].color;
+  const b = { id:++bid, kind, gx, gy, role, color, target:0, shown:0, done:false, doneAt:0, popAt:-99,
+    seed:Math.random()*1000, name:'', ownerId:0, ownerName:'' };
+  buildings.push(b);
+  occupied.set(gx + ',' + gy, b);
+  return b;
+}
+function removeBuilding(b){
+  const i = buildings.indexOf(b); if (i >= 0) buildings.splice(i, 1);
+  if (occupied.get(b.gx + ',' + b.gy) === b) occupied.delete(b.gx + ',' + b.gy);
+  if (selected && selected.t === 'b' && selected.id === b.id) selected = null;
+}
+function standFor(kind, x, y){
+  if (kind === 'bridge') return { x: x + .5, y: .34 };
+  const [fx, fy] = frontOf(x, y);
+  return { x: fx + .5 + (x - fx) * .28, y: fy + .5 + (y - fy) * .28 };
+}
+function demolishOldest(kind){
+  const cands = buildings.filter(b => b.done && (kind === 'bridge' ? b.kind === 'bridge' : b.kind !== 'bridge') && !citizens.some(c => c.id === b.ownerId));
+  cands.sort((a, b) => a.doneAt - b.doneAt);
+  const b = cands[0]; if (!b) return false;
+  removeBuilding(b);
+  puff(b.gx + .5, b.kind === 'bridge' ? -.5 : b.gy + .5, 16);
+  log(`拆掉最旧的${KIND_ZH[b.kind]}（${b.name}），腾出空地`);
+  return true;
+}
+function allocPlot(kind){
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (kind === 'bridge') {
+      const x = BRIDGE_X.find(x => !occupied.has(x + ',-1'));
+      if (x !== undefined) return { x, y: -1 };
+    } else {
+      let free = PLOTS.filter(p => !occupied.has(p + ''));
+      if (kind === 'garden' && free.some(p => INNER.has(p + ''))) free = free.filter(p => INNER.has(p + ''));
+      if (kind !== 'garden' && free.some(p => !INNER.has(p + ''))) free = free.filter(p => !INNER.has(p + ''));
+      if (free.length) { const p = pick(free); return { x: p[0], y: p[1] }; }
+    }
+    if (!demolishOldest(kind)) return null;
+  }
+  return null;
+}
+function newCitizen(role, task){
+  const R = ROLES[role];
+  return { id:++cid, role, label:role, task, color:R.color, hat:R.hat, skin:pick(SKIN), x:DOOR.x, y:DOOR.y, path:[], state:'spawn', stateT:0,
+    alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0,Other:0}, work:0, bld:null, stand:null, slot:null, rest:null,
+    question:'', answer:'', answered:false, pendingAnswer:'', askT:0, stuck:false, doneFlag:false, leaveFlag:false,
+    qa:[], bubble:null, walkT:Math.random()*5, feed:null, gone:false, dustT:0 };
+}
+const byId = id => citizens.find(c => c.id === id);
+
+function goTo(c, target, state){
+  const p = findPath(c.x, c.y, target.x, target.y);
+  c.path = p && p.length ? [...p.slice(0, -1), [target.x, target.y]] : [[target.x, target.y]];
+  c.state = state; c.stateT = 0;
+}
+function move(c, dt){
+  const [tx, ty] = c.path[0];
+  const dx = tx - c.x, dy = ty - c.y, d = Math.hypot(dx, dy), sp = (c.state === 'to_hall' ? 2.3 : 1.9) * dt;
+  c.walkT += dt;
+  if (d <= sp) { c.x = tx; c.y = ty; c.path.shift(); if (!c.path.length) onArrive(c); }
+  else { c.x += dx / d * sp; c.y += dy / d * sp; }
+}
+function onArrive(c){
+  switch (c.state) {
+    case 'to_plot': case 'back':
+      c.state = 'building'; c.stateT = 0;
+      if (c.stuck) goHall(c); else if (c.doneFlag) finish(c);
+      break;
+    case 'to_hall': c.state = 'asking'; c.stateT = 0; c.askT = simT; break;
+    case 'to_rest': c.state = 'resting'; c.stateT = 0; if (c.leaveFlag) leave(c); break;
+  }
+}
+function goHall(c){
+  let slot = HALL_SLOTS.find(s => !s.by);
+  if (slot) slot.by = c.id; else slot = { x: 4.5 + Math.random() * .6, y: 8.9 + Math.random() * .6, by: c.id, extra: true };
+  c.slot = slot;
+  goTo(c, slot, 'to_hall');
+}
+function releaseSlot(c){ if (c.slot && !c.slot.extra) c.slot.by = 0; c.slot = null; }
+function giveAnswer(c){
+  say(gov, c.answer, 2.6); gov.answered++;
+  c.qa.push({ q: c.question, a: c.answer });
+  c.state = 'heard'; c.stateT = 0;
+}
+function finish(c){
+  const b = c.bld;
+  if (b) { b.done = true; b.doneAt = simT; b.popAt = simT; b.target = 1; burst(b); }
+  c.state = 'finishing'; c.stateT = 0;
+  say(c, '完工啦！', 1.5);
+}
+function goRest(c){
+  const free = REST.filter(r => !r.by);
+  let spot = free.length ? pick(free) : null;
+  if (spot) spot.by = c.id;
+  else {
+    const grass = Object.keys(tiles).filter(k => ['grass','park'].includes(tiles[k]) && walkable(...k.split(',').map(Number)));
+    const [gx, gy] = pick(grass).split(',').map(Number);
+    spot = { x: gx + .5, y: gy + .5, pose: 'lie', by: c.id, extra: true };
+  }
+  c.rest = spot;
+  goTo(c, spot, 'to_rest');
+}
+function leave(c){
+  if (c.rest && !c.rest.extra) c.rest.by = 0;
+  c.rest = null;
+  goTo(c, GATE, 'leaving');
+}
+
+const WEIGHT = { Edit:1, Write:1, Bash:.6, Read:.3, Other:.3 };
+const KSCALE = { house:4.5, tower:5.5, garden:2.2, bridge:1.8 };
+function apply(ev){
+  const c = ev.id ? byId(ev.id) : null;
+  switch (ev.type) {
+    case 'spawn': {
+      const R = ROLES[ev.role];
+      const plot = allocPlot(R.kind);
+      if (!plot) { log(`没有空地了：${ev.task} 先等等`); return null; }
+      if (citizens.length >= MAX_CITIZENS) { const old = citizens.find(x => x.state === 'resting') || citizens[0]; old.gone = true; }
+      const n = newCitizen(ev.role, ev.task);
+      const b = newBuilding(R.kind, plot.x, plot.y, ev.role);
+      b.name = ev.task; b.ownerId = n.id; b.ownerName = `${ev.role} · ${ev.task}`;
+      n.bld = b; n.stand = standFor(R.kind, plot.x, plot.y);
+      citizens.push(n);
+      say(gov, `去吧：${ev.task}`, 1.8); gov.dispatched++;
+      log(`总督派出 ${ev.role}：${ev.task}`);
+      return n;
+    }
+    case 'tool': {
+      if (!c) return null;
+      c.tools[ev.tool] = (c.tools[ev.tool] || 0) + 1;
+      c.work += WEIGHT[ev.tool] || .3;
+      if (c.bld && !c.bld.done) c.bld.target = .92 * (1 - Math.exp(-c.work / KSCALE[c.bld.kind]));
+      if (floaters.length < MAX_FLOATERS) floaters.push({ text: ev.tool, x: c.x, y: c.y, t0: simT, color: c.color, el: null });
+      return c;
+    }
+    case 'stuck': {
+      if (!c) return null;
+      c.stuck = true; c.question = ev.question; c.answered = false; c.answer = '';
+      if (['building','to_plot','back'].includes(c.state)) goHall(c);
+      log(`${c.task} 卡住了：“${ev.question}” → 去问总督`, 'ask');
+      return c;
+    }
+    case 'answer': {
+      if (!c) return null;
+      c.answer = ev.answer; c.answered = true; c.stuck = false;
+      log(`总督回答 ${c.task}：“${ev.answer}”`);
+      return c;
+    }
+    case 'done': {
+      if (!c || c.doneFlag) return null;
+      c.doneFlag = true;
+      if (c.state === 'building') finish(c);
+      log(`${c.task} 完工：${KIND_ZH[ROLES[c.role].kind]}封顶，去休息`, 'done');
+      return c;
+    }
+    case 'leave': {
+      if (!c) return null;
+      c.leaveFlag = true;
+      if (c.state === 'resting') leave(c);
+      log(`${c.task} 下班了`);
+      return c;
+    }
+  }
+  return null;
+}
+const emit = ev => apply(ev);
+
+function makeFeed(role, stuckChance){
+  const s = [];
+  if (role === 'worker') {
+    s.push('Read'); if (Math.random() < .5) s.push('Read');
+    const n = Math.floor(rnd(6, 11));
+    for (let i = 0; i < n; i++) { s.push(Math.random() < .8 ? 'Edit' : 'Write'); if (i % 3 === 2) s.push('Bash'); }
+    s.push('Bash');
+  } else if (role === 'task-manager') {
+    s.push('Read', 'Read');
+    const n = Math.floor(rnd(5, 8)); for (let i = 0; i < n; i++) s.push('Write');
+    s.push('Bash', 'Bash');
+  } else if (role === 'fast-lane-deputy') {
+    s.push('Read', 'Edit', 'Edit'); if (Math.random() < .5) s.push('Edit');
+  } else {
+    s.push('Bash', 'Bash', 'Bash', 'Bash'); if (Math.random() < .4) s.push('Bash');
+  }
+  const seq = s.map(tool => ({ t:'tool', tool }));
+  const p = stuckChance ?? (role === 'merge-deputy' ? .2 : .4);
+  if (Math.random() < p) { const [q, a] = pick(QA); seq.splice(Math.floor(rnd(1, seq.length - 1)), 0, { t:'stuck', q, a }); }
+  seq.push({ t:'done' }, { t:'leave' });
+  return { steps: seq, next: 0, restSince: 0, restFor: rnd(16, 30) };
+}
+function feed(c){
+  const f = c.feed; if (!f || simT < f.next) return;
+  const s = f.steps[0]; if (!s) return;
+  if (c.doneFlag && s.t !== 'leave') { f.steps = f.steps.filter(x => x.t === 'leave'); return; }
+  if (s.t === 'leave') {
+    if (c.state !== 'resting') return;
+    if (!f.restSince) { f.restSince = simT; return; }
+    if (simT - f.restSince < f.restFor) return;
+    f.steps.shift(); emit({ type:'leave', id:c.id }); return;
+  }
+  if (c.state !== 'building') return;
+  f.steps.shift();
+  if (s.t === 'tool') { emit({ type:'tool', id:c.id, tool:s.tool }); f.next = simT + rnd(.55, 1.35); }
+  else if (s.t === 'stuck') { c.pendingAnswer = s.a; emit({ type:'stuck', id:c.id, question:s.q }); f.next = simT + .6; }
+  else if (s.t === 'done') emit({ type:'done', id:c.id });
+}
+function spawnDemo(role, task){
+  if (!task) {
+    const busy = new Set(citizens.map(c => c.task));
+    const opts = TASKS[role].filter(t => !busy.has(t));
+    task = pick(opts.length ? opts : TASKS[role]);
+  }
+  const c = emit({ type:'spawn', role, task });
+  if (c) c.feed = makeFeed(role);
+  return c;
+}
+let nextSpawn = 6;
+function spawner(){
+  if (simT < nextSpawn) return;
+  nextSpawn = simT + rnd(7, 13);
+  const active = citizens.filter(c => STATE[c.state][0] !== 'rest' && c.state !== 'leaving').length;
+  if (active >= 6) return;
+  const r = Math.random();
+  spawnDemo(r < .5 ? 'worker' : r < .65 ? 'task-manager' : r < .85 ? 'fast-lane-deputy' : 'merge-deputy');
+}
+function burst(b){
+  const x = b.gx + .5, z = b.kind === 'bridge' ? -.5 : b.gy + .5;
+  const h = b.kind === 'tower' ? 2.2 : b.kind === 'house' ? 1.4 : .5;
+  const n = RM ? 8 : 34;
+  for (let i = 0; i < n && particles.length < MAX_PARTICLES; i++) {
+    const a = Math.random() * Math.PI * 2, sp = rnd(.6, 1.8);
+    particles.push({ x, z, h, vx:Math.cos(a) * sp, vz:Math.sin(a) * sp, vh:rnd(1.5, 3.4), life:rnd(1.1, 1.9), t:0,
+      c:pick(['#FFD36E', b.color, '#FFFFFF', '#FF7593', '#8FE3C0']), kind:'confetti', size:rnd(.05, .08) });
+  }
+}
+function puff(x, z, n){
+  for (let i = 0; i < n && particles.length < MAX_PARTICLES; i++) particles.push({ x, z, h:rnd(.05, .25), vx:rnd(-.5, .5), vz:rnd(-.5, .5), vh:rnd(.2, .6),
+    life:rnd(.5, .9), t:0, c:'#EFE3D2', kind:'dust', size:rnd(.06, .11) });
+}
+
+function update(dt){
+  simT += dt;
+  for (const c of citizens) {
+    c.stateT += dt;
+    if (c.state === 'spawn') { c.alpha = Math.min(1, c.alpha + dt * 2.5); if (c.stateT > .7) { if (c.stuck) goHall(c); else goTo(c, c.stand, 'to_plot'); } }
+    else if (c.path.length) move(c, dt);
+    switch (c.state) {
+      case 'building':
+        c.dustT += dt;
+        if (!RM && c.dustT > .9) { c.dustT = 0; const b = c.bld; if (b && !b.done) puff(b.gx + .5, b.kind === 'bridge' ? -.2 : b.gy + .5, 2); }
+        break;
+      case 'asking':
+        if (c.answered && simT - c.askT > .9) giveAnswer(c);
+        else if (!c.answered && simT - c.askT > 1.9) emit({ type:'answer', id:c.id, answer: c.pendingAnswer || pick(QA)[1] });
+        break;
+      case 'heard':
+        if (c.stateT > 1.5) { releaseSlot(c); say(c, '明白！', 1.1); goTo(c, c.stand, 'back'); }
+        break;
+      case 'finishing': if (c.stateT > 1.5) goRest(c); break;
+      case 'leaving': if (!c.path.length) { c.alpha -= dt * 2; if (c.alpha <= 0) c.gone = true; } break;
+    }
+    feed(c);
+  }
+  for (let i = citizens.length - 1; i >= 0; i--) if (citizens[i].gone) {
+    const c = citizens[i];
+    if (c.rest && !c.rest.extra) c.rest.by = 0;
+    releaseSlot(c);
+    if (selected && selected.t === 'c' && selected.id === c.id) selected = c.bld && buildings.includes(c.bld) ? { t:'b', id:c.bld.id } : null;
+    citizens.splice(i, 1);
+  }
+  for (const b of buildings) {
+    if (b.done) b.shown = Math.min(1, b.shown + dt * 1.2);
+    else { const o = byId(b.ownerId); if (o && o.state === 'building') b.shown += (b.target - b.shown) * Math.min(1, dt * 1.6); }
+  }
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i]; p.t += dt;
+    if (p.t > p.life || (p.h < 0 && p.kind === 'confetti')) { particles.splice(i, 1); continue; }
+    p.x += p.vx * dt; p.z += p.vz * dt; p.h += p.vh * dt;
+    p.vh -= (p.kind === 'confetti' ? 5.5 : .4) * dt;
+    if (p.kind === 'confetti') { p.vx *= .985; p.vz *= .985; }
+  }
+  for (let i = floaters.length - 1; i >= 0; i--) if (simT - floaters[i].t0 > 1.2) { const f = floaters[i]; if (f.el) f.el.remove(); floaters.splice(i, 1); }
+  spawner();
+}
+
+/* =========================================================
+   3D view (three.js r128). Shared geometry and materials,
+   one instanced mesh for all particles, capped frame rate.
+   ========================================================= */
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, powerPreference:'low-power' });
+renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+const world = new THREE.Group();
+world.position.set(-6, 0, -5);
+scene.add(world);
+const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, .1, 200);
+const cam = { az: Math.PI / 4, el: .64, zoom: 1, tx: 0, tz: 0 };
+
+const grad = new THREE.DataTexture(new Uint8Array([125, 200, 255]), 3, 1, THREE.LuminanceFormat);
+grad.minFilter = grad.magFilter = THREE.NearestFilter; grad.generateMipmaps = false; grad.needsUpdate = true;
+const matCache = new Map();
+function mat(color){
+  let m = matCache.get(color);
+  if (!m) { m = new THREE.MeshToonMaterial({ color: new THREE.Color(color), gradientMap: grad }); matCache.set(color, m); }
+  return m;
+}
+const M = {
+  win: new THREE.MeshToonMaterial({ color: new THREE.Color('#BFE3FF'), gradientMap: grad }),
+  lamp: new THREE.MeshToonMaterial({ color: new THREE.Color('#FFF6D6'), gradientMap: grad }),
+  ring: new THREE.MeshBasicMaterial({ color: new THREE.Color('#FF7593') }),
+  water: new THREE.MeshToonMaterial({ color: new THREE.Color('#86CFF5'), gradientMap: grad, transparent:true, opacity:.9 }),
+};
+const G = {
+  box: new THREE.BoxGeometry(1, 1, 1),
+  sph: new THREE.SphereGeometry(1, 18, 14),
+  cyl: new THREE.CylinderGeometry(1, 1, 1, 18),
+  cone4: new THREE.ConeGeometry(1, 1, 4),
+  cone: new THREE.ConeGeometry(1, 1, 16),
+  dome: new THREE.SphereGeometry(1, 18, 9, 0, Math.PI * 2, 0, Math.PI / 2),
+  ring: new THREE.RingGeometry(.3, .37, 32),
+};
+function mk(geo, color, sx, sy, sz, x, y, z, parent, shadow){
+  const m = new THREE.Mesh(G[geo], typeof color === 'string' ? mat(color) : color);
+  m.scale.set(sx, sy, sz); m.position.set(x, y, z);
+  m.castShadow = shadow !== false; m.receiveShadow = true;
+  if (parent) parent.add(m);
+  return m;
+}
+function group(parent, x, y, z){ const g = new THREE.Group(); g.position.set(x || 0, y || 0, z || 0); (parent || world).add(g); return g; }
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0xffffff, .8);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffffff, .8);
+sun.position.set(7, 15, 9);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+Object.assign(sun.shadow.camera, { left:-11, right:11, top:11, bottom:-11, near:1, far:45 });
+sun.shadow.bias = -.0006; sun.shadow.normalBias = .02;
+scene.add(sun); scene.add(sun.target);
+
+const THEME = {
+  day:{ sky:'#F2F8FF', gnd:'#FFE7CF', hemiI:.6, sun:'#FFF4E0', sunI:.6, grass:'#9BDE92', grass2:'#91D688', park:'#88D382', park2:'#80CC7A',
+    road:'#F1DDB8', road2:'#E8CFA4', stripe:'#FFFFFF', plaza:'#F9DECE', plaza2:'#F4D2BE', water:'#86CFF5', bank:'#B4E4A3', dirt:'#D29A70', lip:'#84CE7C',
+    win:'#BFE3FF', winE:'#000000', lampE:'#000000', night:false },
+  night:{ sky:'#8E99E0', gnd:'#34294D', hemiI:.62, sun:'#B4C1FF', sunI:.36, grass:'#5B9477', grass2:'#578F72', park:'#548F70', park2:'#50896B',
+    road:'#8A80A3', road2:'#83799C', stripe:'#B2AAC9', plaza:'#8E7890', plaza2:'#86718A', water:'#4A7FBA', bank:'#5E9276', dirt:'#7B5A6D', lip:'#4E8268',
+    win:'#FFE08A', winE:'#FFB13B', lampE:'#FFE08A', night:true },
+};
+let P = THEME.day, themeKey = '';
+
+/* ground: one canvas texture on a rounded island */
+const TILE_PX = 40;
+const gCanvas = document.createElement('canvas');
+gCanvas.width = 12 * TILE_PX; gCanvas.height = 14 * TILE_PX;
+const gTex = new THREE.CanvasTexture(gCanvas);
+gTex.repeat.set(1 / 12, -1 / 14); gTex.offset.set(0, 12 / 14);
+gTex.anisotropy = 4;
+function paintGround(){
+  const g = gCanvas.getContext('2d'), S = TILE_PX;
+  for (let y = GY0; y <= GY1; y++) for (let x = 0; x <= GX1; x++) {
+    const t = T(x, y), px = x * S, py = (y - GY0) * S;
+    let f = P.grass;
+    if (t === 'grass') f = ((x * 7 + y * 13) % 3) ? P.grass : P.grass2;
+    else if (t === 'park') f = (x + y) % 2 ? P.park2 : P.park;
+    else if (t === 'road') f = P.road;
+    else if (t === 'plaza' || t === 'cafe' || t === 'hall') f = (x + y) % 2 ? P.plaza2 : P.plaza;
+    else if (t === 'water') f = P.water;
+    else if (t === 'bank') f = P.bank;
+    g.fillStyle = f; g.fillRect(px, py, S + 1, S + 1);
+    if (t === 'grass' || t === 'park' || t === 'bank') {
+      g.fillStyle = mix(f, '#FFFFFF', .25);
+      for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(px + sr(x * 31 + y, i) * S, py + sr(y * 17 + x, i + 5) * S, 1.6, 0, Math.PI * 2); g.fill(); }
+    }
+    if (t === 'road') {
+      const vx = (x === 4 || x === 7), hy = (y === 4 || y === 7);
+      g.fillStyle = P.road2;
+      for (let i = 0; i < 4; i++) { g.beginPath(); g.arc(px + sr(x + 3, i + y) * S, py + sr(y + 9, i + x) * S, 2.2, 0, Math.PI * 2); g.fill(); }
+      g.strokeStyle = P.stripe; g.lineWidth = 3; g.lineCap = 'round';
+      if (vx && !hy) { g.beginPath(); g.moveTo(px + S / 2, py + S * .28); g.lineTo(px + S / 2, py + S * .72); g.stroke(); }
+      if (hy && !vx) { g.beginPath(); g.moveTo(px + S * .28, py + S / 2); g.lineTo(px + S * .72, py + S / 2); g.stroke(); }
+    }
+  }
+  gTex.needsUpdate = true;
+}
+function roundedRect(x, y, w, h, r){
+  const s = new THREE.Shape();
+  s.moveTo(x + r, y); s.lineTo(x + w - r, y); s.quadraticCurveTo(x + w, y, x + w, y + r);
+  s.lineTo(x + w, y + h - r); s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  s.lineTo(x + r, y + h); s.quadraticCurveTo(x, y + h, x, y + h - r);
+  s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y);
+  return s;
+}
+const groundMat = new THREE.MeshToonMaterial({ map: gTex, gradientMap: grad });
+const dirtMat = new THREE.MeshToonMaterial({ color: new THREE.Color('#D8A884'), gradientMap: grad });
+const lipMat = new THREE.MeshToonMaterial({ color: new THREE.Color('#8CD585'), gradientMap: grad });
+const islandGeo = new THREE.ExtrudeGeometry(roundedRect(0, -2, 12, 14, .7), { depth: 1.2, bevelEnabled: false, curveSegments: 8 });
+islandGeo.rotateX(Math.PI / 2);
+const island = new THREE.Mesh(islandGeo, [groundMat, dirtMat]);
+island.receiveShadow = true;
+world.add(island);
+const lipGeo = new THREE.ExtrudeGeometry(roundedRect(-.05, -2.05, 12.1, 14.1, .74), { depth: .2, bevelEnabled: false, curveSegments: 8 });
+lipGeo.rotateX(Math.PI / 2);
+const lip = new THREE.Mesh(lipGeo, lipMat);
+lip.position.y = -.02;
+world.add(lip);
+
+/* river, waterfall, ducks */
+const river = mk('box', M.water, 12, .04, .92, 6, .02, -.5, world, false);
+river.receiveShadow = true;
+mk('box', M.water, .06, 1.15, .9, 12.03, -.55, -.5, world, false);
+const sparkles = [];
+for (let i = 0; i < 7; i++) sparkles.push(mk('box', '#FFFFFF', .22, .01, .03, rnd(0, 12), .045, rnd(-.85, -.15), world, false));
+const ducks = [];
+function makeDuck(x, z){
+  const d = group(world, x, .05, z);
+  mk('sph', '#FFD84D', .14, .1, .18, 0, .06, 0, d);
+  mk('sph', '#FFD84D', .08, .08, .08, 0, .17, .1, d);
+  mk('cone', '#FF9A3C', .03, .07, .03, 0, .16, .19, d).rotation.x = Math.PI / 2;
+  mk('sph', '#2A2B45', .013, .013, .013, .045, .19, .15, d, false);
+  mk('sph', '#2A2B45', .013, .013, .013, -.045, .19, .15, d, false);
+  d.rotation.y = Math.PI / 2;
+  ducks.push({ g:d, speed:rnd(.18, .3), ph:Math.random() * 6 });
+}
+makeDuck(2.5, -.55); makeDuck(8.2, -.4);
+
+/* scenery */
+function tree(x, z, s){
+  const g = group(world, x, 0, z); g.scale.setScalar(s || 1);
+  mk('cyl', '#B07A52', .06, .34, .06, 0, .17, 0, g);
+  mk('sph', '#6CCB7D', .27, .25, .27, 0, .52, 0, g);
+  mk('sph', '#86D98F', .19, .18, .19, -.15, .44, .09, g);
+  mk('sph', '#5DBB72', .17, .16, .17, .16, .46, -.05, g);
+  return g;
+}
+for (const [x, y] of TREES) tree(x + .5, y + .5);
+for (const [x, y, s] of [[2.5, -1.5, .75], [8.5, -1.55, .7], [10.9, -1.5, .8], [5.6, -1.6, .6]]) tree(x, y, s);
+const lampHeads = [], glows = [];
+const glowTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, 'rgba(255,220,140,.6)'); r.addColorStop(1, 'rgba(255,220,140,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+})();
+const glowMat = new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+for (const [x, y] of LAMPS) {
+  mk('cyl', '#7B7699', .025, .62, .025, x, .31, y, world);
+  lampHeads.push(mk('sph', M.lamp, .07, .07, .07, x, .66, y, world, false));
+  const s = new THREE.Sprite(glowMat); s.position.set(x, .66, y); s.scale.set(.8, .8, 1); s.visible = false; world.add(s); glows.push(s);
+}
+for (const [x, y] of BENCHES) {
+  const g = group(world, x, 0, y);
+  mk('box', '#D69C6B', .56, .05, .16, 0, .16, .02, g);
+  mk('box', '#C98A5A', .56, .14, .04, 0, .26, -.07, g);
+  for (const dx of [-.22, .22]) mk('box', '#8C6A55', .04, .14, .12, dx, .07, .02, g);
+}
+const fountainDrops = [];
+(() => {
+  const g = group(world, 9.5, 0, 9.5);
+  mk('cyl', '#F1E6DA', .42, .16, .42, 0, .08, 0, g);
+  mk('cyl', M.water, .36, .02, .36, 0, .165, 0, g, false);
+  mk('cyl', '#EADBCB', .06, .42, .06, 0, .3, 0, g);
+  mk('cyl', '#F1E6DA', .16, .05, .16, 0, .5, 0, g);
+  for (let i = 0; i < 10; i++) fountainDrops.push({ m: mk('sph', '#CFEFFF', .03, .03, .03, 0, .5, 0, g, false), a: i / 10 * Math.PI * 2, ph: i / 10 });
+})();
+let hallFlag;
+(() => {
+  const g = group(world, 6, 0, 6);
+  mk('box', '#EFE2D4', 1.9, .12, 1.9, 0, .06, 0, g);
+  mk('box', '#FFF5E8', 1.7, .78, 1.7, 0, .51, 0, g);
+  for (const x of [-.62, -.3, .3, .62]) mk('cyl', '#FFFFFF', .07, .7, .07, x, .47, .9, g);
+  mk('box', '#A8714F', .34, .5, .04, 0, .37, .86, g);
+  for (const z of [-.45, 0, .45]) { mk('box', M.win, .04, .22, .2, .86, .6, z, g, false); mk('box', M.win, .04, .22, .2, -.86, .6, z, g, false); }
+  mk('box', '#FF7593', 1.92, .12, 1.92, 0, .96, 0, g);
+  mk('dome', '#FFD36E', .56, .5, .56, 0, 1.02, 0, g);
+  mk('sph', '#FFE9A8', .1, .07, .1, -.2, 1.34, .2, g, false);
+  mk('cyl', '#6E6A8F', .02, .5, .02, 0, 1.75, 0, g);
+  hallFlag = mk('box', '#FF6F8B', .3, .18, .02, .15, 1.9, 0, g);
+})();
+(() => {
+  const g = group(world, 5.5, 0, 10.5);
+  mk('box', '#FFE8CC', .74, .56, .74, 0, .28, 0, g);
+  mk('box', '#C98B6B', .82, .07, .82, 0, .59, 0, g);
+  mk('box', M.win, .02, .2, .4, .375, .3, 0, g, false);
+  mk('box', '#A8714F', .2, .3, .02, 0, .15, .375, g);
+  for (let i = 0; i < 6; i++) {
+    const s = mk('box', i % 2 ? '#FFFFFF' : '#FF7593', .28, .02, .12, .5, .47, -.3 + i * .12, g);
+    s.rotation.z = -.45;
+  }
+  for (const [x, z] of [[1.28, 0], [1.28, .95], [.32, 1.05]]) {
+    const t = group(g, x, 0, z);
+    mk('cyl', '#8C6A55', .02, .26, .02, 0, .13, 0, t);
+    mk('cyl', '#FFFFFF', .16, .02, .16, 0, .27, 0, t);
+    mk('cyl', '#8C6A55', .012, .5, .012, 0, .45, 0, t, false);
+    mk('cone', pick(['#FFB3C4', '#BDE6FF', '#FFE08A']), .26, .12, .26, 0, .72, 0, t);
+  }
+})();
+const flowerCount = 46;
+const flowers = new THREE.InstancedMesh(G.sph, new THREE.MeshToonMaterial({ gradientMap: grad }), flowerCount);
+(() => {
+  const spots = Object.keys(tiles).filter(k => (tiles[k] === 'grass' || tiles[k] === 'park') && !PLOT_SET.has(k) && !STATIC_BLOCK.has(k));
+  const m = new THREE.Matrix4(), col = new THREE.Color();
+  const cols = ['#FF8FAB', '#FFD36E', '#FFFFFF', '#B9A4FF', '#FFA877'];
+  for (let i = 0; i < flowerCount; i++) {
+    const [x, y] = spots[Math.floor(sr(i, 3) * spots.length)].split(',').map(Number);
+    m.makeScale(.045, .045, .045); m.setPosition(x + .12 + sr(i, 7) * .76, .05, y + .12 + sr(i, 9) * .76);
+    flowers.setMatrixAt(i, m); flowers.setColorAt(i, col.set(cols[i % cols.length]));
+  }
+  flowers.instanceMatrix.needsUpdate = true;
+  if (flowers.instanceColor) flowers.instanceColor.needsUpdate = true;
+  world.add(flowers);
+})();
+const clouds = [];
+for (let i = 0; i < 4; i++) {
+  const g = group(scene, rnd(-10, 10), rnd(3.4, 4.4), rnd(-8, 6));
+  const n = 3 + (i % 3);
+  for (let k = 0; k < n; k++) mk('sph', '#FFFFFF', rnd(.35, .6), rnd(.28, .4), rnd(.35, .5), k * .45 - n * .2, rnd(-.05, .1), rnd(-.15, .15), g, false);
+  clouds.push({ g, v: rnd(.12, .22) });
+}
+const stars = (() => {
+  const pos = [];
+  for (let i = 0; i < 160; i++) { const a = Math.random() * Math.PI * 2, e = rnd(.25, 1.2), r = 60; pos.push(Math.cos(a) * Math.cos(e) * r, Math.sin(e) * r, Math.sin(a) * Math.cos(e) * r); }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 2, sizeAttenuation: false }));
+  pts.visible = false; scene.add(pts); return pts;
+})();
+
+/* particles: one instanced mesh */
+const partMesh = new THREE.InstancedMesh(G.box, new THREE.MeshToonMaterial({ gradientMap: grad }), MAX_PARTICLES);
+partMesh.frustumCulled = false; partMesh.castShadow = false;
+world.add(partMesh);
+const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3(), tmpC = new THREE.Color();
+const zeroM = new THREE.Matrix4().makeScale(0, 0, 0);
+
+/* people */
+const pickables = [];
+function makePerson(c){
+  const g = group(world, c.x, 0, c.y);
+  const inner = group(g);
+  const legL = group(inner, -.065, .14, 0), legR = group(inner, .065, .14, 0);
+  for (const l of [legL, legR]) { mk('cyl', '#3E3A5A', .045, .13, .045, 0, -.065, 0, l); mk('sph', '#3E3A5A', .055, .04, .07, 0, -.13, .02, l); }
+  const body = mk('sph', c.color, .16, .18, .14, 0, .27, 0, inner);
+  mk('sph', c.skin, .05, .05, .05, -.17, .27, .02, inner);
+  const armR = group(inner, .15, .34, 0);
+  mk('sph', c.skin, .05, .05, .05, 0, -.12, 0, armR);
+  const hammer = group(armR, 0, -.12, 0);
+  mk('cyl', '#B07A52', .015, .16, .015, 0, -.07, 0, hammer);
+  mk('box', '#8F96AB', .1, .05, .06, 0, -.16, 0, hammer);
+  const head = mk('sph', c.skin, .2, .19, .19, 0, .56, 0, inner);
+  for (const s of [-1, 1]) {
+    mk('sph', '#2A2B45', .026, .03, .02, s * .068, .57, .175, inner, false);
+    mk('sph', '#FF9DB0', .035, .02, .012, s * .118, .51, .15, inner, false);
+  }
+  const hat = group(inner, 0, .6, 0);
+  mk('dome', c.hat, .21, .19, .21, 0, 0, 0, hat);
+  mk('cyl', c.hat, .235, .022, .235, 0, 0, .02, hat);
+  mk('box', c.hat, .035, .04, .33, 0, .19, 0, hat);
+  const hair = mk('dome', '#5A3E36', .2, .15, .2, 0, .6, -.01, inner);
+  const cup = mk('cyl', '#FFFFFF', .035, .06, .035, 0, -.14, .04, armR);
+  const ring = new THREE.Mesh(G.ring, M.ring); ring.rotation.x = -Math.PI / 2; ring.position.y = .012; g.add(ring);
+  g.userData.pick = { t:'c', id:c.id };
+  pickables.push(g);
+  c.v = { g, inner, legL, legR, body, armR, hammer, head, hat, hair, cup, ring, yaw: 0, pop: 0 };
+}
+let govV;
+(() => {
+  const g = group(world, gov.x, 0, gov.y); g.scale.setScalar(1.12);
+  const inner = group(g);
+  mk('cone', '#FF6F8B', .27, .5, .27, 0, .25, 0, inner);
+  mk('cyl', '#FFD36E', .17, .03, .17, 0, .33, 0, inner);
+  mk('sph', '#FFE0C7', .2, .19, .19, 0, .62, 0, inner);
+  for (const s of [-1, 1]) { mk('sph', '#2A2B45', .026, .03, .02, s * .068, .63, .175, inner, false); mk('sph', '#FF9DB0', .035, .02, .012, s * .118, .57, .15, inner, false); }
+  mk('cyl', '#FFD36E', .15, .07, .15, 0, .81, 0, inner);
+  for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; mk('cone', '#FFD36E', .035, .09, .035, Math.cos(a) * .12, .88, Math.sin(a) * .12, inner); }
+  const arm = group(inner, .2, .45, 0);
+  mk('sph', '#FFE0C7', .05, .05, .05, 0, -.1, .04, arm);
+  mk('cyl', '#FFF3D6', .03, .2, .03, 0, -.12, .1, arm).rotation.z = Math.PI / 2;
+  const ring = new THREE.Mesh(G.ring, M.ring); ring.rotation.x = -Math.PI / 2; ring.position.y = .012; g.add(ring);
+  g.rotation.y = Math.atan2(0, 1);
+  g.userData.pick = { t:'gov' };
+  pickables.push(g);
+  govV = { g, inner, arm, ring };
+})();
+
+/* buildings */
+function makeBuilding(b){
+  const x = b.gx + .5, z = b.kind === 'bridge' ? -.5 : b.gy + .5;
+  const g = group(world, x, 0, z);
+  const v = { g, kind: b.kind };
+  const wall = mix(b.color, '#FFFFFF', .62), roof = b.color, wood = '#D9A066';
+  v.stakes = group(g);
+  for (const [sx, sz] of [[-.34, -.34], [.34, -.34], [.34, .34], [-.34, .34]]) mk('box', '#A87B55', .035, .16, .035, sx, .08, sz, v.stakes);
+  mk('cyl', '#A87B55', .012, .3, .012, .34, .15, .34, v.stakes);
+  mk('cone', b.color, .07, .14, .07, .38, .26, .34, v.stakes).rotation.z = -Math.PI / 2;
+  if (b.kind === 'house') {
+    v.walls = mk('box', wall, .66, 1, .66, 0, .5, 0, g);
+    v.wins = [];
+    for (let f = 0; f < 3; f++) for (const [wx, wz, ry] of [[0, .335, 0], [.335, 0, Math.PI / 2], [0, -.335, 0], [-.335, 0, Math.PI / 2]]) {
+      if (f === 0 && wz > .3) continue;
+      const w = mk('box', M.win, .15, .15, .02, wx, f * .31 + .18, wz, g, false); w.rotation.y = ry; w.userData.floor = f; v.wins.push(w);
+    }
+    v.door = mk('box', '#A8714F', .17, .25, .02, -.1, .125, .335, g, false);
+    v.roof = group(g, 0, .93, 0);
+    const r = mk('cone4', roof, .56, .42, .56, 0, .21, 0, v.roof); r.rotation.y = Math.PI / 4;
+    mk('box', mix(roof, '#FFFFFF', .3), .09, .18, .09, .16, .24, -.1, v.roof);
+  } else if (b.kind === 'tower') {
+    v.walls = mk('cyl', mix(b.color, '#FFFFFF', .55), .3, 1, .3, 0, .5, 0, g);
+    v.bands = [];
+    for (let f = 0; f < 7; f++) { const m = mk('cyl', M.win, .305, .07, .305, 0, f * .3 + .18, 0, g, false); m.userData.floor = f; v.bands.push(m); }
+    v.roof = group(g, 0, 2.1, 0);
+    mk('dome', b.color, .31, .28, .31, 0, 0, 0, v.roof);
+    mk('cyl', '#6E6A8F', .015, .5, .015, 0, .45, 0, v.roof);
+    v.beacon = mk('sph', '#FF5A6E', .05, .05, .05, 0, .72, 0, v.roof, false);
+    mk('box', '#43C58B', .2, .12, .015, .11, .6, 0, v.roof);
+    v.crane = group(g, .42, 0, -.42);
+    v.mast = mk('box', '#FFC23D', .06, 1, .06, 0, .5, 0, v.crane);
+    v.jib = group(v.crane, 0, 1, 0);
+    mk('box', '#FFC23D', 1.1, .05, .05, -.35, 0, 0, v.jib);
+    mk('box', '#8F96AB', .08, .08, .08, -.75, -.25, 0, v.jib);
+    mk('cyl', '#555A70', .006, .22, .006, -.75, -.11, 0, v.jib, false);
+  } else if (b.kind === 'garden') {
+    v.soil = mk('box', '#B98B65', .86, .04, .86, 0, .02, 0, g, false);
+    v.lawn = mk('box', '#7FD27B', .84, .05, .84, 0, .03, 0, g, false);
+    v.bushes = [[-.3, -.3], [.3, -.3], [-.3, .3], [.3, .3]].map(([bx, bz]) => mk('sph', '#5DBB72', .13, .11, .13, bx, .1, bz, g));
+    v.fl = [];
+    for (let i = 0; i < 9; i++) {
+      const fx = -.2 + sr(b.seed, i) * .4, fz = -.2 + sr(b.seed, i + 20) * .45;
+      const f = group(g, fx, 0, fz);
+      mk('cyl', '#3D9A4E', .01, .12, .01, 0, .06, 0, f, false);
+      mk('sph', ['#FF8FAB', '#FFD36E', '#FFFFFF', '#B9A4FF', '#FFA877'][i % 5], .045, .04, .045, 0, .13, 0, f);
+      v.fl.push(f);
+    }
+    v.tree = tree(0, 0, 1); g.add(v.tree); v.tree.position.set(0, 0, -.12);
+  } else {
+    v.planks = [];
+    for (let i = 0; i < 9; i++) {
+      const t = i / 8, zz = .5 - t * 1.1, yy = .07 + Math.sin(t * Math.PI) * .2;
+      const pl = mk('box', '#D69C6B', .6, .045, .13, 0, yy, zz, g);
+      pl.rotation.x = Math.cos(t * Math.PI) * -.45;
+      v.planks.push(pl);
+    }
+    v.rails = group(g);
+    for (const sx of [-.29, .29]) for (let i = 0; i <= 4; i++) {
+      const t = i / 4, zz = .5 - t * 1.1, yy = .07 + Math.sin(t * Math.PI) * .2;
+      mk('box', '#B7835A', .03, .2, .03, sx, yy + .1, zz, v.rails);
+    }
+  }
+  if (b.kind === 'house' || b.kind === 'tower') {
+    v.scaf = group(g);
+    const r = b.kind === 'tower' ? .38 : .41;
+    for (const [sx, sz] of [[-r, r], [r, r], [r, -r], [-r, -r]]) mk('box', wood, .025, 1, .025, sx, .5, sz, v.scaf, false);
+    for (let f = 1; f <= 7; f++) {
+      const bar = group(v.scaf, 0, f * .3, 0); bar.userData.floor = f;
+      mk('box', wood, r * 2, .025, .025, 0, 0, r, bar, false);
+      mk('box', wood, .025, .025, r * 2, r, 0, 0, bar, false);
+    }
+  }
+  g.userData.pick = { t:'b', id:b.id };
+  pickables.push(g);
+  b.v = v;
+}
+function updateBuilding(b, t){
+  const v = b.v, p = b.done ? 1 : b.shown, planned = !b.done && b.shown < .02;
+  v.stakes.visible = planned;
+  const k = t - b.popAt, pop = k >= 0 && k < 1 ? 1 + .16 * Math.sin(k * 10) * Math.exp(-k * 4) : 1;
+  v.g.scale.set(pop, pop, pop);
+  if (b.kind === 'house' || b.kind === 'tower') {
+    const full = b.kind === 'tower' ? 2.1 : .93;
+    const h = planned ? 0 : Math.max(.05, p * full);
+    v.walls.visible = !planned;
+    v.walls.scale.y = h; v.walls.position.y = h / 2;
+    const list = b.kind === 'tower' ? v.bands : v.wins;
+    for (const w of list) w.visible = !planned && h > (w.userData.floor + 1) * (b.kind === 'tower' ? .3 : .31) - .06;
+    if (v.door) v.door.visible = !planned && h > .28;
+    v.roof.visible = b.done;
+    if (b.done) v.roof.scale.setScalar(clamp((t - b.popAt) * 3, 0, 1) || 1);
+    v.scaf.visible = !b.done && !planned;
+    if (v.scaf.visible) { v.scaf.children.forEach(ch => { if (ch.userData.floor) ch.visible = ch.userData.floor * .3 <= h + .12; else { ch.scale.y = h + .15; ch.position.y = (h + .15) / 2; } }); }
+    if (v.crane) {
+      v.crane.visible = !b.done && !planned;
+      v.mast.scale.y = h + .9; v.mast.position.y = (h + .9) / 2; v.jib.position.y = h + .9;
+      if (!RM) v.jib.rotation.y = Math.sin(t * .35 + b.seed) * 1.1;
+      if (v.beacon) v.beacon.visible = !P.night || Math.sin(t * 3) > 0;
+    }
+  } else if (b.kind === 'garden') {
+    v.lawn.visible = p > .12;
+    v.bushes.forEach(m => m.scale.set(.13 * clamp(p * 2, .01, 1), .11 * clamp(p * 2, .01, 1), .13 * clamp(p * 2, .01, 1)));
+    const n = Math.round(p * 9);
+    v.fl.forEach((f, i) => { f.visible = i < n; });
+    const ts = clamp((p - .45) / .55, 0, 1);
+    v.tree.visible = ts > 0; v.tree.scale.setScalar(.35 + ts * .45);
+    v.soil.visible = true;
+  } else {
+    const n = planned ? 0 : Math.ceil(p * 9);
+    v.planks.forEach((pl, i) => { pl.visible = i < n; });
+    v.rails.visible = b.done;
+  }
+}
+
+/* overlays: crisp HTML labels that follow the 3D scene */
+let W = 1, H = 1, needFrame = true;
+const tmpV = new THREE.Vector3();
+function toScreen(x, h, z){ tmpV.set(x - 6, h, z - 5).project(camera); return [(tmpV.x + 1) / 2 * W, (1 - tmpV.y) / 2 * H, tmpV.z]; }
+function ovEl(cls, html){ const el = document.createElement('div'); el.className = cls; if (html) el.innerHTML = html; el.hidden = true; ovRoot.appendChild(el); return el; }
+function place(el, x, y, show){ if (!show) { if (!el.hidden) el.hidden = true; return; } if (el.hidden) el.hidden = false; el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
+function setText(el, text){ if (el._t !== text) { el._t = text; el.textContent = text; } }
+const labels = [
+  { el: ovEl('lbl'), text: '市政厅', x: 6, h: 2.35, z: 6 },
+  { el: ovEl('lbl'), text: '咖啡馆', x: 5.5, h: .95, z: 10.5 },
+  { el: ovEl('lbl'), text: 'main', x: 1.2, h: .45, z: -1.5 },
+];
+labels.forEach(l => setText(l.el, l.text));
+const govBub = ovEl('bub gov'), govTag = ovEl('tagl');
+govTag.style.setProperty('--c', '#FF6F8B'); setText(govTag, '总督 · main manager');
+
+function ensureOv(c){
+  if (c.o) return;
+  c.o = { bub: ovEl('bub'), qm: ovEl('qm', '<span>?</span>'), zz: ovEl('zz', '<span>z</span><span>z</span><span>Z</span>'), tag: ovEl('tagl') };
+  c.o.tag.style.setProperty('--c', c.color);
+}
+function dropOv(c){ if (!c.o) return; for (const k in c.o) c.o[k].remove(); c.o = null; }
+
+function updatePerson(c, t){
+  const v = c.v, g = v.g, inner = v.inner;
+  g.position.set(c.x, 0, c.y);
+  const walking = c.path.length > 0 && c.state !== 'spawn';
+  const resting = c.state === 'resting' && c.rest;
+  const pose = resting ? c.rest.pose : '';
+  let yaw = v.yaw;
+  if (walking) { const [tx, ty] = c.path[0]; const dx = tx - c.x, dz = ty - c.y; if (Math.hypot(dx, dz) > .001) yaw = Math.atan2(dx, dz); }
+  else if (c.state === 'building' && c.bld) { const bz = c.bld.kind === 'bridge' ? -.5 : c.bld.gy + .5; yaw = Math.atan2(c.bld.gx + .5 - c.x, bz - c.y); }
+  else if (c.state === 'asking' || c.state === 'heard') yaw = Math.atan2(gov.x - c.x, gov.y - c.y);
+  else if (pose === 'cafe') yaw = Math.PI / 2;
+  else if (pose === 'bench') yaw = 0;
+  let d = yaw - v.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+  v.yaw += d * .25;
+  g.rotation.set(0, v.yaw, 0);
+  const grow = c.state === 'spawn' || c.state === 'leaving' ? clamp(c.alpha, 0, 1) : 1;
+  const s = grow < 1 ? grow * (1 + .25 * Math.sin(grow * Math.PI)) : 1;
+  g.scale.set(Math.max(.001, s), Math.max(.001, s), Math.max(.001, s));
+  const ph = c.walkT * 11;
+  let lift = 0, legRot = 0, squash = 1;
+  if (walking && !RM) { lift = Math.abs(Math.sin(ph)) * .06; legRot = Math.sin(ph) * .7; squash = 1 - Math.abs(Math.cos(ph)) * .06; }
+  inner.rotation.set(0, 0, 0); inner.position.set(0, lift, 0);
+  v.body.scale.set(.16, .18 * squash, .14);
+  v.legL.rotation.x = legRot; v.legR.rotation.x = -legRot;
+  v.hammer.visible = c.state === 'building';
+  v.cup.visible = pose === 'cafe';
+  if (c.state === 'building') {
+    const sw = RM ? 0 : Math.sin(t * 12 + c.id);
+    v.armR.rotation.set(-1.6 + sw * .9, 0, 0);
+    inner.position.y = Math.max(0, -sw) * .025;
+  } else if (c.state === 'asking' || c.state === 'to_hall') {
+    v.armR.rotation.set(-2.7 + (RM ? 0 : Math.sin(t * 9 + c.id) * .25), 0, 0);
+  } else if (pose === 'cafe') v.armR.rotation.set(-1.1, 0, 0);
+  else v.armR.rotation.set(walking && !RM ? -Math.sin(ph) * .5 : 0, 0, 0);
+  if (pose === 'bench' || pose === 'sit' || pose === 'cafe') {
+    inner.position.y = pose === 'bench' ? .06 : .02;
+    v.legL.rotation.x = v.legR.rotation.x = -1.45;
+  } else if (pose === 'lie') {
+    inner.rotation.set(0, 0, Math.PI / 2 * .96);
+    inner.position.set(-.08, .17, 0);
+  }
+  const bare = resting || c.state === 'to_rest' || c.state === 'leaving' || c.state === 'finishing';
+  v.hat.visible = !bare; v.hair.visible = bare;
+  v.ring.visible = !!(selected && selected.t === 'c' && selected.id === c.id);
+
+  ensureOv(c);
+  const top = pose === 'lie' ? .55 : 1.0;
+  const [sx, sy] = toScreen(c.x, top, c.y);
+  const talk = c.bubble && simT < c.bubble.until;
+  place(c.o.qm, sx, sy, c.state === 'to_hall' && grow > .5);
+  place(c.o.zz, sx + 12, sy, pose === 'lie');
+  const showBub = c.state === 'asking' || (talk && c.state !== 'to_hall');
+  if (showBub) {
+    const text = c.state === 'asking' ? c.question : c.bubble.text;
+    setText(c.o.bub, text);
+    c.o.bub.className = 'bub' + (c.state === 'asking' ? ' ask' : c.state === 'finishing' ? ' done' : '');
+  }
+  place(c.o.bub, sx, sy, showBub);
+  const [tx, ty] = toScreen(c.x, 0, c.y);
+  setText(c.o.tag, `${c.label} · ${c.task}`);
+  place(c.o.tag, tx, ty + 34, v.ring.visible && c.state !== 'asking');
+}
+function updateGovernor(t){
+  const talking = gov.bubble && simT < gov.bubble.until;
+  govV.inner.rotation.z = RM ? 0 : Math.sin(t * 1.4) * .04;
+  govV.inner.position.y = talking && !RM ? Math.abs(Math.sin(t * 8)) * .03 : 0;
+  govV.arm.rotation.x = talking ? -2.2 + (RM ? 0 : Math.sin(t * 8) * .3) : 0;
+  govV.ring.visible = !!(selected && selected.t === 'gov');
+  const [sx, sy] = toScreen(gov.x, 1.25, gov.y);
+  if (talking) setText(govBub, gov.bubble.text);
+  place(govBub, sx, sy, talking);
+  const [tx, ty] = toScreen(gov.x, 0, gov.y);
+  place(govTag, tx, ty + 38, govV.ring.visible);
+}
+
+function applyTheme(){
+  const key = isDark() ? 'night' : 'day';
+  if (key === themeKey) return;
+  themeKey = key; P = THEME[key];
+  hemi.color.set(P.sky); hemi.groundColor.set(P.gnd); hemi.intensity = P.hemiI;
+  sun.color.set(P.sun); sun.intensity = P.sunI;
+  dirtMat.color.set(P.dirt); lipMat.color.set(P.lip);
+  M.water.color.set(P.water);
+  M.win.color.set(P.win); M.win.emissive.set(P.winE);
+  M.lamp.emissive.set(P.lampE);
+  stars.visible = P.night; glows.forEach(s => { s.visible = P.night; });
+  paintGround();
+}
+function updateCamera(){
+  const aspect = W / H;
+  let halfW = 9.4, halfH = halfW / aspect;
+  if (halfH < 6.7) { halfH = 6.7; halfW = halfH * aspect; }
+  camera.left = -halfW; camera.right = halfW; camera.top = halfH; camera.bottom = -halfH;
+  camera.zoom = cam.zoom; camera.updateProjectionMatrix();
+  const d = 40, ce = Math.cos(cam.el);
+  camera.position.set(cam.tx + d * ce * Math.sin(cam.az), d * Math.sin(cam.el), cam.tz + d * ce * Math.cos(cam.az));
+  camera.lookAt(cam.tx, .4, cam.tz);
+}
+function resetCam(){ cam.az = Math.PI / 4; cam.el = .64; cam.tx = 0; cam.tz = 0; cam.zoom = W < 560 ? 1.3 : 1; }
+function resize(){
+  const r = stage.getBoundingClientRect();
+  W = Math.max(1, r.width); H = Math.max(1, r.height);
+  renderer.setSize(W, H, false);
+  needFrame = true;
+}
+
+function sync(t, dt){
+  const ids = new Set(buildings.map(b => b.id));
+  for (const b of buildings) { if (!b.v) makeBuilding(b); updateBuilding(b, t); }
+  for (let i = pickables.length - 1; i >= 0; i--) {
+    const pk = pickables[i].userData.pick;
+    if (pk.t === 'b' && !ids.has(pk.id)) { world.remove(pickables[i]); pickables.splice(i, 1); }
+    if (pk.t === 'c' && !byId(pk.id)) { world.remove(pickables[i]); pickables.splice(i, 1); }
+  }
+  for (const c of citizens) { if (!c.v) makePerson(c); updatePerson(c, t); }
+  for (const c of goneOv) dropOv(c);
+  goneOv.length = 0;
+  updateGovernor(t);
+  let n = 0;
+  for (const p of particles) {
+    if (n >= MAX_PARTICLES) break;
+    const k = 1 - p.t / p.life, sz = p.size * (p.kind === 'dust' ? (1 + p.t) * k : Math.min(1, k * 3));
+    tmpE.set(p.t * 7, p.t * 5, 0); tmpQ.setFromEuler(tmpE);
+    tmpS.set(sz, p.kind === 'dust' ? sz : sz * .3, sz); tmpP.set(p.x, Math.max(.02, p.h), p.z);
+    tmpM.compose(tmpP, tmpQ, tmpS);
+    partMesh.setMatrixAt(n, tmpM); partMesh.setColorAt(n, tmpC.set(p.c)); n++;
+  }
+  for (let i = n; i < partMesh.userData.used; i++) partMesh.setMatrixAt(i, zeroM);
+  partMesh.userData.used = n;
+  partMesh.instanceMatrix.needsUpdate = true;
+  if (partMesh.instanceColor) partMesh.instanceColor.needsUpdate = true;
+  for (const f of floaters) {
+    if (!f.el) { f.el = ovEl('fl'); f.el.style.setProperty('--c', f.color); setText(f.el, f.text); }
+    const k = (simT - f.t0) / 1.2, [sx, sy] = toScreen(f.x, 1.05 + k * .6, f.y);
+    f.el.style.opacity = String(clamp(1.3 - k * 1.3, 0, 1));
+    place(f.el, sx + 22, sy, true);
+  }
+  for (const l of labels) { const [sx, sy] = toScreen(l.x, l.h, l.z); place(l.el, sx, sy, true); }
+  if (!RM) {
+    for (const d of ducks) { const p = d.g.position; p.x += d.speed * dt; if (p.x > 12.3) p.x = -.2; p.y = .04 + Math.sin(t * 2 + d.ph) * .015; d.g.rotation.z = Math.sin(t * 2 + d.ph) * .06; }
+    for (const s of sparkles) { s.position.x += dt * .5; if (s.position.x > 12) s.position.x = 0; }
+    for (const c of clouds) { c.g.position.x += c.v * dt; if (c.g.position.x > 14) c.g.position.x = -14; }
+    for (const f of fountainDrops) { const k = (t * .8 + f.ph) % 1; f.m.position.set(Math.cos(f.a) * .3 * k, .5 + Math.sin(k * Math.PI) * .22 - k * .3, Math.sin(f.a) * .3 * k); }
+    hallFlag.rotation.y = Math.sin(t * 2.2) * .35;
+  }
+}
+const goneOv = [];
+
+/* ---------- panel ---------- */
+const dirty = { log:true };
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[ch]));
+const clock = t => new Date(BASE + t * 1000).toTimeString().slice(0, 8);
+const pct = c => c.bld ? Math.round((c.bld.done ? 1 : c.bld.shown) * 100) : 0;
+const ORDER = { ask:0, build:1, walk:2, rest:3 };
+function renderStats(){
+  let work = 0, ask = 0, rest = 0;
+  for (const c of citizens) { const g = STATE[c.state][0]; if (g === 'ask') ask++; else if (g === 'rest') rest++; else if (c.state !== 'leaving') work++; }
+  const done = buildings.filter(b => b.done).length;
+  const html = [['#5AA9F0','干活',work],['#FF6F8B','找总督',ask],['#43C58B','休息',rest],['#FFC23D','建成',done]]
+    .map(([c, l, n]) => `<span class="stat"><i style="background:${c}"></i>${l} <b>${n}</b></span>`).join('');
+  if ($('#stats').innerHTML !== html) $('#stats').innerHTML = html;
+}
+let lastRoster = '';
+function renderRoster(){
+  const list = [...citizens].sort((a, b) => ORDER[STATE[a.state][0]] - ORDER[STATE[b.state][0]] || a.id - b.id);
+  const govBusy = gov.bubble && simT < gov.bubble.until;
+  let html = `<li><button class="row" type="button" data-sel="gov" aria-current="${!!(selected && selected.t === 'gov')}"><span class="hat crown"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govBusy ? '说话中' : '坐镇市政厅'}</span></button></li>`;
+  for (const c of list) {
+    const [g, zh] = STATE[c.state];
+    const kind = KIND_ZH[ROLES[c.role].kind];
+    const sub = g === 'build' ? `${c.label} · ${kind} ${pct(c)}%` : `${c.label} · ${kind}`;
+    html += `<li><button class="row" type="button" data-sel="${c.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === c.id)}"><span class="hat" style="--c:${c.color};--h:${c.hat}"></span><span class="who"><b>${esc(c.task)}</b><span>${esc(sub)}</span></span><span class="pill ${g}">${zh}</span></button></li>`;
+  }
+  if (html !== lastRoster) { $('#roster').innerHTML = html; lastRoster = html; }
+}
+let lastDetailKey = '';
+function renderDetail(){
+  const el = $('#detail');
+  let key = 'none', c = null, b = null;
+  if (selected && selected.t === 'c') { c = byId(selected.id); if (!c) selected = null; else key = `c${c.id}|${c.state}|${c.doneFlag}|${c.stuck}|${c.qa.length}`; }
+  if (selected && selected.t === 'b') { b = buildings.find(x => x.id === selected.id); if (!b) selected = null; else key = `b${b.id}|${b.done}`; }
+  if (selected && selected.t === 'gov') key = `gov|${gov.answered}|${gov.dispatched}`;
+  if (key !== lastDetailKey) {
+    lastDetailKey = key;
+    if (c) {
+      const [g, zh] = STATE[c.state], kind = KIND_ZH[ROLES[c.role].kind];
+      const qa = [...c.qa.map(x => `<p>问：<b>“${esc(x.q)}”</b></p><p>答：<b>“${esc(x.a)}”</b></p>`), (c.stuck ? `<p>问：<b>“${esc(c.question)}”</b> 等回答…</p>` : '')].join('');
+      const canStuck = !c.doneFlag && !c.stuck && ['building','to_plot','back'].includes(c.state);
+      el.innerHTML = `
+        <div class="d-head"><span class="hat" style="--c:${c.color};--h:${c.hat}"></span><div><div class="d-name">${esc(c.task)}</div><div class="d-role">${esc(c.label)} · ${ROLES[c.role].zh}</div></div><span class="pill ${g}">${zh}</span></div>
+        <div class="d-bar"><div class="track"><i data-f="bar" style="width:${pct(c)}%;background:${c.color}"></i></div><span data-f="pct">${kind} ${pct(c)}%</span></div>
+        <dl class="d-tools">${['Edit','Write','Bash','Read'].map(t => `<div><dt>${t}</dt><dd data-f="${t}">${c.tools[t]}</dd></div>`).join('')}</dl>
+        ${qa ? `<div class="d-qa">${qa}</div>` : ''}
+        <div class="d-actions">
+          <button class="btn" type="button" data-act="stuck" ${canStuck ? '' : 'disabled'}>让它卡住</button>
+          <button class="btn" type="button" data-act="done" ${c.doneFlag ? 'disabled' : ''}>让它完工</button>
+          <button class="btn" type="button" data-act="leave" ${c.state === 'resting' && !c.leaveFlag ? '' : 'disabled'}>让它下班</button>
+        </div>
+        <p class="d-note">这三个按钮只在原型里有，用来试流程。</p>`;
+    } else if (b) {
+      const owner = byId(b.ownerId);
+      el.innerHTML = `
+        <div class="d-head"><span class="hat" style="--c:${b.color};--h:${ROLES[b.role].hat}"></span><div><div class="d-name">${KIND_ZH[b.kind]} · ${esc(b.name)}</div><div class="d-role">${b.role}</div></div><span class="pill ${b.done ? 'rest' : 'build'}">${b.done ? '建成' : '施工中'}</span></div>
+        <p class="hint">${owner ? `盖它的小人还在城里：${esc(owner.task)}。` : `盖它的 ${b.role} 已经下班。`}${b.kind === 'bridge' ? '桥 = 把分支接到 main。' : ''}</p>`;
+    } else if (selected && selected.t === 'gov') {
+      el.innerHTML = `
+        <div class="d-head"><span class="hat crown"></span><div><div class="d-name">总督</div><div class="d-role">main manager · 主对话</div></div><span class="pill gov">市政厅</span></div>
+        <p class="hint">总督就是你正在聊的主对话。它派人出门、回答卡住的问题，自己不盖楼。</p>
+        <dl class="d-tools" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><dt>派出</dt><dd>${gov.dispatched}</dd></div><div><dt>回答</dt><dd>${gov.answered}</dd></div></dl>`;
+    } else {
+      el.innerHTML = `<h2><span class="en">Selected</span>详情</h2><p class="hint">点城里的小人、房子，或下面名单里的一行。</p>`;
+    }
+  }
+  if (c) {
+    const bar = el.querySelector('[data-f="bar"]'); if (bar) bar.style.width = pct(c) + '%';
+    const p = el.querySelector('[data-f="pct"]'); if (p) p.textContent = `${KIND_ZH[ROLES[c.role].kind]} ${pct(c)}%`;
+    for (const t of ['Edit','Write','Bash','Read']) { const d = el.querySelector(`[data-f="${t}"]`); if (d && d.textContent !== String(c.tools[t])) d.textContent = c.tools[t]; }
+  }
+}
+function renderLog(){
+  if (!dirty.log) return; dirty.log = false;
+  $('#log').innerHTML = logEntries.map(e => `<li><time>${clock(e.t)}</time><span class="${e.kind}">${esc(e.text)}</span></li>`).join('');
+}
+function renderPanel(){ renderStats(); renderRoster(); renderDetail(); renderLog(); $('#clock').textContent = '模拟 ' + clock(simT); }
+
+/* ---------- input ---------- */
+function selectFrom(val){
+  if (val === 'gov') selected = { t:'gov' };
+  else if (val) selected = { t:'c', id:Number(val) };
+  lastDetailKey = ''; lastRoster = ''; renderPanel(); needFrame = true;
+}
+$('#roster').addEventListener('pointerdown', e => { const r = e.target.closest('[data-sel]'); if (r) selectFrom(r.dataset.sel); });
+$('#roster').addEventListener('click', e => { const r = e.target.closest('[data-sel]'); if (r && e.detail === 0) selectFrom(r.dataset.sel); });
+$('#detail').addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]'); if (!btn || !selected || selected.t !== 'c') return;
+  const c = byId(selected.id); if (!c) return;
+  if (btn.dataset.act === 'stuck') { const [q, a] = pick(QA); c.pendingAnswer = a; emit({ type:'stuck', id:c.id, question:q }); }
+  if (btn.dataset.act === 'done') emit({ type:'done', id:c.id });
+  if (btn.dataset.act === 'leave') emit({ type:'leave', id:c.id });
+  lastDetailKey = ''; renderPanel();
+});
+$('#spawn').addEventListener('click', () => { const c = spawnDemo($('#role').value); if (c) { selected = { t:'c', id:c.id }; lastDetailKey = ''; renderPanel(); } });
+$('#play').addEventListener('click', () => {
+  paused = !paused;
+  $('#play').setAttribute('aria-pressed', String(paused));
+  $('#play-label').textContent = paused ? '继续' : '暂停';
+  $('#icon-pause').hidden = paused; $('#icon-play').hidden = !paused;
+});
+document.querySelectorAll('[data-speed]').forEach(b => b.addEventListener('click', () => {
+  speed = Number(b.dataset.speed);
+  document.querySelectorAll('[data-speed]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+}));
+const camChanged = () => { needFrame = true; hideHint(); };
+$('#zin').addEventListener('click', () => { cam.zoom = clamp(cam.zoom * 1.25, .7, 3.2); camChanged(); });
+$('#zout').addEventListener('click', () => { cam.zoom = clamp(cam.zoom / 1.25, .7, 3.2); camChanged(); });
+$('#rot').addEventListener('click', () => { camTween = { from: cam.az, to: cam.az - Math.PI / 2, t: 0 }; camChanged(); });
+$('#zfit').addEventListener('click', () => { resetCam(); camChanged(); });
+let hintHidden = false;
+function hideHint(){ if (!hintHidden) { hintHidden = true; $('#hint-drag').hidden = true; } }
+let camTween = null;
+
+const pointers = new Map();
+let drag = null, pinch = null;
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function pickAt(px, py){
+  ndc.set(px / W * 2 - 1, -(py / H) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects(pickables, true);
+  for (const h of hits) {
+    let o = h.object;
+    while (o && !o.userData.pick) o = o.parent;
+    if (!o) continue;
+    const pk = o.userData.pick;
+    if (pk.t === 'b') { const b = buildings.find(x => x.id === pk.id); const owner = b && byId(b.ownerId); return owner ? { t:'c', id:owner.id } : pk; }
+    return pk;
+  }
+  return null;
+}
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+  if (pointers.size === 1) drag = { x:e.clientX, y:e.clientY, moved:false, pan: e.button === 2 || e.shiftKey };
+  if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: cam.zoom, mx:(a.x + b.x) / 2, my:(a.y + b.y) / 2 }; drag = null; }
+});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+function panBy(dx, dy){
+  const k = (camera.right - camera.left) / camera.zoom / W;
+  const s = Math.sin(cam.az), c = Math.cos(cam.az);
+  cam.tx = clamp(cam.tx - (dx * c - dy * s * 1.4) * k, -6, 6);
+  cam.tz = clamp(cam.tz - (-dx * s - dy * c * 1.4) * k, -6, 6);
+}
+canvas.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+  if (pinch && pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    cam.zoom = clamp(pinch.z * d / Math.max(20, pinch.d), .7, 3.2);
+    panBy(mx - pinch.mx, my - pinch.my); pinch.mx = mx; pinch.my = my;
+    camChanged(); return;
+  }
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) < 6) return;
+  drag.moved = true; canvas.classList.add('grabbing');
+  if (drag.pan) panBy(dx, dy);
+  else { cam.az -= dx * .008; cam.el = clamp(cam.el + dy * .005, .32, 1.15); }
+  drag.x = e.clientX; drag.y = e.clientY;
+  camChanged();
+});
+function endPointer(e){
+  const wasTap = drag && !drag.moved && pointers.size === 1;
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinch = null;
+  if (wasTap && e.type === 'pointerup') {
+    const r = canvas.getBoundingClientRect();
+    selected = pickAt(e.clientX - r.left, e.clientY - r.top);
+    lastDetailKey = ''; lastRoster = ''; renderPanel(); needFrame = true;
+  }
+  if (!pointers.size) { drag = null; canvas.classList.remove('grabbing'); }
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('wheel', e => { e.preventDefault(); cam.zoom = clamp(cam.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), .7, 3.2); camChanged(); }, { passive:false });
+
+/* ---------- opening scene: a city mid-day, not an empty island ---------- */
+function placeBuilder(role, task, x, y, tools){
+  const R = ROLES[role], c = newCitizen(role, task), b = newBuilding(R.kind, x, y, role);
+  b.name = task; b.ownerId = c.id; b.ownerName = `${role} · ${task}`;
+  c.bld = b; c.stand = standFor(R.kind, x, y); c.x = c.stand.x; c.y = c.stand.y;
+  c.alpha = 1; c.state = 'building';
+  Object.assign(c.tools, tools);
+  c.work = Object.entries(tools).reduce((s, [k, v]) => s + (WEIGHT[k] || .5) * v, 0);
+  b.target = b.shown = .92 * (1 - Math.exp(-c.work / KSCALE[R.kind]));
+  c.feed = makeFeed(role, 0); c.feed.steps.splice(0, Math.min(4, c.feed.steps.length - 2));
+  citizens.push(c);
+  return c;
+}
+function placeResting(role, task, restIdx, bName){
+  const c = newCitizen(role, task), spot = REST[restIdx];
+  spot.by = c.id; c.rest = spot; c.x = spot.x; c.y = spot.y; c.alpha = 1; c.state = 'resting'; c.doneFlag = true;
+  const b = buildings.find(x => x.name === bName); if (b) { b.ownerId = c.id; c.bld = b; }
+  c.feed = { steps:[{ t:'leave' }], next:0, restSince:0, restFor:rnd(22, 34) };
+  citizens.push(c);
+  return c;
+}
+function seed(){
+  const hist = [['house',3,0,'worker','价格计算',-420],['tower',5,3,'task-manager','登录',-380],['garden',1,1,'fast-lane-deputy','按钮颜色',-300],
+    ['house',0,3,'worker','导出 CSV',-260],['bridge',4,-1,'merge-deputy','合并 login',-200],['house',9,6,'worker','深色模式',-150],['garden',5,1,'fast-lane-deputy','错别字',-45]];
+  for (const [k, x, y, role, task, t] of hist) { const b = newBuilding(k, x, y, role); b.done = true; b.shown = b.target = 1; b.name = task; b.ownerName = `${role} · ${task}`; b.doneAt = t; }
+  logAt(-420, '总督派出 worker：价格计算');
+  logAt(-300, '按钮颜色 完工：花园封顶，去休息', 'done');
+  logAt(-200, '合并 login 完工：桥封顶，去休息', 'done');
+  logAt(-95, '总督派出 task-manager：设置页');
+  logAt(-82, '总督派出 worker：设置页表单');
+  logAt(-80, '总督派出 worker：设置页 API');
+  logAt(-45, '错别字 完工：花园封顶，去休息', 'done');
+  placeBuilder('worker', '设置页表单', 3, 6, { Read:1, Edit:4, Write:1, Bash:1 });
+  placeBuilder('task-manager', '设置页', 10, 3, { Read:2, Write:3, Bash:1 });
+  const api = placeBuilder('worker', '设置页 API', 8, 3, { Read:2, Edit:2, Bash:1 });
+  placeResting('fast-lane-deputy', '错别字', 0, '错别字');
+  placeResting('worker', '价格计算', 4, '价格计算');
+  api.pendingAnswer = '用 /api/settings';
+  api.x = 7.5; api.y = 5.2;
+  emit({ type:'stuck', id:api.id, question:'API 路径用哪个？' });
+  selected = { t:'c', id:api.id };
+}
+
+/* ---------- boot: capped frame rate, slower when nothing moves ---------- */
+seed();
+resize(); resetCam();
+new ResizeObserver(() => resize()).observe(stage);
+let lastSim = performance.now(), lastDraw = 0, panelT = 0;
+function busy(){
+  if (drag && drag.moved || pinch || camTween) return true;
+  if (particles.length || floaters.length) return true;
+  return citizens.some(c => c.path.length || c.state === 'building' || c.state === 'spawn' || c.state === 'asking');
+}
+function frame(now){
+  requestAnimationFrame(frame);
+  if (document.hidden) { lastSim = now; return; }
+  const moving = busy();
+  const interval = moving || needFrame ? FRAME_MS : IDLE_FRAME_MS;
+  if (now - lastDraw < interval - 2) return;
+  const raw = Math.min(.1, (now - lastSim) / 1000);
+  lastSim = now; lastDraw = now; needFrame = false;
+  if (!paused) {
+    let dt = raw * speed;
+    const before = new Set(citizens);
+    while (dt > 0) { const s = Math.min(dt, .05); update(s); dt -= s; }
+    for (const c of before) if (!citizens.includes(c)) goneOv.push(c);
+  }
+  if (camTween) {
+    camTween.t = Math.min(1, camTween.t + raw * 2.2);
+    const e = camTween.t < .5 ? 2 * camTween.t * camTween.t : 1 - Math.pow(-2 * camTween.t + 2, 2) / 2;
+    cam.az = camTween.from + (camTween.to - camTween.from) * e;
+    if (camTween.t >= 1) camTween = null;
+  }
+  applyTheme();
+  updateCamera();
+  sync(simT, paused ? 0 : raw * speed);
+  renderer.render(scene, camera);
+  panelT += raw;
+  if (panelT > .25) { panelT = 0; renderPanel(); }
+}
+applyTheme(); updateCamera(); sync(0, 0); renderer.render(scene, camera); renderPanel();
+requestAnimationFrame(frame);
+})();
+</script>
