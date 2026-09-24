@@ -174,7 +174,9 @@ class ServerCase(unittest.TestCase):
     def start(self, *extra, wait=True):
         args = [sys.executable, SERVER, "serve", "--dir", self.dir, "--port", "0"]
         args += list(extra) or ["--idle-sec", "60"]
-        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # Never the real ~/.claude/agent-city (world.json, decisions.jsonl).
+        env = dict(os.environ, AGENT_CITY_HOME=os.path.join(self.base, "cityhome"))
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
         self.procs.append(proc)
         if wait:
             self.assertTrue(wait_for(lambda: (self.on() or (0,))[0] == proc.pid),
@@ -266,8 +268,10 @@ class TestServe(ServerCase):
         self.append(line("PreToolUse", tool="Agent", desc="设置页表单", sub="worker"))
         self.append(line("SubagentStart", aid="a1", at="worker"))
         self.append(line("PostToolUse", aid="a1", at="worker", tool="Edit"))
-        self.assertTrue(wait_for(lambda: len(client.events()) >= 2))
-        spawn, tool = client.events()[:2]
+        self.assertTrue(wait_for(lambda: client.events("tool")))
+        spawn, tool = client.events("spawn")[0], client.events("tool")[0]
+        self.assertIn("terr", spawn, "growth: a spawn names its territory (tests/test_agent_city_world.py)")
+        spawn = {k: v for k, v in spawn.items() if k != "terr"}
         self.assertEqual(spawn, {"type": "spawn", "id": "a1", "role": "worker",
                                  "label": "worker", "task": "设置页表单"})
         self.assertEqual(tool, {"type": "tool", "id": "a1", "tool": "Edit"})
@@ -305,8 +309,8 @@ class TestServe(ServerCase):
         self.append(full[:20])
         time.sleep(0.8)
         self.append(full[20:])
-        self.assertTrue(wait_for(lambda: client.events()))
-        self.assertEqual(client.events()[0]["id"], "a1")
+        self.assertTrue(wait_for(lambda: client.events("spawn")))
+        self.assertEqual(client.events("spawn")[0]["id"], "a1")
 
     def test_fifth_client_is_refused(self):
         self.start()
@@ -482,7 +486,7 @@ class TestCityScript(ScriptCase):
         super().tearDown()
 
     def city_run(self, *args, env=None):
-        full = {"AGENT_CITY_DIR": self.city}
+        full = {"AGENT_CITY_DIR": self.city, "AGENT_CITY_HOME": os.path.join(self.repo.base, "cityhome")}
         full.update(env or {})
         return self.repo.run("agent-city.sh", *args, env=full, timeout=30)
 

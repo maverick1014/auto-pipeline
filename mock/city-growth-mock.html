@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City · growth mock</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --berry:#FF7593; --berry-deep:#D9506E; --butter:#FFD36E; --mint:#6FD4A8; --focus:#4D7CFE;
+  --ok:#2FB57A; --ask-ink:#C2345A;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA; --line:#2D3360; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA; --line:#2D3360; color-scheme:dark; }
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px}
+.bar h1{margin:0 8px 0 0;font:700 18px/1.2 var(--round)}
+.proto{background:var(--butter);color:#4A3500;font:600 12px/1 var(--round);padding:6px 11px;border-radius:999px}
+.tabs{display:inline-flex;gap:6px}
+.btn{font:600 13px/1 var(--round);border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:12px;padding:0 12px;min-height:34px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--ink-3)}
+.btn[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.primary{background:var(--berry);border-color:var(--berry);color:#fff}
+.btn:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;padding:0 16px 16px}
+.stage{position:relative;min-height:560px;height:calc(100vh - 80px)}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.panel{display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 80px);overflow:auto}
+.card{background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:12px 14px}
+.card h2{margin:0 0 8px;font:700 14px/1.3 var(--round)}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.muted{color:var(--ink-2);font-size:12.5px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:13px}
+.kv b{font-weight:600}
+input[type=range]{width:100%}
+.dist{display:grid;grid-template-columns:18px 1fr auto;gap:4px 8px;align-items:center;font-size:13px}
+.sw{width:14px;height:14px;border-radius:4px}
+.log{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px;font-size:12.5px}
+.log li{background:var(--panel-2);border-radius:10px;padding:5px 9px}
+.log li.bad{background:#FFE1E8;color:#8E1F3F}
+.log li.good{background:#DAF5E8;color:#155F3E}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+td,th{border-bottom:1px solid var(--line);padding:4px 4px;text-align:left;vertical-align:top}
+.tip{position:absolute;left:12px;bottom:12px;background:var(--panel);border:1.5px solid var(--line);border-radius:12px;padding:6px 10px;font-size:12.5px;pointer-events:none}
+@media (max-width: 960px){ .layout{grid-template-columns:1fr} .stage{height:70vh;min-height:380px} .panel{max-height:none} }
+</style>
+</head>
+<body>
+<header class="bar">
+  <h1>Agent City · 成长</h1>
+  <span class="proto">mock · 平面图，只看布局</span>
+  <div class="tabs" role="tablist">
+    <button class="btn" data-view="plans" aria-pressed="true">5 个规划</button>
+    <button class="btn" data-view="land" aria-pressed="false">一片大陆</button>
+  </div>
+</header>
+<main class="layout">
+  <div class="stage"><canvas id="cv"></canvas><div class="tip" id="tip"></div></div>
+  <aside class="panel" id="panel">
+    <!-- plans view -->
+    <section class="card" data-for="plans">
+      <h2>选规划</h2>
+      <div class="row" id="planBtns"></div>
+      <p class="muted" id="planNote"></p>
+    </section>
+    <section class="card" data-for="plans">
+      <h2>代码行数 → 领地大小</h2>
+      <input type="range" id="linesP" min="0" max="1000" value="0" aria-label="代码行数">
+      <div class="row" id="presets"></div>
+      <div class="kv" id="planStats" style="margin-top:8px"></div>
+      <label class="row muted" style="margin-top:8px"><input type="checkbox" id="ghost" checked> 显示还没解锁的地块（数字 = 生长顺序）</label>
+    </section>
+    <section class="card" data-for="plans">
+      <h2>5 个区（按改的文件类型）</h2>
+      <div class="dist" id="distP"></div>
+    </section>
+    <!-- land view -->
+    <section class="card" data-for="land" hidden>
+      <h2>仓库（点地图上的领地也行）</h2>
+      <div class="row" id="terrBtns"></div>
+      <div class="kv" id="terrStats" style="margin-top:8px"></div>
+      <input type="range" id="linesL" min="0" max="1000" value="0" aria-label="这个仓库的代码行数" style="margin-top:6px">
+      <p class="muted" style="margin:4px 0 0">拖动 = 这个仓库的代码行数变了（真实版：git 跟踪的代码行，几分钟重数一次）</p>
+    </section>
+    <section class="card" data-for="land" hidden>
+      <h2>这个仓库里有 agent 改了文件</h2>
+      <div class="row" id="kindBtns"></div>
+      <div class="row" style="margin-top:8px"><button class="btn" id="wtBtn">worktree 里的 agent 改 UI 文件</button></div>
+      <p class="muted" style="margin:6px 0 0">每个 agent 第一次改文件时，按文件类型在对应的区建一栋楼。地块用完或还没解锁 → 不建，只在已有的楼帮忙。楼永远留着。</p>
+    </section>
+    <section class="card" data-for="land" hidden>
+      <h2>重开 / 出错</h2>
+      <div class="row">
+        <button class="btn" id="addBtn">来了一个新仓库</button>
+        <button class="btn" id="restartBtn">关掉服务再开</button>
+        <button class="btn" id="breakBtn">world.json 坏了</button>
+      </div>
+    </section>
+    <section class="card" data-for="land" hidden>
+      <h2>动态</h2>
+      <ul class="log" id="log"></ul>
+    </section>
+    <section class="card">
+      <h2>3D 真页面里用什么</h2>
+      <table>
+        <tr><th>地形</th><th>地面 · 植物 · 路</th></tr>
+        <tr><td>草原</td><td>绿草 · 橡树、花 · 石板路</td></tr>
+        <tr><td>山地</td><td>灰绿草 · 松树、石头 · 石板路</td></tr>
+        <tr><td>沙漠</td><td>沙地 · 仙人掌、石头 · 土路</td></tr>
+        <tr><td>森林</td><td>深绿 · 密松林 · 土路</td></tr>
+        <tr><td>海边</td><td>浅绿 · 棕榈 · 沙路，海滩 + 海</td></tr>
+      </table>
+      <p class="muted" style="margin:8px 0 0">分界：河（桥）· 峡谷（桥）· 山口（路）· 林带（路）。模型全部来自 Kenney（CC0）。边缘是河岸、悬崖、林边、海滩，没有棕色土块侧面。</p>
+    </section>
+  </aside>
+</main>
+<script type="application/json" id="city-plans">
+{"v":1,"plans":[
+{"id":"meadow","terrain":"grassland","name":"草原镇","edge":[1.05,1,0.92,1.08,1.12,0.95,1,1.1,0.9,1.02,1.12,0.97],"roads":[[-3,-3,2,-3],[-3,2,2,2],[-3,-3,-3,2],[2,-3,2,2],[3,0,10,0],[-11,-1,-4,-1],[0,-11,0,-4],[-1,3,-1,10],[-4,-7,3,-7],[-4,6,3,6],[-7,-4,-7,3],[6,-4,6,3],[2,3,2,6],[3,3,5,3]],"exits":{"E":[10,0],"W":[-11,-1],"N":[0,-11],"S":[-1,10]},"sea":null,"plots":[[0,3,"house"],[-2,3,"house"],[1,-4,"tower"],[3,-1,"shop"],[-4,-2,"library"],[-1,-4,"tower"],[-4,0,"house"],[3,1,"shop"],[3,-3,"tower"],[-4,2,"house"],[-3,-4,"library"],[1,4,"workshop"],[-2,5,"house"],[0,5,"house"],[4,2,"workshop"],[5,-1,"shop"],[1,-6,"tower"],[-6,-2,"house"],[-1,-6,"tower"],[-6,0,"house"],[5,1,"shop"],[3,-6,"tower"],[-4,5,"house"],[-6,-4,"library"],[3,4,"workshop"],[-6,2,"house"],[-3,-6,"library"],[-2,7,"house"],[0,7,"house"],[-5,6,"house"],[7,-1,"shop"],[-7,-5,"library"],[5,4,"workshop"],[-4,7,"house"],[7,1,"shop"],[-8,-4,"library"]]},
+{"id":"ridge","terrain":"mountain","name":"山岭镇","edge":[1.12,0.9,0.95,1.05,0.88,1.1,1,0.86,1.08,1.14,0.92,1],"roads":[[-8,2,10,2],[8,-3,8,1],[-7,-3,7,-3],[-11,-3,-8,-3],[-7,-7,-7,-4],[-7,-7,6,-7],[0,-11,0,-8],[-8,3,-8,6],[-8,6,7,6],[-2,7,-2,10],[-3,-2,-3,1]],"exits":{"E":[10,2],"W":[-11,-3],"N":[0,-11],"S":[-2,10]},"sea":null,"plots":[[2,-2,"workshop"],[-1,-4,"tower"],[2,1,"shop"],[0,3,"house"],[-4,1,"house"],[-4,-1,"library"],[-3,-4,"library"],[1,-4,"tower"],[-2,3,"house"],[4,-2,"workshop"],[2,3,"shop"],[-1,-6,"tower"],[4,1,"shop"],[-4,3,"house"],[3,-4,"workshop"],[0,5,"house"],[-5,-2,"library"],[-6,1,"house"],[-3,-6,"tower"],[1,-6,"tower"],[-6,3,"house"],[-2,5,"house"],[6,-2,"workshop"],[2,5,"shop"],[4,3,"shop"],[6,1,"shop"],[-5,-4,"library"],[-1,-8,"tower"],[5,-4,"workshop"],[7,-1,"workshop"],[-5,-6,"library"],[-7,-2,"library"],[0,7,"house"],[-7,4,"house"],[-8,1,"house"],[-4,5,"house"],[4,5,"shop"]]},
+{"id":"oasis","terrain":"desert","name":"绿洲镇","edge":[1.1,1.04,0.9,0.98,1.12,1.06,0.92,1.08,1,0.9,1.1,1.02],"roads":[[-11,2,10,2],[-3,-11,-3,10],[2,-6,2,1],[6,-4,6,6],[-8,-4,2,-4],[-8,6,6,6],[-7,3,-7,8]],"exits":{"E":[10,2],"W":[-11,2],"N":[-3,-11],"S":[-3,10]},"sea":null,"plots":[[1,-3,"tower"],[-1,-3,"library"],[3,0,"shop"],[-2,3,"house"],[-4,-2,"workshop"],[-4,1,"house"],[3,-2,"tower"],[0,3,"house"],[4,1,"shop"],[-4,3,"house"],[1,-5,"tower"],[3,-4,"tower"],[-5,-3,"workshop"],[2,3,"shop"],[-2,-5,"library"],[5,0,"shop"],[5,-2,"tower"],[-2,5,"house"],[4,3,"shop"],[-4,-5,"library"],[0,5,"house"],[-4,5,"house"],[-6,1,"workshop"],[3,-6,"tower"],[-6,3,"house"],[-7,-3,"workshop"],[-6,-5,"library"],[2,5,"shop"],[7,0,"shop"],[5,4,"shop"],[-6,5,"house"],[-2,-7,"library"],[-4,7,"house"],[-4,-7,"library"],[-2,7,"house"],[0,7,"house"],[-8,3,"house"]]},
+{"id":"woods","terrain":"forest","name":"森林镇","edge":[0.96,1.1,1.02,0.9,1.06,1.12,0.94,1,1.1,0.92,1.04,1.1],"roads":[[-5,-4,4,-4],[4,-4,4,4],[-6,4,4,4],[-6,-1,-6,4],[-5,-4,-5,-1],[0,2,0,3],[-1,-3,-1,-3],[5,-1,10,-1],[-11,2,-7,2],[1,-11,1,-5],[-3,5,-3,10],[-6,-8,0,-8],[5,4,8,4],[-9,-2,-9,1]],"exits":{"E":[10,-1],"W":[-11,2],"N":[1,-11],"S":[-3,10]},"sea":null,"plots":[[-2,-3,"library"],[0,-3,"tower"],[-1,2,"house"],[1,2,"workshop"],[2,-3,"tower"],[3,-2,"shop"],[3,1,"shop"],[-2,3,"house"],[-4,-1,"house"],[2,3,"workshop"],[-4,-3,"library"],[-5,1,"house"],[-4,3,"house"],[-2,-5,"library"],[0,-5,"tower"],[2,-5,"tower"],[-4,-5,"library"],[5,-3,"shop"],[5,2,"shop"],[5,0,"shop"],[-2,5,"house"],[-6,-2,"house"],[4,-5,"tower"],[1,5,"workshop"],[-4,5,"house"],[3,5,"workshop"],[-6,-4,"library"],[-3,-7,"library"],[-7,3,"house"],[6,-2,"shop"],[-7,1,"house"],[6,3,"shop"],[2,-7,"tower"],[-7,-1,"house"],[-6,5,"house"],[5,5,"workshop"],[7,0,"shop"]]},
+{"id":"harbor","terrain":"coast","name":"海港镇","edge":[1.08,1,0.94,0.9,0.94,1.02,1.1,1.06,0.98,1.1,1.04,1.12],"roads":[[-11,5,10,5],[-6,-8,-6,4],[2,-11,2,4],[6,-5,6,4],[-3,-6,-3,4],[-8,-3,6,-3],[-2,2,1,2]],"exits":{"E":[10,5],"W":[-11,5],"N":[2,-11],"S":null},"sea":"S","plots":[[-4,-1,"workshop"],[0,-4,"tower"],[3,-1,"house"],[-4,1,"workshop"],[3,1,"house"],[-2,-4,"library"],[-1,3,"shop"],[-5,0,"workshop"],[1,3,"shop"],[4,-2,"house"],[-5,-2,"workshop"],[1,-5,"tower"],[3,-4,"tower"],[-4,-4,"library"],[-5,2,"workshop"],[5,-1,"house"],[-4,3,"workshop"],[0,4,"shop"],[3,3,"shop"],[-2,4,"shop"],[5,1,"house"],[-2,-6,"library"],[5,-4,"tower"],[1,-7,"tower"],[-5,-5,"library"],[3,-6,"tower"],[5,3,"house"],[4,4,"shop"],[-4,-6,"library"],[7,-1,"house"],[-7,-4,"library"],[7,-3,"house"],[7,1,"house"],[-1,6,"shop"],[1,6,"shop"]]}]}
+</script>
+<script>
+/* ---------- WORLD LAYOUT: reference algorithm (the server ports this to Python) ---------- */
+const CELL = 26, HALF = 13, R0 = 1.9, RMAX = 8.6, L0 = 50, LCAP = 1000000, SEA_ROWS = 8;
+const KIND_TYPE = { test:'tower', ui:'shop', script:'workshop', doc:'library', other:'house' };
+const TYPES = ['house','shop','tower','workshop','library'];
+const clampW = (v, a, b) => Math.max(a, Math.min(b, v));
+function fnv1a(s){ let h = 0x811c9dc5; for (const c of new TextEncoder().encode(s)) { h ^= c; h = Math.imul(h, 0x01000193) >>> 0; } return h >>> 0; }
+function mulberry32(a){ return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function interpEdge(edge, th){ let a = th / (2 * Math.PI) * 12; a = ((a % 12) + 12) % 12; const i = Math.floor(a), t = a - i, j = (i + 1) % 12, s = (1 - Math.cos(Math.PI * t)) / 2; return edge[i] * (1 - s) + edge[j] * s; }
+function growth(lines){ return Math.min(1, Math.log1p(Math.max(0, lines) / L0) / Math.log1p(LCAP / L0)); }
+function radius(lines){ return R0 + (RMAX - R0) * growth(lines); }
+function plotNeed(plan, x, z){ const cx = x + .5, cz = z + .5; return (Math.hypot(cx, cz) + .7) / interpEdge(plan.edge, Math.atan2(cz, cx)); }
+function needs(plan){ let m = 0; return plan.plots.map(([x, z]) => (m = Math.max(m, plotNeed(plan, x, z)))); }
+function openCount(plan, r){ return needs(plan).filter(n => n <= r).length; }
+function shapeOf(identity, plan){ const rnd = mulberry32(fnv1a(identity)); const edge = plan.edge.map(e => e * (1 + .16 * (rnd() - .5))); return { edge, p1: rnd() * 2 * Math.PI, p2: rnd() * 2 * Math.PI }; }
+function mult(shape, th){ return clampW(interpEdge(shape.edge, th) * (1 + .06 * Math.sin(5 * th + shape.p1) + .04 * Math.sin(8 * th + shape.p2)), .75, 1.17); }
+function roadSet(plan){ const s = new Set(); for (const [x0, z0, x1, z1] of plan.roads) for (let x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) for (let z = Math.min(z0, z1); z <= Math.max(z0, z1); z++) s.add(x + ',' + z); return s; }
+function frontOfPlot(roads, x, z){ return [[x, z + 1], [x + 1, z], [x - 1, z], [x, z - 1]].find(([a, b]) => roads.has(a + ',' + b)); }
+const isHall = (x, z) => x >= -1 && x <= 0 && z >= -1 && z <= 0;
+/* territory in local tile coords: hall + tiles inside the organic edge + open plots and their front road tiles */
+function territory(plan, identity, lines){
+  const r = radius(lines), shape = shapeOf(identity, plan), roads = roadSet(plan), land = new Set();
+  for (let x = -HALF; x < HALF; x++) for (let z = -HALF; z < HALF; z++) {
+    const cx = x + .5, cz = z + .5;
+    if (isHall(x, z) || Math.hypot(cx, cz) <= r * mult(shape, Math.atan2(cz, cx))) land.add(x + ',' + z);
+  }
+  const n = openCount(plan, r), open = plan.plots.slice(0, n);
+  for (const [x, z] of open) { land.add(x + ',' + z); const f = frontOfPlot(roads, x, z); if (f) land.add(f + ''); }
+  return { r, g: growth(lines), land, roads, open: n };
+}
+/* slots: spiral order on a square grid of cells, each new territory 4-adjacent to one already there */
+const SLOTS = (() => { const out = []; for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) out.push([i, j]);
+  const ang = ([i, j]) => { const a = Math.atan2(j, i); return a < 0 ? a + 2 * Math.PI : a; };
+  return out.sort((a, b) => Math.max(Math.abs(a[0]), Math.abs(a[1])) - Math.max(Math.abs(b[0]), Math.abs(b[1])) || (Math.abs(a[0]) + Math.abs(a[1])) - (Math.abs(b[0]) + Math.abs(b[1])) || ang(a) - ang(b)); })();
+function addTerritory(world, plans, identity, name, lines){
+  if (world.territories[identity]) return world.territories[identity];
+  const list = Object.values(world.territories), used = new Set(list.map(t => t.plan));
+  const occ = new Set(list.map(t => t.slot + '')), blocked = new Set(list.filter(t => plans.find(p => p.id === t.plan).sea).map(t => [t.slot[0], t.slot[1] + 1] + ''));
+  const h = fnv1a(identity) % plans.length;
+  const slotFor = plan => SLOTS.find(([i, j]) => !occ.has([i, j] + '') && !blocked.has([i, j] + '')
+    && (occ.size === 0 || [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, b]) => occ.has([i + a, j + b] + '')))
+    && (!plan.sea || !occ.has([i, j + 1] + '')));
+  let pick = null;
+  for (let k = 0; k < plans.length && !pick; k++) { const p = plans[(h + k) % plans.length]; if (!used.has(p.id) && slotFor(p)) pick = p; }
+  if (!pick) for (let k = 0; k < plans.length && !pick; k++) { const p = plans[(h + k) % plans.length]; if (slotFor(p)) pick = p; }
+  const t = { name, plan: pick.id, slot: slotFor(pick), lines: lines || 0, buildings: [], era: 'village' };
+  world.territories[identity] = t; world.order.push(identity);
+  return t;
+}
+/* gap between two neighbours, by their terrains (same terrain: river) */
+const GAPS = { 'grassland|mountain':'pass', 'desert|grassland':'ravine', 'forest|grassland':'forest', 'coast|grassland':'river',
+  'desert|mountain':'ravine', 'forest|mountain':'pass', 'coast|mountain':'river', 'desert|forest':'river', 'coast|desert':'river', 'coast|forest':'forest' };
+function gapOf(ta, tb){ return GAPS[[ta, tb].sort().join('|')] || 'river'; }
+const GAP_CH = { river:'w', ravine:'k', pass:'m', forest:'f' };
+/* outer edge depth (1..6 tiles cut from a cell side with no neighbour) and gap belt bend (-2..2), both from the global coordinate along the side */
+function trimDepth(a, c){ return 1 + clampW(Math.round(2.5 + 1.3 * Math.sin(a * .31 + c) + .8 * Math.sin(a * .77 + 2 * c) + .5 * Math.sin(a * 1.53 + 3 * c) + .45 * Math.sin(a * 2.9 + 5 * c)), 0, 5); }
+function beltOffset(a, c){ return clampW(Math.round(1.5 * Math.sin(a * .23 + c) + .8 * Math.sin(a * .61 + 2 * c)), -2, 2); }
+function cornerCut(X, Z){ return 8 + Math.round(2 * Math.sin(X * .5 + Z * .3)); }
+/* whole land as one char grid. ' ' void  . wild  g territory ground  r road  t track  H hall  P open plot
+   w river  k ravine  m mountain pass  f forest band  B bridge  b beach  s sea */
+function layout(world, plans){
+  const P = id => plans.find(p => p.id === id);
+  const ids = world.order.filter(id => world.territories[id]);
+  const bySlot = new Map(ids.map(id => [world.territories[id].slot + '', id]));
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (const id of ids) { const [i, j] = world.territories[id].slot, sea = P(world.territories[id].plan).sea;
+    x0 = Math.min(x0, i * CELL - HALF); x1 = Math.max(x1, i * CELL + HALF - 1); z0 = Math.min(z0, j * CELL - HALF); z1 = Math.max(z1, j * CELL + HALF - 1 + (sea ? SEA_ROWS : 0)); }
+  if (!ids.length) return { x0: 0, z0: 0, w: 0, h: 0, rows: [], terr: [], links: [] };
+  const w = x1 - x0 + 1, h = z1 - z0 + 1, grid = Array.from({ length: h }, () => new Array(w).fill(' '));
+  const get = (X, Z) => (grid[Z - z0] || [])[X - x0], set = (X, Z, c) => { if (grid[Z - z0] && X >= x0 && X <= x1) grid[Z - z0][X - x0] = c; };
+  const links = [];
+  for (const id of ids) { const t = world.territories[id], [i, j] = t.slot;
+    for (const [di, dj, side] of [[1, 0, 'E'], [0, 1, 'S']]) { const nb = bySlot.get([i + di, j + dj] + ''); if (!nb) continue;
+      const u = world.territories[nb], gap = gapOf(P(t.plan).terrain, P(u.plan).terrain);
+      links.push({ a: id, b: nb, side, gap, kind: gap === 'river' || gap === 'ravine' ? 'bridge' : 'road' }); } }
+  const linkAt = (a, b) => links.find(l => (l.a === a && l.b === b) || (l.a === b && l.b === a));
+  const terr = [];
+  for (const id of ids) {
+    const t = world.territories[id], plan = P(t.plan), [i, j] = t.slot, ox = i * CELL, oz = j * CELL;
+    const nb = { N: bySlot.get([i, j - 1] + ''), S: bySlot.get([i, j + 1] + ''), W: bySlot.get([i - 1, j] + ''), E: bySlot.get([i + 1, j] + '') };
+    /* belts: the gap line between two cells, bent; bx / bz = first column / row of the east / south cell */
+    const vBelt = (bx, Z) => { const o = beltOffset(Z, bx * .37); return [bx - 1 + o, bx + o]; };
+    const hBelt = (bz, X) => { const o = beltOffset(X, bz * .41); return [bz - 1 + o, bz + o]; };
+    for (let x = -HALF; x < HALF; x++) for (let z = -HALF; z < HALF; z++) {
+      const X = ox + x, Z = oz + z, kN = z + HALF, kS = HALF - 1 - z, kW = x + HALF, kE = HALF - 1 - x;
+      const tN = trimDepth(X, .7), tS = trimDepth(X, 2.1), tW = trimDepth(Z, 1.3), tE = trimDepth(Z, 3.3), cc = cornerCut(X, Z);
+      const cut = (!nb.N && kN < tN) || (!nb.W && kW < tW) || (!nb.E && kE < tE) || (!plan.sea && !nb.S && kS < tS)
+        || (!nb.N && !nb.W && kN + kW < cc) || (!nb.N && !nb.E && kN + kE < cc) || (!nb.S && !nb.W && kS + kW < cc) || (!nb.S && !nb.E && kS + kE < cc);
+      let c = '.';
+      const seaOk = (nb.E || kE >= trimDepth(Z, 6.1) - 1) && (nb.W || kW >= trimDepth(Z, 6.9) - 1);
+      if (plan.sea && (kS < tS + 1 || (cut && kS < 9))) c = seaOk ? 's' : ' ';
+      else if (cut) c = ' ';
+      else if (plan.sea && kS < tS + 3) c = 'b';
+      else {
+        const belts = [];
+        if (nb.E) belts.push([vBelt(ox + HALF, Z).includes(X), nb.E]);
+        if (nb.W) belts.push([vBelt(ox - HALF, Z).includes(X), nb.W]);
+        if (nb.S) belts.push([hBelt(oz + HALF, X).includes(Z), nb.S]);
+        if (nb.N) belts.push([hBelt(oz - HALF, X).includes(Z), nb.N]);
+        const hit = belts.find(b => b[0]);
+        if (hit) c = GAP_CH[linkAt(id, hit[1]).gap];
+      }
+      set(X, Z, c);
+    }
+    if (plan.sea) for (let x = -HALF; x < HALF; x++) for (let z = HALF; z < HALF + SEA_ROWS; z++)
+      if (z - HALF < 1 + trimDepth(ox + x, 5.5) && get(ox + x, oz + z - 1) === 's'
+        && x + HALF >= trimDepth(oz + z, 6.9) + z - HALF && HALF - 1 - x >= trimDepth(oz + z, 6.1) + z - HALF) set(ox + x, oz + z, 's');
+    const tr = territory(plan, id, t.lines);
+    for (const k of tr.land) { const [x, z] = k.split(',').map(Number); if (get(ox + x, oz + z) === '.') set(ox + x, oz + z, tr.roads.has(k) ? 'r' : 'g'); }
+    plan.plots.slice(0, tr.open).forEach(([x, z]) => set(ox + x, oz + z, 'P'));
+    for (let x = -1; x <= 0; x++) for (let z = -1; z <= 0; z++) set(ox + x, oz + z, 'H');
+    terr.push({ id, name: t.name, plan: plan.id, terrain: plan.terrain, slot: t.slot, cx: ox, cz: oz, lines: t.lines, g: tr.g, r: tr.r, open: tr.open, plots: plan.plots.length,
+      buildings: t.buildings.map(b => ({ ...b, x: ox + plan.plots[b.plot][0], z: oz + plan.plots[b.plot][1] })) });
+  }
+  /* tracks: plan road from the territory out to its exit, then across the gap to the neighbour's exit */
+  const trunk = (id, dir) => { const t = world.territories[id], plan = P(t.plan), [i, j] = t.slot, ox = i * CELL, oz = j * CELL, roads = roadSet(plan), ex = plan.exits[dir];
+    const prev = new Map([[ex + '', null]]), q = [ex]; let hit = null;
+    while (q.length) { const [x, z] = q.shift(), c = get(ox + x, oz + z); if (c === 'r' || c === 'H' || c === 'g') { hit = [x, z]; break; }
+      for (const [a, b] of [[x + 1, z], [x - 1, z], [x, z + 1], [x, z - 1]]) { const k = a + ',' + b; if (prev.has(k) || !(roads.has(k) || isHall(a, b))) continue; prev.set(k, [x, z]); q.push([a, b]); } }
+    for (let p = hit; p; p = prev.get(p + '')) if (get(ox + p[0], oz + p[1]) === '.') set(ox + p[0], oz + p[1], 't');
+    return [ox + ex[0], oz + ex[1]]; };
+  for (const l of links) {
+    const A = trunk(l.a, l.side), B = trunk(l.b, l.side === 'E' ? 'W' : 'N');
+    l.cross = [];
+    const lay = (X, Z) => { const c = get(X, Z); if (c === '.') set(X, Z, 't'); else if ('wkmf'.includes(c)) { set(X, Z, l.kind === 'bridge' ? 'B' : 't'); l.cross.push([X, Z]); } };
+    if (l.side === 'E') { for (let X = A[0]; X <= B[0]; X++) lay(X, A[1]); for (let Z = Math.min(A[1], B[1]); Z <= Math.max(A[1], B[1]); Z++) lay(B[0], Z); }
+    else { for (let Z = A[1]; Z <= B[1]; Z++) lay(A[0], Z); for (let X = Math.min(A[0], B[0]); X <= Math.max(A[0], B[0]); X++) lay(X, B[1]); }
+  }
+  return { x0, z0, w, h, rows: grid.map(r => r.join('')), terr, links };
+}
+function build(world, plans, identity, kind, by, now){
+  const t = world.territories[identity]; if (!t) return null;
+  const plan = plans.find(p => p.id === t.plan), type = KIND_TYPE[kind] || 'house', n = openCount(plan, radius(t.lines));
+  const taken = new Set(t.buildings.map(b => b.plot));
+  for (let k = 0; k < n; k++) if (plan.plots[k][2] === type && !taken.has(k)) { const b = { plot: k, type, by, at: now }; t.buildings.push(b); return b; }
+  return null;
+}
+/* ---------- mock UI (not the real page) ---------- */
+const PLANS = JSON.parse(document.getElementById('city-plans').textContent).plans;
+const $ = s => document.querySelector(s);
+const TYPE_ZH = { house:'住宅', shop:'商店', tower:'测试塔', workshop:'工坊', library:'图书馆' };
+const DIST_ZH = { house:'住宅区', shop:'商店街', tower:'测试塔区', workshop:'工坊区', library:'图书馆区' };
+const KIND_ZH = { test:'测试文件', ui:'UI 文件', script:'脚本', doc:'文档', other:'其他代码' };
+const TERRAIN_ZH = { grassland:'草原', mountain:'山地', desert:'沙漠', forest:'森林', coast:'海边' };
+const GAP_ZH = { river:'河', ravine:'峡谷', pass:'山口', forest:'林带' };
+const DCOL = { house:'#F4A259', shop:'#FF7593', tower:'#4D7CFE', workshop:'#9C6B4E', library:'#2FB57A' };
+const ICON = { house:'🏠', shop:'🏪', tower:'🗼', workshop:'🛠️', library:'📚' };
+const PAL = {
+  grassland:{ wild:'#A9D68B', ground:'#CBE8A9', road:'#E9D8AE', deco:[['🌳',.05],['🌼',.04]] },
+  mountain: { wild:'#9EB09A', ground:'#C9D0BE', road:'#D8D1C2', deco:[['🌲',.12],['🪨',.06]] },
+  desert:   { wild:'#EBCB8B', ground:'#F4E0AE', road:'#D7B173', deco:[['🌵',.07],['🪨',.03]] },
+  forest:   { wild:'#5F9F5B', ground:'#A2CE8B', road:'#CFB68A', deco:[['🌲',.26],['🌳',.14]] },
+  coast:    { wild:'#BFE3A1', ground:'#DAEEBB', road:'#F2E4B9', deco:[['🌴',.05],['🌳',.02]] },
+};
+const FIX = { t:'#C9A874', w:'#6DB5E6', k:'#5A4A3F', m:'#8E8E8A', f:'#2E6A3A', B:'#A9743F', b:'#F5E2B2', s:'#7CC6E4' };
+const hash2 = (x, z, k) => { let h = Math.imul(x * 374761393 + z * 668265263 + k * 2147483647, 1274126177); h ^= h >>> 13; h = Math.imul(h, 1103515245); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+const linesOf = v => v <= 0 ? 0 : Math.round(50 * Math.expm1(v / 1000 * Math.log1p(2000000 / 50)));
+const sliderOf = l => l <= 0 ? 0 : Math.round(1000 * Math.log1p(l / 50) / Math.log1p(2000000 / 50));
+const fmt = n => n.toLocaleString('en-US');
+
+let view = 'plans', planIdx = 0, linesP = 0, ghost = true;
+let world = { v: 1, territories: {}, order: [] }, sel = null, saved = null;
+const logs = [];
+const REPOS = [['auto-pipeline', 14000], ['v4-plus', 250000], ['pos-lite', 40], ['dungeon-diary', 3000], ['notes', 600], ['home-blessed', 9000]];
+const idOf = n => '/Users/you/code/' + n + '/.git';
+function log(text, cls){ logs.unshift([text, cls || '']); logs.length = Math.min(logs.length, 30); $('#log').innerHTML = logs.map(([t, c]) => `<li class="${c}">${t}</li>`).join(''); }
+function seedLand(){ world = { v: 1, territories: {}, order: [] };
+  for (const [n, l] of REPOS.slice(0, 3)) addTerritory(world, PLANS, idOf(n), n, l);
+  sel = world.order[0];
+  const b = (n, k, who) => { const r = build(world, PLANS, idOf(n), k, who, Date.now()); return r; };
+  for (const k of ['other', 'test', 'ui', 'other', 'script', 'doc']) b('auto-pipeline', k, 'worker');
+  for (let i = 0; i < 24; i++) b('v4-plus', ['other', 'ui', 'test', 'other', 'script', 'doc'][i % 6], 'worker');
+  saved = JSON.stringify(world);
+}
+
+/* ---------- drawing ---------- */
+const cv = $('#cv'), ctx = cv.getContext('2d');
+let L = null, px = 10, offX = 0, offY = 0, cellTerrain = new Map();
+function render(){
+  const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  let w;
+  if (view === 'plans') { w = { v: 1, territories: {}, order: [] }; const p = PLANS[planIdx], id = 'demo/' + p.id;
+    w.territories[id] = { name: p.name, plan: p.id, slot: [0, 0], lines: linesP, buildings: [] }; w.order.push(id); }
+  else w = world;
+  L = layout(w, PLANS);
+  cellTerrain = new Map(Object.values(w.territories).map(t => [t.slot + '', PLANS.find(p => p.id === t.plan).terrain]));
+  if (!L.w) return;
+  px = Math.floor(Math.min((W - 24) / L.w, (H - 24) / L.h) * 100) / 100; offX = (W - L.w * px) / 2; offY = (H - L.h * px) / 2;
+  const terrAt = (X, Z) => cellTerrain.get([Math.floor((X + HALF) / CELL), Math.floor((Z + HALF) / CELL)] + '') || 'coast';
+  for (let r = 0; r < L.h; r++) for (let c = 0; c < L.w; c++) {
+    const ch = L.rows[r][c]; if (ch === ' ') continue;
+    const X = L.x0 + c, Z = L.z0 + r, pal = PAL[terrAt(X, Z)], x = offX + c * px, y = offY + r * px;
+    let col = FIX[ch] || (ch === '.' ? pal.wild : ch === 'r' ? pal.road : pal.ground);
+    if (ch === 'B') { ctx.fillStyle = FIX.w; ctx.fillRect(x, y, px + .5, px + .5); ctx.fillStyle = col; ctx.fillRect(x + px * .12, y, px * .76, px + .5); continue; }
+    if (ch === 'k') { ctx.fillStyle = '#3F342D'; ctx.fillRect(x, y, px + .5, px + .5); ctx.fillStyle = col; ctx.fillRect(x + px * .2, y + px * .2, px * .6, px * .6); continue; }
+    ctx.fillStyle = col; ctx.fillRect(x, y, px + .5, px + .5);
+    if (ch === 'r' || ch === 't') { ctx.fillStyle = 'rgba(0,0,0,.05)'; ctx.fillRect(x, y + px * .45, px, px * .1); }
+    const emo = (e, s) => { ctx.font = `${px * s}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(e, x + px / 2, y + px / 2); };
+    if (ch === '.') { let acc = 0; const u = hash2(X, Z, 1); for (const [e, p] of pal.deco) { acc += p; if (u < acc) { emo(e, .85); break; } } }
+    else if (ch === 'f' && hash2(X, Z, 2) < .7) emo('🌲', .95);
+    else if (ch === 'm' && hash2(X, Z, 3) < .45) emo('⛰️', .9);
+    else if (ch === 's' && hash2(X, Z, 4) < .02) emo('⛵', .8);
+  }
+  for (const t of L.terr) {
+    const plan = PLANS.find(p => p.id === t.plan), built = new Map(t.buildings.map(b => [b.plot, b]));
+    plan.plots.forEach(([x, z, d], k) => {
+      const X = t.cx + x, Z = t.cz + z, sx = offX + (X - L.x0) * px, sy = offY + (Z - L.z0) * px, open = k < t.open;
+      if (open) {
+        const b = built.get(k);
+        ctx.strokeStyle = DCOL[d]; ctx.lineWidth = Math.max(1, px * .09); ctx.setLineDash(b ? [] : [px * .18, px * .12]);
+        ctx.strokeRect(sx + px * .1, sy + px * .1, px * .8, px * .8); ctx.setLineDash([]);
+        if (b) { ctx.font = `${px * .82}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ICON[b.type], sx + px / 2, sy + px / 2 + 1); }
+      } else if (view === 'plans' && ghost) {
+        ctx.strokeStyle = DCOL[d] + '88'; ctx.lineWidth = 1; ctx.setLineDash([2, 2]); ctx.strokeRect(sx + px * .15, sy + px * .15, px * .7, px * .7); ctx.setLineDash([]);
+        ctx.fillStyle = DCOL[d]; ctx.font = `600 ${Math.max(8, px * .38)}px ui-monospace,monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(k + 1, sx + px / 2, sy + px / 2);
+      }
+    });
+    const hx = offX + (t.cx - L.x0) * px, hy = offY + (t.cz - L.z0) * px, hs = t.g < .15 ? 1.3 : 1.8;
+    ctx.font = `${px * hs}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🏛️', hx, hy);
+    const byD = {}; plan.plots.slice(0, t.open).forEach(([x, z, d]) => { (byD[d] = byD[d] || []).push([x, z]); });
+    ctx.font = `600 ${Math.max(10, px * .55)}px ${getComputedStyle(document.body).fontFamily}`;
+    for (const d in byD) { const pts = byD[d]; if (pts.length < 2) continue; const mx = pts.reduce((a, p) => a + p[0], 0) / pts.length, mz = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+      label(DIST_ZH[d], offX + (t.cx + mx + .5 - L.x0) * px, offY + (t.cz + mz + .5 - L.z0) * px, DCOL[d], .82); }
+    ctx.font = `700 ${Math.max(11, px * .7)}px ${getComputedStyle(document.body).fontFamily}`;
+    label(`${t.name} · ${fmt(t.lines)} 行`, hx, hy - px * 1.6, sel === t.id && view === 'land' ? '#FF4F72' : '#2A2B45', 1);
+  }
+  ctx.font = `600 ${Math.max(10, px * .55)}px ${getComputedStyle(document.body).fontFamily}`;
+  for (const l of L.links) { if (!l.cross.length) continue; const [X, Z] = l.cross[Math.floor(l.cross.length / 2)];
+    label(`${GAP_ZH[l.gap]} · ${l.kind === 'bridge' ? '桥' : '路'}`, offX + (X - L.x0 + .5) * px, offY + (Z - L.z0 - 1.2) * px, '#585D82', .9); }
+}
+function label(text, x, y, col, alpha){ const m = ctx.measureText(text), w = m.width + 10, h = parseFloat(ctx.font.match(/(\d+(\.\d+)?)px/)[1]) + 6;
+  ctx.globalAlpha = alpha; ctx.fillStyle = 'rgba(255,255,255,.92)'; ctx.beginPath(); ctx.roundRect(x - w / 2, y - h / 2, w, h, h / 2); ctx.fill(); ctx.globalAlpha = 1;
+  ctx.fillStyle = col; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y + .5); }
+
+/* ---------- panels ---------- */
+function planPanel(){
+  const p = PLANS[planIdx], t = territory(p, 'demo/' + p.id, linesP), n = t.open;
+  $('#planBtns').innerHTML = PLANS.map((q, i) => `<button class="btn" data-plan="${i}" aria-pressed="${i === planIdx}">${q.name} · ${TERRAIN_ZH[q.terrain]}</button>`).join('');
+  $('#planNote').textContent = { meadow:'十字大道 + 两圈环路。商店在东大道，测试塔在北，工坊在东南。', ridge:'山坡上的之字路，一层一层往上。测试塔在北边山脊，工坊在东边采石场。', oasis:'东西大街是集市，南北大街穿城。房子围着集市。', woods:'林中环路和空地。图书馆在西北深林，工坊（伐木场）在东边。', harbor:'南面朝海，海滨大道是商店街，工坊（船坞）在西南。它只放在大陆边上，海在外侧。' }[p.id];
+  $('#linesP').value = sliderOf(linesP);
+  $('#planStats').innerHTML = `<span>代码行数</span><b>${fmt(linesP)}</b><span>领地半径</span><b>${t.r.toFixed(1)} 格（${Math.round(t.g * 100)}%）</b><span>已解锁地块</span><b>${n} / ${p.plots.length}</b><span>领地格数</span><b>${t.land.size}</b>`;
+  const cnt = {}; p.plots.forEach(([, , d], k) => { cnt[d] = cnt[d] || [0, 0]; cnt[d][1]++; if (k < n) cnt[d][0]++; });
+  $('#distP').innerHTML = TYPES.map(d => `<span class="sw" style="background:${DCOL[d]}"></span><span>${ICON[d]} ${DIST_ZH[d]} ← ${KIND_ZH[Object.keys(KIND_TYPE).find(k => KIND_TYPE[k] === d)]}</span><b>${cnt[d] ? cnt[d][0] + ' / ' + cnt[d][1] : '0'}</b>`).join('');
+}
+function landPanel(){
+  const ts = world.order.map(id => [id, world.territories[id]]);
+  $('#terrBtns').innerHTML = ts.map(([id, t]) => `<button class="btn" data-terr="${id}" aria-pressed="${id === sel}">${t.name}</button>`).join('');
+  const t = world.territories[sel]; if (!t) { $('#terrStats').innerHTML = '<span>还没有仓库</span><b></b>'; return; }
+  const p = PLANS.find(q => q.id === t.plan), tr = territory(p, sel, t.lines);
+  $('#terrStats').innerHTML = `<span>规划</span><b>${p.name} · ${TERRAIN_ZH[p.terrain]}</b><span>代码行数</span><b>${fmt(t.lines)}</b><span>领地</span><b>${Math.round(tr.g * 100)}% · 地块 ${tr.open} / ${p.plots.length}</b><span>楼</span><b>${t.buildings.length}</b><span>身份</span><b style="font:12px var(--mono);word-break:break-all">${sel}</b>`;
+  $('#linesL').value = sliderOf(t.lines);
+  $('#kindBtns').innerHTML = Object.keys(KIND_TYPE).map(k => `<button class="btn" data-kind="${k}">${KIND_ZH[k]} → ${ICON[KIND_TYPE[k]]}</button>`).join('');
+}
+function refresh(){ document.querySelectorAll('[data-for]').forEach(e => { e.hidden = e.dataset.for !== view; });
+  document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === view));
+  if (view === 'plans') planPanel(); else landPanel(); render(); }
+function doBuild(id, kind, who){
+  const t = world.territories[id], b = build(world, PLANS, id, kind, who, Date.now());
+  if (b) log(`${t.name}：${who} 改了${KIND_ZH[kind]} → ${DIST_ZH[b.type]}第 ${b.plot + 1} 号地建了${TYPE_ZH[b.type]}`, 'good');
+  else log(`${t.name}：${who} 改了${KIND_ZH[kind]}，${DIST_ZH[KIND_TYPE[kind]]}没有空的已解锁地块 → 不建新楼，去帮已有的楼`);
+  saved = JSON.stringify(world); refresh(); }
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.view) { view = b.dataset.view; refresh(); }
+  else if (b.dataset.plan) { planIdx = +b.dataset.plan; refresh(); }
+  else if (b.dataset.preset != null) { linesP = +b.dataset.preset; refresh(); }
+  else if (b.dataset.terr) { sel = b.dataset.terr; refresh(); }
+  else if (b.dataset.kind) doBuild(sel, b.dataset.kind, 'worker');
+  else if (b.id === 'wtBtn') { const id = idOf('auto-pipeline');
+    log('worktree city-growth 里的 agent → git common dir 是 auto-pipeline/.git → 落在 auto-pipeline 的领地'); doBuild(id, 'ui', 'worker(worktree)'); }
+  else if (b.id === 'addBtn') { const next = REPOS.find(([n]) => !world.territories[idOf(n)]);
+    if (!next) { log('mock 只准备了 6 个仓库'); return; }
+    const t = addTerritory(world, PLANS, idOf(next[0]), next[0], next[1]); sel = idOf(next[0]); saved = JSON.stringify(world);
+    const p = PLANS.find(q => q.id === t.plan), ls = layout(world, PLANS).links.filter(l => l.a === sel || l.b === sel);
+    const how = ls.map(l => { const o = world.territories[l.a === sel ? l.b : l.a].name; return `${GAP_ZH[l.gap]}上${l.kind === 'bridge' ? '架桥' : '修路'}连 ${o}`; }).join('，');
+    log(`新仓库 ${next[0]}：${p.name}（${TERRAIN_ZH[p.terrain]}），放在旁边的空位，${how}`, 'good'); refresh(); }
+  else if (b.id === 'restartBtn') { const before = JSON.stringify(layout(world, PLANS).rows);
+    world = JSON.parse(saved); const same = JSON.stringify(layout(world, PLANS).rows) === before;
+    log(same ? '服务重启：从 world.json 读回来，同一座城 ✓' : '服务重启：城变了 ✗', same ? 'good' : 'bad'); refresh(); }
+  else if (b.id === 'breakBtn') { const t = new Date(), p = n => String(n).padStart(2, '0');
+    const name = `world.json.bad-${t.getFullYear()}${p(t.getMonth() + 1)}${p(t.getDate())}-${p(t.getHours())}${p(t.getMinutes())}${p(t.getSeconds())}`;
+    world = { v: 1, territories: {}, order: [] }; sel = null; saved = JSON.stringify(world);
+    log(`world.json 读不了，已挪到 ${name}，重新开始一座新城`, 'bad'); refresh(); }
+});
+$('#linesP').addEventListener('input', e => { linesP = linesOf(+e.target.value); planPanel(); render(); });
+$('#linesL').addEventListener('input', e => { const t = world.territories[sel]; if (!t) return; t.lines = linesOf(+e.target.value); saved = JSON.stringify(world); landPanel(); render(); });
+$('#ghost').addEventListener('change', e => { ghost = e.target.checked; render(); });
+$('#presets').innerHTML = [[0, '第 0 天'], [500, '500 行'], [5000, '5 千'], [20000, '2 万'], [250000, '25 万'], [1000000, '封顶 100 万+']].map(([l, t]) => `<button class="btn" data-preset="${l}">${t}</button>`).join('');
+cv.addEventListener('click', e => { if (view !== 'land' || !L) return; const r = cv.getBoundingClientRect();
+  const X = L.x0 + Math.floor((e.clientX - r.left - offX) / px), Z = L.z0 + Math.floor((e.clientY - r.top - offY) / px);
+  const t = L.terr.find(t => Math.abs(X - t.cx) <= HALF && Math.abs(Z - t.cz) <= HALF); if (t) { sel = t.id; refresh(); } });
+cv.addEventListener('mousemove', e => { if (!L) return; const r = cv.getBoundingClientRect();
+  const c = Math.floor((e.clientX - r.left - offX) / px), rr = Math.floor((e.clientY - r.top - offY) / px), ch = (L.rows[rr] || '')[c];
+  const NAME = { ' ':'', '.':'荒地（还不是领地）', g:'领地', r:'路', t:'土路（连邻居）', H:'市政厅', P:'地块', w:'河', k:'峡谷', m:'山口', f:'林带', B:'桥', b:'海滩', s:'海' };
+  $('#tip').textContent = ch ? NAME[ch] || '' : ''; $('#tip').hidden = !$('#tip').textContent; });
+addEventListener('resize', render);
+seedLand();
+log('打开页面：从 world.json 读到 3 个仓库');
+refresh();
+</script>
+</body>
+</html>

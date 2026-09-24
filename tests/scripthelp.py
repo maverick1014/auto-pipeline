@@ -64,6 +64,7 @@ COPY_BIN = [
     "agent-city-hook.sh",
     "agent_city.py",
     "agent-city.html",
+    "agent-city-plans.json",
 ]
 
 # Copied into the temp plugin's root.

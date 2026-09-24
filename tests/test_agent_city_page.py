@@ -49,26 +49,31 @@ CONTRACT
       other clip, so feet match the ground. Pets (petAnim, updatePets with
       .45 * dt) unchanged.
     No frame around the city: no .stage rule sets a border, a border-radius
-      or the var(--sky) background; the island sits on the page.
+      or the var(--sky) background; the land sits on the page.
     Camera: new THREE.PerspectiveCamera(FOV, ...) with const FOV = 40, no
-      OrthographicCamera. cam = {az, el, dist, tx, tz} in scene coordinates
-      (world group offset -6, -5; the town hall centre is scene 0, 1).
+      OrthographicCamera. cam = {az, el, dist, tx, tz} in scene coordinates.
+      Growth: the world group is moved so the middle of the land's map is
+      scene (0, 0); top-level `let land = {hx, hz}` = half the map's width
+      and height in tiles (w / 2, h / 2), set whenever the world changes;
+      top-level `let home = {x, z}` = scene position of the town hall the
+      default view looks at (the governor's territory, else the first).
       Constants: EL_MIN = 15°, EL_MAX = 60°, EL_DEFAULT = 30° (radians,
       Math.PI allowed), DIST_MIN <= 3.5 (street level), DIST_DEFAULT,
       TARGET_Y, CAM_CLEAR, LIFT_MAX = 10°, FADE_OPACITY = .3.
       distMax(): the zoom-out limit for the stage size W x H and the current
       tilt, the same from every angle az (so auto-rotation never changes it).
-      At distMax() the whole island (scene x -6..6, z -7..7, y -1.05..0)
-      stays fully inside the stage, fills about 80% of it on its tighter
-      side at the widest angle (.7 to .9), and sits in the middle. May use
-      only W, H, cam.el, FOV, DIST_MIN, Math, clamp, and the helpers
-      islandSpread and centreHeight if present. updateCamera() keeps
+      At distMax() the whole land (scene x -hx..hx, z -hz..hz, y
+      -1.05..0) stays fully inside the stage from every angle, sits in the
+      middle, and a square land fills about 80% of it on its tighter side
+      at the widest angle (.7 to .9). May use only W, H, cam.el, FOV,
+      DIST_MIN, land, Math, clamp, and the helpers landSpread (or
+      islandSpread) and centreHeight if present. updateCamera() keeps
       cam.dist <= distMax(); tilting while fully zoomed out stays fully out.
       camTarget() -> [x, y, z]: the point the camera looks at: (tx,
-      TARGET_Y, tz) up to dist 12, then drawn smoothly to the island's middle
-      (x 0, z 0, at the height that centres the island), reached at
+      TARGET_Y, tz) up to dist 12, then drawn smoothly to the land's middle
+      (x 0, z 0, at the height that centres the land), reached at
       distMax().
-      resetCam(): tilt 30°, target within 3.5 of the town hall, dist <= 14,
+      resetCam(): tilt 30°, target within 3.5 of home, dist <= 14,
       phone (W < 560) not closer than wide.
       updateCamera(): camera on the sphere around camTarget(), at dist, tilt camLift(), direction az (x = tx + dist cos(el)
       sin(az), z = tz + dist cos(el) cos(az)); lookAt the target. It may raise
@@ -85,9 +90,10 @@ CONTRACT
       viewBlockers(el) -> Set of scene tile keys 'x,z' (Math.floor) whose
       heightAt stands above the view line from camTarget() to the camera at
       tilt el (samples from 0.6 out to the camera).
-      fadeables: top-level array of {g, tiles}: the town hall and its flag
-      (tiles '-1,0' '0,0' '-1,1' '0,1', pushed in buildIsland), every
-      building (its tile, pushed in makeBuilding, removed in removeBuilding).
+      fadeables: top-level array of {g, tiles}: every town hall and its
+      flag (its four scene tiles, pushed in buildLand), every building (its
+      tile, pushed in makeBuilding). Buildings are permanent: no
+      removeBuilding.
       applyFade(blocked): every mesh under a fadeable whose tiles meet
       blocked gets a cached faded clone of its own material (transparent,
       opacity x FADE_OPACITY, depthWrite false, same clippingPlanes array,
@@ -197,6 +203,83 @@ CONTRACT
       ancestors (header.bar, #stats.stats), sets pointer-events:none.
       (A class shared with the 3D countdown chip once did.)
 
+  Growth (approved mock: mock/city-growth-mock.html; the world itself is
+  pinned in tests/test_agent_city_world.py). The fixed 12 x 12 island is
+  gone (no PLOTS, GX1, BRIDGE_X, demolishOldest, removeBuilding): the page
+  draws the world view the server sends.
+    Handles `case 'world'` (ev.world: a new view, redraw the land) and
+      `case 'build'` (ev.terr, ev.plot, ev.btype, ev.x, ev.z, ev.by, ev.id:
+      the agent walks to world tile (ev.x, ev.z) and builds a ev.btype
+      there) in the same switch; the snapshot's world and notice (a notice
+      goes to the page log). `case 'spawn'` puts the agent in ev.terr.
+    const DEMO_WORLD = <the JSON printed by python3 bin/agent_city.py
+      demo-world>, exactly: #demo draws it, same look as live.
+    let map = the current view. tileAt(x, z) -> its char at world tile
+      (x, z), ' ' outside. walkable(x, z): true for . g r t B b when the
+      tile is not in `occupied` (Map 'x,z' -> building) or `blocked` (Set);
+      false for void, river, ravine, pass, forest belt, sea, hall and plots.
+      findPath(sx, sz, tx, tz) as before, on world tiles: over a river only
+      by a bridge.
+    const BUILD_MODELS = {house, shop, tower, workshop, library}: each a
+      non-empty list of model names (the part after '/') from MODELS.
+    const TYPE_ZH = {house:'住宅', shop:'商店', tower:'测试塔',
+      workshop:'工坊', library:'图书馆'}.
+    const TERRAIN_LOOK = {grassland, mountain, desert, forest, coast}: each
+      {ground: '#rrggbb', path: '#rrggbb', plants: [model names from
+      MODELS]}. Desert plants include a cactus, mountain a pine, coast a
+      palm; coast paths are sand (not the grassland path colour); desert
+      ground is not grassland ground. Terrain changes the look only.
+    MODELS has a bridge, a river piece and a rock or cliff (gaps).
+    buildLand() places a town hall ('building-j') for every territory.
+  E2E bounce (real Chrome, 2026-09-24): the first page drew floating tiles.
+    One ground: groundGeometry(view) -> {positions, colors, indices}: ONE
+      continuous mesh for every land tile, in world tile units (the group
+      offset is applied outside). Land tiles = every map char except ' '
+      (void), 'w' 's' 'B' (water) and 'k' (ravine). Each land tile is an
+      exact square [X, X+1] x [Z, Z+1] at y 0 (integer corners, no inset,
+      no gap): no seams, no page background between tiles. Wild '.' tiles
+      are land too, coloured TERRAIN_LOOK[t].wild; 'g' 'H' 'P' ground, 'r'
+      path, 't' a track colour, 'b' sand, 'm' rock, 'f' dark forest floor.
+      The outer outline of the land (next to void or ravine) gets a skirt:
+      side faces down to y <= -0.8, rock grey (never brown earth: the
+      owner's rule), so the land's edge reads as a rock cliff.
+    One water: waterGeometry(view) -> the same shape of object: one
+      continuous surface over every 'w', 's' and 'B' tile (exact squares,
+      integer corners), blue. No river tile models for water.
+    No Kenney cliff_block model at all (brown earth sides).
+    Every .glb loads without GLTFLoader warnings: no KHR_texture_transform
+      (bake the transform into the UVs, or use a model without it).
+    Zoom: zoomStep(k) (k = +1 out, -1 in) is what #zout, #zin call; from
+      the default view, 6 steps out reach distMax() on a land of 5
+      territories. At the zoom-out limit the lift is 0 (tall buildings by
+      the middle must not tilt the view off the land).
+    buildLand() calls updateHome(): ⛶ looks at a town hall, never at the
+      empty middle of the land. home = the square just south of that hall
+      (1.5 to 3 tiles in front of its centre), so the hall itself never
+      stands in the view line and fades.
+  Second E2E pass (headless screenshots): the ground did not show at all.
+    Faces point the right way: every top face of groundGeometry and
+      waterGeometry faces up (normal (b-a) x (c-a) has y > 0, three.js
+      front faces), every side face faces out, toward the void, ravine or
+      water tile beside it.
+    River bank: every land tile beside water ('w' 's' 'B') gets a side face
+      on that side down below the water surface (y <= -0.1), so no page
+      background shows as a white line where land meets water.
+    First view: when the first world arrives the camera goes home
+      (resetCam()) unless the user already moved it; live and demo both
+      open on a town hall, never on the empty middle. Only the first: a
+      one-time flag (if (!flag ...) { flag = true; resetCam(); }), so a
+      later world never snaps the camera back.
+    Day 0 is bare: hallDecor(t, view) -> the decorations around territory
+      t's hall as [{key, x, z}] (world tiles): [] while t.open is 0 (no
+      plot yet); later a fountain and lamps, each on a 'g' tile (never a
+      road, plot or the hall). buildLand places exactly these; pets and
+      other life come only to a territory with open plots.
+    restSlotsFor(t) -> the rest spots near territory t's town hall ({x, y,
+      pose, by}, world tiles), each on a walkable tile: never on a plot, the
+      hall, water or the void, so nobody rests inside a building. At least 3
+      when the tiles around the hall allow it.
+
   bin/agent-city-assets/
     vendor/three.min.js, vendor/GLTFLoader.js, vendor/SkeletonUtils.js
       (three.js r128, MIT, the licence header kept)
@@ -212,6 +295,7 @@ import re
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -287,7 +371,7 @@ class TestModes(unittest.TestCase):
 
     def test_every_message_type_is_handled(self):
         text = inline_script()
-        for kind in ("snapshot", "spawn", "tool", "stuck", "answer", "done", "leave", "gov"):
+        for kind in ("snapshot", "spawn", "tool", "stuck", "answer", "done", "leave", "gov", "world", "build"):
             with self.subTest(kind=kind):
                 self.assertRegex(text, r"case\s+'%s'\s*:" % kind)
 
@@ -361,6 +445,20 @@ class TestAssets(unittest.TestCase):
                 self.assertTrue(os.path.exists(path), path)
                 with open(path, encoding="utf-8", errors="replace") as fh:
                     self.assertIn("CC0", fh.read())
+
+    def test_no_model_needs_an_unsupported_extension(self):
+        """E2E bounce G5: 35 GLTFLoader warnings (KHR_texture_transform, custom UV sets)."""
+        for folder, _, files in os.walk(ASSETS):
+            for name in files:
+                if not name.endswith(".glb"):
+                    continue
+                path = os.path.join(folder, name)
+                with open(path, "rb") as fh:
+                    data = fh.read()
+                length = struct.unpack("<I", data[12:16])[0]
+                doc = data[20:20 + length].decode("utf-8")
+                with self.subTest(model=os.path.relpath(path, ASSETS)):
+                    self.assertNotIn("KHR_texture_transform", doc)
 
     def test_size_budget(self):
         total = sum(os.path.getsize(os.path.join(folder, name))
@@ -668,7 +766,7 @@ const clips = ['walk', 'sprint', 'idle', 'interact-right', 'emote-yes', 'jump', 
 }
 // camera: default view and limits
 {
-  const box = ctx({ cam: { az: 0, el: 0, dist: 1, tx: -5, tz: -5 }, W: 1200, H: 800 });
+  const box = ctx({ cam: { az: 0, el: 0, dist: 1, tx: -5, tz: -5 }, W: 1200, H: 800, home: { x: 4, z: -3 }, land: { hx: 13, hz: 13 } });
   box.resetCam(); out.viewWide = Object.assign({}, box.cam);
   box.W = 400; box.H = 440; box.resetCam(); out.viewPhone = Object.assign({}, box.cam);
   out.consts = { FOV: box.FOV, EL_MIN: box.EL_MIN, EL_MAX: box.EL_MAX, DIST_MIN: box.DIST_MIN, LIFT_MAX: box.LIFT_MAX, FADE_OPACITY: box.FADE_OPACITY };
@@ -779,17 +877,17 @@ const clampFn = (v, a, b) => Math.max(a, Math.min(b, v));
   box.applyFade(new Set());
   out.fade.restored = a1.material === shared && a2.material === shared && b1.material === shared;
 }
-// zoom out: the whole island fills about 80% of the stage and sits in the middle
+// zoom out: the whole land fills the stage, sits in the middle, the same from every angle
 {
   const camera = fakeCamera();
   const box = ctx({ camera, cam: { az: 0, el: .5, dist: 9, tx: 0, tz: 0 }, W: 874, H: 710, clamp: clampFn,
-    drag: null, pinch: null, camLiftNow: 0, fadeables: [] });
+    drag: null, pinch: null, camLiftNow: 0, fadeables: [], land: { hx: 13, hz: 13 }, home: { x: 0, z: 0 } });
   box.heightAt = () => 0;
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
   const norm = a => { const l = Math.hypot(...a); return a.map(v => v / l); };
-  const fit = (W, H, az, el) => {
-    box.W = W; box.H = H;
+  const fit = (W, H, az, el, hx, hz) => {
+    box.W = W; box.H = H; box.land = { hx, hz };
     Object.assign(box.cam, { az, el: el === undefined ? box.EL_DEFAULT : el, tx: .3, tz: 2.8 });
     box.cam.dist = box.distMax();
     for (let i = 0; i < 40; i++) box.updateCamera();
@@ -797,7 +895,7 @@ const clampFn = (v, a, b) => Math.max(a, Math.min(b, v));
     const f = norm(sub(L, P)), r = norm(cross(f, [0, 1, 0])), u = cross(r, f);
     const t = Math.tan(box.FOV * Math.PI / 360), a = W / H;
     let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
-    for (const x of [-6, 6]) for (const z of [-7, 7]) for (const y of [-1.05, 0]) {
+    for (const x of [-hx, hx]) for (const z of [-hz, hz]) for (const y of [-1.05, 0]) {
       const d = sub([x, y, z], P), zc = dot(d, f), nx = dot(d, r) / (zc * t * a), ny = dot(d, u) / (zc * t);
       x0 = Math.min(x0, nx); x1 = Math.max(x1, nx); y0 = Math.min(y0, ny); y1 = Math.max(y1, ny);
     }
@@ -807,11 +905,41 @@ const clampFn = (v, a, b) => Math.max(a, Math.min(b, v));
       cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, edge: Math.max(-x0, x1, -y0, y1) };
   };
   const d = Math.PI / 180;
-  out.zoomOut = { wide: fit(874, 710, Math.PI / 4), phone: fit(358, 394, Math.PI / 4), wideSide: fit(874, 710, 0),
-    broad: fit(1400, 700, Math.PI / 4), wideSteep: fit(874, 710, Math.PI / 4, 60 * d), wideLow: fit(874, 710, Math.PI / 4, 15 * d),
-    broadSteep: fit(1400, 700, Math.PI / 4, 60 * d), phoneSide: fit(358, 394, 0, 45 * d) };
+  const one = [13, 13];
+  out.zoomOut = {};
+  for (const [name, W, H, az, el] of [['wide', 874, 710, Math.PI / 4], ['phone', 358, 394, Math.PI / 4], ['wideSide', 874, 710, 0],
+    ['broad', 1400, 700, Math.PI / 4], ['wideSteep', 874, 710, Math.PI / 4, 60 * d], ['wideLow', 874, 710, Math.PI / 4, 15 * d],
+    ['broadSteep', 1400, 700, Math.PI / 4, 60 * d], ['phoneSide', 358, 394, 0, 45 * d]])
+    out.zoomOut[name] = fit(W, H, az, el, one[0], one[1]);
+  // lands of several territories (half sizes of real layouts: 2 repos side by side or stacked,
+  // 3 in an L, a coast with its sea, 5 in a plus; and a 3:1 strip as the extreme): never cut off
+  // from any angle, always centred
+  out.zoomLands = [];
+  for (const [hx, hz] of [[26, 13], [13, 26], [26, 26], [13, 17], [39, 39], [39, 30], [13, 39]])
+    for (const [W, H] of [[874, 710], [358, 394], [1400, 700]])
+      for (let k = 0; k < 12; k++) {
+        const z = fit(W, H, k * Math.PI / 12, undefined, hx, hz);
+        out.zoomLands.push({ hx, hz, W, H, az: k * 15, edge: z.edge, cx: z.cx, cy: z.cy, fill: Math.max(z.w, z.h), same: z.sameFromAnyAngle });
+      }
   // tilting while fully zoomed out stays fully out; zooming past the limit is clamped
-  box.W = 874; box.H = 710;
+  // six steps out from the default view reach the limit on a land of five territories
+  box.W = 874; box.H = 710; box.land = { hx: 39, hz: 39 }; box.home = { x: 0, z: 0 };
+  box.camChanged = () => {};
+  box.resetCam();
+  if (typeof box.zoomStep === 'function') { for (let i = 0; i < 6; i++) box.zoomStep(1); out.sixOut = box.cam.dist / box.distMax(); }
+  else out.sixOut = null;
+  // at the limit, tall things by the middle must not lift the view off the land
+  box.heightAt = (x, z) => (Math.abs(x) < 3 && Math.abs(z) < 3 ? 4 : 0);
+  out.liftAtLimit = [];
+  for (const [W, H, hx, hz] of [[874, 710, 26, 26], [874, 710, 39, 39], [358, 394, 26, 13]]) {
+    box.camLiftNow = 0;
+    const z = fit(W, H, Math.PI / 5, undefined, hx, hz);
+    for (let i = 0; i < 60; i++) box.updateCamera();
+    const again = fit(W, H, Math.PI / 5, undefined, hx, hz);
+    out.liftAtLimit.push({ W, H, hx, hz, lift: box.camLiftNow, edge: again.edge, cx: again.cx, cy: again.cy });
+  }
+  box.heightAt = () => 0; box.camLiftNow = 0;
+  box.W = 874; box.H = 710; box.land = { hx: 13, hz: 13 };
   Object.assign(box.cam, { az: 1, el: box.EL_DEFAULT, tx: 0, tz: 0 }); box.cam.dist = box.distMax() * 3; box.updateCamera();
   out.clamped = box.cam.dist <= box.distMax() + 1e-9;
   box.W = 874; box.H = 710;
@@ -861,7 +989,7 @@ def unit_results():
             if src is None:
                 raise AssertionError("function %s(...) not found in the page script" % name)
             fns.append(src)
-        for name in ("aroundH", "autoRotating", "fadedOf", "islandSpread", "centreHeight"):
+        for name in ("aroundH", "autoRotating", "fadedOf", "islandSpread", "landSpread", "centreHeight", "zoomStep"):
             src = function_source(name)
             if src is not None:
                 fns.append(src)
@@ -1017,15 +1145,10 @@ class TestSmoothAndSteady(unittest.TestCase):
         self.assertFalse(b["touched"], "right after a touch, with nothing moving, idle rate is fine")
         self.assertFalse(b["reduced"], "reduced motion: no rotation, idle rate")
 
-    def test_edge_cliff_tops_sit_behind_path_and_river_floors(self):
-        text = inline_script()
-        self.assertRegex(text, r"instanced\('cliff_block_rock'[^\n]*\bbehind: true")
-        body = function_source("instanced") or ""
-        self.assertRegex(body, r"o\.behind")
-        self.assertRegex(body, r"polygonOffset = true")
-        factor = re.search(r"polygonOffsetFactor = ([\d.]+)", body)
-        self.assertIsNotNone(factor)
-        self.assertGreaterEqual(float(factor.group(1)), 1)
+    def test_no_brown_earth_block_sides(self):
+        """E2E bounce G3: the owner said no to brown earth blocks twice."""
+        self.assertFalse([m for m in models() if "cliff_block" in m], "cliff_block models are brown earth cubes")
+        self.assertNotIn("cliff_block", inline_script())
 
     def test_depth_range_is_tight(self):
         m = re.search(r"new THREE\.PerspectiveCamera\(\s*\w+,\s*[\w.]+,\s*([\d.]+),\s*([\d.]+)\s*\)", inline_script())
@@ -1082,10 +1205,9 @@ class TestLiftAndFade(unittest.TestCase):
         self.assertAlmostEqual(unit_results()["consts"]["FADE_OPACITY"], 0.3, delta=0.05)
 
     def test_hall_and_buildings_can_fade(self):
-        self.assertRegex(function_source("buildIsland") or "", r"fadeables\.push\(")
-        self.assertIn("'-1,0'", function_source("buildIsland") or "")
+        self.assertRegex(function_source("buildLand") or "", r"fadeables\.push\(")
         self.assertRegex(function_source("makeBuilding") or "", r"fadeables\.push\(")
-        self.assertIn("fadeables", function_source("removeBuilding") or "")
+        self.assertIsNone(function_source("removeBuilding"), "buildings are permanent")
 
     def test_frame_fades_what_blocks_the_view(self):
         self.assertRegex(function_source("frame") or "", r"applyFade\(viewBlockers\(cam\.el \+ camLiftNow\)\)")
@@ -1110,6 +1232,32 @@ class TestZoomOut(unittest.TestCase):
         for name, z in unit_results()["zoomOut"].items():
             with self.subTest(stage=name):
                 self.assertTrue(z["sameFromAnyAngle"], "auto-rotation would change the zoom")
+
+    def test_a_land_of_many_territories_is_never_cut_off(self):
+        for z in unit_results()["zoomLands"]:
+            with self.subTest(land=(z["hx"], z["hz"]), stage=(z["W"], z["H"]), az=z["az"]):
+                self.assertLessEqual(z["edge"], 0.98, "part of the land is cut off")
+                self.assertLessEqual(abs(z["cx"]), 0.1)
+                self.assertLessEqual(abs(z["cy"]), 0.1)
+                self.assertTrue(z["same"], "auto-rotation would change the zoom")
+                # One zoom for every angle (auto-rotation never zooms), so a long land seen
+                # end-on fills less of the stage; it must still be clearly there.
+                low = 0.3 if max(z["hx"], z["hz"]) >= 3 * min(z["hx"], z["hz"]) else 0.35
+                self.assertGreaterEqual(z["fill"], low, "the land is lost in the middle of the stage")
+
+    def test_six_steps_out_show_the_whole_land(self):
+        """E2E bounce G6: 6 x minus in #demo still cut the land off."""
+        six = unit_results()["sixOut"]
+        self.assertIsNotNone(six, "function zoomStep(k) not found")
+        self.assertAlmostEqual(six, 1.0, delta=1e-6)
+
+    def test_no_lift_at_the_zoom_out_limit(self):
+        for z in unit_results()["liftAtLimit"]:
+            with self.subTest(land=(z["hx"], z["hz"]), stage=(z["W"], z["H"])):
+                self.assertLessEqual(abs(z["lift"]), 0.005)
+                self.assertLessEqual(z["edge"], 0.98)
+                self.assertLessEqual(abs(z["cx"]), 0.1)
+                self.assertLessEqual(abs(z["cy"]), 0.1)
 
     def test_zoom_past_the_limit_is_clamped(self):
         self.assertTrue(unit_results()["clamped"])
@@ -1151,8 +1299,8 @@ class TestCamera(unittest.TestCase):
             with self.subTest(view=key):
                 v = r[key]
                 self.assertAlmostEqual(v["el"], 0.5236, delta=0.06, msg="tilt about 30 degrees")
-                self.assertLessEqual(((v["tx"] - 0) ** 2 + (v["tz"] - 1) ** 2) ** .5, 3.5,
-                                     "look at the town hall (scene 0, 1)")
+                self.assertLessEqual(((v["tx"] - 4) ** 2 + (v["tz"] + 3) ** 2) ** .5, 3.5,
+                                     "look at the home town hall (the test puts it at scene 4, -3)")
                 self.assertGreaterEqual(v["dist"], r["consts"]["DIST_MIN"])
                 self.assertLessEqual(v["dist"], 14, "close enough to see people")
         self.assertLessEqual(r["viewWide"]["dist"], r["viewPhone"]["dist"])
@@ -1168,10 +1316,11 @@ class TestCamera(unittest.TestCase):
         self.assertLessEqual(c["DIST_MIN"], 3.5)
         text = inline_script()
         self.assertNotIn("DIST_MAX", text)
+        step = function_source("zoomStep") or ""
         for needle in ("$('#zin')", "$('#zout')", "canvas.addEventListener('wheel'"):
             with self.subTest(control=needle):
                 line = next(l for l in text.splitlines() if needle in l)
-                self.assertIn("DIST_MIN, distMax()", line)
+                self.assertTrue("DIST_MIN, distMax()" in line or ("zoomStep(" in line and "DIST_MIN, distMax()" in step), line)
         self.assertRegex(text, r"pinch\.z[^;\n]*DIST_MIN, distMax\(\)")
 
     def test_camera_orbits_the_target_at_the_users_tilt(self):
@@ -1713,6 +1862,416 @@ process.stdout.write(JSON.stringify(out));
                             "a failed decision must be shown in the panel")
         self.assertRegex(body, r"\.ok\b|status\s*[!<>]=?", "non-409 errors must be handled too")
 
+
+
+# ---------------------------------------------------------------------------
+# Growth: the page draws the server's world
+# ---------------------------------------------------------------------------
+
+GROWTH_JS = r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const view = { cell: 26, x0: -3, z0: -2, w: 7, h: 5, rows: [
+  '..w....',
+  '..w.gg.',
+  '..B.gH.',
+  '..w....',
+  ' .w..s ' ], territories: [], links: [] };
+const box = Object.assign({ Math, JSON, console, occupied: new Map(), blocked: new Set(), map: view });
+vm.createContext(box);
+vm.runInContext(prelude + '\n' + fns, box);
+const out = {};
+out.tiles = [[-3, -2], [-1, -2], [-1, 0], [2, 0], [0, -10], [3, 2], [-3, 2], [2, 2], [1, -1]].map(([x, z]) => box.tileAt(x, z));
+out.walk = [[-3, -2], [-1, -2], [-1, 0], [2, 0], [0, -10], [2, 2], [1, -1], [0, 1]].map(([x, z]) => !!box.walkable(x, z));
+box.occupied.set('0,-1', { id: 1 });
+out.walkOccupied = !!box.walkable(0, -1);
+box.occupied.clear();
+box.blocked.add('0,-1');
+out.walkBlocked = !!box.walkable(0, -1);
+box.blocked.clear();
+const p = box.findPath(-1.5, -1.5, 0.5, -1.5);
+out.path = p;
+out.pathUsesBridge = !!(p && p.some(([x, z]) => x === -0.5 && z === 0.5));
+box.map = Object.assign({}, view, { rows: view.rows.map(r => r.replace('B', 'w')) });
+out.noBridge = box.findPath(-1.5, -1.5, 0.5, -1.5);
+process.stdout.write(JSON.stringify(out));
+"""
+
+
+def growth_results():
+    if "growth" not in _CACHE:
+        fns = []
+        for name in ("tileAt", "walkable", "findPath"):
+            src = function_source(name)
+            if src is None:
+                raise AssertionError("function %s(...) not found in the page script" % name)
+            fns.append(src)
+        _CACHE["growth"] = run_node(GROWTH_JS, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
+    return _CACHE["growth"]
+
+
+def const_object(name):
+    """The JSON-like literal of `const NAME = {...};` (keys may be bare words)."""
+    text = inline_script()
+    m = re.search(r"^const %s = " % re.escape(name), text, re.M)
+    if not m:
+        return None
+    i = m.end()
+    depth = 0
+    for j in range(i, len(text)):
+        if text[j] in "{[":
+            depth += 1
+        elif text[j] in "}]":
+            depth -= 1
+            if depth == 0:
+                return text[i:j + 1]
+    return None
+
+
+def js_value(literal):
+    node = shutil.which("node")
+    if not node:
+        raise unittest.SkipTest("node is not installed")
+    result = subprocess.run([node, "-e", "process.stdout.write(JSON.stringify(%s))" % literal],
+                            capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL)
+    if result.returncode != 0:
+        raise AssertionError(result.stderr[-2000:])
+    return json.loads(result.stdout)
+
+
+REST_JS = r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+// a territory whose hall sits at (0, 0), plots (P) on some tiles right beside the plaza
+const rows = [
+  '.........',
+  '..ggggg..',
+  '..ggrgg..',
+  '..gHHgg..',
+  '..gHHgg..',
+  '.PggrgPP.',
+  '..PgPgg..',
+  '..ggPg...',
+  '.........' ];
+const view = { cell: 26, x0: -4, z0: -4, w: 9, h: 9, rows, territories: [{ id: 't1', cx: 0, cz: 0 }], links: [] };
+const box = Object.assign({ Math, JSON, console, occupied: new Map(), blocked: new Set(), map: view, restSlotsByTerr: new Map() });
+vm.createContext(box);
+vm.runInContext(prelude + '\n' + fns, box);
+const slots = box.restSlotsFor(view.territories[0]);
+process.stdout.write(JSON.stringify({ spots: slots.map(r => [r.x, r.y, box.tileAt(Math.floor(r.x), Math.floor(r.y)), !!box.walkable(Math.floor(r.x), Math.floor(r.y))]) }));
+"""
+
+
+GROUND_JS = r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+// two cells: grassland (slot 0,0) west, desert (slot 1,0) east; void corners, a river with a bridge,
+// a ravine, a beach and sea
+const rows = [
+  ' ....  ',
+  '.gHr.w.',
+  '.gHr.B.',
+  '.tPrkw.',
+  '.bbb.ws',
+  '  .. ss' ];
+const view = { cell: 26, x0: 10, z0: -2, w: 7, h: 6, rows,
+  territories: [{ id: 'a', slot: [0, 0], terrain: 'grassland', cx: 0, cz: 0 }, { id: 'b', slot: [1, 0], terrain: 'desert', cx: 26, cz: 0 }],
+  links: [] };
+const box = Object.assign({ Math, JSON, console, map: view });
+vm.createContext(box);
+vm.runInContext(prelude + '\n' + fns, box);
+const out = {};
+for (const name of ['groundGeometry', 'waterGeometry']) {
+  const g = box[name](view);
+  const P = Array.from(g.positions), C = Array.from(g.colors), I = Array.from(g.indices || []);
+  const idx = I.length ? I : P.map((_, i) => i).filter(i => i < P.length / 3);
+  const top = {}, skirt = [], odd = [], down = [], inward = [], bank = new Set();
+  const at = (x, z) => { const r = z - view.z0, c = x - view.x0; return r >= 0 && r < view.h && c >= 0 && c < view.w ? view.rows[r][c] : ' '; };
+  for (let t = 0; t < idx.length; t += 3) {
+    const vs = [idx[t], idx[t + 1], idx[t + 2]].map(i => ({ x: P[3 * i], y: P[3 * i + 1], z: P[3 * i + 2], c: [C[3 * i], C[3 * i + 1], C[3 * i + 2]] }));
+    const ax = vs[1].x - vs[0].x, ay = vs[1].y - vs[0].y, az = vs[1].z - vs[0].z, bx = vs[2].x - vs[0].x, by = vs[2].y - vs[0].y, bz = vs[2].z - vs[0].z;
+    const n = [ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx];
+    if (vs.every(v => Math.abs(v.y - vs[0].y) < 1e-6)) { if (!(n[1] > 0)) down.push([vs[0].x, vs[0].y, vs[0].z]); }
+    else {
+      const cx = (vs[0].x + vs[1].x + vs[2].x) / 3, cz = (vs[0].z + vs[1].z + vs[2].z) / 3, l = Math.hypot(n[0], n[2]) || 1;
+      const ch = at(Math.floor(cx + n[0] / l * .5), Math.floor(cz + n[2] / l * .5));
+      if (!' kwsB'.includes(ch)) inward.push([cx, cz, ch]);
+      if ('wsB'.includes(ch) && vs.some(v => v.y <= -0.1)) bank.add(Math.floor(cx + n[0] / l * .5) + ',' + Math.floor(cz + n[2] / l * .5) + '<' + Math.floor(cx - n[0] / l * .5) + ',' + Math.floor(cz - n[2] / l * .5));
+    }
+    if (vs.every(v => v.y > -0.2)) {
+      const x0 = Math.min(...vs.map(v => v.x)), z0 = Math.min(...vs.map(v => v.z)), x1 = Math.max(...vs.map(v => v.x)), z1 = Math.max(...vs.map(v => v.z));
+      if (!vs.every(v => Number.isInteger(Math.round(v.x * 1e6) / 1e6) && Number.isInteger(Math.round(v.z * 1e6) / 1e6)) || x1 - x0 !== 1 || z1 - z0 !== 1) odd.push([x0, z0, x1, z1]);
+      const k = x0 + ',' + z0; top[k] = top[k] || vs[0].c.map(v => Math.round(v * 1000) / 1000);
+    } else if (vs.some(v => v.y <= -0.8)) skirt.push(vs.map(v => v.c.map(q => Math.round(q * 1000) / 1000)));
+  }
+  out[name] = { top, skirt: skirt.length, skirtColors: skirt.slice(0, 400).flat(), odd: odd.slice(0, 5), down: down.length, downAt: down.slice(0, 3), inward: inward.slice(0, 5), bank: [...bank] };
+}
+process.stdout.write(JSON.stringify(out));
+"""
+
+
+DECOR_JS = r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const rows = [
+  '.........',
+  '..ggggg..',
+  '..ggrgg..',
+  '..gHHgg..',
+  '..gHHgg..',
+  '.PggrgPP.',
+  '..PgPgg..',
+  '..ggPg...',
+  '.........' ];
+const view = { cell: 26, x0: -4, z0: -4, w: 9, h: 9, rows, territories: [], links: [] };
+const box = Object.assign({ Math, JSON, console, occupied: new Map(), blocked: new Set(), map: view });
+vm.createContext(box);
+vm.runInContext(prelude + '\n' + fns, box);
+const ch = (x, z) => { const r = Math.floor(z) - view.z0, c = Math.floor(x) - view.x0; return r >= 0 && r < view.h && c >= 0 && c < view.w ? rows[r][c] : ' '; };
+const t0 = { id: 't', cx: 0, cz: 0, open: 0, size: 0 }, t1 = { id: 't', cx: 0, cz: 0, open: 6, size: .4 };
+process.stdout.write(JSON.stringify({
+  day0: box.hallDecor(t0, view),
+  grown: box.hallDecor(t1, view).map(d => [d.key, d.x, d.z, ch(d.x, d.z)]),
+}));
+"""
+
+
+def ground_results():
+    if "ground" not in _CACHE:
+        fns = ["const TERRAIN_LOOK = %s;" % (const_object("TERRAIN_LOOK") or "{}")]
+        for name in ("groundGeometry", "waterGeometry"):
+            src = function_source(name)
+            if src is None:
+                raise AssertionError("function %s(view) not found in the page script" % name)
+            fns.append(src)
+        for helper in ("h2r", "hexRgb", "rgbOf", "tintOf", "terrAtOf", "cellTerrain", "terrainAt"):
+            src = function_source(helper)
+            if src:
+                fns.append(src)
+        _CACHE["ground"] = run_node(GROUND_JS, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
+    return _CACHE["ground"]
+
+
+GROUND_ROWS = [' ....  ', '.gHr.w.', '.gHr.B.', '.tPrkw.', '.bbb.ws', '  .. ss']
+
+
+def tiles_where(test):
+    out = set()
+    for r, row in enumerate(GROUND_ROWS):
+        for c, ch in enumerate(row):
+            if test(ch):
+                out.add("%d,%d" % (10 + c, -2 + r))
+    return out
+
+
+class TestOneLand(unittest.TestCase):
+    """E2E bounce G1-G4: one continuous ground and one water, no seams, rock edges."""
+
+    def test_every_land_tile_has_ground_as_one_seamless_mesh(self):
+        g = ground_results()["groundGeometry"]
+        self.assertEqual(g["odd"], [], "ground tiles must be exact 1 x 1 squares on integer corners")
+        self.assertEqual(set(g["top"]), tiles_where(lambda ch: ch not in " wsBk"),
+                         "wild land, claimed land, roads, tracks, beach: every land tile has ground")
+
+    def test_wild_land_is_terrain_coloured_and_reads_apart(self):
+        top = ground_results()["groundGeometry"]["top"]
+        wild_grass, wild_desert = top["11,-1"], top["14,-2"]
+        self.assertNotEqual(wild_grass, wild_desert, "desert wild land must not look like grassland")
+        self.assertNotEqual(top["11,-1"], top["11,0"], "claimed ground reads apart from wild land")
+        road, beach = top["13,0"], top["11,2"]
+        self.assertNotEqual(road, top["11,0"])
+        self.assertGreater(beach[0], beach[2], "beach is sand")
+
+    def test_the_land_edge_is_grey_rock_never_brown_earth(self):
+        g = ground_results()["groundGeometry"]
+        self.assertGreater(g["skirt"], 10, "the land edge has side faces (a cliff), it does not float as a sheet")
+        for rgb in g["skirtColors"]:
+            with self.subTest(rgb=rgb):
+                self.assertLessEqual(max(rgb) - min(rgb), 0.12, "edge colour %s is not grey rock" % (rgb,))
+
+    def test_water_is_one_continuous_surface(self):
+        w = ground_results()["waterGeometry"]
+        self.assertEqual(w["odd"], [])
+        self.assertEqual(set(w["top"]), tiles_where(lambda ch: ch in "wsB"))
+        for k, rgb in w["top"].items():
+            self.assertGreater(rgb[2], rgb[0], "water at %s is not blue" % k)
+        self.assertNotIn("ground_riverStraight", inline_script(), "no chopped river tile models for water")
+
+    def test_the_ground_and_water_face_up(self):
+        """Second pass: the top faces were wound clockwise, so three.js culled the whole ground."""
+        for name in ("groundGeometry", "waterGeometry"):
+            with self.subTest(mesh=name):
+                g = ground_results()[name]
+                self.assertEqual(g["down"], 0, "faces pointing down, e.g. at %s" % g["downAt"])
+
+    def test_the_cliff_faces_look_out(self):
+        self.assertEqual(ground_results()["groundGeometry"]["inward"], [], "a skirt face points into the land")
+
+    def test_a_bank_where_land_meets_water(self):
+        """Second pass: a white line showed between the ground (y 0) and the water below it."""
+        bank = set(ground_results()["groundGeometry"]["bank"])
+        want = set()
+        for r, row in enumerate(GROUND_ROWS):
+            for c, ch in enumerate(row):
+                if ch in " wsBk":
+                    continue
+                for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    rr, cc = r + dr, c + dc
+                    if 0 <= rr < len(GROUND_ROWS) and 0 <= cc < len(GROUND_ROWS[0]) and GROUND_ROWS[rr][cc] in "wsB":
+                        want.add("%d,%d<%d,%d" % (10 + cc, -2 + rr, 10 + c, -2 + r))
+        self.assertEqual(bank, want)
+
+    def test_the_first_view_is_a_town_hall(self):
+        text = inline_script()
+        snap = re.search(r"case 'snapshot':(.*?)(?=case '\w+':)", text, re.S).group(1)
+        self.assertTrue("resetCam()" in snap or "resetCam()" in (function_source("buildLand") or ""),
+                        "the first world must put the camera home (resetCam), not leave it on the land's middle")
+        body = snap + (function_source("buildLand") or "")
+        once = re.search(r"if \(!(\w+)[^)]*\)\s*\{\s*\1 = true;\s*resetCam\(\);", body) or \
+            re.search(r"if \(!(\w+)[^)]*\)\s*\{\s*resetCam\(\);\s*\1 = true;", body)
+        self.assertIsNotNone(once, "only the FIRST world goes home: a later world (a new territory, a recount) "
+                                   "must not snap the camera back or stop the auto-rotation's turn")
+
+    def test_day_zero_is_bare(self):
+        rest_off = const_object("REST_OFF")
+        src = function_source("hallDecor")
+        self.assertIsNotNone(src, "function hallDecor(t, view) not found")
+        fns = [src]
+        for name in ("tileAt", "walkable"):
+            if function_source(name):
+                fns.append(function_source(name))
+        out = run_node(DECOR_JS, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
+        self.assertEqual(out["day0"], [], "day 0: nothing but the town hall")
+        self.assertTrue(out["grown"], "a town with open plots gets its fountain and lamps")
+        for key, x, z, ch in out["grown"]:
+            with self.subTest(decor=key):
+                self.assertEqual(ch, "g", "%s stands on %r at %s" % (key, ch, (x, z)))
+        self.assertIn("hallDecor(", function_source("buildLand") or "")
+        self.assertNotRegex(function_source("buildLand") or "", r"place\('fountain-round', t\.cx")
+
+    def test_home_is_the_square_in_front_of_the_hall(self):
+        """Final screenshots: with home on the hall's own centre the hall stood in the view line and faded."""
+        src = function_source("updateHome")
+        self.assertIsNotNone(src)
+        js = r"""
+const fs = require('fs'), vm = require('vm');
+const { fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const t = { id: 't', cx: 26, cz: -26, open: 3 };
+const box = { Math, JSON, console, map: { territories: [t] }, mid: { x: 13, z: -13 }, govTerr: null, gov: {}, home: null,
+  terrOf: id => (id === 't' ? t : null), hallStand: () => ({ x: 26, y: -24 }) };
+vm.createContext(box);
+vm.runInContext(fns + '\nupdateHome();', box);
+process.stdout.write(JSON.stringify({ home: box.home }));
+"""
+        out = run_node(js, {"fns": src})
+        home = out["home"]
+        self.assertLessEqual(abs(home["x"] - (26 - 13)), 0.5)
+        self.assertGreaterEqual(home["z"] - (-26 + 13), 1.5, "look at the square south of the hall, not into it")
+        self.assertLessEqual(home["z"] - (-26 + 13), 3.0)
+
+    def test_the_home_view_is_a_town_hall(self):
+        self.assertRegex(function_source("buildLand") or "", r"updateHome\(\)")
+
+
+class TestGrowthPage(unittest.TestCase):
+    def test_nobody_rests_inside_a_building(self):
+        rest_off = const_object("REST_OFF")
+        fns = ["const REST_OFF = %s;" % rest_off if rest_off else ""]
+        for name in ("tileAt", "walkable", "restSlotsFor"):
+            src = function_source(name)
+            self.assertIsNotNone(src, "function %s(...) not found" % name)
+            fns.append(src)
+        out = run_node(REST_JS, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
+        self.assertGreaterEqual(len(out["spots"]), 3, out)
+        for x, z, ch, ok in out["spots"]:
+            with self.subTest(spot=(x, z)):
+                self.assertTrue(ok, "a rest spot on %r at %s" % (ch, (x, z)))
+
+    def test_old_fixed_island_is_gone(self):
+        text = inline_script()
+        for name in ("const PLOTS", "const GX1", "const BRIDGE_X", "function demolishOldest", "function removeBuilding",
+                     "function buildIsland"):
+            with self.subTest(name=name):
+                self.assertNotIn(name, text)
+
+    def test_land_and_home_are_top_level(self):
+        text = inline_script()
+        self.assertRegex(text, r"(?m)^let land = \{", "let land = {hx, hz}")
+        self.assertRegex(text, r"(?m)^let home = \{")
+        self.assertRegex(text, r"(?m)^let map = ")
+
+    def test_demo_world_is_the_servers(self):
+        literal = const_object("DEMO_WORLD")
+        self.assertIsNotNone(literal, "const DEMO_WORLD = {...}; not found")
+        out = subprocess.run([sys.executable, os.path.join(ROOT, "bin", "agent_city.py"), "demo-world"],
+                             capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(json.loads(literal), json.loads(out.stdout))
+
+    def test_tiles_walking_and_bridges(self):
+        g = growth_results()
+        self.assertEqual(g["tiles"], [".", "w", "B", "H", " ", " ", " ", "s", "g"])
+        self.assertEqual(g["walk"], [True, False, True, False, False, False, True, True])
+        self.assertFalse(g["walkOccupied"])
+        self.assertFalse(g["walkBlocked"])
+        self.assertTrue(g["path"], "no way over the river")
+        self.assertTrue(g["pathUsesBridge"], "the way over the river is the bridge")
+        self.assertIsNone(g["noBridge"], "walked through a river")
+
+    def test_building_models_per_type(self):
+        b = js_value(const_object("BUILD_MODELS") or "null")
+        self.assertIsInstance(b, dict)
+        self.assertEqual(set(b), {"house", "shop", "tower", "workshop", "library"})
+        names = {m.split("/")[1] for m in models()}
+        for typ, keys in b.items():
+            with self.subTest(type=typ):
+                self.assertTrue(keys)
+                self.assertLessEqual(set(keys), names)
+
+    def test_type_names_in_chinese(self):
+        self.assertEqual(js_value(const_object("TYPE_ZH") or "null"),
+                         {"house": "住宅", "shop": "商店", "tower": "测试塔", "workshop": "工坊", "library": "图书馆"})
+
+    def test_terrain_changes_the_look(self):
+        look = js_value(const_object("TERRAIN_LOOK") or "null")
+        self.assertIsInstance(look, dict)
+        self.assertEqual(set(look), {"grassland", "mountain", "desert", "forest", "coast"})
+        names = {m.split("/")[1] for m in models()}
+        for t, v in look.items():
+            with self.subTest(terrain=t):
+                self.assertRegex(v["ground"], r"^#[0-9A-Fa-f]{6}$")
+                self.assertRegex(v.get("wild", ""), r"^#[0-9A-Fa-f]{6}$", "wild land has its own colour")
+                self.assertNotEqual(v["wild"].lower(), v["ground"].lower(), "claimed land must read apart from wild land")
+                self.assertRegex(v["path"], r"^#[0-9A-Fa-f]{6}$")
+                self.assertTrue(v["plants"])
+                self.assertLessEqual(set(v["plants"]), names)
+        self.assertTrue(any("cactus" in n for n in look["desert"]["plants"]))
+        self.assertTrue(any("pine" in n for n in look["mountain"]["plants"]))
+        self.assertTrue(any("palm" in n for n in look["coast"]["plants"]))
+        self.assertNotEqual(look["coast"]["path"].lower(), look["grassland"]["path"].lower())
+        self.assertNotEqual(look["desert"]["ground"].lower(), look["grassland"]["ground"].lower())
+
+    def test_gap_models(self):
+        names = " ".join(models())
+        self.assertIn("bridge", names)
+        self.assertRegex(names, r"rock")
+
+    def test_world_and_build_events_drive_the_page(self):
+        text = inline_script()
+        build = re.search(r"case 'build':(.*?)(?=case '\w+':)", text, re.S)
+        self.assertIsNotNone(build)
+        for key in ("ev.x", "ev.z", "ev.btype"):
+            self.assertIn(key, build.group(1))
+        spawn = re.search(r"case 'spawn':(.*?)(?=case '\w+':)", text, re.S)
+        self.assertIn("ev.terr", spawn.group(1))
+        snap = re.search(r"case 'snapshot':(.*?)(?=case '\w+':)", text, re.S)
+        self.assertIn(".world", snap.group(1))
+        self.assertIn(".notice", snap.group(1))
+
+    def test_a_town_hall_for_every_territory(self):
+        body = function_source("buildLand") or ""
+        self.assertIn("building-j", body)
+        self.assertRegex(body, r"for \(const \w+ of [\w.]*territories\)")
 
 if __name__ == "__main__":
     unittest.main()

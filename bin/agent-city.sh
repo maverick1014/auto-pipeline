@@ -83,7 +83,8 @@ do_start() {
   mkdir -p "$CITY_DIR"
   nohup python3 "$SERVER" serve --dir "$CITY_DIR" --port "$city_port" \
     --idle-min "$city_idle_min" --gov-wait-sec "$city_governor_wait_sec" \
-    --decisions "$CITY_HOME/decisions.jsonl" </dev/null >/dev/null 2>&1 &
+    --decisions "$CITY_HOME/decisions.jsonl" --world "$CITY_HOME/world.json" \
+    </dev/null >/dev/null 2>&1 &
   disown "$!" 2>/dev/null || true
 
   step=0

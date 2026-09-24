@@ -52,7 +52,8 @@ SOURCED_ONLY = [
     "agent-resources.sh",
 ]
 BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py", "agent.conf.default",
-                                            "agent_city.py", "agent-city.html"]
+                                            "agent_city.py", "agent-city.html",
+                                            "agent-city-plans.json"]
 
 AGENT_FILES = ["fast-lane-deputy.md", "merge-deputy.md", "worker.md"]
 SKILL_DIRS = ["dispatch", "merge", "init", "cloud-pack", "city"]
