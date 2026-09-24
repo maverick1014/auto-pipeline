@@ -1,5 +1,5 @@
 <title>Agent City 3D</title>
-<meta name="description" content="Clickable 3D mock: a cute floating island where every coding agent is a little builder.">
+<meta name="description" content="Clickable 3D mock built only from ready-made CC0 Kenney models: every coding agent is a little builder on a floating island.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap">
@@ -42,7 +42,6 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
 .sign{display:inline-flex;align-items:center;gap:10px;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:5px 16px 5px 8px;box-shadow:0 3px 0 var(--ink)}
-.sign svg{width:34px;height:34px;flex:none}
 .sign-name{font:700 24px/1 var(--display);letter-spacing:.01em}
 .sign-sub{display:block;font:600 10.5px/1.2 var(--mono);color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase;margin-top:3px}
 .stats{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
@@ -99,12 +98,13 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .card h2 .en{font:600 12px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
 .intro{margin:0;color:var(--ink-2);font-size:13.5px}
 
-.hat{--c:#5AA9F0;--h:#FFD04D;position:relative;width:24px;height:24px;flex:none}
-.hat::before{content:"";position:absolute;left:5px;right:5px;bottom:1px;height:10px;border-radius:6px 6px 3px 3px;background:var(--c)}
-.hat::after{content:"";position:absolute;left:2px;right:2px;top:3px;height:10px;border-radius:12px 12px 2px 2px;background:var(--h);box-shadow:0 2px 0 -1px rgba(42,43,69,.35)}
-.hat.crown::before{background:#FF6F8B}
-.hat.crown::after{top:1px;left:5px;right:5px;height:11px;border-radius:1px;background:var(--butter);clip-path:polygon(0 100%,0 20%,25% 60%,50% 0,75% 60%,100% 20%,100% 100%);box-shadow:none}
 
+.sign-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--berry);color:#fff;flex:none}
+.sign-icon svg{width:20px;height:20px}
+.btn svg.lucide{width:16px;height:16px}
+.loading{position:absolute;inset:0;z-index:4;display:grid;place-items:center;background:var(--sky);font:600 14px/1.4 var(--display);color:var(--ink-2)}
+.rdot{width:18px;height:18px;border-radius:50%;border:4px solid var(--c);background:var(--panel);flex:none;justify-self:center}
+.rdot.gov{--c:#FFD36E}
 .roster{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
 .row{width:100%;display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;gap:10px;padding:7px 8px;border-radius:14px;border:1.5px solid transparent;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .row:hover{background:var(--panel-2)}
@@ -161,7 +161,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 <div class="app">
   <header class="bar">
     <div class="sign">
-      <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="8" y="17" width="24" height="17" rx="4" fill="#9CD6FF" stroke="#2A2B45" stroke-width="2.4"/><path d="M5 19 20 6l15 13" fill="#FF7593" stroke="#2A2B45" stroke-width="2.4" stroke-linejoin="round"/><rect x="17" y="23" width="7" height="11" rx="2" fill="#FFD36E" stroke="#2A2B45" stroke-width="2"/></svg>
+      <span class="sign-icon"><svg class="lucide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg></span>
       <div><span class="sign-name">Agent City</span><span class="sign-sub">auto-pipeline · 3D</span></div>
     </div>
     <div class="stats" id="stats" aria-live="polite"></div>
@@ -173,22 +173,21 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
         <canvas id="city" role="img" aria-label="3D 小岛：每个小人是一个 agent"></canvas>
         <div class="ov" id="ov"></div>
         <div class="proto">原型 · 模拟数据</div>
+        <div class="loading" id="loading"><span id="loading-text">正在搬来素材…</span></div>
         <div class="cam">
-          <button class="btn" id="zin" type="button" aria-label="放大">+</button>
-          <button class="btn" id="zout" type="button" aria-label="缩小">−</button>
-          <button class="btn" id="rot" type="button" aria-label="转一下">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13 2.5v3h-3"/></svg>
+          <button class="btn" id="zin" type="button" aria-label="放大"><svg class="lucide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+          <button class="btn" id="zout" type="button" aria-label="缩小"><svg class="lucide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+          <button class="btn" id="rot" type="button" aria-label="转一下"><svg class="lucide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
           </button>
-          <button class="btn" id="zfit" type="button" aria-label="回到默认视角">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4"/></svg>
+          <button class="btn" id="zfit" type="button" aria-label="回到默认视角"><svg class="lucide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
           </button>
         </div>
         <div class="hint-drag" id="hint-drag">拖动转视角 · 滚轮或双指缩放</div>
       </div>
       <div class="toolbar" role="toolbar" aria-label="控制">
         <button class="btn" id="play" type="button" aria-pressed="false">
-          <svg id="icon-pause" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3" y="2" width="3.6" height="12" rx="1.4"/><rect x="9.4" y="2" width="3.6" height="12" rx="1.4"/></svg>
-          <svg id="icon-play" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" hidden><path d="M4 2.5v11l9-5.5z"/></svg>
+          <svg id="icon-pause" class="lucide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg>
+          <svg id="icon-play" class="lucide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><polygon points="6 3 20 12 6 21 6 3"/></svg>
           <span id="play-label">暂停</span>
         </button>
         <div class="group" role="group" aria-label="速度">
@@ -213,7 +212,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 
     <aside class="panel">
       <section class="card">
-        <p class="intro">3D 原型，人和任务都是假的。每个小人是一个 agent：分到任务就去盖楼，卡住了就走去市政厅问总督，做完了就去休息。拖动可以转视角，点小人看详情。</p>
+        <p class="intro">3D 原型，人和任务都是假的。场景里每个模型都是现成的免费素材，不是自己画的。每个小人是一个 agent：分到任务就去盖楼，卡住了就跑去市政厅问总督，做完了就去休息。拖动可以转视角，点小人看详情。</p>
       </section>
       <section class="card detail" id="detail" aria-live="polite"></section>
       <section class="card">
@@ -229,23 +228,34 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
         <table class="legend">
           <thead><tr><th>城里看到的</th><th>真实 agent 在做的</th></tr></thead>
           <tbody>
-            <tr><td>从市政厅蹦出来</td><td>主对话派出一个 agent</td></tr>
-            <tr><td>空地插上小旗</td><td>分到任务，定下做哪一块</td></tr>
-            <tr><td>楼一层一层长高</td><td>改文件（Edit / Write）</td></tr>
+            <tr><td>从市政厅走出来</td><td>主对话派出一个 agent</td></tr>
+            <tr><td>空地摆上路锥</td><td>分到任务，定下做哪一块</td></tr>
+            <tr><td>楼从地面一层层长出来，外面搭着木架</td><td>改文件（Edit / Write）</td></tr>
             <tr><td>头上飘出 Bash / Read</td><td>跑命令或测试 / 读文件</td></tr>
-            <tr><td>头顶「？」跳着去市政厅</td><td>卡住了：要问问题或等权限</td></tr>
-            <tr><td>总督回话，它走回工地</td><td>拿到答案，继续干</td></tr>
-            <tr><td>封顶撒彩纸，去长椅或咖啡馆</td><td>任务做完</td></tr>
+            <tr><td>头顶「？」跑去市政厅</td><td>卡住了：要问问题或等权限</td></tr>
+            <tr><td>总督回话，它点点头走回工地</td><td>拿到答案，继续干</td></tr>
+            <tr><td>完工跳一下，去长椅或咖啡馆坐着</td><td>任务做完</td></tr>
             <tr><td>走出城门</td><td>agent 结束</td></tr>
           </tbody>
         </table>
         <table class="legend" style="margin-top:12px">
-          <thead><tr><th>谁</th><th>盖什么</th></tr></thead>
+          <thead><tr><th>脚下圆圈</th><th>盖什么</th></tr></thead>
           <tbody>
-            <tr><td><span class="dot" style="background:#FFD04D"></span>worker</td><td>小房子</td></tr>
-            <tr><td><span class="dot" style="background:#FFFFFF"></span>task manager</td><td>测试塔，带吊车</td></tr>
-            <tr><td><span class="dot" style="background:#A6F0C6"></span>fast-lane deputy</td><td>花园，小而快</td></tr>
-            <tr><td><span class="dot" style="background:#FFC199"></span>merge deputy</td><td>过河的桥，接到 main</td></tr>
+            <tr><td><span class="dot" style="background:#5AA9F0"></span>worker</td><td>小房子</td></tr>
+            <tr><td><span class="dot" style="background:#9C86F2"></span>task manager</td><td>测试塔</td></tr>
+            <tr><td><span class="dot" style="background:#43C58B"></span>fast-lane deputy</td><td>花园，小而快</td></tr>
+            <tr><td><span class="dot" style="background:#FF9A5C"></span>merge deputy</td><td>过河的桥，接到 main</td></tr>
+            <tr><td><span class="dot" style="background:#FFD36E"></span>总督</td><td>不盖楼，站在市政厅门口</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="card">
+        <h2><span class="en">Credits</span>素材来源</h2>
+        <table class="legend">
+          <tbody>
+            <tr><td>3D 模型和动画</td><td>Kenney（kenney.nl），CC0 公共领域：小人、房子、高楼、自然、小镇、生存、道路、森林、宠物 9 个包</td></tr>
+            <tr><td>图标</td><td>Lucide，ISC 许可</td></tr>
+            <tr><td>3D 引擎</td><td>three.js r128，MIT 许可</td></tr>
           </tbody>
         </table>
       </section>
@@ -254,6 +264,8 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
 <script>
 (() => {
 'use strict';
@@ -265,7 +277,7 @@ const pick = a => a[Math.floor(Math.random() * a.length)];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const BASE = Date.now();
 const FRAME_MS = 33, IDLE_FRAME_MS = 100;
-const MAX_CITIZENS = 40, MAX_LOG = 40, MAX_PARTICLES = 300, MAX_FLOATERS = 80;
+const MAX_CITIZENS = 40, MAX_LOG = 40, MAX_FLOATERS = 80;
 
 function h2r(h){ h = h.replace('#',''); return [0,2,4].map(i => parseInt(h.slice(i,i+2),16)); }
 function r2h(c){ return '#' + c.map(v => Math.round(clamp(v,0,255)).toString(16).padStart(2,'0')).join(''); }
@@ -613,20 +625,8 @@ function spawner(){
   const r = Math.random();
   spawnDemo(r < .5 ? 'worker' : r < .65 ? 'task-manager' : r < .85 ? 'fast-lane-deputy' : 'merge-deputy');
 }
-function burst(b){
-  const x = b.gx + .5, z = b.kind === 'bridge' ? -.5 : b.gy + .5;
-  const h = b.kind === 'tower' ? 2.2 : b.kind === 'house' ? 1.4 : .5;
-  const n = RM ? 8 : 34;
-  for (let i = 0; i < n && particles.length < MAX_PARTICLES; i++) {
-    const a = Math.random() * Math.PI * 2, sp = rnd(.6, 1.8);
-    particles.push({ x, z, h, vx:Math.cos(a) * sp, vz:Math.sin(a) * sp, vh:rnd(1.5, 3.4), life:rnd(1.1, 1.9), t:0,
-      c:pick(['#FFD36E', b.color, '#FFFFFF', '#FF7593', '#8FE3C0']), kind:'confetti', size:rnd(.05, .08) });
-  }
-}
-function puff(x, z, n){
-  for (let i = 0; i < n && particles.length < MAX_PARTICLES; i++) particles.push({ x, z, h:rnd(.05, .25), vx:rnd(-.5, .5), vz:rnd(-.5, .5), vh:rnd(.2, .6),
-    life:rnd(.5, .9), t:0, c:'#EFE3D2', kind:'dust', size:rnd(.06, .11) });
-}
+function burst(){}
+function puff(){}
 
 function update(dt){
   simT += dt;
@@ -674,13 +674,34 @@ function update(dt){
 }
 
 /* =========================================================
-   3D view (three.js r128). Shared geometry and materials,
-   one instanced mesh for all particles, capped frame rate.
+   3D view. Every model is a ready-made CC0 asset from Kenney
+   (kenney.nl), loaded as-is. Only placement is ours.
    ========================================================= */
+const ASSET = 'agent-city-3d-assets/';
+const MODELS = [
+  'characters/character-female-a', 'characters/character-female-c', 'characters/character-female-e',
+  'characters/character-male-a', 'characters/character-male-b', 'characters/character-male-c', 'characters/character-male-e',
+  'suburban/building-type-a', 'suburban/building-type-c', 'suburban/building-type-f', 'suburban/building-type-k', 'suburban/building-type-n', 'suburban/building-type-r',
+  'commercial/building-j', 'commercial/building-skyscraper-a', 'commercial/building-skyscraper-b', 'commercial/detail-parasol-a', 'commercial/detail-parasol-b',
+  'nature/ground_grass', 'nature/ground_pathStraight', 'nature/ground_pathCross', 'nature/ground_pathTile', 'nature/ground_riverStraight',
+  'nature/cliff_block_rock', 'nature/bridge_wood', 'nature/tree_default', 'nature/tree_oak', 'nature/flower_redA', 'nature/flower_yellowA',
+  'nature/flower_purpleA', 'nature/plant_bush', 'nature/plant_bushLarge', 'nature/lily_large',
+  'fantasy/fountain-round', 'fantasy/lantern', 'fantasy/stall-red', 'fantasy/stall-bench',
+  'survival/structure', 'survival/tool-hammer', 'survival/resource-planks', 'survival/signpost-single',
+  'roads/construction-cone', 'forest/flag', 'forest/patch-grass',
+  'pets/animal-chick', 'pets/animal-cat', 'pets/animal-dog',
+];
+const VARIANTS = { 'task-manager':['character-female-c'], worker:['character-male-a','character-female-a','character-male-c'],
+  'fast-lane-deputy':['character-female-e'], 'merge-deputy':['character-male-e'], other:['character-male-c'] };
+const HOUSES = ['building-type-a','building-type-c','building-type-f','building-type-k','building-type-n','building-type-r'];
+const TOWERS = ['building-skyscraper-a','building-skyscraper-b'];
+
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, powerPreference:'low-power' });
 renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
+renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.localClippingEnabled = true;
 const scene = new THREE.Scene();
 const world = new THREE.Group();
 world.position.set(-6, 0, -5);
@@ -688,423 +709,331 @@ scene.add(world);
 const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, .1, 200);
 const cam = { az: Math.PI / 4, el: .64, zoom: 1, tx: 0, tz: 0 };
 
-const grad = new THREE.DataTexture(new Uint8Array([125, 200, 255]), 3, 1, THREE.LuminanceFormat);
-grad.minFilter = grad.magFilter = THREE.NearestFilter; grad.generateMipmaps = false; grad.needsUpdate = true;
-const matCache = new Map();
-function mat(color){
-  let m = matCache.get(color);
-  if (!m) { m = new THREE.MeshToonMaterial({ color: new THREE.Color(color), gradientMap: grad }); matCache.set(color, m); }
-  return m;
-}
-const M = {
-  win: new THREE.MeshToonMaterial({ color: new THREE.Color('#BFE3FF'), gradientMap: grad }),
-  lamp: new THREE.MeshToonMaterial({ color: new THREE.Color('#FFF6D6'), gradientMap: grad }),
-  ring: new THREE.MeshBasicMaterial({ color: new THREE.Color('#FF7593') }),
-  water: new THREE.MeshToonMaterial({ color: new THREE.Color('#86CFF5'), gradientMap: grad, transparent:true, opacity:.9 }),
-};
-const G = {
-  box: new THREE.BoxGeometry(1, 1, 1),
-  sph: new THREE.SphereGeometry(1, 18, 14),
-  cyl: new THREE.CylinderGeometry(1, 1, 1, 18),
-  cone4: new THREE.ConeGeometry(1, 1, 4),
-  cone: new THREE.ConeGeometry(1, 1, 16),
-  dome: new THREE.SphereGeometry(1, 18, 9, 0, Math.PI * 2, 0, Math.PI / 2),
-  ring: new THREE.RingGeometry(.3, .37, 32),
-};
-function mk(geo, color, sx, sy, sz, x, y, z, parent, shadow){
-  const m = new THREE.Mesh(G[geo], typeof color === 'string' ? mat(color) : color);
-  m.scale.set(sx, sy, sz); m.position.set(x, y, z);
-  m.castShadow = shadow !== false; m.receiveShadow = true;
-  if (parent) parent.add(m);
-  return m;
-}
-function group(parent, x, y, z){ const g = new THREE.Group(); g.position.set(x || 0, y || 0, z || 0); (parent || world).add(g); return g; }
-
-const hemi = new THREE.HemisphereLight(0xffffff, 0xffffff, .8);
+const hemi = new THREE.HemisphereLight(0xffffff, 0xffffff, 1);
 scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xffffff, .8);
+const sun = new THREE.DirectionalLight(0xffffff, 1);
 sun.position.set(7, 15, 9);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
 Object.assign(sun.shadow.camera, { left:-11, right:11, top:11, bottom:-11, near:1, far:45 });
 sun.shadow.bias = -.0006; sun.shadow.normalBias = .02;
 scene.add(sun); scene.add(sun.target);
-
 const THEME = {
-  day:{ sky:'#F2F8FF', gnd:'#FFE7CF', hemiI:.6, sun:'#FFF4E0', sunI:.6, grass:'#9BDE92', grass2:'#91D688', park:'#88D382', park2:'#80CC7A',
-    road:'#F1DDB8', road2:'#E8CFA4', stripe:'#FFFFFF', plaza:'#F9DECE', plaza2:'#F4D2BE', water:'#86CFF5', bank:'#B4E4A3', dirt:'#D29A70', lip:'#84CE7C',
-    win:'#BFE3FF', winE:'#000000', lampE:'#000000', night:false },
-  night:{ sky:'#8E99E0', gnd:'#34294D', hemiI:.62, sun:'#B4C1FF', sunI:.36, grass:'#5B9477', grass2:'#578F72', park:'#548F70', park2:'#50896B',
-    road:'#8A80A3', road2:'#83799C', stripe:'#B2AAC9', plaza:'#8E7890', plaza2:'#86718A', water:'#4A7FBA', bank:'#5E9276', dirt:'#7B5A6D', lip:'#4E8268',
-    win:'#FFE08A', winE:'#FFB13B', lampE:'#FFE08A', night:true },
+  day:   { sky:'#FFFFFF', gnd:'#C7D2E0', hemiI:.55, sun:'#FFF3E0', sunI:.6, night:false },
+  night: { sky:'#7D8BD9', gnd:'#2A2246', hemiI:.32, sun:'#AEBBFF', sunI:.24, night:true },
 };
 let P = THEME.day, themeKey = '';
 
-/* ground: one canvas texture on a rounded island */
-const TILE_PX = 40;
-const gCanvas = document.createElement('canvas');
-gCanvas.width = 12 * TILE_PX; gCanvas.height = 14 * TILE_PX;
-const gTex = new THREE.CanvasTexture(gCanvas);
-gTex.repeat.set(1 / 12, -1 / 14); gTex.offset.set(0, 12 / 14);
-gTex.anisotropy = 4;
-function paintGround(){
-  const g = gCanvas.getContext('2d'), S = TILE_PX;
-  for (let y = GY0; y <= GY1; y++) for (let x = 0; x <= GX1; x++) {
-    const t = T(x, y), px = x * S, py = (y - GY0) * S;
-    let f = P.grass;
-    if (t === 'grass') f = ((x * 7 + y * 13) % 3) ? P.grass : P.grass2;
-    else if (t === 'park') f = (x + y) % 2 ? P.park2 : P.park;
-    else if (t === 'road') f = P.road;
-    else if (t === 'plaza' || t === 'cafe' || t === 'hall') f = (x + y) % 2 ? P.plaza2 : P.plaza;
-    else if (t === 'water') f = P.water;
-    else if (t === 'bank') f = P.bank;
-    g.fillStyle = f; g.fillRect(px, py, S + 1, S + 1);
-    if (t === 'grass' || t === 'park' || t === 'bank') {
-      g.fillStyle = mix(f, '#FFFFFF', .25);
-      for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(px + sr(x * 31 + y, i) * S, py + sr(y * 17 + x, i + 5) * S, 1.6, 0, Math.PI * 2); g.fill(); }
-    }
-    if (t === 'road') {
-      const vx = (x === 4 || x === 7), hy = (y === 4 || y === 7);
-      g.fillStyle = P.road2;
-      for (let i = 0; i < 4; i++) { g.beginPath(); g.arc(px + sr(x + 3, i + y) * S, py + sr(y + 9, i + x) * S, 2.2, 0, Math.PI * 2); g.fill(); }
-      g.strokeStyle = P.stripe; g.lineWidth = 3; g.lineCap = 'round';
-      if (vx && !hy) { g.beginPath(); g.moveTo(px + S / 2, py + S * .28); g.lineTo(px + S / 2, py + S * .72); g.stroke(); }
-      if (hy && !vx) { g.beginPath(); g.moveTo(px + S * .28, py + S / 2); g.lineTo(px + S * .72, py + S / 2); g.stroke(); }
-    }
+/* ---------- loading ---------- */
+const lib = {};
+const lambert = new Map();
+function toLambert(m){
+  if (Array.isArray(m)) return m.map(toLambert);
+  let l = lambert.get(m.uuid);
+  if (!l) {
+    l = new THREE.MeshLambertMaterial({ color: m.color ? m.color.clone() : new THREE.Color(0xffffff), map: m.map || null,
+      transparent: m.transparent, opacity: m.opacity, side: m.side, alphaTest: m.alphaTest || 0 });
+    if (!m.map) l.color.convertSRGBToLinear();
+    l.skinning = !!m.skinning;
+    lambert.set(m.uuid, l);
   }
-  gTex.needsUpdate = true;
+  return l;
 }
-function roundedRect(x, y, w, h, r){
-  const s = new THREE.Shape();
-  s.moveTo(x + r, y); s.lineTo(x + w - r, y); s.quadraticCurveTo(x + w, y, x + w, y + r);
-  s.lineTo(x + w, y + h - r); s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  s.lineTo(x + r, y + h); s.quadraticCurveTo(x, y + h, x, y + h - r);
-  s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y);
-  return s;
+function prep(key, gltf){
+  const root = gltf.scene;
+  root.traverse(n => { if (n.isMesh) { n.material = toLambert(n.material); n.castShadow = true; n.receiveShadow = true; } });
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
+  lib[key] = { scene: root, clips: gltf.animations, box, size, skinned: gltf.animations.length > 0 && !!root.getObjectByProperty('type', 'SkinnedMesh') };
 }
-const groundMat = new THREE.MeshToonMaterial({ map: gTex, gradientMap: grad });
-const dirtMat = new THREE.MeshToonMaterial({ color: new THREE.Color('#D8A884'), gradientMap: grad });
-const lipMat = new THREE.MeshToonMaterial({ color: new THREE.Color('#8CD585'), gradientMap: grad });
-const islandGeo = new THREE.ExtrudeGeometry(roundedRect(0, -2, 12, 14, .7), { depth: 1.2, bevelEnabled: false, curveSegments: 8 });
-islandGeo.rotateX(Math.PI / 2);
-const island = new THREE.Mesh(islandGeo, [groundMat, dirtMat]);
-island.receiveShadow = true;
-world.add(island);
-const lipGeo = new THREE.ExtrudeGeometry(roundedRect(-.05, -2.05, 12.1, 14.1, .74), { depth: .2, bevelEnabled: false, curveSegments: 8 });
-lipGeo.rotateX(Math.PI / 2);
-const lip = new THREE.Mesh(lipGeo, lipMat);
-lip.position.y = -.02;
-world.add(lip);
+// models.json (every .glb as base64 in one file) is used where plain .glb files
+// cannot be served; otherwise each .glb is loaded as it is.
+function b64ToBuffer(s){ const bin = atob(s), out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out.buffer; }
+async function loadAll(onStep){
+  const loader = new THREE.GLTFLoader();
+  let bundle = null, done = 0;
+  try { const r = await fetch(ASSET + 'models.json'); if (r.ok) bundle = await r.json(); } catch (e) { bundle = null; }
+  await Promise.all(MODELS.map(key => new Promise((res, rej) => {
+    const ok = g => { prep(key.split('/')[1], g); onStep(++done, MODELS.length); res(); };
+    if (bundle && bundle[key]) loader.parse(b64ToBuffer(bundle[key]), ASSET + key.split('/')[0] + '/', ok, rej);
+    else loader.load(ASSET + key + '.glb', ok, undefined, rej);
+  })));
+  bundle = null;
+}
+const texLoader = new THREE.TextureLoader();
+function loadTex(path){
+  return new Promise(res => texLoader.load(ASSET + path, t => { t.encoding = THREE.sRGBEncoding; t.flipY = false; res(t); }, undefined, () => res(null)));
+}
+const variations = [];
 
-/* river, waterfall, ducks */
-const river = mk('box', M.water, 12, .04, .92, 6, .02, -.5, world, false);
-river.receiveShadow = true;
-mk('box', M.water, .06, 1.15, .9, 12.03, -.55, -.5, world, false);
-const sparkles = [];
-for (let i = 0; i < 7; i++) sparkles.push(mk('box', '#FFFFFF', .22, .01, .03, rnd(0, 12), .045, rnd(-.85, -.15), world, false));
-const ducks = [];
-function makeDuck(x, z){
-  const d = group(world, x, .05, z);
-  mk('sph', '#FFD84D', .14, .1, .18, 0, .06, 0, d);
-  mk('sph', '#FFD84D', .08, .08, .08, 0, .17, .1, d);
-  mk('cone', '#FF9A3C', .03, .07, .03, 0, .16, .19, d).rotation.x = Math.PI / 2;
-  mk('sph', '#2A2B45', .013, .013, .013, .045, .19, .15, d, false);
-  mk('sph', '#2A2B45', .013, .013, .013, -.045, .19, .15, d, false);
-  d.rotation.y = Math.PI / 2;
-  ducks.push({ g:d, speed:rnd(.18, .3), ph:Math.random() * 6 });
-}
-makeDuck(2.5, -.55); makeDuck(8.2, -.4);
-
-/* scenery */
-function tree(x, z, s){
-  const g = group(world, x, 0, z); g.scale.setScalar(s || 1);
-  mk('cyl', '#B07A52', .06, .34, .06, 0, .17, 0, g);
-  mk('sph', '#6CCB7D', .27, .25, .27, 0, .52, 0, g);
-  mk('sph', '#86D98F', .19, .18, .19, -.15, .44, .09, g);
-  mk('sph', '#5DBB72', .17, .16, .17, .16, .46, -.05, g);
+/* ---------- placing ready-made models ---------- */
+const tmpM = new THREE.Matrix4(), tmpM2 = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3();
+function fitScale(key, target){ const s = lib[key].size; return target / Math.max(s.x, s.z); }
+function scaleOf(key, o){ return o.s != null ? o.s : o.h != null ? o.h / lib[key].size.y : fitScale(key, o.fit || .9); }
+function place(key, x, z, opt){
+  const o = opt || {}, L = lib[key];
+  const g = new THREE.Group();
+  g.position.set(x, o.y || 0, z);
+  g.rotation.y = o.ry || 0;
+  const inner = L.skinned ? THREE.SkeletonUtils.clone(L.scene) : L.scene.clone(true);
+  const s = scaleOf(key, o);
+  inner.scale.setScalar(s);
+  const c = L.box.getCenter(new THREE.Vector3());
+  inner.position.set(-c.x * s, o.keepY ? 0 : -L.box.min.y * s, -c.z * s);
+  g.add(inner);
+  (o.parent || world).add(g);
+  g.userData.s = s;
   return g;
 }
-for (const [x, y] of TREES) tree(x + .5, y + .5);
-for (const [x, y, s] of [[2.5, -1.5, .75], [8.5, -1.55, .7], [10.9, -1.5, .8], [5.6, -1.6, .6]]) tree(x, y, s);
-const lampHeads = [], glows = [];
-const glowTex = (() => {
-  const c = document.createElement('canvas'); c.width = c.height = 64;
-  const g = c.getContext('2d'), r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  r.addColorStop(0, 'rgba(255,220,140,.6)'); r.addColorStop(1, 'rgba(255,220,140,0)');
-  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
-  return new THREE.CanvasTexture(c);
-})();
-const glowMat = new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
-for (const [x, y] of LAMPS) {
-  mk('cyl', '#7B7699', .025, .62, .025, x, .31, y, world);
-  lampHeads.push(mk('sph', M.lamp, .07, .07, .07, x, .66, y, world, false));
-  const s = new THREE.Sprite(glowMat); s.position.set(x, .66, y); s.scale.set(.8, .8, 1); s.visible = false; world.add(s); glows.push(s);
+function instanced(key, items, opt){
+  const o = opt || {}, L = lib[key];
+  if (!items.length) return;
+  L.scene.traverse(n => {
+    if (!n.isMesh) return;
+    const im = new THREE.InstancedMesh(n.geometry, n.material, items.length);
+    items.forEach((it, i) => {
+      const s = scaleOf(key, it);
+      const y = (it.y || 0) - (o.keepY ? 0 : L.box.min.y * s);
+      tmpM.compose(tmpP.set(it.x, y, it.z), tmpQ.setFromEuler(tmpE.set(0, it.ry || 0, 0)), tmpS.set(s, s, s));
+      im.setMatrixAt(i, tmpM2.multiplyMatrices(tmpM, n.matrixWorld));
+    });
+    im.castShadow = o.shadow !== false; im.receiveShadow = true; im.frustumCulled = false;
+    world.add(im);
+  });
 }
-for (const [x, y] of BENCHES) {
-  const g = group(world, x, 0, y);
-  mk('box', '#D69C6B', .56, .05, .16, 0, .16, .02, g);
-  mk('box', '#C98A5A', .56, .14, .04, 0, .26, -.07, g);
-  for (const dx of [-.22, .22]) mk('box', '#8C6A55', .04, .14, .12, dx, .07, .02, g);
-}
-const fountainDrops = [];
-(() => {
-  const g = group(world, 9.5, 0, 9.5);
-  mk('cyl', '#F1E6DA', .42, .16, .42, 0, .08, 0, g);
-  mk('cyl', M.water, .36, .02, .36, 0, .165, 0, g, false);
-  mk('cyl', '#EADBCB', .06, .42, .06, 0, .3, 0, g);
-  mk('cyl', '#F1E6DA', .16, .05, .16, 0, .5, 0, g);
-  for (let i = 0; i < 10; i++) fountainDrops.push({ m: mk('sph', '#CFEFFF', .03, .03, .03, 0, .5, 0, g, false), a: i / 10 * Math.PI * 2, ph: i / 10 });
-})();
-let hallFlag;
-(() => {
-  const g = group(world, 6, 0, 6);
-  mk('box', '#EFE2D4', 1.9, .12, 1.9, 0, .06, 0, g);
-  mk('box', '#FFF5E8', 1.7, .78, 1.7, 0, .51, 0, g);
-  for (const x of [-.62, -.3, .3, .62]) mk('cyl', '#FFFFFF', .07, .7, .07, x, .47, .9, g);
-  mk('box', '#A8714F', .34, .5, .04, 0, .37, .86, g);
-  for (const z of [-.45, 0, .45]) { mk('box', M.win, .04, .22, .2, .86, .6, z, g, false); mk('box', M.win, .04, .22, .2, -.86, .6, z, g, false); }
-  mk('box', '#FF7593', 1.92, .12, 1.92, 0, .96, 0, g);
-  mk('dome', '#FFD36E', .56, .5, .56, 0, 1.02, 0, g);
-  mk('sph', '#FFE9A8', .1, .07, .1, -.2, 1.34, .2, g, false);
-  mk('cyl', '#6E6A8F', .02, .5, .02, 0, 1.75, 0, g);
-  hallFlag = mk('box', '#FF6F8B', .3, .18, .02, .15, 1.9, 0, g);
-})();
-(() => {
-  const g = group(world, 5.5, 0, 10.5);
-  mk('box', '#FFE8CC', .74, .56, .74, 0, .28, 0, g);
-  mk('box', '#C98B6B', .82, .07, .82, 0, .59, 0, g);
-  mk('box', M.win, .02, .2, .4, .375, .3, 0, g, false);
-  mk('box', '#A8714F', .2, .3, .02, 0, .15, .375, g);
-  for (let i = 0; i < 6; i++) {
-    const s = mk('box', i % 2 ? '#FFFFFF' : '#FF7593', .28, .02, .12, .5, .47, -.3 + i * .12, g);
-    s.rotation.z = -.45;
+
+/* ---------- the island, all from the nature kit ---------- */
+function buildIsland(){
+  const tilesBy = { ground_grass:[], ground_pathStraight:[], ground_pathCross:[], ground_pathTile:[], ground_riverStraight:[] };
+  for (let y = GY0; y <= GY1; y++) for (let x = 0; x <= GX1; x++) {
+    const t = T(x, y), it = { x: x + .5, z: y + .5, y: .05, s: 1 };
+    if (t === 'road') {
+      const vx = x === 4 || x === 7, hy = y === 4 || y === 7;
+      if (vx && hy) tilesBy.ground_pathCross.push(it);
+      else { it.ry = vx ? 0 : Math.PI / 2; tilesBy.ground_pathStraight.push(it); }
+    } else if (t === 'water') { it.ry = Math.PI / 2; tilesBy.ground_riverStraight.push(it); }
+    else if (t === 'plaza' || t === 'hall' || t === 'cafe') tilesBy.ground_pathTile.push(it);
+    else tilesBy.ground_grass.push(it);
   }
-  for (const [x, z] of [[1.28, 0], [1.28, .95], [.32, 1.05]]) {
-    const t = group(g, x, 0, z);
-    mk('cyl', '#8C6A55', .02, .26, .02, 0, .13, 0, t);
-    mk('cyl', '#FFFFFF', .16, .02, .16, 0, .27, 0, t);
-    mk('cyl', '#8C6A55', .012, .5, .012, 0, .45, 0, t, false);
-    mk('cone', pick(['#FFB3C4', '#BDE6FF', '#FFE08A']), .26, .12, .26, 0, .72, 0, t);
-  }
-})();
-const flowerCount = 46;
-const flowers = new THREE.InstancedMesh(G.sph, new THREE.MeshToonMaterial({ gradientMap: grad }), flowerCount);
-(() => {
+  for (const k in tilesBy) instanced(k, tilesBy[k], { keepY: true, shadow: false });
+  const edge = [];
+  for (let y = GY0; y <= GY1; y++) for (let x = 0; x <= GX1; x++)
+    if (x === 0 || x === GX1 || y === GY0 || y === GY1) edge.push({ x: x + .5, z: y + .5, y: -1, s: 1 });
+  instanced('cliff_block_rock', edge, { keepY: true, shadow: false });
+
+  instanced('tree_default', TREES.filter((_, i) => i % 2 === 0).map(([x, y]) => ({ x: x + .5, z: y + .5, h: .95, ry: x })));
+  instanced('tree_oak', TREES.filter((_, i) => i % 2 === 1).map(([x, y]) => ({ x: x + .5, z: y + .5, h: .9, ry: y })));
+  instanced('tree_oak', [[2.5, -1.5], [8.5, -1.55], [10.9, -1.45], [5.6, -1.6]].map(([x, z]) => ({ x, z, h: .7, ry: x })));
+  instanced('lantern', LAMPS.map(([x, z]) => ({ x, z, h: .62 })));
+  instanced('stall-bench', BENCHES.map(([x, z]) => ({ x, z, s: .62, ry: Math.PI / 2 })));
+  instanced('lily_large', [[1.6, -.6], [5.3, -.35], [9.4, -.7], [11.2, -.4]].map(([x, z]) => ({ x, z, y: .02, s: 1, ry: x })), { keepY: true, shadow: false });
   const spots = Object.keys(tiles).filter(k => (tiles[k] === 'grass' || tiles[k] === 'park') && !PLOT_SET.has(k) && !STATIC_BLOCK.has(k));
-  const m = new THREE.Matrix4(), col = new THREE.Color();
-  const cols = ['#FF8FAB', '#FFD36E', '#FFFFFF', '#B9A4FF', '#FFA877'];
-  for (let i = 0; i < flowerCount; i++) {
+  const flowerKeys = ['flower_redA', 'flower_yellowA', 'flower_purpleA'];
+  const flowersBy = { flower_redA: [], flower_yellowA: [], flower_purpleA: [] };
+  for (let i = 0; i < 42; i++) {
     const [x, y] = spots[Math.floor(sr(i, 3) * spots.length)].split(',').map(Number);
-    m.makeScale(.045, .045, .045); m.setPosition(x + .12 + sr(i, 7) * .76, .05, y + .12 + sr(i, 9) * .76);
-    flowers.setMatrixAt(i, m); flowers.setColorAt(i, col.set(cols[i % cols.length]));
+    flowersBy[flowerKeys[i % 3]].push({ x: x + .15 + sr(i, 7) * .7, z: y + .15 + sr(i, 9) * .7, s: .55, ry: i });
   }
-  flowers.instanceMatrix.needsUpdate = true;
-  if (flowers.instanceColor) flowers.instanceColor.needsUpdate = true;
-  world.add(flowers);
-})();
-const clouds = [];
-for (let i = 0; i < 4; i++) {
-  const g = group(scene, rnd(-10, 10), rnd(3.4, 4.4), rnd(-8, 6));
-  const n = 3 + (i % 3);
-  for (let k = 0; k < n; k++) mk('sph', '#FFFFFF', rnd(.35, .6), rnd(.28, .4), rnd(.35, .5), k * .45 - n * .2, rnd(-.05, .1), rnd(-.15, .15), g, false);
-  clouds.push({ g, v: rnd(.12, .22) });
+  for (const k in flowersBy) instanced(k, flowersBy[k], { shadow: false });
+  instanced('plant_bushLarge', [[4.9, 7.25], [7.1, 7.25], [8.25, 8.2], [11.7, 10.4]].map(([x, z]) => ({ x, z, s: .75 })));
+
+  place('building-j', 6, 6, { fit: 1.85 });
+  place('flag', 6.1, 6.25, { y: lib['building-j'].size.y * fitScale('building-j', 1.85), s: .7 });
+  place('fountain-round', 9.5, 9.5, { fit: .98 });
+  place('stall-red', 5.5, 10.5, { h: .72, ry: -Math.PI / 2 });
+  place('detail-parasol-a', 6.78, 10.5, { h: .5 });
+  place('detail-parasol-b', 6.78, 11.45, { h: .5 });
+  place('detail-parasol-a', 5.82, 11.55, { h: .5 });
+  place('signpost-single', 1.2, -1.45, { h: .6, ry: .3 });
 }
-const stars = (() => {
-  const pos = [];
-  for (let i = 0; i < 160; i++) { const a = Math.random() * Math.PI * 2, e = rnd(.25, 1.2), r = 60; pos.push(Math.cos(a) * Math.cos(e) * r, Math.sin(e) * r, Math.sin(a) * Math.cos(e) * r); }
-  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 2, sizeAttenuation: false }));
-  pts.visible = false; scene.add(pts); return pts;
-})();
 
-/* particles: one instanced mesh */
-const partMesh = new THREE.InstancedMesh(G.box, new THREE.MeshToonMaterial({ gradientMap: grad }), MAX_PARTICLES);
-partMesh.frustumCulled = false; partMesh.castShadow = false;
-world.add(partMesh);
-const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3(), tmpC = new THREE.Color();
-const zeroM = new THREE.Matrix4().makeScale(0, 0, 0);
-
-/* people */
-const pickables = [];
-function makePerson(c){
-  const g = group(world, c.x, 0, c.y);
-  const inner = group(g);
-  const legL = group(inner, -.065, .14, 0), legR = group(inner, .065, .14, 0);
-  for (const l of [legL, legR]) { mk('cyl', '#3E3A5A', .045, .13, .045, 0, -.065, 0, l); mk('sph', '#3E3A5A', .055, .04, .07, 0, -.13, .02, l); }
-  const body = mk('sph', c.color, .16, .18, .14, 0, .27, 0, inner);
-  mk('sph', c.skin, .05, .05, .05, -.17, .27, .02, inner);
-  const armR = group(inner, .15, .34, 0);
-  mk('sph', c.skin, .05, .05, .05, 0, -.12, 0, armR);
-  const hammer = group(armR, 0, -.12, 0);
-  mk('cyl', '#B07A52', .015, .16, .015, 0, -.07, 0, hammer);
-  mk('box', '#8F96AB', .1, .05, .06, 0, -.16, 0, hammer);
-  const head = mk('sph', c.skin, .2, .19, .19, 0, .56, 0, inner);
-  for (const s of [-1, 1]) {
-    mk('sph', '#2A2B45', .026, .03, .02, s * .068, .57, .175, inner, false);
-    mk('sph', '#FF9DB0', .035, .02, .012, s * .118, .51, .15, inner, false);
+/* ---------- river life and pets: animated ready-made models ---------- */
+const mixers = [];
+function playClip(obj, key, name){
+  const clip = THREE.AnimationClip.findByName(lib[key].clips, name);
+  if (!clip) return null;
+  const mixer = new THREE.AnimationMixer(obj);
+  const action = mixer.clipAction(clip); action.play();
+  mixers.push(mixer);
+  return { mixer, action };
+}
+const chicks = [], pets = [];
+function buildLife(){
+  for (const [x, z, sp] of [[2.2, -.55, .22], [8, -.42, .3]]) {
+    const g = place('animal-chick', x, z, { s: .11, ry: Math.PI / 2, y: .01 });
+    playClip(g.children[0], 'animal-chick', 'idle');
+    chicks.push({ g, sp, ph: Math.random() * 6 });
   }
-  const hat = group(inner, 0, .6, 0);
-  mk('dome', c.hat, .21, .19, .21, 0, 0, 0, hat);
-  mk('cyl', c.hat, .235, .022, .235, 0, 0, .02, hat);
-  mk('box', c.hat, .035, .04, .33, 0, .19, 0, hat);
-  const hair = mk('dome', '#5A3E36', .2, .15, .2, 0, .6, -.01, inner);
-  const cup = mk('cyl', '#FFFFFF', .035, .06, .035, 0, -.14, .04, armR);
-  const ring = new THREE.Mesh(G.ring, M.ring); ring.rotation.x = -Math.PI / 2; ring.position.y = .012; g.add(ring);
+  for (const [key, x, z] of [['animal-cat', 10.5, 10.6], ['animal-dog', 8.6, 11.3]]) {
+    const g = place(key, x, z, { s: .13 });
+    const mixer = new THREE.AnimationMixer(g.children[0]); mixers.push(mixer);
+    pets.push({ g, key, mixer, cur: null, target: null, wait: rnd(1, 4), yaw: 0 });
+    petAnim(pets[pets.length - 1], 'idle');
+  }
+}
+function petAnim(p, name){
+  if (p.cur === name) return;
+  const clip = THREE.AnimationClip.findByName(lib[p.key].clips, name); if (!clip) return;
+  const next = p.mixer.clipAction(clip);
+  next.reset().play();
+  if (p.action) next.crossFadeFrom(p.action, .25, false);
+  p.action = next; p.cur = name;
+}
+const PARK = Object.keys(tiles).filter(k => tiles[k] === 'park' && !STATIC_BLOCK.has(k)).map(k => k.split(',').map(Number));
+function updatePets(dt){
+  for (const p of pets) {
+    const pos = p.g.position;
+    if (!p.target) {
+      p.wait -= dt;
+      if (p.wait <= 0) { const [x, y] = pick(PARK); p.target = { x: x + rnd(.2, .8), z: y + rnd(.2, .8) }; petAnim(p, 'walk'); }
+      else if (p.cur === 'walk') petAnim(p, Math.random() < .5 ? 'eat' : 'idle');
+      continue;
+    }
+    const dx = p.target.x - pos.x, dz = p.target.z - pos.z, d = Math.hypot(dx, dz), sp = .45 * dt;
+    let dy = Math.atan2(dx, dz) - p.g.rotation.y; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
+    p.g.rotation.y += dy * .15;
+    if (d < sp) { p.target = null; p.wait = rnd(2, 6); petAnim(p, Math.random() < .5 ? 'eat' : 'idle'); }
+    else { pos.x += dx / d * sp; pos.z += dz / d * sp; }
+  }
+  for (const c of chicks) { const p = c.g.position; p.x += c.sp * dt; if (p.x > 11.8) p.x = .2; p.y = .01 + Math.sin(simT * 2 + c.ph) * .01; }
+}
+
+/* ---------- people: Kenney mini characters with their own animations ---------- */
+const pickables = [];
+const ringGeo = new THREE.RingGeometry(.22, .28, 32);
+const ringMats = new Map();
+function ringMat(color){ let m = ringMats.get(color); if (!m) { m = new THREE.MeshBasicMaterial({ color: new THREE.Color(color), transparent: true, opacity: .85 }); ringMats.set(color, m); } return m; }
+const CHAR_SCALE = .6;
+function makePerson(c){
+  const key = pick(VARIANTS[c.role] || VARIANTS.other);
+  const g = place(key, c.x, c.y, { s: CHAR_SCALE, keepY: true });
+  const body = g.children[0];
+  const mixer = new THREE.AnimationMixer(body); mixers.push(mixer);
+  const hand = body.getObjectByName('arm-right');
+  let hammer = null;
+  if (hand) { hammer = lib['tool-hammer'].scene.clone(true); hammer.scale.setScalar(1.25); hammer.position.set(-.02, -.17, .06); hammer.rotation.set(Math.PI / 2, 0, 0); hand.add(hammer); }
+  const ring = new THREE.Mesh(ringGeo, ringMat(c.color)); ring.rotation.x = -Math.PI / 2; ring.position.y = .015; g.add(ring);
+  const sel = new THREE.Mesh(ringGeo, ringMat('#FF7593')); sel.rotation.x = -Math.PI / 2; sel.position.y = .02; sel.scale.setScalar(1.45); g.add(sel);
   g.userData.pick = { t:'c', id:c.id };
   pickables.push(g);
-  c.v = { g, inner, legL, legR, body, armR, hammer, head, hat, hair, cup, ring, yaw: 0, pop: 0 };
+  c.v = { g, key, mixer, hammer, sel, yaw: 0, cur: null, action: null };
+}
+function anim(v, name, once){
+  if (v.cur === name) return;
+  const clip = THREE.AnimationClip.findByName(lib[v.key].clips, name); if (!clip) return;
+  const next = v.mixer.clipAction(clip);
+  next.reset(); next.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity); next.clampWhenFinished = !!once;
+  next.play();
+  if (v.action) next.crossFadeFrom(v.action, .2, false);
+  v.action = next; v.cur = name;
 }
 let govV;
-(() => {
-  const g = group(world, gov.x, 0, gov.y); g.scale.setScalar(1.12);
-  const inner = group(g);
-  mk('cone', '#FF6F8B', .27, .5, .27, 0, .25, 0, inner);
-  mk('cyl', '#FFD36E', .17, .03, .17, 0, .33, 0, inner);
-  mk('sph', '#FFE0C7', .2, .19, .19, 0, .62, 0, inner);
-  for (const s of [-1, 1]) { mk('sph', '#2A2B45', .026, .03, .02, s * .068, .63, .175, inner, false); mk('sph', '#FF9DB0', .035, .02, .012, s * .118, .57, .15, inner, false); }
-  mk('cyl', '#FFD36E', .15, .07, .15, 0, .81, 0, inner);
-  for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; mk('cone', '#FFD36E', .035, .09, .035, Math.cos(a) * .12, .88, Math.sin(a) * .12, inner); }
-  const arm = group(inner, .2, .45, 0);
-  mk('sph', '#FFE0C7', .05, .05, .05, 0, -.1, .04, arm);
-  mk('cyl', '#FFF3D6', .03, .2, .03, 0, -.12, .1, arm).rotation.z = Math.PI / 2;
-  const ring = new THREE.Mesh(G.ring, M.ring); ring.rotation.x = -Math.PI / 2; ring.position.y = .012; g.add(ring);
-  g.rotation.y = Math.atan2(0, 1);
+function makeGovernor(){
+  const g = place('character-male-b', gov.x, gov.y, { s: CHAR_SCALE * 1.15, keepY: true });
+  const mixer = new THREE.AnimationMixer(g.children[0]); mixers.push(mixer);
+  const sel = new THREE.Mesh(ringGeo, ringMat('#FF7593')); sel.rotation.x = -Math.PI / 2; sel.position.y = .02; sel.scale.setScalar(1.6); g.add(sel);
+  const ring = new THREE.Mesh(ringGeo, ringMat('#FFD36E')); ring.rotation.x = -Math.PI / 2; ring.position.y = .015; ring.scale.setScalar(1.15); g.add(ring);
   g.userData.pick = { t:'gov' };
   pickables.push(g);
-  govV = { g, inner, arm, ring };
-})();
+  govV = { g, key:'character-male-b', mixer, sel, cur:null, action:null };
+  anim(govV, 'idle');
+}
 
-/* buildings */
+/* ---------- buildings: ready-made models, revealed floor by floor ---------- */
+function frontYaw(b){
+  if (b.kind === 'bridge') return Math.PI / 2;
+  const [fx, fy] = frontOf(b.gx, b.gy);
+  return Math.atan2(fx - b.gx, fy - b.gy);
+}
 function makeBuilding(b){
   const x = b.gx + .5, z = b.kind === 'bridge' ? -.5 : b.gy + .5;
-  const g = group(world, x, 0, z);
-  const v = { g, kind: b.kind };
-  const wall = mix(b.color, '#FFFFFF', .62), roof = b.color, wood = '#D9A066';
-  v.stakes = group(g);
-  for (const [sx, sz] of [[-.34, -.34], [.34, -.34], [.34, .34], [-.34, .34]]) mk('box', '#A87B55', .035, .16, .035, sx, .08, sz, v.stakes);
-  mk('cyl', '#A87B55', .012, .3, .012, .34, .15, .34, v.stakes);
-  mk('cone', b.color, .07, .14, .07, .38, .26, .34, v.stakes).rotation.z = -Math.PI / 2;
-  if (b.kind === 'house') {
-    v.walls = mk('box', wall, .66, 1, .66, 0, .5, 0, g);
-    v.wins = [];
-    for (let f = 0; f < 3; f++) for (const [wx, wz, ry] of [[0, .335, 0], [.335, 0, Math.PI / 2], [0, -.335, 0], [-.335, 0, Math.PI / 2]]) {
-      if (f === 0 && wz > .3) continue;
-      const w = mk('box', M.win, .15, .15, .02, wx, f * .31 + .18, wz, g, false); w.rotation.y = ry; w.userData.floor = f; v.wins.push(w);
-    }
-    v.door = mk('box', '#A8714F', .17, .25, .02, -.1, .125, .335, g, false);
-    v.roof = group(g, 0, .93, 0);
-    const r = mk('cone4', roof, .56, .42, .56, 0, .21, 0, v.roof); r.rotation.y = Math.PI / 4;
-    mk('box', mix(roof, '#FFFFFF', .3), .09, .18, .09, .16, .24, -.1, v.roof);
-  } else if (b.kind === 'tower') {
-    v.walls = mk('cyl', mix(b.color, '#FFFFFF', .55), .3, 1, .3, 0, .5, 0, g);
-    v.bands = [];
-    for (let f = 0; f < 7; f++) { const m = mk('cyl', M.win, .305, .07, .305, 0, f * .3 + .18, 0, g, false); m.userData.floor = f; v.bands.push(m); }
-    v.roof = group(g, 0, 2.1, 0);
-    mk('dome', b.color, .31, .28, .31, 0, 0, 0, v.roof);
-    mk('cyl', '#6E6A8F', .015, .5, .015, 0, .45, 0, v.roof);
-    v.beacon = mk('sph', '#FF5A6E', .05, .05, .05, 0, .72, 0, v.roof, false);
-    mk('box', '#43C58B', .2, .12, .015, .11, .6, 0, v.roof);
-    v.crane = group(g, .42, 0, -.42);
-    v.mast = mk('box', '#FFC23D', .06, 1, .06, 0, .5, 0, v.crane);
-    v.jib = group(v.crane, 0, 1, 0);
-    mk('box', '#FFC23D', 1.1, .05, .05, -.35, 0, 0, v.jib);
-    mk('box', '#8F96AB', .08, .08, .08, -.75, -.25, 0, v.jib);
-    mk('cyl', '#555A70', .006, .22, .006, -.75, -.11, 0, v.jib, false);
-  } else if (b.kind === 'garden') {
-    v.soil = mk('box', '#B98B65', .86, .04, .86, 0, .02, 0, g, false);
-    v.lawn = mk('box', '#7FD27B', .84, .05, .84, 0, .03, 0, g, false);
-    v.bushes = [[-.3, -.3], [.3, -.3], [-.3, .3], [.3, .3]].map(([bx, bz]) => mk('sph', '#5DBB72', .13, .11, .13, bx, .1, bz, g));
-    v.fl = [];
-    for (let i = 0; i < 9; i++) {
-      const fx = -.2 + sr(b.seed, i) * .4, fz = -.2 + sr(b.seed, i + 20) * .45;
-      const f = group(g, fx, 0, fz);
-      mk('cyl', '#3D9A4E', .01, .12, .01, 0, .06, 0, f, false);
-      mk('sph', ['#FF8FAB', '#FFD36E', '#FFFFFF', '#B9A4FF', '#FFA877'][i % 5], .045, .04, .045, 0, .13, 0, f);
-      v.fl.push(f);
-    }
-    v.tree = tree(0, 0, 1); g.add(v.tree); v.tree.position.set(0, 0, -.12);
+  const g = new THREE.Group(); g.position.set(x, 0, z); world.add(g);
+  const v = { g, meshes: [], plane: null, h: 1 };
+  v.cones = new THREE.Group(); g.add(v.cones);
+  const cz = b.kind === 'bridge' ? [[-.38, .45], [.38, .45]] : [[-.38, -.38], [.38, -.38], [.38, .38], [-.38, .38]];
+  for (const [cx, czz] of cz) place('construction-cone', cx, czz, { s: 1.7, parent: v.cones });
+  let key;
+  if (b.kind === 'house') key = HOUSES[Math.floor(sr(b.seed, 1) * HOUSES.length)];
+  else if (b.kind === 'tower') key = TOWERS[Math.floor(sr(b.seed, 2) * TOWERS.length)];
+  else if (b.kind === 'bridge') key = 'bridge_wood';
+  if (key) {
+    const fit = b.kind === 'tower' ? .82 : b.kind === 'house' ? 1 : 1.05;
+    v.model = place(key, 0, 0, { fit, ry: frontYaw(b), parent: g, y: b.kind === 'bridge' ? -.02 : 0 });
+    v.h = lib[key].size.y * v.model.userData.s;
+    const variation = b.kind === 'house' ? variations[Math.floor(sr(b.seed, 5) * (variations.length + 1))] : null;
+    v.model.traverse(n => { if (n.isMesh) {
+      if (variation && n.material.map) n.material = variantMat(n.material, variation);
+      n.userData.base = n.material; v.meshes.push(n);
+    } });
   } else {
-    v.planks = [];
-    for (let i = 0; i < 9; i++) {
-      const t = i / 8, zz = .5 - t * 1.1, yy = .07 + Math.sin(t * Math.PI) * .2;
-      const pl = mk('box', '#D69C6B', .6, .045, .13, 0, yy, zz, g);
-      pl.rotation.x = Math.cos(t * Math.PI) * -.45;
-      v.planks.push(pl);
-    }
-    v.rails = group(g);
-    for (const sx of [-.29, .29]) for (let i = 0; i <= 4; i++) {
-      const t = i / 4, zz = .5 - t * 1.1, yy = .07 + Math.sin(t * Math.PI) * .2;
-      mk('box', '#B7835A', .03, .2, .03, sx, yy + .1, zz, v.rails);
-    }
+    v.model = new THREE.Group(); g.add(v.model);
+    place('patch-grass', 0, 0, { fit: .9, parent: v.model, keepY: true, y: -.12 });
+    v.items = [];
+    const bits = [['plant_bush', -.28, -.28, .55], ['flower_redA', -.05, .1, .6], ['flower_yellowA', .2, -.15, .6], ['plant_bush', .28, .28, .5],
+      ['flower_purpleA', .15, .25, .6], ['flower_redA', -.25, .22, .6], ['tree_oak', .05, -.2, null], ['flower_yellowA', -.3, -.02, .6]];
+    for (const [k, bx, bz, s] of bits) { const it = place(k, bx, bz, { s: s != null ? s : undefined, fit: .38, parent: v.model }); v.items.push(it); }
   }
   if (b.kind === 'house' || b.kind === 'tower') {
-    v.scaf = group(g);
-    const r = b.kind === 'tower' ? .38 : .41;
-    for (const [sx, sz] of [[-r, r], [r, r], [r, -r], [-r, -r]]) mk('box', wood, .025, 1, .025, sx, .5, sz, v.scaf, false);
-    for (let f = 1; f <= 7; f++) {
-      const bar = group(v.scaf, 0, f * .3, 0); bar.userData.floor = f;
-      mk('box', wood, r * 2, .025, .025, 0, 0, r, bar, false);
-      mk('box', wood, .025, .025, r * 2, r, 0, 0, bar, false);
-    }
+    v.scaf = new THREE.Group(); g.add(v.scaf);
+    const per = .42, n = Math.ceil(v.h / per) + 1;
+    for (let i = 0; i < n; i++) { const f = place('structure', 0, 0, { y: i * per, parent: v.scaf, s: 1 }); f.scale.set(1.9, per / .5, 1.9); f.userData.floor = i; }
+    v.planks = place('resource-planks', .55, .35, { s: .8, ry: .6, parent: g });
   }
   g.userData.pick = { t:'b', id:b.id };
   pickables.push(g);
   b.v = v;
 }
+const varCache = new Map();
+function variantMat(m, tex){
+  const k = m.uuid + tex.uuid;
+  let v = varCache.get(k);
+  if (!v) { v = m.clone(); v.map = tex; varCache.set(k, v); }
+  return v;
+}
+function setClip(b, on){
+  const v = b.v;
+  if (on && !v.plane) {
+    v.plane = b.kind === 'bridge' ? new THREE.Plane(new THREE.Vector3(0, 0, 1), 5) : new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
+    for (const n of v.meshes) { const m = n.userData.base.clone(); m.clippingPlanes = [v.plane]; m.clipShadows = true; n.material = m; }
+  } else if (!on && v.plane) {
+    for (const n of v.meshes) { n.material.dispose(); n.material = n.userData.base; }
+    v.plane = null;
+  }
+}
 function updateBuilding(b, t){
   const v = b.v, p = b.done ? 1 : b.shown, planned = !b.done && b.shown < .02;
-  v.stakes.visible = planned;
-  const k = t - b.popAt, pop = k >= 0 && k < 1 ? 1 + .16 * Math.sin(k * 10) * Math.exp(-k * 4) : 1;
+  v.cones.visible = planned;
+  v.model.visible = !planned;
+  const k = t - b.popAt, pop = k >= 0 && k < 1 ? 1 + .14 * Math.sin(k * 10) * Math.exp(-k * 4) : 1;
   v.g.scale.set(pop, pop, pop);
-  if (b.kind === 'house' || b.kind === 'tower') {
-    const full = b.kind === 'tower' ? 2.1 : .93;
-    const h = planned ? 0 : Math.max(.05, p * full);
-    v.walls.visible = !planned;
-    v.walls.scale.y = h; v.walls.position.y = h / 2;
-    const list = b.kind === 'tower' ? v.bands : v.wins;
-    for (const w of list) w.visible = !planned && h > (w.userData.floor + 1) * (b.kind === 'tower' ? .3 : .31) - .06;
-    if (v.door) v.door.visible = !planned && h > .28;
-    v.roof.visible = b.done;
-    if (b.done) v.roof.scale.setScalar(clamp((t - b.popAt) * 3, 0, 1) || 1);
+  if (b.kind === 'garden') {
+    const n = Math.round(p * v.items.length);
+    v.items.forEach((it, i) => { it.visible = i < n; });
+    return;
+  }
+  setClip(b, !b.done && !planned);
+  if (v.plane) {
+    if (b.kind === 'bridge') v.plane.constant = 5 + p * 1.1;
+    else v.plane.constant = Math.max(.04, p * v.h);
+  }
+  if (v.scaf) {
     v.scaf.visible = !b.done && !planned;
-    if (v.scaf.visible) { v.scaf.children.forEach(ch => { if (ch.userData.floor) ch.visible = ch.userData.floor * .3 <= h + .12; else { ch.scale.y = h + .15; ch.position.y = (h + .15) / 2; } }); }
-    if (v.crane) {
-      v.crane.visible = !b.done && !planned;
-      v.mast.scale.y = h + .9; v.mast.position.y = (h + .9) / 2; v.jib.position.y = h + .9;
-      if (!RM) v.jib.rotation.y = Math.sin(t * .35 + b.seed) * 1.1;
-      if (v.beacon) v.beacon.visible = !P.night || Math.sin(t * 3) > 0;
-    }
-  } else if (b.kind === 'garden') {
-    v.lawn.visible = p > .12;
-    v.bushes.forEach(m => m.scale.set(.13 * clamp(p * 2, .01, 1), .11 * clamp(p * 2, .01, 1), .13 * clamp(p * 2, .01, 1)));
-    const n = Math.round(p * 9);
-    v.fl.forEach((f, i) => { f.visible = i < n; });
-    const ts = clamp((p - .45) / .55, 0, 1);
-    v.tree.visible = ts > 0; v.tree.scale.setScalar(.35 + ts * .45);
-    v.soil.visible = true;
-  } else {
-    const n = planned ? 0 : Math.ceil(p * 9);
-    v.planks.forEach((pl, i) => { pl.visible = i < n; });
-    v.rails.visible = b.done;
+    v.planks.visible = v.scaf.visible;
+    const h = p * v.h;
+    v.scaf.children.forEach(f => { f.visible = f.userData.floor * .42 < h + .05; });
   }
 }
 
-/* overlays: crisp HTML labels that follow the 3D scene */
+/* ---------- overlays: crisp HTML labels that follow the scene ---------- */
 let W = 1, H = 1, needFrame = true;
 const tmpV = new THREE.Vector3();
-function toScreen(x, h, z){ tmpV.set(x - 6, h, z - 5).project(camera); return [(tmpV.x + 1) / 2 * W, (1 - tmpV.y) / 2 * H, tmpV.z]; }
+function toScreen(x, h, z){ tmpV.set(x - 6, h, z - 5).project(camera); return [(tmpV.x + 1) / 2 * W, (1 - tmpV.y) / 2 * H]; }
 function ovEl(cls, html){ const el = document.createElement('div'); el.className = cls; if (html) el.innerHTML = html; el.hidden = true; ovRoot.appendChild(el); return el; }
-function place(el, x, y, show){ if (!show) { if (!el.hidden) el.hidden = true; return; } if (el.hidden) el.hidden = false; el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
+function pin(el, x, y, show){ if (!show) { if (!el.hidden) el.hidden = true; return; } if (el.hidden) el.hidden = false; el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
 function setText(el, text){ if (el._t !== text) { el._t = text; el.textContent = text; } }
-const labels = [
-  { el: ovEl('lbl'), text: '市政厅', x: 6, h: 2.35, z: 6 },
-  { el: ovEl('lbl'), text: '咖啡馆', x: 5.5, h: .95, z: 10.5 },
-  { el: ovEl('lbl'), text: 'main', x: 1.2, h: .45, z: -1.5 },
-];
-labels.forEach(l => setText(l.el, l.text));
+const labels = [];
 const govBub = ovEl('bub gov'), govTag = ovEl('tagl');
 govTag.style.setProperty('--c', '#FF6F8B'); setText(govTag, '总督 · main manager');
-
 function ensureOv(c){
   if (c.o) return;
   c.o = { bub: ovEl('bub'), qm: ovEl('qm', '<span>?</span>'), zz: ovEl('zz', '<span>z</span><span>z</span><span>Z</span>'), tag: ovEl('tagl') };
@@ -1112,8 +1041,8 @@ function ensureOv(c){
 }
 function dropOv(c){ if (!c.o) return; for (const k in c.o) c.o[k].remove(); c.o = null; }
 
-function updatePerson(c, t){
-  const v = c.v, g = v.g, inner = v.inner;
+function updatePerson(c, t, dt){
+  const v = c.v, g = v.g;
   g.position.set(c.x, 0, c.y);
   const walking = c.path.length > 0 && c.state !== 'spawn';
   const resting = c.state === 'resting' && c.rest;
@@ -1126,84 +1055,71 @@ function updatePerson(c, t){
   else if (pose === 'bench') yaw = 0;
   let d = yaw - v.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
   v.yaw += d * .25;
-  g.rotation.set(0, v.yaw, 0);
+  g.rotation.y = v.yaw;
   const grow = c.state === 'spawn' || c.state === 'leaving' ? clamp(c.alpha, 0, 1) : 1;
   const s = grow < 1 ? grow * (1 + .25 * Math.sin(grow * Math.PI)) : 1;
-  g.scale.set(Math.max(.001, s), Math.max(.001, s), Math.max(.001, s));
-  const ph = c.walkT * 11;
-  let lift = 0, legRot = 0, squash = 1;
-  if (walking && !RM) { lift = Math.abs(Math.sin(ph)) * .06; legRot = Math.sin(ph) * .7; squash = 1 - Math.abs(Math.cos(ph)) * .06; }
-  inner.rotation.set(0, 0, 0); inner.position.set(0, lift, 0);
-  v.body.scale.set(.16, .18 * squash, .14);
-  v.legL.rotation.x = legRot; v.legR.rotation.x = -legRot;
-  v.hammer.visible = c.state === 'building';
-  v.cup.visible = pose === 'cafe';
-  if (c.state === 'building') {
-    const sw = RM ? 0 : Math.sin(t * 12 + c.id);
-    v.armR.rotation.set(-1.6 + sw * .9, 0, 0);
-    inner.position.y = Math.max(0, -sw) * .025;
-  } else if (c.state === 'asking' || c.state === 'to_hall') {
-    v.armR.rotation.set(-2.7 + (RM ? 0 : Math.sin(t * 9 + c.id) * .25), 0, 0);
-  } else if (pose === 'cafe') v.armR.rotation.set(-1.1, 0, 0);
-  else v.armR.rotation.set(walking && !RM ? -Math.sin(ph) * .5 : 0, 0, 0);
-  if (pose === 'bench' || pose === 'sit' || pose === 'cafe') {
-    inner.position.y = pose === 'bench' ? .06 : .02;
-    v.legL.rotation.x = v.legR.rotation.x = -1.45;
-  } else if (pose === 'lie') {
-    inner.rotation.set(0, 0, Math.PI / 2 * .96);
-    inner.position.set(-.08, .17, 0);
-  }
-  const bare = resting || c.state === 'to_rest' || c.state === 'leaving' || c.state === 'finishing';
-  v.hat.visible = !bare; v.hair.visible = bare;
-  v.ring.visible = !!(selected && selected.t === 'c' && selected.id === c.id);
+  g.scale.setScalar(Math.max(.001, s));
+  g.position.y = pose === 'bench' ? .1 : 0;
+  let a = 'idle', once = false;
+  if (walking) a = c.state === 'to_hall' ? 'sprint' : 'walk';
+  else if (c.state === 'building') a = 'interact-right';
+  else if (c.state === 'heard') { a = 'emote-yes'; once = true; }
+  else if (c.state === 'finishing') { a = 'jump'; }
+  else if (resting) a = 'sit';
+  anim(v, a, once);
+  if (v.hammer) v.hammer.visible = c.state === 'building';
+  v.sel.visible = !!(selected && selected.t === 'c' && selected.id === c.id);
 
   ensureOv(c);
-  const top = pose === 'lie' ? .55 : 1.0;
-  const [sx, sy] = toScreen(c.x, top, c.y);
+  const [sx, sy] = toScreen(c.x, resting ? .58 : .72, c.y);
   const talk = c.bubble && simT < c.bubble.until;
-  place(c.o.qm, sx, sy, c.state === 'to_hall' && grow > .5);
-  place(c.o.zz, sx + 12, sy, pose === 'lie');
+  pin(c.o.qm, sx, sy, c.state === 'to_hall' && grow > .5);
+  pin(c.o.zz, sx + 14, sy, resting && pose === 'lie');
   const showBub = c.state === 'asking' || (talk && c.state !== 'to_hall');
   if (showBub) {
-    const text = c.state === 'asking' ? c.question : c.bubble.text;
-    setText(c.o.bub, text);
+    setText(c.o.bub, c.state === 'asking' ? c.question : c.bubble.text);
     c.o.bub.className = 'bub' + (c.state === 'asking' ? ' ask' : c.state === 'finishing' ? ' done' : '');
   }
-  place(c.o.bub, sx, sy, showBub);
+  pin(c.o.bub, sx, sy, showBub);
   const [tx, ty] = toScreen(c.x, 0, c.y);
   setText(c.o.tag, `${c.label} · ${c.task}`);
-  place(c.o.tag, tx, ty + 34, v.ring.visible && c.state !== 'asking');
+  pin(c.o.tag, tx, ty + 34, v.sel.visible && c.state !== 'asking');
 }
-function updateGovernor(t){
+function updateGovernor(){
   const talking = gov.bubble && simT < gov.bubble.until;
-  govV.inner.rotation.z = RM ? 0 : Math.sin(t * 1.4) * .04;
-  govV.inner.position.y = talking && !RM ? Math.abs(Math.sin(t * 8)) * .03 : 0;
-  govV.arm.rotation.x = talking ? -2.2 + (RM ? 0 : Math.sin(t * 8) * .3) : 0;
-  govV.ring.visible = !!(selected && selected.t === 'gov');
-  const [sx, sy] = toScreen(gov.x, 1.25, gov.y);
+  anim(govV, talking ? 'interact-left' : 'idle');
+  govV.sel.visible = !!(selected && selected.t === 'gov');
+  const [sx, sy] = toScreen(gov.x, .9, gov.y);
   if (talking) setText(govBub, gov.bubble.text);
-  place(govBub, sx, sy, talking);
+  pin(govBub, sx, sy, talking);
   const [tx, ty] = toScreen(gov.x, 0, gov.y);
-  place(govTag, tx, ty + 38, govV.ring.visible);
+  pin(govTag, tx, ty + 38, govV.sel.visible);
 }
 
+const glowTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, 'rgba(255,214,130,.65)'); r.addColorStop(1, 'rgba(255,214,130,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+})();
+const glows = [];
+function buildGlows(){
+  const m = new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  for (const [x, z] of LAMPS) { const s = new THREE.Sprite(m); s.position.set(x, .62, z); s.scale.set(.9, .9, 1); s.visible = false; world.add(s); glows.push(s); }
+}
 function applyTheme(){
   const key = isDark() ? 'night' : 'day';
   if (key === themeKey) return;
   themeKey = key; P = THEME[key];
   hemi.color.set(P.sky); hemi.groundColor.set(P.gnd); hemi.intensity = P.hemiI;
   sun.color.set(P.sun); sun.intensity = P.sunI;
-  dirtMat.color.set(P.dirt); lipMat.color.set(P.lip);
-  M.water.color.set(P.water);
-  M.win.color.set(P.win); M.win.emissive.set(P.winE);
-  M.lamp.emissive.set(P.lampE);
-  stars.visible = P.night; glows.forEach(s => { s.visible = P.night; });
-  paintGround();
+  glows.forEach(s => { s.visible = P.night; });
 }
 function updateCamera(){
   const aspect = W / H;
   let halfW = 9.4, halfH = halfW / aspect;
-  if (halfH < 6.7) { halfH = 6.7; halfW = halfH * aspect; }
+  if (halfH < 6.9) { halfH = 6.9; halfW = halfH * aspect; }
   camera.left = -halfW; camera.right = halfW; camera.top = halfH; camera.bottom = -halfH;
   camera.zoom = cam.zoom; camera.updateProjectionMatrix();
   const d = 40, ce = Math.cos(cam.el);
@@ -1217,49 +1133,28 @@ function resize(){
   renderer.setSize(W, H, false);
   needFrame = true;
 }
-
+const goneOv = [];
 function sync(t, dt){
   const ids = new Set(buildings.map(b => b.id));
   for (const b of buildings) { if (!b.v) makeBuilding(b); updateBuilding(b, t); }
   for (let i = pickables.length - 1; i >= 0; i--) {
     const pk = pickables[i].userData.pick;
-    if (pk.t === 'b' && !ids.has(pk.id)) { world.remove(pickables[i]); pickables.splice(i, 1); }
-    if (pk.t === 'c' && !byId(pk.id)) { world.remove(pickables[i]); pickables.splice(i, 1); }
+    if ((pk.t === 'b' && !ids.has(pk.id)) || (pk.t === 'c' && !byId(pk.id))) { world.remove(pickables[i]); pickables.splice(i, 1); }
   }
-  for (const c of citizens) { if (!c.v) makePerson(c); updatePerson(c, t); }
-  for (const c of goneOv) dropOv(c);
+  for (const c of citizens) { if (!c.v) makePerson(c); updatePerson(c, t, dt); }
+  for (const c of goneOv) { if (c.v) { const i = mixers.indexOf(c.v.mixer); if (i >= 0) mixers.splice(i, 1); } dropOv(c); }
   goneOv.length = 0;
-  updateGovernor(t);
-  let n = 0;
-  for (const p of particles) {
-    if (n >= MAX_PARTICLES) break;
-    const k = 1 - p.t / p.life, sz = p.size * (p.kind === 'dust' ? (1 + p.t) * k : Math.min(1, k * 3));
-    tmpE.set(p.t * 7, p.t * 5, 0); tmpQ.setFromEuler(tmpE);
-    tmpS.set(sz, p.kind === 'dust' ? sz : sz * .3, sz); tmpP.set(p.x, Math.max(.02, p.h), p.z);
-    tmpM.compose(tmpP, tmpQ, tmpS);
-    partMesh.setMatrixAt(n, tmpM); partMesh.setColorAt(n, tmpC.set(p.c)); n++;
-  }
-  for (let i = n; i < partMesh.userData.used; i++) partMesh.setMatrixAt(i, zeroM);
-  partMesh.userData.used = n;
-  partMesh.instanceMatrix.needsUpdate = true;
-  if (partMesh.instanceColor) partMesh.instanceColor.needsUpdate = true;
+  updateGovernor();
+  if (!RM) updatePets(dt);
+  for (const m of mixers) m.update(dt);
   for (const f of floaters) {
     if (!f.el) { f.el = ovEl('fl'); f.el.style.setProperty('--c', f.color); setText(f.el, f.text); }
-    const k = (simT - f.t0) / 1.2, [sx, sy] = toScreen(f.x, 1.05 + k * .6, f.y);
+    const k = (simT - f.t0) / 1.2, [sx, sy] = toScreen(f.x, .62 + k * .45, f.y);
     f.el.style.opacity = String(clamp(1.3 - k * 1.3, 0, 1));
-    place(f.el, sx + 22, sy, true);
+    pin(f.el, sx + 22, sy, true);
   }
-  for (const l of labels) { const [sx, sy] = toScreen(l.x, l.h, l.z); place(l.el, sx, sy, true); }
-  if (!RM) {
-    for (const d of ducks) { const p = d.g.position; p.x += d.speed * dt; if (p.x > 12.3) p.x = -.2; p.y = .04 + Math.sin(t * 2 + d.ph) * .015; d.g.rotation.z = Math.sin(t * 2 + d.ph) * .06; }
-    for (const s of sparkles) { s.position.x += dt * .5; if (s.position.x > 12) s.position.x = 0; }
-    for (const c of clouds) { c.g.position.x += c.v * dt; if (c.g.position.x > 14) c.g.position.x = -14; }
-    for (const f of fountainDrops) { const k = (t * .8 + f.ph) % 1; f.m.position.set(Math.cos(f.a) * .3 * k, .5 + Math.sin(k * Math.PI) * .22 - k * .3, Math.sin(f.a) * .3 * k); }
-    hallFlag.rotation.y = Math.sin(t * 2.2) * .35;
-  }
+  for (const l of labels) { const [sx, sy] = toScreen(l.x, l.h, l.z); pin(l.el, sx, sy, true); }
 }
-const goneOv = [];
-
 /* ---------- panel ---------- */
 const dirty = { log:true };
 const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[ch]));
@@ -1278,12 +1173,12 @@ let lastRoster = '';
 function renderRoster(){
   const list = [...citizens].sort((a, b) => ORDER[STATE[a.state][0]] - ORDER[STATE[b.state][0]] || a.id - b.id);
   const govBusy = gov.bubble && simT < gov.bubble.until;
-  let html = `<li><button class="row" type="button" data-sel="gov" aria-current="${!!(selected && selected.t === 'gov')}"><span class="hat crown"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govBusy ? '说话中' : '坐镇市政厅'}</span></button></li>`;
+  let html = `<li><button class="row" type="button" data-sel="gov" aria-current="${!!(selected && selected.t === 'gov')}"><span class="rdot gov"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govBusy ? '说话中' : '坐镇市政厅'}</span></button></li>`;
   for (const c of list) {
     const [g, zh] = STATE[c.state];
     const kind = KIND_ZH[ROLES[c.role].kind];
     const sub = g === 'build' ? `${c.label} · ${kind} ${pct(c)}%` : `${c.label} · ${kind}`;
-    html += `<li><button class="row" type="button" data-sel="${c.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === c.id)}"><span class="hat" style="--c:${c.color};--h:${c.hat}"></span><span class="who"><b>${esc(c.task)}</b><span>${esc(sub)}</span></span><span class="pill ${g}">${zh}</span></button></li>`;
+    html += `<li><button class="row" type="button" data-sel="${c.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === c.id)}"><span class="rdot" style="--c:${c.color}"></span><span class="who"><b>${esc(c.task)}</b><span>${esc(sub)}</span></span><span class="pill ${g}">${zh}</span></button></li>`;
   }
   if (html !== lastRoster) { $('#roster').innerHTML = html; lastRoster = html; }
 }
@@ -1301,7 +1196,7 @@ function renderDetail(){
       const qa = [...c.qa.map(x => `<p>问：<b>“${esc(x.q)}”</b></p><p>答：<b>“${esc(x.a)}”</b></p>`), (c.stuck ? `<p>问：<b>“${esc(c.question)}”</b> 等回答…</p>` : '')].join('');
       const canStuck = !c.doneFlag && !c.stuck && ['building','to_plot','back'].includes(c.state);
       el.innerHTML = `
-        <div class="d-head"><span class="hat" style="--c:${c.color};--h:${c.hat}"></span><div><div class="d-name">${esc(c.task)}</div><div class="d-role">${esc(c.label)} · ${ROLES[c.role].zh}</div></div><span class="pill ${g}">${zh}</span></div>
+        <div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(c.task)}</div><div class="d-role">${esc(c.label)} · ${ROLES[c.role].zh}</div></div><span class="pill ${g}">${zh}</span></div>
         <div class="d-bar"><div class="track"><i data-f="bar" style="width:${pct(c)}%;background:${c.color}"></i></div><span data-f="pct">${kind} ${pct(c)}%</span></div>
         <dl class="d-tools">${['Edit','Write','Bash','Read'].map(t => `<div><dt>${t}</dt><dd data-f="${t}">${c.tools[t]}</dd></div>`).join('')}</dl>
         ${qa ? `<div class="d-qa">${qa}</div>` : ''}
@@ -1314,11 +1209,11 @@ function renderDetail(){
     } else if (b) {
       const owner = byId(b.ownerId);
       el.innerHTML = `
-        <div class="d-head"><span class="hat" style="--c:${b.color};--h:${ROLES[b.role].hat}"></span><div><div class="d-name">${KIND_ZH[b.kind]} · ${esc(b.name)}</div><div class="d-role">${b.role}</div></div><span class="pill ${b.done ? 'rest' : 'build'}">${b.done ? '建成' : '施工中'}</span></div>
+        <div class="d-head"><span class="rdot" style="--c:${b.color}"></span><div><div class="d-name">${KIND_ZH[b.kind]} · ${esc(b.name)}</div><div class="d-role">${b.role}</div></div><span class="pill ${b.done ? 'rest' : 'build'}">${b.done ? '建成' : '施工中'}</span></div>
         <p class="hint">${owner ? `盖它的小人还在城里：${esc(owner.task)}。` : `盖它的 ${b.role} 已经下班。`}${b.kind === 'bridge' ? '桥 = 把分支接到 main。' : ''}</p>`;
     } else if (selected && selected.t === 'gov') {
       el.innerHTML = `
-        <div class="d-head"><span class="hat crown"></span><div><div class="d-name">总督</div><div class="d-role">main manager · 主对话</div></div><span class="pill gov">市政厅</span></div>
+        <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">总督</div><div class="d-role">main manager · 主对话</div></div><span class="pill gov">市政厅</span></div>
         <p class="hint">总督就是你正在聊的主对话。它派人出门、回答卡住的问题，自己不盖楼。</p>
         <dl class="d-tools" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><dt>派出</dt><dd>${gov.dispatched}</dd></div><div><dt>回答</dt><dd>${gov.answered}</dd></div></dl>`;
     } else {
@@ -1480,26 +1375,23 @@ function seed(){
   selected = { t:'c', id:api.id };
 }
 
-/* ---------- boot: capped frame rate, slower when nothing moves ---------- */
-seed();
-resize(); resetCam();
-new ResizeObserver(() => resize()).observe(stage);
+/* ---------- boot: load the ready-made models, then run at a capped frame rate ---------- */
 let lastSim = performance.now(), lastDraw = 0, panelT = 0;
 function busy(){
   if (drag && drag.moved || pinch || camTween) return true;
-  if (particles.length || floaters.length) return true;
+  if (floaters.length) return true;
   return citizens.some(c => c.path.length || c.state === 'building' || c.state === 'spawn' || c.state === 'asking');
 }
 function frame(now){
   requestAnimationFrame(frame);
   if (document.hidden) { lastSim = now; return; }
-  const moving = busy();
-  const interval = moving || needFrame ? FRAME_MS : IDLE_FRAME_MS;
+  const interval = busy() || needFrame ? FRAME_MS : IDLE_FRAME_MS;
   if (now - lastDraw < interval - 2) return;
   const raw = Math.min(.1, (now - lastSim) / 1000);
   lastSim = now; lastDraw = now; needFrame = false;
+  let dtScaled = 0;
   if (!paused) {
-    let dt = raw * speed;
+    let dt = dtScaled = raw * speed;
     const before = new Set(citizens);
     while (dt > 0) { const s = Math.min(dt, .05); update(s); dt -= s; }
     for (const c of before) if (!citizens.includes(c)) goneOv.push(c);
@@ -1512,12 +1404,24 @@ function frame(now){
   }
   applyTheme();
   updateCamera();
-  sync(simT, paused ? 0 : raw * speed);
+  sync(simT, dtScaled);
   renderer.render(scene, camera);
   panelT += raw;
   if (panelT > .25) { panelT = 0; renderPanel(); }
 }
-applyTheme(); updateCamera(); sync(0, 0); renderer.render(scene, camera); renderPanel();
-requestAnimationFrame(frame);
+resize(); resetCam(); updateCamera();
+Promise.all([
+  loadAll((n, total) => { $('#loading-text').textContent = `正在搬来素材 ${n}/${total}`; }),
+  ...['suburban/Textures/variation-a.png', 'suburban/Textures/variation-b.png', 'suburban/Textures/variation-c.png'].map(loadTex),
+]).then(([, ...tex]) => {
+  tex.forEach(t => { if (t) variations.push(t); });
+  buildIsland(); buildLife(); buildGlows(); makeGovernor();
+  for (const [text, x, h, z] of [['市政厅', 6, 1.95, 6], ['咖啡馆', 5.5, 1.0, 10.5], ['main', 1.2, .85, -1.5]]) { const el = ovEl('lbl'); setText(el, text); labels.push({ el, x, h, z }); }
+  seed();
+  $('#loading').hidden = true;
+  new ResizeObserver(() => resize()).observe(stage);
+  applyTheme(); updateCamera(); sync(0, 0); renderer.render(scene, camera); renderPanel();
+  requestAnimationFrame(frame);
+}).catch(err => { $('#loading-text').textContent = '素材没加载成功：' + ((err && err.message) || err); });
 })();
 </script>
