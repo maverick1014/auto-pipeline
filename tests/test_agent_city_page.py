@@ -849,9 +849,11 @@ const clampFn = (v, a, b) => Math.max(a, Math.min(b, v));
     ['broad', 1400, 700, Math.PI / 4], ['wideSteep', 874, 710, Math.PI / 4, 60 * d], ['wideLow', 874, 710, Math.PI / 4, 15 * d],
     ['broadSteep', 1400, 700, Math.PI / 4, 60 * d], ['phoneSide', 358, 394, 0, 45 * d]])
     out.zoomOut[name] = fit(W, H, az, el, one[0], one[1]);
-  // lands of several territories: never cut off from any angle, always centred
+  // lands of several territories (half sizes of real layouts: 2 repos side by side or stacked,
+  // 3 in an L, a coast with its sea, 5 in a plus; and a 3:1 strip as the extreme): never cut off
+  // from any angle, always centred
   out.zoomLands = [];
-  for (const [hx, hz] of [[39, 26], [13, 39], [39, 39], [52, 26]])
+  for (const [hx, hz] of [[26, 13], [13, 26], [26, 26], [13, 17], [39, 39], [39, 30], [13, 39]])
     for (const [W, H] of [[874, 710], [358, 394], [1400, 700]])
       for (let k = 0; k < 12; k++) {
         const z = fit(W, H, k * Math.PI / 12, undefined, hx, hz);
@@ -1164,7 +1166,10 @@ class TestZoomOut(unittest.TestCase):
                 self.assertLessEqual(abs(z["cx"]), 0.1)
                 self.assertLessEqual(abs(z["cy"]), 0.1)
                 self.assertTrue(z["same"], "auto-rotation would change the zoom")
-                self.assertGreaterEqual(z["fill"], 0.45, "the land is lost in the middle of the stage")
+                # One zoom for every angle (auto-rotation never zooms), so a long land seen
+                # end-on fills less of the stage; it must still be clearly there.
+                low = 0.3 if max(z["hx"], z["hz"]) >= 3 * min(z["hx"], z["hz"]) else 0.35
+                self.assertGreaterEqual(z["fill"], low, "the land is lost in the middle of the stage")
 
     def test_zoom_past_the_limit_is_clamped(self):
         self.assertTrue(unit_results()["clamped"])

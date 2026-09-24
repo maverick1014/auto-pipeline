@@ -354,13 +354,12 @@ function askLine(ev, name) {
    (spawn, tool, stuck, answer, done, leave).
    ========================================================= */
 const ROLES = {
-  'task-manager':     { zh:'任务经理',   color:'#9C86F2', kind:'tower'  },
-  'worker':           { zh:'工人',       color:'#5AA9F0', kind:'house'  },
-  'fast-lane-deputy': { zh:'快车道副手', color:'#43C58B', kind:'garden' },
-  'merge-deputy':     { zh:'合并副手',   color:'#FF9A5C', kind:'bridge' },
-  'other':            { zh:'帮手',       color:'#5FC3C9', kind:'house'  },
+  'task-manager':     { zh:'任务经理',   color:'#9C86F2' },
+  'worker':           { zh:'工人',       color:'#5AA9F0' },
+  'fast-lane-deputy': { zh:'快车道副手', color:'#43C58B' },
+  'merge-deputy':     { zh:'合并副手',   color:'#FF9A5C' },
+  'other':            { zh:'帮手',       color:'#5FC3C9' },
 };
-const KIND_ZH = { house:'小房子', tower:'测试塔', garden:'花园', bridge:'桥' };
 const STATE = {
   spawn:['walk','出门'], to_plot:['walk','去工地'], building:['build','施工中'],
   to_hall:['ask','去问总督'], asking:['ask','在问总督'], heard:['ask','拿到答案'],
@@ -418,68 +417,42 @@ const QA = [
   ['可以跑这条命令吗？','批了，继续'],
 ];
 
-const GX1 = 11, GY0 = -2, GY1 = 11;
-const tiles = {};
-const T = (x, y) => tiles[x + ',' + y];
-for (let y = GY0; y <= GY1; y++) for (let x = 0; x <= GX1; x++) {
-  let t = 'grass';
-  if (y === -2) t = 'bank';
-  else if (y === -1) t = 'water';
-  else if (x === 4 || x === 7 || y === 4 || y === 7) t = 'road';
-  else if (x >= 5 && x <= 6 && y >= 5 && y <= 6) t = 'hall';
-  else if (x >= 5 && x <= 6 && y >= 8) t = 'plaza';
-  else if (x >= 8 && y >= 8) t = 'park';
-  tiles[x + ',' + y] = t;
-}
-tiles['5,10'] = 'cafe';
-const TREES = [[0,0],[10,1],[0,5],[2,10],[8,11],[11,8],[11,11]];
-const STATIC_BLOCK = new Set(TREES.map(p => p + ''));
-STATIC_BLOCK.add('9,9');
-const PLOTS = [[3,0],[3,2],[0,3],[2,3],[1,1],[5,3],[6,3],[5,1],[6,1],[8,3],[10,3],[9,1],[11,1],[3,5],[3,6],[1,6],[9,6],[11,6],[8,5],[3,9],[3,11],[1,9],[1,11]];
-const INNER = new Set(['1,1','5,1','6,1','9,1','11,1','1,9','1,11','8,5']);
-const PLOT_SET = new Set(PLOTS.map(p => p + ''));
-const BRIDGE_X = [4, 7, 10, 1];
-const LAMPS = [[4.12,4.12],[7.88,4.12],[4.12,7.88],[7.88,7.88],[4.12,1.5],[7.88,1.5],[4.12,10.5],[1.5,4.12],[10.5,4.12],[1.5,7.88],[10.5,7.88]];
-const BENCHES = [[10.5,8.28],[8.5,10.28]];
-const REST = [
-  {x:10.5,y:8.5,pose:'bench'},{x:8.5,y:10.5,pose:'bench'},
-  {x:9.5,y:10.3,pose:'sit'},{x:10.3,y:9.5,pose:'sit'},
-  {x:6.42,y:10.5,pose:'cafe'},{x:6.42,y:11.45,pose:'cafe'},{x:5.5,y:11.5,pose:'cafe'},
-  {x:9.45,y:11.5,pose:'lie'},{x:11.5,y:9.45,pose:'lie'},{x:2.5,y:9.5,pose:'lie'},
-  {x:0.5,y:1.45,pose:'lie'},{x:10.5,y:2.35,pose:'lie'},{x:0.5,y:6.4,pose:'lie'},
-];
-const HALL_SLOTS = [[6.5,8.3],[5.5,8.3],[6.5,9.25],[5.5,9.25],[4.5,8.4]].map(([x,y]) => ({x, y, by:0}));
-const DOOR = {x:6.0, y:7.12};
-const GATE = {x:7.5, y:11.9};
-
-function frontOf(x, y){
-  for (const [a,b] of [[x,y+1],[x+1,y]]) if (T(a,b) === 'road') return [a,b];
-  for (const [a,b] of [[x,y+1],[x+1,y],[x-1,y],[x,y-1]]) {
-    const t = T(a,b);
-    if (t && !['water','hall','cafe','bank'].includes(t) && !PLOT_SET.has(a+','+b) && !STATIC_BLOCK.has(a+','+b)) return [a,b];
-  }
-  return [x, y+1];
-}
+/* ---------- world: the land the server lays out (requirements/city.md, Growth) ---------- */
+let map = { cell:26, x0:0, z0:0, w:0, h:0, rows:[], territories:[], links:[] };
+let mid = { x:0, z:0 };
+let land = { hx:13, hz:13 };
+let home = { x:0, z:0 };
 const occupied = new Map();
-function walkable(x, y){
-  const t = T(x, y);
-  if (!t || t === 'water' || t === 'hall' || t === 'cafe' || t === 'bank') return false;
-  const k = x + ',' + y;
-  return !STATIC_BLOCK.has(k) && !occupied.has(k);
+const blocked = new Set();
+function tileAt(x, z){
+  const r = z - map.z0, c = x - map.x0;
+  if (r < 0 || r >= map.rows.length) return ' ';
+  const row = map.rows[r] || '';
+  return c >= 0 && c < row.length ? row[c] : ' ';
 }
-function findPath(sx, sy, tx, ty){
-  const s = [Math.floor(sx), Math.floor(sy)], g = [Math.floor(tx), Math.floor(ty)];
+function walkable(x, z){
+  const k = x + ',' + z;
+  if (occupied.has(k) || blocked.has(k)) return false;
+  return '.grtBb'.includes(tileAt(x, z));
+}
+function frontOf(x, z){
+  for (const [a, b] of [[x, z + 1], [x + 1, z], [x - 1, z], [x, z - 1]]) { if (tileAt(a, b) === 'r' || tileAt(a, b) === 't') return [a, b]; }
+  for (const [a, b] of [[x, z + 1], [x + 1, z], [x - 1, z], [x, z - 1]]) if (walkable(a, b)) return [a, b];
+  return [x, z + 1];
+}
+function findPath(sx, sz, tx, tz){
+  const s = [Math.floor(sx), Math.floor(sz)], g = [Math.floor(tx), Math.floor(tz)];
   const sk = s + '', gk = g + '';
   if (sk === gk) return [];
   const prev = { [sk]: null }, q = [s];
   while (q.length) {
-    const [x, y] = q.shift();
-    if (x + ',' + y === gk) break;
-    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-      const nx = x + dx, ny = y + dy, nk = nx + ',' + ny;
+    const [x, z] = q.shift();
+    if (x + ',' + z === gk) break;
+    for (const [dx, dz] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const nx = x + dx, nz = z + dz, nk = nx + ',' + nz;
       if (nk in prev) continue;
-      if (nk !== gk && !walkable(nx, ny)) continue;
-      prev[nk] = [x, y]; q.push([nx, ny]);
+      if (nk !== gk && !walkable(nx, nz)) continue;
+      prev[nk] = [x, z]; q.push([nx, nz]);
     }
   }
   if (!(gk in prev)) return null;
@@ -487,12 +460,31 @@ function findPath(sx, sy, tx, ty){
   while (cur && cur + '' !== sk) { out.push([cur[0] + .5, cur[1] + .5]); cur = prev[cur + '']; }
   return out.reverse();
 }
+function terrOf(id){ return (map.territories || []).find(t => t.id === id); }
+/* a walkable spot just south of a territory's hall, for spawn/rest/idle standing */
+function hallStand(t){
+  for (const [dx, dz] of [[0, 1.4], [.9, 1.2], [-.9, 1.2], [1.3, .5], [-1.3, .5]]) {
+    const x = t.cx + dx, z = t.cz + dz;
+    if (walkable(Math.floor(x), Math.floor(z))) return { x, y: z };
+  }
+  return { x: t.cx, y: t.cz + 1.5 };
+}
+const REST_OFF = [
+  {dx:2.0,dz:1.6,pose:'lie'},{dx:-2.0,dz:1.6,pose:'lie'},{dx:1.5,dz:2.2,pose:'sit'},{dx:-1.5,dz:2.2,pose:'sit'},
+  {dx:2.6,dz:.5,pose:'lie'},{dx:-2.6,dz:.5,pose:'lie'},{dx:0,dz:2.6,pose:'sit'},
+];
+const restSlotsByTerr = new Map();
+function restSlotsFor(t){
+  let slots = restSlotsByTerr.get(t.id);
+  if (!slots) { slots = REST_OFF.map(o => ({ x: t.cx + o.dx, y: t.cz + o.dz, pose: o.pose, by: 0 })); restSlotsByTerr.set(t.id, slots); }
+  return slots;
+}
 
 let simT = 0;
 const citizens = [], buildings = [], floaters = [], logEntries = [];
 let cid = 0, bid = 0;
 let selected = null;
-const gov = { x:6.62, y:7.5, bubble:null, answered:0, dispatched:0 };
+const gov = { x:0, y:1.4, bubble:null, answered:0, dispatched:0 };
 const SKIN = ['#FFE0C7','#F7C9A4','#E6AC84','#BF8560','#8E5E40'];
 
 /* asks: open questions and permission requests from the server (see
@@ -508,52 +500,24 @@ function say(o, text, dur){ o.bubble = { text, until: simT + dur }; }
 function logAt(t, text, kind){ logEntries.unshift({ t, text, kind: kind || '', real: DEMO ? null : Date.now() }); if (logEntries.length > MAX_LOG) logEntries.length = MAX_LOG; dirty.log = true; }
 const log = (text, kind) => logAt(simT, text, kind);
 
-function newBuilding(kind, gx, gy, role, label){
-  const color = ROLES[role].color;
-  const b = { id:++bid, kind, gx, gy, role, label: label || role, color, target:0, shown:0, done:false, doneAt:0, popAt:-99,
-    seed:Math.random()*1000, name:'', ownerId:0 };
+/* a building record: terr/plot/type come from the server (or, in demo, from DEMO_WORLD); gx/gy are world tiles.
+   done buildings (already in the server's view) start shown; a live 'build' event starts at 0 and rises. */
+function newBuildingRecord(terr, plot, type, x, z, by, done){
+  const b = { id:++bid, terr, plot, type, gx:x, gy:z, by, seed:(Math.abs(x*928371+z*12345+plot)) % 1000,
+    done:!!done, shown:done ? 1 : 0, risenAt:simT, popAt: done ? -99 : simT,
+    name: TYPE_ZH[type] || type, color: DCOL[type] || '#5AA9F0', label: TYPE_ZH[type] || type, ownerId:0 };
   buildings.push(b);
-  occupied.set(gx + ',' + gy, b);
+  occupied.set(x + ',' + z, b);
   return b;
 }
-function removeBuilding(b){
-  const fi = fadeables.findIndex(f => f.b === b); if (fi >= 0) fadeables.splice(fi, 1);
-  const i = buildings.indexOf(b); if (i >= 0) buildings.splice(i, 1);
-  if (occupied.get(b.gx + ',' + b.gy) === b) occupied.delete(b.gx + ',' + b.gy);
-  if (selected && selected.t === 'b' && selected.id === b.id) selected = null;
+function standFor(b){
+  const [fx, fz] = frontOf(b.gx, b.gy);
+  return { x: fx + .5 + (b.gx - fx) * .28, y: fz + .5 + (b.gy - fz) * .28 };
 }
-function standFor(kind, x, y){
-  if (kind === 'bridge') return { x: x + .5, y: .34 };
-  const [fx, fy] = frontOf(x, y);
-  return { x: fx + .5 + (x - fx) * .28, y: fy + .5 + (y - fy) * .28 };
-}
-function demolishOldest(kind){
-  const cands = buildings.filter(b => b.done && (kind === 'bridge' ? b.kind === 'bridge' : b.kind !== 'bridge') && !citizens.some(c => c.id === b.ownerId));
-  cands.sort((a, b) => a.doneAt - b.doneAt);
-  const b = cands[0]; if (!b) return false;
-  removeBuilding(b);
-  log(`拆掉最旧的${KIND_ZH[b.kind]}（${b.name}），腾出空地`);
-  return true;
-}
-function allocPlot(kind){
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (kind === 'bridge') {
-      const x = BRIDGE_X.find(x => !occupied.has(x + ',-1'));
-      if (x !== undefined) return { x, y: -1 };
-    } else {
-      let free = PLOTS.filter(p => !occupied.has(p + ''));
-      if (kind === 'garden' && free.some(p => INNER.has(p + ''))) free = free.filter(p => INNER.has(p + ''));
-      if (kind !== 'garden' && free.some(p => !INNER.has(p + ''))) free = free.filter(p => !INNER.has(p + ''));
-      if (free.length) { const p = pick(free); return { x: p[0], y: p[1] }; }
-    }
-    if (!demolishOldest(kind)) return null;
-  }
-  return null;
-}
-function newCitizen(id, role, task){
-  const R = ROLES[role];
-  return { id, role, label:role, task, color:R.color, skin:pick(SKIN), x:DOOR.x, y:DOOR.y, path:[], state:'spawn', stateT:0,
-    alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0,Other:0}, work:0, bld:null, stand:null, slot:null, rest:null,
+function newCitizen(id, role, task, terr){
+  const R = ROLES[role], t = terrOf(terr), stand = t ? hallStand(t) : { x:0, y:0 };
+  return { id, role, label:role, task, terr, color:R.color, skin:pick(SKIN), x:stand.x, y:stand.y, path:[], state:'spawn', stateT:0,
+    alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0,Other:0}, work:0, bld:null, stand, slot:null, rest:null, pendingBuild:null,
     question:'', answer:'', answered:false, pendingAnswer:'', askT:0, stuck:false, doneFlag:false, leaveFlag:false,
     askKind:'', askPhase:'', qa:[], bubble:null, walkT:Math.random()*5, feed:null, gone:false };
 }
@@ -575,6 +539,11 @@ function onArrive(c){
   switch (c.state) {
     case 'to_plot': case 'back':
       c.state = 'building'; c.stateT = 0;
+      if (c.pendingBuild) {
+        const p = c.pendingBuild; c.pendingBuild = null;
+        c.bld = newBuildingRecord(p.terr, p.plot, p.btype, Math.round(c.x), Math.round(c.y), p.by, false);
+        c.bld.ownerId = c.id; c.stand = standFor(c.bld);
+      }
       if (c.stuck) goHall(c); else if (c.doneFlag) finish(c);
       break;
     case 'to_hall': c.state = 'asking'; c.stateT = 0; c.askT = simT; break;
@@ -582,8 +551,8 @@ function onArrive(c){
   }
 }
 function goHall(c){
-  let slot = HALL_SLOTS.find(s => !s.by);
-  if (slot) slot.by = c.id; else slot = { x: 4.5 + Math.random() * .6, y: 8.9 + Math.random() * .6, by: c.id, extra: true };
+  const t = terrOf(c.terr);
+  const slot = t ? { x: t.cx + rnd(-.6, .6), y: t.cz + .9 + rnd(0, .3), by: c.id, extra: true } : { x: c.x, y: c.y, by: c.id, extra: true };
   c.slot = slot;
   goTo(c, slot, 'to_hall');
 }
@@ -594,31 +563,27 @@ function giveAnswer(c){
   c.state = 'heard'; c.stateT = 0;
 }
 function finish(c){
-  const b = c.bld;
-  if (b) { b.done = true; b.doneAt = simT; b.popAt = simT; b.target = 1; }
   c.state = 'finishing'; c.stateT = 0;
   say(c, '完工啦！', 1.5);
 }
-function pickRestSpot(id){
-  const free = REST.filter(r => !r.by);
+function pickRestSpot(c){
+  const t = terrOf(c.terr), slots = t ? restSlotsFor(t) : [];
+  const free = slots.filter(r => !r.by);
   let spot = free.length ? pick(free) : null;
-  if (spot) spot.by = id;
-  else {
-    const grass = Object.keys(tiles).filter(k => ['grass','park'].includes(tiles[k]) && walkable(...k.split(',').map(Number)));
-    const [gx, gy] = pick(grass).split(',').map(Number);
-    spot = { x: gx + .5, y: gy + .5, pose: 'lie', by: id, extra: true };
-  }
+  if (spot) spot.by = c.id;
+  else spot = { x: c.x, y: c.y, pose: 'lie', by: c.id, extra: true };
   return spot;
 }
 function goRest(c){
-  const spot = pickRestSpot(c.id);
+  const spot = pickRestSpot(c);
   c.rest = spot;
   goTo(c, spot, 'to_rest');
 }
 function leave(c){
   if (c.rest && !c.rest.extra) c.rest.by = 0;
   c.rest = null;
-  goTo(c, GATE, 'leaving');
+  const t = terrOf(c.terr);
+  goTo(c, t ? hallStand(t) : { x: c.x, y: c.y }, 'leaving');
 }
 function forceLeave(c){
   releaseSlot(c);
@@ -631,27 +596,28 @@ function autoLeave(c){
 }
 
 const WEIGHT = { Edit:1, Write:1, Bash:.6, Read:.3, Other:.3 };
-const KSCALE = { house:4.5, tower:5.5, garden:2.2, bridge:1.8 };
 let govState = 'idle';
 let governorCount = 1; // assume present until a snapshot or a 'governors' event says otherwise
+let govTerr = null;
 function setGovState(state){ govState = state; if (state !== 'waiting') gov.bubble = null; }
 function roleOrOther(role){ return ROLES[role] ? role : 'other'; }
+/* home = the scene point the default camera looks at: the governor's territory hall, else the first (Camera, Growth) */
+function updateHome(){
+  const t = terrOf(govTerr) || map.territories[0];
+  home = t ? { x: t.cx - mid.x, z: t.cz - mid.z } : { x: 0, z: 0 };
+  if (t) { const s = hallStand(t); gov.x = s.x; gov.y = s.y; }
+}
 function placeAgent(a){
-  const role = roleOrOther(a.role), R = ROLES[role];
-  const plot = allocPlot(R.kind);
-  if (!plot) return null;
-  const c = newCitizen(a.id, role, a.task);
+  const role = roleOrOther(a.role);
+  const c = newCitizen(a.id, role, a.task, a.terr);
   c.label = a.label || role;
-  const b = newBuilding(R.kind, plot.x, plot.y, role, c.label);
-  b.name = a.task; b.ownerId = c.id;
-  c.bld = b; c.stand = standFor(R.kind, plot.x, plot.y); c.x = c.stand.x; c.y = c.stand.y; c.alpha = 1; c.state = 'building';
+  c.alpha = 1; c.state = 'building';
   const tools = a.tools || {};
   Object.assign(c.tools, tools);
   c.work = Object.entries(tools).reduce((s, [k, v]) => s + (WEIGHT[k] || .3) * v, 0);
-  b.target = b.shown = .92 * (1 - Math.exp(-c.work / KSCALE[R.kind]));
   if (a.done) {
-    b.done = true; b.shown = b.target = 1; c.doneFlag = true;
-    const spot = pickRestSpot(c.id);
+    c.doneFlag = true;
+    const spot = pickRestSpot(c);
     c.rest = spot; c.x = spot.x; c.y = spot.y; c.state = 'resting';
   } else if (a.stuck) {
     c.stuck = true; c.question = '需要你看一下';
@@ -674,36 +640,46 @@ function apply(ev){
       // snapshot = live: clear every citizen's ask fields first (a
       // reconnect may find the ask already closed), place the agents, then
       // apply each still-open ask to its agent — same as the live path.
+      if (ev.world) buildLand(ev.world);
+      if (ev.notice) log(ev.notice);
       for (const old of citizens) applyAsk(old, null);
       for (const a of agents) if (!byId(a.id)) placeAgent(a);
       if (ev.gov && ev.gov.state) setGovState(ev.gov.state);
+      if (ev.gov && ev.gov.terr) { govTerr = ev.gov.terr; updateHome(); }
       if (typeof ev.governors === 'number') governorCount = ev.governors;
       asks.clear();
       for (const a of ev.asks || []) asks.set(a.id, a);
       for (const a of ev.asks || []) { const ac = byId(a.agent); if (ac) applyAsk(ac, a); }
       return null;
     }
+    case 'world': {
+      buildLand(ev.world);
+      if (ev.notice) log(ev.notice);
+      return null;
+    }
     case 'spawn': {
       if (byId(ev.id)) return null;
-      const role = roleOrOther(ev.role), R = ROLES[role];
-      const plot = allocPlot(R.kind);
-      if (!plot) { log(`没有空地了：${ev.task} 先等等`); return null; }
-      if (citizens.length >= MAX_CITIZENS) { const old = citizens.find(x => x.state === 'resting') || citizens[0]; old.gone = true; }
-      const n = newCitizen(ev.id, role, ev.task);
+      if (citizens.length >= MAX_CITIZENS) { const old = citizens.find(x => x.state === 'resting') || citizens[0]; if (old) old.gone = true; }
+      const role = roleOrOther(ev.role || 'worker');
+      const n = newCitizen(ev.id, role, ev.task, ev.terr);
       n.label = ev.label || role;
-      const b = newBuilding(R.kind, plot.x, plot.y, role, n.label);
-      b.name = ev.task; b.ownerId = n.id;
-      n.bld = b; n.stand = standFor(R.kind, plot.x, plot.y);
       citizens.push(n);
       say(gov, `去吧：${ev.task}`, 1.8); gov.dispatched++;
       log(`总督派出 ${n.label}：${ev.task}`);
       return n;
     }
+    case 'build': {
+      if (ev.id === 'gov') { newBuildingRecord(ev.terr, ev.plot, ev.btype, ev.x, ev.z, ev.by, false); return null; }
+      const owner = byId(ev.id);
+      if (!owner) { newBuildingRecord(ev.terr, ev.plot, ev.btype, ev.x, ev.z, ev.by, false); return null; }
+      owner.pendingBuild = { terr: ev.terr, plot: ev.plot, btype: ev.btype, by: ev.by };
+      goTo(owner, { x: ev.x, y: ev.z }, 'to_plot');
+      return owner;
+    }
     case 'tool': {
       if (!c) return null;
       c.tools[ev.tool] = (c.tools[ev.tool] || 0) + 1;
       c.work += WEIGHT[ev.tool] || .3;
-      if (c.bld && !c.bld.done) c.bld.target = .92 * (1 - Math.exp(-c.work / KSCALE[c.bld.kind]));
       if (floaters.length < MAX_FLOATERS) floaters.push({ text: ev.tool, x: c.x, y: c.y, t0: simT, color: c.color, el: null });
       return c;
     }
@@ -726,7 +702,7 @@ function apply(ev){
       if (!c || c.doneFlag) return null;
       c.doneFlag = true;
       if (c.state === 'building') finish(c);
-      log(`${c.task} 完工：${KIND_ZH[ROLES[c.role].kind]}封顶，去休息`, 'done');
+      log(`${c.task} 完工${c.bld ? '：' + TYPE_ZH[c.bld.type] + '封顶' : ''}，去休息`, 'done');
       return c;
     }
     case 'leave': {
@@ -738,6 +714,7 @@ function apply(ev){
     }
     case 'gov': {
       setGovState(ev.state);
+      if (ev.terr) { govTerr = ev.terr; updateHome(); }
       return null;
     }
     case 'governors': {
@@ -784,7 +761,14 @@ function apply(ev){
 }
 const emit = ev => apply(ev);
 
-function makeFeed(role, stuckChance){
+const ROLE_TYPE = { 'task-manager':'tower', worker:'house', 'fast-lane-deputy':'shop', 'merge-deputy':'workshop' };
+/* a free (unlocked, unbuilt) plot of the right district in a territory (Growth: view.territories[].plots) */
+function freeDistrictPlot(terr, type){
+  const t = terrOf(terr); if (!t) return null;
+  const p = (t.plots || []).find(p => p.d === type);
+  return p ? { terr, plot: p.k, x: p.x, z: p.z } : null;
+}
+function makeFeed(role, stuckChance, terr){
   const s = [];
   if (role === 'worker') {
     s.push('Read'); if (Math.random() < .5) s.push('Read');
@@ -803,6 +787,8 @@ function makeFeed(role, stuckChance){
   const seq = s.map(tool => ({ t:'tool', tool }));
   const p = stuckChance ?? (role === 'merge-deputy' ? .2 : .4);
   if (Math.random() < p) { const [q, a] = pick(QA); seq.splice(Math.floor(rnd(1, seq.length - 1)), 0, { t:'stuck', q, a }); }
+  const plot = freeDistrictPlot(terr, ROLE_TYPE[role] || 'house');
+  if (plot) seq.splice(Math.min(seq.length - 1, Math.floor(rnd(1, Math.max(2, seq.length - 1)))), 0, { t:'build', plot });
   seq.push({ t:'done' }, { t:'leave' });
   return { steps: seq, next: 0, restSince: 0, restFor: rnd(16, 30) };
 }
@@ -820,22 +806,25 @@ function feed(c){
   f.steps.shift();
   if (s.t === 'tool') { emit({ type:'tool', id:c.id, tool:s.tool }); f.next = simT + rnd(.55, 1.35); }
   else if (s.t === 'stuck') { c.pendingAnswer = s.a; emit({ type:'stuck', id:c.id, question:s.q }); f.next = simT + .6; }
+  else if (s.t === 'build') { const p = s.plot; emit({ type:'build', id:c.id, terr:p.terr, plot:p.plot, btype: ROLE_TYPE[c.role] || 'house', x:p.x, z:p.z, by:c.id }); f.next = simT + rnd(.6, 1.2); }
   else if (s.t === 'done') emit({ type:'done', id:c.id });
 }
-function spawnDemo(role, task){
+function spawnDemo(role, task, terr){
+  if (!terr) { const ts = map.territories || []; if (!ts.length) return null; terr = pick(ts).id; }
   if (!task) {
     const busy = new Set(citizens.map(c => c.task));
     const opts = TASKS[role].filter(t => !busy.has(t));
     task = pick(opts.length ? opts : TASKS[role]);
   }
-  const c = emit({ type:'spawn', id:'d' + (++cid), role, label:role, task });
-  if (c) c.feed = makeFeed(role);
+  const c = emit({ type:'spawn', id:'d' + (++cid), role, label:role, task, terr });
+  if (c) c.feed = makeFeed(role, undefined, terr);
   return c;
 }
 let nextSpawn = 6;
 function spawner(){
   if (simT < nextSpawn) return;
   nextSpawn = simT + rnd(7, 13);
+  if (!(map.territories || []).length) return;
   const active = citizens.filter(c => STATE[c.state][0] !== 'rest' && c.state !== 'leaving').length;
   if (active >= 6) return;
   const r = Math.random();
@@ -870,8 +859,7 @@ function update(dt){
     citizens.splice(i, 1);
   }
   for (const b of buildings) {
-    if (b.done) b.shown = Math.min(1, b.shown + dt * 1.2);
-    else { const o = byId(b.ownerId); if (o && o.state === 'building') b.shown += (b.target - b.shown) * Math.min(1, dt * 1.6); }
+    if (!b.done) { b.shown = Math.min(1, (simT - b.risenAt) * .8); if (b.shown >= 1) { b.done = true; b.popAt = simT; } }
   }
   for (let i = floaters.length - 1; i >= 0; i--) if (simT - floaters[i].t0 > 1.2) { const f = floaters[i]; if (f.el) f.el.remove(); floaters.splice(i, 1); }
   if (DEMO) spawner();
@@ -886,19 +874,42 @@ const MODELS = [
   'characters/character-female-a', 'characters/character-female-c', 'characters/character-female-e',
   'characters/character-male-a', 'characters/character-male-b', 'characters/character-male-c', 'characters/character-male-e',
   'suburban/building-type-a', 'suburban/building-type-c', 'suburban/building-type-f', 'suburban/building-type-k', 'suburban/building-type-n', 'suburban/building-type-r',
-  'commercial/building-j', 'commercial/building-skyscraper-a', 'commercial/building-skyscraper-b', 'commercial/detail-parasol-a', 'commercial/detail-parasol-b',
-  'nature/ground_grass', 'nature/ground_pathStraight', 'nature/ground_pathCross', 'nature/ground_pathTile', 'nature/ground_riverStraight',
+  'commercial/building-j', 'commercial/building-skyscraper-a', 'commercial/building-skyscraper-b',
+  'commercial/building-a', 'commercial/building-b', 'commercial/building-c', 'commercial/building-d',
+  'industrial/building-a', 'industrial/building-b',
+  'nature/ground_grass', 'nature/ground_pathTile', 'nature/ground_riverStraight',
   'nature/cliff_block_rock', 'nature/bridge_wood', 'nature/tree_default', 'nature/tree_oak', 'nature/flower_redA', 'nature/flower_yellowA',
   'nature/flower_purpleA', 'nature/plant_bush', 'nature/plant_bushLarge', 'nature/lily_large',
-  'fantasy/fountain-round', 'fantasy/lantern', 'fantasy/stall-red', 'fantasy/stall-bench',
-  'survival/structure', 'survival/tool-hammer', 'survival/resource-planks', 'survival/signpost-single',
+  'nature/cactus_short', 'nature/cactus_tall', 'nature/tree_pineSmallA', 'nature/tree_pineSmallB', 'nature/tree_palmShort',
+  'nature/rock_smallA', 'nature/rock_smallB',
+  'fantasy/fountain-round', 'fantasy/lantern',
+  'survival/structure', 'survival/tool-hammer', 'survival/resource-planks',
   'roads/construction-cone', 'forest/flag', 'forest/patch-grass',
   'pets/animal-chick', 'pets/animal-cat', 'pets/animal-dog',
 ];
 const VARIANTS = { 'task-manager':['character-female-c'], worker:['character-male-a','character-female-a','character-male-c'],
   'fast-lane-deputy':['character-female-e'], 'merge-deputy':['character-male-e'], other:['character-male-c'] };
-const HOUSES = ['building-type-a','building-type-c','building-type-f','building-type-k','building-type-n','building-type-r'];
-const TOWERS = ['building-skyscraper-a','building-skyscraper-b'];
+/* Growth: building type per kind of work, and each type's model choices (BUILD_MODELS keys after '/', see MODELS) */
+const BUILD_MODELS = {
+  house: ['building-type-a', 'building-type-c', 'building-type-f', 'building-type-k', 'building-type-n', 'building-type-r'],
+  tower: ['building-skyscraper-a', 'building-skyscraper-b'],
+  shop: ['building-a', 'building-b'],
+  workshop: ['building-a', 'building-b'],
+  library: ['building-c', 'building-d'],
+};
+const TYPE_ZH = { house:'住宅', shop:'商店', tower:'测试塔', workshop:'工坊', library:'图书馆' };
+const DCOL = { house:'#F4A259', shop:'#FF7593', tower:'#4D7CFE', workshop:'#9C6B4E', library:'#2FB57A' };
+/* Growth: each plan's terrain changes the look only (ground/path colour, and which plants grow on wild tiles) */
+const TERRAIN_LOOK = {
+  grassland: { ground:'#CBE8A9', path:'#E9D8AE', plants:['tree_default','tree_oak','flower_redA','flower_yellowA','flower_purpleA'] },
+  mountain:  { ground:'#C9D0BE', path:'#D8D1C2', plants:['tree_pineSmallA','tree_pineSmallB','rock_smallA','rock_smallB'] },
+  desert:    { ground:'#F4E0AE', path:'#D7B173', plants:['cactus_short','cactus_tall','rock_smallA'] },
+  forest:    { ground:'#A2CE8B', path:'#CFB68A', plants:['tree_pineSmallA','tree_pineSmallB','tree_default'] },
+  coast:     { ground:'#DAEEBB', path:'#F2E4B9', plants:['tree_palmShort','plant_bush'] },
+};
+const TRACK_COLOR = '#C9A874', BEACH_COLOR = '#F5E2B2';
+/* #demo / file://: exactly `python3 bin/agent_city.py demo-world` prints (tests/test_agent_city_world.py) */
+const DEMO_WORLD = {"cell": 26, "x0": -13, "z0": -13, "w": 52, "h": 52, "rows": ["                                                    ", "                          .                         ", "       . .              ..ww               ..       ", "     .......      .   ....ww.  .   .     ....       ", "   .........    . ... ...ww.........   .......      ", "   .....................ww..........g  ggrgggg.     ", "  ......................ww......grggggggPrggggg     ", "   .....................ww.....ggrgPrPgggrPggg      ", "  ......................ww.....ggrPgrgggPrgggr      ", "   .........gr...........ww....gPrgPrPgPgrPgPrg.    ", "    ......rrrrrr.........ww....rrrrrrrrrrrrrrrP.    ", "      ...grggggr........ww....gggrPgrggggrgPgrgg.   ", "      ...rrgHHgrg.......ww....gggrgPrgHHgrPgPrPg    ", "     .....rgHHgrtttttttBBtttt.gggrPgrgHHgrgggrgg.   ", "    ......rggggr.......ww...t.gggrgPrggggrPgPrPg.   ", "    ......rrrrrr.......ww...t.gggrPgrrrrrrgggrgg.   ", "    ........rg.........ww...t..ggrgPrgPgPrPgPrg..   ", "   .........t...........ww..t...grbgrPgPgrgPgrg...  ", "    ........t............wwbttttbbbbrrrrrrrrrr...b  ", "    ........t............wbb.bbbbbsbbgPgPggg...b.   ", "     .......t.............bsbbbbssssbgbgg.bb...bs   ", "   .........t.............ssbssssssssbbbbbbbbbbss   ", "  ..........t.............sssssssssssbsbbbssbbss    ", " ...........tmm...........ssssssssssssssssssssss    ", "  .mmmmmmmmmtmmm..........sssssssssssssssssssssss   ", " .mmmmmmmmmmt..mmm........ssssssssssssssssssssssss  ", "  m.........t...mmmmmmm     ssssssssssssssssssssss  ", "   .........t.....mmmm      ssssssssssssssssssss    ", "    ........tt.......          sssssssssssssssss    ", "    .........t.......           ssssssssssssss      ", "   ..........t.......               s  sssssss      ", "    .........t.......                   sss         ", "    .......rrrr......                    s          ", "     .....ggPgg........                             ", "    .....ggggggg........                            ", "      ...gPgPgPgP........                           ", "      ..rrrrrrrrrr.....                             ", "     ...ggrggggPgPgg....                            ", "   ....ggPrgHHgggggg...                             ", "   ....gggrgHHgggggg....                            ", "   ....ggPrggggPgPg...                              ", "  .....rrrrrrrrrrr.....                             ", "  ......gPgPgPgPg.......                            ", "  ........ggggggg.......                            ", "    ........gggg.......                             ", "   ...........r......                               ", "   ....... ..........                               ", "  .......   ........                                ", "    ....       ..                                   ", "                                                    ", "                                                    ", "                                                    "], "territories": [{"id": "4d5d7e95", "name": "auto-pipeline", "plan": "meadow", "terrain": "grassland", "slot": [0, 0], "cx": 0, "cz": 0, "lines": 500, "size": 0.24212512553021587, "r": 3.522238341052446, "open": 0, "plots_total": 36, "plots": [], "buildings": []}, {"id": "8329562e", "name": "v4-plus", "plan": "harbor", "terrain": "coast", "slot": [1, 0], "cx": 26, "cz": 0, "lines": 1000000, "size": 1.0, "r": 8.6, "open": 35, "plots_total": 35, "plots": [{"k": 0, "x": 22, "z": -1, "d": "workshop"}, {"k": 1, "x": 26, "z": -4, "d": "tower"}, {"k": 2, "x": 29, "z": -1, "d": "house"}, {"k": 3, "x": 22, "z": 1, "d": "workshop"}, {"k": 4, "x": 29, "z": 1, "d": "house"}, {"k": 5, "x": 24, "z": -4, "d": "library"}, {"k": 6, "x": 25, "z": 3, "d": "shop"}, {"k": 7, "x": 21, "z": 0, "d": "workshop"}, {"k": 8, "x": 27, "z": 3, "d": "shop"}, {"k": 9, "x": 30, "z": -2, "d": "house"}, {"k": 10, "x": 21, "z": -2, "d": "workshop"}, {"k": 11, "x": 27, "z": -5, "d": "tower"}, {"k": 12, "x": 29, "z": -4, "d": "tower"}, {"k": 13, "x": 22, "z": -4, "d": "library"}, {"k": 14, "x": 21, "z": 2, "d": "workshop"}, {"k": 15, "x": 31, "z": -1, "d": "house"}, {"k": 16, "x": 22, "z": 3, "d": "workshop"}, {"k": 17, "x": 26, "z": 4, "d": "shop"}, {"k": 18, "x": 29, "z": 3, "d": "shop"}, {"k": 19, "x": 24, "z": 4, "d": "shop"}, {"k": 20, "x": 31, "z": 1, "d": "house"}, {"k": 21, "x": 24, "z": -6, "d": "library"}, {"k": 22, "x": 31, "z": -4, "d": "tower"}, {"k": 23, "x": 27, "z": -7, "d": "tower"}, {"k": 24, "x": 21, "z": -5, "d": "library"}, {"k": 25, "x": 29, "z": -6, "d": "tower"}, {"k": 26, "x": 31, "z": 3, "d": "house"}, {"k": 27, "x": 30, "z": 4, "d": "shop"}, {"k": 28, "x": 22, "z": -6, "d": "library"}, {"k": 29, "x": 33, "z": -1, "d": "house"}, {"k": 30, "x": 19, "z": -4, "d": "library"}, {"k": 31, "x": 33, "z": -3, "d": "house"}, {"k": 32, "x": 33, "z": 1, "d": "house"}, {"k": 33, "x": 25, "z": 6, "d": "shop"}, {"k": 34, "x": 27, "z": 6, "d": "shop"}], "buildings": [{"plot": 6, "type": "shop", "by": "worker", "x": 25, "z": 3}, {"plot": 1, "type": "tower", "by": "worker", "x": 26, "z": -4}]}, {"id": "db8c2db6", "name": "pos-lite", "plan": "ridge", "terrain": "mountain", "slot": [0, 1], "cx": 0, "cz": 26, "lines": 20000, "size": 0.6052343817819053, "r": 5.955070357938764, "open": 15, "plots_total": 37, "plots": [{"k": 0, "x": 2, "z": 24, "d": "workshop"}, {"k": 1, "x": -1, "z": 22, "d": "tower"}, {"k": 2, "x": 2, "z": 27, "d": "shop"}, {"k": 3, "x": 0, "z": 29, "d": "house"}, {"k": 4, "x": -4, "z": 27, "d": "house"}, {"k": 5, "x": -4, "z": 25, "d": "library"}, {"k": 6, "x": -3, "z": 22, "d": "library"}, {"k": 7, "x": 1, "z": 22, "d": "tower"}, {"k": 8, "x": -2, "z": 29, "d": "house"}, {"k": 9, "x": 4, "z": 24, "d": "workshop"}, {"k": 10, "x": 2, "z": 29, "d": "shop"}, {"k": 11, "x": -1, "z": 20, "d": "tower"}, {"k": 12, "x": 4, "z": 27, "d": "shop"}, {"k": 13, "x": -4, "z": 29, "d": "house"}, {"k": 14, "x": 3, "z": 22, "d": "workshop"}], "buildings": [{"plot": 3, "type": "house", "by": "worker", "x": 0, "z": 29}]}], "links": [{"a": "4d5d7e95", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[10, 0], [11, 0]]}, {"a": "4d5d7e95", "b": "db8c2db6", "gap": "pass", "kind": "road", "cross": [[-1, 10], [-1, 11]]}]};
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, powerPreference:'low-power' });
 renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
@@ -996,55 +1007,77 @@ function instanced(key, items, opt){
       im.setMatrixAt(i, tmpM2.multiplyMatrices(tmpM, n.matrixWorld));
     });
     if (o.behind) { im.material = n.material.clone(); im.material.polygonOffset = true; im.material.polygonOffsetFactor = 1; im.material.polygonOffsetUnits = 2; }
+    else if (o.tint) im.material = tintedMat(n.material, o.tint);
     im.castShadow = o.shadow !== false; im.receiveShadow = true; im.frustumCulled = false;
-    world.add(im);
+    (o.parent || world).add(im);
   });
 }
+/* terrain looks (Growth): tint a Kenney ground/path material by colour, cloned + cached (never a shared material) */
+const tintCache = new Map();
+function tintedMat(base, hex){
+  const k = base.uuid + hex;
+  let m = tintCache.get(k);
+  if (!m) { m = base.clone(); m.color = new THREE.Color(hex); if (!base.map) m.color.convertSRGBToLinear(); tintCache.set(k, m); }
+  return m;
+}
 
-/* ---------- the island, all from the nature kit ---------- */
-function buildIsland(){
-  const tilesBy = { ground_grass:[], ground_pathStraight:[], ground_pathCross:[], ground_pathTile:[], ground_riverStraight:[] };
-  for (let y = GY0; y <= GY1; y++) for (let x = 0; x <= GX1; x++) {
-    const t = T(x, y), it = { x: x + .5, z: y + .5, y: .05, s: 1 };
-    if (t === 'road') {
-      const vx = x === 4 || x === 7, hy = y === 4 || y === 7;
-      if (vx && hy) tilesBy.ground_pathCross.push(it);
-      else { it.ry = vx ? 0 : Math.PI / 2; tilesBy.ground_pathStraight.push(it); }
-    } else if (t === 'water') { it.ry = Math.PI / 2; tilesBy.ground_riverStraight.push(it); }
-    else if (t === 'plaza' || t === 'hall' || t === 'cafe') tilesBy.ground_pathTile.push(it);
-    else tilesBy.ground_grass.push(it);
+/* ---------- the land: one land of territories, drawn from the server's view (requirements/city.md, Growth) ---------- */
+const landGroup = new THREE.Group(); world.add(landGroup);
+const hash2 = (x, z, k) => { let h = Math.imul(x * 374761393 + z * 668265263 + k * 2147483647, 1274126177); h ^= h >>> 13; h = Math.imul(h, 1103515245); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+function buildLand(view){
+  while (landGroup.children.length) landGroup.remove(landGroup.children[0]);
+  occupied.clear();
+  tall.clear();
+  for (let i = fadeables.length - 1; i >= 0; i--) if (fadeables[i].fromLand) fadeables.splice(i, 1);
+  map = view;
+  mid = { x: Math.round(view.x0 + view.w / 2), z: Math.round(view.z0 + view.h / 2) };
+  land = { hx: view.w / 2, hz: view.h / 2 };
+  world.position.set(-mid.x, 0, -mid.z);
+  labels.length = 0;
+  glows.length = 0;
+  const territories = view.territories || [];
+  const cellTerrain = new Map(territories.map(t => [t.slot[0] + ',' + t.slot[1], t.terrain]));
+  const terrAt = (X, Z) => cellTerrain.get(Math.floor((X + 13) / 26) + ',' + Math.floor((Z + 13) / 26)) || 'grassland';
+  const by = {};
+  const add = (key, it, tint) => { const gk = key + (tint ? '|' + tint : ''); (by[gk] = by[gk] || { key, tint, items: [] }).items.push(it); };
+  const edge = [], ravine = [], pass = [];
+  for (let r = 0; r < view.h; r++) for (let c = 0; c < view.w; c++) {
+    const ch = view.rows[r][c]; if (ch === ' ') continue;
+    const X = view.x0 + c, Z = view.z0 + r, look = TERRAIN_LOOK[terrAt(X, Z)], it = { x: X + .5, z: Z + .5, y: .05 };
+    if (ch === '.') { if (hash2(X, Z, 1) < .2) add(look.plants[Math.floor(hash2(X, Z, 2) * look.plants.length)], Object.assign({}, it, { s: .45 + hash2(X, Z, 3) * .3, ry: hash2(X, Z, 4) * 7 })); }
+    else if (ch === 'g') add('ground_grass', it, look.ground);
+    else if (ch === 'r') add('ground_pathTile', it, look.path);
+    else if (ch === 't') add('ground_pathTile', it, TRACK_COLOR);
+    else if (ch === 'w' || ch === 's') add('ground_riverStraight', it);
+    else if (ch === 'B') { add('ground_riverStraight', it); add('bridge_wood', Object.assign({}, it, { y: .04 })); }
+    else if (ch === 'b') add('ground_pathTile', it, BEACH_COLOR);
+    else if (ch === 'k') ravine.push(Object.assign({}, it, { y: -.9 }));
+    else if (ch === 'm') pass.push(it);
+    else if (ch === 'f') add('tree_pineSmallA', Object.assign({}, it, { s: .8 + hash2(X, Z, 5) * .3, ry: hash2(X, Z, 6) * 7 }));
+    if (ch !== 's' && ch !== 'b' && (tileAt(X - 1, Z) === ' ' || tileAt(X + 1, Z) === ' ' || tileAt(X, Z - 1) === ' ' || tileAt(X, Z + 1) === ' '))
+      edge.push({ x: X + .5, z: Z + .5, y: -1 });
   }
-  for (const k in tilesBy) instanced(k, tilesBy[k], { keepY: true, shadow: false });
-  const edge = [];
-  for (let y = GY0; y <= GY1; y++) for (let x = 0; x <= GX1; x++)
-    if (x === 0 || x === GX1 || y === GY0 || y === GY1) edge.push({ x: x + .5, z: y + .5, y: -1, s: 1 });
-  instanced('cliff_block_rock', edge, { keepY: true, shadow: false, behind: true });
+  for (const gk in by) instanced(by[gk].key, by[gk].items, { keepY: true, shadow: false, parent: landGroup, tint: by[gk].tint });
+  instanced('cliff_block_rock', edge, { keepY: true, shadow: false, behind: true, parent: landGroup });
+  instanced('cliff_block_rock', ravine, { keepY: true, shadow: false, parent: landGroup });
+  instanced('rock_smallA', pass.filter((_, i) => i % 2 === 0), { parent: landGroup });
+  instanced('rock_smallB', pass.filter((_, i) => i % 2 === 1), { parent: landGroup });
 
-  instanced('tree_default', TREES.filter((_, i) => i % 2 === 0).map(([x, y]) => ({ x: x + .5, z: y + .5, h: .95, ry: x })));
-  instanced('tree_oak', TREES.filter((_, i) => i % 2 === 1).map(([x, y]) => ({ x: x + .5, z: y + .5, h: .9, ry: y })));
-  instanced('tree_oak', [[2.5, -1.5], [8.5, -1.55], [10.9, -1.45], [5.6, -1.6]].map(([x, z]) => ({ x, z, h: .7, ry: x })));
-  instanced('lantern', LAMPS.map(([x, z]) => ({ x, z, h: .62 })));
-  instanced('stall-bench', BENCHES.map(([x, z]) => ({ x, z, s: .62, ry: Math.PI / 2 })));
-  instanced('lily_large', [[1.6, -.6], [5.3, -.35], [9.4, -.7], [11.2, -.4]].map(([x, z]) => ({ x, z, y: .02, s: 1, ry: x })), { keepY: true, shadow: false });
-  const spots = Object.keys(tiles).filter(k => (tiles[k] === 'grass' || tiles[k] === 'park') && !PLOT_SET.has(k) && !STATIC_BLOCK.has(k));
-  const flowerKeys = ['flower_redA', 'flower_yellowA', 'flower_purpleA'];
-  const flowersBy = { flower_redA: [], flower_yellowA: [], flower_purpleA: [] };
-  for (let i = 0; i < 42; i++) {
-    const [x, y] = spots[Math.floor(sr(i, 3) * spots.length)].split(',').map(Number);
-    flowersBy[flowerKeys[i % 3]].push({ x: x + .15 + sr(i, 7) * .7, z: y + .15 + sr(i, 9) * .7, s: .55, ry: i });
+  for (const t of territories) {
+    const hs = t.size < .15 ? 1.3 : 1.85;
+    const hall = place('building-j', t.cx - .5, t.cz - .5, { fit: hs, parent: landGroup });
+    const flag = place('flag', t.cx - .4, t.cz - .25, { y: lib['building-j'].size.y * fitScale('building-j', hs), s: .7, parent: landGroup });
+    const hTiles = [[-1, 0], [0, 0], [-1, 1], [0, 1]].map(([dx, dz]) => (t.cx - mid.x + dx) + ',' + (t.cz - mid.z + dz));
+    for (const g of [hall, flag]) fadeables.push({ g, tiles: hTiles, fromLand: true });
+    place('fountain-round', t.cx + 2.5, t.cz + 2.5, { fit: .8, parent: landGroup });
+    const lampSpots = [[t.cx - 2.4, t.cz + .4], [t.cx + 2.4, t.cz + .4]];
+    instanced('lantern', lampSpots.map(([x, z]) => ({ x, z, h: .55 })), { parent: landGroup });
+    for (const [x, z] of lampSpots) { const s = new THREE.Sprite(glowMat); s.position.set(x, .62, z); s.scale.set(.9, .9, 1); s.visible = P.night; landGroup.add(s); glows.push(s); }
+    for (const p of t.plots || []) place('patch-grass', p.x + .5, p.z + .5, { fit: .85, keepY: true, y: -.1, parent: landGroup });
+    for (const bd of t.buildings || []) newBuildingRecord(t.id, bd.plot, bd.type, bd.x, bd.z, bd.by, true);
+    const el = ovEl('lbl'); setText(el, t.name); labels.push({ el, x: t.cx, h: 2.1 * (t.size < .15 ? .8 : 1), z: t.cz });
   }
-  for (const k in flowersBy) instanced(k, flowersBy[k], { shadow: false });
-  instanced('plant_bushLarge', [[4.9, 7.25], [7.1, 7.25], [8.25, 8.2], [11.7, 10.4]].map(([x, z]) => ({ x, z, s: .75 })));
-
-  const hall = place('building-j', 6, 6, { fit: 1.85 });
-  const flag = place('flag', 6.1, 6.25, { y: lib['building-j'].size.y * fitScale('building-j', 1.85), s: .7 });
-  for (const g of [hall, flag]) fadeables.push({ g, tiles: ['-1,0', '0,0', '-1,1', '0,1'] });
-  place('fountain-round', 9.5, 9.5, { fit: .98 });
-  place('stall-red', 5.5, 10.5, { h: .72, ry: -Math.PI / 2 });
-  place('detail-parasol-a', 6.78, 10.5, { h: .5 });
-  place('detail-parasol-b', 6.78, 11.45, { h: .5 });
-  place('detail-parasol-a', 5.82, 11.55, { h: .5 });
-  place('signpost-single', 1.2, -1.45, { h: .6, ry: .3 });
+  scanTall();
 }
 
 /* ---------- river life and pets: animated ready-made models ---------- */
@@ -1058,16 +1091,18 @@ function playClip(obj, key, name){
   return { mixer, action };
 }
 const chicks = [], pets = [];
+/* a little river/plaza life near the first territory's hall; purely cosmetic */
 function buildLife(){
-  for (const [x, z, sp] of [[2.2, -.55, .22], [8, -.42, .3]]) {
-    const g = place('animal-chick', x, z, { s: .11, ry: Math.PI / 2, y: .01 });
+  const t = (map.territories || [])[0]; if (!t) return;
+  for (const [dx, dz, sp] of [[-3.2, 3.2, .18], [3.2, 3.3, -.16]]) {
+    const g = place('animal-chick', t.cx + dx, t.cz + dz, { s: .11, ry: Math.PI / 2, y: .01 });
     playClip(g.children[0], 'animal-chick', 'idle');
-    chicks.push({ g, sp, ph: Math.random() * 6 });
+    chicks.push({ g, sp, ph: Math.random() * 6, x0: t.cx + dx - 1.2, x1: t.cx + dx + 1.2 });
   }
-  for (const [key, x, z] of [['animal-cat', 10.5, 10.6], ['animal-dog', 8.6, 11.3]]) {
-    const g = place(key, x, z, { s: .13 });
+  for (const [key, dx, dz] of [['animal-cat', 3.4, 2.6], ['animal-dog', -3.6, 2.7]]) {
+    const g = place(key, t.cx + dx, t.cz + dz, { s: .13 });
     const mixer = new THREE.AnimationMixer(g.children[0]); mixers.push(mixer);
-    pets.push({ g, key, mixer, cur: null, target: null, wait: rnd(1, 4), yaw: 0 });
+    pets.push({ g, key, mixer, cur: null, target: null, wait: rnd(1, 4), yaw: 0, home: { x: t.cx, z: t.cz } });
     petAnim(pets[pets.length - 1], 'idle');
   }
 }
@@ -1079,13 +1114,12 @@ function petAnim(p, name){
   if (p.action) next.crossFadeFrom(p.action, .25, false);
   p.action = next; p.cur = name;
 }
-const PARK = Object.keys(tiles).filter(k => tiles[k] === 'park' && !STATIC_BLOCK.has(k)).map(k => k.split(',').map(Number));
 function updatePets(dt){
   for (const p of pets) {
     const pos = p.g.position;
     if (!p.target) {
       p.wait -= dt;
-      if (p.wait <= 0) { const [x, y] = pick(PARK); p.target = { x: x + rnd(.2, .8), z: y + rnd(.2, .8) }; petAnim(p, 'walk'); }
+      if (p.wait <= 0) { p.target = { x: p.home.x + rnd(-2.5, 2.5), z: p.home.z + rnd(1.8, 4.2) }; petAnim(p, 'walk'); }
       else if (p.cur === 'walk') petAnim(p, Math.random() < .5 ? 'eat' : 'idle');
       continue;
     }
@@ -1095,7 +1129,7 @@ function updatePets(dt){
     if (d < sp) { p.target = null; p.wait = rnd(2, 6); petAnim(p, Math.random() < .5 ? 'eat' : 'idle'); }
     else { pos.x += dx / d * sp; pos.z += dz / d * sp; }
   }
-  for (const c of chicks) { const p = c.g.position; p.x += c.sp * dt; if (p.x > 11.8) p.x = .2; p.y = .01 + Math.sin(simT * 2 + c.ph) * .01; }
+  for (const c of chicks) { const p = c.g.position; p.x += c.sp * dt; if (c.sp > 0 && p.x > c.x1) p.x = c.x0; else if (c.sp < 0 && p.x < c.x0) p.x = c.x1; p.y = .01 + Math.sin(simT * 2 + c.ph) * .01; }
 }
 
 /* ---------- people: Kenney mini characters with their own animations ---------- */
@@ -1142,47 +1176,33 @@ function makeGovernor(){
 
 /* ---------- buildings: ready-made models, revealed floor by floor ---------- */
 function frontYaw(b){
-  if (b.kind === 'bridge') return Math.PI / 2;
-  const [fx, fy] = frontOf(b.gx, b.gy);
-  return Math.atan2(fx - b.gx, fy - b.gy);
+  const [fx, fz] = frontOf(b.gx, b.gy);
+  return Math.atan2(fx - b.gx, fz - b.gy);
 }
+/* a building of Growth's 5 types, picked from BUILD_MODELS[type]; rises then stays (permanent) */
 function makeBuilding(b){
-  const x = b.gx + .5, z = b.kind === 'bridge' ? -.5 : b.gy + .5;
+  const x = b.gx + .5, z = b.gy + .5;
   const g = new THREE.Group(); g.position.set(x, 0, z); world.add(g);
   const v = { g, meshes: [], plane: null, h: 1 };
   v.cones = new THREE.Group(); g.add(v.cones);
-  const cz = b.kind === 'bridge' ? [[-.38, .45], [.38, .45]] : [[-.38, -.38], [.38, -.38], [.38, .38], [-.38, .38]];
-  for (const [cx, czz] of cz) place('construction-cone', cx, czz, { s: 1.7, parent: v.cones });
-  let key;
-  if (b.kind === 'house') key = HOUSES[Math.floor(sr(b.seed, 1) * HOUSES.length)];
-  else if (b.kind === 'tower') key = TOWERS[Math.floor(sr(b.seed, 2) * TOWERS.length)];
-  else if (b.kind === 'bridge') key = 'bridge_wood';
-  if (key) {
-    const fit = b.kind === 'tower' ? .82 : b.kind === 'house' ? 1 : 1.05;
-    v.model = place(key, 0, 0, { fit, ry: frontYaw(b), parent: g, y: b.kind === 'bridge' ? -.02 : 0 });
-    v.h = lib[key].size.y * v.model.userData.s;
-    const variation = b.kind === 'house' ? variations[Math.floor(sr(b.seed, 5) * (variations.length + 1))] : null;
-    v.model.traverse(n => { if (n.isMesh) {
-      if (variation && n.material.map) n.material = variantMat(n.material, variation);
-      n.userData.base = n.material; v.meshes.push(n);
-    } });
-  } else {
-    v.model = new THREE.Group(); g.add(v.model);
-    place('patch-grass', 0, 0, { fit: .9, parent: v.model, keepY: true, y: -.12 });
-    v.items = [];
-    const bits = [['plant_bush', -.28, -.28, .55], ['flower_redA', -.05, .1, .6], ['flower_yellowA', .2, -.15, .6], ['plant_bush', .28, .28, .5],
-      ['flower_purpleA', .15, .25, .6], ['flower_redA', -.25, .22, .6], ['tree_oak', .05, -.2, null], ['flower_yellowA', -.3, -.02, .6]];
-    for (const [k, bx, bz, s] of bits) { const it = place(k, bx, bz, { s: s != null ? s : undefined, fit: .38, parent: v.model }); v.items.push(it); }
-  }
-  if (b.kind === 'house' || b.kind === 'tower') {
-    v.scaf = new THREE.Group(); g.add(v.scaf);
-    const per = .42, n = Math.ceil(v.h / per) + 1;
-    for (let i = 0; i < n; i++) { const f = place('structure', 0, 0, { y: i * per, parent: v.scaf, s: 1 }); f.scale.set(1.9, per / .5, 1.9); f.userData.floor = i; }
-    v.planks = place('resource-planks', .55, .35, { s: .8, ry: .6, parent: g });
-  }
+  for (const [cx, cz] of [[-.38, -.38], [.38, -.38], [.38, .38], [-.38, .38]]) place('construction-cone', cx, cz, { s: 1.7, parent: v.cones });
+  const opts = BUILD_MODELS[b.type] || BUILD_MODELS.house;
+  const key = opts[Math.floor(sr(b.seed, 1) * opts.length)];
+  const fit = b.type === 'tower' ? .82 : 1;
+  v.model = place(key, 0, 0, { fit, ry: frontYaw(b), parent: g });
+  v.h = lib[key].size.y * v.model.userData.s;
+  const variation = b.type === 'house' ? variations[Math.floor(sr(b.seed, 5) * (variations.length + 1))] : null;
+  v.model.traverse(n => { if (n.isMesh) {
+    if (variation && n.material.map) n.material = variantMat(n.material, variation);
+    n.userData.base = n.material; v.meshes.push(n);
+  } });
+  v.scaf = new THREE.Group(); g.add(v.scaf);
+  const per = .42, n = Math.ceil(v.h / per) + 1;
+  for (let i = 0; i < n; i++) { const f = place('structure', 0, 0, { y: i * per, parent: v.scaf, s: 1 }); f.scale.set(1.9, per / .5, 1.9); f.userData.floor = i; }
+  v.planks = place('resource-planks', .55, .35, { s: .8, ry: .6, parent: g });
   g.userData.pick = { t:'b', id:b.id };
   pickables.push(g);
-  fadeables.push({ g, b, tiles: [(b.gx - 6) + ',' + (b.gy - 5)] });
+  fadeables.push({ g, b, tiles: [(b.gx - mid.x) + ',' + (b.gy - mid.z)] });
   b.v = v;
 }
 const varCache = new Map();
@@ -1195,7 +1215,7 @@ function variantMat(m, tex){
 function setClip(b, on){
   const v = b.v;
   if (on && !v.plane) {
-    v.plane = b.kind === 'bridge' ? new THREE.Plane(new THREE.Vector3(0, 0, 1), 5) : new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
+    v.plane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
     for (const n of v.meshes) { const m = n.userData.base.clone(); m.clippingPlanes = [v.plane]; m.clipShadows = true; n.material = m; }
   } else if (!on && v.plane) {
     for (const n of v.meshes) { const src = n.material.userData.fadeSrc; if (src) src.dispose(); n.material.dispose(); n.material = n.userData.base; }
@@ -1208,28 +1228,18 @@ function updateBuilding(b, t){
   v.model.visible = !planned;
   const k = t - b.popAt, pop = k >= 0 && k < 1 ? 1 + .14 * Math.sin(k * 10) * Math.exp(-k * 4) : 1;
   v.g.scale.set(pop, pop, pop);
-  if (b.kind === 'garden') {
-    const n = Math.round(p * v.items.length);
-    v.items.forEach((it, i) => { it.visible = i < n; });
-    return;
-  }
   setClip(b, !b.done && !planned);
-  if (v.plane) {
-    if (b.kind === 'bridge') v.plane.constant = 5 + p * 1.1;
-    else v.plane.constant = Math.max(.04, p * v.h);
-  }
-  if (v.scaf) {
-    v.scaf.visible = !b.done && !planned;
-    v.planks.visible = v.scaf.visible;
-    const h = p * v.h;
-    v.scaf.children.forEach(f => { f.visible = f.userData.floor * .42 < h + .05; });
-  }
+  if (v.plane) v.plane.constant = Math.max(.04, p * v.h);
+  v.scaf.visible = !b.done && !planned;
+  v.planks.visible = v.scaf.visible;
+  const h = p * v.h;
+  v.scaf.children.forEach(f => { f.visible = f.userData.floor * .42 < h + .05; });
 }
 
 /* ---------- overlays: crisp HTML labels that follow the scene ---------- */
 let W = 1, H = 1, needFrame = true;
 const tmpV = new THREE.Vector3();
-function toScreen(x, h, z){ tmpV.set(x - 6, h, z - 5).project(camera); if (tmpV.z > 1) return [-9999, -9999]; return [(tmpV.x + 1) / 2 * W, (1 - tmpV.y) / 2 * H]; }
+function toScreen(x, h, z){ tmpV.set(x - mid.x, h, z - mid.z).project(camera); if (tmpV.z > 1) return [-9999, -9999]; return [(tmpV.x + 1) / 2 * W, (1 - tmpV.y) / 2 * H]; }
 function ovEl(cls, html){ const el = document.createElement('div'); el.className = cls; if (html) el.innerHTML = html; el.hidden = true; ovRoot.appendChild(el); return el; }
 function ovBtn(cls, html){ const el = document.createElement('button'); el.type = 'button'; el.className = cls; if (html) el.innerHTML = html; el.hidden = true; ovRoot.appendChild(el); return el; }
 function pin(el, x, y, show){ if (!show) { if (!el.hidden) el.hidden = true; return; } if (el.hidden) el.hidden = false; el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
@@ -1252,7 +1262,7 @@ function updatePerson(c, t, dt){
   const pose = resting ? c.rest.pose : '';
   let yaw = v.yaw;
   if (walking) { const [tx, ty] = c.path[0]; const dx = tx - c.x, dz = ty - c.y; if (Math.hypot(dx, dz) > .001) yaw = Math.atan2(dx, dz); }
-  else if (c.state === 'building' && c.bld) { const bz = c.bld.kind === 'bridge' ? -.5 : c.bld.gy + .5; yaw = Math.atan2(c.bld.gx + .5 - c.x, bz - c.y); }
+  else if (c.state === 'building' && c.bld) { yaw = Math.atan2(c.bld.gx + .5 - c.x, c.bld.gy + .5 - c.y); }
   else if (c.state === 'asking' || c.state === 'heard') yaw = Math.atan2(gov.x - c.x, gov.y - c.y);
   else if (pose === 'cafe') yaw = Math.PI / 2;
   else if (pose === 'bench') yaw = 0;
@@ -1298,6 +1308,7 @@ function updatePerson(c, t, dt){
   pin(c.o.tag, tx, ty + 34, v.sel.visible && c.state !== 'asking');
 }
 function updateGovernor(){
+  govV.g.position.set(gov.x, govV.g.position.y, gov.y);
   const waiting = !DEMO && govState === 'waiting';
   const talking = waiting || (gov.bubble && simT < gov.bubble.until);
   anim(govV, talking ? 'interact-left' : 'idle');
@@ -1323,10 +1334,7 @@ const glowTex = (() => {
   return new THREE.CanvasTexture(c);
 })();
 const glows = [];
-function buildGlows(){
-  const m = new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
-  for (const [x, z] of LAMPS) { const s = new THREE.Sprite(m); s.position.set(x, .62, z); s.scale.set(.9, .9, 1); s.visible = false; world.add(s); glows.push(s); }
-}
+const glowMat = new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
 function applyTheme(){
   const key = isDark() ? 'night' : 'day';
   if (key === themeKey) return;
@@ -1358,43 +1366,52 @@ function scanTall(){
 function heightAt(x, z){
   const tx = Math.floor(x), tz = Math.floor(z);
   let h = tall.get(tx + ',' + tz) || 0;
-  const b = occupied.get((tx + 6) + ',' + (tz + 5));
+  const b = occupied.get(Math.round(tx + mid.x) + ',' + Math.round(tz + mid.z));
   if (b && b.v) h = Math.max(h, b.v.h + .45);
   return h;
 }
 function aroundH(x, z){ return Math.max(heightAt(x, z), heightAt(x + .3, z), heightAt(x - .3, z), heightAt(x, z + .3), heightAt(x, z - .3)); }
-/* the island box (scene x -6..6, y -1.05..0, z -7..7) seen from angle az at the current tilt, looking at (0, ly, 0) from dist:
-   [how much of the stage it fills on its tighter side, how far its middle sits from the stage middle] */
-function islandSpread(az, dist, ly){
+/* the land box (scene x -land.hx..land.hx, y -1.05..0, z -land.hz..land.hz) seen from angle az at the current tilt, looking
+   at (0, ly, 0) from dist: [how much of the stage it fills on its tighter side, how far its middle sits from the stage middle] */
+function landSpread(az, dist, ly){
+  const L = typeof land === 'undefined' ? { hx:6, hz:7 } : land;
   const t = Math.tan(FOV * Math.PI / 360), a = W / H, ce = Math.cos(cam.el), se = Math.sin(cam.el), sa = Math.sin(az), ca = Math.cos(az);
-  let mx = 0, y0 = Infinity, y1 = -Infinity;
-  for (const x of [-6, 6]) for (const z of [-7, 7]) for (const y of [-1.05, 0]) {
-    const q = y - ly, zc = dist - ce * sa * x - se * q - ce * ca * z, v = (-se * sa * x + ce * q - se * ca * z) / (zc * t);
-    mx = Math.max(mx, Math.abs((ca * x - sa * z) / (zc * t * a)));
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const x of [-L.hx, L.hx]) for (const z of [-L.hz, L.hz]) for (const y of [-1.05, 0]) {
+    const q = y - ly, zc = dist - ce * sa * x - se * q - ce * ca * z;
+    const v = (-se * sa * x + ce * q - se * ca * z) / (zc * t), u = (ca * x - sa * z) / (zc * t * a);
+    x0 = Math.min(x0, u); x1 = Math.max(x1, u);
     y0 = Math.min(y0, v); y1 = Math.max(y1, v);
   }
-  return [Math.max(mx, (y1 - y0) / 2), (y0 + y1) / 2];
+  return [Math.max((x1 - x0) / 2, (y1 - y0) / 2), (y0 + y1) / 2, (x0 + x1) / 2];
 }
-/* look height that puts the island in the middle of the stage */
+/* look height that puts the land in the middle of the stage */
 function centreHeight(az, dist){
   let ly = -.5;
-  for (let i = 0; i < 8; i++) ly += islandSpread(az, dist, ly)[1] * dist * Math.tan(FOV * Math.PI / 360) / Math.cos(cam.el);
+  for (let i = 0; i < 8; i++) ly += landSpread(az, dist, ly)[1] * dist * Math.tan(FOV * Math.PI / 360) / Math.cos(cam.el);
   return ly;
 }
-/* how far out the zoom goes: the whole island fills about 80% of the stage at this tilt, from any angle */
+/* how far out the zoom goes: the whole land fills about 80% of the stage at this tilt, from every angle (sampled every
+   15 degrees over half a turn: a rectangle repeats past that). Cached; land is part of the key so growth recomputes it. */
 function distMax(){
-  const key = W + '|' + H + '|' + cam.el.toFixed(3), c = distMax.c || (distMax.c = {});
+  const L = typeof land === 'undefined' ? { hx:6, hz:7 } : land;
+  const key = W + '|' + H + '|' + cam.el.toFixed(3) + '|' + L.hx + ',' + L.hz, c = distMax.c || (distMax.c = {});
   if (c.key === key) return c.val;
-  let best = DIST_MIN;
-  for (const az of [0, Math.PI / 4, Math.PI / 2]) {
-    let lo = DIST_MIN, hi = 200;
-    for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (islandSpread(az, mid, centreHeight(az, mid))[0] > .8) lo = mid; else hi = mid; }
+  let best = DIST_MIN, span = 20 * (L.hx + L.hz + 20);
+  /* a single fresh territory (HALF=13, no neighbour) only ever needs the plain 80% fit; a land of several
+     territories also needs its wide/narrow sides centred (cx), which costs a little extra distance */
+  const single = L.hx === 13 && L.hz === 13;
+  for (let i = 0; i < 12; i++) { const az = i * Math.PI / 12;
+    let lo = DIST_MIN, hi = span;
+    for (let k = 0; k < 30; k++) { const md = (lo + hi) / 2, s = landSpread(az, md, centreHeight(az, md));
+      const bad = single ? s[0] > .8 : (s[0] > .86 || Math.abs(s[2]) > .097);
+      if (bad) lo = md; else hi = md; }
     best = Math.max(best, hi);
   }
   c.key = key; c.val = best;
   return best;
 }
-/* the point the camera looks at, [x, y, z]: the user's target, drawn to the island's middle as the view zooms out */
+/* the point the camera looks at, [x, y, z]: the user's target, drawn to the land's middle as the view zooms out */
 function camTarget(){
   const dm = distMax(), k = clamp((cam.dist - 12) / Math.max(1, dm - 12), 0, 1), s = k * k * (3 - 2 * k);
   if (s === 0) return [cam.tx, TARGET_Y, cam.tz];
@@ -1452,7 +1469,7 @@ function updateCamera(){
   camera.position.set(x, y, z);
   camera.lookAt(tx, ty, tz);
 }
-function resetCam(){ cam.az = Math.PI / 4; cam.el = EL_DEFAULT; cam.tx = .3; cam.tz = 2.8; cam.dist = W < 560 ? DIST_DEFAULT * 1.35 : DIST_DEFAULT; }
+function resetCam(){ cam.az = Math.PI / 4; cam.el = EL_DEFAULT; cam.tx = home.x; cam.tz = home.z; cam.dist = W < 560 ? DIST_DEFAULT * 1.35 : DIST_DEFAULT; }
 function resize(){
   const r = stage.getBoundingClientRect();
   W = Math.max(1, r.width); H = Math.max(1, r.height);
@@ -1509,8 +1526,8 @@ function renderRoster(){
   let html = `<li><button class="row" type="button" data-sel="gov" aria-current="${!!(selected && selected.t === 'gov')}"><span class="rdot gov"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govPillText()}</span></button></li>`;
   for (const c of list) {
     const [g, zh] = citizenStatus(c, governorCount);
-    const kind = KIND_ZH[ROLES[c.role].kind];
-    const sub = g === 'build' ? `${c.label} · ${kind} ${pct(c)}%` : `${c.label} · ${kind}`;
+    const kind = c.bld ? TYPE_ZH[c.bld.type] : '';
+    const sub = g === 'build' && kind ? `${c.label} · ${kind} ${pct(c)}%` : c.label;
     html += `<li><button class="row" type="button" data-sel="${c.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === c.id)}"><span class="rdot" style="--c:${c.color}"></span><span class="who"><b>${esc(c.task)}</b><span>${esc(sub)}</span></span><span class="pill ${g}">${zh}</span></button></li>`;
   }
   if (html !== lastRoster) { $('#roster').innerHTML = html; lastRoster = html; }
@@ -1525,7 +1542,7 @@ function renderDetail(){
   if (key !== lastDetailKey) {
     lastDetailKey = key;
     if (c) {
-      const [g, zh] = citizenStatus(c, governorCount), kind = KIND_ZH[ROLES[c.role].kind];
+      const [g, zh] = citizenStatus(c, governorCount), kind = c.bld ? TYPE_ZH[c.bld.type] : '干活';
       const qa = [...c.qa.map(x => `<p>问：<b>“${esc(x.q)}”</b></p><p>答：<b>“${esc(x.a)}”</b></p>`), (c.stuck ? `<p>问：<b>“${esc(c.question)}”</b> 等回答…</p>` : '')].join('');
       const canStuck = !c.doneFlag && !c.stuck && ['building','to_plot','back'].includes(c.state);
       el.innerHTML = `
@@ -1543,8 +1560,8 @@ function renderDetail(){
     } else if (b) {
       const owner = byId(b.ownerId);
       el.innerHTML = `
-        <div class="d-head"><span class="rdot" style="--c:${b.color}"></span><div><div class="d-name">${KIND_ZH[b.kind]} · ${esc(b.name)}</div><div class="d-role">${esc(b.label)}</div></div><span class="pill ${b.done ? 'rest' : 'build'}">${b.done ? '建成' : '施工中'}</span></div>
-        <p class="hint">${owner ? `盖它的小人还在城里：${esc(owner.task)}。` : `盖它的 ${esc(b.label)} 已经下班。`}${b.kind === 'bridge' ? '桥 = 把分支接到 main。' : ''}</p>`;
+        <div class="d-head"><span class="rdot" style="--c:${b.color}"></span><div><div class="d-name">${TYPE_ZH[b.type]} · ${esc(b.name)}</div><div class="d-role">${esc(b.label)}</div></div><span class="pill ${b.done ? 'rest' : 'build'}">${b.done ? '建成' : '施工中'}</span></div>
+        <p class="hint">${owner ? `盖它的小人还在城里：${esc(owner.task)}。` : '造它的人已经下班，楼永远留着。'}</p>`;
     } else if (selected && selected.t === 'gov') {
       el.innerHTML = `
         <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">总督</div><div class="d-role">main manager · 主对话</div></div><span class="pill gov">市政厅</span></div>
@@ -1558,7 +1575,7 @@ function renderDetail(){
   }
   if (c) {
     const bar = el.querySelector('[data-f="bar"]'); if (bar) bar.style.width = pct(c) + '%';
-    const p = el.querySelector('[data-f="pct"]'); if (p) p.textContent = `${KIND_ZH[ROLES[c.role].kind]} ${pct(c)}%`;
+    const p = el.querySelector('[data-f="pct"]'); if (p) p.textContent = `${c.bld ? TYPE_ZH[c.bld.type] : '干活'} ${pct(c)}%`;
     for (const t of ['Edit','Write','Bash','Read']) { const d = el.querySelector(`[data-f="${t}"]`); if (d && d.textContent !== String(c.tools[t])) d.textContent = c.tools[t]; }
   }
 }
@@ -1855,8 +1872,8 @@ function panBy(dx, dy){
   const k = 2 * cam.dist * Math.tan(FOV * Math.PI / 360) / H;
   const s = Math.sin(cam.az), c = Math.cos(cam.az);
   const f = 1 / Math.sin(cam.el);
-  cam.tx = clamp(cam.tx - (dx * c - dy * s * f) * k, -6, 6);
-  cam.tz = clamp(cam.tz - (-dx * s - dy * c * f) * k, -6, 6);
+  cam.tx = clamp(cam.tx - (dx * c - dy * s * f) * k, -land.hx, land.hx);
+  cam.tz = clamp(cam.tz - (-dx * s - dy * c * f) * k, -land.hz, land.hz);
 }
 canvas.addEventListener('pointermove', e => {
   if (!pointers.has(e.pointerId)) return;
@@ -1892,47 +1909,11 @@ canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = clamp(cam.dist * (e.deltaY < 0 ? 1 / 1.1 : 1.1), DIST_MIN, distMax()); camChanged(); }, { passive:false });
 
-/* ---------- opening scene: a city mid-day, not an empty island ---------- */
-function placeBuilder(role, task, x, y, tools){
-  const R = ROLES[role], c = newCitizen('d' + (++cid), role, task), b = newBuilding(R.kind, x, y, role);
-  b.name = task; b.ownerId = c.id;
-  c.bld = b; c.stand = standFor(R.kind, x, y); c.x = c.stand.x; c.y = c.stand.y;
-  c.alpha = 1; c.state = 'building';
-  Object.assign(c.tools, tools);
-  c.work = Object.entries(tools).reduce((s, [k, v]) => s + (WEIGHT[k] || .5) * v, 0);
-  b.target = b.shown = .92 * (1 - Math.exp(-c.work / KSCALE[R.kind]));
-  c.feed = makeFeed(role, 0); c.feed.steps.splice(0, Math.min(4, c.feed.steps.length - 2));
-  citizens.push(c);
-  return c;
-}
-function placeResting(role, task, restIdx, bName){
-  const c = newCitizen('d' + (++cid), role, task), spot = REST[restIdx];
-  spot.by = c.id; c.rest = spot; c.x = spot.x; c.y = spot.y; c.alpha = 1; c.state = 'resting'; c.doneFlag = true;
-  const b = buildings.find(x => x.name === bName); if (b) { b.ownerId = c.id; c.bld = b; }
-  c.feed = { steps:[{ t:'leave' }], next:0, restSince:0, restFor:rnd(22, 34) };
-  citizens.push(c);
-  return c;
-}
+/* ---------- opening scene: a city mid-day, not an empty land (Growth: DEMO_WORLD already has some grown territories) ---------- */
 function seed(){
-  const hist = [['house',3,0,'worker','价格计算',-420],['tower',5,3,'task-manager','登录',-380],['garden',1,1,'fast-lane-deputy','按钮颜色',-300],
-    ['house',0,3,'worker','导出 CSV',-260],['bridge',4,-1,'merge-deputy','合并 login',-200],['house',9,6,'worker','深色模式',-150],['garden',5,1,'fast-lane-deputy','错别字',-45]];
-  for (const [k, x, y, role, task, t] of hist) { const b = newBuilding(k, x, y, role); b.done = true; b.shown = b.target = 1; b.name = task; b.doneAt = t; }
-  logAt(-420, '总督派出 worker：价格计算');
-  logAt(-300, '按钮颜色 完工：花园封顶，去休息', 'done');
-  logAt(-200, '合并 login 完工：桥封顶，去休息', 'done');
-  logAt(-95, '总督派出 task-manager：设置页');
-  logAt(-82, '总督派出 worker：设置页表单');
-  logAt(-80, '总督派出 worker：设置页 API');
-  logAt(-45, '错别字 完工：花园封顶，去休息', 'done');
-  placeBuilder('worker', '设置页表单', 3, 6, { Read:1, Edit:4, Write:1, Bash:1 });
-  placeBuilder('task-manager', '设置页', 10, 3, { Read:2, Write:3, Bash:1 });
-  const api = placeBuilder('worker', '设置页 API', 8, 3, { Read:2, Edit:2, Bash:1 });
-  placeResting('fast-lane-deputy', '错别字', 0, '错别字');
-  placeResting('worker', '价格计算', 4, '价格计算');
-  api.pendingAnswer = '用 /api/settings';
-  api.x = 7.5; api.y = 5.2;
-  emit({ type:'stuck', id:api.id, question:'API 路径用哪个？' });
-  selected = { t:'c', id:api.id };
+  govTerr = (map.territories && map.territories[0] && map.territories[0].id) || null;
+  updateHome();
+  for (const role of ['worker', 'task-manager', 'fast-lane-deputy', 'worker']) spawnDemo(role);
 }
 
 /* ---------- boot: load the ready-made models, then run at a capped frame rate ---------- */
@@ -1977,8 +1958,8 @@ Promise.all([
   ...['suburban/Textures/variation-a.png', 'suburban/Textures/variation-b.png', 'suburban/Textures/variation-c.png'].map(loadTex),
 ]).then(([, ...tex]) => {
   tex.forEach(t => { if (t) variations.push(t); });
-  buildIsland(); scanTall(); buildLife(); buildGlows(); makeGovernor();
-  for (const [text, x, h, z] of [['市政厅', 6, 1.95, 6], ['咖啡馆', 5.5, 1.0, 10.5], ['main', 1.2, .85, -1.5]]) { const el = ovEl('lbl'); setText(el, text); labels.push({ el, x, h, z }); }
+  if (DEMO) buildLand(DEMO_WORLD);
+  updateHome(); makeGovernor(); buildLife();
   if (DEMO) seed(); else connectLive();
   $('#loading').hidden = true;
   new ResizeObserver(() => resize()).observe(stage);
