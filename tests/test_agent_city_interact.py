@@ -24,7 +24,10 @@ CONTRACT: server additions (bin/agent_city.py serve)
   present, must be http://127.0.0.1:<port> or http://localhost:<port>, else
   403. No response ever carries Access-Control-Allow-Origin. OPTIONS: never 2xx.
 
-  /api/*: header X-City-Token must equal the token, else 403. POST bodies are
+  /api/*: header X-City-Token must equal the token (compared with
+  hmac.compare_digest), else 403. A request refused before its body is read
+  closes the connection, so a kept-alive connection never reads a leftover
+  body as the next request. POST bodies are
   one JSON object, at most 64 KB (413 over, 400 when not an object). A
   refused request changes nothing.
 
@@ -114,6 +117,8 @@ CONTRACT: the ask hook, python3 bin/agent_city.py ask [--max-wait-sec N]
               "answers": {"<question>": "<text>"}>}
   Closed by the terminal, server gone, or --max-wait-sec (default 3600) over:
     exit 0, no output (after a max-wait it POSTs /api/closed first).
+  Its parent (Claude Code) gone (os.getppid() changed): POST /api/closed,
+    exit 0, within 10 s.
   SIGTERM, SIGINT or SIGHUP (the terminal said no, or Claude Code gave up):
     POST /api/closed, exit 0, no output. Never writes to stderr.
 
@@ -129,6 +134,11 @@ CONTRACT: the governor watcher, python3 bin/agent_city.py gov-watch
   commands "<plugin>/bin/agent-city.sh answer <id> ..." and
   "<plugin>/bin/agent-city.sh pass <id>". Never offers to approve anything.
   replaced, server gone, or --max-wait-sec (default 43200) over: exit 0.
+  Its parent (the governor's Claude Code) gone: exit 0 within 10 s, so a
+  closed governor session stops counting as a governor.
+  Server side: a SessionEnd line for a governor's sid forgets that governor
+  at once (its waiting watcher gets "replaced"; new questions go to the
+  owner, why no-governor).
 
 CONTRACT: bin/agent-city.sh answer | pass | pending (for the governor)
 
@@ -301,6 +311,25 @@ class TestToken(InteractCase):
         self.start()
         self.assertEqual(self.api("POST", "/api/ask", perm_body(), token=None)[0], 403)
         self.assertEqual(self.asks(), [])
+
+
+class TestConnection(InteractCase):
+    def test_token_compare_is_constant_time(self):
+        with open(SERVER) as fh:
+            self.assertTrue("hmac.compare_digest" in fh.read(), "use hmac.compare_digest for the token")
+
+    def test_a_refused_body_does_not_spoil_the_next_request(self):
+        self.start()
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        body = json.dumps(perm_body()).encode("utf-8")
+        conn.request("POST", "/api/ask", body=body, headers={"Content-Type": "application/json"})
+        first = conn.getresponse()
+        first.read()
+        self.assertEqual(first.status, 403)
+        conn.request("GET", "/api/asks", headers={"X-City-Token": self.token()})
+        second = conn.getresponse()
+        self.assertEqual(second.status, 200, second.read())
+        conn.close()
 
 
 class TestHostAndOrigin(InteractCase):
@@ -549,6 +578,24 @@ class TestGovernorTimeout(InteractCase):
                          (ask_id, "owner", "timeout", 1))
         self.assertEqual(self.view(ask_id)["why"], "timeout")
         self.assertEqual(self.decisions_lines(), [], "a timeout is not a decision")
+
+
+class TestGovernorGone(InteractCase):
+    def test_session_end_forgets_the_governor(self):
+        self.start()
+        self.gov_next(sid="gs")
+        self.assertEqual(self.health()["governors"], 1)
+        out = {}
+        t = threading.Thread(target=lambda: out.update(r=self.gov_next(sid="gs", timeout=20)))
+        t.start()
+        time.sleep(0.5)
+        self.append(json.dumps({"ev": "SessionEnd", "sid": "gs", "aid": "", "at": "", "tool": "",
+                                "nt": "", "proj": "shop", "role": "", "desc": "", "sub": "",
+                                "q": "", "klen": ""}) + "\n")
+        t.join(5)
+        self.assertEqual(out.get("r", {}).get("state"), "replaced")
+        self.assertEqual(self.health()["governors"], 0)
+        self.assertEqual(self.view(self.ask(q_body()))["why"], "no-governor")
 
 
 class TestGovernorWatcherSlot(InteractCase):
@@ -866,6 +913,22 @@ class TestAskHookOn(AskHookCase):
         self.assertEqual((code, out), (0, b""))
         self.assertLess(time.monotonic() - start, 10)
 
+    def test_parent_gone_closes_it(self):
+        self.start()
+        sse = self.sse()
+        env = dict(os.environ, AGENT_CITY_DIR=self.dir, AGENT_ROLE="worker")
+        stdin_file = os.path.join(self.base, "req.json")
+        with open(stdin_file, "wb") as fh:
+            fh.write(hook_payload(self.work))
+        # a parent that starts the hook and goes away, like a closed Claude Code
+        parent = subprocess.Popen(["sh", "-c", '"$0" "$1" ask --max-wait-sec 60 <"$2" >/dev/null 2>&1 & sleep 1',
+                                   sys.executable, SERVER, stdin_file], env=env)
+        ask_id = self.first_ask()["id"]
+        parent.wait(10)
+        closed = wait_for(lambda: sse.events("ask_closed"), timeout=12)
+        self.assertTrue(closed, "the hook outlived its parent")
+        self.assertEqual((closed[0]["id"], closed[0]["by"], closed[0]["verb"]), (ask_id, "terminal", "closed"))
+
     def test_max_wait_gives_up_and_closes(self):
         self.start()
         proc = self.hook(hook_payload(self.work), "--max-wait-sec", "2")
@@ -950,6 +1013,22 @@ class TestGovWatch(AskHookCase):
         code, _, _ = self.finish(first, timeout=10)
         self.assertEqual(code, 0)
         self.assertIsNone(second.poll())
+
+    def test_parent_gone_ends_the_watcher(self):
+        self.start()
+        env = dict(os.environ, AGENT_CITY_DIR=self.dir)
+        env.pop("AGENT_ROLE", None)
+        stdin_file = os.path.join(self.base, "stop.json")
+        with open(stdin_file, "wb") as fh:
+            fh.write(stop_payload(self.work, sid="gone-gov"))
+        pid_file = os.path.join(self.base, "watcher.pid")
+        parent = subprocess.Popen(["sh", "-c", '"$0" "$1" gov-watch --max-wait-sec 120 <"$2" >/dev/null 2>&1 & echo $! >"$3"; sleep 1',
+                                   sys.executable, SERVER, stdin_file, pid_file], env=env)
+        parent.wait(10)
+        with open(pid_file) as fh:
+            watcher_pid = int(fh.read())
+        self.assertTrue(wait_for(lambda: not pid_alive(watcher_pid), timeout=12),
+                        "the watcher outlived the governor session")
 
     def test_server_gone(self):
         srv = self.start()
