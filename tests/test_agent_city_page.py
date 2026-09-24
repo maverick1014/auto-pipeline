@@ -254,7 +254,9 @@ CONTRACT
       territories. At the zoom-out limit the lift is 0 (tall buildings by
       the middle must not tilt the view off the land).
     buildLand() calls updateHome(): ⛶ looks at a town hall, never at the
-      empty middle of the land.
+      empty middle of the land. home = the square just south of that hall
+      (1.5 to 3 tiles in front of its centre), so the hall itself never
+      stands in the view line and fades.
   Second E2E pass (headless screenshots): the ground did not show at all.
     Faces point the right way: every top face of groundGeometry and
       waterGeometry faces up (normal (b-a) x (c-a) has y > 0, three.js
@@ -2146,6 +2148,26 @@ class TestOneLand(unittest.TestCase):
                 self.assertEqual(ch, "g", "%s stands on %r at %s" % (key, ch, (x, z)))
         self.assertIn("hallDecor(", function_source("buildLand") or "")
         self.assertNotRegex(function_source("buildLand") or "", r"place\('fountain-round', t\.cx")
+
+    def test_home_is_the_square_in_front_of_the_hall(self):
+        """Final screenshots: with home on the hall's own centre the hall stood in the view line and faded."""
+        src = function_source("updateHome")
+        self.assertIsNotNone(src)
+        js = r"""
+const fs = require('fs'), vm = require('vm');
+const { fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const t = { id: 't', cx: 26, cz: -26, open: 3 };
+const box = { Math, JSON, console, map: { territories: [t] }, mid: { x: 13, z: -13 }, govTerr: null, gov: {}, home: null,
+  terrOf: id => (id === 't' ? t : null), hallStand: () => ({ x: 26, y: -24 }) };
+vm.createContext(box);
+vm.runInContext(fns + '\nupdateHome();', box);
+process.stdout.write(JSON.stringify({ home: box.home }));
+"""
+        out = run_node(js, {"fns": src})
+        home = out["home"]
+        self.assertLessEqual(abs(home["x"] - (26 - 13)), 0.5)
+        self.assertGreaterEqual(home["z"] - (-26 + 13), 1.5, "look at the square south of the hall, not into it")
+        self.assertLessEqual(home["z"] - (-26 + 13), 3.0)
 
     def test_the_home_view_is_a_town_hall(self):
         self.assertRegex(function_source("buildLand") or "", r"updateHome\(\)")
