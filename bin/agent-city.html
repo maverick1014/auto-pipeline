@@ -1418,9 +1418,8 @@ function buildLand(view){
   mid = { x: Math.round(view.x0 + view.w / 2), z: Math.round(view.z0 + view.h / 2) };
   land = { hx: view.w / 2, hz: view.h / 2 };
   world.position.set(-mid.x, 0, -mid.z);
-  labels.length = 0;
   glows.length = 0;
-  signs.length = 0;
+  landOverlays(view); // Balance E2E bounce 2: removes the old label/sign elements first, then makes fresh ones
   const territories = view.territories || [];
 
   landGroup.add(meshFromGeometry(groundGeometry(view)));
@@ -1482,9 +1481,6 @@ function buildLand(view){
       occupied.set(bd.x + ',' + bd.z, existing);
       if (existing.v && existing.builtEra !== eraShown(t)) dropBuildingMesh(existing);
     }
-    const el = ovEl('lbl'); setText(el, t.name); labels.push({ el, x: t.cx, h: 2.1 * (t.size < .15 ? .8 : 1), z: t.cz });
-    // Balance: the "还差：..." sign, in front of the hall (south of its centre, like home/hallStand)
-    const signEl = ovEl('era-sign'); signs.push({ el: signEl, t, x: t.cx, z: t.cz + 1.7 });
   }
   updateHome(); // the world changed: look at a town hall, never at the empty middle of the land
   if (!firstViewDone && lastTouch === -Infinity) { firstViewDone = true; resetCam(); } // only the first world goes home; a later one never snaps the camera back
@@ -1678,6 +1674,33 @@ function setText(el, text){ if (el._t !== text) { el._t = text; el.textContent =
 const labels = [];
 /* Balance: one .era-sign overlay per territory, in front of its hall; {el, t, x, z}, filled by buildLand */
 const signs = [];
+/* Balance E2E bounce 2: landOverlays(view) makes the .lbl and .era-sign overlays for buildLand — no THREE.
+   First removes every element it made last time (buildLand used to just reset the labels/signs arrays and
+   call ovEl again, leaving the old elements sitting in #ov forever: labels multiplied on every world event
+   and every era flip, and a stale 还差 sign stayed next to the fresh one). Then one .lbl and one .era-sign
+   per territory, same as before. buildLand calls this; nothing else calls ovEl for a label or a sign. */
+function landOverlays(view){
+  for (const l of labels) l.el.remove();
+  for (const sg of signs) sg.el.remove();
+  labels.length = 0;
+  signs.length = 0;
+  for (const t of view.territories || []) {
+    const el = ovEl('lbl'); setText(el, t.name);
+    labels.push({ el, x: t.cx, h: 2.1 * (t.size < .15 ? .8 : 1), z: t.cz });
+    // the sign sits in front of the hall (south of its centre, like home/hallStand)
+    const signEl = ovEl('era-sign');
+    signs.push({ el: signEl, t, x: t.cx, z: t.cz + 1.7 });
+  }
+}
+/* pinLandOverlays(): the per-frame part (screen position for every label; for every sign, also its text
+   and visibility, hidden while signText(t) is ''). Called every frame from sync(). */
+function pinLandOverlays(){
+  for (const l of labels) { const [sx, sy] = toScreen(l.x, l.h, l.z); pin(l.el, sx, sy, true); }
+  for (const sg of signs) {
+    const text = signText(sg.t), [sx, sy] = toScreen(sg.x, 1.5, sg.z);
+    setText(sg.el, text); pin(sg.el, sx, sy, !!text);
+  }
+}
 const govBub = ovEl('bub gov'), govTag = ovEl('tagl'), govQm = ovBtn('qm', '<span>?</span>');
 govTag.style.setProperty('--c', '#FF6F8B'); setText(govTag, '总督 · main manager');
 function ensureOv(c){
@@ -2071,11 +2094,7 @@ function sync(t, dt){
     f.el.style.opacity = String(clamp(1.3 - k * 1.3, 0, 1));
     pin(f.el, sx + 22, sy, true);
   }
-  for (const l of labels) { const [sx, sy] = toScreen(l.x, l.h, l.z); pin(l.el, sx, sy, true); }
-  for (const sg of signs) { // Balance: the "还差：..." sign, hidden while signText(t) is ''
-    const text = signText(sg.t), [sx, sy] = toScreen(sg.x, 1.5, sg.z);
-    setText(sg.el, text); pin(sg.el, sx, sy, !!text);
-  }
+  pinLandOverlays();
 }
 /* ---------- panel ---------- */
 const dirty = { log:true };
@@ -2247,8 +2266,12 @@ function renderBalance(){
   const t = currentBalanceTerr();
   if (!t) { if (el.innerHTML) el.innerHTML = ''; lastBalanceKey = ''; return; }
   const terrs = (map.territories || []).map(x => ({ id: x.id, name: x.name }));
-  const key = t.id + '|' + (t.era || '') + '|' + JSON.stringify(t.balance) + '|' + (t.next || []).join(',') +
-    '|' + (t.rules_note || '') + '|' + JSON.stringify(balanceOpen) + '|' + terrs.map(x => x.id).join(',');
+  // Balance E2E bounce 2: eraShown(t) and signText(t) change on their own as time passes (the flip at 52 s,
+  // the sign's text once a show ends) — without them here the card missed both and kept saying "升级中" or
+  // showing the old 还差 after a rebuild-free frame (renderPanel runs this often; buildLand isn't involved).
+  const key = t.id + '|' + (t.era || '') + '|' + eraShown(t) + '|' + signText(t) + '|' + JSON.stringify(t.balance) +
+    '|' + (t.next || []).join(',') + '|' + (t.rules_note || '') + '|' + JSON.stringify(balanceOpen) +
+    '|' + terrs.map(x => x.id).join(',');
   if (key === lastBalanceKey) return;
   lastBalanceKey = key;
   el.innerHTML = balanceHtml(t, balanceOpen, terrs);
