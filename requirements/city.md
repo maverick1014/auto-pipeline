@@ -48,7 +48,12 @@
 - Island shape is uneven: organic coastline, never a square or rectangle. Growth adds land at the edge and keeps it uneven.
 - Same repo → same shape every time (shape seeded from the repo identity), so reopening shows the island the owner remembers.
 - Repo identity = git common dir. Agents in a worktree land on their main repo's island.
-- New land gets buildings. Building type is picked automatically from the kind of work (files touched): tests → test tower, UI → shop, scripts → workshop, docs → library, other → house.
+- 5 hand-made town plans. Each plan: coastline, roads, town hall spot, districts, and preset building plots with a growth order.
+- Each repo gets one plan, picked from the repo identity (stable, not a new pick each start).
+- Growth unlocks the plan's plots in its order. No building is ever placed off-plan.
+- Building type is picked automatically from the kind of work (files touched): tests → test tower, UI → shop, scripts → workshop, docs → library, other → house.
+- Each type goes to its district in the plan (test towers together, shops on the shop street, and so on).
+- The 5 plans go through the mock gate: owner sees all 5 before real code.
 - Buildings are permanent. An agent leaving never removes its building.
 
 ## Persistence
