@@ -3,7 +3,7 @@
 CONTRACT: the server
 
   python3 bin/agent_city.py serve --dir DIR --port PORT
-          [--idle-min N | --idle-sec S] [--max-log-kb K] [--page PATH]
+          [--idle-min N | --idle-sec S] [--max-log-kb K] [--page PATH] [--assets DIR]
 
   --port 0 picks a free port. --idle-sec wins over --idle-min (default 30 min).
   --max-log-kb default 256. --page default: agent-city.html next to the script.
@@ -14,6 +14,13 @@ CONTRACT: the server
   SIGINT).
 
   GET /         200 text/html, the page
+  GET /assets/<path>  the file <assets>/<path>, where <assets> is --assets or,
+                by default, agent-city-assets next to the script. Content-Type
+                by extension: .js application/javascript, .glb
+                model/gltf-binary, .png image/png, .txt text/plain.
+                Cache-Control: max-age=86400. A path that leaves <assets>
+                (.., %2e%2e, an absolute path, a symlink out) or a missing
+                file: 404.
   GET /health   200 application/json {"ok": true, "lines": <good lines read
                 since start>, "agents": <alive now>, "clients": <open /events>}
   GET /events   200 text/event-stream. First message: data: {"type":"snapshot",
@@ -302,6 +309,62 @@ class TestServe(ServerCase):
         self.assertTrue(wait_for(lambda: self.health()["clients"] == 1))
         client.close()
         self.assertTrue(wait_for(lambda: self.health()["clients"] == 0, timeout=20))
+
+
+class TestAssetsRoute(ServerCase):
+    def setUp(self):
+        super().setUp()
+        self.assets = os.path.join(self.base, "assets")
+        os.makedirs(os.path.join(self.assets, "vendor"))
+        os.makedirs(os.path.join(self.assets, "pets", "Textures"))
+        self.files = {
+            "vendor/three.min.js": (b"var THREE={};", "application/javascript"),
+            "pets/animal-cat.glb": (b"glTF\x02\x00\x00\x00fake", "model/gltf-binary"),
+            "pets/Textures/colormap.png": (b"\x89PNG fake", "image/png"),
+            "pets/License.txt": (b"CC0", "text/plain"),
+        }
+        for rel, (data, _) in self.files.items():
+            with open(os.path.join(self.assets, rel), "wb") as fh:
+                fh.write(data)
+        with open(os.path.join(self.base, "secret.txt"), "w") as fh:
+            fh.write("SECRET")
+        os.symlink(os.path.join(self.base, "secret.txt"), os.path.join(self.assets, "link.txt"))
+        self.start("--idle-sec", "60", "--assets", self.assets)
+
+    def test_files_and_types(self):
+        for rel, (data, kind) in self.files.items():
+            with self.subTest(rel=rel):
+                status, headers, body = self.get("/assets/" + rel)
+                self.assertEqual(status, 200)
+                self.assertEqual(body, data)
+                self.assertIn(kind, headers.get("Content-Type", ""))
+                self.assertIn("max-age=86400", headers.get("Cache-Control", ""))
+
+    def test_nothing_outside_the_folder(self):
+        for path in ("/assets/../secret.txt", "/assets/%2e%2e/secret.txt", "/assets/..%2fsecret.txt",
+                     "/assets//etc/passwd", "/assets/link.txt", "/assets/pets/../../secret.txt",
+                     "/assets/missing.glb", "/assets/", "/assets/pets"):
+            with self.subTest(path=path):
+                status, _, body = self.get(path)
+                self.assertEqual(status, 404)
+                self.assertNotIn(b"SECRET", body)
+
+    def test_default_folder_is_next_to_the_script(self):
+        proc = subprocess.Popen([sys.executable, SERVER, "serve", "--dir", os.path.join(self.base, "c2"),
+                                 "--port", "0", "--idle-sec", "30"],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.procs.append(proc)
+        on = os.path.join(self.base, "c2", "on")
+        self.assertTrue(wait_for(lambda: os.path.exists(on)))
+        with open(on) as fh:
+            port = int(fh.read().split()[1])
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        conn.request("GET", "/assets/vendor/three.min.js")
+        resp = conn.getresponse()
+        body = resp.read()
+        conn.close()
+        self.assertEqual(resp.status, 200)
+        self.assertIn(b"SPDX-License-Identifier: MIT", body[:400])
 
 
 class TestLifecycle(ServerCase):
