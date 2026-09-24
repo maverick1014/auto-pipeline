@@ -1125,6 +1125,7 @@ const MODELS = [
   'suburban/building-type-a', 'suburban/building-type-c', 'suburban/building-type-f', 'suburban/building-type-k', 'suburban/building-type-n', 'suburban/building-type-r',
   'commercial/building-j', 'commercial/building-skyscraper-a', 'commercial/building-skyscraper-b',
   'commercial/building-a', 'commercial/building-b', 'commercial/building-c', 'commercial/building-d',
+  'commercial/building-f', 'commercial/building-g',
   'industrial/building-a', 'industrial/building-b', 'industrial/building-h', 'industrial/building-k',
   'industrial/water-tower', 'industrial/chimney-large',
   'hexagon/building-house', 'hexagon/building-cabin', 'hexagon/unit-house', 'hexagon/building-market',
@@ -1167,11 +1168,12 @@ const ERA_LOOK = {
     build: {
       house: ['building-type-a', 'building-type-c', 'building-type-f', 'building-type-k', 'building-type-n', 'building-type-r'],
       shop: ['building-a', 'building-b'],
-      tower: ['building-skyscraper-a', 'building-skyscraper-b'],
+      // brick mid-rise office blocks (City Kit Commercial building-f/-g), not the city's glass skyscrapers
+      tower: ['building-f', 'building-g'],
       workshop: ['building-a', 'building-b'],
       library: ['building-c', 'building-d'],
     },
-    hall: 'building-j', road: '#9C8A73', lamps: true,
+    hall: 'building-j', road: '#A9A39A', lamps: true, // stone grey, apart from the village dirt path and the city asphalt
   },
   city: {
     build: {
@@ -1184,6 +1186,15 @@ const ERA_LOOK = {
     hall: 'building-skyscraper-a', road: '#5B5E68', lamps: true,
   },
 };
+/* Balance: the Kenney Hexagon Kit's "building-*" models each bake their own hex ground tile into the same
+   mesh as the building (one node, one primitive; coloured earth sides), a uniform .2 units thick on every
+   one of them (measured from the glTF: the footprint stays a full 1 x 1.155 hex up to y .2, then shrinks to
+   the building itself). On our square land that tile reads as a floating, earth-sided hex island, so every
+   entry here is sunk by that .2 plus about .01 (place()'s `sink` option) — the hex base ends up buried under
+   the ground and only the building stands above it. The "unit-*" hexagon models (unit-house, unit-tower)
+   ship with no tile at all and need no sink. */
+const HEX_SINK = { 'building-house': .21, 'building-cabin': .21, 'building-market': .21, 'building-tower': .21,
+  'building-mill': .21, 'building-farm': .21, 'building-wizard-tower': .21, 'building-village': .21 };
 /* Growth: each plan's terrain changes the look only (ground/path colour, and which plants grow on wild tiles).
    wild = the untouched land before a territory claims it; ground = claimed land, always a different shade. */
 const TERRAIN_LOOK = {
@@ -1278,13 +1289,15 @@ function scaleOf(key, o){ return o.s != null ? o.s : o.h != null ? o.h / lib[key
 function place(key, x, z, opt){
   const o = opt || {}, L = lib[key];
   const g = new THREE.Group();
-  g.position.set(x, o.y || 0, z);
   g.rotation.y = o.ry || 0;
   const inner = L.skinned ? THREE.SkeletonUtils.clone(L.scene) : L.scene.clone(true);
   const s = scaleOf(key, o);
   inner.scale.setScalar(s);
   const c = L.box.getCenter(new THREE.Vector3());
   inner.position.set(-c.x * s, o.keepY ? 0 : -L.box.min.y * s, -c.z * s);
+  // Balance: o.sink (model-space units, before scaling) buries a baked-in base under the ground, e.g. the
+  // Hexagon Kit's own hex tile, so only the building itself stands above y 0
+  g.position.set(x, (o.y || 0) - (o.sink || 0) * s, z);
   g.add(inner);
   (o.parent || world).add(g);
   g.userData.s = s;
@@ -1430,8 +1443,10 @@ function buildLand(view){
   for (const t of territories) {
     const hs = t.size < .15 ? 1.3 : 1.85;
     const hallKey = eraLook(t).hall; // Balance: the hall model follows the era shown (village/town/city)
-    const hall = place(hallKey, t.cx - .5, t.cz - .5, { fit: hs, parent: landGroup });
-    const flag = place('flag', t.cx - .4, t.cz - .25, { y: lib[hallKey].size.y * fitScale(hallKey, hs), s: .7, parent: landGroup });
+    const hallSink = HEX_SINK[hallKey] || 0;
+    const hall = place(hallKey, t.cx - .5, t.cz - .5, { fit: hs, sink: hallSink, parent: landGroup });
+    const hallS = fitScale(hallKey, hs);
+    const flag = place('flag', t.cx - .4, t.cz - .25, { y: lib[hallKey].size.y * hallS - hallSink * hallS, s: .7, parent: landGroup });
     const hTiles = [[-1, 0], [0, 0], [-1, 1], [0, 1]].map(([dx, dz]) => (t.cx - mid.x + dx) + ',' + (t.cz - mid.z + dz));
     for (const g of [hall, flag]) fadeables.push({ g, tiles: hTiles, fromLand: true });
     const decor = hallDecor(t, view), lamps = decor.filter(d => d.key === 'lantern');
@@ -1588,8 +1603,9 @@ function makeBuilding(b){
   const opts = build[b.type] || build.house;
   const key = opts[Math.floor(sr(b.seed, 1) * opts.length)];
   const fit = b.type === 'tower' ? .82 : 1;
-  v.model = place(key, 0, 0, { fit, ry: frontYaw(b), parent: g });
-  v.h = lib[key].size.y * v.model.userData.s;
+  const keySink = HEX_SINK[key] || 0;
+  v.model = place(key, 0, 0, { fit, ry: frontYaw(b), sink: keySink, parent: g });
+  v.h = (lib[key].size.y - keySink) * v.model.userData.s;
   const variation = b.type === 'house' ? variations[Math.floor(sr(b.seed, 5) * (variations.length + 1))] : null;
   // Balance: painted walls once beauty is healthy (like the mock); a few bright colours, seeded per building
   const paint = bt.balance && bt.balance.beauty && bt.balance.beauty.state === 'healthy'
@@ -2178,12 +2194,16 @@ function kindBar(k, b, opened){
 function balanceHtml(t, open, terrs){
   const KINDS = ['build', 'rules', 'beauty', 'knowledge', 'infra'];
   const ORDER = ['village', 'town', 'city'];
-  const era = t.era || 'village';
-  const next = ORDER[ORDER.indexOf(era) + 1];
+  const target = t.era || 'village';
+  const shown = eraShown(t); // Balance: before the flip the city still looks like the old era; the card must match it
+  const next = ORDER[ORDER.indexOf(target) + 1];
   const sign = signText(t);
-  const eraLine = !next
-    ? `<div class="era">时代 <b>${esc(ERA_ZH[era])}</b> · 已经是城</div>`
-    : `<div class="era">时代 <b>${esc(ERA_ZH[era])}</b> → <b>${esc(ERA_ZH[next])}</b>${sign ? `<span class="need">${esc(sign)}</span>` : ''}</div>`;
+  const eraLine = shown !== target
+    // still showing the old look: no arrow, no 还差 chip (signText is '' during a show anyway), just the progress note
+    ? `<div class="era">时代 <b>${esc(ERA_ZH[shown])}</b><span class="need">正在升级成${esc(ERA_ZH[target])}…</span></div>`
+    : !next
+      ? `<div class="era">时代 <b>${esc(ERA_ZH[target])}</b> · 已经是城</div>`
+      : `<div class="era">时代 <b>${esc(ERA_ZH[target])}</b> → <b>${esc(ERA_ZH[next])}</b>${sign ? `<span class="need">${esc(sign)}</span>` : ''}</div>`;
   const note = t.rules_note ? `<p class="note">${esc(t.rules_note)}</p>` : '';
   const picker = terrs && terrs.length > 1
     ? `<div class="bterr">${terrs.map(x => `<button class="btn" type="button" data-bterr="${esc(x.id)}" aria-pressed="${x.id === t.id}">${esc(x.name)}</button>`).join('')}</div>`
