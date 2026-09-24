@@ -1,0 +1,2 @@
+Tests start real agent-monitor.sh loops from temp plugin copies (/var/folders/.../auto_pipeline_*/plugin) and never stop them: 34 zombie loops found on 2026-09-24 after yesterday's suite runs, each sweeping orca every 5 min. Fix: every test that starts a monitor must stop it in tearDown, or start must be stubbed in tests. | 2026-09-24 12:14 | by main
+relief table: rows whose WHAT is Orca itself should say 'human decides', not 'close from Orca if idle' (cosmetic, seen 2026-09-24). | 2026-09-24 15:23 | by main
