@@ -9,6 +9,7 @@ Two parts, in one file so the server never imports anything but the stdlib:
 
   Server   python3 agent_city.py serve --dir DIR --port PORT
                    [--idle-min N | --idle-sec S] [--max-log-kb K] [--page PATH]
+                   [--assets DIR]
            Tails <dir>/events.jsonl, feeds each line to a Reducer, and streams
            the resulting events to a browser over Server-Sent Events at
            /events. Stays cheap: bounded queues, a bounded log file, an idle
@@ -21,12 +22,14 @@ import argparse
 import json
 import os
 import queue
+import shutil
 import signal
 import sys
 import threading
 import time
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import unquote
 
 
 # --------------------------------------------------------------------------
@@ -380,6 +383,15 @@ FALLBACK_PAGE = (
     b"<title>Agent City</title></head><body></body></html>"
 )
 
+ASSET_PREFIX = "/assets/"
+ASSET_CONTENT_TYPES = {
+    ".js": "application/javascript",
+    ".glb": "model/gltf-binary",
+    ".png": "image/png",
+    ".txt": "text/plain; charset=utf-8",
+}
+ASSET_DEFAULT_TYPE = "application/octet-stream"
+
 _DROP = object()  # sentinel put in a client's queue to tell it to disconnect
 
 
@@ -481,6 +493,8 @@ class CityHandler(BaseHTTPRequestHandler):
             self._send_health()
         elif self.path == "/events":
             self._send_events()
+        elif self.path.startswith(ASSET_PREFIX):
+            self._send_asset(self.path[len(ASSET_PREFIX):])
         else:
             self.send_error(404)
 
@@ -499,6 +513,30 @@ class CityHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_asset(self, raw_rel):
+        assets_root = self.server.assets_dir
+        rel = unquote(raw_rel)
+        full = os.path.realpath(os.path.join(assets_root, rel))
+        if full != assets_root and not full.startswith(assets_root + os.sep):
+            self.send_error(404)
+            return
+        if not os.path.isfile(full):
+            self.send_error(404)
+            return
+        ext = os.path.splitext(full)[1].lower()
+        content_type = ASSET_CONTENT_TYPES.get(ext, ASSET_DEFAULT_TYPE)
+        try:
+            size = os.path.getsize(full)
+            with open(full, "rb") as fh:
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(size))
+                self.send_header("Cache-Control", "max-age=86400")
+                self.end_headers()
+                shutil.copyfileobj(fh, self.wfile)
+        except OSError:
+            self.send_error(404)
 
     def _send_events(self):
         city = self.server.city
@@ -662,6 +700,7 @@ def _build_parser():
     serve.add_argument("--idle-sec", type=float, default=None)
     serve.add_argument("--max-log-kb", type=float, default=256.0)
     serve.add_argument("--page", default=None)
+    serve.add_argument("--assets", default=None)
     return parser
 
 
@@ -680,6 +719,8 @@ def cmd_serve(args):
     page_path = args.page or os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "agent-city.html")
     page_bytes = _load_page(page_path)
+    assets_dir = os.path.realpath(args.assets) if args.assets else os.path.realpath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent-city-assets"))
 
     log_path = os.path.join(directory, "events.jsonl")
     try:
@@ -692,6 +733,7 @@ def cmd_serve(args):
     server.daemon_threads = True
     server.city = city
     server.page_bytes = page_bytes
+    server.assets_dir = assets_dir
 
     port = server.server_address[1]
     _write_on(on_path, os.getpid(), port)

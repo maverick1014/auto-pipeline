@@ -11,6 +11,8 @@ NUMBER_BOUNDS = {
     "max_agents": (1, 16),
     "monitor_interval_min": (1, 60),
     "stall_min": (1, 120),
+    "city_port": (1024, 65535),
+    "city_idle_min": (1, 240),
 }
 
 ROLE_KEYS = [
@@ -44,6 +46,8 @@ HINTS = {
     "auto_resume": "Run agent-resume.sh by itself when a main manager starts. yes or no.",
     "language": "Language for talking to the human, e.g. en, zh, ms. Code and rules stay English.",
     "runtime": "How this machine runs agents. One of: auto, orca, plain, cloud.",
+    "city_port": "Port the agent city listens on, on 127.0.0.1 only. Whole number, 1024 to 65535.",
+    "city_idle_min": "Minutes the agent city keeps running with no browser open, then it stops by itself. Whole number, 1 to 240.",
 }
 
 GROUPS = [
@@ -52,6 +56,7 @@ GROUPS = [
     ("roles", list(ROLE_KEYS)),
     ("permission", ["permission_mode", "auto_resume", "language"]),
     ("runtime", ["runtime"]),
+    ("city", ["city_port", "city_idle_min"]),
 ]
 
 _GROUP_OF = {}

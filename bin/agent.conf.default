@@ -12,3 +12,5 @@ permission_mode=auto
 auto_resume=yes
 language=en
 runtime=auto
+city_port=4777
+city_idle_min=30
