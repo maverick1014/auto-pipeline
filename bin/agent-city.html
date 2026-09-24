@@ -643,7 +643,8 @@ function roleOrOther(role){ return ROLES[role] ? role : 'other'; }
 /* home = the scene point the default camera looks at: the governor's territory hall, else the first (Camera, Growth) */
 function updateHome(){
   const t = terrOf(govTerr) || map.territories[0];
-  home = t ? { x: t.cx - mid.x, z: t.cz - mid.z } : { x: 0, z: 0 };
+  // the square just south of the hall (2.2 tiles), never the hall's own centre: it would stand in the view line and fade
+  home = t ? { x: t.cx - mid.x, z: t.cz - mid.z + 2.2 } : { x: 0, z: 0 };
   if (t) { const s = hallStand(t); gov.x = s.x; gov.y = s.y; }
 }
 function placeAgent(a){
