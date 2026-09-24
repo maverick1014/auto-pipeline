@@ -31,6 +31,79 @@ CONTRACT
       static scenery drawn with THREE.InstancedMesh
     Its <script> passes `node --check`.
 
+  Cleanup (approved mock: mock/city-ui-cleanup-mock.html). A real agent work
+  view: real time only, less clutter. Page text stays Chinese (lang="zh-CN").
+    Gone, markup and JS both: the intro card (#intro), the legend card
+      (怎么看这座城), the credits card (素材来源), the speed buttons
+      ([data-speed]), the pause button (#play and its icons/label), the drag
+      hint (#hint-drag, hideHint), the separator #spawn-sep. No `speed` or
+      `paused` in the script, no keydown/keyup/keypress listener.
+    Kept: the status counts 干活 找总督 休息 建成, the clock (#clock), the
+      demo-only spawn control (#spawn-group, hidden outside demo), the
+      demo-only detail buttons (data-act stuck/done/leave behind DEMO ?), the
+      four camera buttons #zin #zout #rot #zfit and nothing else there, the
+      one-column layout under @media (max-width: 960px).
+    People walk at 1/3 of the old speed: move(c, dt) goes 1.9/3 per second,
+      2.3/3 in state 'to_hall' (the sprint). anim(v, name, once) sets the
+      action's time scale to 1/3 for 'walk' and 'sprint' and back to 1 for any
+      other clip, so feet match the ground. Pets (petAnim, updatePets with
+      .45 * dt) unchanged.
+    No frame around the city: no .stage rule sets a border, a border-radius
+      or the var(--sky) background; the island sits on the page.
+    Camera: new THREE.PerspectiveCamera(FOV, ...) with const FOV = 40, no
+      OrthographicCamera. cam = {az, el, dist, tx, tz} in scene coordinates
+      (world group offset -6, -5; the town hall centre is scene 0, 1).
+      Constants: EL_MIN = 15°, EL_MAX = 60°, EL_DEFAULT = 30° (radians,
+      Math.PI allowed), DIST_MIN <= 3.5 (street level), DIST_MAX >= 30 (whole
+      island), DIST_DEFAULT, TARGET_Y, CAM_CLEAR.
+      resetCam(): tilt 30°, target within 3.5 of the town hall, dist <= 14,
+      phone (W < 560) not closer than wide.
+      updateCamera(): camera on the sphere around (tx, TARGET_Y, tz) at dist,
+      tilt el, direction az (x = tx + dist cos(el) sin(az), z = tz + dist
+      cos(el) cos(az)); lookAt the target. It may raise the camera, never let
+      it sit below heightAt(x, z) + 0.1 within 0.25 of its position, or below
+      the ground. heightAt(x, z) = top of whatever stands on that scene tile
+      (0 on open ground); the test replaces it with a stub. updateCamera may
+      call only heightAt, camLift, aroundH, clamp and Math.
+      Drag up/down: cam.el = clamp(..., EL_MIN, EL_MAX). +/−, wheel, pinch:
+      cam.dist clamped with DIST_MIN, DIST_MAX on the same line.
+      toScreen() hides points behind the camera (projected z > 1).
+      Depth: PerspectiveCamera(FOV, 1, near, far) with number literals,
+      near >= 0.2, far <= 200, far/near <= 1000. The edge cliff blocks share
+      a plane with path and river floors: instanced('cliff_block_rock', ...,
+      { ..., behind: true }) and instanced() gives such meshes a cloned
+      material with polygonOffset = true, polygonOffsetFactor >= 1.
+      busy() is true while auto-rotation turns the camera (so live mode with
+      zero agents runs at FRAME_MS like demo); false when nothing moves,
+      within 10 s of a touch, or under reduced motion.
+      autoRotate(now, dt), called from frame(), turns only cam.az, one full
+      turn per 300 s; it does nothing when RM (reduced motion), while drag or
+      pinch is set, or within 10 s (10000 ms) of lastTouch. lastTouch =
+      performance.now() in camChanged and in the canvas pointerdown handler.
+      No button for it.
+    Right column <aside class="panel" id="panel"> holds exactly three cards,
+      default order detail, citizens, log:
+        <section class="card" data-card="detail|citizens|log">
+          <h2 class="card-head"><button type="button" aria-expanded="true"
+            aria-controls="<body id>">… 详情 | 市民 | 动态 …</button></h2>
+          one element with class card-body: #detail, #roster, #log
+        </section>
+      The 详情 header is static markup; the script never writes an <h2>.
+      Click a header: the card gets/loses class `collapsed` (CSS hides its
+      .card-body), the button's aria-expanded follows. Drag a header with
+      pointer events (6 px threshold, .card-head has touch-action:none): the
+      card moves among the panel's cards by comparing the pointer's Y with the
+      other cards' midpoints (getBoundingClientRect/offsetTop); it never leaves
+      #panel; the click that ends a drag does not toggle.
+      Order and collapsed state saved on every change and restored on load:
+      localStorage key 'agent-city-cards' = JSON {order: [...], collapsed:
+      [...]}. Unknown names ignored, missing cards keep default order. Every
+      localStorage access inside try/catch; the page works when storage throws.
+      This code is its own section: a comment line starting
+      `/* ---------- right column` up to the next `/* ----------` line. It
+      may use $, clamp and CARD_KEY from outside; the test runs it in node
+      with a small fake DOM.
+
   bin/agent-city-assets/
     vendor/three.min.js, vendor/GLTFLoader.js, vendor/SkeletonUtils.js
       (three.js r128, MIT, the licence header kept)
@@ -200,6 +273,785 @@ class TestAssets(unittest.TestCase):
         total = sum(os.path.getsize(os.path.join(folder, name))
                     for folder, _, files in os.walk(ASSETS) for name in files)
         self.assertLessEqual(total, 6 * 1024 * 1024, "assets are %.1f MB" % (total / 1048576))
+
+
+# ---------------------------------------------------------------------------
+# Cleanup: helpers
+# ---------------------------------------------------------------------------
+
+def markup():
+    """The page without its <script> and <style> blocks."""
+    return re.sub(r"<script[^>]*>.*?</script>|<style>.*?</style>", "", page(), flags=re.S)
+
+
+def style():
+    return "\n".join(re.findall(r"<style>(.*?)</style>", page(), re.S))
+
+
+def function_source(name):
+    """Source of the top-level `function name(...) {...}` in the inline script."""
+    text = inline_script()
+    m = re.search(r"^function %s\s*\(" % re.escape(name), text, re.M)
+    if not m:
+        return None
+    i = text.index("{", m.end())
+    depth = 0
+    for j in range(i, len(text)):
+        if text[j] == "{":
+            depth += 1
+        elif text[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[m.start():j + 1]
+    return None
+
+
+def cards_section():
+    """The right-column section: from its header comment to the next one."""
+    text = inline_script()
+    i = text.find("/* ---------- right column")
+    if i < 0:
+        return None
+    j = text.find("/* ----------", i + 10)
+    return text[i:j if j > 0 else len(text)]
+
+
+def constants_prelude():
+    """Every top-level `const NAME = <number or string>;` of the script."""
+    out = []
+    for name, value in re.findall(r"^const ([A-Z][A-Z0-9_]*) = ([^;\n]+);\s*$", inline_script(), re.M):
+        if re.fullmatch(r"(?:[\d.\s/*+\-()]|Math\.PI)+|'[^'\\]*'", value.strip()):
+            out.append("var %s = %s;" % (name, value.strip()))
+    return "\n".join(out)
+
+
+def cards():
+    """[(name, inner html)] of the <section class="card" data-card=...> blocks."""
+    return re.findall(r'<section class="card"[^>]*\bdata-card="([\w-]+)"[^>]*>(.*?)</section>',
+                      markup(), re.S)
+
+
+FAKE_DOM_JS = r"""
+class CL {
+  constructor(list){ this.s = new Set(list || []); }
+  add(...c){ c.forEach(x => this.s.add(x)); }
+  remove(...c){ c.forEach(x => this.s.delete(x)); }
+  contains(c){ return this.s.has(c); }
+  toggle(c, on){ if (on === undefined) on = !this.s.has(c); if (on) this.s.add(c); else this.s.delete(c); return !!on; }
+}
+const camel = s => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+function compound(el, c, root){
+  if (c === ':scope') return el === root;
+  const m = c.match(/^([a-z0-9]+)?((?:[.#][\w-]+|\[[^\]]+\])*)$/i);
+  if (!m) throw new Error('fake DOM cannot parse selector part: ' + c);
+  if (m[1] && el.tagName !== m[1].toUpperCase()) return false;
+  for (const p of (m[2].match(/[.#][\w-]+|\[[^\]]+\]/g) || [])) {
+    if (p[0] === '.') { if (!el.classList.contains(p.slice(1))) return false; }
+    else if (p[0] === '#') { if (el.getAttribute('id') !== p.slice(1)) return false; }
+    else {
+      const a = p.slice(1, -1).match(/^([\w-]+)(?:="?([^"]*)"?)?$/);
+      const v = el.getAttribute(a[1]);
+      if (v === null || (a[2] !== undefined && v !== a[2])) return false;
+    }
+  }
+  return true;
+}
+function parse(sel){
+  const parts = [], toks = sel.trim().replace(/\s*>\s*/g, ' > ').split(/\s+/);
+  let comb = null;
+  for (const t of toks) { if (t === '>') { comb = '>'; continue; } parts.push({ comb: parts.length ? (comb || ' ') : null, c: t }); comb = null; }
+  return parts;
+}
+function chain(el, parts, root){
+  const k = parts.length - 1;
+  if (!el.getAttribute || !compound(el, parts[k].c, root)) return false;
+  if (k === 0) return true;
+  const rest = parts.slice(0, k);
+  if (parts[k].comb === '>') return !!el.parentNode && chain(el.parentNode, rest, root);
+  for (let a = el.parentNode; a; a = a.parentNode) if (chain(a, rest, root)) return true;
+  return false;
+}
+const matchAny = (el, sel, root) => sel.split(',').some(s => chain(el, parse(s), root));
+class El {
+  constructor(tag, cls, attrs){
+    this.tagName = tag.toUpperCase(); this.classList = new CL(cls); this.attrs = Object.assign({}, attrs || {});
+    this.dataset = {}; this.style = {}; this.children = []; this.parentNode = null; this.listeners = {}; this.textContent = ''; this._h = 30;
+  }
+  get parentElement(){ return this.parentNode; }
+  get childNodes(){ return this.children; }
+  get className(){ return [...this.classList.s].join(' '); }
+  get id(){ return this.getAttribute('id') || ''; }
+  setAttribute(k, v){ if (k.startsWith('data-')) this.dataset[camel(k.slice(5))] = String(v); else this.attrs[k] = String(v); }
+  getAttribute(k){ if (k.startsWith('data-')) { const v = this.dataset[camel(k.slice(5))]; return v === undefined ? null : v; } return k in this.attrs ? this.attrs[k] : null; }
+  hasAttribute(k){ return this.getAttribute(k) !== null; }
+  removeAttribute(k){ if (k.startsWith('data-')) delete this.dataset[camel(k.slice(5))]; else delete this.attrs[k]; }
+  append(...xs){ xs.forEach(x => this.insertBefore(x, null)); }
+  prepend(...xs){ xs.reverse().forEach(x => this.insertBefore(x, this.children[0] || null)); }
+  appendChild(x){ return this.insertBefore(x, null); }
+  insertBefore(x, ref){
+    if (ref && ref.parentNode !== this) throw new Error('insertBefore: ref is not a child');
+    if (x.parentNode) x.parentNode._drop(x);
+    if (ref) this.children.splice(this.children.indexOf(ref), 0, x); else this.children.push(x);
+    x.parentNode = this; return x;
+  }
+  before(x){ this.parentNode.insertBefore(x, this); }
+  after(x){ this.parentNode.insertBefore(x, this.nextElementSibling); }
+  _drop(x){ const i = this.children.indexOf(x); if (i >= 0) this.children.splice(i, 1); x.parentNode = null; }
+  remove(){ if (this.parentNode) this.parentNode._drop(this); }
+  get firstElementChild(){ return this.children[0] || null; }
+  get lastElementChild(){ return this.children[this.children.length - 1] || null; }
+  get nextElementSibling(){ const p = this.parentNode; return p ? p.children[p.children.indexOf(this) + 1] || null : null; }
+  get previousElementSibling(){ const p = this.parentNode; return p ? p.children[p.children.indexOf(this) - 1] || null : null; }
+  get nextSibling(){ return this.nextElementSibling; }
+  get previousSibling(){ return this.previousElementSibling; }
+  matches(sel){ return matchAny(this, sel, this); }
+  closest(sel){ for (let e = this; e && e.getAttribute; e = e.parentNode) if (matchAny(e, sel, e)) return e; return null; }
+  querySelectorAll(sel){ const out = [], walk = e => { for (const c of e.children) { if (matchAny(c, sel, this)) out.push(c); walk(c); } }; walk(this); return out; }
+  querySelector(sel){ return this.querySelectorAll(sel)[0] || null; }
+  getElementById(id){ return this.querySelector('#' + id); }
+  contains(x){ for (let e = x; e; e = e.parentNode) if (e === this) return true; return false; }
+  addEventListener(t, fn){ (this.listeners[t] = this.listeners[t] || []).push(fn); }
+  removeEventListener(t, fn){ const l = this.listeners[t] || []; const i = l.indexOf(fn); if (i >= 0) l.splice(i, 1); }
+  setPointerCapture(){} releasePointerCapture(){} hasPointerCapture(){ return false; } focus(){} blur(){}
+  get offsetHeight(){ return this._h; }
+  get offsetWidth(){ return 360; }
+  get offsetTop(){ const p = this.parentNode; if (!p) return 0; if (p.getAttribute('id') === 'panel') return 1000 + p.children.indexOf(this) * 110; return p.offsetTop; }
+  get offsetLeft(){ return 1100; }
+  get scrollTop(){ return 0; } set scrollTop(v){}
+  getBoundingClientRect(){ const t = this.offsetTop - 1000 + 100, h = this._h; return { top: t, bottom: t + h, y: t, height: h, left: 1100, right: 1460, x: 1100, width: 360 }; }
+}
+"""
+
+HARNESS_JS = FAKE_DOM_JS + r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, section } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const KEY = 'agent-city-cards';
+const tick = () => new Promise(r => setTimeout(r, 5));
+
+function world(stored, mode){
+  const doc = new El('html'), body = new El('body'), stage = new El('div', ['stage'], { id: 'stage' });
+  doc.appendChild(body); body.appendChild(stage);
+  const panel = new El('aside', ['panel'], { id: 'panel' }); body.appendChild(panel);
+  for (const [name, zh, bodyId, tag] of [['detail', '详情', 'detail', 'div'], ['citizens', '市民', 'roster', 'ul'], ['log', '动态', 'log', 'ol']]) {
+    const sec = new El('section', ['card']); sec.setAttribute('data-card', name); sec._h = 100;
+    const h2 = new El('h2', ['card-head']);
+    const btn = new El('button', [], { type: 'button', 'aria-expanded': 'true', 'aria-controls': bodyId }); btn.textContent = zh;
+    h2.appendChild(btn); sec.appendChild(h2); sec.appendChild(new El(tag, ['card-body'], { id: bodyId }));
+    panel.appendChild(sec);
+  }
+  const mem = {}; if (stored !== undefined) mem[KEY] = stored;
+  const store = {
+    getItem(k){ if (mode === 'getthrow') throw new Error('SecurityError'); return k in mem ? mem[k] : null; },
+    setItem(k, v){ if (mode === 'setthrow') throw new Error('QuotaExceededError'); mem[k] = String(v); },
+    removeItem(k){ delete mem[k]; }, clear(){ for (const k in mem) delete mem[k]; },
+  };
+  const errors = [], winL = {};
+  const box = {
+    console, setTimeout, clearTimeout, JSON, Math, Map, Set, Array, Object, String, Number, Boolean, Error, Promise,
+    performance: { now: () => Date.now() },
+    requestAnimationFrame: fn => setTimeout(() => fn(Date.now()), 0), cancelAnimationFrame: clearTimeout,
+    CSS: { escape: s => String(s) }, RM: false,
+    $: s => doc.querySelector(s), clamp: (v, a, b) => Math.max(a, Math.min(b, v)),
+    addEventListener(t, fn){ (winL[t] = winL[t] || []).push(fn); }, removeEventListener(t, fn){ const l = winL[t] || []; const i = l.indexOf(fn); if (i >= 0) l.splice(i, 1); },
+    innerWidth: 1500, innerHeight: 900,
+  };
+  doc.body = body; doc.documentElement = doc;
+  box.document = doc; box.window = box;
+  Object.defineProperty(box, 'localStorage', { get(){ if (mode === 'throw') throw new Error('SecurityError: storage is off'); return store; } });
+  vm.createContext(box);
+  try { vm.runInContext(prelude + '\n' + section, box); } catch (e) { errors.push('load: ' + e.message); }
+  const card = n => panel.children.find(c => c.getAttribute('data-card') === n);
+  const btn = n => card(n).querySelector('button');
+  function fire(type, target, y, x){
+    const ev = { type, target, clientX: x === undefined ? 1200 : x, clientY: y, pageX: x === undefined ? 1200 : x, pageY: y,
+      pointerId: 7, pointerType: 'mouse', isPrimary: true, button: 0, buttons: type === 'pointerup' || type === 'click' ? 0 : 1,
+      detail: 1, defaultPrevented: false, _stop: false,
+      preventDefault(){ this.defaultPrevented = true; }, stopPropagation(){ this._stop = true; }, stopImmediatePropagation(){ this._stop = true; } };
+    const path = []; for (let e = target; e; e = e.parentNode) path.push(e);
+    for (const node of path.concat([{ listeners: winL }])) {
+      for (const fn of (node.listeners[type] || []).slice()) {
+        ev.currentTarget = node;
+        try { fn.call(node, ev); } catch (e) { errors.push(type + ': ' + e.message); }
+      }
+      if (ev._stop) break;
+    }
+  }
+  const click = n => { const b = btn(n), y = b.getBoundingClientRect().top + 10; fire('pointerdown', b, y); fire('pointerup', b, y); fire('click', b, y); };
+  async function drag(n, ys, x){
+    const b = btn(n); let y = b.getBoundingClientRect().top + 10;
+    fire('pointerdown', b, y); await tick();
+    for (const to of ys) { fire('pointermove', b, to, x); y = to; await tick(); }
+    fire('pointerup', b, y, x); fire('click', b, y, x);
+  }
+  const state = () => ({
+    order: panel.children.map(c => c.getAttribute('data-card')),
+    collapsed: panel.children.filter(c => c.classList.contains('collapsed')).map(c => c.getAttribute('data-card')),
+    expanded: Object.fromEntries(panel.children.map(c => [c.getAttribute('data-card'), c.querySelector('button').getAttribute('aria-expanded')])),
+    offset: panel.children.filter(c => ['transform', 'top', 'translate'].some(k => c.style[k] && !/^(none|0(px)?|translateY\(0(px)?\))$/.test(c.style[k]))).map(c => c.getAttribute('data-card')),
+    inPanel: panel.children.length === 3 && stage.children.length === 0 && body.children.length === 2,
+    stored: mem[KEY] === undefined ? null : mem[KEY],
+    errors: errors.slice(),
+  });
+  return { click, drag, state, tick };
+}
+
+(async () => {
+  const out = {};
+  let w = world();
+  out.fresh = w.state();
+  w.click('citizens'); await w.tick(); out.collapsed = w.state();
+  w.click('citizens'); await w.tick(); out.reopened = w.state();
+  await w.drag('log', [225, 215, 190, 160, 130, 100, 70, 40, 15]); out.dragged = w.state();
+  await w.tick(); w.click('log'); await w.tick(); out.clickAfterDrag = w.state();
+  await w.drag('detail', [300, 600, 1200, 5000], 3000); out.farDrag = w.state();
+
+  w = world(); await w.drag('log', [310, 290, 270, 250]); out.midDrop = w.state();
+
+  w = world(JSON.stringify({ order: ['log', 'detail', 'bogus'], collapsed: ['citizens', 'nope'] })); out.restored = w.state();
+  w = world('{not json'); out.garbage = w.state();
+  w = world('[1,2]'); out.wrongShape1 = w.state();
+  w = world(JSON.stringify({ order: 'log', collapsed: 5 })); out.wrongShape2 = w.state();
+
+  w = world(undefined, 'throw'); out.throwLoad = w.state();
+  w.click('detail'); await w.tick(); out.throwClick = w.state();
+  await w.drag('log', [225, 190, 150, 110, 70, 30, 10]); out.throwDrag = w.state();
+
+  w = world(undefined, 'setthrow'); w.click('log'); await w.tick(); out.setThrow = w.state();
+  w = world(undefined, 'getthrow'); out.getThrow = w.state();
+  process.stdout.write(JSON.stringify(out));
+})().catch(e => { process.stdout.write(JSON.stringify({ fatal: String(e && e.stack || e) })); });
+"""
+
+UNIT_JS = r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const out = {};
+function ctx(extra){ const box = Object.assign({ Math, JSON, console, performance: { now: () => 0 } }, extra); vm.createContext(box); vm.runInContext(prelude + '\n' + fns, box); return box; }
+
+// walking
+{
+  const box = ctx({ onArrive(){} });
+  out.walk = {};
+  for (const state of ['to_plot', 'back', 'to_rest', 'leaving', 'to_hall']) {
+    const c = { x: 0, y: 0, path: [[10, 0]], state, walkT: 0, stateT: 0 };
+    box.move(c, 1);
+    out.walk[state] = c.x;
+  }
+}
+// animation time scale
+function fakeMixer(){
+  const actions = new Map();
+  return { timeScale: 1, actions, clipAction(clip){
+    if (!actions.has(clip.name)) {
+      const a = { clip, timeScale: 1, weight: 1, loop: null, clampWhenFinished: false };
+      for (const m of ['reset', 'play', 'stop', 'fadeIn', 'fadeOut', 'crossFadeFrom', 'crossFadeTo', 'setEffectiveWeight', 'startAt', 'halt', 'warp', 'stopWarping', 'stopFading'])
+        a[m] = function(){ return this; };
+      a.setLoop = function(l){ this.loop = l; return this; };
+      a.setEffectiveTimeScale = function(t){ this.timeScale = t; return this; };
+      a.getEffectiveTimeScale = function(){ return this.timeScale; };
+      a.setDuration = function(d){ this.timeScale = this.clip.duration / d; return this; };
+      actions.set(clip.name, a);
+    }
+    return actions.get(clip.name);
+  } };
+}
+const THREE = { LoopOnce: 2200, LoopRepeat: 2201, LoopPingPong: 2202,
+  AnimationClip: { findByName: (clips, name) => clips.find(c => c.name === name) || null } };
+const clips = ['walk', 'sprint', 'idle', 'interact-right', 'emote-yes', 'jump', 'sit', 'eat', 'interact-left'].map(name => ({ name, duration: 1 }));
+{
+  const box = ctx({ THREE, lib: { k: { clips } } });
+  const v = { key: 'k', mixer: fakeMixer(), cur: null, action: null };
+  out.anim = [];
+  for (const name of ['walk', 'interact-right', 'sprint', 'idle', 'walk', 'emote-yes', 'sprint', 'sit']) {
+    box.anim(v, name, name === 'emote-yes');
+    out.anim.push([name, v.mixer.clipAction({ name, duration: 1 }).timeScale * v.mixer.timeScale]);
+  }
+  const p = { key: 'k', mixer: fakeMixer(), cur: null, action: null };
+  out.pet = [];
+  for (const name of ['walk', 'eat', 'walk']) {
+    box.petAnim(p, name);
+    out.pet.push([name, p.mixer.clipAction({ name, duration: 1 }).timeScale * p.mixer.timeScale]);
+  }
+}
+// camera: default view and limits
+{
+  const box = ctx({ cam: { az: 0, el: 0, dist: 1, tx: -5, tz: -5 }, W: 1200, H: 800 });
+  box.resetCam(); out.viewWide = Object.assign({}, box.cam);
+  box.W = 400; box.H = 440; box.resetCam(); out.viewPhone = Object.assign({}, box.cam);
+  out.consts = { FOV: box.FOV, EL_MIN: box.EL_MIN, EL_MAX: box.EL_MAX, DIST_MIN: box.DIST_MIN, DIST_MAX: box.DIST_MAX };
+}
+// camera pose: orbits the target at the user's tilt; never inside the ground or a building
+{
+  const camera = { aspect: 1, fov: 40, look: null, updateProjectionMatrix(){},
+    position: { x: 0, y: 0, z: 0, set(x, y, z){ this.x = x; this.y = y; this.z = z; return this; } },
+    lookAt(x, y, z){ this.look = typeof x === 'object' ? [x.x, x.y, x.z] : [x, y, z]; } };
+  const box = ctx({ camera, cam: { az: 0, el: .5, dist: 9, tx: 0, tz: 0 }, W: 1200, H: 800,
+    clamp: (v, a, b) => Math.max(a, Math.min(b, v)) });
+  let ground = () => 0;
+  box.heightAt = (x, z) => ground(x, z);
+  const pose = (c) => { Object.assign(box.cam, c); box.updateCamera(); const p = camera.position; return { x: p.x, y: p.y, z: p.z, look: camera.look.slice() }; };
+  out.orbit = [];
+  for (const el of [box.EL_MIN, 30 * Math.PI / 180, box.EL_MAX]) for (const az of [0, 1, 2.5, 4, 5.5]) {
+    const c = { az, el, dist: 9, tx: 1, tz: -2 }, p = pose(c);
+    const hx = p.x - c.tx, hz = p.z - c.tz, hor = Math.hypot(hx, hz);
+    out.orbit.push({ el, az, tilt: Math.atan2(p.y - p.look[1], hor), dir: Math.atan2(hx, hz),
+      dist: Math.hypot(hor, p.y - p.look[1]), look: [p.look[0], p.look[2]], want: [c.tx, c.tz] });
+  }
+  const tower = (x, z) => (x >= 1 && x < 3 && z >= 1 && z < 3 ? 3.2 : 0) || (x >= -2 && x < -1 && z >= 3 && z < 4 ? 1.6 : 0) || (x >= -4 && x < -3 && z >= -1 && z < 0 ? 2.4 : 0);
+  ground = tower;
+  out.clip = []; out.poses = 0;
+  const near = (x, z) => { let h = 0; for (const [dx, dz] of [[0, 0], [.25, 0], [-.25, 0], [0, .25], [0, -.25]]) h = Math.max(h, tower(x + dx, z + dz)); return h; };
+  for (const [tx, tz] of [[0, 0], [.5, 2], [3.5, 3.5], [-1.5, 2.6], [2, .4], [-3.5, .3]])
+    for (const el of [box.EL_MIN, 30 * Math.PI / 180, box.EL_MAX])
+      for (const dist of [box.DIST_MIN, 4, 9])
+        for (let i = 0; i < 16; i++) {
+          const az = i * Math.PI / 8, p = pose({ az, el, dist, tx, tz });
+          out.poses++;
+          if (!(p.y > .3) || p.y < near(p.x, p.z) + .1) out.clip.push({ tx, tz, el, dist, az, y: p.y, top: near(p.x, p.z) });
+        }
+  out.clip = out.clip.slice(0, 5);
+}
+// auto-rotation
+{
+  const box = ctx({ cam: { az: 1, el: .7, dist: 6.5, tx: 0, tz: 0 }, drag: null, pinch: null, camTween: null, lastTouch: -Infinity, RM: false });
+  const turn = (now, dt, setup) => { box.cam.az = 1; box.drag = null; box.pinch = null; box.camTween = null; box.lastTouch = -Infinity; box.RM = false; Object.assign(box, setup || {}); box.autoRotate(now, dt); return box.cam.az - 1; };
+  out.rot = {
+    idle: turn(100000, 1),
+    touched5s: turn(100000, 1, { lastTouch: 95000 }),
+    touched11s: turn(100000, 1, { lastTouch: 89000 }),
+    dragging: turn(100000, 1, { drag: { x: 0, y: 0, moved: true } }),
+    pinching: turn(100000, 1, { pinch: { d: 100, z: 1 } }),
+    reduced: turn(100000, 1, { RM: true }),
+  };
+  out.rot.keeps = [box.cam.el, box.cam.dist];
+}
+// frame rate: auto-rotation counts as motion, so live with zero agents is not throttled
+{
+  const box = ctx({ cam: { az: 0, el: .5, dist: 9, tx: 0, tz: 0 }, drag: null, pinch: null, camTween: null, lastTouch: -Infinity, RM: false,
+    floaters: [], citizens: [], needFrame: false, performance: { now: () => 100000 } });
+  const busy = setup => { Object.assign(box, { drag: null, pinch: null, camTween: null, lastTouch: -Infinity, RM: false }, setup || {}); return !!box.busy(); };
+  out.busy = { rotating: busy(), touched: busy({ lastTouch: 95000 }), reduced: busy({ RM: true }) };
+}
+process.stdout.write(JSON.stringify(out));
+"""
+
+
+def run_node(js, payload):
+    node = shutil.which("node")
+    if not node:
+        raise unittest.SkipTest("node is not installed")
+    with tempfile.TemporaryDirectory() as tmp:
+        script = os.path.join(tmp, "harness.js")
+        data = os.path.join(tmp, "data.json")
+        with open(script, "w", encoding="utf-8") as fh:
+            fh.write(js)
+        with open(data, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh)
+        result = subprocess.run([node, script, data], capture_output=True, text=True,
+                                timeout=60, stdin=subprocess.DEVNULL)
+    if result.returncode != 0 or not result.stdout.strip():
+        raise AssertionError("node harness failed:\n" + result.stderr[-3000:])
+    return json.loads(result.stdout)
+
+
+_CACHE = {}
+
+
+def unit_results():
+    if "unit" not in _CACHE:
+        fns = []
+        for name in ("move", "anim", "petAnim", "resetCam", "autoRotate", "updateCamera", "busy"):
+            src = function_source(name)
+            if src is None:
+                raise AssertionError("function %s(...) not found in the page script" % name)
+            fns.append(src)
+        for name in ("camLift", "aroundH", "autoRotating"):
+            src = function_source(name)
+            if src is not None:
+                fns.append(src)
+        _CACHE["unit"] = run_node(UNIT_JS, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
+    return _CACHE["unit"]
+
+
+def card_results():
+    if "cards" not in _CACHE:
+        section = cards_section()
+        if section is None:
+            raise AssertionError("no `/* ---------- right column` section in the page script")
+        _CACHE["cards"] = run_node(HARNESS_JS, {"prelude": constants_prelude(), "section": section})
+        if "fatal" in _CACHE["cards"]:
+            raise AssertionError("card harness crashed: " + _CACHE["cards"]["fatal"])
+    return _CACHE["cards"]
+
+
+# ---------------------------------------------------------------------------
+# Cleanup: tests
+# ---------------------------------------------------------------------------
+
+class TestRemoved(unittest.TestCase):
+    def test_no_intro_card(self):
+        self.assertNotIn('id="intro"', page())
+        self.assertNotIn("#intro", inline_script())
+
+    def test_no_legend_card(self):
+        self.assertNotIn("怎么看这座城", page())
+        self.assertNotIn('class="legend"', page())
+        self.assertNotIn(">Legend<", page())
+
+    def test_no_credits_card(self):
+        self.assertNotIn("素材来源", page())
+        self.assertNotIn(">Credits<", page())
+
+    def test_no_speed_buttons(self):
+        self.assertNotIn("data-speed", page())
+        self.assertIsNone(re.search(r"\b\d×", markup()), "a speed label is still on the page")
+
+    def test_no_pause_button(self):
+        for needle in ('id="play"', "icon-pause", "icon-play", "play-label", "#play"):
+            with self.subTest(needle=needle):
+                self.assertNotIn(needle, page())
+
+    def test_no_drag_hint(self):
+        self.assertNotIn("hint-drag", page())
+        self.assertNotIn("hideHint", inline_script())
+
+    def test_no_empty_separator(self):
+        self.assertNotIn("spawn-sep", page())
+
+    def test_real_time_only(self):
+        text = inline_script()
+        self.assertIsNone(re.search(r"\bspeed\b", text), "`speed` is still in the script")
+        self.assertIsNone(re.search(r"\bpaused\b", text), "`paused` is still in the script")
+        self.assertNotIn("dtScaled", text)
+
+    def test_no_keyboard_shortcuts(self):
+        for event in ("keydown", "keyup", "keypress"):
+            with self.subTest(event=event):
+                self.assertNotIn(event, inline_script())
+
+
+class TestKept(unittest.TestCase):
+    def test_chinese_page(self):
+        self.assertIn('<html lang="zh-CN">', page())
+
+    def test_status_counts(self):
+        body = function_source("renderStats") or ""
+        for label in ("干活", "找总督", "休息", "建成"):
+            with self.subTest(label=label):
+                self.assertIn(label, body)
+
+    def test_clock(self):
+        self.assertIn('id="clock"', markup())
+        self.assertIn("$('#clock')", inline_script())
+
+    def test_spawn_control_only_in_demo(self):
+        self.assertIn('id="spawn-group"', markup())
+        self.assertRegex(inline_script(),
+                         r"if \(DEMO\) \{\s*\$\('#spawn'\)\.addEventListener[\s\S]*?\n\} else \{\s*"
+                         r"\$\('#spawn-group'\)\.hidden = true;")
+
+    def test_detail_buttons_only_in_demo(self):
+        text = inline_script()
+        for act in ("stuck", "done", "leave"):
+            with self.subTest(act=act):
+                self.assertEqual(text.count('data-act="%s"' % act), 1)
+        self.assertRegex(text, r"\$\{DEMO \? `\s*<div class=\"d-actions\">")
+
+    def test_camera_buttons_unchanged(self):
+        block = re.search(r'<div class="cam">(.*?)</div>', markup(), re.S)
+        self.assertIsNotNone(block)
+        self.assertEqual(re.findall(r'<button[^>]*\bid="(\w+)"', block.group(1)), ["zin", "zout", "rot", "zfit"])
+        self.assertEqual(block.group(1).count("<button"), 4)
+
+    def test_zoom_still_works(self):
+        text = inline_script()
+        for needle in ("$('#zin').addEventListener", "$('#zout').addEventListener",
+                       "canvas.addEventListener('wheel'", "pinch"):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, text)
+
+    def test_phone_layout(self):
+        self.assertIn('name="viewport"', page())
+        self.assertRegex(style(), r"@media \(max-width: ?960px\)\s*\{[^@]*?\.layout\{grid-template-columns:minmax\(0,1fr\)\}")
+
+
+class TestWalkSpeed(unittest.TestCase):
+    def test_walk_is_a_third(self):
+        walk = unit_results()["walk"]
+        for state in ("to_plot", "back", "to_rest", "leaving"):
+            with self.subTest(state=state):
+                self.assertAlmostEqual(walk[state], 1.9 / 3, delta=0.03)
+
+    def test_sprint_to_city_hall_is_a_third(self):
+        self.assertAlmostEqual(unit_results()["walk"]["to_hall"], 2.3 / 3, delta=0.03)
+
+    def test_old_speeds_are_gone(self):
+        self.assertNotIn("2.3 : 1.9", inline_script())
+
+    def test_walk_animation_slowed_to_match(self):
+        for name, scale in unit_results()["anim"]:
+            with self.subTest(clip=name):
+                want = 1 / 3 if name in ("walk", "sprint") else 1
+                self.assertAlmostEqual(scale, want, delta=0.02)
+
+    def test_pets_unchanged(self):
+        for name, scale in unit_results()["pet"]:
+            with self.subTest(clip=name):
+                self.assertAlmostEqual(scale, 1, delta=0.001)
+        self.assertIn(".45 * dt", function_source("updatePets") or "")
+
+
+class TestNoFrame(unittest.TestCase):
+    def test_no_frame_around_the_city(self):
+        rules = re.findall(r"(?<![\w-])\.stage\{([^}]*)\}", style())
+        self.assertTrue(rules)
+        for rule in rules:
+            with self.subTest(rule=rule):
+                self.assertNotRegex(rule, r"border(-radius)?\s*:\s*(?!0\b|none\b)")
+                self.assertNotIn("var(--sky)", rule, "the city must blend into the page, no box")
+
+
+class TestSmoothAndSteady(unittest.TestCase):
+    def test_live_is_as_smooth_as_demo_while_rotating(self):
+        self.assertTrue(unit_results()["busy"]["rotating"],
+                        "with zero agents the auto-rotating camera must get the full frame rate")
+
+    def test_still_cheap_when_nothing_moves(self):
+        b = unit_results()["busy"]
+        self.assertFalse(b["touched"], "right after a touch, with nothing moving, idle rate is fine")
+        self.assertFalse(b["reduced"], "reduced motion: no rotation, idle rate")
+
+    def test_edge_cliff_tops_sit_behind_path_and_river_floors(self):
+        text = inline_script()
+        self.assertRegex(text, r"instanced\('cliff_block_rock'[^\n]*\bbehind: true")
+        body = function_source("instanced") or ""
+        self.assertRegex(body, r"o\.behind")
+        self.assertRegex(body, r"polygonOffset = true")
+        factor = re.search(r"polygonOffsetFactor = ([\d.]+)", body)
+        self.assertIsNotNone(factor)
+        self.assertGreaterEqual(float(factor.group(1)), 1)
+
+    def test_depth_range_is_tight(self):
+        m = re.search(r"new THREE\.PerspectiveCamera\(\s*\w+,\s*[\w.]+,\s*([\d.]+),\s*([\d.]+)\s*\)", inline_script())
+        self.assertIsNotNone(m, "PerspectiveCamera(FOV, aspect, near, far) with number literals for near and far")
+        near, far = float(m.group(1)), float(m.group(2))
+        self.assertGreaterEqual(near, 0.2)
+        self.assertLessEqual(far, 200)
+        self.assertLessEqual(far / near, 1000)
+
+
+class TestCamera(unittest.TestCase):
+    def test_perspective_not_god_view(self):
+        text = inline_script()
+        self.assertNotIn("OrthographicCamera", text)
+        self.assertRegex(text, r"new THREE\.PerspectiveCamera\(\s*(FOV|40)\b")
+        self.assertAlmostEqual(unit_results()["consts"]["FOV"], 40, delta=5)
+
+    def test_default_view_is_close_to_the_town_hall(self):
+        r = unit_results()
+        for key in ("viewWide", "viewPhone"):
+            with self.subTest(view=key):
+                v = r[key]
+                self.assertAlmostEqual(v["el"], 0.5236, delta=0.06, msg="tilt about 30 degrees")
+                self.assertLessEqual(((v["tx"] - 0) ** 2 + (v["tz"] - 1) ** 2) ** .5, 3.5,
+                                     "look at the town hall (scene 0, 1)")
+                self.assertGreaterEqual(v["dist"], r["consts"]["DIST_MIN"])
+                self.assertLessEqual(v["dist"], 14, "close enough to see people")
+        self.assertLessEqual(r["viewWide"]["dist"], r["viewPhone"]["dist"])
+
+    def test_tilt_range(self):
+        c = unit_results()["consts"]
+        self.assertAlmostEqual(c["EL_MIN"], 0.2618, delta=0.035)
+        self.assertAlmostEqual(c["EL_MAX"], 1.0472, delta=0.05)
+        self.assertRegex(inline_script(), r"cam\.el = clamp\([^;]*EL_MIN, EL_MAX\)")
+
+    def test_zoom_from_street_level_to_the_whole_island(self):
+        c = unit_results()["consts"]
+        self.assertLessEqual(c["DIST_MIN"], 3.5)
+        self.assertGreaterEqual(c["DIST_MAX"], 30)
+        text = inline_script()
+        for needle in ("$('#zin')", "$('#zout')", "canvas.addEventListener('wheel'"):
+            with self.subTest(control=needle):
+                line = next(l for l in text.splitlines() if needle in l)
+                self.assertIn("DIST_MIN, DIST_MAX", line)
+        self.assertRegex(text, r"pinch\.z[^;\n]*DIST_MIN, DIST_MAX")
+
+    def test_camera_orbits_the_target_at_the_users_tilt(self):
+        import math
+        for o in unit_results()["orbit"]:
+            with self.subTest(el=round(o["el"], 3), az=o["az"]):
+                self.assertAlmostEqual(o["tilt"], o["el"], delta=0.01)
+                self.assertAlmostEqual(o["dist"], 9, delta=0.05)
+                self.assertAlmostEqual(math.remainder(o["dir"] - o["az"], 2 * math.pi), 0, delta=0.01)
+                self.assertAlmostEqual(o["look"][0], o["want"][0], delta=0.01)
+                self.assertAlmostEqual(o["look"][1], o["want"][1], delta=0.01)
+
+    def test_never_clips_into_ground_or_buildings(self):
+        r = unit_results()
+        self.assertGreater(r["poses"], 800)
+        self.assertEqual(r["clip"], [])
+
+    def test_overlays_hide_behind_the_camera(self):
+        self.assertRegex(function_source("toScreen") or "", r"\.z\s*>=?\s*1\b")
+
+    def test_auto_rotation_keeps_tilt_and_zoom(self):
+        self.assertEqual(unit_results()["rot"]["keeps"], [0.7, 6.5])
+
+    def test_auto_rotation_one_turn_per_five_minutes(self):
+        per_second = abs(unit_results()["rot"]["idle"])
+        self.assertAlmostEqual(per_second, 2 * 3.141592653589793 / 300, delta=0.003)
+
+    def test_auto_rotation_waits_10s_after_a_touch(self):
+        rot = unit_results()["rot"]
+        self.assertEqual(rot["touched5s"], 0)
+        self.assertNotEqual(rot["touched11s"], 0)
+
+    def test_auto_rotation_stops_while_dragging_or_zooming(self):
+        rot = unit_results()["rot"]
+        self.assertEqual(rot["dragging"], 0)
+        self.assertEqual(rot["pinching"], 0)
+
+    def test_no_auto_rotation_for_reduced_motion(self):
+        self.assertEqual(unit_results()["rot"]["reduced"], 0)
+
+    def test_frame_calls_auto_rotate(self):
+        self.assertRegex(function_source("frame") or "", r"\bautoRotate\(")
+
+    def test_touch_and_zoom_reset_the_timer(self):
+        text = inline_script()
+        cam_changed = re.search(r"const camChanged = \([^)]*\) => \{[^}]*\}", text)
+        self.assertIsNotNone(cam_changed, "camChanged not found")
+        self.assertRegex(cam_changed.group(0), r"lastTouch = performance\.now\(\)")
+        down = re.search(r"canvas\.addEventListener\('pointerdown', e => \{(.*?)\n\}\);", text, re.S)
+        self.assertIsNotNone(down, "canvas pointerdown handler not found")
+        self.assertRegex(down.group(1), r"lastTouch = performance\.now\(\)")
+
+
+class TestCardsMarkup(unittest.TestCase):
+    def test_three_cards_in_default_order(self):
+        panel = re.search(r'<aside class="panel" id="panel"[^>]*>(.*?)</aside>', markup(), re.S)
+        self.assertIsNotNone(panel, '<aside class="panel" id="panel"> not found')
+        self.assertEqual(re.findall(r'data-card="([\w-]+)"', panel.group(1)), ["detail", "citizens", "log"])
+        self.assertEqual(panel.group(1).count("<section"), 3)
+
+    def test_each_card_has_a_toggle_header_and_one_body(self):
+        want = {"detail": ("详情", "detail"), "citizens": ("市民", "roster"), "log": ("动态", "log")}
+        found = dict(cards())
+        self.assertEqual(sorted(found), sorted(want))
+        for name, (zh, body_id) in want.items():
+            with self.subTest(card=name):
+                inner = found[name]
+                head = re.search(r'<h2 class="card-head">\s*<button type="button"([^>]*)>(.*?)</button>\s*</h2>', inner, re.S)
+                self.assertIsNotNone(head, "header button missing")
+                self.assertIn('aria-expanded="true"', head.group(1))
+                self.assertIn('aria-controls="%s"' % body_id, head.group(1))
+                self.assertIn(zh, head.group(2))
+                self.assertEqual(len(re.findall(r'class="[^"]*\bcard-body\b', inner)), 1)
+                self.assertRegex(inner, r'<[a-z]+ class="[^"]*\bcard-body\b[^"]*" id="%s"' % body_id)
+                self.assertLess(inner.index("card-head"), inner.index('id="%s"' % body_id))
+
+    def test_detail_header_is_static(self):
+        self.assertNotIn("<h2", inline_script())
+
+    def test_collapsed_card_hides_its_body(self):
+        self.assertRegex(style(), r"\.card\.collapsed \.card-body\{display:none")
+
+    def test_header_takes_touch_for_dragging(self):
+        self.assertRegex(style(), r"\.card-head\{[^}]*touch-action:none")
+
+
+class TestCardsBehaviour(unittest.TestCase):
+    """The right-column section run in node against a fake DOM."""
+
+    def test_default_state(self):
+        r = card_results()["fresh"]
+        self.assertEqual(r["errors"], [])
+        self.assertEqual(r["order"], ["detail", "citizens", "log"])
+        self.assertEqual(r["collapsed"], [])
+
+    def test_click_header_collapses_and_reopens(self):
+        r = card_results()
+        self.assertEqual(r["collapsed"]["collapsed"], ["citizens"])
+        self.assertEqual(r["collapsed"]["expanded"]["citizens"], "false")
+        self.assertEqual(r["collapsed"]["expanded"]["detail"], "true")
+        self.assertEqual(r["reopened"]["collapsed"], [])
+        self.assertEqual(r["reopened"]["expanded"]["citizens"], "true")
+        self.assertEqual(r["reopened"]["errors"], [])
+
+    def test_collapse_is_saved(self):
+        r = card_results()
+        self.assertEqual(json.loads(r["collapsed"]["stored"])["collapsed"], ["citizens"])
+        self.assertEqual(json.loads(r["reopened"]["stored"])["collapsed"], [])
+
+    def test_drag_header_reorders(self):
+        r = card_results()["dragged"]
+        self.assertEqual(r["errors"], [])
+        self.assertEqual(r["order"], ["log", "detail", "citizens"])
+        self.assertEqual(r["collapsed"], [], "the click that ends a drag must not toggle")
+        self.assertEqual(r["offset"], [], "a dropped card must sit in its slot, no leftover offset")
+        self.assertEqual(json.loads(r["stored"])["order"], ["log", "detail", "citizens"])
+
+    def test_card_dropped_mid_column_sits_in_its_slot(self):
+        r = card_results()["midDrop"]
+        self.assertEqual(r["errors"], [])
+        self.assertEqual(r["order"], ["detail", "log", "citizens"])
+        self.assertEqual(r["offset"], [], "a dropped card must sit in its slot, no leftover offset")
+        self.assertEqual(r["collapsed"], [])
+
+    def test_plain_click_after_a_drag_still_toggles(self):
+        r = card_results()["clickAfterDrag"]
+        self.assertEqual(r["collapsed"], ["log"])
+
+    def test_drag_never_leaves_the_column(self):
+        r = card_results()["farDrag"]
+        self.assertEqual(r["errors"], [])
+        self.assertTrue(r["inPanel"], "a card left the right column")
+        self.assertEqual(r["order"][-1], "detail")
+        self.assertEqual(sorted(r["order"]), ["citizens", "detail", "log"])
+
+    def test_restores_saved_order_and_collapse(self):
+        r = card_results()["restored"]
+        self.assertEqual(r["errors"], [])
+        self.assertEqual(r["order"], ["log", "detail", "citizens"])
+        self.assertEqual(r["collapsed"], ["citizens"])
+        self.assertEqual(r["expanded"], {"log": "true", "detail": "true", "citizens": "false"})
+
+    def test_bad_saved_data_is_ignored(self):
+        results = card_results()
+        for case in ("garbage", "wrongShape1", "wrongShape2"):
+            with self.subTest(case=case):
+                r = results[case]
+                self.assertEqual(r["errors"], [])
+                self.assertEqual(r["order"], ["detail", "citizens", "log"])
+                self.assertEqual(r["collapsed"], [])
+
+    def test_works_when_storage_throws(self):
+        results = card_results()
+        self.assertEqual(results["throwLoad"]["errors"], [])
+        self.assertEqual(results["throwLoad"]["order"], ["detail", "citizens", "log"])
+        self.assertEqual(results["throwClick"]["collapsed"], ["detail"])
+        self.assertEqual(results["throwClick"]["errors"], [])
+        self.assertEqual(results["throwDrag"]["order"], ["log", "detail", "citizens"])
+        self.assertEqual(results["throwDrag"]["errors"], [])
+        for case in ("setThrow", "getThrow"):
+            with self.subTest(case=case):
+                self.assertEqual(results[case]["errors"], [])
+        self.assertEqual(results["setThrow"]["collapsed"], ["log"])
+
+    def test_every_storage_access_is_guarded(self):
+        text = inline_script()
+        hits = [m.start() for m in re.finditer(r"localStorage", text)]
+        self.assertGreaterEqual(len(hits), 2, "order and collapse are not stored")
+        for at in hits:
+            before = text[:at]
+            opened = max(before.rfind("try {"), before.rfind("try{"))
+            with self.subTest(line=text[at - 60:at + 40].strip()):
+                self.assertNotEqual(opened, -1, "localStorage used outside try")
+                self.assertNotIn("catch", before[opened:], "localStorage used outside try")
+                self.assertLess(at - opened, 300)
+
+    def test_storage_key(self):
+        self.assertIn("'agent-city-cards'", inline_script())
 
 
 if __name__ == "__main__":
