@@ -80,6 +80,7 @@
 - Eras: village (wood houses, dirt roads) → town (brick, stone roads, lamps) → city (towers, parks, fountains).
 - Village → town: size, and no kind missing. Town → city: size, and rules and beauty both healthy. Size alone never moves an era.
 - A sign in front of the town hall shows what the next era still needs (e.g. 还差：规则).
+- An era change restyles the whole territory at once: every existing building, road and lamp takes the new era's look (wood → brick → tower). Positions and owners stay.
 - The city server never runs the repo's tests. Test pass counts: maybe later, only if cheap.
 
 ## Persistence
