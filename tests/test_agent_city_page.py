@@ -13,12 +13,14 @@ CONTRACT
     A full HTML document (<!doctype html>) with <title>Agent City</title>.
     <link rel="icon" href="data:,"> so the browser never asks for /favicon.ico.
     Fully offline: no http:// or https:// URL anywhere (no web fonts, no CDN).
-    Loads three.js and its loaders from the server, in this order:
-      <script src="assets/vendor/three.min.js">
-      <script src="assets/vendor/GLTFLoader.js">
-      <script src="assets/vendor/SkeletonUtils.js">
-    const ASSET = 'assets/' and a const MODELS = [...] list of '<pack>/<name>'
-    entries; each is loaded from ASSET + entry + '.glb'.
+    Loads three.js and its loaders from the server, in this order, each URL
+    versioned (Balance: the server fills in __CITY_ASSET_V__):
+      <script src="assets/vendor/three.min.js?v=__CITY_ASSET_V__">
+      <script src="assets/vendor/GLTFLoader.js?v=__CITY_ASSET_V__">
+      <script src="assets/vendor/SkeletonUtils.js?v=__CITY_ASSET_V__">
+    const ASSET = 'assets/', const ASSET_V = '__CITY_ASSET_V__' and a const
+    MODELS = [...] list of '<pack>/<name>' entries (names unique across
+    packs); each is loaded from ASSET + entry + '.glb?v=' + ASSET_V.
     Live mode: new EventSource('/events').
     Demo mode (the mock's fake agents) when location.hash is '#demo' or the page
     is opened as a file:// URL. Live mode never runs the fake agents.
@@ -117,12 +119,12 @@ CONTRACT
       pinch is set, or within 10 s (10000 ms) of lastTouch. lastTouch =
       performance.now() in camChanged and in the canvas pointerdown handler.
       No button for it.
-    Right column <aside class="panel" id="panel"> holds exactly three cards,
-      default order detail, citizens, log:
-        <section class="card" data-card="detail|citizens|log">
+    Right column <aside class="panel" id="panel"> holds exactly four cards,
+      default order detail, balance, citizens, log (Balance added 城市平衡):
+        <section class="card" data-card="detail|balance|citizens|log">
           <h2 class="card-head"><button type="button" aria-expanded="true"
-            aria-controls="<body id>">… 详情 | 市民 | 动态 …</button></h2>
-          one element with class card-body: #detail, #roster, #log
+            aria-controls="<body id>">… 详情 | 城市平衡 | 市民 | 动态 …</button></h2>
+          one element with class card-body: #detail, #balance, #roster, #log
         </section>
       The 详情 header is static markup; the script never writes an <h2>.
       Click a header: the card gets/loses class `collapsed` (CSS hides its
@@ -286,10 +288,11 @@ CONTRACT
     <pack>/<name>.glb for every MODELS entry, and nothing unused
     <pack>/Textures/*.png for every texture those models name
     <pack>/License.txt for every pack, each saying CC0
-    Everything together at most 6 MB.
+    Everything together at most 7 MB (Balance raised it from 6 MB).
 """
 
 import json
+import math
 import os
 import re
 import shutil
@@ -343,8 +346,9 @@ class TestDocument(unittest.TestCase):
 
     def test_vendor_scripts_in_order(self):
         srcs = re.findall(r'<script src="([^"]+)"', page())
-        self.assertEqual(srcs, ["assets/vendor/three.min.js", "assets/vendor/GLTFLoader.js",
-                                "assets/vendor/SkeletonUtils.js"])
+        self.assertEqual(srcs, ["assets/vendor/three.min.js?v=__CITY_ASSET_V__",
+                                "assets/vendor/GLTFLoader.js?v=__CITY_ASSET_V__",
+                                "assets/vendor/SkeletonUtils.js?v=__CITY_ASSET_V__"])
 
     def test_script_parses(self):
         node = shutil.which("node")
@@ -379,8 +383,16 @@ class TestModes(unittest.TestCase):
         self.assertRegex(inline_script(), r"['\"]?other['\"]?\s*:\s*\{")
 
     def test_assets_come_from_the_server(self):
-        self.assertIn("const ASSET = 'assets/'", inline_script())
+        text = inline_script()
+        self.assertIn("const ASSET = 'assets/'", text)
+        self.assertIn("const ASSET_V = '__CITY_ASSET_V__'", text)
+        self.assertRegex(function_source("loadAll") or "", r"ASSET \+ key \+ '\.glb\?v=' \+ ASSET_V")
+        self.assertRegex(function_source("loadTex") or "", r"ASSET \+ path \+ '\?v=' \+ ASSET_V")
         self.assertGreater(len(models()), 20)
+        names = [m.split("/")[1] for m in models()]
+        self.assertEqual(sorted(set(n for n in names if names.count(n) > 1)), ["building-a", "building-b"],
+                         "a model is found by its name alone: new names must be unique (commercial/industrial "
+                         "building-a/-b were already shared before Balance)")
 
 
 class TestCost(unittest.TestCase):
@@ -463,7 +475,7 @@ class TestAssets(unittest.TestCase):
     def test_size_budget(self):
         total = sum(os.path.getsize(os.path.join(folder, name))
                     for folder, _, files in os.walk(ASSETS) for name in files)
-        self.assertLessEqual(total, 6 * 1024 * 1024, "assets are %.1f MB" % (total / 1048576))
+        self.assertLessEqual(total, 7 * 1024 * 1024, "assets are %.1f MB" % (total / 1048576))
 
 
 # ---------------------------------------------------------------------------
@@ -1375,14 +1387,15 @@ class TestCamera(unittest.TestCase):
 
 
 class TestCardsMarkup(unittest.TestCase):
-    def test_three_cards_in_default_order(self):
+    def test_four_cards_in_default_order(self):
         panel = re.search(r'<aside class="panel" id="panel"[^>]*>(.*?)</aside>', markup(), re.S)
         self.assertIsNotNone(panel, '<aside class="panel" id="panel"> not found')
-        self.assertEqual(re.findall(r'data-card="([\w-]+)"', panel.group(1)), ["detail", "citizens", "log"])
-        self.assertEqual(panel.group(1).count("<section"), 3)
+        self.assertEqual(re.findall(r'data-card="([\w-]+)"', panel.group(1)), ["detail", "balance", "citizens", "log"])
+        self.assertEqual(panel.group(1).count("<section"), 4)
 
     def test_each_card_has_a_toggle_header_and_one_body(self):
-        want = {"detail": ("详情", "detail"), "citizens": ("市民", "roster"), "log": ("动态", "log")}
+        want = {"detail": ("详情", "detail"), "balance": ("城市平衡", "balance"), "citizens": ("市民", "roster"),
+                "log": ("动态", "log")}
         found = dict(cards())
         self.assertEqual(sorted(found), sorted(want))
         for name, (zh, body_id) in want.items():
@@ -2029,9 +2042,11 @@ vm.createContext(box);
 vm.runInContext(prelude + '\n' + fns, box);
 const ch = (x, z) => { const r = Math.floor(z) - view.z0, c = Math.floor(x) - view.x0; return r >= 0 && r < view.h && c >= 0 && c < view.w ? rows[r][c] : ' '; };
 const t0 = { id: 't', cx: 0, cz: 0, open: 0, size: 0 }, t1 = { id: 't', cx: 0, cz: 0, open: 6, size: .4 };
+const t2 = { id: 't', cx: 0, cz: 0, open: 6, size: .4, era: 'town' };
 process.stdout.write(JSON.stringify({
   day0: box.hallDecor(t0, view),
   grown: box.hallDecor(t1, view).map(d => [d.key, d.x, d.z, ch(d.x, d.z)]),
+  town: box.hallDecor(t2, view).map(d => [d.key, d.x, d.z, ch(d.x, d.z)]),
 }));
 """
 
@@ -2140,12 +2155,17 @@ class TestOneLand(unittest.TestCase):
         for name in ("tileAt", "walkable"):
             if function_source(name):
                 fns.append(function_source(name))
-        out = run_node(DECOR_JS, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
+        for name in ("eraShown", "showOf"):
+            if function_source(name):
+                fns.append(function_source(name))
+        out = run_node(DECOR_JS, {"prelude": constants_prelude() + "\nvar shows = new Map();", "fns": "\n".join(fns)})
         self.assertEqual(out["day0"], [], "day 0: nothing but the town hall")
-        self.assertTrue(out["grown"], "a town with open plots gets its fountain and lamps")
-        for key, x, z, ch in out["grown"]:
+        self.assertEqual(out["grown"], [], "Balance: a village has no lamps, and the fountain comes from beauty only")
+        self.assertTrue(out["town"], "a town gets its lamps")
+        for key, x, z, ch in out["town"]:
             with self.subTest(decor=key):
                 self.assertEqual(ch, "g", "%s stands on %r at %s" % (key, ch, (x, z)))
+                self.assertNotIn("fountain", key, "the fountain is beauty's (systemsDecor), never hallDecor's")
         self.assertIn("hallDecor(", function_source("buildLand") or "")
         self.assertNotRegex(function_source("buildLand") or "", r"place\('fountain-round', t\.cx")
 
@@ -2219,14 +2239,16 @@ class TestGrowthPage(unittest.TestCase):
         self.assertIsNone(g["noBridge"], "walked through a river")
 
     def test_building_models_per_type(self):
-        b = js_value(const_object("BUILD_MODELS") or "null")
-        self.assertIsInstance(b, dict)
-        self.assertEqual(set(b), {"house", "shop", "tower", "workshop", "library"})
+        look = js_value(const_object("ERA_LOOK") or "null")
+        self.assertIsInstance(look, dict, "Balance: const ERA_LOOK = {village, town, city} replaces BUILD_MODELS")
         names = {m.split("/")[1] for m in models()}
-        for typ, keys in b.items():
-            with self.subTest(type=typ):
-                self.assertTrue(keys)
-                self.assertLessEqual(set(keys), names)
+        for era in ("village", "town", "city"):
+            b = look[era]["build"]
+            self.assertEqual(set(b), {"house", "shop", "tower", "workshop", "library"})
+            for typ, keys in b.items():
+                with self.subTest(era=era, type=typ):
+                    self.assertTrue(keys)
+                    self.assertLessEqual(set(keys), names)
 
     def test_type_names_in_chinese(self):
         self.assertEqual(js_value(const_object("TYPE_ZH") or "null"),
@@ -2270,8 +2292,641 @@ class TestGrowthPage(unittest.TestCase):
 
     def test_a_town_hall_for_every_territory(self):
         body = function_source("buildLand") or ""
-        self.assertIn("building-j", body)
+        self.assertRegex(body, r"eraLook\(|ERA_LOOK\[", "the hall model follows the era (Balance)")
         self.assertRegex(body, r"for \(const \w+ of [\w.]*territories\)")
+
+
+# ---------------------------------------------------------------------------
+# Balance (requirements/city.md "Balance"; approved mock mock/city-balance-mock.html;
+# server side: tests/test_agent_city_balance.py)
+#
+#   Constants  KIND_ZH {build 建设, rules 规则, beauty 美化, knowledge 知识, infra 基建}
+#              STATE_ZH {healthy 健康, low 偏低, missing 没有, na 不适用}
+#              ERA_ZH {village 村, town 镇, city 城}; SHOW_SEC = 60, SHOW_FLIP = 52
+#   ERA_LOOK = {village|town|city: {build: {house, shop, tower, workshop, library:
+#     [model names]}, hall: model name, road: '#hex', lamps: bool}}. Village =
+#     wood, town = brick, city = towers: the three eras' house lists share no
+#     model; city's tower list has a skyscraper; lamps only town and city.
+#     eraLook(t) = ERA_LOOK[eraShown(t)].
+#   roadColor(t): village -> TERRAIN_LOOK[t.terrain].path, town and city ->
+#     ERA_LOOK[era].road (all three differ). groundGeometry colours 'r' tiles
+#     with it.
+#   hallDecor(t, view): [] on day 0 and in a village; lamps ('lantern') in a
+#     town or city, on 'g' tiles. Never a fountain (that is beauty's).
+#   signText(t) -> '' on day 0 (no lines), in the city era, with no "next", or
+#     while t's era show runs; else '还差：' + t.next.join('、'). Drawn as an
+#     overlay (.era-sign) in front of each town hall.
+#   balanceHtml(t, open, terrs) -> the 城市平衡 card body (#balance):
+#     era line (时代 <ERA_ZH> -> next era, with the sign text; 已经是城 in the
+#     city era), then <li class="kind" data-kind=K data-state=S> for the 5
+#     kinds in KINDS order, each with a <button type="button"
+#     aria-expanded> showing KIND_ZH, a bar, STATE_ZH and t.balance[K].text.
+#     t.balance {} -> every kind data-state="missing" with 还没数过.
+#     open = {kind, files, total, rules, error} opens that kind: its paths
+#     (escaped), 还有 N 个 when total > files.length, and the fix hint naming
+#     the rules file (分错了？ ... = none); files null -> 正在拿文件列表…;
+#     error -> 文件列表拿不到： + error (never silent). t.rules_note shown.
+#     terrs [{id, name}] with more than one -> a button per territory
+#     (data-bterr=id, aria-pressed on the shown one).
+#   openBalanceKind(kind): live -> fetch('/api/balance?terr=' + id + '&kind='
+#     + kind) with the X-City-Token header; a failure is shown in the card.
+#     Demo -> no fetch, 演示：没有真实文件.
+#   systemsDecor(t, view) -> [{key ('<pack>/<name>' in MODELS), x, z, kind}]:
+#     [] on day 0 (t.open 0) or with no balance; nothing for a missing or na
+#     kind (absent, never broken: no cones, no cracks); every item on its own
+#     'g' tile, none on a hallDecor tile. rules: signposts and a police
+#     station, traffic lights too when healthy; beauty: flowers, and a park
+#     and the fountain ('fantasy/fountain-round') when healthy; knowledge: a
+#     library and district name signs; infra: a water tower, and a power
+#     plant when healthy. A healthy kind never has fewer items than low.
+#   trackColor(t): TRACK_COLOR, paved (another colour) when infra is healthy.
+#   Era show: case 'era' -> startShow(ev.terr, ev.from, ev.to, ev.left);
+#     the snapshot starts each of ev.shows with left > 0. startShow only
+#     records {from, to, end: performance.now() + left*1000} in the Map
+#     `shows` and asks for a frame. eraShown(t): t's show running and less
+#     than SHOW_FLIP s in -> from, else t.era (village by default). The flip
+#     is one moment: every building, road and lamp of t changes together.
+#     showPlan(t, view, to) -> {builders, targets: [{x, z, what}]}: every
+#     building of t (what 'building'), every 2nd road tile of t ('road'),
+#     the lamps of the new era ('lamp', none for a village); builders =
+#     clamp(ceil(targets / 3), 6, 24). Builders are not citizens: never in
+#     the roster or the top counts.
+# ---------------------------------------------------------------------------
+
+KINDS = ["build", "rules", "beauty", "knowledge", "infra"]
+
+
+def balance_card_results():
+    if "bcards" not in _CACHE:
+        section = cards_section()
+        if section is None:
+            raise AssertionError("no `/* ---------- right column` section in the page script")
+        js = HARNESS_JS.replace(
+            "[['detail', '详情', 'detail', 'div'], ['citizens', '市民', 'roster', 'ul'], ['log', '动态', 'log', 'ol']]",
+            "[['detail', '详情', 'detail', 'div'], ['balance', '城市平衡', 'balance', 'div'], "
+            "['citizens', '市民', 'roster', 'ul'], ['log', '动态', 'log', 'ol']]")
+        js = js.replace("inPanel: panel.children.length === 3", "inPanel: panel.children.length === 4")
+        start = js.index("(async () => {")
+        js = js[:start] + r"""(async () => {
+  const out = {};
+  let w = world();
+  out.fresh = w.state();
+  w.click('balance'); await w.tick(); out.collapsed = w.state();
+  w = world(JSON.stringify({ order: ['log', 'detail', 'citizens'], collapsed: ['log'] })); out.oldSave = w.state();
+  w = world(JSON.stringify({ order: ['balance', 'log', 'detail', 'citizens'], collapsed: ['balance'] })); out.restored = w.state();
+  w = world(); await w.drag('balance', [100, 60, 30, 10, 0]); out.dragged = w.state();
+  process.stdout.write(JSON.stringify(out));
+})().catch(e => { process.stdout.write(JSON.stringify({ fatal: String(e && e.stack || e) })); });
+"""
+        _CACHE["bcards"] = run_node(js, {"prelude": constants_prelude(), "section": section})
+        if "fatal" in _CACHE["bcards"]:
+            raise AssertionError("card harness crashed: " + _CACHE["bcards"]["fatal"])
+    return _CACHE["bcards"]
+
+
+def page_fns(*names, optional=()):
+    fns = []
+    for name in names:
+        src = function_source(name)
+        if src is None:
+            raise AssertionError("function %s(...) not found in the page script" % name)
+        fns.append(src)
+    for name in optional:
+        src = function_source(name)
+        if src:
+            fns.append(src)
+    return "\n".join(fns)
+
+
+def consts(*names):
+    out = []
+    for name in names:
+        lit = const_object(name)
+        if lit is None:
+            raise AssertionError("const %s = {...}; not found in the page script" % name)
+        out.append("var %s = %s;" % (name, lit))
+    return "\n".join(out)
+
+
+BAL = {"build": {"state": "healthy", "value": 4200, "n": 12, "text": "4,200 行代码"},
+       "rules": {"state": "missing", "value": 0, "n": 0, "text": "还没有"},
+       "beauty": {"state": "low", "value": 1, "n": 2, "text": "1 个组件，平均复用 1.0 次"},
+       "knowledge": {"state": "na", "value": 0, "n": 0, "text": "这个仓库不用这一类"},
+       "infra": {"state": "healthy", "value": 8, "n": 8, "text": "8 个文件"}}
+
+CARD_JS = r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, fns, cases } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const box = { Math, JSON, console, DEMO: false, shows: new Map(), performance: { now: () => 0 }, map: { territories: [] } };
+vm.createContext(box);
+vm.runInContext(prelude + '\n' + fns, box);
+process.stdout.write(JSON.stringify(cases.map(([t, open, terrs]) => box.balanceHtml(t, open, terrs))));
+"""
+
+
+class TestBalanceCard(unittest.TestCase):
+    def test_markup(self):
+        found = dict(cards())
+        self.assertIn("balance", found)
+        inner = found["balance"]
+        self.assertIn("城市平衡", inner)
+        self.assertRegex(inner, r'<svg class="grip"', "same grip as the other cards")
+        self.assertRegex(inner, r'<[a-z]+ class="[^"]*\bcard-body\b[^"]*" id="balance"')
+
+    def test_same_collapse_drag_and_memory_as_the_other_cards(self):
+        r = balance_card_results()
+        self.assertEqual(r["fresh"]["errors"], [])
+        self.assertEqual(r["fresh"]["order"], ["detail", "balance", "citizens", "log"])
+        self.assertEqual(r["collapsed"]["collapsed"], ["balance"])
+        self.assertEqual(json.loads(r["collapsed"]["stored"])["collapsed"], ["balance"])
+        self.assertEqual(r["oldSave"]["order"], ["log", "detail", "citizens", "balance"],
+                         "a browser that saved the 3-card order still gets the new card")
+        self.assertEqual(r["oldSave"]["collapsed"], ["log"])
+        self.assertEqual(r["restored"]["order"], ["balance", "log", "detail", "citizens"])
+        self.assertEqual(r["restored"]["collapsed"], ["balance"])
+        self.assertEqual(r["dragged"]["order"][0], "balance")
+        self.assertEqual(r["dragged"]["errors"], [])
+
+    def test_names_in_chinese(self):
+        self.assertEqual(js_value(const_object("KIND_ZH") or "null"),
+                         {"build": "建设", "rules": "规则", "beauty": "美化", "knowledge": "知识", "infra": "基建"})
+        self.assertEqual(js_value(const_object("STATE_ZH") or "null"),
+                         {"healthy": "健康", "low": "偏低", "missing": "没有", "na": "不适用"})
+        self.assertEqual(js_value(const_object("ERA_ZH") or "null"), {"village": "村", "town": "镇", "city": "城"})
+
+    def card(self, *cases):
+        fns = page_fns("balanceHtml", optional=("signText", "eraShown", "showOf", "kindBar", "barOf"))
+        esc = re.search(r"^const esc = .*;$", inline_script(), re.M)
+        prelude = constants_prelude() + "\n" + consts("KIND_ZH", "STATE_ZH", "ERA_ZH") + "\n" + \
+            (esc.group(0).replace("const esc", "var esc") if esc else "")
+        return run_node(CARD_JS, {"prelude": prelude, "fns": fns, "cases": [list(c) for c in cases]})
+
+    def test_one_bar_per_kind(self):
+        t = {"id": "t1", "name": "shop", "era": "village", "lines": 4200, "open": 6, "balance": BAL,
+             "next": ["规则"], "rules_note": ""}
+        html = self.card((t, None, [{"id": "t1", "name": "shop"}]))[0]
+        self.assertEqual(re.findall(r'data-kind="(\w+)"', html), KINDS)
+        self.assertEqual(re.findall(r'data-state="(\w+)"', html), ["healthy", "missing", "low", "na", "healthy"])
+        for word in ("建设", "规则", "美化", "知识", "基建", "健康", "没有", "偏低", "不适用", "4,200 行代码",
+                     "1 个组件，平均复用 1.0 次", "村", "还差：规则"):
+            with self.subTest(word=word):
+                self.assertIn(word, html)
+        self.assertNotIn('class="files', html, "no list until a kind is clicked")
+        self.assertEqual(len(re.findall(r'<button type="button"[^>]*aria-expanded="false"', html)), 5)
+        self.assertNotIn("data-bterr", html, "one territory: no picker")
+
+    def test_a_clicked_kind_lists_its_files(self):
+        t = {"id": "t1", "name": "shop", "era": "town", "lines": 9000, "open": 6, "balance": BAL,
+             "next": ["规模", "美化"], "rules_note": ""}
+        opened = {"kind": "infra", "files": [".github/workflows/ci.yml", "scripts/<b>x</b>.sh"], "total": 7,
+                  "rules": "/Users/me/.claude/agent-city/rules/shop.conf", "error": ""}
+        loading = dict(opened, files=None)
+        failed = dict(opened, files=None, error="HTTP 403")
+        html, wait, err = self.card((t, opened, []), (t, loading, []), (t, failed, []))
+        self.assertIn(".github/workflows/ci.yml", html)
+        self.assertIn("&lt;b&gt;x&lt;/b&gt;", html)
+        self.assertNotIn("<b>x</b>", html)
+        self.assertIn("还有 5 个", html)
+        self.assertIn("rules/shop.conf", html)
+        self.assertIn("分错了", html)
+        self.assertIn("= none", html)
+        self.assertRegex(html, r'data-kind="infra"[^>]*>\s*<button type="button"[^>]*aria-expanded="true"')
+        self.assertIn("正在拿文件列表", wait)
+        self.assertIn("文件列表拿不到：HTTP 403", err)
+
+    def test_before_the_first_count(self):
+        t = {"id": "t1", "name": "shop", "era": "village", "lines": 0, "open": 0, "balance": {}, "next": [],
+             "rules_note": ""}
+        html = self.card((t, None, []))[0]
+        self.assertEqual(re.findall(r'data-state="(\w+)"', html), ["missing"] * 5)
+        self.assertIn("还没数过", html)
+        self.assertNotIn("还差", html, "day 0 is clean")
+
+    def test_city_rules_note_and_territory_picker(self):
+        t = {"id": "t2", "name": "big", "era": "city", "lines": 90000, "open": 30, "balance": BAL, "next": [],
+             "rules_note": "big.conf 第 3 行看不懂，已跳过"}
+        html = self.card((t, None, [{"id": "t1", "name": "shop"}, {"id": "t2", "name": "big"}]))[0]
+        self.assertIn("已经是城", html)
+        self.assertNotIn("还差", html)
+        self.assertIn("big.conf 第 3 行看不懂", html)
+        self.assertEqual(re.findall(r'data-bterr="(\w+)"', html), ["t1", "t2"])
+        self.assertRegex(html, r'data-bterr="t2"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-bterr="t2"')
+
+    def test_clicking_a_kind_asks_the_server(self):
+        src = function_source("openBalanceKind")
+        self.assertIsNotNone(src, "function openBalanceKind(kind) not found")
+        self.assertIn("'/api/balance?terr='", src)
+        self.assertIn("'X-City-Token': TOKEN", src)
+        self.assertIn("encodeURIComponent", src)
+        self.assertRegex(src, r"if \(DEMO\)[^;]*", "demo mode never fetches")
+        self.assertIn("演示：没有真实文件", inline_script())
+        self.assertRegex(src, r"catch|\.ok", "a failed fetch is shown, never swallowed")
+
+
+SIGN_JS = r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, fns, cases } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const box = { Math, JSON, console, shows: new Map(), performance: { now: () => 1000 } };
+vm.createContext(box);
+vm.runInContext(prelude + '\n' + fns, box);
+const out = cases.map(t => box.signText(t));
+box.shows.set('t9', { from: 'village', to: 'town', end: 1000 + 30000 });
+out.push(box.signText({ id: 't9', era: 'town', lines: 5000, next: ['规模'] }));
+process.stdout.write(JSON.stringify(out));
+"""
+
+
+class TestEraLook(unittest.TestCase):
+    def test_sign_text(self):
+        cases = [{"id": "a", "era": "village", "lines": 4200, "next": ["规则"]},
+                 {"id": "b", "era": "town", "lines": 9000, "next": ["规模", "美化"]},
+                 {"id": "c", "era": "village", "lines": 0, "next": ["规模"]},
+                 {"id": "d", "era": "city", "lines": 90000, "next": []},
+                 {"id": "e", "era": "town", "lines": 9000, "next": []}]
+        out = run_node(SIGN_JS, {"prelude": constants_prelude(),
+                                 "fns": page_fns("signText", optional=("eraShown", "showOf")), "cases": cases})
+        self.assertEqual(out, ["还差：规则", "还差：规模、美化", "", "", "", ""],
+                         "no sign on day 0, in the city, with nothing needed, or during the show")
+        self.assertIn(".era-sign", style())
+        self.assertIn("era-sign", inline_script())
+
+    def test_era_look(self):
+        look = js_value(const_object("ERA_LOOK") or "null")
+        self.assertIsInstance(look, dict)
+        self.assertEqual(set(look), {"village", "town", "city"})
+        names = {m.split("/")[1] for m in models()}
+        houses = {}
+        for era, v in look.items():
+            with self.subTest(era=era):
+                self.assertIn(v["hall"], names)
+                self.assertRegex(v["road"], r"^#[0-9A-Fa-f]{6}$")
+                self.assertIs(v["lamps"], era != "village")
+                houses[era] = set(v["build"]["house"])
+        self.assertFalse(houses["village"] & houses["town"], "village is wood, town is brick: other models")
+        self.assertFalse(houses["town"] & houses["city"])
+        self.assertFalse(houses["village"] & houses["city"])
+        self.assertTrue(any("skyscraper" in k for k in look["city"]["build"]["tower"]))
+        self.assertNotEqual(look["town"]["road"].lower(), look["city"]["road"].lower())
+        self.assertNotEqual(look["village"]["hall"], look["city"]["hall"])
+
+    def test_road_colour_follows_the_era(self):
+        js = r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const box = { Math, JSON, console, shows: new Map(), performance: { now: () => 0 } };
+vm.createContext(box);
+vm.runInContext(prelude + '\n' + fns, box);
+process.stdout.write(JSON.stringify(['village', 'town', 'city', undefined].map(era => box.roadColor({ id: 'x', terrain: 'coast', era }))));
+"""
+        prelude = constants_prelude() + "\n" + consts("TERRAIN_LOOK", "ERA_LOOK")
+        out = run_node(js, {"prelude": prelude, "fns": page_fns("roadColor", optional=("eraShown", "showOf", "eraLook"))})
+        look = js_value(const_object("ERA_LOOK"))
+        terrain = js_value(const_object("TERRAIN_LOOK"))
+        self.assertEqual([c.lower() for c in out],
+                         [terrain["coast"]["path"].lower(), look["town"]["road"].lower(),
+                          look["city"]["road"].lower(), terrain["coast"]["path"].lower()])
+        self.assertIn("roadColor(", function_source("groundGeometry") or "")
+
+    def test_the_ground_draws_town_roads_in_stone(self):
+        base = ground_results()["groundGeometry"]["top"]["13,0"]
+        fns = ["const TERRAIN_LOOK = %s;" % const_object("TERRAIN_LOOK"), "const ERA_LOOK = %s;" % const_object("ERA_LOOK"),
+               "var shows = new Map();"]
+        for name in ("groundGeometry", "waterGeometry"):
+            fns.append(function_source(name))
+        for helper in ("h2r", "hexRgb", "rgbOf", "tintOf", "terrAtOf", "cellTerrain", "terrainAt", "roadColor",
+                       "eraShown", "showOf", "eraLook", "trackColor"):
+            src = function_source(helper)
+            if src:
+                fns.append(src)
+        js = GROUND_JS.replace("terrain: 'desert', cx: 26, cz: 0 }", "terrain: 'desert', cx: 26, cz: 0, era: 'town' }")
+        self.assertNotEqual(js, GROUND_JS)
+        out = run_node(js, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
+        self.assertNotEqual(out["groundGeometry"]["top"]["13,0"], base, "a town's road is not the village dirt path")
+
+    def test_versioned_assets_and_the_hall(self):
+        self.assertIn("function eraLook(", inline_script())
+        self.assertIn("function eraShown(", inline_script())
+
+
+SYS_JS = r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, fns, cases } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+// one territory, hall at (-1..0, -1..0); roads x = 2 and z = 2 and a ring at 6; plots beside the roads
+const N = 10, rows = [];
+for (let z = -N; z <= N; z++) {
+  let row = '';
+  for (let x = -N; x <= N; x++) {
+    const d = Math.hypot(x + .5, z + .5);
+    let c = d > 9.2 ? '.' : 'g';
+    if (c === 'g' && (x === 2 || z === 2 || Math.abs(x) === 6 || Math.abs(z) === 6)) c = 'r';
+    if (c === 'g' && (x === 3 || x === 1 || z === 3 || z === 1) && (x + z) % 3 === 0) c = 'P';
+    if ((x === -1 || x === 0) && (z === -1 || z === 0)) c = 'H';
+    row += c;
+  }
+  rows.push(row);
+}
+const view = { cell: 26, x0: -N, z0: -N, w: 2 * N + 1, h: 2 * N + 1, rows, territories: [], links: [] };
+const box = { Math, JSON, console, occupied: new Map(), blocked: new Set(), map: view, shows: new Map(), performance: { now: () => 0 } };
+vm.createContext(box);
+vm.runInContext(prelude + '\n' + fns, box);
+const ch = (x, z) => { const r = Math.floor(z) - view.z0, c = Math.floor(x) - view.x0; return r >= 0 && r < view.h && c >= 0 && c < view.w ? rows[r][c] : ' '; };
+const out = {};
+for (const [name, t] of Object.entries(cases)) {
+  view.territories = [t];
+  const items = box.systemsDecor(t, view);
+  const hall = box.hallDecor(t, view).map(d => Math.floor(d.x) + ',' + Math.floor(d.z));
+  out[name] = items.map(d => ({ key: d.key, kind: d.kind, ch: ch(d.x, d.z), tile: Math.floor(d.x) + ',' + Math.floor(d.z), onHall: hall.includes(Math.floor(d.x) + ',' + Math.floor(d.z)) }));
+}
+process.stdout.write(JSON.stringify(out));
+"""
+
+
+def systems_results():
+    if "sys" not in _CACHE:
+        def terr(**states):
+            bal = {k: {"state": "missing", "value": 0, "n": 0, "text": "还没有"} for k in KINDS}
+            for k, st in states.items():
+                bal[k] = {"state": st, "value": 1, "n": 1, "text": ""}
+            return {"id": "t", "name": "shop", "cx": 0, "cz": 0, "open": 8, "size": .6, "lines": 9000,
+                    "era": "town", "terrain": "grassland", "balance": bal, "next": [], "buildings": []}
+        cases = {"day0": dict(terr(build="healthy", rules="healthy"), open=0, lines=0),
+                 "none": terr(), "nobalance": dict(terr(), balance={})}
+        for k in KINDS[1:]:
+            cases[k + "_low"] = terr(build="healthy", **{k: "low"})
+            cases[k + "_healthy"] = terr(build="healthy", **{k: "healthy"})
+            cases[k + "_na"] = terr(build="healthy", **{k: "na"})
+        cases["all"] = terr(**{k: "healthy" for k in KINDS})
+        fns = page_fns("systemsDecor", "hallDecor",
+                       optional=("tileAt", "walkable", "eraShown", "showOf", "eraLook", "frontOf", "sr", "terrOf"))
+        prelude = constants_prelude() + "\n" + consts("ERA_LOOK")
+        _CACHE["sys"] = run_node(SYS_JS, {"prelude": prelude, "fns": fns, "cases": cases})
+    return _CACHE["sys"]
+
+
+class TestSystems(unittest.TestCase):
+    def test_day_zero_and_missing_kinds_add_nothing(self):
+        r = systems_results()
+        self.assertEqual(r["day0"], [], "day 0 is clean empty land")
+        self.assertEqual(r["none"], [], "a missing kind is absent")
+        self.assertEqual(r["nobalance"], [])
+        for k in KINDS[1:]:
+            with self.subTest(kind=k):
+                self.assertEqual(r[k + "_na"], [], "not applicable is absent too")
+
+    def test_each_kind_brings_only_its_own_things(self):
+        r = systems_results()
+        for k in KINDS[1:]:
+            for level in ("low", "healthy"):
+                with self.subTest(kind=k, level=level):
+                    items = r["%s_%s" % (k, level)]
+                    self.assertTrue(items, "%s %s shows nothing" % (k, level))
+                    self.assertEqual({d["kind"] for d in items}, {k})
+            with self.subTest(kind=k, compare=True):
+                self.assertGreaterEqual(len(r[k + "_healthy"]), len(r[k + "_low"]))
+        self.assertGreater(len(r["rules_healthy"]), len(r["rules_low"]), "traffic lights come when rules is healthy")
+        self.assertIn("fantasy/fountain-round", {d["key"] for d in r["beauty_healthy"]})
+        self.assertNotIn("fantasy/fountain-round", {d["key"] for d in r["beauty_low"]})
+
+    def test_every_thing_stands_on_its_own_ground_tile(self):
+        r = systems_results()
+        wanted = set(models())
+        for name, items in r.items():
+            tiles = [d["tile"] for d in items]
+            with self.subTest(case=name):
+                self.assertEqual(len(tiles), len(set(tiles)), "two things on one tile")
+                for d in items:
+                    self.assertEqual(d["ch"], "g", "%s on %r" % (d["key"], d["ch"]))
+                    self.assertFalse(d["onHall"], "%s on a lamp's tile" % d["key"])
+                    self.assertIn(d["key"], wanted, "%s is not a loaded model" % d["key"])
+
+    def test_nothing_broken_ever(self):
+        text = inline_script()
+        body = function_source("systemsDecor") or ""
+        for word in ("cone", "crack", "broken", "ruin"):
+            with self.subTest(word=word):
+                self.assertNotIn(word, body.lower())
+
+    def test_paved_track_with_healthy_infra(self):
+        js = r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const box = { Math, JSON, console };
+vm.createContext(box);
+vm.runInContext(prelude + '\n' + fns, box);
+const t = st => ({ id: 't', balance: { infra: { state: st } } });
+process.stdout.write(JSON.stringify([box.trackColor(t('healthy')), box.trackColor(t('low')), box.trackColor({ id: 'x', balance: {} }), box.TRACK_COLOR]));
+"""
+        out = run_node(js, {"prelude": constants_prelude(), "fns": page_fns("trackColor")})
+        self.assertNotEqual(out[0].lower(), out[3].lower())
+        self.assertEqual(out[1], out[3])
+        self.assertEqual(out[2], out[3])
+
+
+SHOW_JS = r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, fns, t, view } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+let T = 0;
+const box = { Math, JSON, console, shows: new Map(), performance: { now: () => T }, needFrame: false, DEMO: false,
+  map: view, occupied: new Map(), blocked: new Set(), logAt(){}, dirty: {} };
+vm.createContext(box);
+vm.runInContext(prelude + '\n' + fns, box);
+const out = {};
+const at = s => { T = s * 1000; return box.eraShown(t); };
+box.startShow('t', 'village', 'town', 60);
+out.frame = box.needFrame;
+out.full = [at(0), at(10), at(51.5), at(52.5), at(61), at(300)];
+T = 0; box.shows.clear();
+box.startShow('t', 'village', 'town', 20);
+out.joined = [at(0), at(11.5), at(12.5)];
+const p = box.showPlan(t, view, 'town');
+out.plan = { builders: p.builders, targets: p.targets.map(g => [g.what, g.x, g.z]) };
+const pv = box.showPlan(Object.assign({}, t, { buildings: [] }), view, 'village');
+out.village = pv.targets.filter(g => g.what === 'lamp').length;
+process.stdout.write(JSON.stringify(out));
+"""
+
+
+class TestEraShow(unittest.TestCase):
+    def test_constants_and_events(self):
+        text = inline_script()
+        self.assertRegex(text, r"const SHOW_SEC = 60\b")
+        self.assertRegex(text, r"const SHOW_FLIP = 52\b")
+        era = case_block("era")
+        self.assertIsNotNone(era, "case 'era': not handled")
+        self.assertRegex(era, r"startShow\(ev\.terr, ev\.from, ev\.to, ev\.left\)")
+        snap = case_block("snapshot") or ""
+        self.assertIn(".shows", snap)
+        self.assertIn("startShow(", snap)
+        self.assertRegex(snap, r"left > 0", "a finished show is never replayed")
+
+    def show(self):
+        if "show" not in _CACHE:
+            rows = ["..........",
+                    ".gggggggg.",
+                    ".grrrrrrg.",
+                    ".grgHHgrg.",
+                    ".grgHHgrg.",
+                    ".grPggPrg.",
+                    ".grrrrrrg.",
+                    ".gggggggg.",
+                    ".........."]
+            view = {"cell": 26, "x0": -4, "z0": -4, "w": 10, "h": 9, "rows": rows, "territories": [], "links": []}
+            t = {"id": "t", "name": "shop", "cx": 0, "cz": 0, "open": 2, "size": .3, "lines": 3000, "era": "town",
+                 "terrain": "grassland", "balance": {}, "next": [],
+                 "buildings": [{"plot": 0, "type": "house", "by": "w", "x": -1, "z": 1},
+                               {"plot": 1, "type": "shop", "by": "w", "x": 2, "z": 1}]}
+            view["territories"] = [t]
+            fns = page_fns("startShow", "eraShown", "showPlan", "hallDecor",
+                           optional=("showOf", "tileAt", "walkable", "eraLook", "sr"))
+            prelude = constants_prelude() + "\n" + consts("ERA_LOOK")
+            _CACHE["show"] = run_node(SHOW_JS, {"prelude": prelude, "fns": fns, "t": t, "view": view})
+        return _CACHE["show"]
+
+    def test_the_flip_is_one_moment_after_52_s(self):
+        r = self.show()
+        self.assertTrue(r["frame"], "startShow asks for a frame")
+        self.assertEqual(r["full"], ["village", "village", "village", "town", "town", "town"])
+        self.assertEqual(r["joined"], ["village", "village", "town"], "a page opened 40 s in flips 12 s later")
+
+    def test_builders_visit_every_building_road_and_lamp(self):
+        plan = self.show()["plan"]
+        whats = [w for w, _, _ in plan["targets"]]
+        spots = [(x, z) for w, x, z in plan["targets"] if w == "building"]
+        self.assertEqual(len(spots), 2, "one visit per building")
+        for bx, bz in ((-1, 1), (2, 1)):
+            with self.subTest(building=(bx, bz)):
+                self.assertTrue(any(abs(x - bx - .5) <= 1.5 and abs(z - bz - .5) <= 1.5 for x, z in spots),
+                                "no builder goes to the building at %s" % ((bx, bz),))
+        self.assertGreaterEqual(whats.count("road"), 5)
+        self.assertGreaterEqual(whats.count("lamp"), 1, "a town gets lamps: the builders put them up")
+        self.assertEqual(plan["builders"], max(6, min(24, math.ceil(len(whats) / 3))))
+        self.assertEqual(self.show()["village"], 0)
+
+    def test_builders_are_not_citizens(self):
+        for name in ("startShow", "showPlan"):
+            body = function_source(name) or ""
+            with self.subTest(fn=name):
+                for word in ("newCitizen(", "citizens.set(", "spawnDemo("):
+                    self.assertNotIn(word, body)
+
+
+# ---------------------------------------------------------------------------
+# Balance E2E bounce (main manager, real Chrome, page open through a whole show):
+# 4 "shop" labels, a stale 还差 sign next to the new one (and one visible during
+# the show), and the card still saying 正在升级成镇 after the flip; a reload was
+# right. The live event path added overlays instead of replacing them.
+#
+#   landOverlays(view): buildLand's overlays, no THREE: first removes every
+#     overlay element it made before (the old labels and signs leave the DOM),
+#     then one .lbl (the territory name) and one .era-sign per territory.
+#     buildLand calls it.
+#   pinLandOverlays(): the per-frame part: pins every label, and every sign with
+#     setText(signText(t)), hidden while that text is ''. Called every frame.
+#   renderBalance(): its cache key includes what balanceHtml reads that changes
+#     with time, eraShown(t) and signText(t), so the card changes by itself at
+#     the flip and again when the show ends (renderPanel runs it often).
+#   A page open through a whole show ends with exactly what a fresh page builds
+#   from the snapshot: same labels, same signs, same card.
+# ---------------------------------------------------------------------------
+
+LIVE_SHOW_JS = FAKE_DOM_JS + r"""
+const fs = require('fs'), vm = require('vm');
+Object.defineProperty(El.prototype, 'className', { get(){ return [...this.classList.s].join(' '); },
+  set(v){ this.classList = new CL(String(v).split(/\s+/).filter(Boolean)); } });
+const { prelude, fns, view0, view1 } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+function page(){
+  let T = 0;
+  const ov = new El('div', [], { id: 'ov' }), card = new El('div', ['card-body'], { id: 'balance' });
+  Object.defineProperty(card, 'innerHTML', { get(){ return this._html || ''; }, set(v){ this._html = String(v); } });
+  const box = { Math, JSON, console, Map, Set, Array, Object, String, Number, Boolean,
+    performance: { now: () => T }, document: { createElement: tag => new El(tag) },
+    ovRoot: ov, $: s => (s === '#balance' ? card : s === '#ov' ? ov : null),
+    toScreen: () => [100, 100], logAt(){}, log(){}, simT: 0, needFrame: false, DEMO: false,
+    labels: [], signs: [], shows: new Map(), map: { territories: [] },
+    balanceTerr: null, govTerr: null, balanceOpen: null, lastBalanceKey: '' };
+  vm.createContext(box);
+  vm.runInContext(prelude + '\n' + fns, box);
+  const at = s => { T = s * 1000; };
+  const world = v => { box.map = JSON.parse(JSON.stringify(v)); box.landOverlays(box.map); box.lastBalanceKey = ''; box.renderBalance(); };
+  const frame = () => { box.pinLandOverlays(); box.renderBalance(); };
+  const els = cls => ov.children.filter(e => e.classList.contains(cls));
+  const seen = cls => els(cls).filter(e => !e.hidden).map(e => e.textContent).sort();
+  const state = () => ({ lbl: els('lbl').map(e => e.textContent).sort(), lblSeen: seen('lbl'),
+    sign: els('era-sign').length, signSeen: seen('era-sign'), ovCount: ov.children.length, card: card.innerHTML });
+  return { box, at, world, frame, state };
+}
+const out = {};
+let p = page();
+p.world(view0); p.frame(); out.before = p.state();
+p.box.startShow('t', 'village', 'town', 60);            // the era event...
+p.world(view1); p.frame(); out.started = p.state();     // ...then the world event with the new balance
+p.at(10); p.frame(); out.mid = p.state();
+p.at(30); p.world(view1); p.frame();                    // a recount or a build during the show
+p.at(52.5); p.box.landOverlays(p.box.map); p.frame(); out.flipped = p.state();   // the flip rebuilds the land
+p.at(55); p.world(view1); p.frame();
+p.at(61); p.box.shows.delete('t'); p.frame(); out.after = p.state();             // the show ends
+const f = page(); f.world(view1); f.frame(); out.fresh = f.state();
+process.stdout.write(JSON.stringify(out));
+"""
+
+
+def live_show_results():
+    if "liveshow" not in _CACHE:
+        def terr(tid, name, era, states, nxt, lines):
+            bal = {k: {"state": s, "value": 1, "n": 0 if s == "missing" else 3,
+                       "text": "还没有" if s == "missing" else "x"} for k, s in zip(KINDS, states)}
+            return {"id": tid, "name": name, "era": era, "lines": lines, "open": 6, "size": .4, "cx": 0, "cz": 0,
+                    "terrain": "grassland", "balance": bal, "next": nxt, "rules_note": "", "buildings": []}
+        other = terr("u", "big", "city", ["healthy"] * 5, [], 40000)
+        other.update(cx=26)
+        view0 = {"territories": [terr("t", "shop", "village", ["healthy", "missing", "low", "low", "low"], ["规则"], 2200),
+                                 other]}
+        view1 = {"territories": [terr("t", "shop", "town", ["healthy", "low", "low", "low", "low"],
+                                      ["规模", "规则", "美化"], 2200), other]}
+        fns = page_fns("landOverlays", "pinLandOverlays", "signText", "eraShown", "startShow", "renderBalance",
+                       "balanceHtml", "currentBalanceTerr", "terrOf", "ovEl", "setText", "pin",
+                       optional=("showOf", "eraLook", "kindBar", "barOf"))
+        esc = re.search(r"^const esc = .*;$", inline_script(), re.M)
+        prelude = constants_prelude() + "\n" + consts("KIND_ZH", "STATE_ZH", "ERA_ZH", "ERA_LOOK") + "\n" + \
+            (esc.group(0).replace("const esc", "var esc") if esc else "")
+        _CACHE["liveshow"] = run_node(LIVE_SHOW_JS, {"prelude": prelude, "fns": fns, "view0": view0, "view1": view1})
+    return _CACHE["liveshow"]
+
+
+class TestLiveShowMatchesFreshPage(unittest.TestCase):
+    def test_buildland_uses_the_overlay_functions(self):
+        self.assertIn("landOverlays(", function_source("buildLand") or "")
+        self.assertNotRegex(function_source("buildLand") or "", r"ovEl\(", "buildLand makes overlays only through landOverlays")
+        text = inline_script()
+        self.assertGreaterEqual(len(re.findall(r"pinLandOverlays\(\)", text)), 2, "defined and called every frame")
+
+    def test_before_the_show(self):
+        r = live_show_results()["before"]
+        self.assertEqual(r["lbl"], ["big", "shop"])
+        self.assertEqual(r["signSeen"], ["还差：规则"])
+
+    def test_during_the_show_no_sign_and_the_card_says_upgrading(self):
+        r = live_show_results()
+        for name in ("started", "mid"):
+            with self.subTest(moment=name):
+                self.assertEqual(r[name]["signSeen"], [], "no 还差 sign while the show runs")
+                self.assertEqual(r[name]["lbl"], ["big", "shop"], "one label per territory")
+                self.assertIn("正在升级成镇", r[name]["card"])
+
+    def test_after_the_flip_the_card_is_the_new_era(self):
+        r = live_show_results()["flipped"]
+        self.assertNotIn("正在升级", r["card"], "the card follows the flip by itself")
+        self.assertEqual(r["lbl"], ["big", "shop"])
+
+    def test_an_open_page_ends_like_a_fresh_page(self):
+        r = live_show_results()
+        after, fresh = r["after"], r["fresh"]
+        self.assertEqual(after["lbl"], fresh["lbl"], "labels multiplied on the open page")
+        self.assertEqual(after["sign"], fresh["sign"], "old sign elements left in the page")
+        self.assertEqual(after["signSeen"], fresh["signSeen"])
+        self.assertEqual(fresh["signSeen"], ["还差：规模、规则、美化"])
+        self.assertEqual(after["ovCount"], fresh["ovCount"], "leftover overlay elements")
+        self.assertEqual(after["card"], fresh["card"])
 
 if __name__ == "__main__":
     unittest.main()

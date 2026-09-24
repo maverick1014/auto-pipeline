@@ -18,7 +18,8 @@ CONTRACT: the server
                 by default, agent-city-assets next to the script. Content-Type
                 by extension: .js application/javascript, .glb
                 model/gltf-binary, .png image/png, .txt text/plain.
-                Cache-Control: max-age=86400. A path that leaves <assets>
+                Cache-Control: no-cache (a versioned ?v= URL is cached
+                long: tests/test_agent_city_balance.py). A path that leaves <assets>
                 (.., %2e%2e, an absolute path, a symlink out) or a missing
                 file: 404.
   GET /health   200 application/json {"ok": true, "lines": <good lines read
@@ -354,7 +355,7 @@ class TestAssetsRoute(ServerCase):
                 self.assertEqual(status, 200)
                 self.assertEqual(body, data)
                 self.assertIn(kind, headers.get("Content-Type", ""))
-                self.assertIn("max-age=86400", headers.get("Cache-Control", ""))
+                self.assertEqual(headers.get("Cache-Control"), "no-cache", "no ?v=: never a stale day-long cache")
 
     def test_nothing_outside_the_folder(self):
         for path in ("/assets/../secret.txt", "/assets/%2e%2e/secret.txt", "/assets/..%2fsecret.txt",

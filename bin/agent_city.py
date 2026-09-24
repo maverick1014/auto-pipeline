@@ -36,6 +36,8 @@ Python standard library only. Runs on Python 3.8+.
 """
 
 import argparse
+import fnmatch
+import hashlib
 import hmac
 import http.client
 import json
@@ -413,6 +415,7 @@ WHAT_LIMIT = 200
 DETAIL_LIMIT = 2000
 MAX_BODY = 64 * 1024
 TOKEN_PLACEHOLDER = b"__CITY_TOKEN__"
+ASSET_V_PLACEHOLDER = b"__CITY_ASSET_V__"
 
 
 def _s(value):
@@ -612,7 +615,8 @@ class CityState:
     """Thread-safe home for the Reducer, asks, health counters and SSE clients."""
 
     def __init__(self, max_agents=40, done_ttl=600, gov_wait_sec=60.0,
-                 decisions_path=None, token="", world_path=None, plans=None, count_fn=None):
+                 decisions_path=None, token="", world_path=None, plans=None, count_fn=None,
+                 balance_fn=None):
         self.lock = threading.Lock()
         self.cond = threading.Condition(self.lock)
         self.reducer = Reducer(max_agents=max_agents, done_ttl=done_ttl)
@@ -636,6 +640,8 @@ class CityState:
         # -- world: territories, growth, town plans, persistence ----------
         self.plans = plans if plans is not None else load_plans()
         self.count_fn = count_fn or count_lines
+        self.balance_fn = balance_fn if balance_fn is not None else balance_of
+        self.balance_files = {}   # identity -> {"files": ...}["kind"] from the last count (memory only)
         self.world_path = world_path
         if world_path is None:
             self.world, self.notice = new_world(), None
@@ -654,18 +660,46 @@ class CityState:
             if len(self.clients) >= MAX_CLIENTS:
                 return None
             client = _Client()
+            self._start_waiting_shows_locked()
             snap = self.reducer.snapshot()
             gov = dict(snap["gov"], terr=self.gov_terr)
             agents = [dict(a, terr=self.agent_terr.get(a["id"], "")) for a in snap["agents"]]
             snap = {"type": "snapshot", "gov": gov, "agents": agents,
                     "asks": [ask.view() for ask in self.open.values()],
                     "governors": self._fresh_governor_count(),
+                    "shows": self._shows_view_locked(),
                     "world": self._view()}
             if self.notice is not None:
                 snap["notice"] = self.notice
             client.queue.put_nowait(_encode_event(snap))
             self.clients.append(client)
             return client
+
+    def _start_waiting_shows_locked(self):
+        """Caller holds self.lock. Any show still waiting (start None) for a
+        page begins now, saved at once."""
+        dirty = False
+        for t in self.world["territories"].values():
+            show = t.get("show")
+            if show is not None and show.get("start") is None:
+                show["start"] = time.time()
+                dirty = True
+        if dirty:
+            self._save_world_locked()
+
+    def _shows_view_locked(self):
+        """Caller holds self.lock. Every show with time left, for the
+        snapshot; a finished show is never sent again."""
+        out = []
+        for identity, t in self.world["territories"].items():
+            show = t.get("show")
+            if show is None or show.get("start") is None:
+                continue
+            left = SHOW_SEC - (time.time() - show["start"])
+            if left > 0:
+                out.append({"terr": territory_id(identity), "from": show["from"],
+                            "to": show["to"], "left": left})
+        return out
 
     def remove_client(self, client):
         with self.lock:
@@ -818,11 +852,11 @@ class CityState:
         last count, RECOUNT_SEC or more ago (never counted in this run, but
         with a line: due at once). A territory only ever loaded from
         world.json, with no line yet, is never due -- last_activity holds
-        no entry for it until feed_line sees it. count_fn runs outside the
-        lock, so a line that arrives while it runs (bumping last_activity
-        past the "now" this count is about to be stamped with) keeps that
-        territory due again next time, instead of losing it. Returns how
-        many territories were counted."""
+        no entry for it until feed_line sees it. count_fn and balance_fn run
+        outside the lock, so a line that arrives while either runs (bumping
+        last_activity past the "now" this count is about to be stamped with)
+        keeps that territory due again next time, instead of losing it.
+        Returns how many territories were counted."""
         with self.lock:
             due = [i for i in self.world["territories"]
                    if i in self.last_activity
@@ -832,21 +866,109 @@ class CityState:
         if not due:
             return 0
         counted = {i: self.count_fn(i) for i in due}
+        balances = {i: self.balance_fn(i, self._rules_text_for(i)) for i in due}
         with self.lock:
             changed = False
-            for i, val in counted.items():
-                t = self.world["territories"].get(i)
+            for i in due:
                 self.last_count[i] = now
+                t = self.world["territories"].get(i)
                 if t is None:
                     continue
                 before = (t["lines"], t["peak"])
+                val = counted[i]
                 t["lines"] = val
                 t["peak"] = max(t["peak"], val)
                 if (t["lines"], t["peak"]) != before:
                     changed = True
+                if self._apply_balance_locked(i, t, balances[i]):
+                    changed = True
             if changed:
                 self._emit_world_locked()
         return len(due)
+
+    def _apply_balance_locked(self, identity, t, result):
+        """Caller holds self.lock. Stores balance/rules_bad/files from one
+        balance_fn result, advances the era, and starts (or queues) a show
+        on a raise -- the era event, when a page is open, before the caller's
+        world event. Returns whether anything actually changed."""
+        changed = self.balance_files.get(identity) != result["files"]
+        self.balance_files[identity] = result["files"]
+        if t.get("balance") != result["kinds"]:
+            t["balance"] = result["kinds"]
+            changed = True
+        if t.get("rules_bad") != result["bad"]:
+            t["rules_bad"] = result["bad"]
+            changed = True
+        old_era = t.get("era", "village")
+        new_era = era_for(t["peak"], result["kinds"], old_era)
+        if new_era != old_era:
+            t["era"] = new_era
+            start = time.time() if self.clients else None
+            t["show"] = {"from": old_era, "to": new_era, "start": start}
+            changed = True
+            if self.clients:
+                self._broadcast({"type": "era", "terr": territory_id(identity),
+                                  "from": old_era, "to": new_era, "left": SHOW_SEC})
+        return changed
+
+    def _rules_conf_path(self, identity):
+        """The rules file this repo would use, or None with no world path."""
+        if self.world_path is None:
+            return None
+        return os.path.join(os.path.dirname(self.world_path), "rules",
+                             repo_name(identity) + ".conf")
+
+    def _rules_text_for(self, identity):
+        path = self._rules_conf_path(identity)
+        if not path:
+            return ""
+        try:
+            with open(path, encoding="utf-8") as fh:
+                return fh.read()
+        except OSError:
+            return ""
+
+    def ensure_counted(self, identity):
+        """Count IDENTITY's balance once, outside the lock, unless it is
+        already in memory (from an earlier count, or an earlier call here)."""
+        with self.lock:
+            if identity in self.balance_files:
+                return
+        rules_text = self._rules_text_for(identity)
+        result = self.balance_fn(identity, rules_text)
+        with self.lock:
+            if identity in self.balance_files:
+                return
+            t = self.world["territories"].get(identity)
+            if t is None:
+                self.balance_files[identity] = result["files"]
+                return
+            if self._apply_balance_locked(identity, t, result):
+                self._emit_world_locked()
+
+    def _identity_for_terr(self, terr_id):
+        with self.lock:
+            for i in self.world["territories"]:
+                if territory_id(i) == terr_id:
+                    return i
+        return None
+
+    def balance_api(self, terr_id, kind):
+        """GET /api/balance's body, or None for an unknown territory. Counts
+        IDENTITY once if this process has never counted it."""
+        identity = self._identity_for_terr(terr_id)
+        if identity is None:
+            return None
+        self.ensure_counted(identity)
+        with self.lock:
+            t = self.world["territories"].get(identity)
+            if t is None:
+                return None
+            files = self.balance_files.get(identity, {}).get(kind, [])
+            state = t.get("balance", {}).get(kind, {}).get("state", "missing")
+            return {"terr": terr_id, "kind": kind, "state": state,
+                    "files": files[:500], "total": len(files),
+                    "rules": self._rules_conf_path(identity)}
 
     def _forget_governor(self, obj):
         """A SessionEnd for a governor's sid forgets it at once: any waiting
@@ -1290,7 +1412,19 @@ class CityHandler(BaseHTTPRequestHandler):
         if path == "/events":
             return self._send_events()
         if path.startswith(ASSET_PREFIX):
-            return self._send_asset(path[len(ASSET_PREFIX):])
+            return self._send_asset(path[len(ASSET_PREFIX):], parsed.query)
+        if path == "/api/balance":
+            if not self._check_token():
+                self.close_connection = True
+                return self._json(403, {})
+            qs = parse_qs(parsed.query)
+            kind = _qs1(qs, "kind")
+            if kind not in KINDS:
+                return self._json(400, {})
+            result = self.server.city.balance_api(_qs1(qs, "terr"), kind)
+            if result is None:
+                return self._json(404, {})
+            return self._json(200, result)
         if path == "/api/asks":
             if not self._check_token():
                 self.close_connection = True
@@ -1420,7 +1554,7 @@ class CityHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_asset(self, raw_rel):
+    def _send_asset(self, raw_rel, query=""):
         assets_root = self.server.assets_dir
         rel = unquote(raw_rel)
         full = os.path.realpath(os.path.join(assets_root, rel))
@@ -1432,13 +1566,18 @@ class CityHandler(BaseHTTPRequestHandler):
             return
         ext = os.path.splitext(full)[1].lower()
         content_type = ASSET_CONTENT_TYPES.get(ext, ASSET_DEFAULT_TYPE)
+        # A fresh asset_version() every request: an out-of-date ?v= (or none)
+        # must fall back to no-cache at once, even if the model just changed.
+        req_v = _qs1(parse_qs(query), "v", None)
+        cache = ("max-age=31536000, immutable" if req_v == asset_version(assets_root)
+                 else "no-cache")
         try:
             size = os.path.getsize(full)
             with open(full, "rb") as fh:
                 self.send_response(200)
                 self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(size))
-                self.send_header("Cache-Control", "max-age=86400")
+                self.send_header("Cache-Control", cache)
                 self.end_headers()
                 shutil.copyfileobj(fh, self.wfile)
         except OSError:
@@ -1707,10 +1846,12 @@ def cmd_serve(args):
     token = secrets.token_urlsafe(32)
     _write_token(token_path, token)
 
-    page_bytes = _load_page(page_path)
-    page_bytes = page_bytes.replace(TOKEN_PLACEHOLDER, token.encode("ascii"))
     assets_dir = os.path.realpath(args.assets) if args.assets else os.path.realpath(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent-city-assets"))
+
+    page_bytes = _load_page(page_path)
+    page_bytes = page_bytes.replace(TOKEN_PLACEHOLDER, token.encode("ascii"))
+    page_bytes = page_bytes.replace(ASSET_V_PLACEHOLDER, asset_version(assets_dir).encode("ascii"))
 
     log_path = os.path.join(directory, "events.jsonl")
     try:
@@ -2394,7 +2535,8 @@ def add_territory(world, plans, identity, name, lines=0):
 
     lines_val = lines or 0
     record = {"name": name, "plan": pick["id"], "slot": list(slot_for(pick)),
-              "lines": lines_val, "peak": lines_val, "buildings": [], "era": "village"}
+              "lines": lines_val, "peak": lines_val, "buildings": [], "era": "village",
+              "balance": {}, "rules_bad": []}
     world["territories"][identity] = record
     world["order"].append(identity)
     return record
@@ -2588,11 +2730,15 @@ def layout(world, plans):
             buildings_view.append({"plot": b["plot"], "type": b["type"], "by": b["by"],
                                     "x": ox + px, "z": oz + pz})
 
+        era = t.get("era", "village")
+        balance = t.get("balance", {})
         territories_view.append({
             "id": territory_id(ident), "name": t["name"], "plan": plan["id"],
             "terrain": plan["terrain"], "slot": list(t["slot"]), "cx": ox, "cz": oz,
             "lines": t["lines"], "size": growth(t["peak"]), "r": tr["r"], "open": tr["open"],
             "plots_total": len(plan["plots"]), "plots": open_plots, "buildings": buildings_view,
+            "era": era, "balance": balance, "next": next_needs(t["peak"], balance, era),
+            "rules_note": _rules_note(t["name"], t.get("rules_bad", [])),
         })
 
     # -- tracks: plan road from the territory out to its exit, across the gap -
@@ -2806,12 +2952,441 @@ def count_lines(identity):
     return total
 
 
+# --------------------------------------------------------------------------
+# Balance: 5 kinds of code, eras, the era show, versioned assets
+# --------------------------------------------------------------------------
+#
+# requirements/city.md, "Balance". A repo's code is scored in 5 kinds
+# (KINDS); score_balance turns a file list into that score, balance_of gets
+# the file list from git, era_for/next_needs turn a score into a growth era
+# and what is still missing. See the CONTRACT docstring at the top of
+# tests/test_agent_city_balance.py for the exact shape of each.
+
+KINDS = ("build", "rules", "beauty", "knowledge", "infra")
+KIND_ZH = {"build": "建设", "rules": "规则", "beauty": "美化",
+           "knowledge": "知识", "infra": "基建"}
+ERAS = ("village", "town", "city")
+TOWN_LINES = 2000
+CITY_LINES = 20000
+SHOW_SEC = 60
+
+_RULES_DIRS = {"test", "tests", "__tests__", "spec", "specs", "e2e",
+               "integration_test", "cypress", "playwright", "qa"}
+_INFRA_UNDER = {".github", ".circleci", ".gitlab"}
+_INFRA_DIRS = {"migrations", "migrate", "schema", "prisma", "scripts", "ci", "deploy", "infra"}
+_INFRA_EXACT_NAMES = {"Makefile", "Jenkinsfile", "Procfile", ".gitlab-ci.yml"}
+_INFRA_PREFIXES = ("Dockerfile", "docker-compose")
+_INFRA_EXTS = {".sh", ".bash", ".zsh", ".ps1", ".bat", ".sql", ".tf", ".yml", ".yaml",
+               ".toml", ".ini", ".cfg", ".conf"}
+_KNOWLEDGE_EXTS = {".md", ".mdx", ".rst", ".adoc"}
+_BEAUTY_EXTS = {".jsx", ".tsx", ".vue", ".svelte", ".html", ".css", ".scss", ".sass",
+                ".less", ".styl"}
+_BEAUTY_DIRS = {"components", "widgets", "ui", "views", "screens", "pages", "styles", "theme"}
+_COMPONENT_EXTS = {".jsx", ".tsx", ".vue", ".svelte", ".html"}
+_COMPONENT_DIRS = {"components", "widgets", "ui", "views", "screens", "pages"}
+_MODULE_DROP_DIRS = {"src", "lib", "app", "apps", "packages", "modules", "internal",
+                     "pkg", "cmd", "services"}
+_BUILD_EXTS = {".py", ".js", ".mjs", ".cjs", ".ts", ".go", ".rs", ".java", ".kt", ".kts",
+               ".swift", ".dart", ".rb", ".php", ".c", ".h", ".cc", ".cpp", ".hpp", ".cs",
+               ".m", ".mm", ".scala", ".lua", ".ex", ".exs", ".clj", ".hs", ".erl", ".r",
+               ".jl", ".fs", ".groovy", ".pl"}
+
+
+def _path_parts(path):
+    return path.replace("\\", "/").split("/")
+
+
+def _is_rules_path(path):
+    parts = _path_parts(path)
+    if any(seg in _RULES_DIRS for seg in parts[:-1]):
+        return True
+    name = parts[-1]
+    stem, ext = os.path.splitext(name)
+    if ext == "":
+        return False
+    if stem.startswith("test_") or stem.endswith("_test") or stem.endswith(".test") \
+            or stem.endswith(".spec"):
+        return True
+    if name.endswith("_spec.rb"):
+        return True
+    if stem.endswith("Test") or stem.endswith("Tests"):
+        return True
+    return False
+
+
+def _is_infra_path(path):
+    parts = _path_parts(path)
+    dirs, name = parts[:-1], parts[-1]
+    if any(seg in _INFRA_UNDER for seg in dirs):
+        return True
+    if name in _INFRA_EXACT_NAMES:
+        return True
+    if name.startswith(_INFRA_PREFIXES):
+        return True
+    if os.path.splitext(name)[1].lower() in _INFRA_EXTS:
+        return True
+    if any(seg in _INFRA_DIRS for seg in dirs):
+        return True
+    if os.path.splitext(name)[1].lower() == ".json" and not dirs:
+        return True
+    return False
+
+
+def _is_component(path):
+    ext = os.path.splitext(path)[1].lower()
+    if ext in _COMPONENT_EXTS:
+        return True
+    if ext in _BUILD_EXTS and any(seg in _COMPONENT_DIRS for seg in _path_parts(path)[:-1]):
+        return True
+    return False
+
+
+def _is_beauty_path(path, ext):
+    if ext in _BEAUTY_EXTS:
+        return True
+    if ext in _BUILD_EXTS and any(seg in _BEAUTY_DIRS for seg in _path_parts(path)[:-1]):
+        return True
+    return False
+
+
+def _builtin_kind(path):
+    if _is_rules_path(path):
+        return "rules"
+    if _is_infra_path(path):
+        return "infra"
+    ext = os.path.splitext(path)[1].lower()
+    if ext in _KNOWLEDGE_EXTS:
+        return "knowledge"
+    if _is_beauty_path(path, ext):
+        return "beauty"
+    if ext in _BUILD_EXTS:
+        return "build"
+    return None
+
+
+def file_kind(path, rules=()):
+    """One of KINDS, or None: binaries, vendor, lock and generated files
+    never count, whatever a rule says. Then the first matching repo rule,
+    else the built-in rules (see the CONTRACT)."""
+    if not counts_as_code(path):
+        return None
+    for glob, kind in rules:
+        if fnmatch.fnmatchcase(path, glob):
+            return None if kind == "none" else kind
+    return _builtin_kind(path)
+
+
+def parse_rules(text):
+    """{"rules": [(glob, kind)], "na": [kinds], "bad": [1-based line
+    numbers]}. Blank lines and "# ..." are skipped; anything else that is
+    not a valid "<glob> = <kind>" or "na = <kind>[, <kind> ...]" is bad."""
+    rules, na, bad = [], [], []
+    for i, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if line == "" or line.startswith("#"):
+            continue
+        if "=" not in line:
+            bad.append(i)
+            continue
+        left, right = line.split("=", 1)
+        left, right = left.strip(), right.strip()
+        if left == "na":
+            kinds = [k.strip() for k in right.split(",")]
+            if not kinds or any(k not in KINDS for k in kinds):
+                bad.append(i)
+                continue
+            na.extend(kinds)
+        elif right in KINDS or right == "none":
+            rules.append((left, right))
+        else:
+            bad.append(i)
+    return {"rules": rules, "na": na, "bad": bad}
+
+
+def _normalize_test_name(stem):
+    s = stem
+    if s.startswith("test_"):
+        s = s[len("test_"):]
+    else:
+        for suf in ("_spec", "_test", ".spec", ".test", "Tests", "Test"):
+            if s.endswith(suf):
+                s = s[:-len(suf)]
+                break
+    return s.lower().replace("-", "_")
+
+
+def _has_matching_test(source_path, rules_files):
+    src_norm = _normalize_test_name(os.path.splitext(os.path.basename(source_path))[0])
+    for rf_path, _ in rules_files:
+        rf_norm = _normalize_test_name(os.path.splitext(os.path.basename(rf_path))[0])
+        if rf_norm == src_norm or rf_norm.startswith(src_norm + "_"):
+            return True
+    return False
+
+
+def _score_build(build_files):
+    value = sum(n for _, n in build_files)
+    state = "healthy" if value > 0 else "low"
+    return {"state": state, "value": value, "text": "%s 行代码" % format(value, ",")}
+
+
+def _score_rules(rules_files, source_files):
+    if not source_files:
+        return {"state": "healthy", "value": 0.0, "text": "0% 源文件有测试"}
+    matched = sum(1 for p, _ in source_files if _has_matching_test(p, rules_files))
+    value = matched / len(source_files)
+    state = "healthy" if value >= 0.5 else "low"
+    return {"state": state, "value": value, "text": "%d%% 源文件有测试" % round(value * 100)}
+
+
+def _score_beauty(beauty_files, reuse, build_count):
+    comps = [p for p, _ in beauty_files if _is_component(p)]
+    n_comps = len(comps)
+    reuse = reuse or {}
+    mean_reuse = (sum(reuse.get(c, 0) for c in comps) / n_comps) if n_comps else 0.0
+    need = max(3, math.ceil(build_count / 20))
+    state = "healthy" if (n_comps >= need and mean_reuse >= 2.0) else "low"
+    text = "%d 个组件，平均复用 %.1f 次" % (n_comps, mean_reuse)
+    return {"state": state, "value": n_comps, "text": text}
+
+
+def _module_of(path):
+    d = os.path.dirname(path.replace("\\", "/"))
+    if d == "":
+        return "."
+    parts = d.split("/")
+    i = 0
+    while i < len(parts) and parts[i] in _MODULE_DROP_DIRS:
+        i += 1
+    if i == 0 or i == len(parts):
+        return d
+    return "/".join(parts[i:])
+
+
+def _module_has_doc(module, knowledge_files):
+    if module == ".":
+        return any(os.path.dirname(kp.replace("\\", "/")) == "" for kp, _ in knowledge_files)
+    own_name = module.rsplit("/", 1)[-1].lower()
+    for kp, _ in knowledge_files:
+        if _module_of(kp) == module:
+            return True
+        if os.path.splitext(os.path.basename(kp))[0].lower() == own_name:
+            return True
+    return False
+
+
+def _score_knowledge(knowledge_files, source_files):
+    modules = []
+    seen = set()
+    for path, _ in source_files:
+        m = _module_of(path)
+        if m not in seen:
+            seen.add(m)
+            modules.append(m)
+    total = len(modules)
+    if total == 0:
+        return {"state": "healthy", "value": 0.0, "text": "0/0 个模块有文档"}
+    with_doc = sum(1 for m in modules if _module_has_doc(m, knowledge_files))
+    value = with_doc / total
+    state = "healthy" if value >= 0.5 else "low"
+    return {"state": state, "value": value, "text": "%d/%d 个模块有文档" % (with_doc, total)}
+
+
+def _score_infra(infra_files, build_count):
+    n = len(infra_files)
+    need = max(2, math.ceil(build_count / 25))
+    state = "healthy" if n >= need else "low"
+    return {"state": state, "value": n, "text": "%d 个文件" % n}
+
+
+def score_balance(files, rules_text="", reuse=None):
+    """{"kinds", "files", "bad"}: FILES ((path, added lines), ...) scored
+    into the 5 KINDS -- see the CONTRACT for the exact shape."""
+    parsed = parse_rules(rules_text)
+    na_set = set(parsed["na"])
+
+    by_kind = {k: [] for k in KINDS}
+    for path, n in files:
+        k = file_kind(path, parsed["rules"])
+        if k is not None:
+            by_kind[k].append((path, n))
+
+    files_out = {k: sorted(p for p, _ in by_kind[k]) for k in KINDS}
+    build_count = len(by_kind["build"])
+    source_files = by_kind["build"] + [f for f in by_kind["beauty"] if _is_component(f[0])]
+
+    kinds_out = {
+        "build": _score_build(by_kind["build"]),
+        "rules": _score_rules(by_kind["rules"], source_files),
+        "beauty": _score_beauty(by_kind["beauty"], reuse, build_count),
+        "knowledge": _score_knowledge(by_kind["knowledge"], source_files),
+        "infra": _score_infra(by_kind["infra"], build_count),
+    }
+    for k in KINDS:
+        n = len(by_kind[k])
+        entry = kinds_out[k]
+        if k in na_set:
+            entry["state"] = "na"
+            entry["text"] = "这个仓库不用这一类"
+        elif n == 0:
+            entry["state"] = "missing"
+            entry["text"] = "还没有"
+        entry["n"] = n
+
+    return {"kinds": kinds_out, "files": files_out, "bad": parsed["bad"]}
+
+
+def _component_name(path):
+    base = os.path.basename(path)
+    stem = os.path.splitext(base)[0]
+    if stem == "index":
+        return os.path.basename(os.path.dirname(path)) or stem
+    return stem
+
+
+def balance_of(identity, rules_text=""):
+    """score_balance's shape, from git only (diff --numstat for the file
+    list, one grep for component reuse). Never a repo, no commit, a git
+    error or timeout -> every kind "missing", never raises."""
+    try:
+        empty_tree = subprocess.run(
+            ["git", "--git-dir=" + identity, "hash-object", "-t", "tree", "--stdin"],
+            input="", capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return score_balance([], rules_text)
+    if empty_tree.returncode != 0:
+        return score_balance([], rules_text)
+    try:
+        diff = subprocess.run(
+            ["git", "--git-dir=" + identity, "diff", "--numstat", empty_tree.stdout.strip(), "HEAD"],
+            capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return score_balance([], rules_text)
+    if diff.returncode != 0:
+        return score_balance([], rules_text)
+
+    files = []
+    for line in diff.stdout.splitlines():
+        parts = line.split("\t", 2)
+        if len(parts) != 3:
+            continue
+        added, _removed, path = parts
+        if added == "-":
+            continue
+        try:
+            files.append((path, int(added)))
+        except ValueError:
+            continue
+
+    parsed_rules = parse_rules(rules_text)["rules"]
+    components = {p: _component_name(p) for p, _ in files
+                  if file_kind(p, parsed_rules) == "beauty" and _is_component(p)}
+
+    reuse = {}
+    names = sorted(set(components.values()))
+    if names:
+        args = ["git", "--git-dir=" + identity, "grep", "--no-color", "-I", "-w", "-o"]
+        for name in names:
+            args += ["-e", name]
+        args.append("HEAD")
+        try:
+            grep = subprocess.run(args, capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            grep = None
+        word_paths = {}
+        if grep is not None and grep.returncode in (0, 1):
+            for line in grep.stdout.splitlines():
+                parts = line.split(":", 2)
+                if len(parts) != 3:
+                    continue
+                _rev, gpath, word = parts
+                word_paths.setdefault(word, set()).add(gpath)
+        for path, name in components.items():
+            reuse[path] = len(word_paths.get(name, set()) - {path})
+
+    return score_balance(files, rules_text, reuse)
+
+
+def era_for(peak, kinds, current="village"):
+    """The growth era: never earlier than CURRENT, {} kinds -> CURRENT."""
+    if not kinds:
+        return current
+
+    def ok(k):
+        return kinds.get(k, {}).get("state") in ("healthy", "na")
+
+    missing = any(v.get("state") == "missing" for v in kinds.values())
+    if peak >= CITY_LINES and not missing and ok("rules") and ok("beauty"):
+        computed = "city"
+    elif peak >= TOWN_LINES and not missing:
+        computed = "town"
+    else:
+        computed = "village"
+    if current not in ERAS:
+        current = "village"
+    return computed if ERAS.index(computed) > ERAS.index(current) else current
+
+
+def next_needs(peak, kinds, era):
+    """What the next era still needs, KIND_ZH words in KINDS order, "规模"
+    first when the size is short. city -> []. {} kinds -> []."""
+    if era == "city" or not kinds:
+        return []
+    if era == "village":
+        target = TOWN_LINES
+
+        def blocks(k):
+            return kinds.get(k, {}).get("state") == "missing"
+    else:
+        target = CITY_LINES
+
+        def blocks(k):
+            st = kinds.get(k, {}).get("state")
+            if st == "missing":
+                return True
+            return k in ("rules", "beauty") and st not in ("healthy", "na")
+
+    out = ["规模"] if peak < target else []
+    out.extend(KIND_ZH[k] for k in KINDS if blocks(k))
+    return out
+
+
+def _rules_note(name, bad):
+    if not bad:
+        return ""
+    nums = "、".join(str(n) for n in bad)
+    return "%s.conf 第 %s 行看不懂，已忽略" % (name, nums)
+
+
+def asset_version(folder):
+    """A hex string (>= 8 chars) that changes when a file under FOLDER is
+    added, removed or changed (size or mtime), same otherwise."""
+    h = hashlib.sha256()
+    for root, dirs, names in os.walk(folder):
+        dirs.sort()
+        for name in sorted(names):
+            full = os.path.join(root, name)
+            try:
+                st = os.stat(full)
+            except OSError:
+                continue
+            rel = os.path.relpath(full, folder).replace("\\", "/")
+            h.update(rel.encode("utf-8"))
+            h.update(b"\0%d\0%r\n" % (st.st_size, st.st_mtime))
+    return h.hexdigest()
+
+
 # -- demo world: a fixed city for #demo, no files, no clock -----------------
+
+def _demo_entry(state, value, n, text):
+    return {"state": state, "value": value, "n": n, "text": text}
+
 
 def demo_world():
     """At least 3 repos, one small (< 30% grown), one big (> 70% grown), a
     bridge between two of them, and a few buildings -- the fixed sample the
-    page (and its own #demo panel) can show with no server, no git."""
+    page (and its own #demo panel) can show with no server, no git. Also one
+    village (a kind missing, non-empty "next"), one town, one city."""
     plans = load_plans()
     ids = ["/demo/auto-pipeline/.git", "/demo/v4-plus/.git", "/demo/pos-lite/.git"]
     names = ["auto-pipeline", "v4-plus", "pos-lite"]
@@ -2822,6 +3397,37 @@ def demo_world():
     build(world, plans, ids[1], "ui", "a1", "worker", 0)
     build(world, plans, ids[1], "test", "a2", "worker", 0)
     build(world, plans, ids[2], "other", "a3", "worker", 0)
+
+    village = world["territories"][ids[0]]
+    village["era"] = "village"
+    village["balance"] = {
+        "build": _demo_entry("healthy", 500, 3, "500 行代码"),
+        "rules": _demo_entry("missing", 0, 0, "还没有"),
+        "beauty": _demo_entry("healthy", 2, 2, "2 个组件，平均复用 2.0 次"),
+        "knowledge": _demo_entry("healthy", 1.0, 1, "1/1 个模块有文档"),
+        "infra": _demo_entry("healthy", 2, 2, "2 个文件"),
+    }
+
+    city = world["territories"][ids[1]]
+    city["era"] = "city"
+    city["balance"] = {
+        "build": _demo_entry("healthy", 1000000, 400, "1,000,000 行代码"),
+        "rules": _demo_entry("healthy", 0.8, 320, "80% 源文件有测试"),
+        "beauty": _demo_entry("healthy", 40, 40, "40 个组件，平均复用 3.0 次"),
+        "knowledge": _demo_entry("healthy", 0.9, 36, "36/40 个模块有文档"),
+        "infra": _demo_entry("healthy", 20, 20, "20 个文件"),
+    }
+
+    town = world["territories"][ids[2]]
+    town["era"] = "town"
+    town["balance"] = {
+        "build": _demo_entry("healthy", 20000, 60, "20,000 行代码"),
+        "rules": _demo_entry("low", 0.3, 18, "30% 源文件有测试"),
+        "beauty": _demo_entry("healthy", 6, 8, "6 个组件，平均复用 2.5 次"),
+        "knowledge": _demo_entry("healthy", 0.6, 12, "12/20 个模块有文档"),
+        "infra": _demo_entry("healthy", 4, 4, "4 个文件"),
+    }
+
     return layout(world, plans)
 
 

@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City · balance mock</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --berry:#FF7593; --butter:#FFD36E; --mint:#6FD4A8; --focus:#4D7CFE;
+  --healthy:#2FB57A; --low:#E8A33A; --missing:#C4C8DD; --na:#9AA0C3;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA; --line:#2D3360; --missing:#3A4070; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA; --line:#2D3360; --missing:#3A4070; color-scheme:dark; }
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px}
+.bar h1{margin:0 8px 0 0;font:700 18px/1.2 var(--round)}
+.proto{background:var(--butter);color:#4A3500;font:600 12px/1 var(--round);padding:6px 11px;border-radius:999px}
+.tabs{display:inline-flex;gap:6px;flex-wrap:wrap}
+.btn{font:600 13px/1 var(--round);border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:12px;padding:0 12px;min-height:34px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--ink-3)}
+.btn[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.primary{background:var(--berry);border-color:var(--berry);color:#fff}
+.btn:disabled{opacity:.45;cursor:default}
+.btn:focus-visible,button:focus-visible,select:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;padding:0 16px 16px}
+.stage{position:relative;min-height:560px;height:calc(100vh - 80px)}
+.stage canvas{display:block;width:100%;height:100%}
+.grid{display:grid;gap:10px;height:100%}
+.grid.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.grid.g6{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:1fr 1fr}
+.mini{position:relative;background:var(--panel);border:1.5px solid var(--line);border-radius:16px;overflow:hidden;min-height:240px}
+.mini h3{position:absolute;left:12px;top:8px;margin:0;font:700 15px/1.3 var(--round)}
+.mini p{position:absolute;left:12px;right:12px;bottom:8px;margin:0;font-size:12.5px;color:var(--ink-2)}
+.mini canvas{display:block;width:100%;height:100%}
+.panel{display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 80px);overflow:auto}
+.card{background:var(--panel);border:1.5px solid var(--line);border-radius:20px;padding:14px 16px}
+.card.mockonly{border-style:dashed}
+.card h2{margin:0 0 8px;font:700 14px/1.3 var(--round)}
+.card-head{margin:0 0 10px;touch-action:none;user-select:none;-webkit-user-select:none}
+.card-head button{all:unset;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:8px;font:700 16px/1.2 var(--round);color:var(--ink);cursor:grab;border-radius:10px}
+.card-head .grip{width:14px;height:14px;color:var(--ink-3);flex:none}
+.card-head .chev{width:16px;height:16px;margin-left:auto;color:var(--ink-3);transition:transform .15s;flex:none}
+.card-head .en{font:600 12px/1 var(--round);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.card.collapsed .card-head{margin-bottom:0}
+.card.collapsed .card-head .chev{transform:rotate(-90deg)}
+.card.collapsed .card-body{display:none!important}
+.card.dragging{position:relative;z-index:5;box-shadow:0 10px 24px rgba(42,43,69,.22);border-color:var(--ink-3)}
+.muted{color:var(--ink-2);font-size:12.5px}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.era{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:13px}
+.era b{font-size:15px}
+.need{background:var(--panel-2);border-radius:10px;padding:3px 9px;font-weight:600}
+.kinds{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.kind > button{all:unset;box-sizing:border-box;width:100%;display:grid;grid-template-columns:18px 44px minmax(0,1fr) 46px;gap:8px;align-items:center;padding:6px 6px;border-radius:10px;cursor:pointer}
+.kind > button:hover{background:var(--panel-2)}
+.kind > button:focus-visible{outline:2.5px solid var(--focus)}
+.kind .ic{width:16px;height:16px;border-radius:5px}
+.kind .nm{font-weight:700}
+.kind .track{height:9px;border-radius:99px;background:var(--panel-2);overflow:hidden;position:relative}
+.kind .track i{position:absolute;left:0;top:0;bottom:0;border-radius:99px}
+.kind .st{font-size:12px;font-weight:700;text-align:right}
+.kind .val{grid-column:3 / 5;font-size:12px;color:var(--ink-2);margin-top:-4px}
+.st.healthy{color:var(--healthy)} .st.low{color:var(--low)} .st.missing{color:var(--ink-3)} .st.na{color:var(--na)}
+.files{margin:2px 0 8px 26px;padding:8px 10px;background:var(--panel-2);border-radius:10px;font:12px/1.5 var(--mono);max-height:180px;overflow:auto}
+.files ol{margin:0;padding:0 0 0 18px}
+.files .more,.files .fix{font-family:var(--round);color:var(--ink-2);margin-top:4px}
+.files code{background:var(--panel);border-radius:6px;padding:1px 5px}
+.log{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px;font-size:12.5px}
+.log li{background:var(--panel-2);border-radius:10px;padding:5px 9px}
+.ctl{display:grid;grid-template-columns:64px 1fr;gap:6px 8px;align-items:center;font-size:13px}
+select{font:600 13px var(--round);border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:10px;padding:5px 8px}
+input[type=range]{width:100%}
+.showbar{position:absolute;left:16px;right:16px;bottom:14px;display:flex;align-items:center;gap:10px;font-size:13px;background:var(--panel);border:1.5px solid var(--line);border-radius:14px;padding:8px 12px}
+.showbar .prog{flex:1;height:8px;border-radius:99px;background:var(--panel-2);overflow:hidden}
+.showbar .prog i{display:block;height:100%;background:var(--butter);width:0}
+table{border-collapse:collapse;font-size:12.5px;width:100%}
+td,th{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top}
+@media (max-width: 960px){ .layout{grid-template-columns:1fr} .stage{height:70vh;min-height:420px} .grid.g3,.grid.g6{grid-template-columns:1fr;grid-template-rows:none;height:auto} .mini{height:300px} .panel{max-height:none} }
+@media (prefers-reduced-motion: reduce){ .card-head .chev{transition:none} }
+</style>
+</head>
+<body>
+<header class="bar">
+  <h1>Agent City · 城市平衡</h1>
+  <span class="proto">原型 mock</span>
+  <div class="tabs" role="tablist">
+    <button class="btn" data-view="terr" aria-pressed="true">一个领地</button>
+    <button class="btn" data-view="systems" aria-pressed="false">5 个系统</button>
+    <button class="btn" data-view="eras" aria-pressed="false">3 个时代</button>
+  </div>
+</header>
+<main class="layout">
+  <div class="stage" id="stage">
+    <canvas id="cv"></canvas>
+    <div class="showbar" id="showbar" hidden><span id="showText">工人在升级…</span><div class="prog"><i id="showProg"></i></div><span id="showLeft"></span></div>
+    <div class="grid g6" id="sysGrid" hidden></div>
+    <div class="grid g3" id="eraGrid" hidden></div>
+  </div>
+  <aside class="panel" id="panel">
+    <section class="card mockonly" data-for="terr">
+      <h2>原型控制（真页面没有这张卡）</h2>
+      <div class="row" id="presets"></div>
+      <div class="ctl" style="margin-top:10px" id="kindCtl"></div>
+      <div class="ctl" style="margin-top:8px">
+        <span>代码行</span><input type="range" id="lines" min="0" max="1000" value="0" aria-label="build 代码行数">
+      </div>
+      <p class="muted" style="margin:4px 0 8px" id="linesText"></p>
+      <div class="row">
+        <button class="btn primary" id="playBtn">▶ 播放时代表演</button>
+        <label class="row muted"><input type="checkbox" id="quick"> 快看（12 秒，真版 60 秒）</label>
+      </div>
+      <div class="row" style="margin-top:8px"><button class="btn" id="reopenBtn">关掉再打开页面</button></div>
+      <p class="muted" style="margin:6px 0 0">改一类的状态：够条件就自动升时代并播表演（真版同样）。时代只升不降。</p>
+    </section>
+    <section class="card" data-card="balance">
+      <h2 class="card-head"><button type="button" aria-expanded="true" aria-controls="balance" title="点一下收起或展开，按住拖动换位置"><svg class="grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg><span class="en">Balance</span>城市平衡<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2>
+      <div class="card-body" id="balance">
+        <div class="era" id="eraLine"></div>
+        <ul class="kinds" id="kinds"></ul>
+      </div>
+    </section>
+    <section class="card" data-card="detail">
+      <h2 class="card-head"><button type="button" aria-expanded="false" aria-controls="detailBody" title="点一下收起或展开，按住拖动换位置"><svg class="grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg><span class="en">Selected</span>详情<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2>
+      <div class="card-body muted" id="detailBody">（已有的卡，不变）</div>
+    </section>
+    <section class="card" data-card="log">
+      <h2 class="card-head"><button type="button" aria-expanded="true" aria-controls="log" title="点一下收起或展开，按住拖动换位置"><svg class="grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg><span class="en">Log</span>动态<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2>
+      <ol class="card-body log" id="log"></ol>
+    </section>
+    <section class="card mockonly">
+      <h2>怎么算（给审核看，真页面没有）</h2>
+      <table>
+        <tr><th>类</th><th>城里出现</th><th>健康 / 偏低 / 没有</th></tr>
+        <tr><td>建设</td><td>住宅、商店、办公楼</td><td>有 build 代码行 = 健康</td></tr>
+        <tr><td>规则</td><td>路牌 → 警察局 → 红绿灯</td><td>≥50% 源文件有对应测试 / 有测试或 QA 文档 / 0</td></tr>
+        <tr><td>美化</td><td>花 → 公园、喷泉、彩色墙</td><td>组件 ≥ max(3, build 文件/20) 且平均复用 ≥2 次 / 有 UI 文件 / 0</td></tr>
+        <tr><td>知识</td><td>图书馆、区名牌</td><td>≥50% 模块有文档 / 有文档 / 0</td></tr>
+        <tr><td>基建</td><td>水塔 → 发电厂、铺好的出城路和石桥</td><td>文件数 ≥ max(2, build 文件/25) / ≥1 / 0</td></tr>
+      </table>
+      <p class="muted" style="margin:8px 0 0">时代：村→镇 = ≥2000 行 且 没有一类是"没有"。镇→城 = ≥20000 行 且 规则、美化都健康。"不适用"算满足。只看规模永远不升。</p>
+    </section>
+  </aside>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const KINDS = ['build', 'rules', 'beauty', 'knowledge', 'infra'];
+const KZH = { build:'建设', rules:'规则', beauty:'美化', knowledge:'知识', infra:'基建' };
+const KCOL = { build:'#F4A259', rules:'#4D7CFE', beauty:'#FF7593', knowledge:'#2FB57A', infra:'#9C6B4E' };
+const STZH = { healthy:'健康', low:'偏低', missing:'没有', na:'不适用' };
+const ERAZH = { village:'村', town:'镇', city:'城' };
+const ERAS = ['village', 'town', 'city'];
+const REPO = 'v4-plus';
+const TOWN_LINES = 2000, CITY_LINES = 20000;
+const fmt = n => n.toLocaleString('en-US');
+const linesOf = v => v <= 0 ? 0 : Math.round(50 * Math.expm1(v / 1000 * Math.log1p(60000 / 50)));
+const sliderOf = l => l <= 0 ? 0 : Math.round(1000 * Math.log1p(l / 50) / Math.log1p(60000 / 50));
+const growth = l => Math.min(1, Math.log1p(Math.max(0, l) / 50) / Math.log1p(20000));
+const sr = (a, b) => { const x = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return x - Math.floor(x); };
+
+/* ---------- mock repo: what the server's classifier would have found ---------- */
+const FILES = {
+  build: ['src/modules/sales/invoice.service.ts','src/modules/sales/invoice.repo.ts','src/modules/stock/item.service.ts','src/modules/stock/transfer.ts','src/modules/auth/session.ts','src/modules/auth/token.ts','src/modules/report/pnl.ts','src/modules/report/export.ts','src/app.ts','src/server.ts','src/db/pool.ts','src/shared/money.ts'],
+  rules: ['tests/sales/invoice.service.test.ts','tests/stock/item.service.test.ts','tests/auth/session.test.ts','tests/report/pnl.test.ts','e2e/checkout.spec.ts','e2e/login.spec.ts','qa/release-checklist.md'],
+  beauty: ['src/components/Button.tsx','src/components/Table.tsx','src/components/MoneyInput.tsx','src/components/Modal.tsx','src/components/DatePicker.tsx','src/screens/Invoice.tsx','src/styles/theme.css','src/styles/tokens.css'],
+  knowledge: ['requirements/sales.md','requirements/stock.md','docs/modules/auth.md','docs/modules/report.md','README.md'],
+  infra: ['.github/workflows/ci.yml','docker-compose.yml','Dockerfile','migrations/0001_init.sql','migrations/0002_stock.sql','scripts/seed.sh','scripts/backup.sh','tsconfig.json'],
+};
+const LOW_N = { build:12, rules:2, beauty:2, knowledge:1, infra:1 };
+function valueText(k, st, lines){
+  if (st === 'na') return '这个仓库不用这一类';
+  if (st === 'missing') return '还没有';
+  if (k === 'build') return fmt(lines) + ' 行代码';
+  if (k === 'rules') return st === 'healthy' ? '64% 源文件有测试' : '17% 源文件有测试';
+  if (k === 'beauty') return st === 'healthy' ? '6 个组件，平均复用 4.2 次' : '1 个组件，复用 1 次';
+  if (k === 'knowledge') return st === 'healthy' ? '4/5 个模块有文档' : '1/5 个模块有文档';
+  return st === 'healthy' ? '8 个文件' : '1 个文件';
+}
+function filesOf(k, st){ if (st === 'missing' || st === 'na') return []; return st === 'low' ? FILES[k].slice(0, LOW_N[k]) : FILES[k]; }
+
+/* ---------- state ---------- */
+let S = { lines: 0, st: { build:'missing', rules:'missing', beauty:'missing', knowledge:'missing', infra:'missing' }, era: 'village', shown: {} };
+let open = null, view = 'terr';
+const seen = new Map(); // item id -> time it appeared (pop-in)
+const logs = [];
+function log(text){ logs.unshift(text); logs.length = Math.min(logs.length, 30); $('#log').innerHTML = logs.map(t => `<li>${t}</li>`).join(''); }
+
+function earned(s){
+  const miss = KINDS.some(k => s.st[k] === 'missing');
+  const ok = k => s.st[k] === 'healthy' || s.st[k] === 'na';
+  if (s.lines >= CITY_LINES && !miss && ok('rules') && ok('beauty')) return 'city';
+  if (s.lines >= TOWN_LINES && !miss) return 'town';
+  return 'village';
+}
+function needs(s, era){
+  if (era === 'city') return [];
+  const out = [];
+  if (era === 'village') {
+    if (s.lines < TOWN_LINES) out.push('规模');
+    for (const k of KINDS) if (s.st[k] === 'missing') out.push(KZH[k]);
+  } else {
+    if (s.lines < CITY_LINES) out.push('规模');
+    for (const k of KINDS) if (s.st[k] === 'missing') out.push(KZH[k]);
+    for (const k of ['rules', 'beauty']) if (s.st[k] === 'low' && !out.includes(KZH[k])) out.push(KZH[k]);
+  }
+  return out;
+}
+/* no sign on day 0 (bare land) and none in the city era */
+function signText(s, era){ if (s.lines <= 0) return ''; const n = needs(s, era); return n.length ? '还差：' + n.join('、') : ''; }
+
+/* ---------- the territory: fixed plan, 15 x 15 tiles ---------- */
+const N = 15, HALL = [7, 5];
+const ROADS = new Set();
+for (let x = 2; x <= 12; x++) { ROADS.add(x + ',3'); ROADS.add(x + ',7'); ROADS.add(x + ',10'); }
+for (let z = 3; z <= 10; z++) { ROADS.add('3,' + z); ROADS.add('11,' + z); }
+for (let z = 7; z <= 13; z++) ROADS.add('7,' + z);
+const TRUNK = ['7,11', '7,12', '7,13'];
+const SQUARE = new Set(['6,5', '8,5', '6,6', '7,6', '8,6', '7,4']);
+const SPOT = { police:[5,6], library:[9,6], water:[1,12], power:[12,12], park:[[5,8],[6,8],[5,9],[6,9]], fountain:[8,6], sign:[7,6] };
+const RESERVED = new Set([SPOT.police, SPOT.library, SPOT.water, SPOT.power, ...SPOT.park].map(p => p + ''));
+const isRoad = (x, z) => ROADS.has(x + ',' + z);
+const dHall = (x, z) => Math.hypot(x - HALL[0], z - HALL[1]);
+const PLOTS = [];
+for (let z = 1; z <= 12; z++) for (let x = 1; x <= 13; x++) {
+  const k = x + ',' + z;
+  if (ROADS.has(k) || SQUARE.has(k) || RESERVED.has(k) || (x === HALL[0] && z === HALL[1])) continue;
+  if (![[1,0],[-1,0],[0,1],[0,-1]].some(([a, b]) => isRoad(x + a, z + b))) continue;
+  PLOTS.push([x, z, z <= 2 ? 'office' : x < 7 ? 'house' : 'shop']);
+}
+PLOTS.sort((a, b) => dHall(a[0], a[1]) - dHall(b[0], b[1]));
+const CROSS = [...ROADS].map(k => k.split(',').map(Number)).filter(([x, z]) => [[1,0],[-1,0],[0,1],[0,-1]].filter(([a, b]) => isRoad(x + a, z + b)).length >= 3);
+const LAMPS = []; for (let x = 2; x <= 12; x += 2) LAMPS.push([x, 7.55]); for (let z = 4; z <= 9; z += 2) { LAMPS.push([3.55, z]); LAMPS.push([11.55, z]); }
+const DSIGNS = [[2, 7, '住宅区'], [12, 7, '商业街'], [7, 2.4, '办公区']];
+
+function claimR(lines){ return 2.2 + 6.3 * growth(lines); }
+function openPlots(lines){ return lines <= 0 ? 0 : Math.round(PLOTS.length * Math.min(1, growth(lines) * 1.25)); }
+
+/* ---------- iso drawing ---------- */
+let ctx, TW, TH, OX, OY;
+function iso(x, z, y){ return [OX + (x - z) * TW / 2, OY + (x + z) * TH / 2 - (y || 0) * TH * 1.15]; }
+function poly(pts, fill, stroke){ ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke(); } }
+function tile(x, z, col){ poly([iso(x, z), iso(x + 1, z), iso(x + 1, z + 1), iso(x, z + 1)], col); }
+function shade(hex, f){ const n = parseInt(hex.slice(1), 16); const c = [n >> 16, (n >> 8) & 255, n & 255].map(v => Math.max(0, Math.min(255, Math.round(v * f)))); return '#' + c.map(v => v.toString(16).padStart(2, '0')).join(''); }
+function box(x, z, m, h, wall, top, y0){
+  const x0 = x + m, z0 = z + m, x1 = x + 1 - m, z1 = z + 1 - m, b = y0 || 0;
+  poly([iso(x0, z1, b), iso(x1, z1, b), iso(x1, z1, b + h), iso(x0, z1, b + h)], shade(wall, .86));
+  poly([iso(x1, z1, b), iso(x1, z0, b), iso(x1, z0, b + h), iso(x1, z1, b + h)], shade(wall, .7));
+  poly([iso(x0, z0, b + h), iso(x1, z0, b + h), iso(x1, z1, b + h), iso(x0, z1, b + h)], top || shade(wall, 1.08));
+}
+function roof(x, z, m, h, rh, col){
+  const x0 = x + m, z0 = z + m, x1 = x + 1 - m, z1 = z + 1 - m, ap = iso((x0 + x1) / 2, (z0 + z1) / 2, h + rh);
+  poly([iso(x0, z1, h), iso(x1, z1, h), ap], shade(col, .95));
+  poly([iso(x1, z1, h), iso(x1, z0, h), ap], shade(col, .75));
+}
+function windows(x, z, m, h, rows, col){
+  ctx.fillStyle = col;
+  for (let r = 0; r < rows; r++) {
+    const y = .25 + r * (h - .35) / rows;
+    for (const f of [.3, .65]) {
+      const p = iso(x + m + (1 - 2 * m) * f, z + 1 - m, y), q = iso(x + 1 - m, z + m + (1 - 2 * m) * f, y);
+      ctx.fillRect(p[0] - 2, p[1] - 3, 4, 4); ctx.fillRect(q[0] - 2, q[1] - 3, 4, 4);
+    }
+  }
+}
+function pole(x, z, h, col){ const a = iso(x, z, 0), b = iso(x, z, h); ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.5, TW / 26); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); return b; }
+function dot(p, r, col){ ctx.fillStyle = col; ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, Math.PI * 2); ctx.fill(); }
+function tree(x, z, s, col){ pole(x, z, .35 * s, '#7A5230'); const p = iso(x, z, .55 * s); dot(p, TW * .2 * s, col || '#4E9A48'); dot([p[0] - TW * .07, p[1] - TW * .08], TW * .12 * s, shade(col || '#4E9A48', 1.18)); }
+function label(p, text, bg, fg){ ctx.font = `700 ${Math.max(10, Math.min(15, TW * .26))}px ${getComputedStyle(document.body).fontFamily}`; const w = ctx.measureText(text).width + 10, h = Math.max(15, Math.min(22, TW * .4)); ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(p[0] - w / 2, p[1] - h, w, h, 5) : ctx.rect(p[0] - w / 2, p[1] - h, w, h); ctx.fill(); ctx.fillStyle = fg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, p[0], p[1] - h / 2 + .5); }
+
+/* era looks: material only; positions never move */
+const LOOK = {
+  village: { road:'#C9A874', house:['#B9855A','#6E4A2E'], shop:['#C89A68','#8A5A34'], office:['#A87B52','#5E3F27'], hall:['#B07A4E','#5E3F27'], h:{ house:.55, shop:.5, office:.8 } },
+  town:    { road:'#A9A39A', house:['#B5563F','#5F6470'], shop:['#C0664C','#4F5F7A'], office:['#C9C2B5','#6B6F7A'], hall:['#B04A3A','#51565F'], h:{ house:.8, shop:.75, office:1.4 } },
+  city:    { road:'#5E6068', house:['#E7E2D6','#9AA2B0'], shop:['#9CC3E8','#6F8FB5'], office:['#7FA7D9','#5A7FB8'], hall:['#EDEBE4','#8A98B0'], h:{ house:1.6, shop:1.3, office:3.6 } },
+};
+const PAINT = ['#FF9BB0', '#8FDDBA', '#FFD36E', '#9DB8FF', '#F7B37A'];
+
+function drawTerritory(c, s, opts){
+  ctx = c.getContext('2d');
+  const dpr = devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight;
+  c.width = W * dpr; c.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  TW = Math.min((W - 20) / N, (H - 40) / (N * .5 + 2.5)) * (opts.zoom || 1); TH = TW / 2;
+  OX = W / 2 - (HALL[0] - HALL[1] + 1) * TW / 2 * (opts.zoom ? 1 : 0); OY = opts.zoom ? H * .52 - (HALL[0] + HALL[1] + 1) * TH / 2 : (H - N * TH) / 2 + TH * 1.6;
+  const now = performance.now();
+  const sh = opts.show, era = opts.era;
+  const L = LOOK[era], r = claimR(s.lines), nOpen = openPlots(s.lines), has = k => s.st[k] === 'healthy' || s.st[k] === 'low', good = k => s.st[k] === 'healthy';
+  const pop = (id) => { if (!opts.pop) return 1; if (!seen.has(id)) seen.set(id, now); return Math.min(1, (now - seen.get(id)) / 600); };
+  /* ground */
+  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+    if (z === 14) { tile(x, z, '#6DB5E6'); continue; }
+    const claimed = dHall(x, z) <= r;
+    tile(x, z, claimed ? '#CBE8A9' : '#A9D68B');
+    if (!claimed && sr(x, z) < .16 && !isRoad(x, z)) tree(x + .5, z + .5, .9, '#5B9B4F');
+  }
+  /* roads: only on claimed land; material = era */
+  const roadOn = (x, z) => isRoad(x, z) && dHall(x, z) <= r;
+  for (const k of ROADS) { const [x, z] = k.split(',').map(Number); if (!roadOn(x, z)) continue;
+    const trunk = TRUNK.includes(k);
+    let col = trunk ? (good('infra') ? '#6A6C74' : '#C9A874') : L.road;
+    if (sh && sh.work.has('r' + k)) col = shade(col, .9);
+    tile(x, z, col);
+    if (!trunk && era === 'town') { const a = iso(x + .5, z + .5); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1; ctx.strokeRect(a[0] - TW * .18, a[1] - TH * .18, TW * .36, TH * .36); }
+    if ((!trunk && era === 'city') || (trunk && good('infra'))) { const a = iso(x + .5, z + .5); dot(a, 1.3, 'rgba(255,255,255,.7)'); }
+  }
+  /* the bridge over the river: a plain wood bridge always (growth); stone when infra is healthy */
+  if (s.lines > 0) tile(7, 14, good('infra') ? '#9E9A92' : '#A9743F');
+  for (const k of SQUARE) { const [x, z] = k.split(',').map(Number); tile(x, z, era === 'village' ? '#D9C49A' : era === 'town' ? '#BDB6AA' : '#D7D9DE'); }
+  if (has('beauty') && s.lines > 0) for (const [x, z] of SPOT.park) { const p = pop('park' + x + z); tile(x, z, '#8FD27A'); if (good('beauty') && p > .5) tree(x + .5, z + .5, .9 * p, '#3F8F4A'); }
+
+  /* objects, back to front */
+  const items = [];
+  const add = (x, z, fn) => items.push({ k: x + z, fn });
+  /* hall: tiny at day 0, grows with era */
+  add(HALL[0], HALL[1], () => {
+    const [wall, rf] = L.hall, x = HALL[0], z = HALL[1];
+    if (s.lines <= 0) { box(x, z, .28, .45, wall); roof(x, z, .28, .45, .3, rf); pole(x + .5, z + .5, 1.2, '#555'); dot(iso(x + .55, z + .5, 1.15), 3, '#FF7593'); return; }
+    if (era === 'village') { box(x, z, -.12, .95, wall); roof(x, z, -.12, .95, .6, '#C0392B'); }
+    else if (era === 'town') { box(x, z, -.15, 1.35, wall); roof(x, z, -.15, 1.35, .6, '#8E2F25'); dot(iso(x + .5, z + 1.15, 1.05), TW * .12, '#FFF6DA'); }
+    else { box(x, z, -.12, 2.4, wall, '#FFFFFF'); box(x, z, .25, .9, '#D7E3F4', null, 2.4); dot(iso(x + .5, z + .5, 3.5), TW * .18, '#8FB3E8'); }
+    pole(x + .5, z + .5, era === 'city' ? 4.2 : 2.3, '#555'); dot(iso(x + .56, z + .5, era === 'city' ? 4.15 : 2.25), 3.5, '#FF7593');
+  });
+  /* build: houses, shops, offices on the open plots */
+  if (has('build')) PLOTS.slice(0, nOpen).forEach(([x, z, type], i) => add(x, z, () => {
+    const p = pop('b' + i); if (p <= 0) return;
+    let [wall, rf] = L[type]; const h = L.h[type] * (1 + .25 * sr(i, 3)) * p;
+    if (good('beauty')) wall = era === 'city' ? shade(PAINT[i % 5], 1.05) : PAINT[i % 5];
+    const m = type === 'office' ? .14 : .17;
+    box(x, z, m, h, wall);
+    if (era === 'city') windows(x, z, m, h, Math.max(1, Math.round(h * 2)), 'rgba(255,255,255,.75)');
+    else { roof(x, z, m, h, era === 'village' ? .35 : .3, rf); windows(x, z, m, h, 1, era === 'village' ? '#5E3F27' : '#FFF3C4'); }
+    if (type === 'shop' && era !== 'city') { const a = iso(x + .2, z + .85, h * .55), b = iso(x + .8, z + .85, h * .55); ctx.strokeStyle = good('beauty') ? '#FF7593' : '#E9D8AE'; ctx.lineWidth = TW * .08; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
+    if (sh && sh.work.has('b' + i)) scaffold(x, z, m, h);
+  }));
+  /* rules: signposts (low), police station + traffic lights (healthy) */
+  if (has('rules') && s.lines > 0) {
+    CROSS.filter(([x, z]) => dHall(x, z) <= r).slice(0, good('rules') ? 99 : 3).forEach(([x, z], i) => add(x + .9, z + .9, () => {
+      const p = pop('sp' + i);
+      const top = pole(x + .9, z + .9, .8 * p, '#6B6F7A');
+      ctx.fillStyle = '#F3F1E8'; ctx.fillRect(top[0] - TW * .02, top[1], TW * .28, TW * .09); ctx.fillStyle = '#4D7CFE'; ctx.fillRect(top[0] - TW * .02, top[1] + TW * .11, TW * .24, TW * .08);
+    }));
+    add(SPOT.police[0], SPOT.police[1], () => { const [x, z] = SPOT.police, p = pop('police'); const h = (era === 'city' ? 1.3 : .8) * p;
+      box(x, z, .15, h, '#3C63D6', '#E8EEFF'); const band = iso(x + .5, z + .85, h * .6); ctx.fillStyle = '#FFFFFF'; ctx.fillRect(band[0] - TW * .3, band[1] - 2, TW * .6, 3);
+      dot(iso(x + .5, z + .5, h + .12), TW * .07, Math.floor(now / 500) % 2 ? '#FF4D4D' : '#4D7CFE'); });
+    if (good('rules')) CROSS.filter(([x, z]) => dHall(x, z) <= r).forEach(([x, z], i) => add(x + .1, z + .1, () => {
+      const p = pop('tl' + i); const top = pole(x + .1, z + .1, 1.05 * p, '#3A3D48');
+      ctx.fillStyle = '#2A2B35'; ctx.fillRect(top[0] - TW * .06, top[1] - TW * .1, TW * .12, TW * .3);
+      const lit = Math.floor(now / 1500 + i) % 3;
+      ['#FF4D4D', '#FFC83D', '#3DDC84'].forEach((col, j) => dot([top[0], top[1] - TW * .05 + j * TW * .09], TW * .035, lit === j ? col : '#555'));
+    }));
+  }
+  /* beauty: flowers along the roads (low); park trees, fountain, painted walls (healthy) */
+  if (has('beauty') && s.lines > 0) {
+    const spots = []; for (const k of ROADS) { const [x, z] = k.split(',').map(Number); if (dHall(x, z) <= r && sr(x, z * 3) < (good('beauty') ? .55 : .2)) spots.push([x, z]); }
+    spots.forEach(([x, z], i) => add(x + .1, z + .95, () => { const p = pop('fl' + i); if (p < .3) return; const a = iso(x + .1, z + .95); dot(a, 2.2, PAINT[i % 3]); dot([a[0] + 5, a[1] - 1], 2, PAINT[(i + 1) % 3]); }));
+    if (good('beauty')) add(SPOT.fountain[0], SPOT.fountain[1], () => { const [x, z] = SPOT.fountain, p = pop('fountain'), c = iso(x + .5, z + .5);
+      ctx.fillStyle = '#B9C2CF'; ctx.beginPath(); ctx.ellipse(c[0], c[1], TW * .36 * p, TH * .36 * p, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#6DB5E6'; ctx.beginPath(); ctx.ellipse(c[0], c[1] - 1, TW * .28 * p, TH * .28 * p, 0, 0, Math.PI * 2); ctx.fill();
+      const j = iso(x + .5, z + .5, .5 + .08 * Math.sin(now / 200)); ctx.strokeStyle = '#BFE6FF'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(c[0], c[1] - 2); ctx.lineTo(j[0], j[1]); ctx.stroke(); });
+  }
+  /* knowledge: library (low), district name signs (1 low, all healthy) */
+  if (has('knowledge') && s.lines > 0) {
+    add(SPOT.library[0], SPOT.library[1], () => { const [x, z] = SPOT.library, p = pop('library'); const h = (era === 'city' ? 1.4 : .85) * p;
+      box(x, z, .12, h, '#2FB57A', '#D8F5E6'); for (const f of [.25, .5, .75]) { const a = iso(x + .12 + .76 * f, z + .88, 0), b = iso(x + .12 + .76 * f, z + .88, h * .85); ctx.strokeStyle = '#E8FFF3'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
+      roof(x, z, .1, h, .3, '#1E7F55'); });
+    DSIGNS.slice(0, good('knowledge') ? 3 : 1).forEach(([x, z, name], i) => add(x, z, () => { const p = pop('ds' + i); if (p < .5) return; const top = pole(x + .5, z + .5, .9, '#7A5230'); label(top, name, '#2FB57A', '#FFFFFF'); }));
+  }
+  /* infra: water tower (low), power plant (healthy); paved trunk + stone bridge drawn above */
+  if (has('infra') && s.lines > 0) {
+    add(SPOT.water[0], SPOT.water[1], () => { const [x, z] = SPOT.water, p = pop('water'); for (const [a, b] of [[.3,.3],[.7,.3],[.3,.7],[.7,.7]]) pole(x + a, z + b, 1.1 * p, '#8A8F99');
+      const c = iso(x + .5, z + .5, 1.1 * p); ctx.fillStyle = '#9DB8FF'; ctx.fillRect(c[0] - TW * .28, c[1] - TW * .32, TW * .56, TW * .32); ctx.fillStyle = '#7C95D6'; ctx.beginPath(); ctx.ellipse(c[0], c[1] - TW * .32, TW * .28, TH * .22, 0, 0, Math.PI * 2); ctx.fill(); });
+    if (good('infra')) add(SPOT.power[0], SPOT.power[1], () => { const [x, z] = SPOT.power, p = pop('power'); box(x, z, .08, .75 * p, '#9C6B4E', '#C9A088');
+      const top = pole(x + .78, z + .3, 1.9 * p, '#8A6A5A'); for (let k = 0; k < 3; k++) { const t = (now / 1400 + k / 3) % 1; dot([top[0] + t * 8, top[1] - t * 22], 3 + t * 4, `rgba(220,220,225,${.7 - t * .6})`); }
+      ctx.fillStyle = '#FFD36E'; const b = iso(x + .5, z + .92, .45); ctx.font = `700 ${TW * .35}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('⚡', b[0], b[1]); });
+  }
+  /* era look: lamps from town on */
+  if (era !== 'village' && s.lines > 0) LAMPS.filter(([x, z]) => dHall(x, z) <= r).forEach(([x, z], i) => add(x, z, () => { const top = pole(x, z, 1, era === 'city' ? '#5A5F6B' : '#3A3A3A'); dot(top, TW * .06, '#FFE89A'); }));
+  if (sh) sh.lampWork.forEach(([x, z]) => add(x, z, () => { const a = iso(x, z); ctx.fillStyle = '#A9743F'; ctx.fillRect(a[0] - 5, a[1] - 3, 10, 4); }));
+  /* the sign in front of the town hall */
+  const sign = opts.sign;
+  if (sign) add(SPOT.sign[0] + .5, SPOT.sign[1] + .5, () => { const [x, z] = SPOT.sign; const top = pole(x + .5, z + 1.2, .45, '#7A5230'); label(top, sign, '#FFF3C4', '#5A3F00'); });
+  /* builders */
+  if (sh) for (const b of sh.builders) if (b.pos) add(b.pos[0], b.pos[1], () => builder(b.pos, b.hammer, now));
+  items.sort((a, b) => a.k - b.k).forEach(it => it.fn());
+  if (sh && sh.flash > 0) { ctx.fillStyle = `rgba(255,255,240,${sh.flash})`; ctx.fillRect(0, 0, W, H); }
+}
+function scaffold(x, z, m, h){
+  ctx.strokeStyle = '#D98E3A'; ctx.lineWidth = 1.5;
+  const cs = [[x + m - .06, z + 1 - m + .06], [x + 1 - m + .06, z + 1 - m + .06], [x + 1 - m + .06, z + m - .06]];
+  for (const [a, b] of cs) { const p = iso(a, b, 0), q = iso(a, b, h + .2); ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke(); }
+  for (let y = .3; y <= h + .2; y += .35) { ctx.beginPath(); cs.forEach(([a, b], i) => { const p = iso(a, b, y); i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); }); ctx.stroke(); }
+}
+function builder(pos, hammer, now){
+  const bob = Math.abs(Math.sin(now / 120 + pos[0] * 3)) * 2;
+  const f = iso(pos[0], pos[1]); const s = TW * .09;
+  ctx.fillStyle = '#F28C28'; ctx.fillRect(f[0] - s * .7, f[1] - s * 3 - bob, s * 1.4, s * 1.8);
+  dot([f[0], f[1] - s * 3.6 - bob], s * .75, '#F2C9A0');
+  ctx.fillStyle = '#FFD02E'; ctx.beginPath(); ctx.arc(f[0], f[1] - s * 3.8 - bob, s * .85, Math.PI, 0); ctx.fill();
+  if (hammer && Math.floor(now / 180) % 2) { ctx.fillStyle = '#FFE89A'; ctx.font = `700 ${TW * .3}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('✦', f[0] + s * 2, f[1] - s * 4); }
+}
+
+/* ---------- the era show: builders come out, visit every building, road and lamp, then one flip ---------- */
+let show = null;
+function startShow(from, to){
+  const D = ($('#quick').checked ? 12 : 60) * 1000;
+  const targets = [];
+  if (S.st.build !== 'missing') PLOTS.slice(0, openPlots(S.lines)).forEach(([x, z], i) => targets.push({ id: 'b' + i, x: x + .5, z: z + 1.05 }));
+  [...ROADS].filter((k, i) => i % 2 === 0).forEach(k => { const [x, z] = k.split(',').map(Number); if (dHall(x, z) <= claimR(S.lines)) targets.push({ id: 'r' + k, x: x + .5, z: z + .5 }); });
+  if (to !== 'village') LAMPS.filter(([x, z]) => dHall(x, z) <= claimR(S.lines)).forEach(([x, z]) => targets.push({ id: 'l' + x + ',' + z, x, z, lamp: true }));
+  targets.sort((a, b) => Math.atan2(a.z - HALL[1], a.x - HALL[0]) - Math.atan2(b.z - HALL[1], b.x - HALL[0]));
+  const nB = Math.max(6, Math.min(24, Math.round(targets.length / 3)));
+  const door = [HALL[0] + .5, HALL[1] + 1.1];
+  const builders = [];
+  for (let i = 0; i < nB; i++) { const mine = targets.filter((t, j) => j % nB === i); builders.push({ path: [door, ...mine.map(t => [t.x, t.z])], ids: mine.map(t => t.id), lamps: mine.filter(t => t.lamp).map(t => [t.x, t.z]), delay: i / nB * .08 }); }
+  show = { from, to, t0: performance.now(), D, builders, work: new Set(), lampWork: [], flash: 0, flipped: false };
+  $('#showbar').hidden = false;
+  log(`${REPO}：够条件了，开始从${ERAZH[from]}升级成${ERAZH[to]}，${nB} 个工人出来了`);
+}
+function pathAt(path, f){
+  const seg = []; let tot = 0; for (let i = 1; i < path.length; i++) { const d = Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]); seg.push(d); tot += d; }
+  let want = f * tot; for (let i = 0; i < seg.length; i++) { if (want <= seg[i]) { const t = seg[i] ? want / seg[i] : 0; return { p: [path[i][0] + (path[i + 1][0] - path[i][0]) * t, path[i][1] + (path[i + 1][1] - path[i][1]) * t], reached: i }; } want -= seg[i]; }
+  return { p: path[path.length - 1], reached: path.length - 1 };
+}
+function stepShow(now){
+  if (!show) return;
+  const f = (now - show.t0) / show.D;
+  show.work = new Set(); show.lampWork = []; show.flash = 0;
+  for (const b of show.builders) {
+    b.hammer = false;
+    if (f < b.delay) { b.pos = null; continue; }
+    if (f < .8) {
+      const g = Math.min(1, (f - b.delay) / (.72 - b.delay));
+      const at = pathAt(b.path, g); b.pos = at.p;
+      b.ids.slice(0, at.reached).forEach(id => show.work.add(id));
+      b.lamps.slice(0, at.reached).forEach(l => show.lampWork.push(l));
+      const near = b.path.slice(1).some(q => Math.hypot(q[0] - at.p[0], q[1] - at.p[1]) < .35);
+      b.hammer = near || g >= 1;
+    } else if (f < .86) { b.ids.forEach(id => show.work.add(id)); b.lamps.forEach(l => show.lampWork.push(l)); b.pos = b.path[b.path.length - 1]; b.hammer = true; }
+    else { const g = Math.min(1, (f - .86) / .12); b.pos = pathAt([b.path[b.path.length - 1], b.path[0]], g).p; if (g >= 1) b.pos = null; }
+  }
+  if (f >= .86 && !show.flipped) { show.flipped = true; log(`一瞬间：整个领地变成${ERAZH[show.to]}（位置和主人都不变）`); }
+  if (f >= .86 && f < .9) show.flash = .55 * (1 - (f - .86) / .04);
+  $('#showProg').style.width = Math.min(100, f * 100) + '%';
+  $('#showLeft').textContent = Math.max(0, Math.ceil((1 - f) * show.D / 1000)) + ' 秒';
+  $('#showText').textContent = f < .86 ? `工人在把${ERAZH[show.from]}改成${ERAZH[show.to]}…` : '工人回家了';
+  if (f >= 1) { S.shown[show.to] = true; log(`${ERAZH[show.to]}的表演播完，已记在 world.json：重开不会再播`); show = null; $('#showbar').hidden = true; renderCard(); }
+}
+function eraToDraw(){ if (!show) return S.era; return show.flipped ? show.to : show.from; }
+
+/* ---------- the 城市平衡 card ---------- */
+function barOf(st){ return { healthy:[100, 'var(--healthy)'], low:[45, 'var(--low)'], missing:[0, 'var(--missing)'], na:[100, 'repeating-linear-gradient(45deg,var(--na) 0 4px,transparent 4px 8px)'] }[st]; }
+function renderCard(){
+  const era = eraToDraw(), sign = signText(S, S.era);
+  $('#eraLine').innerHTML = `时代 <b>${ERAZH[S.era]}</b>` + (S.era === 'city' ? ' <span class="muted">已经是城</span>' : ` → ${ERAZH[ERAS[ERAS.indexOf(S.era) + 1]]}` + (sign ? ` <span class="need">${sign}</span>` : ''));
+  $('#kinds').innerHTML = KINDS.map(k => {
+    const st = S.st[k], [w, col] = barOf(st), isOpen = open === k, files = filesOf(k, st);
+    let list = '';
+    if (isOpen) {
+      if (st === 'na') list = `<div class="files"><div class="more">这个仓库的规则说不用这一类，所以不算"没有"。<br>设置在 <code>~/.claude/agent-city/rules/${REPO}.conf</code>：<code>na = ${k}</code></div></div>`;
+      else if (!files.length) list = `<div class="files"><div class="more">还没有这一类的文件。一出现，城里就会多出东西。</div></div>`;
+      else list = `<div class="files"><ol>${files.slice(0, 8).map(f => `<li>${f}</li>`).join('')}</ol>${files.length > 8 ? `<div class="more">还有 ${files.length - 8} 个</div>` : ''}<div class="fix">分错了？在 <code>~/.claude/agent-city/rules/${REPO}.conf</code> 加一行，比如 <code>tests/fixtures/** = none</code></div></div>`;
+    }
+    return `<li class="kind"><button type="button" aria-expanded="${isOpen}" data-kind="${k}"><span class="ic" style="background:${KCOL[k]}"></span><span class="nm">${KZH[k]}</span><span class="track"><i style="width:${w}%;background:${col}"></i></span><span class="st ${st}">${STZH[st]}</span><span></span><span></span><span class="val">${valueText(k, st, S.lines)}</span></button>${list}</li>`;
+  }).join('');
+}
+$('#kinds').addEventListener('click', e => { const b = e.target.closest('[data-kind]'); if (!b) return; open = open === b.dataset.kind ? null : b.dataset.kind; renderCard(); });
+
+/* ---------- mock-only controls ---------- */
+const PRESETS = [
+  ['第 0 天', { lines: 0, st: { build:'missing', rules:'missing', beauty:'missing', knowledge:'missing', infra:'missing' } }],
+  ['村 · 没有规则', { lines: 4200, st: { build:'healthy', rules:'missing', beauty:'low', knowledge:'low', infra:'low' } }],
+  ['镇', { lines: 9000, st: { build:'healthy', rules:'low', beauty:'low', knowledge:'healthy', infra:'healthy' } }],
+  ['城', { lines: 38000, st: { build:'healthy', rules:'healthy', beauty:'healthy', knowledge:'healthy', infra:'healthy' } }],
+];
+$('#presets').innerHTML = PRESETS.map(([n], i) => `<button class="btn" data-p="${i}">${n}</button>`).join('');
+$('#presets').addEventListener('click', e => { const b = e.target.closest('[data-p]'); if (!b) return; const p = PRESETS[+b.dataset.p][1];
+  show = null; $('#showbar').hidden = true; seen.clear();
+  S = { lines: p.lines, st: { ...p.st }, era: earned({ lines: p.lines, st: p.st }), shown: {} }; S.shown[S.era] = true;
+  log(`原型：跳到"${PRESETS[+b.dataset.p][0]}"（时代 ${ERAZH[S.era]}，不播表演）`); syncCtl(); renderCard(); });
+$('#kindCtl').innerHTML = KINDS.map(k => `<span>${KZH[k]}</span><select data-k="${k}" aria-label="${KZH[k]}">${['healthy','low','missing','na'].filter(v => k !== 'build' || v !== 'low').map(v => `<option value="${v}">${STZH[v]}</option>`).join('')}</select>`).join('');
+$('#kindCtl').addEventListener('change', e => { const k = e.target.dataset.k; if (!k) return; const before = S.st[k]; S.st[k] = e.target.value;
+  if (before === 'missing' && S.st[k] !== 'missing') log(`${KZH[k]} 出现了：${{ build:'住宅、商店、办公楼', rules:'路牌、警察局' + (S.st[k] === 'healthy' ? '、红绿灯' : ''), beauty:'花' + (S.st[k] === 'healthy' ? '、公园、喷泉、彩色墙' : ''), knowledge:'图书馆、区名牌', infra:'水塔' + (S.st[k] === 'healthy' ? '、发电厂、铺好的出城路' : '') }[k]}`);
+  maybeEra(); renderCard(); });
+$('#lines').addEventListener('input', e => { S.lines = linesOf(+e.target.value); $('#linesText').textContent = fmt(S.lines) + ' 行（镇要 2,000，城要 20,000）'; maybeEra(); renderCard(); });
+function syncCtl(){ document.querySelectorAll('#kindCtl select').forEach(s => s.value = S.st[s.dataset.k]); $('#lines').value = sliderOf(S.lines); $('#linesText').textContent = fmt(S.lines) + ' 行（镇要 2,000，城要 20,000）'; }
+function maybeEra(){ const e = earned(S); if (ERAS.indexOf(e) > ERAS.indexOf(S.era) && !show) { const from = S.era; S.era = e; startShow(from, e); } }
+$('#playBtn').addEventListener('click', () => { if (show) return; const i = ERAS.indexOf(S.era); const from = i > 0 ? ERAS[i - 1] : 'village', to = i > 0 ? S.era : 'town'; if (i === 0) log('原型：演示一次村→镇（真版只在够条件时播）'); startShow(from, to); if (i === 0) { show.demoOnly = true; } });
+$('#reopenBtn').addEventListener('click', () => { const was = show; show = null; $('#showbar').hidden = true; seen.clear(); if (was && !was.demoOnly) S.shown[was.to] = true;
+  log(`重开页面：时代 ${ERAZH[S.era]}，${was ? '表演已开始过，不再从头播' : '不重播表演'}`); renderCard(); });
+
+/* ---------- views ---------- */
+function mini(title, note){ const d = document.createElement('div'); d.className = 'mini'; d.innerHTML = `<canvas></canvas><h3>${title}</h3><p>${note}</p>`; return d; }
+const SYS = [
+  ['第 0 天', '空地 + 一个小市政厅，别的什么都没有', 'day0'],
+  ['规则（测试、QA 文档）', '路牌 → 警察局，健康时每个路口有红绿灯', 'rules'],
+  ['美化（UI 组件、UI 规则）', '路边的花 → 公园、喷泉、彩色墙', 'beauty'],
+  ['知识（需求、功能、模块文档）', '图书馆，区名牌（健康时每个区都有）', 'knowledge'],
+  ['基建（脚本、CI、配置、数据库）', '水塔 → 发电厂，铺好的出城路和石桥', 'infra'],
+  ['只有建设（其他 4 类都没有）', '只有房子。缺的类只是没有，不会坏：没有锥桶、裂缝、乱穿马路', 'build'],
+];
+const ERA_NOTES = [['村', '木房子、土路。第 0 天起都是村', 'village'], ['镇', '砖房、石板路、路灯。要：≥2000 行 + 没有一类是"没有"', 'town'], ['城', '高楼、公园、喷泉。要：≥20000 行 + 规则、美化都健康', 'city']];
+function buildGrids(){
+  $('#sysGrid').innerHTML = ''; SYS.forEach(([t, n]) => $('#sysGrid').appendChild(mini(t, n)));
+  $('#eraGrid').innerHTML = ''; ERA_NOTES.forEach(([t, n]) => $('#eraGrid').appendChild(mini(t, n)));
+}
+function sysState(k){
+  const st = { build:'healthy', rules:'missing', beauty:'missing', knowledge:'missing', infra:'missing' };
+  if (k === 'day0') return { lines: 0, st: { build:'missing', rules:'missing', beauty:'missing', knowledge:'missing', infra:'missing' } };
+  if (k !== 'build') st[k] = 'healthy';
+  return { lines: 6000, st };
+}
+const FULL = { lines: 38000, st: { build:'healthy', rules:'healthy', beauty:'healthy', knowledge:'healthy', infra:'healthy' } };
+function setView(v){ const b = document.querySelector(`[data-view="${v}"]`); if (b) b.click(); }
+document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
+  view = b.dataset.view; try { history.replaceState(null, '', '#' + view); } catch (e) {} document.querySelectorAll('[data-view]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  $('#cv').hidden = view !== 'terr'; $('#sysGrid').hidden = view !== 'systems'; $('#eraGrid').hidden = view !== 'eras';
+  document.querySelectorAll('[data-for="terr"]').forEach(el => el.hidden = view !== 'terr');
+  if (view !== 'terr') { show = null; $('#showbar').hidden = true; }
+}));
+
+/* ---------- right column: collapse on click, drag to reorder (same as the real cards) ---------- */
+const panel = $('#panel');
+document.querySelectorAll('.card[data-card]').forEach(card => {
+  const btn = card.querySelector('.card-head button');
+  if (btn.getAttribute('aria-expanded') === 'false') card.classList.add('collapsed');
+  let startY = null, moved = false;
+  btn.addEventListener('pointerdown', e => { startY = e.clientY; moved = false; btn.setPointerCapture(e.pointerId); });
+  btn.addEventListener('pointermove', e => { if (startY === null) return; const dy = e.clientY - startY; if (Math.abs(dy) > 6) { moved = true; card.classList.add('dragging'); card.style.transform = `translateY(${dy}px)`; } });
+  btn.addEventListener('pointerup', e => { if (startY === null) return; card.classList.remove('dragging'); card.style.transform = '';
+    if (moved) { const cards = [...panel.querySelectorAll('.card[data-card]')]; const y = e.clientY; const target = cards.find(c => c !== card && y < c.getBoundingClientRect().top + c.offsetHeight / 2); if (target) panel.insertBefore(card, target); else panel.appendChild(card); }
+    startY = null; });
+  btn.addEventListener('click', () => { if (moved) { moved = false; return; } const on = !card.classList.contains('collapsed'); card.classList.toggle('collapsed', on); btn.setAttribute('aria-expanded', String(!on)); });
+});
+
+/* ---------- frame ---------- */
+function frame(now){
+  stepShow(now);
+  if (view === 'terr') drawTerritory($('#cv'), S, { era: eraToDraw(), show, pop: true, sign: show ? '' : signText(S, S.era) });
+  else if (view === 'systems') [...$('#sysGrid').children].forEach((d, i) => { const s = sysState(SYS[i][2]); drawTerritory(d.querySelector('canvas'), s, { era: 'village', zoom: 1.45, sign: SYS[i][2] === 'day0' ? '' : signText(s, 'village') }); });
+  else [...$('#eraGrid').children].forEach((d, i) => { const e = ERA_NOTES[i][2]; const s = e === 'village' ? { lines: 38000, st: { ...FULL.st, rules:'missing' } } : e === 'town' ? { lines: 38000, st: { ...FULL.st, beauty:'low' } } : FULL; drawTerritory(d.querySelector('canvas'), s, { era: e, zoom: 1.9, sign: signText(s, e) }); });
+  requestAnimationFrame(frame);
+}
+buildGrids();
+S = { lines: 0, st: { ...PRESETS[0][1].st }, era: 'village', shown: { village: true } };
+syncCtl(); renderCard();
+log('第 0 天：空地和一个小市政厅');
+const HASH = location.hash.slice(1).split('&');
+if (['systems', 'eras'].includes(HASH[0])) setView(HASH[0]);
+const PRE = HASH.find(h => /^p[0-3]$/.test(h)); if (PRE) $(`[data-p="${PRE[1]}"]`).click();
+if (HASH.includes('show')) { $('#quick').checked = true; $('#playBtn').click(); const at = HASH.find(h => h.startsWith('at=')); if (at && show) show.t0 -= parseFloat(at.slice(3)) * show.D; }
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
