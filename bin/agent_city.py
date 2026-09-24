@@ -642,7 +642,7 @@ class CityState:
         else:
             self.world, self.notice = load_world(world_path, self.plans)
         self._view_cache = None
-        self.active = {}          # identity -> True since its last count
+        self.last_activity = {}   # identity -> "now" of its last feed_line, this run only
         self.last_count = {}      # identity -> the recount() "now" it was last counted at
         self.agent_terr = {}      # citizen id -> territory id, for the snapshot's agents
         self.gov_terr = ""        # the governor's current territory id
@@ -716,7 +716,7 @@ class CityState:
                 if identity not in self.world["territories"]:
                     add_territory(self.world, self.plans, identity, repo_name(identity))
                     self._emit_world_locked()
-                self.active[identity] = True
+                self.last_activity[identity] = now
 
             events = self.reducer.feed(obj, now)
             for ev in events:
@@ -814,13 +814,21 @@ class CityState:
         self._save_world_locked()
 
     def recount(self, now):
-        """Count every territory active since its last count, RECOUNT_SEC
-        or more ago (never counted: due at once). count_fn runs outside the
-        lock. Returns how many territories were counted."""
+        """Count every territory that has had a line (this run) since its
+        last count, RECOUNT_SEC or more ago (never counted in this run, but
+        with a line: due at once). A territory only ever loaded from
+        world.json, with no line yet, is never due -- last_activity holds
+        no entry for it until feed_line sees it. count_fn runs outside the
+        lock, so a line that arrives while it runs (bumping last_activity
+        past the "now" this count is about to be stamped with) keeps that
+        territory due again next time, instead of losing it. Returns how
+        many territories were counted."""
         with self.lock:
             due = [i for i in self.world["territories"]
-                   if i not in self.last_count
-                   or (self.active.get(i) and (now - self.last_count[i]) >= RECOUNT_SEC)]
+                   if i in self.last_activity
+                   and (i not in self.last_count
+                        or (self.last_activity[i] > self.last_count[i]
+                            and (now - self.last_count[i]) >= RECOUNT_SEC))]
         if not due:
             return 0
         counted = {i: self.count_fn(i) for i in due}
@@ -829,7 +837,6 @@ class CityState:
             for i, val in counted.items():
                 t = self.world["territories"].get(i)
                 self.last_count[i] = now
-                self.active[i] = False
                 if t is None:
                     continue
                 before = (t["lines"], t["peak"])
