@@ -22,6 +22,12 @@ CONTRACT
        desc  tool_input.description    only when tool is Agent or Task
        sub   tool_input.subagent_type  only when tool is Agent or Task
        q     first "question" in tool_input, only when tool is AskUserQuestion
+       klen  the byte length (a number, as a string) of the JSON-escaped
+             tool_input.command (Bash), tool_input.file_path (Edit, Write,
+             MultiEdit) or tool_input.url (WebFetch), found in the first 4096
+             bytes; "" for other tools or when not found there. Only the
+             length, never the text: it lets the city tell which request a
+             terminal answer closed (tests/test_agent_city_interact.py).
      desc and q: at most 200 bytes, always a valid JSON string.
      Nothing else from the payload is ever written: not tool_input,
      tool_response, prompt, message or last_assistant_message.
@@ -52,7 +58,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(ROOT, "bin", "agent-city-hook.sh")
 BASH = shutil.which("bash")
-KEYS = {"ev", "sid", "aid", "at", "tool", "nt", "proj", "role", "desc", "sub", "q"}
+KEYS = {"ev", "sid", "aid", "at", "tool", "nt", "proj", "role", "desc", "sub", "q", "klen"}
 
 CITY_COMMAND = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
                 '"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh"; exit 0')
@@ -166,7 +172,7 @@ class TestOn(HookCase):
         self.assertEqual(row["tool"], "Edit")
         self.assertEqual(row["proj"], "shop-app")
 
-    def test_exactly_the_eleven_keys_all_strings(self):
+    def test_exactly_the_twelve_keys_all_strings(self):
         row = self.one(payload("PostToolUse", ("a1", "worker"), tool_name="Read",
                                tool_input={"file_path": "/x"}))
         self.assertEqual(set(row), KEYS)
@@ -183,6 +189,31 @@ class TestOn(HookCase):
             text = fh.read()
         self.assertNotIn(b"SECRET_TOKEN_123", text)
         self.assertNotIn(b"deploy", text)
+
+    def test_klen_is_the_escaped_length_of_the_command(self):
+        cmd = 'deploy --token "SECRET_TOKEN_123" é'
+        row = self.one(payload("PostToolUse", ("a1", "worker"), tool_name="Bash",
+                               tool_input={"command": cmd, "description": "deploy"},
+                               tool_response={"stdout": "x"}))
+        escaped = json.dumps(cmd, ensure_ascii=False)[1:-1].encode("utf-8")
+        self.assertEqual(row["klen"], str(len(escaped)))
+
+    def test_klen_for_files_and_urls(self):
+        for tool, key in (("Edit", "file_path"), ("Write", "file_path"), ("MultiEdit", "file_path"),
+                          ("WebFetch", "url")):
+            with self.subTest(tool=tool):
+                open(self.events, "w").close()
+                row = self.one(payload("PermissionRequest", tool_name=tool,
+                                       tool_input={key: "/r/shop/a b.py"}))
+                self.assertEqual(row["klen"], str(len("/r/shop/a b.py")))
+
+    def test_klen_empty_for_other_tools(self):
+        for tool in ("Read", "AskUserQuestion", "Agent", "mcp__x__y"):
+            with self.subTest(tool=tool):
+                open(self.events, "w").close()
+                row = self.one(payload("PostToolUse", tool_name=tool,
+                                       tool_input={"command": "x", "file_path": "/y", "questions": []}))
+                self.assertEqual(row["klen"], "")
 
     def test_main_agent_has_empty_aid_and_at(self):
         row = self.one(payload("PostToolUse", tool_name="Edit", tool_input={"file_path": "/x"}))

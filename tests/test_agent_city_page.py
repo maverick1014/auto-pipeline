@@ -134,6 +134,36 @@ CONTRACT
       may use $, clamp and CARD_KEY from outside; the test runs it in node
       with a small fake DOM.
 
+  Interaction (approved mock: mock/city-interact-mock.html; the server side
+  is pinned in tests/test_agent_city_interact.py). Everything from Cleanup
+  stays (3D city, cards, camera).
+    <meta name="city-token" content="__CITY_TOKEN__"> in <head>; the server
+      swaps in its token. The script reads it from that meta tag (TOKEN).
+    Handles `case 'ask'`, `case 'ask_phase'` and `case 'ask_closed'` in the
+      same switch, and the snapshot's `asks` list.
+    `case 'answer'`: shows ev.answer when it is a non-empty string, else
+      '已回答'. Live mode never invents text: the `case 'answer'` code has no
+      '批了' and no '不行'. Demo data may keep its own made-up answers.
+    askLine(ev, name): top-level pure function (no DOM, no other globals) ->
+      the Chinese log line for one ask / ask_phase / ask_closed event, name =
+      the asker's task. Who: 总督 (governor), 你 (owner), 终端 (terminal).
+      Always the real text; '已回答' when an answer's text is "". A deny
+      without a reason shows no 理由：.
+    The "?" panel: <div class="ask" id="ask" role="dialog"
+      aria-labelledby="ask-title" hidden>, inside #stage (over the city),
+      never inside the right column. Question: the exact questions and
+      options, a free text per question, 发送回答. Permission: tool, command
+      or path, the agent's own description, folder; 批准 and 拒绝, an optional
+      reason. .btn.ok and .btn.no: white-space:nowrap and a min-width. After
+      a close from any side the form is gone and a .closed line says who and
+      when; another side first: 晚了一步.
+    Decisions: fetch('/api/decide') POST, JSON, header 'X-City-Token'. A 409
+      shows the closed state. The page never calls /api/gov/ and never
+      offers the governor approving (no 总督批准).
+    A red "?" (.qm button with data-open) above an agent whose ask is with
+      the owner. renderStats adds <button id="next"> 等你 <n>, which opens the
+      oldest. Phone: the @media (max-width: 960px) block has an .ask rule.
+
   bin/agent-city-assets/
     vendor/three.min.js, vendor/GLTFLoader.js, vendor/SkeletonUtils.js
       (three.js r128, MIT, the licence header kept)
@@ -1287,6 +1317,157 @@ class TestCardsBehaviour(unittest.TestCase):
 
     def test_storage_key(self):
         self.assertIn("'agent-city-cards'", inline_script())
+
+
+# ---------------------------------------------------------------------------
+# Interaction: the "?" panel
+# ---------------------------------------------------------------------------
+
+ASK_LINE_JS = r"""
+const fs = require('fs');
+const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+eval(data.fn);
+process.stdout.write(JSON.stringify(data.cases.map(([ev, name]) => askLine(ev, name))));
+"""
+
+
+def case_block(kind):
+    """The code of `case '<kind>':` up to the next case or the end of the switch."""
+    text = inline_script()
+    m = re.search(r"case\s+'%s'\s*:" % kind, text)
+    if not m:
+        return None
+    rest = text[m.end():]
+    n = re.search(r"\bcase\s+'|\bdefault\s*:", rest)
+    return rest[:n.start() if n else len(rest)]
+
+
+def media_block(query):
+    text = style()
+    i = text.find(query)
+    if i < 0:
+        return ""
+    j = text.index("{", i)
+    depth = 0
+    for k in range(j, len(text)):
+        depth += text[k] == "{"
+        depth -= text[k] == "}"
+        if depth == 0:
+            return text[j:k + 1]
+    return ""
+
+
+class TestInteraction(unittest.TestCase):
+    def test_token_meta_tag(self):
+        head = page().split("</head>")[0]
+        self.assertIn('<meta name="city-token" content="__CITY_TOKEN__">', head)
+        self.assertRegex(inline_script(), r"meta\[name=[\"']?city-token")
+
+    def test_ask_messages_are_handled(self):
+        text = inline_script()
+        for kind in ("ask", "ask_phase", "ask_closed"):
+            with self.subTest(kind=kind):
+                self.assertRegex(text, r"case\s+'%s'\s*:" % kind)
+        self.assertRegex(case_block("snapshot") or "", r"\.asks\b")
+
+    def test_live_answers_are_never_invented(self):
+        block = case_block("answer")
+        self.assertIsNotNone(block)
+        self.assertNotIn("批了", block)
+        self.assertNotIn("不行", block)
+        self.assertIn("已回答", block)
+
+    def test_panel_sits_over_the_city(self):
+        m = markup()
+        i, stage, aside = m.find('id="ask"'), m.find('id="stage"'), m.find('<aside class="panel"')
+        self.assertGreater(i, 0, "no #ask panel in the markup")
+        self.assertTrue(stage < i < aside, "#ask must be inside #stage, not the right column")
+        tag = re.search(r"<div[^>]*id=\"ask\"[^>]*>", m).group(0)
+        for attr in ('class="ask"', 'role="dialog"', 'aria-labelledby="ask-title"', "hidden"):
+            with self.subTest(attr=attr):
+                self.assertIn(attr, tag)
+
+    def test_buttons_never_wrap(self):
+        css = style().replace(" ", "")
+        for sel in (".btn.ok", ".btn.no"):
+            with self.subTest(sel=sel):
+                rules = re.findall(r"([^{}]*)\{([^{}]*)\}", css)
+                body = "".join(b for s, b in rules if sel in s)
+                self.assertIn("white-space:nowrap", body)
+                self.assertIn("min-width", body)
+
+    def test_phone_layout_has_the_panel(self):
+        self.assertIn(".ask", media_block("@media (max-width: 960px)"))
+
+    def test_decisions_go_to_the_page_endpoint_with_the_token(self):
+        text = inline_script()
+        self.assertRegex(text, r"fetch\(\s*'/api/decide'")
+        self.assertIn("'X-City-Token'", text)
+        self.assertIn("409", text)
+        self.assertNotIn("/api/gov", text)
+        self.assertNotIn("总督批准", page())
+
+    def test_owner_waiting_is_visible(self):
+        self.assertIn("data-open", inline_script())
+        stats = function_source("renderStats") or ""
+        self.assertIn("等你", stats)
+        self.assertIn('id="next"', stats)
+
+    def test_closed_state_words(self):
+        text = inline_script()
+        self.assertIn("晚了一步", text)
+        self.assertIn("closed", text)
+
+    def test_ask_line(self):
+        fn = function_source("askLine")
+        self.assertIsNotNone(fn, "function askLine(ev, name) not found")
+        cases = [
+            [{"type": "ask", "kind": "permission", "phase": "owner", "why": "permission",
+              "tool": "Bash", "what": "rm -rf build/"}, "清理构建"],
+            [{"type": "ask", "kind": "question", "phase": "governor", "why": "",
+              "tool": "AskUserQuestion", "what": "Which port?"}, "登录页"],
+            [{"type": "ask", "kind": "question", "phase": "owner", "why": "no-governor",
+              "tool": "AskUserQuestion", "what": "Which port?"}, "登录页"],
+            [{"type": "ask_phase", "kind": "question", "phase": "owner", "why": "timeout", "wait": 60}, "改文案"],
+            [{"type": "ask_phase", "kind": "question", "phase": "owner", "why": "pass", "wait": 60}, "改文案"],
+            [{"type": "ask_closed", "kind": "question", "by": "governor", "verb": "answer", "text": "4791",
+              "tool": "AskUserQuestion", "what": "Which port?", "reason": ""}, "登录页"],
+            [{"type": "ask_closed", "kind": "permission", "by": "owner", "verb": "allow", "text": "",
+              "tool": "Bash", "what": "rm -rf build/", "reason": ""}, "清理构建"],
+            [{"type": "ask_closed", "kind": "permission", "by": "owner", "verb": "deny", "text": "",
+              "tool": "Write", "what": "/etc/hosts", "reason": "不许改系统文件"}, "改文案"],
+            [{"type": "ask_closed", "kind": "permission", "by": "owner", "verb": "deny", "text": "",
+              "tool": "Write", "what": "/etc/hosts", "reason": ""}, "改文案"],
+            [{"type": "ask_closed", "kind": "permission", "by": "terminal", "verb": "allow", "text": "",
+              "tool": "Bash", "what": "npm test", "reason": ""}, "加测试依赖"],
+            [{"type": "ask_closed", "kind": "question", "by": "terminal", "verb": "answer", "text": "",
+              "tool": "AskUserQuestion", "what": "Which port?", "reason": ""}, "登录页"],
+            [{"type": "ask_closed", "kind": "permission", "by": "terminal", "verb": "closed", "text": "",
+              "tool": "Bash", "what": "npm test", "reason": ""}, "加测试依赖"],
+        ]
+        out = run_node(ASK_LINE_JS, {"fn": fn, "cases": cases})
+        want = [
+            ["清理构建", "要权限", "Bash", "rm -rf build/", "等你"],
+            ["登录页", "问总督", "Which port?"],
+            ["登录页", "Which port?", "等你"],
+            ["改文案", "总督", "60", "等你"],
+            ["改文案", "定不了"],
+            ["总督", "登录页", "4791"],
+            ["你", "批准", "清理构建", "rm -rf build/"],
+            ["你", "拒绝", "改文案", "/etc/hosts", "不许改系统文件"],
+            ["你", "拒绝", "改文案", "/etc/hosts"],
+            ["终端", "批准", "加测试依赖", "npm test"],
+            ["终端", "已回答", "登录页"],
+            ["终端", "加测试依赖", "npm test"],
+        ]
+        for i, (line, parts) in enumerate(zip(out, want)):
+            with self.subTest(case=i, line=line):
+                self.assertIsInstance(line, str)
+                for part in parts:
+                    self.assertIn(part, line)
+                self.assertNotIn("批了", line)
+        self.assertNotIn("理由：", out[8], "a deny without a reason must not show one")
+        self.assertNotIn("你", out[9])
 
 
 if __name__ == "__main__":
