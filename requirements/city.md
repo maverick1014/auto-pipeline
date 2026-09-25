@@ -116,15 +116,32 @@
 - Broken or unknown file → move it aside as `world.json.bad-<time>`, start fresh, say so in the page log. Never silent.
 - Server loads it at start; the first snapshot carries it. Browser closed, server stopped, Mac restarted → same city.
 - `events.jsonl` is the feed, not the record. It may be cleared.
-- The city is per computer. Another machine has its own city.
+- The city is per computer. Another machine has its own city. A joined city also shows the other members live (see Joining); each machine's `world.json` stays its own.
 
 ## Limits
 - Server listens on 127.0.0.1 only, port `city_port`, stops itself after `city_idle_min` with no browser open.
 - Start refuses when RAM or CPU is over the cap.
-- Cloud sessions: no city (no localhost for the human).
+- Cloud sessions: no city page (no localhost for the human). A joined cloud session sends its events to its team (see Joining).
+
+## Joining
+- Owner decision, 2026-09-25. The local city stays the default and keeps being maintained. Joining is an optional extra; the local city never needs it.
+- Not joined = the city above: this computer only, no account, nothing leaves the machine.
+- Joined = the local city also shows the other members of the same team: the owner's other machines, other people's terminals, cloud sessions. Every member still runs their own local city. There is no shared city page on the internet.
+- Path: hook → `events.jsonl` (unchanged) → local server → relay → every joined local server → its page. The page talks only to 127.0.0.1, as before; only the local server talks to the relay.
+- Relay: a small Cloudflare Worker. One team = one room. Holds the last few minutes only, never a history.
+- Sent: the same short lines, with the working folder cut down to repo and branch. Never full paths, chat text or files.
+- Same repo from different people = the same territory. Repo key = the `origin` remote (host/owner/repo). No remote = not shared, stays local.
+- Other members' people: a name tag (person) and a small device tag (machine name or 云端). Several main managers in one repo = several governors at the one town hall, each with a name sign. An agent asks its own person's governor.
+- Other members' people are view only. Answering questions and permission requests works for your own agents only.
+- Other members' people and sites are shown live and never written into your `world.json`. Leave → they disappear; your own world is unchanged.
+- Orders (main manager's default, 2026-09-25; the owner may change it): the relay carries events only, never orders. Orders to agents go through the Claude Code app: local sessions via `claude remote-control`, cloud sessions are there already. The city may link a person to its session in the app. Reason: an order channel on a public site would be a way into the members' computers.
+- How to join: the plugin is public; anyone who installs it gets a local city. The owner makes a team on the relay and gives each person an invite code. `/auto-pipeline:city join <code>` stores that person's token in `~/.claude/agent-city/` (never in a repo). `/auto-pipeline:city leave` stops it at any time. No invite code = the relay refuses. One token per person; the owner can cancel a token.
+- Cloud sessions: send only, no page. Need the city hook and the sender shipped by the cloud pack (today it writes only the SessionStart hook), the token as an environment secret, and the relay host allowed in the environment's network setting.
+- Joined machine with no browser open: the server keeps sending while its agents are active; it stops after `city_idle_min` with no browser and no new events.
+- Relay down or offline: the local city keeps working. Unsent lines are kept up to a small cap, oldest dropped first. The page shows 联城断开.
+- Cost: joining adds nothing to the hook. The sender batches lines every few seconds and counts toward the server's RAM limit.
+- Build order: after the worktree sites. Mock first.
 
 ## Open, not decided
-- One city for every machine and cloud session (owner question, 2026-09-25). Would need: a relay (a small Cloudflare Worker on the owner's account), a forwarder per machine or cloud session sending the same short lines in batches, a secret token, the relay host allowed in each cloud environment. Would replace "The city is per computer" and "Cloud sessions: no city". Needs the owner's yes.
-- Orders to agents: proposal, not built into the city. The city watches; it never sends new orders. Local sessions already reach the Claude Code app through `claude remote-control`; cloud sessions are there already. The city may link each person to its session in the app. A relay, if built, carries events only, never orders: an order channel on a public site would be a way into the owner's computers.
-- Team city (owner question, 2026-09-25): other people building the same repo show up in the same territory. Two sources: (1) live agent events from each person's machines and cloud sessions through the relay, each person with their own token and only after they agree; people get a name tag; (2) git history, no setup: buildings carry the authors of their files, recent activity shows who works where, people without agents included. Several main managers in one repo = several governors at the one town hall, each with a name sign; an agent asks its own person's governor. Builds on the relay above; needs the owner's yes.
-- Team city, joining (proposal): the plugin is public, anyone can install it and gets a city of their own machine only. The owner makes a team on the relay and hands each person an invite code. `/auto-pipeline:city join <code>` stores that person's token in `~/.claude/agent-city/` (never in a repo); from then on their agents appear in everyone's city with their name, and they see the whole team. `/auto-pipeline:city leave` stops it at any time. Cloud sessions: the token as an environment secret, the relay host allowed in the network setting. Not joined = nothing leaves the machine. No invite code = the relay refuses.
+- Where the relay lives: the owner's Cloudflare account. Until then joining is design only.
+- People from git history, no joining needed (proposal): buildings carry the authors of their files; recent activity shows who works where, people without agents included.
