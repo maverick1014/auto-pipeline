@@ -1,7 +1,8 @@
 """Agent City: a tiny localhost playground that shows spawned agents as people
 in a city while a pipeline runs.
 
-Three parts, in one file so the server never imports anything but the stdlib:
+Three parts, in one file so the server never imports anything but the stdlib
+and its sibling agent_city_relay.py:
 
   Reducer  Pure. Turns hook lines (one JSON object per line, written by
            bin/agent-city-hook.sh into <dir>/events.jsonl) into city events
@@ -9,7 +10,7 @@ Three parts, in one file so the server never imports anything but the stdlib:
 
   Server   python3 agent_city.py serve --dir DIR --port PORT
                    [--idle-min N | --idle-sec S] [--max-log-kb K] [--page PATH]
-                   [--assets DIR] [--gov-wait-sec N] [--decisions PATH]
+                   [--assets DIR] [--gov-wait-sec N] [--relay-sec S] [--decisions PATH]
            Tails <dir>/events.jsonl, feeds each line to a Reducer, and streams
            the resulting events to a browser over Server-Sent Events at
            /events. Stays cheap: bounded queues, a bounded log file, an idle
@@ -18,7 +19,11 @@ Three parts, in one file so the server never imports anything but the stdlib:
            "Interaction"): a governor (the repo's main manager) may answer a
            question; only the owner, from the page, may allow or deny a
            permission. See tests/test_agent_city_interact.py for the full
-           contract.
+           contract. Also offers every line to one RelayHub
+           (bin/agent_city_relay.py, "Joining"), which syncs a joined repo's
+           lines with its team relay on its own thread; other members' lines
+           come back as "remote" SSE events. See
+           tests/test_agent_city_relay_serve.py for the full contract.
 
   Hooks    python3 agent_city.py ask [--max-wait-sec N]        (PermissionRequest)
            python3 agent_city.py gov-watch [--max-wait-sec N]  (Stop, governor only)
@@ -32,7 +37,8 @@ Three parts, in one file so the server never imports anything but the stdlib:
            tests/test_agent_city_world.py for the full contract.
            python3 agent_city.py demo-world prints the demo view (JSON).
 
-Python standard library only. Runs on Python 3.8+.
+Python standard library only, plus bin/agent_city_relay.py (this file's own
+folder) for the team relay. Runs on Python 3.8+.
 """
 
 import argparse
@@ -567,6 +573,7 @@ QUEUE_MAXSIZE = 500
 PING_INTERVAL = 2.0
 TAIL_INTERVAL = 0.25
 RECOUNT_POLL_SEC = 2.0
+RELAY_POLL_SEC = 0.1
 
 FALLBACK_PAGE = (
     b"<!doctype html><html><head><meta charset=\"utf-8\">"
@@ -742,6 +749,20 @@ class CityState:
     def client_count(self):
         with self.lock:
             return len(self.clients)
+
+    # -- team relay (bin/agent_city_relay.py) ----------------------------
+
+    def push_relay_event(self, ev):
+        """Push one relay-sourced SSE event ("remote" or "relay") to every
+        client. Called from the relay thread, never the tail thread."""
+        with self.lock:
+            self._broadcast(ev)
+
+    def touch_idle(self):
+        """Restart the idle clock: a joined city with new local lines must
+        keep running while its agents work, even with no browser open."""
+        with self.lock:
+            self.idle_since = time.monotonic()
 
     def health(self):
         with self.lock:
@@ -1438,6 +1459,8 @@ class CityHandler(BaseHTTPRequestHandler):
             return self._send_page()
         if path == "/health":
             return self._send_health()
+        if path == "/relay":
+            return self._send_relay()
         if path == "/events":
             return self._send_events()
         if path.startswith(ASSET_PREFIX):
@@ -1583,6 +1606,14 @@ class CityHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_relay(self):
+        body = json.dumps(self.server.hub.status()).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _send_asset(self, raw_rel, query=""):
         assets_root = self.server.assets_dir
         rel = unquote(raw_rel)
@@ -1697,16 +1728,24 @@ def _split_lines(data):
     return parts[:-1], parts[-1]
 
 
-def _consume_line(raw_line, city):
+def _consume_line(raw_line, city, hub=None):
     text = raw_line.decode("utf-8", errors="replace")
     try:
         obj = json.loads(text)
     except ValueError:
         return
     city.feed_line(obj, time.monotonic())
+    if hub is not None:
+        # offer() only queues in memory and reads the small join file (at
+        # most every join_ttl seconds); never the network -- safe on this
+        # thread. A joined city keeps its idle clock restarted by every new
+        # line, not only by a lull in it (requirements/city.md, "Joining").
+        hub.offer(obj)
+        if hub.joined():
+            city.touch_idle()
 
 
-def _read_available(fh, offset, buf, city):
+def _read_available(fh, offset, buf, city, hub=None):
     fh.seek(0, os.SEEK_END)
     end = fh.tell()
     if end <= offset:
@@ -1715,12 +1754,12 @@ def _read_available(fh, offset, buf, city):
     chunk = fh.read(end - offset)
     lines, buf = _split_lines(buf + chunk)
     for raw_line in lines:
-        _consume_line(raw_line, city)
+        _consume_line(raw_line, city, hub)
     return fh.tell(), buf
 
 
 def tail_loop(directory, city, max_log_bytes, stop_event, request_shutdown,
-              idle_seconds, initial_skip):
+              idle_seconds, initial_skip, hub=None):
     """Watch DIR/events.jsonl, feed new lines to the city, rotate when big."""
     log_path = os.path.join(directory, "events.jsonl")
     rotated_path = log_path + ".1"
@@ -1745,7 +1784,7 @@ def tail_loop(directory, city, max_log_bytes, stop_event, request_shutdown,
             skip = 0
             buf = b""
 
-        offset, buf = _read_available(fh, offset, buf, city)
+        offset, buf = _read_available(fh, offset, buf, city, hub)
 
         try:
             on_disk = os.path.getsize(log_path)
@@ -1758,7 +1797,7 @@ def tail_loop(directory, city, max_log_bytes, stop_event, request_shutdown,
             except OSError:
                 pass
             else:
-                offset, buf = _read_available(fh, offset, buf, city)
+                offset, buf = _read_available(fh, offset, buf, city, hub)
                 fh.close()
                 fh = None
                 # Leave a fresh, empty file at the original path: the next
@@ -1781,6 +1820,28 @@ def recount_loop(city, stop_event):
     while not stop_event.is_set():
         city.recount(time.monotonic())
         stop_event.wait(RECOUNT_POLL_SEC)
+
+
+def relay_loop(city, hub, stop_event):
+    """Sync every joined team with its relay, on its own thread: a slow or
+    dead relay never holds up the tail thread or the HTTP server.
+
+    Polls hub.tick() often (RELAY_POLL_SEC); the hub itself decides which
+    team is actually due, every hub.relay_sec. Remote lines come back only
+    as "remote" SSE events -- never fed to the Reducer, never saved to
+    world.json. A team's "relay" state is sent only when it changes.
+    Stops with the server (stop_event)."""
+    last_state = {}
+    while not stop_event.is_set():
+        for item in hub.tick():
+            city.push_relay_event({"type": "remote", "dev": item.get("dev"),
+                                    "line": item.get("line")})
+        for team in hub.status()["teams"]:
+            host, state = team["host"], team["state"]
+            if last_state.get(host) != state:
+                last_state[host] = state
+                city.push_relay_event({"type": "relay", "host": host, "state": state})
+        stop_event.wait(RELAY_POLL_SEC)
 
 
 # --------------------------------------------------------------------------
@@ -1856,6 +1917,17 @@ def _repo_id(cwd):
 # --------------------------------------------------------------------------
 
 def cmd_serve(args):
+    # agent_city_relay.py sits next to this file; make sure its own folder is
+    # on sys.path so "import agent_city_relay" works no matter how this
+    # script was started. Imported only here (not at module top): serve is
+    # the only command that needs it, and importing it pulls in urllib,
+    # ssl, platform and getpass, which the PermissionRequest and Stop hooks
+    # (ask, gov-watch) -- run on every tool call -- must not pay for.
+    bin_dir = os.path.dirname(os.path.abspath(__file__))
+    if bin_dir not in sys.path:
+        sys.path.insert(0, bin_dir)
+    import agent_city_relay as relay
+
     directory = os.path.abspath(args.dir)
     os.makedirs(directory, exist_ok=True)
     on_path = os.path.join(directory, "on")
@@ -1893,9 +1965,11 @@ def cmd_serve(args):
     start_repo = _repo_id(args.start_dir) if args.start_dir else None
     city = CityState(gov_wait_sec=args.gov_wait_sec, decisions_path=decisions_path, token=token,
                       world_path=world_path_arg, start_repo=start_repo)
+    hub = relay.RelayHub(relay_sec=args.relay_sec)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), CityHandler)
     server.daemon_threads = True
     server.city = city
+    server.hub = hub
     server.page_bytes = page_bytes
     server.assets_dir = assets_dir
 
@@ -1921,7 +1995,7 @@ def cmd_serve(args):
     tail = threading.Thread(
         target=tail_loop,
         args=(directory, city, max_log_bytes, stop_event, request_shutdown,
-              idle_seconds, initial_skip),
+              idle_seconds, initial_skip, hub),
         daemon=True,
     )
     tail.start()
@@ -1930,6 +2004,11 @@ def cmd_serve(args):
         target=recount_loop, args=(city, stop_event), daemon=True,
     )
     recount_thread.start()
+
+    relay_thread = threading.Thread(
+        target=relay_loop, args=(city, hub, stop_event), daemon=True,
+    )
+    relay_thread.start()
 
     try:
         server.serve_forever(poll_interval=0.2)
@@ -3478,6 +3557,7 @@ def _build_parser():
     serve.add_argument("--page", default=None)
     serve.add_argument("--assets", default=None)
     serve.add_argument("--gov-wait-sec", type=float, default=60.0)
+    serve.add_argument("--relay-sec", type=float, default=5.0)
     serve.add_argument("--decisions", default=None)
     serve.add_argument("--world", default=None)
     serve.add_argument("--start-dir", default=None)

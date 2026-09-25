@@ -14,6 +14,7 @@ NUMBER_BOUNDS = {
     "city_port": (1024, 65535),
     "city_idle_min": (1, 240),
     "city_governor_wait_sec": (5, 3600),
+    "city_relay_sec": (2, 60),
 }
 
 ROLE_KEYS = [
@@ -50,6 +51,7 @@ HINTS = {
     "city_port": "Port the agent city listens on, on 127.0.0.1 only. Whole number, 1024 to 65535.",
     "city_idle_min": "Minutes the agent city keeps running with no browser open, then it stops by itself. Whole number, 1 to 240.",
     "city_governor_wait_sec": "Seconds the governor has to answer an agent's question before the owner gets it in the city page. Whole number, 5 to 3600.",
+    "city_relay_sec": "Seconds between syncs with a joined team relay. Whole number, 2 to 60.",
 }
 
 GROUPS = [
@@ -58,7 +60,7 @@ GROUPS = [
     ("roles", list(ROLE_KEYS)),
     ("permission", ["permission_mode", "auto_resume", "language"]),
     ("runtime", ["runtime"]),
-    ("city", ["city_port", "city_idle_min", "city_governor_wait_sec"]),
+    ("city", ["city_port", "city_idle_min", "city_governor_wait_sec", "city_relay_sec"]),
 ]
 
 _GROUP_OF = {}
