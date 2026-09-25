@@ -417,6 +417,14 @@ class TestNoRepoIsTheStartTerritory(CityCase):
         ends = [(e["type"], e["id"]) for e in self.drain() if e.get("type") == "relay_end"]
         self.assertIn(("relay_end", "s:tm1"), ends)
 
+    def test_snapshot_home_is_the_start_territory(self):
+        # headless E2E: the page loads its models for a few seconds, so its first snapshot often comes after
+        # other governors' gov events; the snapshot's gov.terr (the page's camera home) is the start territory
+        self.governor("g1", A_REPO)
+        self.governor("g2", B_REPO)
+        self.line("PostToolUse", "g2", B_REPO, tool="Read")
+        self.assertEqual(self.snap()["gov"]["terr"], TA)
+
     def test_a_lead_without_repo_gets_an_office_there(self):
         self.lead("tm-old", repo="")
         spawn = [e for e in self.drain() if e.get("type") == "spawn" and e["id"] == "s:tm-old"][0]
