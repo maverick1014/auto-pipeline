@@ -270,6 +270,14 @@ class TestGovernorPerTerritory(CityCase):
         self.assertEqual([e["terr"] for e in gone], [TA])
         self.assertEqual([g["terr"] for g in self.snap()["govs"]], [TB])
 
+    def test_an_idle_governor_leaving_is_broadcast_too(self):
+        self.governor("g1", A_REPO)
+        self.line("Stop", "g1", A_REPO)
+        self.drain()
+        self.line("SessionEnd", "g1", A_REPO)
+        gone = [e for e in self.drain() if e.get("type") == "gov" and e.get("present") is False]
+        self.assertEqual([e["terr"] for e in gone], [TA])
+
     def test_state_is_per_territory(self):
         self.governor("g1", A_REPO)
         self.governor("g2", B_REPO)

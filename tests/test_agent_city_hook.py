@@ -10,7 +10,7 @@ CONTRACT
   1. Off costs nothing. No <dir>/on, or its pid is not a number, or that
      process is dead: write nothing, print nothing, exit 0.
   2. On: read the hook JSON from stdin and append ONE line with exactly these
-     keys, in this order, all strings, "" when absent:
+     keys (15), in this order, all strings, "" when absent:
        ev    hook_event_name
        sid   session_id
        aid   agent_id     } only from the part of the payload before
@@ -52,6 +52,11 @@ CONTRACT
                        Makefile, Dockerfile; or a folder bin, scripts, .github
                other   anything else
              Only the kind is written, never the path (privacy).
+       ask   city-people (tests/test_agent_city_chain.py): "q" for a
+             SubagentStop whose last_assistant_message starts with
+             "QUESTION:" and a PostToolUse of SendMessage whose
+             tool_input.message starts with "QUESTION:"; else "". Only the
+             flag, never the text or the recipient.
      desc and q: at most 200 bytes, always a valid JSON string.
      Nothing else from the payload is ever written: not tool_input,
      tool_response, prompt, message or last_assistant_message.
@@ -83,7 +88,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(ROOT, "bin", "agent-city-hook.sh")
 BASH = shutil.which("bash")
-KEYS = {"ev", "sid", "aid", "at", "tool", "nt", "proj", "role", "desc", "sub", "q", "klen", "repo", "kind"}
+KEYS = {"ev", "sid", "aid", "at", "tool", "nt", "proj", "role", "desc", "sub", "q", "klen", "repo", "kind", "ask"}
 
 CITY_COMMAND = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
                 '"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh"; exit 0')
@@ -197,7 +202,7 @@ class TestOn(HookCase):
         self.assertEqual(row["tool"], "Edit")
         self.assertEqual(row["proj"], "shop-app")
 
-    def test_exactly_the_fourteen_keys_all_strings(self):
+    def test_exactly_the_keys_all_strings(self):
         row = self.one(payload("PostToolUse", ("a1", "worker"), tool_name="Read",
                                tool_input={"file_path": "/x"}))
         self.assertEqual(set(row), KEYS)
