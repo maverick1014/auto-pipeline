@@ -1895,14 +1895,44 @@ process.stdout.write(JSON.stringify(out));
 
 
 def growth_results():
+    """city-people: findPath now walks a fine grid built from every model's footprint, so this runs the
+    whole simulation section (tests/test_agent_city_people.py run_sim), not a hand-picked function list."""
     if "growth" not in _CACHE:
-        fns = []
-        for name in ("tileAt", "walkable", "findPath"):
-            src = function_source(name)
-            if src is None:
-                raise AssertionError("function %s(...) not found in the page script" % name)
-            fns.append(src)
-        _CACHE["growth"] = run_node(GROWTH_JS, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import test_agent_city_people as tpp
+        driver = r"""
+const view = { cell: 26, x0: -3, z0: -2, w: 7, h: 5, rows: [
+  '..w....',
+  '..w.gg.',
+  '..B.gH.',
+  '..w....',
+  ' .w..s ' ], territories: [], links: [] };
+landState(view);
+const out = {};
+out.tiles = [[-3, -2], [-1, -2], [-1, 0], [2, 0], [0, -10], [3, 2], [-3, 2], [2, 2], [1, -1]].map(([x, z]) => tileAt(x, z));
+out.walk = [[-3, -2], [-1, -2], [-1, 0], [2, 0], [0, -10], [2, 2], [1, -1], [0, 1]].map(([x, z]) => !!walkable(x, z));
+occupied.set('0,-1', { id: 1 });
+out.walkOccupied = !!walkable(0, -1);
+occupied.clear();
+blocked.add('0,-1');
+out.walkBlocked = !!walkable(0, -1);
+blocked.clear();
+landState(view);
+const p = findPath(-1.5, -1.5, 0.5, -1.5);
+out.path = p;
+// the straight legs of the path (start first): they cross the river on the bridge tile, never on water
+const legs = p ? [[-1.5, -1.5]].concat(p) : [];
+const onTile = [];
+for (let i = 1; i < legs.length; i++) {
+  const [ax, az] = legs[i - 1], [bx, bz] = legs[i], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / .05));
+  for (let k = 0; k <= n; k++) onTile.push(tileAt(Math.floor(ax + (bx - ax) * k / n), Math.floor(az + (bz - az) * k / n)));
+}
+out.pathUsesBridge = onTile.includes('B') && !onTile.includes('w');
+landState(Object.assign({}, view, { rows: view.rows.map(r => r.replace('B', 'w')) }));
+out.noBridge = findPath(-1.5, -1.5, 0.5, -1.5);
+__out = out;
+"""
+        _CACHE["growth"] = tpp.run_sim(driver, {}, ("landState", "tileAt", "walkable", "findPath", "occupied", "blocked"))
     return _CACHE["growth"]
 
 
@@ -2048,17 +2078,28 @@ process.stdout.write(JSON.stringify({ home: box.home }));
 
 class TestGrowthPage(unittest.TestCase):
     def test_nobody_rests_inside_a_building(self):
-        rest_off = const_object("REST_OFF")
-        fns = ["const REST_OFF = %s;" % rest_off if rest_off else ""]
-        for name in ("tileAt", "walkable", "restSlotsFor"):
-            src = function_source(name)
-            self.assertIsNotNone(src, "function %s(...) not found" % name)
-            fns.append(src)
-        for name in ("hallStand", "reservedNear"):  # city-people P0: rest spots skip the governor's stand and homes
-            src = function_source(name)
-            if src:
-                fns.append(src)
-        out = run_node(REST_JS, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
+        # city-people: rest spots now depend on homes, the governor's stand and the walk grid, so this runs
+        # the whole simulation section (tests/test_agent_city_people.py run_sim) on the same small territory
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import test_agent_city_people as tpp
+        driver = r"""
+const rows = [
+  '.........',
+  '..ggggg..',
+  '..ggrgg..',
+  '..gHHgg..',
+  '..gHHgg..',
+  '.PggrgPP.',
+  '..PgPgg..',
+  '..ggPg...',
+  '.........' ];
+const view = { cell: 26, x0: -4, z0: -4, w: 9, h: 9, rows, links: [],
+  territories: [{ id: 't1', cx: 0, cz: 0, slot: [0, 0], terrain: 'grassland', era: 'village', plots: [], buildings: [] }] };
+landState(view);
+const slots = restSlotsFor(view.territories[0]);
+__out = { spots: slots.map(r => [r.x, r.y, tileAt(Math.floor(r.x), Math.floor(r.y)), !!walkable(Math.floor(r.x), Math.floor(r.y))]) };
+"""
+        out = tpp.run_sim(driver, {}, ("landState", "restSlotsFor", "tileAt", "walkable"))
         self.assertGreaterEqual(len(out["spots"]), 3, out)
         for x, z, ch, ok in out["spots"]:
             with self.subTest(spot=(x, z)):

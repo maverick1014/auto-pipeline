@@ -28,7 +28,9 @@ CONTRACT (bin/agent-city.html, the simulation section, runs in node)
     Every place a person stands (home, office front, plot stand, hall stand,
     waiting spot) is free; a resting person sits on a rest seat.
   Re-route: when the footprints change, every walker whose remaining path
-    crosses a new footprint gets a new path at once.
+    crosses a new footprint gets a new path at once, and anyone a new
+    footprint lands on is moved to the nearest free point at once (never a
+    frame inside it).
 
 Run: python3 -m unittest tests.test_agent_city_walk </dev/null
 """
@@ -185,7 +187,9 @@ class TestWalkAroundModels(unittest.TestCase):
             with self.subTest(case=key):
                 self.assertGreater(r["n"], 20)
                 self.assertEqual(r["small"], 0, "a footprint smaller than 0.1 tile")
-                self.assertGreaterEqual(r["hallHalf"], .7, "the hall blocks its 2x2 tiles")
+                # the town hall model (commercial/building-j) is 2.1 x 1.3 as placed: about .6 on its short side;
+                # its 2x2 "H" tiles are never walkable anyway
+                self.assertGreaterEqual(r["hallHalf"], .55, "the hall has a real footprint")
                 self.assertGreater(r["buildings"], 0, "a new building adds its footprint")
 
     def test_nobody_walks_through_a_model(self):
@@ -216,10 +220,25 @@ apply({ type: 'snapshot', world: V0, gov: { state: 'busy', terr: tid }, govs: [{
 apply({ type: 'spawn', id: 'w', role: 'worker', label: 'worker', task: 'walker', terr: tid });
 for (let i = 0; i < 30; i++) update(.1);
 const c = byId('w');
-// send it right across the rest area, then open the rest place under its feet
-c.x = rest.x - .5; c.y = rest.z + .5; c.path = [];
-goTo(c, { x: rest.x + 2.5, y: rest.z + .5 }, 'back');
-const crossed = c.path.some(([x, z]) => x >= rest.x && x < rest.x + 2 && z >= rest.z && z < rest.z + 2);
+// a way straight over the (still empty) rest area: try both rows and both directions until one crosses it
+const inRest = (x, z) => x >= rest.x && x < rest.x + 2 && z >= rest.z && z < rest.z + 2;
+let crossed = false;
+const pairs = [];
+for (const d of [.5, 1.5]) {
+  pairs.push([[rest.x - .5, rest.z + d], [rest.x + 2.5, rest.z + d]], [[rest.x + 2.5, rest.z + d], [rest.x - .5, rest.z + d]]);
+  pairs.push([[rest.x + d, rest.z - .5], [rest.x + d, rest.z + 2.5]], [[rest.x + d, rest.z + 2.5], [rest.x + d, rest.z - .5]]);
+}
+for (const [a, b] of pairs) {
+  if (!freeAt(a[0], a[1]) || !freeAt(b[0], b[1])) continue;
+  c.x = a[0]; c.y = a[1]; c.path = [];
+  goTo(c, { x: b[0], y: b[1] }, 'back');
+  const legs = [[c.x, c.y]].concat(c.path);
+  for (let i = 1; i < legs.length && !crossed; i++) {
+    const [ax, az] = legs[i - 1], [bx, bz] = legs[i], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / .05));
+    for (let k = 0; k <= n; k++) if (inRest(ax + (bx - ax) * k / n, az + (bz - az) * k / n)) { crossed = true; break; }
+  }
+  if (crossed) break;
+}
 update(.1);
 apply({ type: 'world', world: V });
 const fps = footprints().filter(f => Math.abs(f.x - (rest.x + 1)) < 1.6 && Math.abs(f.z - (rest.z + 1)) < 1.6);
@@ -227,6 +246,7 @@ const bad = [];
 for (let i = 0; i < 200; i++) { update(.1); for (const f of fps) if (c.path.length && inside(c, f)) { bad.push([f.key, +c.x.toFixed(2), +c.y.toFixed(2)]); break; } }
 __out = { newFootprints: fps.length, bad, crossed };
 """
+
 
 ROADS_DRIVER = r"""
 const rows = ['rrrrrrr', 'r.....r', 'r.....r', 'rrrrrrr'];
@@ -241,10 +261,17 @@ __out = { p, wild: p ? p.filter(([x, z]) => rows[Math.floor(z)][Math.floor(x)] =
 class TestRerouteAndRoads(unittest.TestCase):
 
     def test_walkers_reroute_around_something_new(self):
-        r = run_sim(REROUTE_DRIVER, {"view": plan_view("meadow", "town")}, WALK_REQUIRED + ("goTo",))
-        self.assertTrue(r["crossed"], "before: the way runs over the empty rest area")
-        self.assertGreater(r["newFootprints"], 0, "the rest place brings models")
-        self.assertEqual(r["bad"], [])
+        runs = 0
+        for plan in ac.load_plans():
+            for era in ERAS:
+                r = run_sim(REROUTE_DRIVER, {"view": plan_view(plan["id"], era)}, WALK_REQUIRED + ("goTo",))
+                if not r["crossed"]:
+                    continue
+                runs += 1
+                with self.subTest(plan=plan["id"], era=era):
+                    self.assertGreater(r["newFootprints"], 0, "the rest place brings models")
+                    self.assertEqual(r["bad"], [])
+        self.assertGreater(runs, 0, "no fixture had a way over the empty rest area")
 
     def test_roads_before_wild_land(self):
         r = run_sim(ROADS_DRIVER, {}, WALK_REQUIRED)
