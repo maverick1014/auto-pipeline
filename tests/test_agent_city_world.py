@@ -520,7 +520,9 @@ class TestLand(unittest.TestCase):
         v = ac.layout(w, list(ps.values()))
         for t in v["territories"]:
             plan = ps[t["plan"]]
-            spots = {(t["cx"] + x, t["cz"] + z) for x, z, _ in plan["plots"][:t["open"]]}
+            # city-people: open plots are the view's "plots" (not always a plan-order prefix)
+            spots = {(p["x"], p["z"]) for p in t["plots"]}
+            self.assertEqual(len(spots), t["open"])
             ps_tiles = {(x, z) for x in range(t["cx"] - 13, t["cx"] + 13) for z in range(t["cz"] - 13, t["cz"] + 13)
                         if tile(v, x, z) == "P"}
             self.assertEqual(ps_tiles, spots)

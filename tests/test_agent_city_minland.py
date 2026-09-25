@@ -3,11 +3,19 @@
 
 CONTRACT (bin/agent_city.py, bin/agent-city.html)
 
-  MIN_OPEN = 3 (agent_city.py). territory_tiles(plan, identity, lines)["open"]
-    is at least MIN_OPEN for any lines, 0 included: the first MIN_OPEN plots of
-    the plan, in plan order, are open and on land, each with its front road
-    tile. Past that, growth is unchanged; open never goes down as lines grow.
-  layout: a 0-line territory shows exactly MIN_OPEN open plots ("P").
+  Minimum land (main manager 2026-09-25, owner intent "a small land so that
+  it has buildings"): the first plot of EVERY district the plan defines
+  (house, shop, tower, workshop, library; the first in plan order within the
+  district) is open at any size, 0 lines included, so any kind of first edit
+  in a tiny repo builds, on every plan. Growth beyond that unlocks in plan
+  order as today.
+    open_plots(plan, lines) -> sorted list of the open plot indexes: those
+      first plots plus the plan-order growth prefix (_open_count).
+    territory_tiles(...)["open"] = len(open_plots(...)); every open plot and
+      its front road tile is on land.
+    layout: a territory's "plots" lists exactly its open plots (with "k");
+      "open" is their count.
+    build(): the first free OPEN plot of the district, in plan order.
   Server: a PostToolUse line whose kind's district has no free open plot
     broadcasts {"type": "noplot", "id", "terr", "btype", "by"}; id is the
     builder's city id (aid, "s:<sid>", or "gov" for a governor). An owner
@@ -46,44 +54,79 @@ def tile(view, x, z):
     return " "
 
 
+def first_of_each_district(plan):
+    first = {}
+    for k, (_, _, d) in enumerate(plan["plots"]):
+        first.setdefault(d, k)
+    return first
+
+
+def ident_for(plan_id, tag):
+    for i in range(500):
+        ident = "/work/%s-%d/app/.git" % (tag, i)
+        w = ac.new_world()
+        if ac.add_territory(w, plans(), ident, "app", 0)["plan"] == plan_id:
+            return ident
+    raise AssertionError("no identity found for plan " + plan_id)
+
+
 class TestMinimumOpenPlots(unittest.TestCase):
 
-    def test_min_open_is_three(self):
-        self.assertEqual(ac.MIN_OPEN, 3)
-
-    def test_every_plan_opens_three_on_day_zero(self):
-        for i, p in enumerate(plans()):
+    def test_day_zero_opens_the_first_plot_of_every_district(self):
+        for p in plans():
             with self.subTest(plan=p["id"]):
-                t = ac.territory_tiles(p, "/day0/%d/.git" % i, 0)
-                self.assertEqual(t["open"], 3)
+                first = first_of_each_district(p)
+                self.assertEqual(ac.open_plots(p, 0), sorted(first.values()))
+                t = ac.territory_tiles(p, "/day0/%s/.git" % p["id"], 0)
+                self.assertEqual(t["open"], len(first))
                 roads = ac._road_set(p)
-                for x, z, _ in p["plots"][:3]:
+                for k in first.values():
+                    x, z, _ = p["plots"][k]
                     self.assertIn((x, z), t["land"])
                     front = ac._front_of_plot(roads, x, z)
                     if front is not None:
                         self.assertIn(front, t["land"])
 
-    def test_open_never_below_three_and_never_shrinks(self):
+    def test_growth_adds_in_plan_order_and_never_shrinks(self):
         for p in plans():
-            prev = 0
-            for n in (0, 3, 10, 50, 300, 1000, 3000, 20000):
+            prev = set()
+            base = set(first_of_each_district(p).values())
+            for n in (0, 3, 50, 300, 1000, 3000, 20000, ac.LCAP):
                 with self.subTest(plan=p["id"], lines=n):
-                    o = ac.territory_tiles(p, "/grow/.git", n)["open"]
-                    self.assertGreaterEqual(o, 3)
-                    self.assertGreaterEqual(o, prev)
-                    prev = o
+                    got = set(ac.open_plots(p, n))
+                    prefix = set(range(ac._open_count(p, ac.radius(n))))
+                    self.assertEqual(got, base | prefix)
+                    self.assertTrue(prev <= got)
+                    prev = got
+            self.assertEqual(prev, set(range(len(p["plots"]))))
 
-    def test_day_zero_layout_shows_three_plots(self):
-        for i, p in enumerate(plans()):
-            ident = "/day0v/%d/.git" % i
+    def test_day_zero_layout_shows_one_plot_per_district(self):
+        for p in plans():
+            ident = ident_for(p["id"], "day0v")
             w = ac.new_world()
             ac.add_territory(w, plans(), ident, "app", 0)
             v = ac.layout(w, plans())
             t = v["territories"][0]
             with self.subTest(plan=t["plan"]):
-                self.assertEqual(len(t["plots"]), 3)
+                first = first_of_each_district(p)
+                self.assertEqual(sorted(pl["k"] for pl in t["plots"]), sorted(first.values()))
+                self.assertEqual(t["open"], len(first))
                 for pl in t["plots"]:
                     self.assertEqual(tile(v, pl["x"], pl["z"]), "P")
+
+    def test_any_first_edit_builds_on_every_plan(self):
+        for p in plans():
+            ident = ident_for(p["id"], "anykind")
+            w = ac.new_world()
+            ac.add_territory(w, plans(), ident, "app", 0)
+            for district, kind in KIND_OF.items():
+                if district not in first_of_each_district(p):
+                    continue
+                with self.subTest(plan=p["id"], kind=kind):
+                    b = ac.build(w, plans(), ident, kind, "o-" + kind, "worker", 1.0)
+                    self.assertIsNotNone(b, "a tiny repo has room for a first %s" % district)
+                    self.assertEqual(b["type"], district)
+                    self.assertEqual(b["plot"], first_of_each_district(p)[district])
 
 
 class StateCase(unittest.TestCase):
@@ -121,35 +164,32 @@ class StateCase(unittest.TestCase):
 
 class TestTinyRepoBuilds(StateCase):
 
-    def test_first_write_in_a_tiny_repo_builds(self):
+    def test_first_other_edit_in_a_tiny_repo_builds_a_house(self):
         self.line("tm", tool="Read")
-        first = self.plan()["plots"][0][2]
         self.drain()
-        self.line("tm", aid="w1", kind=KIND_OF[first])
+        self.line("tm", aid="w1", kind="other")
         builds = [e for e in self.drain() if e.get("type") == "build"]
         self.assertEqual(len(builds), 1, "a tiny repo has room for the first agents")
-        self.assertEqual(builds[0]["btype"], first)
+        self.assertEqual(builds[0]["btype"], "house")
 
     def test_no_free_plot_is_said_not_silent(self):
         self.line("tm", tool="Read")
-        opened = {d for _, _, d in self.plan()["plots"][:3]}
-        missing = next(d for d in ("shop", "library", "workshop", "house", "tower") if d not in opened)
+        self.line("tm", aid="w1", kind="other")
         self.drain()
-        self.line("tm", aid="w1", kind=KIND_OF[missing])
+        self.line("tm", aid="w2", kind="other")
         ev = self.drain()
         self.assertEqual([e for e in ev if e.get("type") == "build"], [])
         none = [e for e in ev if e.get("type") == "noplot"]
-        self.assertEqual(len(none), 1)
-        self.assertEqual(none[0]["id"], "w1")
-        self.assertEqual(none[0]["btype"], missing)
+        self.assertEqual(len(none), 1, "the only open house plot is taken: say so")
+        self.assertEqual(none[0]["id"], "w2")
+        self.assertEqual(none[0]["btype"], "house")
         self.assertEqual(none[0]["terr"], ac.territory_id(REPO))
 
     def test_an_owner_with_a_building_is_silent(self):
         self.line("tm", tool="Read")
-        first = self.plan()["plots"][0][2]
-        self.line("tm", aid="w1", kind=KIND_OF[first])
+        self.line("tm", aid="w1", kind="other")
         self.drain()
-        self.line("tm", aid="w1", kind=KIND_OF[first])
+        self.line("tm", aid="w1", kind="other")
         ev = self.drain()
         self.assertEqual([e for e in ev if e.get("type") in ("build", "noplot")], [])
 
