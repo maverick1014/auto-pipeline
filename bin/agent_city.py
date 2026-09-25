@@ -827,9 +827,22 @@ class CityState:
 
             ev_name = obj.get("ev") if isinstance(obj, dict) else None
             sid_field = obj.get("sid") if isinstance(obj, dict) else None
+            aid_field = obj.get("aid") if isinstance(obj, dict) else None
+            ask_field = obj.get("ask") if isinstance(obj, dict) else None
             reducer = self._reducer_for(identity)
             was_gov = (ev_name == "SessionEnd" and isinstance(sid_field, str) and sid_field != ""
                        and reducer.gov_sid == sid_field)
+
+            # A SubagentStop with a question (ask="q") both relays it up
+            # the chain and marks the subagent done. Run the chain step
+            # first so "relay" reaches the page before "done" -- else the
+            # page cheers 完工啦 for a question with no relay known yet
+            # (headless E2E finding). Every other event keeps its usual
+            # order: _process_chain runs after the reducer's events below.
+            chain_processed_early = False
+            if ev_name == "SubagentStop" and ask_field == "q" and isinstance(aid_field, str) and aid_field:
+                self._process_chain(obj, identity, terr, reducer, now)
+                chain_processed_early = True
 
             events = reducer.feed(obj, now)
             gov_seen = False
@@ -868,7 +881,8 @@ class CityState:
                 self.gov_terr = terr
                 self._broadcast({"type": "gov", "state": self.gov_state, "terr": terr, "present": False})
 
-            self._process_chain(obj, identity, terr, reducer, now)
+            if not chain_processed_early:
+                self._process_chain(obj, identity, terr, reducer, now)
 
             if isinstance(obj, dict):
                 if ev_name == "PostToolUse":
