@@ -93,7 +93,7 @@
 - Good quality: straight streets, buildings aligned to their district. Poor quality: buildings crooked, crammed together, some built in the wrong district (a tower in the houses). Messy, never broken.
 - When a file's quality improves, builders move its building to the right plot, aligned.
 - Ground tiles keep their slight per-tile shade (owner, 2026-09-25).
-- Missing Kenney models (police station, library, power plant): look for CC0 packs in the same style first; tinted stand-ins until then.
+- 3D models: Kenney and KayKit only (both CC0, same chunky low-poly look), License.txt per pack. KayKit fills the gaps: Medieval Hexagon (barracks = village police, church = village library, windmill/watermill = village power, tavern = village rest place, building_destroyed = demolition, scaffolding and stage_A/B/C = construction), City Builder Bits (police car beside a building = town/city police station, bench, traffic lights, streetlight, fire hydrant), Space Base (solar panels = city power), Restaurant (tables and chairs = cafe).
 
 ## Persistence
 - World state (territories, land size, buildings, per repo) lives in one file: `~/.claude/agent-city/world.json`.
