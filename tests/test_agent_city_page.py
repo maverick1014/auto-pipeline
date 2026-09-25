@@ -270,7 +270,8 @@ CONTRACT
     <pack>/<name>.glb for every MODELS entry, and nothing unused
     <pack>/Textures/*.png for every texture those models name
     <pack>/License.txt for every pack, each saying CC0
-    Everything together at most 7 MB (Balance raised it from 6 MB).
+    Everything together at most 8 MB (Balance raised it from 6 MB to 7 MB,
+    city-people to 8 MB for the KayKit packs).
 """
 
 import json
@@ -457,7 +458,7 @@ class TestAssets(unittest.TestCase):
     def test_size_budget(self):
         total = sum(os.path.getsize(os.path.join(folder, name))
                     for folder, _, files in os.walk(ASSETS) for name in files)
-        self.assertLessEqual(total, 7 * 1024 * 1024, "assets are %.1f MB" % (total / 1048576))
+        self.assertLessEqual(total, 8 * 1024 * 1024, "assets are %.1f MB" % (total / 1048576))
 
 
 # ---------------------------------------------------------------------------

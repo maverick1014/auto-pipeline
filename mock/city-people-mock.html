@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City · people mock</title>
+<link rel="icon" href="data:,">
+<style>
+:root{ --paper:#ECF1FF; --panel:#FFFFFF; --ink:#2A2B45; --ink-2:#585D82; --line:#DCE2F6; --berry:#FF7593; --butter:#FFD36E;
+  --ask-bg:#FFF1D6; --ask-ink:#8A5A00; --you-bg:#FFE0E6; --you-ink:#B4234A; --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488; --build-bg:#E3ECFF; --build-ink:#2F54C8;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif; color-scheme:light; }
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.5 var(--round)}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 16px 4px}
+.bar h1{margin:0 8px 0 0;font:700 18px/1.2 var(--round)}
+.proto{background:var(--butter);color:#4A3500;font:600 12px/1 var(--round);padding:6px 11px;border-radius:999px}
+.btn{font:600 13px/1 var(--round);border:1.5px solid var(--line);background:#F3F5FE;color:var(--ink);border-radius:12px;padding:0 11px;min-height:32px;cursor:pointer}
+.btn[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.note{padding:4px 16px 8px;color:var(--ink-2);font-size:13px;min-height:28px}
+.main{display:grid;grid-template-columns:1fr 300px;gap:12px;padding:0 16px 16px;height:calc(100vh - 100px);min-height:460px}
+.stage{position:relative;overflow:hidden;border-radius:0}
+.stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+#ov{position:absolute;inset:0;pointer-events:none}
+.tag,.bub,.qm,.sign{position:absolute;left:0;top:0;white-space:nowrap;will-change:transform}
+.tag{font:700 12px/1 var(--round);background:rgba(255,255,255,.92);color:var(--ink);padding:4px 8px;border-radius:999px;box-shadow:0 1px 4px rgba(40,40,80,.18)}
+.tag.gov{background:#FFF4CF;color:#6B4B00}
+.sign{font:700 11.5px/1 var(--round);background:#6B4A2B;color:#FFF3DC;padding:4px 7px;border-radius:5px}
+.bub{font:600 12.5px/1.35 var(--round);background:#fff;color:var(--ink);padding:6px 9px;border-radius:12px;box-shadow:0 2px 8px rgba(40,40,80,.2);max-width:190px;white-space:normal}
+.bub.ask{background:var(--ask-bg);color:var(--ask-ink)}
+.bub.wait{background:var(--walk-bg);color:var(--walk-ink)}
+.qm{width:30px;height:30px;border-radius:50%;background:#E5364F;color:#fff;font:800 19px/30px var(--round);text-align:center;box-shadow:0 0 0 4px rgba(229,54,79,.25),0 3px 8px rgba(0,0,0,.25)}
+aside{display:flex;flex-direction:column;gap:10px;overflow:auto}
+.card{background:var(--panel);border-radius:18px;padding:10px 12px;box-shadow:0 1px 3px rgba(40,40,80,.08)}
+.card h3{margin:0 0 6px;font:700 14px/1.3 var(--round)}
+.terr{margin:8px 0 2px;font:700 13px/1.3 var(--round);display:flex;align-items:center;gap:6px}
+.era{font:600 11px/1 var(--round);background:#EEF1FB;color:var(--ink-2);padding:3px 7px;border-radius:999px}
+.row{display:flex;align-items:center;gap:6px;padding:3px 0 3px 0;font-size:13px}
+.row.sub{padding-left:18px}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.row .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pill{font:700 11px/1 var(--round);padding:4px 7px;border-radius:999px;flex:none}
+.pill.build{background:var(--build-bg);color:var(--build-ink)} .pill.ask{background:var(--ask-bg);color:var(--ask-ink)}
+.pill.you{background:var(--you-bg);color:var(--you-ink)} .pill.rest{background:var(--rest-bg);color:var(--rest-ink)} .pill.walk{background:var(--walk-bg);color:var(--walk-ink)}
+.chain{display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:12.5px}
+.chain b{padding:4px 8px;border-radius:10px;background:#EEF1FB;font-weight:700}
+.chain b.on{background:var(--ink);color:var(--paper)}
+.chain b.you{background:#E5364F;color:#fff}
+.dl{font-size:12.5px;color:var(--ink-2);margin-top:6px}
+@media (max-width:900px){ .main{grid-template-columns:1fr;height:auto} .stage{height:420px} }
+</style>
+</head>
+<body>
+<div class="bar"><h1>市民 · 指挥链 · 休息区</h1><span class="proto">mock</span><span id="scenes"></span></div>
+<div class="note" id="note"></div>
+<div class="main">
+  <div class="stage" id="stage"><canvas id="c"></canvas><div id="ov"></div></div>
+  <aside>
+    <section class="card"><h3>市民 · 按领地</h3><div id="roster"></div></section>
+    <section class="card"><h3>详情</h3><div id="detail"></div></section>
+  </aside>
+</div>
+<script src="../bin/agent-city-assets/vendor/three.min.js"></script>
+<script src="../bin/agent-city-assets/vendor/GLTFLoader.js"></script>
+<script src="../bin/agent-city-assets/vendor/SkeletonUtils.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const Q = new URLSearchParams(location.search);
+const STILL = Q.get('still') === '1';
+const A = '../bin/agent-city-assets/';
+const MODELS = [
+  'characters/character-male-b', 'characters/character-female-c', 'characters/character-male-a', 'characters/character-female-a', 'characters/character-male-c', 'characters/character-female-e',
+  'hexagon/building-village', 'hexagon/building-house', 'hexagon/building-cabin', 'hexagon/building-market',
+  'commercial/building-j', 'commercial/building-c', 'commercial/building-skyscraper-a', 'industrial/building-h',
+  'suburban/building-type-a', 'suburban/building-type-c',
+  'nature/tree_default', 'nature/tree_oak', 'nature/bridge_wood', 'nature/plant_bush', 'nature/flower_redA', 'nature/flower_yellowA',
+  'fantasy/fountain-round', 'fantasy/lantern', 'forest/flag', 'roads/road-sign-street',
+  'kaykit-medieval/building_tavern_red', 'kaykit-medieval/building_barracks_blue', 'kaykit-medieval/building_church_green',
+  'kaykit-medieval/building_windmill_yellow', 'kaykit-medieval/building_home_A_blue',
+  'kaykit-city/car_police', 'kaykit-city/bench',
+  'kaykit-restaurant/table_round_A', 'kaykit-restaurant/chair_A',
+];
+const lib = {};
+const HEX_SINK = { 'hexagon/building-village': .21, 'hexagon/building-house': .21, 'hexagon/building-cabin': .21, 'hexagon/building-market': .21 };
+
+/* ---------- three ---------- */
+const canvas = $('#c'), stage = $('#stage'), ov = $('#ov');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#BFE3F5');
+const camera = new THREE.PerspectiveCamera(40, 1, .1, 400);
+scene.add(new THREE.HemisphereLight('#FFFFFF', '#C7D2E0', .75));
+const sun = new THREE.DirectionalLight('#FFF3E0', .75); sun.position.set(-14, 26, 18); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30 }); scene.add(sun); scene.add(sun.target);
+sun.target.position.set(10, 0, 0);
+const world = new THREE.Group(); scene.add(world);
+const mixers = [];
+
+function prep(key, gltf){
+  const root = gltf.scene;
+  root.traverse(n => { if (n.isMesh) { const m = n.material; n.material = new THREE.MeshLambertMaterial({ color: m.color ? m.color.clone() : new THREE.Color('#fff'), map: m.map || null, skinning: !!n.isSkinnedMesh }); if (!m.map) n.material.color.convertSRGBToLinear(); n.castShadow = true; n.receiveShadow = true; } });
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  lib[key] = { scene: root, clips: gltf.animations, box, size: box.getSize(new THREE.Vector3()), skinned: !!root.getObjectByProperty('type', 'SkinnedMesh') };
+}
+function loadAll(){
+  const loader = new THREE.GLTFLoader();
+  return Promise.all(MODELS.map(k => new Promise(res => loader.load(A + k + '.glb', g => { prep(k, g); res(); }, undefined, e => { console.warn('missing', k, e); res(); }))));
+}
+function place(key, x, z, o = {}){
+  const L = lib[key]; if (!L) return new THREE.Group();
+  const g = new THREE.Group(); g.rotation.y = o.ry || 0;
+  const inner = L.skinned ? THREE.SkeletonUtils.clone(L.scene) : L.scene.clone(true);
+  const s = o.s != null ? o.s : o.h != null ? o.h / L.size.y : (o.fit || .9) / Math.max(L.size.x, L.size.z);
+  inner.scale.setScalar(s);
+  const c = L.box.getCenter(new THREE.Vector3());
+  inner.position.set(-c.x * s, o.keepY ? 0 : -L.box.min.y * s, -c.z * s);
+  g.position.set(x, (o.y || 0) - (HEX_SINK[key] || 0) * s, z);
+  if (o.tint) inner.traverse(n => { if (n.isMesh) { n.material = n.material.clone(); n.material.color = new THREE.Color(o.tint); } });
+  g.add(inner); (o.parent || world).add(g);
+  return g;
+}
+
+/* ---------- land: two territories on one land, a river between (the real land renderer stays as on main) ---------- */
+function lin(c){ return new THREE.Color(c).convertSRGBToLinear(); }
+function blob(cx, cz, r, color, seed, y){
+  const shape = new THREE.Shape();
+  for (let i = 0; i <= 64; i++) {
+    const a = i / 64 * Math.PI * 2, k = 1 + .08 * Math.sin(a * 3 + seed) + .05 * Math.sin(a * 5 + seed * 2);
+    const x = Math.cos(a) * r * k, z = Math.sin(a) * r * k;
+    i ? shape.lineTo(x, z) : shape.moveTo(x, z);
+  }
+  const m = new THREE.Mesh(new THREE.ShapeGeometry(shape, 8), new THREE.MeshLambertMaterial({ color: lin(color) }));
+  m.rotation.x = Math.PI / 2; m.position.set(cx, y || 0, cz); m.receiveShadow = true; world.add(m);
+  m.geometry.scale(1, 1, 1);
+  return m;
+}
+function flip(m){ m.rotation.x = -Math.PI / 2; m.scale.y = -1; }
+function lane(pts, color, w){
+  const curve = new THREE.CatmullRomCurve3(pts.map(([x, z]) => new THREE.Vector3(x, .012, z)));
+  const P = curve.getSpacedPoints(60), pos = [];
+  for (let i = 0; i < P.length - 1; i++) {
+    const a = P[i], b = P[i + 1], dx = b.x - a.x, dz = b.z - a.z, L = Math.hypot(dx, dz) || 1, nx = -dz / L * w, nz = dx / L * w;
+    pos.push(a.x + nx, .012, a.z + nz, a.x - nx, .012, a.z - nz, b.x + nx, .012, b.z + nz, a.x - nx, .012, a.z - nz, b.x - nx, .012, b.z - nz, b.x + nx, .012, b.z + nz);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: lin(color), side: THREE.DoubleSide })); m.receiveShadow = true; world.add(m);
+}
+const T = {
+  a: { id: 'a', name: 'auto-pipeline', cx: 0, cz: 0, era: 'village' },
+  b: { id: 'b', name: 'v4-plus', cx: 21, cz: 0, era: 'town' },
+};
+/* mock only: the real page uses Kenney commercial/detail-parasol-a|b (owner 2026-09-25: real models, never drawn shapes) */
+function parasol(x, z, color){
+  const g = new THREE.Group(); g.position.set(x, 0, z); world.add(g);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(.016, .016, .7, 8), new THREE.MeshLambertMaterial({ color: lin('#EDEDED') })); pole.position.y = .35; pole.castShadow = true; g.add(pole);
+  const top = new THREE.Mesh(new THREE.ConeGeometry(.32, .16, 8), new THREE.MeshLambertMaterial({ color: lin(color) })); top.position.y = .74; top.castShadow = true; g.add(top);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(.33, .05, 8, 1, true), new THREE.MeshLambertMaterial({ color: '#FFFFFF', side: THREE.DoubleSide })); tip.position.y = .65; g.add(tip);
+  return g;
+}
+let rests = {};
+function buildLand(eraB){
+  while (world.children.length) world.remove(world.children[0]);
+  for (const p of people) p.g = null;
+  // one land, a river between the two territories (smooth, not tiles: as on main)
+  flip(blob(10, 0, 23, '#8FC46B', 1, -.02));
+  const river = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 40), new THREE.MeshLambertMaterial({ color: lin('#3E86C4') })); river.rotation.x = -Math.PI / 2; river.rotation.z = .08; river.position.set(10.3, -.005, 0); world.add(river);
+  place('nature/bridge_wood', 10.3, .3, { fit: 2.2, ry: Math.PI / 2 });
+  flip(blob(0, 0, 7.2, '#CBE8A9', 2, -.01));
+  flip(blob(21, 0, 8.6, '#DAEEBB', 4, -.01));
+  lane([[1.2, 1], [4, .5], [8, .3], [9.6, .3]], '#C9A874', .22);
+  lane([[11, .3], [14, .3], [17, .6], [19.8, 1]], eraB === 'village' ? '#C9A874' : '#A9A39A', .24);
+  lane([[-1, 1.4], [-2.2, 2.4], [-3.4, 2.9]], '#E9D8AE', .2);     // hall -> site office
+  lane([[1, 1.4], [2.2, 2.3], [3.4, 2.6]], '#E9D8AE', .2);        // hall -> rest place
+  // --- territory A (village): hall, a few houses, KayKit stand-ins (police barracks, library church, power windmill)
+  place('hexagon/building-village', 0, 0, { fit: 2.0 });
+  place('hexagon/building-house', -3, -3, { fit: 1.1 }); place('hexagon/building-cabin', 2.8, -3.2, { fit: 1.1 });
+  place('hexagon/building-market', 5.2, -1.4, { fit: 1.1 });
+  place('kaykit-medieval/building_barracks_blue', -5.2, -.6, { fit: 1.35, ry: Math.PI / 2 });
+  place('kaykit-medieval/building_church_green', .2, -4.6, { fit: 1.25 });
+  place('kaykit-medieval/building_windmill_yellow', -3.8, -5.2, { fit: 1.35, ry: .6 });
+  for (const [x, z] of [[-6.6, 1.2], [6.6, 1.4], [1.5, 6.6], [5.5, -4.5], [-6.3, -3.8]]) place('nature/tree_default', x, z, { fit: .8 });
+  // site office of the lead city-people: a KayKit cabin, a flag in the lead's colour, a sign
+  place('kaykit-medieval/building_home_A_blue', -3.8, 3.3, { fit: 1.25, ry: .5 });
+  place('forest/flag', -2.9, 3.9, { h: .9, tint: '#9C86F2' });
+  // rest place A (village): KayKit tavern + benches
+  rests.a = { x: 3.9, z: 3.2 };
+  place('kaykit-medieval/building_tavern_red', 4.2, 3.0, { fit: 1.5, ry: -.4 });
+  place('kaykit-city/bench', 3.0, 4.35, { fit: .7, ry: .1 }); place('kaykit-city/bench', 4.6, 4.6, { fit: .7, ry: -.2 });
+  // --- territory B: town (police = a building with a police car beside it) or city (park) or village (tavern)
+  const hallKey = { village: 'hexagon/building-village', town: 'commercial/building-j', city: 'commercial/building-skyscraper-a' }[eraB];
+  place(hallKey, 21, 0, { fit: eraB === 'city' ? 1.6 : 2.0 });
+  if (eraB !== 'village') {
+    place('suburban/building-type-a', 17.5, -3.4, { fit: 1.2 }); place('suburban/building-type-c', 24.6, -3.2, { fit: 1.2 });
+    place('industrial/building-h', 26.2, -.4, { fit: 1.3, tint: '#3C63D6' });
+    place('kaykit-city/car_police', 26.3, 1.05, { fit: .9, ry: Math.PI / 2 });
+    for (const [x, z] of [[19, 1.6], [23, 1.6]]) place('fantasy/lantern', x, z, { h: .55 });
+  } else {
+    place('kaykit-medieval/building_barracks_blue', 26, -.6, { fit: 1.35 });
+  }
+  const rb = rests.b = { x: 23.6, z: 4.2 };
+  if (eraB === 'town') {
+    // cafe: a small shop building, KayKit restaurant round tables and chairs, parasols
+    place('commercial/building-c', 24.4, 3.1, { fit: 1.25, ry: Math.PI });
+    for (const [x, z, col] of [[22.6, 4.6, '#FF7593'], [24.1, 5.2, '#FFD36E'], [25.6, 4.7, '#4D9CFE']]) {
+      place('kaykit-restaurant/table_round_A', x, z, { fit: .36 });
+      place('kaykit-restaurant/chair_A', x - .34, z, { fit: .2, ry: Math.PI / 2 });
+      place('kaykit-restaurant/chair_A', x + .34, z, { fit: .2, ry: -Math.PI / 2 });
+      parasol(x, z, col);
+    }
+  } else if (eraB === 'city') {
+    // park: a greener patch, trees, a fountain, benches, lamps
+    flip(blob(23.8, 4.4, 2.1, '#9FD37E', 7, -.004));
+    place('fantasy/fountain-round', 23.8, 4.3, { fit: 1.0 });
+    for (const [x, z] of [[22.1, 3.1], [25.6, 3.2], [21.7, 5.5], [26.0, 5.6]]) place('nature/tree_oak', x, z, { fit: .66 });
+    for (const [x, z, r] of [[23.8, 5.6, 0], [22.6, 4.4, Math.PI / 2], [25, 4.4, -Math.PI / 2]]) place('kaykit-city/bench', x, z, { fit: .7, ry: r });
+    for (const [x, z] of [[22.3, 4.9], [21.9, 3.8]]) place('nature/flower_redA', x, z, { s: .55 });
+  } else {
+    place('kaykit-medieval/building_tavern_red', 24.1, 3.3, { fit: 1.5, ry: .3 });
+    place('kaykit-city/bench', 23, 4.6, { fit: .7 }); place('kaykit-city/bench', 24.6, 4.9, { fit: .7, ry: -.2 });
+  }
+  for (const [x, z] of [[15.5, 4.5], [27.5, 4], [18, -6], [26.5, -5.5]]) place('nature/tree_oak', x, z, { fit: .85 });
+  for (const p of people) makeBody(p);
+}
+
+/* ---------- people ---------- */
+const ROLE = {
+  gov:    { zh: '总督', color: '#FFD36E', key: 'characters/character-male-b', s: .69 },
+  lead:   { zh: '任务经理', color: '#9C86F2', key: 'characters/character-female-c', s: .6 },
+  worker: { zh: '工人', color: '#5AA9F0', key: 'characters/character-male-a', s: .6 },
+  worker2:{ zh: '工人', color: '#5AA9F0', key: 'characters/character-female-a', s: .6 },
+  deputy: { zh: '快车道副手', color: '#43C58B', key: 'characters/character-female-e', s: .6 },
+};
+const ringGeo = new THREE.RingGeometry(.22, .28, 32);
+const people = [];
+function person(id, role, label, terr, x, z){ const p = { id, role, label, terr, x, z, yaw: 0, anim: 'idle', pose: '', g: null, mixer: null, cur: null, bub: null, tag: null, qm: false, look: null }; people.push(p); return p; }
+function makeBody(p){
+  const R = ROLE[p.role];
+  const g = place(R.key, p.x, p.z, { s: R.s, keepY: true });
+  const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: R.color, transparent: true, opacity: .9 })); ring.rotation.x = -Math.PI / 2; ring.position.y = .015;
+  if (p.role === 'gov') ring.scale.setScalar(1.25);
+  g.add(ring);
+  p.g = g; p.mixer = new THREE.AnimationMixer(g.children[0]); mixers.push(p.mixer); p.cur = null;
+}
+function anim(p, name){
+  if (!p.g || p.cur === name) return;
+  const L = lib[ROLE[p.role].key]; const clip = L && THREE.AnimationClip.findByName(L.clips, name); if (!clip) return;
+  const next = p.mixer.clipAction(clip); next.reset().play(); if (name === 'walk' || name === 'sprint') next.setEffectiveTimeScale(1 / 3);
+  if (p.action) next.crossFadeFrom(p.action, .2, false);
+  p.action = next; p.cur = name;
+}
+const govA = person('gA', 'gov', '总督 · auto-pipeline', 'a', 0, 1.55);
+const govB = person('gB', 'gov', '总督 · v4-plus', 'b', 21, 1.55);
+const lead = person('L', 'lead', '任务经理 · city-people', 'a', -3.1, 4.2);
+const w1 = person('w1', 'worker', '工人 · 写 reducer', 'a', -4.9, 4.4);
+const w2 = person('w2', 'worker2', '工人 · 写页面', 'a', -2.6, 2.6);
+const restA = person('rA', 'deputy', '快车道副手 · 已完工', 'a', 3.0, 4.45);
+const restB1 = person('rB1', 'worker', '工人 · 已完工', 'b', 22.2, 4.6);
+const restB2 = person('rB2', 'worker2', '工人 · 已完工', 'b', 25.2, 4.7);
+
+/* ---------- overlays ---------- */
+function ovEl(cls){ const el = document.createElement('div'); el.className = cls; el.hidden = true; ov.appendChild(el); return el; }
+const tmpV = new THREE.Vector3();
+function toScreen(x, h, z){ tmpV.set(x, h, z).project(camera); if (tmpV.z > 1) return [-999, -999]; return [(tmpV.x + 1) / 2 * stage.clientWidth, (1 - tmpV.y) / 2 * stage.clientHeight]; }
+function pin(el, x, y, show, text){ if (!show) { el.hidden = true; return; } el.hidden = false; if (text != null && el._t !== text) { el._t = text; el.textContent = text; } el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
+for (const p of people) { p.o = { tag: ovEl('tag' + (p.role === 'gov' ? ' gov' : '')), bub: ovEl('bub'), qm: ovEl('qm') }; p.o.qm.textContent = '?'; }
+const signOffice = ovEl('sign'), signRestA = ovEl('sign'), signRestB = ovEl('sign');
+
+/* ---------- scenes ---------- */
+const SCENES = {
+  gov:     { btn: '两块领地 · 各有总督', cam: [10.5, 1.5, 33, .05, .62], eraB: 'town',
+             note: '每个仓库一块领地，每块领地站着自己的总督（没设 AGENT_ROLE 的会话）。右边名单按领地分组。' },
+  office:  { btn: '经理的工地办公室', cam: [-3.6, 3.4, 7, .45, .5], eraB: 'town',
+             note: '任务经理（AGENT_ROLE=task-manager）在自己领地里有一间工地办公室（KayKit 小屋 + 紫旗）。它的工人（它会话里的子代理）住在办公室周围、在附近走动。' },
+  chain1:  { btn: '指挥链 ①', cam: [-1.8, 2.2, 9.5, .7, .55], eraB: 'town', chain: 1,
+             note: '① 工人卡住：回报第一行是 “QUESTION:” → 工人走到自己经理的办公室问经理（不走去总督那里）。' },
+  chain2:  { btn: '②', cam: [-1.8, 2.2, 9.5, .7, .55], eraB: 'town', chain: 2,
+             note: '② 经理自己定不了：经理给总督发 SendMessage，第一行 “QUESTION:” → 经理走去市政厅找总督；工人在办公室等。' },
+  chain3:  { btn: '③', cam: [-1.2, 1.8, 8.5, .7, .6], eraB: 'town', chain: 3,
+             note: '③ 总督也定不了：总督用 AskUserQuestion 问你 → 总督头上出现红色 “?”，你点开回答（和今天一样）。' },
+  restV:   { btn: '休息区 · 村', cam: [3.6, 3.4, 6.5, .9, .5], eraB: 'town',
+             note: '村：领地里第一个代理完工时出现（第 0 天没有）。KayKit 酒馆 + 长椅；完工的代理去那里坐着。' },
+  restT:   { btn: '镇', cam: [23.8, 4.2, 6.8, .8, .55], eraB: 'town', rest: 'town',
+             note: '镇：咖啡馆 + KayKit 餐厅圆桌和椅子 + 遮阳伞；完工的代理坐在桌边。' },
+  restC:   { btn: '城', cam: [23.8, 4.4, 6.8, .8, .55], eraB: 'city', rest: 'city',
+             note: '城：公园 + 长椅（喷泉、树、花）；完工的代理坐在长椅上。' },
+  kaykit:  { btn: 'KayKit 替换', cam: [-1.6, -3, 9.5, .95, .6], eraB: 'town',
+             note: '村：警察局 = KayKit 兵营（左），图书馆 = 教堂（后），电站 = 风车（左后）。镇/城：警察局 = 蓝楼 + 旁边一辆警车（看 “两块领地”）。' },
+};
+let cur = Q.get('s') && SCENES[Q.get('s')] ? Q.get('s') : 'gov', eraBuilt = null;
+const cam = { tx: 0, tz: 0, dist: 10, az: .7, el: .55 };
+const btns = $('#scenes');
+for (const [k, s] of Object.entries(SCENES)) {
+  const b = document.createElement('button'); b.className = 'btn'; b.type = 'button'; b.textContent = s.btn; b.dataset.s = k;
+  b.onclick = () => setScene(k); btns.appendChild(b);
+}
+function setScene(k){
+  cur = k; const s = SCENES[k];
+  for (const b of btns.children) b.setAttribute('aria-pressed', b.dataset.s === k ? 'true' : 'false');
+  $('#note').textContent = s.note;
+  [cam.tx, cam.tz, cam.dist, cam.az, cam.el] = s.cam;
+  if (eraBuilt !== s.eraB && Object.keys(lib).length) { buildLand(s.eraB); eraBuilt = s.eraB; }
+  chainT = s.chain ? (s.chain - 1) * 4 + 3.9 : 0;
+  history.replaceState(null, '', '?s=' + k + (STILL ? '&still=1' : ''));
+  renderPanel();
+}
+
+/* the chain, as positions over time (t in seconds, 12 s loop): 0-4 worker -> office door, 4-8 lead -> hall, 8-12 governor's red ? */
+let chainT = 0;
+const OFFICE_DOOR = { x: -3.05, z: 4.15 }, HALL_FRONT = { x: -.55, z: 1.75 };
+function lerp(a, b, k){ return a + (b - a) * Math.max(0, Math.min(1, k)); }
+function stepPeople(t, dt){
+  const s = SCENES[cur];
+  for (const p of people) { p.bubText = null; p.bubCls = ''; p.qm = false; p.walk = false; p.pose = ''; p.look = null; }
+  // governors always at their own hall
+  govA.x = 0; govA.z = 1.55; govB.x = 21; govB.z = 1.55;
+  govA.look = { x: 0, z: 4 }; govB.look = { x: 21, z: 4 };
+  // workers wander around the office (a slow loop), the lead stands at the door
+  const loop = (p, ph, r) => { const a = t * .18 + ph; p.x = -3.8 + Math.cos(a) * r; p.z = 3.3 + Math.sin(a) * r * .9; p.walk = true; p.look = { x: -3.8 + Math.cos(a + .2) * r, z: 3.3 + Math.sin(a + .2) * r * .9 }; };
+  lead.x = OFFICE_DOOR.x; lead.z = OFFICE_DOOR.z; lead.look = { x: -2, z: 5 };
+  if (!s.chain) {
+    loop(w1, 0, 1.7); loop(w2, Math.PI, 1.7);
+    if (STILL) { w1.walk = w2.walk = false; }
+  } else {
+    const c = chainT;
+    loop(w2, Math.PI, 1.7); if (STILL) w2.walk = false;
+    // worker 1: walks to the office door, asks the lead
+    const from = { x: -5.4, z: 4.9 };
+    w1.x = lerp(from.x, OFFICE_DOOR.x - .55, c / 3); w1.z = lerp(from.z, OFFICE_DOOR.z + .35, c / 3);
+    w1.walk = c < 3; w1.look = { x: lead.x, z: lead.z };
+    if (c >= 3 && c < 4) { w1.bubText = '有问题，问经理'; w1.bubCls = 'ask'; lead.bubText = '我想想…'; }
+    if (c < 3) { w1.bubText = '去问经理'; w1.bubCls = 'ask'; }
+    lead.look = { x: w1.x, z: w1.z };
+    if (c >= 4) {
+      w1.bubText = '等经理回话…'; w1.bubCls = 'wait'; w1.look = { x: 0, z: 0 };
+      const k = (c - 4) / 3.5;
+      lead.x = lerp(OFFICE_DOOR.x, HALL_FRONT.x - .5, k); lead.z = lerp(OFFICE_DOOR.z, HALL_FRONT.z + .2, k);
+      lead.walk = c < 7.5; lead.look = { x: govA.x, z: govA.z };
+      lead.bubText = c < 7.5 ? '去问总督' : '在问总督'; lead.bubCls = 'ask';
+      govA.look = { x: lead.x, z: lead.z };
+    }
+    if (c >= 8) { lead.bubText = '等你'; lead.bubCls = 'wait'; govA.qm = true; govA.bubText = '我也定不了 → 问你'; govA.bubCls = 'ask'; }
+  }
+  // resting: village tavern benches (A), cafe chairs or park benches (B)
+  restA.x = 3.0; restA.z = 4.45; restA.pose = 'sit'; restA.look = { x: 3, z: 6 };
+  const eraB = SCENES[cur].eraB;
+  if (eraB === 'town') { restB1.x = 22.6 - .34; restB1.z = 4.6; restB1.look = { x: 22.6, z: 4.6 }; restB2.x = 24.1 + .34; restB2.z = 5.2; restB2.look = { x: 24.1, z: 5.2 }; }
+  else { restB1.x = 23.8; restB1.z = 5.62; restB1.look = { x: 23.8, z: 7 }; restB2.x = 22.62; restB2.z = 4.4; restB2.look = { x: 24, z: 4.4 }; }
+  restB1.pose = restB2.pose = 'sit';
+  for (const p of people) {
+    if (!p.g) continue;
+    if (p.look) { const dx = p.look.x - p.x, dz = p.look.z - p.z; if (Math.hypot(dx, dz) > .01) p.yaw = Math.atan2(dx, dz); }
+    p.g.position.set(p.x, p.pose === 'sit' ? .1 : 0, p.z); p.g.rotation.y = p.yaw;
+    anim(p, p.walk ? 'walk' : p.pose === 'sit' ? 'sit' : (p.bubText && p.role !== 'worker' ? 'interact-left' : 'idle'));
+  }
+}
+function pinOverlays(){
+  for (const p of people) {
+    if (!p.g) continue;
+    const [sx, sy] = toScreen(p.x, p.role === 'gov' ? .95 : .78, p.z);
+    const showTag = p.role === 'gov' || p.role === 'lead' || (cur === 'office' && p.terr === 'a' && (p === w1 || p === w2));
+    const [tx, ty] = toScreen(p.x, 0, p.z);
+    pin(p.o.tag, tx, ty + 30, showTag && !(cur.startsWith('rest') && p.role === 'lead'), (p.role === 'gov' ? '👑 ' : '') + p.label);
+    pin(p.o.bub, sx, sy, !!p.bubText, p.bubText || '');
+    if (p.bubText) p.o.bub.className = 'bub ' + p.bubCls;
+    pin(p.o.qm, sx, p.bubText ? sy - 40 : sy, p.qm);
+  }
+  const [ox, oy] = toScreen(-3.8, 1.25, 3.3); pin(signOffice, ox, oy, true, '工地办公室 · city-people');
+  const [ax, ay] = toScreen(4.2, 1.3, 3.0); pin(signRestA, ax, ay, true, '休息区 · 酒馆');
+  const eraB = SCENES[cur].eraB, rb = { town: [24.3, 1.35, 3.1, '休息区 · 咖啡馆'], city: [23.8, 1.1, 4.3, '休息区 · 公园'], village: [24.1, 1.3, 3.3, '休息区 · 酒馆'] }[eraB];
+  const [bx, by] = toScreen(rb[0], rb[1], rb[2]); pin(signRestB, bx, by, true, rb[3]);
+}
+
+/* ---------- right column: roster grouped by territory, detail = the chain ---------- */
+function row(color, who, pill, text, sub){ return `<div class="row${sub ? ' sub' : ''}"><span class="dot" style="background:${color}"></span><span class="who">${who}</span><span class="pill ${pill}">${text}</span></div>`; }
+function renderPanel(){
+  const s = SCENES[cur], c = s.chain || 0;
+  const w1s = c === 1 ? ['ask', '问经理'] : c >= 2 ? ['walk', '等经理'] : ['build', '干活'];
+  const ls = c === 2 ? ['ask', '在问总督'] : c === 3 ? ['you', '等你'] : c === 1 ? ['ask', '听工人问'] : ['build', '干活'];
+  const eraZh = { village: '村', town: '镇', city: '城' };
+  $('#roster').innerHTML =
+    `<div class="terr">auto-pipeline <span class="era">村</span></div>` +
+    row('#FFD36E', '👑 总督', c === 3 ? 'you' : 'build', c === 3 ? '等你回答' : '在忙') +
+    row('#9C86F2', '任务经理 · city-people', ls[0], ls[1]) +
+    row('#5AA9F0', '工人 · 写 reducer', w1s[0], w1s[1], true) +
+    row('#5AA9F0', '工人 · 写页面', 'build', '干活', true) +
+    row('#43C58B', '快车道副手 · 已完工', 'rest', '休息') +
+    `<div class="terr">v4-plus <span class="era">${eraZh[s.eraB]}</span></div>` +
+    row('#FFD36E', '👑 总督', 'rest', '空闲') +
+    row('#5AA9F0', '工人 · 已完工', 'rest', '休息') +
+    row('#5AA9F0', '工人 · 已完工', 'rest', '休息');
+  const step = (n, text, cls) => `<b class="${cls || ''}${c === n ? ' on' : ''}">${text}</b>`;
+  $('#detail').innerHTML = c
+    ? `<div class="chain">${step(1, '工人')}→${step(2, '经理 city-people')}→${step(3, '总督')}→<b class="${c === 3 ? 'you' : ''}">你</b></div>` +
+      `<div class="dl">${['', '工人的回报第一行是 QUESTION:（只看前缀，不读内容）。', '经理发给总督的消息第一行是 QUESTION:（只看前缀）。', '总督调用 AskUserQuestion → 红色 “?” 给你。权限请求：永远直接给你，红 “?” 立刻出现。'][c]}</div>`
+    : `<div class="dl">点名单上的人看详情。点 “指挥链 ①②③” 看问题怎么一级级往上走。</div>`;
+}
+
+/* ---------- camera: perspective, drag to orbit ---------- */
+function resize(){ const w = stage.clientWidth, h = stage.clientHeight; renderer.setPixelRatio(Math.min(2, devicePixelRatio)); renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+function updateCamera(){
+  camera.position.set(cam.tx + Math.sin(cam.az) * Math.cos(cam.el) * cam.dist, Math.sin(cam.el) * cam.dist, cam.tz + Math.cos(cam.az) * Math.cos(cam.el) * cam.dist);
+  camera.lookAt(cam.tx, .4, cam.tz);
+}
+let drag = null;
+canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', e => { if (!drag) return; cam.az -= (e.clientX - drag.x) * .006; cam.el = Math.max(.26, Math.min(1.05, cam.el + (e.clientY - drag.y) * .004)); drag = { x: e.clientX, y: e.clientY }; });
+canvas.addEventListener('pointerup', () => { drag = null; });
+canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = Math.max(3, Math.min(40, cam.dist * (e.deltaY > 0 ? 1.1 : .9))); }, { passive: false });
+addEventListener('resize', resize);
+
+let last = performance.now(), simT = 0;
+function frame(now){
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (!STILL) { simT += dt; if (SCENES[cur].chain && Q.get('play') === '1') { chainT = (chainT + dt) % 12; } }
+  for (const m of mixers) m.update(STILL ? 0 : dt);
+  stepPeople(STILL ? 7 : simT, dt);
+  updateCamera(); renderer.render(scene, camera); pinOverlays();
+  requestAnimationFrame(frame);
+}
+resize();
+loadAll().then(() => {
+  eraBuilt = SCENES[cur].eraB; buildLand(eraBuilt); setScene(cur);
+  for (const m of mixers) m.update(.4);
+  requestAnimationFrame(frame);
+  document.body.dataset.ready = '1';
+});
+})();
+</script>
+</body>
+</html>
