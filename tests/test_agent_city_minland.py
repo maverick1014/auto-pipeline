@@ -17,6 +17,7 @@ CONTRACT (bin/agent_city.py, bin/agent-city.html)
       "open" is their count.
     build(): the first free OPEN plot of the district, in plan order.
   Server: a PostToolUse line whose kind's district has no free open plot
+    (and, since city-levelups, every building there already at level 3)
     broadcasts {"type": "noplot", "id", "terr", "btype", "by"}; id is the
     builder's city id (aid, "s:<sid>", or "gov" for a governor). An owner
     that already has a building in that territory gets nothing (one building
@@ -173,15 +174,19 @@ class TestTinyRepoBuilds(StateCase):
         self.assertEqual(builds[0]["btype"], "house")
 
     def test_no_free_plot_is_said_not_silent(self):
+        # city-levelups (tests/test_agent_city_quality.py): a full district levels
+        # its building up to 3 first (w2..w4); only then is there truly no room.
         self.line("tm", tool="Read")
         self.line("tm", aid="w1", kind="other")
+        for w in ("w2", "w3", "w4"):
+            self.line("tm", aid=w, kind="other")
         self.drain()
-        self.line("tm", aid="w2", kind="other")
+        self.line("tm", aid="w5", kind="other")
         ev = self.drain()
-        self.assertEqual([e for e in ev if e.get("type") == "build"], [])
+        self.assertEqual([e for e in ev if e.get("type") in ("build", "levelup")], [])
         none = [e for e in ev if e.get("type") == "noplot"]
-        self.assertEqual(len(none), 1, "the only open house plot is taken: say so")
-        self.assertEqual(none[0]["id"], "w2")
+        self.assertEqual(len(none), 1, "the only open house plot is taken and at level 3: say so")
+        self.assertEqual(none[0]["id"], "w5")
         self.assertEqual(none[0]["btype"], "house")
         self.assertEqual(none[0]["terr"], ac.territory_id(REPO))
 
