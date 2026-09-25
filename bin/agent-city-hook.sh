@@ -194,8 +194,10 @@ proj=${cwd##*/}
 cwd_plain=$(unescape "$cwd")
 git_folder=$(find_git_folder "$cwd_plain")
 repo=
+wt=
 if [ -n "$git_folder" ]; then
     gitdir_path=
+    wt_is_file=
     if [ -d "$git_folder/.git" ]; then
         gitdir_path=$git_folder/.git
     elif [ -f "$git_folder/.git" ]; then
@@ -209,6 +211,7 @@ if [ -n "$git_folder" ]; then
                 /*) : ;;
                 *) gitdir_path=$git_folder/$gitdir_path ;;
             esac
+            wt_is_file=1
         fi
     fi
     if [ -n "$gitdir_path" ]; then
@@ -225,6 +228,13 @@ if [ -n "$git_folder" ]; then
         fi
         repo_raw=$(cd -P -- "$common_path" 2>/dev/null && pwd -P)
         [ -n "$repo_raw" ] && repo=$(escape_json "$repo_raw")
+    fi
+    # wt — growth/worktrees (requirements/city.md): when the folder holding
+    # .git is a FILE (a linked worktree), wt is that folder's own physical
+    # path; the main checkout (.git is a folder) gives "".
+    if [ -n "$wt_is_file" ]; then
+        wt_raw=$(cd -P -- "$git_folder" 2>/dev/null && pwd -P)
+        [ -n "$wt_raw" ] && wt=$(escape_json "$wt_raw")
     fi
 fi
 
@@ -291,8 +301,8 @@ case "$ev" in
         ;;
 esac
 
-printf '{"ev":"%s","sid":"%s","aid":"%s","at":"%s","tool":"%s","nt":"%s","proj":"%s","role":"%s","desc":"%s","sub":"%s","q":"%s","klen":"%s","repo":"%s","kind":"%s","ask":"%s"}\n' \
-    "$ev" "$sid" "$aid" "$at" "$tool" "$nt" "$proj" "$role" "$desc" "$sub" "$q" "$klen" "$repo" "$kind" "$ask" \
+printf '{"ev":"%s","sid":"%s","aid":"%s","at":"%s","tool":"%s","nt":"%s","proj":"%s","role":"%s","desc":"%s","sub":"%s","q":"%s","klen":"%s","repo":"%s","kind":"%s","ask":"%s","wt":"%s"}\n' \
+    "$ev" "$sid" "$aid" "$at" "$tool" "$nt" "$proj" "$role" "$desc" "$sub" "$q" "$klen" "$repo" "$kind" "$ask" "$wt" \
     >> "$dir/events.jsonl" 2>/dev/null
 
 exit 0

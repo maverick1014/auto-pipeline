@@ -327,7 +327,7 @@ class TestLeadsAndOffices(CityCase):
         self.assertEqual(self.agent(snap, "s:tm1")["office"], office)
         view = snap["world"]
         t = self.terr_view(snap, TA)
-        self.assertIn({"lead": "s:tm1", "x": office["x"], "z": office["z"]}, t["offices"])
+        self.assertIn({"lead": "s:tm1", "site": "", "x": office["x"], "z": office["z"]}, t["offices"])  # "site": city-worktrees
         self.assertEqual(tile(view, office["x"], office["z"]), "g")
         plots = {(p["x"], p["z"]) for p in t["plots"]}
         self.assertNotIn((office["x"], office["z"]), plots)

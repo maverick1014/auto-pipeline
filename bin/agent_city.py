@@ -691,10 +691,25 @@ class CityState:
         # server was down never sends SessionEnd, so a loaded office must
         # not outlive the restart. A live lead's next line gives it one
         # again (_assign_office, plan order). Rest place and names persist.
+        # Sites (worktrees) are the same: scan_sites() rediscovers every
+        # live one from agent_worktree.txt on its next tick.
         for t in self.world["territories"].values():
             if t.get("offices"):
                 t["offices"] = {}
                 dirty = True
+            if t.get("sites"):
+                t["sites"] = {}
+                dirty = True
+
+        # -- worktree construction sites: memory-only bookkeeping, never
+        # saved to world.json (scan_sites() rebuilds it every run). --------
+        self._site_watch = {}     # identity -> {"wt", "mon" (stat keys), "rows"}
+        self._site_paths = {}     # site id -> its worktree's physical path
+        self._site_by_path = {}   # physical path -> site id, live sites only
+        self._site_heads = {}     # site id -> last known non-empty HEAD sha
+        self._site_terr = {}      # site id -> its territory identity
+        self._lead_last_wt = {}   # lead citizen id -> last "wt" its lines carried
+        self._lead_site = {}      # lead citizen id -> the site id it stands in
 
         # The city is never empty: the dir the server was started from (its
         # git repo, or the plain folder itself) always has a territory, the
@@ -881,6 +896,15 @@ class CityState:
                     self._maybe_open_rest(identity)
                 self._broadcast(ev)
 
+            # city-worktrees: remember this lead's last "wt" (may be missing
+            # on an old line -> ""), so a site created later can tell it
+            # took over a live lead's own office (_new_site_locked).
+            if identity is not None and isinstance(sid_field, str) and sid_field:
+                lead_cid = "s:" + sid_field
+                if lead_cid in self._chain_for(identity)["leads"]:
+                    wt_field = obj.get("wt")
+                    self._lead_last_wt[lead_cid] = wt_field if isinstance(wt_field, str) else ""
+
             gov_seen_dirty = False
             if identity is not None and isinstance(sid_field, str) and sid_field:
                 if ev_name == "SessionEnd":
@@ -961,7 +985,9 @@ class CityState:
         "terr", "relay" ("lead"|"governor"|""), "lead" (its lead's citizen
         id, or "") and "office" (a world tile, or None: not a lead, or no
         office free). Leads/offices/relays need a real territory (a plan):
-        no repo (identity None) -> just "terr", as before this feature."""
+        no repo (identity None) -> just "terr", as before this feature.
+        A lead standing in a live worktree site (self._lead_site) uses that
+        site's office tile instead of one of its own (city-worktrees)."""
         if identity is None or chain is None:
             return dict(a, terr=terr)
         cid = a["id"]
@@ -972,13 +998,17 @@ class CityState:
             relay = entry["to"]
         lead = chain["lead_of"].get(cid, "") or ""
         if cid in chain["leads"]:
-            office = self._office_view(identity, cid)
+            site_sid = self._lead_site.get(cid)
+            office = self._office_view(identity, site_sid if site_sid is not None else cid)
         return dict(a, terr=terr, relay=relay, lead=lead, office=office)
 
     def _decorate_spawn(self, ev, obj, identity, terr):
         """Caller holds self.lock. A task-manager session citizen is a lead
         (gets an office); a subagent inside a lead's session carries that
-        lead's id. Sets ev["lead"] and ev["office"]. No repo -> untouched."""
+        lead's id. Sets ev["lead"] and ev["office"]. No repo -> untouched.
+        A lead whose spawn line already carries "wt" for a live site stands
+        at that site's office instead of getting one of its own
+        (city-worktrees)."""
         if identity is None:
             return
         chain = self._chain_for(identity)
@@ -987,13 +1017,30 @@ class CityState:
         if not aid_field:
             if ev.get("role") == "task-manager":
                 chain["leads"].add(ev["id"])
-                self._assign_office(identity, ev["id"])
+                wt_field = obj.get("wt") if isinstance(obj.get("wt"), str) else ""
+                site_sid = self._site_by_path.get(wt_field) if wt_field else None
+                if site_sid is not None and self._site_terr.get(site_sid) == identity:
+                    self._lead_site[ev["id"]] = site_sid
+                else:
+                    self._assign_office(identity, ev["id"])
         else:
             owner_cid = "s:" + sid_field
             chain["lead_of"][ev["id"]] = owner_cid if owner_cid in chain["leads"] else ""
         decorated = self._decorate_agent({"id": ev["id"]}, identity, terr, chain)
         ev["lead"] = decorated["lead"]
         ev["office"] = decorated["office"]
+
+    def _free_office_spot_locked(self, t):
+        """Caller holds self.lock. T's plan's first office spot no live
+        lead or site already holds, or None."""
+        plan = _plan_by_id(self.plans, t["plan"])
+        if plan is None:
+            return None
+        held = {tuple(v) for v in t.get("offices", {}).values()}
+        for x, z in plan.get("offices", []):
+            if (x, z) not in held:
+                return [x, z]
+        return None
 
     def _assign_office(self, identity, lead_cid):
         """Caller holds self.lock. LEAD_CID gets its plan's first office
@@ -1004,18 +1051,13 @@ class CityState:
         t = self.world["territories"].get(identity)
         if t is None:
             return
-        plan = _plan_by_id(self.plans, t["plan"])
-        if plan is None:
-            return
         offices = t.setdefault("offices", {})
         if lead_cid in offices:
             return
-        held = {tuple(v) for v in offices.values()}
-        for x, z in plan.get("offices", []):
-            if (x, z) not in held:
-                offices[lead_cid] = [x, z]
-                self._invalidate_view()
-                return
+        spot = self._free_office_spot_locked(t)
+        if spot is not None:
+            offices[lead_cid] = spot
+            self._invalidate_view()
 
     def _maybe_open_rest(self, identity):
         """Caller holds self.lock. The first done citizen in a territory
@@ -1289,6 +1331,140 @@ class CityState:
             if changed:
                 self._emit_world_locked()
         return len(due)
+
+    # -- worktrees: construction sites (requirements/city.md, "Worktrees") --
+
+    @staticmethod
+    def _stat_key(path):
+        try:
+            st = os.stat(path)
+        except OSError:
+            return None
+        return (st.st_size, st.st_mtime)
+
+    def scan_sites(self):
+        """Rescans every territory's construction sites: agent_worktree.txt
+        and agent_monitor.txt, re-read only when their size or mtime
+        changed. Takes self.lock itself -- recount_loop and the tests call
+        it directly, never already holding the lock."""
+        with self.lock:
+            for identity in list(self.world["territories"].keys()):
+                self._scan_site_territory_locked(identity)
+
+    def _scan_site_territory_locked(self, identity):
+        """Caller holds self.lock. IDENTITY carries sites only when it is a
+        "<root>/.git" folder -- the shape the hook's "repo" always has for a
+        real git territory (the start repo or a world territory); a
+        no-repo/plain-folder identity never does."""
+        stripped = identity.rstrip("/")
+        if os.path.basename(stripped) != ".git" or not os.path.isdir(identity):
+            return
+        t = self.world["territories"].get(identity)
+        if t is None:
+            return
+        root = os.path.dirname(stripped)
+        terr = territory_id(identity)
+        watch = self._site_watch.setdefault(identity, {"wt": None, "mon": None, "rows": []})
+        wt_stat = self._stat_key(os.path.join(root, "agent_worktree.txt"))
+        mon_stat = self._stat_key(os.path.join(root, "agent_monitor.txt"))
+        if wt_stat != watch["wt"] or mon_stat != watch["mon"]:
+            watch["wt"] = wt_stat
+            watch["mon"] = mon_stat
+            watch["rows"] = read_sites(root)
+
+        known = t.setdefault("sites", {})
+        seen = set()
+        for row in watch["rows"]:
+            path = row["path"]
+            sid = site_id(path)
+            seen.add(sid)
+            self._site_paths[sid] = path
+            self._site_by_path[path] = sid
+            self._site_terr[sid] = identity
+            # Refreshed every scan, files unchanged or not, so a later
+            # "merged" check (once the row is gone) sees the newest commit.
+            head = site_head(path)
+            if head:
+                self._site_heads[sid] = head
+            fields = {"branch": site_branch(path), "module": row["module"],
+                      "status": row["status"], "human": row["human"], "stalled": row["stalled"]}
+            if sid not in known:
+                self._new_site_locked(identity, terr, t, sid, path, fields)
+            elif known[sid] != fields:
+                self._changed_site_locked(identity, terr, t, sid, fields)
+
+        for sid in [s for s in known if s not in seen]:
+            self._gone_site_locked(identity, terr, t, root, sid)
+
+    def _new_site_locked(self, identity, terr, t, sid, path, fields):
+        """Caller holds self.lock. SID just appeared: it takes over a live
+        lead's office when that lead's last line carried "wt" == PATH, else
+        the plan's first free office spot. A world broadcast (the existing
+        _emit_world_locked), then a site event."""
+        offices = t.setdefault("offices", {})
+        chain = self._chain_for(identity)
+        taken_from = None
+        for lead_cid in chain["leads"]:
+            if lead_cid in offices and self._lead_last_wt.get(lead_cid, "") == path:
+                taken_from = lead_cid
+                break
+        if taken_from is not None:
+            offices[sid] = offices.pop(taken_from)
+            self._lead_site[taken_from] = sid
+        else:
+            spot = self._free_office_spot_locked(t)
+            if spot is not None:
+                offices[sid] = spot
+        t.setdefault("sites", {})[sid] = fields
+        self._emit_world_locked()
+        self._site_event_locked(identity, terr, sid, fields)
+
+    def _changed_site_locked(self, identity, terr, t, sid, fields):
+        """Caller holds self.lock. SID's fields changed: one site event, no
+        world broadcast; the cached view is still invalidated so a snapshot
+        built right after (a page connecting) sees the new fields."""
+        t.setdefault("sites", {})[sid] = fields
+        self._invalidate_view()
+        self._site_event_locked(identity, terr, sid, fields)
+        self._save_world_locked()
+
+    def _site_event_locked(self, identity, terr, sid, fields):
+        office = self._office_view(identity, sid) or {"x": None, "z": None}
+        self._broadcast({"type": "site", "terr": terr, "id": sid, "branch": fields["branch"],
+                          "module": fields["module"], "status": fields["status"],
+                          "human": fields["human"], "stalled": fields["stalled"],
+                          "x": office["x"], "z": office["z"]})
+
+    def _gone_site_locked(self, identity, terr, t, root, sid):
+        """Caller holds self.lock. SID's line is gone: "merged" when its
+        last known head is an ancestor of ROOT's checked-out HEAD, else
+        "removed". Its office frees, then a world broadcast."""
+        office = self._office_view(identity, sid) or {"x": None, "z": None}
+        head = self._site_heads.get(sid, "")
+        how = self._merge_check(root, head) if head else "removed"
+        self._broadcast({"type": "site_end", "terr": terr, "id": sid, "how": how,
+                          "x": office["x"], "z": office["z"]})
+        t.get("offices", {}).pop(sid, None)
+        t.get("sites", {}).pop(sid, None)
+        path = self._site_paths.pop(sid, None)
+        if path is not None:
+            self._site_by_path.pop(path, None)
+        self._site_terr.pop(sid, None)
+        self._site_heads.pop(sid, None)
+        self._emit_world_locked()
+
+    @staticmethod
+    def _merge_check(root, head):
+        """"merged" when HEAD is an ancestor of ROOT's checked-out HEAD,
+        else "removed" (also on any git failure). 5s timeout, no stdin: the
+        caller may be holding self.lock, so this stays short-lived."""
+        try:
+            res = subprocess.run(["git", "-C", root, "merge-base", "--is-ancestor", head, "HEAD"],
+                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL, timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            return "removed"
+        return "merged" if res.returncode == 0 else "removed"
 
     def _apply_balance_locked(self, identity, t, result):
         """Caller holds self.lock. Stores balance/rules_bad/files from one
@@ -2155,9 +2331,15 @@ def tail_loop(directory, city, max_log_bytes, stop_event, request_shutdown,
 
 def recount_loop(city, stop_event):
     """Recount active territories about every RECOUNT_POLL_SEC, with the
-    same clock (time.monotonic()) feed_line gets. Stops with the server."""
+    same clock (time.monotonic()) feed_line gets. Also rescans worktree
+    construction sites (city.scan_sites()) every tick: an exception there is
+    printed to stderr and never stops the loop. Stops with the server."""
     while not stop_event.is_set():
         city.recount(time.monotonic())
+        try:
+            city.scan_sites()
+        except Exception as exc:
+            print("agent_city: scan_sites failed: %s" % exc, file=sys.stderr)
         stop_event.wait(RECOUNT_POLL_SEC)
 
 
@@ -2738,6 +2920,154 @@ def repo_name(identity):
     return base
 
 
+# -- worktrees: construction sites (requirements/city.md, "Worktrees") ------
+#
+# One worktree = one construction site inside its repo's territory. These
+# helpers read agent_worktree.txt/agent_monitor.txt (bin/agent-file.sh,
+# bin/agent-monitor.sh) and a linked worktree's own git files, never running
+# git for read_sites/site_id/site_branch/site_head -- see the CONTRACT in
+# tests/test_agent_city_worktrees.py.
+
+def read_sites(root):
+    """[{"path", "module", "status", "human", "stalled"}], one per
+    non-blank line of <root>/agent_worktree.txt, file order. Missing file
+    -> []. stalled comes from <root>/agent_monitor.txt (missing -> none
+    stalled)."""
+    wt_path = os.path.join(root, "agent_worktree.txt")
+    try:
+        with open(wt_path, encoding="utf-8") as fh:
+            raw_lines = fh.readlines()
+    except OSError:
+        return []
+
+    stalled = set()
+    try:
+        with open(os.path.join(root, "agent_monitor.txt"), encoding="utf-8") as fh:
+            for mline in fh:
+                if not mline.strip():
+                    continue
+                fields = [f.strip() for f in mline.split("|")]
+                if len(fields) >= 6 and fields[5] == "STALL":
+                    stalled.add(fields[0])
+    except OSError:
+        pass
+
+    out = []
+    for line in raw_lines:
+        if not line.strip():
+            continue
+        fields = [f.strip() for f in line.split("|")]
+        if len(fields) < 3:
+            continue
+        path = fields[0]
+        if fields[1] == "task manager, human-direct":
+            out.append({"path": path, "module": os.path.basename(path.rstrip("/")),
+                        "status": "working", "human": True, "stalled": path in stalled})
+            continue
+        status = fields[2] if fields[2] in ("working", "final", "idle") else "working"
+        out.append({"path": path, "module": fields[1], "status": status,
+                    "human": False, "stalled": path in stalled})
+    return out
+
+
+def site_id(path):
+    return "wt:" + hashlib.sha1(os.path.realpath(path).encode("utf-8")).hexdigest()[:10]
+
+
+def _worktree_git_paths(path):
+    """(gitdir, commondir) for the linked worktree at PATH, read from files
+    only, or None: PATH's ".git" is missing, a folder (the main checkout),
+    or an unreadable/malformed "gitdir: " file."""
+    try:
+        with open(os.path.join(path, ".git"), encoding="utf-8") as fh:
+            line = fh.readline().rstrip("\n")
+    except OSError:
+        return None
+    if not line.startswith("gitdir: "):
+        return None
+    gitdir = line[len("gitdir: "):]
+    if not os.path.isabs(gitdir):
+        gitdir = os.path.join(path, gitdir)
+    gitdir = os.path.normpath(gitdir)
+    common = gitdir
+    try:
+        with open(os.path.join(gitdir, "commondir"), encoding="utf-8") as fh:
+            cline = fh.readline().rstrip("\n")
+        if cline:
+            common = cline if os.path.isabs(cline) else os.path.join(gitdir, cline)
+            common = os.path.normpath(common)
+    except OSError:
+        pass
+    return gitdir, common
+
+
+def _read_head_ref(gitdir):
+    """("ref", "refs/heads/x") or ("sha", sha) from GITDIR/HEAD, or None."""
+    try:
+        with open(os.path.join(gitdir, "HEAD"), encoding="utf-8") as fh:
+            line = fh.readline().strip()
+    except OSError:
+        return None
+    if line.startswith("ref: "):
+        return "ref", line[len("ref: "):]
+    if line:
+        return "sha", line
+    return None
+
+
+def site_branch(path):
+    """The worktree's branch ("feat-a"); a detached HEAD -> its sha's first
+    7 hex; not a linked worktree -> ""."""
+    paths = _worktree_git_paths(path)
+    if paths is None:
+        return ""
+    head = _read_head_ref(paths[0])
+    if head is None:
+        return ""
+    kind, val = head
+    if kind == "sha":
+        return val[:7]
+    if val.startswith("refs/heads/"):
+        return val[len("refs/heads/"):]
+    return ""
+
+
+def site_head(path):
+    """The worktree's HEAD commit, 40 hex, from files only: a loose ref in
+    the common dir, else packed-refs; detached -> the sha itself;
+    unreadable -> ""."""
+    paths = _worktree_git_paths(path)
+    if paths is None:
+        return ""
+    gitdir, common = paths
+    head = _read_head_ref(gitdir)
+    if head is None:
+        return ""
+    kind, val = head
+    if kind == "sha":
+        return val
+    ref = val
+    try:
+        with open(os.path.join(common, *ref.split("/")), encoding="utf-8") as fh:
+            sha = fh.readline().strip()
+        if sha:
+            return sha
+    except OSError:
+        pass
+    try:
+        with open(os.path.join(common, "packed-refs"), encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line[0] in "#^":
+                    continue
+                parts = line.split(" ", 1)
+                if len(parts) == 2 and parts[1] == ref:
+                    return parts[0]
+    except OSError:
+        pass
+    return ""
+
+
 def growth(lines):
     """0..1, log-scaled: fast at first, flat near LCAP. Never negative,
     never over 1 (a repo past the cap looks the same as the cap)."""
@@ -3162,7 +3492,21 @@ def layout(world, plans):
             px, pz, _ = plan["plots"][b["plot"]]
             buildings_view.append({"plot": b["plot"], "type": b["type"], "by": b["by"],
                                     "x": ox + px, "z": oz + pz})
-        offices_view = [{"lead": cid, "x": ox + lx, "z": oz + lz} for cid, (lx, lz) in offices.items()]
+        sites = t.get("sites", {})
+        offices_view = [
+            {"lead": ("" if cid in sites else cid), "site": (cid if cid in sites else ""),
+             "x": ox + lx, "z": oz + lz}
+            for cid, (lx, lz) in offices.items()
+        ]
+        sites_view = []
+        for sid, info in sites.items():
+            pos = offices.get(sid)
+            if pos is None:
+                continue
+            sites_view.append({"id": sid, "branch": info.get("branch", ""),
+                               "module": info.get("module", ""), "status": info.get("status", ""),
+                               "human": info.get("human", False), "stalled": info.get("stalled", False),
+                               "x": ox + pos[0], "z": oz + pos[1]})
 
         era = t.get("era", "village")
         balance = t.get("balance", {})
@@ -3173,7 +3517,7 @@ def layout(world, plans):
             "plots_total": len(plan["plots"]), "plots": plots_view, "buildings": buildings_view,
             "era": era, "balance": balance, "next": next_needs(t["peak"], balance, era),
             "rules_note": _rules_note(t["name"], t.get("rules_bad", [])),
-            "offices": offices_view, "rest": rest_view,
+            "offices": offices_view, "rest": rest_view, "sites": sites_view,
         })
 
     # -- tracks: plan road from the territory out to its exit, across the gap -
