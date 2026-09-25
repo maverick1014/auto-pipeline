@@ -578,6 +578,93 @@ function officeDecor(t){
   }
   return out;
 }
+/* Worktrees (requirements/city.md, Worktrees): one worktree = one construction site inside its repo's
+   territory, the site office being its task manager's office (Interaction). sites -- Map id -> {id,
+   terr, branch, module, status, human, stalled, x, z, phase}; phase 'live' (server-tracked right now) |
+   'merging' (site_end how 'merged': a lane grows to the hall, then it packs up) | 'packing' (site_end
+   how 'removed': it just packs up). siteList() -> the values, in any order (buildLand/renderStats read
+   whichever fields they need off each record). */
+const sites = new Map();
+function siteList(){ return [...sites.values()]; }
+/* SITE_MERGE_SEC / SITE_PACK_SEC: how long the merge lane takes to grow / a packing site lingers before
+   it is gone (v1 limits: "a lane is laid ... over a few seconds"), both inside the contract's 3..12 s. */
+const SITE_MERGE_SEC = 6, SITE_PACK_SEC = 4;
+/* syncSites(world): the shared half of apply({type:'snapshot'}) and apply({type:'world'}) (Worktrees
+   contract) -- every territory's own "sites" list (CityState's view) becomes phase 'live' in the sites
+   map (terr = that territory's id, never a field read off the site itself); a live site missing from
+   the new view is dropped (its worktree, or the whole territory, is gone from the server's own
+   picture); a site already merging or packing (ended server-side, still finishing its own local
+   animation) is kept regardless of what the new view says -- unless the view lists it again, in which
+   case it is live once more (a reconnect mid-animation shows what the server has, not a stale local
+   guess). */
+function syncSites(world){
+  const liveIds = new Set();
+  for (const t of (world && world.territories) || []) {
+    for (const s of t.sites || []) {
+      liveIds.add(s.id);
+      sites.set(s.id, { id: s.id, terr: t.id, branch: s.branch || '', module: s.module || '',
+        status: s.status || 'working', human: !!s.human, stalled: !!s.stalled, x: s.x, z: s.z, phase: 'live' });
+    }
+  }
+  for (const [id, s] of sites) if (s.phase === 'live' && !liveIds.has(id)) sites.delete(id);
+}
+/* siteRoad(id) -> {from:{x,y}, to:{x,y}, p} while merging (Worktrees: "the merge deputy lays a road or
+   bridge from the site to the town hall"): from just in front of the site office (within 1.6 tiles of
+   its own centre), to a stand near the hall (hallStand(t) -- the very point a citizen walks to), p
+   growing 0 -> 1 over SITE_MERGE_SEC. null once the site is not merging (live, packing, or gone). */
+function siteRoad(id){
+  const s = sites.get(id);
+  if (!s || s.phase !== 'merging') return null;
+  const t = terrOf(s.terr);
+  const cx = s.x + .5, cz = s.z + .5;
+  const to = t ? hallStand(t) : { x: cx, y: cz };
+  const since = s.endAt == null ? 0 : simT - s.endAt;
+  return { from: { x: cx, y: cz + .9 }, to: { x: to.x, y: to.y }, p: clamp(since / SITE_MERGE_SEC, 0, 1) };
+}
+/* siteDecor(site) -> [{key, x, z, ...}] (pure, v1 limits): live -- a low fence ring around the office
+   (people may step over it, so it is never a footprint), the branch sign, the site light (on unless
+   idle), scaffolding while working, a barrier + smoke while stalled, a flag while human-direct. merging
+   -- the same minus the fence (it "goes" first, before the lane and the packing). packing -- nothing
+   (the office itself is packing up and going). */
+function siteDecor(site){
+  if (!site || site.phase === 'packing') return [];
+  const cx = site.x + .5, cz = site.z + .5, out = [];
+  if (site.phase === 'live') {
+    const ring = [[-1.8, -1.8], [1.8, -1.8], [-1.8, 1.8], [1.8, 1.8], [0, -2], [0, 2], [-2, 0], [2, 0]];
+    for (const [dx, dz] of ring) out.push({ key: 'roads/construction-fence', x: cx + dx, z: cz + dz });
+  }
+  out.push({ key: 'survival/signpost-single', x: cx - .9, z: cz - .9, text: site.branch || '' });
+  out.push({ key: 'roads/construction-light', x: cx + .9, z: cz - .9, on: site.status !== 'idle' });
+  if (site.status === 'working') out.push({ key: 'survival/structure', x: cx, z: cz + .4 });
+  if (site.stalled) {
+    out.push({ key: 'roads/construction-barrier', x: cx - .9, z: cz + .9 });
+    out.push({ key: 'particles/smoke_01', x: cx, z: cz - .2 });
+  }
+  if (site.human) out.push({ key: 'forest/flag', x: cx + .9, z: cz + .9, label: '亲自带' });
+  return out;
+}
+/* DEMO_SITES (Worktrees: "#demo shows the sites, one of them stalled, so the owner can look without a
+   real worktree"): demo-only site configs. No coordinates here -- seedSites() (3D view, DEMO boot)
+   places them once the demo world exists and feeds them through apply() exactly like the real server
+   would, so sites/siteDecor/siteRoad above run the very same path live and in demo. */
+const DEMO_SITES = [
+  { id: 'demo-site-a', branch: 'feat-checkout', module: 'checkout', status: 'working', human: false, stalled: true },
+  { id: 'demo-site-b', branch: 'hotfix-invoice', module: 'invoice', status: 'working', human: true, stalled: false },
+];
+/* topCounts() -> [[label, n], ...]: the top bar's own numbers (requirements/city.md, Interaction: "top
+   counts stay: 干活, 找总督, 休息, 建成"), then Worktrees' own 卡住的工地 (stalled live sites), only when
+   there is at least one -- reward, never punish (never a 0 chip sitting there on a calm day).
+   renderStats (3D view) draws straight from this, never recomputes its own counts. */
+function topCounts(){
+  let work = 0, ask = 0, rest = 0;
+  for (const c of citizens) { const g = STATE[c.state][0]; if (g === 'ask') ask++; else if (g === 'rest') rest++; else if (c.state !== 'leaving') work++; }
+  const done = buildings.filter(b => b.done).length;
+  const out = [['干活', work], ['找总督', ask], ['休息', rest], ['建成', done]];
+  let stalled = 0;
+  for (const s of sites.values()) if (s.phase === 'live' && s.stalled) stalled++;
+  if (stalled > 0) out.push(['卡住的工地', stalled]);
+  return out;
+}
 /* Growth: each plan's terrain changes the look only (ground/path colour, and which plants grow on wild tiles).
    wild = the untouched land before a territory claims it; ground = claimed land, always a different shade.
    city-people: also wildDecor's own source of which plant/pine/rock models cover a tile -- lives here (not
@@ -1890,6 +1977,7 @@ function apply(ev){
       // first camera home is the governor's own hall, not whichever territory happens to sort first.
       if (ev.gov && ev.gov.terr) govTerr = ev.gov.terr;
       if (ev.world) buildLand(ev.world); else if (ev.gov && ev.gov.terr) updateHome();
+      if (ev.world) syncSites(ev.world); // Worktrees: every territory's own "sites" list, phase 'live'
       if (ev.world) { lastBalanceKey = ''; renderBalance(); }
       if (ev.notice) log(ev.notice);
       for (const old of citizens) applyAsk(old, null);
@@ -1906,8 +1994,28 @@ function apply(ev){
     }
     case 'world': {
       buildLand(ev.world);
+      syncSites(ev.world); // Worktrees: same rule as the snapshot's own world
       lastBalanceKey = ''; renderBalance();
       if (ev.notice) log(ev.notice);
+      return null;
+    }
+    case 'site': {
+      // Worktrees: a new or changed live site (CityState scan_sites) -- always phase 'live', an upsert.
+      sites.set(ev.id, { id: ev.id, terr: ev.terr, branch: ev.branch || '', module: ev.module || '',
+        status: ev.status || 'working', human: !!ev.human, stalled: !!ev.stalled, x: ev.x, z: ev.z, phase: 'live' });
+      if (typeof syncSiteMesh === 'function') syncSiteMesh(ev.id);
+      return null;
+    }
+    case 'site_end': {
+      // Worktrees: the worktree is gone server-side -- merged (a lane grows to the hall, then it packs
+      // up) or removed (straight to packing); site_end's own x/z keep the office tile the animation runs
+      // from, in case the site record was never seen live on this page (a page opened after the fact).
+      const phase = ev.how === 'merged' ? 'merging' : 'packing';
+      const prev = sites.get(ev.id);
+      if (prev) Object.assign(prev, { phase, endAt: simT, x: ev.x != null ? ev.x : prev.x, z: ev.z != null ? ev.z : prev.z });
+      else sites.set(ev.id, { id: ev.id, terr: ev.terr, branch: '', module: '', status: 'working', human: false,
+        stalled: false, x: ev.x, z: ev.z, phase, endAt: simT });
+      if (typeof syncSiteMesh === 'function') syncSiteMesh(ev.id);
       return null;
     }
     case 'era': {
@@ -2219,6 +2327,17 @@ function update(dt){
     if (!b.done) { b.shown = Math.min(1, (simT - b.risenAt) * .8); if (b.shown >= 1) { b.done = true; b.popAt = simT; } }
   }
   for (let i = floaters.length - 1; i >= 0; i--) if (simT - floaters[i].t0 > 1.2) { const f = floaters[i]; if (f.el) f.el.remove(); floaters.splice(i, 1); }
+  // Worktrees: a merging site's lane finishes growing, a packing site finishes packing -- SITE_MERGE_SEC /
+  // SITE_PACK_SEC after its own site_end (s.endAt), it is gone (removed straight from the sites map: no
+  // 3D mesh, no fence, nothing left for it to be -- syncAllSiteMeshes drops its meshes on the next sync).
+  for (const [id, s] of sites) {
+    if (s.endAt == null) continue;
+    const timedOut = (s.phase === 'merging' && simT - s.endAt >= SITE_MERGE_SEC) ||
+      (s.phase === 'packing' && simT - s.endAt >= SITE_PACK_SEC);
+    if (!timedOut) continue;
+    sites.delete(id);
+    if (typeof syncSiteMesh === 'function') syncSiteMesh(id); // 3D view: drop its meshes the moment it is gone
+  }
   if (DEMO) spawner();
 }
 
@@ -2338,8 +2457,9 @@ const MODELS = [
   'nature/cactus_short', 'nature/cactus_tall', 'nature/tree_pineSmallA', 'nature/tree_pineSmallB', 'nature/tree_palmShort',
   'nature/rock_smallA', 'nature/rock_smallB',
   'fantasy/fountain-round', 'fantasy/lantern',
-  'survival/structure', 'survival/tool-hammer', 'survival/resource-planks',
-  'roads/construction-cone', 'roads/road-sign-street', 'roads/traffic-light', 'forest/flag', 'forest/patch-grass',
+  'survival/structure', 'survival/tool-hammer', 'survival/resource-planks', 'survival/signpost-single',
+  'roads/construction-cone', 'roads/construction-fence', 'roads/construction-light', 'roads/construction-barrier',
+  'roads/road-sign-street', 'roads/traffic-light', 'forest/flag', 'forest/patch-grass',
   'pets/animal-chick', 'pets/animal-cat', 'pets/animal-dog',
   // city-people: KayKit stand-ins (rest place, site office, systems) and the Kenney parasols (restored
   // from git, never hand-drawn shapes -- owner 2026-09-25). Each pack folder carries its own CC0 License.txt.
@@ -2380,7 +2500,7 @@ const ROCK_GREY = '#8A8A86';
 const RAVINE_FLOOR = '#33312F';
 const WATER_COLOR = '#3E86C4';
 /* #demo / file://: exactly `python3 bin/agent_city.py demo-world` prints (tests/test_agent_city_world.py) */
-const DEMO_WORLD = {"cell": 26, "x0": -13, "z0": -13, "w": 52, "h": 52, "rows": ["                                                    ", "                          .                         ", "       . .              ..ww               ..       ", "     .......      .   ....ww.  .   .     ....       ", "   .........    . ... ...ww.........   .......      ", "   .....................ww..........g  ggrgggg.     ", "  ......................ww......grggggggPrggggg     ", "   .....................ww.....ggrgPrPgggrPggg      ", "  ......................ww.....ggrPgrgggPrgggr      ", "   .........grP..........ww....gPrgPrPgPgrPgPrg.    ", "    ......rrrrrr.........ww....rrrrrrrrrrrrrrrP.    ", "      ...Prggggr........ww....gggrPgrggggrgPgrgg.   ", "      ...rrgHHgrP.......ww....gggrgPrgHHgrPgPrPg    ", "     .....rgHHgrrttttttBBtttt.gggrPgrgHHgrgggrgg.   ", "    ......rggggr.......ww...t.gggrgPrggggrPgPrPg.   ", "    ......rrrrrr.......ww...t.gggrPgrrrrrrgggrgg.   ", "    ........rP.........ww...t..ggrgPrgPgPrPgPrg..   ", "   .........t.Pr........ww..t...grbgrPgPgrgPgrg...  ", "    ........t............wwbttttbbbbrrrrrrrrrr...b  ", "    ........t............wbb.bbbbbsbbgPgPggg...b.   ", "     .......t.............bsbbbbssssbgbgg.bb...bs   ", "   .........t.............ssbssssssssbbbbbbbbbbss   ", "  ..........t.............sssssssssssbsbbbssbbss    ", " ...........tmm...........ssssssssssssssssssssss    ", "  .mmmmmmmmmtmmm..........sssssssssssssssssssssss   ", " .mmmmmmmmmmt..mmm........ssssssssssssssssssssssss  ", "  m.........t...mmmmmmm     ssssssssssssssssssssss  ", "   .........t.....mmmm      ssssssssssssssssssss    ", "    ........tt.......          sssssssssssssssss    ", "    .........t.......           ssssssssssssss      ", "   ..........t.......               s  sssssss      ", "    .........t.......                   sss         ", "    .......rrrr......                    s          ", "     .....ggPgg........                             ", "    .....ggggggg........                            ", "      ...gPgPgPgP........                           ", "      ..rrrrrrrrrr.....                             ", "     ...ggrggggPgPgg....                            ", "   ....ggPrgHHgggggg...                             ", "   ....gggrgHHgggggg....                            ", "   ....ggPrggggPgPg...                              ", "  .....rrrrrrrrrrr.....                             ", "  ......gPgPgPgPg.......                            ", "  ........ggggggg.......                            ", "    ........gggg.......                             ", "   ...........r......                               ", "   ....... ..........                               ", "  .......   ........                                ", "    ....       ..                                   ", "                                                    ", "                                                    ", "                                                    "], "territories": [{"id": "4d5d7e95", "name": "auto-pipeline", "plan": "meadow", "terrain": "grassland", "slot": [0, 0], "cx": 0, "cz": 0, "lines": 500, "size": 0.24212512553021587, "r": 3.522238341052446, "open": 5, "plots_total": 36, "plots": [{"k": 0, "x": 0, "z": 3, "d": "house"}, {"k": 2, "x": 1, "z": -4, "d": "tower"}, {"k": 3, "x": 3, "z": -1, "d": "shop"}, {"k": 4, "x": -4, "z": -2, "d": "library"}, {"k": 11, "x": 1, "z": 4, "d": "workshop"}], "buildings": [], "era": "village", "balance": {"build": {"state": "healthy", "value": 500, "n": 3, "text": "500 \u884c\u4ee3\u7801"}, "rules": {"state": "missing", "value": 0, "n": 0, "text": "\u8fd8\u6ca1\u6709"}, "beauty": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 1.0, "n": 1, "text": "1/1 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u6587\u4ef6"}}, "next": ["\u89c4\u6a21", "\u89c4\u5219"], "rules_note": "", "offices": [], "rest": null}, {"id": "8329562e", "name": "v4-plus", "plan": "harbor", "terrain": "coast", "slot": [1, 0], "cx": 26, "cz": 0, "lines": 1000000, "size": 1.0, "r": 8.6, "open": 35, "plots_total": 35, "plots": [{"k": 0, "x": 22, "z": -1, "d": "workshop"}, {"k": 1, "x": 26, "z": -4, "d": "tower"}, {"k": 2, "x": 29, "z": -1, "d": "house"}, {"k": 3, "x": 22, "z": 1, "d": "workshop"}, {"k": 4, "x": 29, "z": 1, "d": "house"}, {"k": 5, "x": 24, "z": -4, "d": "library"}, {"k": 6, "x": 25, "z": 3, "d": "shop"}, {"k": 7, "x": 21, "z": 0, "d": "workshop"}, {"k": 8, "x": 27, "z": 3, "d": "shop"}, {"k": 9, "x": 30, "z": -2, "d": "house"}, {"k": 10, "x": 21, "z": -2, "d": "workshop"}, {"k": 11, "x": 27, "z": -5, "d": "tower"}, {"k": 12, "x": 29, "z": -4, "d": "tower"}, {"k": 13, "x": 22, "z": -4, "d": "library"}, {"k": 14, "x": 21, "z": 2, "d": "workshop"}, {"k": 15, "x": 31, "z": -1, "d": "house"}, {"k": 16, "x": 22, "z": 3, "d": "workshop"}, {"k": 17, "x": 26, "z": 4, "d": "shop"}, {"k": 18, "x": 29, "z": 3, "d": "shop"}, {"k": 19, "x": 24, "z": 4, "d": "shop"}, {"k": 20, "x": 31, "z": 1, "d": "house"}, {"k": 21, "x": 24, "z": -6, "d": "library"}, {"k": 22, "x": 31, "z": -4, "d": "tower"}, {"k": 23, "x": 27, "z": -7, "d": "tower"}, {"k": 24, "x": 21, "z": -5, "d": "library"}, {"k": 25, "x": 29, "z": -6, "d": "tower"}, {"k": 26, "x": 31, "z": 3, "d": "house"}, {"k": 27, "x": 30, "z": 4, "d": "shop"}, {"k": 28, "x": 22, "z": -6, "d": "library"}, {"k": 29, "x": 33, "z": -1, "d": "house"}, {"k": 30, "x": 19, "z": -4, "d": "library"}, {"k": 31, "x": 33, "z": -3, "d": "house"}, {"k": 32, "x": 33, "z": 1, "d": "house"}, {"k": 33, "x": 25, "z": 6, "d": "shop"}, {"k": 34, "x": 27, "z": 6, "d": "shop"}], "buildings": [{"plot": 6, "type": "shop", "by": "worker", "x": 25, "z": 3}, {"plot": 1, "type": "tower", "by": "worker", "x": 26, "z": -4}], "era": "city", "balance": {"build": {"state": "healthy", "value": 1000000, "n": 400, "text": "1,000,000 \u884c\u4ee3\u7801"}, "rules": {"state": "healthy", "value": 0.8, "n": 320, "text": "80% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 40, "n": 40, "text": "40 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 3.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.9, "n": 36, "text": "36/40 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 20, "n": 20, "text": "20 \u4e2a\u6587\u4ef6"}}, "next": [], "rules_note": "", "offices": [], "rest": null}, {"id": "db8c2db6", "name": "pos-lite", "plan": "ridge", "terrain": "mountain", "slot": [0, 1], "cx": 0, "cz": 26, "lines": 20000, "size": 0.6052343817819053, "r": 5.955070357938764, "open": 15, "plots_total": 37, "plots": [{"k": 0, "x": 2, "z": 24, "d": "workshop"}, {"k": 1, "x": -1, "z": 22, "d": "tower"}, {"k": 2, "x": 2, "z": 27, "d": "shop"}, {"k": 3, "x": 0, "z": 29, "d": "house"}, {"k": 4, "x": -4, "z": 27, "d": "house"}, {"k": 5, "x": -4, "z": 25, "d": "library"}, {"k": 6, "x": -3, "z": 22, "d": "library"}, {"k": 7, "x": 1, "z": 22, "d": "tower"}, {"k": 8, "x": -2, "z": 29, "d": "house"}, {"k": 9, "x": 4, "z": 24, "d": "workshop"}, {"k": 10, "x": 2, "z": 29, "d": "shop"}, {"k": 11, "x": -1, "z": 20, "d": "tower"}, {"k": 12, "x": 4, "z": 27, "d": "shop"}, {"k": 13, "x": -4, "z": 29, "d": "house"}, {"k": 14, "x": 3, "z": 22, "d": "workshop"}], "buildings": [{"plot": 3, "type": "house", "by": "worker", "x": 0, "z": 29}], "era": "town", "balance": {"build": {"state": "healthy", "value": 20000, "n": 60, "text": "20,000 \u884c\u4ee3\u7801"}, "rules": {"state": "low", "value": 0.3, "n": 18, "text": "30% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 6, "n": 8, "text": "6 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.5 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.6, "n": 12, "text": "12/20 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 4, "n": 4, "text": "4 \u4e2a\u6587\u4ef6"}}, "next": ["\u89c4\u5219"], "rules_note": "", "offices": [], "rest": null}], "links": [{"a": "4d5d7e95", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[10, 0], [11, 0]]}, {"a": "4d5d7e95", "b": "db8c2db6", "gap": "pass", "kind": "road", "cross": [[-1, 10], [-1, 11]]}]};
+const DEMO_WORLD = {"cell": 26, "x0": -13, "z0": -13, "w": 52, "h": 52, "rows": ["                                                    ", "                          .                         ", "       . .              ..ww               ..       ", "     .......      .   ....ww.  .   .     ....       ", "   .........    . ... ...ww.........   .......      ", "   .....................ww..........g  ggrgggg.     ", "  ......................ww......grggggggPrggggg     ", "   .....................ww.....ggrgPrPgggrPggg      ", "  ......................ww.....ggrPgrgggPrgggr      ", "   .........grP..........ww....gPrgPrPgPgrPgPrg.    ", "    ......rrrrrr.........ww....rrrrrrrrrrrrrrrP.    ", "      ...Prggggr........ww....gggrPgrggggrgPgrgg.   ", "      ...rrgHHgrP.......ww....gggrgPrgHHgrPgPrPg    ", "     .....rgHHgrrttttttBBtttt.gggrPgrgHHgrgggrgg.   ", "    ......rggggr.......ww...t.gggrgPrggggrPgPrPg.   ", "    ......rrrrrr.......ww...t.gggrPgrrrrrrgggrgg.   ", "    ........rP.........ww...t..ggrgPrgPgPrPgPrg..   ", "   .........t.Pr........ww..t...grbgrPgPgrgPgrg...  ", "    ........t............wwbttttbbbbrrrrrrrrrr...b  ", "    ........t............wbb.bbbbbsbbgPgPggg...b.   ", "     .......t.............bsbbbbssssbgbgg.bb...bs   ", "   .........t.............ssbssssssssbbbbbbbbbbss   ", "  ..........t.............sssssssssssbsbbbssbbss    ", " ...........tmm...........ssssssssssssssssssssss    ", "  .mmmmmmmmmtmmm..........sssssssssssssssssssssss   ", " .mmmmmmmmmmt..mmm........ssssssssssssssssssssssss  ", "  m.........t...mmmmmmm     ssssssssssssssssssssss  ", "   .........t.....mmmm      ssssssssssssssssssss    ", "    ........tt.......          sssssssssssssssss    ", "    .........t.......           ssssssssssssss      ", "   ..........t.......               s  sssssss      ", "    .........t.......                   sss         ", "    .......rrrr......                    s          ", "     .....ggPgg........                             ", "    .....ggggggg........                            ", "      ...gPgPgPgP........                           ", "      ..rrrrrrrrrr.....                             ", "     ...ggrggggPgPgg....                            ", "   ....ggPrgHHgggggg...                             ", "   ....gggrgHHgggggg....                            ", "   ....ggPrggggPgPg...                              ", "  .....rrrrrrrrrrr.....                             ", "  ......gPgPgPgPg.......                            ", "  ........ggggggg.......                            ", "    ........gggg.......                             ", "   ...........r......                               ", "   ....... ..........                               ", "  .......   ........                                ", "    ....       ..                                   ", "                                                    ", "                                                    ", "                                                    "], "territories": [{"id": "4d5d7e95", "name": "auto-pipeline", "plan": "meadow", "terrain": "grassland", "slot": [0, 0], "cx": 0, "cz": 0, "lines": 500, "size": 0.24212512553021587, "r": 3.522238341052446, "open": 5, "plots_total": 36, "plots": [{"k": 0, "x": 0, "z": 3, "d": "house"}, {"k": 2, "x": 1, "z": -4, "d": "tower"}, {"k": 3, "x": 3, "z": -1, "d": "shop"}, {"k": 4, "x": -4, "z": -2, "d": "library"}, {"k": 11, "x": 1, "z": 4, "d": "workshop"}], "buildings": [], "era": "village", "balance": {"build": {"state": "healthy", "value": 500, "n": 3, "text": "500 \u884c\u4ee3\u7801"}, "rules": {"state": "missing", "value": 0, "n": 0, "text": "\u8fd8\u6ca1\u6709"}, "beauty": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 1.0, "n": 1, "text": "1/1 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u6587\u4ef6"}}, "next": ["\u89c4\u6a21", "\u89c4\u5219"], "rules_note": "", "offices": [], "rest": null, "sites": []}, {"id": "8329562e", "name": "v4-plus", "plan": "harbor", "terrain": "coast", "slot": [1, 0], "cx": 26, "cz": 0, "lines": 1000000, "size": 1.0, "r": 8.6, "open": 35, "plots_total": 35, "plots": [{"k": 0, "x": 22, "z": -1, "d": "workshop"}, {"k": 1, "x": 26, "z": -4, "d": "tower"}, {"k": 2, "x": 29, "z": -1, "d": "house"}, {"k": 3, "x": 22, "z": 1, "d": "workshop"}, {"k": 4, "x": 29, "z": 1, "d": "house"}, {"k": 5, "x": 24, "z": -4, "d": "library"}, {"k": 6, "x": 25, "z": 3, "d": "shop"}, {"k": 7, "x": 21, "z": 0, "d": "workshop"}, {"k": 8, "x": 27, "z": 3, "d": "shop"}, {"k": 9, "x": 30, "z": -2, "d": "house"}, {"k": 10, "x": 21, "z": -2, "d": "workshop"}, {"k": 11, "x": 27, "z": -5, "d": "tower"}, {"k": 12, "x": 29, "z": -4, "d": "tower"}, {"k": 13, "x": 22, "z": -4, "d": "library"}, {"k": 14, "x": 21, "z": 2, "d": "workshop"}, {"k": 15, "x": 31, "z": -1, "d": "house"}, {"k": 16, "x": 22, "z": 3, "d": "workshop"}, {"k": 17, "x": 26, "z": 4, "d": "shop"}, {"k": 18, "x": 29, "z": 3, "d": "shop"}, {"k": 19, "x": 24, "z": 4, "d": "shop"}, {"k": 20, "x": 31, "z": 1, "d": "house"}, {"k": 21, "x": 24, "z": -6, "d": "library"}, {"k": 22, "x": 31, "z": -4, "d": "tower"}, {"k": 23, "x": 27, "z": -7, "d": "tower"}, {"k": 24, "x": 21, "z": -5, "d": "library"}, {"k": 25, "x": 29, "z": -6, "d": "tower"}, {"k": 26, "x": 31, "z": 3, "d": "house"}, {"k": 27, "x": 30, "z": 4, "d": "shop"}, {"k": 28, "x": 22, "z": -6, "d": "library"}, {"k": 29, "x": 33, "z": -1, "d": "house"}, {"k": 30, "x": 19, "z": -4, "d": "library"}, {"k": 31, "x": 33, "z": -3, "d": "house"}, {"k": 32, "x": 33, "z": 1, "d": "house"}, {"k": 33, "x": 25, "z": 6, "d": "shop"}, {"k": 34, "x": 27, "z": 6, "d": "shop"}], "buildings": [{"plot": 6, "type": "shop", "by": "worker", "x": 25, "z": 3}, {"plot": 1, "type": "tower", "by": "worker", "x": 26, "z": -4}], "era": "city", "balance": {"build": {"state": "healthy", "value": 1000000, "n": 400, "text": "1,000,000 \u884c\u4ee3\u7801"}, "rules": {"state": "healthy", "value": 0.8, "n": 320, "text": "80% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 40, "n": 40, "text": "40 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 3.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.9, "n": 36, "text": "36/40 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 20, "n": 20, "text": "20 \u4e2a\u6587\u4ef6"}}, "next": [], "rules_note": "", "offices": [], "rest": null, "sites": []}, {"id": "db8c2db6", "name": "pos-lite", "plan": "ridge", "terrain": "mountain", "slot": [0, 1], "cx": 0, "cz": 26, "lines": 20000, "size": 0.6052343817819053, "r": 5.955070357938764, "open": 15, "plots_total": 37, "plots": [{"k": 0, "x": 2, "z": 24, "d": "workshop"}, {"k": 1, "x": -1, "z": 22, "d": "tower"}, {"k": 2, "x": 2, "z": 27, "d": "shop"}, {"k": 3, "x": 0, "z": 29, "d": "house"}, {"k": 4, "x": -4, "z": 27, "d": "house"}, {"k": 5, "x": -4, "z": 25, "d": "library"}, {"k": 6, "x": -3, "z": 22, "d": "library"}, {"k": 7, "x": 1, "z": 22, "d": "tower"}, {"k": 8, "x": -2, "z": 29, "d": "house"}, {"k": 9, "x": 4, "z": 24, "d": "workshop"}, {"k": 10, "x": 2, "z": 29, "d": "shop"}, {"k": 11, "x": -1, "z": 20, "d": "tower"}, {"k": 12, "x": 4, "z": 27, "d": "shop"}, {"k": 13, "x": -4, "z": 29, "d": "house"}, {"k": 14, "x": 3, "z": 22, "d": "workshop"}], "buildings": [{"plot": 3, "type": "house", "by": "worker", "x": 0, "z": 29}], "era": "town", "balance": {"build": {"state": "healthy", "value": 20000, "n": 60, "text": "20,000 \u884c\u4ee3\u7801"}, "rules": {"state": "low", "value": 0.3, "n": 18, "text": "30% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 6, "n": 8, "text": "6 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.5 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.6, "n": 12, "text": "12/20 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 4, "n": 4, "text": "4 \u4e2a\u6587\u4ef6"}}, "next": ["\u89c4\u5219"], "rules_note": "", "offices": [], "rest": null, "sites": []}], "links": [{"a": "4d5d7e95", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[10, 0], [11, 0]]}, {"a": "4d5d7e95", "b": "db8c2db6", "gap": "pass", "kind": "road", "cross": [[-1, 10], [-1, 11]]}]};
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, powerPreference:'low-power' });
 renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
@@ -2498,6 +2618,9 @@ function tintedMat(base, hex){
    city-land: a gaussian land field + marching squares replaces the flat 1x1 tile grid — approved mock
    mock/city-land-mock.html; roads and tracks are no longer coloured here, laneGeometry draws them). ---------- */
 const landGroup = new THREE.Group(); world.add(landGroup);
+// Worktrees: site meshes live in their own group, never cleared by buildLand's landGroup rebuild (every
+// world event) -- a merging/packing site keeps animating through a world event that no longer lists it.
+const siteGroup = new THREE.Group(); world.add(siteGroup);
 let firstViewDone = false; // only the first world with a territory sends the camera home; a later one never snaps it back
 const isLand = ch => !' wsBk'.includes(ch);
 const isWater = ch => ch === 'w' || ch === 's' || ch === 'B';
@@ -2868,6 +2991,143 @@ function buildLand(view){
   updateHome(); // the world changed: look at a town hall, never at the empty middle of the land (landState() already did this; harmless twice)
   if (!firstViewDone && territories.length && lastTouch === -Infinity) { firstViewDone = true; resetCam(); } // only the first world with a territory goes home; a later one never snaps the camera back
   scanTall();
+  syncAllSiteMeshes(); // Worktrees: every current site (sites map, not just this view's own) gets its meshes
+}
+
+/* ---------- Worktrees: site meshes (fence/sign/light/scaffold/barrier/flag), the merge lane and the
+   stalled smoke, all in siteGroup (never cleared by buildLand's own landGroup rebuild -- a merging or
+   packing site keeps animating through a world event that no longer lists it, city-worktrees CityState).
+   Cost (requirements/city.md, Limits): meshes are only ever rebuilt when a site's own decor-relevant
+   fields change (siteMeshSig) -- a per-frame call (updateSiteFrames) only ever touches transforms and
+   opacity (smoke puffs, the merge lane's own growth), never geometry. ---------- */
+const siteMeshes = new Map(); // id -> {sig, objs:[Object3D...], road, smoke:[{sprite,t0}]}
+let smokeTex = null;
+const SMOKE_CYCLE = 2.4; // seconds a puff takes to rise and fully fade, then it starts over
+function siteMeshSig(s){ return [s.phase, s.status, s.stalled, s.human, s.branch, s.x, s.z].join('|'); }
+function removeSiteMesh(rec){
+  for (const o of rec.objs) { if (o.parent) o.parent.remove(o); }
+  if (rec.road && rec.road.parent) rec.road.parent.remove(rec.road);
+  for (const p of rec.smoke || []) if (p.sprite.parent) p.sprite.parent.remove(p.sprite);
+}
+/* a thin flat lane segment, grown by scale/position/rotation only (updateSiteFrames) -- never a fresh
+   geometry per frame (Limits: keep frame cost low). Colour: the site's own territory road colour
+   (ERA_LOOK[eraShown(t)].road), the same lane colour laneGeometry paints everywhere else. */
+function makeRoadMesh(terr){
+  const t = terrOf(terr), color = t ? eraLook(t).road : TRACK_COLOR;
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, .04, 1), new THREE.MeshLambertMaterial({ color }));
+  mesh.receiveShadow = true;
+  siteGroup.add(mesh);
+  return mesh;
+}
+function updateRoadMesh(mesh, from, to, p){
+  const dx = to.x - from.x, dz = to.y - from.y, full = Math.hypot(dx, dz) || .001, len = full * clamp(p, 0, 1);
+  mesh.visible = len > .05;
+  if (!mesh.visible) return;
+  mesh.position.set(from.x + (dx / full) * len / 2, .02, from.y + (dz / full) * len / 2);
+  mesh.rotation.y = Math.atan2(dx, dz);
+  mesh.scale.set(.6, 1, Math.max(.05, len));
+}
+/* syncSiteMesh(id): rebuild one site's static meshes only when siteMeshSig changed (or it is new); a
+   gone site (not in the sites map any more) drops its meshes. Called from apply()'s 'site'/'site_end'
+   (an immediate reaction, no world event needed) and from syncAllSiteMeshes (buildLand). */
+function syncSiteMesh(id){
+  const site = sites.get(id);
+  const prev = siteMeshes.get(id);
+  if (!site) { if (prev) removeSiteMesh(prev); siteMeshes.delete(id); return; }
+  const sig = siteMeshSig(site);
+  if (prev && prev.sig === sig) return; // nothing a rebuild would change -- keep the meshes as they are
+  if (prev) removeSiteMesh(prev);
+  const rec = { sig, objs: [], road: prev ? prev.road : null, smoke: (prev && prev.smoke) || [] };
+  for (const d of siteDecor(site)) {
+    if (d.key === 'particles/smoke_01') continue; // its own puffs, made once below, animated every frame
+    const bare = d.key.split('/')[1];
+    if (!lib[bare]) continue; // never crash on a stray/unloaded key
+    const g = place(bare, d.x, d.z, { fit: .8, parent: siteGroup });
+    rec.objs.push(g);
+    if (d.key === 'survival/signpost-single') { ensureSiteSign(id).text = d.text; rec.signAt = { x: d.x, z: d.z + .55 }; }
+  }
+  const smokeSpot = siteDecor(site).find(d => d.key === 'particles/smoke_01');
+  if (smokeSpot) {
+    while (rec.smoke.length < 3) rec.smoke.push({ sprite: makeSmokeSprite(), t0: Math.random() * SMOKE_CYCLE });
+    for (const p of rec.smoke) { p.spot = smokeSpot; if (!p.sprite.parent) siteGroup.add(p.sprite); }
+  } else {
+    for (const p of rec.smoke) if (p.sprite.parent) p.sprite.parent.remove(p.sprite);
+    rec.smoke = [];
+  }
+  if (site.phase === 'merging') { if (!rec.road) rec.road = makeRoadMesh(site.terr); }
+  else if (rec.road) { rec.road.parent && rec.road.parent.remove(rec.road); rec.road = null; }
+  siteMeshes.set(id, rec);
+  if (!rec.signAt) removeSiteSign(id);
+}
+function syncAllSiteMeshes(){
+  for (const id of sites.keys()) syncSiteMesh(id);
+  for (const id of [...siteMeshes.keys()]) if (!sites.has(id)) syncSiteMesh(id);
+}
+function makeSmokeSprite(){
+  const mat = new THREE.SpriteMaterial({ map: smokeTex, transparent: true, opacity: 0, depthWrite: false });
+  const s = new THREE.Sprite(mat);
+  s.scale.set(.7, .7, 1);
+  return s;
+}
+/* per-frame animation only (Limits: keep frame cost low) -- called from sync() every frame: the merge
+   lane's own growth (siteRoad's p) and the stalled smoke puffs (rising, fading, looping). */
+function updateSiteFrames(dt){
+  for (const [id, rec] of siteMeshes) {
+    if (rec.road) { const r = siteRoad(id); if (r) updateRoadMesh(rec.road, r.from, r.to, r.p); else rec.road.visible = false; }
+    for (const p of rec.smoke) {
+      p.t0 += dt;
+      const k = (p.t0 % SMOKE_CYCLE) / SMOKE_CYCLE;
+      if (p.spot) p.sprite.position.set(p.spot.x, .3 + k * 1.1, p.spot.z);
+      p.sprite.material.opacity = (1 - k) * .5;
+    }
+  }
+}
+/* the branch sign's own text (Worktrees: "reuse the page's existing text-label/sprite approach for
+   names") -- one .lbl overlay per site, same ovEl()/pin()/toScreen() pattern as landOverlays' territory
+   name labels; pinSiteSigns() (sync()) positions and shows/hides them every frame. */
+const siteSigns = new Map();
+function ensureSiteSign(id){
+  let s = siteSigns.get(id);
+  if (!s) { s = { el: ovEl('lbl'), x: 0, z: 0, text: '' }; siteSigns.set(id, s); }
+  return s;
+}
+function removeSiteSign(id){
+  const s = siteSigns.get(id);
+  if (s) { s.el.remove(); siteSigns.delete(id); }
+}
+function pinSiteSigns(){
+  for (const [id, rec] of siteMeshes) {
+    if (!rec.signAt) continue;
+    const sign = siteSigns.get(id); if (!sign) continue;
+    sign.x = rec.signAt.x; sign.z = rec.signAt.z;
+    setText(sign.el, sign.text);
+    const [sx, sy] = toScreen(sign.x, 1.1, sign.z);
+    pin(sign.el, sx, sy, true);
+  }
+  for (const id of [...siteSigns.keys()]) if (!siteMeshes.has(id) || !siteMeshes.get(id).signAt) removeSiteSign(id);
+}
+/* Worktrees Demo: DEMO_SITES placed at two of the demo world's own free ground tiles (offsets picked by
+   hand off its 'meadow' plan -- 4d5d7e95's own free 'g' tiles around its hall, never a plot or the hall
+   itself), fed through the same apply({type:'world'}) path a real worktree site takes, so everything
+   above runs the very same code live and in demo. Optionally merges the stalled one after a while, so
+   the owner also sees a site finish (requirements/city.md, Worktrees). */
+function seedSites(){
+  const t = DEMO_WORLD.territories && DEMO_WORLD.territories[0];
+  if (!t) return;
+  const offs = [[-2, -2], [1, 1]];
+  t.offices = (t.offices || []).slice();
+  t.sites = [];
+  DEMO_SITES.forEach((s, i) => {
+    const [dx, dz] = offs[i] || offs[offs.length - 1];
+    s.terr = t.id; s.x = t.cx + dx; s.z = t.cz + dz;
+    t.offices.push({ lead: '', site: s.id, x: s.x, z: s.z });
+    t.sites.push({ id: s.id, branch: s.branch, module: s.module, status: s.status, human: s.human, stalled: s.stalled, x: s.x, z: s.z });
+  });
+  apply({ type: 'world', world: DEMO_WORLD });
+  setTimeout(() => {
+    const s = DEMO_SITES[0];
+    if (s && sites.has(s.id)) apply({ type: 'site_end', terr: s.terr, id: s.id, how: 'merged', x: s.x, z: s.z });
+  }, 45000);
 }
 
 /* ---------- river life and pets: animated ready-made models ---------- */
@@ -3541,6 +3801,8 @@ function sync(t, dt){
     f.el.style.opacity = String(clamp(1.3 - k * 1.3, 0, 1));
     pin(f.el, sx + 22, sy, true);
   }
+  updateSiteFrames(dt); // Worktrees: the merge lane's own growth, the stalled smoke -- transforms/opacity only
+  pinSiteSigns();
   pinLandOverlays();
 }
 /* ---------- panel ---------- */
@@ -3550,12 +3812,12 @@ const clock = t => new Date(BASE + t * 1000).toTimeString().slice(0, 8);
 const pct = c => c.bld ? Math.round((c.bld.done ? 1 : c.bld.shown) * 100) : 0;
 const ORDER = { ask:0, build:1, walk:2, rest:3 };
 function renderStats(){
-  let work = 0, ask = 0, rest = 0;
-  for (const c of citizens) { const g = STATE[c.state][0]; if (g === 'ask') ask++; else if (g === 'rest') rest++; else if (c.state !== 'leaving') work++; }
-  const done = buildings.filter(b => b.done).length;
   const waiting = openAskCount();
-  const html = [['#5AA9F0','干活',work],['#FF6F8B','找总督',ask],['#43C58B','休息',rest],['#FFC23D','建成',done]]
-    .map(([c, l, n]) => `<span class="stat"><i style="background:${c}"></i>${l} <b>${n}</b></span>`).join('')
+  // Worktrees: topCounts()'s own colours -- 干活/找总督/休息/建成 as before, plus 卡住的工地's, only ever
+  // appended when there is one (topCounts() itself decides whether it shows at all; renderStats only
+  // ever draws whatever it hands back).
+  const COLOR = { '干活':'#5AA9F0', '找总督':'#FF6F8B', '休息':'#43C58B', '建成':'#FFC23D', '卡住的工地':'#E8833A' };
+  const html = topCounts().map(([l, n]) => `<span class="stat"><i style="background:${COLOR[l]}"></i>${l} <b>${n}</b></span>`).join('')
     + `<button class="stat wait" type="button" id="next" ${waiting ? '' : 'disabled'} aria-label="等你决定 ${waiting} 个，点开最早的一个">等你 <b>${waiting}</b></button>`;
   if ($('#stats').innerHTML !== html) $('#stats').innerHTML = html;
 }
@@ -4097,6 +4359,7 @@ function seed(){
   govTerr = (map.territories && map.territories[0] && map.territories[0].id) || null;
   updateHome();
   for (const role of ['worker', 'task-manager', 'fast-lane-deputy', 'worker']) spawnDemo(role);
+  seedSites(); // Worktrees: DEMO_SITES, so #demo shows a construction site (one stalled) with no real worktree
 }
 
 /* ---------- boot: load the ready-made models, then run at a capped frame rate ---------- */
@@ -4131,8 +4394,10 @@ function frame(now){
 resize(); resetCam(); updateCamera();
 Promise.all([
   loadAll((n, total) => { $('#loading-text').textContent = `正在搬来素材 ${n}/${total}`; }),
+  loadTex('particles/smoke_01.png'), // Worktrees: the stalled-site smoke sprites (siteDecor's 'particles/smoke_01')
   ...['suburban/Textures/variation-a.png', 'suburban/Textures/variation-b.png', 'suburban/Textures/variation-c.png'].map(loadTex),
-]).then(([, ...tex]) => {
+]).then(([, smoke, ...tex]) => {
+  smokeTex = smoke;
   tex.forEach(t => { if (t) variations.push(t); });
   if (DEMO) buildLand(DEMO_WORLD);
   makeGovernor(); buildLife();
