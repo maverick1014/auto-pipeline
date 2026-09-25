@@ -687,6 +687,15 @@ class CityState:
             print("agent_city: dropped %d territory(ies) with no repo (\"dir:\" identity)"
                   % len(dropped), file=sys.stderr)
 
+        # Offices belong to live leads only: a lead that ended while the
+        # server was down never sends SessionEnd, so a loaded office must
+        # not outlive the restart. A live lead's next line gives it one
+        # again (_assign_office, plan order). Rest place and names persist.
+        for t in self.world["territories"].values():
+            if t.get("offices"):
+                t["offices"] = {}
+                dirty = True
+
         # The city is never empty: the dir the server was started from (its
         # git repo, or the plain folder itself) always has a territory, the
         # governor's home until a real one shows up.
@@ -1067,7 +1076,10 @@ class CityState:
         repo = obj.get("repo")
         if isinstance(repo, str) and repo:
             return repo
-        return None
+        # No repo (missing or ""): an old-hook line. With a start repo, it
+        # belongs there -- same identity as a line that does carry it, so
+        # one reducer, one governor, offices, relays and builds are shared.
+        return self.start_repo
 
     def _view(self):
         """Caller holds self.lock. The layout view the page draws, cached
@@ -1363,9 +1375,10 @@ class CityState:
             label = fallback
             task = fallback
         governor = self.governors.get(repo)
+        is_own_gov = reducer is not None and reducer.gov_sid == sid
         if aid:
             agent_field = aid
-        elif governor is not None and governor["sid"] == sid:
+        elif (governor is not None and governor["sid"] == sid) or is_own_gov:
             agent_field = "gov"
         else:
             agent_field = "s:" + sid
