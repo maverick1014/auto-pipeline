@@ -217,3 +217,22 @@ __out = { openBefore, at9, at10: closes, ms: ASK_CLOSE_MS };
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRingsAboveRoads(unittest.TestCase):
+    """Owner bug (on main since city-land): the coloured ring under a person is hidden on a road or lane,
+    because the smooth lane ribbon (y .02, polygonOffset -1) draws over it (ring at y .015).
+    CONTRACT: every ring and selection ring under a person or a governor stands at least .015 above the
+    highest ground layer (the lanes' y), and at most .06 above it (it never floats visibly)."""
+
+    def test_rings_sit_just_above_the_lanes(self):
+        text = page()
+        lane = re.search(r"function laneGeometry\([^)]*\)\{[^\n]*\n\s*const [^\n]*\by = ([\d.]+)", text)
+        self.assertIsNotNone(lane, "laneGeometry's y not found")
+        lane_y = float(lane.group(1))
+        ys = [float(v) for v in re.findall(r"\b(?:ring|sel)\.position\.y = ([\d.]+)", text)]
+        self.assertGreaterEqual(len(ys), 6, "person, governor and pooled governor rings")
+        for y in ys:
+            with self.subTest(y=y):
+                self.assertGreaterEqual(y, lane_y + .015, "the ring draws above roads and lanes")
+                self.assertLessEqual(y, lane_y + .06, "and does not float")
