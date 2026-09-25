@@ -254,6 +254,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
       <div class="stage" id="stage">
         <canvas id="city" role="img" aria-label="3D 小岛：每个小人是一个 agent"></canvas>
         <div class="ov" id="ov"></div>
+        <p id="empty-land" hidden style="position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);margin:0;padding:8px 14px;border-radius:12px;background:rgba(255,255,255,.85);color:var(--ink-2);font:600 14px/1.4 var(--round);pointer-events:none">还没有领地 · 在一个 git 仓库里启动，或等代理开工</p>
         <div class="proto" id="proto">原型 · 模拟数据</div>
         <div class="loading" id="loading"><span id="loading-text">正在搬来素材…</span></div>
         <div class="cam">
@@ -677,6 +678,11 @@ function findPath(sx, sz, tx, tz){
   return out.reverse();
 }
 function terrOf(id){ return (map.territories || []).find(t => t.id === id); }
+/* city-land: the start dir always has a territory (a plain folder counts too), so this is only a safety
+   net for the one frame before the first snapshot arrives — landReady()/showEmptyLine() keep the camera,
+   the governor and the people from hanging in an empty void (requirements/city.md, Growth). */
+function landReady(){ return !!(map.territories && map.territories.length); }
+function showEmptyLine(view){ const el = $('#empty-land'); if (el) el.hidden = !!(view.territories && view.territories.length); }
 /* a walkable spot just south of a territory's hall, for spawn/rest/idle standing */
 function hallStand(t){
   for (const [dx, dz] of [[0, 1.4], [.9, 1.2], [-.9, 1.2], [1.3, .5], [-1.3, .5]]) {
@@ -751,7 +757,10 @@ function standFor(b){
   return { x: fx + .5 + (b.gx - fx) * .28, y: fz + .5 + (b.gy - fz) * .28 };
 }
 function newCitizen(id, role, task, terr){
-  const R = ROLES[role], t = terrOf(terr), stand = t ? hallStand(t) : { x:0, y:0 };
+  const R = ROLES[role];
+  // an unknown territory ("" or not in the map): stand at the governor's hall, else the first territory
+  const t = terrOf(terr) || terrOf(govTerr) || (map.territories && map.territories[0]);
+  const stand = t ? hallStand(t) : { x:0, y:0 };
   return { id, role, label:role, task, terr, color:R.color, skin:pick(SKIN), x:stand.x, y:stand.y, path:[], state:'spawn', stateT:0,
     alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0,Other:0}, work:0, bld:null, stand, slot:null, rest:null, pendingBuild:null,
     question:'', answer:'', answered:false, pendingAnswer:'', askT:0, stuck:false, doneFlag:false, leaveFlag:false,
@@ -881,13 +890,15 @@ function apply(ev){
       // left > 0 only) — eraShown(t) reads `shows`, so a page opened mid-show must draw the OLD era with
       // its show running, never jump straight to the new one.
       for (const sw of ev.shows || []) if (sw.left > 0) startShow(sw.terr, sw.from, sw.to, sw.left);
-      if (ev.world) buildLand(ev.world);
+      // city-land First view: govTerr must be set BEFORE buildLand (which calls updateHome()), so the very
+      // first camera home is the governor's own hall, not whichever territory happens to sort first.
+      if (ev.gov && ev.gov.terr) govTerr = ev.gov.terr;
+      if (ev.world) buildLand(ev.world); else if (ev.gov && ev.gov.terr) updateHome();
       if (ev.world) { lastBalanceKey = ''; renderBalance(); }
       if (ev.notice) log(ev.notice);
       for (const old of citizens) applyAsk(old, null);
       for (const a of agents) if (!byId(a.id)) placeAgent(a);
       if (ev.gov && ev.gov.state) setGovState(ev.gov.state);
-      if (ev.gov && ev.gov.terr) { govTerr = ev.gov.terr; updateHome(); }
       if (typeof ev.governors === 'number') governorCount = ev.governors;
       asks.clear();
       for (const a of ev.asks || []) asks.set(a.id, a);
@@ -1331,70 +1342,297 @@ function tintedMat(base, hex){
 }
 
 /* ---------- the land: one continuous ground + one continuous water, drawn from the server's view
-   (requirements/city.md, Growth; E2E bounce 2026-09-24: floating tiles, seams, brown-earth edges). ---------- */
+   (requirements/city.md, Growth; E2E bounce 2026-09-24: floating tiles, seams, brown-earth edges;
+   city-land: a gaussian land field + marching squares replaces the flat 1x1 tile grid — approved mock
+   mock/city-land-mock.html; roads and tracks are no longer coloured here, laneGeometry draws them). ---------- */
 const landGroup = new THREE.Group(); world.add(landGroup);
-let firstViewDone = false; // only the first world sends the camera home; a later one (growth, a recount) never snaps it back
+let firstViewDone = false; // only the first world with a territory sends the camera home; a later one never snaps it back
 const hash2 = (x, z, k) => { let h = Math.imul(x * 374761393 + z * 668265263 + k * 2147483647, 1274126177); h ^= h >>> 13; h = Math.imul(h, 1103515245); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
-/* groundGeometry(view) -> {positions, colors, indices}: one mesh, every land tile (all but void/water/ravine)
-   an exact 1x1 square at y 0, coloured by TERRAIN_LOOK / the gap colours; a rock-grey skirt (never brown
-   earth) down the outline next to void or a ravine; the ravine itself gets a dark floor well below ground. */
-function groundGeometry(view){
+const isLand = ch => !' wsBk'.includes(ch);
+const isWater = ch => ch === 'w' || ch === 's' || ch === 'B';
+const SUB = 4;          // sample points per tile along each axis
+const LAND_SIGMA = .55; // how round the outline is (tiles); small enough that 1-tile features survive
+const COLOR_SIGMA = .8; // how soft colour borders are (tiles)
+/* one tile's own ground colour: roads ('r') are no longer painted here — laneGeometry draws them instead */
+function tileColor(view, X, Z, ch){
+  const look = TERRAIN_LOOK[terrAtOf(view, X, Z)];
+  return rgbOf(ch === '.' || ch === 't' ? look.wild : ch === 'b' ? BEACH_COLOR : ch === 'm' ? PASS_COLOR : ch === 'f' ? FOREST_FLOOR : look.ground);
+}
+/* SPEED: the dense gaussian sampling below (fieldAt/colorAt) runs tens of thousands of times per view —
+   terrAtOf/rgbOf must never run per sample point (buildLand runs on every world event). prepView(view)
+   reads every map tile exactly once (a plain Uint8Array of char codes, a Float32Array of each land tile's
+   own colour) and is cached by the view object itself, so groundGeometry + waterGeometry + laneGeometry
+   (called back to back, on the same view) only ever pay this cost once. */
+const viewPrep = new WeakMap();
+function prepView(view){
+  let p = viewPrep.get(view);
+  if (p) return p;
+  const w = view.w, h = view.h, n = Math.max(1, w * h);
+  const chars = new Uint8Array(n), rgb = new Float32Array(n * 3);
+  for (let r = 0; r < h; r++) {
+    const row = view.rows[r] || '';
+    for (let c = 0; c < w; c++) {
+      const ch = row[c] || ' ', i = r * w + c;
+      chars[i] = ch.charCodeAt(0);
+      if (!isLand(ch)) continue;
+      const c3 = tileColor(view, view.x0 + c, view.z0 + r, ch);
+      rgb[i * 3] = c3[0]; rgb[i * 3 + 1] = c3[1]; rgb[i * 3 + 2] = c3[2];
+    }
+  }
+  p = { w, h, x0: view.x0, z0: view.z0, chars, rgb };
+  viewPrep.set(view, p);
+  return p;
+}
+/* the map character at a world tile (a typed-array lookup, never a string slice) */
+function landAt(view, X, Z){
+  const p = prepView(view), c = X - p.x0, r = Z - p.z0;
+  return r < 0 || r >= p.h || c < 0 || c >= p.w ? ' ' : String.fromCharCode(p.chars[r * p.w + c]);
+}
+/* weighted share of the land tiles around (x, z) (tile centres at X+.5) that pass pred, gaussian falloff:
+   this is the hidden field marching squares contours into a smooth outline (mock's fieldAt). */
+function fieldAt(view, pred, x, z, sigma){
+  const X0 = Math.floor(x - .5), Z0 = Math.floor(z - .5), k = 1 / (2 * sigma * sigma);
+  let s = 0, n = 0;
+  for (let dz = -1; dz <= 2; dz++) for (let dx = -1; dx <= 2; dx++) {
+    const X = X0 + dx, Z = Z0 + dz, ex = X + .5 - x, ez = Z + .5 - z, w = Math.exp(-(ex * ex + ez * ez) * k);
+    n += w; if (pred(landAt(view, X, Z))) s += w;
+  }
+  return s / n;
+}
+/* ground colour at any point: a gaussian mix of the land tiles' own precomputed colour around it (prepView:
+   never a per-sample terrAtOf/rgbOf call) — never a per-tile step */
+function colorAt(view, x, z){
+  const p = prepView(view), X0 = Math.floor(x - .5) - p.x0, Z0 = Math.floor(z - .5) - p.z0, k = 1 / (2 * COLOR_SIGMA * COLOR_SIGMA);
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let dz = -2; dz <= 3; dz++) for (let dx = -2; dx <= 3; dx++) {
+    const cx = X0 + dx, cz = Z0 + dz;
+    if (cx < 0 || cx >= p.w || cz < 0 || cz >= p.h) continue;
+    const i = cz * p.w + cx;
+    if (!isLand(String.fromCharCode(p.chars[i]))) continue;
+    const ex = (cx + p.x0) + .5 - x, ez = (cz + p.z0) + .5 - z, w = Math.exp(-(ex * ex + ez * ez) * k);
+    r += p.rgb[i * 3] * w; g += p.rgb[i * 3 + 1] * w; b += p.rgb[i * 3 + 2] * w; n += w;
+  }
+  return n ? [r / n, g / n, b / n] : rgbOf(TERRAIN_LOOK.grassland.wild);
+}
+/* SPEED: fieldAt's own gaussian weight along one axis depends only on that axis's sample index (i or j),
+   never on the other one — so contourMesh's whole (w*SUB+1) x (h*SUB+1) grid needs each weight computed
+   only once per row and once per column (Float64Array tables), not once per sample point per neighbour.
+   Same numbers as calling fieldAt(view, pred, x0+i/SUB, z0+j/SUB, sigma) at every grid point, far fewer
+   Math.exp calls and pred() called once per map tile (a mask), never per sample. */
+function buildField(view, pred, sigma){
+  const p = prepView(view), w = p.w, h = p.h, k = 1 / (2 * sigma * sigma);
+  const mask = new Uint8Array(Math.max(1, w * h));
+  for (let i = 0; i < w * h; i++) mask[i] = pred(String.fromCharCode(p.chars[i])) ? 1 : 0;
+  const nx = w * SUB + 1, nz = h * SUB + 1;
+  const xBase = new Int32Array(nx), xW = new Float64Array(nx * 4);
+  for (let i = 0; i < nx; i++) {
+    const x = i / SUB, X0 = Math.floor(x - .5); xBase[i] = X0;
+    for (let d = 0; d < 4; d++) { const ex = X0 + (d - 1) + .5 - x; xW[i * 4 + d] = Math.exp(-(ex * ex) * k); }
+  }
+  const zBase = new Int32Array(nz), zW = new Float64Array(nz * 4);
+  for (let j = 0; j < nz; j++) {
+    const z = j / SUB, Z0 = Math.floor(z - .5); zBase[j] = Z0;
+    for (let d = 0; d < 4; d++) { const ez = Z0 + (d - 1) + .5 - z; zW[j * 4 + d] = Math.exp(-(ez * ez) * k); }
+  }
+  const F = new Float32Array(nx * nz);
+  for (let j = 0; j < nz; j++) {
+    const Z0 = zBase[j];
+    for (let i = 0; i < nx; i++) {
+      const X0 = xBase[i];
+      let s = 0, n = 0;
+      for (let dz = 0; dz < 4; dz++) {
+        const Z = Z0 + dz - 1, inZ = Z >= 0 && Z < h, wz = zW[j * 4 + dz];
+        for (let dx = 0; dx < 4; dx++) {
+          const X = X0 + dx - 1, wgt = xW[i * 4 + dx] * wz;
+          n += wgt;
+          if (inZ && X >= 0 && X < w && mask[Z * w + X]) s += wgt;
+        }
+      }
+      F[j * nx + i] = s / n;
+    }
+  }
+  return F;
+}
+/* marching squares over a sampled field: fills where f >= level at height y (one vertex position, one
+   colour: colorFn(x, z)); calls edge(P, Q) for every piece of the outline (mock's contourMesh) so the
+   caller can add a skirt or a bank exactly along the smooth border, never the tile grid. */
+function contourMesh(view, pred, sigma, level, y, colorFn, edge){
   const positions = [], colors = [], indices = [];
-  const at = (X, Z) => { const r = Z - view.z0, c = X - view.x0; if (r < 0 || r >= view.h) return ' '; const row = view.rows[r] || ''; return c >= 0 && c < row.length ? row[c] : ' '; };
-  const gap = ch => ch === ' ' || ch === 'k';
-  const water = ch => ch === 'w' || ch === 's' || ch === 'B';
-  const cl = v => v < 0 ? 0 : v > 1 ? 1 : v;
-  const quad = (x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3, rgb) => {
-    const base = positions.length / 3;
-    positions.push(x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3);
-    for (let i = 0; i < 4; i++) colors.push(rgb[0], rgb[1], rgb[2]);
-    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  const nx = view.w * SUB + 1, nz = view.h * SUB + 1, x0 = view.x0, z0 = view.z0;
+  const F = buildField(view, pred, sigma);
+  for (let idx = 0; idx < F.length; idx++) F[idx] -= level;
+  const vid = new Map();
+  const vert = (key, x, z) => {
+    let id = vid.get(key);
+    if (id === undefined) { id = positions.length / 3; vid.set(key, id); positions.push(x, y, z); colors.push(...colorFn(x, z)); }
+    return id;
   };
-  const jitter = (X, Z, rgb) => { const j = (Math.abs(Math.sin(X * 12.9898 + Z * 78.233) * 43758.5453) % 1 - .5) * .05; return [cl(rgb[0] + j), cl(rgb[1] + j), cl(rgb[2] + j)]; };
-  const rock = rgbOf(ROCK_GREY);
-  for (let r = 0; r < view.h; r++) for (let c = 0; c < view.w; c++) {
-    const X = view.x0 + c, Z = view.z0 + r, ch = view.rows[r][c];
-    if (ch === 'k') { quad(X, -1.2, Z + 1, X + 1, -1.2, Z + 1, X + 1, -1.2, Z, X, -1.2, Z, rgbOf(RAVINE_FLOOR)); continue; }
-    if (ch === ' ' || ch === 'w' || ch === 's' || ch === 'B') continue;
-    const look = TERRAIN_LOOK[terrAtOf(view, X, Z)];
-    // Balance: a claimed 'r' road tile is coloured by its territory's era (roadColor); when that helper
-    // is not around (a bare groundGeometry harness) it falls back to the plain terrain path, as before.
-    const roadRgb = ch === 'r' && typeof roadColor === 'function'
-      ? rgbOf(roadColor(cellTerrain(view, X, Z) || { terrain: terrAtOf(view, X, Z) })) : rgbOf(look.path);
-    // Balance: a claimed 't' track tile is coloured by its territory's infra (trackColor); same fallback
-    // pattern as roadRgb when the helper is not around (a bare groundGeometry harness).
-    const trackRgb = ch === 't' && typeof trackColor === 'function'
-      ? rgbOf(trackColor(cellTerrain(view, X, Z) || {})) : rgbOf(TRACK_COLOR);
-    const rgb = jitter(X, Z,
-      ch === '.' ? rgbOf(look.wild) : ch === 'r' ? roadRgb : ch === 't' ? trackRgb :
-      ch === 'b' ? rgbOf(BEACH_COLOR) : ch === 'm' ? rgbOf(PASS_COLOR) : ch === 'f' ? rgbOf(FOREST_FLOOR) : rgbOf(look.ground));
-    quad(X, 0, Z + 1, X + 1, 0, Z + 1, X + 1, 0, Z, X, 0, Z, rgb); // wound so the top face normal points up (three.js front-face)
-    if (gap(at(X, Z - 1))) quad(X, 0, Z, X + 1, 0, Z, X + 1, -1, Z, X, -1, Z, rock);
-    if (gap(at(X, Z + 1))) quad(X + 1, 0, Z + 1, X, 0, Z + 1, X, -1, Z + 1, X + 1, -1, Z + 1, rock);
-    if (gap(at(X - 1, Z))) quad(X, 0, Z + 1, X, 0, Z, X, -1, Z, X, -1, Z + 1, rock);
-    if (gap(at(X + 1, Z))) quad(X + 1, 0, Z, X + 1, 0, Z + 1, X + 1, -1, Z + 1, X + 1, -1, Z, rock);
-    // a bank down to the water (shallower than a cliff skirt, stays above the y <= -0.8 that flags one): no
-    // white line of page background between the ground (y 0) and the water (y -0.06) where they meet.
-    const bankY = -.3, bankRgb = [rgb[0] * .7, rgb[1] * .7, rgb[2] * .7];
-    if (water(at(X, Z - 1))) quad(X, 0, Z, X + 1, 0, Z, X + 1, bankY, Z, X, bankY, Z, bankRgb);
-    if (water(at(X, Z + 1))) quad(X + 1, 0, Z + 1, X, 0, Z + 1, X, bankY, Z + 1, X + 1, bankY, Z + 1, bankRgb);
-    if (water(at(X - 1, Z))) quad(X, 0, Z + 1, X, 0, Z, X, bankY, Z, X, bankY, Z + 1, bankRgb);
-    if (water(at(X + 1, Z))) quad(X + 1, 0, Z, X + 1, 0, Z + 1, X + 1, bankY, Z + 1, X + 1, bankY, Z, bankRgb);
+  const corner = (i, j) => vert('c' + i + ',' + j, x0 + i / SUB, z0 + j / SUB);
+  const cut = (i0, j0, i1, j1) => {
+    const a = F[j0 * nx + i0], b = F[j1 * nx + i1], t = a / (a - b);
+    const x = x0 + (i0 + (i1 - i0) * t) / SUB, z = z0 + (j0 + (j1 - j0) * t) / SUB;
+    return { id: vert('e' + Math.min(i0, i1) + ',' + Math.min(j0, j1) + (i0 !== i1 ? 'h' : 'v'), x, z), x, z };
+  };
+  for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const cs = [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]];
+    const inside = cs.map(([a, b]) => F[b * nx + a] >= 0);
+    if (!inside.some(Boolean)) continue;
+    const poly = [];
+    for (let k = 0; k < 4; k++) {
+      const [a, b] = cs[k], [c, d] = cs[(k + 1) % 4];
+      if (inside[k]) poly.push({ id: corner(a, b), x: x0 + a / SUB, z: z0 + b / SUB, c: true });
+      if (inside[k] !== inside[(k + 1) % 4]) poly.push(cut(a, b, c, d));
+    }
+    for (let k = 1; k + 1 < poly.length; k++) indices.push(poly[0].id, poly[k + 1].id, poly[k].id); // wound to face up
+    if (edge) for (let k = 0; k < poly.length; k++) { const p = poly[k], q = poly[(k + 1) % poly.length]; if (!p.c && !q.c) edge(p, q); }
   }
   return { positions, colors, indices };
 }
-/* waterGeometry(view) -> the same shape of object: one continuous surface over every river/bridge/sea tile */
-function waterGeometry(view){
-  const positions = [], colors = [], indices = [];
-  const rgb = rgbOf(WATER_COLOR);
-  for (let r = 0; r < view.h; r++) for (let c = 0; c < view.w; c++) {
-    const ch = view.rows[r][c]; if (ch !== 'w' && ch !== 's' && ch !== 'B') continue;
-    const X = view.x0 + c, Z = view.z0 + r, base = positions.length / 3;
-    positions.push(X, -.06, Z + 1, X + 1, -.06, Z + 1, X + 1, -.06, Z, X, -.06, Z);
-    for (let i = 0; i < 4; i++) colors.push(rgb[0], rgb[1], rgb[2]);
-    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+/* two geometries, one buffer (index offsets fixed up) */
+function merge(a, b){
+  const off = a.positions.length / 3;
+  return { positions: a.positions.concat(b.positions), colors: a.colors.concat(b.colors), indices: a.indices.concat(b.indices.map(i => i + off)) };
+}
+/* every flat face points up (three.js front face); the ground's own top+skirt winding is already right
+   (contourMesh's fan order), this is only for meshes built purely from an xz-plane outline (water, the
+   ravine floor, the lane ribbons). */
+function fixUp(g){
+  const P = g.positions, I = g.indices;
+  for (let t = 0; t < I.length; t += 3) {
+    const a = I[t] * 3, b = I[t + 1] * 3, c = I[t + 2] * 3;
+    const ux = P[b] - P[a], uz = P[b + 2] - P[a + 2], vx = P[c] - P[a], vz = P[c + 2] - P[a + 2];
+    if (uz * vx - ux * vz < 0) { const s = I[t + 1]; I[t + 1] = I[t + 2]; I[t + 2] = s; }
   }
-  return { positions, colors, indices };
+  return g;
+}
+/* groundGeometry(view) -> {positions, colors, indices}: one seamless land surface (marching squares over
+   the gaussian land field): a grey rock cliff where it meets the void or a ravine, a bank down into the
+   water, colour blended tile to tile (never a hard step) — plus the ravine's own flat, dark floor merged
+   in well below ground (mock's newGround + newRavine). */
+function groundGeometry(view){
+  const skirts = { positions: [], colors: [], indices: [] };
+  const rock = rgbOf(ROCK_GREY);
+  const wall = (p, q, yb, rgbTop, rgbBot) => {
+    // outward = the side where the land field is lower
+    const mx = (p.x + q.x) / 2, mz = (p.z + q.z) / 2, dx = q.x - p.x, dz = q.z - p.z, l = Math.hypot(dx, dz) || 1;
+    let nx = dz / l, nz = -dx / l;
+    if (fieldAt(view, isLand, mx + nx * .1, mz + nz * .1, LAND_SIGMA) > fieldAt(view, isLand, mx - nx * .1, mz - nz * .1, LAND_SIGMA)) { nx = -nx; nz = -nz; }
+    const b = skirts.positions.length / 3;
+    skirts.positions.push(p.x, 0, p.z, q.x, 0, q.z, q.x, yb, q.z, p.x, yb, p.z);
+    skirts.colors.push(...rgbTop, ...rgbTop, ...rgbBot, ...rgbBot);
+    const fx = dz, fz = -dx; // normal of (p, q, q-bottom) points along (dz, -dx)
+    if ((fx * nx + fz * nz) > 0) skirts.indices.push(b, b + 1, b + 2, b, b + 2, b + 3); else skirts.indices.push(b, b + 2, b + 1, b, b + 3, b + 2);
+  };
+  const top = contourMesh(view, isLand, LAND_SIGMA, .5, 0, (x, z) => colorAt(view, x, z), (p, q) => {
+    const mx = (p.x + q.x) / 2, mz = (p.z + q.z) / 2, dx = q.x - p.x, dz = q.z - p.z, l = Math.hypot(dx, dz) || 1;
+    let nx = dz / l, nz = -dx / l;
+    if (fieldAt(view, isLand, mx + nx * .1, mz + nz * .1, LAND_SIGMA) > fieldAt(view, isLand, mx - nx * .1, mz - nz * .1, LAND_SIGMA)) { nx = -nx; nz = -nz; }
+    const out = landAt(view, Math.floor(mx + nx * .45), Math.floor(mz + nz * .45));
+    if (isWater(out)) { const c = colorAt(view, mx, mz); wall(p, q, -.3, c.map(v => v * .72), c.map(v => v * .55)); }
+    else wall(p, q, out === 'k' ? -1.25 : -1, rock, rock.map(v => v * .7));
+  });
+  const ravine = fixUp(contourMesh(view, ch => ch === 'k', LAND_SIGMA, .3, -1.2, () => rgbOf(RAVINE_FLOOR)));
+  return merge(merge(top, skirts), ravine);
+}
+/* waterGeometry(view) -> the same shape: one continuous flat surface over every river/bridge/sea tile */
+function waterGeometry(view){
+  const c = rgbOf(WATER_COLOR);
+  return fixUp(contourMesh(view, isWater, LAND_SIGMA, .3, -.06, () => c));
+}
+/* laneGraph(view) -> {paths: [{pts}], joints}: smooth centre lines along the road/track tiles (through
+   bridges), walked from every junction/dead end and Chaikin-smoothed (ends pinned); a lane tile with no
+   lane neighbour is its own one-point path, so every 'r'/'t'/'B' tile still gets a lane (mock's lanePaths,
+   plus that one-tile case the mock itself never had to handle). */
+function laneGraph(view){
+  const isLane = ch => ch === 'r' || ch === 't' || ch === 'B';
+  const nodes = new Map();
+  for (let r = 0; r < view.h; r++) for (let c = 0; c < view.w; c++) if (isLane(view.rows[r][c])) nodes.set((view.x0 + c) + ',' + (view.z0 + r), [view.x0 + c, view.z0 + r]);
+  const nbrs = k => { const [x, z] = nodes.get(k); return [[x + 1, z], [x - 1, z], [x, z + 1], [x, z - 1]].map(p => p[0] + ',' + p[1]).filter(q => nodes.has(q)); };
+  const used = new Set(), ekey = (a, b) => a < b ? a + '|' + b : b + '|' + a, paths = [], joints = [];
+  const walk = (start, next) => {
+    const pts = [start]; let prev = start, cur = next; used.add(ekey(start, next));
+    while (true) {
+      pts.push(cur);
+      const ns = nbrs(cur);
+      if (ns.length !== 2) break;
+      const nx = ns[0] === prev ? ns[1] : ns[0];
+      if (used.has(ekey(cur, nx))) break;
+      used.add(ekey(cur, nx)); prev = cur; cur = nx;
+    }
+    return pts;
+  };
+  for (const k of nodes.keys()) { const d = nbrs(k).length; if (d !== 2) { joints.push(nodes.get(k)); for (const n of nbrs(k)) if (!used.has(ekey(k, n))) paths.push(walk(k, n)); } }
+  for (const k of nodes.keys()) for (const n of nbrs(k)) if (!used.has(ekey(k, n))) paths.push(walk(k, n)); // loops
+  const covered = new Set(paths.flat());
+  for (const k of nodes.keys()) if (!covered.has(k)) paths.push([k]); // a lone tile: its own one-point path
+  const out = paths.map(p => {
+    let pts = p.map(k => { const [x, z] = nodes.get(k); return [x + .5, z + .5]; });
+    for (let it = 0; it < 3 && pts.length >= 3; it++) { // Chaikin corner cutting, ends pinned
+      const q = [pts[0]];
+      for (let i = 0; i < pts.length - 1; i++) { const [ax, az] = pts[i], [bx, bz] = pts[i + 1]; if (i > 0) q.push([ax * .75 + bx * .25, az * .75 + bz * .25]); if (i < pts.length - 2) q.push([ax * .25 + bx * .75, az * .25 + bz * .75]); }
+      q.push(pts[pts.length - 1]); pts = q;
+    }
+    return { pts };
+  });
+  return { paths: out, joints: joints.map(([x, z]) => [x + .5, z + .5]) };
+}
+/* lanePaths(view) -> [{pts}]: the public shape (an array, unlike laneGraph's own {paths, joints}) */
+function lanePaths(view){ return laneGraph(view).paths; }
+const LANE_HALF = .32;
+/* laneGeometry(view) -> {positions, colors, indices}: ribbons along lanePaths (narrower than a tile), round
+   at every end and junction, flat just above the ground; nothing over water (the bridge deck is the lane
+   there); colour smoothed along the lane so a road never steps to a track (mock's laneGeometry). Colour:
+   roadColor(t) on a territory's 'r' tiles (its era), trackColor(t) on 't'. */
+function laneGeometry(view){
+  const positions = [], colors = [], indices = [], y = .02;
+  // the lane colour at a point: a territory's own era/infra (roadColor(t) on 'r', trackColor(t) on 't')
+  const laneColor = (x, z) => { const X = Math.floor(x), Z = Math.floor(z), ch = landAt(view, X, Z), t = cellTerrain(view, X, Z); return rgbOf(ch === 'r' ? roadColor(t) : trackColor(t)); };
+  const { paths, joints } = laneGraph(view);
+  for (const { pts } of paths) {
+    const raw = pts.map(([x, z]) => laneColor(x, z));
+    const col = raw.map((_, i) => { const s = [0, 0, 0]; let n = 0; for (let k = -6; k <= 6; k++) { const c = raw[i + k]; if (c) { s[0] += c[0]; s[1] += c[1]; s[2] += c[2]; n++; } } return s.map(v => v / n); });
+    const base = positions.length / 3;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = -dz / l, nz = dx / l;
+      positions.push(pts[i][0] + nx * LANE_HALF, y, pts[i][1] + nz * LANE_HALF, pts[i][0] - nx * LANE_HALF, y, pts[i][1] - nz * LANE_HALF);
+      colors.push(...col[i], ...col[i]);
+    }
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const mx = (pts[i][0] + pts[i + 1][0]) / 2, mz = (pts[i][1] + pts[i + 1][1]) / 2;
+      if (isWater(landAt(view, Math.floor(mx), Math.floor(mz)))) continue; // the bridge deck is the lane there
+      const a = base + 2 * i;
+      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+  }
+  for (const [x, z] of joints) { // round joins and ends
+    if (isWater(landAt(view, Math.floor(x), Math.floor(z)))) continue;
+    const c = laneColor(x, z), base = positions.length / 3;
+    positions.push(x, y + .001, z); colors.push(...c);
+    for (let k = 0; k <= 16; k++) { const a = k / 16 * Math.PI * 2; positions.push(x + Math.cos(a) * LANE_HALF, y + .001, z + Math.sin(a) * LANE_HALF); colors.push(...c); }
+    for (let k = 0; k < 16; k++) indices.push(base, base + 2 + k, base + 1 + k);
+  }
+  return fixUp({ positions, colors, indices });
+}
+/* wildDecor(view) -> [{key, x, z, y, s?, ry?}]: the wild scenery buildLand instances — plants on '.', pines
+   on 'f', rocks on 'm', one bridge deck on every 'B'; plants/pines/rocks jitter off their tile centre (the
+   mock's own (hash2(X,Z,11)-.5)*.6, so nothing stands in rows); a bridge sits exactly on the centre. */
+function wildDecor(view){
+  const out = [];
+  for (let r = 0; r < view.h; r++) for (let c = 0; c < view.w; c++) {
+    const ch = view.rows[r][c]; if (ch === ' ') continue;
+    const X = view.x0 + c, Z = view.z0 + r, look = TERRAIN_LOOK[terrAtOf(view, X, Z)];
+    const jx = (hash2(X, Z, 11) - .5) * .6, jz = (hash2(X, Z, 12) - .5) * .6;
+    if (ch === '.') {
+      if (hash2(X, Z, 1) < .2) out.push({ key: look.plants[Math.floor(hash2(X, Z, 2) * look.plants.length)], x: X + .5 + jx, z: Z + .5 + jz, y: .03, s: .45 + hash2(X, Z, 3) * .3, ry: hash2(X, Z, 4) * 7 });
+    } else if (ch === 'B') {
+      out.push({ key: 'bridge_wood', x: X + .5, z: Z + .5, y: .02 });
+    } else if (ch === 'f') {
+      out.push({ key: 'tree_pineSmallA', x: X + .5 + jx, z: Z + .5 + jz, y: .03, s: .8 + hash2(X, Z, 5) * .3, ry: hash2(X, Z, 6) * 7 });
+    } else if (ch === 'm') {
+      out.push({ key: hash2(X, Z, 7) < .5 ? 'rock_smallA' : 'rock_smallB', x: X + .5 + jx, z: Z + .5 + jz, y: .03, ry: hash2(X, Z, 8) * 7 });
+    }
+  }
+  return out;
 }
 function meshFromGeometry(geo, opt){
   const g = new THREE.BufferGeometry();
@@ -1420,23 +1658,18 @@ function buildLand(view){
   world.position.set(-mid.x, 0, -mid.z);
   glows.length = 0;
   landOverlays(view); // Balance E2E bounce 2: removes the old label/sign elements first, then makes fresh ones
+  showEmptyLine(view); // city-land: the "还没有领地" line follows every world event, not only the first
   const territories = view.territories || [];
 
   landGroup.add(meshFromGeometry(groundGeometry(view)));
   const wg = waterGeometry(view);
   if (wg.positions.length) landGroup.add(meshFromGeometry(wg, { transparent: true, opacity: .92 }));
+  const lg = laneGeometry(view);
+  if (lg.positions.length) landGroup.add(meshFromGeometry(lg, { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
 
-  // decoration on top of the ground: wild plants, forest-belt pines, mountain-pass rocks, bridge decks
+  // wild scenery on top of the ground: plants, forest-belt pines, mountain-pass rocks, bridge decks
   const by = {};
-  const add = (key, it) => (by[key] = by[key] || []).push(it);
-  for (let r = 0; r < view.h; r++) for (let c = 0; c < view.w; c++) {
-    const ch = view.rows[r][c]; if (ch === ' ') continue;
-    const X = view.x0 + c, Z = view.z0 + r, look = TERRAIN_LOOK[terrAtOf(view, X, Z)], it = { x: X + .5, z: Z + .5, y: .03 };
-    if (ch === '.') { if (hash2(X, Z, 1) < .2) add(look.plants[Math.floor(hash2(X, Z, 2) * look.plants.length)], Object.assign({}, it, { s: .45 + hash2(X, Z, 3) * .3, ry: hash2(X, Z, 4) * 7 })); }
-    else if (ch === 'B') add('bridge_wood', Object.assign({}, it, { y: .02 }));
-    else if (ch === 'f') add('tree_pineSmallA', Object.assign({}, it, { s: .8 + hash2(X, Z, 5) * .3, ry: hash2(X, Z, 6) * 7 }));
-    else if (ch === 'm') add(hash2(X, Z, 7) < .5 ? 'rock_smallA' : 'rock_smallB', Object.assign({}, it, { ry: hash2(X, Z, 8) * 7 }));
-  }
+  for (const d of wildDecor(view)) (by[d.key] = by[d.key] || []).push(d);
   for (const k in by) instanced(k, by[k], { keepY: true, shadow: false, parent: landGroup });
 
   for (const t of territories) {
@@ -1483,7 +1716,7 @@ function buildLand(view){
     }
   }
   updateHome(); // the world changed: look at a town hall, never at the empty middle of the land
-  if (!firstViewDone && lastTouch === -Infinity) { firstViewDone = true; resetCam(); } // only the first world goes home; a later one never snaps the camera back
+  if (!firstViewDone && territories.length && lastTouch === -Infinity) { firstViewDone = true; resetCam(); } // only the first world with a territory goes home; a later one never snaps the camera back
   scanTall();
 }
 
@@ -1712,6 +1945,7 @@ function dropOv(c){ if (!c.o) return; for (const k in c.o) c.o[k].remove(); c.o 
 
 function updatePerson(c, t, dt){
   const v = c.v, g = v.g;
+  g.visible = landReady(); // city-land: nobody floats in the void before the first territory lands
   g.position.set(c.x, 0, c.y);
   const walking = c.path.length > 0 && c.state !== 'spawn';
   const resting = c.state === 'resting' && c.rest;
@@ -1764,6 +1998,7 @@ function updatePerson(c, t, dt){
   pin(c.o.tag, tx, ty + 34, v.sel.visible && c.state !== 'asking');
 }
 function updateGovernor(){
+  govV.g.visible = landReady(); // city-land: no governor floating in the void before the first territory lands
   govV.g.position.set(gov.x, govV.g.position.y, gov.y);
   const waiting = !DEMO && govState === 'waiting';
   const talking = waiting || (gov.bubble && simT < gov.bubble.until);
@@ -1830,7 +2065,11 @@ function aroundH(x, z){ return Math.max(heightAt(x, z), heightAt(x + .3, z), hei
 /* the land box (scene x -land.hx..land.hx, y -1.05..0, z -land.hz..land.hz) seen from angle az at the current tilt, looking
    at (0, ly, 0) from dist: [how much of the stage it fills on its tighter side, how far its middle sits from the stage middle] */
 function landSpread(az, dist, ly){
-  const L = typeof land === 'undefined' ? { hx:6, hz:7 } : land;
+  // city-land: an empty world (or a land smaller than one fresh territory) zooms like one fresh territory,
+  // so it never traps the camera (requirements/city.md, Growth) — but a bare harness with no `land` at all
+  // keeps its own small placeholder untouched.
+  const raw = typeof land === 'undefined' ? { hx:6, hz:7 } : land;
+  const L = typeof land !== 'undefined' && (raw.hx < 13 || raw.hz < 13) ? { hx:13, hz:13 } : raw;
   const t = Math.tan(FOV * Math.PI / 360), a = W / H, ce = Math.cos(cam.el), se = Math.sin(cam.el), sa = Math.sin(az), ca = Math.cos(az);
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (const x of [-L.hx, L.hx]) for (const z of [-L.hz, L.hz]) for (const y of [-1.05, 0]) {
@@ -1850,7 +2089,9 @@ function centreHeight(az, dist){
 /* how far out the zoom goes: the whole land fills about 80% of the stage at this tilt, from every angle (sampled every
    15 degrees over half a turn: a rectangle repeats past that). Cached; land is part of the key so growth recomputes it. */
 function distMax(){
-  const L = typeof land === 'undefined' ? { hx:6, hz:7 } : land;
+  // city-land: same "empty/small land zooms like one fresh territory" rule as landSpread() (see there).
+  const raw = typeof land === 'undefined' ? { hx:6, hz:7 } : land;
+  const L = typeof land !== 'undefined' && (raw.hx < 13 || raw.hz < 13) ? { hx:13, hz:13 } : raw;
   const key = W + '|' + H + '|' + cam.el.toFixed(3) + '|' + L.hx + ',' + L.hz, c = distMax.c || (distMax.c = {});
   if (c.key === key) return c.val;
   let best = DIST_MIN, span = 20 * (L.hx + L.hz + 20);

@@ -84,6 +84,7 @@ do_start() {
   nohup python3 "$SERVER" serve --dir "$CITY_DIR" --port "$city_port" \
     --idle-min "$city_idle_min" --gov-wait-sec "$city_governor_wait_sec" \
     --decisions "$CITY_HOME/decisions.jsonl" --world "$CITY_HOME/world.json" \
+    --start-dir "$(pwd -P)" \
     </dev/null >/dev/null 2>&1 &
   disown "$!" 2>/dev/null || true
 

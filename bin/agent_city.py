@@ -616,7 +616,7 @@ class CityState:
 
     def __init__(self, max_agents=40, done_ttl=600, gov_wait_sec=60.0,
                  decisions_path=None, token="", world_path=None, plans=None, count_fn=None,
-                 balance_fn=None):
+                 balance_fn=None, start_repo=None):
         self.lock = threading.Lock()
         self.cond = threading.Condition(self.lock)
         self.reducer = Reducer(max_agents=max_agents, done_ttl=done_ttl)
@@ -652,6 +652,35 @@ class CityState:
         self.last_count = {}      # identity -> the recount() "now" it was last counted at
         self.agent_terr = {}      # citizen id -> territory id, for the snapshot's agents
         self.gov_terr = ""        # the governor's current territory id
+
+        # Old data is dropped: a territory saved under a "dir:..." identity
+        # (no repo -- the old proj fallback) never comes back.
+        dropped = [i for i in self.world["territories"] if i.startswith("dir:")]
+        dirty = bool(dropped)
+        if dropped:
+            for i in dropped:
+                del self.world["territories"][i]
+            self.world["order"] = [i for i in self.world["order"] if i not in dropped]
+            drop_notice = "去掉了 %d 块没有仓库的旧领地" % len(dropped)
+            self.notice = (self.notice + "\n" + drop_notice) if self.notice else drop_notice
+            print("agent_city: dropped %d territory(ies) with no repo (\"dir:\" identity)"
+                  % len(dropped), file=sys.stderr)
+
+        # The city is never empty: the dir the server was started from (its
+        # git repo, or the plain folder itself) always has a territory, the
+        # governor's home until a real one shows up.
+        self.start_repo = start_repo if start_repo else None
+        self.start_terr = territory_id(self.start_repo) if self.start_repo else ""
+        if self.start_repo:
+            was_known = self.start_repo in self.world["territories"]
+            add_territory(self.world, self.plans, self.start_repo, repo_name(self.start_repo))
+            if not was_known:
+                dirty = True
+            self.last_activity[self.start_repo] = 0.0
+            self.gov_terr = self.start_terr
+
+        if dirty:
+            self._save_world_locked()
 
     # -- SSE clients ----------------------------------------------------
 
@@ -745,7 +774,7 @@ class CityState:
         with self.lock:
             self.lines += 1
             identity = self._identity_of(obj) if isinstance(obj, dict) else None
-            terr = territory_id(identity) if identity is not None else ""
+            terr = territory_id(identity) if identity is not None else self.start_terr
             if identity is not None:
                 if identity not in self.world["territories"]:
                     add_territory(self.world, self.plans, identity, repo_name(identity))
@@ -778,9 +807,6 @@ class CityState:
         repo = obj.get("repo")
         if isinstance(repo, str) and repo:
             return repo
-        proj = obj.get("proj")
-        if isinstance(proj, str) and proj:
-            return "dir:" + proj
         return None
 
     def _view(self):
@@ -1861,8 +1887,9 @@ def cmd_serve(args):
 
     decisions_path = args.decisions or os.path.expanduser("~/.claude/agent-city/decisions.jsonl")
     world_path_arg = args.world if args.world is not None else world_path()
+    start_repo = _repo_id(args.start_dir) if args.start_dir else None
     city = CityState(gov_wait_sec=args.gov_wait_sec, decisions_path=decisions_path, token=token,
-                      world_path=world_path_arg)
+                      world_path=world_path_arg, start_repo=start_repo)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), CityHandler)
     server.daemon_threads = True
     server.city = city
@@ -3450,6 +3477,7 @@ def _build_parser():
     serve.add_argument("--gov-wait-sec", type=float, default=60.0)
     serve.add_argument("--decisions", default=None)
     serve.add_argument("--world", default=None)
+    serve.add_argument("--start-dir", default=None)
 
     ask_p = sub.add_parser("ask")
     ask_p.add_argument("--max-wait-sec", type=float, default=3600.0)

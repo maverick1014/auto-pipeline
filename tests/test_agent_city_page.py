@@ -234,20 +234,9 @@ CONTRACT
     MODELS has a bridge, a river piece and a rock or cliff (gaps).
     buildLand() places a town hall ('building-j') for every territory.
   E2E bounce (real Chrome, 2026-09-24): the first page drew floating tiles.
-    One ground: groundGeometry(view) -> {positions, colors, indices}: ONE
-      continuous mesh for every land tile, in world tile units (the group
-      offset is applied outside). Land tiles = every map char except ' '
-      (void), 'w' 's' 'B' (water) and 'k' (ravine). Each land tile is an
-      exact square [X, X+1] x [Z, Z+1] at y 0 (integer corners, no inset,
-      no gap): no seams, no page background between tiles. Wild '.' tiles
-      are land too, coloured TERRAIN_LOOK[t].wild; 'g' 'H' 'P' ground, 'r'
-      path, 't' a track colour, 'b' sand, 'm' rock, 'f' dark forest floor.
-      The outer outline of the land (next to void or ravine) gets a skirt:
-      side faces down to y <= -0.8, rock grey (never brown earth: the
-      owner's rule), so the land's edge reads as a rock cliff.
-    One water: waterGeometry(view) -> the same shape of object: one
-      continuous surface over every 'w', 's' and 'B' tile (exact squares,
-      integer corners), blue. No river tile models for water.
+    Ground, water and roads: one smooth ground mesh, smooth water, smooth
+      lanes (city-land replaced the exact 1 x 1 tile squares): the contract
+      is in tests/test_agent_city_land.py.
     No Kenney cliff_block model at all (brown earth sides).
     Every .glb loads without GLTFLoader warnings: no KHR_texture_transform
       (bake the transform into the UVs, or use a model without it).
@@ -260,13 +249,6 @@ CONTRACT
       (1.5 to 3 tiles in front of its centre), so the hall itself never
       stands in the view line and fades.
   Second E2E pass (headless screenshots): the ground did not show at all.
-    Faces point the right way: every top face of groundGeometry and
-      waterGeometry faces up (normal (b-a) x (c-a) has y > 0, three.js
-      front faces), every side face faces out, toward the void, ravine or
-      water tile beside it.
-    River bank: every land tile beside water ('w' 's' 'B') gets a side face
-      on that side down below the water surface (y <= -0.1), so no page
-      background shows as a white line where land meets water.
     First view: when the first world arrives the camera goes home
       (resetCam()) unless the user already moved it; live and demo both
       open on a town hall, never on the empty middle. Only the first: a
@@ -1975,54 +1957,6 @@ process.stdout.write(JSON.stringify({ spots: slots.map(r => [r.x, r.y, box.tileA
 """
 
 
-GROUND_JS = r"""
-const fs = require('fs'), vm = require('vm');
-const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-// two cells: grassland (slot 0,0) west, desert (slot 1,0) east; void corners, a river with a bridge,
-// a ravine, a beach and sea
-const rows = [
-  ' ....  ',
-  '.gHr.w.',
-  '.gHr.B.',
-  '.tPrkw.',
-  '.bbb.ws',
-  '  .. ss' ];
-const view = { cell: 26, x0: 10, z0: -2, w: 7, h: 6, rows,
-  territories: [{ id: 'a', slot: [0, 0], terrain: 'grassland', cx: 0, cz: 0 }, { id: 'b', slot: [1, 0], terrain: 'desert', cx: 26, cz: 0 }],
-  links: [] };
-const box = Object.assign({ Math, JSON, console, map: view });
-vm.createContext(box);
-vm.runInContext(prelude + '\n' + fns, box);
-const out = {};
-for (const name of ['groundGeometry', 'waterGeometry']) {
-  const g = box[name](view);
-  const P = Array.from(g.positions), C = Array.from(g.colors), I = Array.from(g.indices || []);
-  const idx = I.length ? I : P.map((_, i) => i).filter(i => i < P.length / 3);
-  const top = {}, skirt = [], odd = [], down = [], inward = [], bank = new Set();
-  const at = (x, z) => { const r = z - view.z0, c = x - view.x0; return r >= 0 && r < view.h && c >= 0 && c < view.w ? view.rows[r][c] : ' '; };
-  for (let t = 0; t < idx.length; t += 3) {
-    const vs = [idx[t], idx[t + 1], idx[t + 2]].map(i => ({ x: P[3 * i], y: P[3 * i + 1], z: P[3 * i + 2], c: [C[3 * i], C[3 * i + 1], C[3 * i + 2]] }));
-    const ax = vs[1].x - vs[0].x, ay = vs[1].y - vs[0].y, az = vs[1].z - vs[0].z, bx = vs[2].x - vs[0].x, by = vs[2].y - vs[0].y, bz = vs[2].z - vs[0].z;
-    const n = [ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx];
-    if (vs.every(v => Math.abs(v.y - vs[0].y) < 1e-6)) { if (!(n[1] > 0)) down.push([vs[0].x, vs[0].y, vs[0].z]); }
-    else {
-      const cx = (vs[0].x + vs[1].x + vs[2].x) / 3, cz = (vs[0].z + vs[1].z + vs[2].z) / 3, l = Math.hypot(n[0], n[2]) || 1;
-      const ch = at(Math.floor(cx + n[0] / l * .5), Math.floor(cz + n[2] / l * .5));
-      if (!' kwsB'.includes(ch)) inward.push([cx, cz, ch]);
-      if ('wsB'.includes(ch) && vs.some(v => v.y <= -0.1)) bank.add(Math.floor(cx + n[0] / l * .5) + ',' + Math.floor(cz + n[2] / l * .5) + '<' + Math.floor(cx - n[0] / l * .5) + ',' + Math.floor(cz - n[2] / l * .5));
-    }
-    if (vs.every(v => v.y > -0.2)) {
-      const x0 = Math.min(...vs.map(v => v.x)), z0 = Math.min(...vs.map(v => v.z)), x1 = Math.max(...vs.map(v => v.x)), z1 = Math.max(...vs.map(v => v.z));
-      if (!vs.every(v => Number.isInteger(Math.round(v.x * 1e6) / 1e6) && Number.isInteger(Math.round(v.z * 1e6) / 1e6)) || x1 - x0 !== 1 || z1 - z0 !== 1) odd.push([x0, z0, x1, z1]);
-      const k = x0 + ',' + z0; top[k] = top[k] || vs[0].c.map(v => Math.round(v * 1000) / 1000);
-    } else if (vs.some(v => v.y <= -0.8)) skirt.push(vs.map(v => v.c.map(q => Math.round(q * 1000) / 1000)));
-  }
-  out[name] = { top, skirt: skirt.length, skirtColors: skirt.slice(0, 400).flat(), odd: odd.slice(0, 5), down: down.length, downAt: down.slice(0, 3), inward: inward.slice(0, 5), bank: [...bank] };
-}
-process.stdout.write(JSON.stringify(out));
-"""
-
-
 DECOR_JS = r"""
 const fs = require('fs'), vm = require('vm');
 const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
@@ -2051,90 +1985,8 @@ process.stdout.write(JSON.stringify({
 """
 
 
-def ground_results():
-    if "ground" not in _CACHE:
-        fns = ["const TERRAIN_LOOK = %s;" % (const_object("TERRAIN_LOOK") or "{}")]
-        for name in ("groundGeometry", "waterGeometry"):
-            src = function_source(name)
-            if src is None:
-                raise AssertionError("function %s(view) not found in the page script" % name)
-            fns.append(src)
-        for helper in ("h2r", "hexRgb", "rgbOf", "tintOf", "terrAtOf", "cellTerrain", "terrainAt"):
-            src = function_source(helper)
-            if src:
-                fns.append(src)
-        _CACHE["ground"] = run_node(GROUND_JS, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
-    return _CACHE["ground"]
-
-
-GROUND_ROWS = [' ....  ', '.gHr.w.', '.gHr.B.', '.tPrkw.', '.bbb.ws', '  .. ss']
-
-
-def tiles_where(test):
-    out = set()
-    for r, row in enumerate(GROUND_ROWS):
-        for c, ch in enumerate(row):
-            if test(ch):
-                out.add("%d,%d" % (10 + c, -2 + r))
-    return out
-
-
 class TestOneLand(unittest.TestCase):
-    """E2E bounce G1-G4: one continuous ground and one water, no seams, rock edges."""
-
-    def test_every_land_tile_has_ground_as_one_seamless_mesh(self):
-        g = ground_results()["groundGeometry"]
-        self.assertEqual(g["odd"], [], "ground tiles must be exact 1 x 1 squares on integer corners")
-        self.assertEqual(set(g["top"]), tiles_where(lambda ch: ch not in " wsBk"),
-                         "wild land, claimed land, roads, tracks, beach: every land tile has ground")
-
-    def test_wild_land_is_terrain_coloured_and_reads_apart(self):
-        top = ground_results()["groundGeometry"]["top"]
-        wild_grass, wild_desert = top["11,-1"], top["14,-2"]
-        self.assertNotEqual(wild_grass, wild_desert, "desert wild land must not look like grassland")
-        self.assertNotEqual(top["11,-1"], top["11,0"], "claimed ground reads apart from wild land")
-        road, beach = top["13,0"], top["11,2"]
-        self.assertNotEqual(road, top["11,0"])
-        self.assertGreater(beach[0], beach[2], "beach is sand")
-
-    def test_the_land_edge_is_grey_rock_never_brown_earth(self):
-        g = ground_results()["groundGeometry"]
-        self.assertGreater(g["skirt"], 10, "the land edge has side faces (a cliff), it does not float as a sheet")
-        for rgb in g["skirtColors"]:
-            with self.subTest(rgb=rgb):
-                self.assertLessEqual(max(rgb) - min(rgb), 0.12, "edge colour %s is not grey rock" % (rgb,))
-
-    def test_water_is_one_continuous_surface(self):
-        w = ground_results()["waterGeometry"]
-        self.assertEqual(w["odd"], [])
-        self.assertEqual(set(w["top"]), tiles_where(lambda ch: ch in "wsB"))
-        for k, rgb in w["top"].items():
-            self.assertGreater(rgb[2], rgb[0], "water at %s is not blue" % k)
-        self.assertNotIn("ground_riverStraight", inline_script(), "no chopped river tile models for water")
-
-    def test_the_ground_and_water_face_up(self):
-        """Second pass: the top faces were wound clockwise, so three.js culled the whole ground."""
-        for name in ("groundGeometry", "waterGeometry"):
-            with self.subTest(mesh=name):
-                g = ground_results()[name]
-                self.assertEqual(g["down"], 0, "faces pointing down, e.g. at %s" % g["downAt"])
-
-    def test_the_cliff_faces_look_out(self):
-        self.assertEqual(ground_results()["groundGeometry"]["inward"], [], "a skirt face points into the land")
-
-    def test_a_bank_where_land_meets_water(self):
-        """Second pass: a white line showed between the ground (y 0) and the water below it."""
-        bank = set(ground_results()["groundGeometry"]["bank"])
-        want = set()
-        for r, row in enumerate(GROUND_ROWS):
-            for c, ch in enumerate(row):
-                if ch in " wsBk":
-                    continue
-                for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                    rr, cc = r + dr, c + dc
-                    if 0 <= rr < len(GROUND_ROWS) and 0 <= cc < len(GROUND_ROWS[0]) and GROUND_ROWS[rr][cc] in "wsB":
-                        want.add("%d,%d<%d,%d" % (10 + cc, -2 + rr, 10 + c, -2 + r))
-        self.assertEqual(bank, want)
+    """E2E bounce G1-G4 (the ground itself: tests/test_agent_city_land.py)."""
 
     def test_the_first_view_is_a_town_hall(self):
         text = inline_script()
@@ -2142,8 +1994,8 @@ class TestOneLand(unittest.TestCase):
         self.assertTrue("resetCam()" in snap or "resetCam()" in (function_source("buildLand") or ""),
                         "the first world must put the camera home (resetCam), not leave it on the land's middle")
         body = snap + (function_source("buildLand") or "")
-        once = re.search(r"if \(!(\w+)[^)]*\)\s*\{\s*\1 = true;\s*resetCam\(\);", body) or \
-            re.search(r"if \(!(\w+)[^)]*\)\s*\{\s*resetCam\(\);\s*\1 = true;", body)
+        once = re.search(r"if \(!(\w+)[^\n]*?\)\s*\{\s*\1 = true;\s*resetCam\(\);", body) or \
+            re.search(r"if \(!(\w+)[^\n]*?\)\s*\{\s*resetCam\(\);\s*\1 = true;", body)
         self.assertIsNotNone(once, "only the FIRST world goes home: a later world (a new territory, a recount) "
                                    "must not snap the camera back or stop the auto-rotation's turn")
 
@@ -2309,8 +2161,8 @@ class TestGrowthPage(unittest.TestCase):
 #     model; city's tower list has a skyscraper; lamps only town and city.
 #     eraLook(t) = ERA_LOOK[eraShown(t)].
 #   roadColor(t): village -> TERRAIN_LOOK[t.terrain].path, town and city ->
-#     ERA_LOOK[era].road (all three differ). groundGeometry colours 'r' tiles
-#     with it.
+#     ERA_LOOK[era].road (all three differ). laneGeometry colours the lanes
+#     on 'r' tiles with it (tests/test_agent_city_land.py).
 #   hallDecor(t, view): [] on day 0 and in a village; lamps ('lantern') in a
 #     town or city, on 'g' tiles. Never a fountain (that is beauty's).
 #   signText(t) -> '' on day 0 (no lines), in the city era, with no "next", or
@@ -2585,23 +2437,7 @@ process.stdout.write(JSON.stringify(['village', 'town', 'city', undefined].map(e
         self.assertEqual([c.lower() for c in out],
                          [terrain["coast"]["path"].lower(), look["town"]["road"].lower(),
                           look["city"]["road"].lower(), terrain["coast"]["path"].lower()])
-        self.assertIn("roadColor(", function_source("groundGeometry") or "")
-
-    def test_the_ground_draws_town_roads_in_stone(self):
-        base = ground_results()["groundGeometry"]["top"]["13,0"]
-        fns = ["const TERRAIN_LOOK = %s;" % const_object("TERRAIN_LOOK"), "const ERA_LOOK = %s;" % const_object("ERA_LOOK"),
-               "var shows = new Map();"]
-        for name in ("groundGeometry", "waterGeometry"):
-            fns.append(function_source(name))
-        for helper in ("h2r", "hexRgb", "rgbOf", "tintOf", "terrAtOf", "cellTerrain", "terrainAt", "roadColor",
-                       "eraShown", "showOf", "eraLook", "trackColor"):
-            src = function_source(helper)
-            if src:
-                fns.append(src)
-        js = GROUND_JS.replace("terrain: 'desert', cx: 26, cz: 0 }", "terrain: 'desert', cx: 26, cz: 0, era: 'town' }")
-        self.assertNotEqual(js, GROUND_JS)
-        out = run_node(js, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
-        self.assertNotEqual(out["groundGeometry"]["top"]["13,0"], base, "a town's road is not the village dirt path")
+        self.assertTrue("roadColor(" in (function_source("laneGeometry") or ""), "laneGeometry colours roads with roadColor")
 
     def test_versioned_assets_and_the_hall(self):
         self.assertIn("function eraLook(", inline_script())
