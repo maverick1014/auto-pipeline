@@ -25,7 +25,7 @@
 - No frame around the city: no border line, no rounded box.
 - Camera is a perspective camera, not a top-down god view. Default tilt about 30° above the horizon, close to the town hall.
 - Drag up/down tilts (about 15° to 60°), drag left/right orbits, wheel/pinch zooms from near street level to the whole territory. Never clips into ground or buildings.
-- Camera auto-rotates, one turn per 5 min. Stops on drag or zoom, resumes 10 s after. Off under `prefers-reduced-motion`.
+- Camera auto-rotates, one turn per 5 min, and never stops: clicks, drags, zoom and panels do not pause it (owner, 2026-09-25; replaces stop-on-touch). A drag adds to the angle while it keeps turning. Off under `prefers-reduced-motion`.
 
 ## Interaction
 - An agent that asks (AskUserQuestion) or needs a permission walks to the governor. Governor = main manager session of that repo.
