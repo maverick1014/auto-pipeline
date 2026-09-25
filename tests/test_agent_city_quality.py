@@ -48,7 +48,8 @@ CONTRACT
         "touch";
       else build: quality = file_quality(that file's text)["score"] alone,
         read now (from obj "wt" when set, else the repo root = dirname of
-        the "<root>/.git" identity; a file that cannot be read is "good";
+        the "<root>/.git" identity; a file that cannot be read, or a path
+        that is absolute or has a ".." part, is never read: "good";
         duplicates and hot spots only come with requality); poor and
         wrong_district(file) -> the
         first free open plot of another district in plan order, home false;
@@ -63,7 +64,8 @@ CONTRACT
     CityState.requality(identity): for every building, its files that still
       exist in the root checkout or in any live site (worktree) path of
       that territory: none left -> {"type": "demolish", "terr", "plot"} and
-      the building goes; else q = the worst combine_quality of those files
+      the building goes (a building with no files recorded -- old ones --
+      is never demolished and keeps its q); else q = the worst combine_quality of those files
       (duplicates across the territory's building files, hot_counts of the
       root); changed -> {"type": "quality", "terr", "plot", "q"}; a building
       with home false and q not "poor" moves to the first free open plot of
@@ -482,6 +484,30 @@ class TestRequality(BuildCase):
         self.st.requality(self.ident)
         self.assertFalse([e for e in drain(self.client) if e["type"] == "demolish"])
         self.assertIsNotNone(self.view_building(plot))
+
+    def test_a_building_with_no_known_files_is_never_demolished(self):
+        """Old world.json buildings and old hook lines (no "file") have files []:
+        nothing is known about them, so requality leaves them alone."""
+        self.st.feed_line(self.line("tm", aid="w1", kind="other", file=""), 1000.0)
+        plot = [e for e in drain(self.client) if e["type"] == "build"][0]["plot"]
+        t = self.st.world["territories"][self.ident]
+        k = [x for x in ac.open_plots(self.plan(), t["peak"]) if x != plot][0]
+        t["buildings"].append({"plot": k, "type": self.district(k), "owner": "old", "by": "worker", "at": 1.0})
+        self.st._invalidate_view()
+        self.st.requality(self.ident)
+        self.assertEqual(drain(self.client), [])
+        self.assertIsNotNone(self.view_building(plot))
+        self.assertIsNotNone(self.view_building(k))
+
+    def test_a_path_leaving_the_repo_is_never_read(self):
+        outside = os.path.join(self.base, "secret.py")
+        with open(outside, "w") as fh:
+            fh.write(flat(1600))
+        ev = self.edit("w1", "../secret.py")
+        builds = [e for e in ev if e["type"] == "build"]
+        self.assertEqual([b["q"] for b in builds], ["good"], "an unreadable/refused path counts as good")
+        self.st.requality(self.ident)
+        self.assertFalse([e for e in drain(self.client) if e["type"] in ("quality", "move")])
 
     def test_recount_calls_requality(self):
         import inspect
