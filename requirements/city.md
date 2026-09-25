@@ -128,20 +128,31 @@
 - Not joined = the city above: this computer only, no account, nothing leaves the machine.
 - Joined = the local city also shows the other members of the same team: the owner's other machines, other people's terminals, cloud sessions. Every member still runs their own local city. There is no shared city page on the internet.
 - Path: hook → `events.jsonl` (unchanged) → local server → relay → every joined local server → its page. The page talks only to 127.0.0.1, as before; only the local server talks to the relay.
-- Relay: a small Cloudflare Worker. One team = one room. Holds the last few minutes only, never a history.
+- Relay: a small Cloudflare Worker, one per team. Holds the last few minutes only, never a history.
 - Sent: the same short lines, with the working folder cut down to repo and branch. Never full paths, chat text or files.
-- Same repo from different people = the same territory. Repo key = the `origin` remote (host/owner/repo). No remote = not shared, stays local.
+- Same repo from different people = the same territory. Repo identity = the `origin` remote (host/owner/repo). No remote = not shared, stays local.
 - Other members' people: a name tag (person) and a small device tag (machine name or 云端). Several main managers in one repo = several governors at the one town hall, each with a name sign. An agent asks its own person's governor.
 - Other members' people are view only. Answering questions and permission requests works for your own agents only.
 - Other members' people and sites are shown live and never written into your `world.json`. Leave → they disappear; your own world is unchanged.
 - Orders (main manager's default, 2026-09-25; the owner may change it): the relay carries events only, never orders. Orders to agents go through the Claude Code app: local sessions via `claude remote-control`, cloud sessions are there already. The city may link a person to its session in the app. Reason: an order channel on a public site would be a way into the members' computers.
-- How to join: the plugin is public; anyone who installs it gets a local city. The owner makes a team on the relay and gives each person an invite code. `/auto-pipeline:city join <code>` stores that person's token in `~/.claude/agent-city/` (never in a repo). `/auto-pipeline:city leave` stops it at any time. No invite code = the relay refuses. One token per person; the owner can cancel a token.
-- Cloud sessions: send only, no page. Need the city hook and the sender shipped by the cloud pack (today it writes only the SessionStart hook), the token as an environment secret, and the relay host allowed in the environment's network setting.
+- Relay host (owner decision, 2026-09-25): self-hosted. Each team's owner makes their own free Cloudflare account and sets up the relay there by hand (see Relay setup). The plugin's author runs no server; teams share nothing.
+- Key: setting up the relay gives two values, the relay address and a team key (kept as a secret in Cloudflare). The team owner hands both to each member.
+- Joining is per repo: the address and key go into `<repo>/.secrets/agent-city-relay`. The person does this in their own terminal (`bin/agent-city.sh join` asks for both, the key hidden) or by hand. Agents never write, print or ask for the key, and it never goes into the chat. `.secrets/` is git-ignored by agent-init; join refuses when it is not. Only repos with that file send and see the team; every other repo stays local. `bin/agent-city.sh leave` deletes the file. Wrong or missing key = the relay refuses.
+- One key per team for now. Remove a member = change the key in Cloudflare, hand the new key to the others.
+- Name tag = the person's git `user.name`.
+- Cloud sessions: send only, no page. Need the address and key as one environment secret (`AGENT_CITY_RELAY`), the relay host allowed in the environment's network setting, and the city hook and sender shipped by the cloud pack (today it writes only the SessionStart hook).
 - Joined machine with no browser open: the server keeps sending while its agents are active; it stops after `city_idle_min` with no browser and no new events.
 - Relay down or offline: the local city keeps working. Unsent lines are kept up to a small cap, oldest dropped first. The page shows 联城断开.
 - Cost: joining adds nothing to the hook. The sender batches lines every few seconds and counts toward the server's RAM limit.
 - Build order: after the worktree sites. Mock first.
 
+## Relay setup
+- Owner decision, 2026-09-25: the relay comes with setup steps a person can follow by hand.
+- Written together with the relay code. They live in `skills/city/` next to the command (config, not a new doc); `/auto-pipeline:city setup` walks through the same steps, but never asks for the key.
+- Reader: someone who has never used Cloudflare. Numbered steps, plain words, each step says what you should see. Cloudflare website only where possible; any command is given exactly, ready to paste.
+- Covers: make the account; make the relay; set the team key; find the relay address; hand address and key to members; join a local repo; join a cloud environment (secret and network setting); check it works (a second machine or a cloud session shows up in the city); change the key; remove the relay.
+- Acceptance: the owner follows the steps by hand, from a new Cloudflare account, and it works. Until then `city-join` is not done. A step he gets stuck on = a bug in the steps, fixed in the same task.
+
 ## Open, not decided
-- Where the relay lives: the owner's Cloudflare account. Until then joining is design only.
+- A key per person, so one member can be removed without changing everyone's key (proposal, later).
 - People from git history, no joining needed (proposal): buildings carry the authors of their files; recent activity shows who works where, people without agents included.
