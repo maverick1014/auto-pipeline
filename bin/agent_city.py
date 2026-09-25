@@ -630,6 +630,7 @@ class CityState:
         self.lines = 0
         self.clients = []
         self.idle_since = time.monotonic()
+        self.remote = None        # set by cmd_serve to a RemoteCity, when joined
 
         self.gov_wait_sec = gov_wait_sec
         self.decisions_path = decisions_path or os.path.expanduser(
@@ -710,6 +711,10 @@ class CityState:
             if self.notice is not None:
                 snap["notice"] = self.notice
             client.queue.put_nowait(_encode_event(snap))
+            if self.remote is not None:
+                remote_snap = self.remote.snapshot_event()
+                if remote_snap is not None:
+                    client.queue.put_nowait(_encode_event(remote_snap))
             self.clients.append(client)
             return client
 
@@ -1822,25 +1827,195 @@ def recount_loop(city, stop_event):
         stop_event.wait(RECOUNT_POLL_SEC)
 
 
-def relay_loop(city, hub, stop_event):
+RELAY_QUEUED_MIN_SEC = 1.0   # "off" queued updates go to the page at most this often
+
+
+class RemoteCity:
+    """Turns other members' relay lines into "remote" page events, using the
+    same rules as local lines: one Reducer per sender device (the "dev" of
+    the sync item -- see bin/agent_city_relay.py RelayHub.tick()). Also
+    tracks each team's relay state for the page, and forgets a sender
+    device silent for remote_ttl_sec. Pure logic plus a lock: never touches
+    world.json, self.reducer or self.lines of any CityState. See
+    tests/test_agent_city_relay_serve.py, "Other members on the page".
+
+    Thread-safe: poll() runs on the relay thread, snapshot_event() on an
+    HTTP handler thread (CityState.add_client)."""
+
+    def __init__(self, hub, remote_ttl_sec=600.0):
+        self.hub = hub
+        self.remote_ttl_sec = remote_ttl_sec
+        self._lock = threading.Lock()
+        self._reducers = {}      # sender dev id -> Reducer
+        self._last_seen = {}     # sender dev id -> monotonic time of its last line
+        self._meta = {}          # "r:<dev>:<id>" -> {"who","device","rid","br","terr","dev"}
+        self._team_state = {}    # host -> {"state", "queued", "at"} last sent to the page
+        self._team_rids = {}     # host -> set(rid), last known (to forget on "left")
+
+    def poll(self, now):
+        """One relay-thread tick: sync with every due team (hub.tick()),
+        age out silent devices, and notice a team that left. -> a list of
+        "remote"/"relay" SSE events."""
+        items = self.hub.tick()
+        with self._lock:
+            events = []
+            for item in items:
+                events.extend(self._one_line(item.get("dev"), item.get("line"), now))
+            events.extend(self._sweep_ttl(now))
+            events.extend(self._sweep_teams(now))
+            return events
+
+    def snapshot_event(self):
+        """{"type": "remote_snapshot", "me", "people", "govs", "relay"} for a
+        new page, only while the hub has a team; else None."""
+        if not self.hub.joined():
+            return None
+        with self._lock:
+            people = []
+            govs = []
+            for dev_id, reducer in self._reducers.items():
+                for agent in reducer.snapshot()["agents"]:
+                    people.append(self._person(dev_id, agent))
+                if reducer.gov_sid is not None:
+                    govs.append(self._gov(dev_id, reducer.gov_state))
+        relay = [{"host": t["host"], "state": t["state"], "queued": t["queued"]}
+                for t in self.hub.status()["teams"]]
+        return {"type": "remote_snapshot", "me": self.hub.identity(),
+                "people": people, "govs": govs, "relay": relay}
+
+    # -- lines from the relay -- caller holds self._lock ------------------
+
+    def _one_line(self, dev_id, line, now):
+        if not dev_id or not isinstance(line, dict):
+            return []
+        rid = line.get("rid") or ""
+        repo = self.hub.repo_for(rid) if rid else None
+        if repo is None:
+            return []   # no local territory for this rid: the line is dropped
+        self._last_seen[dev_id] = now
+        terr = territory_id(repo)
+        who, device, br = line.get("who") or "", line.get("dev") or "", line.get("br") or ""
+        fed = dict(line)
+        fed["proj"] = rid.rsplit("/", 1)[-1]
+        reducer = self._reducers.get(dev_id)
+        if reducer is None:
+            reducer = Reducer()
+            self._reducers[dev_id] = reducer
+        out = []
+        ev_name = line.get("ev")
+        for ev in reducer.feed(fed, now):
+            if ev.get("type") == "spawn":
+                ev["terr"] = terr
+            elif ev.get("type") == "gov":
+                ev["id"] = "gov"
+                ev["terr"] = terr
+                ev["present"] = ev_name != "SessionEnd"
+            if "id" in ev:
+                remote_id = "r:%s:%s" % (dev_id, ev["id"])
+                ev["id"] = remote_id
+                if ev.get("type") == "leave" or ev.get("present") is False:
+                    self._meta.pop(remote_id, None)
+                else:
+                    self._meta[remote_id] = {"who": who, "device": device, "rid": rid,
+                                             "br": br, "terr": terr, "dev": dev_id}
+            out.append({"type": "remote", "dev": dev_id, "who": who, "device": device,
+                        "rid": rid, "br": br, "ev": ev})
+        return out
+
+    def _sweep_ttl(self, now):
+        stale = [d for d, seen in self._last_seen.items() if now - seen >= self.remote_ttl_sec]
+        events = []
+        for dev_id in stale:
+            events.extend(self._forget_device(dev_id))
+        return events
+
+    def _sweep_teams(self, now):
+        events = []
+        status_teams = {t["host"]: t for t in self.hub.status()["teams"]}
+        for host in list(self._team_rids.keys()):
+            if host in status_teams:
+                continue
+            rids = self._team_rids.pop(host)
+            self._team_state.pop(host, None)
+            for dev_id in self._devices_of(rids):
+                events.extend(self._forget_device(dev_id))
+            events.append({"type": "relay", "host": host, "state": "left", "queued": 0})
+        for host, team in status_teams.items():
+            self._team_rids[host] = set(team["rids"])
+            events.extend(self._maybe_relay_event(host, team, now))
+        return events
+
+    def _maybe_relay_event(self, host, team, now):
+        state, queued = team["state"], team["queued"]
+        prev = self._team_state.get(host)
+        changed = prev is None or prev["state"] != state
+        queued_due = (not changed and state == "off" and queued != prev["queued"]
+                     and (now - prev["at"]) >= RELAY_QUEUED_MIN_SEC)
+        if not (changed or queued_due):
+            return []
+        self._team_state[host] = {"state": state, "queued": queued, "at": now}
+        return [{"type": "relay", "host": host, "state": state, "queued": queued}]
+
+    def _devices_of(self, rids):
+        devs = set()
+        for meta in self._meta.values():
+            if meta.get("rid") in rids:
+                devs.add(meta.get("dev"))
+        return devs
+
+    def _forget_device(self, dev_id):
+        reducer = self._reducers.pop(dev_id, None)
+        self._last_seen.pop(dev_id, None)
+        if reducer is None:
+            return []
+        events = []
+        for aid in list(reducer.agents.keys()):
+            remote_id = "r:%s:%s" % (dev_id, aid)
+            meta = self._meta.pop(remote_id, None)
+            events.append(self._wrap(dev_id, meta, {"type": "leave", "id": remote_id}))
+        if reducer.gov_sid is not None:
+            remote_id = "r:%s:gov" % dev_id
+            meta = self._meta.pop(remote_id, None)
+            terr = meta["terr"] if meta else ""
+            events.append(self._wrap(dev_id, meta, {"type": "gov", "id": remote_id,
+                                                     "state": reducer.gov_state,
+                                                     "terr": terr, "present": False}))
+        return events
+
+    def _wrap(self, dev_id, meta, ev):
+        meta = meta or {}
+        return {"type": "remote", "dev": dev_id, "who": meta.get("who", ""),
+                "device": meta.get("device", ""), "rid": meta.get("rid", ""),
+                "br": meta.get("br", ""), "ev": ev}
+
+    def _person(self, dev_id, agent):
+        remote_id = "r:%s:%s" % (dev_id, agent["id"])
+        meta = self._meta.get(remote_id, {})
+        person = dict(agent, id=remote_id, terr=meta.get("terr", ""), who=meta.get("who", ""),
+                     device=meta.get("device", ""), rid=meta.get("rid", ""),
+                     br=meta.get("br", ""), dev=dev_id)
+        return person
+
+    def _gov(self, dev_id, state):
+        remote_id = "r:%s:gov" % dev_id
+        meta = self._meta.get(remote_id, {})
+        return {"id": remote_id, "state": state, "terr": meta.get("terr", ""),
+                "who": meta.get("who", ""), "device": meta.get("device", ""), "dev": dev_id}
+
+
+def relay_loop(city, hub, remote, stop_event):
     """Sync every joined team with its relay, on its own thread: a slow or
     dead relay never holds up the tail thread or the HTTP server.
 
-    Polls hub.tick() often (RELAY_POLL_SEC); the hub itself decides which
-    team is actually due, every hub.relay_sec. Remote lines come back only
-    as "remote" SSE events -- never fed to the Reducer, never saved to
-    world.json. A team's "relay" state is sent only when it changes.
-    Stops with the server (stop_event)."""
-    last_state = {}
+    Polls remote.poll() (RelayHub.tick() under the hood) often (RELAY_POLL_SEC);
+    the hub itself decides which team is actually due, every hub.relay_sec.
+    Remote lines come back only as "remote" SSE events -- never fed to the
+    local Reducer, never saved to world.json. A team's "relay" state is sent
+    only when it changes (or, while "off", its queued count -- at most once
+    a second). Stops with the server (stop_event)."""
     while not stop_event.is_set():
-        for item in hub.tick():
-            city.push_relay_event({"type": "remote", "dev": item.get("dev"),
-                                    "line": item.get("line")})
-        for team in hub.status()["teams"]:
-            host, state = team["host"], team["state"]
-            if last_state.get(host) != state:
-                last_state[host] = state
-                city.push_relay_event({"type": "relay", "host": host, "state": state})
+        for ev in remote.poll(time.monotonic()):
+            city.push_relay_event(ev)
         stop_event.wait(RELAY_POLL_SEC)
 
 
@@ -1965,7 +2140,9 @@ def cmd_serve(args):
     start_repo = _repo_id(args.start_dir) if args.start_dir else None
     city = CityState(gov_wait_sec=args.gov_wait_sec, decisions_path=decisions_path, token=token,
                       world_path=world_path_arg, start_repo=start_repo)
-    hub = relay.RelayHub(relay_sec=args.relay_sec)
+    hub = relay.RelayHub(relay_sec=args.relay_sec, join_ttl=args.join_ttl_sec)
+    remote = RemoteCity(hub, remote_ttl_sec=args.remote_ttl_sec)
+    city.remote = remote
     server = ThreadingHTTPServer(("127.0.0.1", args.port), CityHandler)
     server.daemon_threads = True
     server.city = city
@@ -2006,7 +2183,7 @@ def cmd_serve(args):
     recount_thread.start()
 
     relay_thread = threading.Thread(
-        target=relay_loop, args=(city, hub, stop_event), daemon=True,
+        target=relay_loop, args=(city, hub, remote, stop_event), daemon=True,
     )
     relay_thread.start()
 
@@ -3558,6 +3735,8 @@ def _build_parser():
     serve.add_argument("--assets", default=None)
     serve.add_argument("--gov-wait-sec", type=float, default=60.0)
     serve.add_argument("--relay-sec", type=float, default=5.0)
+    serve.add_argument("--join-ttl-sec", type=float, default=30.0)
+    serve.add_argument("--remote-ttl-sec", type=float, default=600.0)
     serve.add_argument("--decisions", default=None)
     serve.add_argument("--world", default=None)
     serve.add_argument("--start-dir", default=None)

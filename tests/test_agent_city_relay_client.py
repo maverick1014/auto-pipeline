@@ -25,8 +25,9 @@ Module API:
         makes the folder, writes atomically (tmp + rename, no tmp left
         behind), file mode 0600.
     check_address(address) -> None when fine, else a short error text.
-        https://<host>[...] is fine. http:// only for 127.0.0.1 and
-        localhost (tests, a relay run by hand on this machine).
+        https://<host>[...] is fine. http:// only for 127.0.0.1, localhost
+        and private LAN IPv4 addresses (10.0.0.0/8, 172.16.0.0/12,
+        192.168.0.0/16: the dev relay of the two-machine LAN test).
     origin_id(url) -> "host/owner/repo", lower case, or None.
         Takes any git remote form, drops the scheme, user, password, port,
         ".git" and a trailing "/". A local path or file:// remote is None
@@ -75,11 +76,20 @@ Module API:
             A team none of whose repos still has its join file (leave, or a
             new key) is dropped with its queue, at the next tick after
             join_ttl.
+            A relay that answers with a seq LOWER than the team's "after"
+            was made again (new database, or a dev relay restarted): the
+            team's "after" goes back to 0 at once, so its new lines are
+            not missed.
         status() -> {"joined": bool, "teams": [{"host": "<host[:port]>",
             "rids": [sorted], "state": "new" | "ok" | "off" | "refused",
             "queued": int, "dropped": int}]}
             Never the key, never the full address.
         joined() -> bool, same as status()["joined"].
+        repo_for(rid) -> the real path of the git common dir of a joined
+            local repo whose origin gives rid (any repo offer() has queued a
+            line for), or None.
+        identity() -> {"who": git user.name of the first joined repo seen,
+            or "" before any, "device": label}.
         Safe to call from two threads: offer() from the file-tail thread,
         tick()/status()/joined() from others. tick() never holds the hub's
         lock while it waits for the relay.
@@ -198,6 +208,17 @@ class TestCheckAddress(Case):
                   "http://127.0.0.1:8787", "http://localhost:9000"):
             with self.subTest(a=a):
                 self.assertIsNone(rl.check_address(a))
+
+    def test_lan_http_for_the_dev_relay(self):
+        # the two-machine LAN test (tests/test_agent_city_relay_dev.py)
+        for a in ("http://192.168.1.20:8787", "http://10.0.0.5:8787", "http://172.16.0.9:8787",
+                  "http://172.31.255.1"):
+            with self.subTest(a=a):
+                self.assertIsNone(rl.check_address(a))
+        for a in ("http://8.8.8.8:8787", "http://172.32.0.1", "http://192.169.0.1",
+                  "http://11.0.0.1"):
+            with self.subTest(a=a):
+                self.assertTrue(rl.check_address(a))
 
     def test_bad(self):
         for a in ("", "relay.example.com", "http://relay.example.com", "ftp://x",
@@ -452,6 +473,18 @@ class TestHubJoined(HubCase):
         self.assertEqual(self.fake.sync_bodies()[1]["after"], first_seq)
         self.assertEqual(hub.status()["teams"][0]["state"], "ok")
 
+    def test_relay_made_again(self):
+        hub = self.hub()
+        hub.offer(hook_line(self.repo))
+        for i in range(3):
+            self.fake.push("dev-other", {"ev": "Stop", "n": i})
+        self.assertEqual(len(hub.tick()), 3)
+        self.fake.reset()
+        self.fake.push("dev-other", {"ev": "Stop", "n": "after-reset"})
+        got = hub.tick() + hub.tick()
+        self.assertEqual([g["line"]["n"] for g in got], ["after-reset"],
+                         "a line sent right after the relay was made again was missed")
+
     def test_syncs_to_receive_even_with_nothing_to_send(self):
         hub = self.hub()
         hub.offer(hook_line(self.repo))
@@ -572,6 +605,16 @@ class TestHubJoined(HubCase):
         self.assertTrue(hub.offer(hook_line(self.repo)))
         os.remove(os.path.join(self.repo, ".secrets", "agent-city-relay"))
         self.assertTrue(hub.offer(hook_line(self.repo)), "read at most every join_ttl seconds")
+
+    def test_repo_for_and_identity(self):
+        hub = self.hub()
+        self.assertEqual(hub.identity(), {"who": "", "device": "mac-1"})
+        self.assertIsNone(hub.repo_for("github.com/acme/shop"))
+        hub.offer(hook_line(self.repo))
+        self.assertEqual(hub.repo_for("github.com/acme/shop"),
+                         os.path.realpath(os.path.join(self.repo, ".git")))
+        self.assertIsNone(hub.repo_for("github.com/other/thing"))
+        self.assertEqual(hub.identity(), {"who": "Ann", "device": "mac-1"})
 
     def test_default_ids(self):
         a = rl.RelayHub()

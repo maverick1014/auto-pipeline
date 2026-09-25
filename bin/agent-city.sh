@@ -14,6 +14,9 @@
 #   ./agent-city.sh send     cloud sender: send this session's lines to the
 #                            team relay named by the environment secret
 #                            AGENT_CITY_RELAY (no page, no join file)
+#   ./agent-city.sh relay-dev [port]   run the dev relay for a two-machine
+#                            LAN test (no Cloudflare account); default
+#                            port 8787, key asked here, needs Node 22.5+
 #   ./agent-city.sh -h       this help
 #
 # City dir: $AGENT_CITY_DIR, default $HOME/.cache/agent-city (the same dir the
@@ -56,6 +59,7 @@ agent-city.sh — start/stop/status/demo for the Agent City playground.
   ./agent-city.sh join     join this repo's team relay (address + key, asked here)
   ./agent-city.sh leave    leave this repo's team relay
   ./agent-city.sh send     cloud sender: send this session's lines to the team relay
+  ./agent-city.sh relay-dev [port]   run the dev relay for a two-machine LAN test
   ./agent-city.sh -h       this help
 EOF
 }
@@ -305,6 +309,35 @@ print(rl.origin_id(sys.argv[2]) or "")
   return 0
 }
 
+# Dev relay for a two-machine LAN test (no Cloudflare account yet):
+# bin/agent-city-relay-dev.mjs, the very Worker the owner would paste into
+# Cloudflare, run behind a plain HTTP server on this machine's LAN, with an
+# in-memory D1 stand-in. Needs Node 22.5+ (node:sqlite). The team key is
+# read here with echo off and handed to the .mjs on stdin only -- never
+# argv, never printed.
+do_relay_dev() {
+  port="${1:-8787}"
+  if ! node -e "require('node:sqlite')" >/dev/null 2>&1; then
+    echo "RELAY-DEV: needs Node 22.5 or newer" >&2
+    exit 1
+  fi
+
+  printf 'Team key for the dev relay (hidden): ' >&2
+  read -rs key
+  printf '\n' >&2
+  if [ -z "$key" ]; then
+    echo "RELAY-DEV: no key entered" >&2
+    exit 1
+  fi
+
+  # exec, not a pipe: a pipe forks node into a subshell, so a SIGINT sent to
+  # this script's own pid (Ctrl-C) would never reach it. Process substitution
+  # (not a here-string: bash before 5.1 writes those to a temp file) feeds
+  # node's stdin from printf, a builtin, so the key touches neither argv nor
+  # disk; exec then replaces this process with node in place, same pid.
+  exec node "$PLUGIN_ROOT/bin/agent-city-relay-dev.mjs" --port "$port" < <(printf '%s\n' "$key")
+}
+
 do_leave() {
   if [ -f "$SECRET_FILE" ]; then
     rm -f "$SECRET_FILE"
@@ -328,5 +361,6 @@ case "$1" in
   pending) do_pending;;
   join) do_join;;
   leave) do_leave;;
+  relay-dev) do_relay_dev "${2:-}";;
   *) usage; exit 2;;
 esac

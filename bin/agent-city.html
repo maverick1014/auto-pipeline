@@ -59,6 +59,9 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .stat.wait:disabled{cursor:default;border-color:var(--line);background:var(--panel);color:var(--ink-3)}
 .stat.wait:disabled b{color:var(--ink-3)}
 .stat.wait:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.stat.ok{border-color:var(--ok);color:var(--ok-deep)}
+.stat.off{border-color:var(--ink-3);color:var(--ink-3)}
+.stat.refused{border-color:var(--ask-ink);background:var(--ask-bg);color:var(--ask-ink)}
 
 .layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;flex:1;min-height:0}
 .stage-col{display:flex;flex-direction:column;gap:10px;min-width:0}
@@ -78,7 +81,9 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .qm{all:unset;cursor:pointer;display:block;width:28px;height:28px;pointer-events:auto}
 .qm span{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#FF6F8B;color:#fff;font:700 17px/1 var(--display);border:2px solid #fff;box-shadow:0 2px 0 rgba(42,43,69,.25);animation:hop .7s ease-in-out infinite}
 .qm:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.qm.grey span{background:#8D91B3;animation:none}
 @keyframes hop{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.stale{background:#585D82;color:#fff;border-radius:999px;padding:2px 9px;font:600 11px/1.4 var(--mono);white-space:nowrap}
 .gwait{display:inline-flex;align-items:center;gap:5px;background:var(--gov-bg);color:var(--gov-ink);border:1.5px solid var(--gov-ink);border-radius:999px;padding:2px 9px;font:600 11px/1.4 var(--mono);white-space:nowrap;font-variant-numeric:tabular-nums;pointer-events:none}
 .zz{font:700 14px/1 var(--display);color:#8D91B3;letter-spacing:.1em}
 .zz span{display:inline-block;animation:zz 2.4s ease-in-out infinite}
@@ -129,6 +134,8 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .rdot{width:18px;height:18px;border-radius:50%;border:4px solid var(--c);background:var(--panel);flex:none;justify-self:center}
 .rdot.gov{--c:#FFD36E}
 .roster{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.grp-head{font:700 11.5px/1.4 var(--display);color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;padding:9px 8px 3px}
+.grp-head:first-child{padding-top:2px}
 .row{width:100%;display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;gap:10px;padding:7px 8px;border-radius:14px;border:1.5px solid transparent;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .row:hover{background:var(--panel-2)}
 .row[aria-current="true"]{border-color:var(--berry);background:var(--panel-2)}
@@ -277,6 +284,9 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
             <option value="merge-deputy">merge deputy · 桥</option>
           </select>
           <button class="btn primary" id="spawn" type="button">派出</button>
+          <button class="btn" type="button" data-remote="off">中继断开</button>
+          <button class="btn" type="button" data-remote="on">恢复</button>
+          <button class="btn" type="button" data-remote="leave">退出联城</button>
         </div>
         <span class="clock" id="clock"></span>
       </div>
@@ -319,6 +329,7 @@ const BASE = Date.now();
 const FRAME_MS = 33;
 const IDLE_FRAME_MS = 100;
 const MAX_CITIZENS = 40;
+const MAX_REMOTE = 20;
 const MAX_LOG = 40;
 const MAX_FLOATERS = 80;
 const LIVE_REST_SEC = 180;
@@ -563,6 +574,37 @@ function askLine(ev, name) {
   }
   return '';
 }
+
+/* city-join: pure */
+/* remoteChip(relays, me, people, govs) -> null | {cls, text} for the top-bar 联城 chip.
+   relays: [{host, state, queued}]; me: {who, device} or null; people/govs: [{who, dev}]. */
+function remoteChip(relays, me, people, govs) {
+  if (!relays.some(r => r.state !== 'left')) return null;
+  const off = relays.filter(r => r.state === 'off');
+  if (off.length) {
+    const n = off.reduce((s, r) => s + r.queued, 0);
+    return { cls: 'off', text: '联城断开 · 待发 ' + n + ' 条' };
+  }
+  if (relays.some(r => r.state === 'refused')) return { cls: 'refused', text: '联城拒绝了密钥' };
+  const who = new Set();
+  if (me && me.who) who.add(me.who);
+  for (const p of people) if (p.who) who.add(p.who);
+  for (const g of govs) if (g.who) who.add(g.who);
+  const dev = new Set();
+  for (const p of people) if (p.dev) dev.add(p.dev);
+  for (const g of govs) if (g.dev) dev.add(g.dev);
+  const D = (me ? 1 : 0) + dev.size;
+  return { cls: 'ok', text: '联城 · ' + who.size + ' 人 · ' + D + ' 台设备' };
+}
+/* remoteNote(who) -> the lock explanation under another member's agent */
+function remoteNote(who) { return '只能看：这是 ' + who + ' 的 agent，只有 ' + who + ' 能回答。'; }
+/* govSign(g) -> the name sign over another member's governor figure */
+function govSign(g) { return g.who + ' · ' + g.device; }
+/* staleText(sec) -> "最后更新 …" while a team's relay is off */
+function staleText(sec) {
+  return sec < 60 ? ('最后更新 ' + Math.floor(sec) + ' 秒前') : ('最后更新 ' + Math.floor(sec / 60) + ' 分钟前');
+}
+/* end city-join: pure */
 
 /* =========================================================
    Simulation: the same event contract the real city reads
@@ -932,6 +974,16 @@ let govTerr = null;
 /* territory id -> {state} for every governor session present now (server: snapshot "govs", live "gov"
    with present true/false -- city-people, Interaction). Empty: no governor anywhere. */
 const govsByTerr = new Map();
+/* city-join: another team's governor sessions, keyed by their wrapped id ("r:<dev>:gov") ->
+   {id, terr, who, device, dev, state, at}; other members' people live in `citizens` too, each
+   flagged with a `remote` field {who, device, dev, rid, br} (city-people's own newCitizen/
+   placeAgent already draw them like any citizen -- only the parts that must never happen for
+   someone else's agent, like a governor's "去吧" dispatch or a real ask panel, are skipped). */
+const remoteGovs = new Map();
+/* [{host, state, queued}], replaced by 'relay' events and the 'relay' list of a remote_snapshot */
+let relays = [];
+/* {who, device} of this machine's own joined identity, or null while not joined (remote_snapshot) */
+let meInfo = null;
 /* {x, y} where the territory's governor figure stands, or null when no governor is there -- DEMO always
    shows one (the mock never sends govs/gov events) so the prototype looks as it always has. */
 function governorAt(terr){
@@ -1017,7 +1069,14 @@ function apply(ev){
     }
     case 'spawn': {
       if (byId(ev.id)) return null;
-      if (citizens.length >= MAX_CITIZENS) { const old = citizens.find(x => x.state === 'resting') || citizens[0]; if (old) old.gone = true; }
+      // MAX_CITIZENS is my own city's cap: a remote person never counts against it, and is the
+      // first one sacrificed if my own city is full (city-join: a remote person never pushes out
+      // one of my own).
+      if (localCount() >= MAX_CITIZENS) {
+        const old = citizens.find(x => x.remote && x.state === 'resting') || citizens.find(x => x.state === 'resting')
+          || citizens.find(x => x.remote) || citizens[0];
+        if (old) old.gone = true;
+      }
       const role = roleOrOther(ev.role || 'worker');
       const n = newCitizen(ev.id, role, ev.task, ev.terr);
       assignHome(n);
@@ -1120,10 +1179,108 @@ function apply(ev){
       }
       return null;
     }
+    // city-join (requirements/city.md, Joining): another team member's own event, wire-wrapped by
+    // the local server. It is never mine to dispatch or answer -- applyRemote() only ever plays it
+    // back onto a citizen flagged `remote`, or (for 'gov') into the remoteGovs map.
+    case 'remote': {
+      const who = { who: ev.who, device: ev.device, dev: ev.dev, rid: ev.rid, br: ev.br };
+      const inner = ev.ev;
+      if (!inner) return null;
+      if (inner.type === 'gov') {
+        if (inner.present === false) remoteGovs.delete(inner.id);
+        else remoteGovs.set(inner.id, { id: inner.id, terr: inner.terr, who: who.who, device: who.device, dev: who.dev, state: inner.state, at: Date.now() });
+        return null;
+      }
+      return applyRemote(inner, who);
+    }
+    // city-join: the whole picture of other members, replacing it the same way a local 'snapshot' replaces mine.
+    case 'remote_snapshot': {
+      meInfo = ev.me || null;
+      const seen = new Set((ev.people || []).map(p => p.id));
+      for (const old of citizens.slice()) {
+        if (!old.remote || seen.has(old.id)) continue;
+        old.leaveFlag = true;
+        if (old.state === 'resting' || !old.doneFlag) forceLeave(old);
+      }
+      for (const p of ev.people || []) {
+        const existing = byId(p.id);
+        if (existing) { existing.remoteAt = Date.now(); continue; }
+        if (remoteCount() >= MAX_REMOTE) continue;
+        const nc = placeAgent(p);
+        nc.remote = { who: p.who, device: p.device, dev: p.dev, rid: p.rid, br: p.br };
+        nc.remoteAt = Date.now();
+      }
+      const seenGov = new Set((ev.govs || []).map(g => g.id));
+      for (const id of [...remoteGovs.keys()]) if (!seenGov.has(id)) remoteGovs.delete(id);
+      for (const g of ev.govs || []) remoteGovs.set(g.id, { id: g.id, terr: g.terr, who: g.who, device: g.device, dev: g.dev, state: g.state, at: Date.now() });
+      relays = ev.relay || [];
+      return null;
+    }
+    // city-join: one team's relay state (联城断开 while "off"); at most once a second while off, per requirements/city.md.
+    case 'relay': {
+      const i = relays.findIndex(r => r.host === ev.host);
+      const entry = { host: ev.host, state: ev.state, queued: ev.queued || 0 };
+      if (i >= 0) relays[i] = entry; else relays.push(entry);
+      return null;
+    }
   }
   return null;
 }
 const emit = ev => apply(ev);
+/* citizens that are mine (never counts a remote person against MAX_CITIZENS) */
+function localCount(){ let n = 0; for (const c of citizens) if (!c.remote) n++; return n; }
+/* other members' citizens now shown (capped at MAX_REMOTE, requirements/city.md Joining) */
+function remoteCount(){ let n = 0; for (const c of citizens) if (c.remote) n++; return n; }
+/* applyRemote(inner, who): plays one of another member's own page events (spawn, tool, stuck,
+   answer, done, leave -- 'gov' is handled by the 'remote' case itself) onto a citizen flagged
+   `remote`. Never the "去吧" dispatch, never a build, never MY governor -- city-join, Joining. */
+function applyRemote(inner, who){
+  if (inner.type === 'spawn') {
+    if (byId(inner.id)) return null;
+    if (remoteCount() >= MAX_REMOTE) {
+      const old = citizens.find(x => x.remote && x.state === 'resting');
+      if (old) old.gone = true; else return null; // never pushes out one of my own -- and never past its own cap
+    }
+    const role = roleOrOther(inner.role || 'worker');
+    const n = newCitizen(inner.id, role, inner.task, inner.terr);
+    assignHome(n);
+    n.label = inner.label || role;
+    n.remote = who;
+    n.remoteAt = Date.now();
+    citizens.push(n);
+    log(`${who.who}（${who.device}）的 ${n.label} 开始：${inner.task}`);
+    return n;
+  }
+  const rc = inner.id ? byId(inner.id) : null;
+  if (!rc || !rc.remote) return null;
+  rc.remoteAt = Date.now();
+  switch (inner.type) {
+    case 'tool':
+      rc.tools[inner.tool] = (rc.tools[inner.tool] || 0) + 1;
+      rc.work += WEIGHT[inner.tool] || .3;
+      workWalk(rc);
+      return rc;
+    case 'stuck':
+      rc.stuck = true; rc.question = stuckText(inner); rc.answered = false; rc.answer = '';
+      if (['building','working','to_plot','back'].includes(rc.state)) goHall(rc);
+      return rc;
+    case 'answer':
+      rc.stuck = false;
+      return rc;
+    case 'done':
+      if (rc.doneFlag) return null;
+      rc.doneFlag = true;
+      if (rc.state === 'building' || (rc.state === 'working' && !rc.path.length)) finish(rc);
+      log(`${who.who}（${who.device}）的 ${rc.task} 完工了`);
+      return rc;
+    case 'leave':
+      rc.leaveFlag = true;
+      if (rc.state === 'resting' || !rc.doneFlag) forceLeave(rc);
+      log(`${who.who}（${who.device}）的 ${rc.task} 下线了`);
+      return rc;
+  }
+  return null;
+}
 
 const ROLE_TYPE = { 'task-manager':'tower', worker:'house', 'fast-lane-deputy':'shop', 'merge-deputy':'workshop' };
 /* a free (unlocked, unbuilt) plot of the right district in a territory (Growth: view.territories[].plots) */
@@ -1189,7 +1346,7 @@ function spawner(){
   if (simT < nextSpawn) return;
   nextSpawn = simT + rnd(7, 13);
   if (!(map.territories || []).length) return;
-  const active = citizens.filter(c => STATE[c.state][0] !== 'rest' && c.state !== 'leaving').length;
+  const active = citizens.filter(c => !c.remote && STATE[c.state][0] !== 'rest' && c.state !== 'leaving').length;
   if (active >= 6) return;
   const r = Math.random();
   spawnDemo(r < .5 ? 'worker' : r < .65 ? 'task-manager' : r < .85 ? 'fast-lane-deputy' : 'merge-deputy');
@@ -1197,14 +1354,16 @@ function spawner(){
 
 function update(dt){
   simT += dt;
+  if (DEMO) demoRelayTick(dt);
   for (const c of citizens) {
     c.stateT += dt;
     if (c.state === 'spawn') { c.alpha = Math.min(1, c.alpha + dt * 2.5); if (c.stateT > .7) { if (c.stuck) goHall(c); else goTo(c, c.stand, 'to_plot'); } }
     else if (c.path.length) move(c, dt);
     switch (c.state) {
       case 'asking':
+        // city-join: never mine to answer -- a remote citizen's grey "?" just waits (requirements/city.md, Joining)
         if (c.answered && simT - c.askT > .9) giveAnswer(c);
-        else if (DEMO && !c.answered && simT - c.askT > 1.9) emit({ type:'answer', id:c.id, answer: c.pendingAnswer || pick(QA)[1] });
+        else if (DEMO && !c.remote && !c.answered && simT - c.askT > 1.9) emit({ type:'answer', id:c.id, answer: c.pendingAnswer || pick(QA)[1] });
         break;
       case 'heard':
         if (c.stateT > 1.5) { releaseSlot(c); say(c, '明白！', 1.1); goTo(c, c.stand, 'back'); }
@@ -2061,6 +2220,9 @@ function ensureOv(c){
   if (c.o) return;
   c.o = { bub: ovEl('bub'), qm: ovBtn('qm', '<span>?</span>'), wait: ovEl('gwait'), zz: ovEl('zz', '<span>z</span><span>z</span><span>Z</span>'), tag: ovEl('tagl') };
   c.o.tag.style.setProperty('--c', c.color);
+  // city-join: another member's citizen also gets a grey, panel-less "?" and a "最后更新" chip for
+  // while their team's relay is off (requirements/city.md, Joining) -- never the pink one above.
+  if (c.remote) { c.o.rqm = ovBtn('qm grey', '<span>?</span>'); c.o.stale = ovEl('stale'); }
 }
 function dropOv(c){ if (!c.o) return; for (const k in c.o) c.o[k].remove(); c.o = null; }
 
@@ -2102,7 +2264,7 @@ function updatePerson(c, t, dt){
   if (ask) c.o.qm.setAttribute('data-open', ask.id); else c.o.qm.removeAttribute('data-open');
   c.o.qm.setAttribute('aria-label', `${c.task} 等你${ask && ask.kind === 'permission' ? '批' : '回答'}，点开看`);
   // above the bubble, never over it: a bubble reserves the spot at (sx, sy).
-  pin(c.o.qm, sx, showBub ? sy - 32 : sy, !!(ask && ask.phase === 'owner') || (DEMO && c.state === 'to_hall' && grow > .5));
+  pin(c.o.qm, sx, showBub ? sy - 32 : sy, !!(ask && ask.phase === 'owner') || (DEMO && !c.remote && c.state === 'to_hall' && grow > .5));
   if (ask && ask.phase === 'governor') {
     const left = Math.max(0, (ask.wait || 0) - (Date.now() - (ask.at || Date.now())) / 1000);
     setText(c.o.wait, '总督 ' + Math.ceil(left) + 's');
@@ -2115,8 +2277,21 @@ function updatePerson(c, t, dt){
   }
   pin(c.o.bub, sx, sy, showBub);
   const [tx, ty] = toScreen(c.x, 0, c.y);
-  setText(c.o.tag, `${c.label} · ${c.task}`);
-  pin(c.o.tag, tx, ty + 34, v.sel.visible && c.state !== 'asking');
+  if (c.remote) {
+    // city-join: the name tag (who) and device tag (device) stay up always, not only while
+    // selected -- other members' people are told apart on sight (requirements/city.md, Joining).
+    setText(c.o.tag, `${c.remote.who} · ${c.remote.device}`);
+    pin(c.o.tag, tx, ty + 34, true);
+    const frozen = anyRelayOff();
+    setFaded(v, frozen);
+    pin(c.o.stale, sx, sy - 46, frozen);
+    if (frozen) setText(c.o.stale, staleText((Date.now() - (c.remoteAt || Date.now())) / 1000));
+    c.o.rqm.setAttribute('aria-label', `${c.remote.who} 卡住了，只有 ${c.remote.who} 能回答`);
+    pin(c.o.rqm, sx, showBub ? sy - 32 : sy, !frozen && !!c.stuck);
+  } else {
+    setText(c.o.tag, `${c.label} · ${c.task}`);
+    pin(c.o.tag, tx, ty + 34, v.sel.visible && c.state !== 'asking');
+  }
 }
 function updateGovernor(){
   // city-land: no governor floating in the void before the first territory lands; city-people: and no
@@ -2138,6 +2313,82 @@ function updateGovernor(){
   pin(govQm, sx, talking ? sy - 32 : sy, !!(gAsk && gAsk.phase === 'owner'));
   const [tx, ty] = toScreen(gov.x, 0, gov.y);
   pin(govTag, tx, ty + 38, govV.sel.visible);
+}
+
+/* city-join: true while any joined team's relay is off (requirements/city.md, Joining: "联城断开") */
+function anyRelayOff(){ return relays.some(r => r.state === 'off'); }
+/* city-join: fades one figure (a citizen or a remote governor view, anything with a `.g` THREE
+   group) in place -- only ever called for a `remote` figure, so a local citizen's or my own
+   governor's material is never touched, let alone the shared material other citizens of the same
+   model still use (each mesh node's own faded clone lives in its own userData, per node). */
+function setFaded(v, on){
+  if (v.fadedOn === on) return;
+  v.fadedOn = on;
+  v.g.traverse(n => {
+    if (!n.isMesh) return;
+    if (!n.userData.ownBase) n.userData.ownBase = n.material;
+    if (on) {
+      if (!n.userData.faded) {
+        const m = n.userData.ownBase.clone();
+        m.transparent = true; m.opacity = FADE_OPACITY; m.depthWrite = false;
+        n.userData.faded = m;
+      }
+      n.material = n.userData.faded;
+    } else {
+      n.material = n.userData.ownBase;
+    }
+  });
+}
+/* city-join: extra small governor figures at another team's territory hall, one per remoteGovs
+   entry, each with a govSign() name sign; several side by side when a territory has more than one
+   (requirements/city.md, Joining: "several main managers in one repo = several governors at the
+   one town hall, each with a name sign"). Kept in a Map by id, same key as remoteGovs. */
+const remoteGovViews = new Map();
+function ensureRemoteGovView(id){
+  let v = remoteGovViews.get(id);
+  if (v) return v;
+  const g = place('character-male-b', 0, 0, { s: CHAR_SCALE * .92, keepY: true });
+  const mixer = new THREE.AnimationMixer(g.children[0]); mixers.push(mixer);
+  const ring = new THREE.Mesh(ringGeo, ringMat('#B9BEDD')); ring.rotation.x = -Math.PI / 2; ring.position.y = .015; ring.scale.setScalar(.9); g.add(ring);
+  const sel = new THREE.Mesh(ringGeo, ringMat('#FF7593')); sel.rotation.x = -Math.PI / 2; sel.position.y = .02; sel.scale.setScalar(1.3); g.add(sel);
+  g.userData.pick = { t:'rg', id };
+  pickables.push(g);
+  const tag = ovEl('tagl'); tag.style.setProperty('--c', '#B9BEDD');
+  v = { g, key:'character-male-b', mixer, sel, tag, cur:null, action:null, fadedOn:false };
+  anim(v, 'idle');
+  remoteGovViews.set(id, v);
+  return v;
+}
+function dropRemoteGovView(id){
+  const v = remoteGovViews.get(id); if (!v) return;
+  world.remove(v.g);
+  const pi = pickables.indexOf(v.g); if (pi >= 0) pickables.splice(pi, 1);
+  const mi = mixers.indexOf(v.mixer); if (mi >= 0) mixers.splice(mi, 1);
+  v.tag.remove();
+  remoteGovViews.delete(id);
+}
+function updateRemoteGovs(){
+  const seen = new Set();
+  const perTerr = new Map();
+  for (const g of remoteGovs.values()) {
+    seen.add(g.id);
+    const t = terrOf(g.terr);
+    if (!t) continue;
+    const n = (perTerr.get(g.terr) || 0) + 1; perTerr.set(g.terr, n);
+    const v = ensureRemoteGovView(g.id);
+    const stand = hallStand(t);
+    const gx = stand.x + n * .55, gy = stand.y - n * .12;
+    v.g.visible = landReady();
+    v.g.position.set(gx, v.g.position.y, gy);
+    anim(v, 'idle');
+    v.sel.visible = !!(selected && selected.t === 'rg' && selected.id === g.id);
+    const frozen = anyRelayOff();
+    setFaded(v, frozen);
+    const [tx, ty] = toScreen(gx, 0, gy);
+    setText(v.tag, frozen ? govSign(g) + ' · ' + staleText((Date.now() - (g.at || Date.now())) / 1000) : govSign(g));
+    pin(v.tag, tx, ty + 30, true);
+  }
+  for (const id of [...remoteGovViews.keys()]) if (!seen.has(id)) dropRemoteGovView(id);
 }
 
 const glowTex = (() => {
@@ -2450,6 +2701,7 @@ function sync(t, dt){
   for (const c of goneOv) { if (c.v) { const i = mixers.indexOf(c.v.mixer); if (i >= 0) mixers.splice(i, 1); } dropOv(c); }
   goneOv.length = 0;
   updateGovernor();
+  updateRemoteGovs();
   if (!RM) updatePets(dt);
   for (const m of mixers) m.update(dt);
   for (const f of floaters) {
@@ -2466,14 +2718,23 @@ const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&':'&amp;', '<':'&lt;', 
 const clock = t => new Date(BASE + t * 1000).toTimeString().slice(0, 8);
 const pct = c => c.bld ? Math.round((c.bld.done ? 1 : c.bld.shown) * 100) : 0;
 const ORDER = { ask:0, build:1, walk:2, rest:3 };
+/* city-join: the [{who, dev}] this machine currently shows, for remoteChip() -- people/govs never
+   feed into 干活/找总督/休息 above: those counts are my own city's, never another member's. */
+function remotePeopleList(){ const out = []; for (const c of citizens) if (c.remote) out.push({ who: c.remote.who, dev: c.remote.dev }); return out; }
+function remoteGovList(){ return [...remoteGovs.values()].map(g => ({ who: g.who, dev: g.dev })); }
 function renderStats(){
   let work = 0, ask = 0, rest = 0;
-  for (const c of citizens) { const g = STATE[c.state][0]; if (g === 'ask') ask++; else if (g === 'rest') rest++; else if (c.state !== 'leaving') work++; }
+  for (const c of citizens) {
+    if (c.remote) continue;
+    const g = STATE[c.state][0]; if (g === 'ask') ask++; else if (g === 'rest') rest++; else if (c.state !== 'leaving') work++;
+  }
   const done = buildings.filter(b => b.done).length;
   const waiting = openAskCount();
+  const chip = remoteChip(relays, meInfo, remotePeopleList(), remoteGovList());
   const html = [['#5AA9F0','干活',work],['#FF6F8B','找总督',ask],['#43C58B','休息',rest],['#FFC23D','建成',done]]
     .map(([c, l, n]) => `<span class="stat"><i style="background:${c}"></i>${l} <b>${n}</b></span>`).join('')
-    + `<button class="stat wait" type="button" id="next" ${waiting ? '' : 'disabled'} aria-label="等你决定 ${waiting} 个，点开最早的一个">等你 <b>${waiting}</b></button>`;
+    + `<button class="stat wait" type="button" id="next" ${waiting ? '' : 'disabled'} aria-label="等你决定 ${waiting} 个，点开最早的一个">等你 <b>${waiting}</b></button>`
+    + (chip ? `<span class="stat ${chip.cls}">${esc(chip.text)}</span>` : '');
   if ($('#stats').innerHTML !== html) $('#stats').innerHTML = html;
 }
 let lastRoster = '';
@@ -2483,27 +2744,57 @@ function govPillText(){
   const busy = (!DEMO && govState === 'busy') || (gov.bubble && simT < gov.bubble.until);
   return busy ? '忙着' : '坐镇市政厅';
 }
+function rosterRow(c){
+  const [g, zh] = citizenStatus(c, governorCount);
+  const kind = c.bld ? TYPE_ZH[c.bld.type] : '';
+  const sub = g === 'build' && kind ? `${c.label} · ${kind} ${pct(c)}%` : c.label;
+  return `<li><button class="row" type="button" data-sel="${c.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === c.id)}"><span class="rdot" style="--c:${c.color}"></span><span class="who"><b>${esc(c.task)}</b><span>${esc(sub)}</span></span><span class="pill ${g}">${zh}</span></button></li>`;
+}
+/* city-join: one row for a remote governor, selectable the same way ("rg:<id>", see selectFrom) */
+function remoteGovRow(g){
+  return `<li><button class="row" type="button" data-sel="rg:${g.id}" aria-current="${!!(selected && selected.t === 'rg' && selected.id === g.id)}"><span class="rdot gov"></span><span class="who"><b>${esc(govSign(g))}</b><span>main manager</span></span><span class="pill gov">市政厅</span></button></li>`;
+}
 function renderRoster(){
-  const list = [...citizens].sort((a, b) => ORDER[STATE[a.state][0]] - ORDER[STATE[b.state][0]] || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const mine = citizens.filter(c => !c.remote)
+    .sort((a, b) => ORDER[STATE[a.state][0]] - ORDER[STATE[b.state][0]] || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   let html = `<li><button class="row" type="button" data-sel="gov" aria-current="${!!(selected && selected.t === 'gov')}"><span class="rdot gov"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govPillText()}</span></button></li>`;
-  for (const c of list) {
-    const [g, zh] = citizenStatus(c, governorCount);
-    const kind = c.bld ? TYPE_ZH[c.bld.type] : '';
-    const sub = g === 'build' && kind ? `${c.label} · ${kind} ${pct(c)}%` : c.label;
-    html += `<li><button class="row" type="button" data-sel="${c.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === c.id)}"><span class="rdot" style="--c:${c.color}"></span><span class="who"><b>${esc(c.task)}</b><span>${esc(sub)}</span></span><span class="pill ${g}">${zh}</span></button></li>`;
-  }
+  for (const c of mine) html += rosterRow(c);
+  // city-join: my own citizens first, then one group per "<who> · <device>" (requirements/city.md, Joining)
+  const groups = new Map();
+  const addGroup = (who, device, row) => {
+    const key = who + '|' + device;
+    if (!groups.has(key)) groups.set(key, { title: who + ' · ' + device, rows: [] });
+    groups.get(key).rows.push(row);
+  };
+  for (const g of remoteGovs.values()) addGroup(g.who, g.device, remoteGovRow(g));
+  for (const c of citizens) if (c.remote) addGroup(c.remote.who, c.remote.device, rosterRow(c));
+  for (const grp of groups.values()) html += `<li class="grp-head">${esc(grp.title)}</li>` + grp.rows.join('');
   if (html !== lastRoster) { $('#roster').innerHTML = html; lastRoster = html; }
 }
 let lastDetailKey = '';
 function renderDetail(){
   const el = $('#detail');
   let key = (!DEMO && citizens.length === 0) ? 'empty' : 'none', c = null, b = null;
-  if (selected && selected.t === 'c') { c = byId(selected.id); if (!c) selected = null; else key = `c${c.id}|${c.state}|${c.doneFlag}|${c.stuck}|${c.qa.length}|${c.askKind}|${c.askPhase}|${governorCount}`; }
+  if (selected && selected.t === 'c') {
+    c = byId(selected.id);
+    if (!c) selected = null;
+    else key = c.remote ? `rc${c.id}|${c.state}|${c.stuck}|${c.task}` : `c${c.id}|${c.state}|${c.doneFlag}|${c.stuck}|${c.qa.length}|${c.askKind}|${c.askPhase}|${governorCount}`;
+  }
   if (selected && selected.t === 'b') { b = buildings.find(x => x.id === selected.id); if (!b) selected = null; else key = `b${b.id}|${b.done}`; }
   if (selected && selected.t === 'gov') key = `gov|${gov.answered}|${gov.dispatched}|${governorCount}`;
+  if (selected && selected.t === 'rg') { if (!remoteGovs.has(selected.id)) selected = null; else key = `rg${selected.id}|${remoteGovs.get(selected.id).state}`; }
   if (key !== lastDetailKey) {
     lastDetailKey = key;
-    if (c) {
+    if (c && c.remote) {
+      // city-join: view only -- who, device, repo, branch, what it is doing, remoteNote(); never
+      // an answer, allow or deny button (requirements/city.md, Joining).
+      el.innerHTML = `
+        <div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(c.remote.who)} · ${esc(c.remote.device)}</div><div class="d-role">${esc(ROLES[c.role].zh)}</div></div></div>
+        <div class="kv"><span>仓库</span><code>${esc(c.remote.rid)}</code></div>
+        <div class="kv"><span>分支</span><code>${esc(c.remote.br)}</code></div>
+        <div class="kv"><span>在做</span><b>${esc(c.task)}</b></div>
+        <div class="why">${esc(remoteNote(c.remote.who))}</div>`;
+    } else if (c) {
       const [g, zh] = citizenStatus(c, governorCount), kind = c.bld ? TYPE_ZH[c.bld.type] : '干活';
       const qa = [...c.qa.map(x => `<p>问：<b>“${esc(x.q)}”</b></p><p>答：<b>“${esc(x.a)}”</b></p>`), (c.stuck ? `<p>问：<b>“${esc(c.question)}”</b> 等回答…</p>` : '')].join('');
       const canStuck = !c.doneFlag && !c.stuck && ['building','to_plot','back'].includes(c.state);
@@ -2519,6 +2810,11 @@ function renderDetail(){
           <button class="btn" type="button" data-act="leave" ${c.state === 'resting' && !c.leaveFlag ? '' : 'disabled'}>让它下班</button>
         </div>
         <p class="d-note">这三个按钮只在原型里有，用来试流程。</p>` : ''}`;
+    } else if (selected && selected.t === 'rg') {
+      const rg = remoteGovs.get(selected.id);
+      el.innerHTML = `
+        <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">${esc(govSign(rg))}</div><div class="d-role">main manager · 总督</div></div><span class="pill gov">市政厅</span></div>
+        <div class="why">${esc(remoteNote(rg.who))}</div>`;
     } else if (b) {
       const owner = byId(b.ownerId);
       el.innerHTML = `
@@ -2867,6 +3163,7 @@ ovRoot.addEventListener('click', e => { const t = e.target.closest('[data-open]'
 /* ---------- input ---------- */
 function selectFrom(val){
   if (val === 'gov') selected = { t:'gov' };
+  else if (val && val.startsWith('rg:')) selected = { t:'rg', id: val.slice(3) };
   else if (val) selected = { t:'c', id:val };
   lastDetailKey = ''; lastRoster = ''; renderPanel(); needFrame = true;
 }
@@ -2882,6 +3179,7 @@ $('#detail').addEventListener('click', e => {
 });
 if (DEMO) {
   $('#spawn').addEventListener('click', () => { const c = spawnDemo($('#role').value); if (c) { selected = { t:'c', id:c.id }; lastDetailKey = ''; renderPanel(); } });
+  $('#spawn-group').addEventListener('click', e => { const b = e.target.closest('[data-remote]'); if (b) demoRemote(b.dataset.remote); });
 } else {
   $('#spawn-group').hidden = true;
   $('#proto').textContent = '实时 · 等服务器';
@@ -2980,6 +3278,68 @@ function seed(){
   govTerr = (map.territories && map.territories[0] && map.territories[0].id) || null;
   updateHome();
   for (const role of ['worker', 'task-manager', 'fast-lane-deputy', 'worker']) spawnDemo(role);
+  seedDemoRemote();
+}
+
+/* city-join demo (#demo, data-remote buttons in #spawn-group): fake other members, so the look
+   can be checked without a relay (requirements/city.md, Joining). Every step goes through the same
+   apply() a real relay would drive, using the exact event shapes tests/test_agent_city_relay_serve.py
+   describes ("remote", "remote_snapshot", "relay"). My own device here is mac-mini. */
+const DEMO_RELAY_HOST = 'demo-team';
+let demoQueued = 0, demoTickAcc = 0;
+function seedDemoRemote(){
+  const terr = govTerr;
+  if (!terr) return;
+  meInfo = { who: 'Maverick', device: 'mac-mini' };
+  apply({ type: 'relay', host: DEMO_RELAY_HOST, state: 'ok', queued: 0 });
+  apply({ type: 'remote', who: 'Maverick', device: 'pc2', dev: 'dev-pc2', rid: 'acme/shop', br: 'main',
+    ev: { type: 'gov', id: 'r:dev-pc2:gov', state: 'busy', terr, present: true } });
+  apply({ type: 'remote', who: 'Maverick', device: 'pc2', dev: 'dev-pc2', rid: 'acme/shop', br: 'test/checkout',
+    ev: { type: 'spawn', id: 'r:dev-pc2:s:1', role: 'worker', label: 'worker', task: '写结账测试', terr } });
+  apply({ type: 'remote', who: 'Ann', device: 'ann-laptop', dev: 'dev-ann', rid: 'acme/shop', br: 'main',
+    ev: { type: 'gov', id: 'r:dev-ann:gov', state: 'busy', terr, present: true } });
+  apply({ type: 'remote', who: 'Ann', device: 'ann-laptop', dev: 'dev-ann', rid: 'acme/shop', br: 'feat/payment-retry',
+    ev: { type: 'spawn', id: 'r:dev-ann:s:1', role: 'worker', label: 'worker', task: '改支付超时重试', terr } });
+  apply({ type: 'remote', who: 'Ann', device: 'ann-laptop', dev: 'dev-ann', rid: 'acme/shop', br: 'feat/payment-retry',
+    ev: { type: 'stuck', id: 'r:dev-ann:s:1', tool: 'AskUserQuestion', question: '支付超时要不要自动重试？' } });
+  apply({ type: 'remote', who: 'Bo', device: '云端', dev: 'dev-bo', rid: 'acme/shop', br: 'chore/deps-scan',
+    ev: { type: 'spawn', id: 'r:dev-bo:s:1', role: 'worker', label: 'worker', task: '扫描依赖漏洞', terr } });
+}
+/* the three demo-only #spawn-group buttons: 中继断开 / 恢复 / 退出联城 */
+function demoRemote(kind){
+  if (kind === 'off') {
+    apply({ type: 'relay', host: DEMO_RELAY_HOST, state: 'off', queued: demoQueued });
+    log('联城中继断开：其他成员定格，我的城市照常干活。');
+  } else if (kind === 'on') {
+    demoQueued = 0; demoTickAcc = 0;
+    apply({ type: 'relay', host: DEMO_RELAY_HOST, state: 'ok', queued: 0 });
+    log('联城恢复：其他成员更新到最新。');
+  } else if (kind === 'leave') {
+    // city-join: the server sends 'leave'/present:false for every person and gov of a dropped
+    // team, then the 'relay' state -- the demo plays back the same shape (requirements/city.md).
+    for (const rc of citizens.slice()) if (rc.remote) {
+      apply({ type: 'remote', who: rc.remote.who, device: rc.remote.device, dev: rc.remote.dev, rid: rc.remote.rid, br: rc.remote.br,
+        ev: { type: 'leave', id: rc.id } });
+    }
+    for (const g of [...remoteGovs.values()]) {
+      apply({ type: 'remote', who: g.who, device: g.device, dev: g.dev, rid: '', br: '',
+        ev: { type: 'gov', id: g.id, terr: g.terr, state: g.state, present: false } });
+    }
+    apply({ type: 'relay', host: DEMO_RELAY_HOST, state: 'left', queued: 0 });
+    meInfo = null;
+    log('退出联城：其他成员从我的城市消失，我的城市不变。');
+  }
+  lastDetailKey = ''; lastRoster = ''; renderPanel(); needFrame = true;
+}
+/* while the demo relay is off, 待发 grows about once a second, like a real queued sender would */
+function demoRelayTick(dt){
+  if (!anyRelayOff()) return;
+  demoTickAcc += dt;
+  if (demoTickAcc < 1) return;
+  demoTickAcc = 0;
+  demoQueued = Math.min(99, demoQueued + 1);
+  const i = relays.findIndex(r => r.host === DEMO_RELAY_HOST);
+  if (i >= 0) relays[i] = Object.assign({}, relays[i], { queued: demoQueued });
 }
 
 /* ---------- boot: load the ready-made models, then run at a capped frame rate ---------- */

@@ -6,6 +6,7 @@ client and server tests never touch Cloudflare, the network or a real key.
 
     relay = FakeRelay(key)          started at once; relay.url, relay.host
     relay.push(dev, line)           another machine sends one line
+    relay.reset()                   the relay was made again: empty, seq 0
     relay.requests                  every POST it got: {"path", "auth", "body", "status"}
     relay.sent_lines()              lines of the syncs it accepted (200) only
     relay.mode = "ok" | "refuse" | "error" | "garbage" | "redirect"
@@ -137,6 +138,13 @@ class FakeRelay:
             self.seq += 1
             self.items.append((self.seq, dev, line))
             return self.seq
+
+    def reset(self):
+        """The relay was made again (new database, or a dev relay restarted):
+        empty store, seq back to 0."""
+        with self.lock:
+            self.items = []
+            self.seq = 0
 
     def sync_bodies(self):
         with self.lock:

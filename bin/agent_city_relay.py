@@ -11,6 +11,7 @@ See tests/test_agent_city_relay_client.py for the full contract.
 
 import getpass
 import hashlib
+import ipaddress
 import json
 import os
 import platform
@@ -85,6 +86,18 @@ def write_join(path, address, key):
     os.chmod(path, 0o600)
 
 
+_LAN_NETS = tuple(ipaddress.ip_network(n) for n in
+                  ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
+
+
+def _is_lan_ipv4(host):
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return any(ip in net for net in _LAN_NETS)
+
+
 def check_address(address):
     """None when address is fine to use for a relay, else a short error."""
     if not address or any(ch.isspace() for ch in address):
@@ -99,8 +112,9 @@ def check_address(address):
     host = parsed.hostname
     if not host:
         return "bad address"
-    if scheme == "http" and host.lower() not in ("127.0.0.1", "localhost"):
-        return "http:// only for 127.0.0.1 and localhost"
+    if scheme == "http" and host.lower() not in ("127.0.0.1", "localhost") \
+            and not _is_lan_ipv4(host):
+        return "http:// only for 127.0.0.1, localhost, or a LAN address"
     return None
 
 
@@ -363,6 +377,9 @@ class RelayHub:
         self._join_cache = {}
         self._ids_cache = {}
         self._worktree_cache = {}
+        self._repo_by_rid = {}
+        self._who = ""
+        self._who_set = False
         self._lock = threading.RLock()
 
     def _cached(self, cache, key, compute):
@@ -437,6 +454,10 @@ class RelayHub:
             team.rids.add(rid)
             if join_path is not None:
                 team.join_paths.add(join_path)
+            self._repo_by_rid[rid] = os.path.realpath(repo)
+            if not self._who_set:
+                self._who = ids.get("who") or ""
+                self._who_set = True
             return True
 
     def tick(self):
@@ -463,6 +484,15 @@ class RelayHub:
             # The network call happens with the lock released, so a slow
             # or stuck relay never stalls offer() / other teams' ticks.
             state, data = sync(address, api_key, dev_id, after, batch, timeout=timeout)
+            extra_state, extra_data = None, None
+            if state == "ok" and after > 0 and data.get("seq") is not None \
+                    and data["seq"] < after:
+                # The relay was made again (new database, or a dev relay
+                # restarted): its seq went backwards. Resync from scratch
+                # right away, so a line sent just after the reset is not
+                # missed.
+                extra_state, extra_data = sync(address, api_key, dev_id, 0, [],
+                                               timeout=timeout)
             finished_at = time.monotonic()
 
             with self._lock:
@@ -474,8 +504,15 @@ class RelayHub:
                 team.last_sync = finished_at
                 if state == "ok":
                     team.state = "ok"
-                    team.after = data["seq"]
-                    for item in data.get("lines") or []:
+                    new_after, lines = data["seq"], data.get("lines") or []
+                    if extra_state is not None:
+                        if extra_state == "ok":
+                            new_after = extra_data["seq"]
+                            lines = extra_data.get("lines") or []
+                        else:
+                            new_after = 0
+                    team.after = new_after
+                    for item in lines:
                         results.append({"dev": item.get("dev"), "line": item.get("line")})
                 else:
                     team.state = "off" if state == "down" else state
@@ -507,6 +544,18 @@ class RelayHub:
     def joined(self):
         with self._lock:
             return bool(self._teams)
+
+    def repo_for(self, rid):
+        """The real path of the git common dir of a joined local repo whose
+        origin gives rid (any repo offer() has queued a line for), or None."""
+        with self._lock:
+            return self._repo_by_rid.get(rid)
+
+    def identity(self):
+        """{"who": git user.name of the first joined repo seen, or "" before
+        any, "device": label}."""
+        with self._lock:
+            return {"who": self._who, "device": self.label}
 
 
 # --------------------------------------------------------------- cloud send
