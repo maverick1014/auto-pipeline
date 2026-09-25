@@ -1330,6 +1330,8 @@ class CityState:
 
         file_val = obj.get("file")
         file_rel = file_val if isinstance(file_val, str) and file_val else None
+        if file_rel is not None and not _is_safe_rel_path(file_rel):
+            file_rel = None
         building_type = KIND_TYPE[kind]
 
         if file_rel is not None:
@@ -1420,16 +1422,20 @@ class CityState:
     def requality(self, identity):
         """Rechecks IDENTITY's buildings against the files on disk
         (requirements/city.md, "Quality"): a file counts as still there
-        when it exists in the root checkout or in a live site (worktree)
-        path of that territory. A building none of whose files are still
-        there is demolished; the rest gets combine_quality's worst result
-        across its surviving files (duplicates across the territory's
-        building files, hot_counts of the root) -- a change broadcasts
-        "quality"; a "home" false building whose quality is no longer
-        "poor" moves to its own district's first free open plot
-        ("move"). File reads and the one hot_counts git log run outside
-        the lock, like count_fn; only the resulting edits and broadcasts
-        are locked."""
+        when it is a safe repo-relative path (_is_safe_rel_path: no leaving
+        the repo) that exists in the root checkout or in a live site
+        (worktree) path of that territory. A building with no safely known
+        file at all (no "files" recorded -- an old world.json building or
+        an old hook line without "file" -- or every recorded path unsafe)
+        is left alone entirely, never demolished; one that does have safe
+        files but none of them still exist is demolished; the rest gets
+        combine_quality's worst result across its surviving files
+        (duplicates across the territory's building files, hot_counts of
+        the root) -- a change broadcasts "quality"; a "home" false building
+        whose quality is no longer "poor" moves to its own district's first
+        free open plot ("move"). File reads and the one hot_counts git log
+        run outside the lock, like count_fn; only the resulting edits and
+        broadcasts are locked."""
         with self.lock:
             t = self.world["territories"].get(identity)
             if t is None or not t["buildings"]:
@@ -1443,8 +1449,16 @@ class CityState:
         alive_files = {}
         texts = {}
         for plot, files in snapshot_files.items():
+            safe = [f for f in files if _is_safe_rel_path(f)]
+            if not safe:
+                # Nothing safely known about this building (no "files"
+                # recorded at all -- an old world.json building or an old
+                # hook line without "file" -- or every recorded path leaves
+                # the repo): leave it alone entirely, never demolished.
+                alive_files[plot] = None
+                continue
             alive = []
-            for f in files:
+            for f in safe:
                 text = None
                 for base in bases:
                     text = _read_text(base, f)
@@ -1470,7 +1484,7 @@ class CityState:
             for b in list(t["buildings"]):
                 alive = alive_files.get(b["plot"])
                 if alive is None:
-                    continue
+                    continue  # nothing safely known about it -- never demolished
                 if not alive:
                     t["buildings"].remove(b)
                     self._broadcast({"type": "demolish", "terr": terr, "plot": b["plot"]})
@@ -3496,6 +3510,8 @@ def build(world, plans, identity, kind, owner, by, now, file_rel=None, wt=""):
     plan = _plan_by_id(plans, t["plan"])
     taken = {b["plot"] for b in t["buildings"]}
 
+    if file_rel and not _is_safe_rel_path(file_rel):
+        file_rel = None
     files = [file_rel] if file_rel else []
     q = "good"
     if file_rel:
@@ -4355,9 +4371,22 @@ _FN_BRACE_END_RE = re.compile(r'\)\s*\{\s*$')
 _FN_ARROW_END_RE = re.compile(r'\)\s*=>\s*\{\s*$')
 
 
+def _is_safe_rel_path(rel):
+    """False for an absolute path, an empty one, or one with a ".."
+    segment -- never read and never recorded in a building's "files"
+    (requirements/city.md, "Quality": a line's "file" is trusted for
+    nothing beyond a plain path inside the repo)."""
+    if not rel or os.path.isabs(rel):
+        return False
+    return ".." not in rel.replace("\\", "/").split("/")
+
+
 def _read_text(base, rel):
-    """UTF-8 text of BASE/REL, or None when it cannot be read (missing, a
-    directory, permission, ...)."""
+    """UTF-8 text of BASE/REL, or None when REL is not a safe repo-relative
+    path (_is_safe_rel_path) or it cannot be read (missing, a directory,
+    permission, ...). Never reads outside BASE."""
+    if not _is_safe_rel_path(rel):
+        return None
     try:
         with open(os.path.join(base, rel), encoding="utf-8", errors="replace") as fh:
             return fh.read()
