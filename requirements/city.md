@@ -49,7 +49,7 @@
 - Territory size grows with the repo's git-tracked code lines. Not counted: binaries, images, 3D models, vendor, lock files.
 - New repo = tiny territory with a small town hall only.
 - The city is never empty: when the server starts it shows the territory of the dir it was started from (its git repo; a plain folder counts too), plus every territory saved in world.json, at once, before any agent acts.
-- Minimum size: every territory, even an empty repo with 0 code lines, has at least a small land, a town hall and a few open plots (about 3), so the first agents can build.
+- Minimum size: every territory, even an empty repo with 0 code lines, has at least a small land, a town hall and one open plot in every district of its plan (house, shop, test tower, workshop, library), so any first edit can build.
 - A build that finds no free plot says so in the page log (e.g. "r1 没有空地了，先等等"). Never silent.
 - Old data is dropped (owner 2026-09-25, nobody uses it): territories saved without a repo identity are removed from world.json on load; events without a repo go to the start territory, never make their own.
 - Zoom in and out always move; the governor stands at a hall, never in the void.
