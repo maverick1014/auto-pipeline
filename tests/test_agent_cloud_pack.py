@@ -73,13 +73,20 @@ import json
 import os
 import re
 import shutil
+import signal
 import stat
 import subprocess
+import sys
 import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from relayhelp import FAKE_KEY, FakeRelay  # noqa: E402
 SCRIPT = os.path.join(ROOT, "bin", "agent-cloud-pack.sh")
 
 PACK = os.path.join(".claude", "auto-pipeline")
@@ -558,6 +565,80 @@ class TestCityHooks(PackCase):
         result = self.run_cmd(SEND_CMD)
         self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
         self.assertFalse(os.path.exists(os.path.join(self.base, "city", "on")))
+
+
+class TestCityInTheCloud(PackCase):
+    """End to end, the way a cloud session runs it: a packed repo, no plugin,
+    CLAUDE_CODE_REMOTE set, AGENT_CITY_RELAY as the environment secret, the
+    default city dir under a fresh $HOME. The packed SessionStart hook
+    (SEND_CMD) starts the sender; the packed city hook (CITY_HOOK_CMD) writes
+    the event; the sender delivers it to the team relay (a fake one on
+    127.0.0.1, tests/relayhelp.py) as 云端, with the repo id and branch."""
+
+    def setUp(self):
+        super().setUp()
+        self.key = FAKE_KEY
+        self.fake = FakeRelay()
+        self.addCleanup(self.fake.stop)
+        git(self.target, "remote", "add", "origin", "git@github.com:Acme/Shop.git")
+        self.assertOk(self.pack())
+        self.city = os.path.join(self.home, ".cache", "agent-city")
+        self.addCleanup(self.stop_sender)
+
+    def stop_sender(self):
+        try:
+            with open(os.path.join(self.city, "on")) as fh:
+                os.kill(int(fh.read().split()[0]), signal.SIGTERM)
+        except (OSError, ValueError, IndexError):
+            pass
+
+    def cloud_env(self):
+        env = self.env({"CLAUDE_PROJECT_DIR": self.target, "CLAUDE_CODE_REMOTE": "true",
+                        "AGENT_CITY_RELAY": "%s %s" % (self.fake.url, self.key)})
+        env.pop("AGENT_CITY_DIR", None)
+        return env
+
+    def run_cmd(self, cmd, stdin=""):
+        return subprocess.run(["bash", "-c", cmd], cwd=self.target, env=self.cloud_env(),
+                              capture_output=True, text=True, input=stdin, timeout=60)
+
+    def wait(self, check, timeout=10.0):
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            if check():
+                return True
+            time.sleep(0.1)
+        return bool(check())
+
+    def test_a_cloud_session_sends_its_events(self):
+        started = self.run_cmd(SEND_CMD)
+        self.assertEqual(started.returncode, 0, started.stderr)
+        self.assertIn("CITY: sending to the team relay " + self.fake.host, started.stdout)
+        self.assertNotIn(self.key, started.stdout + started.stderr)
+        self.assertTrue(os.path.exists(os.path.join(self.city, "on")))
+
+        event = {"session_id": "cloud-1", "hook_event_name": "PostToolUse", "cwd": self.target,
+                 "tool_name": "Bash", "tool_input": {"command": "ls"}}
+        hook = self.run_cmd(CITY_HOOK_CMD, stdin=json.dumps(event))
+        self.assertEqual((hook.returncode, hook.stdout), (0, ""), hook.stderr)
+
+        # the city_relay_sec default is 5 s: the first sync is at once, the next within ~5 s
+        self.assertTrue(self.wait(lambda: self.fake.sent_lines(), timeout=15),
+                        "the cloud session's event never reached the relay")
+        wire = self.fake.sent_lines()[0]
+        branch = git(self.target, "rev-parse", "--abbrev-ref", "HEAD").strip()
+        self.assertEqual((wire["sid"], wire["rid"], wire["dev"], wire["br"]),
+                         ("cloud-1", "github.com/acme/shop", "云端", branch))
+        self.assertNotIn(self.target, json.dumps(self.fake.sync_bodies()))
+
+    def test_the_second_session_start_keeps_one_sender(self):
+        self.assertEqual(self.run_cmd(SEND_CMD).returncode, 0)
+        with open(os.path.join(self.city, "on")) as fh:
+            first = fh.read()
+        again = self.run_cmd(SEND_CMD)
+        self.assertEqual(again.returncode, 0, again.stderr)
+        with open(os.path.join(self.city, "on")) as fh:
+            self.assertEqual(fh.read(), first)
 
 
 class TestClaudeMd(PackCase):

@@ -91,6 +91,7 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .zz span:nth-child(3){animation-delay:.8s}
 @keyframes zz{0%{transform:translate(0,0);opacity:0}30%{opacity:1}100%{transform:translate(8px,-14px);opacity:0}}
 .tagl{background:var(--c);color:#fff;border-radius:999px;padding:3px 10px;font:600 11.5px/1.3 var(--mono);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.rdev{background:var(--panel-2);color:var(--ink-3);border:1px solid var(--line);border-radius:999px;padding:2px 7px;font:600 9.5px/1.3 var(--mono);white-space:nowrap}
 .fl{background:var(--c);color:#fff;border-radius:8px;padding:1px 7px;font:600 11px/1.5 var(--mono)}
 .lbl{background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:2px 10px;font:600 12px/1.5 var(--display);box-shadow:0 2px 0 rgba(42,43,69,.15);white-space:nowrap}
 .era-sign{background:var(--gov-bg);color:var(--gov-ink);border:1.5px solid var(--gov-ink);border-radius:999px;padding:3px 10px;font:600 12px/1.3 var(--round);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.18)}
@@ -2222,7 +2223,7 @@ function ensureOv(c){
   c.o.tag.style.setProperty('--c', c.color);
   // city-join: another member's citizen also gets a grey, panel-less "?" and a "最后更新" chip for
   // while their team's relay is off (requirements/city.md, Joining) -- never the pink one above.
-  if (c.remote) { c.o.rqm = ovBtn('qm grey', '<span>?</span>'); c.o.stale = ovEl('stale'); }
+  if (c.remote) { c.o.rqm = ovBtn('qm grey', '<span>?</span>'); c.o.stale = ovEl('stale'); c.o.rdev = ovEl('rdev'); }
 }
 function dropOv(c){ if (!c.o) return; for (const k in c.o) c.o[k].remove(); c.o = null; }
 
@@ -2280,8 +2281,19 @@ function updatePerson(c, t, dt){
   if (c.remote) {
     // city-join: the name tag (who) and device tag (device) stay up always, not only while
     // selected -- other members' people are told apart on sight (requirements/city.md, Joining).
-    setText(c.o.tag, `${c.remote.who} · ${c.remote.device}`);
+    // Owner decision 2026-09-25: two separate tags, never one combined "who · device" tag --
+    // the name tag (c.o.tag) and, pinned right beside it, a small grey device chip (c.o.rdev).
+    // Cheap: offsetWidth forces a layout recalc, so it's only read the frame the text actually
+    // changes (who/device never change for a given citizen after spawn); every other frame reuses
+    // the width cached on the element (el._w) from that one read.
+    const tagChanged = c.o.tag._t !== c.remote.who;
+    setText(c.o.tag, c.remote.who);
     pin(c.o.tag, tx, ty + 34, true);
+    if (tagChanged || c.o.tag._w === undefined) c.o.tag._w = c.o.tag.offsetWidth;
+    const devChanged = c.o.rdev._t !== c.remote.device;
+    setText(c.o.rdev, c.remote.device);
+    pin(c.o.rdev, tx + c.o.tag._w / 2 + 4 + (c.o.rdev._w || 0) / 2, ty + 34, true);
+    if (devChanged || c.o.rdev._w === undefined) c.o.rdev._w = c.o.rdev.offsetWidth;
     const frozen = anyRelayOff();
     setFaded(v, frozen);
     pin(c.o.stale, sx, sy - 46, frozen);

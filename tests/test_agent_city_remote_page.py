@@ -19,7 +19,12 @@ bin/agent-city.html
   Other members' people (browser; the main manager's click path checks it):
     - drawn like my own citizens (same models, walks, tools, rest), in the
       territory ev.terr, each marked remote with who/device/dev/rid/br
-    - a name tag with the person (who) and a small device tag (device)
+    - two tags, always shown (owner decision 2026-09-25, as in the mock):
+      the name tag with the person (who), and beside it a SEPARATE small
+      grey device chip (device) — an overlay element of class "rdev", its
+      own CSS rule `.rdev{...}` (smaller, grey). Never one combined
+      "<who> · <device>" tag on a person. Governor signs stay govSign(g).
+      Both set with textContent (a member's git user.name is outside input).
     - my governor never talks to them, never sends them ("去吧" is mine only)
     - their stuck "?" is grey and opens no ask panel; the detail card shows
       who, device, repo (rid), branch, what it is doing, and remoteNote(who);
@@ -116,6 +121,13 @@ class TestEvents(unittest.TestCase):
         for name in ("remote", "remote_snapshot", "relay"):
             with self.subTest(case=name):
                 self.assertIn("case '%s'" % name, script)
+
+    def test_name_tag_and_device_chip_are_separate(self):
+        text = page()
+        self.assertRegex(text, r"\.rdev\s*\{", "no CSS rule for the device chip .rdev")
+        self.assertRegex(inline_script(), r"['\"]rdev['\"]", "no element with class rdev")
+        self.assertNotRegex(inline_script(), r"remote\.who\}\s*·\s*\$\{[^}]*remote\.device",
+                            "a person still gets one combined 'who · device' tag")
 
     def test_cap(self):
         self.assertRegex(inline_script(), r"const MAX_REMOTE = 20\b")
