@@ -578,6 +578,7 @@ const ROLES = {
 const STATE = {
   spawn:['walk','出门'], to_plot:['walk','去工地'], building:['build','施工中'], working:['build','干活'],
   to_hall:['ask','去问总督'], asking:['ask','在问总督'], heard:['ask','拿到答案'],
+  to_lead:['ask','去问经理'], at_lead:['ask','问经理'],
   back:['walk','回工地'], finishing:['rest','封顶了'], to_rest:['rest','去休息'],
   resting:['rest','休息中'], leaving:['walk','下班回家'],
 };
@@ -700,6 +701,14 @@ const HOME_OFF = [
   {dx:-1.4,dz:1.3},{dx:1.4,dz:1.3},{dx:-.7,dz:1.9},{dx:.7,dz:1.9},{dx:-2.1,dz:.6},{dx:2.1,dz:.6},{dx:0,dz:2.2},
 ];
 const homeSlotsByTerr = new Map();
+/* offsets around a lead's office centre for its workers to live at, every one within 2.6 tiles (Interaction:
+   a lead's home is its office; its workers live and walk around it, never the hall). */
+const OFFICE_HOME_OFF = [
+  {dx:-1.6,dz:0},{dx:1.6,dz:0},{dx:0,dz:-1.6},{dx:0,dz:1.6},
+  {dx:-1.2,dz:1.2},{dx:1.2,dz:1.2},{dx:-1.2,dz:-1.2},{dx:1.2,dz:-1.2},
+  {dx:-2.3,dz:.6},{dx:2.3,dz:.6},{dx:-.6,dz:-2.3},{dx:.6,dz:-2.3},
+];
+const officeSlotsByLead = new Map();
 /* tile keys already spoken for near t's hall: the governor's own stand, plus whichever of the rest/home
    pools has already been built for this territory this generation (the second pool to build reads the
    first's full candidate list, so home and rest never land on the same tile -- city-people, Interaction). */
@@ -709,28 +718,37 @@ function reservedNear(t, exclude){
   if (exclude !== 'home') { const h = homeSlotsByTerr.get(t.id); if (h) for (const s of h) out.add(Math.floor(s.x) + ',' + Math.floor(s.y)); }
   return out;
 }
-/* rest spots near t's hall: only walkable tiles (never a plot, the hall, water, the void, the governor's
-   stand or a citizen's home spot), at least 3 when the tiles allow it (REST_OFF first, then the walkable
-   ring nearest the hall). A citizen already resting on a tile keeps it reserved (by: -1) across a
-   rebuild, so nobody doubles up on the same spot. */
+/* rest spots: with a rest place (t.rest, a 2x2 area's corner -- Interaction), one seat at the centre of
+   each of its 4 land tiles, within 1.8 of the place's own centre (t.rest.x + 1, t.rest.z + 1). Without
+   one, as before: only walkable tiles near t's hall (never a plot, the hall, water, the void, the
+   governor's stand or a citizen's home spot), at least 3 when the tiles allow it (REST_OFF first, then
+   the walkable ring nearest the hall). A citizen already resting on a tile keeps it reserved (by: -1)
+   across a rebuild, so nobody doubles up on the same spot. */
 function restSlotsFor(t){
   let slots = restSlotsByTerr.get(t.id);
   if (slots) return slots;
   const restingHere = new Set();
   if (typeof citizens !== 'undefined') for (const c of citizens) if (c.state === 'resting' && c.terr === t.id && c.rest) restingHere.add(Math.floor(c.rest.x) + ',' + Math.floor(c.rest.y));
   slots = [];
-  const used = reservedNear(t, 'rest');
-  const add = (x, z, pose) => {
+  const add = (x, z, pose, used) => {
     const fx = Math.floor(x), fz = Math.floor(z), k = fx + ',' + fz;
     if (used.has(k) || !walkable(fx, fz)) return;
     used.add(k);
     slots.push({ x, y: z, pose, by: restingHere.has(k) ? -1 : 0 });
   };
-  for (const o of REST_OFF) add(t.cx + o.dx, t.cz + o.dz, o.pose);
+  if (t.rest) {
+    const used = new Set();
+    const spots = [[.5, .5, 'sit'], [1.5, .5, 'sit'], [.5, 1.5, 'lie'], [1.5, 1.5, 'lie']];
+    for (const [dx, dz, pose] of spots) add(t.rest.x + dx, t.rest.z + dz, pose, used);
+    restSlotsByTerr.set(t.id, slots);
+    return slots;
+  }
+  const used = reservedNear(t, 'rest');
+  for (const o of REST_OFF) add(t.cx + o.dx, t.cz + o.dz, o.pose, used);
   for (let r = 1; slots.length < 3 && r <= 8; r++)
     for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
       if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
-      add(t.cx + dx + .5, t.cz + dz + .5, 'lie');
+      add(t.cx + dx + .5, t.cz + dz + .5, 'lie', used);
     }
   restSlotsByTerr.set(t.id, slots);
   return slots;
@@ -765,25 +783,105 @@ function pickHomeSpot(c, t){
   const free = slots.filter(s => !s.by);
   let spot = free.length ? pick(free) : null;
   if (spot) spot.by = c.id;
-  else spot = { x: t.cx, y: t.cz + 2.5, by: c.id, extra: true };
+  else spot = { x: t.cx + rnd(-2.5, 2.5), y: t.cz + 2.6 + rnd(0, 1.2), by: c.id, extra: true };
+  return spot;
+}
+/* the walkable tile just in front of (x, z) (a building or an office), stepped in a little so a citizen
+   never stands on the thing itself. */
+function frontStand(x, z){
+  const [fx, fz] = frontOf(x, z);
+  return { x: fx + .5 + (x - fx) * .28, y: fz + .5 + (z - fz) * .28 };
+}
+/* offices: a lead's own home is its office (view territory "offices", or its own a.office -- Interaction),
+   it stands at the office's front; its workers live and walk around it (within 2.6 tiles of the office
+   centre, never the hall). Office tiles are not walkable (landState() blocks them). */
+function officeStand(o){ return frontStand(o.x, o.z); }
+function officeSlotsFor(leadC){
+  let slots = officeSlotsByLead.get(leadC.id);
+  if (slots) return slots;
+  const oc = { x: leadC.office.x + .5, y: leadC.office.z + .5 };
+  const homeHere = new Set([Math.floor(leadC.home ? leadC.home.x : leadC.x) + ',' + Math.floor(leadC.home ? leadC.home.y : leadC.y)]);
+  if (typeof citizens !== 'undefined') for (const c of citizens) if (c.home && c.lead === leadC.id && !c.gone) homeHere.add(Math.floor(c.home.x) + ',' + Math.floor(c.home.y));
+  slots = [];
+  const used = new Set(homeHere);
+  const add = (x, z) => {
+    const fx = Math.floor(x), fz = Math.floor(z), k = fx + ',' + fz;
+    if (used.has(k) || !walkable(fx, fz)) return;
+    used.add(k);
+    slots.push({ x, y: z, by: homeHere.has(k) ? -1 : 0 });
+  };
+  for (const o of OFFICE_HOME_OFF) add(oc.x + o.dx, oc.y + o.dz);
+  for (let r = 1; slots.length < 6 && r <= 6; r++)
+    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
+      if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+      if (Math.hypot(dx, dz) > 2.6) continue;
+      add(oc.x + dx, oc.y + dz);
+    }
+  officeSlotsByLead.set(leadC.id, slots);
+  return slots;
+}
+function pickOfficeHomeSpot(c, leadC){
+  const slots = officeSlotsFor(leadC);
+  const free = slots.filter(s => !s.by);
+  let spot = free.length ? pick(free) : null;
+  if (spot) spot.by = c.id;
+  else spot = { x: leadC.office.x + .5 + rnd(-.6, .6), y: leadC.office.z + 1.6 + rnd(0, .6), by: c.id, extra: true };
   return spot;
 }
 /* c's own spot for its whole life in the city: assigned once, right after it is created (spawn or a
-   snapshot's placeAgent), so it never has to share the governor's tile with anyone else. */
+   snapshot's placeAgent), so it never has to share the governor's tile with anyone else.
+   A lead (c.office) stands at its office; a worker with a lead (c.lead) lives around that lead's office;
+   everyone else lives near the territory hall, as before (Interaction: offices and the chain of command). */
 function assignHome(c){
+  if (c.office) { const spot = officeStand(c.office); c.home = spot; c.stand = spot; return; }
+  const leadC = c.lead ? byId(c.lead) : null;
+  if (leadC && leadC.office) { const spot = pickOfficeHomeSpot(c, leadC); c.home = spot; c.stand = spot; return; }
   const t = terrOf(c.terr);
   const spot = t ? pickHomeSpot(c, t) : { x: c.x, y: c.y, by: c.id, extra: true };
   c.home = spot;
   c.stand = spot;
 }
-/* a free walkable spot within `within` tiles of home, for a short walk while working with no building. */
-function nearbyWalkSpot(home, within){
+/* the distance from point (px, pz) to the segment [(ax, az), (bx, bz)]. */
+function segDist(px, pz, ax, az, bx, bz){
+  const dx = bx - ax, dz = bz - az, len2 = dx * dx + dz * dz;
+  let k = len2 ? ((px - ax) * dx + (pz - az) * dz) / len2 : 0;
+  k = Math.max(0, Math.min(1, k));
+  return Math.hypot(px - (ax + k * dx), pz - (az + k * dz));
+}
+/* the governor's own stand: the one point near the hall every citizen's short walk must never graze,
+   even mid-walk, not just land on it (city-people P0: nobody shares a spot). Other citizens' home and
+   rest spots are already excluded as *destinations* (reservedNear); they are also spaced out enough
+   from one another that a walk between two of them never grazes a third. */
+function protectedPoints(t, exceptId){
+  const g = governorAt(t.id);
+  return g ? [g] : [];
+}
+/* true when the actual walked path from (sx, sz) to (tx, tz) never comes within `margin` of any of `pts`. */
+function pathClearOfAll(sx, sz, tx, tz, pts, margin){
+  if (!pts.length) return true;
+  const p = findPath(sx, sz, tx, tz), steps = p && p.length ? p : [[tx, tz]];
+  let ax = sx, az = sz;
+  for (const [bx, bz] of steps) {
+    for (const pt of pts) if (segDist(pt.x, pt.y, ax, az, bx, bz) < margin) return false;
+    ax = bx; az = bz;
+  }
+  return true;
+}
+/* a free walkable spot within `within` tiles of home, for a short walk while working with no building.
+   Never a tile another citizen already calls its own (home, rest or the governor's stand -- city-people
+   P0: nobody shares a spot, even mid-walk), when a territory is known. */
+function nearbyWalkSpot(home, within, t, exceptId){
+  const avoid = t ? reservedNear(t) : null;
+  const pts = t ? protectedPoints(t, exceptId) : [];
   const fx0 = Math.floor(home.x), fz0 = Math.floor(home.y), out = [];
   for (let dx = -within; dx <= within; dx++) for (let dz = -within; dz <= within; dz++) {
     if (!dx && !dz) continue;
     if (Math.hypot(dx, dz) > within) continue;
-    const x = fx0 + dx + .5, z = fz0 + dz + .5;
-    if (walkable(Math.floor(x), Math.floor(z))) out.push({ x, y: z });
+    const x = fx0 + dx + .5, z = fz0 + dz + .5, fx = Math.floor(x), fz = Math.floor(z);
+    if (avoid && avoid.has(fx + ',' + fz)) continue;
+    if (!walkable(fx, fz)) continue;
+    if (!pathClearOfAll(home.x, home.y, x, z, pts, .55)) continue;
+    out.push({ x, y: z });
   }
   return out.length ? pick(out) : null;
 }
@@ -792,7 +890,7 @@ function nearbyWalkSpot(home, within){
 function workWalk(c){
   if (c.bld || c.stuck || c.doneFlag || c.state !== 'working' || c.path.length) return;
   if (simT - (c.walkAt || 0) < 2) return;
-  const spot = nearbyWalkSpot(c.home, 2);
+  const spot = nearbyWalkSpot(c.home, 2, terrOf(c.terr), c.id);
   if (!spot) return;
   c.walkAt = simT;
   c.walkOut = true;
@@ -829,10 +927,7 @@ function newBuildingRecord(terr, plot, type, x, z, by, done){
   occupied.set(x + ',' + z, b);
   return b;
 }
-function standFor(b){
-  const [fx, fz] = frontOf(b.gx, b.gy);
-  return { x: fx + .5 + (b.gx - fx) * .28, y: fz + .5 + (b.gy - fz) * .28 };
-}
+function standFor(b){ return frontStand(b.gx, b.gy); }
 function newCitizen(id, role, task, terr){
   const R = ROLES[role];
   // an unknown territory ("" or not in the map): stand at the governor's hall, else the first territory
@@ -841,7 +936,8 @@ function newCitizen(id, role, task, terr){
   return { id, role, label:role, task, terr, color:R.color, skin:pick(SKIN), x:stand.x, y:stand.y, path:[], state:'spawn', stateT:0,
     alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0,Other:0}, work:0, bld:null, stand, home:null, slot:null, rest:null, pendingBuild:null,
     question:'', answer:'', answered:false, pendingAnswer:'', askT:0, stuck:false, doneFlag:false, leaveFlag:false,
-    askKind:'', askPhase:'', qa:[], bubble:null, walkT:Math.random()*5, walkAt:0, walkOut:false, feed:null, gone:false };
+    askKind:'', askPhase:'', qa:[], bubble:null, walkT:Math.random()*5, walkAt:0, walkOut:false, feed:null, gone:false,
+    office:null, lead:'', relay:'' };
 }
 const byId = id => citizens.find(c => c.id === id);
 
@@ -872,6 +968,7 @@ function onArrive(c){
       if (c.stuck) goHall(c); else if (c.doneFlag) finish(c);
       break;
     case 'to_hall': c.state = 'asking'; c.stateT = 0; c.askT = simT; break;
+    case 'to_lead': c.state = 'at_lead'; c.stateT = 0; break;
     case 'to_rest': c.state = 'resting'; c.stateT = 0; if (c.leaveFlag) leave(c); break;
     case 'working':
       // returning from a short work-walk (workWalk): done overrides it, else walk back home and stop.
@@ -885,6 +982,13 @@ function goHall(c){
   const slot = t ? { x: t.cx + rnd(-.6, .6), y: t.cz + .9 + rnd(0, .3), by: c.id, extra: true } : { x: c.x, y: c.y, by: c.id, extra: true };
   c.slot = slot;
   goTo(c, slot, 'to_hall');
+}
+/* a citizen with a lead (relay 'lead', or stuck) walks to that lead's office and waits there, never the
+   hall (Interaction: the chain of command). */
+function goOffice(c, leadC){
+  const spot = officeStand(leadC.office);
+  c.slot = spot;
+  goTo(c, spot, 'to_lead');
 }
 function releaseSlot(c){ if (c.slot && !c.slot.extra) c.slot.by = 0; c.slot = null; }
 function giveAnswer(c){
@@ -948,9 +1052,18 @@ function updateHome(){
   home = t ? { x: t.cx - mid.x, z: t.cz - mid.z + 2.2 } : { x: 0, z: 0 };
   if (t) { const s = hallStand(t); gov.x = s.x; gov.y = s.y; }
 }
+/* a citizen with a lead goes to that lead's office; everyone else goes to the governor's hall
+   (Interaction: the chain of command). Shared by the live 'stuck'/'relay' events and a reconnect
+   (snapshot placeAgent) that finds an agent already stuck or mid-relay. */
+function goChain(c, leadId){
+  const leadC = (leadId && byId(leadId)) || (c.lead ? byId(c.lead) : null);
+  if (leadC && leadC.office) goOffice(c, leadC); else goHall(c);
+}
 function placeAgent(a){
   const role = roleOrOther(a.role);
   const c = newCitizen(a.id, role, a.task, a.terr);
+  c.office = a.office || null;
+  c.lead = a.lead || '';
   assignHome(c);
   c.label = a.label || role;
   c.alpha = 1; c.x = c.home.x; c.y = c.home.y; c.state = 'working';
@@ -963,7 +1076,10 @@ function placeAgent(a){
     c.rest = spot; c.x = spot.x; c.y = spot.y; c.state = 'resting';
   } else if (a.stuck) {
     c.stuck = true; c.question = '需要你看一下';
-    goHall(c);
+    goChain(c);
+  } else if (a.relay === 'lead' || a.relay === 'governor') {
+    c.relay = a.relay;
+    if (a.relay === 'lead') goChain(c, a.lead); else goHall(c);
   }
   citizens.push(c);
   return c;
@@ -1020,6 +1136,8 @@ function apply(ev){
       if (citizens.length >= MAX_CITIZENS) { const old = citizens.find(x => x.state === 'resting') || citizens[0]; if (old) old.gone = true; }
       const role = roleOrOther(ev.role || 'worker');
       const n = newCitizen(ev.id, role, ev.task, ev.terr);
+      n.office = ev.office || null;
+      n.lead = ev.lead || '';
       assignHome(n);
       n.label = ev.label || role;
       citizens.push(n);
@@ -1047,7 +1165,9 @@ function apply(ev){
       if (!c) return null;
       const text = stuckText(ev);
       c.stuck = true; c.question = text; c.answered = false; c.answer = '';
-      if (['building','working','to_plot','back'].includes(c.state)) goHall(c);
+      // a citizen with a lead goes to its office; everyone else (leads included) goes to the governor,
+      // as before (Interaction: a question or a permission climbs the chain).
+      if (['building','working','to_plot','back'].includes(c.state)) goChain(c);
       if (DEMO) log(`${c.task} 卡住了：“${text}” → 去问总督`, 'ask');
       return c;
     }
@@ -1056,6 +1176,21 @@ function apply(ev){
       const text = typeof ev.answer === 'string' && ev.answer ? ev.answer : '已回答';
       c.answer = text; c.answered = true; c.stuck = false;
       if (DEMO) log(`总督回答 ${c.task}：“${text}”`);
+      return c;
+    }
+    case 'relay': {
+      // the chain of command (Interaction): to 'lead' walks to its lead's office, to 'governor' walks to
+      // the territory's governor. citizenStatus reads the resulting state (to_lead/at_lead, to_hall/asking).
+      if (!c) return null;
+      c.relay = ev.to;
+      if (ev.to === 'lead') goChain(c, ev.lead); else if (ev.to === 'governor') goHall(c);
+      return c;
+    }
+    case 'relay_end': {
+      // back home; a done citizen then rests (never straight from the office/hall -- Interaction).
+      if (!c) return null;
+      c.relay = ''; c.stuck = false;
+      goTo(c, c.home, 'back');
       return c;
     }
     case 'done': {
@@ -1124,6 +1259,36 @@ function apply(ev){
   return null;
 }
 const emit = ev => apply(ev);
+/* the governor row's own pill text, per territory (Interaction: a governor per territory): 不在 only
+   when governorAt(terr) is null, else its state (busy/idle/waiting -> 在忙/空闲/等你). */
+function govRowText(terr){
+  if (!governorAt(terr)) return '不在';
+  const g = govsByTerr.get(terr), state = g ? g.state : 'idle';
+  if (state === 'waiting') return '等你';
+  return state === 'busy' ? '在忙' : '空闲';
+}
+/* rosterGroups() -> [{terr, name, rows: [{id, depth}]}] in map order: per territory, the governor first
+   (id "gov:<terr>"), then each lead (its own office -- Interaction) followed by its workers (depth 1),
+   then everyone else (depth 0). renderRoster() draws this. */
+function rosterGroups(){
+  const groups = [];
+  for (const t of map.territories || []) {
+    const here = citizens.filter(c => c.terr === t.id && !c.gone);
+    const rows = [{ id: 'gov:' + t.id, depth: 0 }];
+    const leads = here.filter(c => c.office).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    const leadIds = new Set(leads.map(c => c.id));
+    for (const lead of leads) {
+      rows.push({ id: lead.id, depth: 0 });
+      for (const w of here) if (w.lead === lead.id) rows.push({ id: w.id, depth: 1 });
+    }
+    for (const c of here) {
+      if (leadIds.has(c.id) || (c.lead && leadIds.has(c.lead))) continue;
+      rows.push({ id: c.id, depth: 0 });
+    }
+    groups.push({ terr: t.id, name: t.name, rows });
+  }
+  return groups;
+}
 
 const ROLE_TYPE = { 'task-manager':'tower', worker:'house', 'fast-lane-deputy':'shop', 'merge-deputy':'workshop' };
 /* a free (unlocked, unbuilt) plot of the right district in a territory (Growth: view.territories[].plots) */
@@ -1235,8 +1400,10 @@ function update(dt){
    first, then does the meshes. Runs with no three.js: the tests drive it straight (city-people). */
 function landState(view){
   occupied.clear();
+  blocked.clear();
   restSlotsByTerr.clear();
   homeSlotsByTerr.clear();
+  officeSlotsByLead.clear();
   map = view;
   mid = { x: Math.round(view.x0 + view.w / 2), z: Math.round(view.z0 + view.h / 2) };
   land = { hx: view.w / 2, hz: view.h / 2 };
@@ -1246,6 +1413,8 @@ function landState(view){
       if (!existing) { newBuildingRecord(t.id, bd.plot, bd.type, bd.x, bd.z, bd.by, true); continue; }
       occupied.set(bd.x + ',' + bd.z, existing);
     }
+    // offices are not walkable for people (Interaction: a lead's office stands on its own tile)
+    for (const o of t.offices || []) blocked.add(o.x + ',' + o.z);
   }
   updateHome();
 }
@@ -1353,7 +1522,7 @@ const ROCK_GREY = '#8A8A86';
 const RAVINE_FLOOR = '#33312F';
 const WATER_COLOR = '#3E86C4';
 /* #demo / file://: exactly `python3 bin/agent_city.py demo-world` prints (tests/test_agent_city_world.py) */
-const DEMO_WORLD = {"cell": 26, "x0": -13, "z0": -13, "w": 52, "h": 52, "rows": ["                                                    ", "                          .                         ", "       . .              ..ww               ..       ", "     .......      .   ....ww.  .   .     ....       ", "   .........    . ... ...ww.........   .......      ", "   .....................ww..........g  ggrgggg.     ", "  ......................ww......grggggggPrggggg     ", "   .....................ww.....ggrgPrPgggrPggg      ", "  ......................ww.....ggrPgrgggPrgggr      ", "   .........gr...........ww....gPrgPrPgPgrPgPrg.    ", "    ......rrrrrr.........ww....rrrrrrrrrrrrrrrP.    ", "      ...grggggr........ww....gggrPgrggggrgPgrgg.   ", "      ...rrgHHgrg.......ww....gggrgPrgHHgrPgPrPg    ", "     .....rgHHgrtttttttBBtttt.gggrPgrgHHgrgggrgg.   ", "    ......rggggr.......ww...t.gggrgPrggggrPgPrPg.   ", "    ......rrrrrr.......ww...t.gggrPgrrrrrrgggrgg.   ", "    ........rg.........ww...t..ggrgPrgPgPrPgPrg..   ", "   .........t...........ww..t...grbgrPgPgrgPgrg...  ", "    ........t............wwbttttbbbbrrrrrrrrrr...b  ", "    ........t............wbb.bbbbbsbbgPgPggg...b.   ", "     .......t.............bsbbbbssssbgbgg.bb...bs   ", "   .........t.............ssbssssssssbbbbbbbbbbss   ", "  ..........t.............sssssssssssbsbbbssbbss    ", " ...........tmm...........ssssssssssssssssssssss    ", "  .mmmmmmmmmtmmm..........sssssssssssssssssssssss   ", " .mmmmmmmmmmt..mmm........ssssssssssssssssssssssss  ", "  m.........t...mmmmmmm     ssssssssssssssssssssss  ", "   .........t.....mmmm      ssssssssssssssssssss    ", "    ........tt.......          sssssssssssssssss    ", "    .........t.......           ssssssssssssss      ", "   ..........t.......               s  sssssss      ", "    .........t.......                   sss         ", "    .......rrrr......                    s          ", "     .....ggPgg........                             ", "    .....ggggggg........                            ", "      ...gPgPgPgP........                           ", "      ..rrrrrrrrrr.....                             ", "     ...ggrggggPgPgg....                            ", "   ....ggPrgHHgggggg...                             ", "   ....gggrgHHgggggg....                            ", "   ....ggPrggggPgPg...                              ", "  .....rrrrrrrrrrr.....                             ", "  ......gPgPgPgPg.......                            ", "  ........ggggggg.......                            ", "    ........gggg.......                             ", "   ...........r......                               ", "   ....... ..........                               ", "  .......   ........                                ", "    ....       ..                                   ", "                                                    ", "                                                    ", "                                                    "], "territories": [{"id": "4d5d7e95", "name": "auto-pipeline", "plan": "meadow", "terrain": "grassland", "slot": [0, 0], "cx": 0, "cz": 0, "lines": 500, "size": 0.24212512553021587, "r": 3.522238341052446, "open": 0, "plots_total": 36, "plots": [], "buildings": [], "era": "village", "balance": {"build": {"state": "healthy", "value": 500, "n": 3, "text": "500 \u884c\u4ee3\u7801"}, "rules": {"state": "missing", "value": 0, "n": 0, "text": "\u8fd8\u6ca1\u6709"}, "beauty": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 1.0, "n": 1, "text": "1/1 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u6587\u4ef6"}}, "next": ["\u89c4\u6a21", "\u89c4\u5219"], "rules_note": ""}, {"id": "8329562e", "name": "v4-plus", "plan": "harbor", "terrain": "coast", "slot": [1, 0], "cx": 26, "cz": 0, "lines": 1000000, "size": 1.0, "r": 8.6, "open": 35, "plots_total": 35, "plots": [{"k": 0, "x": 22, "z": -1, "d": "workshop"}, {"k": 1, "x": 26, "z": -4, "d": "tower"}, {"k": 2, "x": 29, "z": -1, "d": "house"}, {"k": 3, "x": 22, "z": 1, "d": "workshop"}, {"k": 4, "x": 29, "z": 1, "d": "house"}, {"k": 5, "x": 24, "z": -4, "d": "library"}, {"k": 6, "x": 25, "z": 3, "d": "shop"}, {"k": 7, "x": 21, "z": 0, "d": "workshop"}, {"k": 8, "x": 27, "z": 3, "d": "shop"}, {"k": 9, "x": 30, "z": -2, "d": "house"}, {"k": 10, "x": 21, "z": -2, "d": "workshop"}, {"k": 11, "x": 27, "z": -5, "d": "tower"}, {"k": 12, "x": 29, "z": -4, "d": "tower"}, {"k": 13, "x": 22, "z": -4, "d": "library"}, {"k": 14, "x": 21, "z": 2, "d": "workshop"}, {"k": 15, "x": 31, "z": -1, "d": "house"}, {"k": 16, "x": 22, "z": 3, "d": "workshop"}, {"k": 17, "x": 26, "z": 4, "d": "shop"}, {"k": 18, "x": 29, "z": 3, "d": "shop"}, {"k": 19, "x": 24, "z": 4, "d": "shop"}, {"k": 20, "x": 31, "z": 1, "d": "house"}, {"k": 21, "x": 24, "z": -6, "d": "library"}, {"k": 22, "x": 31, "z": -4, "d": "tower"}, {"k": 23, "x": 27, "z": -7, "d": "tower"}, {"k": 24, "x": 21, "z": -5, "d": "library"}, {"k": 25, "x": 29, "z": -6, "d": "tower"}, {"k": 26, "x": 31, "z": 3, "d": "house"}, {"k": 27, "x": 30, "z": 4, "d": "shop"}, {"k": 28, "x": 22, "z": -6, "d": "library"}, {"k": 29, "x": 33, "z": -1, "d": "house"}, {"k": 30, "x": 19, "z": -4, "d": "library"}, {"k": 31, "x": 33, "z": -3, "d": "house"}, {"k": 32, "x": 33, "z": 1, "d": "house"}, {"k": 33, "x": 25, "z": 6, "d": "shop"}, {"k": 34, "x": 27, "z": 6, "d": "shop"}], "buildings": [{"plot": 6, "type": "shop", "by": "worker", "x": 25, "z": 3}, {"plot": 1, "type": "tower", "by": "worker", "x": 26, "z": -4}], "era": "city", "balance": {"build": {"state": "healthy", "value": 1000000, "n": 400, "text": "1,000,000 \u884c\u4ee3\u7801"}, "rules": {"state": "healthy", "value": 0.8, "n": 320, "text": "80% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 40, "n": 40, "text": "40 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 3.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.9, "n": 36, "text": "36/40 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 20, "n": 20, "text": "20 \u4e2a\u6587\u4ef6"}}, "next": [], "rules_note": ""}, {"id": "db8c2db6", "name": "pos-lite", "plan": "ridge", "terrain": "mountain", "slot": [0, 1], "cx": 0, "cz": 26, "lines": 20000, "size": 0.6052343817819053, "r": 5.955070357938764, "open": 15, "plots_total": 37, "plots": [{"k": 0, "x": 2, "z": 24, "d": "workshop"}, {"k": 1, "x": -1, "z": 22, "d": "tower"}, {"k": 2, "x": 2, "z": 27, "d": "shop"}, {"k": 3, "x": 0, "z": 29, "d": "house"}, {"k": 4, "x": -4, "z": 27, "d": "house"}, {"k": 5, "x": -4, "z": 25, "d": "library"}, {"k": 6, "x": -3, "z": 22, "d": "library"}, {"k": 7, "x": 1, "z": 22, "d": "tower"}, {"k": 8, "x": -2, "z": 29, "d": "house"}, {"k": 9, "x": 4, "z": 24, "d": "workshop"}, {"k": 10, "x": 2, "z": 29, "d": "shop"}, {"k": 11, "x": -1, "z": 20, "d": "tower"}, {"k": 12, "x": 4, "z": 27, "d": "shop"}, {"k": 13, "x": -4, "z": 29, "d": "house"}, {"k": 14, "x": 3, "z": 22, "d": "workshop"}], "buildings": [{"plot": 3, "type": "house", "by": "worker", "x": 0, "z": 29}], "era": "town", "balance": {"build": {"state": "healthy", "value": 20000, "n": 60, "text": "20,000 \u884c\u4ee3\u7801"}, "rules": {"state": "low", "value": 0.3, "n": 18, "text": "30% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 6, "n": 8, "text": "6 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.5 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.6, "n": 12, "text": "12/20 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 4, "n": 4, "text": "4 \u4e2a\u6587\u4ef6"}}, "next": ["\u89c4\u5219"], "rules_note": ""}], "links": [{"a": "4d5d7e95", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[10, 0], [11, 0]]}, {"a": "4d5d7e95", "b": "db8c2db6", "gap": "pass", "kind": "road", "cross": [[-1, 10], [-1, 11]]}]};
+const DEMO_WORLD = {"cell": 26, "x0": -13, "z0": -13, "w": 52, "h": 52, "rows": ["                                                    ", "                          .                         ", "       . .              ..ww               ..       ", "     .......      .   ....ww.  .   .     ....       ", "   .........    . ... ...ww.........   .......      ", "   .....................ww..........g  ggrgggg.     ", "  ......................ww......grggggggPrggggg     ", "   .....................ww.....ggrgPrPgggrPggg      ", "  ......................ww.....ggrPgrgggPrgggr      ", "   .........gr...........ww....gPrgPrPgPgrPgPrg.    ", "    ......rrrrrr.........ww....rrrrrrrrrrrrrrrP.    ", "      ...grggggr........ww....gggrPgrggggrgPgrgg.   ", "      ...rrgHHgrg.......ww....gggrgPrgHHgrPgPrPg    ", "     .....rgHHgrtttttttBBtttt.gggrPgrgHHgrgggrgg.   ", "    ......rggggr.......ww...t.gggrgPrggggrPgPrPg.   ", "    ......rrrrrr.......ww...t.gggrPgrrrrrrgggrgg.   ", "    ........rg.........ww...t..ggrgPrgPgPrPgPrg..   ", "   .........t...........ww..t...grbgrPgPgrgPgrg...  ", "    ........t............wwbttttbbbbrrrrrrrrrr...b  ", "    ........t............wbb.bbbbbsbbgPgPggg...b.   ", "     .......t.............bsbbbbssssbgbgg.bb...bs   ", "   .........t.............ssbssssssssbbbbbbbbbbss   ", "  ..........t.............sssssssssssbsbbbssbbss    ", " ...........tmm...........ssssssssssssssssssssss    ", "  .mmmmmmmmmtmmm..........sssssssssssssssssssssss   ", " .mmmmmmmmmmt..mmm........ssssssssssssssssssssssss  ", "  m.........t...mmmmmmm     ssssssssssssssssssssss  ", "   .........t.....mmmm      ssssssssssssssssssss    ", "    ........tt.......          sssssssssssssssss    ", "    .........t.......           ssssssssssssss      ", "   ..........t.......               s  sssssss      ", "    .........t.......                   sss         ", "    .......rrrr......                    s          ", "     .....ggPgg........                             ", "    .....ggggggg........                            ", "      ...gPgPgPgP........                           ", "      ..rrrrrrrrrr.....                             ", "     ...ggrggggPgPgg....                            ", "   ....ggPrgHHgggggg...                             ", "   ....gggrgHHgggggg....                            ", "   ....ggPrggggPgPg...                              ", "  .....rrrrrrrrrrr.....                             ", "  ......gPgPgPgPg.......                            ", "  ........ggggggg.......                            ", "    ........gggg.......                             ", "   ...........r......                               ", "   ....... ..........                               ", "  .......   ........                                ", "    ....       ..                                   ", "                                                    ", "                                                    ", "                                                    "], "territories": [{"id": "4d5d7e95", "name": "auto-pipeline", "plan": "meadow", "terrain": "grassland", "slot": [0, 0], "cx": 0, "cz": 0, "lines": 500, "size": 0.24212512553021587, "r": 3.522238341052446, "open": 0, "plots_total": 36, "plots": [], "buildings": [], "era": "village", "balance": {"build": {"state": "healthy", "value": 500, "n": 3, "text": "500 \u884c\u4ee3\u7801"}, "rules": {"state": "missing", "value": 0, "n": 0, "text": "\u8fd8\u6ca1\u6709"}, "beauty": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 1.0, "n": 1, "text": "1/1 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u6587\u4ef6"}}, "next": ["\u89c4\u6a21", "\u89c4\u5219"], "rules_note": "", "offices": [], "rest": null}, {"id": "8329562e", "name": "v4-plus", "plan": "harbor", "terrain": "coast", "slot": [1, 0], "cx": 26, "cz": 0, "lines": 1000000, "size": 1.0, "r": 8.6, "open": 35, "plots_total": 35, "plots": [{"k": 0, "x": 22, "z": -1, "d": "workshop"}, {"k": 1, "x": 26, "z": -4, "d": "tower"}, {"k": 2, "x": 29, "z": -1, "d": "house"}, {"k": 3, "x": 22, "z": 1, "d": "workshop"}, {"k": 4, "x": 29, "z": 1, "d": "house"}, {"k": 5, "x": 24, "z": -4, "d": "library"}, {"k": 6, "x": 25, "z": 3, "d": "shop"}, {"k": 7, "x": 21, "z": 0, "d": "workshop"}, {"k": 8, "x": 27, "z": 3, "d": "shop"}, {"k": 9, "x": 30, "z": -2, "d": "house"}, {"k": 10, "x": 21, "z": -2, "d": "workshop"}, {"k": 11, "x": 27, "z": -5, "d": "tower"}, {"k": 12, "x": 29, "z": -4, "d": "tower"}, {"k": 13, "x": 22, "z": -4, "d": "library"}, {"k": 14, "x": 21, "z": 2, "d": "workshop"}, {"k": 15, "x": 31, "z": -1, "d": "house"}, {"k": 16, "x": 22, "z": 3, "d": "workshop"}, {"k": 17, "x": 26, "z": 4, "d": "shop"}, {"k": 18, "x": 29, "z": 3, "d": "shop"}, {"k": 19, "x": 24, "z": 4, "d": "shop"}, {"k": 20, "x": 31, "z": 1, "d": "house"}, {"k": 21, "x": 24, "z": -6, "d": "library"}, {"k": 22, "x": 31, "z": -4, "d": "tower"}, {"k": 23, "x": 27, "z": -7, "d": "tower"}, {"k": 24, "x": 21, "z": -5, "d": "library"}, {"k": 25, "x": 29, "z": -6, "d": "tower"}, {"k": 26, "x": 31, "z": 3, "d": "house"}, {"k": 27, "x": 30, "z": 4, "d": "shop"}, {"k": 28, "x": 22, "z": -6, "d": "library"}, {"k": 29, "x": 33, "z": -1, "d": "house"}, {"k": 30, "x": 19, "z": -4, "d": "library"}, {"k": 31, "x": 33, "z": -3, "d": "house"}, {"k": 32, "x": 33, "z": 1, "d": "house"}, {"k": 33, "x": 25, "z": 6, "d": "shop"}, {"k": 34, "x": 27, "z": 6, "d": "shop"}], "buildings": [{"plot": 6, "type": "shop", "by": "worker", "x": 25, "z": 3}, {"plot": 1, "type": "tower", "by": "worker", "x": 26, "z": -4}], "era": "city", "balance": {"build": {"state": "healthy", "value": 1000000, "n": 400, "text": "1,000,000 \u884c\u4ee3\u7801"}, "rules": {"state": "healthy", "value": 0.8, "n": 320, "text": "80% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 40, "n": 40, "text": "40 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 3.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.9, "n": 36, "text": "36/40 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 20, "n": 20, "text": "20 \u4e2a\u6587\u4ef6"}}, "next": [], "rules_note": "", "offices": [], "rest": null}, {"id": "db8c2db6", "name": "pos-lite", "plan": "ridge", "terrain": "mountain", "slot": [0, 1], "cx": 0, "cz": 26, "lines": 20000, "size": 0.6052343817819053, "r": 5.955070357938764, "open": 15, "plots_total": 37, "plots": [{"k": 0, "x": 2, "z": 24, "d": "workshop"}, {"k": 1, "x": -1, "z": 22, "d": "tower"}, {"k": 2, "x": 2, "z": 27, "d": "shop"}, {"k": 3, "x": 0, "z": 29, "d": "house"}, {"k": 4, "x": -4, "z": 27, "d": "house"}, {"k": 5, "x": -4, "z": 25, "d": "library"}, {"k": 6, "x": -3, "z": 22, "d": "library"}, {"k": 7, "x": 1, "z": 22, "d": "tower"}, {"k": 8, "x": -2, "z": 29, "d": "house"}, {"k": 9, "x": 4, "z": 24, "d": "workshop"}, {"k": 10, "x": 2, "z": 29, "d": "shop"}, {"k": 11, "x": -1, "z": 20, "d": "tower"}, {"k": 12, "x": 4, "z": 27, "d": "shop"}, {"k": 13, "x": -4, "z": 29, "d": "house"}, {"k": 14, "x": 3, "z": 22, "d": "workshop"}], "buildings": [{"plot": 3, "type": "house", "by": "worker", "x": 0, "z": 29}], "era": "town", "balance": {"build": {"state": "healthy", "value": 20000, "n": 60, "text": "20,000 \u884c\u4ee3\u7801"}, "rules": {"state": "low", "value": 0.3, "n": 18, "text": "30% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 6, "n": 8, "text": "6 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.5 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.6, "n": 12, "text": "12/20 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 4, "n": 4, "text": "4 \u4e2a\u6587\u4ef6"}}, "next": ["\u89c4\u5219"], "rules_note": "", "offices": [], "rest": null}], "links": [{"a": "4d5d7e95", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[10, 0], [11, 0]]}, {"a": "4d5d7e95", "b": "db8c2db6", "gap": "pass", "kind": "road", "cross": [[-1, 10], [-1, 11]]}]};
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, powerPreference:'low-power' });
 renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
@@ -2484,33 +2653,61 @@ function govPillText(){
   return busy ? '忙着' : '坐镇市政厅';
 }
 function renderRoster(){
-  const list = [...citizens].sort((a, b) => ORDER[STATE[a.state][0]] - ORDER[STATE[b.state][0]] || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  let html = `<li><button class="row" type="button" data-sel="gov" aria-current="${!!(selected && selected.t === 'gov')}"><span class="rdot gov"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govPillText()}</span></button></li>`;
-  for (const c of list) {
-    const [g, zh] = citizenStatus(c, governorCount);
-    const kind = c.bld ? TYPE_ZH[c.bld.type] : '';
-    const sub = g === 'build' && kind ? `${c.label} · ${kind} ${pct(c)}%` : c.label;
-    html += `<li><button class="row" type="button" data-sel="${c.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === c.id)}"><span class="rdot" style="--c:${c.color}"></span><span class="who"><b>${esc(c.task)}</b><span>${esc(sub)}</span></span><span class="pill ${g}">${zh}</span></button></li>`;
+  const groups = rosterGroups(), multi = groups.length > 1;
+  let html = '';
+  for (const grp of groups) {
+    if (multi) html += `<li class="grp-head">${esc(grp.name || grp.terr)}</li>`;
+    for (const row of grp.rows) {
+      if (row.id.slice(0, 4) === 'gov:') {
+        const terr = row.id.slice(4);
+        html += `<li><button class="row" type="button" data-sel="${row.id}" aria-current="${!!(selected && selected.t === 'gov' && (selected.terr || govTerr) === terr)}"><span class="rdot gov"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govRowText(terr)}</span></button></li>`;
+        continue;
+      }
+      const c = byId(row.id);
+      if (!c) continue;
+      const [g, zh] = citizenStatus(c, governorCount);
+      const kind = c.bld ? TYPE_ZH[c.bld.type] : '';
+      const sub = g === 'build' && kind ? `${c.label} · ${kind} ${pct(c)}%` : c.label;
+      html += `<li class="${row.depth ? 'sub' : ''}"><button class="row" type="button" data-sel="${c.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === c.id)}"><span class="rdot" style="--c:${c.color}"></span><span class="who"><b>${esc(c.task)}</b><span>${esc(sub)}</span></span><span class="pill ${g}">${zh}</span></button></li>`;
+    }
   }
   if (html !== lastRoster) { $('#roster').innerHTML = html; lastRoster = html; }
 }
 let lastDetailKey = '';
+/* the chain of command for c's detail card (mock: 工人 → 经理 <task> → 总督 → 你), the current step
+   marked -- only for a citizen that is part of one (a lead's own office, or a worker with a lead). */
+function chainLine(c){
+  if (!c.office && !c.lead) return '';
+  const leadC = c.lead ? byId(c.lead) : null;
+  const steps = [];
+  if (c.lead) steps.push(['worker', '工人']);
+  steps.push(['lead', leadC ? `经理 ${esc(leadC.task)}` : '经理']);
+  steps.push(['gov', '总督']);
+  steps.push(['owner', '你']);
+  let cur = c.lead ? 'worker' : 'lead';
+  if (c.relay === 'lead') cur = 'lead';
+  else if (c.relay === 'governor') cur = 'gov';
+  else if (c.askPhase === 'owner') cur = 'owner';
+  return steps.map(([k, label]) => k === cur ? `<b>${label}</b>` : label).join(' → ');
+}
 function renderDetail(){
   const el = $('#detail');
   let key = (!DEMO && citizens.length === 0) ? 'empty' : 'none', c = null, b = null;
-  if (selected && selected.t === 'c') { c = byId(selected.id); if (!c) selected = null; else key = `c${c.id}|${c.state}|${c.doneFlag}|${c.stuck}|${c.qa.length}|${c.askKind}|${c.askPhase}|${governorCount}`; }
+  if (selected && selected.t === 'c') { c = byId(selected.id); if (!c) selected = null; else key = `c${c.id}|${c.state}|${c.doneFlag}|${c.stuck}|${c.qa.length}|${c.askKind}|${c.askPhase}|${c.relay}|${governorCount}`; }
   if (selected && selected.t === 'b') { b = buildings.find(x => x.id === selected.id); if (!b) selected = null; else key = `b${b.id}|${b.done}`; }
-  if (selected && selected.t === 'gov') key = `gov|${gov.answered}|${gov.dispatched}|${governorCount}`;
+  if (selected && selected.t === 'gov') key = `gov|${selected.terr || govTerr}|${gov.answered}|${gov.dispatched}|${governorCount}`;
   if (key !== lastDetailKey) {
     lastDetailKey = key;
     if (c) {
       const [g, zh] = citizenStatus(c, governorCount), kind = c.bld ? TYPE_ZH[c.bld.type] : '干活';
       const qa = [...c.qa.map(x => `<p>问：<b>“${esc(x.q)}”</b></p><p>答：<b>“${esc(x.a)}”</b></p>`), (c.stuck ? `<p>问：<b>“${esc(c.question)}”</b> 等回答…</p>` : '')].join('');
       const canStuck = !c.doneFlag && !c.stuck && ['building','to_plot','back'].includes(c.state);
+      const chain = chainLine(c);
       el.innerHTML = `
         <div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(c.task)}</div><div class="d-role">${esc(c.label)} · ${ROLES[c.role].zh}</div></div><span class="pill ${g}">${zh}</span></div>
         <div class="d-bar"><div class="track"><i data-f="bar" style="width:${pct(c)}%;background:${c.color}"></i></div><span data-f="pct">${kind} ${pct(c)}%</span></div>
         <dl class="d-tools">${['Edit','Write','Bash','Read'].map(t => `<div><dt>${t}</dt><dd data-f="${t}">${c.tools[t]}</dd></div>`).join('')}</dl>
+        ${chain ? `<p class="hint chain">${chain}</p>` : ''}
         ${qa ? `<div class="d-qa">${qa}</div>` : ''}
         ${DEMO ? `
         <div class="d-actions">
@@ -2525,9 +2722,10 @@ function renderDetail(){
         <div class="d-head"><span class="rdot" style="--c:${b.color}"></span><div><div class="d-name">${TYPE_ZH[b.type]} · ${esc(b.name)}</div><div class="d-role">${esc(b.label)}</div></div><span class="pill ${b.done ? 'rest' : 'build'}">${b.done ? '建成' : '施工中'}</span></div>
         <p class="hint">${owner ? `盖它的小人还在城里：${esc(owner.task)}。` : '造它的人已经下班，楼永远留着。'}</p>`;
     } else if (selected && selected.t === 'gov') {
+      const terr = selected.terr || govTerr, present = !!governorAt(terr);
       el.innerHTML = `
-        <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">总督</div><div class="d-role">main manager · 主对话</div></div><span class="pill gov">市政厅</span></div>
-        <p class="hint">${!DEMO && governorCount === 0 ? '总督不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等总督。' : '总督就是你正在聊的主对话。它派人出门、回答卡住的问题，自己不盖楼。'}</p>
+        <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">总督</div><div class="d-role">main manager · 主对话</div></div><span class="pill gov">${present ? '市政厅' : '不在'}</span></div>
+        <p class="hint">${!present ? '总督不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等总督。' : '总督就是你正在聊的主对话。它派人出门、回答卡住的问题，自己不盖楼。'}</p>
         <dl class="d-tools" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><dt>派出</dt><dd>${gov.dispatched}</dd></div><div><dt>回答</dt><dd>${gov.answered}</dd></div></dl>`;
     } else if (!DEMO && citizens.length === 0) {
       el.innerHTML = `<p class="hint">还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。</p>`;
@@ -2866,7 +3064,8 @@ ovRoot.addEventListener('click', e => { const t = e.target.closest('[data-open]'
 
 /* ---------- input ---------- */
 function selectFrom(val){
-  if (val === 'gov') selected = { t:'gov' };
+  if (val && val.slice(0, 4) === 'gov:') selected = { t:'gov', terr: val.slice(4) };
+  else if (val === 'gov') selected = { t:'gov', terr: govTerr };
   else if (val) selected = { t:'c', id:val };
   lastDetailKey = ''; lastRoster = ''; renderPanel(); needFrame = true;
 }
