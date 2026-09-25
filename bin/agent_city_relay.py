@@ -15,6 +15,7 @@ import json
 import os
 import platform
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -27,6 +28,9 @@ OUTBOX_CAP = 500        # unsent lines kept per team, oldest dropped first
 MAX_BATCH = 200         # lines per sync, the relay's own limit
 
 GIT_TIMEOUT = 3.0       # short timeout for every git subprocess call
+
+TAIL_INTERVAL = 0.25    # cloud sender: how often it polls events.jsonl
+RELAY_POLL_SEC = 0.1    # cloud sender: how often it calls hub.tick()
 
 _JOIN_FOLDER = ".secrets"
 _JOIN_NAME = "agent-city-relay"
@@ -98,6 +102,24 @@ def check_address(address):
     if scheme == "http" and host.lower() not in ("127.0.0.1", "localhost"):
         return "http:// only for 127.0.0.1 and localhost"
     return None
+
+
+def parse_env(value):
+    """Parse AGENT_CITY_RELAY="<address> <key>" (one space between, a cloud
+    session's only source of its team relay). {"address", "key"} on exactly
+    two whitespace-separated parts whose address passes check_address() and
+    whose key is not empty, else None."""
+    if not value:
+        return None
+    parts = value.split()
+    if len(parts) != 2:
+        return None
+    address, key = parts
+    if check_address(address):
+        return None
+    if not key:
+        return None
+    return {"address": address, "key": key}
 
 
 # ------------------------------------------------------------------- wire
@@ -277,6 +299,25 @@ def _git(args, cwd):
     return proc.stdout.strip()
 
 
+def _parse_worktrees(text):
+    """Parse `git worktree list --porcelain` into
+    [{"path": str, "branch": str}, ...]. branch is "" for a detached HEAD."""
+    entries = []
+    cur = None
+    for raw_line in (text or "").splitlines():
+        if raw_line.startswith("worktree "):
+            cur = {"path": raw_line[len("worktree "):], "branch": ""}
+            entries.append(cur)
+        elif cur is None:
+            continue
+        elif raw_line.startswith("branch "):
+            ref = raw_line[len("branch "):]
+            cur["branch"] = ref[len("refs/heads/"):] if ref.startswith("refs/heads/") else ref
+        elif raw_line == "":
+            cur = None
+    return entries
+
+
 # --------------------------------------------------------------------- hub
 
 class _Team:
@@ -289,6 +330,8 @@ class _Team:
         self.after = 0
         self.last_sync = None
         self.state = "new"
+        self.env = False    # True for a RelayHub(env_join=...) team: no join
+                            # file, lives as long as the process does.
 
 
 class RelayHub:
@@ -303,17 +346,23 @@ class RelayHub:
     the result or put the lines back."""
 
     def __init__(self, relay_sec=5.0, dev_id=None, label=None, cap=OUTBOX_CAP,
-                 join_ttl=30.0, timeout=10.0):
+                 join_ttl=30.0, timeout=10.0, env_join=None, send_only=False):
         self.relay_sec = relay_sec
         self.dev_id = dev_id or _default_dev_id()
         self.label = label or _default_label()
         self.cap = cap
         self.join_ttl = join_ttl
         self.timeout = timeout
+        # env_join {"address", "key"}: a cloud session's fixed team, read
+        # from AGENT_CITY_RELAY, never from a join file (see parse_env()).
+        self.env_join = env_join
+        # send_only: tick() still syncs and still moves "after", but always
+        # returns [] -- a cloud session shows no one.
+        self.send_only = send_only
         self._teams = {}
         self._join_cache = {}
         self._ids_cache = {}
-        self._branch_cache = {}
+        self._worktree_cache = {}
         self._lock = threading.RLock()
 
     def _cached(self, cache, key, compute):
@@ -337,10 +386,22 @@ class RelayHub:
             return {"origin": origin, "who": who}
         return self._cached(self._ids_cache, root, compute)
 
-    def _branch(self, proj):
+    def _repo_worktrees(self, root):
         def compute():
-            return _git(["rev-parse", "--abbrev-ref", "HEAD"], proj) or ""
-        return self._cached(self._branch_cache, proj, compute)
+            text = _git(["worktree", "list", "--porcelain"], root) or ""
+            return _parse_worktrees(text)
+        return self._cached(self._worktree_cache, root, compute)
+
+    def _branch(self, root, proj):
+        # The hook keeps only the folder name of the session's cwd in
+        # "proj" (bin/agent-city-hook.sh: proj=${cwd##*/}), never a path,
+        # so the branch is found by listing the repo's worktrees and
+        # matching that folder name. No match (e.g. the cwd was a
+        # subfolder) or a detached HEAD -> "".
+        for wt in self._repo_worktrees(root):
+            if os.path.basename(wt["path"].rstrip("/")) == proj:
+                return wt["branch"]
+        return ""
 
     def offer(self, line):
         if not isinstance(line, dict):
@@ -349,27 +410,33 @@ class RelayHub:
         if not repo:
             return False
         root = os.path.dirname(repo)
-        join_path = os.path.join(root, _JOIN_FOLDER, _JOIN_NAME)
+        join_path = None
         with self._lock:
-            joined = self._read_join(join_path)
-            if not joined:
-                return False
+            if self.env_join is not None:
+                joined = self.env_join
+            else:
+                join_path = os.path.join(root, _JOIN_FOLDER, _JOIN_NAME)
+                joined = self._read_join(join_path)
+                if not joined:
+                    return False
             ids = self._repo_ids(root)
             rid = origin_id(ids.get("origin"))
             if not rid:
                 return False
-            proj = line.get("proj") or root
-            branch = self._branch(proj)
+            proj = line.get("proj") or os.path.basename(root)
+            branch = self._branch(root, proj)
             ctx = {"rid": rid, "br": branch, "who": ids.get("who") or "", "dev": self.label}
             wire = to_wire(line, ctx)
             key = (joined["address"], joined["key"])
             team = self._teams.get(key)
             if team is None:
                 team = _Team(joined["address"], joined["key"], self.cap)
+                team.env = self.env_join is not None
                 self._teams[key] = team
             team.outbox.add(wire)
             team.rids.add(rid)
-            team.join_paths.add(join_path)
+            if join_path is not None:
+                team.join_paths.add(join_path)
             return True
 
     def tick(self):
@@ -413,10 +480,14 @@ class RelayHub:
                 else:
                     team.state = "off" if state == "down" else state
                     team.outbox.putback(batch)
-        return results
+        # send_only (a cloud session): still synced above, "after" still
+        # moved, but a cloud session shows no one.
+        return [] if self.send_only else results
 
     def _team_still_joined(self, team):
         # Caller must hold self._lock.
+        if team.env:
+            return True
         for join_path in list(team.join_paths):
             parsed = self._read_join(join_path)
             if parsed and parsed["address"] == team.address and parsed["key"] == team.key:
@@ -438,6 +509,138 @@ class RelayHub:
             return bool(self._teams)
 
 
+# --------------------------------------------------------------- cloud send
+
+def _read_switch(path):
+    """(pid, port) from DIR/on, or None. Same file bin/agent_city.py serve
+    writes; the cloud sender writes port 0 (no page)."""
+    try:
+        with open(path) as fh:
+            parts = fh.read().split()
+        if len(parts) != 2:
+            return None
+        return int(parts[0]), int(parts[1])
+    except (OSError, ValueError):
+        return None
+
+
+def _write_switch(path, pid, port):
+    with open(path, "w") as fh:
+        fh.write("%d %d\n" % (pid, port))
+
+
+def _pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _split_bytes(data):
+    parts = data.split(b"\n")
+    return parts[:-1], parts[-1]
+
+
+def cmd_send(args):
+    """The cloud sender: reads AGENT_CITY_RELAY, writes DIR/on, tails
+    DIR/events.jsonl from its end and syncs offered lines on its own
+    thread, until idle-sec with no new line or SIGTERM. See
+    tests/test_agent_city_relay_send.py for the full contract."""
+    value = os.environ.get("AGENT_CITY_RELAY")
+    if not value:
+        print("SEND: AGENT_CITY_RELAY is not set")
+        return 1
+    joined = parse_env(value)
+    if joined is None:
+        print("SEND: AGENT_CITY_RELAY must be '<address> <key>'")
+        return 2
+
+    directory = os.path.abspath(args.dir)
+    os.makedirs(directory, exist_ok=True)
+    on_path = os.path.join(directory, "on")
+
+    existing = _read_switch(on_path)
+    if existing is not None and _pid_alive(existing[0]):
+        print("SEND: already running")
+        return 0
+
+    my_pid = os.getpid()
+    log_path = os.path.join(directory, "events.jsonl")
+    try:
+        initial_skip = os.path.getsize(log_path)
+    except OSError:
+        initial_skip = 0
+
+    hub = RelayHub(relay_sec=args.relay_sec, env_join=joined, send_only=True)
+
+    stop_event = threading.Event()
+    last_activity = [time.monotonic()]
+
+    def on_term(signum, frame):
+        stop_event.set()
+
+    signal.signal(signal.SIGTERM, on_term)
+
+    def tail_loop():
+        fh = None
+        offset = 0
+        buf = b""
+        skip = initial_skip
+        while not stop_event.is_set():
+            if fh is None:
+                try:
+                    fh = open(log_path, "rb")
+                except OSError:
+                    stop_event.wait(TAIL_INTERVAL)
+                    continue
+                size_now = os.fstat(fh.fileno()).st_size
+                offset = min(skip, size_now)
+                skip = 0
+                buf = b""
+            fh.seek(0, os.SEEK_END)
+            end = fh.tell()
+            if end > offset:
+                fh.seek(offset)
+                chunk = fh.read(end - offset)
+                lines, buf = _split_bytes(buf + chunk)
+                for raw_line in lines:
+                    last_activity[0] = time.monotonic()
+                    try:
+                        obj = json.loads(raw_line.decode("utf-8", errors="replace"))
+                    except ValueError:
+                        continue
+                    hub.offer(obj)
+                offset = fh.tell()
+            stop_event.wait(TAIL_INTERVAL)
+        if fh is not None:
+            fh.close()
+
+    def relay_loop():
+        while not stop_event.is_set():
+            hub.tick()
+            stop_event.wait(RELAY_POLL_SEC)
+
+    _write_switch(on_path, my_pid, 0)
+    threading.Thread(target=tail_loop, daemon=True).start()
+    threading.Thread(target=relay_loop, daemon=True).start()
+
+    try:
+        while not stop_event.is_set():
+            if time.monotonic() - last_activity[0] >= args.idle_sec:
+                stop_event.set()
+                break
+            stop_event.wait(TAIL_INTERVAL)
+    finally:
+        current = _read_switch(on_path)
+        if current is not None and current[0] == my_pid:
+            try:
+                os.remove(on_path)
+            except OSError:
+                pass
+    return 0
+
+
 # --------------------------------------------------------------------- CLI
 
 def _cli(argv):
@@ -453,14 +656,22 @@ def _cli(argv):
     p_join.add_argument("--address", required=True)
     p_join.add_argument("--file", required=True)
 
+    p_send = sub.add_parser("send")
+    p_send.add_argument("--dir", required=True)
+    p_send.add_argument("--relay-sec", type=float, default=5.0)
+    p_send.add_argument("--idle-sec", type=float, default=1800.0)
+
     try:
         args = parser.parse_args(argv)
     except SystemExit:
         return 2
 
-    if args.cmd not in ("check", "join"):
+    if args.cmd not in ("check", "join", "send"):
         parser.print_usage(sys.stderr)
         return 2
+
+    if args.cmd == "send":
+        return cmd_send(args)
 
     err = check_address(args.address)
     if err:

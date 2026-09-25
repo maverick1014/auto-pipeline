@@ -18,7 +18,8 @@ make_repo(base, name, origin=..., ignore_secrets=True, user="Ann")
 join(repo, address, key)
     write <repo>/.secrets/agent-city-relay by hand, the way a person would.
 hook_line(repo, proj=None, **fields)
-    one events.jsonl line the way bin/agent-city-hook.sh writes it.
+    one events.jsonl line the way bin/agent-city-hook.sh writes it
+    ("proj" is only the folder name of the cwd, as the real hook writes it).
 """
 
 import json
@@ -198,9 +199,11 @@ def join(repo, address, key=FAKE_KEY):
 
 
 def hook_line(repo, proj=None, **fields):
+    """proj: the session's cwd. Like the real hook, the line keeps only its
+    folder name (bin/agent-city-hook.sh: proj=${cwd##*/})."""
     line = {"ev": "PostToolUse", "sid": "s1", "aid": "", "at": "", "tool": "Bash",
-            "nt": "", "proj": proj or repo, "role": "", "desc": "", "sub": "", "q": "",
-            "klen": "12", "repo": os.path.join(repo, ".git"), "kind": ""}
+            "nt": "", "proj": os.path.basename(proj or repo), "role": "", "desc": "",
+            "sub": "", "q": "", "klen": "12", "repo": os.path.join(repo, ".git"), "kind": ""}
     line.update(fields)
     return line
 

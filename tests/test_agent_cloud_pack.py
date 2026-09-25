@@ -84,6 +84,21 @@ SCRIPT = os.path.join(ROOT, "bin", "agent-cloud-pack.sh")
 
 PACK = os.path.join(".claude", "auto-pipeline")
 HOOK_CMD = 'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-start.sh'
+
+# Agent City in the cloud (requirements/city.md, "Joining": cloud sessions
+# send only, no page). The pack also ships:
+#   - every city event hook of the source hooks/hooks.json (the entries that
+#     run agent-city-hook.sh), same event and matcher, as CITY_HOOK_CMD. Off
+#     (no <city dir>/on) it costs one test -f, like the plugin's own hook.
+#   - one more SessionStart hook, SEND_CMD: starts the cloud sender only when
+#     the environment secret AGENT_CITY_RELAY is set; silent otherwise.
+#   - never the page-side hooks (agent_city.py ask / gov-watch): a cloud
+#     session has no city page and no owner at it.
+# Each added once; a second pack or --update adds none twice.
+CITY_HOOK_CMD = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
+                 'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-city-hook.sh; exit 0')
+SEND_CMD = ('[ -n "${AGENT_CITY_RELAY:-}" ] && '
+            'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-city.sh send; exit 0')
 POINTER = ("Run .claude/auto-pipeline/bin/agent-start.sh first. "
            "Follow its output. No work until the quiz says PASS.")
 AGENTS_LINE = ("Run .claude/auto-pipeline/bin/agent-start.sh first. "
@@ -406,8 +421,9 @@ class TestSettingsMerge(PackCase):
         self.assertEqual(data["model"], "opus")
         self.assertEqual(data["env"], {"FOO": "bar"})
         self.assertEqual(data["permissions"]["deny"], ["Bash(rm -rf *)"])
-        self.assertEqual(data["hooks"]["PreToolUse"],
-                         USER_SETTINGS["hooks"]["PreToolUse"])
+        user_pre = USER_SETTINGS["hooks"]["PreToolUse"]
+        self.assertEqual(data["hooks"]["PreToolUse"][:len(user_pre)], user_pre,
+                         "the user's own hooks stay first, unchanged")
 
     def test_exactly_one_hook_runs_agent_start(self):
         self.assertOk(self.pack())
@@ -448,7 +464,7 @@ class TestSettingsMerge(PackCase):
         os.remove(self.t(".claude", "settings.json"))
         self.assertOk(self.pack())
         data = self.settings()
-        self.assertEqual(session_start_commands(data), [HOOK_CMD])
+        self.assertEqual(session_start_commands(data), [HOOK_CMD, SEND_CMD])
         self.assertEqual(data["permissions"]["allow"], ALLOW_RULES)
 
     def test_broken_settings_stop_the_pack_and_nothing_is_written(self):
@@ -458,6 +474,90 @@ class TestSettingsMerge(PackCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("settings.json", result.stdout + result.stderr)
         self.assertEqual(snapshot(self.target), before)
+
+
+def city_entries(hooks_json_path):
+    """[(event, matcher or None)] of every source hook entry that runs
+    agent-city-hook.sh."""
+    with open(hooks_json_path) as fh:
+        hooks = json.load(fh)["hooks"]
+    out = []
+    for event, entries in hooks.items():
+        for entry in entries:
+            if any("agent-city-hook.sh" in h.get("command", "") for h in entry.get("hooks", [])):
+                out.append((event, entry.get("matcher")))
+    return out
+
+
+def commands_for(settings, event, matcher):
+    return [h.get("command") for entry in settings.get("hooks", {}).get(event, [])
+            if entry.get("matcher") == matcher for h in entry.get("hooks", [])]
+
+
+class TestCityHooks(PackCase):
+    def setUp(self):
+        super().setUp()
+        self.assertOk(self.pack())
+        self.wanted = city_entries(self.s("hooks", "hooks.json"))
+        self.assertTrue(self.wanted, "the source has no city hooks?")
+
+    def test_every_city_event_hook_is_packed(self):
+        data = self.settings()
+        for event, matcher in self.wanted:
+            with self.subTest(event=event, matcher=matcher):
+                self.assertEqual(commands_for(data, event, matcher).count(CITY_HOOK_CMD), 1)
+
+    def test_no_page_hooks_in_the_cloud(self):
+        text = json.dumps(self.settings())
+        self.assertNotIn("agent_city.py", text)
+
+    def test_the_sender_hook(self):
+        self.assertEqual(session_start_commands(self.settings()).count(SEND_CMD), 1)
+
+    def test_nothing_twice_after_a_second_pack_and_an_update(self):
+        self.assertOk(self.pack())
+        self.assertOk(self.pack("--update"))
+        data = self.settings()
+        for event, matcher in self.wanted:
+            with self.subTest(event=event):
+                self.assertEqual(commands_for(data, event, matcher).count(CITY_HOOK_CMD), 1)
+        self.assertEqual(session_start_commands(data).count(SEND_CMD), 1)
+
+    def test_update_adds_them_to_an_older_pack(self):
+        data = self.settings()
+        for event in list(data["hooks"]):
+            data["hooks"][event] = [e for e in data["hooks"][event]
+                                    if not any("agent-city" in h.get("command", "")
+                                               for h in e.get("hooks", []))]
+        write_text(self.t(".claude", "settings.json"), json.dumps(data, indent=2) + "\n")
+        self.assertOk(self.pack("--update"))
+        data = self.settings()
+        self.assertEqual(session_start_commands(data).count(SEND_CMD), 1)
+        for event, matcher in self.wanted:
+            with self.subTest(event=event):
+                self.assertEqual(commands_for(data, event, matcher).count(CITY_HOOK_CMD), 1)
+
+    def run_cmd(self, cmd, extra=None, stdin=""):
+        env = {"CLAUDE_PROJECT_DIR": self.target,
+               "AGENT_CITY_DIR": os.path.join(self.base, "city")}
+        env.update(extra or {})
+        full = self.env(env)
+        if "AGENT_CITY_RELAY" not in (extra or {}):
+            full.pop("AGENT_CITY_RELAY", None)
+        return subprocess.run(["bash", "-c", cmd], cwd=self.target, env=full,
+                              capture_output=True, text=True, input=stdin, timeout=60)
+
+    def test_city_hook_is_free_and_silent_when_off(self):
+        event = json.dumps({"session_id": "s", "hook_event_name": "PostToolUse",
+                            "cwd": self.target, "tool_name": "Bash"})
+        result = self.run_cmd(CITY_HOOK_CMD, stdin=event)
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
+        self.assertFalse(os.path.exists(os.path.join(self.base, "city")))
+
+    def test_sender_hook_is_silent_without_the_secret(self):
+        result = self.run_cmd(SEND_CMD)
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
+        self.assertFalse(os.path.exists(os.path.join(self.base, "city", "on")))
 
 
 class TestClaudeMd(PackCase):

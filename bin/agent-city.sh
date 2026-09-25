@@ -11,6 +11,9 @@
 #   ./agent-city.sh pending             list what is waiting in the city
 #   ./agent-city.sh join     join this repo's team relay (address + key, asked here)
 #   ./agent-city.sh leave    leave this repo's team relay
+#   ./agent-city.sh send     cloud sender: send this session's lines to the
+#                            team relay named by the environment secret
+#                            AGENT_CITY_RELAY (no page, no join file)
 #   ./agent-city.sh -h       this help
 #
 # City dir: $AGENT_CITY_DIR, default $HOME/.cache/agent-city (the same dir the
@@ -52,6 +55,7 @@ agent-city.sh — start/stop/status/demo for the Agent City playground.
   ./agent-city.sh pending             list what is waiting in the city
   ./agent-city.sh join     join this repo's team relay (address + key, asked here)
   ./agent-city.sh leave    leave this repo's team relay
+  ./agent-city.sh send     cloud sender: send this session's lines to the team relay
   ./agent-city.sh -h       this help
 EOF
 }
@@ -147,6 +151,71 @@ if joined:
 else:
     print("TEAM: not joined")
 ' "$PLUGIN_ROOT/bin" "$SECRET_FILE"
+}
+
+# Cloud sender (requirements/city.md, "Joining": cloud sessions send only, no
+# page). Reads the team relay from the environment secret AGENT_CITY_RELAY
+# only -- it is never an argv and never printed, and the sender inherits it
+# straight from this process's environment.
+do_send() {
+  if [ -z "${AGENT_CITY_RELAY:-}" ]; then
+    echo "SEND: AGENT_CITY_RELAY is not set" >&2
+    return 1
+  fi
+
+  if ! resources_ok "$max_usage_percent"; then
+    resources_line "$max_usage_percent"
+    echo "not starting the sender: over the resource cap"
+    return 1
+  fi
+
+  existing=$(read_on) || existing=""
+  if [ -z "$existing" ]; then
+    mkdir -p "$CITY_DIR"
+    idle_sec=$((city_idle_min * 60))
+    nohup python3 "$RELAY_MODULE" send --dir "$CITY_DIR" \
+      --relay-sec "$city_relay_sec" --idle-sec "$idle_sec" \
+      </dev/null >/dev/null 2>&1 &
+    disown "$!" 2>/dev/null || true
+
+    step=0
+    found=""
+    while [ "$step" -lt 50 ]; do
+      if found=$(read_on); then
+        break
+      fi
+      found=""
+      sleep 0.1
+      step=$((step + 1))
+    done
+    if [ -z "$found" ]; then
+      echo "SEND: failed to start" >&2
+      return 1
+    fi
+  fi
+
+  host=$(send_host) || { echo "SEND: bad AGENT_CITY_RELAY" >&2; return 1; }
+  echo "CITY: sending to the team relay ${host}"
+  return 0
+}
+
+# The host for the line above: the address part of AGENT_CITY_RELAY (its
+# first word) only, parsed with agent_city_relay's own check_address and
+# urlsplit. Never the second word (the key).
+send_host() {
+  python3 -c '
+import os
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+from urllib.parse import urlsplit
+
+value = os.environ.get("AGENT_CITY_RELAY", "")
+address = value.split()[0] if value.split() else ""
+if rl.check_address(address):
+    sys.exit(1)
+print(urlsplit(address).netloc)
+' "$PLUGIN_ROOT/bin"
 }
 
 do_stop() {
@@ -253,6 +322,7 @@ case "$1" in
   demo) do_start "/#demo";;
   status) do_status;;
   stop) do_stop;;
+  send) do_send;;
   answer) do_answer "$@";;
   pass) do_pass "$@";;
   pending) do_pending;;

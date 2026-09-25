@@ -59,8 +59,13 @@ Module API:
             The line's "repo" is the git common dir (<root>/.git); the join
             file is <root>/.secrets/agent-city-relay, read at most every
             join_ttl seconds. Not joined, no origin, or no "repo" -> False.
-            ctx: rid = origin_id(origin), br = branch of the line's "proj",
-            who = the repo's git user.name, dev = label.
+            ctx: rid = origin_id(origin), who = the repo's git user.name,
+            dev = label, br = the branch of the session's worktree. The hook
+            keeps only the FOLDER NAME of the cwd in "proj" (never a path),
+            so br is found by listing the repo's worktrees (git worktree
+            list --porcelain, cached for join_ttl) and taking the one whose
+            folder name is "proj". No match (e.g. the cwd was a subfolder)
+            or a detached HEAD -> "".
         tick() -> [{"dev": <sender id>, "line": <their wire line>}, ...]
             Syncs every team that is due (relay_sec since its last sync;
             0 = always due), at most MAX_BATCH lines each. "after" is the
@@ -429,6 +434,12 @@ class TestHubJoined(HubCase):
         self.assertTrue(hub.offer(hook_line(self.repo, proj=wt)))
         hub.tick()
         self.assertEqual(self.fake.sent_lines()[0]["br"], "feature/relay")
+
+    def test_subfolder_or_unknown_folder_gives_no_branch(self):
+        hub = self.hub()
+        hub.offer(hook_line(self.repo, proj=os.path.join(self.repo, "api")))
+        hub.tick()
+        self.assertEqual(self.fake.sent_lines()[0]["br"], "")
 
     def test_remote_lines_come_back_and_after_moves(self):
         hub = self.hub()
