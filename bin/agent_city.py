@@ -729,7 +729,14 @@ class CityState:
                     agents.append(self._decorate_agent(a, identity, terr, chain))
                 if reducer.gov_sid is not None:
                     govs.append({"terr": terr, "state": reducer.gov_state})
-            gov = {"state": self.gov_state, "terr": self.gov_terr}
+            # The snapshot's "gov" is the page's camera home: with a start
+            # territory, that is always home, even when the last live "gov"
+            # event (self.gov_terr) belongs to a different governor who
+            # spoke after the page connected but before this snapshot was
+            # built (headless E2E: models load for a few seconds first).
+            # Live "gov" events keep broadcasting their own territory.
+            home_terr = self.start_terr if self.start_terr else self.gov_terr
+            gov = {"state": self.gov_state, "terr": home_terr}
             snap = {"type": "snapshot", "gov": gov, "govs": govs, "agents": agents,
                     "asks": [ask.view() for ask in self.open.values()],
                     "governors": self._fresh_governor_count(),
