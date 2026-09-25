@@ -42,6 +42,18 @@
 - Out of scope: Claude Code's own cross-session message hold ("Deliver this message"). Never auto-clicked.
 - Build order: prove first, with a real session, how an answer or approval reaches it (hook decision or Orca terminal keys). Then build.
 
+## Worktrees
+- Owner decision 2026-09-25. Mock first, owner sees it, then build.
+- One worktree = one construction site inside its repo's territory. The pipeline gives each worktree one task manager: the site office is that task manager's office (see Interaction).
+- The site has a fence and a sign on the site office with the branch name. Its workers build inside it.
+- Status from `agent_worktree.txt`: working = lights on, work going on; final = workers gone, the task manager checks, scaffolding comes down; idle = quiet, lights off.
+- Stalled (from `agent_monitor.txt`) = smoke and a warning sign on the site, and a 卡住的工地 count next to the top counts.
+- Merged = the merge deputy lays a road or bridge from the site to the town hall, the fence goes, the new buildings join the town.
+- Worktree removed = the site office packs up and goes.
+- A human-direct session (second session opened by hand) = a small 亲自带 flag on its site.
+- Which worktree an agent is in: the server works it out with git from the event's working folder, once per folder, cached. The hook sends the full working folder instead of only its last part; still bash builtins only.
+- Sessions with no worktree (plain or cloud runtime) work on the town itself, as today.
+
 ## Growth
 - One territory per repo. All territories on one land, not islands on a sea.
 - Territories are split by a natural gap: river, ravine, mountain pass or forest. A bridge or road joins neighbours, so people could cross.
@@ -110,3 +122,8 @@
 - Server listens on 127.0.0.1 only, port `city_port`, stops itself after `city_idle_min` with no browser open.
 - Start refuses when RAM or CPU is over the cap.
 - Cloud sessions: no city (no localhost for the human).
+
+## Open, not decided
+- One city for every machine and cloud session (owner question, 2026-09-25). Would need: a relay (a small Cloudflare Worker on the owner's account), a forwarder per machine or cloud session sending the same short lines in batches, a secret token, the relay host allowed in each cloud environment. Would replace "The city is per computer" and "Cloud sessions: no city". Needs the owner's yes.
+- Orders to agents: proposal, not built into the city. The city watches; it never sends new orders. Local sessions already reach the Claude Code app through `claude remote-control`; cloud sessions are there already. The city may link each person to its session in the app. A relay, if built, carries events only, never orders: an order channel on a public site would be a way into the owner's computers.
+- Team city (owner question, 2026-09-25): other people building the same repo show up in the same territory. Two sources: (1) live agent events from each person's machines and cloud sessions through the relay, each person with their own token and only after they agree; people get a name tag; (2) git history, no setup: buildings carry the authors of their files, recent activity shows who works where, people without agents included. Several main managers in one repo = several governors at the one town hall, each with a name sign; an agent asks its own person's governor. Builds on the relay above; needs the owner's yes.
