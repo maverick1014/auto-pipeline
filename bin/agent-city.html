@@ -2936,8 +2936,8 @@ function makePerson(c){
   const hand = body.getObjectByName('arm-right');
   let hammer = null;
   if (hand) { hammer = lib['tool-hammer'].scene.clone(true); hammer.scale.setScalar(1.25); hammer.position.set(-.02, -.17, .06); hammer.rotation.set(Math.PI / 2, 0, 0); hand.add(hammer); }
-  const ring = new THREE.Mesh(ringGeo, ringMat(c.color)); ring.rotation.x = -Math.PI / 2; ring.position.y = .015; g.add(ring);
-  const sel = new THREE.Mesh(ringGeo, ringMat('#FF7593')); sel.rotation.x = -Math.PI / 2; sel.position.y = .02; sel.scale.setScalar(1.45); g.add(sel);
+  const ring = new THREE.Mesh(ringGeo, ringMat(c.color)); ring.rotation.x = -Math.PI / 2; ring.position.y = .035; g.add(ring);
+  const sel = new THREE.Mesh(ringGeo, ringMat('#FF7593')); sel.rotation.x = -Math.PI / 2; sel.position.y = .04; sel.scale.setScalar(1.45); g.add(sel);
   g.userData.pick = { t:'c', id:c.id };
   pickables.push(g);
   c.v = { g, key, mixer, hammer, sel, yaw: 0, cur: null, action: null };
@@ -2956,8 +2956,8 @@ let govV;
 function makeGovernor(){
   const g = place('character-male-b', gov.x, gov.y, { s: CHAR_SCALE * 1.15, keepY: true });
   const mixer = new THREE.AnimationMixer(g.children[0]); mixers.push(mixer);
-  const sel = new THREE.Mesh(ringGeo, ringMat('#FF7593')); sel.rotation.x = -Math.PI / 2; sel.position.y = .02; sel.scale.setScalar(1.6); g.add(sel);
-  const ring = new THREE.Mesh(ringGeo, ringMat('#FFD36E')); ring.rotation.x = -Math.PI / 2; ring.position.y = .015; ring.scale.setScalar(1.15); g.add(ring);
+  const sel = new THREE.Mesh(ringGeo, ringMat('#FF7593')); sel.rotation.x = -Math.PI / 2; sel.position.y = .04; sel.scale.setScalar(1.6); g.add(sel);
+  const ring = new THREE.Mesh(ringGeo, ringMat('#FFD36E')); ring.rotation.x = -Math.PI / 2; ring.position.y = .035; ring.scale.setScalar(1.15); g.add(ring);
   g.userData.pick = { t:'gov' };
   pickables.push(g);
   govV = { g, key:'character-male-b', mixer, sel, cur:null, action:null };
@@ -3186,8 +3186,8 @@ function ensureGovFigure(terr){
   if (v) return v;
   const g = place('character-male-b', gov.x, gov.y, { s: CHAR_SCALE * 1.15, keepY: true });
   const mixer = new THREE.AnimationMixer(g.children[0]); mixers.push(mixer);
-  const sel = new THREE.Mesh(ringGeo, ringMat('#FF7593')); sel.rotation.x = -Math.PI / 2; sel.position.y = .02; sel.scale.setScalar(1.6); g.add(sel);
-  const ring = new THREE.Mesh(ringGeo, ringMat('#FFD36E')); ring.rotation.x = -Math.PI / 2; ring.position.y = .015; ring.scale.setScalar(1.15); g.add(ring);
+  const sel = new THREE.Mesh(ringGeo, ringMat('#FF7593')); sel.rotation.x = -Math.PI / 2; sel.position.y = .04; sel.scale.setScalar(1.6); g.add(sel);
+  const ring = new THREE.Mesh(ringGeo, ringMat('#FFD36E')); ring.rotation.x = -Math.PI / 2; ring.position.y = .035; ring.scale.setScalar(1.15); g.add(ring);
   g.userData.pick = { t:'gov', terr };
   pickables.push(g);
   const bub = ovEl('bub gov'), tag = ovEl('tagl tag'), qm = ovBtn('qm', '<span>?</span>');
