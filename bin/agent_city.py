@@ -722,6 +722,7 @@ class CityState:
             self._start_waiting_shows_locked()
             agents = []
             govs = []
+            gov_seen_resolved = set()
             for identity, reducer in self.reducers.items():
                 terr = self._terr_for(identity)
                 chain = self.terr_chain.get(identity)
@@ -729,6 +730,15 @@ class CityState:
                     agents.append(self._decorate_agent(a, identity, terr, chain))
                 if reducer.gov_sid is not None:
                     govs.append({"terr": terr, "state": reducer.gov_state})
+                    gov_seen_resolved.add(identity)
+            # A territory's governor from a past run (world.json "gov_seen")
+            # that has not yet acted in this run is "unknown", never a
+            # present governor, until it acts (then resolved above) or its
+            # sid ends (then forgotten, see _forget_gov_seen_locked).
+            for identity in self.world.get("gov_seen", {}):
+                if identity in gov_seen_resolved:
+                    continue
+                govs.append({"terr": self._terr_for(identity), "state": "unknown"})
             # The snapshot's "gov" is the page's camera home: with a start
             # territory, that is always home, even when the last live "gov"
             # event (self.gov_terr) belongs to a different governor who
@@ -871,7 +881,16 @@ class CityState:
                     self._maybe_open_rest(identity)
                 self._broadcast(ev)
 
-            if names_dirty:
+            gov_seen_dirty = False
+            if identity is not None and isinstance(sid_field, str) and sid_field:
+                if ev_name == "SessionEnd":
+                    if was_gov and self._forget_gov_seen_locked(identity):
+                        gov_seen_dirty = True
+                elif reducer.gov_sid == sid_field:
+                    if self._remember_gov_seen_locked(identity, sid_field):
+                        gov_seen_dirty = True
+
+            if names_dirty or gov_seen_dirty:
                 self._save_world_locked()
 
             if was_gov and not gov_seen:
@@ -1156,6 +1175,27 @@ class CityState:
         names = self.world.get("names")
         if names and cid in names:
             del names[cid]
+            return True
+        return False
+
+    def _remember_gov_seen_locked(self, identity, sid):
+        """Caller holds self.lock. IDENTITY's governor session last seen,
+        for "govs": "unknown" after a restart until that sid acts again in
+        this run or ends (see _forget_gov_seen_locked). Returns whether
+        world.json needs saving."""
+        seen = self.world.setdefault("gov_seen", {})
+        if seen.get(identity) == sid:
+            return False
+        seen[identity] = sid
+        return True
+
+    def _forget_gov_seen_locked(self, identity):
+        """Caller holds self.lock. That governor's sid ended: forgotten so
+        IDENTITY does not keep showing "unknown" after a future restart.
+        Returns whether world.json needs saving."""
+        seen = self.world.get("gov_seen")
+        if seen and identity in seen:
+            del seen[identity]
             return True
         return False
 
