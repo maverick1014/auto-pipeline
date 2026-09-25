@@ -361,6 +361,69 @@ class TestLeadsAndOffices(CityCase):
         self.assertEqual(len(self.terr_view(self.snap(), TA)["offices"]), 1)
 
 
+class TestServerE2EFindings(CityCase):
+    """Task manager's headless run (real server, synthetic hook lines)."""
+
+    def test_offices_do_not_outlive_a_restart(self):
+        # a lead that ended while the server was down never sends SessionEnd: its cabin must not stay forever
+        self.lead("tm1")
+        self.assertEqual(len(self.terr_view(self.snap(), TA)["offices"]), 1)
+        again = self.new_state()
+        snap = decode(again.add_client().queue.get_nowait())
+        self.assertEqual(self.terr_view(snap, TA)["offices"], [], "no office until a live lead shows up again")
+        self.now += 1
+        again.feed_line({"ev": "PostToolUse", "sid": "tm1", "aid": "", "at": "", "tool": "Bash", "nt": "", "proj": "app",
+                         "role": "task-manager", "desc": "", "sub": "", "q": "", "klen": "", "repo": A_REPO,
+                         "kind": "", "ask": ""}, self.now)
+        snap = decode(again.add_client().queue.get_nowait())
+        self.assertEqual(len(self.terr_view(snap, TA)["offices"]), 1, "a live lead gets its office back")
+
+    def test_a_governors_own_ask_is_the_governors(self):
+        # no gov-watch has polled yet (first turn): the session is still the governor of its territory
+        self.governor("g1")
+        body, code = self.st.create_ask({"sid": "g1", "aid": "", "at": "", "role": "", "cwd": "/w", "repo": A_REPO,
+                                         "tool": "AskUserQuestion",
+                                         "input": {"questions": [{"question": "port?", "header": "p", "options": [],
+                                                                  "multiSelect": False}]}}, 1000.0)
+        self.assertEqual(code, 200)
+        view = self.st.asks_view()[0]
+        self.assertEqual(view["agent"], "gov")
+        self.assertEqual(view["terr"], TA)
+        self.assertEqual(view["phase"], "owner", "the governor asks the owner: red ? at once")
+
+
+class TestNoRepoIsTheStartTerritory(CityCase):
+    """A session on an older hook sends lines without "repo" (the owner's main manager on plugin 0.4.4):
+    they belong to the start territory, the same one as lines with the start repo, never a second state."""
+
+    def new_state(self):
+        return ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=self.world_path,
+                            plans=ac.load_plans(), count_fn=lambda i: self.lines_count,
+                            balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}}, start_repo=A_REPO)
+
+    def test_one_governor_for_the_start_territory(self):
+        self.governor("g-old", repo="")
+        self.governor("g-new", repo=A_REPO)
+        self.assertEqual([g["terr"] for g in self.snap()["govs"]], [TA])
+        spawns = [e["id"] for e in self.drain() if e.get("type") == "spawn"]
+        self.assertEqual(spawns, ["s:g-new"], "the second roleless session there is a citizen")
+
+    def test_a_governor_without_repo_answers_a_lead_with_repo(self):
+        self.governor("g-old", repo="")
+        self.lead("tm1", repo=A_REPO)
+        self.line("PostToolUse", "tm1", A_REPO, role="task-manager", tool="SendMessage", ask="q")
+        self.drain()
+        self.line("PostToolUse", "g-old", "", tool="SendMessage")
+        ends = [(e["type"], e["id"]) for e in self.drain() if e.get("type") == "relay_end"]
+        self.assertIn(("relay_end", "s:tm1"), ends)
+
+    def test_a_lead_without_repo_gets_an_office_there(self):
+        self.lead("tm-old", repo="")
+        spawn = [e for e in self.drain() if e.get("type") == "spawn" and e["id"] == "s:tm-old"][0]
+        self.assertIsNotNone(spawn.get("office"))
+        self.assertEqual(spawn["terr"], TA)
+
+
 class TestChain(CityCase):
 
     def setUp(self):
