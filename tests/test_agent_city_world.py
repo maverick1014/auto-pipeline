@@ -5,7 +5,8 @@ is the plan data). The Balance section is NOT built here; only room is left.
 
 CONTRACT (bin/agent_city.py, Python standard library only)
 
-  Plans   bin/agent-city-plans.json == the mock's city-plans JSON, exactly.
+  Plans   bin/agent-city-plans.json == the mock's city-plans JSON, exactly,
+          apart from city-people's "offices" and "rest" keys per plan.
           {"v": 1, "plans": [5 plans]}. A plan: id, terrain, name, edge (12
           radius factors, one per 30 degrees from +x, z grows south), roads
           ([x0, z0, x1, z1] inclusive, axis-aligned, local tiles), exits
@@ -217,7 +218,12 @@ class TestPlans(unittest.TestCase):
             m = re.search(r'<script type="application/json" id="city-plans">(.*?)</script>', fh.read(), re.S)
         self.assertIsNotNone(m)
         with open(PLANS_FILE, encoding="utf-8") as fh:
-            self.assertEqual(json.load(fh), json.loads(m.group(1)))
+            data = json.load(fh)
+        # city-people adds each plan's "offices" and "rest" spots (tests/test_agent_city_chain.py)
+        for plan in data["plans"]:
+            plan.pop("offices", None)
+            plan.pop("rest", None)
+        self.assertEqual(data, json.loads(m.group(1)))
 
     def test_five_plans_one_per_terrain(self):
         ps = plans()
