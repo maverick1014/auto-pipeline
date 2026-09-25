@@ -205,8 +205,9 @@ class TestHookAskFlag(unittest.TestCase):
                                tool_response={"success": True, "message": "queued"})
 
     def test_ask_key_is_last_and_a_string(self):
+        # city-worktrees added a 16th key "wt" after it (tests/test_agent_city_worktrees.py)
         row, _ = self.row(self.stop("PASS\nall green"))
-        self.assertEqual(list(row)[-1], "ask")
+        self.assertEqual(list(row)[-2:], ["ask", "wt"])
         self.assertEqual(row["ask"], "")
 
     def test_worker_question_sets_the_flag_not_the_text(self):

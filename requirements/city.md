@@ -52,8 +52,10 @@
 - Merged = the merge deputy lays a road or bridge from the site to the town hall, the fence goes, the new buildings join the town.
 - Worktree removed = the site office packs up and goes.
 - A human-direct session (second session opened by hand) = a small 亲自带 flag on its site.
-- Which worktree an agent is in: the server works it out with git from the event's working folder, once per folder, cached. The hook sends the full working folder instead of only its last part; still bash builtins only.
+- Which worktree an agent is in: the hook already walks up to the folder holding `.git`; when that `.git` is a file (a linked worktree) it sends that folder's physical path as a 16th key `wt`, else "". Still bash builtins only, no git run per event (main manager, 2026-09-25: replaces "the server works it out with git").
 - Sessions with no worktree (plain or cloud runtime) work on the town itself, as today.
+- Built without a separate mock (owner, 2026-09-25: "能做你直接做就可以了"). Demo mode `/#demo` shows the sites, one of them stalled, so the owner can look without a real worktree.
+- v1 limits (main manager, 2026-09-25): the site is the office, a low construction fence around it (people may step over it), the branch sign, a site light, and scaffolding while working. Buildings its workers make still go up on the town's plots, as today. The 卡住的工地 count shows only when at least one site is stalled. Merged: a lane is laid from the site to the town hall over a few seconds, the fence goes, then the site office packs up (the worktree is gone after a merge). A site's office uses one of the plan's office spots; a lead working in that worktree stands at the site office instead of getting its own.
 
 ## Growth
 - One territory per repo. All territories on one land, not islands on a sea.
