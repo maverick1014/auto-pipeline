@@ -142,7 +142,7 @@
 - Joined = the local city also shows the other members of the same team: the owner's other machines, other people's terminals, cloud sessions. Every member still runs their own local city. There is no shared city page on the internet.
 - Path: hook → `events.jsonl` (unchanged) → local server → relay → every joined local server → its page. The page talks only to 127.0.0.1, as before; only the local server talks to the relay.
 - Relay: a small Cloudflare Worker, one per team. Holds the last few minutes only, never a history.
-- Sent: the same short lines, with the working folder cut down to repo and branch. Never full paths, chat text or files.
+- Sent: the same short lines, with the working folder cut down to repo and branch. Never full paths, chat text or files: the hook's `wt` (a full path) is sent only as the branch name, and its `file` key (city-quality) is never sent.
 - Same repo from different people = the same territory. Repo identity = the `origin` remote (host/owner/repo). No remote = not shared, stays local.
 - Other members' people: a name tag (person) and a small device tag (machine name or 云端). Several main managers in one repo = several governors at the one town hall, each with a name sign. An agent asks its own person's governor.
 - Other members' people are view only. Answering questions and permission requests works for your own agents only.
