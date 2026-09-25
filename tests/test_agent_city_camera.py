@@ -26,9 +26,10 @@ from test_agent_city_chain import FEATURE_REQUIRED, TA, two_territory_view  # no
 # same way, so after a drag against that way it turns the view straight back over the old angle.
 #
 # CONTRACT (bin/agent-city.html, simulation section, no three.js):
-#   cam = {az, el, dist, tx, tz}; dragBy(dx, dy) is what an orbit drag does (the pointer handler
-#   calls it); cameraStep(dt) advances the camera one frame (auto-rotation, the quarter-turn tween);
-#   frame() calls it. The rotation turns AUTO_ROT_SEC per turn in the direction of the owner's last
+#   cam = {az, el, dist, tx, tz}; dragBy(dx, dy, limit) is what an orbit drag does (the pointer handler
+#   calls it with distMax() as the zoom limit; no typeof guards); cameraStep(dt) advances the camera one frame (auto-rotation, the quarter-turn tween);
+#   frame() calls it, and it turns the view through autoRotate(), the one rotation path
+#   (autoRotDir = the way it turns, -1 before any drag). The rotation turns AUTO_ROT_SEC per turn in the direction of the owner's last
 #   orbit drag (left or right), so it never turns the view back to where it was before the drag.
 #   Nothing but the fit button (and the very first world) changes az/el/dist/tx/tz back: no live
 #   event of any kind (snapshot, world, era, gov, governors, spawn, tool, build, relay, ask ...).

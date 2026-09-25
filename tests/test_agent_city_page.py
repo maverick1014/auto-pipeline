@@ -799,7 +799,7 @@ const clips = ['walk', 'sprint', 'idle', 'interact-right', 'emote-yes', 'jump', 
 }
 // auto-rotation
 {
-  const box = ctx({ cam: { az: 1, el: .7, dist: 6.5, tx: 0, tz: 0 }, drag: null, pinch: null, camTween: null, lastTouch: -Infinity, RM: false });
+  const box = ctx({ cam: { az: 1, el: .7, dist: 6.5, tx: 0, tz: 0 }, drag: null, pinch: null, camTween: null, lastTouch: -Infinity, RM: false, autoRotDir: -1 });
   const turn = (now, dt, setup) => { box.cam.az = 1; box.drag = null; box.pinch = null; box.camTween = null; box.lastTouch = -Infinity; box.RM = false; Object.assign(box, setup || {}); box.autoRotate(now, dt); return box.cam.az - 1; };
   out.rot = {
     idle: turn(100000, 1),
@@ -1278,7 +1278,19 @@ class TestZoomOut(unittest.TestCase):
         self.assertAlmostEqual(r["target12"][2], -2, delta=0.01)
 
     def test_tilting_while_fully_zoomed_out_stays_out(self):
-        self.assertRegex(inline_script(), r"const out = cam\.dist >= distMax\(\)[^\n]*cam\.el = clamp\([^\n]*if \(out\) cam\.dist = distMax\(\)")
+        # city-people: an orbit drag is dragBy(dx, dy, limit); the pointer handler passes distMax()
+        down = re.search(r"canvas\.addEventListener\('pointermove', e => \{(.*?)\n\}\);", inline_script(), re.S)
+        self.assertIsNotNone(down, "canvas pointermove handler not found")
+        self.assertRegex(down.group(1), r"dragBy\([^)]*distMax\(\)\)")
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import test_agent_city_people as tpp
+        out = tpp.run_sim(r"""
+cam.dist = 30; dragBy(0, 40, 30); const kept = cam.dist;
+cam.dist = 10; dragBy(0, 40, 30); const near = cam.dist;
+__out = { kept, near };
+""", {}, ("dragBy", "cam"))
+        self.assertEqual(out["kept"], 30, "fully zoomed out, a tilt keeps the camera out")
+        self.assertEqual(out["near"], 10)
 
 
 class TestCamera(unittest.TestCase):
@@ -1358,7 +1370,11 @@ class TestCamera(unittest.TestCase):
         self.assertEqual(unit_results()["rot"]["reduced"], 0)
 
     def test_frame_calls_auto_rotate(self):
-        self.assertRegex(function_source("frame") or "", r"\bautoRotate\(")
+        # city-people: frame() -> cameraStep(dt) -> autoRotate(): one rotation path, no comment stand-ins
+        frame = re.sub(r"//[^\n]*|/\*.*?\*/", "", function_source("frame") or "", flags=re.S)
+        self.assertRegex(frame, r"\bcameraStep\(")
+        step = re.sub(r"//[^\n]*|/\*.*?\*/", "", function_source("cameraStep") or "", flags=re.S)
+        self.assertRegex(step, r"\bautoRotate\(")
 
     def test_no_pause_timer_left(self):
         text = inline_script()
