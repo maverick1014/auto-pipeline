@@ -336,6 +336,8 @@ class TestCityScriptStartDir(ScriptCase):
     def test_start_from_a_plain_folder(self):
         plain = os.path.join(self.repo.base, "plain")
         os.makedirs(plain)
+        with open(os.path.join(plain, "agent.conf"), "w") as fh:  # its own port: never the real city's 4777
+            fh.write("city_port=%d\n" % tp_free_port())
         result = self.city_run("start", cwd=plain)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(list(self.territories()), [os.path.realpath(plain)])
