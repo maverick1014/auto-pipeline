@@ -10,7 +10,7 @@ CONTRACT
   1. Off costs nothing. No <dir>/on, or its pid is not a number, or that
      process is dead: write nothing, print nothing, exit 0.
   2. On: read the hook JSON from stdin and append ONE line with exactly these
-     keys (16), in this order, all strings, "" when absent:
+     keys (17), in this order, all strings, "" when absent:
        ev    hook_event_name
        sid   session_id
        aid   agent_id     } only from the part of the payload before
@@ -60,6 +60,8 @@ CONTRACT
        wt    city-worktrees (tests/test_agent_city_worktrees.py): the physical
              path of the folder holding .git when that .git is a file (a
              linked worktree); else "".
+       file  city-quality (tests/test_agent_city_quality.py): the edited
+             file's path relative to the folder holding .git; else "".
      desc and q: at most 200 bytes, always a valid JSON string.
      Nothing else from the payload is ever written: not tool_input,
      tool_response, prompt, message or last_assistant_message.
@@ -91,7 +93,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(ROOT, "bin", "agent-city-hook.sh")
 BASH = shutil.which("bash")
-KEYS = {"ev", "sid", "aid", "at", "tool", "nt", "proj", "role", "desc", "sub", "q", "klen", "repo", "kind", "ask", "wt"}
+KEYS = {"ev", "sid", "aid", "at", "tool", "nt", "proj", "role", "desc", "sub", "q", "klen", "repo", "kind", "ask", "wt", "file"}
 
 CITY_COMMAND = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
                 '"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh"; exit 0')

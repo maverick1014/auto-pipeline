@@ -5,7 +5,8 @@ One worktree = one construction site inside its repo's territory.
 CONTRACT
 
   Hook (bin/agent-city-hook.sh)
-    A 16th key "wt", last, after "ask": when the folder holding .git (the
+    A 16th key "wt", right after "ask" (city-quality adds "file" after it):
+    when the folder holding .git (the
     same walk up from cwd the hook already does for "repo") has a .git FILE
     (a linked worktree), "wt" is that folder's physical path (cd -P, pwd -P),
     JSON-escaped. A .git folder (the main checkout), no git, or a missing
@@ -209,10 +210,12 @@ class TestHookWt(unittest.TestCase):
     def test_missing_cwd_gives_empty(self):
         self.assertEqual(self.row(os.path.join(self.base, "nope"))["wt"], "")
 
-    def test_wt_is_the_sixteenth_and_last_key(self):
+    def test_wt_is_the_sixteenth_key_right_after_ask(self):
+        # city-quality appends a 17th key "file" after it (tests/test_agent_city_quality.py)
         row = self.row(self.wt)
-        self.assertEqual(len(row), 16)
-        self.assertEqual(list(row)[-2:], ["ask", "wt"])
+        keys = list(row)
+        self.assertEqual(keys.index("wt"), 15)
+        self.assertEqual(keys[14:16], ["ask", "wt"])
 
 
 # ---------------------------------------------------------------------------
