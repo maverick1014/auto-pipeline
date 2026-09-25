@@ -408,6 +408,10 @@ const SYS_FIT = {
   'roads/road-sign-street': .55, 'roads/traffic-light': .55, 'industrial/building-h': .8, 'industrial/building-k': .8,
   'industrial/water-tower': .85, 'industrial/chimney-large': .8, 'nature/tree_default': .8, 'nature/tree_oak': .8,
   'nature/plant_bush': .6, 'fantasy/fountain-round': .9,
+  // city-people: village-era KayKit stand-ins (police/library/power) and the town/city police car --
+  // same numbers the approved mock (mock/city-people-mock.html, "KayKit 替换") already places them at.
+  'kaykit-medieval/building_barracks_blue': 1.35, 'kaykit-medieval/building_church_green': 1.25,
+  'kaykit-medieval/building_windmill_yellow': 1.35, 'kaykit-city/car_police': .9,
 };
 /* Balance: an absolute scale (not a "fit to target size" one) for keys where fit makes them huge on a
    small-footprint model — the same numbers buildLand already uses for the wild scenery's own flowers. */
@@ -425,9 +429,14 @@ const SYS_TINT = { 'industrial/building-h': '#3C63D6', 'industrial/building-k': 
    low set, never removes from it. rules: signposts, a police station and traffic lights when healthy.
    beauty: flowers, then a park and the fountain when healthy (painted walls are makeBuilding's job, not
    an item here). knowledge: a library, then district signs when healthy. infra: a water tower, then a
-   power plant when healthy. build has no item here: its own houses/shops/offices already show it. */
+   power plant when healthy. build has no item here: its own houses/shops/offices already show it.
+   city-people: the police station, the library and the healthy-infra power item follow eraShown(t) --
+   village gets its own KayKit stand-ins (never tinted: SYS_TINT only ever touches the old industrial
+   ones), town/city keep the industrial buildings (police tinted blue) with a KayKit police car parked
+   on a free ground tile right beside the station. */
 function systemsDecor(t, view){
   if (!t.open || !t.balance) return [];
+  const era = eraShown(t);
   const avoid = new Set((hallDecor(t, view) || []).map(d => Math.floor(d.x) + ',' + Math.floor(d.z)));
   const R = Math.min(24, 6 + Math.round((t.size || .3) * 16));
   const cx = Math.round(t.cx), cz = Math.round(t.cz);
@@ -454,11 +463,20 @@ function systemsDecor(t, view){
   const used = new Set();
   const take = list => { for (const s2 of list) if (!used.has(s2.k)) { used.add(s2.k); return s2; } return null; };
   const out = [];
-  const put = (list, key, kind) => { const s2 = take(list.length ? list : near); if (!s2) return; out.push({ key, x: s2.x, z: s2.z, kind }); };
+  const put = (list, key, kind) => { const s2 = take(list.length ? list : near); if (!s2) return; out.push({ key, x: s2.x, z: s2.z, kind }); return s2; };
+  // put(list, villageKey, elseKey, kind): a village/town-city pair (police, library, power) -- village
+  // gets its own KayKit stand-in, town/city keep the industrial building.
+  const putEra = (list, villageKey, elseKey, kind) => put(list, era === 'village' ? villageKey : elseKey, kind);
   const st = k => t.balance[k] && t.balance[k].state;
   if (st('rules') === 'low' || st('rules') === 'healthy') {
     put(junc, 'roads/road-sign-street', 'rules'); put(junc, 'roads/road-sign-street', 'rules');
-    put(nearOutPlaza, 'industrial/building-h', 'rules'); // police station, near the hall but never in the plaza — low already has it (contract table)
+    // police station, near the hall but never in the plaza — low already has it (contract table); town/
+    // city get a KayKit police car parked beside it, on a free ground tile within 1 tile (Chebyshev)
+    const police = putEra(nearOutPlaza, 'kaykit-medieval/building_barracks_blue', 'industrial/building-h', 'rules');
+    if (police && era !== 'village') {
+      const carSpot = free.find(s2 => !used.has(s2.k) && Math.max(Math.abs(s2.x - police.x), Math.abs(s2.z - police.z)) <= 1);
+      if (carSpot) { used.add(carSpot.k); out.push({ key: 'kaykit-city/car_police', x: carSpot.x, z: carSpot.z, kind: 'rules' }); }
+    }
     if (st('rules') === 'healthy') { put(junc, 'roads/traffic-light', 'rules'); put(junc, 'roads/traffic-light', 'rules'); }
   }
   if (st('beauty') === 'low' || st('beauty') === 'healthy') {
@@ -479,14 +497,77 @@ function systemsDecor(t, view){
     }
   }
   if (st('knowledge') === 'low' || st('knowledge') === 'healthy') {
-    put(nearOutPlaza, 'industrial/building-k', 'knowledge'); // library, near the hall but never in the plaza
+    // library, near the hall but never in the plaza -- village gets its own KayKit stand-in
+    putEra(nearOutPlaza, 'kaykit-medieval/building_church_green', 'industrial/building-k', 'knowledge');
     const districts = new Set((t.plots || []).map(p => p.d)); // every district with an open plot
     const signs = st('knowledge') === 'healthy' ? Math.max(1, districts.size) : 1; // low: 1 sign; healthy: one per district
     for (let n = 0; n < signs; n++) put(near, 'roads/road-sign-street', 'knowledge');
   }
   if (st('infra') === 'low' || st('infra') === 'healthy') {
     put(far, 'industrial/water-tower', 'infra');
-    if (st('infra') === 'healthy') put(far, 'industrial/chimney-large', 'infra');
+    // the power plant, once infra is healthy -- village gets its own KayKit windmill
+    if (st('infra') === 'healthy') putEra(far, 'kaykit-medieval/building_windmill_yellow', 'industrial/chimney-large', 'infra');
+  }
+  return out;
+}
+/* Balance: how big restDecor's and officeDecor's own items are placed (place()/instanced() 'fit'); the
+   same numbers the approved mock (mock/city-people-mock.html, "KayKit 替换") already places them at. */
+const REST_FIT = {
+  'kaykit-medieval/building_tavern_red': 1.5, 'kaykit-city/bench': .7,
+  'kaykit-restaurant/table_round_A': .36, 'kaykit-restaurant/chair_A': .2,
+  'commercial/detail-parasol-a': .5, 'commercial/detail-parasol-b': .5,
+  'commercial/building-c': 1.25, 'fantasy/fountain-round': 1.0, 'nature/tree_oak': .7, 'nature/flower_redA': .55,
+};
+/* officeDecor's own placing: the cabin fits like the mock, the flag is sized by height (h), like the
+   town hall's own flag already is (buildLand: place('flag', ..., { s: .7, ... })). */
+const OFFICE_OPT = { 'kaykit-medieval/building_home_A_blue': { fit: 1.25 }, 'forest/flag': { h: .9 } };
+/* restDecor(t) -> [{key, x, z, ry?}] the rest place's own models, by the era shown (eraShown): village a
+   KayKit tavern + benches; town a cafe (an existing Kenney shop) + KayKit round tables/chairs + Kenney
+   parasols (commercial/detail-parasol-a|b, restored from git, never hand-drawn shapes -- owner
+   2026-09-25); city a fountain + benches + a couple of trees/flowers. [] without t.rest (Interaction: the
+   rest place). t.rest is the 2x2 area's own corner (world tiles); its centre (t.rest.x + 1, t.rest.z + 1)
+   is the same point restSlotsFor(t) seats people around, so people rest facing what stands here. */
+function restDecor(t){
+  if (!t.rest) return [];
+  const cx = t.rest.x + 1, cz = t.rest.z + 1, era = eraShown(t);
+  const out = [];
+  if (era === 'village') {
+    out.push({ key: 'kaykit-medieval/building_tavern_red', x: cx + .2, z: cz - .3, ry: -.4 });
+    out.push({ key: 'kaykit-city/bench', x: cx - 1.2, z: cz + 1.1, ry: .1 });
+    out.push({ key: 'kaykit-city/bench', x: cx + .4, z: cz + 1.4, ry: -.2 });
+  } else if (era === 'town') {
+    out.push({ key: 'commercial/building-c', x: cx + .5, z: cz - .9, ry: Math.PI });
+    const tables = [[cx - 1.4, cz + .6], [cx + .1, cz + 1.2], [cx + 1.4, cz + .7]];
+    tables.forEach(([x, z], i) => {
+      out.push({ key: 'kaykit-restaurant/table_round_A', x, z });
+      out.push({ key: 'kaykit-restaurant/chair_A', x: x - .34, z, ry: Math.PI / 2 });
+      out.push({ key: 'kaykit-restaurant/chair_A', x: x + .34, z, ry: -Math.PI / 2 });
+      out.push({ key: i % 2 ? 'commercial/detail-parasol-b' : 'commercial/detail-parasol-a', x, z });
+    });
+  } else {
+    out.push({ key: 'fantasy/fountain-round', x: cx, z: cz - .1 });
+    out.push({ key: 'kaykit-city/bench', x: cx, z: cz + 1.5 });
+    out.push({ key: 'kaykit-city/bench', x: cx - 1.3, z: cz + .5, ry: Math.PI / 2 });
+    out.push({ key: 'kaykit-city/bench', x: cx + 1.3, z: cz + .5, ry: -Math.PI / 2 });
+    out.push({ key: 'nature/tree_oak', x: cx - 1.4, z: cz - 1.3 });
+    out.push({ key: 'nature/tree_oak', x: cx + 1.4, z: cz - 1.3 });
+    out.push({ key: 'nature/flower_redA', x: cx - .5, z: cz + 1.6 });
+  }
+  return out;
+}
+/* officeDecor(t) -> [{key, x, z, ry?, tint?}] per office in t.offices: a KayKit cabin on the office tile
+   (Interaction: a lead's home is its office) and a flag beside it, tinted in the lead role's own colour
+   (ROLES['task-manager'].color -- every lead is a task-manager, city.md Interaction). buildLand draws
+   these; they update whenever a world event changes t.offices (a lead's office frees when it leaves). */
+function officeDecor(t){
+  const out = [];
+  // the lead role's own colour (ROLES is outside the land section proper -- a literal fallback keeps
+  // officeDecor pure and safe wherever it runs, e.g. the decor test harness, which never defines ROLES)
+  const flagColor = typeof ROLES !== 'undefined' ? ROLES['task-manager'].color : '#9C86F2';
+  for (const o of t.offices || []) {
+    const cx = o.x + .5, cz = o.z + .5;
+    out.push({ key: 'kaykit-medieval/building_home_A_blue', x: cx, z: cz, ry: .5 });
+    out.push({ key: 'forest/flag', x: cx + .9, z: cz + .6, tint: flagColor });
   }
   return out;
 }
@@ -616,6 +697,13 @@ function citizenStatus(c, governors = 1) {
   }
   if (!governors && (c.state === 'to_hall' || c.state === 'asking')) return ['you', '等你'];
   return STATE[c.state];
+}
+/* nameOf(c) -> c.label, or "<label> · <task>" when the task is non-empty and differs from the label:
+   never the same text twice (a server restart used to leave "auto-pipeline:worker · auto-pipeline:worker"
+   on screen -- the server now strips the plugin prefix; the page just never repeats what it gets). The
+   person tag, the roster and the detail card all go through this, never c.label/c.task directly. */
+function nameOf(c) {
+  return c.task && c.task !== c.label ? c.label + ' · ' + c.task : c.label;
 }
 const TASKS = {
   'worker':['设置页表单','登录 API','导出 CSV','深色模式','小票打印','搜索框','分页','价格计算','库存提醒','客户列表'],
@@ -1043,6 +1131,25 @@ function governorAt(terr){
   const t = terrOf(terr);
   return t ? hallStand(t) : null;
 }
+/* governorFigures() -> [{terr, x, y}] one per present governor, each at its own hall (Interaction: a
+   governor per territory -- B1 only ever drew the home territory's). DEMO never sends govs/gov events
+   (governorAt always answers there instead), so this falls back to the one home-territory figure then. */
+function governorFigures(){
+  if (DEMO) { const p = governorAt(govTerr); return p ? [{ terr: govTerr, x: p.x, y: p.y }] : []; }
+  const out = [];
+  for (const terr of govsByTerr.keys()) {
+    const p = governorAt(terr);
+    if (p) out.push({ terr, x: p.x, y: p.y });
+  }
+  return out;
+}
+/* openGovAskFor(terr): the open ask (if any) whose agent is 'gov' AND whose own repo's territory is
+   `terr` -- the server's "agent": "gov" is shared by every governor, so an ask's own "terr" is what
+   tells which territory's figure should show the red "?" (Interaction). */
+function openGovAskFor(terr){
+  for (const a of asks.values()) if (!a.closed && a.agent === 'gov' && a.terr === terr) return a;
+  return null;
+}
 function setGovState(state){ govState = state; if (state !== 'waiting') gov.bubble = null; }
 function roleOrOther(role){ return ROLES[role] ? role : 'other'; }
 /* home = the scene point the default camera looks at: the governor's territory hall, else the first (Camera, Growth) */
@@ -1205,6 +1312,12 @@ function apply(ev){
       c.leaveFlag = true;
       if (c.state === 'resting' || !c.doneFlag) forceLeave(c);
       log(`${c.task} 下班了`);
+      return c;
+    }
+    case 'noplot': {
+      // a build found no free plot (minimum land, Growth): never silent -- the citizen's own task when
+      // it is still around, else whoever the server says tried the build (ev.by)
+      log(`${c ? c.task : ev.by} 没有空地了，先等等`);
       return c;
     }
     case 'gov': {
@@ -1445,6 +1558,14 @@ const MODELS = [
   'survival/structure', 'survival/tool-hammer', 'survival/resource-planks',
   'roads/construction-cone', 'roads/road-sign-street', 'roads/traffic-light', 'forest/flag', 'forest/patch-grass',
   'pets/animal-chick', 'pets/animal-cat', 'pets/animal-dog',
+  // city-people: KayKit stand-ins (rest place, site office, systems) and the Kenney parasols (restored
+  // from git, never hand-drawn shapes -- owner 2026-09-25). Each pack folder carries its own CC0 License.txt.
+  'kaykit-medieval/building_tavern_red', 'kaykit-medieval/building_barracks_blue',
+  'kaykit-medieval/building_church_green', 'kaykit-medieval/building_windmill_yellow',
+  'kaykit-medieval/building_home_A_blue',
+  'kaykit-city/car_police', 'kaykit-city/bench',
+  'kaykit-restaurant/table_round_A', 'kaykit-restaurant/chair_A',
+  'commercial/detail-parasol-a', 'commercial/detail-parasol-b',
 ];
 const VARIANTS = { 'task-manager':['character-female-c'], worker:['character-male-a','character-female-a','character-male-c'],
   'fast-lane-deputy':['character-female-e'], 'merge-deputy':['character-male-e'], other:['character-male-c'] };
@@ -1522,7 +1643,7 @@ const ROCK_GREY = '#8A8A86';
 const RAVINE_FLOOR = '#33312F';
 const WATER_COLOR = '#3E86C4';
 /* #demo / file://: exactly `python3 bin/agent_city.py demo-world` prints (tests/test_agent_city_world.py) */
-const DEMO_WORLD = {"cell": 26, "x0": -13, "z0": -13, "w": 52, "h": 52, "rows": ["                                                    ", "                          .                         ", "       . .              ..ww               ..       ", "     .......      .   ....ww.  .   .     ....       ", "   .........    . ... ...ww.........   .......      ", "   .....................ww..........g  ggrgggg.     ", "  ......................ww......grggggggPrggggg     ", "   .....................ww.....ggrgPrPgggrPggg      ", "  ......................ww.....ggrPgrgggPrgggr      ", "   .........gr...........ww....gPrgPrPgPgrPgPrg.    ", "    ......rrrrrr.........ww....rrrrrrrrrrrrrrrP.    ", "      ...grggggr........ww....gggrPgrggggrgPgrgg.   ", "      ...rrgHHgrg.......ww....gggrgPrgHHgrPgPrPg    ", "     .....rgHHgrtttttttBBtttt.gggrPgrgHHgrgggrgg.   ", "    ......rggggr.......ww...t.gggrgPrggggrPgPrPg.   ", "    ......rrrrrr.......ww...t.gggrPgrrrrrrgggrgg.   ", "    ........rg.........ww...t..ggrgPrgPgPrPgPrg..   ", "   .........t...........ww..t...grbgrPgPgrgPgrg...  ", "    ........t............wwbttttbbbbrrrrrrrrrr...b  ", "    ........t............wbb.bbbbbsbbgPgPggg...b.   ", "     .......t.............bsbbbbssssbgbgg.bb...bs   ", "   .........t.............ssbssssssssbbbbbbbbbbss   ", "  ..........t.............sssssssssssbsbbbssbbss    ", " ...........tmm...........ssssssssssssssssssssss    ", "  .mmmmmmmmmtmmm..........sssssssssssssssssssssss   ", " .mmmmmmmmmmt..mmm........ssssssssssssssssssssssss  ", "  m.........t...mmmmmmm     ssssssssssssssssssssss  ", "   .........t.....mmmm      ssssssssssssssssssss    ", "    ........tt.......          sssssssssssssssss    ", "    .........t.......           ssssssssssssss      ", "   ..........t.......               s  sssssss      ", "    .........t.......                   sss         ", "    .......rrrr......                    s          ", "     .....ggPgg........                             ", "    .....ggggggg........                            ", "      ...gPgPgPgP........                           ", "      ..rrrrrrrrrr.....                             ", "     ...ggrggggPgPgg....                            ", "   ....ggPrgHHgggggg...                             ", "   ....gggrgHHgggggg....                            ", "   ....ggPrggggPgPg...                              ", "  .....rrrrrrrrrrr.....                             ", "  ......gPgPgPgPg.......                            ", "  ........ggggggg.......                            ", "    ........gggg.......                             ", "   ...........r......                               ", "   ....... ..........                               ", "  .......   ........                                ", "    ....       ..                                   ", "                                                    ", "                                                    ", "                                                    "], "territories": [{"id": "4d5d7e95", "name": "auto-pipeline", "plan": "meadow", "terrain": "grassland", "slot": [0, 0], "cx": 0, "cz": 0, "lines": 500, "size": 0.24212512553021587, "r": 3.522238341052446, "open": 0, "plots_total": 36, "plots": [], "buildings": [], "era": "village", "balance": {"build": {"state": "healthy", "value": 500, "n": 3, "text": "500 \u884c\u4ee3\u7801"}, "rules": {"state": "missing", "value": 0, "n": 0, "text": "\u8fd8\u6ca1\u6709"}, "beauty": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 1.0, "n": 1, "text": "1/1 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u6587\u4ef6"}}, "next": ["\u89c4\u6a21", "\u89c4\u5219"], "rules_note": "", "offices": [], "rest": null}, {"id": "8329562e", "name": "v4-plus", "plan": "harbor", "terrain": "coast", "slot": [1, 0], "cx": 26, "cz": 0, "lines": 1000000, "size": 1.0, "r": 8.6, "open": 35, "plots_total": 35, "plots": [{"k": 0, "x": 22, "z": -1, "d": "workshop"}, {"k": 1, "x": 26, "z": -4, "d": "tower"}, {"k": 2, "x": 29, "z": -1, "d": "house"}, {"k": 3, "x": 22, "z": 1, "d": "workshop"}, {"k": 4, "x": 29, "z": 1, "d": "house"}, {"k": 5, "x": 24, "z": -4, "d": "library"}, {"k": 6, "x": 25, "z": 3, "d": "shop"}, {"k": 7, "x": 21, "z": 0, "d": "workshop"}, {"k": 8, "x": 27, "z": 3, "d": "shop"}, {"k": 9, "x": 30, "z": -2, "d": "house"}, {"k": 10, "x": 21, "z": -2, "d": "workshop"}, {"k": 11, "x": 27, "z": -5, "d": "tower"}, {"k": 12, "x": 29, "z": -4, "d": "tower"}, {"k": 13, "x": 22, "z": -4, "d": "library"}, {"k": 14, "x": 21, "z": 2, "d": "workshop"}, {"k": 15, "x": 31, "z": -1, "d": "house"}, {"k": 16, "x": 22, "z": 3, "d": "workshop"}, {"k": 17, "x": 26, "z": 4, "d": "shop"}, {"k": 18, "x": 29, "z": 3, "d": "shop"}, {"k": 19, "x": 24, "z": 4, "d": "shop"}, {"k": 20, "x": 31, "z": 1, "d": "house"}, {"k": 21, "x": 24, "z": -6, "d": "library"}, {"k": 22, "x": 31, "z": -4, "d": "tower"}, {"k": 23, "x": 27, "z": -7, "d": "tower"}, {"k": 24, "x": 21, "z": -5, "d": "library"}, {"k": 25, "x": 29, "z": -6, "d": "tower"}, {"k": 26, "x": 31, "z": 3, "d": "house"}, {"k": 27, "x": 30, "z": 4, "d": "shop"}, {"k": 28, "x": 22, "z": -6, "d": "library"}, {"k": 29, "x": 33, "z": -1, "d": "house"}, {"k": 30, "x": 19, "z": -4, "d": "library"}, {"k": 31, "x": 33, "z": -3, "d": "house"}, {"k": 32, "x": 33, "z": 1, "d": "house"}, {"k": 33, "x": 25, "z": 6, "d": "shop"}, {"k": 34, "x": 27, "z": 6, "d": "shop"}], "buildings": [{"plot": 6, "type": "shop", "by": "worker", "x": 25, "z": 3}, {"plot": 1, "type": "tower", "by": "worker", "x": 26, "z": -4}], "era": "city", "balance": {"build": {"state": "healthy", "value": 1000000, "n": 400, "text": "1,000,000 \u884c\u4ee3\u7801"}, "rules": {"state": "healthy", "value": 0.8, "n": 320, "text": "80% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 40, "n": 40, "text": "40 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 3.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.9, "n": 36, "text": "36/40 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 20, "n": 20, "text": "20 \u4e2a\u6587\u4ef6"}}, "next": [], "rules_note": "", "offices": [], "rest": null}, {"id": "db8c2db6", "name": "pos-lite", "plan": "ridge", "terrain": "mountain", "slot": [0, 1], "cx": 0, "cz": 26, "lines": 20000, "size": 0.6052343817819053, "r": 5.955070357938764, "open": 15, "plots_total": 37, "plots": [{"k": 0, "x": 2, "z": 24, "d": "workshop"}, {"k": 1, "x": -1, "z": 22, "d": "tower"}, {"k": 2, "x": 2, "z": 27, "d": "shop"}, {"k": 3, "x": 0, "z": 29, "d": "house"}, {"k": 4, "x": -4, "z": 27, "d": "house"}, {"k": 5, "x": -4, "z": 25, "d": "library"}, {"k": 6, "x": -3, "z": 22, "d": "library"}, {"k": 7, "x": 1, "z": 22, "d": "tower"}, {"k": 8, "x": -2, "z": 29, "d": "house"}, {"k": 9, "x": 4, "z": 24, "d": "workshop"}, {"k": 10, "x": 2, "z": 29, "d": "shop"}, {"k": 11, "x": -1, "z": 20, "d": "tower"}, {"k": 12, "x": 4, "z": 27, "d": "shop"}, {"k": 13, "x": -4, "z": 29, "d": "house"}, {"k": 14, "x": 3, "z": 22, "d": "workshop"}], "buildings": [{"plot": 3, "type": "house", "by": "worker", "x": 0, "z": 29}], "era": "town", "balance": {"build": {"state": "healthy", "value": 20000, "n": 60, "text": "20,000 \u884c\u4ee3\u7801"}, "rules": {"state": "low", "value": 0.3, "n": 18, "text": "30% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 6, "n": 8, "text": "6 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.5 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.6, "n": 12, "text": "12/20 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 4, "n": 4, "text": "4 \u4e2a\u6587\u4ef6"}}, "next": ["\u89c4\u5219"], "rules_note": "", "offices": [], "rest": null}], "links": [{"a": "4d5d7e95", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[10, 0], [11, 0]]}, {"a": "4d5d7e95", "b": "db8c2db6", "gap": "pass", "kind": "road", "cross": [[-1, 10], [-1, 11]]}]};
+const DEMO_WORLD = {"cell": 26, "x0": -13, "z0": -13, "w": 52, "h": 52, "rows": ["                                                    ", "                          .                         ", "       . .              ..ww               ..       ", "     .......      .   ....ww.  .   .     ....       ", "   .........    . ... ...ww.........   .......      ", "   .....................ww..........g  ggrgggg.     ", "  ......................ww......grggggggPrggggg     ", "   .....................ww.....ggrgPrPgggrPggg      ", "  ......................ww.....ggrPgrgggPrgggr      ", "   .........grP..........ww....gPrgPrPgPgrPgPrg.    ", "    ......rrrrrr.........ww....rrrrrrrrrrrrrrrP.    ", "      ...Prggggr........ww....gggrPgrggggrgPgrgg.   ", "      ...rrgHHgrP.......ww....gggrgPrgHHgrPgPrPg    ", "     .....rgHHgrrttttttBBtttt.gggrPgrgHHgrgggrgg.   ", "    ......rggggr.......ww...t.gggrgPrggggrPgPrPg.   ", "    ......rrrrrr.......ww...t.gggrPgrrrrrrgggrgg.   ", "    ........rP.........ww...t..ggrgPrgPgPrPgPrg..   ", "   .........t.Pr........ww..t...grbgrPgPgrgPgrg...  ", "    ........t............wwbttttbbbbrrrrrrrrrr...b  ", "    ........t............wbb.bbbbbsbbgPgPggg...b.   ", "     .......t.............bsbbbbssssbgbgg.bb...bs   ", "   .........t.............ssbssssssssbbbbbbbbbbss   ", "  ..........t.............sssssssssssbsbbbssbbss    ", " ...........tmm...........ssssssssssssssssssssss    ", "  .mmmmmmmmmtmmm..........sssssssssssssssssssssss   ", " .mmmmmmmmmmt..mmm........ssssssssssssssssssssssss  ", "  m.........t...mmmmmmm     ssssssssssssssssssssss  ", "   .........t.....mmmm      ssssssssssssssssssss    ", "    ........tt.......          sssssssssssssssss    ", "    .........t.......           ssssssssssssss      ", "   ..........t.......               s  sssssss      ", "    .........t.......                   sss         ", "    .......rrrr......                    s          ", "     .....ggPgg........                             ", "    .....ggggggg........                            ", "      ...gPgPgPgP........                           ", "      ..rrrrrrrrrr.....                             ", "     ...ggrggggPgPgg....                            ", "   ....ggPrgHHgggggg...                             ", "   ....gggrgHHgggggg....                            ", "   ....ggPrggggPgPg...                              ", "  .....rrrrrrrrrrr.....                             ", "  ......gPgPgPgPg.......                            ", "  ........ggggggg.......                            ", "    ........gggg.......                             ", "   ...........r......                               ", "   ....... ..........                               ", "  .......   ........                                ", "    ....       ..                                   ", "                                                    ", "                                                    ", "                                                    "], "territories": [{"id": "4d5d7e95", "name": "auto-pipeline", "plan": "meadow", "terrain": "grassland", "slot": [0, 0], "cx": 0, "cz": 0, "lines": 500, "size": 0.24212512553021587, "r": 3.522238341052446, "open": 5, "plots_total": 36, "plots": [{"k": 0, "x": 0, "z": 3, "d": "house"}, {"k": 2, "x": 1, "z": -4, "d": "tower"}, {"k": 3, "x": 3, "z": -1, "d": "shop"}, {"k": 4, "x": -4, "z": -2, "d": "library"}, {"k": 11, "x": 1, "z": 4, "d": "workshop"}], "buildings": [], "era": "village", "balance": {"build": {"state": "healthy", "value": 500, "n": 3, "text": "500 \u884c\u4ee3\u7801"}, "rules": {"state": "missing", "value": 0, "n": 0, "text": "\u8fd8\u6ca1\u6709"}, "beauty": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 1.0, "n": 1, "text": "1/1 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u6587\u4ef6"}}, "next": ["\u89c4\u6a21", "\u89c4\u5219"], "rules_note": "", "offices": [], "rest": null}, {"id": "8329562e", "name": "v4-plus", "plan": "harbor", "terrain": "coast", "slot": [1, 0], "cx": 26, "cz": 0, "lines": 1000000, "size": 1.0, "r": 8.6, "open": 35, "plots_total": 35, "plots": [{"k": 0, "x": 22, "z": -1, "d": "workshop"}, {"k": 1, "x": 26, "z": -4, "d": "tower"}, {"k": 2, "x": 29, "z": -1, "d": "house"}, {"k": 3, "x": 22, "z": 1, "d": "workshop"}, {"k": 4, "x": 29, "z": 1, "d": "house"}, {"k": 5, "x": 24, "z": -4, "d": "library"}, {"k": 6, "x": 25, "z": 3, "d": "shop"}, {"k": 7, "x": 21, "z": 0, "d": "workshop"}, {"k": 8, "x": 27, "z": 3, "d": "shop"}, {"k": 9, "x": 30, "z": -2, "d": "house"}, {"k": 10, "x": 21, "z": -2, "d": "workshop"}, {"k": 11, "x": 27, "z": -5, "d": "tower"}, {"k": 12, "x": 29, "z": -4, "d": "tower"}, {"k": 13, "x": 22, "z": -4, "d": "library"}, {"k": 14, "x": 21, "z": 2, "d": "workshop"}, {"k": 15, "x": 31, "z": -1, "d": "house"}, {"k": 16, "x": 22, "z": 3, "d": "workshop"}, {"k": 17, "x": 26, "z": 4, "d": "shop"}, {"k": 18, "x": 29, "z": 3, "d": "shop"}, {"k": 19, "x": 24, "z": 4, "d": "shop"}, {"k": 20, "x": 31, "z": 1, "d": "house"}, {"k": 21, "x": 24, "z": -6, "d": "library"}, {"k": 22, "x": 31, "z": -4, "d": "tower"}, {"k": 23, "x": 27, "z": -7, "d": "tower"}, {"k": 24, "x": 21, "z": -5, "d": "library"}, {"k": 25, "x": 29, "z": -6, "d": "tower"}, {"k": 26, "x": 31, "z": 3, "d": "house"}, {"k": 27, "x": 30, "z": 4, "d": "shop"}, {"k": 28, "x": 22, "z": -6, "d": "library"}, {"k": 29, "x": 33, "z": -1, "d": "house"}, {"k": 30, "x": 19, "z": -4, "d": "library"}, {"k": 31, "x": 33, "z": -3, "d": "house"}, {"k": 32, "x": 33, "z": 1, "d": "house"}, {"k": 33, "x": 25, "z": 6, "d": "shop"}, {"k": 34, "x": 27, "z": 6, "d": "shop"}], "buildings": [{"plot": 6, "type": "shop", "by": "worker", "x": 25, "z": 3}, {"plot": 1, "type": "tower", "by": "worker", "x": 26, "z": -4}], "era": "city", "balance": {"build": {"state": "healthy", "value": 1000000, "n": 400, "text": "1,000,000 \u884c\u4ee3\u7801"}, "rules": {"state": "healthy", "value": 0.8, "n": 320, "text": "80% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 40, "n": 40, "text": "40 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 3.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.9, "n": 36, "text": "36/40 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 20, "n": 20, "text": "20 \u4e2a\u6587\u4ef6"}}, "next": [], "rules_note": "", "offices": [], "rest": null}, {"id": "db8c2db6", "name": "pos-lite", "plan": "ridge", "terrain": "mountain", "slot": [0, 1], "cx": 0, "cz": 26, "lines": 20000, "size": 0.6052343817819053, "r": 5.955070357938764, "open": 15, "plots_total": 37, "plots": [{"k": 0, "x": 2, "z": 24, "d": "workshop"}, {"k": 1, "x": -1, "z": 22, "d": "tower"}, {"k": 2, "x": 2, "z": 27, "d": "shop"}, {"k": 3, "x": 0, "z": 29, "d": "house"}, {"k": 4, "x": -4, "z": 27, "d": "house"}, {"k": 5, "x": -4, "z": 25, "d": "library"}, {"k": 6, "x": -3, "z": 22, "d": "library"}, {"k": 7, "x": 1, "z": 22, "d": "tower"}, {"k": 8, "x": -2, "z": 29, "d": "house"}, {"k": 9, "x": 4, "z": 24, "d": "workshop"}, {"k": 10, "x": 2, "z": 29, "d": "shop"}, {"k": 11, "x": -1, "z": 20, "d": "tower"}, {"k": 12, "x": 4, "z": 27, "d": "shop"}, {"k": 13, "x": -4, "z": 29, "d": "house"}, {"k": 14, "x": 3, "z": 22, "d": "workshop"}], "buildings": [{"plot": 3, "type": "house", "by": "worker", "x": 0, "z": 29}], "era": "town", "balance": {"build": {"state": "healthy", "value": 20000, "n": 60, "text": "20,000 \u884c\u4ee3\u7801"}, "rules": {"state": "low", "value": 0.3, "n": 18, "text": "30% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 6, "n": 8, "text": "6 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.5 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.6, "n": 12, "text": "12/20 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 4, "n": 4, "text": "4 \u4e2a\u6587\u4ef6"}}, "next": ["\u89c4\u5219"], "rules_note": "", "offices": [], "rest": null}], "links": [{"a": "4d5d7e95", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[10, 0], [11, 0]]}, {"a": "4d5d7e95", "b": "db8c2db6", "gap": "pass", "kind": "road", "cross": [[-1, 10], [-1, 11]]}]};
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, powerPreference:'low-power' });
 renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
@@ -1995,6 +2116,31 @@ function buildLand(view){
         if (tint) g.traverse(n => { if (n.isMesh) n.material = tintedMat(n.material, tint); }); // ready-made Kenney model, tint only — never a hand-made shape
       }
     }
+    // city-people: the rest place's own models (restDecor) -- same grouping as systemsDecor above;
+    // each item may carry its own `ry` (rotation), read straight off restDecor's own output.
+    const restBy = {};
+    for (const d of restDecor(t)) (restBy[d.key] = restBy[d.key] || []).push(d);
+    for (const key in restBy) {
+      const items = restBy[key], bare = key.split('/')[1], scaleOpt = { fit: REST_FIT[key] || .8 };
+      if (items.length > 1) {
+        instanced(bare, items.map(it => Object.assign({ x: it.x, z: it.z, ry: it.ry || 0 }, scaleOpt)), { parent: landGroup });
+      } else {
+        place(bare, items[0].x, items[0].z, Object.assign({ parent: landGroup, ry: items[0].ry || 0 }, scaleOpt));
+      }
+    }
+    // city-people: every office's own KayKit cabin and flag (officeDecor); the flag is tinted in the
+    // lead's colour, never the cabin (a ready-made model, tint only -- never a hand-made shape).
+    const officeBy = {};
+    for (const d of officeDecor(t)) (officeBy[d.key] = officeBy[d.key] || []).push(d);
+    for (const key in officeBy) {
+      const items = officeBy[key], bare = key.split('/')[1], tint = items[0].tint, scaleOpt = OFFICE_OPT[key] || { fit: .8 };
+      if (items.length > 1) {
+        instanced(bare, items.map(it => Object.assign({ x: it.x, z: it.z, ry: it.ry || 0 }, scaleOpt)), Object.assign({ parent: landGroup }, tint ? { tint } : null));
+      } else {
+        const g = place(bare, items[0].x, items[0].z, Object.assign({ parent: landGroup, ry: items[0].ry || 0 }, scaleOpt));
+        if (tint) g.traverse(n => { if (n.isMesh) n.material = tintedMat(n.material, tint); });
+      }
+    }
     // Balance: one record (and mesh) per building, keyed by plot — never a duplicate across repeated
     // buildLand calls (every 'world' event, and the era-flip). A building already known keeps its record;
     // if its era look changed (eraShown(t) moved on), its old mesh is dropped so sync() remakes it fresh
@@ -2284,9 +2430,15 @@ function updatePerson(c, t, dt){
   }
   pin(c.o.bub, sx, sy, showBub);
   const [tx, ty] = toScreen(c.x, 0, c.y);
-  setText(c.o.tag, `${c.label} · ${c.task}`);
+  setText(c.o.tag, nameOf(c));
   pin(c.o.tag, tx, ty + 34, v.sel.visible && c.state !== 'asking');
 }
+/* Interaction: one governor figure per present governor (city-people, B1 drew only the home
+   territory's). govV/govBub/govQm/govTag stay the PRIMARY figure, at the home territory (govTerr) --
+   every existing harness that stubs exactly these globals (test_agent_city_land: EMPTY_JS/FIRST_VIEW)
+   keeps working unchanged. A small pool (govVByTerr, ensureGovFigure/updateGovPool below) covers every
+   OTHER present governor; built lazily, only reached when governorFigures() actually exists (typeof
+   guard, the same pattern restSlotsFor already uses for `typeof citizens`). */
 function updateGovernor(){
   // city-land: no governor floating in the void before the first territory lands; city-people: and no
   // governor figure at all where no governor session is present (governorAt() checks presence, not just land).
@@ -2295,18 +2447,64 @@ function updateGovernor(){
   const waiting = !DEMO && govState === 'waiting';
   const talking = waiting || (gov.bubble && simT < gov.bubble.until);
   anim(govV, talking ? 'interact-left' : 'idle');
-  govV.sel.visible = !!(selected && selected.t === 'gov');
+  govV.sel.visible = !!(selected && selected.t === 'gov' && (selected.terr || govTerr) === govTerr);
   const [sx, sy] = toScreen(gov.x, .9, gov.y);
   if (waiting) setText(govBub, '等你回话…');
   else if (talking) setText(govBub, gov.bubble.text);
   pin(govBub, sx, sy, talking);
-  const gAsk = openAskFor('gov');
+  const gAsk = typeof openGovAskFor === 'function' ? openGovAskFor(govTerr) : openAskFor('gov');
   if (gAsk) govQm.setAttribute('data-open', gAsk.id); else govQm.removeAttribute('data-open');
   govQm.setAttribute('aria-label', '总督 等你' + (gAsk && gAsk.kind === 'permission' ? '批' : '回答') + '，点开看');
   // above the bubble, never over it: a bubble reserves the spot at (sx, sy).
   pin(govQm, sx, talking ? sy - 32 : sy, !!(gAsk && gAsk.phase === 'owner'));
   const [tx, ty] = toScreen(gov.x, 0, gov.y);
   pin(govTag, tx, ty + 38, govV.sel.visible);
+  if (typeof governorFigures === 'function') updateGovPool(governorFigures());
+}
+/* the extra figures' own pool, keyed by territory (never the home one -- that is govV above). Made the
+   first time a territory needs one (place()/ovEl() only exist once the 3D scene is up); dropped from
+   view (never from the pool) once its governor leaves, so a later return reuses the same mesh. */
+const govVByTerr = new Map();
+function ensureGovFigure(terr){
+  let v = govVByTerr.get(terr);
+  if (v) return v;
+  const g = place('character-male-b', gov.x, gov.y, { s: CHAR_SCALE * 1.15, keepY: true });
+  const mixer = new THREE.AnimationMixer(g.children[0]); mixers.push(mixer);
+  const sel = new THREE.Mesh(ringGeo, ringMat('#FF7593')); sel.rotation.x = -Math.PI / 2; sel.position.y = .02; sel.scale.setScalar(1.6); g.add(sel);
+  const ring = new THREE.Mesh(ringGeo, ringMat('#FFD36E')); ring.rotation.x = -Math.PI / 2; ring.position.y = .015; ring.scale.setScalar(1.15); g.add(ring);
+  g.userData.pick = { t:'gov', terr };
+  pickables.push(g);
+  const bub = ovEl('bub gov'), tag = ovEl('tagl'), qm = ovBtn('qm', '<span>?</span>');
+  tag.style.setProperty('--c', '#FF6F8B'); setText(tag, '总督 · main manager');
+  v = { g, key:'character-male-b', mixer, sel, cur:null, action:null, bub, tag, qm };
+  anim(v, 'idle');
+  govVByTerr.set(terr, v);
+  return v;
+}
+function updateGovPool(list){
+  const seen = new Set();
+  for (const fig of list) {
+    if (fig.terr === govTerr) continue; // the home territory's figure is govV, drawn above
+    seen.add(fig.terr);
+    const v = ensureGovFigure(fig.terr);
+    v.g.visible = true;
+    v.g.position.set(fig.x, v.g.position.y, fig.y);
+    anim(v, 'idle');
+    v.sel.visible = !!(selected && selected.t === 'gov' && selected.terr === fig.terr);
+    const [sx, sy] = toScreen(fig.x, .9, fig.y);
+    pin(v.bub, sx, sy, false); // no per-territory "talking" text yet -- gov.bubble only ever tracks the home one
+    const gAsk = openGovAskFor(fig.terr);
+    if (gAsk) v.qm.setAttribute('data-open', gAsk.id); else v.qm.removeAttribute('data-open');
+    v.qm.setAttribute('aria-label', '总督 等你' + (gAsk && gAsk.kind === 'permission' ? '批' : '回答') + '，点开看');
+    pin(v.qm, sx, sy, !!(gAsk && gAsk.phase === 'owner'));
+    const [tx, ty] = toScreen(fig.x, 0, fig.y);
+    pin(v.tag, tx, ty + 38, v.sel.visible);
+  }
+  for (const [terr, v] of govVByTerr) {
+    if (seen.has(terr)) continue;
+    v.g.visible = false;
+    pin(v.bub, 0, 0, false); pin(v.qm, 0, 0, false); pin(v.tag, 0, 0, false);
+  }
 }
 
 const glowTex = (() => {
@@ -2668,7 +2866,7 @@ function renderRoster(){
       const [g, zh] = citizenStatus(c, governorCount);
       const kind = c.bld ? TYPE_ZH[c.bld.type] : '';
       const sub = g === 'build' && kind ? `${c.label} · ${kind} ${pct(c)}%` : c.label;
-      html += `<li class="${row.depth ? 'sub' : ''}"><button class="row" type="button" data-sel="${c.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === c.id)}"><span class="rdot" style="--c:${c.color}"></span><span class="who"><b>${esc(c.task)}</b><span>${esc(sub)}</span></span><span class="pill ${g}">${zh}</span></button></li>`;
+      html += `<li class="${row.depth ? 'sub' : ''}"><button class="row" type="button" data-sel="${c.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === c.id)}"><span class="rdot" style="--c:${c.color}"></span><span class="who"><b>${esc(nameOf(c))}</b><span>${esc(sub)}</span></span><span class="pill ${g}">${zh}</span></button></li>`;
     }
   }
   if (html !== lastRoster) { $('#roster').innerHTML = html; lastRoster = html; }
@@ -2704,7 +2902,7 @@ function renderDetail(){
       const canStuck = !c.doneFlag && !c.stuck && ['building','to_plot','back'].includes(c.state);
       const chain = chainLine(c);
       el.innerHTML = `
-        <div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(c.task)}</div><div class="d-role">${esc(c.label)} · ${ROLES[c.role].zh}</div></div><span class="pill ${g}">${zh}</span></div>
+        <div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(nameOf(c))}</div><div class="d-role">${esc(c.label)} · ${ROLES[c.role].zh}</div></div><span class="pill ${g}">${zh}</span></div>
         <div class="d-bar"><div class="track"><i data-f="bar" style="width:${pct(c)}%;background:${c.color}"></i></div><span data-f="pct">${kind} ${pct(c)}%</span></div>
         <dl class="d-tools">${['Edit','Write','Bash','Read'].map(t => `<div><dt>${t}</dt><dd data-f="${t}">${c.tools[t]}</dd></div>`).join('')}</dl>
         ${chain ? `<p class="hint chain">${chain}</p>` : ''}

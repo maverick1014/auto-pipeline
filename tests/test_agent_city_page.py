@@ -301,7 +301,7 @@ def inline_script():
 
 def models():
     block = re.search(r"const MODELS = \[(.*?)\];", inline_script(), re.S)
-    return re.findall(r"'([a-z]+/[A-Za-z0-9_\-]+)'", block.group(1)) if block else []
+    return re.findall(r"'([a-z][a-z\-]*/[A-Za-z0-9_\-]+)'", block.group(1)) if block else []
 
 
 def glb_images(path):
