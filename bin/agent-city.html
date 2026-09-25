@@ -75,7 +75,7 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .bub.ask{border-color:#E4476F}
 .bub.gov{background:#FFF1C9;border-color:#C99A1E}
 .bub.done{border-color:#2FB57A;background:#EFFFF6}
-.qm{all:unset;cursor:pointer;display:block;width:28px;height:28px;pointer-events:auto}
+.qm{all:unset;cursor:pointer;display:block;width:28px;height:28px;pointer-events:auto;z-index:3}
 .qm span{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#FF6F8B;color:#fff;font:700 17px/1 var(--display);border:2px solid #fff;box-shadow:0 2px 0 rgba(42,43,69,.25);animation:hop .7s ease-in-out infinite}
 .qm:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
 @keyframes hop{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
@@ -86,9 +86,10 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .zz span:nth-child(3){animation-delay:.8s}
 @keyframes zz{0%{transform:translate(0,0);opacity:0}30%{opacity:1}100%{transform:translate(8px,-14px);opacity:0}}
 .tagl{background:var(--c);color:#fff;border-radius:999px;padding:3px 10px;font:600 11.5px/1.3 var(--mono);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.tag{z-index:2}
 .fl{background:var(--c);color:#fff;border-radius:8px;padding:1px 7px;font:600 11px/1.5 var(--mono)}
 .lbl{background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:2px 10px;font:600 12px/1.5 var(--display);box-shadow:0 2px 0 rgba(42,43,69,.15);white-space:nowrap}
-.era-sign{background:var(--gov-bg);color:var(--gov-ink);border:1.5px solid var(--gov-ink);border-radius:999px;padding:3px 10px;font:600 12px/1.3 var(--round);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.18)}
+.era-sign{background:var(--gov-bg);color:var(--gov-ink);border:1.5px solid var(--gov-ink);border-radius:999px;padding:3px 10px;font:600 12px/1.3 var(--round);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.18);z-index:1}
 
 .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:8px}
 .group{display:inline-flex;align-items:center;gap:5px}
@@ -695,6 +696,10 @@ function askLine(ev, name) {
   if (ev.type === 'ask') {
     if (ev.kind === 'permission') {
       return name + ' 要权限：' + toolWhat(ev.tool, ev.what) + ' → 等你批';
+    }
+    if (ev.agent === 'gov') {
+      // the governor asks the owner, never itself -- never says 问总督 (owner E2E, 2026-09-25).
+      return name + ' 问你：“' + (ev.what || '') + '”';
     }
     if (ev.phase === 'governor') {
       return name + ' 问总督：“' + (ev.what || '') + '”';
@@ -1595,7 +1600,12 @@ const govsByTerr = new Map();
 /* {x, y} where the territory's governor figure stands, or null when no governor is there -- DEMO always
    shows one (the mock never sends govs/gov events) so the prototype looks as it always has. */
 function governorAt(terr){
-  if (!DEMO && !govsByTerr.has(terr)) return null;
+  if (!DEMO) {
+    const g = govsByTerr.get(terr);
+    // a "gov_seen" entry with state "unknown" (server restart, city-people D5) is not a present
+    // governor -- no figure -- until it either acts there (a normal state) or its session ends.
+    if (!g || g.state === 'unknown') return null;
+  }
   const t = terrOf(terr);
   return t ? hallStand(t) : null;
 }
@@ -1735,7 +1745,8 @@ function apply(ev){
       if (!c) return null;
       c.tools[ev.tool] = (c.tools[ev.tool] || 0) + 1;
       c.work += WEIGHT[ev.tool] || .3;
-      if (floaters.length < MAX_FLOATERS) floaters.push({ text: ev.tool, x: c.x, y: c.y, t0: simT, color: c.color, el: null });
+      // a catch-all "Other" tool has no real name to show over someone's head -- no floater for it.
+      if (ev.tool !== 'Other' && floaters.length < MAX_FLOATERS) floaters.push({ text: ev.tool, x: c.x, y: c.y, t0: simT, color: c.color, el: null });
       workWalk(c);
       return c;
     }
@@ -1811,12 +1822,12 @@ function apply(ev){
       asks.set(ev.id, ev);
       const ac = byId(ev.agent);
       if (ac) applyAsk(ac, ev);
-      log(askLine(ev, ev.task || ev.label || ''), ev.phase === 'owner' ? 'wait-you' : 'ask');
+      log(askLine(ev, askName(ev)), ev.phase === 'owner' ? 'wait-you' : 'ask');
       return null;
     }
     case 'ask_phase': {
       const view = asks.get(ev.id);
-      const name = view ? (view.task || view.label || '') : '';
+      const name = view ? askName(view) : askName(ev);
       if (view) Object.assign(view, ev);
       const ac = byId(ev.agent);
       if (ac) ac.askPhase = ev.phase;
@@ -1826,7 +1837,7 @@ function apply(ev){
     }
     case 'ask_closed': {
       const view = asks.get(ev.id);
-      const name = view ? (view.task || view.label || '') : '';
+      const name = view ? askName(view) : askName(ev);
       const ac = byId(ev.agent);
       if (ac) applyAsk(ac, null);
       log(askLine(ev, name));
@@ -1836,6 +1847,7 @@ function apply(ev){
       }
       if (openAskId === ev.id && view) {
         view.closed = { by: ev.by, verb: ev.verb, text: ev.text, reason: ev.reason, at: ev.at };
+        view.shownAt = performance.now(); // Result line then close: askAutoClose(frame's now) closes it ASK_CLOSE_MS later
         renderAskPanel();
       } else {
         asks.delete(ev.id);
@@ -1849,8 +1861,10 @@ const emit = ev => apply(ev);
 /* the governor row's own pill text, per territory (Interaction: a governor per territory): 不在 only
    when governorAt(terr) is null, else its state (busy/idle/waiting -> 在忙/空闲/等你). */
 function govRowText(terr){
+  const g = govsByTerr.get(terr);
+  if (g && g.state === 'unknown') return '未知'; // seen before a restart, not present yet (city-people D5)
   if (!governorAt(terr)) return '不在';
-  const g = govsByTerr.get(terr), state = g ? g.state : 'idle';
+  const state = g ? g.state : 'idle';
   if (state === 'waiting') return '等你';
   return state === 'busy' ? '在忙' : '空闲';
 }
@@ -2008,6 +2022,30 @@ function landState(view){
   updateHome();
   buildingLandState = false;
   rerouteBlocked(); // city-people, Walk (re-route): the footprints just changed -- move whoever now walks through one
+}
+
+/* askName(view): who asks, as people read it (owner E2E, 2026-09-25: the panel and the log used to
+   drop the asker's name for the governor's own question). A governor's own ask (view.agent === 'gov')
+   -> "<territory name> 总督" (the territory of view.terr, since the governor never asks itself -- the
+   panel title, and every log line of an ask (ask, ask_phase, ask_closed), all read this). Anyone else
+   -> its task, else its label. */
+function askName(view){
+  if (view.agent === 'gov') {
+    const t = terrOf(view.terr);
+    return (t && t.name ? t.name : view.terr) + ' 总督';
+  }
+  return view.task || view.label || '';
+}
+/* ASK_CLOSE_MS / askAutoClose(nowMs): the open ask panel closes itself ASK_CLOSE_MS after it first
+   shows a result (answered, allowed, denied, or someone else was first) -- shownAt is stamped then
+   (case 'ask_closed' and decide()'s own success/409 paths), never on an open, unanswered ask. Called
+   from frame() every tick; a no-op with no open panel or no result shown yet. */
+const ASK_CLOSE_MS = 10000;
+function askAutoClose(nowMs){
+  if (!openAskId) return;
+  const view = asks.get(openAskId);
+  if (!view || typeof view.shownAt !== 'number') return;
+  if (nowMs - view.shownAt >= ASK_CLOSE_MS) closeAskPanel();
 }
 
 /* =========================================================
@@ -2776,11 +2814,11 @@ function pinLandOverlays(){
     setText(sg.el, text); pin(sg.el, sx, sy, !!text);
   }
 }
-const govBub = ovEl('bub gov'), govTag = ovEl('tagl'), govQm = ovBtn('qm', '<span>?</span>');
+const govBub = ovEl('bub gov'), govTag = ovEl('tagl tag'), govQm = ovBtn('qm', '<span>?</span>');
 govTag.style.setProperty('--c', '#FF6F8B'); setText(govTag, '总督 · main manager');
 function ensureOv(c){
   if (c.o) return;
-  c.o = { bub: ovEl('bub'), qm: ovBtn('qm', '<span>?</span>'), wait: ovEl('gwait'), zz: ovEl('zz', '<span>z</span><span>z</span><span>Z</span>'), tag: ovEl('tagl') };
+  c.o = { bub: ovEl('bub'), qm: ovBtn('qm', '<span>?</span>'), wait: ovEl('gwait'), zz: ovEl('zz', '<span>z</span><span>z</span><span>Z</span>'), tag: ovEl('tagl tag') };
   c.o.tag.style.setProperty('--c', c.color);
 }
 function dropOv(c){ if (!c.o) return; for (const k in c.o) c.o[k].remove(); c.o = null; }
@@ -2880,7 +2918,7 @@ function ensureGovFigure(terr){
   const ring = new THREE.Mesh(ringGeo, ringMat('#FFD36E')); ring.rotation.x = -Math.PI / 2; ring.position.y = .015; ring.scale.setScalar(1.15); g.add(ring);
   g.userData.pick = { t:'gov', terr };
   pickables.push(g);
-  const bub = ovEl('bub gov'), tag = ovEl('tagl'), qm = ovBtn('qm', '<span>?</span>');
+  const bub = ovEl('bub gov'), tag = ovEl('tagl tag'), qm = ovBtn('qm', '<span>?</span>');
   tag.style.setProperty('--c', '#FF6F8B'); setText(tag, '总督 · main manager');
   v = { g, key:'character-male-b', mixer, sel, cur:null, action:null, bub, tag, qm };
   anim(v, 'idle');
@@ -3536,6 +3574,7 @@ function closeAskPanel(){
 }
 function askWhyLine(view){
   if (view.kind === 'permission') return `<div class="why">权限只由你来批，总督不批。</div>`;
+  if (view.agent === 'gov') return `<div class="why gov">总督定不了，交给你。</div>`;
   if (view.why === 'timeout') return `<div class="why gov">总督 ${view.wait} 秒没回答，交给你。</div>`;
   if (view.why === 'pass') return `<div class="why gov">总督说：这个我定不了，交给你。</div>`;
   return `<div class="why gov">没有总督在，直接交给你。</div>`;
@@ -3583,7 +3622,7 @@ function renderAskPanel(){
   const view = asks.get(openAskId);
   if (!view) { closeAskPanel(); return; }
   const closed = view.closed;
-  const head = `<div class="ask-head"><div><div class="ask-title" id="ask-title" tabindex="-1">${esc(view.task || view.label || '')} ${view.kind === 'question' ? '在问' : '要权限'}</div><div class="ask-role">${esc(view.label || '')}</div></div><span class="pill you">${closed ? '已关闭' : (view.kind === 'question' ? '等你回答' : '等你批')}</span><button class="x" type="button" data-close aria-label="收起（不回答）">✕</button></div>`;
+  const head = `<div class="ask-head"><div><div class="ask-title" id="ask-title" tabindex="-1">${esc(askName(view))} ${view.kind === 'question' ? '在问' : '要权限'}</div><div class="ask-role">${esc(view.label || '')}</div></div><span class="pill you">${closed ? '已关闭' : (view.kind === 'question' ? '等你回答' : '等你批')}</span><button class="x" type="button" data-close aria-label="收起（不回答）">✕</button></div>`;
   const why = closed ? '' : askWhyLine(view);
   const body = closed ? '' : (view.kind === 'question' ? askQuestionBody(view) : askPermissionBody(view));
   const closedHtml = closed ? askClosedLine(view) : '';
@@ -3645,6 +3684,7 @@ async function decide(id, body){
       view.closed = body.answers
         ? { by:'owner', verb:'answer', text: Object.values(body.answers).join('；'), reason:'', at: Date.now() }
         : { by:'owner', verb: body.verb, text:'', reason: body.reason || '', at: Date.now() };
+      view.shownAt = performance.now(); // Result line then close: askAutoClose(frame's now) closes it ASK_CLOSE_MS later
     }
     if (openAskId === id) renderAskPanel();
     return;
@@ -3652,7 +3692,10 @@ async function decide(id, body){
   if (res.status === 409) {
     const data = await res.json().catch(() => ({}));
     const view = asks.get(id);
-    if (view && !view.closed) view.closed = { by: data.by || 'terminal', verb: 'closed', text: '', reason: '' };
+    if (view && !view.closed) {
+      view.closed = { by: data.by || 'terminal', verb: 'closed', text: '', reason: '' };
+      view.shownAt = performance.now(); // someone else was first: the panel still auto-closes ASK_CLOSE_MS later
+    }
     if (openAskId === id) renderAskPanel();
     return;
   }
@@ -3803,6 +3846,7 @@ function autoRotate(now, dt){
 function frame(now){
   requestAnimationFrame(frame);
   if (document.hidden) { lastSim = now; return; }
+  askAutoClose(now); // Result line then close: the open panel closes itself ASK_CLOSE_MS after its result showed
   const interval = busy() || needFrame ? FRAME_MS : IDLE_FRAME_MS;
   if (now - lastDraw < interval - 2) return;
   const raw = Math.min(.1, (now - lastSim) / 1000);
