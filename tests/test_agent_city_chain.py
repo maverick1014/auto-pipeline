@@ -642,10 +642,10 @@ const groups = rosterGroups().map(g => ({ terr: g.terr, rows: g.rows.map(r => [r
 apply({ type: 'relay', id: 'w1', to: 'lead', lead: 's:L' });
 apply({ type: 'done', id: 'w1' });
 tick(20);
-const c1 = { w1: pos('w1'), status: citizenStatus(byId('w1'), 2) };
+const c1 = { w1: pos('w1'), L: pos('s:L'), status: citizenStatus(byId('w1'), 2), bubble: (byId('w1').bubble && byId('w1').bubble.text) || '' };
 apply({ type: 'relay', id: 's:L', to: 'governor', lead: '' });
 tick(35);
-const c2 = { L: pos('s:L'), w1: pos('w1'), status: citizenStatus(byId('s:L'), 2) };
+const c2 = { L: pos('s:L'), w1: pos('w1'), status: citizenStatus(byId('s:L'), 2), noWatch: citizenStatus(byId('s:L'), 0) };
 apply({ type: 'relay_end', id: 's:L', by: 'governor' });
 apply({ type: 'relay_end', id: 'w1', by: 'governor' });
 tick(45);
@@ -718,12 +718,16 @@ class TestPeoplePage(unittest.TestCase):
     def test_worker_question_walks_to_the_office(self):
         c1 = self.r["c1"]
         self.assertLessEqual(dist(c1["w1"], self.r["OC"]), 1.3)
+        self.assertGreaterEqual(dist(c1["w1"], c1["L"]), 0.45, "beside its lead, not on it")
+        self.assertNotIn("完工", c1["bubble"], "a worker with a question does not cheer 完工啦")
         self.assertNotEqual(c1["w1"]["state"], "resting", "a worker waiting for its lead does not rest yet")
         self.assertEqual(c1["status"][1], "问经理")
 
     def test_lead_walks_to_the_governor_worker_waits(self):
         c2 = self.r["c2"]
         self.assertLessEqual(dist(c2["L"], self.r["gA"]), 1.6)
+        self.assertGreaterEqual(dist(c2["L"], self.r["gA"]), 0.45, "beside the governor, not on him (headless E2E)")
+        self.assertEqual(c2["noWatch"][1], "在问总督", "a present governor answers relays even before its gov-watch runs")
         self.assertLessEqual(dist(c2["w1"], self.r["OC"]), 1.6)
         self.assertEqual(c2["status"][1], "在问总督")
 
