@@ -112,13 +112,13 @@ CONTRACT
       { ..., behind: true }) and instanced() gives such meshes a cloned
       material with polygonOffset = true, polygonOffsetFactor >= 1.
       busy() is true while auto-rotation turns the camera (so live mode with
-      zero agents runs at FRAME_MS like demo); false when nothing moves,
-      within 10 s of a touch, or under reduced motion.
+      zero agents runs at FRAME_MS like demo); false only under reduced
+      motion with nothing else moving.
       autoRotate(now, dt), called from frame(), turns only cam.az, one full
-      turn per 300 s; it does nothing when RM (reduced motion), while drag or
-      pinch is set, or within 10 s (10000 ms) of lastTouch. lastTouch =
-      performance.now() in camChanged and in the canvas pointerdown handler.
-      No button for it.
+      turn per 300 s, and never stops (owner 2026-09-25, replaces the pause
+      on touch): clicks, drags, pinch/zoom, panels and the "?" panel do not
+      pause it; a drag adds to the angle while it keeps turning. Nothing
+      under RM (reduced motion). No button for it.
     Right column <aside class="panel" id="panel"> holds exactly four cards,
       default order detail, balance, citizens, log (Balance added 城市平衡):
         <section class="card" data-card="detail|balance|citizens|log">
@@ -1137,7 +1137,7 @@ class TestSmoothAndSteady(unittest.TestCase):
 
     def test_still_cheap_when_nothing_moves(self):
         b = unit_results()["busy"]
-        self.assertFalse(b["touched"], "right after a touch, with nothing moving, idle rate is fine")
+        self.assertTrue(b["touched"], "a touch never pauses the rotation (owner 2026-09-25)")
         self.assertFalse(b["reduced"], "reduced motion: no rotation, idle rate")
 
     def test_no_brown_earth_block_sides(self):
@@ -1343,15 +1343,16 @@ class TestCamera(unittest.TestCase):
         per_second = abs(unit_results()["rot"]["idle"])
         self.assertAlmostEqual(per_second, 2 * 3.141592653589793 / 300, delta=0.003)
 
-    def test_auto_rotation_waits_10s_after_a_touch(self):
+    def test_auto_rotation_never_waits_after_a_touch(self):
         rot = unit_results()["rot"]
-        self.assertEqual(rot["touched5s"], 0)
-        self.assertNotEqual(rot["touched11s"], 0)
+        self.assertNotEqual(rot["idle"], 0)
+        self.assertAlmostEqual(rot["touched5s"], rot["idle"], delta=1e-9)
+        self.assertAlmostEqual(rot["touched11s"], rot["idle"], delta=1e-9)
 
-    def test_auto_rotation_stops_while_dragging_or_zooming(self):
+    def test_auto_rotation_keeps_turning_while_dragging_or_zooming(self):
         rot = unit_results()["rot"]
-        self.assertEqual(rot["dragging"], 0)
-        self.assertEqual(rot["pinching"], 0)
+        self.assertAlmostEqual(rot["dragging"], rot["idle"], delta=1e-9)
+        self.assertAlmostEqual(rot["pinching"], rot["idle"], delta=1e-9)
 
     def test_no_auto_rotation_for_reduced_motion(self):
         self.assertEqual(unit_results()["rot"]["reduced"], 0)
@@ -1359,14 +1360,12 @@ class TestCamera(unittest.TestCase):
     def test_frame_calls_auto_rotate(self):
         self.assertRegex(function_source("frame") or "", r"\bautoRotate\(")
 
-    def test_touch_and_zoom_reset_the_timer(self):
+    def test_no_pause_timer_left(self):
         text = inline_script()
-        cam_changed = re.search(r"const camChanged = \([^)]*\) => \{[^}]*\}", text)
-        self.assertIsNotNone(cam_changed, "camChanged not found")
-        self.assertRegex(cam_changed.group(0), r"lastTouch = performance\.now\(\)")
-        down = re.search(r"canvas\.addEventListener\('pointerdown', e => \{(.*?)\n\}\);", text, re.S)
-        self.assertIsNotNone(down, "canvas pointerdown handler not found")
-        self.assertRegex(down.group(1), r"lastTouch = performance\.now\(\)")
+        self.assertFalse("AUTO_ROT_IDLE_MS" in text, "no resume-after-10s timer any more")
+        src = function_source("autoRotating") or function_source("autoRotate") or ""
+        self.assertNotIn("drag", src, "a drag never pauses the rotation")
+        self.assertNotIn("pinch", src, "zoom never pauses the rotation")
 
 
 class TestCardsMarkup(unittest.TestCase):
