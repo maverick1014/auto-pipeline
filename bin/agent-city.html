@@ -1195,6 +1195,18 @@ function rerouteBlocked(){
     const np = findPath(c.x, c.y, last[0], last[1]);
     c.path = np || []; // no way around the new footprint either -- stop rather than cut through it
   }
+  // calm idle strolls (city-people): a governor mid-stroll gets the very same treatment -- he is not in
+  // `citizens` above, so a new footprint growing across his own current route would otherwise go unnoticed
+  // until he next decides where to go, not while he is already walking it.
+  for (const m of govMove.values()) {
+    if (!freeAt(m.x, m.y)) { const s = snapFree(m.x, m.y); m.x = s.x; m.y = s.y; }
+    if (!m.path || !m.path.length) continue;
+    let ax = m.x, az = m.y, hit = false;
+    for (const [bx, bz] of m.path) { if (!segFree([ax, az], [bx, bz])) { hit = true; break; } ax = bx; az = bz; }
+    if (!hit) continue;
+    const last = m.path[m.path.length - 1];
+    m.path = findPath(m.x, m.y, last[0], last[1]) || [];
+  }
 }
 function terrOf(id){ return (map.territories || []).find(t => t.id === id); }
 /* city-land: the start dir always has a territory (a plain folder counts too), so this is only a safety
@@ -1462,7 +1474,7 @@ function newCitizen(id, role, task, terr){
     alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0,Other:0}, work:0, bld:null, stand, home:null, slot:null, rest:null, pendingBuild:null,
     question:'', answer:'', answered:false, pendingAnswer:'', askT:0, stuck:false, doneFlag:false, leaveFlag:false,
     askKind:'', askPhase:'', qa:[], bubble:null, walkT:Math.random()*5, walkAt:0, walkOut:false, feed:null, gone:false,
-    office:null, lead:'', relay:'' };
+    office:null, lead:'', relay:'', toolAt:0, strollPhase:'', strollPauseUntil:0, strollOutPath:[] };
 }
 const byId = id => citizens.find(c => c.id === id);
 
@@ -1492,6 +1504,9 @@ function onArrive(c){
       // no building yet (a Bash/Read-only session never sends one): 'working', never 'building' --
       // citizenStatus must never say 施工中 without a building (city-people).
       c.state = c.bld ? 'building' : 'working';
+      // calm idle strolls (city-people): every time a citizen settles back into 'working' (spawn's first
+      // arrival, or back from asking/relay/permission), its "nothing to do" clock starts fresh.
+      c.toolAt = simT;
       if (c.stuck) goHall(c); else if (c.doneFlag) finish(c);
       break;
     case 'to_hall': c.state = 'asking'; c.stateT = 0; c.askT = simT; break;
@@ -1499,8 +1514,11 @@ function onArrive(c){
     case 'to_rest': c.state = 'resting'; c.stateT = 0; if (c.leaveFlag) leave(c); break;
     case 'working':
       // returning from a short work-walk (workWalk): done overrides it, else walk back home and stop.
-      if (c.doneFlag) { c.walkOut = false; finish(c); break; }
-      if (c.walkOut) { c.walkOut = false; goTo(c, c.home, 'working'); }
+      if (c.doneFlag) { c.walkOut = false; c.strollPhase = ''; finish(c); break; }
+      if (c.walkOut) { c.walkOut = false; goTo(c, c.home, 'working'); break; }
+      // calm idle strolls (city-people): out -> pause a few seconds -> back home, then a fresh wait.
+      if (c.strollPhase === 'out') { c.strollPhase = 'pause'; c.strollPauseUntil = simT + rnd(3.5, 6); break; }
+      if (c.strollPhase === 'back') { c.strollPhase = ''; c.toolAt = simT; break; }
       break;
   }
 }
@@ -1532,7 +1550,10 @@ function goHall(c){
   const t = terrOf(c.terr);
   let slot;
   if (t) {
-    const gp = governorAt(t.id) || hallStand(t);
+    // calm idle strolls (city-people): people always head for the governor's fixed hall stand, never
+    // wherever he currently happens to be strolling -- and heading his way calls him back there at once.
+    const gp = hallStand(t);
+    governorSummon(t.id);
     const taken = citizens.filter(o => o !== c && o.slot && o.terr === t.id
       && (o.state === 'to_hall' || o.state === 'asking')).map(o => o.slot);
     const s = waitStand(gp, taken);
@@ -1598,16 +1619,190 @@ let govTerr = null;
    with present true/false -- city-people, Interaction). Empty: no governor anywhere. */
 const govsByTerr = new Map();
 /* {x, y} where the territory's governor figure stands, or null when no governor is there -- DEMO always
-   shows one (the mock never sends govs/gov events) so the prototype looks as it always has. */
+   shows one (the mock never sends govs/gov events) so the prototype looks as it always has. A present,
+   non-DEMO governor's own spot moves with his idle stroll (govMove, below); everyone else still always
+   walks to his fixed hall stand (goHall), never wherever he currently happens to be strolling. */
 function governorAt(terr){
-  if (!DEMO) {
-    const g = govsByTerr.get(terr);
-    // a "gov_seen" entry with state "unknown" (server restart, city-people D5) is not a present
-    // governor -- no figure -- until it either acts there (a normal state) or its session ends.
-    if (!g || g.state === 'unknown') return null;
-  }
+  if (DEMO) { const t = terrOf(terr); return t ? hallStand(t) : null; }
+  const g = govsByTerr.get(terr);
+  // a "gov_seen" entry with state "unknown" (server restart, city-people D5) is not a present
+  // governor -- no figure -- until it either acts there (a normal state) or its session ends.
+  if (!g || g.state === 'unknown') return null;
   const t = terrOf(terr);
-  return t ? hallStand(t) : null;
+  if (!t) return null;
+  // the calm idle-stroll mover (below): guarded the same way other page_fns-bundled harnesses already
+  // guard governorFigures/govAnim, so a caller pulling in only governorAt (never the whole script) still
+  // gets his fixed hall stand, never a crash.
+  if (typeof ensureGovMove !== 'function') return hallStand(t);
+  const m = ensureGovMove(terr);
+  return { x: m.x, y: m.y };
+}
+/* calm idle strolls (city-people): a governor's own movement, one entry per present territory (DEMO never
+   uses this -- its single figure stays hallStand-pinned, as always). idleSince resets whenever he has
+   something to do (governorSummon) or just finished a leg home; strollPhase: '' (at his hall, or not yet
+   built) | 'out' (walking away) | 'pause' (stopped a moment) | 'back'/'home' (walking to the hall, 'home'
+   being the urgent recall a new ask or someone heading his way triggers). */
+const govMove = new Map();
+function ensureGovMove(terr){
+  let m = govMove.get(terr);
+  if (m) return m;
+  const t = terrOf(terr), s = t ? hallStand(t) : { x: 0, y: 0 };
+  m = { x: s.x, y: s.y, path: [], outPath: [], phase: '', pauseUntil: 0, idleSince: simT };
+  govMove.set(terr, m);
+  return m;
+}
+/* true while terr's governor has something to do: an open ask of his own, or a citizen heading to or
+   already waiting at his hall (relay/stuck -- Interaction: the chain of command). */
+function govHasWork(terr){
+  if (openGovAskFor(terr)) return true;
+  for (const c of citizens) if (!c.gone && c.terr === terr && (c.state === 'to_hall' || c.state === 'asking')) return true;
+  return false;
+}
+/* sends terr's governor back to his hall stand at once (city-people, calm): a new ask of his own
+   (case 'ask'), or a relay/stuck heading to him (goHall, above) -- never waits for the next idle check. */
+function governorSummon(terr){
+  if (DEMO) return;
+  const t = terrOf(terr);
+  if (!t) return;
+  const m = ensureGovMove(terr);
+  m.idleSince = simT;
+  if (m.phase !== 'home') {
+    const hs = hallStand(t);
+    m.path = findPath(m.x, m.y, hs.x, hs.y) || [];
+    m.phase = 'home';
+  }
+}
+/* every other mover's current spot, and where it is already headed if it is mid-walk -- a citizen (except
+   `exceptId`) and every present governor (except `exceptTerr`'s own). The "already headed" half matters
+   within the very same tick: citizens are decided one at a time (in array order) and the governor last, so
+   by the time a later one picks its own idle-stroll spot, an earlier one that just chose its own this same
+   tick has not actually moved yet -- only its path says where it is going (city-people, calm: "nobody
+   stands closer than 0.45"). Never a citizen's designated home/rest tile that is simply empty right now
+   (reservedNear, below, still keeps those clear too). */
+function otherPositions(exceptId, exceptTerr){
+  const pts = [];
+  for (const o of citizens) {
+    if (o.gone || o.id === exceptId) continue;
+    pts.push({ x: o.x, y: o.y });
+    if (o.path && o.path.length) { const last = o.path[o.path.length - 1]; pts.push({ x: last[0], y: last[1] }); }
+  }
+  for (const [terr, m] of govMove) {
+    if (terr === exceptTerr) continue;
+    pts.push({ x: m.x, y: m.y });
+    if (m.path && m.path.length) { const last = m.path[m.path.length - 1]; pts.push({ x: last[0], y: last[1] }); }
+  }
+  return pts;
+}
+/* true when the given already-computed path (world points, the walker starting at (sx, sz)) never comes
+   within `margin` of any of `pts` -- unlike pathClearOfAll (above), this checks a path already in hand
+   rather than computing a fresh one, so re-checking a stored route costs no extra pathfinding. */
+function pathAvoidsPoints(path, sx, sz, pts, margin){
+  let ax = sx, az = sz;
+  for (const [bx, bz] of path) {
+    for (const pt of pts) if (segDist(pt.x, pt.y, ax, az, bx, bz) < margin) return false;
+    ax = bx; az = bz;
+  }
+  return true;
+}
+/* the exact walk home reversed, ending precisely at `dest` (city-people, calm): a stroll's own way out was
+   already checked clear of everyone else (strollSpot, below); walking it backwards guarantees the way back
+   is just as clear, with no second, possibly different route to re-validate. */
+function reversePath(outPath, dest){
+  const rev = (outPath || []).slice(0, -1).reverse();
+  rev.push([dest.x, dest.y]);
+  return rev;
+}
+/* true when the given path would now cross a model's footprint -- a new building (Growth) can go up while
+   a stroller is stopped out on its walk, so the reversed way back (reversePath, above) is only reused when
+   the world has not moved on since; otherwise findPath (which always reads the current walk grid) finds a
+   fresh way home instead of a stale one (city-people, calm; Growth: "people never walk through models"). */
+function pathBlockedByModels(path, sx, sz){
+  let ax = sx, az = sz;
+  for (const [bx, bz] of path) {
+    if (!segFree([ax, az], [bx, bz])) return true;
+    ax = bx; az = bz;
+  }
+  return false;
+}
+/* a free walkable spot at least MIN and at most MAX tiles from `home` -- for an idle stroll (calm: "a
+   nearby building, the rest place or a road"), never through a model (walkable/freeAt, the same walk
+   grid every walk uses), never another citizen's own reserved spot, and the whole route there never
+   grazes `avoidPts` (otherPositions) -- so a stroll never crosses paths with whoever else is standing
+   still right now (city-people, calm). */
+function strollSpot(home, min, max, t, avoidPts){
+  const avoid = t ? reservedNear(t) : new Set();
+  const fx0 = Math.floor(home.x), fz0 = Math.floor(home.y), out = [];
+  for (let dx = -max; dx <= max; dx++) for (let dz = -max; dz <= max; dz++) {
+    const d = Math.hypot(dx, dz);
+    if (d > max || d < min) continue;
+    const x = fx0 + dx + .5, z = fz0 + dz + .5, fx = Math.floor(x), fz = Math.floor(z);
+    if (avoid.has(fx + ',' + fz)) continue;
+    if (!walkable(fx, fz) || !freeAt(x, z)) continue;
+    if (avoidPts && avoidPts.length && !pathClearOfAll(home.x, home.y, x, z, avoidPts, .5)) continue;
+    out.push({ x, y: z });
+  }
+  return out.length ? pick(out) : null;
+}
+const IDLE_STROLL_SEC = 30, GOV_STROLL_MIN = 1.5, GOV_STROLL_MAX = 5;
+/* every present governor's own idle stroll: nothing to do for a while -> a slow walk to a nearby spot,
+   a short pause, then back to the hall, and a fresh wait -- never further than 8 tiles from his hall
+   (city-people, calm). Runs from update(dt); a no-op in DEMO (its single figure never moves). */
+function updateGovernors(dt){
+  if (DEMO) return;
+  for (const terr of govsByTerr.keys()) {
+    const t = terrOf(terr);
+    if (!t) continue;
+    const m = ensureGovMove(terr), hs = hallStand(t);
+    if (govHasWork(terr)) {
+      m.idleSince = simT;
+      if (m.phase !== 'home' && (m.path.length || Math.hypot(m.x - hs.x, m.y - hs.y) > .05)) {
+        m.path = findPath(m.x, m.y, hs.x, hs.y) || [];
+        m.phase = 'home';
+      }
+    } else if (m.phase === 'home' && !m.path.length) {
+      m.phase = ''; m.idleSince = simT;
+    } else if (m.phase === 'pause') {
+      if (simT >= m.pauseUntil) {
+        const rev = reversePath(m.outPath, hs);
+        if (m.outPath.length && pathBlockedByModels(rev, m.x, m.y)) {
+          // a new building went up while he was out -- a fresh route, never the stale reversed one.
+          m.path = findPath(m.x, m.y, hs.x, hs.y) || []; m.phase = 'back';
+        // the way out was clear of everyone when he left; only re-checked here in case someone new has
+        // since settled right on that route -- a short extra wait rather than ever walking through them.
+        } else if (!m.outPath.length || pathAvoidsPoints(rev, m.x, m.y, otherPositions(null, terr), .5)) {
+          m.path = rev; m.phase = 'back';
+        } else m.pauseUntil = simT + 1;
+      }
+    } else if (m.phase === 'back' && !m.path.length) {
+      m.phase = ''; m.idleSince = simT;
+    } else if (!m.phase && !m.path.length && simT - m.idleSince >= IDLE_STROLL_SEC) {
+      const spot = strollSpot(hs, GOV_STROLL_MIN, GOV_STROLL_MAX, t, otherPositions(null, terr));
+      if (spot) {
+        const p = findPath(m.x, m.y, spot.x, spot.y) || [];
+        m.path = p; m.outPath = p.slice(); m.phase = 'out';
+      }
+    }
+    if (m.path.length) {
+      const [tx, ty] = m.path[0];
+      const dx = tx - m.x, dy = ty - m.y, d = Math.hypot(dx, dy);
+      const sp = (m.phase === 'home' ? SPRINT_SPEED : WALK_SPEED) * dt;
+      if (d <= sp) {
+        m.x = tx; m.y = ty; m.path.shift();
+        if (!m.path.length && m.phase === 'out') { m.phase = 'pause'; m.pauseUntil = simT + rnd(3.5, 6); }
+      } else { m.x += dx / d * sp; m.y += dy / d * sp; }
+    }
+  }
+}
+/* govAnim(terr, t) -> the governor figure's animation at sim time t (seconds): 'walk' while he actually
+   strolls (his own live movement, not the given t), else 'idle' most of the time, with at most a short
+   gesture once in a while -- a fixed, calm schedule of t itself (never a looping wave/handshake while he
+   waits: city-people, calm). updateGovernor() uses it for every governor figure. */
+const GOV_GESTURE_PERIOD = 30, GOV_GESTURE_DUR = 1.2;
+function govAnim(terr, t){
+  const m = govMove.get(terr);
+  if (m && m.path && m.path.length) return 'walk';
+  const phase = ((t % GOV_GESTURE_PERIOD) + GOV_GESTURE_PERIOD) % GOV_GESTURE_PERIOD;
+  return phase < GOV_GESTURE_DUR ? 'interact-left' : 'idle';
 }
 /* governorFigures() -> [{terr, x, y}] one per present governor, each at its own hall (Interaction: a
    governor per territory -- B1 only ever drew the home territory's). DEMO never sends govs/gov events
@@ -1655,16 +1850,20 @@ function placeAgent(a){
   const tools = a.tools || {};
   Object.assign(c.tools, tools);
   c.work = Object.entries(tools).reduce((s, [k, v]) => s + (WEIGHT[k] || .3) * v, 0);
-  if (a.done) {
-    c.doneFlag = true;
+  c.toolAt = simT; // calm idle strolls (city-people): a fresh "nothing to do" clock on every (re)connect
+  c.doneFlag = !!a.done;
+  // D2, a page opened mid-chain (city-people): a relay -- done or not -- always waits at the office/hall,
+  // never straight to resting; relay_end (still to come, or already applied before this snapshot) is what
+  // sends a done citizen on to rest, same order the live events give.
+  if (a.relay === 'lead' || a.relay === 'governor') {
+    c.relay = a.relay;
+    if (a.relay === 'lead') goChain(c, a.lead); else goHall(c);
+  } else if (a.done) {
     const spot = pickRestSpot(c);
     c.rest = spot; c.x = spot.x; c.y = spot.y; c.state = 'resting';
   } else if (a.stuck) {
     c.stuck = true; c.question = '需要你看一下';
     goChain(c);
-  } else if (a.relay === 'lead' || a.relay === 'governor') {
-    c.relay = a.relay;
-    if (a.relay === 'lead') goChain(c, a.lead); else goHall(c);
   }
   citizens.push(c);
   return c;
@@ -1745,6 +1944,7 @@ function apply(ev){
       if (!c) return null;
       c.tools[ev.tool] = (c.tools[ev.tool] || 0) + 1;
       c.work += WEIGHT[ev.tool] || .3;
+      c.toolAt = simT; // calm idle strolls (city-people): a real tool event is never "nothing to do"
       // a catch-all "Other" tool has no real name to show over someone's head -- no floater for it.
       if (ev.tool !== 'Other' && floaters.length < MAX_FLOATERS) floaters.push({ text: ev.tool, x: c.x, y: c.y, t0: simT, color: c.color, el: null });
       workWalk(c);
@@ -1822,6 +2022,9 @@ function apply(ev){
       asks.set(ev.id, ev);
       const ac = byId(ev.agent);
       if (ac) applyAsk(ac, ev);
+      // the governor's own question (agent 'gov') sends him back to his hall stand at once, same as a
+      // relay/stuck heading his way (city-people, calm).
+      if (ev.agent === 'gov' && ev.terr) governorSummon(ev.terr);
       log(askLine(ev, askName(ev)), ev.phase === 'owner' ? 'wait-you' : 'ask');
       return null;
     }
@@ -1978,9 +2181,33 @@ function update(dt){
       case 'finishing': if (c.stateT > 1.5) goRest(c); break;
       case 'resting': if (!DEMO && !c.leaveFlag && c.stateT > LIVE_REST_SEC) autoLeave(c); break;
       case 'leaving': if (!c.path.length) { c.alpha -= dt * 2; if (c.alpha <= 0) c.gone = true; } break;
+      case 'working':
+        // calm idle strolls (city-people): only a standalone citizen (no office of its own, no lead
+        // keeping it near an office) that has had nothing to do for a while -- never a building citizen,
+        // a lead or one of its workers, who keep to their own spot.
+        if (c.bld || c.stuck || c.doneFlag || c.office || c.lead) break;
+        if (c.strollPhase === 'pause') {
+          if (simT >= c.strollPauseUntil) {
+            const rev = reversePath(c.strollOutPath, c.home);
+            if (c.strollOutPath.length && pathBlockedByModels(rev, c.x, c.y)) {
+              // a new building went up while it was out -- a fresh route, never the stale reversed one.
+              c.strollPhase = 'back'; c.path = findPath(c.x, c.y, c.home.x, c.home.y) || [];
+              c.state = 'working'; c.stateT = 0;
+            // the way out was clear of everyone when it left; only re-checked here in case someone new
+            // has since settled right on that route -- a short extra wait, never walking through them.
+            } else if (!c.strollOutPath.length || pathAvoidsPoints(rev, c.x, c.y, otherPositions(c.id, null), .5)) {
+              c.strollPhase = 'back'; c.path = rev; c.state = 'working'; c.stateT = 0;
+            } else c.strollPauseUntil = simT + 1;
+          }
+        } else if (!c.strollPhase && !c.path.length && simT - c.toolAt >= IDLE_STROLL_SEC) {
+          const spot = strollSpot(c.home, 1.5, 4, terrOf(c.terr), otherPositions(c.id, null));
+          if (spot) { c.strollPhase = 'out'; goTo(c, spot, 'working'); c.strollOutPath = c.path.slice(); }
+        }
+        break;
     }
     if (DEMO) feed(c);
   }
+  updateGovernors(dt);
   for (let i = citizens.length - 1; i >= 0; i--) if (citizens[i].gone) {
     const c = citizens[i];
     if (c.rest && !c.rest.extra) c.rest.by = 0;
@@ -2886,13 +3113,19 @@ function updatePerson(c, t, dt){
 function updateGovernor(){
   // city-land: no governor floating in the void before the first territory lands; city-people: and no
   // governor figure at all where no governor session is present (governorAt() checks presence, not just land).
-  govV.g.visible = landReady() && !!governorAt(govTerr);
-  govV.g.position.set(gov.x, govV.g.position.y, gov.y);
+  const here = governorAt(govTerr);
+  govV.g.visible = landReady() && !!here;
+  const px = here ? here.x : gov.x, py = here ? here.y : gov.y;
+  govV.g.position.set(px, govV.g.position.y, py);
   const waiting = !DEMO && govState === 'waiting';
   const talking = waiting || (gov.bubble && simT < gov.bubble.until);
-  anim(govV, talking ? 'interact-left' : 'idle');
+  // calm idle strolls (city-people): govAnim caps any gesture (no looping wave/handshake while waiting)
+  // and shows 'walk' while he actually strolls -- the old unconditional talking/idle toggle used to
+  // loop 'interact-left' for as long as govState stayed 'waiting'.
+  const gAnim = typeof govAnim === 'function' ? govAnim(govTerr, simT) : (talking ? 'interact-left' : 'idle');
+  anim(govV, gAnim);
   govV.sel.visible = !!(selected && selected.t === 'gov' && (selected.terr || govTerr) === govTerr);
-  const [sx, sy] = toScreen(gov.x, .9, gov.y);
+  const [sx, sy] = toScreen(px, .9, py);
   if (waiting) setText(govBub, '等你回话…');
   else if (talking) setText(govBub, gov.bubble.text);
   pin(govBub, sx, sy, talking);
@@ -2901,7 +3134,7 @@ function updateGovernor(){
   govQm.setAttribute('aria-label', '总督 等你' + (gAsk && gAsk.kind === 'permission' ? '批' : '回答') + '，点开看');
   // above the bubble, never over it: a bubble reserves the spot at (sx, sy).
   pin(govQm, sx, talking ? sy - 32 : sy, !!(gAsk && gAsk.phase === 'owner'));
-  const [tx, ty] = toScreen(gov.x, 0, gov.y);
+  const [tx, ty] = toScreen(px, 0, py);
   pin(govTag, tx, ty + 38, govV.sel.visible);
   if (typeof governorFigures === 'function') updateGovPool(governorFigures());
 }
@@ -2933,7 +3166,7 @@ function updateGovPool(list){
     const v = ensureGovFigure(fig.terr);
     v.g.visible = true;
     v.g.position.set(fig.x, v.g.position.y, fig.y);
-    anim(v, 'idle');
+    anim(v, typeof govAnim === 'function' ? govAnim(fig.terr, simT) : 'idle');
     v.sel.visible = !!(selected && selected.t === 'gov' && selected.terr === fig.terr);
     const [sx, sy] = toScreen(fig.x, .9, fig.y);
     pin(v.bub, sx, sy, false); // no per-territory "talking" text yet -- gov.bubble only ever tracks the home one
