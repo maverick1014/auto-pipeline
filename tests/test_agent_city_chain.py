@@ -205,8 +205,10 @@ class TestHookAskFlag(unittest.TestCase):
                                tool_response={"success": True, "message": "queued"})
 
     def test_ask_key_is_last_and_a_string(self):
+        # city-worktrees added "wt" after it, city-quality "file" after that
+        # (tests/test_agent_city_worktrees.py, tests/test_agent_city_quality.py)
         row, _ = self.row(self.stop("PASS\nall green"))
-        self.assertEqual(list(row)[-1], "ask")
+        self.assertEqual(list(row)[-3:], ["ask", "wt", "file"])
         self.assertEqual(row["ask"], "")
 
     def test_worker_question_sets_the_flag_not_the_text(self):
@@ -326,7 +328,7 @@ class TestLeadsAndOffices(CityCase):
         self.assertEqual(self.agent(snap, "s:tm1")["office"], office)
         view = snap["world"]
         t = self.terr_view(snap, TA)
-        self.assertIn({"lead": "s:tm1", "x": office["x"], "z": office["z"]}, t["offices"])
+        self.assertIn({"lead": "s:tm1", "site": "", "x": office["x"], "z": office["z"]}, t["offices"])  # "site": city-worktrees
         self.assertEqual(tile(view, office["x"], office["z"]), "g")
         plots = {(p["x"], p["z"]) for p in t["plots"]}
         self.assertNotIn((office["x"], office["z"]), plots)

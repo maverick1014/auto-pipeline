@@ -52,8 +52,10 @@
 - Merged = the merge deputy lays a road or bridge from the site to the town hall, the fence goes, the new buildings join the town.
 - Worktree removed = the site office packs up and goes.
 - A human-direct session (second session opened by hand) = a small 亲自带 flag on its site.
-- Which worktree an agent is in: the server works it out with git from the event's working folder, once per folder, cached. The hook sends the full working folder instead of only its last part; still bash builtins only.
+- Which worktree an agent is in: the hook already walks up to the folder holding `.git`; when that `.git` is a file (a linked worktree) it sends that folder's physical path as a 16th key `wt`, else "". Still bash builtins only, no git run per event (main manager, 2026-09-25: replaces "the server works it out with git").
 - Sessions with no worktree (plain or cloud runtime) work on the town itself, as today.
+- Built without a separate mock (owner, 2026-09-25: "能做你直接做就可以了"). Demo mode `/#demo` shows the sites, one of them stalled, so the owner can look without a real worktree.
+- v1 limits (main manager, 2026-09-25): the site is the office, a low construction fence around it (people may step over it), the branch sign, a site light, and scaffolding while working. Buildings its workers make still go up on the town's plots, as today. The 卡住的工地 count shows only when at least one site is stalled. Merged: a lane is laid from the site to the town hall over a few seconds, the fence goes, then the site office packs up (the worktree is gone after a merge). A site's office uses one of the plan's office spots; a lead working in that worktree stands at the site office instead of getting its own.
 
 ## Growth
 - One territory per repo. All territories on one land, not islands on a sea.
@@ -83,7 +85,7 @@
 - Idle people are calm: no looping gestures (the governor does not keep waving); they mostly stand, and now and then take a slow walk around their territory to look at the city, then come back. The governor strolls near his hall and returns at once when a question or permission needs him.
 - People never walk through models: buildings, halls, trees, rocks, lamps, fountains, cars and tables block their footprint; paths go around, and people re-route when something new is built.
 - A rest place per territory: appears when the first agent there finishes (day 0 stays bare). Benches and parasols first, a cafe and park with the eras. Free agents hang out there.
-- Planned, not built: when a district is full, buildings level up (taller, bigger) instead of nothing happening.
+- When a district is full (every open plot of it taken), the next build there levels up a building instead: the one with the lowest level, oldest first, gets taller and a little wider (levels 1 to 3). Only when every building of that district is at level 3 does the page log say there is no free plot (main manager, 2026-09-25; owner: "能做你直接做就可以了").
 
 ## Balance
 - The city shows how healthy the repo is, not only how big. 5 kinds of code, each one city system:
@@ -113,6 +115,10 @@
 - Code quality shapes how orderly the city is. Measured from the files only, no tools run: very large files, long functions and deep nesting, duplicated blocks, hot spots (large files changed very often in git).
 - Good quality: straight streets, buildings aligned to their district. Poor quality: buildings crooked, crammed together, some built in the wrong district (a tower in the houses). Messy, never broken.
 - When a file's quality improves, builders move its building to the right plot, aligned.
+- How it is measured (main manager, 2026-09-25), per file, by reading it: lines; the longest function (a def/function/func/fn line, or a line ending in `) {` / `) => {`, to its end by indent or brace); the deepest nesting (brace depth or indent level). Good / fair / poor by thresholds. A block of 8 or more identical lines found twice anywhere in the territory's building files, or a hot spot (10 or more commits in 90 days on a file of 300 or more lines), each makes the file one step worse. A building's quality = its worst file.
+- Where the files come from: the hook adds the edited file's path relative to the repo (17th key `file`, Edit/Write/MultiEdit/NotebookEdit only, never outside the repo). It stays on this computer: joining never sends it.
+- Poor: the building stands crooked and a little off its plot (crammed), and one in three poor buildings (picked from its first file's name, stable) is built in another district. Fair: slightly off. Good: straight. The card says 整齐 / 还行 / 有点乱, and 放错区了 for one in the wrong district.
+- Rechecked with the territory's count (never on every event). A file counts as still there when it exists in the main checkout or in a live worktree of that repo; every file of a building gone = demolished.
 - Land looks smooth, not tiled (owner, 2026-09-25, replaces the per-tile shade): no per-tile colour steps, no stair-step edges; coast, cliffs, river banks and district edges are smooth curves; paths and roads are smooth lanes that curve, not rows of tiles. The tile grid stays only as hidden logic for plots.
 - 3D models: Kenney and KayKit only (both CC0, same chunky low-poly look), License.txt per pack. KayKit fills the gaps: Medieval Hexagon (barracks = village police, church = village library, windmill/watermill = village power, tavern = village rest place, building_destroyed = demolition, scaffolding and stage_A/B/C = construction), City Builder Bits (police car beside a building = town/city police station, bench, traffic lights, streetlight, fire hydrant), Space Base (solar panels = city power), Restaurant (tables and chairs = cafe).
 
@@ -136,7 +142,7 @@
 - Joined = the local city also shows the other members of the same team: the owner's other machines, other people's terminals, cloud sessions. Every member still runs their own local city. There is no shared city page on the internet.
 - Path: hook → `events.jsonl` (unchanged) → local server → relay → every joined local server → its page. The page talks only to 127.0.0.1, as before; only the local server talks to the relay.
 - Relay: a small Cloudflare Worker, one per team. Holds the last few minutes only, never a history.
-- Sent: the same short lines, with the working folder cut down to repo and branch. Never full paths, chat text or files.
+- Sent: the same short lines, with the working folder cut down to repo and branch. Never full paths, chat text or files: the hook's `wt` (a full path) is sent only as the branch name, and its `file` key (city-quality) is never sent.
 - Same repo from different people = the same territory. Repo identity = the `origin` remote (host/owner/repo). No remote = not shared, stays local.
 - Other members' people: a name tag (person) and a small device tag (machine name or 云端). Several main managers in one repo = several governors at the one town hall, each with a name sign. An agent asks its own person's governor.
 - Other members' people are view only. Answering questions and permission requests works for your own agents only.

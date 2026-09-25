@@ -10,7 +10,7 @@ CONTRACT
   1. Off costs nothing. No <dir>/on, or its pid is not a number, or that
      process is dead: write nothing, print nothing, exit 0.
   2. On: read the hook JSON from stdin and append ONE line with exactly these
-     keys (15), in this order, all strings, "" when absent:
+     keys (17), in this order, all strings, "" when absent:
        ev    hook_event_name
        sid   session_id
        aid   agent_id     } only from the part of the payload before
@@ -51,12 +51,18 @@ CONTRACT
                script  a name *.sh *.bash *.zsh *.fish *.ps1 *.bat *.cmd *.mk,
                        Makefile, Dockerfile; or a folder bin, scripts, .github
                other   anything else
-             Only the kind is written, never the path (privacy).
+             Only the kind is written here; the repo-relative path goes in
+             "file" (city-quality), never the absolute path.
        ask   city-people (tests/test_agent_city_chain.py): "q" for a
              SubagentStop whose last_assistant_message starts with
              "QUESTION:" and a PostToolUse of SendMessage whose
              tool_input.message starts with "QUESTION:"; else "". Only the
              flag, never the text or the recipient.
+       wt    city-worktrees (tests/test_agent_city_worktrees.py): the physical
+             path of the folder holding .git when that .git is a file (a
+             linked worktree); else "".
+       file  city-quality (tests/test_agent_city_quality.py): the edited
+             file's path relative to the folder holding .git; else "".
      desc and q: at most 200 bytes, always a valid JSON string.
      Nothing else from the payload is ever written: not tool_input,
      tool_response, prompt, message or last_assistant_message.
@@ -88,7 +94,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(ROOT, "bin", "agent-city-hook.sh")
 BASH = shutil.which("bash")
-KEYS = {"ev", "sid", "aid", "at", "tool", "nt", "proj", "role", "desc", "sub", "q", "klen", "repo", "kind", "ask"}
+KEYS = {"ev", "sid", "aid", "at", "tool", "nt", "proj", "role", "desc", "sub", "q", "klen", "repo", "kind", "ask", "wt", "file"}
 
 CITY_COMMAND = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
                 '"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh"; exit 0')
@@ -563,14 +569,22 @@ class TestRepoAndKind(HookCase):
                 self.run_hook(payload(ev, ("a1", "worker"), cwd=self.shop, tool_name=tool, tool_input=ti))
                 self.assertEqual(self.lines()[-1]["kind"], "")
 
-    def test_the_path_is_never_written(self):
+    def test_the_path_is_written_only_as_the_repo_relative_file_key(self):
+        # city-quality (requirements/city.md, Quality): buildings remember their
+        # files, so the repo-relative path goes in "file" -- never the absolute
+        # path, and never in any other key. It stays on this computer.
         marker = "zz_private_marker_9431"
-        for rel in ("%s/tests/test_q.py" % marker, "src/%s.py" % marker, "docs/%s.md" % marker):
+        rels = ("%s/tests/test_q.py" % marker, "src/%s.py" % marker, "docs/%s.md" % marker)
+        for rel in rels:
             self.edit(rel)
         with open(self.events, "rb") as fh:
             raw = fh.read()
-        self.assertNotIn(marker.encode(), raw)
-        self.assertEqual([r["kind"] for r in self.lines()], ["test", "other", "doc"])
+        self.assertNotIn(self.shop.encode(), raw.replace(self.common.encode(), b""))
+        rows = self.lines()
+        self.assertEqual([r["kind"] for r in rows], ["test", "other", "doc"])
+        self.assertEqual([r["file"] for r in rows], list(rels))
+        for r in rows:
+            self.assertFalse([k for k, v in r.items() if k != "file" and marker in v])
 
     def test_still_cheap_deep_in_a_repo(self):
         deep = os.path.join(self.shop, *["d%d" % i for i in range(12)])
