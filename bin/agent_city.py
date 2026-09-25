@@ -44,6 +44,7 @@ import json
 import math
 import os
 import queue
+import re
 import secrets
 import shutil
 import signal
@@ -1256,11 +1257,62 @@ class CityState:
             return known["label"]
         return bare_type(at) or role
 
+    def _plot_xz_locked(self, t, plot):
+        """Caller holds self.lock. World (x, z) of T's plot number PLOT --
+        the same math layout() uses (territory slot * CELL + the plan's
+        local plot coordinates)."""
+        plan = _plan_by_id(self.plans, t["plan"])
+        px, pz, _ = plan["plots"][plot]
+        i, j = t["slot"]
+        return i * CELL + px, j * CELL + pz
+
+    def _owned_building_locked(self, t, owner):
+        """Caller holds self.lock. T's building OWNER counts as owning
+        (its own "owner", or one it was granted by a levelup -- "owners"),
+        else None."""
+        for b in t["buildings"]:
+            owners = b.get("owners")
+            if owners is not None:
+                if owner in owners:
+                    return b
+            elif b.get("owner") == owner:
+                return b
+        return None
+
+    def _add_file_locked(self, b, file_rel):
+        """Caller holds self.lock. FILE_REL goes to the front of B's
+        "files" (newest first), at most 12."""
+        files = b.setdefault("files", [])
+        if file_rel in files:
+            files.remove(file_rel)
+        files.insert(0, file_rel)
+        del files[12:]
+
+    def _touch_locked(self, b, owner, by, terr, add_file=None):
+        """Caller holds self.lock. A touch on building B: ADD_FILE when
+        given, a hist entry (newest first, at most 10), the "touch"
+        broadcast; never a new building."""
+        if add_file is not None:
+            self._add_file_locked(b, add_file)
+        hist = b.setdefault("hist", [])
+        hist.insert(0, {"by": by, "at": time.time()})
+        del hist[10:]
+        self._invalidate_view()
+        self._broadcast({"type": "touch", "terr": terr, "plot": b["plot"], "by": by})
+        self._save_world_locked()
+
     def _maybe_build(self, obj, identity, terr):
         """Caller holds self.lock. A PostToolUse line with a known kind
-        builds in its agent's territory. Never counts code lines. No free
-        open plot in that kind's district: says so (noplot), unless the
-        owner already has a building here (silent, as before)."""
+        builds, touches or levels up in its agent's territory
+        (requirements/city.md, "Growth" and "Quality"). A "file" already
+        listed on a building here (any owner) is a touch with history; the
+        owner already having a building here adds the file to it (touch);
+        else a new building, or a levelup when its own district is full
+        (the leveling owner then counts as owning that building); no line
+        without "file" (old hook lines) ever touches or levels a building
+        it does not already own -- it stays silent, as before. Never counts
+        code lines. Every building of the district already at level 3: says
+        so (noplot)."""
         kind = obj.get("kind")
         if identity is None or not isinstance(kind, str) or kind not in KIND_TYPE:
             return
@@ -1273,25 +1325,56 @@ class CityState:
         owner = aid or ("s:" + sid)
         by = self._build_by(reducer, owner, at, role, is_gov)
         t = self.world["territories"].get(identity)
-        if t is not None and any(b["owner"] == owner for b in t["buildings"]):
+        if t is None:
             return
-        b = build(self.world, self.plans, identity, kind, owner, by, time.time())
-        if b is None:
-            self._broadcast({"type": "noplot", "id": "gov" if is_gov else owner, "terr": terr,
-                              "btype": KIND_TYPE[kind], "by": by})
+
+        file_val = obj.get("file")
+        file_rel = file_val if isinstance(file_val, str) and file_val else None
+        building_type = KIND_TYPE[kind]
+
+        if file_rel is not None:
+            for b in t["buildings"]:
+                if file_rel in b.get("files", []):
+                    self._touch_locked(b, owner, by, terr)
+                    return
+
+        owned = self._owned_building_locked(t, owner)
+        if owned is not None:
+            if file_rel is None:
+                return
+            self._touch_locked(owned, owner, by, terr, add_file=file_rel)
             return
-        self._invalidate_view()
-        view = self._view()
-        x = z = None
-        for tv in view["territories"]:
-            if tv["id"] == terr:
-                for bv in tv["buildings"]:
-                    if bv["plot"] == b["plot"]:
-                        x, z = bv["x"], bv["z"]
-                break
-        self._broadcast({"type": "build", "id": "gov" if is_gov else owner, "terr": terr,
-                          "plot": b["plot"], "btype": b["type"], "x": x, "z": z, "by": b["by"]})
-        self._save_world_locked()
+
+        wt_val = obj.get("wt")
+        wt = wt_val if isinstance(wt_val, str) else ""
+        b = build(self.world, self.plans, identity, kind, owner, by, time.time(),
+                  file_rel=file_rel, wt=wt)
+        if b is not None:
+            self._invalidate_view()
+            x, z = self._plot_xz_locked(t, b["plot"])
+            self._broadcast({"type": "build", "id": "gov" if is_gov else owner, "terr": terr,
+                              "plot": b["plot"], "btype": b["type"], "x": x, "z": z, "by": b["by"],
+                              "q": b["q"], "home": b["home"], "files": list(b["files"]),
+                              "name": b["name"], "lv": b["lv"]})
+            self._save_world_locked()
+            return
+
+        cand = _level_up_candidate(t["buildings"], building_type)
+        if cand is not None:
+            cand["lv"] = min(3, cand.get("lv", 0) + 1)
+            owners = cand.setdefault("owners", [cand.get("owner")])
+            if owner not in owners:
+                owners.append(owner)
+            if file_rel is not None:
+                self._add_file_locked(cand, file_rel)
+            self._invalidate_view()
+            self._broadcast({"type": "levelup", "terr": terr, "plot": cand["plot"],
+                              "lv": cand["lv"], "by": by})
+            self._save_world_locked()
+            return
+
+        self._broadcast({"type": "noplot", "id": "gov" if is_gov else owner, "terr": terr,
+                          "btype": building_type, "by": by})
 
     def recount(self, now):
         """Count every territory that has had a line (this run) since its
@@ -1313,6 +1396,8 @@ class CityState:
             return 0
         counted = {i: self.count_fn(i) for i in due}
         balances = {i: self.balance_fn(i, self._rules_text_for(i)) for i in due}
+        for i in due:
+            self.requality(i)
         with self.lock:
             changed = False
             for i in due:
@@ -1331,6 +1416,98 @@ class CityState:
             if changed:
                 self._emit_world_locked()
         return len(due)
+
+    def requality(self, identity):
+        """Rechecks IDENTITY's buildings against the files on disk
+        (requirements/city.md, "Quality"): a file counts as still there
+        when it exists in the root checkout or in a live site (worktree)
+        path of that territory. A building none of whose files are still
+        there is demolished; the rest gets combine_quality's worst result
+        across its surviving files (duplicates across the territory's
+        building files, hot_counts of the root) -- a change broadcasts
+        "quality"; a "home" false building whose quality is no longer
+        "poor" moves to its own district's first free open plot
+        ("move"). File reads and the one hot_counts git log run outside
+        the lock, like count_fn; only the resulting edits and broadcasts
+        are locked."""
+        with self.lock:
+            t = self.world["territories"].get(identity)
+            if t is None or not t["buildings"]:
+                return
+            root = os.path.dirname(identity)
+            sites = [p for sid, p in self._site_paths.items()
+                     if self._site_terr.get(sid) == identity]
+            snapshot_files = {b["plot"]: list(b.get("files", [])) for b in t["buildings"]}
+
+        bases = [root] + sites
+        alive_files = {}
+        texts = {}
+        for plot, files in snapshot_files.items():
+            alive = []
+            for f in files:
+                text = None
+                for base in bases:
+                    text = _read_text(base, f)
+                    if text is not None:
+                        break
+                if text is None:
+                    continue
+                alive.append(f)
+                if f not in texts:
+                    texts[f] = text
+            alive_files[plot] = alive
+
+        dup_names = duplicates(texts)
+        hot = hot_counts(root)
+
+        with self.lock:
+            t = self.world["territories"].get(identity)
+            if t is None:
+                return
+            terr = territory_id(identity)
+            plan = _plan_by_id(self.plans, t["plan"])
+            changed = False
+            for b in list(t["buildings"]):
+                alive = alive_files.get(b["plot"])
+                if alive is None:
+                    continue
+                if not alive:
+                    t["buildings"].remove(b)
+                    self._broadcast({"type": "demolish", "terr": terr, "plot": b["plot"]})
+                    changed = True
+                    continue
+                worst = "good"
+                for f in alive:
+                    text = texts.get(f)
+                    base_score = file_quality(text)["score"] if text is not None else "good"
+                    is_dup = f in dup_names
+                    is_hot = (hot.get(f, 0) >= 10 and text is not None
+                              and len(text.splitlines()) >= 300)
+                    combined = combine_quality(base_score, is_dup, is_hot)
+                    if _QUALITY_ORDER.index(combined) > _QUALITY_ORDER.index(worst):
+                        worst = combined
+                if worst != b.get("q", "good"):
+                    b["q"] = worst
+                    self._broadcast({"type": "quality", "terr": terr, "plot": b["plot"], "q": worst})
+                    changed = True
+                if not b.get("home", True) and worst != "poor":
+                    taken = {b2["plot"] for b2 in t["buildings"] if b2 is not b}
+                    target = None
+                    for k in open_plots(plan, t["peak"]):
+                        if k not in taken and plan["plots"][k][2] == b["type"]:
+                            target = k
+                            break
+                    if target is not None:
+                        old_plot = b["plot"]
+                        b["plot"] = target
+                        b["home"] = True
+                        x, z = self._plot_xz_locked(t, target)
+                        self._broadcast({"type": "move", "terr": terr, "from": old_plot,
+                                          "plot": target, "x": x, "z": z, "home": True})
+                        changed = True
+            if changed:
+                self._invalidate_view()
+                self._save_world_locked()
 
     # -- worktrees: construction sites (requirements/city.md, "Worktrees") --
 
@@ -3293,26 +3470,49 @@ def add_territory(world, plans, identity, name, lines=0):
     return record
 
 
-def build(world, plans, identity, kind, owner, by, now):
+def build(world, plans, identity, kind, owner, by, now, file_rel=None, wt=""):
     """The first free open plot of KIND's district, in plan order. None
     when the identity is unknown, the kind is unknown, OWNER already has a
-    building here, or that district has no free open plot. Sized by the
-    territory's peak (not its current lines), so a building already placed
-    is never stranded by code later deleted."""
+    building here, or no open plot matching fits. Sized by the territory's
+    peak (not its current lines), so a building already placed is never
+    stranded by code later deleted.
+
+    FILE_REL (repo-relative, city-quality): its content -- read from WT
+    when given, else the repo root = dirname of the "<root>/.git" IDENTITY;
+    unreadable -> "good" -- sets the new building's quality alone
+    (duplicates and hot spots only come with CityState.requality). Poor and
+    wrong_district(FILE_REL) -> the first free open plot of another
+    district in plan order, "home" false; else its own district, "home"
+    true. No FILE_REL (old hook lines): files [], q "good", home true, its
+    own district, as before."""
     t = world["territories"].get(identity)
     if t is None:
         return None
     building_type = KIND_TYPE.get(kind)
     if not building_type:
         return None
-    if any(b["owner"] == owner for b in t["buildings"]):
+    if any(b.get("owner") == owner for b in t["buildings"]):
         return None
     plan = _plan_by_id(plans, t["plan"])
     taken = {b["plot"] for b in t["buildings"]}
+
+    files = [file_rel] if file_rel else []
+    q = "good"
+    if file_rel:
+        base = wt if wt else os.path.dirname(identity)
+        text = _read_text(base, file_rel)
+        if text is not None:
+            q = file_quality(text)["score"]
+    home = not (q == "poor" and file_rel and wrong_district(file_rel))
+
     for k in open_plots(plan, t["peak"]):
-        x, z, district = plan["plots"][k]
-        if district == building_type and k not in taken:
-            b = {"plot": k, "type": building_type, "owner": owner, "by": by, "at": now}
+        if k in taken:
+            continue
+        _x, _z, district = plan["plots"][k]
+        matches = (district == building_type) if home else (district != building_type)
+        if matches:
+            b = {"plot": k, "type": building_type, "owner": owner, "owners": [owner], "by": by,
+                 "at": now, "files": files, "hist": [], "q": q, "home": home, "lv": 0, "name": ""}
             t["buildings"].append(b)
             return b
     return None
@@ -3491,7 +3691,10 @@ def layout(world, plans):
         for b in t["buildings"]:
             px, pz, _ = plan["plots"][b["plot"]]
             buildings_view.append({"plot": b["plot"], "type": b["type"], "by": b["by"],
-                                    "x": ox + px, "z": oz + pz})
+                                    "x": ox + px, "z": oz + pz,
+                                    "files": b.get("files", []), "hist": b.get("hist", []),
+                                    "q": b.get("q", "good"), "home": b.get("home", True),
+                                    "lv": b.get("lv", 0), "name": b.get("name", "")})
         sites = t.get("sites", {})
         offices_view = [
             {"lead": ("" if cid in sites else cid), "site": (cid if cid in sites else ""),
@@ -4135,6 +4338,175 @@ def _rules_note(name, bad):
         return ""
     nums = "、".join(str(n) for n in bad)
     return "%s.conf 第 %s 行看不懂，已忽略" % (name, nums)
+
+
+# --------------------------------------------------------------------------
+# Quality: file quality, duplicates, hot spots, wrong-district placement
+# --------------------------------------------------------------------------
+#
+# requirements/city.md, "Quality". Measured from the files only, no tools
+# run. See the CONTRACT docstring at the top of
+# tests/test_agent_city_quality.py for the exact shape of each.
+
+_QUALITY_ORDER = ("good", "fair", "poor")
+
+_FN_START_RE = re.compile(r'^\s*(async\s+)?(def|function|func|fn)\b')
+_FN_BRACE_END_RE = re.compile(r'\)\s*\{\s*$')
+_FN_ARROW_END_RE = re.compile(r'\)\s*=>\s*\{\s*$')
+
+
+def _read_text(base, rel):
+    """UTF-8 text of BASE/REL, or None when it cannot be read (missing, a
+    directory, permission, ...)."""
+    try:
+        with open(os.path.join(base, rel), encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+    except OSError:
+        return None
+
+
+def _line_indent(line):
+    """LINE's leading indent level: spaces counted, a tab worth 4, // 4."""
+    n = 0
+    for ch in line:
+        if ch == " ":
+            n += 1
+        elif ch == "\t":
+            n += 4
+        else:
+            break
+    return n // 4
+
+
+def _is_fn_start(line):
+    return bool(_FN_START_RE.match(line)) or bool(_FN_BRACE_END_RE.search(line)) \
+        or bool(_FN_ARROW_END_RE.search(line))
+
+
+def _fn_length(lines, start):
+    """Lines of the function starting at LINES[START] (1-based, inclusive):
+    when the start line ends with "{", to where the brace depth (opened by
+    that "{") drops back to 0; else to the last later line indented deeper
+    than the start."""
+    stripped = lines[start].rstrip()
+    if stripped.endswith("{"):
+        depth = stripped.count("{") - stripped.count("}")
+        end = start
+        for idx in range(start + 1, len(lines)):
+            depth += lines[idx].count("{") - lines[idx].count("}")
+            end = idx
+            if depth <= 0:
+                break
+        return end - start + 1
+    indent0 = _line_indent(lines[start])
+    end = start
+    for idx in range(start + 1, len(lines)):
+        if _line_indent(lines[idx]) > indent0:
+            end = idx
+    return end - start + 1
+
+
+def file_quality(text):
+    """{"lines", "long_fn", "depth", "score"}: lines; the longest function
+    (a def/function/func/fn line, or one ending in ") {" / ") => {"); the
+    deepest nesting (brace depth or indent level). Good/fair/poor by
+    thresholds."""
+    lines = text.splitlines()
+    max_indent = 0
+    brace_depth = 0
+    max_brace = 0
+    for line in lines:
+        max_indent = max(max_indent, _line_indent(line))
+        for ch in line:
+            if ch == "{":
+                brace_depth += 1
+                max_brace = max(max_brace, brace_depth)
+            elif ch == "}":
+                brace_depth = max(0, brace_depth - 1)
+    long_fn = 0
+    for idx, line in enumerate(lines):
+        if _is_fn_start(line):
+            long_fn = max(long_fn, _fn_length(lines, idx))
+    depth = max(max_indent, max_brace)
+    n = len(lines)
+    if n > 1500 or long_fn > 200 or depth > 8:
+        score = "poor"
+    elif n > 500 or long_fn > 80 or depth > 5:
+        score = "fair"
+    else:
+        score = "good"
+    return {"lines": n, "long_fn": long_fn, "depth": depth, "score": score}
+
+
+def duplicates(texts):
+    """Set of TEXTS keys holding a run of 8 or more consecutive significant
+    lines (stripped; lines under 4 characters skipped, not counted) that
+    also appears elsewhere (another file, or another place in the same
+    file)."""
+    run = 8
+    seen = {}
+    for name, text in texts.items():
+        sig = [ln.strip() for ln in text.splitlines()]
+        sig = [ln for ln in sig if len(ln) >= 4]
+        for i in range(len(sig) - run + 1):
+            window = tuple(sig[i:i + run])
+            seen.setdefault(window, []).append(name)
+    hit = set()
+    for names in seen.values():
+        if len(names) >= 2:
+            hit.update(names)
+    return hit
+
+
+def hot_counts(root, days=90):
+    """{repo-relative path: commits in the last DAYS days touching it}
+    (one `git -C ROOT log`). {} when ROOT is not a git working tree, or git
+    errors or times out."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", root, "log", "--since=%d days ago" % days,
+             "--name-only", "--pretty=format:"],
+            capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    if result.returncode != 0:
+        return {}
+    counts = {}
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        counts[line] = counts.get(line, 0) + 1
+    return counts
+
+
+def combine_quality(score, dup, hot):
+    """SCORE stepped one worse for DUP, one more for HOT, never past
+    "poor"."""
+    idx = _QUALITY_ORDER.index(score) + (1 if dup else 0) + (1 if hot else 0)
+    return _QUALITY_ORDER[min(idx, len(_QUALITY_ORDER) - 1)]
+
+
+def wrong_district(path):
+    """One in three files (stable, from its own repo-relative path) is
+    built in the wrong district when its quality is poor."""
+    return int(hashlib.sha1(path.encode("utf-8")).hexdigest(), 16) % 3 == 0
+
+
+def _level_up_candidate(buildings, building_type):
+    """The BUILDINGS entry of BUILDING_TYPE with the lowest "lv" (ties: the
+    earliest in BUILDINGS, oldest first); None when there is none, or every
+    one is already at level 3."""
+    best = None
+    for b in buildings:
+        if b.get("type") != building_type:
+            continue
+        lv = b.get("lv", 0)
+        if lv >= 3:
+            continue
+        if best is None or lv < best.get("lv", 0):
+            best = b
+    return best
 
 
 def asset_version(folder):

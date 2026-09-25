@@ -124,6 +124,24 @@ find_git_folder() {
     done
 }
 
+# rel_file RAW FOLDER — city-quality (requirements/city.md, "Quality"): the
+# JSON-escaped path RAW (tool_input.file_path/notebook_path), taken
+# relative to the plain FOLDER that holds .git, JSON-escaped; "" when
+# FOLDER is "", RAW is outside it, or the relative path is over 300 bytes.
+# Same boundary as classify_path, but this one prints the path itself.
+rel_file() {
+    local raw=$1 folder=$2 plain rel
+    [ -n "$folder" ] || return 0
+    plain=$(unescape "$raw")
+    case "$plain" in
+        "$folder"/*) rel=${plain#"$folder"/} ;;
+        *) return 0 ;;
+    esac
+    [ -n "$rel" ] || return 0
+    [ ${#rel} -le 300 ] || return 0
+    escape_json "$rel"
+}
+
 # classify_path RAW FOLDER — the kind of work for the JSON-escaped path RAW
 # (tool_input.file_path/notebook_path), taken relative to the plain FOLDER
 # that holds .git ("" when there is none); outside FOLDER, or when FOLDER is
@@ -246,6 +264,7 @@ sub=
 q=
 klen=
 kind=
+file=
 case "$tool" in
     Agent|Task|AskUserQuestion)
         rest=
@@ -277,7 +296,10 @@ case "$tool" in
         esac
         if [ "$ev" = PostToolUse ] && [ -n "$kval" ]; then
             case "$tool" in
-                Edit|Write|MultiEdit|NotebookEdit) kind=$(classify_path "$kval" "$git_folder") ;;
+                Edit|Write|MultiEdit|NotebookEdit)
+                    kind=$(classify_path "$kval" "$git_folder")
+                    file=$(rel_file "$kval" "$git_folder")
+                    ;;
             esac
         fi
         ;;
@@ -301,8 +323,8 @@ case "$ev" in
         ;;
 esac
 
-printf '{"ev":"%s","sid":"%s","aid":"%s","at":"%s","tool":"%s","nt":"%s","proj":"%s","role":"%s","desc":"%s","sub":"%s","q":"%s","klen":"%s","repo":"%s","kind":"%s","ask":"%s","wt":"%s"}\n' \
-    "$ev" "$sid" "$aid" "$at" "$tool" "$nt" "$proj" "$role" "$desc" "$sub" "$q" "$klen" "$repo" "$kind" "$ask" "$wt" \
+printf '{"ev":"%s","sid":"%s","aid":"%s","at":"%s","tool":"%s","nt":"%s","proj":"%s","role":"%s","desc":"%s","sub":"%s","q":"%s","klen":"%s","repo":"%s","kind":"%s","ask":"%s","wt":"%s","file":"%s"}\n' \
+    "$ev" "$sid" "$aid" "$at" "$tool" "$nt" "$proj" "$role" "$desc" "$sub" "$q" "$klen" "$repo" "$kind" "$ask" "$wt" "$file" \
     >> "$dir/events.jsonl" 2>/dev/null
 
 exit 0

@@ -621,6 +621,21 @@ function siteRoad(id){
   const since = s.endAt == null ? 0 : simT - s.endAt;
   return { from: { x: cx, y: cz + .9 }, to: { x: to.x, y: to.y }, p: clamp(since / SITE_MERGE_SEC, 0, 1) };
 }
+/* siteDecor's own fence ring (bounce 2, owner via main manager: the fence read as scattered tall posts --
+   no rotation, no gate, and place()'s own 'fit' blew a low wide panel up trying to fill a whole tile
+   footprint). FENCE_R sits inside the contract's 1.0-3.0 tiles (owner: "1.4 to 2.2"); FENCE_GATE_DEG
+   leaves the office's front (south, +z -- the same side siteRoad's own lane leaves from) open as the
+   gate; each panel's own ry points its long axis (local z -- see the model's own bounding box, a low
+   wide plank) tangent to the ring, so together they read as a fence, not a scatter of posts. */
+const FENCE_R = 1.8, FENCE_N = 8, FENCE_GATE_DEG = 90;
+function fenceRing(){
+  const out = [], span = 360 - FENCE_GATE_DEG, start = FENCE_GATE_DEG / 2;
+  for (let i = 0; i < FENCE_N; i++) {
+    const a = (start + (span * i) / (FENCE_N - 1)) * Math.PI / 180;
+    out.push({ dx: Math.sin(a) * FENCE_R, dz: Math.cos(a) * FENCE_R, ry: a + Math.PI / 2 });
+  }
+  return out;
+}
 /* siteDecor(site) -> [{key, x, z, ...}] (pure, v1 limits): live -- a low fence ring around the office
    (people may step over it, so it is never a footprint), the branch sign, the site light (on unless
    idle), scaffolding while working, a barrier + smoke while stalled, a flag while human-direct. merging
@@ -630,15 +645,15 @@ function siteDecor(site){
   if (!site || site.phase === 'packing') return [];
   const cx = site.x + .5, cz = site.z + .5, out = [];
   if (site.phase === 'live') {
-    const ring = [[-1.8, -1.8], [1.8, -1.8], [-1.8, 1.8], [1.8, 1.8], [0, -2], [0, 2], [-2, 0], [2, 0]];
-    for (const [dx, dz] of ring) out.push({ key: 'roads/construction-fence', x: cx + dx, z: cz + dz });
+    for (const f of fenceRing()) out.push({ key: 'roads/construction-fence', x: cx + f.dx, z: cz + f.dz, ry: f.ry });
   }
   out.push({ key: 'survival/signpost-single', x: cx - .9, z: cz - .9, text: site.branch || '' });
   out.push({ key: 'roads/construction-light', x: cx + .9, z: cz - .9, on: site.status !== 'idle' });
   if (site.status === 'working') out.push({ key: 'survival/structure', x: cx, z: cz + .4 });
   if (site.stalled) {
-    out.push({ key: 'roads/construction-barrier', x: cx - .9, z: cz + .9 });
-    out.push({ key: 'particles/smoke_01', x: cx, z: cz - .2 });
+    // in front of the office, at the gate the fence ring leaves open (owner, bounce 2)
+    out.push({ key: 'roads/construction-barrier', x: cx, z: cz + 1.5 });
+    out.push({ key: 'particles/smoke_01', x: cx, z: cz + .3 });
   }
   if (site.human) out.push({ key: 'forest/flag', x: cx + .9, z: cz + .9, label: '亲自带' });
   return out;
@@ -3007,7 +3022,28 @@ function buildLand(view){
 const siteMeshes = new Map(); // id -> {sig, objs:[Object3D...], road, smoke:[{sprite,t0}]}
 let smokeTex = null;
 const SMOKE_CYCLE = 2.4; // seconds a puff takes to rise and fully fade, then it starts over
+const SMOKE_N = 4; // 3-5 puffs (owner, bounce 2)
 function siteMeshSig(s){ return [s.phase, s.status, s.stalled, s.human, s.branch, s.x, s.z].join('|'); }
+/* the office cabin's own real placed height (officeDecor's OFFICE_OPT fit, the same table it uses),
+   read from the loaded model's own box -- never a raw guessed number (bounce 2, owner: "use the page's
+   existing size/fit approach"). A sane fallback before the model has loaded (never crashes). */
+function cabinHeight(){
+  const key = 'building_home_A_blue', opt = OFFICE_OPT['kaykit-medieval/' + key];
+  return lib[key] ? lib[key].size.y * fitScale(key, (opt && opt.fit) || 1.25) : 1.2;
+}
+/* siteModelOpt(bare): place()'s own size option per site model (bounce 2, owner: the light and the fence
+   have a tiny footprint but a real height -- 'fit' (which only ever looks at the footprint) blew them up
+   trying to fill a whole tile; 'h' sizes by the model's own real height instead, same fix systemsDecor's
+   SYS_SCALE already applies to the flowers). Heights are relative to cabinHeight(), so they track the
+   cabin if its own fit ever changes. signpost/structure/flag keep 'fit: .8' (owner, bounce 2: "sign and
+   flag sizes look fine"). */
+function siteModelOpt(bare){
+  const ch = cabinHeight();
+  if (bare === 'construction-light') return { h: ch * .58 }; // "half to two-thirds of the cabin's height"
+  if (bare === 'construction-fence') return { h: ch / 3 };   // "height roughly a third of the cabin"
+  if (bare === 'construction-barrier') return { h: ch * .28 }; // "keep the barrier small"
+  return { fit: .8 };
+}
 function removeSiteMesh(rec){
   for (const o of rec.objs) { if (o.parent) o.parent.remove(o); }
   if (rec.road && rec.road.parent) rec.road.parent.remove(rec.road);
@@ -3046,13 +3082,16 @@ function syncSiteMesh(id){
     if (d.key === 'particles/smoke_01') continue; // its own puffs, made once below, animated every frame
     const bare = d.key.split('/')[1];
     if (!lib[bare]) continue; // never crash on a stray/unloaded key
-    const g = place(bare, d.x, d.z, { fit: .8, parent: siteGroup });
+    const opt = Object.assign({ parent: siteGroup, ry: d.ry || 0 }, siteModelOpt(bare));
+    const g = place(bare, d.x, d.z, opt);
     rec.objs.push(g);
     if (d.key === 'survival/signpost-single') { ensureSiteSign(id).text = d.text; rec.signAt = { x: d.x, z: d.z + .55 }; }
   }
   const smokeSpot = siteDecor(site).find(d => d.key === 'particles/smoke_01');
   if (smokeSpot) {
-    while (rec.smoke.length < 3) rec.smoke.push({ sprite: makeSmokeSprite(), t0: Math.random() * SMOKE_CYCLE });
+    // evenly staggered phases (never all-random): at any instant at least one puff is freshly spawned and
+    // clearly opaque, never all of them caught mid-fade at once (bounce 2, owner: "no visible smoke").
+    while (rec.smoke.length < SMOKE_N) rec.smoke.push({ sprite: makeSmokeSprite(), t0: (rec.smoke.length / SMOKE_N) * SMOKE_CYCLE });
     for (const p of rec.smoke) { p.spot = smokeSpot; if (!p.sprite.parent) siteGroup.add(p.sprite); }
   } else {
     for (const p of rec.smoke) if (p.sprite.parent) p.sprite.parent.remove(p.sprite);
@@ -3067,10 +3106,19 @@ function syncAllSiteMeshes(){
   for (const id of sites.keys()) syncSiteMesh(id);
   for (const id of [...siteMeshes.keys()]) if (!sites.has(id)) syncSiteMesh(id);
 }
+/* particles/smoke_01.png as a sprite, not a model atlas: loadTex() (loadAll's own helper) forces
+   flipY = false because every other caller feeds a UV atlas baked for a glTF's own (already-flipped) UVs
+   -- a plain sprite image needs the loader's normal flipY = true, so this loads it directly instead of
+   going through loadTex() (bounce 2, owner: "check the texture actually loads"). Same URL shape either
+   way: ASSET + 'particles/smoke_01.png?v=' + ASSET_V. */
+function loadSmokeTex(){
+  return new Promise(res => texLoader.load(ASSET + 'particles/smoke_01.png?v=' + ASSET_V,
+    t => { t.encoding = THREE.sRGBEncoding; res(t); }, undefined, () => res(null)));
+}
 function makeSmokeSprite(){
   const mat = new THREE.SpriteMaterial({ map: smokeTex, transparent: true, opacity: 0, depthWrite: false });
   const s = new THREE.Sprite(mat);
-  s.scale.set(.7, .7, 1);
+  s.scale.set(.9, .9, 1); // 0.6-1 tile (owner, bounce 2)
   return s;
 }
 /* per-frame animation only (Limits: keep frame cost low) -- called from sync() every frame: the merge
@@ -3082,7 +3130,7 @@ function updateSiteFrames(dt){
       p.t0 += dt;
       const k = (p.t0 % SMOKE_CYCLE) / SMOKE_CYCLE;
       if (p.spot) p.sprite.position.set(p.spot.x, .3 + k * 1.1, p.spot.z);
-      p.sprite.material.opacity = (1 - k) * .5;
+      p.sprite.material.opacity = (1 - k) * .68; // ~0.5-0.7 at its freshest, fading to 0 (owner, bounce 2)
     }
   }
 }
@@ -4398,7 +4446,7 @@ function frame(now){
 resize(); resetCam(); updateCamera();
 Promise.all([
   loadAll((n, total) => { $('#loading-text').textContent = `正在搬来素材 ${n}/${total}`; }),
-  loadTex('particles/smoke_01.png'), // Worktrees: the stalled-site smoke sprites (siteDecor's 'particles/smoke_01')
+  loadSmokeTex(), // Worktrees: the stalled-site smoke sprites (siteDecor's 'particles/smoke_01') -- its own loader, not loadTex() (see loadSmokeTex's own comment)
   ...['suburban/Textures/variation-a.png', 'suburban/Textures/variation-b.png', 'suburban/Textures/variation-c.png'].map(loadTex),
 ]).then(([, smoke, ...tex]) => {
   smokeTex = smoke;
