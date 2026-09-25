@@ -576,7 +576,7 @@ const ROLES = {
   'other':            { zh:'帮手',       color:'#5FC3C9' },
 };
 const STATE = {
-  spawn:['walk','出门'], to_plot:['walk','去工地'], building:['build','施工中'],
+  spawn:['walk','出门'], to_plot:['walk','去工地'], building:['build','施工中'], working:['build','干活'],
   to_hall:['ask','去问总督'], asking:['ask','在问总督'], heard:['ask','拿到答案'],
   back:['walk','回工地'], finishing:['rest','封顶了'], to_rest:['rest','去休息'],
   resting:['rest','休息中'], leaving:['walk','下班回家'],
@@ -696,16 +696,30 @@ const REST_OFF = [
   {dx:2.6,dz:.5,pose:'lie'},{dx:-2.6,dz:.5,pose:'lie'},{dx:0,dz:2.6,pose:'sit'},
 ];
 const restSlotsByTerr = new Map();
-/* rest spots near t's hall: only walkable tiles (never a plot, the hall, water or the void), at least 3
-   when the tiles allow it (REST_OFF first, then the walkable ring nearest the hall). A citizen already
-   resting on a tile keeps it reserved (by: -1) across a rebuild, so nobody doubles up on the same spot. */
+const HOME_OFF = [
+  {dx:-1.4,dz:1.3},{dx:1.4,dz:1.3},{dx:-.7,dz:1.9},{dx:.7,dz:1.9},{dx:-2.1,dz:.6},{dx:2.1,dz:.6},{dx:0,dz:2.2},
+];
+const homeSlotsByTerr = new Map();
+/* tile keys already spoken for near t's hall: the governor's own stand, plus whichever of the rest/home
+   pools has already been built for this territory this generation (the second pool to build reads the
+   first's full candidate list, so home and rest never land on the same tile -- city-people, Interaction). */
+function reservedNear(t, exclude){
+  const gs = hallStand(t), out = new Set([Math.floor(gs.x) + ',' + Math.floor(gs.y)]);
+  if (exclude !== 'rest') { const r = restSlotsByTerr.get(t.id); if (r) for (const s of r) out.add(Math.floor(s.x) + ',' + Math.floor(s.y)); }
+  if (exclude !== 'home') { const h = homeSlotsByTerr.get(t.id); if (h) for (const s of h) out.add(Math.floor(s.x) + ',' + Math.floor(s.y)); }
+  return out;
+}
+/* rest spots near t's hall: only walkable tiles (never a plot, the hall, water, the void, the governor's
+   stand or a citizen's home spot), at least 3 when the tiles allow it (REST_OFF first, then the walkable
+   ring nearest the hall). A citizen already resting on a tile keeps it reserved (by: -1) across a
+   rebuild, so nobody doubles up on the same spot. */
 function restSlotsFor(t){
   let slots = restSlotsByTerr.get(t.id);
   if (slots) return slots;
   const restingHere = new Set();
   if (typeof citizens !== 'undefined') for (const c of citizens) if (c.state === 'resting' && c.terr === t.id && c.rest) restingHere.add(Math.floor(c.rest.x) + ',' + Math.floor(c.rest.y));
   slots = [];
-  const used = new Set();
+  const used = reservedNear(t, 'rest');
   const add = (x, z, pose) => {
     const fx = Math.floor(x), fz = Math.floor(z), k = fx + ',' + fz;
     if (used.has(k) || !walkable(fx, fz)) return;
@@ -720,6 +734,69 @@ function restSlotsFor(t){
     }
   restSlotsByTerr.set(t.id, slots);
   return slots;
+}
+/* c's own standing spot near t's hall: never the governor's, never a rest spot, never another citizen's
+   home (city-people, Interaction: every citizen has somewhere of its own to stand, not just the plots it
+   builds). A citizen already standing on a tile as its home keeps it reserved (by: -1) across a rebuild. */
+function homeSlotsFor(t){
+  let slots = homeSlotsByTerr.get(t.id);
+  if (slots) return slots;
+  const homeHere = new Set();
+  if (typeof citizens !== 'undefined') for (const c of citizens) if (c.home && c.terr === t.id && !c.gone) homeHere.add(Math.floor(c.home.x) + ',' + Math.floor(c.home.y));
+  slots = [];
+  const used = reservedNear(t, 'home');
+  const add = (x, z) => {
+    const fx = Math.floor(x), fz = Math.floor(z), k = fx + ',' + fz;
+    if (used.has(k) || !walkable(fx, fz)) return;
+    used.add(k);
+    slots.push({ x, y: z, by: homeHere.has(k) ? -1 : 0 });
+  };
+  for (const o of HOME_OFF) add(t.cx + o.dx, t.cz + o.dz);
+  for (let r = 1; slots.length < 6 && r <= 10; r++)
+    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) {
+      if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+      add(t.cx + dx + .5, t.cz + dz + .5);
+    }
+  homeSlotsByTerr.set(t.id, slots);
+  return slots;
+}
+function pickHomeSpot(c, t){
+  const slots = homeSlotsFor(t);
+  const free = slots.filter(s => !s.by);
+  let spot = free.length ? pick(free) : null;
+  if (spot) spot.by = c.id;
+  else spot = { x: t.cx, y: t.cz + 2.5, by: c.id, extra: true };
+  return spot;
+}
+/* c's own spot for its whole life in the city: assigned once, right after it is created (spawn or a
+   snapshot's placeAgent), so it never has to share the governor's tile with anyone else. */
+function assignHome(c){
+  const t = terrOf(c.terr);
+  const spot = t ? pickHomeSpot(c, t) : { x: c.x, y: c.y, by: c.id, extra: true };
+  c.home = spot;
+  c.stand = spot;
+}
+/* a free walkable spot within `within` tiles of home, for a short walk while working with no building. */
+function nearbyWalkSpot(home, within){
+  const fx0 = Math.floor(home.x), fz0 = Math.floor(home.y), out = [];
+  for (let dx = -within; dx <= within; dx++) for (let dz = -within; dz <= within; dz++) {
+    if (!dx && !dz) continue;
+    if (Math.hypot(dx, dz) > within) continue;
+    const x = fx0 + dx + .5, z = fz0 + dz + .5;
+    if (walkable(Math.floor(x), Math.floor(z))) out.push({ x, y: z });
+  }
+  return out.length ? pick(out) : null;
+}
+/* on a live 'tool' event, a citizen with no building, idle at home, takes a short walk near home and
+   comes back (city-people: working without a building still walks). At most one walk every 2s. */
+function workWalk(c){
+  if (c.bld || c.stuck || c.doneFlag || c.state !== 'working' || c.path.length) return;
+  if (simT - (c.walkAt || 0) < 2) return;
+  const spot = nearbyWalkSpot(c.home, 2);
+  if (!spot) return;
+  c.walkAt = simT;
+  c.walkOut = true;
+  goTo(c, spot, 'working');
 }
 
 let simT = 0;
@@ -762,9 +839,9 @@ function newCitizen(id, role, task, terr){
   const t = terrOf(terr) || terrOf(govTerr) || (map.territories && map.territories[0]);
   const stand = t ? hallStand(t) : { x:0, y:0 };
   return { id, role, label:role, task, terr, color:R.color, skin:pick(SKIN), x:stand.x, y:stand.y, path:[], state:'spawn', stateT:0,
-    alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0,Other:0}, work:0, bld:null, stand, slot:null, rest:null, pendingBuild:null,
+    alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0,Other:0}, work:0, bld:null, stand, home:null, slot:null, rest:null, pendingBuild:null,
     question:'', answer:'', answered:false, pendingAnswer:'', askT:0, stuck:false, doneFlag:false, leaveFlag:false,
-    askKind:'', askPhase:'', qa:[], bubble:null, walkT:Math.random()*5, feed:null, gone:false };
+    askKind:'', askPhase:'', qa:[], bubble:null, walkT:Math.random()*5, walkAt:0, walkOut:false, feed:null, gone:false };
 }
 const byId = id => citizens.find(c => c.id === id);
 
@@ -783,16 +860,24 @@ function move(c, dt){
 function onArrive(c){
   switch (c.state) {
     case 'to_plot': case 'back':
-      c.state = 'building'; c.stateT = 0;
+      c.stateT = 0;
       if (c.pendingBuild) {
         const p = c.pendingBuild; c.pendingBuild = null;
         c.bld = newBuildingRecord(p.terr, p.plot, p.btype, Math.round(c.x), Math.round(c.y), p.by, false);
         c.bld.ownerId = c.id; c.stand = standFor(c.bld);
       }
+      // no building yet (a Bash/Read-only session never sends one): 'working', never 'building' --
+      // citizenStatus must never say 施工中 without a building (city-people).
+      c.state = c.bld ? 'building' : 'working';
       if (c.stuck) goHall(c); else if (c.doneFlag) finish(c);
       break;
     case 'to_hall': c.state = 'asking'; c.stateT = 0; c.askT = simT; break;
     case 'to_rest': c.state = 'resting'; c.stateT = 0; if (c.leaveFlag) leave(c); break;
+    case 'working':
+      // returning from a short work-walk (workWalk): done overrides it, else walk back home and stop.
+      if (c.doneFlag) { c.walkOut = false; finish(c); break; }
+      if (c.walkOut) { c.walkOut = false; goTo(c, c.home, 'working'); }
+      break;
   }
 }
 function goHall(c){
@@ -844,6 +929,16 @@ const WEIGHT = { Edit:1, Write:1, Bash:.6, Read:.3, Other:.3 };
 let govState = 'idle';
 let governorCount = 1; // assume present until a snapshot or a 'governors' event says otherwise
 let govTerr = null;
+/* territory id -> {state} for every governor session present now (server: snapshot "govs", live "gov"
+   with present true/false -- city-people, Interaction). Empty: no governor anywhere. */
+const govsByTerr = new Map();
+/* {x, y} where the territory's governor figure stands, or null when no governor is there -- DEMO always
+   shows one (the mock never sends govs/gov events) so the prototype looks as it always has. */
+function governorAt(terr){
+  if (!DEMO && !govsByTerr.has(terr)) return null;
+  const t = terrOf(terr);
+  return t ? hallStand(t) : null;
+}
 function setGovState(state){ govState = state; if (state !== 'waiting') gov.bubble = null; }
 function roleOrOther(role){ return ROLES[role] ? role : 'other'; }
 /* home = the scene point the default camera looks at: the governor's territory hall, else the first (Camera, Growth) */
@@ -856,8 +951,9 @@ function updateHome(){
 function placeAgent(a){
   const role = roleOrOther(a.role);
   const c = newCitizen(a.id, role, a.task, a.terr);
+  assignHome(c);
   c.label = a.label || role;
-  c.alpha = 1; c.state = 'building';
+  c.alpha = 1; c.x = c.home.x; c.y = c.home.y; c.state = 'working';
   const tools = a.tools || {};
   Object.assign(c.tools, tools);
   c.work = Object.entries(tools).reduce((s, [k, v]) => s + (WEIGHT[k] || .3) * v, 0);
@@ -898,6 +994,9 @@ function apply(ev){
       if (ev.notice) log(ev.notice);
       for (const old of citizens) applyAsk(old, null);
       for (const a of agents) if (!byId(a.id)) placeAgent(a);
+      // snapshot = live: govs replaces the whole picture of who is present, empty means nobody
+      govsByTerr.clear();
+      for (const g of ev.govs || []) govsByTerr.set(g.terr, { state: g.state });
       if (ev.gov && ev.gov.state) setGovState(ev.gov.state);
       if (typeof ev.governors === 'number') governorCount = ev.governors;
       asks.clear();
@@ -921,6 +1020,7 @@ function apply(ev){
       if (citizens.length >= MAX_CITIZENS) { const old = citizens.find(x => x.state === 'resting') || citizens[0]; if (old) old.gone = true; }
       const role = roleOrOther(ev.role || 'worker');
       const n = newCitizen(ev.id, role, ev.task, ev.terr);
+      assignHome(n);
       n.label = ev.label || role;
       citizens.push(n);
       say(gov, `去吧：${ev.task}`, 1.8); gov.dispatched++;
@@ -940,13 +1040,14 @@ function apply(ev){
       c.tools[ev.tool] = (c.tools[ev.tool] || 0) + 1;
       c.work += WEIGHT[ev.tool] || .3;
       if (floaters.length < MAX_FLOATERS) floaters.push({ text: ev.tool, x: c.x, y: c.y, t0: simT, color: c.color, el: null });
+      workWalk(c);
       return c;
     }
     case 'stuck': {
       if (!c) return null;
       const text = stuckText(ev);
       c.stuck = true; c.question = text; c.answered = false; c.answer = '';
-      if (['building','to_plot','back'].includes(c.state)) goHall(c);
+      if (['building','working','to_plot','back'].includes(c.state)) goHall(c);
       if (DEMO) log(`${c.task} 卡住了：“${text}” → 去问总督`, 'ask');
       return c;
     }
@@ -960,7 +1061,7 @@ function apply(ev){
     case 'done': {
       if (!c || c.doneFlag) return null;
       c.doneFlag = true;
-      if (c.state === 'building') finish(c);
+      if (c.state === 'building' || (c.state === 'working' && !c.path.length)) finish(c);
       log(`${c.task} 完工${c.bld ? '：' + TYPE_ZH[c.bld.type] + '封顶' : ''}，去休息`, 'done');
       return c;
     }
@@ -973,7 +1074,11 @@ function apply(ev){
     }
     case 'gov': {
       setGovState(ev.state);
-      if (ev.terr) { govTerr = ev.terr; updateHome(); }
+      if (ev.terr) {
+        govTerr = ev.terr;
+        if (ev.present === false) govsByTerr.delete(ev.terr); else govsByTerr.set(ev.terr, { state: ev.state });
+        updateHome();
+      }
       return null;
     }
     case 'governors': {
@@ -1122,6 +1227,27 @@ function update(dt){
   }
   for (let i = floaters.length - 1; i >= 0; i--) if (simT - floaters[i].t0 > 1.2) { const f = floaters[i]; if (f.el) f.el.remove(); floaters.splice(i, 1); }
   if (DEMO) spawner();
+}
+
+/* the non-3D half of buildLand(view): map, mid, land, the occupied/rest/home tile pools (a plot may have
+   opened by the hall), a record for every already-built building in the view, then updateHome() (the
+   world changed: look at a town hall, never at the empty middle of the land). buildLand() calls this
+   first, then does the meshes. Runs with no three.js: the tests drive it straight (city-people). */
+function landState(view){
+  occupied.clear();
+  restSlotsByTerr.clear();
+  homeSlotsByTerr.clear();
+  map = view;
+  mid = { x: Math.round(view.x0 + view.w / 2), z: Math.round(view.z0 + view.h / 2) };
+  land = { hx: view.w / 2, hz: view.h / 2 };
+  for (const t of view.territories || []) {
+    for (const bd of t.buildings || []) {
+      const existing = buildings.find(b => b.terr === t.id && b.plot === bd.plot);
+      if (!existing) { newBuildingRecord(t.id, bd.plot, bd.type, bd.x, bd.z, bd.by, true); continue; }
+      occupied.set(bd.x + ',' + bd.z, existing);
+    }
+  }
+  updateHome();
 }
 
 /* =========================================================
@@ -1647,14 +1773,10 @@ function meshFromGeometry(geo, opt){
   return mesh;
 }
 function buildLand(view){
+  landState(view); // map, mid, land, the tile pools, building records, updateHome() -- city-people
   while (landGroup.children.length) landGroup.remove(landGroup.children[0]);
-  occupied.clear();
   tall.clear();
   for (let i = fadeables.length - 1; i >= 0; i--) if (fadeables[i].fromLand) fadeables.splice(i, 1);
-  restSlotsByTerr.clear(); // the world changed (a plot may have opened by the hall): rebuilt lazily, keeps who is resting where
-  map = view;
-  mid = { x: Math.round(view.x0 + view.w / 2), z: Math.round(view.z0 + view.h / 2) };
-  land = { hx: view.w / 2, hz: view.h / 2 };
   world.position.set(-mid.x, 0, -mid.z);
   glows.length = 0;
   landOverlays(view); // Balance E2E bounce 2: removes the old label/sign elements first, then makes fresh ones
@@ -1709,13 +1831,12 @@ function buildLand(view){
     // if its era look changed (eraShown(t) moved on), its old mesh is dropped so sync() remakes it fresh
     // with the new eraLook. Buildings are still permanent: none is ever removed.
     for (const bd of t.buildings || []) {
+      // the record (and occupied tile) already exists: landState() made it. Only the mesh is 3D work here.
       const existing = buildings.find(b => b.terr === t.id && b.plot === bd.plot);
-      if (!existing) { newBuildingRecord(t.id, bd.plot, bd.type, bd.x, bd.z, bd.by, true); continue; }
-      occupied.set(bd.x + ',' + bd.z, existing);
       if (existing.v && existing.builtEra !== eraShown(t)) dropBuildingMesh(existing);
     }
   }
-  updateHome(); // the world changed: look at a town hall, never at the empty middle of the land
+  updateHome(); // the world changed: look at a town hall, never at the empty middle of the land (landState() already did this; harmless twice)
   if (!firstViewDone && territories.length && lastTouch === -Infinity) { firstViewDone = true; resetCam(); } // only the first world with a territory goes home; a later one never snaps the camera back
   scanTall();
 }
@@ -1998,7 +2119,9 @@ function updatePerson(c, t, dt){
   pin(c.o.tag, tx, ty + 34, v.sel.visible && c.state !== 'asking');
 }
 function updateGovernor(){
-  govV.g.visible = landReady(); // city-land: no governor floating in the void before the first territory lands
+  // city-land: no governor floating in the void before the first territory lands; city-people: and no
+  // governor figure at all where no governor session is present (governorAt() checks presence, not just land).
+  govV.g.visible = landReady() && !!governorAt(govTerr);
   govV.g.position.set(gov.x, govV.g.position.y, gov.y);
   const waiting = !DEMO && govState === 'waiting';
   const talking = waiting || (gov.bubble && simT < gov.bubble.until);
