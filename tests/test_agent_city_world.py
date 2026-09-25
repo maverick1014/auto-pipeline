@@ -102,8 +102,8 @@ CONTRACT (bin/agent_city.py, Python standard library only)
   Server (python3 bin/agent_city.py serve ... --world PATH)
     Default --world is world_path(). Loads it at start. The /events snapshot
     carries "world" (layout view) and, after a moved-aside file, "notice".
-    A line with "repo" (the hook's git common dir; "" -> "dir:" + proj)
-    makes its territory on first sight: {"type": "world", "world": view} is
+    A line with "repo" (the hook's git common dir; a line with no repo never
+    makes one, tests/test_agent_city_land.py) makes its territory on first sight: {"type": "world", "world": view} is
     sent and the file saved at once (every change is saved at once). Spawn events and snapshot agents carry "terr"
     (territory id); the snapshot "gov" and gov events carry "terr" too.
     PostToolUse with a "kind" builds for its agent (owner = aid, or "s:" +
@@ -915,12 +915,16 @@ class TestServerWorld(WorldServerCase):
         self.assertEqual(snap["agents"][0]["terr"], ac.territory_id(self.repo_b))
         self.assertEqual(snap["gov"]["terr"], ac.territory_id(self.repo_a))
 
-    def test_no_git_repo_uses_the_folder_name(self):
+    def test_a_line_without_repo_makes_no_territory(self):
+        """Owner 2026-09-25: old data is dropped; no "dir:" + proj fallback any more."""
         self.start()
         client, _ = self.snap()
         self.append(gline("UserPromptSubmit", sid="g1", repo="", proj="notes"))
-        ev = wait_for(lambda: client.events("world"))
-        self.assertEqual([t["name"] for t in ev[-1]["world"]["territories"]], ["notes"])
+        self.assertTrue(wait_for(lambda: client.events("gov")), "the line was read")
+        time.sleep(0.5)
+        self.assertEqual(client.events("world"), [])
+        _, snap = self.snap()
+        self.assertEqual(snap["world"]["territories"], [])
 
     def test_an_edit_builds_in_its_district_and_stays(self):
         seed = world_of((self.repo_a, 1000000))
