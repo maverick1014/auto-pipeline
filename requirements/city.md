@@ -29,8 +29,10 @@
 
 ## Interaction
 - An agent that asks (AskUserQuestion) or needs a permission walks to the governor. Governor = main manager session of that repo.
+- Chain of command, same as the real pipeline: worker → its task manager (the lead) → the governor → the owner. A worker's question goes to its task manager first; only what the task manager cannot decide goes on to the governor; only what the governor cannot decide gets the owner's "?".
+- Every territory has its own governor: the main manager session of that repo. Task managers are leads with their own site office; their workers live and walk around it.
 - The governor really answers questions.
-- ON HOLD: the governor approving or denying another agent's permission request. Owner wanted it (2026-09-24); Claude Code's auto-mode safety check blocks it as a permission bypass (spike, 2026-09-24). Not built, not routed around. Until the owner decides: every permission request goes straight to the owner ("?" at once).
+- Permission requests are never approved by the governor (Claude Code's safety check blocks it; owner decision 2026-09-25: keep it that way). Every permission request goes straight to the owner: red "?" at once, the owner reviews and decides.
 - Governor cannot decide, or no answer within `city_governor_wait_sec` (default 60) → red "?" above the agent.
 - Owner clicks the "?": sees the exact question or request (tool + command or path) and answers, approves or denies in the page.
 - First answer wins, from any side (governor, page, terminal). The others see it closed.
@@ -58,7 +60,9 @@
 - Building type is picked automatically from the kind of work (files touched): tests → test tower, UI → shop, scripts → workshop, docs → library, other → house.
 - Each type goes to its district in the plan (test towers together, shops on the shop street, and so on).
 - The 5 plans go through the mock gate: owner sees all 5 before real code.
-- Buildings are permanent. An agent leaving never removes its building.
+- Each building remembers the files it was built for. An agent leaving never removes its building. The files behind a building deleted → the building is demolished (a short demolition). Code comes back or is rewritten → a new building goes up.
+- A rest place per territory: appears when the first agent there finishes (day 0 stays bare). Benches and parasols first, a cafe and park with the eras. Free agents hang out there.
+- Planned, not built: when a district is full, buildings level up (taller, bigger) instead of nothing happening.
 
 ## Balance
 - The city shows how healthy the repo is, not only how big. 5 kinds of code, each one city system:
@@ -83,6 +87,13 @@
 - An era change is a show, not a blink: many small builders come out, walk to every building, road and lamp, scaffolding and hammering everywhere for a while, then in one moment the whole territory flips to the new era's look (wood → brick → tower). Positions and owners stay. Builders leave.
 - The show runs once per era change, about 60 s, and is recorded in world.json so a reopen does not replay it.
 - The city server never runs the repo's tests. Test pass counts: maybe later, only if cheap.
+
+## Quality
+- Code quality shapes how orderly the city is. Measured from the files only, no tools run: very large files, long functions and deep nesting, duplicated blocks, hot spots (large files changed very often in git).
+- Good quality: straight streets, buildings aligned to their district. Poor quality: buildings crooked, crammed together, some built in the wrong district (a tower in the houses). Messy, never broken.
+- When a file's quality improves, builders move its building to the right plot, aligned.
+- Ground tiles keep their slight per-tile shade (owner, 2026-09-25).
+- Missing Kenney models (police station, library, power plant): look for CC0 packs in the same style first; tinted stand-ins until then.
 
 ## Persistence
 - World state (territories, land size, buildings, per repo) lives in one file: `~/.claude/agent-city/world.json`.
