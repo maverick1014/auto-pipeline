@@ -49,6 +49,7 @@
 - Territory size grows with the repo's git-tracked code lines. Not counted: binaries, images, 3D models, vendor, lock files.
 - New repo = tiny territory with a small town hall only.
 - The city is never empty: when the server starts it shows the territory of the repo it was started from, plus every territory saved in world.json, at once, before any agent acts. Old sessions whose events carry no repo never create a territory and never block this.
+- With no territory at all (started outside a repo, empty world) the page still works: zoom in and out always move, the governor never floats in the void, a short line says no territory yet.
 - Territory edge is natural: river bank, cliff, forest edge, or beach on the coast. No brown earth block sides, no hard line.
 - Territory shape is uneven: organic edge, never a square or rectangle. Growth adds land at the edge and keeps it uneven.
 - Same repo → same shape every time (shape seeded from the repo identity), so reopening shows the territory the owner remembers.
