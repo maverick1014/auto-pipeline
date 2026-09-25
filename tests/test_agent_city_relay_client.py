@@ -34,7 +34,9 @@ Module API:
         (not shared, stays local).
     to_wire(line, ctx) -> the line as sent to the relay.
         Keeps only ev sid aid at tool nt role desc sub klen kind (missing =
-        ""), adds ctx's rid br who dev. Drops proj, repo and q (chat text).
+        ""), adds ctx's rid br who dev. An empty or blank who becomes the
+        dev (owner decision: a machine with no git user.name is named by
+        its device, never a blank name). Drops proj, repo and q (chat text).
         Every value a string of at most 200 characters. Inside the kept
         text, a word that is an absolute path (starts with "/" or "~/")
         becomes its last part: "fix /Users/ann/shop/api/login.py" ->
@@ -89,7 +91,7 @@ Module API:
             local repo whose origin gives rid (any repo offer() has queued a
             line for), or None.
         identity() -> {"who": git user.name of the first joined repo seen,
-            or "" before any, "device": label}.
+            else the label (never blank), "device": label}.
         Safe to call from two threads: offer() from the file-tail thread,
         tick()/status()/joined() from others. tick() never holds the hub's
         lock while it waits for the relay.
@@ -118,6 +120,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -294,6 +297,11 @@ class TestToWire(Case):
         self.assertEqual(wire["klen"], "7")
         self.assertEqual(wire["tool"], "")
         self.assertTrue(all(isinstance(v, str) for v in wire.values()))
+
+    def test_no_user_name_means_the_device_name(self):
+        for who in ("", "   "):
+            with self.subTest(who=who):
+                self.assertEqual(rl.to_wire(self.line(), dict(CTX, who=who))["who"], "mac-1")
 
     def test_capped_at_200(self):
         wire = rl.to_wire(self.line(desc="x" * 500), CTX)
@@ -608,13 +616,25 @@ class TestHubJoined(HubCase):
 
     def test_repo_for_and_identity(self):
         hub = self.hub()
-        self.assertEqual(hub.identity(), {"who": "", "device": "mac-1"})
+        self.assertEqual(hub.identity(), {"who": "mac-1", "device": "mac-1"})
         self.assertIsNone(hub.repo_for("github.com/acme/shop"))
         hub.offer(hook_line(self.repo))
         self.assertEqual(hub.repo_for("github.com/acme/shop"),
                          os.path.realpath(os.path.join(self.repo, ".git")))
         self.assertIsNone(hub.repo_for("github.com/other/thing"))
         self.assertEqual(hub.identity(), {"who": "Ann", "device": "mac-1"})
+
+    def test_repo_without_user_name(self):
+        env = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+        with mock.patch.dict(os.environ, env):
+            nameless = make_repo(self.base, "pc2repo", origin="git@github.com:Acme/Shop.git")
+            subprocess.run(["git", "-C", nameless, "config", "--unset", "user.name"], check=True)
+            join(nameless, self.fake.url)
+            hub = self.hub(label="pc2")
+            hub.offer(hook_line(nameless))
+            hub.tick()
+            self.assertEqual(self.fake.sent_lines()[-1]["who"], "pc2")
+            self.assertEqual(hub.identity(), {"who": "pc2", "device": "pc2"})
 
     def test_default_ids(self):
         a = rl.RelayHub()

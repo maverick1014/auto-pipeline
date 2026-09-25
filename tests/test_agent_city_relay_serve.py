@@ -18,7 +18,8 @@ bin/agent_city_relay.py (tests/test_agent_city_relay_client.py) for the rest:
   (the "dev" of the sync item), fed the wire line with "proj" set to the
   last part of its "rid" (the wire line has no folder). Each event the
   Reducer emits reaches the page wrapped:
-      {"type": "remote", "dev": "<sender device id>", "who": "<line who>",
+      {"type": "remote", "dev": "<sender device id>",
+       "who": "<line who; the line dev when who is blank>",
        "device": "<line dev: machine name or 云端>", "rid": "<line rid>",
        "br": "<line br>", "ev": <the Reducer event>}
     - every "id" in ev becomes "r:<dev>:<id>", so it never meets a local id
@@ -195,6 +196,12 @@ class TestJoined(RelayServerCase):
         for k in ("spawn", "tool", "stuck", "leave"):
             self.assertIn(k, kinds)
         self.assertTrue(all(e["ev"]["id"] == "r:dev-bo:s:t1" for e in client.events("remote")))
+
+    def test_blank_who_is_the_device(self):
+        client = self.started()
+        self.fake.push("dev-pc2", self.wire(who="", dev="pc2"))
+        self.assertTrue(wait_for(lambda: client.events("remote")))
+        self.assertEqual(client.events("remote")[0]["who"], "pc2")
 
     def test_remote_governor(self):
         client = self.started()

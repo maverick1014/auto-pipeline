@@ -19,12 +19,24 @@ bin/agent-city.html
   Other members' people (browser; the main manager's click path checks it):
     - drawn like my own citizens (same models, walks, tools, rest), in the
       territory ev.terr, each marked remote with who/device/dev/rid/br
-    - two tags, always shown (owner decision 2026-09-25, as in the mock):
-      the name tag with the person (who), and beside it a SEPARATE small
-      grey device chip (device) — an overlay element of class "rdev", its
-      own CSS rule `.rdev{...}` (smaller, grey). Never one combined
-      "<who> · <device>" tag on a person. Governor signs stay govSign(g).
+    - two tags (owner decision 2026-09-25, as in the mock): the name tag
+      (memberName(who, device)) and beside it a SEPARATE small grey device
+      chip (device) — an overlay element of class "rdev", its own CSS rule
+      `.rdev{...}`. Never one combined "<who> · <device>" tag on a person.
       Both set with textContent (a member's git user.name is outside input).
+    - Owner decision 2026-09-25 (after the LAN test): the floating tags are
+      OFF by default for every person. They show only while the pointer is
+      over that person (hover) or it is selected: tagVisible(hover, sel).
+      Hover: the canvas's pointermove, with no button down, picks the
+      person under the pointer (pickAt) into a top-level `let hovered`.
+    - While joined, the ring under EVERY person (mine and others', governors
+      too) has the colour of the member it belongs to: memberColors() over
+      "me" and each sender device (dev), mine = MEMBER_COLORS[0]. In a
+      local-only city (not joined) the ring keeps the role colour as today:
+      ringColor(joined, roleColor, memberColor).
+    - The roster group headers and the 联城 chip keep the members' names,
+      each with a dot in that member's colour: memberLegend().
+    - A blank who is never shown: memberName() falls back to the device.
     - my governor never talks to them, never sends them ("去吧" is mine only)
     - their stuck "?" is grey and opens no ask panel; the detail card shows
       who, device, repo (rid), branch, what it is doing, and remoteNote(who);
@@ -35,7 +47,8 @@ bin/agent-city.html
   Other members' governors: extra governor figures at that territory's town
   hall, next to mine, several side by side, each with a name sign
   govSign(g); "present": false removes one.
-  Relay chip in the top bar (#stats), only while joined: remoteChip(...).
+  Relay chip in the top bar (#stats), only while joined: remoteChip(...),
+  then the members from memberLegend(), each a colour dot + name.
   While a team is off, other members' figures fade and show
   staleText(seconds since their last event).
   Roster: my own first, then one group per "<who> · <device>".
@@ -52,18 +65,38 @@ bin/agent-city.html
   String, Number), so this file runs them in node:
     remoteChip(relays, me, people, govs) -> null | {cls, text}
         relays: [{host, state, queued}], me: {who, device} or null,
-        people / govs: [{who, dev}].
+        people / govs: [{who, device, dev}].
         No entry whose state is not "left" -> null (not joined: no chip).
         Any "off"      -> {cls: "off", text: "联城断开 · 待发 N 条"},
                           N = the sum of queued over the "off" entries.
         Else any "refused" -> {cls: "refused", text: "联城拒绝了密钥"}.
         Else           -> {cls: "ok", text: "联城 · P 人 · D 台设备"},
-                          P = distinct non-empty who over me, people, govs;
+                          P = distinct memberName(who, device) over me,
+                          people, govs;
                           D = (me ? 1 : 0) + distinct dev over people, govs.
     remoteNote(who) -> "只能看：这是 <who> 的 agent，只有 <who> 能回答。"
-    govSign(g)      -> "<g.who> · <g.device>"
+    memberLabel(who, device) -> "<memberName> · <device>", or just the
+                       name when the name IS the device (no "pc2 · pc2").
+    govSign(g)      -> memberLabel(g.who, g.device). Roster group headers use
+                       memberLabel too.
     staleText(sec)  -> under 60: "最后更新 <floor(sec)> 秒前",
                        else "最后更新 <floor(sec / 60)> 分钟前"
+    memberName(who, device) -> who trimmed; if blank, device trimmed; if
+                       both blank, "未知". Never blank.
+    MEMBER_COLORS   at least 8 distinct "#rrggbb" colours; [0] is mine.
+    memberColors(keys, meKey) -> {key: colour}. meKey -> MEMBER_COLORS[0].
+                       Every other key gets a colour from MEMBER_COLORS[1..]
+                       picked from a hash of the key (moving on to the next
+                       free one when taken), so it is the same whatever the
+                       order of keys (keys are handled sorted) and distinct
+                       while there are free colours; never MEMBER_COLORS[0].
+    ringColor(joined, roleColor, memberColor) -> joined ? memberColor : roleColor
+    tagVisible(hover, selected) -> !!(hover || selected)
+    memberLegend(me, people, govs, colors) -> [{key, name, device, color}]
+                       me first (key "me"), then one entry per dev in order
+                       of first appearance (people, then govs); name =
+                       memberName(); colour = colors[key]. me null -> no
+                       "me" entry.
 
 The page must keep passing tests/test_agent_city_page.py.
 
@@ -129,6 +162,14 @@ class TestEvents(unittest.TestCase):
         self.assertNotRegex(inline_script(), r"remote\.who\}\s*·\s*\$\{[^}]*remote\.device",
                             "a person still gets one combined 'who · device' tag")
 
+    def test_hover_and_member_rings_are_wired(self):
+        script = inline_script()
+        outside = script.replace(pure_section() or "", "")
+        self.assertRegex(script, r"\blet hovered\b", "no top-level `let hovered`")
+        for fn in ("tagVisible(", "ringColor(", "memberColors(", "memberLegend(", "memberName("):
+            with self.subTest(fn=fn):
+                self.assertIn(fn, outside, "%s is defined but never used by the page" % fn)
+
     def test_cap(self):
         self.assertRegex(inline_script(), r"const MAX_REMOTE = 20\b")
 
@@ -175,9 +216,11 @@ class TestPureHelpers(unittest.TestCase):
         return [r.get("ok") for r in out]
 
     ME = {"who": "Maverick", "device": "mac-mini"}
-    PEOPLE = [{"who": "Maverick", "dev": "d-pc2"}, {"who": "Ann", "dev": "d-ann"},
-              {"who": "Bo", "dev": "d-bo"}]
-    GOVS = [{"who": "Maverick", "dev": "d-pc2"}, {"who": "Ann", "dev": "d-ann"}]
+    PEOPLE = [{"who": "Maverick", "device": "pc2", "dev": "d-pc2"},
+              {"who": "Ann", "device": "ann-laptop", "dev": "d-ann"},
+              {"who": "Bo", "device": "云端", "dev": "d-bo"}]
+    GOVS = [{"who": "Maverick", "device": "pc2", "dev": "d-pc2"},
+            {"who": "Ann", "device": "ann-laptop", "dev": "d-ann"}]
 
     def test_chip(self):
         ok = [{"host": "r.example", "state": "ok", "queued": 0}]
@@ -215,6 +258,68 @@ class TestPureHelpers(unittest.TestCase):
                                "Ann · ann-laptop", "Bo · 云端",
                                "最后更新 0 秒前", "最后更新 59 秒前",
                                "最后更新 1 分钟前", "最后更新 3 分钟前"])
+
+    def test_blank_name_counts_as_its_device(self):
+        ok = [{"host": "r.example", "state": "ok", "queued": 0}]
+        got = self.run_calls([
+            ["remoteChip", [ok, self.ME, [{"who": "", "device": "pc2", "dev": "d-pc2"}], []]],
+        ])
+        self.assertEqual(got[0], {"cls": "ok", "text": "联城 · 2 人 · 2 台设备"})
+
+    def test_member_label_never_repeats_the_device(self):
+        got = self.run_calls([["memberLabel", ["Ann", "ann-laptop"]], ["memberLabel", ["", "pc2"]],
+                              ["govSign", [{"who": "", "device": "pc2"}]],
+                              ["govSign", [{"who": "Ann", "device": "ann-laptop"}]]])
+        self.assertEqual(got, ["Ann · ann-laptop", "pc2", "pc2", "Ann · ann-laptop"])
+
+    def test_member_name(self):
+        got = self.run_calls([["memberName", ["Ann", "ann-laptop"]], ["memberName", ["", "pc2"]],
+                              ["memberName", ["  ", " pc2 "]], ["memberName", ["", ""]],
+                              ["memberName", [None, "pc2"]]])
+        self.assertEqual(got, ["Ann", "pc2", "pc2", "未知", "pc2"])
+
+    def test_member_colours(self):
+        keys = ["d-pc2", "d-ann", "d-bo", "d-cy", "me"]
+        got = self.run_calls([
+            ["(() => MEMBER_COLORS)", []],
+            ["memberColors", [keys, "me"]],
+            ["memberColors", [list(reversed(keys)), "me"]],
+            ["memberColors", [["me"], "me"]],
+        ])
+        palette, a, b, only_me = got
+        self.assertGreaterEqual(len(palette), 8)
+        self.assertEqual(len(set(palette)), len(palette))
+        for c in palette:
+            self.assertRegex(c, r"^#[0-9a-fA-F]{6}$")
+        self.assertEqual(a, b, "colours must not depend on the order of keys")
+        self.assertEqual(a["me"], palette[0])
+        self.assertEqual(only_me, {"me": palette[0]})
+        others = [a[k] for k in keys if k != "me"]
+        self.assertNotIn(palette[0], others)
+        self.assertEqual(len(set(others)), len(others), "distinct while colours are free")
+        many = self.run_calls([["memberColors", [["d%d" % i for i in range(20)] + ["me"], "me"]]])[0]
+        self.assertEqual(len(many), 21)
+        self.assertEqual(sum(1 for k, v in many.items() if v == palette[0]), 1)
+
+    def test_ring_tag_legend(self):
+        colors = {"me": "#111111", "d-pc2": "#222222", "d-ann": "#333333"}
+        people = [{"who": "", "device": "pc2", "dev": "d-pc2"},
+                  {"who": "Ann", "device": "ann-laptop", "dev": "d-ann"},
+                  {"who": "", "device": "pc2", "dev": "d-pc2"}]
+        govs = [{"who": "Ann", "device": "ann-laptop", "dev": "d-ann"}]
+        got = self.run_calls([
+            ["ringColor", [True, "#role00", "#member"]], ["ringColor", [False, "#role00", "#member"]],
+            ["tagVisible", [False, False]], ["tagVisible", [True, False]], ["tagVisible", [False, True]],
+            ["memberLegend", [self.ME, people, govs, colors]],
+            ["memberLegend", [None, people, [], colors]],
+        ])
+        self.assertEqual(got[:5], ["#member", "#role00", False, True, True])
+        self.assertEqual(got[5], [
+            {"key": "me", "name": "Maverick", "device": "mac-mini", "color": "#111111"},
+            {"key": "d-pc2", "name": "pc2", "device": "pc2", "color": "#222222"},
+            {"key": "d-ann", "name": "Ann", "device": "ann-laptop", "color": "#333333"},
+        ])
+        self.assertEqual([e["key"] for e in got[6]], ["d-pc2", "d-ann"])
 
     def test_pure_means_pure(self):
         section = pure_section()

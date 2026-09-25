@@ -1894,7 +1894,8 @@ class RemoteCity:
             return []   # no local territory for this rid: the line is dropped
         self._last_seen[dev_id] = now
         terr = territory_id(repo)
-        who, device, br = line.get("who") or "", line.get("dev") or "", line.get("br") or ""
+        device = line.get("dev") or ""
+        who, br = line.get("who") or device, line.get("br") or ""
         fed = dict(line)
         fed["proj"] = rid.rsplit("/", 1)[-1]
         reducer = self._reducers.get(dev_id)

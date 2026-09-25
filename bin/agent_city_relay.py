@@ -203,6 +203,8 @@ def to_wire(line, ctx):
     for field in _CTX_FIELDS:
         value = _wire_str(ctx.get(field) if ctx else None)
         out[field] = value[:200]
+    if not out["who"].strip():
+        out["who"] = out["dev"]
     return out
 
 
@@ -552,10 +554,10 @@ class RelayHub:
             return self._repo_by_rid.get(rid)
 
     def identity(self):
-        """{"who": git user.name of the first joined repo seen, or "" before
-        any, "device": label}."""
+        """{"who": git user.name of the first joined repo seen, else the
+        label (never blank), "device": label}."""
         with self._lock:
-            return {"who": self._who, "device": self.label}
+            return {"who": self._who or self.label, "device": self.label}
 
 
 # --------------------------------------------------------------- cloud send

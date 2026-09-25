@@ -577,8 +577,17 @@ function askLine(ev, name) {
 }
 
 /* city-join: pure */
+/* memberName(who, device) -> who trimmed; blank -> device trimmed; both blank -> "未知". Never blank
+   (owner decision 2026-09-25: a blank who -- e.g. pc2 has no git user.name -- is never shown as-is). */
+function memberName(who, device) {
+  const w = (who || '').trim();
+  if (w) return w;
+  const d = (device || '').trim();
+  return d || '未知';
+}
 /* remoteChip(relays, me, people, govs) -> null | {cls, text} for the top-bar 联城 chip.
-   relays: [{host, state, queued}]; me: {who, device} or null; people/govs: [{who, dev}]. */
+   relays: [{host, state, queued}]; me: {who, device} or null; people/govs: [{who, device, dev}].
+   P counts distinct memberName(who, device), never a raw (possibly blank) who. */
 function remoteChip(relays, me, people, govs) {
   if (!relays.some(r => r.state !== 'left')) return null;
   const off = relays.filter(r => r.state === 'off');
@@ -587,23 +596,78 @@ function remoteChip(relays, me, people, govs) {
     return { cls: 'off', text: '联城断开 · 待发 ' + n + ' 条' };
   }
   if (relays.some(r => r.state === 'refused')) return { cls: 'refused', text: '联城拒绝了密钥' };
-  const who = new Set();
-  if (me && me.who) who.add(me.who);
-  for (const p of people) if (p.who) who.add(p.who);
-  for (const g of govs) if (g.who) who.add(g.who);
+  const names = new Set();
+  if (me) names.add(memberName(me.who, me.device));
+  for (const p of people) names.add(memberName(p.who, p.device));
+  for (const g of govs) names.add(memberName(g.who, g.device));
   const dev = new Set();
   for (const p of people) if (p.dev) dev.add(p.dev);
   for (const g of govs) if (g.dev) dev.add(g.dev);
   const D = (me ? 1 : 0) + dev.size;
-  return { cls: 'ok', text: '联城 · ' + who.size + ' 人 · ' + D + ' 台设备' };
+  return { cls: 'ok', text: '联城 · ' + names.size + ' 人 · ' + D + ' 台设备' };
 }
 /* remoteNote(who) -> the lock explanation under another member's agent */
 function remoteNote(who) { return '只能看：这是 ' + who + ' 的 agent，只有 ' + who + ' 能回答。'; }
+/* memberLabel(who, device) -> "<memberName> · <device>", or just the name when the name IS the
+   device (a blank who falls back to the device via memberName -- never shows "pc2 · pc2"). */
+function memberLabel(who, device) {
+  const name = memberName(who, device);
+  return name === device ? name : name + ' · ' + device;
+}
 /* govSign(g) -> the name sign over another member's governor figure */
-function govSign(g) { return g.who + ' · ' + g.device; }
+function govSign(g) { return memberLabel(g.who, g.device); }
 /* staleText(sec) -> "最后更新 …" while a team's relay is off */
 function staleText(sec) {
   return sec < 60 ? ('最后更新 ' + Math.floor(sec) + ' 秒前') : ('最后更新 ' + Math.floor(sec / 60) + ' 分钟前');
+}
+/* MEMBER_COLORS: a fixed palette, [0] reserved for "me". Owner decision 2026-09-05: while joined,
+   every ring (mine, other members', governors too) is coloured by the member it belongs to. */
+const MEMBER_COLORS = ['#FF5D73', '#2EC4B6', '#FFB627', '#5E60CE', '#06D6A0', '#EF476F', '#118AB2', '#F4A261', '#8338EC', '#3A86FF'];
+/* a small deterministic string hash (djb2-xor), used only to pick a starting colour slot */
+function memberHash(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h;
+}
+/* memberColors(keys, meKey) -> {key: colour}. meKey -> MEMBER_COLORS[0]; every other key gets a
+   colour from MEMBER_COLORS[1..], picked from a hash of the key (the next free slot when taken),
+   the same regardless of the order `keys` arrives in (non-me keys are sorted first), distinct while
+   slots are free, never MEMBER_COLORS[0]. */
+function memberColors(keys, meKey) {
+  const uniq = Array.from(new Set(keys));
+  const out = {};
+  if (uniq.includes(meKey)) out[meKey] = MEMBER_COLORS[0];
+  const pool = MEMBER_COLORS.slice(1);
+  const used = new Set();
+  const others = uniq.filter(k => k !== meKey).sort();
+  for (const k of others) {
+    let idx = memberHash(k) % pool.length, tries = 0;
+    while (used.has(idx) && tries < pool.length) { idx = (idx + 1) % pool.length; tries++; }
+    used.add(idx);
+    out[k] = pool[idx];
+  }
+  return out;
+}
+/* ringColor(joined, roleColor, memberColor) -> the colour a person's ring should be right now.
+   Local-only city (not joined): the role colour as always. Joined: the colour of the member the
+   ring belongs to (mine included). */
+function ringColor(joined, roleColor, memberColor) { return joined ? memberColor : roleColor; }
+/* tagVisible(hover, selected) -> a floating name tag / device chip is off by default; it shows
+   only while the pointer is over that person or the person is selected (owner decision 2026-09-25). */
+function tagVisible(hover, selected) { return !!(hover || selected); }
+/* memberLegend(me, people, govs, colors) -> [{key, name, device, color}]. me first (key "me") when
+   not null, then one entry per dev in order of first appearance (people, then govs). Feeds both the
+   联城 chip and the roster group headers. */
+function memberLegend(me, people, govs, colors) {
+  const out = [];
+  if (me) out.push({ key: 'me', name: memberName(me.who, me.device), device: me.device, color: colors.me });
+  const seen = new Set();
+  for (const p of people.concat(govs)) {
+    if (!p.dev || seen.has(p.dev)) continue;
+    seen.add(p.dev);
+    out.push({ key: p.dev, name: memberName(p.who, p.device), device: p.device, color: colors[p.dev] });
+  }
+  return out;
 }
 /* end city-join: pure */
 
@@ -846,6 +910,9 @@ let simT = 0;
 const citizens = [], buildings = [], floaters = [], logEntries = [];
 let cid = 0, bid = 0;
 let selected = null;
+/* city-join: the {t, id} under the pointer right now (pointermove, no button down), or null --
+   drives tagVisible() so a floating name tag / device chip shows on hover, same as on select. */
+let hovered = null;
 const gov = { x:0, y:1.4, bubble:null, answered:0, dispatched:0 };
 const SKIN = ['#FFE0C7','#F7C9A4','#E6AC84','#BF8560','#8E5E40'];
 
@@ -985,6 +1052,25 @@ const remoteGovs = new Map();
 let relays = [];
 /* {who, device} of this machine's own joined identity, or null while not joined (remote_snapshot) */
 let meInfo = null;
+/* city-join: "joined" (remoteChip(...) is not null -- same gate remoteChip itself opens with), and
+   the member -> colour map (memberColors()) rings are painted from. Recomputed only when the joined
+   state or the member set (which devs are present) changes, not every frame -- see refreshMembers(). */
+let joined = false;
+let memberColorMap = { me: MEMBER_COLORS[0] };
+let memberSig = '\u0000';
+function refreshMembers(){
+  const now = relays.some(r => r.state !== 'left');
+  const keys = [];
+  if (meInfo) keys.push('me');
+  const seen = new Set();
+  for (const c of citizens) if (c.remote && c.remote.dev && !seen.has(c.remote.dev)) { seen.add(c.remote.dev); keys.push(c.remote.dev); }
+  for (const g of remoteGovs.values()) if (g.dev && !seen.has(g.dev)) { seen.add(g.dev); keys.push(g.dev); }
+  const sig = now + '|' + keys.slice().sort().join(',');
+  if (sig === memberSig) return;
+  memberSig = sig;
+  joined = now;
+  memberColorMap = memberColors(keys, 'me');
+}
 /* {x, y} where the territory's governor figure stands, or null when no governor is there -- DEMO always
    shows one (the mock never sends govs/gov events) so the prototype looks as it always has. */
 function governorAt(terr){
@@ -1249,7 +1335,7 @@ function applyRemote(inner, who){
     n.remote = who;
     n.remoteAt = Date.now();
     citizens.push(n);
-    log(`${who.who}（${who.device}）的 ${n.label} 开始：${inner.task}`);
+    log(`${memberName(who.who, who.device)}（${who.device}）的 ${n.label} 开始：${inner.task}`);
     return n;
   }
   const rc = inner.id ? byId(inner.id) : null;
@@ -1272,12 +1358,12 @@ function applyRemote(inner, who){
       if (rc.doneFlag) return null;
       rc.doneFlag = true;
       if (rc.state === 'building' || (rc.state === 'working' && !rc.path.length)) finish(rc);
-      log(`${who.who}（${who.device}）的 ${rc.task} 完工了`);
+      log(`${memberName(who.who, who.device)}（${who.device}）的 ${rc.task} 完工了`);
       return rc;
     case 'leave':
       rc.leaveFlag = true;
       if (rc.state === 'resting' || !rc.doneFlag) forceLeave(rc);
-      log(`${who.who}（${who.device}）的 ${rc.task} 下线了`);
+      log(`${memberName(who.who, who.device)}（${who.device}）的 ${rc.task} 下线了`);
       return rc;
   }
   return null;
@@ -2071,7 +2157,23 @@ function makePerson(c){
   const sel = new THREE.Mesh(ringGeo, ringMat('#FF7593')); sel.rotation.x = -Math.PI / 2; sel.position.y = .02; sel.scale.setScalar(1.45); g.add(sel);
   g.userData.pick = { t:'c', id:c.id };
   pickables.push(g);
-  c.v = { g, key, mixer, hammer, sel, yaw: 0, cur: null, action: null };
+  // city-join: `ring` kept on c.v (not just added to `g`) so its material can change colour later --
+  // ringColorFor()/applyRing() below only touch it when the colour actually changes.
+  c.v = { g, key, mixer, hammer, sel, ring, ringColor: c.color, yaw: 0, cur: null, action: null };
+}
+/* city-join: the colour a person's ring should show right now -- mine (me, no c.remote) uses
+   MEMBER_COLORS[0] via memberColorMap.me while joined; a remote person uses their own dev's colour;
+   not joined -> everyone's ring keeps its role colour (ringColor() itself). */
+function ringColorFor(c){
+  const memberKey = c.remote ? c.remote.dev : 'me';
+  return ringColor(joined, c.color, memberColorMap[memberKey] || c.color);
+}
+/* applyRing(v, color): only ever touches the mesh's material when the colour actually changed --
+   Cheap: no per-frame material creation (ringMat caches by colour) or reassignment. */
+function applyRing(v, color){
+  if (v.ringColor === color) return;
+  v.ringColor = color;
+  v.ring.material = ringMat(color);
 }
 function anim(v, name, once){
   if (v.cur === name) return;
@@ -2091,7 +2193,7 @@ function makeGovernor(){
   const ring = new THREE.Mesh(ringGeo, ringMat('#FFD36E')); ring.rotation.x = -Math.PI / 2; ring.position.y = .015; ring.scale.setScalar(1.15); g.add(ring);
   g.userData.pick = { t:'gov' };
   pickables.push(g);
-  govV = { g, key:'character-male-b', mixer, sel, cur:null, action:null };
+  govV = { g, key:'character-male-b', mixer, sel, ring, ringColor: '#FFD36E', cur:null, action:null };
   anim(govV, 'idle');
 }
 
@@ -2255,7 +2357,12 @@ function updatePerson(c, t, dt){
   else if (resting) a = 'sit';
   anim(v, a, once);
   if (v.hammer) v.hammer.visible = c.state === 'building';
-  v.sel.visible = !!(selected && selected.t === 'c' && selected.id === c.id);
+  const isSel = !!(selected && selected.t === 'c' && selected.id === c.id);
+  v.sel.visible = isSel;
+  // city-join: the ring is the member's colour while joined (mine included), else its role colour
+  // as always -- applyRing() only touches the material when that colour actually changed.
+  applyRing(v, ringColorFor(c));
+  const isHover = !!(hovered && hovered.t === 'c' && hovered.id === c.id);
 
   ensureOv(c);
   const [sx, sy] = toScreen(c.x, resting ? .58 : .72, c.y);
@@ -2279,30 +2386,32 @@ function updatePerson(c, t, dt){
   pin(c.o.bub, sx, sy, showBub);
   const [tx, ty] = toScreen(c.x, 0, c.y);
   if (c.remote) {
-    // city-join: the name tag (who) and device tag (device) stay up always, not only while
-    // selected -- other members' people are told apart on sight (requirements/city.md, Joining).
-    // Owner decision 2026-09-25: two separate tags, never one combined "who · device" tag --
-    // the name tag (c.o.tag) and, pinned right beside it, a small grey device chip (c.o.rdev).
+    // city-join: two separate tags, never one combined "who · device" tag -- the name tag (c.o.tag,
+    // memberName() so a blank who shows the device instead) and, pinned right beside it, a small
+    // grey device chip (c.o.rdev). Owner decision 2026-09-25: both OFF by default, shown only on
+    // hover or while selected (tagVisible()) -- other people no longer float a tag all the time.
     // Cheap: offsetWidth forces a layout recalc, so it's only read the frame the text actually
     // changes (who/device never change for a given citizen after spawn); every other frame reuses
     // the width cached on the element (el._w) from that one read.
-    const tagChanged = c.o.tag._t !== c.remote.who;
-    setText(c.o.tag, c.remote.who);
-    pin(c.o.tag, tx, ty + 34, true);
+    const name = memberName(c.remote.who, c.remote.device);
+    const show = tagVisible(isHover, isSel);
+    const tagChanged = c.o.tag._t !== name;
+    setText(c.o.tag, name);
+    pin(c.o.tag, tx, ty + 34, show);
     if (tagChanged || c.o.tag._w === undefined) c.o.tag._w = c.o.tag.offsetWidth;
     const devChanged = c.o.rdev._t !== c.remote.device;
     setText(c.o.rdev, c.remote.device);
-    pin(c.o.rdev, tx + c.o.tag._w / 2 + 4 + (c.o.rdev._w || 0) / 2, ty + 34, true);
+    pin(c.o.rdev, tx + c.o.tag._w / 2 + 4 + (c.o.rdev._w || 0) / 2, ty + 34, show);
     if (devChanged || c.o.rdev._w === undefined) c.o.rdev._w = c.o.rdev.offsetWidth;
     const frozen = anyRelayOff();
     setFaded(v, frozen);
     pin(c.o.stale, sx, sy - 46, frozen);
     if (frozen) setText(c.o.stale, staleText((Date.now() - (c.remoteAt || Date.now())) / 1000));
-    c.o.rqm.setAttribute('aria-label', `${c.remote.who} 卡住了，只有 ${c.remote.who} 能回答`);
+    c.o.rqm.setAttribute('aria-label', `${name} 卡住了，只有 ${name} 能回答`);
     pin(c.o.rqm, sx, showBub ? sy - 32 : sy, !frozen && !!c.stuck);
   } else {
     setText(c.o.tag, `${c.label} · ${c.task}`);
-    pin(c.o.tag, tx, ty + 34, v.sel.visible && c.state !== 'asking');
+    pin(c.o.tag, tx, ty + 34, tagVisible(isHover, isSel) && c.state !== 'asking');
   }
 }
 function updateGovernor(){
@@ -2310,6 +2419,8 @@ function updateGovernor(){
   // governor figure at all where no governor session is present (governorAt() checks presence, not just land).
   govV.g.visible = landReady() && !!governorAt(govTerr);
   govV.g.position.set(gov.x, govV.g.position.y, gov.y);
+  // city-join: my own governor's ring is my member colour while joined, else its usual role colour.
+  applyRing(govV, ringColor(joined, '#FFD36E', memberColorMap.me));
   const waiting = !DEMO && govState === 'waiting';
   const talking = waiting || (gov.bubble && simT < gov.bubble.until);
   anim(govV, talking ? 'interact-left' : 'idle');
@@ -2366,7 +2477,7 @@ function ensureRemoteGovView(id){
   g.userData.pick = { t:'rg', id };
   pickables.push(g);
   const tag = ovEl('tagl'); tag.style.setProperty('--c', '#B9BEDD');
-  v = { g, key:'character-male-b', mixer, sel, tag, cur:null, action:null, fadedOn:false };
+  v = { g, key:'character-male-b', mixer, sel, ring, ringColor: '#B9BEDD', tag, cur:null, action:null, fadedOn:false };
   anim(v, 'idle');
   remoteGovViews.set(id, v);
   return v;
@@ -2393,12 +2504,15 @@ function updateRemoteGovs(){
     v.g.visible = landReady();
     v.g.position.set(gx, v.g.position.y, gy);
     anim(v, 'idle');
-    v.sel.visible = !!(selected && selected.t === 'rg' && selected.id === g.id);
+    const isSel = !!(selected && selected.t === 'rg' && selected.id === g.id);
+    v.sel.visible = isSel;
+    applyRing(v, ringColor(joined, '#B9BEDD', memberColorMap[g.dev] || '#B9BEDD'));
     const frozen = anyRelayOff();
     setFaded(v, frozen);
     const [tx, ty] = toScreen(gx, 0, gy);
     setText(v.tag, frozen ? govSign(g) + ' · ' + staleText((Date.now() - (g.at || Date.now())) / 1000) : govSign(g));
-    pin(v.tag, tx, ty + 30, true);
+    const isHover = !!(hovered && hovered.t === 'rg' && hovered.id === g.id);
+    pin(v.tag, tx, ty + 30, tagVisible(isHover, isSel));
   }
   for (const id of [...remoteGovViews.keys()]) if (!seen.has(id)) dropRemoteGovView(id);
 }
@@ -2709,6 +2823,7 @@ function sync(t, dt){
     const pk = pickables[i].userData.pick;
     if ((pk.t === 'b' && !ids.has(pk.id)) || (pk.t === 'c' && !byId(pk.id))) { world.remove(pickables[i]); pickables.splice(i, 1); }
   }
+  refreshMembers(); // city-join: cheap signature check -- rings are only recoloured when this actually changes
   for (const c of citizens) { if (!c.v) makePerson(c); updatePerson(c, t, dt); }
   for (const c of goneOv) { if (c.v) { const i = mixers.indexOf(c.v.mixer); if (i >= 0) mixers.splice(i, 1); } dropOv(c); }
   goneOv.length = 0;
@@ -2730,10 +2845,11 @@ const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&':'&amp;', '<':'&lt;', 
 const clock = t => new Date(BASE + t * 1000).toTimeString().slice(0, 8);
 const pct = c => c.bld ? Math.round((c.bld.done ? 1 : c.bld.shown) * 100) : 0;
 const ORDER = { ask:0, build:1, walk:2, rest:3 };
-/* city-join: the [{who, dev}] this machine currently shows, for remoteChip() -- people/govs never
-   feed into 干活/找总督/休息 above: those counts are my own city's, never another member's. */
-function remotePeopleList(){ const out = []; for (const c of citizens) if (c.remote) out.push({ who: c.remote.who, dev: c.remote.dev }); return out; }
-function remoteGovList(){ return [...remoteGovs.values()].map(g => ({ who: g.who, dev: g.dev })); }
+/* city-join: the [{who, device, dev}] this machine currently shows, for remoteChip() and
+   memberLegend() -- people/govs never feed into 干活/找总督/休息 above: those counts are my own
+   city's, never another member's. */
+function remotePeopleList(){ const out = []; for (const c of citizens) if (c.remote) out.push({ who: c.remote.who, device: c.remote.device, dev: c.remote.dev }); return out; }
+function remoteGovList(){ return [...remoteGovs.values()].map(g => ({ who: g.who, device: g.device, dev: g.dev })); }
 function renderStats(){
   let work = 0, ask = 0, rest = 0;
   for (const c of citizens) {
@@ -2743,10 +2859,13 @@ function renderStats(){
   const done = buildings.filter(b => b.done).length;
   const waiting = openAskCount();
   const chip = remoteChip(relays, meInfo, remotePeopleList(), remoteGovList());
+  // city-join: while joined, the chip is followed by the members from memberLegend(), each its own colour dot + name.
+  const legend = chip ? memberLegend(meInfo, remotePeopleList(), remoteGovList(), memberColorMap) : [];
   const html = [['#5AA9F0','干活',work],['#FF6F8B','找总督',ask],['#43C58B','休息',rest],['#FFC23D','建成',done]]
     .map(([c, l, n]) => `<span class="stat"><i style="background:${c}"></i>${l} <b>${n}</b></span>`).join('')
     + `<button class="stat wait" type="button" id="next" ${waiting ? '' : 'disabled'} aria-label="等你决定 ${waiting} 个，点开最早的一个">等你 <b>${waiting}</b></button>`
-    + (chip ? `<span class="stat ${chip.cls}">${esc(chip.text)}</span>` : '');
+    + (chip ? `<span class="stat ${chip.cls}">${esc(chip.text)}</span>` : '')
+    + legend.map(e => `<span class="stat member"><i style="background:${e.color}"></i>${esc(e.name)}</span>`).join('');
   if ($('#stats').innerHTML !== html) $('#stats').innerHTML = html;
 }
 let lastRoster = '';
@@ -2771,16 +2890,20 @@ function renderRoster(){
     .sort((a, b) => ORDER[STATE[a.state][0]] - ORDER[STATE[b.state][0]] || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   let html = `<li><button class="row" type="button" data-sel="gov" aria-current="${!!(selected && selected.t === 'gov')}"><span class="rdot gov"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govPillText()}</span></button></li>`;
   for (const c of mine) html += rosterRow(c);
-  // city-join: my own citizens first, then one group per "<who> · <device>" (requirements/city.md, Joining)
+  // city-join: my own citizens first, then one group per "<who> · <device>" (requirements/city.md,
+  // Joining), the header carrying a dot in that member's colour (memberColors(), owner decision 2026-09-25).
   const groups = new Map();
-  const addGroup = (who, device, row) => {
+  const addGroup = (who, device, dev, row) => {
     const key = who + '|' + device;
-    if (!groups.has(key)) groups.set(key, { title: who + ' · ' + device, rows: [] });
+    if (!groups.has(key)) groups.set(key, { title: memberLabel(who, device), dev, rows: [] });
     groups.get(key).rows.push(row);
   };
-  for (const g of remoteGovs.values()) addGroup(g.who, g.device, remoteGovRow(g));
-  for (const c of citizens) if (c.remote) addGroup(c.remote.who, c.remote.device, rosterRow(c));
-  for (const grp of groups.values()) html += `<li class="grp-head">${esc(grp.title)}</li>` + grp.rows.join('');
+  for (const g of remoteGovs.values()) addGroup(g.who, g.device, g.dev, remoteGovRow(g));
+  for (const c of citizens) if (c.remote) addGroup(c.remote.who, c.remote.device, c.remote.dev, rosterRow(c));
+  for (const grp of groups.values()) {
+    const color = memberColorMap[grp.dev] || '#B9BEDD';
+    html += `<li class="grp-head"><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;vertical-align:middle"></i>${esc(grp.title)}</li>` + grp.rows.join('');
+  }
   if (html !== lastRoster) { $('#roster').innerHTML = html; lastRoster = html; }
 }
 let lastDetailKey = '';
@@ -2800,12 +2923,13 @@ function renderDetail(){
     if (c && c.remote) {
       // city-join: view only -- who, device, repo, branch, what it is doing, remoteNote(); never
       // an answer, allow or deny button (requirements/city.md, Joining).
+      const name = memberName(c.remote.who, c.remote.device);
       el.innerHTML = `
-        <div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(c.remote.who)} · ${esc(c.remote.device)}</div><div class="d-role">${esc(ROLES[c.role].zh)}</div></div></div>
+        <div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(memberLabel(c.remote.who, c.remote.device))}</div><div class="d-role">${esc(ROLES[c.role].zh)}</div></div></div>
         <div class="kv"><span>仓库</span><code>${esc(c.remote.rid)}</code></div>
         <div class="kv"><span>分支</span><code>${esc(c.remote.br)}</code></div>
         <div class="kv"><span>在做</span><b>${esc(c.task)}</b></div>
-        <div class="why">${esc(remoteNote(c.remote.who))}</div>`;
+        <div class="why">${esc(remoteNote(name))}</div>`;
     } else if (c) {
       const [g, zh] = citizenStatus(c, governorCount), kind = c.bld ? TYPE_ZH[c.bld.type] : '干活';
       const qa = [...c.qa.map(x => `<p>问：<b>“${esc(x.q)}”</b></p><p>答：<b>“${esc(x.a)}”</b></p>`), (c.stuck ? `<p>问：<b>“${esc(c.question)}”</b> 等回答…</p>` : '')].join('');
@@ -2826,7 +2950,7 @@ function renderDetail(){
       const rg = remoteGovs.get(selected.id);
       el.innerHTML = `
         <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">${esc(govSign(rg))}</div><div class="d-role">main manager · 总督</div></div><span class="pill gov">市政厅</span></div>
-        <div class="why">${esc(remoteNote(rg.who))}</div>`;
+        <div class="why">${esc(remoteNote(memberName(rg.who, rg.device)))}</div>`;
     } else if (b) {
       const owner = byId(b.ownerId);
       el.innerHTML = `
@@ -3251,7 +3375,22 @@ function panBy(dx, dy){
   cam.tx = clamp(cam.tx - (dx * c - dy * s * f) * k, -land.hx, land.hx);
   cam.tz = clamp(cam.tz - (-dx * s - dy * c * f) * k, -land.hz, land.hz);
 }
+/* city-join: hover -- pointermove with no button down picks the person under the pointer (pickAt)
+   into the top-level `hovered`, so tagVisible() can show that one person's name tag + device chip.
+   Cheap: the raycast itself only runs at most every HOVER_MS, never on every mousemove. */
+const HOVER_MS = 80;
+let lastHoverAt = -Infinity;
+function sameHit(a, b){ return a === b || !!(a && b && a.t === b.t && a.id === b.id); }
 canvas.addEventListener('pointermove', e => {
+  if (e.buttons === 0 && !pointers.size) {
+    const now = performance.now();
+    if (now - lastHoverAt >= HOVER_MS) {
+      lastHoverAt = now;
+      const r = canvas.getBoundingClientRect();
+      const hit = pickAt(e.clientX - r.left, e.clientY - r.top);
+      if (!sameHit(hit, hovered)) { hovered = hit; needFrame = true; }
+    }
+  }
   if (!pointers.has(e.pointerId)) return;
   pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
   if (pinch && pointers.size === 2) {
@@ -3283,6 +3422,7 @@ function endPointer(e){
 }
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('pointerleave', () => { if (hovered) { hovered = null; needFrame = true; } });
 canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = clamp(cam.dist * (e.deltaY < 0 ? 1 / 1.1 : 1.1), DIST_MIN, distMax()); camChanged(); }, { passive:false });
 
 /* ---------- opening scene: a city mid-day, not an empty land (Growth: DEMO_WORLD already has some grown territories) ---------- */
@@ -3304,9 +3444,11 @@ function seedDemoRemote(){
   if (!terr) return;
   meInfo = { who: 'Maverick', device: 'mac-mini' };
   apply({ type: 'relay', host: DEMO_RELAY_HOST, state: 'ok', queued: 0 });
-  apply({ type: 'remote', who: 'Maverick', device: 'pc2', dev: 'dev-pc2', rid: 'acme/shop', br: 'main',
+  // city-join: pc2's who is blank on purpose (like a machine with no git user.name) so the demo
+  // shows memberName()'s device fallback -- everything else here is a normal member.
+  apply({ type: 'remote', who: '', device: 'pc2', dev: 'dev-pc2', rid: 'acme/shop', br: 'main',
     ev: { type: 'gov', id: 'r:dev-pc2:gov', state: 'busy', terr, present: true } });
-  apply({ type: 'remote', who: 'Maverick', device: 'pc2', dev: 'dev-pc2', rid: 'acme/shop', br: 'test/checkout',
+  apply({ type: 'remote', who: '', device: 'pc2', dev: 'dev-pc2', rid: 'acme/shop', br: 'test/checkout',
     ev: { type: 'spawn', id: 'r:dev-pc2:s:1', role: 'worker', label: 'worker', task: '写结账测试', terr } });
   apply({ type: 'remote', who: 'Ann', device: 'ann-laptop', dev: 'dev-ann', rid: 'acme/shop', br: 'main',
     ev: { type: 'gov', id: 'r:dev-ann:gov', state: 'busy', terr, present: true } });
