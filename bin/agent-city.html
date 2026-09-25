@@ -639,13 +639,19 @@ function fenceRing(){
 /* siteDecor(site) -> [{key, x, z, ...}] (pure, v1 limits): live -- a low fence ring around the office
    (people may step over it, so it is never a footprint), the branch sign, the site light (on unless
    idle), scaffolding while working, a barrier + smoke while stalled, a flag while human-direct. merging
-   -- the same minus the fence (it "goes" first, before the lane and the packing). packing -- nothing
-   (the office itself is packing up and going). */
+   -- the same minus the fence (it "goes" first, before the lane and the packing), plus the office cabin
+   itself (bounce 4, owner: the server frees the office the moment site_end arrives, so officeDecor stops
+   drawing it well before the merge lane finishes growing -- siteDecor keeps it standing here for exactly
+   the 'merging' phase, so the order reads: fence goes, lane is laid, then the office packs up). packing
+   -- nothing (the office itself is packing up and going; a short shrink of what was drawn is the 3D
+   view's own call, not this pure function's). */
 function siteDecor(site){
   if (!site || site.phase === 'packing') return [];
   const cx = site.x + .5, cz = site.z + .5, out = [];
   if (site.phase === 'live') {
     for (const f of fenceRing()) out.push({ key: 'roads/construction-fence', x: cx + f.dx, z: cz + f.dz, ry: f.ry });
+  } else if (site.phase === 'merging') {
+    out.push({ key: 'kaykit-medieval/building_home_A_blue', x: cx, z: cz, ry: .5 }); // officeDecor's own key/ry
   }
   out.push({ key: 'survival/signpost-single', x: cx - .9, z: cz - .9, text: site.branch || '' });
   out.push({ key: 'roads/construction-light', x: cx + .9, z: cz - .9, on: site.status !== 'idle' });
@@ -2031,10 +2037,12 @@ function apply(ev){
       // from, in case the site record was never seen live on this page (a page opened after the fact).
       const phase = ev.how === 'merged' ? 'merging' : 'packing';
       const prev = sites.get(ev.id);
+      const branch = (prev && prev.branch) || ev.branch || ev.id;
       if (prev) Object.assign(prev, { phase, endAt: simT, x: ev.x != null ? ev.x : prev.x, z: ev.z != null ? ev.z : prev.z });
       else sites.set(ev.id, { id: ev.id, terr: ev.terr, branch: '', module: '', status: 'working', human: false,
         stalled: false, x: ev.x, z: ev.z, phase, endAt: simT });
       if (typeof syncSiteMesh === 'function') syncSiteMesh(ev.id);
+      log(phase === 'merging' ? `${branch} 合并进主线，工地收工` : `${branch} 的工地撤了`);
       return null;
     }
     case 'era': {
@@ -3042,6 +3050,7 @@ function siteModelOpt(bare){
   if (bare === 'construction-light') return { h: ch * .58 }; // "half to two-thirds of the cabin's height"
   if (bare === 'construction-fence') return { h: ch / 3 };   // "height roughly a third of the cabin"
   if (bare === 'construction-barrier') return { h: ch * .28 }; // "keep the barrier small"
+  if (bare === 'building_home_A_blue') return OFFICE_OPT['kaykit-medieval/' + bare] || { fit: 1.25 }; // merging: officeDecor's own size
   return { fit: .8 };
 }
 function removeSiteMesh(rec){
@@ -3049,23 +3058,38 @@ function removeSiteMesh(rec){
   if (rec.road && rec.road.parent) rec.road.parent.remove(rec.road);
   for (const p of rec.smoke || []) if (p.sprite.parent) p.sprite.parent.remove(p.sprite);
 }
-/* a thin flat lane segment, grown by scale/position/rotation only (updateSiteFrames) -- never a fresh
-   geometry per frame (Limits: keep frame cost low). Colour: the site's own territory road colour
-   (ERA_LOOK[eraShown(t)].road), the same lane colour laneGeometry paints everywhere else. */
+/* the merge lane: a plain-colour ribbon quad, the same technique laneGeometry already uses for every
+   other road in the game (a few verts at y .02 plus polygonOffset, never a raised box a fixed height
+   above a ground that may not sit exactly at that height everywhere -- bounce 4, owner, measured: "only
+   a small flat patch... just above the ground so it never z-fights"). Its own 4 positions are rewritten
+   every frame (updateRoadMesh) -- cheap, unlike the static decor meshes above, since it is only ever 4
+   vertices; frustumCulled is off so a stale bounding sphere from a previous frame never clips it. Colour:
+   the site's own territory road colour (ERA_LOOK[eraShown(t)].road), same as laneGeometry paints. */
+const MERGE_LANE_HALF = .25; // "about 0.5 tile wide" (owner, bounce 4)
 function makeRoadMesh(terr){
   const t = terrOf(terr), color = t ? eraLook(t).road : TRACK_COLOR;
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, .04, 1), new THREE.MeshLambertMaterial({ color }));
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(12), 3));
+  geo.setIndex([0, 1, 2, 1, 3, 2]);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
   mesh.receiveShadow = true;
+  mesh.frustumCulled = false;
   siteGroup.add(mesh);
   return mesh;
 }
 function updateRoadMesh(mesh, from, to, p){
-  const dx = to.x - from.x, dz = to.y - from.y, full = Math.hypot(dx, dz) || .001, len = full * clamp(p, 0, 1);
-  mesh.visible = len > .05;
+  const q = clamp(p, 0, 1);
+  mesh.visible = q > .02;
   if (!mesh.visible) return;
-  mesh.position.set(from.x + (dx / full) * len / 2, .02, from.y + (dz / full) * len / 2);
-  mesh.rotation.y = Math.atan2(dx, dz);
-  mesh.scale.set(.6, 1, Math.max(.05, len));
+  const dx = to.x - from.x, dz = to.y - from.y, full = Math.hypot(dx, dz) || .001, nx = -dz / full, nz = dx / full;
+  const ex = from.x + dx * q, ez = from.y + dz * q, y = .02, hw = MERGE_LANE_HALF;
+  const pos = mesh.geometry.attributes.position;
+  pos.setXYZ(0, from.x + nx * hw, y, from.y + nz * hw);
+  pos.setXYZ(1, from.x - nx * hw, y, from.y - nz * hw);
+  pos.setXYZ(2, ex + nx * hw, y, ez + nz * hw);
+  pos.setXYZ(3, ex - nx * hw, y, ez - nz * hw);
+  pos.needsUpdate = true;
+  mesh.geometry.computeBoundingSphere();
 }
 /* syncSiteMesh(id): rebuild one site's static meshes only when siteMeshSig changed (or it is new); a
    gone site (not in the sites map any more) drops its meshes. Called from apply()'s 'site'/'site_end'
