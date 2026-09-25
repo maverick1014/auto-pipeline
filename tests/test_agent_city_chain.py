@@ -629,7 +629,7 @@ const OF = A.offices[0], OC = { x: OF.x + .5, y: OF.z + .5 }, RC = { x: A.rest.x
 function buildLand(view){ landState(view); }
 function tick(sec){ for (let i = 0; i < Math.round(sec * 10); i++) update(.1); }
 const pos = id => { const c = byId(id); return c ? { x: c.x, y: c.y, state: c.state } : null; };
-const who = () => citizens.filter(c => !c.gone && c.state !== 'leaving').map(c => ({ id: c.id, x: c.x, y: c.y }));
+const who = () => citizens.filter(c => !c.gone && c.state !== 'leaving' && !(c.path && c.path.length)).map(c => ({ id: c.id, x: c.x, y: c.y })); // standing people (strollers may pass)
 apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: A.id }, governors: 2, asks: [], shows: [],
   govs: [{ terr: A.id, state: 'busy' }, { terr: B.id, state: 'idle' }], agents: [
   { id: 's:L', role: 'task-manager', label: 'task-manager', task: 'city-people', stuck: false, done: false, tools: { Bash: 2 }, terr: A.id, lead: '', office: { x: OF.x, z: OF.z }, relay: '' },
