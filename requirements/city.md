@@ -48,8 +48,10 @@
 - Where the land ends it may meet sea (the coast terrain); that is the only sea.
 - Territory size grows with the repo's git-tracked code lines. Not counted: binaries, images, 3D models, vendor, lock files.
 - New repo = tiny territory with a small town hall only.
-- The city is never empty: when the server starts it shows the territory of the repo it was started from, plus every territory saved in world.json, at once, before any agent acts. Old sessions whose events carry no repo never create a territory and never block this.
-- With no territory at all (started outside a repo, empty world) the page still works: zoom in and out always move, the governor never floats in the void, a short line says no territory yet.
+- The city is never empty: when the server starts it shows the territory of the dir it was started from (its git repo; a plain folder counts too), plus every territory saved in world.json, at once, before any agent acts.
+- Minimum size: every territory, even an empty repo with 0 code lines, has at least a small land and a town hall.
+- Old data is dropped (owner 2026-09-25, nobody uses it): territories saved without a repo identity are removed from world.json on load; events without a repo go to the start territory, never make their own.
+- Zoom in and out always move; the governor stands at a hall, never in the void.
 - Territory edge is natural: river bank, cliff, forest edge, or beach on the coast. No brown earth block sides, no hard line.
 - Territory shape is uneven: organic edge, never a square or rectangle. Growth adds land at the edge and keeps it uneven.
 - Same repo → same shape every time (shape seeded from the repo identity), so reopening shows the territory the owner remembers.
