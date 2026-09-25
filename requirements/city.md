@@ -80,6 +80,7 @@
 - The 5 plans go through the mock gate: owner sees all 5 before real code.
 - Every building means something and says so. Click a building → its card: name (the task it was built for, e.g. "设置页 API"), what it is (kind and district), the feature it stands for (its module or folder and the files it covers), built when and by whom, and its history of touch-ups (who changed its files and when, newest first).
 - Each building remembers the files it was built for. An agent leaving never removes its building. The files behind a building deleted → the building is demolished (a short demolition). Code comes back or is rewritten → a new building goes up.
+- Idle people are calm: no looping gestures (the governor does not keep waving); they mostly stand, and now and then take a slow walk around their territory to look at the city, then come back. The governor strolls near his hall and returns at once when a question or permission needs him.
 - People never walk through models: buildings, halls, trees, rocks, lamps, fountains, cars and tables block their footprint; paths go around, and people re-route when something new is built.
 - A rest place per territory: appears when the first agent there finishes (day 0 stays bare). Benches and parasols first, a cafe and park with the eras. Free agents hang out there.
 - Planned, not built: when a district is full, buildings level up (taller, bigger) instead of nothing happening.
