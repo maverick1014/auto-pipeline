@@ -297,17 +297,20 @@ class TestSize(unittest.TestCase):
         b = ac.territory_tiles(p, "/x/.git", 1000000)["land"]
         self.assertGreater(len(b), len(a) * 1.1)
 
-    def test_day_zero_is_a_tiny_town_hall_only(self):
+    def test_day_zero_is_a_tiny_town_hall_and_one_plot_per_district(self):
+        # city-people (requirements 3bec3dd + main manager): the minimum land opens the first plot of every
+        # district so any first edit can build; no building on day 0 (tests/test_agent_city_minland.py)
         for i, p in enumerate(plans()):
             with self.subTest(plan=p["id"]):
+                districts = len({d for _, _, d in p["plots"]})
                 t = ac.territory_tiles(p, "/day0/%d/.git" % i, 0)
-                self.assertEqual(t["open"], 0, "no plot on day 0")
-                self.assertLessEqual(len(t["land"]), 16)
+                self.assertEqual(t["open"], districts)
                 self.assertTrue({(-1, -1), (0, -1), (-1, 0), (0, 0)} <= t["land"])
                 w = world_of(("/day0/%d/.git" % i, 0))
                 v = ac.layout(w, plans())
-                self.assertFalse(set("rP") & {tile(v, x, z) for x in range(-13, 13) for z in range(-13, 13)},
-                                 "day 0: bare terrain, no road, no plot")
+                chars = [tile(v, x, z) for x in range(-13, 13) for z in range(-13, 13)]
+                self.assertEqual(chars.count("P"), districts, "one open plot per district")
+                self.assertEqual(v["territories"][0]["buildings"], [], "no building on day 0")
 
     def test_growth_adds_land_at_the_edge_and_keeps_the_old_land(self):
         p = plans()[1]
