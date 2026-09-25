@@ -336,7 +336,6 @@ const DIST_DEFAULT = 9;
 const TARGET_Y = .4;
 const CAM_CLEAR = .35;
 const AUTO_ROT_SEC = 300;
-const AUTO_ROT_IDLE_MS = 10000;
 const CARD_KEY = 'agent-city-cards';
 const SHOW_SEC = 60;
 const SHOW_FLIP = 52;
@@ -3754,14 +3753,17 @@ function seed(){
 /* ---------- boot: load the ready-made models, then run at a capped frame rate ---------- */
 let lastSim = performance.now(), lastDraw = 0, panelT = 0;
 function busy(){
-  if (drag && drag.moved || pinch || camTween || autoRotating(performance.now())) return true;
+  if (drag && drag.moved || pinch || camTween || autoRotating()) return true;
   if (floaters.length) return true;
   if (typeof shows !== 'undefined' && shows.size) return true; // Balance: an era show is running (builders walking, about to flip)
   return citizens.some(c => c.path.length || c.state === 'building' || c.state === 'spawn' || c.state === 'asking');
 }
-function autoRotating(now){ return !RM && !drag && !pinch && !camTween && now - lastTouch >= AUTO_ROT_IDLE_MS; }
+// owner 2026-09-25: the camera never stops turning — clicks, drags, pinch/wheel zoom and any
+// panel (cards, the "?" panel) leave it running; only reduced motion, or a camera tween (reset/
+// fit) that needs to finish without a fight, pause it.
+function autoRotating(){ return !RM && !camTween; }
 function autoRotate(now, dt){
-  if (autoRotating(now)) cam.az -= dt * Math.PI * 2 / AUTO_ROT_SEC;
+  if (autoRotating()) cam.az -= dt * Math.PI * 2 / AUTO_ROT_SEC;
 }
 function frame(now){
   requestAnimationFrame(frame);
