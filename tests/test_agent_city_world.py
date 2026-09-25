@@ -573,10 +573,17 @@ class TestBuild(unittest.TestCase):
             self.assertIsNotNone(ac.build(self.w, self.ps, self.id, "doc", "d%d" % i, "w", 1.0))
         self.assertIsNone(ac.build(self.w, self.ps, self.id, "doc", "late", "w", 1.0))
 
-    def test_no_open_plot_on_day_zero(self):
+    def test_day_zero_has_one_plot_per_district(self):
+        # city-people (requirements 3bec3dd + main manager): any first edit builds, a second of the same
+        # district waits for growth (tests/test_agent_city_minland.py)
         w = world_of(("/new/.git", 0))
-        for kind in ac.KIND_TYPE:
-            self.assertIsNone(ac.build(w, self.ps, "/new/.git", kind, "x-" + kind, "w", 1.0))
+        plan = next(p for p in self.ps if p["id"] == w["territories"]["/new/.git"]["plan"])
+        districts = {d for _, _, d in plan["plots"]}
+        for kind, district in ac.KIND_TYPE.items():
+            if district not in districts:
+                continue
+            self.assertIsNotNone(ac.build(w, self.ps, "/new/.git", kind, "x-" + kind, "w", 1.0))
+            self.assertIsNone(ac.build(w, self.ps, "/new/.git", kind, "y-" + kind, "w", 1.0))
 
     def test_no_kind_no_building(self):
         self.assertIsNone(ac.build(self.w, self.ps, self.id, "", "a1", "w", 1.0))

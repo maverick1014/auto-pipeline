@@ -75,10 +75,20 @@ TOOL_MAP = {
 
 GOV_BUSY_EVENTS = ("PostToolUse", "PreToolUse", "UserPromptSubmit")
 STUCK_NOTIFICATIONS = ("permission_prompt", "idle_prompt")
+MAX_NAMES = 200  # world.json "names": at most this many live citizens, oldest dropped
 
 
 def _trim(value, limit):
     return value[:limit] if len(value) > limit else value
+
+
+def bare_type(value):
+    """The text after the last ":" in an agent type ("auto-pipeline:worker"
+    -> "worker"; "worker" -> "worker"; "" -> ""): anything before is a
+    plugin name, never part of the role or label."""
+    if not isinstance(value, str):
+        return ""
+    return value.rsplit(":", 1)[-1]
 
 
 class Reducer:
@@ -292,17 +302,19 @@ class Reducer:
         return events
 
     def _spawn_subagent(self, sid, aid, at):
-        role = self._normalize_role(at)
-        label = _trim(at, 30)
-        desc = self._take_queued(sid, at)
-        task = _trim(desc, 40) if desc is not None else _trim(at, 40)
+        bare_at = bare_type(at)
+        role = self._normalize_role(bare_at)
+        label = _trim(bare_at, 30)
+        desc = self._take_queued(sid, bare_at)
+        task = _trim(desc, 40) if desc is not None else _trim(bare_at, 40)
         self._create_agent(aid, role, label, task, owner=sid, kind="subagent")
         return [{"type": "spawn", "id": aid, "role": role, "label": label, "task": task}]
 
     def _auto_spawn_subagent(self, sid, aid, at):
-        role = self._normalize_role(at)
-        label = _trim(at, 30)
-        task = _trim(at, 40)
+        bare_at = bare_type(at)
+        role = self._normalize_role(bare_at)
+        label = _trim(bare_at, 30)
+        task = _trim(bare_at, 40)
         self._create_agent(aid, role, label, task, owner=sid, kind="subagent")
         return [{"type": "spawn", "id": aid, "role": role, "label": label, "task": task}]
 
@@ -360,11 +372,14 @@ class Reducer:
         q.append((sub, desc))
 
     def _take_queued(self, sid, at):
+        """AT is already bare_type()'d; SUB (the queued PreToolUse
+        subagent_type) may still carry a plugin prefix, so it is compared
+        bare too."""
         q = self.pending.get(sid)
         if not q:
             return None
         for i, (sub, desc) in enumerate(q):
-            if sub == at:
+            if bare_type(sub) == at:
                 del q[i]
                 return desc
         for i, (sub, desc) in enumerate(q):
@@ -802,12 +817,16 @@ class CityState:
 
             events = reducer.feed(obj, now)
             gov_seen = False
+            names_dirty = False
             for ev in events:
                 etype = ev.get("type")
                 if etype == "spawn":
+                    self._apply_saved_name_locked(ev, reducer)
                     ev["terr"] = terr
                     self.agent_terr[ev["id"]] = terr
                     self._decorate_spawn(ev, obj, identity, terr)
+                    if self._remember_name_locked(ev["id"], ev["label"], ev["task"]):
+                        names_dirty = True
                 elif etype == "gov":
                     gov_seen = True
                     self.gov_terr = terr
@@ -817,9 +836,14 @@ class CityState:
                 elif etype == "leave":
                     self.agent_terr.pop(ev["id"], None)
                     self._on_leave(ev["id"], identity, terr)
+                    if self._forget_name_locked(ev["id"]):
+                        names_dirty = True
                 elif etype == "done":
                     self._maybe_open_rest(identity)
                 self._broadcast(ev)
+
+            if names_dirty:
+                self._save_world_locked()
 
             if was_gov and not gov_seen:
                 # a governor whose state was already idle (after Stop) still
@@ -1065,6 +1089,43 @@ class CityState:
         except OSError as exc:
             print("agent_city: could not save world.json: %s" % exc, file=sys.stderr)
 
+    def _apply_saved_name_locked(self, ev, reducer):
+        """Caller holds self.lock. A citizen id world.json remembers from
+        before a restart: the fresh spawn's label/task (derived only from
+        this line, so a lost SubagentStart line forgets the real task) is
+        overwritten with the saved ones, in both the event and the
+        Reducer's own agent record."""
+        names = self.world.get("names")
+        saved = names.get(ev["id"]) if names else None
+        if saved is None:
+            return
+        ev["label"] = saved.get("label", ev.get("label", ""))
+        ev["task"] = saved.get("task", ev.get("task", ""))
+        agent = reducer.agents.get(ev["id"])
+        if agent is not None:
+            agent["label"] = ev["label"]
+            agent["task"] = ev["task"]
+
+    def _remember_name_locked(self, cid, label, task):
+        """Caller holds self.lock. Saves CID's label/task for a future
+        restart, at most MAX_NAMES (oldest dropped). Returns whether
+        world.json needs saving."""
+        names = self.world.setdefault("names", {})
+        names.pop(cid, None)
+        names[cid] = {"label": label, "task": task}
+        while len(names) > MAX_NAMES:
+            del names[next(iter(names))]
+        return True
+
+    def _forget_name_locked(self, cid):
+        """Caller holds self.lock. A citizen that left is forgotten.
+        Returns whether world.json needs saving."""
+        names = self.world.get("names")
+        if names and cid in names:
+            del names[cid]
+            return True
+        return False
+
     def _emit_world_locked(self):
         """Caller holds self.lock. The world changed: recompute the view,
         broadcast it, save at once."""
@@ -1078,11 +1139,13 @@ class CityState:
         known = reducer.agents.get(owner)
         if known is not None:
             return known["label"]
-        return at or role
+        return bare_type(at) or role
 
     def _maybe_build(self, obj, identity, terr):
         """Caller holds self.lock. A PostToolUse line with a known kind
-        builds in its agent's territory. Never counts code lines."""
+        builds in its agent's territory. Never counts code lines. No free
+        open plot in that kind's district: says so (noplot), unless the
+        owner already has a building here (silent, as before)."""
         kind = obj.get("kind")
         if identity is None or not isinstance(kind, str) or kind not in KIND_TYPE:
             return
@@ -1094,8 +1157,13 @@ class CityState:
         is_gov = (not aid) and sid != "" and sid == reducer.gov_sid
         owner = aid or ("s:" + sid)
         by = self._build_by(reducer, owner, at, role, is_gov)
+        t = self.world["territories"].get(identity)
+        if t is not None and any(b["owner"] == owner for b in t["buildings"]):
+            return
         b = build(self.world, self.plans, identity, kind, owner, by, time.time())
         if b is None:
+            self._broadcast({"type": "noplot", "id": "gov" if is_gov else owner, "terr": terr,
+                              "btype": KIND_TYPE[kind], "by": by})
             return
         self._invalidate_view()
         view = self._view()
@@ -1279,12 +1347,13 @@ class CityState:
     # -- asks: creation ---------------------------------------------------
 
     def _agent_view(self, sid, aid, at, role, repo):
+        bare_at = bare_type(at)
         if aid:
             cid = aid
-            fallback = at or role
+            fallback = bare_at or role
         else:
             cid = "s:" + sid
-            fallback = role or at
+            fallback = role or bare_at
         reducer = self._reducer_for(repo if repo else None, create=False)
         known = reducer.agents.get(cid) if reducer is not None else None
         if known is not None:
@@ -2697,6 +2766,18 @@ def _open_count(plan, r):
     return n
 
 
+def open_plots(plan, lines):
+    """Sorted plot indexes open at this size: the first plot of every
+    district PLAN defines (so a fresh territory, 0 lines included, already
+    has room for a first building of every kind), plus the plan-order
+    growth prefix (_open_count)."""
+    first = {}
+    for k, (_, _, d) in enumerate(plan["plots"]):
+        first.setdefault(d, k)
+    n = _open_count(plan, radius(lines))
+    return sorted(set(first.values()) | set(range(n)))
+
+
 def territory_tiles(plan, identity, lines):
     """{"r", "g", "open", "land"}: the organic land shape (local tile
     coords) a territory this size has on this plan, for this repo's
@@ -2710,13 +2791,14 @@ def territory_tiles(plan, identity, lines):
             cx, cz = x + 0.5, z + 0.5
             if _is_hall(x, z) or math.hypot(cx, cz) <= r * _mult(shape, math.atan2(cz, cx)):
                 land.add((x, z))
-    n = _open_count(plan, r)
-    for x, z, _ in plan["plots"][:n]:
+    opens = open_plots(plan, lines)
+    for k in opens:
+        x, z, _ = plan["plots"][k]
         land.add((x, z))
         front = _front_of_plot(roads, x, z)
         if front is not None:
             land.add(front)
-    return {"r": r, "g": growth(lines), "open": n, "land": land}
+    return {"r": r, "g": growth(lines), "open": len(opens), "land": land}
 
 
 def _plans_file_path():
@@ -2822,9 +2904,8 @@ def build(world, plans, identity, kind, owner, by, now):
     if any(b["owner"] == owner for b in t["buildings"]):
         return None
     plan = _plan_by_id(plans, t["plan"])
-    n = _open_count(plan, radius(t["peak"]))
     taken = {b["plot"] for b in t["buildings"]}
-    for k in range(n):
+    for k in open_plots(plan, t["peak"]):
         x, z, district = plan["plots"][k]
         if district == building_type and k not in taken:
             b = {"plot": k, "type": building_type, "owner": owner, "by": by, "at": now}
@@ -2981,7 +3062,9 @@ def layout(world, plans):
         for x, z in tr["land"]:
             if get(ox + x, oz + z) == ".":
                 set_tile(ox + x, oz + z, "r" if (x, z) in roads else "g")
-        for x, z, _ in plan["plots"][:tr["open"]]:
+        opens = open_plots(plan, t["peak"])
+        for k in opens:
+            x, z, _ = plan["plots"][k]
             set_tile(ox + x, oz + z, "P")
         for x in range(-1, 1):
             for z in range(-1, 1):
@@ -2998,8 +3081,8 @@ def layout(world, plans):
                 for dz in (0, 1):
                     set_tile(ox + rx + dx, oz + rz + dz, "g")
 
-        open_plots = [{"k": k, "x": ox + x, "z": oz + z, "d": d}
-                      for k, (x, z, d) in enumerate(plan["plots"][:tr["open"]])]
+        plots_view = [{"k": k, "x": ox + plan["plots"][k][0], "z": oz + plan["plots"][k][1],
+                       "d": plan["plots"][k][2]} for k in opens]
         buildings_view = []
         for b in t["buildings"]:
             px, pz, _ = plan["plots"][b["plot"]]
@@ -3013,7 +3096,7 @@ def layout(world, plans):
             "id": territory_id(ident), "name": t["name"], "plan": plan["id"],
             "terrain": plan["terrain"], "slot": list(t["slot"]), "cx": ox, "cz": oz,
             "lines": t["lines"], "size": growth(t["peak"]), "r": tr["r"], "open": tr["open"],
-            "plots_total": len(plan["plots"]), "plots": open_plots, "buildings": buildings_view,
+            "plots_total": len(plan["plots"]), "plots": plots_view, "buildings": buildings_view,
             "era": era, "balance": balance, "next": next_needs(t["peak"], balance, era),
             "rules_note": _rules_note(t["name"], t.get("rules_bad", [])),
             "offices": offices_view, "rest": rest_view,
