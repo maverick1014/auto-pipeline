@@ -1976,8 +1976,12 @@ function apply(ev){
       // city-land First view: govTerr must be set BEFORE buildLand (which calls updateHome()), so the very
       // first camera home is the governor's own hall, not whichever territory happens to sort first.
       if (ev.gov && ev.gov.terr) govTerr = ev.gov.terr;
+      // Worktrees: syncSites BEFORE buildLand -- buildLand's own syncAllSiteMeshes() (its last line) reads
+      // the sites map as it stands right then, and a page that only just connected must show sites that
+      // already existed before it did (bundled straight into this very snapshot's world, never a separate
+      // 'site' event of their own); syncSites after buildLand left that first paint with nothing to draw.
+      if (ev.world) syncSites(ev.world);
       if (ev.world) buildLand(ev.world); else if (ev.gov && ev.gov.terr) updateHome();
-      if (ev.world) syncSites(ev.world); // Worktrees: every territory's own "sites" list, phase 'live'
       if (ev.world) { lastBalanceKey = ''; renderBalance(); }
       if (ev.notice) log(ev.notice);
       for (const old of citizens) applyAsk(old, null);
@@ -1993,8 +1997,8 @@ function apply(ev){
       return null;
     }
     case 'world': {
+      syncSites(ev.world); // Worktrees: before buildLand -- see the snapshot case's own comment above
       buildLand(ev.world);
-      syncSites(ev.world); // Worktrees: same rule as the snapshot's own world
       lastBalanceKey = ''; renderBalance();
       if (ev.notice) log(ev.notice);
       return null;
