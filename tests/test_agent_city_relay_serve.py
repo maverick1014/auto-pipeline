@@ -35,7 +35,7 @@ bin/agent_city_relay.py (tests/test_agent_city_relay_client.py) for the rest:
        "people": [ {Reducer snapshot agent + "id" prefixed, "terr", "who",
                     "device", "rid", "br", "dev"} ],
        "govs":   [ {"id", "state", "terr", "who", "device", "dev"} ],
-       "relay":  [ {"host", "state", "queued"} ]}
+       "teams":  [ {"host", "state", "queued"} ]}
     me: RelayHub.identity() -> {"who": git user.name of a joined repo,
     "device": the hub's label}.
   A sender device silent for --remote-ttl-sec (default 600): its people get
@@ -43,8 +43,9 @@ bin/agent_city_relay.py (tests/test_agent_city_relay_client.py) for the rest:
   forgotten.
 
   A team's state goes to the page when it changes, and while it is "off" also
-  when its queued count changes (at most once a second):
-      {"type": "relay", "host": "<relay host[:port]>",
+  when its queued count changes (at most once a second). Its type is "team":
+  "relay" is taken by city-people (a question passed up the chain).
+      {"type": "team", "host": "<relay host[:port]>",
        "state": "ok" | "off" | "refused" | "left", "queued": <int>}
   "off" is what the page shows as 联城断开. "left": the team was dropped
   (leave, or a new key); every person and gov of that team's devices then
@@ -269,7 +270,7 @@ class TestJoined(RelayServerCase):
                          [("r:dev-bo:s:t1", "Bo", "bo-laptop", self.terr(), "dev-bo")])
         self.assertEqual([(g["id"], g["who"], g["state"], g["dev"]) for g in snap["govs"]],
                          [("r:dev-cy:gov", "Cy", "busy", "dev-cy")])
-        self.assertEqual([(r["host"], r["state"]) for r in snap["relay"]], [(self.fake.host, "ok")])
+        self.assertEqual([(r["host"], r["state"]) for r in snap["teams"]], [(self.fake.host, "ok")])
         kinds = [m.get("type") for m in late.messages]
         self.assertLess(kinds.index("snapshot"), kinds.index("remote_snapshot"))
 
@@ -293,13 +294,13 @@ class TestJoined(RelayServerCase):
 
     def test_relay_state_events_on_change_only(self):
         client = self.started()
-        ok = lambda: [e for e in client.events("relay") if e["state"] == "ok"]
+        ok = lambda: [e for e in client.events("team") if e["state"] == "ok"]
         self.assertTrue(wait_for(ok))
         self.assertEqual((ok()[0]["host"], ok()[0]["queued"]), (self.fake.host, 0))
         time.sleep(1.0)  # about five more syncs
         self.assertEqual(len(ok()), 1, "state is sent when it changes")
         self.fake.stop()
-        off = lambda: [e for e in client.events("relay") if e["state"] == "off"]
+        off = lambda: [e for e in client.events("team") if e["state"] == "off"]
         self.assertTrue(wait_for(off), "no 联城断开 event")
         for i in range(3):
             self.add(sid="later%d" % i)
@@ -314,7 +315,7 @@ class TestJoined(RelayServerCase):
         client = self.sse()
         self.add(sid="s1")
         self.assertTrue(wait_for(lambda: any(e["state"] == "refused" and e["host"] == self.fake.host
-                                             for e in client.events("relay"))))
+                                             for e in client.events("team"))))
 
     def test_leave_removes_everyone_of_that_team(self):
         client = self.started()
@@ -323,8 +324,8 @@ class TestJoined(RelayServerCase):
                                             who="Ann", dev="ann-laptop"))
         self.assertTrue(wait_for(lambda: len(client.events("remote")) == 2))
         os.remove(os.path.join(self.repo, ".secrets", "agent-city-relay"))
-        self.assertTrue(wait_for(lambda: any(e["state"] == "left" for e in client.events("relay"))),
-                        "no 'left' relay event")
+        self.assertTrue(wait_for(lambda: any(e["state"] == "left" for e in client.events("team"))),
+                        "no 'left' team event")
         evs = [e["ev"] for e in client.events("remote")]
         self.assertIn({"type": "leave", "id": "r:dev-bo:s:t1"}, evs)
         self.assertTrue(any(e.get("id") == "r:dev-ann:gov" and e.get("present") is False

@@ -112,13 +112,13 @@ CONTRACT
       { ..., behind: true }) and instanced() gives such meshes a cloned
       material with polygonOffset = true, polygonOffsetFactor >= 1.
       busy() is true while auto-rotation turns the camera (so live mode with
-      zero agents runs at FRAME_MS like demo); false when nothing moves,
-      within 10 s of a touch, or under reduced motion.
+      zero agents runs at FRAME_MS like demo); false only under reduced
+      motion with nothing else moving.
       autoRotate(now, dt), called from frame(), turns only cam.az, one full
-      turn per 300 s; it does nothing when RM (reduced motion), while drag or
-      pinch is set, or within 10 s (10000 ms) of lastTouch. lastTouch =
-      performance.now() in camChanged and in the canvas pointerdown handler.
-      No button for it.
+      turn per 300 s, and never stops (owner 2026-09-25, replaces the pause
+      on touch): clicks, drags, pinch/zoom, panels and the "?" panel do not
+      pause it; a drag adds to the angle while it keeps turning. Nothing
+      under RM (reduced motion). No button for it.
     Right column <aside class="panel" id="panel"> holds exactly four cards,
       default order detail, balance, citizens, log (Balance added 城市平衡):
         <section class="card" data-card="detail|balance|citizens|log">
@@ -270,7 +270,8 @@ CONTRACT
     <pack>/<name>.glb for every MODELS entry, and nothing unused
     <pack>/Textures/*.png for every texture those models name
     <pack>/License.txt for every pack, each saying CC0
-    Everything together at most 7 MB (Balance raised it from 6 MB).
+    Everything together at most 8 MB (Balance raised it from 6 MB to 7 MB,
+    city-people to 8 MB for the KayKit packs).
 """
 
 import json
@@ -300,7 +301,7 @@ def inline_script():
 
 def models():
     block = re.search(r"const MODELS = \[(.*?)\];", inline_script(), re.S)
-    return re.findall(r"'([a-z]+/[A-Za-z0-9_\-]+)'", block.group(1)) if block else []
+    return re.findall(r"'([a-z][a-z\-]*/[A-Za-z0-9_\-]+)'", block.group(1)) if block else []
 
 
 def glb_images(path):
@@ -457,7 +458,7 @@ class TestAssets(unittest.TestCase):
     def test_size_budget(self):
         total = sum(os.path.getsize(os.path.join(folder, name))
                     for folder, _, files in os.walk(ASSETS) for name in files)
-        self.assertLessEqual(total, 7 * 1024 * 1024, "assets are %.1f MB" % (total / 1048576))
+        self.assertLessEqual(total, 8 * 1024 * 1024, "assets are %.1f MB" % (total / 1048576))
 
 
 # ---------------------------------------------------------------------------
@@ -798,7 +799,7 @@ const clips = ['walk', 'sprint', 'idle', 'interact-right', 'emote-yes', 'jump', 
 }
 // auto-rotation
 {
-  const box = ctx({ cam: { az: 1, el: .7, dist: 6.5, tx: 0, tz: 0 }, drag: null, pinch: null, camTween: null, lastTouch: -Infinity, RM: false });
+  const box = ctx({ cam: { az: 1, el: .7, dist: 6.5, tx: 0, tz: 0 }, drag: null, pinch: null, camTween: null, lastTouch: -Infinity, RM: false, autoRotDir: -1 });
   const turn = (now, dt, setup) => { box.cam.az = 1; box.drag = null; box.pinch = null; box.camTween = null; box.lastTouch = -Infinity; box.RM = false; Object.assign(box, setup || {}); box.autoRotate(now, dt); return box.cam.az - 1; };
   out.rot = {
     idle: turn(100000, 1),
@@ -1136,7 +1137,7 @@ class TestSmoothAndSteady(unittest.TestCase):
 
     def test_still_cheap_when_nothing_moves(self):
         b = unit_results()["busy"]
-        self.assertFalse(b["touched"], "right after a touch, with nothing moving, idle rate is fine")
+        self.assertTrue(b["touched"], "a touch never pauses the rotation (owner 2026-09-25)")
         self.assertFalse(b["reduced"], "reduced motion: no rotation, idle rate")
 
     def test_no_brown_earth_block_sides(self):
@@ -1277,7 +1278,19 @@ class TestZoomOut(unittest.TestCase):
         self.assertAlmostEqual(r["target12"][2], -2, delta=0.01)
 
     def test_tilting_while_fully_zoomed_out_stays_out(self):
-        self.assertRegex(inline_script(), r"const out = cam\.dist >= distMax\(\)[^\n]*cam\.el = clamp\([^\n]*if \(out\) cam\.dist = distMax\(\)")
+        # city-people: an orbit drag is dragBy(dx, dy, limit); the pointer handler passes distMax()
+        down = re.search(r"canvas\.addEventListener\('pointermove', e => \{(.*?)\n\}\);", inline_script(), re.S)
+        self.assertIsNotNone(down, "canvas pointermove handler not found")
+        self.assertRegex(down.group(1), r"dragBy\([^)]*distMax\(\)\)")
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import test_agent_city_people as tpp
+        out = tpp.run_sim(r"""
+cam.dist = 30; dragBy(0, 40, 30); const kept = cam.dist;
+cam.dist = 10; dragBy(0, 40, 30); const near = cam.dist;
+__out = { kept, near };
+""", {}, ("dragBy", "cam"))
+        self.assertEqual(out["kept"], 30, "fully zoomed out, a tilt keeps the camera out")
+        self.assertEqual(out["near"], 10)
 
 
 class TestCamera(unittest.TestCase):
@@ -1342,30 +1355,33 @@ class TestCamera(unittest.TestCase):
         per_second = abs(unit_results()["rot"]["idle"])
         self.assertAlmostEqual(per_second, 2 * 3.141592653589793 / 300, delta=0.003)
 
-    def test_auto_rotation_waits_10s_after_a_touch(self):
+    def test_auto_rotation_never_waits_after_a_touch(self):
         rot = unit_results()["rot"]
-        self.assertEqual(rot["touched5s"], 0)
-        self.assertNotEqual(rot["touched11s"], 0)
+        self.assertNotEqual(rot["idle"], 0)
+        self.assertAlmostEqual(rot["touched5s"], rot["idle"], delta=1e-9)
+        self.assertAlmostEqual(rot["touched11s"], rot["idle"], delta=1e-9)
 
-    def test_auto_rotation_stops_while_dragging_or_zooming(self):
+    def test_auto_rotation_keeps_turning_while_dragging_or_zooming(self):
         rot = unit_results()["rot"]
-        self.assertEqual(rot["dragging"], 0)
-        self.assertEqual(rot["pinching"], 0)
+        self.assertAlmostEqual(rot["dragging"], rot["idle"], delta=1e-9)
+        self.assertAlmostEqual(rot["pinching"], rot["idle"], delta=1e-9)
 
     def test_no_auto_rotation_for_reduced_motion(self):
         self.assertEqual(unit_results()["rot"]["reduced"], 0)
 
     def test_frame_calls_auto_rotate(self):
-        self.assertRegex(function_source("frame") or "", r"\bautoRotate\(")
+        # city-people: frame() -> cameraStep(dt) -> autoRotate(): one rotation path, no comment stand-ins
+        frame = re.sub(r"//[^\n]*|/\*.*?\*/", "", function_source("frame") or "", flags=re.S)
+        self.assertRegex(frame, r"\bcameraStep\(")
+        step = re.sub(r"//[^\n]*|/\*.*?\*/", "", function_source("cameraStep") or "", flags=re.S)
+        self.assertRegex(step, r"\bautoRotate\(")
 
-    def test_touch_and_zoom_reset_the_timer(self):
+    def test_no_pause_timer_left(self):
         text = inline_script()
-        cam_changed = re.search(r"const camChanged = \([^)]*\) => \{[^}]*\}", text)
-        self.assertIsNotNone(cam_changed, "camChanged not found")
-        self.assertRegex(cam_changed.group(0), r"lastTouch = performance\.now\(\)")
-        down = re.search(r"canvas\.addEventListener\('pointerdown', e => \{(.*?)\n\}\);", text, re.S)
-        self.assertIsNotNone(down, "canvas pointerdown handler not found")
-        self.assertRegex(down.group(1), r"lastTouch = performance\.now\(\)")
+        self.assertFalse("AUTO_ROT_IDLE_MS" in text, "no resume-after-10s timer any more")
+        src = function_source("autoRotating") or function_source("autoRotate") or ""
+        self.assertNotIn("drag", src, "a drag never pauses the rotation")
+        self.assertNotIn("pinch", src, "zoom never pauses the rotation")
 
 
 class TestCardsMarkup(unittest.TestCase):
@@ -1886,7 +1902,7 @@ out.walkBlocked = !!box.walkable(0, -1);
 box.blocked.clear();
 const p = box.findPath(-1.5, -1.5, 0.5, -1.5);
 out.path = p;
-out.pathUsesBridge = !!(p && p.some(([x, z]) => x === -0.5 && z === 0.5));
+out.pathUsesBridge = !!(p && p.some(([x, z]) => Math.floor(x) === -1 && Math.floor(z) === 0)); // a point on the bridge tile (city-people: finer walk grid)
 box.map = Object.assign({}, view, { rows: view.rows.map(r => r.replace('B', 'w')) });
 out.noBridge = box.findPath(-1.5, -1.5, 0.5, -1.5);
 process.stdout.write(JSON.stringify(out));
@@ -1894,14 +1910,44 @@ process.stdout.write(JSON.stringify(out));
 
 
 def growth_results():
+    """city-people: findPath now walks a fine grid built from every model's footprint, so this runs the
+    whole simulation section (tests/test_agent_city_people.py run_sim), not a hand-picked function list."""
     if "growth" not in _CACHE:
-        fns = []
-        for name in ("tileAt", "walkable", "findPath"):
-            src = function_source(name)
-            if src is None:
-                raise AssertionError("function %s(...) not found in the page script" % name)
-            fns.append(src)
-        _CACHE["growth"] = run_node(GROWTH_JS, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import test_agent_city_people as tpp
+        driver = r"""
+const view = { cell: 26, x0: -3, z0: -2, w: 7, h: 5, rows: [
+  '..w....',
+  '..w.gg.',
+  '..B.gH.',
+  '..w....',
+  ' .w..s ' ], territories: [], links: [] };
+landState(view);
+const out = {};
+out.tiles = [[-3, -2], [-1, -2], [-1, 0], [2, 0], [0, -10], [3, 2], [-3, 2], [2, 2], [1, -1]].map(([x, z]) => tileAt(x, z));
+out.walk = [[-3, -2], [-1, -2], [-1, 0], [2, 0], [0, -10], [2, 2], [1, -1], [0, 1]].map(([x, z]) => !!walkable(x, z));
+occupied.set('0,-1', { id: 1 });
+out.walkOccupied = !!walkable(0, -1);
+occupied.clear();
+blocked.add('0,-1');
+out.walkBlocked = !!walkable(0, -1);
+blocked.clear();
+landState(view);
+const p = findPath(-1.5, -1.5, 0.5, -1.5);
+out.path = p;
+// the straight legs of the path (start first): they cross the river on the bridge tile, never on water
+const legs = p ? [[-1.5, -1.5]].concat(p) : [];
+const onTile = [];
+for (let i = 1; i < legs.length; i++) {
+  const [ax, az] = legs[i - 1], [bx, bz] = legs[i], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / .05));
+  for (let k = 0; k <= n; k++) onTile.push(tileAt(Math.floor(ax + (bx - ax) * k / n), Math.floor(az + (bz - az) * k / n)));
+}
+out.pathUsesBridge = onTile.includes('B') && !onTile.includes('w');
+landState(Object.assign({}, view, { rows: view.rows.map(r => r.replace('B', 'w')) }));
+out.noBridge = findPath(-1.5, -1.5, 0.5, -1.5);
+__out = out;
+"""
+        _CACHE["growth"] = tpp.run_sim(driver, {}, ("landState", "tileAt", "walkable", "findPath", "occupied", "blocked"))
     return _CACHE["growth"]
 
 
@@ -2047,17 +2093,28 @@ process.stdout.write(JSON.stringify({ home: box.home }));
 
 class TestGrowthPage(unittest.TestCase):
     def test_nobody_rests_inside_a_building(self):
-        rest_off = const_object("REST_OFF")
-        fns = ["const REST_OFF = %s;" % rest_off if rest_off else ""]
-        for name in ("tileAt", "walkable", "restSlotsFor"):
-            src = function_source(name)
-            self.assertIsNotNone(src, "function %s(...) not found" % name)
-            fns.append(src)
-        for name in ("hallStand", "reservedNear"):  # city-people P0: rest spots skip the governor's stand and homes
-            src = function_source(name)
-            if src:
-                fns.append(src)
-        out = run_node(REST_JS, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
+        # city-people: rest spots now depend on homes, the governor's stand and the walk grid, so this runs
+        # the whole simulation section (tests/test_agent_city_people.py run_sim) on the same small territory
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import test_agent_city_people as tpp
+        driver = r"""
+const rows = [
+  '.........',
+  '..ggggg..',
+  '..ggrgg..',
+  '..gHHgg..',
+  '..gHHgg..',
+  '.PggrgPP.',
+  '..PgPgg..',
+  '..ggPg...',
+  '.........' ];
+const view = { cell: 26, x0: -4, z0: -4, w: 9, h: 9, rows, links: [],
+  territories: [{ id: 't1', cx: 0, cz: 0, slot: [0, 0], terrain: 'grassland', era: 'village', plots: [], buildings: [] }] };
+landState(view);
+const slots = restSlotsFor(view.territories[0]);
+__out = { spots: slots.map(r => [r.x, r.y, tileAt(Math.floor(r.x), Math.floor(r.y)), !!walkable(Math.floor(r.x), Math.floor(r.y))]) };
+"""
+        out = tpp.run_sim(driver, {}, ("landState", "restSlotsFor", "tileAt", "walkable"))
         self.assertGreaterEqual(len(out["spots"]), 3, out)
         for x, z, ch, ok in out["spots"]:
             with self.subTest(spot=(x, z)):

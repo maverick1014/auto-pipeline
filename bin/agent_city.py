@@ -81,10 +81,20 @@ TOOL_MAP = {
 
 GOV_BUSY_EVENTS = ("PostToolUse", "PreToolUse", "UserPromptSubmit")
 STUCK_NOTIFICATIONS = ("permission_prompt", "idle_prompt")
+MAX_NAMES = 200  # world.json "names": at most this many live citizens, oldest dropped
 
 
 def _trim(value, limit):
     return value[:limit] if len(value) > limit else value
+
+
+def bare_type(value):
+    """The text after the last ":" in an agent type ("auto-pipeline:worker"
+    -> "worker"; "worker" -> "worker"; "" -> ""): anything before is a
+    plugin name, never part of the role or label."""
+    if not isinstance(value, str):
+        return ""
+    return value.rsplit(":", 1)[-1]
 
 
 class Reducer:
@@ -298,17 +308,19 @@ class Reducer:
         return events
 
     def _spawn_subagent(self, sid, aid, at):
-        role = self._normalize_role(at)
-        label = _trim(at, 30)
-        desc = self._take_queued(sid, at)
-        task = _trim(desc, 40) if desc is not None else _trim(at, 40)
+        bare_at = bare_type(at)
+        role = self._normalize_role(bare_at)
+        label = _trim(bare_at, 30)
+        desc = self._take_queued(sid, bare_at)
+        task = _trim(desc, 40) if desc is not None else _trim(bare_at, 40)
         self._create_agent(aid, role, label, task, owner=sid, kind="subagent")
         return [{"type": "spawn", "id": aid, "role": role, "label": label, "task": task}]
 
     def _auto_spawn_subagent(self, sid, aid, at):
-        role = self._normalize_role(at)
-        label = _trim(at, 30)
-        task = _trim(at, 40)
+        bare_at = bare_type(at)
+        role = self._normalize_role(bare_at)
+        label = _trim(bare_at, 30)
+        task = _trim(bare_at, 40)
         self._create_agent(aid, role, label, task, owner=sid, kind="subagent")
         return [{"type": "spawn", "id": aid, "role": role, "label": label, "task": task}]
 
@@ -366,11 +378,14 @@ class Reducer:
         q.append((sub, desc))
 
     def _take_queued(self, sid, at):
+        """AT is already bare_type()'d; SUB (the queued PreToolUse
+        subagent_type) may still carry a plugin prefix, so it is compared
+        bare too."""
         q = self.pending.get(sid)
         if not q:
             return None
         for i, (sub, desc) in enumerate(q):
-            if sub == at:
+            if bare_type(sub) == at:
                 del q[i]
                 return desc
         for i, (sub, desc) in enumerate(q):
@@ -422,6 +437,7 @@ DETAIL_LIMIT = 2000
 MAX_BODY = 64 * 1024
 TOKEN_PLACEHOLDER = b"__CITY_TOKEN__"
 ASSET_V_PLACEHOLDER = b"__CITY_ASSET_V__"
+RELAY_TIMEOUT_SEC = 600  # 10 min: an open chain-of-command relay times out
 
 
 def _s(value):
@@ -553,7 +569,8 @@ class Ask:
     def view(self):
         d = {
             "id": self.id, "agent": self.agent, "label": self.label, "task": self.task,
-            "repo": self.repo, "kind": self.kind, "phase": self.phase, "why": self.why,
+            "repo": self.repo, "terr": territory_id(self.repo) if self.repo else "",
+            "kind": self.kind, "phase": self.phase, "why": self.why,
             "wait": self.gov_wait_sec, "left": self.left(), "tool": self.tool,
             "what": self.what, "at": self.created_ms,
         }
@@ -626,7 +643,11 @@ class CityState:
                  balance_fn=None, start_repo=None):
         self.lock = threading.Lock()
         self.cond = threading.Condition(self.lock)
-        self.reducer = Reducer(max_agents=max_agents, done_ttl=done_ttl)
+        self._max_agents = max_agents
+        self._done_ttl = done_ttl
+        self.reducers = {}        # identity (str, or None: the start territory) -> Reducer
+        self.terr_chain = {}      # identity -> {"leads", "lead_of", "open"} (leads, offices, relays)
+        self.gov_state = "idle"   # legacy single-governor scalar, mirrors the last "gov" event seen
         self.lines = 0
         self.clients = []
         self.idle_since = time.monotonic()
@@ -674,6 +695,15 @@ class CityState:
             print("agent_city: dropped %d territory(ies) with no repo (\"dir:\" identity)"
                   % len(dropped), file=sys.stderr)
 
+        # Offices belong to live leads only: a lead that ended while the
+        # server was down never sends SessionEnd, so a loaded office must
+        # not outlive the restart. A live lead's next line gives it one
+        # again (_assign_office, plan order). Rest place and names persist.
+        for t in self.world["territories"].values():
+            if t.get("offices"):
+                t["offices"] = {}
+                dirty = True
+
         # The city is never empty: the dir the server was started from (its
         # git repo, or the plain folder itself) always has a territory, the
         # governor's home until a real one shows up.
@@ -698,11 +728,33 @@ class CityState:
                 return None
             client = _Client()
             self._start_waiting_shows_locked()
-            snap = self.reducer.snapshot()
-            gov = dict(snap["gov"], terr=self.gov_terr)
-            agents = [dict(a, terr=self.agent_terr.get(a["id"], "")) for a in snap["agents"]]
-            govs = ([{"terr": self.gov_terr, "state": self.reducer.gov_state}]
-                    if self.reducer.gov_sid is not None else [])
+            agents = []
+            govs = []
+            gov_seen_resolved = set()
+            for identity, reducer in self.reducers.items():
+                terr = self._terr_for(identity)
+                chain = self.terr_chain.get(identity)
+                for a in reducer.snapshot()["agents"]:
+                    agents.append(self._decorate_agent(a, identity, terr, chain))
+                if reducer.gov_sid is not None:
+                    govs.append({"terr": terr, "state": reducer.gov_state})
+                    gov_seen_resolved.add(identity)
+            # A territory's governor from a past run (world.json "gov_seen")
+            # that has not yet acted in this run is "unknown", never a
+            # present governor, until it acts (then resolved above) or its
+            # sid ends (then forgotten, see _forget_gov_seen_locked).
+            for identity in self.world.get("gov_seen", {}):
+                if identity in gov_seen_resolved:
+                    continue
+                govs.append({"terr": self._terr_for(identity), "state": "unknown"})
+            # The snapshot's "gov" is the page's camera home: with a start
+            # territory, that is always home, even when the last live "gov"
+            # event (self.gov_terr) belongs to a different governor who
+            # spoke after the page connected but before this snapshot was
+            # built (headless E2E: models load for a few seconds first).
+            # Live "gov" events keep broadcasting their own territory.
+            home_terr = self.start_terr if self.start_terr else self.gov_terr
+            gov = {"state": self.gov_state, "terr": home_terr}
             snap = {"type": "snapshot", "gov": gov, "govs": govs, "agents": agents,
                     "asks": [ask.view() for ask in self.open.values()],
                     "governors": self._fresh_governor_count(),
@@ -774,7 +826,7 @@ class CityState:
             return {
                 "ok": True,
                 "lines": self.lines,
-                "agents": len(self.reducer.agents),
+                "agents": sum(len(r.agents) for r in self.reducers.values()),
                 "clients": len(self.clients),
                 "asks": len(self.open),
                 "gov_wait_sec": self.gov_wait_sec,
@@ -802,7 +854,7 @@ class CityState:
         with self.lock:
             self.lines += 1
             identity = self._identity_of(obj) if isinstance(obj, dict) else None
-            terr = territory_id(identity) if identity is not None else self.start_terr
+            terr = self._terr_for(identity)
             if identity is not None:
                 if identity not in self.world["territories"]:
                     add_territory(self.world, self.plans, identity, repo_name(identity))
@@ -810,18 +862,72 @@ class CityState:
                 self.last_activity[identity] = now
 
             ev_name = obj.get("ev") if isinstance(obj, dict) else None
-            events = self.reducer.feed(obj, now)
+            sid_field = obj.get("sid") if isinstance(obj, dict) else None
+            aid_field = obj.get("aid") if isinstance(obj, dict) else None
+            ask_field = obj.get("ask") if isinstance(obj, dict) else None
+            reducer = self._reducer_for(identity)
+            was_gov = (ev_name == "SessionEnd" and isinstance(sid_field, str) and sid_field != ""
+                       and reducer.gov_sid == sid_field)
+
+            # A SubagentStop with a question (ask="q") both relays it up
+            # the chain and marks the subagent done. Run the chain step
+            # first so "relay" reaches the page before "done" -- else the
+            # page cheers 完工啦 for a question with no relay known yet
+            # (headless E2E finding). Every other event keeps its usual
+            # order: _process_chain runs after the reducer's events below.
+            chain_processed_early = False
+            if ev_name == "SubagentStop" and ask_field == "q" and isinstance(aid_field, str) and aid_field:
+                self._process_chain(obj, identity, terr, reducer, now)
+                chain_processed_early = True
+
+            events = reducer.feed(obj, now)
+            gov_seen = False
+            names_dirty = False
             for ev in events:
-                if ev.get("type") == "spawn":
+                etype = ev.get("type")
+                if etype == "spawn":
+                    self._apply_saved_name_locked(ev, reducer)
                     ev["terr"] = terr
                     self.agent_terr[ev["id"]] = terr
-                elif ev.get("type") == "gov":
+                    self._decorate_spawn(ev, obj, identity, terr)
+                    if self._remember_name_locked(ev["id"], ev["label"], ev["task"]):
+                        names_dirty = True
+                elif etype == "gov":
+                    gov_seen = True
                     self.gov_terr = terr
+                    self.gov_state = ev.get("state", self.gov_state)
                     ev["terr"] = terr
                     ev["present"] = ev_name != "SessionEnd"
-                elif ev.get("type") == "leave":
+                elif etype == "leave":
                     self.agent_terr.pop(ev["id"], None)
+                    self._on_leave(ev["id"], identity, terr)
+                    if self._forget_name_locked(ev["id"]):
+                        names_dirty = True
+                elif etype == "done":
+                    self._maybe_open_rest(identity)
                 self._broadcast(ev)
+
+            gov_seen_dirty = False
+            if identity is not None and isinstance(sid_field, str) and sid_field:
+                if ev_name == "SessionEnd":
+                    if was_gov and self._forget_gov_seen_locked(identity):
+                        gov_seen_dirty = True
+                elif reducer.gov_sid == sid_field:
+                    if self._remember_gov_seen_locked(identity, sid_field):
+                        gov_seen_dirty = True
+
+            if names_dirty or gov_seen_dirty:
+                self._save_world_locked()
+
+            if was_gov and not gov_seen:
+                # a governor whose state was already idle (after Stop) still
+                # broadcasts its departure: Reducer only emits "gov" on a
+                # state change, so this line synthesizes the missing one.
+                self.gov_terr = terr
+                self._broadcast({"type": "gov", "state": self.gov_state, "terr": terr, "present": False})
+
+            if not chain_processed_early:
+                self._process_chain(obj, identity, terr, reducer, now)
 
             if isinstance(obj, dict):
                 if ev_name == "PostToolUse":
@@ -830,13 +936,216 @@ class CityState:
                 elif ev_name == "SessionEnd":
                     self._forget_governor(obj)
 
+    # -- growth: many territories, one Reducer each ----------------------
+    #
+    # A repo (its territory) is a chain of command of its own: the first
+    # roleless session in it is that territory's governor, task-manager
+    # citizens in it are leads with their own office, and workers/helpers
+    # relay questions up the chain (leads, then that territory's governor).
+    # The Reducer itself stays single-governor and repo-blind (its own
+    # tests never see "repo"); CityState gives every territory its own
+    # Reducer instance instead, so each runs that single-governor state
+    # machine independently.
+
+    def _reducer_for(self, identity, create=True):
+        """Caller holds self.lock. The Reducer for this territory (None:
+        the start/fallback territory), made on first use."""
+        reducer = self.reducers.get(identity)
+        if reducer is None and create:
+            reducer = Reducer(max_agents=self._max_agents, done_ttl=self._done_ttl)
+            self.reducers[identity] = reducer
+        return reducer
+
+    def _terr_for(self, identity):
+        return territory_id(identity) if identity is not None else self.start_terr
+
+    def _chain_for(self, identity):
+        """Caller holds self.lock. This territory's leads/offices/relay
+        bookkeeping, made on first use."""
+        chain = self.terr_chain.get(identity)
+        if chain is None:
+            chain = {"leads": set(), "lead_of": {}, "open": {}}
+            self.terr_chain[identity] = chain
+        return chain
+
+    def _office_view(self, identity, cid):
+        """Caller holds self.lock. LEAD_CID's office as a world tile, or
+        None: no territory, no plan, or no office held."""
+        if identity is None:
+            return None
+        t = self.world["territories"].get(identity)
+        if t is None:
+            return None
+        local = t.get("offices", {}).get(cid)
+        if local is None:
+            return None
+        ox, oz = t["slot"][0] * CELL, t["slot"][1] * CELL
+        return {"x": ox + local[0], "z": oz + local[1]}
+
+    def _decorate_agent(self, a, identity, terr, chain):
+        """Caller holds self.lock. A snapshot/spawn agent record, plus
+        "terr", "relay" ("lead"|"governor"|""), "lead" (its lead's citizen
+        id, or "") and "office" (a world tile, or None: not a lead, or no
+        office free). Leads/offices/relays need a real territory (a plan):
+        no repo (identity None) -> just "terr", as before this feature."""
+        if identity is None or chain is None:
+            return dict(a, terr=terr)
+        cid = a["id"]
+        relay = ""
+        office = None
+        entry = chain["open"].get(cid)
+        if entry is not None:
+            relay = entry["to"]
+        lead = chain["lead_of"].get(cid, "") or ""
+        if cid in chain["leads"]:
+            office = self._office_view(identity, cid)
+        return dict(a, terr=terr, relay=relay, lead=lead, office=office)
+
+    def _decorate_spawn(self, ev, obj, identity, terr):
+        """Caller holds self.lock. A task-manager session citizen is a lead
+        (gets an office); a subagent inside a lead's session carries that
+        lead's id. Sets ev["lead"] and ev["office"]. No repo -> untouched."""
+        if identity is None:
+            return
+        chain = self._chain_for(identity)
+        aid_field = obj.get("aid") if isinstance(obj.get("aid"), str) else ""
+        sid_field = obj.get("sid") if isinstance(obj.get("sid"), str) else ""
+        if not aid_field:
+            if ev.get("role") == "task-manager":
+                chain["leads"].add(ev["id"])
+                self._assign_office(identity, ev["id"])
+        else:
+            owner_cid = "s:" + sid_field
+            chain["lead_of"][ev["id"]] = owner_cid if owner_cid in chain["leads"] else ""
+        decorated = self._decorate_agent({"id": ev["id"]}, identity, terr, chain)
+        ev["lead"] = decorated["lead"]
+        ev["office"] = decorated["office"]
+
+    def _assign_office(self, identity, lead_cid):
+        """Caller holds self.lock. LEAD_CID gets its plan's first office
+        spot no live lead already holds, land while held (bin/agent_city.py
+        layout())."""
+        if identity is None:
+            return
+        t = self.world["territories"].get(identity)
+        if t is None:
+            return
+        plan = _plan_by_id(self.plans, t["plan"])
+        if plan is None:
+            return
+        offices = t.setdefault("offices", {})
+        if lead_cid in offices:
+            return
+        held = {tuple(v) for v in offices.values()}
+        for x, z in plan.get("offices", []):
+            if (x, z) not in held:
+                offices[lead_cid] = [x, z]
+                self._invalidate_view()
+                return
+
+    def _maybe_open_rest(self, identity):
+        """Caller holds self.lock. The first done citizen in a territory
+        opens its rest place, for good (world.json, saved at once)."""
+        if identity is None:
+            return
+        t = self.world["territories"].get(identity)
+        if t is None or t.get("rest"):
+            return
+        t["rest"] = True
+        self._emit_world_locked()
+
+    def _close_relay(self, chain, cid, by):
+        """Caller holds self.lock. Closes CID's open relay, if any; a lead
+        relay also closes its own waiting workers, same BY."""
+        entry = chain["open"].pop(cid, None)
+        if entry is None:
+            return
+        self._broadcast({"type": "relay_end", "id": cid, "by": by})
+        if entry["kind"] == "lead":
+            for wcid in [c for c, e in chain["open"].items()
+                         if e["kind"] == "worker" and e["lead"] == cid]:
+                chain["open"].pop(wcid, None)
+                self._broadcast({"type": "relay_end", "id": wcid, "by": by})
+
+    def _on_leave(self, cid, identity, terr):
+        """Caller holds self.lock. A citizen gone: frees its office (a
+        lead) and closes its open relay, by "leave"."""
+        chain = self.terr_chain.get(identity)
+        if chain is None:
+            return
+        chain["lead_of"].pop(cid, None)
+        if cid in chain["leads"]:
+            chain["leads"].discard(cid)
+            if identity is not None:
+                t = self.world["territories"].get(identity)
+                if t is not None and cid in t.get("offices", {}):
+                    del t["offices"][cid]
+                    self._invalidate_view()
+        self._close_relay(chain, cid, "leave")
+
+    def _process_chain(self, obj, identity, terr, reducer, now):
+        """Caller holds self.lock. The chain of command (requirements/
+        city.md, "Interaction"): relay/relay_end events for a question
+        passed up from a worker to its lead, or a lead to its territory's
+        governor; the governor's answer, a lead deciding on its own, a
+        lead leaving, or 10 minutes with no answer close it."""
+        if not isinstance(obj, dict):
+            return
+        ev_name = obj.get("ev")
+        ask = obj.get("ask") if isinstance(obj.get("ask"), str) else ""
+        tool = obj.get("tool") if isinstance(obj.get("tool"), str) else ""
+        aid = obj.get("aid") if isinstance(obj.get("aid"), str) else ""
+        sid = obj.get("sid") if isinstance(obj.get("sid"), str) else ""
+        chain = self._chain_for(identity)
+
+        for cid in [c for c, e in chain["open"].items() if now - e["opened_at"] >= RELAY_TIMEOUT_SEC]:
+            self._close_relay(chain, cid, "timeout")
+
+        if ev_name == "SubagentStop" and ask == "q" and aid:
+            owner_cid = "s:" + sid
+            if owner_cid in chain["leads"]:
+                chain["open"][aid] = {"kind": "worker", "to": "lead", "lead": owner_cid, "opened_at": now}
+                self._broadcast({"type": "relay", "id": aid, "to": "lead", "lead": owner_cid})
+            elif sid != "" and reducer.gov_sid == sid:
+                chain["open"][aid] = {"kind": "helper", "to": "governor", "lead": "", "opened_at": now}
+                self._broadcast({"type": "relay", "id": aid, "to": "governor", "lead": ""})
+            return
+
+        if ev_name == "PostToolUse" and not aid and tool == "SendMessage":
+            cid = "s:" + sid
+            if sid != "" and reducer.gov_sid == sid:
+                lead_id = next((c for c, e in chain["open"].items() if e["kind"] == "lead"), None)
+                if lead_id is not None:
+                    self._close_relay(chain, lead_id, "governor")
+                for c in [c for c, e in chain["open"].items() if e["kind"] == "helper"]:
+                    self._close_relay(chain, c, "governor")
+            elif cid in chain["leads"]:
+                if ask == "q":
+                    chain["open"][cid] = {"kind": "lead", "to": "governor", "lead": "", "opened_at": now}
+                    self._broadcast({"type": "relay", "id": cid, "to": "governor", "lead": ""})
+                elif cid not in chain["open"]:
+                    for c in [c for c, e in chain["open"].items()
+                              if e["kind"] == "worker" and e["lead"] == cid]:
+                        self._close_relay(chain, c, "lead")
+            return
+
+        if ev_name == "PreToolUse" and not aid and tool in ("Agent", "Task"):
+            cid = "s:" + sid
+            if cid in chain["leads"] and cid not in chain["open"]:
+                for c in [c for c, e in chain["open"].items()
+                          if e["kind"] == "worker" and e["lead"] == cid]:
+                    self._close_relay(chain, c, "lead")
+
     # -- world: territories, growth, town plans, persistence ------------
 
     def _identity_of(self, obj):
         repo = obj.get("repo")
         if isinstance(repo, str) and repo:
             return repo
-        return None
+        # No repo (missing or ""): an old-hook line. With a start repo, it
+        # belongs there -- same identity as a line that does carry it, so
+        # one reducer, one governor, offices, relays and builds are shared.
+        return self.start_repo
 
     def _view(self):
         """Caller holds self.lock. The layout view the page draws, cached
@@ -858,6 +1167,64 @@ class CityState:
         except OSError as exc:
             print("agent_city: could not save world.json: %s" % exc, file=sys.stderr)
 
+    def _apply_saved_name_locked(self, ev, reducer):
+        """Caller holds self.lock. A citizen id world.json remembers from
+        before a restart: the fresh spawn's label/task (derived only from
+        this line, so a lost SubagentStart line forgets the real task) is
+        overwritten with the saved ones, in both the event and the
+        Reducer's own agent record."""
+        names = self.world.get("names")
+        saved = names.get(ev["id"]) if names else None
+        if saved is None:
+            return
+        ev["label"] = saved.get("label", ev.get("label", ""))
+        ev["task"] = saved.get("task", ev.get("task", ""))
+        agent = reducer.agents.get(ev["id"])
+        if agent is not None:
+            agent["label"] = ev["label"]
+            agent["task"] = ev["task"]
+
+    def _remember_name_locked(self, cid, label, task):
+        """Caller holds self.lock. Saves CID's label/task for a future
+        restart, at most MAX_NAMES (oldest dropped). Returns whether
+        world.json needs saving."""
+        names = self.world.setdefault("names", {})
+        names.pop(cid, None)
+        names[cid] = {"label": label, "task": task}
+        while len(names) > MAX_NAMES:
+            del names[next(iter(names))]
+        return True
+
+    def _forget_name_locked(self, cid):
+        """Caller holds self.lock. A citizen that left is forgotten.
+        Returns whether world.json needs saving."""
+        names = self.world.get("names")
+        if names and cid in names:
+            del names[cid]
+            return True
+        return False
+
+    def _remember_gov_seen_locked(self, identity, sid):
+        """Caller holds self.lock. IDENTITY's governor session last seen,
+        for "govs": "unknown" after a restart until that sid acts again in
+        this run or ends (see _forget_gov_seen_locked). Returns whether
+        world.json needs saving."""
+        seen = self.world.setdefault("gov_seen", {})
+        if seen.get(identity) == sid:
+            return False
+        seen[identity] = sid
+        return True
+
+    def _forget_gov_seen_locked(self, identity):
+        """Caller holds self.lock. That governor's sid ended: forgotten so
+        IDENTITY does not keep showing "unknown" after a future restart.
+        Returns whether world.json needs saving."""
+        seen = self.world.get("gov_seen")
+        if seen and identity in seen:
+            del seen[identity]
+            return True
+        return False
+
     def _emit_world_locked(self):
         """Caller holds self.lock. The world changed: recompute the view,
         broadcast it, save at once."""
@@ -865,17 +1232,19 @@ class CityState:
         self._broadcast({"type": "world", "world": self._view()})
         self._save_world_locked()
 
-    def _build_by(self, owner, at, role, is_gov):
+    def _build_by(self, reducer, owner, at, role, is_gov):
         if is_gov:
             return "总督"
-        known = self.reducer.agents.get(owner)
+        known = reducer.agents.get(owner)
         if known is not None:
             return known["label"]
-        return at or role
+        return bare_type(at) or role
 
     def _maybe_build(self, obj, identity, terr):
         """Caller holds self.lock. A PostToolUse line with a known kind
-        builds in its agent's territory. Never counts code lines."""
+        builds in its agent's territory. Never counts code lines. No free
+        open plot in that kind's district: says so (noplot), unless the
+        owner already has a building here (silent, as before)."""
         kind = obj.get("kind")
         if identity is None or not isinstance(kind, str) or kind not in KIND_TYPE:
             return
@@ -883,11 +1252,17 @@ class CityState:
         aid = obj.get("aid") if isinstance(obj.get("aid"), str) else ""
         at = obj.get("at") if isinstance(obj.get("at"), str) else ""
         role = obj.get("role") if isinstance(obj.get("role"), str) else ""
-        is_gov = (not aid) and sid != "" and sid == self.reducer.gov_sid
+        reducer = self._reducer_for(identity)
+        is_gov = (not aid) and sid != "" and sid == reducer.gov_sid
         owner = aid or ("s:" + sid)
-        by = self._build_by(owner, at, role, is_gov)
+        by = self._build_by(reducer, owner, at, role, is_gov)
+        t = self.world["territories"].get(identity)
+        if t is not None and any(b["owner"] == owner for b in t["buildings"]):
+            return
         b = build(self.world, self.plans, identity, kind, owner, by, time.time())
         if b is None:
+            self._broadcast({"type": "noplot", "id": "gov" if is_gov else owner, "terr": terr,
+                              "btype": KIND_TYPE[kind], "by": by})
             return
         self._invalidate_view()
         view = self._view()
@@ -1071,13 +1446,15 @@ class CityState:
     # -- asks: creation ---------------------------------------------------
 
     def _agent_view(self, sid, aid, at, role, repo):
+        bare_at = bare_type(at)
         if aid:
             cid = aid
-            fallback = at or role
+            fallback = bare_at or role
         else:
             cid = "s:" + sid
-            fallback = role or at
-        known = self.reducer.agents.get(cid)
+            fallback = role or bare_at
+        reducer = self._reducer_for(repo if repo else None, create=False)
+        known = reducer.agents.get(cid) if reducer is not None else None
         if known is not None:
             label = known["label"]
             task = known["task"]
@@ -1085,9 +1462,10 @@ class CityState:
             label = fallback
             task = fallback
         governor = self.governors.get(repo)
+        is_own_gov = reducer is not None and reducer.gov_sid == sid
         if aid:
             agent_field = aid
-        elif governor is not None and governor["sid"] == sid:
+        elif (governor is not None and governor["sid"] == sid) or is_own_gov:
             agent_field = "gov"
         else:
             agent_field = "s:" + sid
@@ -1855,7 +2233,7 @@ class RemoteCity:
     def poll(self, now):
         """One relay-thread tick: sync with every due team (hub.tick()),
         age out silent devices, and notice a team that left. -> a list of
-        "remote"/"relay" SSE events."""
+        "remote"/"team" SSE events."""
         items = self.hub.tick()
         with self._lock:
             events = []
@@ -1866,7 +2244,7 @@ class RemoteCity:
             return events
 
     def snapshot_event(self):
-        """{"type": "remote_snapshot", "me", "people", "govs", "relay"} for a
+        """{"type": "remote_snapshot", "me", "people", "govs", "teams"} for a
         new page, only while the hub has a team; else None."""
         if not self.hub.joined():
             return None
@@ -1878,10 +2256,10 @@ class RemoteCity:
                     people.append(self._person(dev_id, agent))
                 if reducer.gov_sid is not None:
                     govs.append(self._gov(dev_id, reducer.gov_state))
-        relay = [{"host": t["host"], "state": t["state"], "queued": t["queued"]}
+        teams = [{"host": t["host"], "state": t["state"], "queued": t["queued"]}
                 for t in self.hub.status()["teams"]]
         return {"type": "remote_snapshot", "me": self.hub.identity(),
-                "people": people, "govs": govs, "relay": relay}
+                "people": people, "govs": govs, "teams": teams}
 
     # -- lines from the relay -- caller holds self._lock ------------------
 
@@ -1940,7 +2318,7 @@ class RemoteCity:
             self._team_state.pop(host, None)
             for dev_id in self._devices_of(rids):
                 events.extend(self._forget_device(dev_id))
-            events.append({"type": "relay", "host": host, "state": "left", "queued": 0})
+            events.append({"type": "team", "host": host, "state": "left", "queued": 0})
         for host, team in status_teams.items():
             self._team_rids[host] = set(team["rids"])
             events.extend(self._maybe_relay_event(host, team, now))
@@ -1955,7 +2333,7 @@ class RemoteCity:
         if not (changed or queued_due):
             return []
         self._team_state[host] = {"state": state, "queued": queued, "at": now}
-        return [{"type": "relay", "host": host, "state": state, "queued": queued}]
+        return [{"type": "team", "host": host, "state": state, "queued": queued}]
 
     def _devices_of(self, rids):
         devs = set()
@@ -2719,6 +3097,18 @@ def _open_count(plan, r):
     return n
 
 
+def open_plots(plan, lines):
+    """Sorted plot indexes open at this size: the first plot of every
+    district PLAN defines (so a fresh territory, 0 lines included, already
+    has room for a first building of every kind), plus the plan-order
+    growth prefix (_open_count)."""
+    first = {}
+    for k, (_, _, d) in enumerate(plan["plots"]):
+        first.setdefault(d, k)
+    n = _open_count(plan, radius(lines))
+    return sorted(set(first.values()) | set(range(n)))
+
+
 def territory_tiles(plan, identity, lines):
     """{"r", "g", "open", "land"}: the organic land shape (local tile
     coords) a territory this size has on this plan, for this repo's
@@ -2732,13 +3122,14 @@ def territory_tiles(plan, identity, lines):
             cx, cz = x + 0.5, z + 0.5
             if _is_hall(x, z) or math.hypot(cx, cz) <= r * _mult(shape, math.atan2(cz, cx)):
                 land.add((x, z))
-    n = _open_count(plan, r)
-    for x, z, _ in plan["plots"][:n]:
+    opens = open_plots(plan, lines)
+    for k in opens:
+        x, z, _ = plan["plots"][k]
         land.add((x, z))
         front = _front_of_plot(roads, x, z)
         if front is not None:
             land.add(front)
-    return {"r": r, "g": growth(lines), "open": n, "land": land}
+    return {"r": r, "g": growth(lines), "open": len(opens), "land": land}
 
 
 def _plans_file_path():
@@ -2823,7 +3214,7 @@ def add_territory(world, plans, identity, name, lines=0):
     lines_val = lines or 0
     record = {"name": name, "plan": pick["id"], "slot": list(slot_for(pick)),
               "lines": lines_val, "peak": lines_val, "buildings": [], "era": "village",
-              "balance": {}, "rules_bad": []}
+              "balance": {}, "rules_bad": [], "offices": {}, "rest": False}
     world["territories"][identity] = record
     world["order"].append(identity)
     return record
@@ -2844,9 +3235,8 @@ def build(world, plans, identity, kind, owner, by, now):
     if any(b["owner"] == owner for b in t["buildings"]):
         return None
     plan = _plan_by_id(plans, t["plan"])
-    n = _open_count(plan, radius(t["peak"]))
     taken = {b["plot"] for b in t["buildings"]}
-    for k in range(n):
+    for k in open_plots(plan, t["peak"]):
         x, z, district = plan["plots"][k]
         if district == building_type and k not in taken:
             b = {"plot": k, "type": building_type, "owner": owner, "by": by, "at": now}
@@ -3003,19 +3393,33 @@ def layout(world, plans):
         for x, z in tr["land"]:
             if get(ox + x, oz + z) == ".":
                 set_tile(ox + x, oz + z, "r" if (x, z) in roads else "g")
-        for x, z, _ in plan["plots"][:tr["open"]]:
+        opens = open_plots(plan, t["peak"])
+        for k in opens:
+            x, z, _ = plan["plots"][k]
             set_tile(ox + x, oz + z, "P")
         for x in range(-1, 1):
             for z in range(-1, 1):
                 set_tile(ox + x, oz + z, "H")
 
-        open_plots = [{"k": k, "x": ox + x, "z": oz + z, "d": d}
-                      for k, (x, z, d) in enumerate(plan["plots"][:tr["open"]])]
+        offices = t.get("offices", {})
+        for lx, lz in offices.values():
+            set_tile(ox + lx, oz + lz, "g")
+        rest_view = None
+        if t.get("rest"):
+            rx, rz = plan["rest"]
+            rest_view = {"x": ox + rx, "z": oz + rz}
+            for dx in (0, 1):
+                for dz in (0, 1):
+                    set_tile(ox + rx + dx, oz + rz + dz, "g")
+
+        plots_view = [{"k": k, "x": ox + plan["plots"][k][0], "z": oz + plan["plots"][k][1],
+                       "d": plan["plots"][k][2]} for k in opens]
         buildings_view = []
         for b in t["buildings"]:
             px, pz, _ = plan["plots"][b["plot"]]
             buildings_view.append({"plot": b["plot"], "type": b["type"], "by": b["by"],
                                     "x": ox + px, "z": oz + pz})
+        offices_view = [{"lead": cid, "x": ox + lx, "z": oz + lz} for cid, (lx, lz) in offices.items()]
 
         era = t.get("era", "village")
         balance = t.get("balance", {})
@@ -3023,9 +3427,10 @@ def layout(world, plans):
             "id": territory_id(ident), "name": t["name"], "plan": plan["id"],
             "terrain": plan["terrain"], "slot": list(t["slot"]), "cx": ox, "cz": oz,
             "lines": t["lines"], "size": growth(t["peak"]), "r": tr["r"], "open": tr["open"],
-            "plots_total": len(plan["plots"]), "plots": open_plots, "buildings": buildings_view,
+            "plots_total": len(plan["plots"]), "plots": plots_view, "buildings": buildings_view,
             "era": era, "balance": balance, "next": next_needs(t["peak"], balance, era),
             "rules_note": _rules_note(t["name"], t.get("rules_bad", [])),
+            "offices": offices_view, "rest": rest_view,
         })
 
     # -- tracks: plan road from the territory out to its exit, across the gap -

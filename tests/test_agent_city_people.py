@@ -202,7 +202,8 @@ function tick(sec){
   }
 }
 function spots(){
-  const out = citizens.filter(c => !c.gone).map(c => ({ id: c.id, x: c.x, y: c.y, state: c.state }));
+  // standing people only: strollers (city-people calm) may pass each other while walking
+  const out = citizens.filter(c => !c.gone && !(c.path && c.path.length)).map(c => ({ id: c.id, x: c.x, y: c.y, state: c.state }));
   const g = governorAt(tid);
   if (g) out.push({ id: 'gov', x: g.x, y: g.y, state: 'gov' });
   return out;

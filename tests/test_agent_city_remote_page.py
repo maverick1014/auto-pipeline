@@ -12,9 +12,10 @@ bin/agent-city.html
                             another member's agent; msg.who, msg.device,
                             msg.dev, msg.rid, msg.br say whose.
     case 'remote_snapshot'  replaces the whole picture of other members
-                            (me, people, govs, relay).
-    case 'relay'            one team's state: ok | off | refused | left, and
-                            its queued count.
+                            (me, people, govs, teams).
+    case 'team'             one team's state: ok | off | refused | left, and
+                            its queued count. ('relay' belongs to city-people:
+                            a question passed up the chain.)
 
   Other members' people (browser; the main manager's click path checks it):
     - drawn like my own citizens (same models, walks, tools, rest), in the
@@ -151,7 +152,7 @@ process.stdout.write(JSON.stringify(out));
 class TestEvents(unittest.TestCase):
     def test_three_new_cases(self):
         script = inline_script()
-        for name in ("remote", "remote_snapshot", "relay"):
+        for name in ("remote", "remote_snapshot", "team"):
             with self.subTest(case=name):
                 self.assertIn("case '%s'" % name, script)
 
@@ -169,6 +170,11 @@ class TestEvents(unittest.TestCase):
         for fn in ("tagVisible(", "ringColor(", "memberColors(", "memberLegend(", "memberName("):
             with self.subTest(fn=fn):
                 self.assertIn(fn, outside, "%s is defined but never used by the page" % fn)
+
+    def test_team_state_never_uses_the_chain_event(self):
+        script = inline_script()
+        self.assertEqual(script.count("case 'relay'"), 1, "one 'relay' case only: city-people's chain")
+        self.assertNotRegex(script, r"type:\s*'relay',\s*host", "the team state is type 'team'")
 
     def test_cap(self):
         self.assertRegex(inline_script(), r"const MAX_REMOTE = 20\b")

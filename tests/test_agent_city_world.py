@@ -5,7 +5,8 @@ is the plan data). The Balance section is NOT built here; only room is left.
 
 CONTRACT (bin/agent_city.py, Python standard library only)
 
-  Plans   bin/agent-city-plans.json == the mock's city-plans JSON, exactly.
+  Plans   bin/agent-city-plans.json == the mock's city-plans JSON, exactly,
+          apart from city-people's "offices" and "rest" keys per plan.
           {"v": 1, "plans": [5 plans]}. A plan: id, terrain, name, edge (12
           radius factors, one per 30 degrees from +x, z grows south), roads
           ([x0, z0, x1, z1] inclusive, axis-aligned, local tiles), exits
@@ -217,7 +218,12 @@ class TestPlans(unittest.TestCase):
             m = re.search(r'<script type="application/json" id="city-plans">(.*?)</script>', fh.read(), re.S)
         self.assertIsNotNone(m)
         with open(PLANS_FILE, encoding="utf-8") as fh:
-            self.assertEqual(json.load(fh), json.loads(m.group(1)))
+            data = json.load(fh)
+        # city-people adds each plan's "offices" and "rest" spots (tests/test_agent_city_chain.py)
+        for plan in data["plans"]:
+            plan.pop("offices", None)
+            plan.pop("rest", None)
+        self.assertEqual(data, json.loads(m.group(1)))
 
     def test_five_plans_one_per_terrain(self):
         ps = plans()
@@ -291,17 +297,20 @@ class TestSize(unittest.TestCase):
         b = ac.territory_tiles(p, "/x/.git", 1000000)["land"]
         self.assertGreater(len(b), len(a) * 1.1)
 
-    def test_day_zero_is_a_tiny_town_hall_only(self):
+    def test_day_zero_is_a_tiny_town_hall_and_one_plot_per_district(self):
+        # city-people (requirements 3bec3dd + main manager): the minimum land opens the first plot of every
+        # district so any first edit can build; no building on day 0 (tests/test_agent_city_minland.py)
         for i, p in enumerate(plans()):
             with self.subTest(plan=p["id"]):
+                districts = len({d for _, _, d in p["plots"]})
                 t = ac.territory_tiles(p, "/day0/%d/.git" % i, 0)
-                self.assertEqual(t["open"], 0, "no plot on day 0")
-                self.assertLessEqual(len(t["land"]), 16)
+                self.assertEqual(t["open"], districts)
                 self.assertTrue({(-1, -1), (0, -1), (-1, 0), (0, 0)} <= t["land"])
                 w = world_of(("/day0/%d/.git" % i, 0))
                 v = ac.layout(w, plans())
-                self.assertFalse(set("rP") & {tile(v, x, z) for x in range(-13, 13) for z in range(-13, 13)},
-                                 "day 0: bare terrain, no road, no plot")
+                chars = [tile(v, x, z) for x in range(-13, 13) for z in range(-13, 13)]
+                self.assertEqual(chars.count("P"), districts, "one open plot per district")
+                self.assertEqual(v["territories"][0]["buildings"], [], "no building on day 0")
 
     def test_growth_adds_land_at_the_edge_and_keeps_the_old_land(self):
         p = plans()[1]
@@ -514,7 +523,9 @@ class TestLand(unittest.TestCase):
         v = ac.layout(w, list(ps.values()))
         for t in v["territories"]:
             plan = ps[t["plan"]]
-            spots = {(t["cx"] + x, t["cz"] + z) for x, z, _ in plan["plots"][:t["open"]]}
+            # city-people: open plots are the view's "plots" (not always a plan-order prefix)
+            spots = {(p["x"], p["z"]) for p in t["plots"]}
+            self.assertEqual(len(spots), t["open"])
             ps_tiles = {(x, z) for x in range(t["cx"] - 13, t["cx"] + 13) for z in range(t["cz"] - 13, t["cz"] + 13)
                         if tile(v, x, z) == "P"}
             self.assertEqual(ps_tiles, spots)
@@ -562,10 +573,17 @@ class TestBuild(unittest.TestCase):
             self.assertIsNotNone(ac.build(self.w, self.ps, self.id, "doc", "d%d" % i, "w", 1.0))
         self.assertIsNone(ac.build(self.w, self.ps, self.id, "doc", "late", "w", 1.0))
 
-    def test_no_open_plot_on_day_zero(self):
+    def test_day_zero_has_one_plot_per_district(self):
+        # city-people (requirements 3bec3dd + main manager): any first edit builds, a second of the same
+        # district waits for growth (tests/test_agent_city_minland.py)
         w = world_of(("/new/.git", 0))
-        for kind in ac.KIND_TYPE:
-            self.assertIsNone(ac.build(w, self.ps, "/new/.git", kind, "x-" + kind, "w", 1.0))
+        plan = next(p for p in self.ps if p["id"] == w["territories"]["/new/.git"]["plan"])
+        districts = {d for _, _, d in plan["plots"]}
+        for kind, district in ac.KIND_TYPE.items():
+            if district not in districts:
+                continue
+            self.assertIsNotNone(ac.build(w, self.ps, "/new/.git", kind, "x-" + kind, "w", 1.0))
+            self.assertIsNone(ac.build(w, self.ps, "/new/.git", kind, "y-" + kind, "w", 1.0))
 
     def test_no_kind_no_building(self):
         self.assertIsNone(ac.build(self.w, self.ps, self.id, "", "a1", "w", 1.0))

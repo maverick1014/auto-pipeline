@@ -609,10 +609,20 @@ def land_results():
         section = land_section()
         if section is None:
             raise AssertionError("no land section (/* ---------- the land ...) in the page script")
-        for name in ("groundGeometry", "waterGeometry", "lanePaths", "laneGeometry", "wildDecor"):
+        for name in ("groundGeometry", "waterGeometry", "lanePaths", "laneGeometry"):
             if not re.search(r"^function %s\s*\(" % name, section, re.M):
                 raise AssertionError("function %s(view) not found in the land section" % name)
-        _CACHE["land"] = tp.run_node(LAND_JS, {"prelude": land_prelude(section), "section": section, "views": views()})
+        prelude = land_prelude(section)
+        # city-people: wildDecor (and its hash2) moved to the simulation section so footprints() can
+        # block walking around plants (tests/test_agent_city_walk.py); take it from there when needed
+        if not re.search(r"^function wildDecor\s*\(", section, re.M):
+            src = tp.function_source("wildDecor")
+            if src is None:
+                raise AssertionError("function wildDecor(view) not found in the page script")
+            m = re.search(r"^const hash2 = [^\n]+", tp.inline_script(), re.M)
+            extra = [m.group(0).replace("const hash2", "var hash2", 1)] if m and "hash2" not in section else []
+            prelude = "\n".join([prelude] + extra + [src])
+        _CACHE["land"] = tp.run_node(LAND_JS, {"prelude": prelude, "section": section, "views": views()})
     return _CACHE["land"]
 
 

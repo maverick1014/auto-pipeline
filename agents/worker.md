@@ -17,4 +17,4 @@ Never
 - Write or edit tests. Run the full suite. Use a browser. Run git.
 - Touch a file the brief did not name. Read the whole repo (S9).
 
-Report (H3), first line exactly `PASS` or `FAIL: <why>`. Then: what changed (files). What to decide (or "nothing").
+Report (H3), first line exactly `PASS`, `FAIL: <why>`, or, when you need a decision you cannot make, `QUESTION: <one line>`. Then: what changed (files). What to decide (or "nothing").
