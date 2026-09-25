@@ -55,6 +55,15 @@ cap200() {
     printf '%s' "$v"
 }
 
+# has_question_prefix KEY HAY — true when the value of "KEY" in HAY begins
+# with the literal text QUESTION: -- a prefix match only, so it works even
+# when HAY is cut off mid-value (no closing quote needed).
+has_question_prefix() {
+    local key=$1 hay=$2 pat
+    pat='"'"$key"'"[[:space:]]*:[[:space:]]*"QUESTION:'
+    [[ $hay =~ $pat ]]
+}
+
 # unescape STR — reverse the three JSON escapes a path can carry: \" \\ \/.
 # Builtins only; any other backslash escape (never produced by a real path)
 # is left as-is.
@@ -264,8 +273,26 @@ case "$tool" in
         ;;
 esac
 
-printf '{"ev":"%s","sid":"%s","aid":"%s","at":"%s","tool":"%s","nt":"%s","proj":"%s","role":"%s","desc":"%s","sub":"%s","q":"%s","klen":"%s","repo":"%s","kind":"%s"}\n' \
-    "$ev" "$sid" "$aid" "$at" "$tool" "$nt" "$proj" "$role" "$desc" "$sub" "$q" "$klen" "$repo" "$kind" \
+# ask — "q" when a question is passed up the chain, else "": a SubagentStop
+# whose last_assistant_message starts with QUESTION:, or a PostToolUse of
+# SendMessage whose tool_input.message starts with QUESTION:. Only the
+# flag, from the already-capped 4096-byte chunk: never the text, never the
+# recipient.
+ask=
+case "$ev" in
+    SubagentStop)
+        has_question_prefix last_assistant_message "$chunk" && ask=q
+        ;;
+    PostToolUse)
+        if [ "$tool" = SendMessage ]; then
+            ti_chunk=${chunk#"$base"}
+            has_question_prefix message "$ti_chunk" && ask=q
+        fi
+        ;;
+esac
+
+printf '{"ev":"%s","sid":"%s","aid":"%s","at":"%s","tool":"%s","nt":"%s","proj":"%s","role":"%s","desc":"%s","sub":"%s","q":"%s","klen":"%s","repo":"%s","kind":"%s","ask":"%s"}\n' \
+    "$ev" "$sid" "$aid" "$at" "$tool" "$nt" "$proj" "$role" "$desc" "$sub" "$q" "$klen" "$repo" "$kind" "$ask" \
     >> "$dir/events.jsonl" 2>/dev/null
 
 exit 0
