@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City 联城</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --sky:#CFE6FF; --berry:#FF7593; --berry-deep:#D9506E; --butter:#FFD36E; --mint:#6FD4A8;
+  --focus:#4D7CFE;
+  --build-bg:#E1ECFF; --build-ink:#3160B5; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
+  --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488;
+  --gov-bg:#FFF0C7; --gov-ink:#8A6000;
+  --ok:#1E8657; --ok-deep:#146342;
+  --ground:#BFE3A6; --ground-edge:#9CCB86; --road:#F2E3C4;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+    --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
+    --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+    --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
+    --gov-bg:#43381A; --gov-ink:#FFDD8A;
+    --ok:#2FA56F; --ok-deep:#1B7049;
+    --ground:#2E5A3A; --ground-edge:#24482E; --road:#5B5238;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+  --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
+  --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+  --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
+  --gov-bg:#43381A; --gov-ink:#FFDD8A;
+  --ok:#2FA56F; --ok-deep:#1B7049;
+  --ground:#2E5A3A; --ground-edge:#24482E; --road:#5B5238;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.app{max-width:1500px;margin-inline:auto;padding-inline:16px;padding-block:14px 22px;display:flex;flex-direction:column;gap:14px;min-height:100dvh}
+
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.sign{display:inline-flex;align-items:center;gap:10px;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:5px 16px 5px 8px;box-shadow:0 3px 0 var(--ink)}
+.sign-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--berry);color:#fff;flex:none}
+.sign-icon svg{width:20px;height:20px}
+.sign-name{font:700 24px/1 var(--display);letter-spacing:.01em}
+.sign-sub{display:block;font:600 10.5px/1.2 var(--mono);color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase;margin-top:3px}
+.stats{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
+.stat{display:inline-flex;align-items:center;gap:7px;padding:6px 13px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font:600 13px/1 var(--round);color:var(--ink-2)}
+.stat b{color:var(--ink);font:700 14px/1 var(--display);font-variant-numeric:tabular-nums}
+.stat.ok{border-color:var(--ok);color:var(--ok-deep)}
+.stat.bad{border-color:var(--ask-ink);background:var(--ask-bg);color:var(--ask-ink)}
+.stat.off{border-color:var(--ink-3);color:var(--ink-3)}
+.stat.wait2{border-color:var(--gov-ink);background:var(--gov-bg);color:var(--gov-ink)}
+
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;flex:1;min-height:0}
+.stage-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.stage{position:relative;overflow:hidden;height:calc(100dvh - 150px);min-height:520px;background:var(--sky)}
+.land{position:absolute;inset:0;width:100%;height:100%}
+.proto{position:absolute;top:12px;left:12px;z-index:3;background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px;box-shadow:0 2px 0 rgba(42,43,69,.18);pointer-events:none}
+
+.house{position:absolute;transform:translate(-50%,-100%);width:32px;height:24px;background:#FFF6E6;border:2px solid #2A2B45;border-radius:4px}
+.house::before{content:"";position:absolute;left:-6px;right:-6px;top:-14px;height:14px;background:var(--r,#E8765C);clip-path:polygon(50% 0,100% 100%,0 100%);}
+.hall{position:absolute;left:50%;top:27%;transform:translate(-50%,-100%);width:96px;height:54px;background:#FFF6E6;border:2.5px solid #2A2B45;border-radius:6px}
+.hall::before{content:"";position:absolute;left:-10px;right:-10px;top:-30px;height:30px;background:#FFC23D;clip-path:polygon(50% 0,100% 100%,0 100%)}
+.hall span{position:absolute;left:50%;bottom:-26px;transform:translateX(-50%);white-space:nowrap;background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:2px 10px;font:600 12px/1.5 var(--display);box-shadow:0 2px 0 rgba(42,43,69,.15)}
+.hall2{position:absolute;transform:translate(-50%,-100%);width:66px;height:36px;background:#FFF6E6;border:2.5px solid #2A2B45;border-radius:6px}
+.hall2::before{content:"";position:absolute;left:-8px;right:-8px;top:-20px;height:20px;background:#B9BEDD;clip-path:polygon(50% 0,100% 100%,0 100%)}
+.hall2 span{position:absolute;left:50%;bottom:-24px;transform:translateX(-50%);white-space:nowrap;background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:2px 9px;font:600 11px/1.5 var(--display);box-shadow:0 2px 0 rgba(42,43,69,.15)}
+
+.person{position:absolute;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;transition:left 1.8s linear,top 1.8s linear,opacity .6s,filter .6s;z-index:2}
+.person .fig{all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:center;border-radius:12px;padding:2px}
+.person .fig:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.person .head{width:18px;height:18px;border-radius:50%;background:#FFD9B8;border:2px solid #2A2B45}
+.person .torso{width:24px;height:20px;margin-top:-2px;border-radius:10px 10px 6px 6px;background:var(--c);border:2px solid #2A2B45}
+.person.sel .torso{box-shadow:0 0 0 3px var(--berry)}
+.person .name{margin-top:3px;background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:1px 8px;font:600 11.5px/1.5 var(--display);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.15)}
+.person.gov .torso{background:#FFC23D}
+.person.frozen{opacity:.4;filter:grayscale(1)}
+.idtag{display:flex;gap:4px;margin-top:2px;font:600 10px/1.4 var(--mono);color:var(--ink-2)}
+.idtag i{font-style:normal;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:0 5px;color:var(--ink-3)}
+.above{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:4px}
+.bub{background:#FFFFFF;color:#2A2B45;border:2px solid #2A2B45;border-radius:14px;padding:3px 10px;font:600 12.5px/1.4 var(--round);white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.bub.ask{border-color:#E4476F}
+.bub.gov{background:#FFF1C9;border-color:#C99A1E}
+.bub.done{border-color:#2FB57A;background:#EFFFF6}
+.bub.walk{color:#585D82}
+.stale{background:#585D82;color:#fff;border-radius:999px;padding:2px 9px;font:600 11px/1.4 var(--mono);white-space:nowrap}
+.qm{all:unset;cursor:pointer;display:grid;place-items:center;width:32px;height:32px;border-radius:50%}
+.qm span{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#FF4F72;color:#fff;font:700 18px/1 var(--display);border:2px solid #fff;box-shadow:0 2px 0 rgba(42,43,69,.3);animation:hop .7s ease-in-out infinite}
+.qm.grey span{background:#8D91B3;animation:none}
+.qm:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+@keyframes hop{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:8px}
+.lead{font-size:13px;color:var(--ink-2);margin-right:2px}
+.clock{margin-left:auto;font:600 12px/1 var(--mono);color:var(--ink-2);font-variant-numeric:tabular-nums;padding-right:4px}
+.btn{font:600 13px/1 var(--round);border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:12px;padding:0 12px;min-height:36px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:transform .12s,box-shadow .12s,border-color .12s}
+.btn:hover{border-color:var(--ink-3)}
+.btn:focus-visible,.row:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.btn.primary{background:var(--berry);border-color:var(--berry);color:#fff;box-shadow:0 3px 0 var(--berry-deep)}
+.btn.primary:active{transform:translateY(3px);box-shadow:none}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
+
+.panel{display:flex;flex-direction:column;gap:12px;min-width:0;max-height:calc(100dvh - 100px);overflow:auto;padding-bottom:3px}
+.card{background:var(--panel);border:1.5px solid var(--line);border-radius:20px;padding:14px 16px}
+.card-head{margin:0 0 10px;display:flex;align-items:center;gap:8px;font:700 16px/1.2 var(--round)}
+.card-head .en{font:600 12px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.rdot{width:18px;height:18px;border-radius:50%;border:4px solid var(--c);background:var(--panel);flex:none;justify-self:center}
+.rdot.gov{--c:#FFD36E}
+.roster{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.grp-head{font:700 11.5px/1.4 var(--display);color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;padding:9px 8px 3px}
+.grp-head:first-child{padding-top:2px}
+.row{width:100%;display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;gap:10px;padding:7px 8px;border-radius:14px;border:1.5px solid transparent;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.row:hover{background:var(--panel-2)}
+.row[aria-current="true"]{border-color:var(--berry);background:var(--panel-2)}
+.who{min-width:0;display:flex;flex-direction:column}
+.who b{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who span{font:12px/1.3 var(--mono);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{font:600 12px/1 var(--round);padding:6px 10px;border-radius:999px;white-space:nowrap}
+.pill.build{background:var(--build-bg);color:var(--build-ink)}
+.pill.ask{background:var(--ask-bg);color:var(--ask-ink)}
+.pill.rest{background:var(--rest-bg);color:var(--rest-ink)}
+.pill.walk{background:var(--walk-bg);color:var(--walk-ink)}
+.pill.gov{background:var(--gov-bg);color:var(--gov-ink)}
+.detail{display:flex;flex-direction:column;gap:11px}
+.d-head{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:10px;align-items:center}
+.d-name{font-weight:700;font-size:17px;line-height:1.3;overflow-wrap:anywhere}
+.d-role{font:12px/1.3 var(--mono);color:var(--ink-3)}
+.kv{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;align-items:baseline;font-size:13px}
+.kv>span{color:var(--ink-3)}
+.kv b{font:700 13.5px/1.3 var(--mono);overflow-wrap:anywhere}
+.d-req{display:flex;flex-direction:column;gap:8px;background:var(--ask-bg);color:var(--ask-ink);border-radius:14px;padding:10px 11px;font-size:13px}
+.d-req.gov{background:var(--gov-bg);color:var(--gov-ink)}
+.d-req b{display:block;font-weight:700;margin-bottom:2px}
+.acts{display:flex;flex-wrap:wrap;gap:8px}
+.acts .btn{min-height:38px;padding:0 14px;font-size:13.5px}
+.why{display:flex;gap:8px;align-items:flex-start;background:var(--ask-bg);color:var(--ask-ink);border-radius:12px;padding:9px 11px;font-size:13px;line-height:1.5}
+.why svg{width:16px;height:16px;flex:none;margin-top:2px}
+.d-qa{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.d-qa p{margin:0;color:var(--ink-2)}
+.d-qa b{color:var(--ink);font-weight:700}
+.hint{margin:0;font-size:12.5px;color:var(--ink-3)}
+.log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;max-height:340px;overflow:auto}
+.log li{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px;font-size:13px;line-height:1.45}
+.log time{font:12px/1.45 var(--mono);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.w-gov{color:var(--gov-ink);font-weight:700}
+.w-you{color:var(--ask-ink);font-weight:700}
+
+.notes{background:var(--panel);border:1.5px dashed var(--ink-3);border-radius:16px;padding:10px 14px;font-size:13px;color:var(--ink-2)}
+.notes summary{cursor:pointer;font-weight:700;color:var(--ink)}
+.notes ul{margin:8px 0 2px;padding-left:18px}
+.notes li{margin:3px 0}
+
+@media (max-width: 960px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+  .stage{height:min(78vh,calc(100vw * 1.3));min-height:460px}
+  .panel{max-height:none;overflow:visible}
+  .stats{margin-left:0}
+}
+@media (prefers-reduced-motion: reduce){ .qm span{animation:none} .person{transition:none} .btn{transition:none} }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="sign">
+      <span class="sign-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg></span>
+      <div><span class="sign-name">Agent City</span><span class="sign-sub">auto-pipeline · 联城 mock</span></div>
+    </div>
+    <div class="stats" id="stats" aria-live="polite"></div>
+  </header>
+
+  <main class="layout">
+    <section class="stage-col" aria-label="城市">
+      <div class="stage" id="stage">
+        <svg class="land" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M6 30 C10 14 30 8 50 9 C72 8 92 14 95 34 C99 55 94 80 80 91 C64 99 34 99 18 91 C4 82 2 50 6 30 Z" fill="var(--ground)" stroke="var(--ground-edge)" stroke-width=".8"/>
+          <path d="M50 28 C50 44 30 52 20 70 M50 28 C52 46 70 56 82 66 M50 28 C48 50 44 70 34 84 M50 28 C54 52 64 70 68 80 M50 28 C40 36 22 42 14 50 M50 22 C64 20 82 20 88 26" fill="none" stroke="var(--road)" stroke-width="2.4" stroke-linecap="round"/>
+        </svg>
+        <div class="hall" aria-hidden="true"><span>市政厅 · shop（已联城）</span></div>
+        <div class="hall2" style="left:88%;top:22%" aria-hidden="true"><span>notes 仓库 · 只在本机</span></div>
+        <div id="houses" aria-hidden="true"></div>
+        <div id="people"></div>
+        <div class="proto">原型 · 模拟数据</div>
+      </div>
+      <div class="toolbar" role="toolbar" aria-label="试一试（只在 mock 里）">
+        <span class="lead">试一试</span>
+        <button class="btn" type="button" data-sc="ask-mine">提问 · 我的 worker</button>
+        <button class="btn" type="button" data-sc="ask-ann">提问 · Ann 的 worker</button>
+        <button class="btn" type="button" data-sc="disconnect">中继断开</button>
+        <button class="btn" type="button" data-sc="reconnect">恢复</button>
+        <button class="btn" type="button" data-sc="new-member">新成员加入</button>
+        <button class="btn" type="button" data-sc="bo-end">Bo 的云端会话结束</button>
+        <button class="btn" type="button" data-sc="leave">退出联城</button>
+        <button class="btn" type="button" data-sc="reset">重来</button>
+        <span class="clock" id="clock"></span>
+      </div>
+    </section>
+
+    <aside class="panel" aria-label="信息栏">
+      <section class="card"><h2 class="card-head"><span class="en">Selected</span>详情</h2><div class="detail" id="detail" aria-live="polite"></div></section>
+      <section class="card"><h2 class="card-head"><span class="en">Citizens</span>市民</h2><ul class="roster" id="roster"></ul></section>
+      <section class="card"><h2 class="card-head"><span class="en">Log</span>动态</h2><ol class="log" id="log"></ol></section>
+    </aside>
+  </main>
+
+  <details class="notes">
+    <summary>Mock 说明（真页面没有这一块，也没有“试一试”那一行）</summary>
+    <ul>
+      <li>平面小岛只是替身；真页面还是 3D 城市，名字牌、设备牌、气泡都挂在 3D 小人头上。</li>
+      <li>联城的中继只搬事件，从不下命令：agent 的问题和权限请求还是走终端 / Claude Code app，公开的中继上不开命令通道。</li>
+      <li>别人的小人只能看：只有本人能替自己的 agent 回答问题、批权限；灰色 “?” 点开只有说明，没有按钮。</li>
+      <li>别人的城市、别人的小人，从不写进我的 <code>world.json</code>：断联或退出，我的城市原样不动。</li>
+      <li>密钥（relay 的团队密钥）从不出现在这页里，也从不出现在聊天里，agent 不写、不问、不打印它。</li>
+      <li>中继断不开我的本机城市：中继掉线时本机照常干活，只是别的成员定格、待发事件攒着。</li>
+      <li>同一个仓库（按 origin 的 host/owner/repo 认）在不同人那里算同一个 territory，所以大家的 agent 会出现在同一个市政厅。</li>
+      <li>notes 仓库没有 remote，本来就不共享，所以联城开不开都只有我自己的 agent 在那。</li>
+    </ul>
+  </details>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const WALK_MS = RM ? 0 : 1800;
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[ch]));
+const hms = ms => new Date(ms).toTimeString().slice(0, 8);
+const ROLE_ZH = { gov:'main manager · 总督', tm:'task manager', worker:'worker' };
+
+let citizens, logs, selected, teamJoined, relayConnected, pendingCount, freezeAt, cloudSeq, tickN, timers;
+
+function later(ms, fn){ timers.push(setTimeout(fn, ms)); }
+
+function buildCitizens(){
+  const list = [
+    // mine — Maverick on mac-mini (this machine)
+    { id:'gov-mine', role:'gov', person:'Maverick', device:'mac-mini', mine:true, repo:'acme/shop', branch:'main', home:[43,38] },
+    { id:'tm-mine', role:'tm', person:'Maverick', device:'mac-mini', mine:true, task:'带队 · 结账改版', color:'#9B7BFF', repo:'acme/shop', branch:'main', home:[24,62] },
+    { id:'w-mine-1', role:'worker', person:'Maverick', device:'mac-mini', mine:true, task:'改结账按钮文案', color:'#5AA9F0', repo:'acme/shop', branch:'feat/checkout-copy', home:[16,80] },
+    { id:'w-mine-2', role:'worker', person:'Maverick', device:'mac-mini', mine:true, task:'修价格的 CSS', color:'#FF8A5B', repo:'acme/shop', branch:'fix/price-css', home:[34,88] },
+    { id:'w-notes', role:'worker', person:'Maverick', device:'mac-mini', mine:true, task:'整理会议笔记', color:'#43C58B', repo:'notes（本地，无 remote）', branch:'main', home:[92,46] },
+    // Maverick on a second device
+    { id:'gov-pc2', role:'gov', person:'Maverick', device:'pc2', mine:false, repo:'acme/shop', branch:'main', home:[50,41] },
+    { id:'w-pc2-1', role:'worker', person:'Maverick', device:'pc2', mine:false, task:'写结账测试', color:'#E4A11B', repo:'acme/shop', branch:'test/checkout', home:[68,82] },
+    // Ann
+    { id:'gov-ann', role:'gov', person:'Ann', device:'ann-laptop', mine:false, repo:'acme/shop', branch:'main', home:[57,38] },
+    { id:'w-ann-1', role:'worker', person:'Ann', device:'ann-laptop', mine:false, task:'改支付超时重试', color:'#E86B93', repo:'acme/shop', branch:'feat/payment-retry', home:[82,66] },
+    // Bo — cloud session, no governor
+    { id:'w-bo', role:'worker', person:'Bo', device:'云端', mine:false, task:'扫描依赖漏洞', color:'#7BD1C7', repo:'acme/shop', branch:'chore/deps-scan', home:[78,90] },
+  ];
+  return list.map(c => ({ ...c, x:c.home[0], y:c.home[1], homeOrig:[c.home[0], c.home[1]], bubble:null, qm:null, busy:false, frozen:false, present:true, qa:[] }));
+}
+function byId(id){ return citizens.find(c => c.id === id); }
+function addLog(html){ logs.unshift({ t:Date.now(), html }); if (logs.length > 60) logs.length = 60; }
+function seedLog(t, html){ logs.unshift({ t, html }); }
+
+function initCity(){
+  (timers || []).forEach(clearTimeout); timers = [];
+  teamJoined = true; relayConnected = true; pendingCount = 0; freezeAt = null; cloudSeq = 0; tickN = 0;
+  selected = null; logs = [];
+  citizens = buildCitizens();
+  const now = Date.now(), ago = s => now - s * 1000;
+  seedLog(ago(300), `<b>Maverick · pc2</b> 的 worker 开始写结账测试。`);
+  seedLog(ago(180), `<b>Ann · ann-laptop</b> 的 worker 开始改支付超时重试。`);
+  seedLog(ago(60), `<b>Bo · 云端</b> 的 worker 开始扫描依赖漏洞。`);
+  render();
+}
+
+/* ---------- scenarios ---------- */
+function askMine(){
+  const c = byId('w-mine-1');
+  if (c.busy) { select(c.id); return; }
+  c.busy = true; c.bubble = { text:'走去市政厅…', cls:'walk' };
+  c.x = 40; c.y = 46;
+  selected = c.id; render();
+  later(WALK_MS, () => {
+    c.bubble = { text:'问：结账按钮文案？', cls:'ask' };
+    c.qm = 'pink';
+    addLog(`<b>${esc(c.task)}</b>（我的）问总督：结账按钮写“提交订单”还是“去支付”？`);
+    render();
+  });
+}
+function answerMine(choice){
+  const c = byId('w-mine-1');
+  if (!c || c.qm !== 'pink') return;
+  c.qm = null;
+  c.bubble = { text:'答：' + choice, cls:'done' };
+  c.qa.push({ q:'结账按钮文案', a:choice });
+  addLog(`<span class="w-you">你</span>回答 <b>${esc(c.task)}</b>：“${esc(choice)}”`);
+  render();
+  later(1500, () => { c.bubble = null; c.x = c.homeOrig[0]; c.y = c.homeOrig[1]; c.busy = false; render(); });
+}
+function askAnn(){
+  if (!teamJoined) { addLog('（mock）未加入联城，看不到 Ann 的 agent。'); render(); return; }
+  const c = byId('w-ann-1');
+  if (!c || c.present === false) { addLog('（mock）Ann 的 worker 不在。'); render(); return; }
+  if (c.busy) { select(c.id); return; }
+  c.busy = true; c.bubble = { text:'走去市政厅…', cls:'walk' };
+  c.x = 60; c.y = 46;
+  selected = c.id; render();
+  later(WALK_MS, () => {
+    c.bubble = { text:'问：支付超时重试？', cls:'ask' };
+    c.qm = 'grey';
+    const gov = byId('gov-ann');
+    if (gov) gov.bubble = { text:'在听 Ann 的 worker', cls:'gov' };
+    addLog(`<b>${esc(c.task)}</b>（Ann 的）问 <b>Ann 的总督</b>：“支付超时要不要自动重试？”`);
+    render();
+    later(2600, () => { if (gov && gov.bubble && gov.bubble.text === '在听 Ann 的 worker') { gov.bubble = null; render(); } });
+  });
+}
+function disconnect(){
+  if (!teamJoined) { addLog('（mock）没加入联城，没有中继可断。'); render(); return; }
+  if (!relayConnected) return;
+  relayConnected = false; freezeAt = Date.now(); pendingCount = 0;
+  addLog('联城中继断开：其他成员定格，我的城市照常干活。');
+  render();
+}
+function reconnect(){
+  if (!teamJoined) { addLog('（mock）没加入联城，没有中继要恢复。'); render(); return; }
+  if (relayConnected) return;
+  relayConnected = true; pendingCount = 0;
+  addLog('联城恢复：其他成员更新到最新，待发事件已送达。');
+  render();
+}
+function newMember(){
+  if (!teamJoined) { addLog('（mock）没加入联城，没法有新成员。'); render(); return; }
+  cloudSeq++;
+  const names = ['Cy', 'Dee', 'Fen', 'Gus'];
+  const name = names[(cloudSeq - 1) % names.length] + (cloudSeq > names.length ? cloudSeq : '');
+  citizens.push({ id:'w-cloud' + cloudSeq, role:'worker', person:name, device:'云端', mine:false, task:'lint 检查', color:'#B48CE0', repo:'acme/shop', branch:'chore/lint', home:[60 + (cloudSeq % 3) * 6, 92], x:60 + (cloudSeq % 3) * 6, y:92, homeOrig:[60 + (cloudSeq % 3) * 6, 92], bubble:null, qm:null, busy:false, frozen:false, present:true, qa:[] });
+  addLog(`新成员加入：<b>${esc(name)} · 云端</b> 上线，一个 worker。`);
+  render();
+}
+function boEnd(){
+  if (!teamJoined) { addLog('（mock）没加入联城，看不到 Bo。'); render(); return; }
+  const c = byId('w-bo');
+  if (!c || c.present === false) { addLog('（mock）Bo 已经下线了。'); render(); return; }
+  c.present = false;
+  if (selected === c.id) selected = null;
+  addLog('Bo 的云端会话结束：Bo 的 agent 从城市消失。');
+  render();
+}
+function leaveCity(){
+  if (!teamJoined) { addLog('（mock）已经是未加入联城。'); render(); return; }
+  teamJoined = false; relayConnected = true; pendingCount = 0; freezeAt = null;
+  const cur = selected && byId(selected);
+  if (!cur || !cur.mine) selected = null;
+  addLog('退出联城：其他成员从我的城市消失，我的城市不变。');
+  render();
+}
+function select(id){ selected = id; render(); }
+
+/* ---------- render ---------- */
+function renderStats(){
+  const shown = citizens.filter(c => c.mine || (teamJoined && c.present !== false));
+  const people = new Set(shown.map(c => c.person));
+  const devices = new Set(shown.map(c => c.device));
+  let html;
+  if (!teamJoined) html = `<span class="stat off">未加入联城</span>`;
+  else if (!relayConnected) html = `<span class="stat bad">联城断开</span><span class="stat wait2">待发 <b>${pendingCount}</b> 条</span>`;
+  else html = `<span class="stat ok">联城 · ${people.size} 人 · ${devices.size} 台设备</span>`;
+  $('#stats').innerHTML = html;
+}
+function renderHouses(){
+  // A house for another member exists only while that person's figure is shown — the same rule
+  // as everywhere else: their things never become a permanent part of my city.
+  const shown = citizens.filter(c => c.role !== 'gov' && (c.mine || (teamJoined && c.present !== false)));
+  $('#houses').innerHTML = shown.map(c => `<div class="house" style="left:${c.homeOrig[0]}%;top:${c.homeOrig[1] - 6}%;--r:${c.color || '#E8765C'}"></div>`).join('');
+}
+function renderPeople(){
+  const shown = citizens.filter(c => c.mine || (teamJoined && c.present !== false));
+  const elapsed = freezeAt ? Math.floor((Date.now() - freezeAt) / 1000) : 0;
+  $('#people').innerHTML = shown.map(c => {
+    const frozen = !c.mine && !relayConnected;
+    let above = '';
+    if (frozen) above += `<span class="stale">最后更新 ${elapsed} 秒前</span>`;
+    if (c.bubble) above += `<span class="bub ${c.bubble.cls}">${esc(c.bubble.text)}</span>`;
+    if (c.qm === 'pink') above += `<button class="qm" type="button" data-sel="${c.id}" aria-label="${esc(nameOf(c))} 等你回答，点开看"><span>?</span></button>`;
+    if (c.qm === 'grey') above += `<button class="qm grey" type="button" data-sel="${c.id}" aria-label="${esc(nameOf(c))} 在等 ${esc(c.person)} 回答，你看不了"><span>?</span></button>`;
+    const cls = 'person' + (selected === c.id ? ' sel' : '') + (c.role === 'gov' ? ' gov' : '') + (frozen ? ' frozen' : '');
+    const style = `left:${c.x}%;top:${c.y}%;` + (c.role === 'gov' ? '' : `--c:${c.color};`);
+    const label = c.role === 'gov' ? `${c.person} · ${c.device}` : c.task;
+    const idtag = (!c.mine && c.role !== 'gov') ? `<span class="idtag"><b>${esc(c.person)}</b><i>${esc(c.device)}</i></span>` : '';
+    return `<div class="${cls}" data-cid="${c.id}" style="${style}"><div class="above">${above}</div><button class="fig" type="button" data-sel="${c.id}" aria-label="${esc(label)}"><span class="head"></span><span class="torso"></span></button><span class="name">${esc(label)}</span>${idtag}</div>`;
+  }).join('');
+}
+function nameOf(c){ return c.role === 'gov' ? `${c.person} · ${c.device}` : c.task; }
+function renderRoster(){
+  const mine = citizens.filter(c => c.mine);
+  const groups = [{ title:'我（本机）', items:mine }];
+  if (teamJoined) {
+    const others = citizens.filter(c => !c.mine && c.present !== false);
+    const map = new Map();
+    others.forEach(c => {
+      const key = c.person + '|' + c.device;
+      if (!map.has(key)) map.set(key, { title:`${c.person} · ${c.device}`, items:[] });
+      map.get(key).items.push(c);
+    });
+    groups.push(...map.values());
+  }
+  $('#roster').innerHTML = groups.map(g => `<li class="grp-head">${esc(g.title)}</li>` + g.items.map(rosterRow).join('')).join('');
+}
+function rosterRow(c){
+  let pillCls = 'build', pillText = '干活';
+  if (c.role === 'gov') { pillCls = 'gov'; pillText = '坐镇市政厅'; }
+  else if (c.qm === 'pink') { pillCls = 'ask'; pillText = '等你'; }
+  else if (c.qm === 'grey') { pillCls = 'ask'; pillText = '等 ' + c.person; }
+  else if (!c.mine && !relayConnected) { pillCls = 'walk'; pillText = '定格'; }
+  else if (c.repo && c.repo.indexOf('本地') !== -1) { pillCls = 'walk'; pillText = '只在本机'; }
+  const label = c.role === 'gov' ? `${c.person} · ${c.device}` : c.task;
+  const sub = c.mine ? ROLE_ZH[c.role] : `${ROLE_ZH[c.role]} · ${c.repo}`;
+  return `<li><button class="row" type="button" data-sel="${c.id}" aria-current="${selected === c.id}"><span class="rdot${c.role === 'gov' ? ' gov' : ''}" style="--c:${c.color || '#FFD36E'}"></span><span class="who"><b>${esc(label)}</b><span>${esc(sub)}</span></span><span class="pill ${pillCls}">${esc(pillText)}</span></button></li>`;
+}
+function renderDetail(){
+  const el = $('#detail');
+  const c = selected && byId(selected);
+  if (!c) { el.innerHTML = `<p class="hint">点城里的小人，或下面名单里的一行。</p>`; return; }
+  if (c.role === 'gov') {
+    if (c.mine) {
+      el.innerHTML = `<div class="d-head"><span class="rdot gov"></span><div><div class="d-name">${esc(c.person)} · ${esc(c.device)}</div><div class="d-role">main manager · 总督</div></div><span class="pill gov">市政厅</span></div>
+        <div class="kv"><span>仓库</span><b>${esc(c.repo)}</b></div><div class="kv"><span>分支</span><b>${esc(c.branch)}</b></div>
+        <p class="hint">这是我在 ${esc(c.device)} 上的总督，负责 ${esc(c.repo)}。</p>`;
+      return;
+    }
+    el.innerHTML = `<div class="d-head"><span class="rdot gov"></span><div><div class="d-name">${esc(c.person)} · ${esc(c.device)}</div><div class="d-role">main manager · 总督</div></div><span class="pill gov">市政厅</span></div>
+      <div class="kv"><span>仓库</span><b>${esc(c.repo)}</b></div>
+      <div class="why">${ICON_LOCK}<span>只能看：这是 <b>${esc(c.person)}</b> 在 <b>${esc(c.device)}</b> 的总督，只有 ${esc(c.person)} 能替它回答。</span></div>`;
+    return;
+  }
+  const label = c.task, sub = ROLE_ZH[c.role];
+  const kv = `<div class="kv"><span>仓库</span><b>${esc(c.repo)}</b></div><div class="kv"><span>分支</span><b>${esc(c.branch)}</b></div><div class="kv"><span>在做</span><b>${esc(c.task)}</b></div>`;
+  if (c.mine) {
+    let req = '';
+    if (c.qm === 'pink') req = `<div class="d-req"><b>等你回答</b>结账按钮写“提交订单”还是“去支付”？<div class="acts"><button class="btn primary" type="button" data-answer="提交订单">提交订单</button><button class="btn primary" type="button" data-answer="去支付">去支付</button></div></div>`;
+    const qa = c.qa.slice(-2).map(x => `<p>问：<b>“${esc(x.q)}”</b></p><p>你答：<b>“${esc(x.a)}”</b></p>`).join('');
+    el.innerHTML = `<div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(label)}</div><div class="d-role">${esc(sub)}</div></div></div>${kv}${req}${qa ? `<div class="d-qa">${qa}</div>` : ''}`;
+    return;
+  }
+  let req = '';
+  if (c.qm === 'grey') req = `<div class="d-req gov"><b>灰色 “?”</b>问：“支付超时要不要自动重试？”（只看得到，答不了）</div>`;
+  el.innerHTML = `<div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(label)}</div><div class="d-role">${esc(sub)}</div></div><span class="idtag" style="margin-top:0"><b>${esc(c.person)}</b><i>${esc(c.device)}</i></span></div>${kv}${req}
+    <div class="why">${ICON_LOCK}<span>只能看：这是 <b>${esc(c.person)}</b> 的 agent，只有 ${esc(c.person)} 能回答。</span></div>`;
+}
+function renderLog(){ $('#log').innerHTML = logs.map(e => `<li><time>${hms(e.t)}</time><span>${e.html}</span></li>`).join(''); }
+function render(){ renderStats(); renderHouses(); renderPeople(); renderRoster(); renderDetail(); renderLog(); }
+
+const ICON_LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+
+/* ---------- per-second tick: touch only what actually changes, never rebuild buttons ---------- */
+function jitterMine(){
+  // My own city keeps moving even when the relay is down. This nudges one figure's
+  // position directly on its existing DOM node — no innerHTML rebuild, so clicks and
+  // keyboard focus elsewhere on the page are never disturbed.
+  const pool = citizens.filter(c => c.mine && c.role !== 'gov' && !c.busy);
+  if (!pool.length) return;
+  const c = pool[Math.floor(Math.random() * pool.length)];
+  const dx = (Math.random() * 8 - 4), dy = (Math.random() * 6 - 3);
+  c.x = Math.min(96, Math.max(6, c.homeOrig[0] + dx));
+  c.y = Math.min(94, Math.max(30, c.homeOrig[1] + dy));
+  const el = document.querySelector('.person[data-cid="' + c.id + '"]');
+  if (el) { el.style.left = c.x + '%'; el.style.top = c.y + '%'; }
+}
+function updateStaleLabels(){
+  // Update the text of the existing "最后更新 N 秒前" spans in place instead of
+  // re-rendering #people (which would drop the "?" buttons and steal focus).
+  if (!freezeAt) return;
+  const elapsed = Math.floor((Date.now() - freezeAt) / 1000);
+  document.querySelectorAll('#people .stale').forEach(el => { el.textContent = '最后更新 ' + elapsed + ' 秒前'; });
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-sel],[data-answer],[data-sc]');
+  if (!t) return;
+  if (t.dataset.answer) { answerMine(t.dataset.answer); return; }
+  if (t.dataset.sel) { select(t.dataset.sel); return; }
+  if (t.dataset.sc) scenario(t.dataset.sc);
+});
+
+function scenario(name){
+  if (name === 'reset') { initCity(); return; }
+  if (name === 'ask-mine') return askMine();
+  if (name === 'ask-ann') return askAnn();
+  if (name === 'disconnect') return disconnect();
+  if (name === 'reconnect') return reconnect();
+  if (name === 'new-member') return newMember();
+  if (name === 'bo-end') return boEnd();
+  if (name === 'leave') return leaveCity();
+}
+
+// Every second: clock, stats chip / 待发 count, and the stale-label text, all updated
+// in place. Full render() (which rebuilds #people/#roster/#detail) only happens for
+// real events — scenarios and clicks — below, never on this tick, so a click's
+// mousedown/mouseup can't straddle a rebuild and keyboard focus never jumps to <body>.
+setInterval(() => {
+  tickN++;
+  $('#clock').textContent = '现在 ' + hms(Date.now());
+  if (!relayConnected && teamJoined) { if (tickN % 2 === 0) pendingCount = Math.min(99, pendingCount + 1); }
+  renderStats();
+  updateStaleLabels();
+  if (!RM && tickN % 4 === 0) jitterMine();
+}, 1000);
+$('#clock').textContent = '现在 ' + hms(Date.now());
+initCity();
+})();
+</script>
+</body>
+</html>
