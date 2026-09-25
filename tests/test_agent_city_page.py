@@ -1887,7 +1887,7 @@ out.walkBlocked = !!box.walkable(0, -1);
 box.blocked.clear();
 const p = box.findPath(-1.5, -1.5, 0.5, -1.5);
 out.path = p;
-out.pathUsesBridge = !!(p && p.some(([x, z]) => x === -0.5 && z === 0.5));
+out.pathUsesBridge = !!(p && p.some(([x, z]) => Math.floor(x) === -1 && Math.floor(z) === 0)); // a point on the bridge tile (city-people: finer walk grid)
 box.map = Object.assign({}, view, { rows: view.rows.map(r => r.replace('B', 'w')) });
 out.noBridge = box.findPath(-1.5, -1.5, 0.5, -1.5);
 process.stdout.write(JSON.stringify(out));

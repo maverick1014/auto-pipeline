@@ -54,7 +54,9 @@ CONTRACT, server (bin/agent_city.py). Every line may carry "ask".
 
 CONTRACT, page (bin/agent-city.html):
   governorAt(terr) for every territory with a present governor, each at
-    its own hall. Roster and detail group people by territory:
+    its own hall. governorFigures() -> [{terr, x, y}] one per present
+    governor; updateGovernor() draws a figure (with its bubble, "?" and tag)
+    for each of them, not only the home territory's. Roster and detail group people by territory:
     rosterGroups() -> [{"terr", "name", "rows": [{"id", "depth"}]}] in map
     order; per group the governor first (id "gov:<terr>"), then each lead
     followed by its workers (depth 1), then everyone else (depth 0).
@@ -666,6 +668,34 @@ class TestPeoplePage(unittest.TestCase):
 
     def test_roster_uses_the_groups(self):
         self.assertIn("rosterGroups(", function_source("renderRoster") or "")
+
+
+GOVFIG_DRIVER = r"""
+const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
+function buildLand(view){ landState(view); }
+apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: A.id }, governors: 1, asks: [], shows: [], agents: [],
+  govs: [{ terr: A.id, state: 'busy' }, { terr: B.id, state: 'idle' }] });
+const two = governorFigures().map(g => ({ terr: g.terr, x: g.x, y: g.y }));
+apply({ type: 'gov', terr: B.id, state: 'idle', present: false });
+const one = governorFigures().map(g => g.terr);
+__out = { two, one, hallA: { x: A.cx, y: A.cz }, hallB: { x: B.cx, y: B.cz } };
+"""
+
+
+class TestGovernorFigures(unittest.TestCase):
+    """One governor figure per present governor, each at its own hall (B1 drew only one)."""
+
+    def test_one_figure_per_present_governor(self):
+        r = run_sim(GOVFIG_DRIVER, {"view": two_territory_view(), "ta": TA, "tb": TB},
+                    FEATURE_REQUIRED + ("governorFigures",))
+        self.assertEqual(sorted(g["terr"] for g in r["two"]), sorted([TA, TB]))
+        by = {g["terr"]: g for g in r["two"]}
+        self.assertLessEqual(dist(by[TA], r["hallA"]), 2.5)
+        self.assertLessEqual(dist(by[TB], r["hallB"]), 2.5)
+        self.assertEqual(r["one"], [TA])
+
+    def test_the_3d_draws_every_figure(self):
+        self.assertIn("governorFigures(", function_source("updateGovernor") or "")
 
 
 def decor_run(cases):
