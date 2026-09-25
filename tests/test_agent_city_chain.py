@@ -450,6 +450,8 @@ class TestChain(CityCase):
         self.assertIn(("relay", "w1", "lead"), self.relays(ev))
         r = [e for e in ev if e.get("type") == "relay"][0]
         self.assertEqual(r["lead"], "s:tm1")
+        order = [e["type"] for e in ev if e.get("id") == "w1" and e.get("type") in ("relay", "done")]
+        self.assertEqual(order, ["relay", "done"], "relay first, so the page never cheers 完工啦 for a question (headless E2E)")
         self.assertEqual(self.agent(self.snap(), "w1")["relay"], "lead")
 
     def test_a_plain_stop_is_only_done(self):
