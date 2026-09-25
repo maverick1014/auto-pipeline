@@ -48,6 +48,7 @@
 - Where the land ends it may meet sea (the coast terrain); that is the only sea.
 - Territory size grows with the repo's git-tracked code lines. Not counted: binaries, images, 3D models, vendor, lock files.
 - New repo = tiny territory with a small town hall only.
+- The city is never empty: when the server starts it shows the territory of the repo it was started from, plus every territory saved in world.json, at once, before any agent acts. Old sessions whose events carry no repo never create a territory and never block this.
 - Territory edge is natural: river bank, cliff, forest edge, or beach on the coast. No brown earth block sides, no hard line.
 - Territory shape is uneven: organic edge, never a square or rectangle. Growth adds land at the edge and keeps it uneven.
 - Same repo → same shape every time (shape seeded from the repo identity), so reopening shows the territory the owner remembers.
@@ -92,7 +93,7 @@
 - Code quality shapes how orderly the city is. Measured from the files only, no tools run: very large files, long functions and deep nesting, duplicated blocks, hot spots (large files changed very often in git).
 - Good quality: straight streets, buildings aligned to their district. Poor quality: buildings crooked, crammed together, some built in the wrong district (a tower in the houses). Messy, never broken.
 - When a file's quality improves, builders move its building to the right plot, aligned.
-- Ground tiles keep their slight per-tile shade (owner, 2026-09-25).
+- Land looks smooth, not tiled (owner, 2026-09-25, replaces the per-tile shade): no per-tile colour steps, no stair-step edges; coast, cliffs, river banks and district edges are smooth curves; paths and roads are smooth lanes that curve, not rows of tiles. The tile grid stays only as hidden logic for plots.
 - 3D models: Kenney and KayKit only (both CC0, same chunky low-poly look), License.txt per pack. KayKit fills the gaps: Medieval Hexagon (barracks = village police, church = village library, windmill/watermill = village power, tavern = village rest place, building_destroyed = demolition, scaffolding and stage_A/B/C = construction), City Builder Bits (police car beside a building = town/city police station, bench, traffic lights, streetlight, fire hydrant), Space Base (solar panels = city power), Restaurant (tables and chairs = cafe).
 
 ## Persistence
