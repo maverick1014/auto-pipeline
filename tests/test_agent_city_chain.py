@@ -698,6 +698,31 @@ class TestGovernorFigures(unittest.TestCase):
         self.assertIn("governorFigures(", function_source("updateGovernor") or "")
 
 
+HOME_DRIVER = r"""
+const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
+function buildLand(view){ landState(view); }
+apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: A.id }, governors: 1, asks: [], shows: [], agents: [],
+  govs: [{ terr: A.id, state: 'busy' }] });
+const h0 = { x: home.x, z: home.z };
+apply({ type: 'gov', terr: B.id, state: 'busy', present: true });
+apply({ type: 'gov', terr: B.id, state: 'idle', present: true });
+const h1 = { x: home.x, z: home.z };
+apply({ type: 'world', world: V });
+const h2 = { x: home.x, z: home.z };
+__out = { h0, h1, h2 };
+"""
+
+
+class TestCameraHomeStays(unittest.TestCase):
+    """E2E (task manager, headless): with two governors the default view jumped to whichever governor
+    sent the last gov event. Home is the start territory (snapshot gov.terr) and stays there."""
+
+    def test_other_governors_do_not_move_home(self):
+        r = run_sim(HOME_DRIVER, {"view": two_territory_view(), "ta": TA, "tb": TB}, FEATURE_REQUIRED + ("home",))
+        self.assertEqual(r["h1"], r["h0"])
+        self.assertEqual(r["h2"], r["h0"])
+
+
 def decor_run(cases):
     import test_agent_city_page as tp
     js = r"""
