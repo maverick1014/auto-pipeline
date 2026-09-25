@@ -787,6 +787,9 @@ out.ready.push(box.landReady());
 // the governor
 const gv = { g: { visible: true, position: { y: 0, set(){} } }, sel: { visible: false } };
 const el = () => ({ setAttribute(){}, removeAttribute(){}, hidden: true, style: {} });
+// city-people P0: the figure shows only where a governor session is present (governorAt)
+Object.assign(box, { govsByTerr: new Map([['t', { state: 'idle' }]]), govTerr: 't',
+  terrOf: id => (box.map.territories || []).find(t => t.id === id), hallStand: t => ({ x: t.cx, y: t.cz + 1.4 }) });
 Object.assign(box, { govV: gv, gov: { x: 0, y: 0, bubble: null }, DEMO: false, govState: 'idle', simT: 0, selected: null,
   anim(){}, toScreen: () => [0, 0], setText(){}, pin(){}, openAskFor: () => null, govBub: el(), govQm: el(), govTag: el() });
 box.map = { territories: [] }; box.updateGovernor(); out.govEmpty = gv.g.visible;
@@ -803,7 +806,7 @@ process.stdout.write(JSON.stringify(out));
 class TestEmptyWorld(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        fns = tp.page_fns("distMax", "zoomStep", "landReady", "updateGovernor", "showEmptyLine",
+        fns = tp.page_fns("distMax", "zoomStep", "landReady", "updateGovernor", "showEmptyLine", "governorAt",
                           optional=("landSpread", "centreHeight", "islandSpread"))
         cls.out = tp.run_node(EMPTY_JS, {"prelude": tp.constants_prelude(), "fns": fns})
 

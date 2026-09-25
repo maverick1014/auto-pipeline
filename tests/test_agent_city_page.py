@@ -1950,7 +1950,7 @@ const rows = [
   '..ggPg...',
   '.........' ];
 const view = { cell: 26, x0: -4, z0: -4, w: 9, h: 9, rows, territories: [{ id: 't1', cx: 0, cz: 0 }], links: [] };
-const box = Object.assign({ Math, JSON, console, occupied: new Map(), blocked: new Set(), map: view, restSlotsByTerr: new Map() });
+const box = Object.assign({ Math, JSON, console, occupied: new Map(), blocked: new Set(), map: view, restSlotsByTerr: new Map(), homeSlotsByTerr: new Map() });
 vm.createContext(box);
 vm.runInContext(prelude + '\n' + fns, box);
 const slots = box.restSlotsFor(view.territories[0]);
@@ -2054,6 +2054,10 @@ class TestGrowthPage(unittest.TestCase):
             src = function_source(name)
             self.assertIsNotNone(src, "function %s(...) not found" % name)
             fns.append(src)
+        for name in ("hallStand", "reservedNear"):  # city-people P0: rest spots skip the governor's stand and homes
+            src = function_source(name)
+            if src:
+                fns.append(src)
         out = run_node(REST_JS, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
         self.assertGreaterEqual(len(out["spots"]), 3, out)
         for x, z, ch, ok in out["spots"]:
