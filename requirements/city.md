@@ -36,6 +36,7 @@
 - Governor cannot decide, or no answer within `city_governor_wait_sec` (default 60) → red "?" above the agent.
 - Owner clicks the "?": sees the exact question or request (tool + command or path) and answers, approves or denies in the page.
 - First answer wins, from any side (governor, page, terminal). The others see it closed.
+- After an answer, approval or denial the panel shows the result for 10 s, then closes by itself (owner, 2026-09-25).
 - Every answer and approval is logged: who (governor or owner), what, when. In the page log and in `~/.claude/agent-city/decisions.jsonl`. Never silent.
 - Control requests: 127.0.0.1 only, a random token per server start on every request, Origin and Host checked. No other website can answer or approve.
 - City off or server down → the agent falls back to its normal terminal prompt, no waiting.
