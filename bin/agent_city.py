@@ -693,7 +693,9 @@ class CityState:
             snap = self.reducer.snapshot()
             gov = dict(snap["gov"], terr=self.gov_terr)
             agents = [dict(a, terr=self.agent_terr.get(a["id"], "")) for a in snap["agents"]]
-            snap = {"type": "snapshot", "gov": gov, "agents": agents,
+            govs = ([{"terr": self.gov_terr, "state": self.reducer.gov_state}]
+                    if self.reducer.gov_sid is not None else [])
+            snap = {"type": "snapshot", "gov": gov, "govs": govs, "agents": agents,
                     "asks": [ask.view() for ask in self.open.values()],
                     "governors": self._fresh_governor_count(),
                     "shows": self._shows_view_locked(),
@@ -781,6 +783,7 @@ class CityState:
                     self._emit_world_locked()
                 self.last_activity[identity] = now
 
+            ev_name = obj.get("ev") if isinstance(obj, dict) else None
             events = self.reducer.feed(obj, now)
             for ev in events:
                 if ev.get("type") == "spawn":
@@ -789,12 +792,12 @@ class CityState:
                 elif ev.get("type") == "gov":
                     self.gov_terr = terr
                     ev["terr"] = terr
+                    ev["present"] = ev_name != "SessionEnd"
                 elif ev.get("type") == "leave":
                     self.agent_terr.pop(ev["id"], None)
                 self._broadcast(ev)
 
             if isinstance(obj, dict):
-                ev_name = obj.get("ev")
                 if ev_name == "PostToolUse":
                     self._maybe_close_from_terminal(obj)
                     self._maybe_build(obj, identity, terr)
