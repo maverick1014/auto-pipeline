@@ -773,6 +773,9 @@ function citizenStatus(c, governors = 1) {
     if (c.askPhase === 'governor') return governors ? ['ask', '在问总督'] : ['you', '等你回答'];
     if (c.askPhase === 'owner') return ['you', '等你回答'];
   }
+  // a citizen relayed to the governor: the governor answers relays by SendMessage, never through gov-watch,
+  // so its own territory's presence (governorAt) decides, not the old gov-watch 'governors' count (Interaction).
+  if (c.relay === 'governor') return governorAt(c.terr) ? ['ask', '在问总督'] : ['you', '等你'];
   if (!governors && (c.state === 'to_hall' || c.state === 'asking')) return ['you', '等你'];
   return STATE[c.state];
 }
@@ -1496,20 +1499,52 @@ function onArrive(c){
       break;
   }
 }
+/* a free walkable spot near a fixed point `p` {x, y}, at least MIN_GAP away from `p` itself and from every
+   point in `taken` (other people already waiting for the same target) -- so whoever waits stands beside
+   the person it is asking, never on its very spot, and several people waiting for the same target land on
+   different spots (city-people, Interaction). A small ring of offsets around `p`, closest first, each
+   snapped to a free cell -- the fine walk grid (WALK_SUB) can otherwise land two independently-computed
+   points almost on top of each other, so every candidate is checked against the real distance after
+   snapping, never just its nominal offset. Falls back to `p` itself when nothing nearby clears both checks
+   (fully boxed in). */
+const MIN_GAP = .45;
+const WAIT_RING = (() => {
+  const out = [];
+  for (const r of [.55, .8, 1.05]) for (let i = 0; i < 8; i++) out.push([r, i / 8 * Math.PI * 2]);
+  return out;
+})();
+function waitStand(p, taken){
+  for (const [r, a] of WAIT_RING) {
+    const s = snapFree(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r);
+    if (Math.hypot(s.x - p.x, s.y - p.y) < MIN_GAP) continue;
+    if (!walkable(Math.floor(s.x), Math.floor(s.y))) continue;
+    if (taken.some(q => Math.hypot(s.x - q.x, s.y - q.y) < MIN_GAP)) continue;
+    return s;
+  }
+  return { x: p.x, y: p.y };
+}
 function goHall(c){
   const t = terrOf(c.terr);
   let slot;
-  if (t) { const s = snapFree(t.cx + rnd(-.6, .6), t.cz + .9 + rnd(0, .3)); slot = { x: s.x, y: s.y, by: c.id, extra: true }; }
-  else slot = { x: c.x, y: c.y, by: c.id, extra: true };
+  if (t) {
+    const gp = governorAt(t.id) || hallStand(t);
+    const taken = citizens.filter(o => o !== c && o.slot && o.terr === t.id
+      && (o.state === 'to_hall' || o.state === 'asking')).map(o => o.slot);
+    const s = waitStand(gp, taken);
+    slot = { x: s.x, y: s.y, by: c.id, extra: true };
+  } else slot = { x: c.x, y: c.y, by: c.id, extra: true };
   c.slot = slot;
   goTo(c, slot, 'to_hall');
 }
-/* a citizen with a lead (relay 'lead', or stuck) walks to that lead's office and waits there, never the
-   hall (Interaction: the chain of command). */
+/* a citizen with a lead (relay 'lead', or stuck) walks to that lead's office and waits there, beside it,
+   never on the lead's own spot (city-people, Interaction: the chain of command). */
 function goOffice(c, leadC){
-  const spot = officeStand(leadC.office);
-  c.slot = spot;
-  goTo(c, spot, 'to_lead');
+  const oc = { x: leadC.office.x + .5, y: leadC.office.z + .5 };
+  const taken = citizens.filter(o => o !== c && o.slot && byId(o.lead) === leadC
+    && (o.state === 'to_lead' || o.state === 'at_lead')).map(o => o.slot);
+  const s = waitStand(oc, [{ x: leadC.x, y: leadC.y }, ...taken]);
+  c.slot = s;
+  goTo(c, s, 'to_lead');
 }
 function releaseSlot(c){ if (c.slot && !c.slot.extra) c.slot.by = 0; c.slot = null; }
 function giveAnswer(c){
