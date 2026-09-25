@@ -2275,6 +2275,46 @@ function askAutoClose(nowMs){
   if (nowMs - view.shownAt >= ASK_CLOSE_MS) closeAskPanel();
 }
 
+/* Camera state: cam = {az, el, dist, tx, tz} in scene coordinates (owner 2026-09-25 bug fix). Nothing
+   but the reset-to-home call (the first world, the fit button, page start) and the user's own controls
+   (drag, pan, pinch, wheel, the quarter-turn button) ever touches it: no live event of any kind. */
+const cam = { az: Math.PI / 4, el: EL_DEFAULT, dist: DIST_DEFAULT, tx: 0, tz: 0 };
+let camTween = null;
+/* autoRotDir: which way the never-stop rotation turns, used by autoRotate(). Owner 2026-09-25 bug: it
+   always turned the same way (-1), so a drag against it got turned straight back over the dragged
+   angle. dragBy() points it the way the owner's last orbit drag went; before any drag, -1 (today's way). */
+let autoRotDir = -1;
+/* dragBy(dx, dy, limit): what an orbit drag does (the pointermove handler calls it, passing distMax()
+   as limit; pan and pinch are separate). limit is the zoom-out cap for the tilt this drag lands on:
+   already fully zoomed out, a tilt stays fully out at the (possibly new) limit for that tilt. */
+function dragBy(dx, dy, limit){
+  const out = limit != null && cam.dist >= limit - .01;
+  cam.az -= dx * .008;
+  cam.el = clamp(cam.el + dy * .005, EL_MIN, EL_MAX);
+  if (out) cam.dist = limit;
+  if (dx) autoRotDir = dx > 0 ? -1 : 1;
+}
+// owner 2026-09-25: the camera never stops turning — clicks, drags, pinch/wheel zoom and any
+// panel (cards, the "?" panel) leave it running; only reduced motion, or a camera tween (reset/
+// fit) that needs to finish without a fight, pause it.
+function autoRotating(){ return !RM && !camTween; }
+/* autoRotate(now, dt): the never-stop rotation, turning cam.az by autoRotDir's way, one turn per
+   AUTO_ROT_SEC (now is unused; kept for the caller's convenience). */
+function autoRotate(now, dt){
+  if (autoRotating()) cam.az += autoRotDir * dt * Math.PI * 2 / AUTO_ROT_SEC;
+}
+/* cameraStep(dt): the per-frame camera advance -- the never-stop rotation (through autoRotate(), the
+   one rotation path) plus the quarter-turn tween. frame() calls this every frame. */
+function cameraStep(dt){
+  autoRotate(0, dt);
+  if (camTween) {
+    camTween.t = Math.min(1, camTween.t + dt * 2.2);
+    const e = camTween.t < .5 ? 2 * camTween.t * camTween.t : 1 - Math.pow(-2 * camTween.t + 2, 2) / 2;
+    cam.az = camTween.from + (camTween.to - camTween.from) * e;
+    if (camTween.t >= 1) camTween = null;
+  }
+}
+
 /* =========================================================
    3D view. Every model is a ready-made CC0 asset from Kenney
    (kenney.nl), loaded as-is. Only placement is ours.
@@ -2353,7 +2393,6 @@ const world = new THREE.Group();
 world.position.set(-6, 0, -5);
 scene.add(world);
 const camera = new THREE.PerspectiveCamera(FOV, 1, .25, 150);
-const cam = { az: Math.PI / 4, el: EL_DEFAULT, dist: DIST_DEFAULT, tx: 0, tz: 0 };
 
 const hemi = new THREE.HemisphereLight(0xffffff, 0xffffff, 1);
 scene.add(hemi);
@@ -3986,7 +4025,6 @@ $('#zin').addEventListener('click', () => zoomStep(-1));
 $('#zout').addEventListener('click', () => zoomStep(1));
 $('#rot').addEventListener('click', () => { camTween = { from: cam.az, to: cam.az - Math.PI / 2, t: 0 }; camChanged(); });
 $('#zfit').addEventListener('click', () => { resetCam(); camChanged(); });
-let camTween = null;
 
 const pointers = new Map();
 let drag = null, pinch = null;
@@ -4035,7 +4073,7 @@ canvas.addEventListener('pointermove', e => {
   if (!drag.moved && Math.hypot(dx, dy) < 6) return;
   drag.moved = true; canvas.classList.add('grabbing');
   if (drag.pan) panBy(dx, dy);
-  else { const out = cam.dist >= distMax() - .01; cam.az -= dx * .008; cam.el = clamp(cam.el + dy * .005, EL_MIN, EL_MAX); if (out) cam.dist = distMax(); }
+  else dragBy(dx, dy, distMax());
   drag.x = e.clientX; drag.y = e.clientY;
   camChanged();
 });
@@ -4069,13 +4107,6 @@ function busy(){
   if (typeof shows !== 'undefined' && shows.size) return true; // Balance: an era show is running (builders walking, about to flip)
   return citizens.some(c => c.path.length || c.state === 'building' || c.state === 'spawn' || c.state === 'asking');
 }
-// owner 2026-09-25: the camera never stops turning — clicks, drags, pinch/wheel zoom and any
-// panel (cards, the "?" panel) leave it running; only reduced motion, or a camera tween (reset/
-// fit) that needs to finish without a fight, pause it.
-function autoRotating(){ return !RM && !camTween; }
-function autoRotate(now, dt){
-  if (autoRotating()) cam.az -= dt * Math.PI * 2 / AUTO_ROT_SEC;
-}
 function frame(now){
   requestAnimationFrame(frame);
   if (document.hidden) { lastSim = now; return; }
@@ -4087,13 +4118,7 @@ function frame(now){
   const before = new Set(citizens);
   for (let dt = raw; dt > 0; dt -= .05) update(Math.min(dt, .05));
   for (const c of before) if (!citizens.includes(c)) goneOv.push(c);
-  autoRotate(now, raw);
-  if (camTween) {
-    camTween.t = Math.min(1, camTween.t + raw * 2.2);
-    const e = camTween.t < .5 ? 2 * camTween.t * camTween.t : 1 - Math.pow(-2 * camTween.t + 2, 2) / 2;
-    cam.az = camTween.from + (camTween.to - camTween.from) * e;
-    if (camTween.t >= 1) camTween = null;
-  }
+  cameraStep(raw); // the never-stop rotation (through autoRotate) plus the quarter-turn tween
   applyTheme();
   updateCamera();
   applyFade(viewBlockers(cam.el + camLiftNow));
