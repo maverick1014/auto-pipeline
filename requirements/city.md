@@ -13,7 +13,7 @@
 - `hooks/hooks.json` → `bin/agent-city-hook.sh` → `<city dir>/events.jsonl` → `bin/agent_city.py` → SSE `/events` → page.
 - Hook when off: one `test -f`, nothing else. On: one JSON line per event. Bash builtins only.
 - Session without `AGENT_ROLE` = governor. Session with `AGENT_ROLE` = citizen. Subagent = citizen.
-- A session shows up only if it started with the city hook installed (plugin 0.5.0+).
+- A session shows up only if it started with the city hook installed (plugin 0.6.0+).
 
 ## Look
 - No credits, intro text, legend, or drag hint on the page. Kenney assets are CC0; `License.txt` files stay in `bin/agent-city-assets/`.

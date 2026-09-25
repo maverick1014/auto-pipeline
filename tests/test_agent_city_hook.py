@@ -407,7 +407,10 @@ class TestSocketStdin(HookCase):
             ours.sendall(data)
         except OSError:
             pass
-        ours.shutdown(socket.SHUT_WR)
+        try:
+            ours.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
         out, err = proc.communicate(timeout=20)
         ours.close()
         return proc.returncode, out, err
