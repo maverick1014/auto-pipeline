@@ -1029,9 +1029,13 @@ class TestDemoWorld(unittest.TestCase):
     def test_demo_world_command(self):
         home = tempfile.mkdtemp(prefix="city_demo_")
         try:
+            # PYTHONDONTWRITEBYTECODE: Apple's Command Line Tools Python keeps
+            # its byte-code cache under $HOME/Library/Caches, so any run with a
+            # fresh HOME makes that folder before agent_city.py even starts.
             out = subprocess.run([sys.executable, os.path.join(BIN, "agent_city.py"), "demo-world"],
                                  capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL,
-                                 env=dict(os.environ, AGENT_CITY_HOME=home, HOME=home))
+                                 env=dict(os.environ, AGENT_CITY_HOME=home, HOME=home,
+                                          PYTHONDONTWRITEBYTECODE="1"))
             self.assertEqual(os.listdir(home), [], "demo-world reads and writes no file")
         finally:
             shutil.rmtree(home, ignore_errors=True)

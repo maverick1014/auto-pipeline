@@ -73,17 +73,39 @@ import json
 import os
 import re
 import shutil
+import signal
 import stat
 import subprocess
+import sys
 import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from relayhelp import FAKE_KEY, FakeRelay  # noqa: E402
 SCRIPT = os.path.join(ROOT, "bin", "agent-cloud-pack.sh")
 
 PACK = os.path.join(".claude", "auto-pipeline")
 HOOK_CMD = 'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-start.sh'
+
+# Agent City in the cloud (requirements/city.md, "Joining": cloud sessions
+# send only, no page). The pack also ships:
+#   - every city event hook of the source hooks/hooks.json (the entries that
+#     run agent-city-hook.sh), same event and matcher, as CITY_HOOK_CMD. Off
+#     (no <city dir>/on) it costs one test -f, like the plugin's own hook.
+#   - one more SessionStart hook, SEND_CMD: starts the cloud sender only when
+#     the environment secret AGENT_CITY_RELAY is set; silent otherwise.
+#   - never the page-side hooks (agent_city.py ask / gov-watch): a cloud
+#     session has no city page and no owner at it.
+# Each added once; a second pack or --update adds none twice.
+CITY_HOOK_CMD = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
+                 'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-city-hook.sh; exit 0')
+SEND_CMD = ('[ -n "${AGENT_CITY_RELAY:-}" ] && '
+            'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-city.sh send; exit 0')
 POINTER = ("Run .claude/auto-pipeline/bin/agent-start.sh first. "
            "Follow its output. No work until the quiz says PASS.")
 AGENTS_LINE = ("Run .claude/auto-pipeline/bin/agent-start.sh first. "
@@ -406,8 +428,9 @@ class TestSettingsMerge(PackCase):
         self.assertEqual(data["model"], "opus")
         self.assertEqual(data["env"], {"FOO": "bar"})
         self.assertEqual(data["permissions"]["deny"], ["Bash(rm -rf *)"])
-        self.assertEqual(data["hooks"]["PreToolUse"],
-                         USER_SETTINGS["hooks"]["PreToolUse"])
+        user_pre = USER_SETTINGS["hooks"]["PreToolUse"]
+        self.assertEqual(data["hooks"]["PreToolUse"][:len(user_pre)], user_pre,
+                         "the user's own hooks stay first, unchanged")
 
     def test_exactly_one_hook_runs_agent_start(self):
         self.assertOk(self.pack())
@@ -448,7 +471,7 @@ class TestSettingsMerge(PackCase):
         os.remove(self.t(".claude", "settings.json"))
         self.assertOk(self.pack())
         data = self.settings()
-        self.assertEqual(session_start_commands(data), [HOOK_CMD])
+        self.assertEqual(session_start_commands(data), [HOOK_CMD, SEND_CMD])
         self.assertEqual(data["permissions"]["allow"], ALLOW_RULES)
 
     def test_broken_settings_stop_the_pack_and_nothing_is_written(self):
@@ -458,6 +481,164 @@ class TestSettingsMerge(PackCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("settings.json", result.stdout + result.stderr)
         self.assertEqual(snapshot(self.target), before)
+
+
+def city_entries(hooks_json_path):
+    """[(event, matcher or None)] of every source hook entry that runs
+    agent-city-hook.sh."""
+    with open(hooks_json_path) as fh:
+        hooks = json.load(fh)["hooks"]
+    out = []
+    for event, entries in hooks.items():
+        for entry in entries:
+            if any("agent-city-hook.sh" in h.get("command", "") for h in entry.get("hooks", [])):
+                out.append((event, entry.get("matcher")))
+    return out
+
+
+def commands_for(settings, event, matcher):
+    return [h.get("command") for entry in settings.get("hooks", {}).get(event, [])
+            if entry.get("matcher") == matcher for h in entry.get("hooks", [])]
+
+
+class TestCityHooks(PackCase):
+    def setUp(self):
+        super().setUp()
+        self.assertOk(self.pack())
+        self.wanted = city_entries(self.s("hooks", "hooks.json"))
+        self.assertTrue(self.wanted, "the source has no city hooks?")
+
+    def test_every_city_event_hook_is_packed(self):
+        data = self.settings()
+        for event, matcher in self.wanted:
+            with self.subTest(event=event, matcher=matcher):
+                self.assertEqual(commands_for(data, event, matcher).count(CITY_HOOK_CMD), 1)
+
+    def test_no_page_hooks_in_the_cloud(self):
+        text = json.dumps(self.settings())
+        self.assertNotIn("agent_city.py", text)
+
+    def test_the_sender_hook(self):
+        self.assertEqual(session_start_commands(self.settings()).count(SEND_CMD), 1)
+
+    def test_nothing_twice_after_a_second_pack_and_an_update(self):
+        self.assertOk(self.pack())
+        self.assertOk(self.pack("--update"))
+        data = self.settings()
+        for event, matcher in self.wanted:
+            with self.subTest(event=event):
+                self.assertEqual(commands_for(data, event, matcher).count(CITY_HOOK_CMD), 1)
+        self.assertEqual(session_start_commands(data).count(SEND_CMD), 1)
+
+    def test_update_adds_them_to_an_older_pack(self):
+        data = self.settings()
+        for event in list(data["hooks"]):
+            data["hooks"][event] = [e for e in data["hooks"][event]
+                                    if not any("agent-city" in h.get("command", "")
+                                               for h in e.get("hooks", []))]
+        write_text(self.t(".claude", "settings.json"), json.dumps(data, indent=2) + "\n")
+        self.assertOk(self.pack("--update"))
+        data = self.settings()
+        self.assertEqual(session_start_commands(data).count(SEND_CMD), 1)
+        for event, matcher in self.wanted:
+            with self.subTest(event=event):
+                self.assertEqual(commands_for(data, event, matcher).count(CITY_HOOK_CMD), 1)
+
+    def run_cmd(self, cmd, extra=None, stdin=""):
+        env = {"CLAUDE_PROJECT_DIR": self.target,
+               "AGENT_CITY_DIR": os.path.join(self.base, "city")}
+        env.update(extra or {})
+        full = self.env(env)
+        if "AGENT_CITY_RELAY" not in (extra or {}):
+            full.pop("AGENT_CITY_RELAY", None)
+        return subprocess.run(["bash", "-c", cmd], cwd=self.target, env=full,
+                              capture_output=True, text=True, input=stdin, timeout=60)
+
+    def test_city_hook_is_free_and_silent_when_off(self):
+        event = json.dumps({"session_id": "s", "hook_event_name": "PostToolUse",
+                            "cwd": self.target, "tool_name": "Bash"})
+        result = self.run_cmd(CITY_HOOK_CMD, stdin=event)
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
+        self.assertFalse(os.path.exists(os.path.join(self.base, "city")))
+
+    def test_sender_hook_is_silent_without_the_secret(self):
+        result = self.run_cmd(SEND_CMD)
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
+        self.assertFalse(os.path.exists(os.path.join(self.base, "city", "on")))
+
+
+class TestCityInTheCloud(PackCase):
+    """End to end, the way a cloud session runs it: a packed repo, no plugin,
+    CLAUDE_CODE_REMOTE set, AGENT_CITY_RELAY as the environment secret, the
+    default city dir under a fresh $HOME. The packed SessionStart hook
+    (SEND_CMD) starts the sender; the packed city hook (CITY_HOOK_CMD) writes
+    the event; the sender delivers it to the team relay (a fake one on
+    127.0.0.1, tests/relayhelp.py) as 云端, with the repo id and branch."""
+
+    def setUp(self):
+        super().setUp()
+        self.key = FAKE_KEY
+        self.fake = FakeRelay()
+        self.addCleanup(self.fake.stop)
+        git(self.target, "remote", "add", "origin", "git@github.com:Acme/Shop.git")
+        self.assertOk(self.pack())
+        self.city = os.path.join(self.home, ".cache", "agent-city")
+        self.addCleanup(self.stop_sender)
+
+    def stop_sender(self):
+        try:
+            with open(os.path.join(self.city, "on")) as fh:
+                os.kill(int(fh.read().split()[0]), signal.SIGTERM)
+        except (OSError, ValueError, IndexError):
+            pass
+
+    def cloud_env(self):
+        env = self.env({"CLAUDE_PROJECT_DIR": self.target, "CLAUDE_CODE_REMOTE": "true",
+                        "AGENT_CITY_RELAY": "%s %s" % (self.fake.url, self.key)})
+        env.pop("AGENT_CITY_DIR", None)
+        return env
+
+    def run_cmd(self, cmd, stdin=""):
+        return subprocess.run(["bash", "-c", cmd], cwd=self.target, env=self.cloud_env(),
+                              capture_output=True, text=True, input=stdin, timeout=60)
+
+    def wait(self, check, timeout=10.0):
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            if check():
+                return True
+            time.sleep(0.1)
+        return bool(check())
+
+    def test_a_cloud_session_sends_its_events(self):
+        started = self.run_cmd(SEND_CMD)
+        self.assertEqual(started.returncode, 0, started.stderr)
+        self.assertIn("CITY: sending to the team relay " + self.fake.host, started.stdout)
+        self.assertNotIn(self.key, started.stdout + started.stderr)
+        self.assertTrue(os.path.exists(os.path.join(self.city, "on")))
+
+        event = {"session_id": "cloud-1", "hook_event_name": "PostToolUse", "cwd": self.target,
+                 "tool_name": "Bash", "tool_input": {"command": "ls"}}
+        hook = self.run_cmd(CITY_HOOK_CMD, stdin=json.dumps(event))
+        self.assertEqual((hook.returncode, hook.stdout), (0, ""), hook.stderr)
+
+        # the city_relay_sec default is 5 s: the first sync is at once, the next within ~5 s
+        self.assertTrue(self.wait(lambda: self.fake.sent_lines(), timeout=15),
+                        "the cloud session's event never reached the relay")
+        wire = self.fake.sent_lines()[0]
+        branch = git(self.target, "rev-parse", "--abbrev-ref", "HEAD").strip()
+        self.assertEqual((wire["sid"], wire["rid"], wire["dev"], wire["br"]),
+                         ("cloud-1", "github.com/acme/shop", "云端", branch))
+        self.assertNotIn(self.target, json.dumps(self.fake.sync_bodies()))
+
+    def test_the_second_session_start_keeps_one_sender(self):
+        self.assertEqual(self.run_cmd(SEND_CMD).returncode, 0)
+        with open(os.path.join(self.city, "on")) as fh:
+            first = fh.read()
+        again = self.run_cmd(SEND_CMD)
+        self.assertEqual(again.returncode, 0, again.stderr)
+        with open(os.path.join(self.city, "on")) as fh:
+            self.assertEqual(fh.read(), first)
 
 
 class TestClaudeMd(PackCase):
