@@ -96,15 +96,29 @@ that machine only. It refuses when the repo has no `origin` remote, or
 when `.secrets/` is not git-ignored.
 
 ## 7. Join a cloud environment
-1. Open the cloud environment's settings, where it keeps secrets and
-   network rules.
-2. Add an environment secret named `AGENT_CITY_RELAY`. Its value is the
+Cloud sessions (Claude Code on the web / in the Claude app) have no city
+page; they only send, and show up in the city on your Mac.
+1. Make sure each repo you work on in the cloud carries the current cloud
+   pack (it ships the city hook and the sender). On your Mac, inside the
+   repo, run:
+   ```
+   bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-cloud-pack.sh" . --update
+   ```
+   then commit and push what it changed. You should see: `.claude/auto-pipeline/VERSION` shows the plugin's
+   version, and `.claude/settings.json` has hooks that run
+   `agent-city-hook.sh`.
+2. Open a cloud session, click the cloud environment menu in the session's
+   title bar, then "Edit".
+3. Add an environment variable named `AGENT_CITY_RELAY`. Its value is the
    relay address, one space, then the team key: `<relay address>
-   <team key>`.
-3. Add the relay host to the environment's allowed network hosts:
+   <team key>`. Type it there yourself; never in a chat.
+4. Under "Network access", add the relay host to the allowed domains:
    `<worker name>.<account subdomain>.workers.dev`.
-   You should see: the host listed as an allowed network host, and the
-   secret listed (its value hidden).
+   You should see: the host listed under the allowed domains, and the
+   variable listed.
+5. Start a new cloud session (a running one does not see the change).
+   You should see: at its start, the line
+   `CITY: sending to the team relay <worker name>.<account subdomain>.workers.dev`.
 
 ## 8. Check it works
 1. On a second machine, or in a cloud session, join the same repo (step
