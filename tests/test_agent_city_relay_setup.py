@@ -24,7 +24,9 @@ Shape the tests hold it to:
   2  names agent-city-relay.js, a D1 database, the binding name DB.
   3  names TEAM_KEY, says it is a secret, and that the key never goes into
      the chat (or to Claude, or to any agent).
-  4  names workers.dev.
+  4  names workers.dev; checks the address from a terminal (curl, in a
+     code block) and says how to turn Cloudflare Access off when it stands
+     in front of the relay.
   6  gives the join command in a code block (agent-city.sh join, or
      agent-city.sh" join when the path is quoted), names .secrets.
   7  names the environment secret AGENT_CITY_RELAY (value: the address, one
@@ -122,6 +124,16 @@ class TestContent(SetupCase):
 
     def test_address(self):
         self.assert_names(4, "workers.dev")
+
+    def test_address_checked_from_a_terminal(self):
+        # A browser already signed in to Cloudflare Access sees the relay;
+        # a joining machine gets a sign-in redirect instead (the owner's own
+        # account has Access on some workers.dev addresses).
+        body = self.section(4)
+        blocks = re.findall(r"```[a-z]*\n(.*?)```", body, re.S)
+        self.assertTrue(any("curl" in b for b in blocks),
+                        "a terminal check of the address, in a code block")
+        self.assertIn("Cloudflare Access", body)
 
     def test_join_local(self):
         body = self.section(6)

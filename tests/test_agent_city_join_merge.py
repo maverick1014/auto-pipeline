@@ -32,8 +32,8 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from relayhelp import add_worktree, hook_line, join  # noqa: E402
-from test_agent_city_relay_client import HubCase  # noqa: E402
+from relayhelp import FAKE_KEY, add_worktree, hook_line, join  # noqa: E402
+from test_agent_city_relay_client import Case, HubCase, rl  # noqa: E402
 from test_agent_city_people import function_source, plan_views, run_sim  # noqa: E402
 
 
@@ -74,6 +74,20 @@ class TestNewHookKeysStayHome(HubCase):
         self.assertTrue(hub.offer(hook_line(self.repo, proj=wt)))
         hub.tick()
         self.assertEqual(self.fake.sent_lines()[0]["br"], "feature/old")
+
+
+class TestCloudflareLetsTheClientIn(Case):
+    """Cloudflare answers 403 to Python's default User-Agent, even on a
+    workers.dev address (seen 2026-09-26 on the owner's own account), and
+    sync() reads a 403 as "the relay refused the key". So every request
+    carries the client's own User-Agent."""
+
+    def test_sync_sends_its_own_user_agent(self):
+        fake = self.relay()
+        state, _ = rl.sync(fake.url, FAKE_KEY, "dev-me", 0, [])
+        self.assertEqual(state, "ok")
+        ua = fake.requests[0]["ua"] or ""
+        self.assertTrue(ua.startswith("agent-city-relay/"), ua)
 
 
 COUNT_DRIVER = r"""

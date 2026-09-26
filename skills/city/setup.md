@@ -69,6 +69,19 @@ keep it only in your terminal, in Cloudflare, and with your members.
    `https://<worker name>.<account subdomain>.workers.dev`.
 2. Open that address in a browser.
    You should see: `{"ok":true,"relay":"agent-city","v":1}`.
+3. Check it from a terminal as well, because machines join without a
+   browser sign-in. On your Mac, run (put your own address in):
+   ```
+   curl -s https://<worker name>.<account subdomain>.workers.dev/
+   ```
+   You should see: the same `{"ok":true,"relay":"agent-city","v":1}`.
+4. Only if step 3 shows anything else (a `302 Found` page, a sign-in
+   page, or nothing at all):
+   Cloudflare Access stands in front of the relay and would lock out
+   every machine that joins. Open the Worker's "Domains" tab (on older
+   dashboards: "Settings", then "Domains & Routes"). Next to `workers.dev`,
+   click "Disable Cloudflare Access", then run step 3 again.
+   You should see: step 3 now shows the relay's answer.
 
 This address is not secret; the team key is what protects the relay.
 

@@ -68,7 +68,7 @@ class _Handler(BaseHTTPRequestHandler):
         except ValueError:
             body = None
         record = {"path": self.path, "auth": self.headers.get("Authorization"),
-                  "body": body, "status": None}
+                  "ua": self.headers.get("User-Agent"), "body": body, "status": None}
         with relay.lock:
             relay.requests.append(record)
             mode = relay.mode
