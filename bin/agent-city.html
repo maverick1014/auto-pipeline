@@ -2294,7 +2294,7 @@ function apply(ev){
     case 'move': {
       const b = buildings.find(x => x.terr === ev.terr && x.plot === ev.from);
       if (!b) return null;
-      log(`${bldLabel(b)} 搬回${TYPE_ZH[b.type] || b.type} 区`);
+      log(`${bldLabel(b)} 搬回${TYPE_ZH[b.type] || b.type}区`);
       b.moveTo = { plot: ev.plot, x: ev.x, z: ev.z, t: 0 };
       return b;
     }
