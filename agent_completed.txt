@@ -29,3 +29,4 @@
 2026-09-26 | release-0.7.0 | bump plugin to 0.7.0 so installed users get city-worktrees, city-quality, city-levelups (same-version updates are skipped) | est 5m actual 0m
 2026-09-26 | city-relay | agent-city join backend on maverick-pc2 (relay Worker, dev relay, join/leave, hand setup steps; no page/agent_city.py). Part of city-join. TM on pc2: worktree /Users/maverick/orca/workspaces/auto-pipeline/city-relay, terminal term_ef1703c4-18b3-40d3-8f0f-27afb3bbdbf5 (--environment maverick-pc2) | est 150m actual 785m
 2026-09-26 | release-0.8.0 | bump plugin to 0.8.0: joining a team city (relay) merged with worktree sites and quality | est 5m actual 0m
+2026-09-26 | setup-access-check | setup.md step 4: check the relay address from a terminal; Cloudflare Access off; plus move-log spacing nit | est 10m actual 10m
