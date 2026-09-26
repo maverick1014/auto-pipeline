@@ -49,6 +49,7 @@ REAL_KEYS = [
     "city_port",
     "city_idle_min",
     "city_governor_wait_sec",
+    "city_relay_sec",
 ]
 
 GOOD_CONF_TEXT = (
@@ -69,6 +70,7 @@ GOOD_CONF_TEXT = (
     "city_port=4777\n"
     "city_idle_min=30\n"
     "city_governor_wait_sec=60\n"
+    "city_relay_sec=5\n"
 )
 
 
@@ -378,7 +380,8 @@ class TestGroups(unittest.TestCase):
                 ),
                 ("permission", ["permission_mode", "auto_resume", "language"]),
                 ("runtime", ["runtime"]),
-                ("city", ["city_port", "city_idle_min", "city_governor_wait_sec"]),
+                ("city", ["city_port", "city_idle_min", "city_governor_wait_sec",
+                          "city_relay_sec"]),
             ],
         )
 
@@ -428,7 +431,7 @@ class TestCityKeys(unittest.TestCase):
     governor has to answer an agent's question before the owner gets it."""
 
     BOUNDS = {"city_port": (1024, 65535), "city_idle_min": (1, 240),
-              "city_governor_wait_sec": (5, 3600)}
+              "city_governor_wait_sec": (5, 3600), "city_relay_sec": (2, 60)}
 
     def test_bounds(self):
         for key, bounds in self.BOUNDS.items():
@@ -454,6 +457,7 @@ class TestCityKeys(unittest.TestCase):
         self.assertEqual(conf.get("city_port"), "4777")
         self.assertEqual(conf.get("city_idle_min"), "30")
         self.assertEqual(conf.get("city_governor_wait_sec"), "60")
+        self.assertEqual(conf.get("city_relay_sec"), "5")
 
     def test_no_switch_for_the_governor_approving(self):
         # Owner decision 2026-09-24: permission requests are the owner's only.
