@@ -2908,15 +2908,19 @@ def _consume_chat_line(raw_line, city):
     city.feed_chat(obj)
 
 
-def chat_tail_loop(chat_path, city, stop_event):
+def chat_tail_loop(chat_path, city, stop_event, initial_skip=0):
     """Watch <city dir>/chat.jsonl, feed new lines to city.feed_chat: a
     separate tail from events.jsonl (the relay hub must never see chat
-    lines -- chat_path is never offered to it). Lines this same process
-    already wrote and fed itself (a delivered owner message) are skipped
-    here: city.chat_written_offset() tracks how far it has gotten."""
+    lines -- chat_path is never offered to it). INITIAL_SKIP is the file's
+    size at the moment CityState already loaded its history (load_chat), so
+    a line written between then and this thread's first open is never lost.
+    Lines this same process already wrote and fed itself (a delivered owner
+    message) are skipped here too: city.chat_written_offset() tracks how
+    far it has gotten."""
     fh = None
     offset = 0
     buf = b""
+    skip = initial_skip
     while not stop_event.is_set():
         if fh is None:
             try:
@@ -2924,7 +2928,9 @@ def chat_tail_loop(chat_path, city, stop_event):
             except OSError:
                 stop_event.wait(TAIL_INTERVAL)
                 continue
-            offset = os.fstat(fh.fileno()).st_size
+            size_now = os.fstat(fh.fileno()).st_size
+            offset = min(skip, size_now)
+            skip = 0
             buf = b""
 
         offset = max(offset, city.chat_written_offset())
@@ -3268,6 +3274,10 @@ def cmd_serve(args):
     world_path_arg = args.world if args.world is not None else world_path()
     start_repo = _repo_id(args.start_dir) if args.start_dir else None
     chat_path = os.path.join(directory, "chat.jsonl")
+    try:
+        chat_initial_skip = os.path.getsize(chat_path)
+    except OSError:
+        chat_initial_skip = 0
     city = CityState(gov_wait_sec=args.gov_wait_sec, decisions_path=decisions_path, token=token,
                       world_path=world_path_arg, start_repo=start_repo, chat_path=chat_path)
     hub = relay.RelayHub(relay_sec=args.relay_sec, join_ttl=args.join_ttl_sec)
@@ -3308,7 +3318,7 @@ def cmd_serve(args):
     tail.start()
 
     chat_tail = threading.Thread(
-        target=chat_tail_loop, args=(chat_path, city, stop_event), daemon=True,
+        target=chat_tail_loop, args=(chat_path, city, stop_event, chat_initial_skip), daemon=True,
     )
     chat_tail.start()
 
