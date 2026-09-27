@@ -221,7 +221,8 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 
 @media (max-width: 960px){
   .stage-col{flex:1}
-  .stage{flex:1;height:auto;min-height:340px}
+  .stage{flex:1 1 0;height:auto;min-height:340px}
+  .stage canvas{position:absolute;inset:0}
   .stats{margin-left:0}
   .ask-panel{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:72%}
   .win{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:72%}
