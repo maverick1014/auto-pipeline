@@ -636,12 +636,87 @@ class _Client:
         self.queue = queue.Queue(maxsize=QUEUE_MAXSIZE)
 
 
+# --------------------------------------------------------------------------
+# Talking: the owner reads a session's conversation and talks to it from the
+# city page (requirements/city.md, "Talking"). Chat text never leaves the
+# computer: bin/agent_city_relay.py never sees it. See
+# tests/test_agent_city_chat.py for the full contract.
+# --------------------------------------------------------------------------
+
+CHAT_TEXT_MAX = 4000
+CHAT_KEEP = 200
+CHAT_BUSY_EVENTS = ("UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest")
+
+
+def load_chat(path):
+    """The valid lines of PATH, the last CHAT_KEEP per (sid, aid), in file
+    order; rewrites the file (tmp + rename) when it dropped any. Missing
+    file -> []."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            raw_lines = fh.readlines()
+    except OSError:
+        return []
+
+    valid = []
+    for raw in raw_lines:
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            obj = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        sid = obj.get("sid")
+        kind = obj.get("kind")
+        text = obj.get("text")
+        if not isinstance(sid, str) or not sid:
+            continue
+        if kind not in ("prompt", "reply", "owner"):
+            continue
+        if not isinstance(text, str) or not text:
+            continue
+        aid = obj.get("aid", "")
+        if not isinstance(aid, str):
+            aid = ""
+        at = obj.get("at")
+        if not isinstance(at, (int, float)):
+            at = 0.0
+        valid.append({"sid": sid, "aid": aid, "kind": kind, "text": text, "at": at})
+
+    counts = {}
+    for row in valid:
+        key = (row["sid"], row["aid"])
+        counts[key] = counts.get(key, 0) + 1
+    seen = {}
+    kept = []
+    for row in valid:
+        key = (row["sid"], row["aid"])
+        seen[key] = seen.get(key, 0) + 1
+        if counts[key] - seen[key] < CHAT_KEEP:
+            kept.append(row)
+
+    if len(kept) != len(valid):
+        try:
+            folder = os.path.dirname(path) or "."
+            fd, tmp_path = tempfile.mkstemp(dir=folder, prefix=".chat-", suffix=".tmp")
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                for row in kept:
+                    fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+            os.replace(tmp_path, path)
+        except OSError:
+            pass
+    return kept
+
+
 class CityState:
     """Thread-safe home for the Reducer, asks, health counters and SSE clients."""
 
     def __init__(self, max_agents=40, done_ttl=600, gov_wait_sec=60.0,
                  decisions_path=None, token="", world_path=None, plans=None, count_fn=None,
-                 balance_fn=None, start_repo=None):
+                 balance_fn=None, start_repo=None, chat_path=None):
         self.lock = threading.Lock()
         self.cond = threading.Condition(self.lock)
         self._max_agents = max_agents
@@ -735,6 +810,19 @@ class CityState:
 
         if dirty:
             self._save_world_locked()
+
+        # -- talking: the owner's conversation with each session -----------
+        self.chat_path = chat_path
+        self.chat = {}                # page id -> deque(maxlen=CHAT_KEEP) of entries
+        self._chat_seq = 0
+        self._chat_busy = {}          # page id -> bool (True: busy)
+        self._chat_page_of_sid = {}   # sid -> page id, persists past SessionEnd
+        self._chat_ended_pages = set()  # "s:sid" pages whose session ended
+        self._chat_written_offset = 0   # bytes of chat_path this process itself wrote
+        self.chat_watchers = {}       # sid -> {"current", "seen"} (chat_next's own, gov_next keeps self.watchers)
+        if self.chat_path is not None:
+            for row in load_chat(self.chat_path):
+                self.feed_chat(row)
 
     # -- SSE clients ----------------------------------------------------
 
@@ -960,6 +1048,11 @@ class CityState:
                     self._maybe_build(obj, identity, terr)
                 elif ev_name == "SessionEnd":
                     self._forget_governor(obj)
+
+            has_aid = isinstance(aid_field, str) and aid_field != ""
+            if (isinstance(ev_name, str) and ev_name and isinstance(sid_field, str)
+                    and sid_field != "" and not has_aid):
+                self._update_chat_state_locked(sid_field, ev_name, terr, reducer, was_gov)
 
     # -- growth: many territories, one Reducer each ----------------------
     #
@@ -2076,9 +2169,13 @@ class CityState:
                 self.cond.notify_all()
             elif watcher != info["current"]:
                 return {"state": "replaced"}
+            gov_to = "gov:" + territory_id(repo)
             while True:
                 if self.watchers.get(sid, {}).get("current") != watcher:
                     return {"state": "replaced"}
+                message = self._chat_pick_queued_locked(gov_to)
+                if message is not None:
+                    return self._chat_deliver_locked(sid, gov_to, message)
                 ask = self._pick_governor_ask(repo, sid)
                 if ask is not None:
                     ask.given_to.add(sid)
@@ -2131,6 +2228,217 @@ class CityState:
         if match is not None:
             verb = "allow" if match.kind == "permission" else "answer"
             self._close(match, "terminal", verb, "", "", None)
+
+    # -- talking: the owner's conversation with each session --------------
+
+    def _page_id_for_sid(self, sid, aid):
+        """Caller holds self.lock. A subagent's own citizen id; else the
+        governor's mailbox ("gov:" + territory) when SID currently governs
+        some territory; else the session's own ("s:" + sid)."""
+        if aid:
+            return aid
+        for identity, reducer in self.reducers.items():
+            if reducer.gov_sid == sid:
+                return "gov:" + self._terr_for(identity)
+        return "s:" + sid
+
+    def _terr_known(self, terr):
+        for identity in self.reducers:
+            if self._terr_for(identity) == terr:
+                return True
+        return False
+
+    def _agent_known(self, aid):
+        for reducer in self.reducers.values():
+            if aid in reducer.agents:
+                return True
+        return False
+
+    def _update_chat_state_locked(self, sid, ev_name, terr, reducer, was_gov):
+        """Caller holds self.lock. The chat idle rule (requirements/city.md,
+        "Talking"): a session is idle until a line of it (aid "") makes it
+        busy; its Stop makes it idle again; its SessionEnd ends it."""
+        if ev_name == "SessionEnd":
+            to = ("gov:" + terr) if was_gov else ("s:" + sid)
+            self._chat_page_of_sid[sid] = to
+            self._chat_busy.pop(to, None)
+            if to.startswith("s:"):
+                self._chat_ended_pages.add(to)
+            self._chat_expire_queue_locked(to)
+            return
+        to = ("gov:" + terr) if reducer.gov_sid == sid else ("s:" + sid)
+        self._chat_page_of_sid[sid] = to
+        if ev_name in CHAT_BUSY_EVENTS:
+            self._chat_busy[to] = True
+        elif ev_name == "Stop":
+            self._chat_busy[to] = False
+            self.cond.notify_all()
+
+    def _chat_expire_queue_locked(self, to):
+        bucket = self.chat.get(to)
+        if not bucket:
+            return
+        changed = False
+        for entry in bucket:
+            if entry.get("kind") == "owner" and entry.get("state") == "queued":
+                entry["state"] = "undelivered"
+                self._broadcast({"type": "chat", "to": to, "entry": dict(entry)})
+                changed = True
+        if changed:
+            self.cond.notify_all()
+
+    def feed_chat(self, obj):
+        """One chat.jsonl line: kinds prompt, reply, owner; bad lines
+        ignored. Kept per page, the last CHAT_KEEP."""
+        with self.lock:
+            if not isinstance(obj, dict):
+                return
+            sid = obj.get("sid")
+            kind = obj.get("kind")
+            text = obj.get("text")
+            if not isinstance(sid, str) or not sid:
+                return
+            if kind not in ("prompt", "reply", "owner"):
+                return
+            if not isinstance(text, str) or not text:
+                return
+            aid = obj.get("aid", "")
+            if not isinstance(aid, str):
+                aid = ""
+            at = obj.get("at")
+            if not isinstance(at, (int, float)):
+                at = time.time()
+            to = self._page_id_for_sid(sid, aid)
+            self._chat_seq += 1
+            entry = {"id": self._chat_seq, "kind": kind, "text": text, "at": at}
+            if kind == "owner":
+                entry["state"] = "delivered"  # only ever-delivered owner lines are persisted
+            bucket = self.chat.get(to)
+            if bucket is None:
+                bucket = deque(maxlen=CHAT_KEEP)
+                self.chat[to] = bucket
+            bucket.append(entry)
+            self._broadcast({"type": "chat", "to": to, "entry": dict(entry)})
+
+    def chat_view(self, to):
+        with self.lock:
+            if not isinstance(to, str) or not to:
+                return 404, {}
+            if to.startswith("gov:"):
+                terr = to[len("gov:"):]
+                if not self._terr_known(terr):
+                    return 404, {}
+                can_send = True
+            elif to.startswith("s:"):
+                if self._chat_page_of_sid.get(to[2:]) != to:
+                    return 404, {}
+                can_send = to not in self._chat_ended_pages
+            else:
+                if not self._agent_known(to):
+                    return 404, {}
+                can_send = False
+            busy = self._chat_busy.get(to, False)
+            entries = [dict(e) for e in self.chat.get(to, [])]
+            return 200, {"to": to, "can_send": can_send, "busy": busy, "entries": entries}
+
+    def chat_send(self, to, text, now):
+        with self.lock:
+            if not isinstance(text, str) or not text or len(text) > CHAT_TEXT_MAX:
+                return 400, {"error": "text"}
+            if not isinstance(to, str) or not to:
+                return 404, {}
+            if to.startswith("s:"):
+                sid = to[2:]
+                if self._chat_page_of_sid.get(sid) != to or to in self._chat_ended_pages:
+                    return 404, {}
+            elif to.startswith("gov:"):
+                terr = to[len("gov:"):]
+                if not self._terr_known(terr):
+                    return 404, {}
+            elif to.startswith("r:") or to.startswith("rg:"):
+                return 400, {"error": "person"}
+            else:
+                if self._agent_known(to):
+                    return 400, {"error": "subagent"}
+                return 404, {}
+            self._chat_seq += 1
+            entry = {"id": self._chat_seq, "kind": "owner", "text": text, "at": now, "state": "queued"}
+            bucket = self.chat.get(to)
+            if bucket is None:
+                bucket = deque(maxlen=CHAT_KEEP)
+                self.chat[to] = bucket
+            bucket.append(entry)
+            self._broadcast({"type": "chat", "to": to, "entry": dict(entry)})
+            self.cond.notify_all()
+            return 200, {"id": entry["id"], "state": "queued"}
+
+    def _chat_pick_queued_locked(self, to):
+        for entry in self.chat.get(to, []):
+            if entry.get("kind") == "owner" and entry.get("state") == "queued":
+                return entry
+        return None
+
+    def _chat_deliver_locked(self, sid, to, entry):
+        entry["state"] = "delivered"
+        self._broadcast({"type": "chat", "to": to, "entry": dict(entry)})
+        row = {"by": "owner", "verb": "message", "sid": sid, "text": entry["text"], "at": entry["at"]}
+        self._append_jsonl_locked(self.decisions_path, row)
+        self._append_chat_path_locked({"sid": sid, "aid": "", "kind": "owner",
+                                        "text": entry["text"], "at": entry["at"]})
+        return {"state": "message", "id": entry["id"], "text": entry["text"]}
+
+    def _append_jsonl_locked(self, path, row):
+        try:
+            folder = os.path.dirname(path)
+            if folder:
+                os.makedirs(folder, exist_ok=True)
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+
+    def _append_chat_path_locked(self, row):
+        if self.chat_path is None:
+            return
+        self._append_jsonl_locked(self.chat_path, row)
+        try:
+            self._chat_written_offset = os.path.getsize(self.chat_path)
+        except OSError:
+            pass
+
+    def chat_written_offset(self):
+        with self.lock:
+            return self._chat_written_offset
+
+    def chat_next(self, sid, watcher, timeout):
+        """The gov_next watcher rule: a newer watcher for the same sid
+        retires the older. Only while SID's session is idle, the oldest
+        queued owner message for it."""
+        to = "s:" + sid
+        timeout = max(0.0, min(timeout, 30.0))
+        deadline = time.monotonic() + timeout
+        with self.cond:
+            info = self.chat_watchers.get(sid)
+            if info is None:
+                info = {"current": watcher, "seen": {watcher}}
+                self.chat_watchers[sid] = info
+            elif watcher not in info["seen"]:
+                info["seen"].add(watcher)
+                info["current"] = watcher
+                self.cond.notify_all()
+            elif watcher != info["current"]:
+                return {"state": "replaced"}
+            while True:
+                if self.chat_watchers.get(sid, {}).get("current") != watcher:
+                    return {"state": "replaced"}
+                if not self._chat_busy.get(to, False) and to not in self._chat_ended_pages:
+                    entry = self._chat_pick_queued_locked(to)
+                    if entry is not None:
+                        return self._chat_deliver_locked(sid, to, entry)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return {"state": "none"}
+                self.cond.wait(min(remaining, 1.0))
 
 
 class CityHandler(BaseHTTPRequestHandler):
@@ -2248,6 +2556,21 @@ class CityHandler(BaseHTTPRequestHandler):
                 _qs1(qs, "sid"), _qs1(qs, "repo"), _qs1(qs, "watcher"),
                 _qs_float(qs, "timeout", 0.0))
             return self._json(200, result)
+        if path == "/api/chat":
+            if not self._check_token():
+                self.close_connection = True
+                return self._json(403, {})
+            qs = parse_qs(parsed.query)
+            code, body = self.server.city.chat_view(_qs1(qs, "to"))
+            return self._json(code, body)
+        if path == "/api/chat/next":
+            if not self._check_token():
+                self.close_connection = True
+                return self._json(403, {})
+            qs = parse_qs(parsed.query)
+            result = self.server.city.chat_next(
+                _qs1(qs, "sid"), _qs1(qs, "watcher"), _qs_float(qs, "timeout", 0.0))
+            return self._json(200, result)
         self.close_connection = True
         return self.send_error(404)
 
@@ -2260,10 +2583,10 @@ class CityHandler(BaseHTTPRequestHandler):
             return self._json(403, {})
         path = urlsplit(self.path).path
         if path not in ("/api/ask", "/api/decide", "/api/closed",
-                         "/api/gov/answer", "/api/gov/pass"):
+                         "/api/gov/answer", "/api/gov/pass", "/api/chat/send"):
             self.close_connection = True
             return self.send_error(404)
-        if path == "/api/decide" and self.headers.get("Origin") is None:
+        if path in ("/api/decide", "/api/chat/send") and self.headers.get("Origin") is None:
             self.close_connection = True
             return self._json(403, {})
         if not self._check_token():
@@ -2277,7 +2600,9 @@ class CityHandler(BaseHTTPRequestHandler):
             return self._api_closed()
         if path == "/api/gov/answer":
             return self._api_gov_answer()
-        return self._api_gov_pass()
+        if path == "/api/gov/pass":
+            return self._api_gov_pass()
+        return self._api_chat_send()
 
     def do_OPTIONS(self):
         # OPTIONS never succeeds here: no preflight is ever honored, and no
@@ -2336,6 +2661,16 @@ class CityHandler(BaseHTTPRequestHandler):
         if not isinstance(ask_id, str) or not ask_id:
             return self._json(400, {})
         code, body = self.server.city.gov_pass(ask_id)
+        return self._json(code, body)
+
+    def _api_chat_send(self):
+        obj, err = self._read_body()
+        if err:
+            return self._json(err, {})
+        to = obj.get("to")
+        if not isinstance(to, str) or not to:
+            return self._json(400, {})
+        code, body = self.server.city.chat_send(to, obj.get("text"), time.time())
         return self._json(code, body)
 
     # -- plain routes -------------------------------------------------------
@@ -2562,6 +2897,48 @@ def tail_loop(directory, city, max_log_bytes, stop_event, request_shutdown,
                 buf = b""
 
         time.sleep(TAIL_INTERVAL)
+
+
+def _consume_chat_line(raw_line, city):
+    text = raw_line.decode("utf-8", errors="replace")
+    try:
+        obj = json.loads(text)
+    except ValueError:
+        return
+    city.feed_chat(obj)
+
+
+def chat_tail_loop(chat_path, city, stop_event):
+    """Watch <city dir>/chat.jsonl, feed new lines to city.feed_chat: a
+    separate tail from events.jsonl (the relay hub must never see chat
+    lines -- chat_path is never offered to it). Lines this same process
+    already wrote and fed itself (a delivered owner message) are skipped
+    here: city.chat_written_offset() tracks how far it has gotten."""
+    fh = None
+    offset = 0
+    buf = b""
+    while not stop_event.is_set():
+        if fh is None:
+            try:
+                fh = open(chat_path, "rb")
+            except OSError:
+                stop_event.wait(TAIL_INTERVAL)
+                continue
+            offset = os.fstat(fh.fileno()).st_size
+            buf = b""
+
+        offset = max(offset, city.chat_written_offset())
+        fh.seek(0, os.SEEK_END)
+        end = fh.tell()
+        if end > offset:
+            fh.seek(offset)
+            chunk = fh.read(end - offset)
+            lines, buf = _split_lines(buf + chunk)
+            for raw_line in lines:
+                _consume_chat_line(raw_line, city)
+            offset = fh.tell()
+
+        stop_event.wait(TAIL_INTERVAL)
 
 
 def recount_loop(city, stop_event):
@@ -2890,8 +3267,9 @@ def cmd_serve(args):
     decisions_path = args.decisions or os.path.expanduser("~/.claude/agent-city/decisions.jsonl")
     world_path_arg = args.world if args.world is not None else world_path()
     start_repo = _repo_id(args.start_dir) if args.start_dir else None
+    chat_path = os.path.join(directory, "chat.jsonl")
     city = CityState(gov_wait_sec=args.gov_wait_sec, decisions_path=decisions_path, token=token,
-                      world_path=world_path_arg, start_repo=start_repo)
+                      world_path=world_path_arg, start_repo=start_repo, chat_path=chat_path)
     hub = relay.RelayHub(relay_sec=args.relay_sec, join_ttl=args.join_ttl_sec)
     remote = RemoteCity(hub, remote_ttl_sec=args.remote_ttl_sec)
     city.remote = remote
@@ -2929,6 +3307,11 @@ def cmd_serve(args):
     )
     tail.start()
 
+    chat_tail = threading.Thread(
+        target=chat_tail_loop, args=(chat_path, city, stop_event), daemon=True,
+    )
+    chat_tail.start()
+
     recount_thread = threading.Thread(
         target=recount_loop, args=(city, stop_event), daemon=True,
     )
@@ -2947,6 +3330,67 @@ def cmd_serve(args):
             os.remove(on_path)
         except OSError:
             pass
+    return 0
+
+
+# --------------------------------------------------------------------------
+# CLI: say (UserPromptSubmit, Stop, SubagentStop hook)
+# --------------------------------------------------------------------------
+
+def cmd_say(args):
+    try:
+        return _cmd_say_impl(args)
+    except Exception:
+        # Same rule as every other hook here: never fail the caller's turn,
+        # and a UserPromptSubmit hook's stdout would enter the conversation,
+        # so this must never print anything either way.
+        return 0
+
+
+def _cmd_say_impl(args):
+    try:
+        raw = sys.stdin.buffer.read()
+    except Exception:
+        return 0
+    if os.environ.get("CLAUDE_CODE_REMOTE"):
+        return 0  # a cloud session has no city page
+    directory = _city_dir()
+    if not os.path.exists(os.path.join(directory, "on")):
+        return 0  # city off
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return 0
+    if not isinstance(payload, dict):
+        return 0
+
+    sid = payload.get("session_id")
+    if not isinstance(sid, str) or not sid:
+        return 0
+    ev = payload.get("hook_event_name")
+    if ev == "UserPromptSubmit":
+        aid, kind, text = "", "prompt", payload.get("prompt")
+    elif ev == "Stop":
+        aid, kind, text = "", "reply", payload.get("last_assistant_message")
+    elif ev == "SubagentStop":
+        aid_raw = payload.get("agent_id")
+        aid = aid_raw if isinstance(aid_raw, str) else ""
+        kind, text = "reply", payload.get("last_assistant_message")
+    else:
+        return 0
+
+    if not isinstance(text, str) or not text.strip():
+        return 0
+    if len(text) > CHAT_TEXT_MAX:
+        text = text[:CHAT_TEXT_MAX] + "…"
+
+    row = {"sid": sid, "aid": aid, "kind": kind, "text": text, "at": time.time()}
+    try:
+        os.makedirs(directory, exist_ok=True)
+        with open(os.path.join(directory, "chat.jsonl"), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
     return 0
 
 
@@ -3201,6 +3645,72 @@ def _cmd_gov_watch_impl(args):
             ask = out.get("ask")
             if isinstance(ask, dict):
                 _print_governor_question(ask)
+                return 2
+            return 0
+        # "replaced", or anything unexpected: give up quietly.
+        return 0
+
+
+def _print_owner_message(text):
+    """A plain-English wake note, so the session reads this as the owner's
+    own message (typed in the city page) and answers it normally -- not as
+    an instruction buried in tool output."""
+    sys.stderr.write(
+        "[agent-city] The owner typed this in the city page. Read it as the "
+        "owner's own message and answer it normally:\n\n%s\n" % text)
+    sys.stderr.flush()
+
+
+def cmd_chat_watch(args):
+    try:
+        return _cmd_chat_watch_impl(args)
+    except Exception:
+        return 0
+
+
+def _cmd_chat_watch_impl(args):
+    try:
+        raw = sys.stdin.buffer.read()
+    except Exception:
+        return 0
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return 0
+    if not isinstance(payload, dict):
+        return 0
+
+    endpoint = _city_endpoint(_city_dir())
+    if endpoint is None:
+        return 0
+    port, token = endpoint
+
+    sid = payload.get("session_id") or ""
+    watcher = uuid.uuid4().hex
+
+    start_ppid = os.getppid()
+    deadline = time.monotonic() + args.max_wait_sec
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return 0
+        if os.getppid() != start_ppid:
+            return 0
+        chunk = min(5.0, remaining)
+        path = "/api/chat/next?sid=%s&watcher=%s&timeout=%s" % (quote(sid, safe=""), watcher, chunk)
+        result = _http_json(port, "GET", path, token=token, timeout=chunk + 10.0)
+        if result is None:
+            return 0
+        status, out = result
+        if status != 200 or not isinstance(out, dict):
+            return 0
+        state = out.get("state")
+        if state == "none":
+            continue
+        if state == "message":
+            text = out.get("text")
+            if isinstance(text, str):
+                _print_owner_message(text)
                 return 2
             return 0
         # "replaced", or anything unexpected: give up quietly.
@@ -4866,11 +5376,16 @@ def _build_parser():
     serve.add_argument("--world", default=None)
     serve.add_argument("--start-dir", default=None)
 
+    sub.add_parser("say")
+
     ask_p = sub.add_parser("ask")
     ask_p.add_argument("--max-wait-sec", type=float, default=3600.0)
 
     watch_p = sub.add_parser("gov-watch")
     watch_p.add_argument("--max-wait-sec", type=float, default=43200.0)
+
+    chat_watch_p = sub.add_parser("chat-watch")
+    chat_watch_p.add_argument("--max-wait-sec", type=float, default=43200.0)
 
     answer_p = sub.add_parser("gov-answer")
     answer_p.add_argument("--dir", default=None)
@@ -4898,10 +5413,14 @@ def main(argv=None):
     args = _build_parser().parse_args(argv)
     if args.command == "serve":
         return cmd_serve(args)
+    if args.command == "say":
+        return cmd_say(args)
     if args.command == "ask":
         return cmd_ask(args)
     if args.command == "gov-watch":
         return cmd_gov_watch(args)
+    if args.command == "chat-watch":
+        return cmd_chat_watch(args)
     if args.command == "gov-answer":
         return cmd_gov_answer(args)
     if args.command == "gov-pass":

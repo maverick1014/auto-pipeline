@@ -84,6 +84,15 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && python3 \"${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py\" say; exit 0",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "Notification": [
@@ -106,6 +115,15 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && python3 \"${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py\" say; exit 0",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "Stop": [
@@ -122,7 +140,26 @@
         "hooks": [
           {
             "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && python3 \"${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py\" say; exit 0",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "[ -z \"${AGENT_ROLE:-}\" ] && [ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && exec python3 \"${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py\" gov-watch; exit 0",
+            "async": true,
+            "asyncRewake": true
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"${AGENT_ROLE:-}\" ] && [ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && exec python3 \"${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py\" chat-watch; exit 0",
             "async": true,
             "asyncRewake": true
           }
