@@ -165,6 +165,7 @@
 - Reader: someone who has never used Cloudflare. Numbered steps, plain words, each step says what you should see. Cloudflare website only where possible; any command is given exactly, ready to paste.
 - Covers: make the account; make the relay; set the team key; find the relay address; hand address and key to members; join a local repo; join a cloud environment (secret and network setting); check it works (a second machine or a cloud session shows up in the city); change the key; remove the relay.
 - Acceptance: the owner follows the steps by hand, from a new Cloudflare account, and it works. Until then `city-join` is not done. A step he gets stuck on = a bug in the steps, fixed in the same task.
+- On hold (owner, 2026-09-27: "等我有空我才做，先记录在案"): the hand setup waits until the owner has time. The joining code is shipped (0.8.0) and stays off everywhere until a repo holds `.secrets/agent-city-relay` or a cloud environment sets `AGENT_CITY_RELAY`; every city runs local only until then. No agent sets up the relay meanwhile. Use a new free account, as the acceptance says: the owner's existing account has Cloudflare Access in front of some workers.dev addresses (see setup step 4).
 
 ## Open, not decided
 - A key per person, so one member can be removed without changing everyone's key (proposal, later).
