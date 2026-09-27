@@ -49,7 +49,7 @@
 - A message typed in the window goes to that session. Idle session → it wakes at once with the message: the same background Stop hook that wakes a governor with a question (`asyncRewake`), now for every session, reachable while idle up to the same 12 h. Busy session → the message waits and goes in when its turn ends; the window says 等它做完这一步. The window shows each message as sent, then delivered.
 - Sessions only: the governor and task managers. A worker (a subagent inside a session) shows its conversation read only, and the window offers its lead's window to talk to instead.
 - Every delivered message is logged like an answer: who, what, when, in the page log and `~/.claude/agent-city/decisions.jsonl`. Control requests as in Interaction: 127.0.0.1, token, Origin and Host checked.
-- Chat text stays on this computer: never sent through the relay (a joined city shows other members' people, never their conversation; their windows have no box), never written into `world.json`.
+- Chat text stays on this computer, in `chat.jsonl` next to `events.jsonl`, readable by this user only (file mode 0600), one append per line: never sent through the relay (a joined city shows other members' people, never their conversation; their windows have no box), never written into `world.json`.
 - Cost: the per-tool-call hook stays as today (bash builtins, one line). The text is picked up only when a prompt is submitted or a turn ends.
 - From outside this computer (phone, elsewhere): never through the relay, which carries events only (see Joining). Claude Code's own Remote Control in the Claude app is the way.
 
@@ -140,7 +140,7 @@
 - The city is per computer. Another machine has its own city. A joined city also shows the other members live (see Joining); each machine's `world.json` stays its own.
 
 ## Limits
-- Server listens on 127.0.0.1 only, port `city_port`, stops itself after `city_idle_min` with no browser open.
+- Server listens on 127.0.0.1 only, port `city_port`, stops itself after `city_idle_min` with no browser open and no idle session waiting to be talked to (city-chat, 2026-09-27: a session's watcher polling keeps it up, so a closed tab never makes an idle session unreachable).
 - Start refuses when RAM or CPU is over the cap.
 - Cloud sessions: no city page (no localhost for the human). A joined cloud session sends its events to its team (see Joining).
 

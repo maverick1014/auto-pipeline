@@ -19,6 +19,9 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
       JSON object, <city dir>/on does not exist (city off), or
       CLAUDE_CODE_REMOTE is set (a cloud session has no page).
     Never reads transcript_path (its format is internal to Claude Code).
+    chat.jsonl is private: created with mode 0600 (it holds conversation
+      text), and each line goes in with ONE os.write on an O_APPEND file
+      descriptor, so two sessions ending at once never interleave.
     Prints NOTHING on stdout (a UserPromptSubmit hook's stdout would go into
       the conversation). Exit 0 always, whatever happens.
 
@@ -70,6 +73,10 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
   load_chat(path) -> the valid lines, the last CHAT_KEEP per (sid, aid), in
     file order; rewrites the file (tmp + rename) when it dropped any.
     Missing file -> [].
+
+  Idle stop: every chat_next and gov_next call restarts the server's idle
+    clock, so the server never stops while a session waits to be talked to
+    (it still stops with no page and no waiting session).
 
   HTTP (same Host / Origin / token gate as the rest):
     GET  /api/chat?to=<id>          token -> chat_view
@@ -233,6 +240,14 @@ class TestSay(SayCase):
         r = self.say({"hook_event_name": "Stop", "session_id": "s1", "last_assistant_message": "x"})
         self.assertEqual((r.returncode, r.stdout), (0, b""))
         self.assertEqual(self.lines(), [])
+
+    def test_the_file_is_private_and_appended_in_one_write(self):
+        self.say({"hook_event_name": "Stop", "session_id": "s1", "last_assistant_message": "ok"})
+        self.assertEqual(os.stat(self.chat).st_mode & 0o777, 0o600)
+        import inspect
+        src = inspect.getsource(ac._cmd_say_impl)
+        self.assertIn("os.O_APPEND", src)
+        self.assertIn("os.write(", src)
 
     def test_never_reads_the_transcript(self):
         tpath = os.path.join(self.base, "t.jsonl")
@@ -532,20 +547,57 @@ class TestChatHttp(ChatServerCase):
         self.assertEqual(self.call("GET", "/api/chat/next?sid=tm1&watcher=w&timeout=0", token=False)[0], 403)
 
 
-class TestChatWatch(ChatServerCase):
-    def watch(self, sid="tm1", wait="3"):
+class TestWaitingSessionsKeepTheCityUp(ChatServerCase):
+    def test_a_waiting_session_keeps_the_server_up(self):
+        proc = self.start("--idle-sec", "2")
+        self.tm_session()
         env = dict(os.environ, AGENT_CITY_DIR=self.dir, AGENT_ROLE="task-manager",
                    AGENT_CITY_HOME=os.path.join(self.base, "cityhome"))
-        return subprocess.Popen([sys.executable, SERVER, "chat-watch", "--max-wait-sec", wait],
-                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        path = os.path.join(self.base, "hook-idle.json")
+        with open(path, "w") as fh:
+            json.dump({"hook_event_name": "Stop", "session_id": "tm1"}, fh)
+        with open(path, "rb") as stdin:
+            watcher = subprocess.Popen([sys.executable, SERVER, "chat-watch", "--max-wait-sec", "7"],
+                                       stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        time.sleep(5)
+        self.assertIsNone(proc.poll(), "the server stopped while a session waited to be talked to")
+        watcher.communicate(timeout=30)
+        self.assertTrue(wait_for(lambda: proc.poll() is not None, timeout=20),
+                        "no page and no waiting session: the server must still stop by itself")
+
+    def test_delivered_owner_lines_are_private_too(self):
+        base = tempfile.mkdtemp(prefix="city_chatmode_")
+        try:
+            path = os.path.join(base, "chat.jsonl")
+            st = ac.CityState(decisions_path=os.path.join(base, "d.jsonl"), world_path=None, chat_path=path,
+                              count_fn=lambda i: 0, balance_fn=lambda i, r: {"kinds": {}, "files": {}, "bad": []})
+            st.feed_line(line("UserPromptSubmit", "tm1", role="task-manager"), time.monotonic())
+            st.feed_line(line("Stop", "tm1", role="task-manager"), time.monotonic())
+            st.chat_send("s:tm1", "hi", 0)
+            self.assertEqual(st.chat_next("tm1", "w1", 0)["state"], "message")
+            self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+
+
+class TestChatWatch(ChatServerCase):
+    def watch(self, sid="tm1", wait="3"):
+        # The hook input comes from a file: closing a stdin PIPE by hand and
+        # then calling communicate() raises "flush of closed file" on 3.11.
+        env = dict(os.environ, AGENT_CITY_DIR=self.dir, AGENT_ROLE="task-manager",
+                   AGENT_CITY_HOME=os.path.join(self.base, "cityhome"))
+        path = os.path.join(self.base, "hook-%s.json" % sid)
+        with open(path, "w") as fh:
+            json.dump({"hook_event_name": "Stop", "session_id": sid}, fh)
+        with open(path, "rb") as stdin:
+            return subprocess.Popen([sys.executable, SERVER, "chat-watch", "--max-wait-sec", wait],
+                                    stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
 
     def test_wakes_the_session_with_the_owner_text(self):
         self.start()
         self.tm_session()
         self.assertTrue(wait_for(lambda: self.call("GET", "/api/chat?to=s:tm1")[0] == 200))
         proc = self.watch(wait="20")
-        proc.stdin.write(json.dumps({"hook_event_name": "Stop", "session_id": "tm1"}).encode())
-        proc.stdin.close()
         time.sleep(0.5)
         self.call("POST", "/api/chat/send", {"to": "s:tm1", "text": "请先跑一下测试 7731"})
         out, err = proc.communicate(timeout=25)
@@ -557,13 +609,13 @@ class TestChatWatch(ChatServerCase):
         self.start()
         self.tm_session()
         proc = self.watch(wait="2")
-        out, err = proc.communicate(json.dumps({"hook_event_name": "Stop", "session_id": "tm1"}).encode(), timeout=20)
+        out, err = proc.communicate(timeout=20)
         self.assertEqual((proc.returncode, err), (0, b""))
 
     def test_no_server_no_wake(self):
         os.makedirs(self.dir, exist_ok=True)
         proc = self.watch(wait="2")
-        out, err = proc.communicate(json.dumps({"hook_event_name": "Stop", "session_id": "tm1"}).encode(), timeout=20)
+        out, err = proc.communicate(timeout=20)
         self.assertEqual((proc.returncode, err), (0, b""))
 
 
