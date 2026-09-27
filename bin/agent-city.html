@@ -4469,9 +4469,8 @@ let demoChatSeq = 0;
 function chatDisplayName(to){
   if (!to) return '';
   if (to.slice(0, 4) === 'gov:') return '总督';
-  const id = to.slice(0, 2) === 's:' ? to.slice(2) : to;
-  const pc = byId(id);
-  return pc ? nameOf(pc) : id;
+  const pc = byId(to);
+  return pc ? nameOf(pc) : to;
 }
 /* curChatTo() -> the chat id of whatever is selected right now: 'gov:'+terr for the governor,
    's:'+id for a session citizen (a task manager, c.office), the bare id for a subagent (c.lead,

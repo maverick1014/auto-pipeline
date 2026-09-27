@@ -709,6 +709,19 @@ process.stdout.write(JSON.stringify(out));
         out = run_node(js, {"fns": page_fns("curChatTo", "chatTarget")})
         self.assertEqual(out, ["s:tm1", "s:tm2", "a9", None, "gov:t1", "gov:t0", None])
 
+    def test_the_log_names_the_person(self):
+        js = r"""
+const fs = require('fs'), vm = require('vm');
+const { fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const people = { 's:tm1': { id: 's:tm1', label: 'task-manager', task: 'shop' }, 'a9': { id: 'a9', label: 'worker', task: 'form' } };
+const box = { byId: id => people[id], nameOf: c => c.label + ' · ' + c.task };
+vm.createContext(box); vm.runInContext(fns, box);
+process.stdout.write(JSON.stringify(['s:tm1', 'a9', 'gov:t1', 's:gone'].map(t => box.chatDisplayName(t))));
+"""
+        out = run_node(js, {"fns": page_fns("chatDisplayName")})
+        self.assertEqual(out, ["task-manager · shop", "worker · form", "总督", "s:gone"],
+                         "E2E 2026-09-27: the log said 你 → tm1 instead of the name")
+
     def test_window_has_the_conversation_and_the_box(self):
         body = function_source("renderDetail") or ""
         for needle in ("chatHtml(", 'id="chat"', 'id="say"', 'id="say-text"', 'maxlength="4000"', "发送", "组长"):
