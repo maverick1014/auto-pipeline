@@ -1297,9 +1297,10 @@ class TestInteraction(unittest.TestCase):
 
     def test_panel_sits_over_the_city(self):
         m = markup()
-        i, stage, aside = m.find('id="ask"'), m.find('id="stage"'), m.find('<aside class="panel"')
+        i, stage = m.find('id="ask"'), m.find('id="stage"')
         self.assertGreater(i, 0, "no #ask panel in the markup")
-        self.assertTrue(stage < i < aside, "#ask must be inside #stage, not the right column")
+        self.assertTrue(0 < stage < i, "#ask must be inside #stage, over the city")
+        self.assertNotIn('<aside class="panel"', m, "no right column since city-focus")
         tag = re.search(r"<div[^>]*id=\"ask\"[^>]*>", m).group(0)
         for attr in ('class="ask-panel"', 'role="dialog"', 'aria-labelledby="ask-title"', "hidden"):
             with self.subTest(attr=attr):
