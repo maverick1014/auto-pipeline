@@ -4,8 +4,8 @@
 - Owner decisions, 2026-09-24. A change to a rule here needs the owner's yes.
 
 ## What it is
-- Local 3D page. Real agents shown as people in a city. Never reads chat text.
-- Not watch-only: agents' questions and permission requests are answered from it (see Interaction).
+- Local 3D page. Real agents shown as people in a city. Chat text (what was typed to a session and what it answered) is shown only on this computer, in that person's window, and never leaves the machine (see Talking; owner, 2026-09-27, replaces "never reads chat text").
+- Not watch-only: agents' questions and permission requests are answered from it (see Interaction), and the owner talks to any running session from it (see Talking).
 - Live mode `/` = real hook events only. Demo mode `/#demo` = fake data, same look, demo-only controls.
 - Page text Chinese for now.
 
@@ -19,9 +19,9 @@
 - No credits, intro text, legend, or drag hint on the page. Kenney assets are CC0; `License.txt` files stay in `bin/agent-city-assets/`.
 - No speed buttons, no pause. The view runs at real time.
 - People walk at 1/3 of the 0.5.0 speed. Walk animation slowed to match.
-- Right column cards (详情, 市民, 动态): click header to collapse or open; drag header to reorder, inside the column only.
-- Card order and collapsed state saved per browser (`localStorage`, every access in try/catch).
-- Top counts stay: 干活, 找总督, 休息, 建成.
+- The city fills the whole page (owner, 2026-09-27; replaces the right column of cards 详情 / 城市平衡 / 市民 / 动态). Nothing sits beside it.
+- Click a person → that person's window opens over the city: what it does now, its role, task, repo and branch, its latest steps, its conversation, and a box to talk to it (see Talking). Click a building or a site → the same window shows that thing (a "?" keeps its own panel over the city). × or a tap on empty ground closes it: only the city again (no keyboard shortcut, as before).
+- Top counts stay, small, over the city: 干活, 找总督, 休息, 建成. The page log (动态) opens from a small button there, on demand; every line the rules below call "never silent" still goes into it.
 - No frame around the city: no border line, no rounded box.
 - Camera is a perspective camera, not a top-down god view. Default tilt about 30° above the horizon, close to the town hall.
 - Drag up/down tilts (about 15° to 60°), drag left/right orbits, wheel/pinch zooms from near street level to the whole territory. Never clips into ground or buildings.
@@ -42,6 +42,16 @@
 - City off or server down → the agent falls back to its normal terminal prompt, no waiting.
 - Out of scope: Claude Code's own cross-session message hold ("Deliver this message"). Never auto-clicked.
 - Build order: prove first, with a real session, how an answer or approval reaches it (hook decision or Orca terminal keys). Then build.
+
+## Talking
+- Owner decision, 2026-09-27: "我就可以直接看到他的聊天记录对话框然后直接跟他说话". The owner reads a session's conversation and talks to it from its person's window, no terminal needed. The terminal keeps working in parallel; both show the same conversation.
+- What the window shows: what was typed to the session (UserPromptSubmit `prompt`), the text each turn ended with (`last_assistant_message` on Stop and SubagentStop), its questions and their answers, and the owner's messages from the page. Not tool output, not the transcript file: its format is internal to Claude Code and changes between versions (code.claude.com/docs/en/sessions), so the city never parses it. Only from the time the city is on.
+- A message typed in the window goes to that session. Idle session → it wakes at once with the message: the same background Stop hook that wakes a governor with a question (`asyncRewake`), now for every session, reachable while idle up to the same 12 h. Busy session → the message waits and goes in when its turn ends; the window says 等它做完这一步. The window shows each message as sent, then delivered.
+- Sessions only: the governor and task managers. A worker (a subagent inside a session) shows its conversation read only, and the window offers its lead's window to talk to instead.
+- Every delivered message is logged like an answer: who, what, when, in the page log and `~/.claude/agent-city/decisions.jsonl`. Control requests as in Interaction: 127.0.0.1, token, Origin and Host checked.
+- Chat text stays on this computer: never sent through the relay (a joined city shows other members' people, never their conversation; their windows have no box), never written into `world.json`.
+- Cost: the per-tool-call hook stays as today (bash builtins, one line). The text is picked up only when a prompt is submitted or a turn ends.
+- From outside this computer (phone, elsewhere): never through the relay, which carries events only (see Joining). Claude Code's own Remote Control in the Claude app is the way.
 
 ## Worktrees
 - Owner decision 2026-09-25. Mock first, owner sees it, then build.
@@ -88,7 +98,7 @@
 - When a district is full (every open plot of it taken), the next build there levels up a building instead: the one with the lowest level, oldest first, gets taller and a little wider (levels 1 to 3). Only when every building of that district is at level 3 does the page log say there is no free plot (main manager, 2026-09-25; owner: "能做你直接做就可以了").
 
 ## Balance
-- The city shows how healthy the repo is, not only how big. 5 kinds of code, each one city system:
+- 5 kinds of code, each one city system. Reward only, never a to-do list (owner, 2026-09-27: the kinds are an unspoken standard, not a goal; code a person checked by hand without a test can be fine and safe):
 
 | kind | in the repo | in the city | measured by |
 |---|---|---|---|
@@ -100,13 +110,11 @@
 
 - Lines are used for build only. The other kinds use the measure above; lines there mislead.
 - Reward, never punish. Day 0 is clean empty land. A thing appears when its kind exists. A missing kind is absent, not broken: no cones, no cracks, no jaywalking.
-- Each kind is scored healthy / low / missing against build. A 城市平衡 card in the right column, one bar per kind.
-- Click a kind → the list of files it counted. Wrong guess → fix one rule in the city config (`~/.claude/agent-city/rules/<repo>.conf`), never in the repo.
+- Kinds are never listed, scored or asked for on the page (owner, 2026-09-27): no 城市平衡 card, no bars, no file lists. A kind still brings its own buildings when it exists.
+- A file's kind guessed wrong → fix one rule in the city config (`~/.claude/agent-city/rules/<repo>.conf`), never in the repo.
 - Classification runs in the server, by path and file name rules, same result for every viewer and agent. Binaries, vendor, generated files never count.
-- A kind the repo's own rules forbid (e.g. auto-pipeline allows only 3 doc kinds) → "not applicable", never "missing". Per repo setting.
 - Eras: village (wood houses, dirt roads) → town (brick, stone roads, lamps) → city (towers, parks, fountains).
-- Village → town: size, and no kind missing. Town → city: size, and rules and beauty both healthy. Size alone never moves an era.
-- A sign in front of the town hall shows what the next era still needs (e.g. 还差：规则).
+- Eras move by size only (owner, 2026-09-27; replaces the balance gate): the city keeps growing whether or not the repo has tests, docs or UI rules. No sign asks for anything (no 还差 sign).
 - An era change is a show, not a blink: many small builders come out, walk to every building, road and lamp, scaffolding and hammering everywhere for a while, then in one moment the whole territory flips to the new era's look (wood → brick → tower). Positions and owners stay. Builders leave.
 - The show runs once per era change, about 60 s, and is recorded in world.json so a reopen does not replay it.
 - The city server never runs the repo's tests. Test pass counts: maybe later, only if cheap.
@@ -142,7 +150,7 @@
 - Joined = the local city also shows the other members of the same team: the owner's other machines, other people's terminals, cloud sessions. Every member still runs their own local city. There is no shared city page on the internet.
 - Path: hook → `events.jsonl` (unchanged) → local server → relay → every joined local server → its page. The page talks only to 127.0.0.1, as before; only the local server talks to the relay.
 - Relay: a small Cloudflare Worker, one per team. Holds the last few minutes only, never a history.
-- Sent: the same short lines, with the working folder cut down to repo and branch. Never full paths, chat text or files: the hook's `wt` (a full path) is sent only as the branch name, and its `file` key (city-quality) is never sent.
+- Sent: the same short lines, with the working folder cut down to repo and branch. Never full paths, chat text (see Talking) or files: the hook's `wt` (a full path) is sent only as the branch name, and its `file` key (city-quality) is never sent.
 - Same repo from different people = the same territory. Repo identity = the `origin` remote (host/owner/repo). No remote = not shared, stays local.
 - Other members' people: a name tag (person) and a small device tag (machine name or 云端). Several main managers in one repo = several governors at the one town hall, each with a name sign. An agent asks its own person's governor.
 - Other members' people are view only. Answering questions and permission requests works for your own agents only.

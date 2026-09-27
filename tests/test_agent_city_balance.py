@@ -87,24 +87,21 @@ CONTRACT (bin/agent_city.py, Python standard library only)
         commit, a git error or timeout -> every kind "missing", never raises.
         Never runs anything but git.
 
-  era_for(peak, kinds, current="village") -> era. kinds = the "kinds" dict.
-        missing = any state "missing"; ok(k) = state healthy or na.
-        city when peak >= CITY_LINES, nothing missing, ok(rules), ok(beauty);
-        town when peak >= TOWN_LINES and nothing missing; else village.
-        Never earlier than CURRENT (eras never go back). {} kinds -> CURRENT.
-  next_needs(peak, kinds, era) -> what the next era still needs, Chinese
-        words in this order: "规模" when the size is short, then KIND_ZH of
-        each kind in KINDS order that blocks it (village: missing; town:
-        missing, or rules/beauty not ok). city -> []. {} kinds -> [].
+  era_for(peak, kinds, current="village") -> era, by size only (owner,
+        2026-09-27, city-focus; replaces the balance gate): city when peak >=
+        CITY_LINES, town when peak >= TOWN_LINES, else village. The kinds
+        never hold an era back. Never earlier than CURRENT (eras never go
+        back). {} kinds (no count yet) -> CURRENT.
+  No next_needs and no "next" in the view: nothing asks for a kind.
 
   World record per territory (world.json, "v" stays 1): "era" (village at
         birth), "balance" (the "kinds" dict of the last count, {} before),
         "rules_bad" (bad line numbers of the last count), "show" while an era
         show is waiting or running: {"from", "to", "start"}; start = the
         time.time() the first page saw it, None while no page was open.
-  layout view per territory adds "era", "balance", "next" (next_needs of
-        peak, balance, era) and "rules_note" ("" or a Chinese line naming the
-        rules file and its bad line numbers).
+  layout view per territory adds "era", "balance" and "rules_note" ("" or
+        a Chinese line naming the rules file and its bad line numbers). No
+        "next" key.
 
   CityState(..., balance_fn=FN): FN(identity, rules_text) -> the
         balance_of shape; default balance_of. recount(now) calls it next to
@@ -134,7 +131,7 @@ CONTRACT (bin/agent_city.py, Python standard library only)
         "no-cache". (Was max-age=86400: an update kept old models a day.)
 
   demo_world() territories carry era and balance too: at least one village
-        with a missing kind and a non-empty "next", one town, one city.
+        with a missing kind, one town, one city; no "next" key.
 
   No test here touches the real ~/.claude/agent-city: every server gets
   AGENT_CITY_HOME and HOME in a temp folder.
@@ -449,19 +446,17 @@ class TestBalanceOf(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestEras(unittest.TestCase):
-    def test_village_to_town_needs_size_and_nothing_missing(self):
+    def test_village_to_town_by_size_only(self):
         self.assertEqual(ac.era_for(1999, kinds_of()), "village", "size short")
-        self.assertEqual(ac.era_for(2000, kinds_of(rules="missing")), "village", "a kind missing")
+        self.assertEqual(ac.era_for(2000, kinds_of(rules="missing")), "town", "a missing kind never holds it back")
         self.assertEqual(ac.era_for(2000, kinds_of(rules="low", beauty="low")), "town")
-        self.assertEqual(ac.era_for(2000, kinds_of(knowledge="na")), "town", "na is never missing")
+        self.assertEqual(ac.era_for(2000, kinds_of(**{k: "missing" for k in ac.KINDS if k != "build"})), "town")
 
-    def test_town_to_city_needs_size_and_rules_and_beauty_healthy(self):
+    def test_town_to_city_by_size_only(self):
         self.assertEqual(ac.era_for(19999, kinds_of()), "town")
-        self.assertEqual(ac.era_for(20000, kinds_of(rules="low")), "town")
-        self.assertEqual(ac.era_for(20000, kinds_of(beauty="low")), "town")
-        self.assertEqual(ac.era_for(20000, kinds_of(knowledge="low", infra="low")), "city")
-        self.assertEqual(ac.era_for(20000, kinds_of(beauty="na")), "city")
-        self.assertEqual(ac.era_for(500000, kinds_of(infra="missing")), "village", "size alone never moves an era")
+        self.assertEqual(ac.era_for(20000, kinds_of(rules="low")), "city")
+        self.assertEqual(ac.era_for(20000, kinds_of(beauty="missing")), "city")
+        self.assertEqual(ac.era_for(500000, kinds_of(infra="missing")), "city", "size alone moves an era now")
 
     def test_eras_never_go_back(self):
         self.assertEqual(ac.era_for(10, kinds_of(rules="missing"), "town"), "town")
@@ -469,14 +464,8 @@ class TestEras(unittest.TestCase):
         self.assertEqual(ac.era_for(50000, kinds_of(), "village"), "city", "a jump is allowed")
         self.assertEqual(ac.era_for(50000, {}, "town"), "town", "no count yet: no change")
 
-    def test_next_needs(self):
-        self.assertEqual(ac.next_needs(4200, kinds_of(rules="missing"), "village"), ["规则"])
-        self.assertEqual(ac.next_needs(100, kinds_of(rules="missing", infra="missing"), "village"),
-                         ["规模", "规则", "基建"])
-        self.assertEqual(ac.next_needs(9000, kinds_of(beauty="low"), "town"), ["规模", "美化"])
-        self.assertEqual(ac.next_needs(30000, kinds_of(rules="low", knowledge="missing"), "town"), ["规则", "知识"])
-        self.assertEqual(ac.next_needs(30000, kinds_of(), "city"), [])
-        self.assertEqual(ac.next_needs(30000, {}, "village"), [])
+    def test_nothing_asks_for_a_kind(self):
+        self.assertFalse(hasattr(ac, "next_needs"), "next_needs is gone: no sign asks for a kind")
 
 
 # ---------------------------------------------------------------------------
@@ -535,19 +524,20 @@ class TestRecountBalance(StateCase):
         self.state.recount(1100.0)
         self.assertEqual(len(self.calls), 1, "same cost rule as the lines: at most every 300 s")
 
-    def test_view_carries_era_balance_next(self):
+    def test_view_carries_era_and_balance_never_next(self):
         self.feed("/a/.git", 1000.0)
         self.state.recount(1001.0)
         t = self.view_terr()
-        self.assertEqual(t["era"], "village")
+        self.assertEqual(t["era"], "town", "12000 lines: a town, rules missing or not")
         self.assertEqual(t["balance"]["rules"]["state"], "missing")
-        self.assertEqual(t["next"], ["规则"])
+        self.assertNotIn("next", t)
         self.assertEqual(t["rules_note"], "")
 
     def test_a_new_territory_has_empty_balance(self):
         self.feed("/b/.git", 1000.0)
         t = self.view_terr("/b/.git")
-        self.assertEqual((t["era"], t["balance"], t["next"]), ("village", {}, []))
+        self.assertEqual((t["era"], t["balance"]), ("village", {}))
+        self.assertNotIn("next", t)
 
     def test_the_rules_file_is_read_per_repo(self):
         os.makedirs(os.path.join(self.home, "rules"))
@@ -581,10 +571,12 @@ class TestRecountBalance(StateCase):
 
 class TestEraChange(StateCase):
     def raise_era(self):
+        # Eras move by size only (city-focus): the repo grows past TOWN_LINES.
+        self.lines["/a/.git"] = 1200
         self.feed("/a/.git", 1000.0)
         self.state.recount(1001.0)
         self.assertEqual(self.terr()["era"], "village")
-        self.kinds["/a/.git"] = kinds_of(rules="low")
+        self.lines["/a/.git"] = 12000
         self.feed("/a/.git", 1400.0)
         self.state.recount(1401.0)
 
@@ -633,11 +625,12 @@ class TestEraChange(StateCase):
         self.assertTrue(38 <= snap["shows"][0]["left"] <= 40.5)
 
     def test_era_event_comes_before_the_world_event(self):
+        self.lines["/a/.git"] = 1200
         self.feed("/a/.git", 1000.0)
         self.state.recount(1001.0)
         client = self.state.add_client()
         client.queue.get_nowait()
-        self.kinds["/a/.git"] = kinds_of(rules="low")
+        self.lines["/a/.git"] = 12000
         self.feed("/a/.git", 1400.0)
         self.state.recount(1401.0)
         types = []
@@ -653,6 +646,7 @@ class TestEraChange(StateCase):
         self.assertIsNotNone(self.terr()["show"]["start"], "a page was open: the show starts now")
 
     def test_no_show_without_an_era_change(self):
+        self.lines["/a/.git"] = 1200
         self.feed("/a/.git", 1000.0)
         self.state.recount(1001.0)
         self.assertNotIn("show", self.terr())
@@ -663,7 +657,7 @@ class TestEraChange(StateCase):
     def test_an_era_never_goes_back(self):
         self.raise_era()
         self.kinds["/a/.git"] = kinds_of(rules="missing", beauty="missing")
-        self.lines["/a/.git"] = 10
+        self.lines["/a/.git"] = 10  # peak stays 12000: still a town, never a city
         self.feed("/a/.git", 1800.0)
         self.state.recount(1801.0)
         self.assertEqual(self.terr()["era"], "town")
@@ -794,7 +788,8 @@ class TestDemoBalance(unittest.TestCase):
         self.assertEqual(eras, {"village", "town", "city"})
         village = next(t for t in view["territories"] if t["era"] == "village")
         self.assertIn("missing", {v["state"] for v in village["balance"].values()})
-        self.assertTrue(village["next"])
+        for t in view["territories"]:
+            self.assertNotIn("next", t)
         for t in view["territories"]:
             with self.subTest(t=t["name"]):
                 self.assertEqual(set(t["balance"]), set(ac.KINDS))

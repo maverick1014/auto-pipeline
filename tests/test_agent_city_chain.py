@@ -60,7 +60,8 @@ CONTRACT, page (bin/agent-city.html):
     rosterGroups() -> [{"terr", "name", "rows": [{"id", "depth"}]}] in map
     order; per group the governor first (id "gov:<terr>"), then each lead
     followed by its workers (depth 1), then everyone else (depth 0).
-    renderRoster() uses it.
+    The governor's window (renderDetail) lists its people through it
+    (city-focus: the 市民 roster card is gone).
   A lead's home is its office (t.offices). Its workers live and walk
     around it (within 2.6 tiles of the office centre).
   A citizen with relay "lead" (or a worker that is stuck: question or
@@ -745,8 +746,8 @@ class TestPeoplePage(unittest.TestCase):
         self.assertLessEqual(dist(self.r["p1"], self.r["OC"]), 1.3)
         self.assertLessEqual(dist(self.r["p2"], self.r["gA"]), 1.6)
 
-    def test_roster_uses_the_groups(self):
-        self.assertIn("rosterGroups(", function_source("renderRoster") or "")
+    def test_governor_window_uses_the_groups(self):
+        self.assertIn("rosterGroups(", function_source("renderDetail") or "")
 
 
 GOVFIG_DRIVER = r"""
