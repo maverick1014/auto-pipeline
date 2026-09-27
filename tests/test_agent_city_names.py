@@ -159,7 +159,7 @@ __out = [nameOf({ label: 'worker', task: 'worker' }), nameOf({ label: 'worker', 
         self.assertEqual(out, ["worker", "worker", "worker · Slice A", "task-manager · city-people"])
 
     def test_tag_roster_and_detail_use_it(self):
-        for fn in ("updatePerson", "renderRoster", "renderDetail"):
+        for fn in ("updatePerson", "renderDetail"):  # no roster since city-focus
             with self.subTest(fn=fn):
                 self.assertIn("nameOf(", function_source(fn) or "", fn + " shows names through nameOf()")
         self.assertNotIn("${c.label} · ${c.task}", function_source("updatePerson") or "")

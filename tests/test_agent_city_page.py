@@ -119,32 +119,13 @@ CONTRACT
       on touch): clicks, drags, pinch/zoom, panels and the "?" panel do not
       pause it; a drag adds to the angle while it keeps turning. Nothing
       under RM (reduced motion). No button for it.
-    Right column <aside class="panel" id="panel"> holds exactly four cards,
-      default order detail, balance, citizens, log (Balance added 城市平衡):
-        <section class="card" data-card="detail|balance|citizens|log">
-          <h2 class="card-head"><button type="button" aria-expanded="true"
-            aria-controls="<body id>">… 详情 | 城市平衡 | 市民 | 动态 …</button></h2>
-          one element with class card-body: #detail, #balance, #roster, #log
-        </section>
-      The 详情 header is static markup; the script never writes an <h2>.
-      Click a header: the card gets/loses class `collapsed` (CSS hides its
-      .card-body), the button's aria-expanded follows. Drag a header with
-      pointer events (6 px threshold, .card-head has touch-action:none): the
-      card moves among the panel's cards by comparing the pointer's Y with the
-      other cards' midpoints (getBoundingClientRect/offsetTop); it never leaves
-      #panel; the click that ends a drag does not toggle.
-      Order and collapsed state saved on every change and restored on load:
-      localStorage key 'agent-city-cards' = JSON {order: [...], collapsed:
-      [...]}. Unknown names ignored, missing cards keep default order. Every
-      localStorage access inside try/catch; the page works when storage throws.
-      This code is its own section: a comment line starting
-      `/* ---------- right column` up to the next `/* ----------` line. It
-      may use $, clamp and CARD_KEY from outside; the test runs it in node
-      with a small fake DOM.
+    The right column is gone (city-focus, owner 2026-09-27): the city fills
+      the page and a window opens over it on a click; see
+      tests/test_agent_city_focus.py.
 
   Interaction (approved mock: mock/city-interact-mock.html; the server side
   is pinned in tests/test_agent_city_interact.py). Everything from Cleanup
-  stays (3D city, cards, camera).
+  stays (3D city, camera).
     <meta name="city-token" content="__CITY_TOKEN__"> in <head>; the server
       swaps in its token. The script reads it from that meta tag (TOKEN).
     Handles `case 'ask'`, `case 'ask_phase'` and `case 'ask_closed'` in the
@@ -492,16 +473,6 @@ def function_source(name):
     return None
 
 
-def cards_section():
-    """The right-column section: from its header comment to the next one."""
-    text = inline_script()
-    i = text.find("/* ---------- right column")
-    if i < 0:
-        return None
-    j = text.find("/* ----------", i + 10)
-    return text[i:j if j > 0 else len(text)]
-
-
 def constants_prelude():
     """Every top-level `const NAME = <number or string>;` of the script."""
     out = []
@@ -509,12 +480,6 @@ def constants_prelude():
         if re.fullmatch(r"(?:[\d.\s/*+\-()]|Math\.PI)+|'[^'\\]*'", value.strip()):
             out.append("var %s = %s;" % (name, value.strip()))
     return "\n".join(out)
-
-
-def cards():
-    """[(name, inner html)] of the <section class="card" data-card=...> blocks."""
-    return re.findall(r'<section class="card"[^>]*\bdata-card="([\w-]+)"[^>]*>(.*?)</section>',
-                      markup(), re.S)
 
 
 FAKE_DOM_JS = r"""
@@ -606,106 +571,6 @@ class El {
   get scrollTop(){ return 0; } set scrollTop(v){}
   getBoundingClientRect(){ const t = this.offsetTop - 1000 + 100, h = this._h; return { top: t, bottom: t + h, y: t, height: h, left: 1100, right: 1460, x: 1100, width: 360 }; }
 }
-"""
-
-HARNESS_JS = FAKE_DOM_JS + r"""
-const fs = require('fs'), vm = require('vm');
-const { prelude, section } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-const KEY = 'agent-city-cards';
-const tick = () => new Promise(r => setTimeout(r, 5));
-
-function world(stored, mode){
-  const doc = new El('html'), body = new El('body'), stage = new El('div', ['stage'], { id: 'stage' });
-  doc.appendChild(body); body.appendChild(stage);
-  const panel = new El('aside', ['panel'], { id: 'panel' }); body.appendChild(panel);
-  for (const [name, zh, bodyId, tag] of [['detail', '详情', 'detail', 'div'], ['citizens', '市民', 'roster', 'ul'], ['log', '动态', 'log', 'ol']]) {
-    const sec = new El('section', ['card']); sec.setAttribute('data-card', name); sec._h = 100;
-    const h2 = new El('h2', ['card-head']);
-    const btn = new El('button', [], { type: 'button', 'aria-expanded': 'true', 'aria-controls': bodyId }); btn.textContent = zh;
-    h2.appendChild(btn); sec.appendChild(h2); sec.appendChild(new El(tag, ['card-body'], { id: bodyId }));
-    panel.appendChild(sec);
-  }
-  const mem = {}; if (stored !== undefined) mem[KEY] = stored;
-  const store = {
-    getItem(k){ if (mode === 'getthrow') throw new Error('SecurityError'); return k in mem ? mem[k] : null; },
-    setItem(k, v){ if (mode === 'setthrow') throw new Error('QuotaExceededError'); mem[k] = String(v); },
-    removeItem(k){ delete mem[k]; }, clear(){ for (const k in mem) delete mem[k]; },
-  };
-  const errors = [], winL = {};
-  const box = {
-    console, setTimeout, clearTimeout, JSON, Math, Map, Set, Array, Object, String, Number, Boolean, Error, Promise,
-    performance: { now: () => Date.now() },
-    requestAnimationFrame: fn => setTimeout(() => fn(Date.now()), 0), cancelAnimationFrame: clearTimeout,
-    CSS: { escape: s => String(s) }, RM: false,
-    $: s => doc.querySelector(s), clamp: (v, a, b) => Math.max(a, Math.min(b, v)),
-    addEventListener(t, fn){ (winL[t] = winL[t] || []).push(fn); }, removeEventListener(t, fn){ const l = winL[t] || []; const i = l.indexOf(fn); if (i >= 0) l.splice(i, 1); },
-    innerWidth: 1500, innerHeight: 900,
-  };
-  doc.body = body; doc.documentElement = doc;
-  box.document = doc; box.window = box;
-  Object.defineProperty(box, 'localStorage', { get(){ if (mode === 'throw') throw new Error('SecurityError: storage is off'); return store; } });
-  vm.createContext(box);
-  try { vm.runInContext(prelude + '\n' + section, box); } catch (e) { errors.push('load: ' + e.message); }
-  const card = n => panel.children.find(c => c.getAttribute('data-card') === n);
-  const btn = n => card(n).querySelector('button');
-  function fire(type, target, y, x){
-    const ev = { type, target, clientX: x === undefined ? 1200 : x, clientY: y, pageX: x === undefined ? 1200 : x, pageY: y,
-      pointerId: 7, pointerType: 'mouse', isPrimary: true, button: 0, buttons: type === 'pointerup' || type === 'click' ? 0 : 1,
-      detail: 1, defaultPrevented: false, _stop: false,
-      preventDefault(){ this.defaultPrevented = true; }, stopPropagation(){ this._stop = true; }, stopImmediatePropagation(){ this._stop = true; } };
-    const path = []; for (let e = target; e; e = e.parentNode) path.push(e);
-    for (const node of path.concat([{ listeners: winL }])) {
-      for (const fn of (node.listeners[type] || []).slice()) {
-        ev.currentTarget = node;
-        try { fn.call(node, ev); } catch (e) { errors.push(type + ': ' + e.message); }
-      }
-      if (ev._stop) break;
-    }
-  }
-  const click = n => { const b = btn(n), y = b.getBoundingClientRect().top + 10; fire('pointerdown', b, y); fire('pointerup', b, y); fire('click', b, y); };
-  async function drag(n, ys, x){
-    const b = btn(n); let y = b.getBoundingClientRect().top + 10;
-    fire('pointerdown', b, y); await tick();
-    for (const to of ys) { fire('pointermove', b, to, x); y = to; await tick(); }
-    fire('pointerup', b, y, x); fire('click', b, y, x);
-  }
-  const state = () => ({
-    order: panel.children.map(c => c.getAttribute('data-card')),
-    collapsed: panel.children.filter(c => c.classList.contains('collapsed')).map(c => c.getAttribute('data-card')),
-    expanded: Object.fromEntries(panel.children.map(c => [c.getAttribute('data-card'), c.querySelector('button').getAttribute('aria-expanded')])),
-    offset: panel.children.filter(c => ['transform', 'top', 'translate'].some(k => c.style[k] && !/^(none|0(px)?|translateY\(0(px)?\))$/.test(c.style[k]))).map(c => c.getAttribute('data-card')),
-    inPanel: panel.children.length === 3 && stage.children.length === 0 && body.children.length === 2,
-    stored: mem[KEY] === undefined ? null : mem[KEY],
-    errors: errors.slice(),
-  });
-  return { click, drag, state, tick };
-}
-
-(async () => {
-  const out = {};
-  let w = world();
-  out.fresh = w.state();
-  w.click('citizens'); await w.tick(); out.collapsed = w.state();
-  w.click('citizens'); await w.tick(); out.reopened = w.state();
-  await w.drag('log', [225, 215, 190, 160, 130, 100, 70, 40, 15]); out.dragged = w.state();
-  await w.tick(); w.click('log'); await w.tick(); out.clickAfterDrag = w.state();
-  await w.drag('detail', [300, 600, 1200, 5000], 3000); out.farDrag = w.state();
-
-  w = world(); await w.drag('log', [310, 290, 270, 250]); out.midDrop = w.state();
-
-  w = world(JSON.stringify({ order: ['log', 'detail', 'bogus'], collapsed: ['citizens', 'nope'] })); out.restored = w.state();
-  w = world('{not json'); out.garbage = w.state();
-  w = world('[1,2]'); out.wrongShape1 = w.state();
-  w = world(JSON.stringify({ order: 'log', collapsed: 5 })); out.wrongShape2 = w.state();
-
-  w = world(undefined, 'throw'); out.throwLoad = w.state();
-  w.click('detail'); await w.tick(); out.throwClick = w.state();
-  await w.drag('log', [225, 190, 150, 110, 70, 30, 10]); out.throwDrag = w.state();
-
-  w = world(undefined, 'setthrow'); w.click('log'); await w.tick(); out.setThrow = w.state();
-  w = world(undefined, 'getthrow'); out.getThrow = w.state();
-  process.stdout.write(JSON.stringify(out));
-})().catch(e => { process.stdout.write(JSON.stringify({ fatal: String(e && e.stack || e) })); });
 """
 
 UNIT_JS = r"""
@@ -992,17 +857,6 @@ def unit_results():
     return _CACHE["unit"]
 
 
-def card_results():
-    if "cards" not in _CACHE:
-        section = cards_section()
-        if section is None:
-            raise AssertionError("no `/* ---------- right column` section in the page script")
-        _CACHE["cards"] = run_node(HARNESS_JS, {"prelude": constants_prelude(), "section": section})
-        if "fatal" in _CACHE["cards"]:
-            raise AssertionError("card harness crashed: " + _CACHE["cards"]["fatal"])
-    return _CACHE["cards"]
-
-
 # ---------------------------------------------------------------------------
 # Cleanup: tests
 # ---------------------------------------------------------------------------
@@ -1091,7 +945,6 @@ class TestKept(unittest.TestCase):
 
     def test_phone_layout(self):
         self.assertIn('name="viewport"', page())
-        self.assertRegex(style(), r"@media \(max-width: ?960px\)\s*\{[^@]*?\.layout\{grid-template-columns:minmax\(0,1fr\)\}")
 
 
 class TestWalkSpeed(unittest.TestCase):
@@ -1384,134 +1237,6 @@ class TestCamera(unittest.TestCase):
         self.assertNotIn("pinch", src, "zoom never pauses the rotation")
 
 
-class TestCardsMarkup(unittest.TestCase):
-    def test_four_cards_in_default_order(self):
-        panel = re.search(r'<aside class="panel" id="panel"[^>]*>(.*?)</aside>', markup(), re.S)
-        self.assertIsNotNone(panel, '<aside class="panel" id="panel"> not found')
-        self.assertEqual(re.findall(r'data-card="([\w-]+)"', panel.group(1)), ["detail", "balance", "citizens", "log"])
-        self.assertEqual(panel.group(1).count("<section"), 4)
-
-    def test_each_card_has_a_toggle_header_and_one_body(self):
-        want = {"detail": ("详情", "detail"), "balance": ("城市平衡", "balance"), "citizens": ("市民", "roster"),
-                "log": ("动态", "log")}
-        found = dict(cards())
-        self.assertEqual(sorted(found), sorted(want))
-        for name, (zh, body_id) in want.items():
-            with self.subTest(card=name):
-                inner = found[name]
-                head = re.search(r'<h2 class="card-head">\s*<button type="button"([^>]*)>(.*?)</button>\s*</h2>', inner, re.S)
-                self.assertIsNotNone(head, "header button missing")
-                self.assertIn('aria-expanded="true"', head.group(1))
-                self.assertIn('aria-controls="%s"' % body_id, head.group(1))
-                self.assertIn(zh, head.group(2))
-                self.assertEqual(len(re.findall(r'class="[^"]*\bcard-body\b', inner)), 1)
-                self.assertRegex(inner, r'<[a-z]+ class="[^"]*\bcard-body\b[^"]*" id="%s"' % body_id)
-                self.assertLess(inner.index("card-head"), inner.index('id="%s"' % body_id))
-
-    def test_detail_header_is_static(self):
-        self.assertNotIn("<h2", inline_script())
-
-    def test_collapsed_card_hides_its_body(self):
-        self.assertRegex(style(), r"\.card\.collapsed \.card-body\{display:none")
-
-    def test_header_takes_touch_for_dragging(self):
-        self.assertRegex(style(), r"\.card-head\{[^}]*touch-action:none")
-
-
-class TestCardsBehaviour(unittest.TestCase):
-    """The right-column section run in node against a fake DOM."""
-
-    def test_default_state(self):
-        r = card_results()["fresh"]
-        self.assertEqual(r["errors"], [])
-        self.assertEqual(r["order"], ["detail", "citizens", "log"])
-        self.assertEqual(r["collapsed"], [])
-
-    def test_click_header_collapses_and_reopens(self):
-        r = card_results()
-        self.assertEqual(r["collapsed"]["collapsed"], ["citizens"])
-        self.assertEqual(r["collapsed"]["expanded"]["citizens"], "false")
-        self.assertEqual(r["collapsed"]["expanded"]["detail"], "true")
-        self.assertEqual(r["reopened"]["collapsed"], [])
-        self.assertEqual(r["reopened"]["expanded"]["citizens"], "true")
-        self.assertEqual(r["reopened"]["errors"], [])
-
-    def test_collapse_is_saved(self):
-        r = card_results()
-        self.assertEqual(json.loads(r["collapsed"]["stored"])["collapsed"], ["citizens"])
-        self.assertEqual(json.loads(r["reopened"]["stored"])["collapsed"], [])
-
-    def test_drag_header_reorders(self):
-        r = card_results()["dragged"]
-        self.assertEqual(r["errors"], [])
-        self.assertEqual(r["order"], ["log", "detail", "citizens"])
-        self.assertEqual(r["collapsed"], [], "the click that ends a drag must not toggle")
-        self.assertEqual(r["offset"], [], "a dropped card must sit in its slot, no leftover offset")
-        self.assertEqual(json.loads(r["stored"])["order"], ["log", "detail", "citizens"])
-
-    def test_card_dropped_mid_column_sits_in_its_slot(self):
-        r = card_results()["midDrop"]
-        self.assertEqual(r["errors"], [])
-        self.assertEqual(r["order"], ["detail", "log", "citizens"])
-        self.assertEqual(r["offset"], [], "a dropped card must sit in its slot, no leftover offset")
-        self.assertEqual(r["collapsed"], [])
-
-    def test_plain_click_after_a_drag_still_toggles(self):
-        r = card_results()["clickAfterDrag"]
-        self.assertEqual(r["collapsed"], ["log"])
-
-    def test_drag_never_leaves_the_column(self):
-        r = card_results()["farDrag"]
-        self.assertEqual(r["errors"], [])
-        self.assertTrue(r["inPanel"], "a card left the right column")
-        self.assertEqual(r["order"][-1], "detail")
-        self.assertEqual(sorted(r["order"]), ["citizens", "detail", "log"])
-
-    def test_restores_saved_order_and_collapse(self):
-        r = card_results()["restored"]
-        self.assertEqual(r["errors"], [])
-        self.assertEqual(r["order"], ["log", "detail", "citizens"])
-        self.assertEqual(r["collapsed"], ["citizens"])
-        self.assertEqual(r["expanded"], {"log": "true", "detail": "true", "citizens": "false"})
-
-    def test_bad_saved_data_is_ignored(self):
-        results = card_results()
-        for case in ("garbage", "wrongShape1", "wrongShape2"):
-            with self.subTest(case=case):
-                r = results[case]
-                self.assertEqual(r["errors"], [])
-                self.assertEqual(r["order"], ["detail", "citizens", "log"])
-                self.assertEqual(r["collapsed"], [])
-
-    def test_works_when_storage_throws(self):
-        results = card_results()
-        self.assertEqual(results["throwLoad"]["errors"], [])
-        self.assertEqual(results["throwLoad"]["order"], ["detail", "citizens", "log"])
-        self.assertEqual(results["throwClick"]["collapsed"], ["detail"])
-        self.assertEqual(results["throwClick"]["errors"], [])
-        self.assertEqual(results["throwDrag"]["order"], ["log", "detail", "citizens"])
-        self.assertEqual(results["throwDrag"]["errors"], [])
-        for case in ("setThrow", "getThrow"):
-            with self.subTest(case=case):
-                self.assertEqual(results[case]["errors"], [])
-        self.assertEqual(results["setThrow"]["collapsed"], ["log"])
-
-    def test_every_storage_access_is_guarded(self):
-        text = inline_script()
-        hits = [m.start() for m in re.finditer(r"localStorage", text)]
-        self.assertGreaterEqual(len(hits), 2, "order and collapse are not stored")
-        for at in hits:
-            before = text[:at]
-            opened = max(before.rfind("try {"), before.rfind("try{"))
-            with self.subTest(line=text[at - 60:at + 40].strip()):
-                self.assertNotEqual(opened, -1, "localStorage used outside try")
-                self.assertNotIn("catch", before[opened:], "localStorage used outside try")
-                self.assertLess(at - opened, 300)
-
-    def test_storage_key(self):
-        self.assertIn("'agent-city-cards'", inline_script())
-
-
 # ---------------------------------------------------------------------------
 # Interaction: the "?" panel
 # ---------------------------------------------------------------------------
@@ -1572,9 +1297,10 @@ class TestInteraction(unittest.TestCase):
 
     def test_panel_sits_over_the_city(self):
         m = markup()
-        i, stage, aside = m.find('id="ask"'), m.find('id="stage"'), m.find('<aside class="panel"')
+        i, stage = m.find('id="ask"'), m.find('id="stage"')
         self.assertGreater(i, 0, "no #ask panel in the markup")
-        self.assertTrue(stage < i < aside, "#ask must be inside #stage, not the right column")
+        self.assertTrue(0 < stage < i, "#ask must be inside #stage, over the city")
+        self.assertNotIn('<aside class="panel"', m, "no right column since city-focus")
         tag = re.search(r"<div[^>]*id=\"ask\"[^>]*>", m).group(0)
         for attr in ('class="ask-panel"', 'role="dialog"', 'aria-labelledby="ask-title"', "hidden"):
             with self.subTest(attr=attr):
@@ -2213,9 +1939,10 @@ __out = { spots: slots.map(r => [r.x, r.y, tileAt(Math.floor(r.x), Math.floor(r.
 # Balance (requirements/city.md "Balance"; approved mock mock/city-balance-mock.html;
 # server side: tests/test_agent_city_balance.py)
 #
-#   Constants  KIND_ZH {build 建设, rules 规则, beauty 美化, knowledge 知识, infra 基建}
-#              STATE_ZH {healthy 健康, low 偏低, missing 没有, na 不适用}
-#              ERA_ZH {village 村, town 镇, city 城}; SHOW_SEC = 60, SHOW_FLIP = 52
+#   city-focus (owner, 2026-09-27): no 城市平衡 card, no 还差 sign, no file
+#   lists; the kinds only bring their own things (systemsDecor). The retired
+#   signText / balanceHtml / openBalanceKind contract lives in git history.
+#   Constants  SHOW_SEC = 60, SHOW_FLIP = 52
 #   ERA_LOOK = {village|town|city: {build: {house, shop, tower, workshop, library:
 #     [model names]}, hall: model name, road: '#hex', lamps: bool}}. Village =
 #     wood, town = brick, city = towers: the three eras' house lists share no
@@ -2226,24 +1953,6 @@ __out = { spots: slots.map(r => [r.x, r.y, tileAt(Math.floor(r.x), Math.floor(r.
 #     on 'r' tiles with it (tests/test_agent_city_land.py).
 #   hallDecor(t, view): [] on day 0 and in a village; lamps ('lantern') in a
 #     town or city, on 'g' tiles. Never a fountain (that is beauty's).
-#   signText(t) -> '' on day 0 (no lines), in the city era, with no "next", or
-#     while t's era show runs; else '还差：' + t.next.join('、'). Drawn as an
-#     overlay (.era-sign) in front of each town hall.
-#   balanceHtml(t, open, terrs) -> the 城市平衡 card body (#balance):
-#     era line (时代 <ERA_ZH> -> next era, with the sign text; 已经是城 in the
-#     city era), then <li class="kind" data-kind=K data-state=S> for the 5
-#     kinds in KINDS order, each with a <button type="button"
-#     aria-expanded> showing KIND_ZH, a bar, STATE_ZH and t.balance[K].text.
-#     t.balance {} -> every kind data-state="missing" with 还没数过.
-#     open = {kind, files, total, rules, error} opens that kind: its paths
-#     (escaped), 还有 N 个 when total > files.length, and the fix hint naming
-#     the rules file (分错了？ ... = none); files null -> 正在拿文件列表…;
-#     error -> 文件列表拿不到： + error (never silent). t.rules_note shown.
-#     terrs [{id, name}] with more than one -> a button per territory
-#     (data-bterr=id, aria-pressed on the shown one).
-#   openBalanceKind(kind): live -> fetch('/api/balance?terr=' + id + '&kind='
-#     + kind) with the X-City-Token header; a failure is shown in the card.
-#     Demo -> no fetch, 演示：没有真实文件.
 #   systemsDecor(t, view) -> [{key ('<pack>/<name>' in MODELS), x, z, kind}]:
 #     [] on day 0 (t.open 0) or with no balance; nothing for a missing or na
 #     kind (absent, never broken: no cones, no cracks); every item on its own
@@ -2267,34 +1976,6 @@ __out = { spots: slots.map(r => [r.x, r.y, tileAt(Math.floor(r.x), Math.floor(r.
 # ---------------------------------------------------------------------------
 
 KINDS = ["build", "rules", "beauty", "knowledge", "infra"]
-
-
-def balance_card_results():
-    if "bcards" not in _CACHE:
-        section = cards_section()
-        if section is None:
-            raise AssertionError("no `/* ---------- right column` section in the page script")
-        js = HARNESS_JS.replace(
-            "[['detail', '详情', 'detail', 'div'], ['citizens', '市民', 'roster', 'ul'], ['log', '动态', 'log', 'ol']]",
-            "[['detail', '详情', 'detail', 'div'], ['balance', '城市平衡', 'balance', 'div'], "
-            "['citizens', '市民', 'roster', 'ul'], ['log', '动态', 'log', 'ol']]")
-        js = js.replace("inPanel: panel.children.length === 3", "inPanel: panel.children.length === 4")
-        start = js.index("(async () => {")
-        js = js[:start] + r"""(async () => {
-  const out = {};
-  let w = world();
-  out.fresh = w.state();
-  w.click('balance'); await w.tick(); out.collapsed = w.state();
-  w = world(JSON.stringify({ order: ['log', 'detail', 'citizens'], collapsed: ['log'] })); out.oldSave = w.state();
-  w = world(JSON.stringify({ order: ['balance', 'log', 'detail', 'citizens'], collapsed: ['balance'] })); out.restored = w.state();
-  w = world(); await w.drag('balance', [100, 60, 30, 10, 0]); out.dragged = w.state();
-  process.stdout.write(JSON.stringify(out));
-})().catch(e => { process.stdout.write(JSON.stringify({ fatal: String(e && e.stack || e) })); });
-"""
-        _CACHE["bcards"] = run_node(js, {"prelude": constants_prelude(), "section": section})
-        if "fatal" in _CACHE["bcards"]:
-            raise AssertionError("card harness crashed: " + _CACHE["bcards"]["fatal"])
-    return _CACHE["bcards"]
 
 
 def page_fns(*names, optional=()):
@@ -2321,148 +2002,7 @@ def consts(*names):
     return "\n".join(out)
 
 
-BAL = {"build": {"state": "healthy", "value": 4200, "n": 12, "text": "4,200 行代码"},
-       "rules": {"state": "missing", "value": 0, "n": 0, "text": "还没有"},
-       "beauty": {"state": "low", "value": 1, "n": 2, "text": "1 个组件，平均复用 1.0 次"},
-       "knowledge": {"state": "na", "value": 0, "n": 0, "text": "这个仓库不用这一类"},
-       "infra": {"state": "healthy", "value": 8, "n": 8, "text": "8 个文件"}}
-
-CARD_JS = r"""
-const fs = require('fs'), vm = require('vm');
-const { prelude, fns, cases } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-const box = { Math, JSON, console, DEMO: false, shows: new Map(), performance: { now: () => 0 }, map: { territories: [] } };
-vm.createContext(box);
-vm.runInContext(prelude + '\n' + fns, box);
-process.stdout.write(JSON.stringify(cases.map(([t, open, terrs]) => box.balanceHtml(t, open, terrs))));
-"""
-
-
-class TestBalanceCard(unittest.TestCase):
-    def test_markup(self):
-        found = dict(cards())
-        self.assertIn("balance", found)
-        inner = found["balance"]
-        self.assertIn("城市平衡", inner)
-        self.assertRegex(inner, r'<svg class="grip"', "same grip as the other cards")
-        self.assertRegex(inner, r'<[a-z]+ class="[^"]*\bcard-body\b[^"]*" id="balance"')
-
-    def test_same_collapse_drag_and_memory_as_the_other_cards(self):
-        r = balance_card_results()
-        self.assertEqual(r["fresh"]["errors"], [])
-        self.assertEqual(r["fresh"]["order"], ["detail", "balance", "citizens", "log"])
-        self.assertEqual(r["collapsed"]["collapsed"], ["balance"])
-        self.assertEqual(json.loads(r["collapsed"]["stored"])["collapsed"], ["balance"])
-        self.assertEqual(r["oldSave"]["order"], ["log", "detail", "citizens", "balance"],
-                         "a browser that saved the 3-card order still gets the new card")
-        self.assertEqual(r["oldSave"]["collapsed"], ["log"])
-        self.assertEqual(r["restored"]["order"], ["balance", "log", "detail", "citizens"])
-        self.assertEqual(r["restored"]["collapsed"], ["balance"])
-        self.assertEqual(r["dragged"]["order"][0], "balance")
-        self.assertEqual(r["dragged"]["errors"], [])
-
-    def test_names_in_chinese(self):
-        self.assertEqual(js_value(const_object("KIND_ZH") or "null"),
-                         {"build": "建设", "rules": "规则", "beauty": "美化", "knowledge": "知识", "infra": "基建"})
-        self.assertEqual(js_value(const_object("STATE_ZH") or "null"),
-                         {"healthy": "健康", "low": "偏低", "missing": "没有", "na": "不适用"})
-        self.assertEqual(js_value(const_object("ERA_ZH") or "null"), {"village": "村", "town": "镇", "city": "城"})
-
-    def card(self, *cases):
-        fns = page_fns("balanceHtml", optional=("signText", "eraShown", "showOf", "kindBar", "barOf"))
-        esc = re.search(r"^const esc = .*;$", inline_script(), re.M)
-        prelude = constants_prelude() + "\n" + consts("KIND_ZH", "STATE_ZH", "ERA_ZH") + "\n" + \
-            (esc.group(0).replace("const esc", "var esc") if esc else "")
-        return run_node(CARD_JS, {"prelude": prelude, "fns": fns, "cases": [list(c) for c in cases]})
-
-    def test_one_bar_per_kind(self):
-        t = {"id": "t1", "name": "shop", "era": "village", "lines": 4200, "open": 6, "balance": BAL,
-             "next": ["规则"], "rules_note": ""}
-        html = self.card((t, None, [{"id": "t1", "name": "shop"}]))[0]
-        self.assertEqual(re.findall(r'data-kind="(\w+)"', html), KINDS)
-        self.assertEqual(re.findall(r'data-state="(\w+)"', html), ["healthy", "missing", "low", "na", "healthy"])
-        for word in ("建设", "规则", "美化", "知识", "基建", "健康", "没有", "偏低", "不适用", "4,200 行代码",
-                     "1 个组件，平均复用 1.0 次", "村", "还差：规则"):
-            with self.subTest(word=word):
-                self.assertIn(word, html)
-        self.assertNotIn('class="files', html, "no list until a kind is clicked")
-        self.assertEqual(len(re.findall(r'<button type="button"[^>]*aria-expanded="false"', html)), 5)
-        self.assertNotIn("data-bterr", html, "one territory: no picker")
-
-    def test_a_clicked_kind_lists_its_files(self):
-        t = {"id": "t1", "name": "shop", "era": "town", "lines": 9000, "open": 6, "balance": BAL,
-             "next": ["规模", "美化"], "rules_note": ""}
-        opened = {"kind": "infra", "files": [".github/workflows/ci.yml", "scripts/<b>x</b>.sh"], "total": 7,
-                  "rules": "/Users/me/.claude/agent-city/rules/shop.conf", "error": ""}
-        loading = dict(opened, files=None)
-        failed = dict(opened, files=None, error="HTTP 403")
-        html, wait, err = self.card((t, opened, []), (t, loading, []), (t, failed, []))
-        self.assertIn(".github/workflows/ci.yml", html)
-        self.assertIn("&lt;b&gt;x&lt;/b&gt;", html)
-        self.assertNotIn("<b>x</b>", html)
-        self.assertIn("还有 5 个", html)
-        self.assertIn("rules/shop.conf", html)
-        self.assertIn("分错了", html)
-        self.assertIn("= none", html)
-        self.assertRegex(html, r'data-kind="infra"[^>]*>\s*<button type="button"[^>]*aria-expanded="true"')
-        self.assertIn("正在拿文件列表", wait)
-        self.assertIn("文件列表拿不到：HTTP 403", err)
-
-    def test_before_the_first_count(self):
-        t = {"id": "t1", "name": "shop", "era": "village", "lines": 0, "open": 0, "balance": {}, "next": [],
-             "rules_note": ""}
-        html = self.card((t, None, []))[0]
-        self.assertEqual(re.findall(r'data-state="(\w+)"', html), ["missing"] * 5)
-        self.assertIn("还没数过", html)
-        self.assertNotIn("还差", html, "day 0 is clean")
-
-    def test_city_rules_note_and_territory_picker(self):
-        t = {"id": "t2", "name": "big", "era": "city", "lines": 90000, "open": 30, "balance": BAL, "next": [],
-             "rules_note": "big.conf 第 3 行看不懂，已跳过"}
-        html = self.card((t, None, [{"id": "t1", "name": "shop"}, {"id": "t2", "name": "big"}]))[0]
-        self.assertIn("已经是城", html)
-        self.assertNotIn("还差", html)
-        self.assertIn("big.conf 第 3 行看不懂", html)
-        self.assertEqual(re.findall(r'data-bterr="(\w+)"', html), ["t1", "t2"])
-        self.assertRegex(html, r'data-bterr="t2"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-bterr="t2"')
-
-    def test_clicking_a_kind_asks_the_server(self):
-        src = function_source("openBalanceKind")
-        self.assertIsNotNone(src, "function openBalanceKind(kind) not found")
-        self.assertIn("'/api/balance?terr='", src)
-        self.assertIn("'X-City-Token': TOKEN", src)
-        self.assertIn("encodeURIComponent", src)
-        self.assertRegex(src, r"if \(DEMO\)[^;]*", "demo mode never fetches")
-        self.assertIn("演示：没有真实文件", inline_script())
-        self.assertRegex(src, r"catch|\.ok", "a failed fetch is shown, never swallowed")
-
-
-SIGN_JS = r"""
-const fs = require('fs'), vm = require('vm');
-const { prelude, fns, cases } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-const box = { Math, JSON, console, shows: new Map(), performance: { now: () => 1000 } };
-vm.createContext(box);
-vm.runInContext(prelude + '\n' + fns, box);
-const out = cases.map(t => box.signText(t));
-box.shows.set('t9', { from: 'village', to: 'town', end: 1000 + 30000 });
-out.push(box.signText({ id: 't9', era: 'town', lines: 5000, next: ['规模'] }));
-process.stdout.write(JSON.stringify(out));
-"""
-
-
 class TestEraLook(unittest.TestCase):
-    def test_sign_text(self):
-        cases = [{"id": "a", "era": "village", "lines": 4200, "next": ["规则"]},
-                 {"id": "b", "era": "town", "lines": 9000, "next": ["规模", "美化"]},
-                 {"id": "c", "era": "village", "lines": 0, "next": ["规模"]},
-                 {"id": "d", "era": "city", "lines": 90000, "next": []},
-                 {"id": "e", "era": "town", "lines": 9000, "next": []}]
-        out = run_node(SIGN_JS, {"prelude": constants_prelude(),
-                                 "fns": page_fns("signText", optional=("eraShown", "showOf")), "cases": cases})
-        self.assertEqual(out, ["还差：规则", "还差：规模、美化", "", "", "", ""],
-                         "no sign on day 0, in the city, with nothing needed, or during the show")
-        self.assertIn(".era-sign", style())
-        self.assertIn("era-sign", inline_script())
-
     def test_era_look(self):
         look = js_value(const_object("ERA_LOOK") or "null")
         self.assertIsInstance(look, dict)
@@ -2714,16 +2254,12 @@ class TestEraShow(unittest.TestCase):
 # right. The live event path added overlays instead of replacing them.
 #
 #   landOverlays(view): buildLand's overlays, no THREE: first removes every
-#     overlay element it made before (the old labels and signs leave the DOM),
-#     then one .lbl (the territory name) and one .era-sign per territory.
+#     overlay element it made before (the old labels leave the DOM), then one
+#     .lbl (the territory name) per territory. No .era-sign at all (city-focus).
 #     buildLand calls it.
-#   pinLandOverlays(): the per-frame part: pins every label, and every sign with
-#     setText(signText(t)), hidden while that text is ''. Called every frame.
-#   renderBalance(): its cache key includes what balanceHtml reads that changes
-#     with time, eraShown(t) and signText(t), so the card changes by itself at
-#     the flip and again when the show ends (renderPanel runs it often).
+#   pinLandOverlays(): the per-frame part: pins every label. Called every frame.
 #   A page open through a whole show ends with exactly what a fresh page builds
-#   from the snapshot: same labels, same signs, same card.
+#   from the snapshot: same labels, no leftover overlay elements.
 # ---------------------------------------------------------------------------
 
 LIVE_SHOW_JS = FAKE_DOM_JS + r"""
@@ -2733,30 +2269,28 @@ Object.defineProperty(El.prototype, 'className', { get(){ return [...this.classL
 const { prelude, fns, view0, view1 } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 function page(){
   let T = 0;
-  const ov = new El('div', [], { id: 'ov' }), card = new El('div', ['card-body'], { id: 'balance' });
-  Object.defineProperty(card, 'innerHTML', { get(){ return this._html || ''; }, set(v){ this._html = String(v); } });
+  const ov = new El('div', [], { id: 'ov' });
   const box = { Math, JSON, console, Map, Set, Array, Object, String, Number, Boolean,
     performance: { now: () => T }, document: { createElement: tag => new El(tag) },
-    ovRoot: ov, $: s => (s === '#balance' ? card : s === '#ov' ? ov : null),
+    ovRoot: ov, $: s => (s === '#ov' ? ov : null),
     toScreen: () => [100, 100], logAt(){}, log(){}, simT: 0, needFrame: false, DEMO: false,
-    labels: [], signs: [], shows: new Map(), map: { territories: [] },
-    balanceTerr: null, govTerr: null, balanceOpen: null, lastBalanceKey: '' };
+    labels: [], signs: [], shows: new Map(), map: { territories: [] }, govTerr: null };
   vm.createContext(box);
   vm.runInContext(prelude + '\n' + fns, box);
   const at = s => { T = s * 1000; };
-  const world = v => { box.map = JSON.parse(JSON.stringify(v)); box.landOverlays(box.map); box.lastBalanceKey = ''; box.renderBalance(); };
-  const frame = () => { box.pinLandOverlays(); box.renderBalance(); };
+  const world = v => { box.map = JSON.parse(JSON.stringify(v)); box.landOverlays(box.map); };
+  const frame = () => { box.pinLandOverlays(); };
   const els = cls => ov.children.filter(e => e.classList.contains(cls));
   const seen = cls => els(cls).filter(e => !e.hidden).map(e => e.textContent).sort();
   const state = () => ({ lbl: els('lbl').map(e => e.textContent).sort(), lblSeen: seen('lbl'),
-    sign: els('era-sign').length, signSeen: seen('era-sign'), ovCount: ov.children.length, card: card.innerHTML });
+    sign: els('era-sign').length, ovCount: ov.children.length });
   return { box, at, world, frame, state };
 }
 const out = {};
 let p = page();
 p.world(view0); p.frame(); out.before = p.state();
 p.box.startShow('t', 'village', 'town', 60);            // the era event...
-p.world(view1); p.frame(); out.started = p.state();     // ...then the world event with the new balance
+p.world(view1); p.frame(); out.started = p.state();     // ...then the world event
 p.at(10); p.frame(); out.mid = p.state();
 p.at(30); p.world(view1); p.frame();                    // a recount or a build during the show
 p.at(52.5); p.box.landOverlays(p.box.map); p.frame(); out.flipped = p.state();   // the flip rebuilds the land
@@ -2769,23 +2303,17 @@ process.stdout.write(JSON.stringify(out));
 
 def live_show_results():
     if "liveshow" not in _CACHE:
-        def terr(tid, name, era, states, nxt, lines):
-            bal = {k: {"state": s, "value": 1, "n": 0 if s == "missing" else 3,
-                       "text": "还没有" if s == "missing" else "x"} for k, s in zip(KINDS, states)}
+        def terr(tid, name, era, lines):
+            bal = {k: {"state": "low", "value": 1, "n": 3, "text": "x"} for k in KINDS}
             return {"id": tid, "name": name, "era": era, "lines": lines, "open": 6, "size": .4, "cx": 0, "cz": 0,
-                    "terrain": "grassland", "balance": bal, "next": nxt, "rules_note": "", "buildings": []}
-        other = terr("u", "big", "city", ["healthy"] * 5, [], 40000)
+                    "terrain": "grassland", "balance": bal, "rules_note": "", "buildings": []}
+        other = terr("u", "big", "city", 40000)
         other.update(cx=26)
-        view0 = {"territories": [terr("t", "shop", "village", ["healthy", "missing", "low", "low", "low"], ["规则"], 2200),
-                                 other]}
-        view1 = {"territories": [terr("t", "shop", "town", ["healthy", "low", "low", "low", "low"],
-                                      ["规模", "规则", "美化"], 2200), other]}
-        fns = page_fns("landOverlays", "pinLandOverlays", "signText", "eraShown", "startShow", "renderBalance",
-                       "balanceHtml", "currentBalanceTerr", "terrOf", "ovEl", "setText", "pin",
-                       optional=("showOf", "eraLook", "kindBar", "barOf"))
-        esc = re.search(r"^const esc = .*;$", inline_script(), re.M)
-        prelude = constants_prelude() + "\n" + consts("KIND_ZH", "STATE_ZH", "ERA_ZH", "ERA_LOOK") + "\n" + \
-            (esc.group(0).replace("const esc", "var esc") if esc else "")
+        view0 = {"territories": [terr("t", "shop", "village", 1900), other]}
+        view1 = {"territories": [terr("t", "shop", "town", 2200), other]}
+        fns = page_fns("landOverlays", "pinLandOverlays", "eraShown", "startShow", "terrOf", "ovEl", "setText", "pin",
+                       optional=("showOf", "eraLook"))
+        prelude = constants_prelude() + "\n" + consts("ERA_LOOK")
         _CACHE["liveshow"] = run_node(LIVE_SHOW_JS, {"prelude": prelude, "fns": fns, "view0": view0, "view1": view1})
     return _CACHE["liveshow"]
 
@@ -2800,30 +2328,22 @@ class TestLiveShowMatchesFreshPage(unittest.TestCase):
     def test_before_the_show(self):
         r = live_show_results()["before"]
         self.assertEqual(r["lbl"], ["big", "shop"])
-        self.assertEqual(r["signSeen"], ["还差：规则"])
+        self.assertEqual(r["sign"], 0, "no 还差 sign (city-focus)")
 
-    def test_during_the_show_no_sign_and_the_card_says_upgrading(self):
+    def test_during_the_show_one_label_per_territory(self):
         r = live_show_results()
-        for name in ("started", "mid"):
+        for name in ("started", "mid", "flipped"):
             with self.subTest(moment=name):
-                self.assertEqual(r[name]["signSeen"], [], "no 还差 sign while the show runs")
                 self.assertEqual(r[name]["lbl"], ["big", "shop"], "one label per territory")
-                self.assertIn("正在升级成镇", r[name]["card"])
-
-    def test_after_the_flip_the_card_is_the_new_era(self):
-        r = live_show_results()["flipped"]
-        self.assertNotIn("正在升级", r["card"], "the card follows the flip by itself")
-        self.assertEqual(r["lbl"], ["big", "shop"])
+                self.assertEqual(r[name]["sign"], 0)
 
     def test_an_open_page_ends_like_a_fresh_page(self):
         r = live_show_results()
         after, fresh = r["after"], r["fresh"]
         self.assertEqual(after["lbl"], fresh["lbl"], "labels multiplied on the open page")
-        self.assertEqual(after["sign"], fresh["sign"], "old sign elements left in the page")
-        self.assertEqual(after["signSeen"], fresh["signSeen"])
-        self.assertEqual(fresh["signSeen"], ["还差：规模、规则、美化"])
         self.assertEqual(after["ovCount"], fresh["ovCount"], "leftover overlay elements")
-        self.assertEqual(after["card"], fresh["card"])
+        self.assertEqual(fresh["sign"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

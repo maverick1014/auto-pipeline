@@ -63,7 +63,7 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .stat.off{border-color:var(--ink-3);color:var(--ink-3)}
 .stat.refused{border-color:var(--ask-ink);background:var(--ask-bg);color:var(--ask-ink)}
 
-.layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;flex:1;min-height:0}
+.layout{display:flex;flex-direction:column;gap:14px;flex:1;min-height:0}
 .stage-col{display:flex;flex-direction:column;gap:10px;min-width:0}
 .stage{position:relative;overflow:hidden;height:calc(100dvh - 150px);min-height:460px}
 .stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
@@ -95,7 +95,6 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .tag{z-index:2}
 .fl{background:var(--c);color:#fff;border-radius:8px;padding:1px 7px;font:600 11px/1.5 var(--mono)}
 .lbl{background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:2px 10px;font:600 12px/1.5 var(--display);box-shadow:0 2px 0 rgba(42,43,69,.15);white-space:nowrap}
-.era-sign{background:var(--gov-bg);color:var(--gov-ink);border:1.5px solid var(--gov-ink);border-radius:999px;padding:3px 10px;font:600 12px/1.3 var(--round);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.18);z-index:1}
 
 .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:8px}
 .group{display:inline-flex;align-items:center;gap:5px}
@@ -114,21 +113,6 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:12px;padding:0 10px}
 .lead{font-size:13px;color:var(--ink-2);margin-right:2px}
 
-.panel{display:flex;flex-direction:column;gap:12px;min-width:0;max-height:calc(100dvh - 100px);overflow:auto;padding-bottom:3px}
-.card{background:var(--panel);border:1.5px solid var(--line);border-radius:20px;padding:14px 16px}
-.card-head{margin:0 0 10px;touch-action:none;user-select:none;-webkit-user-select:none}
-.card-head button{all:unset;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:8px;font:700 16px/1.2 var(--round);color:var(--ink);cursor:grab;border-radius:10px}
-.card-head button:focus-visible{outline:2.5px solid var(--focus);outline-offset:3px}
-.card-head .grip{width:14px;height:14px;color:var(--ink-3);flex:none}
-.card-head .chev{width:16px;height:16px;margin-left:auto;color:var(--ink-3);transition:transform .15s;flex:none}
-.card.collapsed .card-head{margin-bottom:0}
-.card.collapsed .card-head .chev{transform:rotate(-90deg)}
-.card.collapsed .card-body{display:none!important}
-.card.dragging{position:relative;z-index:5;box-shadow:0 10px 24px rgba(42,43,69,.22);border-color:var(--ink-3)}
-.card.dragging .card-head button{cursor:grabbing}
-.card-head .en{font:600 12px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
-
-
 .sign-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--berry);color:#fff;flex:none}
 .sign-icon svg{width:20px;height:20px}
 .btn svg.lucide{width:16px;height:16px}
@@ -136,11 +120,10 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .rdot{width:18px;height:18px;border-radius:50%;border:4px solid var(--c);background:var(--panel);flex:none;justify-self:center}
 .rdot.gov{--c:#FFD36E}
 .roster{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
-.grp-head{font:700 11.5px/1.4 var(--display);color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;padding:9px 8px 3px}
-.grp-head:first-child{padding-top:2px}
 .row{width:100%;display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;gap:10px;padding:7px 8px;border-radius:14px;border:1.5px solid transparent;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .row:hover{background:var(--panel-2)}
 .row[aria-current="true"]{border-color:var(--berry);background:var(--panel-2)}
+.sub{margin-left:22px}
 .who{min-width:0;display:flex;flex-direction:column}
 .who b{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .who span{font:12px/1.3 var(--mono);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -169,26 +152,19 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .d-actions{display:flex;flex-wrap:wrap;gap:6px}
 .d-note,.hint{margin:0;font-size:12.5px;color:var(--ink-3)}
 
-/* 城市平衡 card (Balance): era line + sign, one bar per kind, its files when clicked open */
-.era{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px;font-size:13px}
-.era b{font-size:15px}
-.note{margin:0 0 10px;font-size:12.5px;color:var(--ink-3)}
-.need{background:var(--panel-2);border-radius:10px;padding:3px 9px;font-weight:600}
-.bterr{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
-.kinds{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
-.kind>button{all:unset;box-sizing:border-box;width:100%;display:grid;grid-template-columns:16px 52px minmax(0,1fr) 46px;gap:8px;align-items:center;padding:7px 6px;border-radius:10px;cursor:pointer}
-.kind>button:hover{background:var(--panel-2)}
-.kind>button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
-.kind .ic{width:14px;height:14px;border-radius:5px}
-.kind .nm{font-weight:700;white-space:nowrap}
-.kind .st{font-size:12px;font-weight:700;text-align:right}
-.kind .val{grid-column:2 / 5;font-size:12px;color:var(--ink-2);margin-top:-2px}
-.st.healthy{color:var(--healthy)} .st.low{color:var(--low)} .st.missing{color:var(--ink-3)} .st.na{color:var(--na)}
-.kind .track i{background:var(--ink-3)}
-.kind[data-state="healthy"] .track i{background:var(--healthy)}
-.kind[data-state="low"] .track i{background:var(--low)}
-.kind[data-state="missing"] .track i{background:var(--missing)}
-.kind[data-state="na"] .track i{background:var(--na)}
+/* the conversation + the box to talk to it (requirements/city.md, Talking) */
+.chat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto}
+.chat .msg{display:flex;flex-direction:column;gap:2px;max-width:88%;padding:7px 10px;border-radius:14px;background:var(--panel-2);font-size:13px;line-height:1.4;align-self:flex-start}
+.chat .msg[data-kind="owner"]{align-self:flex-end;background:var(--gov-bg);color:var(--gov-ink)}
+.chat .msg b{font:600 11px/1.3 var(--mono);color:var(--ink-3)}
+.chat .msg[data-kind="owner"] b{color:var(--gov-ink)}
+.chat .msg span{white-space:pre-wrap;overflow-wrap:anywhere}
+.chat .msg-empty,.chat .msg-wait{text-align:center;font-size:12.5px;color:var(--ink-3);padding:4px 0}
+.chat-fail{color:var(--ask-ink)}
+.say{display:flex;flex-direction:column;gap:8px}
+.say textarea{width:100%;min-height:64px;resize:vertical;font:14px/1.4 var(--round);color:var(--ink);background:var(--panel-2);border:1.5px solid var(--line);border-radius:12px;padding:9px 10px}
+.say .btn{align-self:flex-end}
+
 .files{margin:2px 0 8px 24px;padding:8px 10px;background:var(--panel-2);border-radius:10px;font:12px/1.5 var(--mono);max-height:180px;overflow:auto}
 .files ol{margin:0;padding:0 0 0 18px}
 .files p{margin:4px 0 0;font-family:var(--round);color:var(--ink-2)}
@@ -237,14 +213,21 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .closed.no{background:var(--ask-bg);color:var(--ask-ink)}
 .closed.late{background:var(--gov-bg);color:var(--gov-ink)}
 
+/* the window: click a person / building / the governor, or open 动态 -- one card over the city,
+   inside #stage (requirements/city.md, Look, owner 2026-09-27) */
+.win{position:absolute;left:12px;top:12px;z-index:5;width:min(380px,calc(100% - 24px));max-height:calc(100% - 24px);overflow:auto;background:var(--panel);color:var(--ink);border:2px solid var(--ink);border-radius:20px;box-shadow:0 6px 0 rgba(42,43,69,.22);padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px}
+.win-head{display:flex;align-items:center;gap:10px}
+.win-title{flex:1;min-width:0;font-weight:700;font-size:17px;line-height:1.3;overflow-wrap:anywhere}
+
 @media (max-width: 960px){
-  .layout{grid-template-columns:minmax(0,1fr)}
-  .stage{height:min(66vh,calc(100vw * 1.1));min-height:340px}
-  .panel{max-height:none;overflow:visible}
+  .stage-col{flex:1}
+  .stage{flex:1 1 0;height:auto;min-height:340px}
+  .stage canvas{position:absolute;inset:0}
   .stats{margin-left:0}
   .ask-panel{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:72%}
+  .win{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:72%}
 }
-@media (prefers-reduced-motion: reduce){ .qm span,.zz span{animation:none} .track i,.btn,.card-head .chev{transition:none} }
+@media (prefers-reduced-motion: reduce){ .qm span,.zz span{animation:none} .track i,.btn{transition:none} }
 </style>
 </head>
 <body>
@@ -256,6 +239,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
       <div><span class="sign-name">Agent City</span><span class="sign-sub">auto-pipeline · 3D</span></div>
     </div>
     <div class="stats" id="stats" aria-live="polite"></div>
+    <button type="button" id="logbtn" class="btn">动态</button>
   </header>
 
   <main class="layout">
@@ -275,6 +259,11 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
           </button>
         </div>
         <div class="ask-panel" id="ask" role="dialog" aria-labelledby="ask-title" hidden></div>
+        <div class="win" id="win" role="dialog" aria-labelledby="win-title" hidden>
+          <div class="win-head"><div class="win-title" id="win-title"></div><button type="button" id="win-close" aria-label="关闭" class="x">✕</button></div>
+          <div class="detail" id="detail" aria-live="polite"></div>
+          <ol class="log" id="log"></ol>
+        </div>
       </div>
       <div class="toolbar" role="toolbar" aria-label="控制">
         <div class="group" id="spawn-group">
@@ -293,25 +282,6 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
         <span class="clock" id="clock"></span>
       </div>
     </section>
-
-    <aside class="panel" id="panel" aria-label="信息栏">
-      <section class="card" data-card="detail">
-        <h2 class="card-head"><button type="button" aria-expanded="true" aria-controls="detail" title="点一下收起或展开，按住拖动换位置"><svg class="grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg><span class="en">Selected</span>详情<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2>
-        <div class="card-body detail" id="detail" aria-live="polite"></div>
-      </section>
-      <section class="card" data-card="balance">
-        <h2 class="card-head"><button type="button" aria-expanded="true" aria-controls="balance" title="点一下收起或展开，按住拖动换位置"><svg class="grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg><span class="en">Balance</span>城市平衡<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2>
-        <div class="card-body" id="balance"></div>
-      </section>
-      <section class="card" data-card="citizens">
-        <h2 class="card-head"><button type="button" aria-expanded="true" aria-controls="roster" title="点一下收起或展开，按住拖动换位置"><svg class="grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg><span class="en">Citizens</span>市民<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2>
-        <ul class="card-body roster" id="roster"></ul>
-      </section>
-      <section class="card" data-card="log">
-        <h2 class="card-head"><button type="button" aria-expanded="true" aria-controls="log" title="点一下收起或展开，按住拖动换位置"><svg class="grip" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg><span class="en">Log</span>动态<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h2>
-        <ol class="card-body log" id="log"></ol>
-      </section>
-    </aside>
   </main>
 </div>
 
@@ -351,7 +321,6 @@ const DIST_DEFAULT = 9;
 const TARGET_Y = .4;
 const CAM_CLEAR = .35;
 const AUTO_ROT_SEC = 300;
-const CARD_KEY = 'agent-city-cards';
 const SHOW_SEC = 60;
 const SHOW_FLIP = 52;
 const DEMO = location.hash === '#demo' || location.protocol === 'file:';
@@ -397,14 +366,6 @@ function roadColor(t){
 function trackColor(t){
   const infra = t && t.balance && t.balance.infra;
   return infra && infra.state === 'healthy' ? TRACK_PAVED_COLOR : TRACK_COLOR;
-}
-/* Balance: signText(t) -> the .era-sign line in front of t's hall: '' on day 0, once the city era is
-   reached, with nothing left to build, or while t's era show is still running; else '还差：' + t.next */
-function signText(t){
-  if (!t.lines || t.era === 'city' || !(t.next && t.next.length)) return '';
-  const s = showOf(t.id);
-  if (s && performance.now() < s.end) return '';
-  return '还差：' + t.next.join('、');
 }
 /* hallDecor(t, view) -> [{key, x, z}]: lamps around t's hall, each on a 'g' tile (never a road, a plot or
    the hall itself); [] on day 0 (t.open === 0) and in a village (Balance: the fountain moved to
@@ -2182,7 +2143,6 @@ function apply(ev){
       // 'site' event of their own); syncSites after buildLand left that first paint with nothing to draw.
       if (ev.world) syncSites(ev.world);
       if (ev.world) buildLand(ev.world); else if (ev.gov && ev.gov.terr) updateHome();
-      if (ev.world) { lastBalanceKey = ''; renderBalance(); }
       if (ev.notice) log(ev.notice);
       for (const old of citizens) applyAsk(old, null);
       for (const a of agents) if (!byId(a.id)) placeAgent(a);
@@ -2199,7 +2159,6 @@ function apply(ev){
     case 'world': {
       syncSites(ev.world); // Worktrees: before buildLand -- see the snapshot case's own comment above
       buildLand(ev.world);
-      lastBalanceKey = ''; renderBalance();
       if (ev.notice) log(ev.notice);
       return null;
     }
@@ -2468,6 +2427,23 @@ function apply(ev){
       if (i >= 0) relays[i] = entry; else relays.push(entry);
       return null;
     }
+    // Talking (requirements/city.md): one new line of a conversation, or a state change (queued ->
+    // delivered/undelivered) of the same entry id -- into `chats`, never a rebuild of the open card
+    // (that lives in renderDetail's own per-call refresh, so #say-text is never wiped). An owner
+    // line that turns delivered gets its own page log line.
+    case 'chat': {
+      const to = ev.to, entry = ev.entry;
+      if (!to || !entry) return null;
+      const box = chats.get(to) || { entries: [], busy: false, canSend: true, loaded: false };
+      const i = box.entries.findIndex(x => x.id === entry.id);
+      const was = i >= 0 ? box.entries[i].state : null;
+      box.entries = i >= 0 ? box.entries.map((x, j) => j === i ? entry : x) : box.entries.concat([entry]);
+      chats.set(to, box);
+      if (entry.kind === 'owner' && entry.state === 'delivered' && was !== 'delivered') {
+        log(`你 → ${chatDisplayName(to)}：${entry.text}`);
+      }
+      return null;
+    }
   }
   return null;
 }
@@ -2538,8 +2514,8 @@ function govRowText(terr){
 }
 /* rosterGroups() -> [{terr, name, rows: [{id, depth}]}] in map order: per territory, the governor first
    (id "gov:<terr>"), then each lead (its own office -- Interaction) followed by its workers (depth 1),
-   then everyone else (depth 0). renderRoster() draws this. My own city only -- other members get their
-   own groups, below (city-join). */
+   then everyone else (depth 0). renderDetail() draws a territory's group as its governor's team list
+   (city-focus). My own city only -- other members' people are reached through the 3D city itself. */
 function rosterGroups(){
   const groups = [];
   for (const t of map.territories || []) {
@@ -2859,10 +2835,7 @@ const VARIANTS = { 'task-manager':['character-female-c'], worker:['character-mal
   'fast-lane-deputy':['character-female-e'], 'merge-deputy':['character-male-e'], other:['character-male-c'] };
 const TYPE_ZH = { house:'住宅', shop:'商店', tower:'测试塔', workshop:'工坊', library:'图书馆' };
 const DCOL = { house:'#F4A259', shop:'#FF7593', tower:'#4D7CFE', workshop:'#9C6B4E', library:'#2FB57A' };
-/* Balance: the 5 kinds of code the city grades, the 4 states a kind can be in, and the 3 eras a territory
-   grows through (requirements/city.md, Balance) */
-const KIND_ZH = { build:'建设', rules:'规则', beauty:'美化', knowledge:'知识', infra:'基建' };
-const STATE_ZH = { healthy:'健康', low:'偏低', missing:'没有', na:'不适用' };
+/* Balance: the 3 eras a territory grows through (requirements/city.md, Balance) */
 const ERA_ZH = { village:'村', town:'镇', city:'城' };
 /* Balance: the Kenney Hexagon Kit's "building-*" models each bake their own hex ground tile into the same
    mesh as the building (one node, one primitive; coloured earth sides), a uniform .2 units thick on every
@@ -2885,7 +2858,7 @@ const ROCK_GREY = '#8A8A86';
 const RAVINE_FLOOR = '#33312F';
 const WATER_COLOR = '#3E86C4';
 /* #demo / file://: exactly `python3 bin/agent_city.py demo-world` prints (tests/test_agent_city_world.py) */
-const DEMO_WORLD = {"cell": 26, "x0": -13, "z0": -13, "w": 52, "h": 52, "rows": ["                                                    ", "                          .                         ", "       . .              ..ww               ..       ", "     .......      .   ....ww.  .   .     ....       ", "   .........    . ... ...ww.........   .......      ", "   .....................ww..........g  ggrgggg.     ", "  ......................ww......grggggggPrggggg     ", "   .....................ww.....ggrgPrPgggrPggg      ", "  ......................ww.....ggrPgrgggPrgggr      ", "   .........grP..........ww....gPrgPrPgPgrPgPrg.    ", "    ......rrrrrr.........ww....rrrrrrrrrrrrrrrP.    ", "      ...Prggggr........ww....gggrPgrggggrgPgrgg.   ", "      ...rrgHHgrP.......ww....gggrgPrgHHgrPgPrPg    ", "     .....rgHHgrrttttttBBtttt.gggrPgrgHHgrgggrgg.   ", "    ......rggggr.......ww...t.gggrgPrggggrPgPrPg.   ", "    ......rrrrrr.......ww...t.gggrPgrrrrrrgggrgg.   ", "    ........rP.........ww...t..ggrgPrgPgPrPgPrg..   ", "   .........t.Pr........ww..t...grbgrPgPgrgPgrg...  ", "    ........t............wwbttttbbbbrrrrrrrrrr...b  ", "    ........t............wbb.bbbbbsbbgPgPggg...b.   ", "     .......t.............bsbbbbssssbgbgg.bb...bs   ", "   .........t.............ssbssssssssbbbbbbbbbbss   ", "  ..........t.............sssssssssssbsbbbssbbss    ", " ...........tmm...........ssssssssssssssssssssss    ", "  .mmmmmmmmmtmmm..........sssssssssssssssssssssss   ", " .mmmmmmmmmmt..mmm........ssssssssssssssssssssssss  ", "  m.........t...mmmmmmm     ssssssssssssssssssssss  ", "   .........t.....mmmm      ssssssssssssssssssss    ", "    ........tt.......          sssssssssssssssss    ", "    .........t.......           ssssssssssssss      ", "   ..........t.......               s  sssssss      ", "    .........t.......                   sss         ", "    .......rrrr......                    s          ", "     .....ggPgg........                             ", "    .....ggggggg........                            ", "      ...gPgPgPgP........                           ", "      ..rrrrrrrrrr.....                             ", "     ...ggrggggPgPgg....                            ", "   ....ggPrgHHgggggg...                             ", "   ....gggrgHHgggggg....                            ", "   ....ggPrggggPgPg...                              ", "  .....rrrrrrrrrrr.....                             ", "  ......gPgPgPgPg.......                            ", "  ........ggggggg.......                            ", "    ........gggg.......                             ", "   ...........r......                               ", "   ....... ..........                               ", "  .......   ........                                ", "    ....       ..                                   ", "                                                    ", "                                                    ", "                                                    "], "territories": [{"id": "4d5d7e95", "name": "auto-pipeline", "plan": "meadow", "terrain": "grassland", "slot": [0, 0], "cx": 0, "cz": 0, "lines": 500, "size": 0.24212512553021587, "r": 3.522238341052446, "open": 5, "plots_total": 36, "plots": [{"k": 0, "x": 0, "z": 3, "d": "house"}, {"k": 2, "x": 1, "z": -4, "d": "tower"}, {"k": 3, "x": 3, "z": -1, "d": "shop"}, {"k": 4, "x": -4, "z": -2, "d": "library"}, {"k": 11, "x": 1, "z": 4, "d": "workshop"}], "buildings": [], "era": "village", "balance": {"build": {"state": "healthy", "value": 500, "n": 3, "text": "500 \u884c\u4ee3\u7801"}, "rules": {"state": "missing", "value": 0, "n": 0, "text": "\u8fd8\u6ca1\u6709"}, "beauty": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 1.0, "n": 1, "text": "1/1 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u6587\u4ef6"}}, "next": ["\u89c4\u6a21", "\u89c4\u5219"], "rules_note": "", "offices": [], "rest": null, "sites": []}, {"id": "8329562e", "name": "v4-plus", "plan": "harbor", "terrain": "coast", "slot": [1, 0], "cx": 26, "cz": 0, "lines": 1000000, "size": 1.0, "r": 8.6, "open": 35, "plots_total": 35, "plots": [{"k": 0, "x": 22, "z": -1, "d": "workshop"}, {"k": 1, "x": 26, "z": -4, "d": "tower"}, {"k": 2, "x": 29, "z": -1, "d": "house"}, {"k": 3, "x": 22, "z": 1, "d": "workshop"}, {"k": 4, "x": 29, "z": 1, "d": "house"}, {"k": 5, "x": 24, "z": -4, "d": "library"}, {"k": 6, "x": 25, "z": 3, "d": "shop"}, {"k": 7, "x": 21, "z": 0, "d": "workshop"}, {"k": 8, "x": 27, "z": 3, "d": "shop"}, {"k": 9, "x": 30, "z": -2, "d": "house"}, {"k": 10, "x": 21, "z": -2, "d": "workshop"}, {"k": 11, "x": 27, "z": -5, "d": "tower"}, {"k": 12, "x": 29, "z": -4, "d": "tower"}, {"k": 13, "x": 22, "z": -4, "d": "library"}, {"k": 14, "x": 21, "z": 2, "d": "workshop"}, {"k": 15, "x": 31, "z": -1, "d": "house"}, {"k": 16, "x": 22, "z": 3, "d": "workshop"}, {"k": 17, "x": 26, "z": 4, "d": "shop"}, {"k": 18, "x": 29, "z": 3, "d": "shop"}, {"k": 19, "x": 24, "z": 4, "d": "shop"}, {"k": 20, "x": 31, "z": 1, "d": "house"}, {"k": 21, "x": 24, "z": -6, "d": "library"}, {"k": 22, "x": 31, "z": -4, "d": "tower"}, {"k": 23, "x": 27, "z": -7, "d": "tower"}, {"k": 24, "x": 21, "z": -5, "d": "library"}, {"k": 25, "x": 29, "z": -6, "d": "tower"}, {"k": 26, "x": 31, "z": 3, "d": "house"}, {"k": 27, "x": 30, "z": 4, "d": "shop"}, {"k": 28, "x": 22, "z": -6, "d": "library"}, {"k": 29, "x": 33, "z": -1, "d": "house"}, {"k": 30, "x": 19, "z": -4, "d": "library"}, {"k": 31, "x": 33, "z": -3, "d": "house"}, {"k": 32, "x": 33, "z": 1, "d": "house"}, {"k": 33, "x": 25, "z": 6, "d": "shop"}, {"k": 34, "x": 27, "z": 6, "d": "shop"}], "buildings": [{"plot": 6, "type": "shop", "by": "worker", "x": 25, "z": 3, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": ""}, {"plot": 1, "type": "tower", "by": "worker", "x": 26, "z": -4, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": ""}], "era": "city", "balance": {"build": {"state": "healthy", "value": 1000000, "n": 400, "text": "1,000,000 \u884c\u4ee3\u7801"}, "rules": {"state": "healthy", "value": 0.8, "n": 320, "text": "80% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 40, "n": 40, "text": "40 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 3.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.9, "n": 36, "text": "36/40 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 20, "n": 20, "text": "20 \u4e2a\u6587\u4ef6"}}, "next": [], "rules_note": "", "offices": [], "rest": null, "sites": []}, {"id": "db8c2db6", "name": "pos-lite", "plan": "ridge", "terrain": "mountain", "slot": [0, 1], "cx": 0, "cz": 26, "lines": 20000, "size": 0.6052343817819053, "r": 5.955070357938764, "open": 15, "plots_total": 37, "plots": [{"k": 0, "x": 2, "z": 24, "d": "workshop"}, {"k": 1, "x": -1, "z": 22, "d": "tower"}, {"k": 2, "x": 2, "z": 27, "d": "shop"}, {"k": 3, "x": 0, "z": 29, "d": "house"}, {"k": 4, "x": -4, "z": 27, "d": "house"}, {"k": 5, "x": -4, "z": 25, "d": "library"}, {"k": 6, "x": -3, "z": 22, "d": "library"}, {"k": 7, "x": 1, "z": 22, "d": "tower"}, {"k": 8, "x": -2, "z": 29, "d": "house"}, {"k": 9, "x": 4, "z": 24, "d": "workshop"}, {"k": 10, "x": 2, "z": 29, "d": "shop"}, {"k": 11, "x": -1, "z": 20, "d": "tower"}, {"k": 12, "x": 4, "z": 27, "d": "shop"}, {"k": 13, "x": -4, "z": 29, "d": "house"}, {"k": 14, "x": 3, "z": 22, "d": "workshop"}], "buildings": [{"plot": 3, "type": "house", "by": "worker", "x": 0, "z": 29, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": ""}], "era": "town", "balance": {"build": {"state": "healthy", "value": 20000, "n": 60, "text": "20,000 \u884c\u4ee3\u7801"}, "rules": {"state": "low", "value": 0.3, "n": 18, "text": "30% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 6, "n": 8, "text": "6 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.5 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.6, "n": 12, "text": "12/20 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 4, "n": 4, "text": "4 \u4e2a\u6587\u4ef6"}}, "next": ["\u89c4\u5219"], "rules_note": "", "offices": [], "rest": null, "sites": []}], "links": [{"a": "4d5d7e95", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[10, 0], [11, 0]]}, {"a": "4d5d7e95", "b": "db8c2db6", "gap": "pass", "kind": "road", "cross": [[-1, 10], [-1, 11]]}]};
+const DEMO_WORLD = {"cell": 26, "x0": -13, "z0": -13, "w": 52, "h": 52, "rows": ["                                                    ", "                          .                         ", "       . .              ..ww               ..       ", "     .......      .   ....ww.  .   .     ....       ", "   .........    . ... ...ww.........   .......      ", "   .....................ww..........g  ggrgggg.     ", "  ......................ww......grggggggPrggggg     ", "   .....................ww.....ggrgPrPgggrPggg      ", "  ......................ww.....ggrPgrgggPrgggr      ", "   .........grP..........ww....gPrgPrPgPgrPgPrg.    ", "    ......rrrrrr.........ww....rrrrrrrrrrrrrrrP.    ", "      ...Prggggr........ww....gggrPgrggggrgPgrgg.   ", "      ...rrgHHgrP.......ww....gggrgPrgHHgrPgPrPg    ", "     .....rgHHgrrttttttBBtttt.gggrPgrgHHgrgggrgg.   ", "    ......rggggr.......ww...t.gggrgPrggggrPgPrPg.   ", "    ......rrrrrr.......ww...t.gggrPgrrrrrrgggrgg.   ", "    ........rP.........ww...t..ggrgPrgPgPrPgPrg..   ", "   .........t.Pr........ww..t...grbgrPgPgrgPgrg...  ", "    ........t............wwbttttbbbbrrrrrrrrrr...b  ", "    ........t............wbb.bbbbbsbbgPgPggg...b.   ", "     .......t.............bsbbbbssssbgbgg.bb...bs   ", "   .........t.............ssbssssssssbbbbbbbbbbss   ", "  ..........t.............sssssssssssbsbbbssbbss    ", " ...........tmm...........ssssssssssssssssssssss    ", "  .mmmmmmmmmtmmm..........sssssssssssssssssssssss   ", " .mmmmmmmmmmt..mmm........ssssssssssssssssssssssss  ", "  m.........t...mmmmmmm     ssssssssssssssssssssss  ", "   .........t.....mmmm      ssssssssssssssssssss    ", "    ........tt.......          sssssssssssssssss    ", "    .........t.......           ssssssssssssss      ", "   ..........t.......               s  sssssss      ", "    .........t.......                   sss         ", "    .......rrrr......                    s          ", "     .....ggPgg........                             ", "    .....ggggggg........                            ", "      ...gPgPgPgP........                           ", "      ..rrrrrrrrrr.....                             ", "     ...ggrggggPgPgg....                            ", "   ....ggPrgHHgggggg...                             ", "   ....gggrgHHgggggg....                            ", "   ....ggPrggggPgPg...                              ", "  .....rrrrrrrrrrr.....                             ", "  ......gPgPgPgPg.......                            ", "  ........ggggggg.......                            ", "    ........gggg.......                             ", "   ...........r......                               ", "   ....... ..........                               ", "  .......   ........                                ", "    ....       ..                                   ", "                                                    ", "                                                    ", "                                                    "], "territories": [{"id": "4d5d7e95", "name": "auto-pipeline", "plan": "meadow", "terrain": "grassland", "slot": [0, 0], "cx": 0, "cz": 0, "lines": 500, "size": 0.24212512553021587, "r": 3.522238341052446, "open": 5, "plots_total": 36, "plots": [{"k": 0, "x": 0, "z": 3, "d": "house"}, {"k": 2, "x": 1, "z": -4, "d": "tower"}, {"k": 3, "x": 3, "z": -1, "d": "shop"}, {"k": 4, "x": -4, "z": -2, "d": "library"}, {"k": 11, "x": 1, "z": 4, "d": "workshop"}], "buildings": [], "era": "village", "balance": {"build": {"state": "healthy", "value": 500, "n": 3, "text": "500 \u884c\u4ee3\u7801"}, "rules": {"state": "missing", "value": 0, "n": 0, "text": "\u8fd8\u6ca1\u6709"}, "beauty": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 1.0, "n": 1, "text": "1/1 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u6587\u4ef6"}}, "rules_note": "", "offices": [], "rest": null, "sites": []}, {"id": "8329562e", "name": "v4-plus", "plan": "harbor", "terrain": "coast", "slot": [1, 0], "cx": 26, "cz": 0, "lines": 1000000, "size": 1.0, "r": 8.6, "open": 35, "plots_total": 35, "plots": [{"k": 0, "x": 22, "z": -1, "d": "workshop"}, {"k": 1, "x": 26, "z": -4, "d": "tower"}, {"k": 2, "x": 29, "z": -1, "d": "house"}, {"k": 3, "x": 22, "z": 1, "d": "workshop"}, {"k": 4, "x": 29, "z": 1, "d": "house"}, {"k": 5, "x": 24, "z": -4, "d": "library"}, {"k": 6, "x": 25, "z": 3, "d": "shop"}, {"k": 7, "x": 21, "z": 0, "d": "workshop"}, {"k": 8, "x": 27, "z": 3, "d": "shop"}, {"k": 9, "x": 30, "z": -2, "d": "house"}, {"k": 10, "x": 21, "z": -2, "d": "workshop"}, {"k": 11, "x": 27, "z": -5, "d": "tower"}, {"k": 12, "x": 29, "z": -4, "d": "tower"}, {"k": 13, "x": 22, "z": -4, "d": "library"}, {"k": 14, "x": 21, "z": 2, "d": "workshop"}, {"k": 15, "x": 31, "z": -1, "d": "house"}, {"k": 16, "x": 22, "z": 3, "d": "workshop"}, {"k": 17, "x": 26, "z": 4, "d": "shop"}, {"k": 18, "x": 29, "z": 3, "d": "shop"}, {"k": 19, "x": 24, "z": 4, "d": "shop"}, {"k": 20, "x": 31, "z": 1, "d": "house"}, {"k": 21, "x": 24, "z": -6, "d": "library"}, {"k": 22, "x": 31, "z": -4, "d": "tower"}, {"k": 23, "x": 27, "z": -7, "d": "tower"}, {"k": 24, "x": 21, "z": -5, "d": "library"}, {"k": 25, "x": 29, "z": -6, "d": "tower"}, {"k": 26, "x": 31, "z": 3, "d": "house"}, {"k": 27, "x": 30, "z": 4, "d": "shop"}, {"k": 28, "x": 22, "z": -6, "d": "library"}, {"k": 29, "x": 33, "z": -1, "d": "house"}, {"k": 30, "x": 19, "z": -4, "d": "library"}, {"k": 31, "x": 33, "z": -3, "d": "house"}, {"k": 32, "x": 33, "z": 1, "d": "house"}, {"k": 33, "x": 25, "z": 6, "d": "shop"}, {"k": 34, "x": 27, "z": 6, "d": "shop"}], "buildings": [{"plot": 6, "type": "shop", "by": "worker", "x": 25, "z": 3, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": ""}, {"plot": 1, "type": "tower", "by": "worker", "x": 26, "z": -4, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": ""}], "era": "city", "balance": {"build": {"state": "healthy", "value": 1000000, "n": 400, "text": "1,000,000 \u884c\u4ee3\u7801"}, "rules": {"state": "healthy", "value": 0.8, "n": 320, "text": "80% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 40, "n": 40, "text": "40 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 3.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.9, "n": 36, "text": "36/40 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 20, "n": 20, "text": "20 \u4e2a\u6587\u4ef6"}}, "rules_note": "", "offices": [], "rest": null, "sites": []}, {"id": "db8c2db6", "name": "pos-lite", "plan": "ridge", "terrain": "mountain", "slot": [0, 1], "cx": 0, "cz": 26, "lines": 20000, "size": 0.6052343817819053, "r": 5.955070357938764, "open": 15, "plots_total": 37, "plots": [{"k": 0, "x": 2, "z": 24, "d": "workshop"}, {"k": 1, "x": -1, "z": 22, "d": "tower"}, {"k": 2, "x": 2, "z": 27, "d": "shop"}, {"k": 3, "x": 0, "z": 29, "d": "house"}, {"k": 4, "x": -4, "z": 27, "d": "house"}, {"k": 5, "x": -4, "z": 25, "d": "library"}, {"k": 6, "x": -3, "z": 22, "d": "library"}, {"k": 7, "x": 1, "z": 22, "d": "tower"}, {"k": 8, "x": -2, "z": 29, "d": "house"}, {"k": 9, "x": 4, "z": 24, "d": "workshop"}, {"k": 10, "x": 2, "z": 29, "d": "shop"}, {"k": 11, "x": -1, "z": 20, "d": "tower"}, {"k": 12, "x": 4, "z": 27, "d": "shop"}, {"k": 13, "x": -4, "z": 29, "d": "house"}, {"k": 14, "x": 3, "z": 22, "d": "workshop"}], "buildings": [{"plot": 3, "type": "house", "by": "worker", "x": 0, "z": 29, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": ""}], "era": "town", "balance": {"build": {"state": "healthy", "value": 20000, "n": 60, "text": "20,000 \u884c\u4ee3\u7801"}, "rules": {"state": "low", "value": 0.3, "n": 18, "text": "30% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 6, "n": 8, "text": "6 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.5 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.6, "n": 12, "text": "12/20 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 4, "n": 4, "text": "4 \u4e2a\u6587\u4ef6"}}, "rules_note": "", "offices": [], "rest": null, "sites": []}], "links": [{"a": "4d5d7e95", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[10, 0], [11, 0]]}, {"a": "4d5d7e95", "b": "db8c2db6", "gap": "pass", "kind": "road", "cross": [[-1, 10], [-1, 11]]}]};
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, powerPreference:'low-power' });
 renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
@@ -3809,34 +3782,22 @@ function ovBtn(cls, html){ const el = document.createElement('button'); el.type 
 function pin(el, x, y, show){ if (!show) { if (!el.hidden) el.hidden = true; return; } if (el.hidden) el.hidden = false; el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
 function setText(el, text){ if (el._t !== text) { el._t = text; el.textContent = text; } }
 const labels = [];
-/* Balance: one .era-sign overlay per territory, in front of its hall; {el, t, x, z}, filled by buildLand */
-const signs = [];
-/* Balance E2E bounce 2: landOverlays(view) makes the .lbl and .era-sign overlays for buildLand — no THREE.
-   First removes every element it made last time (buildLand used to just reset the labels/signs arrays and
-   call ovEl again, leaving the old elements sitting in #ov forever: labels multiplied on every world event
-   and every era flip, and a stale 还差 sign stayed next to the fresh one). Then one .lbl and one .era-sign
-   per territory, same as before. buildLand calls this; nothing else calls ovEl for a label or a sign. */
+/* landOverlays(view) makes the .lbl overlays for buildLand — no THREE. First removes every element it
+   made last time (buildLand used to just reset the labels array and call ovEl again, leaving the old
+   elements sitting in #ov forever: labels multiplied on every world event and every era flip). Then one
+   .lbl per territory, same as before. buildLand calls this; nothing else calls ovEl for a label. No sign
+   (city-focus, requirements/city.md Balance: a kind is never asked for on the page). */
 function landOverlays(view){
   for (const l of labels) l.el.remove();
-  for (const sg of signs) sg.el.remove();
   labels.length = 0;
-  signs.length = 0;
   for (const t of view.territories || []) {
     const el = ovEl('lbl'); setText(el, t.name);
     labels.push({ el, x: t.cx, h: 2.1 * (t.size < .15 ? .8 : 1), z: t.cz });
-    // the sign sits in front of the hall (south of its centre, like home/hallStand)
-    const signEl = ovEl('era-sign');
-    signs.push({ el: signEl, t, x: t.cx, z: t.cz + 1.7 });
   }
 }
-/* pinLandOverlays(): the per-frame part (screen position for every label; for every sign, also its text
-   and visibility, hidden while signText(t) is ''). Called every frame from sync(). */
+/* pinLandOverlays(): the per-frame part, screen position for every label. Called every frame from sync(). */
 function pinLandOverlays(){
   for (const l of labels) { const [sx, sy] = toScreen(l.x, l.h, l.z); pin(l.el, sx, sy, true); }
-  for (const sg of signs) {
-    const text = signText(sg.t), [sx, sy] = toScreen(sg.x, 1.5, sg.z);
-    setText(sg.el, text); pin(sg.el, sx, sy, !!text);
-  }
 }
 const govBub = ovEl('bub gov'), govTag = ovEl('tagl tag'), govQm = ovBtn('qm', '<span>?</span>');
 govTag.style.setProperty('--c', '#FF6F8B'); setText(govTag, '总督 · main manager');
@@ -4460,53 +4421,6 @@ function govPillText(){
   const busy = (!DEMO && govState === 'busy') || (gov.bubble && simT < gov.bubble.until);
   return busy ? '忙着' : '坐镇市政厅';
 }
-function rosterRow(c){
-  const [g, zh] = citizenStatus(c, governorCount);
-  const kind = c.bld ? TYPE_ZH[c.bld.type] : '';
-  const sub = g === 'build' && kind ? `${c.label} · ${kind} ${pct(c)}%` : c.label;
-  return `<li><button class="row" type="button" data-sel="${c.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === c.id)}"><span class="rdot" style="--c:${c.color}"></span><span class="who"><b>${esc(c.task)}</b><span>${esc(sub)}</span></span><span class="pill ${g}">${zh}</span></button></li>`;
-}
-/* city-join: one row for a remote governor, selectable the same way ("rg:<id>", see selectFrom) */
-function remoteGovRow(g){
-  return `<li><button class="row" type="button" data-sel="rg:${g.id}" aria-current="${!!(selected && selected.t === 'rg' && selected.id === g.id)}"><span class="rdot gov"></span><span class="who"><b>${esc(govSign(g))}</b><span>main manager</span></span><span class="pill gov">市政厅</span></button></li>`;
-}
-function renderRoster(){
-  // city-people: my own city, per territory (governor row via govRowText, leads with their office,
-  // workers indented below their lead).
-  const groups = rosterGroups(), multi = groups.length > 1;
-  let html = '';
-  for (const grp of groups) {
-    if (multi) html += `<li class="grp-head">${esc(grp.name || grp.terr)}</li>`;
-    for (const row of grp.rows) {
-      if (row.id.slice(0, 4) === 'gov:') {
-        const terr = row.id.slice(4);
-        html += `<li><button class="row" type="button" data-sel="${row.id}" aria-current="${!!(selected && selected.t === 'gov' && (selected.terr || govTerr) === terr)}"><span class="rdot gov"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govRowText(terr)}</span></button></li>`;
-        continue;
-      }
-      const c = byId(row.id);
-      if (!c) continue;
-      const [g, zh] = citizenStatus(c, governorCount);
-      const kind = c.bld ? TYPE_ZH[c.bld.type] : '';
-      const sub = g === 'build' && kind ? `${c.label} · ${kind} ${pct(c)}%` : c.label;
-      html += `<li class="${row.depth ? 'sub' : ''}"><button class="row" type="button" data-sel="${c.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === c.id)}"><span class="rdot" style="--c:${c.color}"></span><span class="who"><b>${esc(nameOf(c))}</b><span>${esc(sub)}</span></span><span class="pill ${g}">${zh}</span></button></li>`;
-    }
-  }
-  // city-join: my own citizens first, then one group per "<who> · <device>" (requirements/city.md,
-  // Joining), the header carrying a dot in that member's colour (memberColors(), owner decision 2026-09-25).
-  const remoteGroups = new Map();
-  const addGroup = (who, device, dev, row) => {
-    const key = who + '|' + device;
-    if (!remoteGroups.has(key)) remoteGroups.set(key, { title: memberLabel(who, device), dev, rows: [] });
-    remoteGroups.get(key).rows.push(row);
-  };
-  for (const g of remoteGovs.values()) addGroup(g.who, g.device, g.dev, remoteGovRow(g));
-  for (const c of citizens) if (c.remote) addGroup(c.remote.who, c.remote.device, c.remote.dev, rosterRow(c));
-  for (const grp of remoteGroups.values()) {
-    const color = memberColorMap[grp.dev] || '#B9BEDD';
-    html += `<li class="grp-head"><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;vertical-align:middle"></i>${esc(grp.title)}</li>` + grp.rows.join('');
-  }
-  if (html !== lastRoster) { $('#roster').innerHTML = html; lastRoster = html; }
-}
 let lastDetailKey = '';
 /* the chain of command for c's detail card (mock: 工人 → 经理 <task> → 总督 → 你), the current step
    marked -- only for a citizen that is part of one (a lead's own office, or a worker with a lead). */
@@ -4524,6 +4438,120 @@ function chainLine(c){
   else if (c.askPhase === 'owner') cur = 'owner';
   return steps.map(([k, label]) => k === cur ? `<b>${label}</b>` : label).join(' → ');
 }
+/* ---------- chat (requirements/city.md, Talking): a person's window shows what was typed to it
+   and what it answered, plus a box to talk to it; the terminal keeps working in parallel. `chats`
+   -- page chat id -> { entries, busy, canSend, loaded, error }. ---------- */
+const CHAT_STATE_ZH = { queued: '已发送', delivered: '已送达', undelivered: '没送到' };
+/* chatHtml(entries, name, busy): pure -- uses only esc and CHAT_STATE_ZH, so it can be pinned and
+   run on its own (tests/test_agent_city_chat.py). */
+function chatHtml(entries, name, busy){
+  if (!entries || !entries.length) return '<li class="msg-empty">还没有对话</li>';
+  const who = e => {
+    if (e.kind === 'owner') return `你（页面）${e.state && CHAT_STATE_ZH[e.state] ? '（' + CHAT_STATE_ZH[e.state] + '）' : ''}`;
+    if (e.kind === 'prompt') return '你（终端）';
+    return esc(name);
+  };
+  let html = entries.map(e => `<li class="msg" data-kind="${esc(e.kind)}" data-id="${esc(e.id)}"><b>${who(e)}</b><span>${esc(e.text)}</span></li>`).join('');
+  const last = entries[entries.length - 1];
+  if (busy && last && last.kind === 'owner' && last.state === 'queued') html += '<li class="msg-wait">等它做完这一步</li>';
+  return html;
+}
+/* chatTarget(sel) -> the chat id of a selection, or null for anything with none (a remote person,
+   a building, a site). The 's:'/bare-id split for a citizen selection is decided by the caller
+   (curChatTo): this is just the plain lookup the contract pins. */
+function chatTarget(sel){
+  if (!sel) return null;
+  if (sel.t === 'gov') return 'gov:' + sel.terr;
+  if (sel.t === 'c') return sel.id;
+  return null;
+}
+const chats = new Map();
+let demoChatSeq = 0;
+/* chatDisplayName(to) -- who a "你 → …" page log line names for a chat id. */
+function chatDisplayName(to){
+  if (!to) return '';
+  if (to.slice(0, 4) === 'gov:') return '总督';
+  const pc = byId(to);
+  return pc ? nameOf(pc) : to;
+}
+/* curChatTo() -> the chat id of whatever is selected right now: 'gov:'+terr for the governor,
+   's:'+id for a session citizen (a task manager, c.office), the bare id for a subagent (c.lead,
+   read only); null for anything else (remote people, buildings, sites, nothing selected). */
+function curChatTo(){
+  if (!selected) return null;
+  if (selected.t === 'gov') return chatTarget({ t: 'gov', terr: selected.terr || govTerr });
+  if (selected.t === 'c') {
+    const pc = byId(selected.id);
+    if (!pc || pc.remote) return null;
+    return chatTarget({ t: 'c', id: pc.id });
+  }
+  return null;
+}
+/* demo: a few made-up lines so the demo people look talked-to, and a fake send that turns
+   delivered after a moment -- never a fetch (requirements/city.md, Talking). */
+function demoChatFor(to){
+  const seed = [{ kind: 'prompt', text: '先把这页做完，别的先不要动' }, { kind: 'reply', text: '好，先做这页，其它先不碰' }];
+  const now = Date.now() / 1000;
+  return { entries: seed.map((s, i) => ({ id: ++demoChatSeq, kind: s.kind, text: s.text, at: now - (seed.length - i) * 40 })),
+    busy: false, canSend: true, loaded: true };
+}
+function demoSendChat(to, text){
+  if (!chats.has(to)) chats.set(to, demoChatFor(to));
+  const box = chats.get(to), id = ++demoChatSeq;
+  box.entries = box.entries.concat([{ id, kind: 'owner', text, at: Date.now() / 1000, state: 'queued' }]);
+  renderPanel();
+  setTimeout(() => {
+    const e = box.entries.find(x => x.id === id);
+    if (!e) return;
+    e.state = 'delivered';
+    log(`你 → ${chatDisplayName(to)}：${e.text}`);
+    renderPanel();
+  }, 900);
+}
+/* loadChat(to): fetches the conversation once per id (chats already has it -- no-op); a failure is
+   shown in the window, never swallowed. Demo never fetches. */
+function loadChat(to){
+  if (chats.has(to)) return;
+  if (DEMO) { chats.set(to, demoChatFor(to)); return; }
+  chats.set(to, { entries: [], busy: false, canSend: true, loaded: false });
+  fetch('/api/chat?to=' + encodeURIComponent(to), { headers: { 'X-City-Token': TOKEN } })
+    .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+    .then(body => { chats.set(to, { entries: body.entries || [], busy: !!body.busy, canSend: body.can_send !== false, loaded: true }); renderPanel(); })
+    .catch(() => { const box = chats.get(to) || { entries: [], busy: false, canSend: true, loaded: false }; box.error = '对话没加载出来，等会儿再打开看看。'; chats.set(to, box); renderPanel(); });
+}
+/* sendChat(to, text): posts to the session (live) or fakes it (demo); either way the owner's own
+   entry lands in `chats` at once (queued), then moves to delivered/undelivered by a 'chat' event
+   (live) or the demo timer above. A failure is shown in the window, never swallowed. Resolves true
+   when the server took the message (a 2xx with a JSON body), false otherwise (network error or a
+   non-ok status); demo always resolves true. */
+function sendChat(to, text){
+  if (DEMO) { demoSendChat(to, text); return Promise.resolve(true); }
+  return fetch('/api/chat/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-City-Token': TOKEN }, body: JSON.stringify({ to, text }) })
+    .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+    .then(body => {
+      const box = chats.get(to) || { entries: [], busy: false, canSend: true, loaded: true };
+      if (!box.entries.some(e => e.id === body.id)) box.entries = box.entries.concat([{ id: body.id, kind: 'owner', text, at: Date.now() / 1000, state: body.state || 'queued' }]);
+      chats.set(to, box);
+      renderPanel();
+      return true;
+    })
+    .catch(() => {
+      const box = chats.get(to) || { entries: [], busy: false, canSend: true, loaded: true };
+      box.error = '没发出去（连不上城市服务器）。';
+      chats.set(to, box);
+      renderPanel();
+      return false;
+    });
+}
+document.addEventListener('submit', e => {
+  if (!e.target || e.target.id !== 'say') return;
+  e.preventDefault();
+  const ta = $('#say-text'), to = curChatTo();
+  if (!ta || !to) return;
+  const text = ta.value;
+  if (!text.trim()) return;
+  Promise.resolve(sendChat(to, text)).then(ok => { if (ok && $('#say-text') === ta) ta.value = ''; });
+});
 function renderDetail(){
   const el = $('#detail');
   let key = (!DEMO && citizens.length === 0) ? 'empty' : 'none', c = null, b = null;
@@ -4540,6 +4568,24 @@ function renderDetail(){
   }
   if (selected && selected.t === 'gov') key = `gov|${selected.terr || govTerr}|${gov.answered}|${gov.dispatched}|${governorCount}`;
   if (selected && selected.t === 'rg') { if (!remoteGovs.has(selected.id)) selected = null; else key = `rg${selected.id}|${remoteGovs.get(selected.id).state}`; }
+  const chatTo = curChatTo();
+  const chatName = chatTo ? (selected && selected.t === 'gov' ? '总督' : (c ? nameOf(c) : '')) : '';
+  if (chatTo) loadChat(chatTo);
+  /* the conversation + the box to talk to it (Talking): a session (governor, or a citizen that is
+     a lead, c.office) gets a form; a subagent (c.lead) is read only, with a way to its lead's window. */
+  function chatSectionHtml(to, name){
+    const box = chats.get(to) || { entries: [], busy: false, canSend: true };
+    const isSession = to.slice(0, 4) === 'gov:' || to.slice(0, 2) === 's:';
+    let html = `<ol class="chat" id="chat">${chatHtml(box.entries, name, box.busy)}</ol>`;
+    html += `<p class="hint chat-fail" id="chat-fail"${box.error ? '' : ' hidden'}>${esc(box.error || '')}</p>`;
+    if (!isSession) {
+      const oc = byId(to), leadC = oc && oc.lead ? byId(oc.lead) : null;
+      const leadBtn = leadC ? `<p><button class="btn" type="button" data-sel="${leadC.id}">找组长：${esc(nameOf(leadC))}</button></p>` : '';
+      return html + `<p class="hint">它是子任务，这份对话只能看；有事去找组长。</p>` + leadBtn;
+    }
+    if (box.canSend === false) return html;
+    return html + `<form class="say" id="say"><textarea id="say-text" maxlength="4000" placeholder="跟它说…"></textarea><button class="btn" type="submit">发送</button></form>`;
+  }
   if (key !== lastDetailKey) {
     lastDetailKey = key;
     if (c && c.remote) {
@@ -4569,7 +4615,8 @@ function renderDetail(){
           <button class="btn" type="button" data-act="done" ${c.doneFlag ? 'disabled' : ''}>让它完工</button>
           <button class="btn" type="button" data-act="leave" ${c.state === 'resting' && !c.leaveFlag ? '' : 'disabled'}>让它下班</button>
         </div>
-        <p class="d-note">这三个按钮只在原型里有，用来试流程。</p>` : ''}`;
+        <p class="d-note">这三个按钮只在原型里有，用来试流程。</p>` : ''}
+        ${chatTo ? chatSectionHtml(chatTo, chatName) : ''}`;
     } else if (selected && selected.t === 'rg') {
       const rg = remoteGovs.get(selected.id);
       el.innerHTML = `
@@ -4590,10 +4637,26 @@ function renderDetail(){
         ${histHtml ? `<p class="hint">改过它的人（新的在前）</p>${histHtml}` : ''}`;
     } else if (selected && selected.t === 'gov') {
       const terr = selected.terr || govTerr, present = !!governorAt(terr);
+      // city-focus: the team stays reachable without the roster -- rosterGroups() again, this territory's
+      // group only, one row per person (a citizen id) plus the governor's own row ('gov:<terr>'), workers
+      // indented (depth 1) under their lead.
+      const grp = rosterGroups().find(x => x.terr === terr);
+      const team = grp ? grp.rows.map(row => {
+        if (row.id.slice(0, 4) === 'gov:') {
+          return `<li><button class="row" type="button" data-sel="${row.id}" aria-current="true"><span class="rdot gov"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govRowText(row.id.slice(4))}</span></button></li>`;
+        }
+        const pc = byId(row.id); if (!pc) return '';
+        const [pg, pzh] = citizenStatus(pc, governorCount);
+        const pkind = pc.bld ? TYPE_ZH[pc.bld.type] : '';
+        const psub = pg === 'build' && pkind ? `${pc.label} · ${pkind} ${pct(pc)}%` : pc.label;
+        return `<li class="${row.depth ? 'sub' : ''}"><button class="row" type="button" data-sel="${pc.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === pc.id)}"><span class="rdot" style="--c:${pc.color}"></span><span class="who"><b>${esc(nameOf(pc))}</b><span>${esc(psub)}</span></span><span class="pill ${pg}">${pzh}</span></button></li>`;
+      }).join('') : '';
       el.innerHTML = `
         <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">总督</div><div class="d-role">main manager · 主对话</div></div><span class="pill gov">${present ? '市政厅' : '不在'}</span></div>
         <p class="hint">${!present ? '总督不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等总督。' : '总督就是你正在聊的主对话。它派人出门、回答卡住的问题，自己不盖楼。'}</p>
-        <dl class="d-tools" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><dt>派出</dt><dd>${gov.dispatched}</dd></div><div><dt>回答</dt><dd>${gov.answered}</dd></div></dl>`;
+        <dl class="d-tools" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><dt>派出</dt><dd>${gov.dispatched}</dd></div><div><dt>回答</dt><dd>${gov.answered}</dd></div></dl>
+        ${team ? `<p class="hint">团队</p><ul class="roster">${team}</ul>` : ''}
+        ${chatTo ? chatSectionHtml(chatTo, chatName) : ''}`;
     } else if (!DEMO && citizens.length === 0) {
       el.innerHTML = `<p class="hint">还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。</p>`;
     } else {
@@ -4605,178 +4668,52 @@ function renderDetail(){
     const p = el.querySelector('[data-f="pct"]'); if (p) p.textContent = `${c.bld ? TYPE_ZH[c.bld.type] : '干活'} ${pct(c)}%`;
     for (const t of ['Edit','Write','Bash','Read']) { const d = el.querySelector(`[data-f="${t}"]`); if (d && d.textContent !== String(c.tools[t])) d.textContent = c.tools[t]; }
   }
+  if (chatTo) {
+    // refreshed every call, never gated by `key`: a new line must show up without rebuilding the
+    // card (that would wipe whatever the owner is still typing in #say-text).
+    const box = chats.get(chatTo) || { entries: [], busy: false, canSend: true };
+    const ol = el.querySelector('#chat');
+    if (ol) {
+      const html = chatHtml(box.entries, chatName, box.busy);
+      if (ol.innerHTML !== html) { ol.innerHTML = html; ol.scrollTop = ol.scrollHeight; }
+    }
+    const fail = el.querySelector('#chat-fail');
+    if (fail) { fail.hidden = !box.error; if (box.error) fail.textContent = box.error; }
+  }
 }
 function renderLog(){
   if (!dirty.log) return; dirty.log = false;
   $('#log').innerHTML = logEntries.map(e => `<li><time>${e.real ? new Date(e.real).toTimeString().slice(0, 8) : clock(e.t)}</time><span class="${e.kind}">${esc(e.text)}</span></li>`).join('');
 }
 
-/* ---------- balance card (requirements/city.md, Balance): the 5 kinds, one bar each ---------- */
-/* barOf(state) -> the bar's fill %, a top-level pure helper (used by kindBar) */
-function barOf(state){ return { healthy: 100, low: 45, missing: 0, na: 100 }[state] ?? 0; }
-/* kindBar(k, b, opened) -> the <li class="kind"> for one kind. b = t.balance[k] (or undefined -> missing/
-   还没数过). opened = the open={kind,files,total,rules,error} object when this is the clicked kind. */
-function kindBar(k, b, opened){
-  const KIND_COL = { build: '#F4A259', rules: '#4D7CFE', beauty: '#FF7593', knowledge: '#2FB57A', infra: '#9C6B4E' };
-  const st = b ? b.state : 'missing';
-  const text = b ? b.text : '还没数过';
-  const open = !!(opened && opened.kind === k);
-  let list = '';
-  if (open) {
-    if (opened.demo) list = `<div class="files"><p class="more">演示：没有真实文件</p></div>`;
-    else if (opened.error) list = `<div class="files"><p class="more">文件列表拿不到：${esc(opened.error)}</p></div>`;
-    else if (opened.files === null) list = `<div class="files"><p class="more">正在拿文件列表…</p></div>`;
-    else {
-      const more = opened.total > opened.files.length ? `<p class="more">还有 ${opened.total - opened.files.length} 个</p>` : '';
-      const fix = opened.rules ? `<p class="fix">分错了？改 <code>${esc(opened.rules)}</code>：一行 “路径 = none” 就跳过它</p>` : '';
-      list = `<div class="files"><ol>${opened.files.map(f => `<li>${esc(f)}</li>`).join('')}</ol>${more}${fix}</div>`;
-    }
-  }
-  return `<li class="kind" data-kind="${k}" data-state="${st}">` +
-    `<button type="button" aria-expanded="${open}"><span class="ic" style="background:${KIND_COL[k]}"></span>` +
-    `<span class="nm">${esc(KIND_ZH[k])}</span><span class="track"><i style="width:${barOf(st)}%"></i></span>` +
-    `<span class="st ${st}">${esc(STATE_ZH[st])}</span><span class="val">${esc(text)}</span></button>${list}</li>`;
-}
-/* balanceHtml(t, open, terrs) -> the whole #balance card body for territory t. terrs = [{id, name}]; a
-   picker only shows when there is more than one (data-bterr, aria-pressed on the one shown = t). */
-function balanceHtml(t, open, terrs){
-  const KINDS = ['build', 'rules', 'beauty', 'knowledge', 'infra'];
-  const ORDER = ['village', 'town', 'city'];
-  const target = t.era || 'village';
-  const shown = eraShown(t); // Balance: before the flip the city still looks like the old era; the card must match it
-  const next = ORDER[ORDER.indexOf(target) + 1];
-  const sign = signText(t);
-  const eraLine = shown !== target
-    // still showing the old look: no arrow, no 还差 chip (signText is '' during a show anyway), just the progress note
-    ? `<div class="era">时代 <b>${esc(ERA_ZH[shown])}</b><span class="need">正在升级成${esc(ERA_ZH[target])}…</span></div>`
-    : !next
-      ? `<div class="era">时代 <b>${esc(ERA_ZH[target])}</b> · 已经是城</div>`
-      : `<div class="era">时代 <b>${esc(ERA_ZH[target])}</b> → <b>${esc(ERA_ZH[next])}</b>${sign ? `<span class="need">${esc(sign)}</span>` : ''}</div>`;
-  const note = t.rules_note ? `<p class="note">${esc(t.rules_note)}</p>` : '';
-  const picker = terrs && terrs.length > 1
-    ? `<div class="bterr">${terrs.map(x => `<button class="btn" type="button" data-bterr="${esc(x.id)}" aria-pressed="${x.id === t.id}">${esc(x.name)}</button>`).join('')}</div>`
-    : '';
-  const kinds = KINDS.map(k => kindBar(k, t.balance && t.balance[k], open)).join('');
-  return picker + eraLine + note + `<ul class="kinds">${kinds}</ul>`;
-}
-/* openBalanceKind(kind): toggles the clicked kind open/closed; live asks the server for its file list
-   (X-City-Token header), demo never fetches (no real files to list). A failed fetch is shown, never
-   swallowed (network error, non-2xx, or a body that is not JSON). */
-async function openBalanceKind(kind){
-  const t = currentBalanceTerr(); if (!t) return;
-  if (balanceOpen && balanceOpen.kind === kind && balanceOpen.terr === t.id) { balanceOpen = null; renderBalance(); return; }
-  if (DEMO) { balanceOpen = { kind, terr: t.id, demo: true }; renderBalance(); return; }
-  balanceOpen = { kind, terr: t.id, files: null, total: 0, rules: '', error: '' };
-  renderBalance();
-  let res;
-  try {
-    res = await fetch('/api/balance?terr=' + encodeURIComponent(t.id) + '&kind=' + encodeURIComponent(kind), { headers: { 'X-City-Token': TOKEN } });
-  } catch (e) {
-    balanceOpen = Object.assign({}, balanceOpen, { files: [], error: '没连上城市服务器' });
-    renderBalance();
-    return;
-  }
-  if (!res.ok) {
-    balanceOpen = Object.assign({}, balanceOpen, { files: [], error: 'HTTP ' + res.status });
-    renderBalance();
-    return;
-  }
-  const data = await res.json().catch(() => null);
-  if (!data) { balanceOpen = Object.assign({}, balanceOpen, { files: [], error: '数据解析失败' }); renderBalance(); return; }
-  balanceOpen = Object.assign({ kind, terr: t.id }, data);
-  renderBalance();
-}
-let balanceOpen = null, balanceTerr = null;
-/* the territory the balance card shows: whichever the owner picked, else the home/governor territory */
-function currentBalanceTerr(){ return terrOf(balanceTerr) || terrOf(govTerr) || (map.territories || [])[0] || null; }
-let lastBalanceKey = '';
-function renderBalance(){
-  const el = $('#balance'); if (!el) return;
-  const t = currentBalanceTerr();
-  if (!t) { if (el.innerHTML) el.innerHTML = ''; lastBalanceKey = ''; return; }
-  const terrs = (map.territories || []).map(x => ({ id: x.id, name: x.name }));
-  // Balance E2E bounce 2: eraShown(t) and signText(t) change on their own as time passes (the flip at 52 s,
-  // the sign's text once a show ends) — without them here the card missed both and kept saying "升级中" or
-  // showing the old 还差 after a rebuild-free frame (renderPanel runs this often; buildLand isn't involved).
-  const key = t.id + '|' + (t.era || '') + '|' + eraShown(t) + '|' + signText(t) + '|' + JSON.stringify(t.balance) +
-    '|' + (t.next || []).join(',') + '|' + (t.rules_note || '') + '|' + JSON.stringify(balanceOpen) +
-    '|' + terrs.map(x => x.id).join(',');
-  if (key === lastBalanceKey) return;
-  lastBalanceKey = key;
-  el.innerHTML = balanceHtml(t, balanceOpen, terrs);
-}
-$('#balance').addEventListener('click', e => {
-  const bterr = e.target.closest('[data-bterr]');
-  if (bterr) { balanceTerr = bterr.dataset.bterr; balanceOpen = null; lastBalanceKey = ''; renderBalance(); return; }
-  const li = e.target.closest('.kind[data-kind]');
-  if (li && e.target.closest('button')) openBalanceKind(li.dataset.kind);
-});
+function renderPanel(){ renderStats(); renderDetail(); renderLog(); renderWin(); $('#clock').textContent = DEMO ? '模拟 ' + clock(simT) : '现在 ' + new Date().toTimeString().slice(0, 8); }
 
-function renderPanel(){ renderStats(); renderRoster(); renderDetail(); renderLog(); renderBalance(); $('#clock').textContent = DEMO ? '模拟 ' + clock(simT) : '现在 ' + new Date().toTimeString().slice(0, 8); }
-
-/* ---------- right column: collapse, drag to reorder, remembered per browser ---------- */
-const panel = $('#panel');
-const cardEls = () => [...panel.children].filter(el => el.dataset.card);
-function setCollapsed(card, on){
-  card.classList.toggle('collapsed', on);
-  card.querySelector('.card-head button').setAttribute('aria-expanded', String(!on));
+/* ---------- window: the person / building / governor detail, or the page log (动态), over the city
+   (requirements/city.md, Look, owner 2026-09-27: replaces the right column of cards) ---------- */
+let winLog = false;
+/* winState() -> 'log' while winLog, 'detail' once something is selected, else null (window closed, only
+   the city shows). */
+function winState(){ return winLog ? 'log' : (selected ? 'detail' : null); }
+function openLog(){ winLog = true; selected = null; renderPanel(); }
+function closeWin(){ winLog = false; selected = null; renderPanel(); }
+/* winTitle() -> a short label for the open window, whatever renderDetail() is showing right now. */
+function winTitle(){
+  if (!selected) return '详情';
+  if (selected.t === 'c') { const c = byId(selected.id); return c ? (c.remote ? memberLabel(c.remote.who, c.remote.device) : nameOf(c)) : '详情'; }
+  if (selected.t === 'b') { const b = buildings.find(x => x.id === selected.id); if (!b) return '详情'; const info = buildingInfo(b); return info.name || TYPE_ZH[b.type] || b.type; }
+  if (selected.t === 'gov') return '总督';
+  if (selected.t === 'rg') { const rg = remoteGovs.get(selected.id); return rg ? govSign(rg) : '总督'; }
+  return '详情';
 }
-function saveCards(){
-  const cards = cardEls();
-  const state = { order: cards.map(c => c.dataset.card), collapsed: cards.filter(c => c.classList.contains('collapsed')).map(c => c.dataset.card) };
-  try { localStorage.setItem(CARD_KEY, JSON.stringify(state)); } catch (e) { /* storage off: order lasts until reload */ }
+function renderWin(){
+  const state = winState();
+  $('#win').hidden = !state;
+  $('#detail').hidden = state !== 'detail';
+  $('#log').hidden = state !== 'log';
+  $('#win-title').textContent = state === 'log' ? '动态' : winTitle();
 }
-function loadCards(){
-  let state = null;
-  try { state = JSON.parse(localStorage.getItem(CARD_KEY) || 'null'); } catch (e) { state = null; }
-  if (!state || typeof state !== 'object') return;
-  const byName = new Map(cardEls().map(c => [c.dataset.card, c]));
-  const order = Array.isArray(state.order) ? state.order.filter(n => byName.has(n)) : [];
-  for (const n of byName.keys()) if (!order.includes(n)) order.push(n);
-  for (const n of order) panel.appendChild(byName.get(n));
-  const collapsed = Array.isArray(state.collapsed) ? state.collapsed : [];
-  for (const [n, c] of byName) setCollapsed(c, collapsed.includes(n));
-}
-let cardDrag = null, dragJustEnded = false;
-panel.addEventListener('pointerdown', e => {
-  const head = e.target.closest('.card-head');
-  if (!head || e.button > 0 || cardDrag) return;
-  const card = head.closest('[data-card]');
-  head.querySelector('button').setPointerCapture(e.pointerId);
-  cardDrag = { card, head, id: e.pointerId, y0: e.clientY, moved: false };
-});
-panel.addEventListener('pointermove', e => {
-  if (!cardDrag || e.pointerId !== cardDrag.id) return;
-  const d = cardDrag, card = d.card;
-  if (!d.moved && Math.abs(e.clientY - d.y0) < 6) return;
-  if (!d.moved) { d.moved = true; card.classList.add('dragging'); }
-  const cards = cardEls(), i = cards.indexOf(card), top = card.offsetTop;
-  const prev = cards[i - 1], next = cards[i + 1];
-  if (prev && e.clientY < prev.getBoundingClientRect().top + prev.offsetHeight / 2) panel.insertBefore(card, prev);
-  else if (next && e.clientY > next.getBoundingClientRect().top + next.offsetHeight / 2) panel.insertBefore(card, next.nextSibling);
-  d.y0 += card.offsetTop - top;
-  const all = cardEls(), first = all[0], last = all[all.length - 1];
-  const lo = first.offsetTop - card.offsetTop, hi = last.offsetTop + last.offsetHeight - card.offsetTop - card.offsetHeight;
-  card.style.transform = `translateY(${clamp(e.clientY - d.y0, lo, hi)}px)`;
-});
-function endCardDrag(e){
-  if (!cardDrag || e.pointerId !== cardDrag.id) return;
-  const d = cardDrag; cardDrag = null;
-  if (!d.moved) return;
-  d.card.classList.remove('dragging'); d.card.style.transform = '';
-  dragJustEnded = true; setTimeout(() => { dragJustEnded = false; }, 0);
-  saveCards();
-}
-panel.addEventListener('pointerup', endCardDrag);
-panel.addEventListener('pointercancel', endCardDrag);
-panel.addEventListener('click', e => {
-  const head = e.target.closest('.card-head');
-  if (!head || dragJustEnded) return;
-  const card = head.closest('[data-card]');
-  setCollapsed(card, !card.classList.contains('collapsed'));
-  saveCards();
-});
-loadCards();
+$('#win-close').addEventListener('click', () => closeWin());
+$('#logbtn').addEventListener('click', () => openLog());
 
 /* ---------- ask panel: the "?" — questions and permission requests from
    the live city (requirements/city.md, Interaction) ---------- */
@@ -4940,11 +4877,12 @@ function selectFrom(val){
   else if (val === 'gov') selected = { t:'gov', terr: govTerr };
   else if (val && val.startsWith('rg:')) selected = { t:'rg', id: val.slice(3) };
   else if (val) selected = { t:'c', id:val };
+  winLog = false;
   lastDetailKey = ''; lastRoster = ''; renderPanel(); needFrame = true;
 }
-$('#roster').addEventListener('pointerdown', e => { const r = e.target.closest('[data-sel]'); if (r) selectFrom(r.dataset.sel); });
-$('#roster').addEventListener('click', e => { const r = e.target.closest('[data-sel]'); if (r && e.detail === 0) selectFrom(r.dataset.sel); });
 $('#detail').addEventListener('click', e => {
+  const row = e.target.closest('[data-sel]');
+  if (row) { selectFrom(row.dataset.sel); return; }
   const btn = e.target.closest('[data-act]'); if (!btn || !selected || selected.t !== 'c') return;
   const c = byId(selected.id); if (!c) return;
   if (btn.dataset.act === 'stuck') { const [q, a] = pick(QA); c.pendingAnswer = a; emit({ type:'stuck', id:c.id, question:q }); }
@@ -5054,6 +4992,7 @@ function endPointer(e){
   if (wasTap && e.type === 'pointerup') {
     const r = canvas.getBoundingClientRect();
     selected = pickAt(e.clientX - r.left, e.clientY - r.top);
+    winLog = false;
     lastDetailKey = ''; lastRoster = ''; renderPanel(); needFrame = true;
   }
   if (!pointers.size) { drag = null; canvas.classList.remove('grabbing'); }
