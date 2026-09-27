@@ -118,7 +118,11 @@ CONTRACT, page (bin/agent-city.html) -- inside the window of city-focus
   sendChat(to, text): live -> fetch('/api/chat/send', POST, JSON {to, text},
     'X-City-Token': TOKEN); a failure is shown in the window. Demo -> no
     fetch.
-  A 'submit' listener (preventDefault) sends #say-text with sendChat.
+  sendChat resolves to true when the server took the message, false when
+    it did not (the failure is shown in the window).
+  A 'submit' listener (preventDefault) sends #say-text with sendChat and
+    clears the box only when sendChat resolved true: a failed send never
+    loses what the owner typed.
   case 'chat' (the page event): updates `chats`; an owner entry that turns
     delivered writes a page log line starting 你 →.
 
@@ -710,6 +714,31 @@ process.stdout.write(JSON.stringify([{ t: 'gov', terr: 't1' }, { t: 'c', id: 's:
         self.assertIsNotNone(m, "no submit listener")
         self.assertIn("preventDefault()", m.group(1))
         self.assertIn("sendChat(", m.group(1))
+
+    def test_a_failed_send_keeps_the_text(self):
+        js = r"""
+const fs = require('fs'), vm = require('vm');
+const { fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const box = { JSON, console, Promise, Error, String, Date, DEMO: false, TOKEN: 't', chats: new Map(),
+  renderPanel(){}, demoSendChat(){} };
+vm.createContext(box);
+vm.runInContext(fns, box);
+(async () => {
+  box.fetch = () => Promise.reject(new Error('down'));
+  const down = await box.sendChat('s:tm1', 'hi');
+  box.fetch = () => Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+  const refused = await box.sendChat('s:tm1', 'hi');
+  box.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 7, state: 'queued' }) });
+  const took = await box.sendChat('s:tm1', 'hi');
+  process.stdout.write(JSON.stringify([down, refused, took, (box.chats.get('s:tm1') || {}).error || '']));
+})();
+"""
+        down, refused, took, _ = run_node(js, {"fns": page_fns("sendChat")})
+        self.assertEqual((down, refused, took), (False, False, True))
+        text = inline_script()
+        m = re.search(r"addEventListener\('submit', e => \{(.*?)\n\}\);", text, re.S)
+        self.assertIsNotNone(m)
+        self.assertRegex(m.group(1), r"then\(\s*ok\s*=>[^\n]*if \(ok", "the box is cleared only when the send worked")
 
     def test_chat_event(self):
         block = case_block("chat") or ""
