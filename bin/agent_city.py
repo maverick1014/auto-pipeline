@@ -3991,7 +3991,7 @@ def layout(world, plans):
             "terrain": plan["terrain"], "slot": list(t["slot"]), "cx": ox, "cz": oz,
             "lines": t["lines"], "size": growth(t["peak"]), "r": tr["r"], "open": tr["open"],
             "plots_total": len(plan["plots"]), "plots": plots_view, "buildings": buildings_view,
-            "era": era, "balance": balance, "next": next_needs(t["peak"], balance, era),
+            "era": era, "balance": balance,
             "rules_note": _rules_note(t["name"], t.get("rules_bad", [])),
             "offices": offices_view, "rest": rest_view, "sites": sites_view,
         })
@@ -4213,8 +4213,8 @@ def count_lines(identity):
 #
 # requirements/city.md, "Balance". A repo's code is scored in 5 kinds
 # (KINDS); score_balance turns a file list into that score, balance_of gets
-# the file list from git, era_for/next_needs turn a score into a growth era
-# and what is still missing. See the CONTRACT docstring at the top of
+# the file list from git, era_for turns the repo's size into a growth era
+# (kinds never hold it back). See the CONTRACT docstring at the top of
 # tests/test_agent_city_balance.py for the exact shape of each.
 
 KINDS = ("build", "rules", "beauty", "knowledge", "infra")
@@ -4563,47 +4563,21 @@ def balance_of(identity, rules_text=""):
 
 
 def era_for(peak, kinds, current="village"):
-    """The growth era: never earlier than CURRENT, {} kinds -> CURRENT."""
+    """The growth era, by size only (requirements/city.md, "Balance", owner
+    2026-09-27): city when PEAK >= CITY_LINES, town when >= TOWN_LINES, else
+    village. The kinds never hold an era back. Never earlier than CURRENT
+    (eras never go back). {} kinds (no count yet) -> CURRENT, unchanged."""
     if not kinds:
         return current
-
-    def ok(k):
-        return kinds.get(k, {}).get("state") in ("healthy", "na")
-
-    missing = any(v.get("state") == "missing" for v in kinds.values())
-    if peak >= CITY_LINES and not missing and ok("rules") and ok("beauty"):
+    if peak >= CITY_LINES:
         computed = "city"
-    elif peak >= TOWN_LINES and not missing:
+    elif peak >= TOWN_LINES:
         computed = "town"
     else:
         computed = "village"
     if current not in ERAS:
         current = "village"
     return computed if ERAS.index(computed) > ERAS.index(current) else current
-
-
-def next_needs(peak, kinds, era):
-    """What the next era still needs, KIND_ZH words in KINDS order, "规模"
-    first when the size is short. city -> []. {} kinds -> []."""
-    if era == "city" or not kinds:
-        return []
-    if era == "village":
-        target = TOWN_LINES
-
-        def blocks(k):
-            return kinds.get(k, {}).get("state") == "missing"
-    else:
-        target = CITY_LINES
-
-        def blocks(k):
-            st = kinds.get(k, {}).get("state")
-            if st == "missing":
-                return True
-            return k in ("rules", "beauty") and st not in ("healthy", "na")
-
-    out = ["规模"] if peak < target else []
-    out.extend(KIND_ZH[k] for k in KINDS if blocks(k))
-    return out
 
 
 def _rules_note(name, bad):
@@ -4823,7 +4797,7 @@ def demo_world():
     """At least 3 repos, one small (< 30% grown), one big (> 70% grown), a
     bridge between two of them, and a few buildings -- the fixed sample the
     page (and its own #demo panel) can show with no server, no git. Also one
-    village (a kind missing, non-empty "next"), one town, one city."""
+    village (a kind missing), one town, one city."""
     plans = load_plans()
     ids = ["/demo/auto-pipeline/.git", "/demo/v4-plus/.git", "/demo/pos-lite/.git"]
     names = ["auto-pipeline", "v4-plus", "pos-lite"]
