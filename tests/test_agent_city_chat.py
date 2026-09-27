@@ -108,6 +108,10 @@ CONTRACT, page (bin/agent-city.html) -- inside the window of city-focus
   chatTarget(sel) -> the chat id of a selection: {t: 'gov', terr} ->
     'gov:' + terr; {t: 'c', id} -> id; anything else (a remote person
     'rg', a building, a site, null) -> null.
+  curChatTo() -> the chat id of the open window: chatTarget of `selected`,
+    using the citizen's own id as the server sent it ("s:<sid>" for a
+    session, the raw agent id for a subagent; never a second "s:"); a
+    remote person -> null. (E2E 2026-09-27: the page asked for s:s:tm1.)
   renderDetail shows, for a chat target, <ol class="chat" id="chat"> with
     chatHtml; for a session also <form class="say" id="say"> with
     <textarea id="say-text" maxlength="4000"> and a submit button 发送; for
@@ -688,6 +692,22 @@ process.stdout.write(JSON.stringify([{ t: 'gov', terr: 't1' }, { t: 'c', id: 's:
   { t: 'rg', id: 'r:dev:s:1' }, { t: 'b', id: 4 }, null].map(s => box.chatTarget(s))));
 """
         self.assertEqual(run_node(js, {"fns": page_fns("chatTarget")}), ["gov:t1", "s:tm1", "a9", None, None, None])
+
+    def test_the_open_window_asks_for_the_right_id(self):
+        js = r"""
+const fs = require('fs'), vm = require('vm');
+const { fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const people = { 's:tm1': { id: 's:tm1', lead: true }, 's:tm2': { id: 's:tm2' }, 'a9': { id: 'a9' },
+  'r:dev:s:1': { id: 'r:dev:s:1', remote: { who: 'Ann' } } };
+const box = { selected: null, govTerr: 't0', byId: id => people[id] };
+vm.createContext(box); vm.runInContext(fns, box);
+const out = [];
+for (const sel of [{ t: 'c', id: 's:tm1' }, { t: 'c', id: 's:tm2' }, { t: 'c', id: 'a9' }, { t: 'c', id: 'r:dev:s:1' },
+                   { t: 'gov', terr: 't1' }, { t: 'gov' }, null]) { box.selected = sel; out.push(box.curChatTo()); }
+process.stdout.write(JSON.stringify(out));
+"""
+        out = run_node(js, {"fns": page_fns("curChatTo", "chatTarget")})
+        self.assertEqual(out, ["s:tm1", "s:tm2", "a9", None, "gov:t1", "gov:t0", None])
 
     def test_window_has_the_conversation_and_the_box(self):
         body = function_source("renderDetail") or ""

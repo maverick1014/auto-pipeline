@@ -4482,7 +4482,7 @@ function curChatTo(){
   if (selected.t === 'c') {
     const pc = byId(selected.id);
     if (!pc || pc.remote) return null;
-    return chatTarget({ t: 'c', id: pc.lead ? pc.id : 's:' + pc.id });
+    return chatTarget({ t: 'c', id: pc.id });
   }
   return null;
 }
