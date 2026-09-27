@@ -923,7 +923,11 @@ class CityState:
         """Restart the idle clock: a joined city with new local lines must
         keep running while its agents work, even with no browser open."""
         with self.lock:
-            self.idle_since = time.monotonic()
+            self._touch_idle_locked()
+
+    def _touch_idle_locked(self):
+        """Caller holds self.lock (or self.cond, the same lock)."""
+        self.idle_since = time.monotonic()
 
     def health(self):
         with self.lock:
@@ -2153,10 +2157,15 @@ class CityState:
     def gov_next(self, sid, repo, watcher, timeout):
         """A watcher id, once superseded by a different one for the same sid,
         stays retired: it never reclaims the slot even if it calls again
-        (it should just have exited on its own "replaced" reply)."""
+        (it should just have exited on its own "replaced" reply). Every turn
+        of the wait loop restarts the idle clock (requirements/city.md,
+        "Limits"): a session polling to be talked to keeps the server up,
+        even with no browser -- a single touch at entry is not enough for a
+        long-poll call that outlives a short idle timeout."""
         timeout = max(0.0, min(timeout, 30.0))
         deadline = time.monotonic() + timeout
         with self.cond:
+            self._touch_idle_locked()
             self.governors[repo] = {"sid": sid, "last_seen": time.monotonic()}
             self._check_governors_count()
             info = self.watchers.get(sid)
@@ -2171,6 +2180,7 @@ class CityState:
                 return {"state": "replaced"}
             gov_to = "gov:" + territory_id(repo)
             while True:
+                self._touch_idle_locked()
                 if self.watchers.get(sid, {}).get("current") != watcher:
                     return {"state": "replaced"}
                 message = self._chat_pick_queued_locked(gov_to)
@@ -2400,7 +2410,7 @@ class CityState:
     def _append_chat_path_locked(self, row):
         if self.chat_path is None:
             return
-        self._append_jsonl_locked(self.chat_path, row)
+        _append_private_jsonl(self.chat_path, row)
         try:
             self._chat_written_offset = os.path.getsize(self.chat_path)
         except OSError:
@@ -2413,11 +2423,16 @@ class CityState:
     def chat_next(self, sid, watcher, timeout):
         """The gov_next watcher rule: a newer watcher for the same sid
         retires the older. Only while SID's session is idle, the oldest
-        queued owner message for it."""
+        queued owner message for it. Every turn of the wait loop restarts
+        the idle clock (requirements/city.md, "Limits"): a session polling
+        to be talked to keeps the server up, even with no browser -- a
+        single touch at entry is not enough for a long-poll call that
+        outlives a short idle timeout."""
         to = "s:" + sid
         timeout = max(0.0, min(timeout, 30.0))
         deadline = time.monotonic() + timeout
         with self.cond:
+            self._touch_idle_locked()
             info = self.chat_watchers.get(sid)
             if info is None:
                 info = {"current": watcher, "seen": {watcher}}
@@ -2429,6 +2444,7 @@ class CityState:
             elif watcher != info["current"]:
                 return {"state": "replaced"}
             while True:
+                self._touch_idle_locked()
                 if self.chat_watchers.get(sid, {}).get("current") != watcher:
                     return {"state": "replaced"}
                 if not self._chat_busy.get(to, False) and to not in self._chat_ended_pages:
@@ -2788,6 +2804,30 @@ def _write_token(path, token):
         os.close(fd)
     try:
         os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def _append_private_jsonl(path, row):
+    """Append one JSON line to PATH, private (mode 0600, chat text lives
+    here -- requirements/city.md, "Talking"), in ONE os.write on an
+    O_APPEND descriptor: two writers ending at once must never interleave.
+    A file that already exists with wider permissions is tightened via
+    fchmod on the open descriptor. Never raises."""
+    try:
+        folder = os.path.dirname(path)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+        data = (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8")
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            try:
+                os.fchmod(fd, 0o600)
+            except OSError:
+                pass
+            os.write(fd, data)
+        finally:
+            os.close(fd)
     except OSError:
         pass
 
@@ -3397,8 +3437,21 @@ def _cmd_say_impl(args):
     row = {"sid": sid, "aid": aid, "kind": kind, "text": text, "at": time.time()}
     try:
         os.makedirs(directory, exist_ok=True)
-        with open(os.path.join(directory, "chat.jsonl"), "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+        chat_path = os.path.join(directory, "chat.jsonl")
+        data = (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8")
+        # Private (holds conversation text) and one write per line: two
+        # sessions ending at once must never interleave (requirements/
+        # city.md, "Talking"). A pre-existing wider-permission file is
+        # tightened via fchmod on the open descriptor.
+        fd = os.open(chat_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            try:
+                os.fchmod(fd, 0o600)
+            except OSError:
+                pass
+            os.write(fd, data)
+        finally:
+            os.close(fd)
     except OSError:
         pass
     return 0
