@@ -225,10 +225,21 @@ class TestCityHooks(unittest.TestCase):
                    'python3 "${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py" ask; exit 0')
     GOV_COMMAND = ('[ -z "${AGENT_ROLE:-}" ] && [ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
                    'exec python3 "${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py" gov-watch; exit 0')
-    SECOND = {
-        "PermissionRequest": {"hooks": [{"type": "command", "command": ASK_COMMAND, "timeout": 3660}]},
-        "Stop": {"hooks": [{"type": "command", "command": GOV_COMMAND, "async": True,
-                            "asyncRewake": True}]},
+    # Talking (tests/test_agent_city_chat.py, owner 2026-09-27): the prompt
+    # and each turn's last text go to chat.jsonl (say); a session with
+    # AGENT_ROLE waits for the owner's message in the background (chat-watch).
+    SAY_COMMAND = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
+                   'python3 "${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py" say; exit 0')
+    CHAT_COMMAND = ('[ -n "${AGENT_ROLE:-}" ] && [ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
+                    'exec python3 "${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py" chat-watch; exit 0')
+    SAY = {"hooks": [{"type": "command", "command": SAY_COMMAND, "timeout": 5}]}
+    EXTRA = {
+        "PermissionRequest": [{"hooks": [{"type": "command", "command": ASK_COMMAND, "timeout": 3660}]}],
+        "Stop": [SAY,
+                 {"hooks": [{"type": "command", "command": GOV_COMMAND, "async": True, "asyncRewake": True}]},
+                 {"hooks": [{"type": "command", "command": CHAT_COMMAND, "async": True, "asyncRewake": True}]}],
+        "UserPromptSubmit": [SAY],
+        "SubagentStop": [SAY],
     }
 
     def test_each_event_has_one_city_entry(self):
@@ -236,16 +247,16 @@ class TestCityHooks(unittest.TestCase):
         for event in self.EVENTS:
             with self.subTest(event=event):
                 entries = hooks.get(event, [])
-                self.assertEqual(len(entries), 2 if event in self.SECOND else 1, entries)
+                self.assertEqual(len(entries), 1 + len(self.EXTRA.get(event, [])), entries)
                 inner = entries[0]["hooks"]
                 self.assertEqual(inner, [{"type": "command", "command": self.COMMAND,
                                           "timeout": 5}])
 
-    def test_permission_request_also_runs_the_ask_hook(self):
-        self.assertEqual(self.hooks()["PermissionRequest"][1], self.SECOND["PermissionRequest"])
-
-    def test_stop_also_runs_the_governor_watcher(self):
-        self.assertEqual(self.hooks()["Stop"][1], self.SECOND["Stop"])
+    def test_the_other_city_entries(self):
+        hooks = self.hooks()
+        for event, extra in self.EXTRA.items():
+            with self.subTest(event=event):
+                self.assertEqual(hooks[event][1:], extra)
 
     def test_the_off_path_of_the_new_commands_starts_nothing(self):
         base = tempfile.mkdtemp(prefix="layout_city_")
@@ -253,9 +264,11 @@ class TestCityHooks(unittest.TestCase):
         env = dict(os.environ, AGENT_CITY_DIR=os.path.join(base, "city"),
                    CLAUDE_PLUGIN_ROOT=os.path.join(base, "no-plugin"), HOME=base)
         env.pop("AGENT_ROLE", None)
-        for command in (self.ASK_COMMAND, self.GOV_COMMAND):
-            with self.subTest(command=command):
-                result = subprocess.run(["sh", "-c", command], input=b"{}", env=env,
+        role_env = dict(env, AGENT_ROLE="task-manager")
+        for command, e in ((self.ASK_COMMAND, env), (self.GOV_COMMAND, env), (self.SAY_COMMAND, env),
+                           (self.CHAT_COMMAND, env), (self.CHAT_COMMAND, role_env)):
+            with self.subTest(command=command, role=e.get("AGENT_ROLE", "")):
+                result = subprocess.run(["sh", "-c", command], input=b"{}", env=e,
                                         capture_output=True, timeout=20)
                 self.assertEqual((result.returncode, result.stdout, result.stderr), (0, b"", b""))
 
