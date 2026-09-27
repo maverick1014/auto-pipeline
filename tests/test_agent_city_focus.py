@@ -20,6 +20,13 @@ CONTRACT (bin/agent-city.html)
       bodies #detail (what was clicked) and #log (the page log, 动态).
     .win is position:absolute; the @media (max-width: 960px) block has a
       .win rule (a phone gets a window that fits).
+    Phone: the city fills the screen below the top bar too. The phone
+      block gives .stage-col and .stage flex:1 and no fixed 66vh height
+      (E2E 2026-09-27: a third of a 390 x 844 screen stayed blank, the
+      room the right column used to take under the city). The canvas never
+      sizes the stage there (.stage canvas position:absolute, the stage
+      flex:1 1 0), or its drawing size feeds back into the layout and the
+      page scrolls (second E2E: the canvas ran 76 px past an 844 px screen).
     <button type="button" id="logbtn"> with the text 动态, in header.bar
       next to the top counts.
 
@@ -125,6 +132,13 @@ class TestWindowMarkup(unittest.TestCase):
     def test_window_css(self):
         self.assertRegex(style(), r"\.win\{[^}]*position:absolute")
         self.assertIn(".win", media_block("@media (max-width: 960px)"))
+
+    def test_phone_city_fills_the_screen(self):
+        block = media_block("@media (max-width: 960px)")
+        self.assertNotIn("66vh", block)
+        self.assertRegex(block, r"\.stage-col\{[^}]*flex:1")
+        self.assertRegex(block, r"\.stage\{[^}]*flex:1 1 0")
+        self.assertRegex(block, r"\.stage canvas\{[^}]*position:absolute")
 
     def test_log_button_in_the_top_bar(self):
         bar = re.search(r'<header class="bar"[^>]*>(.*?)</header>', markup(), re.S)
