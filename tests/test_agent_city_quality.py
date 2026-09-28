@@ -175,7 +175,7 @@ class TestHookFile(unittest.TestCase):
     def test_edit_in_the_main_checkout(self):
         row = self.row(self.root, path=os.path.join(self.root, "src", "app.py"))
         self.assertEqual(row["file"], "src/app.py")
-        self.assertEqual(row["kind"], "other")
+        self.assertNotIn("kind", row)  # idea-city C4: the server picks the building
 
     def test_edit_in_a_worktree_is_relative_to_the_worktree(self):
         row = self.row(self.wt, tool="Write", path=os.path.join(self.wt, "tests", "test_a.py"))

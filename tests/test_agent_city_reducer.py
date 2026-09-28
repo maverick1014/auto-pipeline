@@ -393,7 +393,7 @@ class TestSafety(Case):
         snap = self.r.snapshot()
         self.assertEqual(set(snap), {"gov", "agents"})
         self.assertEqual(set(snap["agents"][0]),
-                         {"id", "role", "label", "task", "stuck", "done", "tools"})
+                         {"id", "role", "label", "task", "stuck", "waiting", "done", "tools"})  # waiting: idea-city C5
         json.dumps(snap)
 
 
