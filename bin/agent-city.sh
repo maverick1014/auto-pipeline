@@ -62,12 +62,28 @@
 # (.claude/auto-pipeline/bin/agent-city-hook.sh under $CLAUDE_PROJECT_DIR) --
 # when a session does start inside one packed repo, its own project hooks
 # send, and the user-level ones stand down, so nothing is ever sent twice.
+#
+# Anywhere (requirements/city.md, "Anywhere"): outside a repo (cwd not
+# inside a git work tree), start/status/join/leave still work -- plugin
+# defaults only, no agent.conf from that folder. start/demo there sync every
+# repo listed in $AGENT_CITY_HOME/joined-repos.txt, language from
+# AGENT_CITY_LANG (en or zh, else zh); join/leave refuse and say to cd into
+# the repo first.
 
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
 roots_read
+
+# Outside a repo: plugin defaults only, this folder's own agent.conf (if
+# any) is never read.
+if [ "$(git -C "$PROJECT_CWD" rev-parse --is-inside-work-tree 2>/dev/null)" = "true" ]; then
+  OUTSIDE_REPO=no
+else
+  OUTSIDE_REPO=yes
+fi
+
 . "$PLUGIN_ROOT/bin/agent.conf.default"
-conf_read
+[ "$OUTSIDE_REPO" = yes ] || conf_read
 . "$PLUGIN_ROOT/bin/agent-resources.sh"
 
 usage() {
@@ -89,6 +105,11 @@ agent-city.sh — start/stop/status/demo for the Agent City playground.
   ./agent-city.sh install-shim   copy the agent-city command to ~/.local/bin, so it runs from any folder
   ./agent-city.sh remove-shim    remove that copy, if it is ours
   ./agent-city.sh -h       this help
+
+Outside a repo: start/demo sync every repo listed in
+$AGENT_CITY_HOME/joined-repos.txt (language from AGENT_CITY_LANG, en or zh,
+else zh); status shows them; join/leave refuse there and say to cd into the
+repo first.
 EOF
 }
 
@@ -116,6 +137,19 @@ read_on() {
 
 do_start() {
   suffix="${1:-}"
+
+  # Outside a repo: AGENT_CITY_LANG picks the language (en/zh, else zh --
+  # the city's own default); everything else (do_send, ...) keeps today's
+  # $language from agent.conf/agent.conf.default.
+  set --
+  if [ "$OUTSIDE_REPO" = yes ]; then
+    case "${AGENT_CITY_LANG:-}" in
+      en|zh) language="$AGENT_CITY_LANG" ;;
+      *) language="zh" ;;
+    esac
+    set -- --joined-list "$CITY_HOME/joined-repos.txt"
+  fi
+
   if ! resources_ok "$max_usage_percent"; then
     resources_line "$max_usage_percent"
     echo "not starting the city: over the resource cap"
@@ -134,7 +168,7 @@ do_start() {
     --idle-min "$city_idle_min" --gov-wait-sec "$city_governor_wait_sec" \
     --relay-sec "$city_relay_sec" \
     --decisions "$CITY_HOME/decisions.jsonl" --world "$CITY_HOME/world.json" \
-    --start-dir "$(pwd -P)" --lang "$language" \
+    --start-dir "$(pwd -P)" --lang "$language" "$@" \
     </dev/null >/dev/null 2>&1 &
   disown "$!" 2>/dev/null || true
 
@@ -166,7 +200,11 @@ do_status() {
   else
     echo "CITY: not running"
   fi
-  team_line
+  if [ "$OUTSIDE_REPO" = yes ]; then
+    joined_list_lines
+  else
+    team_line
+  fi
   return 0
 }
 
@@ -183,6 +221,32 @@ if joined:
 else:
     print("TEAM: not joined")
 ' "$PLUGIN_ROOT/bin" "$SECRET_FILE"
+}
+
+# Outside a repo: one "TEAM: joined <host> (<repo>)" per listed repo whose
+# folder and join file are both there (list order), else "TEAM: not
+# joined". Never the key.
+joined_list_lines() {
+  python3 -c '
+import os
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+from urllib.parse import urlsplit
+
+repos = rl.read_joined_list(sys.argv[2])
+printed = False
+for repo in repos:
+    if not os.path.isdir(repo):
+        continue
+    joined = rl.read_join(os.path.join(repo, ".secrets", "agent-city-relay"))
+    if not joined:
+        continue
+    print("TEAM: joined %s (%s)" % (urlsplit(joined["address"]).netloc, repo))
+    printed = True
+if not printed:
+    print("TEAM: not joined")
+' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt"
 }
 
 # Cloud sender (requirements/city.md, "Joining": cloud sessions send only, no
@@ -298,6 +362,10 @@ do_pending() {
 # is not git-ignored. The team key is read with echo off and handed to
 # agent_city_relay.py on stdin only -- never argv, never on screen.
 do_join() {
+  if [ "$OUTSIDE_REPO" = yes ]; then
+    echo "JOIN: not inside a repo; cd into the repo you want to join, then run join" >&2
+    exit 1
+  fi
   origin=$(git -C "$PROJECT_ROOT" config --get remote.origin.url 2>/dev/null) || origin=""
   if [ -z "$origin" ]; then
     echo "JOIN: this repo has no origin remote to join a team relay for" >&2
@@ -334,6 +402,14 @@ print(rl.origin_id(sys.argv[2]) or "")
 
   host="${out#RELAY: ok }"
   echo "JOINED: ${rid} -> ${host}"
+
+  # Add this repo to the user-level joined list, once, never the key.
+  python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+rl.add_joined(sys.argv[2], sys.argv[3])
+' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$PROJECT_ROOT"
   return 0
 }
 
@@ -456,12 +532,25 @@ PY
 }
 
 do_leave() {
+  if [ "$OUTSIDE_REPO" = yes ]; then
+    echo "LEFT: not inside a repo; cd into the joined repo, then run leave" >&2
+    exit 1
+  fi
   if [ -f "$SECRET_FILE" ]; then
     rm -f "$SECRET_FILE"
     echo "LEFT: left the team relay"
   else
     echo "LEFT: was not joined"
   fi
+
+  # Always drop this repo's line from the user-level joined list, even when
+  # the join file was already gone.
+  python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+rl.remove_joined(sys.argv[2], sys.argv[3])
+' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$PROJECT_ROOT"
   return 0
 }
 
