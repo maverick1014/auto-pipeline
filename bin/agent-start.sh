@@ -362,16 +362,6 @@ if [ -n "$SID" ]; then
 fi
 
 # ---- role: one main manager per repo (W10) ----
-agent_pid() {
-  [ -n "${CLAUDE_PID:-}" ] && { echo "$CLAUDE_PID"; return; }
-  p=$PPID
-  for _ in 1 2 3 4 5 6 7 8; do
-    c=$(ps -o comm= -p "$p" 2>/dev/null | tr -d ' ')
-    case "$c" in *claude*|*codex*|*opencode*|*gemini*) echo "$p"; return;; esac
-    p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' '); [ -z "$p" ] || [ "$p" = 1 ] && break
-  done
-  echo "$PPID"
-}
 LOCK="$PROJECT_GITDIR/agent_main.lock"; ME=$(agent_pid); NOW=$(date '+%Y-%m-%d %H:%M')
 role=main
 if [ -n "${AGENT_ROLE:-}" ]; then role=spawned

@@ -57,7 +57,7 @@ BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py", "agent.conf.default
                                             "agent_city_relay.py", "agent-city-relay.js"]
 
 AGENT_FILES = ["fast-lane-deputy.md", "merge-deputy.md", "worker.md"]
-SKILL_DIRS = ["dispatch", "merge", "init", "cloud-pack", "city"]
+SKILL_DIRS = ["dispatch", "merge", "init", "cloud-pack", "city", "close-case"]
 
 ALLOW_RULES = [
     "Bash(git push origin --delete *)",
@@ -215,7 +215,12 @@ class TestCityHooks(unittest.TestCase):
               "Stop", "SessionEnd"]
 
     def hooks(self):
-        return load_json("hooks", "hooks.json")["hooks"]
+        """The city's entries only: the close-case hook (UserPromptSubmit, not
+        the city's, tests/test_agent_close_case.py) is left out."""
+        hooks = load_json("hooks", "hooks.json")["hooks"]
+        return {event: [e for e in entries
+                        if "agent-close-case.sh" not in json.dumps(e)]
+                for event, entries in hooks.items()}
 
     # Interaction (tests/test_agent_city_interact.py): PermissionRequest also
     # runs the ask hook, which waits for the owner or the governor while the

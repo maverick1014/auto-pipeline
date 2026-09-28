@@ -4,6 +4,8 @@ description: Main manager only. After a task manager reports DONE PASS, run the 
 ---
 # /merge — finish one feature (PRINCIPLES.md W5, W8)
 
+0. A CLOSE CASE report instead of DONE PASS? → run `/close-case` first. Finished → it sends you back here to continue. Unfinished → it decides finish first or close now.
+
 1. Read the task manager's done report. No click path → bounce it: "no E2E script, not done".
 2. Ask `${CLAUDE_PLUGIN_ROOT}/bin/agent-runtime.sh browser` first: chrome, headless or none.
    - **chrome** — run the click path yourself in Claude in Chrome (W5). Every step must match. A miss → send the evidence back to the task manager, stop here.

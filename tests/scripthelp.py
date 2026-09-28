@@ -69,6 +69,7 @@ COPY_BIN = [
     "agent-city-relay-dev.mjs",
     "agent-city.html",
     "agent-city-plans.json",
+    "agent-close-case.sh",
 ]
 
 # Copied into the temp plugin's root.

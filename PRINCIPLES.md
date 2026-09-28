@@ -49,7 +49,7 @@ R7. Worktree file
 W1. Finish in one run
 - Never wait for the human
 - Unknown → pick default, log it, continue
-- New ideas → `agent_ideas.txt` (R6), never in the work or the report
+- New ideas → `agent_ideas.txt` (R6), never in the work or the report, except the CLOSE CASE report (W13), which lists them too
 
 W2. UI
 - Clickable mock first (prototype artifact)
@@ -136,6 +136,20 @@ W12. Cross-repo
 - Only main managers cross repos. Task managers and workers never
 - Need to know the other repo's code → ask its main manager. Never read or edit another repo
 - A cross-repo task the human gives to any main manager is routed the same way
+
+W13. Close case
+- Trigger: the human types close case, any case, anywhere in the prompt. The UserPromptSubmit hook `bin/agent-close-case.sh` injects this rule for the role. A quoted mention is not an order
+- Subagents never get this rule; only a task manager, a human-direct session or a main manager does
+- Task manager or human-direct: start nothing new; workers finish their slice or stop; save agent_state.txt; commit + push (WIP if unfinished). Never lose work
+- Report to the upper level: SendMessage the main manager; another machine → print it in its own terminal and say so (W10)
+- Report first line `CLOSE CASE <name>: finished` or `CLOSE CASE <name>: unfinished`, then done, left + next steps, tests + results, click path, new ideas, TIME line (W11)
+- Then wait for the upper decision. Never close itself. A close case from the main manager counts the same as from the human
+- Main manager gets a CLOSE CASE report: finished → normal path (merge skill)
+- Unfinished → review, decide finish first (goes on to DONE, then merge) or close now (branch stays pushed, todo line open with next steps, pane closed, worktree removed)
+- Log every decision in its agent_state.txt. Human away → decide by the requirement doc, mark it "owner not seen"
+- Main manager gets close case from the human = the whole repo: close case to every live task manager and human-direct session in agent_worktree.txt
+- Collect every report, decide each, merge what passes, close all panes and worktrees, stop its own crons and monitors, update the agent files
+- Then one final table to the human: task, result, what changed, what is left, decisions taken for the human. Nothing dropped (the H3 five-row cap does not apply)
 
 ## C. Human
 

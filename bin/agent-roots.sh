@@ -5,6 +5,9 @@
 #   roots_read [<cwd>]   sets PROJECT_CWD, PROJECT_ROOT, PROJECT_GITDIR, STATE_DIR
 #   conf_read            sources "$PROJECT_ROOT/agent.conf" when it is there
 #                         (call after roots_read)
+#   agent_pid            this session's pid: $CLAUDE_PID, else the first
+#                         claude/codex/opencode/gemini ancestor (shared with
+#                         agent-start.sh and agent-close-case.sh)
 #
 # PLUGIN root  = the folder above bin/. Read only: PRINCIPLES.md, the quiz,
 #                agent_conf.py, bin/agent.conf.default. No script writes here.
@@ -48,4 +51,15 @@ conf_read() {
     . "$PROJECT_ROOT/agent.conf"
   fi
   return 0
+}
+
+agent_pid() {
+  [ -n "${CLAUDE_PID:-}" ] && { echo "$CLAUDE_PID"; return; }
+  p=$PPID
+  for _ in 1 2 3 4 5 6 7 8; do
+    c=$(ps -o comm= -p "$p" 2>/dev/null | tr -d ' ')
+    case "$c" in *claude*|*codex*|*opencode*|*gemini*) echo "$p"; return;; esac
+    p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' '); [ -z "$p" ] || [ "$p" = 1 ] && break
+  done
+  echo "$PPID"
 }

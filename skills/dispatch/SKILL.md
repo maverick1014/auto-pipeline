@@ -49,6 +49,7 @@ STEPS: 0 save this whole brief into agent_state.txt in your worktree, first acti
 REPORT: SendMessage to "<my session name>". First line "DONE PASS <name>" or "DONE FAIL <name>: <why>". Then Result (test count), What changed (files), What to decide. Then the E2E click path: start command, URL, exact clicks, expected result, how to restore. Then one line: TIME: est <n>m, actual <n>m, human <n>m (human = minutes the owner had to be present).
 ASK: first line "QUESTION:". Wait max 10 min, then default + log + continue (W1). Mock gate always waits.
 HEARTBEAT: every 15 min, one line "HEARTBEAT <name>: step <n> of 7, <what runs now>".
+CLOSE: on "close case" from me or the human: start nothing new, commit + push (WIP if unfinished), report first line "CLOSE CASE <name>: finished" or "CLOSE CASE <name>: unfinished", then done, left + next steps, tests, click path, ideas, TIME. Wait for my decision; never close yourself.
 STATE: write agent_state.txt after every step (S7, S8).
 NEVER: Claude in Chrome (W5). Product code. Full suite twice (W4). Files outside the worktree except via ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh.
 ```
