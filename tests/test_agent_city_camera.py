@@ -27,7 +27,7 @@ from test_agent_city_chain import FEATURE_REQUIRED, TA, two_territory_view  # no
 #
 # CONTRACT (bin/agent-city.html, simulation section, no three.js):
 #   cam = {az, el, dist, tx, tz}; dragBy(dx, dy, limit) is what an orbit drag does (the pointer handler
-#   calls it with distMax() as the zoom limit; no typeof guards); cameraStep(dt) advances the camera one frame (auto-rotation, the quarter-turn tween);
+#   calls it with distLimit() as the zoom limit (city-ux); no typeof guards); cameraStep(dt) advances the camera one frame (auto-rotation, the quarter-turn tween);
 #   frame() calls it, and it turns the view through autoRotate(), the one rotation path
 #   (autoRotDir = the way it turns, -1 before any drag). The rotation turns AUTO_ROT_SEC per turn in the direction of the owner's last
 #   orbit drag (left or right), so it never turns the view back to where it was before the drag.

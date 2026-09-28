@@ -268,6 +268,7 @@ _CACHE = {}
 def camera_results():
     if "cam" not in _CACHE:
         fns = need("updateCamera", "camLift", "camTarget", "distMax", "viewBlockers", "landSpread", "centreHeight", "aroundH")
+        fns += "\n" + tp.page_fns(optional=("pullShare", "distLimit", "zoomCapDist", "spanDist"))  # city-ux
         extra = tp.function_source("landBox")
         fns += "\n" + (extra or "")
         boxes = [{"hx": 13, "hz": 13, "cx": 0, "cz": 0}, {"hx": 26, "hz": 13, "cx": 5, "cz": -3},

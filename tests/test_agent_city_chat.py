@@ -661,7 +661,8 @@ class TestPageChat(unittest.TestCase):
         self.assertIsNotNone(esc, "const esc = ...; not found")
         # idea-city C1: the state words live in TEXT (chat.state.*), T() picks the language
         prelude = esc.group(0).replace("const esc", "var esc") + "\n" + constants_prelude()
-        return run_node(CHAT_JS, {"prelude": prelude, "fns": page_fns("chatHtml"), "cases": [list(c) for c in cases]})
+        # city-ux U9: chatHtml renders text through mdLite (self-contained)
+        return run_node(CHAT_JS, {"prelude": prelude, "fns": page_fns("chatHtml", optional=("mdLite",)), "cases": [list(c) for c in cases]})
 
     def test_state_words(self):
         zh = text_zh()  # idea-city C1
