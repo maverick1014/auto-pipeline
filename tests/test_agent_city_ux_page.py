@@ -80,8 +80,8 @@ U4 the governor window says less
   总督就是你正在聊的主对话; the governor branch of renderDetail has no d-tools box. gov.awayNote stays.
 
 U5 the governor window: two columns, the conversation on the right
-  renderDetail's governor branch: <div class="gov-cols"> with <div class="gov-side"> (head, away note,
-  team) and <div class="gov-chat"> (the conversation, #chat, and the #say form). renderWin() toggles
+  renderDetail's governor branch: <div class="gov-cols"> with <div class="gov-side"> (the team list, see
+  U11) and <div class="gov-chat"> (the compact header, the conversation #chat, the #say form). renderWin() toggles
   class "wide" on #win while the governor is selected. CSS: .win.wide is wider (min(...px, ...)) and full
   height (height: calc(100% - 24px)); .gov-cols is a two-column grid; .gov-chat .chat has no fixed
   max-height (it fills the column). The @media (max-width: 960px) block stacks it (.gov-cols one column,
@@ -125,15 +125,31 @@ U10 every person opens the same two-column window, with its history (owner, mock
         -> <li class="msg" data-kind="..."> as chatHtml() makes it (text through mdLite, class "md"; a
         subagent's prompt is labelled chat.task); no items -> <li class="msg-empty"> hist.empty.
   3D part: renderWin() makes the window wide for every person: selected.t 'c' (local or remote) and
-        'gov' (a building, a site and a remote governor stay narrow). renderDetail()'s citizen branch uses
-        the governor's layout: <div class="gov-cols"> with <div class="gov-side"> (head, progress, tools,
-        chain line, demo actions, and its team: a worker's lead row under hint.lead, a lead's own
-        workers under hint.team, each a data-sel row) and <div class="gov-chat"> (hint hist.title, the
-        #chat list from historyHtml(personHistory(c, chat entries)), the .newmsg chip, then the #say form
-        for a session or the read-only hint + find-lead button for a subagent). The per-call refresh keeps
-        that list current (chatScroll rules). A remote person: the same two columns, its own lines only.
+        'gov' (a building, a site and a remote governor stay narrow).
+
+U11 one window for the whole team (owner, mock v3): the left column never changes
+  (sim) esc moves into the sim section (same function). teamListHtml(terr, sel) -> the team list of
+        territory terr, exactly rosterGroups()'s group for it: one <button type="button" class="row"
+        data-sel="<row id>" aria-current="true|false"> per row, in order (the governor first,
+        data-sel="gov:<terr>"; depth-1 rows inside <li class="sub">), aria-current="true" on the row of
+        sel only (a governor selection with no terr is the home governor, govTerr); rows look as the
+        governor window's rows do today (dot, name, sub line, state pill). A selected person who is not
+        in the group (a remote person) gets its own row at the end, current.
+  renderDetail(): for a governor and for a citizen, <div class="gov-cols"> with <div class="gov-side">
+        = hint.team + teamListHtml(the person's territory, selected) and nothing else, and
+        <div class="gov-chat"> = a compact header <div class="p-head"> (dot, name, state pill, one line
+        of facts: repo · branch · doing for a citizen, the away note for an away governor, a thin
+        progress bar for a citizen), then hint hist.title, the #chat list (the governor: its
+        conversation; a citizen: historyHtml(personHistory(c, chat entries))), the .newmsg chip, then
+        the #say form for a session or the governor, or the read-only hint + find-lead button for a
+        subagent. A row click (data-sel) only changes `selected`: the list stays, the right side
+        switches. The demo actions (#demo only) go under the header.
+
+U12 no tool counters: renderDetail shows no Edit / Write / Bash / Read boxes (no d-tools anywhere in it)
+        and no longer updates them.
+
   New TEXT keys, zh and en: hist.title, hist.empty, hist.started, hist.stuck, hist.toLead, hist.toGov,
-        hist.waiting, hist.done, hist.left, hint.lead, chat.task.
+        hist.waiting, hist.done, hist.left, chat.task.
 
 Run: python3 -m unittest tests.test_agent_city_ux_page </dev/null
 """
@@ -578,11 +594,13 @@ class TestGovernorWindow(unittest.TestCase):
 
     def test_two_columns(self):
         branch = gov_branch()
-        for cls in ("gov-cols", "gov-side", "gov-chat"):
+        for cls in ("gov-cols", "gov-side", "gov-chat", "p-head"):
             self.assertIn('class="%s"' % cls, branch, cls)
         side = branch[branch.index('class="gov-side"'):branch.index('class="gov-chat"')]
-        self.assertIn("roster", side, "the team is in the left column")
-        self.assertIn("chatSectionHtml(", branch[branch.index('class="gov-chat"'):], "the chat is in the right column")
+        self.assertIn("teamListHtml(", side, "the team list is the left column")
+        right = branch[branch.index('class="gov-chat"'):]
+        self.assertIn("p-head", right, "the short facts head the right column")
+        self.assertIn("chatSectionHtml(", right, "the chat is in the right column")
 
     def test_wide_window(self):
         src = function_source("renderWin") or ""
@@ -714,7 +732,7 @@ out.acts = c.acts.map(a => a.text);
 out.atOk = c.acts.every(a => typeof a.at === 'number' && a.at > 1.6e9);
 out.want = [i18n('hist.started', { task: '登录 API' }), 'Edit ×2 · Read ×1', i18n('hist.stuck', { text: '支付超时要不要自动重试？' }),
   'Bash ×1', i18n('hist.toGov'), i18n('hist.waiting'), i18n('hist.done'), i18n('hist.left')];
-out.keys = ['hist.started', 'hist.stuck', 'hist.toLead', 'hist.toGov', 'hist.waiting', 'hist.done', 'hist.left', 'hist.title', 'hist.empty', 'hint.lead', 'chat.task'].map(k => i18n(k, { task: 'T', text: 'X' }));
+out.keys = ['hist.started', 'hist.stuck', 'hist.toLead', 'hist.toGov', 'hist.waiting', 'hist.done', 'hist.left', 'hist.title', 'hist.empty', 'chat.task'].map(k => i18n(k, { task: 'T', text: 'X' }));
 for (let i = 0; i < 200; i++) actLog(c, 'line ' + i);
 out.cap = { n: c.acts.length, keep: ACT_KEEP, last: c.acts[c.acts.length - 1].text, first: c.acts[0].text };
 const q = { question: 'q?', answer: 'a!', qa: [], stuck: true, state: 'asking', terr: A.id };
@@ -802,18 +820,73 @@ class TestPersonWindow(unittest.TestCase):
     def test_citizen_two_columns(self):
         b = citizen_branch()
         self.assertTrue(b, "renderDetail's citizen branch not found")
-        for cls in ("gov-cols", "gov-side", "gov-chat"):
+        for cls in ("gov-cols", "gov-side", "gov-chat", "p-head"):
             self.assertIn('class="%s"' % cls, b, cls)
+        side = b[b.index('class="gov-side"'):b.index('class="gov-chat"')]
+        self.assertIn("teamListHtml(", side, "U11: the same full team list on the left")
+        for gone in ("d-bar", "kv.branch", "kv.repo", "d-tools"):
+            self.assertNotIn(gone, side, "U11: the person's facts are not in the left column: " + gone)
         right = b[b.index('class="gov-chat"'):]
         self.assertIn("hist.title", right)
         self.assertIn("personHistory(", b + (function_source("renderDetail") or ""))
         self.assertIn("historyHtml(", function_source("renderDetail") or "")
-        self.assertIn("hint.lead", b, "a worker shows its lead on the left")
 
     def test_history_list_is_refreshed(self):
         src = function_source("renderDetail") or ""
         tail = src[src.rfind("if (chatTo)"):] if "if (chatTo)" in src else src
         self.assertIn("historyHtml(", tail, "the per-call refresh keeps the history current")
+
+
+TEAM_DRIVER = r"""
+const V = __payload.view, A = V.territories[0], B = V.territories[1];
+function buildLand(view){ landState(view); }
+apply({ type: 'snapshot', world: V, gov: { state: 'idle', terr: A.id }, governors: 1, asks: [], shows: [],
+  govs: [{ terr: A.id, state: 'idle' }], agents: [] });
+apply({ type: 'spawn', id: 'x1', role: 'worker', label: 'worker', task: 'one', terr: A.id });
+apply({ type: 'spawn', id: 'x2', role: 'worker', label: 'worker', task: 'two <b>', terr: A.id });
+apply({ type: 'spawn', id: 'y1', role: 'worker', label: 'worker', task: 'far', terr: B.id });
+const rows = html => [...html.matchAll(/<button\b[^>]*>/g)].map(m => {
+  const sel = /data-sel="([^"]*)"/.exec(m[0]), cur = /aria-current="([^"]*)"/.exec(m[0]);
+  return (sel ? sel[1] : '?') + (cur && cur[1] === 'true' ? '*' : ''); });
+const group = rosterGroups().find(g => g.terr === A.id).rows.map(r => r.id);
+__out = { group, a: A.id,
+  x2: rows(teamListHtml(A.id, { t: 'c', id: 'x2' })), gov: rows(teamListHtml(A.id, { t: 'gov', terr: A.id })),
+  home: rows(teamListHtml(A.id, { t: 'gov' })), other: rows(teamListHtml(A.id, { t: 'c', id: 'y1' })),
+  raw: teamListHtml(A.id, { t: 'c', id: 'x1' }) };
+"""
+
+
+class TestTeamList(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_sim(TEAM_DRIVER, {"view": two_territory_view()}, ("apply", "landState", "rosterGroups", "teamListHtml", "esc"))
+
+    def test_same_rows_as_the_roster(self):
+        g = self.r["group"]
+        self.assertEqual(g[0], "gov:" + self.r["a"])
+        self.assertEqual([x.rstrip("*") for x in self.r["x2"]], g)
+
+    def test_only_the_selected_row_is_current(self):
+        a = self.r["a"]
+        self.assertEqual([x for x in self.r["x2"] if x.endswith("*")], ["x2*"])
+        self.assertEqual([x for x in self.r["gov"] if x.endswith("*")], ["gov:%s*" % a])
+        self.assertEqual([x for x in self.r["home"] if x.endswith("*")], ["gov:%s*" % a], "no terr = the home governor")
+        self.assertEqual([x for x in self.r["other"] if x.endswith("*")], [], "someone of another repo is not in this list")
+
+    def test_rows_are_escaped_buttons(self):
+        raw = self.r["raw"]
+        self.assertIn('class="row"', raw)
+        self.assertNotIn("two <b>", raw)
+        self.assertTrue(sim_has("esc"), "esc lives in the sim section")
+
+
+class TestNoToolCounters(unittest.TestCase):
+
+    def test_gone(self):
+        src = function_source("renderDetail") or ""
+        self.assertNotIn("d-tools", src)
+        self.assertNotRegex(src, r"\[\s*'Edit'\s*,\s*'Write'\s*,\s*'Bash'\s*,\s*'Read'\s*\]")
 
 
 if __name__ == "__main__":

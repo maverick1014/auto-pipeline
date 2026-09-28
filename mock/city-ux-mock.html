@@ -145,6 +145,14 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .newmsg{all:unset;cursor:pointer;position:absolute;left:50%;transform:translateX(-50%);bottom:132px;z-index:2;background:var(--ink);color:var(--paper);border-radius:999px;padding:5px 12px;font:600 12.5px/1.2 var(--round);box-shadow:0 3px 0 rgba(42,43,69,.25)}
 /* U10: history rows: activity lines (small), questions and answers (a card), the conversation (bubbles) */
 .hist-h{margin:0;font-weight:600}
+.chat .msg-empty{text-align:center;font-size:12.5px;color:var(--ink-3);padding:4px 0}
+/* U11: the selected person's short facts, on top of the right column */
+.p-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding-bottom:10px;border-bottom:1.5px solid var(--line)}
+.p-name{font-weight:700;font-size:15px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.p-facts{font:12px/1.4 var(--mono);color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.p-facts code{font:inherit;color:var(--ink-2)}
+.p-bar{grid-column:1 / -1;height:6px}
+.p-note{grid-column:1 / -1}
 .chat .act{display:flex;gap:8px;align-items:baseline;font-size:12px;color:var(--ink-3);padding:0 4px}
 .chat .act time{font:11px/1.4 var(--mono);font-variant-numeric:tabular-nums;flex:none}
 .chat .qa{align-self:stretch;border:1.5px solid var(--berry);background:var(--ask-bg);color:var(--ask-ink);border-radius:14px;padding:7px 10px;font-size:13px}
@@ -154,10 +162,6 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .d-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13px;color:var(--ink-2)}
 .track{height:10px;border-radius:999px;background:var(--panel-2);border:1.5px solid var(--line);overflow:hidden}
 .track i{display:block;height:100%}
-.d-tools{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0}
-.d-tools div{background:var(--panel-2);border-radius:12px;padding:7px 9px}
-.d-tools dt{font:11px/1.2 var(--mono);color:var(--ink-3)}
-.d-tools dd{margin:0;font:700 15px/1.2 var(--display)}
 .say{display:flex;flex-direction:column;gap:8px}
 .say textarea{width:100%;min-height:64px;resize:vertical;font:14px/1.4 var(--round);color:var(--ink);background:var(--panel-2);border:1.5px solid var(--line);border-radius:12px;padding:9px 10px}
 .say .btn{align-self:flex-end}
@@ -233,12 +237,12 @@ const TEXT = {
   zh: { 'top.work':'干活', 'top.ask':'找总督', 'top.rest':'休息', 'top.done':'建成', 'btn.log':'动态', 'btn.zoomIn':'放大', 'btn.zoomOut':'缩小', 'btn.resetView':'回到默认视角', 'btn.close':'关闭', 'aria.canvas':'3D 小岛：每个小人是一个 agent',
     'aria.repos':'仓库：点一个飞过去', 'repo.all':'全部', 'repo.allAria':'看全部仓库', 'repo.goAria':'飞到 {name}', 'cap.toast':'已经是最远了 · 点「全部」看所有仓库',
     'chat.new':'有新消息 ↓', 'who.governor':'总督', 'gov.ownTag':'main manager · 主对话', 'pill.hall':'市政厅', 'hint.team':'团队', 'placeholder.say':'跟它说…', 'btn.send':'发送', 'chat.you.page':'你（页面）', 'chat.you.terminal':'你（终端）',
-    'kv.repo':'仓库', 'kv.branch':'分支', 'kv.doing':'在做', 'hist.title':'历史（新的在下面）', 'hist.empty':'还没有记录', 'hist.ask':'问与答', 'label.ask':'问：', 'label.answer':'答：', 'label.waiting':'等回答…', 'chat.task':'任务（派它时的话）', 'hint.lead':'组长', 'hint.readOnlySub':'它是子任务，这份对话只能看；有事去找组长。', 'status.waiting_reply':'等你回话', 'status.asking':'在问总督', 'status.build':'施工中', 'status.rest':'休息中',
+    'kv.repo':'仓库', 'kv.branch':'分支', 'kv.doing':'在做', 'hist.title':'历史（新的在下面）', 'gov.away':'不在', 'gov.awayShort':'总督不在：这个仓库现在没有 main manager 会话，问题直接交给你。', 'hist.empty':'还没有记录', 'hist.ask':'问与答', 'label.ask':'问：', 'label.answer':'答：', 'label.waiting':'等回答…', 'chat.task':'任务（派它时的话）', 'hint.lead':'组长', 'hint.readOnlySub':'它是子任务，这份对话只能看；有事去找组长。', 'status.waiting_reply':'等你回话', 'status.asking':'在问总督', 'status.build':'施工中', 'status.rest':'休息中',
     'm.theme':'主题', 'm.lang':'语言', 'm.auto':'跟系统', 'm.light':'浅色', 'm.dark':'深色', 'm.before':'之前', 'm.after':'之后', 'm.newmsg':'模拟一条新消息（U8）' },
   en: { 'top.work':'Working', 'top.ask':'Need governor', 'top.rest':'Resting', 'top.done':'Built', 'btn.log':'Activity', 'btn.zoomIn':'Zoom in', 'btn.zoomOut':'Zoom out', 'btn.resetView':'Reset the view', 'btn.close':'Close', 'aria.canvas':'3D island: each little person is one agent',
     'aria.repos':'Repos: click one to fly there', 'repo.all':'All', 'repo.allAria':'See every repo', 'repo.goAria':'Fly to {name}', 'cap.toast':'That is as far as it goes - click "All" to see every repo',
     'chat.new':'New messages ↓', 'who.governor':'Governor', 'gov.ownTag':'main manager · main conversation', 'pill.hall':'Town hall', 'hint.team':'Team', 'placeholder.say':'Say something to it…', 'btn.send':'Send', 'chat.you.page':'You (page)', 'chat.you.terminal':'You (terminal)',
-    'kv.repo':'Repo', 'kv.branch':'Branch', 'kv.doing':'Doing', 'hist.title':'History (newest at the bottom)', 'hist.empty':'Nothing yet', 'hist.ask':'Q&A', 'label.ask':'Q: ', 'label.answer':'A: ', 'label.waiting':'Waiting for an answer…', 'chat.task':'Task (what it was sent with)', 'hint.lead':'Lead', 'hint.readOnlySub':'This is a subtask; the conversation is view only - go to its lead for anything else.', 'status.waiting_reply':'Waiting on you', 'status.asking':'Asking the governor', 'status.build':'Building', 'status.rest':'Resting',
+    'kv.repo':'Repo', 'kv.branch':'Branch', 'kv.doing':'Doing', 'hist.title':'History (newest at the bottom)', 'gov.away':'Away', 'gov.awayShort':'The governor is away: no main manager session for this repo, questions come straight to you.', 'hist.empty':'Nothing yet', 'hist.ask':'Q&A', 'label.ask':'Q: ', 'label.answer':'A: ', 'label.waiting':'Waiting for an answer…', 'chat.task':'Task (what it was sent with)', 'hint.lead':'Lead', 'hint.readOnlySub':'This is a subtask; the conversation is view only - go to its lead for anything else.', 'status.waiting_reply':'Waiting on you', 'status.asking':'Asking the governor', 'status.build':'Building', 'status.rest':'Resting',
     'm.theme':'Theme', 'm.lang':'Language', 'm.auto':'System', 'm.light':'Light', 'm.dark':'Dark', 'm.before':'Before', 'm.after':'After', 'm.newmsg':'Simulate a new message (U8)' }
 };
 let LANG = 'zh';
@@ -526,41 +530,44 @@ function histItems(p){
   }).join('');
 }
 function select(p){ sel = p || null; renderWin(); drawMap(); buildTags(); }
-function rowOf(p, current){
-  const st = p.gov ? ['gov', t('status.waiting_reply')] : p.status === 'asking' ? ['you', t('status.asking')] : p.status === 'rest' ? ['rest', t('status.rest')] : ['build', t('status.build')];
-  return `<button class="row" type="button" data-sel="${p.id}" aria-current="${current}"><span class="rdot${p.gov ? ' gov' : ''}" style="--c:${p.color}"></span><span class="who"><b>${esc(who(p))}</b><span>${esc(p.gov ? t('gov.ownTag') : p.branch)}</span></span><span class="pill ${st[0]}">${st[1]}</span></button>`;
+/* the governor of a territory: the real one for auto-pipeline, an away one elsewhere */
+function govOf(terr){ return PEOPLE.find(q => q.gov && q.terr === terr) || { id: 'gov:' + terr, terr, gov: true, away: true, color: '#FFD36E', name: '总督' }; }
+function stateOf(p){
+  if (p.gov) return p.away ? ['walk', t('gov.away')] : ['gov', t('status.waiting_reply')];
+  return p.status === 'asking' ? ['you', t('status.asking')] : p.status === 'rest' ? ['rest', t('status.rest')] : ['build', t('status.build')];
 }
-/* U10: one window for every person: left = who / where / state (+ team), right = history + reply box */
+/* U11: the team list of one territory, always the same: governor first, then each lead with its workers
+   indented, then everyone else. The selected person is highlighted; a click only switches the right column. */
+function teamOf(terr){
+  const here = PEOPLE.filter(q => q.terr === terr && !q.gov), leads = here.filter(q => here.some(w => w.lead === q.id));
+  const rows = [{ p: govOf(terr), depth: 0 }];
+  for (const l of leads) { rows.push({ p: l, depth: 0 }); for (const w of here) if (w.lead === l.id) rows.push({ p: w, depth: 1 }); }
+  for (const q of here) if (!leads.includes(q) && !(q.lead && leads.some(l => l.id === q.lead))) rows.push({ p: q, depth: 0 });
+  return rows;
+}
+function teamList(terr, cur){
+  return `<ul class="roster">${teamOf(terr).map(({ p, depth }) => { const st = stateOf(p);
+    return `<li class="${depth ? 'sub' : ''}"><button class="row" type="button" data-sel="${p.id}" aria-current="${p.id === cur.id}"><span class="rdot${p.gov ? ' gov' : ''}" style="--c:${p.color}"></span><span class="who"><b>${esc(who(p))}</b><span>${esc(p.gov ? t('gov.ownTag') : p.branch)}</span></span><span class="pill ${st[0]}">${st[1]}</span></button></li>`; }).join('')}</ul>`;
+}
+/* U10 + U11: one window for the whole team. Left = the team list (never changes); right = the selected
+   person: a compact header (state, repo, branch, doing, progress), its history, and the reply box. */
 function renderWin(){
   const win = $('#win');
   if (!sel) { win.hidden = true; return; }
   win.hidden = false;
   win.classList.add('wide');
-  const p = sel, terr = TERR.find(x => x.id === p.terr);
-  $('#win-title').textContent = who(p);
-  let side;
-  if (p.gov) {
-    const team = PEOPLE.filter(q => q.terr === p.terr).map(q => `<li class="${q.gov ? '' : 'sub'}">${rowOf(q, q.id === p.id)}</li>`).join('');
-    side = `<div class="d-head"><span class="rdot gov"></span><div><div class="d-name">${t('who.governor')}</div><div class="d-role">${t('gov.ownTag')}</div></div><span class="pill gov">${t('pill.hall')}</span></div>
-      <dl class="kv"><dt>${t('kv.repo')}</dt><dd>${esc(terr.name)}</dd></dl>
-      <p class="hint">${t('hint.team')}</p><ul class="roster">${team}</ul>`;
-  } else {
-    const st = p.status === 'asking' ? ['you', t('status.asking')] : p.status === 'rest' ? ['rest', t('status.rest')] : ['build', t('status.build')];
-    const lead = p.lead && PEOPLE.find(q => q.id === p.lead), crew = PEOPLE.filter(q => q.lead === p.id);
-    const team = lead ? `<p class="hint">${t('hint.lead')}</p><ul class="roster"><li>${rowOf(lead, false)}</li></ul>`
-      : crew.length ? `<p class="hint">${t('hint.team')}</p><ul class="roster">${crew.map(q => `<li>${rowOf(q, false)}</li>`).join('')}</ul>` : '';
-    side = `<div class="d-head"><span class="rdot" style="--c:${p.color}"></span><div><div class="d-name">${esc(p.name)}</div><div class="d-role">${esc(p.role)}</div></div><span class="pill ${st[0]}">${st[1]}</span></div>
-      <div class="d-bar"><div class="track"><i style="width:${p.pct}%;background:${p.color}"></i></div><span>${p.pct}%</span></div>
-      <dl class="kv"><dt>${t('kv.repo')}</dt><dd>${esc(terr.name)}</dd><dt>${t('kv.branch')}</dt><dd><code>${esc(p.branch)}</code></dd><dt>${t('kv.doing')}</dt><dd>${esc(p.task)}</dd></dl>
-      <dl class="d-tools">${['Edit','Write','Bash','Read'].map((k, i) => `<div><dt>${k}</dt><dd>${p.tools[i]}</dd></div>`).join('')}</dl>
-      ${team}`;
-  }
-  const reply = p.talk
+  const p = sel, terr = TERR.find(x => x.id === p.terr), st = stateOf(p);
+  $('#win-title').textContent = terr.name + ' · ' + t('hint.team');
+  const facts = p.gov ? `${esc(terr.name)} · ${t('gov.ownTag')}` : `${esc(terr.name)} · <code>${esc(p.branch)}</code> · ${esc(p.task)}`;
+  const head = `<div class="p-head"><span class="rdot${p.gov ? ' gov' : ''}" style="--c:${p.color}"></span><div class="p-main"><div class="p-name">${esc(who(p))}</div><div class="p-facts">${facts}</div></div><span class="pill ${st[0]}">${st[1]}</span>
+    ${p.gov ? (p.away ? `<p class="hint p-note">${t('gov.awayShort')}</p>` : '') : `<div class="track p-bar"><i style="width:${p.pct}%;background:${p.color}"></i></div>`}</div>`;
+  const reply = p.talk || p.gov
     ? `<form class="say" onsubmit="return false"><textarea placeholder="${t('placeholder.say')}"></textarea><button class="btn" type="submit">${t('btn.send')}</button></form>`
     : `<p class="hint">${t('hint.readOnlySub')}</p>`;
   $('#detail').innerHTML = `<div class="gov-cols">
-    <div class="gov-side">${side}</div>
+    <div class="gov-side"><p class="hint">${t('hint.team')}</p>${teamList(p.terr, p)}</div>
     <div class="gov-chat">
+      ${head}
       <p class="hint hist-h">${t('hist.title')}</p>
       <ol class="chat" id="chat">${histItems(p)}</ol>
       <button class="newmsg" id="newmsg" type="button" hidden>${t('chat.new')}</button>
@@ -572,7 +579,7 @@ function renderWin(){
 }
 const nearBottom = ol => ol.scrollHeight - ol.scrollTop - ol.clientHeight < 40;
 $('#win-close').addEventListener('click', () => select(null));
-$('#detail').addEventListener('click', e => { const b = e.target.closest('[data-sel]'); if (b) select(PEOPLE.find(p => p.id === b.dataset.sel)); });
+$('#detail').addEventListener('click', e => { const b = e.target.closest('[data-sel]'); if (!b) return; const id = b.dataset.sel; select(PEOPLE.find(p => p.id === id) || (id.startsWith('gov:') ? govOf(id.slice(4)) : null)); });
 /* U8: a new line keeps the owner's scroll position unless the owner is already at the bottom */
 $('#m-newmsg').addEventListener('click', () => {
   if (!sel) { select(PEOPLE[0]); return; }
@@ -584,12 +591,12 @@ $('#m-newmsg').addEventListener('click', () => {
 
 /* ---------- notes ---------- */
 const NOTES = {
-  zh: `<h2>city-ux mock v2 · 怎么点</h2>
+  zh: `<h2>city-ux mock v3 · 怎么点</h2>
 <ol>
 <li><b>U1</b> 点上面的仓库标签（比如 <code>docs-site</code>）：地图平滑飞过去，角度不变。点 <b>全部</b>：看到所有仓库。用 − 或捏合缩小：到大约两块领地宽就停住（右下角提示一下）。</li>
 <li><b>U6</b> 点 worker 头上的问题气泡「支付超时要不要自动重试？」或任意名字标签：打开那个人的窗口，和点小人一样。点小人旁边 28 像素内也算点中。红色「?」保持原样（打开回答面板）。</li>
 <li><b>U4 + U5</b> 点总督头上的「等你回话…」：总督窗口变宽、占满高度。左边 = 总督 + 团队，右边 = 对话（高的一栏）+ 输入框。说明文字和 派出 / 回答 两个计数都去掉了。手机宽度（窗口窄于 960px）上下叠放，和现在一样。</li>
-<li><b>U10（v2 新增）</b> 点任何一个人（小人、头顶标签，或窗口里团队名单的一行）：都打开同样的宽窗口。左边 = 是谁、在哪、在做什么（进度、工具次数），再加团队：task manager 显示它的 worker，worker 显示它的组长。右边 = 它的历史，新的在下面：动态行（灰色小字）、问与答（粉色卡片）、对话（气泡，简单 markdown）。能对话的人（总督、task manager 这种会话）下面有输入框；子任务（worker）只能看，并提示去找组长。试试：点 worker 的问题气泡，再点左边的组长那一行。</li>
+<li><b>U10 + U11 + U12（v3）</b> 点任何一个人（小人、头顶标签）：打开<b>这个仓库的团队窗口</b>。左边永远是同一份完整名单（总督在最上面，然后是 task manager 和它的 worker（缩进），再是其他人），当前选中的人高亮。点名单里任何一行，<b>只换右边</b>，左边不变，所以总督永远只差一次点击。右边最上面是这个人的简短信息（状态、仓库 · 分支 · 在做、进度条），下面是它的历史（动态行、问与答、对话），最下面是输入框（能对话的人）或"只能看"提示（子任务）。工具次数（Edit / Write / Bash / Read）去掉了。试试：点 worker 的问题气泡 → 点左边的「总督」→ 再点「task manager · 设置页」。在 shop 仓库点 worker · 导出 CSV：名单里总督显示「不在」，照样能点。</li>
 <li><b>U9</b> 对话里的表格、列表、代码、粗体按简单 markdown 显示；<code>&lt;!-- buddy: … --&gt;</code> 这类注释不显示；HTML 标签只当文字显示，不会执行。</li>
 <li><b>U8</b> 在总督对话里往上滚，然后点上面的「模拟一条新消息」：位置不动，出现「有新消息 ↓」小标签；点它才跳到底部。本来就在底部时，新消息照常自动滚到底。</li>
 <li><b>U7</b> 切换上面的 U7「之前 / 之后」：之前每块领地 26 格、中间空地大；之后 22 格，河更近，6 个仓库一屏装得下。领地形状和位置顺序不变。</li>
@@ -612,12 +619,12 @@ const NOTES = {
 <tr><th>U7</th><td>领地大小和间距在服务器布局（agent_city.py）里，只改页面会切断河流和海岸线。提议：每块领地 26 格 → 22 格（mock v1 画的是 20：城镇规划的地块离市政厅有 8 格，20 会让河压到地块上；要 20 就得重画 5 个城镇规划）（城镇本身不变小，只是周围空地和河之间的距离变小），每个仓库的形状和相对位置不变。切换「之前 / 之后」时缩放不变，可以直接比较一屏能看到多少。主经理已同意改服务器，等另一个分支合并后再动手。</td></tr>
 <tr><th>全部</th><td>标签行最前面放「全部」，它是唯一能超过缩小上限的入口；⌂ 按钮仍是「回到默认视角」。</td></tr>
 </table>`,
-  en: `<h2>city-ux mock v2 · what to click</h2>
+  en: `<h2>city-ux mock v3 · what to click</h2>
 <ol>
 <li><b>U1</b> Click a repo tag at the top (e.g. <code>docs-site</code>): the map flies there smoothly, same angle. Click <b>All</b>: every repo. Zoom out with − or a pinch: it stops at about two territories across (a small hint shows).</li>
 <li><b>U6</b> Click the worker's question bubble or any name tag: that person's window opens, same as clicking the person. A click within 28 px of a person also picks it. The red "?" is unchanged (opens the answer panel).</li>
 <li><b>U4 + U5</b> Click the governor's "Waiting on you…" bubble: the governor window is wide and full height. Left = governor + team, right = the conversation (tall column) + reply box. The explainer text and the Sent / Answered counters are gone. Phone width (under 960 px): stacked, as today.</li>
-<li><b>U10 (new in v2)</b> Click any person (the figure, a head tag, or a team row in the window): the same wide window opens. Left = who, where, what it does (progress, tool counts), plus its team: a task manager lists its workers, a worker shows its lead. Right = its history, newest at the bottom: activity lines (small grey), questions and answers (pink card), the conversation (bubbles, simple markdown). People you can talk to (the governor, a task manager session) get a reply box; a subtask (worker) is view only and points to its lead. Try: click the worker's question bubble, then its lead's row on the left.</li>
+<li><b>U10 + U11 + U12 (v3)</b> Click any person (the figure or a head tag): <b>that repo's team window</b> opens. The left column is always the same full list (the governor on top, then each task manager with its workers indented, then everyone else), the selected person highlighted. Clicking any row <b>only switches the right side</b>; the left never changes, so the governor is always one click away. On top of the right side: the person's short facts (state, repo · branch · doing, progress bar); below it the history (activity lines, Q&amp;A, conversation); at the bottom the reply box (people you can talk to) or the view-only hint (subtasks). The Edit / Write / Bash / Read counters are gone. Try: the worker's question bubble -> the governor on the left -> "task manager · 设置页". In the shop repo click "worker · 导出 CSV": the list shows the governor as away, still clickable.</li>
 <li><b>U9</b> Tables, lists, code and bold in the conversation show as simple markdown; <code>&lt;!-- buddy: … --&gt;</code> comments are hidden; HTML tags show as plain text, never run.</li>
 <li><b>U8</b> Scroll up in the governor conversation, then click "Simulate a new message" above: the position stays, a "New messages ↓" chip shows; click it to jump down. Already at the bottom: new lines scroll down as before.</li>
 <li><b>U7</b> Switch U7 "Before / After" above: before, each territory is 26 tiles with a lot of empty land; after, 22 tiles, rivers closer, 6 repos fit on one screen. Shapes and order stay.</li>
