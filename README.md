@@ -27,6 +27,7 @@ Scripts, not agents (cost no tokens):
   bin/agent-city.sh       starts/stops the agent city visualiser, a local server
   bin/agent-city-shim     the ~/.local/bin/agent-city command; runs the newest installed plugin's agent-city.sh
   bin/agent-city-hook.sh  hook that feeds the city; off costs a `test -f`, on appends one JSON line
+  bin/agent-close-case.sh  UserPromptSubmit hook: "close case" in the prompt injects the close-case rule for the session's role
 ```
 
 ## Who does what
@@ -149,6 +150,7 @@ and the packed skills/agents, and never touches `agent.conf`, `agent_*.txt`, `CL
 ./bin/agent-resume.sh            # runs by itself at startup (auto_resume=yes); run by hand only if you turned that off
 /auto-pipeline:dispatch          # main manager: route one task
 /auto-pipeline:merge             # main manager: E2E, then merge deputy
+/auto-pipeline:close-case        # main manager: settle one CLOSE CASE report, or wrap up the whole repo
 /auto-pipeline:init              # one-time project setup, prints the permissions block
 ./bin/agent-settings.sh          # show or change agent.conf, no agent
 bin/agent-settings.sh language zh   # talk to the human in Chinese
