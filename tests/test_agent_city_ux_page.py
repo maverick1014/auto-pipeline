@@ -736,6 +736,14 @@ class TestChatWiring(unittest.TestCase):
         self.assertNotRegex(src, r"ol\.innerHTML\s*=\s*html;\s*ol\.scrollTop\s*=\s*ol\.scrollHeight",
                             "the old unconditional jump to the bottom is gone")
 
+    def test_chip_and_place_survive_refreshes(self):
+        """Headless E2E: the chip showed for one refresh and was hidden by the next; a rebuilt card (the person's
+        state changed) threw the owner back to the bottom. The chip stays until clicked or the owner is back at
+        the bottom; a rebuild of the SAME chat keeps its scroll place (prev = the state saved before the rebuild)."""
+        src = function_source("renderDetail") or ""
+        self.assertNotRegex(src, r"hidden\s*=\s*!\s*res\.chip", "a later refresh must not hide the chip again")
+        self.assertNotRegex(src, r"rebuilt\s*\?\s*null", "a rebuild of the same chat keeps its place")
+
     def test_new_messages_chip(self):
         for key in ("chat.new",):
             self.assertEqual(text_keys(key), 2, key)
