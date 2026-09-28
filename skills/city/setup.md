@@ -129,7 +129,10 @@ page; they only send, and show up in the city on your Mac.
    `<worker name>.<account subdomain>.workers.dev`.
    You should see: the host listed under the allowed domains, and the
    variable listed.
-5. Start a new cloud session (a running one does not see the change).
+5. Start a new cloud session (a running one does not see the change),
+   opened on ONE repo that carries the cloud pack. A session opened on
+   several repos starts above them and runs none of their hooks, so it
+   sends nothing.
    You should see: at its start, the line
    `CITY: sending to the team relay <worker name>.<account subdomain>.workers.dev`.
 
