@@ -68,7 +68,8 @@ CONTRACT
       outline rules as the ground).
     lanePaths(view) -> [{pts: [[x, z], ...]}]: smooth centre lines of the
       road ('r') and track ('t') tiles, through bridges ('B'):
-      - every 'r' and 't' centre within 0.3 of a lane line;
+      - every 'r' and 't' centre within 0.3 of a lane line, except a lone tile with no
+        road/track/bridge on any side (idea-city C11: it draws nothing);
       - every lane point within 0.75 of an 'r' 't' 'B' centre, and at least
         0.55 from every plot 'P' and hall 'H' centre;
       - smooth: inside one lane, consecutive pieces turn at most 35 degrees.
@@ -555,7 +556,8 @@ for (const [name, view] of Object.entries(views)) {
     const u = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0; best = Math.min(best, Math.hypot(ax + dx * u - x, az + dz * u - z)); } return best; };
   const laneTiles = tiles.filter(t => 'rtB'.includes(t[2])), blocked = tiles.filter(t => 'PH'.includes(t[2]));
   res.lanes = { n: paths.length,
-    uncovered: tiles.filter(t => 'rt'.includes(t[2]) && segDist(t[0] + .5, t[1] + .5) > .3).slice(0, 5),
+    // idea-city C11: a lone road/track tile (no road/track/bridge on any side) draws nothing
+    uncovered: tiles.filter(t => 'rt'.includes(t[2]) && n4(t[0], t[1], ch => 'rtB'.includes(ch)) > 0 && segDist(t[0] + .5, t[1] + .5) > .3).slice(0, 5),
     offRoad: pts.filter(([x, z]) => !laneTiles.some(t => Math.hypot(t[0] + .5 - x, t[1] + .5 - z) <= .75)).slice(0, 5),
     onPlot: pts.filter(([x, z]) => blocked.some(t => Math.hypot(t[0] + .5 - x, t[1] + .5 - z) < .55)).slice(0, 5) };
   let turnMax = 0, turnAt = null;

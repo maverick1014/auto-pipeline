@@ -19,8 +19,8 @@ CONTRACT
       <script src="assets/vendor/GLTFLoader.js?v=__CITY_ASSET_V__">
       <script src="assets/vendor/SkeletonUtils.js?v=__CITY_ASSET_V__">
     const ASSET = 'assets/', const ASSET_V = '__CITY_ASSET_V__' and a const
-    MODELS = [...] list of '<pack>/<name>' entries (names unique across
-    packs); each is loaded from ASSET + entry + '.glb?v=' + ASSET_V.
+    MODELS = [...] list of '<pack>/<name>' entries (lib keys each by its full
+    entry, idea-city C8); each is loaded from ASSET + entry + '.glb?v=' + ASSET_V.
     Live mode: new EventSource('/events').
     Demo mode (the mock's fake agents) when location.hash is '#demo' or the page
     is opened as a file:// URL. Live mode never runs the fake agents.
@@ -353,10 +353,8 @@ class TestModes(unittest.TestCase):
         self.assertRegex(function_source("loadAll") or "", r"ASSET \+ key \+ '\.glb\?v=' \+ ASSET_V")
         self.assertRegex(function_source("loadTex") or "", r"ASSET \+ path \+ '\?v=' \+ ASSET_V")
         self.assertGreater(len(models()), 20)
-        names = [m.split("/")[1] for m in models()]
-        self.assertEqual(sorted(set(n for n in names if names.count(n) > 1)), ["building-a", "building-b"],
-                         "a model is found by its name alone: new names must be unique (commercial/industrial "
-                         "building-a/-b were already shared before Balance)")
+        # idea-city C8: lib keys every model by its full entry; tests/test_agent_city_idea_page.py
+        # checks that no table names a bare name two packs share
 
 
 class TestCost(unittest.TestCase):
@@ -479,6 +477,14 @@ def constants_prelude():
     for name, value in re.findall(r"^const ([A-Z][A-Z0-9_]*) = ([^;\n]+);\s*$", inline_script(), re.M):
         if re.fullmatch(r"(?:[\d.\s/*+\-()]|Math\.PI)+|'[^'\\]*'", value.strip()):
             out.append("var %s = %s;" % (name, value.strip()))
+    # idea-city C1: the page's texts (const TEXT = {zh, en}) and T(key, vars), so a harness that runs a
+    # page function which shows text gets the same words the page shows (LANG is a plain const above)
+    lit = const_object("TEXT")
+    if lit:
+        out.append("var TEXT = %s;" % lit)
+    src = function_source("T")
+    if src:
+        out.append(src)
     return "\n".join(out)
 
 
@@ -1880,7 +1886,7 @@ __out = { spots: slots.map(r => [r.x, r.y, tileAt(Math.floor(r.x), Math.floor(r.
     def test_building_models_per_type(self):
         look = js_value(const_object("ERA_LOOK") or "null")
         self.assertIsInstance(look, dict, "Balance: const ERA_LOOK = {village, town, city} replaces BUILD_MODELS")
-        names = {m.split("/")[1] for m in models()}
+        names = set(models()) | {m.split("/")[1] for m in models() if [x.split("/")[1] for x in models()].count(m.split("/")[1]) == 1}
         for era in ("village", "town", "city"):
             b = look[era]["build"]
             self.assertEqual(set(b), {"house", "shop", "tower", "workshop", "library"})
@@ -1897,7 +1903,7 @@ __out = { spots: slots.map(r => [r.x, r.y, tileAt(Math.floor(r.x), Math.floor(r.
         look = js_value(const_object("TERRAIN_LOOK") or "null")
         self.assertIsInstance(look, dict)
         self.assertEqual(set(look), {"grassland", "mountain", "desert", "forest", "coast"})
-        names = {m.split("/")[1] for m in models()}
+        names = set(models()) | {m.split("/")[1] for m in models() if [x.split("/")[1] for x in models()].count(m.split("/")[1]) == 1}
         for t, v in look.items():
             with self.subTest(terrain=t):
                 self.assertRegex(v["ground"], r"^#[0-9A-Fa-f]{6}$")
@@ -2007,7 +2013,7 @@ class TestEraLook(unittest.TestCase):
         look = js_value(const_object("ERA_LOOK") or "null")
         self.assertIsInstance(look, dict)
         self.assertEqual(set(look), {"village", "town", "city"})
-        names = {m.split("/")[1] for m in models()}
+        names = set(models()) | {m.split("/")[1] for m in models() if [x.split("/")[1] for x in models()].count(m.split("/")[1]) == 1}
         houses = {}
         for era, v in look.items():
             with self.subTest(era=era):
