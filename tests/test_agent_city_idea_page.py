@@ -29,7 +29,9 @@ CONTRACT (bin/agent-city.html)
       mid = {x: Math.round(view.x0 + view.w / 2), z: Math.round(view.z0 + view.h / 2)} (landState's mid).
       No land tile -> {hx: 0, hz: 0, cx: 0, cz: 0}. landState sets land = landBox(view).
     landSpread / distMax / camTarget use that box and its centre (cx, cz; missing = 0). A side under
-      13 counts as 13 (a small land zooms like one fresh territory).
+      13 counts as 13 (a small land zooms like one fresh territory). landBox may carry more (e.g. the
+      land's outline points): the fit rules below also hold for the real land tiles of a view (an L of
+      territories leaves a corner of its box empty -- the land itself must be the thing centred).
     At cam.dist = distMax(), from any angle and on any stage: the whole box is on the stage (no corner
       past 95% of the half-stage), its middle within 12% of the half-stage from the stage middle, and at the worst angle it
       fills 74% to 88% of the half-stage on its tighter side.
@@ -217,6 +219,38 @@ for (const L of boxes) for (const [W, H] of [[874, 710], [358, 394], [1400, 700]
   out.fit.push({ L, W, H, maxFill: Math.max(...shots.map(s => s.fill)), maxOff: Math.max(...shots.map(s => Math.max(Math.abs(s.cx), Math.abs(s.cy)))),
     maxEdge: Math.max(...shots.map(s => s.edge)), farShort: shots.filter(s => !(s.camFar >= s.far)).length });
 }
+// ---- C7: the fit on the REAL land (every non-void tile), not its bounding box: an L-shaped land leaves a
+// corner of its box empty, and centring the box then leaves the land itself off-centre (seen headless, demo)
+out.content = [];
+if (typeof box.landBox === 'function') for (const [name, v] of Object.entries(lb)) {
+  if (name === 'empty') continue;
+  const mx = Math.round(v.x0 + v.w / 2), mz = Math.round(v.z0 + v.h / 2), pts = [];
+  for (let r = 0; r < v.h; r++) for (let c = 0; c < v.w; c++) if (v.rows[r][c] !== ' ') {
+    const X = v.x0 + c - mx, Z = v.z0 + r - mz;
+    for (const [dx, dz] of [[0, 0], [1, 0], [0, 1], [1, 1]]) pts.push([X + dx, Z + dz]);
+  }
+  for (const [W, H] of [[1248, 650], [874, 710], [358, 394]]) {
+    const shots = [];
+    for (let k = 0; k < 12; k++) {
+      box.W = W; box.H = H; box.land = box.landBox(v);
+      Object.assign(box.cam, { az: k * Math.PI / 12, el: box.EL_DEFAULT, tx: .3, tz: 2.8 });
+      box.cam.dist = box.distMax(); box.camLiftNow = 0;
+      for (let i = 0; i < 40; i++) box.updateCamera();
+      const P = [camera.position.x, camera.position.y, camera.position.z], Lk = camera.look;
+      const f = norm(sub(Lk, P)), r = norm(cross(f, [0, 1, 0])), u = cross(r, f);
+      const t = Math.tan(box.FOV * Math.PI / 360), a = W / H;
+      let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+      for (const [x, z] of pts) for (const y of [-1.05, 0]) {
+        const d = sub([x, y, z], P), zc = dot(d, f), nx = dot(d, r) / (zc * t * a), ny = dot(d, u) / (zc * t);
+        x0 = Math.min(x0, nx); x1 = Math.max(x1, nx); y0 = Math.min(y0, ny); y1 = Math.max(y1, ny);
+      }
+      shots.push({ fill: Math.max((x1 - x0) / 2, (y1 - y0) / 2), off: Math.max(Math.abs((x0 + x1) / 2), Math.abs((y0 + y1) / 2)),
+        edge: Math.max(-x0, x1, -y0, y1) });
+    }
+    out.content.push({ name, W, H, maxFill: Math.max(...shots.map(s => s.fill)), maxOff: Math.max(...shots.map(s => s.off)),
+      maxEdge: Math.max(...shots.map(s => s.edge)) });
+  }
+}
 // ---- C2: nothing fades once zoomed out
 box.W = 874; box.H = 710; box.land = { hx: 13, hz: 13, cx: 0, cz: 0 };
 box.heightAt = (x, z) => (x >= 1 && x < 3 && z >= 1 && z < 3 ? 3.2 : 0) || (Math.abs(x) < 2 && Math.abs(z) < 2 ? 3 : 0);
@@ -285,6 +319,18 @@ class TestZoomedOutFit(unittest.TestCase):
                 self.assertLessEqual(r["maxEdge"], .95, "part of the land is cut off")
                 self.assertLessEqual(r["maxOff"], .12, "the land is not in the middle")
                 self.assertGreaterEqual(r["maxFill"], .74, "the land is too small")
+                self.assertLessEqual(r["maxFill"], .88)
+
+    def test_the_real_land_is_centred_and_fills(self):
+        # measured on every land tile of the view (the demo is an L of three territories plus sea)
+        got = camera_results()["content"]
+        self.assertTrue(got)
+        for r in got:
+            with self.subTest(view=r["name"], stage=(r["W"], r["H"])):
+                self.assertLessEqual(r["maxEdge"], .95, "part of the land is cut off")
+                self.assertLessEqual(r["maxOff"], .12, "the land itself is not in the middle")
+                if r["name"] != "quadrant":  # 26 x 13 tiles: under one fresh territory, fitted as 13 x 13 halves
+                    self.assertGreaterEqual(r["maxFill"], .74, "the land is too small")
                 self.assertLessEqual(r["maxFill"], .88)
 
     def test_far_plane_reaches_the_land(self):
