@@ -477,6 +477,7 @@ vm.runInContext("setGovState('busy')", box);
 out.noTerrState = vm.runInContext('govState', box);
 box.govSay('c', 'hello', 5);
 out.phantom = box.govsByTerr.has('c');
+out.saysAnyway = box.govTalk('c');  // the demo has no presence entries at all: its governor still talks
 process.stdout.write(JSON.stringify(out));
 """
 
@@ -509,6 +510,7 @@ class TestGovernorBubbles(unittest.TestCase):
 
     def test_talking_never_makes_a_governor_present(self):
         self.assertFalse(self.results()["phantom"], "govsByTerr is who is present; govSay must not add to it")
+        self.assertEqual(self.results()["saysAnyway"], "hello", "talk is kept apart from presence (the demo has none)")
 
     def test_wiring(self):
         self.assertIn("setGovState(ev.state, ev.terr)", tp.case_block("gov") or "")
