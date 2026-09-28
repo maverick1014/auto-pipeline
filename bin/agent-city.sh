@@ -106,7 +106,7 @@ do_start() {
     --idle-min "$city_idle_min" --gov-wait-sec "$city_governor_wait_sec" \
     --relay-sec "$city_relay_sec" \
     --decisions "$CITY_HOME/decisions.jsonl" --world "$CITY_HOME/world.json" \
-    --start-dir "$(pwd -P)" \
+    --start-dir "$(pwd -P)" --lang "$language" \
     </dev/null >/dev/null 2>&1 &
   disown "$!" 2>/dev/null || true
 
@@ -178,7 +178,7 @@ do_send() {
     mkdir -p "$CITY_DIR"
     idle_sec=$((city_idle_min * 60))
     nohup python3 "$RELAY_MODULE" send --dir "$CITY_DIR" \
-      --relay-sec "$city_relay_sec" --idle-sec "$idle_sec" \
+      --relay-sec "$city_relay_sec" --idle-sec "$idle_sec" --lang "$language" \
       </dev/null >/dev/null 2>&1 &
     disown "$!" 2>/dev/null || true
 

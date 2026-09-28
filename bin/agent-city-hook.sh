@@ -128,7 +128,7 @@ find_git_folder() {
 # JSON-escaped path RAW (tool_input.file_path/notebook_path), taken
 # relative to the plain FOLDER that holds .git, JSON-escaped; "" when
 # FOLDER is "", RAW is outside it, or the relative path is over 300 bytes.
-# Same boundary as classify_path, but this one prints the path itself.
+# The server decides the building kind from this path (idea-city C4).
 rel_file() {
     local raw=$1 folder=$2 plain rel
     [ -n "$folder" ] || return 0
@@ -140,54 +140,6 @@ rel_file() {
     [ -n "$rel" ] || return 0
     [ ${#rel} -le 300 ] || return 0
     escape_json "$rel"
-}
-
-# classify_path RAW FOLDER — the kind of work for the JSON-escaped path RAW
-# (tool_input.file_path/notebook_path), taken relative to the plain FOLDER
-# that holds .git ("" when there is none); outside FOLDER, or when FOLDER is
-# "", classify by the base name alone. Folder rules match any path segment;
-# name rules match the base name; first rule that fits wins. Never prints
-# the path itself.
-classify_path() {
-    local raw=$1 folder=$2 plain rel base dirpart segs
-    plain=$(unescape "$raw")
-    rel=
-    if [ -n "$folder" ]; then
-        case "$plain" in
-            "$folder"/*) rel=${plain#"$folder"/} ;;
-        esac
-    fi
-    [ -n "$rel" ] || rel=${plain##*/}
-    case "$rel" in
-        */*) base=${rel##*/}; dirpart=${rel%/*} ;;
-        *) base=$rel; dirpart= ;;
-    esac
-    segs="/$dirpart/"
-    case "$segs" in
-        */test/*|*/tests/*|*/__tests__/*|*/spec/*|*/e2e/*) printf test; return ;;
-    esac
-    case "$base" in
-        test_*|*_test.*|*.test.*|*.spec.*|*_spec.*|*Test.*) printf test; return ;;
-    esac
-    case "$segs" in
-        */docs/*|*/doc/*|*/requirements/*) printf doc; return ;;
-    esac
-    case "$base" in
-        *.md|*.markdown|*.mdx|*.rst|*.adoc|*.txt) printf doc; return ;;
-    esac
-    case "$segs" in
-        */components/*|*/ui/*|*/views/*|*/pages/*|*/widgets/*|*/screens/*) printf ui; return ;;
-    esac
-    case "$base" in
-        *.html|*.htm|*.css|*.scss|*.sass|*.less|*.jsx|*.tsx|*.vue|*.svelte) printf ui; return ;;
-    esac
-    case "$segs" in
-        */bin/*|*/scripts/*|*/.github/*) printf script; return ;;
-    esac
-    case "$base" in
-        *.sh|*.bash|*.zsh|*.fish|*.ps1|*.bat|*.cmd|*.mk|Makefile|Dockerfile) printf script; return ;;
-    esac
-    printf other
 }
 
 chunk=
@@ -263,7 +215,6 @@ desc=
 sub=
 q=
 klen=
-kind=
 file=
 case "$tool" in
     Agent|Task|AskUserQuestion)
@@ -297,7 +248,6 @@ case "$tool" in
         if [ "$ev" = PostToolUse ] && [ -n "$kval" ]; then
             case "$tool" in
                 Edit|Write|MultiEdit|NotebookEdit)
-                    kind=$(classify_path "$kval" "$git_folder")
                     file=$(rel_file "$kval" "$git_folder")
                     ;;
             esac
@@ -323,8 +273,8 @@ case "$ev" in
         ;;
 esac
 
-printf '{"ev":"%s","sid":"%s","aid":"%s","at":"%s","tool":"%s","nt":"%s","proj":"%s","role":"%s","desc":"%s","sub":"%s","q":"%s","klen":"%s","repo":"%s","kind":"%s","ask":"%s","wt":"%s","file":"%s"}\n' \
-    "$ev" "$sid" "$aid" "$at" "$tool" "$nt" "$proj" "$role" "$desc" "$sub" "$q" "$klen" "$repo" "$kind" "$ask" "$wt" "$file" \
+printf '{"ev":"%s","sid":"%s","aid":"%s","at":"%s","tool":"%s","nt":"%s","proj":"%s","role":"%s","desc":"%s","sub":"%s","q":"%s","klen":"%s","repo":"%s","ask":"%s","wt":"%s","file":"%s"}\n' \
+    "$ev" "$sid" "$aid" "$at" "$tool" "$nt" "$proj" "$role" "$desc" "$sub" "$q" "$klen" "$repo" "$ask" "$wt" "$file" \
     >> "$dir/events.jsonl" 2>/dev/null
 
 exit 0
