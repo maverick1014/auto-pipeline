@@ -903,7 +903,8 @@ class TestTeamList(unittest.TestCase):
     def test_same_rows_as_the_roster(self):
         g = self.r["group"]
         self.assertEqual(g[0], "gov:" + self.r["a"])
-        self.assertEqual([x.rstrip("*") for x in self.r["x2"]], g)
+        # every list below is taken after the driver added one other member's person to territory A
+        self.assertEqual([x.rstrip("*") for x in self.r["x2"]], g + ["r:dev-ann:s:9"])
 
     def test_only_the_selected_row_is_current(self):
         a = self.r["a"]
