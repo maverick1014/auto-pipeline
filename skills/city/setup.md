@@ -73,8 +73,14 @@ You should see: `JOINED: <repo id> -> <host>`. This saves the address and key to
 3. Open a cloud session, click the cloud environment menu in the session's title bar, then "Edit".
 4. Add an environment variable named `AGENT_CITY_RELAY`, value: `<relay address> <team key>` (one space between them, typed there yourself, never in a chat).
 5. Under "Network access", add the relay host to the allowed domains: `<worker name>.<account subdomain>.workers.dev`.
-6. Start a new cloud session, opened on ONE repo that carries the cloud pack. A session opened on several repos starts above them and runs none of their hooks, so it sends nothing.
+6. Start a new cloud session, opened on ONE repo that carries the cloud pack. A session opened on several repos starts above them and runs none of their hooks, so it sends nothing (step 7 fixes that).
 You should see: at the session's start, the line `CITY: sending to the team relay <worker name>.<account subdomain>.workers.dev`.
+7. For sessions opened on several repos: in the same "Edit" screen, paste this into the Setup script (keep step 1 too):
+   ```
+   git clone --depth 1 https://github.com/maverick1014/auto-pipeline /tmp/ap-city && bash /tmp/ap-city/bin/agent-city.sh cloud-hooks
+   ```
+   Then start a new cloud session on several repos.
+   You should see: `CITY: user hooks written to .../settings.json` (or `CITY: user hooks already there`), and the session shows up in the city like step 6.
 
 ## 8. Check it works
 1. On a second machine, or in a cloud session, join the same repo (section 6, or the cloud secret from section 7).
