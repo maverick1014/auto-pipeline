@@ -210,7 +210,7 @@ class TestWindowWiring(unittest.TestCase):
                 self.assertNotIn(name, body)
 
     def test_render_win(self):
-        body = function_source("renderWin") or ""
+        body = zh_resolved(function_source("renderWin") or "")  # idea-city C1
         self.assertTrue(body, "renderWin() not found")
         for needle in ("'#win'", "winState()", "'#detail'", "'#log'", "'#win-title'", "动态", "hidden"):
             with self.subTest(needle=needle):

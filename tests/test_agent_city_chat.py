@@ -718,12 +718,12 @@ const box = { byId: id => people[id], nameOf: c => c.label + ' · ' + c.task };
 vm.createContext(box); vm.runInContext(fns, box);
 process.stdout.write(JSON.stringify(['s:tm1', 'a9', 'gov:t1', 's:gone'].map(t => box.chatDisplayName(t))));
 """
-        out = run_node(js, {"fns": page_fns("chatDisplayName")})
+        out = run_node(js, {"fns": constants_prelude() + "\n" + page_fns("chatDisplayName")})
         self.assertEqual(out, ["task-manager · shop", "worker · form", "总督", "s:gone"],
                          "E2E 2026-09-27: the log said 你 → tm1 instead of the name")
 
     def test_window_has_the_conversation_and_the_box(self):
-        body = function_source("renderDetail") or ""
+        body = zh_resolved(function_source("renderDetail") or "")  # idea-city C1
         for needle in ("chatHtml(", 'id="chat"', 'id="say"', 'id="say-text"', 'maxlength="4000"', "发送", "组长"):
             with self.subTest(needle=needle):
                 self.assertIn(needle, body)
@@ -766,7 +766,7 @@ vm.runInContext(fns, box);
   process.stdout.write(JSON.stringify([down, refused, took, (box.chats.get('s:tm1') || {}).error || '']));
 })();
 """
-        down, refused, took, _ = run_node(js, {"fns": page_fns("sendChat")})
+        down, refused, took, _ = run_node(js, {"fns": constants_prelude() + "\n" + page_fns("sendChat")})
         self.assertEqual((down, refused, took), (False, False, True))
         text = inline_script()
         m = re.search(r"addEventListener\('submit', e => \{(.*?)\n\}\);", text, re.S)

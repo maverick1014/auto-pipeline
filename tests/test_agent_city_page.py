@@ -1535,7 +1535,7 @@ process.stdout.write(JSON.stringify(out));
             [{"type": "ask_closed", "kind": "permission", "by": "terminal", "verb": "closed", "text": "",
               "tool": "Bash", "what": "npm test", "reason": ""}, "加测试依赖"],
         ]
-        out = run_node(ASK_LINE_JS, {"fn": fn, "cases": cases})
+        out = run_node(ASK_LINE_JS, {"fn": constants_prelude() + "\n" + fn, "cases": cases})  # + TEXT, i18n (idea-city C1)
         want = [
             ["清理构建", "要权限", "Bash", "rm -rf build/", "等你"],
             ["登录页", "问总督", "Which port?"],
@@ -1581,7 +1581,7 @@ process.stdout.write(JSON.stringify(out));
             v("permission", "terminal", "allow"),
         ]
         js = ("const fs = require('fs'); const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));\n"
-              + esc + "\n" + fn + "\n"
+              + constants_prelude() + "\n" + esc + "\n" + fn + "\n"
               + "process.stdout.write(JSON.stringify(data.map(x => askClosedLine(x).replace(/<[^>]+>/g, ''))));")
         out = run_node(js, cases)
         for i in (0, 1, 2):
