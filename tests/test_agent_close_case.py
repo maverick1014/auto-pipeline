@@ -218,6 +218,12 @@ class TestItTriggers(CloseCaseCase):
             with self.subTest(prompt=prompt):
                 self.assertIn("CLOSE CASE project: unfinished", self.as_task_manager(prompt))
 
+    def test_a_huge_prompt_still_triggers(self):
+        # A pasted log bigger than the OS limit for one exec (ARG_MAX, 1 MB
+        # on macOS) must still reach the parser: never pass it in env or argv.
+        out = self.as_task_manager("x" * 1200000 + "\nclose case")
+        self.assertIn("CLOSE CASE project: unfinished", out)
+
     def test_one_unquoted_use_is_enough(self):
         out = self.as_task_manager('the "close case" rule is in. now close case')
         self.assertIn("CLOSE CASE project: unfinished", out)
