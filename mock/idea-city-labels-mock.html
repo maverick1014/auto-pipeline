@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>District Labels Mock</title>
+<!--
+  idea-city C10 mock: district name signs get a small text label, shown only when the camera is close.
+  Clickable: + / - zoom (5 steps, like the page), 中文 / English toggle, hover a sign.
+  Not the real page: a flat top view of one territory. The real page keeps its 3D look; only the labels are new.
+-->
+<style>
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --grass:#9ED36A; --grass-2:#8CC45B; --path:#E9D8AE; --line:#2A2B45;
+  --display:"Fredoka","Nunito",ui-rounded,system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --paper:#13162A; --panel:#1C2040; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA; --line:#EEF0FF; }
+}
+:root[data-theme="dark"]{ --paper:#13162A; --panel:#1C2040; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA; --line:#EEF0FF; }
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--display)}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 16px}
+h1{font-size:18px;margin:0 12px 0 0}
+.btn{border:2px solid var(--line);background:var(--panel);color:var(--ink);border-radius:12px;padding:4px 12px;font:600 14px var(--display);cursor:pointer;box-shadow:0 2px 0 var(--line)}
+.btn[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+.note{color:var(--ink-2);font-size:13px;padding:0 16px 8px}
+.stage{position:relative;margin:0 16px 16px;height:min(70vh,620px);border-radius:18px;overflow:hidden;background:#BFE3FF;border:2px solid var(--line)}
+svg{position:absolute;inset:0;width:100%;height:100%}
+.zoom{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:8px;z-index:3}
+.zoom .btn{width:40px;height:40px;padding:0;font-size:20px}
+.meter{position:absolute;left:12px;bottom:12px;z-index:3;background:rgba(255,255,255,.92);color:#2A2B45;border-radius:999px;padding:2px 12px;font:600 12px var(--display)}
+/* existing territory name label (.lbl on the page) */
+.lbl{position:absolute;transform:translate(-50%,-100%);background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:2px 10px;font:600 12px/1.5 var(--display);box-shadow:0 2px 0 rgba(42,43,69,.15);white-space:nowrap;z-index:2}
+/* NEW: district label, smaller and quieter than the territory label, own class (not .lbl) */
+.dlbl{position:absolute;transform:translate(-50%,-100%);background:rgba(255,255,255,.86);color:#2A2B45;border-radius:6px;padding:0 6px;font:600 10px/1.6 var(--display);white-space:nowrap;border-left:4px solid var(--c);z-index:1;transition:opacity .25s}
+.dlbl.hidden{opacity:0;pointer-events:none}
+.legend{margin:0 16px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.legend div{background:var(--panel);border-radius:12px;padding:8px 12px;border:1px solid var(--ink-3)}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">区名标牌 · 预览</h1>
+  <button class="btn" id="zh" aria-pressed="true">中文</button>
+  <button class="btn" id="en" aria-pressed="false">English</button>
+</header>
+<div class="note" id="note"></div>
+<div class="stage" id="stage">
+  <div class="meter" id="meter"></div>
+  <div class="zoom">
+    <button class="btn" id="zin" aria-label="zoom in">+</button>
+    <button class="btn" id="zout" aria-label="zoom out">−</button>
+  </div>
+  <svg id="svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
+</div>
+<div class="legend" id="legend"></div>
+<script>
+const TEXT = {
+  zh: { title: '区名标牌 · 预览', far: '远：只看到领地名，没有区名（不挤）', close: '近：每个区的路牌上有小字区名',
+        note: '点 + / − 缩放。区名只在镜头近的时候出现（第 1、2 档）；中间档以上淡出。颜色条 = 这个区的颜色。',
+        zoom: '缩放', legendHead: '区名（中文 / English）', terr: 'auto-pipeline' },
+  en: { title: 'District labels · preview', far: 'Far: only the territory name, no district names (no clutter)', close: 'Close: each district sign shows its name in small text',
+        note: 'Click + / − to zoom. District names show only when the camera is close (steps 1 and 2); they fade out from the middle step on. Colour bar = the district colour.',
+        zoom: 'Zoom', legendHead: 'District names (中文 / English)', terr: 'auto-pipeline' },
+};
+const DISTRICTS = [ // same 5 building types as the page (TYPE_ZH, DCOL)
+  { type: 'house',    zh: '住宅区',  en: 'Homes',     col: '#F4A259', x: 28, y: 30 },
+  { type: 'shop',     zh: '商业街',  en: 'Shops',     col: '#FF7593', x: 72, y: 30 },
+  { type: 'tower',    zh: '测试区',  en: 'Tests',     col: '#4D7CFE', x: 76, y: 70 },
+  { type: 'workshop', zh: '工坊区',  en: 'Workshops', col: '#9C6B4E', x: 26, y: 72 },
+  { type: 'library',  zh: '图书馆区', en: 'Library',   col: '#2FB57A', x: 50, y: 84 },
+];
+const STEPS = [1.9, 1.5, 1.0, .75, .55];   // 5 zoom steps; step 1 = closest
+const LABEL_MAX_STEP = 2;                   // labels shown at steps 1-2 only
+let lang = 'zh', step = 3;
+const svg = document.getElementById('svg'), stage = document.getElementById('stage');
+function draw() {
+  const s = STEPS[step - 1], cx = 50, cy = 55, half = 50 / s;
+  svg.setAttribute('viewBox', `${cx - half} ${cy - half} ${2 * half} ${2 * half}`);
+  let h = `<rect x="4" y="8" width="92" height="88" rx="10" fill="#9ED36A"/>`;
+  h += `<path d="M50 52 L28 30 M50 52 L72 30 M50 52 L76 70 M50 52 L26 72 M50 52 L50 84" stroke="#E9D8AE" stroke-width="3" stroke-linecap="round"/>`;
+  for (const d of DISTRICTS) {
+    for (let i = 0; i < 4; i++) {
+      const ox = d.x + (i % 2 ? 4 : -8), oy = d.y + (i < 2 ? -9 : 1);
+      h += `<rect x="${ox}" y="${oy}" width="5" height="5" rx="1" fill="${d.col}" opacity=".85"/>`;
+    }
+    // the road sign (post + board), at its own district, not at the hall
+    h += `<line x1="${d.x + 1}" y1="${d.y + 7}" x2="${d.x + 1}" y2="${d.y + 3.4}" stroke="#6B4E3A" stroke-width=".7"/>`;
+    h += `<rect x="${d.x - .6}" y="${d.y + 2.6}" width="3.2" height="1.4" rx=".3" fill="#3E7D4F"/>`;
+  }
+  h += `<rect x="45" y="46" width="10" height="10" rx="2" fill="#C44E4E"/><polygon points="44,46 50,40 56,46" fill="#8E3434"/>`;
+  svg.innerHTML = h;
+  // overlays
+  stage.querySelectorAll('.lbl,.dlbl').forEach(e => e.remove());
+  const r = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal, k = Math.min(r.width / vb.width, r.height / vb.height);
+  const ox = (r.width - vb.width * k) / 2, oy = (r.height - vb.height * k) / 2;
+  const toScreen = (x, y) => [ox + (x - vb.x) * k, oy + (y - vb.y) * k];
+  const [tx, ty] = toScreen(50, 39);
+  const t = document.createElement('div'); t.className = 'lbl'; t.textContent = TEXT[lang].terr;
+  t.style.left = tx + 'px'; t.style.top = ty + 'px'; stage.appendChild(t);
+  for (const d of DISTRICTS) {
+    const [sx, sy] = toScreen(d.x + 1, d.y + 2.4);
+    const e = document.createElement('div'); e.className = 'dlbl' + (step <= LABEL_MAX_STEP ? '' : ' hidden');
+    e.style.setProperty('--c', d.col); e.textContent = d[lang];
+    e.title = `${d.zh} / ${d.en}`;
+    e.style.left = sx + 'px'; e.style.top = sy + 'px'; stage.appendChild(e);
+  }
+  const T = TEXT[lang];
+  document.getElementById('meter').textContent = `${T.zoom} ${step}/5 · ${step <= LABEL_MAX_STEP ? T.close : T.far}`;
+  document.getElementById('title').textContent = T.title;
+  document.getElementById('note').textContent = T.note;
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  document.getElementById('zh').setAttribute('aria-pressed', lang === 'zh');
+  document.getElementById('en').setAttribute('aria-pressed', lang === 'en');
+  document.getElementById('legend').innerHTML = `<div><b>${T.legendHead}</b></div>` +
+    DISTRICTS.map(d => `<div><span style="color:${d.col}">■</span> ${d.zh} / ${d.en}</div>`).join('');
+}
+document.getElementById('zin').onclick = () => { step = Math.max(1, step - 1); draw(); };
+document.getElementById('zout').onclick = () => { step = Math.min(5, step + 1); draw(); };
+document.getElementById('zh').onclick = () => { lang = 'zh'; draw(); };
+document.getElementById('en').onclick = () => { lang = 'en'; draw(); };
+addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>
