@@ -22,6 +22,10 @@
 #                            and a fixed copy of bin/ under $AGENT_CITY_HOME,
 #                            for a cloud session opened above several repos
 #                            (requirements/city.md, "Joining")
+#   ./agent-city.sh install-shim   copy bin/agent-city-shim to
+#                            $HOME/.local/bin/agent-city, so `agent-city` works
+#                            from any folder (requirements/city.md, "Anywhere")
+#   ./agent-city.sh remove-shim    remove that copy, if it is ours
 #   ./agent-city.sh -h       this help
 #
 # City dir: $AGENT_CITY_DIR, default $HOME/.cache/agent-city (the same dir the
@@ -82,6 +86,8 @@ agent-city.sh — start/stop/status/demo for the Agent City playground.
   ./agent-city.sh send     cloud sender: send this session's lines to the team relay
   ./agent-city.sh relay-dev [port]   run the dev relay for a two-machine LAN test
   ./agent-city.sh cloud-hooks   write the city hooks into user-level settings
+  ./agent-city.sh install-shim   copy the agent-city command to ~/.local/bin, so it runs from any folder
+  ./agent-city.sh remove-shim    remove that copy, if it is ours
   ./agent-city.sh -h       this help
 EOF
 }
@@ -459,6 +465,66 @@ do_leave() {
   return 0
 }
 
+# install-shim / remove-shim (requirements/city.md, "Anywhere"): put
+# bin/agent-city-shim on the owner's PATH as ~/.local/bin/agent-city, so a
+# plain terminal can run `agent-city ...` from any folder. A target that is
+# not ours -- a symlink, a folder, or a file without our marker line -- is
+# never touched, on either command.
+do_install_shim() {
+  marker="# auto-pipeline agent-city shim"
+  src="$PLUGIN_ROOT/bin/agent-city-shim"
+  dst_dir="$HOME/.local/bin"
+  dst="$dst_dir/agent-city"
+
+  if [ -L "$dst" ]; then
+    echo "SHIM: $dst is not ours, left alone" >&2
+    return 1
+  fi
+  if [ -e "$dst" ]; then
+    if [ -d "$dst" ] || ! grep -qxF "$marker" "$dst" 2>/dev/null; then
+      echo "SHIM: $dst is not ours, left alone" >&2
+      return 1
+    fi
+  fi
+
+  mkdir -p "$dst_dir"
+  # temp file in the same folder, then mv: never a half-written shim, and no
+  # leftover file whatever happens in between
+  tmp="$dst_dir/.agent-city.$$"
+  cp "$src" "$tmp"
+  chmod 755 "$tmp"
+  mv -f "$tmp" "$dst"
+  echo "SHIM: installed $dst"
+
+  case ":$PATH:" in
+    *":$dst_dir:"*) ;;
+    *) echo "SHIM: $dst_dir is not on your PATH; add to ~/.zshrc: export PATH=\"$dst_dir:\$PATH\"" ;;
+  esac
+  return 0
+}
+
+do_remove_shim() {
+  marker="# auto-pipeline agent-city shim"
+  dst="$HOME/.local/bin/agent-city"
+
+  if [ -L "$dst" ]; then
+    echo "SHIM: $dst is not ours, left alone" >&2
+    return 1
+  fi
+  if [ -e "$dst" ]; then
+    if [ -d "$dst" ] || ! grep -qxF "$marker" "$dst" 2>/dev/null; then
+      echo "SHIM: $dst is not ours, left alone" >&2
+      return 1
+    fi
+    rm -f "$dst"
+    echo "SHIM: removed $dst"
+    return 0
+  fi
+
+  echo "SHIM: not installed"
+  return 0
+}
+
 [ $# -eq 0 ] && { usage; exit 2; }
 case "$1" in
   -h|--help) usage; exit 0;;
@@ -474,5 +540,7 @@ case "$1" in
   leave) do_leave;;
   relay-dev) do_relay_dev "${2:-}";;
   cloud-hooks) do_cloud_hooks;;
+  install-shim) do_install_shim;;
+  remove-shim) do_remove_shim;;
   *) usage; exit 2;;
 esac
