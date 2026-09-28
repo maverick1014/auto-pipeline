@@ -37,3 +37,5 @@
 2026-09-28 | user-scope-v4-plus | CROSS-REPO: v4-plus drops project-scope plugin (keep user scope), reports whether 22b1cddf0/4ac748b1b were pushed; NO live v4-plus main manager, send when one opens | est 15m actual 4188m
 2026-09-28 | user-scope-v4-plus-sync | CROSS-REPO: v4-plus-sync drops project-scope plugin (keep user scope); NO live main manager, send when one opens | est 15m actual 4188m
 2026-09-28 | relief-orphan-monitors | agent-resources.sh relief: stop agent-monitor.sh loops whose folder (cwd) was deleted; today they are skipped and run forever | est 15m actual 15m
+2026-09-28 | idea-pipeline | pipeline idea batch: relief children + test sleep leak, relief Orca row wording, agent-settings in worktree, quiz line for subagents, todo drop, runtime probe retry, dispatch skill TUI-key helper, early-merge rule. TM on pc2 | est 150m actual 104m
+2026-09-28 | setup-md-simple | skills/city/setup.md: owner says too long; short precise numbered steps, cut prose; fix step 6 (replace the code inside worker.js, never delete the file) and add 'cannot reach' = check the D1 binding is named DB | est 20m actual 33m

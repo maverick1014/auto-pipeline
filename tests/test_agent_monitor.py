@@ -41,6 +41,10 @@ sees a half-written file, and no temp file is left behind.
 every monitor_interval_min minutes. A pid file whose process is gone counts as
 not running.
 
+The loop waits in a child `sleep` (monitor_interval_min * 60 seconds). A
+stopped loop takes that sleep with it: `stop`, and a plain TERM to the loop
+pid from anyone else (relief), both leave no sleep behind.
+
 RUNTIME. All of the above is the orca runtime, and the pane state comes through
 `bin/agent-runtime.sh ps`, never a bare orca call.
 
@@ -60,6 +64,7 @@ orca is never called in either mode.
 
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -69,7 +74,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-from scripthelp import ScriptCase
+from scripthelp import ScriptCase, args_of, children_of
 
 LINE_RE = re.compile(
     r"^(?P<path>[^|]+) \| (?P<module>[^|]+) \| pane (?P<pane>\S+) \| "
@@ -367,6 +372,63 @@ class TestLifecycle(MonitorCase):
         else:
             self.fail("pid %d is still alive after stop" % pid)
         self.assertFalse(os.path.exists(self.pid_file()))
+
+    def loop_and_sleep(self):
+        """Start the loop; return its pid and its sleep child's pid."""
+        self.assertOk(self.monitor("start"))
+        pid = int(open(self.pid_file()).read().split()[0])
+        deadline = time.time() + 10
+        while not children_of(pid) and time.time() < deadline:
+            time.sleep(0.1)
+        kids = children_of(pid)
+        self.assertTrue(kids, "the loop never started its sleep")
+        return pid, kids
+
+    def assertGone(self, pid, what):
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                return
+            time.sleep(0.1)
+        self.fail("%s (pid %d) is still alive" % (what, pid))
+
+    def test_stop_ends_the_loops_sleep_too(self):
+        _pid, kids = self.loop_and_sleep()
+        self.assertOk(self.monitor("stop"))
+        for kid in kids:
+            self.assertGone(kid, "the loop's sleep after stop")
+
+    def test_a_term_to_the_loop_ends_its_sleep_too(self):
+        pid, kids = self.loop_and_sleep()
+        os.kill(pid, signal.SIGTERM)
+        self.assertGone(pid, "the loop after TERM")
+        for kid in kids:
+            self.assertGone(kid, "the loop's sleep after TERM")
+
+    def test_a_term_while_it_sweeps_still_removes_the_pid_file(self):
+        # the sleep is already over (killed here), the loop is busy in a
+        # slow sweep when TERM arrives: the trap must still remove the pid
+        # file, even though there is no sleep left to kill
+        self.repo.set_conf("runtime", "orca")
+        self.one_worktree(panes=["working"])  # so a sweep calls orca at all
+        env = {"ORCA_STUB_SLEEP": "2"}
+        self.assertOk(self.monitor("start", env=env))
+        pid = int(open(self.pid_file()).read().split()[0])
+        deadline = time.time() + 10
+        while not children_of(pid) and time.time() < deadline:
+            time.sleep(0.1)
+        for kid in children_of(pid):
+            os.kill(kid, signal.SIGTERM)
+        time.sleep(0.5)
+        self.assertFalse([k for k in children_of(pid)
+                          if args_of(k).startswith("sleep")],
+                         "the loop was not in its sweep yet")
+        os.kill(pid, signal.SIGTERM)
+        self.assertGone(pid, "the loop after TERM")
+        self.assertFalse(os.path.exists(self.pid_file()),
+                         "the TERM trap left the pid file behind")
 
     def test_stop_when_not_running_says_so(self):
         out = self.assertOk(self.monitor("stop"))

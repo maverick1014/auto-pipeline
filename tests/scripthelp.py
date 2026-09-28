@@ -129,6 +129,19 @@ def ps_json(worktrees):
     return {"ok": True, "result": {"worktrees": rows}}
 
 
+def children_of(pid):
+    """The pids whose parent is `pid` (pgrep -P). Empty when none or gone."""
+    out = subprocess.run(["pgrep", "-P", str(pid)], capture_output=True,
+                         text=True).stdout
+    return [int(x) for x in out.split()]
+
+
+def args_of(pid):
+    """The command line of `pid` (ps -o args=), or "" when it is gone."""
+    return subprocess.run(["ps", "-o", "args=", "-p", str(pid)],
+                          capture_output=True, text=True).stdout.strip()
+
+
 class ScriptRepo:
     """A throwaway plugin copy plus a throwaway project git repo."""
 
@@ -430,6 +443,9 @@ class ScriptRepo:
         env.pop("CLAUDE_CODE_REMOTE", None)
         env.pop("AGENT_RUNTIME", None)
         env.pop("AGENT_START_DEDUPE_SEC", None)
+        # the session a test run is started from; a quiz marker is keyed on
+        # it, so a test that wants one sets it itself
+        env.pop("CLAUDE_CODE_SESSION_ID", None)
         for key in list(env):
             if key.startswith("CLAUDE_PLUGIN_OPTION_"):
                 env.pop(key)
@@ -437,6 +453,9 @@ class ScriptRepo:
             env["HOME"] = self.home
         env.setdefault("AGENT_FAKE_RAM", "10")
         env.setdefault("AGENT_FAKE_CPU", "10")
+        # relief run by a test stops only what lies under this test's own
+        # temp tree, never another session's monitors or test runs
+        env["AGENT_RELIEF_ONLY_UNDER"] = self.base
         env.update(extra or {})
         return env
 
@@ -493,6 +512,10 @@ class ScriptRepo:
         says so and exits 0. Then, belt and braces: kill whatever pid is
         still on file, in case `stop` could not reach it (KIND resolved
         differently outside a test's own cwd, script missing, etc).
+
+        The loop's children too (its `sleep`): read before `stop`, killed
+        after it. A sleep left alive holds no pipe here (the loop writes to
+        /dev/null) but still runs for minutes after the test is gone.
         """
         monitor_sh = os.path.join(self.plugin_bin, "agent-monitor.sh")
         # os.walk, not glob: glob's "**" does not descend into a dot
@@ -507,6 +530,18 @@ class ScriptRepo:
             gitdir = os.path.dirname(pid_file)
             project_dir = os.path.dirname(gitdir)  # parent of .git or .auto-pipeline
 
+            pid = None
+            try:
+                with open(pid_file) as fh:
+                    pid = int(fh.read().split()[0])
+            except (ValueError, IndexError, OSError):
+                pass
+            # ours only: the loop runs this repo's plugin copy. A stale pid
+            # file can name any process by now.
+            if pid and self.base not in args_of(pid):
+                pid = None
+            kids = children_of(pid) if pid else []
+
             if os.path.exists(monitor_sh) and os.path.isdir(project_dir):
                 try:
                     self.run("agent-monitor.sh", "stop", cwd=project_dir,
@@ -514,14 +549,11 @@ class ScriptRepo:
                 except Exception:
                     pass
 
-            if not os.path.exists(pid_file):
-                continue
-            try:
-                with open(pid_file) as fh:
-                    pid = int(fh.read().split()[0])
-                os.kill(pid, signal.SIGTERM)
-            except (ValueError, IndexError, OSError):
-                pass
+            for victim in ([pid] if pid else []) + kids:
+                try:
+                    os.kill(victim, signal.SIGTERM)
+                except OSError:
+                    pass
             try:
                 os.remove(pid_file)
             except OSError:
