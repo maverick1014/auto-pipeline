@@ -54,7 +54,8 @@ CONTRACT (bin/agent-city.html)
     govSay(terr, text, dur): that territory's governor says TEXT for DUR seconds (simT clock).
     govTalk(terr) -> the text his bubble shows now, or '': 等你回话… (zh) while that territory's
       governor is waiting, else his own govSay text while it lasts. Never another territory's.
-    setGovState(state, terr): only the home territory (govTerr) changes govState; case 'gov' calls
+    setGovState(state, terr): only the home territory (govTerr) changes govState (no terr: the home one,
+      as before); govSay never adds a territory to govsByTerr (that map is who is present); case 'gov' calls
       setGovState(ev.state, ev.terr). updateGovernor and updateGovPool show govTalk(terr); no
       say(gov, ...) is left.
 
@@ -472,6 +473,10 @@ vm.runInContext("setGovState('waiting', 'a')", box);
 out.homeState = vm.runInContext('govState', box);
 box.govsByTerr.set('a', { state: 'waiting' });
 out.waitA = box.govTalk('a');
+vm.runInContext("setGovState('busy')", box);
+out.noTerrState = vm.runInContext('govState', box);
+box.govSay('c', 'hello', 5);
+out.phantom = box.govsByTerr.has('c');
 process.stdout.write(JSON.stringify(out));
 """
 
@@ -498,6 +503,12 @@ class TestGovernorBubbles(unittest.TestCase):
         r = self.results()
         self.assertEqual(r["otherState"], "idle")
         self.assertEqual(r["homeState"], "waiting")
+
+    def test_no_territory_means_home(self):
+        self.assertEqual(self.results()["noTerrState"], "busy", "setGovState(state) with no terr is the home one, as before")
+
+    def test_talking_never_makes_a_governor_present(self):
+        self.assertFalse(self.results()["phantom"], "govsByTerr is who is present; govSay must not add to it")
 
     def test_wiring(self):
         self.assertIn("setGovState(ev.state, ev.terr)", tp.case_block("gov") or "")
