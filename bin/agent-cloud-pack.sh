@@ -506,3 +506,6 @@ echo "The Claude GitHub App must be installed on this repo, or the cloud clone h
 echo
 echo "To set up any other repo the same way, paste this into a fresh cloud session of it, then commit and push:"
 echo "git clone $REPO_URL /tmp/ap && /tmp/ap/bin/agent-cloud-pack.sh . --language $LANG_IN_USE"
+echo
+echo "For a cloud session opened on several repos at once (its cwd starts above them, so it loads none of their hooks): paste this into that environment's Setup script instead:"
+echo "git clone --depth 1 $REPO_URL /tmp/ap-city && bash /tmp/ap-city/bin/agent-city.sh cloud-hooks"

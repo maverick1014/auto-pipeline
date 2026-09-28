@@ -17,6 +17,11 @@
 #   ./agent-city.sh relay-dev [port]   run the dev relay for a two-machine
 #                            LAN test (no Cloudflare account); default
 #                            port 8787, key asked here, needs Node 22.5+
+#   ./agent-city.sh cloud-hooks   write this pipeline's city hooks into
+#                            user-level settings ($HOME/.claude/settings.json)
+#                            and a fixed copy of bin/ under $AGENT_CITY_HOME,
+#                            for a cloud session opened above several repos
+#                            (requirements/city.md, "Joining")
 #   ./agent-city.sh -h       this help
 #
 # City dir: $AGENT_CITY_DIR, default $HOME/.cache/agent-city (the same dir the
@@ -37,6 +42,22 @@
 # question; it never touches a permission request — only the owner, from the
 # city page, may allow or deny one (requirements/city.md, "Interaction").
 # decisions.jsonl lives under $AGENT_CITY_HOME, default $HOME/.claude/agent-city.
+#
+# cloud-hooks (requirements/city.md, "Joining"): a cloud session opened on
+# several repos at once starts above them (e.g. /home/user, not a repo), so
+# none of their .claude/settings.json project hooks ever load -- the cloud
+# pack's SessionStart sender and city hooks never run, no matter how many of
+# the repos carry it. The fix lives one level up, in user-level settings,
+# which the environment's Setup script (pasted by the owner, see
+# skills/city/setup.md step 7) can write before Claude Code even starts:
+# `agent-city.sh cloud-hooks` copies this plugin's bin/ to a fixed path under
+# $AGENT_CITY_HOME and merges the same SessionStart send hook and city hooks
+# (hooks/hooks.json's agent-city-hook.sh entries) into
+# $HOME/.claude/settings.json. Each hook command there first checks that no
+# project-level pack is already sending for this session
+# (.claude/auto-pipeline/bin/agent-city-hook.sh under $CLAUDE_PROJECT_DIR) --
+# when a session does start inside one packed repo, its own project hooks
+# send, and the user-level ones stand down, so nothing is ever sent twice.
 
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
@@ -60,6 +81,7 @@ agent-city.sh — start/stop/status/demo for the Agent City playground.
   ./agent-city.sh leave    leave this repo's team relay
   ./agent-city.sh send     cloud sender: send this session's lines to the team relay
   ./agent-city.sh relay-dev [port]   run the dev relay for a two-machine LAN test
+  ./agent-city.sh cloud-hooks   write the city hooks into user-level settings
   ./agent-city.sh -h       this help
 EOF
 }
@@ -338,6 +360,95 @@ do_relay_dev() {
   exec node "$PLUGIN_ROOT/bin/agent-city-relay-dev.mjs" --port "$port" < <(printf '%s\n' "$key")
 }
 
+# cloud-hooks (requirements/city.md, "Joining"): see the header comment
+# above for the why. Never needs AGENT_CITY_RELAY to be set, never starts
+# the sender, never prints the relay secret.
+do_cloud_hooks() {
+  bin_dst="$CITY_HOME/bin"
+  mkdir -p "$bin_dst"
+  for f in "$PLUGIN_ROOT"/bin/*; do
+    name=$(basename "$f")
+    [ "$name" = "__pycache__" ] && continue
+    [ -f "$f" ] || continue
+    cp -p "$f" "$bin_dst/$name"
+  done
+  echo "CITY: user hooks bin copied to $bin_dst"
+
+  python3 - "$HOME/.claude/settings.json" "$PLUGIN_ROOT/hooks/hooks.json" "$CITY_HOME" <<'PY'
+import json
+import os
+import sys
+
+settings_path, src_hooks_path, city_home = sys.argv[1], sys.argv[2], sys.argv[3]
+
+# Same guard on both commands: stand down when this session's project folder
+# ($CLAUDE_PROJECT_DIR, where it started) is a repo that already carries the cloud pack (its own project hooks send
+# instead), so a line is never written twice.
+GUARD = ('[ ! -f "${CLAUDE_PROJECT_DIR:-/nonexistent}/.claude/auto-pipeline'
+         '/bin/agent-city-hook.sh" ]')
+SEND_CMD = ('[ -n "${AGENT_CITY_RELAY:-}" ] && %s && '
+            'bash "%s/bin/agent-city.sh" send; exit 0') % (GUARD, city_home)
+CITY_HOOK_CMD = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && %s && '
+                 'bash "%s/bin/agent-city-hook.sh"; exit 0') % (GUARD, city_home)
+
+existed = os.path.exists(settings_path)
+if existed:
+    with open(settings_path) as fh:
+        raw = fh.read()
+    try:
+        data = json.loads(raw)
+    except ValueError as exc:
+        sys.stderr.write(
+            "agent-city.sh cloud-hooks: %s is not valid JSON: %s\n"
+            % (settings_path, exc))
+        sys.exit(2)
+else:
+    data = {}
+
+changed = not existed
+
+hooks = data.setdefault("hooks", {})
+session_start = hooks.setdefault("SessionStart", [])
+has_send = any(hook.get("command", "") == SEND_CMD
+               for entry in session_start for hook in entry.get("hooks", []))
+if not has_send:
+    session_start.append({"hooks": [{"type": "command", "command": SEND_CMD}]})
+    changed = True
+
+if os.path.exists(src_hooks_path):
+    with open(src_hooks_path) as fh:
+        src_hooks = json.load(fh).get("hooks", {})
+    for event, entries in src_hooks.items():
+        for entry in entries:
+            if not any("agent-city-hook.sh" in h.get("command", "")
+                       for h in entry.get("hooks", [])):
+                continue
+            matcher = entry.get("matcher")
+            event_list = hooks.setdefault(event, [])
+            has_city = any(
+                e.get("matcher") == matcher and
+                any(h.get("command", "") == CITY_HOOK_CMD for h in e.get("hooks", []))
+                for e in event_list)
+            if not has_city:
+                new_entry = {"hooks": [{"type": "command", "command": CITY_HOOK_CMD}]}
+                if matcher is not None:
+                    new_entry["matcher"] = matcher
+                event_list.append(new_entry)
+                changed = True
+
+if changed:
+    os.makedirs(os.path.dirname(settings_path), exist_ok=True)
+    tmp_path = settings_path + ".tmp"
+    with open(tmp_path, "w") as fh:
+        json.dump(data, fh, indent=2)
+        fh.write("\n")
+    os.replace(tmp_path, settings_path)
+    print("CITY: user hooks written to %s" % settings_path)
+else:
+    print("CITY: user hooks already there")
+PY
+}
+
 do_leave() {
   if [ -f "$SECRET_FILE" ]; then
     rm -f "$SECRET_FILE"
@@ -362,5 +473,6 @@ case "$1" in
   join) do_join;;
   leave) do_leave;;
   relay-dev) do_relay_dev "${2:-}";;
+  cloud-hooks) do_cloud_hooks;;
   *) usage; exit 2;;
 esac

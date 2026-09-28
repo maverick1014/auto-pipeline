@@ -132,9 +132,29 @@ page; they only send, and show up in the city on your Mac.
 5. Start a new cloud session (a running one does not see the change),
    opened on ONE repo that carries the cloud pack. A session opened on
    several repos starts above them and runs none of their hooks, so it
-   sends nothing.
+   sends nothing — for that case, see step 6 below.
    You should see: at its start, the line
    `CITY: sending to the team relay <worker name>.<account subdomain>.workers.dev`.
+6. Opening a session on several repos at once instead? Its working
+   directory starts above them, so it
+   loads none of their `.claude/settings.json` hooks — even when every one
+   of them carries the cloud pack. In the same Edit screen as steps 2-4,
+   paste this into the Setup script once (keep step 1 too: a session on
+   one repo still uses the pack's own hooks):
+   ```
+   git clone --depth 1 https://github.com/maverick1014/auto-pipeline /tmp/ap-city && bash /tmp/ap-city/bin/agent-city.sh cloud-hooks
+   ```
+   This writes the same city hooks one level up, into `~/.claude/settings.json`
+   (read by every session that environment starts, whatever repos it opens
+   on), plus a fixed copy of the plugin's scripts they run from. It does
+   not need `AGENT_CITY_RELAY` to be set yet, and never prints the key.
+   Then start a new cloud session on several repos.
+   You should see: two lines, `CITY: user hooks bin copied to ...` and
+   `CITY: user hooks written to .../settings.json` (or `... already
+   there`, on a second run — nothing changes). A session that then starts
+   on several repos sends the same way step 5 shows; a session that
+   starts on one repo carrying the project pack still uses its own
+   project hooks, unchanged.
 
 ## 8. Check it works
 1. On a second machine, or in a cloud session, join the same repo (step
