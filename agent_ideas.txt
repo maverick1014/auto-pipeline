@@ -40,3 +40,8 @@ tests: DLBL_JS (test_agent_city_idea_page.py) and LIVE_SHOW_JS (test_agent_city_
 agent-city: fully zoomed out, a person's question bubble covers the territory name label (auto-pipeline hidden behind 'Should a payment timeou...'); stack or offset them. Seen in idea-city E2E 2026-09-28 | 2026-09-28 14:23 | by main
 agent-file.sh: a 'todo note' (or keep-open) for close-case 'close now': today re-adding the todo resets its opened date, so actual minutes start over (close-case TM 2026-09-28) | 2026-09-28 18:47 | by main
 close-case: check live whether a SendMessage to a task manager fires its UserPromptSubmit hook; if not, TMs rely on W13 + the brief's CLOSE line, and 'orca terminal send' of the words does fire it (close-case TM 2026-09-28) | 2026-09-28 18:47 | by main
+agent-city: each person's activity and ask/answer history lives only in the page; a reload loses it. Keep it on the server (city-ux TM 2026-09-28) | 2026-09-28 19:11 | by main
+agent-city: at the zoom-out cap, when the focused repo sits at the continent edge half the view is empty; pull the view toward the continent middle (city-ux TM 2026-09-28) | 2026-09-28 19:11 | by main
+agent-city: store building names on the server (today the stored name is always empty, so the popup shows the type word, e.g. 测试塔) (city-ux TM 2026-09-28) | 2026-09-28 19:11 | by main
+agent-city: small repos could use smaller cells; needs a new layout method (city-ux TM 2026-09-28) | 2026-09-28 19:11 | by main
+agent-city: with the never-stop rotation, a question bubble moves while you aim at it; a real click often lands beside it (seen in city-ux E2E). Pause rotation while the pointer is over the stage, or give bubbles a bigger hit area | 2026-09-28 19:11 | by main
