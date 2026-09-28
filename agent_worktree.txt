@@ -1,2 +1,1 @@
 pc2:/Users/maverick/orca/workspaces/auto-pipeline/idea-city | idea-city (TM on maverick-pc2) | working | since 2026-09-28 09:56
-/Users/maverick/auto-pipeline | task manager, human-direct | task: (ask the human) | since 2026-09-28 10:48
