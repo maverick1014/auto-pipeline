@@ -60,8 +60,9 @@ CONTRACT
         face within 0.9 tiles of the border's middle.
       - ravine floor: every 'k' centre is on a flat face at y <= -0.8.
       - cheap: at most 60 triangles per map tile (w * h); groundGeometry +
-        waterGeometry + laneGeometry of the demo world under 700 ms in node
-        (buildLand runs on every world event).
+        waterGeometry + laneGeometry of the demo world under 700 ms of CPU time in
+        node, best of 3 runs (buildLand runs on every world event; wall clock
+        flaked under machine load).
     waterGeometry(view) -> the same shape: flat, facing up, y in [-0.2, 0),
       blue; every 'w' 's' 'B' centre on it; its outline smooth (the same three
       outline rules as the ground).
@@ -483,10 +484,16 @@ for (const [name, view] of Object.entries(views)) {
   for (let r = 0; r < view.h; r++) for (let c = 0; c < view.w; c++) tiles.push([view.x0 + c, view.z0 + r, view.rows[r][c]]);
   const res = {};
   // ---- ground
-  let t0 = Date.now();
-  const g = box.groundGeometry(view);
-  box.waterGeometry(view); box.laneGeometry(view);
-  res.ms = Date.now() - t0;
+  // cost = CPU time, not wall clock (machine load must not count), best of 3 runs (buildLand runs
+  // on every world event, so later runs are warm; the first run also pays JIT warm-up)
+  let g; res.ms = Infinity;
+  for (let i = 0; i < 3; i++) {
+    const c0 = process.cpuUsage();
+    g = box.groundGeometry(view);
+    box.waterGeometry(view); box.laneGeometry(view);
+    const c = process.cpuUsage(c0);
+    res.ms = Math.min(res.ms, (c.user + c.system) / 1000);
+  }
   const T = tris(g);
   res.tris = T.length; res.area = view.w * view.h;
   const top = T.filter(t => t.flat && Math.abs(t.y) < 1e-6), low = T.filter(t => t.flat && t.y <= -0.8), side = T.filter(t => !t.flat);
