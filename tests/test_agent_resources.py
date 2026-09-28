@@ -187,6 +187,58 @@ class TestReliefLeavesALiveMainManagerAlone(unittest.TestCase):
         self.assertNotIn("no live main manager", result.stdout)
 
 
+class TestReliefStopsMonitorWhoseFolderIsGone(unittest.TestCase):
+    """A monitor loop whose cwd folder was deleted (a removed E2E temp repo,
+    a deleted scratchpad clone) can never be stopped with
+    "agent-monitor.sh stop" -- that folder no longer exists to cd into.
+    relief must kill the loop (and any child it left running) instead of
+    skipping it forever.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp(prefix="relief_gone_")
+        self.addCleanup(shutil.rmtree, self.base, ignore_errors=True)
+        self.repo_root = os.path.join(self.base, "somerepo")
+        os.makedirs(self.repo_root)
+        fake_monitor = os.path.join(self.repo_root, "agent-monitor.sh")
+        with open(fake_monitor, "w") as fh:
+            fh.write("#!/usr/bin/env bash\nsleep 300\n")
+        os.chmod(fake_monitor, 0o755)
+
+        self.proc = subprocess.Popen(["bash", fake_monitor, "start"],
+                                     cwd=self.repo_root)
+        self.addCleanup(self._kill_leftover)
+        self.assertTrue(wait_until(lambda: alive(self.proc.pid)),
+                        "fake monitor never started")
+        # let bash actually get past forking its "sleep" child before we
+        # pull the folder out from under it: cwd-dependent work (job
+        # control, PATH lookup) mid-fork can otherwise kill bash itself,
+        # which would test the wrong thing (bash dying on its own instead
+        # of relief stopping a genuinely still-running orphan).
+        time.sleep(1)
+
+        # delete the folder out from under the running process
+        shutil.rmtree(self.repo_root, ignore_errors=True)
+
+    def _kill_leftover(self):
+        if self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+
+    def test_relief_stops_a_monitor_whose_folder_is_gone(self):
+        result = subprocess.run([REAL_SCRIPT, "relief"],
+                                env=dict(os.environ, AGENT_FAKE_RAM="10",
+                                         AGENT_FAKE_CPU="10"),
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("folder gone", result.stdout)
+        self.assertTrue(wait_until(lambda: self.proc.poll() is not None),
+                        "monitor whose folder is gone is still alive after relief")
+
+
 class TestOverCapNamesRelief(ScriptCase):
     script = "agent-start.sh"
 

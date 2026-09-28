@@ -89,7 +89,17 @@ relief_kill_orphan_monitors() {
 
     cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | awk '/^n/{print substr($0,2); exit}')
     [ -n "$cwd" ] || continue
-    [ -d "$cwd" ] || continue
+    if [ ! -d "$cwd" ]; then
+      # folder is gone (deleted E2E temp repo, deleted scratchpad clone):
+      # "agent-monitor.sh stop" cannot run from a folder that no longer
+      # exists, so kill the loop and any child it left running (its sleep).
+      for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+        kill "$child" 2>/dev/null || true
+      done
+      kill "$pid" 2>/dev/null || true
+      echo "stopped monitor of $cwd (folder gone)"
+      continue
+    fi
 
     gitdir=$(git -C "$cwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
     [ -n "$gitdir" ] || continue
