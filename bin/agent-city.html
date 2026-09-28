@@ -319,6 +319,9 @@ const LIFT_MAX = 10 * Math.PI / 180;
 const FADE_OPACITY = .3;
 const DIST_DEFAULT = 9;
 const TARGET_Y = .4;
+/* city-idea C2: the distance where camTarget starts drawing the view to the land middle; past it,
+   nothing fades (viewBlockers returns empty) -- zoomed out, the whole land is meant to be seen. */
+const FADE_DIST = 12;
 const CAM_CLEAR = .35;
 const AUTO_ROT_SEC = 300;
 const SHOW_SEC = 60;
@@ -2719,6 +2722,26 @@ function update(dt){
   if (DEMO) spawner();
 }
 
+/* city-idea C7: the box of view's non-void tiles (' ' is void), in scene units relative to
+   landState's own mid -- tile (X, Z) covers [X - mid.x, X - mid.x + 1] x [Z - mid.z, Z - mid.z + 1].
+   Much of a view's whole w x h rectangle can be void (sea rows, gaps between territories), so this is
+   usually smaller than { hx: view.w / 2, hz: view.h / 2 } and centred on the real land, not the view's
+   own box. No land tile at all -> { hx: 0, hz: 0, cx: 0, cz: 0 }. */
+function landBox(view){
+  const mid = { x: Math.round(view.x0 + view.w / 2), z: Math.round(view.z0 + view.h / 2) };
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (let r = 0; r < view.h; r++) {
+    const row = view.rows[r];
+    for (let c = 0; c < view.w; c++) {
+      if (row[c] === ' ') continue;
+      const X = view.x0 + c - mid.x, Z = view.z0 + r - mid.z;
+      x0 = Math.min(x0, X); x1 = Math.max(x1, X + 1);
+      z0 = Math.min(z0, Z); z1 = Math.max(z1, Z + 1);
+    }
+  }
+  if (!isFinite(x0)) return { hx: 0, hz: 0, cx: 0, cz: 0 };
+  return { hx: (x1 - x0) / 2, hz: (z1 - z0) / 2, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2 };
+}
 /* the non-3D half of buildLand(view): map, mid, land, the occupied/rest/home tile pools (a plot may have
    opened by the hall), a record for every already-built building in the view, then updateHome() (the
    world changed: look at a town hall, never at the empty middle of the land). buildLand() calls this
@@ -2733,7 +2756,7 @@ function landState(view){
   officeSlotsByLead.clear();
   map = view;
   mid = { x: Math.round(view.x0 + view.w / 2), z: Math.round(view.z0 + view.h / 2) };
-  land = { hx: view.w / 2, hz: view.h / 2 };
+  land = landBox(view);
   for (const t of view.territories || []) {
     for (const bd of t.buildings || []) {
       const existing = buildings.find(b => b.terr === t.id && b.plot === bd.plot);
@@ -4142,57 +4165,79 @@ function heightAt(x, z){
   return h;
 }
 function aroundH(x, z){ return Math.max(heightAt(x, z), heightAt(x + .3, z), heightAt(x - .3, z), heightAt(x, z + .3), heightAt(x, z - .3)); }
-/* the land box (scene x -land.hx..land.hx, y -1.05..0, z -land.hz..land.hz) seen from angle az at the current tilt, looking
-   at (0, ly, 0) from dist: [how much of the stage it fills on its tighter side, how far its middle sits from the stage middle] */
-function landSpread(az, dist, ly){
+/* the land box (scene x cx-hx..cx+hx, y -1.05..0, z cz-hz..cz+hz, relative to wherever the camera is
+   looking) seen from angle az at the current tilt, looking at (0, ly, 0) from dist, shifted sideways
+   by lx along the view's own right vector (cos(az), -sin(az)) -- city-idea C7: perspective alone
+   skews a box's apparent middle off-screen at most angles, even one already centred on the look
+   point, worse the bigger the box; centreHeight() below cancels it by moving the look point the same
+   amount the other way. [how much of the stage it fills on its tighter side, how far its middle sits
+   from the stage middle (vertically, horizontally)] */
+function landSpread(az, dist, ly, lx){
   // city-land: an empty world (or a land smaller than one fresh territory) zooms like one fresh territory,
   // so it never traps the camera (requirements/city.md, Growth) — but a bare harness with no `land` at all
-  // keeps its own small placeholder untouched.
-  const raw = typeof land === 'undefined' ? { hx:6, hz:7 } : land;
-  const L = typeof land !== 'undefined' && (raw.hx < 13 || raw.hz < 13) ? { hx:13, hz:13 } : raw;
+  // keeps its own small placeholder untouched. city-idea C7: land's own middle (cx, cz; missing = 0).
+  const raw = typeof land === 'undefined' ? { hx:6, hz:7, cx:0, cz:0 } : land;
+  const L = typeof land === 'undefined' ? raw : { hx: Math.max(raw.hx, 13), hz: Math.max(raw.hz, 13), cx: raw.cx || 0, cz: raw.cz || 0 };
   const t = Math.tan(FOV * Math.PI / 360), a = W / H, ce = Math.cos(cam.el), se = Math.sin(cam.el), sa = Math.sin(az), ca = Math.cos(az);
+  const shift = lx || 0;
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (const x of [-L.hx, L.hx]) for (const z of [-L.hz, L.hz]) for (const y of [-1.05, 0]) {
-    const q = y - ly, zc = dist - ce * sa * x - se * q - ce * ca * z;
-    const v = (-se * sa * x + ce * q - se * ca * z) / (zc * t), u = (ca * x - sa * z) / (zc * t * a);
+    const xs = x - shift * ca, zs = z + shift * sa, q = y - ly, zc = dist - ce * sa * xs - se * q - ce * ca * zs;
+    const v = (-se * sa * xs + ce * q - se * ca * zs) / (zc * t), u = (ca * xs - sa * zs) / (zc * t * a);
     x0 = Math.min(x0, u); x1 = Math.max(x1, u);
     y0 = Math.min(y0, v); y1 = Math.max(y1, v);
   }
   return [Math.max((x1 - x0) / 2, (y1 - y0) / 2), (y0 + y1) / 2, (x0 + x1) / 2];
 }
-/* look height that puts the land in the middle of the stage */
+/* [look height, sideways shift] that puts the land in the middle of the stage -- both start at the
+   plain guess (0 height offset, no shift) and settle by the same kind of step landSpread's own v/u
+   come from (Math derivation: near zc = dist, d(v)/d(ly) = -cos(el)/(dist t), d(u)/d(lx) =
+   -1/(dist t a); each round below undoes the last round's leftover v or u by that amount). */
 function centreHeight(az, dist){
-  let ly = -.5;
-  for (let i = 0; i < 8; i++) ly += landSpread(az, dist, ly)[1] * dist * Math.tan(FOV * Math.PI / 360) / Math.cos(cam.el);
-  return ly;
+  let ly = -.5, lx = 0;
+  const t = Math.tan(FOV * Math.PI / 360), a = W / H, ce = Math.cos(cam.el);
+  for (let i = 0; i < 8; i++) {
+    const s = landSpread(az, dist, ly, lx);
+    ly += s[1] * dist * t / ce;
+    lx += s[2] * dist * t * a;
+  }
+  return [ly, lx];
 }
 /* how far out the zoom goes: the whole land fills about 80% of the stage at this tilt, from every angle (sampled every
    15 degrees over half a turn: a rectangle repeats past that). Cached; land is part of the key so growth recomputes it. */
 function distMax(){
   // city-land: same "empty/small land zooms like one fresh territory" rule as landSpread() (see there).
-  const raw = typeof land === 'undefined' ? { hx:6, hz:7 } : land;
-  const L = typeof land !== 'undefined' && (raw.hx < 13 || raw.hz < 13) ? { hx:13, hz:13 } : raw;
-  const key = W + '|' + H + '|' + cam.el.toFixed(3) + '|' + L.hx + ',' + L.hz, c = distMax.c || (distMax.c = {});
+  const raw = typeof land === 'undefined' ? { hx:6, hz:7, cx:0, cz:0 } : land;
+  const L = typeof land === 'undefined' ? raw : { hx: Math.max(raw.hx, 13), hz: Math.max(raw.hz, 13), cx: raw.cx || 0, cz: raw.cz || 0 };
+  const key = W + '|' + H + '|' + cam.el.toFixed(3) + '|' + L.hx + ',' + L.hz + ',' + L.cx + ',' + L.cz, c = distMax.c || (distMax.c = {});
   if (c.key === key) return c.val;
   let best = DIST_MIN, span = 20 * (L.hx + L.hz + 20);
-  /* a single fresh territory (HALF=13, no neighbour) only ever needs the plain 80% fit; a land of several
-     territories also needs its wide/narrow sides centred (cx), which costs a little extra distance */
+  /* a single fresh territory (HALF=13, no neighbour) only ever needs the plain 80% fit; a land of
+     several territories, or one big enough that perspective alone tilts its apparent middle off by
+     more than centreHeight()'s sideways shift can fully cancel, keeps a little safety margin too */
   const single = L.hx === 13 && L.hz === 13;
   for (let i = 0; i < 12; i++) { const az = i * Math.PI / 12;
     let lo = DIST_MIN, hi = span;
-    for (let k = 0; k < 30; k++) { const md = (lo + hi) / 2, s = landSpread(az, md, centreHeight(az, md));
-      const bad = single ? s[0] > .8 : (s[0] > .86 || Math.abs(s[2]) > .097);
+    for (let k = 0; k < 30; k++) { const md = (lo + hi) / 2, s = landSpread(az, md, ...centreHeight(az, md));
+      const bad = single ? s[0] > .8 : (s[0] > .86 || Math.abs(s[2]) > .09);
       if (bad) lo = md; else hi = md; }
     best = Math.max(best, hi);
   }
   c.key = key; c.val = best;
   return best;
 }
-/* the point the camera looks at, [x, y, z]: the user's target, drawn to the land's middle as the view zooms out */
+/* the point the camera looks at, [x, y, z]: the user's target, drawn to the land's real middle (its
+   box centre cx, cz -- city-idea C7, not the scene origin), then nudged sideways by the same amount
+   centreHeight()'s lx cancels in landSpread (undoing the shift convention there: a positive lx there
+   moves the box the other way, i.e. the look point itself moves by lx along (cos(az), -sin(az))), as
+   the view zooms out */
 function camTarget(){
-  const dm = distMax(), k = clamp((cam.dist - 12) / Math.max(1, dm - 12), 0, 1), s = k * k * (3 - 2 * k);
+  const dm = distMax(), k = clamp((cam.dist - FADE_DIST) / Math.max(1, dm - FADE_DIST), 0, 1), s = k * k * (3 - 2 * k);
   if (s === 0) return [cam.tx, TARGET_Y, cam.tz];
-  return [cam.tx * (1 - s), TARGET_Y * (1 - s) + centreHeight(cam.az, dm) * s, cam.tz * (1 - s)];
+  const cx = (typeof land !== 'undefined' && land.cx) || 0, cz = (typeof land !== 'undefined' && land.cz) || 0;
+  const [ly, lx] = centreHeight(cam.az, dm), ca = Math.cos(cam.az), sa = Math.sin(cam.az);
+  const tx2 = cx + lx * ca, tz2 = cz - lx * sa;
+  return [cam.tx * (1 - s) + tx2 * s, TARGET_Y * (1 - s) + ly * s, cam.tz * (1 - s) + tz2 * s];
 }
 /* tilt used this frame: the user's tilt, lifted at most LIFT_MAX (eased, never while dragging) so the view clears what stands in the way */
 let camLiftNow = 0;
@@ -4208,8 +4253,11 @@ function camLift(){
   camLiftNow += (want - camLiftNow) * .2;
   return cam.el + camLiftNow;
 }
-/* tiles whose top still stands above the view line at tilt el: what gets faded */
+/* tiles whose top still stands above the view line at tilt el: what gets faded. city-idea C2: past
+   FADE_DIST the view is already drawn to the land middle -- whatever stands there (the town hall) must
+   stay solid, so nothing fades once zoomed out that far. */
 function viewBlockers(el){
+  if (cam.dist > FADE_DIST) return new Set();
   const [tx, ty, tz] = camTarget(), sx = Math.sin(cam.az), sz = Math.cos(cam.az), t = Math.tan(el), out = new Set();
   for (let r = .6; r <= cam.dist * Math.cos(el); r += .2) {
     const x = tx + sx * r, z = tz + sz * r;
@@ -4239,13 +4287,20 @@ function applyFade(blocked){
 }
 function updateCamera(){
   camera.aspect = W / H;
-  camera.updateProjectionMatrix();
   cam.dist = Math.min(cam.dist, distMax());
   const [tx, ty, tz] = camTarget(), el = camLift(), ce = Math.cos(el);
   const x = tx + cam.dist * ce * Math.sin(cam.az), z = tz + cam.dist * ce * Math.cos(cam.az);
   const y = Math.max(ty + cam.dist * Math.sin(el), aroundH(x, z) + CAM_CLEAR);
   camera.position.set(x, y, z);
   camera.lookAt(tx, ty, tz);
+  // city-idea C7: far must clear the whole land box, not just a fixed guess -- a big land used to get clipped
+  const raw = typeof land === 'undefined' ? { hx:6, hz:7, cx:0, cz:0 } : land;
+  const L = typeof land === 'undefined' ? raw : { hx: Math.max(raw.hx, 13), hz: Math.max(raw.hz, 13), cx: raw.cx || 0, cz: raw.cz || 0 };
+  let far = 0;
+  for (const lx of [L.cx - L.hx, L.cx + L.hx]) for (const lz of [L.cz - L.hz, L.cz + L.hz]) for (const ly of [-1.05, 0])
+    far = Math.max(far, Math.hypot(lx - x, ly - y, lz - z));
+  camera.far = far + 5;
+  camera.updateProjectionMatrix();
 }
 function resetCam(){ cam.az = Math.PI / 4; cam.el = EL_DEFAULT; cam.tx = home.x; cam.tz = home.z; cam.dist = W < 560 ? DIST_DEFAULT * 1.35 : DIST_DEFAULT; }
 function resize(){
