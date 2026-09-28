@@ -137,12 +137,16 @@ U11 one window for the whole team (owner, mock v3): the left column never change
         data-sel="<row id>" aria-current="true|false"> per row, in order (the governor first,
         data-sel="gov:<terr>"; depth-1 rows inside <li class="sub">), aria-current="true" on the row of
         sel only (a governor selection with no terr is the home governor, govTerr); rows look as the
-        governor window's rows do today (dot, name, sub line, state pill). A selected person who is not
-        in the group (a remote person) gets its own row at the end, current.
+        governor window's rows do today (dot, name, sub line, state pill). After the group's rows, always,
+        one row per other member's person standing in that territory (c.remote, not gone), so the list is
+        the same whoever is selected (headless E2E: a remote person used to appear only while selected).
+  winTitle(): for a person (selected.t 'c' or 'gov') the team window's title, i18n('team.title', {repo:
+        that territory's name}) (zh '{repo} · 团队', en '{repo} · Team'): the same whoever is selected.
   renderDetail(): for a governor and for a citizen, <div class="gov-cols"> with <div class="gov-side">
         = hint.team + teamListHtml(the person's territory, selected) and nothing else, and
         <div class="gov-chat"> = a compact header <div class="p-head"> (dot, name, state pill, one line
-        of facts: repo · branch · doing for a citizen, the away note for an away governor, a thin
+        of facts: repo · branch · doing for a citizen, repo · gov.ownTag for the governor (its pill the
+        same words as its list row, govRowText), the away note for an away governor, a thin
         progress bar for a citizen), then hint hist.title, the #chat list (the governor: its
         conversation; a citizen: historyHtml(personHistory(c, chat entries))), the .newmsg chip, then
         the #say form for a session or the governor, or the read-only hint + find-lead button for a
@@ -880,10 +884,13 @@ const rows = html => [...html.matchAll(/<button\b[^>]*>/g)].map(m => {
   const sel = /data-sel="([^"]*)"/.exec(m[0]), cur = /aria-current="([^"]*)"/.exec(m[0]);
   return (sel ? sel[1] : '?') + (cur && cur[1] === 'true' ? '*' : ''); });
 const group = rosterGroups().find(g => g.terr === A.id).rows.map(r => r.id);
+const rp = newCitizen('r:dev-ann:s:9', 'worker', 'far task', A.id);
+rp.remote = { who: 'Ann', device: 'lap', dev: 'dev-ann', rid: 'acme/shop', br: 'b' }; citizens.push(rp);
 __out = { group, a: A.id,
   x2: rows(teamListHtml(A.id, { t: 'c', id: 'x2' })), gov: rows(teamListHtml(A.id, { t: 'gov', terr: A.id })),
   home: rows(teamListHtml(A.id, { t: 'gov' })), other: rows(teamListHtml(A.id, { t: 'c', id: 'y1' })),
-  raw: teamListHtml(A.id, { t: 'c', id: 'x1' }) };
+  raw: teamListHtml(A.id, { t: 'c', id: 'x1' }),
+  withRemote: rows(teamListHtml(A.id, { t: 'c', id: 'x1' })), remoteSel: rows(teamListHtml(A.id, { t: 'c', id: 'r:dev-ann:s:9' })) };
 """
 
 
@@ -891,7 +898,7 @@ class TestTeamList(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.r = run_sim(TEAM_DRIVER, {"view": two_territory_view()}, ("apply", "landState", "rosterGroups", "teamListHtml", "esc"))
+        cls.r = run_sim(TEAM_DRIVER, {"view": two_territory_view()}, ("apply", "landState", "rosterGroups", "teamListHtml", "esc", "newCitizen", "citizens"))
 
     def test_same_rows_as_the_roster(self):
         g = self.r["group"]
@@ -905,11 +912,33 @@ class TestTeamList(unittest.TestCase):
         self.assertEqual([x for x in self.r["home"] if x.endswith("*")], ["gov:%s*" % a], "no terr = the home governor")
         self.assertEqual([x for x in self.r["other"] if x.endswith("*")], [], "someone of another repo is not in this list")
 
+    def test_other_members_are_always_listed(self):
+        g = self.r["group"]
+        self.assertEqual(self.r["withRemote"], [("x1*" if x == "x1" else x) for x in g] + ["r:dev-ann:s:9"],
+                         "the remote person is listed while someone else is selected")
+        self.assertEqual(self.r["remoteSel"], g + ["r:dev-ann:s:9*"])
+
     def test_rows_are_escaped_buttons(self):
         raw = self.r["raw"]
         self.assertIn('class="row"', raw)
         self.assertNotIn("two <b>", raw)
         self.assertTrue(sim_has("esc"), "esc lives in the sim section")
+
+
+class TestTeamWindowHead(unittest.TestCase):
+
+    def test_one_title_for_the_team(self):
+        self.assertEqual(text_keys("team.title"), 2)
+        self.assertIn("'team.title': '{repo} · 团队'", page())
+        self.assertIn("team.title", function_source("winTitle") or "")
+
+    def test_governor_head_facts(self):
+        branch = gov_branch()
+        i = branch.find('class="p-head"')
+        self.assertGreater(i, 0)
+        head = branch[i:branch.find("hist.title", i) if "hist.title" in branch[i:] else i + 1500]
+        self.assertIn("gov.ownTag", head, "repo · main manager · 主对话 under the name")
+        self.assertIn("govRowText(", head, "the same state words as its list row")
 
 
 class TestNoToolCounters(unittest.TestCase):
