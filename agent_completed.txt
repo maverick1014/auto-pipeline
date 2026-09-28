@@ -36,3 +36,4 @@
 2026-09-28 | user-scope-v4-pospro | CROSS-REPO: v4-pospro drops project-scope plugin (keep user scope), reports whether 27d69559/b37dd08b were pushed and its CLAUDE.md/AGENTS.md agent-start lines; sent to v4-pospro-60 | est 15m actual 4188m
 2026-09-28 | user-scope-v4-plus | CROSS-REPO: v4-plus drops project-scope plugin (keep user scope), reports whether 22b1cddf0/4ac748b1b were pushed; NO live v4-plus main manager, send when one opens | est 15m actual 4188m
 2026-09-28 | user-scope-v4-plus-sync | CROSS-REPO: v4-plus-sync drops project-scope plugin (keep user scope); NO live main manager, send when one opens | est 15m actual 4188m
+2026-09-28 | relief-orphan-monitors | agent-resources.sh relief: stop agent-monitor.sh loops whose folder (cwd) was deleted; today they are skipped and run forever | est 15m actual 15m
