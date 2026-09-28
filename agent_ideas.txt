@@ -38,3 +38,5 @@ agent-city: bin/agent.conf.default has language=en but the city default is zh; a
 agents/worker.md: forbid bare git stash (the stash is shared across sessions/worktrees); an idea-city worker used stash/pop, nothing lost (idea-city TM 2026-09-28) | 2026-09-28 14:23 | by main
 tests: DLBL_JS (test_agent_city_idea_page.py) and LIVE_SHOW_JS (test_agent_city_page.py) still set an unused signs: [] property; cleanup (idea-city TM 2026-09-28) | 2026-09-28 14:23 | by main
 agent-city: fully zoomed out, a person's question bubble covers the territory name label (auto-pipeline hidden behind 'Should a payment timeou...'); stack or offset them. Seen in idea-city E2E 2026-09-28 | 2026-09-28 14:23 | by main
+agent-file.sh: a 'todo note' (or keep-open) for close-case 'close now': today re-adding the todo resets its opened date, so actual minutes start over (close-case TM 2026-09-28) | 2026-09-28 18:47 | by main
+close-case: check live whether a SendMessage to a task manager fires its UserPromptSubmit hook; if not, TMs rely on W13 + the brief's CLOSE line, and 'orca terminal send' of the words does fire it (close-case TM 2026-09-28) | 2026-09-28 18:47 | by main
