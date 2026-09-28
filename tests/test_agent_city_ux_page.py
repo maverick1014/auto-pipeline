@@ -199,7 +199,7 @@ def listener_block(target_regex, event):
 
 def css():
     text = page()
-    return text[text.index("<style>"):text.index("</style>")]
+    return re.sub(r"/\*.*?\*/", "", text[text.index("<style>"):text.index("</style>")], flags=re.S)
 
 
 def media_960():

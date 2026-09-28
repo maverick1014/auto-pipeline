@@ -789,7 +789,8 @@ const out = {};
 const box = { Math, JSON, console, performance: { now: () => 0 }, cam: { az: .7, el: 30 * Math.PI / 180, dist: 9, tx: 0, tz: 0 },
   W: 1200, H: 800, land: { hx: 13, hz: 13 }, map: { territories: [] }, camChanged(){}, clamp: (v, a, b) => Math.max(a, Math.min(b, v)),
   // city-ux: zoomStep may show the zoom-out hint (capHint) -- a harmless element for it
-  $: () => ({ hidden: true, textContent: '', style: {}, classList: { add(){}, remove(){}, toggle(){} } }), setTimeout: () => 0, clearTimeout(){} };
+  $: () => ({ hidden: true, textContent: '', style: {}, classList: { add(){}, remove(){}, toggle(){} } }), setTimeout: () => 0, clearTimeout(){},
+  setText(el, t){ el.textContent = t; }, capHintTimer: 0 };
 vm.createContext(box);
 vm.runInContext(prelude + '\n' + fns, box);
 out.full = box.distMax();

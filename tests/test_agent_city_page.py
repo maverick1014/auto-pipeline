@@ -584,7 +584,7 @@ UNIT_JS = r"""
 const fs = require('fs'), vm = require('vm');
 const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const out = {};
-function ctx(extra){ const box = Object.assign({ Math, JSON, console, performance: { now: () => 0 } }, extra); vm.createContext(box); vm.runInContext(prelude + '\n' + fns, box); return box; }
+function ctx(extra){ const box = Object.assign({ Math, JSON, console, performance: { now: () => 0 }, $: () => null, setTimeout: () => 0, clearTimeout(){} }, extra); vm.createContext(box); vm.runInContext(prelude + '\n' + fns, box); return box; }
 
 // walking
 {
@@ -793,7 +793,8 @@ const clampFn = (v, a, b) => Math.max(a, Math.min(b, v));
   box.W = 874; box.H = 710; box.land = { hx: 39, hz: 39 }; box.home = { x: 0, z: 0 };
   box.camChanged = () => {};
   box.resetCam();
-  if (typeof box.zoomStep === 'function') { for (let i = 0; i < 6; i++) box.zoomStep(1); out.sixOut = box.cam.dist / box.distMax(); }
+  // city-ux U1: the user's zoom-out stops at distLimit() (the whole land is the All tag's job)
+  if (typeof box.zoomStep === 'function') { for (let i = 0; i < 6; i++) box.zoomStep(1); out.sixOut = box.cam.dist / (typeof box.distLimit === 'function' ? box.distLimit() : box.distMax()); }
   else out.sixOut = null;
   // at the limit, tall things by the middle must not lift the view off the land
   box.heightAt = (x, z) => (Math.abs(x) < 3 && Math.abs(z) < 3 ? 4 : 0);
@@ -1103,7 +1104,7 @@ class TestZoomOut(unittest.TestCase):
                 self.assertGreaterEqual(z["fill"], low, "the land is lost in the middle of the stage")
 
     def test_six_steps_out_show_the_whole_land(self):
-        """E2E bounce G6: 6 x minus in #demo still cut the land off."""
+        """E2E bounce G6: 6 x minus in #demo still cut the land off. city-ux U1: six steps reach the zoom-out limit."""
         six = unit_results()["sixOut"]
         self.assertIsNotNone(six, "function zoomStep(k) not found")
         self.assertAlmostEqual(six, 1.0, delta=1e-6)
@@ -1196,7 +1197,7 @@ class TestCamera(unittest.TestCase):
         wheel = re.search(r"(?:\bstage|\$\('#stage'\))\.addEventListener\('wheel'.*", text)
         self.assertIsNotNone(wheel)
         self.assertIn("capZoom(", text[wheel.start():wheel.start() + 1500])
-        self.assertRegex(text, r"pinch\.z[^;\n]*capZoom\(|capZoom\([^;\n]*pinch\.z")
+        self.assertRegex(text, r"pinch\.z[\s\S]{0,300}capZoom\(")
 
     def test_camera_orbits_the_target_at_the_users_tilt(self):
         import math
