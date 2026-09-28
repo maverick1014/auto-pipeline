@@ -5,14 +5,23 @@
 #   ./agent-settings.sh menu            pick the key and type the value
 #   ./agent-settings.sh sync            add any key missing from agent.conf, template value
 # Takes effect at the next agent start.
+# Run from a worktree: still reads/writes the MAIN repo's agent.conf; show, set and sync say so.
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
 roots_read
 CONF="$PROJECT_ROOT/agent.conf"
 TEMPLATE="$PLUGIN_ROOT/bin/agent.conf.default"
 
+ROOT_REAL=$(cd "$PROJECT_ROOT" && pwd -P)
+STATE_REAL=$(cd "$STATE_DIR" && pwd -P)
+WORKTREE_NOTE=""
+if [ "$STATE_REAL" != "$ROOT_REAL" ]; then
+  WORKTREE_NOTE="agent.conf: $ROOT_REAL/agent.conf (main repo copy; this worktree's own agent.conf is not used)"
+fi
+note() { [ -z "$WORKTREE_NOTE" ] || echo "$WORKTREE_NOTE"; }
+
 case "${1:-}" in
-  -h|--help) sed -n '2,7p' "$0"; exit 0;;
+  -h|--help) sed -n '2,8p' "$0"; exit 0;;
 esac
 
 if [ ! -f "$CONF" ]; then
@@ -20,8 +29,9 @@ if [ ! -f "$CONF" ]; then
   exit 2
 fi
 
-show() { awk -F= 'NF==2{printf "  %-20s %s\n",$1,$2}' "$CONF"; }
+show() { note; awk -F= 'NF==2{printf "  %-20s %s\n",$1,$2}' "$CONF"; }
 setv() {
+  note
   PYTHONPATH="$PLUGIN_ROOT/bin${PYTHONPATH:+:$PYTHONPATH}" python3 - "$1" "$2" "$CONF" "$TEMPLATE" <<'PY'
 import sys, agent_conf as a
 k, v, conf_path, template_path = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
@@ -43,6 +53,7 @@ print(f"saved: {k}={v}"); print("takes effect at the next agent start; running a
 PY
 }
 sync() {
+  note
   PYTHONPATH="$PLUGIN_ROOT/bin${PYTHONPATH:+:$PYTHONPATH}" python3 - "$CONF" "$TEMPLATE" <<'PY'
 import sys, agent_conf as a
 conf_path, template_path = sys.argv[1], sys.argv[2]
@@ -72,6 +83,6 @@ case "${1:-}" in
     k=$(printf '%s\n' $keys | sed -n "${n}p"); [ -n "$k" ] || { echo "no such number"; exit 1; }
     printf 'new value for %s: ' "$k"; read -r v
     setv "$k" "$v";;
-  -h|--help) sed -n '2,7p' "$0";;
-  *) [ $# -eq 2 ] || { sed -n '2,7p' "$0"; exit 2; }; setv "$1" "$2";;
+  -h|--help) sed -n '2,8p' "$0";;
+  *) [ $# -eq 2 ] || { sed -n '2,8p' "$0"; exit 2; }; setv "$1" "$2";;
 esac
