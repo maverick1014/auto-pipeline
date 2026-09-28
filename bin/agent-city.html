@@ -1857,27 +1857,27 @@ const WEIGHT = { Edit:1, Write:1, Bash:.6, Read:.3, Other:.3 };
 let govState = 'idle';
 let governorCount = 1; // assume present until a snapshot or a 'governors' event says otherwise
 let govTerr = null;
-/* territory id -> {state, bubble} for every governor session present now (server: snapshot "govs",
-   live "gov" with present true/false -- city-people, Interaction). Empty: no governor anywhere.
-   `bubble` ({text, until}, idea-city C13) is that territory's own governor's say() text, set by
-   govSay below -- kept on the same entry so it never leaks onto another territory's governor. */
+/* territory id -> {state} for every governor session present now (server: snapshot "govs", live
+   "gov" with present true/false -- city-people, Interaction). Empty: no governor anywhere. Presence
+   ONLY -- idea-city P3 fix: govSay/govTalk (below) keep their own talk apart from it, so a governor
+   with no presence entry at all (the DEMO one: governorAt never fills govsByTerr there) still talks,
+   and talking itself never adds a phantom presence entry. */
 const govsByTerr = new Map();
 /* govSay(terr, text, dur): that territory's own governor says `text` for `dur` seconds (simT clock).
-   govsByTerr is "who is present" (governorAt/the figure pool draw from it) -- govSay only ever talks
-   for a territory that already has an entry there, never adds one itself (idea-city P3 fix: a "去吧"
-   or answer arriving after that governor's own present:false must never bring back a phantom one). */
+   The talk map lives on govSay itself (govSay.talk), not a separate top-level variable, only so this
+   function's own extracted source is self-contained for callers that pull in just govSay/govTalk. */
 function govSay(terr, text, dur){
-  const g = govsByTerr.get(terr);
-  if (g) g.bubble = { text, until: simT + dur };
+  govSay.talk = govSay.talk || new Map();
+  govSay.talk.set(terr, { text, until: simT + dur });
 }
 /* govTalk(terr) -> the text terr's own governor bubble shows right now, or '': 等你回话… while that
-   territory's governor is waiting, else his own govSay text while it lasts -- never another
-   territory's (city-people, Interaction: every governor talks in his own bubble). */
+   territory's governor is waiting (govsByTerr, presence), else his own govSay text while it lasts --
+   never another territory's (city-people, Interaction: every governor talks in his own bubble). */
 function govTalk(terr){
   const g = govsByTerr.get(terr);
-  if (!g) return '';
-  if (g.state === 'waiting') return '等你回话…';
-  return (g.bubble && simT < g.bubble.until) ? g.bubble.text : '';
+  if (g && g.state === 'waiting') return '等你回话…';
+  const b = govSay.talk && govSay.talk.get(terr);
+  return (b && simT < b.until) ? b.text : '';
 }
 /* city-join: another team's governor sessions, keyed by their wrapped id ("r:<dev>:gov") ->
    {id, terr, who, device, dev, state, at}; other members' people live in `citizens` too, each
@@ -2120,7 +2120,7 @@ function openGovAskFor(terr){
 function setGovState(state, terr){
   if (terr !== undefined && terr !== govTerr) return;
   govState = state;
-  if (state !== 'waiting') { const g = govsByTerr.get(govTerr); if (g) g.bubble = null; }
+  if (state !== 'waiting' && govSay.talk) govSay.talk.delete(govTerr);
 }
 function roleOrOther(role){ return ROLES[role] ? role : 'other'; }
 /* home = the scene point the default camera looks at: the governor's territory hall, else the first (Camera, Growth) */
@@ -2397,10 +2397,7 @@ function apply(ev){
         // a live 'gov' event only ever updates that territory's own presence/state, never which
         // territory the camera calls home -- other governors coming and going must not move it.
         if (govTerr === null) govTerr = ev.terr;
-        if (ev.present === false) govsByTerr.delete(ev.terr);
-        // idea-city C13: mutate the existing entry's state in place -- a fresh object here would drop
-        // its own .bubble (govSay), silencing a governor mid-say every time his state merely updates.
-        else { const g = govsByTerr.get(ev.terr); if (g) g.state = ev.state; else govsByTerr.set(ev.terr, { state: ev.state }); }
+        if (ev.present === false) govsByTerr.delete(ev.terr); else govsByTerr.set(ev.terr, { state: ev.state });
         updateHome();
       }
       // idea-city C13: only the event's OWN territory ever moves govState (setGovState guards it) --
