@@ -105,6 +105,36 @@ U9 chat text: simple markdown, safe
   (<table>, <th>, <td>). No links, no images, no raw HTML ever. chatHtml() renders every message's
   text through mdLite inside an element with class "md"; CSS styles .md tables, code and lists.
 
+U10 every person opens the same two-column window, with its history (owner, mock v2 5ebd055)
+  (sim) ACT_KEEP = 60. Every citizen has c.acts = [] (newCitizen): its activity lines, oldest first.
+        actLog(c, text): appends { at: Date.now() / 1000, text }, keeps only the last ACT_KEEP.
+        actTool(c, tool): when the last line is a tools line (it has .tools), counts the tool there and
+        rewrites its text; else appends a new tools line { at, tools: {tool: 1}, text }. A tools line's
+        text is "<tool> ×<n>" per tool, in the order first used, joined by " · " ("Edit ×2 · Read ×1").
+        apply() records, for the event's citizen: spawn -> hist.started {task}; tool -> actTool; stuck
+        -> hist.stuck {text: stuckText(ev)}; relay -> hist.toLead (to 'lead') or hist.toGov; waiting ->
+        hist.waiting; done -> hist.done; leave -> hist.left (remote people get their spawn / done / leave
+        lines the same way). giveAnswer() stores { q, a, at: Date.now() / 1000 } in c.qa.
+  (sim) personHistory(c, entries) -> one list, oldest first (a stable sort by .at): every c.acts line
+        {k:'act', at, text}, every c.qa {k:'ask', q, a, at}, every chat entry (prompt / reply / owner)
+        {k: entry.kind, text, at, state}, and last of all, while c.stuck, the open question
+        {k:'ask', q: c.question, a: null}.
+  (sim) historyHtml(items, name, busy) -> the <li> rows of the history list: 'act' -> <li class="act">
+        with <time> (HH:MM) and the escaped text; 'ask' -> <li class="qa"> with label.ask + the escaped
+        question and label.answer + the escaped answer, or label.awaitingAnswer while a is null; a message
+        -> <li class="msg" data-kind="..."> as chatHtml() makes it (text through mdLite, class "md"; a
+        subagent's prompt is labelled chat.task); no items -> <li class="msg-empty"> hist.empty.
+  3D part: renderWin() makes the window wide for every person: selected.t 'c' (local or remote) and
+        'gov' (a building, a site and a remote governor stay narrow). renderDetail()'s citizen branch uses
+        the governor's layout: <div class="gov-cols"> with <div class="gov-side"> (head, progress, tools,
+        chain line, demo actions, and its team: a worker's lead row under hint.lead, a lead's own
+        workers under hint.team, each a data-sel row) and <div class="gov-chat"> (hint hist.title, the
+        #chat list from historyHtml(personHistory(c, chat entries)), the .newmsg chip, then the #say form
+        for a session or the read-only hint + find-lead button for a subagent). The per-call refresh keeps
+        that list current (chatScroll rules). A remote person: the same two columns, its own lines only.
+  New TEXT keys, zh and en: hist.title, hist.empty, hist.started, hist.stuck, hist.toLead, hist.toGov,
+        hist.waiting, hist.done, hist.left, hint.lead, chat.task.
+
 Run: python3 -m unittest tests.test_agent_city_ux_page </dev/null
 """
 
@@ -658,6 +688,132 @@ class TestChatWiring(unittest.TestCase):
             self.assertEqual(text_keys(key), 2, key)
         self.assertIn('class="newmsg"', page())
         self.assertTrue(rule(".newmsg"), "CSS for the chip")
+
+
+# ---------------------------------------------------------------------------
+# U10: every person's window, with its history
+# ---------------------------------------------------------------------------
+
+U10_DRIVER = r"""
+const V = __payload.view, A = V.territories[0];
+function buildLand(view){ landState(view); }
+apply({ type: 'snapshot', world: V, gov: { state: 'idle', terr: A.id }, governors: 1, asks: [], shows: [],
+  govs: [{ terr: A.id, state: 'idle' }], agents: [] });
+apply({ type: 'spawn', id: 'x1', role: 'worker', label: 'worker', task: '登录 API', terr: A.id });
+const c = byId('x1'), out = { fresh: Array.isArray(c.acts) };
+out.n0 = c.acts.length;
+for (const t of ['Edit', 'Edit', 'Read']) apply({ type: 'tool', id: 'x1', tool: t });
+out.afterTools = c.acts.map(a => a.text);
+apply({ type: 'stuck', id: 'x1', question: '支付超时要不要自动重试？' });
+apply({ type: 'tool', id: 'x1', tool: 'Bash' });
+apply({ type: 'relay', id: 'x1', to: 'governor', lead: '' });
+apply({ type: 'waiting', id: 'x1' });
+apply({ type: 'done', id: 'x1' });
+apply({ type: 'leave', id: 'x1' });
+out.acts = c.acts.map(a => a.text);
+out.atOk = c.acts.every(a => typeof a.at === 'number' && a.at > 1.6e9);
+out.want = [i18n('hist.started', { task: '登录 API' }), 'Edit ×2 · Read ×1', i18n('hist.stuck', { text: '支付超时要不要自动重试？' }),
+  'Bash ×1', i18n('hist.toGov'), i18n('hist.waiting'), i18n('hist.done'), i18n('hist.left')];
+out.keys = ['hist.started', 'hist.stuck', 'hist.toLead', 'hist.toGov', 'hist.waiting', 'hist.done', 'hist.left', 'hist.title', 'hist.empty', 'hint.lead', 'chat.task'].map(k => i18n(k, { task: 'T', text: 'X' }));
+for (let i = 0; i < 200; i++) actLog(c, 'line ' + i);
+out.cap = { n: c.acts.length, keep: ACT_KEEP, last: c.acts[c.acts.length - 1].text, first: c.acts[0].text };
+const q = { question: 'q?', answer: 'a!', qa: [], stuck: true, state: 'asking', terr: A.id };
+giveAnswer(q);
+out.qa = q.qa.map(x => ({ q: x.q, a: x.a, at: typeof x.at === 'number' && x.at > 1.6e9 }));
+const p = { acts: [{ at: 10, text: 'a' }, { at: 30, text: 'b' }], qa: [{ q: 'q1', a: 'a1', at: 20 }], stuck: true, question: 'q2' };
+out.hist = personHistory(p, [{ kind: 'prompt', text: 't', at: 5 }, { kind: 'reply', text: 'r', at: 25 }, { kind: 'owner', text: 'o', at: 30, state: 'delivered' }])
+  .map(x => x.k + ':' + (x.k === 'ask' ? x.q + (x.a === null ? ':open' : ':' + x.a) : x.text));
+p.stuck = false;
+out.hist2 = personHistory(p, []).map(x => x.k);
+out.html = historyHtml([{ k: 'act', at: 1727500000, text: '<b>x</b>' }, { k: 'ask', q: '<q>', a: null, at: 2 },
+  { k: 'ask', q: 'q', a: 'a<i>', at: 3 }, { k: 'reply', text: '**bold**', at: 4 }], 'worker', false);
+out.empty = historyHtml([], 'w', false);
+out.labels = { ask: i18n('label.ask'), answer: i18n('label.answer'), waiting: i18n('label.awaitingAnswer'), empty: i18n('hist.empty') };
+__out = out;
+"""
+
+
+class TestPersonHistory(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_sim(U10_DRIVER, {"view": two_territory_view()},
+                        ("apply", "byId", "landState", "i18n", "actLog", "actTool", "ACT_KEEP", "personHistory",
+                         "historyHtml", "giveAnswer"))
+
+    def test_activity_lines_from_live_events(self):
+        self.assertTrue(self.r["fresh"], "newCitizen gives c.acts = []")
+        self.assertEqual(self.r["n0"], 1, "spawn -> one started line")
+        self.assertEqual(self.r["afterTools"], self.r["want"][:2], "tools in a row share one line")
+        self.assertEqual(self.r["acts"], self.r["want"])
+        self.assertTrue(self.r["atOk"], "every line has at = Date.now() / 1000")
+
+    def test_texts_exist(self):
+        for got in self.r["keys"]:
+            self.assertFalse(got.startswith(("hist.", "hint.", "chat.")), "missing TEXT key: " + got)
+
+    def test_capped(self):
+        c = self.r["cap"]
+        self.assertEqual(c["keep"], 60)
+        self.assertEqual(c["n"], 60)
+        self.assertEqual(c["last"], "line 199")
+        self.assertEqual(c["first"], "line 140")
+
+    def test_answers_are_dated(self):
+        self.assertEqual(self.r["qa"], [{"q": "q?", "a": "a!", "at": True}])
+
+    def test_one_history_oldest_first(self):
+        self.assertEqual(self.r["hist"], ["prompt:t", "act:a", "ask:q1:a1", "reply:r", "act:b", "owner:o", "ask:q2:open"])
+        self.assertEqual(self.r["hist2"], ["act", "ask", "act"])
+
+    def test_history_rows(self):
+        h, L = self.r["html"], self.r["labels"]
+        self.assertIn('<li class="act">', h)
+        self.assertIn("<time>", h)
+        self.assertIn("&lt;b&gt;x&lt;/b&gt;", h)
+        self.assertNotIn("<b>x</b>", h)
+        self.assertEqual(h.count('<li class="qa"'), 2)
+        self.assertIn("&lt;q&gt;", h)
+        self.assertIn(L["waiting"], h)
+        self.assertIn("a&lt;i&gt;", h)
+        self.assertIn('class="msg"', h)
+        self.assertRegex(h, r"<(b|strong)>bold</(b|strong)>")
+        self.assertIn("msg-empty", self.r["empty"])
+        self.assertIn(L["empty"], self.r["empty"])
+
+
+def citizen_branch():
+    src = function_source("renderDetail") or ""
+    i = src.find("} else if (c) {")
+    j = src.find("} else if (selected && selected.t === 'rg')", i)
+    return src[i:j] if i >= 0 and j > i else ""
+
+
+class TestPersonWindow(unittest.TestCase):
+
+    def test_wide_for_every_person(self):
+        src = function_source("renderWin") or ""
+        m = re.search(r"classList\.toggle\(\s*'wide'\s*,([^)]*)\)", src)
+        self.assertIsNotNone(m, "renderWin toggles 'wide'")
+        cond = m.group(1)
+        self.assertIn("'c'", cond + src, "citizens get the wide window")
+        self.assertIn("'gov'", cond + src)
+
+    def test_citizen_two_columns(self):
+        b = citizen_branch()
+        self.assertTrue(b, "renderDetail's citizen branch not found")
+        for cls in ("gov-cols", "gov-side", "gov-chat"):
+            self.assertIn('class="%s"' % cls, b, cls)
+        right = b[b.index('class="gov-chat"'):]
+        self.assertIn("hist.title", right)
+        self.assertIn("personHistory(", b + (function_source("renderDetail") or ""))
+        self.assertIn("historyHtml(", function_source("renderDetail") or "")
+        self.assertIn("hint.lead", b, "a worker shows its lead on the left")
+
+    def test_history_list_is_refreshed(self):
+        src = function_source("renderDetail") or ""
+        tail = src[src.rfind("if (chatTo)"):] if "if (chatTo)" in src else src
+        self.assertIn("historyHtml(", tail, "the per-call refresh keeps the history current")
 
 
 if __name__ == "__main__":
