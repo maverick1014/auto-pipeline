@@ -967,6 +967,9 @@ function citizenStatus(c, governors = 1) {
     if (c.askPhase === 'governor') return governors ? ['ask', '在问总督'] : ['you', '等你回答'];
     if (c.askPhase === 'owner') return ['you', '等你回答'];
   }
+  // idea-city C5: idle_prompt is not a question -- a citizen merely waiting for input shows 等你回话,
+  // never 在问总督/stuck (an ask of its own still wins: it is checked first, above).
+  if (c.waiting) return ['you', '等你回话'];
   // a citizen relayed to the governor: the governor answers relays by SendMessage, never through gov-watch,
   // so its own territory's presence (governorAt) decides, not the old gov-watch 'governors' count (Interaction).
   if (c.relay === 'governor') return governorAt(c.terr) ? ['ask', '在问总督'] : ['you', '等你'];
@@ -1713,7 +1716,7 @@ function newCitizen(id, role, task, terr){
     alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0,Other:0}, work:0, bld:null, stand, home:null, slot:null, rest:null, pendingBuild:null,
     question:'', answer:'', answered:false, pendingAnswer:'', askT:0, stuck:false, doneFlag:false, leaveFlag:false,
     askKind:'', askPhase:'', qa:[], bubble:null, walkT:Math.random()*5, walkAt:0, walkOut:false, feed:null, gone:false,
-    office:null, lead:'', relay:'', toolAt:0, strollPhase:'', strollPauseUntil:0, strollOutPath:[] };
+    office:null, lead:'', relay:'', toolAt:0, strollPhase:'', strollPauseUntil:0, strollOutPath:[], waiting:false };
 }
 const byId = id => citizens.find(c => c.id === id);
 
@@ -1813,7 +1816,7 @@ function goOffice(c, leadC){
 }
 function releaseSlot(c){ if (c.slot && !c.slot.extra) c.slot.by = 0; c.slot = null; }
 function giveAnswer(c){
-  if (DEMO) { say(gov, c.answer, 2.6); gov.answered++; }
+  if (DEMO) { govSay(c.terr || govTerr, c.answer, 2.6); gov.answered++; }
   c.qa.push({ q: c.question, a: c.answer });
   c.state = 'heard'; c.stateT = 0;
 }
@@ -1854,9 +1857,26 @@ const WEIGHT = { Edit:1, Write:1, Bash:.6, Read:.3, Other:.3 };
 let govState = 'idle';
 let governorCount = 1; // assume present until a snapshot or a 'governors' event says otherwise
 let govTerr = null;
-/* territory id -> {state} for every governor session present now (server: snapshot "govs", live "gov"
-   with present true/false -- city-people, Interaction). Empty: no governor anywhere. */
+/* territory id -> {state, bubble} for every governor session present now (server: snapshot "govs",
+   live "gov" with present true/false -- city-people, Interaction). Empty: no governor anywhere.
+   `bubble` ({text, until}, idea-city C13) is that territory's own governor's say() text, set by
+   govSay below -- kept on the same entry so it never leaks onto another territory's governor. */
 const govsByTerr = new Map();
+/* govSay(terr, text, dur): that territory's own governor says `text` for `dur` seconds (simT clock). */
+function govSay(terr, text, dur){
+  const bubble = { text, until: simT + dur };
+  const g = govsByTerr.get(terr);
+  if (g) g.bubble = bubble; else govsByTerr.set(terr, { state: 'idle', bubble });
+}
+/* govTalk(terr) -> the text terr's own governor bubble shows right now, or '': 等你回话… while that
+   territory's governor is waiting, else his own govSay text while it lasts -- never another
+   territory's (city-people, Interaction: every governor talks in his own bubble). */
+function govTalk(terr){
+  const g = govsByTerr.get(terr);
+  if (!g) return '';
+  if (g.state === 'waiting') return '等你回话…';
+  return (g.bubble && simT < g.bubble.until) ? g.bubble.text : '';
+}
 /* city-join: another team's governor sessions, keyed by their wrapped id ("r:<dev>:gov") ->
    {id, terr, who, device, dev, state, at}; other members' people live in `citizens` too, each
    flagged with a `remote` field {who, device, dev, rid, br} (city-people's own newCitizen/
@@ -2091,7 +2111,14 @@ function openGovAskFor(terr){
   for (const a of asks.values()) if (!a.closed && a.agent === 'gov' && a.terr === terr) return a;
   return null;
 }
-function setGovState(state){ govState = state; if (state !== 'waiting') gov.bubble = null; }
+/* setGovState(state, terr): only the home territory (govTerr) ever changes govState -- another
+   territory's governor state never moves the home one (city-people, Interaction: every governor
+   talks in his own bubble). */
+function setGovState(state, terr){
+  if (terr !== govTerr) return;
+  govState = state;
+  if (state !== 'waiting') { const g = govsByTerr.get(govTerr); if (g) g.bubble = null; }
+}
 function roleOrOther(role){ return ROLES[role] ? role : 'other'; }
 /* home = the scene point the default camera looks at: the governor's territory hall, else the first (Camera, Growth) */
 function updateHome(){
@@ -2120,6 +2147,7 @@ function placeAgent(a){
   c.work = Object.entries(tools).reduce((s, [k, v]) => s + (WEIGHT[k] || .3) * v, 0);
   c.toolAt = simT; // calm idle strolls (city-people): a fresh "nothing to do" clock on every (re)connect
   c.doneFlag = !!a.done;
+  c.waiting = !!a.waiting; // idea-city C5: a snapshot agent idle_prompt-waiting starts the same way
   // D2, a page opened mid-chain (city-people): a relay -- done or not -- always waits at the office/hall,
   // never straight to resting; relay_end (still to come, or already applied before this snapshot) is what
   // sends a done citizen on to rest, same order the live events give.
@@ -2169,7 +2197,7 @@ function apply(ev){
       // snapshot = live: govs replaces the whole picture of who is present, empty means nobody
       govsByTerr.clear();
       for (const g of ev.govs || []) govsByTerr.set(g.terr, { state: g.state });
-      if (ev.gov && ev.gov.state) setGovState(ev.gov.state);
+      if (ev.gov && ev.gov.state) setGovState(ev.gov.state, ev.gov.terr);
       if (typeof ev.governors === 'number') governorCount = ev.governors;
       asks.clear();
       for (const a of ev.asks || []) asks.set(a.id, a);
@@ -2225,7 +2253,7 @@ function apply(ev){
       assignHome(n);
       n.label = ev.label || role;
       citizens.push(n);
-      say(gov, `去吧：${ev.task}`, 1.8); gov.dispatched++;
+      govSay(ev.terr || govTerr, `去吧：${ev.task}`, 1.8); gov.dispatched++;
       log(`总督派出 ${n.label}：${ev.task}`);
       return n;
     }
@@ -2321,6 +2349,18 @@ function apply(ev){
       if (ev.to === 'lead') goChain(c, ev.lead); else if (ev.to === 'governor') goHall(c);
       return c;
     }
+    // idea-city C5: idle_prompt is not a question -- a citizen whose session merely waits for input
+    // stays exactly where it is (no goChain/goHall: it has not asked anything, has nowhere new to go).
+    case 'waiting': {
+      if (!c) return null;
+      c.waiting = true;
+      return c;
+    }
+    case 'resume': {
+      if (!c) return null;
+      c.waiting = false;
+      return c;
+    }
     case 'relay_end': {
       // back home; a done citizen then rests (never straight from the office/hall -- Interaction).
       if (!c) return null;
@@ -2349,15 +2389,20 @@ function apply(ev){
       return c;
     }
     case 'gov': {
-      setGovState(ev.state);
       if (ev.terr) {
         // Camera home (updateHome) is fixed at the snapshot's own gov.terr (city-land, First view);
         // a live 'gov' event only ever updates that territory's own presence/state, never which
         // territory the camera calls home -- other governors coming and going must not move it.
         if (govTerr === null) govTerr = ev.terr;
-        if (ev.present === false) govsByTerr.delete(ev.terr); else govsByTerr.set(ev.terr, { state: ev.state });
+        if (ev.present === false) govsByTerr.delete(ev.terr);
+        // idea-city C13: mutate the existing entry's state in place -- a fresh object here would drop
+        // its own .bubble (govSay), silencing a governor mid-say every time his state merely updates.
+        else { const g = govsByTerr.get(ev.terr); if (g) g.state = ev.state; else govsByTerr.set(ev.terr, { state: ev.state }); }
         updateHome();
       }
+      // idea-city C13: only the event's OWN territory ever moves govState (setGovState guards it) --
+      // another territory's governor going busy/idle/waiting never touches the home one.
+      setGovState(ev.state, ev.terr);
       return null;
     }
     case 'governors': {
@@ -2391,7 +2436,7 @@ function apply(ev){
       if (ac) applyAsk(ac, null);
       log(askLine(ev, name));
       if (ev.by === 'governor' && ev.verb === 'answer') {
-        say(gov, ev.text || '已回答', 2.6);
+        govSay((view && view.terr) || govTerr, ev.text || '已回答', 2.6);
         gov.answered++;
       }
       if (openAskId === ev.id && view) {
@@ -2473,8 +2518,9 @@ function localCount(){ let n = 0; for (const c of citizens) if (!c.remote) n++; 
 /* other members' citizens now shown (capped at MAX_REMOTE, requirements/city.md Joining) */
 function remoteCount(){ let n = 0; for (const c of citizens) if (c.remote) n++; return n; }
 /* applyRemote(inner, who): plays one of another member's own page events (spawn, tool, stuck,
-   answer, done, leave -- 'gov' is handled by the 'remote' case itself) onto a citizen flagged
-   `remote`. Never the "去吧" dispatch, never a build, never MY governor -- city-join, Joining. */
+   answer, relay, relay_end, waiting, resume, done, leave -- 'gov' is handled by the 'remote' case
+   itself) onto a citizen flagged `remote`. Never the "去吧" dispatch, never a build, never MY
+   governor -- city-join, Joining. */
 function applyRemote(inner, who){
   if (inner.type === 'spawn') {
     if (byId(inner.id)) return null;
@@ -2495,6 +2541,28 @@ function applyRemote(inner, who){
   const rc = inner.id ? byId(inner.id) : null;
   if (!rc || !rc.remote) return null;
   rc.remoteAt = Date.now();
+  // idea-city C16: the chain of command, played back the way apply() does for local people -- a
+  // remote lead never has an office (its own applyRemote 'spawn' sets none), so 'lead' walks beside
+  // the lead person itself instead, falling back to the territory hall when it cannot be found.
+  if (inner.type === 'relay') {
+    rc.relay = inner.to;
+    if (inner.to === 'lead') {
+      const leadC = inner.lead ? byId(inner.lead) : null;
+      if (leadC) {
+        const taken = citizens.filter(o => o !== rc && o.slot && byId(o.lead) === leadC
+          && (o.state === 'to_lead' || o.state === 'at_lead')).map(o => o.slot);
+        const s = waitStand({ x: leadC.x, y: leadC.y }, taken);
+        rc.slot = s;
+        goTo(rc, s, 'to_lead');
+      } else goHall(rc);
+    } else if (inner.to === 'governor') goHall(rc);
+    return rc;
+  }
+  if (inner.type === 'relay_end') {
+    rc.relay = ''; rc.stuck = false;
+    goTo(rc, rc.home, 'back');
+    return rc;
+  }
   switch (inner.type) {
     case 'tool':
       rc.tools[inner.tool] = (rc.tools[inner.tool] || 0) + 1;
@@ -2507,6 +2575,14 @@ function applyRemote(inner, who){
       return rc;
     case 'answer':
       rc.stuck = false;
+      return rc;
+    // idea-city C5: idle_prompt is not a question -- another member's citizen merely waiting for
+    // input stays exactly where it is, same as the local 'waiting'/'resume' cases.
+    case 'waiting':
+      rc.waiting = true;
+      return rc;
+    case 'resume':
+      rc.waiting = false;
       return rc;
     case 'done':
       if (rc.doneFlag) return null;
@@ -3991,8 +4067,9 @@ function updateGovernor(){
   // typeof guard: some harnesses (test_agent_city_land, TestEmptyWorld) stub updateGovernor's globals
   // without the city-join ring helpers -- same pattern governorFigures() below already relies on.
   if (typeof applyRing === 'function') applyRing(govV, ringColor(joined, '#FFD36E', memberColorMap.me));
-  const waiting = !DEMO && govState === 'waiting';
-  const talking = waiting || (gov.bubble && simT < gov.bubble.until);
+  // idea-city C13: govTalk(terr) is the single source of the home territory's own bubble text --
+  // 等你回话… while HE waits, else his own govSay text while it lasts, never another territory's.
+  const text = govTalk(govTerr), talking = !!text;
   // calm idle strolls (city-people): govAnim caps any gesture (no looping wave/handshake while waiting)
   // and shows 'walk' while he actually strolls -- the old unconditional talking/idle toggle used to
   // loop 'interact-left' for as long as govState stayed 'waiting'.
@@ -4000,8 +4077,7 @@ function updateGovernor(){
   anim(govV, gAnim);
   govV.sel.visible = !!(selected && selected.t === 'gov' && (selected.terr || govTerr) === govTerr);
   const [sx, sy] = toScreen(px, .9, py);
-  if (waiting) setText(govBub, '等你回话…');
-  else if (talking) setText(govBub, gov.bubble.text);
+  if (talking) setText(govBub, text);
   pin(govBub, sx, sy, talking);
   const gAsk = typeof openGovAskFor === 'function' ? openGovAskFor(govTerr) : openAskFor('gov');
   if (gAsk) govQm.setAttribute('data-open', gAsk.id); else govQm.removeAttribute('data-open');
@@ -4047,11 +4123,15 @@ function updateGovPool(list){
     anim(v, typeof govAnim === 'function' ? govAnim(fig.terr, simT) : 'idle');
     v.sel.visible = !!(selected && selected.t === 'gov' && selected.terr === fig.terr);
     const [sx, sy] = toScreen(fig.x, .9, fig.y);
-    pin(v.bub, sx, sy, false); // no per-territory "talking" text yet -- gov.bubble only ever tracks the home one
+    // idea-city C13: every governor talks in his own bubble -- govTalk(fig.terr) only ever answers
+    // for this figure's own territory, never another one's (home included).
+    const text = govTalk(fig.terr), talking = !!text;
+    if (talking) setText(v.bub, text);
+    pin(v.bub, sx, sy, talking);
     const gAsk = openGovAskFor(fig.terr);
     if (gAsk) v.qm.setAttribute('data-open', gAsk.id); else v.qm.removeAttribute('data-open');
     v.qm.setAttribute('aria-label', '总督 等你' + (gAsk && gAsk.kind === 'permission' ? '批' : '回答') + '，点开看');
-    pin(v.qm, sx, sy, !!(gAsk && gAsk.phase === 'owner'));
+    pin(v.qm, sx, talking ? sy - 32 : sy, !!(gAsk && gAsk.phase === 'owner'));
     const [tx, ty] = toScreen(fig.x, 0, fig.y);
     pin(v.tag, tx, ty + 38, v.sel.visible);
   }
@@ -4542,7 +4622,7 @@ let lastRoster = '';
 function govPillText(){
   if (!DEMO && governorCount === 0) return '不在';
   if (!DEMO && govState === 'waiting') return '等你回话';
-  const busy = (!DEMO && govState === 'busy') || (gov.bubble && simT < gov.bubble.until);
+  const busy = (!DEMO && govState === 'busy') || !!govTalk(govTerr);
   return busy ? '忙着' : '坐镇市政厅';
 }
 let lastDetailKey = '';
