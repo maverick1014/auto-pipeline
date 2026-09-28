@@ -210,12 +210,13 @@ class TestHookWt(unittest.TestCase):
     def test_missing_cwd_gives_empty(self):
         self.assertEqual(self.row(os.path.join(self.base, "nope"))["wt"], "")
 
-    def test_wt_is_the_sixteenth_key_right_after_ask(self):
-        # city-quality appends a 17th key "file" after it (tests/test_agent_city_quality.py)
+    def test_wt_is_the_fifteenth_key_right_after_ask(self):
+        # city-quality appends a 16th key "file" after it (tests/test_agent_city_quality.py);
+        # idea-city C4 dropped "kind", so wt moved up one
         row = self.row(self.wt)
         keys = list(row)
-        self.assertEqual(keys.index("wt"), 15)
-        self.assertEqual(keys[14:16], ["ask", "wt"])
+        self.assertEqual(keys.index("wt"), 14)
+        self.assertEqual(keys[13:15], ["ask", "wt"])
 
 
 # ---------------------------------------------------------------------------

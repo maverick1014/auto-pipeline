@@ -109,12 +109,16 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PAGE = os.path.join(ROOT, "bin", "agent-city.html")
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+import test_agent_city_page as tp  # noqa: E402  idea-city C1: constants_prelude (TEXT, i18n)
 START = "/* city-join: pure */"
 END = "/* end city-join: pure */"
 
@@ -205,7 +209,8 @@ class TestPureHelpers(unittest.TestCase):
         section = pure_section()
         self.assertIsNotNone(section, "no /* city-join: pure */ ... /* end city-join: pure */ section")
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as fh:
-            json.dump({"section": section, "calls": calls}, fh)
+            # idea-city C1: the page's TEXT and i18n come first, as on the page
+            json.dump({"section": tp.constants_prelude() + "\n" + section, "calls": calls}, fh)
             data = fh.name
         with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as fh:
             fh.write(RUNNER)

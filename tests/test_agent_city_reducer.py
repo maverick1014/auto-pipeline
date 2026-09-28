@@ -54,7 +54,8 @@ CONTRACT
       everything else -> Other.
     PermissionRequest -> stuck (question "", tool = tool).
     AskUserQuestion PreToolUse -> stuck (question = q, max 60 chars).
-    Notification permission_prompt or idle_prompt from a citizen session -> stuck.
+    Notification permission_prompt from a citizen session -> stuck; idle_prompt
+      -> waiting / resume (idea-city C5, tests/test_agent_city_idea_server.py).
     Already stuck -> no second stuck event.
     Stuck, then any PostToolUse or UserPromptSubmit from it -> answer ok True
       first, then the rest. PermissionDenied -> answer ok False.
@@ -392,7 +393,7 @@ class TestSafety(Case):
         snap = self.r.snapshot()
         self.assertEqual(set(snap), {"gov", "agents"})
         self.assertEqual(set(snap["agents"][0]),
-                         {"id", "role", "label", "task", "stuck", "done", "tools"})
+                         {"id", "role", "label", "task", "stuck", "waiting", "done", "tools"})  # waiting: idea-city C5
         json.dumps(snap)
 
 

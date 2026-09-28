@@ -156,7 +156,8 @@ class Reducer:
         for aid, a in self.agents.items():
             agents.append({
                 "id": aid, "role": a["role"], "label": a["label"], "task": a["task"],
-                "stuck": a["stuck"], "done": a["done"], "tools": dict(a["tools"]),
+                "stuck": a["stuck"], "waiting": a["waiting"], "done": a["done"],
+                "tools": dict(a["tools"]),
             })
         return {"gov": {"state": self.gov_state}, "agents": agents}
 
@@ -227,20 +228,30 @@ class Reducer:
         agent = self.agents.get(cid)
         if agent is None or agent["done"]:
             return []
+        # idea-city C5: idle_prompt is not a question -- it makes the
+        # citizen "waiting", never "stuck"; its next PreToolUse/PostToolUse/
+        # UserPromptSubmit resumes it (once), always before the usual
+        # events for that same line.
+        resumed = []
+        if ev in ("PreToolUse", "PostToolUse", "UserPromptSubmit") and agent["waiting"]:
+            agent["waiting"] = False
+            resumed = [{"type": "resume", "id": cid}]
         if ev == "PreToolUse" and tool == "AskUserQuestion":
-            return self._make_stuck(cid, _trim(q, 60), tool)
+            return resumed + self._make_stuck(cid, _trim(q, 60), tool)
         if ev == "PermissionRequest":
-            return self._make_stuck(cid, "", tool)
-        if ev == "Notification" and nt in STUCK_NOTIFICATIONS:
-            return self._make_stuck(cid, "", "")
+            return resumed + self._make_stuck(cid, "", tool)
+        if ev == "Notification" and nt == "permission_prompt":
+            return resumed + self._make_stuck(cid, "", "")
+        if ev == "Notification" and nt == "idle_prompt":
+            return resumed + self._make_waiting(cid)
         if ev == "PermissionDenied":
-            return self._make_answer_if_stuck(cid, False)
+            return resumed + self._make_answer_if_stuck(cid, False)
         if ev in ("PostToolUse", "UserPromptSubmit"):
             out = self._make_answer_if_stuck(cid, True)
             if ev == "PostToolUse" and tool:
                 out = out + self._tool_event(cid, tool)
-            return out
-        return []
+            return resumed + out
+        return resumed
 
     def _end_session(self, sid):
         events = []
@@ -334,7 +345,7 @@ class Reducer:
         self._seq += 1
         self.agents[aid] = {
             "role": role, "label": label, "task": task,
-            "stuck": False, "done": False, "done_at": 0.0,
+            "stuck": False, "waiting": False, "done": False, "done_at": 0.0,
             "tools": {"Edit": 0, "Write": 0, "Bash": 0, "Read": 0, "Other": 0},
             "seq": self._seq, "owner": owner, "kind": kind,
         }
@@ -355,6 +366,15 @@ class Reducer:
             return []
         agent["stuck"] = True
         return [{"type": "stuck", "id": aid, "question": question, "tool": tool}]
+
+    def _make_waiting(self, aid):
+        """idea-city C5: Notification idle_prompt -> "waiting", once (never
+        "stuck") -- a citizen resting, not asking a question."""
+        agent = self.agents.get(aid)
+        if agent is None or agent["waiting"] or agent["done"]:
+            return []
+        agent["waiting"] = True
+        return [{"type": "waiting", "id": aid}]
 
     def _make_answer_if_stuck(self, aid, ok):
         agent = self.agents.get(aid)
@@ -438,11 +458,18 @@ DETAIL_LIMIT = 2000
 MAX_BODY = 64 * 1024
 TOKEN_PLACEHOLDER = b"__CITY_TOKEN__"
 ASSET_V_PLACEHOLDER = b"__CITY_ASSET_V__"
+LANG_PLACEHOLDER = b"__CITY_LANG__"
 RELAY_TIMEOUT_SEC = 600  # 10 min: an open chain-of-command relay times out
 
 
 def _s(value):
     return value if isinstance(value, str) else ""
+
+
+def norm_lang(value):
+    """idea-city C1: "en" stays "en"; anything else (missing, "zh", a typo)
+    counts as "zh" -- the page's default language."""
+    return "en" if value == "en" else "zh"
 
 
 def _now_ms():
@@ -716,8 +743,9 @@ class CityState:
 
     def __init__(self, max_agents=40, done_ttl=600, gov_wait_sec=60.0,
                  decisions_path=None, token="", world_path=None, plans=None, count_fn=None,
-                 balance_fn=None, start_repo=None, chat_path=None):
+                 balance_fn=None, start_repo=None, chat_path=None, lang="zh"):
         self.lock = threading.Lock()
+        self.lang = norm_lang(lang)
         self.cond = threading.Condition(self.lock)
         self._max_agents = max_agents
         self._done_ttl = done_ttl
@@ -751,7 +779,7 @@ class CityState:
         if world_path is None:
             self.world, self.notice = new_world(), None
         else:
-            self.world, self.notice = load_world(world_path, self.plans)
+            self.world, self.notice = load_world(world_path, self.plans, lang=self.lang)
         self._view_cache = None
         self.last_activity = {}   # identity -> "now" of its last feed_line, this run only
         self.last_count = {}      # identity -> the recount() "now" it was last counted at
@@ -766,7 +794,10 @@ class CityState:
             for i in dropped:
                 del self.world["territories"][i]
             self.world["order"] = [i for i in self.world["order"] if i not in dropped]
-            drop_notice = "去掉了 %d 块没有仓库的旧领地" % len(dropped)
+            if self.lang == "en":
+                drop_notice = "dropped %d old territory(ies) with no repo" % len(dropped)
+            else:
+                drop_notice = "去掉了 %d 块没有仓库的旧领地" % len(dropped)
             self.notice = (self.notice + "\n" + drop_notice) if self.notice else drop_notice
             print("agent_city: dropped %d territory(ies) with no repo (\"dir:\" identity)"
                   % len(dropped), file=sys.stderr)
@@ -1374,7 +1405,7 @@ class CityState:
 
     def _build_by(self, reducer, owner, at, role, is_gov):
         if is_gov:
-            return "总督"
+            return "governor" if self.lang == "en" else "总督"
         known = reducer.agents.get(owner)
         if known is not None:
             return known["label"]
@@ -1425,20 +1456,37 @@ class CityState:
         self._save_world_locked()
 
     def _maybe_build(self, obj, identity, terr):
-        """Caller holds self.lock. A PostToolUse line with a known kind
-        builds, touches or levels up in its agent's territory
-        (requirements/city.md, "Growth" and "Quality"). A "file" already
-        listed on a building here (any owner) is a touch with history; the
-        owner already having a building here adds the file to it (touch);
-        else a new building, or a levelup when its own district is full
-        (the leveling owner then counts as owning that building); no line
-        without "file" (old hook lines) ever touches or levels a building
-        it does not already own -- it stays silent, as before. Never counts
-        code lines. Every building of the district already at level 3: says
-        so (noplot)."""
-        kind = obj.get("kind")
-        if identity is None or not isinstance(kind, str) or kind not in KIND_TYPE:
+        """Caller holds self.lock. A PostToolUse line builds, touches or
+        levels up in its agent's territory (requirements/city.md, "Growth"
+        and "Quality"). The building type: a safe "file" decides it via
+        file_kind(file, this repo's rules) mapped to a building (rules ->
+        tower, beauty -> shop, infra -> workshop, knowledge -> library,
+        build -> house; not code -> no building at all -- any "kind" on the
+        line is then ignored); with no "file", an old hook "kind" (test ui
+        script doc other) still builds by the old map (idea-city C4). A
+        "file" already listed on a building here (any owner) is a touch
+        with history; the owner already having a building here adds the
+        file to it (touch); else a new building, or a levelup when its own
+        district is full (the leveling owner then counts as owning that
+        building); no line without "file" (old hook lines) ever touches or
+        levels a building it does not already own -- it stays silent, as
+        before. Never counts code lines. Every building of the district
+        already at level 3: says so (noplot)."""
+        if identity is None:
             return
+        file_val = obj.get("file")
+        file_rel = file_val if isinstance(file_val, str) and file_val else None
+        if file_rel is not None and not _is_safe_rel_path(file_rel):
+            file_rel = None
+        kind = obj.get("kind") if isinstance(obj.get("kind"), str) else ""
+        if file_rel is not None:
+            rules = parse_rules(self._rules_text_for(identity))["rules"]
+            building_type = FILE_KIND_TYPE.get(file_kind(file_rel, rules))
+        else:
+            building_type = KIND_TYPE.get(kind)
+        if building_type is None:
+            return
+
         sid = obj.get("sid") if isinstance(obj.get("sid"), str) else ""
         aid = obj.get("aid") if isinstance(obj.get("aid"), str) else ""
         at = obj.get("at") if isinstance(obj.get("at"), str) else ""
@@ -1450,12 +1498,6 @@ class CityState:
         t = self.world["territories"].get(identity)
         if t is None:
             return
-
-        file_val = obj.get("file")
-        file_rel = file_val if isinstance(file_val, str) and file_val else None
-        if file_rel is not None and not _is_safe_rel_path(file_rel):
-            file_rel = None
-        building_type = KIND_TYPE[kind]
 
         if file_rel is not None:
             for b in t["buildings"]:
@@ -1473,7 +1515,7 @@ class CityState:
         wt_val = obj.get("wt")
         wt = wt_val if isinstance(wt_val, str) else ""
         b = build(self.world, self.plans, identity, kind, owner, by, time.time(),
-                  file_rel=file_rel, wt=wt)
+                  file_rel=file_rel, wt=wt, building_type=building_type)
         if b is not None:
             self._invalidate_view()
             x, z = self._plot_xz_locked(t, b["plot"])
@@ -3020,8 +3062,10 @@ class RemoteCity:
         self.hub = hub
         self.remote_ttl_sec = remote_ttl_sec
         self._lock = threading.Lock()
-        self._reducers = {}      # sender dev id -> Reducer
-        self._last_seen = {}     # sender dev id -> monotonic time of its last line
+        self._reducers = {}      # (sender dev id, rid) -> Reducer -- idea-city C3: one per repo
+        self._rid_terr = {}      # (sender dev id, rid) -> that repo's local territory id
+        self._chains = {}        # (sender dev id, rid) -> {"leads", "lead_of", "open"} (idea-city C16)
+        self._last_seen = {}     # sender dev id -> monotonic time of its last line (any of its repos)
         self._meta = {}          # "r:<dev>:<id>" -> {"who","device","rid","br","terr","dev"}
         self._team_state = {}    # host -> {"state", "queued", "at"} last sent to the page
         self._team_rids = {}     # host -> set(rid), last known (to forget on "left")
@@ -3047,11 +3091,12 @@ class RemoteCity:
         with self._lock:
             people = []
             govs = []
-            for dev_id, reducer in self._reducers.items():
+            for (dev_id, rid), reducer in self._reducers.items():
                 for agent in reducer.snapshot()["agents"]:
                     people.append(self._person(dev_id, agent))
                 if reducer.gov_sid is not None:
-                    govs.append(self._gov(dev_id, reducer.gov_state))
+                    terr = self._rid_terr.get((dev_id, rid), "")
+                    govs.append(self._gov(dev_id, terr, reducer.gov_state))
         teams = [{"host": t["host"], "state": t["state"], "queued": t["queued"]}
                 for t in self.hub.status()["teams"]]
         return {"type": "remote_snapshot", "me": self.hub.identity(),
@@ -3072,22 +3117,54 @@ class RemoteCity:
         who, br = line.get("who") or device, line.get("br") or ""
         fed = dict(line)
         fed["proj"] = rid.rsplit("/", 1)[-1]
-        reducer = self._reducers.get(dev_id)
+        # idea-city C3: one Reducer per (device, rid) -- a member's role-less
+        # main session in a second repo is that repo's own governor.
+        key = (dev_id, rid)
+        reducer = self._reducers.get(key)
         if reducer is None:
             reducer = Reducer()
-            self._reducers[dev_id] = reducer
-        out = []
+            self._reducers[key] = reducer
+        self._rid_terr[key] = terr
+        chain = self._chains.setdefault(key, {"leads": set(), "lead_of": {}, "open": {}})
+
         ev_name = line.get("ev")
+        ask = line.get("ask") if isinstance(line.get("ask"), str) else ""
+        tool = line.get("tool") if isinstance(line.get("tool"), str) else ""
+        aid = line.get("aid") if isinstance(line.get("aid"), str) else ""
+        sid = line.get("sid") if isinstance(line.get("sid"), str) else ""
+
+        # idea-city C16: replay CityState._process_chain's ordering -- a
+        # worker's question relays to its lead (or governor) *before* the
+        # "done" the same line also carries, everything else relays after
+        # the reducer's own events for that line.
+        local_events = []
+        chain_early = ev_name == "SubagentStop" and ask == "q" and bool(aid)
+        if chain_early:
+            local_events.extend(self._chain_relay(chain, reducer.gov_sid, ev_name, ask, tool, aid, sid, now))
+
         for ev in reducer.feed(fed, now):
-            if ev.get("type") == "spawn":
+            etype = ev.get("type")
+            if etype == "spawn":
                 ev["terr"] = terr
-            elif ev.get("type") == "gov":
-                ev["id"] = "gov"
+                self._chain_spawn(chain, ev, aid, sid)
+            elif etype == "gov":
+                ev["id"] = "gov:" + terr
                 ev["terr"] = terr
                 ev["present"] = ev_name != "SessionEnd"
+            elif etype == "leave":
+                local_events.extend(self._on_leave_chain(chain, ev["id"]))
+            local_events.append(ev)
+
+        if not chain_early:
+            local_events.extend(self._chain_relay(chain, reducer.gov_sid, ev_name, ask, tool, aid, sid, now))
+
+        out = []
+        for ev in local_events:
             if "id" in ev:
                 remote_id = "r:%s:%s" % (dev_id, ev["id"])
                 ev["id"] = remote_id
+                if ev.get("lead"):
+                    ev["lead"] = "r:%s:%s" % (dev_id, ev["lead"])
                 if ev.get("type") == "leave" or ev.get("present") is False:
                     self._meta.pop(remote_id, None)
                 else:
@@ -3096,6 +3173,78 @@ class RemoteCity:
             out.append({"type": "remote", "dev": dev_id, "who": who, "device": device,
                         "rid": rid, "br": br, "ev": ev})
         return out
+
+    # -- idea-city C16: chain of command for a remote (device, rid) --------
+    # caller holds self._lock. Local ids only (no "r:<dev>:" prefix yet);
+    # _one_line remaps ids (and "lead") to remote ids afterwards. No offices:
+    # a remote lead has no office to hold or free. Mirrors the rules of
+    # CityState._process_chain / _decorate_spawn / _close_relay / _on_leave.
+
+    def _chain_spawn(self, chain, ev, aid_field, sid_field):
+        if not aid_field:
+            if ev.get("role") == "task-manager":
+                chain["leads"].add(ev["id"])
+        else:
+            owner_cid = "s:" + sid_field
+            chain["lead_of"][ev["id"]] = owner_cid if owner_cid in chain["leads"] else ""
+
+    def _on_leave_chain(self, chain, cid):
+        chain["lead_of"].pop(cid, None)
+        chain["leads"].discard(cid)
+        return self._close_chain_relay(chain, cid, "leave")
+
+    def _close_chain_relay(self, chain, cid, by):
+        entry = chain["open"].pop(cid, None)
+        if entry is None:
+            return []
+        events = [{"type": "relay_end", "id": cid, "by": by}]
+        if entry["kind"] == "lead":
+            for wcid in [c for c, e in chain["open"].items()
+                         if e["kind"] == "worker" and e["lead"] == cid]:
+                chain["open"].pop(wcid, None)
+                events.append({"type": "relay_end", "id": wcid, "by": by})
+        return events
+
+    def _chain_relay(self, chain, gov_sid, ev_name, ask, tool, aid, sid, now):
+        events = []
+        for cid in [c for c, e in chain["open"].items() if now - e["opened_at"] >= RELAY_TIMEOUT_SEC]:
+            events.extend(self._close_chain_relay(chain, cid, "timeout"))
+
+        if ev_name == "SubagentStop" and ask == "q" and aid:
+            owner_cid = "s:" + sid
+            if owner_cid in chain["leads"]:
+                chain["open"][aid] = {"kind": "worker", "to": "lead", "lead": owner_cid, "opened_at": now}
+                events.append({"type": "relay", "id": aid, "to": "lead", "lead": owner_cid})
+            elif sid != "" and gov_sid == sid:
+                chain["open"][aid] = {"kind": "helper", "to": "governor", "lead": "", "opened_at": now}
+                events.append({"type": "relay", "id": aid, "to": "governor", "lead": ""})
+            return events
+
+        if ev_name == "PostToolUse" and not aid and tool == "SendMessage":
+            cid = "s:" + sid
+            if sid != "" and gov_sid == sid:
+                lead_id = next((c for c, e in chain["open"].items() if e["kind"] == "lead"), None)
+                if lead_id is not None:
+                    events.extend(self._close_chain_relay(chain, lead_id, "governor"))
+                for c in [c for c, e in chain["open"].items() if e["kind"] == "helper"]:
+                    events.extend(self._close_chain_relay(chain, c, "governor"))
+            elif cid in chain["leads"]:
+                if ask == "q":
+                    chain["open"][cid] = {"kind": "lead", "to": "governor", "lead": "", "opened_at": now}
+                    events.append({"type": "relay", "id": cid, "to": "governor", "lead": ""})
+                elif cid not in chain["open"]:
+                    for c in [c for c, e in chain["open"].items()
+                              if e["kind"] == "worker" and e["lead"] == cid]:
+                        events.extend(self._close_chain_relay(chain, c, "lead"))
+            return events
+
+        if ev_name == "PreToolUse" and not aid and tool in ("Agent", "Task"):
+            cid = "s:" + sid
+            if cid in chain["leads"] and cid not in chain["open"]:
+                for c in [c for c, e in chain["open"].items()
+                          if e["kind"] == "worker" and e["lead"] == cid]:
+                    events.extend(self._close_chain_relay(chain, c, "lead"))
+        return events
 
     def _sweep_ttl(self, now):
         stale = [d for d, seen in self._last_seen.items() if now - seen >= self.remote_ttl_sec]
@@ -3139,8 +3288,19 @@ class RemoteCity:
         return devs
 
     def _forget_device(self, dev_id):
-        reducer = self._reducers.pop(dev_id, None)
+        """idea-city C3: forgetting a device forgets all of its repos."""
         self._last_seen.pop(dev_id, None)
+        keys = [k for k in self._reducers if k[0] == dev_id]
+        events = []
+        for key in keys:
+            events.extend(self._forget_repo(key))
+        return events
+
+    def _forget_repo(self, key):
+        dev_id, rid = key
+        reducer = self._reducers.pop(key, None)
+        terr = self._rid_terr.pop(key, "")
+        self._chains.pop(key, None)
         if reducer is None:
             return []
         events = []
@@ -3149,9 +3309,9 @@ class RemoteCity:
             meta = self._meta.pop(remote_id, None)
             events.append(self._wrap(dev_id, meta, {"type": "leave", "id": remote_id}))
         if reducer.gov_sid is not None:
-            remote_id = "r:%s:gov" % dev_id
+            remote_id = "r:%s:gov:%s" % (dev_id, terr)
             meta = self._meta.pop(remote_id, None)
-            terr = meta["terr"] if meta else ""
+            terr = meta["terr"] if meta else terr
             events.append(self._wrap(dev_id, meta, {"type": "gov", "id": remote_id,
                                                      "state": reducer.gov_state,
                                                      "terr": terr, "present": False}))
@@ -3171,10 +3331,10 @@ class RemoteCity:
                      br=meta.get("br", ""), dev=dev_id)
         return person
 
-    def _gov(self, dev_id, state):
-        remote_id = "r:%s:gov" % dev_id
+    def _gov(self, dev_id, terr, state):
+        remote_id = "r:%s:gov:%s" % (dev_id, terr)
         meta = self._meta.get(remote_id, {})
-        return {"id": remote_id, "state": state, "terr": meta.get("terr", ""),
+        return {"id": remote_id, "state": state, "terr": meta.get("terr", terr),
                 "who": meta.get("who", ""), "device": meta.get("device", ""), "dev": dev_id}
 
 
@@ -3300,9 +3460,12 @@ def cmd_serve(args):
     assets_dir = os.path.realpath(args.assets) if args.assets else os.path.realpath(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent-city-assets"))
 
+    lang = norm_lang(args.lang)
+
     page_bytes = _load_page(page_path)
     page_bytes = page_bytes.replace(TOKEN_PLACEHOLDER, token.encode("ascii"))
     page_bytes = page_bytes.replace(ASSET_V_PLACEHOLDER, asset_version(assets_dir).encode("ascii"))
+    page_bytes = page_bytes.replace(LANG_PLACEHOLDER, lang.encode("ascii"))
 
     log_path = os.path.join(directory, "events.jsonl")
     try:
@@ -3319,7 +3482,7 @@ def cmd_serve(args):
     except OSError:
         chat_initial_skip = 0
     city = CityState(gov_wait_sec=args.gov_wait_sec, decisions_path=decisions_path, token=token,
-                      world_path=world_path_arg, start_repo=start_repo, chat_path=chat_path)
+                      world_path=world_path_arg, start_repo=start_repo, chat_path=chat_path, lang=lang)
     hub = relay.RelayHub(relay_sec=args.relay_sec, join_ttl=args.join_ttl_sec)
     remote = RemoteCity(hub, remote_ttl_sec=args.remote_ttl_sec)
     city.remote = remote
@@ -3896,6 +4059,10 @@ L0, LCAP = 50, 1000000
 SEA_ROWS = 8
 KIND_TYPE = {"test": "tower", "ui": "shop", "script": "workshop",
              "doc": "library", "other": "house"}
+# idea-city C4: the server's own map, from a "file"'s file_kind (see KINDS)
+# to a building -- the hook no longer classifies paths.
+FILE_KIND_TYPE = {"rules": "tower", "beauty": "shop", "infra": "workshop",
+                   "knowledge": "library", "build": "house"}
 RECOUNT_SEC = 300
 
 GAP_CH = {"river": "w", "ravine": "k", "pass": "m", "forest": "f"}
@@ -4314,9 +4481,11 @@ def add_territory(world, plans, identity, name, lines=0):
     return record
 
 
-def build(world, plans, identity, kind, owner, by, now, file_rel=None, wt=""):
-    """The first free open plot of KIND's district, in plan order. None
-    when the identity is unknown, the kind is unknown, OWNER already has a
+def build(world, plans, identity, kind, owner, by, now, file_rel=None, wt="", building_type=None):
+    """The first free open plot of KIND's district (or BUILDING_TYPE's, when
+    given -- idea-city C4: the server picks the building straight from a
+    "file", bypassing KIND_TYPE), in plan order. None when the identity is
+    unknown, the kind (or BUILDING_TYPE) is unknown, OWNER already has a
     building here, or no open plot matching fits. Sized by the territory's
     peak (not its current lines), so a building already placed is never
     stranded by code later deleted.
@@ -4332,7 +4501,8 @@ def build(world, plans, identity, kind, owner, by, now, file_rel=None, wt=""):
     t = world["territories"].get(identity)
     if t is None:
         return None
-    building_type = KIND_TYPE.get(kind)
+    if building_type is None:
+        building_type = KIND_TYPE.get(kind)
     if not building_type:
         return None
     if any(b.get("owner") == owner for b in t["buildings"]):
@@ -4674,11 +4844,14 @@ def _world_looks_valid(data, plans):
     return True
 
 
-def load_world(path, plans):
+def load_world(path, plans=None, lang="zh"):
     """(world, notice). Missing file -> a fresh world, no notice. Anything
     else wrong (unreadable, not JSON, not this shape, an unknown plan, a
     bad slot) -> the file is moved aside untouched, byte for byte, and a
-    fresh world is returned with a Chinese notice naming where it went."""
+    fresh world is returned with a notice naming where it went -- Chinese
+    for lang "zh" (default), English (no CJK) for "en" (idea-city C1)."""
+    if plans is None:
+        plans = load_plans()
     try:
         with open(path, "rb") as fh:
             raw = fh.read()
@@ -4700,7 +4873,10 @@ def load_world(path, plans):
         os.replace(path, bad_path)
     except OSError:
         pass
-    notice = "world.json 读不了，已挪到 %s，重新开始一座新城" % bad_name
+    if norm_lang(lang) == "en":
+        notice = "world.json could not be read, moved to %s, starting a fresh city" % bad_name
+    else:
+        notice = "world.json 读不了，已挪到 %s，重新开始一座新城" % bad_name
     return new_world(), notice
 
 
@@ -5438,6 +5614,7 @@ def _build_parser():
     serve.add_argument("--decisions", default=None)
     serve.add_argument("--world", default=None)
     serve.add_argument("--start-dir", default=None)
+    serve.add_argument("--lang", default="zh")
 
     sub.add_parser("say")
 

@@ -33,7 +33,7 @@ Module API:
         ".git" and a trailing "/". A local path or file:// remote is None
         (not shared, stays local).
     to_wire(line, ctx) -> the line as sent to the relay.
-        Keeps only ev sid aid at tool nt role desc sub klen kind (missing =
+        Keeps only ev sid aid at tool nt role desc sub klen ask (missing =
         ""), adds ctx's rid br who dev. An empty or blank who becomes the
         dev (owner decision: a machine with no git user.name is named by
         its device, never a blank name). Drops proj, repo and q (chat text).
@@ -271,7 +271,7 @@ class TestToWire(Case):
     def test_keys(self):
         wire = rl.to_wire(self.line(), CTX)
         self.assertEqual(set(wire), {"ev", "sid", "aid", "at", "tool", "nt", "role", "desc",
-                                     "sub", "klen", "kind", "rid", "br", "who", "dev"})
+                                     "sub", "klen", "ask", "rid", "br", "who", "dev"})
         self.assertEqual(wire["rid"], "github.com/acme/shop")
         self.assertEqual(wire["br"], "feature/x")
         self.assertEqual(wire["who"], "Ann")

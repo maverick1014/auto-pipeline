@@ -19,8 +19,8 @@ CONTRACT
       <script src="assets/vendor/GLTFLoader.js?v=__CITY_ASSET_V__">
       <script src="assets/vendor/SkeletonUtils.js?v=__CITY_ASSET_V__">
     const ASSET = 'assets/', const ASSET_V = '__CITY_ASSET_V__' and a const
-    MODELS = [...] list of '<pack>/<name>' entries (names unique across
-    packs); each is loaded from ASSET + entry + '.glb?v=' + ASSET_V.
+    MODELS = [...] list of '<pack>/<name>' entries (lib keys each by its full
+    entry, idea-city C8); each is loaded from ASSET + entry + '.glb?v=' + ASSET_V.
     Live mode: new EventSource('/events').
     Demo mode (the mock's fake agents) when location.hash is '#demo' or the page
     is opened as a file:// URL. Live mode never runs the fake agents.
@@ -353,10 +353,8 @@ class TestModes(unittest.TestCase):
         self.assertRegex(function_source("loadAll") or "", r"ASSET \+ key \+ '\.glb\?v=' \+ ASSET_V")
         self.assertRegex(function_source("loadTex") or "", r"ASSET \+ path \+ '\?v=' \+ ASSET_V")
         self.assertGreater(len(models()), 20)
-        names = [m.split("/")[1] for m in models()]
-        self.assertEqual(sorted(set(n for n in names if names.count(n) > 1)), ["building-a", "building-b"],
-                         "a model is found by its name alone: new names must be unique (commercial/industrial "
-                         "building-a/-b were already shared before Balance)")
+        # idea-city C8: lib keys every model by its full entry; tests/test_agent_city_idea_page.py
+        # checks that no table names a bare name two packs share
 
 
 class TestCost(unittest.TestCase):
@@ -479,6 +477,14 @@ def constants_prelude():
     for name, value in re.findall(r"^const ([A-Z][A-Z0-9_]*) = ([^;\n]+);\s*$", inline_script(), re.M):
         if re.fullmatch(r"(?:[\d.\s/*+\-()]|Math\.PI)+|'[^'\\]*'", value.strip()):
             out.append("var %s = %s;" % (name, value.strip()))
+    # idea-city C1: the page's texts (const TEXT = {zh, en}) and i18n(key, vars), so a harness that runs a
+    # page function which shows text gets the same words the page shows (LANG is a plain const above)
+    lit = const_object("TEXT")
+    if lit:
+        out.append("var TEXT = %s;" % lit)
+    src = function_source("i18n")
+    if src:
+        out.append(src)
     return "\n".join(out)
 
 
@@ -1289,7 +1295,7 @@ class TestInteraction(unittest.TestCase):
         self.assertRegex(case_block("snapshot") or "", r"\.asks\b")
 
     def test_live_answers_are_never_invented(self):
-        block = case_block("answer")
+        block = zh_resolved(case_block("answer"))
         self.assertIsNotNone(block)
         self.assertNotIn("批了", block)
         self.assertNotIn("不行", block)
@@ -1328,12 +1334,12 @@ class TestInteraction(unittest.TestCase):
 
     def test_owner_waiting_is_visible(self):
         self.assertIn("data-open", inline_script())
-        stats = function_source("renderStats") or ""
+        stats = zh_resolved(function_source("renderStats") or "")
         self.assertIn("等你", stats)
         self.assertIn('id="next"', stats)
 
     def test_closed_state_words(self):
-        text = inline_script()
+        text = zh_resolved(inline_script())
         self.assertIn("晚了一步", text)
         self.assertIn("closed", text)
 
@@ -1368,11 +1374,11 @@ class TestInteraction(unittest.TestCase):
     def test_governor_speaks_only_its_own_answers(self):
         give = function_source("giveAnswer") or ""
         for line in give.splitlines():
-            if "say(gov" in line or "gov.answered" in line:
+            if "say(gov" in line or "govSay(" in line or "gov.answered" in line:
                 with self.subTest(line=line.strip()):
                     self.assertIn("DEMO", line)
         closed = case_block("ask_closed") or ""
-        self.assertIn("say(gov", closed)
+        self.assertIn("govSay(", closed)  # idea-city C13: each governor talks in his own bubble
         self.assertIn("'governor'", closed)
 
     def test_stuck_text_and_citizen_status(self):
@@ -1383,6 +1389,7 @@ class TestInteraction(unittest.TestCase):
         state = re.search(r"^const STATE = \{.*?^\};", inline_script(), re.S | re.M)
         self.assertIsNotNone(state, "const STATE = {...}; not found")
         js = ("const fs = require('fs'); const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));\n"
+              + constants_prelude() + "\n"  # idea-city C1: TEXT and i18n
               + state.group(0) + "\n" + st + "\n" + cs + "\n"
               + "process.stdout.write(JSON.stringify({st: data.st.map(e => stuckText(e)), "
               + "cs: data.cs.map(c => citizenStatus(c))}));")
@@ -1455,7 +1462,7 @@ class TestInteraction(unittest.TestCase):
                 self.assertIn("applyAsk(", case_block(kind) or "")
         js = r"""
 const fs = require('fs'); const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-""" + state + "\n" + st + "\n" + cs + "\n" + ap + r"""
+""" + constants_prelude() + "\n" + state + "\n" + st + "\n" + cs + "\n" + ap + r"""
 const out = [];
 for (const ask of data.asks) {
   // live: the reducer's stuck event first (as it arrives), then the ask event
@@ -1498,7 +1505,7 @@ process.stdout.write(JSON.stringify(out));
 
     def test_governor_presence(self):
         self.assertRegex(inline_script(), r"case\s+'governors'\s*:")
-        self.assertIn("不在", function_source("govPillText") or "")
+        self.assertIn("不在", zh_resolved(function_source("govPillText") or ""))
         self.assertRegex(case_block("snapshot") or "", r"\.governors\b")
 
     def test_ask_line(self):
@@ -1528,7 +1535,7 @@ process.stdout.write(JSON.stringify(out));
             [{"type": "ask_closed", "kind": "permission", "by": "terminal", "verb": "closed", "text": "",
               "tool": "Bash", "what": "npm test", "reason": ""}, "加测试依赖"],
         ]
-        out = run_node(ASK_LINE_JS, {"fn": fn, "cases": cases})
+        out = run_node(ASK_LINE_JS, {"fn": constants_prelude() + "\n" + fn, "cases": cases})  # + TEXT, i18n (idea-city C1)
         want = [
             ["清理构建", "要权限", "Bash", "rm -rf build/", "等你"],
             ["登录页", "问总督", "Which port?"],
@@ -1574,7 +1581,7 @@ process.stdout.write(JSON.stringify(out));
             v("permission", "terminal", "allow"),
         ]
         js = ("const fs = require('fs'); const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));\n"
-              + esc + "\n" + fn + "\n"
+              + constants_prelude() + "\n" + esc + "\n" + fn + "\n"
               + "process.stdout.write(JSON.stringify(data.map(x => askClosedLine(x).replace(/<[^>]+>/g, ''))));")
         out = run_node(js, cases)
         for i in (0, 1, 2):
@@ -1693,6 +1700,35 @@ def const_object(name):
             if depth == 0:
                 return text[i:j + 1]
     return None
+
+
+_ZH = {}
+
+
+def text_zh():
+    """idea-city C1: the page's zh texts (const TEXT = {zh, en}), {} before the page has them."""
+    lit = const_object("TEXT")
+    if not lit:
+        return {}
+    if lit not in _ZH:
+        _ZH.clear()
+        _ZH[lit] = (js_value(lit) or {}).get("zh", {})
+    return _ZH[lit]
+
+
+def zh_resolved(src):
+    """idea-city C1: SRC as a reader of the zh page sees it: every i18n('key' call shows its zh text in
+    place of the key, and every data-t="key" / data-t-aria="key" / data-t-title="key" attribute becomes
+    the zh text / aria-label / title -- so a test that looks for a Chinese word in the page source still
+    finds it after the texts moved into TEXT. Before that (no TEXT) SRC comes back unchanged."""
+    zh = text_zh()
+    if not zh or not src:
+        return src
+    q = lambda k: zh.get(k, k).replace("'", "\\'")
+    src = re.sub(r"\bi18n\((['\"])([\w.\-]+)\1", lambda m: "i18n('%s'" % q(m.group(2)), src)
+    src = re.sub(r'data-t-aria="([\w.\-]+)"', lambda m: 'aria-label="%s"' % zh.get(m.group(1), m.group(1)), src)
+    src = re.sub(r'data-t-title="([\w.\-]+)"', lambda m: 'title="%s"' % zh.get(m.group(1), m.group(1)), src)
+    return re.sub(r'\sdata-t="([\w.\-]+)"([^>]*)>', lambda m: '%s>%s' % (m.group(2), zh.get(m.group(1), m.group(1))), src)
 
 
 def js_value(literal):
@@ -1880,7 +1916,7 @@ __out = { spots: slots.map(r => [r.x, r.y, tileAt(Math.floor(r.x), Math.floor(r.
     def test_building_models_per_type(self):
         look = js_value(const_object("ERA_LOOK") or "null")
         self.assertIsInstance(look, dict, "Balance: const ERA_LOOK = {village, town, city} replaces BUILD_MODELS")
-        names = {m.split("/")[1] for m in models()}
+        names = set(models()) | {m.split("/")[1] for m in models() if [x.split("/")[1] for x in models()].count(m.split("/")[1]) == 1}
         for era in ("village", "town", "city"):
             b = look[era]["build"]
             self.assertEqual(set(b), {"house", "shop", "tower", "workshop", "library"})
@@ -1890,14 +1926,15 @@ __out = { spots: slots.map(r => [r.x, r.y, tileAt(Math.floor(r.x), Math.floor(r.
                     self.assertLessEqual(set(keys), names)
 
     def test_type_names_in_chinese(self):
-        self.assertEqual(js_value(const_object("TYPE_ZH") or "null"),
+        zh = text_zh()  # idea-city C1: the names live in TEXT (type.*)
+        self.assertEqual({k: zh.get("type." + k) for k in ("house", "shop", "tower", "workshop", "library")},
                          {"house": "住宅", "shop": "商店", "tower": "测试塔", "workshop": "工坊", "library": "图书馆"})
 
     def test_terrain_changes_the_look(self):
         look = js_value(const_object("TERRAIN_LOOK") or "null")
         self.assertIsInstance(look, dict)
         self.assertEqual(set(look), {"grassland", "mountain", "desert", "forest", "coast"})
-        names = {m.split("/")[1] for m in models()}
+        names = set(models()) | {m.split("/")[1] for m in models() if [x.split("/")[1] for x in models()].count(m.split("/")[1]) == 1}
         for t, v in look.items():
             with self.subTest(terrain=t):
                 self.assertRegex(v["ground"], r"^#[0-9A-Fa-f]{6}$")
@@ -2007,7 +2044,7 @@ class TestEraLook(unittest.TestCase):
         look = js_value(const_object("ERA_LOOK") or "null")
         self.assertIsInstance(look, dict)
         self.assertEqual(set(look), {"village", "town", "city"})
-        names = {m.split("/")[1] for m in models()}
+        names = set(models()) | {m.split("/")[1] for m in models() if [x.split("/")[1] for x in models()].count(m.split("/")[1]) == 1}
         houses = {}
         for era, v in look.items():
             with self.subTest(era=era):

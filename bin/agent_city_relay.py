@@ -37,7 +37,7 @@ _JOIN_FOLDER = ".secrets"
 _JOIN_NAME = "agent-city-relay"
 
 _KEPT_LINE_FIELDS = ("ev", "sid", "aid", "at", "tool", "nt", "role", "desc",
-                     "sub", "klen", "kind")
+                     "sub", "klen", "ask")
 _CTX_FIELDS = ("rid", "br", "who", "dev")
 
 
@@ -193,8 +193,10 @@ def _wire_str(value):
 
 
 def to_wire(line, ctx):
-    """The line as sent to the relay: the kept fields of line, plus ctx's
-    rid/br/who/dev. Every value a string of at most 200 characters."""
+    """The line as sent to the relay: _KEPT_LINE_FIELDS of line (ev sid aid
+    at tool nt role desc sub klen ask -- no "kind", nobody reads it; idea-
+    city C4), plus ctx's rid/br/who/dev. Every value a string of at most
+    200 characters."""
     out = {}
     for field in _KEPT_LINE_FIELDS:
         value = line.get(field) if isinstance(line, dict) else None
@@ -297,9 +299,11 @@ def _default_dev_id():
     return digest[:16]
 
 
-def _default_label():
+def _default_label(lang="zh"):
+    """idea-city C1: a cloud session's tag follows LANG -- "cloud" for
+    "en", "云端" for anything else (the default, "zh")."""
     if os.environ.get("CLAUDE_CODE_REMOTE"):
-        return "云端"
+        return "cloud" if lang == "en" else "云端"
     host = platform.node() or "host"
     return host.split(".")[0] or "host"
 
@@ -607,8 +611,10 @@ def _split_bytes(data):
 def cmd_send(args):
     """The cloud sender: reads AGENT_CITY_RELAY, writes DIR/on, tails
     DIR/events.jsonl from its end and syncs offered lines on its own
-    thread, until idle-sec with no new line or SIGTERM. See
-    tests/test_agent_city_relay_send.py for the full contract."""
+    thread, until idle-sec with no new line or SIGTERM. --lang (default
+    "zh") only picks this device's own label, _default_label(lang) --
+    idea-city C1. See tests/test_agent_city_relay_send.py for the full
+    contract."""
     value = os.environ.get("AGENT_CITY_RELAY")
     if not value:
         print("SEND: AGENT_CITY_RELAY is not set")
@@ -634,7 +640,8 @@ def cmd_send(args):
     except OSError:
         initial_skip = 0
 
-    hub = RelayHub(relay_sec=args.relay_sec, env_join=joined, send_only=True)
+    hub = RelayHub(relay_sec=args.relay_sec, env_join=joined, send_only=True,
+                   label=_default_label(getattr(args, "lang", "zh")))
 
     stop_event = threading.Event()
     last_activity = [time.monotonic()]
@@ -722,6 +729,7 @@ def _cli(argv):
     p_send.add_argument("--dir", required=True)
     p_send.add_argument("--relay-sec", type=float, default=5.0)
     p_send.add_argument("--idle-sec", type=float, default=1800.0)
+    p_send.add_argument("--lang", default="zh")
 
     try:
         args = parser.parse_args(argv)

@@ -95,6 +95,8 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .tag{z-index:2}
 .fl{background:var(--c);color:#fff;border-radius:8px;padding:1px 7px;font:600 11px/1.5 var(--mono)}
 .lbl{background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:2px 10px;font:600 12px/1.5 var(--display);box-shadow:0 2px 0 rgba(42,43,69,.15);white-space:nowrap}
+.dlbl{background:rgba(255,255,255,.86);color:#2A2B45;border-left:4px solid var(--c);border-radius:6px;padding:0 6px;font:600 10px/1.6 var(--display);white-space:nowrap;transition:opacity .25s}
+.dlbl.far{opacity:0;pointer-events:none}
 
 .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:8px}
 .group{display:inline-flex;align-items:center;gap:5px}
@@ -239,45 +241,45 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
       <div><span class="sign-name">Agent City</span><span class="sign-sub">auto-pipeline · 3D</span></div>
     </div>
     <div class="stats" id="stats" aria-live="polite"></div>
-    <button type="button" id="logbtn" class="btn">动态</button>
+    <button type="button" id="logbtn" class="btn" data-t="btn.log"></button>
   </header>
 
   <main class="layout">
-    <section class="stage-col" aria-label="城市">
+    <section class="stage-col" data-t-aria="aria.city">
       <div class="stage" id="stage">
-        <canvas id="city" role="img" aria-label="3D 小岛：每个小人是一个 agent"></canvas>
+        <canvas id="city" role="img" data-t-aria="aria.canvas"></canvas>
         <div class="ov" id="ov"></div>
-        <p id="empty-land" hidden style="position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);margin:0;padding:8px 14px;border-radius:12px;background:rgba(255,255,255,.85);color:var(--ink-2);font:600 14px/1.4 var(--round);pointer-events:none">还没有领地 · 在一个 git 仓库里启动，或等代理开工</p>
-        <div class="proto" id="proto">原型 · 模拟数据</div>
-        <div class="loading" id="loading"><span id="loading-text">正在搬来素材…</span></div>
+        <p id="empty-land" hidden data-t="empty.noLand" style="position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);margin:0;padding:8px 14px;border-radius:12px;background:rgba(255,255,255,.85);color:var(--ink-2);font:600 14px/1.4 var(--round);pointer-events:none"></p>
+        <div class="proto" id="proto" data-t="proto.banner"></div>
+        <div class="loading" id="loading"><span id="loading-text" data-t="loading.text"></span></div>
         <div class="cam">
-          <button class="btn" id="zin" type="button" aria-label="放大"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
-          <button class="btn" id="zout" type="button" aria-label="缩小"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
-          <button class="btn" id="rot" type="button" aria-label="转一下"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+          <button class="btn" id="zin" type="button" data-t-aria="btn.zoomIn"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+          <button class="btn" id="zout" type="button" data-t-aria="btn.zoomOut"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+          <button class="btn" id="rot" type="button" data-t-aria="btn.rotate"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
           </button>
-          <button class="btn" id="zfit" type="button" aria-label="回到默认视角"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+          <button class="btn" id="zfit" type="button" data-t-aria="btn.resetView"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
           </button>
         </div>
         <div class="ask-panel" id="ask" role="dialog" aria-labelledby="ask-title" hidden></div>
         <div class="win" id="win" role="dialog" aria-labelledby="win-title" hidden>
-          <div class="win-head"><div class="win-title" id="win-title"></div><button type="button" id="win-close" aria-label="关闭" class="x">✕</button></div>
+          <div class="win-head"><div class="win-title" id="win-title"></div><button type="button" id="win-close" data-t-aria="btn.close" class="x">✕</button></div>
           <div class="detail" id="detail" aria-live="polite"></div>
           <ol class="log" id="log"></ol>
         </div>
       </div>
-      <div class="toolbar" role="toolbar" aria-label="控制">
+      <div class="toolbar" role="toolbar" data-t-aria="aria.toolbar">
         <div class="group" id="spawn-group">
-          <label for="role" class="lead">派一个</label>
+          <label for="role" class="lead" data-t="label.spawn"></label>
           <select id="role">
-            <option value="worker">worker · 盖房子</option>
-            <option value="task-manager">task manager · 测试塔</option>
-            <option value="fast-lane-deputy">fast-lane deputy · 花园</option>
-            <option value="merge-deputy">merge deputy · 桥</option>
+            <option value="worker" data-t="opt.worker"></option>
+            <option value="task-manager" data-t="opt.taskManager"></option>
+            <option value="fast-lane-deputy" data-t="opt.fastLaneDeputy"></option>
+            <option value="merge-deputy" data-t="opt.mergeDeputy"></option>
           </select>
-          <button class="btn primary" id="spawn" type="button">派出</button>
-          <button class="btn" type="button" data-remote="off">中继断开</button>
-          <button class="btn" type="button" data-remote="on">恢复</button>
-          <button class="btn" type="button" data-remote="leave">退出联城</button>
+          <button class="btn primary" id="spawn" type="button" data-t="btn.spawn"></button>
+          <button class="btn" type="button" data-remote="off" data-t="btn.remoteOff"></button>
+          <button class="btn" type="button" data-remote="on" data-t="btn.remoteOn"></button>
+          <button class="btn" type="button" data-remote="leave" data-t="btn.remoteLeave"></button>
         </div>
         <span class="clock" id="clock"></span>
       </div>
@@ -291,6 +293,28 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 <script>
 (() => {
 'use strict';
+/* idea-city C1: English too. LANG is filled in by the server (serve --lang, from agent.conf
+   language) -- anything but 'en' counts as 'zh' (the page's default). TEXT carries every text the
+   page shows, both languages, same keys; i18n(key, vars) looks the key up in the language now showing,
+   replacing every "{name}" with vars[name] -- an unknown key gives the key itself back. Static markup
+   (data-t / data-t-aria / data-t-title / data-t-placeholder) is filled once, at start, by applyText(). */
+const LANG = '__CITY_LANG__';
+document.documentElement.lang = LANG === 'en' ? 'en' : 'zh-CN';
+const TEXT = { zh: { 'btn.log': '动态', 'aria.city': '城市', 'aria.canvas': '3D 小岛：每个小人是一个 agent', 'proto.banner': '原型 · 模拟数据', 'btn.zoomIn': '放大', 'btn.zoomOut': '缩小', 'btn.rotate': '转一下', 'btn.resetView': '回到默认视角', 'btn.close': '关闭', 'aria.toolbar': '控制', 'label.spawn': '派一个', 'opt.worker': 'worker · 盖房子', 'opt.taskManager': 'task manager · 测试塔', 'opt.fastLaneDeputy': 'fast-lane deputy · 花园', 'opt.mergeDeputy': 'merge deputy · 桥', 'btn.spawn': '派出', 'btn.remoteOff': '中继断开', 'btn.remoteOn': '恢复', 'btn.remoteLeave': '退出联城', 'type.house': '住宅', 'type.shop': '商店', 'type.tower': '测试塔', 'type.workshop': '工坊', 'type.library': '图书馆', 'district.house': '住宅区', 'district.shop': '商业街', 'district.tower': '测试区', 'district.workshop': '工坊区', 'district.library': '图书馆区', 'chat.state.queued': '已发送', 'chat.state.delivered': '已送达', 'chat.state.undelivered': '没送到', 'role.task-manager': '任务经理', 'role.worker': '工人', 'role.fast-lane-deputy': '快车道副手', 'role.merge-deputy': '合并副手', 'role.other': '帮手', 'era.village': '村', 'era.town': '镇', 'era.city': '城', 'quality.good': '整齐', 'quality.fair': '还行', 'quality.poor': '有点乱', 'who.governor': '总督', 'who.owner': '你', 'who.terminal': '终端', 'state.spawn': '出门', 'state.to_plot': '去工地', 'state.building': '施工中', 'state.working': '干活', 'state.to_hall': '去问总督', 'state.asking': '在问总督', 'state.heard': '拿到答案', 'state.to_lead': '去问经理', 'state.at_lead': '问经理', 'state.back': '回工地', 'state.finishing': '封顶了', 'state.to_rest': '去休息', 'state.resting': '休息中', 'state.leaving': '下班回家', 'status.need_approval': '等你批', 'status.asking_gov': '在问总督', 'status.waiting_answer': '等你回答', 'status.waiting_reply': '等你回话', 'status.waiting': '等你', 'stuck.permission': '要权限：{tool}', 'stuck.default': '需要你看一下', 'gov.away': '不在', 'gov.busy': '忙着', 'gov.home': '坐镇市政厅', 'top.work': '干活', 'top.ask': '找总督', 'top.rest': '休息', 'top.done': '建成', 'top.stalled': '卡住的工地', 'top.pending': '等你', 'top.pendingAria': '等你决定 {n} 个，点开最早的一个', 'empty.noLand': '还没有领地 · 在一个 git 仓库里启动，或等代理开工', 'loading.text': '正在搬来素材…', 'loading.progress': '正在搬来素材 {n}/{total}', 'loading.error': '素材没加载成功：{err}', 'site.human': '亲自带', 'log.eraUpgrade': '{name} 开始升级成{era}', 'say.done': '完工啦！', 'log.leftWork': '{task} 下班了', 'gov.dispatch': '去吧：{task}', 'log.govDispatch': '总督派出 {label}：{task}', 'log.siteMerged': '{branch} 合并进主线，工地收工', 'log.siteRemoved': '{branch} 的工地撤了', 'log.levelUp': '{label} 升到 {lv} 级', 'log.movedBack': '{label} 搬回{kind}区', 'log.demolished': '{label} 的文件都没了，拆掉', 'log.stuckDemo': '{task} 卡住了：“{text}” → 去问总督', 'answer.default': '已回答', 'log.govAnswer': '总督回答 {task}：“{text}”', 'log.doneRestPlain': '{task} 完工，去休息', 'log.doneRestBuilt': '{task} 完工：{kind}封顶，去休息', 'log.noplot': '{name} 没有空地了，先等等', 'gov.unknown': '未知', 'gov.busyRow': '在忙', 'gov.idleRow': '空闲', 'gov.title': '{name} 总督', 'chain.lead': '经理', 'chain.leadTask': '经理 {task}', 'chat.empty': '还没有对话', 'chat.you.page': '你（页面）', 'chat.you.terminal': '你（终端）', 'chat.wait': '等它做完这一步', 'chat.loadError': '对话没加载出来，等会儿再打开看看。', 'kv.repo': '仓库', 'kv.branch': '分支', 'kv.doing': '在做', 'qa.ask': '问：“{q}”', 'qa.answer': '答：“{a}”', 'qa.waiting': '问：“{q}” 等回答…', 'act.makeStuck': '让它卡住', 'act.makeDone': '让它完工', 'act.makeLeave': '让它下班', 'act.demoNote': '这三个按钮只在原型里有，用来试流程。', 'gov.ownTag': 'main manager · 主对话', 'gov.tagLabel': '总督 · main manager', 'gov.rgRole': 'main manager · 总督', 'pill.hall': '市政厅', 'gov.awayNote': '总督不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等总督。', 'gov.presentNote': '总督就是你正在聊的主对话。它派人出门、回答卡住的问题，自己不盖楼。', 'dt.dispatched': '派出', 'dt.answered': '回答', 'hint.team': '团队', 'hint.noAgents': '还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。', 'hint.pickSomething': '点城里的小人、房子，或下面名单里的一行。', 'building.misplaced': ' · 放错区了', 'building.level': ' · 等级 {level}', 'building.district': '{kind}区', 'hint.files': '盖它的文件', 'hint.history': '改过它的人（新的在前）', 'detail.title': '详情', 'clock.demo': '模拟 {t}', 'clock.now': '现在 {t}', 'opt.other': '其他', 'opt.customAnswer': '自己写回答', 'btn.sendAnswer': '发送回答', 'kv.tool': '工具', 'kv.file': '文件', 'kv.url': '网址', 'said': '它说：{text}', 'kv.dir': '目录', 'field.denyReason': '拒绝理由（可以不填；填了会原样告诉它）', 'field.denyPlaceholder': '比如：先别删 dist/，里面有发布包', 'btn.allow': '批准', 'btn.deny': '拒绝', 'ask.asking': '在问', 'ask.needsPermission': '要权限', 'pill.closed': '已关闭', 'aria.collapse': '收起（不回答）', 'foot.terminalAnswers': '终端里也能答，先答的算。', 'err.decideNetwork': '没发出去（连不上城市服务器）。终端里还能答。', 'err.decideStatus': '没发出去（{status}）。终端里还能答，可以再试一次。', 'proto.live': '实时 · 等服务器', 'proto.connected': '实时 · 已连接', 'proto.reconnecting': '实时 · 重连中…', 'log.relayOff': '联城中继断开：其他成员定格，我的城市照常干活。', 'log.relayOn': '联城恢复：其他成员更新到最新。', 'log.relayLeave': '退出联城：其他成员从我的城市消失，我的城市不变。', 'demo.task.checkoutTest': '写结账测试', 'demo.task.paymentRetry': '改支付超时重试', 'demo.q.paymentRetry': '支付超时要不要自动重试？', 'demo.task.depsScan': '扫描依赖漏洞', 'demo.task.worker.0': '设置页表单', 'demo.task.worker.1': '登录 API', 'demo.task.worker.2': '导出 CSV', 'demo.task.worker.3': '深色模式', 'demo.task.worker.4': '小票打印', 'demo.task.worker.5': '搜索框', 'demo.task.worker.6': '分页', 'demo.task.worker.7': '价格计算', 'demo.task.worker.8': '库存提醒', 'demo.task.worker.9': '客户列表', 'demo.task.taskManager.0': '设置页', 'demo.task.taskManager.1': '登录', 'demo.task.taskManager.2': '报表', 'demo.task.taskManager.3': '打印', 'demo.task.taskManager.4': '库存', 'demo.task.fastLaneDeputy.0': '错别字', 'demo.task.fastLaneDeputy.1': '按钮颜色', 'demo.task.fastLaneDeputy.2': '图标大小', 'demo.task.fastLaneDeputy.3': '标题换行', 'demo.task.fastLaneDeputy.4': '空状态文案', 'demo.task.mergeDeputy.0': '合并 settings', 'demo.task.mergeDeputy.1': '合并 login', 'demo.task.mergeDeputy.2': '合并 report', 'demo.task.mergeDeputy.3': '合并 print', 'demo.qa.0.q': '测试名不清楚，用哪个？', 'demo.qa.0.a': '按默认，记进日志', 'demo.qa.1.q': 'API 路径用哪个？', 'demo.qa.1.a': '用 /api/settings', 'demo.qa.2.q': '要不要加分页？', 'demo.qa.2.a': '先不加，写进 ideas', 'demo.qa.3.q': '默认语言是？', 'demo.qa.3.a': 'zh，跟 agent.conf', 'demo.qa.4.q': '旧数据要迁移吗？', 'demo.qa.4.a': '要，先写测试', 'demo.qa.5.q': '这个文件能改吗？', 'demo.qa.5.a': '能，只改你那份', 'demo.qa.6.q': '可以跑这条命令吗？', 'demo.qa.6.a': '批了，继续', 'aria.needsApproval': '{task} 等你批，点开看', 'aria.needsAnswer': '{task} 等你回答，点开看', 'aria.stuckOnlyThem': '{name} 卡住了，只有 {name} 能回答', 'aria.govNeedsApproval': '总督 等你批，点开看', 'aria.govNeedsAnswer': '总督 等你回答，点开看', 'gov.waitCountdown': '总督 {s}s', 'chat.sendError': '没发出去（连不上城市服务器）。', 'btn.findLead': '找组长：{name}', 'hint.readOnlySub': '它是子任务，这份对话只能看；有事去找组长。', 'placeholder.saySomething': '跟它说…', 'btn.send': '发送', 'label.ask': '问：', 'label.answer': '答：', 'label.awaitingAnswer': '等回答…', 'member.unknown': '未知', 'chip.off': '联城断开 · 待发 {n} 条', 'chip.refused': '联城拒绝了密钥', 'chip.ok': '联城 · {people} 人 · {devices} 台设备', 'remote.note': '只能看：这是 {who} 的 agent，只有 {who} 能回答。', 'stale.sec': '最后更新 {n} 秒前', 'stale.min': '最后更新 {n} 分钟前', 'ask.permission': '{name} 要权限：{what} → 等你批', 'ask.toOwner': '{name} 问你：“{what}”', 'ask.toGov': '{name} 问总督：“{what}”', 'ask.toGovNoGov': '{name} 问总督：“{what}”，没有总督在 → 等你回答', 'askphase.pass': '总督：这个我定不了 → 等你回答 {name}', 'askphase.timeout': '总督 {wait} 秒没回答 {name} → 等你', 'closed.routed': '{name} 的请求转到{who}处理：{what}', 'closed.answered': '{who}回答 {name}：“{text}”', 'closed.answeredDefault': '{who}已回答 {name}', 'closed.allowed': '{who}批准 {name}：{what}', 'closed.denied': '{who}拒绝 {name}：{what}', 'closed.deniedReason': '，理由：“{reason}”', 'closed.ended': '{who}结束了 {name}：{what}', 'why.permission': '权限只由你来批，总督不批。', 'why.gov': '总督定不了，交给你。', 'why.timeout': '总督 {wait} 秒没回答，交给你。', 'why.pass': '总督说：这个我定不了，交给你。', 'why.noGov': '没有总督在，直接交给你。', 'closed.late': '晚了一步：<b>{who}</b>在 {time} 已经处理了。这里不用再点了。', 'closed.pending': '在 {time} 已经处理了，结果还没传回来。已记下。', 'closed.answeredText': '回答了：“{text}”', 'closed.allowedText': '批准了', 'closed.deniedText': '拒绝了', 'closed.lateFull': '晚了一步：<b>{who}</b>在 {time} 先{text}。这里不用再点了。', 'closed.doneByYou': '<b>{who}</b>在 {time} {text}。已记下。', 'log.chatSent': '你 → {to}：{text}', 'log.remoteSpawn': '{who}（{device}）的 {label} 开始：{task}', 'log.remoteDone': '{who}（{device}）的 {task} 完工了', 'log.remoteLeft': '{who}（{device}）的 {task} 下线了', 'say.understood': '明白！', 'log.eraBecame': '{name} 变成{era}了', 'demo.seed.prompt': '先把这页做完，别的先不要动', 'demo.seed.reply': '好，先做这页，其它先不碰', 'chat.stateSuffix': '（{state}）', 'punct.answerJoin': '；', 'demo.device.cloud': '云端' }, en: { 'btn.log': 'Activity', 'aria.city': 'City', 'aria.canvas': '3D island: each little person is one agent', 'proto.banner': 'Prototype - demo data', 'btn.zoomIn': 'Zoom in', 'btn.zoomOut': 'Zoom out', 'btn.rotate': 'Rotate', 'btn.resetView': 'Reset the view', 'btn.close': 'Close', 'aria.toolbar': 'Controls', 'label.spawn': 'Send a', 'opt.worker': 'worker - builds houses', 'opt.taskManager': 'task manager - test tower', 'opt.fastLaneDeputy': 'fast-lane deputy - garden', 'opt.mergeDeputy': 'merge deputy - bridge', 'btn.spawn': 'Send', 'btn.remoteOff': 'Disconnect relay', 'btn.remoteOn': 'Resume', 'btn.remoteLeave': 'Leave the linked city', 'type.house': 'House', 'type.shop': 'Shop', 'type.tower': 'Tower', 'type.workshop': 'Workshop', 'type.library': 'Library', 'district.house': 'Homes', 'district.shop': 'Shops', 'district.tower': 'Tests', 'district.workshop': 'Workshops', 'district.library': 'Library', 'chat.state.queued': 'Sent', 'chat.state.delivered': 'Delivered', 'chat.state.undelivered': 'Undelivered', 'role.task-manager': 'Task manager', 'role.worker': 'Worker', 'role.fast-lane-deputy': 'Fast-lane deputy', 'role.merge-deputy': 'Merge deputy', 'role.other': 'Helper', 'era.village': 'Village', 'era.town': 'Town', 'era.city': 'City', 'quality.good': 'Tidy', 'quality.fair': 'OK', 'quality.poor': 'Messy', 'who.governor': 'Governor', 'who.owner': 'You', 'who.terminal': 'Terminal', 'state.spawn': 'Heading out', 'state.to_plot': 'To the site', 'state.building': 'Building', 'state.working': 'Working', 'state.to_hall': 'To the governor', 'state.asking': 'Asking the governor', 'state.heard': 'Got the answer', 'state.to_lead': 'To the manager', 'state.at_lead': 'Asking the manager', 'state.back': 'Back to the site', 'state.finishing': 'Topped out', 'state.to_rest': 'Heading to rest', 'state.resting': 'Resting', 'state.leaving': 'Heading home', 'status.need_approval': 'Needs your OK', 'status.asking_gov': 'Asking the governor', 'status.waiting_answer': 'Waiting on your answer', 'status.waiting_reply': 'Waiting on you', 'status.waiting': 'Waiting on you', 'stuck.permission': 'Needs permission: {tool}', 'stuck.default': 'Needs your eyes', 'gov.away': 'Away', 'gov.busy': 'Busy', 'gov.home': 'At the town hall', 'top.work': 'Working', 'top.ask': 'Need governor', 'top.rest': 'Resting', 'top.done': 'Built', 'top.stalled': 'Stalled site', 'top.pending': 'Waiting', 'top.pendingAria': '{n} waiting on your call - click to open the earliest', 'empty.noLand': 'No territory yet - start inside a git repo, or wait for an agent', 'loading.text': 'Loading assets…', 'loading.progress': 'Loading assets {n}/{total}', 'loading.error': 'Assets failed to load: {err}', 'site.human': 'Hands-on', 'log.eraUpgrade': '{name} is upgrading to {era}', 'say.done': 'Done!', 'log.leftWork': '{task} clocked out', 'gov.dispatch': 'Go: {task}', 'log.govDispatch': 'The governor sent {label}: {task}', 'log.siteMerged': '{branch} merged into main, the site wrapped up', 'log.siteRemoved': 'The {branch} site was pulled down', 'log.levelUp': '{label} leveled up to {lv}', 'log.movedBack': '{label} moved back to the {kind} district', 'log.demolished': 'Every file behind {label} is gone, demolished', 'log.stuckDemo': '{task} got stuck: "{text}" -> asking the governor', 'answer.default': 'Answered', 'log.govAnswer': 'The governor answered {task}: "{text}"', 'log.doneRestPlain': '{task} finished, heading to rest', 'log.doneRestBuilt': '{task} finished: {kind} topped out, heading to rest', 'log.noplot': '{name} found no empty plot, waiting a bit', 'gov.unknown': 'Unknown', 'gov.busyRow': 'Busy', 'gov.idleRow': 'Idle', 'gov.title': '{name} governor', 'chain.lead': 'Manager', 'chain.leadTask': 'Manager {task}', 'chat.empty': 'No conversation yet', 'chat.you.page': 'You (page)', 'chat.you.terminal': 'You (terminal)', 'chat.wait': 'Waiting for it to finish this step', 'chat.loadError': 'Could not load the conversation - try opening it again in a moment.', 'kv.repo': 'Repo', 'kv.branch': 'Branch', 'kv.doing': 'Doing', 'qa.ask': 'Q: “{q}”', 'qa.answer': 'A: “{a}”', 'qa.waiting': 'Q: “{q}” - waiting for an answer…', 'act.makeStuck': 'Make it stuck', 'act.makeDone': 'Make it finish', 'act.makeLeave': 'Make it clock out', 'act.demoNote': 'These three buttons exist only in the prototype, to try the flow.', 'gov.ownTag': 'main manager · main conversation', 'gov.tagLabel': 'Governor · main manager', 'gov.rgRole': 'main manager · Governor', 'pill.hall': 'Town hall', 'gov.awayNote': 'The governor is away: this repo has no main manager session right now. Agent questions go straight to you, without waiting for the governor first.', 'gov.presentNote': 'The governor is the main conversation you are talking to. It sends agents out and answers stuck questions, but never builds anything itself.', 'dt.dispatched': 'Sent', 'dt.answered': 'Answered', 'hint.team': 'Team', 'hint.noAgents': 'No agents at work yet. Open a Claude Code session and send an agent - it will walk out of the town hall.', 'hint.pickSomething': 'Click a person or building in the city, or a row in the list below.', 'building.misplaced': ' - in the wrong district', 'building.level': ' - level {level}', 'building.district': '{kind} district', 'hint.files': 'The files that built it', 'hint.history': 'Who has touched it (newest first)', 'detail.title': 'Details', 'clock.demo': 'Demo {t}', 'clock.now': 'Now {t}', 'opt.other': 'Other', 'opt.customAnswer': 'Write your own answer', 'btn.sendAnswer': 'Send answer', 'kv.tool': 'Tool', 'kv.file': 'File', 'kv.url': 'URL', 'said': 'It said: {text}', 'kv.dir': 'Directory', 'field.denyReason': 'Reason for denying (optional; if filled in, it is told to it as-is)', 'field.denyPlaceholder': 'e.g. do not delete dist/ yet, it has the release package', 'btn.allow': 'Allow', 'btn.deny': 'Deny', 'ask.asking': 'is asking', 'ask.needsPermission': 'needs permission', 'pill.closed': 'Closed', 'aria.collapse': 'Collapse (without answering)', 'foot.terminalAnswers': 'The terminal can answer too - whichever answers first wins.', 'err.decideNetwork': 'Could not send (cannot reach the city server). The terminal can still answer.', 'err.decideStatus': 'Could not send ({status}). The terminal can still answer, or try again.', 'proto.live': 'Live - waiting for the server', 'proto.connected': 'Live - connected', 'proto.reconnecting': 'Live - reconnecting…', 'log.relayOff': 'City-link relay disconnected: other members are frozen, my city keeps working as normal.', 'log.relayOn': 'City-link resumed: other members update to the latest.', 'log.relayLeave': 'Left the linked city: other members disappear from my city; my city is unchanged.', 'demo.task.checkoutTest': 'Write checkout tests', 'demo.task.paymentRetry': 'Fix payment-timeout retry', 'demo.q.paymentRetry': 'Should a payment timeout retry automatically?', 'demo.task.depsScan': 'Scan dependencies for vulnerabilities', 'demo.task.worker.0': 'Settings page form', 'demo.task.worker.1': 'Login API', 'demo.task.worker.2': 'Export CSV', 'demo.task.worker.3': 'Dark mode', 'demo.task.worker.4': 'Receipt printing', 'demo.task.worker.5': 'Search box', 'demo.task.worker.6': 'Pagination', 'demo.task.worker.7': 'Price calculation', 'demo.task.worker.8': 'Inventory alerts', 'demo.task.worker.9': 'Customer list', 'demo.task.taskManager.0': 'Settings page', 'demo.task.taskManager.1': 'Login', 'demo.task.taskManager.2': 'Reports', 'demo.task.taskManager.3': 'Printing', 'demo.task.taskManager.4': 'Inventory', 'demo.task.fastLaneDeputy.0': 'Typos', 'demo.task.fastLaneDeputy.1': 'Button colour', 'demo.task.fastLaneDeputy.2': 'Icon size', 'demo.task.fastLaneDeputy.3': 'Title wrapping', 'demo.task.fastLaneDeputy.4': 'Empty-state copy', 'demo.task.mergeDeputy.0': 'Merge settings', 'demo.task.mergeDeputy.1': 'Merge login', 'demo.task.mergeDeputy.2': 'Merge report', 'demo.task.mergeDeputy.3': 'Merge print', 'demo.qa.0.q': 'Which test name is unclear - which one?', 'demo.qa.0.a': 'Go with the default, log it', 'demo.qa.1.q': 'Which API path should I use?', 'demo.qa.1.a': 'Use /api/settings', 'demo.qa.2.q': 'Should I add pagination?', 'demo.qa.2.a': 'Not yet, write it into ideas', 'demo.qa.3.q': 'What is the default language?', 'demo.qa.3.a': 'zh, matching agent.conf', 'demo.qa.4.q': 'Does the old data need migrating?', 'demo.qa.4.a': 'Yes, write a test first', 'demo.qa.5.q': 'Can I change this file?', 'demo.qa.5.a': 'Yes, only your own copy', 'demo.qa.6.q': 'Can I run this command?', 'demo.qa.6.a': 'Approved, go ahead', 'aria.needsApproval': '{task} needs your approval, click to open', 'aria.needsAnswer': '{task} needs your answer, click to open', 'aria.stuckOnlyThem': '{name} is stuck; only {name} can answer', 'aria.govNeedsApproval': 'The governor needs your approval, click to open', 'aria.govNeedsAnswer': 'The governor needs your answer, click to open', 'gov.waitCountdown': 'Governor {s}s', 'chat.sendError': 'Could not send (cannot reach the city server).', 'btn.findLead': 'Find the lead: {name}', 'hint.readOnlySub': 'This is a subtask; the conversation is view only - go to its lead for anything else.', 'placeholder.saySomething': 'Say something to it…', 'btn.send': 'Send', 'label.ask': 'Q: ', 'label.answer': 'A: ', 'label.awaitingAnswer': 'awaiting an answer…', 'member.unknown': 'Unknown', 'chip.off': 'City-link disconnected - {n} queued', 'chip.refused': 'City-link refused the key', 'chip.ok': 'City-link - {people} people - {devices} devices', 'remote.note': 'View only: this agent belongs to {who} - only {who} can answer it.', 'stale.sec': 'Last updated {n}s ago', 'stale.min': 'Last updated {n}m ago', 'ask.permission': '{name} needs permission: {what} -> waiting on you', 'ask.toOwner': '{name} asks you: “{what}”', 'ask.toGov': '{name} asks the governor: “{what}”', 'ask.toGovNoGov': '{name} asks the governor: “{what}”, no governor around -> waiting on your answer', 'askphase.pass': 'The governor: not mine to decide -> waiting on your answer for {name}', 'askphase.timeout': 'The governor did not answer {name} in {wait}s -> waiting on you', 'closed.routed': 'The request from {name} was routed to {who}: {what}', 'closed.answered': '{who} answered {name}: “{text}”', 'closed.answeredDefault': '{who} already answered {name}', 'closed.allowed': '{who} allowed {name}: {what}', 'closed.denied': '{who} denied {name}: {what}', 'closed.deniedReason': ', reason: “{reason}”', 'closed.ended': '{who} closed {name}: {what}', 'why.permission': 'Only you can approve permissions - the governor does not.', 'why.gov': 'The governor cannot decide this - it is yours.', 'why.timeout': 'The governor did not answer in {wait}s - it is yours.', 'why.pass': 'The governor said: not mine to decide - it is yours.', 'why.noGov': 'No governor around - it goes straight to you.', 'closed.late': 'Too late: <b>{who}</b> already handled it at {time}. No need to click here.', 'closed.pending': 'Handled at {time}; the result has not come back yet. Noted.', 'closed.answeredText': 'Answered: “{text}”', 'closed.allowedText': 'Allowed', 'closed.deniedText': 'Denied', 'closed.lateFull': 'Too late: <b>{who}</b> already {text} at {time}. No need to click here.', 'closed.doneByYou': '<b>{who}</b> {text} at {time}. Noted.', 'log.chatSent': 'You -> {to}: {text}', 'log.remoteSpawn': '{who} ({device}) - {label} started: {task}', 'log.remoteDone': '{who} ({device}) - {task} finished', 'log.remoteLeft': '{who} ({device}) - {task} went offline', 'say.understood': 'Got it!', 'log.eraBecame': '{name} became a {era}', 'demo.seed.prompt': 'Finish this page first, do not touch anything else yet', 'demo.seed.reply': 'OK, doing this page first, leaving the rest alone', 'chat.stateSuffix': ' ({state})', 'punct.answerJoin': '; ', 'demo.device.cloud': 'Cloud' } };
+/* idea-city C1: i18n(key, vars) -> TEXT[en or zh][key], every "{name}" replaced by vars[name]; an
+   unknown key gives the key itself back. A plain top-level function declaration -- every caller in
+   this file reaches it by that name (never `T`: several test drivers use a local `T` for "the
+   territory"). function_source("i18n") (tests/test_agent_city_page.py) finds it to run on its own. */
+function i18n(key, vars) { const lang = LANG === 'en' ? 'en' : 'zh'; const table = TEXT[lang] || {}; let s = Object.prototype.hasOwnProperty.call(table, key) ? table[key] : key; if (vars) for (const name in vars) s = s.split('{' + name + '}').join(vars[name]); return s; }
+/* idea-city C1: fills every data-t / data-t-aria / data-t-title / data-t-placeholder element from
+   TEXT, once, at start -- the static markup carries no Chinese of its own any more. */
+function applyText() {
+  document.querySelectorAll('[data-t]').forEach(el => { el.textContent = i18n(el.getAttribute('data-t')); });
+  document.querySelectorAll('[data-t-aria]').forEach(el => { el.setAttribute('aria-label', i18n(el.getAttribute('data-t-aria'))); });
+  document.querySelectorAll('[data-t-title]').forEach(el => { el.setAttribute('title', i18n(el.getAttribute('data-t-title'))); });
+  document.querySelectorAll('[data-t-placeholder]').forEach(el => { el.setAttribute('placeholder', i18n(el.getAttribute('data-t-placeholder'))); });
+}
+applyText();
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#city'), ovRoot = $('#ov');
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -319,6 +343,9 @@ const LIFT_MAX = 10 * Math.PI / 180;
 const FADE_OPACITY = .3;
 const DIST_DEFAULT = 9;
 const TARGET_Y = .4;
+/* city-idea C2: the distance where camTarget starts drawing the view to the land middle; past it,
+   nothing fades (viewBlockers returns empty) -- zoomed out, the whole land is meant to be seen. */
+const FADE_DIST = 12;
 const CAM_CLEAR = .35;
 const AUTO_ROT_SEC = 300;
 const SHOW_SEC = 60;
@@ -391,11 +418,11 @@ const SYS_FIT = {
 /* Balance: an absolute scale (not a "fit to target size" one) for keys where fit makes them huge on a
    small-footprint model — the same numbers buildLand already uses for the wild scenery's own flowers. */
 const SYS_SCALE = { 'nature/flower_redA': .55, 'nature/flower_yellowA': .55, 'nature/flower_purpleA': .55 };
-/* Balance: 'industrial/building-h' (police station, blue tint) and 'industrial/building-k'
-   (library, green) are plain Kenney buildings with unique bare names (never 'commercial/building-a' or
-   'industrial/building-a'/'-b', which the town/city ERA_LOOK already uses under the bare names 'building-a'
-   and 'building-b' — lib is keyed by the bare name only, so reusing those would make the police station and
-   the library look like whichever of the two packs' same-named model finished loading last). */
+/* Balance: 'industrial/building-h' (police station, blue tint) and 'industrial/building-k' (library,
+   green) are plain Kenney buildings with unique bare names, so they need no pack prefix to name a real
+   model (idea-city C8: lib is keyed by the full 'pack/name' entry; a bare name is only ever an alias when
+   no other pack ships that name -- 'building-a'/'building-b' alone name nothing, since both commercial
+   and industrial ship one: the town/city ERA_LOOK's shop/workshop lists spell those out in full). */
 const SYS_TINT = { 'industrial/building-h': '#3C63D6', 'industrial/building-k': '#2FB57A' };
 /* Balance: systemsDecor(t, view) -> [{key, x, z, kind}], the 5 systems made visible in the world
    (requirements/city.md, Balance): [] on day 0 (t.open === 0) or with no balance; nothing for a missing
@@ -481,9 +508,20 @@ function systemsDecor(t, view){
   if (st('knowledge') === 'low' || st('knowledge') === 'healthy') {
     // library, near the hall but never in the plaza -- village gets its own KayKit stand-in
     putEra(nearOutPlaza, 'kaykit-medieval/building_church_green', 'industrial/building-k', 'knowledge');
-    const districts = new Set((t.plots || []).map(p => p.d)); // every district with an open plot
-    const signs = st('knowledge') === 'healthy' ? Math.max(1, districts.size) : 1; // low: 1 sign; healthy: one per district
-    for (let n = 0; n < signs; n++) put(near, 'roads/road-sign-street', 'knowledge');
+    const districts = [...new Set((t.plots || []).map(p => p.d))]; // every district with an open plot, in plot order
+    // idea-city C10: healthy gets one sign per district; low gets one, the district of the first open
+    // plot. Each sign sits on the free tile nearest that district's own plots (within 3 tiles,
+    // Chebyshev, when one is free there; else the nearest free tile overall) -- never near the hall
+    // (the 'near' list above is sorted by distance to the hall, not used here).
+    const wantDistricts = st('knowledge') === 'healthy' ? districts : districts.slice(0, 1);
+    for (const d of wantDistricts) {
+      const plotsOf = (t.plots || []).filter(p => p.d === d);
+      const distTo = s2 => Math.min(...plotsOf.map(p => Math.max(Math.abs(s2.x - (p.x + .5)), Math.abs(s2.z - (p.z + .5)))));
+      const byDist = list => list.slice().sort((a, b) => distTo(a) - distTo(b));
+      const inRange = free.filter(s2 => distTo(s2) <= 3);
+      const s2 = take(byDist(inRange.length ? inRange : free));
+      if (s2) out.push({ key: 'roads/road-sign-street', x: s2.x, z: s2.z, kind: 'knowledge', d });
+    }
   }
   if (st('infra') === 'low' || st('infra') === 'healthy') {
     put(far, 'industrial/water-tower', 'infra');
@@ -639,7 +677,7 @@ function siteDecor(site){
     out.push({ key: 'roads/construction-barrier', x: cx, z: cz + 1.5 });
     out.push({ key: 'particles/smoke_01', x: cx, z: cz + .3 });
   }
-  if (site.human) out.push({ key: 'forest/flag', x: cx + .9, z: cz + .9, label: '亲自带' });
+  if (site.human) out.push({ key: 'forest/flag', x: cx + .9, z: cz + .9, label: i18n('site.human') });
   return out;
 }
 /* DEMO_SITES (Worktrees: "#demo shows the sites, one of them stalled, so the owner can look without a
@@ -661,10 +699,10 @@ function topCounts(){
     const g = STATE[c.state][0]; if (g === 'ask') ask++; else if (g === 'rest') rest++; else if (c.state !== 'leaving') work++;
   }
   const done = buildings.filter(b => b.done).length;
-  const out = [['干活', work], ['找总督', ask], ['休息', rest], ['建成', done]];
+  const out = [[i18n('top.work'), work], [i18n('top.ask'), ask], [i18n('top.rest'), rest], [i18n('top.done'), done]];
   let stalled = 0;
   for (const s of sites.values()) if (s.phase === 'live' && s.stalled) stalled++;
-  if (stalled > 0) out.push(['卡住的工地', stalled]);
+  if (stalled > 0) out.push([i18n('top.stalled'), stalled]);
   return out;
 }
 /* Growth: each plan's terrain changes the look only (ground/path colour, and which plants grow on wild tiles).
@@ -697,20 +735,22 @@ const ERA_LOOK = {
   town: {
     build: {
       house: ['building-type-a', 'building-type-c', 'building-type-f', 'building-type-k', 'building-type-n', 'building-type-r'],
-      shop: ['building-a', 'building-b'],
+      // idea-city C8: full keys -- 'building-a'/'building-b' alone name nothing (commercial and
+      // industrial each ship one, and lib no longer picks one at random between them)
+      shop: ['commercial/building-a', 'commercial/building-b'],
       // brick mid-rise office blocks (City Kit Commercial building-f/-g), not the city's glass skyscrapers
       tower: ['building-f', 'building-g'],
-      workshop: ['building-a', 'building-b'],
+      workshop: ['industrial/building-a', 'industrial/building-b'],
       library: ['building-c', 'building-d'],
     },
     hall: 'building-j', road: '#A9A39A', lamps: true, // stone grey, apart from the village dirt path and the city asphalt
   },
   city: {
     build: {
-      house: ['building-a', 'building-b', 'building-c', 'building-d'],
-      shop: ['building-a', 'building-b'],
+      house: ['commercial/building-a', 'commercial/building-b', 'commercial/building-c', 'commercial/building-d'],
+      shop: ['commercial/building-a', 'commercial/building-b'],
       tower: ['building-skyscraper-a', 'building-skyscraper-b'],
-      workshop: ['building-a', 'building-b'],
+      workshop: ['industrial/building-a', 'industrial/building-b'],
       library: ['building-c', 'building-d'],
     },
     hall: 'building-skyscraper-a', road: '#5B5E68', lamps: true,
@@ -748,8 +788,7 @@ function startShow(terr, from, to, left){
   needFrame = true;
   if (left >= SHOW_SEC - .5) {
     const name = (typeof terrOf === 'function' && terrOf(terr) && terrOf(terr).name) || terr;
-    const zh = typeof ERA_ZH !== 'undefined' ? ERA_ZH[to] : to;
-    logAt(typeof simT !== 'undefined' ? simT : 0, name + ' 开始升级成' + zh);
+    logAt(typeof simT !== 'undefined' ? simT : 0, i18n('log.eraUpgrade', { name, era: i18n('era.' + to) }));
   }
 }
 /* Balance: showPlan(t, view, to) -> {builders, targets: [{what, x, z}]}: one 'building' visit per building
@@ -776,28 +815,28 @@ function mix(a, b, t){ const A = h2r(a), B = h2r(b); return r2h(A.map((x,i) => x
 function sr(seed, i){ const x = Math.sin(seed*12.9898 + i*78.233) * 43758.5453; return x - Math.floor(x); }
 function isDark(){ const t = document.documentElement.getAttribute('data-theme'); if (t === 'dark') return true; if (t === 'light') return false; return matchMedia('(prefers-color-scheme: dark)').matches; }
 
-/* askLine(ev, name): the Chinese log line for one ask / ask_phase / ask_closed
-   event. Pure: no DOM, no globals outside its own arguments. Live mode never
-   invents text; it only ever shows what the event itself carries. */
+/* askLine(ev, name): the log line for one ask / ask_phase / ask_closed event, in the language now
+   showing (TEXT/i18n). Live mode never invents text; it only ever shows what the event itself
+   carries. */
 function askLine(ev, name) {
-  const WHO = { governor: '总督', owner: '你', terminal: '终端' };
+  const WHO = { governor: i18n('who.governor'), owner: i18n('who.owner'), terminal: i18n('who.terminal') };
   const toolWhat = (tool, what) => tool ? (what ? tool + ' ' + what : tool) : (what || '');
   if (ev.type === 'ask') {
     if (ev.kind === 'permission') {
-      return name + ' 要权限：' + toolWhat(ev.tool, ev.what) + ' → 等你批';
+      return i18n('ask.permission', { name, what: toolWhat(ev.tool, ev.what) });
     }
     if (ev.agent === 'gov') {
       // the governor asks the owner, never itself -- never says 问总督 (owner E2E, 2026-09-25).
-      return name + ' 问你：“' + (ev.what || '') + '”';
+      return i18n('ask.toOwner', { name, what: ev.what || '' });
     }
     if (ev.phase === 'governor') {
-      return name + ' 问总督：“' + (ev.what || '') + '”';
+      return i18n('ask.toGov', { name, what: ev.what || '' });
     }
-    return name + ' 问总督：“' + (ev.what || '') + '”，没有总督在 → 等你回答';
+    return i18n('ask.toGovNoGov', { name, what: ev.what || '' });
   }
   if (ev.type === 'ask_phase') {
-    if (ev.why === 'pass') return '总督：这个我定不了 → 等你回答 ' + name;
-    return '总督 ' + ev.wait + ' 秒没回答 ' + name + ' → 等你';
+    if (ev.why === 'pass') return i18n('askphase.pass', { name });
+    return i18n('askphase.timeout', { name, wait: ev.wait });
   }
   if (ev.type === 'ask_closed') {
     const who = WHO[ev.by] || ev.by || '';
@@ -805,26 +844,31 @@ function askLine(ev, name) {
     if (ev.verb === 'closed') {
       // the terminal (or the hook giving up) only took it off the table; it
       // did not itself allow, deny or answer, so this stays neutral.
-      return name + ' 的请求转到' + who + '处理：' + what;
+      return i18n('closed.routed', { name, who, what });
     }
     if (ev.verb === 'answer') {
-      return ev.text ? who + '回答 ' + name + '：“' + ev.text + '”' : who + '已回答 ' + name;
+      return ev.text ? i18n('closed.answered', { who, name, text: ev.text }) : i18n('closed.answeredDefault', { who, name });
     }
-    if (ev.verb === 'allow') return who + '批准 ' + name + '：' + what;
-    if (ev.verb === 'deny') return who + '拒绝 ' + name + '：' + what + (ev.reason ? '，理由：“' + ev.reason + '”' : '');
-    return who + '结束了 ' + name + '：' + what;
+    if (ev.verb === 'allow') return i18n('closed.allowed', { who, name, what });
+    if (ev.verb === 'deny') {
+      const reason = ev.reason ? i18n('closed.deniedReason', { reason: ev.reason }) : '';
+      return i18n('closed.denied', { who, name, what }) + reason;
+    }
+    return i18n('closed.ended', { who, name, what });
   }
   return '';
 }
 
 /* city-join: pure */
-/* memberName(who, device) -> who trimmed; blank -> device trimmed; both blank -> "未知". Never blank
-   (owner decision 2026-09-25: a blank who -- e.g. pc2 has no git user.name -- is never shown as-is). */
+/* memberName(who, device) -> who trimmed; blank -> device trimmed; both blank -> member.unknown.
+   Never blank (owner decision 2026-09-25: a blank who -- e.g. pc2 has no git user.name -- is never
+   shown as-is). idea-city C1: the words route through i18n() (TEXT/i18n come first even when this
+   section is pinned alone, tests/test_agent_city_remote_page.py). */
 function memberName(who, device) {
   const w = (who || '').trim();
   if (w) return w;
   const d = (device || '').trim();
-  return d || '未知';
+  return d || i18n('member.unknown');
 }
 /* remoteChip(relays, me, people, govs) -> null | {cls, text} for the top-bar 联城 chip.
    relays: [{host, state, queued}]; me: {who, device} or null; people/govs: [{who, device, dev}].
@@ -834,9 +878,9 @@ function remoteChip(relays, me, people, govs) {
   const off = relays.filter(r => r.state === 'off');
   if (off.length) {
     const n = off.reduce((s, r) => s + r.queued, 0);
-    return { cls: 'off', text: '联城断开 · 待发 ' + n + ' 条' };
+    return { cls: 'off', text: i18n('chip.off', { n }) };
   }
-  if (relays.some(r => r.state === 'refused')) return { cls: 'refused', text: '联城拒绝了密钥' };
+  if (relays.some(r => r.state === 'refused')) return { cls: 'refused', text: i18n('chip.refused') };
   const names = new Set();
   if (me) names.add(memberName(me.who, me.device));
   for (const p of people) names.add(memberName(p.who, p.device));
@@ -845,10 +889,12 @@ function remoteChip(relays, me, people, govs) {
   for (const p of people) if (p.dev) dev.add(p.dev);
   for (const g of govs) if (g.dev) dev.add(g.dev);
   const D = (me ? 1 : 0) + dev.size;
-  return { cls: 'ok', text: '联城 · ' + names.size + ' 人 · ' + D + ' 台设备' };
+  return { cls: 'ok', text: i18n('chip.ok', { people: names.size, devices: D }) };
 }
 /* remoteNote(who) -> the lock explanation under another member's agent */
-function remoteNote(who) { return '只能看：这是 ' + who + ' 的 agent，只有 ' + who + ' 能回答。'; }
+function remoteNote(who) {
+  return i18n('remote.note', { who });
+}
 /* memberLabel(who, device) -> "<memberName> · <device>", or just the name when the name IS the
    device (a blank who falls back to the device via memberName -- never shows "pc2 · pc2"). */
 function memberLabel(who, device) {
@@ -859,7 +905,7 @@ function memberLabel(who, device) {
 function govSign(g) { return memberLabel(g.who, g.device); }
 /* staleText(sec) -> "最后更新 …" while a team's relay is off */
 function staleText(sec) {
-  return sec < 60 ? ('最后更新 ' + Math.floor(sec) + ' 秒前') : ('最后更新 ' + Math.floor(sec / 60) + ' 分钟前');
+  return sec < 60 ? i18n('stale.sec', { n: Math.floor(sec) }) : i18n('stale.min', { n: Math.floor(sec / 60) });
 }
 /* MEMBER_COLORS: a fixed palette, [0] reserved for "me". Owner decision 2026-09-05: while joined,
    every ring (mine, other members', governors too) is coloured by the member it belongs to. */
@@ -916,25 +962,27 @@ function memberLegend(me, people, govs, colors) {
    Simulation: the same event contract the real city reads
    (spawn, tool, stuck, answer, done, leave).
    ========================================================= */
+/* idea-city C1: role names and status words come from TEXT (role.*, state.*), through i18n() -- ROLES
+   itself only keeps each role's colour now. */
 const ROLES = {
-  'task-manager':     { zh:'任务经理',   color:'#9C86F2' },
-  'worker':           { zh:'工人',       color:'#5AA9F0' },
-  'fast-lane-deputy': { zh:'快车道副手', color:'#43C58B' },
-  'merge-deputy':     { zh:'合并副手',   color:'#FF9A5C' },
-  'other':            { zh:'帮手',       color:'#5FC3C9' },
+  'task-manager':     { color:'#9C86F2' },
+  'worker':           { color:'#5AA9F0' },
+  'fast-lane-deputy': { color:'#43C58B' },
+  'merge-deputy':     { color:'#FF9A5C' },
+  'other':            { color:'#5FC3C9' },
 };
 const STATE = {
-  spawn:['walk','出门'], to_plot:['walk','去工地'], building:['build','施工中'], working:['build','干活'],
-  to_hall:['ask','去问总督'], asking:['ask','在问总督'], heard:['ask','拿到答案'],
-  to_lead:['ask','去问经理'], at_lead:['ask','问经理'],
-  back:['walk','回工地'], finishing:['rest','封顶了'], to_rest:['rest','去休息'],
-  resting:['rest','休息中'], leaving:['walk','下班回家'],
+  spawn:['walk','state.spawn'], to_plot:['walk','state.to_plot'], building:['build','state.building'], working:['build','state.working'],
+  to_hall:['ask','state.to_hall'], asking:['ask','state.asking'], heard:['ask','state.heard'],
+  to_lead:['ask','state.to_lead'], at_lead:['ask','state.at_lead'],
+  back:['walk','state.back'], finishing:['rest','state.finishing'], to_rest:['rest','state.to_rest'],
+  resting:['rest','state.resting'], leaving:['walk','state.leaving'],
 };
 /* stuckText(ev): the bubble over a stuck citizen. Never invents "可以用 …
    吗" or "问总督" — those belong only to the demo's own made-up lines. */
 function stuckText(ev) {
-  if (ev.tool && ev.tool !== 'AskUserQuestion') return '要权限：' + ev.tool;
-  return ev.question || '需要你看一下';
+  if (ev.tool && ev.tool !== 'AskUserQuestion') return i18n('stuck.permission', { tool: ev.tool });
+  return ev.question || i18n('stuck.default');
 }
 /* applyAsk(c, ask): snapshot = live. With an ask view it sets c.askKind,
    c.askPhase, c.stuck and c.question the same way the live 'ask' event
@@ -957,16 +1005,20 @@ function applyAsk(c, ask) {
    so the demo — which never sends a 'governors' event — looks as before);
    with governors === 0 it never says 问总督. */
 function citizenStatus(c, governors = 1) {
-  if (c.askKind === 'permission') return ['you', '等你批'];
+  if (c.askKind === 'permission') return ['you', i18n('status.need_approval')];
   if (c.askKind === 'question') {
-    if (c.askPhase === 'governor') return governors ? ['ask', '在问总督'] : ['you', '等你回答'];
-    if (c.askPhase === 'owner') return ['you', '等你回答'];
+    if (c.askPhase === 'governor') return governors ? ['ask', i18n('status.asking_gov')] : ['you', i18n('status.waiting_answer')];
+    if (c.askPhase === 'owner') return ['you', i18n('status.waiting_answer')];
   }
+  // idea-city C5: idle_prompt is not a question -- a citizen merely waiting for input shows 等你回话,
+  // never 在问总督/stuck (an ask of its own still wins: it is checked first, above).
+  if (c.waiting) return ['you', i18n('status.waiting_reply')];
   // a citizen relayed to the governor: the governor answers relays by SendMessage, never through gov-watch,
   // so its own territory's presence (governorAt) decides, not the old gov-watch 'governors' count (Interaction).
-  if (c.relay === 'governor') return governorAt(c.terr) ? ['ask', '在问总督'] : ['you', '等你'];
-  if (!governors && (c.state === 'to_hall' || c.state === 'asking')) return ['you', '等你'];
-  return STATE[c.state];
+  if (c.relay === 'governor') return governorAt(c.terr) ? ['ask', i18n('status.asking_gov')] : ['you', i18n('status.waiting')];
+  if (!governors && (c.state === 'to_hall' || c.state === 'asking')) return ['you', i18n('status.waiting')];
+  const s = STATE[c.state];
+  return s ? [s[0], i18n(s[1])] : s;
 }
 /* nameOf(c) -> c.label, or "<label> · <task>" when the task is non-empty and differs from the label:
    never the same text twice (a server restart used to leave "auto-pipeline:worker · auto-pipeline:worker"
@@ -976,19 +1028,19 @@ function nameOf(c) {
   return c.task && c.task !== c.label ? c.label + ' · ' + c.task : c.label;
 }
 const TASKS = {
-  'worker':['设置页表单','登录 API','导出 CSV','深色模式','小票打印','搜索框','分页','价格计算','库存提醒','客户列表'],
-  'task-manager':['设置页','登录','报表','打印','库存'],
-  'fast-lane-deputy':['错别字','按钮颜色','图标大小','标题换行','空状态文案'],
-  'merge-deputy':['合并 settings','合并 login','合并 report','合并 print'],
+  'worker':[0,1,2,3,4,5,6,7,8,9].map(i => i18n('demo.task.worker.' + i)),
+  'task-manager':[0,1,2,3,4].map(i => i18n('demo.task.taskManager.' + i)),
+  'fast-lane-deputy':[0,1,2,3,4].map(i => i18n('demo.task.fastLaneDeputy.' + i)),
+  'merge-deputy':[0,1,2,3].map(i => i18n('demo.task.mergeDeputy.' + i)),
 };
 const QA = [
-  ['测试名不清楚，用哪个？','按默认，记进日志'],
-  ['API 路径用哪个？','用 /api/settings'],
-  ['要不要加分页？','先不加，写进 ideas'],
-  ['默认语言是？','zh，跟 agent.conf'],
-  ['旧数据要迁移吗？','要，先写测试'],
-  ['这个文件能改吗？','能，只改你那份'],
-  ['可以跑这条命令吗？','批了，继续'],
+  [i18n('demo.qa.0.q'), i18n('demo.qa.0.a')],
+  [i18n('demo.qa.1.q'), i18n('demo.qa.1.a')],
+  [i18n('demo.qa.2.q'), i18n('demo.qa.2.a')],
+  [i18n('demo.qa.3.q'), i18n('demo.qa.3.a')],
+  [i18n('demo.qa.4.q'), i18n('demo.qa.4.a')],
+  [i18n('demo.qa.5.q'), i18n('demo.qa.5.a')],
+  [i18n('demo.qa.6.q'), i18n('demo.qa.6.a')],
 ];
 
 /* ---------- world: the land the server lays out (requirements/city.md, Growth) ---------- */
@@ -1026,9 +1078,11 @@ function frontYaw(b){
    exporter's own min/max on the POSITION accessor and every one of these models is a single un-rotated
    node. Models are not loaded in node, so footprints() (below) uses this table plus footScale()/footBox()
    -- the same fit/s/h math place()/scaleOf() use on lib[key].size -- instead of the real THREE geometry.
-   Keyed by the bare model name: place()/instanced() are always called with the bare name too (buildLand
-   splits every 'pack/name' decor key on '/' before placing it), so `lib` (and this table) never carry the
-   pack prefix. y is only needed for the few items placed by a target height (`h`) rather than `fit`/`s`. */
+   Keyed the same way `lib` is (idea-city C8): the full 'pack/name' entry, or a bare name only when it
+   names a real model on its own (no other pack ships that name) -- 'commercial/building-a' and
+   'industrial/building-a' differ (and both exist), so each gets its own full-key entry here; footBox()
+   below tries the full key first, then the bare name. y is only needed for the few items placed by a
+   target height (`h`) rather than `fit`/`s`. */
 const MODEL_SIZE = {
   'road-sign-street': { x: .196, y: .475, z: .196 }, 'traffic-light': { x: .118, y: .515, z: .09 },
   'building-h': { x: 1.322, y: .734, z: 1.31 }, 'building-k': { x: 1.303, y: .773, z: .914 },
@@ -1053,7 +1107,11 @@ const MODEL_SIZE = {
   'building-type-a': { x: 1.3, y: .834, z: 1.028 }, 'building-type-c': { x: 1.286, y: 1.034, z: 1.028 },
   'building-type-f': { x: 1.428, y: 1.138, z: 1.406 }, 'building-type-k': { x: .921, y: 1.15, z: 1.02 },
   'building-type-n': { x: 1.784, y: 1.138, z: 1.378 }, 'building-type-r': { x: 1.028, y: 1.141, z: 1.02 },
-  'building-a': { x: .884, y: 1.293, z: .94 }, 'building-b': { x: .97, y: 1.293, z: .94 }, 'building-d': { x: .84, y: 1.293, z: .9 },
+  // idea-city C8: 'building-a'/'building-b' name nothing on their own (commercial and industrial each
+  // ship one, a different size) -- full keys, each measured from its own pack's .glb POSITION bounds.
+  'commercial/building-a': { x: .884, y: 1.293, z: .94 }, 'commercial/building-b': { x: .97, y: 1.293, z: .94 },
+  'industrial/building-a': { x: 2.084, y: 1.47, z: 1.242 }, 'industrial/building-b': { x: 2.084, y: 1.47, z: 1.262 },
+  'building-d': { x: .84, y: 1.293, z: .9 },
   'building-f': { x: .84, y: 1.693, z: 1.03 }, 'building-g': { x: .97, y: 1.693, z: .922 },
   'building-j': { x: 2.084, y: 1.693, z: 1.34 },
   'building-skyscraper-a': { x: 1.36, y: 2.88, z: 1.36 }, 'building-skyscraper-b': { x: 1.36, y: 4.48, z: 1.36 },
@@ -1077,7 +1135,7 @@ const MIN_FOOT_HALF = .15;
 function footBox(rawKey, x, z, opt){
   opt = opt || {};
   const bare = rawKey.indexOf('/') >= 0 ? rawKey.slice(rawKey.indexOf('/') + 1) : rawKey;
-  const size = MODEL_SIZE[bare];
+  const size = MODEL_SIZE[rawKey] || MODEL_SIZE[bare]; // idea-city C8: the full key first, the bare name only as a fallback
   if (!size) return null;
   const s = footScale(size, opt);
   const hw = size.x * s / 2, hd = size.z * s / 2;
@@ -1636,6 +1694,15 @@ const openAskCount = () => { let n = 0; for (const a of asks.values()) if (!a.cl
 const oldestOpenAsk = () => { let best = null; for (const a of asks.values()) if (!a.closed && a.phase === 'owner' && (!best || a.at < best.at)) best = a; return best; };
 
 function say(o, text, dur){ o.bubble = { text, until: simT + dur }; }
+/* idea-city C14: personBubble(c) -> the text over citizen c now, or '' (no bubble at all): its question
+   while asking, else its own say() text while it lasts -- never while walking to the hall ('to_hall', the
+   sprint: a bubble there would trail behind a moving citizen). '' when that text itself is empty, so
+   updatePerson never pins an empty bubble. */
+function personBubble(c){
+  if (c.state === 'asking') return c.question || '';
+  if (c.bubble && simT < c.bubble.until && c.state !== 'to_hall') return c.bubble.text || '';
+  return '';
+}
 function logAt(t, text, kind){ logEntries.unshift({ t, text, kind: kind || '', real: DEMO ? null : Date.now() }); if (logEntries.length > MAX_LOG) logEntries.length = MAX_LOG; dirty.log = true; }
 const log = (text, kind) => logAt(simT, text, kind);
 
@@ -1648,7 +1715,7 @@ function newBuildingRecord(terr, plot, type, x, z, by, done, ev){
   ev = ev || {};
   const b = { id:++bid, terr, plot, type, gx:x, gy:z, by, seed:(Math.abs(x*928371+z*12345+plot)) % 1000,
     done:!!done, shown:done ? 1 : 0, risenAt:simT, popAt: done ? -99 : simT,
-    color: DCOL[type] || '#5AA9F0', label: TYPE_ZH[type] || type, ownerId:0,
+    color: DCOL[type] || '#5AA9F0', label: i18n('type.' + type) || type, ownerId:0,
     q: ev.q || 'good', home: ev.home !== false, files: ev.files ? ev.files.slice() : [],
     hist: ev.hist ? ev.hist.slice() : [], lv: ev.lv || 0, name: ev.name || '' };
   buildings.push(b);
@@ -1660,7 +1727,7 @@ function newBuildingRecord(terr, plot, type, x, z, by, done, ev){
 function standFor(b){ return frontStand(b.gx, b.gy); }
 /* bldLabel(b) -> what a log line calls a building: the task it was built for when known, else its type
    (city-levelups, city-quality: "<name or type> ..."). */
-const bldLabel = b => b.name || TYPE_ZH[b.type] || b.type;
+const bldLabel = b => b.name || i18n('type.' + b.type) || b.type;
 /* buildingPose(b) -> {dx, dz, ry}: a small, stable lean/offset for a fair or poor building (city-quality) --
    derived from the building's own seed alone (never Math.random), so the same building always leans the
    same way. Good stands dead straight. */
@@ -1677,11 +1744,12 @@ function buildingPose(b){
 }
 /* levelScale(lv) -> {sy, sxz}: a level-up (city-levelups) grows a building taller more than wider. */
 function levelScale(lv){ return { sy: 1 + lv * .5, sxz: 1 + lv * .12 }; }
-const QUALITY_ZH = { good: '整齐', fair: '还行', poor: '有点乱' };
+/* idea-city C1: quality words come from TEXT (quality.*), through i18n(). */
 /* buildingInfo(b) -> what the building card shows (city-quality, city-levelups): the building card
    (renderDetail, below) reads this rather than b's raw fields. */
 function buildingInfo(b){
-  return { quality: QUALITY_ZH[b.q] || QUALITY_ZH.good, misplaced: !b.home, files: b.files, hist: b.hist,
+  const q = (b.q === 'fair' || b.q === 'poor') ? b.q : 'good';
+  return { quality: i18n('quality.' + q), qid: q, misplaced: !b.home, files: b.files, hist: b.hist,
     level: b.lv, name: b.name };
 }
 function newCitizen(id, role, task, terr){
@@ -1693,7 +1761,7 @@ function newCitizen(id, role, task, terr){
     alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0,Other:0}, work:0, bld:null, stand, home:null, slot:null, rest:null, pendingBuild:null,
     question:'', answer:'', answered:false, pendingAnswer:'', askT:0, stuck:false, doneFlag:false, leaveFlag:false,
     askKind:'', askPhase:'', qa:[], bubble:null, walkT:Math.random()*5, walkAt:0, walkOut:false, feed:null, gone:false,
-    office:null, lead:'', relay:'', toolAt:0, strollPhase:'', strollPauseUntil:0, strollOutPath:[] };
+    office:null, lead:'', relay:'', toolAt:0, strollPhase:'', strollPauseUntil:0, strollOutPath:[], waiting:false };
 }
 const byId = id => citizens.find(c => c.id === id);
 
@@ -1793,13 +1861,13 @@ function goOffice(c, leadC){
 }
 function releaseSlot(c){ if (c.slot && !c.slot.extra) c.slot.by = 0; c.slot = null; }
 function giveAnswer(c){
-  if (DEMO) { say(gov, c.answer, 2.6); gov.answered++; }
+  if (DEMO) { govSay(c.terr || govTerr, c.answer, 2.6); gov.answered++; }
   c.qa.push({ q: c.question, a: c.answer });
   c.state = 'heard'; c.stateT = 0;
 }
 function finish(c){
   c.state = 'finishing'; c.stateT = 0;
-  say(c, '完工啦！', 1.5);
+  say(c, i18n('say.done'), 1.5);
 }
 function pickRestSpot(c){
   const t = terrOf(c.terr), slots = t ? restSlotsFor(t) : [];
@@ -1827,16 +1895,35 @@ function forceLeave(c){
 function autoLeave(c){
   c.leaveFlag = true;
   leave(c);
-  log(`${c.task} 下班了`);
+  log(i18n('log.leftWork', { task: c.task }));
 }
 
 const WEIGHT = { Edit:1, Write:1, Bash:.6, Read:.3, Other:.3 };
 let govState = 'idle';
 let governorCount = 1; // assume present until a snapshot or a 'governors' event says otherwise
 let govTerr = null;
-/* territory id -> {state} for every governor session present now (server: snapshot "govs", live "gov"
-   with present true/false -- city-people, Interaction). Empty: no governor anywhere. */
+/* territory id -> {state} for every governor session present now (server: snapshot "govs", live
+   "gov" with present true/false -- city-people, Interaction). Empty: no governor anywhere. Presence
+   ONLY -- idea-city P3 fix: govSay/govTalk (below) keep their own talk apart from it, so a governor
+   with no presence entry at all (the DEMO one: governorAt never fills govsByTerr there) still talks,
+   and talking itself never adds a phantom presence entry. */
 const govsByTerr = new Map();
+/* govSay(terr, text, dur): that territory's own governor says `text` for `dur` seconds (simT clock).
+   The talk map lives on govSay itself (govSay.talk), not a separate top-level variable, only so this
+   function's own extracted source is self-contained for callers that pull in just govSay/govTalk. */
+function govSay(terr, text, dur){
+  govSay.talk = govSay.talk || new Map();
+  govSay.talk.set(terr, { text, until: simT + dur });
+}
+/* govTalk(terr) -> the text terr's own governor bubble shows right now, or '': 等你回话… while that
+   territory's governor is waiting (govsByTerr, presence), else his own govSay text while it lasts --
+   never another territory's (city-people, Interaction: every governor talks in his own bubble). */
+function govTalk(terr){
+  const g = govsByTerr.get(terr);
+  if (g && g.state === 'waiting') return i18n('status.waiting_reply') + '…';
+  const b = govSay.talk && govSay.talk.get(terr);
+  return (b && simT < b.until) ? b.text : '';
+}
 /* city-join: another team's governor sessions, keyed by their wrapped id ("r:<dev>:gov") ->
    {id, terr, who, device, dev, state, at}; other members' people live in `citizens` too, each
    flagged with a `remote` field {who, device, dev, rid, br} (city-people's own newCitizen/
@@ -2071,7 +2158,15 @@ function openGovAskFor(terr){
   for (const a of asks.values()) if (!a.closed && a.agent === 'gov' && a.terr === terr) return a;
   return null;
 }
-function setGovState(state){ govState = state; if (state !== 'waiting') gov.bubble = null; }
+/* setGovState(state, terr): only the home territory (govTerr) ever changes govState -- another
+   territory's governor state never moves the home one (city-people, Interaction: every governor
+   talks in his own bubble). No terr at all (as before idea-city P3) means the home territory too --
+   only a known, DIFFERENT terr is ever ignored. */
+function setGovState(state, terr){
+  if (terr !== undefined && terr !== govTerr) return;
+  govState = state;
+  if (state !== 'waiting' && govSay.talk) govSay.talk.delete(govTerr);
+}
 function roleOrOther(role){ return ROLES[role] ? role : 'other'; }
 /* home = the scene point the default camera looks at: the governor's territory hall, else the first (Camera, Growth) */
 function updateHome(){
@@ -2100,6 +2195,7 @@ function placeAgent(a){
   c.work = Object.entries(tools).reduce((s, [k, v]) => s + (WEIGHT[k] || .3) * v, 0);
   c.toolAt = simT; // calm idle strolls (city-people): a fresh "nothing to do" clock on every (re)connect
   c.doneFlag = !!a.done;
+  c.waiting = !!a.waiting; // idea-city C5: a snapshot agent idle_prompt-waiting starts the same way
   // D2, a page opened mid-chain (city-people): a relay -- done or not -- always waits at the office/hall,
   // never straight to resting; relay_end (still to come, or already applied before this snapshot) is what
   // sends a done citizen on to rest, same order the live events give.
@@ -2110,7 +2206,7 @@ function placeAgent(a){
     const spot = pickRestSpot(c);
     c.rest = spot; c.x = spot.x; c.y = spot.y; c.state = 'resting';
   } else if (a.stuck) {
-    c.stuck = true; c.question = '需要你看一下';
+    c.stuck = true; c.question = i18n('stuck.default');
     goChain(c);
   }
   citizens.push(c);
@@ -2149,7 +2245,7 @@ function apply(ev){
       // snapshot = live: govs replaces the whole picture of who is present, empty means nobody
       govsByTerr.clear();
       for (const g of ev.govs || []) govsByTerr.set(g.terr, { state: g.state });
-      if (ev.gov && ev.gov.state) setGovState(ev.gov.state);
+      if (ev.gov && ev.gov.state) setGovState(ev.gov.state, ev.gov.terr);
       if (typeof ev.governors === 'number') governorCount = ev.governors;
       asks.clear();
       for (const a of ev.asks || []) asks.set(a.id, a);
@@ -2180,7 +2276,7 @@ function apply(ev){
       else sites.set(ev.id, { id: ev.id, terr: ev.terr, branch: '', module: '', status: 'working', human: false,
         stalled: false, x: ev.x, z: ev.z, phase, endAt: simT });
       if (typeof syncSiteMesh === 'function') syncSiteMesh(ev.id);
-      log(phase === 'merging' ? `${branch} 合并进主线，工地收工` : `${branch} 的工地撤了`);
+      log(phase === 'merging' ? i18n('log.siteMerged', { branch }) : i18n('log.siteRemoved', { branch }));
       return null;
     }
     case 'era': {
@@ -2205,8 +2301,8 @@ function apply(ev){
       assignHome(n);
       n.label = ev.label || role;
       citizens.push(n);
-      say(gov, `去吧：${ev.task}`, 1.8); gov.dispatched++;
-      log(`总督派出 ${n.label}：${ev.task}`);
+      govSay(ev.terr || govTerr, i18n('gov.dispatch', { task: ev.task }), 1.8); gov.dispatched++;
+      log(i18n('log.govDispatch', { label: n.label, task: ev.task }));
       return n;
     }
     case 'build': {
@@ -2245,7 +2341,7 @@ function apply(ev){
       if (!b) return null;
       b.lv = ev.lv;
       b.showScaf = true; b.showScafUntil = simT + 2.5;
-      log(`${bldLabel(b)} 升到 ${ev.lv} 级`);
+      log(i18n('log.levelUp', { label: bldLabel(b), lv: ev.lv }));
       return b;
     }
     /* city-quality: an improved, misplaced building moves home -- the record itself moves only after
@@ -2253,7 +2349,7 @@ function apply(ev){
     case 'move': {
       const b = buildings.find(x => x.terr === ev.terr && x.plot === ev.from);
       if (!b) return null;
-      log(`${bldLabel(b)} 搬回${TYPE_ZH[b.type] || b.type}区`);
+      log(i18n('log.movedBack', { label: bldLabel(b), kind: i18n('type.' + b.type) || b.type }));
       b.moveTo = { plot: ev.plot, x: ev.x, z: ev.z, t: 0 };
       return b;
     }
@@ -2262,7 +2358,7 @@ function apply(ev){
     case 'demolish': {
       const b = buildings.find(x => x.terr === ev.terr && x.plot === ev.plot);
       if (!b) return null;
-      log(`${bldLabel(b)} 的文件都没了，拆掉`);
+      log(i18n('log.demolished', { label: bldLabel(b) }));
       b.demolishing = true; b.demolishT = 0;
       return b;
     }
@@ -2283,14 +2379,14 @@ function apply(ev){
       // a citizen with a lead goes to its office; everyone else (leads included) goes to the governor,
       // as before (Interaction: a question or a permission climbs the chain).
       if (['building','working','to_plot','back'].includes(c.state)) goChain(c);
-      if (DEMO) log(`${c.task} 卡住了：“${text}” → 去问总督`, 'ask');
+      if (DEMO) log(i18n('log.stuckDemo', { task: c.task, text }), 'ask');
       return c;
     }
     case 'answer': {
       if (!c) return null;
-      const text = typeof ev.answer === 'string' && ev.answer ? ev.answer : '已回答';
+      const text = typeof ev.answer === 'string' && ev.answer ? ev.answer : i18n('answer.default');
       c.answer = text; c.answered = true; c.stuck = false;
-      if (DEMO) log(`总督回答 ${c.task}：“${text}”`);
+      if (DEMO) log(i18n('log.govAnswer', { task: c.task, text }));
       return c;
     }
     case 'relay': {
@@ -2299,6 +2395,18 @@ function apply(ev){
       if (!c) return null;
       c.relay = ev.to;
       if (ev.to === 'lead') goChain(c, ev.lead); else if (ev.to === 'governor') goHall(c);
+      return c;
+    }
+    // idea-city C5: idle_prompt is not a question -- a citizen whose session merely waits for input
+    // stays exactly where it is (no goChain/goHall: it has not asked anything, has nowhere new to go).
+    case 'waiting': {
+      if (!c) return null;
+      c.waiting = true;
+      return c;
+    }
+    case 'resume': {
+      if (!c) return null;
+      c.waiting = false;
       return c;
     }
     case 'relay_end': {
@@ -2312,24 +2420,23 @@ function apply(ev){
       if (!c || c.doneFlag) return null;
       c.doneFlag = true;
       if (c.state === 'building' || (c.state === 'working' && !c.path.length)) finish(c);
-      log(`${c.task} 完工${c.bld ? '：' + TYPE_ZH[c.bld.type] + '封顶' : ''}，去休息`, 'done');
+      log(c.bld ? i18n('log.doneRestBuilt', { task: c.task, kind: i18n('type.' + c.bld.type) }) : i18n('log.doneRestPlain', { task: c.task }), 'done');
       return c;
     }
     case 'leave': {
       if (!c) return null;
       c.leaveFlag = true;
       if (c.state === 'resting' || !c.doneFlag) forceLeave(c);
-      log(`${c.task} 下班了`);
+      log(i18n('log.leftWork', { task: c.task }));
       return c;
     }
     case 'noplot': {
       // a build found no free plot (minimum land, Growth): never silent -- the citizen's own task when
       // it is still around, else whoever the server says tried the build (ev.by)
-      log(`${c ? c.task : ev.by} 没有空地了，先等等`);
+      log(i18n('log.noplot', { name: c ? c.task : ev.by }));
       return c;
     }
     case 'gov': {
-      setGovState(ev.state);
       if (ev.terr) {
         // Camera home (updateHome) is fixed at the snapshot's own gov.terr (city-land, First view);
         // a live 'gov' event only ever updates that territory's own presence/state, never which
@@ -2338,6 +2445,9 @@ function apply(ev){
         if (ev.present === false) govsByTerr.delete(ev.terr); else govsByTerr.set(ev.terr, { state: ev.state });
         updateHome();
       }
+      // idea-city C13: only the event's OWN territory ever moves govState (setGovState guards it) --
+      // another territory's governor going busy/idle/waiting never touches the home one.
+      setGovState(ev.state, ev.terr);
       return null;
     }
     case 'governors': {
@@ -2371,7 +2481,7 @@ function apply(ev){
       if (ac) applyAsk(ac, null);
       log(askLine(ev, name));
       if (ev.by === 'governor' && ev.verb === 'answer') {
-        say(gov, ev.text || '已回答', 2.6);
+        govSay((view && view.terr) || govTerr, ev.text || i18n('answer.default'), 2.6);
         gov.answered++;
       }
       if (openAskId === ev.id && view) {
@@ -2440,7 +2550,7 @@ function apply(ev){
       box.entries = i >= 0 ? box.entries.map((x, j) => j === i ? entry : x) : box.entries.concat([entry]);
       chats.set(to, box);
       if (entry.kind === 'owner' && entry.state === 'delivered' && was !== 'delivered') {
-        log(`你 → ${chatDisplayName(to)}：${entry.text}`);
+        log(i18n('log.chatSent', { to: chatDisplayName(to), text: entry.text }));
       }
       return null;
     }
@@ -2453,8 +2563,9 @@ function localCount(){ let n = 0; for (const c of citizens) if (!c.remote) n++; 
 /* other members' citizens now shown (capped at MAX_REMOTE, requirements/city.md Joining) */
 function remoteCount(){ let n = 0; for (const c of citizens) if (c.remote) n++; return n; }
 /* applyRemote(inner, who): plays one of another member's own page events (spawn, tool, stuck,
-   answer, done, leave -- 'gov' is handled by the 'remote' case itself) onto a citizen flagged
-   `remote`. Never the "去吧" dispatch, never a build, never MY governor -- city-join, Joining. */
+   answer, relay, relay_end, waiting, resume, done, leave -- 'gov' is handled by the 'remote' case
+   itself) onto a citizen flagged `remote`. Never the "去吧" dispatch, never a build, never MY
+   governor -- city-join, Joining. */
 function applyRemote(inner, who){
   if (inner.type === 'spawn') {
     if (byId(inner.id)) return null;
@@ -2469,12 +2580,34 @@ function applyRemote(inner, who){
     n.remote = who;
     n.remoteAt = Date.now();
     citizens.push(n);
-    log(`${memberName(who.who, who.device)}（${who.device}）的 ${n.label} 开始：${inner.task}`);
+    log(i18n('log.remoteSpawn', { who: memberName(who.who, who.device), device: who.device, label: n.label, task: inner.task }));
     return n;
   }
   const rc = inner.id ? byId(inner.id) : null;
   if (!rc || !rc.remote) return null;
   rc.remoteAt = Date.now();
+  // idea-city C16: the chain of command, played back the way apply() does for local people -- a
+  // remote lead never has an office (its own applyRemote 'spawn' sets none), so 'lead' walks beside
+  // the lead person itself instead, falling back to the territory hall when it cannot be found.
+  if (inner.type === 'relay') {
+    rc.relay = inner.to;
+    if (inner.to === 'lead') {
+      const leadC = inner.lead ? byId(inner.lead) : null;
+      if (leadC) {
+        const taken = citizens.filter(o => o !== rc && o.slot && byId(o.lead) === leadC
+          && (o.state === 'to_lead' || o.state === 'at_lead')).map(o => o.slot);
+        const s = waitStand({ x: leadC.x, y: leadC.y }, taken);
+        rc.slot = s;
+        goTo(rc, s, 'to_lead');
+      } else goHall(rc);
+    } else if (inner.to === 'governor') goHall(rc);
+    return rc;
+  }
+  if (inner.type === 'relay_end') {
+    rc.relay = ''; rc.stuck = false;
+    goTo(rc, rc.home, 'back');
+    return rc;
+  }
   switch (inner.type) {
     case 'tool':
       rc.tools[inner.tool] = (rc.tools[inner.tool] || 0) + 1;
@@ -2488,16 +2621,24 @@ function applyRemote(inner, who){
     case 'answer':
       rc.stuck = false;
       return rc;
+    // idea-city C5: idle_prompt is not a question -- another member's citizen merely waiting for
+    // input stays exactly where it is, same as the local 'waiting'/'resume' cases.
+    case 'waiting':
+      rc.waiting = true;
+      return rc;
+    case 'resume':
+      rc.waiting = false;
+      return rc;
     case 'done':
       if (rc.doneFlag) return null;
       rc.doneFlag = true;
       if (rc.state === 'building' || (rc.state === 'working' && !rc.path.length)) finish(rc);
-      log(`${memberName(who.who, who.device)}（${who.device}）的 ${rc.task} 完工了`);
+      log(i18n('log.remoteDone', { who: memberName(who.who, who.device), device: who.device, task: rc.task }));
       return rc;
     case 'leave':
       rc.leaveFlag = true;
       if (rc.state === 'resting' || !rc.doneFlag) forceLeave(rc);
-      log(`${memberName(who.who, who.device)}（${who.device}）的 ${rc.task} 下线了`);
+      log(i18n('log.remoteLeft', { who: memberName(who.who, who.device), device: who.device, task: rc.task }));
       return rc;
   }
   return null;
@@ -2506,11 +2647,11 @@ function applyRemote(inner, who){
    when governorAt(terr) is null, else its state (busy/idle/waiting -> 在忙/空闲/等你). */
 function govRowText(terr){
   const g = govsByTerr.get(terr);
-  if (g && g.state === 'unknown') return '未知'; // seen before a restart, not present yet (city-people D5)
-  if (!governorAt(terr)) return '不在';
+  if (g && g.state === 'unknown') return i18n('gov.unknown'); // seen before a restart, not present yet (city-people D5)
+  if (!governorAt(terr)) return i18n('gov.away');
   const state = g ? g.state : 'idle';
-  if (state === 'waiting') return '等你';
-  return state === 'busy' ? '在忙' : '空闲';
+  if (state === 'waiting') return i18n('status.waiting');
+  return state === 'busy' ? i18n('gov.busyRow') : i18n('gov.idleRow');
 }
 /* rosterGroups() -> [{terr, name, rows: [{id, depth}]}] in map order: per territory, the governor first
    (id "gov:<terr>"), then each lead (its own office -- Interaction) followed by its workers (depth 1),
@@ -2620,7 +2761,7 @@ function update(dt){
         else if (DEMO && !c.remote && !c.answered && simT - c.askT > 1.9) emit({ type:'answer', id:c.id, answer: c.pendingAnswer || pick(QA)[1] });
         break;
       case 'heard':
-        if (c.stateT > 1.5) { releaseSlot(c); say(c, '明白！', 1.1); goTo(c, c.stand, 'back'); }
+        if (c.stateT > 1.5) { releaseSlot(c); say(c, i18n('say.understood'), 1.1); goTo(c, c.stand, 'back'); }
         break;
       case 'finishing': if (c.stateT > 1.5) goRest(c); break;
       case 'resting': if (!DEMO && !c.leaveFlag && c.stateT > LIVE_REST_SEC) autoLeave(c); break;
@@ -2702,6 +2843,47 @@ function update(dt){
   if (DEMO) spawner();
 }
 
+/* city-idea C7: the box of view's non-void tiles (' ' is void), in scene units relative to
+   landState's own mid -- tile (X, Z) covers [X - mid.x, X - mid.x + 1] x [Z - mid.z, Z - mid.z + 1].
+   Much of a view's whole w x h rectangle can be void (sea rows, gaps between territories), so this is
+   usually smaller than { hx: view.w / 2, hz: view.h / 2 } and centred on the real land, not the view's
+   own box. No land tile at all -> { hx: 0, hz: 0, cx: 0, cz: 0 }. Also carries pts: the convex hull of
+   every non-void tile's 4 corners (a few dozen points at most, however ragged the land), re-centred on
+   (cx, cz) -- an L of territories (or any land that isn't itself a rectangle) leaves a corner of its
+   own box empty, so landSpread projects this outline instead of the box's 4 corners to fit and centre
+   the real land, not the box around it. */
+function landBox(view){
+  const mid = { x: Math.round(view.x0 + view.w / 2), z: Math.round(view.z0 + view.h / 2) };
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  const seen = new Set(), pts = [];
+  for (let r = 0; r < view.h; r++) {
+    const row = view.rows[r];
+    for (let c = 0; c < view.w; c++) {
+      if (row[c] === ' ') continue;
+      const X = view.x0 + c - mid.x, Z = view.z0 + r - mid.z;
+      x0 = Math.min(x0, X); x1 = Math.max(x1, X + 1);
+      z0 = Math.min(z0, Z); z1 = Math.max(z1, Z + 1);
+      for (const p of [[X, Z], [X + 1, Z], [X, Z + 1], [X + 1, Z + 1]]) {
+        const k = p[0] + ',' + p[1];
+        if (!seen.has(k)) { seen.add(k); pts.push(p); }
+      }
+    }
+  }
+  if (!isFinite(x0)) return { hx: 0, hz: 0, cx: 0, cz: 0, pts: [] };
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  // convex hull (monotone chain): sort by x then z, build the lower and upper chains, each dropping
+  // the last point while it and the new one turn the same way or straighter (cross <= 0) as the point
+  // before it -- what's left is the outline, every point on it or inside it dropped.
+  pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower = [];
+  for (const p of pts) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+  const upper = [];
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+  lower.pop(); upper.pop();
+  const hull = lower.concat(upper).map(p => [p[0] - cx, p[1] - cz]);
+  return { hx: (x1 - x0) / 2, hz: (z1 - z0) / 2, cx, cz, pts: hull };
+}
 /* the non-3D half of buildLand(view): map, mid, land, the occupied/rest/home tile pools (a plot may have
    opened by the hall), a record for every already-built building in the view, then updateHome() (the
    world changed: look at a town hall, never at the empty middle of the land). buildLand() calls this
@@ -2716,7 +2898,7 @@ function landState(view){
   officeSlotsByLead.clear();
   map = view;
   mid = { x: Math.round(view.x0 + view.w / 2), z: Math.round(view.z0 + view.h / 2) };
-  land = { hx: view.w / 2, hz: view.h / 2 };
+  land = landBox(view);
   for (const t of view.territories || []) {
     for (const bd of t.buildings || []) {
       const existing = buildings.find(b => b.terr === t.id && b.plot === bd.plot);
@@ -2739,7 +2921,7 @@ function landState(view){
 function askName(view){
   if (view.agent === 'gov') {
     const t = terrOf(view.terr);
-    return (t && t.name ? t.name : view.terr) + ' 总督';
+    return i18n('gov.title', { name: (t && t.name ? t.name : view.terr) });
   }
   return view.task || view.label || '';
 }
@@ -2833,10 +3015,10 @@ const MODELS = [
 ];
 const VARIANTS = { 'task-manager':['character-female-c'], worker:['character-male-a','character-female-a','character-male-c'],
   'fast-lane-deputy':['character-female-e'], 'merge-deputy':['character-male-e'], other:['character-male-c'] };
-const TYPE_ZH = { house:'住宅', shop:'商店', tower:'测试塔', workshop:'工坊', library:'图书馆' };
+/* idea-city C1: building type names live in TEXT (type.*), through i18n('type.' + type). */
 const DCOL = { house:'#F4A259', shop:'#FF7593', tower:'#4D7CFE', workshop:'#9C6B4E', library:'#2FB57A' };
-/* Balance: the 3 eras a territory grows through (requirements/city.md, Balance) */
-const ERA_ZH = { village:'村', town:'镇', city:'城' };
+/* Balance: the 3 eras a territory grows through (requirements/city.md, Balance); their names live in
+   TEXT (era.*), through i18n('era.' + era). */
 /* Balance: the Kenney Hexagon Kit's "building-*" models each bake their own hex ground tile into the same
    mesh as the building (one node, one primitive; coloured earth sides), a uniform .2 units thick on every
    one of them (measured from the glTF: the footprint stays a full 1 x 1.155 hex up to y .2, then shrinks to
@@ -2889,6 +3071,16 @@ let P = THEME.day, themeKey = '';
 
 /* ---------- loading ---------- */
 const lib = {};
+/* idea-city C8: lib is keyed by every MODELS entry's own full 'pack/name'. A bare name after '/' is also
+   set as an alias (place()/instanced()/lib[...] lookups elsewhere in the script use bare names such as
+   'flag', 'tool-hammer', 'resource-planks', 'character-male-b' -- never ambiguous), but only when that
+   bare name is unique across every pack; 'building-a'/'building-b' (commercial and industrial both ship
+   one) name nothing on their own, so callers that care must pass the full entry. */
+const BARE_DUPES = (() => {
+  const seen = new Set(), dup = new Set();
+  for (const m of MODELS) { const b = m.slice(m.indexOf('/') + 1); if (seen.has(b)) dup.add(b); seen.add(b); }
+  return dup;
+})();
 const lambert = new Map();
 function toLambert(m){
   if (Array.isArray(m)) return m.map(toLambert);
@@ -2907,13 +3099,16 @@ function prep(key, gltf){
   root.traverse(n => { if (n.isMesh) { n.material = toLambert(n.material); n.castShadow = true; n.receiveShadow = true; } });
   root.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
-  lib[key] = { scene: root, clips: gltf.animations, box, size, skinned: gltf.animations.length > 0 && !!root.getObjectByProperty('type', 'SkinnedMesh') };
+  const entry = { scene: root, clips: gltf.animations, box, size, skinned: gltf.animations.length > 0 && !!root.getObjectByProperty('type', 'SkinnedMesh') };
+  lib[key] = entry;
+  const bare = key.slice(key.indexOf('/') + 1);
+  if (!BARE_DUPES.has(bare)) lib[bare] = entry; // idea-city C8: optional alias, only when unique across packs
 }
 async function loadAll(onStep){
   const loader = new THREE.GLTFLoader();
   let done = 0;
   await Promise.all(MODELS.map(key => new Promise((res, rej) => {
-    const ok = g => { prep(key.split('/')[1], g); onStep(++done, MODELS.length); res(); };
+    const ok = g => { prep(key, g); onStep(++done, MODELS.length); res(); };
     loader.load(ASSET + key + '.glb?v=' + ASSET_V, ok, undefined, rej);
   })));
 }
@@ -2979,6 +3174,10 @@ const landGroup = new THREE.Group(); world.add(landGroup);
 // Worktrees: site meshes live in their own group, never cleared by buildLand's landGroup rebuild (every
 // world event) -- a merging/packing site keeps animating through a world event that no longer lists it.
 const siteGroup = new THREE.Group(); world.add(siteGroup);
+// idea-city C9: an era show's road planks live here, never cleared by buildLand's landGroup rebuild --
+// a second territory's show used to lose its planks the moment any territory's era flipped and rebuilt
+// landGroup. makeShowRun removes a run's own planks from this group when the run ends.
+const showGroup = new THREE.Group(); world.add(showGroup);
 let firstViewDone = false; // only the first world with a territory sends the camera home; a later one never snaps it back
 const isLand = ch => !' wsBk'.includes(ch);
 const isWater = ch => ch === 'w' || ch === 's' || ch === 'B';
@@ -3193,10 +3392,11 @@ function laneGraph(view){
     }
     return pts;
   };
-  for (const k of nodes.keys()) { const d = nbrs(k).length; if (d !== 2) { joints.push(nodes.get(k)); for (const n of nbrs(k)) if (!used.has(ekey(k, n))) paths.push(walk(k, n)); } }
+  // idea-city C11: a lone road/track tile (no lane neighbour on any of the 4 sides) is never a joint and
+  // never a path of its own -- it draws nothing (no round patch), unlike a real dead end (d === 1), which
+  // still caps its one edge with a round end.
+  for (const k of nodes.keys()) { const d = nbrs(k).length; if (d === 0) continue; if (d !== 2) { joints.push(nodes.get(k)); for (const n of nbrs(k)) if (!used.has(ekey(k, n))) paths.push(walk(k, n)); } }
   for (const k of nodes.keys()) for (const n of nbrs(k)) if (!used.has(ekey(k, n))) paths.push(walk(k, n)); // loops
-  const covered = new Set(paths.flat());
-  for (const k of nodes.keys()) if (!covered.has(k)) paths.push([k]); // a lone tile: its own one-point path
   const out = paths.map(p => {
     let pts = p.map(k => { const [x, z] = nodes.get(k); return [x + .5, z + .5]; });
     for (let it = 0; it < 3 && pts.length >= 3; it++) { // Chaikin corner cutting, ends pinned
@@ -3264,9 +3464,18 @@ function buildLand(view){
   for (let i = fadeables.length - 1; i >= 0; i--) if (fadeables[i].fromLand) fadeables.splice(i, 1);
   world.position.set(-mid.x, 0, -mid.z);
   glows.length = 0;
-  landOverlays(view); // Balance E2E bounce 2: removes the old label/sign elements first, then makes fresh ones
-  showEmptyLine(view); // city-land: the "还没有领地" line follows every world event, not only the first
   const territories = view.territories || [];
+  // idea-city C10: systemsDecor(t, view) once per territory, up front, so its district signs can go
+  // straight into landOverlays' .dlbl labels; the loop below reuses this same decor (never calls
+  // systemsDecor a second time).
+  const decorByTerr = new Map(), dSigns = [];
+  for (const t of territories) {
+    const decor = systemsDecor(t, view);
+    decorByTerr.set(t.id, decor);
+    for (const d of decor) if (d.kind === 'knowledge' && d.key === 'roads/road-sign-street' && d.d) dSigns.push({ x: d.x, z: d.z, d: d.d });
+  }
+  landOverlays(view, dSigns); // Balance E2E bounce 2: removes the old label/sign elements first, then makes fresh ones
+  showEmptyLine(view); // city-land: the "还没有领地" line follows every world event, not only the first
 
   landGroup.add(meshFromGeometry(groundGeometry(view)));
   const wg = waterGeometry(view);
@@ -3295,19 +3504,19 @@ function buildLand(view){
     for (const p of t.plots || []) place('patch-grass', p.x + .5, p.z + .5, { fit: .85, keepY: true, y: -.1, parent: landGroup });
     // Balance: the 5 systems' own things (signposts, flowers, a library, a water tower, ...); grouped by
     // model so repeats become one InstancedMesh (buildLand: "use instanced() when you can"). systemsDecor's
-    // `key` is 'pack/name' (what the tests and MODELS pin); `lib` (and place()/instanced()) key off the
-    // bare name after '/' (loadAll: prep(key.split('/')[1], g)) — split it here, once, for real placing.
+    // `key` is 'pack/name' (what the tests and MODELS pin); `lib` (and place()/instanced()) key off that
+    // same full entry (idea-city C8: prep(key, g) in loadAll), so it is passed straight through here.
     const sysBy = {};
-    for (const d of systemsDecor(t, view)) (sysBy[d.key] = sysBy[d.key] || []).push(d);
+    for (const d of decorByTerr.get(t.id)) (sysBy[d.key] = sysBy[d.key] || []).push(d);
     for (const key in sysBy) {
-      const items = sysBy[key], bare = key.split('/')[1], tint = SYS_TINT[key];
+      const items = sysBy[key], tint = SYS_TINT[key];
       // Balance: SYS_SCALE (an absolute scale) for keys a "fit to target size" would blow up on a small
       // model (the flowers); SYS_FIT (fit) for everything else, .8 if neither says otherwise.
       const scaleOpt = key in SYS_SCALE ? { s: SYS_SCALE[key] } : { fit: SYS_FIT[key] || .8 };
       if (items.length > 1) {
-        instanced(bare, items.map(it => Object.assign({ x: it.x, z: it.z }, scaleOpt)), Object.assign({ parent: landGroup }, tint ? { tint } : null));
+        instanced(key, items.map(it => Object.assign({ x: it.x, z: it.z }, scaleOpt)), Object.assign({ parent: landGroup }, tint ? { tint } : null));
       } else {
-        const g = place(bare, items[0].x, items[0].z, Object.assign({ parent: landGroup }, scaleOpt));
+        const g = place(key, items[0].x, items[0].z, Object.assign({ parent: landGroup }, scaleOpt));
         if (tint) g.traverse(n => { if (n.isMesh) n.material = tintedMat(n.material, tint); }); // ready-made Kenney model, tint only — never a hand-made shape
       }
     }
@@ -3316,11 +3525,11 @@ function buildLand(view){
     const restBy = {};
     for (const d of restDecor(t)) (restBy[d.key] = restBy[d.key] || []).push(d);
     for (const key in restBy) {
-      const items = restBy[key], bare = key.split('/')[1], scaleOpt = { fit: REST_FIT[key] || .8 };
+      const items = restBy[key], scaleOpt = { fit: REST_FIT[key] || .8 };
       if (items.length > 1) {
-        instanced(bare, items.map(it => Object.assign({ x: it.x, z: it.z, ry: it.ry || 0 }, scaleOpt)), { parent: landGroup });
+        instanced(key, items.map(it => Object.assign({ x: it.x, z: it.z, ry: it.ry || 0 }, scaleOpt)), { parent: landGroup });
       } else {
-        place(bare, items[0].x, items[0].z, Object.assign({ parent: landGroup, ry: items[0].ry || 0 }, scaleOpt));
+        place(key, items[0].x, items[0].z, Object.assign({ parent: landGroup, ry: items[0].ry || 0 }, scaleOpt));
       }
     }
     // city-people: every office's own KayKit cabin and flag (officeDecor); the flag is tinted in the
@@ -3328,11 +3537,11 @@ function buildLand(view){
     const officeBy = {};
     for (const d of officeDecor(t)) (officeBy[d.key] = officeBy[d.key] || []).push(d);
     for (const key in officeBy) {
-      const items = officeBy[key], bare = key.split('/')[1], tint = items[0].tint, scaleOpt = OFFICE_OPT[key] || { fit: .8 };
+      const items = officeBy[key], tint = items[0].tint, scaleOpt = OFFICE_OPT[key] || { fit: .8 };
       if (items.length > 1) {
-        instanced(bare, items.map(it => Object.assign({ x: it.x, z: it.z, ry: it.ry || 0 }, scaleOpt)), Object.assign({ parent: landGroup }, tint ? { tint } : null));
+        instanced(key, items.map(it => Object.assign({ x: it.x, z: it.z, ry: it.ry || 0 }, scaleOpt)), Object.assign({ parent: landGroup }, tint ? { tint } : null));
       } else {
-        const g = place(bare, items[0].x, items[0].z, Object.assign({ parent: landGroup, ry: items[0].ry || 0 }, scaleOpt));
+        const g = place(key, items[0].x, items[0].z, Object.assign({ parent: landGroup, ry: items[0].ry || 0 }, scaleOpt));
         if (tint) g.traverse(n => { if (n.isMesh) n.material = tintedMat(n.material, tint); });
       }
     }
@@ -3367,21 +3576,21 @@ function siteMeshSig(s){ return [s.phase, s.status, s.stalled, s.human, s.branch
    read from the loaded model's own box -- never a raw guessed number (bounce 2, owner: "use the page's
    existing size/fit approach"). A sane fallback before the model has loaded (never crashes). */
 function cabinHeight(){
-  const key = 'building_home_A_blue', opt = OFFICE_OPT['kaykit-medieval/' + key];
+  const key = 'kaykit-medieval/building_home_A_blue', opt = OFFICE_OPT[key];
   return lib[key] ? lib[key].size.y * fitScale(key, (opt && opt.fit) || 1.25) : 1.2;
 }
-/* siteModelOpt(bare): place()'s own size option per site model (bounce 2, owner: the light and the fence
+/* siteModelOpt(key): place()'s own size option per site model (bounce 2, owner: the light and the fence
    have a tiny footprint but a real height -- 'fit' (which only ever looks at the footprint) blew them up
    trying to fill a whole tile; 'h' sizes by the model's own real height instead, same fix systemsDecor's
    SYS_SCALE already applies to the flowers). Heights are relative to cabinHeight(), so they track the
    cabin if its own fit ever changes. signpost/structure/flag keep 'fit: .8' (owner, bounce 2: "sign and
-   flag sizes look fine"). */
-function siteModelOpt(bare){
+   flag sizes look fine"). idea-city C8: keyed by the full 'pack/name' entry, like `lib`. */
+function siteModelOpt(key){
   const ch = cabinHeight();
-  if (bare === 'construction-light') return { h: ch * .58 }; // "half to two-thirds of the cabin's height"
-  if (bare === 'construction-fence') return { h: ch / 3 };   // "height roughly a third of the cabin"
-  if (bare === 'construction-barrier') return { h: ch * .28 }; // "keep the barrier small"
-  if (bare === 'building_home_A_blue') return OFFICE_OPT['kaykit-medieval/' + bare] || { fit: 1.25 }; // merging: officeDecor's own size
+  if (key === 'roads/construction-light') return { h: ch * .58 }; // "half to two-thirds of the cabin's height"
+  if (key === 'roads/construction-fence') return { h: ch / 3 };   // "height roughly a third of the cabin"
+  if (key === 'roads/construction-barrier') return { h: ch * .28 }; // "keep the barrier small"
+  if (key === 'kaykit-medieval/building_home_A_blue') return OFFICE_OPT[key] || { fit: 1.25 }; // merging: officeDecor's own size
   return { fit: .8 };
 }
 function removeSiteMesh(rec){
@@ -3435,10 +3644,9 @@ function syncSiteMesh(id){
   const rec = { sig, objs: [], road: prev ? prev.road : null, smoke: (prev && prev.smoke) || [] };
   for (const d of siteDecor(site)) {
     if (d.key === 'particles/smoke_01') continue; // its own puffs, made once below, animated every frame
-    const bare = d.key.split('/')[1];
-    if (!lib[bare]) continue; // never crash on a stray/unloaded key
-    const opt = Object.assign({ parent: siteGroup, ry: d.ry || 0 }, siteModelOpt(bare));
-    const g = place(bare, d.x, d.z, opt);
+    if (!lib[d.key]) continue; // never crash on a stray/unloaded key
+    const opt = Object.assign({ parent: siteGroup, ry: d.ry || 0 }, siteModelOpt(d.key));
+    const g = place(d.key, d.x, d.z, opt);
     rec.objs.push(g);
     if (d.key === 'survival/signpost-single') { ensureSiteSign(id).text = d.text; rec.signAt = { x: d.x, z: d.z + .55 }; }
   }
@@ -3782,25 +3990,44 @@ function ovBtn(cls, html){ const el = document.createElement('button'); el.type 
 function pin(el, x, y, show){ if (!show) { if (!el.hidden) el.hidden = true; return; } if (el.hidden) el.hidden = false; el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
 function setText(el, text){ if (el._t !== text) { el._t = text; el.textContent = text; } }
 const labels = [];
-/* landOverlays(view) makes the .lbl overlays for buildLand — no THREE. First removes every element it
-   made last time (buildLand used to just reset the labels array and call ovEl again, leaving the old
+/* landOverlays(view, marks) makes the .lbl (territory) and small .dlbl (district) overlays for buildLand
+   — no THREE. Both live in the one `labels` bookkeeping array, a district entry flagged with its own
+   `mark: true` so pinLandOverlays can tell it apart for the fade class below. First removes every element
+   it made last time (buildLand used to just reset the labels array and call ovEl again, leaving the old
    elements sitting in #ov forever: labels multiplied on every world event and every era flip). Then one
-   .lbl per territory, same as before. buildLand calls this; nothing else calls ovEl for a label. No sign
-   (city-focus, requirements/city.md Balance: a kind is never asked for on the page). */
-function landOverlays(view){
+   .lbl per territory, same as before, plus one .dlbl per district mark (idea-city C10, approved mock
+   mock/idea-city-labels-mock.html): marks = [{x, z, d}] in world tiles (buildLand passes the knowledge
+   signs' own districts); text i18n('district.' + d), CSS var --c = DCOL[d]. No marks argument -> no extra
+   overlay at all. buildLand calls this; nothing else calls ovEl for a label. */
+function landOverlays(view, marks){
   for (const l of labels) l.el.remove();
   labels.length = 0;
   for (const t of view.territories || []) {
     const el = ovEl('lbl'); setText(el, t.name);
     labels.push({ el, x: t.cx, h: 2.1 * (t.size < .15 ? .8 : 1), z: t.cz });
   }
+  for (const m of marks || []) {
+    const el = ovEl('dlbl'); setText(el, i18n('district.' + m.d));
+    el.style['--c'] = DCOL[m.d];
+    labels.push({ el, x: m.x, h: 1.1, z: m.z, mark: true });
+  }
 }
-/* pinLandOverlays(): the per-frame part, screen position for every label. Called every frame from sync(). */
+/* pinLandOverlays(): the per-frame part, screen position for every label. Called every frame from sync().
+   A district mark also gets class 'far' once the camera is at DIST_DEFAULT (the default view) or further
+   out, off at the two zoom-in steps closer than that (idea-city C10) -- CSS fades it out with that class,
+   so el.hidden is never used for distance: a .dlbl is always pinned and shown, only its own opacity
+   moves. typeof guard: some harnesses stub pinLandOverlays' other globals but not cam -- the real page
+   always has it. */
 function pinLandOverlays(){
-  for (const l of labels) { const [sx, sy] = toScreen(l.x, l.h, l.z); pin(l.el, sx, sy, true); }
+  const far = typeof cam !== 'undefined' && cam.dist >= DIST_DEFAULT;
+  for (const l of labels) {
+    const [sx, sy] = toScreen(l.x, l.h, l.z);
+    pin(l.el, sx, sy, true);
+    if (l.mark) l.el.classList.toggle('far', far);
+  }
 }
 const govBub = ovEl('bub gov'), govTag = ovEl('tagl tag'), govQm = ovBtn('qm', '<span>?</span>');
-govTag.style.setProperty('--c', '#FF6F8B'); setText(govTag, '总督 · main manager');
+govTag.style.setProperty('--c', '#FF6F8B'); setText(govTag, i18n('gov.tagLabel'));
 function ensureOv(c){
   if (c.o) return;
   c.o = { bub: ovEl('bub'), qm: ovBtn('qm', '<span>?</span>'), wait: ovEl('gwait'), zz: ovEl('zz', '<span>z</span><span>z</span><span>Z</span>'), tag: ovEl('tagl tag') };
@@ -3848,21 +4075,21 @@ function updatePerson(c, t, dt){
 
   ensureOv(c);
   const [sx, sy] = toScreen(c.x, resting ? .58 : .72, c.y);
-  const talk = c.bubble && simT < c.bubble.until;
-  const showBub = c.state === 'asking' || (talk && c.state !== 'to_hall');
+  const bubText = personBubble(c); // idea-city C14: never an empty bubble
+  const showBub = bubText !== '';
   const ask = openAskFor(c.id);
   if (ask) c.o.qm.setAttribute('data-open', ask.id); else c.o.qm.removeAttribute('data-open');
-  c.o.qm.setAttribute('aria-label', `${c.task} 等你${ask && ask.kind === 'permission' ? '批' : '回答'}，点开看`);
+  c.o.qm.setAttribute('aria-label', i18n(ask && ask.kind === 'permission' ? 'aria.needsApproval' : 'aria.needsAnswer', { task: c.task }));
   // above the bubble, never over it: a bubble reserves the spot at (sx, sy).
   pin(c.o.qm, sx, showBub ? sy - 32 : sy, !!(ask && ask.phase === 'owner') || (DEMO && !c.remote && c.state === 'to_hall' && grow > .5));
   if (ask && ask.phase === 'governor') {
     const left = Math.max(0, (ask.wait || 0) - (Date.now() - (ask.at || Date.now())) / 1000);
-    setText(c.o.wait, '总督 ' + Math.ceil(left) + 's');
+    setText(c.o.wait, i18n('gov.waitCountdown', { s: Math.ceil(left) }));
   }
   pin(c.o.wait, sx - 26, showBub ? sy - 32 : sy, !!(ask && ask.phase === 'governor'));
   pin(c.o.zz, sx + 14, sy, resting && pose === 'lie');
   if (showBub) {
-    setText(c.o.bub, c.state === 'asking' ? c.question : c.bubble.text);
+    setText(c.o.bub, bubText);
     c.o.bub.className = 'bub' + (c.state === 'asking' ? ' ask' : c.state === 'finishing' ? ' done' : '');
   }
   pin(c.o.bub, sx, sy, showBub);
@@ -3889,7 +4116,7 @@ function updatePerson(c, t, dt){
     setFaded(v, frozen);
     pin(c.o.stale, sx, sy - 46, frozen);
     if (frozen) setText(c.o.stale, staleText((Date.now() - (c.remoteAt || Date.now())) / 1000));
-    c.o.rqm.setAttribute('aria-label', `${name} 卡住了，只有 ${name} 能回答`);
+    c.o.rqm.setAttribute('aria-label', i18n('aria.stuckOnlyThem', { name }));
     pin(c.o.rqm, sx, showBub ? sy - 32 : sy, !frozen && !!c.stuck);
   } else {
     setText(c.o.tag, nameOf(c));
@@ -3913,8 +4140,9 @@ function updateGovernor(){
   // typeof guard: some harnesses (test_agent_city_land, TestEmptyWorld) stub updateGovernor's globals
   // without the city-join ring helpers -- same pattern governorFigures() below already relies on.
   if (typeof applyRing === 'function') applyRing(govV, ringColor(joined, '#FFD36E', memberColorMap.me));
-  const waiting = !DEMO && govState === 'waiting';
-  const talking = waiting || (gov.bubble && simT < gov.bubble.until);
+  // idea-city C13: govTalk(terr) is the single source of the home territory's own bubble text --
+  // 等你回话… while HE waits, else his own govSay text while it lasts, never another territory's.
+  const text = govTalk(govTerr), talking = !!text;
   // calm idle strolls (city-people): govAnim caps any gesture (no looping wave/handshake while waiting)
   // and shows 'walk' while he actually strolls -- the old unconditional talking/idle toggle used to
   // loop 'interact-left' for as long as govState stayed 'waiting'.
@@ -3922,12 +4150,11 @@ function updateGovernor(){
   anim(govV, gAnim);
   govV.sel.visible = !!(selected && selected.t === 'gov' && (selected.terr || govTerr) === govTerr);
   const [sx, sy] = toScreen(px, .9, py);
-  if (waiting) setText(govBub, '等你回话…');
-  else if (talking) setText(govBub, gov.bubble.text);
+  if (talking) setText(govBub, text);
   pin(govBub, sx, sy, talking);
   const gAsk = typeof openGovAskFor === 'function' ? openGovAskFor(govTerr) : openAskFor('gov');
   if (gAsk) govQm.setAttribute('data-open', gAsk.id); else govQm.removeAttribute('data-open');
-  govQm.setAttribute('aria-label', '总督 等你' + (gAsk && gAsk.kind === 'permission' ? '批' : '回答') + '，点开看');
+  govQm.setAttribute('aria-label', i18n(gAsk && gAsk.kind === 'permission' ? 'aria.govNeedsApproval' : 'aria.govNeedsAnswer'));
   // above the bubble, never over it: a bubble reserves the spot at (sx, sy).
   pin(govQm, sx, talking ? sy - 32 : sy, !!(gAsk && gAsk.phase === 'owner'));
   const [tx, ty] = toScreen(px, 0, py);
@@ -3948,7 +4175,7 @@ function ensureGovFigure(terr){
   g.userData.pick = { t:'gov', terr };
   pickables.push(g);
   const bub = ovEl('bub gov'), tag = ovEl('tagl tag'), qm = ovBtn('qm', '<span>?</span>');
-  tag.style.setProperty('--c', '#FF6F8B'); setText(tag, '总督 · main manager');
+  tag.style.setProperty('--c', '#FF6F8B'); setText(tag, i18n('gov.tagLabel'));
   // city-join: `ring` kept on v (like govV's own) so applyRing() can recolour it -- these are still
   // MY governors (other territories), so the same member-colour rule applies.
   v = { g, key:'character-male-b', mixer, sel, ring, ringColor: '#FFD36E', cur:null, action:null, bub, tag, qm };
@@ -3969,11 +4196,15 @@ function updateGovPool(list){
     anim(v, typeof govAnim === 'function' ? govAnim(fig.terr, simT) : 'idle');
     v.sel.visible = !!(selected && selected.t === 'gov' && selected.terr === fig.terr);
     const [sx, sy] = toScreen(fig.x, .9, fig.y);
-    pin(v.bub, sx, sy, false); // no per-territory "talking" text yet -- gov.bubble only ever tracks the home one
+    // idea-city C13: every governor talks in his own bubble -- govTalk(fig.terr) only ever answers
+    // for this figure's own territory, never another one's (home included).
+    const text = govTalk(fig.terr), talking = !!text;
+    if (talking) setText(v.bub, text);
+    pin(v.bub, sx, sy, talking);
     const gAsk = openGovAskFor(fig.terr);
     if (gAsk) v.qm.setAttribute('data-open', gAsk.id); else v.qm.removeAttribute('data-open');
-    v.qm.setAttribute('aria-label', '总督 等你' + (gAsk && gAsk.kind === 'permission' ? '批' : '回答') + '，点开看');
-    pin(v.qm, sx, sy, !!(gAsk && gAsk.phase === 'owner'));
+    v.qm.setAttribute('aria-label', i18n(gAsk && gAsk.kind === 'permission' ? 'aria.govNeedsApproval' : 'aria.govNeedsAnswer'));
+    pin(v.qm, sx, talking ? sy - 32 : sy, !!(gAsk && gAsk.phase === 'owner'));
     const [tx, ty] = toScreen(fig.x, 0, fig.y);
     pin(v.tag, tx, ty + 38, v.sel.visible);
   }
@@ -4108,57 +4339,86 @@ function heightAt(x, z){
   return h;
 }
 function aroundH(x, z){ return Math.max(heightAt(x, z), heightAt(x + .3, z), heightAt(x - .3, z), heightAt(x, z + .3), heightAt(x, z - .3)); }
-/* the land box (scene x -land.hx..land.hx, y -1.05..0, z -land.hz..land.hz) seen from angle az at the current tilt, looking
-   at (0, ly, 0) from dist: [how much of the stage it fills on its tighter side, how far its middle sits from the stage middle] */
-function landSpread(az, dist, ly){
+/* the land's outline (scene x/z relative to wherever the camera is looking, y -1.05..0) seen from
+   angle az at the current tilt, looking at (0, ly, 0) from dist, shifted sideways by lx along the
+   view's own right vector (cos(az), -sin(az)) -- city-idea C7: perspective alone skews a box's
+   apparent middle off-screen at most angles, even one already centred on the look point, worse the
+   bigger the box; centreHeight() below cancels it by moving the look point the same amount the other
+   way. Projects landBox()'s outline points (pts, already relative to the box's own middle) when there
+   are any and the box wasn't stretched up to the 13-minimum below (points from a smaller land would
+   rectangle, is fit and centred on its own real outline this way, not the empty corners of its box --
+   still true of a land under the 13-minimum below (its outline is the real, smaller shape; only the
+   box used as a fallback, and the search span/threshold in distMax(), see the 13 as a floor). Falls
+   back to the box's own 4 corners when there is no outline at all (a bare harness, or an empty world).
+   [how much of the stage it fills on its tighter side, how far its middle sits from the stage middle
+   (vertically, horizontally)] */
+function landSpread(az, dist, ly, lx){
   // city-land: an empty world (or a land smaller than one fresh territory) zooms like one fresh territory,
   // so it never traps the camera (requirements/city.md, Growth) — but a bare harness with no `land` at all
-  // keeps its own small placeholder untouched.
-  const raw = typeof land === 'undefined' ? { hx:6, hz:7 } : land;
-  const L = typeof land !== 'undefined' && (raw.hx < 13 || raw.hz < 13) ? { hx:13, hz:13 } : raw;
+  // keeps its own small placeholder untouched. city-idea C7: land's own middle (cx, cz; missing = 0).
+  const raw = typeof land === 'undefined' ? { hx:6, hz:7, cx:0, cz:0 } : land;
+  const L = typeof land === 'undefined' ? raw : { hx: Math.max(raw.hx, 13), hz: Math.max(raw.hz, 13), cx: raw.cx || 0, cz: raw.cz || 0 };
+  const pts = (raw.pts && raw.pts.length) ? raw.pts : [[-L.hx, -L.hz], [-L.hx, L.hz], [L.hx, -L.hz], [L.hx, L.hz]];
   const t = Math.tan(FOV * Math.PI / 360), a = W / H, ce = Math.cos(cam.el), se = Math.sin(cam.el), sa = Math.sin(az), ca = Math.cos(az);
+  const shift = lx || 0;
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-  for (const x of [-L.hx, L.hx]) for (const z of [-L.hz, L.hz]) for (const y of [-1.05, 0]) {
-    const q = y - ly, zc = dist - ce * sa * x - se * q - ce * ca * z;
-    const v = (-se * sa * x + ce * q - se * ca * z) / (zc * t), u = (ca * x - sa * z) / (zc * t * a);
+  for (const p of pts) for (const y of [-1.05, 0]) {
+    const xs = p[0] - shift * ca, zs = p[1] + shift * sa, q = y - ly, zc = dist - ce * sa * xs - se * q - ce * ca * zs;
+    const v = (-se * sa * xs + ce * q - se * ca * zs) / (zc * t), u = (ca * xs - sa * zs) / (zc * t * a);
     x0 = Math.min(x0, u); x1 = Math.max(x1, u);
     y0 = Math.min(y0, v); y1 = Math.max(y1, v);
   }
   return [Math.max((x1 - x0) / 2, (y1 - y0) / 2), (y0 + y1) / 2, (x0 + x1) / 2];
 }
-/* look height that puts the land in the middle of the stage */
+/* [look height, sideways shift] that puts the land in the middle of the stage -- both start at the
+   plain guess (0 height offset, no shift) and settle by the same kind of step landSpread's own v/u
+   come from (Math derivation: near zc = dist, d(v)/d(ly) = -cos(el)/(dist t), d(u)/d(lx) =
+   -1/(dist t a); each round below undoes the last round's leftover v or u by that amount). */
 function centreHeight(az, dist){
-  let ly = -.5;
-  for (let i = 0; i < 8; i++) ly += landSpread(az, dist, ly)[1] * dist * Math.tan(FOV * Math.PI / 360) / Math.cos(cam.el);
-  return ly;
+  let ly = -.5, lx = 0;
+  const t = Math.tan(FOV * Math.PI / 360), a = W / H, ce = Math.cos(cam.el);
+  for (let i = 0; i < 8; i++) {
+    const s = landSpread(az, dist, ly, lx);
+    ly += s[1] * dist * t / ce;
+    lx += s[2] * dist * t * a;
+  }
+  return [ly, lx];
 }
 /* how far out the zoom goes: the whole land fills about 80% of the stage at this tilt, from every angle (sampled every
    15 degrees over half a turn: a rectangle repeats past that). Cached; land is part of the key so growth recomputes it. */
 function distMax(){
   // city-land: same "empty/small land zooms like one fresh territory" rule as landSpread() (see there).
-  const raw = typeof land === 'undefined' ? { hx:6, hz:7 } : land;
-  const L = typeof land !== 'undefined' && (raw.hx < 13 || raw.hz < 13) ? { hx:13, hz:13 } : raw;
-  const key = W + '|' + H + '|' + cam.el.toFixed(3) + '|' + L.hx + ',' + L.hz, c = distMax.c || (distMax.c = {});
+  const raw = typeof land === 'undefined' ? { hx:6, hz:7, cx:0, cz:0 } : land;
+  const L = typeof land === 'undefined' ? raw : { hx: Math.max(raw.hx, 13), hz: Math.max(raw.hz, 13), cx: raw.cx || 0, cz: raw.cz || 0 };
+  const key = W + '|' + H + '|' + cam.el.toFixed(3) + '|' + L.hx + ',' + L.hz + ',' + L.cx + ',' + L.cz, c = distMax.c || (distMax.c = {});
   if (c.key === key) return c.val;
   let best = DIST_MIN, span = 20 * (L.hx + L.hz + 20);
-  /* a single fresh territory (HALF=13, no neighbour) only ever needs the plain 80% fit; a land of several
-     territories also needs its wide/narrow sides centred (cx), which costs a little extra distance */
+  /* a single fresh territory (HALF=13, no neighbour) only ever needs the plain 80% fit; a land of
+     several territories, or one big enough that perspective alone tilts its apparent middle off by
+     more than centreHeight()'s sideways shift can fully cancel, keeps a little safety margin too */
   const single = L.hx === 13 && L.hz === 13;
   for (let i = 0; i < 12; i++) { const az = i * Math.PI / 12;
     let lo = DIST_MIN, hi = span;
-    for (let k = 0; k < 30; k++) { const md = (lo + hi) / 2, s = landSpread(az, md, centreHeight(az, md));
-      const bad = single ? s[0] > .8 : (s[0] > .86 || Math.abs(s[2]) > .097);
+    for (let k = 0; k < 30; k++) { const md = (lo + hi) / 2, s = landSpread(az, md, ...centreHeight(az, md));
+      const bad = single ? s[0] > .8 : (s[0] > .86 || Math.abs(s[2]) > .09);
       if (bad) lo = md; else hi = md; }
     best = Math.max(best, hi);
   }
   c.key = key; c.val = best;
   return best;
 }
-/* the point the camera looks at, [x, y, z]: the user's target, drawn to the land's middle as the view zooms out */
+/* the point the camera looks at, [x, y, z]: the user's target, drawn to the land's real middle (its
+   box centre cx, cz -- city-idea C7, not the scene origin), then nudged sideways by the same amount
+   centreHeight()'s lx cancels in landSpread (undoing the shift convention there: a positive lx there
+   moves the box the other way, i.e. the look point itself moves by lx along (cos(az), -sin(az))), as
+   the view zooms out */
 function camTarget(){
-  const dm = distMax(), k = clamp((cam.dist - 12) / Math.max(1, dm - 12), 0, 1), s = k * k * (3 - 2 * k);
+  const dm = distMax(), k = clamp((cam.dist - FADE_DIST) / Math.max(1, dm - FADE_DIST), 0, 1), s = k * k * (3 - 2 * k);
   if (s === 0) return [cam.tx, TARGET_Y, cam.tz];
-  return [cam.tx * (1 - s), TARGET_Y * (1 - s) + centreHeight(cam.az, dm) * s, cam.tz * (1 - s)];
+  const cx = (typeof land !== 'undefined' && land.cx) || 0, cz = (typeof land !== 'undefined' && land.cz) || 0;
+  const [ly, lx] = centreHeight(cam.az, dm), ca = Math.cos(cam.az), sa = Math.sin(cam.az);
+  const tx2 = cx + lx * ca, tz2 = cz - lx * sa;
+  return [cam.tx * (1 - s) + tx2 * s, TARGET_Y * (1 - s) + ly * s, cam.tz * (1 - s) + tz2 * s];
 }
 /* tilt used this frame: the user's tilt, lifted at most LIFT_MAX (eased, never while dragging) so the view clears what stands in the way */
 let camLiftNow = 0;
@@ -4174,8 +4434,11 @@ function camLift(){
   camLiftNow += (want - camLiftNow) * .2;
   return cam.el + camLiftNow;
 }
-/* tiles whose top still stands above the view line at tilt el: what gets faded */
+/* tiles whose top still stands above the view line at tilt el: what gets faded. city-idea C2: past
+   FADE_DIST the view is already drawn to the land middle -- whatever stands there (the town hall) must
+   stay solid, so nothing fades once zoomed out that far. */
 function viewBlockers(el){
+  if (cam.dist > FADE_DIST) return new Set();
   const [tx, ty, tz] = camTarget(), sx = Math.sin(cam.az), sz = Math.cos(cam.az), t = Math.tan(el), out = new Set();
   for (let r = .6; r <= cam.dist * Math.cos(el); r += .2) {
     const x = tx + sx * r, z = tz + sz * r;
@@ -4205,13 +4468,20 @@ function applyFade(blocked){
 }
 function updateCamera(){
   camera.aspect = W / H;
-  camera.updateProjectionMatrix();
   cam.dist = Math.min(cam.dist, distMax());
   const [tx, ty, tz] = camTarget(), el = camLift(), ce = Math.cos(el);
   const x = tx + cam.dist * ce * Math.sin(cam.az), z = tz + cam.dist * ce * Math.cos(cam.az);
   const y = Math.max(ty + cam.dist * Math.sin(el), aroundH(x, z) + CAM_CLEAR);
   camera.position.set(x, y, z);
   camera.lookAt(tx, ty, tz);
+  // city-idea C7: far must clear the whole land box, not just a fixed guess -- a big land used to get clipped
+  const raw = typeof land === 'undefined' ? { hx:6, hz:7, cx:0, cz:0 } : land;
+  const L = typeof land === 'undefined' ? raw : { hx: Math.max(raw.hx, 13), hz: Math.max(raw.hz, 13), cx: raw.cx || 0, cz: raw.cz || 0 };
+  let far = 0;
+  for (const lx of [L.cx - L.hx, L.cx + L.hx]) for (const lz of [L.cz - L.hz, L.cz + L.hz]) for (const ly of [-1.05, 0])
+    far = Math.max(far, Math.hypot(lx - x, ly - y, lz - z));
+  camera.far = far + 5;
+  camera.updateProjectionMatrix();
 }
 function resetCam(){ cam.az = Math.PI / 4; cam.el = EL_DEFAULT; cam.tx = home.x; cam.tz = home.z; cam.dist = W < 560 ? DIST_DEFAULT * 1.35 : DIST_DEFAULT; }
 function resize(){
@@ -4242,8 +4512,9 @@ function showPathAt(path, g){
 }
 /* one run's live state for a territory's show: its plan, one walking builder per plan.builders (each with
    its own door->target->target->...->door legs, findPath used leg by leg), and a (initially hidden)
-   scaffold/planks group per building/road target — parented under landGroup so the flip's buildLand(map)
-   clears them for free. */
+   scaffold/planks group per building/road target — parented under showGroup (idea-city C9: never landGroup,
+   which buildLand empties on every world event and every other territory's own era flip; a run's own
+   planks are removed from showGroup by dropShowRun when the run itself ends). */
 function makeShowRun(t, view, s){
   const plan = showPlan(t, view, s.to);
   const door = hallStand(t);
@@ -4263,7 +4534,7 @@ function makeShowRun(t, view, s){
   // scaffolding — makeBuilding already built it, sized to its height — via b.showScaf, not a generic prop)
   const scaf = plan.targets.filter(g => g.what === 'road').map(g => ({
     key: Math.floor(g.x) + ',' + Math.floor(g.z),
-    el: place('resource-planks', g.x, g.z, { s: .8, ry: sr(g.x * 7 + g.z, 3) * 6.28, parent: landGroup }),
+    el: place('resource-planks', g.x, g.z, { s: .8, parent: showGroup, ry: sr(g.x * 7 + g.z, 3) * 6.28 }),
   }));
   for (const s2 of scaf) s2.el.visible = false;
   return { plan, builders, scaf, reached: new Set(), flipped: false };
@@ -4325,11 +4596,16 @@ function dropShowBuilder(b){
   const mi = mixers.indexOf(b.v.mixer); if (mi >= 0) mixers.splice(mi, 1);
   b.v = null;
 }
+/* idea-city C9: a run's own road planks (run.scaf, parented under showGroup) are its own -- drop them
+   here, whenever the run itself ends, never left for buildLand to clean up (it never empties showGroup). */
+function dropShowRun(run){
+  for (const s2 of run.scaf) if (s2.el.parent) s2.el.parent.remove(s2.el);
+}
 function stepShows(now){
   if (!shows.size) return;
   for (const [id, s] of [...shows]) {
     const t = terrOf(id);
-    if (!t) { shows.delete(id); showRuns.delete(id); continue; }
+    if (!t) { const gone = showRuns.get(id); if (gone) dropShowRun(gone); shows.delete(id); showRuns.delete(id); continue; }
     let run = showRuns.get(id);
     if (!run) { run = makeShowRun(t, map, s); showRuns.set(id, run); }
     const elapsed = SHOW_SEC - (s.end - now) / 1000;
@@ -4347,15 +4623,16 @@ function stepShows(now){
     }
     if (!run.flipped && elapsed >= SHOW_FLIP) {
       run.flipped = true;
-      buildLand(map); // one moment: every building, hall, road and lamp of t re-skinned by eraLook (eraShown(t) is now s.to); clears the road planks too (landGroup)
+      buildLand(map); // one moment: every building, hall, road and lamp of t re-skinned by eraLook (eraShown(t) is now s.to); the run's own planks (showGroup) survive this -- dropShowRun clears them when the run ends
       for (const g2 of run.plan.targets) if (g2.what === 'building') { // fresh mesh in the new era: no scaffolding left on it
         const bld = occupied.get(Math.floor(g2.x) + ',' + Math.floor(g2.z));
         if (bld) bld.showScaf = false;
       }
-      logAt(simT, t.name + ' 变成' + ERA_ZH[s.to] + '了');
+      logAt(simT, i18n('log.eraBecame', { name: t.name, era: i18n('era.' + s.to) }));
     }
     if (now >= s.end) {
       for (const b of run.builders) dropShowBuilder(b);
+      dropShowRun(run);
       shows.delete(id); showRuns.delete(id);
     }
     needFrame = true;
@@ -4404,22 +4681,26 @@ function renderStats(){
   // appended when there is one (topCounts() itself decides whether it shows at all; renderStats only
   // ever draws whatever it hands back). topCounts() itself skips remote people (city-join): those counts
   // are this machine's own city, never another member's.
-  const COLOR = { '干活':'#5AA9F0', '找总督':'#FF6F8B', '休息':'#43C58B', '建成':'#FFC23D', '卡住的工地':'#E8833A' };
+  // idea-city C1: topCounts()'s own labels come from TEXT (top.*), through i18n() -- topCounts() always
+  // hands back work/ask/rest/done (in that order), then stalled only when there is one, so COLOR is keyed
+  // by that fixed position, never by the resolved (zh or en) label text (part 1's own bug: en lost every
+  // chip's colour, since COLOR was keyed by the zh label i18n() only ever gives back in zh).
+  const COLOR = ['#5AA9F0', '#FF6F8B', '#43C58B', '#FFC23D', '#E8833A'];
   const chip = remoteChip(relays, meInfo, remotePeopleList(), remoteGovList());
   // city-join: while joined, the chip is followed by the members from memberLegend(), each its own colour dot + name.
   const legend = chip ? memberLegend(meInfo, remotePeopleList(), remoteGovList(), memberColorMap) : [];
-  const html = topCounts().map(([l, n]) => `<span class="stat"><i style="background:${COLOR[l]}"></i>${l} <b>${n}</b></span>`).join('')
-    + `<button class="stat wait" type="button" id="next" ${waiting ? '' : 'disabled'} aria-label="等你决定 ${waiting} 个，点开最早的一个">等你 <b>${waiting}</b></button>`
+  const html = topCounts().map(([l, n], i) => `<span class="stat"><i style="background:${COLOR[i] || '#8D91B3'}"></i>${l} <b>${n}</b></span>`).join('')
+    + `<button class="stat wait" type="button" id="next" ${waiting ? '' : 'disabled'} aria-label="${i18n('top.pendingAria', { n: waiting })}">${i18n('top.pending')} <b>${waiting}</b></button>`
     + (chip ? `<span class="stat ${chip.cls}">${esc(chip.text)}</span>` : '')
     + legend.map(e => `<span class="stat member"><i style="background:${e.color}"></i>${esc(e.name)}</span>`).join('');
   if ($('#stats').innerHTML !== html) $('#stats').innerHTML = html;
 }
 let lastRoster = '';
 function govPillText(){
-  if (!DEMO && governorCount === 0) return '不在';
-  if (!DEMO && govState === 'waiting') return '等你回话';
-  const busy = (!DEMO && govState === 'busy') || (gov.bubble && simT < gov.bubble.until);
-  return busy ? '忙着' : '坐镇市政厅';
+  if (!DEMO && governorCount === 0) return i18n('gov.away');
+  if (!DEMO && govState === 'waiting') return i18n('status.waiting_reply');
+  const busy = (!DEMO && govState === 'busy') || !!govTalk(govTerr);
+  return busy ? i18n('gov.busy') : i18n('gov.home');
 }
 let lastDetailKey = '';
 /* the chain of command for c's detail card (mock: 工人 → 经理 <task> → 总督 → 你), the current step
@@ -4428,10 +4709,10 @@ function chainLine(c){
   if (!c.office && !c.lead) return '';
   const leadC = c.lead ? byId(c.lead) : null;
   const steps = [];
-  if (c.lead) steps.push(['worker', '工人']);
-  steps.push(['lead', leadC ? `经理 ${esc(leadC.task)}` : '经理']);
-  steps.push(['gov', '总督']);
-  steps.push(['owner', '你']);
+  if (c.lead) steps.push(['worker', i18n('role.worker')]);
+  steps.push(['lead', leadC ? i18n('chain.leadTask', { task: esc(leadC.task) }) : i18n('chain.lead')]);
+  steps.push(['gov', i18n('who.governor')]);
+  steps.push(['owner', i18n('who.owner')]);
   let cur = c.lead ? 'worker' : 'lead';
   if (c.relay === 'lead') cur = 'lead';
   else if (c.relay === 'governor') cur = 'gov';
@@ -4441,19 +4722,20 @@ function chainLine(c){
 /* ---------- chat (requirements/city.md, Talking): a person's window shows what was typed to it
    and what it answered, plus a box to talk to it; the terminal keeps working in parallel. `chats`
    -- page chat id -> { entries, busy, canSend, loaded, error }. ---------- */
-const CHAT_STATE_ZH = { queued: '已发送', delivered: '已送达', undelivered: '没送到' };
-/* chatHtml(entries, name, busy): pure -- uses only esc and CHAT_STATE_ZH, so it can be pinned and
-   run on its own (tests/test_agent_city_chat.py). */
+/* idea-city C1: the state words and every other bit of text here live in TEXT (chat.*), through
+   i18n() -- chatHtml is pinned and run on its own (tests/test_agent_city_chat.py), with TEXT/i18n
+   in its prelude (constants_prelude()). */
 function chatHtml(entries, name, busy){
-  if (!entries || !entries.length) return '<li class="msg-empty">还没有对话</li>';
+  if (!entries || !entries.length) return `<li class="msg-empty">${i18n('chat.empty')}</li>`;
+  const CHAT_STATES = ['queued', 'delivered', 'undelivered'];
   const who = e => {
-    if (e.kind === 'owner') return `你（页面）${e.state && CHAT_STATE_ZH[e.state] ? '（' + CHAT_STATE_ZH[e.state] + '）' : ''}`;
-    if (e.kind === 'prompt') return '你（终端）';
+    if (e.kind === 'owner') return `${i18n('chat.you.page')}${e.state && CHAT_STATES.includes(e.state) ? i18n('chat.stateSuffix', { state: i18n('chat.state.' + e.state) }) : ''}`;
+    if (e.kind === 'prompt') return i18n('chat.you.terminal');
     return esc(name);
   };
   let html = entries.map(e => `<li class="msg" data-kind="${esc(e.kind)}" data-id="${esc(e.id)}"><b>${who(e)}</b><span>${esc(e.text)}</span></li>`).join('');
   const last = entries[entries.length - 1];
-  if (busy && last && last.kind === 'owner' && last.state === 'queued') html += '<li class="msg-wait">等它做完这一步</li>';
+  if (busy && last && last.kind === 'owner' && last.state === 'queued') html += `<li class="msg-wait">${i18n('chat.wait')}</li>`;
   return html;
 }
 /* chatTarget(sel) -> the chat id of a selection, or null for anything with none (a remote person,
@@ -4470,7 +4752,7 @@ let demoChatSeq = 0;
 /* chatDisplayName(to) -- who a "你 → …" page log line names for a chat id. */
 function chatDisplayName(to){
   if (!to) return '';
-  if (to.slice(0, 4) === 'gov:') return '总督';
+  if (to.slice(0, 4) === 'gov:') return i18n('who.governor');
   const pc = byId(to);
   return pc ? nameOf(pc) : to;
 }
@@ -4490,7 +4772,7 @@ function curChatTo(){
 /* demo: a few made-up lines so the demo people look talked-to, and a fake send that turns
    delivered after a moment -- never a fetch (requirements/city.md, Talking). */
 function demoChatFor(to){
-  const seed = [{ kind: 'prompt', text: '先把这页做完，别的先不要动' }, { kind: 'reply', text: '好，先做这页，其它先不碰' }];
+  const seed = [{ kind: 'prompt', text: i18n('demo.seed.prompt') }, { kind: 'reply', text: i18n('demo.seed.reply') }];
   const now = Date.now() / 1000;
   return { entries: seed.map((s, i) => ({ id: ++demoChatSeq, kind: s.kind, text: s.text, at: now - (seed.length - i) * 40 })),
     busy: false, canSend: true, loaded: true };
@@ -4504,7 +4786,7 @@ function demoSendChat(to, text){
     const e = box.entries.find(x => x.id === id);
     if (!e) return;
     e.state = 'delivered';
-    log(`你 → ${chatDisplayName(to)}：${e.text}`);
+    log(i18n('log.chatSent', { to: chatDisplayName(to), text: e.text }));
     renderPanel();
   }, 900);
 }
@@ -4517,7 +4799,7 @@ function loadChat(to){
   fetch('/api/chat?to=' + encodeURIComponent(to), { headers: { 'X-City-Token': TOKEN } })
     .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
     .then(body => { chats.set(to, { entries: body.entries || [], busy: !!body.busy, canSend: body.can_send !== false, loaded: true }); renderPanel(); })
-    .catch(() => { const box = chats.get(to) || { entries: [], busy: false, canSend: true, loaded: false }; box.error = '对话没加载出来，等会儿再打开看看。'; chats.set(to, box); renderPanel(); });
+    .catch(() => { const box = chats.get(to) || { entries: [], busy: false, canSend: true, loaded: false }; box.error = i18n('chat.loadError'); chats.set(to, box); renderPanel(); });
 }
 /* sendChat(to, text): posts to the session (live) or fakes it (demo); either way the owner's own
    entry lands in `chats` at once (queued), then moves to delivered/undelivered by a 'chat' event
@@ -4537,7 +4819,7 @@ function sendChat(to, text){
     })
     .catch(() => {
       const box = chats.get(to) || { entries: [], busy: false, canSend: true, loaded: true };
-      box.error = '没发出去（连不上城市服务器）。';
+      box.error = i18n('chat.sendError');
       chats.set(to, box);
       renderPanel();
       return false;
@@ -4569,7 +4851,7 @@ function renderDetail(){
   if (selected && selected.t === 'gov') key = `gov|${selected.terr || govTerr}|${gov.answered}|${gov.dispatched}|${governorCount}`;
   if (selected && selected.t === 'rg') { if (!remoteGovs.has(selected.id)) selected = null; else key = `rg${selected.id}|${remoteGovs.get(selected.id).state}`; }
   const chatTo = curChatTo();
-  const chatName = chatTo ? (selected && selected.t === 'gov' ? '总督' : (c ? nameOf(c) : '')) : '';
+  const chatName = chatTo ? (selected && selected.t === 'gov' ? i18n('who.governor') : (c ? nameOf(c) : '')) : '';
   if (chatTo) loadChat(chatTo);
   /* the conversation + the box to talk to it (Talking): a session (governor, or a citizen that is
      a lead, c.office) gets a form; a subagent (c.lead) is read only, with a way to its lead's window. */
@@ -4580,11 +4862,11 @@ function renderDetail(){
     html += `<p class="hint chat-fail" id="chat-fail"${box.error ? '' : ' hidden'}>${esc(box.error || '')}</p>`;
     if (!isSession) {
       const oc = byId(to), leadC = oc && oc.lead ? byId(oc.lead) : null;
-      const leadBtn = leadC ? `<p><button class="btn" type="button" data-sel="${leadC.id}">找组长：${esc(nameOf(leadC))}</button></p>` : '';
-      return html + `<p class="hint">它是子任务，这份对话只能看；有事去找组长。</p>` + leadBtn;
+      const leadBtn = leadC ? `<p><button class="btn" type="button" data-sel="${leadC.id}">${i18n('btn.findLead', { name: esc(nameOf(leadC)) })}</button></p>` : '';
+      return html + `<p class="hint">${i18n('hint.readOnlySub')}</p>` + leadBtn;
     }
     if (box.canSend === false) return html;
-    return html + `<form class="say" id="say"><textarea id="say-text" maxlength="4000" placeholder="跟它说…"></textarea><button class="btn" type="submit">发送</button></form>`;
+    return html + `<form class="say" id="say"><textarea id="say-text" maxlength="4000" placeholder="${i18n('placeholder.saySomething')}"></textarea><button class="btn" type="submit">${i18n('btn.send')}</button></form>`;
   }
   if (key !== lastDetailKey) {
     lastDetailKey = key;
@@ -4593,48 +4875,48 @@ function renderDetail(){
       // an answer, allow or deny button (requirements/city.md, Joining).
       const name = memberName(c.remote.who, c.remote.device);
       el.innerHTML = `
-        <div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(memberLabel(c.remote.who, c.remote.device))}</div><div class="d-role">${esc(ROLES[c.role].zh)}</div></div></div>
-        <div class="kv"><span>仓库</span><code>${esc(c.remote.rid)}</code></div>
-        <div class="kv"><span>分支</span><code>${esc(c.remote.br)}</code></div>
-        <div class="kv"><span>在做</span><b>${esc(c.task)}</b></div>
+        <div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(memberLabel(c.remote.who, c.remote.device))}</div><div class="d-role">${esc(i18n('role.' + c.role))}</div></div></div>
+        <div class="kv"><span>${i18n('kv.repo')}</span><code>${esc(c.remote.rid)}</code></div>
+        <div class="kv"><span>${i18n('kv.branch')}</span><code>${esc(c.remote.br)}</code></div>
+        <div class="kv"><span>${i18n('kv.doing')}</span><b>${esc(c.task)}</b></div>
         <div class="why">${esc(remoteNote(name))}</div>`;
     } else if (c) {
-      const [g, zh] = citizenStatus(c, governorCount), kind = c.bld ? TYPE_ZH[c.bld.type] : '干活';
-      const qa = [...c.qa.map(x => `<p>问：<b>“${esc(x.q)}”</b></p><p>答：<b>“${esc(x.a)}”</b></p>`), (c.stuck ? `<p>问：<b>“${esc(c.question)}”</b> 等回答…</p>` : '')].join('');
+      const [g, zh] = citizenStatus(c, governorCount), kind = c.bld ? i18n('type.' + c.bld.type) : i18n('state.working');
+      const qa = [...c.qa.map(x => `<p>${i18n('label.ask')}<b>“${esc(x.q)}”</b></p><p>${i18n('label.answer')}<b>“${esc(x.a)}”</b></p>`), (c.stuck ? `<p>${i18n('label.ask')}<b>“${esc(c.question)}”</b> ${i18n('label.awaitingAnswer')}</p>` : '')].join('');
       const canStuck = !c.doneFlag && !c.stuck && ['building','to_plot','back'].includes(c.state);
       const chain = chainLine(c);
       el.innerHTML = `
-        <div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(nameOf(c))}</div><div class="d-role">${esc(c.label)} · ${ROLES[c.role].zh}</div></div><span class="pill ${g}">${zh}</span></div>
+        <div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(nameOf(c))}</div><div class="d-role">${esc(c.label)} · ${i18n('role.' + c.role)}</div></div><span class="pill ${g}">${zh}</span></div>
         <div class="d-bar"><div class="track"><i data-f="bar" style="width:${pct(c)}%;background:${c.color}"></i></div><span data-f="pct">${kind} ${pct(c)}%</span></div>
         <dl class="d-tools">${['Edit','Write','Bash','Read'].map(t => `<div><dt>${t}</dt><dd data-f="${t}">${c.tools[t]}</dd></div>`).join('')}</dl>
         ${chain ? `<p class="hint chain">${chain}</p>` : ''}
         ${qa ? `<div class="d-qa">${qa}</div>` : ''}
         ${DEMO ? `
         <div class="d-actions">
-          <button class="btn" type="button" data-act="stuck" ${canStuck ? '' : 'disabled'}>让它卡住</button>
-          <button class="btn" type="button" data-act="done" ${c.doneFlag ? 'disabled' : ''}>让它完工</button>
-          <button class="btn" type="button" data-act="leave" ${c.state === 'resting' && !c.leaveFlag ? '' : 'disabled'}>让它下班</button>
+          <button class="btn" type="button" data-act="stuck" ${canStuck ? '' : 'disabled'}>${i18n('act.makeStuck')}</button>
+          <button class="btn" type="button" data-act="done" ${c.doneFlag ? 'disabled' : ''}>${i18n('act.makeDone')}</button>
+          <button class="btn" type="button" data-act="leave" ${c.state === 'resting' && !c.leaveFlag ? '' : 'disabled'}>${i18n('act.makeLeave')}</button>
         </div>
-        <p class="d-note">这三个按钮只在原型里有，用来试流程。</p>` : ''}
+        <p class="d-note">${i18n('act.demoNote')}</p>` : ''}
         ${chatTo ? chatSectionHtml(chatTo, chatName) : ''}`;
     } else if (selected && selected.t === 'rg') {
       const rg = remoteGovs.get(selected.id);
       el.innerHTML = `
-        <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">${esc(govSign(rg))}</div><div class="d-role">main manager · 总督</div></div><span class="pill gov">市政厅</span></div>
+        <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">${esc(govSign(rg))}</div><div class="d-role">${i18n('gov.rgRole')}</div></div><span class="pill gov">${i18n('pill.hall')}</span></div>
         <div class="why">${esc(remoteNote(memberName(rg.who, rg.device)))}</div>`;
     } else if (b) {
       // city-quality, city-levelups: the building card, built from buildingInfo(b) -- name, kind and
       // district, quality, 放错区了 when misplaced, level, its files, and who has touched it (newest first).
-      const info = buildingInfo(b), kind = TYPE_ZH[b.type] || b.type, district = `${kind}区`;
-      const qClass = info.quality === '整齐' ? 'rest' : info.quality === '还行' ? 'build' : 'ask';
+      const info = buildingInfo(b), kind = i18n('type.' + b.type) || b.type, district = i18n('building.district', { kind });
+      const qClass = info.qid === 'good' ? 'rest' : info.qid === 'fair' ? 'build' : 'ask';
       const filesHtml = info.files.length
         ? `<div class="files"><ol>${info.files.map(f => `<li><code>${esc(f)}</code></li>`).join('')}</ol></div>` : '';
       const histHtml = info.hist.length
         ? `<div class="files"><ol>${info.hist.map(h => `<li>${esc(h.by)}</li>`).join('')}</ol></div>` : '';
       el.innerHTML = `
-        <div class="d-head"><span class="rdot" style="--c:${b.color}"></span><div><div class="d-name">${info.name ? esc(info.name) : kind}</div><div class="d-role">${kind} · ${district}${info.misplaced ? ' · 放错区了' : ''}${info.level ? ` · 等级 ${info.level}` : ''}</div></div><span class="pill ${qClass}">${info.quality}</span></div>
-        ${filesHtml ? `<p class="hint">盖它的文件</p>${filesHtml}` : ''}
-        ${histHtml ? `<p class="hint">改过它的人（新的在前）</p>${histHtml}` : ''}`;
+        <div class="d-head"><span class="rdot" style="--c:${b.color}"></span><div><div class="d-name">${info.name ? esc(info.name) : kind}</div><div class="d-role">${kind} · ${district}${info.misplaced ? i18n('building.misplaced') : ''}${info.level ? i18n('building.level', { level: info.level }) : ''}</div></div><span class="pill ${qClass}">${info.quality}</span></div>
+        ${filesHtml ? `<p class="hint">${i18n('hint.files')}</p>${filesHtml}` : ''}
+        ${histHtml ? `<p class="hint">${i18n('hint.history')}</p>${histHtml}` : ''}`;
     } else if (selected && selected.t === 'gov') {
       const terr = selected.terr || govTerr, present = !!governorAt(terr);
       // city-focus: the team stays reachable without the roster -- rosterGroups() again, this territory's
@@ -4643,29 +4925,29 @@ function renderDetail(){
       const grp = rosterGroups().find(x => x.terr === terr);
       const team = grp ? grp.rows.map(row => {
         if (row.id.slice(0, 4) === 'gov:') {
-          return `<li><button class="row" type="button" data-sel="${row.id}" aria-current="true"><span class="rdot gov"></span><span class="who"><b>总督</b><span>main manager · 主对话</span></span><span class="pill gov">${govRowText(row.id.slice(4))}</span></button></li>`;
+          return `<li><button class="row" type="button" data-sel="${row.id}" aria-current="true"><span class="rdot gov"></span><span class="who"><b>${i18n('who.governor')}</b><span>${i18n('gov.ownTag')}</span></span><span class="pill gov">${govRowText(row.id.slice(4))}</span></button></li>`;
         }
         const pc = byId(row.id); if (!pc) return '';
         const [pg, pzh] = citizenStatus(pc, governorCount);
-        const pkind = pc.bld ? TYPE_ZH[pc.bld.type] : '';
+        const pkind = pc.bld ? i18n('type.' + pc.bld.type) : '';
         const psub = pg === 'build' && pkind ? `${pc.label} · ${pkind} ${pct(pc)}%` : pc.label;
         return `<li class="${row.depth ? 'sub' : ''}"><button class="row" type="button" data-sel="${pc.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === pc.id)}"><span class="rdot" style="--c:${pc.color}"></span><span class="who"><b>${esc(nameOf(pc))}</b><span>${esc(psub)}</span></span><span class="pill ${pg}">${pzh}</span></button></li>`;
       }).join('') : '';
       el.innerHTML = `
-        <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">总督</div><div class="d-role">main manager · 主对话</div></div><span class="pill gov">${present ? '市政厅' : '不在'}</span></div>
-        <p class="hint">${!present ? '总督不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等总督。' : '总督就是你正在聊的主对话。它派人出门、回答卡住的问题，自己不盖楼。'}</p>
-        <dl class="d-tools" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><dt>派出</dt><dd>${gov.dispatched}</dd></div><div><dt>回答</dt><dd>${gov.answered}</dd></div></dl>
-        ${team ? `<p class="hint">团队</p><ul class="roster">${team}</ul>` : ''}
+        <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">${i18n('who.governor')}</div><div class="d-role">${i18n('gov.ownTag')}</div></div><span class="pill gov">${present ? i18n('pill.hall') : i18n('gov.away')}</span></div>
+        <p class="hint">${!present ? i18n('gov.awayNote') : i18n('gov.presentNote')}</p>
+        <dl class="d-tools" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><dt>${i18n('dt.dispatched')}</dt><dd>${gov.dispatched}</dd></div><div><dt>${i18n('dt.answered')}</dt><dd>${gov.answered}</dd></div></dl>
+        ${team ? `<p class="hint">${i18n('hint.team')}</p><ul class="roster">${team}</ul>` : ''}
         ${chatTo ? chatSectionHtml(chatTo, chatName) : ''}`;
     } else if (!DEMO && citizens.length === 0) {
-      el.innerHTML = `<p class="hint">还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。</p>`;
+      el.innerHTML = `<p class="hint">${i18n('hint.noAgents')}</p>`;
     } else {
-      el.innerHTML = `<p class="hint">点城里的小人、房子，或下面名单里的一行。</p>`;
+      el.innerHTML = `<p class="hint">${i18n('hint.pickSomething')}</p>`;
     }
   }
   if (c) {
     const bar = el.querySelector('[data-f="bar"]'); if (bar) bar.style.width = pct(c) + '%';
-    const p = el.querySelector('[data-f="pct"]'); if (p) p.textContent = `${c.bld ? TYPE_ZH[c.bld.type] : '干活'} ${pct(c)}%`;
+    const p = el.querySelector('[data-f="pct"]'); if (p) p.textContent = `${c.bld ? i18n('type.' + c.bld.type) : i18n('state.working')} ${pct(c)}%`;
     for (const t of ['Edit','Write','Bash','Read']) { const d = el.querySelector(`[data-f="${t}"]`); if (d && d.textContent !== String(c.tools[t])) d.textContent = c.tools[t]; }
   }
   if (chatTo) {
@@ -4686,7 +4968,7 @@ function renderLog(){
   $('#log').innerHTML = logEntries.map(e => `<li><time>${e.real ? new Date(e.real).toTimeString().slice(0, 8) : clock(e.t)}</time><span class="${e.kind}">${esc(e.text)}</span></li>`).join('');
 }
 
-function renderPanel(){ renderStats(); renderDetail(); renderLog(); renderWin(); $('#clock').textContent = DEMO ? '模拟 ' + clock(simT) : '现在 ' + new Date().toTimeString().slice(0, 8); }
+function renderPanel(){ renderStats(); renderDetail(); renderLog(); renderWin(); $('#clock').textContent = DEMO ? i18n('clock.demo', { t: clock(simT) }) : i18n('clock.now', { t: new Date().toTimeString().slice(0, 8) }); }
 
 /* ---------- window: the person / building / governor detail, or the page log (动态), over the city
    (requirements/city.md, Look, owner 2026-09-27: replaces the right column of cards) ---------- */
@@ -4698,19 +4980,19 @@ function openLog(){ winLog = true; selected = null; renderPanel(); }
 function closeWin(){ winLog = false; selected = null; renderPanel(); }
 /* winTitle() -> a short label for the open window, whatever renderDetail() is showing right now. */
 function winTitle(){
-  if (!selected) return '详情';
-  if (selected.t === 'c') { const c = byId(selected.id); return c ? (c.remote ? memberLabel(c.remote.who, c.remote.device) : nameOf(c)) : '详情'; }
-  if (selected.t === 'b') { const b = buildings.find(x => x.id === selected.id); if (!b) return '详情'; const info = buildingInfo(b); return info.name || TYPE_ZH[b.type] || b.type; }
-  if (selected.t === 'gov') return '总督';
-  if (selected.t === 'rg') { const rg = remoteGovs.get(selected.id); return rg ? govSign(rg) : '总督'; }
-  return '详情';
+  if (!selected) return i18n('detail.title');
+  if (selected.t === 'c') { const c = byId(selected.id); return c ? (c.remote ? memberLabel(c.remote.who, c.remote.device) : nameOf(c)) : i18n('detail.title'); }
+  if (selected.t === 'b') { const b = buildings.find(x => x.id === selected.id); if (!b) return i18n('detail.title'); const info = buildingInfo(b); return info.name || i18n('type.' + b.type) || b.type; }
+  if (selected.t === 'gov') return i18n('who.governor');
+  if (selected.t === 'rg') { const rg = remoteGovs.get(selected.id); return rg ? govSign(rg) : i18n('who.governor'); }
+  return i18n('detail.title');
 }
 function renderWin(){
   const state = winState();
   $('#win').hidden = !state;
   $('#detail').hidden = state !== 'detail';
   $('#log').hidden = state !== 'log';
-  $('#win-title').textContent = state === 'log' ? '动态' : winTitle();
+  $('#win-title').textContent = state === 'log' ? i18n('btn.log') : winTitle();
 }
 $('#win-close').addEventListener('click', () => closeWin());
 $('#logbtn').addEventListener('click', () => openLog());
@@ -4734,61 +5016,67 @@ function closeAskPanel(){
   askReturnFocus = null;
   needFrame = true;
 }
+/* idea-city C1: routes through i18n() (why.*). */
 function askWhyLine(view){
-  if (view.kind === 'permission') return `<div class="why">权限只由你来批，总督不批。</div>`;
-  if (view.agent === 'gov') return `<div class="why gov">总督定不了，交给你。</div>`;
-  if (view.why === 'timeout') return `<div class="why gov">总督 ${view.wait} 秒没回答，交给你。</div>`;
-  if (view.why === 'pass') return `<div class="why gov">总督说：这个我定不了，交给你。</div>`;
-  return `<div class="why gov">没有总督在，直接交给你。</div>`;
+  if (view.kind === 'permission') return `<div class="why">${i18n('why.permission')}</div>`;
+  if (view.agent === 'gov') return `<div class="why gov">${i18n('why.gov')}</div>`;
+  if (view.why === 'timeout') return `<div class="why gov">${i18n('why.timeout', { wait: view.wait })}</div>`;
+  if (view.why === 'pass') return `<div class="why gov">${i18n('why.pass')}</div>`;
+  return `<div class="why gov">${i18n('why.noGov')}</div>`;
 }
 function askQuestionBody(view){
   const qs = view.questions || [];
   return `<form id="qform" class="perm" novalidate>` + qs.map((q, i) => `
     <fieldset class="q"><legend>${q.header ? `<span class="chip">${esc(q.header)}</span>` : ''}${esc(q.question || '')}</legend>
       ${(q.options || []).map(o => `<label class="opt"><input type="radio" name="q${i}" value="${esc(o.label)}"><span><b>${esc(o.label)}</b>${o.description ? `<small>${esc(o.description)}</small>` : ''}</span></label>`).join('')}
-      <label class="opt"><input type="radio" name="q${i}" value="" data-other><span><b>其他</b><input type="text" data-text="${i}" placeholder="自己写回答" aria-label="自己写回答"></span></label>
-    </fieldset>`).join('') + `<div class="acts"><button class="btn primary" type="submit" id="send" disabled>发送回答</button></div></form>`;
+      <label class="opt"><input type="radio" name="q${i}" value="" data-other><span><b>${i18n('opt.other')}</b><input type="text" data-text="${i}" placeholder="${i18n('opt.customAnswer')}" aria-label="${i18n('opt.customAnswer')}"></span></label>
+    </fieldset>`).join('') + `<div class="acts"><button class="btn primary" type="submit" id="send" disabled>${i18n('btn.sendAnswer')}</button></div></form>`;
 }
 function askPermissionBody(view){
   const d = view.detail || {};
   const main = d.command ? `<pre class="cmd">${esc(d.command)}</pre>`
-    : d.file_path ? `<div class="kv"><span>文件</span><code>${esc(d.file_path)}</code></div>`
-    : d.url ? `<div class="kv"><span>网址</span><code>${esc(d.url)}</code></div>`
+    : d.file_path ? `<div class="kv"><span>${i18n('kv.file')}</span><code>${esc(d.file_path)}</code></div>`
+    : d.url ? `<div class="kv"><span>${i18n('kv.url')}</span><code>${esc(d.url)}</code></div>`
     : (view.what ? `<pre class="cmd">${esc(view.what)}</pre>` : '');
   return `<div class="perm">
-    <div class="kv"><span>工具</span><b>${esc(view.tool || '')}</b></div>
+    <div class="kv"><span>${i18n('kv.tool')}</span><b>${esc(view.tool || '')}</b></div>
     ${main}
-    ${d.description ? `<p class="said">它说：${esc(d.description)}</p>` : ''}
-    ${d.cwd ? `<div class="kv"><span>目录</span><code>${esc(d.cwd)}</code></div>` : ''}
-    <label class="field" for="reason">拒绝理由（可以不填；填了会原样告诉它）<input id="reason" type="text" placeholder="比如：先别删 dist/，里面有发布包"></label>
-    <div class="acts"><button class="btn ok" type="button" data-verb="allow">批准</button><button class="btn no" type="button" data-verb="deny">拒绝</button></div>
+    ${d.description ? `<p class="said">${i18n('said', { text: esc(d.description) })}</p>` : ''}
+    ${d.cwd ? `<div class="kv"><span>${i18n('kv.dir')}</span><code>${esc(d.cwd)}</code></div>` : ''}
+    <label class="field" for="reason">${i18n('field.denyReason')}<input id="reason" type="text" placeholder="${i18n('field.denyPlaceholder')}"></label>
+    <div class="acts"><button class="btn ok" type="button" data-verb="allow">${i18n('btn.allow')}</button><button class="btn no" type="button" data-verb="deny">${i18n('btn.deny')}</button></div>
   </div>`;
 }
+/* idea-city C1: routes through i18n() (closed.*, and TEXT's own who.* for the "who" table). */
 function askClosedLine(view){
-  const k = view.closed, byZh = { governor:'总督', owner:'你', terminal:'终端' }[k.by] || k.by;
-  const t = new Date(k.at || Date.now()).toTimeString().slice(0, 8);
+  const k = view.closed;
+  const byName = { governor: i18n('who.governor'), owner: i18n('who.owner'), terminal: i18n('who.terminal') }[k.by] || k.by;
+  const at = new Date(k.at || Date.now()).toTimeString().slice(0, 8);
   const late = k.by !== 'owner';
   if (k.verb === 'closed') {
     // only taken off the table (terminal, or a 409 before the real facts
     // arrive by SSE) — never say it was approved, denied or answered.
     return late
-      ? `<div class="closed late"><span>晚了一步：<b>${byZh}</b>在 ${t} 已经处理了。这里不用再点了。</span></div>`
-      : `<div class="closed"><span>在 ${t} 已经处理了，结果还没传回来。已记下。</span></div>`;
+      ? `<div class="closed late"><span>${i18n('closed.late', { who: byName, time: at })}</span></div>`
+      : `<div class="closed"><span>${i18n('closed.pending', { time: at })}</span></div>`;
   }
   const text = view.kind === 'question'
-    ? (k.text ? `回答了：“${esc(k.text)}”` : '已回答')
-    : (k.verb === 'allow' ? '批准了' : `拒绝了${k.reason ? `，理由：“${esc(k.reason)}”` : ''}`);
-  return `<div class="closed ${late ? 'late' : (k.verb === 'deny' ? 'no' : '')}"><span>${late ? `晚了一步：<b>${byZh}</b>在 ${t} 先${text}。这里不用再点了。` : `<b>你</b>在 ${t} ${text}。已记下。`}</span></div>`;
+    ? (k.text ? i18n('closed.answeredText', { text: esc(k.text) }) : i18n('answer.default'))
+    : (k.verb === 'allow' ? i18n('closed.allowedText')
+      : i18n('closed.deniedText') + (k.reason ? i18n('closed.deniedReason', { reason: esc(k.reason) }) : ''));
+  return `<div class="closed ${late ? 'late' : (k.verb === 'deny' ? 'no' : '')}"><span>${late
+    ? i18n('closed.lateFull', { who: byName, time: at, text })
+    : i18n('closed.doneByYou', { who: byName, time: at, text })}</span></div>`;
 }
 function renderAskPanel(){
   const view = asks.get(openAskId);
   if (!view) { closeAskPanel(); return; }
   const closed = view.closed;
-  const head = `<div class="ask-head"><div><div class="ask-title" id="ask-title" tabindex="-1">${esc(askName(view))} ${view.kind === 'question' ? '在问' : '要权限'}</div><div class="ask-role">${esc(view.label || '')}</div></div><span class="pill you">${closed ? '已关闭' : (view.kind === 'question' ? '等你回答' : '等你批')}</span><button class="x" type="button" data-close aria-label="收起（不回答）">✕</button></div>`;
+  const head = `<div class="ask-head"><div><div class="ask-title" id="ask-title" tabindex="-1">${esc(askName(view))} ${view.kind === 'question' ? i18n('ask.asking') : i18n('ask.needsPermission')}</div><div class="ask-role">${esc(view.label || '')}</div></div><span class="pill you">${closed ? i18n('pill.closed') : (view.kind === 'question' ? i18n('status.waiting_answer') : i18n('status.need_approval'))}</span><button class="x" type="button" data-close aria-label="${i18n('aria.collapse')}">✕</button></div>`;
   const why = closed ? '' : askWhyLine(view);
   const body = closed ? '' : (view.kind === 'question' ? askQuestionBody(view) : askPermissionBody(view));
   const closedHtml = closed ? askClosedLine(view) : '';
-  const foot = closed ? '' : `<p class="foot">终端里也能答，先答的算。</p>`;
+  const foot = closed ? '' : `<p class="foot">${i18n('foot.terminalAnswers')}</p>`;
   $('#ask').innerHTML = head + why + closedHtml + body + foot;
   const form = $('#qform');
   if (form) {
@@ -4836,7 +5124,7 @@ async function decide(id, body){
   try {
     res = await fetch('/api/decide', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-City-Token': TOKEN }, body: JSON.stringify(body) });
   } catch (e) {
-    showAskFailure('没发出去（连不上城市服务器）。终端里还能答。');
+    showAskFailure(i18n('err.decideNetwork'));
     setAskControlsDisabled(false);
     return;
   }
@@ -4844,7 +5132,7 @@ async function decide(id, body){
     const view = asks.get(id);
     if (view && !view.closed) {
       view.closed = body.answers
-        ? { by:'owner', verb:'answer', text: Object.values(body.answers).join('；'), reason:'', at: Date.now() }
+        ? { by:'owner', verb:'answer', text: Object.values(body.answers).join(i18n('punct.answerJoin')), reason:'', at: Date.now() }
         : { by:'owner', verb: body.verb, text:'', reason: body.reason || '', at: Date.now() };
       view.shownAt = performance.now(); // Result line then close: askAutoClose(frame's now) closes it ASK_CLOSE_MS later
     }
@@ -4861,7 +5149,7 @@ async function decide(id, body){
     if (openAskId === id) renderAskPanel();
     return;
   }
-  showAskFailure(`没发出去（${res.status}）。终端里还能答，可以再试一次。`);
+  showAskFailure(i18n('err.decideStatus', { status: res.status }));
   setAskControlsDisabled(false);
 }
 $('#ask').addEventListener('click', e => { if (e.target.closest('[data-close]')) closeAskPanel(); });
@@ -4895,14 +5183,14 @@ if (DEMO) {
   $('#spawn-group').addEventListener('click', e => { const b = e.target.closest('[data-remote]'); if (b) demoRemote(b.dataset.remote); });
 } else {
   $('#spawn-group').hidden = true;
-  $('#proto').textContent = '实时 · 等服务器';
+  $('#proto').textContent = i18n('proto.live');
 }
 function connectLive(){
   const chip = $('#proto');
   let everOpen = false;
   const es = new EventSource('/events');
-  es.onopen = () => { everOpen = true; chip.textContent = '实时 · 已连接'; };
-  es.onerror = () => { chip.textContent = everOpen ? '实时 · 重连中…' : '实时 · 等服务器'; };
+  es.onopen = () => { everOpen = true; chip.textContent = i18n('proto.connected'); };
+  es.onerror = () => { chip.textContent = everOpen ? i18n('proto.reconnecting') : i18n('proto.live'); };
   es.onmessage = e => {
     let ev;
     try { ev = JSON.parse(e.data); } catch (err) { return; }
@@ -5028,25 +5316,25 @@ function seedDemoRemote(){
   apply({ type: 'remote', who: '', device: 'pc2', dev: 'dev-pc2', rid: 'acme/shop', br: 'main',
     ev: { type: 'gov', id: 'r:dev-pc2:gov', state: 'busy', terr, present: true } });
   apply({ type: 'remote', who: '', device: 'pc2', dev: 'dev-pc2', rid: 'acme/shop', br: 'test/checkout',
-    ev: { type: 'spawn', id: 'r:dev-pc2:s:1', role: 'worker', label: 'worker', task: '写结账测试', terr } });
+    ev: { type: 'spawn', id: 'r:dev-pc2:s:1', role: 'worker', label: 'worker', task: i18n('demo.task.checkoutTest'), terr } });
   apply({ type: 'remote', who: 'Ann', device: 'ann-laptop', dev: 'dev-ann', rid: 'acme/shop', br: 'main',
     ev: { type: 'gov', id: 'r:dev-ann:gov', state: 'busy', terr, present: true } });
   apply({ type: 'remote', who: 'Ann', device: 'ann-laptop', dev: 'dev-ann', rid: 'acme/shop', br: 'feat/payment-retry',
-    ev: { type: 'spawn', id: 'r:dev-ann:s:1', role: 'worker', label: 'worker', task: '改支付超时重试', terr } });
+    ev: { type: 'spawn', id: 'r:dev-ann:s:1', role: 'worker', label: 'worker', task: i18n('demo.task.paymentRetry'), terr } });
   apply({ type: 'remote', who: 'Ann', device: 'ann-laptop', dev: 'dev-ann', rid: 'acme/shop', br: 'feat/payment-retry',
-    ev: { type: 'stuck', id: 'r:dev-ann:s:1', tool: 'AskUserQuestion', question: '支付超时要不要自动重试？' } });
-  apply({ type: 'remote', who: 'Bo', device: '云端', dev: 'dev-bo', rid: 'acme/shop', br: 'chore/deps-scan',
-    ev: { type: 'spawn', id: 'r:dev-bo:s:1', role: 'worker', label: 'worker', task: '扫描依赖漏洞', terr } });
+    ev: { type: 'stuck', id: 'r:dev-ann:s:1', tool: 'AskUserQuestion', question: i18n('demo.q.paymentRetry') } });
+  apply({ type: 'remote', who: 'Bo', device: i18n('demo.device.cloud'), dev: 'dev-bo', rid: 'acme/shop', br: 'chore/deps-scan',
+    ev: { type: 'spawn', id: 'r:dev-bo:s:1', role: 'worker', label: 'worker', task: i18n('demo.task.depsScan'), terr } });
 }
 /* the three demo-only #spawn-group buttons: 中继断开 / 恢复 / 退出联城 */
 function demoRemote(kind){
   if (kind === 'off') {
     apply({ type: 'team', host: DEMO_RELAY_HOST, state: 'off', queued: demoQueued });
-    log('联城中继断开：其他成员定格，我的城市照常干活。');
+    log(i18n('log.relayOff'));
   } else if (kind === 'on') {
     demoQueued = 0; demoTickAcc = 0;
     apply({ type: 'team', host: DEMO_RELAY_HOST, state: 'ok', queued: 0 });
-    log('联城恢复：其他成员更新到最新。');
+    log(i18n('log.relayOn'));
   } else if (kind === 'leave') {
     // city-join: the server sends 'leave'/present:false for every person and gov of a dropped
     // team, then the 'team' state -- the demo plays back the same shape (requirements/city.md).
@@ -5060,7 +5348,7 @@ function demoRemote(kind){
     }
     apply({ type: 'team', host: DEMO_RELAY_HOST, state: 'left', queued: 0 });
     meInfo = null;
-    log('退出联城：其他成员从我的城市消失，我的城市不变。');
+    log(i18n('log.relayLeave'));
   }
   lastDetailKey = ''; lastRoster = ''; renderPanel(); needFrame = true;
 }
@@ -5106,7 +5394,7 @@ function frame(now){
 }
 resize(); resetCam(); updateCamera();
 Promise.all([
-  loadAll((n, total) => { $('#loading-text').textContent = `正在搬来素材 ${n}/${total}`; }),
+  loadAll((n, total) => { $('#loading-text').textContent = i18n('loading.progress', { n, total }); }),
   loadSmokeTex(), // Worktrees: the stalled-site smoke sprites (siteDecor's 'particles/smoke_01') -- its own loader, not loadTex() (see loadSmokeTex's own comment)
   ...['suburban/Textures/variation-a.png', 'suburban/Textures/variation-b.png', 'suburban/Textures/variation-c.png'].map(loadTex),
 ]).then(([, smoke, ...tex]) => {
@@ -5119,7 +5407,7 @@ Promise.all([
   new ResizeObserver(() => resize()).observe(stage);
   applyTheme(); updateCamera(); sync(0, 0); renderer.render(scene, camera); renderPanel();
   requestAnimationFrame(frame);
-}).catch(err => { $('#loading-text').textContent = '素材没加载成功：' + ((err && err.message) || err); });
+}).catch(err => { $('#loading-text').textContent = i18n('loading.error', { err: (err && err.message) || err }); });
 })();
 </script>
 </body>

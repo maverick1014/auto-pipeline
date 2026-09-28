@@ -26,7 +26,7 @@ bin/agent_city_relay.py (tests/test_agent_city_relay_client.py) for the rest:
     - spawn gets "terr": the LOCAL territory of that rid (the joined local
       repo with that origin; RelayHub.repo_for(rid)). A rid with no local
       repo -> the line is dropped.
-    - gov gets "id": "r:<dev>:gov", "terr" as above and "present" (false on
+    - gov gets "id": "r:<dev>:gov:<terr>" (idea-city C3: one per repo), "terr" as above and "present" (false on
       SessionEnd), like the local gov event
     - never a build, never into world.json, never in /health "agents"
   A new page gets, right after its snapshot and only while the hub has a
@@ -211,7 +211,7 @@ class TestJoined(RelayServerCase):
         self.assertTrue(wait_for(lambda: client.events("remote")))
         got = client.events("remote")[0]
         self.assertEqual(got["who"], "Ann")
-        self.assertEqual(got["ev"], {"type": "gov", "id": "r:dev-ann:gov", "state": "busy",
+        self.assertEqual(got["ev"], {"type": "gov", "id": "r:dev-ann:gov:" + self.terr(), "state": "busy",
                                      "terr": self.terr(), "present": True})
 
     def test_two_devices_never_share_ids(self):
@@ -269,7 +269,7 @@ class TestJoined(RelayServerCase):
                           for p in snap["people"]],
                          [("r:dev-bo:s:t1", "Bo", "bo-laptop", self.terr(), "dev-bo")])
         self.assertEqual([(g["id"], g["who"], g["state"], g["dev"]) for g in snap["govs"]],
-                         [("r:dev-cy:gov", "Cy", "busy", "dev-cy")])
+                         [("r:dev-cy:gov:" + self.terr(), "Cy", "busy", "dev-cy")])
         self.assertEqual([(r["host"], r["state"]) for r in snap["teams"]], [(self.fake.host, "ok")])
         kinds = [m.get("type") for m in late.messages]
         self.assertLess(kinds.index("snapshot"), kinds.index("remote_snapshot"))
@@ -328,7 +328,7 @@ class TestJoined(RelayServerCase):
                         "no 'left' team event")
         evs = [e["ev"] for e in client.events("remote")]
         self.assertIn({"type": "leave", "id": "r:dev-bo:s:t1"}, evs)
-        self.assertTrue(any(e.get("id") == "r:dev-ann:gov" and e.get("present") is False
+        self.assertTrue(any(e.get("id") == "r:dev-ann:gov:" + self.terr() and e.get("present") is False
                             for e in evs))
 
     def test_relay_route(self):

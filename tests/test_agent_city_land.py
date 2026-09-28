@@ -60,14 +60,16 @@ CONTRACT
         face within 0.9 tiles of the border's middle.
       - ravine floor: every 'k' centre is on a flat face at y <= -0.8.
       - cheap: at most 60 triangles per map tile (w * h); groundGeometry +
-        waterGeometry + laneGeometry of the demo world under 700 ms in node
-        (buildLand runs on every world event).
+        waterGeometry + laneGeometry of the demo world under 700 ms of CPU time in
+        node, best of 3 runs (buildLand runs on every world event; wall clock
+        flaked under machine load).
     waterGeometry(view) -> the same shape: flat, facing up, y in [-0.2, 0),
       blue; every 'w' 's' 'B' centre on it; its outline smooth (the same three
       outline rules as the ground).
     lanePaths(view) -> [{pts: [[x, z], ...]}]: smooth centre lines of the
       road ('r') and track ('t') tiles, through bridges ('B'):
-      - every 'r' and 't' centre within 0.3 of a lane line;
+      - every 'r' and 't' centre within 0.3 of a lane line, except a lone tile with no
+        road/track/bridge on any side (idea-city C11: it draws nothing);
       - every lane point within 0.75 of an 'r' 't' 'B' centre, and at least
         0.55 from every plot 'P' and hall 'H' centre;
       - smooth: inside one lane, consecutive pieces turn at most 35 degrees.
@@ -483,10 +485,16 @@ for (const [name, view] of Object.entries(views)) {
   for (let r = 0; r < view.h; r++) for (let c = 0; c < view.w; c++) tiles.push([view.x0 + c, view.z0 + r, view.rows[r][c]]);
   const res = {};
   // ---- ground
-  let t0 = Date.now();
-  const g = box.groundGeometry(view);
-  box.waterGeometry(view); box.laneGeometry(view);
-  res.ms = Date.now() - t0;
+  // cost = CPU time, not wall clock (machine load must not count), best of 3 runs (buildLand runs
+  // on every world event, so later runs are warm; the first run also pays JIT warm-up)
+  let g; res.ms = Infinity;
+  for (let i = 0; i < 3; i++) {
+    const c0 = process.cpuUsage();
+    g = box.groundGeometry(view);
+    box.waterGeometry(view); box.laneGeometry(view);
+    const c = process.cpuUsage(c0);
+    res.ms = Math.min(res.ms, (c.user + c.system) / 1000);
+  }
   const T = tris(g);
   res.tris = T.length; res.area = view.w * view.h;
   const top = T.filter(t => t.flat && Math.abs(t.y) < 1e-6), low = T.filter(t => t.flat && t.y <= -0.8), side = T.filter(t => !t.flat);
@@ -548,7 +556,8 @@ for (const [name, view] of Object.entries(views)) {
     const u = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L)) : 0; best = Math.min(best, Math.hypot(ax + dx * u - x, az + dz * u - z)); } return best; };
   const laneTiles = tiles.filter(t => 'rtB'.includes(t[2])), blocked = tiles.filter(t => 'PH'.includes(t[2]));
   res.lanes = { n: paths.length,
-    uncovered: tiles.filter(t => 'rt'.includes(t[2]) && segDist(t[0] + .5, t[1] + .5) > .3).slice(0, 5),
+    // idea-city C11: a lone road/track tile (no road/track/bridge on any side) draws nothing
+    uncovered: tiles.filter(t => 'rt'.includes(t[2]) && n4(t[0], t[1], ch => 'rtB'.includes(ch)) > 0 && segDist(t[0] + .5, t[1] + .5) > .3).slice(0, 5),
     offRoad: pts.filter(([x, z]) => !laneTiles.some(t => Math.hypot(t[0] + .5 - x, t[1] + .5 - z) <= .75)).slice(0, 5),
     onPlot: pts.filter(([x, z]) => blocked.some(t => Math.hypot(t[0] + .5 - x, t[1] + .5 - z) < .55)).slice(0, 5) };
   let turnMax = 0, turnAt = null;
@@ -817,7 +826,7 @@ class TestEmptyWorld(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         fns = tp.page_fns("distMax", "zoomStep", "landReady", "updateGovernor", "showEmptyLine", "governorAt",
-                          optional=("landSpread", "centreHeight", "islandSpread"))
+                          optional=("landSpread", "centreHeight", "islandSpread", "govTalk", "govSay"))
         cls.out = tp.run_node(EMPTY_JS, {"prelude": tp.constants_prelude(), "fns": fns})
 
     def test_zoom_keeps_working_with_no_land(self):
@@ -838,7 +847,7 @@ class TestEmptyWorld(unittest.TestCase):
         self.assertTrue("landReady()" in (tp.function_source("updatePerson") or ""), "people never float in the void either")
 
     def test_one_line_says_there_is_no_territory_yet(self):
-        m = re.search(r"<p\b[^>]*\bid=\"empty-land\"[^>]*>(.*?)</p>", tp.markup(), re.S)
+        m = re.search(r"<p\b[^>]*\bid=\"empty-land\"[^>]*>(.*?)</p>", tp.zh_resolved(tp.markup()), re.S)  # idea-city C1: the text comes from TEXT (data-t)
         self.assertIsNotNone(m, '<p id="empty-land"> not found')
         self.assertIn("hidden", m.group(0).split(">")[0])
         self.assertIn("还没有领地", m.group(1))

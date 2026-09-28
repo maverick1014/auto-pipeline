@@ -156,7 +156,7 @@ for p in (HERE, BIN):
 
 import agent_city as ac  # noqa: E402
 from test_agent_city_page import (case_block, const_object, function_source, inline_script,  # noqa: E402
-                                  js_value, page_fns, run_node)
+                                  js_value, page_fns, run_node, zh_resolved, constants_prelude, text_zh)
 from test_agent_city_server import ServerCase, wait_for  # noqa: E402
 
 REPO = "/r/shop/.git"
@@ -659,13 +659,13 @@ class TestPageChat(unittest.TestCase):
     def html(self, *cases):
         esc = re.search(r"^const esc = .*;$", inline_script(), re.M)
         self.assertIsNotNone(esc, "const esc = ...; not found")
-        lit = const_object("CHAT_STATE_ZH")
-        self.assertIsNotNone(lit, "const CHAT_STATE_ZH = {...}; not found")
-        prelude = esc.group(0).replace("const esc", "var esc") + "\nvar CHAT_STATE_ZH = %s;" % lit
+        # idea-city C1: the state words live in TEXT (chat.state.*), T() picks the language
+        prelude = esc.group(0).replace("const esc", "var esc") + "\n" + constants_prelude()
         return run_node(CHAT_JS, {"prelude": prelude, "fns": page_fns("chatHtml"), "cases": [list(c) for c in cases]})
 
     def test_state_words(self):
-        self.assertEqual(js_value(const_object("CHAT_STATE_ZH") or "null"),
+        zh = text_zh()  # idea-city C1
+        self.assertEqual({k: zh.get("chat.state." + k) for k in ("queued", "delivered", "undelivered")},
                          {"queued": "已发送", "delivered": "已送达", "undelivered": "没送到"})
 
     def test_chat_html(self):
@@ -718,12 +718,12 @@ const box = { byId: id => people[id], nameOf: c => c.label + ' · ' + c.task };
 vm.createContext(box); vm.runInContext(fns, box);
 process.stdout.write(JSON.stringify(['s:tm1', 'a9', 'gov:t1', 's:gone'].map(t => box.chatDisplayName(t))));
 """
-        out = run_node(js, {"fns": page_fns("chatDisplayName")})
+        out = run_node(js, {"fns": constants_prelude() + "\n" + page_fns("chatDisplayName")})
         self.assertEqual(out, ["task-manager · shop", "worker · form", "总督", "s:gone"],
                          "E2E 2026-09-27: the log said 你 → tm1 instead of the name")
 
     def test_window_has_the_conversation_and_the_box(self):
-        body = function_source("renderDetail") or ""
+        body = zh_resolved(function_source("renderDetail") or "")  # idea-city C1
         for needle in ("chatHtml(", 'id="chat"', 'id="say"', 'id="say-text"', 'maxlength="4000"', "发送", "组长"):
             with self.subTest(needle=needle):
                 self.assertIn(needle, body)
@@ -766,7 +766,7 @@ vm.runInContext(fns, box);
   process.stdout.write(JSON.stringify([down, refused, took, (box.chats.get('s:tm1') || {}).error || '']));
 })();
 """
-        down, refused, took, _ = run_node(js, {"fns": page_fns("sendChat")})
+        down, refused, took, _ = run_node(js, {"fns": constants_prelude() + "\n" + page_fns("sendChat")})
         self.assertEqual((down, refused, took), (False, False, True))
         text = inline_script()
         m = re.search(r"addEventListener\('submit', e => \{(.*?)\n\}\);", text, re.S)
@@ -774,7 +774,7 @@ vm.runInContext(fns, box);
         self.assertRegex(m.group(1), r"then\(\s*ok\s*=>[^\n]*if \(ok", "the box is cleared only when the send worked")
 
     def test_chat_event(self):
-        block = case_block("chat") or ""
+        block = zh_resolved(case_block("chat") or "")
         self.assertTrue(block, "case 'chat': not handled")
         self.assertIn("chats", block)
         self.assertIn("你 →", block)

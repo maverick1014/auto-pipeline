@@ -105,7 +105,7 @@ process.stdout.write(JSON.stringify({
   gov: box.askWhyLine({ kind: 'question', why: 'no-governor', agent: 'gov', terr: 't' }),
   other: box.askWhyLine({ kind: 'question', why: 'no-governor', agent: 'w1', terr: 't' }) }));
 """
-        out = tp.run_node(js, {"fns": tp.page_fns("askWhyLine")})
+        out = tp.run_node(js, {"fns": tp.constants_prelude() + "\n" + tp.page_fns("askWhyLine")})
         self.assertIn("总督定不了，交给你", out["gov"])
         self.assertNotIn("没有总督在", out["gov"])
         self.assertIn("没有总督在", out["other"], "a citizen's question with no governor keeps its line")

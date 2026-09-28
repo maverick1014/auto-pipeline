@@ -60,7 +60,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from test_agent_city_page import (function_source, inline_script, markup, media_block,  # noqa: E402
-                                  page, page_fns, run_node, style)
+                                  page, page_fns, run_node, style, zh_resolved)
 
 
 GONE_FUNCTIONS = ("renderRoster", "renderBalance", "balanceHtml", "kindBar", "openBalanceKind", "signText")
@@ -123,6 +123,7 @@ class TestWindowMarkup(unittest.TestCase):
 
     def test_window_holds_title_close_detail_and_log(self):
         _, block = win_block()
+        block = zh_resolved(block)  # idea-city C1: aria-label text may come from TEXT (data-t-aria)
         self.assertIn('id="win-title"', block)
         self.assertRegex(block, r'<button type="button"[^>]*id="win-close"[^>]*aria-label="关闭"|'
                                 r'<button type="button"[^>]*aria-label="关闭"[^>]*id="win-close"')
@@ -141,7 +142,7 @@ class TestWindowMarkup(unittest.TestCase):
         self.assertRegex(block, r"\.stage canvas\{[^}]*position:absolute")
 
     def test_log_button_in_the_top_bar(self):
-        bar = re.search(r'<header class="bar"[^>]*>(.*?)</header>', markup(), re.S)
+        bar = re.search(r'<header class="bar"[^>]*>(.*?)</header>', zh_resolved(markup()), re.S)
         self.assertIsNotNone(bar, '<header class="bar"> not found')
         self.assertRegex(bar.group(1), r'<button type="button"[^>]*id="logbtn"[^>]*>[^<]*动态')
 
@@ -209,7 +210,7 @@ class TestWindowWiring(unittest.TestCase):
                 self.assertNotIn(name, body)
 
     def test_render_win(self):
-        body = function_source("renderWin") or ""
+        body = zh_resolved(function_source("renderWin") or "")  # idea-city C1
         self.assertTrue(body, "renderWin() not found")
         for needle in ("'#win'", "winState()", "'#detail'", "'#log'", "'#win-title'", "动态", "hidden"):
             with self.subTest(needle=needle):
