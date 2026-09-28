@@ -10,7 +10,7 @@ CONTRACT
   1. Off costs nothing. No <dir>/on, or its pid is not a number, or that
      process is dead: write nothing, print nothing, exit 0.
   2. On: read the hook JSON from stdin and append ONE line with exactly these
-     keys (17), in this order, all strings, "" when absent:
+     keys (16), in this order, all strings, "" when absent:
        ev    hook_event_name
        sid   session_id
        aid   agent_id     } only from the part of the payload before
@@ -36,23 +36,8 @@ CONTRACT
              "commondir" file (relative to it) points at the common dir.
              Physical path through `cd -P` and `pwd -P`. JSON-escaped.
              "" outside git or when cwd does not exist.
-       kind  growth: the kind of work of a file edit, only for PostToolUse of
-             Edit, Write, MultiEdit (tool_input.file_path) and NotebookEdit
-             (tool_input.notebook_path), found in the first 4096 bytes; else
-             "". The path is taken relative to the folder holding .git (a
-             file outside it: its own name), then the first rule that fits:
-               test    a folder test, tests, __tests__, spec, e2e; or a name
-                       test_*, *_test.*, *.test.*, *.spec.*, *_spec.*, *Test.*
-               doc     a name *.md *.markdown *.mdx *.rst *.adoc *.txt; or a
-                       folder docs, doc, requirements
-               ui      a name *.html *.htm *.css *.scss *.sass *.less *.jsx
-                       *.tsx *.vue *.svelte; or a folder components, ui,
-                       views, pages, widgets, screens
-               script  a name *.sh *.bash *.zsh *.fish *.ps1 *.bat *.cmd *.mk,
-                       Makefile, Dockerfile; or a folder bin, scripts, .github
-               other   anything else
-             Only the kind is written here; the repo-relative path goes in
-             "file" (city-quality), never the absolute path.
+       (no "kind": idea-city C4 -- the server decides the building from "file"
+        with its own rules, tests/test_agent_city_idea_server.py)
        ask   city-people (tests/test_agent_city_chain.py): "q" for a
              SubagentStop whose last_assistant_message starts with
              "QUESTION:" and a PostToolUse of SendMessage whose
@@ -94,7 +79,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(ROOT, "bin", "agent-city-hook.sh")
 BASH = shutil.which("bash")
-KEYS = {"ev", "sid", "aid", "at", "tool", "nt", "proj", "role", "desc", "sub", "q", "klen", "repo", "kind", "ask", "wt", "file"}
+KEYS = {"ev", "sid", "aid", "at", "tool", "nt", "proj", "role", "desc", "sub", "q", "klen", "repo", "ask", "wt", "file"}
 
 CITY_COMMAND = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
                 '"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh"; exit 0')
@@ -460,26 +445,10 @@ def git(cwd, *args):
                    stdin=subprocess.DEVNULL)
 
 
-KIND_TABLE = [
-    ("tests/test_page.py", "test"), ("src/__tests__/a.js", "test"), ("spec/models/user_spec.rb", "test"),
-    ("pkg/foo_test.go", "test"), ("web/app.test.tsx", "test"), ("web/app.spec.ts", "test"),
-    ("test_util.py", "test"), ("test/helper.js", "test"), ("e2e/login.js", "test"), ("src/FooTest.java", "test"),
-    ("tests/fixtures/page.html", "test"),
-    ("README.md", "doc"), ("docs/guide.html", "doc"), ("requirements/city.md", "doc"), ("notes.txt", "doc"),
-    ("CHANGELOG.rst", "doc"), ("doc/api.adoc", "doc"), ("site/intro.mdx", "doc"),
-    ("bin/agent-city.html", "ui"), ("src/components/Button.js", "ui"), ("styles/site.css", "ui"),
-    ("app/views/home.erb", "ui"), ("lib/ui/theme.dart", "ui"), ("App.vue", "ui"), ("Page.svelte", "ui"),
-    ("a.scss", "ui"), ("src/pages/index.tsx", "ui"), ("lib/screens/login.dart", "ui"),
-    ("bin/agent-city.sh", "script"), ("scripts/deploy.py", "script"), ("Makefile", "script"),
-    ("Dockerfile", "script"), ("tools/x.bash", "script"), (".github/workflows/ci.yml", "script"),
-    ("bin/agent_city.py", "script"), ("build.ps1", "script"),
-    ("src/app.py", "other"), ("lib/x.ts", "other"), ("agent.conf", "other"), ("package.json", "other"),
-    ("db/schema.sql", "other"), ("main.go", "other"), ("latest.py", "other"), ("contest.py", "other"),
-]
 
 
 class TestRepoAndKind(HookCase):
-    """Growth: which territory (repo) and which building (kind), never the path."""
+    """Growth: which territory (repo), never the path; the server picks the building (idea-city C4)."""
 
     def setUp(self):
         super().setUp()
@@ -534,41 +503,6 @@ class TestRepoAndKind(HookCase):
         git(odd, "init", "-q")
         self.assertEqual(self.at(odd)["repo"], os.path.realpath(os.path.join(odd, ".git")))
 
-    def test_kind_of_every_file(self):
-        for rel, kind in KIND_TABLE:
-            with self.subTest(path=rel):
-                self.assertEqual(self.edit(rel)["kind"], kind)
-
-    def test_every_edit_tool(self):
-        for tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
-            with self.subTest(tool=tool):
-                self.assertEqual(self.edit("tests/test_x.py", tool=tool)["kind"], "test")
-
-    def test_the_path_inside_the_repo_decides(self):
-        inner = os.path.join(self.base, "tests", "proj")
-        os.makedirs(os.path.join(inner, "src"))
-        git(inner, "init", "-q")
-        self.assertEqual(self.edit("src/a.py", cwd=inner, root=inner)["kind"], "other",
-                         "a repo that lives under a folder named tests is not all tests")
-
-    def test_a_file_outside_the_repo_goes_by_its_name(self):
-        self.assertEqual(self.edit(os.path.join(self.base, "elsewhere", "notes.md"))["kind"], "doc")
-        self.assertEqual(self.edit(os.path.join(self.base, "tests", "x.py"))["kind"], "other")
-
-    def test_worktree_edits_classify_inside_the_worktree(self):
-        self.assertEqual(self.edit("tests/test_a.py", cwd=self.wt, root=self.wt)["kind"], "test")
-        self.assertEqual(self.edit("ui/a.js", cwd=self.wt, root=self.wt)["kind"], "ui")
-
-    def test_kind_only_for_a_finished_file_edit(self):
-        cases = [("PostToolUse", "Bash", {"command": "vi tests/test_a.py"}),
-                 ("PostToolUse", "Read", {"file_path": os.path.join(self.shop, "tests/test_a.py")}),
-                 ("PermissionRequest", "Edit", {"file_path": os.path.join(self.shop, "tests/test_a.py")}),
-                 ("PostToolUse", "Edit", {"old_string": "no path here"})]
-        for ev, tool, ti in cases:
-            with self.subTest(ev=ev, tool=tool):
-                self.run_hook(payload(ev, ("a1", "worker"), cwd=self.shop, tool_name=tool, tool_input=ti))
-                self.assertEqual(self.lines()[-1]["kind"], "")
-
     def test_the_path_is_written_only_as_the_repo_relative_file_key(self):
         # city-quality (requirements/city.md, Quality): buildings remember their
         # files, so the repo-relative path goes in "file" -- never the absolute
@@ -581,7 +515,7 @@ class TestRepoAndKind(HookCase):
             raw = fh.read()
         self.assertNotIn(self.shop.encode(), raw.replace(self.common.encode(), b""))
         rows = self.lines()
-        self.assertEqual([r["kind"] for r in rows], ["test", "other", "doc"])
+        self.assertNotIn("kind", rows[0])
         self.assertEqual([r["file"] for r in rows], list(rels))
         for r in rows:
             self.assertFalse([k for k, v in r.items() if k != "file" and marker in v])

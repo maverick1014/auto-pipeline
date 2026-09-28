@@ -4,7 +4,7 @@ Quality and Growth).
 CONTRACT
 
   Hook (bin/agent-city-hook.sh)
-    A 17th key "file", last, after "wt": for a PostToolUse of Edit, Write,
+    A key "file", last, after "wt" (16 keys since idea-city C4 dropped "kind"): for a PostToolUse of Edit, Write,
     MultiEdit (tool_input.file_path) or NotebookEdit (notebook_path) found
     in the first 4096 bytes, the path relative to the folder holding .git
     (the same relative path the kind rule already uses), JSON-escaped;
@@ -202,9 +202,10 @@ class TestHookFile(unittest.TestCase):
         row = self.row(self.root, path=os.path.join(self.root, 'we"ird.py'))
         self.assertEqual(row["file"], 'we"ird.py')
 
-    def test_file_is_the_seventeenth_and_last_key(self):
+    def test_file_is_the_sixteenth_and_last_key(self):
+        # idea-city C4: the hook line has no "kind" any more
         row = self.row(self.root, path=os.path.join(self.root, "a.py"))
-        self.assertEqual(len(row), 17)
+        self.assertEqual(len(row), 16)
         self.assertEqual(list(row)[-3:], ["ask", "wt", "file"])
 
 
