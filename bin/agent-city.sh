@@ -49,7 +49,7 @@
 # pack's SessionStart sender and city hooks never run, no matter how many of
 # the repos carry it. The fix lives one level up, in user-level settings,
 # which the environment's Setup script (pasted by the owner, see
-# skills/city/setup.md step 7) can write before Claude Code even starts:
+# skills/city/setup.md section 7) can write before Claude Code even starts:
 # `agent-city.sh cloud-hooks` copies this plugin's bin/ to a fixed path under
 # $AGENT_CITY_HOME and merges the same SessionStart send hook and city hooks
 # (hooks/hooks.json's agent-city-hook.sh entries) into

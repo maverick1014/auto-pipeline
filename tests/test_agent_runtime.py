@@ -31,7 +31,12 @@ the owner switches between Orca and the Claude app inside one day.
     2. CLAUDE_CODE_REMOTE=true                        -> cloud
     3. orca on PATH and `orca worktree ps --json`
        answers inside 3 seconds                       -> orca
+       cut off at 3 seconds -> one more try, 3 seconds -> orca
+       (a busy Orca can miss one window; seen 2026-09-28)
     4. anything else                                  -> plain
+
+    The retry is for a timeout only. An orca that answers fast with an error
+    (app not running) is a real answer: plain at once, one call, no retry.
 
 $AGENT_RUNTIME is a one-shot override, not a cache: it is something a caller
 SETS, never something this script writes. It exists for two reasons. A human
@@ -281,6 +286,49 @@ class TestKindAuto(RuntimeCase):
 
     def test_a_fast_orca_is_not_cut_off(self):
         self.assertEqual(self.kind(env={"ORCA_STUB_SLEEP": "1"}), "orca")
+
+
+class TestKindRetriesASlowProbe(RuntimeCase):
+    """A busy Orca that misses the first 3 second window gets one more."""
+
+    def slow_first_orca(self, first_sleep):
+        """An orca stub: the first call sleeps, every later one is fast."""
+        count = os.path.join(self.repo.base, "orca_count")
+        self.repo.stub_tool("orca", (
+            "#!/usr/bin/env bash\n"
+            "{ printf 'CALL'; for a in \"$@\"; do printf '\\t%%s' \"$a\"; done; "
+            "printf '\\n'; } >> \"$ORCA_STUB_LOG\"\n"
+            "n=$(cat %(count)s 2>/dev/null || echo 0); n=$((n+1)); "
+            "echo $n > %(count)s\n"
+            "[ \"$n\" = 1 ] && sleep %(sleep)s\n"
+            "case \"${1:-} ${2:-}\" in\n"
+            "  \"worktree ps\") cat \"$ORCA_STUB_PS\";;\n"
+            "  *) printf '{\"ok\":true,\"result\":{}}\\n';;\n"
+            "esac\n") % {"count": count, "sleep": first_sleep})
+
+    def probe_calls(self):
+        return [c for c in self.repo.calls() if c[:2] == ["worktree", "ps"]]
+
+    def test_a_first_probe_cut_off_then_a_fast_answer_is_orca(self):
+        self.slow_first_orca(6)
+        self.assertEqual(self.kind(), "orca")
+        self.assertEqual(len(self.probe_calls()), 2)
+
+    def test_a_fast_first_answer_makes_one_call(self):
+        self.slow_first_orca(0)
+        self.assertEqual(self.kind(), "orca")
+        self.assertEqual(len(self.probe_calls()), 1)
+
+    def test_a_fast_error_is_plain_without_a_retry(self):
+        self.repo.stub_orca_down()
+        self.assertEqual(self.kind(), "plain")
+        self.assertEqual(len(self.probe_calls()), 1)
+
+    def test_slow_twice_is_plain_and_stays_under_ten_seconds(self):
+        started = time.time()
+        self.assertEqual(self.kind(env={"ORCA_STUB_SLEEP": "20"}), "plain")
+        self.assertLess(time.time() - started, 10)
+        self.assertEqual(len(self.probe_calls()), 2)
 
 
 class TestKindCloud(RuntimeCase):

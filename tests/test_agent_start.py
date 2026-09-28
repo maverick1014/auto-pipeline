@@ -48,6 +48,22 @@ When the stdin JSON has a session_id, the real work runs once per event:
     a repo that is not set up stays untouched: no marker either
 
 The resource helper below is unchanged by all this.
+
+No quiz for subagents (S9). A worker or deputy runs agent-start.sh by hand
+(CLAUDE.md says so) inside its parent's session. Nothing in its environment
+tells it apart from the parent: checked 2026-09-28, a worker subagent's env
+is the parent's (same CLAUDE_CODE_SESSION_ID, CLAUDE_PID, AGENT_ROLE,
+CLAUDE_EFFORT). What does tell: the session already passed the quiz, and a
+session passes before it spawns anyone.
+
+    --answer PASS with a session id (CLAUDE_CODE_SESSION_ID) writes the
+      marker $PROJECT_GITDIR/agent_quiz_<session id>. A FAIL writes none.
+      No session id -> no marker.
+    a normal start whose session id (the hook's stdin session_id, else
+      CLAUDE_CODE_SESSION_ID) has that marker prints QUIZ_DONE_LINE as its
+      last line, in place of the quiz line
+    another session, or no session id -> the quiz line, as before
+    agent_quiz_* markers older than AGENT_MARKER_DAYS go with the others
 """
 
 import json
@@ -69,6 +85,8 @@ MONITOR_LINE = ("/tmp/wt | alpha | pane working | commit 2m ago | "
 RULES_LINE = "RULES: read %s/PRINCIPLES.md now (S8)."
 QUIZ_LINE = ("QUIZ: run %s/bin/agent-start.sh --quiz, then --answer. "
              "No work until PASS.")
+QUIZ_DONE_LINE = ("QUIZ: PASS already in this session. A subagent (worker, "
+                  "deputy) takes no quiz (S9). Go on with your brief.")
 
 
 class StartCase(ScriptCase):
@@ -494,6 +512,89 @@ class TestQuizStillWorks(StartCase):
         result = self.start("--answer", self.ANSWERS.replace("1A", "1B"))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("FAIL", result.stdout)
+
+
+class TestNoQuizForSubagents(StartCase):
+    ANSWERS = TestQuizStillWorks.ANSWERS
+
+    def sid(self, sid="sess-1", **more):
+        env = {"CLAUDE_CODE_SESSION_ID": sid, "AGENT_ROLE": "task-manager"}
+        env.update(more)
+        return env
+
+    def quiz_marker(self, sid="sess-1"):
+        return self.repo.path(".git", "agent_quiz_%s" % sid)
+
+    def pass_quiz(self, sid="sess-1"):
+        out = self.assertOk(self.start("--answer", self.ANSWERS,
+                                       env=self.sid(sid)))
+        self.assertIn("29/29 PASS", out)
+
+    def test_a_pass_writes_the_session_marker(self):
+        self.pass_quiz()
+        self.assertTrue(os.path.exists(self.quiz_marker()))
+
+    def test_a_run_by_hand_after_the_pass_skips_the_quiz_line(self):
+        self.pass_quiz()
+        lines = self.lines(self.assertOk(self.start(env=self.sid())))
+        self.assertNotIn(self.quiz_line(), lines)
+        self.assertEqual(lines[-1], QUIZ_DONE_LINE)
+        self.assertEqual(lines[-2], self.rules_line())
+
+    def test_the_hook_session_id_counts_too(self):
+        self.pass_quiz("sess-9")
+        stdin = json.dumps({"cwd": self.repo.dir, "session_id": "sess-9",
+                            "source": "resume"})
+        out = self.assertOk(self.start(stdin=stdin,
+                                       env={"AGENT_ROLE": "task-manager"}))
+        self.assertEqual(self.lines(out)[-1], QUIZ_DONE_LINE)
+
+    def test_another_session_still_gets_the_quiz(self):
+        self.pass_quiz("sess-1")
+        lines = self.lines(self.assertOk(self.start(env=self.sid("sess-2"))))
+        self.assertEqual(lines[-1], self.quiz_line())
+
+    def test_no_session_id_still_gets_the_quiz(self):
+        self.pass_quiz("sess-1")
+        out = self.assertOk(self.start(env={"AGENT_ROLE": "task-manager"}))
+        self.assertEqual(self.lines(out)[-1], self.quiz_line())
+
+    def test_a_fail_writes_no_marker(self):
+        result = self.start("--answer", self.ANSWERS.replace("1A", "1B"),
+                            env=self.sid())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(os.path.exists(self.quiz_marker()))
+        lines = self.lines(self.assertOk(self.start(env=self.sid())))
+        self.assertEqual(lines[-1], self.quiz_line())
+
+    def test_a_pass_with_no_session_id_writes_no_marker(self):
+        self.assertOk(self.start("--answer", self.ANSWERS))
+        left = [n for n in os.listdir(self.repo.path(".git"))
+                if n.startswith("agent_quiz_")]
+        self.assertEqual(left, [])
+
+    def test_the_pass_output_is_unchanged(self):
+        out = self.assertOk(self.start("--answer", self.ANSWERS,
+                                       env=self.sid()))
+        self.assertEqual(self.lines(out),
+                         ["QUIZ RESULT: 29/29 PASS", "You may start work."])
+
+    def test_it_still_fits_the_cap(self):
+        self.pass_quiz()
+        out = self.assertOk(self.start(env=self.sid()))
+        self.assertLessEqual(len(out.encode()), 2000)
+
+    def test_an_old_quiz_marker_is_cleaned_at_startup(self):
+        old = self.quiz_marker("old-sess")
+        with open(old, "w") as fh:
+            fh.write("pass\n")
+        when = time.time() - 8 * 86400
+        os.utime(old, (when, when))
+        stdin = json.dumps({"cwd": self.repo.dir, "session_id": "cur-q",
+                            "source": "startup"})
+        self.assertOk(self.start(stdin=stdin,
+                                 env={"AGENT_ROLE": "task-manager"}))
+        self.assertFalse(os.path.exists(old))
 
 
 class TestAutoResume(StartCase):

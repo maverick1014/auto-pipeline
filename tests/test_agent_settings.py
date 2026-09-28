@@ -9,9 +9,19 @@ CONTRACT:
 
   agent_conf.py gets both in NUMBER_BOUNDS, HINTS and GROUPS["limits"], so
   ./agent-settings.sh accepts a good value and refuses a bad one without saving.
+
+CONTRACT (run from a git worktree):
+
+  Every script reads the MAIN repo's agent.conf (the first `git worktree
+  list` entry), so agent-settings.sh keeps reading and writing that copy,
+  never the worktree's own (git-tracked) agent.conf. Run from a worktree,
+  every mode (show, set, sync) says so: the output names the full path of
+  the file it used and the words "main repo". Run from the main repo the
+  output is as before, no such note.
 """
 
 import os
+import subprocess
 import sys
 import unittest
 
@@ -162,6 +172,52 @@ class TestSetvOnMissingKey(SettingsCase):
         result = self.settings("no_such_key", "x")
         self.assertNotEqual(result.returncode, 0)
         self.assertIsNone(self.conf_value("no_such_key"))
+
+
+class TestFromAWorktree(SettingsCase):
+    def setUp(self):
+        super(TestFromAWorktree, self).setUp()
+        self.wt = os.path.join(self.repo.base, "wt_feature")
+        subprocess.run(["git", "-C", self.repo.dir, "worktree", "add", "-q",
+                        "-b", "feature", self.wt],
+                       check=True, capture_output=True)
+        self.main_conf = os.path.join(os.path.realpath(self.repo.dir),
+                                      "agent.conf")
+        self.wt_conf = os.path.join(self.wt, "agent.conf")
+        self.assertTrue(os.path.exists(self.wt_conf),
+                        "the worktree should carry its own tracked agent.conf")
+        with open(self.wt_conf) as fh:
+            self.wt_before = fh.read()
+
+    def from_wt(self, *args):
+        return self.repo.run("agent-settings.sh", *args, cwd=self.wt)
+
+    def test_set_writes_the_main_copy_only(self):
+        self.assertOk(self.from_wt("worker", "sonnet-5:high"))
+        self.assertEqual(self.conf_value("worker"), "sonnet-5:high")
+        with open(self.wt_conf) as fh:
+            self.assertEqual(fh.read(), self.wt_before)
+
+    def test_set_names_the_main_copy(self):
+        out = self.assertOk(self.from_wt("worker", "sonnet-5:high"))
+        self.assertIn(self.main_conf, out)
+        self.assertIn("main repo", out)
+
+    def test_show_names_the_main_copy(self):
+        out = self.assertOk(self.from_wt())
+        self.assertIn(self.main_conf, out)
+        self.assertIn("main repo", out)
+
+    def test_sync_names_the_main_copy(self):
+        out = self.assertOk(self.from_wt("sync"))
+        self.assertIn(self.main_conf, out)
+        self.assertIn("main repo", out)
+
+    def test_from_the_main_repo_there_is_no_note(self):
+        for args in ((), ("worker", "sonnet-5:high"), ("sync",)):
+            with self.subTest(args=args):
+                out = self.assertOk(self.settings(*args))
+                self.assertNotIn("main repo", out)
 
 
 if __name__ == "__main__":
