@@ -845,6 +845,30 @@ class TestHubList(HubListCase):
         hub.tick()
         self.assertEqual(hub.repo_for(RID), os.path.realpath(os.path.join(self.shop, ".git")))
 
+    def test_git_runs_at_most_once_per_join_ttl(self):
+        # The server calls tick() every 0.1 s (agent_city.py RELAY_POLL_SEC),
+        # under the hub's lock: no git process per listed repo per tick.
+        docs = make_repo(self.base, "docs", origin="git@github.com:Acme/Docs.git")
+        join_by_hand(docs, self.fake.url)
+        self.write_list([self.shop, docs])
+        calls = []
+        real_git = rl._git
+
+        def counting(args, cwd):
+            calls.append(list(args))
+            return real_git(args, cwd)
+
+        rl._git = counting
+        self.addCleanup(setattr, rl, "_git", real_git)
+        hub = self.hub(relay_sec=5, join_ttl=30)
+        for _ in range(20):
+            hub.tick()
+        first = len(calls)
+        self.assertLessEqual(first, 2 * 3, "more than 3 git calls per listed repo: %r" % calls)
+        for _ in range(20):
+            hub.tick()
+        self.assertEqual(len(calls), first, "git ran again inside join_ttl: %r" % calls[first:])
+
     def test_join_file_removed_drops_the_team(self):
         self.write_list([self.shop])
         hub = self.hub()
