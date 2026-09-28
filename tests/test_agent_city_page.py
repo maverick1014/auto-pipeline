@@ -477,12 +477,12 @@ def constants_prelude():
     for name, value in re.findall(r"^const ([A-Z][A-Z0-9_]*) = ([^;\n]+);\s*$", inline_script(), re.M):
         if re.fullmatch(r"(?:[\d.\s/*+\-()]|Math\.PI)+|'[^'\\]*'", value.strip()):
             out.append("var %s = %s;" % (name, value.strip()))
-    # idea-city C1: the page's texts (const TEXT = {zh, en}) and T(key, vars), so a harness that runs a
+    # idea-city C1: the page's texts (const TEXT = {zh, en}) and i18n(key, vars), so a harness that runs a
     # page function which shows text gets the same words the page shows (LANG is a plain const above)
     lit = const_object("TEXT")
     if lit:
         out.append("var TEXT = %s;" % lit)
-    src = function_source("T")
+    src = function_source("i18n")
     if src:
         out.append(src)
     return "\n".join(out)
@@ -1389,6 +1389,7 @@ class TestInteraction(unittest.TestCase):
         state = re.search(r"^const STATE = \{.*?^\};", inline_script(), re.S | re.M)
         self.assertIsNotNone(state, "const STATE = {...}; not found")
         js = ("const fs = require('fs'); const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));\n"
+              + constants_prelude() + "\n"  # idea-city C1: TEXT and i18n
               + state.group(0) + "\n" + st + "\n" + cs + "\n"
               + "process.stdout.write(JSON.stringify({st: data.st.map(e => stuckText(e)), "
               + "cs: data.cs.map(c => citizenStatus(c))}));")
@@ -1461,7 +1462,7 @@ class TestInteraction(unittest.TestCase):
                 self.assertIn("applyAsk(", case_block(kind) or "")
         js = r"""
 const fs = require('fs'); const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-""" + state + "\n" + st + "\n" + cs + "\n" + ap + r"""
+""" + constants_prelude() + "\n" + state + "\n" + st + "\n" + cs + "\n" + ap + r"""
 const out = [];
 for (const ask of data.asks) {
   // live: the reducer's stuck event first (as it arrives), then the ask event
@@ -1716,7 +1717,7 @@ def text_zh():
 
 
 def zh_resolved(src):
-    """idea-city C1: SRC as a reader of the zh page sees it: every T('key' call shows its zh text in
+    """idea-city C1: SRC as a reader of the zh page sees it: every i18n('key' call shows its zh text in
     place of the key, and every data-t="key" / data-t-aria="key" / data-t-title="key" attribute becomes
     the zh text / aria-label / title -- so a test that looks for a Chinese word in the page source still
     finds it after the texts moved into TEXT. Before that (no TEXT) SRC comes back unchanged."""
@@ -1724,7 +1725,7 @@ def zh_resolved(src):
     if not zh or not src:
         return src
     q = lambda k: zh.get(k, k).replace("'", "\\'")
-    src = re.sub(r"\bT\((['\"])([\w.\-]+)\1", lambda m: "T('%s'" % q(m.group(2)), src)
+    src = re.sub(r"\bi18n\((['\"])([\w.\-]+)\1", lambda m: "i18n('%s'" % q(m.group(2)), src)
     src = re.sub(r'data-t-aria="([\w.\-]+)"', lambda m: 'aria-label="%s"' % zh.get(m.group(1), m.group(1)), src)
     src = re.sub(r'data-t-title="([\w.\-]+)"', lambda m: 'title="%s"' % zh.get(m.group(1), m.group(1)), src)
     return re.sub(r'\sdata-t="([\w.\-]+)"([^>]*)>', lambda m: '%s>%s' % (m.group(2), zh.get(m.group(1), m.group(1))), src)

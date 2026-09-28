@@ -826,7 +826,7 @@ class TestEmptyWorld(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         fns = tp.page_fns("distMax", "zoomStep", "landReady", "updateGovernor", "showEmptyLine", "governorAt",
-                          optional=("landSpread", "centreHeight", "islandSpread"))
+                          optional=("landSpread", "centreHeight", "islandSpread", "govTalk", "govSay"))
         cls.out = tp.run_node(EMPTY_JS, {"prelude": tp.constants_prelude(), "fns": fns})
 
     def test_zoom_keeps_working_with_no_land(self):

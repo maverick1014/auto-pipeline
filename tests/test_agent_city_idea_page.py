@@ -7,8 +7,9 @@ CONTRACT (bin/agent-city.html)
     const LANG = '__CITY_LANG__';  (the server fills it in: 'en' or 'zh'; anything but 'en' is zh)
     const TEXT = { zh: {...}, en: {...} };  every text the page shows, both languages: the same keys,
       every value a non-empty string, no CJK character in any en value. Placeholders "{name}".
-    function T(key, vars) -> TEXT[en or zh][key], each "{name}" replaced by vars[name]; an unknown key
-      gives the key itself.
+    function i18n(key, vars) -> TEXT[en or zh][key], each "{name}" replaced by vars[name]; an unknown key
+      gives the key itself. A plain top-level function; every caller calls i18n('literal.key', ...) by
+      that name (not T: test drivers use T for "the territory").
     Nowhere else in the page -- markup, style, script, demo data -- is there a CJK character (comments
       aside). The static markup gets its text from TEXT at start. document.documentElement.lang follows
       LANG ('en' or 'zh-CN').
@@ -75,7 +76,7 @@ CONTRACT (bin/agent-city.html)
     TEXT keys district.house/.shop/.tower/.workshop/.library:
       zh 住宅区 商业街 测试区 工坊区 图书馆区, en Homes Shops Tests Workshops Library.
     landOverlays(view, signs): signs = [{x, z, d}] in world tiles (buildLand passes the district signs);
-      one '.dlbl' overlay per sign (its own class, never '.lbl'), text T('district.' + d), CSS var --c =
+      one '.dlbl' overlay per sign (its own class, never '.lbl'), text i18n('district.' + d), CSS var --c =
       DCOL[d] (the colour bar); made again from scratch on every call, like the territory labels.
       With no signs argument: no '.dlbl'.
     pinLandOverlays(): each district label is pinned at its sign and carries class 'far' whenever
@@ -152,7 +153,7 @@ class TestEnglishToo(unittest.TestCase):
         found = [rest[max(0, m.start() - 30):m.end() + 10].replace("\n", " ") for m in CJK.finditer(rest)]
         self.assertEqual(found[:8], [], "%d CJK characters outside TEXT" % len(found))
 
-    def test_T(self):
+    def test_i18n(self):
         js = r"""
 const fs = require('fs'), vm = require('vm');
 const { lit, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
@@ -162,13 +163,13 @@ for (const lang of ['en', 'zh', 'fr', '__CITY_LANG__']) {
   vm.createContext(box);
   vm.runInContext("var LANG = '" + lang + "'; var TEXT = " + lit + ";\n" + fns, box);
   box.TEXT.zh.__t = 'a {x} b {x}'; box.TEXT.en.__t = 'A {x} B';
-  out[lang] = { t: box.T('__t', { x: 1 }), unknown: box.T('no.such.key') };
+  out[lang] = { t: box.i18n('__t', { x: 1 }), unknown: box.i18n('no.such.key') };
 }
 process.stdout.write(JSON.stringify(out));
 """
         lit = tp.const_object("TEXT")
         self.assertIsNotNone(lit)
-        r = tp.run_node(js, {"lit": lit, "fns": need("T")})
+        r = tp.run_node(js, {"lit": lit, "fns": need("i18n")})
         self.assertEqual(r["en"]["t"], "A 1 B")
         for lang in ("zh", "fr", "__CITY_LANG__"):
             self.assertEqual(r[lang]["t"], "a 1 b 1", lang)
