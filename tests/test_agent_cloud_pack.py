@@ -573,7 +573,8 @@ class TestCityInTheCloud(PackCase):
     default city dir under a fresh $HOME. The packed SessionStart hook
     (SEND_CMD) starts the sender; the packed city hook (CITY_HOOK_CMD) writes
     the event; the sender delivers it to the team relay (a fake one on
-    127.0.0.1, tests/relayhelp.py) as 云端, with the repo id and branch."""
+    127.0.0.1, tests/relayhelp.py) as 云端 (language zh; "cloud" for en --
+    idea-city C1), with the repo id and branch."""
 
     def setUp(self):
         super().setUp()
@@ -610,7 +611,19 @@ class TestCityInTheCloud(PackCase):
             time.sleep(0.1)
         return bool(check())
 
+    def set_language(self, lang):
+        # idea-city C1: the sender's own label follows the repo's agent.conf language (云端 / cloud);
+        # with no language key the plugin template's default applies
+        path = os.path.join(self.target, "agent.conf")
+        lines = []
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                lines = [ln for ln in fh.read().splitlines() if not ln.startswith("language=")]
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lines + ["language=" + lang]) + "\n")
+
     def test_a_cloud_session_sends_its_events(self):
+        self.set_language("zh")
         started = self.run_cmd(SEND_CMD)
         self.assertEqual(started.returncode, 0, started.stderr)
         self.assertIn("CITY: sending to the team relay " + self.fake.host, started.stdout)
