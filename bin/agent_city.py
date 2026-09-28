@@ -3062,8 +3062,10 @@ class RemoteCity:
         self.hub = hub
         self.remote_ttl_sec = remote_ttl_sec
         self._lock = threading.Lock()
-        self._reducers = {}      # sender dev id -> Reducer
-        self._last_seen = {}     # sender dev id -> monotonic time of its last line
+        self._reducers = {}      # (sender dev id, rid) -> Reducer -- idea-city C3: one per repo
+        self._rid_terr = {}      # (sender dev id, rid) -> that repo's local territory id
+        self._chains = {}        # (sender dev id, rid) -> {"leads", "lead_of", "open"} (idea-city C16)
+        self._last_seen = {}     # sender dev id -> monotonic time of its last line (any of its repos)
         self._meta = {}          # "r:<dev>:<id>" -> {"who","device","rid","br","terr","dev"}
         self._team_state = {}    # host -> {"state", "queued", "at"} last sent to the page
         self._team_rids = {}     # host -> set(rid), last known (to forget on "left")
@@ -3089,11 +3091,12 @@ class RemoteCity:
         with self._lock:
             people = []
             govs = []
-            for dev_id, reducer in self._reducers.items():
+            for (dev_id, rid), reducer in self._reducers.items():
                 for agent in reducer.snapshot()["agents"]:
                     people.append(self._person(dev_id, agent))
                 if reducer.gov_sid is not None:
-                    govs.append(self._gov(dev_id, reducer.gov_state))
+                    terr = self._rid_terr.get((dev_id, rid), "")
+                    govs.append(self._gov(dev_id, terr, reducer.gov_state))
         teams = [{"host": t["host"], "state": t["state"], "queued": t["queued"]}
                 for t in self.hub.status()["teams"]]
         return {"type": "remote_snapshot", "me": self.hub.identity(),
@@ -3114,22 +3117,54 @@ class RemoteCity:
         who, br = line.get("who") or device, line.get("br") or ""
         fed = dict(line)
         fed["proj"] = rid.rsplit("/", 1)[-1]
-        reducer = self._reducers.get(dev_id)
+        # idea-city C3: one Reducer per (device, rid) -- a member's role-less
+        # main session in a second repo is that repo's own governor.
+        key = (dev_id, rid)
+        reducer = self._reducers.get(key)
         if reducer is None:
             reducer = Reducer()
-            self._reducers[dev_id] = reducer
-        out = []
+            self._reducers[key] = reducer
+        self._rid_terr[key] = terr
+        chain = self._chains.setdefault(key, {"leads": set(), "lead_of": {}, "open": {}})
+
         ev_name = line.get("ev")
+        ask = line.get("ask") if isinstance(line.get("ask"), str) else ""
+        tool = line.get("tool") if isinstance(line.get("tool"), str) else ""
+        aid = line.get("aid") if isinstance(line.get("aid"), str) else ""
+        sid = line.get("sid") if isinstance(line.get("sid"), str) else ""
+
+        # idea-city C16: replay CityState._process_chain's ordering -- a
+        # worker's question relays to its lead (or governor) *before* the
+        # "done" the same line also carries, everything else relays after
+        # the reducer's own events for that line.
+        local_events = []
+        chain_early = ev_name == "SubagentStop" and ask == "q" and bool(aid)
+        if chain_early:
+            local_events.extend(self._chain_relay(chain, reducer.gov_sid, ev_name, ask, tool, aid, sid, now))
+
         for ev in reducer.feed(fed, now):
-            if ev.get("type") == "spawn":
+            etype = ev.get("type")
+            if etype == "spawn":
                 ev["terr"] = terr
-            elif ev.get("type") == "gov":
-                ev["id"] = "gov"
+                self._chain_spawn(chain, ev, aid, sid)
+            elif etype == "gov":
+                ev["id"] = "gov:" + terr
                 ev["terr"] = terr
                 ev["present"] = ev_name != "SessionEnd"
+            elif etype == "leave":
+                local_events.extend(self._on_leave_chain(chain, ev["id"]))
+            local_events.append(ev)
+
+        if not chain_early:
+            local_events.extend(self._chain_relay(chain, reducer.gov_sid, ev_name, ask, tool, aid, sid, now))
+
+        out = []
+        for ev in local_events:
             if "id" in ev:
                 remote_id = "r:%s:%s" % (dev_id, ev["id"])
                 ev["id"] = remote_id
+                if ev.get("lead"):
+                    ev["lead"] = "r:%s:%s" % (dev_id, ev["lead"])
                 if ev.get("type") == "leave" or ev.get("present") is False:
                     self._meta.pop(remote_id, None)
                 else:
@@ -3138,6 +3173,78 @@ class RemoteCity:
             out.append({"type": "remote", "dev": dev_id, "who": who, "device": device,
                         "rid": rid, "br": br, "ev": ev})
         return out
+
+    # -- idea-city C16: chain of command for a remote (device, rid) --------
+    # caller holds self._lock. Local ids only (no "r:<dev>:" prefix yet);
+    # _one_line remaps ids (and "lead") to remote ids afterwards. No offices:
+    # a remote lead has no office to hold or free. Mirrors the rules of
+    # CityState._process_chain / _decorate_spawn / _close_relay / _on_leave.
+
+    def _chain_spawn(self, chain, ev, aid_field, sid_field):
+        if not aid_field:
+            if ev.get("role") == "task-manager":
+                chain["leads"].add(ev["id"])
+        else:
+            owner_cid = "s:" + sid_field
+            chain["lead_of"][ev["id"]] = owner_cid if owner_cid in chain["leads"] else ""
+
+    def _on_leave_chain(self, chain, cid):
+        chain["lead_of"].pop(cid, None)
+        chain["leads"].discard(cid)
+        return self._close_chain_relay(chain, cid, "leave")
+
+    def _close_chain_relay(self, chain, cid, by):
+        entry = chain["open"].pop(cid, None)
+        if entry is None:
+            return []
+        events = [{"type": "relay_end", "id": cid, "by": by}]
+        if entry["kind"] == "lead":
+            for wcid in [c for c, e in chain["open"].items()
+                         if e["kind"] == "worker" and e["lead"] == cid]:
+                chain["open"].pop(wcid, None)
+                events.append({"type": "relay_end", "id": wcid, "by": by})
+        return events
+
+    def _chain_relay(self, chain, gov_sid, ev_name, ask, tool, aid, sid, now):
+        events = []
+        for cid in [c for c, e in chain["open"].items() if now - e["opened_at"] >= RELAY_TIMEOUT_SEC]:
+            events.extend(self._close_chain_relay(chain, cid, "timeout"))
+
+        if ev_name == "SubagentStop" and ask == "q" and aid:
+            owner_cid = "s:" + sid
+            if owner_cid in chain["leads"]:
+                chain["open"][aid] = {"kind": "worker", "to": "lead", "lead": owner_cid, "opened_at": now}
+                events.append({"type": "relay", "id": aid, "to": "lead", "lead": owner_cid})
+            elif sid != "" and gov_sid == sid:
+                chain["open"][aid] = {"kind": "helper", "to": "governor", "lead": "", "opened_at": now}
+                events.append({"type": "relay", "id": aid, "to": "governor", "lead": ""})
+            return events
+
+        if ev_name == "PostToolUse" and not aid and tool == "SendMessage":
+            cid = "s:" + sid
+            if sid != "" and gov_sid == sid:
+                lead_id = next((c for c, e in chain["open"].items() if e["kind"] == "lead"), None)
+                if lead_id is not None:
+                    events.extend(self._close_chain_relay(chain, lead_id, "governor"))
+                for c in [c for c, e in chain["open"].items() if e["kind"] == "helper"]:
+                    events.extend(self._close_chain_relay(chain, c, "governor"))
+            elif cid in chain["leads"]:
+                if ask == "q":
+                    chain["open"][cid] = {"kind": "lead", "to": "governor", "lead": "", "opened_at": now}
+                    events.append({"type": "relay", "id": cid, "to": "governor", "lead": ""})
+                elif cid not in chain["open"]:
+                    for c in [c for c, e in chain["open"].items()
+                              if e["kind"] == "worker" and e["lead"] == cid]:
+                        events.extend(self._close_chain_relay(chain, c, "lead"))
+            return events
+
+        if ev_name == "PreToolUse" and not aid and tool in ("Agent", "Task"):
+            cid = "s:" + sid
+            if cid in chain["leads"] and cid not in chain["open"]:
+                for c in [c for c, e in chain["open"].items()
+                          if e["kind"] == "worker" and e["lead"] == cid]:
+                    events.extend(self._close_chain_relay(chain, c, "lead"))
+        return events
 
     def _sweep_ttl(self, now):
         stale = [d for d, seen in self._last_seen.items() if now - seen >= self.remote_ttl_sec]
@@ -3181,8 +3288,19 @@ class RemoteCity:
         return devs
 
     def _forget_device(self, dev_id):
-        reducer = self._reducers.pop(dev_id, None)
+        """idea-city C3: forgetting a device forgets all of its repos."""
         self._last_seen.pop(dev_id, None)
+        keys = [k for k in self._reducers if k[0] == dev_id]
+        events = []
+        for key in keys:
+            events.extend(self._forget_repo(key))
+        return events
+
+    def _forget_repo(self, key):
+        dev_id, rid = key
+        reducer = self._reducers.pop(key, None)
+        terr = self._rid_terr.pop(key, "")
+        self._chains.pop(key, None)
         if reducer is None:
             return []
         events = []
@@ -3191,9 +3309,9 @@ class RemoteCity:
             meta = self._meta.pop(remote_id, None)
             events.append(self._wrap(dev_id, meta, {"type": "leave", "id": remote_id}))
         if reducer.gov_sid is not None:
-            remote_id = "r:%s:gov" % dev_id
+            remote_id = "r:%s:gov:%s" % (dev_id, terr)
             meta = self._meta.pop(remote_id, None)
-            terr = meta["terr"] if meta else ""
+            terr = meta["terr"] if meta else terr
             events.append(self._wrap(dev_id, meta, {"type": "gov", "id": remote_id,
                                                      "state": reducer.gov_state,
                                                      "terr": terr, "present": False}))
@@ -3213,10 +3331,10 @@ class RemoteCity:
                      br=meta.get("br", ""), dev=dev_id)
         return person
 
-    def _gov(self, dev_id, state):
-        remote_id = "r:%s:gov" % dev_id
+    def _gov(self, dev_id, terr, state):
+        remote_id = "r:%s:gov:%s" % (dev_id, terr)
         meta = self._meta.get(remote_id, {})
-        return {"id": remote_id, "state": state, "terr": meta.get("terr", ""),
+        return {"id": remote_id, "state": state, "terr": meta.get("terr", terr),
                 "who": meta.get("who", ""), "device": meta.get("device", ""), "dev": dev_id}
 
 
