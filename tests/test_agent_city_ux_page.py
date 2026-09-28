@@ -184,9 +184,9 @@ def listener_block(target_regex, event):
     """Every `<target>.addEventListener('<event>', ...)` call in the page, each up to its matching ')',
     joined (None when there is none)."""
     text, out = page(), []
-    for m in re.finditer(r"\b%s\.addEventListener\(\s*'%s'" % (target_regex, re.escape(event)), text):
+    for m in re.finditer(r"(?<![\w$])%s\.addEventListener\(\s*'%s'" % (target_regex, re.escape(event)), text):
         depth = 0
-        for j in range(m.start() + m.group(0).index("("), len(text)):
+        for j in range(m.start() + m.group(0).index("addEventListener(") + len("addEventListener"), len(text)):
             if text[j] == "(":
                 depth += 1
             elif text[j] == ")":
