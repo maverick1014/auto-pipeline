@@ -97,6 +97,12 @@ def section(text, start, end):
     return "\n".join(lines[begin:stop])
 
 
+def dispatch_brief():
+    """The task manager brief template of the dispatch skill."""
+    return section(read("skills", "dispatch", "SKILL.md"),
+                   "## Task manager brief", "## Cross-repo brief")
+
+
 class CloseCaseCase(ScriptCase):
     script = "agent-close-case.sh"
 
@@ -401,7 +407,7 @@ class TestTheRule(unittest.TestCase):
         self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", text)), 29)
 
 
-class TestTheSkills(CloseCaseCase):
+class TestTheSkills(unittest.TestCase):
     def test_the_close_case_skill(self):
         text = read("skills", "close-case", "SKILL.md")
         self.assertRegex(text, r"(?m)^name: close-case$")
@@ -423,23 +429,23 @@ class TestTheSkills(CloseCaseCase):
         self.assertIn("CLOSE CASE", text)
         self.assertIn("/close-case", text)
 
-    def brief(self):
-        return section(read("skills", "dispatch", "SKILL.md"),
-                       "## Task manager brief", "## Cross-repo brief")
-
     def test_the_task_manager_brief_mentions_it(self):
-        brief = self.brief()
+        brief = dispatch_brief()
         self.assertIn("close case", brief.lower())
         self.assertIn("CLOSE CASE <name>: finished", brief)
         self.assertIn("CLOSE CASE <name>: unfinished", brief)
-
-    def test_the_brief_itself_never_fires_the_hook(self):
-        self.assertEqual(self.as_task_manager(self.brief()), "")
 
     def test_the_readme_names_the_hook_and_the_skill(self):
         text = read("README.md")
         self.assertIn("agent-close-case.sh", text)
         self.assertIn("close-case", text)
+
+
+class TestTheBriefIsQuiet(CloseCaseCase):
+    """The dispatch brief explains 'close case' but never fires it."""
+
+    def test_the_brief_itself_never_fires_the_hook(self):
+        self.assertEqual(self.as_task_manager(dispatch_brief()), "")
 
 
 if __name__ == "__main__":
