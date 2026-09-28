@@ -391,11 +391,11 @@ const SYS_FIT = {
 /* Balance: an absolute scale (not a "fit to target size" one) for keys where fit makes them huge on a
    small-footprint model — the same numbers buildLand already uses for the wild scenery's own flowers. */
 const SYS_SCALE = { 'nature/flower_redA': .55, 'nature/flower_yellowA': .55, 'nature/flower_purpleA': .55 };
-/* Balance: 'industrial/building-h' (police station, blue tint) and 'industrial/building-k'
-   (library, green) are plain Kenney buildings with unique bare names (never 'commercial/building-a' or
-   'industrial/building-a'/'-b', which the town/city ERA_LOOK already uses under the bare names 'building-a'
-   and 'building-b' — lib is keyed by the bare name only, so reusing those would make the police station and
-   the library look like whichever of the two packs' same-named model finished loading last). */
+/* Balance: 'industrial/building-h' (police station, blue tint) and 'industrial/building-k' (library,
+   green) are plain Kenney buildings with unique bare names, so they need no pack prefix to name a real
+   model (idea-city C8: lib is keyed by the full 'pack/name' entry; a bare name is only ever an alias when
+   no other pack ships that name -- 'building-a'/'building-b' alone name nothing, since both commercial
+   and industrial ship one: the town/city ERA_LOOK's shop/workshop lists spell those out in full). */
 const SYS_TINT = { 'industrial/building-h': '#3C63D6', 'industrial/building-k': '#2FB57A' };
 /* Balance: systemsDecor(t, view) -> [{key, x, z, kind}], the 5 systems made visible in the world
    (requirements/city.md, Balance): [] on day 0 (t.open === 0) or with no balance; nothing for a missing
@@ -697,20 +697,22 @@ const ERA_LOOK = {
   town: {
     build: {
       house: ['building-type-a', 'building-type-c', 'building-type-f', 'building-type-k', 'building-type-n', 'building-type-r'],
-      shop: ['building-a', 'building-b'],
+      // idea-city C8: full keys -- 'building-a'/'building-b' alone name nothing (commercial and
+      // industrial each ship one, and lib no longer picks one at random between them)
+      shop: ['commercial/building-a', 'commercial/building-b'],
       // brick mid-rise office blocks (City Kit Commercial building-f/-g), not the city's glass skyscrapers
       tower: ['building-f', 'building-g'],
-      workshop: ['building-a', 'building-b'],
+      workshop: ['industrial/building-a', 'industrial/building-b'],
       library: ['building-c', 'building-d'],
     },
     hall: 'building-j', road: '#A9A39A', lamps: true, // stone grey, apart from the village dirt path and the city asphalt
   },
   city: {
     build: {
-      house: ['building-a', 'building-b', 'building-c', 'building-d'],
-      shop: ['building-a', 'building-b'],
+      house: ['commercial/building-a', 'commercial/building-b', 'commercial/building-c', 'commercial/building-d'],
+      shop: ['commercial/building-a', 'commercial/building-b'],
       tower: ['building-skyscraper-a', 'building-skyscraper-b'],
-      workshop: ['building-a', 'building-b'],
+      workshop: ['industrial/building-a', 'industrial/building-b'],
       library: ['building-c', 'building-d'],
     },
     hall: 'building-skyscraper-a', road: '#5B5E68', lamps: true,
@@ -1026,9 +1028,11 @@ function frontYaw(b){
    exporter's own min/max on the POSITION accessor and every one of these models is a single un-rotated
    node. Models are not loaded in node, so footprints() (below) uses this table plus footScale()/footBox()
    -- the same fit/s/h math place()/scaleOf() use on lib[key].size -- instead of the real THREE geometry.
-   Keyed by the bare model name: place()/instanced() are always called with the bare name too (buildLand
-   splits every 'pack/name' decor key on '/' before placing it), so `lib` (and this table) never carry the
-   pack prefix. y is only needed for the few items placed by a target height (`h`) rather than `fit`/`s`. */
+   Keyed the same way `lib` is (idea-city C8): the full 'pack/name' entry, or a bare name only when it
+   names a real model on its own (no other pack ships that name) -- 'commercial/building-a' and
+   'industrial/building-a' differ (and both exist), so each gets its own full-key entry here; footBox()
+   below tries the full key first, then the bare name. y is only needed for the few items placed by a
+   target height (`h`) rather than `fit`/`s`. */
 const MODEL_SIZE = {
   'road-sign-street': { x: .196, y: .475, z: .196 }, 'traffic-light': { x: .118, y: .515, z: .09 },
   'building-h': { x: 1.322, y: .734, z: 1.31 }, 'building-k': { x: 1.303, y: .773, z: .914 },
@@ -1053,7 +1057,11 @@ const MODEL_SIZE = {
   'building-type-a': { x: 1.3, y: .834, z: 1.028 }, 'building-type-c': { x: 1.286, y: 1.034, z: 1.028 },
   'building-type-f': { x: 1.428, y: 1.138, z: 1.406 }, 'building-type-k': { x: .921, y: 1.15, z: 1.02 },
   'building-type-n': { x: 1.784, y: 1.138, z: 1.378 }, 'building-type-r': { x: 1.028, y: 1.141, z: 1.02 },
-  'building-a': { x: .884, y: 1.293, z: .94 }, 'building-b': { x: .97, y: 1.293, z: .94 }, 'building-d': { x: .84, y: 1.293, z: .9 },
+  // idea-city C8: 'building-a'/'building-b' name nothing on their own (commercial and industrial each
+  // ship one, a different size) -- full keys, each measured from its own pack's .glb POSITION bounds.
+  'commercial/building-a': { x: .884, y: 1.293, z: .94 }, 'commercial/building-b': { x: .97, y: 1.293, z: .94 },
+  'industrial/building-a': { x: 2.084, y: 1.47, z: 1.242 }, 'industrial/building-b': { x: 2.084, y: 1.47, z: 1.262 },
+  'building-d': { x: .84, y: 1.293, z: .9 },
   'building-f': { x: .84, y: 1.693, z: 1.03 }, 'building-g': { x: .97, y: 1.693, z: .922 },
   'building-j': { x: 2.084, y: 1.693, z: 1.34 },
   'building-skyscraper-a': { x: 1.36, y: 2.88, z: 1.36 }, 'building-skyscraper-b': { x: 1.36, y: 4.48, z: 1.36 },
@@ -1077,7 +1085,7 @@ const MIN_FOOT_HALF = .15;
 function footBox(rawKey, x, z, opt){
   opt = opt || {};
   const bare = rawKey.indexOf('/') >= 0 ? rawKey.slice(rawKey.indexOf('/') + 1) : rawKey;
-  const size = MODEL_SIZE[bare];
+  const size = MODEL_SIZE[rawKey] || MODEL_SIZE[bare]; // idea-city C8: the full key first, the bare name only as a fallback
   if (!size) return null;
   const s = footScale(size, opt);
   const hw = size.x * s / 2, hd = size.z * s / 2;
@@ -1636,6 +1644,15 @@ const openAskCount = () => { let n = 0; for (const a of asks.values()) if (!a.cl
 const oldestOpenAsk = () => { let best = null; for (const a of asks.values()) if (!a.closed && a.phase === 'owner' && (!best || a.at < best.at)) best = a; return best; };
 
 function say(o, text, dur){ o.bubble = { text, until: simT + dur }; }
+/* idea-city C14: personBubble(c) -> the text over citizen c now, or '' (no bubble at all): its question
+   while asking, else its own say() text while it lasts -- never while walking to the hall ('to_hall', the
+   sprint: a bubble there would trail behind a moving citizen). '' when that text itself is empty, so
+   updatePerson never pins an empty bubble. */
+function personBubble(c){
+  if (c.state === 'asking') return c.question || '';
+  if (c.bubble && simT < c.bubble.until && c.state !== 'to_hall') return c.bubble.text || '';
+  return '';
+}
 function logAt(t, text, kind){ logEntries.unshift({ t, text, kind: kind || '', real: DEMO ? null : Date.now() }); if (logEntries.length > MAX_LOG) logEntries.length = MAX_LOG; dirty.log = true; }
 const log = (text, kind) => logAt(simT, text, kind);
 
@@ -2889,6 +2906,16 @@ let P = THEME.day, themeKey = '';
 
 /* ---------- loading ---------- */
 const lib = {};
+/* idea-city C8: lib is keyed by every MODELS entry's own full 'pack/name'. A bare name after '/' is also
+   set as an alias (place()/instanced()/lib[...] lookups elsewhere in the script use bare names such as
+   'flag', 'tool-hammer', 'resource-planks', 'character-male-b' -- never ambiguous), but only when that
+   bare name is unique across every pack; 'building-a'/'building-b' (commercial and industrial both ship
+   one) name nothing on their own, so callers that care must pass the full entry. */
+const BARE_DUPES = (() => {
+  const seen = new Set(), dup = new Set();
+  for (const m of MODELS) { const b = m.slice(m.indexOf('/') + 1); if (seen.has(b)) dup.add(b); seen.add(b); }
+  return dup;
+})();
 const lambert = new Map();
 function toLambert(m){
   if (Array.isArray(m)) return m.map(toLambert);
@@ -2907,13 +2934,16 @@ function prep(key, gltf){
   root.traverse(n => { if (n.isMesh) { n.material = toLambert(n.material); n.castShadow = true; n.receiveShadow = true; } });
   root.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
-  lib[key] = { scene: root, clips: gltf.animations, box, size, skinned: gltf.animations.length > 0 && !!root.getObjectByProperty('type', 'SkinnedMesh') };
+  const entry = { scene: root, clips: gltf.animations, box, size, skinned: gltf.animations.length > 0 && !!root.getObjectByProperty('type', 'SkinnedMesh') };
+  lib[key] = entry;
+  const bare = key.slice(key.indexOf('/') + 1);
+  if (!BARE_DUPES.has(bare)) lib[bare] = entry; // idea-city C8: optional alias, only when unique across packs
 }
 async function loadAll(onStep){
   const loader = new THREE.GLTFLoader();
   let done = 0;
   await Promise.all(MODELS.map(key => new Promise((res, rej) => {
-    const ok = g => { prep(key.split('/')[1], g); onStep(++done, MODELS.length); res(); };
+    const ok = g => { prep(key, g); onStep(++done, MODELS.length); res(); };
     loader.load(ASSET + key + '.glb?v=' + ASSET_V, ok, undefined, rej);
   })));
 }
@@ -2979,6 +3009,10 @@ const landGroup = new THREE.Group(); world.add(landGroup);
 // Worktrees: site meshes live in their own group, never cleared by buildLand's landGroup rebuild (every
 // world event) -- a merging/packing site keeps animating through a world event that no longer lists it.
 const siteGroup = new THREE.Group(); world.add(siteGroup);
+// idea-city C9: an era show's road planks live here, never cleared by buildLand's landGroup rebuild --
+// a second territory's show used to lose its planks the moment any territory's era flipped and rebuilt
+// landGroup. makeShowRun removes a run's own planks from this group when the run ends.
+const showGroup = new THREE.Group(); world.add(showGroup);
 let firstViewDone = false; // only the first world with a territory sends the camera home; a later one never snaps it back
 const isLand = ch => !' wsBk'.includes(ch);
 const isWater = ch => ch === 'w' || ch === 's' || ch === 'B';
@@ -3193,10 +3227,11 @@ function laneGraph(view){
     }
     return pts;
   };
-  for (const k of nodes.keys()) { const d = nbrs(k).length; if (d !== 2) { joints.push(nodes.get(k)); for (const n of nbrs(k)) if (!used.has(ekey(k, n))) paths.push(walk(k, n)); } }
+  // idea-city C11: a lone road/track tile (no lane neighbour on any of the 4 sides) is never a joint and
+  // never a path of its own -- it draws nothing (no round patch), unlike a real dead end (d === 1), which
+  // still caps its one edge with a round end.
+  for (const k of nodes.keys()) { const d = nbrs(k).length; if (d === 0) continue; if (d !== 2) { joints.push(nodes.get(k)); for (const n of nbrs(k)) if (!used.has(ekey(k, n))) paths.push(walk(k, n)); } }
   for (const k of nodes.keys()) for (const n of nbrs(k)) if (!used.has(ekey(k, n))) paths.push(walk(k, n)); // loops
-  const covered = new Set(paths.flat());
-  for (const k of nodes.keys()) if (!covered.has(k)) paths.push([k]); // a lone tile: its own one-point path
   const out = paths.map(p => {
     let pts = p.map(k => { const [x, z] = nodes.get(k); return [x + .5, z + .5]; });
     for (let it = 0; it < 3 && pts.length >= 3; it++) { // Chaikin corner cutting, ends pinned
@@ -3295,19 +3330,19 @@ function buildLand(view){
     for (const p of t.plots || []) place('patch-grass', p.x + .5, p.z + .5, { fit: .85, keepY: true, y: -.1, parent: landGroup });
     // Balance: the 5 systems' own things (signposts, flowers, a library, a water tower, ...); grouped by
     // model so repeats become one InstancedMesh (buildLand: "use instanced() when you can"). systemsDecor's
-    // `key` is 'pack/name' (what the tests and MODELS pin); `lib` (and place()/instanced()) key off the
-    // bare name after '/' (loadAll: prep(key.split('/')[1], g)) — split it here, once, for real placing.
+    // `key` is 'pack/name' (what the tests and MODELS pin); `lib` (and place()/instanced()) key off that
+    // same full entry (idea-city C8: prep(key, g) in loadAll), so it is passed straight through here.
     const sysBy = {};
     for (const d of systemsDecor(t, view)) (sysBy[d.key] = sysBy[d.key] || []).push(d);
     for (const key in sysBy) {
-      const items = sysBy[key], bare = key.split('/')[1], tint = SYS_TINT[key];
+      const items = sysBy[key], tint = SYS_TINT[key];
       // Balance: SYS_SCALE (an absolute scale) for keys a "fit to target size" would blow up on a small
       // model (the flowers); SYS_FIT (fit) for everything else, .8 if neither says otherwise.
       const scaleOpt = key in SYS_SCALE ? { s: SYS_SCALE[key] } : { fit: SYS_FIT[key] || .8 };
       if (items.length > 1) {
-        instanced(bare, items.map(it => Object.assign({ x: it.x, z: it.z }, scaleOpt)), Object.assign({ parent: landGroup }, tint ? { tint } : null));
+        instanced(key, items.map(it => Object.assign({ x: it.x, z: it.z }, scaleOpt)), Object.assign({ parent: landGroup }, tint ? { tint } : null));
       } else {
-        const g = place(bare, items[0].x, items[0].z, Object.assign({ parent: landGroup }, scaleOpt));
+        const g = place(key, items[0].x, items[0].z, Object.assign({ parent: landGroup }, scaleOpt));
         if (tint) g.traverse(n => { if (n.isMesh) n.material = tintedMat(n.material, tint); }); // ready-made Kenney model, tint only — never a hand-made shape
       }
     }
@@ -3316,11 +3351,11 @@ function buildLand(view){
     const restBy = {};
     for (const d of restDecor(t)) (restBy[d.key] = restBy[d.key] || []).push(d);
     for (const key in restBy) {
-      const items = restBy[key], bare = key.split('/')[1], scaleOpt = { fit: REST_FIT[key] || .8 };
+      const items = restBy[key], scaleOpt = { fit: REST_FIT[key] || .8 };
       if (items.length > 1) {
-        instanced(bare, items.map(it => Object.assign({ x: it.x, z: it.z, ry: it.ry || 0 }, scaleOpt)), { parent: landGroup });
+        instanced(key, items.map(it => Object.assign({ x: it.x, z: it.z, ry: it.ry || 0 }, scaleOpt)), { parent: landGroup });
       } else {
-        place(bare, items[0].x, items[0].z, Object.assign({ parent: landGroup, ry: items[0].ry || 0 }, scaleOpt));
+        place(key, items[0].x, items[0].z, Object.assign({ parent: landGroup, ry: items[0].ry || 0 }, scaleOpt));
       }
     }
     // city-people: every office's own KayKit cabin and flag (officeDecor); the flag is tinted in the
@@ -3328,11 +3363,11 @@ function buildLand(view){
     const officeBy = {};
     for (const d of officeDecor(t)) (officeBy[d.key] = officeBy[d.key] || []).push(d);
     for (const key in officeBy) {
-      const items = officeBy[key], bare = key.split('/')[1], tint = items[0].tint, scaleOpt = OFFICE_OPT[key] || { fit: .8 };
+      const items = officeBy[key], tint = items[0].tint, scaleOpt = OFFICE_OPT[key] || { fit: .8 };
       if (items.length > 1) {
-        instanced(bare, items.map(it => Object.assign({ x: it.x, z: it.z, ry: it.ry || 0 }, scaleOpt)), Object.assign({ parent: landGroup }, tint ? { tint } : null));
+        instanced(key, items.map(it => Object.assign({ x: it.x, z: it.z, ry: it.ry || 0 }, scaleOpt)), Object.assign({ parent: landGroup }, tint ? { tint } : null));
       } else {
-        const g = place(bare, items[0].x, items[0].z, Object.assign({ parent: landGroup, ry: items[0].ry || 0 }, scaleOpt));
+        const g = place(key, items[0].x, items[0].z, Object.assign({ parent: landGroup, ry: items[0].ry || 0 }, scaleOpt));
         if (tint) g.traverse(n => { if (n.isMesh) n.material = tintedMat(n.material, tint); });
       }
     }
@@ -3367,21 +3402,21 @@ function siteMeshSig(s){ return [s.phase, s.status, s.stalled, s.human, s.branch
    read from the loaded model's own box -- never a raw guessed number (bounce 2, owner: "use the page's
    existing size/fit approach"). A sane fallback before the model has loaded (never crashes). */
 function cabinHeight(){
-  const key = 'building_home_A_blue', opt = OFFICE_OPT['kaykit-medieval/' + key];
+  const key = 'kaykit-medieval/building_home_A_blue', opt = OFFICE_OPT[key];
   return lib[key] ? lib[key].size.y * fitScale(key, (opt && opt.fit) || 1.25) : 1.2;
 }
-/* siteModelOpt(bare): place()'s own size option per site model (bounce 2, owner: the light and the fence
+/* siteModelOpt(key): place()'s own size option per site model (bounce 2, owner: the light and the fence
    have a tiny footprint but a real height -- 'fit' (which only ever looks at the footprint) blew them up
    trying to fill a whole tile; 'h' sizes by the model's own real height instead, same fix systemsDecor's
    SYS_SCALE already applies to the flowers). Heights are relative to cabinHeight(), so they track the
    cabin if its own fit ever changes. signpost/structure/flag keep 'fit: .8' (owner, bounce 2: "sign and
-   flag sizes look fine"). */
-function siteModelOpt(bare){
+   flag sizes look fine"). idea-city C8: keyed by the full 'pack/name' entry, like `lib`. */
+function siteModelOpt(key){
   const ch = cabinHeight();
-  if (bare === 'construction-light') return { h: ch * .58 }; // "half to two-thirds of the cabin's height"
-  if (bare === 'construction-fence') return { h: ch / 3 };   // "height roughly a third of the cabin"
-  if (bare === 'construction-barrier') return { h: ch * .28 }; // "keep the barrier small"
-  if (bare === 'building_home_A_blue') return OFFICE_OPT['kaykit-medieval/' + bare] || { fit: 1.25 }; // merging: officeDecor's own size
+  if (key === 'roads/construction-light') return { h: ch * .58 }; // "half to two-thirds of the cabin's height"
+  if (key === 'roads/construction-fence') return { h: ch / 3 };   // "height roughly a third of the cabin"
+  if (key === 'roads/construction-barrier') return { h: ch * .28 }; // "keep the barrier small"
+  if (key === 'kaykit-medieval/building_home_A_blue') return OFFICE_OPT[key] || { fit: 1.25 }; // merging: officeDecor's own size
   return { fit: .8 };
 }
 function removeSiteMesh(rec){
@@ -3435,10 +3470,9 @@ function syncSiteMesh(id){
   const rec = { sig, objs: [], road: prev ? prev.road : null, smoke: (prev && prev.smoke) || [] };
   for (const d of siteDecor(site)) {
     if (d.key === 'particles/smoke_01') continue; // its own puffs, made once below, animated every frame
-    const bare = d.key.split('/')[1];
-    if (!lib[bare]) continue; // never crash on a stray/unloaded key
-    const opt = Object.assign({ parent: siteGroup, ry: d.ry || 0 }, siteModelOpt(bare));
-    const g = place(bare, d.x, d.z, opt);
+    if (!lib[d.key]) continue; // never crash on a stray/unloaded key
+    const opt = Object.assign({ parent: siteGroup, ry: d.ry || 0 }, siteModelOpt(d.key));
+    const g = place(d.key, d.x, d.z, opt);
     rec.objs.push(g);
     if (d.key === 'survival/signpost-single') { ensureSiteSign(id).text = d.text; rec.signAt = { x: d.x, z: d.z + .55 }; }
   }
@@ -3848,8 +3882,8 @@ function updatePerson(c, t, dt){
 
   ensureOv(c);
   const [sx, sy] = toScreen(c.x, resting ? .58 : .72, c.y);
-  const talk = c.bubble && simT < c.bubble.until;
-  const showBub = c.state === 'asking' || (talk && c.state !== 'to_hall');
+  const bubText = personBubble(c); // idea-city C14: never an empty bubble
+  const showBub = bubText !== '';
   const ask = openAskFor(c.id);
   if (ask) c.o.qm.setAttribute('data-open', ask.id); else c.o.qm.removeAttribute('data-open');
   c.o.qm.setAttribute('aria-label', `${c.task} 等你${ask && ask.kind === 'permission' ? '批' : '回答'}，点开看`);
@@ -3862,7 +3896,7 @@ function updatePerson(c, t, dt){
   pin(c.o.wait, sx - 26, showBub ? sy - 32 : sy, !!(ask && ask.phase === 'governor'));
   pin(c.o.zz, sx + 14, sy, resting && pose === 'lie');
   if (showBub) {
-    setText(c.o.bub, c.state === 'asking' ? c.question : c.bubble.text);
+    setText(c.o.bub, bubText);
     c.o.bub.className = 'bub' + (c.state === 'asking' ? ' ask' : c.state === 'finishing' ? ' done' : '');
   }
   pin(c.o.bub, sx, sy, showBub);
@@ -4242,8 +4276,9 @@ function showPathAt(path, g){
 }
 /* one run's live state for a territory's show: its plan, one walking builder per plan.builders (each with
    its own door->target->target->...->door legs, findPath used leg by leg), and a (initially hidden)
-   scaffold/planks group per building/road target — parented under landGroup so the flip's buildLand(map)
-   clears them for free. */
+   scaffold/planks group per building/road target — parented under showGroup (idea-city C9: never landGroup,
+   which buildLand empties on every world event and every other territory's own era flip; a run's own
+   planks are removed from showGroup by dropShowRun when the run itself ends). */
 function makeShowRun(t, view, s){
   const plan = showPlan(t, view, s.to);
   const door = hallStand(t);
@@ -4263,7 +4298,7 @@ function makeShowRun(t, view, s){
   // scaffolding — makeBuilding already built it, sized to its height — via b.showScaf, not a generic prop)
   const scaf = plan.targets.filter(g => g.what === 'road').map(g => ({
     key: Math.floor(g.x) + ',' + Math.floor(g.z),
-    el: place('resource-planks', g.x, g.z, { s: .8, ry: sr(g.x * 7 + g.z, 3) * 6.28, parent: landGroup }),
+    el: place('resource-planks', g.x, g.z, { s: .8, parent: showGroup, ry: sr(g.x * 7 + g.z, 3) * 6.28 }),
   }));
   for (const s2 of scaf) s2.el.visible = false;
   return { plan, builders, scaf, reached: new Set(), flipped: false };
@@ -4325,11 +4360,16 @@ function dropShowBuilder(b){
   const mi = mixers.indexOf(b.v.mixer); if (mi >= 0) mixers.splice(mi, 1);
   b.v = null;
 }
+/* idea-city C9: a run's own road planks (run.scaf, parented under showGroup) are its own -- drop them
+   here, whenever the run itself ends, never left for buildLand to clean up (it never empties showGroup). */
+function dropShowRun(run){
+  for (const s2 of run.scaf) if (s2.el.parent) s2.el.parent.remove(s2.el);
+}
 function stepShows(now){
   if (!shows.size) return;
   for (const [id, s] of [...shows]) {
     const t = terrOf(id);
-    if (!t) { shows.delete(id); showRuns.delete(id); continue; }
+    if (!t) { const gone = showRuns.get(id); if (gone) dropShowRun(gone); shows.delete(id); showRuns.delete(id); continue; }
     let run = showRuns.get(id);
     if (!run) { run = makeShowRun(t, map, s); showRuns.set(id, run); }
     const elapsed = SHOW_SEC - (s.end - now) / 1000;
@@ -4347,7 +4387,7 @@ function stepShows(now){
     }
     if (!run.flipped && elapsed >= SHOW_FLIP) {
       run.flipped = true;
-      buildLand(map); // one moment: every building, hall, road and lamp of t re-skinned by eraLook (eraShown(t) is now s.to); clears the road planks too (landGroup)
+      buildLand(map); // one moment: every building, hall, road and lamp of t re-skinned by eraLook (eraShown(t) is now s.to); the run's own planks (showGroup) survive this -- dropShowRun clears them when the run ends
       for (const g2 of run.plan.targets) if (g2.what === 'building') { // fresh mesh in the new era: no scaffolding left on it
         const bld = occupied.get(Math.floor(g2.x) + ',' + Math.floor(g2.z));
         if (bld) bld.showScaf = false;
@@ -4356,6 +4396,7 @@ function stepShows(now){
     }
     if (now >= s.end) {
       for (const b of run.builders) dropShowBuilder(b);
+      dropShowRun(run);
       shows.delete(id); showRuns.delete(id);
     }
     needFrame = true;
