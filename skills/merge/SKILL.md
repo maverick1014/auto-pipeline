@@ -20,3 +20,4 @@ description: Main manager only. After a task manager reports DONE PASS, run the 
    ```
 5. On `MERGE PASS`: `git log --oneline -2`, `git worktree list`, `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show`. All clean → report to the human in H3 shape.
 6. On `MERGE FAIL`: report the first line to the human with the deputy's evidence. Do not retry on your own.
+7. Merged a fix early, while its branch is still running? → `SendMessage` that task manager at once: merge main back into your branch. Never cherry-pick slices; merge the branch (or its prefix).

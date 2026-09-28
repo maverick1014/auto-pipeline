@@ -21,7 +21,11 @@
 #   2. CLAUDE_CODE_REMOTE=true                         -> cloud
 #   3. orca on PATH and `orca worktree ps --json`
 #      answers inside 3 seconds                        -> orca
+#      cut off at 3 seconds -> one more try, 3 seconds -> orca
+#      (a busy Orca can miss one window)
 #   4. anything else                                   -> plain
+# The retry in step 3 is for a timeout only: an orca that answers fast with an
+# error (app not running) is a real answer, plain at once, one call, no retry.
 # `auto`, an empty value, a missing line, or any other value all fall through
 # to the next step, at either tier.
 #
@@ -36,7 +40,9 @@
 # The background call redirects stdin, stdout and stderr, so a caller piping
 # our own stdout/stderr never inherits them and hangs waiting for them to
 # close. Any temp file it needs lives under ${TMPDIR:-/tmp} and is always
-# removed before the probe returns, timed out or not.
+# removed before the probe returns, timed out or not. Its exit code tells a
+# cut-off call (2, worth one retry) apart from one that ran to completion,
+# whether that was a success (0) or a real, fast error (1, no retry).
 #
 # plain and cloud are the same shape: no terminals, no panes, no monitor loop.
 # They differ only in the browser: Claude in Chrome can never reach a cloud
@@ -55,7 +61,9 @@ _runtime_conf_value() {
   awk -F'=' '$1=="runtime"{v=$2} END{print v}' "$PROJECT_ROOT/agent.conf" 2>/dev/null
 }
 
-# The 3 second probe. Prints nothing; exit 0 means orca answered in time.
+# The 3 second probe. Prints nothing. Exit code: 0 orca answered in time,
+# 1 no orca on PATH or a real answer that was an error, 2 cut off at 3
+# seconds (the only case worth a retry).
 _runtime_probe_orca() {
   command -v orca >/dev/null 2>&1 || return 1
   local tmp pid step rc
@@ -73,16 +81,17 @@ _runtime_probe_orca() {
     pkill -TERM -P "$pid" 2>/dev/null
     wait "$pid" 2>/dev/null
     rm -f "$tmp"
-    return 1
+    return 2
   fi
   wait "$pid"
   rc=$?
   rm -f "$tmp"
-  return $rc
+  [ "$rc" -eq 0 ] && return 0
+  return 1
 }
 
 runtime_kind() {
-  local value
+  local value rc
   case "${AGENT_RUNTIME:-}" in
     orca|plain|cloud) printf '%s\n' "$AGENT_RUNTIME"; return 0;;
   esac
@@ -94,7 +103,13 @@ runtime_kind() {
     echo cloud
     return 0
   fi
-  if _runtime_probe_orca; then
+  rc=0
+  _runtime_probe_orca || rc=$?
+  if [ "$rc" -eq 2 ]; then
+    rc=0
+    _runtime_probe_orca || rc=$?
+  fi
+  if [ "$rc" -eq 0 ]; then
     echo orca
   else
     echo plain

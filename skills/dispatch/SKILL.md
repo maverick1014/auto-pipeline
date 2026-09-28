@@ -25,9 +25,12 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
    orca terminal create --worktree path:<worktree path> --title "TM <name>" --command "AGENT_ROLE=task-manager claude --model <model> --effort <effort> --permission-mode <mode>" --json
    orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 90000 --json
    ```
+   A new pane stops at a menu (trust prompt)? `orca terminal send` has no key flag: send the raw key as text, then Enter, e.g. Down: `orca terminal send --terminal <handle> --text $'\x1b[B' --enter`.
    Then `ListAgents`, find the new session, `SendMessage` it the brief below. Keep the terminal handle for `/merge`.
 
    **plain or cloud** — no terminal can be opened here, so no worktree either. The main manager does the task itself, from the session it is already in, with `Agent` subagents (`subagent_type: worker`), up to `max_agents` at a time. Use the task manager brief below as its own task list and run the steps in order.
+
+8. Early merge: a fix from a still-running branch merged into main → at once `SendMessage` that task manager: merge main back into your branch now. Never cherry-pick slices; merge the branch (or its prefix) — cherry-picks cost a conflict round at the final merge.
 
 ## Task manager brief (fill the <>)
 

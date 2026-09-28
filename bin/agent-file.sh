@@ -3,6 +3,7 @@
 #
 #   agent-file.sh todo add  "<name>" "<size>" "<what>" [est_minutes] [by]  -> agent_todo.txt (by defaults to "main")
 #   agent-file.sh todo done "<name>"                          -> line moves to agent_completed.txt as: date | name | what | est <n>m actual <n>m
+#   agent-file.sh todo drop "<name>" "<reason>"               -> line moves to agent_completed.txt as: date | name | what | est <n>m actual - | dropped: <reason>
 #   agent-file.sh idea add  "<text>"                          -> agent_ideas.txt
 #   agent-file.sh idea list                                   -> print agent_ideas.txt, numbered (cat -n)
 #   agent-file.sh idea rm   <n>                                -> remove line n from agent_ideas.txt
@@ -21,7 +22,7 @@ TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agen
 NOW=$(date '+%Y-%m-%d %H:%M'); WHO=${AGENT_ROLE:-main}
 touch "$TODO" "$DONE" "$IDEAS" "$WT"
 
-usage() { sed -n '2,16p' "$0"; exit 2; }
+usage() { sed -n '2,17p' "$0"; exit 2; }
 need()  { [ $# -ge "$1" ] || usage; }
 append(){ printf '%s\n' "$2" >> "$1"; }
 # drop lines whose first field (before " | ") equals $2 from file $1
@@ -55,6 +56,16 @@ case "${1:-}:${2:-}" in
     date="${NOW%% *}"
     drop "$TODO" "$3"; append "$DONE" "$date | $3 | $what | est $est_disp actual $actual_disp"
     echo "todo done: $3";;
+  todo:drop)
+    need 5 "$@"; line=$(first "$TODO" "$3")
+    [ -n "$line" ] || { echo "no todo line named: $3" >&2; exit 1; }
+    what=$(printf '%s\n' "$line" | awk -F' \\| ' '{print $3}')
+    est=$(printf '%s' "$line" | grep -o 'est [0-9][0-9]*m' | head -1 | sed 's/est //;s/m//')
+    [ -n "$est" ] || est="-"
+    [ "$est" = "-" ] && est_disp="-" || est_disp="${est}m"
+    date="${NOW%% *}"
+    drop "$TODO" "$3"; append "$DONE" "$date | $3 | $what | est $est_disp actual - | dropped: $4"
+    echo "todo dropped: $3";;
   idea:add)
     need 3 "$@"; append "$IDEAS" "$3 | $NOW | by $WHO"
     echo "idea added";;
@@ -83,6 +94,7 @@ case "${1:-}:${2:-}" in
     [ -s "$DONE" ] || exit 0
     while IFS= read -r ln; do
       [ -n "$ln" ] || continue
+      case "$ln" in *'| dropped: '*) continue;; esac
       name=$(printf '%s' "$ln" | awk -F' \\| ' '{print $2}')
       last=$(printf '%s' "$ln" | awk -F' \\| ' '{print $NF}')
       est=$(printf '%s' "$last" | grep -o 'est [0-9][0-9]*m' | head -1 | sed 's/est //;s/m//')

@@ -7,6 +7,9 @@
 #
 # Rule: no work until the quiz says PASS.
 #
+# A PASS with a session id marks it (agent_quiz_<session id> in the git dir),
+# so a later run in that same session skips straight past the quiz line.
+#
 # With a session_id on stdin, the real work runs once per SessionStart event
 # (two hooks, repo-packed plus user-scope, can fire for the same session):
 # see the once-per-session dedupe below (AGENT_START_DEDUPE_SEC, default 60s).
@@ -217,6 +220,10 @@ if [ "${1:-}" = "--answer" ]; then
     if [ -n "$l" ] && [ "$(h "$SALT:$q:$l")" = "${KEY[$q]}" ]; then ok=$((ok+1)); else wrong="$wrong Q$q(${RULE[$q]})"; fi
   done
   if [ $ok -eq $N ]; then
+    if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+      ( roots_read && mkdir -p "$PROJECT_GITDIR" && \
+        : > "$PROJECT_GITDIR/agent_quiz_$CLAUDE_CODE_SESSION_ID" ) 2>/dev/null || true
+    fi
     echo "QUIZ RESULT: $ok/$N PASS"; echo "You may start work."; exit 0
   else
     echo "QUIZ RESULT: $ok/$N FAIL"; echo "Wrong:$wrong"
@@ -569,18 +576,23 @@ fi
 # `2>/dev/null || true` so a failure here never breaks the hook. ----
 MARKER_DAYS="${AGENT_MARKER_DAYS:-7}"
 if [ -n "$SID" ]; then
-  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_compact_*' \) \
-    ! -name "agent_started_$SID" ! -name "agent_compact_$SID" \
+  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' \) \
+    ! -name "agent_started_$SID" ! -name "agent_compact_$SID" ! -name "agent_quiz_$SID" \
     -mtime "+$MARKER_DAYS" -delete 2>/dev/null || true
 else
-  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_compact_*' \) \
+  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' \) \
     -mtime "+$MARKER_DAYS" -delete 2>/dev/null || true
 fi
 
 NORMAL_TEXT=$(print_normal_lines; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
 MON_TEXT=$(print_monitor_block; printf 'X'); MON_TEXT=${MON_TEXT%X}
 RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
-QUIZ_LINE="QUIZ: run $PLUGIN_ROOT/bin/agent-start.sh --quiz, then --answer. No work until PASS."
+QUIZ_SID="${SID:-${CLAUDE_CODE_SESSION_ID:-}}"
+if [ -n "$QUIZ_SID" ] && [ -f "$PROJECT_GITDIR/agent_quiz_$QUIZ_SID" ]; then
+  QUIZ_LINE="QUIZ: PASS already in this session. A subagent (worker, deputy) takes no quiz (S9). Go on with your brief."
+else
+  QUIZ_LINE="QUIZ: run $PLUGIN_ROOT/bin/agent-start.sh --quiz, then --answer. No work until PASS."
+fi
 
 # ---- auto resume: real startup, main manager (new or taken over), never
 # spawned, never human-direct (second), and only when auto_resume=yes. A
