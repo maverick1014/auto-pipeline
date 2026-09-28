@@ -156,7 +156,7 @@ for p in (HERE, BIN):
 
 import agent_city as ac  # noqa: E402
 from test_agent_city_page import (case_block, const_object, function_source, inline_script,  # noqa: E402
-                                  js_value, page_fns, run_node)
+                                  js_value, page_fns, run_node, zh_resolved)
 from test_agent_city_server import ServerCase, wait_for  # noqa: E402
 
 REPO = "/r/shop/.git"
@@ -774,7 +774,7 @@ vm.runInContext(fns, box);
         self.assertRegex(m.group(1), r"then\(\s*ok\s*=>[^\n]*if \(ok", "the box is cleared only when the send worked")
 
     def test_chat_event(self):
-        block = case_block("chat") or ""
+        block = zh_resolved(case_block("chat") or "")
         self.assertTrue(block, "case 'chat': not handled")
         self.assertIn("chats", block)
         self.assertIn("你 →", block)

@@ -1295,7 +1295,7 @@ class TestInteraction(unittest.TestCase):
         self.assertRegex(case_block("snapshot") or "", r"\.asks\b")
 
     def test_live_answers_are_never_invented(self):
-        block = case_block("answer")
+        block = zh_resolved(case_block("answer"))
         self.assertIsNotNone(block)
         self.assertNotIn("批了", block)
         self.assertNotIn("不行", block)
@@ -1334,12 +1334,12 @@ class TestInteraction(unittest.TestCase):
 
     def test_owner_waiting_is_visible(self):
         self.assertIn("data-open", inline_script())
-        stats = function_source("renderStats") or ""
+        stats = zh_resolved(function_source("renderStats") or "")
         self.assertIn("等你", stats)
         self.assertIn('id="next"', stats)
 
     def test_closed_state_words(self):
-        text = inline_script()
+        text = zh_resolved(inline_script())
         self.assertIn("晚了一步", text)
         self.assertIn("closed", text)
 
@@ -1504,7 +1504,7 @@ process.stdout.write(JSON.stringify(out));
 
     def test_governor_presence(self):
         self.assertRegex(inline_script(), r"case\s+'governors'\s*:")
-        self.assertIn("不在", function_source("govPillText") or "")
+        self.assertIn("不在", zh_resolved(function_source("govPillText") or ""))
         self.assertRegex(case_block("snapshot") or "", r"\.governors\b")
 
     def test_ask_line(self):
@@ -1699,6 +1699,35 @@ def const_object(name):
             if depth == 0:
                 return text[i:j + 1]
     return None
+
+
+_ZH = {}
+
+
+def text_zh():
+    """idea-city C1: the page's zh texts (const TEXT = {zh, en}), {} before the page has them."""
+    lit = const_object("TEXT")
+    if not lit:
+        return {}
+    if lit not in _ZH:
+        _ZH.clear()
+        _ZH[lit] = (js_value(lit) or {}).get("zh", {})
+    return _ZH[lit]
+
+
+def zh_resolved(src):
+    """idea-city C1: SRC as a reader of the zh page sees it: every T('key' call shows its zh text in
+    place of the key, and every data-t="key" / data-t-aria="key" / data-t-title="key" attribute becomes
+    the zh text / aria-label / title -- so a test that looks for a Chinese word in the page source still
+    finds it after the texts moved into TEXT. Before that (no TEXT) SRC comes back unchanged."""
+    zh = text_zh()
+    if not zh or not src:
+        return src
+    q = lambda k: zh.get(k, k).replace("'", "\\'")
+    src = re.sub(r"\bT\((['\"])([\w.\-]+)\1", lambda m: "T('%s'" % q(m.group(2)), src)
+    src = re.sub(r'data-t-aria="([\w.\-]+)"', lambda m: 'aria-label="%s"' % zh.get(m.group(1), m.group(1)), src)
+    src = re.sub(r'data-t-title="([\w.\-]+)"', lambda m: 'title="%s"' % zh.get(m.group(1), m.group(1)), src)
+    return re.sub(r'\sdata-t="([\w.\-]+)"([^>]*)>', lambda m: '%s>%s' % (m.group(2), zh.get(m.group(1), m.group(1))), src)
 
 
 def js_value(literal):
