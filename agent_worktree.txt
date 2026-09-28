@@ -1,0 +1,2 @@
+pc2:/Users/maverick/orca/workspaces/auto-pipeline/agent-city-anywhere | agent-city-anywhere (TM on maverick-pc2, bounce 1) | working | since 2026-09-28 15:46
+pc2:/Users/maverick/orca/workspaces/auto-pipeline/city-ux | city-ux (TM on maverick-pc2) | working | since 2026-09-28 15:55
