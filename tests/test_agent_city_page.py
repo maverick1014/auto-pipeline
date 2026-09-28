@@ -1374,11 +1374,11 @@ class TestInteraction(unittest.TestCase):
     def test_governor_speaks_only_its_own_answers(self):
         give = function_source("giveAnswer") or ""
         for line in give.splitlines():
-            if "say(gov" in line or "gov.answered" in line:
+            if "say(gov" in line or "govSay(" in line or "gov.answered" in line:
                 with self.subTest(line=line.strip()):
                     self.assertIn("DEMO", line)
         closed = case_block("ask_closed") or ""
-        self.assertIn("say(gov", closed)
+        self.assertIn("govSay(", closed)  # idea-city C13: each governor talks in his own bubble
         self.assertIn("'governor'", closed)
 
     def test_stuck_text_and_citizen_status(self):
