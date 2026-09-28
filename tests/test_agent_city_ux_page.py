@@ -42,6 +42,10 @@ U1 repo tags + zoom-out limit
         aria-current="true" on the tag nearest the look point (nearestTerr), or on All while cam.dist >
         distLimit(). New TEXT keys, zh and en both: repo.all, aria.repos, repo.goAria.
 
+  The zoom-out hint (approved mock v3): <div class="cap-hint" id="cap-hint" aria-live="polite" hidden>
+        inside #stage; capHint() shows it with i18n cap.hint (zh + en) for about 1.6 s. zoomStep, the wheel
+        listener and the gesturechange listener call capHint() when a zoom-out was stopped by the limit.
+
 U2 a click never moves the view
   (sim) TAP_PX (6 .. 12); isDrag(x0, y0, x1, y1) -> true once the pointer is TAP_PX or more away.
   3D part: the pointermove handler uses isDrag(); camLift() treats only a real drag (drag.moved) or a
@@ -410,6 +414,14 @@ class TestRepoTagsWiring(unittest.TestCase):
         self.assertIn("capZoom(", move, "pinch goes through capZoom")
         self.assertIn("dragBy(dx, dy, distLimit())", move)
         self.assertIn("distMax()", function_source("updateCamera") or "")
+
+    def test_zoom_out_hint(self):
+        self.assertEqual(text_keys("cap.hint"), 2)
+        self.assertRegex(page(), r'<div class="cap-hint" id="cap-hint"[^>]*hidden')
+        self.assertIsNotNone(function_source("capHint"), "capHint() missing")
+        self.assertIn("capHint(", function_source("zoomStep") or "")
+        self.assertIn("capHint(", listener_block(r"(?:stage|\$\('#stage'\))", "wheel") or "")
+        self.assertIn("capHint(", listener_block(r"(?:stage|\$\('#stage'\)|canvas)", "gesturechange") or "")
 
     def test_user_controls_stop_a_fly(self):
         for name in ("zoomStep", "panBy"):
