@@ -15,7 +15,7 @@ CONTRACT (bin/agent_city.py, Python standard library only)
           {-1, 0}; plaza ring = the box -2..1 around it.
           load_plans(path=None) -> the list of plans (default: the file above).
 
-  Constants  CELL 26, HALF 13, R0 1.9, RMAX 8.6, L0 50, LCAP 1000000,
+  Constants  CELL 22, HALF 11 (city-ux U7, owner 2026-09-28: was 26/13), R0 1.9, RMAX 8.6, L0 50, LCAP 1000000,
           KIND_TYPE {test: tower, ui: shop, script: workshop, doc: library,
           other: house}, RECOUNT_SEC 300.
 
@@ -50,14 +50,14 @@ CONTRACT (bin/agent_city.py, Python standard library only)
           that district in plan order: {"plot": k, "type", "owner", "by",
           "at": now}, appended to the territory's buildings.
     layout(world, plans) -> the view the page draws:
-          {"cell": 26, "x0", "z0", "w", "h", "rows": [h strings of w chars],
+          {"cell": 22, "x0", "z0", "w", "h", "rows": [h strings of w chars],
            "territories": [{"id", "name", "plan", "terrain", "slot", "cx",
               "cz", "lines", "size", "r", "open", "plots_total",
               "plots": [{"k", "x", "z", "d"}] (open plots, world tiles),
               "buildings": [{"plot", "type", "by", "x", "z"}]}],
            "links": [{"a", "b", "gap", "kind", "cross": [[x, z], ...]}]}
           World tile (X, Z) = rows[Z - z0][X - x0]. A territory in slot
-          (i, j) has its hall centre at (26 i, 26 j). Map chars:
+          (i, j) has its hall centre at (22 i, 22 j). Map chars:
             ' ' void  . wild  g territory ground  r road  t track  H hall
             P open plot  w river  k ravine  m mountain pass  f forest belt
             B bridge  b beach  s sea
@@ -272,7 +272,7 @@ class TestPlans(unittest.TestCase):
 
 class TestSize(unittest.TestCase):
     def test_constants(self):
-        self.assertEqual((ac.CELL, ac.HALF), (26, 13))
+        self.assertEqual((ac.CELL, ac.HALF), (22, 11))
         self.assertEqual((ac.R0, ac.RMAX, ac.L0, ac.LCAP), (1.9, 8.6, 50, 1000000))
         self.assertEqual(ac.KIND_TYPE, {"test": "tower", "ui": "shop", "script": "workshop",
                                         "doc": "library", "other": "house"})
@@ -406,7 +406,7 @@ class TestLand(unittest.TestCase):
 
     def test_map_shape_and_alphabet(self):
         v = ac.layout(world_of(*[(i, 3000 * (k + 1)) for k, i in enumerate(ids(4))]), plans())
-        self.assertEqual(v["cell"], 26)
+        self.assertEqual(v["cell"], 22)
         self.assertEqual(len(v["rows"]), v["h"])
         for row in v["rows"]:
             self.assertEqual(len(row), v["w"])
@@ -417,7 +417,7 @@ class TestLand(unittest.TestCase):
         v = ac.layout(w, plans())
         self.assertEqual(len(v["territories"]), 4)
         for t in v["territories"]:
-            self.assertEqual((t["cx"], t["cz"]), (26 * t["slot"][0], 26 * t["slot"][1]))
+            self.assertEqual((t["cx"], t["cz"]), (22 * t["slot"][0], 22 * t["slot"][1]))
             for x in (t["cx"] - 1, t["cx"]):
                 for z in (t["cz"] - 1, t["cz"]):
                     self.assertEqual(tile(v, x, z), "H")
@@ -474,10 +474,10 @@ class TestLand(unittest.TestCase):
             spots = set()
             for along in range(-9, 10):
                 if across:
-                    line, at = 13 + 26 * min(a["slot"][0], b["slot"][0]), a["cz"] + along
+                    line, at = 11 + 22 * min(a["slot"][0], b["slot"][0]), a["cz"] + along
                     hits = [d for d in range(-4, 4) if tile(v, line + d, at) == ch]
                 else:
-                    line, at = 13 + 26 * min(a["slot"][1], b["slot"][1]), a["cx"] + along
+                    line, at = 11 + 22 * min(a["slot"][1], b["slot"][1]), a["cx"] + along
                     hits = [d for d in range(-4, 4) if tile(v, at, line + d) == ch]
                 if hits:
                     spots.add(min(hits))
