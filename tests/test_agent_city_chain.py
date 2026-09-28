@@ -747,7 +747,11 @@ class TestPeoplePage(unittest.TestCase):
         self.assertLessEqual(dist(self.r["p2"], self.r["gA"]), 1.6)
 
     def test_governor_window_uses_the_groups(self):
-        self.assertIn("rosterGroups(", function_source("renderDetail") or "")
+        # city-ux U11: renderDetail draws the list through teamListHtml(), which reads rosterGroups()
+        src = function_source("renderDetail") or ""
+        if "teamListHtml(" in src:
+            src = function_source("teamListHtml") or ""
+        self.assertIn("rosterGroups(", src)
 
 
 GOVFIG_DRIVER = r"""

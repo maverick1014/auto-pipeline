@@ -4054,7 +4054,12 @@ def cmd_gov_pending(args):
 # top of tests/test_agent_city_world.py for the exact shapes. Balance (the
 # 5 kinds' colours, eras) is a later task: "era" is stored but unused here.
 
-CELL, HALF = 26, 13
+CELL, HALF = 22, 11
+# city-ux U7: the content box every plan's plots/offices/rest fit inside
+# (bin/agent-city-plans.json, unchanged). A plan's roads and exits reach
+# further out (up to +-HALF); layout() and trunk() cut those back to this
+# box so no 'r' tile, and no exit, ever lands in the neighbour's gap belt.
+BOX_LO, BOX_HI = -8, 7
 R0, RMAX = 1.9, 8.6
 L0, LCAP = 50, 1000000
 SEA_ROWS = 8
@@ -4320,12 +4325,25 @@ def _mult(shape, theta):
 # -- one plan's fixed geometry ----------------------------------------------
 
 def _road_set(plan):
+    """Plan roads, cut back to the content box (BOX_LO..BOX_HI): a segment
+    that reaches past the box is clipped to it, so no road tile ever lands
+    in the gap belt between neighbours; a segment entirely outside is
+    dropped."""
     roads = set()
     for x0, z0, x1, z1 in plan["roads"]:
-        for x in range(min(x0, x1), max(x0, x1) + 1):
-            for z in range(min(z0, z1), max(z0, z1) + 1):
+        xlo, xhi = max(min(x0, x1), BOX_LO), min(max(x0, x1), BOX_HI)
+        zlo, zhi = max(min(z0, z1), BOX_LO), min(max(z0, z1), BOX_HI)
+        for x in range(xlo, xhi + 1):
+            for z in range(zlo, zhi + 1):
                 roads.add((x, z))
     return roads
+
+
+def _clip_to_box(pt):
+    """A plan exit cut back to the content box edge (its road is cut the
+    same way by _road_set, so the trunk below still starts on a road)."""
+    x, z = pt
+    return (max(BOX_LO, min(BOX_HI, x)), max(BOX_LO, min(BOX_HI, z)))
 
 
 def _front_of_plot(roads, x, z):
@@ -4538,12 +4556,15 @@ def build(world, plans, identity, kind, owner, by, now, file_rel=None, wt="", bu
 # -- the whole land as a char grid, for the page to draw --------------------
 
 def _trim_depth(a, c):
-    """Outer-edge cut depth (1..6 tiles) with no neighbour on that side,
+    """Outer-edge cut depth (1..3 tiles) with no neighbour on that side,
     from a noisy wave along the cell's side (A = the global coordinate
-    running along it, C = a per-side phase so all four sides differ)."""
-    v = (2.5 + 1.3 * math.sin(a * 0.31 + c) + 0.8 * math.sin(a * 0.77 + 2 * c)
-         + 0.5 * math.sin(a * 1.53 + 3 * c) + 0.45 * math.sin(a * 2.9 + 5 * c))
-    return 1 + max(0, min(5, math.floor(v + 0.5)))
+    running along it, C = a per-side phase so all four sides differ).
+    Scaled down for HALF 11 (was 1..6 at HALF 13): the margin between the
+    cell edge and the content box (BOX_LO/BOX_HI) is only 3 tiles now, so a
+    deeper cut would eat the towns."""
+    v = (1.3 + 0.45 * math.sin(a * 0.7 + c) + 0.4 * math.sin(a * 1.7 + 2 * c)
+         + 0.35 * math.sin(a * 3.1 + 3 * c) + 0.3 * math.sin(a * 5.3 + 5 * c))
+    return 1 + max(0, min(2, math.floor(v + 0.5)))
 
 
 def _belt_offset(a, c):
@@ -4553,7 +4574,11 @@ def _belt_offset(a, c):
 
 
 def _corner_cut(x, z):
-    return 8 + math.floor(2 * math.sin(x * 0.5 + z * 0.3) + 0.5)
+    """Diagonal-corner cut depth (2..6, was 8+-2 at HALF 13): a corner tile
+    is cut when its two edge distances sum to less than this. At HALF 11
+    the content box's own corner sums to 6 (BOX_HI's distance on each side),
+    so 6 is the largest value that still never touches the box."""
+    return 4 + math.floor(2 * math.sin(x * 0.5 + z * 0.3) + 0.5)
 
 
 def layout(world, plans):
@@ -4747,7 +4772,7 @@ def layout(world, plans):
         i, j = t["slot"]
         ox, oz = i * CELL, j * CELL
         roads = _road_set(plan)
-        ex = tuple(plan["exits"][direction])
+        ex = _clip_to_box(plan["exits"][direction])
         prev = {ex: None}
         queue_ = deque([ex])
         hit = None

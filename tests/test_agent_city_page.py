@@ -104,7 +104,8 @@ CONTRACT
       changes a shared material, never fades twice. frame() calls
       applyFade(viewBlockers(cam.el + camLiftNow)) after updateCamera().
       Drag up/down: cam.el = clamp(..., EL_MIN, EL_MAX). +/−, wheel, pinch:
-      cam.dist clamped with DIST_MIN, distMax() on the same line.
+      cam.dist through capZoom(want, cur, distLimit(), distMax()) (city-ux:
+      DIST_MIN inside capZoom; the user's zoom-out stops at distLimit()).
       toScreen() hides points behind the camera (projected z > 1).
       Depth: PerspectiveCamera(FOV, 1, near, far) with number literals,
       near >= 0.2, far <= 200, far/near <= 1000. The edge cliff blocks share
@@ -583,7 +584,7 @@ UNIT_JS = r"""
 const fs = require('fs'), vm = require('vm');
 const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const out = {};
-function ctx(extra){ const box = Object.assign({ Math, JSON, console, performance: { now: () => 0 } }, extra); vm.createContext(box); vm.runInContext(prelude + '\n' + fns, box); return box; }
+function ctx(extra){ const box = Object.assign({ Math, JSON, console, performance: { now: () => 0 }, $: () => null, setTimeout: () => 0, clearTimeout(){} }, extra); vm.createContext(box); vm.runInContext(prelude + '\n' + fns, box); return box; }
 
 // walking
 {
@@ -792,7 +793,8 @@ const clampFn = (v, a, b) => Math.max(a, Math.min(b, v));
   box.W = 874; box.H = 710; box.land = { hx: 39, hz: 39 }; box.home = { x: 0, z: 0 };
   box.camChanged = () => {};
   box.resetCam();
-  if (typeof box.zoomStep === 'function') { for (let i = 0; i < 6; i++) box.zoomStep(1); out.sixOut = box.cam.dist / box.distMax(); }
+  // city-ux U1: the user's zoom-out stops at distLimit() (the whole land is the All tag's job)
+  if (typeof box.zoomStep === 'function') { for (let i = 0; i < 6; i++) box.zoomStep(1); out.sixOut = box.cam.dist / (typeof box.distLimit === 'function' ? box.distLimit() : box.distMax()); }
   else out.sixOut = null;
   // at the limit, tall things by the middle must not lift the view off the land
   box.heightAt = (x, z) => (Math.abs(x) < 3 && Math.abs(z) < 3 ? 4 : 0);
@@ -855,7 +857,8 @@ def unit_results():
             if src is None:
                 raise AssertionError("function %s(...) not found in the page script" % name)
             fns.append(src)
-        for name in ("aroundH", "autoRotating", "fadedOf", "islandSpread", "landSpread", "centreHeight", "zoomStep"):
+        for name in ("aroundH", "autoRotating", "fadedOf", "islandSpread", "landSpread", "centreHeight", "zoomStep",
+                     "pullShare", "distLimit", "zoomCapDist", "spanDist", "capZoom", "stopFly", "capHint"):  # city-ux
             src = function_source(name)
             if src is not None:
                 fns.append(src)
@@ -944,10 +947,11 @@ class TestKept(unittest.TestCase):
 
     def test_zoom_still_works(self):
         text = inline_script()
-        for needle in ("$('#zin').addEventListener", "$('#zout').addEventListener",
-                       "canvas.addEventListener('wheel'", "pinch"):
+        for needle in ("$('#zin').addEventListener", "$('#zout').addEventListener", "pinch"):
             with self.subTest(needle=needle):
                 self.assertIn(needle, text)
+        # city-ux U3: the wheel listener sits on the stage (so a wheel over a head tag still pans)
+        self.assertRegex(text, r"(?:\bstage|\$\('#stage'\))\.addEventListener\('wheel'")
 
     def test_phone_layout(self):
         self.assertIn('name="viewport"', page())
@@ -1100,7 +1104,7 @@ class TestZoomOut(unittest.TestCase):
                 self.assertGreaterEqual(z["fill"], low, "the land is lost in the middle of the stage")
 
     def test_six_steps_out_show_the_whole_land(self):
-        """E2E bounce G6: 6 x minus in #demo still cut the land off."""
+        """E2E bounce G6: 6 x minus in #demo still cut the land off. city-ux U1: six steps reach the zoom-out limit."""
         six = unit_results()["sixOut"]
         self.assertIsNotNone(six, "function zoomStep(k) not found")
         self.assertAlmostEqual(six, 1.0, delta=1e-6)
@@ -1137,10 +1141,10 @@ class TestZoomOut(unittest.TestCase):
         self.assertAlmostEqual(r["target12"][2], -2, delta=0.01)
 
     def test_tilting_while_fully_zoomed_out_stays_out(self):
-        # city-people: an orbit drag is dragBy(dx, dy, limit); the pointer handler passes distMax()
+        # city-people: an orbit drag is dragBy(dx, dy, limit); the pointer handler passes the limit (city-ux: distLimit())
         down = re.search(r"canvas\.addEventListener\('pointermove', e => \{(.*?)\n\}\);", inline_script(), re.S)
         self.assertIsNotNone(down, "canvas pointermove handler not found")
-        self.assertRegex(down.group(1), r"dragBy\([^)]*distMax\(\)\)")
+        self.assertRegex(down.group(1), r"dragBy\([^)]*distLimit\(\)\)")
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import test_agent_city_people as tpp
         out = tpp.run_sim(r"""
@@ -1182,12 +1186,18 @@ class TestCamera(unittest.TestCase):
         self.assertLessEqual(c["DIST_MIN"], 3.5)
         text = inline_script()
         self.assertNotIn("DIST_MAX", text)
+        # city-ux U1: every user zoom goes through capZoom(want, cur, distLimit(), distMax()); DIST_MIN is in capZoom
+        self.assertIn("DIST_MIN", function_source("capZoom") or "")
         step = function_source("zoomStep") or ""
-        for needle in ("$('#zin')", "$('#zout')", "canvas.addEventListener('wheel'"):
+        self.assertIn("capZoom(", step)
+        for needle in ("$('#zin')", "$('#zout')"):
             with self.subTest(control=needle):
                 line = next(l for l in text.splitlines() if needle in l)
-                self.assertTrue("DIST_MIN, distMax()" in line or ("zoomStep(" in line and "DIST_MIN, distMax()" in step), line)
-        self.assertRegex(text, r"pinch\.z[^;\n]*DIST_MIN, distMax\(\)")
+                self.assertIn("zoomStep(", line)
+        wheel = re.search(r"(?:\bstage|\$\('#stage'\))\.addEventListener\('wheel'.*", text)
+        self.assertIsNotNone(wheel)
+        self.assertIn("capZoom(", text[wheel.start():wheel.start() + 1500])
+        self.assertRegex(text, r"pinch\.z[\s\S]{0,300}capZoom\(")
 
     def test_camera_orbits_the_target_at_the_users_tilt(self):
         import math

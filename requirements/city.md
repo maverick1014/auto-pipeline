@@ -20,11 +20,14 @@
 - No speed buttons, no pause. The view runs at real time.
 - People walk at 1/3 of the 0.5.0 speed. Walk animation slowed to match.
 - The city fills the whole page (owner, 2026-09-27; replaces the right column of cards 详情 / 城市平衡 / 市民 / 动态). Nothing sits beside it.
-- Click a person → that person's window opens over the city: what it does now, its role, task, repo and branch, its latest steps, its conversation, and a box to talk to it (see Talking). Click a building or a site → the same window shows that thing (a "?" keeps its own panel over the city). × or a tap on empty ground closes it: only the city again (no keyboard shortcut, as before).
+- Click a person, or any tag or bubble over its head (name tag, state bubble, question bubble) → the team window of its repo opens over the city (owner, 2026-09-28, city-ux; approved mock mock/city-ux-mock.html v3). One window for the whole team, title "<repo> · 团队": the left column is always the same full list (the governor first, then each task manager with its workers, then everyone else, other members' people last), the selected person highlighted; a click on a row only switches the right column, so the governor is always one click away. The right column: the person's short facts (state, repo · branch · doing, progress), its history, newest at the bottom (activity lines the page records since it opened: started, tools, stuck, waiting, done; its questions and answers; its conversation, see Talking), and the reply box for a session (a subagent: view only, find its lead). Wide on a computer, the right column fills the window height; stacked on a phone. No tool counters (Edit / Write / Bash / Read), no explainer text, no 派出 / 回答 counters.
+- A person is easy to hit: a click within about 28 px of a person picks it.
+- Click a building → the window shows one meaningful name (the task it came from, else the module its files point at, else its type; never a file path or its builder) and its type and district, nothing else. A site as before (a "?" keeps its own panel over the city). × or a tap on empty ground closes it: only the city again (no keyboard shortcut, as before).
 - Top counts stay, small, over the city: 干活, 找总督, 休息, 建成. The page log (动态) opens from a small button there, on demand; every line the rules below call "never silent" still goes into it.
 - No frame around the city: no border line, no rounded box.
 - Camera is a perspective camera, not a top-down god view. Default tilt about 30° above the horizon, close to the town hall.
-- Drag up/down tilts (about 15° to 60°), drag left/right orbits, wheel/pinch zooms from near street level to the whole territory. Never clips into ground or buildings.
+- Drag up/down tilts (about 15° to 60°), drag left/right orbits (a drag starts past 8 px; a plain click never moves or tilts the view). Trackpad like a MacBook: two fingers together pan (the land follows the fingers, like scrolling), pinch zooms, both proportional. A plain mouse wheel pans too; zoom with pinch, ctrl + wheel or + / −. Never clips into ground or buildings.
+- Repo tags (owner, 2026-09-28): a row above the city, always visible: 全部 / All first, then one tag per repo; the tag of the repo in view is highlighted. A tag flies the camera there (smooth, keeps the tilt); All shows every repo. The user's own zoom-out stops at about two territories across (a short hint says so and points to All); only All goes past it.
 - Camera auto-rotates, one turn per 5 min, and never stops: clicks, drags, zoom and panels do not pause it (owner, 2026-09-25; replaces stop-on-touch). A drag adds to the angle while it keeps turning. Off under `prefers-reduced-motion`.
 
 ## Interaction
@@ -48,6 +51,7 @@
 - What the window shows: what was typed to the session (UserPromptSubmit `prompt`), the text each turn ended with (`last_assistant_message` on Stop and SubagentStop), and the owner's messages from the page. Questions and permission requests stay in their own "?" panel (see Interaction). Not tool output, not the transcript file: its format is internal to Claude Code and changes between versions (code.claude.com/docs/en/sessions), so the city never parses it. Only from the time the city is on.
 - A message typed in the window goes to that session. Idle session → it wakes at once with the message: the same background Stop hook that wakes a governor with a question (`asyncRewake`), now for every session, reachable while idle up to the same 12 h. Busy session → the message waits and goes in when its turn ends; the window says 等它做完这一步. The window shows each message as sent, then delivered.
 - Sessions only: the governor and task managers. A worker (a subagent inside a session) shows its conversation read only, and the window offers its lead's window to talk to instead.
+- The conversation shows simple markdown (paragraphs, lists, code, bold, simple tables) and hides HTML comments (e.g. <!-- buddy: … -->); raw HTML is shown as text, never run. The log never pulls the owner down: it follows new lines only while the owner is at the bottom; scrolled up, it stays put and a small 有新消息 ↓ / New messages ↓ chip jumps down.
 - Every delivered message is logged like an answer: who, what, when, in the page log and `~/.claude/agent-city/decisions.jsonl`. Control requests as in Interaction: 127.0.0.1, token, Origin and Host checked.
 - Chat text stays on this computer, in `chat.jsonl` next to `events.jsonl`, readable by this user only (file mode 0600), one append per line: never sent through the relay (a joined city shows other members' people, never their conversation; their windows have no box), never written into `world.json`.
 - Cost: the per-tool-call hook stays as today (bash builtins, one line). The text is picked up only when a prompt is submitted or a turn ends.
@@ -70,6 +74,7 @@
 ## Growth
 - One territory per repo. All territories on one land, not islands on a sea.
 - Territories are split by a natural gap: river, ravine, mountain pass or forest. A bridge or road joins neighbours, so people could cross.
+- Tight spacing (owner, 2026-09-28, city-ux): territories sit 22 tiles apart (was 26); the town plans are unchanged, their roads stop at the town's content box, and the outer edge and coast stay organic.
 - Where the land ends it may meet sea (the coast terrain); that is the only sea.
 - Territory size grows with the repo's git-tracked code lines. Not counted: binaries, images, 3D models, vendor, lock files.
 - New repo = tiny territory with a small town hall only.

@@ -231,6 +231,9 @@ class TestWindowWiring(unittest.TestCase):
 
     def test_a_tap_on_the_city_closes_the_log(self):
         body = function_source("endPointer") or ""
+        # city-ux U6: the tap goes through selectPick(), the one select path (it clears winLog)
+        if "selectPick(" in body:
+            body = function_source("selectPick") or ""
         self.assertRegex(body, r"winLog = false|closeWin\(")
 
 

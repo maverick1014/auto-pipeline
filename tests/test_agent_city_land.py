@@ -787,7 +787,10 @@ const fs = require('fs'), vm = require('vm');
 const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const out = {};
 const box = { Math, JSON, console, performance: { now: () => 0 }, cam: { az: .7, el: 30 * Math.PI / 180, dist: 9, tx: 0, tz: 0 },
-  W: 1200, H: 800, land: { hx: 13, hz: 13 }, map: { territories: [] }, camChanged(){}, clamp: (v, a, b) => Math.max(a, Math.min(b, v)) };
+  W: 1200, H: 800, land: { hx: 13, hz: 13 }, map: { territories: [] }, camChanged(){}, clamp: (v, a, b) => Math.max(a, Math.min(b, v)),
+  // city-ux: zoomStep may show the zoom-out hint (capHint) -- a harmless element for it
+  $: () => ({ hidden: true, textContent: '', style: {}, classList: { add(){}, remove(){}, toggle(){} } }), setTimeout: () => 0, clearTimeout(){},
+  setText(el, t){ el.textContent = t; }, capHintTimer: 0 };
 vm.createContext(box);
 vm.runInContext(prelude + '\n' + fns, box);
 out.full = box.distMax();
@@ -828,7 +831,8 @@ class TestEmptyWorld(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         fns = tp.page_fns("distMax", "zoomStep", "landReady", "updateGovernor", "showEmptyLine", "governorAt",
-                          optional=("landSpread", "centreHeight", "islandSpread", "govTalk", "govSay"))
+                          optional=("landSpread", "centreHeight", "islandSpread", "govTalk", "govSay",
+                                    "capZoom", "distLimit", "zoomCapDist", "spanDist", "stopFly", "capHint"))  # city-ux
         cls.out = tp.run_node(EMPTY_JS, {"prelude": tp.constants_prelude(), "fns": fns})
 
     def test_zoom_keeps_working_with_no_land(self):
