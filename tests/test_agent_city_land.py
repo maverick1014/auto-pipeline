@@ -847,7 +847,7 @@ class TestEmptyWorld(unittest.TestCase):
         self.assertTrue("landReady()" in (tp.function_source("updatePerson") or ""), "people never float in the void either")
 
     def test_one_line_says_there_is_no_territory_yet(self):
-        m = re.search(r"<p\b[^>]*\bid=\"empty-land\"[^>]*>(.*?)</p>", tp.markup(), re.S)
+        m = re.search(r"<p\b[^>]*\bid=\"empty-land\"[^>]*>(.*?)</p>", tp.zh_resolved(tp.markup()), re.S)  # idea-city C1: the text comes from TEXT (data-t)
         self.assertIsNotNone(m, '<p id="empty-land"> not found')
         self.assertIn("hidden", m.group(0).split(">")[0])
         self.assertIn("还没有领地", m.group(1))
