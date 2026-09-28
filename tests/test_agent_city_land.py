@@ -308,8 +308,9 @@ class TestCityScriptStartDir(ScriptCase):
                 pass
         super().tearDown()
 
-    def city_run(self, *args, cwd=None):
+    def city_run(self, *args, cwd=None, extra=None):
         env = {"AGENT_CITY_DIR": self.city, "AGENT_CITY_HOME": self.home}
+        env.update(extra or {})
         kw = {"env": env, "timeout": 30}
         if cwd:
             kw["cwd"] = cwd
@@ -338,9 +339,10 @@ class TestCityScriptStartDir(ScriptCase):
     def test_start_from_a_plain_folder(self):
         plain = os.path.join(self.repo.base, "plain")
         os.makedirs(plain)
-        with open(os.path.join(plain, "agent.conf"), "w") as fh:  # its own port: never the real city's 4777
-            fh.write("city_port=%d\n" % tp_free_port())
-        result = self.city_run("start", cwd=plain)
+        # Its own port: never the real city's 4777. Outside a repo no
+        # agent.conf is read (requirements/city.md, "Anywhere"), so the port
+        # comes from AGENT_CITY_PORT.
+        result = self.city_run("start", cwd=plain, extra={"AGENT_CITY_PORT": str(tp_free_port())})
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(list(self.territories()), [os.path.realpath(plain)])
 

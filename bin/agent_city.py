@@ -3483,7 +3483,8 @@ def cmd_serve(args):
         chat_initial_skip = 0
     city = CityState(gov_wait_sec=args.gov_wait_sec, decisions_path=decisions_path, token=token,
                       world_path=world_path_arg, start_repo=start_repo, chat_path=chat_path, lang=lang)
-    hub = relay.RelayHub(relay_sec=args.relay_sec, join_ttl=args.join_ttl_sec)
+    hub = relay.RelayHub(relay_sec=args.relay_sec, join_ttl=args.join_ttl_sec,
+                        joined_list=args.joined_list)
     remote = RemoteCity(hub, remote_ttl_sec=args.remote_ttl_sec)
     city.remote = remote
     server = ThreadingHTTPServer(("127.0.0.1", args.port), CityHandler)
@@ -5610,6 +5611,7 @@ def _build_parser():
     serve.add_argument("--gov-wait-sec", type=float, default=60.0)
     serve.add_argument("--relay-sec", type=float, default=5.0)
     serve.add_argument("--join-ttl-sec", type=float, default=30.0)
+    serve.add_argument("--joined-list", default=None)
     serve.add_argument("--remote-ttl-sec", type=float, default=600.0)
     serve.add_argument("--decisions", default=None)
     serve.add_argument("--world", default=None)
