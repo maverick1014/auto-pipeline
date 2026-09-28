@@ -1862,11 +1862,13 @@ let govTerr = null;
    `bubble` ({text, until}, idea-city C13) is that territory's own governor's say() text, set by
    govSay below -- kept on the same entry so it never leaks onto another territory's governor. */
 const govsByTerr = new Map();
-/* govSay(terr, text, dur): that territory's own governor says `text` for `dur` seconds (simT clock). */
+/* govSay(terr, text, dur): that territory's own governor says `text` for `dur` seconds (simT clock).
+   govsByTerr is "who is present" (governorAt/the figure pool draw from it) -- govSay only ever talks
+   for a territory that already has an entry there, never adds one itself (idea-city P3 fix: a "去吧"
+   or answer arriving after that governor's own present:false must never bring back a phantom one). */
 function govSay(terr, text, dur){
-  const bubble = { text, until: simT + dur };
   const g = govsByTerr.get(terr);
-  if (g) g.bubble = bubble; else govsByTerr.set(terr, { state: 'idle', bubble });
+  if (g) g.bubble = { text, until: simT + dur };
 }
 /* govTalk(terr) -> the text terr's own governor bubble shows right now, or '': 等你回话… while that
    territory's governor is waiting, else his own govSay text while it lasts -- never another
@@ -2113,9 +2115,10 @@ function openGovAskFor(terr){
 }
 /* setGovState(state, terr): only the home territory (govTerr) ever changes govState -- another
    territory's governor state never moves the home one (city-people, Interaction: every governor
-   talks in his own bubble). */
+   talks in his own bubble). No terr at all (as before idea-city P3) means the home territory too --
+   only a known, DIFFERENT terr is ever ignored. */
 function setGovState(state, terr){
-  if (terr !== govTerr) return;
+  if (terr !== undefined && terr !== govTerr) return;
   govState = state;
   if (state !== 'waiting') { const g = govsByTerr.get(govTerr); if (g) g.bubble = null; }
 }
