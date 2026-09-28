@@ -18,6 +18,13 @@
 # monitors of repos with no live main manager. It never touches a process it
 # does not own — the human's apps, other repos' sessions, Gradle or node
 # runners are only ever listed in one table for the human to act on.
+#
+# AGENT_RELIEF_ONLY_UNDER=<folder>: relief only touches a process whose
+# command line or working folder lies under that folder (checked against the
+# folder as given and its resolved form, cd -P, for /var vs /private/var).
+# Unset or empty -> everything, as before. Every kill path stops a loop's
+# children too (a TERM to the loop pid alone can leave its `sleep` running
+# for minutes).
 
 ram_used() {
   if [ -n "${AGENT_FAKE_RAM:-}" ]; then echo "$AGENT_FAKE_RAM"; return; fi
@@ -64,6 +71,52 @@ resources_ok() {
 
 # ---- relief: only runs when this file is executed directly (see foot) ----
 
+# AGENT_RELIEF_ONLY_UNDER=<folder>: true when $1 (a pid) is in scope --
+# either its command line or its working folder lies under that folder.
+# "Under" is a path boundary, not a plain substring (scope_a does not hold
+# scope_abc): the cwd must equal the folder or start with "<folder>/", and
+# the command line must contain "<folder>/".
+# $2, when given, is a cwd already read by the caller (skips a second lsof).
+# Unset/empty scope -> always in scope. Checked against the folder as given
+# and its resolved form (cd -P), since a temp folder can resolve differently
+# on macOS (/var vs /private/var).
+relief_scope_ok() {
+  pid=$1
+  cwd=${2:-}
+  scope="${AGENT_RELIEF_ONLY_UNDER:-}"
+  [ -n "$scope" ] || return 0
+
+  [ -n "$cwd" ] || cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | awk '/^n/{print substr($0,2); exit}')
+  args=$(ps -o args= -p "$pid" 2>/dev/null || true)
+
+  resolved=""
+  if [ -d "$scope" ]; then
+    resolved=$(cd -P "$scope" 2>/dev/null && pwd) || resolved=""
+  fi
+
+  for folder in "$scope" "$resolved"; do
+    [ -n "$folder" ] || continue
+    [ "$cwd" = "$folder" ] && return 0
+    case "$cwd" in "$folder"/*) return 0 ;; esac
+    case "$args" in *"$folder"/*) return 0 ;; esac
+  done
+  return 1
+}
+
+# Stops a loop pid and the children it left running: read `pgrep -P` before
+# killing the loop, kill the loop, then kill those children. A TERM to the
+# loop alone can leave its `sleep` running for minutes.
+relief_stop_loop() {
+  pid=$1
+  children=$(pgrep -P "$pid" 2>/dev/null || true)
+  kill "$pid" 2>/dev/null
+  rc=$?
+  for child in $children; do
+    kill "$child" 2>/dev/null || true
+  done
+  return $rc
+}
+
 # Kills every "auto_pipeline_*/plugin/bin/agent-monitor.sh" process: monitor
 # loops a test run started and left behind. This pattern only ever matches a
 # throwaway test copy's own plugin tree, never a real install.
@@ -71,7 +124,8 @@ relief_kill_test_monitors() {
   pids=$(pgrep -f 'auto_pipeline_[a-z0-9_]*/plugin/bin/agent-monitor\.sh' 2>/dev/null || true)
   n=0
   for pid in $pids; do
-    kill "$pid" 2>/dev/null && n=$((n + 1))
+    relief_scope_ok "$pid" || continue
+    relief_stop_loop "$pid" && n=$((n + 1))
   done
   echo "stopped $n test monitors"
 }
@@ -89,14 +143,14 @@ relief_kill_orphan_monitors() {
 
     cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | awk '/^n/{print substr($0,2); exit}')
     [ -n "$cwd" ] || continue
+
+    relief_scope_ok "$pid" "$cwd" || continue
+
     if [ ! -d "$cwd" ]; then
       # folder is gone (deleted E2E temp repo, deleted scratchpad clone):
       # "agent-monitor.sh stop" cannot run from a folder that no longer
       # exists, so kill the loop and any child it left running (its sleep).
-      for child in $(pgrep -P "$pid" 2>/dev/null || true); do
-        kill "$child" 2>/dev/null || true
-      done
-      kill "$pid" 2>/dev/null || true
+      relief_stop_loop "$pid"
       echo "stopped monitor of $cwd (folder gone)"
       continue
     fi
@@ -117,9 +171,17 @@ relief_kill_orphan_monitors() {
 
     repo_name=$(basename "$repo_root")
     if [ -x "$repo_root/bin/agent-monitor.sh" ]; then
+      # An old copy's `stop` may not stop the sleep, or its pid file may be
+      # gone: read the children first, run `stop`, then finish the loop and
+      # its children off ourselves if either is still alive.
+      children=$(pgrep -P "$pid" 2>/dev/null || true)
       ( cd "$repo_root" && "$repo_root/bin/agent-monitor.sh" stop ) >/dev/null 2>&1 || true
+      kill -0 "$pid" 2>/dev/null && kill "$pid" 2>/dev/null
+      for child in $children; do
+        kill "$child" 2>/dev/null || true
+      done
     else
-      kill "$pid" 2>/dev/null || true
+      relief_stop_loop "$pid"
     fi
     echo "stopped monitor of $repo_name (no live main manager)"
   done
@@ -139,8 +201,19 @@ relief_what_suggest() {
       cwd=$(lsof -a -p "$pid_for_what" -d cwd -Fn 2>/dev/null | awk '/^n/{print substr($0,2); exit}')
       echo "claude session ${cwd:-?}|close from Orca if idle"; return ;;
   esac
-  case "$comm$args" in
-    *[Oo]rca*) echo "Orca|close from Orca if idle"; return ;;
+  # Orca itself (the app and its helpers): a path under Orca.app/, or a comm
+  # whose basename is exactly "Orca" or starts with "Orca Helper". A process
+  # that merely has "orca" in a path (node vite in ~/orca/workspaces/...) is
+  # not Orca, and falls through to the rows below.
+  base=${comm##*/}
+  case "$comm" in
+    *Orca.app/*) echo "Orca|human decides"; return ;;
+  esac
+  case "$args" in
+    *Orca.app/*) echo "Orca|human decides"; return ;;
+  esac
+  case "$base" in
+    Orca|"Orca Helper"*) echo "Orca|human decides"; return ;;
   esac
   case "$comm" in
     node|*/node)

@@ -15,6 +15,11 @@
 # anyway, so start/once/status just say the loop is not used there, no pid
 # file, no sweep, orca never called. `stop` is unchanged in every mode, so a
 # loop left over from an Orca session can still be killed after switching.
+#
+# The loop's wait is a child `sleep`; its TERM trap kills that sleep too, so
+# a plain TERM from anyone (relief included), not just `stop`, leaves nothing
+# behind. `stop` also reads the loop's children before killing it and kills
+# them after, in case an older copy's loop left its sleep running on its own.
 
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
@@ -168,10 +173,12 @@ do_start() {
   sweep
   (
     unset AGENT_RUNTIME
-    trap 'rm -f "$PIDFILE"; exit 0' TERM
+    sleep_pid=""
+    trap '[ -n "$sleep_pid" ] && kill "$sleep_pid" 2>/dev/null || true; rm -f "$PIDFILE"; exit 0' TERM
     while true; do
       sleep "$((monitor_interval_min * 60))" &
-      wait $! 2>/dev/null || true
+      sleep_pid=$!
+      wait "$sleep_pid" 2>/dev/null || true
       sweep
     done
   ) >/dev/null 2>&1 </dev/null &
@@ -187,7 +194,11 @@ do_start() {
 do_stop() {
   if running; then
     pid=$(awk '{print $1}' "$PIDFILE")
+    children=$(pgrep -P "$pid" 2>/dev/null || true)
     kill -TERM "$pid" 2>/dev/null || true
+    for child in $children; do
+      kill "$child" 2>/dev/null || true
+    done
     rm -f "$PIDFILE"
     echo "monitor: stopped"
   else
