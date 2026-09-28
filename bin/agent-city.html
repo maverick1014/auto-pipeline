@@ -239,45 +239,45 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
       <div><span class="sign-name">Agent City</span><span class="sign-sub">auto-pipeline · 3D</span></div>
     </div>
     <div class="stats" id="stats" aria-live="polite"></div>
-    <button type="button" id="logbtn" class="btn">动态</button>
+    <button type="button" id="logbtn" class="btn" data-t="btn.log"></button>
   </header>
 
   <main class="layout">
-    <section class="stage-col" aria-label="城市">
+    <section class="stage-col" data-t-aria="aria.city">
       <div class="stage" id="stage">
-        <canvas id="city" role="img" aria-label="3D 小岛：每个小人是一个 agent"></canvas>
+        <canvas id="city" role="img" data-t-aria="aria.canvas"></canvas>
         <div class="ov" id="ov"></div>
         <p id="empty-land" hidden style="position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);margin:0;padding:8px 14px;border-radius:12px;background:rgba(255,255,255,.85);color:var(--ink-2);font:600 14px/1.4 var(--round);pointer-events:none">还没有领地 · 在一个 git 仓库里启动，或等代理开工</p>
-        <div class="proto" id="proto">原型 · 模拟数据</div>
+        <div class="proto" id="proto" data-t="proto.banner"></div>
         <div class="loading" id="loading"><span id="loading-text">正在搬来素材…</span></div>
         <div class="cam">
-          <button class="btn" id="zin" type="button" aria-label="放大"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
-          <button class="btn" id="zout" type="button" aria-label="缩小"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
-          <button class="btn" id="rot" type="button" aria-label="转一下"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+          <button class="btn" id="zin" type="button" data-t-aria="btn.zoomIn"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+          <button class="btn" id="zout" type="button" data-t-aria="btn.zoomOut"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+          <button class="btn" id="rot" type="button" data-t-aria="btn.rotate"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
           </button>
-          <button class="btn" id="zfit" type="button" aria-label="回到默认视角"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+          <button class="btn" id="zfit" type="button" data-t-aria="btn.resetView"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
           </button>
         </div>
         <div class="ask-panel" id="ask" role="dialog" aria-labelledby="ask-title" hidden></div>
         <div class="win" id="win" role="dialog" aria-labelledby="win-title" hidden>
-          <div class="win-head"><div class="win-title" id="win-title"></div><button type="button" id="win-close" aria-label="关闭" class="x">✕</button></div>
+          <div class="win-head"><div class="win-title" id="win-title"></div><button type="button" id="win-close" data-t-aria="btn.close" class="x">✕</button></div>
           <div class="detail" id="detail" aria-live="polite"></div>
           <ol class="log" id="log"></ol>
         </div>
       </div>
-      <div class="toolbar" role="toolbar" aria-label="控制">
+      <div class="toolbar" role="toolbar" data-t-aria="aria.toolbar">
         <div class="group" id="spawn-group">
-          <label for="role" class="lead">派一个</label>
+          <label for="role" class="lead" data-t="label.spawn"></label>
           <select id="role">
-            <option value="worker">worker · 盖房子</option>
-            <option value="task-manager">task manager · 测试塔</option>
-            <option value="fast-lane-deputy">fast-lane deputy · 花园</option>
-            <option value="merge-deputy">merge deputy · 桥</option>
+            <option value="worker" data-t="opt.worker"></option>
+            <option value="task-manager" data-t="opt.taskManager"></option>
+            <option value="fast-lane-deputy" data-t="opt.fastLaneDeputy"></option>
+            <option value="merge-deputy" data-t="opt.mergeDeputy"></option>
           </select>
-          <button class="btn primary" id="spawn" type="button">派出</button>
-          <button class="btn" type="button" data-remote="off">中继断开</button>
-          <button class="btn" type="button" data-remote="on">恢复</button>
-          <button class="btn" type="button" data-remote="leave">退出联城</button>
+          <button class="btn primary" id="spawn" type="button" data-t="btn.spawn"></button>
+          <button class="btn" type="button" data-remote="off" data-t="btn.remoteOff"></button>
+          <button class="btn" type="button" data-remote="on" data-t="btn.remoteOn"></button>
+          <button class="btn" type="button" data-remote="leave" data-t="btn.remoteLeave"></button>
         </div>
         <span class="clock" id="clock"></span>
       </div>
@@ -291,6 +291,30 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 <script>
 (() => {
 'use strict';
+/* idea-city C1: English too. LANG is filled in by the server (serve --lang, from agent.conf
+   language) -- anything but 'en' counts as 'zh' (the page's default). TEXT carries every text the
+   page shows, both languages, same keys; globalThis.T(key, vars) looks the key up in the language now showing,
+   replacing every "{name}" with vars[name] -- an unknown key gives the key itself back. Static markup
+   (data-t / data-t-aria / data-t-title / data-t-placeholder) is filled once, at start, by applyText(). */
+const LANG = '__CITY_LANG__';
+document.documentElement.lang = LANG === 'en' ? 'en' : 'zh-CN';
+const TEXT = { zh: { 'btn.log': '动态', 'aria.city': '城市', 'aria.canvas': '3D 小岛：每个小人是一个 agent', 'proto.banner': '原型 · 模拟数据', 'btn.zoomIn': '放大', 'btn.zoomOut': '缩小', 'btn.rotate': '转一下', 'btn.resetView': '回到默认视角', 'btn.close': '关闭', 'aria.toolbar': '控制', 'label.spawn': '派一个', 'opt.worker': 'worker · 盖房子', 'opt.taskManager': 'task manager · 测试塔', 'opt.fastLaneDeputy': 'fast-lane deputy · 花园', 'opt.mergeDeputy': 'merge deputy · 桥', 'btn.spawn': '派出', 'btn.remoteOff': '中继断开', 'btn.remoteOn': '恢复', 'btn.remoteLeave': '退出联城', 'type.house': '住宅', 'type.shop': '商店', 'type.tower': '测试塔', 'type.workshop': '工坊', 'type.library': '图书馆', 'chat.state.queued': '已发送', 'chat.state.delivered': '已送达', 'chat.state.undelivered': '没送到', 'role.task-manager': '任务经理', 'role.worker': '工人', 'role.fast-lane-deputy': '快车道副手', 'role.merge-deputy': '合并副手', 'role.other': '帮手', 'era.village': '村', 'era.town': '镇', 'era.city': '城', 'quality.good': '整齐', 'quality.fair': '还行', 'quality.poor': '有点乱', 'who.governor': '总督', 'who.owner': '你', 'who.terminal': '终端', 'state.spawn': '出门', 'state.to_plot': '去工地', 'state.building': '施工中', 'state.working': '干活', 'state.to_hall': '去问总督', 'state.asking': '在问总督', 'state.heard': '拿到答案', 'state.to_lead': '去问经理', 'state.at_lead': '问经理', 'state.back': '回工地', 'state.finishing': '封顶了', 'state.to_rest': '去休息', 'state.resting': '休息中', 'state.leaving': '下班回家', 'status.need_approval': '等你批', 'status.asking_gov': '在问总督', 'status.waiting_answer': '等你回答', 'status.waiting_reply': '等你回话', 'status.waiting': '等你', 'stuck.permission': '要权限：{tool}', 'stuck.default': '需要你看一下', 'gov.away': '不在', 'gov.busy': '忙着', 'gov.home': '坐镇市政厅', 'top.work': '干活', 'top.ask': '找总督', 'top.rest': '休息', 'top.done': '建成', 'top.stalled': '卡住的工地', 'top.pending': '等你', 'top.pendingAria': '等你决定 {n} 个，点开最早的一个' }, en: { 'btn.log': 'Activity', 'aria.city': 'City', 'aria.canvas': '3D island: each little person is one agent', 'proto.banner': 'Prototype - demo data', 'btn.zoomIn': 'Zoom in', 'btn.zoomOut': 'Zoom out', 'btn.rotate': 'Rotate', 'btn.resetView': 'Reset the view', 'btn.close': 'Close', 'aria.toolbar': 'Controls', 'label.spawn': 'Send a', 'opt.worker': 'worker - builds houses', 'opt.taskManager': 'task manager - test tower', 'opt.fastLaneDeputy': 'fast-lane deputy - garden', 'opt.mergeDeputy': 'merge deputy - bridge', 'btn.spawn': 'Send', 'btn.remoteOff': 'Disconnect relay', 'btn.remoteOn': 'Resume', 'btn.remoteLeave': 'Leave the linked city', 'type.house': 'House', 'type.shop': 'Shop', 'type.tower': 'Tower', 'type.workshop': 'Workshop', 'type.library': 'Library', 'chat.state.queued': 'Sent', 'chat.state.delivered': 'Delivered', 'chat.state.undelivered': 'Undelivered', 'role.task-manager': 'Task manager', 'role.worker': 'Worker', 'role.fast-lane-deputy': 'Fast-lane deputy', 'role.merge-deputy': 'Merge deputy', 'role.other': 'Helper', 'era.village': 'Village', 'era.town': 'Town', 'era.city': 'City', 'quality.good': 'Tidy', 'quality.fair': 'OK', 'quality.poor': 'Messy', 'who.governor': 'Governor', 'who.owner': 'You', 'who.terminal': 'Terminal', 'state.spawn': 'Heading out', 'state.to_plot': 'To the site', 'state.building': 'Building', 'state.working': 'Working', 'state.to_hall': 'To the governor', 'state.asking': 'Asking the governor', 'state.heard': 'Got the answer', 'state.to_lead': 'To the manager', 'state.at_lead': 'Asking the manager', 'state.back': 'Back to the site', 'state.finishing': 'Topped out', 'state.to_rest': 'Heading to rest', 'state.resting': 'Resting', 'state.leaving': 'Heading home', 'status.need_approval': 'Needs your OK', 'status.asking_gov': 'Asking the governor', 'status.waiting_answer': 'Waiting on your answer', 'status.waiting_reply': 'Waiting on you', 'status.waiting': 'Waiting on you', 'stuck.permission': 'Needs permission: {tool}', 'stuck.default': 'Needs your eyes', 'gov.away': 'Away', 'gov.busy': 'Busy', 'gov.home': 'At the town hall', 'top.work': 'Working', 'top.ask': 'Need governor', 'top.rest': 'Resting', 'top.done': 'Built', 'top.stalled': 'Stalled site', 'top.pending': 'Waiting', 'top.pendingAria': '{n} waiting on your call - click to open the earliest' } };
+// idea-city C1: T is assigned (never `const`/`let`/`function` at this top level) so a page function
+// that some other test's own driver script runs alongside its own local `T` (several use `T` for "the
+// territory") never collides with this one; every caller in this file reaches it through
+// `globalThis.T(...)`, never the bare name. function_source("T") (tests/test_agent_city_page.py) still
+// finds the plain declaration below to run on its own, unaffected by any of this.
+this.T =
+function T(key, vars) { const lang = LANG === 'en' ? 'en' : 'zh'; const table = TEXT[lang] || {}; let s = Object.prototype.hasOwnProperty.call(table, key) ? table[key] : key; if (vars) for (const name in vars) s = s.split('{' + name + '}').join(vars[name]); return s; };
+/* idea-city C1: fills every data-t / data-t-aria / data-t-title / data-t-placeholder element from
+   TEXT, once, at start -- the static markup carries no Chinese of its own any more. */
+function applyText() {
+  document.querySelectorAll('[data-t]').forEach(el => { el.textContent = globalThis.T(el.getAttribute('data-t')); });
+  document.querySelectorAll('[data-t-aria]').forEach(el => { el.setAttribute('aria-label', globalThis.T(el.getAttribute('data-t-aria'))); });
+  document.querySelectorAll('[data-t-title]').forEach(el => { el.setAttribute('title', globalThis.T(el.getAttribute('data-t-title'))); });
+  document.querySelectorAll('[data-t-placeholder]').forEach(el => { el.setAttribute('placeholder', globalThis.T(el.getAttribute('data-t-placeholder'))); });
+}
+applyText();
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#city'), ovRoot = $('#ov');
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -664,10 +688,10 @@ function topCounts(){
     const g = STATE[c.state][0]; if (g === 'ask') ask++; else if (g === 'rest') rest++; else if (c.state !== 'leaving') work++;
   }
   const done = buildings.filter(b => b.done).length;
-  const out = [['干活', work], ['找总督', ask], ['休息', rest], ['建成', done]];
+  const out = [[globalThis.T('top.work'), work], [globalThis.T('top.ask'), ask], [globalThis.T('top.rest'), rest], [globalThis.T('top.done'), done]];
   let stalled = 0;
   for (const s of sites.values()) if (s.phase === 'live' && s.stalled) stalled++;
-  if (stalled > 0) out.push(['卡住的工地', stalled]);
+  if (stalled > 0) out.push([globalThis.T('top.stalled'), stalled]);
   return out;
 }
 /* Growth: each plan's terrain changes the look only (ground/path colour, and which plants grow on wild tiles).
@@ -753,8 +777,8 @@ function startShow(terr, from, to, left){
   needFrame = true;
   if (left >= SHOW_SEC - .5) {
     const name = (typeof terrOf === 'function' && terrOf(terr) && terrOf(terr).name) || terr;
-    const zh = typeof ERA_ZH !== 'undefined' ? ERA_ZH[to] : to;
-    logAt(typeof simT !== 'undefined' ? simT : 0, name + ' 开始升级成' + zh);
+    const eraName = typeof globalThis.T === 'function' ? globalThis.T('era.' + to) : to;
+    logAt(typeof simT !== 'undefined' ? simT : 0, name + ' 开始升级成' + eraName);
   }
 }
 /* Balance: showPlan(t, view, to) -> {builders, targets: [{what, x, z}]}: one 'building' visit per building
@@ -921,25 +945,27 @@ function memberLegend(me, people, govs, colors) {
    Simulation: the same event contract the real city reads
    (spawn, tool, stuck, answer, done, leave).
    ========================================================= */
+/* idea-city C1: role names and status words come from TEXT (role.*, state.*), through globalThis.T() -- ROLES
+   itself only keeps each role's colour now. */
 const ROLES = {
-  'task-manager':     { zh:'任务经理',   color:'#9C86F2' },
-  'worker':           { zh:'工人',       color:'#5AA9F0' },
-  'fast-lane-deputy': { zh:'快车道副手', color:'#43C58B' },
-  'merge-deputy':     { zh:'合并副手',   color:'#FF9A5C' },
-  'other':            { zh:'帮手',       color:'#5FC3C9' },
+  'task-manager':     { color:'#9C86F2' },
+  'worker':           { color:'#5AA9F0' },
+  'fast-lane-deputy': { color:'#43C58B' },
+  'merge-deputy':     { color:'#FF9A5C' },
+  'other':            { color:'#5FC3C9' },
 };
 const STATE = {
-  spawn:['walk','出门'], to_plot:['walk','去工地'], building:['build','施工中'], working:['build','干活'],
-  to_hall:['ask','去问总督'], asking:['ask','在问总督'], heard:['ask','拿到答案'],
-  to_lead:['ask','去问经理'], at_lead:['ask','问经理'],
-  back:['walk','回工地'], finishing:['rest','封顶了'], to_rest:['rest','去休息'],
-  resting:['rest','休息中'], leaving:['walk','下班回家'],
+  spawn:['walk','state.spawn'], to_plot:['walk','state.to_plot'], building:['build','state.building'], working:['build','state.working'],
+  to_hall:['ask','state.to_hall'], asking:['ask','state.asking'], heard:['ask','state.heard'],
+  to_lead:['ask','state.to_lead'], at_lead:['ask','state.at_lead'],
+  back:['walk','state.back'], finishing:['rest','state.finishing'], to_rest:['rest','state.to_rest'],
+  resting:['rest','state.resting'], leaving:['walk','state.leaving'],
 };
 /* stuckText(ev): the bubble over a stuck citizen. Never invents "可以用 …
    吗" or "问总督" — those belong only to the demo's own made-up lines. */
 function stuckText(ev) {
-  if (ev.tool && ev.tool !== 'AskUserQuestion') return '要权限：' + ev.tool;
-  return ev.question || '需要你看一下';
+  if (ev.tool && ev.tool !== 'AskUserQuestion') return globalThis.T('stuck.permission', { tool: ev.tool });
+  return ev.question || globalThis.T('stuck.default');
 }
 /* applyAsk(c, ask): snapshot = live. With an ask view it sets c.askKind,
    c.askPhase, c.stuck and c.question the same way the live 'ask' event
@@ -962,19 +988,20 @@ function applyAsk(c, ask) {
    so the demo — which never sends a 'governors' event — looks as before);
    with governors === 0 it never says 问总督. */
 function citizenStatus(c, governors = 1) {
-  if (c.askKind === 'permission') return ['you', '等你批'];
+  if (c.askKind === 'permission') return ['you', globalThis.T('status.need_approval')];
   if (c.askKind === 'question') {
-    if (c.askPhase === 'governor') return governors ? ['ask', '在问总督'] : ['you', '等你回答'];
-    if (c.askPhase === 'owner') return ['you', '等你回答'];
+    if (c.askPhase === 'governor') return governors ? ['ask', globalThis.T('status.asking_gov')] : ['you', globalThis.T('status.waiting_answer')];
+    if (c.askPhase === 'owner') return ['you', globalThis.T('status.waiting_answer')];
   }
   // idea-city C5: idle_prompt is not a question -- a citizen merely waiting for input shows 等你回话,
   // never 在问总督/stuck (an ask of its own still wins: it is checked first, above).
-  if (c.waiting) return ['you', '等你回话'];
+  if (c.waiting) return ['you', globalThis.T('status.waiting_reply')];
   // a citizen relayed to the governor: the governor answers relays by SendMessage, never through gov-watch,
   // so its own territory's presence (governorAt) decides, not the old gov-watch 'governors' count (Interaction).
-  if (c.relay === 'governor') return governorAt(c.terr) ? ['ask', '在问总督'] : ['you', '等你'];
-  if (!governors && (c.state === 'to_hall' || c.state === 'asking')) return ['you', '等你'];
-  return STATE[c.state];
+  if (c.relay === 'governor') return governorAt(c.terr) ? ['ask', globalThis.T('status.asking_gov')] : ['you', globalThis.T('status.waiting')];
+  if (!governors && (c.state === 'to_hall' || c.state === 'asking')) return ['you', globalThis.T('status.waiting')];
+  const s = STATE[c.state];
+  return s ? [s[0], globalThis.T(s[1])] : s;
 }
 /* nameOf(c) -> c.label, or "<label> · <task>" when the task is non-empty and differs from the label:
    never the same text twice (a server restart used to leave "auto-pipeline:worker · auto-pipeline:worker"
@@ -1671,7 +1698,7 @@ function newBuildingRecord(terr, plot, type, x, z, by, done, ev){
   ev = ev || {};
   const b = { id:++bid, terr, plot, type, gx:x, gy:z, by, seed:(Math.abs(x*928371+z*12345+plot)) % 1000,
     done:!!done, shown:done ? 1 : 0, risenAt:simT, popAt: done ? -99 : simT,
-    color: DCOL[type] || '#5AA9F0', label: TYPE_ZH[type] || type, ownerId:0,
+    color: DCOL[type] || '#5AA9F0', label: globalThis.T('type.' + type) || type, ownerId:0,
     q: ev.q || 'good', home: ev.home !== false, files: ev.files ? ev.files.slice() : [],
     hist: ev.hist ? ev.hist.slice() : [], lv: ev.lv || 0, name: ev.name || '' };
   buildings.push(b);
@@ -1683,7 +1710,7 @@ function newBuildingRecord(terr, plot, type, x, z, by, done, ev){
 function standFor(b){ return frontStand(b.gx, b.gy); }
 /* bldLabel(b) -> what a log line calls a building: the task it was built for when known, else its type
    (city-levelups, city-quality: "<name or type> ..."). */
-const bldLabel = b => b.name || TYPE_ZH[b.type] || b.type;
+const bldLabel = b => b.name || globalThis.T('type.' + b.type) || b.type;
 /* buildingPose(b) -> {dx, dz, ry}: a small, stable lean/offset for a fair or poor building (city-quality) --
    derived from the building's own seed alone (never Math.random), so the same building always leans the
    same way. Good stands dead straight. */
@@ -1700,11 +1727,12 @@ function buildingPose(b){
 }
 /* levelScale(lv) -> {sy, sxz}: a level-up (city-levelups) grows a building taller more than wider. */
 function levelScale(lv){ return { sy: 1 + lv * .5, sxz: 1 + lv * .12 }; }
-const QUALITY_ZH = { good: '整齐', fair: '还行', poor: '有点乱' };
+/* idea-city C1: quality words come from TEXT (quality.*), through globalThis.T(). */
 /* buildingInfo(b) -> what the building card shows (city-quality, city-levelups): the building card
    (renderDetail, below) reads this rather than b's raw fields. */
 function buildingInfo(b){
-  return { quality: QUALITY_ZH[b.q] || QUALITY_ZH.good, misplaced: !b.home, files: b.files, hist: b.hist,
+  const q = (b.q === 'fair' || b.q === 'poor') ? b.q : 'good';
+  return { quality: globalThis.T('quality.' + q), misplaced: !b.home, files: b.files, hist: b.hist,
     level: b.lv, name: b.name };
 }
 function newCitizen(id, role, task, terr){
@@ -1875,7 +1903,7 @@ function govSay(terr, text, dur){
    never another territory's (city-people, Interaction: every governor talks in his own bubble). */
 function govTalk(terr){
   const g = govsByTerr.get(terr);
-  if (g && g.state === 'waiting') return '等你回话…';
+  if (g && g.state === 'waiting') return globalThis.T('status.waiting_reply') + '…';
   const b = govSay.talk && govSay.talk.get(terr);
   return (b && simT < b.until) ? b.text : '';
 }
@@ -2304,7 +2332,7 @@ function apply(ev){
     case 'move': {
       const b = buildings.find(x => x.terr === ev.terr && x.plot === ev.from);
       if (!b) return null;
-      log(`${bldLabel(b)} 搬回${TYPE_ZH[b.type] || b.type}区`);
+      log(`${bldLabel(b)} 搬回${globalThis.T('type.' + b.type) || b.type}区`);
       b.moveTo = { plot: ev.plot, x: ev.x, z: ev.z, t: 0 };
       return b;
     }
@@ -2375,7 +2403,7 @@ function apply(ev){
       if (!c || c.doneFlag) return null;
       c.doneFlag = true;
       if (c.state === 'building' || (c.state === 'working' && !c.path.length)) finish(c);
-      log(`${c.task} 完工${c.bld ? '：' + TYPE_ZH[c.bld.type] + '封顶' : ''}，去休息`, 'done');
+      log(`${c.task} 完工${c.bld ? '：' + globalThis.T('type.' + c.bld.type) + '封顶' : ''}，去休息`, 'done');
       return c;
     }
     case 'leave': {
@@ -2970,10 +2998,10 @@ const MODELS = [
 ];
 const VARIANTS = { 'task-manager':['character-female-c'], worker:['character-male-a','character-female-a','character-male-c'],
   'fast-lane-deputy':['character-female-e'], 'merge-deputy':['character-male-e'], other:['character-male-c'] };
-const TYPE_ZH = { house:'住宅', shop:'商店', tower:'测试塔', workshop:'工坊', library:'图书馆' };
+/* idea-city C1: building type names live in TEXT (type.*), through globalThis.T('type.' + type). */
 const DCOL = { house:'#F4A259', shop:'#FF7593', tower:'#4D7CFE', workshop:'#9C6B4E', library:'#2FB57A' };
-/* Balance: the 3 eras a territory grows through (requirements/city.md, Balance) */
-const ERA_ZH = { village:'村', town:'镇', city:'城' };
+/* Balance: the 3 eras a territory grows through (requirements/city.md, Balance); their names live in
+   TEXT (era.*), through globalThis.T('era.' + era). */
 /* Balance: the Kenney Hexagon Kit's "building-*" models each bake their own hex ground tile into the same
    mesh as the building (one node, one primitive; coloured earth sides), a uniform .2 units thick on every
    one of them (measured from the glTF: the footprint stays a full 1 x 1.155 hex up to y .2, then shrinks to
@@ -4555,7 +4583,7 @@ function stepShows(now){
         const bld = occupied.get(Math.floor(g2.x) + ',' + Math.floor(g2.z));
         if (bld) bld.showScaf = false;
       }
-      logAt(simT, t.name + ' 变成' + ERA_ZH[s.to] + '了');
+      logAt(simT, t.name + ' 变成' + globalThis.T('era.' + s.to) + '了');
     }
     if (now >= s.end) {
       for (const b of run.builders) dropShowBuilder(b);
@@ -4608,22 +4636,24 @@ function renderStats(){
   // appended when there is one (topCounts() itself decides whether it shows at all; renderStats only
   // ever draws whatever it hands back). topCounts() itself skips remote people (city-join): those counts
   // are this machine's own city, never another member's.
+  // idea-city C1: topCounts()'s own labels come from TEXT (top.*), through globalThis.T() -- COLOR is keyed by
+  // the zh label text (globalThis.T() resolves to it whenever LANG isn't 'en', same as every test harness here).
   const COLOR = { '干活':'#5AA9F0', '找总督':'#FF6F8B', '休息':'#43C58B', '建成':'#FFC23D', '卡住的工地':'#E8833A' };
   const chip = remoteChip(relays, meInfo, remotePeopleList(), remoteGovList());
   // city-join: while joined, the chip is followed by the members from memberLegend(), each its own colour dot + name.
   const legend = chip ? memberLegend(meInfo, remotePeopleList(), remoteGovList(), memberColorMap) : [];
-  const html = topCounts().map(([l, n]) => `<span class="stat"><i style="background:${COLOR[l]}"></i>${l} <b>${n}</b></span>`).join('')
-    + `<button class="stat wait" type="button" id="next" ${waiting ? '' : 'disabled'} aria-label="等你决定 ${waiting} 个，点开最早的一个">等你 <b>${waiting}</b></button>`
+  const html = topCounts().map(([l, n]) => `<span class="stat"><i style="background:${COLOR[l] || '#8D91B3'}"></i>${l} <b>${n}</b></span>`).join('')
+    + `<button class="stat wait" type="button" id="next" ${waiting ? '' : 'disabled'} aria-label="${globalThis.T('top.pendingAria', { n: waiting })}">${globalThis.T('top.pending')} <b>${waiting}</b></button>`
     + (chip ? `<span class="stat ${chip.cls}">${esc(chip.text)}</span>` : '')
     + legend.map(e => `<span class="stat member"><i style="background:${e.color}"></i>${esc(e.name)}</span>`).join('');
   if ($('#stats').innerHTML !== html) $('#stats').innerHTML = html;
 }
 let lastRoster = '';
 function govPillText(){
-  if (!DEMO && governorCount === 0) return '不在';
-  if (!DEMO && govState === 'waiting') return '等你回话';
+  if (!DEMO && governorCount === 0) return globalThis.T('gov.away');
+  if (!DEMO && govState === 'waiting') return globalThis.T('status.waiting_reply');
   const busy = (!DEMO && govState === 'busy') || !!govTalk(govTerr);
-  return busy ? '忙着' : '坐镇市政厅';
+  return busy ? globalThis.T('gov.busy') : globalThis.T('gov.home');
 }
 let lastDetailKey = '';
 /* the chain of command for c's detail card (mock: 工人 → 经理 <task> → 总督 → 你), the current step
@@ -4645,13 +4675,14 @@ function chainLine(c){
 /* ---------- chat (requirements/city.md, Talking): a person's window shows what was typed to it
    and what it answered, plus a box to talk to it; the terminal keeps working in parallel. `chats`
    -- page chat id -> { entries, busy, canSend, loaded, error }. ---------- */
-const CHAT_STATE_ZH = { queued: '已发送', delivered: '已送达', undelivered: '没送到' };
-/* chatHtml(entries, name, busy): pure -- uses only esc and CHAT_STATE_ZH, so it can be pinned and
-   run on its own (tests/test_agent_city_chat.py). */
+/* idea-city C1: the state words live in TEXT (chat.state.*), through globalThis.T() -- chatHtml keeps its own
+   list of the states TEXT knows, so it stays self-contained (it can be pinned and run on its own,
+   tests/test_agent_city_chat.py). */
 function chatHtml(entries, name, busy){
   if (!entries || !entries.length) return '<li class="msg-empty">还没有对话</li>';
+  const CHAT_STATES = ['queued', 'delivered', 'undelivered'];
   const who = e => {
-    if (e.kind === 'owner') return `你（页面）${e.state && CHAT_STATE_ZH[e.state] ? '（' + CHAT_STATE_ZH[e.state] + '）' : ''}`;
+    if (e.kind === 'owner') return `你（页面）${e.state && CHAT_STATES.includes(e.state) ? '（' + globalThis.T('chat.state.' + e.state) + '）' : ''}`;
     if (e.kind === 'prompt') return '你（终端）';
     return esc(name);
   };
@@ -4797,18 +4828,18 @@ function renderDetail(){
       // an answer, allow or deny button (requirements/city.md, Joining).
       const name = memberName(c.remote.who, c.remote.device);
       el.innerHTML = `
-        <div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(memberLabel(c.remote.who, c.remote.device))}</div><div class="d-role">${esc(ROLES[c.role].zh)}</div></div></div>
+        <div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(memberLabel(c.remote.who, c.remote.device))}</div><div class="d-role">${esc(globalThis.T('role.' + c.role))}</div></div></div>
         <div class="kv"><span>仓库</span><code>${esc(c.remote.rid)}</code></div>
         <div class="kv"><span>分支</span><code>${esc(c.remote.br)}</code></div>
         <div class="kv"><span>在做</span><b>${esc(c.task)}</b></div>
         <div class="why">${esc(remoteNote(name))}</div>`;
     } else if (c) {
-      const [g, zh] = citizenStatus(c, governorCount), kind = c.bld ? TYPE_ZH[c.bld.type] : '干活';
+      const [g, zh] = citizenStatus(c, governorCount), kind = c.bld ? globalThis.T('type.' + c.bld.type) : globalThis.T('state.working');
       const qa = [...c.qa.map(x => `<p>问：<b>“${esc(x.q)}”</b></p><p>答：<b>“${esc(x.a)}”</b></p>`), (c.stuck ? `<p>问：<b>“${esc(c.question)}”</b> 等回答…</p>` : '')].join('');
       const canStuck = !c.doneFlag && !c.stuck && ['building','to_plot','back'].includes(c.state);
       const chain = chainLine(c);
       el.innerHTML = `
-        <div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(nameOf(c))}</div><div class="d-role">${esc(c.label)} · ${ROLES[c.role].zh}</div></div><span class="pill ${g}">${zh}</span></div>
+        <div class="d-head"><span class="rdot" style="--c:${c.color}"></span><div><div class="d-name">${esc(nameOf(c))}</div><div class="d-role">${esc(c.label)} · ${globalThis.T('role.' + c.role)}</div></div><span class="pill ${g}">${zh}</span></div>
         <div class="d-bar"><div class="track"><i data-f="bar" style="width:${pct(c)}%;background:${c.color}"></i></div><span data-f="pct">${kind} ${pct(c)}%</span></div>
         <dl class="d-tools">${['Edit','Write','Bash','Read'].map(t => `<div><dt>${t}</dt><dd data-f="${t}">${c.tools[t]}</dd></div>`).join('')}</dl>
         ${chain ? `<p class="hint chain">${chain}</p>` : ''}
@@ -4829,7 +4860,7 @@ function renderDetail(){
     } else if (b) {
       // city-quality, city-levelups: the building card, built from buildingInfo(b) -- name, kind and
       // district, quality, 放错区了 when misplaced, level, its files, and who has touched it (newest first).
-      const info = buildingInfo(b), kind = TYPE_ZH[b.type] || b.type, district = `${kind}区`;
+      const info = buildingInfo(b), kind = globalThis.T('type.' + b.type) || b.type, district = `${kind}区`;
       const qClass = info.quality === '整齐' ? 'rest' : info.quality === '还行' ? 'build' : 'ask';
       const filesHtml = info.files.length
         ? `<div class="files"><ol>${info.files.map(f => `<li><code>${esc(f)}</code></li>`).join('')}</ol></div>` : '';
@@ -4851,7 +4882,7 @@ function renderDetail(){
         }
         const pc = byId(row.id); if (!pc) return '';
         const [pg, pzh] = citizenStatus(pc, governorCount);
-        const pkind = pc.bld ? TYPE_ZH[pc.bld.type] : '';
+        const pkind = pc.bld ? globalThis.T('type.' + pc.bld.type) : '';
         const psub = pg === 'build' && pkind ? `${pc.label} · ${pkind} ${pct(pc)}%` : pc.label;
         return `<li class="${row.depth ? 'sub' : ''}"><button class="row" type="button" data-sel="${pc.id}" aria-current="${!!(selected && selected.t === 'c' && selected.id === pc.id)}"><span class="rdot" style="--c:${pc.color}"></span><span class="who"><b>${esc(nameOf(pc))}</b><span>${esc(psub)}</span></span><span class="pill ${pg}">${pzh}</span></button></li>`;
       }).join('') : '';
@@ -4869,7 +4900,7 @@ function renderDetail(){
   }
   if (c) {
     const bar = el.querySelector('[data-f="bar"]'); if (bar) bar.style.width = pct(c) + '%';
-    const p = el.querySelector('[data-f="pct"]'); if (p) p.textContent = `${c.bld ? TYPE_ZH[c.bld.type] : '干活'} ${pct(c)}%`;
+    const p = el.querySelector('[data-f="pct"]'); if (p) p.textContent = `${c.bld ? globalThis.T('type.' + c.bld.type) : globalThis.T('state.working')} ${pct(c)}%`;
     for (const t of ['Edit','Write','Bash','Read']) { const d = el.querySelector(`[data-f="${t}"]`); if (d && d.textContent !== String(c.tools[t])) d.textContent = c.tools[t]; }
   }
   if (chatTo) {
@@ -4904,7 +4935,7 @@ function closeWin(){ winLog = false; selected = null; renderPanel(); }
 function winTitle(){
   if (!selected) return '详情';
   if (selected.t === 'c') { const c = byId(selected.id); return c ? (c.remote ? memberLabel(c.remote.who, c.remote.device) : nameOf(c)) : '详情'; }
-  if (selected.t === 'b') { const b = buildings.find(x => x.id === selected.id); if (!b) return '详情'; const info = buildingInfo(b); return info.name || TYPE_ZH[b.type] || b.type; }
+  if (selected.t === 'b') { const b = buildings.find(x => x.id === selected.id); if (!b) return '详情'; const info = buildingInfo(b); return info.name || globalThis.T('type.' + b.type) || b.type; }
   if (selected.t === 'gov') return '总督';
   if (selected.t === 'rg') { const rg = remoteGovs.get(selected.id); return rg ? govSign(rg) : '总督'; }
   return '详情';
