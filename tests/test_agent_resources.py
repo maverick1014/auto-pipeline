@@ -381,6 +381,27 @@ class TestReliefStaysInsideItsScope(ReliefLoopCase):
         self.assertIsNone(proc.poll(), "relief stopped a loop outside its scope")
         self.assertTrue(alive(child))
 
+    def test_a_folder_that_only_starts_with_the_scope_name_is_outside(self):
+        # "under" is a path boundary, not a substring: scope_a does not
+        # hold scope_abc
+        scope = os.path.join(self.base, "scope_a")
+        os.makedirs(scope)
+        script = write_exe(os.path.join(
+            self.base, "scope_abc", "auto_pipeline_pre", "plugin", "bin",
+            "agent-monitor.sh"), LOOP)
+        proc, child = self.loop_with_child(script)
+        repo = git_repo(os.path.join(self.base, "scope_abc", "nolock"))
+        orphan, orphan_child = self.loop_with_child(
+            write_exe(os.path.join(repo, "agent-monitor.sh"), LOOP), cwd=repo)
+        result = relief(scope)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("stopped 0 test monitors", result.stdout)
+        self.assertNotIn("nolock", result.stdout)
+        time.sleep(1)
+        for p, kid in ((proc, child), (orphan, orphan_child)):
+            self.assertIsNone(p.poll(), "relief stopped a loop outside its scope")
+            self.assertTrue(alive(kid))
+
     def test_a_scope_holding_it_still_stops_it(self):
         script = write_exe(os.path.join(
             self.base, "auto_pipeline_1n", "plugin", "bin",

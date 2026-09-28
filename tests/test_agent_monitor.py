@@ -74,7 +74,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-from scripthelp import ScriptCase, children_of
+from scripthelp import ScriptCase, args_of, children_of
 
 LINE_RE = re.compile(
     r"^(?P<path>[^|]+) \| (?P<module>[^|]+) \| pane (?P<pane>\S+) \| "
@@ -406,6 +406,29 @@ class TestLifecycle(MonitorCase):
         self.assertGone(pid, "the loop after TERM")
         for kid in kids:
             self.assertGone(kid, "the loop's sleep after TERM")
+
+    def test_a_term_while_it_sweeps_still_removes_the_pid_file(self):
+        # the sleep is already over (killed here), the loop is busy in a
+        # slow sweep when TERM arrives: the trap must still remove the pid
+        # file, even though there is no sleep left to kill
+        self.repo.set_conf("runtime", "orca")
+        self.one_worktree(panes=["working"])  # so a sweep calls orca at all
+        env = {"ORCA_STUB_SLEEP": "2"}
+        self.assertOk(self.monitor("start", env=env))
+        pid = int(open(self.pid_file()).read().split()[0])
+        deadline = time.time() + 10
+        while not children_of(pid) and time.time() < deadline:
+            time.sleep(0.1)
+        for kid in children_of(pid):
+            os.kill(kid, signal.SIGTERM)
+        time.sleep(0.5)
+        self.assertFalse([k for k in children_of(pid)
+                          if args_of(k).startswith("sleep")],
+                         "the loop was not in its sweep yet")
+        os.kill(pid, signal.SIGTERM)
+        self.assertGone(pid, "the loop after TERM")
+        self.assertFalse(os.path.exists(self.pid_file()),
+                         "the TERM trap left the pid file behind")
 
     def test_stop_when_not_running_says_so(self):
         out = self.assertOk(self.monitor("stop"))
