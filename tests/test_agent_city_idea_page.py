@@ -63,6 +63,22 @@ CONTRACT (bin/agent-city.html)
 
   C16 other members' people follow the chain
     applyRemote handles 'relay' and 'relay_end' like the local page does.
+
+  C10 district name labels (approved mock mock/idea-city-labels-mock.html, owner "ok like this for now")
+    systemsDecor: every knowledge sign ('roads/road-sign-street', kind 'knowledge') carries d, its
+      district (house shop tower workshop library): healthy -> one sign per district with an open plot,
+      low -> one (the district of the first open plot); each on the free tile nearest its district's
+      plots (within 3 tiles, Chebyshev, of one of them when such a tile is free), not near the hall.
+    TEXT keys district.house/.shop/.tower/.workshop/.library:
+      zh 住宅区 商业街 测试区 工坊区 图书馆区, en Homes Shops Tests Workshops Library.
+    landOverlays(view, signs): signs = [{x, z, d}] in world tiles (buildLand passes the district signs);
+      one '.dlbl' overlay per sign (its own class, never '.lbl'), text T('district.' + d), CSS var --c =
+      DCOL[d] (the colour bar); made again from scratch on every call, like the territory labels.
+      With no signs argument: no '.dlbl'.
+    pinLandOverlays(): each district label is pinned at its sign and carries class 'far' whenever
+      cam.dist >= DIST_DEFAULT (the default view and anything further out); closer (the two zoom-in
+      steps) it has no 'far'. CSS: .dlbl smaller and quieter than .lbl; .dlbl.far {opacity: 0} with an
+      opacity transition, so labels fade out from the default step on.
 """
 
 import math
@@ -513,6 +529,152 @@ class TestIdleOnThePage(unittest.TestCase):
         for kind in ("waiting", "resume", "relay", "relay_end"):
             with self.subTest(kind=kind):
                 self.assertIn("'%s'" % kind, remote)
+
+
+# -------------------------------------------------------------------- C10
+
+DLBL_JS = tp.FAKE_DOM_JS + r"""
+const fs = require('fs'), vm = require('vm');
+Object.defineProperty(El.prototype, 'className', { get(){ return [...this.classList.s].join(' '); },
+  set(v){ this.classList = new CL(String(v).split(/\s+/).filter(Boolean)); } });
+const { prelude, fns, view } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const ov = new El('div', [], { id: 'ov' });
+const box = { Math, JSON, console, Map, Set, Array, Object, String, Number, Boolean,
+  performance: { now: () => 0 }, document: { createElement: tag => new El(tag) },
+  ovRoot: ov, $: s => (s === '#ov' ? ov : null), toScreen: () => [100, 100], logAt(){}, log(){}, simT: 0,
+  needFrame: false, DEMO: false, labels: [], signs: [], shows: new Map(), map: view, govTerr: null,
+  cam: { az: 0, el: .5, dist: 5, tx: 0, tz: 0 } };
+vm.createContext(box);
+vm.runInContext(prelude + '\n' + fns, box);
+const els = cls => ov.children.filter(e => e.classList.contains(cls));
+const out = {};
+const signs = [{ x: 3, z: 4, d: 'house' }, { x: -5, z: 2, d: 'shop' }, { x: 6, z: -6, d: 'library' }];
+box.landOverlays(view, signs);
+out.made = { dlbl: els('dlbl').map(e => e.textContent), lbl: els('lbl').length,
+  bars: els('dlbl').map(e => e.style && e.style.getPropertyValue ? e.style.getPropertyValue('--c') : (e.style || {})['--c']) };
+const look = () => els('dlbl').map(e => ({ far: e.classList.contains('far'), hidden: !!e.hidden }));
+box.cam.dist = 5; box.pinLandOverlays(); out.close = look();
+box.cam.dist = 2.8; box.pinLandOverlays(); out.closest = look();
+box.cam.dist = box.DIST_DEFAULT; box.pinLandOverlays(); out.dflt = look();
+box.cam.dist = 16.2; box.pinLandOverlays(); out.far = look();
+box.landOverlays(view, signs); out.again = els('dlbl').length;
+box.landOverlays(view); out.none = els('dlbl').length;
+process.stdout.write(JSON.stringify(out));
+"""
+
+SIGNS_JS = r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, fns, cases } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const N = 12, rows = [], plots = [];
+const DIST = (x, z) => (x >= 4 ? (z >= 4 ? 'house' : z <= -4 ? 'shop' : '') : x <= -4 ? (z >= 4 ? 'tower' : z <= -4 ? 'workshop' : 'library') : '');
+for (let z = -N; z <= N; z++) {
+  let row = '';
+  for (let x = -N; x <= N; x++) {
+    let c = Math.hypot(x + .5, z + .5) > 11.2 ? '.' : 'g';
+    if (c === 'g' && (x === 2 || z === 2 || Math.abs(x) === 7 || Math.abs(z) === 7)) c = 'r';
+    if (c === 'g' && (x === 8 || x === -8 || z === 8 || z === -8) && DIST(x, z)) { c = 'P'; plots.push({ x, z, d: DIST(x, z) }); }
+    if ((x === -1 || x === 0) && (z === -1 || z === 0)) c = 'H';
+    row += c;
+  }
+  rows.push(row);
+}
+const view = { cell: 26, x0: -N, z0: -N, w: 2 * N + 1, h: 2 * N + 1, rows, territories: [], links: [] };
+const box = { Math, JSON, console, occupied: new Map(), blocked: new Set(), map: view, shows: new Map(), performance: { now: () => 0 } };
+vm.createContext(box);
+vm.runInContext(prelude + '\n' + fns, box);
+const out = { plots };
+for (const [name, t] of Object.entries(cases)) {
+  t.plots = plots;
+  view.territories = [t];
+  out[name] = box.systemsDecor(t, view).filter(i => i.kind === 'knowledge' && i.key === 'roads/road-sign-street');
+}
+process.stdout.write(JSON.stringify(out));
+"""
+
+
+class TestDistrictLabels(unittest.TestCase):
+    NAMES = {"zh": {"house": "住宅区", "shop": "商业街", "tower": "测试区", "workshop": "工坊区", "library": "图书馆区"},
+             "en": {"house": "Homes", "shop": "Shops", "tower": "Tests", "workshop": "Workshops", "library": "Library"}}
+
+    def test_names_both_languages(self):
+        t = tp.js_value(tp.const_object("TEXT"))
+        for lang, names in self.NAMES.items():
+            for d, name in names.items():
+                with self.subTest(lang=lang, d=d):
+                    self.assertEqual(t[lang].get("district." + d), name)
+
+    def overlays(self):
+        if "dlbl" not in _CACHE:
+            view = {"territories": [{"id": "t", "name": "shop", "cx": 0, "cz": 0, "size": .4, "era": "town"}]}
+            fns = need("landOverlays", "pinLandOverlays", "ovEl", "setText", "pin")
+            fns += "\n" + tp.page_fns(optional=("eraShown", "terrOf", "showOf"))
+            prelude = tp.constants_prelude() + "\n" + tp.consts("DCOL")
+            _CACHE["dlbl"] = tp.run_node(DLBL_JS, {"prelude": prelude, "fns": fns, "view": view})
+        return _CACHE["dlbl"]
+
+    def test_one_label_per_sign(self):
+        r = self.overlays()
+        self.assertEqual(r["made"]["dlbl"], ["住宅区", "商业街", "图书馆区"])
+        self.assertEqual(r["made"]["lbl"], 1, "the territory label stays one .lbl")
+        self.assertEqual(r["again"], 3, "labels multiplied on a rebuild")
+        self.assertEqual(r["none"], 0)
+
+    def test_colour_bar(self):
+        dcol = tp.js_value(tp.const_object("DCOL"))
+        self.assertEqual([c.strip() if c else c for c in self.overlays()["made"]["bars"]],
+                         [dcol["house"], dcol["shop"], dcol["library"]])
+
+    def test_close_only(self):
+        r = self.overlays()
+        for name in ("close", "closest"):
+            with self.subTest(zoom=name):
+                self.assertEqual(r[name], [{"far": False, "hidden": False}] * 3)
+        for name in ("dflt", "far"):
+            with self.subTest(zoom=name):
+                self.assertTrue(all(x["far"] for x in r[name]), r[name])
+
+    def test_style(self):
+        css = tp.style()
+        rule = re.search(r"\.dlbl\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(rule, ".dlbl style missing")
+        size = re.search(r"(\d+(?:\.\d+)?)px", re.search(r"font:[^;]*", rule.group(1)).group(0) if "font:" in rule.group(1) else rule.group(1))
+        self.assertIsNotNone(size)
+        self.assertLess(float(size.group(1)), 12, "quieter than the 12px territory label")
+        self.assertIn("transition", rule.group(1))
+        self.assertIn("opacity", rule.group(1))
+        self.assertRegex(css, r"\.dlbl\.far\s*\{[^}]*opacity:\s*0")
+
+    def test_buildland_passes_signs(self):
+        self.assertRegex(tp.function_source("buildLand") or "", r"landOverlays\(view,\s*\w+")
+
+    def signs(self):
+        if "signs" not in _CACHE:
+            def terr(state):
+                bal = {k: {"state": "healthy" if k == "build" else "missing", "value": 1, "n": 1, "text": ""}
+                       for k in tp.KINDS}
+                bal["knowledge"] = {"state": state, "value": 1, "n": 1, "text": ""}
+                return {"id": "t", "name": "shop", "cx": 0, "cz": 0, "open": 8, "size": .7, "lines": 9000,
+                        "era": "town", "terrain": "grassland", "balance": bal, "next": [], "buildings": []}
+            fns = tp.page_fns("systemsDecor", "hallDecor",
+                              optional=("tileAt", "walkable", "eraShown", "showOf", "eraLook", "frontOf", "sr", "terrOf"))
+            prelude = tp.constants_prelude() + "\n" + tp.consts("ERA_LOOK")
+            _CACHE["signs"] = tp.run_node(SIGNS_JS, {"prelude": prelude, "fns": fns,
+                                                     "cases": {"healthy": terr("healthy"), "low": terr("low")}})
+        return _CACHE["signs"]
+
+    def test_one_sign_per_district_at_its_district(self):
+        r = self.signs()
+        plots = r["plots"]
+        want = sorted({p["d"] for p in plots})
+        self.assertEqual(sorted(str(s.get("d")) for s in r["healthy"]), want)
+        for s in r["healthy"]:
+            with self.subTest(d=s.get("d")):
+                near = min(max(abs(p["x"] + .5 - s["x"]), abs(p["z"] + .5 - s["z"])) for p in plots if p["d"] == s["d"])
+                self.assertLessEqual(near, 3.5, "the sign is not at its district")
+
+    def test_low_has_one(self):
+        r = self.signs()
+        self.assertEqual([s.get("d") for s in r["low"]], [r["plots"][0]["d"]])
 
 
 if __name__ == "__main__":
