@@ -61,6 +61,7 @@ COPY_BIN = [
     "agent_conf.py",
     "agent.conf.default",
     "agent-city.sh",
+    "agent-city-shim",
     "agent-city-hook.sh",
     "agent_city.py",
     "agent_city_relay.py",

@@ -86,6 +86,88 @@ def write_join(path, address, key):
     os.chmod(path, 0o600)
 
 
+def _write_lines_atomic(path, lines):
+    """Write lines (one per line, "\\n" appended) atomically: a temp file
+    in the same folder, then os.replace. Same pattern as write_join()."""
+    folder = os.path.dirname(path)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+    tmp_path = path + ".tmp-%d" % os.getpid()
+    content = "".join(line + "\n" for line in lines)
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        os.replace(tmp_path, path)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+
+def read_joined_list(path):
+    """User-level list of joined repos: one absolute repo path per line,
+    "#" comments, paths only (never keys). Absolute paths in file order;
+    blank, "#" comment and relative lines skipped; a later line whose
+    os.path.realpath equals an earlier one is dropped. Missing file -> []."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError:
+        return []
+    seen = set()
+    out = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or not os.path.isabs(line):
+            continue
+        real = os.path.realpath(line)
+        if real in seen:
+            continue
+        seen.add(real)
+        out.append(line)
+    return out
+
+
+def add_joined(path, repo):
+    """Add os.path.realpath(repo) to the joined list at path, unless a
+    line with the same realpath is already there. Makes the folder, keeps
+    every other line and comment as is, written atomically."""
+    real = os.path.realpath(repo)
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        lines = []
+    for raw_line in lines:
+        line = raw_line.strip()
+        if line and not line.startswith("#") and os.path.isabs(line) \
+                and os.path.realpath(line) == real:
+            return
+    lines.append(real)
+    _write_lines_atomic(path, lines)
+
+
+def remove_joined(path, repo):
+    """Drop the lines of the joined list at path whose realpath equals
+    repo's (works for a folder that no longer exists); keeps the rest and
+    the comments. Missing file -> no error, create nothing."""
+    real = os.path.realpath(repo)
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        return
+    kept = []
+    for raw_line in lines:
+        line = raw_line.strip()
+        if line and not line.startswith("#") and os.path.isabs(line) \
+                and os.path.realpath(line) == real:
+            continue
+        kept.append(raw_line)
+    _write_lines_atomic(path, kept)
+
+
 _LAN_NETS = tuple(ipaddress.ip_network(n) for n in
                   ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
 
@@ -366,7 +448,8 @@ class RelayHub:
     the result or put the lines back."""
 
     def __init__(self, relay_sec=5.0, dev_id=None, label=None, cap=OUTBOX_CAP,
-                 join_ttl=30.0, timeout=10.0, env_join=None, send_only=False):
+                 join_ttl=30.0, timeout=10.0, env_join=None, send_only=False,
+                 joined_list=None):
         self.relay_sec = relay_sec
         self.dev_id = dev_id or _default_dev_id()
         self.label = label or _default_label()
@@ -379,10 +462,16 @@ class RelayHub:
         # send_only: tick() still syncs and still moves "after", but always
         # returns [] -- a cloud session shows no one.
         self.send_only = send_only
+        # joined_list: path to a user-level list of repos (read_joined_list)
+        # this machine has joined; tick() seeds a team per listed repo, no
+        # offer() (no local line) needed. None -> today's behaviour.
+        self.joined_list = joined_list
         self._teams = {}
         self._join_cache = {}
         self._ids_cache = {}
         self._worktree_cache = {}
+        self._list_cache = {}
+        self._common_cache = {}
         self._repo_by_rid = {}
         self._who = ""
         self._who_set = False
@@ -408,6 +497,13 @@ class RelayHub:
             who = _git(["config", "user.name"], root) or ""
             return {"origin": origin, "who": who}
         return self._cached(self._ids_cache, root, compute)
+
+    def _git_common_dir(self, root):
+        # Cached like _repo_ids(): a listed repo must cost at most one
+        # "git rev-parse --git-common-dir" per join_ttl, not one per tick
+        # (tick() calls this under self._lock, and RELAY_POLL_SEC is 0.1s).
+        return self._cached(self._common_cache, root,
+                            lambda: _git(["rev-parse", "--git-common-dir"], root))
 
     def _repo_worktrees(self, root):
         def compute():
@@ -435,6 +531,48 @@ class RelayHub:
             if os.path.basename(entry["path"].rstrip("/")) == proj:
                 return entry["branch"]
         return ""
+
+    def _seed_from_list(self):
+        # Caller must hold self._lock. The list itself, re-read at most
+        # every join_ttl seconds (join_ttl=0: every tick), same _cached()
+        # as _read_join()/_repo_ids() below.
+        if self.joined_list is None:
+            return
+        repos = self._cached(self._list_cache, self.joined_list,
+                             lambda: read_joined_list(self.joined_list))
+        for repo in repos:
+            self._seed_team(repo)
+
+    def _seed_team(self, repo):
+        # Caller must hold self._lock. Local-only work (join file, a couple
+        # of short git calls) -- same "under the lock" pattern offer() uses;
+        # only the relay sync itself in tick() ever runs unlocked. A gone
+        # folder, a gone join file or a local-only origin: skip quietly,
+        # same as offer() returning False.
+        join_path = os.path.join(repo, _JOIN_FOLDER, _JOIN_NAME)
+        joined = self._read_join(join_path)
+        if not joined:
+            return
+        ids = self._repo_ids(repo)
+        rid = origin_id(ids.get("origin"))
+        if not rid:
+            return
+        common = self._git_common_dir(repo)
+        if not common:
+            return
+        if not os.path.isabs(common):
+            common = os.path.join(repo, common)
+        key = (joined["address"], joined["key"])
+        team = self._teams.get(key)
+        if team is None:
+            team = _Team(joined["address"], joined["key"], self.cap)
+            self._teams[key] = team
+        team.rids.add(rid)
+        team.join_paths.add(join_path)
+        self._repo_by_rid[rid] = os.path.realpath(common)
+        if not self._who_set:
+            self._who = ids.get("who") or ""
+            self._who_set = True
 
     def offer(self, line):
         if not isinstance(line, dict):
@@ -481,6 +619,7 @@ class RelayHub:
         results = []
         now = time.monotonic()
         with self._lock:
+            self._seed_from_list()
             keys = list(self._teams.keys())
         for key in keys:
             with self._lock:

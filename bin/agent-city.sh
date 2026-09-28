@@ -22,15 +22,22 @@
 #                            and a fixed copy of bin/ under $AGENT_CITY_HOME,
 #                            for a cloud session opened above several repos
 #                            (requirements/city.md, "Joining")
+#   ./agent-city.sh install-shim   copy bin/agent-city-shim to
+#                            $HOME/.local/bin/agent-city, so `agent-city` works
+#                            from any folder (requirements/city.md, "Anywhere")
+#   ./agent-city.sh remove-shim    remove that copy, if it is ours
 #   ./agent-city.sh -h       this help
 #
 # City dir: $AGENT_CITY_DIR, default $HOME/.cache/agent-city (the same dir the
 # hook writes events.jsonl into). Port and idle timeout come from the
 # project's agent.conf (city_port, city_idle_min), falling back to the
-# plugin template when a key is missing there. Before starting, RAM and CPU
-# are checked against max_usage_percent (bin/agent-resources.sh); over the
-# cap, nothing is started. city_relay_sec (agent.conf, default 5) is passed
-# to serve as --relay-sec, how often a joined team relay is synced.
+# plugin template when a key is missing there. AGENT_CITY_PORT, a whole
+# number 1024-65535, wins over city_port for start/demo, inside or outside a
+# repo (requirements/city.md, "Port anywhere"); any other non-empty value
+# refuses to start. Before starting, RAM and CPU are checked against
+# max_usage_percent (bin/agent-resources.sh); over the cap, nothing is
+# started. city_relay_sec (agent.conf, default 5) is passed to serve as
+# --relay-sec, how often a joined team relay is synced.
 #
 # join/leave use bin/agent_city_relay.py (requirements/city.md, "Joining"):
 # a per-repo join file at <main repo root>/.secrets/agent-city-relay, mode
@@ -58,12 +65,28 @@
 # (.claude/auto-pipeline/bin/agent-city-hook.sh under $CLAUDE_PROJECT_DIR) --
 # when a session does start inside one packed repo, its own project hooks
 # send, and the user-level ones stand down, so nothing is ever sent twice.
+#
+# Anywhere (requirements/city.md, "Anywhere"): outside a repo (cwd not
+# inside a git work tree), start/status/join/leave still work -- plugin
+# defaults only, no agent.conf from that folder. start/demo there sync every
+# repo listed in $AGENT_CITY_HOME/joined-repos.txt, language from
+# AGENT_CITY_LANG (en or zh, else zh); join/leave refuse and say to cd into
+# the repo first.
 
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
 roots_read
+
+# Outside a repo: plugin defaults only, this folder's own agent.conf (if
+# any) is never read.
+if [ "$(git -C "$PROJECT_CWD" rev-parse --is-inside-work-tree 2>/dev/null)" = "true" ]; then
+  OUTSIDE_REPO=no
+else
+  OUTSIDE_REPO=yes
+fi
+
 . "$PLUGIN_ROOT/bin/agent.conf.default"
-conf_read
+[ "$OUTSIDE_REPO" = yes ] || conf_read
 . "$PLUGIN_ROOT/bin/agent-resources.sh"
 
 usage() {
@@ -82,7 +105,17 @@ agent-city.sh — start/stop/status/demo for the Agent City playground.
   ./agent-city.sh send     cloud sender: send this session's lines to the team relay
   ./agent-city.sh relay-dev [port]   run the dev relay for a two-machine LAN test
   ./agent-city.sh cloud-hooks   write the city hooks into user-level settings
+  ./agent-city.sh install-shim   copy the agent-city command to ~/.local/bin, so it runs from any folder
+  ./agent-city.sh remove-shim    remove that copy, if it is ours
   ./agent-city.sh -h       this help
+
+Outside a repo: start/demo sync every repo listed in
+$AGENT_CITY_HOME/joined-repos.txt (language from AGENT_CITY_LANG, en or zh,
+else zh); status shows them; join/leave refuse there and say to cd into the
+repo first.
+
+AGENT_CITY_PORT=<1024-65535>   start/demo use this port instead of city_port,
+                                inside or outside a repo.
 EOF
 }
 
@@ -98,6 +131,25 @@ SERVER="$PLUGIN_ROOT/bin/agent_city.py"
 SECRET_FILE="$PROJECT_ROOT/.secrets/agent-city-relay"
 RELAY_MODULE="$PLUGIN_ROOT/bin/agent_city_relay.py"
 
+# True when something already answers on 127.0.0.1:<port> (short connect,
+# 1s timeout) -- tells "another program holds the port" apart from a plain
+# start failure.
+port_busy() {
+  python3 - "$1" >/dev/null 2>&1 <<'PY'
+import socket
+import sys
+
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.settimeout(1)
+try:
+    s.connect(("127.0.0.1", int(sys.argv[1])))
+except OSError:
+    sys.exit(1)
+s.close()
+sys.exit(0)
+PY
+}
+
 # Prints "pid port" and returns 0 when ON_FILE names a pid that is alive.
 read_on() {
   [ -f "$ON_FILE" ] || return 1
@@ -110,6 +162,37 @@ read_on() {
 
 do_start() {
   suffix="${1:-}"
+
+  # AGENT_CITY_PORT (requirements/city.md, "Port anywhere"): a whole number
+  # 1024-65535 wins over city_port, inside or outside a repo. Case pattern
+  # first, before any arithmetic -- set -u, a value like "47 77" must never
+  # reach -lt/-gt and crash the script.
+  env_port="${AGENT_CITY_PORT:-}"
+  case "$env_port" in
+    '') : ;;
+    *[!0-9]*)
+      echo "CITY: AGENT_CITY_PORT is not a port number (1024-65535): $env_port" >&2
+      return 1 ;;
+    *)
+      if [ "$env_port" -lt 1024 ] || [ "$env_port" -gt 65535 ]; then
+        echo "CITY: AGENT_CITY_PORT is not a port number (1024-65535): $env_port" >&2
+        return 1
+      fi
+      city_port="$env_port" ;;
+  esac
+
+  # Outside a repo: AGENT_CITY_LANG picks the language (en/zh, else zh --
+  # the city's own default); everything else (do_send, ...) keeps today's
+  # $language from agent.conf/agent.conf.default.
+  set --
+  if [ "$OUTSIDE_REPO" = yes ]; then
+    case "${AGENT_CITY_LANG:-}" in
+      en|zh) language="$AGENT_CITY_LANG" ;;
+      *) language="zh" ;;
+    esac
+    set -- --joined-list "$CITY_HOME/joined-repos.txt"
+  fi
+
   if ! resources_ok "$max_usage_percent"; then
     resources_line "$max_usage_percent"
     echo "not starting the city: over the resource cap"
@@ -120,6 +203,7 @@ do_start() {
   if [ -n "$existing" ]; then
     port=$(printf '%s' "$existing" | awk '{print $2}')
     echo "CITY: http://127.0.0.1:${port}${suffix}"
+    echo "CITY: already running; its settings stay. To start it again from here: stop it first, then start."
     return 0
   fi
 
@@ -128,7 +212,7 @@ do_start() {
     --idle-min "$city_idle_min" --gov-wait-sec "$city_governor_wait_sec" \
     --relay-sec "$city_relay_sec" \
     --decisions "$CITY_HOME/decisions.jsonl" --world "$CITY_HOME/world.json" \
-    --start-dir "$(pwd -P)" --lang "$language" \
+    --start-dir "$(pwd -P)" --lang "$language" "$@" \
     </dev/null >/dev/null 2>&1 &
   disown "$!" 2>/dev/null || true
 
@@ -143,7 +227,11 @@ do_start() {
     step=$((step + 1))
   done
   if [ -z "$found" ]; then
-    echo "CITY: failed to start" >&2
+    if port_busy "$city_port"; then
+      echo "CITY: failed to start: port $city_port is already in use by another program; set AGENT_CITY_PORT to a free port and start again" >&2
+    else
+      echo "CITY: failed to start" >&2
+    fi
     return 1
   fi
   port=$(printf '%s' "$found" | awk '{print $2}')
@@ -160,7 +248,11 @@ do_status() {
   else
     echo "CITY: not running"
   fi
-  team_line
+  if [ "$OUTSIDE_REPO" = yes ]; then
+    joined_list_lines
+  else
+    team_line
+  fi
   return 0
 }
 
@@ -177,6 +269,32 @@ if joined:
 else:
     print("TEAM: not joined")
 ' "$PLUGIN_ROOT/bin" "$SECRET_FILE"
+}
+
+# Outside a repo: one "TEAM: joined <host> (<repo>)" per listed repo whose
+# folder and join file are both there (list order), else "TEAM: not
+# joined". Never the key.
+joined_list_lines() {
+  python3 -c '
+import os
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+from urllib.parse import urlsplit
+
+repos = rl.read_joined_list(sys.argv[2])
+printed = False
+for repo in repos:
+    if not os.path.isdir(repo):
+        continue
+    joined = rl.read_join(os.path.join(repo, ".secrets", "agent-city-relay"))
+    if not joined:
+        continue
+    print("TEAM: joined %s (%s)" % (urlsplit(joined["address"]).netloc, repo))
+    printed = True
+if not printed:
+    print("TEAM: not joined")
+' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt"
 }
 
 # Cloud sender (requirements/city.md, "Joining": cloud sessions send only, no
@@ -292,6 +410,10 @@ do_pending() {
 # is not git-ignored. The team key is read with echo off and handed to
 # agent_city_relay.py on stdin only -- never argv, never on screen.
 do_join() {
+  if [ "$OUTSIDE_REPO" = yes ]; then
+    echo "JOIN: not inside a repo; cd into the repo you want to join, then run join" >&2
+    exit 1
+  fi
   origin=$(git -C "$PROJECT_ROOT" config --get remote.origin.url 2>/dev/null) || origin=""
   if [ -z "$origin" ]; then
     echo "JOIN: this repo has no origin remote to join a team relay for" >&2
@@ -328,6 +450,14 @@ print(rl.origin_id(sys.argv[2]) or "")
 
   host="${out#RELAY: ok }"
   echo "JOINED: ${rid} -> ${host}"
+
+  # Add this repo to the user-level joined list, once, never the key.
+  python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+rl.add_joined(sys.argv[2], sys.argv[3])
+' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$PROJECT_ROOT"
   return 0
 }
 
@@ -450,12 +580,85 @@ PY
 }
 
 do_leave() {
+  if [ "$OUTSIDE_REPO" = yes ]; then
+    echo "LEFT: not inside a repo; cd into the joined repo, then run leave" >&2
+    exit 1
+  fi
   if [ -f "$SECRET_FILE" ]; then
     rm -f "$SECRET_FILE"
     echo "LEFT: left the team relay"
   else
     echo "LEFT: was not joined"
   fi
+
+  # Always drop this repo's line from the user-level joined list, even when
+  # the join file was already gone.
+  python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+rl.remove_joined(sys.argv[2], sys.argv[3])
+' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$PROJECT_ROOT"
+  return 0
+}
+
+# install-shim / remove-shim (requirements/city.md, "Anywhere"): put
+# bin/agent-city-shim on the owner's PATH as ~/.local/bin/agent-city, so a
+# plain terminal can run `agent-city ...` from any folder. A target that is
+# not ours -- a symlink, a folder, or a file without our marker line -- is
+# never touched, on either command.
+do_install_shim() {
+  marker="# auto-pipeline agent-city shim"
+  src="$PLUGIN_ROOT/bin/agent-city-shim"
+  dst_dir="$HOME/.local/bin"
+  dst="$dst_dir/agent-city"
+
+  if [ -L "$dst" ]; then
+    echo "SHIM: $dst is not ours, left alone" >&2
+    return 1
+  fi
+  if [ -e "$dst" ]; then
+    if [ -d "$dst" ] || ! grep -qxF "$marker" "$dst" 2>/dev/null; then
+      echo "SHIM: $dst is not ours, left alone" >&2
+      return 1
+    fi
+  fi
+
+  mkdir -p "$dst_dir"
+  # temp file in the same folder, then mv: never a half-written shim, and no
+  # leftover file whatever happens in between
+  tmp="$dst_dir/.agent-city.$$"
+  cp "$src" "$tmp"
+  chmod 755 "$tmp"
+  mv -f "$tmp" "$dst"
+  echo "SHIM: installed $dst"
+
+  case ":$PATH:" in
+    *":$dst_dir:"*) ;;
+    *) echo "SHIM: $dst_dir is not on your PATH; add to ~/.zshrc: export PATH=\"$dst_dir:\$PATH\"" ;;
+  esac
+  return 0
+}
+
+do_remove_shim() {
+  marker="# auto-pipeline agent-city shim"
+  dst="$HOME/.local/bin/agent-city"
+
+  if [ -L "$dst" ]; then
+    echo "SHIM: $dst is not ours, left alone" >&2
+    return 1
+  fi
+  if [ -e "$dst" ]; then
+    if [ -d "$dst" ] || ! grep -qxF "$marker" "$dst" 2>/dev/null; then
+      echo "SHIM: $dst is not ours, left alone" >&2
+      return 1
+    fi
+    rm -f "$dst"
+    echo "SHIM: removed $dst"
+    return 0
+  fi
+
+  echo "SHIM: not installed"
   return 0
 }
 
@@ -474,5 +677,7 @@ case "$1" in
   leave) do_leave;;
   relay-dev) do_relay_dev "${2:-}";;
   cloud-hooks) do_cloud_hooks;;
+  install-shim) do_install_shim;;
+  remove-shim) do_remove_shim;;
   *) usage; exit 2;;
 esac

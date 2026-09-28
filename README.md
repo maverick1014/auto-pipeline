@@ -25,6 +25,7 @@ Scripts, not agents (cost no tokens):
   bin/agent-init.sh      sets a project up: agent.conf, the four task files, .secrets/, .gitignore lines, AGENTS.md, and it prints the permissions block
   bin/agent-cloud-pack.sh  lays this pipeline into a repo as plain files, for cloud sessions
   bin/agent-city.sh       starts/stops the agent city visualiser, a local server
+  bin/agent-city-shim     the ~/.local/bin/agent-city command; runs the newest installed plugin's agent-city.sh
   bin/agent-city-hook.sh  hook that feeds the city; off costs a `test -f`, on appends one JSON line
 ```
 
