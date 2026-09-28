@@ -2726,10 +2726,15 @@ function update(dt){
    landState's own mid -- tile (X, Z) covers [X - mid.x, X - mid.x + 1] x [Z - mid.z, Z - mid.z + 1].
    Much of a view's whole w x h rectangle can be void (sea rows, gaps between territories), so this is
    usually smaller than { hx: view.w / 2, hz: view.h / 2 } and centred on the real land, not the view's
-   own box. No land tile at all -> { hx: 0, hz: 0, cx: 0, cz: 0 }. */
+   own box. No land tile at all -> { hx: 0, hz: 0, cx: 0, cz: 0 }. Also carries pts: the convex hull of
+   every non-void tile's 4 corners (a few dozen points at most, however ragged the land), re-centred on
+   (cx, cz) -- an L of territories (or any land that isn't itself a rectangle) leaves a corner of its
+   own box empty, so landSpread projects this outline instead of the box's 4 corners to fit and centre
+   the real land, not the box around it. */
 function landBox(view){
   const mid = { x: Math.round(view.x0 + view.w / 2), z: Math.round(view.z0 + view.h / 2) };
   let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  const seen = new Set(), pts = [];
   for (let r = 0; r < view.h; r++) {
     const row = view.rows[r];
     for (let c = 0; c < view.w; c++) {
@@ -2737,10 +2742,26 @@ function landBox(view){
       const X = view.x0 + c - mid.x, Z = view.z0 + r - mid.z;
       x0 = Math.min(x0, X); x1 = Math.max(x1, X + 1);
       z0 = Math.min(z0, Z); z1 = Math.max(z1, Z + 1);
+      for (const p of [[X, Z], [X + 1, Z], [X, Z + 1], [X + 1, Z + 1]]) {
+        const k = p[0] + ',' + p[1];
+        if (!seen.has(k)) { seen.add(k); pts.push(p); }
+      }
     }
   }
-  if (!isFinite(x0)) return { hx: 0, hz: 0, cx: 0, cz: 0 };
-  return { hx: (x1 - x0) / 2, hz: (z1 - z0) / 2, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2 };
+  if (!isFinite(x0)) return { hx: 0, hz: 0, cx: 0, cz: 0, pts: [] };
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  // convex hull (monotone chain): sort by x then z, build the lower and upper chains, each dropping
+  // the last point while it and the new one turn the same way or straighter (cross <= 0) as the point
+  // before it -- what's left is the outline, every point on it or inside it dropped.
+  pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower = [];
+  for (const p of pts) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+  const upper = [];
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+  lower.pop(); upper.pop();
+  const hull = lower.concat(upper).map(p => [p[0] - cx, p[1] - cz]);
+  return { hx: (x1 - x0) / 2, hz: (z1 - z0) / 2, cx, cz, pts: hull };
 }
 /* the non-3D half of buildLand(view): map, mid, land, the occupied/rest/home tile pools (a plot may have
    opened by the hall), a record for every already-built building in the view, then updateHome() (the
@@ -4165,24 +4186,31 @@ function heightAt(x, z){
   return h;
 }
 function aroundH(x, z){ return Math.max(heightAt(x, z), heightAt(x + .3, z), heightAt(x - .3, z), heightAt(x, z + .3), heightAt(x, z - .3)); }
-/* the land box (scene x cx-hx..cx+hx, y -1.05..0, z cz-hz..cz+hz, relative to wherever the camera is
-   looking) seen from angle az at the current tilt, looking at (0, ly, 0) from dist, shifted sideways
-   by lx along the view's own right vector (cos(az), -sin(az)) -- city-idea C7: perspective alone
-   skews a box's apparent middle off-screen at most angles, even one already centred on the look
-   point, worse the bigger the box; centreHeight() below cancels it by moving the look point the same
-   amount the other way. [how much of the stage it fills on its tighter side, how far its middle sits
-   from the stage middle (vertically, horizontally)] */
+/* the land's outline (scene x/z relative to wherever the camera is looking, y -1.05..0) seen from
+   angle az at the current tilt, looking at (0, ly, 0) from dist, shifted sideways by lx along the
+   view's own right vector (cos(az), -sin(az)) -- city-idea C7: perspective alone skews a box's
+   apparent middle off-screen at most angles, even one already centred on the look point, worse the
+   bigger the box; centreHeight() below cancels it by moving the look point the same amount the other
+   way. Projects landBox()'s outline points (pts, already relative to the box's own middle) when there
+   are any and the box wasn't stretched up to the 13-minimum below (points from a smaller land would
+   rectangle, is fit and centred on its own real outline this way, not the empty corners of its box --
+   still true of a land under the 13-minimum below (its outline is the real, smaller shape; only the
+   box used as a fallback, and the search span/threshold in distMax(), see the 13 as a floor). Falls
+   back to the box's own 4 corners when there is no outline at all (a bare harness, or an empty world).
+   [how much of the stage it fills on its tighter side, how far its middle sits from the stage middle
+   (vertically, horizontally)] */
 function landSpread(az, dist, ly, lx){
   // city-land: an empty world (or a land smaller than one fresh territory) zooms like one fresh territory,
   // so it never traps the camera (requirements/city.md, Growth) — but a bare harness with no `land` at all
   // keeps its own small placeholder untouched. city-idea C7: land's own middle (cx, cz; missing = 0).
   const raw = typeof land === 'undefined' ? { hx:6, hz:7, cx:0, cz:0 } : land;
   const L = typeof land === 'undefined' ? raw : { hx: Math.max(raw.hx, 13), hz: Math.max(raw.hz, 13), cx: raw.cx || 0, cz: raw.cz || 0 };
+  const pts = (raw.pts && raw.pts.length) ? raw.pts : [[-L.hx, -L.hz], [-L.hx, L.hz], [L.hx, -L.hz], [L.hx, L.hz]];
   const t = Math.tan(FOV * Math.PI / 360), a = W / H, ce = Math.cos(cam.el), se = Math.sin(cam.el), sa = Math.sin(az), ca = Math.cos(az);
   const shift = lx || 0;
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-  for (const x of [-L.hx, L.hx]) for (const z of [-L.hz, L.hz]) for (const y of [-1.05, 0]) {
-    const xs = x - shift * ca, zs = z + shift * sa, q = y - ly, zc = dist - ce * sa * xs - se * q - ce * ca * zs;
+  for (const p of pts) for (const y of [-1.05, 0]) {
+    const xs = p[0] - shift * ca, zs = p[1] + shift * sa, q = y - ly, zc = dist - ce * sa * xs - se * q - ce * ca * zs;
     const v = (-se * sa * xs + ce * q - se * ca * zs) / (zc * t), u = (ca * xs - sa * zs) / (zc * t * a);
     x0 = Math.min(x0, u); x1 = Math.max(x1, u);
     y0 = Math.min(y0, v); y1 = Math.max(y1, v);
