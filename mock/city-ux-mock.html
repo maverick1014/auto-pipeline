@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City · city-ux mock</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --sky:#CFE6FF; --berry:#FF7593; --berry-deep:#D9506E; --butter:#FFD36E; --mint:#6FD4A8;
+  --focus:#4D7CFE;
+  --build-bg:#E1ECFF; --build-ink:#3160B5; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
+  --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488;
+  --gov-bg:#FFF0C7; --gov-ink:#8A6000;
+  --sea:#BFDDF6; --river:#6CB8F0;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+    --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
+    --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+    --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
+    --gov-bg:#43381A; --gov-ink:#FFDD8A; --sea:#1A2A4A; --river:#3E7FC0;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+  --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
+  --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+  --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
+  --gov-bg:#43381A; --gov-ink:#FFDD8A; --sea:#1A2A4A; --river:#3E7FC0;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.app{max-width:1500px;margin-inline:auto;padding-inline:16px;padding-block:14px 22px;display:flex;flex-direction:column;gap:10px}
+
+/* mock-only controls (not part of the page) */
+.mockbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 12px;border:1.5px dashed var(--ink-3);border-radius:14px;font-size:12.5px;color:var(--ink-2)}
+.mockbar b{font:700 12px/1 var(--mono);color:var(--ink-3);letter-spacing:.06em}
+.seg{display:inline-flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{all:unset;cursor:pointer;padding:5px 10px;font:600 12px/1.2 var(--round);color:var(--ink-2);background:var(--panel)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.sign{display:inline-flex;align-items:center;gap:10px;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:5px 16px 5px 8px;box-shadow:0 3px 0 var(--ink)}
+.sign-icon{width:30px;height:30px;display:grid;place-items:center;border-radius:10px;background:var(--butter);color:#4A3500}
+.sign-name{font:700 24px/1 var(--display);letter-spacing:.01em}
+.sign-sub{display:block;font:600 10.5px/1.2 var(--mono);color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase;margin-top:3px}
+.stats{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
+.stat{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font-size:13px;color:var(--ink-2)}
+.stat b{color:var(--ink);font:700 14px/1 var(--display)}
+.btn{font:600 13px/1 var(--round);border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:12px;padding:0 12px;min-height:36px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--ink-3)}
+
+/* U1: the repo tag row, one chip per territory, always visible */
+.repos{display:flex;gap:6px;overflow-x:auto;scrollbar-width:thin;padding:2px 2px 4px}
+.repo{all:unset;cursor:pointer;flex:none;display:inline-flex;align-items:center;gap:7px;padding:5px 12px 5px 8px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font:600 13px/1.2 var(--round);color:var(--ink-2);white-space:nowrap}
+.repo i{width:12px;height:12px;border-radius:4px;background:var(--c);display:block;box-shadow:inset 0 0 0 1.5px rgba(0,0,0,.12)}
+.repo:hover{border-color:var(--ink-3)}
+.repo:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.repo[aria-current="true"]{border-color:var(--ink);background:var(--ink);color:var(--paper)}
+.repo .n{font:600 11px/1 var(--mono);color:inherit;opacity:.7}
+.repo.all{padding-left:12px}
+
+.stage{position:relative;overflow:hidden;height:min(640px,calc(100dvh - 190px));min-height:440px;border-radius:0;background:var(--sea);touch-action:none}
+.stage svg{display:block;width:100%;height:100%;cursor:grab}
+.stage svg.grabbing{cursor:grabbing}
+.ov{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
+.ov>*{position:absolute;left:0;top:0}
+/* U6: every head tag / bubble is clickable, same as clicking the person */
+.bub{all:unset;box-sizing:border-box;pointer-events:auto;cursor:pointer;background:#FFFFFF;color:#2A2B45;border:2px solid #2A2B45;border-radius:14px;padding:3px 10px;font:600 12.5px/1.4 var(--round);white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.bub.ask{border-color:#E4476F}
+.bub.gov{background:#FFF1C9;border-color:#C99A1E}
+.tagl{all:unset;box-sizing:border-box;pointer-events:auto;cursor:pointer;background:var(--c);color:#fff;border-radius:999px;padding:3px 10px;font:600 11.5px/1.3 var(--mono);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.bub:hover,.tagl:hover{filter:brightness(1.06);box-shadow:0 0 0 3px rgba(255,117,147,.45)}
+.bub:focus-visible,.tagl:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.qm{all:unset;cursor:pointer;display:block;width:28px;height:28px;pointer-events:auto}
+.qm span{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#FF6F8B;color:#fff;font:700 17px/1 var(--display);border:2px solid #fff;box-shadow:0 2px 0 rgba(42,43,69,.25)}
+.lbl{background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:2px 10px;font:600 12px/1.5 var(--display);box-shadow:0 2px 0 rgba(42,43,69,.15);white-space:nowrap}
+.cam{position:absolute;top:12px;right:12px;z-index:3;display:flex;flex-direction:column;gap:6px}
+.cam .btn{width:38px;padding:0;justify-content:center;font-size:17px}
+.toast{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:4;background:var(--panel);color:var(--ink-2);border:1.5px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12.5px;pointer-events:none;opacity:0;transition:opacity .25s}
+.toast.on{opacity:1}
+
+/* the window (today's .win) */
+.win{position:absolute;left:12px;top:12px;z-index:5;width:min(380px,calc(100% - 24px));max-height:calc(100% - 24px);overflow:auto;background:var(--panel);color:var(--ink);border:2px solid var(--ink);border-radius:20px;box-shadow:0 6px 0 rgba(42,43,69,.22);padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px}
+.win-head{display:flex;align-items:center;gap:10px}
+.win-title{flex:1;min-width:0;font-weight:700;font-size:17px;line-height:1.3}
+.x{all:unset;cursor:pointer;display:grid;place-items:center;width:32px;height:32px;border-radius:10px;color:var(--ink-2)}
+.x:hover{background:var(--panel-2)}
+.detail{display:flex;flex-direction:column;gap:11px;min-height:0}
+/* U5: the governor window is wide and full height: left = governor + team, right = the conversation */
+.win.wide{width:min(840px,calc(100% - 24px));height:calc(100% - 24px);overflow:hidden}
+.win.wide .detail{flex:1}
+.gov-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:16px;flex:1;min-height:0}
+.gov-side{display:flex;flex-direction:column;gap:11px;min-height:0;overflow:auto;padding-right:2px}
+.gov-chat{display:flex;flex-direction:column;gap:8px;min-height:0;border-left:1.5px solid var(--line);padding-left:16px;position:relative}
+.gov-chat .chat{flex:1;max-height:none;min-height:0}
+.d-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center}
+.d-name{font-weight:700;font-size:16px;line-height:1.3}
+.d-role{font:12px/1.3 var(--mono);color:var(--ink-3)}
+.rdot{width:18px;height:18px;border-radius:50%;border:4px solid var(--c);background:var(--panel);flex:none}
+.rdot.gov{--c:#FFD36E}
+.pill{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font:600 12px/1.2 var(--round);white-space:nowrap;background:var(--walk-bg);color:var(--walk-ink)}
+.pill.gov{background:var(--gov-bg);color:var(--gov-ink)}
+.pill.you{background:var(--ask-bg);color:var(--ask-ink)}
+.pill.build{background:var(--build-bg);color:var(--build-ink)}
+.pill.rest{background:var(--rest-bg);color:var(--rest-ink)}
+.hint{margin:0;font-size:12.5px;color:var(--ink-3)}
+.roster{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.roster li.sub{padding-left:18px}
+.row{all:unset;box-sizing:border-box;width:100%;cursor:pointer;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:6px 8px;border:1.5px solid transparent;border-radius:12px}
+.row:hover{background:var(--panel-2)}
+.row[aria-current="true"]{border-color:var(--berry);background:var(--panel-2)}
+.who{display:flex;flex-direction:column;min-width:0}
+.who b{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who span{font:12px/1.3 var(--mono);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:0;font-size:13px}
+.kv dt{color:var(--ink-3)} .kv dd{margin:0}
+.chat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto}
+.chat .msg{display:flex;flex-direction:column;gap:2px;max-width:92%;padding:7px 10px;border-radius:14px;background:var(--panel-2);font-size:13px;line-height:1.45;align-self:flex-start}
+.chat .msg[data-kind="owner"]{align-self:flex-end;background:var(--gov-bg);color:var(--gov-ink)}
+.chat .msg b.by{font:600 11px/1.3 var(--mono);color:var(--ink-3)}
+.chat .msg[data-kind="owner"] b.by{color:var(--gov-ink)}
+/* U9: simple markdown, rendered safely */
+.md{overflow-wrap:anywhere}
+.md p{margin:0 0 6px} .md p:last-child{margin-bottom:0}
+.md ul,.md ol{margin:0 0 6px;padding-left:20px}
+.md code{font:12px/1.4 var(--mono);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:0 4px}
+.md pre{margin:0 0 6px;font:12px/1.45 var(--mono);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px;overflow-x:auto;white-space:pre}
+.md pre code{border:0;padding:0;background:none}
+.md table{border-collapse:collapse;margin:0 0 6px;font-size:12.5px}
+.md th,.md td{border:1px solid var(--line);padding:3px 8px;text-align:left}
+.md th{background:var(--panel)}
+/* U8: jump-down chip, only while the owner has scrolled up and something new came in */
+.newmsg{all:unset;cursor:pointer;position:absolute;left:50%;transform:translateX(-50%);bottom:132px;z-index:2;background:var(--ink);color:var(--paper);border-radius:999px;padding:5px 12px;font:600 12.5px/1.2 var(--round);box-shadow:0 3px 0 rgba(42,43,69,.25)}
+.say{display:flex;flex-direction:column;gap:8px}
+.say textarea{width:100%;min-height:64px;resize:vertical;font:14px/1.4 var(--round);color:var(--ink);background:var(--panel-2);border:1.5px solid var(--line);border-radius:12px;padding:9px 10px}
+.say .btn{align-self:flex-end}
+@media (max-width: 960px){
+  .stats{margin-left:0}
+  .win{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:72%}
+  .win.wide{width:auto;height:auto;overflow:auto}
+  .gov-cols{grid-template-columns:minmax(0,1fr)}
+  .gov-chat{border-left:0;padding-left:0}
+  .gov-chat .chat{max-height:260px}
+  .newmsg{bottom:120px}
+}
+
+.notes{background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:14px 18px;font-size:13.5px;color:var(--ink-2)}
+.notes h2{font:700 16px/1.3 var(--display);color:var(--ink);margin:0 0 8px}
+.notes h3{font:700 13.5px/1.3 var(--round);color:var(--ink);margin:12px 0 4px}
+.notes table{border-collapse:collapse;width:100%;font-size:13px}
+.notes th,.notes td{border-top:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+.notes th{color:var(--ink-3);font-weight:600;width:64px}
+.notes code{font:12px/1.4 var(--mono);background:var(--panel-2);border-radius:6px;padding:1px 5px}
+.notes ol{margin:4px 0;padding-left:20px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="mockbar" aria-label="mock controls">
+    <b>MOCK</b>
+    <span data-m="theme"></span><span class="seg" id="m-theme"><button type="button" data-v="auto"></button><button type="button" data-v="light"></button><button type="button" data-v="dark"></button></span>
+    <span data-m="lang"></span><span class="seg" id="m-lang"><button type="button" data-v="zh">中文</button><button type="button" data-v="en">English</button></span>
+    <span>U7</span><span class="seg" id="m-u7"><button type="button" data-v="before"></button><button type="button" data-v="after"></button></span>
+    <button class="btn" type="button" id="m-newmsg" style="min-height:28px" data-m="newmsg"></button>
+  </div>
+
+  <header class="bar">
+    <div class="sign">
+      <span class="sign-icon">⌂</span>
+      <div><span class="sign-name">Agent City</span><span class="sign-sub">auto-pipeline · 3D</span></div>
+    </div>
+    <div class="stats"><span class="stat"><i style="background:#4D7CFE"></i><span data-t="top.work"></span><b>4</b></span><span class="stat"><i style="background:#FF7593"></i><span data-t="top.ask"></span><b>1</b></span><span class="stat"><i style="background:#6FD4A8"></i><span data-t="top.rest"></span><b>2</b></span><span class="stat"><i style="background:#FFD36E"></i><span data-t="top.done"></span><b>23</b></span></div>
+    <button type="button" class="btn" data-t="btn.log"></button>
+  </header>
+
+  <nav class="repos" id="repos" data-t-aria="aria.repos"></nav>
+
+  <div class="stage" id="stage">
+    <svg id="map" role="img" data-t-aria="aria.canvas"></svg>
+    <div class="ov" id="ov"></div>
+    <div class="cam">
+      <button class="btn" id="zin" type="button" data-t-aria="btn.zoomIn">+</button>
+      <button class="btn" id="zout" type="button" data-t-aria="btn.zoomOut">−</button>
+      <button class="btn" id="zfit" type="button" data-t-aria="btn.resetView">⌂</button>
+    </div>
+    <div class="toast" id="toast"></div>
+    <div class="win" id="win" role="dialog" aria-labelledby="win-title" hidden>
+      <div class="win-head"><div class="win-title" id="win-title"></div><button type="button" id="win-close" class="x" data-t-aria="btn.close">✕</button></div>
+      <div class="detail" id="detail"></div>
+    </div>
+  </div>
+
+  <section class="notes" id="notes"></section>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+
+/* ---------- text (new strings marked NEW; both languages) ---------- */
+const TEXT = {
+  zh: { 'top.work':'干活', 'top.ask':'找总督', 'top.rest':'休息', 'top.done':'建成', 'btn.log':'动态', 'btn.zoomIn':'放大', 'btn.zoomOut':'缩小', 'btn.resetView':'回到默认视角', 'btn.close':'关闭', 'aria.canvas':'3D 小岛：每个小人是一个 agent',
+    'aria.repos':'仓库：点一个飞过去', 'repo.all':'全部', 'repo.allAria':'看全部仓库', 'repo.goAria':'飞到 {name}', 'cap.toast':'已经是最远了 · 点「全部」看所有仓库',
+    'chat.new':'有新消息 ↓', 'who.governor':'总督', 'gov.ownTag':'main manager · 主对话', 'pill.hall':'市政厅', 'hint.team':'团队', 'placeholder.say':'跟它说…', 'btn.send':'发送', 'chat.you.page':'你（页面）', 'chat.you.terminal':'你（终端）',
+    'kv.repo':'仓库', 'kv.branch':'分支', 'kv.doing':'在做', 'status.waiting_reply':'等你回话', 'status.asking':'在问总督', 'status.build':'施工中', 'status.rest':'休息中',
+    'm.theme':'主题', 'm.lang':'语言', 'm.auto':'跟系统', 'm.light':'浅色', 'm.dark':'深色', 'm.before':'之前', 'm.after':'之后', 'm.newmsg':'模拟一条新消息（U8）' },
+  en: { 'top.work':'Working', 'top.ask':'Need governor', 'top.rest':'Resting', 'top.done':'Built', 'btn.log':'Activity', 'btn.zoomIn':'Zoom in', 'btn.zoomOut':'Zoom out', 'btn.resetView':'Reset the view', 'btn.close':'Close', 'aria.canvas':'3D island: each little person is one agent',
+    'aria.repos':'Repos: click one to fly there', 'repo.all':'All', 'repo.allAria':'See every repo', 'repo.goAria':'Fly to {name}', 'cap.toast':'That is as far as it goes - click "All" to see every repo',
+    'chat.new':'New messages ↓', 'who.governor':'Governor', 'gov.ownTag':'main manager · main conversation', 'pill.hall':'Town hall', 'hint.team':'Team', 'placeholder.say':'Say something to it…', 'btn.send':'Send', 'chat.you.page':'You (page)', 'chat.you.terminal':'You (terminal)',
+    'kv.repo':'Repo', 'kv.branch':'Branch', 'kv.doing':'Doing', 'status.waiting_reply':'Waiting on you', 'status.asking':'Asking the governor', 'status.build':'Building', 'status.rest':'Resting',
+    'm.theme':'Theme', 'm.lang':'Language', 'm.auto':'System', 'm.light':'Light', 'm.dark':'Dark', 'm.before':'Before', 'm.after':'After', 'm.newmsg':'Simulate a new message (U8)' }
+};
+let LANG = 'zh';
+const t = (k, v) => { let s = (TEXT[LANG] && TEXT[LANG][k]) || k; for (const n in v || {}) s = s.split('{' + n + '}').join(v[n]); return s; };
+
+/* ---------- the world: 6 repos, 3 x 2 slots ---------- */
+const TERR = [
+  { id:'ap',   name:'auto-pipeline', terrain:'grass',    r:8.2, slot:[0,0] },
+  { id:'shop', name:'shop',          terrain:'desert',   r:5.4, slot:[1,0] },
+  { id:'blog', name:'blog',          terrain:'forest',   r:3.0, slot:[2,0] },
+  { id:'inf',  name:'infra',         terrain:'mountain', r:6.2, slot:[0,1] },
+  { id:'docs', name:'docs-site',     terrain:'coast',    r:2.4, slot:[1,1] },
+  { id:'mob',  name:'mobile',        terrain:'grass',    r:4.2, slot:[2,1] },
+];
+const TCOL = { grass:'#8BD17C', desert:'#E9CF8E', forest:'#5FAF6A', mountain:'#A9B3C2', coast:'#9ED9A0' };
+const TOWN = { grass:'#B7E6A4', desert:'#F4E2B2', forest:'#8FCB8C', mountain:'#CDD4DE', coast:'#F2E6B8' };
+/* people: [terr, dx, dz, kind, name, color, extra] */
+const PEOPLE = [
+  { id:'gov', terr:'ap', dx:0.6, dz:1.8, gov:true, color:'#FFD36E', name:'总督 · main manager', bubble:'等你回话…', bubbleEn:'Waiting on you…' },
+  { id:'w1', terr:'ap', dx:-4.2, dz:-2.6, color:'#4D7CFE', name:'worker · 登录 API', ask:true, bubble:'支付超时要不要自动重试？', bubbleEn:'Should a payment timeout retry?', status:'asking', task:'登录 API', branch:'feat/login' },
+  { id:'tm', terr:'ap', dx:3.6, dz:-3.1, color:'#A06CF0', name:'task manager · 设置页', status:'build', task:'设置页', branch:'feat/settings' },
+  { id:'w2', terr:'shop', dx:-1.8, dz:1.4, color:'#4D7CFE', name:'worker · 导出 CSV', status:'build', task:'导出 CSV', branch:'feat/csv' },
+  { id:'w3', terr:'inf', dx:2.2, dz:-1.2, color:'#2FB57A', name:'fast-lane deputy · 错别字', status:'rest', task:'错别字', branch:'main' },
+];
+
+let U7 = 'after';
+const cellOf = () => U7 === 'after' ? 20 : 26;
+function hash(s){ let h = 2166136261; for (const ch of s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; }
+function centre(tr){ const C = cellOf(); return [tr.slot[0] * C, tr.slot[1] * C]; }
+function landBox(){ const C = cellOf(); return { x0: -C / 2, z0: -C / 2, x1: 2 * C + C / 2, z1: C + C / 2 }; }
+
+/* organic closed path through points (Catmull-Rom -> cubic) */
+function smoothPath(pts){
+  let d = `M${pts[0][0].toFixed(2)},${pts[0][1].toFixed(2)}`;
+  for (let i = 0; i < pts.length; i++) {
+    const p0 = pts[(i - 1 + pts.length) % pts.length], p1 = pts[i], p2 = pts[(i + 1) % pts.length], p3 = pts[(i + 2) % pts.length];
+    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6], c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+    d += `C${c1[0].toFixed(2)},${c1[1].toFixed(2)} ${c2[0].toFixed(2)},${c2[1].toFixed(2)} ${p2[0].toFixed(2)},${p2[1].toFixed(2)}`;
+  }
+  return d + 'Z';
+}
+function blob(cx, cz, r, seed, n = 26){
+  const a = hash(seed) * 6.28, b = hash(seed + 'b') * 6.28, pts = [];
+  for (let i = 0; i < n; i++) { const th = i / n * Math.PI * 2, k = 1 + .12 * Math.sin(3 * th + a) + .07 * Math.sin(5 * th + b); pts.push([cx + Math.cos(th) * r * k, cz + Math.sin(th) * r * k]); }
+  return smoothPath(pts);
+}
+function coast(){
+  const B = landBox(), pts = [], wob = (u, s) => .9 * Math.sin(u * .45 + s) + .6 * Math.sin(u * 1.1 + 2 * s);
+  for (let x = B.x0; x < B.x1; x += 2) pts.push([x, B.z0 + 1.2 + wob(x, 1)]);
+  for (let z = B.z0; z < B.z1; z += 2) pts.push([B.x1 - 1.2 - wob(z, 2), z]);
+  for (let x = B.x1; x > B.x0; x -= 2) pts.push([x, B.z1 - 1.2 - wob(x, 3)]);
+  for (let z = B.z1; z > B.z0; z -= 2) pts.push([B.x0 + 1.2 + wob(z, 4), z]);
+  return smoothPath(pts);
+}
+function river(x0, z0, x1, z1, seed){
+  const pts = [], n = 18, vert = x0 === x1;
+  for (let i = 0; i <= n; i++) { const u = i / n, w = 1.1 * Math.sin(u * 7 + seed) + .5 * Math.sin(u * 17 + 2 * seed);
+    pts.push(vert ? [x0 + w, z0 + (z1 - z0) * u] : [x0 + (x1 - x0) * u, z0 + w]); }
+  return 'M' + pts.map(p => p[0].toFixed(2) + ',' + p[1].toFixed(2)).join(' L');
+}
+function drawMap(){
+  const C = cellOf(), svg = $('#map');
+  let s = `<rect x="-200" y="-200" width="600" height="600" fill="var(--sea)"/>`;
+  s += `<path d="${coast()}" fill="#86C877"/>`;
+  for (const tr of TERR) { const [cx, cz] = centre(tr);
+    s += `<rect x="${cx - C / 2 + .2}" y="${cz - C / 2 + .2}" width="${C - .4}" height="${C - .4}" rx="3" fill="${TCOL[tr.terrain]}" opacity=".55"/>`; }
+  // gap belts: rivers between neighbours, with a bridge each
+  for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) { const x = i * C + C / 2; s += `<path d="${river(x, j * C - C / 2 + 1.5, x, j * C + C / 2 - .5, i * 3 + j)}" stroke="var(--river)" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
+    s += `<rect x="${x - 1.4}" y="${j * C - .5}" width="2.8" height="1" rx=".3" fill="#B98A5A"/>`; }
+  for (let i = 0; i < 3; i++) { const z = C / 2; s += `<path d="${river(i * C - C / 2 + 1.5, z, i * C + C / 2 - .5, z, 5 + i)}" stroke="var(--river)" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
+    s += `<rect x="${i * C - .5}" y="${z - 1.4}" width="1" height="2.8" rx=".3" fill="#B98A5A"/>`; }
+  for (const tr of TERR) {
+    const [cx, cz] = centre(tr);
+    s += `<path d="${blob(cx, cz, tr.r, tr.id)}" fill="${TOWN[tr.terrain]}" stroke="rgba(0,0,0,.08)" stroke-width=".15"/>`;
+    s += `<path d="M${cx - tr.r * .9},${cz} L${cx + tr.r * .9},${cz} M${cx},${cz - tr.r * .9} L${cx},${cz + tr.r * .9}" stroke="#D8C39A" stroke-width=".55" stroke-linecap="round"/>`;
+    const n = Math.round(tr.r * 1.6);
+    for (let k = 0; k < n; k++) { const a = hash(tr.id + k) * 6.28, d = 1.6 + hash(tr.id + 'd' + k) * (tr.r - 1.8);
+      const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d, cols = ['#E7A4B4', '#9FB8F0', '#F2C66D', '#B6A0E8', '#9ED6C1'];
+      s += `<rect x="${(x - .45).toFixed(2)}" y="${(z - .45).toFixed(2)}" width=".9" height=".9" rx=".15" fill="${cols[k % 5]}" stroke="rgba(0,0,0,.25)" stroke-width=".08"/>`; }
+    s += `<rect x="${cx - .8}" y="${cz - .8}" width="1.6" height="1.6" rx=".2" fill="#E4476F" stroke="#7A2436" stroke-width=".1"/>`;
+    if (tr.terrain === 'forest' || tr.terrain === 'mountain') for (let k = 0; k < 14; k++) { const x = cx + (hash(tr.id + 't' + k) - .5) * (C - 4), z = cz + (hash(tr.id + 'u' + k) - .5) * (C - 4);
+      if (Math.hypot(x - cx, z - cz) > tr.r + 1) s += `<circle cx="${x.toFixed(2)}" cy="${z.toFixed(2)}" r=".7" fill="${tr.terrain === 'forest' ? '#3F8F4E' : '#7C8797'}"/>`; }
+  }
+  for (const p of PEOPLE) { const pos = personAt(p);
+    s += `<g data-person="${p.id}"><circle cx="${pos[0]}" cy="${pos[1]}" r=".62" fill="none" stroke="${sel && sel.id === p.id ? '#FF7593' : 'transparent'}" stroke-width=".2"/><circle cx="${pos[0]}" cy="${pos[1]}" r=".38" fill="${p.color}" stroke="#2A2B45" stroke-width=".08"/></g>`; }
+  svg.innerHTML = s;
+}
+function personAt(p){ const tr = TERR.find(x => x.id === p.terr), [cx, cz] = centre(tr), k = Math.min(1, tr.r / 8.2) * .9 + .1; return [cx + p.dx * k, cz + p.dz * k]; }
+
+/* ---------- the camera (2D stand-in for the 3D one: same rules) ---------- */
+const view = { cx: 0, cz: 0, w: 30 };
+let fly = null, sel = null, winGov = false;
+const W_MIN = 8;
+function wCap(){ return 2.2 * cellOf(); }        // U1: user zoom-out stops at about 2 territories across
+function wAll(){ const B = landBox(), S = $('#stage').getBoundingClientRect(); return Math.max(B.x1 - B.x0, (B.z1 - B.z0) * S.width / S.height) * 1.04; }
+function applyView(){
+  const S = $('#stage').getBoundingClientRect(), h = view.w * S.height / S.width;
+  $('#map').setAttribute('viewBox', `${(view.cx - view.w / 2).toFixed(3)} ${(view.cz - h / 2).toFixed(3)} ${view.w.toFixed(3)} ${h.toFixed(3)}`);
+  placeTags(); markActive();
+}
+function toScreen(x, z){ const S = $('#stage').getBoundingClientRect(), k = S.width / view.w; return [(x - view.cx) * k + S.width / 2, (z - view.cz) * k + S.height / 2]; }
+const ease = u => u < .5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+function flyTo(cx, cz, w){
+  fly = { a: { ...view }, b: { cx, cz, w }, t0: performance.now(), ms: 700 };
+  requestAnimationFrame(stepFly);
+}
+function stepFly(now){
+  if (!fly) return;
+  const u = Math.min(1, (now - fly.t0) / fly.ms), e = ease(u);
+  view.cx = fly.a.cx + (fly.b.cx - fly.a.cx) * e; view.cz = fly.a.cz + (fly.b.cz - fly.a.cz) * e; view.w = fly.a.w + (fly.b.w - fly.a.w) * e;
+  applyView();
+  if (u < 1) requestAnimationFrame(stepFly); else fly = null;
+}
+let toastT = 0;
+function toast(){ const el = $('#toast'); el.textContent = t('cap.toast'); el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), 1600); }
+/* zoom: never past the cap by zooming out; the "All" view (already past it) never jumps in */
+function zoomTo(w){
+  const cap = Math.max(wCap(), view.w);
+  if (w > cap + 1e-6 && view.w >= wCap() - 1e-6) toast();
+  view.w = Math.max(W_MIN, Math.min(w, cap));
+  applyView();
+}
+function panPx(dx, dy){ const k = view.w / $('#stage').getBoundingClientRect().width, B = landBox();
+  view.cx = Math.max(B.x0, Math.min(B.x1, view.cx + dx * k)); view.cz = Math.max(B.z0, Math.min(B.z1, view.cz + dy * k)); applyView(); }
+
+/* U1: repo tags */
+function renderRepos(){
+  let h = `<button class="repo all" type="button" data-terr="*" aria-label="${esc(t('repo.allAria'))}">${esc(t('repo.all'))} <span class="n">${TERR.length}</span></button>`;
+  for (const tr of TERR) h += `<button class="repo" type="button" data-terr="${tr.id}" style="--c:${TCOL[tr.terrain]}" aria-label="${esc(t('repo.goAria', { name: tr.name }))}"><i></i>${esc(tr.name)}</button>`;
+  $('#repos').innerHTML = h; markActive();
+}
+function markActive(){
+  let best = null, bd = Infinity;
+  if (view.w <= wCap() * 1.02) for (const tr of TERR) { const [x, z] = centre(tr), d = Math.hypot(x - view.cx, z - view.cz); if (d < bd) { bd = d; best = tr.id; } }
+  const cur = best || '*';
+  for (const b of document.querySelectorAll('.repo')) b.setAttribute('aria-current', String(b.dataset.terr === cur));
+}
+$('#repos').addEventListener('click', e => {
+  const b = e.target.closest('.repo'); if (!b) return;
+  if (b.dataset.terr === '*') { const B = landBox(); flyTo((B.x0 + B.x1) / 2, (B.z0 + B.z1) / 2, wAll()); return; }
+  const tr = TERR.find(x => x.id === b.dataset.terr), [cx, cz] = centre(tr);
+  flyTo(cx, cz, Math.min(wCap(), cellOf() * 1.6));
+});
+$('#zin').addEventListener('click', () => zoomTo(view.w / 1.8));
+$('#zout').addEventListener('click', () => zoomTo(view.w * 1.8));
+$('#zfit').addEventListener('click', () => { const [cx, cz] = centre(TERR[0]); flyTo(cx, cz, 36); });
+
+/* U3: trackpad. Two-finger swipe (wheel, no ctrl) = pan, content follows the fingers. Pinch (ctrl+wheel in
+   Chrome/Orca, gesture* in Safari) = zoom, proportional to the fingers. A plain mouse wheel pans too. */
+$('#stage').addEventListener('wheel', e => {
+  if (e.target.closest('.win')) return;
+  e.preventDefault(); fly = null;
+  const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+  if (e.ctrlKey) zoomTo(view.w * Math.exp(Math.max(-.5, Math.min(.5, e.deltaY * k * .01))));
+  else panPx(e.deltaX * k, e.deltaY * k);
+}, { passive: false });
+let g0 = 0;
+$('#stage').addEventListener('gesturestart', e => { e.preventDefault(); g0 = view.w; });
+$('#stage').addEventListener('gesturechange', e => { e.preventDefault(); zoomTo(g0 / e.scale); });
+
+/* U2: a click never moves the view; only a drag past 8 px does. U6: a click near a person (28 px) picks it. */
+const TAP_PX = 8, PICK_PX = 28;
+let press = null;
+const svgEl = $('#map');
+svgEl.addEventListener('pointerdown', e => { svgEl.setPointerCapture(e.pointerId); press = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, moved: false }; fly = null; });
+svgEl.addEventListener('pointermove', e => {
+  if (!press) return;
+  if (e.buttons === 0) { press = null; svgEl.classList.remove('grabbing'); return; }
+  if (!press.moved && Math.hypot(e.clientX - press.x, e.clientY - press.y) < TAP_PX) return;
+  press.moved = true; svgEl.classList.add('grabbing');
+  panPx(-(e.clientX - press.lx), -(e.clientY - press.ly)); press.lx = e.clientX; press.ly = e.clientY;
+});
+svgEl.addEventListener('pointerup', e => {
+  const p = press; press = null; svgEl.classList.remove('grabbing');
+  if (!p || p.moved) return;
+  const r = $('#stage').getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+  let best = null, bd = PICK_PX;
+  for (const q of PEOPLE) { const [sx, sy] = toScreen(...personAt(q)), d = Math.hypot(sx - px, sy - py); if (d < bd) { bd = d; best = q; } }
+  select(best);
+});
+svgEl.addEventListener('lostpointercapture', () => { press = null; svgEl.classList.remove('grabbing'); });
+
+/* ---------- overlays: territory labels + head tags (U6: all clickable) ---------- */
+const tags = [];
+function buildTags(){
+  const ov = $('#ov'); ov.innerHTML = ''; tags.length = 0;
+  for (const tr of TERR) { const el = document.createElement('div'); el.className = 'lbl'; el.textContent = tr.name; ov.appendChild(el); tags.push({ el, at: () => { const [x, z] = centre(tr); return [x, z - tr.r - 1.2]; }, dy: 0 }); }
+  for (const p of PEOPLE) {
+    const b = document.createElement('button'); b.type = 'button'; b.dataset.pickT = p.gov ? 'gov' : 'c'; b.dataset.pickId = p.id;
+    if (p.bubble) { b.className = 'bub' + (p.gov ? ' gov' : p.ask ? ' ask' : ''); b.textContent = LANG === 'en' ? p.bubbleEn : p.bubble; }
+    else { b.className = 'tagl'; b.style.setProperty('--c', p.color); b.textContent = p.name; }
+    ov.appendChild(b); tags.push({ el: b, at: () => personAt(p), dy: -16 });
+    if (p.ask) { const q = document.createElement('button'); q.type = 'button'; q.className = 'qm'; q.innerHTML = '<span>?</span>'; q.title = 'opens the ? panel (unchanged)'; ov.appendChild(q); tags.push({ el: q, at: () => personAt(p), dy: -50 }); }
+  }
+  placeTags();
+}
+function placeTags(){
+  for (const tg of tags) { const [x, y] = toScreen(...tg.at()); tg.el.style.transform = `translate(${x.toFixed(1)}px,${(y + tg.dy).toFixed(1)}px) translate(-50%,-100%)`; }
+}
+$('#ov').addEventListener('click', e => {
+  const b = e.target.closest('[data-pick-t]'); if (!b) return;
+  select(PEOPLE.find(p => p.id === b.dataset.pickId));
+});
+
+/* ---------- the window ---------- */
+/* U9: safe mini markdown: HTML comments dropped, everything escaped first, then a few simple forms */
+function mdLite(src){
+  const text = String(src).replace(/<\!--[\s\S]*?(--\>|$)/g, '').replace(/\r\n?/g, '\n').trim();
+  const inline = s => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  const lines = text.split('\n'), out = []; let i = 0;
+  const cells = l => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+  while (i < lines.length) {
+    const l = lines[i];
+    if (/^```/.test(l)) { const buf = []; i++; while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]); i++; out.push(`<pre><code>${esc(buf.join('\n'))}</code></pre>`); continue; }
+    if (/^\s*\|.*\|\s*$/.test(l) && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1]) && lines[i + 1].includes('-')) {
+      const head = cells(l); i += 2; const rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(cells(lines[i++]));
+      out.push(`<table><thead><tr>${head.map(c => `<th>${inline(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${inline(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`); continue; }
+    if (/^\s*[-*] /.test(l)) { const items = []; while (i < lines.length && /^\s*[-*] /.test(lines[i])) items.push(lines[i++].replace(/^\s*[-*] /, '')); out.push(`<ul>${items.map(x => `<li>${inline(x)}</li>`).join('')}</ul>`); continue; }
+    if (/^\s*\d+\. /.test(l)) { const items = []; while (i < lines.length && /^\s*\d+\. /.test(lines[i])) items.push(lines[i++].replace(/^\s*\d+\. /, '')); out.push(`<ol>${items.map(x => `<li>${inline(x)}</li>`).join('')}</ol>`); continue; }
+    if (!l.trim()) { i++; continue; }
+    const para = []; while (i < lines.length && lines[i].trim() && !/^```|^\s*[-*] |^\s*\d+\. |^\s*\|.*\|\s*$/.test(lines[i])) para.push(lines[i++]);
+    out.push(`<p>${para.map(inline).join('<br>')}</p>`);
+  }
+  return out.join('');
+}
+const CHAT = [
+  { kind:'owner', text:'先把这页做完，别的先不要动' },
+  { kind:'gov', text:'好，先做这页，其它先不碰。' },
+  { kind:'prompt', text:'这个仓库现在有几个 worktree？' },
+  { kind:'gov', text:'<\!-- buddy: idle, no action --\>现在有 **2** 个：\n\n| worktree | 状态 |\n|---|---|\n| city-ux | 做 mock |\n| city-anywhere | 写测试 |' },
+  { kind:'owner', text:'城市里标签太难点了' },
+  { kind:'gov', text:'收到，交给 city-ux 的 task manager：\n\n1. 头顶标签能点\n2. 小人的点击范围变大\n\n测试命令：\n```\npython3 -m unittest tests.test_agent_city_ux_page\n```' },
+  { kind:'prompt', text:'<b>不要</b>渲染这段 HTML <script>alert(1)<\/script>' },
+  { kind:'gov', text:'上面那行只会原样显示成文字，不会执行。`<script>` 被转义了。' },
+  { kind:'owner', text:'好，mock 出来叫我' },
+  { kind:'gov', text:'- mock：做好了\n- 等你说 **mock yes**' },
+];
+let extra = 0;
+function chatItems(){
+  return CHAT.map(m => `<li class="msg" data-kind="${m.kind === 'gov' ? 'gov' : 'owner'}"><b class="by">${esc(m.kind === 'owner' ? t('chat.you.page') : m.kind === 'prompt' ? t('chat.you.terminal') : t('who.governor'))}</b><div class="md">${mdLite(m.text)}</div></li>`).join('');
+}
+function select(p){ sel = p || null; renderWin(); drawMap(); buildTags(); }
+function renderWin(){
+  const win = $('#win');
+  if (!sel) { win.hidden = true; return; }
+  win.hidden = false;
+  const gov = !!sel.gov;
+  win.classList.toggle('wide', gov);
+  $('#win-title').textContent = gov ? t('who.governor') : sel.name;
+  if (gov) {
+    const team = PEOPLE.filter(p => p.terr === 'ap').map(p => p.gov
+      ? `<li><button class="row" type="button" data-sel="${p.id}" aria-current="true"><span class="rdot gov"></span><span class="who"><b>${t('who.governor')}</b><span>${t('gov.ownTag')}</span></span><span class="pill gov">${t('status.waiting_reply')}</span></button></li>`
+      : `<li class="sub"><button class="row" type="button" data-sel="${p.id}"><span class="rdot" style="--c:${p.color}"></span><span class="who"><b>${esc(p.name)}</b><span>${esc(p.branch)}</span></span><span class="pill ${p.status === 'asking' ? 'you' : 'build'}">${t(p.status === 'asking' ? 'status.asking' : 'status.build')}</span></button></li>`).join('');
+    $('#detail').innerHTML = `<div class="gov-cols">
+      <div class="gov-side">
+        <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">${t('who.governor')}</div><div class="d-role">${t('gov.ownTag')}</div></div><span class="pill gov">${t('pill.hall')}</span></div>
+        <p class="hint">${t('hint.team')}</p><ul class="roster">${team}</ul>
+      </div>
+      <div class="gov-chat">
+        <ol class="chat" id="chat">${chatItems()}</ol>
+        <button class="newmsg" id="newmsg" type="button" hidden>${t('chat.new')}</button>
+        <form class="say" onsubmit="return false"><textarea placeholder="${t('placeholder.say')}"></textarea><button class="btn" type="submit">${t('btn.send')}</button></form>
+      </div></div>`;
+    const ol = $('#chat'); ol.scrollTop = ol.scrollHeight;
+    ol.addEventListener('scroll', () => { if (nearBottom(ol)) $('#newmsg').hidden = true; });
+    $('#newmsg').addEventListener('click', () => { ol.scrollTop = ol.scrollHeight; $('#newmsg').hidden = true; });
+  } else {
+    const st = sel.status === 'asking' ? ['you', t('status.asking')] : sel.status === 'rest' ? ['rest', t('status.rest')] : ['build', t('status.build')];
+    $('#detail').innerHTML = `<div class="d-head"><span class="rdot" style="--c:${sel.color}"></span><div><div class="d-name">${esc(sel.name)}</div><div class="d-role">${esc(sel.task)}</div></div><span class="pill ${st[0]}">${st[1]}</span></div>
+      <dl class="kv"><dt>${t('kv.repo')}</dt><dd>${esc(TERR.find(x => x.id === sel.terr).name)}</dd><dt>${t('kv.branch')}</dt><dd><code>${esc(sel.branch)}</code></dd><dt>${t('kv.doing')}</dt><dd>${esc(sel.task)}</dd></dl>`;
+  }
+}
+const nearBottom = ol => ol.scrollHeight - ol.scrollTop - ol.clientHeight < 40;
+$('#win-close').addEventListener('click', () => select(null));
+$('#detail').addEventListener('click', e => { const b = e.target.closest('[data-sel]'); if (b) select(PEOPLE.find(p => p.id === b.dataset.sel)); });
+/* U8: a new line keeps the owner's scroll position unless he is already at the bottom */
+$('#m-newmsg').addEventListener('click', () => {
+  CHAT.push({ kind: 'gov', text: `新消息 #${++extra}：worker 完成了 **导出 CSV**。` });
+  if (!sel || !sel.gov) { select(PEOPLE[0]); return; }
+  const ol = $('#chat'), stick = nearBottom(ol), top = ol.scrollTop;
+  ol.innerHTML = chatItems();
+  if (stick) ol.scrollTop = ol.scrollHeight; else { ol.scrollTop = top; $('#newmsg').hidden = false; }
+});
+
+/* ---------- notes ---------- */
+const NOTES = {
+  zh: `<h2>city-ux mock · 怎么点</h2>
+<ol>
+<li><b>U1</b> 点上面的仓库标签（比如 <code>docs-site</code>）：地图平滑飞过去，角度不变。点 <b>全部</b>：看到所有仓库。用 − 或捏合缩小：到大约两块领地宽就停住（右下角提示一下）。</li>
+<li><b>U6</b> 点 worker 头上的问题气泡「支付超时要不要自动重试？」或任意名字标签：打开那个人的窗口，和点小人一样。点小人旁边 28 像素内也算点中。红色「?」保持原样（打开回答面板）。</li>
+<li><b>U4 + U5</b> 点总督头上的「等你回话…」：总督窗口变宽、占满高度。左边 = 总督 + 团队，右边 = 对话（高的一栏）+ 输入框。说明文字和 派出 / 回答 两个计数都去掉了。手机宽度（窗口窄于 960px）上下叠放，和现在一样。</li>
+<li><b>U9</b> 对话里的表格、列表、代码、粗体按简单 markdown 显示；<code>&lt;!-- buddy: … --&gt;</code> 这类注释不显示；HTML 标签只当文字显示，不会执行。</li>
+<li><b>U8</b> 在总督对话里往上滚，然后点上面的「模拟一条新消息」：位置不动，出现「有新消息 ↓」小标签；点它才跳到底部。本来就在底部时，新消息照常自动滚到底。</li>
+<li><b>U7</b> 切换上面的 U7「之前 / 之后」：之前每块领地 26 格、中间空地大；之后 20 格，河更近，6 个仓库一屏装得下。领地形状和位置顺序不变。</li>
+</ol>
+<h3>只能用文字说明的行为</h3>
+<table>
+<tr><th>U2</th><td>按下再松开、移动不到 8 像素 = 点击：视角完全不动（连"躲开高楼的自动抬高"也不动）。超过 8 像素才算拖动。松开后没有按键的移动绝不拖动（修复丢失 pointerup 后"粘住"的拖动）。这个 mock 里已经这样做：点地图空地试试。</td></tr>
+<tr><th>U3</th><td>MacBook 触控板：两指一起滑 = 平移，地图跟着手指走，像滚动网页；两指捏合 = 缩放，按手指的幅度成比例，不跳。Safari 的 gesture 事件也接上。<b>选择：普通鼠标滚轮也是平移</b>（和 Figma 一样），缩放用捏合、+ / − 按钮或 ctrl+滚轮。这个 mock 里已经这样做，可以在笔记本上直接试。</td></tr>
+<tr><th>相机</th><td>真实页面里仍是 3D：飞过去时保留你的倾斜角，自动慢转不停（原来的规则不变）。</td></tr>
+</table>
+<h3>请你拍板</h3>
+<table>
+<tr><th>U7</th><td>领地大小和间距在服务器布局（agent_city.py）里，只改页面会切断河流和海岸线。提议：每块领地 26 格 → 20 格（城镇本身不变小，只是周围空地和河之间的距离变小），每个仓库的形状和相对位置不变。切换「之前 / 之后」时缩放不变，可以直接比较一屏能看到多少。主经理已同意改服务器，等另一个分支合并后再动手。</td></tr>
+<tr><th>全部</th><td>标签行最前面放「全部」，它是唯一能超过缩小上限的入口；⌂ 按钮仍是「回到默认视角」。</td></tr>
+</table>`,
+  en: `<h2>city-ux mock · what to click</h2>
+<ol>
+<li><b>U1</b> Click a repo tag at the top (e.g. <code>docs-site</code>): the map flies there smoothly, same angle. Click <b>All</b>: every repo. Zoom out with − or a pinch: it stops at about two territories across (a small hint shows).</li>
+<li><b>U6</b> Click the worker's question bubble or any name tag: that person's window opens, same as clicking the person. A click within 28 px of a person also picks it. The red "?" is unchanged (opens the answer panel).</li>
+<li><b>U4 + U5</b> Click the governor's "Waiting on you…" bubble: the governor window is wide and full height. Left = governor + team, right = the conversation (tall column) + reply box. The explainer text and the Sent / Answered counters are gone. Phone width (under 960 px): stacked, as today.</li>
+<li><b>U9</b> Tables, lists, code and bold in the conversation show as simple markdown; <code>&lt;!-- buddy: … --&gt;</code> comments are hidden; HTML tags show as plain text, never run.</li>
+<li><b>U8</b> Scroll up in the governor conversation, then click "Simulate a new message" above: the position stays, a "New messages ↓" chip shows; click it to jump down. Already at the bottom: new lines scroll down as before.</li>
+<li><b>U7</b> Switch U7 "Before / After" above: before, each territory is 26 tiles with a lot of empty land; after, 20 tiles, rivers closer, 6 repos fit on one screen. Shapes and order stay.</li>
+</ol>
+<h3>Behaviour (described)</h3>
+<table>
+<tr><th>U2</th><td>Press and release moving less than 8 px = a click: the view does not move at all (not even the auto-lift over tall buildings). Only past 8 px is it a drag. A move with no button down never drags (fixes a drag that "sticks" after a lost pointerup). This mock already does it: click empty ground.</td></tr>
+<tr><th>U3</th><td>MacBook trackpad: two fingers together = pan, the map follows the fingers like scrolling a page; pinch = zoom, proportional, no jumps. Safari gesture events too. <b>Choice: a plain mouse wheel pans too</b> (like Figma); zoom with pinch, the + / − buttons or ctrl+wheel. Try it in this mock on the laptop.</td></tr>
+<tr><th>Camera</th><td>The real page stays 3D: a fly keeps your tilt, the slow auto-rotation keeps going (rules unchanged).</td></tr>
+</table>
+<h3>For you to decide</h3>
+<table>
+<tr><th>U7</th><td>Territory size and spacing live in the server layout (agent_city.py); a page-only change would cut rivers and coasts. Proposal: each territory 26 tiles -> 20 (the towns do not shrink, only the empty land around them and the distance between rivers), every repo keeps its shape and place. Switching Before / After keeps the zoom, so you can compare how much fits on one screen. The main manager agreed to the server change, after the other branch is merged.</td></tr>
+<tr><th>All</th><td>An "All" tag first in the row, the only way past the zoom-out limit; ⌂ stays "reset the view".</td></tr>
+</table>`
+};
+
+/* ---------- mock controls ---------- */
+function applyText(){
+  document.documentElement.lang = LANG === 'en' ? 'en' : 'zh-CN';
+  for (const el of document.querySelectorAll('[data-t]')) el.textContent = t(el.dataset.t);
+  for (const el of document.querySelectorAll('[data-t-aria]')) el.setAttribute('aria-label', t(el.dataset.tAria));
+  for (const el of document.querySelectorAll('[data-m]')) el.textContent = t('m.' + el.dataset.m);
+  for (const b of document.querySelectorAll('#m-theme button')) b.textContent = t('m.' + b.dataset.v);
+  for (const b of document.querySelectorAll('#m-u7 button')) b.textContent = t('m.' + b.dataset.v);
+  $('#notes').innerHTML = NOTES[LANG];
+  renderRepos(); buildTags(); renderWin();
+}
+function seg(id, cur, fn){ for (const b of document.querySelectorAll(`#${id} button`)) { b.setAttribute('aria-pressed', String(b.dataset.v === cur)); b.onclick = () => fn(b.dataset.v); } }
+function setTheme(v){ if (v === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', v); seg('m-theme', v, setTheme); }
+function setLang(v){ LANG = v; seg('m-lang', v, setLang); applyText(); }
+/* U7 before/after at the SAME zoom (tiles across), so the difference shows: after, more repos fit */
+function setU7(v){ const B0 = landBox(), fx = (view.cx - B0.x0) / (B0.x1 - B0.x0), fz = (view.cz - B0.z0) / (B0.z1 - B0.z0); U7 = v; seg('m-u7', v, setU7); const B = landBox(); view.cx = B.x0 + fx * (B.x1 - B.x0); view.cz = B.z0 + fz * (B.z1 - B.z0); drawMap(); buildTags(); applyView(); }
+const q = new URLSearchParams(location.search);
+setTheme(q.get('theme') || 'auto'); LANG = q.get('lang') === 'en' ? 'en' : 'zh'; seg('m-lang', LANG, setLang); seg('m-u7', U7, setU7);
+if (q.get('u7') === 'before') U7 = 'before', seg('m-u7', U7, setU7);
+const [hx, hz] = centre(TERR[0]); view.cx = hx; view.cz = hz; view.w = 36;
+drawMap(); applyText(); applyView();
+if (q.get('all')) { const B = landBox(); view.cx = (B.x0 + B.x1) / 2; view.cz = (B.z0 + B.z1) / 2; view.w = q.get('w') ? +q.get('w') : wAll(); applyView(); }
+if (q.get('open')) select(PEOPLE.find(p => p.id === q.get('open')));
+new ResizeObserver(() => applyView()).observe($('#stage'));
+})();
+</script>
+</body>
+</html>
