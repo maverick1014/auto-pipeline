@@ -155,6 +155,25 @@ U12 no tool counters: renderDetail shows no Edit / Write / Bash / Read boxes (no
   New TEXT keys, zh and en: hist.title, hist.empty, hist.started, hist.stuck, hist.toLead, hist.toGov,
         hist.waiting, hist.done, hist.left, chat.task.
 
+U13 a building shows one meaningful name (owner, 2026-09-28; no new mock, main manager approved by text)
+  (sim) buildingName(b) -> one name, never a file path, never the builder:
+        1. b.name, when it is not empty and not path-like (no / or \\, no ".ext" end);
+        2. else b.task, when it is not empty, not path-like, not b.by and not a bare role word
+           (worker, task-manager, fast-lane-deputy, merge-deputy, other);
+        3. else i18n('building.module', {name}) with name = the module the files point at: per file the
+           last part's stem (extension dropped; a test_ prefix or _test/.test/.spec suffix dropped); a
+           generic stem (index, main, __init__, init, mod, app, util, utils, readme, test, tests, spec,
+           setup, conftest) gives its folder name instead (a generic folder: src, lib, test, tests, bin,
+           app, pkg, internal, cmd, or none -> that file gives nothing); the most frequent wins, a tie ->
+           the earliest file;
+        4. else the type word, i18n('type.' + b.type).
+        newBuildingRecord keeps task: ev.task || ''. The 'build' case hands the builder's task on:
+        owner.pendingBuild gets task: owner.task (so the record made on arrival has it).
+        bldLabel(b) and buildingInfo(b).name use buildingName(b).
+  renderDetail's building branch: the head shows buildingName and one line with the type word (and its
+        district); no quality pill, no level, no files list, no builders list (no hint.files / hint.history,
+        no .files / .hist in that branch). New TEXT key building.module, zh '{name} 模块', en '{name} module'.
+
 Run: python3 -m unittest tests.test_agent_city_ux_page </dev/null
 """
 
@@ -899,6 +918,88 @@ class TestNoToolCounters(unittest.TestCase):
         src = function_source("renderDetail") or ""
         self.assertNotIn("d-tools", src)
         self.assertNotRegex(src, r"\[\s*'Edit'\s*,\s*'Write'\s*,\s*'Bash'\s*,\s*'Read'\s*\]")
+
+
+BUILDING_DRIVER = r"""
+const T = o => buildingName(Object.assign({ name: '', task: '', by: 'worker', files: [], type: 'house' }, o));
+const V = __payload.view, A = V.territories[0];
+function buildLand(view){ landState(view); }
+apply({ type: 'snapshot', world: V, gov: { state: 'idle', terr: A.id }, governors: 1, asks: [], shows: [],
+  govs: [{ terr: A.id, state: 'idle' }], agents: [] });
+const rec = newBuildingRecord(A.id, 99, 'shop', 0, 0, 'worker', true, { task: '导出 CSV', files: ['web/export.js'] });
+__out = { names: [
+    T({ name: 'Checkout' }),
+    T({ name: 'src/a.py', task: '登录 API' }),
+    T({ task: 'worker', files: ['api/login.py', 'tests/test_login.py'] }),
+    T({ files: ['src/components/Cart/index.js', 'src/components/Cart/Cart.css', 'src/components/Nav/Nav.js'] }),
+    T({ files: ['README.md'] }),
+    T({ type: 'tower' }),
+    T({ task: 'task-manager', by: 'task-manager', files: ['bin/agent_city.py', 'bin/agent-city.html'] }),
+    T({ task: 'web/export.js', files: ['lib/util.py'] }),
+    T({ name: 'x.py', task: 'merge-deputy', files: ['a\\\\b\\\\report_test.go'] })],
+  want: [i18n('building.module', { name: 'login' }), i18n('building.module', { name: 'Cart' }), i18n('type.house'), i18n('type.tower'),
+    i18n('building.module', { name: 'agent_city' }), i18n('type.house'), i18n('building.module', { name: 'report' })],
+  rec: { task: rec.task, name: buildingName(rec), label: bldLabel(rec), info: buildingInfo(rec).name },
+  key: i18n('building.module', { name: 'N' }) };
+"""
+
+
+class TestBuildingName(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_sim(BUILDING_DRIVER, {"view": two_territory_view()},
+                        ("buildingName", "newBuildingRecord", "bldLabel", "buildingInfo", "apply", "landState", "i18n"))
+
+    def test_one_meaningful_name(self):
+        n, w = self.r["names"], self.r["want"]
+        self.assertEqual(n[0], "Checkout")
+        self.assertEqual(n[1], "登录 API", "a path-like name is skipped, the task wins")
+        self.assertEqual(n[2], w[0], "a bare role word is no task: the module from the files")
+        self.assertEqual(n[3], w[1], "a generic stem gives its folder; the most frequent wins")
+        self.assertEqual(n[4], w[2], "nothing meaningful: the type word")
+        self.assertEqual(n[5], w[3])
+        self.assertEqual(n[6], w[4], "the builder's own label is no task; first file wins a tie")
+        self.assertEqual(n[7], w[5], "a path-like task is skipped; util in lib gives nothing")
+        self.assertEqual(n[8], w[6], "backslash paths and a _test suffix")
+
+    def test_never_a_path(self):
+        for name in self.r["names"]:
+            self.assertNotRegex(name, r"[/\\\\]|\.[A-Za-z0-9]{1,5}$", name)
+
+    def test_the_record_keeps_the_task(self):
+        r = self.r["rec"]
+        self.assertEqual(r["task"], "导出 CSV")
+        self.assertEqual(r["name"], "导出 CSV")
+        self.assertEqual(r["label"], "导出 CSV")
+        self.assertEqual(r["info"], "导出 CSV")
+
+    def test_text(self):
+        self.assertEqual(text_keys("building.module"), 2)
+        self.assertEqual(self.r["key"], "N 模块")
+
+
+def building_branch():
+    src = function_source("renderDetail") or ""
+    i = src.find("} else if (b) {")
+    j = src.find("} else if (", i + 5)
+    return src[i:j] if i >= 0 and j > i else ""
+
+
+class TestBuildingCard(unittest.TestCase):
+
+    def test_only_the_name_and_the_type(self):
+        b = building_branch()
+        self.assertTrue(b, "renderDetail's building branch not found")
+        for gone in ("hint.files", "hint.history", ".files", ".hist", "info.quality", "building.level", "building.misplaced"):
+            self.assertNotIn(gone, b, gone)
+        self.assertTrue("buildingName(" in b or "info.name" in b)
+
+    def test_build_hands_the_task_on(self):
+        src = page()
+        i = src.find("case 'build': {")
+        self.assertGreater(i, 0)
+        self.assertRegex(src[i:i + 1500], r"pendingBuild\s*=\s*\{[^}]*task:\s*owner\.task")
 
 
 if __name__ == "__main__":
