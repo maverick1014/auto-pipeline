@@ -1925,7 +1925,8 @@ __out = { spots: slots.map(r => [r.x, r.y, tileAt(Math.floor(r.x), Math.floor(r.
                     self.assertLessEqual(set(keys), names)
 
     def test_type_names_in_chinese(self):
-        self.assertEqual(js_value(const_object("TYPE_ZH") or "null"),
+        zh = text_zh()  # idea-city C1: the names live in TEXT (type.*)
+        self.assertEqual({k: zh.get("type." + k) for k in ("house", "shop", "tower", "workshop", "library")},
                          {"house": "住宅", "shop": "商店", "tower": "测试塔", "workshop": "工坊", "library": "图书馆"})
 
     def test_terrain_changes_the_look(self):

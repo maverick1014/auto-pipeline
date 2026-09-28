@@ -156,7 +156,7 @@ for p in (HERE, BIN):
 
 import agent_city as ac  # noqa: E402
 from test_agent_city_page import (case_block, const_object, function_source, inline_script,  # noqa: E402
-                                  js_value, page_fns, run_node, zh_resolved)
+                                  js_value, page_fns, run_node, zh_resolved, constants_prelude, text_zh)
 from test_agent_city_server import ServerCase, wait_for  # noqa: E402
 
 REPO = "/r/shop/.git"
@@ -659,13 +659,13 @@ class TestPageChat(unittest.TestCase):
     def html(self, *cases):
         esc = re.search(r"^const esc = .*;$", inline_script(), re.M)
         self.assertIsNotNone(esc, "const esc = ...; not found")
-        lit = const_object("CHAT_STATE_ZH")
-        self.assertIsNotNone(lit, "const CHAT_STATE_ZH = {...}; not found")
-        prelude = esc.group(0).replace("const esc", "var esc") + "\nvar CHAT_STATE_ZH = %s;" % lit
+        # idea-city C1: the state words live in TEXT (chat.state.*), T() picks the language
+        prelude = esc.group(0).replace("const esc", "var esc") + "\n" + constants_prelude()
         return run_node(CHAT_JS, {"prelude": prelude, "fns": page_fns("chatHtml"), "cases": [list(c) for c in cases]})
 
     def test_state_words(self):
-        self.assertEqual(js_value(const_object("CHAT_STATE_ZH") or "null"),
+        zh = text_zh()  # idea-city C1
+        self.assertEqual({k: zh.get("chat.state." + k) for k in ("queued", "delivered", "undelivered")},
                          {"queued": "已发送", "delivered": "已送达", "undelivered": "没送到"})
 
     def test_chat_html(self):
