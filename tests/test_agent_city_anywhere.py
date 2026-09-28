@@ -51,6 +51,17 @@ CONTRACT
       none -> "TEAM: not joined". Never the key.
     - join and leave refuse (exit 1, a message with "repo"): run them
       inside the repo. Nothing asked, nothing sent, the list untouched.
+  bin/agent-city.sh start/demo, anywhere (inside or outside a repo)
+    - AGENT_CITY_PORT, a whole number 1024-65535, wins over city_port
+      (agent.conf or the plugin default). Any other non-empty value: a
+      message naming AGENT_CITY_PORT, exit 1, nothing started. Empty or
+      unset: as before.
+    - The port is held by another program: exit 1 and a message naming
+      the port, "already in use" and AGENT_CITY_PORT (never the bare
+      "CITY: failed to start"). No city left running.
+    - A city already runs in this city dir: exit 0, its URL line as today,
+      plus a line with "already running" telling to stop it first to start
+      it again from here (its own settings stay until then).
   Inside a repo: as today (agent.conf, --lang from it, no --joined-list,
   one TEAM line for this repo), plus
     - join adds the main repo root to $AGENT_CITY_HOME/joined-repos.txt
@@ -523,6 +534,56 @@ class TestStartOutsideARepo(OutsideCase):
         self.assertEqual(self.fake.requests, [])
         self.assertIsNotNone(server_pid(self.city))
         self.assertTrue(_alive(server_pid(self.city)), "the city stopped over a gone repo")
+
+
+class TestPort(OutsideCase):
+    def test_agent_city_port_outside_a_repo(self):
+        port = free_port()
+        result = self.city_run("start", extra={"AGENT_CITY_PORT": str(port)})
+        self.assertOk(result)
+        self.assertIn("CITY: http://127.0.0.1:%d" % port, result.stdout)
+        self.assertIn("--port %d" % port, server_args(self.city))
+
+    def test_agent_city_port_wins_over_agent_conf_inside_a_repo(self):
+        port = free_port()
+        self.repo.set_conf("city_port", str(free_port()))
+        result = self.city_run("start", cwd=self.repo.dir, extra={"AGENT_CITY_PORT": str(port)})
+        self.assertOk(result)
+        self.assertIn("--port %d" % port, server_args(self.city))
+
+    def test_empty_agent_city_port_is_unset(self):
+        self.assertOk(self.city_run("start", extra={"AGENT_CITY_PORT": ""}))
+        self.assertIn("--port %d" % self.port, server_args(self.city))
+
+    def test_bad_agent_city_port(self):
+        for bad in ("abc", "80", "70000", "47 77", "-1"):
+            with self.subTest(value=bad):
+                result = self.city_run("start", extra={"AGENT_CITY_PORT": bad})
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("AGENT_CITY_PORT", result.stdout + result.stderr)
+                self.assertIsNone(server_pid(self.city), "nothing may be started")
+
+    def test_port_held_by_another_program(self):
+        busy = socket.socket()
+        busy.bind(("127.0.0.1", self.port))
+        busy.listen(1)
+        self.addCleanup(busy.close)
+        result = self.city_run("start")
+        out = result.stdout + result.stderr
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("already in use", out)
+        self.assertIn(str(self.port), out)
+        self.assertIn("AGENT_CITY_PORT", out)
+        pid = server_pid(self.city)
+        self.assertFalse(pid is not None and _alive(pid), "no city may be left running")
+
+    def test_a_city_already_running_says_so(self):
+        self.assertOk(self.city_run("start"))
+        again = self.city_run("start")
+        self.assertOk(again)
+        self.assertIn("CITY: http://127.0.0.1:%d" % self.port, again.stdout)
+        self.assertIn("already running", again.stdout)
+        self.assertIn("stop", again.stdout.split("already running", 1)[1])
 
 
 class TestStatusOutsideARepo(OutsideCase):
