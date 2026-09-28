@@ -5062,6 +5062,10 @@ function govPillText(){
   return busy ? i18n('gov.busy') : i18n('gov.home');
 }
 let lastDetailKey = '';
+/* U8: the chat target the #chat DOM currently reflects -- so a rebuild (the person's state, not the
+   chat, changed) can tell whether it is still the same chat (keep the scroll place and the newmsg
+   chip) or a different one (start at the bottom, chip hidden). */
+let lastChatTo = null;
 /* the chain of command for c's detail card (mock: 工人 → 经理 <task> → 总督 → 你), the current step
    marked -- only for a citizen that is part of one (a lead's own office, or a worker with a lead). */
 function chainLine(c){
@@ -5213,6 +5217,17 @@ function renderDetail(){
   const chatTo = curChatTo();
   const chatName = chatTo ? (selected && selected.t === 'gov' ? i18n('who.governor') : (c ? nameOf(c) : '')) : '';
   if (chatTo) loadChat(chatTo);
+  // U8: capture the OLD #chat's scroll place and newmsg-chip state before a rebuild below (if any)
+  // replaces it -- a rebuild of the SAME chat target reuses this; a different target (or none before)
+  // starts fresh at the bottom, chip hidden.
+  let savedChat = null;
+  if (lastChatTo) {
+    const oldOl = el.querySelector('#chat');
+    if (oldOl) {
+      const oldChip = el.querySelector('#newmsg');
+      savedChat = { to: lastChatTo, top: oldOl.scrollTop, height: oldOl.scrollHeight, client: oldOl.clientHeight, chip: !!(oldChip && !oldChip.hidden) };
+    }
+  }
   /* the box under the conversation (Talking): a session (governor, or a citizen that is a lead,
      c.office) gets a form; a subagent (c.lead) is read only, with a way to its lead's window. The
      #chat list itself is always filled by the per-call refresh below (chatScroll keeps its place, or
@@ -5293,8 +5308,9 @@ function renderDetail(){
       // district (the 3D look of a building does not change; no quality pill, no level, no files list,
       // no builders list here any more).
       const name = buildingName(b), kind = i18n('type.' + b.type) || b.type, district = i18n('building.district', { kind });
+      const roleLine = name === kind ? district : `${kind} · ${district}`;
       el.innerHTML = `
-        <div class="d-head"><span class="rdot" style="--c:${b.color}"></span><div><div class="d-name">${esc(name)}</div><div class="d-role">${kind} · ${district}</div></div></div>`;
+        <div class="d-head"><span class="rdot" style="--c:${b.color}"></span><div><div class="d-name">${esc(name)}</div><div class="d-role">${roleLine}</div></div></div>`;
     } else if (selected && selected.t === 'gov') {
       const terr = selected.terr || govTerr, present = !!governorAt(terr);
       const terrRec = terrOf(terr), repoName = terrRec ? terrRec.name : '';
@@ -5318,34 +5334,42 @@ function renderDetail(){
     }
     // U8: a freshly built card wires its own newmsg chip once: a click scrolls to the bottom and
     // hides it, and it hides again once the owner scrolls back within CHAT_STICK_PX of the bottom.
+    // A rebuild of the SAME chat target keeps the chip showing if it already was (never re-hidden
+    // just because the card was rebuilt).
     const freshOl = el.querySelector('#chat'), freshChip = el.querySelector('#newmsg');
     if (freshOl && freshChip) {
+      if (savedChat && savedChat.to === chatTo && savedChat.chip) freshChip.hidden = false;
       freshChip.addEventListener('click', () => { freshOl.scrollTop = freshOl.scrollHeight; freshChip.hidden = true; });
       freshOl.addEventListener('scroll', () => {
         if (freshOl.scrollHeight - freshOl.scrollTop - freshOl.clientHeight <= CHAT_STICK_PX) freshChip.hidden = true;
       });
     }
   }
+  lastChatTo = chatTo;
   if (c && !c.remote && selected && selected.t === 'c') {
     const bar = el.querySelector('.p-bar i'); if (bar) bar.style.width = pct(c) + '%';
   }
   if (chatTo) {
-    // U8: chatScroll() decides the scroll position both when the log only refreshes and when the
-    // whole card was just rebuilt (prev null then: a freshly opened chat starts at the bottom, the
-    // same chat keeps its place) -- never an unconditional jump to the bottom.
+    // U8: chatScroll() decides the scroll position both when the log only refreshes (prev = the live
+    // DOM state) and when the whole card was just rebuilt (prev = the state saved above, when the
+    // rebuild kept the same chat target -- a different target starts at the bottom, prev null) --
+    // never an unconditional jump to the bottom. res.chip only ever SHOWS the chip: it hides only on
+    // its own click, or when the owner scrolls back within CHAT_STICK_PX of the bottom (both wired
+    // once per fresh card above), or a different chat target is opened (a fresh, hidden chip).
     const box = chats.get(chatTo) || { entries: [], busy: false, canSend: true };
     const listHtml = (selected && selected.t === 'gov')
       ? chatHtml(box.entries, chatName, box.busy)
       : historyHtml(personHistory(c, box.entries), chatName, box.busy);
     const ol = el.querySelector('#chat');
     if (ol) {
-      const prev = rebuilt ? null : { top: ol.scrollTop, height: ol.scrollHeight, client: ol.clientHeight };
+      const prev = !rebuilt ? { top: ol.scrollTop, height: ol.scrollHeight, client: ol.clientHeight }
+        : (savedChat && savedChat.to === chatTo ? { top: savedChat.top, height: savedChat.height, client: savedChat.client } : null);
       if (ol.innerHTML !== listHtml) ol.innerHTML = listHtml;
       const next = { height: ol.scrollHeight, client: ol.clientHeight };
       const res = chatScroll(prev, next);
       ol.scrollTop = res.top;
       const chip = el.querySelector('#newmsg');
-      if (chip) chip.hidden = !res.chip;
+      if (chip && res.chip) chip.hidden = false;
     }
     const fail = el.querySelector('#chat-fail');
     if (fail) { fail.hidden = !box.error; if (box.error) fail.textContent = box.error; }
