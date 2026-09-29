@@ -153,6 +153,7 @@ const { fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const box = { Math, JSON, console, selected: null, winLog: false, lastDetailKey: 'x', lastRoster: 'x',
   needFrame: false, govTerr: 't1', renders: 0 };
 box.renderPanel = () => { box.renders++; };
+box.afterPick = () => {}; // city-ux2: a pick also follows + opens the panel -- tested in test_agent_city_ux2
 vm.createContext(box);
 vm.runInContext(fns, box);
 const out = {};

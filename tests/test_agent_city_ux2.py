@@ -459,6 +459,10 @@ class TestRailWiring(unittest.TestCase):
             self.assertIn(key, p, key)
         for name in ("setRailFolded", "setWinFolded"):
             src = function_source(name) or ""
+            self.assertTrue(src, name)
+            # the storage may sit in a small helper it calls (e.g. writeStoredBool)
+            for callee in set(re.findall(r"\b([A-Za-z_$][\w$]*)\s*\(", src)) - {name}:
+                src += function_source(callee) or ""
             self.assertIn("localStorage", src, name)
             self.assertIn("try", src, name + ": storage can throw")
         for sel, fn in (("#rail-fold", "setRailFolded("), ("#rail-tab", "setRailFolded("), ("#win-fold", "setWinFolded("),
