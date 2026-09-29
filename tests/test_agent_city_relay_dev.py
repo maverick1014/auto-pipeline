@@ -47,6 +47,7 @@ for p in (HERE, BIN):
     if p not in sys.path:
         sys.path.insert(0, p)
 
+from nodehelp import NODE, SKIP_REASON, link_node  # noqa: E402
 from relayhelp import FAKE_KEY, hook_line, join, make_repo  # noqa: E402
 from scripthelp import ScriptCase  # noqa: E402
 
@@ -55,17 +56,8 @@ try:
 except ImportError:
     rl = None
 
-NODE = shutil.which("node")
 
-
-def node_has_sqlite():
-    if not NODE:
-        return False
-    r = subprocess.run([NODE, "-e", "require('node:sqlite')"], capture_output=True)
-    return r.returncode == 0
-
-
-@unittest.skipUnless(node_has_sqlite(), "node with node:sqlite is not installed")
+@unittest.skipUnless(NODE, SKIP_REASON)
 class TestDevRelay(unittest.TestCase):
     def setUp(self):
         self.assertTrue(os.path.isfile(DEV), "bin/agent-city-relay-dev.mjs is missing")
@@ -147,13 +139,15 @@ class TestDevRelay(unittest.TestCase):
         self.assertIn("RELAY-DEV: no key on stdin", proc.stdout + proc.stderr)
 
 
-@unittest.skipUnless(node_has_sqlite(), "node with node:sqlite is not installed")
+@unittest.skipUnless(NODE, SKIP_REASON)
 class TestCityRelayDev(ScriptCase):
     script = "agent-city.sh"
 
     def setUp(self):
         super().setUp()
         self.procs = []
+        # agent-city.sh runs plain `node`: the picked one goes first on PATH
+        link_node(self.repo.bin)
 
     def tearDown(self):
         for p in self.procs:

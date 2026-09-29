@@ -132,6 +132,7 @@ for p in (HERE, BIN):
     if p not in sys.path:
         sys.path.insert(0, p)
 
+from nodehelp import NODE, SKIP_REASON  # noqa: E402
 from relayhelp import (FAKE_KEY, FakeRelay, add_worktree, hook_line, join,  # noqa: E402
                        make_repo, wait_for)
 
@@ -707,7 +708,7 @@ class TestCli(Case):
 
 # ------------------------------------------------- against the real Worker
 
-@unittest.skipUnless(shutil.which("node"), "node is not installed")
+@unittest.skipUnless(NODE, SKIP_REASON)
 class TestAgainstRealWorker(Case):
     """bin/agent-city-relay.js under Node (tests/relay_harness.mjs serve), so
     the client and the Worker are proven to speak the same contract."""
@@ -715,7 +716,7 @@ class TestAgainstRealWorker(Case):
     def setUp(self):
         super().setUp()
         self.assertTrue(os.path.isfile(WORKER), "bin/agent-city-relay.js is missing")
-        self.proc = subprocess.Popen(["node", HARNESS, WORKER, "serve", FAKE_KEY],
+        self.proc = subprocess.Popen([NODE, HARNESS, WORKER, "serve", FAKE_KEY],
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         port = self.proc.stdout.readline().strip()
         self.assertTrue(port.isdigit(), self.proc.stderr.read() if not port else port)

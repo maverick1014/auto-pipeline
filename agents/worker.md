@@ -15,6 +15,7 @@ Do
 
 Never
 - Write or edit tests. Run the full suite. Use a browser. Run git.
+- `git stash` / `git stash pop`: the stash is shared by every worktree and session of the repo. To set work aside, ask the task manager (it commits a WIP on the branch).
 - Touch a file the brief did not name. Read the whole repo (S9).
 
 Report (H3), first line exactly `PASS`, `FAIL: <why>`, or, when you need a decision you cannot make, `QUESTION: <one line>`. Then: what changed (files). What to decide (or "nothing").
