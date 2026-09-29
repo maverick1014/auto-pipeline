@@ -738,6 +738,38 @@ def load_chat(path):
     return kept
 
 
+# -- the governor seat's holder: is it gone? (requirements/city.md, "Data path")
+
+def _pid_state(pid):
+    """True alive, False dead, None can't tell (a pid the OS refuses)."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except (OverflowError, ValueError, OSError):
+        return None
+    return True
+
+
+def _lock_pid(identity):
+    """The live pid in <repo>/agent_main.lock ("<pid> <date>", written by
+    bin/agent-start.sh), else None: no lock, unreadable, garbage, or a pid
+    that is dead now. Never raises."""
+    if not identity:
+        return None
+    try:
+        with open(os.path.join(identity, "agent_main.lock"), encoding="utf-8") as fh:
+            words = fh.read(200).split()
+    except (OSError, ValueError):
+        return None
+    if not words or not (words[0].isascii() and words[0].isdigit()) or int(words[0]) <= 0:
+        return None
+    pid = int(words[0])
+    return pid if _pid_state(pid) else None
+
+
 class CityState:
     """Thread-safe home for the Reducer, asks, health counters and SSE clients."""
 
@@ -767,6 +799,7 @@ class CityState:
         self.closed_order = deque()
         self.governors = {}       # repo -> {"sid", "last_seen" (monotonic)}
         self.watchers = {}        # governor sid -> current watcher id
+        self._seat = {}           # identity -> {"sid", "last" (its last line's now), "pid" or None} of the seat holder
         self._ask_seq = 0
         self._governors_count = 0  # last count checked/broadcast (see _check_governors_count)
 
@@ -992,102 +1025,142 @@ class CityState:
     def feed_line(self, obj, now):
         with self.lock:
             self.lines += 1
-            identity = self._identity_of(obj) if isinstance(obj, dict) else None
-            terr = self._terr_for(identity)
-            if identity is not None:
-                if identity not in self.world["territories"]:
-                    add_territory(self.world, self.plans, identity, repo_name(identity))
-                    self._emit_world_locked()
-                self.last_activity[identity] = now
+            gone = self._gone_holder_locked(obj, now)
+            if gone is not None:
+                # the old holder ends exactly as its own SessionEnd would
+                self._feed_line_locked({"ev": "SessionEnd", "sid": gone, "repo": obj.get("repo")}, now)
+            self._feed_line_locked(obj, now)
 
-            ev_name = obj.get("ev") if isinstance(obj, dict) else None
-            sid_field = obj.get("sid") if isinstance(obj, dict) else None
-            aid_field = obj.get("aid") if isinstance(obj, dict) else None
-            ask_field = obj.get("ask") if isinstance(obj, dict) else None
-            reducer = self._reducer_for(identity)
-            was_gov = (ev_name == "SessionEnd" and isinstance(sid_field, str) and sid_field != ""
-                       and reducer.gov_sid == sid_field)
+    def _gone_holder_locked(self, obj, now):
+        """Caller holds self.lock. The sid of the territory's seat holder when
+        a roleless session it does not know comes in and the holder is gone,
+        else None. Gone: its lock pid (see _lock_pid) is dead now; with no
+        pid, its last line is older than GOV_FRESH_SEC. A crashed main
+        manager never sends its SessionEnd, so this frees its seat."""
+        if not isinstance(obj, dict):
+            return None
 
-            # A SubagentStop with a question (ask="q") both relays it up
-            # the chain and marks the subagent done. Run the chain step
-            # first so "relay" reaches the page before "done" -- else the
-            # page cheers 完工啦 for a question with no relay known yet
-            # (headless E2E finding). Every other event keeps its usual
-            # order: _process_chain runs after the reducer's events below.
-            chain_processed_early = False
-            if ev_name == "SubagentStop" and ask_field == "q" and isinstance(aid_field, str) and aid_field:
-                self._process_chain(obj, identity, terr, reducer, now)
-                chain_processed_early = True
+        def text(key):
+            value = obj.get(key, "")
+            return value if isinstance(value, str) else ""
 
-            events = reducer.feed(obj, now)
-            gov_seen = False
-            names_dirty = False
-            for ev in events:
-                etype = ev.get("type")
-                if etype == "spawn":
-                    self._apply_saved_name_locked(ev, reducer)
-                    ev["terr"] = terr
-                    self.agent_terr[ev["id"]] = terr
-                    self._decorate_spawn(ev, obj, identity, terr)
-                    if self._remember_name_locked(ev["id"], ev["label"], ev["task"]):
-                        names_dirty = True
-                elif etype == "gov":
-                    gov_seen = True
-                    self.gov_terr = terr
-                    self.gov_state = ev.get("state", self.gov_state)
-                    ev["terr"] = terr
-                    ev["present"] = ev_name != "SessionEnd"
-                elif etype == "leave":
-                    self.agent_terr.pop(ev["id"], None)
-                    self._on_leave(ev["id"], identity, terr)
-                    if self._forget_name_locked(ev["id"]):
-                        names_dirty = True
-                elif etype == "done":
-                    self._maybe_open_rest(identity)
-                self._broadcast(ev)
+        sid = text("sid")
+        if sid == "" or text("aid") != "" or text("role") != "":
+            return None
+        identity = self._identity_of(obj)
+        reducer = self._reducer_for(identity, create=False)
+        if reducer is None or sid in reducer.sessions or reducer.gov_sid in (None, sid):
+            return None
+        seat = self._seat.get(identity)
+        if seat is None or seat["sid"] != reducer.gov_sid:
+            return None
+        if seat["pid"] is not None:
+            gone = _pid_state(seat["pid"]) is False
+        else:
+            gone = now - seat["last"] > GOV_FRESH_SEC
+        return seat["sid"] if gone else None
 
-            # city-worktrees: remember this lead's last "wt" (may be missing
-            # on an old line -> ""), so a site created later can tell it
-            # took over a live lead's own office (_new_site_locked).
-            if identity is not None and isinstance(sid_field, str) and sid_field:
-                lead_cid = "s:" + sid_field
-                if lead_cid in self._chain_for(identity)["leads"]:
-                    wt_field = obj.get("wt")
-                    self._lead_last_wt[lead_cid] = wt_field if isinstance(wt_field, str) else ""
+    def _feed_line_locked(self, obj, now):
+        identity = self._identity_of(obj) if isinstance(obj, dict) else None
+        terr = self._terr_for(identity)
+        if identity is not None:
+            if identity not in self.world["territories"]:
+                add_territory(self.world, self.plans, identity, repo_name(identity))
+                self._emit_world_locked()
+            self.last_activity[identity] = now
 
-            gov_seen_dirty = False
-            if identity is not None and isinstance(sid_field, str) and sid_field:
-                if ev_name == "SessionEnd":
-                    if was_gov and self._forget_gov_seen_locked(identity):
-                        gov_seen_dirty = True
-                elif reducer.gov_sid == sid_field:
-                    if self._remember_gov_seen_locked(identity, sid_field):
-                        gov_seen_dirty = True
+        ev_name = obj.get("ev") if isinstance(obj, dict) else None
+        sid_field = obj.get("sid") if isinstance(obj, dict) else None
+        aid_field = obj.get("aid") if isinstance(obj, dict) else None
+        ask_field = obj.get("ask") if isinstance(obj, dict) else None
+        reducer = self._reducer_for(identity)
+        was_gov = (ev_name == "SessionEnd" and isinstance(sid_field, str) and sid_field != ""
+                   and reducer.gov_sid == sid_field)
 
-            if names_dirty or gov_seen_dirty:
-                self._save_world_locked()
+        # A SubagentStop with a question (ask="q") both relays it up
+        # the chain and marks the subagent done. Run the chain step
+        # first so "relay" reaches the page before "done" -- else the
+        # page cheers 完工啦 for a question with no relay known yet
+        # (headless E2E finding). Every other event keeps its usual
+        # order: _process_chain runs after the reducer's events below.
+        chain_processed_early = False
+        if ev_name == "SubagentStop" and ask_field == "q" and isinstance(aid_field, str) and aid_field:
+            self._process_chain(obj, identity, terr, reducer, now)
+            chain_processed_early = True
 
-            if was_gov and not gov_seen:
-                # a governor whose state was already idle (after Stop) still
-                # broadcasts its departure: Reducer only emits "gov" on a
-                # state change, so this line synthesizes the missing one.
+        events = reducer.feed(obj, now)
+        gov_seen = False
+        names_dirty = False
+        for ev in events:
+            etype = ev.get("type")
+            if etype == "spawn":
+                self._apply_saved_name_locked(ev, reducer)
+                ev["terr"] = terr
+                self.agent_terr[ev["id"]] = terr
+                self._decorate_spawn(ev, obj, identity, terr)
+                if self._remember_name_locked(ev["id"], ev["label"], ev["task"]):
+                    names_dirty = True
+            elif etype == "gov":
+                gov_seen = True
                 self.gov_terr = terr
-                self._broadcast({"type": "gov", "state": self.gov_state, "terr": terr, "present": False})
+                self.gov_state = ev.get("state", self.gov_state)
+                ev["terr"] = terr
+                ev["present"] = ev_name != "SessionEnd"
+            elif etype == "leave":
+                self.agent_terr.pop(ev["id"], None)
+                self._on_leave(ev["id"], identity, terr)
+                if self._forget_name_locked(ev["id"]):
+                    names_dirty = True
+            elif etype == "done":
+                self._maybe_open_rest(identity)
+            self._broadcast(ev)
 
-            if not chain_processed_early:
-                self._process_chain(obj, identity, terr, reducer, now)
+        # city-worktrees: remember this lead's last "wt" (may be missing
+        # on an old line -> ""), so a site created later can tell it
+        # took over a live lead's own office (_new_site_locked).
+        if identity is not None and isinstance(sid_field, str) and sid_field:
+            lead_cid = "s:" + sid_field
+            if lead_cid in self._chain_for(identity)["leads"]:
+                wt_field = obj.get("wt")
+                self._lead_last_wt[lead_cid] = wt_field if isinstance(wt_field, str) else ""
 
-            if isinstance(obj, dict):
-                if ev_name == "PostToolUse":
-                    self._maybe_close_from_terminal(obj)
-                    self._maybe_build(obj, identity, terr)
-                elif ev_name == "SessionEnd":
-                    self._forget_governor(obj)
+        gov_seen_dirty = False
+        if identity is not None and isinstance(sid_field, str) and sid_field:
+            if ev_name == "SessionEnd":
+                if was_gov and self._forget_gov_seen_locked(identity):
+                    gov_seen_dirty = True
+            elif reducer.gov_sid == sid_field:
+                if self._remember_gov_seen_locked(identity, sid_field):
+                    gov_seen_dirty = True
 
-            has_aid = isinstance(aid_field, str) and aid_field != ""
-            if (isinstance(ev_name, str) and ev_name and isinstance(sid_field, str)
-                    and sid_field != "" and not has_aid):
-                self._update_chat_state_locked(sid_field, ev_name, terr, reducer, was_gov)
+        if names_dirty or gov_seen_dirty:
+            self._save_world_locked()
+
+        if was_gov and not gov_seen:
+            # a governor whose state was already idle (after Stop) still
+            # broadcasts its departure: Reducer only emits "gov" on a
+            # state change, so this line synthesizes the missing one.
+            self.gov_terr = terr
+            self._broadcast({"type": "gov", "state": self.gov_state, "terr": terr, "present": False})
+
+        if not chain_processed_early:
+            self._process_chain(obj, identity, terr, reducer, now)
+
+        if isinstance(obj, dict):
+            if ev_name == "PostToolUse":
+                self._maybe_close_from_terminal(obj)
+                self._maybe_build(obj, identity, terr)
+            elif ev_name == "SessionEnd":
+                self._forget_governor(obj)
+
+        has_aid = isinstance(aid_field, str) and aid_field != ""
+        if (isinstance(ev_name, str) and ev_name and isinstance(sid_field, str)
+                and sid_field != "" and not has_aid):
+            self._update_chat_state_locked(sid_field, ev_name, terr, reducer, was_gov)
+
+        if isinstance(sid_field, str) and sid_field and reducer.gov_sid == sid_field:
+            # the seat holder acted: keep when, and its lock pid if alive
+            self._seat[identity] = {"sid": sid_field, "last": now, "pid": _lock_pid(identity)}
 
     # -- growth: many territories, one Reducer each ----------------------
     #
