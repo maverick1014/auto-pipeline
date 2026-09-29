@@ -1,10 +1,12 @@
-"""Failing tests for city-ux2 (owner, 2026-09-29, after using 0.10.0; mock mock/city-ux2-mock.html).
+"""Failing tests for city-ux2 (owner, 2026-09-29, after using 0.10.0; mock v2 mock/city-ux2-mock.html, 21b5788,
+after the owner's review of v1: "the tab is too big ... when I click an agent, no need to show the middle panel
+any more, directly show the message" + "the online panel should be able to collapse and expand").
 
 CONTRACT (bin/agent-city.html). "sim section" = the page script from 'use strict' up to the '3D view.'
 comment: every function named "(sim)" below lives there, needs no three.js and no DOM, and is driven
 straight by these tests (tests/test_agent_city_people.py run_sim). Everything else is "3D part".
 
-V1 the left rail: every person here now, click = the camera follows that person
+V1 a compact left rail = the team list; a click on a person = follow it + its message panel
   (sim) REPO_COLORS: at least 6 distinct '#rrggbb' colours. terrColor(terr) -> REPO_COLORS[i % length],
         i = the territory's index in map.territories; '#8D91B3' for a territory not in the map.
   (sim) railGroups() -> [{terr, name, color, rows: [{id, depth, rest}]}], in map order, one per territory
@@ -17,21 +19,26 @@ V1 the left rail: every person here now, click = the camera follows that person
         name = the territory's name, color = terrColor(terr).
   (sim) railCount(groups) -> {active, you}: active = rows that are neither the governor nor resting;
         you = those among them whose citizenStatus(c)[0] === 'you' (waiting on the owner).
-  (sim) railHtml(groups, followId, openRest) -> the HTML of #rail-list; openRest is a Set of terr ids
-        whose resting rows are shown. Per group:
-          <section class="rail-grp" data-terr="<terr>"> with a head <div class="grp-h"> holding
-          <span class="rc" style="--rc:<color>">, the escaped territory name and <span class="n"> = the
-          number of active rows (not the governor, not resting);
-          <ul class="rrows"> with one row per non-resting row;
-          when the group has resting rows: <button type="button" class="rest-t" data-rest="<terr>"
-          aria-expanded="true|false"> with i18n('rail.rest', {n}); and only when openRest has terr, a
-          second <ul class="rrows"> with the resting rows.
-        A row: <li class="rrow[ sub][ resting]" style="--rc:<color>"> holding
-          <button type="button" class="rfocus" data-focus="<row id>" aria-pressed="<row id === followId>"
-          aria-label="<i18n row.focusAria {name}>"> with the escaped name (the governor: i18n who.governor;
-          a person: nameOf(c)) and <span class="pill <group>"> (the governor: class gov, govRowText(terr);
-          a person: citizenStatus(c)), then <button type="button" class="ropen" data-open="<row id>"
-          aria-label="<i18n row.openAria {name}>"> with i18n row.open. Everything escaped.
+  (sim) railHtml(groups, selId, closed, openRest) -> the HTML of #rail-list. selId = the selected row id
+        (selKey(selected)); closed = a Set of terr ids folded by the owner; openRest = a Set of terr ids whose
+        resting rows are shown. Per group:
+          <section class="rail-grp" data-terr="<terr>">, then the head, a button:
+          <button type="button" class="grp-h" data-grp="<terr>" aria-expanded="<not closed>"> with
+          <span class="rc" style="--rc:<color>">, the escaped territory name, <span class="n"> = the number
+          of active rows (not the governor, not resting), and, only while the group is closed and has
+          people waiting on the owner, <span class="you"> with that number.
+          While not closed: <ul class="rrows"> with one <li> per non-resting row; when the group has
+          resting rows, <button type="button" class="rest-t" data-rest="<terr>" aria-expanded="true|false">
+          with i18n('rail.rest', {n}); and only when openRest has terr, a second <ul class="rrows"> with the
+          resting rows. A closed group shows its head only.
+        A row is ONE button (no open button any more):
+          <button type="button" class="rrow[ sub][ resting]" data-focus="<row id>"
+          aria-current="<row id === selId>" style="--rc:<color>"> holding <span class="sdot"> (the state
+          dot), <b> with the escaped name (the governor: i18n who.governor; a person: nameOf(c)) and
+          <span class="chip <group>"> with the state words (the governor: class gov, govRowText(terr); a
+          person: citizenStatus(c)). Everything escaped.
+  (sim) selKey(sel) -> the rail row id of a selection: {t:'c', id} -> id; {t:'gov', terr} -> 'gov:' +
+        (terr || govTerr); anything else (a building, a remote governor, null) -> null.
   (sim) let follow = null (the followed row id); FOLLOW_DIST (4 .. 7): how close a follow flies.
         followPos(id) -> [x, z] in scene coordinates (world - mid) of that person ('gov:<terr>': its
         governorFigures() entry; else the citizen, not gone), or null.
@@ -42,58 +49,78 @@ V1 the left rail: every person here now, click = the camera follows that person
         toggleFollow(id): follow === id ? stopFollow() : startFollow(id).
         cameraStep(dt) also follows: while follow is set and no fly runs, cam.tx/tz move to followPos
         (eased at about 8 per second: k = 1 - exp(-8 dt); a sprinting person stays within 0.15 tiles of
-        the middle); followPos null (gone) -> stopFollow(). It never
-        touches cam.el, cam.dist after the fly, or cam.az (only the never-stop rotation turns it).
+        the middle); followPos null (gone) -> stopFollow(). It never touches cam.el, cam.dist after the
+        fly, or cam.az (only the never-stop rotation turns it).
         stopFly() never ends a follow (a zoom during the fly-in just ends the fly).
   (sim) tagVisible(hover, selected, followed) -> !!(hover || selected || followed): the followed person
         shows its name tag like a selected one. updatePerson passes the follow check as the third arg.
-  (sim) freeCentre(w, h, rail, win) -> [cx, cy], the middle of the city you can see, stage px.
-        rail = {right} (the rail's right edge, a computer) or null (phone: a drawer covers nothing for
-        long); win = the open team window's box {left, top, right, bottom}, passed only while following,
-        else null. x0 = rail ? rail.right : 0, x1 = w, y0 = 0, y1 = h. A window spanning the width (left
-        <= x0 + 20 and right >= w - 20: the phone sheet) -> y1 = win.top; else a window at the left
-        (left <= x0 + 20) -> x0 = win.right. Never a sliver: x1 - x0 < 160 -> x0 back to the rail's edge
-        (or 0); y1 - y0 < 120 -> y1 = h.
+  (sim) freeCentre(w, h, rail, win) -> [cx, cy], the middle of the map you can see, stage px.
+        rail = {right} (the rail's, or its folded tab's, right edge; a computer) or null (a phone: the
+        drawer is only out for a moment); win = the box {left, top, right, bottom} of the message panel,
+        or its folded tab, whichever shows (a phone: the sheet, or null while folded), else null.
+        x0 = rail ? rail.right : 0, x1 = w, y0 = 0, y1 = h. A win spanning the width (left <= x0 + 20 and
+        right >= w - 20: the phone sheet) -> y1 = win.top; else a win on the right half (left >= w / 2)
+        -> x1 = win.left; else (on the left) -> x0 = max(x0, win.right). Never a sliver: x1 - x0 < 160 ->
+        x0 = 0 and x1 = w; y1 - y0 < 120 -> y1 = h.
   3D part:
-    Markup inside #stage (after the canvas, before .cam): <aside class="rail" id="rail"
-        data-t-aria="rail.title"> with a head (data-t="rail.title" text, <span class="n" id="rail-n">)
-        and <div class="rail-list" id="rail-list">; <button type="button" class="rail-btn" id="rail-btn"
-        aria-controls="rail" aria-expanded="false"> (the phone drawer button); <div class="follow"
-        id="follow" role="status" hidden> with <span id="follow-t"> and <button type="button"
-        id="follow-stop" data-t="follow.stop">.
-    renderRail(): railHtml(railGroups(), follow, railRestOpen) into #rail-list only when it changed
-        (lastRail); #rail-n = i18n rail.count {n: active}; #rail-btn text = i18n rail.drawer {n}, plus the
-        'you' count when > 0. renderPanel() calls it; so do startFollow/stopFollow (the pressed row).
-    setRail(open): the phone drawer -- class "open" on #rail, aria-expanded on #rail-btn, class
-        "drawer-open" on #stage. #rail-btn click toggles it. selectPick() and selectFrom() call
-        setRail(false) (a window never opens under the drawer).
-    #rail-list click: [data-rest] toggles railRestOpen; [data-focus] -> toggleFollow(id) + setRail(false);
-        [data-open] -> selectFrom(id) (the same window a head-tag click opens) + setRail(false).
-    Team window: teamListHtml() rows get, after the row button, <button type="button" class="tfocus"
-        data-follow="<row id>" aria-pressed="<row id === follow>" aria-label="<i18n team.focus>">;
-        the #detail click listener: [data-follow] -> toggleFollow(id), the selection stays.
-    Building window: renderDetail's building branch has <button type="button" class="b-focus"
+    Picking a person = following it. selectPick(pk) and selectFrom(val) (every way to pick: a rail row, a
+        person or head tag or bubble in the city, the find-lead button) both call afterPick() once
+        `selected` is set. afterPick(): a person or governor (selKey(selected) not null) ->
+        toggleFollow(selKey(selected)) (so a second click on the followed person stops following, its
+        panel stays); anything else, and a tap on empty ground (selectPick(null): the panel closes) ->
+        stopFollow(). It also calls setWinFolded(false) when something is selected (a pick shows the
+        panel even when it was folded) and, on a phone, setRailFolded(true). renderWin() shows #win or
+        #win-tab by winFolded and keeps the tab's name and badge current.
+    The message panel is #win, docked right: .win right:12px, top:12px, bottom:12px, width var(--msg-w)
+        (--msg-w 300 .. 360px); no two columns, no team list, no 'wide' (see test_agent_city_ux_page U5,
+        U10, U11 notes); winTitle() = the person's name (nameOf; the governor: its gov.title). The
+        building card, a site and the page log (动态) show in the same panel. The "?" ask panel stays.
+    Folding: #rail and #win each fold to a thin tab on their edge. Markup: in the rail head
+        <button type="button" class="fold" id="rail-fold" data-t-aria="fold.rail">; after the rail
+        <button type="button" class="tab rail-tab" id="rail-tab" aria-controls="rail" hidden> (the count
+        i18n rail.tab {n} + a <span class="you"> badge); in the window head, before #win-close,
+        <button type="button" class="fold" id="win-fold" data-t-aria="fold.msg">; after #win
+        <button type="button" class="tab win-tab" id="win-tab" aria-controls="win" hidden> (i18n msg.tab
+        {name} + a badge with the number of new messages since it was folded). setRailFolded(v) and
+        setWinFolded(v) set the state, save it in localStorage ('agent-city.railFolded',
+        'agent-city.winFolded', '1' / '0', every read and write in try/catch) and redraw; the page reads
+        both at start (a phone with nothing saved starts with the rail folded). The folded groups are
+        saved too ('agent-city.railClosed', comma-joined terr ids). #rail-fold / #rail-tab and #win-fold /
+        #win-tab click listeners call them.
+    Markup inside #stage (after the canvas overlay, before .cam): <aside class="rail" id="rail"
+        data-t-aria="rail.title"> with a head (data-t="rail.title", <span class="n" id="rail-n">, <span
+        class="you" id="rail-you" hidden>, #rail-fold) and <div class="rail-list" id="rail-list">; the rail
+        tab; <div class="follow" id="follow" role="status" hidden> with <span id="follow-t"> and <button
+        type="button" id="follow-stop" data-t="follow.stop">. The #win tab after #win.
+    renderRail(): railHtml(railGroups(), selKey(selected), railClosed, railRestOpen) into #rail-list only
+        when it changed (lastRail); #rail-n = i18n rail.count {n: active}; #rail-you / the tab badge =
+        the you count (hidden at 0); the rail or its tab shows, by railFolded. renderPanel() calls it.
+    #rail-list click: [data-grp] toggles railClosed (saved); [data-rest] toggles railRestOpen;
+        [data-focus] -> selectFrom(id).
+    Building card: renderDetail's building branch has <button type="button" class="b-focus"
         data-focus-b="<building id>"> (i18n b.focus); the #detail click listener: stopFollow() then
         flyTo(the building's scene x/z, Math.min(cam.dist, FOLLOW_DIST)).
     Follow chip: renderFollow() (frame() calls it; touches the DOM only on change): #follow hidden
-        unless follow; #follow-t = i18n follow.on {name}; left = the free centre x. #follow-stop click ->
-        stopFollow().
-    Stops following: a second click on the row, Esc (document keydown, e.key === 'Escape', only
-        stopFollow), #follow-stop, the repo tags (All too), #zfit, and a pan (panBy calls stopFollow()).
-        Keeps following: dragBy (orbit), zoomStep, pinch/gesture/wheel zoom, the rotation, the window.
-    The view is centred on the free part: updateCamera() eases a shift toward freeCentre(W, H, the
-        rail's box on a computer, the #win box while following) and sets camera.setViewOffset (so pickAt
-        and toScreen stay right).
+        unless follow; #follow-t = i18n follow.on {name}; left = the free centre x. #follow-stop ->
+        stopFollow(). Esc (document keydown, e.key === 'Escape', only when following) -> stopFollow().
+    Stops following: the same person again, empty ground, Esc, #follow-stop, the repo tags (All too),
+        #zfit, a pan (panBy calls stopFollow()). Keeps it: dragBy (orbit), zoomStep, pinch/gesture/wheel
+        zoom, the rotation, folding either panel.
+    The map is centred on the free part: updateCamera() eases a shift toward freeCentre(W, H, the rail /
+        rail tab box on a computer, the #win / #win-tab box) and sets camera.setViewOffset (so pickAt and
+        toScreen stay right). The zoom buttons (.cam) sit left of the panel: a CSS rule places .cam with
+        var(--msg-w) while the panel shows.
     The wheel listener also leaves wheels inside .rail alone (the list scrolls).
     renderRepos(): each repo tag gets <span class="rc" style="--rc:<terrColor>">.
-    CSS: --rail-w (the rail's width) on .stage or :root; .rail position:absolute, left 12px; .win and
-        .proto sit right of it (their left uses var(--rail-w)); .rail-btn display:none on a computer.
-        @media (max-width: 960px): .rail is a drawer (off screen until .rail.open), .rail-btn shows,
-        .stage.drawer-open hides .win and .ask-panel.
-    New TEXT keys, zh and en: rail.title, rail.count, rail.rest, rail.drawer, row.open, row.openAria,
-        row.focusAria, follow.on, follow.stop, team.focus, b.focus.
+    CSS: --rail-w (190 .. 230px) and --msg-w on .stage or :root; .rail position:absolute, left 12px,
+        width var(--rail-w), max-height calc(100% - 24px); .proto sits right of the rail (var(--rail-w)).
+        .tab is position:absolute. @media (max-width: 960px): the rail is a drawer from its tab (.rail
+        full height at the left edge), .win a bottom sheet (top:auto, bottom, about half the height),
+        .stage.drawer-open hides .win and .ask-panel while the rail is out.
+    New TEXT keys, zh and en: rail.title, rail.count, rail.rest, rail.tab, fold.rail, fold.msg, msg.tab,
+        follow.on, follow.stop, b.focus.
 
-V2 two-finger sideways scroll moves the land the same way up/down does
+V2 two-finger sideways scroll moves the land the same way up/down does (unchanged from mock v1)
   (sim) wheelMove(e, h): no ctrlKey -> { pan: [deltaX * unit, -deltaY * unit] } (was -deltaX: the X axis
         went the other way from Y). ctrlKey zoom unchanged.
   (sim) panDelta(dx, dy, az, el, dist, h) -> [dtx, dtz], the look-point move panBy() makes for a pan of
@@ -102,8 +129,8 @@ V2 two-finger sideways scroll moves the land the same way up/down does
         No invert option; pinch stays zoom.
 
 V3 head tags and bubbles are easy to hit
-  CSS: .bub::after, .tagl::after, .qm::after, .rdev::after: content "", position absolute, inset -8px (at least 6 px
-        each side, so the hit area is at least 12 px bigger than the box). .bub itself is not
+  CSS: .bub::after, .tagl::after, .qm::after, .rdev::after: content "", position absolute, inset -8px (at
+        least 6 px each side, so the hit area is at least 12 px bigger than the box). .bub itself is not
         overflow:hidden (a clipped ::after takes no clicks); its ellipsis moves to an inner element.
 
 Run: python3 -m unittest tests.test_agent_city_ux2 </dev/null
@@ -128,6 +155,11 @@ FOV = 40
 def sim_has(name):
     return re.search(r"(?:function\s+%s\s*\(|(?:const|let)\s+%s\s*=)" % (re.escape(name), re.escape(name)),
                      sim_section()) is not None
+
+
+def px(value):
+    m = re.search(r"(-?\d+(?:\.\d+)?)px", value or "")
+    return float(m.group(1)) if m else None
 
 
 SNAPSHOT = r"""
@@ -167,21 +199,25 @@ def payload():
 RAIL_DRIVER = SNAPSHOT + r"""
 const G = railGroups();
 const ids = h => [...h.matchAll(/data-focus="([^"]*)"/g)].map(m => m[1]);
-const opens = h => [...h.matchAll(/data-open="([^"]*)"/g)].map(m => m[1]);
-const pressed = h => [...h.matchAll(/data-focus="([^"]*)"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-focus="([^"]*)"/g)].map(m => m[1] || m[2]);
-const closed = railHtml(G, 'w1', new Set()), open = railHtml(G, null, new Set([A.id]));
-const cnt0 = railCount(G);
-byId('w1').waiting = true;
+const cur = h => [...h.matchAll(/<button\b[^>]*>/g)].map(m => m[0]).filter(t => /aria-current="true"/.test(t))
+  .map(t => (/data-focus="([^"]*)"/.exec(t) || [])[1]);
+const shut = new Set(), none = new Set();
+const plain = railHtml(G, 'w1', shut, none), open = railHtml(G, null, shut, new Set([A.id]));
+byId('y1').waiting = true;
+const closedB = railHtml(railGroups(), null, new Set([B.id]), none);
 const cnt1 = railCount(railGroups());
-byId('w1').waiting = false;
+byId('y1').waiting = false;
+const cnt0 = railCount(G);
 byId('y1').gone = true; byId('y2').gone = true;
 const noB = railGroups().map(g => g.terr);
 __out = { a: A.id, b: B.id, terrs: map.territories.map(t => t.id), colors: REPO_COLORS,
   cA: terrColor(A.id), cB: terrColor(B.id), cX: terrColor('nope'),
   groups: G.map(g => ({ terr: g.terr, name: g.name, color: g.color, rows: g.rows.map(r => [r.id, r.depth, !!r.rest]) })),
-  names: [A.name, B.name],
-  closed, open, closedIds: ids(closed), openIds: ids(open), closedOpens: opens(closed), pressed: pressed(closed),
-  restA: i18n('rail.rest', { n: 1 }), cnt0, cnt1, noB };
+  names: [A.name, B.name], plain, open, closedB,
+  plainIds: ids(plain), openIds: ids(open), closedIds: ids(closedB), cur: cur(plain), curNone: cur(open),
+  restA: i18n('rail.rest', { n: 1 }), cnt0, cnt1, noB,
+  keys: [selKey({ t: 'c', id: 'w1' }), selKey({ t: 'gov', terr: B.id }), selKey({ t: 'gov' }), selKey({ t: 'b', id: 'x' }),
+         selKey({ t: 'rg', id: 'q' }), selKey(null)], home: govTerr };
 """
 
 
@@ -189,7 +225,7 @@ class TestRailData(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.r = run_sim(RAIL_DRIVER, payload(), ("apply", "landState", "railGroups", "railHtml", "railCount",
+        cls.r = run_sim(RAIL_DRIVER, payload(), ("apply", "landState", "railGroups", "railHtml", "railCount", "selKey",
                                                  "terrColor", "REPO_COLORS", "newCitizen", "citizens", "byId"))
 
     def test_repo_colours(self):
@@ -223,26 +259,47 @@ class TestRailData(unittest.TestCase):
         self.assertEqual(self.r["cnt0"], {"active": 5, "you": 0}, "s:L w1 f1 remote y1")
         self.assertEqual(self.r["cnt1"], {"active": 5, "you": 1})
 
-    def test_rows_html(self):
+    def test_sel_key(self):
         a, b = self.r["a"], self.r["b"]
-        self.assertEqual(self.r["closedIds"], ["gov:" + a, "s:L", "w1", "f1", "r:dev-ann:s:9", "y1"], "resting rows folded")
-        self.assertEqual(self.r["closedOpens"], self.r["closedIds"], "every row has its open button")
+        self.assertEqual(self.r["keys"], ["w1", "gov:" + b, "gov:" + self.r["home"], None, None, None])
+
+    def test_rows_are_single_buttons(self):
+        a = self.r["a"]
+        self.assertEqual(self.r["plainIds"], ["gov:" + a, "s:L", "w1", "f1", "r:dev-ann:s:9", "y1"], "resting rows folded")
         self.assertEqual(self.r["openIds"], ["gov:" + a, "s:L", "w1", "f1", "r:dev-ann:s:9", "w2", "y1"])
-        self.assertEqual(self.r["pressed"], ["w1"])
-        h = self.r["closed"]
-        self.assertIn('class="rfocus"', h)
-        self.assertIn('class="ropen"', h)
-        self.assertRegex(h, r'<section class="rail-grp" data-terr="%s"' % re.escape(a))
+        self.assertEqual(self.r["cur"], ["w1"], "the selected row")
+        self.assertEqual(self.r["curNone"], [])
+        h = self.r["plain"]
+        self.assertNotIn("data-open", h, "no open buttons any more")
+        self.assertNotIn("ropen", h)
+        self.assertRegex(h, r'<button type="button" class="rrow[^"]*" data-focus="w1"')
+        self.assertRegex(h, r'class="rrow sub[^"]*" data-focus="w1"', "a worker under its lead")
+        self.assertIn('class="sdot"', h)
+        self.assertIn('class="chip gov"', h)
         self.assertIn("--rc:%s" % self.r["cA"], h)
+        self.assertNotIn("city <b>", h, "escaped")
+        self.assertIn("city &lt;b&gt;", h)
+        self.assertIn("resting", self.r["open"])
+
+    def test_group_heads(self):
+        a, b = self.r["a"], self.r["b"]
+        h = self.r["plain"]
+        self.assertRegex(h, r'<section class="rail-grp" data-terr="%s"' % re.escape(a))
+        self.assertRegex(h, r'<button type="button" class="grp-h" data-grp="%s" aria-expanded="true"' % re.escape(a))
+        self.assertRegex(h, r'data-grp="%s"[^>]*>[\s\S]*?<span class="n">\s*4\s*</span>' % re.escape(a), "A: s:L w1 f1 remote")
         self.assertRegex(h, r'data-rest="%s"[^>]*aria-expanded="false"|aria-expanded="false"[^>]*data-rest="%s"' % (re.escape(a), re.escape(a)))
         self.assertRegex(self.r["open"], r'data-rest="%s"[^>]*aria-expanded="true"|aria-expanded="true"[^>]*data-rest="%s"' % (re.escape(a), re.escape(a)))
         self.assertIn(self.r["restA"], h)
-        self.assertIn('class="pill gov"', h)
-        self.assertIn('class="rrow sub', h, "a worker under its lead")
-        self.assertIn("resting", self.r["open"])
-        self.assertNotIn("city <b>", h, "escaped")
-        self.assertIn("city &lt;b&gt;", h)
-        self.assertRegex(h, r'<span class="n">\s*4\s*</span>', "A: s:L w1 f1 remote")
+
+    def test_closed_group_shows_its_head_only(self):
+        b = self.r["b"]
+        h = self.r["closedB"]
+        self.assertRegex(h, r'data-grp="%s" aria-expanded="false"' % re.escape(b))
+        self.assertNotIn("y1", self.r["closedIds"], "B's rows are folded away")
+        self.assertIn("r:dev-ann:s:9", self.r["closedIds"], "A stays open")
+        sec = h[h.index('data-terr="%s"' % b):]
+        self.assertRegex(sec, r'<span class="you">\s*1\s*</span>', "a closed group still shows who waits on you")
+        self.assertNotIn('data-rest="%s"' % b, sec)
 
 
 # ---------------------------------------------------------------------------
@@ -331,12 +388,14 @@ class TestFollow(unittest.TestCase):
 
 FREE_DRIVER = r"""
 __out = [
-  freeCentre(1200, 800, { right: 290 }, null),
+  freeCentre(1200, 800, { right: 236 }, null),
   freeCentre(1200, 800, null, null),
-  freeCentre(1200, 800, { right: 290 }, { left: 302, top: 12, right: 1000, bottom: 788 }),
-  freeCentre(1200, 800, { right: 290 }, { left: 302, top: 12, right: 1150, bottom: 788 }),
-  freeCentre(400, 700, null, { left: 8, top: 300, right: 392, bottom: 692 }),
-  freeCentre(400, 700, null, { left: 8, top: 80, right: 392, bottom: 692 }),
+  freeCentre(1200, 800, { right: 236 }, { left: 858, top: 12, right: 1188, bottom: 788 }),
+  freeCentre(1200, 800, { right: 40 }, { left: 1168, top: 12, right: 1200, bottom: 200 }),
+  freeCentre(1200, 800, { right: 236 }, { left: 300, top: 12, right: 1188, bottom: 788 }),
+  freeCentre(1200, 800, { right: 700 }, { left: 800, top: 12, right: 1188, bottom: 788 }),
+  freeCentre(400, 700, null, { left: 6, top: 390, right: 394, bottom: 694 }),
+  freeCentre(400, 700, null, { left: 6, top: 80, right: 394, bottom: 694 }),
 ];
 """
 
@@ -345,26 +404,7 @@ class TestFreeCentre(unittest.TestCase):
 
     def test_values(self):
         r = run_sim(FREE_DRIVER, {}, ("freeCentre",))
-        self.assertEqual(r, [[745, 400], [600, 400], [1100, 400], [745, 400], [200, 150], [200, 350]])
-
-
-TEAM_FOCUS_DRIVER = SNAPSHOT + r"""
-follow = 'w1';
-__out = teamListHtml(A.id, { t: 'c', id: 'f1' });
-"""
-
-
-class TestTeamRowFocus(unittest.TestCase):
-
-    def test_focus_buttons(self):
-        h = run_sim(TEAM_FOCUS_DRIVER, payload(), ("apply", "landState", "teamListHtml", "newCitizen", "citizens"))
-        self.assertIn('class="tfocus"', h)
-        ids = re.findall(r'data-follow="([^"]*)"', h)
-        self.assertIn("w1", ids)
-        self.assertIn("f1", ids)
-        self.assertTrue(any(i.startswith("gov:") for i in ids), "the governor row too")
-        self.assertRegex(h, r'data-follow="w1"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-follow="w1"')
-        self.assertNotRegex(h, r'data-follow="f1"[^>]*aria-pressed="true"')
+        self.assertEqual(r, [[718, 400], [600, 400], [547, 400], [604, 400], [600, 400], [600, 400], [200, 195], [200, 350]])
 
 
 # ---------------------------------------------------------------------------
@@ -376,16 +416,19 @@ class TestRailMarkup(unittest.TestCase):
     def test_markup_inside_the_stage(self):
         p = page()
         stage, tb = p.index('id="stage"'), p.index('class="toolbar"')
-        for bit in ('<aside class="rail" id="rail"', 'id="rail-list"', 'id="rail-n"', 'id="rail-btn"',
-                    'id="follow"', 'id="follow-t"', 'id="follow-stop"'):
+        for bit in ('<aside class="rail" id="rail"', 'id="rail-list"', 'id="rail-n"', 'id="rail-you"', 'id="rail-fold"',
+                    'id="rail-tab"', 'id="follow"', 'id="follow-t"', 'id="follow-stop"', 'id="win-fold"', 'id="win-tab"'):
             self.assertIn(bit, p, bit)
             self.assertTrue(stage < p.index(bit) < tb, bit + " inside #stage")
         self.assertRegex(p, r'<div class="follow" id="follow" role="status"[^>]*hidden')
-        self.assertRegex(p, r'<button type="button" class="rail-btn" id="rail-btn" aria-controls="rail" aria-expanded="false"')
+        self.assertRegex(p, r'<button type="button" class="tab rail-tab" id="rail-tab" aria-controls="rail"[^>]*hidden')
+        self.assertRegex(p, r'<button type="button" class="tab win-tab" id="win-tab" aria-controls="win"[^>]*hidden')
+        self.assertLess(p.index('id="win-fold"'), p.index('id="win-close"'), "fold, then close")
+        self.assertNotIn('id="rail-btn"', p, "the rail tab is the phone drawer button too")
 
     def test_text_keys(self):
-        for k in ("rail.title", "rail.count", "rail.rest", "rail.drawer", "row.open", "row.openAria", "row.focusAria",
-                  "follow.on", "follow.stop", "team.focus", "b.focus"):
+        for k in ("rail.title", "rail.count", "rail.rest", "rail.tab", "fold.rail", "fold.msg", "msg.tab",
+                  "follow.on", "follow.stop", "b.focus"):
             self.assertEqual(text_keys(k), 2, k + " in zh and en")
 
 
@@ -393,26 +436,45 @@ class TestRailWiring(unittest.TestCase):
 
     def test_render_rail(self):
         src = function_source("renderRail") or ""
-        for bit in ("railGroups(", "railHtml(", "railCount(", "lastRail", "rail.count", "rail.drawer"):
+        for bit in ("railGroups(", "railHtml(", "railCount(", "selKey(", "railClosed", "railRestOpen", "lastRail",
+                    "rail.count", "railFolded"):
             self.assertIn(bit, src, bit)
         self.assertIn("renderRail(", function_source("renderPanel") or "")
 
-    def test_drawer(self):
-        src = function_source("setRail") or ""
-        for bit in ("'open'", "aria-expanded", "drawer-open"):
-            self.assertIn(bit, src, bit)
-        self.assertIn("setRail(", listener_block(r"\$\('#rail-btn'\)", "click") or "")
-        for name in ("selectPick", "selectFrom"):
-            self.assertIn("setRail(false)", function_source(name) or "", name)
-
     def test_rail_clicks(self):
         block = listener_block(r"\$\('#rail-list'\)", "click") or ""
-        for bit in ("data-rest", "data-focus", "data-open", "toggleFollow(", "selectFrom(", "setRail(false)", "railRestOpen"):
+        for bit in ("data-grp", "data-rest", "data-focus", "selectFrom(", "railClosed", "railRestOpen"):
             self.assertIn(bit, block, bit)
 
-    def test_team_and_building_focus(self):
+    def test_pick_is_follow(self):
+        for name in ("selectPick", "selectFrom"):
+            self.assertIn("afterPick()", function_source(name) or "", name)
+        src = function_source("afterPick") or ""
+        for bit in ("toggleFollow(", "selKey(", "stopFollow()", "setWinFolded(false)", "setRailFolded(true)"):
+            self.assertIn(bit, src, "afterPick: " + bit)
+
+    def test_folds_are_remembered(self):
+        p = page()
+        for key in ("agent-city.railFolded", "agent-city.winFolded", "agent-city.railClosed"):
+            self.assertIn(key, p, key)
+        for name in ("setRailFolded", "setWinFolded"):
+            src = function_source(name) or ""
+            self.assertIn("localStorage", src, name)
+            self.assertIn("try", src, name + ": storage can throw")
+        for sel, fn in (("#rail-fold", "setRailFolded("), ("#rail-tab", "setRailFolded("), ("#win-fold", "setWinFolded("),
+                        ("#win-tab", "setWinFolded(")):
+            self.assertIn(fn, listener_block(r"\$\('%s'\)" % sel, "click") or "", sel)
+
+    def test_panel_is_one_person(self):
+        self.assertNotRegex(function_source("renderWin") or "", r"'wide'", "no wide window")
+        self.assertIn("win-tab", function_source("renderWin") or "", "renderWin keeps the tab current")
+        src = function_source("renderDetail") or ""
+        self.assertNotIn("teamListHtml(", src)
+        self.assertNotIn("gov-side", src)
+
+    def test_building_focus(self):
         block = listener_block(r"\$\('#detail'\)", "click") or ""
-        for bit in ("data-follow", "toggleFollow(", "data-focus-b", "stopFollow()", "flyTo(", "FOLLOW_DIST"):
+        for bit in ("data-focus-b", "stopFollow()", "flyTo(", "FOLLOW_DIST"):
             self.assertIn(bit, block, bit)
         self.assertIn("data-focus-b", function_source("renderDetail") or "")
         self.assertIn("b.focus", function_source("renderDetail") or "")
@@ -433,7 +495,7 @@ class TestRailWiring(unittest.TestCase):
         self.assertIn("stopFollow()", function_source("panBy") or "")
         self.assertIn("stopFollow()", listener_block(r"\$\('#repos'\)", "click") or "")
         self.assertIn("stopFollow()", listener_block(r"\$\('#zfit'\)", "click") or "")
-        for name in ("dragBy", "zoomStep", "stopFly"):
+        for name in ("dragBy", "zoomStep", "stopFly", "setRailFolded", "setWinFolded"):
             src = function_source(name) or ""
             self.assertNotIn("stopFollow", src, name + " keeps the follow")
             self.assertNotIn("follow = null", src, name + " keeps the follow")
@@ -453,17 +515,30 @@ class TestRailCss(unittest.TestCase):
 
     def test_computer(self):
         c = css()
-        self.assertIn("--rail-w", c)
-        r = rule(".rail")
-        self.assertIn("position:absolute", r.replace(" ", ""))
-        self.assertIn("display:none", rule(".rail-btn").replace(" ", ""))
-        self.assertIn("var(--rail-w", rule(".win"), "the window sits right of the rail")
-        self.assertIn("var(--rail-w", rule(".proto"), "so does the live/demo chip")
+        m = re.search(r"--rail-w\s*:\s*(\d+)px", c)
+        self.assertIsNotNone(m, "--rail-w")
+        self.assertTrue(190 <= int(m.group(1)) <= 230, "compact: " + m.group(1))
+        m = re.search(r"--msg-w\s*:\s*(\d+)px", c)
+        self.assertIsNotNone(m, "--msg-w")
+        self.assertTrue(300 <= int(m.group(1)) <= 360, m.group(1))
+        r = rule(".rail").replace(" ", "")
+        for bit in ("position:absolute", "width:var(--rail-w)", "max-height:calc(100%-24px)"):
+            self.assertIn(bit, r, bit)
+        w = rule(".win").replace(" ", "")
+        for bit in ("right:12px", "top:12px", "bottom:12px", "width:var(--msg-w)"):
+            self.assertIn(bit, w, ".win docked right: " + bit)
+        self.assertNotIn("left:12px", w)
+        self.assertEqual(rule(".win.wide"), "", "no wide window")
+        self.assertIn("position:absolute", rule(".tab").replace(" ", ""))
+        self.assertIn("var(--rail-w", rule(".proto"), "the live/demo chip sits right of the rail")
+        self.assertRegex(c, r"\.cam\b[^{]*\{[^}]*var\(--msg-w", "the zoom buttons move left of the panel")
 
     def test_phone(self):
         m = media_960()
-        for bit in (".rail.open", ".rail-btn", ".drawer-open"):
+        for bit in (".rail", ".win", ".drawer-open"):
             self.assertIn(bit, m, bit)
+        w = rule(".win", m).replace(" ", "")
+        self.assertIn("top:auto", w, "a bottom sheet")
         self.assertIn(".ask-panel", m[m.index(".drawer-open"):] if ".drawer-open" in m else "")
 
 
