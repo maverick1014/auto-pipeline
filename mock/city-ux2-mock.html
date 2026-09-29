@@ -3,24 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Agent City · city-ux2 mock</title>
+<title>Agent City · city-ux2 mock v2</title>
 <link rel="icon" href="data:,">
 <style>
 :root{
   --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
-  --line:#DCE2F6; --sky:#CFE6FF; --berry:#FF7593; --butter:#FFD36E; --mint:#6FD4A8; --focus:#4D7CFE;
+  --line:#DCE2F6; --berry:#FF7593; --focus:#4D7CFE;
   --build-bg:#E1ECFF; --build-ink:#3160B5; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
   --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488;
   --gov-bg:#FFF0C7; --gov-ink:#8A6000; --sea:#BFDDF6; --land:#CDE9B4; --land-edge:#9FCB84;
   --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
   --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --rail-w:212px; --msg-w:330px; --tab-w:30px;
   color-scheme:light;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
-    --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
+    --line:#2D3360; --focus:#8FB0FF;
     --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
     --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
     --gov-bg:#43381A; --gov-ink:#FFDD8A; --sea:#1A2A4A; --land:#2F4A34; --land-edge:#476B4C;
@@ -29,7 +30,7 @@
 }
 :root[data-theme="dark"]{
   --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
-  --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
+  --line:#2D3360; --focus:#8FB0FF;
   --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
   --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
   --gov-bg:#43381A; --gov-ink:#FFDD8A; --sea:#1A2A4A; --land:#2F4A34; --land-edge:#476B4C;
@@ -56,144 +57,138 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .stats{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
 .stat{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font-size:13px;color:var(--ink-2)}
 .stat b{color:var(--ink);font:700 14px/1 var(--display)}
-
 .repos{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 4px}
 .repo{all:unset;cursor:pointer;flex:none;display:inline-flex;align-items:center;gap:7px;padding:5px 12px 5px 9px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font:600 13px/1.2 var(--round);color:var(--ink-2);white-space:nowrap}
 .repo:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
-.repo[aria-current="true"]{border-color:var(--ink);background:var(--ink);color:var(--paper)}
 .repo.all{padding-left:12px}
-.rc{width:9px;height:9px;border-radius:50%;background:var(--rc);flex:none;box-shadow:0 0 0 1.5px rgba(255,255,255,.6)}
+.rc{width:9px;height:9px;border-radius:50%;background:var(--rc);flex:none}
 
-.stage{position:relative;overflow:hidden;height:calc(100dvh - 330px);min-height:480px;background:var(--sea);border-radius:0}
-.app.phone .stage{height:640px;min-height:0}
+.stage{position:relative;overflow:hidden;height:calc(100dvh - 330px);min-height:500px;background:var(--sea)}
+.app.phone .stage{height:660px;min-height:0}
 .stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
 .stage canvas.grabbing{cursor:grabbing}
 .ov{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
 .ov > div{position:absolute;left:0;top:0;will-change:transform}
 .bub,.tagl{position:absolute;pointer-events:auto;cursor:pointer;white-space:nowrap}
-.bub{background:#FFFFFF;color:#2A2B45;border:2px solid #2A2B45;border-radius:14px;padding:3px 10px;font:600 12.5px/1.4 var(--round);max-width:220px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.bub{background:#FFFFFF;color:#2A2B45;border:2px solid #2A2B45;border-radius:14px;padding:3px 10px;font:600 12.5px/1.4 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.bub span{display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis}
 .bub.ask{border-color:#E4476F}
 .tagl{background:var(--c);color:#fff;border-radius:999px;padding:3px 10px;font:600 11.5px/1.3 var(--mono);box-shadow:0 2px 0 rgba(42,43,69,.2)}
-/* V3: the hit area is 8 px bigger than the box on every side (16 px in total, at least the 12 asked) */
+/* V3: the hit area is 8 px bigger than the box on every side */
 .bub::after,.tagl::after{content:"";position:absolute;inset:-8px;border-radius:18px}
 .showhit .bub::after,.showhit .tagl::after{outline:1.5px dashed #E4476F;background:rgba(228,71,111,.08)}
-.bub{overflow:visible}
-.bub span{display:block;overflow:hidden;text-overflow:ellipsis}
 
-/* V1: the rail -- always visible on a computer, left side, over the city */
-.rail{position:absolute;left:12px;top:12px;bottom:12px;z-index:4;width:264px;display:flex;flex-direction:column;background:color-mix(in srgb,var(--panel) 94%,transparent);border:2px solid var(--ink);border-radius:18px;box-shadow:0 4px 0 rgba(42,43,69,.18);overflow:hidden}
-.rail-head{display:flex;align-items:center;gap:8px;padding:10px 12px 8px;border-bottom:1.5px solid var(--line);font-weight:700}
-.rail-head .n{font:700 12px/1 var(--mono);color:var(--ink-3)}
-.rail-head .x{margin-left:auto}
-.rail-list{flex:1;overflow:auto;padding:6px 6px 10px;display:flex;flex-direction:column;gap:6px}
-.grp-h{display:flex;align-items:center;gap:7px;padding:6px 6px 2px;font:700 12px/1.2 var(--mono);color:var(--ink-2)}
+.x,.fold{all:unset;cursor:pointer;flex:none;width:26px;height:26px;display:grid;place-items:center;border-radius:8px;color:var(--ink-2);font:700 14px/1 var(--round)}
+.x:hover,.fold:hover{background:var(--panel-2);color:var(--ink)}
+.x:focus-visible,.fold:focus-visible{outline:2px solid var(--focus)}
+.you{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--berry);color:#fff;font:700 11px/1 var(--round)}
+
+/* V1 (W1): the compact rail, left */
+.rail{position:absolute;left:12px;top:12px;z-index:4;width:var(--rail-w);max-height:calc(100% - 24px);display:flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:16px;box-shadow:0 4px 0 rgba(42,43,69,.18);overflow:hidden}
+.rail-head{display:flex;align-items:center;gap:6px;padding:6px 6px 6px 12px;border-bottom:1.5px solid var(--line);font-weight:700;font-size:13px}
+.rail-head .n{font:600 12px/1 var(--mono);color:var(--ink-3)}
+.rail-head .fold{margin-left:auto}
+.rail-list{overflow:auto;padding:4px 4px 8px}
+.grp-h{all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:6px;padding:6px 6px 3px;font:700 11.5px/1.2 var(--mono);color:var(--ink-2)}
+.grp-h:focus-visible{outline:2px solid var(--focus);border-radius:6px}
 .grp-h .n{margin-left:auto;color:var(--ink-3);font-weight:600}
-.rrows{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
-.rrow{display:flex;align-items:stretch;border-radius:11px;border-left:4px solid var(--rc)}
-.rrow.sub{margin-left:12px}
-.rfocus{all:unset;cursor:pointer;flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:5px 6px 5px 8px;border-radius:0 11px 11px 0}
-.rfocus:hover{background:var(--panel-2)}
-.rfocus:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
-.rrow[aria-current="true"] .rfocus{background:var(--ink);color:var(--paper)}
-.rrow[aria-current="true"] .rfocus .who small{color:var(--paper);opacity:.75}
-.who{display:flex;align-items:center;gap:5px;min-width:0;flex:1}
-.who b{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.who small{font:11px/1.3 var(--mono);color:var(--ink-3);white-space:nowrap}
-.eye{flex:none;width:14px;height:14px}
-.pill{flex:none;display:inline-flex;padding:1px 8px;border-radius:999px;font:600 11px/1.5 var(--round);white-space:nowrap}
-.pill.you{background:var(--ask-bg);color:var(--ask-ink);border:1px solid var(--berry)}
-.pill.ask{background:var(--gov-bg);color:var(--gov-ink)}
-.pill.build{background:var(--build-bg);color:var(--build-ink)}
-.pill.walk{background:var(--walk-bg);color:var(--walk-ink)}
-.pill.rest{background:var(--rest-bg);color:var(--rest-ink)}
-.pill.gov{background:var(--gov-bg);color:var(--gov-ink)}
-.ropen{all:unset;cursor:pointer;flex:none;align-self:center;padding:3px 6px;margin:0 2px 0 3px;border-radius:8px;font:600 11px/1.2 var(--round);color:var(--ink-2);border:1.5px solid var(--line);background:var(--panel)}
-.ropen:hover{border-color:var(--ink-3)}
-.ropen:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
-.rest-t{all:unset;cursor:pointer;margin:2px 0 0 4px;padding:3px 8px;border-radius:8px;font:600 12px/1.3 var(--round);color:var(--rest-ink)}
-.rest-t:hover{background:var(--panel-2)}
+.grp-h .car{width:10px;color:var(--ink-3);transition:transform .15s}
+.grp-h[aria-expanded="false"] .car{transform:rotate(-90deg)}
+.rrows{list-style:none;margin:0;padding:0}
+.rrow{all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:8px;border-left:3px solid var(--rc);font-size:12.5px;line-height:1.35}
+.rrow.sub{padding-left:16px}
+.rrow:hover{background:var(--panel-2)}
+.rrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.rrow[aria-current="true"]{background:var(--ink);color:var(--paper)}
+.rrow.resting{opacity:.7}
+.sdot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--sd)}
+.rrow b{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{flex:none;padding:0 6px;border-radius:999px;font:600 10.5px/1.6 var(--round);white-space:nowrap}
+.chip.you{background:var(--ask-bg);color:var(--ask-ink)}
+.chip.ask{background:var(--gov-bg);color:var(--gov-ink)}
+.chip.build{background:var(--build-bg);color:var(--build-ink)}
+.chip.walk{background:var(--walk-bg);color:var(--walk-ink)}
+.chip.rest{background:var(--rest-bg);color:var(--rest-ink)}
+.chip.gov{background:var(--gov-bg);color:var(--gov-ink)}
+.rest-t{all:unset;cursor:pointer;display:block;margin:1px 0 2px 8px;padding:1px 6px;border-radius:6px;font:600 11.5px/1.5 var(--round);color:var(--rest-ink)}
 .rest-t:focus-visible{outline:2px solid var(--focus)}
-.rrow.resting{opacity:.72}
 
-/* the following chip, top middle of the free city area */
-.follow{position:absolute;top:12px;z-index:4;transform:translateX(-50%);display:inline-flex;align-items:center;gap:8px;padding:5px 6px 5px 12px;border-radius:999px;background:var(--ink);color:var(--paper);font:600 13px/1.2 var(--round);box-shadow:0 3px 0 rgba(42,43,69,.25);white-space:nowrap;max-width:calc(100% - 24px)}
+/* W4: a folded panel = a thin tab on its edge */
+.tab{all:unset;cursor:pointer;position:absolute;z-index:4;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0;width:var(--tab-w);background:var(--panel);border:2px solid var(--ink);box-shadow:0 3px 0 rgba(42,43,69,.18);font:700 12px/1.1 var(--round);color:var(--ink)}
+.tab:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.tab .v{writing-mode:vertical-rl;white-space:nowrap;max-height:180px;overflow:hidden;text-overflow:ellipsis}
+.rail-tab{left:0;top:12px;border-left:0;border-radius:0 12px 12px 0}
+.win-tab{right:0;top:12px;border-right:0;border-radius:12px 0 0 12px}
+
+/* W2: the message panel, docked right -- one person (or the governor), never a team list */
+.win{position:absolute;right:12px;top:12px;bottom:12px;z-index:5;width:var(--msg-w);background:var(--panel);border:2px solid var(--ink);border-radius:16px;box-shadow:0 5px 0 rgba(42,43,69,.2);display:flex;flex-direction:column;overflow:hidden}
+.win.short{bottom:auto}
+.win-head{display:flex;align-items:center;gap:6px;padding:8px 6px 8px 12px;border-bottom:1.5px solid var(--line)}
+.win-head .dot{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}
+.win-title{flex:1;min-width:0;font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.facts{padding:6px 12px 0;font:11.5px/1.4 var(--mono);color:var(--ink-3);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.hist{list-style:none;margin:0;padding:8px 12px;display:flex;flex-direction:column;gap:6px;flex:1;min-height:0;overflow:auto;font-size:13px}
+.hist .act{display:flex;gap:8px;color:var(--ink-3);font-size:12px}
+.hist .act time{font:11px/1.5 var(--mono)}
+.hist .qa{border:1.5px solid var(--berry);background:var(--ask-bg);color:var(--ask-ink);border-radius:12px;padding:6px 9px}
+.hist .qa p{margin:0}
+.hist .msg{padding:6px 10px;border-radius:12px;background:var(--panel-2);max-width:92%}
+.hist .msg.me{align-self:flex-end;background:var(--ink);color:var(--paper)}
+.hist .msg small{display:block;font-size:11px;opacity:.7}
+.hist .msg ul{margin:2px 0 0;padding-left:18px}
+.say{display:flex;gap:6px;padding:8px 10px 10px;border-top:1.5px solid var(--line)}
+.say textarea{flex:1;min-width:0;resize:none;height:38px;border:1.5px solid var(--line);border-radius:10px;padding:6px 8px;font:13px/1.35 var(--round);background:var(--panel);color:var(--ink)}
+.say textarea:focus-visible{outline:2px solid var(--focus)}
+.btn{all:unset;cursor:pointer;display:inline-grid;place-items:center;min-width:34px;height:34px;padding:0 10px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);font:600 13px/1 var(--round)}
+.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.ro{margin:0;padding:8px 12px 10px;border-top:1.5px solid var(--line);font-size:12.5px;color:var(--ink-2);display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.pill{display:inline-flex;padding:0 7px;border-radius:999px;font:600 11px/1.6 var(--round)}
+.pill.you{background:var(--ask-bg);color:var(--ask-ink)} .pill.ask{background:var(--gov-bg);color:var(--gov-ink)}
+.pill.build{background:var(--build-bg);color:var(--build-ink)} .pill.walk{background:var(--walk-bg);color:var(--walk-ink)}
+.pill.rest{background:var(--rest-bg);color:var(--rest-ink)} .pill.gov{background:var(--gov-bg);color:var(--gov-ink)}
+.bld{padding:10px 12px 12px;display:flex;flex-direction:column;gap:8px}
+
+/* the following chip, top middle of the free map */
+.follow{position:absolute;top:12px;z-index:4;transform:translateX(-50%);display:inline-flex;align-items:center;gap:7px;padding:3px 4px 3px 10px;border-radius:999px;background:var(--ink);color:var(--paper);font:600 12px/1.2 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.25);white-space:nowrap;max-width:60%}
 .follow span{overflow:hidden;text-overflow:ellipsis}
-.follow kbd{font:600 11px/1 var(--mono);opacity:.7}
-.follow button{all:unset;cursor:pointer;padding:3px 9px;border-radius:999px;background:var(--paper);color:var(--ink);font:600 12px/1.2 var(--round)}
+.follow kbd{font:600 10.5px/1 var(--mono);opacity:.7}
+.follow button{all:unset;cursor:pointer;padding:2px 8px;border-radius:999px;background:var(--paper);color:var(--ink);font:600 11.5px/1.3 var(--round)}
 .follow button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
-.cam{position:absolute;right:12px;bottom:12px;z-index:3;display:flex;flex-direction:column;gap:6px}
-.btn{all:unset;cursor:pointer;display:inline-grid;place-items:center;min-width:34px;height:34px;padding:0 8px;border-radius:11px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);font:600 14px/1 var(--round)}
-.btn:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
-.x{all:unset;cursor:pointer;width:28px;height:28px;display:grid;place-items:center;border-radius:9px;color:var(--ink-2)}
-.x:hover{background:var(--panel-2)}
-.x:focus-visible{outline:2px solid var(--focus)}
+.cam{position:absolute;bottom:12px;z-index:3;display:flex;flex-direction:column;gap:6px;transition:right .2s}
 
-/* the one team window -- moved right of the rail, never under it */
-.win{position:absolute;left:288px;top:12px;z-index:5;width:min(700px,calc(100% - 300px));height:calc(100% - 24px);background:var(--panel);border:2px solid var(--ink);border-radius:20px;box-shadow:0 6px 0 rgba(42,43,69,.22);padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px}
-.win.narrow{height:auto;width:min(320px,calc(100% - 300px))}
-.win-head{display:flex;align-items:center;gap:10px}
-.win-title{flex:1;min-width:0;font-weight:700;font-size:16px}
-.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:14px;flex:1;min-height:0}
-.team{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;overflow:auto}
-.trow{display:flex;align-items:center;gap:4px;border-radius:11px}
-.trow.sub{margin-left:14px}
-.tsel{all:unset;cursor:pointer;flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:11px}
-.tsel:hover{background:var(--panel-2)}
-.tsel:focus-visible{outline:2px solid var(--focus)}
-.trow[aria-current="true"] .tsel{background:var(--panel-2);box-shadow:inset 0 0 0 1.5px var(--ink)}
-.tsel b{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
-.dot{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}
-.tfocus{all:unset;cursor:pointer;flex:none;width:28px;height:28px;display:grid;place-items:center;border-radius:9px;color:var(--ink-2)}
-.tfocus:hover{background:var(--panel-2);color:var(--ink)}
-.tfocus:focus-visible{outline:2px solid var(--focus)}
-.tfocus[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
-.side{border-left:1.5px solid var(--line);padding-left:14px;display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto}
-.p-name{font-weight:700;font-size:15px}
-.p-facts{font:12px/1.4 var(--mono);color:var(--ink-3)}
-.hist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:13px}
-.hist li{padding:6px 10px;border-radius:12px;background:var(--panel-2)}
-.hist .act{background:none;padding:0 4px;color:var(--ink-3);font-size:12px}
-.b-focus{all:unset;cursor:pointer;align-self:flex-start;display:inline-flex;gap:6px;align-items:center;padding:6px 12px;border-radius:11px;border:1.5px solid var(--ink);font:600 13px/1.2 var(--round)}
-.b-focus:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+/* phone: the rail is a drawer from its tab; the message panel is a bottom sheet that folds to a bottom tab */
+.app.phone .rail{left:0;top:0;bottom:0;max-height:none;width:min(250px,78%);border-left:0;border-radius:0 16px 16px 0}
+.app.phone .win{left:6px;right:6px;top:auto;bottom:6px;width:auto;height:44%}
+.app.phone .win.short{height:auto}
+.app.phone .win-tab{right:auto;left:50%;top:auto;bottom:0;transform:translateX(-50%);width:auto;flex-direction:row;padding:6px 14px;border:2px solid var(--ink);border-bottom:0;border-radius:12px 12px 0 0}
+.app.phone .win-tab .v{writing-mode:horizontal-tb;max-width:220px}
+@media (prefers-reduced-motion: reduce){ .cam,.grp-h .car{transition:none} }
 
-/* phone: the rail becomes a drawer; the window is a bottom sheet; the two never show at once */
-.drawer-btn{position:absolute;left:8px;top:8px;z-index:4;display:none;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:2px solid var(--ink);background:var(--panel);font:600 13px/1.2 var(--round);color:var(--ink);cursor:pointer}
-.drawer-btn:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-.drawer-btn .you{background:var(--ask-bg);color:var(--ask-ink);border-radius:999px;padding:0 6px;font-size:11.5px}
-.app.phone .drawer-btn{display:inline-flex}
-.app.phone .rail{left:0;top:0;bottom:0;width:min(290px,84%);border-radius:0 18px 18px 0;border-left:0;transform:translateX(-105%);transition:transform .22s ease}
-.app.phone .rail.open{transform:none}
-.app.phone .win{left:6px;right:6px;top:auto;bottom:6px;width:auto;height:auto;max-height:62%;overflow:auto}
-.app.phone .cols{grid-template-columns:minmax(0,1fr)}
-.app.phone .side{border-left:0;padding-left:0;border-top:1.5px solid var(--line);padding-top:10px}
-.app.phone .follow{top:50px}
-@media (prefers-reduced-motion: reduce){ .app.phone .rail{transition:none} }
-
-/* the note: what to click, and the rules */
 .note{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
 .card{background:var(--panel);border:1.5px solid var(--line);border-radius:16px;padding:12px 14px}
 .card h3{margin:0 0 6px;font-size:14px}
 .card ol,.card ul{margin:0;padding-left:20px}
 .card li{margin:2px 0}
 .card p{margin:4px 0}
-.pad{position:relative;height:190px;border-radius:12px;overflow:hidden;background:var(--sea);border:1.5px solid var(--line);cursor:grab;touch-action:none}
+.pad{position:relative;height:170px;border-radius:12px;overflow:hidden;background:var(--sea);border:1.5px solid var(--line);touch-action:none}
 .pad canvas{display:block;width:100%;height:100%}
 .pad-out{font:12px/1.4 var(--mono);color:var(--ink-2);margin-top:6px}
-code{font:12px/1.4 var(--mono);background:var(--panel-2);border-radius:6px;padding:0 4px}
 </style>
 </head>
 <body>
 <div class="app" id="app">
   <div class="mockbar" role="group" aria-label="mock controls">
-    <b>MOCK</b>
+    <b>MOCK v2</b>
     <span data-t="m.lang"></span>
     <span class="seg" id="seg-lang"><button type="button" data-v="zh" aria-pressed="true">中文</button><button type="button" data-v="en" aria-pressed="false">English</button></span>
     <span data-t="m.width"></span>
     <span class="seg" id="seg-width"><button type="button" data-v="pc" aria-pressed="true" data-t="m.pc"></button><button type="button" data-v="phone" aria-pressed="false" data-t="m.phone"></button></span>
-    <span data-t="m.rowClick"></span>
-    <span class="seg" id="seg-row"><button type="button" data-v="focus" aria-pressed="true" data-t="m.rowFocus"></button><button type="button" data-v="both" aria-pressed="false" data-t="m.rowBoth"></button></span>
+    <span data-t="m.refold"></span>
+    <span class="seg" id="seg-refold"><button type="button" data-v="open" aria-pressed="true" data-t="m.refoldA"></button><button type="button" data-v="keep" aria-pressed="false" data-t="m.refoldB"></button></span>
     <span class="seg" id="seg-hit"><button type="button" data-v="off" aria-pressed="true" data-t="m.hitOff"></button><button type="button" data-v="on" aria-pressed="false" data-t="m.hitOn"></button></span>
+    <button type="button" class="btn" id="m-reset" data-t="m.reset"></button>
   </div>
 
   <header class="bar">
@@ -205,32 +200,31 @@ code{font:12px/1.4 var(--mono);background:var(--panel-2);border-radius:6px;paddi
   <div class="stage" id="stage">
     <canvas id="city"></canvas>
     <div class="ov" id="ov"></div>
-    <button type="button" class="drawer-btn" id="drawer-btn" aria-controls="rail" aria-expanded="false"></button>
+
     <aside class="rail" id="rail">
-      <div class="rail-head"><span data-t="rail.title"></span><span class="n" id="rail-n"></span><button type="button" class="x" id="rail-x" data-t-aria="btn.close" hidden>✕</button></div>
+      <div class="rail-head"><span data-t="rail.title"></span><span class="n" id="rail-n"></span><span class="you" id="rail-you" hidden></span><button type="button" class="fold" id="rail-fold" data-t-aria="fold.rail">«</button></div>
       <div class="rail-list" id="rail-list"></div>
     </aside>
-    <div class="follow" id="follow" role="status" hidden><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><span id="follow-t"></span><kbd>Esc</kbd><button type="button" id="follow-stop" data-t="follow.stop"></button></div>
-    <div class="cam">
+    <button type="button" class="tab rail-tab" id="rail-tab" aria-controls="rail" hidden><span>›</span><span class="v" id="rail-tab-t"></span><span class="you" id="rail-tab-you" hidden></span></button>
+
+    <div class="follow" id="follow" role="status" hidden><span id="follow-t"></span><kbd>Esc</kbd><button type="button" id="follow-stop" data-t="follow.stop"></button></div>
+
+    <div class="cam" id="cam">
       <button type="button" class="btn" id="zin" data-t-aria="btn.zoomIn">+</button>
       <button type="button" class="btn" id="zout" data-t-aria="btn.zoomOut">−</button>
       <button type="button" class="btn" id="zfit" data-t-aria="btn.home">⌂</button>
     </div>
+
     <div class="win" id="win" role="dialog" aria-labelledby="win-title" hidden>
-      <div class="win-head"><div class="win-title" id="win-title"></div><button type="button" class="x" id="win-x" data-t-aria="btn.close">✕</button></div>
+      <div class="win-head"><span class="dot" id="win-dot"></span><div class="win-title" id="win-title"></div><button type="button" class="fold" id="win-fold" data-t-aria="fold.msg">»</button><button type="button" class="x" id="win-x" data-t-aria="btn.close">✕</button></div>
       <div id="win-body" style="display:flex;flex-direction:column;flex:1;min-height:0"></div>
     </div>
+    <button type="button" class="tab win-tab" id="win-tab" aria-controls="win" hidden><span id="win-tab-arrow">‹</span><span class="v" id="win-tab-t"></span><span class="you" id="win-tab-n" hidden></span></button>
   </div>
 
   <section class="note">
-    <div class="card">
-      <h3 data-t="n.clickTitle"></h3>
-      <ol id="n-click"></ol>
-    </div>
-    <div class="card">
-      <h3 data-t="n.rulesTitle"></h3>
-      <ul id="n-rules"></ul>
-    </div>
+    <div class="card"><h3 data-t="n.clickTitle"></h3><ol id="n-click"></ol></div>
+    <div class="card"><h3 data-t="n.rulesTitle"></h3><ul id="n-rules"></ul></div>
     <div class="card">
       <h3 data-t="n.v2Title"></h3>
       <p id="n-v2"></p>
@@ -248,73 +242,78 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '
 let LANG = 'zh';
 const TEXT = {
   zh: {
-    'm.lang':'语言', 'm.width':'宽度', 'm.pc':'电脑', 'm.phone':'手机', 'm.rowClick':'点名单一行 =',
-    'm.rowFocus':'只跟随（默认）', 'm.rowBoth':'跟随 + 打开窗口', 'm.hitOff':'点击范围：隐藏', 'm.hitOn':'点击范围：显示',
-    'rail.title':'在线', 'rail.n':'{n} 人', 'rest.more':'休息 {n} ▸', 'rest.less':'休息 {n} ▾', 'row.open':'打开',
-    'row.openAria':'打开 {name} 的窗口', 'row.focusAria':'看 {name}（再点一次停止）', 'drawer':'名单 · {n}',
-    'follow.t':'跟随：{name}', 'follow.stop':'停止', 'btn.close':'关闭', 'btn.zoomIn':'放大', 'btn.zoomOut':'缩小', 'btn.home':'回到全部',
-    'repo.all':'全部', 'team.title':'{repo} · 团队', 'team.focus':'看它', 'b.focus':'看看它', 'b.type':'{type} · {district}',
-    'who.gov':'总督', 'stat.work':'干活', 'stat.you':'等你', 'stat.rest':'休息',
-    'hist.a':'出门：{task}', 'hist.b':'Edit ×3 · Read ×2', 'hist.c':'问总督：“{q}”',
-    'n.clickTitle':'怎么点', 'n.rulesTitle':'规则（写进 requirements/city.md）', 'n.v2Title':'V2 两指左右滚动',
+    'm.lang':'语言', 'm.width':'宽度', 'm.pc':'电脑', 'm.phone':'手机', 'm.refold':'消息面板折起后，再点一个人：',
+    'm.refoldA':'自动打开（默认）', 'm.refoldB':'保持折起', 'm.hitOff':'点击范围：隐藏', 'm.hitOn':'点击范围：显示', 'm.reset':'重置（清掉记住的折叠）',
+    'rail.title':'在线', 'rail.count':'{n}', 'rail.rest':'休息 {n} ▸', 'rail.restOpen':'休息 {n} ▾', 'rail.tab':'在线 {n}',
+    'fold.rail':'折起名单', 'fold.msg':'折起消息', 'btn.close':'关闭', 'btn.zoomIn':'放大', 'btn.zoomOut':'缩小', 'btn.home':'回到全部',
+    'follow.on':'跟随 {name}', 'follow.stop':'停止', 'repo.all':'全部', 'msg.tab':'消息 · {name}',
+    'say.ph':'跟它说…', 'say.send':'发送', 'ro.remote':'只能看：这是 {who} 的 agent，只有 {who} 能回答。',
+    'ro.sub':'它是子任务，这份对话只能看；有事去找组长。', 'ro.findLead':'找组长：{name}', 'b.focus':'看看它', 'b.type':'{type} · {district}',
+    'hist.started':'出门：{task}', 'hist.tools':'Edit ×3 · Read ×2', 'hist.q':'问：', 'hist.a':'答：', 'hist.wait':'等回答…',
+    'who.you':'你（页面）', 'who.it':'它', 'stat.work':'干活', 'stat.you':'等你', 'stat.rest':'休息',
+    'n.clickTitle':'怎么点（v2）', 'n.rulesTitle':'规则（写进 requirements/city.md）', 'n.v2Title':'V2 两指左右滚动（和 v1 一样）',
     'n.click':[
-      '左边「在线」名单：按仓库分组，每行 = 名字 + 状态。红色 = 等你。',
-      '点「event」里的 <b>worker · 票价计算</b>：镜头飞过去、放大，一直跟着它走；上面出现黑色「跟随」条。城市照常慢慢转，它始终在中间。',
-      '停止跟随：再点同一行，或按 Esc，或点「停止」，或点「全部」/ ⌂，或自己拖动地图。放大缩小、转动不会停止跟随。',
-      '行尾「打开」= 团队窗口（和今天点头顶标签一样）。窗口在名单右边，不会被名单盖住；跟随的人会挪到窗口右边的空地中间。',
-      '窗口左栏每行有一个 👁「看它」按钮；点一栋房子，小窗口里有「看看它」。',
-      '「休息 N ▸」展开休息的人。',
-      '上面切到「手机」：名单变成左上角的「名单」按钮，点开是抽屉；点一行 = 跟随并收起抽屉。抽屉打开时窗口先让开，关上后回来。',
-      '上面「点击范围：显示」：红虚线 = 头顶标签/气泡的点击范围（比框大 8 px 一圈）。',
+      '左边「在线」名单变小了：一行 = 状态点 + 名字 + 小状态。仓库标题可以点，收起/展开那个仓库。',
+      '点 event 里的 <b>worker · 票价计算</b>：镜头飞过去一直跟着它；右边打开它的<b>消息面板</b>（历史 + 回复框）。没有中间的大窗口了，地图中间一直看得见。',
+      '直接点城里的人、头顶标签或气泡：一样 = 跟随 + 消息面板。',
+      '点名单里的 <b>总督</b>：消息面板就是和总督的对话。',
+      '点 auto-pipeline 的 <b>worker · 左侧名单</b>：它是子任务，面板只能看，有「找组长」按钮。',
+      '名单右上角 « 折起名单 → 左边只剩一条细标签「› 在线 7」；消息面板的 » 折起 → 右边一条细标签。点细标签再打开。刷新页面后还记得。',
+      '停止跟随：Esc、跟随条上的「停止」、再点同一行、「全部」/ ⌂、自己拖地图。点空地 = 关掉消息面板并停止跟随。',
+      '点一栋房子：右边面板显示它的名字和「看看它」。',
+      '上面切「手机」：名单从左边细标签拉出来，点一行后自动收起；消息面板在下面，折起后是底部的小标签。',
     ],
     'n.rules':[
-      '名单一直在左边（电脑）；只列现在的人：总督第一，然后经理和它的工人，再是其他人；休息的收起放最后。顺序固定，不会因为状态变化跳来跳去。',
-      '仓库颜色：每个仓库一个颜色，名单行左边的色条和上面的仓库标签用同一个颜色。',
-      '点一行 = 镜头飞过去、放大到能读气泡，然后跟着它走（转动照常，围着它转）。默认只跟随，不开窗口；想要「跟随 + 开窗口」就在上面选另一个。',
-      '跟随中：再点同一行、Esc、「停止」、「全部」、⌂、拖动或两指滚动地图 → 停止。缩放、转动、开关窗口 → 不停。那个人下班离开 → 自动停止。',
-      '跟随的人放在「看得见的城市」中间：电脑上是名单（和窗口）右边的空地；手机上窗口打开时是窗口上面的空地。',
-      '手机（宽度 ≤ 960 px）：名单 = 抽屉；抽屉和窗口不同时出现。',
-      '头顶标签和气泡：点击范围比框大一圈 8 px。',
+      '名单 = 团队名单（每个仓库：总督、经理和它的工人、其他人；休息的收起放最后）。顺序固定，不会跳。名单宽约 212 px。',
+      '点一个人（名单行、城里的人、头顶标签、气泡）= 镜头跟随它 + 右边消息面板只显示这个人：历史、回复框。不再有中间的两栏团队窗口，面板里也不再有第二份名单。',
+      '其他成员的人：只能看。子任务：只能看 + 找组长。总督：和它的对话 + 回复框。',
+      '名单和消息面板都能折成边上的细标签（名单：人数 + 等你的红点；消息：名字 + 新消息数），一下点开；折叠状态记在这台电脑的浏览器里。',
+      '地图永远露在中间：跟随的人放在名单和消息面板之间的空地中间；右下的缩放按钮挪到消息面板左边。',
+      '「?」回答面板照旧（点红色 ? 打开，出现在右边，暂时盖在消息面板上，答完 10 秒自己关）。',
+      '手机（≤ 960 px）：名单 = 左边拉出的抽屉；消息面板 = 底部，占大约一半高，上面还能看到地图。',
     ],
-    'n.v2':'今天：上下对，左右反了（上下和左右用的规律不一样）。改法：上下保持今天的方向；左右改成跟上下同一个规律。Mac 的「自然滚动」开或关，页面都跟系统走：系统一改，上下左右一起变。页面自己不加“反向”开关。捏合 = 缩放，不变。下面用你的触控板试：A 是推荐改法；“今天”是现在的样子；B 是网页式（上下左右都和 A 相反），给你比较。',
-    'v2.today':'今天 0.10.0', 'v2.A':'A 推荐', 'v2.B':'B 网页式', 'pad.out':'deltaX {x} · deltaY {y} → 地面往 {dir} 动',
+    'n.v2':'v1 的规则不变：上下保持今天的方向；左右改成跟上下同一个规律。系统「自然滚动」一改，上下左右一起变；页面不加反向开关。捏合 = 缩放。下面可以用触控板试：A 是改法，“今天”是现在的样子，B 是网页式给你比较。',
+    'v2.today':'今天 0.10.0', 'v2.A':'A 改法', 'v2.B':'B 网页式', 'pad.out':'deltaX {x} · deltaY {y} → 地面往 {dir} 动',
     'dir.r':'右', 'dir.l':'左', 'dir.u':'上', 'dir.d':'下',
   },
   en: {
-    'm.lang':'Language', 'm.width':'Width', 'm.pc':'Computer', 'm.phone':'Phone', 'm.rowClick':'Click a row =',
-    'm.rowFocus':'follow only (default)', 'm.rowBoth':'follow + open window', 'm.hitOff':'Hit area: hidden', 'm.hitOn':'Hit area: shown',
-    'rail.title':'Now', 'rail.n':'{n} people', 'rest.more':'Resting {n} ▸', 'rest.less':'Resting {n} ▾', 'row.open':'Open',
-    'row.openAria':'Open the window of {name}', 'row.focusAria':'Watch {name} (click again to stop)', 'drawer':'People · {n}',
-    'follow.t':'Following: {name}', 'follow.stop':'Stop', 'btn.close':'Close', 'btn.zoomIn':'Zoom in', 'btn.zoomOut':'Zoom out', 'btn.home':'Back to All',
-    'repo.all':'All', 'team.title':'{repo} · Team', 'team.focus':'Watch', 'b.focus':'Show it', 'b.type':'{type} · {district}',
-    'who.gov':'Governor', 'stat.work':'Working', 'stat.you':'Waiting', 'stat.rest':'Resting',
-    'hist.a':'Headed out: {task}', 'hist.b':'Edit ×3 · Read ×2', 'hist.c':'Asked the governor: “{q}”',
-    'n.clickTitle':'What to click', 'n.rulesTitle':'Rules (go into requirements/city.md)', 'n.v2Title':'V2 two-finger sideways scroll',
+    'm.lang':'Language', 'm.width':'Width', 'm.pc':'Computer', 'm.phone':'Phone', 'm.refold':'Message panel folded, then a person is clicked:',
+    'm.refoldA':'open it (default)', 'm.refoldB':'keep it folded', 'm.hitOff':'Hit area: hidden', 'm.hitOn':'Hit area: shown', 'm.reset':'Reset (forget the folds)',
+    'rail.title':'Now', 'rail.count':'{n}', 'rail.rest':'Resting {n} ▸', 'rail.restOpen':'Resting {n} ▾', 'rail.tab':'Now {n}',
+    'fold.rail':'Fold the list', 'fold.msg':'Fold the messages', 'btn.close':'Close', 'btn.zoomIn':'Zoom in', 'btn.zoomOut':'Zoom out', 'btn.home':'Back to All',
+    'follow.on':'Following {name}', 'follow.stop':'Stop', 'repo.all':'All', 'msg.tab':'Messages · {name}',
+    'say.ph':'Say something to it…', 'say.send':'Send', 'ro.remote':'View only: this agent belongs to {who} - only {who} can answer it.',
+    'ro.sub':'This is a subtask; the conversation is view only - go to its lead for anything else.', 'ro.findLead':'Find the lead: {name}', 'b.focus':'Show it', 'b.type':'{type} · {district}',
+    'hist.started':'Headed out: {task}', 'hist.tools':'Edit ×3 · Read ×2', 'hist.q':'Q: ', 'hist.a':'A: ', 'hist.wait':'awaiting an answer…',
+    'who.you':'You (page)', 'who.it':'It', 'stat.work':'Working', 'stat.you':'Waiting', 'stat.rest':'Resting',
+    'n.clickTitle':'What to click (v2)', 'n.rulesTitle':'Rules (go into requirements/city.md)', 'n.v2Title':'V2 two-finger sideways scroll (same as v1)',
     'n.click':[
-      'The "Now" list on the left: grouped by repo, each row = name + state. Red = waiting on you.',
-      'Click <b>worker · Ticket price</b> under "event": the camera flies there, zooms in and keeps following it; a dark "Following" chip shows on top. The city keeps turning slowly and the person stays in the middle.',
-      'Stop following: click the same row again, or Esc, or "Stop", or "All" / ⌂, or drag the map yourself. Zoom and rotation do not stop it.',
-      '"Open" at the end of a row = the team window (as a head-tag click today). The window sits right of the list, never under it; the followed person moves to the middle of the free city right of the window.',
-      'Every row in the window\'s left column has a 👁 "Watch" button; click a building: its small window has "Show it".',
-      '"Resting N ▸" opens the resting people.',
-      'Switch to "Phone" on top: the list becomes the "People" button at the top left, a drawer; a row = follow and the drawer closes. While the drawer is open the window steps aside, and comes back when it closes.',
-      '"Hit area: shown" on top: the red dashes = where a head tag / bubble takes a click (8 px round the box).',
+      'The "Now" list on the left is small now: a row = state dot + name + short state. A repo title folds / opens that repo.',
+      'Click <b>worker · Ticket price</b> under event: the camera flies there and keeps following it; its <b>message panel</b> opens on the right (history + reply box). No big middle window any more: the middle of the map stays visible.',
+      'Click a person, head tag or bubble in the city: the same = follow + message panel.',
+      'Click the <b>Governor</b> in the list: the message panel is the governor conversation.',
+      'Click <b>worker · Left list</b> under auto-pipeline: a subtask, the panel is view only, with a "Find the lead" button.',
+      '« on the list folds it to a thin tab "› Now 7" at the left edge; » on the message panel folds it to a thin tab at the right edge. Click a tab to open again. A reload remembers.',
+      'Stop following: Esc, "Stop" on the chip, the same row again, "All" / ⌂, or drag the map. A click on empty ground = close the message panel and stop following.',
+      'Click a building: the right panel shows its name and "Show it".',
+      'Switch to "Phone" on top: the list slides out of its thin tab at the left and slides back after a row; the message panel is at the bottom, folded it is a small tab at the bottom.',
     ],
     'n.rules':[
-      'The list is always on the left (computer); only people who are here now: the governor first, then each manager with its workers, then the rest; resting people folded, last. The order is fixed, rows never jump when a state changes.',
-      'Repo colour: one colour per repo, the same on the row\'s left bar and on the repo tag above.',
-      'Click a row = the camera flies there, zooms in until the bubble is readable, then follows (rotation goes on, turning around it). Default: follow only, no window; pick the other option on top to try "follow + open window".',
-      'While following: same row again, Esc, "Stop", "All", ⌂, a drag or two-finger scroll of the map -> stop. Zoom, rotation, opening/closing a window -> no stop. The person clocks out -> stop by itself.',
-      'The followed person sits in the middle of the city you can see: on a computer, the free part right of the list (and the window); on a phone with the window open, the part above the window.',
-      'Phone (width ≤ 960 px): the list = a drawer; the drawer and the window never show together.',
-      'Head tags and bubbles: the hit area is 8 px bigger than the box all round.',
+      'The list = the team list (per repo: governor, managers with their workers, the rest; resting folded, last). Fixed order, rows never jump. About 212 px wide.',
+      'Click a person (list row, a person in the city, head tag, bubble) = the camera follows it + the message panel on the right shows only that person: history, reply box. No two-column team window in the middle any more, and no second list in the panel.',
+      'Another member\'s person: view only. A subtask: view only + find the lead. The governor: its conversation + reply box.',
+      'The list and the message panel each fold to a thin tab on their edge (list: count + red waiting dot; messages: name + new messages), one click opens; the folds are remembered in this browser.',
+      'The map always shows in the middle: the followed person sits in the middle of the gap between the list and the message panel; the zoom buttons move left of the panel.',
+      'The "?" answer panel as today (click the red ?, it shows on the right, over the message panel for a while, closes itself 10 s after the answer).',
+      'Phone (≤ 960 px): the list = a drawer from the left tab; the message panel = the bottom, about half the height, the map still shows above it.',
     ],
-    'n.v2':'Today: up/down is right, sideways is reversed (the two axes follow different rules). Fix: up/down stays as today; sideways follows the same rule as up/down. Mac "natural scrolling" on or off, the page follows the system: change it and both axes change together. The page adds no "invert" option of its own. Pinch = zoom, unchanged. Try it below with your trackpad: A is the fix; "Today" is how it is now; B is web-page style (both axes the other way from A), to compare.',
-    'v2.today':'Today 0.10.0', 'v2.A':'A (fix)', 'v2.B':'B web style', 'pad.out':'deltaX {x} · deltaY {y} -> land moves {dir}',
+    'n.v2':'Rule unchanged from v1: up/down stays as today; sideways follows the same rule. Change the system "natural scrolling" and both axes change together; no invert option in the page. Pinch = zoom. Try it below with the trackpad: A is the fix, "Today" is now, B is web-page style to compare.',
+    'v2.today':'Today 0.10.0', 'v2.A':'A fix', 'v2.B':'B web style', 'pad.out':'deltaX {x} · deltaY {y} -> land moves {dir}',
     'dir.r':'right', 'dir.l':'left', 'dir.u':'up', 'dir.d':'down',
   },
 };
 const tr = (k, v) => { let s = (TEXT[LANG] && TEXT[LANG][k]) || TEXT.zh[k] || k; if (v) for (const n in v) s = String(s).split('{' + n + '}').join(v[n]); return s; };
+const store = { get(k){ try { return localStorage.getItem('city-mock.' + k); } catch (e) { return null; } }, set(k, v){ try { localStorage.setItem('city-mock.' + k, v); } catch (e) {} } };
 
 /* ---------- world (2D stand-in for the 3D city) ---------- */
 const REPOS = [
@@ -323,105 +322,107 @@ const REPOS = [
   { id:'web', name:'website', rc:'#2FB57A', x:40, y:250, r:130 },
 ];
 const ROLE_C = { gov:'#C99A1E', tm:'#9C86F2', worker:'#4D7CFE', fast:'#2FB57A', merge:'#E0843A' };
+const SD = { you:'#E4476F', ask:'#E0A21E', build:'#4D7CFE', walk:'#8D91B3', rest:'#2FB57A', gov:'#C99A1E' };
 const STATE = {
-  you_ok:['you', { zh:'等你批', en:'Needs your OK' }],
-  you_ans:['you', { zh:'等你回答', en:'Waiting on your answer' }],
-  ask:['ask', { zh:'在问总督', en:'Asking the governor' }],
-  work:['build', { zh:'干活', en:'Working' }],
-  build:['build', { zh:'施工中', en:'Building' }],
-  walk:['walk', { zh:'去工地', en:'To the site' }],
-  rest:['rest', { zh:'休息中', en:'Resting' }],
-  gov_busy:['gov', { zh:'在忙', en:'Busy' }],
-  gov_idle:['gov', { zh:'空闲', en:'Idle' }],
-  gov_away:['walk', { zh:'不在', en:'Away' }],
+  you_ok:['you', { zh:'等你批', en:'Needs OK' }], you_ans:['you', { zh:'等你答', en:'Waiting' }],
+  ask:['ask', { zh:'问总督', en:'Asking' }], work:['build', { zh:'干活', en:'Working' }], build:['build', { zh:'施工', en:'Building' }],
+  walk:['walk', { zh:'走路', en:'Walking' }], rest:['rest', { zh:'休息', en:'Resting' }],
+  gov_busy:['gov', { zh:'在忙', en:'Busy' }], gov_idle:['gov', { zh:'空闲', en:'Idle' }],
 };
 const P = [
-  { id:'g-ap', repo:'ap', role:'gov', name:{ zh:'总督', en:'Governor' }, st:'gov_busy', home:[-250, -40], still:true },
-  { id:'tm1', repo:'ap', role:'tm', name:{ zh:'task manager · city-ux2', en:'task manager · city-ux2' }, st:'work', home:[-300, -110] },
+  { id:'g-ap', repo:'ap', role:'gov', name:{ zh:'总督', en:'Governor' }, st:'gov_busy', home:[-250, -40], still:true, chat:true },
+  { id:'tm1', repo:'ap', role:'tm', name:{ zh:'task manager · city-ux2', en:'task manager · city-ux2' }, st:'work', home:[-300, -110], chat:true },
   { id:'w1', repo:'ap', role:'worker', lead:'tm1', name:{ zh:'worker · 左侧名单', en:'worker · Left list' }, st:'build', home:[-330, -60] },
   { id:'w2', repo:'ap', role:'worker', lead:'tm1', name:{ zh:'worker · 滚动方向', en:'worker · Scroll way' }, st:'ask', home:[-200, 20], bub:{ zh:'左右要不要跟系统？', en:'Sideways: follow the system?' } },
-  { id:'f1', repo:'ap', role:'fast', name:{ zh:'fast-lane · 错别字', en:'fast-lane · Typos' }, st:'rest', home:[-170, -120] },
-  { id:'g-ev', repo:'ev', role:'gov', name:{ zh:'总督', en:'Governor' }, st:'gov_idle', home:[250, -110], still:true },
-  { id:'tm2', repo:'ev', role:'tm', name:{ zh:'task manager · 报名表', en:'task manager · Sign-up form' }, st:'you_ok', home:[300, -170], bub:{ zh:'要权限：Bash npm test', en:'Needs permission: Bash npm test' }, ask:true },
-  { id:'w3', repo:'ev', role:'worker', lead:'tm2', name:{ zh:'worker · 票价计算', en:'worker · Ticket price' }, st:'walk', home:[200, -40], roam:110 },
-  { id:'w4', repo:'ev', role:'worker', lead:'tm2', name:{ zh:'worker · 导出 CSV', en:'worker · Export CSV' }, st:'rest', home:[330, -60] },
-  { id:'g-web', repo:'web', role:'gov', name:{ zh:'总督', en:'Governor' }, st:'gov_away', home:[40, 250], still:true },
-  { id:'w5', repo:'web', role:'worker', name:{ zh:'worker · 深色模式', en:'worker · Dark mode' }, st:'you_ans', home:[0, 200], bub:{ zh:'深色用哪个蓝？', en:'Which blue for dark?' }, ask:true },
-  { id:'m1', repo:'web', role:'merge', name:{ zh:'merge deputy · 合并 login', en:'merge deputy · Merge login' }, st:'work', home:[100, 300] },
+  { id:'f1', repo:'ap', role:'fast', name:{ zh:'fast-lane · 错别字', en:'fast-lane · Typos' }, st:'rest', home:[-170, -120], chat:true },
+  { id:'g-ev', repo:'ev', role:'gov', name:{ zh:'总督', en:'Governor' }, st:'gov_idle', home:[250, -110], still:true, chat:true },
+  { id:'tm2', repo:'ev', role:'tm', name:{ zh:'task manager · 报名表', en:'task manager · Sign-up form' }, st:'you_ok', home:[300, -170], bub:{ zh:'要权限：Bash npm test', en:'Needs permission: Bash npm test' }, ask:true, chat:true },
+  { id:'w3', repo:'ev', role:'worker', name:{ zh:'worker · 票价计算', en:'worker · Ticket price' }, st:'walk', home:[200, -40], roam:110, chat:true },
+  { id:'w4', repo:'ev', role:'worker', name:{ zh:'worker · 导出 CSV', en:'worker · Export CSV' }, st:'rest', home:[330, -60], chat:true },
+  { id:'w5', repo:'web', role:'worker', name:{ zh:'worker · 深色模式', en:'worker · Dark mode' }, st:'you_ans', home:[0, 200], bub:{ zh:'深色用哪个蓝？', en:'Which blue for dark?' }, ask:true, chat:true },
+  { id:'m1', repo:'web', role:'merge', name:{ zh:'merge deputy · 合并 login', en:'merge deputy · Merge login' }, st:'work', home:[100, 300], remote:'Ann' },
 ];
 const BUILD = [
   { id:'b1', repo:'ap', x:-250, y:-40, w:40, h:32, hall:true, name:{ zh:'市政厅', en:'Town hall' }, type:{ zh:'市政厅', en:'Town hall' }, dist:{ zh:'中心', en:'Centre' } },
   { id:'b2', repo:'ap', x:-330, y:-80, w:26, h:22, name:{ zh:'city 页面', en:'city page' }, type:{ zh:'住宅', en:'House' }, dist:{ zh:'住宅区', en:'Homes' } },
   { id:'b3', repo:'ap', x:-300, y:-140, w:24, h:30, name:{ zh:'测试塔', en:'Test tower' }, type:{ zh:'测试塔', en:'Tower' }, dist:{ zh:'测试区', en:'Tests' } },
-  { id:'b4', repo:'ap', x:-180, y:20, w:26, h:22, name:{ zh:'relay 模块', en:'relay module' }, type:{ zh:'工坊', en:'Workshop' }, dist:{ zh:'工坊区', en:'Workshops' } },
   { id:'b5', repo:'ev', x:250, y:-110, w:38, h:30, hall:true, name:{ zh:'市政厅', en:'Town hall' }, type:{ zh:'市政厅', en:'Town hall' }, dist:{ zh:'中心', en:'Centre' } },
-  { id:'b6', repo:'ev', x:320, y:-170, w:24, h:30, name:{ zh:'报名表', en:'Sign-up form' }, type:{ zh:'测试塔', en:'Tower' }, dist:{ zh:'测试区', en:'Tests' } },
   { id:'b7', repo:'ev', x:190, y:-20, w:26, h:22, name:{ zh:'票价 模块', en:'pricing module' }, type:{ zh:'商店', en:'Shop' }, dist:{ zh:'商业街', en:'Shops' } },
   { id:'b8', repo:'web', x:40, y:250, w:36, h:28, hall:true, name:{ zh:'市政厅', en:'Town hall' }, type:{ zh:'市政厅', en:'Town hall' }, dist:{ zh:'中心', en:'Centre' } },
-  { id:'b9', repo:'web', x:-20, y:200, w:26, h:22, name:{ zh:'主题', en:'theme' }, type:{ zh:'住宅', en:'House' }, dist:{ zh:'住宅区', en:'Homes' } },
 ];
 const repoOf = id => REPOS.find(r => r.id === id);
-for (const p of P) { p.x = p.home[0]; p.y = p.home[1]; p.goal = null; p.wait = Math.random() * 2; }
+const byId = id => P.find(p => p.id === id);
+for (const p of P) { p.x = p.home[0]; p.y = p.home[1]; p.goal = null; p.wait = Math.random() * 2; p.msgs = []; }
 const nm = p => p.name[LANG] || p.name.zh;
 
-/* ---------- camera: target (tx, ty), scale s, angle a (never-stop rotation) ---------- */
+/* ---------- state ---------- */
 const cam = { tx:0, ty:60, s:.85, a:0 };
 const ROT_SEC = 90; // mock only: faster than the page's 5 min, so the orbit is easy to see
-let fly = null, follow = null, selected = null, winMode = null, drawerOpen = false, restOpen = new Set(), phone = false;
-let rowMode = 'focus', v2Mode = 'A';
 const FOLLOW_S = 2.1;
+let fly = null, follow = null, pick = null /* {t:'p'|'b', id} */, phone = false, v2Mode = 'A', refold = 'open';
+let railFolded = store.get('railFolded') === '1', msgFolded = store.get('msgFolded') === '1', drawerOpen = false;
+const grpClosed = new Set((store.get('grpClosed') || '').split(',').filter(Boolean)), restOpen = new Set();
+let seenMsgs = 0;
 
 const stage = $('#stage'), canvas = $('#city'), ctx = canvas.getContext('2d'), ov = $('#ov');
 let W = 0, H = 0, DPR = 1;
-function resize(){
-  const r = stage.getBoundingClientRect(); W = r.width; H = r.height; DPR = window.devicePixelRatio || 1;
-  canvas.width = W * DPR; canvas.height = H * DPR;
-}
-/* the free city area: right of the rail (and of the window) on a computer; above the sheet on a phone */
+function resize(){ const r = stage.getBoundingClientRect(); W = r.width; H = r.height; DPR = window.devicePixelRatio || 1; canvas.width = W * DPR; canvas.height = H * DPR; }
+const railShown = () => phone ? drawerOpen : !railFolded;
+const winShown = () => !!pick && !msgFolded;
+/* the free map: between the rail (or its tab) and the message panel (or its tab); on a phone above the sheet */
 function freeBox(){
-  let x0 = 0, y0 = 0, x1 = W, y1 = H;
+  let x0 = 0, x1 = W, y0 = 0, y1 = H;
   if (!phone) {
-    x0 = 12 + 264 + 12;
-    const w = $('#win'); if (!w.hidden) x0 = w.offsetLeft + w.offsetWidth + 12;
-    if (x0 > W - 120) x0 = 12 + 264 + 12;
+    x0 = railShown() ? 12 + $('#rail').offsetWidth + 8 : 30 + 8;
+    if (pick) x1 = winShown() ? $('#win').offsetLeft - 8 : W - 30 - 8;
   } else {
-    const w = $('#win'); if (!w.hidden) y1 = w.offsetTop - 6;
+    x0 = 30;
+    if (pick) y1 = winShown() ? $('#win').offsetTop - 6 : H - 40;
   }
-  return { x0, y0, x1, y1, cx:(x0 + x1) / 2, cy:(y0 + y1) / 2 };
+  return { x0, x1, y0, y1, cx:(x0 + x1) / 2, cy:(y0 + y1) / 2 };
 }
 function toScreen(x, y){
   const f = freeBox(), c = Math.cos(cam.a), s = Math.sin(cam.a), dx = x - cam.tx, dy = y - cam.ty;
   return [f.cx + cam.s * (dx * c - dy * s), f.cy + cam.s * (dx * s + dy * c)];
 }
-function screenPan(dx, dy){ // the land moves (dx, dy) px on screen
-  const c = Math.cos(-cam.a), s = Math.sin(-cam.a);
-  cam.tx -= (dx * c - dy * s) / cam.s; cam.ty -= (dx * s + dy * c) / cam.s;
-}
+function screenPan(dx, dy){ const c = Math.cos(-cam.a), s = Math.sin(-cam.a); cam.tx -= (dx * c - dy * s) / cam.s; cam.ty -= (dx * s + dy * c) / cam.s; }
 const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 function flyTo(x, y, s){ fly = { fx:cam.tx, fy:cam.ty, fs:cam.s, x, y, s, t:0 }; }
-function startFollow(p){ follow = p.id; fly = { fx:cam.tx, fy:cam.ty, fs:cam.s, x:p.x, y:p.y, s:Math.max(cam.s, FOLLOW_S), t:0, live:p.id }; render(); }
-function stopFollow(){ if (!follow) return; follow = null; render(); }
+function startFollow(p){ follow = p.id; fly = { fx:cam.tx, fy:cam.ty, fs:cam.s, x:p.x, y:p.y, s:Math.max(cam.s, FOLLOW_S), t:0, live:p.id }; }
+function stopFollow(){ if (!follow) return; follow = null; if (fly && fly.live) fly = null; renderAll(); }
 function home(){ stopFollow(); flyTo(0, 60, phone ? .55 : .85); }
 
-/* ---------- people walk ---------- */
+/* pick a person = follow + message panel (W2); a building = its card in the same panel */
+function pickPerson(id){
+  const p = byId(id);
+  if (follow === id && pick && pick.id === id) { stopFollow(); return; } // a second click on the followed person stops following
+  pick = { t:'p', id }; seenMsgs = p.msgs.length;
+  if (refold === 'open') msgFolded = false;
+  startFollow(p);
+  if (phone) drawerOpen = false;
+  renderAll();
+}
+function pickBuilding(id){ pick = { t:'b', id }; if (refold === 'open') msgFolded = false; renderAll(); }
+function unpick(){ pick = null; stopFollow(); renderAll(); }
+
+/* ---------- people walk, camera ---------- */
 function step(dt){
   for (const p of P) {
     if (p.still || p.st === 'rest') continue;
     if (!p.goal) { p.wait -= dt; if (p.wait <= 0) { const R = p.roam || 45, a = Math.random() * 6.28; p.goal = [p.home[0] + Math.cos(a) * R * Math.random(), p.home[1] + Math.sin(a) * R * Math.random()]; } continue; }
     const dx = p.goal[0] - p.x, dy = p.goal[1] - p.y, d = Math.hypot(dx, dy), v = 22 * dt;
-    if (d <= v) { p.x = p.goal[0]; p.y = p.goal[1]; p.goal = null; p.wait = 1 + Math.random() * 2.5; }
-    else { p.x += dx / d * v; p.y += dy / d * v; }
+    if (d <= v) { p.x = p.goal[0]; p.y = p.goal[1]; p.goal = null; p.wait = 1 + Math.random() * 2.5; } else { p.x += dx / d * v; p.y += dy / d * v; }
   }
   cam.a += dt * Math.PI * 2 / ROT_SEC;
   if (fly) {
     fly.t = Math.min(1, fly.t + dt / .9);
-    const e = ease(fly.t), lp = fly.live && P.find(q => q.id === fly.live);
+    const e = ease(fly.t), lp = fly.live && byId(fly.live);
     const x = lp ? lp.x : fly.x, y = lp ? lp.y : fly.y;
     cam.tx = fly.fx + (x - fly.fx) * e; cam.ty = fly.fy + (y - fly.fy) * e; cam.s = fly.fs + (fly.s - fly.fs) * e;
     if (fly.t >= 1) fly = null;
   } else if (follow) {
-    const p = P.find(q => q.id === follow);
-    if (!p) stopFollow(); else { cam.tx += (p.x - cam.tx) * .2; cam.ty += (p.y - cam.ty) * .2; }
+    const p = byId(follow), k = 1 - Math.exp(-8 * dt);
+    cam.tx += (p.x - cam.tx) * k; cam.ty += (p.y - cam.ty) * k;
   }
 }
 function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
@@ -432,25 +433,21 @@ function draw(){
     const [x, y] = toScreen(r.x, r.y);
     ctx.beginPath(); ctx.arc(x, y, r.r * cam.s, 0, 7); ctx.fillStyle = css('--land'); ctx.fill();
     ctx.lineWidth = 3; ctx.strokeStyle = css('--land-edge'); ctx.stroke();
-    ctx.beginPath(); ctx.arc(x, y, r.r * cam.s - 6, 0, 7); ctx.lineWidth = 2; ctx.strokeStyle = r.rc + '55'; ctx.stroke();
   }
   for (const b of BUILD) {
     const [x, y] = toScreen(b.x, b.y);
     ctx.save(); ctx.translate(x, y); ctx.rotate(cam.a);
     ctx.fillStyle = b.hall ? '#FFD36E' : '#F4F1E8'; ctx.strokeStyle = '#2A2B45'; ctx.lineWidth = 2;
-    ctx.fillRect(-b.w * cam.s / 2, -b.h * cam.s / 2, b.w * cam.s, b.h * cam.s);
-    ctx.strokeRect(-b.w * cam.s / 2, -b.h * cam.s / 2, b.w * cam.s, b.h * cam.s);
+    ctx.fillRect(-b.w * cam.s / 2, -b.h * cam.s / 2, b.w * cam.s, b.h * cam.s); ctx.strokeRect(-b.w * cam.s / 2, -b.h * cam.s / 2, b.w * cam.s, b.h * cam.s);
     ctx.restore();
   }
   for (const p of P) {
     const [x, y] = toScreen(p.x, p.y);
-    ctx.beginPath(); ctx.arc(x, y, 6 + cam.s * 1.6, 0, 7); ctx.fillStyle = ROLE_C[p.role]; ctx.fill();
-    ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 6 + cam.s * 1.6, 0, 7); ctx.fillStyle = ROLE_C[p.role]; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.stroke();
     if (follow === p.id) { ctx.beginPath(); ctx.arc(x, y, 14 + cam.s * 3, 0, 7); ctx.lineWidth = 2; ctx.strokeStyle = '#2A2B45'; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); }
   }
   placeTags();
 }
-/* head tags + bubbles (HTML over the canvas), clickable = open the team window, as today */
 const tagEls = new Map();
 function placeTags(){
   for (const p of P) {
@@ -461,7 +458,7 @@ function placeTags(){
       t.bub.className = 'bub' + (p.ask ? ' ask' : ''); t.bub.dataset.pid = p.id; t.bub.innerHTML = '<span></span>';
       ov.append(t.tag, t.bub); tagEls.set(p.id, t);
     }
-    const [x, y] = toScreen(p.x, p.y), show = cam.s > .7 || follow === p.id || selected === p.id;
+    const [x, y] = toScreen(p.x, p.y), show = cam.s > .7 || follow === p.id;
     t.tag.textContent = nm(p); t.tag.hidden = !show || p.st === 'rest';
     const bt = p.bub ? p.bub[LANG] : '';
     t.bub.firstChild.textContent = bt; t.bub.hidden = !bt || !show;
@@ -469,136 +466,157 @@ function placeTags(){
     t.bub.style.transform = `translate(${x}px, ${y - 46}px) translate(-50%, -100%)`;
   }
 }
-ov.addEventListener('click', e => { const el = e.target.closest('[data-pid]'); if (el) openWin(el.dataset.pid); });
+ov.addEventListener('click', e => { const el = e.target.closest('[data-pid]'); if (el) pickPerson(el.dataset.pid); });
 
-/* ---------- the rail ---------- */
+/* ---------- the rail (W1): compact, collapsible groups, the team list ---------- */
 function rows(repoId){
-  const here = P.filter(p => p.repo === repoId);
-  const out = [], gov = here.find(p => p.role === 'gov'); if (gov) out.push({ p:gov, depth:0 });
-  for (const lead of here.filter(p => p.role === 'tm')) {
-    out.push({ p:lead, depth:0 });
-    for (const w of here) if (w.lead === lead.id) out.push({ p:w, depth:1 });
-  }
+  const here = P.filter(p => p.repo === repoId), out = [];
+  const gov = here.find(p => p.role === 'gov'); if (gov) out.push({ p:gov, depth:0 });
+  for (const lead of here.filter(p => p.role === 'tm')) { out.push({ p:lead, depth:0 }); for (const w of here) if (w.lead === lead.id) out.push({ p:w, depth:1 }); }
   for (const p of here) if (p.role !== 'gov' && p.role !== 'tm' && !p.lead) out.push({ p, depth:0 });
   return out;
 }
-function rowHtml(r, resting){
-  const p = r.p, rep = repoOf(p.repo), [cls, txt] = STATE[p.st], name = nm(p);
-  return `<li class="rrow${r.depth ? ' sub' : ''}${resting ? ' resting' : ''}" style="--rc:${rep.rc}" aria-current="${follow === p.id}">`
-    + `<button type="button" class="rfocus" data-focus="${p.id}" aria-pressed="${follow === p.id}" aria-label="${esc(tr('row.focusAria', { name }))}">`
-    + `<span class="who">${follow === p.id ? '<svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>' : ''}<b>${esc(name)}</b></span>`
-    + `<span class="pill ${cls}">${esc(txt[LANG])}</span></button>`
-    + `<button type="button" class="ropen" data-open="${p.id}" aria-label="${esc(tr('row.openAria', { name }))}">${esc(tr('row.open'))}</button></li>`;
+function rowHtml(r, repo, resting){
+  const p = r.p, [cls, txt] = STATE[p.st];
+  return `<li><button type="button" class="rrow${r.depth ? ' sub' : ''}${resting ? ' resting' : ''}" data-focus="${p.id}" style="--rc:${repo.rc}" aria-current="${!!(pick && pick.id === p.id)}">`
+    + `<span class="sdot" style="--sd:${SD[cls]}"></span><b>${esc(nm(p))}</b><span class="chip ${cls}">${esc(txt[LANG])}</span></button></li>`;
+}
+function counts(){
+  let n = 0, you = 0;
+  for (const p of P) if (p.role !== 'gov' && p.st !== 'rest') { n++; if (STATE[p.st][0] === 'you') you++; }
+  return { n, you };
 }
 function renderRail(){
-  let html = '', n = 0, you = 0;
+  let html = '';
   for (const rep of REPOS) {
-    const all = rows(rep.id), act = all.filter(r => r.p.st !== 'rest'), rest = all.filter(r => r.p.st === 'rest');
-    n += act.filter(r => r.p.role !== 'gov').length;
-    you += act.filter(r => STATE[r.p.st][0] === 'you').length;
-    html += `<section><div class="grp-h"><span class="rc" style="--rc:${rep.rc}"></span>${esc(rep.name)}<span class="n">${act.length}</span></div><ul class="rrows">`
-      + act.map(r => rowHtml(r, false)).join('') + '</ul>';
-    if (rest.length) {
-      const open = restOpen.has(rep.id);
-      html += `<button type="button" class="rest-t" data-rest="${rep.id}" aria-expanded="${open}">${esc(tr(open ? 'rest.less' : 'rest.more', { n: rest.length }))}</button>`;
-      if (open) html += '<ul class="rrows">' + rest.map(r => rowHtml(r, true)).join('') + '</ul>';
+    const all = rows(rep.id), act = all.filter(r => r.p.st !== 'rest'), rest = all.filter(r => r.p.st === 'rest'), open = !grpClosed.has(rep.id);
+    const you = act.filter(r => STATE[r.p.st][0] === 'you').length;
+    html += `<section><button type="button" class="grp-h" data-grp="${rep.id}" aria-expanded="${open}"><span class="car">▾</span><span class="rc" style="--rc:${rep.rc}"></span>${esc(rep.name)}`
+      + `<span class="n">${act.filter(r => r.p.role !== 'gov').length}</span>${you && !open ? `<span class="you">${you}</span>` : ''}</button>`;
+    if (open) {
+      html += '<ul class="rrows">' + act.map(r => rowHtml(r, rep, false)).join('') + '</ul>';
+      if (rest.length) {
+        const ro = restOpen.has(rep.id);
+        html += `<button type="button" class="rest-t" data-rest="${rep.id}" aria-expanded="${ro}">${esc(tr(ro ? 'rail.restOpen' : 'rail.rest', { n: rest.length }))}</button>`;
+        if (ro) html += '<ul class="rrows">' + rest.map(r => rowHtml(r, rep, true)).join('') + '</ul>';
+      }
     }
     html += '</section>';
   }
   $('#rail-list').innerHTML = html;
-  $('#rail-n').textContent = tr('rail.n', { n });
-  $('#drawer-btn').innerHTML = esc(tr('drawer', { n })) + (you ? ` <span class="you">${you}</span>` : '');
+  const c = counts();
+  $('#rail-n').textContent = tr('rail.count', { n: c.n });
+  $('#rail-you').hidden = !c.you; $('#rail-you').textContent = c.you;
+  $('#rail-tab-t').textContent = tr('rail.tab', { n: c.n });
+  $('#rail-tab-you').hidden = !c.you; $('#rail-tab-you').textContent = c.you;
+  $('#rail').hidden = !railShown();
+  $('#rail-tab').hidden = railShown();
 }
 $('#rail-list').addEventListener('click', e => {
-  const f = e.target.closest('[data-focus]'), o = e.target.closest('[data-open]'), rt = e.target.closest('[data-rest]');
+  const g = e.target.closest('[data-grp]'), rt = e.target.closest('[data-rest]'), f = e.target.closest('[data-focus]');
+  if (g) { const id = g.dataset.grp; grpClosed.has(id) ? grpClosed.delete(id) : grpClosed.add(id); store.set('grpClosed', [...grpClosed].join(',')); renderRail(); return; }
   if (rt) { const id = rt.dataset.rest; restOpen.has(id) ? restOpen.delete(id) : restOpen.add(id); renderRail(); return; }
-  if (o) { if (phone) setDrawer(false); openWin(o.dataset.open); return; }
-  if (f) {
-    const p = P.find(q => q.id === f.dataset.focus);
-    if (follow === p.id) { stopFollow(); return; }
-    if (phone) setDrawer(false);
-    startFollow(p);
-    if (rowMode === 'both') openWin(p.id);
-  }
+  if (f) pickPerson(f.dataset.focus);
 });
-function setDrawer(open){
-  drawerOpen = open;
-  $('#rail').classList.toggle('open', open);
-  $('#drawer-btn').setAttribute('aria-expanded', String(open));
-  $('#rail-x').hidden = !open;
-  if (phone) $('#win').style.visibility = open ? 'hidden' : '';
-}
-$('#drawer-btn').addEventListener('click', () => setDrawer(!drawerOpen));
-$('#rail-x').addEventListener('click', () => setDrawer(false));
+$('#rail-fold').addEventListener('click', () => { if (phone) drawerOpen = false; else { railFolded = true; store.set('railFolded', '1'); } renderAll(); $('#rail-tab').focus(); });
+$('#rail-tab').addEventListener('click', () => { if (phone) drawerOpen = true; else { railFolded = false; store.set('railFolded', '0'); } renderAll(); });
 
-/* ---------- the team window / building window ---------- */
-function openWin(pid){ selected = pid; winMode = 'team'; if (phone && drawerOpen) setDrawer(false); renderWin(); }
-function openBuilding(bid){ selected = bid; winMode = 'b'; renderWin(); }
+/* ---------- the message panel (W2, W3) ---------- */
+const HIST = {
+  'g-ap': [['act', '09:02', { zh:'出门：main manager', en:'Headed out: main manager' }], ['me', { zh:'city-ux2 的 mock 怎么样了？', en:'How is the city-ux2 mock?' }], ['it', { zh:'mock v2 已推送，等主人看。\n- 名单变小\n- 点人 = 跟随 + 消息', en:'mock v2 is pushed, waiting for the owner.\n- smaller list\n- click = follow + messages' }]],
+  'tm1': [['act', '08:52', { zh:'出门：city-ux2', en:'Headed out: city-ux2' }], ['act', '09:08', { zh:'Edit ×3 · Read ×2', en:'Edit ×3 · Read ×2' }], ['it', { zh:'失败测试已提交，等 **mock yes**。', en:'Failing tests are in, waiting for **mock yes**.' }]],
+  'w1': [['act', '09:40', { zh:'出门：左侧名单', en:'Headed out: Left list' }], ['task', { zh:'按 tests/test_agent_city_ux2.py 做 V1', en:'Do V1 per tests/test_agent_city_ux2.py' }], ['act', '09:52', { zh:'Edit ×6 · Bash ×2', en:'Edit ×6 · Bash ×2' }]],
+  'w2': [['act', '09:30', { zh:'出门：滚动方向', en:'Headed out: Scroll way' }], ['qa', { zh:'左右要不要跟系统？', en:'Sideways: follow the system?' }, null]],
+  'tm2': [['act', '10:10', { zh:'出门：报名表', en:'Headed out: Sign-up form' }], ['qa', { zh:'要权限：Bash npm test', en:'Needs permission: Bash npm test' }, null]],
+  'w3': [['act', '10:20', { zh:'出门：票价计算', en:'Headed out: Ticket price' }], ['me', { zh:'儿童票打几折？', en:'What is the child discount?' }], ['it', { zh:'按规则：**半价**，满 12 岁按成人。', en:'Per the rules: **half price**, adult from 12.' }], ['act', '10:31', { zh:'Edit ×2', en:'Edit ×2' }]],
+  'w4': [['act', '08:40', { zh:'完工，去休息', en:'Finished, heading to rest' }]],
+  'f1': [['act', '08:30', { zh:'完工，去休息', en:'Finished, heading to rest' }]],
+  'g-ev': [['it', { zh:'今天 event 没有新任务。', en:'No new task for event today.' }]],
+  'w5': [['act', '10:05', { zh:'出门：深色模式', en:'Headed out: Dark mode' }], ['qa', { zh:'深色用哪个蓝？', en:'Which blue for dark?' }, null]],
+  'm1': [['act', '10:12', { zh:'出门：合并 login', en:'Headed out: Merge login' }]],
+};
+function md(s){ return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split('\n- ').map((x, i) => i ? `<li>${x}</li>` : x).join('').replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>'); }
+function histHtml(p){
+  const items = (HIST[p.id] || []).map(h => {
+    const [k] = h;
+    if (k === 'act') return `<li class="act"><time>${h[1]}</time><span>${esc(h[2][LANG])}</span></li>`;
+    if (k === 'qa') return `<li class="qa"><p><b>${esc(tr('hist.q'))}</b>${esc(h[1][LANG])}</p><p><b>${esc(tr('hist.a'))}</b>${h[2] ? esc(h[2][LANG]) : `<i>${esc(tr('hist.wait'))}</i>`}</p></li>`;
+    if (k === 'me') return `<li class="msg me"><small>${esc(tr('who.you'))}</small>${md(h[1][LANG])}</li>`;
+    return `<li class="msg"><small>${esc(nm(p))}</small>${md(h[1][LANG])}</li>`;
+  });
+  for (const m of p.msgs) items.push(`<li class="msg me"><small>${esc(tr('who.you'))}</small>${esc(m)}</li>`);
+  return items.join('');
+}
 function renderWin(){
-  const w = $('#win');
-  if (!winMode) { w.hidden = true; return; }
-  w.hidden = false;
-  if (winMode === 'b') {
-    const b = BUILD.find(x => x.id === selected);
-    w.classList.add('narrow');
+  const w = $('#win'), tab = $('#win-tab');
+  if (!pick) { w.hidden = true; tab.hidden = true; return; }
+  w.hidden = msgFolded; tab.hidden = !msgFolded;
+  if (pick.t === 'b') {
+    const b = BUILD.find(x => x.id === pick.id);
+    w.classList.add('short');
+    $('#win-dot').style.setProperty('--c', '#FFD36E');
     $('#win-title').textContent = b.name[LANG];
-    $('#win-body').innerHTML = `<p class="p-facts" style="margin:0">${esc(tr('b.type', { type: b.type[LANG], district: b.dist[LANG] }))}</p>`
-      + `<button type="button" class="b-focus" data-bfocus="${b.id}"><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>${esc(tr('b.focus'))}</button>`;
+    $('#win-tab-t').textContent = b.name[LANG]; $('#win-tab-n').hidden = true;
+    $('#win-body').innerHTML = `<div class="bld"><span class="facts" style="padding:0">${esc(tr('b.type', { type: b.type[LANG], district: b.dist[LANG] }))}</span><button type="button" class="btn" data-focus-b="${b.id}">👁 ${esc(tr('b.focus'))}</button></div>`;
     return;
   }
-  w.classList.remove('narrow');
-  const p = P.find(q => q.id === selected), rep = repoOf(p.repo);
-  $('#win-title').textContent = tr('team.title', { repo: rep.name });
-  const list = rows(rep.id).map(r => {
-    const q = r.p, [cls, txt] = STATE[q.st];
-    return `<li class="trow${r.depth ? ' sub' : ''}" aria-current="${q.id === p.id}"><button type="button" class="tsel" data-sel="${q.id}"><span class="dot" style="--c:${ROLE_C[q.role]}"></span><b>${esc(nm(q))}</b><span class="pill ${cls}">${esc(txt[LANG])}</span></button>`
-      + `<button type="button" class="tfocus" data-tfocus="${q.id}" aria-pressed="${follow === q.id}" aria-label="${esc(tr('team.focus'))}" title="${esc(tr('team.focus'))}"><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></li>`;
-  }).join('');
-  const [cls, txt] = STATE[p.st];
-  $('#win-body').innerHTML = `<div class="cols"><ul class="team">${list}</ul><div class="side">`
-    + `<div class="p-name">${esc(nm(p))} <span class="pill ${cls}">${esc(txt[LANG])}</span></div>`
-    + `<div class="p-facts">${esc(rep.name)} · main</div>`
-    + `<ul class="hist"><li class="act">${esc(tr('hist.a', { task: nm(p) }))}</li><li class="act">${esc(tr('hist.b'))}</li>${p.bub ? `<li>${esc(tr('hist.c', { q: p.bub[LANG] }))}</li>` : ''}</ul></div></div>`;
+  w.classList.remove('short');
+  const p = byId(pick.id), rep = repoOf(p.repo), [cls, txt] = STATE[p.st];
+  $('#win-dot').style.setProperty('--c', ROLE_C[p.role]);
+  $('#win-title').textContent = nm(p);
+  $('#win-tab-t').textContent = tr('msg.tab', { name: nm(p) });
+  const fresh = Math.max(0, p.msgs.length - seenMsgs); $('#win-tab-n').hidden = !fresh; $('#win-tab-n').textContent = fresh;
+  let foot;
+  if (p.remote) foot = `<p class="ro">${esc(tr('ro.remote', { who: p.remote }))}</p>`;
+  else if (p.lead) { const l = byId(p.lead); foot = `<div class="ro"><span>${esc(tr('ro.sub'))}</span><button type="button" class="btn" data-lead="${l.id}">${esc(tr('ro.findLead', { name: nm(l) }))}</button></div>`; }
+  else foot = `<form class="say" id="say"><textarea id="say-t" placeholder="${esc(tr('say.ph'))}" aria-label="${esc(tr('say.ph'))}"></textarea><button type="submit" class="btn primary">${esc(tr('say.send'))}</button></form>`;
+  $('#win-body').innerHTML = `<div class="facts"><span class="pill ${cls}">${esc(txt[LANG])}</span><span>${esc(rep.name)} · main</span></div><ul class="hist" id="hist">${histHtml(p)}</ul>${foot}`;
+  const h = $('#hist'); h.scrollTop = h.scrollHeight;
 }
 $('#win-body').addEventListener('click', e => {
-  const s = e.target.closest('[data-sel]'), f = e.target.closest('[data-tfocus]'), bf = e.target.closest('[data-bfocus]');
-  if (f) { const p = P.find(q => q.id === f.dataset.tfocus); follow === p.id ? stopFollow() : startFollow(p); renderWin(); return; }
-  if (s) { selected = s.dataset.sel; renderWin(); return; }
-  if (bf) { const b = BUILD.find(x => x.id === bf.dataset.bfocus); stopFollow(); flyTo(b.x, b.y, FOLLOW_S); }
+  const l = e.target.closest('[data-lead]'), bf = e.target.closest('[data-focus-b]');
+  if (l) pickPerson(l.dataset.lead);
+  if (bf) { const b = BUILD.find(x => x.id === bf.dataset.focusB); stopFollow(); flyTo(b.x, b.y, FOLLOW_S); }
 });
-$('#win-x').addEventListener('click', () => { winMode = null; selected = null; renderWin(); });
+$('#win-body').addEventListener('submit', e => {
+  e.preventDefault();
+  const t = $('#say-t'), v = t.value.trim(); if (!v || !pick) return;
+  byId(pick.id).msgs.push(v); seenMsgs = byId(pick.id).msgs.length; renderWin();
+});
+$('#win-x').addEventListener('click', unpick);
+$('#win-fold').addEventListener('click', () => { msgFolded = true; store.set('msgFolded', '1'); renderAll(); $('#win-tab').focus(); });
+$('#win-tab').addEventListener('click', () => { msgFolded = false; store.set('msgFolded', '0'); if (pick && pick.t === 'p') seenMsgs = byId(pick.id).msgs.length; renderAll(); });
 
-/* ---------- the chip, repo tags, stats ---------- */
+/* ---------- chip, repo tags, stats, zoom buttons ---------- */
 function renderFollow(){
-  const el = $('#follow'), p = follow && P.find(q => q.id === follow);
-  el.hidden = !p;
-  if (!p) return;
-  $('#follow-t').textContent = tr('follow.t', { name: nm(p) });
+  const el = $('#follow'), p = follow && byId(follow);
+  el.hidden = !p; if (!p) return;
+  $('#follow-t').textContent = tr('follow.on', { name: nm(p) });
   el.style.left = freeBox().cx + 'px';
+}
+function placeCam(){
+  const f = freeBox();
+  $('#cam').style.right = (W - f.x1 + 4) + 'px';
+  $('#cam').style.bottom = phone && pick ? (H - f.y1 + 6) + 'px' : '12px';
 }
 $('#follow-stop').addEventListener('click', stopFollow);
 function renderRepos(){
   $('#repos').innerHTML = `<button type="button" class="repo all" data-terr="*">${esc(tr('repo.all'))}</button>`
     + REPOS.map(r => `<button type="button" class="repo" data-terr="${r.id}"><span class="rc" style="--rc:${r.rc}"></span>${esc(r.name)}</button>`).join('');
 }
-$('#repos').addEventListener('click', e => {
-  const b = e.target.closest('.repo'); if (!b) return;
-  stopFollow();
-  if (b.dataset.terr === '*') { home(); return; }
-  const r = repoOf(b.dataset.terr); flyTo(r.x, r.y, 1.35);
-});
+$('#repos').addEventListener('click', e => { const b = e.target.closest('.repo'); if (!b) return; stopFollow(); if (b.dataset.terr === '*') { home(); return; } const r = repoOf(b.dataset.terr); flyTo(r.x, r.y, 1.35); });
 function renderStats(){
   const act = P.filter(p => p.role !== 'gov');
   const work = act.filter(p => ['build', 'walk'].includes(STATE[p.st][0])).length, you = act.filter(p => STATE[p.st][0] === 'you').length, rest = act.filter(p => p.st === 'rest').length;
   $('#stats').innerHTML = `<span class="stat">${esc(tr('stat.work'))} <b>${work}</b></span><span class="stat">${esc(tr('stat.you'))} <b>${you}</b></span><span class="stat">${esc(tr('stat.rest'))} <b>${rest}</b></span>`;
 }
-function render(){ renderRail(); renderFollow(); if (winMode) renderWin(); }
-
-/* ---------- camera controls ---------- */
-$('#zin').addEventListener('click', () => { fly = null; cam.s = Math.min(4, cam.s * 1.4); });
-$('#zout').addEventListener('click', () => { fly = null; cam.s = Math.max(.35, cam.s / 1.4); });
+function renderAll(){ renderRail(); renderWin(); renderFollow(); placeCam(); }
+$('#zin').addEventListener('click', () => { fly = fly && fly.live ? null : fly; cam.s = Math.min(4, cam.s * 1.4); });
+$('#zout').addEventListener('click', () => { fly = fly && fly.live ? null : fly; cam.s = Math.max(.35, cam.s / 1.4); });
 $('#zfit').addEventListener('click', home);
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && follow) { stopFollow(); e.preventDefault(); } });
+
+/* ---------- the city: drag = pan (stops following), tap = pick ---------- */
 let drag = null;
 canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); drag = { x:e.clientX, y:e.clientY, x0:e.clientX, y0:e.clientY, moved:false }; });
 canvas.addEventListener('pointermove', e => {
@@ -614,28 +632,23 @@ canvas.addEventListener('pointerup', e => {
   const r = canvas.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
   let best = null, bd = 28;
   for (const p of P) { const [x, y] = toScreen(p.x, p.y), dd = Math.hypot(x - px, y - py); if (dd < bd) { bd = dd; best = p; } }
-  if (best) { openWin(best.id); return; }
-  for (const b of BUILD) { const [x, y] = toScreen(b.x, b.y); if (Math.hypot(x - px, y - py) < Math.max(b.w, b.h) * cam.s / 1.6) { openBuilding(b.id); return; } }
-  winMode = null; selected = null; renderWin();
+  if (best) { pickPerson(best.id); return; }
+  for (const b of BUILD) { const [x, y] = toScreen(b.x, b.y); if (Math.hypot(x - px, y - py) < Math.max(b.w, b.h) * cam.s / 1.6) { pickBuilding(b.id); return; } }
+  if (phone && drawerOpen) { drawerOpen = false; renderAll(); return; }
+  unpick();
 });
-/* V2: the rule. A = the fix (land moves the way of (deltaX, deltaY)); today = X the other way; B = web page style */
-function wheelLand(dx, dy, mode){
-  if (mode === 'today') return [-dx, dy];
-  if (mode === 'B') return [-dx, -dy];
-  return [dx, dy];
-}
+/* V2 */
+function wheelLand(dx, dy, mode){ if (mode === 'today') return [-dx, dy]; if (mode === 'B') return [-dx, -dy]; return [dx, dy]; }
 stage.addEventListener('wheel', e => {
   if (e.target.closest('.rail') || e.target.closest('.win')) return;
   e.preventDefault();
-  if (e.ctrlKey) { cam.s = Math.max(.35, Math.min(4, cam.s * Math.exp(-e.deltaY * .01))); fly = null; return; }
+  if (e.ctrlKey) { cam.s = Math.max(.35, Math.min(4, cam.s * Math.exp(-e.deltaY * .01))); return; }
   stopFollow(); fly = null;
-  const [lx, ly] = wheelLand(e.deltaX, e.deltaY, v2Mode === 'today' ? 'today' : v2Mode);
-  screenPan(lx, ly);
+  const [lx, ly] = wheelLand(e.deltaX, e.deltaY, v2Mode); screenPan(lx, ly);
 }, { passive:false });
 
 /* ---------- V2 pad ---------- */
-const pad = $('#pad'), pc = $('#pad-c'), pctx = pc.getContext('2d');
-const padCam = { x:0, y:0 };
+const pad = $('#pad'), pc = $('#pad-c'), pctx = pc.getContext('2d'), padCam = { x:0, y:0 };
 function drawPad(){
   const r = pad.getBoundingClientRect(), d = window.devicePixelRatio || 1;
   pc.width = r.width * d; pc.height = r.height * d; pctx.setTransform(d, 0, 0, d, 0, 0);
@@ -648,25 +661,15 @@ function drawPad(){
   }
 }
 pad.addEventListener('wheel', e => {
-  e.preventDefault();
-  if (e.ctrlKey) return;
-  const [lx, ly] = wheelLand(e.deltaX, e.deltaY, v2Mode);
-  padCam.x += lx; padCam.y += ly;
-  const dir = [];
-  if (Math.abs(lx) >= 1) dir.push(tr(lx > 0 ? 'dir.r' : 'dir.l'));
-  if (Math.abs(ly) >= 1) dir.push(tr(ly > 0 ? 'dir.d' : 'dir.u'));
+  e.preventDefault(); if (e.ctrlKey) return;
+  const [lx, ly] = wheelLand(e.deltaX, e.deltaY, v2Mode); padCam.x += lx; padCam.y += ly;
+  const dir = []; if (Math.abs(lx) >= 1) dir.push(tr(lx > 0 ? 'dir.r' : 'dir.l')); if (Math.abs(ly) >= 1) dir.push(tr(ly > 0 ? 'dir.d' : 'dir.u'));
   $('#pad-out').textContent = tr('pad.out', { x: e.deltaX.toFixed(0), y: e.deltaY.toFixed(0), dir: dir.join(' + ') || '-' });
   drawPad();
 }, { passive:false });
 
 /* ---------- mock controls ---------- */
-function seg(id, fn){
-  $(id).addEventListener('click', e => {
-    const b = e.target.closest('button'); if (!b) return;
-    $(id).querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
-    fn(b.dataset.v);
-  });
-}
+function seg(id, fn){ $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $(id).querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); fn(b.dataset.v); }); }
 function applyText(){
   document.documentElement.lang = LANG === 'en' ? 'en' : 'zh-CN';
   document.querySelectorAll('[data-t]').forEach(el => { el.textContent = tr(el.dataset.t); });
@@ -675,24 +678,25 @@ function applyText(){
   $('#n-click').innerHTML = tr('n.click').map(s => `<li>${s}</li>`).join('');
   $('#n-rules').innerHTML = tr('n.rules').map(s => `<li>${esc(s)}</li>`).join('');
   $('#n-v2').textContent = tr('n.v2');
-  renderRepos(); renderStats(); render();
+  renderRepos(); renderStats(); renderAll();
 }
 seg('#seg-lang', v => { LANG = v; applyText(); });
-seg('#seg-width', v => { phone = v === 'phone'; $('#app').classList.toggle('phone', phone); setDrawer(false); requestAnimationFrame(() => { resize(); home(); }); });
-seg('#seg-row', v => { rowMode = v; });
+seg('#seg-width', v => { phone = v === 'phone'; $('#app').classList.toggle('phone', phone); drawerOpen = false; requestAnimationFrame(() => { resize(); renderAll(); home(); }); });
+seg('#seg-refold', v => { refold = v; });
 seg('#seg-hit', v => { stage.classList.toggle('showhit', v === 'on'); });
 seg('#seg-v2', v => { v2Mode = v; });
+$('#m-reset').addEventListener('click', () => { try { for (const k of ['railFolded', 'msgFolded', 'grpClosed']) localStorage.removeItem('city-mock.' + k); } catch (e) {} railFolded = msgFolded = false; grpClosed.clear(); unpick(); home(); });
 
-let last = performance.now(), railT = 0;
+let last = performance.now(), statT = 0;
 function frame(now){
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   step(dt); draw(); renderFollow();
-  railT += dt; if (railT > 1) { railT = 0; renderStats(); }
+  statT += dt; if (statT > 1) { statT = 0; renderStats(); }
   requestAnimationFrame(frame);
 }
-addEventListener('resize', () => { resize(); drawPad(); });
+addEventListener('resize', () => { resize(); drawPad(); placeCam(); });
 resize(); applyText(); drawPad(); requestAnimationFrame(frame);
-window.mock = { P, cam, startFollow, stopFollow, get follow(){ return follow; }, toScreen, freeBox };
+window.mock = { P, cam, get follow(){ return follow; }, get pick(){ return pick; }, toScreen, freeBox };
 </script>
 </body>
 </html>
