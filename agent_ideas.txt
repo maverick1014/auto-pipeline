@@ -19,3 +19,7 @@ agent-city: each person's activity and ask/answer history lives only in the page
 agent-city: at the zoom-out cap, when the focused repo sits at the continent edge half the view is empty; pull the view toward the continent middle (city-ux TM 2026-09-28) | 2026-09-28 19:11 | by main
 agent-city: store building names on the server (today the stored name is always empty, so the popup shows the type word, e.g. 测试塔) (city-ux TM 2026-09-28) | 2026-09-28 19:11 | by main
 agent-city: small repos could use smaller cells; needs a new layout method (city-ux TM 2026-09-28) | 2026-09-28 19:11 | by main
+agent-city: a crashed governor is still drawn as present until a new main session comes; a tick sweep (holder pid dead) would show it gone at once (ideas-soon TM 2026-09-29) | 2026-09-29 12:04 | by main
+agent-city: crashed task-manager sessions never leave either; the hook could carry the session's Claude pid (works in any folder, no lock needed) (ideas-soon TM 2026-09-29) | 2026-09-29 12:04 | by main
+dispatch skill: worker.md says workers never run git, so briefs must not ask workers to commit; say the task manager commits after it verifies (ideas-soon TM 2026-09-29) | 2026-09-29 12:04 | by main
+workers read CLAUDE.md and run agent-start.sh; a subagent could be told to skip it (saves tokens) (ideas-soon TM 2026-09-29) | 2026-09-29 12:04 | by main
