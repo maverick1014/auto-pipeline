@@ -56,8 +56,9 @@ U3 trackpad like a MacBook
   (sim) WHEEL_ZOOM = 0.01. wheelMove(e, h) for a wheel event e = {deltaX, deltaY, deltaMode, ctrlKey}
         (h = page height, the size of one deltaMode 2 page; deltaMode 1 = 16 px a line):
         ctrlKey (a pinch in Chrome/Orca) -> { zoom: Math.exp(clamp(deltaY * unit * WHEEL_ZOOM, -.5, .5)) }
-        else (two-finger swipe, and a plain mouse wheel) -> { pan: [-deltaX * unit, -deltaY * unit] }
-        (the land follows the fingers: fed to panBy, the same px a drag uses).
+        else (two-finger swipe, and a plain mouse wheel) -> { pan: [deltaX * unit, -deltaY * unit] }
+        (fed to panBy, the same px a drag uses; city-ux2 V2, owner 2026-09-29: X was -deltaX and went
+        the other way from Y -- see tests/test_agent_city_ux2.py).
   3D part: the wheel listener is on #stage (not only the canvas, so a wheel over a head tag still
         pans), passive:false, and leaves wheels inside .win / .ask-panel alone (the chat log scrolls);
         it uses wheelMove(); zoom -> capZoom(cam.dist * zoom, ...). Safari: gesturestart/gesturechange
@@ -479,7 +480,7 @@ class TestTapAndTrackpad(unittest.TestCase):
 
     def test_two_finger_swipe_pans_with_the_fingers(self):
         p = self.r["pan"]
-        for got, want in zip(p, [[0, -10], [6, -4], [0, -48], [-1800, -900]]):
+        for got, want in zip(p, [[0, -10], [-6, -4], [0, -48], [1800, -900]]):  # city-ux2 V2: X no longer negated
             self.assertIn("pan", got)
             self.assertNotIn("zoom", got)
             self.assertAlmostEqual(got["pan"][0], want[0], places=9)
@@ -888,7 +889,7 @@ apply({ type: 'snapshot', world: V, gov: { state: 'idle', terr: A.id }, governor
 apply({ type: 'spawn', id: 'x1', role: 'worker', label: 'worker', task: 'one', terr: A.id });
 apply({ type: 'spawn', id: 'x2', role: 'worker', label: 'worker', task: 'two <b>', terr: A.id });
 apply({ type: 'spawn', id: 'y1', role: 'worker', label: 'worker', task: 'far', terr: B.id });
-const rows = html => [...html.matchAll(/<button\b[^>]*>/g)].map(m => {
+const rows = html => [...html.matchAll(/<button\b[^>]*class="row"[^>]*>/g)].map(m => { // city-ux2: only the row buttons, not their focus buttons
   const sel = /data-sel="([^"]*)"/.exec(m[0]), cur = /aria-current="([^"]*)"/.exec(m[0]);
   return (sel ? sel[1] : '?') + (cur && cur[1] === 'true' ? '*' : ''); });
 const group = rosterGroups().find(g => g.terr === A.id).rows.map(r => r.id);
