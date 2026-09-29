@@ -13,6 +13,7 @@
 - `hooks/hooks.json` → `bin/agent-city-hook.sh` → `<city dir>/events.jsonl` → `bin/agent_city.py` → SSE `/events` → page.
 - Hook when off: one `test -f`, nothing else. On: one JSON line per event. Bash builtins only.
 - Session without `AGENT_ROLE` = governor. Session with `AGENT_ROLE` = citizen. Subagent = citizen.
+- The governor seat frees when its holder is gone, not only on its SessionEnd (a crashed main manager never sends one; ideas-soon, 2026-09-29). A new session without `AGENT_ROLE` asks first: is the holder gone? Holder's pid known (the pid in `<git common dir>/agent_main.lock`, read while the holder acts, kept only if alive then) → gone when that pid is dead. No pid known → gone after 15 min with no line from it. Gone → ended like its SessionEnd, and the new session takes the seat at once. Not gone → the new session is a citizen.
 - A session shows up only if it started with the city hook installed (plugin 0.6.0+).
 
 ## Look
