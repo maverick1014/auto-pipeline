@@ -56,8 +56,9 @@ U3 trackpad like a MacBook
   (sim) WHEEL_ZOOM = 0.01. wheelMove(e, h) for a wheel event e = {deltaX, deltaY, deltaMode, ctrlKey}
         (h = page height, the size of one deltaMode 2 page; deltaMode 1 = 16 px a line):
         ctrlKey (a pinch in Chrome/Orca) -> { zoom: Math.exp(clamp(deltaY * unit * WHEEL_ZOOM, -.5, .5)) }
-        else (two-finger swipe, and a plain mouse wheel) -> { pan: [-deltaX * unit, -deltaY * unit] }
-        (the land follows the fingers: fed to panBy, the same px a drag uses).
+        else (two-finger swipe, and a plain mouse wheel) -> { pan: [deltaX * unit, -deltaY * unit] }
+        (fed to panBy, the same px a drag uses; city-ux2 V2, owner 2026-09-29: X was -deltaX and went
+        the other way from Y -- see tests/test_agent_city_ux2.py).
   3D part: the wheel listener is on #stage (not only the canvas, so a wheel over a head tag still
         pans), passive:false, and leaves wheels inside .win / .ask-panel alone (the chat log scrolls);
         it uses wheelMove(); zoom -> capZoom(cam.dist * zoom, ...). Safari: gesturestart/gesturechange
@@ -84,6 +85,8 @@ U4 the governor window says less
   总督就是你正在聊的主对话; the governor branch of renderDetail has no d-tools box. gov.awayNote stays.
 
 U5 the governor window: two columns, the conversation on the right
+  city-ux2 v2 (owner 2026-09-29) REPLACES the two columns: one right-docked message panel, no team list in
+  it (the left rail is the team list); see tests/test_agent_city_ux2.py. The lines below are history.
   renderDetail's governor branch: <div class="gov-cols"> with <div class="gov-side"> (the team list, see
   U11) and <div class="gov-chat"> (the compact header, the conversation #chat, the #say form). renderWin() toggles
   class "wide" on #win while the governor is selected. CSS: .win.wide is wider (min(...px, ...)) and full
@@ -110,6 +113,7 @@ U9 chat text: simple markdown, safe
   text through mdLite inside an element with class "md"; CSS styles .md tables, code and lists.
 
 U10 every person opens the same two-column window, with its history (owner, mock v2 5ebd055)
+  city-ux2 v2: the history stays; the two-column window and 'wide' go (tests/test_agent_city_ux2.py).
   (sim) ACT_KEEP = 60. Every citizen has c.acts = [] (newCitizen): its activity lines, oldest first.
         actLog(c, text): appends { at: Date.now() / 1000, text }, keeps only the last ACT_KEEP.
         actTool(c, tool): when the last line is a tools line (it has .tools), counts the tool there and
@@ -132,6 +136,7 @@ U10 every person opens the same two-column window, with its history (owner, mock
         'gov' (a building, a site and a remote governor stay narrow).
 
 U11 one window for the whole team (owner, mock v3): the left column never changes
+  city-ux2 v2: REPLACED by the left rail (railGroups/railHtml); winTitle is the person's name.
   (sim) esc moves into the sim section (same function). teamListHtml(terr, sel) -> the team list of
         territory terr, exactly rosterGroups()'s group for it: one <button type="button" class="row"
         data-sel="<row id>" aria-current="true|false"> per row, in order (the governor first,
@@ -479,7 +484,7 @@ class TestTapAndTrackpad(unittest.TestCase):
 
     def test_two_finger_swipe_pans_with_the_fingers(self):
         p = self.r["pan"]
-        for got, want in zip(p, [[0, -10], [6, -4], [0, -48], [-1800, -900]]):
+        for got, want in zip(p, [[0, -10], [-6, -4], [0, -48], [1800, -900]]):  # city-ux2 V2: X no longer negated
             self.assertIn("pan", got)
             self.assertNotIn("zoom", got)
             self.assertAlmostEqual(got["pan"][0], want[0], places=9)
@@ -627,32 +632,15 @@ class TestGovernorWindow(unittest.TestCase):
         self.assertNotIn("d-tools", branch)
         self.assertNotIn("presentNote", branch)
 
-    def test_two_columns(self):
+    def test_one_column_no_team_list(self):
+        # city-ux2 v2 (owner 2026-09-29): the window is the right-docked message panel for one person;
+        # the rail is the team list, so no second list and no two-column window any more.
         branch = gov_branch()
-        for cls in ("gov-cols", "gov-side", "gov-chat", "p-head"):
-            self.assertIn('class="%s"' % cls, branch, cls)
-        side = branch[branch.index('class="gov-side"'):branch.index('class="gov-chat"')]
-        self.assertIn("teamListHtml(", side, "the team list is the left column")
-        right = branch[branch.index('class="gov-chat"'):]
-        self.assertIn("p-head", right, "the short facts head the right column")
-        self.assertIn("chatSectionHtml(", right, "the chat is in the right column")
-
-    def test_wide_window(self):
-        src = function_source("renderWin") or ""
-        self.assertRegex(src, r"classList\.toggle\(\s*'wide'")
-        wide = rule(".win.wide").replace(" ", "")
-        self.assertIn("width:min(", wide)
-        self.assertIn("height:calc(100%-24px)", wide)
-        cols = rule(".gov-cols")
-        self.assertIn("display:grid", cols.replace(" ", ""))
-        self.assertEqual(columns(cols), 2, "two columns")
-        chat = rule(".gov-chat .chat").replace(" ", "")
-        self.assertIn("max-height:none", chat)
-
-    def test_phone_stacks(self):
-        m = media_960()
-        self.assertTrue(rule(".win.wide", m), "a .win.wide rule for phones")
-        self.assertEqual(columns(rule(".gov-cols", m)), 1, "phone: one column")
+        self.assertIn('class="p-head"', branch)
+        self.assertIn("chatSectionHtml(", branch, "the conversation")
+        for gone in ("gov-side", "teamListHtml(", "gov-cols"):
+            self.assertNotIn(gone, branch, gone)
+        self.assertNotRegex(function_source("renderWin") or "", r"classList\.toggle\(\s*'wide'", "no wide window")
 
 
 # ---------------------------------------------------------------------------
@@ -852,27 +840,18 @@ def citizen_branch():
 
 class TestPersonWindow(unittest.TestCase):
 
-    def test_wide_for_every_person(self):
-        src = function_source("renderWin") or ""
-        m = re.search(r"classList\.toggle\(\s*'wide'\s*,([^)]*)\)", src)
-        self.assertIsNotNone(m, "renderWin toggles 'wide'")
-        cond = m.group(1)
-        self.assertIn("'c'", cond + src, "citizens get the wide window")
-        self.assertIn("'gov'", cond + src)
-
-    def test_citizen_two_columns(self):
+    def test_citizen_one_column(self):
+        # city-ux2 v2: the message panel shows only this person -- head, history, reply box / read-only
         b = citizen_branch()
         self.assertTrue(b, "renderDetail's citizen branch not found")
-        for cls in ("gov-cols", "gov-side", "gov-chat", "p-head"):
-            self.assertIn('class="%s"' % cls, b, cls)
-        side = b[b.index('class="gov-side"'):b.index('class="gov-chat"')]
-        self.assertIn("teamListHtml(", side, "U11: the same full team list on the left")
-        for gone in ("d-bar", "kv.branch", "kv.repo", "d-tools"):
-            self.assertNotIn(gone, side, "U11: the person's facts are not in the left column: " + gone)
-        right = b[b.index('class="gov-chat"'):]
-        self.assertIn("hist.title", right)
-        self.assertIn("personHistory(", b + (function_source("renderDetail") or ""))
-        self.assertIn("historyHtml(", function_source("renderDetail") or "")
+        self.assertIn('class="p-head"', b)
+        self.assertIn("hist.title", b)
+        for gone in ("gov-side", "teamListHtml(", "gov-cols"):
+            self.assertNotIn(gone, b, gone)
+        src = function_source("renderDetail") or ""
+        self.assertIn("personHistory(", src)
+        self.assertIn("historyHtml(", src)
+        self.assertNotIn("teamListHtml(", src, "no team list anywhere in the panel (remote people too)")
 
     def test_history_list_is_refreshed(self):
         src = function_source("renderDetail") or ""
@@ -880,66 +859,16 @@ class TestPersonWindow(unittest.TestCase):
         self.assertIn("historyHtml(", tail, "the per-call refresh keeps the history current")
 
 
-TEAM_DRIVER = r"""
-const V = __payload.view, A = V.territories[0], B = V.territories[1];
-function buildLand(view){ landState(view); }
-apply({ type: 'snapshot', world: V, gov: { state: 'idle', terr: A.id }, governors: 1, asks: [], shows: [],
-  govs: [{ terr: A.id, state: 'idle' }], agents: [] });
-apply({ type: 'spawn', id: 'x1', role: 'worker', label: 'worker', task: 'one', terr: A.id });
-apply({ type: 'spawn', id: 'x2', role: 'worker', label: 'worker', task: 'two <b>', terr: A.id });
-apply({ type: 'spawn', id: 'y1', role: 'worker', label: 'worker', task: 'far', terr: B.id });
-const rows = html => [...html.matchAll(/<button\b[^>]*>/g)].map(m => {
-  const sel = /data-sel="([^"]*)"/.exec(m[0]), cur = /aria-current="([^"]*)"/.exec(m[0]);
-  return (sel ? sel[1] : '?') + (cur && cur[1] === 'true' ? '*' : ''); });
-const group = rosterGroups().find(g => g.terr === A.id).rows.map(r => r.id);
-const rp = newCitizen('r:dev-ann:s:9', 'worker', 'far task', A.id);
-rp.remote = { who: 'Ann', device: 'lap', dev: 'dev-ann', rid: 'acme/shop', br: 'b' }; citizens.push(rp);
-__out = { group, a: A.id,
-  x2: rows(teamListHtml(A.id, { t: 'c', id: 'x2' })), gov: rows(teamListHtml(A.id, { t: 'gov', terr: A.id })),
-  home: rows(teamListHtml(A.id, { t: 'gov' })), other: rows(teamListHtml(A.id, { t: 'c', id: 'y1' })),
-  raw: teamListHtml(A.id, { t: 'c', id: 'x1' }),
-  withRemote: rows(teamListHtml(A.id, { t: 'c', id: 'x1' })), remoteSel: rows(teamListHtml(A.id, { t: 'c', id: 'r:dev-ann:s:9' })) };
-"""
-
-
-class TestTeamList(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        cls.r = run_sim(TEAM_DRIVER, {"view": two_territory_view()}, ("apply", "landState", "rosterGroups", "teamListHtml", "esc", "newCitizen", "citizens"))
-
-    def test_same_rows_as_the_roster(self):
-        g = self.r["group"]
-        self.assertEqual(g[0], "gov:" + self.r["a"])
-        # every list below is taken after the driver added one other member's person to territory A
-        self.assertEqual([x.rstrip("*") for x in self.r["x2"]], g + ["r:dev-ann:s:9"])
-
-    def test_only_the_selected_row_is_current(self):
-        a = self.r["a"]
-        self.assertEqual([x for x in self.r["x2"] if x.endswith("*")], ["x2*"])
-        self.assertEqual([x for x in self.r["gov"] if x.endswith("*")], ["gov:%s*" % a])
-        self.assertEqual([x for x in self.r["home"] if x.endswith("*")], ["gov:%s*" % a], "no terr = the home governor")
-        self.assertEqual([x for x in self.r["other"] if x.endswith("*")], [], "someone of another repo is not in this list")
-
-    def test_other_members_are_always_listed(self):
-        g = self.r["group"]
-        self.assertEqual(self.r["withRemote"], [("x1*" if x == "x1" else x) for x in g] + ["r:dev-ann:s:9"],
-                         "the remote person is listed while someone else is selected")
-        self.assertEqual(self.r["remoteSel"], g + ["r:dev-ann:s:9*"])
-
-    def test_rows_are_escaped_buttons(self):
-        raw = self.r["raw"]
-        self.assertIn('class="row"', raw)
-        self.assertNotIn("two <b>", raw)
-        self.assertTrue(sim_has("esc"), "esc lives in the sim section")
+# city-ux2 v2: the team list (teamListHtml, U11) moved into the left rail -- tests/test_agent_city_ux2.py.
 
 
 class TestTeamWindowHead(unittest.TestCase):
 
-    def test_one_title_for_the_team(self):
-        self.assertEqual(text_keys("team.title"), 2)
-        self.assertIn("'team.title': '{repo} · 团队'", page())
-        self.assertIn("team.title", function_source("winTitle") or "")
+    def test_title_is_the_person(self):
+        # city-ux2 v2: the message panel is one person's, so its title is that person, not the team
+        src = function_source("winTitle") or ""
+        self.assertNotIn("team.title", src)
+        self.assertIn("nameOf(", src)
 
     def test_governor_head_facts(self):
         branch = gov_branch()
