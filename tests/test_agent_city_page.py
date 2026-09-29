@@ -907,9 +907,19 @@ class TestRemoved(unittest.TestCase):
         self.assertNotIn("dtScaled", text)
 
     def test_no_keyboard_shortcuts(self):
-        for event in ("keydown", "keyup", "keypress"):
+        # city-ux2 (brief 2026-09-29): Esc stops following a person -- the one key the page listens to.
+        # Still no keyboard shortcut for anything else (windows close by x or a tap on the ground).
+        text = inline_script()
+        for event in ("keyup", "keypress"):
             with self.subTest(event=event):
-                self.assertNotIn(event, inline_script())
+                self.assertNotIn(event, text)
+        self.assertEqual(text.count("keydown"), 1, "one keydown listener: Esc stops following")
+        m = re.search(r"document\.addEventListener\('keydown',(.*?)\n\}\);|document\.addEventListener\('keydown',([^\n]*)", text, re.S)
+        self.assertIsNotNone(m, "the keydown listener sits on document")
+        body = m.group(1) or m.group(2)
+        self.assertIn("Escape", body)
+        self.assertIn("stopFollow()", body)
+        self.assertEqual(re.findall(r"e\.key\s*===\s*'([^']+)'", body), ["Escape"], "Esc only")
 
 
 class TestKept(unittest.TestCase):

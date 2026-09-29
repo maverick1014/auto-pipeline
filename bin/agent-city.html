@@ -65,12 +65,56 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 
 .layout{display:flex;flex-direction:column;gap:14px;flex:1;min-height:0}
 .stage-col{display:flex;flex-direction:column;gap:10px;min-width:0}
-.stage{position:relative;overflow:hidden;height:calc(100dvh - 150px);min-height:460px}
+.stage{position:relative;overflow:hidden;height:calc(100dvh - 150px);min-height:460px;--rail-w:212px;--msg-w:330px}
 .stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
 .stage canvas.grabbing{cursor:grabbing}
-.proto{position:absolute;top:12px;left:12px;z-index:3;background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px;box-shadow:0 2px 0 rgba(42,43,69,.18);pointer-events:none}
+.proto{position:absolute;top:12px;left:calc(var(--rail-w) + 24px);z-index:3;background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px;box-shadow:0 2px 0 rgba(42,43,69,.18);pointer-events:none}
 .cam{position:absolute;top:12px;right:12px;z-index:3;display:flex;flex-direction:column;gap:6px}
 .cam .btn{width:38px;height:38px;padding:0;justify-content:center;background:var(--panel)}
+
+/* V1 (W2): the compact rail, left -- the team list, folds to a thin tab on its own edge; the follow
+   chip, top middle of whatever is free between the rail and the message panel. Approved look: mock v2
+   (mock/city-ux2-mock.html), .rail/.rail-head/.rail-list/.grp-h/.rrows/.rrow/.sdot/.chip/.rest-t/.tab/
+   .rail-tab/.follow/.you, adapted to this page's own CSS vars (--build-bg/ink etc already exist). */
+.you{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--berry);color:#fff;font:700 11px/1 var(--round)}
+.fold{all:unset;cursor:pointer;flex:none;width:26px;height:26px;display:grid;place-items:center;border-radius:8px;color:var(--ink-2);font:700 14px/1 var(--round)}
+.fold:hover{background:var(--panel-2);color:var(--ink)}
+.fold:focus-visible{outline:2px solid var(--focus)}
+.rc{width:10px;height:10px;border-radius:50%;background:var(--rc);flex:none;display:inline-block}
+.rail{position:absolute;left:12px;top:12px;z-index:4;width:var(--rail-w);max-height:calc(100% - 24px);display:flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:16px;box-shadow:0 4px 0 rgba(42,43,69,.18);overflow:hidden}
+.rail-head{display:flex;align-items:center;gap:6px;padding:6px 6px 6px 12px;border-bottom:1.5px solid var(--line);font-weight:700;font-size:13px}
+.rail-head .n{font:600 12px/1 var(--mono);color:var(--ink-3)}
+.rail-head .fold{margin-left:auto}
+.rail-list{overflow:auto;padding:4px 4px 8px}
+.grp-h{all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:6px;padding:6px 6px 3px;font:700 11.5px/1.2 var(--mono);color:var(--ink-2)}
+.grp-h:focus-visible{outline:2px solid var(--focus);border-radius:6px}
+.grp-h .n{margin-left:auto;color:var(--ink-3);font-weight:600}
+.rrows{list-style:none;margin:0;padding:0}
+.rrow{all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:8px;border-left:3px solid var(--rc);font-size:12.5px;line-height:1.35}
+.rrow.sub{padding-left:16px}
+.rrow:hover{background:var(--panel-2)}
+.rrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.rrow[aria-current="true"]{background:var(--ink);color:var(--paper)}
+.rrow.resting{opacity:.7}
+.sdot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--ink-3)}
+.rrow b{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip.you{background:var(--ask-bg);color:var(--ask-ink)}
+.chip.ask{background:var(--gov-bg);color:var(--gov-ink)}
+.chip.build{background:var(--build-bg);color:var(--build-ink)}
+.chip.walk{background:var(--walk-bg);color:var(--walk-ink)}
+.chip.rest{background:var(--rest-bg);color:var(--rest-ink)}
+.chip.gov{background:var(--gov-bg);color:var(--gov-ink)}
+.rest-t{all:unset;cursor:pointer;display:block;margin:1px 0 2px 8px;padding:1px 6px;border-radius:6px;font:600 11.5px/1.5 var(--round);color:var(--rest-ink)}
+.rest-t:focus-visible{outline:2px solid var(--focus)}
+.tab{all:unset;cursor:pointer;position:absolute;z-index:4;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0;width:30px;background:var(--panel);border:2px solid var(--ink);box-shadow:0 3px 0 rgba(42,43,69,.18);font:700 12px/1.1 var(--round);color:var(--ink)}
+.tab:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.tab .v{writing-mode:vertical-rl;white-space:nowrap;max-height:180px;overflow:hidden;text-overflow:ellipsis}
+.rail-tab{left:0;top:12px;border-left:0;border-radius:0 12px 12px 0}
+.follow{position:absolute;top:12px;z-index:4;transform:translateX(-50%);display:inline-flex;align-items:center;gap:7px;padding:3px 4px 3px 10px;border-radius:999px;background:var(--ink);color:var(--paper);font:600 12px/1.2 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.25);white-space:nowrap;max-width:60%}
+.follow span{overflow:hidden;text-overflow:ellipsis}
+.follow kbd{font:600 10.5px/1 var(--mono);opacity:.7}
+.follow button{all:unset;cursor:pointer;padding:2px 8px;border-radius:999px;background:var(--paper);color:var(--ink);font:600 11.5px/1.3 var(--round)}
+.follow button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
 .ov{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
 .ov > div,.ov > button{position:absolute;left:0;top:0;will-change:transform}
@@ -270,6 +314,9 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
   .stage{flex:1 1 0;height:auto;min-height:340px}
   .stage canvas{position:absolute;inset:0}
   .stats{margin-left:0}
+  .proto{left:8px;top:52px}
+  .rail{left:0;top:0;bottom:0;max-height:none;width:min(250px,78%);border-left:0;border-radius:0 16px 16px 0}
+  .stage.drawer-open .win,.stage.drawer-open .ask-panel{visibility:hidden}
   .ask-panel{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:72%}
   .win{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:72%}
   .win.wide{width:auto;height:auto;max-height:72%;overflow:auto}
@@ -302,6 +349,12 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
       <div class="stage" id="stage">
         <canvas id="city" role="img" data-t-aria="aria.canvas"></canvas>
         <div class="ov" id="ov"></div>
+        <aside class="rail" id="rail" data-t-aria="rail.title">
+          <div class="rail-head"><span data-t="rail.title"></span><span class="n" id="rail-n"></span><span class="you" id="rail-you" hidden></span><button type="button" class="fold" id="rail-fold" data-t-aria="fold.rail">«</button></div>
+          <div class="rail-list" id="rail-list"></div>
+        </aside>
+        <button type="button" class="tab rail-tab" id="rail-tab" aria-controls="rail" hidden><span>›</span><span class="v" id="rail-tab-t"></span><span class="you" id="rail-tab-you" hidden></span></button>
+        <div class="follow" id="follow" role="status" hidden><span id="follow-t"></span><kbd>Esc</kbd><button type="button" id="follow-stop" data-t="follow.stop"></button></div>
         <div class="cap-hint" id="cap-hint" aria-live="polite" hidden></div>
         <p id="empty-land" hidden data-t="empty.noLand" style="position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);margin:0;padding:8px 14px;border-radius:12px;background:rgba(255,255,255,.85);color:var(--ink-2);font:600 14px/1.4 var(--round);pointer-events:none"></p>
         <div class="proto" id="proto" data-t="proto.banner"></div>
@@ -354,7 +407,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
    (data-t / data-t-aria / data-t-title / data-t-placeholder) is filled once, at start, by applyText(). */
 const LANG = '__CITY_LANG__';
 document.documentElement.lang = LANG === 'en' ? 'en' : 'zh-CN';
-const TEXT = { zh: { 'btn.log': '动态', 'aria.city': '城市', 'aria.canvas': '3D 小岛：每个小人是一个 agent', 'proto.banner': '原型 · 模拟数据', 'btn.zoomIn': '放大', 'btn.zoomOut': '缩小', 'btn.rotate': '转一下', 'btn.resetView': '回到默认视角', 'repo.all': '全部', 'aria.repos': '仓库：点一个飞过去', 'repo.goAria': '飞到 {name}', 'cap.hint': '已经是最远了 · 点「全部」看所有仓库','btn.close': '关闭', 'aria.toolbar': '控制', 'label.spawn': '派一个', 'opt.worker': 'worker · 盖房子', 'opt.taskManager': 'task manager · 测试塔', 'opt.fastLaneDeputy': 'fast-lane deputy · 花园', 'opt.mergeDeputy': 'merge deputy · 桥', 'btn.spawn': '派出', 'btn.remoteOff': '中继断开', 'btn.remoteOn': '恢复', 'btn.remoteLeave': '退出联城', 'type.house': '住宅', 'type.shop': '商店', 'type.tower': '测试塔', 'type.workshop': '工坊', 'type.library': '图书馆', 'district.house': '住宅区', 'district.shop': '商业街', 'district.tower': '测试区', 'district.workshop': '工坊区', 'district.library': '图书馆区', 'chat.state.queued': '已发送', 'chat.state.delivered': '已送达', 'chat.state.undelivered': '没送到', 'chat.new': '有新消息 ↓', 'hist.title': '历史（新的在下面）', 'hist.empty': '还没有记录', 'hist.started': '出门：{task}', 'hist.stuck': '卡住了：{text}', 'hist.toLead': '去问经理', 'hist.toGov': '去问总督', 'hist.waiting': '等你回话', 'hist.done': '完工，去休息', 'hist.left': '下班了', 'chat.task': '任务（派它时的话）', 'team.title': '{repo} · 团队', 'role.task-manager': '任务经理', 'role.worker': '工人', 'role.fast-lane-deputy': '快车道副手', 'role.merge-deputy': '合并副手', 'role.other': '帮手', 'era.village': '村', 'era.town': '镇', 'era.city': '城', 'quality.good': '整齐', 'quality.fair': '还行', 'quality.poor': '有点乱', 'who.governor': '总督', 'who.owner': '你', 'who.terminal': '终端', 'state.spawn': '出门', 'state.to_plot': '去工地', 'state.building': '施工中', 'state.working': '干活', 'state.to_hall': '去问总督', 'state.asking': '在问总督', 'state.heard': '拿到答案', 'state.to_lead': '去问经理', 'state.at_lead': '问经理', 'state.back': '回工地', 'state.finishing': '封顶了', 'state.to_rest': '去休息', 'state.resting': '休息中', 'state.leaving': '下班回家', 'status.need_approval': '等你批', 'status.asking_gov': '在问总督', 'status.waiting_answer': '等你回答', 'status.waiting_reply': '等你回话', 'status.waiting': '等你', 'stuck.permission': '要权限：{tool}', 'stuck.default': '需要你看一下', 'gov.away': '不在', 'gov.busy': '忙着', 'gov.home': '坐镇市政厅', 'top.work': '干活', 'top.ask': '找总督', 'top.rest': '休息', 'top.done': '建成', 'top.stalled': '卡住的工地', 'top.pending': '等你', 'top.pendingAria': '等你决定 {n} 个，点开最早的一个', 'empty.noLand': '还没有领地 · 在一个 git 仓库里启动，或等代理开工', 'loading.text': '正在搬来素材…', 'loading.progress': '正在搬来素材 {n}/{total}', 'loading.error': '素材没加载成功：{err}', 'site.human': '亲自带', 'log.eraUpgrade': '{name} 开始升级成{era}', 'say.done': '完工啦！', 'log.leftWork': '{task} 下班了', 'gov.dispatch': '去吧：{task}', 'log.govDispatch': '总督派出 {label}：{task}', 'log.siteMerged': '{branch} 合并进主线，工地收工', 'log.siteRemoved': '{branch} 的工地撤了', 'log.levelUp': '{label} 升到 {lv} 级', 'log.movedBack': '{label} 搬回{kind}区', 'log.demolished': '{label} 的文件都没了，拆掉', 'log.stuckDemo': '{task} 卡住了：“{text}” → 去问总督', 'answer.default': '已回答', 'log.govAnswer': '总督回答 {task}：“{text}”', 'log.doneRestPlain': '{task} 完工，去休息', 'log.doneRestBuilt': '{task} 完工：{kind}封顶，去休息', 'log.noplot': '{name} 没有空地了，先等等', 'gov.unknown': '未知', 'gov.busyRow': '在忙', 'gov.idleRow': '空闲', 'gov.title': '{name} 总督', 'chain.lead': '经理', 'chain.leadTask': '经理 {task}', 'chat.empty': '还没有对话', 'chat.you.page': '你（页面）', 'chat.you.terminal': '你（终端）', 'chat.wait': '等它做完这一步', 'chat.loadError': '对话没加载出来，等会儿再打开看看。', 'kv.repo': '仓库', 'kv.branch': '分支', 'kv.doing': '在做', 'qa.ask': '问：“{q}”', 'qa.answer': '答：“{a}”', 'qa.waiting': '问：“{q}” 等回答…', 'act.makeStuck': '让它卡住', 'act.makeDone': '让它完工', 'act.makeLeave': '让它下班', 'act.demoNote': '这三个按钮只在原型里有，用来试流程。', 'gov.ownTag': 'main manager · 主对话', 'gov.tagLabel': '总督 · main manager', 'gov.rgRole': 'main manager · 总督', 'pill.hall': '市政厅', 'gov.awayNote': '总督不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等总督。', 'hint.team': '团队', 'hint.noAgents': '还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。', 'hint.pickSomething': '点城里的小人、房子，或下面名单里的一行。', 'building.misplaced': ' · 放错区了', 'building.level': ' · 等级 {level}', 'building.district': '{kind}区', 'building.module': '{name} 模块', 'hint.files': '盖它的文件', 'hint.history': '改过它的人（新的在前）', 'detail.title': '详情', 'clock.demo': '模拟 {t}', 'clock.now': '现在 {t}', 'opt.other': '其他', 'opt.customAnswer': '自己写回答', 'btn.sendAnswer': '发送回答', 'kv.tool': '工具', 'kv.file': '文件', 'kv.url': '网址', 'said': '它说：{text}', 'kv.dir': '目录', 'field.denyReason': '拒绝理由（可以不填；填了会原样告诉它）', 'field.denyPlaceholder': '比如：先别删 dist/，里面有发布包', 'btn.allow': '批准', 'btn.deny': '拒绝', 'ask.asking': '在问', 'ask.needsPermission': '要权限', 'pill.closed': '已关闭', 'aria.collapse': '收起（不回答）', 'foot.terminalAnswers': '终端里也能答，先答的算。', 'err.decideNetwork': '没发出去（连不上城市服务器）。终端里还能答。', 'err.decideStatus': '没发出去（{status}）。终端里还能答，可以再试一次。', 'proto.live': '实时 · 等服务器', 'proto.connected': '实时 · 已连接', 'proto.reconnecting': '实时 · 重连中…', 'log.relayOff': '联城中继断开：其他成员定格，我的城市照常干活。', 'log.relayOn': '联城恢复：其他成员更新到最新。', 'log.relayLeave': '退出联城：其他成员从我的城市消失，我的城市不变。', 'demo.task.checkoutTest': '写结账测试', 'demo.task.paymentRetry': '改支付超时重试', 'demo.q.paymentRetry': '支付超时要不要自动重试？', 'demo.task.depsScan': '扫描依赖漏洞', 'demo.task.worker.0': '设置页表单', 'demo.task.worker.1': '登录 API', 'demo.task.worker.2': '导出 CSV', 'demo.task.worker.3': '深色模式', 'demo.task.worker.4': '小票打印', 'demo.task.worker.5': '搜索框', 'demo.task.worker.6': '分页', 'demo.task.worker.7': '价格计算', 'demo.task.worker.8': '库存提醒', 'demo.task.worker.9': '客户列表', 'demo.task.taskManager.0': '设置页', 'demo.task.taskManager.1': '登录', 'demo.task.taskManager.2': '报表', 'demo.task.taskManager.3': '打印', 'demo.task.taskManager.4': '库存', 'demo.task.fastLaneDeputy.0': '错别字', 'demo.task.fastLaneDeputy.1': '按钮颜色', 'demo.task.fastLaneDeputy.2': '图标大小', 'demo.task.fastLaneDeputy.3': '标题换行', 'demo.task.fastLaneDeputy.4': '空状态文案', 'demo.task.mergeDeputy.0': '合并 settings', 'demo.task.mergeDeputy.1': '合并 login', 'demo.task.mergeDeputy.2': '合并 report', 'demo.task.mergeDeputy.3': '合并 print', 'demo.qa.0.q': '测试名不清楚，用哪个？', 'demo.qa.0.a': '按默认，记进日志', 'demo.qa.1.q': 'API 路径用哪个？', 'demo.qa.1.a': '用 /api/settings', 'demo.qa.2.q': '要不要加分页？', 'demo.qa.2.a': '先不加，写进 ideas', 'demo.qa.3.q': '默认语言是？', 'demo.qa.3.a': 'zh，跟 agent.conf', 'demo.qa.4.q': '旧数据要迁移吗？', 'demo.qa.4.a': '要，先写测试', 'demo.qa.5.q': '这个文件能改吗？', 'demo.qa.5.a': '能，只改你那份', 'demo.qa.6.q': '可以跑这条命令吗？', 'demo.qa.6.a': '批了，继续', 'aria.needsApproval': '{task} 等你批，点开看', 'aria.needsAnswer': '{task} 等你回答，点开看', 'aria.stuckOnlyThem': '{name} 卡住了，只有 {name} 能回答', 'aria.govNeedsApproval': '总督 等你批，点开看', 'aria.govNeedsAnswer': '总督 等你回答，点开看', 'gov.waitCountdown': '总督 {s}s', 'chat.sendError': '没发出去（连不上城市服务器）。', 'btn.findLead': '找组长：{name}', 'hint.readOnlySub': '它是子任务，这份对话只能看；有事去找组长。', 'placeholder.saySomething': '跟它说…', 'btn.send': '发送', 'label.ask': '问：', 'label.answer': '答：', 'label.awaitingAnswer': '等回答…', 'member.unknown': '未知', 'chip.off': '联城断开 · 待发 {n} 条', 'chip.refused': '联城拒绝了密钥', 'chip.ok': '联城 · {people} 人 · {devices} 台设备', 'remote.note': '只能看：这是 {who} 的 agent，只有 {who} 能回答。', 'stale.sec': '最后更新 {n} 秒前', 'stale.min': '最后更新 {n} 分钟前', 'ask.permission': '{name} 要权限：{what} → 等你批', 'ask.toOwner': '{name} 问你：“{what}”', 'ask.toGov': '{name} 问总督：“{what}”', 'ask.toGovNoGov': '{name} 问总督：“{what}”，没有总督在 → 等你回答', 'askphase.pass': '总督：这个我定不了 → 等你回答 {name}', 'askphase.timeout': '总督 {wait} 秒没回答 {name} → 等你', 'closed.routed': '{name} 的请求转到{who}处理：{what}', 'closed.answered': '{who}回答 {name}：“{text}”', 'closed.answeredDefault': '{who}已回答 {name}', 'closed.allowed': '{who}批准 {name}：{what}', 'closed.denied': '{who}拒绝 {name}：{what}', 'closed.deniedReason': '，理由：“{reason}”', 'closed.ended': '{who}结束了 {name}：{what}', 'why.permission': '权限只由你来批，总督不批。', 'why.gov': '总督定不了，交给你。', 'why.timeout': '总督 {wait} 秒没回答，交给你。', 'why.pass': '总督说：这个我定不了，交给你。', 'why.noGov': '没有总督在，直接交给你。', 'closed.late': '晚了一步：<b>{who}</b>在 {time} 已经处理了。这里不用再点了。', 'closed.pending': '在 {time} 已经处理了，结果还没传回来。已记下。', 'closed.answeredText': '回答了：“{text}”', 'closed.allowedText': '批准了', 'closed.deniedText': '拒绝了', 'closed.lateFull': '晚了一步：<b>{who}</b>在 {time} 先{text}。这里不用再点了。', 'closed.doneByYou': '<b>{who}</b>在 {time} {text}。已记下。', 'log.chatSent': '你 → {to}：{text}', 'log.remoteSpawn': '{who}（{device}）的 {label} 开始：{task}', 'log.remoteDone': '{who}（{device}）的 {task} 完工了', 'log.remoteLeft': '{who}（{device}）的 {task} 下线了', 'say.understood': '明白！', 'log.eraBecame': '{name} 变成{era}了', 'demo.seed.prompt': '先把这页做完，别的先不要动', 'demo.seed.reply': '好，先做这页，其它先不碰', 'chat.stateSuffix': '（{state}）', 'punct.answerJoin': '；', 'demo.device.cloud': '云端' }, en: { 'btn.log': 'Activity', 'aria.city': 'City', 'aria.canvas': '3D island: each little person is one agent', 'proto.banner': 'Prototype - demo data', 'btn.zoomIn': 'Zoom in', 'btn.zoomOut': 'Zoom out', 'btn.rotate': 'Rotate', 'btn.resetView': 'Reset the view', 'repo.all': 'All', 'aria.repos': 'Repos: click one to fly there', 'repo.goAria': 'Fly to {name}', 'cap.hint': 'That is as far as it goes - click "All" to see every repo','btn.close': 'Close', 'aria.toolbar': 'Controls', 'label.spawn': 'Send a', 'opt.worker': 'worker - builds houses', 'opt.taskManager': 'task manager - test tower', 'opt.fastLaneDeputy': 'fast-lane deputy - garden', 'opt.mergeDeputy': 'merge deputy - bridge', 'btn.spawn': 'Send', 'btn.remoteOff': 'Disconnect relay', 'btn.remoteOn': 'Resume', 'btn.remoteLeave': 'Leave the linked city', 'type.house': 'House', 'type.shop': 'Shop', 'type.tower': 'Tower', 'type.workshop': 'Workshop', 'type.library': 'Library', 'district.house': 'Homes', 'district.shop': 'Shops', 'district.tower': 'Tests', 'district.workshop': 'Workshops', 'district.library': 'Library', 'chat.state.queued': 'Sent', 'chat.state.delivered': 'Delivered', 'chat.state.undelivered': 'Undelivered', 'chat.new': 'New messages ↓', 'hist.title': 'History (newest at the bottom)', 'hist.empty': 'Nothing yet', 'hist.started': 'Headed out: {task}', 'hist.stuck': 'Stuck: {text}', 'hist.toLead': 'To the manager', 'hist.toGov': 'To the governor', 'hist.waiting': 'Waiting on you', 'hist.done': 'Finished, heading to rest', 'hist.left': 'Clocked out', 'chat.task': 'Task (what it was sent with)', 'team.title': '{repo} · Team', 'role.task-manager': 'Task manager', 'role.worker': 'Worker', 'role.fast-lane-deputy': 'Fast-lane deputy', 'role.merge-deputy': 'Merge deputy', 'role.other': 'Helper', 'era.village': 'Village', 'era.town': 'Town', 'era.city': 'City', 'quality.good': 'Tidy', 'quality.fair': 'OK', 'quality.poor': 'Messy', 'who.governor': 'Governor', 'who.owner': 'You', 'who.terminal': 'Terminal', 'state.spawn': 'Heading out', 'state.to_plot': 'To the site', 'state.building': 'Building', 'state.working': 'Working', 'state.to_hall': 'To the governor', 'state.asking': 'Asking the governor', 'state.heard': 'Got the answer', 'state.to_lead': 'To the manager', 'state.at_lead': 'Asking the manager', 'state.back': 'Back to the site', 'state.finishing': 'Topped out', 'state.to_rest': 'Heading to rest', 'state.resting': 'Resting', 'state.leaving': 'Heading home', 'status.need_approval': 'Needs your OK', 'status.asking_gov': 'Asking the governor', 'status.waiting_answer': 'Waiting on your answer', 'status.waiting_reply': 'Waiting on you', 'status.waiting': 'Waiting on you', 'stuck.permission': 'Needs permission: {tool}', 'stuck.default': 'Needs your eyes', 'gov.away': 'Away', 'gov.busy': 'Busy', 'gov.home': 'At the town hall', 'top.work': 'Working', 'top.ask': 'Need governor', 'top.rest': 'Resting', 'top.done': 'Built', 'top.stalled': 'Stalled site', 'top.pending': 'Waiting', 'top.pendingAria': '{n} waiting on your call - click to open the earliest', 'empty.noLand': 'No territory yet - start inside a git repo, or wait for an agent', 'loading.text': 'Loading assets…', 'loading.progress': 'Loading assets {n}/{total}', 'loading.error': 'Assets failed to load: {err}', 'site.human': 'Hands-on', 'log.eraUpgrade': '{name} is upgrading to {era}', 'say.done': 'Done!', 'log.leftWork': '{task} clocked out', 'gov.dispatch': 'Go: {task}', 'log.govDispatch': 'The governor sent {label}: {task}', 'log.siteMerged': '{branch} merged into main, the site wrapped up', 'log.siteRemoved': 'The {branch} site was pulled down', 'log.levelUp': '{label} leveled up to {lv}', 'log.movedBack': '{label} moved back to the {kind} district', 'log.demolished': 'Every file behind {label} is gone, demolished', 'log.stuckDemo': '{task} got stuck: "{text}" -> asking the governor', 'answer.default': 'Answered', 'log.govAnswer': 'The governor answered {task}: "{text}"', 'log.doneRestPlain': '{task} finished, heading to rest', 'log.doneRestBuilt': '{task} finished: {kind} topped out, heading to rest', 'log.noplot': '{name} found no empty plot, waiting a bit', 'gov.unknown': 'Unknown', 'gov.busyRow': 'Busy', 'gov.idleRow': 'Idle', 'gov.title': '{name} governor', 'chain.lead': 'Manager', 'chain.leadTask': 'Manager {task}', 'chat.empty': 'No conversation yet', 'chat.you.page': 'You (page)', 'chat.you.terminal': 'You (terminal)', 'chat.wait': 'Waiting for it to finish this step', 'chat.loadError': 'Could not load the conversation - try opening it again in a moment.', 'kv.repo': 'Repo', 'kv.branch': 'Branch', 'kv.doing': 'Doing', 'qa.ask': 'Q: “{q}”', 'qa.answer': 'A: “{a}”', 'qa.waiting': 'Q: “{q}” - waiting for an answer…', 'act.makeStuck': 'Make it stuck', 'act.makeDone': 'Make it finish', 'act.makeLeave': 'Make it clock out', 'act.demoNote': 'These three buttons exist only in the prototype, to try the flow.', 'gov.ownTag': 'main manager · main conversation', 'gov.tagLabel': 'Governor · main manager', 'gov.rgRole': 'main manager · Governor', 'pill.hall': 'Town hall', 'gov.awayNote': 'The governor is away: this repo has no main manager session right now. Agent questions go straight to you, without waiting for the governor first.', 'hint.team': 'Team', 'hint.noAgents': 'No agents at work yet. Open a Claude Code session and send an agent - it will walk out of the town hall.', 'hint.pickSomething': 'Click a person or building in the city, or a row in the list below.', 'building.misplaced': ' - in the wrong district', 'building.level': ' - level {level}', 'building.district': '{kind} district', 'building.module': '{name} module', 'hint.files': 'The files that built it', 'hint.history': 'Who has touched it (newest first)', 'detail.title': 'Details', 'clock.demo': 'Demo {t}', 'clock.now': 'Now {t}', 'opt.other': 'Other', 'opt.customAnswer': 'Write your own answer', 'btn.sendAnswer': 'Send answer', 'kv.tool': 'Tool', 'kv.file': 'File', 'kv.url': 'URL', 'said': 'It said: {text}', 'kv.dir': 'Directory', 'field.denyReason': 'Reason for denying (optional; if filled in, it is told to it as-is)', 'field.denyPlaceholder': 'e.g. do not delete dist/ yet, it has the release package', 'btn.allow': 'Allow', 'btn.deny': 'Deny', 'ask.asking': 'is asking', 'ask.needsPermission': 'needs permission', 'pill.closed': 'Closed', 'aria.collapse': 'Collapse (without answering)', 'foot.terminalAnswers': 'The terminal can answer too - whichever answers first wins.', 'err.decideNetwork': 'Could not send (cannot reach the city server). The terminal can still answer.', 'err.decideStatus': 'Could not send ({status}). The terminal can still answer, or try again.', 'proto.live': 'Live - waiting for the server', 'proto.connected': 'Live - connected', 'proto.reconnecting': 'Live - reconnecting…', 'log.relayOff': 'City-link relay disconnected: other members are frozen, my city keeps working as normal.', 'log.relayOn': 'City-link resumed: other members update to the latest.', 'log.relayLeave': 'Left the linked city: other members disappear from my city; my city is unchanged.', 'demo.task.checkoutTest': 'Write checkout tests', 'demo.task.paymentRetry': 'Fix payment-timeout retry', 'demo.q.paymentRetry': 'Should a payment timeout retry automatically?', 'demo.task.depsScan': 'Scan dependencies for vulnerabilities', 'demo.task.worker.0': 'Settings page form', 'demo.task.worker.1': 'Login API', 'demo.task.worker.2': 'Export CSV', 'demo.task.worker.3': 'Dark mode', 'demo.task.worker.4': 'Receipt printing', 'demo.task.worker.5': 'Search box', 'demo.task.worker.6': 'Pagination', 'demo.task.worker.7': 'Price calculation', 'demo.task.worker.8': 'Inventory alerts', 'demo.task.worker.9': 'Customer list', 'demo.task.taskManager.0': 'Settings page', 'demo.task.taskManager.1': 'Login', 'demo.task.taskManager.2': 'Reports', 'demo.task.taskManager.3': 'Printing', 'demo.task.taskManager.4': 'Inventory', 'demo.task.fastLaneDeputy.0': 'Typos', 'demo.task.fastLaneDeputy.1': 'Button colour', 'demo.task.fastLaneDeputy.2': 'Icon size', 'demo.task.fastLaneDeputy.3': 'Title wrapping', 'demo.task.fastLaneDeputy.4': 'Empty-state copy', 'demo.task.mergeDeputy.0': 'Merge settings', 'demo.task.mergeDeputy.1': 'Merge login', 'demo.task.mergeDeputy.2': 'Merge report', 'demo.task.mergeDeputy.3': 'Merge print', 'demo.qa.0.q': 'Which test name is unclear - which one?', 'demo.qa.0.a': 'Go with the default, log it', 'demo.qa.1.q': 'Which API path should I use?', 'demo.qa.1.a': 'Use /api/settings', 'demo.qa.2.q': 'Should I add pagination?', 'demo.qa.2.a': 'Not yet, write it into ideas', 'demo.qa.3.q': 'What is the default language?', 'demo.qa.3.a': 'zh, matching agent.conf', 'demo.qa.4.q': 'Does the old data need migrating?', 'demo.qa.4.a': 'Yes, write a test first', 'demo.qa.5.q': 'Can I change this file?', 'demo.qa.5.a': 'Yes, only your own copy', 'demo.qa.6.q': 'Can I run this command?', 'demo.qa.6.a': 'Approved, go ahead', 'aria.needsApproval': '{task} needs your approval, click to open', 'aria.needsAnswer': '{task} needs your answer, click to open', 'aria.stuckOnlyThem': '{name} is stuck; only {name} can answer', 'aria.govNeedsApproval': 'The governor needs your approval, click to open', 'aria.govNeedsAnswer': 'The governor needs your answer, click to open', 'gov.waitCountdown': 'Governor {s}s', 'chat.sendError': 'Could not send (cannot reach the city server).', 'btn.findLead': 'Find the lead: {name}', 'hint.readOnlySub': 'This is a subtask; the conversation is view only - go to its lead for anything else.', 'placeholder.saySomething': 'Say something to it…', 'btn.send': 'Send', 'label.ask': 'Q: ', 'label.answer': 'A: ', 'label.awaitingAnswer': 'awaiting an answer…', 'member.unknown': 'Unknown', 'chip.off': 'City-link disconnected - {n} queued', 'chip.refused': 'City-link refused the key', 'chip.ok': 'City-link - {people} people - {devices} devices', 'remote.note': 'View only: this agent belongs to {who} - only {who} can answer it.', 'stale.sec': 'Last updated {n}s ago', 'stale.min': 'Last updated {n}m ago', 'ask.permission': '{name} needs permission: {what} -> waiting on you', 'ask.toOwner': '{name} asks you: “{what}”', 'ask.toGov': '{name} asks the governor: “{what}”', 'ask.toGovNoGov': '{name} asks the governor: “{what}”, no governor around -> waiting on your answer', 'askphase.pass': 'The governor: not mine to decide -> waiting on your answer for {name}', 'askphase.timeout': 'The governor did not answer {name} in {wait}s -> waiting on you', 'closed.routed': 'The request from {name} was routed to {who}: {what}', 'closed.answered': '{who} answered {name}: “{text}”', 'closed.answeredDefault': '{who} already answered {name}', 'closed.allowed': '{who} allowed {name}: {what}', 'closed.denied': '{who} denied {name}: {what}', 'closed.deniedReason': ', reason: “{reason}”', 'closed.ended': '{who} closed {name}: {what}', 'why.permission': 'Only you can approve permissions - the governor does not.', 'why.gov': 'The governor cannot decide this - it is yours.', 'why.timeout': 'The governor did not answer in {wait}s - it is yours.', 'why.pass': 'The governor said: not mine to decide - it is yours.', 'why.noGov': 'No governor around - it goes straight to you.', 'closed.late': 'Too late: <b>{who}</b> already handled it at {time}. No need to click here.', 'closed.pending': 'Handled at {time}; the result has not come back yet. Noted.', 'closed.answeredText': 'Answered: “{text}”', 'closed.allowedText': 'Allowed', 'closed.deniedText': 'Denied', 'closed.lateFull': 'Too late: <b>{who}</b> already {text} at {time}. No need to click here.', 'closed.doneByYou': '<b>{who}</b> {text} at {time}. Noted.', 'log.chatSent': 'You -> {to}: {text}', 'log.remoteSpawn': '{who} ({device}) - {label} started: {task}', 'log.remoteDone': '{who} ({device}) - {task} finished', 'log.remoteLeft': '{who} ({device}) - {task} went offline', 'say.understood': 'Got it!', 'log.eraBecame': '{name} became a {era}', 'demo.seed.prompt': 'Finish this page first, do not touch anything else yet', 'demo.seed.reply': 'OK, doing this page first, leaving the rest alone', 'chat.stateSuffix': ' ({state})', 'punct.answerJoin': '; ', 'demo.device.cloud': 'Cloud' } };
+const TEXT = { zh: { 'btn.log': '动态', 'aria.city': '城市', 'aria.canvas': '3D 小岛：每个小人是一个 agent', 'proto.banner': '原型 · 模拟数据', 'btn.zoomIn': '放大', 'btn.zoomOut': '缩小', 'btn.rotate': '转一下', 'btn.resetView': '回到默认视角', 'repo.all': '全部', 'aria.repos': '仓库：点一个飞过去', 'repo.goAria': '飞到 {name}', 'cap.hint': '已经是最远了 · 点「全部」看所有仓库','btn.close': '关闭', 'aria.toolbar': '控制', 'label.spawn': '派一个', 'opt.worker': 'worker · 盖房子', 'opt.taskManager': 'task manager · 测试塔', 'opt.fastLaneDeputy': 'fast-lane deputy · 花园', 'opt.mergeDeputy': 'merge deputy · 桥', 'btn.spawn': '派出', 'btn.remoteOff': '中继断开', 'btn.remoteOn': '恢复', 'btn.remoteLeave': '退出联城', 'type.house': '住宅', 'type.shop': '商店', 'type.tower': '测试塔', 'type.workshop': '工坊', 'type.library': '图书馆', 'district.house': '住宅区', 'district.shop': '商业街', 'district.tower': '测试区', 'district.workshop': '工坊区', 'district.library': '图书馆区', 'chat.state.queued': '已发送', 'chat.state.delivered': '已送达', 'chat.state.undelivered': '没送到', 'chat.new': '有新消息 ↓', 'hist.title': '历史（新的在下面）', 'hist.empty': '还没有记录', 'hist.started': '出门：{task}', 'hist.stuck': '卡住了：{text}', 'hist.toLead': '去问经理', 'hist.toGov': '去问总督', 'hist.waiting': '等你回话', 'hist.done': '完工，去休息', 'hist.left': '下班了', 'chat.task': '任务（派它时的话）', 'team.title': '{repo} · 团队', 'role.task-manager': '任务经理', 'role.worker': '工人', 'role.fast-lane-deputy': '快车道副手', 'role.merge-deputy': '合并副手', 'role.other': '帮手', 'era.village': '村', 'era.town': '镇', 'era.city': '城', 'quality.good': '整齐', 'quality.fair': '还行', 'quality.poor': '有点乱', 'who.governor': '总督', 'who.owner': '你', 'who.terminal': '终端', 'state.spawn': '出门', 'state.to_plot': '去工地', 'state.building': '施工中', 'state.working': '干活', 'state.to_hall': '去问总督', 'state.asking': '在问总督', 'state.heard': '拿到答案', 'state.to_lead': '去问经理', 'state.at_lead': '问经理', 'state.back': '回工地', 'state.finishing': '封顶了', 'state.to_rest': '去休息', 'state.resting': '休息中', 'state.leaving': '下班回家', 'status.need_approval': '等你批', 'status.asking_gov': '在问总督', 'status.waiting_answer': '等你回答', 'status.waiting_reply': '等你回话', 'status.waiting': '等你', 'stuck.permission': '要权限：{tool}', 'stuck.default': '需要你看一下', 'gov.away': '不在', 'gov.busy': '忙着', 'gov.home': '坐镇市政厅', 'top.work': '干活', 'top.ask': '找总督', 'top.rest': '休息', 'top.done': '建成', 'top.stalled': '卡住的工地', 'top.pending': '等你', 'top.pendingAria': '等你决定 {n} 个，点开最早的一个', 'empty.noLand': '还没有领地 · 在一个 git 仓库里启动，或等代理开工', 'loading.text': '正在搬来素材…', 'loading.progress': '正在搬来素材 {n}/{total}', 'loading.error': '素材没加载成功：{err}', 'site.human': '亲自带', 'log.eraUpgrade': '{name} 开始升级成{era}', 'say.done': '完工啦！', 'log.leftWork': '{task} 下班了', 'gov.dispatch': '去吧：{task}', 'log.govDispatch': '总督派出 {label}：{task}', 'log.siteMerged': '{branch} 合并进主线，工地收工', 'log.siteRemoved': '{branch} 的工地撤了', 'log.levelUp': '{label} 升到 {lv} 级', 'log.movedBack': '{label} 搬回{kind}区', 'log.demolished': '{label} 的文件都没了，拆掉', 'log.stuckDemo': '{task} 卡住了：“{text}” → 去问总督', 'answer.default': '已回答', 'log.govAnswer': '总督回答 {task}：“{text}”', 'log.doneRestPlain': '{task} 完工，去休息', 'log.doneRestBuilt': '{task} 完工：{kind}封顶，去休息', 'log.noplot': '{name} 没有空地了，先等等', 'gov.unknown': '未知', 'gov.busyRow': '在忙', 'gov.idleRow': '空闲', 'gov.title': '{name} 总督', 'chain.lead': '经理', 'chain.leadTask': '经理 {task}', 'chat.empty': '还没有对话', 'chat.you.page': '你（页面）', 'chat.you.terminal': '你（终端）', 'chat.wait': '等它做完这一步', 'chat.loadError': '对话没加载出来，等会儿再打开看看。', 'kv.repo': '仓库', 'kv.branch': '分支', 'kv.doing': '在做', 'qa.ask': '问：“{q}”', 'qa.answer': '答：“{a}”', 'qa.waiting': '问：“{q}” 等回答…', 'act.makeStuck': '让它卡住', 'act.makeDone': '让它完工', 'act.makeLeave': '让它下班', 'act.demoNote': '这三个按钮只在原型里有，用来试流程。', 'gov.ownTag': 'main manager · 主对话', 'gov.tagLabel': '总督 · main manager', 'gov.rgRole': 'main manager · 总督', 'pill.hall': '市政厅', 'gov.awayNote': '总督不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等总督。', 'hint.team': '团队', 'hint.noAgents': '还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。', 'hint.pickSomething': '点城里的小人、房子，或下面名单里的一行。', 'building.misplaced': ' · 放错区了', 'building.level': ' · 等级 {level}', 'building.district': '{kind}区', 'building.module': '{name} 模块', 'hint.files': '盖它的文件', 'hint.history': '改过它的人（新的在前）', 'detail.title': '详情', 'clock.demo': '模拟 {t}', 'clock.now': '现在 {t}', 'opt.other': '其他', 'opt.customAnswer': '自己写回答', 'btn.sendAnswer': '发送回答', 'kv.tool': '工具', 'kv.file': '文件', 'kv.url': '网址', 'said': '它说：{text}', 'kv.dir': '目录', 'field.denyReason': '拒绝理由（可以不填；填了会原样告诉它）', 'field.denyPlaceholder': '比如：先别删 dist/，里面有发布包', 'btn.allow': '批准', 'btn.deny': '拒绝', 'ask.asking': '在问', 'ask.needsPermission': '要权限', 'pill.closed': '已关闭', 'aria.collapse': '收起（不回答）', 'foot.terminalAnswers': '终端里也能答，先答的算。', 'err.decideNetwork': '没发出去（连不上城市服务器）。终端里还能答。', 'err.decideStatus': '没发出去（{status}）。终端里还能答，可以再试一次。', 'proto.live': '实时 · 等服务器', 'proto.connected': '实时 · 已连接', 'proto.reconnecting': '实时 · 重连中…', 'log.relayOff': '联城中继断开：其他成员定格，我的城市照常干活。', 'log.relayOn': '联城恢复：其他成员更新到最新。', 'log.relayLeave': '退出联城：其他成员从我的城市消失，我的城市不变。', 'demo.task.checkoutTest': '写结账测试', 'demo.task.paymentRetry': '改支付超时重试', 'demo.q.paymentRetry': '支付超时要不要自动重试？', 'demo.task.depsScan': '扫描依赖漏洞', 'demo.task.worker.0': '设置页表单', 'demo.task.worker.1': '登录 API', 'demo.task.worker.2': '导出 CSV', 'demo.task.worker.3': '深色模式', 'demo.task.worker.4': '小票打印', 'demo.task.worker.5': '搜索框', 'demo.task.worker.6': '分页', 'demo.task.worker.7': '价格计算', 'demo.task.worker.8': '库存提醒', 'demo.task.worker.9': '客户列表', 'demo.task.taskManager.0': '设置页', 'demo.task.taskManager.1': '登录', 'demo.task.taskManager.2': '报表', 'demo.task.taskManager.3': '打印', 'demo.task.taskManager.4': '库存', 'demo.task.fastLaneDeputy.0': '错别字', 'demo.task.fastLaneDeputy.1': '按钮颜色', 'demo.task.fastLaneDeputy.2': '图标大小', 'demo.task.fastLaneDeputy.3': '标题换行', 'demo.task.fastLaneDeputy.4': '空状态文案', 'demo.task.mergeDeputy.0': '合并 settings', 'demo.task.mergeDeputy.1': '合并 login', 'demo.task.mergeDeputy.2': '合并 report', 'demo.task.mergeDeputy.3': '合并 print', 'demo.qa.0.q': '测试名不清楚，用哪个？', 'demo.qa.0.a': '按默认，记进日志', 'demo.qa.1.q': 'API 路径用哪个？', 'demo.qa.1.a': '用 /api/settings', 'demo.qa.2.q': '要不要加分页？', 'demo.qa.2.a': '先不加，写进 ideas', 'demo.qa.3.q': '默认语言是？', 'demo.qa.3.a': 'zh，跟 agent.conf', 'demo.qa.4.q': '旧数据要迁移吗？', 'demo.qa.4.a': '要，先写测试', 'demo.qa.5.q': '这个文件能改吗？', 'demo.qa.5.a': '能，只改你那份', 'demo.qa.6.q': '可以跑这条命令吗？', 'demo.qa.6.a': '批了，继续', 'aria.needsApproval': '{task} 等你批，点开看', 'aria.needsAnswer': '{task} 等你回答，点开看', 'aria.stuckOnlyThem': '{name} 卡住了，只有 {name} 能回答', 'aria.govNeedsApproval': '总督 等你批，点开看', 'aria.govNeedsAnswer': '总督 等你回答，点开看', 'gov.waitCountdown': '总督 {s}s', 'chat.sendError': '没发出去（连不上城市服务器）。', 'btn.findLead': '找组长：{name}', 'hint.readOnlySub': '它是子任务，这份对话只能看；有事去找组长。', 'placeholder.saySomething': '跟它说…', 'btn.send': '发送', 'label.ask': '问：', 'label.answer': '答：', 'label.awaitingAnswer': '等回答…', 'member.unknown': '未知', 'chip.off': '联城断开 · 待发 {n} 条', 'chip.refused': '联城拒绝了密钥', 'chip.ok': '联城 · {people} 人 · {devices} 台设备', 'remote.note': '只能看：这是 {who} 的 agent，只有 {who} 能回答。', 'stale.sec': '最后更新 {n} 秒前', 'stale.min': '最后更新 {n} 分钟前', 'ask.permission': '{name} 要权限：{what} → 等你批', 'ask.toOwner': '{name} 问你：“{what}”', 'ask.toGov': '{name} 问总督：“{what}”', 'ask.toGovNoGov': '{name} 问总督：“{what}”，没有总督在 → 等你回答', 'askphase.pass': '总督：这个我定不了 → 等你回答 {name}', 'askphase.timeout': '总督 {wait} 秒没回答 {name} → 等你', 'closed.routed': '{name} 的请求转到{who}处理：{what}', 'closed.answered': '{who}回答 {name}：“{text}”', 'closed.answeredDefault': '{who}已回答 {name}', 'closed.allowed': '{who}批准 {name}：{what}', 'closed.denied': '{who}拒绝 {name}：{what}', 'closed.deniedReason': '，理由：“{reason}”', 'closed.ended': '{who}结束了 {name}：{what}', 'why.permission': '权限只由你来批，总督不批。', 'why.gov': '总督定不了，交给你。', 'why.timeout': '总督 {wait} 秒没回答，交给你。', 'why.pass': '总督说：这个我定不了，交给你。', 'why.noGov': '没有总督在，直接交给你。', 'closed.late': '晚了一步：<b>{who}</b>在 {time} 已经处理了。这里不用再点了。', 'closed.pending': '在 {time} 已经处理了，结果还没传回来。已记下。', 'closed.answeredText': '回答了：“{text}”', 'closed.allowedText': '批准了', 'closed.deniedText': '拒绝了', 'closed.lateFull': '晚了一步：<b>{who}</b>在 {time} 先{text}。这里不用再点了。', 'closed.doneByYou': '<b>{who}</b>在 {time} {text}。已记下。', 'log.chatSent': '你 → {to}：{text}', 'log.remoteSpawn': '{who}（{device}）的 {label} 开始：{task}', 'log.remoteDone': '{who}（{device}）的 {task} 完工了', 'log.remoteLeft': '{who}（{device}）的 {task} 下线了', 'say.understood': '明白！', 'log.eraBecame': '{name} 变成{era}了', 'demo.seed.prompt': '先把这页做完，别的先不要动', 'demo.seed.reply': '好，先做这页，其它先不碰', 'chat.stateSuffix': '（{state}）', 'punct.answerJoin': '；', 'rail.title': '在线', 'rail.count': '{n}', 'rail.rest': '休息 {n}', 'rail.tab': '在线 {n}', 'fold.rail': '折起名单', 'follow.on': '跟随 {name}', 'follow.stop': '停止', 'demo.device.cloud': '云端' }, en: { 'btn.log': 'Activity', 'aria.city': 'City', 'aria.canvas': '3D island: each little person is one agent', 'proto.banner': 'Prototype - demo data', 'btn.zoomIn': 'Zoom in', 'btn.zoomOut': 'Zoom out', 'btn.rotate': 'Rotate', 'btn.resetView': 'Reset the view', 'repo.all': 'All', 'aria.repos': 'Repos: click one to fly there', 'repo.goAria': 'Fly to {name}', 'cap.hint': 'That is as far as it goes - click "All" to see every repo','btn.close': 'Close', 'aria.toolbar': 'Controls', 'label.spawn': 'Send a', 'opt.worker': 'worker - builds houses', 'opt.taskManager': 'task manager - test tower', 'opt.fastLaneDeputy': 'fast-lane deputy - garden', 'opt.mergeDeputy': 'merge deputy - bridge', 'btn.spawn': 'Send', 'btn.remoteOff': 'Disconnect relay', 'btn.remoteOn': 'Resume', 'btn.remoteLeave': 'Leave the linked city', 'type.house': 'House', 'type.shop': 'Shop', 'type.tower': 'Tower', 'type.workshop': 'Workshop', 'type.library': 'Library', 'district.house': 'Homes', 'district.shop': 'Shops', 'district.tower': 'Tests', 'district.workshop': 'Workshops', 'district.library': 'Library', 'chat.state.queued': 'Sent', 'chat.state.delivered': 'Delivered', 'chat.state.undelivered': 'Undelivered', 'chat.new': 'New messages ↓', 'hist.title': 'History (newest at the bottom)', 'hist.empty': 'Nothing yet', 'hist.started': 'Headed out: {task}', 'hist.stuck': 'Stuck: {text}', 'hist.toLead': 'To the manager', 'hist.toGov': 'To the governor', 'hist.waiting': 'Waiting on you', 'hist.done': 'Finished, heading to rest', 'hist.left': 'Clocked out', 'chat.task': 'Task (what it was sent with)', 'team.title': '{repo} · Team', 'role.task-manager': 'Task manager', 'role.worker': 'Worker', 'role.fast-lane-deputy': 'Fast-lane deputy', 'role.merge-deputy': 'Merge deputy', 'role.other': 'Helper', 'era.village': 'Village', 'era.town': 'Town', 'era.city': 'City', 'quality.good': 'Tidy', 'quality.fair': 'OK', 'quality.poor': 'Messy', 'who.governor': 'Governor', 'who.owner': 'You', 'who.terminal': 'Terminal', 'state.spawn': 'Heading out', 'state.to_plot': 'To the site', 'state.building': 'Building', 'state.working': 'Working', 'state.to_hall': 'To the governor', 'state.asking': 'Asking the governor', 'state.heard': 'Got the answer', 'state.to_lead': 'To the manager', 'state.at_lead': 'Asking the manager', 'state.back': 'Back to the site', 'state.finishing': 'Topped out', 'state.to_rest': 'Heading to rest', 'state.resting': 'Resting', 'state.leaving': 'Heading home', 'status.need_approval': 'Needs your OK', 'status.asking_gov': 'Asking the governor', 'status.waiting_answer': 'Waiting on your answer', 'status.waiting_reply': 'Waiting on you', 'status.waiting': 'Waiting on you', 'stuck.permission': 'Needs permission: {tool}', 'stuck.default': 'Needs your eyes', 'gov.away': 'Away', 'gov.busy': 'Busy', 'gov.home': 'At the town hall', 'top.work': 'Working', 'top.ask': 'Need governor', 'top.rest': 'Resting', 'top.done': 'Built', 'top.stalled': 'Stalled site', 'top.pending': 'Waiting', 'top.pendingAria': '{n} waiting on your call - click to open the earliest', 'empty.noLand': 'No territory yet - start inside a git repo, or wait for an agent', 'loading.text': 'Loading assets…', 'loading.progress': 'Loading assets {n}/{total}', 'loading.error': 'Assets failed to load: {err}', 'site.human': 'Hands-on', 'log.eraUpgrade': '{name} is upgrading to {era}', 'say.done': 'Done!', 'log.leftWork': '{task} clocked out', 'gov.dispatch': 'Go: {task}', 'log.govDispatch': 'The governor sent {label}: {task}', 'log.siteMerged': '{branch} merged into main, the site wrapped up', 'log.siteRemoved': 'The {branch} site was pulled down', 'log.levelUp': '{label} leveled up to {lv}', 'log.movedBack': '{label} moved back to the {kind} district', 'log.demolished': 'Every file behind {label} is gone, demolished', 'log.stuckDemo': '{task} got stuck: "{text}" -> asking the governor', 'answer.default': 'Answered', 'log.govAnswer': 'The governor answered {task}: "{text}"', 'log.doneRestPlain': '{task} finished, heading to rest', 'log.doneRestBuilt': '{task} finished: {kind} topped out, heading to rest', 'log.noplot': '{name} found no empty plot, waiting a bit', 'gov.unknown': 'Unknown', 'gov.busyRow': 'Busy', 'gov.idleRow': 'Idle', 'gov.title': '{name} governor', 'chain.lead': 'Manager', 'chain.leadTask': 'Manager {task}', 'chat.empty': 'No conversation yet', 'chat.you.page': 'You (page)', 'chat.you.terminal': 'You (terminal)', 'chat.wait': 'Waiting for it to finish this step', 'chat.loadError': 'Could not load the conversation - try opening it again in a moment.', 'kv.repo': 'Repo', 'kv.branch': 'Branch', 'kv.doing': 'Doing', 'qa.ask': 'Q: “{q}”', 'qa.answer': 'A: “{a}”', 'qa.waiting': 'Q: “{q}” - waiting for an answer…', 'act.makeStuck': 'Make it stuck', 'act.makeDone': 'Make it finish', 'act.makeLeave': 'Make it clock out', 'act.demoNote': 'These three buttons exist only in the prototype, to try the flow.', 'gov.ownTag': 'main manager · main conversation', 'gov.tagLabel': 'Governor · main manager', 'gov.rgRole': 'main manager · Governor', 'pill.hall': 'Town hall', 'gov.awayNote': 'The governor is away: this repo has no main manager session right now. Agent questions go straight to you, without waiting for the governor first.', 'hint.team': 'Team', 'hint.noAgents': 'No agents at work yet. Open a Claude Code session and send an agent - it will walk out of the town hall.', 'hint.pickSomething': 'Click a person or building in the city, or a row in the list below.', 'building.misplaced': ' - in the wrong district', 'building.level': ' - level {level}', 'building.district': '{kind} district', 'building.module': '{name} module', 'hint.files': 'The files that built it', 'hint.history': 'Who has touched it (newest first)', 'detail.title': 'Details', 'clock.demo': 'Demo {t}', 'clock.now': 'Now {t}', 'opt.other': 'Other', 'opt.customAnswer': 'Write your own answer', 'btn.sendAnswer': 'Send answer', 'kv.tool': 'Tool', 'kv.file': 'File', 'kv.url': 'URL', 'said': 'It said: {text}', 'kv.dir': 'Directory', 'field.denyReason': 'Reason for denying (optional; if filled in, it is told to it as-is)', 'field.denyPlaceholder': 'e.g. do not delete dist/ yet, it has the release package', 'btn.allow': 'Allow', 'btn.deny': 'Deny', 'ask.asking': 'is asking', 'ask.needsPermission': 'needs permission', 'pill.closed': 'Closed', 'aria.collapse': 'Collapse (without answering)', 'foot.terminalAnswers': 'The terminal can answer too - whichever answers first wins.', 'err.decideNetwork': 'Could not send (cannot reach the city server). The terminal can still answer.', 'err.decideStatus': 'Could not send ({status}). The terminal can still answer, or try again.', 'proto.live': 'Live - waiting for the server', 'proto.connected': 'Live - connected', 'proto.reconnecting': 'Live - reconnecting…', 'log.relayOff': 'City-link relay disconnected: other members are frozen, my city keeps working as normal.', 'log.relayOn': 'City-link resumed: other members update to the latest.', 'log.relayLeave': 'Left the linked city: other members disappear from my city; my city is unchanged.', 'demo.task.checkoutTest': 'Write checkout tests', 'demo.task.paymentRetry': 'Fix payment-timeout retry', 'demo.q.paymentRetry': 'Should a payment timeout retry automatically?', 'demo.task.depsScan': 'Scan dependencies for vulnerabilities', 'demo.task.worker.0': 'Settings page form', 'demo.task.worker.1': 'Login API', 'demo.task.worker.2': 'Export CSV', 'demo.task.worker.3': 'Dark mode', 'demo.task.worker.4': 'Receipt printing', 'demo.task.worker.5': 'Search box', 'demo.task.worker.6': 'Pagination', 'demo.task.worker.7': 'Price calculation', 'demo.task.worker.8': 'Inventory alerts', 'demo.task.worker.9': 'Customer list', 'demo.task.taskManager.0': 'Settings page', 'demo.task.taskManager.1': 'Login', 'demo.task.taskManager.2': 'Reports', 'demo.task.taskManager.3': 'Printing', 'demo.task.taskManager.4': 'Inventory', 'demo.task.fastLaneDeputy.0': 'Typos', 'demo.task.fastLaneDeputy.1': 'Button colour', 'demo.task.fastLaneDeputy.2': 'Icon size', 'demo.task.fastLaneDeputy.3': 'Title wrapping', 'demo.task.fastLaneDeputy.4': 'Empty-state copy', 'demo.task.mergeDeputy.0': 'Merge settings', 'demo.task.mergeDeputy.1': 'Merge login', 'demo.task.mergeDeputy.2': 'Merge report', 'demo.task.mergeDeputy.3': 'Merge print', 'demo.qa.0.q': 'Which test name is unclear - which one?', 'demo.qa.0.a': 'Go with the default, log it', 'demo.qa.1.q': 'Which API path should I use?', 'demo.qa.1.a': 'Use /api/settings', 'demo.qa.2.q': 'Should I add pagination?', 'demo.qa.2.a': 'Not yet, write it into ideas', 'demo.qa.3.q': 'What is the default language?', 'demo.qa.3.a': 'zh, matching agent.conf', 'demo.qa.4.q': 'Does the old data need migrating?', 'demo.qa.4.a': 'Yes, write a test first', 'demo.qa.5.q': 'Can I change this file?', 'demo.qa.5.a': 'Yes, only your own copy', 'demo.qa.6.q': 'Can I run this command?', 'demo.qa.6.a': 'Approved, go ahead', 'aria.needsApproval': '{task} needs your approval, click to open', 'aria.needsAnswer': '{task} needs your answer, click to open', 'aria.stuckOnlyThem': '{name} is stuck; only {name} can answer', 'aria.govNeedsApproval': 'The governor needs your approval, click to open', 'aria.govNeedsAnswer': 'The governor needs your answer, click to open', 'gov.waitCountdown': 'Governor {s}s', 'chat.sendError': 'Could not send (cannot reach the city server).', 'btn.findLead': 'Find the lead: {name}', 'hint.readOnlySub': 'This is a subtask; the conversation is view only - go to its lead for anything else.', 'placeholder.saySomething': 'Say something to it…', 'btn.send': 'Send', 'label.ask': 'Q: ', 'label.answer': 'A: ', 'label.awaitingAnswer': 'awaiting an answer…', 'member.unknown': 'Unknown', 'chip.off': 'City-link disconnected - {n} queued', 'chip.refused': 'City-link refused the key', 'chip.ok': 'City-link - {people} people - {devices} devices', 'remote.note': 'View only: this agent belongs to {who} - only {who} can answer it.', 'stale.sec': 'Last updated {n}s ago', 'stale.min': 'Last updated {n}m ago', 'ask.permission': '{name} needs permission: {what} -> waiting on you', 'ask.toOwner': '{name} asks you: “{what}”', 'ask.toGov': '{name} asks the governor: “{what}”', 'ask.toGovNoGov': '{name} asks the governor: “{what}”, no governor around -> waiting on your answer', 'askphase.pass': 'The governor: not mine to decide -> waiting on your answer for {name}', 'askphase.timeout': 'The governor did not answer {name} in {wait}s -> waiting on you', 'closed.routed': 'The request from {name} was routed to {who}: {what}', 'closed.answered': '{who} answered {name}: “{text}”', 'closed.answeredDefault': '{who} already answered {name}', 'closed.allowed': '{who} allowed {name}: {what}', 'closed.denied': '{who} denied {name}: {what}', 'closed.deniedReason': ', reason: “{reason}”', 'closed.ended': '{who} closed {name}: {what}', 'why.permission': 'Only you can approve permissions - the governor does not.', 'why.gov': 'The governor cannot decide this - it is yours.', 'why.timeout': 'The governor did not answer in {wait}s - it is yours.', 'why.pass': 'The governor said: not mine to decide - it is yours.', 'why.noGov': 'No governor around - it goes straight to you.', 'closed.late': 'Too late: <b>{who}</b> already handled it at {time}. No need to click here.', 'closed.pending': 'Handled at {time}; the result has not come back yet. Noted.', 'closed.answeredText': 'Answered: “{text}”', 'closed.allowedText': 'Allowed', 'closed.deniedText': 'Denied', 'closed.lateFull': 'Too late: <b>{who}</b> already {text} at {time}. No need to click here.', 'closed.doneByYou': '<b>{who}</b> {text} at {time}. Noted.', 'log.chatSent': 'You -> {to}: {text}', 'log.remoteSpawn': '{who} ({device}) - {label} started: {task}', 'log.remoteDone': '{who} ({device}) - {task} finished', 'log.remoteLeft': '{who} ({device}) - {task} went offline', 'say.understood': 'Got it!', 'log.eraBecame': '{name} became a {era}', 'demo.seed.prompt': 'Finish this page first, do not touch anything else yet', 'demo.seed.reply': 'OK, doing this page first, leaving the rest alone', 'chat.stateSuffix': ' ({state})', 'punct.answerJoin': '; ', 'rail.title': 'Now', 'rail.count': '{n}', 'rail.rest': 'Resting {n}', 'rail.tab': 'Now {n}', 'fold.rail': 'Fold the list', 'follow.on': 'Following {name}', 'follow.stop': 'Stop', 'demo.device.cloud': 'Cloud' } };
 /* idea-city C1: i18n(key, vars) -> TEXT[en or zh][key], every "{name}" replaced by vars[name]; an
    unknown key gives the key itself back. A plain top-level function declaration -- every caller in
    this file reaches it by that name (never `T`: several test drivers use a local `T` for "the
@@ -993,9 +1046,10 @@ function memberColors(keys, meKey) {
    Local-only city (not joined): the role colour as always. Joined: the colour of the member the
    ring belongs to (mine included). */
 function ringColor(joined, roleColor, memberColor) { return joined ? memberColor : roleColor; }
-/* tagVisible(hover, selected) -> a floating name tag / device chip is off by default; it shows
-   only while the pointer is over that person or the person is selected (owner decision 2026-09-25). */
-function tagVisible(hover, selected) { return !!(hover || selected); }
+/* tagVisible(hover, selected, followed) -> a floating name tag / device chip is off by default; it
+   shows only while the pointer is over that person, the person is selected, or (V1) it is the followed
+   person -- the same as a selected one (owner decision 2026-09-25; V1 adds follow). */
+function tagVisible(hover, selected, followed) { return !!(hover || selected || followed); }
 /* memberLegend(me, people, govs, colors) -> [{key, name, device, color}]. me first (key "me") when
    not null, then one entry per dev in order of first appearance (people, then govs). Feeds both the
    联城 chip and the roster group headers. */
@@ -1857,6 +1911,11 @@ let selected = null;
 /* city-join: the {t, id} under the pointer right now (pointermove, no button down), or null --
    drives tagVisible() so a floating name tag / device chip shows on hover, same as on select. */
 let hovered = null;
+/* V1 (sim): follow -- the rail row id (a citizen id, or 'gov:<terr>') the camera is locked onto, or
+   null. FOLLOW_DIST: how close a follow flies in -- startFollow() never zooms further OUT than the
+   owner's own current cam.dist to follow. */
+let follow = null;
+const FOLLOW_DIST = 5.5;
 const gov = { x:0, y:1.4, bubble:null, answered:0, dispatched:0 };
 const SKIN = ['#FFE0C7','#F7C9A4','#E6AC84','#BF8560','#8E5E40'];
 
@@ -2877,6 +2936,15 @@ function applyRemote(inner, who){
   }
   return null;
 }
+/* V1 (sim): REPO_COLORS -- one accent colour per territory (the rail's dots, --rc), cycling by the
+   territory's own index in map.territories (so the same territory keeps the same colour as others come
+   and go around it). terrColor(terr) -> that colour; '#8D91B3' (--ink-3, a neutral) for a territory not
+   in the map at all. */
+const REPO_COLORS = ['#4D7CFE', '#FF7593', '#2FB57A', '#E8A33A', '#8A6FE0', '#2FAFC4', '#E0577E', '#6FA33A'];
+function terrColor(terr){
+  const i = (map.territories || []).findIndex(t => t.id === terr);
+  return i < 0 ? '#8D91B3' : REPO_COLORS[i % REPO_COLORS.length];
+}
 /* the governor row's own pill text, per territory (Interaction: a governor per territory): 不在 only
    when governorAt(terr) is null, else its state (busy/idle/waiting -> 在忙/空闲/等你). */
 function govRowText(terr){
@@ -2909,6 +2977,98 @@ function rosterGroups(){
     groups.push({ terr: t.id, name: t.name, rows });
   }
   return groups;
+}
+/* V1 (sim): railGroups() -> [{terr, name, color, rows: [{id, depth, rest}]}], one per territory that
+   has at least one row (a territory with nobody here is left out), in map order. Built from
+   rosterGroups() (minus its own always-present governor row) plus the rail's own governor row -- only
+   while that territory actually has a governor figure (governorFigures(), never rosterGroups()'s
+   unconditional one) -- and every other member's person in it (c.remote, not gone; rosterGroups() only
+   ever lists my own city). Last, every row whose person rests (citizenStatus(c)[0] === 'rest') moves to
+   the end of its own group, with rest: true, the order among them kept. */
+function railGroups(){
+  const figs = new Set(governorFigures().map(g => g.terr));
+  const out = [];
+  for (const g of rosterGroups()) {
+    const rows = [];
+    if (figs.has(g.terr)) rows.push({ id: 'gov:' + g.terr, depth: 0, rest: false });
+    for (const r of g.rows) {
+      if (r.id === 'gov:' + g.terr) continue;
+      const c = byId(r.id);
+      rows.push({ id: r.id, depth: r.depth, rest: !!(c && citizenStatus(c)[0] === 'rest') });
+    }
+    for (const c of citizens) {
+      if (c.terr !== g.terr || c.gone || !c.remote) continue;
+      rows.push({ id: c.id, depth: 0, rest: citizenStatus(c)[0] === 'rest' });
+    }
+    if (!rows.length) continue;
+    const active = rows.filter(r => !r.rest), resting = rows.filter(r => r.rest);
+    out.push({ terr: g.terr, name: g.name, color: terrColor(g.terr), rows: active.concat(resting) });
+  }
+  return out;
+}
+/* V1 (sim): railCount(groups) -> {active, you}: active = rows that are neither the governor nor
+   resting; you = those among them whose citizenStatus(c)[0] === 'you' (waiting on the owner), read fresh
+   every call (the rows themselves only carry id/depth/rest, never a cached status). */
+function railCount(groups){
+  let active = 0, you = 0;
+  for (const g of groups) for (const row of g.rows) {
+    if (row.rest || row.id.slice(0, 4) === 'gov:') continue;
+    active++;
+    const c = byId(row.id);
+    if (c && citizenStatus(c)[0] === 'you') you++;
+  }
+  return { active, you };
+}
+/* V1 (sim): selKey(sel) -> the rail row id a selection corresponds to: {t:'c', id} -> id; {t:'gov',
+   terr} -> 'gov:' + (terr || govTerr); anything else (a building, a remote governor, null) -> null. */
+function selKey(sel){
+  if (!sel) return null;
+  if (sel.t === 'c') return sel.id;
+  if (sel.t === 'gov') return 'gov:' + (sel.terr || govTerr);
+  return null;
+}
+/* V1 (sim): railRowHtml(row, group) -> one rail row, a single button (no separate open button any
+   more) -- railHtml()'s own per-row draw. */
+function railRowHtml(row, group){
+  const isGov = row.id.slice(0, 4) === 'gov:';
+  const c = isGov ? null : byId(row.id);
+  const name = isGov ? i18n('who.governor') : (c ? nameOf(c) : '');
+  const [cls, text] = isGov ? ['gov', govRowText(row.id.slice(4))] : (c ? citizenStatus(c) : ['walk', '']);
+  const clsAttr = 'rrow' + (row.depth ? ' sub' : '') + (row.rest ? ' resting' : '');
+  return '<li><button type="button" class="' + clsAttr + '" data-focus="' + esc(row.id) + '" aria-current="' +
+    (row.id === group.selId) + '" style="--rc:' + group.color + '"><span class="sdot"></span><b>' + esc(name) +
+    '</b><span class="chip ' + cls + '">' + esc(text) + '</span></button></li>';
+}
+/* V1 (sim): railHtml(groups, selId, closed, openRest) -> the HTML of #rail-list. selId = selKey(the
+   selection); closed = a Set of terr ids folded by the owner; openRest = a Set of terr ids whose resting
+   rows show. A closed group shows its own head only (no rows, no rest toggle); the head's <span
+   class="you"> (people waiting on the owner) shows only while closed, and only past zero. */
+function railHtml(groups, selId, closed, openRest){
+  let html = '';
+  for (const g of groups) {
+    const grp = { color: g.color, selId };
+    const isClosed = closed.has(g.terr);
+    const active = g.rows.filter(r => !r.rest), resting = g.rows.filter(r => r.rest);
+    // the head's own counts: active rows that are neither the governor nor resting (railCount() counts the same way)
+    const activeCount = active.filter(r => r.id.slice(0, 4) !== 'gov:');
+    const you = activeCount.reduce((n, r) => n + (byId(r.id) && citizenStatus(byId(r.id))[0] === 'you' ? 1 : 0), 0);
+    html += '<section class="rail-grp" data-terr="' + esc(g.terr) + '">';
+    html += '<button type="button" class="grp-h" data-grp="' + esc(g.terr) + '" aria-expanded="' + !isClosed + '">' +
+      '<span class="rc" style="--rc:' + g.color + '"></span>' + esc(g.name) + '<span class="n">' + activeCount.length + '</span>';
+    if (isClosed && you) html += '<span class="you">' + you + '</span>';
+    html += '</button>';
+    if (!isClosed) {
+      html += '<ul class="rrows">' + active.map(r => railRowHtml(r, grp)).join('') + '</ul>';
+      if (resting.length) {
+        const open = openRest.has(g.terr);
+        html += '<button type="button" class="rest-t" data-rest="' + esc(g.terr) + '" aria-expanded="' + open + '">' +
+          esc(i18n('rail.rest', { n: resting.length })) + '</button>';
+        if (open) html += '<ul class="rrows">' + resting.map(r => railRowHtml(r, grp)).join('') + '</ul>';
+      }
+    }
+    html += '</section>';
+  }
+  return html;
 }
 
 const ROLE_TYPE = { 'task-manager':'tower', worker:'house', 'fast-lane-deputy':'shop', 'merge-deputy':'workshop' };
@@ -3201,7 +3361,8 @@ function autoRotate(now, dt){
   if (autoRotating()) cam.az += autoRotDir * dt * Math.PI * 2 / AUTO_ROT_SEC;
 }
 /* cameraStep(dt): the per-frame camera advance -- the never-stop rotation (through autoRotate(), the
-   one rotation path) plus the quarter-turn tween. frame() calls this every frame. */
+   one rotation path) plus the quarter-turn tween, plus V1's follow (below). frame() calls this every
+   frame. */
 function cameraStep(dt){
   autoRotate(0, dt);
   if (camTween) {
@@ -3211,12 +3372,31 @@ function cameraStep(dt){
     if (camTween.t >= 1) camTween = null;
   }
   if (camFly) {
-    camFly.t = Math.min(1, camFly.t + dt / FLY_SEC);
-    const e = camFly.t < .5 ? 2 * camFly.t * camFly.t : 1 - Math.pow(-2 * camFly.t + 2, 2) / 2;
-    cam.tx = camFly.fromTx + (camFly.x - camFly.fromTx) * e;
-    cam.tz = camFly.fromTz + (camFly.z - camFly.fromTz) * e;
-    cam.dist = camFly.fromDist + (camFly.dist - camFly.fromDist) * e;
-    if (camFly.t >= 1) camFly = null;
+    // V1: a fly started by startFollow() keeps its own end point tracking the followed person while it
+    // flies (camFly.follow), refreshed here before the ease so the fly always arcs toward where the
+    // person actually is right now -- never a jump once it lands.
+    if (camFly.follow) {
+      const p = followPos(camFly.follow);
+      if (!p) stopFollow(); else { camFly.x = p[0]; camFly.z = p[1]; }
+    }
+    if (camFly) {
+      camFly.t = Math.min(1, camFly.t + dt / FLY_SEC);
+      const e = camFly.t < .5 ? 2 * camFly.t * camFly.t : 1 - Math.pow(-2 * camFly.t + 2, 2) / 2;
+      cam.tx = camFly.fromTx + (camFly.x - camFly.fromTx) * e;
+      cam.tz = camFly.fromTz + (camFly.z - camFly.fromTz) * e;
+      cam.dist = camFly.fromDist + (camFly.dist - camFly.fromDist) * e;
+      if (camFly.t >= 1) camFly = null;
+    }
+  } else if (follow) {
+    // V1: once the fly-in is over, cam.tx/tz keep easing toward the followed person (a sprint stays
+    // within .15 tiles of the middle); cam.el and cam.dist are never touched here.
+    const p = followPos(follow);
+    if (!p) stopFollow();
+    else {
+      const k = 1 - Math.exp(-8 * dt);
+      cam.tx += (p[0] - cam.tx) * k;
+      cam.tz += (p[1] - cam.tz) * k;
+    }
   }
 }
 /* U1 (sim): repoTags(view) -> one tag {id, name, x, z} per territory, scene coordinates relative to
@@ -3244,6 +3424,36 @@ function flyTo(x, z, dist){
   camFly = { fromTx: cam.tx, fromTz: cam.tz, fromDist: cam.dist, x, z, dist, t: 0 };
 }
 function stopFly(){ camFly = null; }
+/* V1 (sim): followPos(id) -> [x, z] in scene coordinates (world - mid) of the rail row `id` names right
+   now -- 'gov:<terr>': that territory's governorFigures() entry; else the citizen (byId), not gone --
+   or null (nobody to follow: unknown id, gone, or a territory with no governor figure). */
+function followPos(id){
+  if (!id) return null;
+  if (id.slice(0, 4) === 'gov:') {
+    const terr = id.slice(4), g = governorFigures().find(f => f.terr === terr);
+    return g ? [g.x - mid.x, g.y - mid.z] : null;
+  }
+  const c = byId(id);
+  return c && !c.gone ? [c.x - mid.x, c.y - mid.z] : null;
+}
+/* V1 (sim): startFollow(id) does nothing when followPos(id) is null; else follow = id and a fly to the
+   person, never further out than the owner's own current zoom (Math.min(cam.dist, FOLLOW_DIST)) --
+   cameraStep() keeps that fly's end point tracking the person (camFly.follow) while it runs, then keeps
+   following after. stopFollow(): follow = null, and a fly started by startFollow() is cancelled (a
+   zoom/pan/etc fly is left alone -- stopFly() is the one that only ever ends a fly, never a follow).
+   toggleFollow(id): the same id stops it, any other (or none) starts it. */
+function startFollow(id){
+  const p = followPos(id);
+  if (!p) return;
+  follow = id;
+  flyTo(p[0], p[1], Math.min(cam.dist, FOLLOW_DIST));
+  camFly.follow = id;
+}
+function stopFollow(){
+  if (camFly && camFly.follow) camFly = null;
+  follow = null;
+}
+function toggleFollow(id){ if (follow === id) stopFollow(); else startFollow(id); }
 /* U1 (sim): spanDist(span, w, h) -> the camera distance at which `span` tiles fill the stage's
    shorter side. ZOOM_OUT_TERR territories across that side is the zoom-out limit (zoomCapDist). */
 function spanDist(span, w, h){
@@ -3288,6 +3498,22 @@ function panDelta(dx, dy, az, el, dist, h){
   const dtx = -(dx * c - dy * s * f) * k;
   const dtz = -(-dx * s - dy * c * f) * k;
   return [dtx, dtz];
+}
+/* V1 (sim): freeCentre(w, h, rail, win) -> [cx, cy], the middle of the map that is actually free, stage
+   px. rail = {right} (the rail's own right edge, or its folded tab's) on a computer, else null (a phone:
+   the drawer is only ever out for a moment, never counted). win = the box {left, top, right, bottom} of
+   the message panel, or its folded tab, whichever shows, else null. updateCamera() eases
+   camera.setViewOffset toward this every frame. */
+function freeCentre(w, h, rail, win){
+  let x0 = rail ? rail.right : 0, x1 = w, y0 = 0, y1 = h;
+  if (win) {
+    if (win.left <= x0 + 20 && win.right >= w - 20) y1 = win.top; // a phone sheet spanning the width
+    else if (win.left >= w / 2) x1 = win.left; // on the right
+    else x0 = Math.max(x0, win.right); // on the left
+  }
+  if (x1 - x0 < 160) { x0 = 0; x1 = w; } // never a sliver
+  if (y1 - y0 < 120) { y0 = 0; y1 = h; }
+  return [(x0 + x1) / 2, (y0 + y1) / 2];
 }
 /* U6 (sim): tagPick(el, t, id) tags a name tag/bubble element with what a tap on it should select.
    pickOfTag(t, id) turns that back into a selection ({t:'c', id} | {t:'rg', id} | {t:'gov', terr: id} |
@@ -3800,7 +4026,8 @@ function renderRepos(){
   const parts = ['<button type="button" class="repo all" data-terr="*">' + esc(i18n('repo.all')) + '</button>'];
   for (const t of tags) {
     parts.push('<button type="button" class="repo" data-terr="' + esc(t.id) + '" aria-label="' +
-      esc(i18n('repo.goAria', { name: t.name })) + '">' + esc(t.name) + '</button>');
+      esc(i18n('repo.goAria', { name: t.name })) + '"><span class="rc" style="--rc:' + terrColor(t.id) +
+      '"></span>' + esc(t.name) + '</button>');
   }
   el.innerHTML = parts.join('');
   reposAriaCur = undefined; // force at least one aria-current pass on the fresh markup
@@ -4472,7 +4699,7 @@ function updatePerson(c, t, dt){
     // changes (who/device never change for a given citizen after spawn); every other frame reuses
     // the width cached on the element (el._w) from that one read.
     const name = memberName(c.remote.who, c.remote.device);
-    const show = tagVisible(isHover, isSel);
+    const show = tagVisible(isHover, isSel, follow === c.id);
     const tagChanged = c.o.tag._t !== name;
     setText(c.o.tag, name);
     pin(c.o.tag, tx, ty + 34, show);
@@ -4489,7 +4716,7 @@ function updatePerson(c, t, dt){
     pin(c.o.rqm, sx, showBub ? sy - 32 : sy, !frozen && !!c.stuck);
   } else {
     setText(c.o.tag, nameOf(c));
-    pin(c.o.tag, tx, ty + 34, tagVisible(isHover, isSel) && c.state !== 'asking');
+    pin(c.o.tag, tx, ty + 34, tagVisible(isHover, isSel, follow === c.id) && c.state !== 'asking');
   }
 }
 /* Interaction: one governor figure per present governor (city-people, B1 drew only the home
@@ -4841,6 +5068,33 @@ function applyFade(blocked){
     });
   }
 }
+/* V1: the free part of the map -- the #rail/#rail-tab and #win/#win-tab boxes, relative to the stage,
+   read at most a few times a second (getBoundingClientRect is not free every frame); updateCamera()
+   eases camera.setViewOffset toward freeCentre() of these every frame, so the followed person (and
+   pickAt/toScreen, through the camera's own offset) settle on whatever is actually free between the
+   panels rather than the plain stage middle. */
+let panelBoxesAt = -Infinity, railBoxNow = null, winBoxNow = null;
+function refreshPanelBoxes(now){
+  if (now - panelBoxesAt < 200) return;
+  panelBoxesAt = now;
+  const sr = stage.getBoundingClientRect();
+  const phone = matchMedia('(max-width: 960px)').matches;
+  railBoxNow = null;
+  if (!phone) {
+    const railEl = $('#rail'), tabEl = $('#rail-tab');
+    const el = (railEl && !railEl.hidden) ? railEl : ((tabEl && !tabEl.hidden) ? tabEl : null);
+    if (el) { const r = el.getBoundingClientRect(); railBoxNow = { right: r.right - sr.left }; }
+  }
+  winBoxNow = null;
+  const winEl = $('#win'), winTabEl = $('#win-tab');
+  const wEl = phone ? ((winEl && !winEl.hidden) ? winEl : null)
+    : ((winEl && !winEl.hidden) ? winEl : ((winTabEl && !winTabEl.hidden) ? winTabEl : null));
+  if (wEl) {
+    const r = wEl.getBoundingClientRect();
+    winBoxNow = { left: r.left - sr.left, top: r.top - sr.top, right: r.right - sr.left, bottom: r.bottom - sr.top };
+  }
+}
+let viewShiftX = 0, viewShiftY = 0;
 function updateCamera(){
   camera.aspect = W / H;
   cam.dist = Math.min(cam.dist, distMax());
@@ -4856,6 +5110,19 @@ function updateCamera(){
   for (const lx of [L.cx - L.hx, L.cx + L.hx]) for (const lz of [L.cz - L.hz, L.cz + L.hz]) for (const ly of [-1.05, 0])
     far = Math.max(far, Math.hypot(lx - x, ly - y, lz - z));
   camera.far = far + 5;
+  // V1: the view offset -- eases toward freeCentre(rail, win) so the camera's own middle matches what
+  // is actually free between the rail and the message panel (pickAt/toScreen stay right for free, since
+  // both already project through the camera). Guarded on `stage`: only the real page has #rail/#win to
+  // read -- the unit-test harnesses (tests/test_agent_city_page.py, test_agent_city_idea_page.py) run
+  // updateCamera() alone, with no DOM of their own, so this whole block is skipped there.
+  if (typeof stage !== 'undefined') {
+    refreshPanelBoxes(performance.now());
+    const centre = freeCentre(W, H, railBoxNow, winBoxNow);
+    viewShiftX += (centre[0] - W / 2 - viewShiftX) * .2;
+    viewShiftY += (centre[1] - H / 2 - viewShiftY) * .2;
+    if (Math.abs(viewShiftX) < .5 && Math.abs(viewShiftY) < .5) camera.clearViewOffset();
+    else camera.setViewOffset(W, H, -viewShiftX, -viewShiftY, W, H);
+  }
   camera.updateProjectionMatrix();
 }
 function resetCam(){ cam.az = Math.PI / 4; cam.el = EL_DEFAULT; cam.tx = home.x; cam.tz = home.z; cam.dist = W < 560 ? DIST_DEFAULT * 1.35 : DIST_DEFAULT; }
@@ -5395,7 +5662,100 @@ function renderLog(){
   $('#log').innerHTML = logEntries.map(e => `<li><time>${e.real ? new Date(e.real).toTimeString().slice(0, 8) : clock(e.t)}</time><span class="${e.kind}">${esc(e.text)}</span></li>`).join('');
 }
 
-function renderPanel(){ renderStats(); renderDetail(); renderLog(); renderWin(); $('#clock').textContent = DEMO ? i18n('clock.demo', { t: clock(simT) }) : i18n('clock.now', { t: new Date().toTimeString().slice(0, 8) }); }
+/* ---------- rail: the compact, collapsible team list, left (V1) ---------- */
+function readStoredBool(key, dflt){
+  try { const v = localStorage.getItem(key); return v === null ? dflt : v === '1'; } catch (e) { return dflt; }
+}
+function writeStoredBool(key, v){ try { localStorage.setItem(key, v ? '1' : '0'); } catch (e) {} }
+let railClosed = new Set();
+try {
+  const savedClosed = localStorage.getItem('agent-city.railClosed');
+  if (savedClosed) railClosed = new Set(savedClosed.split(',').filter(Boolean));
+} catch (e) {}
+function saveRailClosed(){ try { localStorage.setItem('agent-city.railClosed', [...railClosed].join(',')); } catch (e) {} }
+let railRestOpen = new Set();
+// a phone with nothing saved starts with the rail folded; a computer starts with it open.
+let railFolded = readStoredBool('agent-city.railFolded', matchMedia('(max-width: 960px)').matches);
+function setRailFolded(v){
+  railFolded = v;
+  writeStoredBool('agent-city.railFolded', v);
+  renderRail();
+}
+let lastRail = '';
+/* renderRail(): #rail-list from railGroups()/railHtml() (only touches the DOM when the html actually
+   changed, through lastRail); #rail-n / #rail-you (+ the tab's own badges) from railCount(); #rail /
+   #rail-tab show by railFolded, both hidden when railGroups() is empty. On a phone, the rail unfolded is
+   the drawer open -- the stage gets .drawer-open while it covers the win/ask panels. renderPanel() calls
+   this. */
+function renderRail(){
+  const groups = railGroups();
+  const html = railHtml(groups, selKey(selected), railClosed, railRestOpen);
+  if (html !== lastRail) { lastRail = html; $('#rail-list').innerHTML = html; }
+  const counts = railCount(groups);
+  $('#rail-n').textContent = i18n('rail.count', { n: counts.active });
+  $('#rail-you').hidden = !counts.you;
+  $('#rail-you').textContent = counts.you;
+  $('#rail-tab-t').textContent = i18n('rail.tab', { n: counts.active });
+  $('#rail-tab-you').hidden = !counts.you;
+  $('#rail-tab-you').textContent = counts.you;
+  const has = groups.length > 0, shown = has && !railFolded;
+  $('#rail').hidden = !shown;
+  $('#rail-tab').hidden = !(has && railFolded);
+  stage.classList.toggle('drawer-open', shown && matchMedia('(max-width: 960px)').matches);
+}
+$('#rail-list').addEventListener('click', e => {
+  const grp = e.target.closest('[data-grp]');
+  if (grp) {
+    const terr = grp.dataset.grp;
+    if (railClosed.has(terr)) railClosed.delete(terr); else railClosed.add(terr);
+    saveRailClosed();
+    lastRail = ''; renderRail();
+    return;
+  }
+  const rest = e.target.closest('[data-rest]');
+  if (rest) {
+    const terr = rest.dataset.rest;
+    if (railRestOpen.has(terr)) railRestOpen.delete(terr); else railRestOpen.add(terr);
+    lastRail = ''; renderRail();
+    return;
+  }
+  const row = e.target.closest('[data-focus]');
+  if (row) selectFrom(row.dataset.focus);
+});
+$('#rail-fold').addEventListener('click', () => { setRailFolded(true); $('#rail-tab').focus(); });
+$('#rail-tab').addEventListener('click', () => setRailFolded(false));
+/* renderFollow(): the "Following <name>" chip, top middle of the free part of the map -- shown only
+   while following; left = freeCentre()'s own x (the chip itself is translateX(-50%)); touches the DOM
+   only on change. frame() calls this every frame (not throttled like renderPanel: the chip tracks the
+   map's own free middle, eased every frame in updateCamera()). */
+let lastFollowKey = '';
+function renderFollow(){
+  const el = $('#follow');
+  if (!follow) {
+    if (lastFollowKey) { el.hidden = true; lastFollowKey = ''; }
+    return;
+  }
+  let name;
+  if (follow.slice(0, 4) === 'gov:') {
+    const terrRec = terrOf(follow.slice(4));
+    name = i18n('who.governor') + ' · ' + (terrRec ? terrRec.name : '');
+  } else {
+    const c = byId(follow);
+    name = c ? nameOf(c) : '';
+  }
+  const centre = freeCentre(W, H, railBoxNow, winBoxNow);
+  const left = Math.round(centre[0]);
+  const key = follow + '|' + name + '|' + left;
+  if (key === lastFollowKey) return;
+  lastFollowKey = key;
+  el.hidden = false;
+  $('#follow-t').textContent = i18n('follow.on', { name });
+  el.style.left = left + 'px';
+}
+$('#follow-stop').addEventListener('click', () => stopFollow());
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && follow) stopFollow(); });
+
+function renderPanel(){ renderRail(); renderStats(); renderDetail(); renderLog(); renderWin(); $('#clock').textContent = DEMO ? i18n('clock.demo', { t: clock(simT) }) : i18n('clock.now', { t: new Date().toTimeString().slice(0, 8) }); }
 
 /* ---------- window: the person / building / governor detail, or the page log (动态), over the city
    (requirements/city.md, Look, owner 2026-09-27: replaces the right column of cards) ---------- */
@@ -5672,12 +6032,14 @@ function zoomStep(k){
 $('#zin').addEventListener('click', () => zoomStep(-1));
 $('#zout').addEventListener('click', () => zoomStep(1));
 $('#rot').addEventListener('click', () => { camTween = { from: cam.az, to: cam.az - Math.PI / 2, t: 0 }; camChanged(); });
-$('#zfit').addEventListener('click', () => { resetCam(); camChanged(); });
+$('#zfit').addEventListener('click', () => { stopFollow(); resetCam(); camChanged(); });
 /* U1: click a repo tag to fly there -- "All" flies out to the whole land, a repo flies to a view of
-   just that territory, never further out than the zoom-out limit. */
+   just that territory, never further out than the zoom-out limit. V1: every repo tag (All too) stops
+   any follow. */
 $('#repos').addEventListener('click', e => {
   const b = e.target.closest('.repo');
   if (!b) return;
+  stopFollow();
   const terr = b.dataset.terr;
   if (terr === '*') { flyTo(land.cx || 0, land.cz || 0, distMax()); return; }
   const tag = repoTags(map).find(t => t.id === terr);
@@ -5727,6 +6089,7 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
    lets the owner pan the view off the land. */
 function panBy(dx, dy){
   stopFly();
+  stopFollow(); // V1: a real drag/pan/wheel pan of the map stops any follow
   const [dtx, dtz] = panDelta(dx, dy, cam.az, cam.el, cam.dist, H);
   const cx = land.cx || 0, cz = land.cz || 0;
   cam.tx = clamp(cam.tx + dtx, cx - land.hx, cx + land.hx);
@@ -5807,9 +6170,10 @@ canvas.addEventListener('pointerleave', e => {
   if (hovered) { hovered = null; needFrame = true; }
 });
 /* U3: one wheel listener, on the stage (not just the canvas, so a wheel over a head tag still pans);
-   leaves wheels inside .win / .ask-panel alone (their own scroll). U1: zoom goes through capZoom(). */
+   leaves wheels inside .win / .ask-panel / .rail alone (their own scroll). U1: zoom goes through
+   capZoom(). */
 stage.addEventListener('wheel', e => {
-  if (e.target.closest('.win') || e.target.closest('.ask-panel')) return;
+  if (e.target.closest('.win') || e.target.closest('.ask-panel') || e.target.closest('.rail')) return;
   e.preventDefault();
   stopFly();
   const m = wheelMove(e, H);
@@ -5931,6 +6295,7 @@ function frame(now){
   updateReposAria(now); // U1: aria-current follows the look point, throttled
   applyTheme();
   updateCamera();
+  renderFollow(); // V1: the follow chip tracks the map's free middle every frame, not just every renderPanel
   applyFade(viewBlockers(cam.el + camLiftNow));
   stepShows(now); // Balance: the running era show(s) — builders walking, then the one-moment flip
   sync(simT, raw);
