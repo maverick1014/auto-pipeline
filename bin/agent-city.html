@@ -74,10 +74,12 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 
 .ov{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
 .ov > div,.ov > button{position:absolute;left:0;top:0;will-change:transform}
-.bub{background:#FFFFFF;color:#2A2B45;border:2px solid #2A2B45;border-radius:14px;padding:3px 10px;font:600 12.5px/1.4 var(--round);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 0 rgba(42,43,69,.2);pointer-events:auto;cursor:pointer}
+.bub{background:#FFFFFF;color:#2A2B45;border:2px solid #2A2B45;border-radius:14px;padding:3px 10px;font:600 12.5px/1.4 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.2);pointer-events:auto;cursor:pointer}
+.bub>span{display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bub.ask{border-color:#E4476F}
 .bub.gov{background:#FFF1C9;border-color:#C99A1E}
 .bub.done{border-color:#2FB57A;background:#EFFFF6}
+.bub::after,.tagl::after,.qm::after,.rdev::after{content:"";position:absolute;inset:-8px}
 .qm{all:unset;cursor:pointer;display:block;width:28px;height:28px;pointer-events:auto;z-index:3}
 .qm span{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#FF6F8B;color:#fff;font:700 17px/1 var(--display);border:2px solid #fff;box-shadow:0 2px 0 rgba(42,43,69,.25);animation:hop .7s ease-in-out infinite}
 .qm:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
@@ -3276,7 +3278,16 @@ const WHEEL_ZOOM = .01;
 function wheelMove(e, h){
   const unit = e.deltaMode === 2 ? h : e.deltaMode === 1 ? 16 : 1;
   if (e.ctrlKey) return { zoom: Math.exp(clamp(e.deltaY * unit * WHEEL_ZOOM, -.5, .5)) };
-  return { pan: [-e.deltaX * unit, -e.deltaY * unit] };
+  // X follows the same rule as Y, the page adds no invert option.
+  return { pan: [e.deltaX * unit, -e.deltaY * unit] };
+}
+/* V2 (sim): panDelta(dx, dy, az, el, dist, h) -> [dtx, dtz], exactly the math panBy() uses today. */
+function panDelta(dx, dy, az, el, dist, h){
+  const k = 2 * dist * Math.tan(FOV * Math.PI / 360) / h;
+  const s = Math.sin(az), c = Math.cos(az), f = 1 / Math.sin(el);
+  const dtx = -(dx * c - dy * s * f) * k;
+  const dtz = -(-dx * s - dy * c * f) * k;
+  return [dtx, dtz];
 }
 /* U6 (sim): tagPick(el, t, id) tags a name tag/bubble element with what a tap on it should select.
    pickOfTag(t, id) turns that back into a selection ({t:'c', id} | {t:'rg', id} | {t:'gov', terr: id} |
@@ -4341,6 +4352,10 @@ function ovEl(cls, html){ const el = document.createElement('div'); el.className
 function ovBtn(cls, html){ const el = document.createElement('button'); el.type = 'button'; el.className = cls; if (html) el.innerHTML = html; el.hidden = true; ovRoot.appendChild(el); return el; }
 function pin(el, x, y, show){ if (!show) { if (!el.hidden) el.hidden = true; return; } if (el.hidden) el.hidden = false; el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
 function setText(el, text){ if (el._t !== text) { el._t = text; el.textContent = text; } }
+/* V3: a .bub's ellipsis lives on an inner <span> now (the outer .bub can no longer clip its own
+   ::after hit area) -- every bubble is made with that span as its only child (el.firstChild), and
+   its text is written there instead of on the outer element. */
+function setBubText(el, text){ if (el._t !== text) { el._t = text; el.firstChild.textContent = text; } }
 const labels = [];
 /* landOverlays(view, marks) makes the .lbl (territory) and small .dlbl (district) overlays for buildLand
    — no THREE. Both live in the one `labels` bookkeeping array, a district entry flagged with its own
@@ -4378,12 +4393,12 @@ function pinLandOverlays(){
     if (l.mark) l.el.classList.toggle('far', far);
   }
 }
-const govBub = ovEl('bub gov'), govTag = ovEl('tagl tag'), govQm = ovBtn('qm', '<span>?</span>');
+const govBub = ovEl('bub gov', '<span></span>'), govTag = ovEl('tagl tag'), govQm = ovBtn('qm', '<span>?</span>');
 govTag.style.setProperty('--c', '#FF6F8B'); setText(govTag, i18n('gov.tagLabel'));
 tagPick(govBub, 'gov', ''); tagPick(govTag, 'gov', ''); // U6: the home governor's own bubble + tag
 function ensureOv(c){
   if (c.o) return;
-  c.o = { bub: ovEl('bub'), qm: ovBtn('qm', '<span>?</span>'), wait: ovEl('gwait'), zz: ovEl('zz', '<span>z</span><span>z</span><span>Z</span>'), tag: ovEl('tagl tag') };
+  c.o = { bub: ovEl('bub', '<span></span>'), qm: ovBtn('qm', '<span>?</span>'), wait: ovEl('gwait'), zz: ovEl('zz', '<span>z</span><span>z</span><span>Z</span>'), tag: ovEl('tagl tag') };
   c.o.tag.style.setProperty('--c', c.color);
   tagPick(c.o.bub, 'c', c.id); tagPick(c.o.tag, 'c', c.id); // U6: clickable head tags
   // city-join: another member's citizen also gets a grey, panel-less "?" and a "最后更新" chip for
@@ -4443,7 +4458,7 @@ function updatePerson(c, t, dt){
   pin(c.o.wait, sx - 26, showBub ? sy - 32 : sy, !!(ask && ask.phase === 'governor'));
   pin(c.o.zz, sx + 14, sy, resting && pose === 'lie');
   if (showBub) {
-    setText(c.o.bub, bubText);
+    setBubText(c.o.bub, bubText);
     c.o.bub.className = 'bub' + (c.state === 'asking' ? ' ask' : c.state === 'finishing' ? ' done' : '');
   }
   pin(c.o.bub, sx, sy, showBub);
@@ -4504,7 +4519,7 @@ function updateGovernor(){
   anim(govV, gAnim);
   govV.sel.visible = !!(selected && selected.t === 'gov' && (selected.terr || govTerr) === govTerr);
   const [sx, sy] = toScreen(px, .9, py);
-  if (talking) setText(govBub, text);
+  if (talking) setBubText(govBub, text);
   pin(govBub, sx, sy, talking);
   const gAsk = typeof openGovAskFor === 'function' ? openGovAskFor(govTerr) : openAskFor('gov');
   if (gAsk) govQm.setAttribute('data-open', gAsk.id); else govQm.removeAttribute('data-open');
@@ -4528,7 +4543,7 @@ function ensureGovFigure(terr){
   const ring = new THREE.Mesh(ringGeo, ringMat('#FFD36E')); ring.rotation.x = -Math.PI / 2; ring.position.y = .035; ring.scale.setScalar(1.15); g.add(ring);
   g.userData.pick = { t:'gov', terr };
   pickables.push(g);
-  const bub = ovEl('bub gov'), tag = ovEl('tagl tag'), qm = ovBtn('qm', '<span>?</span>');
+  const bub = ovEl('bub gov', '<span></span>'), tag = ovEl('tagl tag'), qm = ovBtn('qm', '<span>?</span>');
   tag.style.setProperty('--c', '#FF6F8B'); setText(tag, i18n('gov.tagLabel'));
   tagPick(bub, 'gov', terr); tagPick(tag, 'gov', terr); // U6: a pool governor's own bubble + tag
   // city-join: `ring` kept on v (like govV's own) so applyRing() can recolour it -- these are still
@@ -4554,7 +4569,7 @@ function updateGovPool(list){
     // idea-city C13: every governor talks in his own bubble -- govTalk(fig.terr) only ever answers
     // for this figure's own territory, never another one's (home included).
     const text = govTalk(fig.terr), talking = !!text;
-    if (talking) setText(v.bub, text);
+    if (talking) setBubText(v.bub, text);
     pin(v.bub, sx, sy, talking);
     const gAsk = openGovAskFor(fig.terr);
     if (gAsk) v.qm.setAttribute('data-open', gAsk.id); else v.qm.removeAttribute('data-open');
@@ -5712,12 +5727,10 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
    lets the owner pan the view off the land. */
 function panBy(dx, dy){
   stopFly();
-  const k = 2 * cam.dist * Math.tan(FOV * Math.PI / 360) / H;
-  const s = Math.sin(cam.az), c = Math.cos(cam.az);
-  const f = 1 / Math.sin(cam.el);
+  const [dtx, dtz] = panDelta(dx, dy, cam.az, cam.el, cam.dist, H);
   const cx = land.cx || 0, cz = land.cz || 0;
-  cam.tx = clamp(cam.tx - (dx * c - dy * s * f) * k, cx - land.hx, cx + land.hx);
-  cam.tz = clamp(cam.tz - (-dx * s - dy * c * f) * k, cz - land.hz, cz + land.hz);
+  cam.tx = clamp(cam.tx + dtx, cx - land.hx, cx + land.hx);
+  cam.tz = clamp(cam.tz + dtz, cz - land.hz, cz + land.hz);
 }
 /* city-join: hover -- pointermove with no button down picks the person under the pointer (pickAt)
    into the top-level `hovered`, so tagVisible() can show that one person's name tag + device chip.
