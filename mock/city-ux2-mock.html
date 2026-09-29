@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City · city-ux2 mock</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --sky:#CFE6FF; --berry:#FF7593; --butter:#FFD36E; --mint:#6FD4A8; --focus:#4D7CFE;
+  --build-bg:#E1ECFF; --build-ink:#3160B5; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
+  --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488;
+  --gov-bg:#FFF0C7; --gov-ink:#8A6000; --sea:#BFDDF6; --land:#CDE9B4; --land-edge:#9FCB84;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+    --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
+    --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+    --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
+    --gov-bg:#43381A; --gov-ink:#FFDD8A; --sea:#1A2A4A; --land:#2F4A34; --land-edge:#476B4C;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+  --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
+  --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+  --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
+  --gov-bg:#43381A; --gov-ink:#FFDD8A; --sea:#1A2A4A; --land:#2F4A34; --land-edge:#476B4C;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.app{max-width:1500px;margin-inline:auto;padding-inline:16px;padding-block:12px 22px;display:flex;flex-direction:column;gap:10px}
+.app.phone{max-width:400px;border:2px dashed var(--ink-3);border-radius:28px;padding-inline:8px}
+
+/* mock-only controls (not part of the page) */
+.mockbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 12px;border:1.5px dashed var(--ink-3);border-radius:14px;font-size:12.5px;color:var(--ink-2)}
+.mockbar b{font:700 12px/1 var(--mono);color:var(--ink-3);letter-spacing:.06em}
+.seg{display:inline-flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{all:unset;cursor:pointer;padding:5px 10px;font:600 12px/1.2 var(--round);color:var(--ink-2);background:var(--panel)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.seg button:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.sign{display:inline-flex;align-items:center;gap:10px;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:5px 16px 5px 12px;box-shadow:0 3px 0 var(--ink)}
+.sign-name{font:700 22px/1 var(--display)}
+.stats{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
+.stat{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font-size:13px;color:var(--ink-2)}
+.stat b{color:var(--ink);font:700 14px/1 var(--display)}
+
+.repos{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 4px}
+.repo{all:unset;cursor:pointer;flex:none;display:inline-flex;align-items:center;gap:7px;padding:5px 12px 5px 9px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font:600 13px/1.2 var(--round);color:var(--ink-2);white-space:nowrap}
+.repo:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.repo[aria-current="true"]{border-color:var(--ink);background:var(--ink);color:var(--paper)}
+.repo.all{padding-left:12px}
+.rc{width:9px;height:9px;border-radius:50%;background:var(--rc);flex:none;box-shadow:0 0 0 1.5px rgba(255,255,255,.6)}
+
+.stage{position:relative;overflow:hidden;height:calc(100dvh - 330px);min-height:480px;background:var(--sea);border-radius:0}
+.app.phone .stage{height:640px;min-height:0}
+.stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.stage canvas.grabbing{cursor:grabbing}
+.ov{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
+.ov > div{position:absolute;left:0;top:0;will-change:transform}
+.bub,.tagl{position:absolute;pointer-events:auto;cursor:pointer;white-space:nowrap}
+.bub{background:#FFFFFF;color:#2A2B45;border:2px solid #2A2B45;border-radius:14px;padding:3px 10px;font:600 12.5px/1.4 var(--round);max-width:220px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.bub.ask{border-color:#E4476F}
+.tagl{background:var(--c);color:#fff;border-radius:999px;padding:3px 10px;font:600 11.5px/1.3 var(--mono);box-shadow:0 2px 0 rgba(42,43,69,.2)}
+/* V3: the hit area is 8 px bigger than the box on every side (16 px in total, at least the 12 asked) */
+.bub::after,.tagl::after{content:"";position:absolute;inset:-8px;border-radius:18px}
+.showhit .bub::after,.showhit .tagl::after{outline:1.5px dashed #E4476F;background:rgba(228,71,111,.08)}
+.bub{overflow:visible}
+.bub span{display:block;overflow:hidden;text-overflow:ellipsis}
+
+/* V1: the rail -- always visible on a computer, left side, over the city */
+.rail{position:absolute;left:12px;top:12px;bottom:12px;z-index:4;width:264px;display:flex;flex-direction:column;background:color-mix(in srgb,var(--panel) 94%,transparent);border:2px solid var(--ink);border-radius:18px;box-shadow:0 4px 0 rgba(42,43,69,.18);overflow:hidden}
+.rail-head{display:flex;align-items:center;gap:8px;padding:10px 12px 8px;border-bottom:1.5px solid var(--line);font-weight:700}
+.rail-head .n{font:700 12px/1 var(--mono);color:var(--ink-3)}
+.rail-head .x{margin-left:auto}
+.rail-list{flex:1;overflow:auto;padding:6px 6px 10px;display:flex;flex-direction:column;gap:6px}
+.grp-h{display:flex;align-items:center;gap:7px;padding:6px 6px 2px;font:700 12px/1.2 var(--mono);color:var(--ink-2)}
+.grp-h .n{margin-left:auto;color:var(--ink-3);font-weight:600}
+.rrows{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.rrow{display:flex;align-items:stretch;border-radius:11px;border-left:4px solid var(--rc)}
+.rrow.sub{margin-left:12px}
+.rfocus{all:unset;cursor:pointer;flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:5px 6px 5px 8px;border-radius:0 11px 11px 0}
+.rfocus:hover{background:var(--panel-2)}
+.rfocus:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.rrow[aria-current="true"] .rfocus{background:var(--ink);color:var(--paper)}
+.rrow[aria-current="true"] .rfocus .who small{color:var(--paper);opacity:.75}
+.who{display:flex;align-items:center;gap:5px;min-width:0;flex:1}
+.who b{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.who small{font:11px/1.3 var(--mono);color:var(--ink-3);white-space:nowrap}
+.eye{flex:none;width:14px;height:14px}
+.pill{flex:none;display:inline-flex;padding:1px 8px;border-radius:999px;font:600 11px/1.5 var(--round);white-space:nowrap}
+.pill.you{background:var(--ask-bg);color:var(--ask-ink);border:1px solid var(--berry)}
+.pill.ask{background:var(--gov-bg);color:var(--gov-ink)}
+.pill.build{background:var(--build-bg);color:var(--build-ink)}
+.pill.walk{background:var(--walk-bg);color:var(--walk-ink)}
+.pill.rest{background:var(--rest-bg);color:var(--rest-ink)}
+.pill.gov{background:var(--gov-bg);color:var(--gov-ink)}
+.ropen{all:unset;cursor:pointer;flex:none;align-self:center;padding:3px 6px;margin:0 2px 0 3px;border-radius:8px;font:600 11px/1.2 var(--round);color:var(--ink-2);border:1.5px solid var(--line);background:var(--panel)}
+.ropen:hover{border-color:var(--ink-3)}
+.ropen:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+.rest-t{all:unset;cursor:pointer;margin:2px 0 0 4px;padding:3px 8px;border-radius:8px;font:600 12px/1.3 var(--round);color:var(--rest-ink)}
+.rest-t:hover{background:var(--panel-2)}
+.rest-t:focus-visible{outline:2px solid var(--focus)}
+.rrow.resting{opacity:.72}
+
+/* the following chip, top middle of the free city area */
+.follow{position:absolute;top:12px;z-index:4;transform:translateX(-50%);display:inline-flex;align-items:center;gap:8px;padding:5px 6px 5px 12px;border-radius:999px;background:var(--ink);color:var(--paper);font:600 13px/1.2 var(--round);box-shadow:0 3px 0 rgba(42,43,69,.25);white-space:nowrap;max-width:calc(100% - 24px)}
+.follow span{overflow:hidden;text-overflow:ellipsis}
+.follow kbd{font:600 11px/1 var(--mono);opacity:.7}
+.follow button{all:unset;cursor:pointer;padding:3px 9px;border-radius:999px;background:var(--paper);color:var(--ink);font:600 12px/1.2 var(--round)}
+.follow button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+.cam{position:absolute;right:12px;bottom:12px;z-index:3;display:flex;flex-direction:column;gap:6px}
+.btn{all:unset;cursor:pointer;display:inline-grid;place-items:center;min-width:34px;height:34px;padding:0 8px;border-radius:11px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);font:600 14px/1 var(--round)}
+.btn:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.x{all:unset;cursor:pointer;width:28px;height:28px;display:grid;place-items:center;border-radius:9px;color:var(--ink-2)}
+.x:hover{background:var(--panel-2)}
+.x:focus-visible{outline:2px solid var(--focus)}
+
+/* the one team window -- moved right of the rail, never under it */
+.win{position:absolute;left:288px;top:12px;z-index:5;width:min(700px,calc(100% - 300px));height:calc(100% - 24px);background:var(--panel);border:2px solid var(--ink);border-radius:20px;box-shadow:0 6px 0 rgba(42,43,69,.22);padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px}
+.win.narrow{height:auto;width:min(320px,calc(100% - 300px))}
+.win-head{display:flex;align-items:center;gap:10px}
+.win-title{flex:1;min-width:0;font-weight:700;font-size:16px}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:14px;flex:1;min-height:0}
+.team{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;overflow:auto}
+.trow{display:flex;align-items:center;gap:4px;border-radius:11px}
+.trow.sub{margin-left:14px}
+.tsel{all:unset;cursor:pointer;flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:11px}
+.tsel:hover{background:var(--panel-2)}
+.tsel:focus-visible{outline:2px solid var(--focus)}
+.trow[aria-current="true"] .tsel{background:var(--panel-2);box-shadow:inset 0 0 0 1.5px var(--ink)}
+.tsel b{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}
+.tfocus{all:unset;cursor:pointer;flex:none;width:28px;height:28px;display:grid;place-items:center;border-radius:9px;color:var(--ink-2)}
+.tfocus:hover{background:var(--panel-2);color:var(--ink)}
+.tfocus:focus-visible{outline:2px solid var(--focus)}
+.tfocus[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.side{border-left:1.5px solid var(--line);padding-left:14px;display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto}
+.p-name{font-weight:700;font-size:15px}
+.p-facts{font:12px/1.4 var(--mono);color:var(--ink-3)}
+.hist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:13px}
+.hist li{padding:6px 10px;border-radius:12px;background:var(--panel-2)}
+.hist .act{background:none;padding:0 4px;color:var(--ink-3);font-size:12px}
+.b-focus{all:unset;cursor:pointer;align-self:flex-start;display:inline-flex;gap:6px;align-items:center;padding:6px 12px;border-radius:11px;border:1.5px solid var(--ink);font:600 13px/1.2 var(--round)}
+.b-focus:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+/* phone: the rail becomes a drawer; the window is a bottom sheet; the two never show at once */
+.drawer-btn{position:absolute;left:8px;top:8px;z-index:4;display:none;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:2px solid var(--ink);background:var(--panel);font:600 13px/1.2 var(--round);color:var(--ink);cursor:pointer}
+.drawer-btn:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.drawer-btn .you{background:var(--ask-bg);color:var(--ask-ink);border-radius:999px;padding:0 6px;font-size:11.5px}
+.app.phone .drawer-btn{display:inline-flex}
+.app.phone .rail{left:0;top:0;bottom:0;width:min(290px,84%);border-radius:0 18px 18px 0;border-left:0;transform:translateX(-105%);transition:transform .22s ease}
+.app.phone .rail.open{transform:none}
+.app.phone .win{left:6px;right:6px;top:auto;bottom:6px;width:auto;height:auto;max-height:62%;overflow:auto}
+.app.phone .cols{grid-template-columns:minmax(0,1fr)}
+.app.phone .side{border-left:0;padding-left:0;border-top:1.5px solid var(--line);padding-top:10px}
+.app.phone .follow{top:50px}
+@media (prefers-reduced-motion: reduce){ .app.phone .rail{transition:none} }
+
+/* the note: what to click, and the rules */
+.note{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.card{background:var(--panel);border:1.5px solid var(--line);border-radius:16px;padding:12px 14px}
+.card h3{margin:0 0 6px;font-size:14px}
+.card ol,.card ul{margin:0;padding-left:20px}
+.card li{margin:2px 0}
+.card p{margin:4px 0}
+.pad{position:relative;height:190px;border-radius:12px;overflow:hidden;background:var(--sea);border:1.5px solid var(--line);cursor:grab;touch-action:none}
+.pad canvas{display:block;width:100%;height:100%}
+.pad-out{font:12px/1.4 var(--mono);color:var(--ink-2);margin-top:6px}
+code{font:12px/1.4 var(--mono);background:var(--panel-2);border-radius:6px;padding:0 4px}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="mockbar" role="group" aria-label="mock controls">
+    <b>MOCK</b>
+    <span data-t="m.lang"></span>
+    <span class="seg" id="seg-lang"><button type="button" data-v="zh" aria-pressed="true">中文</button><button type="button" data-v="en" aria-pressed="false">English</button></span>
+    <span data-t="m.width"></span>
+    <span class="seg" id="seg-width"><button type="button" data-v="pc" aria-pressed="true" data-t="m.pc"></button><button type="button" data-v="phone" aria-pressed="false" data-t="m.phone"></button></span>
+    <span data-t="m.rowClick"></span>
+    <span class="seg" id="seg-row"><button type="button" data-v="focus" aria-pressed="true" data-t="m.rowFocus"></button><button type="button" data-v="both" aria-pressed="false" data-t="m.rowBoth"></button></span>
+    <span class="seg" id="seg-hit"><button type="button" data-v="off" aria-pressed="true" data-t="m.hitOff"></button><button type="button" data-v="on" aria-pressed="false" data-t="m.hitOn"></button></span>
+  </div>
+
+  <header class="bar">
+    <div class="sign"><span class="sign-name">Agent City</span></div>
+    <div class="stats" id="stats"></div>
+  </header>
+  <nav class="repos" id="repos"></nav>
+
+  <div class="stage" id="stage">
+    <canvas id="city"></canvas>
+    <div class="ov" id="ov"></div>
+    <button type="button" class="drawer-btn" id="drawer-btn" aria-controls="rail" aria-expanded="false"></button>
+    <aside class="rail" id="rail">
+      <div class="rail-head"><span data-t="rail.title"></span><span class="n" id="rail-n"></span><button type="button" class="x" id="rail-x" data-t-aria="btn.close" hidden>✕</button></div>
+      <div class="rail-list" id="rail-list"></div>
+    </aside>
+    <div class="follow" id="follow" role="status" hidden><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><span id="follow-t"></span><kbd>Esc</kbd><button type="button" id="follow-stop" data-t="follow.stop"></button></div>
+    <div class="cam">
+      <button type="button" class="btn" id="zin" data-t-aria="btn.zoomIn">+</button>
+      <button type="button" class="btn" id="zout" data-t-aria="btn.zoomOut">−</button>
+      <button type="button" class="btn" id="zfit" data-t-aria="btn.home">⌂</button>
+    </div>
+    <div class="win" id="win" role="dialog" aria-labelledby="win-title" hidden>
+      <div class="win-head"><div class="win-title" id="win-title"></div><button type="button" class="x" id="win-x" data-t-aria="btn.close">✕</button></div>
+      <div id="win-body" style="display:flex;flex-direction:column;flex:1;min-height:0"></div>
+    </div>
+  </div>
+
+  <section class="note">
+    <div class="card">
+      <h3 data-t="n.clickTitle"></h3>
+      <ol id="n-click"></ol>
+    </div>
+    <div class="card">
+      <h3 data-t="n.rulesTitle"></h3>
+      <ul id="n-rules"></ul>
+    </div>
+    <div class="card">
+      <h3 data-t="n.v2Title"></h3>
+      <p id="n-v2"></p>
+      <p><span class="seg" id="seg-v2"><button type="button" data-v="today" aria-pressed="false" data-t="v2.today"></button><button type="button" data-v="A" aria-pressed="true" data-t="v2.A"></button><button type="button" data-v="B" aria-pressed="false" data-t="v2.B"></button></span></p>
+      <div class="pad" id="pad"><canvas id="pad-c"></canvas></div>
+      <div class="pad-out" id="pad-out"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+let LANG = 'zh';
+const TEXT = {
+  zh: {
+    'm.lang':'语言', 'm.width':'宽度', 'm.pc':'电脑', 'm.phone':'手机', 'm.rowClick':'点名单一行 =',
+    'm.rowFocus':'只跟随（默认）', 'm.rowBoth':'跟随 + 打开窗口', 'm.hitOff':'点击范围：隐藏', 'm.hitOn':'点击范围：显示',
+    'rail.title':'在线', 'rail.n':'{n} 人', 'rest.more':'休息 {n} ▸', 'rest.less':'休息 {n} ▾', 'row.open':'打开',
+    'row.openAria':'打开 {name} 的窗口', 'row.focusAria':'看 {name}（再点一次停止）', 'drawer':'名单 · {n}',
+    'follow.t':'跟随：{name}', 'follow.stop':'停止', 'btn.close':'关闭', 'btn.zoomIn':'放大', 'btn.zoomOut':'缩小', 'btn.home':'回到全部',
+    'repo.all':'全部', 'team.title':'{repo} · 团队', 'team.focus':'看它', 'b.focus':'看看它', 'b.type':'{type} · {district}',
+    'who.gov':'总督', 'stat.work':'干活', 'stat.you':'等你', 'stat.rest':'休息',
+    'hist.a':'出门：{task}', 'hist.b':'Edit ×3 · Read ×2', 'hist.c':'问总督：“{q}”',
+    'n.clickTitle':'怎么点', 'n.rulesTitle':'规则（写进 requirements/city.md）', 'n.v2Title':'V2 两指左右滚动',
+    'n.click':[
+      '左边「在线」名单：按仓库分组，每行 = 名字 + 状态。红色 = 等你。',
+      '点「event」里的 <b>worker · 票价计算</b>：镜头飞过去、放大，一直跟着它走；上面出现黑色「跟随」条。城市照常慢慢转，它始终在中间。',
+      '停止跟随：再点同一行，或按 Esc，或点「停止」，或点「全部」/ ⌂，或自己拖动地图。放大缩小、转动不会停止跟随。',
+      '行尾「打开」= 团队窗口（和今天点头顶标签一样）。窗口在名单右边，不会被名单盖住；跟随的人会挪到窗口右边的空地中间。',
+      '窗口左栏每行有一个 👁「看它」按钮；点一栋房子，小窗口里有「看看它」。',
+      '「休息 N ▸」展开休息的人。',
+      '上面切到「手机」：名单变成左上角的「名单」按钮，点开是抽屉；点一行 = 跟随并收起抽屉。抽屉打开时窗口先让开，关上后回来。',
+      '上面「点击范围：显示」：红虚线 = 头顶标签/气泡的点击范围（比框大 8 px 一圈）。',
+    ],
+    'n.rules':[
+      '名单一直在左边（电脑）；只列现在的人：总督第一，然后经理和它的工人，再是其他人；休息的收起放最后。顺序固定，不会因为状态变化跳来跳去。',
+      '仓库颜色：每个仓库一个颜色，名单行左边的色条和上面的仓库标签用同一个颜色。',
+      '点一行 = 镜头飞过去、放大到能读气泡，然后跟着它走（转动照常，围着它转）。默认只跟随，不开窗口；想要「跟随 + 开窗口」就在上面选另一个。',
+      '跟随中：再点同一行、Esc、「停止」、「全部」、⌂、拖动或两指滚动地图 → 停止。缩放、转动、开关窗口 → 不停。那个人下班离开 → 自动停止。',
+      '跟随的人放在「看得见的城市」中间：电脑上是名单（和窗口）右边的空地；手机上窗口打开时是窗口上面的空地。',
+      '手机（宽度 ≤ 960 px）：名单 = 抽屉；抽屉和窗口不同时出现。',
+      '头顶标签和气泡：点击范围比框大一圈 8 px。',
+    ],
+    'n.v2':'今天：上下对，左右反了（上下和左右用的规律不一样）。改法：上下保持今天的方向；左右改成跟上下同一个规律。Mac 的「自然滚动」开或关，页面都跟系统走：系统一改，上下左右一起变。页面自己不加“反向”开关。捏合 = 缩放，不变。下面用你的触控板试：A 是推荐改法；“今天”是现在的样子；B 是网页式（上下左右都和 A 相反），给你比较。',
+    'v2.today':'今天 0.10.0', 'v2.A':'A 推荐', 'v2.B':'B 网页式', 'pad.out':'deltaX {x} · deltaY {y} → 地面往 {dir} 动',
+    'dir.r':'右', 'dir.l':'左', 'dir.u':'上', 'dir.d':'下',
+  },
+  en: {
+    'm.lang':'Language', 'm.width':'Width', 'm.pc':'Computer', 'm.phone':'Phone', 'm.rowClick':'Click a row =',
+    'm.rowFocus':'follow only (default)', 'm.rowBoth':'follow + open window', 'm.hitOff':'Hit area: hidden', 'm.hitOn':'Hit area: shown',
+    'rail.title':'Now', 'rail.n':'{n} people', 'rest.more':'Resting {n} ▸', 'rest.less':'Resting {n} ▾', 'row.open':'Open',
+    'row.openAria':'Open the window of {name}', 'row.focusAria':'Watch {name} (click again to stop)', 'drawer':'People · {n}',
+    'follow.t':'Following: {name}', 'follow.stop':'Stop', 'btn.close':'Close', 'btn.zoomIn':'Zoom in', 'btn.zoomOut':'Zoom out', 'btn.home':'Back to All',
+    'repo.all':'All', 'team.title':'{repo} · Team', 'team.focus':'Watch', 'b.focus':'Show it', 'b.type':'{type} · {district}',
+    'who.gov':'Governor', 'stat.work':'Working', 'stat.you':'Waiting', 'stat.rest':'Resting',
+    'hist.a':'Headed out: {task}', 'hist.b':'Edit ×3 · Read ×2', 'hist.c':'Asked the governor: “{q}”',
+    'n.clickTitle':'What to click', 'n.rulesTitle':'Rules (go into requirements/city.md)', 'n.v2Title':'V2 two-finger sideways scroll',
+    'n.click':[
+      'The "Now" list on the left: grouped by repo, each row = name + state. Red = waiting on you.',
+      'Click <b>worker · Ticket price</b> under "event": the camera flies there, zooms in and keeps following it; a dark "Following" chip shows on top. The city keeps turning slowly and the person stays in the middle.',
+      'Stop following: click the same row again, or Esc, or "Stop", or "All" / ⌂, or drag the map yourself. Zoom and rotation do not stop it.',
+      '"Open" at the end of a row = the team window (as a head-tag click today). The window sits right of the list, never under it; the followed person moves to the middle of the free city right of the window.',
+      'Every row in the window\'s left column has a 👁 "Watch" button; click a building: its small window has "Show it".',
+      '"Resting N ▸" opens the resting people.',
+      'Switch to "Phone" on top: the list becomes the "People" button at the top left, a drawer; a row = follow and the drawer closes. While the drawer is open the window steps aside, and comes back when it closes.',
+      '"Hit area: shown" on top: the red dashes = where a head tag / bubble takes a click (8 px round the box).',
+    ],
+    'n.rules':[
+      'The list is always on the left (computer); only people who are here now: the governor first, then each manager with its workers, then the rest; resting people folded, last. The order is fixed, rows never jump when a state changes.',
+      'Repo colour: one colour per repo, the same on the row\'s left bar and on the repo tag above.',
+      'Click a row = the camera flies there, zooms in until the bubble is readable, then follows (rotation goes on, turning around it). Default: follow only, no window; pick the other option on top to try "follow + open window".',
+      'While following: same row again, Esc, "Stop", "All", ⌂, a drag or two-finger scroll of the map -> stop. Zoom, rotation, opening/closing a window -> no stop. The person clocks out -> stop by itself.',
+      'The followed person sits in the middle of the city you can see: on a computer, the free part right of the list (and the window); on a phone with the window open, the part above the window.',
+      'Phone (width ≤ 960 px): the list = a drawer; the drawer and the window never show together.',
+      'Head tags and bubbles: the hit area is 8 px bigger than the box all round.',
+    ],
+    'n.v2':'Today: up/down is right, sideways is reversed (the two axes follow different rules). Fix: up/down stays as today; sideways follows the same rule as up/down. Mac "natural scrolling" on or off, the page follows the system: change it and both axes change together. The page adds no "invert" option of its own. Pinch = zoom, unchanged. Try it below with your trackpad: A is the fix; "Today" is how it is now; B is web-page style (both axes the other way from A), to compare.',
+    'v2.today':'Today 0.10.0', 'v2.A':'A (fix)', 'v2.B':'B web style', 'pad.out':'deltaX {x} · deltaY {y} -> land moves {dir}',
+    'dir.r':'right', 'dir.l':'left', 'dir.u':'up', 'dir.d':'down',
+  },
+};
+const tr = (k, v) => { let s = (TEXT[LANG] && TEXT[LANG][k]) || TEXT.zh[k] || k; if (v) for (const n in v) s = String(s).split('{' + n + '}').join(v[n]); return s; };
+
+/* ---------- world (2D stand-in for the 3D city) ---------- */
+const REPOS = [
+  { id:'ap', name:'auto-pipeline', rc:'#4D7CFE', x:-250, y:-40, r:150 },
+  { id:'ev', name:'event', rc:'#F08A3C', x:250, y:-110, r:140 },
+  { id:'web', name:'website', rc:'#2FB57A', x:40, y:250, r:130 },
+];
+const ROLE_C = { gov:'#C99A1E', tm:'#9C86F2', worker:'#4D7CFE', fast:'#2FB57A', merge:'#E0843A' };
+const STATE = {
+  you_ok:['you', { zh:'等你批', en:'Needs your OK' }],
+  you_ans:['you', { zh:'等你回答', en:'Waiting on your answer' }],
+  ask:['ask', { zh:'在问总督', en:'Asking the governor' }],
+  work:['build', { zh:'干活', en:'Working' }],
+  build:['build', { zh:'施工中', en:'Building' }],
+  walk:['walk', { zh:'去工地', en:'To the site' }],
+  rest:['rest', { zh:'休息中', en:'Resting' }],
+  gov_busy:['gov', { zh:'在忙', en:'Busy' }],
+  gov_idle:['gov', { zh:'空闲', en:'Idle' }],
+  gov_away:['walk', { zh:'不在', en:'Away' }],
+};
+const P = [
+  { id:'g-ap', repo:'ap', role:'gov', name:{ zh:'总督', en:'Governor' }, st:'gov_busy', home:[-250, -40], still:true },
+  { id:'tm1', repo:'ap', role:'tm', name:{ zh:'task manager · city-ux2', en:'task manager · city-ux2' }, st:'work', home:[-300, -110] },
+  { id:'w1', repo:'ap', role:'worker', lead:'tm1', name:{ zh:'worker · 左侧名单', en:'worker · Left list' }, st:'build', home:[-330, -60] },
+  { id:'w2', repo:'ap', role:'worker', lead:'tm1', name:{ zh:'worker · 滚动方向', en:'worker · Scroll way' }, st:'ask', home:[-200, 20], bub:{ zh:'左右要不要跟系统？', en:'Sideways: follow the system?' } },
+  { id:'f1', repo:'ap', role:'fast', name:{ zh:'fast-lane · 错别字', en:'fast-lane · Typos' }, st:'rest', home:[-170, -120] },
+  { id:'g-ev', repo:'ev', role:'gov', name:{ zh:'总督', en:'Governor' }, st:'gov_idle', home:[250, -110], still:true },
+  { id:'tm2', repo:'ev', role:'tm', name:{ zh:'task manager · 报名表', en:'task manager · Sign-up form' }, st:'you_ok', home:[300, -170], bub:{ zh:'要权限：Bash npm test', en:'Needs permission: Bash npm test' }, ask:true },
+  { id:'w3', repo:'ev', role:'worker', lead:'tm2', name:{ zh:'worker · 票价计算', en:'worker · Ticket price' }, st:'walk', home:[200, -40], roam:110 },
+  { id:'w4', repo:'ev', role:'worker', lead:'tm2', name:{ zh:'worker · 导出 CSV', en:'worker · Export CSV' }, st:'rest', home:[330, -60] },
+  { id:'g-web', repo:'web', role:'gov', name:{ zh:'总督', en:'Governor' }, st:'gov_away', home:[40, 250], still:true },
+  { id:'w5', repo:'web', role:'worker', name:{ zh:'worker · 深色模式', en:'worker · Dark mode' }, st:'you_ans', home:[0, 200], bub:{ zh:'深色用哪个蓝？', en:'Which blue for dark?' }, ask:true },
+  { id:'m1', repo:'web', role:'merge', name:{ zh:'merge deputy · 合并 login', en:'merge deputy · Merge login' }, st:'work', home:[100, 300] },
+];
+const BUILD = [
+  { id:'b1', repo:'ap', x:-250, y:-40, w:40, h:32, hall:true, name:{ zh:'市政厅', en:'Town hall' }, type:{ zh:'市政厅', en:'Town hall' }, dist:{ zh:'中心', en:'Centre' } },
+  { id:'b2', repo:'ap', x:-330, y:-80, w:26, h:22, name:{ zh:'city 页面', en:'city page' }, type:{ zh:'住宅', en:'House' }, dist:{ zh:'住宅区', en:'Homes' } },
+  { id:'b3', repo:'ap', x:-300, y:-140, w:24, h:30, name:{ zh:'测试塔', en:'Test tower' }, type:{ zh:'测试塔', en:'Tower' }, dist:{ zh:'测试区', en:'Tests' } },
+  { id:'b4', repo:'ap', x:-180, y:20, w:26, h:22, name:{ zh:'relay 模块', en:'relay module' }, type:{ zh:'工坊', en:'Workshop' }, dist:{ zh:'工坊区', en:'Workshops' } },
+  { id:'b5', repo:'ev', x:250, y:-110, w:38, h:30, hall:true, name:{ zh:'市政厅', en:'Town hall' }, type:{ zh:'市政厅', en:'Town hall' }, dist:{ zh:'中心', en:'Centre' } },
+  { id:'b6', repo:'ev', x:320, y:-170, w:24, h:30, name:{ zh:'报名表', en:'Sign-up form' }, type:{ zh:'测试塔', en:'Tower' }, dist:{ zh:'测试区', en:'Tests' } },
+  { id:'b7', repo:'ev', x:190, y:-20, w:26, h:22, name:{ zh:'票价 模块', en:'pricing module' }, type:{ zh:'商店', en:'Shop' }, dist:{ zh:'商业街', en:'Shops' } },
+  { id:'b8', repo:'web', x:40, y:250, w:36, h:28, hall:true, name:{ zh:'市政厅', en:'Town hall' }, type:{ zh:'市政厅', en:'Town hall' }, dist:{ zh:'中心', en:'Centre' } },
+  { id:'b9', repo:'web', x:-20, y:200, w:26, h:22, name:{ zh:'主题', en:'theme' }, type:{ zh:'住宅', en:'House' }, dist:{ zh:'住宅区', en:'Homes' } },
+];
+const repoOf = id => REPOS.find(r => r.id === id);
+for (const p of P) { p.x = p.home[0]; p.y = p.home[1]; p.goal = null; p.wait = Math.random() * 2; }
+const nm = p => p.name[LANG] || p.name.zh;
+
+/* ---------- camera: target (tx, ty), scale s, angle a (never-stop rotation) ---------- */
+const cam = { tx:0, ty:60, s:.85, a:0 };
+const ROT_SEC = 90; // mock only: faster than the page's 5 min, so the orbit is easy to see
+let fly = null, follow = null, selected = null, winMode = null, drawerOpen = false, restOpen = new Set(), phone = false;
+let rowMode = 'focus', v2Mode = 'A';
+const FOLLOW_S = 2.1;
+
+const stage = $('#stage'), canvas = $('#city'), ctx = canvas.getContext('2d'), ov = $('#ov');
+let W = 0, H = 0, DPR = 1;
+function resize(){
+  const r = stage.getBoundingClientRect(); W = r.width; H = r.height; DPR = window.devicePixelRatio || 1;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+}
+/* the free city area: right of the rail (and of the window) on a computer; above the sheet on a phone */
+function freeBox(){
+  let x0 = 0, y0 = 0, x1 = W, y1 = H;
+  if (!phone) {
+    x0 = 12 + 264 + 12;
+    const w = $('#win'); if (!w.hidden) x0 = w.offsetLeft + w.offsetWidth + 12;
+    if (x0 > W - 120) x0 = 12 + 264 + 12;
+  } else {
+    const w = $('#win'); if (!w.hidden) y1 = w.offsetTop - 6;
+  }
+  return { x0, y0, x1, y1, cx:(x0 + x1) / 2, cy:(y0 + y1) / 2 };
+}
+function toScreen(x, y){
+  const f = freeBox(), c = Math.cos(cam.a), s = Math.sin(cam.a), dx = x - cam.tx, dy = y - cam.ty;
+  return [f.cx + cam.s * (dx * c - dy * s), f.cy + cam.s * (dx * s + dy * c)];
+}
+function screenPan(dx, dy){ // the land moves (dx, dy) px on screen
+  const c = Math.cos(-cam.a), s = Math.sin(-cam.a);
+  cam.tx -= (dx * c - dy * s) / cam.s; cam.ty -= (dx * s + dy * c) / cam.s;
+}
+const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function flyTo(x, y, s){ fly = { fx:cam.tx, fy:cam.ty, fs:cam.s, x, y, s, t:0 }; }
+function startFollow(p){ follow = p.id; fly = { fx:cam.tx, fy:cam.ty, fs:cam.s, x:p.x, y:p.y, s:Math.max(cam.s, FOLLOW_S), t:0, live:p.id }; render(); }
+function stopFollow(){ if (!follow) return; follow = null; render(); }
+function home(){ stopFollow(); flyTo(0, 60, phone ? .55 : .85); }
+
+/* ---------- people walk ---------- */
+function step(dt){
+  for (const p of P) {
+    if (p.still || p.st === 'rest') continue;
+    if (!p.goal) { p.wait -= dt; if (p.wait <= 0) { const R = p.roam || 45, a = Math.random() * 6.28; p.goal = [p.home[0] + Math.cos(a) * R * Math.random(), p.home[1] + Math.sin(a) * R * Math.random()]; } continue; }
+    const dx = p.goal[0] - p.x, dy = p.goal[1] - p.y, d = Math.hypot(dx, dy), v = 22 * dt;
+    if (d <= v) { p.x = p.goal[0]; p.y = p.goal[1]; p.goal = null; p.wait = 1 + Math.random() * 2.5; }
+    else { p.x += dx / d * v; p.y += dy / d * v; }
+  }
+  cam.a += dt * Math.PI * 2 / ROT_SEC;
+  if (fly) {
+    fly.t = Math.min(1, fly.t + dt / .9);
+    const e = ease(fly.t), lp = fly.live && P.find(q => q.id === fly.live);
+    const x = lp ? lp.x : fly.x, y = lp ? lp.y : fly.y;
+    cam.tx = fly.fx + (x - fly.fx) * e; cam.ty = fly.fy + (y - fly.fy) * e; cam.s = fly.fs + (fly.s - fly.fs) * e;
+    if (fly.t >= 1) fly = null;
+  } else if (follow) {
+    const p = P.find(q => q.id === follow);
+    if (!p) stopFollow(); else { cam.tx += (p.x - cam.tx) * .2; cam.ty += (p.y - cam.ty) * .2; }
+  }
+}
+function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function draw(){
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = css('--sea'); ctx.fillRect(0, 0, W, H);
+  for (const r of REPOS) {
+    const [x, y] = toScreen(r.x, r.y);
+    ctx.beginPath(); ctx.arc(x, y, r.r * cam.s, 0, 7); ctx.fillStyle = css('--land'); ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = css('--land-edge'); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, r.r * cam.s - 6, 0, 7); ctx.lineWidth = 2; ctx.strokeStyle = r.rc + '55'; ctx.stroke();
+  }
+  for (const b of BUILD) {
+    const [x, y] = toScreen(b.x, b.y);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(cam.a);
+    ctx.fillStyle = b.hall ? '#FFD36E' : '#F4F1E8'; ctx.strokeStyle = '#2A2B45'; ctx.lineWidth = 2;
+    ctx.fillRect(-b.w * cam.s / 2, -b.h * cam.s / 2, b.w * cam.s, b.h * cam.s);
+    ctx.strokeRect(-b.w * cam.s / 2, -b.h * cam.s / 2, b.w * cam.s, b.h * cam.s);
+    ctx.restore();
+  }
+  for (const p of P) {
+    const [x, y] = toScreen(p.x, p.y);
+    ctx.beginPath(); ctx.arc(x, y, 6 + cam.s * 1.6, 0, 7); ctx.fillStyle = ROLE_C[p.role]; ctx.fill();
+    ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.stroke();
+    if (follow === p.id) { ctx.beginPath(); ctx.arc(x, y, 14 + cam.s * 3, 0, 7); ctx.lineWidth = 2; ctx.strokeStyle = '#2A2B45'; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); }
+  }
+  placeTags();
+}
+/* head tags + bubbles (HTML over the canvas), clickable = open the team window, as today */
+const tagEls = new Map();
+function placeTags(){
+  for (const p of P) {
+    let t = tagEls.get(p.id);
+    if (!t) {
+      t = { tag: document.createElement('div'), bub: document.createElement('div') };
+      t.tag.className = 'tagl'; t.tag.style.setProperty('--c', ROLE_C[p.role]); t.tag.dataset.pid = p.id;
+      t.bub.className = 'bub' + (p.ask ? ' ask' : ''); t.bub.dataset.pid = p.id; t.bub.innerHTML = '<span></span>';
+      ov.append(t.tag, t.bub); tagEls.set(p.id, t);
+    }
+    const [x, y] = toScreen(p.x, p.y), show = cam.s > .7 || follow === p.id || selected === p.id;
+    t.tag.textContent = nm(p); t.tag.hidden = !show || p.st === 'rest';
+    const bt = p.bub ? p.bub[LANG] : '';
+    t.bub.firstChild.textContent = bt; t.bub.hidden = !bt || !show;
+    t.tag.style.transform = `translate(${x}px, ${y - 20}px) translate(-50%, -100%)`;
+    t.bub.style.transform = `translate(${x}px, ${y - 46}px) translate(-50%, -100%)`;
+  }
+}
+ov.addEventListener('click', e => { const el = e.target.closest('[data-pid]'); if (el) openWin(el.dataset.pid); });
+
+/* ---------- the rail ---------- */
+function rows(repoId){
+  const here = P.filter(p => p.repo === repoId);
+  const out = [], gov = here.find(p => p.role === 'gov'); if (gov) out.push({ p:gov, depth:0 });
+  for (const lead of here.filter(p => p.role === 'tm')) {
+    out.push({ p:lead, depth:0 });
+    for (const w of here) if (w.lead === lead.id) out.push({ p:w, depth:1 });
+  }
+  for (const p of here) if (p.role !== 'gov' && p.role !== 'tm' && !p.lead) out.push({ p, depth:0 });
+  return out;
+}
+function rowHtml(r, resting){
+  const p = r.p, rep = repoOf(p.repo), [cls, txt] = STATE[p.st], name = nm(p);
+  return `<li class="rrow${r.depth ? ' sub' : ''}${resting ? ' resting' : ''}" style="--rc:${rep.rc}" aria-current="${follow === p.id}">`
+    + `<button type="button" class="rfocus" data-focus="${p.id}" aria-pressed="${follow === p.id}" aria-label="${esc(tr('row.focusAria', { name }))}">`
+    + `<span class="who">${follow === p.id ? '<svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>' : ''}<b>${esc(name)}</b></span>`
+    + `<span class="pill ${cls}">${esc(txt[LANG])}</span></button>`
+    + `<button type="button" class="ropen" data-open="${p.id}" aria-label="${esc(tr('row.openAria', { name }))}">${esc(tr('row.open'))}</button></li>`;
+}
+function renderRail(){
+  let html = '', n = 0, you = 0;
+  for (const rep of REPOS) {
+    const all = rows(rep.id), act = all.filter(r => r.p.st !== 'rest'), rest = all.filter(r => r.p.st === 'rest');
+    n += act.filter(r => r.p.role !== 'gov').length;
+    you += act.filter(r => STATE[r.p.st][0] === 'you').length;
+    html += `<section><div class="grp-h"><span class="rc" style="--rc:${rep.rc}"></span>${esc(rep.name)}<span class="n">${act.length}</span></div><ul class="rrows">`
+      + act.map(r => rowHtml(r, false)).join('') + '</ul>';
+    if (rest.length) {
+      const open = restOpen.has(rep.id);
+      html += `<button type="button" class="rest-t" data-rest="${rep.id}" aria-expanded="${open}">${esc(tr(open ? 'rest.less' : 'rest.more', { n: rest.length }))}</button>`;
+      if (open) html += '<ul class="rrows">' + rest.map(r => rowHtml(r, true)).join('') + '</ul>';
+    }
+    html += '</section>';
+  }
+  $('#rail-list').innerHTML = html;
+  $('#rail-n').textContent = tr('rail.n', { n });
+  $('#drawer-btn').innerHTML = esc(tr('drawer', { n })) + (you ? ` <span class="you">${you}</span>` : '');
+}
+$('#rail-list').addEventListener('click', e => {
+  const f = e.target.closest('[data-focus]'), o = e.target.closest('[data-open]'), rt = e.target.closest('[data-rest]');
+  if (rt) { const id = rt.dataset.rest; restOpen.has(id) ? restOpen.delete(id) : restOpen.add(id); renderRail(); return; }
+  if (o) { if (phone) setDrawer(false); openWin(o.dataset.open); return; }
+  if (f) {
+    const p = P.find(q => q.id === f.dataset.focus);
+    if (follow === p.id) { stopFollow(); return; }
+    if (phone) setDrawer(false);
+    startFollow(p);
+    if (rowMode === 'both') openWin(p.id);
+  }
+});
+function setDrawer(open){
+  drawerOpen = open;
+  $('#rail').classList.toggle('open', open);
+  $('#drawer-btn').setAttribute('aria-expanded', String(open));
+  $('#rail-x').hidden = !open;
+  if (phone) $('#win').style.visibility = open ? 'hidden' : '';
+}
+$('#drawer-btn').addEventListener('click', () => setDrawer(!drawerOpen));
+$('#rail-x').addEventListener('click', () => setDrawer(false));
+
+/* ---------- the team window / building window ---------- */
+function openWin(pid){ selected = pid; winMode = 'team'; if (phone && drawerOpen) setDrawer(false); renderWin(); }
+function openBuilding(bid){ selected = bid; winMode = 'b'; renderWin(); }
+function renderWin(){
+  const w = $('#win');
+  if (!winMode) { w.hidden = true; return; }
+  w.hidden = false;
+  if (winMode === 'b') {
+    const b = BUILD.find(x => x.id === selected);
+    w.classList.add('narrow');
+    $('#win-title').textContent = b.name[LANG];
+    $('#win-body').innerHTML = `<p class="p-facts" style="margin:0">${esc(tr('b.type', { type: b.type[LANG], district: b.dist[LANG] }))}</p>`
+      + `<button type="button" class="b-focus" data-bfocus="${b.id}"><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>${esc(tr('b.focus'))}</button>`;
+    return;
+  }
+  w.classList.remove('narrow');
+  const p = P.find(q => q.id === selected), rep = repoOf(p.repo);
+  $('#win-title').textContent = tr('team.title', { repo: rep.name });
+  const list = rows(rep.id).map(r => {
+    const q = r.p, [cls, txt] = STATE[q.st];
+    return `<li class="trow${r.depth ? ' sub' : ''}" aria-current="${q.id === p.id}"><button type="button" class="tsel" data-sel="${q.id}"><span class="dot" style="--c:${ROLE_C[q.role]}"></span><b>${esc(nm(q))}</b><span class="pill ${cls}">${esc(txt[LANG])}</span></button>`
+      + `<button type="button" class="tfocus" data-tfocus="${q.id}" aria-pressed="${follow === q.id}" aria-label="${esc(tr('team.focus'))}" title="${esc(tr('team.focus'))}"><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></li>`;
+  }).join('');
+  const [cls, txt] = STATE[p.st];
+  $('#win-body').innerHTML = `<div class="cols"><ul class="team">${list}</ul><div class="side">`
+    + `<div class="p-name">${esc(nm(p))} <span class="pill ${cls}">${esc(txt[LANG])}</span></div>`
+    + `<div class="p-facts">${esc(rep.name)} · main</div>`
+    + `<ul class="hist"><li class="act">${esc(tr('hist.a', { task: nm(p) }))}</li><li class="act">${esc(tr('hist.b'))}</li>${p.bub ? `<li>${esc(tr('hist.c', { q: p.bub[LANG] }))}</li>` : ''}</ul></div></div>`;
+}
+$('#win-body').addEventListener('click', e => {
+  const s = e.target.closest('[data-sel]'), f = e.target.closest('[data-tfocus]'), bf = e.target.closest('[data-bfocus]');
+  if (f) { const p = P.find(q => q.id === f.dataset.tfocus); follow === p.id ? stopFollow() : startFollow(p); renderWin(); return; }
+  if (s) { selected = s.dataset.sel; renderWin(); return; }
+  if (bf) { const b = BUILD.find(x => x.id === bf.dataset.bfocus); stopFollow(); flyTo(b.x, b.y, FOLLOW_S); }
+});
+$('#win-x').addEventListener('click', () => { winMode = null; selected = null; renderWin(); });
+
+/* ---------- the chip, repo tags, stats ---------- */
+function renderFollow(){
+  const el = $('#follow'), p = follow && P.find(q => q.id === follow);
+  el.hidden = !p;
+  if (!p) return;
+  $('#follow-t').textContent = tr('follow.t', { name: nm(p) });
+  el.style.left = freeBox().cx + 'px';
+}
+$('#follow-stop').addEventListener('click', stopFollow);
+function renderRepos(){
+  $('#repos').innerHTML = `<button type="button" class="repo all" data-terr="*">${esc(tr('repo.all'))}</button>`
+    + REPOS.map(r => `<button type="button" class="repo" data-terr="${r.id}"><span class="rc" style="--rc:${r.rc}"></span>${esc(r.name)}</button>`).join('');
+}
+$('#repos').addEventListener('click', e => {
+  const b = e.target.closest('.repo'); if (!b) return;
+  stopFollow();
+  if (b.dataset.terr === '*') { home(); return; }
+  const r = repoOf(b.dataset.terr); flyTo(r.x, r.y, 1.35);
+});
+function renderStats(){
+  const act = P.filter(p => p.role !== 'gov');
+  const work = act.filter(p => ['build', 'walk'].includes(STATE[p.st][0])).length, you = act.filter(p => STATE[p.st][0] === 'you').length, rest = act.filter(p => p.st === 'rest').length;
+  $('#stats').innerHTML = `<span class="stat">${esc(tr('stat.work'))} <b>${work}</b></span><span class="stat">${esc(tr('stat.you'))} <b>${you}</b></span><span class="stat">${esc(tr('stat.rest'))} <b>${rest}</b></span>`;
+}
+function render(){ renderRail(); renderFollow(); if (winMode) renderWin(); }
+
+/* ---------- camera controls ---------- */
+$('#zin').addEventListener('click', () => { fly = null; cam.s = Math.min(4, cam.s * 1.4); });
+$('#zout').addEventListener('click', () => { fly = null; cam.s = Math.max(.35, cam.s / 1.4); });
+$('#zfit').addEventListener('click', home);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && follow) { stopFollow(); e.preventDefault(); } });
+let drag = null;
+canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); drag = { x:e.clientX, y:e.clientY, x0:e.clientX, y0:e.clientY, moved:false }; });
+canvas.addEventListener('pointermove', e => {
+  if (!drag) return;
+  if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 8) return;
+  if (!drag.moved) { drag.moved = true; stopFollow(); fly = null; canvas.classList.add('grabbing'); }
+  screenPan(e.clientX - drag.x, e.clientY - drag.y); drag.x = e.clientX; drag.y = e.clientY;
+});
+canvas.addEventListener('pointerup', e => {
+  canvas.classList.remove('grabbing');
+  const d = drag; drag = null;
+  if (!d || d.moved) return;
+  const r = canvas.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+  let best = null, bd = 28;
+  for (const p of P) { const [x, y] = toScreen(p.x, p.y), dd = Math.hypot(x - px, y - py); if (dd < bd) { bd = dd; best = p; } }
+  if (best) { openWin(best.id); return; }
+  for (const b of BUILD) { const [x, y] = toScreen(b.x, b.y); if (Math.hypot(x - px, y - py) < Math.max(b.w, b.h) * cam.s / 1.6) { openBuilding(b.id); return; } }
+  winMode = null; selected = null; renderWin();
+});
+/* V2: the rule. A = the fix (land moves the way of (deltaX, deltaY)); today = X the other way; B = web page style */
+function wheelLand(dx, dy, mode){
+  if (mode === 'today') return [-dx, dy];
+  if (mode === 'B') return [-dx, -dy];
+  return [dx, dy];
+}
+stage.addEventListener('wheel', e => {
+  if (e.target.closest('.rail') || e.target.closest('.win')) return;
+  e.preventDefault();
+  if (e.ctrlKey) { cam.s = Math.max(.35, Math.min(4, cam.s * Math.exp(-e.deltaY * .01))); fly = null; return; }
+  stopFollow(); fly = null;
+  const [lx, ly] = wheelLand(e.deltaX, e.deltaY, v2Mode === 'today' ? 'today' : v2Mode);
+  screenPan(lx, ly);
+}, { passive:false });
+
+/* ---------- V2 pad ---------- */
+const pad = $('#pad'), pc = $('#pad-c'), pctx = pc.getContext('2d');
+const padCam = { x:0, y:0 };
+function drawPad(){
+  const r = pad.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  pc.width = r.width * d; pc.height = r.height * d; pctx.setTransform(d, 0, 0, d, 0, 0);
+  pctx.fillStyle = css('--sea'); pctx.fillRect(0, 0, r.width, r.height);
+  for (let i = -6; i <= 6; i++) for (let j = -4; j <= 4; j++) {
+    const x = r.width / 2 + i * 70 + padCam.x, y = r.height / 2 + j * 60 + padCam.y;
+    pctx.fillStyle = css('--land'); pctx.fillRect(x - 28, y - 22, 56, 44);
+    pctx.fillStyle = (i + j) % 3 === 0 ? '#FFD36E' : '#F4F1E8'; pctx.fillRect(x - 8, y - 8, 16, 16);
+    pctx.fillStyle = '#2A2B45'; pctx.font = '600 10px ui-monospace,monospace'; pctx.fillText(`${i},${j}`, x - 10, y + 20);
+  }
+}
+pad.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (e.ctrlKey) return;
+  const [lx, ly] = wheelLand(e.deltaX, e.deltaY, v2Mode);
+  padCam.x += lx; padCam.y += ly;
+  const dir = [];
+  if (Math.abs(lx) >= 1) dir.push(tr(lx > 0 ? 'dir.r' : 'dir.l'));
+  if (Math.abs(ly) >= 1) dir.push(tr(ly > 0 ? 'dir.d' : 'dir.u'));
+  $('#pad-out').textContent = tr('pad.out', { x: e.deltaX.toFixed(0), y: e.deltaY.toFixed(0), dir: dir.join(' + ') || '-' });
+  drawPad();
+}, { passive:false });
+
+/* ---------- mock controls ---------- */
+function seg(id, fn){
+  $(id).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    $(id).querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    fn(b.dataset.v);
+  });
+}
+function applyText(){
+  document.documentElement.lang = LANG === 'en' ? 'en' : 'zh-CN';
+  document.querySelectorAll('[data-t]').forEach(el => { el.textContent = tr(el.dataset.t); });
+  document.querySelectorAll('[data-t-aria]').forEach(el => el.setAttribute('aria-label', tr(el.dataset.tAria)));
+  $('#rail').setAttribute('aria-label', tr('rail.title'));
+  $('#n-click').innerHTML = tr('n.click').map(s => `<li>${s}</li>`).join('');
+  $('#n-rules').innerHTML = tr('n.rules').map(s => `<li>${esc(s)}</li>`).join('');
+  $('#n-v2').textContent = tr('n.v2');
+  renderRepos(); renderStats(); render();
+}
+seg('#seg-lang', v => { LANG = v; applyText(); });
+seg('#seg-width', v => { phone = v === 'phone'; $('#app').classList.toggle('phone', phone); setDrawer(false); requestAnimationFrame(() => { resize(); home(); }); });
+seg('#seg-row', v => { rowMode = v; });
+seg('#seg-hit', v => { stage.classList.toggle('showhit', v === 'on'); });
+seg('#seg-v2', v => { v2Mode = v; });
+
+let last = performance.now(), railT = 0;
+function frame(now){
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  step(dt); draw(); renderFollow();
+  railT += dt; if (railT > 1) { railT = 0; renderStats(); }
+  requestAnimationFrame(frame);
+}
+addEventListener('resize', () => { resize(); drawPad(); });
+resize(); applyText(); drawPad(); requestAnimationFrame(frame);
+window.mock = { P, cam, startFollow, stopFollow, get follow(){ return follow; }, toScreen, freeBox };
+</script>
+</body>
+</html>
