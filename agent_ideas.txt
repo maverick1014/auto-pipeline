@@ -10,7 +10,6 @@ agent-city: a page opened while another member's person is already asking up the
 agent-city: the Reducer's governor seat (gov_sid) never expires; after a crashed main manager, a new main session in the same repo shows as a citizen until the old SessionEnd arrives (idea-city TM 2026-09-28) | 2026-09-28 14:23 | by main
 agent-city: in English the top bar wraps to a second row (longer words, seen in E2E at 1440 px: Activity button drops below); shorter labels or a scrolling row (idea-city TM 2026-09-28) | 2026-09-28 14:23 | by main
 agent-city: server balance texts and KIND_ZH in bin/agent_city.py are Chinese only (not shown on the page today) (idea-city TM 2026-09-28) | 2026-09-28 14:23 | by main
-agent-city: bin/agent.conf.default has language=en but the city default is zh; a repo with no language key gets an English city. Decide one default (matters for agent-city-anywhere: outside a repo) (idea-city TM 2026-09-28) | 2026-09-28 14:23 | by main
 agents/worker.md: forbid bare git stash (the stash is shared across sessions/worktrees); an idea-city worker used stash/pop, nothing lost (idea-city TM 2026-09-28) | 2026-09-28 14:23 | by main
 tests: DLBL_JS (test_agent_city_idea_page.py) and LIVE_SHOW_JS (test_agent_city_page.py) still set an unused signs: [] property; cleanup (idea-city TM 2026-09-28) | 2026-09-28 14:23 | by main
 agent-city: fully zoomed out, a person's question bubble covers the territory name label (auto-pipeline hidden behind 'Should a payment timeou...'); stack or offset them. Seen in idea-city E2E 2026-09-28 | 2026-09-28 14:23 | by main
