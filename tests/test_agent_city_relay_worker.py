@@ -55,15 +55,18 @@ Run: python3 -m unittest tests.test_agent_city_relay_worker
 
 import json
 import os
-import shutil
 import subprocess
+import sys
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 WORKER = os.path.join(ROOT, "bin", "agent-city-relay.js")
 HARNESS = os.path.join(HERE, "relay_harness.mjs")
-NODE = shutil.which("node")
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from nodehelp import NODE, SKIP_REASON  # noqa: E402
 
 KEY = "test-team-key-not-real-0001"
 T0 = 1_800_000_000_000  # a fixed clock, ms
@@ -82,7 +85,7 @@ def ev(n):
     return {"ev": "PostToolUse", "sid": "s%d" % n, "tool": "Bash", "rid": "github.com/o/r"}
 
 
-@unittest.skipUnless(NODE, "node is not installed")
+@unittest.skipUnless(NODE, SKIP_REASON)
 class RelayCase(unittest.TestCase):
     def run_relay(self, requests, env=None):
         if env is None:
