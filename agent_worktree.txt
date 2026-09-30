@@ -1,1 +1,1 @@
-pc2:/Users/maverick/orca/workspaces/auto-pipeline/city-work-anim | city-work-anim (TM on maverick-pc2) | working | since 2026-09-29 16:54
+pc2:/Users/maverick/orca/workspaces/auto-pipeline/session-names | session-names (TM on maverick-pc2) | working | since 2026-09-30 13:19

@@ -29,7 +29,8 @@ CONTRACT
     Cheap:
       const FRAME_MS = 33        at most about 30 frames a second
       const IDLE_FRAME_MS = 100  about 10 a second when nothing moves
-      const MAX_CITIZENS = 40, MAX_LOG = 40, MAX_FLOATERS = 80, each used
+      const MAX_CITIZENS = 40, MAX_LOG = 40, each used (MAX_FLOATERS went with the floating tool
+        names, city-work-anim bounce 1)
       static scenery drawn with THREE.InstancedMesh
     Its <script> passes `node --check`.
 
@@ -368,7 +369,7 @@ class TestCost(unittest.TestCase):
 
     def test_limits(self):
         text = inline_script()
-        for name, value in (("MAX_CITIZENS", 40), ("MAX_LOG", 40), ("MAX_FLOATERS", 80)):
+        for name, value in (("MAX_CITIZENS", 40), ("MAX_LOG", 40)):
             with self.subTest(name=name):
                 self.assertRegex(text, r"const %s = %d\b" % (name, value))
                 self.assertGreaterEqual(len(re.findall(r"\b%s\b" % name, text)), 2,

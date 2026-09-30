@@ -116,9 +116,11 @@ U10 every person opens the same two-column window, with its history (owner, mock
   city-ux2 v2: the history stays; the two-column window and 'wide' go (tests/test_agent_city_ux2.py).
   (sim) ACT_KEEP = 60. Every citizen has c.acts = [] (newCitizen): its activity lines, oldest first.
         actLog(c, text): appends { at: Date.now() / 1000, text }, keeps only the last ACT_KEEP.
-        actTool(c, tool): when the last line is a tools line (it has .tools), counts the tool there and
-        rewrites its text; else appends a new tools line { at, tools: {tool: 1}, text }. A tools line's
-        text is "<tool> ×<n>" per tool, in the order first used, joined by " · " ("Edit ×2 · Read ×1").
+        actTool(c, step): when the last line is a steps line (it has .steps), adds the step there if it
+        is new and rewrites its text; else appends a new steps line { at, steps: [step], text }. A steps
+        line's text is its plain-words steps (stepText, tests/test_agent_city_steps.py), in the order
+        first seen, the last 3 at most, joined by " · " ("改代码 · 看文件") -- never a tool name or a
+        count (city-work-anim bounce 1, owner 2026-09-30).
         apply() records, for the event's citizen: spawn -> hist.started {task}; tool -> actTool; stuck
         -> hist.stuck {text: stuckText(ev)}; relay -> hist.toLead (to 'lead') or hist.toGov; waiting ->
         hist.waiting; done -> hist.done; leave -> hist.left (remote people get their spawn / done / leave
@@ -761,8 +763,8 @@ apply({ type: 'done', id: 'x1' });
 apply({ type: 'leave', id: 'x1' });
 out.acts = c.acts.map(a => a.text);
 out.atOk = c.acts.every(a => typeof a.at === 'number' && a.at > 1.6e9);
-out.want = [i18n('hist.started', { task: '登录 API' }), 'Edit ×2 · Read ×1', i18n('hist.stuck', { text: '支付超时要不要自动重试？' }),
-  'Bash ×1', i18n('hist.toGov'), i18n('hist.waiting'), i18n('hist.done'), i18n('hist.left')];
+out.want = [i18n('hist.started', { task: '登录 API' }), '改代码 · 看文件', i18n('hist.stuck', { text: '支付超时要不要自动重试？' }),
+  '跑命令', i18n('hist.toGov'), i18n('hist.waiting'), i18n('hist.done'), i18n('hist.left')];
 out.keys = ['hist.started', 'hist.stuck', 'hist.toLead', 'hist.toGov', 'hist.waiting', 'hist.done', 'hist.left', 'hist.title', 'hist.empty', 'chat.task'].map(k => i18n(k, { task: 'T', text: 'X' }));
 for (let i = 0; i < 200; i++) actLog(c, 'line ' + i);
 out.cap = { n: c.acts.length, keep: ACT_KEEP, last: c.acts[c.acts.length - 1].text, first: c.acts[0].text };

@@ -276,7 +276,7 @@ class TestServe(ServerCase):
         spawn = {k: v for k, v in spawn.items() if k not in ("terr", "lead", "office", "relay")}
         self.assertEqual(spawn, {"type": "spawn", "id": "a1", "role": "worker",
                                  "label": "worker", "task": "设置页表单"})
-        self.assertEqual(tool, {"type": "tool", "id": "a1", "tool": "Edit"})
+        self.assertEqual(tool, {"type": "tool", "id": "a1", "tool": "Edit", "name": "Edit"})
 
     def test_lines_from_before_the_start_are_skipped(self):
         os.makedirs(self.dir, exist_ok=True)

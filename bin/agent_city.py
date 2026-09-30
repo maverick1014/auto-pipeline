@@ -142,11 +142,12 @@ class Reducer:
         desc = field("desc")
         sub = field("sub")
         q = field("q")
+        file = field("file")   # city-work-anim: only read for a tool event's file name
 
         if aid:
-            events = self._handle_subagent_event(ev, sid, aid, at, tool, q, now)
+            events = self._handle_subagent_event(ev, sid, aid, at, tool, q, now, file, desc)
         else:
-            events = self._handle_session_event(ev, sid, role, proj, tool, nt, desc, sub, q, now)
+            events = self._handle_session_event(ev, sid, role, proj, tool, nt, desc, sub, q, now, file)
 
         events.extend(self._sweep(now))
         return events
@@ -163,7 +164,7 @@ class Reducer:
 
     # -- session-main (no aid): governor or citizen --------------------
 
-    def _handle_session_event(self, ev, sid, role, proj, tool, nt, desc, sub, q, now):
+    def _handle_session_event(self, ev, sid, role, proj, tool, nt, desc, sub, q, now, file=""):
         if sid == "":
             return []
         # A bare "about to spawn" PreToolUse is only a queue entry: it must
@@ -184,7 +185,7 @@ class Reducer:
         if cid is None:
             events.extend(self._governor_event(ev, tool, nt))
         else:
-            events.extend(self._citizen_event(ev, cid, tool, nt, q))
+            events.extend(self._citizen_event(ev, cid, tool, nt, q, file, desc))
             self._touch(cid, now)
         if is_queue_pretool:
             self._enqueue(sid, sub, desc)
@@ -224,7 +225,7 @@ class Reducer:
         self.gov_state = new_state
         return [{"type": "gov", "state": new_state}]
 
-    def _citizen_event(self, ev, cid, tool, nt, q):
+    def _citizen_event(self, ev, cid, tool, nt, q, file="", desc=""):
         agent = self.agents.get(cid)
         if agent is None or agent["done"]:
             return []
@@ -249,7 +250,7 @@ class Reducer:
         if ev in ("PostToolUse", "UserPromptSubmit"):
             out = self._make_answer_if_stuck(cid, True)
             if ev == "PostToolUse" and tool:
-                out = out + self._tool_event(cid, tool)
+                out = out + self._tool_event(cid, tool, file, desc)
             return resumed + out
         return resumed
 
@@ -283,7 +284,7 @@ class Reducer:
 
     # -- subagents (aid set) -------------------------------------------
 
-    def _handle_subagent_event(self, ev, sid, aid, at, tool, q, now):
+    def _handle_subagent_event(self, ev, sid, aid, at, tool, q, now, file="", desc=""):
         agent = self.agents.get(aid)
         events = []
         if agent is None:
@@ -304,7 +305,7 @@ class Reducer:
         if ev == "PostToolUse":
             events.extend(self._make_answer_if_stuck(aid, True))
             if tool:
-                events.extend(self._tool_event(aid, tool))
+                events.extend(self._tool_event(aid, tool, file, desc))
         elif ev == "PermissionRequest":
             events.extend(self._make_stuck(aid, "", tool))
         elif ev == "PermissionDenied":
@@ -355,10 +356,21 @@ class Reducer:
         if aid in self.agents:
             self.agents[aid]["seq"] = self._seq
 
-    def _tool_event(self, aid, tool):
+    def _tool_event(self, aid, tool, file="", desc=""):
         kind = TOOL_MAP.get(tool, "Other")
         self.agents[aid]["tools"][kind] += 1
-        return [{"type": "tool", "id": aid, "tool": kind}]
+        # city-work-anim: the raw tool name (safe chars only), an edit's file
+        # name (last path part, never a folder), a Task's desc -- so the page
+        # can say in plain words what the agent is doing.
+        name = tool if re.fullmatch(r"[A-Za-z0-9_]{1,64}", tool) else ""
+        ev = {"type": "tool", "id": aid, "tool": kind, "name": name}
+        if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit") and _is_safe_rel_path(file):
+            last = file.replace("\\", "/").rsplit("/", 1)[-1]
+            if last:
+                ev["file"] = _trim(last, 60)
+        if tool in ("Agent", "Task") and desc:
+            ev["desc"] = _trim(desc, 60)
+        return [ev]
 
     def _make_stuck(self, aid, question, tool):
         agent = self.agents.get(aid)
@@ -3190,6 +3202,7 @@ class RemoteCity:
         who, br = line.get("who") or device, line.get("br") or ""
         fed = dict(line)
         fed["proj"] = rid.rsplit("/", 1)[-1]
+        fed.pop("file", None)   # city-work-anim: another member's file names never show
         # idea-city C3: one Reducer per (device, rid) -- a member's role-less
         # main session in a second repo is that repo's own governor.
         key = (dev_id, rid)

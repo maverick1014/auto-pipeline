@@ -34,10 +34,10 @@ CONTRACT (bin/agent-city.html, the inline script)
   Every citizen has its own spot. After people settle, no two people
       (citizens and governors) stand closer than 0.45 tiles, and nobody
       stands within 0.45 of a governor.
-  A working citizen walks: a citizen without a building walks between spots
-      near its home while it works (tool events), at least 1 tile of path
-      over 12 s with 6 tool events. It never shows "施工中" without a
-      building (citizenStatus text).
+  A working citizen stays on its spot (city-work-anim, owner 2026-09-29,
+      replaces "walks between spots near its home while it works"): under
+      0.05 tiles of path over 12 s with 6 tool events. It never shows
+      "施工中" without a building (citizenStatus text).
   A worker that gets a build event walks to the plot and builds there
       (a building record on that plot, the worker within 1.3 tiles of the
       plot centre, state 'building'), on every terrain (5 plans).
@@ -228,7 +228,7 @@ apply({ type: 'done', id: 'w9' });
 tick(45);
 const rested = { state: w9.state, x: w9.x, y: w9.y, rest: w9.rest ? { x: w9.rest.x, y: w9.rest.y } : null };
 apply({ type: 'spawn', id: 's:tm2', role: 'task-manager', label: 'task-manager', task: 'other', terr: tid });
-tick(3);
+tick(15); // city-work-anim: settled on its spot first -- the tool events below must not move it
 const walkedBefore = trace['s:tm2'] || 0;
 for (let i = 0; i < 6; i++) { apply({ type: 'tool', id: 's:tm2', tool: i % 2 ? 'Read' : 'Bash' }); tick(2); }
 tick(8);
@@ -289,12 +289,14 @@ class TestPeopleWalkP0(unittest.TestCase):
                 self.assertIsNotNone(s["rest"])
                 self.assertLess(math.hypot(s["x"] - s["rest"]["x"], s["y"] - s["rest"]["y"]), 0.2)
 
-    def test_working_citizen_without_a_building_walks(self):
+    def test_working_citizen_without_a_building_stays_on_its_spot(self):
+        # city-work-anim (owner, 2026-09-29): replaces "a working citizen walks" -- it stays on its
+        # spot and acts its work out (tests/test_agent_city_work.py); walking is for going somewhere.
         for plan, r in self.results.items():
             with self.subTest(plan=plan):
                 w = r["worked"]
                 self.assertFalse(w["hasBld"])
-                self.assertGreaterEqual(w["walked"], 1.0, "moves while it works")
+                self.assertLess(w["walked"], 0.05, "stays on its spot while it works")
                 self.assertNotEqual(w["status"][1], "施工中", "no 施工中 without a building")
 
     def test_everyone_apart_at_the_end(self):
