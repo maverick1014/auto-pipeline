@@ -70,6 +70,7 @@ COPY_BIN = [
     "agent-city.html",
     "agent-city-plans.json",
     "agent-close-case.sh",
+    "agent-name.sh",
 ]
 
 # Copied into the temp plugin's root.
@@ -445,6 +446,8 @@ class ScriptRepo:
         env.pop("CLAUDE_CODE_REMOTE", None)
         env.pop("AGENT_RUNTIME", None)
         env.pop("AGENT_START_DEDUPE_SEC", None)
+        # a test run started inside an Orca pane must not rename that pane
+        env.pop("ORCA_TERMINAL_HANDLE", None)
         # the session a test run is started from; a quiz marker is keyed on
         # it, so a test that wants one sets it itself
         env.pop("CLAUDE_CODE_SESSION_ID", None)
