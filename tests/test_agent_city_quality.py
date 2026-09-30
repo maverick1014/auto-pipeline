@@ -109,6 +109,7 @@ sys.path.insert(0, HERE)
 import agent_city as ac  # noqa: E402
 from test_agent_city_people import page, run_sim, plan_views  # noqa: E402
 from test_agent_city_worktrees import git, make_repo, write, drain, snapshot  # noqa: E402
+from cityhelp import Mains  # noqa: E402
 
 
 def flat(n):
@@ -204,10 +205,11 @@ class TestHookFile(unittest.TestCase):
 
     def test_file_is_the_sixteenth_key(self):
         # idea-city C4: the hook line has no "kind" any more; session-names
-        # added "tp" after "file" (tests/test_agent_city_session_names.py)
+        # added "tp" after "file" (tests/test_agent_city_session_names.py),
+        # city-roles "pid" after "tp" (tests/test_agent_city_roles.py)
         row = self.row(self.root, path=os.path.join(self.root, "a.py"))
-        self.assertEqual(len(row), 17)
-        self.assertEqual(list(row)[-4:], ["ask", "wt", "file", "tp"])
+        self.assertEqual(len(row), 18)
+        self.assertEqual(list(row)[-5:], ["ask", "wt", "file", "tp", "pid"])
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +305,8 @@ class BuildCase(unittest.TestCase):
                                world_path=os.path.join(self.base, "world.json"),
                                plans=ac.load_plans(), count_fn=lambda i: 0,
                                balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}},
-                               start_repo=self.ident)
+                               start_repo=self.ident,
+                               main_fn=Mains({self.ident: "tm"}))   # city-roles: "tm" is the main manager
         self.snap, self.client = snapshot(self.st)
         self.st.feed_line(self.line("tm", tool="Read"), 1000.0)
         drain(self.client)

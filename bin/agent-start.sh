@@ -4,6 +4,10 @@
 #   ./agent-start.sh                          resource check + pointers + open tasks
 #   ./agent-start.sh --quiz                   print the 29 quiz questions
 #   ./agent-start.sh --answer "1A 2D ... 29B"    grade your quiz answers
+#   ./agent-start.sh --take-over              this session becomes the main manager
+#                                             (only when the human asks; the old one is closed)
+#   ./agent-start.sh --release                the main manager frees its seat (last step of
+#                                             a whole-repo close case); this session is closed
 #
 # Rule: no work until the quiz says PASS.
 #
@@ -25,6 +29,96 @@ N=29
 
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
 h()   { printf '%s' "$1" | sha | cut -c1-16; }
+
+# ---- the seat: the lock line and the closed list (files: see agent-roots.sh) ----
+
+# lock_write <since>: the whole lock line, "<pid> <date> <time> <sid> <terminal>".
+# sid: the hook's stdin session_id, else $CLAUDE_CODE_SESSION_ID, else "-".
+lock_write() {
+  local sid term tmp
+  sid="${SID:-${CLAUDE_CODE_SESSION_ID:-}}"; sid=${sid//[[:space:]]/_}
+  term="${ORCA_TERMINAL_HANDLE:-}"; term=${term//[[:space:]]/_}
+  tmp="$LOCK.tmp.$$"
+  printf '%s %s %s %s\n' "$ME" "$1" "${sid:--}" "${term:--}" > "$tmp" && mv "$tmp" "$LOCK"
+}
+
+# closed_update <add-pid|-> <drop-pid|-> <why>: rewrite the closed list. Dead
+# pids go; <drop-pid> goes; <add-pid> is added (why, now). A pid's told-once
+# mark (agent-close-case.sh) goes with its line, so it is told again next time.
+closed_update() {
+  local tmp p rest t
+  tmp="$CLOSED.tmp.$$"
+  {
+    if [ -f "$CLOSED" ]; then
+      while read -r p rest; do
+        [ -n "$p" ] || continue
+        [ "$p" = "$1" ] || [ "$p" = "$2" ] && continue
+        kill -0 "$p" 2>/dev/null && printf '%s %s\n' "$p" "$rest"
+      done < "$CLOSED"
+    fi
+    [ "$1" = - ] || printf '%s %s %s\n' "$1" "$3" "$NOW"
+  } > "$tmp"
+  if [ -s "$tmp" ]; then mv "$tmp" "$CLOSED"; else rm -f "$tmp" "$CLOSED"; fi
+  for t in "$PROJECT_GITDIR"/agent_main.told_*; do
+    [ -e "$t" ] || continue
+    p=${t##*_}
+    if [ "$p" = "$1" ] || [ "$p" = "$2" ] || ! kill -0 "$p" 2>/dev/null; then rm -f "$t"; fi
+  done
+  return 0
+}
+
+# drop_human_direct: this worktree's own human-direct line leaves agent_worktree.txt.
+drop_human_direct() {
+  local wt tmp
+  wt="$PROJECT_ROOT/agent_worktree.txt"; tmp="$wt.tmp"
+  [ -f "$wt" ] || return 0
+  awk -v p="$PROJECT_CWD" -F' \\| ' '!($1 == p && $2 == "task manager, human-direct")' "$wt" > "$tmp" && mv "$tmp" "$wt"
+  return 0
+}
+
+# ---- --take-over / --release: the seat moves by hand, only when the human asks
+# (W10, W13). Needs the roots, prints no start output, reads no stdin. ----
+if [ "${1:-}" = "--take-over" ] || [ "${1:-}" = "--release" ]; then
+  roots_read
+  if [ ! -f "$PROJECT_ROOT/agent.conf" ]; then
+    echo "auto-pipeline: not set up in this repo, run /auto-pipeline:init to enable"; exit 1
+  fi
+  mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
+  role_read; NOW=$(date '+%Y-%m-%d %H:%M'); REPO=$(basename "$PROJECT_ROOT")
+  if [ "$1" = "--take-over" ]; then
+    if [ "$role" = spawned ]; then
+      echo "REFUSED: $AGENT_ROLE is a spawned agent, never the main manager. Only a human-direct session takes over."; exit 1
+    fi
+    if [ -f "$LOCK" ] && [ "$lpid" = "$ME" ]; then
+      echo "Already the main manager (lock: pid $ME). Nothing changed."; exit 0
+    fi
+    lock_write "$NOW"
+    if [ -n "$lpid" ] && [ "$lpid" != "$ME" ] && pid_alive "$lpid"; then
+      closed_update "$lpid" "$ME" replaced
+    else
+      closed_update - "$ME" replaced; lpid=""
+    fi
+    drop_human_direct
+    echo "ROLE: main manager (lock: pid $ME). Address: /rename $REPO Manager or claude --name"
+    [ -n "$lpid" ] && echo "Took over from pid $lpid: it is closed now and is told once."
+    exit 0
+  fi
+  # --release: only the lock holder
+  if [ ! -f "$LOCK" ] || [ "$lpid" != "$ME" ]; then
+    if [ -f "$LOCK" ] && [ -n "$lpid" ]; then
+      echo "REFUSED: only the main manager releases. The lock holder is pid $lpid, this session is pid $ME."
+    else
+      echo "REFUSED: no lock, nothing to release (this session is pid $ME)."
+    fi
+    exit 1
+  fi
+  rm -f "$LOCK"
+  closed_update "$ME" - released
+  echo "RELEASED: the main manager seat of \"$REPO\" is free. The next session the human opens becomes the main manager."
+  echo "This session is closed: start nothing new. Take over again only when the human asks; the human types this line in this session, never run it yourself:"
+  echo "! $PLUGIN_ROOT/bin/agent-start.sh --take-over"
+  exit 0
+fi
 
 # ---- --quiz: print the questions only, nothing else, no lock, no roots ----
 if [ "${1:-}" = "--quiz" ]; then
@@ -391,10 +485,13 @@ announce_human_direct() {
 print_role_and_project() {
   case $role in
     spawned)  echo "ROLE: $AGENT_ROLE (spawned by an agent, not human-direct). Main manager: \"$REPO Manager\" (not listed by that name: the \"$REPO-<xx>\" row; pid $(cut -d' ' -f1 "$LOCK" 2>/dev/null || echo ?)). Report to it with SendMessage.";;
-    main)     echo "$ME $NOW" > "$LOCK"; echo "ROLE: main manager (lock: pid $ME). Address: /rename $REPO Manager or claude --name";;
-    takeover) echo "$ME $NOW" > "$LOCK"; echo "ROLE: main manager. Previous main manager (pid $lpid, since $lsince) is dead. Run recovery (S7). Address: /rename $REPO Manager or claude --name";;
+    main)     lock_write "$NOW"; echo "ROLE: main manager (lock: pid $ME). Address: /rename $REPO Manager or claude --name";;
+    takeover) lock_write "$NOW"; echo "ROLE: main manager. Previous main manager (pid $lpid, since $lsince) is dead. Run recovery (S7). Address: /rename $REPO Manager or claude --name";;
+    closed)   closed_lines "ROLE: closed.";;
     second)
-      echo "ROLE: task manager, human-direct (W10). Main manager already running: pid $lpid, since $lsince."
+      echo "ROLE: task manager, human-direct (W10). Main manager already running: $(holder_text)."
+      echo "Take over only when the human asks (the old main manager is then closed). The human types this line in this session; never run it yourself:"
+      echo "! $PLUGIN_ROOT/bin/agent-start.sh --take-over"
       announce_human_direct
       echo "Announced: line added to agent_worktree.txt. Send the main manager a direct message too if Orca is available."
       echo "Will change files? Open your own worktree first (W7). Human says finish -> report done + click path to the main manager."

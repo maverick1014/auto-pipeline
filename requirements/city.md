@@ -12,8 +12,11 @@
 ## Data path
 - `hooks/hooks.json` → `bin/agent-city-hook.sh` → `<city dir>/events.jsonl` → `bin/agent_city.py` → SSE `/events` → page.
 - Hook when off: one `test -f`, nothing else. On: one JSON line per event. Bash builtins only.
-- Session without `AGENT_ROLE` = governor. Session with `AGENT_ROLE` = citizen. Subagent = citizen.
-- The governor seat frees when its holder is gone, not only on its SessionEnd (a crashed main manager never sends one; ideas-soon, 2026-09-29). A new session without `AGENT_ROLE` asks first: is the holder gone? Holder's pid known (the pid in `<git common dir>/agent_main.lock`, read while the holder acts, kept only if alive then) → gone when that pid is dead. No pid known → gone after 15 min with no line from it. Gone → ended like its SessionEnd, and the new session takes the seat at once. Not gone → the new session is a citizen.
+- Governor = the repo's real main manager only (owner, 2026-09-30, city-roles; replaces "first session without `AGENT_ROLE`"): the session holding `<git common dir>/agent_main.lock` (pid alive; its session id matches, or with an old lock that has no session id, the hook's `pid`). Everyone else is a citizen, a session without `AGENT_ROLE` too. Subagent = citizen.
+- No live lock holder → no governor in that territory (the page says 总督不在; questions go straight to the owner).
+- The lock changes hands (take-over, close case, a new main manager) → the new holder is governor on its next line, even if it was a citizen; the old one leaves the seat. The server also checks the seats about every 2 s: a dead holder ends like its SessionEnd, a released lock empties the seat.
+- Only the governor gets governor questions and the governor's messages. Any other session's watcher hears its own messages, like a citizen.
+- A line with no repo stays in the territory its session was last seen in. Only an unknown session with no repo goes to the start territory (old hooks).
 - A session shows up only if it started with the city hook installed (plugin 0.6.0+).
 
 ## Look
@@ -52,10 +55,10 @@
 ## Talking
 - Owner decision, 2026-09-27: "我就可以直接看到他的聊天记录对话框然后直接跟他说话". The owner reads a session's conversation and talks to it from its person's window, no terminal needed. The terminal keeps working in parallel; both show the same conversation.
 - What the window shows: what was typed to the session (UserPromptSubmit `prompt`), the text each turn ended with (`last_assistant_message` on Stop and SubagentStop), and the owner's messages from the page. Questions and permission requests stay in their own "?" panel (see Interaction). Not tool output, not the transcript file: its format is internal to Claude Code and changes between versions (code.claude.com/docs/en/sessions), so the city never parses it. Only from the time the city is on.
-- A message typed in the window goes to that session. Idle session → it wakes at once with the message: the same background Stop hook that wakes a governor with a question (`asyncRewake`), now for every session, reachable while idle up to the same 12 h. Busy session → the message waits and goes in when its turn ends; the window says 等它做完这一步. The window shows each message as sent, then delivered.
-- Sessions only: the governor and task managers. A worker (a subagent inside a session) shows its conversation read only, and the window offers its lead's window to talk to instead.
+- A message typed in the window goes to that session. Idle session → it wakes at once with the message: the same background Stop hook that wakes a governor with a question (`asyncRewake`), now for every session, reachable while idle up to the same 12 h. Busy session → the message waits and goes in when its turn ends; the window says 等它做完这一步. The window shows each message as queued (排队中), then delivered (已送达). Nobody can take it (the session is idle and its watcher is not listening, or a governor page with no governor) → 没送到 with the reason 它没在听，收不到, at once or as soon as that is true; never a silent wait (owner, 2026-09-30, city-roles R6).
+- Sessions only: the governor, task managers and every other session (a Helper too: its watcher listens for its own window, only the governor's listens for the governor's). A worker (a subagent inside a session) shows its conversation read only, and the window offers its lead's window to talk to instead.
 - The conversation shows simple markdown (paragraphs, lists, code, bold, simple tables) and hides HTML comments (e.g. <!-- buddy: … -->); raw HTML is shown as text, never run. The log never pulls the owner down: it follows new lines only while the owner is at the bottom; scrolled up, it stays put and a small 有新消息 ↓ / New messages ↓ chip jumps down.
-- Every delivered message is logged like an answer: who, what, when, in the page log and `~/.claude/agent-city/decisions.jsonl`. Control requests as in Interaction: 127.0.0.1, token, Origin and Host checked.
+- Every delivered message is logged like an answer: who, what, when, in the page log and `$AGENT_CITY_HOME/decisions.jsonl` (default `~/.claude/agent-city/decisions.jsonl`; tests never write the real one, R7). Control requests as in Interaction: 127.0.0.1, token, Origin and Host checked.
 - Chat text stays on this computer, in `chat.jsonl` next to `events.jsonl`, readable by this user only (file mode 0600), one append per line: never sent through the relay (a joined city shows other members' people, never their conversation; their windows have no box), never written into `world.json`.
 - Cost: the per-tool-call hook stays as today (bash builtins, one line). The text is picked up only when a prompt is submitted or a turn ends.
 - From outside this computer (phone, elsewhere): never through the relay, which carries events only (see Joining). Claude Code's own Remote Control in the Claude app is the way.
@@ -84,7 +87,7 @@
 - The city is never empty: when the server starts it shows the territory of the dir it was started from (its git repo; a plain folder counts too), plus every territory saved in world.json, at once, before any agent acts.
 - Minimum size: every territory, even an empty repo with 0 code lines, has at least a small land, a town hall and one open plot in every district of its plan (house, shop, test tower, workshop, library), so any first edit can build.
 - A build that finds no free plot says so in the page log (e.g. "r1 没有空地了，先等等"). Never silent.
-- Old data is dropped (owner 2026-09-25, nobody uses it): territories saved without a repo identity are removed from world.json on load; events without a repo go to the start territory, never make their own.
+- Old data is dropped (owner 2026-09-25, nobody uses it): territories saved without a repo identity are removed from world.json on load; events without a repo go to their session's territory, else to the start territory; never make their own.
 - Zoom in and out always move; the governor stands at a hall, never in the void.
 - Territory edge is natural: river bank, cliff, forest edge, or beach on the coast. No brown earth block sides, no hard line.
 - Territory shape is uneven: organic edge, never a square or rectangle. Growth adds land at the edge and keeps it uneven.

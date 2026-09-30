@@ -107,8 +107,10 @@ W9. Task routing (main manager, before every dispatch)
 - Otherwise → new worktree (W7). Never spawn a worktree for a small task
 
 W10. Second session in the same repo
-- One main manager per repo. `agent-start.sh` keeps a lock in the shared git dir
+- One main manager per repo. `agent-start.sh` keeps a lock in the shared git dir: pid, date, session id, terminal
 - Lock owner alive → this session is a task manager (human-direct). Never a second main manager
+- Its start text names the main manager: pid, `<repo> Manager`, terminal
+- Human wants this session as main manager → the human types `! agent-start.sh --take-over` (full path in the start text); the agent never runs it. The old one is told once, never main again by itself
 - Human-direct = only a session the human opened by hand. Agent-spawned agents are never human-direct. They run fully by agent, no human in the loop
 - At start: the script adds a line to `agent_worktree.txt` (status human-direct). Also send the main manager a direct message if a channel exists (Orca)
 - Will change files → open its own worktree first (W7). Only looking → no worktree
@@ -145,12 +147,12 @@ W13. Close case
 - Report to the upper level: SendMessage the main manager; another machine → print it in its own terminal and say so (W10)
 - Report first line `CLOSE CASE <name>: finished` or `CLOSE CASE <name>: unfinished`, then done, left + next steps, tests + results, click path, new ideas, TIME line (W11)
 - Then wait for the upper decision. Never close itself. A close case from the main manager counts the same as from the human
-- Main manager gets a CLOSE CASE report: finished → normal path (merge skill)
-- Unfinished → review, decide finish first (goes on to DONE, then merge) or close now (branch stays pushed, todo line open with next steps, pane closed, worktree removed)
+- Main manager gets a CLOSE CASE report: finished → merge skill. Unfinished → review, then finish first (DONE, then merge) or close now (branch pushed, todo line open, pane closed, worktree removed)
 - Log every decision in its agent_state.txt. Human away → decide by the requirement doc, mark it "owner not seen"
 - Main manager gets close case from the human = the whole repo: close case to every live task manager and human-direct session in agent_worktree.txt
 - Collect every report, decide each, merge what passes, close all panes and worktrees, stop its own crons and monitors, update the agent files
 - Then one final table to the human: task, result, what changed, what is left, decisions taken for the human. Nothing dropped (the H3 five-row cap does not apply)
+- Last line of the final table: the human types `! agent-start.sh --release`; the agent never runs it. It frees the main seat: the next new session is main manager, never Helper
 
 ## C. Human
 

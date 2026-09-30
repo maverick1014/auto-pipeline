@@ -12,6 +12,7 @@
 #   second session, human-direct      "<repo> Helper"
 #   spawned, AGENT_ROLE=task-manager  "<feature> Task Manager"
 #   spawned, any other AGENT_ROLE     "<feature> <Words Of The Role>"
+#   closed (released or replaced)     no name: it is not the main manager any more
 #
 # repo = folder of the project's main worktree, feature = folder of the git
 # toplevel the session runs in. The role comes from role_read (agent-roots.sh),
@@ -46,6 +47,7 @@ role_read
 repo=$(basename "$PROJECT_ROOT")
 feature=$(basename "$STATE_DIR")
 case "$role" in
+  closed) exit 0;;
   spawned)
     if [ "$AGENT_ROLE" = task-manager ]; then
       name="$feature Task Manager"

@@ -226,7 +226,8 @@ class CityCase(TitleCase):
         st = ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=self.world,
                           plans=ac.load_plans(), count_fn=lambda i: 0,
                           balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}},
-                          titles=ac.TitleReader(root=self.root))
+                          titles=ac.TitleReader(root=self.root),
+                          main_fn=lambda identity: (os.getpid(), "gov"))   # city-roles: "gov" is the main manager
         self.client = st.add_client()
         self.client.queue.get_nowait()
         return st

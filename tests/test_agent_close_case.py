@@ -7,7 +7,8 @@ the upper agent."
 CONTRACT. bin/agent-close-case.sh is a UserPromptSubmit hook (hooks.json).
 Claude Code gives it the prompt as JSON on stdin; what it prints on stdout is
 added to the session's context. It never blocks a prompt: always exit 0,
-nothing on stderr, and it writes no file.
+nothing on stderr, and it writes no file (city-roles: except the told-once mark of a closed
+main manager, tests/test_agent_main_seat.py).
 
     trigger   the words close case, any case, anywhere in the prompt, any
               white space between them (\\bclose\\s+case\\b)

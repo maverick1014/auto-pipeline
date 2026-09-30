@@ -157,6 +157,7 @@ CONTRACT: bin/agent-city.sh answer | pass | pending (for the governor)
   --decisions "${AGENT_CITY_HOME:-$HOME/.claude/agent-city}/decisions.jsonl".
 """
 
+import atexit
 import http.client
 import json
 import os
@@ -189,17 +190,26 @@ QS2 = QS + [{"question": "Which scope?", "header": "Scope",
              "options": [{"label": "Questions", "description": "first"},
                          {"label": "Both", "description": "all"}],
              "multiSelect": False}]
+# city-roles: the governor is the live holder of the repo's main manager lock, so the shop repo of
+# these tests is a real folder whose lock names "gs" (the gov_next() default) with this test
+# process as its live pid.
+SHOP_BASE = os.path.realpath(tempfile.mkdtemp(prefix="city_shop_"))
+SHOP = os.path.join(SHOP_BASE, "r", "shop", ".git")
+os.makedirs(SHOP)
+with open(os.path.join(SHOP, "agent_main.lock"), "w") as _fh:
+    _fh.write("%d 2026-09-30 10:00 gs -\n" % os.getpid())
+atexit.register(shutil.rmtree, SHOP_BASE, True)
 ISO = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$")
 
 
-def perm_body(sid="s1", aid="", tool="Bash", command="rm -rf build/", repo="/r/shop/.git",
+def perm_body(sid="s1", aid="", tool="Bash", command="rm -rf build/", repo=SHOP,
               role="worker", **extra):
     inp = {"command": command, "description": "clean the build"} if tool == "Bash" else extra.pop("input")
     return {"sid": sid, "aid": aid, "at": "worker" if aid else "", "role": role,
             "cwd": "/r/shop", "repo": repo, "tool": tool, "input": inp}
 
 
-def q_body(sid="s2", aid="", questions=None, repo="/r/shop/.git", role="worker"):
+def q_body(sid="s2", aid="", questions=None, repo=SHOP, role="worker"):
     return {"sid": sid, "aid": aid, "at": "worker" if aid else "", "role": role,
             "cwd": "/r/shop", "repo": repo, "tool": "AskUserQuestion",
             "input": {"questions": questions or QS}}
@@ -264,7 +274,7 @@ class InteractCase(ServerCase):
     def decide(self, body, origin=True):
         return self.api("POST", "/api/decide", body, origin=self.origin if origin is True else origin)
 
-    def gov_next(self, sid="gs", repo="/r/shop/.git", watcher="w1", timeout=0):
+    def gov_next(self, sid="gs", repo=SHOP, watcher="w1", timeout=0):
         path = "/api/gov/next?sid=%s&repo=%s&watcher=%s&timeout=%s" % (sid, repo, watcher, timeout)
         return self.api("GET", path, timeout=timeout + 20)[2]
 
@@ -742,7 +752,7 @@ class TestDecisionsLog(InteractCase):
                                             "what", "text", "reason"})
                 self.assertRegex(row["t"], ISO)
                 self.assertEqual(row["by"], "owner")
-                self.assertEqual(row["repo"], "/r/shop/.git")
+                self.assertEqual(row["repo"], SHOP)
         self.assertEqual((rows[0]["verb"], rows[0]["reason"], rows[0]["what"]), ("deny", "no", "rm -rf build/"))
         self.assertEqual((rows[1]["verb"], rows[1]["text"], rows[1]["tool"]), ("answer", "4791", "AskUserQuestion"))
 
@@ -773,6 +783,10 @@ class AskHookCase(InteractCase):
         super().setUp()
         self.work = os.path.join(self.base, "work")
         os.makedirs(self.work)
+        # city-roles: "gov-1" (stop_payload's default sid) holds the main manager lock of this
+        # folder, so its gov-watch is the governor (tests/test_agent_city_roles.py)
+        with open(os.path.join(self.work, "agent_main.lock"), "w") as fh:
+            fh.write("%d 2026-09-30 10:00 gov-1 -\n" % os.getpid())
         self.hooks = []
 
     def tearDown(self):
@@ -882,7 +896,7 @@ class TestAskHookOn(AskHookCase):
 
     def test_the_governor_answer_reaches_it(self):
         self.start()
-        self.gov_next(repo=os.path.realpath(self.work))
+        self.gov_next(sid="gov-1", repo=os.path.realpath(self.work))   # city-roles: gov-1 holds work's lock
         proc = self.hook(hook_payload(self.work, tool="AskUserQuestion", tool_input={"questions": QS}))
         ask = self.first_ask()
         self.assertEqual(ask["phase"], "governor")
@@ -1133,7 +1147,7 @@ class TestCityScriptVerbs(ScriptCase):
 
     def test_pass(self):
         self.started()
-        self.api("GET", "/api/gov/next?sid=g&repo=/r/shop/.git&watcher=w&timeout=0")
+        self.api("GET", "/api/gov/next?sid=gs&repo=%s&watcher=w&timeout=0" % SHOP)
         ask_id = self.api("POST", "/api/ask", q_body())[1]["id"]
         result = self.city_run("pass", ask_id)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

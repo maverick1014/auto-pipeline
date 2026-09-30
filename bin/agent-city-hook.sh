@@ -279,8 +279,16 @@ case "$ev" in
         ;;
 esac
 
-printf '{"ev":"%s","sid":"%s","aid":"%s","at":"%s","tool":"%s","nt":"%s","proj":"%s","role":"%s","desc":"%s","sub":"%s","q":"%s","klen":"%s","repo":"%s","ask":"%s","wt":"%s","file":"%s","tp":"%s"}\n' \
-    "$ev" "$sid" "$aid" "$at" "$tool" "$nt" "$proj" "$role" "$desc" "$sub" "$q" "$klen" "$repo" "$ask" "$wt" "$file" "$tp" \
+# cpid — city-roles: $CLAUDE_PID (the session's own process) when it is all
+# digits, else "". The server matches it against the pid in agent_main.lock
+# to tell the main manager's line from every other session's.
+cpid=$CLAUDE_PID
+case "$cpid" in
+    *[!0-9]*) cpid= ;;
+esac
+
+printf '{"ev":"%s","sid":"%s","aid":"%s","at":"%s","tool":"%s","nt":"%s","proj":"%s","role":"%s","desc":"%s","sub":"%s","q":"%s","klen":"%s","repo":"%s","ask":"%s","wt":"%s","file":"%s","tp":"%s","pid":"%s"}\n' \
+    "$ev" "$sid" "$aid" "$at" "$tool" "$nt" "$proj" "$role" "$desc" "$sub" "$q" "$klen" "$repo" "$ask" "$wt" "$file" "$tp" "$cpid" \
     >> "$dir/events.jsonl" 2>/dev/null
 
 exit 0

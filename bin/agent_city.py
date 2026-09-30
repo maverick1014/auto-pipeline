@@ -144,11 +144,17 @@ class Reducer:
         sub = field("sub")
         q = field("q")
         file = field("file")   # city-work-anim: only read for a tool event's file name
+        # city-roles: CityState says who governs (True: this line is the main
+        # manager's, False: it is not); a bare Reducer gets no "_gov" and keeps
+        # the old rule, the first roleless session governs.
+        hint = raw.get("_gov")
+        if not isinstance(hint, bool):
+            hint = None
 
         if aid:
             events = self._handle_subagent_event(ev, sid, aid, at, tool, q, now, file, desc)
         else:
-            events = self._handle_session_event(ev, sid, role, proj, tool, nt, desc, sub, q, now, file)
+            events = self._handle_session_event(ev, sid, role, proj, tool, nt, desc, sub, q, now, file, hint)
 
         events.extend(self._sweep(now))
         return events
@@ -165,7 +171,7 @@ class Reducer:
 
     # -- session-main (no aid): governor or citizen --------------------
 
-    def _handle_session_event(self, ev, sid, role, proj, tool, nt, desc, sub, q, now, file=""):
+    def _handle_session_event(self, ev, sid, role, proj, tool, nt, desc, sub, q, now, file="", hint=None):
         if sid == "":
             return []
         # A bare "about to spawn" PreToolUse is only a queue entry: it must
@@ -178,7 +184,7 @@ class Reducer:
             return []
 
         events = []
-        cid, spawned = self._resolve_session(sid, role, proj)
+        cid, spawned = self._resolve_session(sid, role, proj, hint)
         events.extend(spawned)
         if ev == "SessionEnd":
             events.extend(self._end_session(sid))
@@ -192,10 +198,10 @@ class Reducer:
             self._enqueue(sid, sub, desc)
         return events
 
-    def _resolve_session(self, sid, role, proj):
+    def _resolve_session(self, sid, role, proj, hint=None):
         if sid in self.sessions:
             return self.sessions[sid]["citizen"], []
-        if role == "" and self.gov_sid is None:
+        if (role == "" if hint is None else hint) and self.gov_sid is None:
             self.gov_sid = sid
             self.sessions[sid] = {"citizen": None}
             return None, []
@@ -212,6 +218,29 @@ class Reducer:
         self.sessions[sid] = {"citizen": cid}
         self._create_agent(cid, norm_role, label, task, owner=sid, kind="session")
         return cid, [{"type": "spawn", "id": cid, "role": norm_role, "label": label, "task": task}]
+
+    def seat(self, sid):
+        """city-roles: the known citizen SID takes the free governor seat (it
+        is the lock holder): its citizen leaves. -> the leave events. A sid the
+        Reducer does not know takes the seat by its own line (hint True)."""
+        info = self.sessions.get(sid)
+        if info is None or info["citizen"] is None or self.gov_sid is not None:
+            return []
+        events = self._finish_and_leave(info["citizen"])
+        self.sessions[sid] = {"citizen": None}
+        self.gov_sid = sid
+        self.gov_state = "idle"
+        return events
+
+    def unseat(self, sid):
+        """city-roles: SID (the governor) is no longer the lock holder: the seat
+        is free and its record is dropped, so its next line resolves it anew
+        (a citizen). Its subagents stay."""
+        if self.gov_sid != sid:
+            return
+        self.gov_sid = None
+        self.gov_state = "idle"
+        self.sessions.pop(sid, None)
 
     def _governor_event(self, ev, tool, nt):
         new_state = None
@@ -466,6 +495,7 @@ class Reducer:
 MAX_OPEN_ASKS = 50
 MAX_CLOSED_ASKS = 200
 GOV_FRESH_SEC = 15 * 60.0
+SID_REPO_KEEP = 2000   # sid -> repo entries kept (CityState._sid_repo)
 WHAT_LIMIT = 200
 DETAIL_LIMIT = 2000
 MAX_BODY = 64 * 1024
@@ -884,21 +914,38 @@ def _pid_state(pid):
     return True
 
 
-def _lock_pid(identity):
-    """The live pid in <repo>/agent_main.lock ("<pid> <date>", written by
-    bin/agent-start.sh), else None: no lock, unreadable, garbage, or a pid
-    that is dead now. Never raises."""
+def _lock_main(identity):
+    """(pid, sid) of the live main manager in <repo>/agent_main.lock
+    ("<pid> <date> <time> <sid> <terminal>", written by bin/agent-start.sh;
+    sid "" when "-" or missing, an older lock has no sid), else None: no
+    lock, unreadable, garbage, or a pid that is dead now. Never raises."""
     if not identity:
         return None
     try:
         with open(os.path.join(identity, "agent_main.lock"), encoding="utf-8") as fh:
-            words = fh.read(200).split()
+            words = fh.read(400).split()
     except (OSError, ValueError):
         return None
     if not words or not (words[0].isascii() and words[0].isdigit()) or int(words[0]) <= 0:
         return None
     pid = int(words[0])
-    return pid if _pid_state(pid) else None
+    if not _pid_state(pid):
+        return None
+    sid = words[3] if len(words) > 3 else ""
+    return pid, ("" if sid == "-" else sid)
+
+
+def _holds(main, sid, pid):
+    """Is the session line (SID, its "pid" field PID) the main manager MAIN's
+    ((pid, sid) of the live lock holder, or None)? A lock with a sid names
+    its holder by that sid alone; an older lock (no sid) by the line's pid
+    (all digits) matching the lock's."""
+    if main is None or not isinstance(sid, str) or sid == "":
+        return False
+    if main[1] != "":
+        return sid == main[1]
+    return (isinstance(pid, str) and pid.isascii() and pid.isdigit()
+            and int(pid) == main[0])
 
 
 class CityState:
@@ -906,7 +953,8 @@ class CityState:
 
     def __init__(self, max_agents=40, done_ttl=600, gov_wait_sec=60.0,
                  decisions_path=None, token="", world_path=None, plans=None, count_fn=None,
-                 balance_fn=None, start_repo=None, chat_path=None, lang="zh", titles=None):
+                 balance_fn=None, start_repo=None, chat_path=None, lang="zh", titles=None,
+                 main_fn=None, listen_grace_sec=15.0):
         self.lock = threading.Lock()
         self.titles = titles if titles is not None else TitleReader()  # a session's real name
         self.lang = norm_lang(lang)
@@ -922,8 +970,7 @@ class CityState:
         self.remote = None        # set by cmd_serve to a RemoteCity, when joined
 
         self.gov_wait_sec = gov_wait_sec
-        self.decisions_path = decisions_path or os.path.expanduser(
-            "~/.claude/agent-city/decisions.jsonl")
+        self.decisions_path = decisions_path or decisions_home_path()
         self.token = token
 
         self.open = {}            # id -> Ask, open only, oldest first
@@ -931,7 +978,9 @@ class CityState:
         self.closed_order = deque()
         self.governors = {}       # repo -> {"sid", "last_seen" (monotonic)}
         self.watchers = {}        # governor sid -> current watcher id
-        self._seat = {}           # identity -> {"sid", "last" (its last line's now), "pid" or None} of the seat holder
+        self.main_fn = main_fn if main_fn is not None else _lock_main  # identity -> (pid, sid) of the live lock holder, or None
+        self._gov_pids = {}       # identity -> {"lock" (pid), "line" (its "pid" field)} of the governor's last line
+        self._sid_repo = {}       # sid -> repo of its last line that carried one, bounded (SID_REPO_KEEP)
         self._ask_seq = 0
         self._governors_count = 0  # last count checked/broadcast (see _check_governors_count)
 
@@ -1016,6 +1065,10 @@ class CityState:
         self._chat_ended_pages = set()  # "s:sid" pages whose session ended
         self._chat_written_offset = 0   # bytes of chat_path this process itself wrote
         self.chat_watchers = {}       # sid -> {"current", "seen"} (chat_next's own, gov_next keeps self.watchers)
+        self.listen_grace_sec = listen_grace_sec
+        self._chat_waiting = {}       # page id -> watchers waiting for it now
+        self._chat_polled_at = {}     # page id -> monotonic time a watcher last polled it
+        self._chat_stop_at = {}       # page id -> monotonic time its session last sent Stop
         if self.chat_path is not None:
             for row in load_chat(self.chat_path):
                 self.feed_chat(row)
@@ -1043,8 +1096,9 @@ class CityState:
             # that has not yet acted in this run is "unknown", never a
             # present governor, until it acts (then resolved above) or its
             # sid ends (then forgotten, see _forget_gov_seen_locked).
+            # Only while that territory has a live main manager (lock holder).
             for identity in self.world.get("gov_seen", {}):
-                if identity in gov_seen_resolved:
+                if identity in gov_seen_resolved or self._main(identity) is None:
                     continue
                 govs.append({"terr": self._terr_for(identity), "state": "unknown"})
             # The snapshot's "gov" is the page's camera home: with a start
@@ -1157,42 +1211,94 @@ class CityState:
     def feed_line(self, obj, now):
         with self.lock:
             self.lines += 1
-            gone = self._gone_holder_locked(obj, now)
-            if gone is not None:
-                # the old holder ends exactly as its own SessionEnd would
-                self._feed_line_locked({"ev": "SessionEnd", "sid": gone, "repo": obj.get("repo")}, now)
             self._feed_line_locked(obj, now)
 
-    def _gone_holder_locked(self, obj, now):
-        """Caller holds self.lock. The sid of the territory's seat holder when
-        a roleless session it does not know comes in and the holder is gone,
-        else None. Gone: its lock pid (see _lock_pid) is dead now; with no
-        pid, its last line is older than GOV_FRESH_SEC. A crashed main
-        manager never sends its SessionEnd, so this frees its seat."""
-        if not isinstance(obj, dict):
+    # -- the governor seat: the lock holder's, nobody else's (city-roles) ----
+
+    def _main(self, identity):
+        """The live lock holder (pid, sid) of IDENTITY's territory, or None.
+        main_fn may be a test's own: never lets it raise."""
+        try:
+            main = self.main_fn(identity)
+            if main is None:
+                return None
+            pid, sid = main
+            return int(pid), str(sid)
+        except Exception:
             return None
 
-        def text(key):
-            value = obj.get(key, "")
-            return value if isinstance(value, str) else ""
+    def _settle_seat_locked(self, obj, identity, reducer):
+        """Caller holds self.lock. A session line (sid set, aid ""): settle
+        the territory's seat before the Reducer sees the line. -> (hint,
+        events, main): hint True when the line is the lock holder's (it
+        governs, whatever its role, even a known citizen), False for every
+        other session (a citizen). The old governor of a seat that changed
+        hands, or a governor whose own line is not the holder's, loses the
+        seat here; the Reducer then makes that line a citizen."""
+        sid = obj["sid"]
+        main = self._main(identity)
+        holder = _holds(main, sid, obj.get("pid"))
+        events = []
+        if obj["ev"] == "SessionEnd":
+            return holder, events, main
+        if holder:
+            if reducer.gov_sid != sid:
+                if reducer.gov_sid is not None:
+                    self._unseat_locked(identity, reducer, reducer.gov_sid, tell=False)
+                events.extend(reducer.seat(sid))
+        elif reducer.gov_sid == sid:
+            self._unseat_locked(identity, reducer, sid, tell=True)
+        return holder, events, main
 
-        sid = text("sid")
-        if sid == "" or text("aid") != "" or text("role") != "":
-            return None
-        identity = self._identity_of(obj)
-        reducer = self._reducer_for(identity, create=False)
-        if reducer is None or sid in reducer.sessions or reducer.gov_sid in (None, sid):
-            return None
-        seat = self._seat.get(identity)
-        if seat is None or seat["sid"] != reducer.gov_sid:
-            return None
-        if seat["pid"] is not None:
-            gone = _pid_state(seat["pid"]) is False
-        else:
-            gone = now - seat["last"] > GOV_FRESH_SEC
-        return seat["sid"] if gone else None
+    def _unseat_locked(self, identity, reducer, sid, tell):
+        """Caller holds self.lock. SID is no longer the governor of IDENTITY:
+        the Reducer frees the seat, world.json forgets it, questions go to the
+        owner (see _forget_governor). TELL: a "gov" event with present False
+        (else the new governor's own event follows at once)."""
+        reducer.unseat(sid)
+        self._gov_pids.pop(identity, None)
+        if self._forget_gov_seen_locked(identity):
+            self._save_world_locked()
+        self._forget_governor({"sid": sid}, identity)
+        if tell:
+            terr = self._terr_for(identity)
+            self.gov_terr = terr
+            self.gov_state = "idle"
+            self._broadcast({"type": "gov", "state": "idle", "terr": terr, "present": False})
+
+    def check_seats(self, now):
+        """A territory whose governor is no longer the lock holder loses it
+        without any line (the server calls this about every 2 s, next to
+        recount): a "gov" event with present False. A governor whose own pid
+        is dead is ended exactly like its SessionEnd (its subagents leave
+        too). Other territories are never touched."""
+        with self.lock:
+            for identity, reducer in list(self.reducers.items()):
+                sid = reducer.gov_sid
+                if sid is None:
+                    continue
+                seat = self._gov_pids.get(identity, {"lock": None, "line": ""})
+                if _holds(self._main(identity), sid, seat["line"]):
+                    continue
+                pid = int(seat["line"]) if seat["line"] else seat["lock"]
+                if pid is not None and _pid_state(pid) is False:
+                    self._feed_line_locked({"ev": "SessionEnd", "sid": sid, "repo": identity}, now)
+                else:
+                    self._unseat_locked(identity, reducer, sid, tell=True)
+
+    def _remember_repo_locked(self, obj):
+        """Caller holds self.lock. R2: the repo of a session's line (session
+        or subagent), so a later line of it with repo "" stays there."""
+        sid, repo = obj.get("sid"), obj.get("repo")
+        if isinstance(sid, str) and sid and isinstance(repo, str) and repo:
+            self._sid_repo.pop(sid, None)
+            self._sid_repo[sid] = repo
+            while len(self._sid_repo) > SID_REPO_KEEP:
+                del self._sid_repo[next(iter(self._sid_repo))]
 
     def _feed_line_locked(self, obj, now):
+        if isinstance(obj, dict):
+            self._remember_repo_locked(obj)
         identity = self._identity_of(obj) if isinstance(obj, dict) else None
         terr = self._terr_for(identity)
         if identity is not None:
@@ -1220,7 +1326,29 @@ class CityState:
             self._process_chain(obj, identity, terr, reducer, now)
             chain_processed_early = True
 
-        events = reducer.feed(obj, now)
+        # city-roles: a session line (sid set, aid "") settles the seat first;
+        # the Reducer is told who governs (see _settle_seat_locked).
+        fed = obj
+        seat_events = []
+        seat_main = None
+        gov_before = reducer.gov_sid
+        is_session_line = (isinstance(obj, dict) and isinstance(ev_name, str) and ev_name != ""
+                           and isinstance(sid_field, str) and sid_field != ""
+                           and not (isinstance(aid_field, str) and aid_field != ""))
+        if is_session_line:
+            hint, seat_events, seat_main = self._settle_seat_locked(obj, identity, reducer)
+            fed = dict(obj, _gov=hint)
+        events = seat_events + reducer.feed(fed, now)
+        if (is_session_line and reducer.gov_sid == sid_field and gov_before != sid_field
+                and not any(e.get("type") == "gov" for e in events)):
+            # the seat changed hands: the page is always told
+            events.append({"type": "gov", "state": reducer.gov_state})
+        if is_session_line and reducer.gov_sid == sid_field and seat_main is not None:
+            pid_field = obj.get("pid")
+            self._gov_pids[identity] = {
+                "lock": seat_main[0],
+                "line": pid_field if isinstance(pid_field, str) and pid_field.isascii()
+                and pid_field.isdigit() else ""}
         gov_seen = False
         names_dirty = False
 
@@ -1259,7 +1387,7 @@ class CityState:
                 self.gov_terr = terr
                 self.gov_state = ev.get("state", self.gov_state)
                 ev["terr"] = terr
-                ev["present"] = ev_name != "SessionEnd"
+                ev.setdefault("present", ev_name != "SessionEnd")
             elif etype == "leave":
                 self.agent_terr.pop(ev["id"], None)
                 self._on_leave(ev["id"], identity, terr)
@@ -1314,20 +1442,23 @@ class CityState:
                 self._maybe_build(obj, identity, terr)
             elif ev_name == "SessionEnd":
                 self._forget_governor(obj)
+                if was_gov:
+                    self._gov_pids.pop(identity, None)
 
         has_aid = isinstance(aid_field, str) and aid_field != ""
         if (isinstance(ev_name, str) and ev_name and isinstance(sid_field, str)
                 and sid_field != "" and not has_aid):
             self._update_chat_state_locked(sid_field, ev_name, terr, reducer, was_gov)
 
-        if isinstance(sid_field, str) and sid_field and reducer.gov_sid == sid_field:
-            # the seat holder acted: keep when, and its lock pid if alive
-            self._seat[identity] = {"sid": sid_field, "last": now, "pid": _lock_pid(identity)}
+        if (ev_name == "SessionEnd" and isinstance(sid_field, str) and sid_field
+                and not (isinstance(aid_field, str) and aid_field)):
+            self._sid_repo.pop(sid_field, None)
 
     # -- growth: many territories, one Reducer each ----------------------
     #
-    # A repo (its territory) is a chain of command of its own: the first
-    # roleless session in it is that territory's governor, task-manager
+    # A repo (its territory) is a chain of command of its own: the main
+    # manager (the holder of its agent_main.lock) is that territory's
+    # governor, task-manager
     # citizens in it are leads with their own office, and workers/helpers
     # relay questions up the chain (leads, then that territory's governor).
     # The Reducer itself stays single-governor and repo-blind (its own
@@ -1548,7 +1679,13 @@ class CityState:
         repo = obj.get("repo")
         if isinstance(repo, str) and repo:
             return repo
-        # No repo (missing or ""): an old-hook line. With a start repo, it
+        # No repo (missing or ""): R2, the repo its session's other lines
+        # carried (a session of another repo that sends one line with no
+        # repo stays in its own territory).
+        sid = obj.get("sid")
+        if isinstance(sid, str) and sid in self._sid_repo:
+            return self._sid_repo[sid]
+        # An unknown sid: an old-hook line. With a start repo, it
         # belongs there -- same identity as a line that does carry it, so
         # one reducer, one governor, offices, relays and builds are shared.
         return self.start_repo
@@ -2141,18 +2278,22 @@ class CityState:
                     "files": files[:500], "total": len(files),
                     "rules": self._rules_conf_path(identity)}
 
-    def _forget_governor(self, obj):
+    def _forget_governor(self, obj, only_repo=None):
         """A SessionEnd for a governor's sid forgets it at once: any waiting
         gov/next for that sid wakes up "replaced", and new questions for its
-        repo(s) go straight to the owner (why no-governor)."""
+        repo(s) go straight to the owner (why no-governor). ONLY_REPO: a
+        governor that lost the seat of that one territory (see
+        _unseat_locked) is forgotten there only."""
         sid = obj.get("sid") if isinstance(obj.get("sid"), str) else ""
         if not sid:
             return
-        gone_repos = [repo for repo, g in self.governors.items() if g["sid"] == sid]
+        gone_repos = [repo for repo, g in self.governors.items()
+                      if g["sid"] == sid and (only_repo is None or repo == only_repo)]
         changed = bool(gone_repos) or sid in self.watchers
         for repo in gone_repos:
             del self.governors[repo]
-        self.watchers.pop(sid, None)
+        if only_repo is None or not any(g["sid"] == sid for g in self.governors.values()):
+            self.watchers.pop(sid, None)
         if changed:
             self.cond.notify_all()
         if gone_repos:
@@ -2431,8 +2572,12 @@ class CityState:
 
     # -- the governor watch queue ----------------------------------------
 
-    def gov_next(self, sid, repo, watcher, timeout):
-        """A watcher id, once superseded by a different one for the same sid,
+    def gov_next(self, sid, repo, watcher, timeout, pid=""):
+        """Only the lock holder of REPO (see _holds; PID is its session's own
+        process id) is a governor there: anyone else gets {"state": "not-main"}
+        at once, is never registered in .governors and is never asked.
+
+        A watcher id, once superseded by a different one for the same sid,
         stays retired: it never reclaims the slot even if it calls again
         (it should just have exited on its own "replaced" reply). Every turn
         of the wait loop restarts the idle clock (requirements/city.md,
@@ -2443,6 +2588,8 @@ class CityState:
         deadline = time.monotonic() + timeout
         with self.cond:
             self._touch_idle_locked()
+            if not self._still_holder_locked(sid, repo, pid):
+                return {"state": "not-main"}
             self.governors[repo] = {"sid": sid, "last_seen": time.monotonic()}
             self._check_governors_count()
             info = self.watchers.get(sid)
@@ -2456,21 +2603,42 @@ class CityState:
             elif watcher != info["current"]:
                 return {"state": "replaced"}
             gov_to = "gov:" + territory_id(repo)
-            while True:
-                self._touch_idle_locked()
-                if self.watchers.get(sid, {}).get("current") != watcher:
-                    return {"state": "replaced"}
-                message = self._chat_pick_queued_locked(gov_to)
-                if message is not None:
-                    return self._chat_deliver_locked(sid, gov_to, message)
-                ask = self._pick_governor_ask(repo, sid)
-                if ask is not None:
-                    ask.given_to.add(sid)
-                    return {"state": "ask", "ask": ask.view()}
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    return {"state": "none"}
-                self.cond.wait(min(remaining, 1.0))
+            self._chat_waiting[gov_to] = self._chat_waiting.get(gov_to, 0) + 1
+            try:
+                while True:
+                    self._touch_idle_locked()
+                    # a waiting holder that lost the seat switches to its own page
+                    if not self._still_holder_locked(sid, repo, pid):
+                        return {"state": "not-main"}
+                    if self.watchers.get(sid, {}).get("current") != watcher:
+                        return {"state": "replaced"}
+                    self._chat_polled_at[gov_to] = time.monotonic()
+                    message = self._chat_pick_queued_locked(gov_to)
+                    if message is not None:
+                        return self._chat_deliver_locked(sid, gov_to, message)
+                    ask = self._pick_governor_ask(repo, sid)
+                    if ask is not None:
+                        ask.given_to.add(sid)
+                        return {"state": "ask", "ask": ask.view()}
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return {"state": "none"}
+                    self.cond.wait(min(remaining, 1.0))
+            finally:
+                self._chat_waiting[gov_to] -= 1
+                if self._chat_waiting[gov_to] <= 0:
+                    del self._chat_waiting[gov_to]
+                    self._chat_polled_at[gov_to] = time.monotonic()
+
+    def _still_holder_locked(self, sid, repo, pid):
+        """Caller holds self.lock. Is SID the lock holder of REPO now? When
+        not, a governor it was is forgotten here (it was one, it is not now)."""
+        if _holds(self._main(repo if repo else self.start_repo), sid, pid):
+            return True
+        gov = self.governors.get(repo)
+        if gov is not None and gov["sid"] == sid:
+            self._forget_governor({"sid": sid}, repo)
+        return False
 
     def _pick_governor_ask(self, repo, sid):
         for ask in self.open.values():
@@ -2559,6 +2727,7 @@ class CityState:
             self._chat_busy[to] = True
         elif ev_name == "Stop":
             self._chat_busy[to] = False
+            self._chat_stop_at[to] = time.monotonic()
             self.cond.notify_all()
 
     def _chat_expire_queue_locked(self, to):
@@ -2573,6 +2742,57 @@ class CityState:
                 changed = True
         if changed:
             self.cond.notify_all()
+
+    def _has_governor_locked(self, terr):
+        """Caller holds self.lock. Does territory id TERR have a governor now:
+        a seated one that is still the live lock holder?"""
+        for identity, reducer in self.reducers.items():
+            if self._terr_for(identity) != terr or reducer.gov_sid is None:
+                continue
+            seat = self._gov_pids.get(identity, {"lock": None, "line": ""})
+            if _holds(self._main(identity), reducer.gov_sid, seat["line"]):
+                return True
+        return False
+
+    def _page_idle_locked(self, to):
+        """Caller holds self.lock. The chat idle rule, or the governor page of
+        a territory with no governor now (its busy mark is stale)."""
+        if not self._chat_busy.get(to, False):
+            return True
+        return to.startswith("gov:") and not self._has_governor_locked(to[len("gov:"):])
+
+    def _page_listened_locked(self, to, now):
+        """Caller holds self.lock. A watcher waits for page TO, or polled it or
+        the page's session sent Stop within listen_grace_sec of NOW."""
+        if self._chat_waiting.get(to, 0) > 0:
+            return True
+        for at in (self._chat_polled_at.get(to), self._chat_stop_at.get(to)):
+            if at is not None and now - at < self.listen_grace_sec:
+                return True
+        return False
+
+    def _page_unreached_locked(self, to):
+        return self._page_idle_locked(to) and not self._page_listened_locked(to, time.monotonic())
+
+    def sweep_chat(self):
+        """Every queued owner entry whose page is idle and not listened to
+        becomes "undelivered" (why "not-listening"): nobody will ever take it.
+        The server calls this every recount tick."""
+        with self.lock:
+            changed = False
+            for to, bucket in list(self.chat.items()):
+                if not any(e.get("kind") == "owner" and e.get("state") == "queued" for e in bucket):
+                    continue
+                if not self._page_unreached_locked(to):
+                    continue
+                for entry in bucket:
+                    if entry.get("kind") == "owner" and entry.get("state") == "queued":
+                        entry["state"] = "undelivered"
+                        entry["why"] = "not-listening"
+                        self._broadcast({"type": "chat", "to": to, "entry": dict(entry)})
+                        changed = True
+            if changed:
+                self.cond.notify_all()
 
     def feed_chat(self, obj):
         """One chat.jsonl line: kinds prompt, reply, owner; bad lines
@@ -2650,6 +2870,9 @@ class CityState:
                 return 404, {}
             self._chat_seq += 1
             entry = {"id": self._chat_seq, "kind": "owner", "text": text, "at": now, "state": "queued"}
+            if self._page_unreached_locked(to):
+                entry["state"] = "undelivered"
+                entry["why"] = "not-listening"
             bucket = self.chat.get(to)
             if bucket is None:
                 bucket = deque(maxlen=CHAT_KEEP)
@@ -2657,7 +2880,10 @@ class CityState:
             bucket.append(entry)
             self._broadcast({"type": "chat", "to": to, "entry": dict(entry)})
             self.cond.notify_all()
-            return 200, {"id": entry["id"], "state": "queued"}
+            reply = {"id": entry["id"], "state": entry["state"]}
+            if "why" in entry:
+                reply["why"] = entry["why"]
+            return 200, reply
 
     def _chat_pick_queued_locked(self, to):
         for entry in self.chat.get(to, []):
@@ -2720,18 +2946,26 @@ class CityState:
                 self.cond.notify_all()
             elif watcher != info["current"]:
                 return {"state": "replaced"}
-            while True:
-                self._touch_idle_locked()
-                if self.chat_watchers.get(sid, {}).get("current") != watcher:
-                    return {"state": "replaced"}
-                if not self._chat_busy.get(to, False) and to not in self._chat_ended_pages:
-                    entry = self._chat_pick_queued_locked(to)
-                    if entry is not None:
-                        return self._chat_deliver_locked(sid, to, entry)
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    return {"state": "none"}
-                self.cond.wait(min(remaining, 1.0))
+            self._chat_waiting[to] = self._chat_waiting.get(to, 0) + 1
+            try:
+                while True:
+                    self._touch_idle_locked()
+                    if self.chat_watchers.get(sid, {}).get("current") != watcher:
+                        return {"state": "replaced"}
+                    self._chat_polled_at[to] = time.monotonic()
+                    if not self._chat_busy.get(to, False) and to not in self._chat_ended_pages:
+                        entry = self._chat_pick_queued_locked(to)
+                        if entry is not None:
+                            return self._chat_deliver_locked(sid, to, entry)
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return {"state": "none"}
+                    self.cond.wait(min(remaining, 1.0))
+            finally:
+                self._chat_waiting[to] -= 1
+                if self._chat_waiting[to] <= 0:
+                    del self._chat_waiting[to]
+                    self._chat_polled_at[to] = time.monotonic()
 
 
 class CityHandler(BaseHTTPRequestHandler):
@@ -2847,7 +3081,7 @@ class CityHandler(BaseHTTPRequestHandler):
             qs = parse_qs(parsed.query)
             result = self.server.city.gov_next(
                 _qs1(qs, "sid"), _qs1(qs, "repo"), _qs1(qs, "watcher"),
-                _qs_float(qs, "timeout", 0.0))
+                _qs_float(qs, "timeout", 0.0), _qs1(qs, "pid"))
             return self._json(200, result)
         if path == "/api/chat":
             if not self._check_token():
@@ -3267,14 +3501,24 @@ def chat_tail_loop(chat_path, city, stop_event, initial_skip=0):
 def recount_loop(city, stop_event):
     """Recount active territories about every RECOUNT_POLL_SEC, with the
     same clock (time.monotonic()) feed_line gets. Also rescans worktree
-    construction sites (city.scan_sites()) every tick: an exception there is
-    printed to stderr and never stops the loop. Stops with the server."""
+    construction sites (city.scan_sites()) and checks the governor seats
+    (city.check_seats()) and tells the owner of chat messages nobody will take
+    (city.sweep_chat()) every tick: an exception there is printed to stderr
+    and never stops the loop. Stops with the server."""
     while not stop_event.is_set():
         city.recount(time.monotonic())
         try:
             city.scan_sites()
         except Exception as exc:
             print("agent_city: scan_sites failed: %s" % exc, file=sys.stderr)
+        try:
+            city.check_seats(time.monotonic())
+        except Exception as exc:
+            print("agent_city: check_seats failed: %s" % exc, file=sys.stderr)
+        try:
+            city.sweep_chat()
+        except Exception as exc:
+            print("agent_city: sweep_chat failed: %s" % exc, file=sys.stderr)
         stop_event.wait(RECOUNT_POLL_SEC)
 
 
@@ -3709,7 +3953,7 @@ def cmd_serve(args):
     except OSError:
         initial_skip = 0
 
-    decisions_path = args.decisions or os.path.expanduser("~/.claude/agent-city/decisions.jsonl")
+    decisions_path = args.decisions or decisions_home_path()
     world_path_arg = args.world if args.world is not None else world_path()
     start_repo = _repo_id(args.start_dir) if args.start_dir else None
     chat_path = os.path.join(directory, "chat.jsonl")
@@ -4085,7 +4329,12 @@ def _cmd_gov_watch_impl(args):
     # Short poll windows so a gone parent (the governor's own Claude Code
     # exited) is noticed within a few seconds, not after a long-poll.
     start_ppid = os.getppid()
+    # The server tells the main manager (the lock holder) from a helper by
+    # this session's own process id: $CLAUDE_PID, else our parent.
+    claude_pid = os.environ.get("CLAUDE_PID", "")
+    pid = claude_pid if claude_pid.isascii() and claude_pid.isdigit() else str(start_ppid)
     deadline = time.monotonic() + args.max_wait_sec
+    own_messages = False   # "not-main": wait for this session's own messages
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -4093,8 +4342,11 @@ def _cmd_gov_watch_impl(args):
         if os.getppid() != start_ppid:
             return 0
         chunk = min(5.0, remaining)
-        path = "/api/gov/next?sid=%s&repo=%s&watcher=%s&timeout=%s" % (
-            quote(sid, safe=""), quote(repo, safe=""), watcher, chunk)
+        if own_messages:
+            path = "/api/chat/next?sid=%s&watcher=%s&timeout=%s" % (quote(sid, safe=""), watcher, chunk)
+        else:
+            path = "/api/gov/next?sid=%s&repo=%s&watcher=%s&timeout=%s&pid=%s" % (
+                quote(sid, safe=""), quote(repo, safe=""), watcher, chunk, quote(pid, safe=""))
         result = _http_json(port, "GET", path, token=token, timeout=chunk + 10.0)
         if result is None:
             return 0
@@ -4104,7 +4356,16 @@ def _cmd_gov_watch_impl(args):
         state = out.get("state")
         if state == "none":
             continue
-        if state == "ask":
+        if state == "not-main":
+            own_messages = True
+            continue
+        if state == "message":
+            text = out.get("text")
+            if isinstance(text, str):
+                _print_owner_message(text)
+                return 2
+            return 0
+        if state == "ask" and not own_messages:
             ask = out.get("ask")
             if isinstance(ask, dict):
                 _print_governor_question(ask)
@@ -5069,6 +5330,15 @@ def world_path():
     if home:
         return os.path.join(home, "world.json")
     return os.path.expanduser("~/.claude/agent-city/world.json")
+
+
+def decisions_home_path():
+    """Where the owner's decisions are logged when nothing names a file:
+    $AGENT_CITY_HOME/decisions.jsonl, else ~/.claude/agent-city/decisions.jsonl."""
+    home = os.environ.get("AGENT_CITY_HOME")
+    if home:
+        return os.path.join(home, "decisions.jsonl")
+    return os.path.expanduser("~/.claude/agent-city/decisions.jsonl")
 
 
 def save_world(path, world):

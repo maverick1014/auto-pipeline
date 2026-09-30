@@ -104,6 +104,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from test_agent_city_people import (ROOT, REQUIRED, ac, function_source, run_sim)  # noqa: E402
+from cityhelp import Mains  # noqa: E402
 
 A_REPO, B_REPO = "/work/fa/app/.git", "/work/fb/app/.git"
 TA, TB = ac.territory_id(A_REPO), ac.territory_id(B_REPO)
@@ -119,6 +120,7 @@ class CityCase(unittest.TestCase):
     def setUp(self):
         self.base = tempfile.mkdtemp(prefix="city_people_f_")
         self.world_path = os.path.join(self.base, "world.json")
+        self.mains = Mains()   # city-roles: territory -> its main manager (the governor)
         self.st = self.new_state()
         self.client = self.st.add_client()
         self.client.queue.get_nowait()
@@ -127,7 +129,7 @@ class CityCase(unittest.TestCase):
     def new_state(self):
         return ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=self.world_path,
                             plans=ac.load_plans(), count_fn=lambda i: self.lines_count,
-                            balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}})
+                            balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}}, main_fn=self.mains)
 
     def tearDown(self):
         shutil.rmtree(self.base, ignore_errors=True)
@@ -157,6 +159,8 @@ class CityCase(unittest.TestCase):
 
     # common casts
     def governor(self, sid="g1", repo=A_REPO):
+        # city-roles: the first governor() of a territory holds its main manager lock
+        self.mains.setdefault(repo if repo else self.st.start_repo, sid)
         self.line("UserPromptSubmit", sid, repo)
 
     def lead(self, sid="tm1", repo=A_REPO):
@@ -207,10 +211,11 @@ class TestHookAskFlag(unittest.TestCase):
 
     def test_ask_key_is_last_and_a_string(self):
         # city-worktrees added "wt" after it, city-quality "file" after that,
-        # session-names "tp" after that (tests/test_agent_city_worktrees.py,
-        # tests/test_agent_city_quality.py, tests/test_agent_city_session_names.py)
+        # session-names "tp" after that, city-roles "pid" last (tests/test_agent_city_worktrees.py,
+        # tests/test_agent_city_quality.py, tests/test_agent_city_session_names.py,
+        # tests/test_agent_city_roles.py)
         row, _ = self.row(self.stop("PASS\nall green"))
-        self.assertEqual(list(row)[-4:], ["ask", "wt", "file", "tp"])
+        self.assertEqual(list(row)[-5:], ["ask", "wt", "file", "tp", "pid"])
         self.assertEqual(row["ask"], "")
 
     def test_worker_question_sets_the_flag_not_the_text(self):
@@ -403,7 +408,8 @@ class TestNoRepoIsTheStartTerritory(CityCase):
     def new_state(self):
         return ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=self.world_path,
                             plans=ac.load_plans(), count_fn=lambda i: self.lines_count,
-                            balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}}, start_repo=A_REPO)
+                            balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}}, start_repo=A_REPO,
+                            main_fn=self.mains)
 
     def test_one_governor_for_the_start_territory(self):
         self.governor("g-old", repo="")
