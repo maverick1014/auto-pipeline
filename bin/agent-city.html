@@ -1865,25 +1865,6 @@ function pathClearOfAll(sx, sz, tx, tz, pts, margin){
   }
   return true;
 }
-/* a free walkable spot within `within` tiles of home, for a short walk while working with no building.
-   Never a tile another citizen already calls its own (home, rest or the governor's stand -- city-people
-   P0: nobody shares a spot, even mid-walk), when a territory is known. */
-function nearbyWalkSpot(home, within, t, exceptId){
-  const avoid = t ? reservedNear(t) : null;
-  const pts = t ? protectedPoints(t, exceptId) : [];
-  const fx0 = Math.floor(home.x), fz0 = Math.floor(home.y), out = [];
-  for (let dx = -within; dx <= within; dx++) for (let dz = -within; dz <= within; dz++) {
-    if (!dx && !dz) continue;
-    if (Math.hypot(dx, dz) > within) continue;
-    const x = fx0 + dx + .5, z = fz0 + dz + .5, fx = Math.floor(x), fz = Math.floor(z);
-    if (avoid && avoid.has(fx + ',' + fz)) continue;
-    if (!walkable(fx, fz)) continue;
-    if (!freeAt(x, z)) continue; // city-people, Walk: never wander into a model's own footprint
-    if (!pathClearOfAll(home.x, home.y, x, z, pts, .55)) continue;
-    out.push({ x, y: z });
-  }
-  return out.length ? pick(out) : null;
-}
 /* city-work-anim: a working person stays on its spot and acts out its work. WORK_HOLD_SEC: how long it
    keeps the action after its last tool event, then it stands still (a short pause, never a walk).
    workKindOf(tool) -> the kind of work of a tool kind the server sends (it already folds Grep, Glob,
@@ -1905,6 +1886,14 @@ function noteWork(c, tool){
   c.workKind = workKindOf(tool);
   c.workAt = simT;
   if (!acting) c.workSince = simT;
+  // city-work-anim: a tool event during a calm stroll (out, or pausing at the far spot) ends it: straight
+  // home, no pause first, and it acts there -- never far from its spot. No way home: it stands on its spot.
+  if (c.strollPhase === 'out' || c.strollPhase === 'pause') {
+    const p = findPath(c.x, c.y, c.home.x, c.home.y);
+    if (p && p.length) { c.strollPhase = 'back'; c.path = p; c.state = 'working'; c.stateT = 0; }
+    else { c.strollPhase = ''; c.path = []; c.x = c.home.x; c.y = c.home.y; }
+    c.strollOutPath = [];
+  }
 }
 
 let simT = 0;
@@ -4414,21 +4403,165 @@ const ringGeo = new THREE.RingGeometry(.22, .28, 32);
 const ringMats = new Map();
 function ringMat(color){ let m = ringMats.get(color); if (!m) { m = new THREE.MeshBasicMaterial({ color: new THREE.Color(color), transparent: true, opacity: .85 }); ringMats.set(color, m); } return m; }
 const CHAR_SCALE = .6;
+/* city-work-anim: a working person stays on its spot and acts out its work, in a calm rhythm: in every
+   WORK_CYCLE_SEC it acts for the first WORK_ACT_SEC, then holds still. workPose(kind, t) -> { clip, rate,
+   beat, flip }: what a still, working person plays t seconds into its work spell (real clips of the
+   character model, no bones moved by code). beat: in the acting part of the cycle. flip: turn the book's
+   page now. RM (reduced motion): the same clips at half rate, no page flips. */
+const WORK_CYCLE_SEC = 4.5;
+const WORK_ACT_SEC = 2;
+const WORK_FX_MAX = 24;
+function workPose(kind, t){
+  const m = ((t % WORK_CYCLE_SEC) + WORK_CYCLE_SEC) % WORK_CYCLE_SEC, beat = m < WORK_ACT_SEC, k = RM ? .5 : 1;
+  if (kind === 'build') return { clip: beat ? 'attack-melee-right' : 'idle', rate: (beat ? .5 : 1) * k, beat, flip: false };
+  if (kind === 'bash') return { clip: beat ? 'interact-right' : 'idle', rate: (beat ? 1.3 : 1) * k, beat, flip: false };
+  if (kind === 'read') return { clip: 'holding-both-shoot', rate: k, beat, flip: !RM && m < .5 };
+  if (kind === 'other') return { clip: m < .9 ? 'interact-left' : 'idle', rate: k, beat, flip: false };
+  return { clip: 'idle', rate: k, beat: false, flip: false };
+}
+/* city-work-anim: workProps(c) -> { hammer, book, laptop, lidOpen, planks }: which props show now. Hammer
+   (and a small plank pile when there is no building) while it builds; the book while it reads; the laptop
+   with its lid open while it types. A person still on its spot whose last work was bash keeps its laptop,
+   lid closed (no prop popping in and out). Walking or asking: nothing. */
+function workProps(c){
+  const a = workAction(c), p = { hammer: false, book: false, laptop: false, lidOpen: false, planks: false };
+  if (a === 'build') { p.hammer = true; p.planks = !c.bld; }
+  else if (a === 'read') p.book = true;
+  else if (a === 'bash') { p.laptop = true; p.lidOpen = true; }
+  else if (!a && c.workKind === 'bash' && !c.path.length && (c.state === 'working' || c.state === 'building')) p.laptop = true;
+  return p;
+}
+/* city-work-anim: the props are a few boxes drawn in code (no new files): geometry and materials made once
+   and shared by everyone, only the meshes are per person. The laptop screen is two planes (lit / dark)
+   toggled by .visible -- never a material swap (setFaded clones a material per mesh). One small shared
+   canvas texture is the lit screen, redrawn a few times a second and only while someone types. */
+const workCol = hex => new THREE.Color(hex).convertSRGBToLinear();
+const WORK_GEO = {
+  cover: new THREE.BoxGeometry(.075, .006, .1), page: new THREE.PlaneGeometry(.068, .092),
+  crate: new THREE.BoxGeometry(.16, .16, .16), lapBase: new THREE.BoxGeometry(.15, .01, .1),
+  lapScreen: new THREE.PlaneGeometry(.14, .09), lapBack: new THREE.BoxGeometry(.15, .1, .006),
+};
+const workScreenCanvas = document.createElement('canvas');
+workScreenCanvas.width = 64; workScreenCanvas.height = 40;
+const workScreenTex = new THREE.CanvasTexture(workScreenCanvas);
+workScreenTex.encoding = THREE.sRGBEncoding;
+const WORK_MAT = {
+  cover: new THREE.MeshLambertMaterial({ color: workCol('#C0504D') }),
+  page: new THREE.MeshLambertMaterial({ color: workCol('#FFFDF4'), side: THREE.DoubleSide }),
+  crate: new THREE.MeshLambertMaterial({ color: workCol('#B98A55') }),
+  lap: new THREE.MeshLambertMaterial({ color: workCol('#5B6178') }),
+  screenOn: new THREE.MeshBasicMaterial({ map: workScreenTex }),
+  screenOff: new THREE.MeshBasicMaterial({ color: workCol('#2B2F40') }),
+};
+let workScreenT = 0, workScreenAcc = 0, workTyping = false;
+function drawWorkScreen(){
+  const x = workScreenCanvas.getContext('2d');
+  x.fillStyle = '#1E2233'; x.fillRect(0, 0, 64, 40);
+  const off = Math.floor(workScreenT * 4);
+  for (let i = 0; i < 6; i++) { const w = 12 + ((i + off) * 37 % 40); x.fillStyle = (i + off) % 4 === 0 ? '#FFD36E' : '#6EE7A8'; x.fillRect(4, 4 + i * 6, w, 3); }
+  workScreenTex.needsUpdate = true;
+}
+drawWorkScreen();
+function makeWorkBook(){
+  const g = new THREE.Group();
+  const l = new THREE.Mesh(WORK_GEO.cover, WORK_MAT.cover), r = new THREE.Mesh(WORK_GEO.cover, WORK_MAT.cover);
+  l.position.x = -.038; l.rotation.z = .18; r.position.x = .038; r.rotation.z = -.18; g.add(l, r);
+  const pl = new THREE.Mesh(WORK_GEO.page, WORK_MAT.page), pr = new THREE.Mesh(WORK_GEO.page, WORK_MAT.page);
+  pl.rotation.x = -Math.PI / 2; pl.position.set(-.036, .005, 0); pl.rotation.y = -.18;
+  pr.rotation.x = -Math.PI / 2; pr.position.set(.036, .005, 0); pr.rotation.y = .18; g.add(pl, pr);
+  const flip = new THREE.Group(); g.add(flip); // the page that turns, on its own pivot
+  const fp = new THREE.Mesh(WORK_GEO.page, WORK_MAT.page); fp.rotation.x = -Math.PI / 2; fp.position.x = .036; flip.add(fp);
+  g.userData.flip = flip;
+  return g;
+}
+function makeWorkLaptop(){
+  const g = new THREE.Group();
+  const crate = new THREE.Mesh(WORK_GEO.crate, WORK_MAT.crate); crate.position.y = .08; crate.castShadow = true; g.add(crate);
+  const base = new THREE.Mesh(WORK_GEO.lapBase, WORK_MAT.lap); base.position.y = .165; g.add(base);
+  const lid = new THREE.Group(); lid.position.set(0, .17, -.05); g.add(lid);
+  const back = new THREE.Mesh(WORK_GEO.lapBack, WORK_MAT.lap); back.position.set(0, .05, -.004); lid.add(back);
+  const on = new THREE.Mesh(WORK_GEO.lapScreen, WORK_MAT.screenOn), off = new THREE.Mesh(WORK_GEO.lapScreen, WORK_MAT.screenOff);
+  on.position.set(0, .05, 0); off.position.set(0, .05, 0); off.visible = false; lid.add(on, off);
+  lid.rotation.x = -1.5; // closed until it types
+  g.userData.lid = lid; g.userData.on = on; g.userData.off = off;
+  return g;
+}
+/* city-work-anim: dust at each hammer hit and small sparks at the laptop, one shared pool of sprites made
+   once and reused (WORK_FX_MAX alive at most). workFx(kind, x, y, z) -> false and nothing added with
+   reduced motion or a full pool, else adds one ('dust' or 'spark') and returns true. stepWorkFx(dt) (from
+   sync) moves and fades them within well under a second, and redraws the lit screen while someone types. */
+const workFxPool = [];
+let workFxLive = 0, workSparkTex = null;
+function workSpark(){
+  if (workSparkTex) return workSparkTex;
+  const c = document.createElement('canvas'); c.width = c.height = 16;
+  const x = c.getContext('2d'); x.fillStyle = '#FFE38A'; x.beginPath();
+  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2, r = i % 2 ? 3 : 8; x.lineTo(8 + Math.cos(a) * r, 8 + Math.sin(a) * r); }
+  x.fill();
+  workSparkTex = new THREE.CanvasTexture(c); workSparkTex.encoding = THREE.sRGBEncoding;
+  return workSparkTex;
+}
+function workFx(kind, x, y, z){
+  if (RM || workFxLive >= WORK_FX_MAX) return false;
+  const spark = kind === 'spark', map = spark ? workSpark() : (smokeTex || workSpark());
+  let p = null;
+  for (const q of workFxPool) if (!q.on) { p = q; break; }
+  if (!p) {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false, opacity: 0 }));
+    s.visible = false; world.add(s);
+    p = { s, on: false, life: 0, max: 1, vx: 0, vy: 0, vz: 0, spark: false };
+    workFxPool.push(p);
+  }
+  const m = p.s.material;
+  if (m.map !== map) { m.map = map; m.needsUpdate = true; }
+  m.color.setHex(spark ? 0xffffff : 0xc9b48a);
+  const a = Math.random() * Math.PI * 2;
+  p.on = true; p.life = 0; p.spark = spark; p.max = spark ? .45 : .8;
+  p.vx = Math.cos(a) * (spark ? .5 : .12); p.vz = Math.sin(a) * (spark ? .5 : .12); p.vy = spark ? .9 : .18;
+  p.s.position.set(x, y, z); p.s.scale.setScalar(spark ? .05 : .09); m.opacity = spark ? 1 : .8; p.s.visible = true;
+  workFxLive++;
+  return true;
+}
+function stepWorkFx(dt){
+  if (workTyping && !RM) { // the lit screen: a few redraws a second, only while someone types
+    workScreenT += dt; workScreenAcc += dt;
+    if (workScreenAcc >= .25) { workScreenAcc = 0; drawWorkScreen(); }
+  }
+  workTyping = false;
+  if (!workFxLive) return;
+  for (const p of workFxPool) {
+    if (!p.on) continue;
+    p.life += dt;
+    const k = p.life / p.max;
+    if (k >= 1) { p.on = false; p.s.visible = false; workFxLive--; continue; }
+    if (p.spark) p.vy -= 3 * dt;
+    p.s.position.x += p.vx * dt; p.s.position.y += p.vy * dt; p.s.position.z += p.vz * dt;
+    p.s.material.opacity = (p.spark ? 1 : .8) * (1 - k);
+    if (!p.spark) p.s.scale.setScalar(.09 + k * .16);
+  }
+}
 function makePerson(c){
   const key = pick(VARIANTS[c.role] || VARIANTS.other);
   const g = place(key, c.x, c.y, { s: CHAR_SCALE, keepY: true });
   const body = g.children[0];
   const mixer = new THREE.AnimationMixer(body); mixers.push(mixer);
-  const hand = body.getObjectByName('arm-right');
+  const hand = body.getObjectByName('arm-right'), torso = body.getObjectByName('torso');
   let hammer = null;
   if (hand) { hammer = lib['tool-hammer'].scene.clone(true); hammer.scale.setScalar(1.25); hammer.position.set(-.02, -.17, .06); hammer.rotation.set(Math.PI / 2, 0, 0); hand.add(hammer); }
+  // city-work-anim: the book is held in front of the torso (its page turns on a pivot); the laptop on a crate
+  // and the plank pile stand in front of the person, facing it. All hidden until workProps() shows them.
+  let book = null;
+  if (torso) { book = makeWorkBook(); book.scale.setScalar(1 / CHAR_SCALE * .95); book.position.set(0, .12, .2); book.rotation.x = -1.05; book.visible = false; torso.add(book); }
+  const lap = makeWorkLaptop(); lap.position.set(0, 0, .26); lap.rotation.y = Math.PI; lap.visible = false; g.add(lap);
+  const planks = place('resource-planks', 0, .24, { fit: .26, ry: Math.PI / 2, parent: g }); planks.visible = false;
   const ring = new THREE.Mesh(ringGeo, ringMat(c.color)); ring.rotation.x = -Math.PI / 2; ring.position.y = .035; g.add(ring);
   const sel = new THREE.Mesh(ringGeo, ringMat('#FF7593')); sel.rotation.x = -Math.PI / 2; sel.position.y = .04; sel.scale.setScalar(1.45); g.add(sel);
   g.userData.pick = { t:'c', id:c.id };
   pickables.push(g);
   // city-join: `ring` kept on c.v (not just added to `g`) so its material can change colour later --
   // ringColorFor()/applyRing() below only touch it when the colour actually changes.
-  c.v = { g, key, mixer, hammer, sel, ring, ringColor: c.color, yaw: 0, cur: null, action: null };
+  c.v = { g, key, mixer, hammer, book, bookFlip: book ? book.userData.flip : null, lap, lapLid: lap.userData.lid, lapOn: lap.userData.on, lapOff: lap.userData.off,
+          planks, sel, ring, ringColor: c.color, yaw: 0, cur: null, action: null, ts: 1, flipT: 0, hitPhase: 0 };
 }
 /* city-join: the colour a person's ring should show right now -- mine (me, no c.remote) uses
    MEMBER_COLORS[0] via memberColorMap.me while joined; a remote person uses their own dev's colour;
@@ -4444,12 +4577,15 @@ function applyRing(v, color){
   v.ringColor = color;
   v.ring.material = ringMat(color);
 }
-function anim(v, name, once){
-  if (v.cur === name) return;
+/* city-work-anim: an optional rate (the time scale of the clip); none -> the walk/sprint scale, else 1, as
+   before. The same clip with a new rate only sets the time scale. */
+function anim(v, name, once, rate){
+  const ts = rate != null ? rate : name === 'walk' || name === 'sprint' ? WALK_ANIM_SCALE : 1;
+  if (v.cur === name) { if (v.action && v.ts !== ts) { v.action.setEffectiveTimeScale(ts); v.ts = ts; } return; }
   const clip = THREE.AnimationClip.findByName(lib[v.key].clips, name); if (!clip) return;
   const next = v.mixer.clipAction(clip);
   next.reset(); next.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity); next.clampWhenFinished = !!once;
-  next.setEffectiveTimeScale(name === 'walk' || name === 'sprint' ? WALK_ANIM_SCALE : 1);
+  next.setEffectiveTimeScale(ts); v.ts = ts;
   next.play();
   if (v.action) next.crossFadeFrom(v.action, .2, false);
   v.action = next; v.cur = name;
@@ -4636,6 +4772,34 @@ function ensureOv(c){
 }
 function dropOv(c){ if (!c.o) return; for (const k in c.o) c.o[k].remove(); c.o = null; }
 
+/* city-work-anim: the per-frame part of a working person's props: what shows, the lid, the turning page,
+   dust at each hammer hit (the swing clip crossing about 55% of its length, only in the acting part) and
+   sparks at the laptop (about one a second while it types). */
+function stepWorkProps(c, v, wp, pr, dt){
+  if (v.hammer) v.hammer.visible = pr.hammer;
+  if (v.book) v.book.visible = pr.book;
+  v.planks.visible = pr.planks;
+  v.lap.visible = pr.laptop;
+  const beat = !!(wp && wp.beat), fx = Math.sin(v.yaw), fz = Math.cos(v.yaw);
+  if (pr.laptop) {
+    const want = pr.lidOpen ? -.25 : -1.5;
+    v.lapLid.rotation.x += (want - v.lapLid.rotation.x) * Math.min(1, dt * 9);
+    v.lapOn.visible = pr.lidOpen; v.lapOff.visible = !pr.lidOpen;
+    if (pr.lidOpen && beat) { workTyping = true; if (Math.random() < dt * 1.1) workFx('spark', c.x + fx * .26, .3, c.y + fz * .26); }
+  }
+  if (v.bookFlip) { // one page turn per cycle, never with reduced motion (workPose has flip false then)
+    if (wp && wp.flip) { v.flipT += dt; const f = v.flipT / .45; v.bookFlip.rotation.z = f < 1 ? Math.PI * f : 0; }
+    else { v.flipT = 0; v.bookFlip.rotation.z = 0; }
+  }
+  if (pr.hammer && beat && v.cur === 'attack-melee-right' && v.action) {
+    const ph = (v.action.time / v.action.getClip().duration) % 1;
+    if (v.hitPhase < .55 && ph >= .55) {
+      const f = c.bld ? .38 : .2;
+      workFx('dust', c.x + fx * f, .06, c.y + fz * f); workFx('dust', c.x + fx * f, .08, c.y + fz * f);
+    }
+    v.hitPhase = ph;
+  } else v.hitPhase = 0;
+}
 function updatePerson(c, t, dt){
   const v = c.v, g = v.g;
   g.visible = landReady(); // city-land: nobody floats in the void before the first territory lands
@@ -4656,14 +4820,17 @@ function updatePerson(c, t, dt){
   const s = grow < 1 ? grow * (1 + .25 * Math.sin(grow * Math.PI)) : 1;
   g.scale.setScalar(Math.max(.001, s));
   g.position.y = pose === 'bench' ? .1 : 0;
-  let a = 'idle', once = false;
+  // city-work-anim: a still person that is working plays the clip of its work (calm rhythm, from the start
+  // of its work spell) and shows the props of that work; pausing or walking: idle / walk, no props.
+  const act = workAction(c), wp = act ? workPose(act, simT - (c.workSince || 0)) : null, pr = workProps(c);
+  let a = 'idle', once = false, rate;
   if (walking) a = c.state === 'to_hall' ? 'sprint' : 'walk';
-  else if (c.state === 'building') a = 'interact-right';
+  else if (wp) { a = wp.clip; rate = wp.rate; }
   else if (c.state === 'heard') { a = 'emote-yes'; once = true; }
   else if (c.state === 'finishing') { a = 'jump'; }
   else if (resting) a = 'sit';
-  anim(v, a, once);
-  if (v.hammer) v.hammer.visible = c.state === 'building';
+  anim(v, a, once, rate);
+  stepWorkProps(c, v, wp, pr, dt);
   const isSel = !!(selected && selected.t === 'c' && selected.id === c.id);
   v.sel.visible = isSel;
   // city-join: the ring is the member's colour while joined (mine included), else its role colour
@@ -5305,6 +5472,7 @@ function sync(t, dt){
     pin(f.el, sx + 22, sy, true);
   }
   updateSiteFrames(dt); // Worktrees: the merge lane's own growth, the stalled smoke -- transforms/opacity only
+  stepWorkFx(dt); // city-work-anim: dust and sparks fade and rise; the lit laptop screen redraws while someone types
   pinSiteSigns();
   pinLandOverlays();
 }
@@ -6337,7 +6505,7 @@ function busy(){
   if (drag && drag.moved || pinch || camTween || autoRotating()) return true;
   if (floaters.length) return true;
   if (typeof shows !== 'undefined' && shows.size) return true; // Balance: an era show is running (builders walking, about to flip)
-  return citizens.some(c => c.path.length || c.state === 'building' || c.state === 'spawn' || c.state === 'asking');
+  return citizens.some(c => c.path.length || workAction(c) || c.state === 'spawn' || c.state === 'asking'); // city-work-anim: acting people need frames, a pausing builder does not
 }
 function frame(now){
   requestAnimationFrame(frame);

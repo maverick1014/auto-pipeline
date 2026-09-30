@@ -33,6 +33,9 @@ CONTRACT (bin/agent-city.html)
                                  A person with no tool event yet keeps the old words, and the code
                                  only reads the clock (simT) when c.workKind is set.
     TEXT has work.edit, work.read, work.bash, work.other, work.pause in zh and en.
+    The demo feed (feed(c), #demo) plays its steps for a person in 'working' as well as
+      'building', so demo people with no building yet act out their work too (it used to wait
+      for 'building' forever).
     The calm idle stroll stays: 30 s (IDLE_STROLL_SEC) without a tool event -> a standalone
       working person takes its slow walk and comes back, as before. A tool event during the stroll
       (walking out, or in its pause at the far spot) ends it: the person walks straight back to
@@ -41,17 +44,18 @@ CONTRACT (bin/agent-city.html)
   3D view (node with stubs):
     WORK_CYCLE_SEC = 4.5, WORK_ACT_SEC = 2: a calm rhythm -- in every 4.5 s cycle the person acts
       for the first 2 s, then holds still (the owner: about half as often as the mock).
-    workPose(kind, t) -> { clip, speed, beat, flip }: what a still, working person plays at t
+    workPose(kind, t) -> { clip, rate, beat, flip }: what a still, working person plays at t
       seconds into its work spell (updatePerson passes simT - c.workSince, so people who started
       at different times never move in step). Real clips of the Kenney character models, no bones
       moved by code. beat = in the acting part of the cycle.
-        build -> 'attack-melee-right' at speed .5 for t mod 4.5 < 2 (two hammer swings), else
+        build -> 'attack-melee-right' at rate .5 for t mod 4.5 < 2 (two hammer swings), else
                  'idle' (the hammer stays in hand)
-        bash  -> 'interact-right' at speed 1.3 for t mod 4.5 < 2 (typing), else 'idle' at the laptop
+        bash  -> 'interact-right' at rate 1.3 for t mod 4.5 < 2 (typing), else 'idle' at the laptop
         read  -> 'holding-both-shoot' all the time (the book held in both hands); flip = true for
                  t mod 4.5 < .5 (one page turn per cycle), never with reduced motion
         other -> 'interact-left' for t mod 4.5 < .9 (one hand gesture), else 'idle'
-      prefers-reduced-motion (RM): the same clips at half the speed, no page flips.
+      prefers-reduced-motion (RM): the same clips at half the rate, no page flips.
+      (The word `speed` stays out of the script: test_agent_city_page.test_real_time_only.)
     workProps(c) -> { hammer, book, laptop, lidOpen, planks } (booleans), what is shown now:
         workAction 'build': hammer; planks too when the person has no building (it hammers a
           small plank pile at its spot instead)
@@ -213,6 +217,15 @@ for (let i = 0; i < 8; i++) { apply({ type: 'tool', id: 's:st', tool: 'Read' });
 out.strollBack = { phaseSeen, far, headingHome, home: Math.hypot(s.x - s.home.x, s.y - s.home.y), path: s.path.length,
                    action: workAction(s), phase: s.strollPhase };
 
+// the demo feed (#demo) plays its tool steps for a person in 'working' too, not only 'building'
+apply({ type: 'spawn', id: 'd:1', role: 'worker', label: 'worker', task: 'demo', terr: tid });
+tick(12);
+const d1 = byId('d:1');
+d1.feed = { steps: [{ t: 'tool', tool: 'Read' }, { t: 'tool', tool: 'Bash' }], next: 0, restSince: 0, restFor: 20 };
+const d1State = d1.state;
+feed(d1);
+out.demoFeed = { state: d1State, kind: d1.workKind, left: d1.feed.steps.length, action: workAction(d1) };
+
 // a person without any tool event keeps the old words
 const fresh = { state: 'building', askKind: '', askPhase: '', relay: '', waiting: false };
 const freshW = { state: 'working', askKind: '', askPhase: '', relay: '', waiting: false };
@@ -339,6 +352,13 @@ class TestWorkingPeopleSim(unittest.TestCase):
         self.assertEqual(b["action"], "read", "and it acts there")
         self.assertEqual(b["phase"], "", "the stroll is over")
 
+    def test_demo_people_without_a_building_act_too(self):
+        d = self.r["demoFeed"]
+        self.assertEqual(d["state"], "working", "a demo person with no building yet")
+        self.assertEqual(d["kind"], "read", "its first demo tool step played")
+        self.assertEqual(d["left"], 1)
+        self.assertEqual(d["action"], "read")
+
     def test_no_tool_yet_keeps_the_old_words(self):
         self.assertEqual(self.r["fresh"][0], ["build", "施工中"])
         self.assertEqual(self.r["fresh"][1], ["build", "干活"])
@@ -461,7 +481,7 @@ class TestWorkingPeople3D(unittest.TestCase):
         for t in (0, .3, .6, .95, 1.9, 4.6, 5.0, 6.4):
             with self.subTest(t=t):
                 self.assertEqual(p[t]["clip"], "attack-melee-right")
-                self.assertAlmostEqual(p[t]["speed"], .5)
+                self.assertAlmostEqual(p[t]["rate"], .5)
                 self.assertTrue(p[t]["beat"])
         for t in (2.1, 4.4, 6.6):
             with self.subTest(t=t):
@@ -473,7 +493,7 @@ class TestWorkingPeople3D(unittest.TestCase):
         for t in (0, .95, 1.9, 4.6, 6.4):
             with self.subTest(t=t):
                 self.assertEqual(p[t]["clip"], "interact-right")
-                self.assertAlmostEqual(p[t]["speed"], 1.3)
+                self.assertAlmostEqual(p[t]["rate"], 1.3)
                 self.assertTrue(p[t]["beat"])
         for t in (2.1, 4.4, 6.6):
             with self.subTest(t=t):
@@ -499,12 +519,12 @@ class TestWorkingPeople3D(unittest.TestCase):
             with self.subTest(kind=k):
                 self.assertFalse(any(x["flip"] for x in self.r["full"][k]))
 
-    def test_reduced_motion_is_half_speed_and_no_flips(self):
+    def test_reduced_motion_is_half_rate_and_no_flips(self):
         for k in ("build", "read", "bash", "other"):
             for full, rm in zip(self.r["full"][k], self.r["rm"][k]):
                 with self.subTest(kind=k):
                     self.assertEqual(rm["clip"], full["clip"])
-                    self.assertAlmostEqual(rm["speed"], full["speed"] / 2)
+                    self.assertAlmostEqual(rm["rate"], full["rate"] / 2)
                     self.assertFalse(rm["flip"], "no page flips with reduced motion")
 
     def test_props_follow_the_work(self):
