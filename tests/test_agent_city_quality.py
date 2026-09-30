@@ -204,10 +204,11 @@ class TestHookFile(unittest.TestCase):
 
     def test_file_is_the_sixteenth_key(self):
         # idea-city C4: the hook line has no "kind" any more; session-names
-        # added "tp" after "file" (tests/test_agent_city_session_names.py)
+        # added "tp" after "file" (tests/test_agent_city_session_names.py),
+        # city-roles "pid" after "tp" (tests/test_agent_city_roles.py)
         row = self.row(self.root, path=os.path.join(self.root, "a.py"))
-        self.assertEqual(len(row), 17)
-        self.assertEqual(list(row)[-4:], ["ask", "wt", "file", "tp"])
+        self.assertEqual(len(row), 18)
+        self.assertEqual(list(row)[-5:], ["ask", "wt", "file", "tp", "pid"])
 
 
 # ---------------------------------------------------------------------------

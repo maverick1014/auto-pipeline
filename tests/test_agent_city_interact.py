@@ -773,6 +773,10 @@ class AskHookCase(InteractCase):
         super().setUp()
         self.work = os.path.join(self.base, "work")
         os.makedirs(self.work)
+        # city-roles: "gov-1" (stop_payload's default sid) holds the main manager lock of this
+        # folder, so its gov-watch is the governor (tests/test_agent_city_roles.py)
+        with open(os.path.join(self.work, "agent_main.lock"), "w") as fh:
+            fh.write("%d 2026-09-30 10:00 gov-1 -\n" % os.getpid())
         self.hooks = []
 
     def tearDown(self):

@@ -84,7 +84,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(ROOT, "bin", "agent-city-hook.sh")
 BASH = shutil.which("bash")
 KEYS = {"ev", "sid", "aid", "at", "tool", "nt", "proj", "role", "desc", "sub", "q", "klen", "repo", "ask", "wt", "file",
-        "tp"}
+        "tp", "pid"}
 
 CITY_COMMAND = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
                 '"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh"; exit 0')
