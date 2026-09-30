@@ -23,3 +23,4 @@ description: Main manager only. On a CLOSE CASE report from a task manager decid
 3. Apply part A to each report. Merge what passes with `/merge`.
 4. Close every pane and worktree left. Stop the crons you started: `CronList` then `CronDelete` each. Stop the monitor: `${CLAUDE_PLUGIN_ROOT}/bin/agent-monitor.sh stop`. Then `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show` to check the agent files.
 5. Then ONE final table to the human: task · result · what changed · what is left · decisions taken for the human. Every task one row, nothing dropped.
+6. Last step, after the final table: run `${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh --release`. It frees the main manager seat: the next session the human opens becomes main manager. This session is closed, start nothing new.
