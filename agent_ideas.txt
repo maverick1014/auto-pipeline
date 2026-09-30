@@ -23,3 +23,7 @@ agent-city: a crashed governor is still drawn as present until a new main sessio
 agent-city: crashed task-manager sessions never leave either; the hook could carry the session's Claude pid (works in any folder, no lock needed) (ideas-soon TM 2026-09-29) | 2026-09-29 12:04 | by main
 dispatch skill: worker.md says workers never run git, so briefs must not ask workers to commit; say the task manager commits after it verifies (ideas-soon TM 2026-09-29) | 2026-09-29 12:04 | by main
 workers read CLAUDE.md and run agent-start.sh; a subagent could be told to skip it (saves tokens) (ideas-soon TM 2026-09-29) | 2026-09-29 12:04 | by main
+cloud-pack does not carry the naming hook yet; cloud sessions keep default names (session-names TM 2026-09-30) | 2026-09-30 14:23 | by main
+in Orca, type /rename into a new main/helper pane while it is idle so the live address matches at once (risk: clashes with what the human is typing) (session-names TM 2026-09-30) | 2026-09-30 14:23 | by main
+city relay could carry the session name so other members see real names too (session-names TM 2026-09-30) | 2026-09-30 14:23 | by main
+the governor (main manager) could show its real session name in the city too (session-names TM 2026-09-30) | 2026-09-30 14:23 | by main
