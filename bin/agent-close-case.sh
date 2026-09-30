@@ -96,7 +96,7 @@ case "$role" in
     if [ "$role" = orphan ]; then
       UPPER="No live main manager (lock pid $lpid): print the report here, the human decides. First line:"
     else
-      UPPER="Report to the main manager \"$REPO Manager\" with SendMessage (another machine: print it in this terminal and say so). First line:"
+      UPPER="Report to the main manager \"$REPO Manager\" (not listed: the \"$REPO-<xx>\" row) with SendMessage (another machine: print it in this terminal and say so). First line:"
     fi
     printf '%s\n%s\nOtherwise settle down now (PRINCIPLES.md W13):\n1. Start nothing new. Running workers finish their slice or stop cleanly.\n2. Save agent_state.txt. Commit + push the branch, a WIP commit if unfinished. Never lose work.\n3. %s\n   CLOSE CASE %s: finished   or   CLOSE CASE %s: unfinished\n   Then: what is done, what is left + next steps, tests run + results, E2E click path, new ideas, TIME: est <n>m, actual <n>m, human <n>m\n4. Wait for the decision: finish first, or close now. Never close yourself.\n' \
       "$LINE1" "$IGNORE_LINE" "$UPPER" "$NAME" "$NAME"

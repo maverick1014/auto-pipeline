@@ -18,7 +18,7 @@ description: Main manager only. On a CLOSE CASE report from a task manager decid
 
 ## B. The human says close case (whole repo)
 
-1. Read `agent_worktree.txt`. Send the words close case to every live task manager (`<name> Task Manager`) and human-direct session (`<repo> Helper`): `SendMessage`, or type it into its pane, `orca terminal send --terminal <handle> --text "close case" --enter`. A session on another machine: tell the human it must be read in its own terminal.
+1. Read `agent_worktree.txt`. Send the words close case to every live task manager (`<name> Task Manager`) and human-direct session (`<repo> Helper`, or its `<repo>-<xx>` row): `SendMessage`, or type it into its pane, `orca terminal send --terminal <handle> --text "close case" --enter`. A session on another machine: tell the human it must be read in its own terminal.
 2. Hold new dispatches. Collect every CLOSE CASE report, wait max 30 min each, then record it "no report".
 3. Apply part A to each report. Merge what passes with `/merge`.
 4. Close every pane and worktree left. Stop the crons you started: `CronList` then `CronDelete` each. Stop the monitor: `${CLAUDE_PLUGIN_ROOT}/bin/agent-monitor.sh stop`. Then `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show` to check the agent files.
