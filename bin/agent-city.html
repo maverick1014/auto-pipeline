@@ -3103,7 +3103,8 @@ function feed(c){
     if (simT - f.restSince < f.restFor) return;
     f.steps.shift(); emit({ type:'leave', id:c.id }); return;
   }
-  if (c.state !== 'building') return;
+  // city-work-anim: a demo person with no building yet is 'working', so it plays its steps too
+  if (c.state !== 'building' && c.state !== 'working') return;
   f.steps.shift();
   if (s.t === 'tool') { emit({ type:'tool', id:c.id, tool:s.tool }); f.next = simT + rnd(.55, 1.35); }
   else if (s.t === 'stuck') { c.pendingAnswer = s.a; emit({ type:'stuck', id:c.id, question:s.q }); f.next = simT + .6; }
