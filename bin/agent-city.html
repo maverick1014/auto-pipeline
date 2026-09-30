@@ -1139,10 +1139,21 @@ function citizenStatus(c, governors = 1) {
 }
 /* nameOf(c) -> c.label, or "<label> · <task>" when the task is non-empty and differs from the label:
    never the same text twice (a server restart used to leave "auto-pipeline:worker · auto-pipeline:worker"
-   on screen -- the server now strips the plugin prefix; the page just never repeats what it gets). The
-   person tag, the roster and the detail card all go through this, never c.label/c.task directly. */
-function nameOf(c) {
+   on screen -- the server now strips the plugin prefix; the page just never repeats what it gets). When
+   another person of my own city (not gone, not remote) has the very same text, " #" and the last 4
+   characters of the id are added, so two rows never read the same (two sessions both "session · v4-plus").
+   The person tag, the roster and the detail card all go through this, never c.label/c.task directly.
+   It runs every frame for every person: one pass over citizens, no allocation. */
+function nameBase(c) {
   return c.task && c.task !== c.label ? c.label + ' · ' + c.task : c.label;
+}
+function nameOf(c) {
+  const base = nameBase(c);
+  for (let i = 0; i < citizens.length; i++) {
+    const o = citizens[i];
+    if (o !== c && !o.gone && !o.remote && nameBase(o) === base) return base + ' #' + String(c.id).slice(-4);
+  }
+  return base;
 }
 const TASKS = {
   'worker':[0,1,2,3,4,5,6,7,8,9].map(i => i18n('demo.task.worker.' + i)),
@@ -2608,6 +2619,14 @@ function apply(ev){
       govSay(ev.terr || govTerr, i18n('gov.dispatch', { task: ev.task }), 1.8); gov.dispatched++;
       log(i18n('log.govDispatch', { label: n.label, task: ev.task }));
       return n;
+    }
+    /* session-names: the session's real name changed (the server read a new title from its transcript). The
+       person tag, the rail row, the panel title and the chat lines all go through nameOf(c), so they follow. */
+    case 'label': {
+      const c = byId(ev.id);
+      if (!c) return null;
+      c.label = String(ev.label);
+      return c;
     }
     case 'build': {
       if (ev.id === 'gov') { newBuildingRecord(ev.terr, ev.plot, ev.btype, ev.x, ev.z, ev.by, false, ev); return null; }
