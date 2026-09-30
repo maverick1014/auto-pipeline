@@ -242,7 +242,7 @@ class TestIdleIsNotAQuestion(unittest.TestCase):
     def test_resume_comes_first(self):
         self.r.feed(R("Notification", sid="tm1", role="task-manager", nt="idle_prompt"), 2.0)
         out = self.r.feed(R("PostToolUse", sid="tm1", role="task-manager", tool="Edit"), 3.0)
-        self.assertEqual(out, [{"type": "resume", "id": "s:tm1"}, {"type": "tool", "id": "s:tm1", "tool": "Edit"}])
+        self.assertEqual(out, [{"type": "resume", "id": "s:tm1"}, {"type": "tool", "id": "s:tm1", "tool": "Edit", "name": "Edit"}])
         a = [a for a in self.r.snapshot()["agents"] if a["id"] == "s:tm1"][0]
         self.assertFalse(a["waiting"])
 

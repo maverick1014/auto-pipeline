@@ -83,13 +83,15 @@ import agent_city  # noqa: E402
 
 EVENT_KEYS = {
     "spawn": {"type", "id", "role", "label", "task"},
-    "tool": {"type", "id", "tool"},
+    "tool": {"type", "id", "tool", "name"},  # city-work-anim bounce 1: + "file" / "desc" when known
     "stuck": {"type", "id", "question", "tool"},
     "answer": {"type", "id", "ok"},
     "done": {"type", "id"},
     "leave": {"type", "id"},
     "gov": {"type", "state"},
 }
+# keys an event may carry only sometimes (tests/test_agent_city_steps.py)
+OPTIONAL_KEYS = {"tool": {"file", "desc"}}
 
 
 def R(ev, sid="s1", aid="", at="", tool="", nt="", proj="shop", role="", desc="", sub="", q=""):
@@ -109,7 +111,7 @@ class Case(unittest.TestCase):
         self.assertIsInstance(out, list)
         for event in out:
             self.assertIn(event.get("type"), EVENT_KEYS, event)
-            self.assertEqual(set(event), EVENT_KEYS[event["type"]], event)
+            self.assertEqual(set(event) - OPTIONAL_KEYS.get(event["type"], set()), EVENT_KEYS[event["type"]], event)
         self.all.extend(out)
         return out
 
@@ -188,7 +190,8 @@ class TestTools(Case):
         for tool, kind in cases.items():
             with self.subTest(tool=tool):
                 out = self.feed(R("PostToolUse", aid="a1", at="worker", tool=tool))
-                self.assertEqual(out, [{"type": "tool", "id": "a1", "tool": kind}])
+                # city-work-anim bounce 1: the event also names the raw tool, for the page's plain-words step
+                self.assertEqual(out, [{"type": "tool", "id": "a1", "tool": kind, "name": tool}])
 
     def test_pre_tool_use_of_a_normal_tool_says_nothing(self):
         self.spawn()
@@ -210,7 +213,7 @@ class TestStuck(Case):
         self.assertEqual(out, [{"type": "stuck", "id": "a1", "question": "", "tool": "Bash"}])
         out = self.feed(R("PostToolUse", aid="a1", at="worker", tool="Bash"))
         self.assertEqual(out, [{"type": "answer", "id": "a1", "ok": True},
-                               {"type": "tool", "id": "a1", "tool": "Bash"}])
+                               {"type": "tool", "id": "a1", "tool": "Bash", "name": "Bash"}])
 
     def test_permission_denied(self):
         self.spawn()
@@ -295,7 +298,7 @@ class TestSessions(Case):
         out = self.feed(R("PostToolUse", sid="tm1", role="task-manager", tool="Write", proj="shop-wt"))
         self.assertEqual(out, [
             {"type": "spawn", "id": "s:tm1", "role": "task-manager", "label": "task-manager", "task": "shop-wt"},
-            {"type": "tool", "id": "s:tm1", "tool": "Write"}])
+            {"type": "tool", "id": "s:tm1", "tool": "Write", "name": "Write"}])
 
     def test_second_plain_session_is_a_task_manager_citizen(self):
         self.govern("main")

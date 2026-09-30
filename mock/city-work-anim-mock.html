@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City · work animation mock</title>
+<link rel="icon" href="data:,">
+<style>
+:root{ --paper:#ECF1FF; --panel:#FFFFFF; --ink:#2A2B45; --ink-2:#585D82; --line:#DCE2F6; --berry:#FF7593; --butter:#FFD36E;
+  --build-bg:#E3ECFF; --build-ink:#2F54C8; --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif; color-scheme:light; }
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.5 var(--round)}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 16px 4px}
+.bar h1{margin:0 8px 0 0;font:700 18px/1.2 var(--round)}
+.proto{background:var(--butter);color:#4A3500;font:600 12px/1 var(--round);padding:6px 11px;border-radius:999px}
+.seg{display:inline-flex;gap:4px}
+.btn{font:600 13px/1 var(--round);border:1.5px solid var(--line);background:#F3F5FE;color:var(--ink);border-radius:12px;padding:0 11px;min-height:32px;cursor:pointer}
+.btn[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.small{min-height:28px;font-size:12px;padding:0 9px}
+.chk{display:inline-flex;align-items:center;gap:5px;font:600 13px/1 var(--round);cursor:pointer}
+.fps{font:600 12px/1 ui-monospace,Menlo,monospace;color:var(--ink-2);margin-left:auto}
+.note{padding:4px 16px 8px;color:var(--ink-2);font-size:13px;min-height:28px}
+.main{display:grid;grid-template-columns:1fr 360px;gap:12px;padding:0 16px 16px;height:calc(100vh - 92px);min-height:520px}
+.left{display:flex;flex-direction:column;gap:8px;min-width:0}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.row .lbl{font:600 12px/1 var(--round);color:var(--ink-2);margin-right:2px}
+.stage{position:relative;overflow:hidden;border-radius:16px;flex:1;min-height:300px;background:#BFE3F5}
+.stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+#ov{position:absolute;inset:0;pointer-events:none}
+.tag,.icon,.head{position:absolute;left:0;top:0;white-space:nowrap;will-change:transform}
+.tag{font:700 11.5px/1 var(--round);background:rgba(255,255,255,.92);color:var(--ink);padding:4px 8px;border-radius:999px;box-shadow:0 1px 4px rgba(40,40,80,.18)}
+.tag i{font-style:normal;font-weight:600;color:var(--build-ink);margin-left:5px}
+.tag.pause i{color:var(--walk-ink)} .tag.walk i{color:var(--walk-ink)} .tag.rest i{color:var(--rest-ink)}
+.head{font:800 15px/1 var(--round);background:#fff;padding:6px 10px;border-radius:12px;box-shadow:0 2px 8px rgba(40,40,80,.2);color:var(--ink)}
+.icon{font:18px/1 system-ui;background:#fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(40,40,80,.22)}
+.strip{height:34px;border-radius:10px;background:#fff;position:relative;overflow:hidden}
+.strip canvas{width:100%;height:100%;display:block}
+aside{display:flex;flex-direction:column;gap:10px;overflow:auto}
+.card{background:var(--panel);border-radius:18px;padding:10px 12px;box-shadow:0 1px 3px rgba(40,40,80,.08)}
+.card h3{margin:0 0 6px;font:700 14px/1.3 var(--round)}
+.opt{display:block;width:100%;text-align:left;border:1.5px solid var(--line);background:#F7F8FE;border-radius:12px;padding:8px 10px;margin:0 0 6px;cursor:pointer;font:inherit;color:inherit}
+.opt[aria-pressed="true"]{border-color:var(--ink);background:#fff;box-shadow:0 0 0 2px var(--ink) inset}
+.opt b{display:block;font:700 13px/1.35 var(--round)}
+.opt span{display:block;font-size:12.5px;color:var(--ink-2);margin-top:2px}
+.rec{background:var(--rest-bg);color:var(--rest-ink);font:700 11px/1 var(--round);padding:3px 7px;border-radius:999px;margin-left:4px}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th,td{border-top:1px solid var(--line);padding:5px 4px;text-align:left;vertical-align:top}
+th{font-weight:700;color:var(--ink-2);white-space:nowrap}
+ol{margin:0;padding-left:18px;font-size:12.5px} ol li{margin:0 0 5px}
+ol li b{font-weight:700}
+.dim{color:var(--ink-2);font-size:12px}
+@media (max-width:980px){ .main{grid-template-columns:1fr;height:auto} .stage{height:440px;flex:none} }
+@media (prefers-reduced-motion: reduce){ .btn{transition:none} }
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1 data-t="title">干活动画</h1><span class="proto">mock</span>
+  <span class="seg" id="views"></span>
+  <label class="chk"><input type="checkbox" id="rm"> <span data-t="rm">减少动态</span></label>
+  <span class="seg" id="lang"></span>
+  <span class="fps" id="fps"></span>
+</div>
+<div class="note" id="note"></div>
+<div class="main">
+  <div class="left">
+    <div class="row" id="kindRow"><span class="lbl" data-t="kindLbl">哪种活</span><span class="seg" id="kinds"></span></div>
+    <div class="row" id="cityRow" hidden><span class="lbl" data-t="cmpLbl">对比</span><span class="seg" id="todaySeg"></span></div>
+    <div class="stage" id="stage"><canvas id="c" aria-label="3D preview"></canvas><div id="ov"></div></div>
+    <div class="row">
+      <span class="seg" id="feed"></span>
+      <span class="lbl" style="margin-left:10px" data-t="holdLbl">最后一个工具后继续干</span><span class="seg" id="hold"></span>
+    </div>
+    <div class="strip" id="stripWrap"><canvas id="strip"></canvas></div>
+  </div>
+  <aside>
+    <section class="card"><h3 data-t="optTitle">方案</h3><div id="opts"></div></section>
+    <section class="card"><h3 data-t="costTitle">用什么素材 · 代价</h3><div id="cost"></div></section>
+    <section class="card"><h3 data-t="askTitle">要你定的（都有默认）</h3><ol id="asks"></ol></section>
+  </aside>
+</div>
+<script src="../bin/agent-city-assets/vendor/three.min.js"></script>
+<script src="../bin/agent-city-assets/vendor/GLTFLoader.js"></script>
+<script src="../bin/agent-city-assets/vendor/SkeletonUtils.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const Q = new URLSearchParams(location.search);
+const A = '../bin/agent-city-assets/';
+
+/* ---------- text: both languages (the real page gets the same keys in TEXT.zh / TEXT.en) ---------- */
+const TX = {
+  zh: {
+    title: '干活动画', rm: '减少动态', kindLbl: '哪种活', cmpLbl: '对比', holdLbl: '最后一个工具后继续干',
+    optTitle: '方案', costTitle: '用什么素材 · 代价', askTitle: '要你定的（都有默认）',
+    'view.side': '① 三个方案并排', 'view.city': '② 放进城里', 'view.many': '③ 很多人一起',
+    'note.side': '上面选一种活，三个人就是三个方案。点「停下工具事件」看：干完一步停一下，站在原地，不乱走。',
+    'note.city': '一小块城：施工的、看文件的、跑命令的、走路去市政厅的、休息的。点「今天的样子」对比：现在干活的人会来回走。右边选方案。',
+    'note.many': '36 个人同时干活，右上角看帧率。可以打开「减少动态」。右边选方案。',
+    'kind.build': 'Edit / Write · 建造', 'kind.read': 'Read · 看文件', 'kind.bash': 'Bash · 跑命令', 'kind.other': '其他工具', 'kind.web': 'WebFetch · 查网页 *',
+    'feed.auto': '▶ 工具事件不停来', 'feed.stop': '⏸ 停下工具事件', 'feed.one': '+ 一个工具事件',
+    'cmp.new': '新的样子', 'cmp.today': '今天的样子',
+    'opt.A': '方案 A · 真动画 + 小道具', 'opt.A.d': '用角色模型里本来就有的动画：抡锤、捧书、敲电脑、打手势，再加一件小道具。一眼看出在干哪种活。',
+    'opt.B': '方案 B · 同一个动作 + 头顶图标', 'opt.B.d': '所有活都是同一个伸手动作（就是今天施工的动作），头顶一个小图标说是哪种活。最省事，但头顶更挤，身体看不出区别。',
+    'opt.C': '方案 C · 大家都抡锤（改动最少）', 'opt.C.d': '不分哪种活：干活时站在原地，都用今天施工的锤子动作。改动最少，但看不出是在看文件还是在跑命令。',
+    rec: '推荐',
+    'st.build': '施工中', 'st.edit': '改代码', 'st.read': '看文件', 'st.bash': '跑命令', 'st.other': '忙着', 'st.web': '查网页', 'st.pause': '停一下',
+    'st.walk': '去市政厅', 'st.rest': '休息中', 'st.today': '干活', 'st.gov': '在市政厅',
+    'who.w1': '工人 · 登录 API', 'who.tm': '任务经理 · 设置页', 'who.w2': '工人 · 测试', 'who.walk': '工人 · 支付', 'who.rest': '副手', 'who.gov': '总督',
+    'strip.label': '最近 15 秒：竖线 = 一个工具事件，蓝色 = 在干活，灰色 = 停一下',
+    fps: '{fps} fps · {n} 人',
+    'cost.h': ['', 'A', 'B', 'C'],
+    'cost.rows': [
+      ['动画', '抡锤 attack-melee-right、捧书 holding-both-shoot、敲 interact-right、手势 interact-left、idle（7 个角色模型里都有，不用代码摆手臂）', 'interact-right、idle', 'interact-right、idle（和今天施工一样）'],
+      ['道具', '锤子、木板（已有模型）；书、电脑、望远镜 = 几个小方块，代码画，不加文件', '没有（图标是文字）', '锤子（已有）'],
+      ['新文件', '0', '0', '0'],
+      ['每帧', '和今天一样的动画混合器；尘土/火花最多 24 个，共用', '和今天一样 + 每人 1 个图标', '和今天一样'],
+      ['减少动态', '慢一半，没有尘土/火花/翻页', '慢一半，图标不跳', '慢一半'],
+    ],
+    asks: [
+      '<b>选哪个方案？</b> 默认 A。',
+      '<b>工具之间停多久算「停一下」？</b> 默认最后一个工具后继续干 6 秒，然后站在原地。30 秒都没工具才像今天一样慢慢走一圈再回来。',
+      '<b>查网页用望远镜（*）？</b> 服务器今天把 WebFetch/WebSearch 当成 Read，页面分不出来，要改一点服务器（多一种 “Web”）。默认：先不改，查网页就显示看文件；望远镜放进想法清单。',
+      '<b>以前的规则改掉：</b>「没有房子的人干活时会走来走去」→ 改成「干活时站在自己的位置上」。走路只在去市政厅、去经理、去休息、慢慢走一圈的时候。',
+      '<b>名单里的状态词跟着活走：</b> 施工中（只在有房子时）/ 改代码 / 看文件 / 跑命令 / 忙着 / 停一下。默认要。',
+    ],
+    'web.note': '* 查网页要改服务器，见右边第 3 条',
+  },
+  en: {
+    title: 'Work animation', rm: 'Reduce motion', kindLbl: 'Kind of work', cmpLbl: 'Compare', holdLbl: 'Keep working after the last tool',
+    optTitle: 'Options', costTitle: 'Assets · cost', askTitle: 'For you to decide (all have defaults)',
+    'view.side': '① Three options side by side', 'view.city': '② In the city', 'view.many': '③ Many people',
+    'note.side': 'Pick a kind of work above; the three people are the three options. Click "Stop tool events" to see the short pause: it stays on its spot, no wandering.',
+    'note.city': 'A small piece of city: building, reading, running commands, walking to the hall, resting. Click "Today" to compare: today working people walk back and forth. Pick the option on the right.',
+    'note.many': '36 people working at once - frame rate at the top right. Try "Reduce motion". Pick the option on the right.',
+    'kind.build': 'Edit / Write · build', 'kind.read': 'Read · read files', 'kind.bash': 'Bash · run commands', 'kind.other': 'Other tools', 'kind.web': 'WebFetch · web *',
+    'feed.auto': '▶ Tool events keep coming', 'feed.stop': '⏸ Stop tool events', 'feed.one': '+ One tool event',
+    'cmp.new': 'New', 'cmp.today': 'Today',
+    'opt.A': 'Option A · real clips + a small prop', 'opt.A.d': 'Uses the clips the character models already have: hammer swing, holding a book, typing, a hand gesture, plus one small prop. You see the kind of work at a glance.',
+    'opt.B': 'Option B · one gesture + head icon', 'opt.B.d': 'Every kind of work is the same reach gesture (today\'s building gesture), with a small icon over the head for the kind. Cheapest, but heads get busier and bodies look the same.',
+    'opt.C': 'Option C · everyone hammers (smallest change)', 'opt.C.d': 'No difference by kind: a working person stays on its spot and plays today\'s building gesture with the hammer. Smallest change, but you cannot tell reading from running commands.',
+    rec: 'recommended',
+    'st.build': 'Building', 'st.edit': 'Editing', 'st.read': 'Reading', 'st.bash': 'Running', 'st.other': 'Busy', 'st.web': 'On the web', 'st.pause': 'Pausing',
+    'st.walk': 'To the hall', 'st.rest': 'Resting', 'st.today': 'Working', 'st.gov': 'At the hall',
+    'who.w1': 'Worker · Login API', 'who.tm': 'Task manager · Settings', 'who.w2': 'Worker · Tests', 'who.walk': 'Worker · Payment', 'who.rest': 'Deputy', 'who.gov': 'Governor',
+    'strip.label': 'Last 15 s: line = a tool event, blue = working, grey = pausing',
+    fps: '{fps} fps · {n} people',
+    'cost.h': ['', 'A', 'B', 'C'],
+    'cost.rows': [
+      ['Clips', 'attack-melee-right (hammer), holding-both-shoot (book), interact-right (typing), interact-left (gesture), idle - in all 7 character models, no arms moved by code', 'interact-right, idle', 'interact-right, idle (same as building today)'],
+      ['Props', 'hammer, planks (models we have); book, laptop, spyglass = a few boxes drawn in code, no new files', 'none (icons are text)', 'hammer (have it)'],
+      ['New files', '0', '0', '0'],
+      ['Per frame', 'the same animation mixer as today; at most 24 dust/spark sprites, shared', 'as today + 1 icon per person', 'as today'],
+      ['Reduce motion', 'half speed, no dust / sparks / page flips', 'half speed, icon still', 'half speed'],
+    ],
+    asks: [
+      '<b>Which option?</b> Default A.',
+      '<b>How long a gap counts as a pause?</b> Default: keeps working 6 s after the last tool, then stands on its spot. Only after 30 s with no tool does it take today\'s slow walk around and come back.',
+      '<b>A spyglass for web (*)?</b> Today the server counts WebFetch/WebSearch as Read, so the page cannot tell them apart; a small server change is needed (a new "Web" kind). Default: not now - web shows as reading; the spyglass goes to the ideas list.',
+      '<b>An old rule changes:</b> "a person without a building walks around while it works" becomes "a working person stays on its own spot". Walking only to the hall, to the manager, to rest, or the slow walk around.',
+      '<b>The status word in the list follows the work:</b> Building (only with a building) / Editing / Reading / Running / Busy / Pausing. Default yes.',
+    ],
+    'web.note': '* web needs a server change, see point 3 on the right',
+  },
+};
+let lang = Q.get('lang') === 'en' ? 'en' : 'zh';
+const t = (k, v) => { let s = TX[lang][k]; if (s == null) s = TX.zh[k] ?? k; if (v) for (const n in v) s = s.replace('{' + n + '}', v[n]); return s; };
+
+/* ---------- state ---------- */
+let view = ['side', 'city', 'many', 'clips', 'kinds'].includes(Q.get('view')) ? Q.get('view') : 'side';
+let kind = ['build', 'read', 'bash', 'other', 'web'].includes(Q.get('kind')) ? Q.get('kind') : 'build';
+let opt = ['A', 'B', 'C'].includes(Q.get('opt')) ? Q.get('opt') : 'A';
+let today = Q.get('today') === '1';
+let feeding = Q.get('feed') !== 'stop';
+let HOLD = [3, 6, 10].includes(+Q.get('hold')) ? +Q.get('hold') : 6;
+let RM = Q.get('rm') === '1' || matchMedia('(prefers-reduced-motion: reduce)').matches;
+$('#rm').checked = RM;
+
+/* ---------- three ---------- */
+const MODELS = ['characters/character-male-a', 'characters/character-female-a', 'characters/character-male-c', 'characters/character-female-c', 'characters/character-male-b', 'characters/character-male-e',
+  'survival/tool-hammer', 'survival/resource-planks', 'survival/structure', 'hexagon/building-house', 'hexagon/building-village', 'hexagon/building-cabin',
+  'kaykit-city/bench', 'roads/construction-fence', 'suburban/building-type-a', 'nature/tree_default', 'nature/tree_oak', 'forest/flag', 'nature/plant_bush'];
+const lib = {};
+const HEX_SINK = { 'hexagon/building-house': .21, 'hexagon/building-village': .21, 'hexagon/building-cabin': .21 };
+const canvas = $('#c'), stage = $('#stage'), ov = $('#ov');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#BFE3F5');
+const camera = new THREE.PerspectiveCamera(35, 1, .05, 200);
+scene.add(new THREE.HemisphereLight('#FFFFFF', '#C7D2E0', .8));
+const sun = new THREE.DirectionalLight('#FFF3E0', .75); sun.position.set(-6, 12, 8); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8 }); scene.add(sun);
+const world = new THREE.Group(); scene.add(world);
+const lin = c => new THREE.Color(c).convertSRGBToLinear();
+const lam = c => new THREE.MeshLambertMaterial({ color: lin(c) });
+
+function prep(key, gltf){
+  const root = gltf.scene;
+  root.traverse(n => { if (n.isMesh) { const m = n.material; n.material = new THREE.MeshLambertMaterial({ color: m.color ? m.color.clone() : new THREE.Color('#fff'), map: m.map || null, skinning: !!n.isSkinnedMesh }); if (!m.map) n.material.color.convertSRGBToLinear(); n.castShadow = true; n.receiveShadow = true; } });
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  lib[key] = { scene: root, clips: gltf.animations, box, size: box.getSize(new THREE.Vector3()), skinned: !!root.getObjectByProperty('type', 'SkinnedMesh') };
+}
+function loadAll(){
+  const loader = new THREE.GLTFLoader();
+  return Promise.all(MODELS.map(k => new Promise(res => loader.load(A + k + '.glb', g => { prep(k, g); res(); }, undefined, () => res()))));
+}
+function place(key, x, z, o = {}){
+  const L = lib[key]; if (!L) return new THREE.Group();
+  const g = new THREE.Group(); g.rotation.y = o.ry || 0;
+  const inner = L.skinned ? THREE.SkeletonUtils.clone(L.scene) : L.scene.clone(true);
+  const s = o.s != null ? o.s : o.h != null ? o.h / L.size.y : (o.fit || .9) / Math.max(L.size.x, L.size.z);
+  inner.scale.setScalar(s);
+  const c = L.box.getCenter(new THREE.Vector3());
+  inner.position.set(-c.x * s, o.keepY ? 0 : -L.box.min.y * s, -c.z * s);
+  g.position.set(x, (o.y || 0) - (HEX_SINK[key] || 0) * s, z);
+  if (o.tint) inner.traverse(n => { if (n.isMesh) { n.material = n.material.clone(); n.material.color = lin(o.tint); } });
+  g.add(inner); (o.parent || world).add(g);
+  return g;
+}
+
+/* ---------- props: drawn in code from a few boxes (shared geometry + materials, no new files) ---------- */
+const G = {
+  cover: new THREE.BoxGeometry(.075, .006, .1), page: new THREE.PlaneGeometry(.068, .092),
+  crate: new THREE.BoxGeometry(.16, .16, .16), lapBase: new THREE.BoxGeometry(.15, .01, .1), lapScreen: new THREE.PlaneGeometry(.14, .09), lapBack: new THREE.BoxGeometry(.15, .1, .006),
+  board: new THREE.BoxGeometry(.07, .1, .006), paper: new THREE.PlaneGeometry(.058, .08), tube: new THREE.CylinderGeometry(.012, .018, .16, 10),
+};
+const M = { cover: lam('#C0504D'), page: new THREE.MeshLambertMaterial({ color: lin('#FFFDF4'), side: THREE.DoubleSide }), crate: lam('#B98A55'), lap: lam('#5B6178'),
+  board: lam('#8C6A43'), tube: lam('#B8912F') };
+const screenCanvas = document.createElement('canvas'); screenCanvas.width = 64; screenCanvas.height = 40;
+const screenTex = new THREE.CanvasTexture(screenCanvas); screenTex.encoding = THREE.sRGBEncoding;
+const M_SCREEN = new THREE.MeshBasicMaterial({ map: screenTex }), M_SCREEN_OFF = new THREE.MeshBasicMaterial({ color: lin('#2B2F40') });
+let screenT = 0;
+function drawScreen(dt){
+  screenT += dt * (RM ? .4 : 1);
+  const x = screenCanvas.getContext('2d');
+  x.fillStyle = '#1E2233'; x.fillRect(0, 0, 64, 40);
+  const off = Math.floor(screenT * 6);
+  for (let i = 0; i < 6; i++) { const w = 12 + ((i + off) * 37 % 40); x.fillStyle = (i + off) % 4 === 0 ? '#FFD36E' : '#6EE7A8'; x.fillRect(4, 4 + i * 6, w, 3); }
+  screenTex.needsUpdate = true;
+}
+function book(){
+  const g = new THREE.Group();
+  const l = new THREE.Mesh(G.cover, M.cover), r = new THREE.Mesh(G.cover, M.cover);
+  l.position.x = -.038; l.rotation.z = .18; r.position.x = .038; r.rotation.z = -.18; g.add(l, r);
+  const pl = new THREE.Mesh(G.page, M.page), pr = new THREE.Mesh(G.page, M.page);
+  pl.rotation.x = -Math.PI / 2; pl.position.set(-.036, .005, 0); pl.rotation.y = -.18;
+  pr.rotation.x = -Math.PI / 2; pr.position.set(.036, .005, 0); pr.rotation.y = .18; g.add(pl, pr);
+  const flipPivot = new THREE.Group(); g.add(flipPivot);
+  const fp = new THREE.Mesh(G.page, M.page); fp.rotation.x = -Math.PI / 2; fp.position.x = .036; flipPivot.add(fp);
+  g.userData.flip = flipPivot;
+  return g;
+}
+function laptop(){
+  const g = new THREE.Group();
+  const crate = new THREE.Mesh(G.crate, M.crate); crate.position.y = .08; crate.castShadow = true; g.add(crate);
+  const base = new THREE.Mesh(G.lapBase, M.lap); base.position.y = .165; g.add(base);
+  const lid = new THREE.Group(); lid.position.set(0, .17, -.05); g.add(lid);
+  const back = new THREE.Mesh(G.lapBack, M.lap); back.position.set(0, .05, -.004); lid.add(back);
+  const scr = new THREE.Mesh(G.lapScreen, M_SCREEN); scr.position.set(0, .05, .0); lid.add(scr);
+  lid.rotation.x = -.25;
+  g.userData = { lid, scr };
+  return g;
+}
+function clipboard(){
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(G.board, M.board));
+  const p = new THREE.Mesh(G.paper, M.page); p.position.z = .004; g.add(p);
+  return g;
+}
+
+/* ---------- dust and sparks: one shared pool, at most 24 at once ---------- */
+const P_MAX = 24, parts = [];
+let dustTex = null;
+const sparkTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 16; const x = c.getContext('2d');
+  x.fillStyle = '#FFE38A'; x.beginPath(); for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2, r = i % 2 ? 3 : 8; x.lineTo(8 + Math.cos(a) * r, 8 + Math.sin(a) * r); } x.fill();
+  const tx = new THREE.CanvasTexture(c); tx.encoding = THREE.sRGBEncoding; return tx; })();
+function puff(x, y, z, type){
+  if (RM || parts.length >= P_MAX) return;
+  const spark = type === 'spark';
+  const mat = new THREE.SpriteMaterial({ map: spark ? sparkTex : dustTex, color: spark ? '#FFFFFF' : '#D8C6A6', transparent: true, depthWrite: false, opacity: spark ? 1 : .8 });
+  const s = new THREE.Sprite(mat); s.position.set(x, y, z); s.scale.setScalar(spark ? .05 : .09); world.add(s);
+  const a = Math.random() * Math.PI * 2;
+  parts.push({ s, life: 0, max: spark ? .45 : .8, spark, vx: Math.cos(a) * (spark ? .5 : .12), vz: Math.sin(a) * (spark ? .5 : .12), vy: spark ? .9 : .18 });
+}
+function stepParts(dt){
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i]; p.life += dt; const k = p.life / p.max;
+    if (k >= 1) { world.remove(p.s); p.s.material.dispose(); parts.splice(i, 1); continue; }
+    if (p.spark) p.vy -= 3 * dt;
+    p.s.position.x += p.vx * dt; p.s.position.y += p.vy * dt; p.s.position.z += p.vz * dt;
+    p.s.material.opacity = (p.spark ? 1 : .8) * (1 - k);
+    if (!p.spark) p.s.scale.setScalar(.09 + k * .16);
+  }
+}
+
+/* ---------- people ---------- */
+const CHAR_SCALE = .6, WALK_ANIM_SCALE = 1 / 3;
+const people = [];
+const KIND_ICON = { build: '🔨', read: '📖', bash: '⌨️', other: '💬', web: '🔭' };
+const KIND_ST = { build: 'st.edit', read: 'st.read', bash: 'st.bash', other: 'st.other', web: 'st.web' };
+function makePerson(o){
+  const key = o.key || 'characters/character-male-a';
+  const g = place(key, o.x, o.z, { s: CHAR_SCALE, keepY: true });
+  const body = g.children[0];
+  const mixer = new THREE.AnimationMixer(body);
+  const bone = n => body.getObjectByName(n);
+  const armR = bone('arm-right'), armL = bone('arm-left'), torso = bone('torso'), head = bone('head');
+  const hammer = lib['survival/tool-hammer'].scene.clone(true); hammer.scale.setScalar(1.25); hammer.position.set(-.02, -.17, .06); hammer.rotation.set(Math.PI / 2, 0, 0); armR.add(hammer);
+  const bk = book(); bk.scale.setScalar(1 / CHAR_SCALE * .95); bk.position.set(0, .12, .2); bk.rotation.x = -1.05; torso.add(bk);
+  const cb = clipboard(); cb.scale.setScalar(1 / CHAR_SCALE * 1.0); cb.position.set(.03, -.2, .08); cb.rotation.set(-.3, .5, 0); armL.add(cb);
+  const spy = new THREE.Mesh(G.tube, M.tube); spy.scale.setScalar(1 / CHAR_SCALE * 1.1); spy.position.set(-.06, .15, .24); spy.rotation.x = Math.PI / 2 - .15; head.add(spy);
+  const lap = laptop(); world.add(lap);
+  const planks = place('survival/resource-planks', o.x, o.z, { fit: .26 });
+  const rest = {};
+  for (const [n, b] of [['armR', armR], ['armL', armL], ['torso', torso], ['head', head]]) rest[n] = b.quaternion.clone();
+  const p = Object.assign({ g, key, mixer, cur: null, action: null, bones: { armR, armL, torso, head }, rest, hammer, book: bk, clip: cb, spy, lap, planks,
+    yaw: o.yaw || 0, kind: o.kind || 'build', lastTool: -99, events: [], bldTarget: null, mode: 'work', flipT: 0, hitPhase: 0, otherT: 0, wander: null,
+    tag: el('tag'), icon: el('icon'), who: o.who || '', walkPath: o.walkPath || null, walkI: 0, sit: !!o.sit, opt: o.opt || null, home: { x: o.x, z: o.z },
+    seq: o.seq || null, seqI: 0, nextAt: o.first != null ? o.first : .3, noTag: !!o.noTag }, o.extra || {});
+  g.rotation.y = p.yaw;
+  people.push(p);
+  return p;
+}
+function el(cls){ const e = document.createElement('div'); e.className = cls; e.hidden = true; ov.appendChild(e); return e; }
+function anim(p, name, once, speed){
+  const ts = (speed || 1) * (RM ? .5 : 1);
+  if (p.cur === name) { if (p.action) p.action.setEffectiveTimeScale(ts); return; }
+  const clip = THREE.AnimationClip.findByName(lib[p.key].clips, name); if (!clip) return;
+  const next = p.mixer.clipAction(clip);
+  next.reset(); next.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity); next.clampWhenFinished = !!once;
+  next.setEffectiveTimeScale(ts); next.play();
+  if (p.action) next.crossFadeFrom(p.action, .2, false);
+  p.action = next; p.cur = name;
+}
+function optOf(p){ return p.opt || opt; }
+function active(p, now){ return now - p.lastTool < HOLD; }
+function toolEvent(p, k, now){
+  p.lastTool = now; p.events.push({ at: now, kind: k });
+  while (p.events.length && now - p.events[0].at > 16) p.events.shift();
+  if (k !== 'other') p.kind = k; else p.kind = 'other';
+  if (p.bldTarget && (k === 'build')) p.bldTarget.progress = Math.min(1, p.bldTarget.progress + .07);
+  // today (compare): a person without a building walks a little on every tool event
+  if (today && view === 'city' && !p.bldTarget && !p.walkPath && !p.sit && !p.wander) {
+    const a = Math.random() * Math.PI * 2, r = .5 + Math.random() * .4;
+    p.wander = { to: { x: p.home.x + Math.cos(a) * r, z: p.home.z + Math.sin(a) * r }, back: false };
+  }
+}
+function faceYaw(p, want, k){ let d = want - p.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; p.yaw += d * k; p.g.rotation.y = p.yaw; }
+const q = new THREE.Quaternion(), ax = new THREE.Vector3();
+const eul = new THREE.Euler();
+function turn(b, x, y, z){ q.setFromEuler(eul.set(x, y || 0, z || 0)); b.quaternion.multiply(q); }
+function setRot(b, x, y, z){ b.quaternion.setFromEuler(eul.set(x, y, z)); }
+
+function stepPerson(p, now, dt){
+  const o = optOf(p);
+  const B = p.bones;
+  for (const n in p.rest) B[n].quaternion.copy(p.rest[n]);
+  let walking = false, clip = 'idle', speed = 1, once = false;
+  // walking legs (walker, today's wander)
+  let target = null;
+  if (p.walkPath) { target = p.walkPath[p.walkI]; }
+  else if (p.wander) target = p.wander.back ? p.home : p.wander.to;
+  if (target) {
+    const x = p.g.position.x, z = p.g.position.z, dx = target.x - x, dz = target.z - z, d = Math.hypot(dx, dz), sp = .32 * dt;
+    if (d <= sp) {
+      p.g.position.x = target.x; p.g.position.z = target.z;
+      if (p.walkPath) p.walkI = (p.walkI + 1) % p.walkPath.length;
+      else if (!p.wander.back) p.wander.back = true; else p.wander = null;
+    } else { p.g.position.x += dx / d * sp; p.g.position.z += dz / d * sp; faceYaw(p, Math.atan2(dx, dz), .25); walking = true; }
+  }
+  const working = !walking && !p.sit && !p.walkPath && active(p, now);
+  const todayLook = today && view === 'city';
+  const k = p.kind;
+  let showHammer = false, showBook = false, showLap = false, showClip = false, showSpy = false, showPlanks = false, lidOpen = false;
+  if (walking) { clip = 'walk'; speed = WALK_ANIM_SCALE * 3 * .55; }
+  else if (p.sit) clip = 'sit';
+  else if (todayLook) {
+    // today: a building person hammers the whole time; everyone else stands
+    if (p.bldTarget) { clip = 'interact-right'; showHammer = true; }
+  } else if (working) {
+    if (o === 'B') { clip = 'interact-right'; }
+    else if (o === 'A') {
+      if (k === 'build') { clip = 'attack-melee-right'; speed = .5; showHammer = true; showPlanks = !p.bldTarget; }
+      else if (k === 'read') { clip = 'holding-both-shoot'; showBook = true; }
+      else if (k === 'bash') { clip = 'interact-right'; speed = 1.3; showLap = true; lidOpen = true; }
+      else if (k === 'web') { clip = 'holding-right'; showSpy = true; p.spyUp = true; }
+      else { p.otherT += dt; clip = (p.otherT % 2.6) < .9 ? 'interact-left' : 'idle'; }
+    } else { // C: one action for every kind -- today's building gesture with the hammer, on the spot
+      clip = 'interact-right'; showHammer = true;
+    }
+  } else if (!p.walkPath && k === 'bash' && o === 'A') { showLap = true; lidOpen = false; } // pausing at the laptop: lid closed, stays put
+  if (p.fixed) { clip = p.fixed; speed = 1; showHammer = true; }
+  anim(p, clip, once, speed);
+  p.mixer.update(dt);
+  if (!walking && working && !todayLook && o === 'A' && k === 'web') setRot(B.armR, 0, 1.2, -.7); // the hand up to the spyglass
+  // A: small extras -- a head nod while reading, dust at each hammer hit, sparks at the laptop
+  if (!walking && working && !todayLook && o === 'A') {
+    if (k === 'read') turn(B.head, .3 + (RM ? 0 : .05 * Math.sin(now * 2.2)), 0, 0);
+    if (k === 'build' && p.action) {
+      const ph = (p.action.time / p.action.getClip().duration) % 1;
+      if (p.hitPhase < .55 && ph >= .55) {
+        const f = p.bldTarget ? .38 : .2, x = p.g.position.x + Math.sin(p.yaw) * f, z = p.g.position.z + Math.cos(p.yaw) * f;
+        puff(x, .06, z, 'dust'); puff(x, .08, z, 'dust');
+      }
+      p.hitPhase = ph;
+    }
+    if (k === 'bash' && Math.random() < dt * 1.1) puff(p.lap.position.x, .3, p.lap.position.z, 'spark');
+  }
+  // page flips, never with reduced motion
+  if (showBook && !RM) {
+    p.flipT += dt; const f = (p.flipT % 1.8) / .45;
+    p.book.userData.flip.rotation.z = f < 1 ? Math.PI * f : 0;
+  } else if (p.book) p.book.userData.flip.rotation.z = 0;
+  p.hammer.visible = showHammer; p.book.visible = showBook; p.clip.visible = showClip; p.spy.visible = showSpy;
+  p.planks.visible = showPlanks;
+  p.lap.visible = showLap;
+  if (showLap) {
+    const f = .26; p.lap.position.set(p.home.x + Math.sin(p.yaw) * f, 0, p.home.z + Math.cos(p.yaw) * f); p.lap.rotation.y = p.yaw + Math.PI;
+    p.lap.userData.lid.rotation.x += ((lidOpen ? -.25 : -1.5) - p.lap.userData.lid.rotation.x) * .15;
+    p.lap.userData.scr.material = lidOpen ? M_SCREEN : M_SCREEN_OFF;
+  }
+  if (showPlanks) { const f = .24; p.planks.position.set(p.home.x + Math.sin(p.yaw) * f, 0, p.home.z + Math.cos(p.yaw) * f); p.planks.rotation.y = p.yaw + Math.PI / 2; }
+  // back home facing after a walk
+  if (!walking && p.faceYaw != null) faceYaw(p, p.faceYaw, .15);
+  return { walking, working, todayLook };
+}
+
+/* ---------- screen overlays ---------- */
+const v3 = new THREE.Vector3();
+function toScreen(x, y, z){ v3.set(x, y, z).project(camera); return [(v3.x + 1) / 2 * W, (1 - v3.y) / 2 * H, v3.z]; }
+function pinEl(e, x, y, show){ if (!show) { e.hidden = true; return; } e.hidden = false; e.style.transform = `translate(${Math.round(x)}px,${Math.round(y)}px) translate(-50%,-50%)`; }
+function overlay(p, st, now){
+  const pos = p.g.position;
+  if (p.lbl) { const [lx, ly] = toScreen(pos.x, .02, pos.z); pinEl(p.lbl, lx, ly + 18, true); }
+  const [sx, sy] = toScreen(pos.x, .02, pos.z);
+  const [hx, hy] = toScreen(pos.x, .5, pos.z);
+  if (!p.noTag) {
+    let cls = 'tag', word;
+    if (st.walking && p.walkPath) { word = t('st.walk'); cls += ' walk'; }
+    else if (p.sit) { word = t('st.rest'); cls += ' rest'; }
+    else if (p.gov) { word = t('st.gov'); cls += ' walk'; }
+    else if (st.todayLook) word = p.bldTarget ? t('st.build') : t('st.today');
+    else if (st.working) word = p.kind === 'build' && p.bldTarget ? t('st.build') : t(KIND_ST[p.kind]);
+    else { word = t('st.pause'); cls += ' pause'; }
+    p.tag.className = cls;
+    const label = p.who ? (p.who.startsWith('opt.') ? t(p.who).split('·')[0].trim() : t(p.who)) : '';
+    p.tag.innerHTML = '';
+    p.tag.append(label); const i = document.createElement('i'); i.textContent = word; p.tag.append(i);
+    pinEl(p.tag, sx, sy + 22, true);
+  }
+  const showIcon = optOf(p) === 'B' && st.working && !st.todayLook;
+  if (showIcon) p.icon.textContent = KIND_ICON[p.kind];
+  pinEl(p.icon, hx, hy - 12 + (RM ? 0 : Math.sin(now * 3) * 2), showIcon);
+}
+
+/* ---------- scenes ---------- */
+const sites = [];
+function clearScene(){
+  while (world.children.length) world.remove(world.children[0]);
+  for (const p of people) { p.tag.remove(); p.icon.remove(); }
+  people.length = 0; sites.length = 0; parts.length = 0;
+  for (const e of [...ov.children]) e.remove();
+}
+function ground(w, d, color){
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), lam(color)); m.rotation.x = -Math.PI / 2; m.receiveShadow = true; world.add(m); return m;
+}
+function site(x, z, fit){
+  // a building that grows with every Edit/Write: scaffold, then the house rising out of the ground
+  const s = { x, z, progress: .45, g: place('suburban/building-type-a', x, z, { fit: fit || .72 }), scaf: place('survival/structure', x, z, { fit: (fit || .72) * .95, h: .3 }) };
+  s.baseY = s.g.position.y;
+  sites.push(s);
+  return s;
+}
+function stepSites(){
+  for (const s of sites) {
+    const h = s.g.children[0].scale.y;
+    s.g.scale.y = Math.max(.05, s.progress);
+    s.scaf.visible = s.progress < 1;
+    if (s.progress >= 1 && !s.doneAt) s.doneAt = performance.now();
+    if (s.doneAt && performance.now() - s.doneAt > 2500) { s.progress = .15; s.doneAt = 0; }
+  }
+}
+const OPTS = ['A', 'B', 'C'];
+function buildSide(){
+  ground(40, 40, '#CBE8A9');
+  const xs = [-1.25, 0, 1.25];
+  OPTS.forEach((o, i) => {
+    const x = xs[i];
+    const tile = new THREE.Mesh(new THREE.CircleGeometry(.55, 40), lam('#E3F2C9')); tile.rotation.x = -Math.PI / 2; tile.position.set(x, .004, 0); tile.receiveShadow = true; world.add(tile);
+    const face = kind === 'build' || kind === 'bash' ? Math.PI / 2 : kind === 'web' ? -.4 : .5;
+    const p = makePerson({ key: MODELS[i], x: kind === 'build' ? x - .22 : x, z: 0, yaw: face, kind, opt: o, who: 'opt.' + o });
+    p.faceYaw = face;
+    if (kind === 'build') { p.bldTarget = site(x + .32, -.02, .5); p.home = { x: x - .22, z: 0 }; }
+    if (o === 'A') { const e = document.createElement('div'); }
+  });
+  cam.tx = 0; cam.tz = 0; cam.ty = .18; cam.dist = 3.3; cam.el = .45; cam.az = 0;
+}
+function buildCity(){
+  ground(40, 40, '#8FC46B');
+  const land = new THREE.Mesh(new THREE.CircleGeometry(3.4, 64), lam('#CBE8A9')); land.rotation.x = -Math.PI / 2; land.position.y = .003; land.receiveShadow = true; world.add(land);
+  const lane = (x0, z0, x1, z1) => { const L = Math.hypot(x1 - x0, z1 - z0); const m = new THREE.Mesh(new THREE.PlaneGeometry(.22, L), lam('#E9D8AE')); m.rotation.x = -Math.PI / 2; m.rotation.z = -Math.atan2(x1 - x0, z1 - z0); m.position.set((x0 + x1) / 2, .006, (z0 + z1) / 2); m.receiveShadow = true; world.add(m); };
+  lane(0, -.3, -1.3, 1.3); lane(0, -.3, 1.5, 1.4); lane(-1.3, 1.3, 1.5, 1.4);
+  place('hexagon/building-village', 0, -1.05, { fit: 1.05 });
+  place('hexagon/building-cabin', -1.75, -.85, { fit: .75, ry: .3 });
+  place('forest/flag', -1.2, -.4, { h: .45, tint: '#9C86F2' });
+  for (const [x, z, r] of [[-2.4, -.3, .2], [-2.3, -1.4, .2], [-1.3, -1.5, 1.4]]) place('roads/construction-fence', x, z, { h: .1, ry: r });
+  place('kaykit-city/bench', -.45, 1.75, { fit: .38 });
+  for (const [x, z, k] of [[-2.9, 1.0, 'nature/tree_default'], [2.7, -1.4, 'nature/tree_oak'], [2.9, .9, 'nature/tree_default'], [.9, -2.4, 'nature/tree_oak'], [-1.0, 2.6, 'nature/plant_bush']]) place(k, x, z, { fit: k === 'nature/plant_bush' ? .3 : .45 });
+  const s = site(1.7, -.45, .62);
+  const tag = (who) => ({ who });
+  const w1 = makePerson(Object.assign({ key: MODELS[0], x: 1.2, z: -.45, yaw: Math.PI / 2, kind: 'build',
+    seq: ['build', 'build', 'build', 'gap', 'build', 'read', 'build', 'build', 'gap', 'bash', 'build'] }, tag('who.w1')));
+  w1.bldTarget = s; w1.faceYaw = Math.PI / 2;
+  const tm = makePerson(Object.assign({ key: MODELS[4], x: -1.15, z: -.05, yaw: .9, kind: 'read',
+    seq: ['read', 'read', 'other', 'read', 'gap', 'other', 'read', 'bash', 'gap', 'read'] }, tag('who.tm')));
+  tm.faceYaw = .9;
+  const w2 = makePerson(Object.assign({ key: MODELS[1], x: -2.0, z: .55, yaw: Math.PI / 2 + .5, kind: 'bash',
+    seq: ['bash', 'bash', 'bash', 'gap', 'bash', 'read', 'bash', 'bash', 'gap', 'gap'] }, tag('who.w2')));
+  w2.faceYaw = Math.PI / 2 + .5;
+  makePerson(Object.assign({ key: MODELS[2], x: 1.5, z: 1.4, kind: 'build', walkPath: [{ x: 1.5, z: 1.4 }, { x: -.2, z: -.1 }, { x: -.22, z: -.05 }, { x: 1.5, z: 1.45 }] }, tag('who.walk')));
+  makePerson(Object.assign({ key: MODELS[3], x: -.45, z: 1.64, yaw: 0, sit: true }, tag('who.rest')));
+  const gv = makePerson(Object.assign({ key: MODELS[5], x: .55, z: -.3, yaw: .3, kind: 'other' }, tag('who.gov')));
+  gv.gov = true; gv.faceYaw = .3;
+  cam.tx = 0; cam.tz = .1; cam.ty = 0; cam.dist = 5.4; cam.el = .72; cam.az = .12;
+}
+function buildMany(){
+  ground(40, 40, '#CBE8A9');
+  const K = ['build', 'read', 'bash', 'other'];
+  let i = 0;
+  for (let r = 0; r < 6; r++) for (let c = 0; c < 6; c++) {
+    const x = (c - 2.5) * .95, z = (r - 2.5) * .95, k = K[(r * 6 + c) % 4];
+    const yaw = k === 'build' || k === 'bash' ? Math.PI / 2 : .5;
+    const p = makePerson({ key: MODELS[i++ % 6], x, z, yaw, kind: k, noTag: true, first: Math.random() * 2 });
+    p.faceYaw = yaw;
+  }
+  cam.tx = 0; cam.tz = 0; cam.ty = 0; cam.dist = 9.5; cam.el = .7; cam.az = .2;
+}
+/* ?view=clips (not in the UI): every clip of the character model on its own person, to pick poses */
+function buildClips(){
+  ground(30, 30, '#CBE8A9');
+  const only = (Q.get('only') || '').split(',').filter(Boolean);
+  const names = only.length ? only : lib[MODELS[0]].clips.map(c => c.name).filter(n => !n.startsWith('wheelchair') && n !== 'static' && n !== 'die' && n !== 'drive');
+  names.forEach((n, i) => {
+    const x = (i % 6 - (Math.min(6, names.length) - 1) / 2) * .9, z = Math.floor(i / 6) * 1.1;
+    const p = makePerson({ key: MODELS[0], x, z, yaw: +Q.get('pyaw') || .6, sit: true, noTag: true });
+    p.fixed = n;
+    const e = el('tag'); e.textContent = n; p.lbl = e;
+  });
+  cam.tx = 0; cam.tz = .1; cam.ty = .1; cam.dist = 6.2; cam.el = .5; cam.az = 0;
+}
+/* ?view=kinds (not in the UI): one option (opt=) doing every kind of work in a row, for checking props */
+function buildKinds(){
+  ground(30, 30, '#CBE8A9');
+  ['build', 'read', 'bash', 'other', 'web'].forEach((k, i) => {
+    const yaw = k === 'build' || k === 'bash' ? Math.PI / 2 : .5;
+    const p = makePerson({ key: MODELS[i % 6], x: (i - 2) * .8, z: 0, yaw, kind: k, who: 'kind.' + k });
+    p.faceYaw = yaw; p.fixedKind = k;
+  });
+  cam.tx = 0; cam.tz = 0; cam.ty = .2; cam.dist = 3.6; cam.el = .42; cam.az = 0;
+}
+function rebuild(){
+  clearScene();
+  if (view === 'kinds') buildKinds();
+  else if (view === 'clips') buildClips();
+  else if (view === 'side') buildSide(); else if (view === 'city') buildCity(); else buildMany();
+  simStart = clock;
+  for (const p of people) if (!p.walkPath && !p.sit && !p.gov) toolEvent(p, p.kind, clock);
+  renderUI();
+}
+
+/* ---------- tool events: the same shape the hook sends (one kind per event) ---------- */
+function feedStep(now){
+  for (const p of people) {
+    if (p.walkPath || p.sit) continue;
+    if (now < p.nextAt) continue;
+    if (view === 'side' || view === 'kinds') {
+      if (!feeding) { p.nextAt = now + .3; continue; }
+      toolEvent(p, p.fixedKind || kind, now); p.nextAt = now + .9 + Math.random() * 1.6;
+    } else if (view === 'city') {
+      if (p.gov) { p.nextAt = now + 99; continue; }
+      if (!feeding) { p.nextAt = now + .3; continue; }
+      const s = p.seq[p.seqI++ % p.seq.length];
+      if (s === 'gap') { p.nextAt = now + HOLD + 2.5; continue; }
+      toolEvent(p, s, now); p.nextAt = now + .8 + Math.random() * 1.5;
+    } else {
+      if (!feeding) { p.nextAt = now + .3; continue; }
+      if (Math.random() < .15) { p.nextAt = now + HOLD + 1 + Math.random() * 3; continue; }
+      toolEvent(p, p.kind, now); p.nextAt = now + .8 + Math.random() * 2;
+    }
+  }
+}
+
+/* ---------- the strip: last 15 s of the first person's tool events ---------- */
+const strip = $('#strip'), sctx = strip.getContext('2d');
+function drawStrip(now){
+  const w = strip.clientWidth, h = strip.clientHeight, dpr = Math.min(2, devicePixelRatio || 1);
+  if (strip.width !== Math.round(w * dpr)) { strip.width = Math.round(w * dpr); strip.height = Math.round(h * dpr); }
+  sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  sctx.clearRect(0, 0, w, h);
+  const p = people.find(x => !x.walkPath && !x.sit && !x.gov);
+  const span = 15, X = at => w - (now - at) / span * (w - 8) - 4;
+  if (p) {
+    // working bands
+    const ev = p.events.slice().sort((a, b) => a.at - b.at);
+    for (let i = 0; i < ev.length; i++) {
+      const a = ev[i].at, b = Math.min(now, i + 1 < ev.length ? Math.min(ev[i + 1].at, a + HOLD) : a + HOLD);
+      sctx.fillStyle = '#E3ECFF'; sctx.fillRect(X(a), 6, Math.max(0, X(b) - X(a)), h - 20);
+    }
+    for (const e of ev) { sctx.fillStyle = '#2F54C8'; sctx.fillRect(X(e.at) - 1, 4, 2, h - 16); }
+  }
+  sctx.fillStyle = '#585D82'; sctx.font = '600 10.5px ui-rounded, system-ui, sans-serif'; sctx.fillText(t('strip.label'), 6, h - 3);
+}
+
+/* ---------- camera: drag to orbit, wheel to zoom ---------- */
+const cam = { tx: 0, ty: 0, tz: 0, dist: 5, el: .4, az: 0 };
+let W = 1, H = 1, drag = null;
+function resize(){ const r = stage.getBoundingClientRect(); W = Math.max(1, r.width); H = Math.max(1, r.height); renderer.setSize(W, H, false); camera.aspect = W / H; camera.updateProjectionMatrix(); }
+function updateCamera(){
+  const h = Math.cos(cam.el) * cam.dist;
+  camera.position.set(cam.tx + Math.sin(cam.az) * h, cam.ty + Math.sin(cam.el) * cam.dist, cam.tz + Math.cos(cam.az) * h);
+  camera.lookAt(cam.tx, cam.ty, cam.tz);
+}
+canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', e => { if (!drag) return; cam.az -= (e.clientX - drag.x) * .006; cam.el = Math.max(.15, Math.min(1.3, cam.el + (e.clientY - drag.y) * .004)); drag = { x: e.clientX, y: e.clientY }; });
+canvas.addEventListener('pointerup', () => { drag = null; });
+canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = Math.max(1.6, Math.min(20, cam.dist * (e.deltaY > 0 ? 1.1 : .9))); }, { passive: false });
+
+/* ---------- UI ---------- */
+function seg(host, items, cur, on){
+  host.innerHTML = '';
+  for (const [id, label] of items) {
+    const b = document.createElement('button'); b.className = 'btn small'; b.type = 'button'; b.textContent = label;
+    b.setAttribute('aria-pressed', String(id === cur)); b.addEventListener('click', () => on(id)); host.appendChild(b);
+  }
+}
+function renderUI(){
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  for (const e of document.querySelectorAll('[data-t]')) e.textContent = t(e.dataset.t);
+  seg($('#views'), [['side', t('view.side')], ['city', t('view.city')], ['many', t('view.many')]], view, v => { view = v; syncURL(); rebuild(); });
+  seg($('#lang'), [['zh', '中文'], ['en', 'EN']], lang, v => { lang = v; syncURL(); renderUI(); });
+  seg($('#kinds'), ['build', 'read', 'bash', 'other', 'web'].map(k => [k, t('kind.' + k)]), kind, v => { kind = v; syncURL(); rebuild(); });
+  seg($('#todaySeg'), [['0', t('cmp.new')], ['1', t('cmp.today')]], today ? '1' : '0', v => { today = v === '1'; for (const p of people) p.wander = null; syncURL(); renderUI(); });
+  const fb = [['auto', t('feed.auto')], ['stop', t('feed.stop')], ['one', t('feed.one')]];
+  seg($('#feed'), fb, feeding ? 'auto' : 'stop', v => {
+    if (v === 'one') { for (const p of people) if (!p.walkPath && !p.sit && !p.gov) toolEvent(p, view === 'side' ? kind : p.kind, clock); return; }
+    feeding = v === 'auto'; syncURL(); renderUI();
+  });
+  seg($('#hold'), [[3, '3 s'], [6, '6 s'], [10, '10 s']], HOLD, v => { HOLD = v; syncURL(); renderUI(); });
+  $('#kindRow').hidden = view !== 'side';
+  $('#cityRow').hidden = view !== 'city';
+  $('#note').textContent = t('note.' + view) + (view === 'side' && kind === 'web' ? '  ' + t('web.note') : '');
+  const oh = $('#opts'); oh.innerHTML = '';
+  for (const o of OPTS) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'opt'; b.setAttribute('aria-pressed', String(o === opt || view === 'side'));
+    const bb = document.createElement('b'); bb.textContent = t('opt.' + o);
+    if (o === 'A') { const r = document.createElement('span'); r.className = 'rec'; r.style.display = 'inline'; r.textContent = t('rec'); bb.appendChild(r); }
+    const d = document.createElement('span'); d.textContent = t('opt.' + o + '.d');
+    b.append(bb, d);
+    b.addEventListener('click', () => { opt = o; if (view === 'side') view = 'city'; syncURL(); rebuild(); });
+    oh.appendChild(b);
+  }
+  const h = TX[lang]['cost.h'], rows = TX[lang]['cost.rows'];
+  $('#cost').innerHTML = '<table><tr>' + h.map(x => '<th>' + x + '</th>').join('') + '</tr>' + rows.map(r => '<tr>' + r.map((c, i) => (i ? '<td>' : '<th>') + c + (i ? '</td>' : '</th>')).join('') + '</tr>').join('') + '</table>';
+  $('#asks').innerHTML = TX[lang].asks.map(a => '<li>' + a + '</li>').join('');
+}
+function syncURL(){
+  const u = new URLSearchParams({ view, kind, opt, lang, hold: HOLD });
+  if (today) u.set('today', '1'); if (!feeding) u.set('feed', 'stop'); if (RM) u.set('rm', '1');
+  history.replaceState(null, '', '?' + u.toString());
+}
+$('#rm').addEventListener('change', e => { RM = e.target.checked; syncURL(); });
+
+/* ---------- loop ---------- */
+let clock = 0, simStart = 0, last = performance.now(), fpsN = 0, fpsT = 0, fpsShow = 0;
+function tick(dt){
+  clock += dt;
+  feedStep(clock);
+  drawScreen(dt);
+  for (const p of people) { const st = stepPerson(p, clock, dt); overlay(p, st, clock); }
+  stepSites(); stepParts(dt);
+}
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt = Math.min(.1, (now - last) / 1000); last = now;
+  fpsN++; fpsT += dt; if (fpsT >= 1) { fpsShow = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; }
+  tick(dt);
+  updateCamera();
+  renderer.render(scene, camera);
+  drawStrip(clock);
+  $('#fps').textContent = t('fps', { fps: fpsShow, n: people.length });
+}
+resize(); new ResizeObserver(resize).observe(stage);
+Promise.all([loadAll(), new Promise(res => new THREE.TextureLoader().load(A + 'particles/smoke_01.png', tx => { tx.encoding = THREE.sRGBEncoding; dustTex = tx; res(); }, undefined, () => res()))]).then(() => {
+  rebuild();
+  // ?adv=<seconds>: run that much of the scene before the first frame (still screenshots)
+  const adv = Math.min(120, +Q.get('adv') || 0);
+  for (let s = 0; s < adv; s += 1 / 30) tick(1 / 30);
+  if (Q.get('dist')) cam.dist = +Q.get('dist');
+  if (Q.get('focus')) cam.tx = { A: -1.25, B: 0, C: 1.25 }[Q.get('focus')] || 0;
+  if (Q.get('az')) cam.az = +Q.get('az');
+  if (Q.get('tx')) cam.tx = +Q.get('tx');
+  if (Q.get('debug')) for (const p of people) document.body.insertAdjacentHTML('beforeend', '<pre class="dbg">' + ['DBG', p.who, p.opt, p.kind, p.cur, 'ham', p.hammer.visible, 'book', p.book.visible, 'spy', p.spy.visible, 'clip', p.clip.visible, 'lap', p.lap.visible, 'pl', p.planks.visible, 'cbpos', p.clip.getWorldPosition(new THREE.Vector3()).toArray().map(v => v.toFixed(2)).join(','), 'hand', p.bones.armL.getWorldPosition(new THREE.Vector3()).toArray().map(v => v.toFixed(2)).join(','), 'par', p.clip.parent && p.clip.parent.name].join(' ') + '</pre>');
+  last = performance.now(); requestAnimationFrame(frame);
+});
+})();
+</script>
+</body>
+</html>
