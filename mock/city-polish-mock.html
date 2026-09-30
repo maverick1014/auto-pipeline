@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City · city-polish mock</title>
+<link rel="icon" href="data:,">
+<style>
+/* city-polish mock (owner screenshots of the live city): P2 message panel, P3 short names, P4 rail groups.
+   The rail and panel CSS below is the real page's (bin/agent-city.html), with the changes marked NEW.
+   ".stage.today" shows today's look, ".stage.new" the proposal -- the mock bar switches between them. */
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --sky:#CFE6FF; --berry:#FF7593; --berry-deep:#D9506E; --butter:#FFD36E; --focus:#4D7CFE;
+  --build-bg:#E1ECFF; --build-ink:#3160B5; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
+  --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488;
+  --gov-bg:#FFF0C7; --gov-ink:#8A6000; --sea:#BFDDF6; --land:#CDE9B4; --land-edge:#9FCB84;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+  --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
+  --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+  --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
+  --gov-bg:#43381A; --gov-ink:#FFDD8A; --sea:#1A2A4A; --land:#2F4A34; --land-edge:#476B4C;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.app{max-width:1500px;margin-inline:auto;padding-inline:16px;padding-block:12px 22px;display:flex;flex-direction:column;gap:10px}
+.app.phone{max-width:400px;border:2px dashed var(--ink-3);border-radius:28px;padding-inline:8px}
+
+/* mock-only controls */
+.mockbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 12px;border:1.5px dashed var(--ink-3);border-radius:14px;font-size:12.5px;color:var(--ink-2)}
+.mockbar b{font:700 12px/1 var(--mono);color:var(--ink-3);letter-spacing:.06em}
+.seg{display:inline-flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{all:unset;cursor:pointer;padding:5px 10px;font:600 12px/1.2 var(--round);color:var(--ink-2);background:var(--panel)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.seg button:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.sign{display:inline-flex;align-items:center;gap:10px;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:5px 16px 5px 12px;box-shadow:0 3px 0 var(--ink)}
+.sign-name{font:700 22px/1 var(--display)}
+
+/* the city stand-in: sea, three islands, little people -- only so the panels sit on something */
+.stage{position:relative;overflow:hidden;height:calc(100dvh - 300px);min-height:520px;background:var(--sea);--rail-w:212px;--msg-w:330px}
+.stage.new{--msg-w:380px} /* NEW P2: a bit wider */
+.app.phone .stage{height:680px;min-height:0}
+.isle{position:absolute;background:var(--land);border:3px solid var(--land-edge);border-radius:46% 54% 50% 50% / 55% 45% 55% 45%}
+.lbl{position:absolute;transform:translate(-50%,-50%);background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:2px 10px;font:600 12px/1.5 var(--display);box-shadow:0 2px 0 rgba(42,43,69,.15);white-space:nowrap;pointer-events:none}
+.hall{position:absolute;width:34px;height:30px;transform:translate(-50%,-70%);background:#F6E2B8;border:2px solid #9C7A3C;border-radius:4px 4px 2px 2px}
+.hall::before{content:"";position:absolute;left:-6px;right:-6px;top:-12px;height:12px;background:#C9544B;clip-path:polygon(50% 0,100% 100%,0 100%)}
+.pp{all:unset;cursor:pointer;position:absolute;width:14px;height:22px;transform:translate(-50%,-100%)}
+.pp::before{content:"";position:absolute;left:3px;top:0;width:8px;height:8px;border-radius:50%;background:#F2C9A0;border:1.5px solid #6B4B33}
+.pp::after{content:"";position:absolute;left:1px;top:9px;width:12px;height:12px;border-radius:5px 5px 2px 2px;background:var(--c)}
+.pp:focus-visible{outline:2px solid var(--focus);outline-offset:3px;border-radius:4px}
+.pp.sel{filter:drop-shadow(0 0 0 #FF7593) drop-shadow(0 0 3px #FF7593)}
+.tagl{position:absolute;transform:translate(-50%,0);background:var(--c);color:#fff;border-radius:999px;padding:3px 10px;font:600 11.5px/1.3 var(--mono);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.2);cursor:pointer;z-index:1}
+
+.x,.fold{all:unset;cursor:pointer;flex:none;width:26px;height:26px;display:grid;place-items:center;border-radius:8px;color:var(--ink-2);font:700 14px/1 var(--round)}
+.x:hover,.fold:hover{background:var(--panel-2);color:var(--ink)}
+.x:focus-visible,.fold:focus-visible{outline:2px solid var(--focus)}
+.you{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--berry);color:#fff;font:700 11px/1 var(--round)}
+.btn{font:600 13px/1 var(--round);border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:12px;padding:0 12px;min-height:36px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--ink-3)}
+.btn:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+
+/* ---- the rail (real page) ---- */
+.rc{width:10px;height:10px;border-radius:50%;background:var(--rc);flex:none;display:inline-block}
+.rail{position:absolute;left:12px;top:12px;z-index:4;width:var(--rail-w);max-height:calc(100% - 24px);display:flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:16px;box-shadow:0 4px 0 rgba(42,43,69,.18);overflow:hidden}
+.rail-head{display:flex;align-items:center;gap:6px;padding:6px 6px 6px 12px;border-bottom:1.5px solid var(--line);font-weight:700;font-size:13px}
+.rail-head .n{font:600 12px/1 var(--mono);color:var(--ink-3)}
+.rail-head .fold{margin-left:auto}
+.rail-list{overflow:auto;padding:4px 4px 8px}
+.grp-h{all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:6px;padding:6px 6px 3px;font:700 11.5px/1.2 var(--mono);color:var(--ink-2)}
+.grp-h:focus-visible{outline:2px solid var(--focus);border-radius:6px}
+.grp-h .n{margin-left:auto;color:var(--ink-3);font-weight:600}
+.rrows{list-style:none;margin:0;padding:0}
+.rrow{all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:8px;font-size:12.5px;line-height:1.35}
+.today .rrow{border-left:3px solid var(--rc)} /* today: every row its own curved coloured edge */
+.rrow.sub{padding-left:16px}
+.rrow:hover{background:var(--panel-2)}
+.rrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.rrow[aria-current="true"]{background:var(--ink);color:var(--paper)}
+.rrow.resting{opacity:.7}
+.sdot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--ink-3)}
+.rrow b{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{flex:none;display:inline-block;font:600 10.5px/1.6 var(--round);border-radius:999px;padding:0 6px;white-space:nowrap}
+.chip.you{background:var(--ask-bg);color:var(--ask-ink)}
+.chip.ask{background:var(--gov-bg);color:var(--gov-ink)}
+.chip.build{background:var(--build-bg);color:var(--build-ink)}
+.chip.walk{background:var(--walk-bg);color:var(--walk-ink)}
+.chip.rest{background:var(--rest-bg);color:var(--rest-ink)}
+.chip.gov{background:var(--gov-bg);color:var(--gov-ink)}
+.rest-t{all:unset;cursor:pointer;display:block;margin:1px 0 2px 8px;padding:1px 6px;border-radius:6px;font:600 11.5px/1.5 var(--round);color:var(--rest-ink)}
+.rest-t:focus-visible{outline:2px solid var(--focus)}
+/* NEW P4: one straight colour bar per repo group, header and rows together; the row dot = its state colour */
+.new .rail-grp{border-left:4px solid var(--rc);margin:4px 0 6px;padding-left:2px}
+.new .rail-grp .grp-h{padding-top:3px}
+.new .sdot.st-you{background:var(--berry)}
+.new .sdot.st-ask,.new .sdot.st-gov{background:#E0A526}
+.new .sdot.st-build{background:#4D7CFE}
+.new .sdot.st-walk{background:var(--walk-ink)}
+.new .sdot.st-rest{background:#2FB57A}
+
+.tab{all:unset;cursor:pointer;position:absolute;z-index:4;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0;width:30px;background:var(--panel);border:2px solid var(--ink);box-shadow:0 3px 0 rgba(42,43,69,.18);font:700 12px/1.1 var(--round);color:var(--ink)}
+.tab:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.tab .v{writing-mode:vertical-rl;white-space:nowrap;max-height:180px;overflow:hidden;text-overflow:ellipsis}
+.rail-tab{left:0;top:12px;border-left:0;border-radius:0 12px 12px 0}
+.win-tab{right:0;top:12px;border-right:0;border-radius:12px 0 0 12px}
+
+/* ---- the message panel (real page) ---- */
+.win{position:absolute;right:12px;top:12px;bottom:12px;z-index:5;width:var(--msg-w);overflow:hidden;background:var(--panel);color:var(--ink);border:2px solid var(--ink);border-radius:20px;box-shadow:0 6px 0 rgba(42,43,69,.22);padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px}
+/* NEW P2: as tall as what it holds, at most the stage (minus the 12 px edges) */
+.new .win{bottom:auto;max-height:calc(100% - 24px)}
+.win-head{display:flex;align-items:center;gap:10px}
+.win-head .fold{margin-left:auto}
+.win-title{flex:1;min-width:0;font-weight:700;font-size:17px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.detail{display:flex;flex-direction:column;gap:11px;flex:1;min-height:0;overflow:auto}
+.new .detail{overflow:hidden}
+.p-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding-bottom:10px;border-bottom:1.5px solid var(--line)}
+.rdot{width:18px;height:18px;border-radius:50%;border:4px solid var(--c);background:var(--panel);flex:none;justify-self:center}
+.rdot.gov{--c:#FFD36E}
+.p-main{min-width:0}
+.p-name{font-weight:700;font-size:15px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.p-facts{font:12px/1.4 var(--mono);color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pill{font:600 12px/1 var(--round);padding:6px 10px;border-radius:999px;white-space:nowrap}
+.pill.build{background:var(--build-bg);color:var(--build-ink)} .pill.ask{background:var(--ask-bg);color:var(--ask-ink)}
+.pill.rest{background:var(--rest-bg);color:var(--rest-ink)} .pill.walk{background:var(--walk-bg);color:var(--walk-ink)}
+.pill.gov{background:var(--gov-bg);color:var(--gov-ink)} .pill.you{background:#FF4F72;color:#fff}
+.track{grid-column:1 / -1;height:6px;border-radius:999px;background:var(--panel-2);border:1.5px solid var(--line);overflow:hidden}
+.track i{display:block;height:100%;border-radius:999px}
+.hint{margin:0;font-size:12.5px;color:var(--ink-3)}
+.hist-h{font-weight:600}
+.chat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto}
+/* NEW P2: the history takes whatever height is left and scrolls inside; no 220 px cap */
+.new .chat{max-height:none;flex:1 1 auto;min-height:0}
+.chat .msg{display:flex;flex-direction:column;gap:2px;max-width:88%;padding:7px 10px;border-radius:14px;background:var(--panel-2);font-size:13px;line-height:1.4;align-self:flex-start}
+.chat .msg[data-kind="owner"]{align-self:flex-end;background:var(--gov-bg);color:var(--gov-ink)}
+.chat .msg b{font:600 11px/1.3 var(--mono);color:var(--ink-3)}
+.chat .msg[data-kind="owner"] b{color:var(--gov-ink)}
+.chat .act{display:flex;gap:8px;align-items:baseline;font-size:12px;color:var(--ink-3);padding:0 4px}
+.chat .act time{font:11px/1.4 var(--mono);flex:none}
+.say{display:flex;flex-direction:column;gap:8px}
+.say textarea{width:100%;min-height:64px;resize:vertical;font:14px/1.4 var(--round);color:var(--ink);background:var(--panel-2);border:1.5px solid var(--line);border-radius:12px;padding:9px 10px}
+.say .btn{align-self:flex-end}
+/* NEW P2: the box and 发送 on one line */
+.new .say{flex-direction:row;align-items:flex-end;flex:none}
+.new .say textarea{flex:1;min-width:0;width:auto;min-height:38px;height:38px;max-height:120px;resize:none;padding:8px 10px}
+.new .say .btn{align-self:auto;flex:none;min-height:38px}
+
+.follow{position:absolute;top:12px;z-index:4;transform:translateX(-50%);display:inline-flex;align-items:center;gap:7px;padding:3px 4px 3px 10px;border-radius:999px;background:var(--ink);color:var(--paper);font:600 12px/1.2 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.25);white-space:nowrap;max-width:60%}
+.follow span{overflow:hidden;text-overflow:ellipsis}
+.follow button{all:unset;cursor:pointer;padding:2px 8px;border-radius:999px;background:var(--paper);color:var(--ink);font:600 11.5px/1.3 var(--round)}
+
+/* phone (the real page's ≤ 960 px rules, here under .app.phone) */
+.app.phone .rail{left:0;top:0;bottom:0;max-height:none;width:min(250px,78%);border-left:0;border-radius:0 16px 16px 0}
+.app.phone .win{left:8px;right:8px;top:auto;bottom:8px;width:auto;height:44%}
+.app.phone .new .win{height:auto;max-height:44%} /* NEW P2: fits its content on a phone too, at most 44% */
+.app.phone .win-tab{right:auto;left:50%;top:auto;bottom:0;transform:translateX(-50%);width:auto;flex-direction:row;padding:6px 14px;border:2px solid var(--ink);border-bottom:0;border-radius:12px 12px 0 0}
+.app.phone .win-tab .v{writing-mode:horizontal-tb;max-width:220px}
+
+.note{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.card{background:var(--panel);border:1.5px solid var(--line);border-radius:16px;padding:12px 14px}
+.card h3{margin:0 0 6px;font-size:14px}
+.card ol,.card ul{margin:0;padding-left:20px}
+.card li{margin:2px 0}
+.card table{border-collapse:collapse;font-size:12.5px;width:100%}
+.card th,.card td{border:1px solid var(--line);padding:3px 6px;text-align:left;vertical-align:top}
+.card th{background:var(--panel-2)}
+.card code{font:12px/1.4 var(--mono)}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="mockbar" role="group" aria-label="mock controls">
+    <b>MOCK city-polish</b>
+    <span>看</span>
+    <span class="seg" id="seg-look"><button type="button" data-v="new" aria-pressed="true">新（提议）</button><button type="button" data-v="today" aria-pressed="false">现在（今天的样子）</button></span>
+    <span>宽度</span>
+    <span class="seg" id="seg-width"><button type="button" data-v="pc" aria-pressed="true">电脑</button><button type="button" data-v="phone" aria-pressed="false">手机</button></span>
+    <span>主题</span>
+    <span class="seg" id="seg-theme"><button type="button" data-v="light" aria-pressed="true">浅色</button><button type="button" data-v="dark" aria-pressed="false">深色</button></span>
+    <button type="button" class="btn" id="m-more">面板里加 6 条历史</button>
+    <button type="button" class="btn" id="m-reset">重置</button>
+  </div>
+
+  <header class="bar"><div class="sign"><span class="sign-name">Agent City</span></div></header>
+
+  <div class="stage new" id="stage">
+    <div id="world"></div>
+
+    <aside class="rail" id="rail" aria-label="在线">
+      <div class="rail-head"><span>在线</span><span class="n" id="rail-n"></span><span class="you" id="rail-you" hidden></span><button type="button" class="fold" id="rail-fold" aria-label="折起名单">«</button></div>
+      <div class="rail-list" id="rail-list"></div>
+    </aside>
+    <button type="button" class="tab rail-tab" id="rail-tab" hidden><span>›</span><span class="v" id="rail-tab-t"></span></button>
+
+    <div class="follow" id="follow" role="status" hidden><span id="follow-t"></span><button type="button" id="follow-stop">停止</button></div>
+
+    <div class="win" id="win" role="dialog" aria-labelledby="win-title" hidden>
+      <div class="win-head"><div class="win-title" id="win-title"></div><button type="button" class="fold" id="win-fold" aria-label="折起消息">»</button><button type="button" class="x" id="win-x" aria-label="关闭">✕</button></div>
+      <div class="detail" id="detail"></div>
+    </div>
+    <button type="button" class="tab win-tab" id="win-tab" hidden><span>‹</span><span class="v" id="win-tab-t"></span></button>
+  </div>
+
+  <section class="note">
+    <div class="card"><h3>怎么点</h3><ol>
+      <li>上面切「新 / 现在」，对比同一个城市今天和提议的样子。</li>
+      <li>点左边名单的一行（或城里的小人、头顶名字）：右边打开它的消息面板。</li>
+      <li>面板现在跟内容一样高；点「面板里加 6 条历史」几次：面板长高，到舞台底部就停，历史在里面滚动。</li>
+      <li>在输入框写字，按「发送」或回车：消息加进历史。输入框和「发送」在同一行。</li>
+      <li>点仓库标题：收起 / 展开那一组。点「休息 1」：展开休息的人。</li>
+      <li>切「手机」：面板在下面，也跟内容一样高，最多占一半左右。</li>
+    </ol></div>
+    <div class="card"><h3>改了什么</h3>
+      <table>
+        <tr><th></th><th>现在</th><th>新</th></tr>
+        <tr><td>消息面板</td><td>固定满高，下面空一大块；宽 330；输入框和发送上下两行</td><td>跟内容一样高，最多到舞台高；历史在里面滚；宽 380；输入框 + 发送一行</td></tr>
+        <tr><td>名字</td><td>v4-pospro Helper / session · v4-plus / auto-pipeline Manager</td><td>组里只写短名：Helper / session / Manager；仓库名只在组标题和面板副标题出现一次</td></tr>
+        <tr><td>名单颜色</td><td>每一行一条弯的颜色边「(」，组标题在外面</td><td>每个仓库一条直的颜色竖条，标题和行连在一起</td></tr>
+        <tr><td>行前小圆点</td><td>永远灰色</td><td>跟状态一个颜色：等你 红，找总督 黄，干活 蓝，走路 灰，休息 绿</td></tr>
+        <tr><td>组的人数</td><td>只数在干活的人（只有总督 = 0）</td><td>组里所有人，包括总督和休息的人</td></tr>
+      </table>
+    </div>
+    <div class="card"><h3>我先按默认做（有意见就说）</h3><ul>
+      <li>组的人数也算休息的人（「组里所有人」）。</li>
+      <li>名单最上面的「在线 N」总数不变：还是只数在干活的人。</li>
+      <li>「动态」记录（各个仓库混在一起）还写全名；名单、头顶名字、面板标题、「跟随 …」条都写短名。</li>
+      <li>同一个仓库里两个人短名一样时，后面加 #和 id 后 4 位（今天的做法），不同仓库之间不加。</li>
+      <li>走路朝向（P1）不需要原型：走路时一直面向前进方向，转身是平滑的；总督散步时也会转身（今天总督散步不转身，会横着、倒着走）。</li>
+    </ul></div>
+  </section>
+</div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+const TERRS = [
+  { id:'ap', name:'auto-pipeline', color:'#FF6F8B', x:.50, y:.30, w:.26, h:.30 },
+  { id:'pos', name:'v4-pospro', color:'#4D7CFE', x:.36, y:.72, w:.24, h:.30 },
+  { id:'plus', name:'v4-plus', color:'#2FB57A', x:.68, y:.70, w:.22, h:.28 },
+];
+// label/task as the server sends them today (session-names: a session's label is its real title when known)
+const PEOPLE = [
+  { id:'gov:ap', terr:'ap', gov:true, st:['gov','坐镇市政厅'], x:.50, y:.26 },
+  { id:'s:c1', terr:'ap', label:'city-polish Task Manager', task:'auto-pipeline', role:'task-manager', st:['build','改代码'], x:.44, y:.34, color:'#9B6BFF', pct:40 },
+  { id:'a:w1', terr:'ap', label:'city-polish Worker 1: rail', task:'city-polish Worker 1: rail', role:'worker', lead:'s:c1', st:['build','跑命令'], x:.47, y:.38, color:'#FF9F43', pct:65 },
+  { id:'s:c2', terr:'ap', label:'city-roles Task Manager', task:'auto-pipeline', role:'task-manager', st:['walk','去工地'], x:.56, y:.35, color:'#00B8D9', pct:20 },
+  { id:'s:h1', terr:'pos', label:'v4-pospro Helper', task:'v4-pospro', role:'task-manager', st:['you','等你回话'], x:.32, y:.70, color:'#FF6F8B', pct:55 },
+  { id:'s:p1', terr:'pos', label:'session', task:'v4-pospro', role:'task-manager', st:['build','施工中'], x:.39, y:.75, color:'#6FD4A8', pct:30 },
+  { id:'a:w2', terr:'pos', label:'worker', task:'小票打印', role:'worker', lead:'s:p1', st:['ask','在问总督'], x:.41, y:.68, color:'#FFB547', pct:80 },
+  { id:'s:r1', terr:'pos', label:'fast-lane-deputy', task:'按钮颜色', role:'fast-lane-deputy', st:['rest','休息中'], rest:true, x:.30, y:.78, color:'#8FB0FF', pct:100 },
+  { id:'gov:plus', terr:'plus', gov:true, st:['gov','空闲'], x:.68, y:.66 },
+  { id:'s:q1a3f2', terr:'plus', label:'session', task:'v4-plus', role:'task-manager', st:['build','看文件'], x:.64, y:.73, color:'#E07BFF', pct:25 },
+  { id:'s:q29c1d', terr:'plus', label:'session', task:'v4-plus', role:'task-manager', st:['walk','回工地'], x:.72, y:.74, color:'#FFCF4D', pct:50 },
+];
+const terr = id => TERRS.find(t => t.id === id);
+const person = id => PEOPLE.find(p => p.id === id);
+let look = 'new', sel = 's:h1', folded = new Set(), restOpen = new Set(), railFolded = false, winFolded = false, extra = 0;
+const typed = new Map();
+
+/* today: nameOf() = label, or "label · task" when they differ, #id when the same text shows twice (whole city) */
+function baseToday(p){ return p.task && p.task !== p.label ? p.label + ' · ' + p.task : p.label; }
+function nameToday(p){
+  const b = baseToday(p);
+  return PEOPLE.some(o => o !== p && !o.gov && baseToday(o) === b) ? b + ' #' + p.id.slice(-4) : b;
+}
+/* new: the repo name is dropped from label and task (whole word at the start: "v4-pospro Helper" -> "Helper",
+   task "v4-plus" in v4-plus -> nothing), then the same rule; #id only against the same repo's people */
+function shortLabel(text, repo){
+  if (!text) return '';
+  if (text === repo) return '';
+  for (const sep of [' · ', ' ', ':', '/']) if (text.startsWith(repo + sep)) return text.slice(repo.length + sep.length).trim();
+  return text;
+}
+function baseNew(p){
+  const repo = terr(p.terr).name;
+  let l = shortLabel(p.label, repo), t = shortLabel(p.task, repo);
+  if (!l) { l = t || p.label; t = ''; }
+  return t && t !== l ? l + ' · ' + t : l;
+}
+function nameNew(p){
+  const b = baseNew(p);
+  return PEOPLE.some(o => o !== p && !o.gov && o.terr === p.terr && baseNew(o) === b) ? b + ' #' + p.id.slice(-4) : b;
+}
+const nameOf = p => p.gov ? '总督' : (look === 'new' ? nameNew(p) : nameToday(p));
+
+function railHtml(){
+  let html = '';
+  for (const t of TERRS) {
+    const rows = PEOPLE.filter(p => p.terr === t.id);
+    const active = rows.filter(p => !p.rest), resting = rows.filter(p => p.rest);
+    const count = look === 'new' ? rows.length : active.filter(p => !p.gov).length;
+    const closed = folded.has(t.id);
+    const you = active.filter(p => p.st[0] === 'you').length;
+    html += `<section class="rail-grp" style="--rc:${t.color}">`;
+    html += `<button type="button" class="grp-h" data-grp="${t.id}" aria-expanded="${!closed}"><span class="rc" style="--rc:${t.color}"></span>${esc(t.name)}<span class="n">${count}</span>${closed && you ? `<span class="you">${you}</span>` : ''}</button>`;
+    if (!closed) {
+      html += '<ul class="rrows">' + active.map(p => rowHtml(p, t)).join('') + '</ul>';
+      if (resting.length) {
+        html += `<button type="button" class="rest-t" data-rest="${t.id}" aria-expanded="${restOpen.has(t.id)}">休息 ${resting.length}</button>`;
+        if (restOpen.has(t.id)) html += '<ul class="rrows">' + resting.map(p => rowHtml(p, t)).join('') + '</ul>';
+      }
+    }
+    html += '</section>';
+  }
+  return html;
+}
+function rowHtml(p, t){
+  const cls = 'rrow' + (p.lead ? ' sub' : '') + (p.rest ? ' resting' : '');
+  return `<li><button type="button" class="${cls}" data-sel="${p.id}" aria-current="${p.id === sel}" style="--rc:${t.color}"><span class="sdot st-${p.st[0]}"></span><b>${esc(nameOf(p))}</b><span class="chip ${p.st[0]}">${esc(p.st[1])}</span></button></li>`;
+}
+function worldHtml(){
+  let html = '';
+  const stage = $('#stage'), W = stage.clientWidth, H = stage.clientHeight;
+  for (const t of TERRS) {
+    html += `<div class="isle" style="left:${(t.x - t.w / 2) * W}px;top:${(t.y - t.h / 2) * H}px;width:${t.w * W}px;height:${t.h * H}px"></div>`;
+    html += `<div class="lbl" style="left:${t.x * W}px;top:${(t.y - t.h / 2 + .03) * H}px">${esc(t.name)}</div>`;
+  }
+  for (const t of TERRS) { const g = PEOPLE.find(p => p.gov && p.terr === t.id); if (g) html += `<div class="hall" style="left:${g.x * W}px;top:${(g.y - .03) * H}px"></div>`; }
+  for (const p of PEOPLE) {
+    const c = p.gov ? '#FFD36E' : p.color;
+    html += `<button type="button" class="pp${p.id === sel ? ' sel' : ''}" data-sel="${p.id}" aria-label="${esc(nameOf(p))}" style="--c:${c};left:${p.x * W}px;top:${p.y * H}px"></button>`;
+    const tag = p.gov ? '总督 · main manager' : nameOf(p);
+    html += `<div class="tagl" data-sel="${p.id}" style="--c:${p.gov ? '#FF6F8B' : c};left:${p.x * W}px;top:${p.y * H + 6}px">${esc(tag)}</div>`;
+  }
+  return html;
+}
+function historyFor(p){
+  const out = [];
+  if (!p.gov) out.push(`<li class="act"><time>14:02</time><span>出门：${esc(p.task || p.label)}</span></li>`);
+  out.push(`<li class="msg" data-kind="prompt"><b>你（终端）</b><span>先把这页做完，别的先不要动</span></li>`);
+  out.push(`<li class="msg" data-kind="agent"><b>${esc(nameOf(p))}</b><span>好，先做这页，其它先不碰。</span></li>`);
+  const lines = ['看了 bin/agent-city.html', '改 rail 的颜色条', '跑 test_agent_city_polish', '截图对比一下', '修一个对齐的问题', '再跑一次测试'];
+  for (let i = 0; i < extra; i++) out.push(`<li class="act"><time>14:${String(10 + i).padStart(2, '0')}</time><span>${lines[i % lines.length]}</span></li>`);
+  for (const t of typed.get(p.id) || []) out.push(`<li class="msg" data-kind="owner"><b>你（页面）（已送达）</b><span>${esc(t)}</span></li>`);
+  return out.join('');
+}
+function detailHtml(p){
+  const t = terr(p.terr);
+  if (p.gov) return `
+    <div class="p-head"><span class="rdot gov"></span><div class="p-main"><div class="p-name">总督</div><div class="p-facts">${esc(t.name)} · main manager · 主对话</div></div><span class="pill gov">${esc(p.st[1])}</span></div>
+    <p class="hint hist-h">历史（新的在下面）</p><ol class="chat" id="chat">${historyFor(p)}</ol>
+    <form class="say" id="say"><textarea id="say-text" rows="1" placeholder="跟它说…"></textarea><button class="btn" type="submit">发送</button></form>`;
+  const name = nameOf(p);
+  // new: the subtitle names the repo once, plus the task only when the name does not already show it
+  const facts = look === 'new'
+    ? esc(t.name) + (p.task && p.task !== t.name && !name.includes(p.task) ? ' · ' + esc(p.task) : '')
+    : esc(t.name) + ' · ' + esc(p.task || '');
+  const say = p.lead
+    ? `<p class="hint">它是子任务，这份对话只能看；有事去找组长。</p><p><button class="btn" type="button" data-sel="${p.lead}">找组长：${esc(nameOf(person(p.lead)))}</button></p>`
+    : `<form class="say" id="say"><textarea id="say-text" rows="1" placeholder="跟它说…"></textarea><button class="btn" type="submit">发送</button></form>`;
+  return `
+    <div class="p-head"><span class="rdot" style="--c:${p.color}"></span><div class="p-main"><div class="p-name">${esc(name)}</div><div class="p-facts">${facts}</div></div><span class="pill ${p.st[0]}">${esc(p.st[1])}</span><div class="track"><i style="width:${p.pct}%;background:${p.color}"></i></div></div>
+    <p class="hint hist-h">历史（新的在下面）</p><ol class="chat" id="chat">${historyFor(p)}</ol>${say}`;
+}
+function render(){
+  const stage = $('#stage');
+  stage.className = 'stage ' + look;
+  $('#world').innerHTML = worldHtml();
+  $('#rail-list').innerHTML = railHtml();
+  const active = PEOPLE.filter(p => !p.gov && !p.rest);
+  $('#rail-n').textContent = active.length;
+  const you = active.filter(p => p.st[0] === 'you').length;
+  $('#rail-you').hidden = !you; $('#rail-you').textContent = you;
+  $('#rail').hidden = railFolded; $('#rail-tab').hidden = !railFolded; $('#rail-tab-t').textContent = '在线 ' + active.length;
+  const p = sel ? person(sel) : null;
+  $('#win').hidden = !p || winFolded; $('#win-tab').hidden = !p || !winFolded;
+  const follow = $('#follow');
+  follow.hidden = !p;
+  if (p) {
+    const title = p.gov ? terr(p.terr).name + ' 总督' : nameOf(p);
+    $('#win-title').textContent = title;
+    $('#win-tab-t').textContent = '消息 · ' + title;
+    $('#detail').innerHTML = detailHtml(p);
+    const chat = $('#chat'); if (chat) chat.scrollTop = chat.scrollHeight;
+    $('#follow-t').textContent = '跟随 ' + (p.gov ? '总督' : nameOf(p));
+    const left = railFolded ? 0 : 12 + 212, right = winFolded ? 30 : 12 + (look === 'new' ? 380 : 330);
+    follow.style.left = (left + (stage.clientWidth - left - right) / 2) + 'px';
+  }
+}
+function segInit(id, cb){
+  const seg = $(id);
+  seg.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    for (const x of seg.querySelectorAll('button')) x.setAttribute('aria-pressed', String(x === b));
+    cb(b.dataset.v);
+  });
+}
+segInit('#seg-look', v => { look = v; render(); });
+segInit('#seg-width', v => { $('#app').classList.toggle('phone', v === 'phone'); railFolded = v === 'phone'; render(); }); // phone: the rail starts folded, as on the real page
+segInit('#seg-theme', v => { document.documentElement.dataset.theme = v; });
+$('#m-more').addEventListener('click', () => { extra += 6; render(); });
+$('#m-reset').addEventListener('click', () => { extra = 0; typed.clear(); folded.clear(); restOpen.clear(); railFolded = winFolded = false; sel = 's:h1'; render(); });
+document.addEventListener('click', e => {
+  const s = e.target.closest('[data-sel]'); if (s) { sel = s.dataset.sel; winFolded = false; if ($('#app').classList.contains('phone') && s.closest('#rail')) railFolded = true; render(); return; }
+  const g = e.target.closest('[data-grp]'); if (g) { const id = g.dataset.grp; folded.has(id) ? folded.delete(id) : folded.add(id); render(); return; }
+  const r = e.target.closest('[data-rest]'); if (r) { const id = r.dataset.rest; restOpen.has(id) ? restOpen.delete(id) : restOpen.add(id); render(); }
+});
+document.addEventListener('submit', e => {
+  if (e.target.id !== 'say') return;
+  e.preventDefault();
+  const text = $('#say-text').value.trim(); if (!text || !sel) return;
+  typed.set(sel, (typed.get(sel) || []).concat(text)); render();
+  $('#say-text').focus();
+});
+document.addEventListener('keydown', e => {
+  if (e.target.id === 'say-text' && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#say').requestSubmit(); }
+  if (e.key === 'Escape') { sel = null; render(); }
+});
+$('#rail-fold').addEventListener('click', () => { railFolded = true; render(); });
+$('#rail-tab').addEventListener('click', () => { railFolded = false; render(); });
+$('#win-fold').addEventListener('click', () => { winFolded = true; render(); });
+$('#win-tab').addEventListener('click', () => { winFolded = false; render(); });
+$('#win-x').addEventListener('click', () => { sel = null; render(); });
+$('#follow-stop').addEventListener('click', () => { sel = null; render(); });
+addEventListener('resize', render);
+{ const q = new URLSearchParams(location.hash.slice(1));
+  const press = (id, v) => { const b = document.querySelector(id + ' button[data-v="' + v + '"]'); if (b) b.click(); };
+  if (q.get('look')) press('#seg-look', q.get('look'));
+  if (q.get('w')) press('#seg-width', q.get('w'));
+  if (q.get('theme')) press('#seg-theme', q.get('theme'));
+  if (q.get('more')) extra = 6 * +q.get('more');
+  if (q.get('sel')) sel = q.get('sel');
+  if (q.get('rest')) restOpen.add(q.get('rest')); }
+render();
+</script>
+</body>
+</html>
