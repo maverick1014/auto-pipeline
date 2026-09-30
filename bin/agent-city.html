@@ -339,6 +339,9 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
   .win-tab{right:auto;left:50%;top:auto;bottom:0;transform:translateX(-50%);width:auto;flex-direction:row;padding:6px 14px;border:2px solid var(--ink);border-bottom:0;border-radius:12px 12px 0 0}
   .win-tab .v{writing-mode:horizontal-tb;max-width:220px}
   .newmsg{bottom:68px}
+  /* city-polish: the bottom sheet is short (44% of a small stage), so the history must never shrink to
+     nothing here -- #detail (overflow:auto) scrolls down to the input row instead. */
+  .chat{min-height:96px}
 }
 @media (prefers-reduced-motion: reduce){ .qm span,.zz span{animation:none} .track i,.btn{transition:none} }
 </style>
