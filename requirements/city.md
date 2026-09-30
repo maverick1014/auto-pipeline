@@ -12,7 +12,7 @@
 ## Data path
 - `hooks/hooks.json` → `bin/agent-city-hook.sh` → `<city dir>/events.jsonl` → `bin/agent_city.py` → SSE `/events` → page.
 - Hook when off: one `test -f`, nothing else. On: one JSON line per event. Bash builtins only.
-- Governor = the repo's real main manager only (owner, 2026-09-30, city-roles; replaces "first session without `AGENT_ROLE`"): the session holding `<git common dir>/agent_main.lock` (pid alive; its session id matches, or the hook's `pid` matches). Everyone else is a citizen, a session without `AGENT_ROLE` too. Subagent = citizen.
+- Governor = the repo's real main manager only (owner, 2026-09-30, city-roles; replaces "first session without `AGENT_ROLE`"): the session holding `<git common dir>/agent_main.lock` (pid alive; its session id matches, or with an old lock that has no session id, the hook's `pid`). Everyone else is a citizen, a session without `AGENT_ROLE` too. Subagent = citizen.
 - No live lock holder → no governor in that territory (the page says 总督不在; questions go straight to the owner).
 - The lock changes hands (take-over, close case, a new main manager) → the new holder is governor on its next line, even if it was a citizen; the old one leaves the seat. The server also checks the seats about every 2 s: a dead holder ends like its SessionEnd, a released lock empties the seat.
 - Only the governor gets governor questions and the governor's messages. Any other session's watcher hears its own messages, like a citizen.

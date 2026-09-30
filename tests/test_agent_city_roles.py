@@ -18,7 +18,8 @@ tests/test_agent_city_seat.py (seat = first roleless session, freed when its hol
   or "-". No file, garbage, a dead pid, identity None -> None. Never raises. Tests may pass their own.
 
   Holder. A session line (sid set, aid "") is the holder's when main_fn(identity) gives (pid, sid)
-  and (sid != "" and the line's sid == sid) or (the line's "pid" field, digits, == pid).
+  and: the lock has a sid -> the line's sid == sid (only; agent-start.sh rewrites the sid on /clear);
+  an old lock without a sid -> the line's "pid" field (digits) == pid.
   The hook adds that field: "pid" = $CLAUDE_PID when it is all digits, else "" (new last key).
 
   R1 seat = holder only.
@@ -474,6 +475,7 @@ class TestGovNext(RolesCase):
 # -- the hook sends its session's pid -----------------------------------------
 
 HOOK = os.path.join(ROOT, "bin", "agent-city-hook.sh")
+BASH = shutil.which("bash") or "/bin/bash"   # PATH is empty inside the hook, as in a real hook run
 
 
 class TestHookPid(unittest.TestCase):
@@ -495,7 +497,7 @@ class TestHookPid(unittest.TestCase):
         stdin = json.dumps({"session_id": "s1", "transcript_path": "/t.jsonl", "cwd": self.base,
                             "hook_event_name": "PostToolUse", "tool_name": "Read",
                             "tool_input": {"file_path": "/x"}}).encode("utf-8")
-        subprocess.run([HOOK], input=stdin, env=full, capture_output=True, timeout=10)
+        subprocess.run([BASH, HOOK], input=stdin, env=full, capture_output=True, timeout=10)
         with open(os.path.join(self.city, "events.jsonl")) as fh:
             rows = [json.loads(l, object_pairs_hook=lambda kv: kv) for l in fh if l.strip()]
         os.remove(os.path.join(self.city, "events.jsonl"))
