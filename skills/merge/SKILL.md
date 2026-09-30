@@ -12,7 +12,7 @@ description: Main manager only. After a task manager reports DONE PASS, run the 
    - **headless** — cloud only, the extension can never reach a VM. Run the same click path with Playwright against the dev server, and save one screenshot per step as evidence. Same rule: a miss → send the evidence back to the task manager, stop here.
    - **none** — no browser at all. Print the click path under the heading NEEDS HUMAN E2E and stop. Do not merge, do not pass, and never call a path "verified" when nobody drove it. Wait for the human to sign it off.
 3. Stop the app server, close whatever ran the click path: the tab, the headless Playwright browser, or nothing if the answer was none.
-4. `Agent` with `subagent_type: merge-deputy`. Brief, all five values:
+4. `Agent` with `subagent_type: merge-deputy`, description `<name> Merge`. Brief, all five values:
    ```
    name: <name>
    branch: <branch>

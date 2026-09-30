@@ -10,7 +10,7 @@ Run these in order. First match wins.
 
 Touches another repo? → W12: keep your part, send the peer main manager the cross-repo brief below, called side first, hold your todo line until its DONE PASS.
 
-2. Small task (fast lane, R1)? → `Agent` with `subagent_type: fast-lane-deputy`. Brief: the task, the file(s), the one test if any. Done.
+2. Small task (fast lane, R1)? → `Agent` with `subagent_type: fast-lane-deputy`, description `<task> Deputy`. Brief: the task, the file(s), the one test if any. Done.
 3. Touches a live worktree's module? → `SendMessage` the task to that task manager. Status `final` → hold it, tell the human.
 4. Big, and a live task manager has capacity? → `SendMessage` it to that task manager.
 5. Idle or done worktrees in `agent_worktree.txt`? → run `/merge` for each first.
@@ -22,13 +22,13 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
    **orca** — open a worktree. Read `<model>` and `<effort>` from `task_manager` in the project's `agent.conf` (form model:effort) and `<mode>` from `permission_mode`:
    ```
    orca worktree create --name <name> --repo path:<main repo> --base-branch main --no-parent --json
-   orca terminal create --worktree path:<worktree path> --title "TM <name>" --command "AGENT_ROLE=task-manager claude --model <model> --effort <effort> --permission-mode <mode>" --json
+   orca terminal create --worktree path:<worktree path> --title "<name> Task Manager" --command "AGENT_ROLE=task-manager claude --name '<name> Task Manager' --model <model> --effort <effort> --permission-mode <mode>" --json
    orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 90000 --json
    ```
    A new pane stops at a menu (trust prompt)? `orca terminal send` has no key flag: send the raw key as text, then Enter, e.g. Down: `orca terminal send --terminal <handle> --text $'\x1b[B' --enter`.
-   Then `ListAgents`, find the new session, `SendMessage` it the brief below. Keep the terminal handle for `/merge`.
+   Then `ListAgents`, find `<name> Task Manager`, `SendMessage` it the brief below. Keep the terminal handle for `/merge`.
 
-   **plain or cloud** — no terminal can be opened here, so no worktree either. The main manager does the task itself, from the session it is already in, with `Agent` subagents (`subagent_type: worker`), up to `max_agents` at a time. Use the task manager brief below as its own task list and run the steps in order.
+   **plain or cloud** — no terminal can be opened here, so no worktree either. The main manager does the task itself, from the session it is already in, with `Agent` subagents (`subagent_type: worker`, description `<name> Worker <n>: <slice>`), up to `max_agents` at a time. Use the task manager brief below as its own task list and run the steps in order.
 
 8. Early merge: a fix from a still-running branch merged into main → at once `SendMessage` that task manager: merge main back into your branch now. Never cherry-pick slices; merge the branch (or its prefix) — cherry-picks cost a conflict round at the final merge.
 
@@ -42,7 +42,7 @@ STEPS: 0 save this whole brief into agent_state.txt in your worktree, first acti
  1 register: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" working
  2 mock first if UI (W2): commit mock/<name>-mock.html, send me the path, STOP until "mock yes"
  3 write the failing tests yourself (W3), commit
- 4 workers: Agent subagent_type worker, max 2 at once, each gets named files + one test command (W4). Check RESOURCES before each spawn (S3, S4)
+ 4 workers: Agent subagent_type worker, description "<name> Worker <n>: <slice>", max 2 at once, each gets named files + one test command (W4). Check RESOURCES before each spawn (S3, S4)
  5 verify every worker result yourself. Full suite once. Defect → back to the worker with evidence. Set status final: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" final
  6 commit, git push -u origin <branch>
  7 report done, set status done, stay idle
