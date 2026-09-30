@@ -370,9 +370,13 @@ class TestOnePidHelper(unittest.TestCase):
         self.assertNotRegex(read("bin", "agent-start.sh"), r"(?m)^agent_pid\(\)")
 
     def test_the_hook_uses_it(self):
+        # through role_read (agent-roots.sh), which calls agent_pid: one copy
+        # of the role logic, tests/test_agent_name.py
         text = read("bin", "agent-close-case.sh")
         self.assertIn("agent-roots.sh", text)
-        self.assertIn("agent_pid", text)
+        self.assertIn("role_read", text)
+        self.assertRegex(read("bin", "agent-roots.sh"),
+                         r"(?ms)^role_read\(\).*?\$\(agent_pid\)")
 
 
 class TestTheRule(unittest.TestCase):

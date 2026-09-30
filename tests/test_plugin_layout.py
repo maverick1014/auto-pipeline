@@ -44,6 +44,7 @@ SHELL_SCRIPTS = [
     "agent-cloud-pack.sh",
     "agent-city.sh",
     "agent-city-hook.sh",
+    "agent-name.sh",
 ]
 # Sourced only, never run. agent-runtime.sh is in the list above instead,
 # because it is both: sourced by its callers and run by a skill.
@@ -179,7 +180,9 @@ class TestMarketplaceManifest(unittest.TestCase):
 class TestHooksJson(unittest.TestCase):
     def command(self):
         data = load_json("hooks", "hooks.json")
-        entries = data["hooks"]["SessionStart"]
+        # the naming hook (tests/test_agent_name.py) is the second entry
+        entries = [e for e in data["hooks"]["SessionStart"]
+                   if "agent-name.sh" not in json.dumps(e)]
         self.assertEqual(len(entries), 1, entries)
         hooks = entries[0]["hooks"]
         self.assertEqual(len(hooks), 1, hooks)
@@ -216,10 +219,12 @@ class TestCityHooks(unittest.TestCase):
 
     def hooks(self):
         """The city's entries only: the close-case hook (UserPromptSubmit, not
-        the city's, tests/test_agent_close_case.py) is left out."""
+        the city's, tests/test_agent_close_case.py) and the naming hook
+        (SessionStart, tests/test_agent_name.py) are left out."""
         hooks = load_json("hooks", "hooks.json")["hooks"]
         return {event: [e for e in entries
-                        if "agent-close-case.sh" not in json.dumps(e)]
+                        if "agent-close-case.sh" not in json.dumps(e)
+                        and "agent-name.sh" not in json.dumps(e)]
                 for event, entries in hooks.items()}
 
     # Interaction (tests/test_agent_city_interact.py): PermissionRequest also

@@ -202,11 +202,12 @@ class TestHookFile(unittest.TestCase):
         row = self.row(self.root, path=os.path.join(self.root, 'we"ird.py'))
         self.assertEqual(row["file"], 'we"ird.py')
 
-    def test_file_is_the_sixteenth_and_last_key(self):
-        # idea-city C4: the hook line has no "kind" any more
+    def test_file_is_the_sixteenth_key(self):
+        # idea-city C4: the hook line has no "kind" any more; session-names
+        # added "tp" after "file" (tests/test_agent_city_session_names.py)
         row = self.row(self.root, path=os.path.join(self.root, "a.py"))
-        self.assertEqual(len(row), 16)
-        self.assertEqual(list(row)[-3:], ["ask", "wt", "file"])
+        self.assertEqual(len(row), 17)
+        self.assertEqual(list(row)[-4:], ["ask", "wt", "file", "tp"])
 
 
 # ---------------------------------------------------------------------------

@@ -54,6 +54,7 @@ import re
 import secrets
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -561,6 +562,124 @@ def _trim_questions(raw):
     return out
 
 
+class TitleReader:
+    """A session's real name, read from its transcript (a .jsonl file the hook
+    line names in "tp"). The transcript gets {"type": "custom-title",
+    "customTitle"}, {"type": "agent-name", "agentName"} and {"type":
+    "ai-title", "aiTitle"} lines again and again, the newest last.
+
+    .title(path) -> the newest customTitle, else the newest agentName, else
+    the newest aiTitle, else "". Only a regular file whose name ends in
+    ".jsonl" and whose realpath is inside realpath(root) is ever opened (a
+    symlink out of root does not count). Never raises: any error gives ""
+    or the titles known so far.
+
+    Cheap: per file it keeps how far it has read and the titles found so far,
+    so a later call reads only the new bytes (whole lines only: a last line
+    with no newline yet waits). A file that got shorter is read again from the
+    start. A first read (or a jump of more than tail_bytes) takes only the last
+    tail_bytes and skips the first, partial line. A line is parsed only when
+    it names one of the three types.
+    """
+
+    TYPE_KEYS = {"custom-title": "customTitle", "agent-name": "agentName", "ai-title": "aiTitle"}
+    MAX_FILES = 500   # files kept in memory, oldest dropped
+
+    def __init__(self, root=None, tail_bytes=2 * 1024 * 1024):
+        if not root:
+            config = os.environ.get("CLAUDE_CONFIG_DIR")
+            root = os.path.join(config if config else os.path.expanduser("~/.claude"), "projects")
+        self.root = root
+        self.tail_bytes = tail_bytes
+        self._seen = {}   # realpath -> {"off": bytes consumed, "skip": bool, "found": {type: title}}
+        self._marks = tuple(t.encode("ascii") for t in self.TYPE_KEYS)
+
+    def title(self, path):
+        try:
+            real = self._checked(path)
+            if real is None:
+                return ""
+            found = self._refresh(real)
+            for kind in ("custom-title", "agent-name", "ai-title"):
+                if found.get(kind):
+                    return found[kind]
+        except Exception:
+            pass
+        return ""
+
+    def _checked(self, path):
+        """The realpath of PATH when it may be read, else None."""
+        if not isinstance(path, str) or not path or not os.path.isabs(path):
+            return None
+        if not path.endswith(".jsonl"):
+            return None
+        real = os.path.realpath(path)
+        prefix = os.path.realpath(self.root).rstrip(os.sep) + os.sep
+        if not real.endswith(".jsonl") or not real.startswith(prefix):
+            return None
+        return real
+
+    def _refresh(self, real):
+        """Read what is new in REAL; the titles found so far in it."""
+        size = None
+        try:
+            info = os.stat(real)
+            if stat.S_ISREG(info.st_mode):
+                size = info.st_size
+        except OSError:
+            pass
+        if size is None:
+            self._seen.pop(real, None)
+            return {}
+        state = self._seen.pop(real, None)
+        if state is None or size < state["off"]:
+            state = {"off": 0, "skip": False, "found": {}}
+        self._seen[real] = state
+        while len(self._seen) > self.MAX_FILES:
+            del self._seen[next(iter(self._seen))]
+        if size - state["off"] > self.tail_bytes:
+            # first read, or a big jump: only the tail. Start one byte early:
+            # when that byte is a newline, the tail starts on a whole line.
+            state["off"] = max(0, size - self.tail_bytes - 1)
+            state["skip"] = state["off"] > 0
+        try:
+            with open(real, "rb") as fh:
+                fh.seek(state["off"])
+                data = fh.read(size - state["off"])
+        except OSError:
+            return state["found"]
+        used = 0
+        if state["skip"]:
+            cut = data.find(b"\n")
+            if cut < 0:
+                state["off"] += len(data)   # still inside one long line
+                return state["found"]
+            used = cut + 1
+            state["skip"] = False
+        end = data.rfind(b"\n") + 1
+        if end <= used:
+            state["off"] += used
+            return state["found"]
+        state["off"] += end
+        for raw in data[used:end].split(b"\n"):
+            if any(mark in raw for mark in self._marks):
+                self._take(raw, state["found"])
+        return state["found"]
+
+    def _take(self, raw, found):
+        try:
+            obj = json.loads(raw)
+        except ValueError:
+            return
+        if not isinstance(obj, dict):
+            return
+        kind = obj.get("type")
+        key = self.TYPE_KEYS.get(kind) if isinstance(kind, str) else None
+        value = obj.get(key) if key else None
+        if isinstance(value, str) and value.strip():
+            found[kind] = value.strip()
+
+
 class Ask:
     """One open (or recently closed) question or permission request.
 
@@ -787,8 +906,9 @@ class CityState:
 
     def __init__(self, max_agents=40, done_ttl=600, gov_wait_sec=60.0,
                  decisions_path=None, token="", world_path=None, plans=None, count_fn=None,
-                 balance_fn=None, start_repo=None, chat_path=None, lang="zh"):
+                 balance_fn=None, start_repo=None, chat_path=None, lang="zh", titles=None):
         self.lock = threading.Lock()
+        self.titles = titles if titles is not None else TitleReader()  # a session's real name
         self.lang = norm_lang(lang)
         self.cond = threading.Condition(self.lock)
         self._max_agents = max_agents
@@ -1103,10 +1223,32 @@ class CityState:
         events = reducer.feed(obj, now)
         gov_seen = False
         names_dirty = False
+
+        # session-names: a session's own line (sid set, aid empty) carries
+        # "tp", its transcript; the real name found there (looked up once per
+        # line, only for a live citizen: the governor gets nothing) becomes
+        # that citizen's label. A subagent's line never does.
+        title_cid = ""
+        title = ""
+        if (isinstance(obj, dict) and isinstance(sid_field, str) and sid_field
+                and not (isinstance(aid_field, str) and aid_field)
+                and isinstance(obj.get("tp"), str) and obj["tp"]):
+            citizen = reducer.agents.get("s:" + sid_field)
+            if citizen is not None and citizen["kind"] == "session" and not citizen["done"]:
+                title_cid = "s:" + sid_field
+                title = self.titles.title(obj["tp"])[:40]
+        title_in_spawn = False
+
         for ev in events:
             etype = ev.get("type")
             if etype == "spawn":
                 self._apply_saved_name_locked(ev, reducer)
+                if title and ev["id"] == title_cid:
+                    ev["label"] = title
+                    spawned = reducer.agents.get(title_cid)
+                    if spawned is not None:
+                        spawned["label"] = title
+                    title_in_spawn = True
                 ev["terr"] = terr
                 self.agent_terr[ev["id"]] = terr
                 self._decorate_spawn(ev, obj, identity, terr)
@@ -1126,6 +1268,14 @@ class CityState:
             elif etype == "done":
                 self._maybe_open_rest(identity)
             self._broadcast(ev)
+
+        if title and not title_in_spawn:
+            record = reducer.agents.get(title_cid)
+            if record is not None and record["label"] != title:
+                record["label"] = title
+                if self._remember_name_locked(title_cid, title, record["task"]):
+                    names_dirty = True
+                self._broadcast({"type": "label", "id": title_cid, "label": title, "terr": terr})
 
         # city-worktrees: remember this lead's last "wt" (may be missing
         # on an old line -> ""), so a site created later can tell it

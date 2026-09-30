@@ -362,15 +362,8 @@ if [ -n "$SID" ]; then
 fi
 
 # ---- role: one main manager per repo (W10) ----
-LOCK="$PROJECT_GITDIR/agent_main.lock"; ME=$(agent_pid); NOW=$(date '+%Y-%m-%d %H:%M')
-role=main
-if [ -n "${AGENT_ROLE:-}" ]; then role=spawned
-elif [ -f "$LOCK" ]; then
-  read -r lpid lsince < "$LOCK" || true
-  if [ "$lpid" = "$ME" ]; then role=main
-  elif kill -0 "$lpid" 2>/dev/null; then role=second
-  else role=takeover; fi
-fi
+role_read; NOW=$(date '+%Y-%m-%d %H:%M')
+REPO=$(basename "$PROJECT_ROOT")
 
 # ---- CAP: the whole output, always, at or under this many bytes. The state
 # block (the unbounded one) gets whatever the fixed parts below leave. ----
@@ -397,15 +390,16 @@ announce_human_direct() {
 
 print_role_and_project() {
   case $role in
-    spawned)  echo "ROLE: $AGENT_ROLE (spawned by an agent, not human-direct). Main manager: pid $(cut -d' ' -f1 "$LOCK" 2>/dev/null || echo ?). Report to it with SendMessage.";;
-    main)     echo "$ME $NOW" > "$LOCK"; echo "ROLE: main manager (lock: pid $ME)";;
-    takeover) echo "$ME $NOW" > "$LOCK"; echo "ROLE: main manager. Previous main manager (pid $lpid, since $lsince) is dead. Run recovery (S7).";;
+    spawned)  echo "ROLE: $AGENT_ROLE (spawned by an agent, not human-direct). Main manager: \"$REPO Manager\" (not listed by that name: the \"$REPO-<xx>\" row; pid $(cut -d' ' -f1 "$LOCK" 2>/dev/null || echo ?)). Report to it with SendMessage.";;
+    main)     echo "$ME $NOW" > "$LOCK"; echo "ROLE: main manager (lock: pid $ME). Address: /rename $REPO Manager or claude --name";;
+    takeover) echo "$ME $NOW" > "$LOCK"; echo "ROLE: main manager. Previous main manager (pid $lpid, since $lsince) is dead. Run recovery (S7). Address: /rename $REPO Manager or claude --name";;
     second)
       echo "ROLE: task manager, human-direct (W10). Main manager already running: pid $lpid, since $lsince."
       announce_human_direct
       echo "Announced: line added to agent_worktree.txt. Send the main manager a direct message too if Orca is available."
       echo "Will change files? Open your own worktree first (W7). Human says finish -> report done + click path to the main manager."
-      echo "Reach the main manager: ListAgents -> the earlier peer session of this repo -> SendMessage to that name. Reply to the from name.";;
+      echo "Reach the main manager: ListAgents -> \"$REPO Manager\" (not listed: the \"$REPO-<xx>\" row; two with that name: add the [ref] ListAgents prints) -> SendMessage to that name. Reply to the from name."
+      echo "NAME: you show as \"$REPO Helper\"; ListAgents calls you something else -> ask the human once: /rename $REPO Helper";;
   esac
   echo "PROJECT: $PROJECT_ROOT | PLUGIN: $PLUGIN_ROOT"
 }
