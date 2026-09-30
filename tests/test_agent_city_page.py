@@ -859,11 +859,16 @@ def unit_results():
                 raise AssertionError("function %s(...) not found in the page script" % name)
             fns.append(src)
         for name in ("aroundH", "autoRotating", "fadedOf", "islandSpread", "landSpread", "centreHeight", "zoomStep",
-                     "pullShare", "distLimit", "zoomCapDist", "spanDist", "capZoom", "stopFly", "capHint"):  # city-ux
+                     "pullShare", "distLimit", "zoomCapDist", "spanDist", "capZoom", "stopFly", "capHint",  # city-ux
+                     "angleDiff", "turnToward"):  # city-polish P1: move() turns before it steps
             src = function_source(name)
             if src is not None:
                 fns.append(src)
-        _CACHE["unit"] = run_node(UNIT_JS, {"prelude": constants_prelude(), "fns": "\n".join(fns)})
+        prelude = constants_prelude()
+        turn = re.search(r"^const (TURN_RATE\b[^;\n]*);", inline_script(), re.M)  # city-polish P1: one line, two consts
+        if turn:
+            prelude += "\nvar %s;" % turn.group(1)
+        _CACHE["unit"] = run_node(UNIT_JS, {"prelude": prelude, "fns": "\n".join(fns)})
     return _CACHE["unit"]
 
 

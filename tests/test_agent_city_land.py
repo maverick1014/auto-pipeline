@@ -810,7 +810,7 @@ out.ready.push(box.landReady());
 box.map = {};
 out.ready.push(box.landReady());
 // the governor
-const gv = { g: { visible: true, position: { y: 0, set(){} } }, sel: { visible: false } };
+const gv = { g: { visible: true, position: { y: 0, set(){} }, rotation: { y: 0 } }, sel: { visible: false } }; // rotation: city-polish P1
 const el = () => ({ setAttribute(){}, removeAttribute(){}, hidden: true, style: {} });
 // city-people P0: the figure shows only where a governor session is present (governorAt)
 Object.assign(box, { govsByTerr: new Map([['t', { state: 'idle' }]]), govTerr: 't',
