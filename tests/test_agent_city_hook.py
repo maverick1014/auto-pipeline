@@ -48,6 +48,10 @@ CONTRACT
              linked worktree); else "".
        file  city-quality (tests/test_agent_city_quality.py): the edited
              file's path relative to the folder holding .git; else "".
+       tp    session-names N5 (tests/test_agent_city_session_names.py): the
+             payload's transcript_path, JSON-escaped as given; "" when it is
+             missing or longer than 1024 bytes. The server reads the
+             session's real name from it; the relay never sends it.
      desc and q: at most 200 bytes, always a valid JSON string.
      Nothing else from the payload is ever written: not tool_input,
      tool_response, prompt, message or last_assistant_message.
@@ -79,7 +83,8 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(ROOT, "bin", "agent-city-hook.sh")
 BASH = shutil.which("bash")
-KEYS = {"ev", "sid", "aid", "at", "tool", "nt", "proj", "role", "desc", "sub", "q", "klen", "repo", "ask", "wt", "file"}
+KEYS = {"ev", "sid", "aid", "at", "tool", "nt", "proj", "role", "desc", "sub", "q", "klen", "repo", "ask", "wt", "file",
+        "tp"}
 
 CITY_COMMAND = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
                 '"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh"; exit 0')
@@ -192,6 +197,16 @@ class TestOn(HookCase):
         self.assertEqual(row["at"], "worker")
         self.assertEqual(row["tool"], "Edit")
         self.assertEqual(row["proj"], "shop-app")
+
+    def test_the_transcript_path(self):
+        row = self.one(payload("PostToolUse", tool_name="Read", tool_input={"file_path": "/x"}))
+        self.assertEqual(row["tp"], "/home/u/.claude/projects/shop/sess-1.jsonl")
+
+    def test_a_too_long_transcript_path_is_dropped(self):
+        stdin = payload("PostToolUse", tool_name="Read", tool_input={"file_path": "/x"})
+        stdin = stdin.replace(b"/home/u/.claude/projects/shop/sess-1.jsonl",
+                              b"/home/u/" + b"d" * 1100 + b"/sess-1.jsonl")
+        self.assertEqual(self.one(stdin)["tp"], "")
 
     def test_exactly_the_keys_all_strings(self):
         row = self.one(payload("PostToolUse", ("a1", "worker"), tool_name="Read",
