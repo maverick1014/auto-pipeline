@@ -21,7 +21,7 @@
 #                         agent-close-case.sh and agent-name.sh.
 #   pid_alive <pid>      true when that process is running
 #   holder_text          "pid <lpid> ("<repo> Manager"[, terminal <t>])[, since <s>]"
-#   closed_lines <lead>  what a closed session is told (3 lines, lead starts the
+#   closed_lines <lead>  what a closed session is told (4 lines, lead starts the
 #                         first). After role_read.
 #
 # Lock "$PROJECT_GITDIR/agent_main.lock", one line, written by agent-start.sh:
@@ -124,6 +124,7 @@ closed_lines() {
   else
     echo "The lock names pid $lpid, which is gone: the next session the human opens becomes the main manager."
   fi
+  echo "Your session name may still say \"$(basename "$PROJECT_ROOT") Manager\": ask the human once to type /rename $(basename "$PROJECT_ROOT") Helper"
   echo "Take over again only when the human asks: $PLUGIN_ROOT/bin/agent-start.sh --take-over"
 }
 
