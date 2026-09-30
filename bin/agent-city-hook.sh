@@ -159,6 +159,12 @@ nt=$(extract notification_type "$base")
 cwd=$(extract cwd "$base")
 proj=${cwd##*/}
 
+# tp — session-names: the payload's transcript_path (JSON-escaped as given),
+# "" when missing or over 1024 bytes. The server reads the session's real
+# name from that file; the relay never sends it.
+tp=$(extract transcript_path "$base")
+[ ${#tp} -le 1024 ] || tp=
+
 # repo — growth (requirements/city.md): the physical path of the git common
 # dir of cwd, so a linked worktree gives its main repo's .git.
 cwd_plain=$(unescape "$cwd")
@@ -273,8 +279,8 @@ case "$ev" in
         ;;
 esac
 
-printf '{"ev":"%s","sid":"%s","aid":"%s","at":"%s","tool":"%s","nt":"%s","proj":"%s","role":"%s","desc":"%s","sub":"%s","q":"%s","klen":"%s","repo":"%s","ask":"%s","wt":"%s","file":"%s"}\n' \
-    "$ev" "$sid" "$aid" "$at" "$tool" "$nt" "$proj" "$role" "$desc" "$sub" "$q" "$klen" "$repo" "$ask" "$wt" "$file" \
+printf '{"ev":"%s","sid":"%s","aid":"%s","at":"%s","tool":"%s","nt":"%s","proj":"%s","role":"%s","desc":"%s","sub":"%s","q":"%s","klen":"%s","repo":"%s","ask":"%s","wt":"%s","file":"%s","tp":"%s"}\n' \
+    "$ev" "$sid" "$aid" "$at" "$tool" "$nt" "$proj" "$role" "$desc" "$sub" "$q" "$klen" "$repo" "$ask" "$wt" "$file" "$tp" \
     >> "$dir/events.jsonl" 2>/dev/null
 
 exit 0
