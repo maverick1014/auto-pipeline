@@ -107,8 +107,10 @@ W9. Task routing (main manager, before every dispatch)
 - Otherwise → new worktree (W7). Never spawn a worktree for a small task
 
 W10. Second session in the same repo
-- One main manager per repo. `agent-start.sh` keeps a lock in the shared git dir
+- One main manager per repo. `agent-start.sh` keeps a lock in the shared git dir: pid, date, session id, terminal
 - Lock owner alive → this session is a task manager (human-direct). Never a second main manager
+- Its start text names the main manager: pid, `<repo> Manager`, terminal
+- Human asks this session to be main manager → `agent-start.sh --take-over`. Only on the human's word. The old one is told once, never main again by itself
 - Human-direct = only a session the human opened by hand. Agent-spawned agents are never human-direct. They run fully by agent, no human in the loop
 - At start: the script adds a line to `agent_worktree.txt` (status human-direct). Also send the main manager a direct message if a channel exists (Orca)
 - Will change files → open its own worktree first (W7). Only looking → no worktree
@@ -151,6 +153,8 @@ W13. Close case
 - Main manager gets close case from the human = the whole repo: close case to every live task manager and human-direct session in agent_worktree.txt
 - Collect every report, decide each, merge what passes, close all panes and worktrees, stop its own crons and monitors, update the agent files
 - Then one final table to the human: task, result, what changed, what is left, decisions taken for the human. Nothing dropped (the H3 five-row cap does not apply)
+- Last step: `agent-start.sh --release` frees the main seat. The next session the human opens is main manager, never Helper
+- The released session is told once it is no longer main manager. It never acts as main again unless the human asks for `--take-over`
 
 ## C. Human
 

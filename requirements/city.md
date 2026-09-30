@@ -12,8 +12,11 @@
 ## Data path
 - `hooks/hooks.json` → `bin/agent-city-hook.sh` → `<city dir>/events.jsonl` → `bin/agent_city.py` → SSE `/events` → page.
 - Hook when off: one `test -f`, nothing else. On: one JSON line per event. Bash builtins only.
-- Session without `AGENT_ROLE` = governor. Session with `AGENT_ROLE` = citizen. Subagent = citizen.
-- The governor seat frees when its holder is gone, not only on its SessionEnd (a crashed main manager never sends one; ideas-soon, 2026-09-29). A new session without `AGENT_ROLE` asks first: is the holder gone? Holder's pid known (the pid in `<git common dir>/agent_main.lock`, read while the holder acts, kept only if alive then) → gone when that pid is dead. No pid known → gone after 15 min with no line from it. Gone → ended like its SessionEnd, and the new session takes the seat at once. Not gone → the new session is a citizen.
+- Governor = the repo's real main manager only (owner, 2026-09-30, city-roles; replaces "first session without `AGENT_ROLE`"): the session holding `<git common dir>/agent_main.lock` (pid alive; its session id matches, or the hook's `pid` matches). Everyone else is a citizen, a session without `AGENT_ROLE` too. Subagent = citizen.
+- No live lock holder → no governor in that territory (the page says 总督不在; questions go straight to the owner).
+- The lock changes hands (take-over, close case, a new main manager) → the new holder is governor on its next line, even if it was a citizen; the old one leaves the seat. The server also checks the seats about every 2 s: a dead holder ends like its SessionEnd, a released lock empties the seat.
+- Only the governor gets governor questions and the governor's messages. Any other session's watcher hears its own messages, like a citizen.
+- A line with no repo stays in the territory its session was last seen in. Only an unknown session with no repo goes to the start territory (old hooks).
 - A session shows up only if it started with the city hook installed (plugin 0.6.0+).
 
 ## Look
@@ -84,7 +87,7 @@
 - The city is never empty: when the server starts it shows the territory of the dir it was started from (its git repo; a plain folder counts too), plus every territory saved in world.json, at once, before any agent acts.
 - Minimum size: every territory, even an empty repo with 0 code lines, has at least a small land, a town hall and one open plot in every district of its plan (house, shop, test tower, workshop, library), so any first edit can build.
 - A build that finds no free plot says so in the page log (e.g. "r1 没有空地了，先等等"). Never silent.
-- Old data is dropped (owner 2026-09-25, nobody uses it): territories saved without a repo identity are removed from world.json on load; events without a repo go to the start territory, never make their own.
+- Old data is dropped (owner 2026-09-25, nobody uses it): territories saved without a repo identity are removed from world.json on load; events without a repo go to their session's territory, else to the start territory; never make their own.
 - Zoom in and out always move; the governor stands at a hall, never in the void.
 - Territory edge is natural: river bank, cliff, forest edge, or beach on the coast. No brown earth block sides, no hard line.
 - Territory shape is uneven: organic edge, never a square or rectangle. Growth adds land at the edge and keeps it uneven.
