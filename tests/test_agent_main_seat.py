@@ -41,6 +41,17 @@ skills/close-case/SKILL.md). "this session" = $CLAUDE_PID, else the first claude
       keep their own text). Other sessions: nothing. This told-once mark is the only file the
       hook ever writes.
 
+  BOUNCE 1 (main manager, laptop E2E): an agent running --take-over is denied by auto mode (right),
+  and an agent's --release can be denied too. So both seat moves are typed by the HUMAN, in that
+  session, never run by an agent. Every text that offers one gives the exact line and says the agent
+  never runs it itself ("never run it yourself"):
+      ! <plugin>/bin/agent-start.sh --take-over      second-session start text, closed notice and
+                                                     closed ROLE text, RELEASED output, PRINCIPLES W10
+      ! <plugin>/bin/agent-start.sh --release        whole-repo close-case hook text (main manager),
+                                                     skills/close-case part B (the final table ends
+                                                     with it, for the human), PRINCIPLES W13
+  The "!" prefix runs it in the session's own shell ($CLAUDE_PID, $CLAUDE_CODE_SESSION_ID set).
+
 Run: python3 -m unittest tests.test_agent_main_seat </dev/null
 """
 
@@ -351,6 +362,56 @@ class TestTheTexts(SeatCase):
         data_path = text[text.index("## Data path"):text.index("## Look")]
         self.assertIn("agent_main.lock", data_path)
         self.assertNotIn("Session without `AGENT_ROLE` = governor", data_path)
+
+
+class TestTheHumanTypesIt(SeatCase):
+    """BOUNCE 1: never an agent command; the human types the exact ! line."""
+
+    def take_over_line(self):
+        return "! %s/bin/agent-start.sh --take-over" % self.repo.plugin
+
+    def release_line(self):
+        return "! %s/bin/agent-start.sh --release" % self.repo.plugin
+
+    def test_the_second_session_gets_the_line(self):
+        self.set_lock("%d 2026-09-30 10:00 sid-m -\n" % self.live())
+        out = self.assertOk(self.start())
+        self.assertIn(self.take_over_line(), out)
+        self.assertIn("never run it yourself", out)
+
+    def test_the_closed_notice_and_role_get_the_line(self):
+        me = self.live()
+        self.become_main(me)
+        released = self.assertOk(self.start("--release", pid=me))
+        self.assertIn(self.take_over_line(), released)
+        notice = self.prompt(pid=me)
+        role = self.assertOk(self.start(pid=me, source="compact", sid="sid-c"))
+        for text in (notice, role):
+            with self.subTest(text=text[:30]):
+                self.assertIn(self.take_over_line(), text)
+                self.assertIn("never run it yourself", text)
+
+    def test_the_whole_repo_close_case_gives_the_release_line(self):
+        self.set_lock("%d 2026-09-30 10:00 sid-me -\n" % os.getpid())
+        out = self.prompt("close case", pid=os.getpid())
+        self.assertIn(self.release_line(), out)
+        self.assertIn("never run it yourself", out)
+        self.assertLessEqual(len(out.encode()), 1200)
+
+    def test_the_skill_never_runs_it(self):
+        part_b = read("skills", "close-case", "SKILL.md").split("## B.", 1)[1]
+        self.assertIn("! ${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh --release", part_b)
+        self.assertIn("never run it yourself", part_b)
+        self.assertNotIn("run `${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh --release`", part_b)
+
+    def test_the_principles_say_the_human_types_it(self):
+        text = read("PRINCIPLES.md")
+        w10 = text[text.index("W10."):text.index("W11.")]
+        w13 = text[text.index("W13."):text.index("## C.")]
+        self.assertIn("`! agent-start.sh --take-over`", w10)
+        self.assertIn("`! agent-start.sh --release`", w13)
+        for rule in (w10, w13):
+            self.assertIn("never runs it", rule)
 
 
 if __name__ == "__main__":
