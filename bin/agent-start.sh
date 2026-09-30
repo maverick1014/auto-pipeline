@@ -115,7 +115,8 @@ if [ "${1:-}" = "--take-over" ] || [ "${1:-}" = "--release" ]; then
   rm -f "$LOCK"
   closed_update "$ME" - released
   echo "RELEASED: the main manager seat of \"$REPO\" is free. The next session the human opens becomes the main manager."
-  echo "This session is closed: start nothing new. Take over again only when the human asks: $PLUGIN_ROOT/bin/agent-start.sh --take-over"
+  echo "This session is closed: start nothing new. Take over again only when the human asks; the human types this line in this session, never run it yourself:"
+  echo "! $PLUGIN_ROOT/bin/agent-start.sh --take-over"
   exit 0
 fi
 
@@ -489,7 +490,8 @@ print_role_and_project() {
     closed)   closed_lines "ROLE: closed.";;
     second)
       echo "ROLE: task manager, human-direct (W10). Main manager already running: $(holder_text)."
-      echo "Take over only when the human asks (the old main manager is then closed): $PLUGIN_ROOT/bin/agent-start.sh --take-over"
+      echo "Take over only when the human asks (the old main manager is then closed). The human types this line in this session; never run it yourself:"
+      echo "! $PLUGIN_ROOT/bin/agent-start.sh --take-over"
       announce_human_direct
       echo "Announced: line added to agent_worktree.txt. Send the main manager a direct message too if Orca is available."
       echo "Will change files? Open your own worktree first (W7). Human says finish -> report done + click path to the main manager."
