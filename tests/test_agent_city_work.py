@@ -34,7 +34,9 @@ CONTRACT (bin/agent-city.html)
                                  only reads the clock (simT) when c.workKind is set.
     TEXT has work.edit, work.read, work.bash, work.other, work.pause in zh and en.
     The calm idle stroll stays: 30 s (IDLE_STROLL_SEC) without a tool event -> a standalone
-      working person takes its slow walk and comes back, as before.
+      working person takes its slow walk and comes back, as before. A tool event during the stroll
+      (walking out, or in its pause at the far spot) ends it: the person walks straight back to
+      its spot (strollPhase 'back', path home) and acts there -- never acts far from its spot.
 
   3D view (node with stubs):
     WORK_CYCLE_SEC = 4.5, WORK_ACT_SEC = 2: a calm rhythm -- in every 4.5 s cycle the person acts
@@ -198,6 +200,18 @@ tick(20);
 const quiet20 = (trace['s:st'] || 0) - sw0;
 tick(40);
 out.stroll = { quiet20, after60: (trace['s:st'] || 0) - sw0 };
+// work comes back during a stroll: it heads home at once and acts there
+let waited = 0;
+const away = () => Math.hypot(s.x - s.home.x, s.y - s.home.y);
+while (!(s.strollPhase === 'pause' || (s.strollPhase === 'out' && s.path.length && away() > 1)) && waited < 120) { tick(.25); waited += .25; }
+const phaseSeen = s.strollPhase;
+const far = away();
+apply({ type: 'tool', id: 's:st', tool: 'Read' });
+tick(.2);
+const headingHome = s.path.length > 0 && Math.hypot(s.path[s.path.length - 1][0] - s.home.x, s.path[s.path.length - 1][1] - s.home.y) < .3;
+for (let i = 0; i < 8; i++) { apply({ type: 'tool', id: 's:st', tool: 'Read' }); tick(2); }
+out.strollBack = { phaseSeen, far, headingHome, home: Math.hypot(s.x - s.home.x, s.y - s.home.y), path: s.path.length,
+                   action: workAction(s), phase: s.strollPhase };
 
 // a person without any tool event keeps the old words
 const fresh = { state: 'building', askKind: '', askPhase: '', relay: '', waiting: false };
@@ -314,6 +328,16 @@ class TestWorkingPeopleSim(unittest.TestCase):
         s = self.r["stroll"]
         self.assertLess(s["quiet20"], 0.05, "20 s without a tool: still standing")
         self.assertGreater(s["after60"], 0.5, "then the slow walk around, as before")
+
+    def test_work_during_a_stroll_sends_it_home_at_once(self):
+        b = self.r["strollBack"]
+        self.assertIn(b["phaseSeen"], ("out", "pause"), "the person was out on its stroll")
+        self.assertGreater(b["far"], 0.9, "well away from its spot when the work came back")
+        self.assertTrue(b["headingHome"], "a tool event mid-stroll: straight back home, no pause first")
+        self.assertLess(b["home"], 0.1, "back on its own spot")
+        self.assertEqual(b["path"], 0)
+        self.assertEqual(b["action"], "read", "and it acts there")
+        self.assertEqual(b["phase"], "", "the stroll is over")
 
     def test_no_tool_yet_keeps_the_old_words(self):
         self.assertEqual(self.r["fresh"][0], ["build", "施工中"])
