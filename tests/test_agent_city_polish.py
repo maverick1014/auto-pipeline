@@ -9,7 +9,9 @@ CONTRACT
     "没有总督在"), and its log line never says "问总督" (the governor asks the owner).
   D4 overlays: the red "?" (.qm) and the name tags (.tag) always draw above the 还差 sign
     (.era-sign): CSS z-index .qm > .tag > .era-sign. A tool event of kind "Other" makes no
-    floating English tag (Edit/Write/Bash/Read still float).
+    floating English tag. city-work-anim bounce 1 (owner, 2026-09-30): no tool name floats over a head
+    at all any more (Edit/Write/Bash/Read neither) -- the head says what it is doing in plain words
+    (tests/test_agent_city_steps.py).
   D5 (bin/agent_city.py): world.json keeps "gov_seen": {identity: sid} of the governor last seen
     per territory. After a restart the snapshot lists such a territory in "govs" with state
     "unknown" until a governor acts there (then its normal state) or that sid ends (then gone,
@@ -69,11 +71,9 @@ apply({ type: 'ask_closed', id: ask.id, agent: 'gov', kind: 'question', tool: 'A
 const answered = logEntries[0].text;
 apply({ type: 'spawn', id: 'w1', role: 'worker', label: 'worker', task: 'slice w1', terr: ask.terr });
 const other = askName({ agent: 'w1', label: 'worker', task: 'slice w1' });
-const before = floaters.length;
 apply({ type: 'tool', id: 'w1', tool: 'Other' });
-const afterOther = floaters.length;
 apply({ type: 'tool', id: 'w1', tool: 'Edit' });
-__out = { name, asked, answered, other, otherFloats: afterOther - before, editFloats: floaters.length - afterOther };
+__out = { name, asked, answered, other };
 """
 
 
@@ -81,7 +81,7 @@ class TestWords(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.r = run_sim(WORDS_DRIVER, {"view": named_view(), "ask": ASK_Q}, REQUIRED + ("askName", "logEntries", "floaters"))
+        cls.r = run_sim(WORDS_DRIVER, {"view": named_view(), "ask": ASK_Q}, REQUIRED + ("askName", "logEntries"))
 
     def test_the_governor_is_named_with_his_territory(self):
         self.assertEqual(self.r["name"], "repoA 总督")
@@ -110,9 +110,10 @@ process.stdout.write(JSON.stringify({
         self.assertNotIn("没有总督在", out["gov"])
         self.assertIn("没有总督在", out["other"], "a citizen's question with no governor keeps its line")
 
-    def test_no_english_other_floater(self):
-        self.assertEqual(self.r["otherFloats"], 0)
-        self.assertEqual(self.r["editFloats"], 1)
+    def test_no_tool_name_floats_over_a_head(self):
+        text = page()
+        self.assertNotIn("floaters.push(", text, "a tool event makes no floating tag")
+        self.assertNotIn("ovEl('fl')", text)
 
 
 def z_index(selector):
