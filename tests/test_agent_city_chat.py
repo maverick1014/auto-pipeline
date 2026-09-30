@@ -97,7 +97,7 @@ CONTRACT, hooks (hooks/hooks.json)
     "asyncRewake": true. The per-tool hook (agent-city-hook.sh) never runs say.
 
 CONTRACT, page (bin/agent-city.html) -- inside the window of city-focus
-  const CHAT_STATE_ZH = {queued: '已发送', delivered: '已送达',
+  const CHAT_STATE_ZH = {queued: '排队中', delivered: '已送达',
     undelivered: '没送到'}.
   chatHtml(entries, name, busy) -> one <li class="msg" data-kind="<kind>"
     data-id="<id>"> per entry, in order: who (prompt -> 你（终端）, owner ->
@@ -670,7 +670,7 @@ class TestPageChat(unittest.TestCase):
     def test_state_words(self):
         zh = text_zh()  # idea-city C1
         self.assertEqual({k: zh.get("chat.state." + k) for k in ("queued", "delivered", "undelivered")},
-                         {"queued": "已发送", "delivered": "已送达", "undelivered": "没送到"})
+                         {"queued": "排队中", "delivered": "已送达", "undelivered": "没送到"})
 
     def test_chat_html(self):
         entries = [{"id": 1, "kind": "prompt", "text": "fix <b>it</b>", "at": 1},
@@ -679,7 +679,7 @@ class TestPageChat(unittest.TestCase):
         html, busy, empty = self.html((entries, "worker · <x>", False), (entries, "w", True), ([], "w", False))
         self.assertEqual(re.findall(r'<li class="msg" data-kind="(\w+)" data-id="(\d+)"', html),
                          [("prompt", "1"), ("reply", "2"), ("owner", "3")])
-        for word in ("你（终端）", "你（页面）", "已发送", "fix &lt;b&gt;it&lt;/b&gt;", "worker · &lt;x&gt;"):
+        for word in ("你（终端）", "你（页面）", "排队中", "fix &lt;b&gt;it&lt;/b&gt;", "worker · &lt;x&gt;"):
             with self.subTest(word=word):
                 self.assertIn(word, html)
         self.assertNotIn("<b>it</b>", html)
