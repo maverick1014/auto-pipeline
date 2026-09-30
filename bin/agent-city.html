@@ -93,14 +93,23 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .grp-h{all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:6px;padding:6px 6px 3px;font:700 11.5px/1.2 var(--mono);color:var(--ink-2)}
 .grp-h:focus-visible{outline:2px solid var(--focus);border-radius:6px}
 .grp-h .n{margin-left:auto;color:var(--ink-3);font-weight:600}
+/* city-polish P4: ONE straight colour bar per repo group (head + rows together), square corners; the
+   section carries --rc, each row's dot carries the person's state colour (.sdot.st-*, below) */
+.rail-grp{border-left:4px solid var(--rc);margin:4px 0 6px;padding-left:2px}
+.rail-grp .grp-h{padding-top:3px}
 .rrows{list-style:none;margin:0;padding:0}
-.rrow{all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:8px;border-left:3px solid var(--rc);font-size:12.5px;line-height:1.35}
+.rrow{all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:8px;font-size:12.5px;line-height:1.35}
 .rrow.sub{padding-left:16px}
 .rrow:hover{background:var(--panel-2)}
 .rrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 .rrow[aria-current="true"]{background:var(--ink);color:var(--paper)}
 .rrow.resting{opacity:.7}
 .sdot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--ink-3)}
+.sdot.st-you{background:var(--berry)}
+.sdot.st-ask,.sdot.st-gov{background:#E0A526}
+.sdot.st-build{background:#4D7CFE}
+.sdot.st-walk{background:var(--walk-ink)}
+.sdot.st-rest{background:#2FB57A}
 .rrow b{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chip.you{background:var(--ask-bg);color:var(--ask-ink)}
 .chip.ask{background:var(--gov-bg);color:var(--gov-ink)}
@@ -1146,17 +1155,57 @@ function citizenStatus(c, governors = 1) {
    another person of my own city (not gone, not remote) has the very same text, " #" and the last 4
    characters of the id are added, so two rows never read the same (two sessions both "session · v4-plus").
    The person tag, the roster and the detail card all go through this, never c.label/c.task directly.
-   It runs every frame for every person: one pass over citizens, no allocation. */
-function nameBase(c) {
-  return c.task && c.task !== c.label ? c.label + ' · ' + c.task : c.label;
+   city-polish P3: a name never repeats the repo -- shortLabel() takes the repo name off the label and the
+   task ("v4-pospro Helper" -> "Helper", a task that is only the repo name -> nothing); the repo shows once
+   where context needs it (rail group head, panel subtitle = factsLine), and in the page log, where every
+   repo mixes, as "<repo> · <name>" (fullName). The #-tag compares only people of the SAME territory.
+   P6: a task "<feature> <Kind> <n>: <slice>" reads "<Kind> <n> · <slice>" (the label is dropped; the full
+   task stays in factsLine).
+   It runs every frame for every person: one pass over citizens, one regexp run per person, no big arrays. */
+function shortLabel(text, repo){
+  if (!repo || !text) return text;
+  text = String(text);
+  if (text === repo) return '';
+  if (text.slice(0, repo.length) !== repo) return text;
+  const ch = text.charAt(repo.length);
+  if (ch !== ' ' && ch !== ':' && ch !== '/') return text;
+  return text.slice(repo.length + 1).replace(/^[·:/\s]+/, '').trim();
+}
+const KIND_TASK = /^(?:\S+\s+)?([A-Z][\w-]*\s+\d+)\s*:\s*(\S.*)$/;
+function repoOf(c){
+  const t = c.terr ? terrOf(c.terr) : null;
+  return t && t.name ? t.name : '';
+}
+function nameBase(c, repo) {
+  let label = shortLabel(c.label, repo), task = shortLabel(c.task, repo);
+  if (!label) { label = task; task = ''; }
+  if (!label) return c.label;
+  const m = task ? KIND_TASK.exec(task) : null;
+  if (m) return m[1] + ' · ' + m[2];
+  return task && task !== label ? label + ' · ' + task : label;
 }
 function nameOf(c) {
-  const base = nameBase(c);
+  const repo = repoOf(c), base = nameBase(c, repo);
   for (let i = 0; i < citizens.length; i++) {
     const o = citizens[i];
-    if (o !== c && !o.gone && !o.remote && nameBase(o) === base) return base + ' #' + String(c.id).slice(-4);
+    if (o !== c && !o.gone && !o.remote && o.terr === c.terr && nameBase(o, repo) === base) return base + ' #' + String(c.id).slice(-4);
   }
   return base;
+}
+/* city-polish P3: fullName(c) -> "<repo> · <nameOf(c)>" for the page log (chatDisplayName); the name alone
+   when there is no repo or the name is the repo itself. */
+function fullName(c) {
+  const repo = repoOf(c), name = nameOf(c);
+  return repo && name !== repo ? repo + ' · ' + name : name;
+}
+/* city-polish P3: factsLine(c) -> the panel's subtitle (plain text): the repo, then the task without the repo
+   name -- unless the name above it already shows that task. */
+function factsLine(c) {
+  const repo = repoOf(c), task = shortLabel(c.task, repo);
+  const parts = [];
+  if (repo) parts.push(repo);
+  if (task && nameOf(c).indexOf(task) < 0) parts.push(task);
+  return parts.join(' · ');
 }
 const TASKS = {
   'worker':[0,1,2,3,4,5,6,7,8,9].map(i => i18n('demo.task.worker.' + i)),
@@ -1961,7 +2010,9 @@ function stepText(ev){
    ''. The task is cut to 13 characters plus …; it is left out when empty or just the label. */
 function doingText(c){
   if (!workAction(c)) return '';
-  const task = c.task && c.task !== c.label ? cutText(c.task, 14) : '', step = c.step || '';
+  // city-polish P3: the task without the repo name (a task that is only the repo shows no task, the step alone)
+  const repo = repoOf(c), t = shortLabel(c.task, repo);
+  const task = t && t !== shortLabel(c.label, repo) ? cutText(t, 14) : '', step = c.step || '';
   return task && step ? task + ' · ' + step : task || step;
 }
 
@@ -3148,7 +3199,7 @@ function railRowHtml(row, group){
   const [cls, text] = isGov ? ['gov', govRowText(row.id.slice(4))] : (c ? citizenStatus(c) : ['walk', '']);
   const clsAttr = 'rrow' + (row.depth ? ' sub' : '') + (row.rest ? ' resting' : '');
   return '<li><button type="button" class="' + clsAttr + '" data-focus="' + esc(row.id) + '" aria-current="' +
-    (row.id === group.selId) + '" style="--rc:' + group.color + '"><span class="sdot"></span><b>' + esc(name) +
+    (row.id === group.selId) + '" style="--rc:' + group.color + '"><span class="sdot st-' + esc(cls) + '"></span><b>' + esc(name) +
     '</b><span class="chip ' + cls + '">' + esc(text) + '</span></button></li>';
 }
 /* V1 (sim): railHtml(groups, selId, closed, openRest) -> the HTML of #rail-list. selId = selKey(the
@@ -3161,12 +3212,14 @@ function railHtml(groups, selId, closed, openRest){
     const grp = { color: g.color, selId };
     const isClosed = closed.has(g.terr);
     const active = g.rows.filter(r => !r.rest), resting = g.rows.filter(r => r.rest);
-    // the head's own counts: active rows that are neither the governor nor resting (railCount() counts the same way)
+    // the head's "waiting on you" count (shown while folded): active rows that are neither the governor nor resting
     const activeCount = active.filter(r => r.id.slice(0, 4) !== 'gov:');
     const you = activeCount.reduce((n, r) => n + (byId(r.id) && citizenStatus(byId(r.id))[0] === 'you' ? 1 : 0), 0);
-    html += '<section class="rail-grp" data-terr="' + esc(g.terr) + '">';
+    // city-polish P4: the group's colour sits on the section (one straight bar for head + rows); the head's
+    // count is everyone in the group (the governor, the active and the resting people)
+    html += '<section class="rail-grp" data-terr="' + esc(g.terr) + '" style="--rc:' + g.color + '">';
     html += '<button type="button" class="grp-h" data-grp="' + esc(g.terr) + '" aria-expanded="' + !isClosed + '">' +
-      '<span class="rc" style="--rc:' + g.color + '"></span>' + esc(g.name) + '<span class="n">' + activeCount.length + '</span>';
+      '<span class="rc" style="--rc:' + g.color + '"></span>' + esc(g.name) + '<span class="n">' + g.rows.length + '</span>';
     if (isClosed && you) html += '<span class="you">' + you + '</span>';
     html += '</button>';
     if (!isClosed) {
@@ -3814,6 +3867,10 @@ const variations = [];
 
 /* ---------- placing ready-made models ---------- */
 const tmpM = new THREE.Matrix4(), tmpM2 = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3();
+/* city-polish P5: models whose pool floor lies on the ground (y 0) and shows through see-through water --
+   place()/instanced() with o.front pull their meshes toward the camera, so the floor wins over the ground
+   (the fountain's water used to flicker; the cliff blocks' o.behind is the opposite case). */
+const FRONT_KEYS = new Set(['fantasy/fountain-round']);
 function fitScale(key, target){ const s = lib[key].size; return target / Math.max(s.x, s.z); }
 function scaleOf(key, o){ return o.s != null ? o.s : o.h != null ? o.h / lib[key].size.y : fitScale(key, o.fit || .9); }
 function place(key, x, z, opt){
@@ -3828,6 +3885,12 @@ function place(key, x, z, opt){
   // Balance: o.sink (model-space units, before scaling) buries a baked-in base under the ground, e.g. the
   // Hexagon Kit's own hex tile, so only the building itself stands above y 0
   g.position.set(x, (o.y || 0) - (o.sink || 0) * s, z);
+  // city-polish P5: the clone shares the lib's materials, so a front model gets its own before the offset
+  if (o.front) inner.traverse(n => {
+    if (!n.isMesh) return;
+    n.material = n.material.clone();
+    n.material.polygonOffset = true; n.material.polygonOffsetFactor = -2; n.material.polygonOffsetUnits = -4;
+  });
   g.add(inner);
   (o.parent || world).add(g);
   g.userData.s = s;
@@ -3846,6 +3909,7 @@ function instanced(key, items, opt){
       im.setMatrixAt(i, tmpM2.multiplyMatrices(tmpM, n.matrixWorld));
     });
     if (o.behind) { im.material = n.material.clone(); im.material.polygonOffset = true; im.material.polygonOffsetFactor = 1; im.material.polygonOffsetUnits = 2; }
+    else if (o.front) { im.material = n.material.clone(); im.material.polygonOffset = true; im.material.polygonOffsetFactor = -2; im.material.polygonOffsetUnits = -4; }
     else if (o.tint) im.material = tintedMat(n.material, o.tint);
     im.castShadow = o.shadow !== false; im.receiveShadow = true; im.frustumCulled = false;
     (o.parent || world).add(im);
@@ -4238,9 +4302,9 @@ function buildLand(view){
       // model (the flowers); SYS_FIT (fit) for everything else, .8 if neither says otherwise.
       const scaleOpt = key in SYS_SCALE ? { s: SYS_SCALE[key] } : { fit: SYS_FIT[key] || .8 };
       if (items.length > 1) {
-        instanced(key, items.map(it => Object.assign({ x: it.x, z: it.z }, scaleOpt)), Object.assign({ parent: landGroup }, tint ? { tint } : null));
+        instanced(key, items.map(it => Object.assign({ x: it.x, z: it.z }, scaleOpt)), Object.assign({ parent: landGroup, front: FRONT_KEYS.has(key) }, tint ? { tint } : null));
       } else {
-        const g = place(key, items[0].x, items[0].z, Object.assign({ parent: landGroup }, scaleOpt));
+        const g = place(key, items[0].x, items[0].z, Object.assign({ parent: landGroup, front: FRONT_KEYS.has(key) }, scaleOpt));
         if (tint) g.traverse(n => { if (n.isMesh) n.material = tintedMat(n.material, tint); }); // ready-made Kenney model, tint only — never a hand-made shape
       }
     }
@@ -4251,9 +4315,9 @@ function buildLand(view){
     for (const key in restBy) {
       const items = restBy[key], scaleOpt = { fit: REST_FIT[key] || .8 };
       if (items.length > 1) {
-        instanced(key, items.map(it => Object.assign({ x: it.x, z: it.z, ry: it.ry || 0 }, scaleOpt)), { parent: landGroup });
+        instanced(key, items.map(it => Object.assign({ x: it.x, z: it.z, ry: it.ry || 0 }, scaleOpt)), { parent: landGroup, front: FRONT_KEYS.has(key) });
       } else {
-        place(key, items[0].x, items[0].z, Object.assign({ parent: landGroup, ry: items[0].ry || 0 }, scaleOpt));
+        place(key, items[0].x, items[0].z, Object.assign({ parent: landGroup, ry: items[0].ry || 0, front: FRONT_KEYS.has(key) }, scaleOpt));
       }
     }
     // city-people: every office's own KayKit cabin and flag (officeDecor); the flag is tinted in the
@@ -5708,7 +5772,7 @@ function chatDisplayName(to){
   if (!to) return '';
   if (to.slice(0, 4) === 'gov:') return i18n('who.governor');
   const pc = byId(to);
-  return pc ? nameOf(pc) : to;
+  return pc ? fullName(pc) : to; // city-polish P3: the log mixes repos, so the repo goes in front
 }
 /* curChatTo() -> the chat id of whatever is selected right now: 'gov:'+terr for the governor,
    's:'+id for a session citizen (a task manager, c.office), the bare id for a subagent (c.lead,
@@ -5866,8 +5930,7 @@ function renderDetail(){
         <p class="why">${esc(remoteNote(name))}</p>`;
     } else if (c) {
       const [g, zh] = citizenStatus(c, governorCount);
-      const terrRec = terrOf(c.terr), repoName = terrRec ? terrRec.name : '';
-      const facts = `${esc(repoName)}${repoName ? ' · ' : ''}${esc(c.task || '')}`;
+      const facts = esc(factsLine(c)); // city-polish P3: the repo once, the task only when the name does not hold it
       const canStuck = !c.doneFlag && !c.stuck && ['building','to_plot','back'].includes(c.state);
       const chain = chainLine(c);
       el.innerHTML = `
@@ -6095,8 +6158,8 @@ function openLog(){ winLog = true; selected = null; renderPanel(); }
 function closeWin(){ winLog = false; selected = null; renderPanel(); }
 /* winTitle() -> a short label for the open window, whatever renderDetail() is showing right now -- V1
    (city-ux2 v2): the panel is one person's own, so its title IS that person -- nameOf(c) for a local
-   citizen, its member label for a remote one, i18n('gov.title', {name}) for the governor (its
-   territory's name) -- never a team title any more. A building/site/log stay as they were. */
+   citizen, its member label for a remote one, i18n('who.governor') for the governor (city-polish P3:
+   its repo shows in the subtitle) -- never a team title any more. A building/site/log stay as they were. */
 function winTitle(){
   if (!selected) return i18n('detail.title');
   if (selected.t === 'c') {
@@ -6104,7 +6167,7 @@ function winTitle(){
     return c.remote ? memberLabel(c.remote.who, c.remote.device) : nameOf(c);
   }
   if (selected.t === 'b') { const b = buildings.find(x => x.id === selected.id); if (!b) return i18n('detail.title'); const info = buildingInfo(b); return info.name || i18n('type.' + b.type) || b.type; }
-  if (selected.t === 'gov') { const terrRec = terrOf(selected.terr || govTerr); return i18n('gov.title', { name: terrRec ? terrRec.name : '' }); }
+  if (selected.t === 'gov') return i18n('who.governor'); // city-polish P3: the repo is in the subtitle, never twice
   if (selected.t === 'rg') { const rg = remoteGovs.get(selected.id); return rg ? govSign(rg) : i18n('who.governor'); }
   return i18n('detail.title');
 }
