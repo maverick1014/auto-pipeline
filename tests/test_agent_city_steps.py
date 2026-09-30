@@ -55,6 +55,9 @@ CONTRACT
   3D view:
     updatePerson(c) pins a small ".doing" line over the head with doingText(c) (not while a bubble or
     a "?" is up there); the CSS has a .doing rule.
+    renderDetail(): the open person's status pill (.p-head .pill, mine and other members') follows
+    citizenStatus(c) on every call, not only when the card is rebuilt -- the word changes with every
+    step now (the rail already did; the panel kept the old word).
 
 Run: python3 -m unittest tests.test_agent_city_steps </dev/null
 """
@@ -320,6 +323,12 @@ class TestHeadLine3D(unittest.TestCase):
         up = function_source("updatePerson") or ""
         self.assertIn("doingText(", up)
         self.assertRegex(page(), r"\.doing\{", "a .doing CSS rule")
+
+    def test_panel_pill_follows_the_work(self):
+        rd = function_source("renderDetail") or ""
+        tail = rd[rd.index("lastChatTo = chatTo;"):] if "lastChatTo = chatTo;" in rd else ""
+        self.assertIn(".pill", tail, "after the rebuild part, every call refreshes the pill")
+        self.assertIn("citizenStatus(", tail)
 
     def test_update_calls_the_demo_tick(self):
         self.assertRegex(function_source("update") or "", r"DEMO[^\n]*demoRemoteTick\(")
