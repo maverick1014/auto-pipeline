@@ -8,6 +8,14 @@
 #   agent_pid            this session's pid: $CLAUDE_PID, else the first
 #                         claude/codex/opencode/gemini ancestor (shared with
 #                         agent-start.sh and agent-close-case.sh)
+#   role_read            this session's role (W10). Call after roots_read.
+#                         Read only, never writes the lock. Sets LOCK, ME, and
+#                         role = spawned (AGENT_ROLE is set) | main (no lock,
+#                         or the lock is ours) | second (a live main manager
+#                         holds the lock) | takeover (the lock's pid is dead);
+#                         lpid and lsince come from the lock. One copy of the
+#                         logic, for agent-start.sh, agent-close-case.sh and
+#                         agent-name.sh.
 #
 # PLUGIN root  = the folder above bin/. Read only: PRINCIPLES.md, the quiz,
 #                agent_conf.py, bin/agent.conf.default. No script writes here.
@@ -49,6 +57,19 @@ roots_read() {
 conf_read() {
   if [ -n "${PROJECT_ROOT:-}" ] && [ -f "$PROJECT_ROOT/agent.conf" ]; then
     . "$PROJECT_ROOT/agent.conf"
+  fi
+  return 0
+}
+
+role_read() {
+  LOCK="$PROJECT_GITDIR/agent_main.lock"; ME=$(agent_pid)
+  role=main; lpid=""; lsince=""
+  if [ -n "${AGENT_ROLE:-}" ]; then role=spawned
+  elif [ -f "$LOCK" ]; then
+    read -r lpid lsince < "$LOCK" 2>/dev/null || true
+    if [ "$lpid" = "$ME" ]; then role=main
+    elif kill -0 "$lpid" 2>/dev/null; then role=second
+    else role=takeover; fi
   fi
   return 0
 }

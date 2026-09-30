@@ -28,6 +28,7 @@ Scripts, not agents (cost no tokens):
   bin/agent-city-shim     the ~/.local/bin/agent-city command; runs the newest installed plugin's agent-city.sh
   bin/agent-city-hook.sh  hook that feeds the city; off costs a `test -f`, on appends one JSON line
   bin/agent-close-case.sh  UserPromptSubmit hook: "close case" in the prompt injects the close-case rule for the session's role
+  bin/agent-name.sh       SessionStart hook: names the session by role (<repo> Manager, <feature> Task Manager, <repo> Helper), also the Orca tab
 ```
 
 ## Who does what
