@@ -14,8 +14,14 @@ prints nothing, or exactly one JSON object on one line:
                             "sessionTitle": "<name>"}}
 
 Claude Code sets the session's title from sessionTitle: the prompt box, the
-/resume picker, the terminal title, and the name ListAgents shows and
-SendMessage uses as the address.
+terminal title, and the stored name (custom-title in the transcript).
+
+Live check on pc2, Claude Code 2.1.285, 2026-09-30: the stored name becomes
+the ListAgents / SendMessage address only from the NEXT start (a resume). A
+fresh `claude` keeps the address "<folder>-<xx>" (folder name plus two hex
+characters) for its whole run; SendMessage to the hook's name fails. The
+address is right at once only with `claude --name <name>` at launch (the
+dispatch skill does this for task managers) or a typed `/rename <name>`.
 
 Always exit 0, nothing on stderr, no file written.
 
@@ -50,8 +56,12 @@ exit code, and the hook still ends inside 5 s.
 
 The start and close-case hooks name the main manager the same way: a spawned
 task manager and a human-direct session are told to SendMessage
-"<repo> Manager", and a human-direct session how to pick one of two sessions
-with the same name (the [ref] ListAgents prints).
+"<repo> Manager", or, when ListAgents has no row by that name, the
+"<repo>-<xx>" row (a main manager started by hand, not yet renamed); a
+human-direct session also how to pick one of two sessions with the same name
+(the [ref] ListAgents prints). The main manager and the human-direct session
+are told how to make their own address match: `claude --name`, or ask the
+human once for `/rename <repo> Manager` (or `/rename <repo> Helper`).
 """
 
 import json
@@ -347,13 +357,25 @@ class TestStartNamesTheManager(ScriptCase):
         self.set_lock(os.getpid())
         out = self.start({"AGENT_ROLE": "task-manager"})
         self.assertIn('"project Manager"', out.splitlines()[0])
+        self.assertIn('"project-<xx>"', out.splitlines()[0])
 
     def test_human_direct_session_finds_repo_manager(self):
         self.set_lock(os.getpid())
         out = self.start({})
         self.assertIn("ROLE: task manager, human-direct", out)
         self.assertIn('"project Manager"', out)
+        self.assertIn('"project-<xx>"', out)
         self.assertIn("[ref]", out)
+
+    def test_human_direct_session_learns_to_fix_its_own_address(self):
+        self.set_lock(os.getpid())
+        self.assertIn("/rename project Helper", self.start({}))
+
+    def test_main_manager_learns_to_fix_its_own_address(self):
+        out = self.start({})
+        self.assertIn("ROLE: main manager", out)
+        self.assertIn("/rename project Manager", out)
+        self.assertIn("claude --name", out)
 
 
 class TestCloseCaseNamesTheManager(ScriptCase):
@@ -374,10 +396,14 @@ class TestCloseCaseNamesTheManager(ScriptCase):
         return result.stdout
 
     def test_task_manager(self):
-        self.assertIn('"project Manager"', self.close_case({"AGENT_ROLE": "task-manager"}))
+        out = self.close_case({"AGENT_ROLE": "task-manager"})
+        self.assertIn('"project Manager"', out)
+        self.assertIn('"project-<xx>"', out)
 
     def test_human_direct(self):
-        self.assertIn('"project Manager"', self.close_case({}))
+        out = self.close_case({})
+        self.assertIn('"project Manager"', out)
+        self.assertIn('"project-<xx>"', out)
 
 
 if __name__ == "__main__":

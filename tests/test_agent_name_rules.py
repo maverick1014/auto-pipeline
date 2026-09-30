@@ -10,12 +10,16 @@ CONTRACT.
     - one short naming rule, a single line (at most 320 characters) that
       names every role: `<repo> Manager`, `<feature> Task Manager`,
       `<repo> Helper`, `<feature> Worker <n>`, a `Deputy` and a `Merge`
-      name, and says the SessionStart hook bin/agent-name.sh sets the first
-      three
+      name, and says the SessionStart hook bin/agent-name.sh shows the first
+      three, and that the SendMessage address follows only after
+      `claude --name`, `/rename` or a resume (live check, see
+      tests/test_agent_name.py)
     - the "Talk between sessions" line (W10) says what to do when two
-      sessions share a name: add the [ref] ListAgents prints
-    - W12 finds the peer by `<repo> Manager`, no longer "named after the
-      other repo's folder"
+      sessions share a name (add the [ref] ListAgents prints) and when the
+      name is not listed (the row named after its folder, `<folder>-<xx>`)
+    - the W10 line that opens a second session names it: --name '<repo> Helper'
+    - W12 finds the peer by `<repo> Manager`, or its `-<xx>` folder row, no
+      longer "named after the other repo's folder"
 
   skills/dispatch/SKILL.md
     - the task manager launch gives the session and the Orca tab the same
@@ -31,6 +35,7 @@ CONTRACT.
   skills/close-case/SKILL.md
     - the sessions that get the words close case are found by name:
       "<feature> Task Manager" or "<name> Task Manager", and "<repo> Helper"
+      or its folder row "<repo>-<xx>"
 """
 
 import os
@@ -80,15 +85,32 @@ class TestPrinciples(unittest.TestCase):
     def test_the_rule_is_short(self):
         self.assertLessEqual(len(self.naming_lines()[0]), 320)
 
-    def test_talk_between_sessions_handles_a_shared_name(self):
-        line = next(l for l in self.text.splitlines()
+    def test_the_rule_says_when_the_name_is_the_address(self):
+        line = self.naming_lines()[0]
+        for word in ("--name", "/rename", "resume"):
+            with self.subTest(word=word):
+                self.assertIn(word, line)
+
+    def talk_line(self):
+        return next(l for l in self.text.splitlines()
                     if l.startswith("- Talk between sessions"))
-        self.assertIn("[ref]", line)
+
+    def test_talk_between_sessions_handles_a_shared_name(self):
+        self.assertIn("[ref]", self.talk_line())
+
+    def test_talk_between_sessions_falls_back_to_the_folder_row(self):
+        self.assertIn("<folder>-<xx>", self.talk_line())
+
+    def test_the_second_session_is_opened_with_its_name(self):
+        line = next(l for l in self.text.splitlines()
+                    if l.startswith("- Open a second session"))
+        self.assertIn("--name '<repo> Helper'", line)
 
     def test_cross_repo_peer_is_found_by_manager_name(self):
         w12 = section(self.text, "W12.", "W13.")
         self.assertNotIn("named after the other repo's folder", w12)
         self.assertIn("Manager", w12)
+        self.assertIn("-<xx>", w12)
 
 
 class TestDispatch(unittest.TestCase):
@@ -127,6 +149,7 @@ class TestCloseCase(unittest.TestCase):
         text = section(read("skills", "close-case", "SKILL.md"), "## B.", "5.")
         self.assertTrue(re.search(r"<(feature|name)> Task Manager", text), text)
         self.assertIn("<repo> Helper", text)
+        self.assertIn("<repo>-<xx>", text)
 
 
 if __name__ == "__main__":
