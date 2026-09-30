@@ -15,7 +15,10 @@ P2 + C1 the message panel: full height, the history fills it, no empty space at 
       flex-direction:column; its textarea flex:1 (or flex-grow 1), min-width:0, one line tall (min-height and
       height at most 40px, resize:none); .say .btn does not wrap (white-space:nowrap or flex:none). .newmsg
       sits just above that row (bottom at most 80px, the phone too).
-  Phone, @media (max-width: 960px): .win stays the bottom sheet (top:auto), as today.
+  Phone, @media (max-width: 960px): .win stays the bottom sheet (top:auto), as today. The sheet is short (44% of
+      the stage), so there the history never shrinks to nothing: .chat min-height at least 80px (the sheet's
+      #detail scrolls to the input row, as it did before). Headless check 2026-09-30, 390 x 844: a 167 px
+      sheet showed no history and cut the input row off.
 
 C2 the history shows the main messages; one small toggle shows the rest (owner: "like Claude Code itself
   hides its mechanism")
@@ -406,6 +409,11 @@ class TestPanelCss(unittest.TestCase):
 
     def test_phone_sheet_stays(self):
         self.assertEqual(decl(rule(".win", media_960()), "top"), "auto", "still a bottom sheet")
+
+    def test_phone_history_never_collapses(self):
+        v = px(decl(rule(".chat", media_960()), "min-height"))
+        self.assertIsNotNone(v, "@media (max-width: 960px) .chat{min-height:...}")
+        self.assertGreaterEqual(v, 80)
 
 
 # ---------------------------------------------------------------------------
