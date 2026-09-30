@@ -158,6 +158,7 @@ import agent_city as ac  # noqa: E402
 from test_agent_city_page import (case_block, const_object, function_source, inline_script,  # noqa: E402
                                   js_value, page_fns, run_node, zh_resolved, constants_prelude, text_zh)
 from test_agent_city_server import ServerCase, wait_for  # noqa: E402
+from cityhelp import Mains  # noqa: E402
 
 REPO = "/r/shop/.git"
 
@@ -318,8 +319,10 @@ class ChatCase(unittest.TestCase):
         self.gov_id = "gov:" + ac.territory_id(REPO)
 
     def make(self):
+        # city-roles: g1 (team()'s governor) holds the main manager lock of REPO
         return ac.CityState(decisions_path=self.decisions, world_path=None, chat_path=self.chat_path,
-                            count_fn=lambda i: 0, balance_fn=lambda i, r: {"kinds": {}, "files": {}, "bad": []})
+                            count_fn=lambda i: 0, balance_fn=lambda i, r: {"kinds": {}, "files": {}, "bad": []},
+                            main_fn=Mains({REPO: "g1"}))
 
     def tearDown(self):
         shutil.rmtree(self.base, ignore_errors=True)

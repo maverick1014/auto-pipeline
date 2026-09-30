@@ -874,6 +874,9 @@ class WorldServerCase(ServerCase):
         self.world = os.path.join(self.home, "world.json")
         self.repo_a = make_repo(os.path.join(self.base, "big"), {"src/%d.py" % i: "x\n" * 400 for i in range(25)})
         self.repo_b = make_repo(os.path.join(self.base, "small"), {"a.py": "x\n" * 30})
+        # city-roles: g1 holds repo A's main manager lock (this test process is its live pid)
+        with open(os.path.join(self.repo_a, "agent_main.lock"), "w") as fh:
+            fh.write("%d 2026-09-30 10:00 g1 -\n" % os.getpid())
 
     def start(self, *extra, wait=True):
         return super().start(*(list(extra) or ["--idle-sec", "60", "--world", self.world]), wait=wait)
@@ -938,7 +941,8 @@ class TestServerWorld(WorldServerCase):
         self.start()
         client, _ = self.snap()
         self.append(gline("UserPromptSubmit", sid="g1", repo="", proj="notes"))
-        self.assertTrue(wait_for(lambda: client.events("gov")), "the line was read")
+        # city-roles: no repo, no start territory -> no lock, so g1 is a citizen, never a governor
+        self.assertTrue(wait_for(lambda: client.events("spawn")), "the line was read")
         time.sleep(0.5)
         self.assertEqual(client.events("world"), [])
         _, snap = self.snap()

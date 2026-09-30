@@ -147,7 +147,7 @@ class TestStartTerritory(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.base, ignore_errors=True)
 
-    def state(self, start_repo, world=None):
+    def state(self, start_repo, world=None, main_fn=None):
         if world is not None:
             ac.save_world(self.path, world)
 
@@ -155,7 +155,7 @@ class TestStartTerritory(unittest.TestCase):
             self.calls.append(identity)
             return 4000
         return ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=self.path,
-                            plans=plans(), count_fn=count, start_repo=start_repo)
+                            plans=plans(), count_fn=count, start_repo=start_repo, main_fn=main_fn)
 
     def snapshot(self, st):
         client = st.add_client()
@@ -218,7 +218,8 @@ class TestStartTerritory(unittest.TestCase):
         self.assertEqual([t["name"] for t in snap["world"]["territories"]], ["shop"])
 
     def test_a_line_without_repo_goes_to_the_start_territory(self):
-        st = self.state("/r/shop/.git")
+        # city-roles: g1 is the start repo's main manager, so it governs there
+        st = self.state("/r/shop/.git", main_fn=lambda identity: (os.getpid(), "g1") if identity == "/r/shop/.git" else None)
         client = st.add_client()
         start_id = ac.territory_id("/r/shop/.git")
         for missing in (False, True):
