@@ -35,7 +35,9 @@ skills/close-case/SKILL.md). "this session" = $CLAUDE_PID, else the first claude
       A new session in the repo is main again at once (no lock -> main), never "Helper".
       agent-close-case.sh (UserPromptSubmit), on its first prompt after that, any prompt: tells it
       once "no longer the main manager", who is main now (pid) when someone is, and
-      --take-over only if the human asks. Every later prompt: nothing (the "close case" words
+      --take-over only if the human asks, and that its name may still say Manager: ask the human
+      once for /rename <repo> Helper (E2E 2026-09-30: the closed one still showed as "<repo> Manager"
+      in the city). Every later prompt: nothing (the "close case" words
       keep their own text). Other sessions: nothing. This told-once mark is the only file the
       hook ever writes.
 
@@ -284,6 +286,7 @@ class TestRelease(SeatCase):
         first = self.prompt(pid=me)
         self.assertIn("no longer the main manager", first)
         self.assertIn("--take-over", first)
+        self.assertIn("/rename project Helper", first)
         self.assertEqual(self.prompt(pid=me), "")
 
     def test_told_names_the_new_main_manager(self):
