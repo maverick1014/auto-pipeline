@@ -22,19 +22,19 @@ V1 a compact left rail = the team list; a click on a person = follow it + its me
   (sim) railHtml(groups, selId, closed, openRest) -> the HTML of #rail-list. selId = the selected row id
         (selKey(selected)); closed = a Set of terr ids folded by the owner; openRest = a Set of terr ids whose
         resting rows are shown. Per group:
-          <section class="rail-grp" data-terr="<terr>">, then the head, a button:
+          <section class="rail-grp" data-terr="<terr>" ...>, then the head, a button:
           <button type="button" class="grp-h" data-grp="<terr>" aria-expanded="<not closed>"> with
           <span class="rc" style="--rc:<color>">, the escaped territory name, <span class="n"> = the number
-          of active rows (not the governor, not resting), and, only while the group is closed and has
-          people waiting on the owner, <span class="you"> with that number.
+          of rows in the group (city-polish P4: everyone, the governor and resting people too), and, only while
+          the group is closed and has people waiting on the owner, <span class="you"> with that number.
           While not closed: <ul class="rrows"> with one <li> per non-resting row; when the group has
           resting rows, <button type="button" class="rest-t" data-rest="<terr>" aria-expanded="true|false">
           with i18n('rail.rest', {n}); and only when openRest has terr, a second <ul class="rrows"> with the
           resting rows. A closed group shows its head only.
         A row is ONE button (no open button any more):
           <button type="button" class="rrow[ sub][ resting]" data-focus="<row id>"
-          aria-current="<row id === selId>" style="--rc:<color>"> holding <span class="sdot"> (the state
-          dot), <b> with the escaped name (the governor: i18n who.governor; a person: nameOf(c)) and
+          aria-current="<row id === selId>" style="--rc:<color>"> holding <span class="sdot st-<chip class>"> (the
+          state dot, city-polish P4), <b> with the escaped name (the governor: i18n who.governor; a person: nameOf(c)) and
           <span class="chip <group>"> with the state words (the governor: class gov, govRowText(terr); a
           person: citizenStatus(c)). Everything escaped.
   (sim) selKey(sel) -> the rail row id of a selection: {t:'c', id} -> id; {t:'gov', terr} -> 'gov:' +
@@ -72,7 +72,7 @@ V1 a compact left rail = the team list; a click on a person = follow it + its me
         panel even when it was folded) and, on a phone, setRailFolded(true). renderWin() shows #win or
         #win-tab by winFolded and keeps the tab's name and badge current.
     The message panel is #win, docked right: .win right:12px, top:12px, bottom:12px, width var(--msg-w)
-        (--msg-w 300 .. 360px); no two columns, no team list, no 'wide' (see test_agent_city_ux_page U5,
+        (--msg-w 360 .. 400px since city-polish P2; was 300 .. 360); no two columns, no team list, no 'wide' (see test_agent_city_ux_page U5,
         U10, U11 notes); winTitle() = the person's name (nameOf; the governor: its gov.title). The
         building card, a site and the page log (动态) show in the same panel. The "?" ask panel stays.
     Folding: #rail and #win each fold to a thin tab on their edge. Markup: in the rail head
@@ -274,7 +274,7 @@ class TestRailData(unittest.TestCase):
         self.assertNotIn("ropen", h)
         self.assertRegex(h, r'<button type="button" class="rrow[^"]*" data-focus="w1"')
         self.assertRegex(h, r'class="rrow sub[^"]*" data-focus="w1"', "a worker under its lead")
-        self.assertIn('class="sdot"', h)
+        self.assertIn('class="sdot st-gov"', h)  # city-polish P4: the dot has the state colour
         self.assertIn('class="chip gov"', h)
         self.assertIn("--rc:%s" % self.r["cA"], h)
         self.assertNotIn("city <b>", h, "escaped")
@@ -286,7 +286,8 @@ class TestRailData(unittest.TestCase):
         h = self.r["plain"]
         self.assertRegex(h, r'<section class="rail-grp" data-terr="%s"' % re.escape(a))
         self.assertRegex(h, r'<button type="button" class="grp-h" data-grp="%s" aria-expanded="true"' % re.escape(a))
-        self.assertRegex(h, r'data-grp="%s"[^>]*>[\s\S]*?<span class="n">\s*4\s*</span>' % re.escape(a), "A: s:L w1 f1 remote")
+        self.assertRegex(h, r'data-grp="%s"[^>]*>[\s\S]*?<span class="n">\s*6\s*</span>' % re.escape(a),
+                         "A: everyone -- gov s:L w1 f1 remote w2 (city-polish P4)")
         self.assertRegex(h, r'data-rest="%s"[^>]*aria-expanded="false"|aria-expanded="false"[^>]*data-rest="%s"' % (re.escape(a), re.escape(a)))
         self.assertRegex(self.r["open"], r'data-rest="%s"[^>]*aria-expanded="true"|aria-expanded="true"[^>]*data-rest="%s"' % (re.escape(a), re.escape(a)))
         self.assertIn(self.r["restA"], h)
@@ -524,7 +525,7 @@ class TestRailCss(unittest.TestCase):
         self.assertTrue(190 <= int(m.group(1)) <= 230, "compact: " + m.group(1))
         m = re.search(r"--msg-w\s*:\s*(\d+)px", c)
         self.assertIsNotNone(m, "--msg-w")
-        self.assertTrue(300 <= int(m.group(1)) <= 360, m.group(1))
+        self.assertTrue(360 <= int(m.group(1)) <= 400, m.group(1))  # city-polish P2: about 380
         r = rule(".rail").replace(" ", "")
         for bit in ("position:absolute", "width:var(--rail-w)", "max-height:calc(100%-24px)"):
             self.assertIn(bit, r, bit)

@@ -715,12 +715,13 @@ process.stdout.write(JSON.stringify(out));
 const fs = require('fs'), vm = require('vm');
 const { fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const people = { 's:tm1': { id: 's:tm1', label: 'task-manager', task: 'shop' }, 'a9': { id: 'a9', label: 'worker', task: 'form' } };
-const box = { byId: id => people[id], nameOf: c => c.label + ' · ' + c.task };
+const box = { byId: id => people[id], nameOf: c => c.label, fullName: c => 'repo · ' + c.label + ' · ' + c.task };
 vm.createContext(box); vm.runInContext(fns, box);
 process.stdout.write(JSON.stringify(['s:tm1', 'a9', 'gov:t1', 's:gone'].map(t => box.chatDisplayName(t))));
 """
         out = run_node(js, {"fns": constants_prelude() + "\n" + page_fns("chatDisplayName")})
-        self.assertEqual(out, ["task-manager · shop", "worker · form", "总督", "s:gone"],
+        # city-polish P3: the page log mixes every repo, so it names the person with its repo (fullName)
+        self.assertEqual(out, ["repo · task-manager · shop", "repo · worker · form", "总督", "s:gone"],
                          "E2E 2026-09-27: the log said 你 → tm1 instead of the name")
 
     def test_window_has_the_conversation_and_the_box(self):
