@@ -226,6 +226,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .say{display:flex;align-items:center;gap:8px}
 .say textarea{flex:1;min-width:0;height:38px;min-height:38px;resize:none;font:14px/1.4 var(--round);color:var(--ink);background:var(--panel-2);border:1.5px solid var(--line);border-radius:12px;padding:7px 10px}
 .say .btn{flex:none;white-space:nowrap}
+.say .say-send{display:inline-flex;align-items:center;justify-content:center;padding:8px 12px}
 
 .files{margin:2px 0 8px 24px;padding:8px 10px;background:var(--panel-2);border-radius:10px;font:12px/1.5 var(--mono);max-height:180px;overflow:auto}
 .files ol{margin:0;padding:0 0 0 18px}
@@ -5928,7 +5929,7 @@ function renderDetail(){
       return html + `<p class="hint">${i18n('hint.readOnlySub')}</p>` + leadBtn;
     }
     if (box.canSend === false) return html;
-    return html + `<form class="say" id="say"><textarea id="say-text" maxlength="4000" placeholder="${i18n('placeholder.saySomething')}"></textarea><button class="btn" type="submit">${i18n('btn.send')}</button></form>`;
+    return html + `<form class="say" id="say"><textarea id="say-text" maxlength="4000" placeholder="${i18n('placeholder.saySomething')}"></textarea><button class="btn say-send" type="submit" aria-label="${i18n('btn.send')}" title="${i18n('btn.send')}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button></form>`;
   }
   /* city-polish C2: the one small toggle in the history's title line (#hist-all); the refresh at the end
      of this function sets its text, its hidden state and aria-pressed on every call. */

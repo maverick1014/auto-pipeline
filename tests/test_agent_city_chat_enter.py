@@ -55,6 +55,16 @@ class TestChatEnter(unittest.TestCase):
         self.assertIn("ta.value.trim()", text)
         self.assertIn("if (!text.trim()) return;", text)
 
+    def test_send_button_is_an_icon_with_a_label(self):
+        text = page()
+        i = text.index('class="btn say-send"')
+        btn = text[i:text.index("</button>", i)]
+        self.assertIn("<svg", btn)
+        self.assertIn("currentColor", btn)
+        self.assertIn("aria-label=", btn)
+        self.assertIn("title=", btn)
+        self.assertNotIn("</svg>${i18n", btn)
+
 
 if __name__ == "__main__":
     unittest.main()
