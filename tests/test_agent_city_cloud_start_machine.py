@@ -109,6 +109,15 @@ bin/agent_city.py
       key). With start on, no page client and no live session it syncs every
       slow-sec seconds instead of relay-sec.
 
+  TEST ONLY, for the E2E on the laptop (a real session must open in a repo
+  Orca already knows, and nothing may be written into that repo's .secrets):
+      RelayHub(..., join_dir=None) and serve --join-dir DIR. With a join dir
+      the join file of a repo is DIR/<the repo folder's own name> (the same
+      two lines, address= and key=) and the repo's own
+      .secrets/agent-city-relay is not read at all (offer, seed and the
+      joined list alike). Without it: exactly as before. Never set by
+      agent-city.sh; no command, hook or page ever passes it.
+
 Every test uses a fake relay on 127.0.0.1 and temp folders. Never a real key.
 
 Run: python3 -m unittest tests.test_agent_city_cloud_start_machine </dev/null
@@ -714,6 +723,59 @@ class TestSlowBeat(ClientCase):
         self.assertEqual(self.syncs(), 2)
 
 
+class TestJoinDir(ClientCase):
+    """Test only (the E2E on the laptop): a repo counts as joined with no file in its own .secrets."""
+
+    def setUp(self):
+        super().setUp()
+        self.joins = os.path.join(self.base, "joins")
+        os.makedirs(self.joins)
+
+    def put(self, name="shop"):
+        path = os.path.join(self.joins, name)
+        with open(path, "w") as fh:
+            fh.write("address=%s\nkey=%s\n" % (self.fake.url, self.fake.key))
+        os.chmod(path, 0o600)
+        return path
+
+    def make(self, **kw):
+        try:
+            return self.hub(**kw)
+        except TypeError as exc:
+            self.fail("RelayHub takes no join_dir yet: %s" % exc)
+
+    def test_the_join_is_read_from_that_folder(self):
+        self.put()
+        hub = self.make(join_dir=self.joins)
+        self.assertTrue(hub.offer(hook_line(self.repo)), "DIR/shop is the join file of the repo whose folder is shop")
+        hub.tick()
+        self.assertEqual(len(self.fake.sent_lines()), 1)
+        self.assertFalse(os.path.exists(os.path.join(self.repo, ".secrets")), "nothing is written into the repo")
+
+    def test_seed_reads_it_too(self):
+        self.put()
+        hub = self.make(join_dir=self.joins)
+        hub.seed(self.repo)
+        hub.tick()
+        self.assertEqual(len([r for r in self.fake.requests if r["path"] == "/v1/sync"]), 1)
+
+    def test_the_repos_own_file_is_not_read_then(self):
+        join(self.repo, self.fake.url)
+        hub = self.make(join_dir=self.joins)                 # an empty join dir
+        self.assertFalse(hub.offer(hook_line(self.repo)))
+        hub.tick()
+        self.assertEqual(self.fake.requests, [])
+
+    def test_without_it_nothing_changes(self):
+        self.put()
+        hub = self.hub()
+        self.assertFalse(hub.offer(hook_line(self.repo)), "no join dir: only <repo>/.secrets/agent-city-relay joins a repo")
+
+    def test_the_command_never_passes_it(self):
+        with open(os.path.join(BIN, "agent-city.sh")) as fh:
+            self.assertNotIn("join-dir", fh.read(), "a test-only option: the owner's command never sets it")
+
+
 # ------------------------------------------------ the server, with a fake orca
 
 ORCA = r"""#!/usr/bin/env python3
@@ -1006,6 +1068,21 @@ class TestOrderAnswers(StartCase):
         ack = self.answered(self.OID, "failed")
         self.assertEqual(ack.get("why"), "off")
         self.assertEqual(self.creates(), [])
+
+
+class TestJoinDirServer(StartCase):
+    def test_an_order_opens_in_a_repo_joined_from_outside(self):
+        os.remove(os.path.join(self.repo, ".secrets", "agent-city-relay"))
+        joins = os.path.join(self.base, "joins")
+        os.makedirs(joins)
+        with open(os.path.join(joins, "shop"), "w") as fh:
+            fh.write("address=%s\nkey=%s\n" % (self.fake.url, self.fake.key))
+        self.start("--idle-sec", "60", "--relay-sec", "0.2", "--cloud-snap-sec", "60", "--join-dir", joins)
+        self.session("tm1")
+        self.fake.order("oid-joindir-00000001", self.terr)
+        self.answered("oid-joindir-00000001", "opening")
+        self.assertEqual(len(self.creates()), 1)
+        self.assertEqual(self.creates()[0][3], "path:" + self.repo)
 
 
 class TestPicture(StartCase):
