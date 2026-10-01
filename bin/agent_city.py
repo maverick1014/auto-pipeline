@@ -106,22 +106,58 @@ def bare_type(value):
 # reply that asks, or work that still runs in the background, is told by the
 # Stop hook ("say") as one StopNote line: flags only, never the text.
 
-_ASK_LINE = re.compile(r"^[ \t#*_>-]*(?:要你决定|What to decide)|^[ \t]*QUESTION:", re.M)
+_ASK_HEAD = re.compile(r"^[ \t#*_>-]*(?:要你决定|What to decide)", re.M)
+_ASK_QUESTION = re.compile(r"^[ \t]*QUESTION:", re.M)
+# what may sit between a decision head and its text: spaces, a colon, marks
+_HEAD_FILL = re.compile(r"[ \t\r:：*_#>]*")
+# a section that says "nothing": the whole content is one of these words
+_EMPTY_WORD = re.compile(
+    r"(?:[ \t\r:：*_#>]|-[ \t])*(?:nothing|none|无|没有|暂无|-|n/a)[ \t\r.。*_]*",
+    re.I)
 _CLOSING_MARKS = "*_`\"')）」』”’"
 HOUSEKEEPING_TASKS = ("dream", "auto-mode scan", "memory import")
 
 
+def _decision_head_asks(text):
+    """True when one decision head (要你决定 / What to decide) at the start of
+    a line has a section that is not empty. The section is the rest of the
+    head line, or, when that holds nothing, the next non-blank line. It is
+    empty when it is only nothing, none, 无, 没有, 暂无, - or n/a. A head with
+    no line after it counts as a question."""
+    for head in _ASK_HEAD.finditer(text):
+        start = head.end()
+        same_line = True
+        while True:
+            eol = text.find("\n", start)
+            line = text[start:] if eol < 0 else text[start:eol]
+            if _EMPTY_WORD.fullmatch(line):
+                break  # this head is an empty section: look at the next head
+            if _HEAD_FILL.fullmatch(line) if same_line else not line.strip():
+                if eol < 0:
+                    return True  # no line after the head: a question
+                start = eol + 1  # nothing on this line: the next line decides
+                same_line = False
+                continue
+            return True  # real content in the section
+    return False
+
+
 def asks_owner(text):
-    """True when a session's last reply TEXT asks the owner: a line begins
-    with 要你决定 or "What to decide" (spaces and the marks # * _ > - before
-    it do not count), or a line begins with "QUESTION:", or the last
-    sentence ends with ? or ？ (trailing spaces and closing marks do not
-    count). Anything else, an empty text or a non-string: False. Never
-    raises."""
+    """True when a session's last reply TEXT asks the owner. Three rules,
+    any one is enough. 1) A line begins with 要你决定 or "What to decide" (a
+    head; spaces and the marks # * _ > - before it do not count) and its
+    section is not empty. The section is the rest of that line, or the next
+    non-blank line when the rest is empty. It is empty when it is only
+    nothing, none, 无, 没有, 暂无, - or n/a (any letter case; a colon, marks
+    and a list mark before it, and . 。 * _ after it do not count): an empty
+    section is a report, not a question. 2) A line begins with "QUESTION:".
+    3) The last sentence ends with ? or ？ (trailing spaces and closing
+    marks do not count). Anything else, an empty text or a non-string:
+    False. Never raises."""
     try:
         if not isinstance(text, str) or not text:
             return False
-        if _ASK_LINE.search(text):
+        if _ASK_QUESTION.search(text) or _decision_head_asks(text):
             return True
         end = len(text)
         while end > 0 and (text[end - 1].isspace() or text[end - 1] in _CLOSING_MARKS):
