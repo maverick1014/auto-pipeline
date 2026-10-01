@@ -13,11 +13,26 @@
     person(pid, label, **more)                  a snapshot person
     ME, OTHER          two users (e-mails)
     RELAY_ENV, CITY_ENV  the env each Worker gets in a normal test
+
+cloud-city-2 (talk):
+    TALK               the talk key of the tests (never a real one)
+    TALK_ENV           RELAY_ENV plus TALK_KEY
+    sync(..., talk=None, talk_key=None)   talk_key -> the header X-City-Talk;
+                       talk (a dict) -> the body key "talk"
+    sql(text, *args)   a statement run straight on the stand-in database
+    lay_msg(cid, dev="mac", to="s:tm1", text="hello", at=T0, state="sent", why="", user=ME)
+                       one city_msg row, laid with sql()
+    send(dev, to, text, cid, login=ME, now=T0, origin=ORIGIN, page="1", ctype=..., body=None)
+                       a POST /api/chat/send to the City Worker
+    feed(..., chat=None, cc=None)   the feed with an open window
+    ORIGIN             the page's own origin in the harness (https://cloud.test)
+    MSG_SQL, CHAT_SQL  the two tables, as BOTH Workers must make them (one line each)
 """
 
 import json
 import os
 import subprocess
+from urllib.parse import quote
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -35,7 +50,24 @@ OTHER = "other@example.com"
 AUD = "test-aud-0001"       # the harness signs tokens for this audience
 TEAM = "testteam"           # ... and this Access team
 
+TALK = "test-talk-key-not-real-0002"
+ORIGIN = "https://cloud.test"
+
 RELAY_ENV = {"TEAM_KEY": KEY, "CITY_USER": ME}
+TALK_ENV = {"TEAM_KEY": KEY, "CITY_USER": ME, "TALK_KEY": TALK}
+
+# cloud-city-2: the two talk tables. Both Workers run exactly these lines (CREATE ... IF NOT
+# EXISTS), so either one may be the first to need them.
+MSG_SQL = ("CREATE TABLE IF NOT EXISTS city_msg (user TEXT NOT NULL, cid TEXT NOT NULL, dev TEXT NOT NULL, "
+           "pg TEXT NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL, state TEXT NOT NULL, why TEXT NOT NULL, "
+           "PRIMARY KEY (user, cid))")
+MSG_INDEX_SQL = "CREATE INDEX IF NOT EXISTS city_msg_dev ON city_msg (user, dev, state)"
+CHAT_SQL = ("CREATE TABLE IF NOT EXISTS city_chat (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT NOT NULL, "
+            "dev TEXT NOT NULL, pg TEXT NOT NULL, k TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, "
+            "at REAL NOT NULL, ts INTEGER NOT NULL, state TEXT NOT NULL, why TEXT NOT NULL, cid TEXT NOT NULL, "
+            "UNIQUE (user, dev, k))")
+CHAT_INDEX_SQL = "CREATE INDEX IF NOT EXISTS city_chat_pg ON city_chat (user, dev, pg, id)"
+TALK_TABLES = (MSG_SQL, MSG_INDEX_SQL, CHAT_SQL, CHAT_INDEX_SQL)
 CITY_ENV = {"ACCESS_TEAM": TEAM, "ACCESS_AUD": AUD}
 
 PAGE = ("<!doctype html><html><head><meta name=\"city-token\" content=\"__CITY_TOKEN__\">"
@@ -66,13 +98,49 @@ def run_cloud(case, requests, relay_env=None, city_env=None, assets=None,
     return out
 
 
-def sync(dev, lines=(), after=0, now=T0, key=KEY, view=None):
+def sync(dev, lines=(), after=0, now=T0, key=KEY, view=None, talk=None, talk_key=None):
     body = {"dev": dev, "after": after, "lines": list(lines)}
     if view is not None:
         body["view"] = view
-    return {"to": "relay", "method": "POST", "path": "/v1/sync",
-            "headers": {"Authorization": "Bearer " + key, "Content-Type": "application/json"},
-            "body": body, "now": now}
+    if talk is not None:
+        body["talk"] = talk
+    headers = {"Authorization": "Bearer " + key, "Content-Type": "application/json"}
+    if talk_key is not None:
+        headers["X-City-Talk"] = talk_key
+    return {"to": "relay", "method": "POST", "path": "/v1/sync", "headers": headers, "body": body, "now": now}
+
+
+def sql(text, *args):
+    return {"to": "sql", "sql": text, "args": list(args)}
+
+
+def make_tables():
+    """The talk tables, laid by the test itself (so a test of one Worker does not need the other)."""
+    return [sql(line) for line in TALK_TABLES]
+
+
+def lay_msg(cid, dev="mac", to="s:tm1", text="hello", at=T0, state="sent", why="", user=ME):
+    return sql("INSERT INTO city_msg (user, cid, dev, pg, text, at, state, why) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+               user, cid, dev, to, text, at, state, why)
+
+
+def lay_chat(k, dev="mac", to="s:tm1", kind="reply", text="hi", at=1.0, ts=T0, state="", why="", cid="", user=ME):
+    return sql("INSERT INTO city_chat (user, dev, pg, k, kind, text, at, ts, state, why, cid) "
+               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", user, dev, to, k, kind, text, at, ts, state, why, cid)
+
+
+def send(dev="mac", to="s:tm1", text="hello", cid="cid-0000000000000001", login=ME, now=T0,
+         origin=ORIGIN, page="1", ctype="application/json", body=None):
+    headers = {}
+    if origin is not None:
+        headers["Origin"] = origin
+    if page is not None:
+        headers["X-City-Page"] = page
+    if ctype is not None:
+        headers["Content-Type"] = ctype
+    req = get("/api/chat/send", login=login, now=now, method="POST", headers=headers)
+    req["body"] = {"dev": dev, "to": to, "text": text, "cid": cid} if body is None else body
+    return req
 
 
 def view(gen, snap=None, events=None, label="mac", counts=None):
@@ -115,7 +183,7 @@ def get(path, login=ME, now=T0, method="GET", headers=None):
     return req
 
 
-def feed(login=ME, dev=None, gen=None, after=None, now=T0):
+def feed(login=ME, dev=None, gen=None, after=None, now=T0, chat=None, cc=None):
     args = []
     if dev is not None:
         args.append("dev=%s" % dev)
@@ -123,4 +191,8 @@ def feed(login=ME, dev=None, gen=None, after=None, now=T0):
         args.append("gen=%d" % gen)
     if after is not None:
         args.append("after=%d" % after)
+    if chat is not None:
+        args.append("chat=%s" % quote(chat, safe=""))
+    if cc is not None:
+        args.append("cc=%d" % cc)
     return get("/api/feed" + ("?" + "&".join(args) if args else ""), login=login, now=now)

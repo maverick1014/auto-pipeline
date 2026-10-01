@@ -18,6 +18,10 @@
 //
 //   Either worker path may be "-" when a test does not need that Worker.
 //
+//   cloud-city-2: a request {"to": "sql", "sql": "<one statement>", "args": [...]}
+//   runs that statement straight on the stand-in database (to lay rows for a
+//   test, or to read them); its "body" is the rows it gave back.
+//
 // Cloudflare Access stand-in (the City Worker must check the token itself):
 //   team   testteam  -> issuer https://testteam.cloudflareaccess.com
 //   certs  https://testteam.cloudflareaccess.com/cdn-cgi/access/certs
@@ -287,6 +291,19 @@ async function main() {
     counters.stmts = 0;
     counters.reads = 0;
     let result;
+    if (req.to === "sql") {
+      try {
+        const rows = d1.db.prepare(req.sql).all(...(req.args || []));
+        result = { status: 200, body: rows, headers: {} };
+      } catch (err) {
+        result = { status: -1, body: String(err && err.stack || err), headers: {} };
+      }
+      result.writes = d1.changes() - before;
+      result.reads = 0;
+      result.stmts = 0;
+      responses.push(result);
+      continue;
+    }
     try {
       const worker = workers[req.to || "relay"];
       if (!worker) throw new Error("no worker loaded for: " + req.to);

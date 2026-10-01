@@ -183,9 +183,8 @@ class TestViewOnly(unittest.TestCase):
         self.assertRegex(head, r"if \(CLOUD\)[^;{]*(return|\{\s*return)",
                          "%s must return before its fetch when CLOUD" % name)
 
-    def test_chat_send_is_off(self):
-        self.before_fetch("sendChat")
-
+    # cloud-city-2: sendChat talks on the cloud page now (tests/test_agent_city_cloud_talk_page.py);
+    # loadChat still never fetches there (the feed brings the window), decide and addAgent stay off.
     def test_chat_load_is_off(self):
         self.before_fetch("loadChat")
 
@@ -199,10 +198,6 @@ class TestViewOnly(unittest.TestCase):
         src = fn(self, "addHtml")
         self.assertRegex(src, r"^function addHtml\(group, st\)\s*\{\s*if \(CLOUD\) return '';",
                          "the cloud page is view only: addHtml() gives '' before anything else")
-
-    def test_no_chat_target(self):
-        src = fn(self, "curChatTo")
-        self.assertIn("CLOUD", src, "in the cloud nobody can be talked to: curChatTo() gives null")
 
     def test_only_feed_and_local_urls(self):
         urls = set(re.findall(r"fetch\(\s*'([^']+)'", script()))

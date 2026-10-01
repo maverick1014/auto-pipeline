@@ -367,8 +367,10 @@ class TestPageAndAssets(CityCase):
 
 class TestViewOnly(CityCase):
     def test_nothing_acts(self):
+        # cloud-city-2: POST /api/chat/send is the one route that acts (its own rules:
+        # tests/test_agent_city_cloud_talk_worker.py); everything else is as in step 1.
         reqs = [get("/api/feed", method="POST"), get("/api/decide", method="POST"),
-                get("/api/chat/send", method="POST"), get("/", method="PUT"),
+                get("/api/chat/send", method="PUT"), get("/", method="PUT"),
                 get("/api/feed", method="DELETE")]
         out = self.run_city(seed_mac() + reqs)
         for r in out["responses"][-len(reqs):]:

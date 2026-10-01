@@ -235,6 +235,57 @@ class TestSetupSteps(unittest.TestCase):
         self.assertIn("100,000", self.text)
         self.assertRegex(self.text, r"(?i)free plan")
 
+    # ---- cloud-city-2: two more sections, talk on and talk off (T8, and ADD 1 of the main manager) ----
+
+    def test_talk_sections_come_after_the_cloud_page_ones(self):
+        nums = {title: int(n) for n, title, _ in self.sections}
+        on = [n for t, n in nums.items() if re.search(r"(?i)talk", t) and re.search(r"(?i)\bon\b", t)]
+        off = [n for t, n in nums.items() if re.search(r"(?i)talk", t) and re.search(r"(?i)\boff\b", t)]
+        self.assertEqual((on, off), ([16], [17]), "16. Turn talking on, 17. Turn talking off")
+
+    def test_talk_on_steps(self):
+        _, _, body = self.section("talking on")
+        self.assertIn("TALK_KEY", body)
+        self.assertIn("openssl rand -hex 24", body)
+        self.assertRegex(body, r"(?i)Secret")
+        self.assertIn("agent-city-relay.js", body, "the new relay code is pasted again")
+        self.assertIn("cloud-deploy", body, "the new page code is deployed again")
+        self.assertIn("cloud-talk on", body)
+        self.assertIn("CLOUD TALK: on", body)
+        self.assertRegex(body, r"(?i)hidden")
+        self.assertRegex(body, r"(?i)each machine|every machine|on that machine")
+        self.assertRegex(body, r"(?i)never .*(chat|agent)", "the talk key is never typed into a chat with an agent")
+        self.assertRegex(body, r"(?i)off by default|stays off")
+
+    def test_talk_on_says_what_it_means(self):
+        _, _, body = self.section("talking on")
+        self.assertRegex(body, r"(?is)(whoever|anyone who) can log in as you.{0,120}(type|talk) to your agents",
+                         "in plain words: who can log in as the owner can type to his agents")
+        self.assertRegex(body, r"(?i)machines? with talk(ing)? on")
+        self.assertRegex(body, r"(?i)session duration", "where to set how long a login lasts")
+        self.assertRegex(body, r"(?i)Zero Trust")
+        self.assertRegex(body, r"(?i)short")
+        self.assertRegex(body, r"(?is)e-?mail account.{0,160}(safe|two-step|2-step|second step|password)")
+        self.assertRegex(body, r"(?i)only text|text only")
+        self.assertRegex(body, r"(?i)7 days")
+        self.assertRegex(body, r"(?i)approv", "approving a permission request stays on the machine")
+
+    def test_talk_off_says_every_way_to_stop_it(self):
+        _, _, body = self.section("talking off")
+        self.assertIn("cloud-talk off", body)
+        self.assertIn("CLOUD TALK: off", body)
+        self.assertIn("TALK_KEY", body)
+        self.assertRegex(body, r"(?i)delete", "delete TALK_KEY: off for every machine")
+        self.assertRegex(body, r"(?i)(end|revoke|log out|sign out).{0,80}(session|login)|(session|login).{0,80}(end|revoke)",
+                         "end the Access session")
+        self.assertRegex(body, r"(?i)one machine|that machine|this machine")
+        self.assertRegex(body, r"(?i)all machines|every machine")
+
+    def test_the_cloud_page_section_no_longer_says_you_cannot_chat(self):
+        _, _, body = self.section("cloud page on")
+        self.assertNotRegex(body, r"(?i)you cannot chat or answer from it\.")
+        self.assertRegex(body, r"(?i)section 16")
+
     def test_no_real_address_or_key(self):
         for word in ("maverickleeweilin88", "gmail.com"):
             self.assertNotIn(word, self.text)
@@ -249,14 +300,31 @@ class TestRequirementLines(unittest.TestCase):
         self.assertIn("## Cloud page", self.text)
         body = self.text[self.text.index("## Cloud page"):self.text.index("## Relay setup")]
         for word in ("One reducer", "CITY_USER", "city_view", "Cloudflare Access", "403",
-                     "View only", "Only joined repos", "CLOUD_KEEP", "Auto-start", "CLOUD: on",
-                     "never orders"):
+                     "View only", "Only joined repos", "CLOUD_KEEP", "Auto-start", "CLOUD: on"):
             self.assertIn(word, body, word)
 
     def test_old_rules_are_replaced_not_left(self):
         self.assertNotIn("There is no shared city page on the internet.", self.text)
         self.assertNotIn("the relay carries events only, never orders", self.text)
-        self.assertIn("never orders", self.text)
+        # cloud-city-2 (owner, 2026-10-01): a message from the cloud page is an order, as chat text only.
+        self.assertNotIn("never orders", self.text)
+        self.assertNotIn("never through the relay or the cloud page, which carry no chat text", self.text)
+        self.assertNotIn("has no route that acts and never writes a row", self.text)
+
+    def test_talk_rules(self):
+        self.assertIn("### Talk", self.text)
+        body = self.text[self.text.index("### Talk"):self.text.index("## Relay setup")]
+        for word in ("TALK_KEY", "cloud-talk on", "cloud-talk off", "CLOUD TALK: on", "city_msg", "city_chat",
+                     "/api/chat/send", "X-City-Page", "7 days", "200 rows", "60 s", "10 min", "cloud-seen",
+                     "4,000", "30 messages in 5 minutes", "300 a day", "以后开放", "在路上", "重发",
+                     "那台电脑没开", "这个会话已经结束", "那台电脑不接收云端消息", "owner not seen",
+                     "never calls a machine", "team key alone"):
+            self.assertIn(word, self.text[self.text.index("## Cloud page"):self.text.index("## Relay setup")], word)
+        self.assertRegex(body, r"(?i)nothing queued")
+        orders = [l for l in self.text.splitlines() if l.startswith("- Orders")]
+        self.assertEqual(len(orders), 1)
+        self.assertRegex(orders[0], r"(?i)text for a session's chat queue only")
+        self.assertRegex(orders[0], r"(?i)team key alone never makes a message")
 
 
 if __name__ == "__main__":
