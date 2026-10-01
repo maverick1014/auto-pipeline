@@ -61,6 +61,7 @@ const CHAT_ROWS = 200; // the rows of a window that is opened (the newest)
 const MSGS_MAX = 50; // the messages on their way shown in one window
 const TO_RE = /^(?:s|gov):[A-Za-z0-9_.:-]{1,120}$/; // a session or a governor, never a path
 const CID_RE = /^[A-Za-z0-9_-]{16,64}$/;
+const SEND_KEYS = ["dev", "to", "text", "cid"]; // the keys of a send body, and no other
 
 // The two talk tables: the same lines as the relay's. The one that needs them
 // first makes them.
@@ -553,7 +554,8 @@ async function handleSend(request, env, user) {
   } catch (err) {
     body = null;
   }
-  if (!isObject(body)) return refuse("body", 400);
+  // A JSON object with these keys and no other: nothing unknown is ignored.
+  if (!isObject(body) || Object.keys(body).some((key) => SEND_KEYS.indexOf(key) === -1)) return refuse("body", 400);
 
   const { text, cid, to } = body;
   if (typeof text !== "string" || text.length > MAX_TEXT || text.trim() === "") return refuse("text", 400);
