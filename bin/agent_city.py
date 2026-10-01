@@ -1076,6 +1076,11 @@ def _holds(main, sid, pid, seat_pid=None):
 # -- add agent: one new session from the city page (requirements/city.md, "Add agent")
 
 ADD_WAIT_SEC = 60.0     # an open holds its repo this long; no new session by then is "late"
+# The one fixed first message of a session the page opens: a new session sends the
+# city no event before its first prompt, and the page can only talk to a session
+# that has had a turn, so the opening line ends with this.
+FIRST_PROMPT = ("You were opened from the Agent City page. Do your start steps now, "
+                "then stop and wait: the owner will talk to you from the city page.")
 ADD_SCRIPT_SEC = 20.0   # the kind and resources readers: no answer by then is no answer
 ADD_OPEN_SEC = 30.0     # one terminal opening: not done by then has failed
 ADD_KINDS = ("orca", "plain", "cloud")
@@ -1114,15 +1119,31 @@ def repo_folder(identity):
     return identity
 
 
-def agent_command(name, folder):
+def pass_city_dir(directory):
+    """What cmd_serve hands to CityState as city_dir: None when DIRECTORY is
+    the default city dir (~/.cache/agent-city, compared by realpath, so a
+    trailing slash does not matter), else its absolute path. A city that runs
+    with its own dir passes it on, so the session it opens reports to THIS
+    city. The default is the fixed path, never the AGENT_CITY_DIR variable."""
+    default = os.path.expanduser("~/.cache/agent-city")
+    if os.path.realpath(directory) == os.path.realpath(default):
+        return None
+    return os.path.abspath(directory)
+
+
+def agent_command(name, folder, city_dir=None):
     """The one fixed line a new terminal runs: `claude --name <name>`, then
     `--model <m> --effort <e>` and `--permission-mode <p>` from FOLDER's
     agent.conf (main_manager, permission_mode: a second session opens with
-    the main manager's values). A missing file or value, or one agent_conf
-    refuses, leaves that part out. Never the folder, never AGENT_ROLE.
-    Never raises."""
+    the main manager's values), then FIRST_PROMPT as the last word. A
+    missing file or value, or one agent_conf refuses, leaves that part out.
+    CITY_DIR given: the line starts with `AGENT_CITY_DIR=<city_dir> `, so the
+    session reports to this city; None: it starts with `claude `. Never the
+    folder, never AGENT_ROLE. Never raises."""
     import shlex
     words = ["claude", "--name", shlex.quote(name)]
+    if city_dir:
+        words.insert(0, "AGENT_CITY_DIR=" + shlex.quote(city_dir))
     try:
         conf_mod = _conf_module()
         conf = conf_mod.load(os.path.join(folder, "agent.conf"))
@@ -1135,6 +1156,7 @@ def agent_command(name, folder):
             words += ["--permission-mode", shlex.quote(mode)]
     except Exception:
         pass
+    words.append(shlex.quote(FIRST_PROMPT))
     return " ".join(words)
 
 
@@ -1249,7 +1271,7 @@ class CityState:
                  decisions_path=None, token="", world_path=None, plans=None, count_fn=None,
                  balance_fn=None, start_repo=None, chat_path=None, lang="zh", titles=None,
                  main_fn=None, listen_grace_sec=15.0, roster_path=None,
-                 open_fn=None, kind_fn=None, resources_fn=None):
+                 open_fn=None, kind_fn=None, resources_fn=None, city_dir=None):
         self.lock = threading.Lock()
         self.titles = titles if titles is not None else TitleReader()  # a session's real name
         self.lang = norm_lang(lang)
@@ -1287,6 +1309,7 @@ class CityState:
         self.open_fn = open_fn if open_fn is not None else open_session            # (folder, title, command) -> (ok, detail)
         self.kind_fn = kind_fn if kind_fn is not None else runtime_kind            # folder -> "orca" | "plain" | "cloud"
         self.resources_fn = resources_fn if resources_fn is not None else machine_resources   # folder -> {"ram", "cpu", "max", "ok"}
+        self.city_dir = city_dir  # None: the default city dir; else this city's own dir, passed on to the session it opens (agent_command)
         self._adding = {}         # identity -> {"terr", "name", "role", "at" (monotonic), "pending", "seen", "before"}: an open under way
 
         # -- world: territories, growth, town plans, persistence ----------
@@ -1627,7 +1650,9 @@ class CityState:
         or a failed open. Nothing slow runs under self.lock: the repo is marked
         first (two clicks at once give one open and one 409), then kind_fn,
         resources_fn and open_fn run free, then the mark is finished or undone.
-        See tests/test_agent_city_add_agent.py."""
+        The line (the opener's and the "plain" one alike) is agent_command with
+        self.city_dir: a city with its own dir hands it to the new session, and
+        the line ends with FIRST_PROMPT. See tests/test_agent_city_add_agent.py."""
         if not isinstance(terr, str) or re.fullmatch(r"[0-9a-f]{8}", terr) is None or not isinstance(force, bool):
             return 400, {"error": "bad"}
         with self.lock:
@@ -1650,7 +1675,7 @@ class CityState:
         held = False
         try:
             import shlex
-            command = agent_command(name, folder)
+            command = agent_command(name, folder, self.city_dir)
             try:
                 kind = self.kind_fn(folder)
             except Exception:
@@ -4735,7 +4760,8 @@ def cmd_serve(args):
         chat_initial_skip = 0
     city = CityState(gov_wait_sec=args.gov_wait_sec, decisions_path=decisions_path, token=token,
                       world_path=world_path_arg, start_repo=start_repo, chat_path=chat_path, lang=lang,
-                      roster_path=os.path.join(directory, "roster.json"))
+                      roster_path=os.path.join(directory, "roster.json"),
+                      city_dir=pass_city_dir(directory))
     hub = relay.RelayHub(relay_sec=args.relay_sec, join_ttl=args.join_ttl_sec,
                         joined_list=args.joined_list)
     remote = RemoteCity(hub, remote_ttl_sec=args.remote_ttl_sec)
