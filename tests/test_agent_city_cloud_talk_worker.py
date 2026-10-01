@@ -20,7 +20,10 @@ this Worker still holds no key (no TEAM_KEY, no TALK_KEY).
             application/json, and an Origin header equal to the origin of
             the request's own URL                       else 403 {"ok": false, "error": "bad origin"}
         the body is at most 16 KB                        else 413
-        the body is a JSON object                        else 400 {"error": "body"}
+        the body is a JSON object with the keys dev, to, text, cid and NO
+            other key (bounce 1, 2026-10-01: an unknown key such as "cmd" was
+            ignored and the message taken; /api/agent/add refuses one too)
+                                                         else 400 {"error": "body"}
         text: a string, 1..4000 characters, not only spaces   else 400 {"error": "text"}
         cid: 16..64 of A-Z a-z 0-9 _ -                   else 400 {"error": "cid"}
         to: "s:" or "gov:" + 1..120 of A-Z a-z 0-9 _ . : -    else 400 {"error": "to"}
@@ -37,7 +40,7 @@ this Worker still holds no key (no TEAM_KEY, no TALK_KEY).
         state 'undelivered', why 'talk-off'  when its counts have no talk flag (talk: 1)
         state 'sent', why ''                 else
       200 {"ok": true, "cid", "state", "why"}. Only these columns are ever
-      stored: no other field of the body goes anywhere.
+      stored; a body with any other field is refused, see above.
       This user's city_msg rows older than 7 days are deleted on a send.
 
   GET /api/feed   as before, plus
@@ -169,7 +172,7 @@ class TestBody(CityCase):
         self.assertEqual(self.msgs(out), [])
 
     def test_size(self):
-        self.refused(send(body={"dev": "mac", "to": "s:tm1", "text": "x", "cid": CID, "pad": "p" * 17000}), 413, None)
+        self.refused(send(body={"dev": "mac", "to": "s:tm1", "text": "x" * 17000, "cid": CID}), 413, None)
 
     def test_json_object(self):
         for body in ("not json", "[1, 2]", "null", '"text"'):
@@ -241,12 +244,26 @@ class TestStore(CityCase):
         self.assertEqual(len(self.msgs(out)), 1)
         self.assertEqual(self.msgs(out)[0]["state"], "undelivered")
 
-    def test_nothing_but_the_text_is_kept(self):
-        body = {"dev": "mac", "to": "s:tm1", "text": "hello", "cid": CID, "cmd": "rm -rf ~", "path": "/etc/passwd",
-                "flags": ["--dangerously-skip-permissions"], "file": "x.sh", "user": OTHER, "state": "delivered",
-                "at": 1}
-        out = self.run_city([send(body=body, now=T0 + 500), sql("SELECT * FROM city_msg")])
-        self.assertEqual(out["responses"][0]["status"], 200, out["responses"][0])
+    def test_an_unknown_key_is_refused(self):
+        good = {"dev": "mac", "to": "s:tm1", "text": "hello", "cid": CID}
+        for key, value in (("cmd", "rm -rf ~"), ("path", "/etc/passwd"), ("flags", ["--dangerously-skip-permissions"]),
+                           ("file", "x.sh"), ("user", OTHER), ("state", "delivered"), ("at", 1), ("why", ""), ("", 1)):
+            out = self.run_city([send(body=dict(good, **{key: value}), now=T0 + 500), sql("SELECT * FROM city_msg")])
+            r = out["responses"][0]
+            self.assertEqual((r["status"], r["body"].get("error"), r["writes"]), (400, "body", 0), key)
+            self.assertEqual(self.msgs(out), [], key)
+
+    def test_a_missing_key_is_refused(self):
+        good = {"dev": "mac", "to": "s:tm1", "text": "hello", "cid": CID}
+        for key in good:
+            body = dict(good)
+            del body[key]
+            out = self.run_city([send(body=body), sql("SELECT * FROM city_msg")])
+            self.assertEqual(out["responses"][0]["status"] // 100, 4, key)
+            self.assertEqual(self.msgs(out), [], key)
+
+    def test_only_the_four_columns_are_kept(self):
+        out = self.run_city([send(text="hello", cid=CID, now=T0 + 500), sql("SELECT * FROM city_msg")])
         self.assertEqual(self.msgs(out), [{"user": ME, "cid": CID, "dev": "mac", "pg": "s:tm1", "text": "hello",
                                            "at": T0 + 500, "state": "sent", "why": ""}])
 
