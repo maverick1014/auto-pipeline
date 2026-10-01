@@ -35,7 +35,8 @@ bin/agent_city.py  (its own block: "cloud-city")
       type on neither list is not uploaded. A new page message type must be
       put on one of them (this test fails until then).
       CLOUD_DROP = ask, ask_phase, ask_closed, chat (question and command
-      text, chat text).
+      text, chat text) and adding (the state of the local "add agent" button:
+      the cloud page is view only and has no such button).
   cloud_clean(msg) -> a cleaned COPY for the cloud, or None (dropped):
       - a type in CLOUD_DROP, an unknown type, not a dict -> None
       - tool: no "file" key
@@ -136,7 +137,7 @@ class TestLists(unittest.TestCase):
                          "does not know): decide whether it goes to the cloud")
 
     def test_what_never_goes_up(self):
-        self.assertEqual(set(need(self, "CLOUD_DROP")), {"ask", "ask_phase", "ask_closed", "chat"})
+        self.assertEqual(set(need(self, "CLOUD_DROP")), {"ask", "ask_phase", "ask_closed", "chat", "adding"})
 
 
 class TestClean(unittest.TestCase):
@@ -148,6 +149,7 @@ class TestClean(unittest.TestCase):
                     {"type": "ask_phase", "id": "q1"},
                     {"type": "ask_closed", "id": "q1", "text": MARK},
                     {"type": "chat", "to": "s:1", "entry": {"text": MARK}},
+                    {"type": "adding", "terr": "t1", "state": "opening", "name": "shop Manager"},
                     {"type": "something-new", "id": 1},
                     {"id": "no type"}, "text", None, 3, [1]):
             self.assertIsNone(self.clean(msg), msg)

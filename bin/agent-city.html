@@ -4050,6 +4050,7 @@ function railHtml(groups, selId, closed, openRest, adds){
    cmd: no Orca here -- the command to run by hand, a copy button, close. Everything that came from the
    server (name, why, cmd) goes through esc() before it is HTML. */
 function addHtml(group, st){
+  if (CLOUD) return ''; // cloud-city: view only, no add-agent button
   const t = esc(group.terr), s = st && st.s;
   if (s === 'opening') {
     const who = shortLabel(st.name, group.name);
@@ -7083,6 +7084,7 @@ function renderRail(){
    an error line too, a broken or empty body counts as {}; the rail is redrawn after every answer. The
    server's 'adding' events (opening / done / late) move the same state on from there. */
 function addAgent(terr, force){
+  if (CLOUD) return; // cloud-city: view only, nothing is sent
   const was = addState.get(terr);
   if (was && was.s === 'opening') return;
   addState.set(terr, { s: 'opening', name: '' });

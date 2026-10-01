@@ -18,9 +18,11 @@ the parallel work on the rail does not meet it.
       apply(); a 403 shows the login notice (with a reload link) and nothing of
       the city; a failed request shows a small "not connected" chip and tries
       again.
-  View only when CLOUD: sendChat, loadChat and decide never call fetch (they
-      return before it); no chat box, no answer / approve buttons, a "?" opens
-      nothing; demo tools are gone (as on the live page).
+  View only when CLOUD: sendChat, loadChat, decide and addAgent never call
+      fetch (they return before it); no chat box, no answer / approve buttons,
+      a "?" opens nothing; no "add agent" button in the rail (addHtml() gives ''
+      at once, city-add-agent merged 2026-10-01); demo tools are gone (as on
+      the live page).
   New on the page when CLOUD (as in the mock): the machine row (class
       "machines": label, 干活 n, 等你 n, age; a tap picks that machine, kept in
       localStorage), the "只能看" pill, the account chip with the e-mail and
@@ -163,13 +165,21 @@ class TestViewOnly(unittest.TestCase):
     def test_decide_is_off(self):
         self.before_fetch("decide")
 
+    def test_add_agent_is_off(self):
+        self.before_fetch("addAgent")
+
+    def test_no_add_agent_button(self):
+        src = fn(self, "addHtml")
+        self.assertRegex(src, r"^function addHtml\(group, st\)\s*\{\s*if \(CLOUD\) return '';",
+                         "the cloud page is view only: addHtml() gives '' before anything else")
+
     def test_no_chat_target(self):
         src = fn(self, "curChatTo")
         self.assertIn("CLOUD", src, "in the cloud nobody can be talked to: curChatTo() gives null")
 
     def test_only_feed_and_local_urls(self):
         urls = set(re.findall(r"fetch\(\s*'([^']+)'", script()))
-        self.assertLessEqual(urls, {"/api/chat?to=", "/api/chat/send", "/api/decide"},
+        self.assertLessEqual(urls, {"/api/chat?to=", "/api/chat/send", "/api/decide", "/api/agent/add"},
                              "no new acting address; the feed address comes from cloudFeedUrl()")
 
 

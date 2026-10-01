@@ -1286,7 +1286,7 @@ def machine_resources(folder, script=None):
 # exactly one of these two lists; a type on neither is never uploaded, and
 # tests/test_agent_city_cloud_upload.py fails until a new page type is put on
 # one of them.
-CLOUD_DROP = frozenset(("ask", "ask_phase", "ask_closed", "chat"))   # question, command and chat text
+CLOUD_DROP = frozenset(("ask", "ask_phase", "ask_closed", "chat", "adding"))   # question, command and chat text; the state of the local add-agent button
 CLOUD_KEEP = frozenset((
     "answer", "background", "build", "demolish", "done", "era", "gov", "governors", "idle", "label",
     "leave", "levelup", "move", "noplot", "quality", "relay", "relay_end", "remote", "remote_snapshot",
