@@ -143,6 +143,8 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .bub.ask{border-color:#E4476F}
 .bub.gov{background:#FFF1C9;border-color:#C99A1E}
 .bub.done{border-color:#2FB57A;background:#EFFFF6}
+.talkb{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;padding:0 6px;background:#fff;color:#2A2B45;border:2px solid #2A2B45;border-radius:15px;font:600 15px/1 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.2);pointer-events:auto;cursor:pointer}
+.talkb::after{content:"";position:absolute;left:50%;bottom:-9px;width:10px;height:10px;margin-left:-5px;box-sizing:border-box;background:#fff;border:2px solid #2A2B45;border-top:0;border-left:0;transform:rotate(45deg)}
 .bub::after,.tagl::after,.qm::after,.rdev::after{content:"";position:absolute;inset:-8px}
 .qm{all:unset;cursor:pointer;display:block;width:28px;height:28px;pointer-events:auto;z-index:3}
 .qm span{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#FF6F8B;color:#fff;font:700 17px/1 var(--display);border:2px solid #fff;box-shadow:0 2px 0 rgba(42,43,69,.25);animation:hop .7s ease-in-out infinite}
@@ -1192,12 +1194,40 @@ function repoOf(c){
   const t = c.terr ? terrOf(c.terr) : null;
   return t && t.name ? t.name : '';
 }
+/* city-talk T5: the kind (label) is dropped and the task alone is the name when the task already says the kind:
+   the kind's last word (after its last "-") is a whole word of the task (any case), or the task's last word is
+   one of the kind's words ("fast-lane-deputy" + "msg-sides Deputy", "merge-deputy" + "city-status Merge").
+   No arrays, no regexp built per call: a few indexOf runs over two short strings. */
+function isWordCh(ch){ return /[\p{L}\p{N}_]/u.test(ch); }
+function hasWord(text, w){
+  if (!w) return false;
+  for (let i = text.indexOf(w); i >= 0; i = text.indexOf(w, i + 1)) {
+    const e = i + w.length;
+    if ((i === 0 || !isWordCh(text.charAt(i - 1))) && (e >= text.length || !isWordCh(text.charAt(e)))) return true;
+  }
+  return false;
+}
+function kindInTask(label, task){
+  const kind = label.toLowerCase(), text = task.toLowerCase();
+  if (hasWord(text, kind.slice(kind.lastIndexOf('-') + 1))) return true;
+  const tail = text.slice(text.lastIndexOf(' ') + 1);
+  if (!tail) return false;
+  for (let from = 0, i = 0; i <= kind.length; i++) {
+    const ch = kind.charAt(i);
+    if (i === kind.length || ch === '-' || ch === ' ') {
+      if (i > from && kind.slice(from, i) === tail) return true;
+      from = i + 1;
+    }
+  }
+  return false;
+}
 function nameBase(c, repo) {
   let label = shortLabel(c.label, repo), task = shortLabel(c.task, repo);
   if (!label) { label = task; task = ''; }
   if (!label) return c.label;
   const m = task ? KIND_TASK.exec(task) : null;
   if (m) return m[1] + ' · ' + m[2];
+  if (task && task !== label && kindInTask(label, task)) return task;
   return task && task !== label ? label + ' · ' + task : label;
 }
 function nameOf(c) {
@@ -2213,6 +2243,7 @@ function goTo(c, target, state){
   const p = findPath(c.x, c.y, target.x, target.y);
   c.path = p || [];
   c.state = state; c.stateT = 0;
+  c.gapOff = c.gapOut = false; c.gapT = 0; // city-talk T2: a fresh way, a fresh start at walking around people
 }
 /* city-polish P1: facing lives in the sim (c.yaw / m.yaw), the 3D part only copies it onto the model.
    TURN_RATE = how fast a person turns, per second (frame-rate independent: turnToward, below);
@@ -2259,11 +2290,36 @@ function move(c, dt){
   c.walkT += dt;
   // city-polish P1: face the way of the step first; too far off -> turn on the spot this tick, no step
   if (d > 1e-6) {
-    const want = Math.atan2(dx, dy);
+    const want0 = Math.atan2(dx, dy);
+    // city-talk T2: somebody on the way -> it turns to the right and steps around (a real change of direction,
+    // never a slide); no room at all -> it waits a moment (gapPick gives up after GAP_WAIT_SEC); typeof guard:
+    // a harness that runs move() alone has no people to walk around
+    const side = typeof gapPick === 'function' ? gapPick(c, want0, d, sp, dt) : 0;
+    if (side < 0) { c.yaw = turnToward(c.yaw, want0, dt); return; }
+    const want = want0 - side;
+    if (side > 0) c.gapOff = c.gapOut = true;
     c.yaw = turnToward(c.yaw, want, dt);
     if (Math.abs(angleDiff(c.yaw, want)) > TURN_WALK_MAX) return;
+    if (c.gapOff) {
+      // going around somebody it steps the way it faces; it takes its straight way again once it looks at its path
+      // point (or can reach it in this step)
+      if (side === 0 && (Math.abs(angleDiff(c.yaw, want0)) <= .1 || (d <= sp && gapStepOk(c, tx, ty, true)))) c.gapOff = false;
+      else {
+        const nx = c.x + Math.sin(c.yaw) * sp, ny = c.y + Math.cos(c.yaw) * sp;
+        if (gapStepOk(c, nx, ny)) { c.x = nx; c.y = ny; }
+        return;
+      }
+    }
+    if (c.gapOut) { // it left its planned way to go around somebody: a straight step from here stays on free ground, else a fresh path
+      const k = Math.min(sp, d), nx = c.x + dx / d * k, ny = c.y + dy / d * k;
+      if (!freeAt(nx, ny) && freeAt(c.x, c.y)) {
+        const last = c.path[c.path.length - 1], p = findPath(c.x, c.y, last[0], last[1]);
+        c.gapOut = false;
+        if (p && p.length) { c.path = p; return; }
+      }
+    }
   }
-  if (d <= sp) { c.x = tx; c.y = ty; c.path.shift(); if (!c.path.length) onArrive(c); }
+  if (d <= sp) { c.x = tx; c.y = ty; c.path.shift(); c.gapOff = c.gapOut = false; if (!c.path.length) { c.gapT = 0; onArrive(c); } }
   else { c.x += dx / d * sp; c.y += dy / d * sp; }
 }
 function onArrive(c){
@@ -2330,6 +2386,83 @@ function waitStand(p, taken, near){
    more than TALK_WAIT_MAX talks waiting for one person -> no walk; WALK_GAP is how close a walker may pass
    somebody (MIN_GAP, above, is how close anybody may stand). */
 const HANDOVER_SEC = 2.6, TALK_SEC = 2, TALK_REPLY_AT = .62, TALK_NEAR = 1.2, TALK_TRIP_MAX_SEC = 4, TALK_WAIT_MAX = 3, WALK_GAP = .3;
+/* city-talk T2: a walker walks around people. gapPick(c, yaw0, d, sp, dt), called by move() each step, says how the
+   walker goes on: 0 = straight for its path point (as always), a turn to the right in radians (GAP_TURNS, 30 / 60 /
+   90 degrees: it steps that way), -1 = no room, wait. It never lets a step bring c closer than WALK_GAP to a person of
+   its territory (a citizen who is not gone or sitting, or the governor) when it was not closer already, and it
+   steers early: a line GAP_LOOK ahead must pass them by GAP_CLEAR. Always to the RIGHT of its own way, so two
+   walkers head-on both give way and never mirror each other; a step goes only onto a free walk cell (freeAt). Same-way
+   walkers ahead are no reason to turn (they keep the hard gap only). It never waits for ever: after GAP_WAIT_SEC
+   without a step it takes its normal one (after a fresh path when it had left its way), and after GAP_BUDGET seconds
+   of going around on one way it stops looking for people until it arrives. */
+const GAP_CLEAR = WALK_GAP + .06, GAP_LOOK = WALK_GAP + .45, GAP_WAIT_SEC = 1.5, GAP_BUDGET = 4;
+const GAP_TURNS = [0, Math.PI / 6, Math.PI / 3, Math.PI / 2];
+const gapNear = []; // scratch: the people near the walker this step (no allocation per frame)
+let gapN = 0;       // how many of gapNear count this step
+/* a step of c to (nx, ny) is fine: onto a free cell (unless c itself stands on a blocked one, or `anywhere`: its
+   path point itself) and not closer than WALK_GAP to anybody near (or, when somebody is closer than that already,
+   not closer than it was) */
+function gapStepOk(c, nx, ny, anywhere){
+  if (!anywhere && !freeAt(nx, ny) && freeAt(c.x, c.y)) return false;
+  for (let i = 0; i < gapN; i++) {
+    const o = gapNear[i];
+    if (Math.hypot(o.x - nx, o.y - ny) < Math.min(WALK_GAP, Math.hypot(o.x - c.x, o.y - c.y)) - 1e-9) return false;
+  }
+  return true;
+}
+function gapPick(c, yaw0, d, sp, dt){
+  gapN = 0;
+  if ((c.gapT || 0) >= GAP_BUDGET) return 0;
+  const reach = GAP_LOOK + GAP_CLEAR + sp, r2 = reach * reach;
+  let n = 0;
+  for (let i = 0; i < citizens.length; i++) {
+    const o = citizens[i];
+    if (o === c || o.gone || o.terr !== c.terr || o.state === 'resting') continue;
+    const ex = o.x - c.x, ey = o.y - c.y;
+    if (ex * ex + ey * ey <= r2) gapNear[n++] = o;
+  }
+  const g = governorAt(c.terr);
+  if (g && (g.x - c.x) * (g.x - c.x) + (g.y - c.y) * (g.y - c.y) <= r2) { const m = govMove.get(c.terr); gapNear[n++] = { x: g.x, y: g.y, path: m ? m.path : null }; }
+  if (!n) { c.gapWait = 0; return 0; }
+  gapN = n;
+  const look = Math.min(GAP_LOOK, d);
+  let best = -1;
+  for (let pass = 0; pass < 2 && best < 0; pass++) {
+    for (let k = 0; k < GAP_TURNS.length && best < 0; k++) {
+      const w = yaw0 - GAP_TURNS[k], ux = Math.sin(w), uy = Math.cos(w), step = k ? sp : Math.min(sp, d);
+      const nx = c.x + ux * step, ny = c.y + uy * step;
+      if (k ? !freeAt(nx, ny) : (c.gapOff && !freeAt(nx, ny) && freeAt(c.x, c.y))) continue;
+      let ok = true;
+      for (let i = 0; i < n && ok; i++) {
+        const o = gapNear[i], ex = o.x - c.x, ey = o.y - c.y;
+        if (Math.hypot(o.x - nx, o.y - ny) < Math.min(WALK_GAP, Math.hypot(ex, ey)) - 1e-9) { ok = false; break; } // never closer than WALK_GAP
+        if (pass) continue;
+        const along = ex * ux + ey * uy;
+        if (along <= 0) continue; // behind it or beside it: no reason to turn
+        if (o.path && o.path.length) { // a walker going the same way ahead keeps its own pace; only the hard gap counts
+          const px = o.path[0][0] - o.x, py = o.path[0][1] - o.y;
+          if (px * ux + py * uy > 0) continue;
+        }
+        const a = Math.min(along, look);
+        if (Math.hypot(ex - ux * a, ey - uy * a) < GAP_CLEAR) ok = false;
+      }
+      if (ok) best = k;
+    }
+  }
+  if (best < 0) {
+    c.gapWait = (c.gapWait || 0) + dt; c.gapT = (c.gapT || 0) + dt;
+    if (c.gapWait < GAP_WAIT_SEC) return -1;
+    if (c.gapOff || c.gapOut) { // no room, and it has left its way: a fresh path from here, then its normal step
+      const last = c.path[c.path.length - 1], p = findPath(c.x, c.y, last[0], last[1]);
+      c.gapOff = c.gapOut = false;
+      if (p && p.length) { c.path = p; return -1; }
+    }
+    return 0;
+  }
+  c.gapWait = 0;
+  if (best) c.gapT = (c.gapT || 0) + dt;
+  return GAP_TURNS[best];
+}
 const TALK_ICON = { handover: '📋', msg: '💬', ask: '❓', answer: '✅' }, TALK_REPLY_ICON = '👌';
 /* every talk going on is one record: { kind, from (page id of the one who started it), to ([page ids] of the
    other one or ones, empty = nobody stands by), start, len (seconds), until ({ id: its own end } when a
@@ -2885,12 +3018,19 @@ function refreshMembers(){
   joined = now;
   memberColorMap = memberColors(keys, 'me');
 }
+/* city-talk, #demo: the demo governor's facing per territory (he never walks there; demoGovTurn keeps it) */
+const demoGovYaw = new Map();
 /* {x, y} where the territory's governor figure stands, or null when no governor is there -- DEMO always
    shows one (the mock never sends govs/gov events) so the prototype looks as it always has. A present,
    non-DEMO governor's own spot moves with his idle stroll (govMove, below); everyone else still always
    walks to his fixed hall stand (goHall), never wherever he currently happens to be strolling. */
 function governorAt(terr){
-  if (DEMO) { const t = terrOf(terr); return t ? hallStand(t) : null; }
+  if (DEMO) {
+    const t = terrOf(terr);
+    if (!t) return null;
+    const hs = hallStand(t);
+    return typeof demoGovYaw !== 'undefined' && demoGovYaw.has(terr) ? { x: hs.x, y: hs.y, yaw: demoGovYaw.get(terr) } : hs;
+  }
   const g = govsByTerr.get(terr);
   // a "gov_seen" entry with state "unknown" (server restart, city-people D5) is not a present
   // governor -- no figure -- until it either acts there (a normal state) or its session ends.
@@ -3856,7 +3996,8 @@ function spawnDemo(role, task, terr){
     const opts = TASKS[role].filter(t => !busy.has(t));
     task = pick(opts.length ? opts : TASKS[role]);
   }
-  const c = emit({ type:'spawn', id:'d' + (++cid), role, label:role, task, terr });
+  // city-talk T1, #demo: the demo governor hands every new one its task face to face
+  const c = emit({ type:'spawn', id:'d' + (++cid), role, label:role, task, terr, from: 'gov:' + terr });
   if (c) c.feed = makeFeed(role, undefined, terr);
   return c;
 }
@@ -3891,11 +4032,43 @@ function demoRemoteTick(dt){
   }
 }
 
+/* city-talk, #demo (fake data, same look): about every DEMO_TALK_SEC seconds two demo people at work in one
+   territory talk -- a { type: 'talk', from, to, terr } event through emit(), as a live one -- so the walk over,
+   the face-to-face talk and the bubble can be seen without real sessions. demoGovTurn: the demo governor never
+   walks (DEMO has no govMove), so his facing is kept here: toward whom he talks to, else back to his stand's look. */
+const DEMO_TALK_SEC = 9;
+let demoTalkAt = DEMO_TALK_SEC;
+function demoTalkTick(dt){
+  demoGovTurn(dt);
+  if (simT < demoTalkAt) return;
+  demoTalkAt = simT + 1.5; // nobody free to talk: look again soon
+  const by = new Map();
+  for (const c of citizens) {
+    if (c.gone || c.remote || c.stuck || c.doneFlag || (c.state !== 'working' && c.state !== 'building') || c.path.length || talkBusy(c.id)) continue;
+    const l = by.get(c.terr);
+    if (l) l.push(c); else by.set(c.terr, [c]);
+  }
+  const terrs = [];
+  for (const [terr, l] of by) if (l.length > 1) terrs.push(terr);
+  if (!terrs.length) return;
+  const terr = pick(terrs), l = by.get(terr), a = pick(l), b = pick(l.filter(c => c !== a));
+  demoTalkAt = simT + DEMO_TALK_SEC * rnd(.85, 1.15);
+  emit({ type: 'talk', from: a.id, to: b.id, terr });
+}
+function demoGovTurn(dt){
+  for (const t of map.territories || []) {
+    const hs = hallStand(t), v = talkViewFor('gov:' + t.id), o = v && v.with ? talkPerson(v.with) : null;
+    const y0 = demoGovYaw.get(t.id) || 0, y1 = turnToward(y0, o ? Math.atan2(o.x - hs.x, o.y - hs.y) : 0, dt);
+    if (y1 !== y0) demoGovYaw.set(t.id, y1);
+  }
+}
+
 function update(dt){
   simT += dt;
   pruneTalks();
   if (DEMO) demoRelayTick(dt);
   if (DEMO) demoRemoteTick(dt);
+  if (DEMO) demoTalkTick(dt);
   for (const c of citizens) {
     c.stateT += dt;
     if (c.state === 'spawn') { c.alpha = Math.min(1, c.alpha + dt * 2.5); if (c.stateT > .7) leaveSpawn(c); }
@@ -5541,11 +5714,29 @@ function pinLandOverlays(){
 const govBub = ovEl('bub gov', '<span></span>'), govTag = ovEl('tagl tag'), govQm = ovBtn('qm', '<span>?</span>');
 govTag.style.setProperty('--c', '#FF6F8B'); setText(govTag, i18n('gov.tagLabel'));
 tagPick(govBub, 'gov', ''); tagPick(govTag, 'gov', ''); // U6: the home governor's own bubble + tag
+/* city-talk T3 (the look): the small talk bubble (.talkb) of one person or governor -- an icon, never chat
+   text -- and the gesture of the one who speaks. talkOf / govTalkOf (the simulation part) say who talks and
+   who speaks; this only draws it. */
+const govTalkb = ovEl('talkb');
+tagPick(govTalkb, 'gov', '');
+const NO_PROPS = Object.freeze({ hammer: false, book: false, laptop: false, lidOpen: false, planks: false });
+/* the clip of a person who is in a talk and not walking: 'interact-left' for the one who speaks (never with
+   reduced motion: the bubble stays, the body does not move), else `a` as it was */
+function talkGesture(tv, a){
+  return tv && tv.speaking && !RM && a !== 'walk' && a !== 'sprint' ? 'interact-left' : a;
+}
+/* the bubble over a head: `n` things (a text bubble, a "?", a countdown, the doing line) already stand at the
+   head, so it sits above them and they never cover each other; hidden unless somebody speaks */
+function pinTalk(el, tv, sx, sy, n){
+  const on = !!(tv && tv.speaking && tv.icon);
+  if (on) setText(el, tv.icon);
+  pin(el, sx, n ? sy - 32 * n - 6 : sy, on);
+}
 function ensureOv(c){
   if (c.o) return;
-  c.o = { bub: ovEl('bub', '<span></span>'), qm: ovBtn('qm', '<span>?</span>'), wait: ovEl('gwait'), zz: ovEl('zz', '<span>z</span><span>z</span><span>Z</span>'), tag: ovEl('tagl tag'), doing: ovEl('doing') };
+  c.o = { bub: ovEl('bub', '<span></span>'), qm: ovBtn('qm', '<span>?</span>'), wait: ovEl('gwait'), zz: ovEl('zz', '<span>z</span><span>z</span><span>Z</span>'), tag: ovEl('tagl tag'), doing: ovEl('doing'), talkb: ovEl('talkb') };
   c.o.tag.style.setProperty('--c', c.color);
-  tagPick(c.o.bub, 'c', c.id); tagPick(c.o.tag, 'c', c.id); // U6: clickable head tags
+  tagPick(c.o.bub, 'c', c.id); tagPick(c.o.tag, 'c', c.id); tagPick(c.o.talkb, 'c', c.id); // U6: clickable head tags (city-talk: and the talk bubble)
   // city-join: another member's citizen also gets a grey, panel-less "?" and a "最后更新" chip for
   // while their team's relay is off (requirements/city.md, Joining) -- never the pink one above.
   if (c.remote) { c.o.rqm = ovBtn('qm grey', '<span>?</span>'); c.o.stale = ovEl('stale'); c.o.rdev = ovEl('rdev'); tagPick(c.o.rdev, 'c', c.id); }
@@ -5596,13 +5787,15 @@ function updatePerson(c, t, dt){
   g.position.y = pose === 'bench' ? .1 : 0;
   // city-work-anim: a still person that is working plays the clip of its work (calm rhythm, from the start
   // of its work spell) and shows the props of that work; pausing or walking: idle / walk, no props.
-  const act = workAction(c), wp = act ? workPose(act, simT - (c.workSince || 0)) : null, pr = workProps(c);
+  // city-talk T3: in a talk (standing face to face) it puts its tools down and stands; the one who speaks gestures
+  const tv = talkOf(c), act = workAction(c), wp = act && !tv ? workPose(act, simT - (c.workSince || 0)) : null, pr = tv ? NO_PROPS : workProps(c);
   let a = 'idle', once = false, rate;
   if (walking) a = c.state === 'to_hall' ? 'sprint' : 'walk';
   else if (wp) { a = wp.clip; rate = wp.rate; }
   else if (c.state === 'heard') { a = 'emote-yes'; once = true; }
   else if (c.state === 'finishing') { a = 'jump'; }
   else if (resting) a = 'sit';
+  if (tv && a === 'idle') a = talkGesture(tv, a); // the one who speaks gestures (a still person; never while walking)
   anim(v, a, once, rate);
   stepWorkProps(c, v, wp, pr, dt);
   const isSel = !!(selected && selected.t === 'c' && selected.id === c.id);
@@ -5639,6 +5832,8 @@ function updatePerson(c, t, dt){
     c.o.bub.className = 'bub' + (c.state === 'asking' ? ' ask' : c.state === 'finishing' ? ' done' : '');
   }
   pin(c.o.bub, sx, sy, showBub);
+  // city-talk T3: the talk bubble sits above whatever else stands at the head (bubble, "?" or countdown, doing line)
+  pinTalk(c.o.talkb, tv, sx, sy, (showBub ? 1 : 0) + (showQm || showWait ? 1 : 0) + (doing !== '' ? 1 : 0));
   const [tx, ty] = toScreen(c.x, 0, c.y);
   if (c.remote) {
     // city-join: two separate tags, never one combined "who · device" tag -- the name tag (c.o.tag,
@@ -5694,7 +5889,9 @@ function updateGovernor(){
   // and shows 'walk' while he actually strolls -- the old unconditional talking/idle toggle used to
   // loop 'interact-left' for as long as govState stayed 'waiting'.
   const gAnim = typeof govAnim === 'function' ? govAnim(govTerr, simT) : (talking ? 'interact-left' : 'idle');
-  anim(govV, gAnim);
+  // city-talk T3: the governor who speaks gestures too (not while he walks, never with reduced motion)
+  const gTalk = typeof govTalkOf === 'function' ? govTalkOf(govTerr) : null;
+  anim(govV, gTalk ? talkGesture(gTalk, gAnim) : gAnim);
   govV.sel.visible = !!(selected && selected.t === 'gov' && (selected.terr || govTerr) === govTerr);
   const [sx, sy] = toScreen(px, .9, py);
   if (talking) setBubText(govBub, text);
@@ -5704,6 +5901,7 @@ function updateGovernor(){
   govQm.setAttribute('aria-label', i18n(gAsk && gAsk.kind === 'permission' ? 'aria.govNeedsApproval' : 'aria.govNeedsAnswer'));
   // above the bubble, never over it: a bubble reserves the spot at (sx, sy).
   pin(govQm, sx, talking ? sy - 32 : sy, !!(gAsk && gAsk.phase === 'owner'));
+  if (typeof govTalkb !== 'undefined') pinTalk(govTalkb, gTalk, sx, sy, (talking ? 1 : 0) + (gAsk && gAsk.phase === 'owner' ? 1 : 0));
   const [tx, ty] = toScreen(px, 0, py);
   pin(govTag, tx, ty + 38, govV.sel.visible);
   if (typeof governorFigures === 'function') updateGovPool(governorFigures());
@@ -5721,12 +5919,12 @@ function ensureGovFigure(terr){
   const ring = new THREE.Mesh(ringGeo, ringMat('#FFD36E')); ring.rotation.x = -Math.PI / 2; ring.position.y = .035; ring.scale.setScalar(1.15); g.add(ring);
   g.userData.pick = { t:'gov', terr };
   pickables.push(g);
-  const bub = ovEl('bub gov', '<span></span>'), tag = ovEl('tagl tag'), qm = ovBtn('qm', '<span>?</span>');
+  const bub = ovEl('bub gov', '<span></span>'), tag = ovEl('tagl tag'), qm = ovBtn('qm', '<span>?</span>'), talkb = ovEl('talkb');
   tag.style.setProperty('--c', '#FF6F8B'); setText(tag, i18n('gov.tagLabel'));
-  tagPick(bub, 'gov', terr); tagPick(tag, 'gov', terr); // U6: a pool governor's own bubble + tag
+  tagPick(bub, 'gov', terr); tagPick(tag, 'gov', terr); tagPick(talkb, 'gov', terr); // U6: a pool governor's own bubble + tag (+ talk bubble)
   // city-join: `ring` kept on v (like govV's own) so applyRing() can recolour it -- these are still
   // MY governors (other territories), so the same member-colour rule applies.
-  v = { g, key:'character-male-b', mixer, sel, ring, ringColor: '#FFD36E', cur:null, action:null, bub, tag, qm };
+  v = { g, key:'character-male-b', mixer, sel, ring, ringColor: '#FFD36E', cur:null, action:null, bub, tag, qm, talkb };
   anim(v, 'idle');
   govVByTerr.set(terr, v);
   return v;
@@ -5742,7 +5940,9 @@ function updateGovPool(list){
     v.g.rotation.y = fig.yaw; // city-polish P1
     // city-join: my own governor's ring is my member colour while joined, else its usual role colour.
     applyRing(v,ringColor(joined, '#FFD36E', memberColorMap.me));
-    anim(v, typeof govAnim === 'function' ? govAnim(fig.terr, simT) : 'idle');
+    const gTalk = govTalkOf(fig.terr); // city-talk T3
+    const gAnim = typeof govAnim === 'function' ? govAnim(fig.terr, simT) : 'idle';
+    anim(v, talkGesture(gTalk, gAnim));
     v.sel.visible = !!(selected && selected.t === 'gov' && selected.terr === fig.terr);
     const [sx, sy] = toScreen(fig.x, .9, fig.y);
     // idea-city C13: every governor talks in his own bubble -- govTalk(fig.terr) only ever answers
@@ -5754,13 +5954,14 @@ function updateGovPool(list){
     if (gAsk) v.qm.setAttribute('data-open', gAsk.id); else v.qm.removeAttribute('data-open');
     v.qm.setAttribute('aria-label', i18n(gAsk && gAsk.kind === 'permission' ? 'aria.govNeedsApproval' : 'aria.govNeedsAnswer'));
     pin(v.qm, sx, talking ? sy - 32 : sy, !!(gAsk && gAsk.phase === 'owner'));
+    pinTalk(v.talkb, gTalk, sx, sy, (talking ? 1 : 0) + (gAsk && gAsk.phase === 'owner' ? 1 : 0));
     const [tx, ty] = toScreen(fig.x, 0, fig.y);
     pin(v.tag, tx, ty + 38, v.sel.visible);
   }
   for (const [terr, v] of govVByTerr) {
     if (seen.has(terr)) continue;
     v.g.visible = false;
-    pin(v.bub, 0, 0, false); pin(v.qm, 0, 0, false); pin(v.tag, 0, 0, false);
+    pin(v.bub, 0, 0, false); pin(v.qm, 0, 0, false); pin(v.tag, 0, 0, false); pin(v.talkb, 0, 0, false);
   }
 }
 
@@ -6448,6 +6649,13 @@ document.addEventListener('keydown', e => {
   ta.setRangeText('\n', ta.selectionStart, ta.selectionEnd, 'end');
   ta.dispatchEvent(new Event('input', { bubbles: true }));
 });
+/* city-talk T4: the red line (chat.loadError) of a person's panel. Only a session (an id that starts with
+   "gov:" or "s:") has a chat of its own; a subagent's panel is read only, so it never gets the line. */
+function chatFailText(to, box){
+  const id = String(to || '');
+  if (id.slice(0, 4) !== 'gov:' && id.slice(0, 2) !== 's:') return '';
+  return box && box.error ? String(box.error) : '';
+}
 function renderDetail(){
   // city-ux2 v2 (V1, owner 2026-09-29): the team list used to render here (U11, via teamListHtml); it
   // now lives in the left rail instead -- #rail-list is built from railGroups(), itself built from
@@ -6489,9 +6697,10 @@ function renderDetail(){
   function chatSectionHtml(to){
     const box = chats.get(to) || { entries: [], busy: false, canSend: true };
     const isSession = to.slice(0, 4) === 'gov:' || to.slice(0, 2) === 's:';
+    const failText = chatFailText(to, box);
     let html = `<ol class="chat" id="chat"></ol>`;
     html += `<button type="button" class="newmsg" id="newmsg" hidden>${i18n('chat.new')}</button>`;
-    html += `<p class="hint chat-fail" id="chat-fail"${box.error ? '' : ' hidden'}>${esc(box.error || '')}</p>`;
+    html += `<p class="hint chat-fail" id="chat-fail"${failText ? '' : ' hidden'}>${esc(failText)}</p>`;
     if (!isSession) {
       const oc = byId(to), leadC = oc && oc.lead ? byId(oc.lead) : null;
       const leadBtn = leadC ? `<p><button class="btn" type="button" data-sel="${leadC.id}">${i18n('btn.findLead', { name: esc(nameOf(leadC)) })}</button></p>` : '';
@@ -6639,7 +6848,7 @@ function renderDetail(){
       if (chip && res.chip) chip.hidden = false;
     }
     const fail = el.querySelector('#chat-fail');
-    if (fail) { fail.hidden = !box.error; if (box.error) fail.textContent = box.error; }
+    if (fail) { const failText = chatFailText(chatTo, box); fail.hidden = !failText; if (fail.textContent !== failText) fail.textContent = failText; }
   }
 }
 function renderLog(){
