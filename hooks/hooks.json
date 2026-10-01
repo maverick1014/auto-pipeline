@@ -17,6 +17,15 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "H=\"${AGENT_CITY_HOME:-$HOME/.claude/agent-city}\"; { [ -f \"$H/cloud\" ] || [ -s \"$H/joined-repos.txt\" ]; } && \"${CLAUDE_PLUGIN_ROOT}\"/bin/agent-city.sh autostart >/dev/null 2>&1; exit 0",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PreToolUse": [

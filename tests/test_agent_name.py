@@ -307,10 +307,13 @@ class TestOrcaTab(NameCase):
 class TestHooksJson(unittest.TestCase):
 
     def test_session_start_runs_both_hooks(self):
+        # cloud-city-1 (owner, 2026-10-01): a third entry starts the local city by itself
+        # (tests/test_agent_city_cloud_autostart.py); the first two stay as they were.
         entries = json.loads(read("hooks", "hooks.json"))["hooks"]["SessionStart"]
-        self.assertEqual(len(entries), 2, entries)
+        self.assertEqual(len(entries), 3, entries)
         self.assertIn("/bin/agent-start.sh", json.dumps(entries[0]))
         self.assertEqual(entries[1], NAME_ENTRY)
+        self.assertIn("agent-city.sh autostart", json.dumps(entries[2]))
 
     def test_the_script_can_run(self):
         path = os.path.join(ROOT, "bin", "agent-name.sh")

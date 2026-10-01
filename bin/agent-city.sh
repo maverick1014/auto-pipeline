@@ -26,6 +26,9 @@
 #                            $HOME/.local/bin/agent-city, so `agent-city` works
 #                            from any folder (requirements/city.md, "Anywhere")
 #   ./agent-city.sh remove-shim    remove that copy, if it is ours
+#   ./agent-city.sh autostart   what the SessionStart hook runs: bring the city up
+#                            by itself on a joined machine whose relay has the
+#                            cloud page on; prints nothing, returns at once
 #   ./agent-city.sh -h       this help
 #
 # City dir: $AGENT_CITY_DIR, default $HOME/.cache/agent-city (the same dir the
@@ -72,6 +75,19 @@
 # repo listed in $AGENT_CITY_HOME/joined-repos.txt, language from
 # AGENT_CITY_LANG (en or zh, else zh); join/leave refuse and say to cd into
 # the repo first.
+#
+# Cloud page (requirements/city.md, "Cloud page"): the marker
+# $AGENT_CITY_HOME/cloud holds the relay hosts that said the cloud page is on
+# (agent_city_relay.py read_cloud / set_cloud; join writes it). status prints
+# "CLOUD: on <relay host>" or "CLOUD: off" after the TEAM line(s) of a joined
+# machine, from the marker only -- it never talks to the relay -- and nothing
+# for a machine that never joined. autostart is the SessionStart hook's verb
+# (hooks/hooks.json): the work runs in a detached background subshell, so a
+# session start never waits on the network. In order: a city server already
+# running -> nothing; a cloud session (CLAUDE_CODE_REMOTE) -> nothing; this
+# repo not joined, or no repo -> nothing, no network; the marker names this
+# repo's relay host -> start; else one quiet `cloud --probe`, on -> start.
+# start there is the plain start with --joined-list always, no browser.
 
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
@@ -107,6 +123,9 @@ agent-city.sh — start/stop/status/demo for the Agent City playground.
   ./agent-city.sh cloud-hooks   write the city hooks into user-level settings
   ./agent-city.sh install-shim   copy the agent-city command to ~/.local/bin, so it runs from any folder
   ./agent-city.sh remove-shim    remove that copy, if it is ours
+  ./agent-city.sh autostart   what the session-start hook runs: start the city by itself
+                           on a joined machine whose relay has the cloud page on
+                           (prints nothing, returns at once)
   ./agent-city.sh -h       this help
 
 Outside a repo: start/demo sync every repo listed in
@@ -130,6 +149,9 @@ SERVER="$PLUGIN_ROOT/bin/agent_city.py"
 : "${city_relay_sec:=5}"
 SECRET_FILE="$PROJECT_ROOT/.secrets/agent-city-relay"
 RELAY_MODULE="$PLUGIN_ROOT/bin/agent_city_relay.py"
+CLOUD_FILE="$CITY_HOME/cloud"
+# yes: do_start always passes --joined-list (autostart, also inside a repo)
+START_JOINED=no
 
 # True when something already answers on 127.0.0.1:<port> (short connect,
 # 1s timeout) -- tells "another program holds the port" apart from a plain
@@ -190,6 +212,8 @@ do_start() {
       en|zh) language="$AGENT_CITY_LANG" ;;
       *) language="zh" ;;
     esac
+  fi
+  if [ "$OUTSIDE_REPO" = yes ] || [ "$START_JOINED" = yes ]; then
     set -- --joined-list "$CITY_HOME/joined-repos.txt"
   fi
 
@@ -249,9 +273,93 @@ do_status() {
   fi
   if [ "$OUTSIDE_REPO" = yes ]; then
     joined_list_lines
+    cloud_lines_outside || true
   else
     team_line
+    cloud_line || true
   fi
+  return 0
+}
+
+# "CLOUD: on <relay host>" or "CLOUD: off" for a joined repo, nothing when it
+# is not joined. From the marker only: no --probe, so no network. Never the key.
+cloud_line() {
+  out=$(python3 "$RELAY_MODULE" cloud --secret "$SECRET_FILE" \
+          --cloud-file "$CLOUD_FILE" 2>/dev/null) || out="none"
+  case "$out" in
+    "on "*) echo "CLOUD: $out" ;;
+    "off "*) echo "CLOUD: off" ;;
+  esac
+  return 0
+}
+
+# Outside a repo: one "CLOUD: on <host>" per joined relay host (each once, list
+# order) that the marker names, else one "CLOUD: off" when a repo is joined,
+# nothing when none is. Marker only, no network. Never the key.
+cloud_lines_outside() {
+  python3 -c '
+import os
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+from urllib.parse import urlsplit
+
+marked = rl.read_cloud(sys.argv[3])
+hosts = []
+for repo in rl.read_joined_list(sys.argv[2]):
+    if not os.path.isdir(repo):
+        continue
+    joined = rl.read_join(os.path.join(repo, ".secrets", "agent-city-relay"))
+    if not joined:
+        continue
+    host = urlsplit(joined["address"]).netloc
+    if host not in hosts:
+        hosts.append(host)
+if hosts:
+    on = [h for h in hosts if h in marked]
+    if on:
+        for h in on:
+            print("CLOUD: on " + h)
+    else:
+        print("CLOUD: off")
+' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$CLOUD_FILE"
+}
+
+# autostart (requirements/city.md, "Cloud page"): the SessionStart hook's verb.
+# Prints nothing, exits 0 and comes back at once -- the checks (and any relay
+# question) run in a detached background subshell with every stream on
+# /dev/null, so a slow or dead relay never holds up a session start.
+do_autostart() {
+  (
+    trap '' HUP
+    autostart_work || true
+  ) </dev/null >/dev/null 2>&1 &
+  disown "$!" 2>/dev/null || true
+  return 0
+}
+
+autostart_work() {
+  # 1. a city server is already running
+  read_on >/dev/null && return 0
+  # 2. a cloud session sends only, it has no page
+  [ -z "${CLAUDE_CODE_REMOTE:-}" ] || return 0
+  # 3. not in a repo, or this repo is not joined: no network at all
+  [ "$OUTSIDE_REPO" = no ] || return 0
+  [ -f "$SECRET_FILE" ] || return 0
+  state=$(python3 "$RELAY_MODULE" cloud --secret "$SECRET_FILE" \
+            --cloud-file "$CLOUD_FILE" 2>/dev/null) || return 0
+  case "$state" in
+    "on "*) ;;
+    "off "*)
+      # 5. no marker for this relay: one quiet sync asks the relay
+      state=$(python3 "$RELAY_MODULE" cloud --secret "$SECRET_FILE" \
+                --cloud-file "$CLOUD_FILE" --probe 2>/dev/null) || return 0
+      case "$state" in "on "*) ;; *) return 0 ;; esac ;;
+    *) return 0 ;;
+  esac
+  # 4. the cloud is on: today's start, with the machine's joined list
+  START_JOINED=yes
+  do_start "" || true
   return 0
 }
 
@@ -440,7 +548,8 @@ print(rl.origin_id(sys.argv[2]) or "")
 
   rc=0
   out=$(printf '%s\n' "$key" | python3 "$RELAY_MODULE" \
-          join --address "$address" --file "$SECRET_FILE" 2>&1) || rc=$?
+          join --address "$address" --file "$SECRET_FILE" \
+          --cloud-file "$CLOUD_FILE" 2>&1) || rc=$?
   if [ "$rc" -ne 0 ]; then
     echo "$out" >&2
     exit 1
@@ -677,5 +786,6 @@ case "$1" in
   cloud-hooks) do_cloud_hooks;;
   install-shim) do_install_shim;;
   remove-shim) do_remove_shim;;
+  autostart) do_autostart;;
   *) usage; exit 2;;
 esac
