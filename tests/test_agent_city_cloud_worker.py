@@ -30,9 +30,12 @@ it touches an asset or the database:
           ACCESS_AUD is not set (never open by mistake).
 
 Routes (GET and HEAD only; anything else 405; no /v1/... here: 404):
-  GET /           the page: /index.html from ASSETS with its placeholders
-                  filled: __CITY_CLOUD__ -> 1, __CITY_TOKEN__ -> empty,
-                  __CITY_LANG__ -> CITY_LANG, __CITY_ASSET_V__ -> CITY_ASSET_V.
+  GET /           the page: the Worker asks ASSETS for "/" (Cloudflare's
+  GET /index.html assets answer "/" with index.html, and answer a request
+                  for "/index.html" with a redirect, so never ask for that)
+                  and fills the placeholders: __CITY_CLOUD__ -> 1,
+                  __CITY_TOKEN__ -> empty, __CITY_LANG__ -> CITY_LANG,
+                  __CITY_ASSET_V__ -> CITY_ASSET_V.
                   text/html, Cache-Control: no-cache.
   GET /api/feed?dev=<dev>&gen=<n>&after=<n>
                   200, Cache-Control: no-store:
@@ -296,7 +299,7 @@ class TestPageAndAssets(CityCase):
         self.assertIn("const LANG = 'zh'", html)
         self.assertIn('content=""', html, "no control token on the cloud page")
         self.assertIn("three.min.js?v=1", html)
-        self.assertEqual(out["assets_fetched"], ["/index.html"])
+        self.assertEqual(out["assets_fetched"], ["/"], "ask the assets for /, never for /index.html")
 
     def test_language_and_asset_version(self):
         env = dict(ch.CITY_ENV, CITY_LANG="en", CITY_ASSET_V="0.15.0")
@@ -305,8 +308,9 @@ class TestPageAndAssets(CityCase):
         self.assertIn("three.min.js?v=0.15.0", html)
 
     def test_index_html_is_the_same_page(self):
-        html = self.last(self.run_city([get("/index.html")]))["body"]
-        self.assertNotRegex(html, r"__CITY_[A-Z_]+__")
+        out = self.run_city([get("/index.html")])
+        self.assertNotRegex(self.last(out)["body"], r"__CITY_[A-Z_]+__")
+        self.assertEqual(out["assets_fetched"], ["/"])
 
     def test_assets_pass_through(self):
         out = self.run_city([get("/assets/vendor/three.min.js?v=1"),
@@ -358,7 +362,7 @@ class TestDevRunner(unittest.TestCase):
                        --user in: the runner signs a token for it with its own
                        key pair and answers the Worker's certs fetch itself.
                        --no-login: no token is added (everything is 403).
-        ASSETS: /index.html = bin/agent-city.html, /assets/<p> =
+        ASSETS: / (and /index.html) = bin/agent-city.html, /assets/<p> =
         bin/agent-city-assets/<p> (never a path outside it).
         No --user -> exit 2. Empty key -> exit 2. Stops on SIGINT / SIGTERM.
     """

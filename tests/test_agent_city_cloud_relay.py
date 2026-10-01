@@ -179,8 +179,8 @@ class TestCloudOn(CloudRelayCase):
         row = self.row(out, "a")
         self.assertEqual((row["gen"], row["n"]), (2, 0))
         self.assertEqual(self.batches(row), [], "the old picture's events are gone")
-        self.assertIn("two", row["snap"])
-        self.assertNotIn("one", row["snap"])
+        labels = [a["label"] for a in json.loads(row["snap"])[0]["agents"]]
+        self.assertEqual(labels, ["two"], "only the new picture is kept")
 
     def test_events_of_another_gen_are_not_stored(self):
         out = self.run_relay([
