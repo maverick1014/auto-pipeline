@@ -21,7 +21,7 @@ CONTRACT (E1, E2: todo done)
 
     The line leaves agent_todo.txt and lands in agent_completed.txt as
 
-        <date> | <name> | <what> | data repo=<r> type=<t> lane=<l> mock=<y|n> est=<m> work=<m> wait=<m> clock=<m> bounces=<n> workers=<n> files=<n> lines=<n> tests=<n> adds=<n>
+        <date> | <name> | <what> | data repo=<r> type=<t> lane=<l> mock=<yes|no> est=<m> work=<m> wait=<m> clock=<m> bounces=<n> workers=<n> files=<n> lines=<n> tests=<n> adds=<n>
 
     Keys always in that order, one space between them, "-" for a value that
     is not known. Computed by the script itself:
@@ -64,6 +64,24 @@ CONTRACT (E4: backfill)
     stdout: "took: <name> work <n> wait <n|->" or "skipped: <name> (<why>)",
     then "backfill: took <n>, skipped <n>". --dry-run prints the same and
     writes nothing. A second run takes nothing.
+
+CONTRACT (E4b: backfill one old line by name; main manager, 2026-10-01)
+    agent-file.sh backfill <name> [--dry-run] [--force] <the todo done options>
+    The main manager knows the real work and wait of past tasks. This sets
+    the data of ONE finished line by name, with the same options and the
+    same refusals as `todo done` (--work --wait --bounces --workers --mock
+    --lane --type --tests --adds, --merge | --range).
+    - The line = the last line of agent_completed.txt named <name> that is
+      not dropped. Only that line is rewritten; its text stays.
+    - An old line: est and clock from its "est <n>m actual <n>m", the given
+      facts, repo as in todo done, every other key "-".
+    - A line that already has data: refused, the line names --force. With
+      --force the given facts replace, every other key keeps its value.
+    - Refused, one plain line on stderr, exit 1, nothing written: no line of
+      that name ("no completed line named: <name>"), only a dropped line
+      (the line says "dropped"), no fact given, nonsense.
+    - stdout: "wrote: <the new line>", then "TIME DATA: <n> of 30".
+      --dry-run: "would write: <the new line>" and nothing is written.
 
 CONTRACT (E5: data, all repos on this machine, read-only)
     agent-file.sh data [<repo path>...]
@@ -164,6 +182,26 @@ class DataCase(ScriptCase):
         return subprocess.run(["git", "-C", self.repo.dir] + list(args),
                               check=True, capture_output=True,
                               text=True).stdout.strip()
+
+    def feat_history(self):
+        """A branch "feat" that changed 3 files (7 lines) and a main branch
+        that moved on after feat left it. Returns the main branch's name."""
+        main = self.git("rev-parse", "--abbrev-ref", "HEAD")
+        self.git("checkout", "-q", "-b", "feat")
+        self.write("a.txt", "1\n2\n3\n")            # 3 lines added
+        self.write("b.txt", "1\n2\n")               # 2 lines added
+        self.write("seed.txt", "y\n")               # 1 added, 1 deleted
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "feat work")
+        self.git("checkout", "-q", main)
+        self.write("c.txt", "main moved on\n")      # not the task's work
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "main moves on")
+        return main
+
+    def merge_feat(self):
+        self.git("merge", "-q", "--no-ff", "feat", "-m", "Merge feat (W8)")
+        return self.git("rev-parse", "HEAD")
 
     def assertRefused(self, result, *words):
         """One plain line on stderr, exit 1, nothing on stdout."""
@@ -328,22 +366,11 @@ class TestFilesAndLines(DataCase):
 
     def setUp(self):
         super().setUp()
-        self.main = self.git("rev-parse", "--abbrev-ref", "HEAD")
-        self.git("checkout", "-q", "-b", "feat")
-        self.write("a.txt", "1\n2\n3\n")            # 3 lines added
-        self.write("b.txt", "1\n2\n")               # 2 lines added
-        self.write("seed.txt", "y\n")               # 1 added, 1 deleted
-        self.git("add", "-A")
-        self.git("commit", "-q", "-m", "feat work")
-        self.git("checkout", "-q", self.main)
-        self.write("c.txt", "main moved on\n")      # not the task's work
-        self.git("add", "-A")
-        self.git("commit", "-q", "-m", "main moves on")
+        self.main = self.feat_history()
         self.todo(T1)
 
     def merge(self):
-        self.git("merge", "-q", "--no-ff", "feat", "-m", "Merge feat (W8)")
-        return self.git("rev-parse", "HEAD")
+        return self.merge_feat()
 
     def test_merge_counts_what_the_merge_brought_in(self):
         commit = self.merge()
@@ -572,6 +599,147 @@ class TestBackfill(DataCase):
         self.completed()
         out = self.assertOk(self.af("backfill"))
         self.assertIn("backfill: took 0, skipped 0", out)
+
+
+# --------------------------------------------------------------------------
+# E4b: backfill one old line by name
+# --------------------------------------------------------------------------
+
+TWICE_DROPPED = "2026-09-10 | twice | first try | est 60m actual - | dropped: rescoped"
+TWICE_DONE = "2026-09-12 | twice | second try | est 45m actual 80m"
+
+
+class TestBackfillByName(DataCase):
+
+    def setUp(self):
+        super().setUp()
+        self.completed(OLD_D, OLD_E, OLD_F, TWICE_DROPPED, TWICE_DONE, OLD_H)
+        self.before = self.read("agent_completed.txt")
+
+    def line(self, name):
+        return [l for l in self.completed_lines() if "| %s |" % name in l]
+
+    def assertUnchanged(self):
+        self.assertEqual(self.read("agent_completed.txt"), self.before)
+
+    D_NEW = ("2026-09-23 | d-task | nothing said here about minutes | "
+             + block(repo="project", type="script", lane="full", mock="no",
+                     est=30, work=25, wait=10, clock=41, bounces=1, workers=2,
+                     tests=9, adds=1))
+    D_ARGS = ("--work", "25", "--wait", "10", "--bounces", "1", "--workers",
+              "2", "--mock", "no", "--lane", "full", "--type", "script",
+              "--tests", "9", "--adds", "1")
+
+    def test_it_sets_the_facts_of_an_old_line(self):
+        self.assertOk(self.af("backfill", "d-task", *self.D_ARGS))
+        self.assertEqual(self.line("d-task"), [self.D_NEW])
+
+    def test_only_that_line_changes_and_the_order_stays(self):
+        self.assertOk(self.af("backfill", "d-task", *self.D_ARGS))
+        self.assertEqual(self.completed_lines(),
+                         [self.D_NEW, OLD_E, OLD_F, TWICE_DROPPED, TWICE_DONE,
+                          OLD_H])
+
+    def test_only_the_given_facts_are_set(self):
+        self.assertOk(self.af("backfill", "d-task", "--work", "25"))
+        self.assertEqual(self.line("d-task"), [
+            "2026-09-23 | d-task | nothing said here about minutes | "
+            + block(repo="project", est=30, work=25, clock=41)])
+
+    def test_an_old_line_with_no_estimate(self):
+        self.assertOk(self.af("backfill", "h-task", "--work", "30", "--wait", "12"))
+        self.assertEqual(self.line("h-task"), [
+            "2026-09-27 | h-task | WORK 30M, WAIT 12 | "
+            + block(repo="project", work=30, wait=12, clock=55)])
+
+    def test_it_prints_what_it_wrote_and_the_count(self):
+        out = self.assertOk(self.af("backfill", "d-task", *self.D_ARGS))
+        self.assertIn("wrote: " + self.D_NEW, out.splitlines())
+        self.assertIn("TIME DATA: 2 of 30", out)
+
+    def test_dry_run_writes_nothing(self):
+        out = self.assertOk(self.af("backfill", "d-task", "--dry-run", *self.D_ARGS))
+        self.assertIn("would write: " + self.D_NEW, out.splitlines())
+        self.assertNotIn("wrote: ", out)
+        self.assertUnchanged()
+
+    def test_an_unknown_name_is_refused(self):
+        self.assertRefused(self.af("backfill", "nope", "--work", "5"),
+                           "no completed line named: nope")
+        self.assertUnchanged()
+
+    def test_a_line_with_data_is_refused_without_force(self):
+        self.assertRefused(self.af("backfill", "e-task", "--work", "80"),
+                           "e-task", "--force")
+        self.assertUnchanged()
+
+    def test_force_replaces_the_given_facts_and_keeps_the_rest(self):
+        self.assertOk(self.af("backfill", "e-task", "--force", "--work", "80",
+                              "--lane", "full"))
+        self.assertEqual(self.line("e-task"), [
+            "2026-09-24 | e-task | has data already, work 999 | " + block(
+                repo="project", type="page", lane="full", est=120, work=80,
+                wait=45, clock=300)])
+
+    def test_force_may_come_last(self):
+        self.assertOk(self.af("backfill", "e-task", "--work", "80", "--force"))
+        self.assertIn(" work=80 ", self.line("e-task")[0])
+
+    def test_a_dropped_line_is_refused_even_with_force(self):
+        self.assertRefused(self.af("backfill", "f-task", "--work", "50"),
+                           "f-task", "dropped")
+        self.assertRefused(self.af("backfill", "f-task", "--work", "50", "--force"),
+                           "f-task", "dropped")
+        self.assertUnchanged()
+
+    def test_a_name_used_twice_means_the_line_that_is_not_dropped(self):
+        self.assertOk(self.af("backfill", "twice", "--work", "50", "--wait", "20"))
+        self.assertEqual(self.line("twice"), [
+            TWICE_DROPPED,
+            "2026-09-12 | twice | second try | "
+            + block(repo="project", est=45, work=50, wait=20, clock=80)])
+
+    def test_no_fact_given_is_refused(self):
+        self.assertRefused(self.af("backfill", "d-task"), "d-task")
+        self.assertRefused(self.af("backfill", "e-task", "--force"), "e-task")
+        self.assertUnchanged()
+
+    def test_nonsense_is_refused_like_in_todo_done(self):
+        bad = [("--work", "-5"), ("--wait", "soon"), ("--bounces", "1.5"),
+               ("--mock", "maybe"), ("--lane", "slow"), ("--type", "banana"),
+               ("--speed", "9")]
+        for option, value in bad:
+            with self.subTest(option=option, value=value):
+                self.assertRefused(self.af("backfill", "d-task", "--work", "25",
+                                           option, value), option)
+                self.assertUnchanged()
+
+    def test_merge_counts_the_files_and_lines(self):
+        self.feat_history()
+        commit = self.merge_feat()
+        self.assertOk(self.af("backfill", "d-task", "--work", "25",
+                              "--merge", commit))
+        self.assertIn(" files=3 lines=7 ", self.line("d-task")[0])
+
+    def test_an_unknown_commit_is_refused(self):
+        self.assertRefused(self.af("backfill", "d-task", "--work", "25",
+                                   "--merge", "deadbeef00"), "--merge")
+        self.assertUnchanged()
+
+    def test_the_text_scan_then_skips_the_line(self):
+        self.assertOk(self.af("backfill", "d-task", "--work", "25"))
+        out = self.assertOk(self.af("backfill"))
+        self.assertRegex(out, r"(?m)^skipped: d-task \(.+\)$")
+
+    def test_time_shows_the_numbers(self):
+        self.assertOk(self.af("backfill", "twice", "--work", "36", "--wait", "20"))
+        rows = [l.split() for l in self.assertOk(self.af("time")).splitlines()]
+        self.assertIn(["twice", "45", "36", "20", "80", "0.8"], rows)
+
+    def test_the_todo_file_is_not_touched(self):
+        self.todo(T1)
+        self.assertOk(self.af("backfill", "d-task", "--work", "25"))
+        self.assertEqual(self.read("agent_todo.txt"), T1 + "\n")
 
 
 # --------------------------------------------------------------------------
@@ -941,6 +1109,11 @@ class TestUsage(DataCase):
                        "work so far", "/ 7", "owner needed next", "mock"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
+
+    def test_usage_lists_backfill_by_name(self):
+        text = self.usage()
+        self.assertIn("backfill <name>", text)
+        self.assertIn("--force", text)
 
     def test_usage_says_the_data_line(self):
         text = self.usage()
