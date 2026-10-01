@@ -12,7 +12,8 @@
 //                 "now": <ms since epoch, optional>,
 //                 "login": null | {"email": "a@b.c", ...}}, ...]}
 //     stdout: {"responses": [{"status", "body", "headers": {...},
-//                             "writes": n, "reads": n, "stmts": n}, ...],
+//                             "writes": n, "reads": n, "stmts": n,
+//                             "plans": ["<query plan line>", ...]}, ...],
 //              "rows_total", "full_scans", "certs_fetches", "other_fetches",
 //              "assets_fetched", "dump": {"<table>": [row, ...]}}
 //
@@ -64,7 +65,7 @@ const CERTS_URL = `${ISSUER}/cdn-cgi/access/certs`;
 const AUD = "test-aud-0001";
 
 const fullScans = [];
-const counters = { stmts: 0, reads: 0 };
+const counters = { stmts: 0, reads: 0, plans: [] };
 
 function notePlan(db, sql, args) {
   let rows = [];
@@ -74,6 +75,7 @@ function notePlan(db, sql, args) {
     return;
   }
   for (const r of rows) {
+    counters.plans.push(r.detail || "");   // cloud-city-2: every plan line of this request
     const m = /^SCAN (\S+)/.exec(r.detail || "");
     if (m && !m[1].startsWith("sqlite_")) fullScans.push({ sql: sql.trim(), detail: r.detail });
   }
@@ -290,6 +292,7 @@ async function main() {
     const before = d1.changes();
     counters.stmts = 0;
     counters.reads = 0;
+    counters.plans = [];
     let result;
     if (req.to === "sql") {
       try {
@@ -316,6 +319,7 @@ async function main() {
     result.writes = d1.changes() - before;
     result.reads = counters.reads;
     result.stmts = counters.stmts;
+    result.plans = counters.plans;
     responses.push(result);
   }
   Date.now = realNow;

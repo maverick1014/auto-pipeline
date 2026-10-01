@@ -57,6 +57,8 @@ header is answered exactly as today, and nothing below happens for it.
       characters), "at" (a number, the machine's seconds), "state" ('' |
       'queued' | 'delivered' | 'undelivered'; missing = ''), "why" (as above;
       missing = ''), "cid" (a string up to 64; missing = '')}
+      A row WITH a cid must have k equal to that cid (the City Worker finds
+      the machine's row of a message by its key); else it is a bad row.
       A bad row is skipped, the others are kept, the sync stays ok.
       One row per (user, dev, k): the same row again writes nothing; a row
       whose state or why changed keeps its place in the table once (still one
@@ -337,7 +339,9 @@ class TestChat(RelayCase):
         rows = [row("ok1"), "x", None, {"k": "nokind", "to": "s:1", "text": "x", "at": 1},
                 row("", "x"), row("bad key!", "x"), row("k" * 65, "x"), row("badkind", kind="note"),
                 row("notext", text=7), row("noat", at="soon"), row("badto", to=""), row("longto", to="s:" + "x" * 200),
-                row("badstate", state="sent"), row("badstate2", state="taken"), row("ok2", why="nonsense")]
+                row("badstate", state="sent"), row("badstate2", state="taken"),
+                row("k-is-not-the-cid", kind="owner", state="queued", cid="cid-0000000000000001"),
+                row("ok2", why="nonsense")]
         out = self.run_relay([tsync(talk={"chat": rows}), sql(CHATS)])
         self.assertEqual(out["responses"][0]["body"]["talk"]["state"], "on")
         got = out["responses"][1]["body"]

@@ -46,6 +46,10 @@ bin/agent_city.py, in the "cloud-city" block(s). Needs slice S3
           row again, same k. A window of a repo that is not joined never goes.
         acks: {"cid", "state"[, "why"]} for every cloud message handed down,
           and again whenever its entry changes state (queued -> delivered).
+          An ack for a message that has an entry ALWAYS rides in the same
+          sync as that entry's chat row (k = cid, the same state): the cloud
+          page stops listing the message the moment it is answered, and
+          shows the machine's row instead.
       talk_sent(host, talk, now): talk None (relay down) or not {"state":
           "on"} -> what was just sent is sent again next time; "on" -> its
           "msgs" go to cloud_message, at most 10, only the fields cid, to,
@@ -523,6 +527,12 @@ class TestMessageComesDown(TalkCase):
         self.fake.say(self.CID, "s:tm1", "请先跑测试 7731", age=2000)
         self.assertTrue(wait_for(lambda: self.last_ack(self.CID), timeout=10), "no answer for the message went up")
         self.assertEqual(self.last_ack(self.CID), {"cid": self.CID, "state": "queued"})
+        for _, talk in list(self.fake.talk_log):
+            for ack in talk.get("acks") or []:
+                if ack.get("cid") == self.CID:
+                    rows = [r for r in talk.get("chat") or [] if r.get("k") == self.CID]
+                    self.assertEqual([(r["state"], r["cid"]) for r in rows], [(ack["state"], self.CID)],
+                                     "the answer and its chat row go up in the same sync")
         mine = [e for e in self.window() if e["kind"] == "owner"]
         self.assertEqual([(e["text"], e["state"], e["cid"]) for e in mine], [("请先跑测试 7731", "queued", self.CID)])
         self.add(sid="tm1", ev="Stop", role="task-manager", tool="")

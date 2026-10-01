@@ -40,8 +40,10 @@ bin/agent-city.html stays ONE file. Cloud code stays in the blocks marked
               true) stays until the feed knows its cid; then the feed's entry
               takes its place;
           an entry that came from a msg and is in neither list any more goes;
-          order: the row entries by at (equal at: the order they came in),
-              then the entries that have no row yet, by at;
+          order: every entry by at (equal at: the order they came in; a
+              row's at is the machine's clock, a msg's the cloud's: seconds
+              both), so a message on its way sits at the bottom and one that
+              was never delivered stays at its own time;
           cc = chat.cc.
     cloudTalkNote(dev, now) -> why the box is off for the machine shown, a
         text key or '': 'cloud.box.talkOff' when dev.talk is not true, else
@@ -345,14 +347,19 @@ class TestPure(unittest.TestCase):
 
     def test_a_message_on_its_way_sits_at_the_bottom_and_shows_once(self):
         first = self.merge(None, {"to": "s:tm1", "cc": 2, "rows": self.ROWS,
-                                  "msgs": [{"cid": "cid-1", "text": "go on", "at": 5, "state": "sent", "why": ""}]})
+                                  "msgs": [{"cid": "cid-1", "text": "go on", "at": 30, "state": "sent", "why": ""}]})
         self.assertEqual([(e["id"], e.get("state")) for e in first["entries"]][-1], ("cid-1", "sent"))
         self.assertEqual((first["entries"][-1]["kind"], first["entries"][-1]["cid"]), ("owner", "cid-1"))
         taken = self.merge(first, {"to": "s:tm1", "cc": 2, "rows": [],
-                                   "msgs": [{"cid": "cid-1", "text": "go on", "at": 5, "state": "taken", "why": ""}]})
+                                   "msgs": [{"cid": "cid-1", "text": "go on", "at": 30, "state": "taken", "why": ""}]})
         self.assertEqual([(e["id"], e.get("state")) for e in taken["entries"]],
                          [("k1", ""), ("k2", ""), ("cid-1", "taken")])
         row = {"k": "cid-1", "kind": "owner", "text": "go on", "at": 15, "state": "queued", "why": "", "cid": "cid-1"}
+        late = self.merge(taken, {"to": "s:tm1", "cc": 2, "rows": [
+            {"k": "k9", "kind": "reply", "text": "a reply in between", "at": 25, "state": "", "why": "", "cid": ""}],
+            "msgs": [{"cid": "cid-1", "text": "go on", "at": 5, "state": "undelivered", "why": "off"}]})
+        self.assertEqual([e["id"] for e in late["entries"]], ["cid-1", "k1", "k2", "k9"],
+                         "every entry sits at its own time: a failed message does not stay under newer replies")
         queued = self.merge(taken, {"to": "s:tm1", "cc": 3, "rows": [row], "msgs": []})
         self.assertEqual([(e["id"], e.get("state")) for e in queued["entries"]],
                          [("k1", ""), ("cid-1", "queued"), ("k2", "")],

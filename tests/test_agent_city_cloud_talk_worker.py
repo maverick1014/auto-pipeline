@@ -50,13 +50,24 @@ this Worker still holds no key (no TEAM_KEY, no TALK_KEY).
               200 newest. "cc" = the highest id this user's rows of that
               machine and window have now (the cursor to send next; never
               lower than the one that came in).
-          msgs = this user's city_msg rows of that machine and window that
-              have no city_chat row with their cid yet, oldest first, at most
-              50: {"cid", "text", "at" (seconds), "state", "why"}.
+          msgs = the messages the machine has no entry for: this user's
+              city_msg rows of that machine and window in state 'sent',
+              'taken' or 'undelivered' that have no city_chat row whose k is
+              their cid (the machine's row for a cloud message has k = cid, and
+              its answer 'queued' / 'delivered' always comes with that row, so
+              those two states are never listed). The 50 newest, oldest first:
+              {"cid", "text", "at" (seconds), "state", "why"}.
               A 'sent' row older than 60 s is first made 'undelivered'
               ('talk-off' when the machine's talk flag is off, else 'off'), a
               'taken' row older than 10 min 'undelivered' / 'off': one guarded
-              UPDATE each, only when there is such a row.
+              UPDATE ... RETURNING cid each, only when there is such a row, and
+              ONLY the rows that UPDATE really changed are shown as not
+              delivered (a machine that took the row in between wins: a
+              message shown as not delivered must never arrive later).
+              COST: a poll comes every 3 s, so these reads go through the
+              indexes only: city_msg by (user, dev, state), city_chat by its
+              unique key (user, dev, k). Never every message of the machine,
+              never every row of the window per message.
         A poll with nothing to expire writes nothing and reads few rows.
       Without chat= the feed is exactly the feed of step 1 (plus "talk").
 
@@ -381,7 +392,12 @@ class TestFeedChat(CityCase):
     def test_messages_on_their_way_are_listed_until_the_machine_has_them(self):
         reqs = [lay_msg("c-sent", text="one", at=T0 + 1000), lay_msg("c-taken", text="two", at=T0 + 2000, state="taken"),
                 lay_msg("c-queued", text="three", at=T0 + 3000, state="queued"),
+                lay_msg("c-bare-queued", text="no row yet", at=T0 + 3100, state="queued"),
+                lay_msg("c-bare-done", text="no row yet", at=T0 + 3200, state="delivered"),
                 lay_msg("c-ended", text="four", at=T0 + 4000, state="undelivered", why="ended"),
+                lay_msg("c-deaf", text="five", at=T0 + 4500, state="undelivered", why="not-listening"),
+                lay_chat("c-deaf", kind="owner", text="five", at=45.0, state="undelivered", why="not-listening",
+                         cid="c-deaf"),
                 lay_msg("c-other", text="other window", to="s:other"), lay_msg("c-pc2", text="other machine", dev="pc2"),
                 lay_chat("c-queued", kind="owner", text="three", at=40.0, state="queued", cid="c-queued"),
                 feed(dev="mac", gen=1, after=0, chat="s:tm1", cc=0, now=T0 + 5000)]
@@ -392,8 +408,43 @@ class TestFeedChat(CityCase):
                          [{"cid": "c-sent", "text": "one", "at": (T0 + 1000) / 1000, "state": "sent", "why": ""},
                           {"cid": "c-taken", "text": "two", "at": (T0 + 2000) / 1000, "state": "taken", "why": ""},
                           {"cid": "c-ended", "text": "four", "at": (T0 + 4000) / 1000, "state": "undelivered", "why": "ended"}])
-        self.assertEqual([x["cid"] for x in chat["rows"]], ["c-queued"], "it shows once: as the machine's own row")
+        self.assertEqual([x["cid"] for x in chat["rows"]], ["c-queued", "c-deaf"],
+                         "the machine has an entry for these two: each shows once, as the machine's own row")
         self.assertEqual(r["writes"], 0)
+
+    def test_the_newest_fifty_messages_oldest_first(self):
+        reqs = [lay_msg("c-%03d" % i, at=T0 + i, state="undelivered", why="ended") for i in range(60)]
+        reqs += [feed(dev="mac", gen=1, after=0, chat="s:tm1", cc=0, now=T0 + 5000)]
+        out = self.run_city(reqs)
+        self.assertEqual([m["cid"] for m in out["responses"][-1]["body"]["chat"]["msgs"]],
+                         ["c-%03d" % i for i in range(10, 60)])
+
+    def test_a_poll_reads_through_the_indexes(self):
+        reqs = [sql("INSERT INTO city_msg (user, cid, dev, pg, text, at, state, why) "
+                    "SELECT ?, 'd' || value, 'mac', 's:tm1', 'x', ? + value, 'delivered', '' FROM json_each(?)",
+                    ME, T0, json.dumps(list(range(300)))),
+                sql("INSERT INTO city_chat (user, dev, pg, k, kind, text, at, ts, state, why, cid) "
+                    "SELECT ?, 'mac', 's:tm1', 'd' || value, 'owner', 'x', value, ?, 'delivered', '', 'd' || value "
+                    "FROM json_each(?)", ME, T0, json.dumps(list(range(200)))),
+                lay_msg("c-sent", at=T0 + 1000),
+                feed(dev="mac", gen=1, after=0, chat="s:tm1", cc=200, now=T0 + 2000)]
+        out = self.run_city(reqs)
+        r = out["responses"][-1]
+        self.assertEqual([m["cid"] for m in r["body"]["chat"]["msgs"]], ["c-sent"])
+        plans = " | ".join(r["plans"])
+        self.assertRegex(plans, r"city_msg_dev \(user=\? AND dev=\? AND state=\?\)",
+                         "the messages of a window are found by state, not by reading every message: " + plans)
+        self.assertRegex(plans, r"sqlite_autoindex_city_chat_1 \(user=\? AND dev=\? AND k=\?\)",
+                         "the machine's row of a message is found by its key (k = cid): " + plans)
+        self.assertNotRegex(plans, r"sqlite_autoindex_city_msg_1 \(user=\?\)(?! AND)")
+
+    def test_only_what_the_update_changed_is_said_to_be_not_delivered(self):
+        with open(ch.CITY, encoding="utf-8") as fh:
+            src = " ".join(fh.read().split())
+        updates = re.findall(r'UPDATE city_msg SET state = \'undelivered\'[^;]*?;', src)
+        self.assertTrue(updates, "the statement that says not delivered was not found")
+        for u in updates:
+            self.assertIn("RETURNING", u, "show 'not delivered' only for the rows this UPDATE really changed")
 
     def test_sixty_seconds_and_nobody_took_it(self):
         reqs = [lay_msg("c-old", at=T0), lay_msg("c-new", at=T0 + 30000),
@@ -419,8 +470,9 @@ class TestFeedChat(CityCase):
         out = self.run_city(reqs)
         early = {m["cid"]: m["state"] for m in out["responses"][2]["body"]["chat"]["msgs"]}
         late = {m["cid"]: (m["state"], m["why"]) for m in out["responses"][3]["body"]["chat"]["msgs"]}
-        self.assertEqual(early, {"c-taken": "taken", "c-queued": "queued"})
-        self.assertEqual(late, {"c-taken": ("undelivered", "off"), "c-queued": ("queued", "")})
+        self.assertEqual(early, {"c-taken": "taken"})
+        self.assertEqual(late, {"c-taken": ("undelivered", "off")})
+        self.assertEqual(out["dump"]["city_msg"][1]["state"], "queued", "the machine holds a queued one: no time limit here")
 
     def test_another_machines_message_is_never_expired_by_my_window(self):
         out = self.run_city([lay_msg("c-pc2", dev="pc2", at=T0), lay_msg("c-oth", user=OTHER, at=T0),

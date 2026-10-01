@@ -59,7 +59,9 @@ bin/agent-city.sh
   cloud-talk off   needs no terminal. "CLOUD TALK: off", exit 0.
   status           in a joined repo, after the CLOUD line: "CLOUD TALK: on
       <host>" or "CLOUD TALK: off". Not joined: no such line. It never talks
-      to the relay.
+      to the relay. Outside a repo (like the CLOUD lines there): one "CLOUD
+      TALK: on <host>" per joined relay host the talk file names (each host
+      once), else one "CLOUD TALK: off" when a repo is joined.
 
 Every test uses a fake relay on 127.0.0.1 and temp folders. Never a real key.
 
@@ -485,6 +487,24 @@ class TestCommand(CloudCase):
         lines = [l.strip() for l in result.stdout.splitlines() if l.strip()]
         cloud = [i for i, l in enumerate(lines) if l.startswith("CLOUD:")]
         self.assertTrue(cloud and lines[cloud[0] + 1].startswith("CLOUD TALK:"), "right after the CLOUD line")
+
+    def test_the_status_line_outside_a_repo(self):
+        import tempfile
+        self.assertOk(self.join())
+        outside = tempfile.mkdtemp(prefix="city_out_", dir=self.repo.base)
+        self.assertEqual(talk_lines(self.city_run("status", cwd=outside).stdout), ["CLOUD TALK: off"])
+        rl.set_talk(self.talk_file, self.fake.host, TALK) if hasattr(rl, "set_talk") else self.fail("set_talk is missing")
+        result = self.city_run("status", cwd=outside)
+        self.assertEqual(talk_lines(result.stdout), ["CLOUD TALK: on " + self.fake.host])
+        self.assertNotIn(TALK, result.stdout + result.stderr)
+
+    def test_on_outside_a_repo_is_refused(self):
+        import tempfile
+        outside = tempfile.mkdtemp(prefix="city_out_", dir=self.repo.base)
+        code, out, err = self.on_in_a_terminal(cwd=outside)
+        self.assertEqual(code, 1, out + err)
+        self.assertRegex(out + err, r"CLOUD TALK: .*repo")
+        self.assertFalse(os.path.exists(self.talk_file))
 
     def test_a_bad_word_is_refused(self):
         self.assertOk(self.join())
