@@ -91,6 +91,7 @@ SCRIPT = os.path.join(ROOT, "bin", "agent-cloud-pack.sh")
 
 PACK = os.path.join(".claude", "auto-pipeline")
 HOOK_CMD = 'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-start.sh'
+NAME_CMD = 'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-name.sh'
 
 # Agent City in the cloud (requirements/city.md, "Joining": cloud sessions
 # send only, no page). The pack also ships:
@@ -471,7 +472,7 @@ class TestSettingsMerge(PackCase):
         os.remove(self.t(".claude", "settings.json"))
         self.assertOk(self.pack())
         data = self.settings()
-        self.assertEqual(session_start_commands(data), [HOOK_CMD, SEND_CMD])
+        self.assertEqual(session_start_commands(data), [HOOK_CMD, NAME_CMD, SEND_CMD])
         self.assertEqual(data["permissions"]["allow"], ALLOW_RULES)
 
     def test_broken_settings_stop_the_pack_and_nothing_is_written(self):
@@ -565,6 +566,51 @@ class TestCityHooks(PackCase):
         result = self.run_cmd(SEND_CMD)
         self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
         self.assertFalse(os.path.exists(os.path.join(self.base, "city", "on")))
+
+
+class TestCloseCaseAndNameHooks(PackCase):
+    WANTED = (("SessionStart", "agent-name.sh"),
+              ("UserPromptSubmit", "agent-close-case.sh"))
+
+    def count(self, event, script):
+        marker = ".claude/auto-pipeline/bin/" + script
+        return sum(marker in h.get("command", "")
+                   for e in self.settings().get("hooks", {}).get(event, [])
+                   for h in e.get("hooks", []))
+
+    def test_a_fresh_pack_has_both_hooks(self):
+        self.assertOk(self.pack())
+        for event, script in self.WANTED:
+            with self.subTest(script=script):
+                self.assertEqual(self.count(event, script), 1)
+                self.assertTrue(os.path.exists(self.t(".claude", "auto-pipeline", "bin", script)))
+        self.assertIn('bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-close-case.sh',
+                      json.dumps(self.settings()).replace("\\\"", '"'))
+
+    def test_a_second_run_and_an_update_add_no_duplicate(self):
+        self.assertOk(self.pack())
+        self.assertOk(self.pack())
+        self.assertOk(self.pack("--update"))
+        for event, script in self.WANTED:
+            with self.subTest(script=script):
+                self.assertEqual(self.count(event, script), 1)
+
+    def test_update_adds_them_to_an_older_pack(self):
+        self.assertOk(self.pack())
+        data = self.settings()
+        for event, _ in self.WANTED:
+            data["hooks"][event] = [e for e in data["hooks"].get(event, [])
+                                    if not any("agent-name.sh" in h.get("command", "") or
+                                               "agent-close-case.sh" in h.get("command", "")
+                                               for h in e.get("hooks", []))]
+        write_text(self.t(".claude", "settings.json"), json.dumps(data, indent=2) + "\n")
+        self.assertEqual(self.count("UserPromptSubmit", "agent-close-case.sh"), 0)
+        self.assertOk(self.pack("--update"))
+        for event, script in self.WANTED:
+            with self.subTest(script=script):
+                self.assertEqual(self.count(event, script), 1)
+        for entry in USER_SETTINGS["hooks"]["SessionStart"]:
+            self.assertIn(entry, self.settings()["hooks"]["SessionStart"])
 
 
 class TestCityInTheCloud(PackCase):

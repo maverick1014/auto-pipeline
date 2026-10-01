@@ -23,8 +23,9 @@
 #                                     packed copy)
 #   .claude/agents/<name>.md         every source agent
 #   .claude/settings.json            merged: every existing key and hook is
-#                                     kept, the SessionStart and city hooks
-#                                     and the permission rules are added
+#                                     kept, the SessionStart (start, name),
+#                                     UserPromptSubmit (close case) and city
+#                                     hooks and the permission rules are added
 #   CLAUDE.md                        one pointer line appended once, never
 #                                     overwritten
 #   agent.conf, agent_*.txt,
@@ -422,6 +423,19 @@ has_hook = any(HOOK_MARKER in hook.get("command", "")
 if not has_hook:
     session_start.append({"hooks": [{"type": "command", "command": HOOK_CMD}]})
     changed = True
+
+# The plugin's other two hooks: the session name line and the close case rule.
+# Same packed path, same marker test, so a rerun or an older pack adds each once.
+for event, script, timeout in (("SessionStart", "agent-name.sh", 5),
+                               ("UserPromptSubmit", "agent-close-case.sh", 10)):
+    marker = ".claude/auto-pipeline/bin/" + script
+    event_list = hooks.setdefault(event, [])
+    if not any(marker in hook.get("command", "")
+               for entry in event_list for hook in entry.get("hooks", [])):
+        event_list.append({"hooks": [{"type": "command",
+                                      "command": 'bash "$CLAUDE_PROJECT_DIR"/' + marker,
+                                      "timeout": timeout}]})
+        changed = True
 
 has_send = any(hook.get("command", "") == SEND_CMD
                for entry in session_start for hook in entry.get("hooks", []))
