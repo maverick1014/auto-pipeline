@@ -38,7 +38,9 @@ bin/agent-city.sh gains:
     ./agent-city.sh send
         What the packed cloud SessionStart hook runs when AGENT_CITY_RELAY is
         set. Not set -> "SEND: AGENT_CITY_RELAY is not set", exit 1. Over the
-        resource cap -> nothing started, exit 1. Else starts the sender in the
+        resource cap -> the RESOURCES line with "OVER CAP" plus one warning
+        line, then it starts anyway (city-cap, 0.13.1: nothing is refused over
+        the cap). Starts the sender in the
         background (--dir $AGENT_CITY_DIR or its default, --relay-sec
         city_relay_sec, --idle-sec city_idle_min*60), waits for DIR/on and
         prints one line "CITY: sending to the team relay <host>", exit 0.
@@ -375,10 +377,15 @@ class TestCitySend(ScriptCase):
         self.assertIn("AGENT_CITY_RELAY is not set", result.stdout + result.stderr)
         self.assertFalse(os.path.exists(os.path.join(self.city, "on")))
 
-    def test_over_cap_starts_nothing(self):
+    def test_over_cap_warns_and_still_starts(self):
+        # city-cap (617b98c, 0.13.1): over the cap nothing is refused; one warning line, then it starts
         result = self.city_send("%s %s" % (self.fake.url, FAKE_KEY), {"AGENT_FAKE_RAM": "95"})
-        self.assertEqual(result.returncode, 1)
-        self.assertFalse(os.path.exists(os.path.join(self.city, "on")))
+        self.assertOk(result)
+        self.assertIn("OVER CAP", result.stdout + result.stderr)
+        self.assertIn("warning: over the resource cap; the sender is small, starting anyway", result.stdout)
+        self.assertIn("CITY: sending to the team relay " + self.fake.host, result.stdout)
+        self.assertNotIn(FAKE_KEY, result.stdout + result.stderr)
+        self.assertTrue(pid_alive(self.pid()))
 
     def test_usage_lists_send(self):
         result = self.repo.run("agent-city.sh", "-h")
