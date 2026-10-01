@@ -5734,6 +5734,16 @@ function pinTalk(el, tv, sx, sy, n){
   if (on) setText(el, tv.icon);
   pin(el, sx, n ? sy - 32 * n - 6 : sy, on);
 }
+/* city-talk bounce 2: the governor's head point. A citizen's bubbles are pinned at .72 over a .43 figure; he is
+   a citizen's model at CHAR_SCALE * 1.15, so his head is higher and his bubbles stand at .72 plus that. */
+const GOV_HEAD_H = .78;
+/* px above that head point for each of his overlays: the talk bubble takes the spot at his head, his speech
+   bubble and his "?" stand above it. With no talk bubble the old order stays (speech bubble at the head point,
+   "?" 32 px above it when a speech bubble shows). */
+function govHeadRows(talkOn, bubOn, qmOn){
+  const t = talkOn ? 38 : 0;
+  return { talk: 0, bub: t, qm: t + (bubOn ? 32 : 0) };
+}
 function ensureOv(c){
   if (c.o) return;
   c.o = { bub: ovEl('bub', '<span></span>'), qm: ovBtn('qm', '<span>?</span>'), wait: ovEl('gwait'), zz: ovEl('zz', '<span>z</span><span>z</span><span>Z</span>'), tag: ovEl('tagl tag'), doing: ovEl('doing'), talkb: ovEl('talkb') };
@@ -5895,15 +5905,18 @@ function updateGovernor(){
   const gTalk = typeof govTalkOf === 'function' ? govTalkOf(govTerr) : null;
   anim(govV, gTalk ? talkGesture(gTalk, gAnim) : gAnim);
   govV.sel.visible = !!(selected && selected.t === 'gov' && (selected.terr || govTerr) === govTerr);
-  const [sx, sy] = toScreen(px, .9, py);
-  if (talking) setBubText(govBub, text);
-  pin(govBub, sx, sy, talking);
+  const [sx, sy] = toScreen(px, GOV_HEAD_H, py);
   const gAsk = typeof openGovAskFor === 'function' ? openGovAskFor(govTerr) : openAskFor('gov');
+  const qmOn = !!(gAsk && gAsk.phase === 'owner'), talkOn = !!(gTalk && gTalk.speaking && gTalk.icon);
+  // city-talk bounce 2: the talk bubble stands at his head, his speech bubble and "?" above it (govHeadRows;
+  // typeof guard: the land harness loads updateGovernor without it, there the old order)
+  const rows = typeof govHeadRows === 'function' ? govHeadRows(talkOn, talking, qmOn) : { talk: 0, bub: 0, qm: talking ? 32 : 0 };
+  if (talking) setBubText(govBub, text);
+  pin(govBub, sx, sy - rows.bub, talking);
   if (gAsk) govQm.setAttribute('data-open', gAsk.id); else govQm.removeAttribute('data-open');
   govQm.setAttribute('aria-label', i18n(gAsk && gAsk.kind === 'permission' ? 'aria.govNeedsApproval' : 'aria.govNeedsAnswer'));
-  // above the bubble, never over it: a bubble reserves the spot at (sx, sy).
-  pin(govQm, sx, talking ? sy - 32 : sy, !!(gAsk && gAsk.phase === 'owner'));
-  if (typeof govTalkb !== 'undefined') pinTalk(govTalkb, gTalk, sx, sy, (talking ? 1 : 0) + (gAsk && gAsk.phase === 'owner' ? 1 : 0));
+  pin(govQm, sx, sy - rows.qm, qmOn);
+  if (typeof govTalkb !== 'undefined') pinTalk(govTalkb, gTalk, sx, sy - rows.talk);
   const [tx, ty] = toScreen(px, 0, py);
   pin(govTag, tx, ty + 38, govV.sel.visible);
   if (typeof governorFigures === 'function') updateGovPool(governorFigures());
@@ -5946,17 +5959,19 @@ function updateGovPool(list){
     const gAnim = typeof govAnim === 'function' ? govAnim(fig.terr, simT) : 'idle';
     anim(v, talkGesture(gTalk, gAnim));
     v.sel.visible = !!(selected && selected.t === 'gov' && selected.terr === fig.terr);
-    const [sx, sy] = toScreen(fig.x, .9, fig.y);
+    const [sx, sy] = toScreen(fig.x, GOV_HEAD_H, fig.y);
     // idea-city C13: every governor talks in his own bubble -- govTalk(fig.terr) only ever answers
     // for this figure's own territory, never another one's (home included).
     const text = govTalk(fig.terr), talking = !!text;
-    if (talking) setBubText(v.bub, text);
-    pin(v.bub, sx, sy, talking);
     const gAsk = openGovAskFor(fig.terr);
+    const qmOn = !!(gAsk && gAsk.phase === 'owner'), talkOn = !!(gTalk && gTalk.speaking && gTalk.icon);
+    const rows = govHeadRows(talkOn, talking, qmOn); // city-talk bounce 2: the talk bubble at his head, the rest above it
+    if (talking) setBubText(v.bub, text);
+    pin(v.bub, sx, sy - rows.bub, talking);
     if (gAsk) v.qm.setAttribute('data-open', gAsk.id); else v.qm.removeAttribute('data-open');
     v.qm.setAttribute('aria-label', i18n(gAsk && gAsk.kind === 'permission' ? 'aria.govNeedsApproval' : 'aria.govNeedsAnswer'));
-    pin(v.qm, sx, talking ? sy - 32 : sy, !!(gAsk && gAsk.phase === 'owner'));
-    pinTalk(v.talkb, gTalk, sx, sy, (talking ? 1 : 0) + (gAsk && gAsk.phase === 'owner' ? 1 : 0));
+    pin(v.qm, sx, sy - rows.qm, qmOn);
+    pinTalk(v.talkb, gTalk, sx, sy - rows.talk);
     const [tx, ty] = toScreen(fig.x, 0, fig.y);
     pin(v.tag, tx, ty + 38, v.sel.visible);
   }
