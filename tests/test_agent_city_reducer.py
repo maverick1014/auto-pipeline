@@ -27,7 +27,7 @@ CONTRACT
     {"type":"answer", "id","ok"}            ok is True or False
     {"type":"done",   "id"}
     {"type":"leave",  "id"}
-    {"type":"gov",    "state"}              busy | waiting | idle
+    {"type":"gov",    "state"}              busy | waiting | background | idle
 
   Who is who
     subagent        id = aid. role = at when at is task-manager, worker,
@@ -55,13 +55,15 @@ CONTRACT
     PermissionRequest -> stuck (question "", tool = tool).
     AskUserQuestion PreToolUse -> stuck (question = q, max 60 chars).
     Notification permission_prompt from a citizen session -> stuck; idle_prompt
-      -> waiting / resume (idea-city C5, tests/test_agent_city_idea_server.py).
+      -> nothing (city-status, tests/test_agent_city_status.py: waiting comes
+      from a StopNote line whose reply asks the owner).
     Already stuck -> no second stuck event.
     Stuck, then any PostToolUse or UserPromptSubmit from it -> answer ok True
       first, then the rest. PermissionDenied -> answer ok False.
     SubagentStop -> done. Anything from a done agent is ignored.
     Governor: PostToolUse / PreToolUse / UserPromptSubmit -> busy,
-      Notification permission_prompt / idle_prompt -> waiting, Stop -> idle.
+      Notification permission_prompt -> waiting, idle_prompt -> nothing,
+      Stop -> idle (city-status: tests/test_agent_city_status.py has the rest).
       A gov event is sent only when the state changes.
     SessionEnd -> done (if not yet) and leave for the session's citizen and
       every subagent of that session; for the governor session: gov idle.
@@ -89,6 +91,11 @@ EVENT_KEYS = {
     "done": {"type", "id"},
     "leave": {"type", "id"},
     "gov": {"type", "state"},
+    # city-status (tests/test_agent_city_status.py): a session citizen's status events
+    "waiting": {"type", "id"},
+    "background": {"type", "id"},
+    "idle": {"type", "id"},
+    "resume": {"type", "id"},
 }
 # keys an event may carry only sometimes (tests/test_agent_city_steps.py)
 OPTIONAL_KEYS = {"tool": {"file", "desc"}}
@@ -265,9 +272,10 @@ class TestDone(Case):
         self.r = agent_city.Reducer(done_ttl=60)
         self.spawn()
         self.feed(R("SubagentStop", aid="a1", at="worker"))
-        self.assertEqual(self.feed(R("Stop", sid="s9", role="worker"), dt=30), [
+        # any line moves the clock; not a Stop: city-status makes a citizen's Stop an "idle" event
+        self.assertEqual(self.feed(R("Notification", sid="s9", role="worker", nt="auth_success"), dt=30), [
             {"type": "spawn", "id": "s:s9", "role": "worker", "label": "worker", "task": "shop"}])
-        out = self.feed(R("Stop", sid="s9", role="worker"), dt=40)
+        out = self.feed(R("Notification", sid="s9", role="worker", nt="auth_success"), dt=40)
         self.assertIn({"type": "leave", "id": "a1"}, out)
         self.assertEqual([a["id"] for a in self.r.snapshot()["agents"]], ["s:s9"])
 
@@ -281,7 +289,8 @@ class TestSessions(Case):
     def test_governor_states_change_only_on_change(self):
         self.govern("main")
         self.assertEqual(self.feed(R("PostToolUse", sid="main", tool="Read")), [])
-        self.assertEqual(self.feed(R("Notification", sid="main", nt="idle_prompt")),
+        self.assertEqual(self.feed(R("Notification", sid="main", nt="idle_prompt")), [])
+        self.assertEqual(self.feed(R("Notification", sid="main", nt="permission_prompt")),
                          [{"type": "gov", "state": "waiting"}])
         self.assertEqual(self.feed(R("Notification", sid="main", nt="permission_prompt")), [])
         self.assertEqual(self.feed(R("PreToolUse", sid="main", tool="Agent", desc="d", sub="worker")),
@@ -317,7 +326,9 @@ class TestSessions(Case):
     def test_citizen_session_stop_is_not_done(self):
         self.govern("main")
         self.feed(R("PostToolUse", sid="tm1", role="task-manager", tool="Write"))
-        self.assertEqual(self.feed(R("Stop", sid="tm1", role="task-manager")), [])
+        # city-status: the turn ended -> idle (tests/test_agent_city_status.py), never done
+        self.assertEqual(self.feed(R("Stop", sid="tm1", role="task-manager")), [{"type": "idle", "id": "s:tm1"}])
+        self.assertFalse([a for a in self.r.snapshot()["agents"] if a["id"] == "s:tm1"][0]["done"])
 
     def test_session_end_sends_everyone_home(self):
         self.govern("main")
@@ -396,7 +407,8 @@ class TestSafety(Case):
         snap = self.r.snapshot()
         self.assertEqual(set(snap), {"gov", "agents"})
         self.assertEqual(set(snap["agents"][0]),
-                         {"id", "role", "label", "task", "stuck", "waiting", "done", "tools"})  # waiting: idea-city C5
+                         {"id", "role", "label", "task", "stuck", "waiting", "status", "done",
+                          "tools"})  # waiting: idea-city C5, status: city-status
         json.dumps(snap)
 
 

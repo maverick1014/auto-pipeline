@@ -83,8 +83,9 @@ TOOL_MAP = {
     "WebFetch": "Read", "WebSearch": "Read",
 }
 
-GOV_BUSY_EVENTS = ("PostToolUse", "PreToolUse", "UserPromptSubmit")
-STUCK_NOTIFICATIONS = ("permission_prompt", "idle_prompt")
+GOV_BUSY_EVENTS = ("PostToolUse", "PreToolUse", "UserPromptSubmit", "PermissionDenied")
+STUCK_NOTIFICATIONS = ("permission_prompt",)   # idle_prompt is not one: it changes nothing
+RESUME_EVENTS = ("PreToolUse", "PostToolUse", "UserPromptSubmit")  # a resting session works again
 MAX_NAMES = 200  # world.json "names": at most this many live citizens, oldest dropped
 
 
@@ -99,6 +100,87 @@ def bare_type(value):
     if not isinstance(value, str):
         return ""
     return value.rsplit(":", 1)[-1]
+
+
+# city-status: the city shows 等你 only when the agent needs the owner. A
+# reply that asks, or work that still runs in the background, is told by the
+# Stop hook ("say") as one StopNote line: flags only, never the text.
+
+_ASK_HEAD = re.compile(r"^[ \t#*_>-]*(?:要你决定|What to decide)", re.M)
+_ASK_QUESTION = re.compile(r"^[ \t]*QUESTION:", re.M)
+# what may sit between a decision head and its text: spaces, a colon, marks
+_HEAD_FILL = re.compile(r"[ \t\r:：*_#>]*")
+# a section that says "nothing": the whole content is one of these words
+_EMPTY_WORD = re.compile(
+    r"(?:[ \t\r:：*_#>]|-[ \t])*(?:nothing|none|无|没有|暂无|-|n/a)[ \t\r.。*_]*",
+    re.I)
+_CLOSING_MARKS = "*_`\"')）」』”’"
+HOUSEKEEPING_TASKS = ("dream", "auto-mode scan", "memory import")
+
+
+def _decision_head_asks(text):
+    """True when one decision head (要你决定 / What to decide) at the start of
+    a line has a section that is not empty. The section is the rest of the
+    head line, or, when that holds nothing, the next non-blank line. It is
+    empty when it is only nothing, none, 无, 没有, 暂无, - or n/a. A head with
+    no line after it counts as a question."""
+    for head in _ASK_HEAD.finditer(text):
+        start = head.end()
+        same_line = True
+        while True:
+            eol = text.find("\n", start)
+            line = text[start:] if eol < 0 else text[start:eol]
+            if _EMPTY_WORD.fullmatch(line):
+                break  # this head is an empty section: look at the next head
+            if _HEAD_FILL.fullmatch(line) if same_line else not line.strip():
+                if eol < 0:
+                    return True  # no line after the head: a question
+                start = eol + 1  # nothing on this line: the next line decides
+                same_line = False
+                continue
+            return True  # real content in the section
+    return False
+
+
+def asks_owner(text):
+    """True when a session's last reply TEXT asks the owner. Three rules,
+    any one is enough. 1) A line begins with 要你决定 or "What to decide" (a
+    head; spaces and the marks # * _ > - before it do not count) and its
+    section is not empty. The section is the rest of that line, or the next
+    non-blank line when the rest is empty. It is empty when it is only
+    nothing, none, 无, 没有, 暂无, - or n/a (any letter case; a colon, marks
+    and a list mark before it, and . 。 * _ after it do not count): an empty
+    section is a report, not a question. 2) A line begins with "QUESTION:".
+    3) The last sentence ends with ? or ？ (trailing spaces and closing
+    marks do not count). Anything else, an empty text or a non-string:
+    False. Never raises."""
+    try:
+        if not isinstance(text, str) or not text:
+            return False
+        if _ASK_QUESTION.search(text) or _decision_head_asks(text):
+            return True
+        end = len(text)
+        while end > 0 and (text[end - 1].isspace() or text[end - 1] in _CLOSING_MARKS):
+            end -= 1
+        return end > 0 and text[end - 1] in "?？"
+    except Exception:
+        return False
+
+
+def background_work(tasks):
+    """True when TASKS (the Stop hook input's "background_tasks": the work
+    still in flight) holds at least one dict that is not housekeeping
+    (dream, auto-mode scan, memory import). A missing field, a non-list or
+    bad entries: False. Never raises."""
+    try:
+        if not isinstance(tasks, list):
+            return False
+        for task in tasks:
+            if isinstance(task, dict) and task.get("type") not in HOUSEKEEPING_TASKS:
+                return True
+    except Exception:
+        pass
+    return False
 
 
 class Reducer:
@@ -153,7 +235,12 @@ class Reducer:
         if not isinstance(hint, bool):
             hint = None
 
-        if aid:
+        if ev == "StopNote":
+            # city-status: the end of a session's turn, told by the Stop hook.
+            # Only a known session's own note counts (subagents keep their
+            # states; a never-seen session is not spawned by a note).
+            events = [] if aid else self._handle_note(sid, field("need"), field("bg"), now)
+        elif aid:
             events = self._handle_subagent_event(ev, sid, aid, at, tool, q, now, file, desc)
         else:
             events = self._handle_session_event(ev, sid, role, proj, tool, nt, desc, sub, q, now, file, hint)
@@ -166,8 +253,8 @@ class Reducer:
         for aid, a in self.agents.items():
             agents.append({
                 "id": aid, "role": a["role"], "label": a["label"], "task": a["task"],
-                "stuck": a["stuck"], "waiting": a["waiting"], "done": a["done"],
-                "tools": dict(a["tools"]),
+                "stuck": a["stuck"], "waiting": a["status"] == "waiting", "done": a["done"],
+                "status": a["status"], "tools": dict(a["tools"]),
             })
         return {"gov": {"state": self.gov_state}, "agents": agents}
 
@@ -198,6 +285,24 @@ class Reducer:
             self._touch(cid, now)
         if is_queue_pretool:
             self._enqueue(sid, sub, desc)
+        return events
+
+    def _handle_note(self, sid, need, bg, now):
+        """city-status: a StopNote decides the status of a known session at
+        the end of its turn: need "1" -> waiting, else bg "1" -> background,
+        else idle. A session the Reducer has never seen: nothing."""
+        info = self.sessions.get(sid)
+        if info is None:
+            return []
+        state = "waiting" if need == "1" else "background" if bg == "1" else "idle"
+        cid = info["citizen"]
+        if cid is None:
+            return self._set_gov_state(state)
+        agent = self.agents.get(cid)
+        if agent is None or agent["done"]:
+            return []
+        events = self._set_status(cid, state)
+        self._touch(cid, now)
         return events
 
     def _resolve_session(self, sid, role, proj, hint=None):
@@ -245,13 +350,21 @@ class Reducer:
         self.sessions.pop(sid, None)
 
     def _governor_event(self, ev, tool, nt):
+        """The governor's state: busy | waiting | background | idle. Waiting:
+        a permission or a question prompt is open. Busy: it works again. A
+        Stop alone only ends a busy turn (the StopNote decides the rest)."""
         new_state = None
-        if ev in GOV_BUSY_EVENTS:
-            new_state = "busy"
+        if ev == "PermissionRequest" or (ev == "PreToolUse" and tool == "AskUserQuestion"):
+            new_state = "waiting"
         elif ev == "Notification" and nt in STUCK_NOTIFICATIONS:
             new_state = "waiting"
-        elif ev == "Stop":
+        elif ev in GOV_BUSY_EVENTS:
+            new_state = "busy"
+        elif ev == "Stop" and self.gov_state == "busy":
             new_state = "idle"
+        return self._set_gov_state(new_state)
+
+    def _set_gov_state(self, new_state):
         if new_state is None or new_state == self.gov_state:
             return []
         self.gov_state = new_state
@@ -261,22 +374,22 @@ class Reducer:
         agent = self.agents.get(cid)
         if agent is None or agent["done"]:
             return []
-        # idea-city C5: idle_prompt is not a question -- it makes the
-        # citizen "waiting", never "stuck"; its next PreToolUse/PostToolUse/
-        # UserPromptSubmit resumes it (once), always before the usual
-        # events for that same line.
+        # city-status: a citizen at rest (waiting, background or idle) works
+        # again at its next PreToolUse/PostToolUse/UserPromptSubmit: one
+        # "resume", always before the usual events for that same line.
         resumed = []
-        if ev in ("PreToolUse", "PostToolUse", "UserPromptSubmit") and agent["waiting"]:
-            agent["waiting"] = False
+        if ev in RESUME_EVENTS and agent["status"] != "":
+            agent["status"] = ""
             resumed = [{"type": "resume", "id": cid}]
+        if ev == "Stop":
+            # A Stop alone ends a busy turn (the StopNote decides the rest).
+            return self._set_status(cid, "idle", only_if_busy=True)
         if ev == "PreToolUse" and tool == "AskUserQuestion":
             return resumed + self._make_stuck(cid, _trim(q, 60), tool)
         if ev == "PermissionRequest":
             return resumed + self._make_stuck(cid, "", tool)
         if ev == "Notification" and nt == "permission_prompt":
             return resumed + self._make_stuck(cid, "", "")
-        if ev == "Notification" and nt == "idle_prompt":
-            return resumed + self._make_waiting(cid)
         if ev == "PermissionDenied":
             return resumed + self._make_answer_if_stuck(cid, False)
         if ev in ("PostToolUse", "UserPromptSubmit"):
@@ -378,7 +491,7 @@ class Reducer:
         self._seq += 1
         self.agents[aid] = {
             "role": role, "label": label, "task": task,
-            "stuck": False, "waiting": False, "done": False, "done_at": 0.0,
+            "stuck": False, "status": "", "done": False, "done_at": 0.0,
             "tools": {"Edit": 0, "Write": 0, "Bash": 0, "Read": 0, "Other": 0},
             "seq": self._seq, "owner": owner, "kind": kind,
         }
@@ -411,14 +524,17 @@ class Reducer:
         agent["stuck"] = True
         return [{"type": "stuck", "id": aid, "question": question, "tool": tool}]
 
-    def _make_waiting(self, aid):
-        """idea-city C5: Notification idle_prompt -> "waiting", once (never
-        "stuck") -- a citizen resting, not asking a question."""
+    def _set_status(self, aid, status, only_if_busy=False):
+        """city-status: a session citizen's status "" (working) | "waiting"
+        | "background" | "idle" -> its event, once per change. ONLY_IF_BUSY:
+        only a working citizen changes (a Stop line alone)."""
         agent = self.agents.get(aid)
-        if agent is None or agent["waiting"] or agent["done"]:
+        if agent is None or agent["done"] or agent["status"] == status:
             return []
-        agent["waiting"] = True
-        return [{"type": "waiting", "id": aid}]
+        if only_if_busy and agent["status"] != "":
+            return []
+        agent["status"] = status
+        return [{"type": status, "id": aid}]
 
     def _make_answer_if_stuck(self, aid, ok):
         agent = self.agents.get(aid)
@@ -1327,6 +1443,16 @@ class CityState:
                 del self._sid_repo[next(iter(self._sid_repo))]
 
     def _feed_line_locked(self, obj, now):
+        if isinstance(obj, dict) and obj.get("ev") == "StopNote":
+            # city-status: a note carries no repo: it stays in its session's
+            # territory (_identity_of). A note of a session nobody has seen,
+            # or of a subagent, shows nobody and tells nobody: it goes no
+            # further, before the seat logic.
+            sid, aid = obj.get("sid"), obj.get("aid")
+            reducer = self.reducers.get(self._identity_of(obj))
+            if (reducer is None or not isinstance(sid, str) or sid not in reducer.sessions
+                    or (isinstance(aid, str) and aid != "")):
+                return
         if isinstance(obj, dict):
             self._remember_repo_locked(obj)
         identity = self._identity_of(obj) if isinstance(obj, dict) else None
@@ -4194,6 +4320,26 @@ def cmd_say(args):
         return 0
 
 
+def _write_stop_note(directory, sid, text, tasks):
+    """Append one StopNote line to <city dir>/events.jsonl: {"ev":"StopNote",
+    "sid","need","bg"}, need "1" when the reply TEXT asks the owner
+    (asks_owner), bg "1" when TASKS (the Stop input's background_tasks) holds
+    work (background_work). Flags only: never the text, never a task. One
+    write on an O_APPEND descriptor, so it never interleaves with the hook's
+    own lines. Never raises, never prints."""
+    try:
+        note = {"ev": "StopNote", "sid": sid,
+                "need": "1" if asks_owner(text) else "", "bg": "1" if background_work(tasks) else ""}
+        data = (json.dumps(note, separators=(",", ":")) + "\n").encode("utf-8")
+        fd = os.open(os.path.join(directory, "events.jsonl"), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            os.write(fd, data)
+        finally:
+            os.close(fd)
+    except Exception:
+        pass
+
+
 def _cmd_say_impl(args):
     try:
         raw = sys.stdin.buffer.read()
@@ -4225,6 +4371,11 @@ def _cmd_say_impl(args):
         kind, text = "reply", payload.get("last_assistant_message")
     else:
         return 0
+
+    if ev == "Stop":
+        # city-status: the session's own Stop also tells the city how its turn
+        # ended (flags only), whatever the reply text is, even empty.
+        _write_stop_note(directory, sid, text, payload.get("background_tasks"))
 
     if not isinstance(text, str) or not text.strip():
         return 0
