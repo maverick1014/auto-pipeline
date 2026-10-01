@@ -993,7 +993,11 @@ def load_chat(path):
         at = obj.get("at")
         if not isinstance(at, (int, float)):
             at = 0.0
-        valid.append({"sid": sid, "aid": aid, "kind": kind, "text": text, "at": at})
+        row = {"sid": sid, "aid": aid, "kind": kind, "text": text, "at": at}
+        cid = obj.get("cid")
+        if kind == "owner" and isinstance(cid, str) and CLOUD_CID_RE.match(cid):
+            row["cid"] = cid     # cloud-city-2: a delivered cloud message keeps its id over a restart
+        valid.append(row)
 
     counts = {}
     for row in valid:
@@ -1686,6 +1690,14 @@ class _CloudTaps:
         while len(self._cloud_said) > CLOUD_SAID_KEEP:
             del self._cloud_said[next(iter(self._cloud_said))]
         return dict(answer)
+
+    def _cloud_note_page_locked(self, cid, to):
+        """Caller holds self.lock. The window of a cloud message's entry
+        (bounded: the oldest are forgotten)."""
+        self._cloud_page.pop(cid, None)
+        self._cloud_page[cid] = to
+        while len(self._cloud_page) > CLOUD_ACKS_KEEP * 4:
+            del self._cloud_page[next(iter(self._cloud_page))]
 
     def _cloud_entry_locked(self, cid):
         """Caller holds self.lock. (the window, the entry) of a cloud message
@@ -4665,6 +4677,11 @@ class CityState(_CloudTaps):
             entry = {"id": self._chat_seq, "kind": kind, "text": text, "at": at}
             if kind == "owner":
                 entry["state"] = "delivered"  # only ever-delivered owner lines are persisted
+                cid = obj.get("cid")
+                if isinstance(cid, str) and CLOUD_CID_RE.match(cid):
+                    # cloud-city-2: a delivered cloud message, read back: same id, so the same key up
+                    entry["cid"] = cid
+                    self._cloud_note_page_locked(cid, to)
             bucket = self.chat.get(to)
             if bucket is None:
                 bucket = deque(maxlen=CHAT_KEEP)
@@ -4721,10 +4738,7 @@ class CityState(_CloudTaps):
                 entry["why"] = "not-listening"
             if cid is not None:     # cloud-city-2: a message from the cloud page
                 entry["cid"] = cid
-                self._cloud_page.pop(cid, None)
-                self._cloud_page[cid] = to
-                while len(self._cloud_page) > CLOUD_ACKS_KEEP * 4:
-                    del self._cloud_page[next(iter(self._cloud_page))]
+                self._cloud_note_page_locked(cid, to)
             bucket = self.chat.get(to)
             if bucket is None:
                 bucket = deque(maxlen=CHAT_KEEP)
@@ -4751,8 +4765,10 @@ class CityState(_CloudTaps):
             row["via"] = "cloud"
             self._cloud_done_locked(entry["cid"])
         self._append_jsonl_locked(self.decisions_path, row)
-        self._append_chat_path_locked({"sid": sid, "aid": "", "kind": "owner",
-                                        "text": entry["text"], "at": entry["at"]})
+        line = {"sid": sid, "aid": "", "kind": "owner", "text": entry["text"], "at": entry["at"]}
+        if entry.get("cid") is not None:
+            line["cid"] = entry["cid"]      # cloud-city-2: read back after a restart, it keeps its id
+        self._append_chat_path_locked(line)
         return {"state": "message", "id": entry["id"], "text": entry["text"]}
 
     def _append_jsonl_locked(self, path, row):

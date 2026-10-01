@@ -31,7 +31,11 @@ bin/agent_city.py, in the "cloud-city" block(s). Needs slice S3
       {"cid", "done": 1}. Never the text. A refused, late, ended or flood
       message queues nothing, changes no window and sends no page event.
       A delivered cloud message is logged in decisions.jsonl like a local
-      one, with "via": "cloud".
+      one, with "via": "cloud". Its chat.jsonl line carries "cid", and a line
+      with a cid gives its entry that cid again when the file is read (a
+      restart), so the entry keeps its key: the relay still holds ONE row for
+      it and both pages still show it once (E2E 2026-10-01: after a restart
+      the cloud page showed every delivered cloud message twice).
 
   CloudUploader gains (the hub's talk source):
       talk_take(host, rids, now) -> {"chat": [...], "acks": [...]} (a key is
@@ -266,6 +270,21 @@ class TestOnce(MessageCase):
         self.assertEqual(self.say("cid-lost"), {"cid": "cid-lost", "state": "undelivered", "why": "off"},
                          "queued, never delivered, lost in the restart: said so, never queued a second time")
         self.assertEqual(self.all_entries(), before)
+
+    def test_a_delivered_message_keeps_its_id_over_a_restart(self):
+        self.team()
+        self.say("cid-kept", text="delivered before the restart")
+        self.feed(line("Stop", "tm1", role="task-manager"))
+        self.assertEqual(self.state.chat_next("tm1", "w1", 2.0)["state"], "message")
+        with open(self.chat_path, encoding="utf-8") as fh:
+            last = json.loads(fh.read().strip().splitlines()[-1])
+        self.assertEqual((last["kind"], last["text"], last.get("cid")), ("owner", "delivered before the restart", "cid-kept"))
+        self.state = self.make()      # the server was started again: the windows come from chat.jsonl
+        self.team()
+        mine = [e for e in self.entries() if e["kind"] == "owner"]
+        self.assertEqual([(e["text"], e["state"], e.get("cid")) for e in mine],
+                         [("delivered before the restart", "delivered", "cid-kept")])
+        self.assertEqual(self.say("cid-kept"), {"cid": "cid-kept", "state": "delivered"})
 
     def test_the_state_follows_the_entry(self):
         self.team()
@@ -634,6 +653,28 @@ class TestMessageComesDown(TalkCase):
         self.fake.talk_key = TALK
         self.assertTrue(wait_for(lambda: self.rows(text="kept for later"), timeout=10),
                         "rows the relay refused are sent again once it takes the key")
+
+    def test_after_a_restart_a_delivered_message_is_still_one_row(self):
+        proc = self.up()
+        self.session("tm1")
+        self.fake.say(self.CID, "s:tm1", "delivered before the restart")
+        self.assertTrue(wait_for(lambda: self.last_ack(self.CID), timeout=10))
+        self.add(sid="tm1", ev="Stop", role="task-manager", tool="")
+        time.sleep(0.3)
+        self.assertEqual(self.call("GET", "/api/chat/next?sid=tm1&watcher=w1&timeout=5")[1]["state"], "message")
+        self.assertTrue(wait_for(lambda: (self.last_ack(self.CID) or {}).get("state") == "delivered", timeout=10))
+        proc.terminate()
+        proc.wait(10)
+        self.up()
+        self.session("tm1")
+        self.chat_line({"sid": "tm1", "aid": "", "kind": "reply", "text": "said after the restart", "at": time.time()})
+        self.assertTrue(wait_for(lambda: self.rows(text="said after the restart"), timeout=15),
+                        "the new run never sent its windows")
+        time.sleep(0.8)
+        self.assertEqual([r["k"] for r in self.rows(text="delivered before the restart")], [self.CID],
+                         "one row for the message, under its own id: the cloud page must not show it twice")
+        mine = [e for e in self.window() if e["kind"] == "owner"]
+        self.assertEqual([(e["text"], e.get("cid")) for e in mine], [("delivered before the restart", self.CID)])
 
     def test_after_a_restart_the_same_message_is_not_queued_again(self):
         proc = self.up()
