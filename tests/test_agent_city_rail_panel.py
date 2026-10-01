@@ -439,6 +439,14 @@ const E = [
   { id: 7, kind: 'prompt', text: 'Another Claude session sent a message:\n<agent-message from="m">go</agent-message>', at: 7 },
   { id: 8, kind: 'reply', text: 'ok manager', at: 8 },
 ];
+const WRAP = '<task-notification>\n<summary>Stop hook feedback</summary>\n[agent-city] The owner typed this in the city page: hi';
+const owned = markMain([
+  { id: 1, kind: 'owner', text: 'hi', at: 1, state: 'delivered' },
+  { id: 2, kind: 'prompt', text: WRAP, at: 2 },
+  { id: 3, kind: 'reply', text: 'answer to the owner', at: 3 },
+  { id: 4, kind: 'prompt', text: '<teammate-message teammate_id="w">x</teammate-message>', at: 4 },
+  { id: 5, kind: 'reply', text: 'ok teammate', at: 5 },
+], false).map(e => [e.id, e.main]);
 const frozen = JSON.stringify(E);
 const session = markMain(E, false).map(e => [e.id, e.main]);
 const sub = markMain([{ id: 9, kind: 'reply', text: 'report', at: 1 }], true).map(e => e.main);
@@ -450,7 +458,7 @@ const shown = mainOnly(personHistory(c, E)).map(it => it.k + ':' + (it.text || i
 const w = { acts: [], qa: [], stuck: false, lead: 's:L' };
 const subHist = personHistory(w, [{ id: 11, kind: 'reply', text: 'report to lead', at: 1 }]).map(it => it.main);
 const plain = mainOnly([{ k: 'x' }, { k: 'y', main: false }, { k: 'z', main: true }]).map(it => it.k);
-__out = { machine, session, sub, first, untouched, hist, shown, subHist, plain, starts: MACHINE_STARTS };
+__out = { owned, machine, session, sub, first, untouched, hist, shown, subHist, plain, starts: MACHINE_STARTS };
 """
 
 
@@ -472,17 +480,20 @@ class TestMainMessages(unittest.TestCase):
                 self.assertIn(start, self.r["starts"])
 
     def test_replies_follow_the_turn(self):
-        self.assertEqual(self.r["session"], [[1, True], [2, True], [3, False], [4, False], [5, True], [6, True],
+        self.assertEqual(self.r["session"], [[1, True], [2, True], [3, False], [4, True], [5, True], [6, True],
                                              [7, False], [8, False]])
         self.assertEqual(self.r["first"], [True], "a reply with no prompt before it shows")
         self.assertEqual(self.r["sub"], [False], "a subagent's reply is its report to its lead")
         self.assertTrue(self.r["untouched"], "markMain copies, never marks the chat store itself")
 
+    def test_owner_reply_after_a_wrapper_prompt_is_main(self):
+        self.assertEqual(self.r["owned"], [[1, True], [2, False], [3, True], [4, False], [5, False]])
+
     def test_history_items_carry_main(self):
         self.assertEqual(self.r["hist"], [["act", False], ["prompt", True], ["ask", True], ["reply", True],
-                                          ["act", False], ["prompt", False], ["reply", False], ["owner", True],
+                                          ["act", False], ["prompt", False], ["reply", True], ["owner", True],
                                           ["reply", True], ["prompt", False], ["reply", False]])
-        self.assertEqual(self.r["shown"], ["prompt:fix the login page", "ask:q?", "reply:fixed", "owner:stop for now",
+        self.assertEqual(self.r["shown"], ["prompt:fix the login page", "ask:q?", "reply:fixed", "reply:worker done, checking", "owner:stop for now",
                                            "reply:stopped"])
         self.assertEqual(self.r["subHist"], [False])
         self.assertEqual(self.r["plain"], ["x", "z"], "no main field counts as main")

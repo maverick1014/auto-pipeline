@@ -1315,7 +1315,8 @@ function actTool(c, step){
 /* city-polish C2 (owner: "like Claude Code itself hides its mechanism"): the history shows the MAIN
    messages -- the human's prompts and the agent's final replies to the human -- and one small toggle
    shows the rest. A prompt that is machine traffic (a task notification, a message from another
-   session or teammate, a system / hook / command line) is not main, and neither is the reply to it;
+   session or teammate, a system / hook / command line) is not main; the reply to it is hidden only when
+   another agent's message started the turn;
    a subagent's replies are its report to its lead, so none of them is main. */
 const MACHINE_STARTS = ['<task-notification', '<agent-message', '<teammate-message', 'Another Claude session sent a message',
   '<system-reminder', '<command-name', '<command-message', '<local-command-', '<bash-input', '<user-prompt-submit-hook',
@@ -1324,15 +1325,22 @@ function isMachinePrompt(text){
   const t = String(text == null ? '' : text).replace(/^\s+/, '');
   return MACHINE_STARTS.some(s => t.startsWith(s));
 }
+/* A reply is hidden only when another agent's message started its turn (or on a subagent's page); a turn
+   started by a task notification, the city delivery wrapper or another system wrapper keeps its reply. */
+const AGENT_STARTS = ['<agent-message', '<teammate-message', 'Another Claude session sent a message'];
+function isAgentPrompt(text){
+  const t = String(text == null ? '' : text).replace(/^\s+/, '');
+  return AGENT_STARTS.some(s => t.startsWith(s));
+}
 /* markMain(entries, sub) -> a copy of the chat entries, same order, each with main set (the chat store
    itself is never marked): owner true; prompt = not a machine prompt; reply = false on a subagent's page
-   (sub), else the main of the latest owner / prompt before it (true with none); any other kind true. */
+   (sub), else false when the latest prompt before it came from another agent, else true; any other kind true. */
 function markMain(entries, sub){
   let turnMain = true;
   return (entries || []).map(e => {
     let main = true;
     if (e.kind === 'owner') turnMain = main = true;
-    else if (e.kind === 'prompt') turnMain = main = !isMachinePrompt(e.text);
+    else if (e.kind === 'prompt') { main = !isMachinePrompt(e.text); turnMain = !isAgentPrompt(e.text); }
     else if (e.kind === 'reply') main = sub ? false : turnMain;
     return Object.assign({}, e, { main });
   });
