@@ -85,7 +85,7 @@
 - The talk bubble holds one icon, never chat text. Reduced motion: no gesture, the bubble stays.
 - A talk never changes a status word and never delays a real one: 等你, stuck, a relay and done end the talk at once; 后台在跑 and 空闲 show at once.
 - Demo (`/#demo`) plays it too: a new demo person in the demo 总督's territory is handed its task by him, and two demo people at work talk about every 9 s.
-- Data: a spawn event says who sent the agent (`from`); a SendMessage that is not a question becomes one `talk` event. The hook adds the recipient's name (`to`, at most 80 characters) to that line: never the message, never through the relay. The name is matched to a session name, a subagent id, or a repo name (its 总督); else nobody.
+- Data: a spawn event says who sent the agent (`from`); a SendMessage that is not a question becomes one `talk` event. The hook adds the recipient's name (`to`, at most 80 characters) to that line: never the message, never through the relay. The name is matched to a session name, a subagent id, a session id, the socket address Claude Code answers to (`uds:…/<pid>.sock`: the session with that pid), or a repo name (its 总督); else nobody.
 
 ## Talking
 - Owner decision, 2026-09-27: "我就可以直接看到他的聊天记录对话框然后直接跟他说话". The owner reads a session's conversation and talks to it from its person's window, no terminal needed. The terminal keeps working in parallel; both show the same conversation.

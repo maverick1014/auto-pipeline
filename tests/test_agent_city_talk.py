@@ -81,9 +81,13 @@ Server (bin/agent_city.py)
     {"type": "talk", "from": <sender page id>, "to": <page id or "">, "terr": <sender's territory>}.
     Sender: the subagent (aid), the governor ("gov:<terr>") or the session citizen ("s:<sid>").
     "to" is resolved, in this order: a live session citizen whose label equals it (any case; the
-    sender's territory first); a live subagent's id; a territory with a governor whose name it starts
+    sender's territory first); a live subagent's id; a session id (a live session citizen -> "s:<sid>",
+    a territory's governor -> "gov:<terr>"); a socket address "uds:<any path>/<pid>.sock" (bounce 1,
+    2026-10-01: Claude Code answers a message to the sender's socket, named after its pid) -> the live
+    session whose known pid (the "pid" of its hook lines; a governor with none: the pid it was seated
+    with) is <pid>, as a citizen or as a governor; a territory with a governor whose name it starts
     with (then the end, a space or "-": "app Manager", "app-7f") -> "gov:<terr>" (the sender's own
-    territory first; never the sender itself); else "".
+    territory first); else "". Never the sender itself: that gives "".
     No talk event: no "to" (old hooks), ask == "q" (the relay shows it), or the line closed a relay
     (relay_end shows the answer).
 Hook (bin/agent-city-hook.sh)
@@ -1092,8 +1096,9 @@ class ServerCase(unittest.TestCase):
         self.line("PreToolUse", sid, repo, role=role, tool="Agent", sub=kind, desc="slice")
         self.line("SubagentStart", sid, repo, role=role, aid=aid, at=kind)
 
-    def send(self, sid, to, repo=A_REPO, role="", aid="", ask="", ev="PostToolUse"):
-        self.line(ev, sid, repo, role=role, aid=aid, at="worker" if aid else "", tool="SendMessage", ask=ask, to=to)
+    def send(self, sid, to, repo=A_REPO, role="", aid="", ask="", ev="PostToolUse", **more):
+        self.line(ev, sid, repo, role=role, aid=aid, at="worker" if aid else "", tool="SendMessage", ask=ask, to=to,
+                  **more)
 
 
 class TestSpawnSaysWhoSentItT1(ServerCase):
@@ -1204,6 +1209,76 @@ class TestSendMessageBecomesATalkT3(ServerCase):
         self.events()
         self.send("h1", "shop Manager")
         self.assertEqual(self.one(), {"type": "talk", "from": "s:h1", "to": "gov:" + TB, "terr": TA})
+
+    # bounce 1 (real sessions on pc2, 2026-10-01): the manager's REPLY went out with
+    # to = "uds:/tmp/cc-socks/41216.sock" (41216 = the helper's pid), so the answer had no walk-over
+
+    def test_a_reply_to_a_socket_address_means_the_session_with_that_pid(self):
+        self.line("PostToolUse", "h1", tool="Bash", pid="41216")
+        self.events()
+        self.send("g1", "uds:/tmp/cc-socks/41216.sock")
+        self.assertEqual(self.one(), {"type": "talk", "from": "gov:" + TA, "to": "s:h1", "terr": TA})
+
+    def test_any_socket_folder(self):
+        self.line("PostToolUse", "tm2", role="task-manager", tool="Bash", pid="5150")
+        self.events()
+        self.send("tm1", "uds:/var/folders/hl/9td/T/cc-socks/5150.sock", role="task-manager")
+        self.assertEqual(self.one()["to"], "s:tm2")
+
+    def test_a_socket_address_of_the_governor(self):
+        self.line("UserPromptSubmit", "g1", pid=str(os.getpid()))
+        self.events()
+        self.send("h1", "uds:/tmp/cc-socks/%d.sock" % os.getpid())
+        self.assertEqual(self.one(), {"type": "talk", "from": "s:h1", "to": "gov:" + TA, "terr": TA})
+
+    def test_a_socket_address_nobody_has(self):
+        self.line("PostToolUse", "h1", tool="Bash", pid="41216")
+        self.events()
+        for name in ("uds:/tmp/cc-socks/99999.sock", "uds:/tmp/cc-socks/abc.sock", "uds:/tmp/cc-socks/41216.sock.bak",
+                     "/tmp/cc-socks/41216.sock", "uds:41216"):
+            with self.subTest(to=name):
+                self.send("g1", name)
+                self.assertEqual(self.one()["to"], "")
+
+    def test_its_own_socket_address_is_nobody(self):
+        self.line("PostToolUse", "h1", tool="Bash", pid="41216")
+        self.events()
+        self.send("h1", "uds:/tmp/cc-socks/41216.sock", pid="41216")
+        self.assertEqual(self.one()["to"], "")
+
+    def test_the_latest_pid_of_a_session_counts(self):
+        self.line("PostToolUse", "h1", tool="Bash", pid="41216")
+        self.line("PostToolUse", "h1", tool="Bash", pid="41300")
+        self.events()
+        self.send("g1", "uds:/tmp/cc-socks/41216.sock")
+        self.assertEqual(self.one()["to"], "", "the old pid is nobody's now")
+        self.send("g1", "uds:/tmp/cc-socks/41300.sock")
+        self.assertEqual(self.one()["to"], "s:h1")
+
+    def test_a_session_id_means_that_session(self):
+        self.send("g1", "h1")
+        self.assertEqual(self.one(), {"type": "talk", "from": "gov:" + TA, "to": "s:h1", "terr": TA})
+        self.send("tm1", "TM2", role="task-manager")
+        self.assertEqual(self.one()["to"], "s:tm2")
+
+    def test_the_governors_session_id_means_the_governor(self):
+        self.send("h1", "g1")
+        self.assertEqual(self.one(), {"type": "talk", "from": "s:h1", "to": "gov:" + TA, "terr": TA})
+
+    def test_its_own_session_id_is_nobody(self):
+        self.send("h1", "h1")
+        self.assertEqual(self.one()["to"], "")
+        self.send("g1", "g1")
+        self.assertEqual(self.one()["to"], "")
+
+    def test_a_session_that_ended_is_nobody(self):
+        self.line("PostToolUse", "h1", tool="Bash", pid="41216")
+        self.line("SessionEnd", "h1", pid="41216")
+        self.events()
+        self.send("g1", "uds:/tmp/cc-socks/41216.sock")
+        self.assertEqual(self.one()["to"], "")
+        self.send("g1", "h1")
+        self.assertEqual(self.one()["to"], "")
 
     def test_old_hook_lines_make_no_talk(self):
         self.line("PostToolUse", "h1", tool="SendMessage")
