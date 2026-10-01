@@ -10,7 +10,8 @@ and its sibling agent_city_relay.py:
 
   Server   python3 agent_city.py serve --dir DIR --port PORT
                    [--idle-min N | --idle-sec S] [--max-log-kb K] [--page PATH]
-                   [--assets DIR] [--gov-wait-sec N] [--relay-sec S] [--decisions PATH]
+                   [--assets DIR] [--gov-wait-sec N] [--relay-sec S] [--slow-sec S]
+                   [--decisions PATH]
            Tails <dir>/events.jsonl, feeds each line to a Reducer, and streams
            the resulting events to a browser over Server-Sent Events at
            /events. Stays cheap: bounded queues, a bounded log file, an idle
@@ -29,6 +30,10 @@ and its sibling agent_city_relay.py:
            POST /api/agent/add opens one new claude session in a territory's
            folder (the page's add-agent button; requirements/city.md, "Add
            agent"); see tests/test_agent_city_add_agent.py for the contract.
+           A start order from the cloud page (only for a relay in the start
+           file, cloud-start) opens one session the same way: CityState.
+           cloud_order calls add_agent and nothing else; see
+           tests/test_agent_city_cloud_start_machine.py.
 
   Hooks   python3 agent_city.py ask [--max-wait-sec N]        (PermissionRequest)
            python3 agent_city.py gov-watch [--max-wait-sec N]  (Stop, governor only)
@@ -1322,6 +1327,16 @@ CLOUD_SEEN_KEEP = 2000         # ... to the newest of them
 CLOUD_SAID_KEEP = 500          # answers kept in memory for messages that have no entry (refused, ended, ...)
 CLOUD_CID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")   # the relay's own rule for a key
 
+# cloud-city-3: a start order from the cloud page (requirements/city.md, "Cloud
+# page", "Start"; tests/test_agent_city_cloud_start_machine.py is the contract).
+CLOUD_ORDER_AGE_MS = 90000     # an order that is older than this (90 s) is not opened
+CLOUD_ORDER_MAX = 10           # orders let in during CLOUD_ORDER_SEC, no more, whatever the cloud says
+CLOUD_ORDER_SEC = 3600.0
+CLOUD_ORDER_TAKE = 3           # orders taken from one reply
+CLOUD_ORDER_ACKS = 20          # order answers in one sync (the relay reads 20)
+CLOUD_ORDER_STATES = ("opening", "opened", "cap", "failed")
+CLOUD_OID_RE = re.compile(r"[A-Za-z0-9_-]{16,64}")      # used with fullmatch
+
 
 def _cloud_relay():
     """The sibling agent_city_relay module, imported only when the cloud code
@@ -1422,6 +1437,13 @@ def cloud_talk_path():
     return os.path.join(os.path.dirname(cloud_home_path()), "cloud-talk")
 
 
+def cloud_start_path():
+    """cloud-city-3: the start file (the relay hosts this machine takes start
+    orders from, hosts only, mode 0600), next to the talk file:
+    $AGENT_CITY_HOME/cloud-start."""
+    return os.path.join(os.path.dirname(cloud_home_path()), "cloud-start")
+
+
 def _cloud_seen_read(path):
     """cloud-city-2: (the cids of the seen file PATH, oldest first, the set of
     those delivered). A missing or broken file gives nothing; a bad line is skipped."""
@@ -1496,6 +1518,66 @@ def _cloud_seen_cut(path, order, done):
     except OSError:
         return order
     return keep
+
+
+def _cloud_orders_read(path):
+    """cloud-city-3: {oid: (state, why) of its last answer line, or None when
+    it has none}, oldest oid first, from the orders file PATH. A missing or
+    broken file gives {}; a bad line is skipped."""
+    last = {}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for raw in fh:
+                try:
+                    row = json.loads(raw)
+                except ValueError:
+                    continue
+                oid = row.get("oid") if isinstance(row, dict) else None
+                if not isinstance(oid, str) or CLOUD_OID_RE.fullmatch(oid) is None:
+                    continue
+                last.setdefault(oid, None)
+                state, why = row.get("state"), row.get("why")
+                if isinstance(state, str) and state in CLOUD_ORDER_STATES:
+                    last[oid] = (state, why if isinstance(why, str) else "")
+    except (OSError, ValueError):
+        pass
+    return last
+
+
+def _cloud_orders_cut(path, last):
+    """cloud-city-3: an orders file with more than CLOUD_SEEN_MAX oids is
+    written again with the newest CLOUD_SEEN_KEEP, each with its last answer
+    line. Returns what was kept; on a failure the file stays as it is."""
+    if len(last) <= CLOUD_SEEN_MAX:
+        return last
+    keep = dict(list(last.items())[-CLOUD_SEEN_KEEP:])
+    rows = []
+    for oid, got in keep.items():
+        rows.append({"oid": oid})
+        if got is not None:
+            row = {"oid": oid, "state": got[0]}
+            if got[1]:
+                row["why"] = got[1]
+            rows.append(row)
+    tmp = path + ".new"
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, "".join(json.dumps(row) + "\n" for row in rows).encode("utf-8"))
+        finally:
+            os.close(fd)
+        os.replace(tmp, path)
+    except OSError:
+        return last
+    return keep
+
+
+def _cloud_order_copy(answer):
+    """cloud-city-3: a copy of an order's answer (its info is a dict of its own)."""
+    out = dict(answer)
+    if isinstance(out.get("info"), dict):
+        out["info"] = dict(out["info"])
+    return out
 
 
 def _cloud_sig_of(entry):
@@ -1576,7 +1658,9 @@ class _CloudTaps:
         that is not in IDENTITIES are not there (not its shape either). Built
         under the lock (a private copy: layout() shares the live building
         lists) and cached until the world changes; the result is shared, so
-        the caller copies it (cloud_clean does) and never changes it."""
+        the caller copies it (cloud_clean does) and never changes it. Every
+        territory says whether its folder is on this machine ("here", as the
+        local view does: asked again each time, it is never in the cache)."""
         keep = frozenset(identities)
         with self.lock:
             full = self._view()    # the cached full view: that object is the world's version
@@ -1589,7 +1673,12 @@ class _CloudTaps:
                 cut["territories"] = {i: t for i, t in self.world["territories"].items() if i in keep}
                 cut["order"] = [i for i in self.world["order"] if i in cut["territories"]]
                 view = cache[1][keep] = json.loads(json.dumps(layout(cut, self.plans)))
-            return view
+            idents = {territory_id(i): i for i in self.world["territories"]}
+            terrs = []
+            for t in view["territories"]:
+                ident = idents.get(t["id"])
+                terrs.append(dict(t, here=ident is not None and os.path.isdir(repo_folder(ident))))
+            return dict(view, territories=terrs)
 
     def cloud_governors(self, identities):
         """The fresh governors (the snapshot's "governors" count) of the repos IDENTITIES only."""
@@ -1730,6 +1819,195 @@ class _CloudTaps:
             return {"cid": cid, "state": "undelivered", "why": "off"}
         return None
 
+    # -- cloud-city-3: the owner's start orders from the cloud page --------
+
+    def cloud_order(self, oid, terr, force, age_ms, terrs, now):
+        """One click on the cloud page's add-agent button, for territory TERR.
+        TERRS: the territory ids of the repos joined to the relay it came
+        from. NOW: monotonic seconds, what add_agent takes. The ONE thing it
+        ever does with an order is add_agent(terr, now, force), the function
+        of the local button: the folder, the name, the role and the command
+        are this server's own, so no part of the order reaches a shell, a
+        path, a flag, the opener's arguments or the server's options. Returns
+        {"oid", "state"[, "why"][, "info"]}: state opening | opened | cap |
+        failed, why refused | off | flood | no-orca | gone | busy | orca |
+        restart | late (the page's words for it are the page's business). An
+        oid seen before is never opened again: its answer of now. Every oid
+        is on disk in the orders file BEFORE add_agent runs, and never a
+        path, a name or a command with it; every answer is one line more."""
+        if not isinstance(oid, str) or CLOUD_OID_RE.fullmatch(oid) is None:
+            return {"oid": oid if isinstance(oid, str) else "", "state": "failed", "why": "refused"}
+        with self.lock:
+            said = self._cloud_order_answer_locked(oid)
+            if said is not None:
+                return said
+            why, identity = self._cloud_order_refuse_locked(terr, force, age_ms, terrs)
+            if why is None:
+                why = self._cloud_order_flood_locked(now)
+            if why is None and not self._cloud_orders_write_locked([{"oid": oid}]):
+                why = "off"     # not on disk: no promise of "once", so nothing is opened
+            if why is not None:
+                return self._cloud_order_said_locked(oid, force, why)
+            self._cloud_order_stamps.append(now)
+            repo = repo_name(identity)
+            self._cloud_orders[oid] = None      # taken: add_agent has not answered yet
+            self._cloud_order_log_locked(oid, repo, force, "taken")
+            if terr not in self._cloud_open:
+                self._cloud_open[terr] = {"oid": oid, "repo": repo, "force": force}
+        try:
+            code, body = self.add_agent(terr, now, force)
+        except Exception:
+            code, body = 0, {}
+        answer = self._cloud_order_words(oid, code, body)
+        with self.lock:
+            parked = self._cloud_after.pop(oid, None)   # "opened" or "late" came before add_agent answered
+            held = self._cloud_open.get(terr)
+            if answer["state"] != "opening":
+                parked = None
+                if held is not None and held["oid"] == oid:
+                    del self._cloud_open[terr]          # nothing is opening for it
+            elif parked is None and held is None:
+                self._cloud_open[terr] = {"oid": oid, "repo": repo, "force": force}
+            self._cloud_order_note_locked(oid, repo, force, answer)
+            if parked is not None:
+                answer = parked
+                self._cloud_order_note_locked(oid, repo, force, answer)
+            return _cloud_order_copy(answer)
+
+    def cloud_order_answers(self, oids):
+        """{oid: answer} for the oids of OIDS this server knows (an unknown
+        oid, and an order add_agent has not answered yet, are left out).
+        No side effect."""
+        out = {}
+        with self.lock:
+            for oid in oids:
+                got = self._cloud_orders[oid] if oid in self._cloud_orders else self._cloud_order_said.get(oid)
+                if got is not None:
+                    out[oid] = _cloud_order_copy(got)
+        return out
+
+    @staticmethod
+    def _cloud_order_words(oid, code, body):
+        """add_agent's (code, body) as the order's answer: the machine's own
+        words, never the folder's path or the command line."""
+        answer = {"oid": oid, "state": "failed"}
+        kind = body.get("state") if code == 200 else body.get("error")
+        if (code, kind) == (200, "opening"):
+            answer.update(state="opening", info={"name": body.get("name"), "role": body.get("role")})
+        elif (code, kind) == (200, "cap"):
+            answer.update(state="cap", info={"ram": body.get("ram"), "cpu": body.get("cpu"), "max": body.get("max")})
+        elif (code, kind) == (502, "failed"):
+            answer.update(why="orca", info={"detail": _cloud_shorten(str(body.get("detail") or ""))[:200]})
+        else:
+            answer["why"] = {(200, "plain"): "no-orca", (409, "gone"): "gone", (409, "busy"): "busy",
+                             (400, "bad"): "refused", (404, "unknown"): "refused"}.get((code, kind), "off")
+        return answer
+
+    def _cloud_order_answer_locked(self, oid):
+        """Caller holds self.lock. The answer for an oid seen before, or None
+        (a new one): what was last said for it. An order the orders file lists
+        with no final answer was cut off by a restart: "failed", why "restart"
+        (decided when the file was read). One add_agent has not answered yet
+        is "busy"."""
+        if oid in self._cloud_orders:
+            got = self._cloud_orders[oid]
+        else:
+            got = self._cloud_order_said.get(oid)
+            if got is None:
+                return None
+        if got is None:
+            return {"oid": oid, "state": "failed", "why": "busy"}
+        return _cloud_order_copy(got)
+
+    def _cloud_order_refuse_locked(self, terr, force, age_ms, terrs):
+        """Caller holds self.lock. (why, identity): why this order is not let
+        in, or None and the identity of its territory. refused: terr, force or
+        age is not what it must be, or the repo is not joined to that relay,
+        or this world has no such territory. off: too old."""
+        if (not isinstance(terr, str) or re.fullmatch(r"[0-9a-f]{8}", terr) is None
+                or not isinstance(force, bool)
+                or not isinstance(age_ms, (int, float)) or isinstance(age_ms, bool)):
+            return "refused", None
+        try:
+            finite = math.isfinite(age_ms)
+        except OverflowError:
+            finite = False
+        if not finite:
+            return "refused", None
+        if age_ms > CLOUD_ORDER_AGE_MS:
+            return "off", None
+        try:
+            joined = terr in terrs
+        except TypeError:
+            joined = False
+        identity = next((i for i in self.world["territories"] if territory_id(i) == terr), None) if joined else None
+        if identity is None:
+            return "refused", None
+        return None, identity
+
+    def _cloud_order_flood_locked(self, now):
+        """Caller holds self.lock. "flood" when CLOUD_ORDER_MAX orders were let
+        in during the last CLOUD_ORDER_SEC seconds (this machine's own count)."""
+        stamps = self._cloud_order_stamps
+        while stamps and now - stamps[0] >= CLOUD_ORDER_SEC:
+            stamps.popleft()
+        return "flood" if len(stamps) >= CLOUD_ORDER_MAX else None
+
+    def _cloud_orders_write_locked(self, rows):
+        """Caller holds self.lock. ROWS go into the orders file; False when
+        they could not be written."""
+        return not self.cloud_orders_path or _cloud_seen_write(self.cloud_orders_path, rows)
+
+    def _cloud_order_said_locked(self, oid, force, why):
+        """Caller holds self.lock. The answer for an order that was not let in
+        (failed and why; one decisions row, no repo); kept, so the oid keeps
+        the same answer and logs nothing more."""
+        answer = {"oid": oid, "state": "failed", "why": why}
+        self._cloud_order_said[oid] = answer
+        while len(self._cloud_order_said) > CLOUD_SAID_KEEP:
+            del self._cloud_order_said[next(iter(self._cloud_order_said))]
+        self._cloud_order_log_locked(oid, "", force, "failed", why)
+        return dict(answer)
+
+    def _cloud_order_note_locked(self, oid, repo, force, answer):
+        """Caller holds self.lock. ANSWER is what is said for the oid from now
+        on: kept, one line in the orders file (ids and states only) and one
+        decisions row."""
+        self._cloud_orders[oid] = _cloud_order_copy(answer)
+        while len(self._cloud_orders) > CLOUD_SEEN_MAX:
+            del self._cloud_orders[next(iter(self._cloud_orders))]
+        row = {"oid": oid, "state": answer["state"]}
+        if "why" in answer:
+            row["why"] = answer["why"]
+        self._cloud_orders_write_locked([row])
+        self._cloud_order_log_locked(oid, repo, force, answer["state"], answer.get("why"))
+
+    def _cloud_order_log_locked(self, oid, repo, force, outcome, why=None):
+        """Caller holds self.lock. One decisions row of an order (the owner's
+        click on the cloud page): the repo's name, never a path."""
+        row = {"t": _iso_now(), "by": "owner", "verb": "add-agent", "via": "cloud", "oid": oid,
+               "repo": repo, "force": force is True, "outcome": outcome}
+        if why:
+            row["why"] = why
+        self._append_jsonl_locked(self.decisions_path, row)
+
+    def _cloud_adding_end_locked(self, entry, state):
+        """Caller holds self.lock. An open of add_agent ended: STATE "done"
+        (its new session showed up) or "late" (it did not). When it was a
+        cloud order's, that order is "opened", or "failed" with why "late"."""
+        held = self._cloud_open.pop(entry["terr"], None)
+        if held is None:
+            return
+        oid = held["oid"]
+        if state == "done":
+            answer = {"oid": oid, "state": "opened", "info": {"name": entry["name"], "role": entry["role"]}}
+        else:
+            answer = {"oid": oid, "state": "failed", "why": "late"}
+        if oid in self._cloud_orders and self._cloud_orders[oid] is None:
+            self._cloud_after[oid] = answer     # add_agent has not answered yet: said right after "opening"
+        else:
+            self._cloud_order_note_locked(oid, held["repo"], held["force"], answer)
+
     def cloud_talk(self, terrs, held, rev_seen, cids):
         """The uploader's one read of the conversations, under one lock hold
         (so an answer and its entry are the same moment). Returns
@@ -1828,6 +2106,35 @@ class CloudUploader:
         now = time.monotonic() if now is None else now
         with self._lock:
             return any(st["on"] and now - st["seen"] <= CLOUD_FORGET_SEC for st in self._hosts.values())
+
+    def cloud_start_on(self, now=None):
+        # cloud-city-3: cloud_on() for a relay this machine takes start orders
+        # from: its host is in the start file and has a talk key. The server
+        # stays up for it with nobody there (the first agent can be started
+        # from the phone), and asks it only every slow-sec. Short reads of this
+        # lock and of the two small files, no network.
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            hosts = [h for h, st in self._hosts.items() if st["on"] and now - st["seen"] <= CLOUD_FORGET_SEC]
+        if not hosts:
+            return False
+        talk_path = getattr(self.hub, "talk_file", None)
+        try:
+            keys = _cloud_relay().read_talk(talk_path) if talk_path else {}
+        except Exception:
+            keys = {}
+        return any(h in keys and self._start_on(h) for h in hosts)
+
+    def _start_on(self, host):
+        # cloud-city-3: True while HOST is in the start file, read now (the
+        # switch on THIS machine decides, with the very next sync, never the relay).
+        path = getattr(self.hub, "start_file", None)
+        if not path:
+            return False
+        try:
+            return host in _cloud_relay().read_start(path)
+        except Exception:
+            return False
 
     # -- the hub's side --------------------------------------------------
 
@@ -2124,10 +2431,16 @@ class CloudUploader:
 
     def talk_take(self, host, rids, now):
         """{"chat": [...], "acks": [...]} for this sync (a key is left out when
-        its list is empty), or None when there is nothing to send."""
+        its list is empty), or None when there is nothing to send.
+        cloud-city-3: for a relay whose host is in the start file now the talk
+        also carries "start", always ({"acks": [...]} or {}: it tells the
+        relay this machine takes start orders), so it is never None then."""
         with self._lock:
             try:
-                return self._talk_take(host, rids)
+                out = self._talk_take(host, rids)
+                if self._start_on(host):
+                    out = dict(out or {}, start=self._start_take(self._talks[host]))
+                return out
             except Exception as exc:
                 tk = self._talks.get(host)
                 if tk is not None:
@@ -2139,7 +2452,9 @@ class CloudUploader:
         """What the relay answered: its talk, or None (down or refused). Not
         "on": the last sync is undone. "on": its "msgs" go to
         city.cloud_message (CLOUD_TALK_TAKE at most; only cid, to, text and
-        age of each are read); every cid gets an answer to go up."""
+        age of each are read); every cid gets an answer to go up.
+        cloud-city-3: its "start" {"state": "on", "orders": [...]} goes to
+        city.cloud_order, only for a host that is in the start file now."""
         with self._lock:
             tk = self._talks.get(host)
             if tk is None:
@@ -2148,6 +2463,8 @@ class CloudUploader:
                 self._talk_undo(tk)
                 return
             tk["inflight"] = None
+            tk["o_inflight"] = None
+            self._start_given(tk, host, talk.get("start"))
             msgs = talk.get("msgs")
             if not isinstance(msgs, list):
                 return
@@ -2166,9 +2483,19 @@ class CloudUploader:
                 del tk["acks"][next(iter(tk["acks"]))]
 
     def talk_soon(self, host):
-        """True while an answer waits to go up (the next sync should come early)."""
+        """True while an answer waits to go up (the next sync should come
+        early); cloud-city-3: also the answer of a start order, for a host
+        that is in the start file now."""
         with self._lock:
             tk = self._talks.get(host)
+            if tk is not None and tk["orders"] and self._start_on(host):
+                try:
+                    answers = self.city.cloud_order_answers(list(tk["orders"]))
+                except Exception:
+                    return False
+                if any(got is not None and self._talk_sig(got) != tk["orders"][oid]["sig"]
+                       for oid, got in answers.items()):
+                    return True
             if tk is None or not tk["acks"]:
                 return False
             try:
@@ -2187,6 +2514,10 @@ class CloudUploader:
 
     def _talk_undo(self, tk):
         """What the last take carried did not arrive (or nobody said): it goes again."""
+        lost, tk["o_inflight"] = tk["o_inflight"], None
+        for oid in lost or ():
+            if oid in tk["orders"]:
+                tk["orders"][oid]["sig"] = None     # the answer of an order goes again too
         sent, tk["inflight"] = tk["inflight"], None
         if sent is None:
             return
@@ -2196,6 +2527,62 @@ class CloudUploader:
             if cid in tk["acks"]:
                 tk["acks"][cid]["sig"] = None
         tk["rev"] = -1
+
+    def _start_given(self, tk, host, start):
+        """cloud-city-3: the reply's talk["start"], {"state": "on", "orders":
+        [...]}: each order (CLOUD_ORDER_TAKE at most; only oid, terr, force
+        and age are read, anything else in it is never looked at) goes to
+        city.cloud_order, and its answer goes up (also when the order is
+        handed down again). Nothing when HOST is not in the start file now:
+        the switch on THIS machine decides, never the relay."""
+        if not isinstance(start, dict) or start.get("state") != "on" or not self._start_on(host):
+            return
+        orders = start.get("orders")
+        if not isinstance(orders, list):
+            return
+        for order in orders[:CLOUD_ORDER_TAKE]:
+            oid = order.get("oid") if isinstance(order, dict) else None
+            if not isinstance(oid, str) or CLOUD_OID_RE.fullmatch(oid) is None:
+                continue
+            try:
+                self.city.cloud_order(oid, order.get("terr"), order.get("force"), order.get("age"),
+                                      tk["terrs"], time.monotonic())
+            except Exception as exc:
+                print("agent_city: cloud order failed: %s" % exc, file=sys.stderr)
+            tk["orders"].pop(oid, None)
+            tk["orders"][oid] = {"sig": None}
+        while len(tk["orders"]) > CLOUD_ACKS_KEEP:
+            del tk["orders"][next(iter(tk["orders"]))]
+
+    def _start_take(self, tk):
+        """cloud-city-3: the "start" of this sync's talk: {"acks": [...]} (at
+        most CLOUD_ORDER_ACKS) of the orders whose answer is new, else {}. An
+        answer rides until a sync the relay answered has carried it; one that
+        will not change again is then forgotten."""
+        oids = list(tk["orders"])
+        answers = self.city.cloud_order_answers(oids) if oids else {}
+        acks = []
+        said = []
+        drop = []
+        for oid in oids:
+            answer = answers.get(oid)
+            if answer is None:
+                drop.append(oid)         # this server knows nothing of it
+                continue
+            sig = self._talk_sig(answer)
+            if sig == tk["orders"][oid]["sig"]:
+                if sig[0] != "opening":
+                    drop.append(oid)     # carried, and nothing more is to come
+                continue
+            if len(acks) < CLOUD_ORDER_ACKS:
+                acks.append(answer)
+                said.append((oid, sig))
+        for oid in drop:
+            del tk["orders"][oid]
+        for oid, sig in said:
+            tk["orders"][oid]["sig"] = sig
+        tk["o_inflight"] = [oid for oid, _ in said]
+        return {"acks": acks} if acks else {}
 
     def _talk_stamp(self):
         """The talk file's mark (changes when `cloud-talk on` writes it again), or None."""
@@ -2222,7 +2609,8 @@ class CloudUploader:
         tk = self._talks.get(host)
         if tk is None:
             tk = self._talks[host] = {"held": {}, "acks": {}, "inflight": None, "stamp": False,
-                                      "rev": -1, "terrs": frozenset()}
+                                      "rev": -1, "terrs": frozenset(),
+                                      "orders": {}, "o_inflight": None}    # cloud-city-3: start orders and their answers
         self._talk_undo(tk)      # a take with no talk_sent after it: nobody knows, so it goes again
         stamp = self._talk_stamp()
         if stamp != tk["stamp"]:
@@ -2325,7 +2713,7 @@ class CityState(_CloudTaps):
                  balance_fn=None, start_repo=None, chat_path=None, lang="zh", titles=None,
                  main_fn=None, listen_grace_sec=15.0, roster_path=None,
                  open_fn=None, kind_fn=None, resources_fn=None, city_dir=None,
-                 cloud_seen_path=None):
+                 cloud_seen_path=None, cloud_orders_path=None):
         self.lock = threading.Lock()
         self.titles = titles if titles is not None else TitleReader()  # a session's real name
         self.lang = norm_lang(lang)
@@ -2465,6 +2853,22 @@ class CityState(_CloudTaps):
             order, done = _cloud_seen_read(cloud_seen_path)
             self._cloud_seen = set(_cloud_seen_cut(cloud_seen_path, order, done))
             self._cloud_done = done & self._cloud_seen
+
+        # cloud-city-3: start orders from the cloud page (see cloud_order)
+        self.cloud_orders_path = cloud_orders_path   # None: the oids are kept in memory only
+        self._cloud_orders = {}       # oid -> its answer; None while add_agent has not answered (bounded)
+        self._cloud_order_said = {}   # oid -> the answer for an order that was not let in (bounded)
+        self._cloud_order_stamps = deque()   # "now" of each order let in, for the flood rule
+        self._cloud_open = {}         # territory id -> {"oid", "repo", "force"} of the cloud order whose session is opening
+        self._cloud_after = {}        # oid -> its "opened" / "late" answer that came before add_agent answered
+        if cloud_orders_path:
+            for oid, got in _cloud_orders_cut(cloud_orders_path, _cloud_orders_read(cloud_orders_path)).items():
+                answer = {"oid": oid, "state": "failed", "why": "restart"}   # no final answer: cut off by a restart
+                if got is not None and got[0] != "opening":
+                    answer = {"oid": oid, "state": got[0]}
+                    if got[1]:
+                        answer["why"] = got[1]
+                self._cloud_orders[oid] = answer
 
         # The sessions of the last run that still live are here again before
         # any line is read (see _restore_roster_locked); the chat comes after,
@@ -2780,6 +3184,7 @@ class CityState(_CloudTaps):
                         # the new session was here before the opener answered
                         del self._adding[identity]
                         self._broadcast({"type": "adding", "terr": terr, "state": "done"})
+                        self._cloud_adding_end_locked(entry, "done")
                 held = True
             return 200, {"state": "opening", "name": name, "role": role}
         finally:
@@ -2801,6 +3206,7 @@ class CityState(_CloudTaps):
             if not entry["pending"] and now - entry["at"] >= ADD_WAIT_SEC:
                 del self._adding[identity]
                 self._broadcast({"type": "adding", "terr": entry["terr"], "state": "late"})
+                self._cloud_adding_end_locked(entry, "late")
 
     def _sids_in_locked(self, identity):
         """Caller holds self.lock. Every session that has had a line in
@@ -2829,6 +3235,7 @@ class CityState(_CloudTaps):
             return
         del self._adding[identity]
         self._broadcast({"type": "adding", "terr": entry["terr"], "state": "done"})
+        self._cloud_adding_end_locked(entry, "done")
 
     def _adding_view_locked(self):
         """Caller holds self.lock. The snapshot's "adding": every repo whose
@@ -5880,12 +6287,24 @@ def cmd_serve(args):
                       world_path=world_path_arg, start_repo=start_repo, chat_path=chat_path, lang=lang,
                       roster_path=os.path.join(directory, "roster.json"),
                       city_dir=pass_city_dir(directory),
-                      cloud_seen_path=os.path.join(directory, "cloud-seen"))  # cloud-city-2
+                      cloud_seen_path=os.path.join(directory, "cloud-seen"),  # cloud-city-2
+                      cloud_orders_path=os.path.join(directory, "cloud-orders"))  # cloud-city-3
     uploader = CloudUploader(city, snap_sec=args.cloud_snap_sec, cloud_file=cloud_home_path())  # cloud-city
+
+    def slow():  # cloud-city-3: nobody at the page, no session, only a start order to wait for: sync slowly
+        try:
+            return (city.client_count() == 0 and city.health()["agents"] == 0
+                    and uploader.cloud_start_on() and not city.live_session_repos())
+        except Exception:
+            return False
+
     hub = relay.RelayHub(relay_sec=args.relay_sec, join_ttl=args.join_ttl_sec,
                         joined_list=args.joined_list,
                         cloud_file=uploader.cloud_file, view_source=uploader,
-                        talk_file=cloud_talk_path())  # cloud-city, cloud-city-2
+                        talk_file=cloud_talk_path(),  # cloud-city, cloud-city-2
+                        start_file=cloud_start_path(), slow_fn=slow,
+                        slow_sec=args.slow_sec if args.slow_sec is not None else relay.SLOW_SEC,
+                        join_dir=args.join_dir)  # cloud-city-3 (join_dir: tests only)
     uploader.bind(hub)  # cloud-city
     # cloud-city-2: the sessions the roster brought back are known to the hub
     # at once, with no line sent, so its first syncs carry the picture and talk
@@ -5898,8 +6317,9 @@ def cmd_serve(args):
         print("agent_city: could not seed the hub from the roster: %s" % exc, file=sys.stderr)
 
     def stay_up():  # cloud-city-2: no idle stop while the cloud page is on and a session lives
+        # cloud-city-3: or a relay this machine takes start orders from says it is on
         try:
-            return uploader.cloud_on() and bool(city.live_session_repos())
+            return uploader.cloud_start_on() or (uploader.cloud_on() and bool(city.live_session_repos()))
         except Exception:
             return False
 
@@ -8187,6 +8607,8 @@ def _build_parser():
     serve.add_argument("--joined-list", default=None)
     serve.add_argument("--remote-ttl-sec", type=float, default=600.0)
     serve.add_argument("--cloud-snap-sec", type=float, default=CLOUD_SNAP_SEC)  # cloud-city
+    serve.add_argument("--slow-sec", type=float, default=None)  # cloud-city-3: None = the relay module's SLOW_SEC
+    serve.add_argument("--join-dir", default=None)  # cloud-city-3: tests only, never set by agent-city.sh
     serve.add_argument("--decisions", default=None)
     serve.add_argument("--world", default=None)
     serve.add_argument("--start-dir", default=None)
