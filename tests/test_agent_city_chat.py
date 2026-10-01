@@ -672,6 +672,12 @@ class TestPageChat(unittest.TestCase):
         self.assertEqual({k: zh.get("chat.state." + k) for k in ("queued", "delivered", "undelivered")},
                          {"queued": "排队中", "delivered": "已送达", "undelivered": "没送到"})
 
+    def test_my_messages_on_the_right_in_green(self):
+        page = open(os.path.join(ROOT, "bin", "agent-city.html"), encoding="utf-8").read()
+        self.assertRegex(page, r'\.chat \.msg\[data-kind="owner"\],\.chat \.msg\[data-kind="prompt"\][^{]*\{align-self:flex-end;background:var\(--me-bg\)')
+        self.assertEqual(len(re.findall(r"--me-bg:#", page)), 3)  # light + two dark blocks
+        self.assertNotRegex(page, r'data-kind="owner"\][^{]*\{[^}]*--gov-bg')
+
     def test_chat_html(self):
         entries = [{"id": 1, "kind": "prompt", "text": "fix <b>it</b>", "at": 1},
                    {"id": 2, "kind": "reply", "text": "done", "at": 2},

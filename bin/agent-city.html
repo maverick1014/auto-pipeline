@@ -13,7 +13,7 @@
   --focus:#4D7CFE;
   --build-bg:#E1ECFF; --build-ink:#3160B5; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
   --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488;
-  --gov-bg:#FFF0C7; --gov-ink:#8A6000; --ok:#1E8657; --ok-deep:#146342;
+  --me-bg:#D9FDD3; --me-ink:#1F3D2B; --gov-bg:#FFF0C7; --gov-ink:#8A6000; --ok:#1E8657; --ok-deep:#146342;
   --healthy:#2FB57A; --low:#E8A33A; --missing:#C4C8DD; --na:#9AA0C3;
   --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
   --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
@@ -26,7 +26,7 @@
     --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
     --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
     --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
-    --gov-bg:#43381A; --gov-ink:#FFDD8A; --ok:#2FA56F; --ok-deep:#1B7049;
+    --me-bg:#144D37; --me-ink:#E3F7EA; --gov-bg:#43381A; --gov-ink:#FFDD8A; --ok:#2FA56F; --ok-deep:#1B7049;
     --missing:#3A4070;
     color-scheme:dark;
   }
@@ -36,7 +36,7 @@
   --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
   --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
   --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
-  --gov-bg:#43381A; --gov-ink:#FFDD8A; --ok:#2FA56F; --ok-deep:#1B7049;
+  --me-bg:#144D37; --me-ink:#E3F7EA; --gov-bg:#43381A; --gov-ink:#FFDD8A; --ok:#2FA56F; --ok-deep:#1B7049;
   --missing:#3A4070;
   color-scheme:dark;
 }
@@ -217,9 +217,9 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 /* the conversation + the box to talk to it (requirements/city.md, Talking) */
 .chat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;flex:1 1 auto;min-height:0;overflow:auto}
 .chat .msg{display:flex;flex-direction:column;gap:2px;max-width:88%;padding:7px 10px;border-radius:14px;background:var(--panel-2);font-size:13px;line-height:1.4;align-self:flex-start}
-.chat .msg[data-kind="owner"]{align-self:flex-end;background:var(--gov-bg);color:var(--gov-ink)}
+.chat .msg[data-kind="owner"],.chat .msg[data-kind="prompt"]:not([data-main="0"]){align-self:flex-end;background:var(--me-bg);color:var(--me-ink)}
 .chat .msg b{font:600 11px/1.3 var(--mono);color:var(--ink-3)}
-.chat .msg[data-kind="owner"] b{color:var(--gov-ink)}
+.chat .msg[data-kind="owner"] b,.chat .msg[data-kind="prompt"]:not([data-main="0"]) b{color:var(--me-ink)}
 .chat .msg span{white-space:pre-wrap;overflow-wrap:anywhere}
 .chat .msg-empty,.chat .msg-wait{text-align:center;font-size:12.5px;color:var(--ink-3);padding:4px 0}
 .chat-fail{color:var(--ask-ink)}
@@ -1364,7 +1364,7 @@ function historyHtml(items, name, busy){
       return `<li class="qa"><p>${i18n('label.ask')}${esc(it.q)}</p>${answer}</li>`;
     }
     const who = it.k === 'owner' ? i18n('chat.you.page') : it.k === 'prompt' ? i18n('chat.task') : esc(name);
-    return `<li class="msg" data-kind="${esc(it.k)}"><b>${who}</b><div class="md">${mdLite(it.text)}</div></li>`;
+    return `<li class="msg" data-kind="${esc(it.k)}"${it.main === false ? ' data-main="0"' : ''}><b>${who}</b><div class="md">${mdLite(it.text)}</div></li>`;
   }).join('');
 }
 /* teamListHtml() (U11) is gone: city-ux2 v2 moved the team list into the left rail -- #rail-list, built
@@ -5754,7 +5754,7 @@ function chatHtml(entries, name, busy){
     return esc(name);
   };
   // U9: the text goes through mdLite (its own escaping; simple markdown, never raw HTML) inside a "md" element.
-  let html = entries.map(e => `<li class="msg" data-kind="${esc(e.kind)}" data-id="${esc(e.id)}"><b>${who(e)}</b><div class="md">${mdLite(e.text)}</div></li>`).join('');
+  let html = entries.map(e => `<li class="msg" data-kind="${esc(e.kind)}" data-id="${esc(e.id)}"${e.main === false ? ' data-main="0"' : ''}><b>${who(e)}</b><div class="md">${mdLite(e.text)}</div></li>`).join('');
   const last = entries[entries.length - 1];
   if (busy && last && last.kind === 'owner' && last.state === 'queued') html += `<li class="msg-wait">${i18n('chat.wait')}</li>`;
   return html;
