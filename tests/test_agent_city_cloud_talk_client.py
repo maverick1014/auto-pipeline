@@ -26,7 +26,9 @@ bin/agent_city_relay.py
               relay was down or refused the team key>, now)
           view_source.talk_soon(host) is True -> the team's NEXT sync is due
               TALK_SOON_SEC after this one, not relay_sec (an answer for a
-              cloud message must not wait 5 s).
+              cloud message must not wait 5 s). Only after a sync the relay
+              ANSWERED: a relay that is down is asked again after relay_sec,
+              never every second.
       No key for that host, no talk file, or no view_source: the sync of
       before, and talk_take is never called.
       The view (take / sent) and the lines are untouched by all of this.
@@ -56,7 +58,11 @@ bin/agent-city.sh
           CLOUD TALK: the relay did not take this key; nothing was saved     exit 1
           CLOUD TALK: the relay has no TALK_KEY (or its cloud page is off); nothing was saved   exit 1
           CLOUD TALK: cannot reach the relay; nothing was saved              exit 1
-  cloud-talk off   needs no terminal. "CLOUD TALK: off", exit 0.
+  cloud-talk off   needs no terminal. "CLOUD TALK: off", exit 0. It must
+      always work (it is the way to stop): outside a repo, or in a repo that
+      has not joined, it removes the whole talk file (every relay host) with
+      no request to anybody; that machine's copy on Cloudflare then ages out
+      (inside the joined repo it is deleted at once, as above).
   status           in a joined repo, after the CLOUD line: "CLOUD TALK: on
       <host>" or "CLOUD TALK: off". Not joined: no such line. It never talks
       to the relay. Outside a repo (like the CLOUD lines there): one "CLOUD
@@ -284,6 +290,16 @@ class TestHub(TalkCase):
         hub.tick()
         self.assertEqual(len(self.fake.sent_lines()), 1)
 
+    def test_a_relay_that_is_down_is_not_asked_every_second(self):
+        self.src.soon = True
+        hub = self.hub_on(relay_sec=30)
+        self.fake.mode = "error"
+        hub.tick()
+        before = len(self.fake.requests)
+        time.sleep(1.3)
+        hub.tick()
+        self.assertEqual(len(self.fake.requests), before, "down: the next try comes after relay_sec, not after 1 s")
+
     def test_soon_means_the_next_sync_comes_in_a_second(self):
         self.assertEqual(need(self, "TALK_SOON_SEC"), 1.0)
         hub = self.hub_on(relay_sec=30)
@@ -470,6 +486,23 @@ class TestCommand(CloudCase):
         again = self.city_run("cloud-talk", "off")
         self.assertOk(again)
         self.assertEqual(talk_lines(again.stdout), ["CLOUD TALK: off"])
+
+    def test_off_always_works(self):
+        import tempfile
+        self.assertOk(self.join())
+        outside = tempfile.mkdtemp(prefix="city_out_", dir=self.repo.base)
+        for cwd in (outside, None):
+            rl.set_talk(self.talk_file, self.fake.host, TALK) if hasattr(rl, "set_talk") else self.fail("set_talk is missing")
+            rl.set_talk(self.talk_file, "other.example", "other-key")
+            if cwd is None:
+                os.remove(self.repo.path(".secrets", "agent-city-relay"))   # a repo that has not joined (any more)
+            before = len(self.fake.requests)
+            result = self.city_run("cloud-talk", "off", cwd=cwd)
+            self.assertOk(result)
+            self.assertEqual(talk_lines(result.stdout), ["CLOUD TALK: off"])
+            self.assertFalse(os.path.exists(self.talk_file), "every host is off: the stop must never be refused")
+            self.assertEqual(len(self.fake.requests), before)
+            self.assertNotIn(TALK, result.stdout + result.stderr)
 
     def test_the_status_line(self):
         result = self.city_run("status")

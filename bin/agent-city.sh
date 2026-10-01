@@ -35,6 +35,10 @@
 #   ./agent-city.sh cloud-deploy   the owner's, in his own terminal only: ask the
 #                            D1 database id, build into $AGENT_CITY_HOME/cloud-site,
 #                            run `npx wrangler deploy` there
+#   ./agent-city.sh cloud-talk on    the owner's, in his own terminal only: ask the
+#                            talk key (hidden), let the cloud page send messages
+#                            to this machine's sessions
+#   ./agent-city.sh cloud-talk off   stop that (no terminal needed)
 #   ./agent-city.sh -h       this help
 #
 # City dir: $AGENT_CITY_DIR, default $HOME/.cache/agent-city (the same dir the
@@ -112,6 +116,18 @@
 # $AGENT_CITY_HOME/cloud-site.conf, the id only), builds, then runs
 # `npx wrangler deploy` in $AGENT_CITY_HOME/cloud-site. It never runs a
 # wrangler login: when the deploy fails it tells the owner to type that himself.
+#
+# cloud-talk on | off (requirements/city.md, "Cloud page", talk from the cloud
+# page): `on` is the owner's, in his own terminal, inside a joined repo. It
+# refuses without a terminal on stdin (exit 2: nothing asked, sent or saved), asks
+# the talk key with echo off ("Talk key (hidden): "), hands it to
+# agent_city_relay.py talk on on stdin only, and the relay must take it before
+# anything is saved: the key goes to $AGENT_CITY_HOME/cloud-talk (mode 0600, one
+# line "<relay host> <talk key>"). `off` needs no terminal and always works: in
+# a joined repo it tells the relay, then forgets the key here; outside a repo,
+# or in a repo that has not joined, it removes the whole file, no request. status prints "CLOUD TALK: on <relay host>" or
+# "CLOUD TALK: off" right after the CLOUD line, from that file only -- no
+# network, never the key.
 
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
@@ -155,6 +171,9 @@ agent-city.sh — start/stop/status/demo for the Agent City playground.
                            (no network, no login)
   ./agent-city.sh cloud-deploy   deploy the cloud page to your Cloudflare account
                            (yours to run, in your own terminal)
+  ./agent-city.sh cloud-talk on    let the cloud page send messages to your sessions
+                           (yours to run, in your own terminal; asks the talk key)
+  ./agent-city.sh cloud-talk off   stop that
   ./agent-city.sh -h       this help
 
 Outside a repo: start/demo sync every repo listed in
@@ -179,6 +198,7 @@ SERVER="$PLUGIN_ROOT/bin/agent_city.py"
 SECRET_FILE="$PROJECT_ROOT/.secrets/agent-city-relay"
 RELAY_MODULE="$PLUGIN_ROOT/bin/agent_city_relay.py"
 CLOUD_FILE="$CITY_HOME/cloud"
+TALK_FILE="$CITY_HOME/cloud-talk"
 # yes: do_start always passes --joined-list (autostart, also inside a repo)
 START_JOINED=no
 
@@ -303,9 +323,11 @@ do_status() {
   if [ "$OUTSIDE_REPO" = yes ]; then
     joined_list_lines
     cloud_lines_outside || true
+    talk_lines_outside || true
   else
     team_line
     cloud_line || true
+    talk_line || true
   fi
   return 0
 }
@@ -352,6 +374,50 @@ if hosts:
     else:
         print("CLOUD: off")
 ' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$CLOUD_FILE"
+}
+
+# "CLOUD TALK: on <relay host>" or "CLOUD TALK: off" for a joined repo, nothing
+# when it is not joined. From the talk file only, no network. Never the key.
+talk_line() {
+  out=$(python3 "$RELAY_MODULE" talk --secret "$SECRET_FILE" \
+          --talk-file "$TALK_FILE" status 2>/dev/null) || out="none"
+  case "$out" in
+    "on "*) echo "CLOUD TALK: $out" ;;
+    "off "*) echo "CLOUD TALK: off" ;;
+  esac
+  return 0
+}
+
+# Outside a repo: one "CLOUD TALK: on <host>" per joined relay host (each once,
+# list order) that the talk file names, else one "CLOUD TALK: off" when a repo
+# is joined, nothing when none is. Talk file only, no network. Never the key.
+talk_lines_outside() {
+  python3 -c '
+import os
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+from urllib.parse import urlsplit
+
+held = rl.read_talk(sys.argv[3])
+hosts = []
+for repo in rl.read_joined_list(sys.argv[2]):
+    if not os.path.isdir(repo):
+        continue
+    joined = rl.read_join(os.path.join(repo, ".secrets", "agent-city-relay"))
+    if not joined:
+        continue
+    host = urlsplit(joined["address"]).netloc
+    if host not in hosts:
+        hosts.append(host)
+if hosts:
+    on = [h for h in hosts if h in held]
+    if on:
+        for h in on:
+            print("CLOUD TALK: on " + h)
+    else:
+        print("CLOUD TALK: off")
+' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$TALK_FILE"
 }
 
 # autostart (requirements/city.md, "Cloud page"): the SessionStart hook's verb.
@@ -1037,6 +1103,80 @@ do_cloud_deploy() {
   return 0
 }
 
+# cloud-talk on | off: see the header comment. `on` is the owner's, in his own
+# terminal: no terminal on stdin (an agent, a pipe) -> refuse before anything is
+# asked, sent or saved. The talk key is read with echo off and handed to
+# agent_city_relay.py on stdin only -- never argv, never on screen, never in a
+# message below. The relay must say talk is on before the key is saved.
+do_cloud_talk() {
+  case "${1:-}" in
+    on) do_talk_on ;;
+    off) do_talk_off ;;
+    *)
+      echo "CLOUD TALK: usage: agent-city.sh cloud-talk on | off" >&2
+      exit 2 ;;
+  esac
+}
+
+do_talk_on() {
+  if [ ! -t 0 ]; then
+    echo "CLOUD TALK: run this yourself in your own terminal (it lets the cloud page send messages to your sessions)" >&2
+    exit 2
+  fi
+  talk_need_joined on
+  printf 'Talk key (hidden): ' >&2
+  read -rs key || key=""
+  printf '\n' >&2
+
+  rc=0
+  out=$(printf '%s\n' "$key" | python3 "$RELAY_MODULE" talk --secret "$SECRET_FILE" \
+          --talk-file "$TALK_FILE" on 2>/dev/null) || rc=$?
+  key=""
+  case "$rc" in
+    0)
+      echo "CLOUD TALK: $out"
+      return 0 ;;
+    2) echo "CLOUD TALK: no key entered; nothing was saved" >&2 ;;
+    3) echo "CLOUD TALK: the relay did not take this key; nothing was saved" >&2 ;;
+    4) echo "CLOUD TALK: the relay has no TALK_KEY (or its cloud page is off); nothing was saved" >&2 ;;
+    5) echo "CLOUD TALK: cannot reach the relay; nothing was saved" >&2 ;;
+    6) echo "CLOUD TALK: cannot write $TALK_FILE; nothing was saved" >&2 ;;
+    *) echo "CLOUD TALK: this repo has not joined a team relay (run join first); nothing was saved" >&2 ;;
+  esac
+  exit 1
+}
+
+# off must always work, it is the way to stop. In a joined repo it tells the
+# relay and forgets that host. Outside a repo, or in a repo that has not joined
+# (any more), there is no host to name: the whole talk file goes, with no
+# request to anybody (that machine's copy on Cloudflare ages out).
+do_talk_off() {
+  rc=1
+  if [ "$OUTSIDE_REPO" = no ] && [ -f "$SECRET_FILE" ]; then
+    rc=0
+    python3 "$RELAY_MODULE" talk --secret "$SECRET_FILE" --talk-file "$TALK_FILE" off \
+      >/dev/null 2>&1 || rc=$?
+  fi
+  if [ "$rc" -ne 0 ]; then
+    rm -f "$TALK_FILE" 2>/dev/null || true
+  fi
+  echo "CLOUD TALK: off"
+  return 0
+}
+
+# cloud-talk on needs a repo that has joined a team relay: the relay host comes
+# from its join file. $1 = the word, for the message.
+talk_need_joined() {
+  if [ "$OUTSIDE_REPO" = yes ]; then
+    echo "CLOUD TALK: not inside a repo; cd into the joined repo, then run cloud-talk $1" >&2
+    exit 1
+  fi
+  if [ ! -f "$SECRET_FILE" ]; then
+    echo "CLOUD TALK: this repo has not joined a team relay; run join first" >&2
+    exit 1
+  fi
+}
+
 [ $# -eq 0 ] && { usage; exit 2; }
 case "$1" in
   -h|--help) usage; exit 0;;
@@ -1057,5 +1197,6 @@ case "$1" in
   autostart) do_autostart;;
   cloud-build) shift; do_cloud_build "$@";;
   cloud-deploy) do_cloud_deploy;;
+  cloud-talk) shift; do_cloud_talk "$@";;
   *) usage; exit 2;;
 esac
