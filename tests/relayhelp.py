@@ -108,7 +108,26 @@ class _Handler(BaseHTTPRequestHandler):
             out = [{"seq": s, "dev": d, "line": l}
                    for (s, d, l) in relay.items if s > after and d != dev]
             seq = relay.seq
-        self._send(200, {"ok": True, "seq": seq, "lines": out})
+            reply = {"ok": True, "seq": seq, "lines": out}
+            if relay.city:
+                # cloud-city-1: the relay keeps this machine's picture (the
+                # rules of bin/agent-city-relay.js, tests/test_agent_city_cloud_relay.py).
+                view = body.get("view")
+                if isinstance(view, dict):
+                    relay.view_log.append((dev, view))
+                    held = relay.views.get(dev)
+                    if "snap" in view:
+                        held = relay.views[dev] = {"gen": view.get("gen"), "label": view.get("label"),
+                                                   "counts": view.get("counts"),
+                                                   "snap": view["snap"], "batches": []}
+                    if held is not None and held["gen"] == view.get("gen"):
+                        held["label"] = view.get("label")
+                        held["counts"] = view.get("counts")
+                        if view.get("events"):
+                            held["batches"].append(view["events"])
+                reply["city"] = True
+                reply["gen"] = (relay.views.get(dev) or {}).get("gen", 0)
+        self._send(200, reply)
 
 
 class FakeRelay:
@@ -119,6 +138,9 @@ class FakeRelay:
         self.items = []
         self.seq = 0
         self.mode = "ok"
+        self.city = False      # cloud-city-1: True = the relay says the cloud page is on
+        self.views = {}        # dev -> {"gen", "label", "counts", "snap", "batches": [[msg, ...], ...]}
+        self.view_log = []     # every (dev, view) a sync carried while city is on, in order
         self.delay = 0
         self.redirect_to = ""
         self.redirect_code = 302
@@ -145,6 +167,22 @@ class FakeRelay:
         with self.lock:
             self.items = []
             self.seq = 0
+
+    def lose_views(self):
+        """The relay lost its pictures (a new database): the next reply says gen 0."""
+        with self.lock:
+            self.views = {}
+
+    def view_of(self, dev=None):
+        """The picture held for DEV (or for the only machine that sent one), or None."""
+        with self.lock:
+            if dev is None:
+                return next(iter(self.views.values()), None)
+            return self.views.get(dev)
+
+    def view_events(self, dev=None):
+        held = self.view_of(dev)
+        return [m for batch in (held or {}).get("batches", []) for m in batch]
 
     def sync_bodies(self):
         with self.lock:
