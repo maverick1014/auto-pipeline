@@ -1,0 +1,809 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City · city-talk mock</title>
+<link rel="icon" href="data:,">
+<style>
+/* the real page's own colours, fonts, rail, name tag and bubble rules (bin/agent-city.html) */
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --berry:#FF7593; --berry-deep:#D9506E; --butter:#FFD36E; --focus:#4D7CFE;
+  --build-bg:#E1ECFF; --build-ink:#3160B5; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
+  --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488;
+  --gov-bg:#FFF0C7; --gov-ink:#8A6000; --bgrun-bg:#ECE4FF; --bgrun-ink:#5A3EC8;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.app{max-width:1500px;margin-inline:auto;padding:12px 16px 16px;display:flex;flex-direction:column;gap:10px;min-height:100dvh}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.sign{display:inline-flex;align-items:center;gap:10px;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:5px 16px 5px 12px;box-shadow:0 3px 0 var(--ink)}
+.sign-name{font:700 20px/1 var(--display)}
+.sign-sub{display:block;font:600 10.5px/1.2 var(--mono);color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase;margin-top:3px}
+.proto{background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px;box-shadow:0 2px 0 rgba(42,43,69,.18)}
+.stat{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font:600 12px/1.3 var(--mono);color:var(--ink-2)}
+.stat.ok{border-color:#1E8657;color:#146342}
+.stat.bad{border-color:var(--ask-ink);background:var(--ask-bg);color:var(--ask-ink)}
+.right{margin-left:auto;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.chk{display:inline-flex;align-items:center;gap:5px;font:600 13px/1 var(--round);cursor:pointer}
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:8px}
+.group{display:inline-flex;flex-wrap:wrap;align-items:center;gap:5px}
+.sep{width:1.5px;align-self:stretch;background:var(--line);margin:0 2px}
+.lead{font-size:13px;color:var(--ink-2);margin-right:2px}
+.btn{font:600 13px/1 var(--round);border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:12px;padding:0 12px;min-height:36px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--ink-3)}
+.btn:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.btn[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.primary{background:var(--berry);border-color:var(--berry);color:#fff;box-shadow:0 3px 0 var(--berry-deep)}
+.btn.primary:active{transform:translateY(3px);box-shadow:none}
+.btn.small{min-height:30px;font-size:12px;padding:0 9px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.note{min-height:44px;background:var(--panel);border:1.5px solid var(--line);border-radius:14px;padding:8px 12px;font-size:13px;color:var(--ink-2)}
+.note b{color:var(--ink)}
+.note .ev{display:block;font:600 11.5px/1.5 var(--mono);color:var(--ink-3)}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:12px;flex:1;min-height:0}
+.stage{position:relative;overflow:hidden;border-radius:16px;min-height:520px;height:calc(100dvh - 220px);background:#BFE3F5;--rail-w:212px}
+.stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.ov{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
+.ov > div{position:absolute;left:0;top:0;will-change:transform;white-space:nowrap}
+.tagl{background:var(--c);color:#fff;border-radius:999px;padding:3px 10px;font:600 11.5px/1.3 var(--mono);box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.bub{background:#FFFFFF;color:#2A2B45;border:2px solid #2A2B45;border-radius:14px;padding:3px 10px;font:600 12.5px/1.4 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.bub.ask{border-color:#E4476F}
+/* new: the small talk bubble (an icon, never chat text) */
+.talkb{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;padding:0 6px;background:#fff;border:2px solid #2A2B45;border-radius:15px;font:600 15px/1 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.talkb::after{content:"";position:absolute;left:50%;bottom:-7px;width:10px;height:10px;background:#fff;border-right:2px solid #2A2B45;border-bottom:2px solid #2A2B45;transform:translateX(-50%) rotate(45deg)}
+.talkb small{font:700 10.5px/1 var(--mono);color:var(--ink-2);margin-left:3px}
+.talkb.bob{animation:bob .9s ease-in-out infinite}
+@keyframes bob{0%,100%{margin-top:0}50%{margin-top:-4px}}
+.letter{font:16px/1 system-ui;filter:drop-shadow(0 2px 0 rgba(42,43,69,.25))}
+.rail{position:absolute;left:12px;top:12px;z-index:4;width:var(--rail-w);max-height:calc(100% - 24px);display:flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:16px;box-shadow:0 4px 0 rgba(42,43,69,.18);overflow:hidden}
+.rail-head{display:flex;align-items:center;gap:6px;padding:6px 12px;border-bottom:1.5px solid var(--line);font-weight:700;font-size:13px}
+.rail-head .n{font:600 12px/1 var(--mono);color:var(--ink-3)}
+.you{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--berry);color:#fff;font:700 11px/1 var(--round);margin-left:auto}
+.rail-list{overflow:auto;padding:4px 4px 8px}
+.rc{width:10px;height:10px;border-radius:50%;background:var(--rc);flex:none;display:inline-block}
+.grp-h{display:flex;align-items:center;gap:6px;padding:3px 6px;font:700 11.5px/1.2 var(--mono);color:var(--ink-2)}
+.grp-h .n{margin-left:auto;color:var(--ink-3);font-weight:600}
+.rail-grp{border-left:4px solid var(--rc);margin:4px 0 6px;padding-left:2px}
+.rrows{list-style:none;margin:0;padding:0}
+.rrow{all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:8px;font-size:12.5px;line-height:1.35}
+.rrow.sub{padding-left:16px}
+.rrow:hover{background:var(--panel-2)}
+.rrow b{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rrow i{font:600 10.5px/1 var(--mono);font-style:normal;color:var(--ink-3);flex:none}
+.sdot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--ink-3)}
+.sdot.st-you{background:var(--berry)}
+.sdot.st-ask{background:#E0A526}
+.sdot.st-build{background:#4D7CFE}
+.sdot.st-rest{background:#2FB57A}
+.sdot.st-bgrun{background:#8B6CF0}
+aside{display:flex;flex-direction:column;gap:10px;overflow:auto;max-height:calc(100dvh - 220px);min-height:520px}
+.card{background:var(--panel);border-radius:18px;padding:10px 12px;box-shadow:0 1px 3px rgba(40,40,80,.08)}
+.card h3{margin:0 0 6px;font:700 14px/1.3 var(--round)}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th,td{border-top:1px solid var(--line);padding:5px 4px;text-align:left;vertical-align:top}
+th{font-weight:700;color:var(--ink-2)}
+ol{margin:0;padding-left:18px;font-size:12.5px} ol li{margin:0 0 6px}
+.fail{padding:40px;font:600 15px/1.6 var(--round);color:var(--ask-ink)}
+@media (max-width:980px){ .main{grid-template-columns:1fr} aside{max-height:none;min-height:0} .stage{height:520px} }
+@media (prefers-reduced-motion: reduce){ .talkb.bob{animation:none} }
+.rm .talkb.bob{animation:none}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="bar">
+    <span class="sign"><span><span class="sign-name" data-t="title"></span><span class="sign-sub">city-talk · T1 T2 T3</span></span></span>
+    <span class="proto">mock</span>
+    <span class="stat" id="gapStat"></span>
+    <span class="right">
+      <label class="chk"><input type="checkbox" id="rm"> <span data-t="rm"></span></label>
+      <span class="group" id="lang"></span>
+      <span class="stat" id="fps"></span>
+    </span>
+  </div>
+  <div class="toolbar">
+    <span class="group" id="mainBtns"></span>
+    <span class="sep"></span>
+    <span class="group" id="moreBtns"></span>
+    <span class="sep"></span>
+    <span class="group"><span class="lead" data-t="farLbl"></span><span class="group" id="farSeg"></span></span>
+    <span class="group" style="margin-left:auto"><button type="button" class="btn small" id="reset" data-t="reset"></button></span>
+  </div>
+  <div class="note" id="note"></div>
+  <div class="main">
+    <div class="stage" id="stage">
+      <canvas id="c" aria-label="3D preview"></canvas>
+      <div class="ov" id="ov"></div>
+      <aside class="rail" aria-label="rail" style="min-height:0">
+        <div class="rail-head"><span data-t="railTitle"></span><span class="n" id="rail-n"></span><span class="you" id="rail-you" hidden></span></div>
+        <div class="rail-list" id="rail-list"></div>
+      </aside>
+    </div>
+    <aside>
+      <section class="card"><h3 data-t="seeTitle"></h3><div id="see"></div></section>
+      <section class="card"><h3 data-t="askTitle"></h3><ol id="asks"></ol></section>
+    </aside>
+  </div>
+</div>
+<script src="../bin/agent-city-assets/vendor/three.min.js"></script>
+<script src="../bin/agent-city-assets/vendor/GLTFLoader.js"></script>
+<script src="../bin/agent-city-assets/vendor/SkeletonUtils.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const Q = new URLSearchParams(location.search);
+const A = '../bin/agent-city-assets/';
+if (!window.THREE) {
+  $('#app').innerHTML = '<p class="fail">three.js did not load. Serve the repo root with a static file server (for example: python3 -m http.server 8765) and open /mock/city-talk-mock.html</p>';
+  return;
+}
+
+/* ---------- text: both languages ---------- */
+const TX = {
+  zh: {
+    title: '城里的人像人一样说话', rm: '减少动态', railTitle: '在线', farLbl: '离得远时', reset: '↺ 重来',
+    'far.walk': '走过去说（默认）', 'far.letter': '原地转身 + 飞信',
+    'b.spawn': '派一个工人', 'b.msg': '发一条消息', 'b.ask': '问总督', 'b.five': '一下来 5 个',
+    'b.deputy': '总督派副手', 'b.tm': '总督派任务经理', 'b.near': '近处的消息', 'b.many': '3 个对话同时', 'b.six': '6 人去同一个点', 'b.status': '对话中变成「等你」',
+    'n.idle': '<b>点上面的按钮重放。</b> 一次放一种，放完按钮再亮。拖动转镜头，滚轮缩放。上面的数字 = 这次重放里任意两个人之间出现过的最近距离，它不会小于规定的间距。',
+    'n.spawn': '<b>派一个工人：</b>① 新工人出现在任务经理<b>旁边</b>（不叠在一起）→ ② 两人面对面，交代任务（📋，约 2.6 秒）→ ③ 工人走去自己的位置，任务经理转回去干活。',
+    'e.spawn': '真实事件：SubagentStart（city-talk Task Manager 的子代理）',
+    'n.deputy': '<b>总督派副手：</b>就是截图里的情况。副手出现在总督旁边，面对面交代，再走去自己的位置。不再叠在总督身上。',
+    'e.deputy': '真实事件：SubagentStart（总督的子代理 fast-lane-deputy）',
+    'n.tm': '<b>总督派任务经理：</b>新的任务经理（一个新会话）出现在总督旁边，面对面交代，然后走去自己的工地。',
+    'e.tm': '真实事件：新会话的第一条事件（SessionStart，AGENT_ROLE=task-manager），派它的人 = 这块地的总督',
+    'n.msg': '<b>发一条消息（离得远）：</b>① Helper 快步走到任务经理面前 → ② 两人面对面，说话（💬，约 2 秒，对方 👌）→ ③ Helper 走回自己的位置，两人接着干原来的事。右上可切换「原地转身 + 飞信」对比。',
+    'n.msgLetter': '<b>发一条消息（离得远，飞信）：</b>两人都不走：都转身朝向对方，一个小信封飞过去（💬），对方 👌 再飞回来，然后转回去干原来的事。',
+    'e.msg': '真实事件：SendMessage（auto-pipeline Helper → city-talk Task Manager）。今天钩子不发「发给谁」，要加（见右边第 5 条）',
+    'n.near': '<b>近处的消息：</b>两人离得近，不用走：都转过身面对面，说话，再转回去干活。',
+    'e.near': '真实事件：SendMessage（Worker 1 → 它的任务经理）',
+    'n.ask': '<b>问总督：</b>① 工人走到它的任务经理面前问（❓），在那里等 → ② 任务经理走到总督面前问（❓）→ ③ 总督要你回答：马上变「等你」，气泡和名单都变，对话不挡它 → ④ 你答了（这里 3 秒后自动）：总督告诉任务经理（✅）→ ⑤ 任务经理走回去告诉工人（✅），工人回自己的位置。',
+    'e.ask': '真实事件：已有的「问题转给上级 / 总督」和「回答了」事件（relay、relay_end），今天只走过去，没有面对面',
+    'n.five': '<b>一下来 5 个：</b>5 个工人在任务经理面前排成一个弧，谁也不叠谁 → 任务经理对大家交代一次（📋 ×5）→ 各自走去自己的位置，路上互相让开。',
+    'e.five': '真实事件：5 条 SubagentStart 几乎同时到',
+    'n.many': '<b>3 个对话同时：</b>每个人一次只和一个人说。Helper 和 Worker 1 都找任务经理：一个先说，另一个排队（气泡上有 +1）。副手同时和总督说。',
+    'e.many': '真实事件：3 条 SendMessage 几乎同时到',
+    'n.six': '<b>6 人去同一个点：</b>6 个人被叫到广场的同一个点。他们围着这个点站开，每人之间都有间距，路上互相绕开。',
+    'e.six': '规则 T2：站着、走着、出现时都保持间距',
+    'n.status': '<b>对话中变成「等你」：</b>Helper 正和任务经理说话，任务经理这时需要你批准。对话<b>马上</b>结束，「等你回话」气泡和名单上的红点立刻出现，不等对话演完。',
+    'e.status': '规则 T3：对话只是身体动作 + 小气泡，从不改、不挡、不拖延真实状态',
+    'st.build': '施工中', 'st.rest': '空闲', 'st.you': '等你', 'st.ask': '在问', 'st.bgrun': '后台在跑',
+    'bub.you': '等你回话',
+    gap: '最近间距 {d} · 规定 ≥ {g}', gapNone: '最近间距 — · 规定 ≥ {g}', fps: '{fps} fps · {n} 人',
+    seeTitle: '按钮 = 重放一种情况', askTitle: '要你定的（都有默认）',
+    'see.h': ['按钮', '你会看到'],
+    'see.rows': [
+      ['派一个工人', '新的人出现在派它的人旁边，面对面交代，再走去自己的位置（T1）'],
+      ['发一条消息', '发的人走过去，面对面说，再走回来（T3）'],
+      ['问总督', '问题一层层往上，答案原路回来；「等你」马上显示（T3）'],
+      ['一下来 5 个', '排成弧，不叠；一起交代一次（T1 + T2）'],
+      ['6 人去同一个点', '围着站开，路上绕开（T2）'],
+    ],
+    asks: [
+      '<b>离得远怎么办？</b> 默认：发消息的人快步走过去，最多约 4 秒到，说完走回来。另一种：都不动，原地转身，一个小信封飞过去（上面可切换对比）。别的仓库（另一块地）的人：永远用飞信，不跨地走。',
+      '<b>说多久、气泡里放什么？</b> 默认：交代任务约 2.6 秒，消息 / 提问 / 回答约 2 秒。气泡只放一个小图标：📋 交代任务、💬 消息、❓ 提问、✅ 回答、👌 收到。不放聊天内容（内容只在那个人的窗口里）。',
+      '<b>很多人、很多对话同时来？</b> 默认：一次派很多人 = 一起交代一次；每人一次只说一个，其余排队，气泡上写 +n；排队超过 3 个的不再走过去，只飞信。',
+      '<b>人与人的间距</b> 默认约一个半身位（mock 里 0.42；真实页面沿用现有的 0.45）。站着、走路、刚出现、去同一个点都算。名字牌在 mock 里一直显示，方便你看是谁；真实页面的名字牌规则不变。',
+      '<b>钩子多发一个「发给谁」</b> 今天 SendMessage 的事件不带收件人，页面不知道谁在和谁说。默认：钩子多发收件人的名字，<b>不发内容</b>。认不出收件人时：发的人在原地冒一个 💬，不走。',
+    ],
+  },
+  en: {
+    title: 'People in the city talk like people', rm: 'Reduce motion', railTitle: 'Online', farLbl: 'Far apart', reset: '↺ Reset',
+    'far.walk': 'Walk over (default)', 'far.letter': 'Turn + a letter flies',
+    'b.spawn': 'Spawn a worker', 'b.msg': 'Send a message', 'b.ask': 'Ask the 总督', 'b.five': '5 appear at once',
+    'b.deputy': '总督 sends a deputy', 'b.tm': '总督 sends a task manager', 'b.near': 'Message, close by', 'b.many': '3 talks at once', 'b.six': '6 people to one spot', 'b.status': 'Turns 等你 during a talk',
+    'n.idle': '<b>Click a button above to replay.</b> One case at a time; the buttons come back when it is over. Drag to orbit, wheel to zoom. The number at the top = the closest any two people came in this replay; it never goes under the gap.',
+    'n.spawn': '<b>Spawn a worker:</b> 1 the new worker appears <b>next to</b> the task manager (not stacked) → 2 they face each other, the task is handed over (📋, about 2.6 s) → 3 the worker walks to its own spot, the task manager turns back to work.',
+    'e.spawn': 'Real event: SubagentStart (a subagent of city-talk Task Manager)',
+    'n.deputy': '<b>总督 sends a deputy:</b> the case in the screenshot. The deputy appears next to the 总督, they talk face to face, then it walks to its own spot. No more stacking on the 总督.',
+    'e.deputy': 'Real event: SubagentStart (fast-lane-deputy, a subagent of the 总督)',
+    'n.tm': '<b>总督 sends a task manager:</b> the new task manager (a new session) appears next to the 总督, they talk face to face, then it walks to its own site.',
+    'e.tm': 'Real event: the first event of a new session (SessionStart, AGENT_ROLE=task-manager); the sender = the 总督 of that territory',
+    'n.msg': '<b>Send a message (far apart):</b> 1 the Helper walks fast to the task manager → 2 they face each other and talk (💬, about 2 s, the other 👌) → 3 the Helper walks back, both go on with what they did. Switch to "Turn + a letter flies" at the top to compare.',
+    'n.msgLetter': '<b>Send a message (far apart, the letter):</b> nobody walks: both turn toward each other, a small letter flies across (💬), the other answers 👌 and it flies back, then both turn back to what they did.',
+    'e.msg': 'Real event: SendMessage (auto-pipeline Helper → city-talk Task Manager). Today the hook does not send who it is for; that is added (point 5 on the right)',
+    'n.near': '<b>Message, close by:</b> the two are close, nobody walks: both turn to face each other, talk, and turn back to work.',
+    'e.near': 'Real event: SendMessage (Worker 1 → its task manager)',
+    'n.ask': '<b>Ask the 总督:</b> 1 the worker walks to its task manager and asks (❓), and waits there → 2 the task manager walks to the 总督 and asks (❓) → 3 the 总督 needs you: 等你 shows at once, bubble and rail, the talk never covers it → 4 you answered (here: by itself after 3 s): the 总督 tells the task manager (✅) → 5 the task manager walks back and tells the worker (✅), the worker goes back to its spot.',
+    'e.ask': 'Real event: the existing "question relayed to the lead / the 总督" and "answered" events (relay, relay_end); today they only walk over, no face to face',
+    'n.five': '<b>5 appear at once:</b> 5 workers stand in an arc in front of the task manager, nobody stacked → one hand-over for all (📋 ×5) → each walks to its own spot and they make way for each other.',
+    'e.five': 'Real event: 5 SubagentStart lines almost at once',
+    'n.many': '<b>3 talks at once:</b> one talk per person at a time. The Helper and Worker 1 both want the task manager: one talks first, the other waits (the bubble says +1). The deputy talks to the 总督 at the same time.',
+    'e.many': 'Real event: 3 SendMessage lines almost at once',
+    'n.six': '<b>6 people to one spot:</b> 6 people are called to the same point on the plaza. They stand around it with a gap between each, and walk around each other on the way.',
+    'e.six': 'Rule T2: a gap when standing, walking and appearing',
+    'n.status': '<b>Turns 等你 during a talk:</b> the Helper is talking to the task manager when the task manager needs your approval. The talk ends <b>at once</b>; the 等你回话 bubble and the red rail dot show right away, not after the talk.',
+    'e.status': 'Rule T3: a talk is only body motion + a small bubble; it never changes, hides or delays a real status',
+    'st.build': 'Building', 'st.rest': 'Idle', 'st.you': '等你', 'st.ask': 'Asking', 'st.bgrun': 'Background',
+    'bub.you': '等你回话',
+    gap: 'closest {d} · rule ≥ {g}', gapNone: 'closest — · rule ≥ {g}', fps: '{fps} fps · {n} people',
+    seeTitle: 'A button = replay one case', askTitle: 'For you to decide (all have defaults)',
+    'see.h': ['Button', 'What you see'],
+    'see.rows': [
+      ['Spawn a worker', 'the new one appears next to its sender, face-to-face hand-over, then walks to its own spot (T1)'],
+      ['Send a message', 'the sender walks over, they talk face to face, it walks back (T3)'],
+      ['Ask the 总督', 'the question goes up level by level, the answer comes back the same way; 等你 shows at once (T3)'],
+      ['5 appear at once', 'an arc, nobody stacked; one hand-over for all (T1 + T2)'],
+      ['6 people to one spot', 'they stand around it and walk around each other (T2)'],
+    ],
+    asks: [
+      '<b>Far apart?</b> Default: the sender walks over fast, there in about 4 s at most, and walks back after. The other way: nobody moves, both turn, a small letter flies across (switch at the top to compare). Someone in another repo (another territory): always the letter, no walk across territories.',
+      '<b>How long, and what is in the bubble?</b> Default: a hand-over about 2.6 s; a message / question / answer about 2 s. The bubble holds one small icon only: 📋 hand-over, 💬 message, ❓ question, ✅ answer, 👌 got it. Never chat text (that stays in the person\'s window).',
+      '<b>Many people, many talks at once?</b> Default: many spawned at once = one hand-over for all; one talk per person at a time, the rest wait, the bubble says +n; with more than 3 waiting the next ones do not walk, the letter flies.',
+      '<b>The gap between people</b> Default about one and a half bodies (0.42 in this mock; the real page keeps its 0.45). It holds when standing, walking, appearing and going to one spot. Name tags always show in this mock so you see who is who; the real page keeps its own name tag rule.',
+      '<b>The hook also sends who a message is for</b> Today a SendMessage event carries no recipient, so the page cannot know who talks to whom. Default: the hook adds the recipient\'s name, <b>never the text</b>. Recipient not recognised: the sender shows a 💬 on its own spot, no walk.',
+    ],
+  },
+};
+let lang = Q.get('lang') === 'en' ? 'en' : 'zh';
+const t = (k, v) => { let s = TX[lang][k]; if (s == null) s = TX.zh[k] ?? k; if (v) for (const n in v) s = s.replace('{' + n + '}', v[n]); return s; };
+
+/* ---------- the numbers of the feature (the real page gets the same ones) ---------- */
+const GAP = .42;            // T2: two people are never closer than this, centre to centre
+const TALK_DIST = .56;      // face to face
+const NEAR = 1.0;            // closer than this: nobody walks, both just turn
+const WALK = .5;            // normal walk, units per second
+const MAX_TRIP = 4;         // a walk-over takes at most this many seconds (it walks faster when far)
+const MAX_WAIT_WALK = 3;    // more talks than this waiting for one person: the next ones use the letter
+const DUR = { handover: 2.6, msg: 2.0, ask: 2.0, answer: 2.0 };
+const ICON = { handover: '📋', msg: '💬', ask: '❓', answer: '✅' };
+const REPLY = '👌';
+const SPLIT = .62;          // the first part of a talk the sender speaks, the rest is the short reply
+
+let RM = Q.get('rm') === '1' || matchMedia('(prefers-reduced-motion: reduce)').matches;
+let farMode = Q.get('far') === 'letter' ? 'letter' : 'walk';
+$('#rm').checked = RM;
+
+/* ---------- three ---------- */
+const CHARS = ['characters/character-male-a', 'characters/character-female-a', 'characters/character-male-c', 'characters/character-female-c', 'characters/character-male-b', 'characters/character-male-e'];
+const MODELS = CHARS.concat(['hexagon/building-village', 'hexagon/building-cabin', 'suburban/building-type-a', 'survival/structure', 'kaykit-city/bench',
+  'nature/tree_default', 'nature/tree_oak', 'forest/flag', 'nature/plant_bush', 'roads/construction-fence']);
+const lib = {};
+const HEX_SINK = { 'hexagon/building-village': .21, 'hexagon/building-cabin': .21 };
+const canvas = $('#c'), stage = $('#stage'), ov = $('#ov');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#BFE3F5');
+const camera = new THREE.PerspectiveCamera(35, 1, .05, 200);
+scene.add(new THREE.HemisphereLight('#FFFFFF', '#C7D2E0', .8));
+const sun = new THREE.DirectionalLight('#FFF3E0', .75); sun.position.set(-6, 12, 8); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8 }); scene.add(sun);
+const world = new THREE.Group(); scene.add(world);
+const lin = c => new THREE.Color(c).convertSRGBToLinear();
+const lam = c => new THREE.MeshLambertMaterial({ color: lin(c) });
+
+function prep(key, gltf){
+  const root = gltf.scene;
+  root.traverse(n => { if (n.isMesh) { const m = n.material; n.material = new THREE.MeshLambertMaterial({ color: m.color ? m.color.clone() : new THREE.Color('#fff'), map: m.map || null, skinning: !!n.isSkinnedMesh }); if (!m.map) n.material.color.convertSRGBToLinear(); n.castShadow = true; n.receiveShadow = true; } });
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  lib[key] = { scene: root, clips: gltf.animations, box, size: box.getSize(new THREE.Vector3()), skinned: !!root.getObjectByProperty('type', 'SkinnedMesh') };
+}
+function loadAll(){
+  const loader = new THREE.GLTFLoader();
+  return Promise.all(MODELS.map(k => new Promise(res => loader.load(A + k + '.glb', g => { try { prep(k, g); } catch (e) {} res(); }, undefined, () => res()))));
+}
+function place(key, x, z, o = {}){
+  const L = lib[key]; if (!L) return new THREE.Group();
+  const g = new THREE.Group(); g.rotation.y = o.ry || 0;
+  const inner = L.skinned ? THREE.SkeletonUtils.clone(L.scene) : L.scene.clone(true);
+  const s = o.s != null ? o.s : o.h != null ? o.h / L.size.y : (o.fit || .9) / Math.max(L.size.x, L.size.z);
+  inner.scale.setScalar(s);
+  const c = L.box.getCenter(new THREE.Vector3());
+  inner.position.set(-c.x * s, o.keepY ? 0 : -L.box.min.y * s, -c.z * s);
+  g.position.set(x, (o.y || 0) - (HEX_SINK[key] || 0) * s, z);
+  if (o.tint) inner.traverse(n => { if (n.isMesh) { n.material = n.material.clone(); n.material.color = lin(o.tint); } });
+  g.add(inner); world.add(g);
+  return g;
+}
+
+/* ---------- people ---------- */
+const CHAR_SCALE = .6;
+const people = [];
+let talks = [];
+let clock = 0, minGap = Infinity, uid = 0, charI = 0, pushes = 0;
+const timers = [];
+const later = (s, f) => timers.push({ at: clock + s, f });
+const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+const el = cls => { const e = document.createElement('div'); e.className = cls; e.hidden = true; ov.appendChild(e); return e; };
+
+function addPerson(o){
+  const key = o.key || CHARS[charI++ % CHARS.length];
+  let g, body = null, mixer = null, head = null;
+  if (lib[key]) {
+    g = place(key, o.x, o.z, { s: CHAR_SCALE, keepY: true });
+    body = g.children[0]; mixer = new THREE.AnimationMixer(body); head = body.getObjectByName('head');
+  } else { // the model did not load: a plain stand-in, so the stage is never empty
+    g = new THREE.Group();
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(.07, .09, .28, 12), lam(o.color || '#7C6CF0')); b.position.y = .14; b.castShadow = true;
+    const h = new THREE.Mesh(new THREE.SphereGeometry(.08, 12, 10), lam('#F2C9A0')); h.position.y = .36; h.castShadow = true;
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(.03, .03, .06), lam('#2A2B45')); nose.position.set(0, .36, .08);
+    g.add(b, h, nose); g.position.set(o.x, 0, o.z); world.add(g);
+  }
+  const p = { id: ++uid, name: o.name, role: o.role, lead: o.lead || null, color: o.color || '#7C6CF0', key, g, mixer, head, cur: null, action: null,
+    rest: head ? head.quaternion.clone() : null, x: o.x, z: o.z, yaw: o.yaw || 0, home: { x: o.hx != null ? o.hx : o.x, z: o.hz != null ? o.hz : o.z, yaw: o.yaw || 0 },
+    goal: null, speed: WALK, heading: 0, onArrive: null, look: null, talk: null, st: o.st || 'build', pop: o.pop ? 0 : 1, spawnDir: o.spawnDir,
+    tag: el('tagl'), bub: el('bub ask'), tb: el('talkb'), h: lib[key] ? lib[key].size.y * CHAR_SCALE : .46 };
+  p.tag.textContent = p.name; p.tag.style.setProperty('--c', p.color);
+  g.rotation.y = p.yaw;
+  people.push(p);
+  return p;
+}
+function anim(p, name, speed){
+  if (!p.mixer) return;
+  const ts = (speed || 1) * (RM ? .6 : 1);
+  if (p.cur === name) { if (p.action) p.action.setEffectiveTimeScale(ts); return; }
+  const clip = THREE.AnimationClip.findByName(lib[p.key].clips, name); if (!clip) return;
+  const next = p.mixer.clipAction(clip);
+  next.reset(); next.setLoop(THREE.LoopRepeat, Infinity); next.setEffectiveTimeScale(ts); next.play();
+  if (p.action) next.crossFadeFrom(p.action, .2, false);
+  p.action = next; p.cur = name;
+}
+function faceYaw(p, want, dt, rate){ let d = want - p.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; p.yaw += d * (1 - Math.exp(-dt * (rate || 9))); }
+const yawTo = (p, o) => Math.atan2(o.x - p.x, o.z - p.z);
+const atHome = p => Math.hypot(p.x - p.home.x, p.z - p.home.z) < .02;
+
+/* ---------- T2: nobody stacks ---------- */
+// the spots a person holds: its own spot, and where it stands or is walking to
+function held(o){ const a = [o.home]; if (!o.goal) a.push({ x: o.x, z: o.z }); else if (!o.loose) a.push(o.goal); return a; }
+function isFree(x, z, skip){
+  for (const o of people) { if (skip && skip.includes(o)) continue; for (const s of held(o)) if (Math.hypot(s.x - x, s.z - z) < GAP - 1e-6) return false; }
+  return true;
+}
+// is the straight way from a to b clear of standing people?
+function clearWay(a, b, skip){
+  const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz || 1e-9;
+  for (const o of people) {
+    if (o.goal || (skip && skip.includes(o))) continue;
+    const k = Math.max(0, Math.min(1, ((o.x - a.x) * dx + (o.z - a.z) * dz) / L2));
+    if (Math.hypot(a.x + dx * k - o.x, a.z + dz * k - o.z) < GAP - 1e-6) return false;
+  }
+  return true;
+}
+const canReach = (from, to, skip) => clearWay(from, to, skip) || !!planWay(from, to, skip && skip[0]);
+// the free point nearest to (x, z): the point itself, else rings around it. With `from` (a walker): the
+// nearest one it can get to, so nobody has to squeeze through a ring of standing people
+function freeSpot(x, z, skip, from){
+  if (isFree(x, z, skip) && (!from || canReach(from, { x, z }, skip))) return { x, z };
+  const S = GAP * 1.08;
+  for (let r = 1; r <= 8; r++) {
+    let best = null, bd = Infinity;
+    for (let i = 0; i < 6 * r; i++) {
+      const a = i / (6 * r) * Math.PI * 2, cx = x + Math.sin(a) * r * S, cz = z + Math.cos(a) * r * S;
+      if (!isFree(cx, cz, skip) || (from && !canReach(from, { x: cx, z: cz }, skip))) continue;
+      const d = from ? Math.hypot(cx - from.x, cz - from.z) : i;
+      if (d < bd) { bd = d; best = { x: cx, z: cz }; }
+    }
+    if (best) return best;
+  }
+  return { x, z };
+}
+// an own spot (where a person works): at least two gaps from every other own spot, so there is always a way through
+function freeHome(x, z, skip){
+  const ok = (cx, cz) => isFree(cx, cz, skip) && !people.some(o => !(skip && skip.includes(o)) && Math.hypot(o.home.x - cx, o.home.z - cz) < GAP * 2 - 1e-6);
+  if (ok(x, z)) return { x, z };
+  const S = GAP * 2.1;
+  for (let r = 1; r <= 6; r++) for (let i = 0; i < 6 * r; i++) {
+    const a = i / (6 * r) * Math.PI * 2, cx = x + Math.sin(a) * r * S, cz = z + Math.cos(a) * r * S;
+    if (Math.hypot(cx, cz + .1) < 3.2 && ok(cx, cz)) return { x: cx, z: cz };
+  }
+  return freeSpot(x, z, skip);
+}
+// a free point at talk distance from b, as close as possible to the direction `base`
+function besideSpot(b, base, skip, from){
+  for (const off of [0, .5, -.5, 1, -1, 1.5, -1.5, 2, -2, 2.6, -2.6, Math.PI]) {
+    const a = base + off, x = b.x + Math.sin(a) * TALK_DIST, z = b.z + Math.cos(a) * TALK_DIST;
+    if (isFree(x, z, skip) && (!from || canReach(from, { x, z }, skip))) return { x, z };
+  }
+  return from ? null : freeSpot(b.x + Math.sin(base) * TALK_DIST, b.z + Math.cos(base) * TALK_DIST, skip);
+}
+// the way around standing people: straight if it is clear, else the shortest way on a fine grid, corners only
+const GS = .14, GN = 52, G0 = -3.6;
+function planWay(a, b, self){
+  if (clearWay(a, b, [self])) return [b];
+  const st = people.filter(o => o !== self && !o.goal);
+  const cell = v => Math.max(0, Math.min(GN - 1, Math.round((v - G0) / GS)));
+  const ti = cell(b.x), tj = cell(b.z), S = cell(a.x) * GN + cell(a.z), T = ti * GN + tj;
+  const blk = new Int8Array(GN * GN);
+  const shut = (i, j) => { const k = i * GN + j; if (k === S || k === T) return false;
+    if (!blk[k]) { const x = G0 + i * GS, z = G0 + j * GS; blk[k] = st.some(o => Math.hypot(o.x - x, o.z - z) < GAP) ? 2 : 1; } return blk[k] === 2; };
+  const g = new Float32Array(GN * GN).fill(Infinity), prev = new Int32Array(GN * GN).fill(-1), open = [[0, S]]; g[S] = 0;
+  while (open.length) {
+    let m = 0; for (let i = 1; i < open.length; i++) if (open[i][0] < open[m][0]) m = i;
+    const k = open.splice(m, 1)[0][1]; if (k === T) break;
+    const ci = (k / GN) | 0, cj = k % GN;
+    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+      const ni = ci + di, nj = cj + dj; if ((!di && !dj) || ni < 0 || nj < 0 || ni >= GN || nj >= GN || shut(ni, nj)) continue;
+      const nk = ni * GN + nj, c = g[k] + (di && dj ? 1.414 : 1);
+      if (c < g[nk]) { g[nk] = c; prev[nk] = k; open.push([c + Math.hypot(ni - ti, nj - tj), nk]); }
+    }
+  }
+  if (prev[T] < 0) return null;                                  // no way through
+  const pts = []; for (let k = prev[T]; k !== S && k >= 0; k = prev[k]) pts.push({ x: G0 + ((k / GN) | 0) * GS, z: G0 + (k % GN) * GS });
+  pts.reverse(); pts.push(b);
+  const out = []; let from = a, i = 0;
+  while (i < pts.length) { let j = pts.length - 1; while (j > i && !clearWay(from, pts[j], [self])) j--; out.push(pts[j]); from = pts[j]; i = j + 1; }
+  return out;
+}
+function moveToward(p, dt){
+  // called to a point others are called to as well: it takes its standing spot when it gets close,
+  // so the first to arrive stands in the middle and nobody has to squeeze through a ring of people
+  if (p.loose && Math.hypot(p.want.x - p.x, p.want.z - p.z) < 1) { p.goal = freeSpot(p.want.x, p.want.z, [p], p); p.loose = false; }
+  // the way is planned once and kept; planned again only when someone has stopped on the next stretch
+  p.planT = (p.planT || 0) - dt;
+  if (p.pathFor !== p.goal || (p.planT <= 0 && !p.push && !clearWay(p, p.path[0], [p]))) { p.path = (!p.push && planWay(p, p.goal, p)) || [p.goal]; p.pathFor = p.goal; p.planT = .5; p.prevD = null; }
+  let g = p.path[0], dx = g.x - p.x, dz = g.z - p.z, d = Math.hypot(dx, dz); const step = p.speed * dt;
+  // held up by people who stopped in its way: it takes another spot it can walk straight to
+  p.stuckT = p.prevD != null && p.prevD - d < step * .25 ? (p.stuckT || 0) + dt : 0; p.prevD = d;
+  p.heldT = p.stuckT > 0 ? (p.heldT || 0) + dt : Math.max(0, (p.heldT || 0) - dt * .5);
+  if (p.stuckT > .5 && p.want) { p.goal = freeSpot(p.want.x, p.want.z, [p], p); p.stuckT = 0; return true; }
+  // the last way out, so nobody ever walks on the spot: it goes straight and the others let it through
+  if (p.heldT > 1.4 && !p.push) { p.push = true; pushes++; p.pathFor = null; return true; }
+  if (d <= step) {
+    p.x = g.x; p.z = g.z; p.path.shift(); p.prevD = null;
+    if (p.path.length) return true;
+    p.goal = null; p.want = null; p.pathFor = null; p.push = false; p.heldT = 0; const f = p.onArrive; p.onArrive = null; if (f) f(); return false;
+  }
+  dx /= d; dz /= d; let vx = dx, vz = dz;
+  // another walker coming the other way: both keep to their right
+  for (const o of people) {
+    if (o === p || !o.goal) continue;
+    const ox = o.x - p.x, oz = o.z - p.z, od = Math.hypot(ox, oz);
+    if (od > GAP * 2 || od < 1e-5) continue;
+    const ahead = ox * dx + oz * dz; if (ahead <= 0) continue;
+    const k = 1 - od / (GAP * 2);
+    vx += dz * k * 1.6; vz += -dx * k * 1.6;
+  }
+  const n = Math.hypot(vx, vz) || 1;
+  p.x += vx / n * step; p.z += vz / n * step; p.heading = Math.atan2(vx, vz);
+  return true;
+}
+// the hard rule: after every step nobody is closer than GAP; a walker gives way to a standing person
+function separate(){
+  for (let it = 0; it < 8; it++) for (let i = 0; i < people.length; i++) for (let j = i + 1; j < people.length; j++) {
+    const a = people[i], b = people[j]; let dx = a.x - b.x, dz = a.z - b.z, d = Math.hypot(dx, dz);
+    if (d >= GAP || a.push || b.push) continue;
+    if (d < 1e-5) { const an = (a.id * 2.4) % 6.28; dx = Math.sin(an); dz = Math.cos(an); d = 1; }
+    const push = GAP - Math.hypot(a.x - b.x, a.z - b.z) + 1e-4, ma = !!a.goal, mb = !!b.goal;
+    const ka = ma === mb ? .5 : ma ? 1 : 0, kb = 1 - ka;
+    a.x += dx / d * push * ka; a.z += dz / d * push * ka; b.x -= dx / d * push * kb; b.z -= dz / d * push * kb;
+  }
+  for (let i = 0; i < people.length; i++) for (let j = i + 1; j < people.length; j++) if (!people[i].push && !people[j].push) minGap = Math.min(minGap, dist(people[i], people[j]));
+}
+
+/* ---------- T3: talks ---------- */
+const members = tk => tk.group ? [tk.a].concat(tk.group) : [tk.a, tk.b];
+const waitingFor = p => talks.filter(x => x.phase === 'wait' && members(x).includes(p)).length;
+function talk(a, b, kind, o){
+  const tk = Object.assign({ a, b, kind, phase: 'wait', t: 0, dur: DUR[kind], group: null, back: true, done: null, walked: false, remote: false }, o || {});
+  talks.push(tk); return tk;
+}
+function goHome(p, then, speed){ p.look = null; p.loose = false; p.want = null; p.speed = speed || WALK; p.goal = { x: p.home.x, z: p.home.z }; p.onArrive = then || null; }
+function endTalk(tk, cut){
+  const i = talks.indexOf(tk); if (i >= 0) talks.splice(i, 1);
+  for (const m of members(tk)) if (m.talk === tk) m.talk = null;
+  if ((tk.walked || tk.a.goal) && tk.back) goHome(tk.a, null, tk.speed);
+  if (!cut && tk.done) tk.done();
+}
+function stepTalks(dt){
+  for (const tk of talks.slice()) {
+    if (tk.phase === 'wait') {
+      if (members(tk).some(m => m.talk)) continue;                       // one talk per person at a time: wait in line
+      for (const m of members(tk)) m.talk = tk;
+      const d = tk.group ? 0 : dist(tk.a, tk.b);
+      if (tk.group || d <= TALK_DIST * 1.15 || (d <= NEAR && !tk.mustWalk)) tk.phase = 'talk';
+      else if (tk.mustWalk || (farMode === 'walk' && waitingFor(tk.b) < MAX_WAIT_WALK)) {
+        const s = besideSpot(tk.b, yawTo(tk.b, tk.a), [tk.a], tk.a);
+        if (!s) { tk.remote = true; tk.phase = 'talk'; continue; }
+        tk.speed = Math.min(1.6, Math.max(WALK * 1.5, d / MAX_TRIP)); tk.a.look = null; tk.a.loose = false; tk.a.want = null; tk.a.goal = s; tk.a.onArrive = null; tk.a.speed = tk.speed;
+        tk.phase = 'approach'; tk.walked = true;
+      } else { tk.remote = true; tk.phase = 'talk'; }
+    } else if (tk.phase === 'approach') {
+      if (!tk.a.goal) { tk.phase = 'talk'; tk.t = 0; }
+      else if (tk.a.stuckT > .5) {                                          // held up on the way: another free side of the other one, else the letter
+        const s = besideSpot(tk.b, yawTo(tk.b, tk.a), [tk.a], tk.a);
+        if (s) tk.a.goal = s; else { tk.a.goal = null; tk.a.pathFor = null; tk.remote = true; tk.phase = 'talk'; tk.t = 0; }
+        tk.a.stuckT = 0;
+      }
+    } else {
+      tk.t += dt; if (tk.t >= tk.dur) endTalk(tk);
+    }
+  }
+}
+function speaking(p, tk){ if (tk.group) return p === tk.a; return (tk.t / tk.dur < SPLIT) === (p === tk.a); }
+function partner(p, tk){ if (!tk.group) return p === tk.a ? tk.b : tk.a; return p === tk.a ? tk.group[Math.floor(tk.t / .6) % tk.group.length] : tk.a; }
+// a real status change: shown at once. 等你 ends the talk of that person at once.
+function setStatus(p, st){
+  p.st = st;
+  if (st === 'you' && p.talk && !p.talk.keepOnYou) endTalk(p.talk, true);
+  renderRail();
+}
+
+/* ---------- T1: a new one appears next to its sender ---------- */
+function ownSpot(parent, role){
+  if (role === 'tm') return freeHome(1.25, 1.55);
+  const dir = parent.spawnDir != null ? parent.spawnDir : parent.yaw + Math.PI;
+  return freeHome(parent.home.x + Math.sin(dir) * 1.3, parent.home.z + Math.cos(dir) * 1.3);
+}
+function spawn(parent, list){
+  const dir = parent.spawnDir != null ? parent.spawnDir : parent.yaw + Math.PI;
+  const n = list.length, kids = [];
+  const R = n <= 2 ? TALK_DIST : Math.max(TALK_DIST, GAP * 1.1 / (2 * Math.sin(Math.min(Math.PI / 2, 2.6 / (2 * Math.max(1, n - 1))))));
+  const stepA = n > 1 ? Math.min(2.6 / (n - 1), 2 * Math.asin(Math.min(1, GAP * 1.1 / (2 * R))) * 1.02) : 0;
+  list.forEach((o, i) => {
+    const a = dir + (i - (n - 1) / 2) * stepA;
+    let x = parent.x + Math.sin(a) * R, z = parent.z + Math.cos(a) * R;
+    if (!isFree(x, z, [parent])) ({ x, z } = n === 1 ? besideSpot(parent, a, [parent]) : freeSpot(x, z, [parent]));
+    const kid = addPerson({ name: o.name, role: o.role, lead: parent, color: o.color, x, z, yaw: yawTo({ x, z }, parent), pop: true, st: 'build' });
+    kids.push(kid);
+  });
+  for (const kid of kids) { const s = ownSpot(parent, kid.role); kid.home = { x: s.x, z: s.z, yaw: kid.role === 'tm' ? Math.PI / 2 : parent.home.yaw }; }
+  const after = () => kids.forEach((kid, i) => later(i * .22, () => goHome(kid)));
+  if (n === 1) talk(parent, kids[0], 'handover', { done: after, back: false });
+  else talk(parent, null, 'handover', { group: kids, done: after, back: false, dur: DUR.handover + .3 });
+  renderRail();
+  return kids;
+}
+
+/* ---------- per frame ---------- */
+const q = new THREE.Quaternion(), eul = new THREE.Euler();
+function stepPerson(p, dt){
+  if (p.pop < 1) { p.pop = Math.min(1, p.pop + dt / (RM ? .01 : .28)); const k = 1 - Math.pow(1 - p.pop, 3); p.g.scale.setScalar(.25 + .75 * k); }
+  let walking = false;
+  if (p.goal) walking = moveToward(p, dt);
+  const tk = p.talk, talking = !!tk && tk.phase === 'talk';
+  let clip = 'idle', speed = 1, want = null, nod = false;
+  if (walking) { clip = 'walk'; speed = p.speed / WALK * .9; want = p.heading; }
+  else if (talking) { want = yawTo(p, partner(p, tk)); if (speaking(p, tk)) { if (!RM) clip = 'interact-left'; } else nod = !RM; }
+  else if (p.look) want = yawTo(p, p.look);
+  else if (atHome(p)) { want = p.home.yaw; if (p.st === 'build') clip = 'interact-right'; }
+  if (want != null) faceYaw(p, want, dt, walking ? 12 : 8);
+  anim(p, clip, speed);
+  if (p.mixer) p.mixer.update(dt);
+  if (p.head && nod) { q.setFromEuler(eul.set(.16 + .14 * Math.sin(clock * 7), 0, 0)); p.head.quaternion.multiply(q); }
+  return { walking, talking };
+}
+function tick(dt){
+  clock += dt;
+  for (let i = timers.length - 1; i >= 0; i--) if (timers[i].at <= clock) { const f = timers[i].f; timers.splice(i, 1); f(); }
+  stepTalks(dt);
+  for (const p of people) p.fr = stepPerson(p, dt);
+  separate();
+  for (const p of people) { p.g.position.x = p.x; p.g.position.z = p.z; p.g.rotation.y = p.yaw; }
+}
+
+/* ---------- overlays: name tag, 等你回话 bubble, talk bubble, flying letter ---------- */
+const v3 = new THREE.Vector3();
+let W = 1, H = 1;
+function toScreen(x, y, z){ v3.set(x, y, z).project(camera); return [(v3.x + 1) / 2 * W, (1 - v3.y) / 2 * H]; }
+function pin(e, x, y){ e.hidden = false; e.style.transform = `translate(${Math.round(x)}px,${Math.round(y)}px) translate(-50%,-100%)`; }
+const letters = [];
+function overlays(){
+  // name tags sit under the feet (always shown in this mock), so heads and bubbles stay clear;
+  // a tag that would cover another moves down
+  const placed = [];
+  const list = people.map(p => { const [x, y] = toScreen(p.x, 0, p.z); return { p, x, y: y + 12 }; }).sort((a, b) => a.y - b.y);
+  for (const it of list) {
+    const p = it.p; if (!p.tw) { p.tag.hidden = false; p.tw = p.tag.offsetWidth; p.th = p.tag.offsetHeight; }
+    let y = it.y, moved = true, guard = 0;
+    while (moved && guard++ < 12) { moved = false; for (const o of placed) if (Math.abs(o.x - it.x) < (o.w + p.tw) / 2 + 2 && y < o.y + o.h + 2 && y + p.th > o.y - 2) { y = o.y + o.h + 3; moved = true; } }
+    placed.push({ x: it.x, y, w: p.tw, h: p.th });
+    pin(p.tag, it.x, y + p.th);
+    const [hx, hy] = toScreen(p.x, p.h * p.g.scale.y + .1, p.z);
+    let top = hy;
+    if (p.st === 'you') { p.bub.textContent = t('bub.you'); pin(p.bub, hx, top); top -= 32; } else p.bub.hidden = true;
+    const tk = p.talk;
+    if (tk && tk.phase === 'talk' && speaking(p, tk)) {
+      const reply = !tk.group && p === tk.b, w = waitingFor(p);
+      p.tb.textContent = reply ? REPLY : ICON[tk.kind];
+      if (tk.group && tk.group.length > 1) { const s = document.createElement('small'); s.textContent = '×' + tk.group.length; p.tb.appendChild(s); }
+      else if (w) { const s = document.createElement('small'); s.textContent = '+' + w; p.tb.appendChild(s); }
+      p.tb.classList.toggle('bob', !RM);
+      pin(p.tb, hx, top - 6);
+    } else p.tb.hidden = true;
+  }
+  // the letter of a talk where nobody walks (far apart, letter mode)
+  for (const tk of talks) {
+    if (!tk.remote || tk.phase !== 'talk') { if (tk.letter) tk.letter.hidden = true; continue; }
+    if (!tk.letter) { tk.letter = el('letter'); tk.letter.textContent = '✉️'; letters.push(tk.letter); }
+    const k = tk.t / tk.dur, out = k < SPLIT, u = out ? Math.min(1, k / (SPLIT * .7)) : Math.min(1, (k - SPLIT) / ((1 - SPLIT) * .8));
+    const from = out ? tk.a : tk.b, to = out ? tk.b : tk.a, e = RM ? (u < 1 ? 0 : 1) : u * u * (3 - 2 * u);
+    const [x, y] = toScreen(from.x + (to.x - from.x) * e, .62 + Math.sin(Math.PI * e) * .7, from.z + (to.z - from.z) * e);
+    if (u >= 1) tk.letter.hidden = true; else pin(tk.letter, x, y);
+  }
+  for (let i = letters.length - 1; i >= 0; i--) if (!talks.some(tk => tk.letter === letters[i])) { letters[i].remove(); letters.splice(i, 1); }
+}
+
+/* ---------- the scene: a small piece of one territory ---------- */
+let P = {};
+function ground(w, d, color){ const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), lam(color)); m.rotation.x = -Math.PI / 2; m.receiveShadow = true; world.add(m); }
+function disc(x, z, r, color, y){ const m = new THREE.Mesh(new THREE.CircleGeometry(r, 48), lam(color)); m.rotation.x = -Math.PI / 2; m.position.set(x, y || .004, z); m.receiveShadow = true; world.add(m); }
+const C = { repo: '#7C6CF0', gov: '#C99A1E' };
+function build(){
+  while (world.children.length) world.remove(world.children[0]);
+  for (const e of [...ov.children]) e.remove();
+  people.length = 0; talks = []; timers.length = 0; letters.length = 0; minGap = Infinity; pushes = 0; charI = 0; uid = 0; wn = 1; dn = 0;
+  ground(40, 40, '#8FC46B');
+  disc(0, 0, 3.6, '#CBE8A9', .003);
+  disc(0, -.55, .85, '#E9D8AE', .005);                       // the plaza in front of the hall
+  place('hexagon/building-village', 0, -1.75, { fit: 1.15 });
+  place('forest/flag', .75, -1.25, { h: .5, tint: C.repo });
+  place('suburban/building-type-a', -2.5, -.2, { fit: .7, ry: Math.PI / 2 });
+  place('survival/structure', -2.55, .6, { fit: .5, h: .3 });
+  place('hexagon/building-cabin', 2.5, .1, { fit: .75, ry: -.4 });
+  place('kaykit-city/bench', 0, 2.55, { fit: .38 });
+  for (const [x, z, k] of [[-3.0, 1.7, 'nature/tree_default'], [3.0, -1.5, 'nature/tree_oak'], [3.1, 1.6, 'nature/tree_default'], [-2.9, -1.9, 'nature/tree_oak'], [1.6, -2.6, 'nature/plant_bush'], [-1.5, 2.9, 'nature/plant_bush']])
+    place(k, x, z, { fit: k === 'nature/plant_bush' ? .3 : .5 });
+  P = {
+    gov: addPerson({ key: CHARS[5], name: '总督', role: 'gov', color: C.gov, x: 0, z: -.75, yaw: 0, st: 'rest', spawnDir: .9 }),
+    tm: addPerson({ key: CHARS[4], name: 'city-talk Task Manager', role: 'tm', color: C.repo, x: -1.65, z: -.2, yaw: -Math.PI / 2, st: 'build', spawnDir: Math.PI / 2 - .5 }),
+    w1: null,
+    helper: addPerson({ key: CHARS[1], name: 'auto-pipeline Helper', role: 'session', color: C.repo, x: 1.7, z: .3, yaw: Math.PI / 2 - .4, st: 'build', spawnDir: -Math.PI / 2 }),
+    dep: null,
+  };
+  P.gov.home.yaw = 0;
+  P.w1 = addPerson({ key: CHARS[0], name: 'Worker 1: tests', role: 'worker', lead: P.tm, color: C.repo, x: -1.35, z: .5, yaw: -Math.PI / 2 - .3, st: 'build' });
+  P.dep = addPerson({ key: CHARS[3], name: 'msg-sides Deputy', role: 'deputy', lead: P.gov, color: C.repo, x: .85, z: -.3, yaw: .6, st: 'build' });
+  charI = 2;
+  cam.tx = 0; cam.tz = .35; cam.ty = .15; cam.dist = 5.9 * Math.max(1, Math.min(1.6, 760 / Math.max(1, W - 236))); cam.el = .74; cam.az = .06;
+  renderRail();
+}
+
+/* ---------- the cases ---------- */
+let wn = 1, dn = 0, cur = 'idle';
+const DEPUTIES = ['rail-fix Deputy', 'typo Deputy', 'label Deputy'];
+const CASES = {
+  spawn(){ spawn(P.tm, [{ name: 'Worker ' + (++wn) + ': page', role: 'worker', color: C.repo }]); },
+  deputy(){ spawn(P.gov, [{ name: DEPUTIES[dn++ % DEPUTIES.length], role: 'deputy', color: C.repo }]); },
+  tm(){ spawn(P.gov, [{ name: 'city-rail Task Manager', role: 'tm', color: C.repo }]); },
+  msg(){ talk(P.helper, P.tm, 'msg'); },
+  near(){ talk(P.w1, P.tm, 'msg'); },
+  ask(){
+    setStatus(P.w1, 'ask');
+    talk(P.w1, P.tm, 'ask', { mustWalk: true, back: false, done(){
+      P.w1.look = P.tm;                                             // the worker waits next to its lead's spot
+      setStatus(P.tm, 'ask');
+      talk(P.tm, P.gov, 'ask', { mustWalk: true, back: false, done(){
+        P.tm.look = P.gov;
+        setStatus(P.gov, 'you');                                    // the 总督 needs the owner: shown at once
+        later(3, () => { setStatus(P.gov, 'rest');
+          talk(P.gov, P.tm, 'answer', { back: false, done(){
+            setStatus(P.tm, 'build');
+            goHome(P.tm, () => talk(P.tm, P.w1, 'answer', { back: false, done(){ setStatus(P.w1, 'build'); goHome(P.w1); } }));
+          } });
+        });
+      } });
+    } });
+  },
+  five(){ spawn(P.tm, [0, 1, 2, 3, 4].map(() => ({ name: 'Worker ' + (++wn), role: 'worker', color: C.repo }))); },
+  many(){ talk(P.helper, P.tm, 'msg'); talk(P.w1, P.tm, 'msg'); talk(P.dep, P.gov, 'msg'); },
+  six(){
+    const pt = { x: .15, z: 1.25 };
+    const six = people.filter(p => p.role !== 'gov').slice(0, 6);
+    while (six.length < 6) six.push(spawnPlain());
+    six.forEach((p, i) => later(i * .12, () => { if (p.talk) return; p.look = null; p.speed = WALK * 1.4; p.want = pt; p.loose = true; p.goal = { x: pt.x, z: pt.z }; p.onArrive = () => { p.look = pt; later(3.2, () => { if (!p.talk && !p.goal) goHome(p); }); }; }));
+  },
+  status(){
+    talk(P.helper, P.tm, 'msg', { dur: 3 });
+    const wait = () => { const tk = P.tm.talk; if (tk && tk.phase === 'talk' && tk.t > .9) { setStatus(P.tm, 'you'); later(4, () => setStatus(P.tm, 'build')); } else later(.1, wait); };
+    later(.1, wait);
+  },
+};
+function spawnPlain(){
+  const s = freeHome(1.5, 1.85);
+  const p = addPerson({ name: 'Worker ' + (++wn), role: 'worker', lead: P.tm, color: C.repo, x: s.x, z: s.z, yaw: 0, st: 'build' });
+  renderRail(); return p;
+}
+const busy = () => talks.length > 0 || timers.length > 0 || people.some(p => p.goal);
+function play(id){ if (busy()) return; cur = id; minGap = Infinity; pushes = 0; CASES[id](); renderNote(); syncURL(); }
+
+/* ---------- camera: drag to orbit, wheel to zoom ---------- */
+const cam = { tx: 0, ty: 0, tz: 0, dist: 7, el: .7, az: 0 };
+let drag = null;
+function resize(){ const r = stage.getBoundingClientRect(); W = Math.max(1, r.width); H = Math.max(1, r.height); renderer.setSize(W, H, false); camera.aspect = W / H;
+  const off = W > 700 ? 118 : 0; if (off) camera.setViewOffset(W, H, -off, 0, W, H); else camera.clearViewOffset(); camera.updateProjectionMatrix(); }
+function updateCamera(){
+  const h = Math.cos(cam.el) * cam.dist;
+  camera.position.set(cam.tx + Math.sin(cam.az) * h, cam.ty + Math.sin(cam.el) * cam.dist, cam.tz + Math.cos(cam.az) * h);
+  camera.lookAt(cam.tx, cam.ty, cam.tz); camera.updateMatrixWorld();
+}
+canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', e => { if (!drag) return; cam.az -= (e.clientX - drag.x) * .006; cam.el = Math.max(.15, Math.min(1.4, cam.el + (e.clientY - drag.y) * .004)); drag = { x: e.clientX, y: e.clientY }; });
+canvas.addEventListener('pointerup', () => { drag = null; });
+canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = Math.max(1.8, Math.min(20, cam.dist * (e.deltaY > 0 ? 1.1 : .9))); }, { passive: false });
+
+/* ---------- UI ---------- */
+function seg(host, items, curId, on, cls){
+  host.innerHTML = '';
+  for (const [id, label] of items) {
+    const b = document.createElement('button'); b.className = 'btn ' + (cls || 'small'); b.type = 'button'; b.textContent = label; b.dataset.id = id;
+    if (curId !== undefined) b.setAttribute('aria-pressed', String(id === curId));
+    b.addEventListener('click', () => on(id)); host.appendChild(b);
+  }
+}
+function renderRail(){
+  const order = [];
+  for (const p of people) if (!p.lead || p.role === 'tm') { order.push([p, false]); for (const c of people) if (c.lead === p && c.role !== 'tm') order.push([c, true]); }
+  const you = people.filter(p => p.st === 'you').length;
+  $('#rail-n').textContent = people.length;
+  $('#rail-you').hidden = !you; $('#rail-you').textContent = you;
+  const host = $('#rail-list'); host.innerHTML = '';
+  const sec = document.createElement('section'); sec.className = 'rail-grp'; sec.style.setProperty('--rc', C.repo);
+  sec.innerHTML = '<div class="grp-h"><span class="rc"></span><span>auto-pipeline</span><span class="n">' + people.length + '</span></div>';
+  const ul = document.createElement('ul'); ul.className = 'rrows';
+  for (const [p, sub] of order) {
+    const li = document.createElement('li'), b = document.createElement('button'); b.type = 'button'; b.className = 'rrow' + (sub ? ' sub' : '');
+    const d = document.createElement('span'); d.className = 'sdot st-' + p.st;
+    const n = document.createElement('b'); n.textContent = p.name;
+    const w = document.createElement('i'); w.textContent = t('st.' + p.st);
+    b.append(d, n, w); b.addEventListener('click', () => { cam.tx = p.x; cam.tz = p.z; cam.dist = Math.min(cam.dist, 4.2); });
+    li.appendChild(b); ul.appendChild(li);
+  }
+  sec.appendChild(ul); host.appendChild(sec);
+}
+function renderNote(){
+  const n = $('#note'); n.innerHTML = t(cur === 'msg' && farMode === 'letter' ? 'n.msgLetter' : 'n.' + cur);
+  if (cur !== 'idle') { const e = document.createElement('span'); e.className = 'ev'; e.textContent = t('e.' + cur); n.appendChild(e); }
+}
+function renderUI(){
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  document.body.classList.toggle('rm', RM);
+  for (const e of document.querySelectorAll('[data-t]')) e.textContent = t(e.dataset.t);
+  seg($('#mainBtns'), ['spawn', 'msg', 'ask', 'five'].map(k => [k, t('b.' + k)]), undefined, play, 'primary');
+  seg($('#moreBtns'), ['deputy', 'tm', 'near', 'many', 'six', 'status'].map(k => [k, t('b.' + k)]), undefined, play);
+  seg($('#farSeg'), [['walk', t('far.walk')], ['letter', t('far.letter')]], farMode, v => { farMode = v; syncURL(); renderUI(); });
+  seg($('#lang'), [['zh', '中文'], ['en', 'EN']], lang, v => { lang = v; syncURL(); renderUI(); });
+  const h = TX[lang]['see.h'], rows = TX[lang]['see.rows'];
+  $('#see').innerHTML = '<table><tr>' + h.map(x => '<th>' + x + '</th>').join('') + '</tr>' + rows.map(r => '<tr><th>' + r[0] + '</th><td>' + r[1] + '</td></tr>').join('') + '</table>';
+  $('#asks').innerHTML = TX[lang].asks.map(a => '<li>' + a + '</li>').join('');
+  wasBusy = false; renderNote(); renderRail();
+}
+function syncURL(){
+  const u = new URLSearchParams({ lang, far: farMode }); if (RM) u.set('rm', '1');
+  history.replaceState(null, '', '?' + u.toString());
+}
+$('#rm').addEventListener('change', e => { RM = e.target.checked; syncURL(); renderUI(); });
+$('#reset').addEventListener('click', () => { cur = 'idle'; build(); renderNote(); });
+
+/* ---------- loop ---------- */
+let last = performance.now(), fpsN = 0, fpsT = 0, fpsShow = 0, wasBusy = false;
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt = Math.min(.1, (now - last) / 1000); last = now;
+  fpsN++; fpsT += dt; if (fpsT >= 1) { fpsShow = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; }
+  tick(dt);
+  updateCamera(); overlays();
+  renderer.render(scene, camera);
+  $('#fps').textContent = t('fps', { fps: fpsShow, n: people.length });
+  const gs = $('#gapStat'), ok = minGap >= GAP - .005;
+  gs.textContent = minGap === Infinity ? t('gapNone', { g: GAP }) : t('gap', { d: minGap.toFixed(2), g: GAP });
+  gs.className = 'stat ' + (ok ? 'ok' : 'bad');
+  const b = busy(); if (b !== wasBusy) { wasBusy = b; for (const e of document.querySelectorAll('#mainBtns .btn, #moreBtns .btn')) e.disabled = b; }
+}
+resize(); new ResizeObserver(resize).observe(stage);
+loadAll().then(() => {
+  build(); renderUI();
+  // for still screenshots: ?case=<id>[,<id>] plays it, ?adv=<seconds> runs that much before the first frame
+  const cs = (Q.get('case') || '').split(',').filter(k => CASES[k]);
+  const adv = Math.min(120, +Q.get('adv') || 0), gapS = +Q.get('gapS') || 0;
+  cs.forEach((k, i) => { if (!i) play(k); else timers.push({ at: gapS * i, f: () => CASES[k]() }); });
+  for (let s = 0; s < adv; s += 1 / 30) tick(1 / 30);
+  for (const k of ['dist', 'az', 'el', 'tx', 'tz']) if (Q.get(k)) cam[k] = +Q.get(k);
+  if (Q.get('debug')) document.body.insertAdjacentHTML('beforeend', '<pre id="dbg">' + JSON.stringify({ minGap: +minGap.toFixed(3), pushes, people: people.map(p => [p.name, +p.x.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(2), p.st, p.talk ? p.talk.kind + ':' + p.talk.phase : '', p.cur, p.goal ? [+p.goal.x.toFixed(2), +p.goal.z.toFixed(2), p.push ? 'push' : '', (p.path || []).length, +p.home.x.toFixed(2), +p.home.z.toFixed(2)] : '']) }) + '</pre>');
+  last = performance.now(); requestAnimationFrame(frame);
+});
+})();
+</script>
+</body>
+</html>
