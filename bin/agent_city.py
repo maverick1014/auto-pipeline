@@ -1890,10 +1890,13 @@ class CityState:
     def _talk_target_locked(self, name, sender, identity):
         """Caller holds self.lock. The page id a SendMessage recipient NAME
         means, or "": (1) a live session citizen whose label equals it, (2) a
-        live subagent whose id equals it, (3) a territory with a governor now
-        whose name it starts with (then the end, a space or "-"). The sender's
-        own territory first in each step; never the sender itself. Compared
-        without case, NAME stripped."""
+        live subagent whose id equals it, (3) a session id: a live session
+        citizen ("s:<sid>") or a territory's governor ("gov:<terr>"), (4) a
+        socket address "uds:<path>/<pid>.sock" (how Claude Code answers): the
+        live session whose latest known pid is <pid>, (5) a territory with a
+        governor now whose name it starts with (then the end, a space or
+        "-"). The sender's own territory first in each step; never the sender
+        itself. Compared without case, NAME stripped."""
         want = name.strip().casefold()
         if want == "":
             return ""
@@ -1906,6 +1909,9 @@ class CityState:
                     value = cid if key == "id" else record["label"]
                     if value.strip().casefold() == want:
                         return "" if cid == sender else cid
+        page = self._talk_session_page_locked(want, ordered)
+        if page != "":
+            return "" if page == sender else page
         best = None
         for ident, red in ordered:
             if red.gov_sid is None:
@@ -1924,6 +1930,60 @@ class CityState:
             if best is None or rank < best[0]:
                 best = (rank, page)
         return best[1] if best is not None else ""
+
+    @staticmethod
+    def _socket_pid(want):
+        """The pid in a socket address WANT (already casefolded): "uds:" then
+        any path whose last part is all digits + ".sock", nothing after it
+        -> that pid (int > 0); anything else -> None."""
+        if not want.startswith("uds:"):
+            return None
+        last = want[4:].rsplit("/", 1)[-1]
+        if not last.endswith(".sock"):
+            return None
+        digits = last[:-5]
+        if not (0 < len(digits) <= 18 and digits.isascii() and digits.isdigit()):
+            return None
+        return int(digits) or None
+
+    def _talk_session_page_locked(self, want, ordered):
+        """Caller holds self.lock. The page id of the live session WANT
+        (casefolded) names, or "": a session id (a live citizen "s:<sid>", a
+        governor "gov:<terr>"), else a socket address whose pid is the latest
+        known pid of a live session (self._sess; a governor with none: the pid
+        it was seated with). A session that ended is nobody. ORDERED = the
+        reducers, the sender's territory first."""
+        for ident, red in ordered:
+            sid = ""
+            if red.gov_sid is not None and red.gov_sid.casefold() == want:
+                sid = red.gov_sid
+            else:
+                for cid, record in red.agents.items():
+                    if record["kind"] == "session" and not record["done"] and cid[2:].casefold() == want:
+                        sid = cid[2:]
+                        break
+            if sid != "":
+                page = self._session_page_id_locked(red, sid, self._terr_for(ident))
+                if page != "":
+                    return page
+        pid = self._socket_pid(want)
+        if pid is None:
+            return ""
+        found = ""
+        for sid, info in self._sess.items():
+            ident = info["repo"] or None
+            red = self.reducers.get(ident)
+            if red is None:
+                continue
+            known = info["pid"]
+            if known is None and red.gov_sid == sid and ident in self._gov_pids:
+                known = self._gov_pids[ident]["lock"]
+            if known != pid:
+                continue
+            page = self._session_page_id_locked(red, sid, self._terr_for(ident))
+            if page != "":
+                found = page    # the newest live session with this pid
+        return found
 
     def _free_office_spot_locked(self, t):
         """Caller holds self.lock. T's plan's first office spot no live
