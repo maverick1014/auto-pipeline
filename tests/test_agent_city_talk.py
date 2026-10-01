@@ -62,6 +62,11 @@ Page, the simulation part of bin/agent-city.html (before the "3D view." comment)
       A walker walks around people: it never comes closer than WALK_GAP to a person who stands or to
       another walker, when there is room to pass; it still arrives.
 
+Page, demo mode (#demo; fake data, same look): spawnDemo's spawn event carries from: 'gov:' + terr (the demo
+  governor hands every new one its task); demoTalkTick(dt), called from update() only in DEMO, sends a
+  { type: 'talk', from, to, terr } event between two demo people at work in one territory about every
+  DEMO_TALK_SEC (a top-level number, 6 .. 15) seconds, through emit()/apply() like a live event.
+
 Page, the 3D part: a .talkb bubble per person (CSS rule .talkb; ensureOv makes it; updatePerson shows
   it from talkOf(c)); the governor's from govTalkOf(terr); the one who speaks plays a talk gesture
   (the 3D part reads `.speaking`); with prefers-reduced-motion no gesture, the bubble stays.
@@ -91,6 +96,7 @@ Run: python3 -m unittest tests.test_agent_city_talk </dev/null
 
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -988,6 +994,23 @@ class TestTalkLookT3(unittest.TestCase):
 
     def test_no_letter_mode(self):
         self.assertNotIn("letter", (function_source("talkOf") or "") + (function_source("govTalkOf") or ""))
+
+
+class TestDemoShowsItT1T3(unittest.TestCase):
+    """#demo plays hand-overs and talks, so the look can be checked without real sessions."""
+
+    def test_a_demo_person_is_sent_by_the_demo_governor(self):
+        self.assertRegex(function_source("spawnDemo") or "", r"from:\s*'gov:'\s*\+\s*terr")
+
+    def test_demo_people_talk_now_and_then(self):
+        src = function_source("demoTalkTick") or ""
+        self.assertTrue(src, "function demoTalkTick(dt) exists")
+        self.assertRegex(src, r"type:\s*'talk'")
+        self.assertRegex(src, r"emit\(|apply\(", "through the same path as a live event")
+        self.assertRegex(function_source("update") or "", r"if \(DEMO\)[^\n]*demoTalkTick\(dt\)")
+        m = re.search(r"^const DEMO_TALK_SEC = ([\d.]+);", page(), re.M)
+        self.assertIsNotNone(m, "const DEMO_TALK_SEC = <seconds>;")
+        self.assertTrue(6 <= float(m.group(1)) <= 15)
 
 
 # ---------------------------------------------------------------------------
