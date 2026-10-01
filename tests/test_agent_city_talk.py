@@ -72,6 +72,15 @@ Page, the 3D part: a .talkb bubble per person (CSS rule .talkb; ensureOv makes i
   it from talkOf(c)); the governor's from govTalkOf(terr); the one who speaks plays a talk gesture
   (the 3D part reads `.speaking`); with prefers-reduced-motion no gesture, the bubble stays.
 
+  The governor's head (bounce 2, 2026-10-01: in a hand-over his 📋 stood about 130 px over his head, on the
+  hall roof: his overlays were anchored at height .9 although he is about .5 tall, and the talk bubble
+  was stacked on top of his speech bubble). GOV_HEAD_H = .78, a top-level number: a citizen's bubble
+  height (.72) plus what the governor is taller. updateGovernor and updateGovPool take the head point
+  from toScreen(x, GOV_HEAD_H, y) for his talk bubble, his speech bubble and his "?". The talk bubble
+  takes the spot at his head; the others stand above it. govHeadRows(talkOn, bubOn, qmOn), top-level
+  and pure -> how many px above the head point each one is pinned:
+  { talk: 0, bub: talkOn ? 38 : 0, qm: (talkOn ? 38 : 0) + (bubOn ? 32 : 0) }. Both functions use it.
+
 Server (bin/agent_city.py)
   A 'spawn' event carries "from": a subagent -> its owner session's page id ("gov:<terr>" when the owner
     is that territory's governor, else "s:<sid>" when that citizen is live, else ""); a session whose
@@ -111,6 +120,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from test_agent_city_people import REQUIRED, ac, function_source, page, run_sim  # noqa: E402
+from test_agent_city_page import page_fns, run_node  # noqa: E402
 from test_agent_city_walk import plan_view  # noqa: E402
 from cityhelp import Mains  # noqa: E402
 import agent_city_relay as relay  # noqa: E402
@@ -999,6 +1009,43 @@ class TestTalkLookT3(unittest.TestCase):
 
     def test_no_letter_mode(self):
         self.assertNotIn("letter", (function_source("talkOf") or "") + (function_source("govTalkOf") or ""))
+
+
+class TestGovernorBubbleAtHisHeadB2(unittest.TestCase):
+    """Bounce 2: the governor's talk bubble sits just above his head, like a citizen's."""
+
+    def rows(self, cases):
+        js = r"""
+const fs = require('fs'), vm = require('vm');
+const { fns, cases } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const box = {}; vm.createContext(box); vm.runInContext(fns, box);
+process.stdout.write(JSON.stringify(cases.map(c => box.govHeadRows(c[0], c[1], c[2]))));
+"""
+        return run_node(js, {"fns": page_fns("govHeadRows"), "cases": cases})
+
+    def test_the_head_height_is_a_citizens_plus_what_he_is_taller(self):
+        m = re.search(r"^const GOV_HEAD_H = ([\d.]+);", page(), re.M)
+        self.assertIsNotNone(m, "const GOV_HEAD_H = <height>;")
+        self.assertAlmostEqual(float(m.group(1)), .78, delta=.03)
+
+    def test_the_talk_bubble_takes_the_spot_at_his_head(self):
+        out = self.rows([[True, False, False], [True, True, False], [True, True, True], [True, False, True]])
+        self.assertEqual([r["talk"] for r in out], [0, 0, 0, 0])
+        self.assertEqual([r["bub"] for r in out[1:3]], [38, 38], "his speech bubble stands above the talk bubble")
+        self.assertEqual([r["qm"] for r in out[2:]], [70, 38], "the ? stands above both")
+
+    def test_without_a_talk_the_old_order_stays(self):
+        out = self.rows([[False, True, False], [False, True, True], [False, False, True]])
+        self.assertEqual([r["bub"] for r in out[:2]], [0, 0])
+        self.assertEqual([r["qm"] for r in out[1:]], [32, 0])
+
+    def test_both_governor_figures_use_them(self):
+        for fn in ("updateGovernor", "updateGovPool"):
+            with self.subTest(fn=fn):
+                src = function_source(fn) or ""
+                self.assertRegex(src, r"toScreen\([^)]*GOV_HEAD_H", fn + " takes the head point at GOV_HEAD_H")
+                self.assertNotRegex(src, r"toScreen\([^,]+, \.9,", "no head overlay at the old height .9")
+                self.assertIn("govHeadRows(", src)
 
 
 class TestDemoShowsItT1T3(unittest.TestCase):

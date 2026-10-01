@@ -82,6 +82,7 @@
 - No walk, the bubble on the sender's own spot: the recipient is not recognised, is in another repo or is walking; the sender is not at work; or more than 3 talks already wait for that person.
 - One talk per person at a time; the rest wait in line.
 - A question passed up (relay) is asked face to face on arrival (❓, about 2 s) and answered face to face before the walk back (✅; the lead or the 总督 speaks). A timeout or a leave: no answer talk.
+- The 总督's talk bubble sits just above his head like a citizen's, at every zoom (never up on the hall roof): it takes the spot at his head, his speech bubble and his "?" stand above it.
 - The talk bubble holds one icon, never chat text. Reduced motion: no gesture, the bubble stays.
 - A talk never changes a status word and never delays a real one: 等你, stuck, a relay and done end the talk at once; 后台在跑 and 空闲 show at once.
 - Demo (`/#demo`) plays it too: a new demo person in the demo 总督's territory is handed its task by him, and two demo people at work talk about every 9 s.
