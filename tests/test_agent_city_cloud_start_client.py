@@ -505,7 +505,8 @@ class TestCommand(CloudCase):
         self.assertOk(self.join())
         result = self.city_run("status")
         self.assertEqual(talk_lines(result.stdout), ["CLOUD TALK: off"])
-        self.assertEqual([l.strip() for l in result.stdout.splitlines() if l.strip().startswith("CLOUD:")], ["CLOUD: off"])
+        self.assertEqual([l.strip() for l in result.stdout.splitlines() if l.strip().startswith("CLOUD:")],
+                         ["CLOUD: on " + self.fake.host], "the fake relay of this case has the cloud page on")
 
 
 class TestSetupSteps(unittest.TestCase):

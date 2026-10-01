@@ -76,8 +76,12 @@ bin/agent_city.py
          "repo" (the repo's name, never a path), "force", "outcome"[, "why"]}
         outcome: taken | opening | opened | cap | failed. An order refused
         before it was let in (a good oid) gets one row (failed, its why,
-        repo ""). An oid handed down again logs nothing new. A click on the
-        local page logs nothing, as today.
+        repo ""). An oid handed down again logs nothing new. The answer
+        "restart" (an oid of the orders file with no final answer) is an
+        outcome too: it is logged once, when it is first given (repo "", the
+        new server no longer knows it), and written to the orders file, so
+        the order's row "taken" never stays without an outcome (E2E
+        2026-10-02). A click on the local page logs nothing, as today.
       The local page sees a cloud order like its own click: the "adding"
         events of add_agent, nothing new.
   CityState.cloud_order_answers(oids) -> {oid: answer} for the oids this
@@ -600,6 +604,25 @@ class TestLog(OrderCase):
         self.order(oid(1), terr="0badc0de")
         rows = self.rows()
         self.assertEqual([(r["outcome"], r.get("why"), r["repo"]) for r in rows], [("failed", "refused", "")])
+
+    def test_the_restart_answer_is_an_outcome_too(self):
+        def crash(folder, title, command):
+            raise SystemExit("the server dies while the terminal opens")
+        self.state.open_fn = crash
+        with self.assertRaises(SystemExit):
+            self.order(oid(1))
+        again = self.make()
+        self.known(self.shop, state=again)
+        self.order(oid(1), state=again)
+        self.order(oid(1), state=again)
+        got = [(r["oid"], r["outcome"], r.get("why")) for r in self.rows()]
+        self.assertEqual(got, [(oid(1), "taken", None), (oid(1), "failed", "restart")],
+                         "every order and its outcome: a taken order never stays without one, and it is said once")
+        self.assertEqual(self.seen_lines()[-1], {"oid": oid(1), "state": "failed", "why": "restart"})
+        third = self.make()
+        self.known(self.shop, state=third)
+        self.assertEqual(self.order(oid(1), state=third), {"oid": oid(1), "state": "failed", "why": "restart"})
+        self.assertEqual(len(self.rows()), 2, "a second restart says the same and logs nothing new")
 
     def test_cap_and_late(self):
         self.res = {"ram": 86, "cpu": 41, "max": 80, "ok": False}
