@@ -239,7 +239,7 @@ class TestFeed(CityCase):
         self.assertEqual((b["ok"], b["user"], b["now"]), (True, ME, T0 + 11000))
         self.assertEqual(b["devs"], [{"dev": "mac", "label": "MacBook-Pro", "ts": T0 + 10000, "gen": 1,
                                       "counts": {"people": 1, "busy": 1, "wait": 0},
-                                      "talk": False}])   # cloud-city-2: does this machine take messages
+                                      "talk": False, "start": False}])   # cloud-city-2: does this machine take messages
         self.assertEqual((b["dev"], b["gen"], b["after"]), ("mac", 1, 2))
         self.assertEqual(b["snap"], [ANN])
         self.assertEqual(b["events"], [tool("s:1"), tool("s:1", "Read"), tool("s:1", "Edit")])

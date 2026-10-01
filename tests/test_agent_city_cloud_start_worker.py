@@ -29,9 +29,17 @@ stays; this Worker still holds no key (no TEAM_KEY, no TALK_KEY).
         this (user, oid) is already stored -> 200 with that row's state, why
             and info, nothing written (a repeated request never makes a
             second order and never moves the first one back)
-        this user already has an order for the same dev and terr in state
+        this user's orders for the same dev and terr that are past their
+            time are first made 'failed', by the feed's own guarded UPDATE (a
+            'sent' one with now - at >= 60000: 'off', or 'start-off' when the
+            machine's start flag is off; a 'taken' or 'opening' one with
+            now - ts >= 180000: 'silent'; ts = now): a dead order never locks
+            its repo (Worker 2, 2026-10-02: a machine that took an order and
+            died, with no page open, left a row nobody expired, and every
+            later click got 409)
+        this user still has an order for the same dev and terr in state
             'sent', 'taken' or 'opening' -> 409 {"ok": false, "error": "busy",
-            "oid": <that order's oid>}, nothing written (one order at a time
+            "oid": <that order's oid>}, no order stored (one order at a time
             per repo: a double click opens one session)
         caps, counted on this user's city_order rows (every order counts, a
             confirm and a failed one too): 10 in the last hour -> 429
@@ -39,7 +47,10 @@ stays; this Worker still holds no key (no TEAM_KEY, no TALK_KEY).
             seconds until the oldest of those 10 is an hour old, at least 1>};
             40 in the last 24 hours -> 429 {"ok": false, "error": "too many today"}
       Then ONE row: user = the login, oid, dev, terr, force 0 | 1, at = ts =
-        now, info '{}', and
+        now, info '{}', stored by ONE statement that inserts only when no
+        order of that user, dev and terr is in flight (INSERT ... WHERE NOT
+        EXISTS (SELECT 1 FROM city_order ...)): two requests at the same
+        moment store one order, the other gets the 409 above. And
         state 'failed', why 'off'        when that machine sent nothing for 150 s
         state 'failed', why 'start-off'  when its counts have no start flag (start: 1)
         state 'sent', why ''             else
@@ -277,6 +288,39 @@ class TestOnePerRepo(CityCase):
             self.assertEqual((r["status"], r["body"], r["writes"]),
                              (409, {"ok": False, "error": "busy", "oid": oid(1)}, 0), state)
             self.assertEqual(len(self.orders(out)), 1)
+
+    def test_a_dead_order_never_locks_the_repo(self):
+        late = T0 + 20 * 60000                              # no page was open for 20 minutes
+        alive = sql("UPDATE city_view SET ts = ? WHERE dev = 'mac'", late - 1000)
+        for state, ts, why in (("sent", T0, "off"), ("taken", T0 + 1000, "silent"), ("opening", T0 + 2000, "silent")):
+            out = self.run_city([lay_order(oid(1), state=state, at=T0, ts=ts), alive, add(oid=oid(2), now=late), sql(ORDERS)])
+            r = out["responses"][2]
+            self.assertEqual((r["status"], r["body"].get("state")), (200, "sent"), (state, r))
+            rows = {o["oid"]: (o["state"], o["why"], o["ts"]) for o in self.orders(out)}
+            self.assertEqual(rows[oid(1)], ("failed", why, late), "%s: the dead order is said to be not opened" % state)
+            self.assertEqual(rows[oid(2)][0], "sent")
+
+    def test_an_order_within_its_time_still_holds_the_repo(self):
+        for state, at, ts, now in (("sent", T0, T0, T0 + 59999), ("taken", T0, T0 + 30000, T0 + 30000 + 179999),
+                                   ("opening", T0, T0 + 30000, T0 + 30000 + 179999)):
+            alive = sql("UPDATE city_view SET ts = ? WHERE dev = 'mac'", now - 1000)
+            out = self.run_city([lay_order(oid(1), state=state, at=at, ts=ts), alive, add(oid=oid(2), now=now), sql(ORDERS)])
+            self.assertEqual(out["responses"][2]["status"], 409, state)
+            self.assertEqual([o["state"] for o in self.orders(out)], [state])
+
+    def test_a_dead_order_of_another_repo_is_left_alone(self):
+        late = T0 + 20 * 60000
+        alive = sql("UPDATE city_view SET ts = ? WHERE dev = 'mac'", late - 1000)
+        out = self.run_city([lay_order(oid(1), state="taken", at=T0, ts=T0, terr="00000002"), alive,
+                             add(oid=oid(2), now=late), sql(ORDERS)])
+        self.assertEqual(out["responses"][2]["writes"], 1, "one row: the new order; the add touches its own repo only")
+
+    def test_the_order_is_stored_only_when_none_is_in_flight(self):
+        with open(ch.CITY, encoding="utf-8") as fh:
+            src = fh.read()
+        src = " ".join(re.sub(r'["`]\s*\+\s*["`]', "", src).split())
+        self.assertRegex(src, r"INSERT (?:OR \w+ )?INTO city_order [^;]*?WHERE NOT EXISTS \(SELECT 1 FROM city_order",
+                         "two requests at the same moment must store one order: the check and the insert are ONE statement")
 
     def test_a_finished_order_frees_the_repo(self):
         for state, why in (("opened", ""), ("cap", ""), ("failed", "late")):
