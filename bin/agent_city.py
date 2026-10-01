@@ -26,8 +26,11 @@ and its sibling agent_city_relay.py:
            lines with its team relay on its own thread; other members' lines
            come back as "remote" SSE events. See
            tests/test_agent_city_relay_serve.py for the full contract.
+           POST /api/agent/add opens one new claude session in a territory's
+           folder (the page's add-agent button; requirements/city.md, "Add
+           agent"); see tests/test_agent_city_add_agent.py for the contract.
 
-  Hooks    python3 agent_city.py ask [--max-wait-sec N]        (PermissionRequest)
+  Hooks   python3 agent_city.py ask [--max-wait-sec N]        (PermissionRequest)
            python3 agent_city.py gov-watch [--max-wait-sec N]  (Stop, governor only)
            Plus small CLI helpers for the governor, used by bin/agent-city.sh:
            gov-answer, gov-pass, gov-pending.
@@ -1070,13 +1073,183 @@ def _holds(main, sid, pid, seat_pid=None):
     return seat_pid is not None and seat_pid == main[0]
 
 
+# -- add agent: one new session from the city page (requirements/city.md, "Add agent")
+
+ADD_WAIT_SEC = 60.0     # an open holds its repo this long; no new session by then is "late"
+ADD_SCRIPT_SEC = 20.0   # the kind and resources readers: no answer by then is no answer
+ADD_OPEN_SEC = 30.0     # one terminal opening: not done by then has failed
+ADD_KINDS = ("orca", "plain", "cloud")
+
+
+def _bin_path(name):
+    """A file of this file's own folder (bin/)."""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+
+
+def _conf_module():
+    """bin/agent_conf.py, imported only when first needed: it sits next to
+    this file, and the hook commands of this file (run on every tool call)
+    must not pay for it."""
+    bin_dir = os.path.dirname(os.path.abspath(__file__))
+    if bin_dir not in sys.path:
+        sys.path.insert(0, bin_dir)
+    import agent_conf
+    return agent_conf
+
+
+def _conf_value(conf_mod, conf, key):
+    """CONF[KEY] when agent_conf's validate_value() accepts it, else None."""
+    value = conf.get(key)
+    if isinstance(value, str) and value != "" and conf_mod.validate_value(key, value) is None:
+        return value
+    return None
+
+
+def repo_folder(identity):
+    """The folder a new session starts in: ".../shop/.git" -> ".../shop" (the
+    repo's main worktree); any other identity is the folder itself."""
+    path = identity.rstrip("/")
+    if os.path.basename(path) == ".git":
+        return os.path.dirname(path)
+    return identity
+
+
+def agent_command(name, folder):
+    """The one fixed line a new terminal runs: `claude --name <name>`, then
+    `--model <m> --effort <e>` and `--permission-mode <p>` from FOLDER's
+    agent.conf (main_manager, permission_mode: a second session opens with
+    the main manager's values). A missing file or value, or one agent_conf
+    refuses, leaves that part out. Never the folder, never AGENT_ROLE.
+    Never raises."""
+    import shlex
+    words = ["claude", "--name", shlex.quote(name)]
+    try:
+        conf_mod = _conf_module()
+        conf = conf_mod.load(os.path.join(folder, "agent.conf"))
+        model = _conf_value(conf_mod, conf, "main_manager")
+        if model is not None:
+            model_name, effort = model.rsplit(":", 1)
+            words += ["--model", shlex.quote(model_name), "--effort", shlex.quote(effort)]
+        mode = _conf_value(conf_mod, conf, "permission_mode")
+        if mode is not None:
+            words += ["--permission-mode", shlex.quote(mode)]
+    except Exception:
+        pass
+    return " ".join(words)
+
+
+def _last_line(text):
+    """The last non-blank line of TEXT, at most 200 characters."""
+    lines = [row.strip() for row in text.splitlines() if row.strip()]
+    return lines[-1][:200] if lines else ""
+
+
+def open_session(folder, title, command, runtime=None):
+    """THE opener, the only place that starts anything: `bash <runtime>
+    launch FOLDER TITLE COMMAND` (bin/agent-runtime.sh when RUNTIME is None),
+    an argument list, never a shell line. It runs as FOLDER's own project, so
+    the kind it launches for is the kind kind_fn answered for FOLDER. ->
+    (True, "") on exit 0, else (False, a short reason: the script's last
+    stderr line when it has one). Never raises."""
+    if runtime is None:
+        runtime = _bin_path("agent-runtime.sh")
+    env = dict(os.environ)
+    env["CLAUDE_PROJECT_DIR"] = folder
+    try:
+        done = subprocess.run(["bash", runtime, "launch", folder, title, command],
+                              cwd=folder if os.path.isdir(folder) else None, env=env,
+                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              timeout=ADD_OPEN_SEC)
+    except subprocess.TimeoutExpired:
+        return False, "no answer after %d s" % ADD_OPEN_SEC
+    except Exception as exc:
+        return False, (str(exc) or exc.__class__.__name__)[:200]
+    if done.returncode == 0:
+        return True, ""
+    return False, _last_line(done.stderr.decode("utf-8", "replace")) or "exit %d" % done.returncode
+
+
+def runtime_kind(folder, runtime=None):
+    """What `bash <runtime> kind` prints (bin/agent-runtime.sh when RUNTIME is
+    None): orca, plain or cloud. It runs in FOLDER as that project, so FOLDER's
+    own agent.conf `runtime` line counts, not the one of where the server was
+    started. Any other output, a failure or a timeout is "plain". Never raises."""
+    if runtime is None:
+        runtime = _bin_path("agent-runtime.sh")
+    env = dict(os.environ)
+    env["CLAUDE_PROJECT_DIR"] = folder
+    try:
+        done = subprocess.run(["bash", runtime, "kind"], cwd=folder, env=env,
+                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                              timeout=ADD_SCRIPT_SEC)
+    except Exception:
+        return "plain"
+    text = done.stdout.decode("utf-8", "replace")
+    if text.endswith("\n"):
+        text = text[:-1]
+    if done.returncode == 0 and text in ADD_KINDS:
+        return text
+    return "plain"
+
+
+def _percent(text):
+    """TEXT as a whole number, -1 when it is not one."""
+    try:
+        return int(text)
+    except ValueError:
+        return -1
+
+
+def _usage_cap(folder):
+    """max_usage_percent: FOLDER's agent.conf, else bin/agent.conf.default (a
+    missing file or a value agent_conf refuses falls through); -1 when
+    neither gives one."""
+    try:
+        conf_mod = _conf_module()
+    except Exception:
+        return -1
+    for path in (os.path.join(folder, "agent.conf"), _bin_path("agent.conf.default")):
+        try:
+            value = _conf_value(conf_mod, conf_mod.load(path), "max_usage_percent")
+        except Exception:
+            continue
+        if value is not None:
+            return int(value)
+    return -1
+
+
+def machine_resources(folder, script=None):
+    """RAM and CPU percent as bin/agent-resources.sh reads them (SCRIPT, or
+    bin/agent-resources.sh; sourced by one fixed `bash -c` program, the path
+    is its argument; AGENT_FAKE_RAM and AGENT_FAKE_CPU work as there) and the
+    cap of FOLDER (_usage_cap) -> {"ram", "cpu", "max", "ok"}. A number that
+    cannot be read is -1 and counts as ok. Never raises."""
+    if script is None:
+        script = _bin_path("agent-resources.sh")
+    ram = cpu = -1
+    try:
+        done = subprocess.run(
+            ["bash", "-c", 'unset RAM_USED CPU_USED; . "$1" && resources_read && echo "$RAM_USED $CPU_USED"',
+             "_", script],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            timeout=ADD_SCRIPT_SEC)
+        words = done.stdout.decode("utf-8", "replace").split()
+        if done.returncode == 0 and len(words) == 2:
+            ram, cpu = _percent(words[0]), _percent(words[1])
+    except Exception:
+        pass
+    cap = _usage_cap(folder)
+    return {"ram": ram, "cpu": cpu, "max": cap, "ok": cap < 0 or (ram <= cap and cpu <= cap)}
+
+
 class CityState:
     """Thread-safe home for the Reducer, asks, health counters and SSE clients."""
 
     def __init__(self, max_agents=40, done_ttl=600, gov_wait_sec=60.0,
                  decisions_path=None, token="", world_path=None, plans=None, count_fn=None,
                  balance_fn=None, start_repo=None, chat_path=None, lang="zh", titles=None,
-                 main_fn=None, listen_grace_sec=15.0, roster_path=None):
+                 main_fn=None, listen_grace_sec=15.0, roster_path=None,
+                 open_fn=None, kind_fn=None, resources_fn=None):
         self.lock = threading.Lock()
         self.titles = titles if titles is not None else TitleReader()  # a session's real name
         self.lang = norm_lang(lang)
@@ -1109,6 +1282,12 @@ class CityState:
         self._restoring = False   # True while the roster is loaded: nothing is written before it is done
         self._ask_seq = 0
         self._governors_count = 0  # last count checked/broadcast (see _check_governors_count)
+
+        # -- add agent: the page's button opens one new session (add_agent) ----
+        self.open_fn = open_fn if open_fn is not None else open_session            # (folder, title, command) -> (ok, detail)
+        self.kind_fn = kind_fn if kind_fn is not None else runtime_kind            # folder -> "orca" | "plain" | "cloud"
+        self.resources_fn = resources_fn if resources_fn is not None else machine_resources   # folder -> {"ram", "cpu", "max", "ok"}
+        self._adding = {}         # identity -> {"terr", "name", "role", "at" (monotonic), "pending", "seen", "before"}: an open under way
 
         # -- world: territories, growth, town plans, persistence ----------
         self.plans = plans if plans is not None else load_plans()
@@ -1247,6 +1426,7 @@ class CityState:
                     "asks": [ask.view() for ask in self.open.values()],
                     "governors": self._fresh_governor_count(),
                     "shows": self._shows_view_locked(),
+                    "adding": self._adding_view_locked(),
                     "world": self._view()}
             if self.notice is not None:
                 snap["notice"] = self.notice
@@ -1432,6 +1612,133 @@ class CityState:
                     self._unseat_locked(identity, reducer, sid, tell=True)
             self._save_roster_locked()
 
+    # -- add agent: the page's button opens one new session -------------------
+
+    def add_agent(self, terr, now, force=False):
+        """Open ONE new claude session in the folder of territory TERR (the
+        page's add-agent button) -> (code, body); NOW is monotonic seconds. The
+        folder, name and role are the server's own: the request names only a
+        territory id. The role comes from the repo's lock (_main): no live main
+        manager -> "main", else "helper". Order: 400 bad, 404 unknown, 409
+        gone, 409 busy, kind (not orca: 200 "plain" with the line to run by
+        hand), the cap (over it, and not FORCE: 200 "cap"), the opener (no or
+        raises: 502), then 200 "opening". One open at a time per repo: the repo
+        is held from the click until the new session's first line, ADD_WAIT_SEC
+        or a failed open. Nothing slow runs under self.lock: the repo is marked
+        first (two clicks at once give one open and one 409), then kind_fn,
+        resources_fn and open_fn run free, then the mark is finished or undone.
+        See tests/test_agent_city_add_agent.py."""
+        if not isinstance(terr, str) or re.fullmatch(r"[0-9a-f]{8}", terr) is None or not isinstance(force, bool):
+            return 400, {"error": "bad"}
+        with self.lock:
+            identity = next((i for i in self.world["territories"] if territory_id(i) == terr), None)
+        if identity is None:
+            return 404, {"error": "unknown"}
+        folder = repo_folder(identity)
+        if not os.path.isdir(folder):
+            return 409, {"error": "gone", "folder": folder}
+        with self.lock:
+            self._expire_adding_locked(now)
+            if identity in self._adding:
+                return 409, {"error": "busy"}
+            role = "main" if self._main(identity) is None else "helper"
+            name = "%s %s" % (os.path.basename(folder.rstrip("/")) or repo_name(identity),
+                              "Manager" if role == "main" else "Helper")
+            self._adding[identity] = {"terr": terr, "name": name, "role": role, "at": now,
+                                      "pending": True, "seen": False,
+                                      "before": self._sids_in_locked(identity)}
+        held = False
+        try:
+            import shlex
+            command = agent_command(name, folder)
+            try:
+                kind = self.kind_fn(folder)
+            except Exception:
+                kind = "plain"
+            if kind != "orca":
+                return 200, {"state": "plain", "name": name, "role": role,
+                             "command": "cd " + shlex.quote(folder) + " && " + command}
+            if not force:
+                try:
+                    res = self.resources_fn(folder)
+                    over = isinstance(res, dict) and not res.get("ok", True)
+                except Exception:
+                    res, over = None, False
+                if over:
+                    return 200, {"state": "cap", "ram": res.get("ram"), "cpu": res.get("cpu"),
+                                 "max": res.get("max")}
+            try:
+                ok, detail = self.open_fn(folder, name, command)
+            except Exception as exc:
+                ok, detail = False, str(exc) or exc.__class__.__name__
+            if not ok:
+                return 502, {"error": "failed", "detail": str(detail)[:200]}
+            with self.lock:
+                entry = self._adding.get(identity)
+                if entry is not None:
+                    entry["pending"] = False
+                    self._broadcast({"type": "adding", "terr": terr, "state": "opening",
+                                     "name": name, "role": role})
+                    if entry["seen"]:
+                        # the new session was here before the opener answered
+                        del self._adding[identity]
+                        self._broadcast({"type": "adding", "terr": terr, "state": "done"})
+                held = True
+            return 200, {"state": "opening", "name": name, "role": role}
+        finally:
+            if not held:
+                with self.lock:
+                    self._adding.pop(identity, None)
+
+    def sweep_adding(self, now):
+        """An open whose new session has not shown up ADD_WAIT_SEC after the
+        click is let go, and the pages are told once ("late"). The server calls
+        this about every 2 s, next to recount."""
+        with self.lock:
+            self._expire_adding_locked(now)
+
+    def _expire_adding_locked(self, now):
+        """Caller holds self.lock. Let go every open that has waited ADD_WAIT_SEC
+        (one still running its opener is never let go here), "late" to the pages."""
+        for identity, entry in list(self._adding.items()):
+            if not entry["pending"] and now - entry["at"] >= ADD_WAIT_SEC:
+                del self._adding[identity]
+                self._broadcast({"type": "adding", "terr": entry["terr"], "state": "late"})
+
+    def _sids_in_locked(self, identity):
+        """Caller holds self.lock. Every session that has had a line in
+        IDENTITY's territory so far: the new session is the first one not in it."""
+        sids = {sid for sid, repo in self._sid_repo.items() if repo == identity}
+        reducer = self.reducers.get(identity)
+        if reducer is not None:
+            sids.update(reducer.sessions)
+        return frozenset(sids)
+
+    def _adding_line_locked(self, obj, identity):
+        """Caller holds self.lock. A session line (sid set, aid "", not a
+        SessionEnd) of IDENTITY from a session with no line in it before the
+        open began is the new session: the repo is free and the pages are told
+        ("done"). While the opener still runs it is only noted: add_agent
+        tells "opening", then "done", when the opener answers."""
+        entry = self._adding.get(identity)
+        if entry is None:
+            return
+        sid, aid, ev = obj.get("sid"), obj.get("aid"), obj.get("ev")
+        if (not isinstance(sid, str) or sid == "" or (isinstance(aid, str) and aid != "")
+                or not isinstance(ev, str) or ev in ("", "SessionEnd") or sid in entry["before"]):
+            return
+        if entry["pending"]:
+            entry["seen"] = True
+            return
+        del self._adding[identity]
+        self._broadcast({"type": "adding", "terr": entry["terr"], "state": "done"})
+
+    def _adding_view_locked(self):
+        """Caller holds self.lock. The snapshot's "adding": every repo whose
+        opener said yes and whose new session has not come (or timed out) yet."""
+        return [{"terr": e["terr"], "name": e["name"], "role": e["role"]}
+                for e in self._adding.values() if not e["pending"]]
+
     def _remember_repo_locked(self, obj):
         """Caller holds self.lock. R2: the repo of a session's line (session
         or subagent), so a later line of it with repo "" stays there."""
@@ -1462,6 +1769,7 @@ class CityState:
                 add_territory(self.world, self.plans, identity, repo_name(identity))
                 self._emit_world_locked()
             self.last_activity[identity] = now
+            self._adding_line_locked(obj, identity)
 
         ev_name = obj.get("ev") if isinstance(obj, dict) else None
         sid_field = obj.get("sid") if isinstance(obj, dict) else None
@@ -2132,9 +2440,16 @@ class CityState:
 
     def _view(self):
         """Caller holds self.lock. The layout view the page draws, cached
-        until the world changes."""
+        until the world changes. Every territory says whether its folder is
+        on this machine ("here": the page offers add-agent only there); that
+        is asked again each time, a folder can come and go, and layout()
+        itself stays pure."""
         if self._view_cache is None:
             self._view_cache = layout(self.world, self.plans)
+        idents = {territory_id(i): i for i in self.world["territories"]}
+        for t in self._view_cache["territories"]:
+            ident = idents.get(t["id"])
+            t["here"] = ident is not None and os.path.isdir(repo_folder(ident))
         return self._view_cache
 
     def _invalidate_view(self):
@@ -3551,10 +3866,10 @@ class CityHandler(BaseHTTPRequestHandler):
             return self._json(403, {})
         path = urlsplit(self.path).path
         if path not in ("/api/ask", "/api/decide", "/api/closed",
-                         "/api/gov/answer", "/api/gov/pass", "/api/chat/send"):
+                         "/api/gov/answer", "/api/gov/pass", "/api/chat/send", "/api/agent/add"):
             self.close_connection = True
             return self.send_error(404)
-        if path in ("/api/decide", "/api/chat/send") and self.headers.get("Origin") is None:
+        if path in ("/api/decide", "/api/chat/send", "/api/agent/add") and self.headers.get("Origin") is None:
             self.close_connection = True
             return self._json(403, {})
         if not self._check_token():
@@ -3570,6 +3885,8 @@ class CityHandler(BaseHTTPRequestHandler):
             return self._api_gov_answer()
         if path == "/api/gov/pass":
             return self._api_gov_pass()
+        if path == "/api/agent/add":
+            return self._api_agent_add()
         return self._api_chat_send()
 
     def do_OPTIONS(self):
@@ -3639,6 +3956,15 @@ class CityHandler(BaseHTTPRequestHandler):
         if not isinstance(to, str) or not to:
             return self._json(400, {})
         code, body = self.server.city.chat_send(to, obj.get("text"), time.time())
+        return self._json(code, body)
+
+    def _api_agent_add(self):
+        obj, err = self._read_body()
+        if err:
+            return self._json(err, {})
+        if any(key not in ("terr", "force") for key in obj):
+            return self._json(400, {})   # a territory id, nothing else: never a path, a name or a command
+        code, body = self.server.city.add_agent(obj.get("terr"), time.monotonic(), obj.get("force", False))
         return self._json(code, body)
 
     # -- plain routes -------------------------------------------------------
@@ -3944,8 +4270,9 @@ def recount_loop(city, stop_event):
     same clock (time.monotonic()) feed_line gets. Also rescans worktree
     construction sites (city.scan_sites()) and checks the governor seats
     (city.check_seats()) and tells the owner of chat messages nobody will take
-    (city.sweep_chat()) every tick: an exception there is printed to stderr
-    and never stops the loop. Stops with the server."""
+    (city.sweep_chat()) and lets go of an add-agent open whose new session
+    never came (city.sweep_adding()) every tick: an exception there is printed
+    to stderr and never stops the loop. Stops with the server."""
     while not stop_event.is_set():
         city.recount(time.monotonic())
         try:
@@ -3960,6 +4287,10 @@ def recount_loop(city, stop_event):
             city.sweep_chat()
         except Exception as exc:
             print("agent_city: sweep_chat failed: %s" % exc, file=sys.stderr)
+        try:
+            city.sweep_adding(time.monotonic())
+        except Exception as exc:
+            print("agent_city: sweep_adding failed: %s" % exc, file=sys.stderr)
         stop_event.wait(RECOUNT_POLL_SEC)
 
 

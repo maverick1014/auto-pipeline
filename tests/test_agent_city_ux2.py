@@ -10,7 +10,7 @@ V1 a compact left rail = the team list; a click on a person = follow it + its me
   (sim) REPO_COLORS: at least 6 distinct '#rrggbb' colours. terrColor(terr) -> REPO_COLORS[i % length],
         i = the territory's index in map.territories; '#8D91B3' for a territory not in the map.
   (sim) railGroups() -> [{terr, name, color, rows: [{id, depth, rest}]}], in map order, one per territory
-        that has at least one row (a territory with nobody here is left out). Rows, in this order:
+        (city-add-agent A1, owner 2026-10-01: also a territory with nobody here, rows []; before, it was left out). Rows, in this order:
         'gov:<terr>' (depth 0, rest false) first, only while that territory has a governor figure
         (governorFigures()); then that territory's rosterGroups() rows without its governor row (leads,
         each followed by its workers at depth 1, then the others); then every other member's person in
@@ -209,7 +209,7 @@ const cnt1 = railCount(railGroups());
 byId('y1').waiting = false;
 const cnt0 = railCount(G);
 byId('y1').gone = true; byId('y2').gone = true;
-const noB = railGroups().map(g => g.terr);
+const noB = railGroups().map(g => [g.terr, g.rows.length]);
 __out = { a: A.id, b: B.id, terrs: map.territories.map(t => t.id), colors: REPO_COLORS,
   cA: terrColor(A.id), cB: terrColor(B.id), cX: terrColor('nope'),
   groups: G.map(g => ({ terr: g.terr, name: g.name, color: g.color, rows: g.rows.map(r => [r.id, r.depth, !!r.rest]) })),
@@ -252,8 +252,10 @@ class TestRailData(unittest.TestCase):
         self.assertEqual(b["rows"], [["y1", 0, False], ["y2", 0, True]], "no governor row while B has no governor")
         self.assertEqual([a["name"], b["name"]], self.r["names"])
 
-    def test_empty_territory_left_out(self):
-        self.assertEqual(self.r["noB"], [self.r["a"]])
+    def test_empty_territory_keeps_its_group(self):
+        """city-add-agent A1 (owner, 2026-10-01) replaces "a territory with nobody here is left out"."""
+        self.assertEqual([g[0] for g in self.r["noB"]], [self.r["a"], self.r["b"]])
+        self.assertEqual(self.r["noB"][1][1], 0, "B has nobody: its group stays, with no rows")
 
     def test_counts(self):
         self.assertEqual(self.r["cnt0"], {"active": 5, "you": 0}, "s:L w1 f1 remote y1")

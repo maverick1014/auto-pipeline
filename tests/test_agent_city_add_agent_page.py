@@ -42,7 +42,10 @@ A4 / A5 / A6 the button's states
   (sim) addReason(body) -> the reason in plain words: error 'gone' -> i18n('add.errGone', {folder}),
       'failed' -> i18n('add.errFailed', {detail}), anything else -> i18n('add.errOther').
   (sim) addAnswer(terr, code, body): the server's answer to POST /api/agent/add -> addState:
-      200 state 'opening' -> {s: 'opening', name}        200 state 'cap' -> {s: 'cap', ram, cpu, max}
+      200 state 'opening' -> {s: 'opening', name}, only while the state still is 'opening' (the click set
+                             it): when it is gone, the server's 'done' event came before this answer (a
+                             fast session) and nothing is set -- the button must not read opening for ever
+      200 state 'cap'     -> {s: 'cap', ram, cpu, max}
       200 state 'plain'   -> {s: 'cmd', cmd: body.command}
       409 error 'busy'    -> {s: 'opening', name: ''} unless it already is opening (kept as it is)
       anything else (409 gone, 502 failed, 403, 404, no answer = code 0) -> {s: 'err', why: addReason(body),
@@ -134,7 +137,8 @@ apply({ type: 'world', world: V });
 const ans = (code, body, before) => { addState.clear(); if (before) addState.set(B.id, before);
   addAnswer(B.id, code, body); return addState.get(B.id) || null; };
 out.ans = {
-  opening: ans(200, { state: 'opening', name: 'v4-plus Manager', role: 'main' }),
+  opening: ans(200, { state: 'opening', name: 'v4-plus Manager', role: 'main' }, { s: 'opening', name: '' }),
+  openingAfterDone: ans(200, { state: 'opening', name: 'v4-plus Manager', role: 'main' }),
   cap: ans(200, { state: 'cap', ram: 86, cpu: 41, max: 80 }),
   plain: ans(200, { state: 'plain', name: 'v4-plus Manager', role: 'main', command: 'cd /r/v4-plus && claude' }),
   busy: ans(409, { error: 'busy' }),
@@ -316,6 +320,10 @@ class TestAnswers(SimCase):
         self.assertEqual((ans["opening"]["s"], ans["opening"]["name"]), ("opening", "v4-plus Manager"))
         self.assertEqual([ans["cap"][k] for k in ("s", "ram", "cpu", "max")], ["cap", 86, 41, 80])
         self.assertEqual((ans["plain"]["s"], ans["plain"]["cmd"]), ("cmd", "cd /r/v4-plus && claude"))
+
+    def test_done_before_the_answer(self):
+        """A fast session: the 'done' event beats the POST answer. The click set 'opening', 'done' removed it."""
+        self.assertIsNone(self.r["ans"]["openingAfterDone"], "the late answer must not bring 'opening' back")
 
     def test_busy_reads_as_opening(self):
         ans = self.r["ans"]
