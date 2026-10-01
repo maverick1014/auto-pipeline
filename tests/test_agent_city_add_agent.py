@@ -12,14 +12,31 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
   repo_folder(identity) -> the folder a new session starts in: the parent of
     a ".../.git" identity (the repo's main worktree), else the identity itself.
 
-  agent_command(name, folder) -> str. The one fixed line a new terminal runs:
-      claude --name <name> [--model <m> --effort <e>] [--permission-mode <p>]
-    NAME goes in through shlex.quote. <m>:<e> = main_manager and <p> =
-    permission_mode of <folder>/agent.conf (rule W10: a second session opens
-    with the main manager's values). A missing file, a missing value or a
-    value bin/agent_conf.py validate_value() refuses -> that part is left
-    out; never raises. Nothing else ever goes into the line: no folder, no
-    "cd", no AGENT_ROLE (task managers are never created here).
+  FIRST_PROMPT = "You were opened from the Agent City page. Do your start
+    steps now, then stop and wait: the owner will talk to you from the city
+    page."  (one line, exactly this text). A new session sends the city no
+    event before its first prompt, and the page can only talk to a session
+    that has had a turn: so the fixed line ends with this fixed first
+    message. The session takes its first turn at once, appears in the city,
+    and can be talked to from the page.
+
+  agent_command(name, folder, city_dir=None) -> str. The one fixed line a new
+    terminal runs:
+      [AGENT_CITY_DIR=<city_dir> ]claude --name <name> [--model <m> --effort
+      <e>] [--permission-mode <p>] <FIRST_PROMPT>
+    NAME, CITY_DIR and FIRST_PROMPT go in through shlex.quote. <m>:<e> =
+    main_manager and <p> = permission_mode of <folder>/agent.conf (rule W10:
+    a second session opens with the main manager's values). A missing file,
+    a missing value or a value bin/agent_conf.py validate_value() refuses ->
+    that part is left out; never raises. Nothing else ever goes into the
+    line: no folder, no "cd", no AGENT_ROLE (task managers are never created
+    here). city_dir None -> the line starts with "claude ".
+
+  pass_city_dir(directory) -> None when DIRECTORY is the default city dir
+    (~/.cache/agent-city, compared by realpath), else its absolute path. A
+    city that runs with its own dir passes it on, so the session it opens
+    reports to THIS city and not to the default one. cmd_serve builds
+    CityState(..., city_dir=pass_city_dir(directory)).
 
   open_session(folder, title, command, runtime=None) -> (ok, detail)
     THE opener, the only place that starts anything. Runs
@@ -44,7 +61,9 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
     written in the code); ok = ram <= max and cpu <= max. A number that
     cannot be read is -1 (and counts as ok). Never raises.
 
-  CityState(..., open_fn=None, kind_fn=None, resources_fn=None)
+  CityState(..., open_fn=None, kind_fn=None, resources_fn=None, city_dir=None)
+    city_dir: handed to agent_command (the opener's line and the "plain"
+      command alike).
     open_fn(folder, title, command) -> (ok, detail); default open_session
       (CityState.open_fn). Tests pass a fake.
     kind_fn(folder) -> "orca" | "plain" | "cloud"; default runtime_kind
@@ -61,7 +80,7 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
     200 {"state": "plain", "name", "role", "command"}   A6: kind_fn(folder)
                                is not "orca": no terminal can be opened.
                                command = "cd " + shlex.quote(folder) + " && "
-                               + agent_command(name, folder), the one line to
+                               + agent_command(name, folder, city_dir), the one line to
                                run by hand. Shown, never run. Asked before the
                                cap; the repo is not held.
     200 {"state": "cap", "ram", "cpu", "max"}   A5: resources_fn(folder) is
@@ -79,7 +98,7 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
     "<repo> Manager"; else role "helper", name "<repo> Helper" (repo = the
     folder's own name). The new session's bin/agent-start.sh still decides
     its real role from the lock; nothing here copies that.
-    open_fn(folder, name, agent_command(name, folder)) is called ONCE, and
+    open_fn(folder, name, agent_command(name, folder, city_dir)) is called ONCE, and
     never while self.lock is held (opening a terminal takes seconds); the
     same for kind_fn and resources_fn.
     One open at a time per repo: from the call that opens until (a) a session
@@ -146,6 +165,8 @@ from cityhelp import Mains, lock_file  # noqa: E402
 
 CONF = "main_manager=opus-5.5:high\npermission_mode=auto\n"
 FLAGS = ["--model", "opus-5.5", "--effort", "high", "--permission-mode", "auto"]
+PROMPT = ("You were opened from the Agent City page. Do your start steps now, then stop and wait: "
+          "the owner will talk to you from the city page.")
 
 
 def line(ev, sid, repo, aid="", role=""):
@@ -234,7 +255,7 @@ class TestOpen(AddCase):
         folder, title, command = self.calls[0]
         self.assertEqual(folder, os.path.join(self.base, "shop"), "the new terminal opens in the repo's own folder")
         self.assertEqual(title, "shop Manager")
-        self.assertEqual(shlex.split(command), ["claude", "--name", "shop Manager"] + FLAGS)
+        self.assertEqual(shlex.split(command), ["claude", "--name", "shop Manager"] + FLAGS + [PROMPT])
 
     def test_live_main_manager_opens_a_helper(self):
         self.mains[self.shop] = "g1"
@@ -244,7 +265,7 @@ class TestOpen(AddCase):
         self.assertEqual((body["state"], body["name"], body["role"]), ("opening", "shop Helper", "helper"))
         folder, title, command = self.calls[0]
         self.assertEqual(title, "shop Helper")
-        self.assertEqual(shlex.split(command), ["claude", "--name", "shop Helper"] + FLAGS,
+        self.assertEqual(shlex.split(command), ["claude", "--name", "shop Helper"] + FLAGS + [PROMPT],
                          "a helper opens with the main manager's model, effort and permission mode (W10)")
 
     def test_the_role_follows_the_real_lock_file(self):
@@ -283,14 +304,14 @@ class TestOpen(AddCase):
         self.assertEqual([c[0] for c in self.calls], [os.path.join(self.base, "shop"), os.path.join(self.base, "bar")])
         self.assertEqual(shlex.split(self.calls[1][2]),
                          ["claude", "--name", "bar Manager", "--model", "sonnet-5", "--effort", "medium",
-                          "--permission-mode", "acceptEdits"])
+                          "--permission-mode", "acceptEdits", PROMPT])
 
     def test_no_agent_conf_leaves_the_flags_out(self):
         bare = self.repo("bare", conf=None)
         self.known(bare)
         code, body = self.add(bare)
         self.assertEqual(code, 200, body)
-        self.assertEqual(shlex.split(self.calls[0][2]), ["claude", "--name", "bare Manager"])
+        self.assertEqual(shlex.split(self.calls[0][2]), ["claude", "--name", "bare Manager", PROMPT])
 
     def test_unknown_territory(self):
         self.known(self.shop)
@@ -433,7 +454,7 @@ class TestCommand(AddCase):
         folder, title, command = self.calls[0]
         self.assertEqual(folder, os.path.join(self.base, name))
         self.assertEqual(title, name + " Manager")
-        self.assertEqual(shlex.split(command), ["claude", "--name", name + " Manager"] + FLAGS,
+        self.assertEqual(shlex.split(command), ["claude", "--name", name + " Manager"] + FLAGS + [PROMPT],
                          "the name must reach claude as ONE quoted word")
         self.assertNotIn(os.path.join(self.base, name), command, "the folder is the opener's own argument, never in the line")
 
@@ -450,9 +471,43 @@ class TestCommand(AddCase):
                 identity = self.repo(name, conf)
                 folder = os.path.join(self.base, name)
                 command = ac.agent_command(name + " Manager", folder)
-                self.assertEqual(shlex.split(command), ["claude", "--name", name + " Manager"] + flags)
+                self.assertEqual(shlex.split(command), ["claude", "--name", name + " Manager"] + flags + [PROMPT])
                 self.assertNotIn("pwned", command)
                 self.assertEqual(ac.repo_folder(identity), folder)
+
+    def test_the_line_ends_with_the_fixed_first_prompt(self):
+        """A new session sends the city nothing before its first prompt: the line carries one."""
+        self.assertEqual(ac.FIRST_PROMPT, PROMPT)
+        self.assertNotIn("\n", ac.FIRST_PROMPT)
+        self.known(self.shop)
+        self.add(self.shop)
+        command = self.calls[0][2]
+        self.assertEqual(shlex.split(command)[-1], PROMPT, "the first prompt is the last word, one quoted word")
+        self.assertTrue(command.endswith(shlex.quote(PROMPT)))
+
+    def test_a_city_with_its_own_dir_passes_it_on(self):
+        own = os.path.join(self.base, "my city")
+        folder = os.path.join(self.base, "shop")
+        self.assertEqual(shlex.split(ac.agent_command("shop Manager", folder, city_dir=own)),
+                         ["AGENT_CITY_DIR=" + own, "claude", "--name", "shop Manager"] + FLAGS + [PROMPT])
+        self.assertTrue(ac.agent_command("shop Manager", folder, own).startswith("AGENT_CITY_DIR=" + shlex.quote(own) + " claude "))
+        self.assertTrue(ac.agent_command("shop Manager", folder).startswith("claude "))
+        state = self.make(city_dir=own, start_repo=self.shop)
+        state.add_agent(ac.territory_id(self.shop), self.now)
+        self.assertEqual(shlex.split(self.calls[0][2])[:2], ["AGENT_CITY_DIR=" + own, "claude"],
+                         "the session this city opens must report to this city")
+        self.kind = "plain"
+        code, body = state.add_agent(ac.territory_id(self.shop), self.now + ac.ADD_WAIT_SEC + 1)
+        self.assertEqual(shlex.split(body["command"])[:5], ["cd", folder, "&&", "AGENT_CITY_DIR=" + own, "claude"])
+
+    def test_the_default_city_dir_is_not_passed(self):
+        default = os.path.expanduser("~/.cache/agent-city")
+        self.assertIsNone(ac.pass_city_dir(default))
+        self.assertIsNone(ac.pass_city_dir(default + "/"))
+        own = os.path.join(self.base, "city")
+        self.assertEqual(ac.pass_city_dir(own), own)
+        import inspect
+        self.assertRegex(inspect.getsource(ac.cmd_serve), r"city_dir=pass_city_dir\(directory\)")
 
     def test_no_shell_anywhere(self):
         with open(SERVER, encoding="utf-8") as fh:
@@ -517,7 +572,7 @@ class TestPlain(AddCase):
                 self.assertEqual(code, 200, body)
                 self.assertEqual((body["state"], body["name"], body["role"]), ("plain", "shop Manager", "main"))
                 self.assertEqual(shlex.split(body["command"]),
-                                 ["cd", os.path.join(self.base, "shop"), "&&", "claude", "--name", "shop Manager"] + FLAGS)
+                                 ["cd", os.path.join(self.base, "shop"), "&&", "claude", "--name", "shop Manager"] + FLAGS + [PROMPT])
         self.assertEqual(self.calls, [], "no terminal can be opened here")
         self.kind = "orca"
         self.assertEqual(self.add(self.shop)[1].get("state"), "opening", "a plain answer never holds the repo")
