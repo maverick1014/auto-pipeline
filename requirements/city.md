@@ -12,10 +12,16 @@
 ## Data path
 - `hooks/hooks.json` → `bin/agent-city-hook.sh` → `<city dir>/events.jsonl` → `bin/agent_city.py` → SSE `/events` → page.
 - Hook when off: one `test -f`, nothing else. On: one JSON line per event. Bash builtins only.
-- Governor = the repo's real main manager only (owner, 2026-09-30, city-roles; replaces "first session without `AGENT_ROLE`"): the session holding `<git common dir>/agent_main.lock` (pid alive; its session id matches, or with an old lock that has no session id, the hook's `pid`). Everyone else is a citizen, a session without `AGENT_ROLE` too. Subagent = citizen.
+- Governor = the repo's real main manager only (owner, 2026-09-30, city-roles; replaces "first session without `AGENT_ROLE`"): the session holding `<git common dir>/agent_main.lock` (pid alive; its session id matches, or with an old lock that has no session id, the hook's `pid`, else the pid the server remembers for that session). Everyone else is a citizen, a session without `AGENT_ROLE` too. Subagent = citizen.
 - No live lock holder → no governor in that territory (the page says 总督不在; questions go straight to the owner).
 - The lock changes hands (take-over, close case, a new main manager) → the new holder is governor on its next line, even if it was a citizen; the old one leaves the seat. The server also checks the seats about every 2 s: a dead holder ends like its SessionEnd, a released lock empties the seat.
 - Only the governor gets governor questions and the governor's messages. Any other session's watcher hears its own messages, like a citizen.
+- Old hooks (lines carry no `pid`): still the governor when the lock names its session id (owner, 2026-10-01, city-rediscover).
+- The server remembers the pid a governor was seated with. A lock that later has no session id again (an old `agent-start.sh` rewrites it on compaction) and still names that pid keeps the seat; another pid takes it away.
+- An old lock line (no session id, or no terminal) is filled in by its holder's own `agent-start.sh`: any start, or `--take-over` typed in that session (same pid, same date). The holder never changes. Nothing known to add → "Nothing changed".
+- Server restart: live sessions come back at once, with no new event. The server keeps `<city dir>/roster.json`: every live session it knows a pid for (governor: its line's `pid`, else the lock's pid). At start, pid alive → shown again (the lock holder as governor, idle; the others as citizens with their name, role and office); pid dead → dropped.
+- Not brought back: a citizen with no known pid (old hooks) and subagents. They show up on their next event, as before.
+- The roster is written (tmp + mv) only when a session appears, ends, takes or loses the seat, or gets its name. Never per tool line. Broken or missing file → empty roster, the city starts.
 - A line with no repo stays in the territory its session was last seen in. Only an unknown session with no repo goes to the start territory (old hooks).
 - A session shows up only if it started with the city hook installed (plugin 0.6.0+).
 
@@ -149,6 +155,7 @@
 - Written atomically (tmp + mv). Has a version field `"v"`.
 - Broken or unknown file → move it aside as `world.json.bad-<time>`, start fresh, say so in the page log. Never silent.
 - Server loads it at start; the first snapshot carries it. Browser closed, server stopped, Mac restarted → same city.
+- The people are not in `world.json`: live sessions come back from `<city dir>/roster.json` (see Data path).
 - `events.jsonl` is the feed, not the record. It may be cleared.
 - The city is per computer. Another machine has its own city. A joined city also shows the other members live (see Joining); each machine's `world.json` stays its own.
 

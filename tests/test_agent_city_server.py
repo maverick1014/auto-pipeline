@@ -34,7 +34,7 @@ CONTRACT: the server
 
   DIR/events.jsonl past --max-log-kb: moved to events.jsonl.1 (replacing any
   older one) and read to its end, so no line is lost and the folder never holds
-  more than on, token, events.jsonl and events.jsonl.1.
+  more than on, token, roster.json, events.jsonl and events.jsonl.1.
   (Interaction: token, the control API and the extra /health fields are in
   tests/test_agent_city_interact.py.)
 
@@ -440,8 +440,9 @@ class TestBudget(ServerCase):
         size = os.path.getsize(os.path.join(self.dir, "events.jsonl"))
         self.assertLess(size, 4096 + 30 * 200)
         # token: the per-start control token (tests/test_agent_city_interact.py)
+        # roster.json: the live sessions, for a restart (tests/test_agent_city_roster.py)
         self.assertLessEqual(set(os.listdir(self.dir)),
-                             {"on", "token", "events.jsonl", "events.jsonl.1"})
+                             {"on", "token", "events.jsonl", "events.jsonl.1", "roster.json"})
 
     def test_memory_stays_small(self):
         if not os.path.exists("/proc/self/status"):

@@ -20,7 +20,13 @@ skills/close-case/SKILL.md). "this session" = $CLAUDE_PID, else the first claude
   only when the human asks:  <plugin>/bin/agent-start.sh --take-over
 
   agent-start.sh --take-over   refused (exit 1, lock untouched) for a spawned agent (AGENT_ROLE).
-      The lock is already this session's -> says so, exit 0, lock untouched.
+      The lock is already this session's -> says so, exit 0, lock untouched. Except (city-rediscover,
+      2026-10-01: an old lock "<pid> <date> <time>" hid a live main manager from the city, and
+      "Nothing changed" left it so): when this session knows its sid and the lock has none or
+      another one, or knows its terminal and the lock has none, the line is rewritten: same pid,
+      same "<date> <time>", this session's sid, this session's terminal (else the lock's own, else
+      "-"). It then says "Already the main manager (lock: pid <pid>). Lock line updated: ..." and
+      never "Nothing changed". The holder never changes, the closed list is not touched.
       Else: the lock becomes this session's (line above); the old holder, when there was one,
       becomes "closed" (below); this session's own human-direct line in agent_worktree.txt goes;
       prints "ROLE: main manager" and the rename hint "/rename <repo> Manager". Exit 0.
@@ -247,6 +253,91 @@ class TestTakeOver(SeatCase):
                 self.assertNotIn("ROLE: main manager", out)
                 self.assertIn("no longer the main manager", out)
                 self.assertEqual(self.lock_words()[0], "5151")
+
+
+# -- city-rediscover R2: the holder's own old lock line gets its sid and terminal --
+
+class TestLockUpgrade(SeatCase):
+    OLD = "%d 2026-09-30 20:03\n"
+
+    def closed_exists(self):
+        return os.path.exists(self.repo.path(".git", "agent_main.closed"))
+
+    def test_take_over_by_the_holder_fills_an_old_lock(self):
+        me = self.live()
+        self.set_lock(self.OLD % me)
+        out = self.assertOk(self.start("--take-over", pid=me, sid="sid-me",
+                                       env={"ORCA_TERMINAL_HANDLE": "term_me"}))
+        self.assertIn("Already the main manager (lock: pid %d)." % me, out)
+        self.assertIn("updated", out.lower())
+        self.assertNotIn("Nothing changed", out)
+        self.assertEqual(self.lock_words(), [str(me), "2026-09-30", "20:03", "sid-me", "term_me"])
+        self.assertFalse(self.closed_exists(), "nobody was replaced")
+
+    def test_a_dash_sid_is_filled_too(self):
+        me = self.live()
+        self.set_lock("%d 2026-09-30 20:03 - -\n" % me)
+        self.assertOk(self.start("--take-over", pid=me, sid="sid-me"))
+        self.assertEqual(self.lock_words(), [str(me), "2026-09-30", "20:03", "sid-me", "-"])
+
+    def test_a_stale_sid_is_replaced(self):
+        me = self.live()
+        self.set_lock("%d 2026-09-30 20:03 sid-before-clear term_me\n" % me)
+        out = self.assertOk(self.start("--take-over", pid=me, sid="sid-me"))
+        self.assertNotIn("Nothing changed", out)
+        self.assertEqual(self.lock_words(), [str(me), "2026-09-30", "20:03", "sid-me", "term_me"],
+                         "the terminal the lock already had stays")
+
+    def test_a_missing_terminal_is_filled(self):
+        me = self.live()
+        self.set_lock("%d 2026-09-30 20:03 sid-me -\n" % me)
+        self.assertOk(self.start("--take-over", pid=me, sid="sid-me", env={"ORCA_TERMINAL_HANDLE": "term_me"}))
+        self.assertEqual(self.lock_words()[3:], ["sid-me", "term_me"])
+
+    def test_nothing_known_changes_nothing(self):
+        me = self.live()
+        self.set_lock(self.OLD % me)
+        out = self.assertOk(self.start("--take-over", pid=me))          # no sid, no terminal
+        self.assertIn("Nothing changed", out)
+        with open(self.lock_path) as fh:
+            self.assertEqual(fh.read(), self.OLD % me)
+
+    def test_a_complete_lock_changes_nothing(self):
+        me = self.live()
+        text = "%d 2026-09-30 20:03 sid-me term_me\n" % me
+        self.set_lock(text)
+        out = self.assertOk(self.start("--take-over", pid=me, sid="sid-me",
+                                       env={"ORCA_TERMINAL_HANDLE": "term_me"}))
+        self.assertIn("Nothing changed", out)
+        with open(self.lock_path) as fh:
+            self.assertEqual(fh.read(), text)
+
+    def test_a_plain_start_by_the_holder_fills_an_old_lock(self):
+        me = self.live()
+        self.set_lock(self.OLD % me)
+        out = self.assertOk(self.start(pid=me, sid="sid-me", env={"ORCA_TERMINAL_HANDLE": "term_me"}))
+        self.assertIn("ROLE: main manager (lock: pid %d)" % me, out)
+        words = self.lock_words()
+        self.assertEqual(words[0], str(me))
+        self.assertEqual(words[3:], ["sid-me", "term_me"])
+
+    def test_the_holders_hook_start_fills_an_old_lock(self):
+        me = self.live()
+        for source in ("startup", "resume", "compact", "clear"):
+            with self.subTest(source=source):
+                self.set_lock(self.OLD % me)
+                self.assertOk(self.start(pid=me, source=source, sid="sid-" + source))
+                self.assertEqual(self.lock_words()[0], str(me))
+                self.assertEqual(self.lock_words()[3], "sid-" + source)
+
+    def test_another_session_never_touches_an_old_lock(self):
+        main = self.live()
+        self.set_lock(self.OLD % main)
+        for args in ((), ("--release",)):
+            with self.subTest(args=args):
+                self.start(*args, pid=5151, sid="sid-other", env={"ORCA_TERMINAL_HANDLE": "term_other"})
+                with open(self.lock_path) as fh:
+                    self.assertEqual(fh.read(), self.OLD % main)
 
 
 # -- R3: a whole-repo close case frees the seat -----------------------------
