@@ -9,7 +9,10 @@ bin/agent-city.html stays ONE file. Cloud code stays in the blocks marked
   historyHtml: a session's window; before this the session's window showed no
   state at all):
       who    its entry has a cid (it was typed on the cloud page) -> chat.you.cloud
-             你（云端）; else chat.you.page 你（页面）, as before
+             你（云端）; else chat.you.page 你（页面）, as before. On the cloud page
+             (CLOUD true) an entry with no cid was typed on the computer's own
+             page: there it reads chat.you.local 你（电脑上的页面）, as in the mock
+             ("页面" alone would mean the wrong page).
       state  after the who, through chat.stateSuffix as before: queued,
              delivered, undelivered, and new: 'sent' and 'taken' -> chat.state.sent 在路上
       why    an undelivered entry with a reason adds " · " + the reason:
@@ -81,7 +84,13 @@ bin/agent-city.html stays ONE file. Cloud code stays in the blocks marked
         a sheet over the lower part of the SCREEN (position: fixed), its
         height from --vvh, which the script keeps equal to
         window.visualViewport.height (resize), so the box stays above the
-        keyboard.
+        keyboard. The sheet's height is (written exactly so, in that rule)
+            max(calc(var(--vvh) * 0.56), min(calc(var(--vvh) - 12px), 400px))
+        : 56% of a full screen, and with the keyboard up (little room) nearly
+        all the room that is left (E2E 2026-10-01: at 470 px the sheet was
+        263 px and the conversation 96 px). When the room changes while the
+        owner is at the bottom of the conversation, the list stays at the
+        bottom (the resize handler sets #chat's scrollTop).
 
 Run: python3 -m unittest tests.test_agent_city_cloud_talk_page
 """
@@ -221,6 +230,24 @@ class TestMessageWords(RenderCase):
         for state in ("sent", "taken"):
             for html in self.both([owner(state=state, cid="cid-1")]):
                 self.assertIn("你（云端）（在路上）", html, state)
+
+    def test_on_the_cloud_page_the_other_page_is_named(self):
+        zh = texts()["zh"]
+        self.assertEqual(zh.get("chat.you.local"), "你（电脑上的页面）")
+        self.assertTrue(texts()["en"].get("chat.you.local"))
+        esc = re.search(r"^const esc = .*;$", script(), re.M)
+        prelude = esc.group(0).replace("const esc", "var esc") + "\n" + tp.constants_prelude()
+        fns = tp.page_fns("chatHtml", "historyHtml", optional=("mdLite",)).replace("var CLOUD = false;", "var CLOUD = true;")
+        local, cloud = owner(state="delivered"), owner(state="delivered", cid="cid-1", i=2)
+        items = [{"k": "owner", "text": e["text"], "at": e["at"], "state": e["state"], "cid": e.get("cid"), "main": True}
+                 for e in (local, cloud)]
+        out = tp.run_node(RENDER_JS, {"prelude": prelude, "fns": fns,
+                                      "calls": [["chatHtml", [[local, cloud], "tm", False]], ["historyHtml", [items, "tm", False]]]})
+        for r in out:
+            self.assertNotIn("error", r, r.get("error"))
+            self.assertIn("你（电脑上的页面）（已送达）", r["ok"])
+            self.assertIn("你（云端）（已送达）", r["ok"])
+            self.assertNotIn("你（页面）", r["ok"])
 
     def test_queued_and_delivered_as_before(self):
         for html in self.both([owner(state="queued", cid="cid-1")]):
@@ -576,6 +603,11 @@ class TestCloudPageTalks(unittest.TestCase):
         rule = " ".join(rules)
         self.assertIn("position:fixed", rule.replace(" ", ""))
         self.assertIn("--vvh", rule)
+        self.assertIn("max(calc(var(--vvh)*0.56),min(calc(var(--vvh)-12px),400px))", rule.replace(" ", ""),
+                      "with the keyboard up the sheet takes nearly all the room that is left")
+        handler = re.search(r"visualViewport[\s\S]{0,1500}", cloud_blocks())
+        self.assertTrue(handler and "scrollTop" in handler.group(0),
+                        "the room changed: a conversation that was at the bottom stays at the bottom")
         blocks_js = cloud_blocks()
         self.assertIn("visualViewport", blocks_js)
         self.assertIn("--vvh", blocks_js)
