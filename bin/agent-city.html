@@ -149,7 +149,9 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .addbox{margin:3px 3px 1px;padding:6px 8px;border-radius:8px;font-size:12px;line-height:1.45;overflow-wrap:anywhere}
 .addbox.err{background:var(--ask-bg);color:var(--ask-ink)}
 .addbox.cap{background:var(--gov-bg);color:var(--gov-ink)}
-.addbox.cmd{background:var(--panel-2);color:var(--ink-2)}
+/* the ask panel's own `.cmd` (a <pre>, further down) also matches this box: this rule is more specific and
+   gives the box its own margin / padding / no border / round font / normal wrapping back (only the <code> is mono) */
+.addbox.cmd{margin:3px 3px 1px;padding:6px 8px;border:0;border-radius:8px;font:12px/1.45 var(--round);white-space:normal;background:var(--panel-2);color:var(--ink-2)}
 .addbox b{font-weight:700}
 .addbox .nums{display:block;font:600 11.5px/1.5 var(--mono)}
 .addbox code{display:block;margin-top:4px;padding:5px 6px;border-radius:6px;background:var(--panel);border:1px solid var(--line);font:11px/1.45 var(--mono);color:var(--ink);word-break:break-all;user-select:all}
