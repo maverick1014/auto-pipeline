@@ -84,6 +84,7 @@
 - A question passed up (relay) is asked face to face on arrival (❓, about 2 s) and answered face to face before the walk back (✅; the lead or the 总督 speaks). A timeout or a leave: no answer talk.
 - The talk bubble holds one icon, never chat text. Reduced motion: no gesture, the bubble stays.
 - A talk never changes a status word and never delays a real one: 等你, stuck, a relay and done end the talk at once; 后台在跑 and 空闲 show at once.
+- Demo (`/#demo`) plays it too: a new demo person in the demo 总督's territory is handed its task by him, and two demo people at work talk about every 9 s.
 - Data: a spawn event says who sent the agent (`from`); a SendMessage that is not a question becomes one `talk` event. The hook adds the recipient's name (`to`, at most 80 characters) to that line: never the message, never through the relay. The name is matched to a session name, a subagent id, or a repo name (its 总督); else nobody.
 
 ## Talking

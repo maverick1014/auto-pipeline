@@ -62,8 +62,9 @@ Page, the simulation part of bin/agent-city.html (before the "3D view." comment)
       A walker walks around people: it never comes closer than WALK_GAP to a person who stands or to
       another walker, when there is room to pass; it still arrives.
 
-Page, demo mode (#demo; fake data, same look): spawnDemo's spawn event carries from: 'gov:' + terr (the demo
-  governor hands every new one its task); demoTalkTick(dt), called from update() only in DEMO, sends a
+Page, demo mode (#demo; fake data, same look): spawnDemo's spawn event carries from: 'gov:' + terr only in
+  the territory whose governor the demo draws (terr === govTerr: the demo governor hands the new one its
+  task); in every other demo territory nobody stands at the hall, so from is '' there. demoTalkTick(dt), called from update() only in DEMO, sends a
   { type: 'talk', from, to, terr } event between two demo people at work in one territory about every
   DEMO_TALK_SEC (a top-level number, 6 .. 15) seconds, through emit()/apply() like a live event.
 
@@ -1000,7 +1001,12 @@ class TestDemoShowsItT1T3(unittest.TestCase):
     """#demo plays hand-overs and talks, so the look can be checked without real sessions."""
 
     def test_a_demo_person_is_sent_by_the_demo_governor(self):
-        self.assertRegex(function_source("spawnDemo") or "", r"from:\s*'gov:'\s*\+\s*terr")
+        self.assertRegex(function_source("spawnDemo") or "", r"'gov:'\s*\+\s*terr")
+
+    def test_only_where_the_demo_draws_a_governor(self):
+        # owner-side check 2026-10-01 (headless #demo): a new person in v4-plus / pos-lite stood beside an
+        # empty hall and answered 👌 to nobody; the demo draws one governor, in govTerr (governorFigures)
+        self.assertRegex(function_source("spawnDemo") or "", r"from:\s*terr === govTerr \? 'gov:'\s*\+\s*terr : ''")
 
     def test_demo_people_talk_now_and_then(self):
         src = function_source("demoTalkTick") or ""

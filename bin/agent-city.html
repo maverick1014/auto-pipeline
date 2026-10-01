@@ -2579,6 +2579,7 @@ function handoverSender(ev, n){
   if (from.slice(0, 4) === 'gov:') {
     const terr = from.slice(4);
     if (!terr || terr !== n.terr) return null;
+    if (DEMO && terr !== govTerr) return null; // #demo draws one governor only, in govTerr: no hand-over from an empty hall
     const g = governorAt(terr), m = govMove.get(terr);
     if (!g || (m && m.path && m.path.length)) return null;
     if (m && m.phase === 'talk') return null; // city-talk T3: he is away on a talk of his own
@@ -3996,8 +3997,9 @@ function spawnDemo(role, task, terr){
     const opts = TASKS[role].filter(t => !busy.has(t));
     task = pick(opts.length ? opts : TASKS[role]);
   }
-  // city-talk T1, #demo: the demo governor hands every new one its task face to face
-  const c = emit({ type:'spawn', id:'d' + (++cid), role, label:role, task, terr, from: 'gov:' + terr });
+  // city-talk T1, #demo: the demo governor hands a new one its task face to face -- only where the demo draws
+  // him (one figure, in govTerr); a new one in another territory appears at its hall as before
+  const c = emit({ type:'spawn', id:'d' + (++cid), role, label:role, task, terr, from: terr === govTerr ? 'gov:' + terr : '' });
   if (c) c.feed = makeFeed(role, undefined, terr);
   return c;
 }
