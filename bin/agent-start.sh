@@ -90,6 +90,19 @@ if [ "${1:-}" = "--take-over" ] || [ "${1:-}" = "--release" ]; then
       echo "REFUSED: $AGENT_ROLE is a spawned agent, never the main manager. Only a human-direct session takes over."; exit 1
     fi
     if [ -f "$LOCK" ] && [ "$lpid" = "$ME" ]; then
+      # The seat stays. An old lock line (no sid, no terminal, or a stale sid) takes this
+      # session's own, so the city can match the lock to its session; what this session
+      # does not know, the lock keeps. Nothing new -> the lock is left untouched.
+      nsid="${CLAUDE_CODE_SESSION_ID:-}"; nsid=${nsid//[[:space:]]/_}; [ -n "$nsid" ] || nsid="$lsid"
+      nterm="${ORCA_TERMINAL_HANDLE:-}"; nterm=${nterm//[[:space:]]/_}; [ -n "$nterm" ] || nterm="$lterm"
+      if [ "$nsid" != "$lsid" ] || [ "$nterm" != "$lterm" ]; then
+        tmp="$LOCK.tmp.$$"
+        if printf '%s %s %s %s\n' "$ME" "${lsince:-$NOW}" "${nsid:--}" "${nterm:--}" > "$tmp" && mv "$tmp" "$LOCK"; then
+          echo "Already the main manager (lock: pid $ME). Lock line updated: session id ${nsid:--}, terminal ${nterm:--}."
+          exit 0
+        fi
+        rm -f "$tmp"; echo "REFUSED: could not rewrite the lock line ($LOCK)."; exit 1
+      fi
       echo "Already the main manager (lock: pid $ME). Nothing changed."; exit 0
     fi
     lock_write "$NOW"
