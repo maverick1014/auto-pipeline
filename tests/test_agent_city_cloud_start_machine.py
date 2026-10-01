@@ -218,11 +218,13 @@ class OrderCase(unittest.TestCase):
         self.feed(line("UserPromptSubmit", sid, identity), line("Stop", sid, identity), state=state)
         return ac.territory_id(identity)
 
-    def order(self, oid_, terr=None, force=False, age=1000, terrs=None, state=None):
+    MINE = object()                    # "this case's own territory" (None is a value a test may want to send)
+
+    def order(self, oid_, terr=MINE, force=False, age=1000, terrs=None, state=None):
         state = state or self.state
         self.assertTrue(hasattr(state, "cloud_order"), "CityState.cloud_order is missing")
         self.now += 1.0
-        return state.cloud_order(oid_, self.terr if terr is None else terr, force, age,
+        return state.cloud_order(oid_, self.terr if terr is OrderCase.MINE else terr, force, age,
                                  self.terrs if terrs is None else terrs, self.now)
 
     def seen_lines(self):
