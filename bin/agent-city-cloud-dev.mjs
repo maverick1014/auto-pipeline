@@ -6,18 +6,28 @@
 // a stand-in for the static assets. No Cloudflare account, nothing leaves
 // this machine.
 //
-//   node agent-city-cloud-dev.mjs --user <e-mail> [--host H] [--port P] [--no-login]
+//   node agent-city-cloud-dev.mjs --user <e-mail> [--talk] [--host H] [--port P] [--no-login]
 //     The team key is the first line of stdin: never argv, never printed.
+//     --talk (talk from the cloud page): the SECOND line of stdin is the talk
+//     key, the relay's TALK_KEY (never argv, never printed). Without --talk
+//     the relay has no TALK_KEY (talking is off), as before. --talk and no
+//     second line (or an empty one) -> exit 2.
 //     Default host 127.0.0.1 (the login is simulated: never the LAN by
 //     default), default port 8788; --port 0 = any free port.
 //     stdout, first two lines:
 //       CLOUD-DEV: listening on <host>:<port>
 //       CLOUD-DEV: page http://<host>:<port>/  relay http://<host>:<port>
-//     /v1/...    -> the relay  (TEAM_KEY = the key, CITY_USER = --user)
+//     /v1/...    -> the relay  (TEAM_KEY = the key, CITY_USER = --user,
+//                   TALK_KEY = the second line, only with --talk)
 //     the rest   -> the City Worker, as if Cloudflare Access had let --user
 //                   in: the runner signs a token for it with its own key pair
 //                   (made at start) and answers the Worker's certs fetch
 //                   itself. --no-login: no token is added (everything is 403).
+//                   A POST (the page's /api/chat/send) arrives whole: its
+//                   method, headers (Origin too) and body. The request URL the
+//                   Worker sees is http://<the Host header of the browser>, so
+//                   its origin is the one the browser used and the Worker's
+//                   Origin check (Origin == its own origin) holds.
 //     ASSETS: / (and /index.html) = bin/agent-city.html, /assets/<p> =
 //     bin/agent-city-assets/<p> (never a path outside that folder).
 //     No --user -> exit 2. Empty key -> exit 2. Stops on SIGINT / SIGTERM.
@@ -53,7 +63,7 @@ function fail(message) {
 }
 
 function parseArgs(argv) {
-  const out = { host: "127.0.0.1", port: 8788, user: "", noLogin: false, bad: "" };
+  const out = { host: "127.0.0.1", port: 8788, user: "", noLogin: false, talk: false, bad: "" };
   for (let i = 0; i < argv.length; i++) {
     let name = argv[i];
     let value;
@@ -74,6 +84,8 @@ function parseArgs(argv) {
       else out.port = port;
     } else if (name === "--no-login") {
       out.noLogin = true;
+    } else if (name === "--talk") {
+      out.talk = true;
     }
   }
   return out;
@@ -157,11 +169,13 @@ async function loadWorker(path, tag) {
   }
 }
 
-// The first line of stdin, without its trailing newline. Resolves "" when
-// stdin ends before any newline (an empty key, or none at all).
-function readKeyLine() {
+// The first `count` lines of stdin, without their newlines. Resolves with the
+// lines it got (fewer than `count` when stdin ends first; the last one may
+// then be a line without its newline, "" when there was nothing).
+function readLines(count) {
   return new Promise((resolve) => {
     let buf = "";
+    const lines = [];
     const cleanup = () => {
       process.stdin.off("data", onData);
       process.stdin.off("end", onEnd);
@@ -169,16 +183,20 @@ function readKeyLine() {
     };
     const onData = (chunk) => {
       buf += chunk;
-      const idx = buf.indexOf("\n");
-      if (idx !== -1) {
-        const line = buf.slice(0, idx).replace(/\r$/, "");
+      let idx;
+      while (lines.length < count && (idx = buf.indexOf("\n")) !== -1) {
+        lines.push(buf.slice(0, idx).replace(/\r$/, ""));
+        buf = buf.slice(idx + 1);
+      }
+      if (lines.length >= count) {
         cleanup();
-        resolve(line);
+        resolve(lines);
       }
     };
     const onEnd = () => {
       cleanup();
-      resolve(buf.replace(/\r$/, ""));
+      if (lines.length < count) lines.push(buf.replace(/\r$/, ""));
+      resolve(lines);
     };
     process.stdin.setEncoding("utf8");
     process.stdin.on("data", onData);
@@ -274,8 +292,11 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.bad) return fail(args.bad);
   if (!args.user) return fail("need --user <e-mail>");
-  const key = await readKeyLine();
+  const lines = await readLines(args.talk ? 2 : 1);
+  const key = lines[0] || "";
   if (!key) return fail("no key on stdin");
+  const talkKey = args.talk ? (lines[1] || "") : "";
+  if (args.talk && !talkKey) return fail("--talk needs the talk key as the second line of stdin");
 
   const access = makeAccess(args.user);
   wrapFetch(access);
@@ -284,6 +305,7 @@ async function main() {
 
   const db = new DevD1();
   const relayEnv = { TEAM_KEY: key, CITY_USER: args.user, DB: db };
+  if (args.talk) relayEnv.TALK_KEY = talkKey;
   const cityEnv = { DB: db, ASSETS: assetsBinding, ACCESS_TEAM: DEV_TEAM, ACCESS_AUD: DEV_AUD };
   const ctx = { waitUntil() {}, passThroughOnException() {} };
 

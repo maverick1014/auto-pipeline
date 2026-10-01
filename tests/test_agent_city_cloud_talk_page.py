@@ -63,6 +63,10 @@ bin/agent-city.html stays ONE file. Cloud code stays in the blocks marked
         {dev, to, text, cid: cloudCid()}; the entry shows at once (mine, state
         'sent'); 429 -> the line cloud.tooFast / cloud.tooMany under the box;
         a failure is shown, never swallowed, and the text stays in the box.
+        A request that got NO answer (the network failed, or a 5xx) is sent
+        again with the SAME cid, up to 3 requests in all, before the failure
+        is shown: the Worker may have stored the message, and with the same
+        cid it stores it once. An answered refusal (429, 4xx) is not retried.
         The local page's sendChat is unchanged (token header, {to, text}).
     A click on [data-resend] sends that entry's text again as a NEW message.
     The box is replaced by a note (cloudTalkNote: cloud.box.talkOff names the
@@ -420,6 +424,86 @@ class TestPure(unittest.TestCase):
             self.assertRegex(cid, r"^[A-Za-z0-9_-]{22,40}$")
         self.assertEqual(len(set(out)), 3)
         self.assertGreaterEqual(got["randomCalls"], 3, "crypto.getRandomValues, never Math.random")
+
+
+SEND_JS = r"""
+const fs = require('fs'), vm = require('vm');
+const { prelude, fns, plan } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const calls = [], delays = [];
+const box = { Math, JSON, console, String, Array, Object, Date, Number, Promise, Map, Set, Error, Uint8Array,
+  crypto: require('crypto').webcrypto,
+  setTimeout: (fn, ms) => { delays.push(ms); return setTimeout(fn, 0); },
+  fetch: (url, init) => {
+    const step = plan[Math.min(calls.length, plan.length - 1)];
+    calls.push({ url, method: init.method, headers: init.headers, body: JSON.parse(init.body) });
+    if (step === 'throw') return Promise.reject(new TypeError('network'));
+    return Promise.resolve({ ok: step.status >= 200 && step.status < 300, status: step.status,
+                             json: () => Promise.resolve(step.body || {}) });
+  } };
+vm.createContext(box);
+vm.runInContext(prelude + '\n' + fns, box);
+vm.runInContext("sendChat('s:tm1', 'hello')", box).then(ok => {
+  const held = vm.runInContext("chats.get('s:tm1')", box) || {};
+  process.stdout.write(JSON.stringify({ ok, calls, delays, entries: held.entries || [], error: held.error || '', fast: held.fast || '' }));
+}).catch(e => { process.stderr.write(String(e && e.stack || e)); process.exit(1); });
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node is not installed")
+class TestSendTriesAgainWithTheSameId(unittest.TestCase):
+    """A request with no answer may still have reached the Worker. Typing the message again would
+    deliver it twice; sending the same cid again cannot."""
+
+    def send(self, *plan):
+        prelude = (tp.constants_prelude() + "\nvar CLOUD = true, DEMO = false, TOKEN = '';\n"
+                   "var chats = new Map(); var cloudLive = { feed: { dev: 'mac' } };\n"
+                   "function renderPanel(){} function demoSendChat(){}\n")
+        fns = "\n".join(tp.function_source(n) for n in ("sendChat", "cloudCid"))
+        return tp.run_node(SEND_JS, {"prelude": prelude, "fns": fns, "plan": list(plan)})
+
+    OK = {"status": 200, "body": {"ok": True, "state": "sent", "why": ""}}
+
+    def test_one_request_when_it_works(self):
+        got = self.send(self.OK)
+        self.assertIs(got["ok"], True)
+        self.assertEqual(len(got["calls"]), 1)
+        call = got["calls"][0]
+        self.assertEqual((call["url"], call["method"], call["headers"].get("X-City-Page")), ("/api/chat/send", "POST", "1"))
+        self.assertEqual(set(call["body"]), {"dev", "to", "text", "cid"})
+        self.assertEqual((call["body"]["dev"], call["body"]["to"], call["body"]["text"]), ("mac", "s:tm1", "hello"))
+        self.assertEqual([(e["id"], e["state"]) for e in got["entries"]], [(call["body"]["cid"], "sent")])
+
+    def test_no_answer_is_tried_again_with_the_same_id(self):
+        for plan in (["throw", self.OK], [{"status": 503}, "throw", self.OK]):
+            got = self.send(*plan)
+            self.assertIs(got["ok"], True, plan)
+            self.assertEqual(len(got["calls"]), len(plan))
+            self.assertEqual(len({c["body"]["cid"] for c in got["calls"]}), 1, "every try carries the same cid")
+            self.assertEqual(len(got["entries"]), 1)
+            self.assertEqual(got["error"], "")
+
+    def test_three_tries_then_it_says_so(self):
+        got = self.send("throw", "throw", "throw", self.OK)
+        self.assertIs(got["ok"], False)
+        self.assertEqual(len(got["calls"]), 3, "three requests in all, not more")
+        self.assertEqual(len({c["body"]["cid"] for c in got["calls"]}), 1)
+        self.assertTrue(got["error"], "the failure is shown")
+        self.assertEqual(got["entries"], [])
+
+    def test_a_refusal_is_not_tried_again(self):
+        got = self.send({"status": 429, "body": {"ok": False, "error": "too fast"}}, self.OK)
+        self.assertEqual((got["ok"], len(got["calls"])), (False, 1))
+        self.assertTrue(got["fast"])
+        got = self.send({"status": 400, "body": {"ok": False, "error": "text"}}, self.OK)
+        self.assertEqual((got["ok"], len(got["calls"])), (False, 1))
+        self.assertTrue(got["error"])
+        got = self.send({"status": 403, "body": {"ok": False, "error": "login required"}}, self.OK)
+        self.assertEqual((got["ok"], len(got["calls"])), (False, 1))
+
+    def test_the_worker_says_not_delivered_at_once(self):
+        got = self.send({"status": 200, "body": {"ok": True, "state": "undelivered", "why": "off"}})
+        self.assertIs(got["ok"], True)
+        self.assertEqual([(e["state"], e["why"]) for e in got["entries"]], [("undelivered", "off")])
 
 
 class TestCloudPageTalks(unittest.TestCase):

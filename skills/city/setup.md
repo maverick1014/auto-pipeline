@@ -109,7 +109,7 @@ You should see: `JOINED: <repo id> -> <host>` on every member's machine again.
 You should see: `LEFT: ...` on each machine, and neither the Worker nor the database listed any more.
 
 ## 11. Turn the cloud page on
-Optional. Do this only after sections 1 to 8 work. The cloud page is your city on Cloudflare, behind a login, to look at from a phone or any computer. It is view only: you cannot chat or answer from it. The local city on your Mac stays as it is, and works with Cloudflare down.
+Optional. Do this only after sections 1 to 8 work. The cloud page is your city on Cloudflare, behind a login, to look at from a phone or any computer. It is view only until you turn talking on (section 16). The local city on your Mac stays as it is, and works with Cloudflare down.
 1. On your Mac, in a terminal, copy the NEW relay code to the clipboard (the same command as section 2, step 5):
    ```
    cat "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city-relay.js" | pbcopy
@@ -165,4 +165,46 @@ You should see: `CLOUD: on <relay host>` from step 3 (`CLOUD: off` means the rel
 2. Open "Workers & Pages", then the Worker `agent-city-page`, then "Settings"; at the bottom, delete the Worker. If Zero Trust still lists an Access application for it ("Access", then "Applications"), delete that too.
 You should see: `CITY_USER` no longer listed on the relay, the page's address no longer opens, and `CLOUD: off` from `status` after the next session. The relay and the local city go on as before.
 
-Cloudflare's free plan allows 100,000 Worker requests and 100,000 D1 rows written a day. A heavy day (3 machines, 6 busy hours each, the page open 8 hours) uses about 36,000 requests and about 66,000 written rows, about four fifths of those rows by the relay's lines as before.
+## 16. Turn talking on
+Optional. Do this only after sections 1 to 15 work. With talking on, you can type to your agents from the cloud page, and the reply shows in the same window. Read this first, in plain words: whoever can log in as you on the page can type to your agents on the machines with talking on. So keep the login short (step 1) and keep your e-mail account safe: use a strong password and two-step login on the e-mail account, because the login code goes there. A message is only text for a session's chat. Approving a permission request stays on the machine: you cannot do it from the page. Talking is off by default: it stays off for a machine until you do step 7 on it.
+1. Set how long a login lasts. In Cloudflare, open Zero Trust, then "Access", then "Applications", then the application for `agent-city-page`, then "Edit". Find the setting "Session Duration" and pick a short one (for example 24 hours or less). Save.
+2. On your Mac, in a terminal, copy the NEW relay code to the clipboard (the same command as section 2, step 5):
+   ```
+   cat "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city-relay.js" | pbcopy
+   ```
+3. In Cloudflare, click "Workers & Pages", then your relay Worker (the one from section 2), then "Edit code". Click inside the code, press Cmd+A, then Delete, then Cmd+V. Do NOT delete the file `worker.js` itself (see section 2, step 6). Click "Deploy" (or "Save and deploy").
+4. Make the talk key. This is a second key, not the team key. In a terminal, run:
+   ```
+   openssl rand -hex 24
+   ```
+5. Keep this terminal open: you will copy the string from it. On the relay Worker, open "Settings", then "Variables and Secrets", then "Add". Set the type to "Secret", the name to exactly `TALK_KEY`, the value to the string from step 4. Click "Deploy" (or "Save"). Never type the talk key into a chat with Claude or any agent: keep it only in your terminal and in Cloudflare.
+6. Deploy the NEW page code (the same command as section 12, step 4):
+   ```
+   bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" cloud-deploy
+   ```
+   Press Enter to keep the database id it remembers. If it says you are not logged in, do section 12, step 3 again, then run this step again.
+7. Do this on each machine that should take messages. In a terminal, inside a repo that joined (section 6), run:
+   ```
+   bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" cloud-talk on
+   ```
+   It asks "Talk key (hidden):". Paste the talk key from step 4 (nothing is shown), press Enter. Type this yourself, in your own terminal: the command refuses when an agent runs it, and you never give the key to an agent.
+8. Check it. On that machine, in a terminal, inside the repo, run the status command (the same as section 8, step 2):
+   ```
+   bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" status
+   ```
+9. Open the cloud page and log in. Wait about a minute. Tap that machine, then tap a person.
+What is stored: your messages and the conversations of machines with talking on go to your own Cloudflare database, for 7 days and at most 200 rows per conversation. The full record stays on the machine. A machine with talking off sends no conversation at all.
+You should see: `CLOUD TALK: on <relay host>` from step 8. On the page, that machine shows 可对话, and a person's window has the message box. A message typed there shows 在路上 (on its way), then 已送达 (delivered), then the reply of the session. A machine that did not do step 7 still shows 只能看.
+
+## 17. Turn talking off
+There are three ways to stop it. Use the one you need, or all of them.
+1. One machine. On that machine, in a terminal (from any folder), run:
+   ```
+   bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" cloud-talk off
+   ```
+   Run inside the repo that joined (section 6), it also deletes the conversations of that machine on Cloudflare at once. Run from another folder, it still turns talking off on that machine, and its conversations on Cloudflare leave by themselves within 7 days. The other machines go on as before.
+2. All machines at once. In Cloudflare, open the relay Worker, then "Settings", then "Variables and Secrets". Delete `TALK_KEY`, then "Deploy". With no `TALK_KEY`, talking is off for every machine.
+3. End the login. On the page, click the 退出 link. To end the Access session everywhere (for example if someone else may have your login): in Cloudflare, open Zero Trust, then "My Team", then "Users", click your user, then "Revoke". Every login on every device must log in again with an e-mail code.
+You should see: `CLOUD TALK: off` from step 1 (the same status command as section 16, step 8 shows it too), and on the page that machine shows 只能看, with no message box. After step 2, no machine takes a message. The cloud page itself, the relay and the local city go on as before.
+
+Cloudflare's free plan allows 100,000 Worker requests and 100,000 D1 rows written a day. A heavy day (3 machines, 6 busy hours each, the page open 8 hours) uses about 36,000 requests and about 72,000 written rows. This day includes talking: 600 session turns and 100 messages from the page. About 52,000 of those rows are the relay's lines as before, and talking adds about 6,000.
