@@ -71,17 +71,16 @@ echo
 over_cap=0
 if [ "$RAM_USED" -ge "$max_usage_percent" ] || [ "$CPU_USED" -ge "$max_usage_percent" ]; then over_cap=1; fi
 
-# ---- model name: family word only, cut down from opus-5.5:xhigh style ----
+# ---- model name: the one the claude CLI takes, cut down from opus-5.5:xhigh style ----
+# The rule (family word for opus*, sonnet*, haiku*, fable*; anything else
+# unchanged) lives in one place, bin/agent_conf.py cli-model, so the city page
+# and this script cannot drift apart. If python3 cannot answer, fall back to
+# the spec without its ":effort" part, so a relaunch still gets a --model word.
 model_name() {
-  spec=$1
-  base=${spec%%:*}
-  case "$base" in
-    opus*)   echo opus;;
-    sonnet*) echo sonnet;;
-    haiku*)  echo haiku;;
-    fable*)  echo fable;;
-    *)       echo "$base";;
-  esac
+  if ! python3 "$PLUGIN_ROOT/bin/agent_conf.py" cli-model "$1" 2>/dev/null; then
+    spec=$1
+    echo "${spec%%:*}"
+  fi
 }
 
 # ---- orca-only setup: live pane lookup, one runtime call. orca may be down. ----

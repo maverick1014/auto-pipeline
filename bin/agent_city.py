@@ -1135,7 +1135,9 @@ def agent_command(name, folder, city_dir=None):
     """The one fixed line a new terminal runs: `claude --name <name>`, then
     `--model <m> --effort <e>` and `--permission-mode <p>` from FOLDER's
     agent.conf (main_manager, permission_mode: a second session opens with
-    the main manager's values), then FIRST_PROMPT as the last word. A
+    the main manager's values; <m> goes through agent_conf.cli_model(), the
+    name the claude CLI takes, not the agent.conf one), then FIRST_PROMPT as
+    the last word. A
     missing file or value, or one agent_conf refuses, leaves that part out.
     CITY_DIR given: the line starts with `AGENT_CITY_DIR=<city_dir> `, so the
     session reports to this city; None: it starts with `claude `. Never the
@@ -1150,7 +1152,7 @@ def agent_command(name, folder, city_dir=None):
         model = _conf_value(conf_mod, conf, "main_manager")
         if model is not None:
             model_name, effort = model.rsplit(":", 1)
-            words += ["--model", shlex.quote(model_name), "--effort", shlex.quote(effort)]
+            words += ["--model", shlex.quote(conf_mod.cli_model(model_name)), "--effort", shlex.quote(effort)]
         mode = _conf_value(conf_mod, conf, "permission_mode")
         if mode is not None:
             words += ["--permission-mode", shlex.quote(mode)]
