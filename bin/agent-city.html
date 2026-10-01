@@ -385,7 +385,8 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .cloud-page .qm{pointer-events:none!important;cursor:default}
 .cloud-page .qm span{background:#8D91B3;animation:none}
 .cloud-page .win[data-cloud-note]::after{content:attr(data-cloud-note);flex:none;border:1.5px dashed var(--line);border-radius:12px;padding:8px 10px;color:var(--ink-3);font:600 12px/1.4 var(--round);text-align:center}
-.cloud-row .stage-col.no-bar{--stage-off:133px}
+.cloud-page .stage-col.no-bar{--stage-off:130px}
+.cloud-row .stage-col.no-bar{--stage-off:178px}
 .cloud-locked .stage>:not(#cloud-notice),.cloud-locked #stats,.cloud-locked .repos,.cloud-locked #logbtn{visibility:hidden}
 .ro{display:inline-flex;align-items:center;padding:6px 11px;border-radius:999px;background:var(--butter);color:#4A3500;font:700 12px/1 var(--display)}
 .acct{display:inline-flex;align-items:center;gap:8px;font:600 12.5px/1 var(--round);color:var(--ink-2)}
@@ -404,6 +405,17 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .mc b{font:700 12.5px/1 var(--display);color:var(--ink)}
 .mc .w{background:#FF6F8B;color:#fff;border-radius:999px;padding:3px 7px;font:700 11px/1 var(--display)}
 .mc .t{color:var(--ink-3);font-weight:500}
+.mc .tk{border-radius:999px;padding:3px 7px;font:700 11px/1 var(--round);background:rgba(47,165,111,.18);color:var(--ink)}
+.mc .tk.no{background:var(--panel-2);color:var(--ink-3)}
+/* talk (cloud-city-2, mock/cloud-city-2-mock.html): send again under a message that did not arrive, the note that
+   replaces the box, the line under the box, and what comes later shown as quiet dashed chips */
+.chat .msg .resend{all:unset;cursor:pointer;align-self:flex-end;margin-top:4px;padding:2px 10px;border-radius:999px;border:1.5px solid currentColor;font:700 11.5px/1.5 var(--round)}
+.chat .msg .resend:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.cloud-why{flex:none;margin:0;border:1.5px dashed var(--line);border-radius:12px;padding:9px 11px;color:var(--ink-2);font:600 12.5px/1.5 var(--round)}
+.cloud-why code{display:inline-block;margin-top:3px;font:600 12px/1.5 var(--mono);background:var(--panel-2);padding:1px 7px;border-radius:6px;color:var(--ink)}
+.cloud-fast{flex:none;margin:0;color:var(--ask-ink);font:600 12px/1.4 var(--round)}
+.cloud-later{flex:none;margin:0;padding:8px 10px;border:1.5px dashed var(--line);border-radius:12px;background:none;color:var(--ink-3);font:600 12.5px/1.3 var(--round);text-align:center;cursor:default}
+.rail>.cloud-later{margin:2px 10px 10px}
 .cloud-banner{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:6;max-width:calc(100% - 24px);background:var(--panel);border:2px solid var(--ink);border-radius:14px;padding:9px 14px;box-shadow:0 4px 0 rgba(42,43,69,.22);font:600 13px/1.45 var(--round);color:var(--ink);text-align:center}
 .cloud-banner small{display:block;color:var(--ink-3);font-weight:500}
 .cloud-empty{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);z-index:6;width:min(360px,calc(100% - 32px));background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:16px 18px;box-shadow:0 5px 0 rgba(42,43,69,.22);text-align:center}
@@ -414,6 +426,13 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 @media (max-width: 960px){
   .machines{flex-wrap:nowrap;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
   .acct .who span{display:none}
+  /* a window is a sheet over the lower part of the SCREEN (the stage alone is too small for a conversation); its
+     height and place come from --vvh / --vvt, which the cloud script keeps equal to the visible part of the screen
+     (height and top), so with the keyboard up the sheet takes nearly all the room that is left and the box stays
+     above the keyboard. 56% of a full screen; with little room: the room minus 12px, at most 400px. The two
+     defaults are for a browser that never says (the script sets both on .app). */
+  .cloud-page{--vvh:100dvh;--vvt:0px}
+  .cloud-page .win{position:fixed;left:8px;right:8px;width:auto;bottom:auto;z-index:30;--sheet:max(calc(var(--vvh) * 0.56), min(calc(var(--vvh) - 12px), 400px));height:var(--sheet);top:calc(var(--vvt) + var(--vvh) - var(--sheet) - 8px)}
 }
 /* end cloud-city: css */
 </style>
@@ -499,7 +518,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
    (data-t / data-t-aria / data-t-title / data-t-placeholder) is filled once, at start, by applyText(). */
 const LANG = '__CITY_LANG__';
 document.documentElement.lang = LANG === 'en' ? 'en' : 'zh-CN';
-const TEXT = { zh: { 'btn.log': '动态', 'aria.city': '城市', 'aria.canvas': '3D 小岛：每个小人是一个 agent', 'proto.banner': '原型 · 模拟数据', 'btn.zoomIn': '放大', 'btn.zoomOut': '缩小', 'btn.rotate': '转一下', 'btn.resetView': '回到默认视角', 'repo.all': '全部', 'aria.repos': '仓库：点一个飞过去', 'repo.goAria': '飞到 {name}', 'cap.hint': '已经是最远了 · 点「全部」看所有仓库','btn.close': '关闭', 'aria.toolbar': '控制', 'label.spawn': '派一个', 'opt.worker': 'worker · 盖房子', 'opt.taskManager': 'task manager · 测试塔', 'opt.fastLaneDeputy': 'fast-lane deputy · 花园', 'opt.mergeDeputy': 'merge deputy · 桥', 'btn.spawn': '派出', 'btn.remoteOff': '中继断开', 'btn.remoteOn': '恢复', 'btn.remoteLeave': '退出联城', 'type.house': '住宅', 'type.shop': '商店', 'type.tower': '测试塔', 'type.workshop': '工坊', 'type.library': '图书馆', 'district.house': '住宅区', 'district.shop': '商业街', 'district.tower': '测试区', 'district.workshop': '工坊区', 'district.library': '图书馆区', 'chat.state.queued': '排队中', 'chat.state.delivered': '已送达', 'chat.state.undelivered': '没送到', 'chat.why.notListening': '它没在听，收不到', 'chat.new': '有新消息 ↓', 'hist.title': '历史（新的在下面）', 'hist.empty': '还没有记录', 'hist.all': '显示过程 {n}', 'hist.hide': '隐藏过程', 'hist.onlyMech': '只有过程记录，点「显示过程」看', 'hist.started': '出门：{task}', 'hist.stuck': '卡住了：{text}', 'hist.toLead': '去问经理', 'hist.toGov': '去问总督', 'hist.waiting': '等你回话', 'hist.done': '完工，去休息', 'hist.left': '下班了', 'chat.task': '任务（派它时的话）', 'team.title': '{repo} · 团队', 'role.task-manager': '任务经理', 'role.worker': '工人', 'role.fast-lane-deputy': '快车道副手', 'role.merge-deputy': '合并副手', 'role.other': '帮手', 'era.village': '村', 'era.town': '镇', 'era.city': '城', 'quality.good': '整齐', 'quality.fair': '还行', 'quality.poor': '有点乱', 'who.governor': '总督', 'who.owner': '你', 'who.terminal': '终端', 'state.spawn': '出门', 'state.to_plot': '去工地', 'state.building': '施工中', 'state.working': '干活', 'state.to_hall': '去问总督', 'state.asking': '在问总督', 'state.heard': '拿到答案', 'state.to_lead': '去问经理', 'state.at_lead': '问经理', 'state.back': '回工地', 'state.finishing': '封顶了', 'state.to_rest': '去休息', 'state.resting': '休息中', 'state.leaving': '下班回家', 'status.need_approval': '等你批', 'status.asking_gov': '在问总督', 'status.waiting_answer': '等你回答', 'status.waiting_reply': '等你回话', 'status.waiting': '等你', 'status.background': '后台在跑', 'status.idle': '空闲', 'stuck.permission': '要权限：{tool}', 'stuck.default': '需要你看一下', 'gov.away': '不在', 'gov.busy': '忙着', 'gov.home': '坐镇市政厅', 'top.work': '干活', 'top.ask': '找总督', 'top.rest': '休息', 'top.done': '建成', 'top.stalled': '卡住的工地', 'top.pending': '等你', 'top.pendingAria': '等你决定 {n} 个，点开最早的一个', 'empty.noLand': '还没有领地 · 在一个 git 仓库里启动，或等代理开工', 'loading.text': '正在搬来素材…', 'loading.progress': '正在搬来素材 {n}/{total}', 'loading.error': '素材没加载成功：{err}', 'site.human': '亲自带', 'log.eraUpgrade': '{name} 开始升级成{era}', 'say.done': '完工啦！', 'log.leftWork': '{task} 下班了', 'gov.dispatch': '去吧：{task}', 'log.govDispatch': '总督派出 {label}：{task}', 'log.siteMerged': '{branch} 合并进主线，工地收工', 'log.siteRemoved': '{branch} 的工地撤了', 'log.levelUp': '{label} 升到 {lv} 级', 'log.movedBack': '{label} 搬回{kind}区', 'log.demolished': '{label} 的文件都没了，拆掉', 'log.stuckDemo': '{task} 卡住了：“{text}” → 去问总督', 'answer.default': '已回答', 'log.govAnswer': '总督回答 {task}：“{text}”', 'log.doneRestPlain': '{task} 完工，去休息', 'log.doneRestBuilt': '{task} 完工：{kind}封顶，去休息', 'log.noplot': '{name} 没有空地了，先等等', 'gov.unknown': '未知', 'gov.busyRow': '在忙', 'gov.idleRow': '空闲', 'gov.title': '{name} 总督', 'chain.lead': '经理', 'chain.leadTask': '经理 {task}', 'chat.empty': '还没有对话', 'chat.you.page': '你（页面）', 'chat.you.terminal': '你（终端）', 'chat.wait': '等它做完这一步', 'chat.loadError': '对话没加载出来，等会儿再打开看看。', 'kv.repo': '仓库', 'kv.branch': '分支', 'kv.doing': '在做', 'qa.ask': '问：“{q}”', 'qa.answer': '答：“{a}”', 'qa.waiting': '问：“{q}” 等回答…', 'act.makeStuck': '让它卡住', 'act.makeDone': '让它完工', 'act.makeLeave': '让它下班', 'act.demoNote': '这三个按钮只在原型里有，用来试流程。', 'gov.ownTag': 'main manager · 主对话', 'gov.tagLabel': '总督 · main manager', 'gov.rgRole': 'main manager · 总督', 'pill.hall': '市政厅', 'gov.awayNote': '总督不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等总督。', 'hint.team': '团队', 'hint.noAgents': '还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。', 'hint.pickSomething': '点城里的小人、房子，或下面名单里的一行。', 'building.misplaced': ' · 放错区了', 'building.level': ' · 等级 {level}', 'building.district': '{kind}区', 'building.module': '{name} 模块', 'hint.files': '盖它的文件', 'hint.history': '改过它的人（新的在前）', 'detail.title': '详情', 'opt.other': '其他', 'opt.customAnswer': '自己写回答', 'btn.sendAnswer': '发送回答', 'kv.tool': '工具', 'kv.file': '文件', 'kv.url': '网址', 'said': '它说：{text}', 'kv.dir': '目录', 'field.denyReason': '拒绝理由（可以不填；填了会原样告诉它）', 'field.denyPlaceholder': '比如：先别删 dist/，里面有发布包', 'btn.allow': '批准', 'btn.deny': '拒绝', 'ask.asking': '在问', 'ask.needsPermission': '要权限', 'pill.closed': '已关闭', 'aria.collapse': '收起（不回答）', 'foot.terminalAnswers': '终端里也能答，先答的算。', 'err.decideNetwork': '没发出去（连不上城市服务器）。终端里还能答。', 'err.decideStatus': '没发出去（{status}）。终端里还能答，可以再试一次。', 'proto.live': '实时 · 等服务器', 'proto.connected': '实时 · 已连接', 'proto.reconnecting': '实时 · 重连中…', 'log.relayOff': '联城中继断开：其他成员定格，我的城市照常干活。', 'log.relayOn': '联城恢复：其他成员更新到最新。', 'log.relayLeave': '退出联城：其他成员从我的城市消失，我的城市不变。', 'demo.task.checkoutTest': '写结账测试', 'demo.task.paymentRetry': '改支付超时重试', 'demo.q.paymentRetry': '支付超时要不要自动重试？', 'demo.task.depsScan': '扫描依赖漏洞', 'demo.task.worker.0': '设置页表单', 'demo.task.worker.1': '登录 API', 'demo.task.worker.2': '导出 CSV', 'demo.task.worker.3': '深色模式', 'demo.task.worker.4': '小票打印', 'demo.task.worker.5': '搜索框', 'demo.task.worker.6': '分页', 'demo.task.worker.7': '价格计算', 'demo.task.worker.8': '库存提醒', 'demo.task.worker.9': '客户列表', 'demo.task.taskManager.0': '设置页', 'demo.task.taskManager.1': '登录', 'demo.task.taskManager.2': '报表', 'demo.task.taskManager.3': '打印', 'demo.task.taskManager.4': '库存', 'demo.task.fastLaneDeputy.0': '错别字', 'demo.task.fastLaneDeputy.1': '按钮颜色', 'demo.task.fastLaneDeputy.2': '图标大小', 'demo.task.fastLaneDeputy.3': '标题换行', 'demo.task.fastLaneDeputy.4': '空状态文案', 'demo.task.mergeDeputy.0': '合并 settings', 'demo.task.mergeDeputy.1': '合并 login', 'demo.task.mergeDeputy.2': '合并 report', 'demo.task.mergeDeputy.3': '合并 print', 'demo.qa.0.q': '测试名不清楚，用哪个？', 'demo.qa.0.a': '按默认，记进日志', 'demo.qa.1.q': 'API 路径用哪个？', 'demo.qa.1.a': '用 /api/settings', 'demo.qa.2.q': '要不要加分页？', 'demo.qa.2.a': '先不加，写进 ideas', 'demo.qa.3.q': '默认语言是？', 'demo.qa.3.a': 'zh，跟 agent.conf', 'demo.qa.4.q': '旧数据要迁移吗？', 'demo.qa.4.a': '要，先写测试', 'demo.qa.5.q': '这个文件能改吗？', 'demo.qa.5.a': '能，只改你那份', 'demo.qa.6.q': '可以跑这条命令吗？', 'demo.qa.6.a': '批了，继续', 'aria.needsApproval': '{task} 等你批，点开看', 'aria.needsAnswer': '{task} 等你回答，点开看', 'aria.stuckOnlyThem': '{name} 卡住了，只有 {name} 能回答', 'aria.govNeedsApproval': '总督 等你批，点开看', 'aria.govNeedsAnswer': '总督 等你回答，点开看', 'gov.waitCountdown': '总督 {s}s', 'chat.sendError': '没发出去（连不上城市服务器）。', 'btn.findLead': '找组长：{name}', 'hint.readOnlySub': '它是子任务，这份对话只能看；有事去找组长。', 'placeholder.saySomething': '跟它说…', 'btn.send': '发送', 'label.ask': '问：', 'label.answer': '答：', 'label.awaitingAnswer': '等回答…', 'member.unknown': '未知', 'chip.off': '联城断开 · 待发 {n} 条', 'chip.refused': '联城拒绝了密钥', 'chip.ok': '联城 · {people} 人 · {devices} 台设备', 'remote.note': '只能看：这是 {who} 的 agent，只有 {who} 能回答。', 'stale.sec': '最后更新 {n} 秒前', 'stale.min': '最后更新 {n} 分钟前', 'ask.permission': '{name} 要权限：{what} → 等你批', 'ask.toOwner': '{name} 问你：“{what}”', 'ask.toGov': '{name} 问总督：“{what}”', 'ask.toGovNoGov': '{name} 问总督：“{what}”，没有总督在 → 等你回答', 'askphase.pass': '总督：这个我定不了 → 等你回答 {name}', 'askphase.timeout': '总督 {wait} 秒没回答 {name} → 等你', 'closed.routed': '{name} 的请求转到{who}处理：{what}', 'closed.answered': '{who}回答 {name}：“{text}”', 'closed.answeredDefault': '{who}已回答 {name}', 'closed.allowed': '{who}批准 {name}：{what}', 'closed.denied': '{who}拒绝 {name}：{what}', 'closed.deniedReason': '，理由：“{reason}”', 'closed.ended': '{who}结束了 {name}：{what}', 'why.permission': '权限只由你来批，总督不批。', 'why.gov': '总督定不了，交给你。', 'why.timeout': '总督 {wait} 秒没回答，交给你。', 'why.pass': '总督说：这个我定不了，交给你。', 'why.noGov': '没有总督在，直接交给你。', 'closed.late': '晚了一步：<b>{who}</b>在 {time} 已经处理了。这里不用再点了。', 'closed.pending': '在 {time} 已经处理了，结果还没传回来。已记下。', 'closed.answeredText': '回答了：“{text}”', 'closed.allowedText': '批准了', 'closed.deniedText': '拒绝了', 'closed.lateFull': '晚了一步：<b>{who}</b>在 {time} 先{text}。这里不用再点了。', 'closed.doneByYou': '<b>{who}</b>在 {time} {text}。已记下。', 'log.chatSent': '你 → {to}：{text}', 'log.remoteSpawn': '{who}（{device}）的 {label} 开始：{task}', 'log.remoteDone': '{who}（{device}）的 {task} 完工了', 'log.remoteLeft': '{who}（{device}）的 {task} 下线了', 'say.understood': '明白！', 'log.eraBecame': '{name} 变成{era}了', 'demo.seed.prompt': '先把这页做完，别的先不要动', 'demo.seed.reply': '好，先做这页，其它先不碰', 'chat.stateSuffix': '（{state}）', 'punct.answerJoin': '；', 'rail.title': '在线', 'rail.count': '{n}', 'rail.rest': '休息 {n}', 'rail.tab': '在线 {n}', 'rail.none': '没人在线', 'add.btn': '＋ 加 agent', 'add.opening': '正在打开 {name}…', 'add.openingBare': '正在打开…', 'add.cap': '电脑有点忙', 'add.capNums': 'RAM {ram}% · CPU {cpu}%（上限 {max}%）', 'add.capAsk': '还要打开吗？', 'add.go': '还是打开', 'add.cancel': '取消', 'add.err': '没打开：', 'add.retry': '再试', 'add.ok': '知道了', 'add.errGone': '找不到仓库文件夹 {folder}（被移走或删掉了）。', 'add.errFailed': 'Orca 没能开出终端：{detail}', 'add.errLate': '终端开了，但 60 秒还没见到它上线。去 Orca 看那个终端。', 'add.errOther': '服务器没有给出原因（可能没连上）。', 'add.plain': '这台电脑没有 Orca，页面开不了终端。在终端里跑这一行：', 'add.copy': '复制', 'add.copied': '已复制', 'add.close': '关掉', 'fold.rail': '折起名单', 'fold.msg': '折起消息', 'msg.tab': '消息 · {name}', 'b.focus': '看看它', 'follow.on': '跟随 {name}', 'follow.stop': '停止', 'demo.device.cloud': '云端', 'work.edit': '改代码', 'work.read': '看文件', 'work.bash': '跑命令', 'work.other': '忙着', 'work.pause': '停一下', 'step.edit': '改 {file}', 'step.write': '写 {file}', 'step.editAny': '改代码', 'step.writeAny': '写代码', 'step.read': '看文件', 'step.search': '找代码', 'step.web': '查资料', 'step.bash': '跑命令', 'step.send': '派出：{desc}', 'step.sendAny': '派出帮手', 'step.plan': '排计划', 'step.message': '发消息', 'step.other': '忙着', /* cloud-city: texts */ 'cloud.readOnly': '只能看', 'cloud.sign': '云端', 'cloud.machines': '机器', 'cloud.busy': '干活 {n}', 'cloud.wait': '等你 {n}', 'cloud.noMachine': '还没有机器', 'cloud.noMachineHint': '在一台加入过城市的电脑上开一个 Claude 会话，它会自己出现在这里。', 'cloud.noSessions': '这台机器现在没有会话', 'cloud.noSessionsHint': '在它上面开一个 Claude 会话，人就会走出来。会话一开，那台机器的城市自己起来。', 'cloud.offline': '没有机器在线 · 这是 {age}的画面（{label}）', 'cloud.offlineHint': '哪台机器上一开 Claude 会话，它的城市自己起来，这里自动更新', 'cloud.login': '登录已经失效，或者还没登录。请重新登录。', 'cloud.reload': '重新登录', 'cloud.logout': '退出', 'cloud.viewNote': '只能看 · 回答和说话请回到那台电脑（以后在这里开放）', 'cloud.notConnected': '没连上 · 重试中…', 'cloud.justNow': '刚刚', 'cloud.ageSec': '{n} 秒前', 'cloud.ageMin': '{n} 分钟前', 'cloud.ageHour': '{n} 小时前', 'cloud.ageDay': '{n} 天前' }, en: { 'btn.log': 'Activity', 'aria.city': 'City', 'aria.canvas': '3D island: each little person is one agent', 'proto.banner': 'Prototype - demo data', 'btn.zoomIn': 'Zoom in', 'btn.zoomOut': 'Zoom out', 'btn.rotate': 'Rotate', 'btn.resetView': 'Reset the view', 'repo.all': 'All', 'aria.repos': 'Repos: click one to fly there', 'repo.goAria': 'Fly to {name}', 'cap.hint': 'That is as far as it goes - click "All" to see every repo','btn.close': 'Close', 'aria.toolbar': 'Controls', 'label.spawn': 'Send a', 'opt.worker': 'worker - builds houses', 'opt.taskManager': 'task manager - test tower', 'opt.fastLaneDeputy': 'fast-lane deputy - garden', 'opt.mergeDeputy': 'merge deputy - bridge', 'btn.spawn': 'Send', 'btn.remoteOff': 'Disconnect relay', 'btn.remoteOn': 'Resume', 'btn.remoteLeave': 'Leave the linked city', 'type.house': 'House', 'type.shop': 'Shop', 'type.tower': 'Tower', 'type.workshop': 'Workshop', 'type.library': 'Library', 'district.house': 'Homes', 'district.shop': 'Shops', 'district.tower': 'Tests', 'district.workshop': 'Workshops', 'district.library': 'Library', 'chat.state.queued': 'Queued', 'chat.state.delivered': 'Delivered', 'chat.state.undelivered': 'Undelivered', 'chat.why.notListening': 'it is not listening, it did not get this', 'chat.new': 'New messages ↓', 'hist.title': 'History (newest at the bottom)', 'hist.empty': 'Nothing yet', 'hist.all': 'Show steps {n}', 'hist.hide': 'Hide steps', 'hist.onlyMech': 'Only steps so far - tap "Show steps"', 'hist.started': 'Headed out: {task}', 'hist.stuck': 'Stuck: {text}', 'hist.toLead': 'To the manager', 'hist.toGov': 'To the governor', 'hist.waiting': 'Waiting on you', 'hist.done': 'Finished, heading to rest', 'hist.left': 'Clocked out', 'chat.task': 'Task (what it was sent with)', 'team.title': '{repo} · Team', 'role.task-manager': 'Task manager', 'role.worker': 'Worker', 'role.fast-lane-deputy': 'Fast-lane deputy', 'role.merge-deputy': 'Merge deputy', 'role.other': 'Helper', 'era.village': 'Village', 'era.town': 'Town', 'era.city': 'City', 'quality.good': 'Tidy', 'quality.fair': 'OK', 'quality.poor': 'Messy', 'who.governor': 'Governor', 'who.owner': 'You', 'who.terminal': 'Terminal', 'state.spawn': 'Heading out', 'state.to_plot': 'To the site', 'state.building': 'Building', 'state.working': 'Working', 'state.to_hall': 'To the governor', 'state.asking': 'Asking the governor', 'state.heard': 'Got the answer', 'state.to_lead': 'To the manager', 'state.at_lead': 'Asking the manager', 'state.back': 'Back to the site', 'state.finishing': 'Topped out', 'state.to_rest': 'Heading to rest', 'state.resting': 'Resting', 'state.leaving': 'Heading home', 'status.need_approval': 'Needs your OK', 'status.asking_gov': 'Asking the governor', 'status.waiting_answer': 'Waiting on your answer', 'status.waiting_reply': 'Waiting on you', 'status.waiting': 'Waiting on you', 'status.background': 'Working in background', 'status.idle': 'Idle', 'stuck.permission': 'Needs permission: {tool}', 'stuck.default': 'Needs your eyes', 'gov.away': 'Away', 'gov.busy': 'Busy', 'gov.home': 'At the town hall', 'top.work': 'Working', 'top.ask': 'Need governor', 'top.rest': 'Resting', 'top.done': 'Built', 'top.stalled': 'Stalled site', 'top.pending': 'Waiting', 'top.pendingAria': '{n} waiting on your call - click to open the earliest', 'empty.noLand': 'No territory yet - start inside a git repo, or wait for an agent', 'loading.text': 'Loading assets…', 'loading.progress': 'Loading assets {n}/{total}', 'loading.error': 'Assets failed to load: {err}', 'site.human': 'Hands-on', 'log.eraUpgrade': '{name} is upgrading to {era}', 'say.done': 'Done!', 'log.leftWork': '{task} clocked out', 'gov.dispatch': 'Go: {task}', 'log.govDispatch': 'The governor sent {label}: {task}', 'log.siteMerged': '{branch} merged into main, the site wrapped up', 'log.siteRemoved': 'The {branch} site was pulled down', 'log.levelUp': '{label} leveled up to {lv}', 'log.movedBack': '{label} moved back to the {kind} district', 'log.demolished': 'Every file behind {label} is gone, demolished', 'log.stuckDemo': '{task} got stuck: "{text}" -> asking the governor', 'answer.default': 'Answered', 'log.govAnswer': 'The governor answered {task}: "{text}"', 'log.doneRestPlain': '{task} finished, heading to rest', 'log.doneRestBuilt': '{task} finished: {kind} topped out, heading to rest', 'log.noplot': '{name} found no empty plot, waiting a bit', 'gov.unknown': 'Unknown', 'gov.busyRow': 'Busy', 'gov.idleRow': 'Idle', 'gov.title': '{name} governor', 'chain.lead': 'Manager', 'chain.leadTask': 'Manager {task}', 'chat.empty': 'No conversation yet', 'chat.you.page': 'You (page)', 'chat.you.terminal': 'You (terminal)', 'chat.wait': 'Waiting for it to finish this step', 'chat.loadError': 'Could not load the conversation - try opening it again in a moment.', 'kv.repo': 'Repo', 'kv.branch': 'Branch', 'kv.doing': 'Doing', 'qa.ask': 'Q: “{q}”', 'qa.answer': 'A: “{a}”', 'qa.waiting': 'Q: “{q}” - waiting for an answer…', 'act.makeStuck': 'Make it stuck', 'act.makeDone': 'Make it finish', 'act.makeLeave': 'Make it clock out', 'act.demoNote': 'These three buttons exist only in the prototype, to try the flow.', 'gov.ownTag': 'main manager · main conversation', 'gov.tagLabel': 'Governor · main manager', 'gov.rgRole': 'main manager · Governor', 'pill.hall': 'Town hall', 'gov.awayNote': 'The governor is away: this repo has no main manager session right now. Agent questions go straight to you, without waiting for the governor first.', 'hint.team': 'Team', 'hint.noAgents': 'No agents at work yet. Open a Claude Code session and send an agent - it will walk out of the town hall.', 'hint.pickSomething': 'Click a person or building in the city, or a row in the list below.', 'building.misplaced': ' - in the wrong district', 'building.level': ' - level {level}', 'building.district': '{kind} district', 'building.module': '{name} module', 'hint.files': 'The files that built it', 'hint.history': 'Who has touched it (newest first)', 'detail.title': 'Details', 'opt.other': 'Other', 'opt.customAnswer': 'Write your own answer', 'btn.sendAnswer': 'Send answer', 'kv.tool': 'Tool', 'kv.file': 'File', 'kv.url': 'URL', 'said': 'It said: {text}', 'kv.dir': 'Directory', 'field.denyReason': 'Reason for denying (optional; if filled in, it is told to it as-is)', 'field.denyPlaceholder': 'e.g. do not delete dist/ yet, it has the release package', 'btn.allow': 'Allow', 'btn.deny': 'Deny', 'ask.asking': 'is asking', 'ask.needsPermission': 'needs permission', 'pill.closed': 'Closed', 'aria.collapse': 'Collapse (without answering)', 'foot.terminalAnswers': 'The terminal can answer too - whichever answers first wins.', 'err.decideNetwork': 'Could not send (cannot reach the city server). The terminal can still answer.', 'err.decideStatus': 'Could not send ({status}). The terminal can still answer, or try again.', 'proto.live': 'Live - waiting for the server', 'proto.connected': 'Live - connected', 'proto.reconnecting': 'Live - reconnecting…', 'log.relayOff': 'City-link relay disconnected: other members are frozen, my city keeps working as normal.', 'log.relayOn': 'City-link resumed: other members update to the latest.', 'log.relayLeave': 'Left the linked city: other members disappear from my city; my city is unchanged.', 'demo.task.checkoutTest': 'Write checkout tests', 'demo.task.paymentRetry': 'Fix payment-timeout retry', 'demo.q.paymentRetry': 'Should a payment timeout retry automatically?', 'demo.task.depsScan': 'Scan dependencies for vulnerabilities', 'demo.task.worker.0': 'Settings page form', 'demo.task.worker.1': 'Login API', 'demo.task.worker.2': 'Export CSV', 'demo.task.worker.3': 'Dark mode', 'demo.task.worker.4': 'Receipt printing', 'demo.task.worker.5': 'Search box', 'demo.task.worker.6': 'Pagination', 'demo.task.worker.7': 'Price calculation', 'demo.task.worker.8': 'Inventory alerts', 'demo.task.worker.9': 'Customer list', 'demo.task.taskManager.0': 'Settings page', 'demo.task.taskManager.1': 'Login', 'demo.task.taskManager.2': 'Reports', 'demo.task.taskManager.3': 'Printing', 'demo.task.taskManager.4': 'Inventory', 'demo.task.fastLaneDeputy.0': 'Typos', 'demo.task.fastLaneDeputy.1': 'Button colour', 'demo.task.fastLaneDeputy.2': 'Icon size', 'demo.task.fastLaneDeputy.3': 'Title wrapping', 'demo.task.fastLaneDeputy.4': 'Empty-state copy', 'demo.task.mergeDeputy.0': 'Merge settings', 'demo.task.mergeDeputy.1': 'Merge login', 'demo.task.mergeDeputy.2': 'Merge report', 'demo.task.mergeDeputy.3': 'Merge print', 'demo.qa.0.q': 'Which test name is unclear - which one?', 'demo.qa.0.a': 'Go with the default, log it', 'demo.qa.1.q': 'Which API path should I use?', 'demo.qa.1.a': 'Use /api/settings', 'demo.qa.2.q': 'Should I add pagination?', 'demo.qa.2.a': 'Not yet, write it into ideas', 'demo.qa.3.q': 'What is the default language?', 'demo.qa.3.a': 'zh, matching agent.conf', 'demo.qa.4.q': 'Does the old data need migrating?', 'demo.qa.4.a': 'Yes, write a test first', 'demo.qa.5.q': 'Can I change this file?', 'demo.qa.5.a': 'Yes, only your own copy', 'demo.qa.6.q': 'Can I run this command?', 'demo.qa.6.a': 'Approved, go ahead', 'aria.needsApproval': '{task} needs your approval, click to open', 'aria.needsAnswer': '{task} needs your answer, click to open', 'aria.stuckOnlyThem': '{name} is stuck; only {name} can answer', 'aria.govNeedsApproval': 'The governor needs your approval, click to open', 'aria.govNeedsAnswer': 'The governor needs your answer, click to open', 'gov.waitCountdown': 'Governor {s}s', 'chat.sendError': 'Could not send (cannot reach the city server).', 'btn.findLead': 'Find the lead: {name}', 'hint.readOnlySub': 'This is a subtask; the conversation is view only - go to its lead for anything else.', 'placeholder.saySomething': 'Say something to it…', 'btn.send': 'Send', 'label.ask': 'Q: ', 'label.answer': 'A: ', 'label.awaitingAnswer': 'awaiting an answer…', 'member.unknown': 'Unknown', 'chip.off': 'City-link disconnected - {n} queued', 'chip.refused': 'City-link refused the key', 'chip.ok': 'City-link - {people} people - {devices} devices', 'remote.note': 'View only: this agent belongs to {who} - only {who} can answer it.', 'stale.sec': 'Last updated {n}s ago', 'stale.min': 'Last updated {n}m ago', 'ask.permission': '{name} needs permission: {what} -> waiting on you', 'ask.toOwner': '{name} asks you: “{what}”', 'ask.toGov': '{name} asks the governor: “{what}”', 'ask.toGovNoGov': '{name} asks the governor: “{what}”, no governor around -> waiting on your answer', 'askphase.pass': 'The governor: not mine to decide -> waiting on your answer for {name}', 'askphase.timeout': 'The governor did not answer {name} in {wait}s -> waiting on you', 'closed.routed': 'The request from {name} was routed to {who}: {what}', 'closed.answered': '{who} answered {name}: “{text}”', 'closed.answeredDefault': '{who} already answered {name}', 'closed.allowed': '{who} allowed {name}: {what}', 'closed.denied': '{who} denied {name}: {what}', 'closed.deniedReason': ', reason: “{reason}”', 'closed.ended': '{who} closed {name}: {what}', 'why.permission': 'Only you can approve permissions - the governor does not.', 'why.gov': 'The governor cannot decide this - it is yours.', 'why.timeout': 'The governor did not answer in {wait}s - it is yours.', 'why.pass': 'The governor said: not mine to decide - it is yours.', 'why.noGov': 'No governor around - it goes straight to you.', 'closed.late': 'Too late: <b>{who}</b> already handled it at {time}. No need to click here.', 'closed.pending': 'Handled at {time}; the result has not come back yet. Noted.', 'closed.answeredText': 'Answered: “{text}”', 'closed.allowedText': 'Allowed', 'closed.deniedText': 'Denied', 'closed.lateFull': 'Too late: <b>{who}</b> already {text} at {time}. No need to click here.', 'closed.doneByYou': '<b>{who}</b> {text} at {time}. Noted.', 'log.chatSent': 'You -> {to}: {text}', 'log.remoteSpawn': '{who} ({device}) - {label} started: {task}', 'log.remoteDone': '{who} ({device}) - {task} finished', 'log.remoteLeft': '{who} ({device}) - {task} went offline', 'say.understood': 'Got it!', 'log.eraBecame': '{name} became a {era}', 'demo.seed.prompt': 'Finish this page first, do not touch anything else yet', 'demo.seed.reply': 'OK, doing this page first, leaving the rest alone', 'chat.stateSuffix': ' ({state})', 'punct.answerJoin': '; ', 'rail.title': 'Now', 'rail.count': '{n}', 'rail.rest': 'Resting {n}', 'rail.tab': 'Now {n}', 'rail.none': 'Nobody online', 'add.btn': '+ Add agent', 'add.opening': 'Opening {name}…', 'add.openingBare': 'Opening…', 'add.cap': 'The computer is busy', 'add.capNums': 'RAM {ram}% · CPU {cpu}% (limit {max}%)', 'add.capAsk': 'Open it anyway?', 'add.go': 'Open anyway', 'add.cancel': 'Cancel', 'add.err': 'Not opened: ', 'add.retry': 'Try again', 'add.ok': 'Got it', 'add.errGone': 'Cannot find the repo folder {folder} (moved or deleted).', 'add.errFailed': 'Orca could not open a terminal: {detail}', 'add.errLate': 'The terminal opened, but nothing showed up in 60 seconds. Look at that terminal in Orca.', 'add.errOther': 'The server gave no reason (it may be out of reach).', 'add.plain': 'This computer has no Orca, so the page cannot open a terminal. Run this line in a terminal:', 'add.copy': 'Copy', 'add.copied': 'Copied', 'add.close': 'Close', 'fold.rail': 'Fold the list', 'fold.msg': 'Fold the messages', 'msg.tab': 'Messages · {name}', 'b.focus': 'Show it', 'follow.on': 'Following {name}', 'follow.stop': 'Stop', 'demo.device.cloud': 'Cloud', 'work.edit': 'Editing', 'work.read': 'Reading', 'work.bash': 'Running', 'work.other': 'Busy', 'work.pause': 'Pausing', 'step.edit': 'Editing {file}', 'step.write': 'Writing {file}', 'step.editAny': 'Editing code', 'step.writeAny': 'Writing code', 'step.read': 'Reading files', 'step.search': 'Searching code', 'step.web': 'Looking things up', 'step.bash': 'Running a command', 'step.send': 'Sending out: {desc}', 'step.sendAny': 'Sending a helper', 'step.plan': 'Planning', 'step.message': 'Sending a message', 'step.other': 'Busy', /* cloud-city: texts */ 'cloud.readOnly': 'View only', 'cloud.sign': 'Cloud', 'cloud.machines': 'Machines', 'cloud.busy': 'Working {n}', 'cloud.wait': 'Waiting {n}', 'cloud.noMachine': 'No machine yet', 'cloud.noMachineHint': 'Open a Claude session on a machine that has joined the city. It shows up here by itself.', 'cloud.noSessions': 'This machine has no sessions right now', 'cloud.noSessionsHint': 'Open a Claude session on it and the people walk out. The city on that machine starts by itself once a session opens.', 'cloud.offline': 'No machine is online - this is the picture from {age} ({label})', 'cloud.offlineHint': 'When a Claude session opens on any machine, its city starts by itself and this page updates', 'cloud.login': 'You are signed out, or the login has expired. Please sign in again.', 'cloud.reload': 'Sign in again', 'cloud.logout': 'Sign out', 'cloud.viewNote': 'View only - to answer or talk, go back to that computer (this page will allow it later)', 'cloud.notConnected': 'Not connected - trying again…', 'cloud.justNow': 'just now', 'cloud.ageSec': '{n} s ago', 'cloud.ageMin': '{n} min ago', 'cloud.ageHour': '{n} h ago', 'cloud.ageDay': '{n} d ago' } };
+const TEXT = { zh: { 'btn.log': '动态', 'aria.city': '城市', 'aria.canvas': '3D 小岛：每个小人是一个 agent', 'proto.banner': '原型 · 模拟数据', 'btn.zoomIn': '放大', 'btn.zoomOut': '缩小', 'btn.rotate': '转一下', 'btn.resetView': '回到默认视角', 'repo.all': '全部', 'aria.repos': '仓库：点一个飞过去', 'repo.goAria': '飞到 {name}', 'cap.hint': '已经是最远了 · 点「全部」看所有仓库','btn.close': '关闭', 'aria.toolbar': '控制', 'label.spawn': '派一个', 'opt.worker': 'worker · 盖房子', 'opt.taskManager': 'task manager · 测试塔', 'opt.fastLaneDeputy': 'fast-lane deputy · 花园', 'opt.mergeDeputy': 'merge deputy · 桥', 'btn.spawn': '派出', 'btn.remoteOff': '中继断开', 'btn.remoteOn': '恢复', 'btn.remoteLeave': '退出联城', 'type.house': '住宅', 'type.shop': '商店', 'type.tower': '测试塔', 'type.workshop': '工坊', 'type.library': '图书馆', 'district.house': '住宅区', 'district.shop': '商业街', 'district.tower': '测试区', 'district.workshop': '工坊区', 'district.library': '图书馆区', 'chat.state.queued': '排队中', 'chat.state.delivered': '已送达', 'chat.state.undelivered': '没送到', 'chat.why.notListening': '它没在听，收不到', 'chat.state.sent': '在路上', 'chat.you.cloud': '你（云端）', 'chat.you.local': '你（电脑上的页面）', 'chat.why.off': '那台电脑没开', 'chat.why.ended': '这个会话已经结束', 'chat.why.talkOff': '那台电脑不接收云端消息', 'chat.why.refused': '那台电脑没收这条消息', 'chat.why.flood': '发得太快，那台电脑没收', 'chat.resend': '重发', 'chat.new': '有新消息 ↓', 'hist.title': '历史（新的在下面）', 'hist.empty': '还没有记录', 'hist.all': '显示过程 {n}', 'hist.hide': '隐藏过程', 'hist.onlyMech': '只有过程记录，点「显示过程」看', 'hist.started': '出门：{task}', 'hist.stuck': '卡住了：{text}', 'hist.toLead': '去问经理', 'hist.toGov': '去问总督', 'hist.waiting': '等你回话', 'hist.done': '完工，去休息', 'hist.left': '下班了', 'chat.task': '任务（派它时的话）', 'team.title': '{repo} · 团队', 'role.task-manager': '任务经理', 'role.worker': '工人', 'role.fast-lane-deputy': '快车道副手', 'role.merge-deputy': '合并副手', 'role.other': '帮手', 'era.village': '村', 'era.town': '镇', 'era.city': '城', 'quality.good': '整齐', 'quality.fair': '还行', 'quality.poor': '有点乱', 'who.governor': '总督', 'who.owner': '你', 'who.terminal': '终端', 'state.spawn': '出门', 'state.to_plot': '去工地', 'state.building': '施工中', 'state.working': '干活', 'state.to_hall': '去问总督', 'state.asking': '在问总督', 'state.heard': '拿到答案', 'state.to_lead': '去问经理', 'state.at_lead': '问经理', 'state.back': '回工地', 'state.finishing': '封顶了', 'state.to_rest': '去休息', 'state.resting': '休息中', 'state.leaving': '下班回家', 'status.need_approval': '等你批', 'status.asking_gov': '在问总督', 'status.waiting_answer': '等你回答', 'status.waiting_reply': '等你回话', 'status.waiting': '等你', 'status.background': '后台在跑', 'status.idle': '空闲', 'stuck.permission': '要权限：{tool}', 'stuck.default': '需要你看一下', 'gov.away': '不在', 'gov.busy': '忙着', 'gov.home': '坐镇市政厅', 'top.work': '干活', 'top.ask': '找总督', 'top.rest': '休息', 'top.done': '建成', 'top.stalled': '卡住的工地', 'top.pending': '等你', 'top.pendingAria': '等你决定 {n} 个，点开最早的一个', 'empty.noLand': '还没有领地 · 在一个 git 仓库里启动，或等代理开工', 'loading.text': '正在搬来素材…', 'loading.progress': '正在搬来素材 {n}/{total}', 'loading.error': '素材没加载成功：{err}', 'site.human': '亲自带', 'log.eraUpgrade': '{name} 开始升级成{era}', 'say.done': '完工啦！', 'log.leftWork': '{task} 下班了', 'gov.dispatch': '去吧：{task}', 'log.govDispatch': '总督派出 {label}：{task}', 'log.siteMerged': '{branch} 合并进主线，工地收工', 'log.siteRemoved': '{branch} 的工地撤了', 'log.levelUp': '{label} 升到 {lv} 级', 'log.movedBack': '{label} 搬回{kind}区', 'log.demolished': '{label} 的文件都没了，拆掉', 'log.stuckDemo': '{task} 卡住了：“{text}” → 去问总督', 'answer.default': '已回答', 'log.govAnswer': '总督回答 {task}：“{text}”', 'log.doneRestPlain': '{task} 完工，去休息', 'log.doneRestBuilt': '{task} 完工：{kind}封顶，去休息', 'log.noplot': '{name} 没有空地了，先等等', 'gov.unknown': '未知', 'gov.busyRow': '在忙', 'gov.idleRow': '空闲', 'gov.title': '{name} 总督', 'chain.lead': '经理', 'chain.leadTask': '经理 {task}', 'chat.empty': '还没有对话', 'chat.you.page': '你（页面）', 'chat.you.terminal': '你（终端）', 'chat.wait': '等它做完这一步', 'chat.loadError': '对话没加载出来，等会儿再打开看看。', 'kv.repo': '仓库', 'kv.branch': '分支', 'kv.doing': '在做', 'qa.ask': '问：“{q}”', 'qa.answer': '答：“{a}”', 'qa.waiting': '问：“{q}” 等回答…', 'act.makeStuck': '让它卡住', 'act.makeDone': '让它完工', 'act.makeLeave': '让它下班', 'act.demoNote': '这三个按钮只在原型里有，用来试流程。', 'gov.ownTag': 'main manager · 主对话', 'gov.tagLabel': '总督 · main manager', 'gov.rgRole': 'main manager · 总督', 'pill.hall': '市政厅', 'gov.awayNote': '总督不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等总督。', 'hint.team': '团队', 'hint.noAgents': '还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。', 'hint.pickSomething': '点城里的小人、房子，或下面名单里的一行。', 'building.misplaced': ' · 放错区了', 'building.level': ' · 等级 {level}', 'building.district': '{kind}区', 'building.module': '{name} 模块', 'hint.files': '盖它的文件', 'hint.history': '改过它的人（新的在前）', 'detail.title': '详情', 'opt.other': '其他', 'opt.customAnswer': '自己写回答', 'btn.sendAnswer': '发送回答', 'kv.tool': '工具', 'kv.file': '文件', 'kv.url': '网址', 'said': '它说：{text}', 'kv.dir': '目录', 'field.denyReason': '拒绝理由（可以不填；填了会原样告诉它）', 'field.denyPlaceholder': '比如：先别删 dist/，里面有发布包', 'btn.allow': '批准', 'btn.deny': '拒绝', 'ask.asking': '在问', 'ask.needsPermission': '要权限', 'pill.closed': '已关闭', 'aria.collapse': '收起（不回答）', 'foot.terminalAnswers': '终端里也能答，先答的算。', 'err.decideNetwork': '没发出去（连不上城市服务器）。终端里还能答。', 'err.decideStatus': '没发出去（{status}）。终端里还能答，可以再试一次。', 'proto.live': '实时 · 等服务器', 'proto.connected': '实时 · 已连接', 'proto.reconnecting': '实时 · 重连中…', 'log.relayOff': '联城中继断开：其他成员定格，我的城市照常干活。', 'log.relayOn': '联城恢复：其他成员更新到最新。', 'log.relayLeave': '退出联城：其他成员从我的城市消失，我的城市不变。', 'demo.task.checkoutTest': '写结账测试', 'demo.task.paymentRetry': '改支付超时重试', 'demo.q.paymentRetry': '支付超时要不要自动重试？', 'demo.task.depsScan': '扫描依赖漏洞', 'demo.task.worker.0': '设置页表单', 'demo.task.worker.1': '登录 API', 'demo.task.worker.2': '导出 CSV', 'demo.task.worker.3': '深色模式', 'demo.task.worker.4': '小票打印', 'demo.task.worker.5': '搜索框', 'demo.task.worker.6': '分页', 'demo.task.worker.7': '价格计算', 'demo.task.worker.8': '库存提醒', 'demo.task.worker.9': '客户列表', 'demo.task.taskManager.0': '设置页', 'demo.task.taskManager.1': '登录', 'demo.task.taskManager.2': '报表', 'demo.task.taskManager.3': '打印', 'demo.task.taskManager.4': '库存', 'demo.task.fastLaneDeputy.0': '错别字', 'demo.task.fastLaneDeputy.1': '按钮颜色', 'demo.task.fastLaneDeputy.2': '图标大小', 'demo.task.fastLaneDeputy.3': '标题换行', 'demo.task.fastLaneDeputy.4': '空状态文案', 'demo.task.mergeDeputy.0': '合并 settings', 'demo.task.mergeDeputy.1': '合并 login', 'demo.task.mergeDeputy.2': '合并 report', 'demo.task.mergeDeputy.3': '合并 print', 'demo.qa.0.q': '测试名不清楚，用哪个？', 'demo.qa.0.a': '按默认，记进日志', 'demo.qa.1.q': 'API 路径用哪个？', 'demo.qa.1.a': '用 /api/settings', 'demo.qa.2.q': '要不要加分页？', 'demo.qa.2.a': '先不加，写进 ideas', 'demo.qa.3.q': '默认语言是？', 'demo.qa.3.a': 'zh，跟 agent.conf', 'demo.qa.4.q': '旧数据要迁移吗？', 'demo.qa.4.a': '要，先写测试', 'demo.qa.5.q': '这个文件能改吗？', 'demo.qa.5.a': '能，只改你那份', 'demo.qa.6.q': '可以跑这条命令吗？', 'demo.qa.6.a': '批了，继续', 'aria.needsApproval': '{task} 等你批，点开看', 'aria.needsAnswer': '{task} 等你回答，点开看', 'aria.stuckOnlyThem': '{name} 卡住了，只有 {name} 能回答', 'aria.govNeedsApproval': '总督 等你批，点开看', 'aria.govNeedsAnswer': '总督 等你回答，点开看', 'gov.waitCountdown': '总督 {s}s', 'chat.sendError': '没发出去（连不上城市服务器）。', 'btn.findLead': '找组长：{name}', 'hint.readOnlySub': '它是子任务，这份对话只能看；有事去找组长。', 'placeholder.saySomething': '跟它说…', 'btn.send': '发送', 'label.ask': '问：', 'label.answer': '答：', 'label.awaitingAnswer': '等回答…', 'member.unknown': '未知', 'chip.off': '联城断开 · 待发 {n} 条', 'chip.refused': '联城拒绝了密钥', 'chip.ok': '联城 · {people} 人 · {devices} 台设备', 'remote.note': '只能看：这是 {who} 的 agent，只有 {who} 能回答。', 'stale.sec': '最后更新 {n} 秒前', 'stale.min': '最后更新 {n} 分钟前', 'ask.permission': '{name} 要权限：{what} → 等你批', 'ask.toOwner': '{name} 问你：“{what}”', 'ask.toGov': '{name} 问总督：“{what}”', 'ask.toGovNoGov': '{name} 问总督：“{what}”，没有总督在 → 等你回答', 'askphase.pass': '总督：这个我定不了 → 等你回答 {name}', 'askphase.timeout': '总督 {wait} 秒没回答 {name} → 等你', 'closed.routed': '{name} 的请求转到{who}处理：{what}', 'closed.answered': '{who}回答 {name}：“{text}”', 'closed.answeredDefault': '{who}已回答 {name}', 'closed.allowed': '{who}批准 {name}：{what}', 'closed.denied': '{who}拒绝 {name}：{what}', 'closed.deniedReason': '，理由：“{reason}”', 'closed.ended': '{who}结束了 {name}：{what}', 'why.permission': '权限只由你来批，总督不批。', 'why.gov': '总督定不了，交给你。', 'why.timeout': '总督 {wait} 秒没回答，交给你。', 'why.pass': '总督说：这个我定不了，交给你。', 'why.noGov': '没有总督在，直接交给你。', 'closed.late': '晚了一步：<b>{who}</b>在 {time} 已经处理了。这里不用再点了。', 'closed.pending': '在 {time} 已经处理了，结果还没传回来。已记下。', 'closed.answeredText': '回答了：“{text}”', 'closed.allowedText': '批准了', 'closed.deniedText': '拒绝了', 'closed.lateFull': '晚了一步：<b>{who}</b>在 {time} 先{text}。这里不用再点了。', 'closed.doneByYou': '<b>{who}</b>在 {time} {text}。已记下。', 'log.chatSent': '你 → {to}：{text}', 'log.remoteSpawn': '{who}（{device}）的 {label} 开始：{task}', 'log.remoteDone': '{who}（{device}）的 {task} 完工了', 'log.remoteLeft': '{who}（{device}）的 {task} 下线了', 'say.understood': '明白！', 'log.eraBecame': '{name} 变成{era}了', 'demo.seed.prompt': '先把这页做完，别的先不要动', 'demo.seed.reply': '好，先做这页，其它先不碰', 'chat.stateSuffix': '（{state}）', 'punct.answerJoin': '；', 'rail.title': '在线', 'rail.count': '{n}', 'rail.rest': '休息 {n}', 'rail.tab': '在线 {n}', 'rail.none': '没人在线', 'add.btn': '＋ 加 agent', 'add.opening': '正在打开 {name}…', 'add.openingBare': '正在打开…', 'add.cap': '电脑有点忙', 'add.capNums': 'RAM {ram}% · CPU {cpu}%（上限 {max}%）', 'add.capAsk': '还要打开吗？', 'add.go': '还是打开', 'add.cancel': '取消', 'add.err': '没打开：', 'add.retry': '再试', 'add.ok': '知道了', 'add.errGone': '找不到仓库文件夹 {folder}（被移走或删掉了）。', 'add.errFailed': 'Orca 没能开出终端：{detail}', 'add.errLate': '终端开了，但 60 秒还没见到它上线。去 Orca 看那个终端。', 'add.errOther': '服务器没有给出原因（可能没连上）。', 'add.plain': '这台电脑没有 Orca，页面开不了终端。在终端里跑这一行：', 'add.copy': '复制', 'add.copied': '已复制', 'add.close': '关掉', 'fold.rail': '折起名单', 'fold.msg': '折起消息', 'msg.tab': '消息 · {name}', 'b.focus': '看看它', 'follow.on': '跟随 {name}', 'follow.stop': '停止', 'demo.device.cloud': '云端', 'work.edit': '改代码', 'work.read': '看文件', 'work.bash': '跑命令', 'work.other': '忙着', 'work.pause': '停一下', 'step.edit': '改 {file}', 'step.write': '写 {file}', 'step.editAny': '改代码', 'step.writeAny': '写代码', 'step.read': '看文件', 'step.search': '找代码', 'step.web': '查资料', 'step.bash': '跑命令', 'step.send': '派出：{desc}', 'step.sendAny': '派出帮手', 'step.plan': '排计划', 'step.message': '发消息', 'step.other': '忙着', /* cloud-city: texts */ 'cloud.readOnly': '只能看', 'cloud.sign': '云端', 'cloud.machines': '机器', 'cloud.busy': '干活 {n}', 'cloud.wait': '等你 {n}', 'cloud.noMachine': '还没有机器', 'cloud.noMachineHint': '在一台加入过城市的电脑上开一个 Claude 会话，它会自己出现在这里。', 'cloud.noSessions': '这台机器现在没有会话', 'cloud.noSessionsHint': '在它上面开一个 Claude 会话，人就会走出来。会话一开，那台机器的城市自己起来。', 'cloud.offline': '没有机器在线 · 这是 {age}的画面（{label}）', 'cloud.offlineHint': '哪台机器上一开 Claude 会话，它的城市自己起来，这里自动更新', 'cloud.login': '登录已经失效，或者还没登录。请重新登录。', 'cloud.reload': '重新登录', 'cloud.logout': '退出', 'cloud.viewNote': '只能看 · 这台电脑没开云端对话，回答和说话请回到那台电脑', 'cloud.notConnected': '没连上 · 重试中…', 'cloud.justNow': '刚刚', 'cloud.ageSec': '{n} 秒前', 'cloud.ageMin': '{n} 分钟前', 'cloud.ageHour': '{n} 小时前', 'cloud.ageDay': '{n} 天前', 'cloud.talk.on': '可对话', 'cloud.talk.off': '只能看', 'cloud.box.talkOff': '这台电脑没开「云端对话」，只能看。在它的终端里自己打这条命令就开：agent-city cloud-talk on', 'cloud.box.offline': '那台电脑现在不在线，发不了。它一上线，这里自己恢复。', 'cloud.tooFast': '发得太快了，等一会儿再发。', 'cloud.tooMany': '今天发得太多了，明天再发。', 'cloud.later.ask': '它在等你批准或选择（"?"）：在这里批准、选择，以后开放。现在请到那台电脑上回答。', 'cloud.later.add': '＋ 加 agent · 以后开放', 'cloud.later.demo': '演示工具 · 以后开放' }, en: { 'btn.log': 'Activity', 'aria.city': 'City', 'aria.canvas': '3D island: each little person is one agent', 'proto.banner': 'Prototype - demo data', 'btn.zoomIn': 'Zoom in', 'btn.zoomOut': 'Zoom out', 'btn.rotate': 'Rotate', 'btn.resetView': 'Reset the view', 'repo.all': 'All', 'aria.repos': 'Repos: click one to fly there', 'repo.goAria': 'Fly to {name}', 'cap.hint': 'That is as far as it goes - click "All" to see every repo','btn.close': 'Close', 'aria.toolbar': 'Controls', 'label.spawn': 'Send a', 'opt.worker': 'worker - builds houses', 'opt.taskManager': 'task manager - test tower', 'opt.fastLaneDeputy': 'fast-lane deputy - garden', 'opt.mergeDeputy': 'merge deputy - bridge', 'btn.spawn': 'Send', 'btn.remoteOff': 'Disconnect relay', 'btn.remoteOn': 'Resume', 'btn.remoteLeave': 'Leave the linked city', 'type.house': 'House', 'type.shop': 'Shop', 'type.tower': 'Tower', 'type.workshop': 'Workshop', 'type.library': 'Library', 'district.house': 'Homes', 'district.shop': 'Shops', 'district.tower': 'Tests', 'district.workshop': 'Workshops', 'district.library': 'Library', 'chat.state.queued': 'Queued', 'chat.state.delivered': 'Delivered', 'chat.state.undelivered': 'Undelivered', 'chat.why.notListening': 'it is not listening, it did not get this', 'chat.state.sent': 'On its way', 'chat.you.cloud': 'You (cloud)', 'chat.you.local': 'You (page on the computer)', 'chat.why.off': 'that computer is off', 'chat.why.ended': 'this session has ended', 'chat.why.talkOff': 'that computer does not take cloud messages', 'chat.why.refused': 'that computer did not accept it', 'chat.why.flood': 'too many messages too fast, that computer did not accept it', 'chat.resend': 'Send again', 'chat.new': 'New messages ↓', 'hist.title': 'History (newest at the bottom)', 'hist.empty': 'Nothing yet', 'hist.all': 'Show steps {n}', 'hist.hide': 'Hide steps', 'hist.onlyMech': 'Only steps so far - tap "Show steps"', 'hist.started': 'Headed out: {task}', 'hist.stuck': 'Stuck: {text}', 'hist.toLead': 'To the manager', 'hist.toGov': 'To the governor', 'hist.waiting': 'Waiting on you', 'hist.done': 'Finished, heading to rest', 'hist.left': 'Clocked out', 'chat.task': 'Task (what it was sent with)', 'team.title': '{repo} · Team', 'role.task-manager': 'Task manager', 'role.worker': 'Worker', 'role.fast-lane-deputy': 'Fast-lane deputy', 'role.merge-deputy': 'Merge deputy', 'role.other': 'Helper', 'era.village': 'Village', 'era.town': 'Town', 'era.city': 'City', 'quality.good': 'Tidy', 'quality.fair': 'OK', 'quality.poor': 'Messy', 'who.governor': 'Governor', 'who.owner': 'You', 'who.terminal': 'Terminal', 'state.spawn': 'Heading out', 'state.to_plot': 'To the site', 'state.building': 'Building', 'state.working': 'Working', 'state.to_hall': 'To the governor', 'state.asking': 'Asking the governor', 'state.heard': 'Got the answer', 'state.to_lead': 'To the manager', 'state.at_lead': 'Asking the manager', 'state.back': 'Back to the site', 'state.finishing': 'Topped out', 'state.to_rest': 'Heading to rest', 'state.resting': 'Resting', 'state.leaving': 'Heading home', 'status.need_approval': 'Needs your OK', 'status.asking_gov': 'Asking the governor', 'status.waiting_answer': 'Waiting on your answer', 'status.waiting_reply': 'Waiting on you', 'status.waiting': 'Waiting on you', 'status.background': 'Working in background', 'status.idle': 'Idle', 'stuck.permission': 'Needs permission: {tool}', 'stuck.default': 'Needs your eyes', 'gov.away': 'Away', 'gov.busy': 'Busy', 'gov.home': 'At the town hall', 'top.work': 'Working', 'top.ask': 'Need governor', 'top.rest': 'Resting', 'top.done': 'Built', 'top.stalled': 'Stalled site', 'top.pending': 'Waiting', 'top.pendingAria': '{n} waiting on your call - click to open the earliest', 'empty.noLand': 'No territory yet - start inside a git repo, or wait for an agent', 'loading.text': 'Loading assets…', 'loading.progress': 'Loading assets {n}/{total}', 'loading.error': 'Assets failed to load: {err}', 'site.human': 'Hands-on', 'log.eraUpgrade': '{name} is upgrading to {era}', 'say.done': 'Done!', 'log.leftWork': '{task} clocked out', 'gov.dispatch': 'Go: {task}', 'log.govDispatch': 'The governor sent {label}: {task}', 'log.siteMerged': '{branch} merged into main, the site wrapped up', 'log.siteRemoved': 'The {branch} site was pulled down', 'log.levelUp': '{label} leveled up to {lv}', 'log.movedBack': '{label} moved back to the {kind} district', 'log.demolished': 'Every file behind {label} is gone, demolished', 'log.stuckDemo': '{task} got stuck: "{text}" -> asking the governor', 'answer.default': 'Answered', 'log.govAnswer': 'The governor answered {task}: "{text}"', 'log.doneRestPlain': '{task} finished, heading to rest', 'log.doneRestBuilt': '{task} finished: {kind} topped out, heading to rest', 'log.noplot': '{name} found no empty plot, waiting a bit', 'gov.unknown': 'Unknown', 'gov.busyRow': 'Busy', 'gov.idleRow': 'Idle', 'gov.title': '{name} governor', 'chain.lead': 'Manager', 'chain.leadTask': 'Manager {task}', 'chat.empty': 'No conversation yet', 'chat.you.page': 'You (page)', 'chat.you.terminal': 'You (terminal)', 'chat.wait': 'Waiting for it to finish this step', 'chat.loadError': 'Could not load the conversation - try opening it again in a moment.', 'kv.repo': 'Repo', 'kv.branch': 'Branch', 'kv.doing': 'Doing', 'qa.ask': 'Q: “{q}”', 'qa.answer': 'A: “{a}”', 'qa.waiting': 'Q: “{q}” - waiting for an answer…', 'act.makeStuck': 'Make it stuck', 'act.makeDone': 'Make it finish', 'act.makeLeave': 'Make it clock out', 'act.demoNote': 'These three buttons exist only in the prototype, to try the flow.', 'gov.ownTag': 'main manager · main conversation', 'gov.tagLabel': 'Governor · main manager', 'gov.rgRole': 'main manager · Governor', 'pill.hall': 'Town hall', 'gov.awayNote': 'The governor is away: this repo has no main manager session right now. Agent questions go straight to you, without waiting for the governor first.', 'hint.team': 'Team', 'hint.noAgents': 'No agents at work yet. Open a Claude Code session and send an agent - it will walk out of the town hall.', 'hint.pickSomething': 'Click a person or building in the city, or a row in the list below.', 'building.misplaced': ' - in the wrong district', 'building.level': ' - level {level}', 'building.district': '{kind} district', 'building.module': '{name} module', 'hint.files': 'The files that built it', 'hint.history': 'Who has touched it (newest first)', 'detail.title': 'Details', 'opt.other': 'Other', 'opt.customAnswer': 'Write your own answer', 'btn.sendAnswer': 'Send answer', 'kv.tool': 'Tool', 'kv.file': 'File', 'kv.url': 'URL', 'said': 'It said: {text}', 'kv.dir': 'Directory', 'field.denyReason': 'Reason for denying (optional; if filled in, it is told to it as-is)', 'field.denyPlaceholder': 'e.g. do not delete dist/ yet, it has the release package', 'btn.allow': 'Allow', 'btn.deny': 'Deny', 'ask.asking': 'is asking', 'ask.needsPermission': 'needs permission', 'pill.closed': 'Closed', 'aria.collapse': 'Collapse (without answering)', 'foot.terminalAnswers': 'The terminal can answer too - whichever answers first wins.', 'err.decideNetwork': 'Could not send (cannot reach the city server). The terminal can still answer.', 'err.decideStatus': 'Could not send ({status}). The terminal can still answer, or try again.', 'proto.live': 'Live - waiting for the server', 'proto.connected': 'Live - connected', 'proto.reconnecting': 'Live - reconnecting…', 'log.relayOff': 'City-link relay disconnected: other members are frozen, my city keeps working as normal.', 'log.relayOn': 'City-link resumed: other members update to the latest.', 'log.relayLeave': 'Left the linked city: other members disappear from my city; my city is unchanged.', 'demo.task.checkoutTest': 'Write checkout tests', 'demo.task.paymentRetry': 'Fix payment-timeout retry', 'demo.q.paymentRetry': 'Should a payment timeout retry automatically?', 'demo.task.depsScan': 'Scan dependencies for vulnerabilities', 'demo.task.worker.0': 'Settings page form', 'demo.task.worker.1': 'Login API', 'demo.task.worker.2': 'Export CSV', 'demo.task.worker.3': 'Dark mode', 'demo.task.worker.4': 'Receipt printing', 'demo.task.worker.5': 'Search box', 'demo.task.worker.6': 'Pagination', 'demo.task.worker.7': 'Price calculation', 'demo.task.worker.8': 'Inventory alerts', 'demo.task.worker.9': 'Customer list', 'demo.task.taskManager.0': 'Settings page', 'demo.task.taskManager.1': 'Login', 'demo.task.taskManager.2': 'Reports', 'demo.task.taskManager.3': 'Printing', 'demo.task.taskManager.4': 'Inventory', 'demo.task.fastLaneDeputy.0': 'Typos', 'demo.task.fastLaneDeputy.1': 'Button colour', 'demo.task.fastLaneDeputy.2': 'Icon size', 'demo.task.fastLaneDeputy.3': 'Title wrapping', 'demo.task.fastLaneDeputy.4': 'Empty-state copy', 'demo.task.mergeDeputy.0': 'Merge settings', 'demo.task.mergeDeputy.1': 'Merge login', 'demo.task.mergeDeputy.2': 'Merge report', 'demo.task.mergeDeputy.3': 'Merge print', 'demo.qa.0.q': 'Which test name is unclear - which one?', 'demo.qa.0.a': 'Go with the default, log it', 'demo.qa.1.q': 'Which API path should I use?', 'demo.qa.1.a': 'Use /api/settings', 'demo.qa.2.q': 'Should I add pagination?', 'demo.qa.2.a': 'Not yet, write it into ideas', 'demo.qa.3.q': 'What is the default language?', 'demo.qa.3.a': 'zh, matching agent.conf', 'demo.qa.4.q': 'Does the old data need migrating?', 'demo.qa.4.a': 'Yes, write a test first', 'demo.qa.5.q': 'Can I change this file?', 'demo.qa.5.a': 'Yes, only your own copy', 'demo.qa.6.q': 'Can I run this command?', 'demo.qa.6.a': 'Approved, go ahead', 'aria.needsApproval': '{task} needs your approval, click to open', 'aria.needsAnswer': '{task} needs your answer, click to open', 'aria.stuckOnlyThem': '{name} is stuck; only {name} can answer', 'aria.govNeedsApproval': 'The governor needs your approval, click to open', 'aria.govNeedsAnswer': 'The governor needs your answer, click to open', 'gov.waitCountdown': 'Governor {s}s', 'chat.sendError': 'Could not send (cannot reach the city server).', 'btn.findLead': 'Find the lead: {name}', 'hint.readOnlySub': 'This is a subtask; the conversation is view only - go to its lead for anything else.', 'placeholder.saySomething': 'Say something to it…', 'btn.send': 'Send', 'label.ask': 'Q: ', 'label.answer': 'A: ', 'label.awaitingAnswer': 'awaiting an answer…', 'member.unknown': 'Unknown', 'chip.off': 'City-link disconnected - {n} queued', 'chip.refused': 'City-link refused the key', 'chip.ok': 'City-link - {people} people - {devices} devices', 'remote.note': 'View only: this agent belongs to {who} - only {who} can answer it.', 'stale.sec': 'Last updated {n}s ago', 'stale.min': 'Last updated {n}m ago', 'ask.permission': '{name} needs permission: {what} -> waiting on you', 'ask.toOwner': '{name} asks you: “{what}”', 'ask.toGov': '{name} asks the governor: “{what}”', 'ask.toGovNoGov': '{name} asks the governor: “{what}”, no governor around -> waiting on your answer', 'askphase.pass': 'The governor: not mine to decide -> waiting on your answer for {name}', 'askphase.timeout': 'The governor did not answer {name} in {wait}s -> waiting on you', 'closed.routed': 'The request from {name} was routed to {who}: {what}', 'closed.answered': '{who} answered {name}: “{text}”', 'closed.answeredDefault': '{who} already answered {name}', 'closed.allowed': '{who} allowed {name}: {what}', 'closed.denied': '{who} denied {name}: {what}', 'closed.deniedReason': ', reason: “{reason}”', 'closed.ended': '{who} closed {name}: {what}', 'why.permission': 'Only you can approve permissions - the governor does not.', 'why.gov': 'The governor cannot decide this - it is yours.', 'why.timeout': 'The governor did not answer in {wait}s - it is yours.', 'why.pass': 'The governor said: not mine to decide - it is yours.', 'why.noGov': 'No governor around - it goes straight to you.', 'closed.late': 'Too late: <b>{who}</b> already handled it at {time}. No need to click here.', 'closed.pending': 'Handled at {time}; the result has not come back yet. Noted.', 'closed.answeredText': 'Answered: “{text}”', 'closed.allowedText': 'Allowed', 'closed.deniedText': 'Denied', 'closed.lateFull': 'Too late: <b>{who}</b> already {text} at {time}. No need to click here.', 'closed.doneByYou': '<b>{who}</b> {text} at {time}. Noted.', 'log.chatSent': 'You -> {to}: {text}', 'log.remoteSpawn': '{who} ({device}) - {label} started: {task}', 'log.remoteDone': '{who} ({device}) - {task} finished', 'log.remoteLeft': '{who} ({device}) - {task} went offline', 'say.understood': 'Got it!', 'log.eraBecame': '{name} became a {era}', 'demo.seed.prompt': 'Finish this page first, do not touch anything else yet', 'demo.seed.reply': 'OK, doing this page first, leaving the rest alone', 'chat.stateSuffix': ' ({state})', 'punct.answerJoin': '; ', 'rail.title': 'Now', 'rail.count': '{n}', 'rail.rest': 'Resting {n}', 'rail.tab': 'Now {n}', 'rail.none': 'Nobody online', 'add.btn': '+ Add agent', 'add.opening': 'Opening {name}…', 'add.openingBare': 'Opening…', 'add.cap': 'The computer is busy', 'add.capNums': 'RAM {ram}% · CPU {cpu}% (limit {max}%)', 'add.capAsk': 'Open it anyway?', 'add.go': 'Open anyway', 'add.cancel': 'Cancel', 'add.err': 'Not opened: ', 'add.retry': 'Try again', 'add.ok': 'Got it', 'add.errGone': 'Cannot find the repo folder {folder} (moved or deleted).', 'add.errFailed': 'Orca could not open a terminal: {detail}', 'add.errLate': 'The terminal opened, but nothing showed up in 60 seconds. Look at that terminal in Orca.', 'add.errOther': 'The server gave no reason (it may be out of reach).', 'add.plain': 'This computer has no Orca, so the page cannot open a terminal. Run this line in a terminal:', 'add.copy': 'Copy', 'add.copied': 'Copied', 'add.close': 'Close', 'fold.rail': 'Fold the list', 'fold.msg': 'Fold the messages', 'msg.tab': 'Messages · {name}', 'b.focus': 'Show it', 'follow.on': 'Following {name}', 'follow.stop': 'Stop', 'demo.device.cloud': 'Cloud', 'work.edit': 'Editing', 'work.read': 'Reading', 'work.bash': 'Running', 'work.other': 'Busy', 'work.pause': 'Pausing', 'step.edit': 'Editing {file}', 'step.write': 'Writing {file}', 'step.editAny': 'Editing code', 'step.writeAny': 'Writing code', 'step.read': 'Reading files', 'step.search': 'Searching code', 'step.web': 'Looking things up', 'step.bash': 'Running a command', 'step.send': 'Sending out: {desc}', 'step.sendAny': 'Sending a helper', 'step.plan': 'Planning', 'step.message': 'Sending a message', 'step.other': 'Busy', /* cloud-city: texts */ 'cloud.readOnly': 'View only', 'cloud.sign': 'Cloud', 'cloud.machines': 'Machines', 'cloud.busy': 'Working {n}', 'cloud.wait': 'Waiting {n}', 'cloud.noMachine': 'No machine yet', 'cloud.noMachineHint': 'Open a Claude session on a machine that has joined the city. It shows up here by itself.', 'cloud.noSessions': 'This machine has no sessions right now', 'cloud.noSessionsHint': 'Open a Claude session on it and the people walk out. The city on that machine starts by itself once a session opens.', 'cloud.offline': 'No machine is online - this is the picture from {age} ({label})', 'cloud.offlineHint': 'When a Claude session opens on any machine, its city starts by itself and this page updates', 'cloud.login': 'You are signed out, or the login has expired. Please sign in again.', 'cloud.reload': 'Sign in again', 'cloud.logout': 'Sign out', 'cloud.viewNote': 'View only - this computer has not turned on cloud talk; to answer or talk, go back to that computer', 'cloud.notConnected': 'Not connected - trying again…', 'cloud.justNow': 'just now', 'cloud.ageSec': '{n} s ago', 'cloud.ageMin': '{n} min ago', 'cloud.ageHour': '{n} h ago', 'cloud.ageDay': '{n} d ago', 'cloud.talk.on': 'Can talk', 'cloud.talk.off': 'View only', 'cloud.box.talkOff': 'This computer has not turned on "cloud talk", so it is view only. Type this command in its own terminal to turn it on: agent-city cloud-talk on', 'cloud.box.offline': 'That computer is offline, so nothing can be sent. When it is back, this box returns by itself.', 'cloud.tooFast': 'Too fast - wait a moment, then send again.', 'cloud.tooMany': 'Too many messages today - try again tomorrow.', 'cloud.later.ask': 'It is waiting for you to approve or choose ("?"): doing that here comes later. For now, answer it on that computer.', 'cloud.later.add': '+ Add agent · later', 'cloud.later.demo': 'Demo tools · later' } };
 /* idea-city C1: i18n(key, vars) -> TEXT[en or zh][key], every "{name}" replaced by vars[name]; an
    unknown key gives the key itself back. A plain top-level function declaration -- every caller in
    this file reaches it by that name (never `T`: several test drivers use a local `T` for "the
@@ -555,6 +574,12 @@ const TOKEN = (() => { const m = $('meta[name="city-token"]'); return m ? m.cont
 const CLOUD = '__CITY_CLOUD__' === '1';
 const CLOUD_POLL_MS = 3000;
 const CLOUD_STALE_MS = 150000;
+const CLOUD_SEND_TRIES = 3;
+const CLOUD_RETRY_MS = 1000;
+/* the cloud page's live state, in one place the chat code (above the cloud script) can reach: feed = the last
+   feed answer (the machine shown, its talk flag, the server's clock), open = the window the last request
+   carried, poke = ask the feed at once (set by connectCloud) */
+const cloudLive = { feed: null, open: '', poke: null };
 /* end cloud-city: constants */
 
 function h2r(h){ h = h.replace('#',''); return [0,2,4].map(i => parseInt(h.slice(i,i+2),16)); }
@@ -1465,31 +1490,47 @@ function mainOnly(items){ return (items || []).filter(it => it.main !== false); 
 /* personHistory(c, entries) -> c's whole history, oldest first (a stable sort by .at): every activity
    line, every c.qa pair, every chat entry (prompt/reply/owner), and last of all -- while c is still
    stuck -- its still-open question (a: null). C2: every item carries main -- an activity line never,
-   a question/answer card always, a chat entry as markMain() says. */
+   a question/answer card always, a chat entry as markMain() says. A chat entry's item also carries its
+   state, why and cid (cloud-city-2: historyHtml() words them). */
 function personHistory(c, entries){
   const items = [];
   for (const a of c.acts || []) items.push({ k: 'act', at: a.at, text: a.text, main: false });
   for (const qa of c.qa || []) items.push({ k: 'ask', q: qa.q, a: qa.a, at: qa.at, main: true });
-  for (const e of markMain(entries, !!c.lead)) items.push({ k: e.kind, text: e.text, at: e.at, state: e.state, main: e.main });
+  for (const e of markMain(entries, !!c.lead)) items.push({ k: e.kind, text: e.text, at: e.at, state: e.state, why: e.why, cid: e.cid, main: e.main });
   items.sort((x, y) => x.at - y.at);
   if (c.stuck) items.push({ k: 'ask', q: c.question, a: null, main: true });
   return items;
 }
 /* historyHtml(items, name, busy) -> the <li> rows personHistory() feeds the window: an activity line,
    a question/answer card, or a message rendered as chatHtml() renders one (text through mdLite, class
-   "md"; a subagent's own task line is labelled chat.task rather than 你（终端）); no items -> hist.empty. */
+   "md"; a subagent's own task line is labelled chat.task rather than 你（终端）); no items -> hist.empty.
+   An owner's message shows its state, its reason and "send again" as chatHtml() does (cloud-city-2), and a
+   busy window whose last item is a queued owner message ends with the chat.wait line. */
 function historyHtml(items, name, busy){
   if (!items || !items.length) return `<li class="msg-empty">${i18n('hist.empty')}</li>`;
   const hhmm = at => new Date(at * 1000).toTimeString().slice(0, 5);
-  return items.map(it => {
+  // cloud-city-2: an owner's message is worded as chatHtml() words it (who, state, reason, send again) -- the
+  // same few lines, kept here so each function runs alone (esc, i18n, mdLite)
+  const CHAT_STATES = ['queued', 'delivered', 'undelivered', 'sent', 'taken'];
+  const WHY = { 'not-listening': 'notListening', off: 'off', ended: 'ended', 'talk-off': 'talkOff', refused: 'refused', flood: 'flood' };
+  const ownerWho = it => {
+    const known = it.state && CHAT_STATES.includes(it.state);
+    const why = it.state === 'undelivered' && typeof it.why === 'string' && Object.prototype.hasOwnProperty.call(WHY, it.why) ? ' · ' + i18n('chat.why.' + WHY[it.why]) : '';
+    return `${i18n(it.cid ? 'chat.you.cloud' : CLOUD ? 'chat.you.local' : 'chat.you.page')}${known ? i18n('chat.stateSuffix', { state: i18n('chat.state.' + (it.state === 'taken' ? 'sent' : it.state)) }) : ''}${why}`;
+  };
+  let html = items.map(it => {
     if (it.k === 'act') return `<li class="act"><time>${hhmm(it.at)}</time><span>${esc(it.text)}</span></li>`;
     if (it.k === 'ask') {
       const answer = it.a === null ? `<p class="wait">${i18n('label.awaitingAnswer')}</p>` : `<p>${i18n('label.answer')}${esc(it.a)}</p>`;
       return `<li class="qa"><p>${i18n('label.ask')}${esc(it.q)}</p>${answer}</li>`;
     }
-    const who = it.k === 'owner' ? i18n('chat.you.page') : it.k === 'prompt' ? i18n('chat.task') : esc(name);
-    return `<li class="msg" data-kind="${esc(it.k)}"${it.main === false ? ' data-main="0"' : ''}><b>${who}</b><div class="md">${mdLite(it.text)}</div></li>`;
+    const who = it.k === 'owner' ? ownerWho(it) : it.k === 'prompt' ? i18n('chat.task') : esc(name);
+    const again = it.k === 'owner' && it.state === 'undelivered' && it.cid ? `<button type="button" class="resend" data-resend="${esc(it.cid)}">${i18n('chat.resend')}</button>` : '';
+    return `<li class="msg" data-kind="${esc(it.k)}"${it.main === false ? ' data-main="0"' : ''}><b>${who}</b><div class="md">${mdLite(it.text)}</div>${again}</li>`;
   }).join('');
+  const last = items[items.length - 1];
+  if (busy && last && last.k === 'owner' && last.state === 'queued') html += `<li class="msg-wait">${i18n('chat.wait')}</li>`;
+  return html;
 }
 /* teamListHtml() (U11) is gone: city-ux2 v2 moved the team list into the left rail -- #rail-list, built
    from railGroups() (itself built from rosterGroups(), just below) -- renderDetail() now draws one
@@ -6695,14 +6736,24 @@ function chainLine(c){
    in its prelude (constants_prelude()). */
 function chatHtml(entries, name, busy){
   if (!entries || !entries.length) return `<li class="msg-empty">${i18n('chat.empty')}</li>`;
-  const CHAT_STATES = ['queued', 'delivered', 'undelivered'];
+  /* cloud-city-2: an owner's message says who typed it (cid = the cloud page), its state ('sent' and 'taken' both
+     read "on its way"), why it did not arrive (only a reason the page knows), and offers "send again" for a
+     cloud message that did not arrive. On the cloud page (CLOUD) a message with no cid was typed on the computer's own
+     page and says so (chat.you.local). historyHtml() below says the same; each stays alone (esc, i18n, mdLite, CLOUD). */
+  const CHAT_STATES = ['queued', 'delivered', 'undelivered', 'sent', 'taken'];
+  const WHY = { 'not-listening': 'notListening', off: 'off', ended: 'ended', 'talk-off': 'talkOff', refused: 'refused', flood: 'flood' };
   const who = e => {
-    if (e.kind === 'owner') return `${i18n('chat.you.page')}${e.state && CHAT_STATES.includes(e.state) ? i18n('chat.stateSuffix', { state: i18n('chat.state.' + e.state) }) : ''}${e.state === 'undelivered' && e.why === 'not-listening' ? ' · ' + i18n('chat.why.notListening') : ''}`;
+    if (e.kind === 'owner') {
+      const known = e.state && CHAT_STATES.includes(e.state);
+      const why = e.state === 'undelivered' && typeof e.why === 'string' && Object.prototype.hasOwnProperty.call(WHY, e.why) ? ' · ' + i18n('chat.why.' + WHY[e.why]) : '';
+      return `${i18n(e.cid ? 'chat.you.cloud' : CLOUD ? 'chat.you.local' : 'chat.you.page')}${known ? i18n('chat.stateSuffix', { state: i18n('chat.state.' + (e.state === 'taken' ? 'sent' : e.state)) }) : ''}${why}`;
+    }
     if (e.kind === 'prompt') return i18n('chat.you.terminal');
     return esc(name);
   };
+  const again = e => e.kind === 'owner' && e.state === 'undelivered' && e.cid ? `<button type="button" class="resend" data-resend="${esc(e.cid)}">${i18n('chat.resend')}</button>` : '';
   // U9: the text goes through mdLite (its own escaping; simple markdown, never raw HTML) inside a "md" element.
-  let html = entries.map(e => `<li class="msg" data-kind="${esc(e.kind)}" data-id="${esc(e.id)}"${e.main === false ? ' data-main="0"' : ''}><b>${who(e)}</b><div class="md">${mdLite(e.text)}</div></li>`).join('');
+  let html = entries.map(e => `<li class="msg" data-kind="${esc(e.kind)}" data-id="${esc(e.id)}"${e.main === false ? ' data-main="0"' : ''}><b>${who(e)}</b><div class="md">${mdLite(e.text)}</div>${again(e)}</li>`).join('');
   const last = entries[entries.length - 1];
   if (busy && last && last.kind === 'owner' && last.state === 'queued') html += `<li class="msg-wait">${i18n('chat.wait')}</li>`;
   return html;
@@ -6727,9 +6778,9 @@ function chatDisplayName(to){
 }
 /* curChatTo() -> the chat id of whatever is selected right now: 'gov:'+terr for the governor,
    's:'+id for a session citizen (a task manager, c.office), the bare id for a subagent (c.lead,
-   read only); null for anything else (remote people, buildings, sites, nothing selected). */
+   read only); null for anything else (remote people, buildings, sites, nothing selected). The cloud page
+   gives the same ids for the machine shown: its own people only, a guest (pc.remote) still has none. */
 function curChatTo(){
-  if (CLOUD) return null; // cloud-city: view only, nobody can be talked to
   if (!selected) return null;
   if (selected.t === 'gov') return chatTarget({ t: 'gov', terr: selected.terr || govTerr });
   if (selected.t === 'c') {
@@ -6763,7 +6814,7 @@ function demoSendChat(to, text){
 /* loadChat(to): fetches the conversation once per id (chats already has it -- no-op); a failure is
    shown in the window, never swallowed. Demo never fetches. */
 function loadChat(to){
-  if (CLOUD) return; // cloud-city: view only, no conversation to load
+  if (CLOUD) return cloudLoad(to); // cloud-city: no request here, the feed brings the conversation
   if (chats.has(to)) return;
   if (DEMO) { chats.set(to, demoChatFor(to)); return; }
   chats.set(to, { entries: [], busy: false, canSend: true, loaded: false });
@@ -6776,10 +6827,52 @@ function loadChat(to){
    entry lands in `chats` at once (queued), then moves to delivered/undelivered by a 'chat' event
    (live) or the demo timer above. A failure is shown in the window, never swallowed. Resolves true
    when the server took the message (a 2xx with a JSON body), false otherwise (network error or a
-   non-ok status); demo always resolves true. */
+   non-ok status); demo always resolves true.
+   cloud-city-2: on the cloud page the message goes to the City Worker, {dev: the machine shown, to, text, cid},
+   with this page's own header (no token here); the entry shows at once (mine, state 'sent', id = cid) and the
+   feed takes it over (cloudChatMerge). A request that gets no answer (the network failed, or a 5xx) is sent
+   again with the SAME cid, CLOUD_SEND_TRIES requests in all, a little later each time: the Worker may have
+   stored the first one, and it keeps one message per cid, so a retry never delivers twice. An answer that
+   refuses (429, any 4xx) is not retried. Too many sends (429) is one line under the box (box.fast); any other
+   failure is the send error above it; either way the entry goes and the text stays in the box (false). */
 function sendChat(to, text){
-  if (CLOUD) return Promise.resolve(false); // cloud-city: view only, nothing is sent
   if (DEMO) { demoSendChat(to, text); return Promise.resolve(true); }
+  if (CLOUD) {
+    const dev = cloudLive.feed && cloudLive.feed.dev, cid = cloudCid();
+    if (!dev) return Promise.resolve(false);
+    const start = chats.get(to) || { entries: [], busy: false, canSend: true, loaded: true };
+    start.error = ''; start.fast = '';
+    start.entries = start.entries.concat([{ id: cid, cid, kind: 'owner', text, at: Date.now() / 1000, state: 'sent', mine: true }]);
+    chats.set(to, start);
+    renderPanel();
+    const fail = (key, line) => {
+      const box = chats.get(to) || start;
+      box.entries = box.entries.filter(x => x.id !== cid);
+      box[key] = line;
+      chats.set(to, box);
+      renderPanel();
+      return false;
+    };
+    // try n of CLOUD_SEND_TRIES: no answer (null) waits a little and sends the same cid again
+    const attempt = n => fetch('/api/chat/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-City-Page': '1' }, body: JSON.stringify({ dev, to, text, cid }) })
+      .then(r => (r.status >= 500 ? null : r.json().catch(() => ({})).then(body => ({ r, body }))), () => null)
+      .then(got => {
+        if (!got) {
+          if (n >= CLOUD_SEND_TRIES) return fail('error', i18n('chat.sendError'));
+          return new Promise(done => setTimeout(done, CLOUD_RETRY_MS * n)).then(() => attempt(n + 1));
+        }
+        const { r, body } = got;
+        if (r.status === 429) return fail('fast', i18n(body.error === 'too many today' ? 'cloud.tooMany' : 'cloud.tooFast'));
+        if (!r.ok) return fail('error', i18n('chat.sendError'));
+        // the Worker's word: 'sent', or 'undelivered' with its reason at once (that computer is off, or takes no cloud messages)
+        const box = chats.get(to) || start;
+        box.entries = box.entries.map(x => x.id === cid ? Object.assign({}, x, { state: body.state || 'sent', why: body.why || '' }) : x);
+        chats.set(to, box);
+        renderPanel();
+        return true;
+      });
+    return attempt(1).catch(() => fail('error', i18n('chat.sendError')));
+  }
   return fetch('/api/chat/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-City-Token': TOKEN }, body: JSON.stringify({ to, text }) })
     .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
     .then(body => {
@@ -6805,6 +6898,16 @@ document.addEventListener('submit', e => {
   const text = ta.value;
   if (!text.trim()) return;
   Promise.resolve(sendChat(to, text)).then(ok => { if (ok && $('#say-text') === ta) ta.value = ''; });
+});
+/* cloud-city-2: "send again" under a message that did not arrive: that entry's text goes out once more as a NEW
+   message (a new cid on the cloud page, a new entry on the local one); the old entry stays as the record. */
+document.addEventListener('click', e => {
+  const btn = e.target && e.target.closest ? e.target.closest('[data-resend]') : null;
+  if (!btn) return;
+  const to = curChatTo(), box = to ? chats.get(to) : null;
+  const old = box ? box.entries.find(x => x.cid && String(x.cid) === btn.dataset.resend) : null;
+  if (!old || box.canSend === false || (CLOUD && cloudBoxNote(to))) return;
+  sendChat(to, old.text);
 });
 /* chat-enter: the chat box keys. sayKeyAction(e, coarse) -> 'send' | 'newline' | '' (leave the key alone).
    Enter sends; Shift/Cmd/Ctrl+Enter is a new line; never while an input method is composing (the Enter
@@ -6858,6 +6961,9 @@ function renderDetail(){
   const chatTo = curChatTo();
   const chatName = chatTo ? (selected && selected.t === 'gov' ? i18n('who.governor') : (c ? nameOf(c) : '')) : '';
   if (chatTo) loadChat(chatTo);
+  // cloud-city-2: why the box is off for the machine shown ('' = the box is there); a change rebuilds the card
+  const talkNote = CLOUD && chatTo ? cloudBoxNote(chatTo) : '';
+  if (CLOUD && chatTo) key += '|' + talkNote;
   // U8: capture the OLD #chat's scroll place and newmsg-chip state before a rebuild below (if any)
   // replaces it -- a rebuild of the SAME chat target reuses this; a different target (or none before)
   // starts fresh at the bottom, chip hidden.
@@ -6887,7 +6993,9 @@ function renderDetail(){
       return html + `<p class="hint">${i18n('hint.readOnlySub')}</p>` + leadBtn;
     }
     if (box.canSend === false) return html;
-    return html + `<form class="say" id="say"><textarea id="say-text" maxlength="4000" placeholder="${i18n('placeholder.saySomething')}"></textarea><button class="btn say-send" type="submit" aria-label="${i18n('btn.send')}" title="${i18n('btn.send')}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button></form>`;
+    if (talkNote) return html + cloudNoteHtml(talkNote); // cloud-city-2: a note instead of the box
+    return html + `<form class="say" id="say"><textarea id="say-text" maxlength="4000" placeholder="${i18n('placeholder.saySomething')}"></textarea><button class="btn say-send" type="submit" aria-label="${i18n('btn.send')}" title="${i18n('btn.send')}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button></form>`
+      + (CLOUD ? `<p class="cloud-fast" id="cloud-fast" hidden></p>` : '');
   }
   /* city-polish C2: the one small toggle in the history's title line (#hist-all); the refresh at the end
      of this function sets its text, its hidden state and aria-pressed on every call. */
@@ -6926,6 +7034,7 @@ function renderDetail(){
           <div class="track p-bar"><i style="width:${pct(c)}%;background:${c.color}"></i></div>
         </div>
         ${chain ? `<p class="hint chain">${chain}</p>` : ''}
+        ${CLOUD && c.stuck ? `<p class="cloud-why" id="cloud-ask">${esc(i18n('cloud.later.ask'))}</p>` : ''}
         ${DEMO ? `
         <div class="d-actions">
           <button class="btn" type="button" data-act="stuck" ${canStuck ? '' : 'disabled'}>${i18n('act.makeStuck')}</button>
@@ -7029,6 +7138,9 @@ function renderDetail(){
     }
     const fail = el.querySelector('#chat-fail');
     if (fail) { const failText = chatFailText(chatTo, box); fail.hidden = !failText; if (fail.textContent !== failText) fail.textContent = failText; }
+    // cloud-city-2: the line under the box when the page sent too much (429)
+    const fast = el.querySelector('#cloud-fast');
+    if (fast) { const line = box.fast ? String(box.fast) : ''; fast.hidden = !line; if (fast.textContent !== line) fast.textContent = line; }
   }
 }
 function renderLog(){
@@ -7504,11 +7616,50 @@ function cloudPick(devs, wanted) {
   if (wanted && list.some(d => d && d.dev === wanted)) return wanted;
   return list.length && list[0] && typeof list[0].dev === 'string' ? list[0].dev : '';
 }
-/* cloudFeedUrl(cur) -> '/api/feed' plus ?dev=&gen=&after= from cur {dev, gen, after}; no dev -> '/api/feed'. */
+/* cloudFeedUrl(cur) -> '/api/feed' plus ?dev=&gen=&after= from cur {dev, gen, after}; no dev -> '/api/feed'.
+   A cur with a window (chat: the open window's id, cc: its cursor) adds &chat=&cc= (cc 0 when missing). */
 function cloudFeedUrl(cur) {
   if (!cur || !cur.dev) return '/api/feed';
   const n = v => Math.max(0, Math.floor(Number(v) || 0));
-  return '/api/feed?dev=' + encodeURIComponent(cur.dev) + '&gen=' + n(cur.gen) + '&after=' + n(cur.after);
+  const url = '/api/feed?dev=' + encodeURIComponent(cur.dev) + '&gen=' + n(cur.gen) + '&after=' + n(cur.after);
+  return typeof cur.chat === 'string' && cur.chat ? url + '&chat=' + encodeURIComponent(cur.chat) + '&cc=' + n(cur.cc) : url;
+}
+/* cloudChatMerge(box, chat) -> the open window's next box {entries, cc, busy, canSend, loaded: true}, from the
+   box now (undefined or null for a window just opened) and the feed's "chat" {to, cc, rows, msgs}; neither
+   argument is changed. A row is the machine's entry {id: k, kind, text, at, state, why, cid}; one whose k is
+   there already replaces that entry (a change of state). A msg is a message on its way or one that never reached
+   the machine: the entry {id: cid, cid, kind: 'owner', ...} (msg: true), unless a row has its cid (it shows
+   once); it goes when the feed names it no more. An entry the page made itself on send (mine: true) stays until
+   the feed knows its cid, then the feed's entry takes its place. Every entry sits by its time (at, seconds; the
+   machine's clock for a row, the cloud's for a msg; equal: the order they came in). */
+function cloudChatMerge(box, chat) {
+  const c = chat || {};
+  const rows = Array.isArray(c.rows) ? c.rows : [];
+  const msgs = Array.isArray(c.msgs) ? c.msgs : [];
+  const known = new Set();
+  for (const r of rows) if (r && r.cid) known.add(r.cid);
+  for (const m of msgs) if (m && m.cid) known.add(m.cid);
+  const byId = new Map();
+  for (const e of box && Array.isArray(box.entries) ? box.entries : []) {
+    if (e.msg || (e.mine && known.has(e.cid))) continue;
+    byId.set(e.id, e);
+  }
+  for (const r of rows) {
+    if (!r) continue;
+    byId.set(r.k, { id: r.k, kind: r.kind, text: r.text, at: r.at, state: r.state, why: r.why, cid: r.cid });
+  }
+  for (const m of msgs) {
+    if (!m || byId.has(m.cid)) continue;
+    byId.set(m.cid, { id: m.cid, cid: m.cid, kind: 'owner', text: m.text, at: m.at, state: m.state, why: m.why, msg: true });
+  }
+  const entries = [...byId.values()].sort((x, y) => (Number(x.at) || 0) - (Number(y.at) || 0));
+  return {
+    entries,
+    cc: typeof c.cc === 'number' ? c.cc : (box && box.cc) || 0,
+    busy: !!(box && box.busy),
+    canSend: !(box && box.canSend === false),
+    loaded: true,
+  };
 }
 /* cloudStep(cur, feed, known) -> { cur, apply }: the next cursor (from the feed) and the messages to hand to
    apply(), in order: the feed's snap, then catch-up events, then the feed's events. A snap with no
@@ -7581,16 +7732,35 @@ function cloudNotice(feed, now) {
   if (shown && shown.counts && shown.counts.people === 0) return 'cloud.noSessions';
   return '';
 }
+/* cloudTalkNote(dev, now) -> why the message box is off for the machine shown (dev = its row of the feed), a text
+   key or '': cloud.box.talkOff when it does not take messages (dev.talk is not true), else cloud.box.offline when
+   it is stale (cloudStale); no machine -> cloud.box.offline. */
+function cloudTalkNote(dev, now) {
+  if (!dev) return 'cloud.box.offline';
+  if (dev.talk !== true) return 'cloud.box.talkOff';
+  return cloudStale(dev, now) ? 'cloud.box.offline' : '';
+}
+/* cloudCid() -> a new random id for one message (24 characters of A-Z a-z 0-9 _ -): the City Worker keeps
+   a message once per id, so a second send of the same id never makes a second message. */
+function cloudCid() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  let id = '';
+  for (const b of bytes) id += chars[b & 63];
+  return id;
+}
 /* end cloud-city: pure */
 /* cloud-city: script -- the page as the cloud page (requirements/city.md, Cloud page): fed by polling the
-   Worker's /api/feed, view only, with a machine row. Everything here runs only when CLOUD is true. */
+   Worker's /api/feed, with a machine row, and talk: a session's window carries its conversation from the feed
+   and a box to send from. Everything here runs only when CLOUD is true. */
 function cloudSetup() {
   const app = $('.app'), bar = $('header.bar');
   app.classList.add('cloud-page');
   const sub = $('.sign-sub');
   if (sub) sub.textContent = i18n('cloud.sign');
   const ro = document.createElement('span');
-  ro.className = 'ro'; ro.textContent = i18n('cloud.readOnly');
+  ro.className = 'ro'; ro.id = 'cloud-ro'; ro.textContent = i18n('cloud.readOnly');
   bar.insertBefore(ro, $('#stats'));
   const acct = document.createElement('span');
   acct.className = 'acct'; acct.id = 'cloud-acct'; acct.hidden = true;
@@ -7599,14 +7769,56 @@ function cloudSetup() {
   note.id = 'cloud-notice'; note.hidden = true;
   note.addEventListener('click', e => { if (e.target.closest('.cloud-reload')) location.reload(); });
   stage.appendChild(note);
-  // the note at the foot of every window (a person's window ends with it; the text comes from TEXT)
+  // the note at the foot of every window (the text comes from TEXT); cloudRenderTalk() takes it off for a machine that talks
   $('#win').setAttribute('data-cloud-note', i18n('cloud.viewNote'));
   // a "?" and the next button open nothing here: the click never reaches the page's own handlers
   document.addEventListener('click', e => {
     if (e.target.closest && e.target.closest('[data-open],#next')) { e.stopPropagation(); e.preventDefault(); }
   }, true);
-  // the cloud keeps no conversation: a person's window shows its activity lines (as if the steps were on)
-  new MutationObserver(cloudHistory).observe($('#detail'), { childList: true, subtree: true });
+  // later, shown and not hidden: the add-agent button (in the rail) and the demo tools (under the stage) as quiet chips
+  const add = document.createElement('button');
+  add.type = 'button'; add.className = 'cloud-later'; add.disabled = true; add.textContent = i18n('cloud.later.add');
+  $('#rail').appendChild(add);
+  const demo = document.createElement('p');
+  demo.className = 'cloud-later'; demo.textContent = i18n('cloud.later.demo');
+  $('.stage-col').appendChild(demo);
+  // the phone's keyboard: the window sheet (css: .cloud-page .win) follows the visible part of the screen; a
+  // conversation that was at the bottom when the room changed stays at the bottom
+  if (window.visualViewport) {
+    const fit = () => {
+      const ol = $('#chat');
+      const atBottom = !!ol && ol.scrollHeight - ol.scrollTop - ol.clientHeight <= CHAT_STICK_PX;
+      app.style.setProperty('--vvh', window.visualViewport.height + 'px');
+      app.style.setProperty('--vvt', window.visualViewport.offsetTop + 'px');
+      if (atBottom) ol.scrollTop = ol.scrollHeight;
+    };
+    window.visualViewport.addEventListener('resize', fit);
+    window.visualViewport.addEventListener('scroll', fit);
+    fit();
+  }
+}
+/* loadChat() on the cloud page: nothing is fetched, the feed brings the conversation. A window just opened is empty
+   until then; the feed is asked at once for a window it does not carry yet (only a session's or the governor's). */
+function cloudLoad(to) {
+  if (!chats.has(to)) chats.set(to, { entries: [], busy: false, canSend: true, loaded: false });
+  if (cloudWindow(to) && cloudLive.poke && cloudLive.open !== to) cloudLive.poke();
+}
+/* cloudWindow(to) -> TO when it is a window the feed can open (a session 's:...' or the governor 'gov:...'), else '' */
+function cloudWindow(to) {
+  return typeof to === 'string' && (to.slice(0, 2) === 's:' || to.slice(0, 4) === 'gov:') ? to : '';
+}
+/* cloudBoxNote(to) -> why the message box of window TO is off, a text key, or '' when the box is there: the answer
+   of cloudTalkNote() for the machine shown. A subagent's window has no box here (it keeps its read-only line). */
+function cloudBoxNote(to) {
+  const feed = cloudLive.feed;
+  if (!feed || !cloudWindow(to)) return '';
+  const devs = Array.isArray(feed.devs) ? feed.devs : [];
+  return cloudTalkNote(devs.find(d => d && d.dev === feed.dev) || null, feed.now);
+}
+/* the note that takes the box's place; the command it names shows as code */
+function cloudNoteHtml(key) {
+  const cmd = 'agent-city cloud-talk on';
+  return `<p class="cloud-why">${esc(i18n(key)).replace(cmd, `<code>${cmd}</code>`)}</p>`;
 }
 /* cloudKnown() -> the people this page draws now (its own, never the guests), for cloudStep()'s catch-up:
    [{id, status, done, stuck, label}], status = 'waiting' | 'background' | 'idle' | '' as the page holds it */
@@ -7619,22 +7831,6 @@ function cloudKnown() {
     label: c.label,
   }));
 }
-/* the history under the person's head: activity lines and question cards, written again when they change */
-function cloudHistory() {
-  const el = $('#detail');
-  const c = selected && selected.t === 'c' ? byId(selected.id) : null;
-  if (!el || !c || c.remote || !el.querySelector('.p-head')) return;
-  let ol = el.querySelector('#cloud-hist');
-  if (!ol) {
-    el.insertAdjacentHTML('beforeend', `<p class="hint hist-h">${i18n('hist.title')}</p><ol class="chat" id="cloud-hist"></ol>`);
-    ol = el.querySelector('#cloud-hist');
-  }
-  const html = historyHtml(personHistory(c, []), nameOf(c), false);
-  if (ol.dataset.h === html) return;
-  const stick = ol.dataset.h === undefined || ol.scrollHeight - ol.scrollTop - ol.clientHeight <= CHAT_STICK_PX;
-  ol.innerHTML = html; ol.dataset.h = html;
-  if (stick) ol.scrollTop = ol.scrollHeight;
-}
 function cloudRenderRow(feed) {
   const nav = $('#machines'), app = $('.app');
   const devs = Array.isArray(feed.devs) ? feed.devs : [];
@@ -7644,6 +7840,7 @@ function cloudRenderRow(feed) {
     return `<button type="button" class="mc${cloudStale(d, feed.now) ? ' off' : ''}" data-dev="${esc(d.dev)}" aria-pressed="${d.dev === shown}"><i></i><b>${esc(d.label || d.dev)}</b>`
       + `<span>${esc(i18n('cloud.busy', { n: n.busy || 0 }))}</span>`
       + (n.wait > 0 ? `<span class="w">${esc(i18n('cloud.wait', { n: n.wait }))}</span>` : '')
+      + `<span class="tk${d.talk === true ? '' : ' no'}">${esc(i18n(d.talk === true ? 'cloud.talk.on' : 'cloud.talk.off'))}</span>`
       + `<span class="t">${esc(cloudAge(feed.now - d.ts))}</span></button>`;
   }).join('');
   nav.hidden = !devs.length;
@@ -7654,6 +7851,15 @@ function cloudRenderRow(feed) {
   const hadDev = had && nav.contains(had) ? had.dataset.dev : null;
   nav.innerHTML = html; nav.dataset.h = html;
   if (hadDev !== null) for (const b of nav.querySelectorAll('.mc')) if (b.dataset.dev === hadDev) b.focus();
+}
+/* the 只能看 pill in the header and the "view only" note under a window show only while the machine shown does
+   not talk (its row of the feed has talk: true when its owner turned cloud talk on) */
+function cloudRenderTalk(feed) {
+  const devs = Array.isArray(feed.devs) ? feed.devs : [];
+  const shown = devs.find(d => d && d.dev === feed.dev);
+  const talks = !!shown && shown.talk === true;
+  $('#cloud-ro').hidden = talks;
+  if (talks) $('#win').removeAttribute('data-cloud-note'); else $('#win').setAttribute('data-cloud-note', i18n('cloud.viewNote'));
 }
 function cloudRenderAcct(feed) {
   const el = $('#cloud-acct');
@@ -7697,7 +7903,9 @@ function connectCloud() {
   const chip = $('#proto');
   let wanted = '';
   try { wanted = localStorage.getItem('city-cloud-dev') || ''; } catch (err) { wanted = ''; }
-  let cur = { dev: wanted, gen: 0, after: 0 };
+  // chat = the open window's id and cc = its cursor go with every request (cloudFeedUrl); the picture's own cursor
+  // (gen, after) is cloudStep's
+  let cur = { dev: wanted, gen: 0, after: 0, chat: '', cc: 0 };
   let busy = false, again = false, stopped = false, epoch = 0, timer = 0;
   chip.hidden = true;
   function later() { clearTimeout(timer); timer = setTimeout(poll, CLOUD_POLL_MS); }
@@ -7707,6 +7915,10 @@ function connectCloud() {
     busy = true;
     clearTimeout(timer);
     const mine = epoch;
+    // the window open now rides with the request; a window opened just now starts from the beginning (cc 0)
+    const open = cloudWindow(curChatTo());
+    if (open !== cur.chat) cur = Object.assign({}, cur, { chat: open, cc: 0 });
+    cloudLive.open = cur.chat;
     fetch(cloudFeedUrl(cur), { credentials: 'same-origin', cache: 'no-store' })
       .then(r => {
         if (r.status === 403) { stopped = true; cloudLocked(); return null; }
@@ -7718,13 +7930,31 @@ function connectCloud() {
         if (feed.ok === false) throw new Error('feed');
         const step = cloudStep(cur, feed, cloudKnown());
         for (const ev of step.apply) { try { apply(ev); } catch (err) { console.error(err); } }
-        cur = step.cur;
+        // the feed shows another machine than the one asked for (that one is gone): the old windows go with it,
+        // and the open window starts again from cc 0 on the next poll
+        const moved = !!cur.dev && step.cur.dev !== cur.dev;
+        cur = Object.assign(step.cur, moved ? { chat: '', cc: 0 } : { chat: cur.chat, cc: cur.cc });
+        if (moved) chats.clear();
+        cloudLive.open = cur.chat;
+        const ch = !moved && feed.chat && typeof feed.chat.to === 'string' ? feed.chat : null;
+        if (ch) {
+          const was = chats.get(ch.to), next = cloudChatMerge(was, ch);
+          if (was && was.error) next.error = was.error;
+          if (was && was.fast) next.fast = was.fast;
+          chats.set(ch.to, next);
+          if (ch.to === cur.chat) cur.cc = next.cc;
+        }
+        cloudLive.feed = feed;
+        // "wait for it to finish this step": the open window is busy while its person is at work (not waiting, idle or done)
+        const box = cur.chat ? chats.get(cur.chat) : null, who = box ? byId(cur.chat) : null;
+        if (box) box.busy = !!who && !who.remote && !who.waiting && !who.idle && !who.doneFlag;
         needFrame = true;
         chip.hidden = true;
         cloudRenderRow(feed);
         cloudRenderAcct(feed);
         cloudRenderNotice(feed);
-        cloudHistory();
+        cloudRenderTalk(feed);
+        renderPanel();
       })
       .catch(() => { if (stopped) return; chip.textContent = i18n('cloud.notConnected'); chip.hidden = false; })
       .then(() => {
@@ -7742,11 +7972,14 @@ function connectCloud() {
     try { localStorage.setItem('city-cloud-dev', dev); } catch (err) { /* private mode: it just is not remembered */ }
     for (const x of $('#machines').querySelectorAll('.mc')) x.setAttribute('aria-pressed', String(x === b));
     epoch++;
-    cur = { dev, gen: 0, after: 0 };
+    chats.clear(); // the windows of the machine before are gone; the open one starts again from cc 0
+    cur = { dev, gen: 0, after: 0, chat: '', cc: 0 };
     if (busy) again = true; else poll();
   });
   // no request while the tab is hidden; one at once when it shows again
   document.addEventListener('visibilitychange', () => { if (!document.hidden && !busy) poll(); });
+  // a window opened now (loadChat) or a message sent: ask the feed at once instead of at the next beat
+  cloudLive.poke = () => { if (stopped) return; if (busy) again = true; else poll(); };
   poll();
 }
 if (CLOUD) cloudSetup();

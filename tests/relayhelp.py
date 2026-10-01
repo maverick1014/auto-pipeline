@@ -7,6 +7,9 @@ client and server tests never touch Cloudflare, the network or a real key.
     relay = FakeRelay(key)          started at once; relay.url, relay.host
     relay.push(dev, line)           another machine sends one line
     relay.reset()                   the relay was made again: empty, seq 0
+    relay.talk_key = "..."          cloud-city-2: the relay has this TALK_KEY (None = none);
+    relay.say(cid, to, text)        a message waits for the machine (handed down until acked)
+    relay.acks_of(cid), relay.chat_rows(), relay.talk_log, relay.offs, relay.talk_headers()
     relay.requests                  every POST it got: {"path", "auth", "body", "status"}
     relay.sent_lines()              lines of the syncs it accepted (200) only
     relay.mode = "ok" | "refuse" | "error" | "garbage" | "redirect"
@@ -68,7 +71,8 @@ class _Handler(BaseHTTPRequestHandler):
         except ValueError:
             body = None
         record = {"path": self.path, "auth": self.headers.get("Authorization"),
-                  "ua": self.headers.get("User-Agent"), "body": body, "status": None}
+                  "ua": self.headers.get("User-Agent"), "body": body, "status": None,
+                  "talk_header": self.headers.get("X-City-Talk"), "t": time.monotonic()}
         with relay.lock:
             relay.requests.append(record)
             mode = relay.mode
@@ -127,6 +131,28 @@ class _Handler(BaseHTTPRequestHandler):
                             held["batches"].append(view["events"])
                 reply["city"] = True
                 reply["gen"] = (relay.views.get(dev) or {}).get("gen", 0)
+            # cloud-city-2: talk (the rules of bin/agent-city-relay.js,
+            # tests/test_agent_city_cloud_talk_relay.py). Only with the header.
+            header = self.headers.get("X-City-Talk")
+            if header is not None:
+                talk = body.get("talk") if isinstance(body.get("talk"), dict) else {}
+                if relay.talk_key is None:
+                    reply["talk"] = {"state": "off"}
+                elif header != relay.talk_key:
+                    reply["talk"] = {"state": "refused"}
+                else:
+                    relay.talk_log.append((dev, talk))
+                    for ack in talk.get("acks") or []:
+                        relay.acks.append(ack)
+                        relay.talk_msgs = [m for m in relay.talk_msgs if m.get("cid") != ack.get("cid")]
+                    for row in talk.get("chat") or []:
+                        relay.chat_log.append(row)
+                        relay.chat[row.get("k")] = row
+                    if talk.get("off"):
+                        relay.offs.append(dev)
+                        reply["talk"] = {"state": "off"}
+                    else:
+                        reply["talk"] = {"state": "on", "msgs": [dict(m) for m in relay.talk_msgs[:10]]}
         self._send(200, reply)
 
 
@@ -141,6 +167,14 @@ class FakeRelay:
         self.city = False      # cloud-city-1: True = the relay says the cloud page is on
         self.views = {}        # dev -> {"gen", "label", "counts", "snap", "batches": [[msg, ...], ...]}
         self.view_log = []     # every (dev, view) a sync carried while city is on, in order
+        # cloud-city-2: talk. talk_key None = the relay has no TALK_KEY.
+        self.talk_key = None
+        self.talk_msgs = []    # messages handed down with every talk-on sync, until an ack names their cid
+        self.talk_log = []     # every (dev, talk body) of a talk-on sync, in order
+        self.acks = []         # every ack, in order
+        self.chat = {}         # k -> the last row sent with that key (first-seen order)
+        self.chat_log = []     # every chat row sent, in order (a row sent twice is here twice)
+        self.offs = []         # the devs that said {"off": true}
         self.delay = 0
         self.redirect_to = ""
         self.redirect_code = 302
@@ -154,6 +188,25 @@ class FakeRelay:
                                        kwargs={"poll_interval": 0.05}, daemon=True)
         self.thread.start()
         self.stopped = False
+
+    def say(self, cid, to, text, age=0, **more):
+        """cloud-city-2: the owner typed TEXT to window TO on the cloud page."""
+        msg = {"cid": cid, "to": to, "text": text, "age": age}
+        msg.update(more)
+        with self.lock:
+            self.talk_msgs.append(msg)
+
+    def acks_of(self, cid):
+        with self.lock:
+            return [a for a in self.acks if a.get("cid") == cid]
+
+    def chat_rows(self):
+        with self.lock:
+            return list(self.chat.values())
+
+    def talk_headers(self):
+        with self.lock:
+            return [r.get("talk_header") for r in self.requests if r["path"] == "/v1/sync"]
 
     def push(self, dev, line):
         with self.lock:

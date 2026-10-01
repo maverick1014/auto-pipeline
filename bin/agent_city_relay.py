@@ -33,6 +33,8 @@ GIT_TIMEOUT = 3.0       # short timeout for every git subprocess call
 TAIL_INTERVAL = 0.25    # cloud sender: how often it polls events.jsonl
 RELAY_POLL_SEC = 0.1    # cloud sender: how often it calls hub.tick()
 
+TALK_SOON_SEC = 1.0     # cloud-city-2: a team with talk to hand up syncs again this soon
+
 _JOIN_FOLDER = ".secrets"
 _JOIN_NAME = "agent-city-relay"
 
@@ -342,22 +344,29 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 _OPENER = urllib.request.build_opener(_NoRedirect)
 
 
-def sync(address, key, dev, after, lines, timeout=10.0, view=None):
-    """POST <address>/v1/sync. ("ok", {"seq", "lines", "city", "gen"}) |
+def sync(address, key, dev, after, lines, timeout=10.0, view=None, talk=None, talk_key=None):
+    """POST <address>/v1/sync. ("ok", {"seq", "lines", "city", "gen", "talk"}) |
     ("refused", None) | ("down", None).
 
     cloud-city-1: view (a dict) rides in the body as "view", only when given.
     The ok data's "city" is True only when the reply says "city": true (an
-    old relay says nothing: False); "gen" is the reply's gen, else 0."""
+    old relay says nothing: False); "gen" is the reply's gen, else 0.
+
+    cloud-city-2: talk_key given -> the header X-City-Talk and the body key
+    "talk" (talk, or {} when talk is None); without a talk_key the request is
+    the one of before. The ok data's "talk" is the reply's talk when it is a
+    dict, else None. The talk key is never in the body and never printed."""
     url = address.rstrip("/") + "/v1/sync"
     body = {"dev": dev, "after": after, "lines": lines}
     if view is not None:
         body["view"] = view
+    headers = {"Authorization": "Bearer " + key, "Content-Type": "application/json",
+               "User-Agent": _USER_AGENT}
+    if talk_key:
+        body["talk"] = talk if talk is not None else {}
+        headers["X-City-Talk"] = talk_key
     payload = json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=payload, method="POST",
-        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json",
-                "User-Agent": _USER_AGENT})
+    req = urllib.request.Request(url, data=payload, method="POST", headers=headers)
     try:
         with _OPENER.open(req, timeout=timeout) as resp:
             raw = resp.read()
@@ -375,8 +384,10 @@ def sync(address, key, dev, after, lines, timeout=10.0, view=None):
         gen = data.get("gen")
         if isinstance(gen, bool) or not isinstance(gen, int):
             gen = 0
+        reply_talk = data.get("talk")
         return ("ok", {"seq": data.get("seq"), "lines": data.get("lines") or [],
-                       "city": data.get("city") is True, "gen": gen})
+                       "city": data.get("city") is True, "gen": gen,
+                       "talk": reply_talk if isinstance(reply_talk, dict) else None})
     return ("down", None)
 
 
@@ -427,6 +438,73 @@ def _set_cloud(path, host, on):
             pass
         return
     _write_lines_atomic(path, sorted(hosts))
+
+
+# ------------------------------------------------------ talk file (cloud-city-2)
+
+def read_talk(path):
+    """cloud-city-2: {relay host: talk key} from the talk file at path (one
+    line "<host> <key>" each; blank, "#" and broken lines skipped). A secret:
+    never print or log the values. Missing or broken file -> {}."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            text = fh.read()
+    except (OSError, ValueError):
+        return {}
+    held = {}
+    for raw_line in text.splitlines():
+        parts = raw_line.split()
+        if len(parts) == 2 and not parts[0].startswith("#"):
+            held[parts[0]] = parts[1]
+    return held
+
+
+_TALK_LOCK = threading.Lock()
+
+
+def set_talk(path, host, key):
+    """cloud-city-2: keep KEY for HOST in the talk file at path (key None =
+    forget HOST), written whole (a temp file, then os.replace), mode 0600; the
+    file is removed when the last host goes. Never raises."""
+    try:
+        with _TALK_LOCK:
+            _set_talk(path, host, key)
+    except OSError:
+        pass
+
+
+def _set_talk(path, host, key):
+    held = read_talk(path)
+    if key is None:
+        if host not in held and (held or not os.path.exists(path)):
+            return      # already as asked
+        held.pop(host, None)
+    else:
+        if not host or not key or len(host.split()) != 1 or len(key.split()) != 1:
+            return      # a line could not hold it
+        held[host] = key
+    if not held:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return
+    folder = os.path.dirname(path)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+    tmp_path = path + ".tmp-%d" % os.getpid()
+    content = "".join("%s %s\n" % (h, held[h]) for h in sorted(held))
+    fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        os.replace(tmp_path, path)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+    os.chmod(path, 0o600)
 
 
 # -------------------------------------------------------------------- ids
@@ -492,6 +570,7 @@ class _Team:
         self.join_paths = set()
         self.after = 0
         self.last_sync = None
+        self.soon = False       # cloud-city-2: the source has talk to hand up: sync again in TALK_SOON_SEC
         self.state = "new"
         self.env = False    # True for a RelayHub(env_join=...) team: no join
                             # file, lives as long as the process does.
@@ -510,7 +589,7 @@ class RelayHub:
 
     def __init__(self, relay_sec=5.0, dev_id=None, label=None, cap=OUTBOX_CAP,
                  join_ttl=30.0, timeout=10.0, env_join=None, send_only=False,
-                 joined_list=None, cloud_file=None, view_source=None):
+                 joined_list=None, cloud_file=None, view_source=None, talk_file=None):
         self.relay_sec = relay_sec
         self.dev_id = dev_id or _default_dev_id()
         self.label = label or _default_label()
@@ -534,6 +613,16 @@ class RelayHub:
         # was down or refused); both are called with the hub's lock released.
         self.cloud_file = cloud_file
         self.view_source = view_source
+        # cloud-city-2: talk_file = the talk file (read_talk): re-read before
+        # every sync of a team, so `cloud-talk on / off` works with the next
+        # sync. When the team's host has a key there and view_source has
+        # talk_take(host, rids, now) -> a dict or None, talk_sent(host, talk,
+        # now) (talk = the reply's talk dict, or None when the relay was down
+        # or refused the team key) and talk_soon(host) -> bool, the sync
+        # carries the key and what talk_take gave; talk_soon true makes the
+        # team's next sync due in TALK_SOON_SEC. All called with the lock
+        # released; an error in any of them never stops the lines.
+        self.talk_file = talk_file
         self._teams = {}
         self._join_cache = {}
         self._ids_cache = {}
@@ -643,6 +732,15 @@ class RelayHub:
             self._who = ids.get("who") or ""
             self._who_set = True
 
+    def seed(self, repo):
+        # cloud-city-2: the hub knows REPO (the repo's own folder, not its
+        # .git) as a joined repo with no line sent: what a first hook line of
+        # that repo does (offer()), minus the line. Used at start for the
+        # repos of the sessions the roster brought back, so the first syncs
+        # carry the picture and talk. A repo that is not joined: nothing.
+        with self._lock:
+            self._seed_team(repo)
+
     def offer(self, line):
         if not isinstance(line, dict):
             return False
@@ -699,8 +797,9 @@ class RelayHub:
                 if not self._team_still_joined(team):
                     del self._teams[key]
                     continue
+                wait = min(self.relay_sec, TALK_SOON_SEC) if team.soon else self.relay_sec
                 due = self.relay_sec <= 0 or team.last_sync is None or \
-                    (now - team.last_sync) >= self.relay_sec
+                    (now - team.last_sync) >= wait
                 if not due:
                     continue
                 batch = team.outbox.take(MAX_BATCH)
@@ -718,10 +817,15 @@ class RelayHub:
                 except Exception:
                     view = None
 
+            # cloud-city-2: talk. Only when this host has a key in the talk
+            # file (read now, so on / off works with this very sync) and the
+            # source can take talk; a source error never stops the lines.
+            talk_key, talk = self._talk_before_sync(host, rids, now)
+
             # The network call happens with the lock released, so a slow
             # or stuck relay never stalls offer() / other teams' ticks.
             state, data = sync(address, api_key, dev_id, after, batch, timeout=timeout,
-                               view=view)
+                               view=view, talk=talk, talk_key=talk_key)
             extra_state, extra_data = None, None
             if state == "ok" and after > 0 and data.get("seq") is not None \
                     and data["seq"] < after:
@@ -734,6 +838,7 @@ class RelayHub:
             finished_at = time.monotonic()
             # cloud-city-1: tell the source what came back (lock released).
             self._cloud_after_sync(host, state, data, finished_at)
+            soon = self._talk_after_sync(host, talk_key, state, data, finished_at)
 
             with self._lock:
                 team = self._teams.get(key)
@@ -742,6 +847,7 @@ class RelayHub:
                     # team and its join file are gone, nothing to store.
                     continue
                 team.last_sync = finished_at
+                team.soon = soon
                 if state == "ok":
                     team.state = "ok"
                     new_after, lines = data["seq"], data.get("lines") or []
@@ -772,6 +878,40 @@ class RelayHub:
                 self.view_source.sent(host, data if state == "ok" else None, now)
             except Exception:
                 pass
+
+    def _talk_before_sync(self, host, rids, now):
+        # cloud-city-2: (talk key, talk) for this team's next sync, or
+        # (None, None) -- the sync of before. Lock released. The key stays
+        # in memory for the one request: never printed, never logged.
+        source = self.view_source
+        if not self.talk_file or source is None or not callable(getattr(source, "talk_take", None)):
+            return None, None
+        talk_key = read_talk(self.talk_file).get(host)
+        if not talk_key:
+            return None, None
+        try:
+            talk = source.talk_take(host, rids, now)
+        except Exception:
+            talk = None
+        return talk_key, talk if isinstance(talk, dict) else None
+
+    def _talk_after_sync(self, host, talk_key, state, data, now):
+        # cloud-city-2: tell the source what talk came back (the reply's talk
+        # dict, or None when the relay was down or refused the team key) and
+        # ask whether the next sync should come soon (only after a sync the
+        # relay answered). Lock released.
+        if not talk_key:
+            return False
+        try:
+            self.view_source.talk_sent(host, data.get("talk") if state == "ok" else None, now)
+        except Exception:
+            pass
+        if state != "ok":
+            return False    # a relay that is down or refuses is asked again after relay_sec
+        try:
+            return bool(self.view_source.talk_soon(host))
+        except Exception:
+            return False
 
     def _team_still_joined(self, team):
         # Caller must hold self._lock.
@@ -979,6 +1119,69 @@ def cmd_cloud(args):
     return 0
 
 
+def cmd_talk(args):
+    """cloud-city-2: `talk --secret <join file> --talk-file <path> on|off|status`
+    prints ONE line. status: "on <host>" | "off <host>" from the talk file (no
+    network), exit 0; no join file -> "none" (exit 0 for status, else 1).
+    on: the talk key is the first line of stdin (never argv, never printed);
+    one sync (no lines) carries it as X-City-Talk: the relay says on -> saved,
+    "on <host>", 0; refused -> "refused <host>", 3; off or nothing about talk ->
+    "no-talk <host>", 4; down or the team key refused -> "down <host>", 5;
+    could not save -> "not-saved <host>", 6; no key -> "no-key", 2. Nothing is
+    saved unless the relay said on. off: one sync with {"off": true} when the
+    file had the host (whatever it answers), the host leaves the file, "off
+    <host>", 0."""
+    joined = read_join(args.secret)
+    if joined is None:
+        print("none")
+        return 0 if args.verb == "status" else 1
+    address = joined["address"]
+    host = urlsplit(address).netloc
+    held = read_talk(args.talk_file)
+
+    if args.verb == "status":
+        print("%s %s" % ("on" if host in held else "off", host))
+        return 0
+
+    if args.verb == "off":
+        if host in held and not check_address(address):
+            sync(address, joined["key"], _default_dev_id(), 0, [],
+                 talk={"off": True}, talk_key=held[host])
+        set_talk(args.talk_file, host, None)
+        print("off %s" % host)
+        return 0
+
+    key = sys.stdin.readline().strip()
+    if not key:
+        print("no-key")
+        return 2
+    if len(key.split()) != 1:
+        # no line of the talk file could hold it: the relay has no such key
+        print("refused %s" % host)
+        return 3
+    if check_address(address):
+        print("down %s" % host)
+        return 5
+    state, data = sync(address, joined["key"], _default_dev_id(), 0, [], talk_key=key)
+    if state != "ok":
+        print("down %s" % host)
+        return 5
+    talk = data.get("talk")
+    answer = talk.get("state") if isinstance(talk, dict) else None
+    if answer == "refused":
+        print("refused %s" % host)
+        return 3
+    if answer != "on":
+        print("no-talk %s" % host)
+        return 4
+    set_talk(args.talk_file, host, key)
+    if read_talk(args.talk_file).get(host) != key:
+        print("not-saved %s" % host)
+        return 6
+    print("on %s" % host)
+    return 0
+
+
 # --------------------------------------------------------------------- CLI
 
 def _cli(argv):
@@ -1001,6 +1204,11 @@ def _cli(argv):
     p_cloud.add_argument("--cloud-file", required=True)
     p_cloud.add_argument("--probe", action="store_true")
 
+    p_talk = sub.add_parser("talk")
+    p_talk.add_argument("--secret", required=True)
+    p_talk.add_argument("--talk-file", required=True)
+    p_talk.add_argument("verb", choices=("on", "off", "status"))
+
     p_send = sub.add_parser("send")
     p_send.add_argument("--dir", required=True)
     p_send.add_argument("--relay-sec", type=float, default=5.0)
@@ -1012,7 +1220,7 @@ def _cli(argv):
     except SystemExit:
         return 2
 
-    if args.cmd not in ("check", "join", "send", "cloud"):
+    if args.cmd not in ("check", "join", "send", "cloud", "talk"):
         parser.print_usage(sys.stderr)
         return 2
 
@@ -1020,6 +1228,8 @@ def _cli(argv):
         return cmd_send(args)
     if args.cmd == "cloud":
         return cmd_cloud(args)
+    if args.cmd == "talk":
+        return cmd_talk(args)
 
     err = check_address(args.address)
     if err:

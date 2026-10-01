@@ -636,12 +636,16 @@ class TestChatWatch(ChatServerCase):
 
 class TestStaysHome(unittest.TestCase):
     def test_relay_never_touches_chat(self):
-        with open(RELAY, encoding="utf-8") as fh:
-            src = fh.read()
-        self.assertNotIn("chat", src.lower())
+        # cloud-city-2 (owner, 2026-10-01): chat text may go to the owner's own Cloudflare, but only
+        # from a machine with talk on, and only in the sync's "talk" part (its own tests:
+        # tests/test_agent_city_cloud_talk_machine.py: no talk file -> no chat text in any request).
+        # A LINE, which every team member gets, still never carries text.
         import agent_city_relay as rl
-        for key in ("text", "prompt", "last_assistant_message"):
+        for key in ("text", "prompt", "last_assistant_message", "chat", "talk"):
             self.assertNotIn(key, rl._KEPT_LINE_FIELDS)
+        wire = rl.to_wire({"ev": "Stop", "sid": "s1", "text": "secret", "prompt": "secret", "chat": "secret",
+                           "last_assistant_message": "secret"}, {"rid": "r", "br": "b", "who": "w", "dev": "d"})
+        self.assertNotIn("secret", repr(wire))
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>云端 Agent City · 对话 · mock</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --berry:#FF7593; --berry-deep:#D9506E; --butter:#FFD36E; --mint:#6FD4A8; --focus:#4D7CFE;
+  --ok:#1E8657; --ok-bg:#DDF5E9; --ask-bg:#FFE1E8; --ask-ink:#C2345A; --build-bg:#E1ECFF; --build-ink:#3160B5;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+    --line:#2D3360; --focus:#8FB0FF; --ok:#5FD39C; --ok-bg:#173A2C; --ask-bg:#4A1F33; --ask-ink:#FFB0C3; --build-bg:#1E3160; --build-ink:#A9C6FF;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.mock{max-width:1500px;margin-inline:auto;padding:14px 16px 28px;display:flex;flex-direction:column;gap:12px}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.sign{display:inline-flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:6px 16px;box-shadow:0 3px 0 var(--ink)}
+.sign b{font:700 21px/1.15 var(--display)}
+.sign small{font:600 10.5px/1.3 var(--mono);color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase}
+.pill{background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:8px}
+.tabs button{all:unset;cursor:pointer;padding:8px 14px;border-radius:12px;font:600 13.5px/1 var(--round);color:var(--ink-2);background:var(--panel-2)}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--panel)}
+.tabs button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.note{background:var(--panel);border:1.5px solid var(--line);border-radius:14px;padding:10px 14px;color:var(--ink-2)}
+.note b{color:var(--ink)}
+.note .en{display:block;color:var(--ink-3);font-size:12.5px}
+.screen{display:grid;gap:14px}
+.screen.side{grid-template-columns:minmax(0,1fr) 340px;align-items:start}
+.screen.cards{grid-template-columns:repeat(auto-fit,minmax(320px,1fr));align-items:start}
+@media (max-width: 960px){ .screen.side{grid-template-columns:1fr} }
+.frame{border:2px solid var(--ink);border-radius:18px;overflow:hidden;background:var(--panel);box-shadow:0 5px 0 rgba(42,43,69,.2)}
+.frame .url{display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--panel-2);border-bottom:1.5px solid var(--line);font:600 12px/1 var(--mono);color:var(--ink-2)}
+.frame .url i{width:9px;height:9px;border-radius:50%;background:var(--line);flex:none}
+.frame .url span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.frame iframe{display:block;width:100%;height:min(760px,calc(100dvh - 40px));border:0;background:var(--paper)}
+.phone-wrap{display:flex;justify-content:center}
+.phone{width:394px;border:2px solid var(--ink);border-radius:38px;padding:10px 0 12px;background:var(--ink);box-shadow:0 6px 0 rgba(42,43,69,.25)}
+.phone .notch{width:110px;height:6px;border-radius:6px;background:#6b6f93;margin:2px auto 9px}
+.phone .glass{width:390px;height:760px;margin-inline:auto;border-radius:26px;overflow:hidden;background:#D5D8E6;display:flex;flex-direction:column}
+.phone iframe{display:block;width:390px;flex:1 1 auto;min-height:0;border:0;background:var(--paper)}
+/* the phone keyboard (a sketch): it takes the bottom of the glass, the page gets what is left */
+.kb{flex:none;height:268px;padding:8px 4px 0;display:flex;flex-direction:column;gap:9px;background:#D5D8E6;color:#1c1d2b}
+.kb .sug{display:flex;justify-content:space-around;font:500 15px/1.6 var(--round);color:#3b3d55}
+.kb .row{display:flex;justify-content:center;gap:5px}
+.kb .row span{flex:0 0 33px;height:42px;border-radius:6px;background:#fff;box-shadow:0 1px 0 #8b8fa8;display:grid;place-items:center;font:500 18px/1 var(--round)}
+.kb .row span.w{flex-basis:44px;background:#AEB3C6;font-size:14px}
+.kb .row span.sp{flex:1 1 auto;font-size:14px}
+.kb .bar{width:120px;height:5px;border-radius:5px;background:#1c1d2b;margin:2px auto 0}
+.kb .row span.go{flex-basis:84px;background:#4D7CFE;color:#fff;font-size:14px}
+.card{background:var(--panel);border:1.5px solid var(--line);border-radius:16px;padding:12px 16px}
+.card h3{margin:0 0 6px;font:700 15px/1.3 var(--display)}
+.card ul,.card ol{margin:0;padding-left:18px}
+.card li{margin:5px 0;color:var(--ink-2)}
+.card li b{color:var(--ink)}
+.card p{margin:6px 0 0;color:var(--ink-2)}
+.card code,.note code{font:600 12px/1 var(--mono);background:var(--panel-2);padding:2px 5px;border-radius:6px}
+.card pre{margin:8px 0 0;padding:10px 12px;border-radius:12px;background:#1C2040;color:#EEF0FF;font:600 12px/1.6 var(--mono);overflow-x:auto}
+.card pre .dim{color:#8D91B3}
+.card pre .hi{color:#8FE3B8}
+.fail{background:var(--ask-bg);color:var(--ask-ink);border-radius:14px;padding:12px 16px;font-weight:600}
+.try{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.try button{all:unset;cursor:pointer;padding:9px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);font:600 13px/1.35 var(--round)}
+.try button small{display:block;color:var(--ink-3);font-weight:500}
+.try button[aria-pressed="true"]{border-color:var(--ink);box-shadow:0 2px 0 var(--ink);background:var(--panel)}
+.try button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.tbl th,.tbl td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{color:var(--ink-3);font-weight:600;white-space:nowrap}
+.tbl td:first-child{white-space:nowrap}
+.tbl-wrap{overflow-x:auto}
+.st{display:inline-block;padding:1px 8px;border-radius:999px;font:700 11.5px/1.6 var(--round)}
+.st.go{background:var(--butter);color:#4A3500}
+.st.ok{background:var(--ok-bg);color:var(--ok)}
+.st.bad{background:var(--ask-bg);color:var(--ask-ink)}
+.path{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
+.path span{padding:5px 9px;border-radius:10px;background:var(--panel-2);border:1.5px solid var(--line);font:600 12px/1.3 var(--round);color:var(--ink)}
+.path i{font-style:normal;color:var(--ink-3)}
+</style>
+</head>
+<body>
+<div class="mock" id="mock">
+  <div class="top">
+    <span class="sign"><b>云端 Agent City</b><small>cloud-city-2 · step 2 · 在云端页面里对话</small></span>
+    <span class="pill">mock</span>
+  </div>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div class="note" id="note"></div>
+  <div id="view"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const Q = new URLSearchParams(location.search);
+const PAGE_URL = '../bin/agent-city.html';
+const ME = 'you@example.com';
+const HOST = 'https://agent-city-page.<你的子域>.workers.dev';
+const MACHINES = [
+  { name: 'MacBook-Pro', busy: 3, wait: 0, seen: '刚刚', talk: true },
+  { name: 'maverick-pc2', busy: 1, wait: 0, seen: '8 秒前', talk: false },
+  { name: '云端', busy: 2, wait: 0, seen: '20 秒前', talk: false },
+];
+
+const SCREENS = [
+  { id: 'send', tab: '1 发消息', note: '<b>点一个人，它的窗口里多了输入框，和本地页面一样：回车发送，右边是你的话。</b> 每条消息后面有一个小标签：<span class="st go">在路上</span> → <span class="st ok">已送达</span>，然后它的回答出现在同一个窗口。机器开着时，从发出到「已送达」大约 10 秒。在框里打一句试试（这里把等待缩短了）。<span class="en">The window has the message box, as on the local page. Each message carries its state: on its way, then delivered; the reply shows in the same window.</span>' },
+  { id: 'fail', tab: '2 没送到', note: '<b>没送到就明说，带原因，绝不悄悄丢。</b> 右边选一种情况，再发一句。三种原因：那台电脑没开 / 这个会话已经结束 / 那台电脑不接收云端消息。每条没送到的消息有「重发」（算一条新消息，绝不会重复送两次）。<span class="en">Never a silent loss: not delivered, with the reason in plain words, and a "send again".</span>' },
+  { id: 'answer', tab: '3 回答等你的', note: '<b>它在等你（等你 / QUESTION / 要你决定）：窗口里看得到它最后那段话，直接在框里回答。</b> 回答送到后，它继续干活，「等你」自己消失，机器那一行的红色数字也减掉，和本地一样。<span class="en">A waiting session: its last reply (the question) is in the window; answer in the box; the waiting state clears as it does locally.</span>' },
+  { id: 'phone', tab: '4 手机 + 键盘', note: '<b>手机上：点一个人，它的窗口盖住屏幕下半边（对话和输入框都在）。点输入框，键盘弹出来，窗口自动缩到键盘上面，输入框一直看得见。</b> 右边的按钮切换键盘。<span class="en">Phone width: the window is a bottom sheet; with the keyboard up it fits the space above it, the box stays in view.</span>' },
+  { id: 'later', tab: '5 以后开放', note: '<b>这一步不做的，页面上写着「以后开放」，不装作没有：</b>批准 / 拒绝权限和选择题（"?"）、加 agent 按钮、演示工具。现在这三样请回到那台电脑上做。<span class="en">Not in this step, shown as "later": approve / deny a permission request, the add-agent button, the demo tools.</span>' },
+  { id: 'safe', tab: '6 开关和安全', note: '<b>这是一条从互联网进你电脑的通道，所以默认关着。</b> 每台机器要你自己在它的终端里打一条命令才开；一条命令就关。下面是消息走的路、存多久、和四种坏情况的答案。<span class="en">Off by default, turned on per machine by one command the owner types. The path, the caps, the threats.</span>' },
+];
+
+/* ---------- the real page, patched in memory so it runs here as the cloud page ---------- */
+let pageSrc = null;
+async function loadPage() {
+  if (pageSrc) return pageSrc;
+  const res = await fetch(PAGE_URL);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  pageSrc = await res.text();
+  return pageSrc;
+}
+function must(src, from, to) {
+  if (!src.includes(from)) throw new Error('the page changed, the mock cannot find: ' + from.slice(0, 60));
+  return src.split(from).join(to);
+}
+function cloudCss() {
+  return `
+.toolbar,#proto,#ask,#next{display:none!important}
+.d-actions,.d-note,#detail>p.hint:not(.hist-h):not(.chat-fail){display:none!important}
+.stage{height:calc(100dvh - 176px)!important}
+.acct{display:inline-flex;align-items:center;gap:8px;font:600 12.5px/1 var(--round);color:var(--ink-2)}
+.acct .who{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel)}
+.acct .who i{width:8px;height:8px;border-radius:50%;background:#2FA56F}
+.acct button{all:unset;cursor:pointer;padding:6px 11px;border-radius:999px;background:var(--panel-2);color:var(--ink-2)}
+.machines{display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px}
+.machines .lead{flex:none;font:600 12px/1 var(--round);color:var(--ink-3);padding-right:2px}
+.mc{all:unset;cursor:pointer;flex:none;display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font:600 12.5px/1 var(--round);color:var(--ink-2)}
+.mc[aria-pressed="true"]{border-color:var(--ink);color:var(--ink);box-shadow:0 2px 0 var(--ink)}
+.mc i{width:8px;height:8px;border-radius:50%;background:#2FA56F}
+.mc.off i{background:#8D91B3}
+.mc b{font:700 12.5px/1 var(--display);color:var(--ink)}
+.mc .w{background:#FF6F8B;color:#fff;border-radius:999px;padding:3px 7px;font:700 11px/1 var(--display)}
+.mc .t{color:var(--ink-3);font-weight:500}
+.mc .tk{border-radius:999px;padding:3px 7px;font:700 11px/1 var(--round);background:rgba(47,165,111,.18);color:var(--ink)}
+.mc .tk.no{background:var(--panel-2);color:var(--ink-3)}
+/* a message's state, and the way to send it again */
+.chat .msg b .st{display:inline-block;margin-left:6px;padding:0 7px;border-radius:999px;font:700 10.5px/1.7 var(--round);vertical-align:1px}
+.st.go{background:#FFD36E;color:#4A3500}
+.st.ok{background:rgba(255,255,255,.82);color:#14603E}
+.st.bad{background:#FFE1E8;color:#C2345A}
+.chat .msg .re{all:unset;cursor:pointer;align-self:flex-end;margin-top:4px;padding:2px 10px;border-radius:999px;border:1.5px solid currentColor;font:700 11.5px/1.5 var(--round)}
+.chat .msg .re:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.cloud-why{flex:none;margin:0;border:1.5px dashed var(--line);border-radius:12px;padding:9px 11px;color:var(--ink-2);font:600 12.5px/1.5 var(--round)}
+.cloud-why b{color:var(--ink)}
+.cloud-why code{display:inline-block;margin-top:3px;font:600 12px/1.5 ui-monospace,Menlo,monospace;background:var(--panel-2);padding:1px 7px;border-radius:6px;color:var(--ink)}
+.cloud-fast{flex:none;margin:0;color:var(--ask-ink);font:600 12px/1.4 var(--round)}
+/* later: shown, not hidden */
+.later-card{position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:6;width:min(430px,calc(100% - 24px));background:var(--panel);border:2px solid var(--ink);border-radius:16px;padding:12px 14px;box-shadow:0 4px 0 rgba(42,43,69,.22);font:600 13px/1.5 var(--round);color:var(--ink)}
+.later-card b{display:block;font:700 15px/1.3 var(--display);margin-bottom:2px}
+.later-card small{display:block;color:var(--ink-3);font-weight:500}
+.later-card .row{display:flex;gap:6px;margin-top:8px}
+.later-card .row span{flex:1;text-align:center;padding:7px 8px;border-radius:10px;border:1.5px dashed var(--line);color:var(--ink-3)}
+.later .rail-list::after{content:"＋ 加 agent · 以后开放";display:block;margin:8px 10px 10px;padding:8px 10px;border:1.5px dashed var(--line);border-radius:12px;color:var(--ink-3);font:600 12.5px/1.3 var(--round);text-align:center}
+.later .stage-col::after{content:"演示工具 · 以后开放";display:block;margin-top:8px;padding:8px 12px;border:1.5px dashed var(--line);border-radius:12px;color:var(--ink-3);font:600 12.5px/1.3 var(--round);text-align:center}
+.later .stage{height:calc(100dvh - 236px)!important}
+@media (max-width: 960px){
+  .stage{height:calc(100dvh - 214px)!important}
+  .acct .who span{display:none}
+  /* T7: on a phone an open window is a sheet over the lower half of the SCREEN (the stage alone is too
+     small for a conversation); with the keyboard up it takes the room the keyboard leaves (the real
+     page sizes it from visualViewport), so the box sits just above the keyboard */
+  .win{position:fixed!important;left:8px!important;right:8px!important;top:auto!important;bottom:8px!important;width:auto!important;height:56dvh!important;z-index:30}
+  .win-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kb-up .win{top:6px!important;bottom:6px!important;height:auto!important}
+}`;
+}
+/* runs INSIDE the page's own script (the page is one closed function), right after its demo seed */
+function innerJs(kind) {
+  return `
+;(() => {
+  const KIND = ${JSON.stringify(kind)};
+  const MACHINES = ${JSON.stringify(MACHINES)};
+  const SID = 's:tm';
+  const terr = govTerr;
+  const speed = 1;
+  /* ---- the cloud page's top: sign, account, machine row ---- */
+  const sub = document.querySelector('.sign-sub'); if (sub) sub.textContent = '云端';
+  const bar = document.querySelector('header.bar');
+  const acct = document.createElement('span'); acct.className = 'acct';
+  acct.innerHTML = '<span class="who"><i></i><span>${ME}</span></span><button type="button" title="退出登录">退出</button>';
+  bar.appendChild(acct);
+  const nav = document.createElement('nav'); nav.className = 'machines'; nav.setAttribute('aria-label', '机器');
+  document.querySelector('#repos').before(nav);
+  const mstate = { wait: KIND === 'answer' ? 1 : 0, off: false, noTalk: false };
+  function drawMachines() {
+    nav.innerHTML = '<span class="lead">机器</span>' + MACHINES.map((m, i) => {
+      const off = i === 0 && mstate.off;
+      const wait = i === 0 ? mstate.wait : m.wait;
+      return '<button type="button" class="mc' + (off ? ' off' : '') + '" data-i="' + i + '" aria-pressed="' + (i === 0) + '"><i></i><b>' + m.name + '</b>' +
+        (off ? '<span class="t">2 分钟前</span>' : '<span>干活 ' + m.busy + '</span>' + (wait ? '<span class="w">等你 ' + wait + '</span>' : '')) +
+        '<span class="tk' + (m.talk && !(i === 0 && mstate.noTalk) ? '' : ' no') + '">' + (m.talk && !(i === 0 && mstate.noTalk) ? '可对话' : '只能看') + '</span>' +
+        (off ? '' : '<span class="t">' + m.seen + '</span>') + '</button>';
+    }).join('');
+  }
+  drawMachines();
+  if (KIND === 'later') document.querySelector('.app').classList.add('later');
+
+  /* ---- one session of this machine, with a conversation ---- */
+  apply({ type: 'spawn', id: SID, role: 'task-manager', label: 'checkout Task Manager', task: '结账页：先写测试', terr, from: '' });
+  let seq = 5000;
+  const t0 = Date.now() / 1000;
+  const E = (kind, text, more) => Object.assign({ id: ++seq, kind, text, at: t0 }, more || {});
+  const entries = [
+    E('prompt', '你是 checkout 的 task manager。先写失败的测试，再派 worker。'),
+    E('reply', '收到。我先写 3 个失败的测试：金额为 0、优惠券过期、重复提交。'),
+    E('owner', '重复提交那个，按钮点两次只能下一单。', { state: 'delivered', via: 'local' }),
+    E('reply', '明白，第三个测试就测这个：点两次，只有一张订单。'),
+  ];
+  if (KIND === 'fail') {
+    entries.push(E('owner', '测试写完了吗？', { state: 'undelivered', why: 'off' }));
+    entries.push(E('owner', '先别派 worker。', { state: 'undelivered', why: 'talk-off' }));
+  }
+  if (KIND === 'answer') {
+    entries.push(E('reply', '3 个测试写好了，都失败（应该的）。\\n\\n**要你决定**\\n- 优惠券过期时：A 直接不让结账；B 去掉优惠券，继续结账。\\n- 我建议 B。'));
+  }
+  const box = { entries, busy: false, canSend: true, loaded: true };
+  chats.set(SID, box);
+  if (KIND === 'answer') apply({ type: 'waiting', id: SID });
+
+  /* ---- how a message shows: who, its state, the reason, send again ---- */
+  const WORD = { sent: '在路上', taken: '在路上', queued: '排队中', delivered: '已送达' };
+  const WHY = { off: '那台电脑没开', ended: '这个会话已经结束', 'talk-off': '那台电脑不接收云端消息', 'not-listening': '它没在听，收不到' };
+  /* one message row; e = { kind, text, state, why, via, id, main }, promptWord = how a prompt is named in this window */
+  function msgRow(e, name, promptWord) {
+    let who = esc(name), more = '';
+    if (e.kind === 'prompt') who = promptWord;
+    if (e.kind === 'owner') {
+      const bad = e.state === 'undelivered';
+      const word = bad ? '没送到：' + (WHY[e.why] || '') : (WORD[e.state] || '');
+      who = (e.via === 'local' ? '你（电脑上的页面）' : '你（云端）') +
+        '<span class="st ' + (bad ? 'bad' : e.state === 'delivered' ? 'ok' : 'go') + '">' + esc(word) + '</span>';
+      if (bad) more = '<button type="button" class="re" data-re="' + e.id + '">重发</button>';
+    }
+    return '<li class="msg" data-kind="' + esc(e.kind) + '"' + (e.main === false ? ' data-main="0"' : '') + '><b>' + who + '</b><div class="md">' + mdLite(e.text) + '</div>' + more + '</li>';
+  }
+  const waitRow = (last, busy) => busy && last && last.state === 'queued' ? '<li class="msg-wait">' + i18n('chat.wait') + '</li>' : '';
+  /* the 总督's window */
+  chatHtml = function (list, name, busy) {
+    if (!list || !list.length) return '<li class="msg-empty">' + i18n('chat.empty') + '</li>';
+    return list.map(e => msgRow(e, name, i18n('chat.you.terminal'))).join('') + waitRow(list[list.length - 1], busy);
+  };
+  /* a session's window: its history carries the state of each of your messages too */
+  const plainHistory = personHistory;
+  personHistory = function (c, list) {
+    const items = plainHistory(c, list);
+    for (const it of items) {
+      if (it.k !== 'owner') continue;
+      const e = (list || []).find(x => x.kind === 'owner' && x.text === it.text && x.at === it.at);
+      if (e) { it.id = e.id; it.why = e.why; it.via = e.via; }
+    }
+    return items;
+  };
+  historyHtml = function (items, name, busy) {
+    if (!items || !items.length) return '<li class="msg-empty">' + i18n('hist.empty') + '</li>';
+    const hhmm = at => new Date(at * 1000).toTimeString().slice(0, 5);
+    return items.map(it => {
+      if (it.k === 'act') return '<li class="act"><time>' + hhmm(it.at) + '</time><span>' + esc(it.text) + '</span></li>';
+      if (it.k === 'ask') return '<li class="qa"><p>' + i18n('label.ask') + esc(it.q) + '</p>' + (it.a === null ? '<p class="wait">' + i18n('label.awaitingAnswer') + '</p>' : '<p>' + i18n('label.answer') + esc(it.a) + '</p>') + '</li>';
+      return msgRow({ kind: it.k, text: it.text, state: it.state, why: it.why, via: it.via, id: it.id, main: it.main }, name, i18n('chat.task'));
+    }).join('') + waitRow(items[items.length - 1], busy);
+  };
+
+  /* ---- the box: why it is off ---- */
+  let mode = KIND === 'fail' ? 'off' : 'ok';
+  const NOTES = {
+    off: '<b>那台电脑现在不在线，发不了。</b><br>它一上线，这里自己恢复。',
+    ended: '<b>这个会话已经结束。</b><br>对话还能看，不能再发。',
+    talkoff: '<b>这台电脑没开「云端对话」，只能看。</b><br>在它的终端里自己打一条命令就开：<br><code>agent-city cloud-talk on</code>',
+  };
+  let boxNote = '';
+  window.mockBoxNote = () => boxNote ? '<p class="cloud-why">' + boxNote + '</p>' : '';
+  function setBox(note) { boxNote = note || ''; box.canSend = !note; lastDetailKey = ''; renderPanel(); }
+
+  /* ---- sending: the states, in the real order (the waits are short here) ---- */
+  const REPLIES = ['好，我按这个改。', '收到，马上做。', '明白，做完告诉你。'];
+  let rn = 0;
+  const later = (ms, fn) => setTimeout(fn, ms * speed);
+  function setState(id, state, why) {
+    const e = box.entries.find(x => x.id === id); if (!e) return;
+    box.entries = box.entries.map(x => x.id === id ? Object.assign({}, x, { state, why }) : x);
+    renderPanel();
+  }
+  function reply(text) { box.busy = false; box.entries = box.entries.concat([E('reply', text)]); box.entries[box.entries.length - 1].at = Date.now() / 1000; renderPanel(); }
+  demoSendChat = function (to, text) {
+    const id = ++seq;
+    box.entries = box.entries.concat([{ id, kind: 'owner', text, at: Date.now() / 1000, state: 'sent' }]);
+    renderPanel();
+    if (mode === 'off') {            /* the machine went off before it picked the message up (real page: 60 s) */
+      later(3200, () => { setState(id, 'undelivered', 'off'); mstate.off = true; drawMachines(); setBox(NOTES.off); });
+    } else if (mode === 'ended') {   /* the machine got it, the session is gone */
+      later(2400, () => { setState(id, 'undelivered', 'ended'); setBox(NOTES.ended); });
+    } else if (mode === 'busy') {    /* the session is in the middle of a step */
+      later(2000, () => { box.busy = true; setState(id, 'queued'); });
+      later(6500, () => { setState(id, 'delivered'); });
+      later(9500, () => reply(REPLIES[rn++ % REPLIES.length]));
+    } else {
+      later(2400, () => {
+        setState(id, 'delivered');
+        if (KIND === 'answer') { apply({ type: 'resume', id: SID }); mstate.wait = 0; drawMachines(); }
+      });
+      later(5600, () => reply(KIND === 'answer' ? '好，按 B 做：过期的优惠券去掉，继续结账。我去派 worker。' : REPLIES[rn++ % REPLIES.length]));
+    }
+  };
+  document.addEventListener('click', e => {
+    const b = e.target.closest('.re'); if (!b) return;
+    const old = box.entries.find(x => String(x.id) === b.dataset.re); if (!old) return;
+    if (box.canSend === false) return;
+    demoSendChat(SID, old.text);
+  });
+  /* the mock's own switch (the buttons beside the page) */
+  window.mockSet = (m, fromRow) => {
+    mode = m;
+    mstate.off = false; mstate.noTalk = m === 'talkoff' && !fromRow; drawMachines();
+    setBox(m === 'talkoff' ? NOTES.talkoff : '');
+  };
+  window.mockKeyboard = on => {
+    document.documentElement.classList.toggle('kb-up', !!on);
+    const t = document.querySelector('#say-text');
+    if (on && t) t.focus();
+    setTimeout(() => { const ol = document.querySelector('#chat'); if (ol) ol.scrollTop = ol.scrollHeight; }, 80);
+  };
+  nav.addEventListener('click', e => {
+    const b = e.target.closest('.mc'); if (!b) return;
+    const i = Number(b.dataset.i);
+    nav.querySelectorAll('.mc').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    window.mockSet(MACHINES[i].talk ? 'ok' : 'talkoff', true);
+    nav.querySelectorAll('.mc').forEach(x => x.setAttribute('aria-pressed', String(Number(x.dataset.i) === i)));
+  });
+  if (KIND === 'later') {
+    const el = document.createElement('div'); el.className = 'later-card';
+    el.innerHTML = '<b>它在等批准（"?"）</b>批准 / 拒绝、选择题：以后在这里开放。<small>现在请到那台电脑上点。它的问题如果是一段话，直接在它的窗口里回答（见第 3 页）。</small><div class="row"><span>批准 · 以后开放</span><span>拒绝 · 以后开放</span></div>';
+    stage.appendChild(el);
+    /* one person with a "?" (a permission request), as the picture shows it */
+    setTimeout(() => { const d = citizens.find(c => c.id !== SID && !c.remote); if (d) apply({ type: 'stuck', id: d.id, tool: 'Bash', question: '' }); }, 1200);
+  } else {
+    setTimeout(() => selectFrom(SID), 400);
+  }
+  window.mockReady = true;
+})();`;
+}
+function patched(src, kind) {
+  let s = src;
+  s = must(s, '<head>', '<head><base href="' + new URL('../bin/', location.href).href + '">');
+  s = must(s, 'assets/vendor/', 'agent-city-assets/vendor/');
+  s = must(s, "const ASSET = 'assets/';", "const ASSET = 'agent-city-assets/';");
+  s = must(s, '__CITY_ASSET_V__', 'mock');
+  s = must(s, '__CITY_LANG__', 'zh');
+  s = must(s, '__CITY_TOKEN__', '');
+  s = must(s, "const DEMO = location.hash === '#demo' || location.protocol === 'file:';", 'const DEMO = true;');
+  s = must(s, 'seedDemoRemote();', ''); /* the owner's own machines only: other members are step 4 */
+  s = must(s, 'if (box.canSend === false) return html;', 'if (box.canSend === false) return html + (window.mockBoxNote ? window.mockBoxNote() : "");');
+  s = must(s, 'if (DEMO) seed(); else if (CLOUD) connectCloud(); else connectLive();', 'seed();' + innerJs(kind));
+  s = must(s, '</head>', '<style>' + cloudCss() + '</style></head>');
+  return s;
+}
+async function cityFrame(kind) {
+  const f = document.createElement('iframe');
+  f.title = '云端城市';
+  f.srcdoc = patched(await loadPage(), kind);
+  return f;
+}
+/* call fn(win) once the page inside the frame is up */
+function whenReady(frame, fn) {
+  const t = setInterval(() => {
+    const w = frame.contentWindow;
+    if (w && w.mockReady) { clearInterval(t); fn(w); }
+  }, 150);
+}
+
+/* ---------- screens ---------- */
+function h(html) { const d = document.createElement('div'); d.innerHTML = html; return d.firstElementChild; }
+function browser(frame, url) {
+  const b = h('<div class="frame"><div class="url"><i></i><i></i><i></i><span></span></div></div>');
+  b.querySelector('span').textContent = url;
+  b.appendChild(frame);
+  return b;
+}
+function tryButtons(el, frame, first) {
+  const wrap = el.querySelector('.try');
+  const press = b => {
+    for (const x of wrap.children) x.setAttribute('aria-pressed', String(x === b));
+    whenReady(frame, w => w.mockSet(b.dataset.mode));
+  };
+  wrap.addEventListener('click', e => { const b = e.target.closest('button'); if (b) press(b); });
+  press(wrap.querySelector('[data-mode="' + first + '"]'));
+}
+
+const RENDER = {
+  async send() {
+    const frame = await cityFrame('send');
+    const el = h(`<div class="screen side"><div></div>
+      <div class="card"><h3>一条消息的一生</h3>
+        <ol>
+          <li><span class="st go">在路上</span> 已经存到 Cloudflare，等那台电脑来取（它每 5 秒问一次）。</li>
+          <li><span class="st go">排队中</span> 电脑取到了，会话正忙：<b>等它做完这一步</b>（和本地一样）。</li>
+          <li><span class="st ok">已送达</span> 会话收到了。它的回答随后出现在这个窗口。</li>
+        </ol>
+        <p>本地页面和云端页面是<b>同一份对话</b>：电脑上页面发的那句（上面那条「你（电脑上的页面）」）这里也看得到，顺序一样，每句只出现一次。</p>
+        <h3 style="margin-top:12px">试一下</h3>
+        <div class="try">
+          <button type="button" data-mode="ok">会话空着<small>在路上 → 已送达 → 回答</small></button>
+          <button type="button" data-mode="busy">会话正忙<small>在路上 → 排队中 · 等它做完这一步 → 已送达</small></button>
+        </div></div></div>`);
+    el.firstElementChild.appendChild(browser(frame, HOST));
+    tryButtons(el, frame, 'ok');
+    return el;
+  },
+  async fail() {
+    const frame = await cityFrame('fail');
+    const el = h(`<div class="screen side"><div></div>
+      <div class="card"><h3>选一种情况，再发一句</h3>
+        <div class="try">
+          <button type="button" data-mode="off">那台电脑关了<small>在路上 → 60 秒没人取 → 没送到：那台电脑没开。之后输入框关掉，写着原因。</small></button>
+          <button type="button" data-mode="ended">会话已经结束<small>电脑取到了，但那个会话不在了 → 没送到：这个会话已经结束</small></button>
+          <button type="button" data-mode="talkoff">这台电脑没开云端对话<small>输入框不出现，写着怎么开（一条命令）。点上面的 maverick-pc2 也一样。</small></button>
+          <button type="button" data-mode="ok">恢复正常<small>点「重发」：算一条新消息</small></button>
+        </div>
+        <p>「没送到」的消息<b>以后也不会再送</b>：过了 60 秒没被取走的，电脑再上线也不取。所以不会出现你以为没送到、它其实晚了一小时才收到的事。</p></div></div>`);
+    el.firstElementChild.appendChild(browser(frame, HOST));
+    tryButtons(el, frame, 'off');
+    return el;
+  },
+  async answer() {
+    const frame = await cityFrame('answer');
+    const el = h(`<div class="screen side"><div></div>
+      <div class="card"><h3>回答一个等你的会话</h3>
+        <ol>
+          <li>机器那一行：<b>等你 1</b>（红色）。</li>
+          <li>点那个人：窗口里是它最后那段话，里面有「要你决定」。</li>
+          <li>在框里回答，比如打 <code>B</code>，回车。</li>
+          <li>已送达后：它继续干活，「等你」消失，红色数字没了。</li>
+        </ol>
+        <p>"?"（批准权限、选择题）这一步还不能在云端点，见第 5 页。</p></div></div>`);
+    el.firstElementChild.appendChild(browser(frame, HOST));
+    whenReady(frame, w => w.mockSet('ok'));
+    return el;
+  },
+  async phone() {
+    const frame = await cityFrame('phone');
+    const el = h(`<div class="screen side"><div class="phone-wrap"><div class="phone"><div class="notch"></div><div class="glass"></div></div></div>
+      <div class="card"><h3>手机上</h3>
+        <div class="try">
+          <button type="button" data-kb="1">键盘弹出<small>窗口缩到键盘上面：标题、对话、输入框都在</small></button>
+          <button type="button" data-kb="0">键盘收起<small>窗口回到下半屏</small></button>
+        </div>
+        <ul style="margin-top:8px">
+          <li><b>输入框</b>一直贴在键盘上面，不会被挡住。</li>
+          <li><b>对话</b>在中间滚动；有新消息时不把你拉走（和本地一样）。</li>
+          <li><b>发送</b>：点右边的纸飞机；手机键盘上的回车是换行。</li>
+        </ul></div></div>`);
+    const glass = el.querySelector('.glass');
+    glass.appendChild(frame);
+    const kb = h(`<div class="kb" hidden><div class="sug"><span>好</span><span>我</span><span>先</span></div>
+      <div class="row">${'qwertyuiop'.split('').map(c => '<span>' + c + '</span>').join('')}</div>
+      <div class="row">${'asdfghjkl'.split('').map(c => '<span>' + c + '</span>').join('')}</div>
+      <div class="row"><span class="w">⇧</span>${'zxcvbnm'.split('').map(c => '<span>' + c + '</span>').join('')}<span class="w">⌫</span></div>
+      <div class="row"><span class="w">123</span><span class="sp">空格</span><span class="go">换行</span></div><div class="bar"></div></div>`);
+    glass.appendChild(kb);
+    const wrap = el.querySelector('.try');
+    const set = on => {
+      for (const x of wrap.children) x.setAttribute('aria-pressed', String((x.dataset.kb === '1') === on));
+      kb.hidden = !on;
+      whenReady(frame, w => w.mockKeyboard(on));
+    };
+    wrap.addEventListener('click', e => { const b = e.target.closest('button'); if (b) set(b.dataset.kb === '1'); });
+    whenReady(frame, w => w.mockSet('ok'));
+    set(Q.get('kb') !== '0');
+    return el;
+  },
+  async later() {
+    const frame = await cityFrame('later');
+    const el = h(`<div class="screen side"><div></div>
+      <div class="card"><h3>这一步不做，页面上写明</h3>
+        <ul>
+          <li><b>"?" 批准 / 拒绝权限、选择题</b>：以后开放。现在到那台电脑上点。</li>
+          <li><b>加 agent</b>（名单每个仓库下面）：以后开放（第 3 步）。</li>
+          <li><b>演示工具</b>（城市下面那一排）：以后开放。</li>
+        </ul>
+        <p>为什么先不做批准：批准 = 让命令在你电脑上跑。这一步只开「说话」，说的话只进聊天队列。</p></div></div>`);
+    el.firstElementChild.appendChild(browser(frame, HOST));
+    return el;
+  },
+  safe() {
+    return h(`<div class="screen cards">
+      <div class="card"><h3>开关：每台机器，你自己打一条命令</h3>
+        <pre><span class="dim"># 开（在那台机器的终端里，一个加入过的仓库里）</span>
+$ agent-city cloud-talk on
+对话钥匙（不显示）：
+<span class="hi">CLOUD TALK: on agentcity.….workers.dev</span>
+
+<span class="dim"># 看</span>
+$ agent-city status
+CITY: running …
+TEAM: joined agentcity.….workers.dev
+CLOUD: on agentcity.….workers.dev
+<span class="hi">CLOUD TALK: on agentcity.….workers.dev</span>
+
+<span class="dim"># 关（同时删掉这台机器在 Cloudflare 上的对话）</span>
+$ agent-city cloud-talk off
+<span class="hi">CLOUD TALK: off</span></pre>
+        <p>默认是关的。没有终端（比如 agent 来跑）这条命令会拒绝。开和关 5 秒内生效，不用重启。</p>
+        <p><b>对话钥匙</b>是第二把钥匙（团队钥匙之外），你在 Cloudflare 里设一次。没开对话的机器、别的成员、云端会话都没有它。</p></div>
+
+      <div class="card"><h3>消息走的路</h3>
+        <b>下去（你的话）</b>
+        <div class="path"><span>云端页面</span><i>→</i><span>City Worker · 验登录</span><i>→</i><span>D1 存一行</span><i>→</i><span>那台电脑来取（每 5 秒）</span><i>→</i><span>本地聊天队列</span><i>→</i><span>会话</span></div>
+        <b style="display:block;margin-top:10px">上来（它的回答）</b>
+        <div class="path"><span>会话</span><i>→</i><span>电脑上的 chat.jsonl</span><i>→</i><span>下一次同步带上去</span><i>→</i><span>D1</span><i>→</i><span>页面每 3 秒的那次请求</span></div>
+        <ul style="margin-top:10px">
+          <li><b>云端从不主动连你的电脑</b>：都是电脑自己来问。</li>
+          <li><b>只送一次</b>：每条消息有自己的编号；重复的请求只存一行；电脑记下取过的编号，取到两次也只排一次队。</li>
+          <li><b>只是文字</b>：进的是那个会话平常的聊天队列。云端来的任何东西都到不了命令行、路径、参数。</li>
+        </ul></div>
+
+      <div class="card"><h3>对话存在哪，存多久</h3>
+        <div class="tbl-wrap"><table class="tbl"><tbody>
+          <tr><th>原件</th><td>在那台电脑上（和今天一样，只有你能读）。</td></tr>
+          <tr><th>副本</th><td>你自己的 Cloudflare 数据库里，只有开了对话的机器才上传。</td></tr>
+          <tr><th>多久</th><td><b>7 天</b>，每个对话最多 <b>200 条</b>（和本地窗口一样）。</td></tr>
+          <tr><th>怎么走</th><td>新的进来时，旧的就删。关掉对话：那台机器的立刻全删。</td></tr>
+          <tr><th>每条</th><td>你的话最多 4,000 字；它的回答超过 8,000 字的在云端截短。</td></tr>
+          <tr><th>花费</th><td>免费额度内：写入约 66% → 70%，请求不变（约 36%）。</td></tr>
+        </tbody></table></div></div>
+
+      <div class="card" style="grid-column:1/-1"><h3>四种坏情况</h3>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>情况</th><th>他能做什么</th><th>挡住它的</th></tr></thead><tbody>
+          <tr><td><b>登录被偷</b><br>（验证码或没锁的手机）</td><td>能对会话说话，别的不能。</td><td>只是文字，进聊天队列；批准权限还在电脑上；只有你开了对话的机器；每条送达的消息都记在电脑上，两个页面都看得到。停掉：<code>cloud-talk off</code>、删对话钥匙、在 Cloudflare 里结束登录。</td></tr>
+          <tr><td><b>别的团队成员</b><br>（只有团队钥匙）</td><td>什么消息都造不出来。</td><td>消息只能由登录后的页面产生；中继没有「造消息」这条路；取消息、上传对话都要对话钥匙，成员和云端会话没有。</td></tr>
+          <tr><td><b>重放</b><br>（同一个请求再发一遍）</td><td>不会多送。</td><td>同一个编号只存一行；电脑取到两次只排一次；超过 60 秒没取的不再取；别的网站不能借你的登录发（只认本页面发的请求）。</td></tr>
+          <tr><td><b>狂发</b></td><td>被限速。</td><td>每人 5 分钟 30 条、一天 300 条；每条 4,000 字；电脑每次最多取 10 条，多的算没送到。</td></tr>
+        </tbody></table></div></div>
+    </div>`);
+  },
+};
+
+let current = null;
+async function show(id) {
+  const sc = SCREENS.find(s => s.id === id) || SCREENS[0];
+  current = sc.id;
+  for (const b of $('#tabs').children) b.setAttribute('aria-selected', String(b.dataset.id === sc.id));
+  $('#note').innerHTML = sc.note;
+  const view = $('#view');
+  view.textContent = '';
+  try {
+    const el = await RENDER[sc.id]();
+    if (current === sc.id) view.appendChild(el);
+  } catch (err) {
+    view.innerHTML = '<p class="fail">这个 mock 要从一个小网页服务器打开（它要读 ../bin/agent-city.html）。在仓库根目录跑：python3 -m http.server 8765，然后打开 http://127.0.0.1:8765/mock/cloud-city-2-mock.html<br>(' + String(err && err.message || err) + ')</p>';
+  }
+  const q = new URLSearchParams(location.search); q.set('s', sc.id);
+  history.replaceState(null, '', '?' + q.toString());
+}
+for (const s of SCREENS) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.dataset.id = s.id; b.textContent = s.tab; b.setAttribute('role', 'tab');
+  b.addEventListener('click', () => show(s.id));
+  $('#tabs').appendChild(b);
+}
+show(Q.get('s') || 'send');
+})();
+</script>
+<!-- Open through a small web server, from the repo root:  python3 -m http.server 8765
+     then http://127.0.0.1:8765/mock/cloud-city-2-mock.html   (?s=send|fail|answer|phone|later|safe) -->
+</body>
+</html>

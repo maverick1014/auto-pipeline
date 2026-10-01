@@ -12,11 +12,16 @@
 //                 "now": <ms since epoch, optional>,
 //                 "login": null | {"email": "a@b.c", ...}}, ...]}
 //     stdout: {"responses": [{"status", "body", "headers": {...},
-//                             "writes": n, "reads": n, "stmts": n}, ...],
+//                             "writes": n, "reads": n, "stmts": n,
+//                             "plans": ["<query plan line>", ...]}, ...],
 //              "rows_total", "full_scans", "certs_fetches", "other_fetches",
 //              "assets_fetched", "dump": {"<table>": [row, ...]}}
 //
 //   Either worker path may be "-" when a test does not need that Worker.
+//
+//   cloud-city-2: a request {"to": "sql", "sql": "<one statement>", "args": [...]}
+//   runs that statement straight on the stand-in database (to lay rows for a
+//   test, or to read them); its "body" is the rows it gave back.
 //
 // Cloudflare Access stand-in (the City Worker must check the token itself):
 //   team   testteam  -> issuer https://testteam.cloudflareaccess.com
@@ -60,7 +65,7 @@ const CERTS_URL = `${ISSUER}/cdn-cgi/access/certs`;
 const AUD = "test-aud-0001";
 
 const fullScans = [];
-const counters = { stmts: 0, reads: 0 };
+const counters = { stmts: 0, reads: 0, plans: [] };
 
 function notePlan(db, sql, args) {
   let rows = [];
@@ -70,6 +75,7 @@ function notePlan(db, sql, args) {
     return;
   }
   for (const r of rows) {
+    counters.plans.push(r.detail || "");   // cloud-city-2: every plan line of this request
     const m = /^SCAN (\S+)/.exec(r.detail || "");
     if (m && !m[1].startsWith("sqlite_")) fullScans.push({ sql: sql.trim(), detail: r.detail });
   }
@@ -286,7 +292,21 @@ async function main() {
     const before = d1.changes();
     counters.stmts = 0;
     counters.reads = 0;
+    counters.plans = [];
     let result;
+    if (req.to === "sql") {
+      try {
+        const rows = d1.db.prepare(req.sql).all(...(req.args || []));
+        result = { status: 200, body: rows, headers: {} };
+      } catch (err) {
+        result = { status: -1, body: String(err && err.stack || err), headers: {} };
+      }
+      result.writes = d1.changes() - before;
+      result.reads = 0;
+      result.stmts = 0;
+      responses.push(result);
+      continue;
+    }
     try {
       const worker = workers[req.to || "relay"];
       if (!worker) throw new Error("no worker loaded for: " + req.to);
@@ -299,6 +319,7 @@ async function main() {
     result.writes = d1.changes() - before;
     result.reads = counters.reads;
     result.stmts = counters.stmts;
+    result.plans = counters.plans;
     responses.push(result);
   }
   Date.now = realNow;

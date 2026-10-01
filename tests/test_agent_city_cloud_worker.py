@@ -114,9 +114,15 @@ class TestShape(unittest.TestCase):
         self.assertRegex(src, r"export\s+default")
 
     def test_it_never_writes_and_has_no_key(self):
+        # cloud-city-2: it writes the owner's messages now, and only them (table city_msg:
+        # tests/test_agent_city_cloud_talk_worker.py, test_it_writes_messages_only). Still no key.
         src = self.src()
-        for word in ("INSERT", "UPDATE ", "DELETE", "CREATE TABLE", "TEAM_KEY"):
-            self.assertNotIn(word, src, "the City Worker only reads city_view")
+        for word in ("TEAM_KEY", "TALK_KEY"):
+            self.assertNotIn(word, src, "the City Worker holds no key")
+        import re as _re
+        for word in ("INSERT", "UPDATE", "DELETE"):
+            tables = set(_re.findall(r"(?is)\b%s\s+(?:OR\s+\w+\s+)?(?:INTO\s+|FROM\s+)?(city_\w+)" % word, src))
+            self.assertNotIn("city_view", tables, "the City Worker only reads city_view")
 
 
 class TestNotLoggedIn(CityCase):
@@ -232,7 +238,8 @@ class TestFeed(CityCase):
         b = r["body"]
         self.assertEqual((b["ok"], b["user"], b["now"]), (True, ME, T0 + 11000))
         self.assertEqual(b["devs"], [{"dev": "mac", "label": "MacBook-Pro", "ts": T0 + 10000, "gen": 1,
-                                      "counts": {"people": 1, "busy": 1, "wait": 0}}])
+                                      "counts": {"people": 1, "busy": 1, "wait": 0},
+                                      "talk": False}])   # cloud-city-2: does this machine take messages
         self.assertEqual((b["dev"], b["gen"], b["after"]), ("mac", 1, 2))
         self.assertEqual(b["snap"], [ANN])
         self.assertEqual(b["events"], [tool("s:1"), tool("s:1", "Read"), tool("s:1", "Edit")])
@@ -367,8 +374,10 @@ class TestPageAndAssets(CityCase):
 
 class TestViewOnly(CityCase):
     def test_nothing_acts(self):
+        # cloud-city-2: POST /api/chat/send is the one route that acts (its own rules:
+        # tests/test_agent_city_cloud_talk_worker.py); everything else is as in step 1.
         reqs = [get("/api/feed", method="POST"), get("/api/decide", method="POST"),
-                get("/api/chat/send", method="POST"), get("/", method="PUT"),
+                get("/api/chat/send", method="PUT"), get("/", method="PUT"),
                 get("/api/feed", method="DELETE")]
         out = self.run_city(seed_mac() + reqs)
         for r in out["responses"][-len(reqs):]:

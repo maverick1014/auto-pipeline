@@ -15,6 +15,16 @@
 // cloud page on. A sync may then carry a "view": that machine's city picture,
 // kept in one row per user + machine (table city_view) for the cloud page to
 // read. Unset or blank, the view is ignored and the relay works as above.
+//
+// Optional, talk from the cloud page: a secret named `TALK_KEY` (a password of
+// its own; the team key is never a talk key). It works only with CITY_USER set.
+// A machine that sends that key in the header X-City-Talk may add a "talk" to
+// its sync: the chat rows it copies up (table city_chat), and its answers for
+// the messages the owner typed on the cloud page (table city_msg). Only the
+// City Worker makes a message row; the relay only changes its state. The reply
+// then carries "talk": {"state": "on", "msgs": [...]}, the messages waiting
+// for that machine (10 a sync at most). A sync without the header is answered
+// as above, and no talk table is made for it.
 
 const WINDOW_MS = 300_000; // how long a line is handed out for
 const MAX_LINES = 200; // lines allowed in one sync
@@ -22,6 +32,15 @@ const MAX_BODY_BYTES = 256 * 1024; // body size cap
 const MAX_RETURN = 500; // lines handed back in one reply, newest kept
 const MAX_EVENTS = 500; // page messages allowed in one view
 const CITY_KEEP_MS = 24 * 3600 * 1000; // a machine not heard from this long is dropped
+
+const TALK_MAX_ACKS = 50; // answers read from one sync
+const TALK_MAX_CHAT = 20; // chat rows read from one sync
+const TALK_MAX_TEXT = 8000; // characters kept of a chat row's text
+const TALK_MAX_DOWN = 10; // messages handed down in one reply
+const TALK_SENT_MS = 60_000; // a message nobody took in this time is not delivered
+const TALK_TAKEN_MS = 600_000; // a message taken but never answered, same
+const TALK_KEEP_MS = 7 * 24 * 3600 * 1000; // chat rows older than this leave
+const TALK_KEEP_ROWS = 200; // chat rows kept for one conversation
 
 // Each stored row (one batch) claims a block of SEQ_STEP seq numbers, the
 // row's id times SEQ_STEP, plus the line's place in the batch. SEQ_STEP
@@ -35,6 +54,61 @@ CREATE INDEX IF NOT EXISTS relay_batch_ts ON relay_batch (ts);`;
 
 // Only run when the cloud page is on. One line: the statement is one line.
 const CITY_SQL = "CREATE TABLE IF NOT EXISTS city_view (user TEXT NOT NULL, dev TEXT NOT NULL, label TEXT NOT NULL, ts INTEGER NOT NULL, gen INTEGER NOT NULL, n INTEGER NOT NULL, counts TEXT NOT NULL, snap TEXT NOT NULL, events TEXT NOT NULL, PRIMARY KEY (user, dev))";
+
+// Only run on a talk sync. The City Worker makes the same four tables with the
+// same four lines (IF NOT EXISTS), so either Worker may be the first to need them.
+const MSG_SQL = "CREATE TABLE IF NOT EXISTS city_msg (user TEXT NOT NULL, cid TEXT NOT NULL, dev TEXT NOT NULL, pg TEXT NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL, state TEXT NOT NULL, why TEXT NOT NULL, PRIMARY KEY (user, cid))";
+const MSG_INDEX_SQL = "CREATE INDEX IF NOT EXISTS city_msg_dev ON city_msg (user, dev, state)";
+const CHAT_SQL = "CREATE TABLE IF NOT EXISTS city_chat (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT NOT NULL, dev TEXT NOT NULL, pg TEXT NOT NULL, k TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, at REAL NOT NULL, ts INTEGER NOT NULL, state TEXT NOT NULL, why TEXT NOT NULL, cid TEXT NOT NULL, UNIQUE (user, dev, k))";
+const CHAT_INDEX_SQL = "CREATE INDEX IF NOT EXISTS city_chat_pg ON city_chat (user, dev, pg, id)";
+const TALK_SQL = [MSG_SQL, MSG_INDEX_SQL, CHAT_SQL, CHAT_INDEX_SQL].join("\n");
+
+// The free plan allows 50 statements a request, so lists of rows go to SQL as
+// ONE json text (?3 or ?4 below) and a statement reads them with json_each:
+// one statement for any number of rows. ?1 is the user, ?2 the machine.
+
+// Answers (?3 = [{cid, state, why}]). Only a message of this machine that is
+// 'taken' or 'queued' changes, and only when the answer says something new.
+const ACKS_SQL =
+  "UPDATE city_msg SET state = json_extract(a.value, '$.state'), why = json_extract(a.value, '$.why') FROM json_each(?3) a " +
+  "WHERE city_msg.user = ?1 AND city_msg.dev = ?2 AND city_msg.state IN ('taken', 'queued') AND city_msg.cid = json_extract(a.value, '$.cid') " +
+  "AND (city_msg.state != json_extract(a.value, '$.state') OR city_msg.why != json_extract(a.value, '$.why'))";
+
+// Chat rows (?3 = [{k, state, why}]): a row whose state or why changed leaves ...
+const CHAT_DROP_SQL =
+  "DELETE FROM city_chat WHERE id IN (SELECT c.id FROM json_each(?3) j JOIN city_chat c ON c.user = ?1 AND c.dev = ?2 AND c.k = json_extract(j.value, '$.k') " +
+  "WHERE c.state != json_extract(j.value, '$.state') OR c.why != json_extract(j.value, '$.why'))";
+// ... and the insert (?3 = now, ?4 = the rows) puts it back with a new id.
+// Rows that did not change are ignored, so they keep their id and write nothing.
+const CHAT_PUT_SQL =
+  "INSERT OR IGNORE INTO city_chat (user, dev, pg, k, kind, text, at, ts, state, why, cid) " +
+  "SELECT ?1, ?2, json_extract(value, '$.to'), json_extract(value, '$.k'), json_extract(value, '$.kind'), json_extract(value, '$.text'), " +
+  "json_extract(value, '$.at'), ?3, json_extract(value, '$.state'), json_extract(value, '$.why'), json_extract(value, '$.cid') FROM json_each(?4)";
+// Rows of one user older than 7 days (?2 = the cut-off) leave.
+const CHAT_OLD_SQL = "DELETE FROM city_chat WHERE user = ?1 AND ts <= ?2";
+// Each conversation touched (?3 = its names) keeps its newest rows only.
+const CHAT_TRIM_SQL =
+  "DELETE FROM city_chat WHERE id IN (SELECT id FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY pg ORDER BY at DESC, id DESC) AS rn " +
+  `FROM city_chat WHERE user = ?1 AND dev = ?2 AND pg IN (SELECT value FROM json_each(?3))) WHERE rn > ${TALK_KEEP_ROWS})`;
+
+// Messages going down (?1 user, ?2 machine, ?3 now). Each change of state is
+// one guarded UPDATE: a message that became 'undelivered' is never taken later.
+const DOWN_EXPIRE_SQL =
+  "UPDATE city_msg SET state = 'undelivered', why = 'off' WHERE user = ?1 AND dev = ?2 AND state IN ('sent', 'taken') " +
+  `AND ?3 - at >= CASE state WHEN 'sent' THEN ${TALK_SENT_MS} ELSE ${TALK_TAKEN_MS} END`;
+// The oldest 'sent' messages become 'taken', so that no more than 10 are taken
+// at once; the rest wait as 'sent' for the next sync.
+const DOWN_TAKE_SQL =
+  "UPDATE city_msg SET state = 'taken' WHERE user = ?1 AND dev = ?2 AND state = 'sent' AND cid IN (SELECT cid FROM city_msg WHERE user = ?1 AND dev = ?2 AND state = 'sent' " +
+  `ORDER BY at, cid LIMIT MAX(0, ${TALK_MAX_DOWN} - (SELECT COUNT(*) FROM city_msg WHERE user = ?1 AND dev = ?2 AND state = 'taken')))`;
+const DOWN_LIST_SQL =
+  `SELECT cid, pg, text, at FROM city_msg WHERE user = ?1 AND dev = ?2 AND state = 'taken' ORDER BY at, cid LIMIT ${TALK_MAX_DOWN}`;
+
+// What the talk keys and values may be.
+const TALK_KEY_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
+const TALK_KINDS = ["prompt", "reply", "owner"];
+const TALK_ANSWERS = ["queued", "delivered", "undelivered"];
+const TALK_WHY = ["ended", "not-listening", "off", "refused", "flood"];
 
 function json(body, status) {
   return new Response(JSON.stringify(body), {
@@ -115,9 +189,10 @@ function readView(view) {
   return { view: out };
 }
 
-// Turn the raw request body text into a validated {dev, after, lines, view},
-// or return the error Response to send straight back. The view is only read
-// when the cloud page is on; otherwise it is ignored, bad or not.
+// Turn the raw request body text into a validated {dev, after, lines, view,
+// talk}, or return the error Response to send straight back. The view is only
+// read when the cloud page is on; otherwise it is ignored, bad or not. The
+// talk is handed on as it came: readTalk cleans it, and only for a talk sync.
 function readSync(text, cityOn) {
   if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) {
     return { error: json({ ok: false, error: "body too big" }, 413) };
@@ -155,7 +230,118 @@ function readSync(text, cityOn) {
     if (got.error) return got;
     view = got.view;
   }
-  return { dev, after, lines, view };
+  return { dev, after, lines, view, talk: body.talk };
+}
+
+// The state of talk for this sync, from the header and the relay's settings:
+// "none" (no header: talk is not asked for), "off" (the relay has no CITY_USER
+// or no TALK_KEY), "refused" (wrong key) or "on". The key is compared like the
+// team key; a blank TALK_KEY is the same as none.
+function talkMode(request, env, user) {
+  const header = request.headers.get("X-City-Talk");
+  if (header === null) return "none";
+  if (user === "" || typeof env.TALK_KEY !== "string" || env.TALK_KEY.trim() === "") return "off";
+  return sameKey(header, env.TALK_KEY) ? "on" : "refused";
+}
+
+// Why an answer gives for a message that did not arrive; anything else is dropped.
+function talkWhy(why) {
+  return TALK_WHY.includes(why) ? why : "";
+}
+
+// One chat row from a machine, cleaned, or null when it is not a good row.
+function readChatRow(r) {
+  if (!isObject(r)) return null;
+  const { k, to, kind, text, at } = r;
+  const state = r.state === undefined ? "" : r.state;
+  const cid = r.cid === undefined ? "" : r.cid;
+  if (typeof k !== "string" || !TALK_KEY_RE.test(k)) return null;
+  if (typeof to !== "string" || to.length < 1 || to.length > 160) return null;
+  if (!TALK_KINDS.includes(kind) || typeof text !== "string") return null;
+  if (typeof at !== "number" || !Number.isFinite(at)) return null;
+  if (state !== "" && !TALK_ANSWERS.includes(state)) return null;
+  if (typeof cid !== "string" || cid.length > 64) return null;
+  // The City Worker finds a message's row by its key (user, dev, k), so a row
+  // that names a message must be keyed by that message's cid.
+  if (cid !== "" && k !== cid) return null;
+  // Cut by characters, not by UTF-16 units, so no pair is split in the middle.
+  const kept = text.length > TALK_MAX_TEXT ? Array.from(text).slice(0, TALK_MAX_TEXT).join("") : text;
+  return { k, to, kind, text: kept, at, state, why: talkWhy(r.why), cid };
+}
+
+// A "talk" from a machine, cleaned: {off, acks, chat}. A bad answer or a bad
+// row is skipped and the rest is kept; it never fails the sync. One answer per
+// message and one row per key (the last one wins).
+function readTalk(raw) {
+  const out = { off: false, acks: [], chat: [] };
+  if (!isObject(raw)) return out;
+  if (raw.off === true) {
+    out.off = true;
+    return out;
+  }
+  if (Array.isArray(raw.acks)) {
+    const acks = new Map();
+    for (const a of raw.acks.slice(0, TALK_MAX_ACKS)) {
+      if (!isObject(a) || typeof a.cid !== "string" || a.cid.length < 1 || a.cid.length > 64) continue;
+      if (!TALK_ANSWERS.includes(a.state)) continue;
+      acks.set(a.cid, { cid: a.cid, state: a.state, why: talkWhy(a.why) });
+    }
+    out.acks = [...acks.values()];
+  }
+  if (Array.isArray(raw.chat)) {
+    const rows = new Map();
+    for (const r of raw.chat.slice(0, TALK_MAX_CHAT)) {
+      const row = readChatRow(r);
+      if (row) rows.set(row.k, row);
+    }
+    out.chat = [...rows.values()];
+  }
+  return out;
+}
+
+// The machine's answers for the owner's messages.
+async function keepAcks(db, user, dev, acks) {
+  if (acks.length === 0) return;
+  await db.prepare(ACKS_SQL).bind(user, dev, JSON.stringify(acks)).run();
+}
+
+// Copy the machine's chat rows. The same row again writes nothing. Old rows
+// and the overflow of a conversation go only after something was stored, so a
+// quiet sync costs no extra statement.
+async function keepChat(db, user, dev, rows, now) {
+  if (rows.length === 0) return;
+  const marks = rows.map((r) => ({ k: r.k, state: r.state, why: r.why }));
+  await db.prepare(CHAT_DROP_SQL).bind(user, dev, JSON.stringify(marks)).run();
+  const put = await db.prepare(CHAT_PUT_SQL).bind(user, dev, now, JSON.stringify(rows)).run();
+  if (!(put.meta && put.meta.changes > 0)) return;
+  await db.prepare(CHAT_OLD_SQL).bind(user, now - TALK_KEEP_MS).run();
+  const names = [...new Set(rows.map((r) => r.to))];
+  await db.prepare(CHAT_TRIM_SQL).bind(user, dev, JSON.stringify(names)).run();
+}
+
+// The owner's messages for this machine: time out the old ones, take the
+// oldest 'sent' ones, and hand down every 'taken' one (again and again, until
+// the machine answers for it). The relay never makes a message row.
+async function handDown(db, user, dev, now) {
+  await db.prepare(DOWN_EXPIRE_SQL).bind(user, dev, now).run();
+  await db.prepare(DOWN_TAKE_SQL).bind(user, dev).run();
+  const { results } = await db.prepare(DOWN_LIST_SQL).bind(user, dev).all();
+  return results.map((m) => ({ cid: m.cid, to: m.pg, text: m.text, age: now - m.at }));
+}
+
+// Talk turned off on the machine: its chat copy goes, its waiting messages are
+// not delivered, and its picture loses the talk flag. Each is guarded, so a
+// second "off" writes nothing.
+async function dropTalk(db, user, dev) {
+  await db.prepare("DELETE FROM city_chat WHERE user = ? AND dev = ?").bind(user, dev).run();
+  await db
+    .prepare("UPDATE city_msg SET state = 'undelivered', why = 'talk-off' WHERE user = ? AND dev = ? AND state IN ('sent', 'taken', 'queued')")
+    .bind(user, dev)
+    .run();
+  await db
+    .prepare("UPDATE city_view SET counts = json_remove(counts, '$.talk') WHERE user = ? AND dev = ? AND json_extract(counts, '$.talk') IS NOT NULL")
+    .bind(user, dev)
+    .run();
 }
 
 // The cloud page's user: CITY_USER trimmed and lower case, or "" when the
@@ -248,9 +434,16 @@ async function handleSync(request, env) {
   if (parsed.error) return parsed.error;
   const { dev, after, lines, view } = parsed;
 
+  // Talk is read only for a sync that is "on"; for any other, body.talk is not looked at.
+  const mode = talkMode(request, env, user);
+  const talk = mode === "on" ? readTalk(parsed.talk) : null;
+  // The picture of a machine that talks says so, once, in its counts.
+  if (talk && !talk.off && view) view.counts.talk = 1;
+
   const db = env.DB;
   await db.exec(SETUP_SQL);
   if (user) await db.exec(CITY_SQL);
+  if (talk) await db.exec(TALK_SQL);
 
   const now = Date.now();
   const cutoff = now - WINDOW_MS;
@@ -289,6 +482,19 @@ async function handleSync(request, env) {
   if (user) {
     reply.city = true;
     reply.gen = await keepView(db, user, dev, view, now);
+  }
+  if (talk) {
+    // In this order: the machine's answers, its chat rows, then the way down.
+    if (talk.off) {
+      await dropTalk(db, user, dev);
+      reply.talk = { state: "off" };
+    } else {
+      await keepAcks(db, user, dev, talk.acks);
+      await keepChat(db, user, dev, talk.chat, now);
+      reply.talk = { state: "on", msgs: await handDown(db, user, dev, now) };
+    }
+  } else if (mode !== "none") {
+    reply.talk = { state: mode };
   }
   return json(reply, 200);
 }
