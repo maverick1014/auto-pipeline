@@ -109,7 +109,7 @@ const SCREENS = [
   { id: 'desktop', tab: '3 城市 · 电脑', note: '<b>和本地城市同一个页面。</b> 多了三样：上面一行「机器」（点哪台，看哪台机器的城市；数字 = 干活 / 等你）、右上角你的邮箱和退出、「只能看」。少了：聊天输入框、回答 / 批准按钮（"?" 是灰的）。约 5 到 10 秒延迟。<span class="en">The same page file. New: the machine row, the account chip, view only. Gone: chat box, answer / approve buttons.</span>' },
   { id: 'phone', tab: '4 城市 · 手机', note: '<b>手机宽度。</b> 机器那一行可以左右滑；左边的名单是抽屉，点人后下半屏是它的窗口（只能看）。<span class="en">Phone width: the machine row scrolls sideways, the rail is a drawer, a person opens the bottom sheet (read only).</span>' },
   { id: 'empty', tab: '5 还没有会话', note: '<b>登录了，但这台机器现在没有会话。</b> 城市照样在（地和房子都在），中间一句话告诉你怎么让人出现。<span class="en">Logged in, no sessions yet: the land is there, one line says what to do.</span>' },
-  { id: 'offline', tab: '6 机器不在线', note: '<b>所有机器的城市都没开着。</b> 页面显示最后一次的画面，上面说清楚是多久以前的。机器上的城市一开，自动回来。<span class="en">No machine is sending: the last picture stays, with its age.</span>' },
+  { id: 'offline', tab: '6 机器不在线', note: '<b>现在没有机器在发画面</b>（都关机了，或者上面没有会话很久了）。页面显示最后一次的画面，上面说清楚是多久以前的。哪台机器上一开会话，自动回来。<span class="en">No machine is sending: the last picture stays, with its age.</span>' },
 ];
 
 /* ---------- the real page, patched in memory so it runs here as the cloud page ---------- */
@@ -202,12 +202,12 @@ function cloudJs(kind) {
   }
   if (kind === 'empty') {
     const el = document.createElement('div'); el.className = 'cloud-empty';
-    el.innerHTML = '<b>这台机器现在没有会话</b><span>在它上面开一个 Claude 会话，人就会走出来。<br>机器上的城市要开着：<code>agent-city start</code></span>';
+    el.innerHTML = '<b>这台机器现在没有会话</b><span>在它上面开一个 Claude 会话，人就会走出来。<br>不用自己开什么：会话一开，那台机器的城市自己起来。</span>';
     stage.appendChild(el);
   }
   if (off) {
     const el = document.createElement('div'); el.className = 'cloud-banner';
-    el.innerHTML = '没有机器在线 · 这是 2 小时前的画面（MacBook-Pro）<small>机器上的城市一开（agent-city start），这里自动更新</small>';
+    el.innerHTML = '没有机器在线 · 这是 2 小时前的画面（MacBook-Pro）<small>哪台机器上一开 Claude 会话，它的城市自己起来，这里自动更新</small>';
     stage.appendChild(el);
   }
 })();`;
@@ -267,7 +267,7 @@ const RENDER = {
         <li>终端里 <code>npx wrangler login</code>，再跑一条部署命令（会问一次数据库的 ID，不是密钥）</li>
         <li>在新 Worker 上点 <b>Enable Cloudflare Access</b>，只允许你的邮箱</li>
         <li>把两个值（团队名、audience tag）填进 Worker</li>
-        <li>每台机器上开着城市：<code>agent-city start</code></li>
+        <li>机器上不用做什么：加入过的机器，会话一开，城市自己起来（不开浏览器，没人用时自己停）</li>
         </ol><p style="margin:8px 0 0;color:var(--ink-3)">登录、密钥、部署都由你自己做；agent 不碰。</p></div>
     </div></div>`);
     el.addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b && b.dataset.go !== 'code') show(b.dataset.go); });
