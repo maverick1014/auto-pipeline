@@ -60,6 +60,15 @@ bin/agent-city.sh
       joined relay host that is on, else one "CLOUD START: off" when a repo
       is joined.
 
+  start            typed INSIDE a repo, while the start file names a host:
+      the server gets --joined-list too (as autostart and a start outside a
+      repo already do), so a machine that takes start orders syncs every
+      repo it has joined from the first moment, with no session line: the
+      cloud page then shows every joined repo of that machine with its
+      button, also one where nobody works yet (found in the E2E, 2026-10-02:
+      a server started by hand inside a repo, with nobody there, was not
+      seen by the cloud at all). No start file: as before.
+
 skills/city/setup.md: two more numbered sections, 18 "Turn starting agents
   on" and 19 "Turn starting agents off" (see TestSetupSteps), and the cost
   line names starting.
@@ -460,6 +469,37 @@ class TestCommand(CloudCase):
         self.assertIn("cloud-start off", src)
         result = self.city_run("--help")
         self.assertIn("cloud-start on", result.stdout + result.stderr)
+
+    def syncs(self):
+        with self.fake.lock:
+            return [r for r in self.fake.requests if r["path"] == "/v1/sync"]
+
+    def stop_city(self):
+        self.city_run("stop")
+
+    def test_a_start_inside_a_repo_syncs_the_joined_repos_when_starting_is_on(self):
+        from relayhelp import wait_for
+        self.assertOk(self.join())
+        self.talk_on()
+        self.start_set()
+        before = len(self.syncs())
+        self.addCleanup(self.stop_city)
+        self.assertOk(self.city_run("start"))
+        got = wait_for(lambda: [r for r in self.syncs()[before:]
+                                if isinstance(r["body"], dict) and isinstance(r["body"].get("talk"), dict)
+                                and "start" in r["body"]["talk"]], timeout=15)
+        self.assertTrue(got, "nobody works there and no line was sent: the machine must still ask for its orders")
+        self.assertEqual(got[0]["talk_header"], TALK)
+
+    def test_a_start_inside_a_repo_with_starting_off_is_as_before(self):
+        import time as _time
+        self.assertOk(self.join())
+        self.talk_on()
+        before = len(self.syncs())
+        self.addCleanup(self.stop_city)
+        self.assertOk(self.city_run("start"))
+        _time.sleep(4.0)
+        self.assertEqual(len(self.syncs()), before, "starting off, no session line: nothing is sent, as before")
 
     def test_the_local_switches_are_as_before(self):
         self.assertOk(self.join())
