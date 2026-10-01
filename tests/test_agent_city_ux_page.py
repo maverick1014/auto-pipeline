@@ -878,7 +878,8 @@ class TestTeamWindowHead(unittest.TestCase):
         self.assertGreater(i, 0)
         head = branch[i:branch.find("hist.title", i) if "hist.title" in branch[i:] else i + 1500]
         self.assertIn("gov.ownTag", head, "repo · main manager · 主对话 under the name")
-        self.assertIn("govRowText(", head, "the same state words as its list row")
+        # city-status: the list row takes class + words from govRowStatus (govRowText is its text)
+        self.assertRegex(head, r"govRow(Status|Text)\(", "the same state words as its list row")
 
 
 class TestNoToolCounters(unittest.TestCase):
