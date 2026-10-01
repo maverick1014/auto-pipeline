@@ -1537,6 +1537,7 @@ class CityState:
                     title_in_spawn = True
                 ev["terr"] = terr
                 self.agent_terr[ev["id"]] = terr
+                ev["from"] = self._spawn_from_locked(obj, reducer, terr)
                 self._decorate_spawn(ev, obj, identity, terr)
                 if self._remember_name_locked(ev["id"], ev["label"], ev["task"]):
                     names_dirty = True
@@ -1591,11 +1592,14 @@ class CityState:
             self.gov_terr = terr
             self._broadcast({"type": "gov", "state": self.gov_state, "terr": terr, "present": False})
 
+        relay_closed = False
         if not chain_processed_early:
-            self._process_chain(obj, identity, terr, reducer, now)
+            relay_closed = self._process_chain(obj, identity, terr, reducer, now)
 
         if isinstance(obj, dict):
             if ev_name == "PostToolUse":
+                if obj.get("tool") == "SendMessage" and not relay_closed:
+                    self._maybe_talk_locked(obj, identity, terr, reducer)
                 self._maybe_close_from_terminal(obj)
                 self._maybe_build(obj, identity, terr)
             elif ev_name == "SessionEnd":
@@ -1828,6 +1832,99 @@ class CityState:
         ev["lead"] = decorated["lead"]
         ev["office"] = decorated["office"]
 
+    # -- city-talk: who sent a new agent, who talks to whom ------------------
+    #
+    # A "spawn" event carries "from" (the page id of whoever sent the new
+    # agent, or ""), and a SendMessage line makes one transient "talk" event
+    # (never stored, never in the snapshot). Page ids: a session citizen
+    # "s:<sid>", a territory's governor "gov:<terr>", a subagent its own id.
+
+    def _session_page_id_locked(self, reducer, sid, terr):
+        """Caller holds self.lock. SID's page id in REDUCER's territory:
+        "gov:<terr>" when it is that territory's governor, "s:<sid>" when
+        that session citizen is live, else ""."""
+        if sid == "":
+            return ""
+        if reducer.gov_sid == sid:
+            return "gov:" + terr
+        record = reducer.agents.get("s:" + sid)
+        if record is not None and record["kind"] == "session" and not record["done"]:
+            return "s:" + sid
+        return ""
+
+    def _spawn_from_locked(self, obj, reducer, terr):
+        """Caller holds self.lock. The "from" of a spawn event made by line
+        OBJ: a subagent -> its owner session's page id; a session whose hook
+        role is "task-manager" -> its territory's governor ("gov:<terr>"),
+        when it has one now; any other session -> ""."""
+        sid = obj.get("sid") if isinstance(obj.get("sid"), str) else ""
+        aid = obj.get("aid") if isinstance(obj.get("aid"), str) else ""
+        if aid:
+            return self._session_page_id_locked(reducer, sid, terr)
+        if obj.get("role") == "task-manager" and reducer.gov_sid is not None:
+            return "gov:" + terr
+        return ""
+
+    def _maybe_talk_locked(self, obj, identity, terr, reducer):
+        """Caller holds self.lock. A PostToolUse SendMessage line (the caller
+        checked that it closed no relay) with a recipient name "to" -> one
+        {"type": "talk", "from", "to", "terr"} event. No "to" (an old hook) or
+        a question (ask "q": the relay shows it) -> nothing; an unknown
+        sender -> nothing."""
+        name = obj.get("to")
+        if not isinstance(name, str) or name == "" or obj.get("ask") == "q":
+            return
+        sid = obj.get("sid") if isinstance(obj.get("sid"), str) else ""
+        aid = obj.get("aid") if isinstance(obj.get("aid"), str) else ""
+        if aid:
+            record = reducer.agents.get(aid)
+            sender = aid if record is not None and record["kind"] == "subagent" else ""
+        else:
+            sender = self._session_page_id_locked(reducer, sid, terr)
+        if sender == "":
+            return
+        self._broadcast({"type": "talk", "from": sender,
+                         "to": self._talk_target_locked(name, sender, identity),
+                         "terr": terr})
+
+    def _talk_target_locked(self, name, sender, identity):
+        """Caller holds self.lock. The page id a SendMessage recipient NAME
+        means, or "": (1) a live session citizen whose label equals it, (2) a
+        live subagent whose id equals it, (3) a territory with a governor now
+        whose name it starts with (then the end, a space or "-"). The sender's
+        own territory first in each step; never the sender itself. Compared
+        without case, NAME stripped."""
+        want = name.strip().casefold()
+        if want == "":
+            return ""
+        ordered = sorted(self.reducers.items(), key=lambda item: item[0] != identity)
+        for kind, key in (("session", "label"), ("subagent", "id")):
+            for _ident, red in ordered:
+                for cid, record in red.agents.items():
+                    if record["kind"] != kind or record["done"]:
+                        continue
+                    value = cid if key == "id" else record["label"]
+                    if value.strip().casefold() == want:
+                        return "" if cid == sender else cid
+        best = None
+        for ident, red in ordered:
+            if red.gov_sid is None:
+                continue
+            territory = self.world["territories"].get(ident)
+            if territory is None:
+                continue
+            terr_name = str(territory.get("name", "")).strip().casefold()
+            if terr_name == "" or not (want == terr_name or want.startswith(terr_name + " ")
+                                       or want.startswith(terr_name + "-")):
+                continue
+            page = "gov:" + self._terr_for(ident)
+            if page == sender:
+                continue
+            rank = (0 if ident == identity else 1, -len(terr_name))
+            if best is None or rank < best[0]:
+                best = (rank, page)
+        return best[1] if best is not None else ""
+
     def _free_office_spot_locked(self, t):
         """Caller holds self.lock. T's plan's first office spot no live
         lead or site already holds, or None."""
@@ -1870,16 +1967,18 @@ class CityState:
 
     def _close_relay(self, chain, cid, by):
         """Caller holds self.lock. Closes CID's open relay, if any; a lead
-        relay also closes its own waiting workers, same BY."""
+        relay also closes its own waiting workers, same BY. -> whether a
+        relay was open (and a relay_end went out)."""
         entry = chain["open"].pop(cid, None)
         if entry is None:
-            return
+            return False
         self._broadcast({"type": "relay_end", "id": cid, "by": by})
         if entry["kind"] == "lead":
             for wcid in [c for c, e in chain["open"].items()
                          if e["kind"] == "worker" and e["lead"] == cid]:
                 chain["open"].pop(wcid, None)
                 self._broadcast({"type": "relay_end", "id": wcid, "by": by})
+        return True
 
     def _on_leave(self, cid, identity, terr):
         """Caller holds self.lock. A citizen gone: frees its office (a
@@ -1902,9 +2001,11 @@ class CityState:
         city.md, "Interaction"): relay/relay_end events for a question
         passed up from a worker to its lead, or a lead to its territory's
         governor; the governor's answer, a lead deciding on its own, a
-        lead leaving, or 10 minutes with no answer close it."""
+        lead leaving, or 10 minutes with no answer close it. -> True when a
+        SendMessage line closed a relay (its relay_end shows the answer, so
+        it makes no "talk" event); a timeout close does not count."""
         if not isinstance(obj, dict):
-            return
+            return False
         ev_name = obj.get("ev")
         ask = obj.get("ask") if isinstance(obj.get("ask"), str) else ""
         tool = obj.get("tool") if isinstance(obj.get("tool"), str) else ""
@@ -1923,16 +2024,17 @@ class CityState:
             elif sid != "" and reducer.gov_sid == sid:
                 chain["open"][aid] = {"kind": "helper", "to": "governor", "lead": "", "opened_at": now}
                 self._broadcast({"type": "relay", "id": aid, "to": "governor", "lead": ""})
-            return
+            return False
 
         if ev_name == "PostToolUse" and not aid and tool == "SendMessage":
             cid = "s:" + sid
+            closed = False
             if sid != "" and reducer.gov_sid == sid:
                 lead_id = next((c for c, e in chain["open"].items() if e["kind"] == "lead"), None)
                 if lead_id is not None:
-                    self._close_relay(chain, lead_id, "governor")
+                    closed = self._close_relay(chain, lead_id, "governor") or closed
                 for c in [c for c, e in chain["open"].items() if e["kind"] == "helper"]:
-                    self._close_relay(chain, c, "governor")
+                    closed = self._close_relay(chain, c, "governor") or closed
             elif cid in chain["leads"]:
                 if ask == "q":
                     chain["open"][cid] = {"kind": "lead", "to": "governor", "lead": "", "opened_at": now}
@@ -1940,8 +2042,8 @@ class CityState:
                 elif cid not in chain["open"]:
                     for c in [c for c, e in chain["open"].items()
                               if e["kind"] == "worker" and e["lead"] == cid]:
-                        self._close_relay(chain, c, "lead")
-            return
+                        closed = self._close_relay(chain, c, "lead") or closed
+            return closed
 
         if ev_name == "PreToolUse" and not aid and tool in ("Agent", "Task"):
             cid = "s:" + sid
@@ -1949,6 +2051,7 @@ class CityState:
                 for c in [c for c, e in chain["open"].items()
                           if e["kind"] == "worker" and e["lead"] == cid]:
                     self._close_relay(chain, c, "lead")
+        return False
 
     # -- world: territories, growth, town plans, persistence ------------
 
