@@ -26,11 +26,25 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
       <e>] [--permission-mode <p>] <FIRST_PROMPT>
     NAME, CITY_DIR and FIRST_PROMPT go in through shlex.quote. <m>:<e> =
     main_manager and <p> = permission_mode of <folder>/agent.conf (rule W10:
-    a second session opens with the main manager's values). A missing file,
+    a second session opens with the main manager's values); <m> goes through
+    agent_conf.cli_model() first (bounce 1: `claude --model fable-5.1` is
+    refused, the session's first turn dies). A missing file,
     a missing value or a value bin/agent_conf.py validate_value() refuses ->
     that part is left out; never raises. Nothing else ever goes into the
     line: no folder, no "cd", no AGENT_ROLE (task managers are never created
     here). city_dir None -> the line starts with "claude ".
+
+  bin/agent_conf.py cli_model(spec) -> the model name the claude CLI takes
+    (bounce 1, laptop E2E 2026-10-01: agent.conf names are not CLI names;
+    fable-5.1, opus-5.5 and sonnet-5 are refused, the family alias works).
+    SPEC is "model" or "model:effort" (the effort part is dropped). A name
+    that starts with opus, sonnet, haiku or fable -> that family word;
+    anything else (a full CLI id like claude-fable-5-1, an unknown name)
+    goes through unchanged. THE one place with this rule:
+      `python3 bin/agent_conf.py cli-model <spec>` prints it (one line, exit
+      0); bin/agent-resume.sh's model_name asks that, and keeps no family
+      list of its own (its behaviour stays as tests/test_agent_resume.py
+      says); agent_command calls cli_model.
 
   pass_city_dir(directory) -> None when DIRECTORY is the default city dir
     (~/.cache/agent-city, compared by realpath), else its absolute path. A
@@ -164,7 +178,7 @@ import agent_city as ac  # noqa: E402
 from cityhelp import Mains, lock_file  # noqa: E402
 
 CONF = "main_manager=opus-5.5:high\npermission_mode=auto\n"
-FLAGS = ["--model", "opus-5.5", "--effort", "high", "--permission-mode", "auto"]
+FLAGS = ["--model", "opus", "--effort", "high", "--permission-mode", "auto"]   # CONF's opus-5.5 as the CLI takes it
 PROMPT = ("You were opened from the Agent City page. Do your start steps now, then stop and wait: "
           "the owner will talk to you from the city page.")
 
@@ -303,7 +317,7 @@ class TestOpen(AddCase):
         self.add(bar)
         self.assertEqual([c[0] for c in self.calls], [os.path.join(self.base, "shop"), os.path.join(self.base, "bar")])
         self.assertEqual(shlex.split(self.calls[1][2]),
-                         ["claude", "--name", "bar Manager", "--model", "sonnet-5", "--effort", "medium",
+                         ["claude", "--name", "bar Manager", "--model", "sonnet", "--effort", "medium",
                           "--permission-mode", "acceptEdits", PROMPT])
 
     def test_no_agent_conf_leaves_the_flags_out(self):
@@ -462,7 +476,7 @@ class TestCommand(AddCase):
         cases = {
             "both": ("main_manager=opus-5.5:high; touch pwned\npermission_mode=auto$(touch pwned)\n", []),
             "mode": ("main_manager=opus-5.5:high\npermission_mode=auto && touch pwned\n",
-                     ["--model", "opus-5.5", "--effort", "high"]),
+                     ["--model", "opus", "--effort", "high"]),
             "model": ("main_manager=`touch pwned`:high\npermission_mode=plan\n", ["--permission-mode", "plan"]),
             "effort": ("main_manager=opus-5.5:huge\npermission_mode=auto\n", ["--permission-mode", "auto"]),
         }
@@ -509,11 +523,66 @@ class TestCommand(AddCase):
         import inspect
         self.assertRegex(inspect.getsource(ac.cmd_serve), r"city_dir=pass_city_dir\(directory\)")
 
+    def test_the_model_is_a_name_the_cli_takes(self):
+        """Bounce 1: `claude --model fable-5.1` is refused and the opened session's first turn dies."""
+        for value, flags in (("fable-5.1:xhigh", ["--model", "fable", "--effort", "xhigh"]),
+                             ("opus-5.5:high", ["--model", "opus", "--effort", "high"]),
+                             ("sonnet-5:medium", ["--model", "sonnet", "--effort", "medium"]),
+                             ("haiku-4.5:low", ["--model", "haiku", "--effort", "low"]),
+                             ("claude-fable-5-1:max", ["--model", "claude-fable-5-1", "--effort", "max"]),
+                             ("mystery-7:high", ["--model", "mystery-7", "--effort", "high"])):
+            with self.subTest(main_manager=value):
+                name = "m-" + value.split(":")[0].replace(".", "-")
+                self.repo(name, "main_manager=%s\n" % value)
+                command = ac.agent_command("x Manager", os.path.join(self.base, name))
+                self.assertEqual(shlex.split(command), ["claude", "--name", "x Manager"] + flags + [PROMPT])
+        with open(os.path.join(BIN, "agent.conf.default")) as fh:
+            default = fh.read()
+        self.repo("as-shipped", default)
+        words = shlex.split(ac.agent_command("x Manager", os.path.join(self.base, "as-shipped")))
+        self.assertIn(words[words.index("--model") + 1], ("fable", "opus", "sonnet", "haiku"),
+                      "the conf this plugin ships must open a session that can run")
+
     def test_no_shell_anywhere(self):
         with open(SERVER, encoding="utf-8") as fh:
             src = fh.read()
         for bad in ("shell=True", "os.system(", "os.popen("):
             self.assertNotIn(bad, src)
+
+
+# ---------------------------------------------------------------------------
+# bounce 1: agent.conf model names -> CLI model names, in ONE place
+# ---------------------------------------------------------------------------
+
+class TestCliModel(unittest.TestCase):
+    TABLE = (("fable-5.1:xhigh", "fable"), ("fable-5.1", "fable"), ("opus-5.5:xhigh", "opus"), ("opus-5:high", "opus"),
+             ("sonnet-5:medium", "sonnet"), ("haiku-4.5:low", "haiku"), ("fable", "fable"), ("opus:max", "opus"),
+             ("claude-fable-5-1", "claude-fable-5-1"), ("claude-opus-5-5:high", "claude-opus-5-5"),
+             ("mystery-7:high", "mystery-7"), ("mystery-7", "mystery-7"))
+
+    def test_the_rule(self):
+        import agent_conf
+        for spec, want in self.TABLE:
+            with self.subTest(spec=spec):
+                self.assertEqual(agent_conf.cli_model(spec), want)
+
+    def test_the_command_line_says_the_same(self):
+        for spec, want in self.TABLE:
+            with self.subTest(spec=spec):
+                done = subprocess.run([sys.executable, os.path.join(BIN, "agent_conf.py"), "cli-model", spec],
+                                      capture_output=True, text=True, timeout=20, stdin=subprocess.DEVNULL)
+                self.assertEqual((done.returncode, done.stdout), (0, want + "\n"), done.stderr)
+
+    def test_one_place(self):
+        with open(os.path.join(BIN, "agent-resume.sh"), encoding="utf-8") as fh:
+            resume = fh.read()
+        self.assertIn("agent_conf.py", resume)
+        self.assertIn("cli-model", resume, "agent-resume.sh's model_name must ask agent_conf.py cli-model")
+        for family in ("opus*)", "sonnet*)", "haiku*)", "fable*)"):
+            self.assertNotIn(family, resume, "no second copy of the family list")
+        with open(SERVER, encoding="utf-8") as fh:
+            server = fh.read()
+        self.assertIn("cli_model(", server)
 
 
 # ---------------------------------------------------------------------------
