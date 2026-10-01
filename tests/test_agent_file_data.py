@@ -97,7 +97,9 @@ CONTRACT (E5: data, all repos on this machine, read-only)
         4. the paths given as arguments
     It reads <repo>/agent_completed.txt and no other file of another repo,
     and writes nothing there. A repo without that file is skipped, one line
-    on stderr naming its path. A missing or broken world.json is not an
+    on stderr naming its path. Read-only for this repo too: `data` never
+    creates or touches one of its four agent_*.txt files (a repo that has
+    none is skipped like any other). A missing or broken world.json is not an
     error. The repo column of a row is its data block's repo, else the
     folder name of the repo.
 
@@ -123,7 +125,9 @@ CONTRACT (E6: eta)
         A clock time that is not today: "<HH:MM> tomorrow", later
         "<HH:MM> on <YYYY-MM-DD>". Minutes round up.
     step is 0..7. Unknown name, no estimate on the line, a bad value or an
-    unknown option: one plain line on stderr, exit 1. eta writes nothing.
+    unknown option: one plain line on stderr, exit 1. eta writes nothing:
+    it never creates or touches one of the four agent_*.txt files (no
+    agent_todo.txt at all -> "no todo line named: <name>").
 """
 
 import json
@@ -182,6 +186,21 @@ class DataCase(ScriptCase):
         return subprocess.run(["git", "-C", self.repo.dir] + list(args),
                               check=True, capture_output=True,
                               text=True).stdout.strip()
+
+    AGENT_TXT = ("agent_todo.txt", "agent_completed.txt", "agent_ideas.txt",
+                 "agent_worktree.txt")
+
+    def stamps(self):
+        """name -> (bytes, mtime) of the four agent files; None when missing."""
+        seen = {}
+        for name in self.AGENT_TXT:
+            full = self.path(name)
+            if os.path.exists(full):
+                with open(full, "rb") as fh:
+                    seen[name] = (fh.read(), os.stat(full).st_mtime_ns)
+            else:
+                seen[name] = None
+        return seen
 
     def feat_history(self):
         """A branch "feat" that changed 3 files (7 lines) and a main branch
@@ -715,6 +734,9 @@ class TestBackfillByName(DataCase):
                 self.assertUnchanged()
 
     def test_merge_counts_the_files_and_lines(self):
+        # the fixture lines are committed first, so they are not feat's work
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "agent files")
         self.feat_history()
         commit = self.merge_feat()
         self.assertOk(self.af("backfill", "d-task", "--work", "25",
@@ -892,6 +914,23 @@ class TestDataAllRepos(DataCase):
         self.assertOk(self.data(self.extra))
         self.assertEqual(self.read("agent_completed.txt"), before)
 
+    def test_it_does_not_touch_this_repos_agent_files(self):
+        os.remove(self.path("agent_ideas.txt"))
+        os.remove(self.path("agent_worktree.txt"))
+        before = self.stamps()
+        self.assertEqual(self.rows()[1:], [HERE_ROW, SHOP_ROW, API_ROW])
+        self.assertEqual(self.stamps(), before)
+
+    def test_a_repo_with_no_agent_files_gets_none(self):
+        for name in self.AGENT_TXT:
+            os.remove(self.path(name))
+        result = self.data()
+        self.assertOk(result)
+        rows = [l.split() for l in result.stdout.splitlines() if l.strip()]
+        self.assertEqual(rows, [HEADER, SHOP_ROW, API_ROW])
+        self.assertRegex(result.stderr, r"(?m)^skipped.*%s" % re.escape(self.repo.dir))
+        self.assertEqual(self.stamps(), dict.fromkeys(self.AGENT_TXT))
+
     def test_nothing_of_another_repo_but_its_data_lines_is_printed(self):
         result = self.data(self.extra)
         self.assertNotIn("SECRETMARK", result.stdout + result.stderr)
@@ -1053,6 +1092,20 @@ class TestEta(DataCase):
         self.assertOk(self.eta("plain", "--step", "3", "--wait", "5"))
         self.assertEqual((self.read("agent_todo.txt"),
                           self.read("agent_completed.txt")), before)
+
+    def test_eta_does_not_touch_the_agent_files(self):
+        os.remove(self.path("agent_ideas.txt"))
+        os.remove(self.path("agent_worktree.txt"))
+        before = self.stamps()
+        self.assertOk(self.eta("plain", "--step", "3"))
+        self.assertRefused(self.eta("nope"), "no todo line named: nope")
+        self.assertEqual(self.stamps(), before)
+
+    def test_eta_in_a_repo_with_no_agent_files_creates_none(self):
+        for name in self.AGENT_TXT:
+            os.remove(self.path(name))
+        self.assertRefused(self.eta("plain"), "no todo line named: plain")
+        self.assertEqual(self.stamps(), dict.fromkeys(self.AGENT_TXT))
 
     def test_the_machine_clock_is_used_when_no_fake_clock_is_set(self):
         out = self.assertOk(self.repo.run("agent-file.sh", "eta", "plain",
