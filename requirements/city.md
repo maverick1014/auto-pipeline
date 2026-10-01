@@ -72,6 +72,20 @@
 - Background work ends → Claude Code wakes the session; that turn ends with nothing in flight → 空闲.
 - Older Claude Code (no `background_tasks`) → never 后台在跑, 空闲 instead.
 
+## Face to face
+- Owner, 2026-10-01 (city-talk; approved mock mock/city-talk-mock.html): people in the city talk like people. The sender walks over and talks; there is no turn-in-place and no flying letter.
+- A new agent appears next to the one who sent it, 0.45 to 1.2 away, never on it: a subagent next to its session (the 总督 for his own), a task manager session next to the 总督 of its repo. They face each other for about 2.6 s (hand-over, 📋), then the new one walks to its own spot. Several at once: each on its own spot, one hand-over for all.
+- Nobody sent it, or the sender is gone: it appears beside the hall as before, never on the 总督 and never on another new one. People placed when the page opens or reconnects get no hand-over.
+- Nobody stacks: standing people are never closer than 0.45 (appearing, working, waiting, talking, leaving at the hall). A walker walks around people and other walkers, never closer than 0.3, when there is room to pass.
+- A message between agents (SendMessage) is a face-to-face talk: the sender walks to the other one (there in about 4 s, faster when far), they face each other for about 2 s (💬, then 👌 from the other one), the sender walks back, both go on. Closer than 1.2: nobody walks, both turn.
+- The 总督 walks over with his messages too and goes back to his hall; anyone who needs him calls him back at once and that talk is dropped.
+- No walk, the bubble on the sender's own spot: the recipient is not recognised, is in another repo or is walking; the sender is not at work; or more than 3 talks already wait for that person.
+- One talk per person at a time; the rest wait in line.
+- A question passed up (relay) is asked face to face on arrival (❓, about 2 s) and answered face to face before the walk back (✅; the lead or the 总督 speaks). A timeout or a leave: no answer talk.
+- The talk bubble holds one icon, never chat text. Reduced motion: no gesture, the bubble stays.
+- A talk never changes a status word and never delays a real one: 等你, stuck, a relay and done end the talk at once; 后台在跑 and 空闲 show at once.
+- Data: a spawn event says who sent the agent (`from`); a SendMessage that is not a question becomes one `talk` event. The hook adds the recipient's name (`to`, at most 80 characters) to that line: never the message, never through the relay. The name is matched to a session name, a subagent id, or a repo name (its 总督); else nobody.
+
 ## Talking
 - Owner decision, 2026-09-27: "我就可以直接看到他的聊天记录对话框然后直接跟他说话". The owner reads a session's conversation and talks to it from its person's window, no terminal needed. The terminal keeps working in parallel; both show the same conversation.
 - What the window shows: what was typed to the session (UserPromptSubmit `prompt`), the text each turn ended with (`last_assistant_message` on Stop and SubagentStop), and the owner's messages from the page. Questions and permission requests stay in their own "?" panel (see Interaction). Not tool output, not the transcript file: its format is internal to Claude Code and changes between versions (code.claude.com/docs/en/sessions), so the city never parses it. Only from the time the city is on.
