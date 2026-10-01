@@ -251,6 +251,7 @@
 - Auto-start (owner, 2026-10-01: he never types `agent-city start` for the cloud page): on a joined machine a session start brings the local server up by itself when the cloud page is on. A SessionStart hook; a machine that never joined pays two file tests and nothing else. Marker `<city home>/cloud`: the relay hosts that said the cloud is on, never a key. No marker → one quiet question to the relay. No browser is opened; the port, idle and RAM rules are those of `start`. A cloud session is not started this way (step 1b).
 - Check line: `agent-city status` in a joined repo prints `CLOUD: on <host>` or `CLOUD: off`.
 - Setup by hand, in skills/city/setup.md after the relay steps. Logins, keys and the deploy are the owner's: agents never type, print or store a key or a token, and never run a login or the deploy.
+- Cost on Cloudflare's free plan (100,000 Worker requests and 100,000 D1 rows written a day), measured on the Worker code by tests/test_agent_city_cloud_cost.py: a heavy day (3 machines, each up 12 h and busy 6 h, the page open 8 h) is about 35,500 requests (36%) and about 65,900 rows written (66%). About 51,800 of those rows are the relay's lines, as before the cloud page; the pictures add about 14,000 (one row per view). A view never writes more than one row, a feed request never writes.
 
 ## Relay setup
 - Owner decision, 2026-09-25: the relay comes with setup steps a person can follow by hand.

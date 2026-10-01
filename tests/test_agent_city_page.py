@@ -2082,7 +2082,9 @@ def page_fns(*names, optional=()):
         src = function_source(name)
         if src:
             fns.append(src)
-    return "\n".join(fns)
+    # cloud-city-1: some page functions return early when CLOUD (the page on Cloudflare,
+    # view only). A harness runs the LOCAL page's functions, where CLOUD is false.
+    return "var CLOUD = false;\n" + "\n".join(fns)
 
 
 def consts(*names):
