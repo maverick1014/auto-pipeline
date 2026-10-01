@@ -208,7 +208,7 @@ class AddCase(unittest.TestCase):
                     main_fn=self.mains, open_fn=self.opener, kind_fn=lambda folder: self.kind,
                     resources_fn=lambda folder: dict(self.res))
         args.update(kw)
-        return ac.CityState(**args)
+        return ac.CityState(decisions_path=args.pop("decisions_path"), **args)   # never the owner's real decisions file
 
     def feed(self, *lines, at=None):
         for obj in lines:
