@@ -66,7 +66,7 @@ Checked in this order, first match wins.
 | File | Who writes it | Who reads it |
 |---|---|---|
 | `agent_todo.txt` | `agent-file.sh todo add` / `todo done` | Every agent at start |
-| `agent_completed.txt` | `agent-file.sh todo done` | Human |
+| `agent_completed.txt` | `agent-file.sh todo done`, one data line per task | Human, `agent-file.sh time` |
 | `agent_ideas.txt` | `agent-file.sh idea add` | Human, on his own time |
 | `agent_worktree.txt` | `agent-file.sh worktree set` / `rm` | Main manager before every dispatch |
 | `agent.conf` | `./bin/agent-settings.sh` | `agent-start.sh` |
@@ -156,7 +156,9 @@ and the packed skills/agents, and never touches `agent.conf`, `agent_*.txt`, `CL
 ./bin/agent-settings.sh          # show or change agent.conf, no agent
 bin/agent-settings.sh language zh   # talk to the human in Chinese
 bin/agent-settings.sh sync          # add any key missing from agent.conf, template value
-bin/agent-file.sh time              # estimate vs actual for every finished task
+bin/agent-file.sh time              # est, work, wait, clock of every finished task
+bin/agent-file.sh data              # the same data of every repo on this machine, one table
+bin/agent-file.sh eta <name>        # work left as minutes and a clock time, and when the human is needed next
 ./bin/agent-city.sh start           # agent city visualiser, off by default, costs almost nothing
 /auto-pipeline:city              # start the agent city, prints the URL
 ```

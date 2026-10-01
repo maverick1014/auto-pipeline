@@ -6,20 +6,22 @@ description: Main manager only. After a task manager reports DONE PASS, run the 
 
 0. A CLOSE CASE report instead of DONE PASS? → run `/close-case` first. Finished → it sends you back here to continue. Unfinished → it decides finish first or close now.
 
-1. Read the task manager's done report. No click path → bounce it: "no E2E script, not done".
+1. Read the task manager's done report. No click path → bounce it: "no E2E script, not done". No TIME line with work and wait apart, or no FACTS line → bounce it: "no TIME, not done".
 2. Ask `${CLAUDE_PLUGIN_ROOT}/bin/agent-runtime.sh browser` first: chrome, headless or none.
    - **chrome** — run the click path yourself in Claude in Chrome (W5). Every step must match. A miss → send the evidence back to the task manager, stop here.
    - **headless** — cloud only, the extension can never reach a VM. Run the same click path with Playwright against the dev server, and save one screenshot per step as evidence. Same rule: a miss → send the evidence back to the task manager, stop here.
    - **none** — no browser at all. Print the click path under the heading NEEDS HUMAN E2E and stop. Do not merge, do not pass, and never call a path "verified" when nobody drove it. Wait for the human to sign it off.
 3. Stop the app server, close whatever ran the click path: the tab, the headless Playwright browser, or nothing if the answer was none.
-4. `Agent` with `subagent_type: merge-deputy`, description `<name> Merge`. Brief, all five values:
+4. `Agent` with `subagent_type: merge-deputy`, description `<name> Merge`. Brief, all six values:
    ```
    name: <name>
    branch: <branch>
    worktree path: <path>
    terminal handle: <term_...>   (orca only, leave empty in plain and cloud)
    suite command: <exact command>
+   todo done arguments: --work <actual> --wait <wait> --bounces <n> --workers <n> --mock <yes|no> --lane full --type <t> --tests <n> --adds <n>
    ```
+   The numbers come from the report's TIME and FACTS lines (actual = agent work only). A number you do not know → leave that option out, never guess.
 5. On `MERGE PASS`: `git log --oneline -2`, `git worktree list`, `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show`. All clean → report to the human in H3 shape.
 6. On `MERGE FAIL`: report the first line to the human with the deputy's evidence. Do not retry on your own.
 7. Merged a fix early, while its branch is still running? → `SendMessage` that task manager at once: merge main back into your branch. Never cherry-pick slices; merge the branch (or its prefix).
