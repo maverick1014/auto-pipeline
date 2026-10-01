@@ -913,19 +913,40 @@ class TestRemoved(unittest.TestCase):
         self.assertNotIn("dtScaled", text)
 
     def test_no_keyboard_shortcuts(self):
-        # city-ux2 (brief 2026-09-29): Esc stops following a person -- the one key the page listens to.
-        # Still no keyboard shortcut for anything else (windows close by x or a tap on the ground).
+        # city-ux2 (brief 2026-09-29): Esc stops following a person -- the one page-wide key.
+        # chat-enter (2026-10-01, 04173d3): a second keydown listener serves the message box only
+        # (Enter sends, Shift/Cmd/Ctrl+Enter is a new line): it leaves at once unless the key was typed
+        # in #say-text. Still no keyboard shortcut for anything else (windows close by x or a tap on
+        # the ground).
         text = inline_script()
         for event in ("keyup", "keypress"):
             with self.subTest(event=event):
                 self.assertNotIn(event, text)
-        self.assertEqual(text.count("keydown"), 1, "one keydown listener: Esc stops following")
-        m = re.search(r"document\.addEventListener\('keydown',(.*?)\n\}\);|document\.addEventListener\('keydown',([^\n]*)", text, re.S)
-        self.assertIsNotNone(m, "the keydown listener sits on document")
-        body = m.group(1) or m.group(2)
-        self.assertIn("Escape", body)
-        self.assertIn("stopFollow()", body)
-        self.assertEqual(re.findall(r"e\.key\s*===\s*'([^']+)'", body), ["Escape"], "Esc only")
+        self.assertEqual(text.count("keydown"), 2, "two keydown listeners: Esc stops following, the message box")
+        self.assertEqual(len(re.findall(r"document\.addEventListener\('keydown',", text)), 2,
+                         "every keydown listener sits on document")
+
+        # 1. the page-wide one: Esc only
+        esc = re.findall(r"document\.addEventListener\('keydown', e => \{ ([^\n]+)", text)
+        self.assertEqual(len(esc), 1, "one one-line listener: Esc stops following")
+        self.assertIn("stopFollow()", esc[0])
+        self.assertEqual(re.findall(r"e\.key\s*[!=]==\s*'([^']+)'", esc[0]), ["Escape"], "Esc only")
+
+        # 2. the message box's own: nothing happens for a key typed anywhere else
+        m = re.search(r"document\.addEventListener\('keydown', e => \{\n(.*?)\n\}\);", text, re.S)
+        self.assertIsNotNone(m, "the message box's keydown listener")
+        lines = [ln.strip() for ln in m.group(1).splitlines() if ln.strip()]
+        self.assertEqual(lines[:2], ["const ta = e.target;", "if (!ta || ta.id !== 'say-text') return;"],
+                         "it leaves first thing unless the key was typed in the message box")
+        body = "\n".join(lines[2:])
+        self.assertIn("sayKeyAction(e,", body, "which key does what is sayKeyAction's alone")
+        self.assertEqual(re.findall(r"e\.(?:key|code|keyCode)\b", body), [], "no key of its own")
+        fn = re.search(r"function sayKeyAction\(e, coarse\)\{\n(.*?)\n\}", text, re.S)
+        self.assertIsNotNone(fn)
+        self.assertEqual(re.findall(r"e\.key\s*[!=]==\s*'([^']+)'", fn.group(1)), ["Enter"], "Enter only")
+
+        # and no other code looks at a pressed key
+        self.assertEqual(len(re.findall(r"\be\.key\s*[!=]==", text)), 2, "a key is read in those two places only")
 
 
 class TestKept(unittest.TestCase):
