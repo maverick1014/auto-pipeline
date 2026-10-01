@@ -34,11 +34,11 @@ extract() {
     fi
 }
 
-# cap200 VALUE — VALUE cut to 200 bytes, then trimmed so it is still a valid
+# cap_json N VALUE — VALUE cut to N bytes, then trimmed so it is still a valid
 # JSON string: a trailing partial \uXXXX escape is dropped, then an unpaired
 # trailing backslash (an escape that got cut off mid-way) is dropped too.
-cap200() {
-    local v=${1:0:200} u_pat tail run
+cap_json() {
+    local v=${2:0:$1} u_pat tail run
     u_pat='\\u[0-9A-Fa-f]?[0-9A-Fa-f]?[0-9A-Fa-f]?$'
     if [[ $v =~ $u_pat ]]; then
         v=${v%${BASH_REMATCH[0]}}
@@ -53,6 +53,27 @@ cap200() {
         v=${v%\\}
     fi
     printf '%s' "$v"
+}
+
+# cap200 VALUE — VALUE cut to 200 bytes, still a valid JSON string (cap_json).
+cap200() {
+    cap_json 200 "$1"
+}
+
+# cap_name VALUE — city-talk: a recipient's name, cut to 80 bytes and still a
+# valid JSON string (cap_json). A cut inside a multi-byte UTF-8 character drops
+# that partial character too (C locale: one byte at a time).
+cap_name() {
+    local v=${1:0:80} next=${1:80:1}
+    case "$next" in
+        [$'\200'-$'\277'])
+            while [[ $v == *[$'\200'-$'\277'] ]]; do
+                v=${v%?}
+            done
+            [[ $v == *[$'\300'-$'\377'] ]] && v=${v%?}
+            ;;
+    esac
+    cap_json 80 "$v"
 }
 
 # has_question_prefix KEY HAY — true when the value of "KEY" in HAY begins
@@ -264,9 +285,15 @@ esac
 # ask — "q" when a question is passed up the chain, else "": a SubagentStop
 # whose last_assistant_message starts with QUESTION:, or a PostToolUse of
 # SendMessage whose tool_input.message starts with QUESTION:. Only the
-# flag, from the already-capped 4096-byte chunk: never the text, never the
-# recipient.
+# flag, from the already-capped 4096-byte chunk: never the text. A question
+# never carries the recipient either (the relay shows it).
+# to — city-talk: for a PostToolUse of SendMessage that is not a question,
+# tool_input.to (the recipient's name, at most 80 bytes, JSON-safe), read
+# from the tool_input part of the chunk only, so a "to" written inside the
+# message text is never taken; "" for everything else. The message text and
+# the summary are never written.
 ask=
+to=
 case "$ev" in
     SubagentStop)
         has_question_prefix last_assistant_message "$chunk" && ask=q
@@ -275,6 +302,9 @@ case "$ev" in
         if [ "$tool" = SendMessage ]; then
             ti_chunk=${chunk#"$base"}
             has_question_prefix message "$ti_chunk" && ask=q
+            if [ -z "$ask" ]; then
+                to=$(cap_name "$(extract to "$ti_chunk")")
+            fi
         fi
         ;;
 esac
@@ -287,8 +317,8 @@ case "$cpid" in
     *[!0-9]*) cpid= ;;
 esac
 
-printf '{"ev":"%s","sid":"%s","aid":"%s","at":"%s","tool":"%s","nt":"%s","proj":"%s","role":"%s","desc":"%s","sub":"%s","q":"%s","klen":"%s","repo":"%s","ask":"%s","wt":"%s","file":"%s","tp":"%s","pid":"%s"}\n' \
-    "$ev" "$sid" "$aid" "$at" "$tool" "$nt" "$proj" "$role" "$desc" "$sub" "$q" "$klen" "$repo" "$ask" "$wt" "$file" "$tp" "$cpid" \
+printf '{"ev":"%s","sid":"%s","aid":"%s","at":"%s","tool":"%s","nt":"%s","proj":"%s","role":"%s","desc":"%s","sub":"%s","q":"%s","klen":"%s","repo":"%s","to":"%s","ask":"%s","wt":"%s","file":"%s","tp":"%s","pid":"%s"}\n' \
+    "$ev" "$sid" "$aid" "$at" "$tool" "$nt" "$proj" "$role" "$desc" "$sub" "$q" "$klen" "$repo" "$to" "$ask" "$wt" "$file" "$tp" "$cpid" \
     >> "$dir/events.jsonl" 2>/dev/null
 
 exit 0
