@@ -13,7 +13,8 @@ this Worker still holds no key (no TEAM_KEY, no TALK_KEY).
   city_view. A read that finds no talk table yet = nothing there (no error).
 
   POST /api/chat/send   body {"dev", "to", "text", "cid"}
-      The only route that acts. Any other method / path pair that is not
+      One of the two routes that act (cloud-city-3 added POST /api/agent/add,
+      tests/test_agent_city_cloud_start_worker.py). Any other method / path pair that is not
       GET or HEAD stays 405. Checked in this order, nothing is written
       before the last check passes:
         the request comes from this page: header X-City-Page: 1, Content-Type
@@ -142,7 +143,7 @@ class TestGate(CityCase):
     def test_the_rest_still_acts_on_nothing(self):
         reqs = [get("/api/feed", method="POST"), get("/api/decide", method="POST"), get("/", method="PUT"),
                 get("/api/chat/send", method="PUT"), get("/api/chat/send", method="DELETE"),
-                get("/api/agent/add", method="POST"), get("/api/chat/send")]
+                get("/api/agent/open", method="POST"), get("/api/chat/send")]
         out = self.run_city(reqs)
         for r in out["responses"][:6]:
             self.assertEqual((r["status"], r["writes"]), (405, 0), r)
@@ -155,11 +156,12 @@ class TestGate(CityCase):
         self.assertNotIn("TALK_KEY", src)
 
     def test_it_writes_messages_only(self):
+        # cloud-city-3: and start orders (city_order, tests/test_agent_city_cloud_start_worker.py); never chat or pictures
         with open(ch.CITY, encoding="utf-8") as fh:
             src = fh.read()
         for word in ("INSERT", "UPDATE", "DELETE"):
             tables = set(re.findall(r"(?is)\b%s\s+(?:OR\s+\w+\s+)?(?:INTO\s+|FROM\s+)?(city_\w+)" % word, src))
-            self.assertLessEqual(tables, {"city_msg"}, "%s touches %s" % (word, tables))
+            self.assertLessEqual(tables, {"city_msg", "city_order"}, "%s touches %s" % (word, tables))
 
 
 class TestBody(CityCase):
