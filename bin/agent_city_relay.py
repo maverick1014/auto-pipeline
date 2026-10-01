@@ -1287,6 +1287,85 @@ def cmd_talk(args):
     return 0
 
 
+def cmd_start(args):
+    """cloud-city-3: `start --secret <join file> --talk-file <path> --start-file
+    <path> on|off|status` prints ONE line. No new secret: the key is the talk
+    key. status: "on <host>" only when the start file has the host AND the talk
+    file has a key for it (start needs talk), else "off <host>" (no network),
+    exit 0; no join file -> "none" (exit 0 for status, else 1). on: the talk key
+    is the first line of stdin (typed again by the owner: never argv, never
+    printed, never saved); no key -> "no-key", 2; no key for this host in the
+    talk file (talk is off here) -> "no-talk-here <host>", 7, nothing sent; else
+    one sync (no lines) carries the typed key as X-City-Talk and the talk
+    {"start": {}}: refused -> "refused <host>", 3; talk off or nothing about
+    talk -> "no-talk <host>", 4; down or the team key refused -> "down <host>",
+    5; talk on but no "start" with state "on" (an old relay code) -> "old-relay
+    <host>", 8; talk on and start on -> the host goes into the start file, "on
+    <host>", 0 (could not save -> "no-write", 6). Nothing is saved unless
+    the last one; the start file never holds a key. off: one sync with {"start":
+    {"off": true}} and the talk file's key when the start file had the host (no
+    key there: no request); whatever it answers, the host leaves the file, "off
+    <host>", 0."""
+    joined = read_join(args.secret)
+    if joined is None:
+        print("none")
+        return 0 if args.verb == "status" else 1
+    address = joined["address"]
+    host = urlsplit(address).netloc
+    held = read_talk(args.talk_file)
+
+    if args.verb == "status":
+        on = host in read_start(args.start_file) and host in held
+        print("%s %s" % ("on" if on else "off", host))
+        return 0
+
+    if args.verb == "off":
+        if host in read_start(args.start_file) and host in held and not check_address(address):
+            sync(address, joined["key"], _default_dev_id(), 0, [],
+                 talk={"start": {"off": True}}, talk_key=held[host])
+        set_start(args.start_file, host, False)
+        print("off %s" % host)
+        return 0
+
+    key = sys.stdin.readline().strip()
+    if not key:
+        print("no-key")
+        return 2
+    if host not in held:
+        print("no-talk-here %s" % host)
+        return 7
+    if len(key.split()) != 1:
+        # no line of the talk file could hold it: the relay has no such key
+        print("refused %s" % host)
+        return 3
+    if check_address(address):
+        print("down %s" % host)
+        return 5
+    state, data = sync(address, joined["key"], _default_dev_id(), 0, [],
+                       talk={"start": {}}, talk_key=key)
+    if state != "ok":
+        print("down %s" % host)
+        return 5
+    talk = data.get("talk")
+    answer = talk.get("state") if isinstance(talk, dict) else None
+    if answer == "refused":
+        print("refused %s" % host)
+        return 3
+    if answer != "on":
+        print("no-talk %s" % host)
+        return 4
+    start = talk.get("start")
+    if not isinstance(start, dict) or start.get("state") != "on":
+        print("old-relay %s" % host)
+        return 8
+    set_start(args.start_file, host, True)
+    if host not in read_start(args.start_file):
+        print("no-write")
+        return 6
+    print("on %s" % host)
+    return 0
+
+
 # --------------------------------------------------------------------- CLI
 
 def _cli(argv):
@@ -1314,6 +1393,12 @@ def _cli(argv):
     p_talk.add_argument("--talk-file", required=True)
     p_talk.add_argument("verb", choices=("on", "off", "status"))
 
+    p_start = sub.add_parser("start")
+    p_start.add_argument("--secret", required=True)
+    p_start.add_argument("--talk-file", required=True)
+    p_start.add_argument("--start-file", required=True)
+    p_start.add_argument("verb", choices=("on", "off", "status"))
+
     p_send = sub.add_parser("send")
     p_send.add_argument("--dir", required=True)
     p_send.add_argument("--relay-sec", type=float, default=5.0)
@@ -1325,7 +1410,7 @@ def _cli(argv):
     except SystemExit:
         return 2
 
-    if args.cmd not in ("check", "join", "send", "cloud", "talk"):
+    if args.cmd not in ("check", "join", "send", "cloud", "talk", "start"):
         parser.print_usage(sys.stderr)
         return 2
 
@@ -1335,6 +1420,8 @@ def _cli(argv):
         return cmd_cloud(args)
     if args.cmd == "talk":
         return cmd_talk(args)
+    if args.cmd == "start":
+        return cmd_start(args)
 
     err = check_address(args.address)
     if err:

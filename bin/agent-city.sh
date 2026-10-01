@@ -38,7 +38,12 @@
 #   ./agent-city.sh cloud-talk on    the owner's, in his own terminal only: ask the
 #                            talk key (hidden), let the cloud page send messages
 #                            to this machine's sessions
-#   ./agent-city.sh cloud-talk off   stop that (no terminal needed)
+#   ./agent-city.sh cloud-talk off   stop that (no terminal needed); it also turns
+#                            starting off
+#   ./agent-city.sh cloud-start on   the owner's, in his own terminal only: ask the
+#                            talk key again (hidden), let the cloud page start
+#                            agents on this machine (talk must be on first)
+#   ./agent-city.sh cloud-start off  stop that (no terminal needed)
 #   ./agent-city.sh -h       this help
 #
 # City dir: $AGENT_CITY_DIR, default $HOME/.cache/agent-city (the same dir the
@@ -128,6 +133,25 @@
 # or in a repo that has not joined, it removes the whole file, no request. status prints "CLOUD TALK: on <relay host>" or
 # "CLOUD TALK: off" right after the CLOUD line, from that file only -- no
 # network, never the key.
+#
+# cloud-start on | off (requirements/city.md, "Cloud page", "Start"): the switch
+# that lets the cloud page open an agent on this machine. No new secret: the key
+# is the talk key, typed again. `on` is the owner's, in his own terminal, inside
+# a joined repo, and talk must be on there first (a talk key for that host in
+# the talk file). It refuses without a terminal on stdin (exit 2: nothing asked,
+# sent or saved), asks the talk key with echo off ("Talk key (hidden): "), hands
+# it to agent_city_relay.py start on on stdin only, and the relay must say
+# starting is on before anything is saved: the host (never a key) goes to
+# $AGENT_CITY_HOME/cloud-start (mode 0600, one relay host per line). `off` needs
+# no terminal and always works: in a joined repo it tells the relay (with the
+# key of the talk file), then forgets that host; outside a repo, or in a repo
+# that has not joined, it removes the whole file, no request. cloud-talk off
+# also turns starting off (the relay is told first: it needs the key);
+# cloud-talk on never turns it on. status prints "CLOUD START: on <relay host>"
+# or "CLOUD START: off" right after the CLOUD TALK line, from the two files only
+# -- on only when talk is on too; no network, never the key.
+# A start typed inside a repo also passes --joined-list while the start file
+# names a host (see START_JOINED).
 
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
@@ -173,7 +197,11 @@ agent-city.sh — start/stop/status/demo for the Agent City playground.
                            (yours to run, in your own terminal)
   ./agent-city.sh cloud-talk on    let the cloud page send messages to your sessions
                            (yours to run, in your own terminal; asks the talk key)
-  ./agent-city.sh cloud-talk off   stop that
+  ./agent-city.sh cloud-talk off   stop that (it also turns starting off)
+  ./agent-city.sh cloud-start on   let the cloud page start agents on this machine
+                           (yours to run, in your own terminal; asks the talk key
+                           again; talk must be on first)
+  ./agent-city.sh cloud-start off  stop that
   ./agent-city.sh -h       this help
 
 Outside a repo: start/demo sync every repo listed in
@@ -199,7 +227,12 @@ SECRET_FILE="$PROJECT_ROOT/.secrets/agent-city-relay"
 RELAY_MODULE="$PLUGIN_ROOT/bin/agent_city_relay.py"
 CLOUD_FILE="$CITY_HOME/cloud"
 TALK_FILE="$CITY_HOME/cloud-talk"
-# yes: do_start always passes --joined-list (autostart, also inside a repo)
+START_FILE="$CITY_HOME/cloud-start"
+# yes: do_start always passes --joined-list (autostart, also inside a repo).
+# Also passed when the start file names a host (do_start checks it): a machine
+# that takes start orders syncs every repo it joined from the first moment, so a
+# server started by hand inside a repo, with nobody working there, is still seen
+# by the cloud page. No start file, or one with no host: as before.
 START_JOINED=no
 
 # True when something already answers on 127.0.0.1:<port> (short connect,
@@ -262,7 +295,8 @@ do_start() {
       *) language="zh" ;;
     esac
   fi
-  if [ "$OUTSIDE_REPO" = yes ] || [ "$START_JOINED" = yes ]; then
+  if [ "$OUTSIDE_REPO" = yes ] || [ "$START_JOINED" = yes ] \
+     || grep -qE '^[[:space:]]*[^#[:space:]][^[:space:]]*[[:space:]]*$' "$START_FILE" 2>/dev/null; then
     set -- --joined-list "$CITY_HOME/joined-repos.txt"
   fi
 
@@ -324,10 +358,12 @@ do_status() {
     joined_list_lines
     cloud_lines_outside || true
     talk_lines_outside || true
+    start_lines_outside || true
   else
     team_line
     cloud_line || true
     talk_line || true
+    start_line || true
   fi
   return 0
 }
@@ -418,6 +454,53 @@ if hosts:
     else:
         print("CLOUD TALK: off")
 ' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$TALK_FILE"
+}
+
+# "CLOUD START: on <relay host>" or "CLOUD START: off" for a joined repo, nothing
+# when it is not joined. From the start file and the talk file only, no network
+# (on only when the talk file has the host too). Never the key.
+start_line() {
+  out=$(python3 "$RELAY_MODULE" start --secret "$SECRET_FILE" \
+          --talk-file "$TALK_FILE" --start-file "$START_FILE" status 2>/dev/null) || out="none"
+  case "$out" in
+    "on "*) echo "CLOUD START: $out" ;;
+    "off "*) echo "CLOUD START: off" ;;
+  esac
+  return 0
+}
+
+# Outside a repo: one "CLOUD START: on <host>" per joined relay host (each once,
+# list order) that the start file and the talk file both name, else one "CLOUD
+# START: off" when a repo is joined, nothing when none is. Files only, no
+# network. Never the key.
+start_lines_outside() {
+  python3 -c '
+import os
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+from urllib.parse import urlsplit
+
+started = rl.read_start(sys.argv[4])
+held = rl.read_talk(sys.argv[3])
+hosts = []
+for repo in rl.read_joined_list(sys.argv[2]):
+    if not os.path.isdir(repo):
+        continue
+    joined = rl.read_join(os.path.join(repo, ".secrets", "agent-city-relay"))
+    if not joined:
+        continue
+    host = urlsplit(joined["address"]).netloc
+    if host not in hosts:
+        hosts.append(host)
+if hosts:
+    on = [h for h in hosts if h in started and h in held]
+    if on:
+        for h in on:
+            print("CLOUD START: on " + h)
+    else:
+        print("CLOUD START: off")
+' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$TALK_FILE" "$START_FILE"
 }
 
 # autostart (requirements/city.md, "Cloud page"): the SessionStart hook's verb.
@@ -1149,16 +1232,21 @@ do_talk_on() {
 # off must always work, it is the way to stop. In a joined repo it tells the
 # relay and forgets that host. Outside a repo, or in a repo that has not joined
 # (any more), there is no host to name: the whole talk file goes, with no
-# request to anybody (that machine's copy on Cloudflare ages out).
+# request to anybody (that machine's copy on Cloudflare ages out). Starting needs
+# talk, so it goes off too: in a joined repo the relay is told about it FIRST
+# (it needs the key, which the talk off below forgets), and the start file loses
+# the host; else the whole start file goes with the talk file.
 do_talk_off() {
   rc=1
   if [ "$OUTSIDE_REPO" = no ] && [ -f "$SECRET_FILE" ]; then
     rc=0
+    python3 "$RELAY_MODULE" start --secret "$SECRET_FILE" --talk-file "$TALK_FILE" \
+      --start-file "$START_FILE" off >/dev/null 2>&1 || rm -f "$START_FILE" 2>/dev/null || true
     python3 "$RELAY_MODULE" talk --secret "$SECRET_FILE" --talk-file "$TALK_FILE" off \
       >/dev/null 2>&1 || rc=$?
   fi
   if [ "$rc" -ne 0 ]; then
-    rm -f "$TALK_FILE" 2>/dev/null || true
+    rm -f "$TALK_FILE" "$START_FILE" 2>/dev/null || true
   fi
   echo "CLOUD TALK: off"
   return 0
@@ -1173,6 +1261,83 @@ talk_need_joined() {
   fi
   if [ ! -f "$SECRET_FILE" ]; then
     echo "CLOUD TALK: this repo has not joined a team relay; run join first" >&2
+    exit 1
+  fi
+}
+
+# cloud-start on | off: see the header comment. `on` is the owner's, in his own
+# terminal: no terminal on stdin (an agent, a pipe) -> refuse before anything is
+# asked, sent or saved. The key is the talk key, typed again: read with echo off
+# and handed to agent_city_relay.py on stdin only -- never argv, never on screen,
+# never in a message below. The relay must say starting is on before the host is
+# saved (the start file holds hosts only).
+do_cloud_start() {
+  case "${1:-}" in
+    on) do_start_on ;;
+    off) do_start_off ;;
+    *)
+      echo "CLOUD START: usage: agent-city.sh cloud-start on | off" >&2
+      exit 2 ;;
+  esac
+}
+
+do_start_on() {
+  if [ ! -t 0 ]; then
+    echo "CLOUD START: run this yourself in your own terminal (it lets the cloud page start agents on this machine)" >&2
+    exit 2
+  fi
+  start_need_joined
+  printf 'Talk key (hidden): ' >&2
+  read -rs key || key=""
+  printf '\n' >&2
+
+  rc=0
+  out=$(printf '%s\n' "$key" | python3 "$RELAY_MODULE" start --secret "$SECRET_FILE" \
+          --talk-file "$TALK_FILE" --start-file "$START_FILE" on 2>/dev/null) || rc=$?
+  key=""
+  case "$rc" in
+    0)
+      echo "CLOUD START: $out"
+      return 0 ;;
+    2) echo "CLOUD START: no key entered; nothing was saved" >&2 ;;
+    3) echo "CLOUD START: the relay did not take this key; nothing was saved" >&2 ;;
+    4) echo "CLOUD START: the relay has no TALK_KEY (or its cloud page is off); nothing was saved" >&2 ;;
+    5) echo "CLOUD START: cannot reach the relay; nothing was saved" >&2 ;;
+    6) echo "CLOUD START: cannot write $START_FILE; nothing was saved" >&2 ;;
+    7) echo "CLOUD START: turn talking on first (agent-city cloud-talk on); nothing was saved" >&2 ;;
+    8) echo "CLOUD START: the relay does not know starting yet; put the new relay code on Cloudflare (skills/city/setup.md), then run this again; nothing was saved" >&2 ;;
+    *) echo "CLOUD START: this repo has not joined a team relay (run join first); nothing was saved" >&2 ;;
+  esac
+  exit 1
+}
+
+# off must always work, it is the way to stop. In a joined repo it tells the
+# relay (so an order that waits is never opened) and forgets that host. Outside
+# a repo, or in a repo that has not joined (any more), there is no host to name:
+# the whole start file goes, with no request to anybody. Talk stays as it is.
+do_start_off() {
+  rc=1
+  if [ "$OUTSIDE_REPO" = no ] && [ -f "$SECRET_FILE" ]; then
+    rc=0
+    python3 "$RELAY_MODULE" start --secret "$SECRET_FILE" --talk-file "$TALK_FILE" \
+      --start-file "$START_FILE" off >/dev/null 2>&1 || rc=$?
+  fi
+  if [ "$rc" -ne 0 ]; then
+    rm -f "$START_FILE" 2>/dev/null || true
+  fi
+  echo "CLOUD START: off"
+  return 0
+}
+
+# cloud-start on needs a repo that has joined a team relay: the relay host comes
+# from its join file.
+start_need_joined() {
+  if [ "$OUTSIDE_REPO" = yes ]; then
+    echo "CLOUD START: not inside a repo; cd into the joined repo, then run cloud-start on" >&2
+    exit 1
+  fi
+  if [ ! -f "$SECRET_FILE" ]; then
+    echo "CLOUD START: this repo has not joined a team relay; run join first" >&2
     exit 1
   fi
 }
@@ -1198,5 +1363,6 @@ case "$1" in
   cloud-build) shift; do_cloud_build "$@";;
   cloud-deploy) do_cloud_deploy;;
   cloud-talk) shift; do_cloud_talk "$@";;
+  cloud-start) shift; do_cloud_start "$@";;
   *) usage; exit 2;;
 esac
