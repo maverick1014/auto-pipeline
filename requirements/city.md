@@ -61,6 +61,7 @@
 ## Status
 - Owner rule, 2026-10-01 (city-status). 等你 (rail, panel, the 等你回话 head bubble) only when the agent really needs the owner: a permission prompt or a question prompt (AskUserQuestion) is open, or its last reply asks the owner.
 - A reply asks the owner when: a line begins with 要你决定 or "What to decide" (a section head), or a line begins with `QUESTION:`, or its last sentence ends with ? or ？.
+- An empty decision section is a report, not a question (owner, 2026-10-01): the head followed only by nothing, none, 无, 没有, 暂无, - or n/a, on the same line or the next line, does not make 等你.
 - A report-only turn while background work still runs → 后台在跑 ("Working in background"): its own colour (violet), no bubble.
 - Otherwise → 空闲. A Notification `idle_prompt` changes nothing (before: every stopped session turned 等你 after a minute).
 - Same rule for the governor and every session: task manager, helper, plain session. Subagents keep their states.

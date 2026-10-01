@@ -16,7 +16,12 @@ CONTRACT
   1. agent_city.asks_owner(text) -> bool. True when TEXT (a session's last
      reply) asks the owner:
        - a line begins with 要你决定 or "What to decide" (a section head;
-         leading spaces and the marks # * _ > - before it do not count), or
+         leading spaces and the marks # * _ > - before it do not count) and
+         the section is not empty. Empty (owner, 2026-10-01: a report, not a
+         question): what follows the head, on the same line or else on the
+         next non-blank line, is only one of nothing, none, 无, 没有, 暂无, -
+         or n/a (any letter case; list marks before it and . 。 after it do
+         not count). Or
        - a line begins with QUESTION: (leading spaces allowed), or
        - its last sentence ends with ? or ？ (trailing spaces, newlines and
          closing marks * _ ` " ' ) ） 」 』 ” ’ do not count).
@@ -119,11 +124,14 @@ def fn(name):
 
 ASKS = [
     "Result: pass\n\n要你决定\n- 现在合并，还是等 E2E",
-    "## 要你决定\n无",
+    "## 要你决定\n- 无法自动合并，要你来定",
     "结果：通过\n**要你决定**：现在合并吗",
     "Result: pass\nWhat changed: 2 files\nWhat to decide: merge now or wait",
-    "### What to decide\n- nothing",
-    "- **What to decide**: nothing",
+    "### What to decide\n- nothing works without the key: send it or drop the step",
+    "- **What to decide**: none of the two ports is free, pick a third",
+    "What to decide\n\n- merge now or wait",
+    "要你决定：无\n\n要继续下一步吗？",
+    "What to decide: nothing\nQUESTION: which port",
     "QUESTION: which port should the city use",
     "Tests pass.\nQUESTION: merge now, or wait for the E2E",
     "  QUESTION: indented",
@@ -152,7 +160,48 @@ REPORTS = [
 ]
 
 
+# an empty decision section is a report, not a question (main manager, 2026-10-01)
+EMPTY_SECTIONS = [
+    # same line
+    "Result: pass\nWhat changed: 2 files\nWhat to decide: nothing",
+    "What to decide: none",
+    "What to decide: None.",
+    "What to decide: -",
+    "What to decide: n/a",
+    "What to decide: N/A",
+    "**What to decide**: nothing",
+    "- **What to decide**: nothing",
+    "**What to decide:** Nothing.",
+    "结果：通过\n改了什么：2 个文件\n要你决定：无",
+    "要你决定：没有",
+    "要你决定: 暂无",
+    "要你决定：无。",
+    "要你决定：-",
+    "**要你决定**：无",
+    "- **要你决定：** 暂无",
+    # the next line
+    "### What to decide\n- nothing",
+    "## What to decide\nNone",
+    "What to decide\n\nnothing",
+    "What to decide\n-",
+    "What to decide:\n- n/a",
+    "## 要你决定\n无",
+    "要你决定\n- 没有",
+    "### 要你决定\n\n暂无",
+    "要你决定：\n- 无",
+    # a report goes on after the empty section
+    "Result: pass\n\nWhat to decide\n- nothing\n\nTIME: est 75m, actual 52m (agent work only), wait 0m",
+    "结果：通过\n\n要你决定：无\n\nTIME: est 75m, actual 52m",
+]
+
+
 class TestAsksOwner(unittest.TestCase):
+    def test_empty_decision_section_is_a_report(self):
+        asks_owner = fn("asks_owner")
+        for text in EMPTY_SECTIONS:
+            with self.subTest(text=text):
+                self.assertIs(asks_owner(text), False)
+
     def test_asks(self):
         asks_owner = fn("asks_owner")
         for text in ASKS:
@@ -811,6 +860,7 @@ class TestRequirementLines(unittest.TestCase):
         self.assertIsNotNone(m, "requirements/city.md has a Status section")
         body = m.group(1)
         for word in ("等你", "后台在跑", "空闲", "要你决定", "What to decide", "QUESTION:", "background_tasks",
+                     "nothing", "none", "没有", "暂无", "n/a",
                      "idle_prompt", "StopNote"):
             with self.subTest(word=word):
                 self.assertIn(word, body)
