@@ -58,6 +58,18 @@
 - Out of scope: Claude Code's own cross-session message hold ("Deliver this message"). Never auto-clicked.
 - Build order: prove first, with a real session, how an answer or approval reaches it (hook decision or Orca terminal keys). Then build.
 
+## Status
+- Owner rule, 2026-10-01 (city-status). 等你 (rail, panel, the 等你回话 head bubble) only when the agent really needs the owner: a permission prompt or a question prompt (AskUserQuestion) is open, or its last reply asks the owner.
+- A reply asks the owner when: a line begins with 要你决定 or "What to decide" (a section head), or a line begins with `QUESTION:`, or its last sentence ends with ? or ？.
+- A report-only turn while background work still runs → 后台在跑 ("Working in background"): its own colour (violet), no bubble.
+- Otherwise → 空闲. A Notification `idle_prompt` changes nothing (before: every stopped session turned 等你 after a minute).
+- Same rule for the governor and every session: task manager, helper, plain session. Subagents keep their states.
+- Source: the Stop hook input. `last_assistant_message` is the reply. `background_tasks` (Claude Code 2.1.145+) lists the work in flight: shells, subagents, workflows, monitors, teammates, cloud sessions. Housekeeping entries (dream, auto-mode scan, memory import) do not count. `session_crons` (a wake-up later) does not count. Async hooks are not listed there, so they do not count.
+- `agent_city.py say` (a Stop hook) adds one line to `events.jsonl`: `{"ev":"StopNote","sid","need","bg"}`. Flags only, never the reply text or a command.
+- StopNote decides: need → 等你; else bg → 后台在跑; else 空闲. A Stop with no note (old hooks, cloud sessions) → 空闲. Next prompt or tool → busy again.
+- Background work ends → Claude Code wakes the session; that turn ends with nothing in flight → 空闲.
+- Older Claude Code (no `background_tasks`) → never 后台在跑, 空闲 instead.
+
 ## Talking
 - Owner decision, 2026-09-27: "我就可以直接看到他的聊天记录对话框然后直接跟他说话". The owner reads a session's conversation and talks to it from its person's window, no terminal needed. The terminal keeps working in parallel; both show the same conversation.
 - What the window shows: what was typed to the session (UserPromptSubmit `prompt`), the text each turn ended with (`last_assistant_message` on Stop and SubagentStop), and the owner's messages from the page. Questions and permission requests stay in their own "?" panel (see Interaction). Not tool output, not the transcript file: its format is internal to Claude Code and changes between versions (code.claude.com/docs/en/sessions), so the city never parses it. Only from the time the city is on.

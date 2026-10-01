@@ -35,13 +35,15 @@ CONTRACT
     an old hook kind (test ui script doc other) still builds by the old map (old
     events.jsonl lines). The relay wire line carries no "kind" (nobody reads it).
 
-  C5 idle_prompt is not a question
-    A citizen's Notification idle_prompt -> {"type": "waiting", "id"} once (never
-    "stuck"); its next PreToolUse / PostToolUse / UserPromptSubmit ->
+  C5 idle_prompt is not a question (changed by city-status, 2026-10-01:
+     tests/test_agent_city_status.py)
+    A Notification idle_prompt changes nothing: no event, for a citizen and
+    for the governor. A citizen is "waiting" ({"type": "waiting", "id"}, never
+    "stuck") only when its last reply asks the owner (a StopNote line with
+    need "1"); its next PreToolUse / PostToolUse / UserPromptSubmit ->
     {"type": "resume", "id"} first, then the usual events. permission_prompt stays
-    "stuck". Reducer.snapshot() agents gain "waiting": bool. A waiting citizen never
-    starts a chain relay and never becomes an ask. The governor keeps its
-    "waiting" gov state as before.
+    "stuck". Reducer.snapshot() agents carry "waiting": bool. A waiting citizen never
+    starts a chain relay and never becomes an ask.
 
   C16 the chain for other members' people
     The relay wire line keeps "ask" (the flag only, "q" or ""). RemoteCity replays
@@ -226,28 +228,35 @@ class TestHookHasNoPathRules(unittest.TestCase):
 
 # --------------------------------------------------------------------- C5
 
+NOTE = {"ev": "StopNote", "sid": "tm1", "need": "1", "bg": ""}
+
+
 class TestIdleIsNotAQuestion(unittest.TestCase):
     def setUp(self):
         self.r = ac.Reducer()
         self.r.feed(R("UserPromptSubmit", sid="main"), 1.0)
         self.r.feed(R("PostToolUse", sid="tm1", role="task-manager", tool="Write"), 1.0)
 
-    def test_idle_prompt_is_waiting_once(self):
-        out = self.r.feed(R("Notification", sid="tm1", role="task-manager", nt="idle_prompt"), 2.0)
-        self.assertEqual(out, [{"type": "waiting", "id": "s:tm1"}])
-        self.assertEqual(self.r.feed(R("Notification", sid="tm1", role="task-manager", nt="idle_prompt"), 3.0), [])
+    def test_idle_prompt_is_nothing(self):
+        self.assertEqual(self.r.feed(R("Notification", sid="tm1", role="task-manager", nt="idle_prompt"), 2.0), [])
+        a = [a for a in self.r.snapshot()["agents"] if a["id"] == "s:tm1"][0]
+        self.assertEqual((a["waiting"], a["stuck"]), (False, False))
+
+    def test_a_reply_that_asks_is_waiting_once(self):
+        self.assertEqual(self.r.feed(dict(NOTE), 2.0), [{"type": "waiting", "id": "s:tm1"}])
+        self.assertEqual(self.r.feed(dict(NOTE), 3.0), [])
         a = [a for a in self.r.snapshot()["agents"] if a["id"] == "s:tm1"][0]
         self.assertEqual((a["waiting"], a["stuck"]), (True, False))
 
     def test_resume_comes_first(self):
-        self.r.feed(R("Notification", sid="tm1", role="task-manager", nt="idle_prompt"), 2.0)
+        self.r.feed(dict(NOTE), 2.0)
         out = self.r.feed(R("PostToolUse", sid="tm1", role="task-manager", tool="Edit"), 3.0)
         self.assertEqual(out, [{"type": "resume", "id": "s:tm1"}, {"type": "tool", "id": "s:tm1", "tool": "Edit", "name": "Edit"}])
         a = [a for a in self.r.snapshot()["agents"] if a["id"] == "s:tm1"][0]
         self.assertFalse(a["waiting"])
 
     def test_prompt_resumes(self):
-        self.r.feed(R("Notification", sid="tm1", role="task-manager", nt="idle_prompt"), 2.0)
+        self.r.feed(dict(NOTE), 2.0)
         self.assertEqual(self.r.feed(R("UserPromptSubmit", sid="tm1", role="task-manager"), 3.0),
                          [{"type": "resume", "id": "s:tm1"}])
 
@@ -255,9 +264,9 @@ class TestIdleIsNotAQuestion(unittest.TestCase):
         out = self.r.feed(R("Notification", sid="tm1", role="task-manager", nt="permission_prompt"), 2.0)
         self.assertEqual(out, [{"type": "stuck", "id": "s:tm1", "question": "", "tool": ""}])
 
-    def test_governor_unchanged(self):
-        self.assertEqual(self.r.feed(R("Notification", sid="main", nt="idle_prompt"), 2.0),
-                         [{"type": "gov", "state": "waiting"}])
+    def test_governor_idle_prompt_is_nothing(self):
+        self.assertEqual(self.r.feed(R("Notification", sid="main", nt="idle_prompt"), 2.0), [])
+        self.assertEqual(self.r.snapshot()["gov"], {"state": "busy"})
 
     def test_every_snapshot_agent_has_waiting(self):
         for a in self.r.snapshot()["agents"]:
@@ -265,11 +274,19 @@ class TestIdleIsNotAQuestion(unittest.TestCase):
 
 
 class TestIdleInTheCity(tq.BuildCase):
-    def test_no_relay_no_ask_no_stuck(self):
+    def test_idle_prompt_no_event_at_all(self):
         self.st.feed_line(dict(self.line("tm1"), role="task-manager", tool="Write", file=""), 1000.0)
         tq.drain(self.client)
         self.st.feed_line(dict(self.line("tm1"), ev="Notification", nt="idle_prompt", role="task-manager",
                                tool="", file=""), 1001.0)
+        types = [e["type"] for e in tq.drain(self.client)]
+        for bad in ("waiting", "stuck", "relay", "ask"):
+            self.assertNotIn(bad, types)
+
+    def test_waiting_no_relay_no_ask_no_stuck(self):
+        self.st.feed_line(dict(self.line("tm1"), role="task-manager", tool="Write", file=""), 1000.0)
+        tq.drain(self.client)
+        self.st.feed_line(dict(NOTE), 1001.0)
         types = [e["type"] for e in tq.drain(self.client)]
         self.assertIn("waiting", types)
         for bad in ("stuck", "relay", "ask"):

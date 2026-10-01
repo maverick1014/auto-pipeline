@@ -27,7 +27,7 @@ CONTRACT
     {"type":"answer", "id","ok"}            ok is True or False
     {"type":"done",   "id"}
     {"type":"leave",  "id"}
-    {"type":"gov",    "state"}              busy | waiting | idle
+    {"type":"gov",    "state"}              busy | waiting | background | idle
 
   Who is who
     subagent        id = aid. role = at when at is task-manager, worker,
@@ -55,13 +55,15 @@ CONTRACT
     PermissionRequest -> stuck (question "", tool = tool).
     AskUserQuestion PreToolUse -> stuck (question = q, max 60 chars).
     Notification permission_prompt from a citizen session -> stuck; idle_prompt
-      -> waiting / resume (idea-city C5, tests/test_agent_city_idea_server.py).
+      -> nothing (city-status, tests/test_agent_city_status.py: waiting comes
+      from a StopNote line whose reply asks the owner).
     Already stuck -> no second stuck event.
     Stuck, then any PostToolUse or UserPromptSubmit from it -> answer ok True
       first, then the rest. PermissionDenied -> answer ok False.
     SubagentStop -> done. Anything from a done agent is ignored.
     Governor: PostToolUse / PreToolUse / UserPromptSubmit -> busy,
-      Notification permission_prompt / idle_prompt -> waiting, Stop -> idle.
+      Notification permission_prompt -> waiting, idle_prompt -> nothing,
+      Stop -> idle (city-status: tests/test_agent_city_status.py has the rest).
       A gov event is sent only when the state changes.
     SessionEnd -> done (if not yet) and leave for the session's citizen and
       every subagent of that session; for the governor session: gov idle.
@@ -281,7 +283,8 @@ class TestSessions(Case):
     def test_governor_states_change_only_on_change(self):
         self.govern("main")
         self.assertEqual(self.feed(R("PostToolUse", sid="main", tool="Read")), [])
-        self.assertEqual(self.feed(R("Notification", sid="main", nt="idle_prompt")),
+        self.assertEqual(self.feed(R("Notification", sid="main", nt="idle_prompt")), [])
+        self.assertEqual(self.feed(R("Notification", sid="main", nt="permission_prompt")),
                          [{"type": "gov", "state": "waiting"}])
         self.assertEqual(self.feed(R("Notification", sid="main", nt="permission_prompt")), [])
         self.assertEqual(self.feed(R("PreToolUse", sid="main", tool="Agent", desc="d", sub="worker")),
