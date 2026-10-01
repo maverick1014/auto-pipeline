@@ -1907,10 +1907,16 @@ class _CloudTaps:
         """Caller holds self.lock. The answer for an oid seen before, or None
         (a new one): what was last said for it. An order the orders file lists
         with no final answer was cut off by a restart: "failed", why "restart"
-        (decided when the file was read). One add_agent has not answered yet
-        is "busy"."""
+        (decided when the file was read); the first time it is said it is an
+        outcome like any other: one line in the orders file, so the file
+        itself holds the final answer from then on, and one decisions row
+        (the order's force is not known any more: false). One add_agent has
+        not answered yet is "busy"."""
         if oid in self._cloud_orders:
             got = self._cloud_orders[oid]
+            if oid in self._cloud_restart:
+                self._cloud_restart.discard(oid)
+                self._cloud_order_note_locked(oid, "", False, got)
         else:
             got = self._cloud_order_said.get(oid)
             if got is None:
@@ -2861,6 +2867,7 @@ class CityState(_CloudTaps):
         self._cloud_order_stamps = deque()   # "now" of each order let in, for the flood rule
         self._cloud_open = {}         # territory id -> {"oid", "repo", "force"} of the cloud order whose session is opening
         self._cloud_after = {}        # oid -> its "opened" / "late" answer that came before add_agent answered
+        self._cloud_restart = set()   # oids whose "restart" answer (decided at start) was not said yet
         if cloud_orders_path:
             for oid, got in _cloud_orders_cut(cloud_orders_path, _cloud_orders_read(cloud_orders_path)).items():
                 answer = {"oid": oid, "state": "failed", "why": "restart"}   # no final answer: cut off by a restart
@@ -2868,6 +2875,8 @@ class CityState(_CloudTaps):
                     answer = {"oid": oid, "state": got[0]}
                     if got[1]:
                         answer["why"] = got[1]
+                else:
+                    self._cloud_restart.add(oid)
                 self._cloud_orders[oid] = answer
 
         # The sessions of the last run that still live are here again before
