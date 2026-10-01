@@ -1457,22 +1457,34 @@ class _CloudTaps:
                         busy += 1
         return {"people": people, "wait": wait, "busy": busy}
 
+    def cloud_world(self, identities):
+        """The world view (layout) of the territories IDENTITIES ALONE: layout()
+        of a world cut to them. layout() places by slot, so every place stays
+        where the local page has it, but the land, roads and tracks of a repo
+        that is not in IDENTITIES are not there (not its shape either). Built
+        under the lock (a private copy: layout() shares the live building
+        lists) and cached until the world changes; the result is shared, so
+        the caller copies it (cloud_clean does) and never changes it."""
+        keep = frozenset(identities)
+        with self.lock:
+            full = self._view()    # the cached full view: that object is the world's version
+            cache = getattr(self, "_cloud_world_cache", None)
+            if cache is None or cache[0] is not full:
+                cache = self._cloud_world_cache = (full, {})
+            view = cache[1].get(keep)
+            if view is None:
+                cut = dict(self.world)
+                cut["territories"] = {i: t for i, t in self.world["territories"].items() if i in keep}
+                cut["order"] = [i for i in self.world["order"] if i in cut["territories"]]
+                view = cache[1][keep] = json.loads(json.dumps(layout(cut, self.plans)))
+            return view
+
     def cloud_governors(self, identities):
         """The fresh governors (the snapshot's "governors" count) of the repos IDENTITIES only."""
         with self.lock:
             now = time.monotonic()
             return sum(1 for repo, g in self.governors.items()
                        if repo in identities and now - g["last_seen"] <= GOV_FRESH_SEC)
-
-
-def _cloud_world_filter(world, terrs):
-    """The world view with only the territories TERRS and the links between two of them."""
-    out = dict(world)
-    out["territories"] = [t for t in world.get("territories") or []
-                          if isinstance(t, dict) and t.get("id") in terrs]
-    out["links"] = [l for l in world.get("links") or []
-                    if isinstance(l, dict) and l.get("a") in terrs and l.get("b") in terrs]
-    return out
 
 
 def _cloud_sig(world):
@@ -1703,7 +1715,7 @@ class CloudUploader:
         out["shows"] = [s for s in snap.get("shows") or [] if isinstance(s, dict) and s.get("terr") in terrs]
         world = snap.get("world")
         if isinstance(world, dict):
-            world = _cloud_world_filter(world, terrs)
+            world = self.city.cloud_world(idents)   # the land of the joined territories alone
             out["world"] = world
         gov = snap.get("gov") if isinstance(snap.get("gov"), dict) else {}
         home = gov.get("terr")
@@ -1733,7 +1745,7 @@ class CloudUploader:
         out = []
         gov_changed = False
         for ev in raw:
-            ev = self._admit(st, terrs, rids, host, ev)
+            ev = self._admit(st, terrs, rids, host, idents, ev)
             if ev is None:
                 continue
             if ev.get("type") == "governors":
@@ -1755,8 +1767,7 @@ class CloudUploader:
                 out.append({"type": "governors", "count": count})
         return out
 
-    @staticmethod
-    def _admit(st, terrs, rids, host, ev):
+    def _admit(self, st, terrs, rids, host, idents, ev):
         """The event if it belongs to this relay's repos, else None. An event
         of a territory that is not joined, or of a person this picture does
         not know, never goes up (default deny)."""
@@ -1764,7 +1775,7 @@ class CloudUploader:
         if kind == "world":
             if not isinstance(ev.get("world"), dict):
                 return None
-            return dict(ev, world=_cloud_world_filter(ev["world"], terrs))
+            return dict(ev, world=self.city.cloud_world(idents))   # the joined territories' land alone
         if kind == "governors":
             return ev
         if kind == "team":

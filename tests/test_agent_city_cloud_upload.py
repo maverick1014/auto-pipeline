@@ -53,7 +53,13 @@ bin/agent_city.py  (its own block: "cloud-city")
   The uploader, while a joined relay says the cloud is on:
       - one picture per relay: only the territories, people, sites and events
         of repos JOINED to that relay. A repo that is not joined never leaves
-        the machine (as today).
+        the machine (as today): not its name, not its people, and not its LAND
+        either. The picture's world (in the snapshot and in every "world"
+        event) is the layout of the joined territories ALONE (layout() of a
+        world that holds only them: same slots, so same places), never the
+        full view with rows of a hidden territory left in. The page maps every
+        road tile to its territory by slot and breaks on a tile whose
+        territory is not in the picture.
       - a view = {"label": the hub's device label, "gen", "counts",
         "snap" (a new picture) and/or "events" (since the last view)}
         counts = {"people": people in the picture, "wait": those waiting for
@@ -539,6 +545,45 @@ class TestOnlyJoined(UploadCase):
         text = json.dumps(self.fake.sync_bodies())
         self.assertNotIn("private-zone", text)
         self.assertNotIn(hidden[0], json.dumps([v for _, v in self.fake.view_log]))
+
+
+    def hidden_land(self, world):
+        """The road / track tiles of WORLD that lie in no territory of it (the page finds a
+        tile's territory by slot: floor((x + 13) / 26), floor((z + 13) / 26))."""
+        slots = {tuple(t["slot"]) for t in world["territories"]}
+        bad = []
+        for r, row in enumerate(world["rows"]):
+            for c, tile in enumerate(row):
+                if tile in ("r", "t"):
+                    x, z = world["x0"] + c, world["z0"] + r
+                    if ((x + 13) // 26, (z + 13) // 26) not in slots:
+                        bad.append((x, z, tile))
+        return bad
+
+    def test_no_land_of_a_hidden_repo(self):
+        private = make_repo(self.base, name="private-zone", origin="git@github.com:Acme/Private.git")
+        self.up(snap_sec="0.5")
+        self.add(sid="s1")
+        self.add(private, sid="p1")
+        self.assertTrue(wait_for(lambda: self.health()["agents"] == 2))
+        self.assertTrue(wait_for(lambda: (self.last_snap() or {}).get("agents"), timeout=10))
+        local = self.local_snapshot()["world"]
+        self.assertEqual(len(local["territories"]), 2)
+        self.assertEqual(self.hidden_land(local), [], "the local view is whole (the check itself is right)")
+        # a build in each repo makes "world" events
+        self.add(sid="s1", tool="Edit", file="src/a.py")
+        self.add(private, sid="p1", tool="Edit", file="src/b.py")
+        self.assertTrue(wait_for(lambda: [m for m in self.all_events() if m.get("type") == "tool"], timeout=10))
+        time.sleep(1.0)
+        worlds = [one["world"] for _, v in list(self.fake.view_log) for one in v.get("snap") or []
+                  if one.get("type") == "snapshot"]
+        worlds += [m["world"] for m in self.all_events() if m.get("type") == "world"]
+        self.assertTrue(worlds)
+        for world in worlds:
+            self.assertEqual([t["name"] for t in world["territories"]], ["shop"])
+            self.assertEqual(self.hidden_land(world), [], "land of a repo that is not joined went up")
+            self.assertLess(world["w"] * world["h"], local["w"] * local["h"],
+                            "the picture's land is the joined territory alone, smaller than the machine's")
 
 
 class TestNothingPrivate(UploadCase):
