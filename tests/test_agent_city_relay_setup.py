@@ -94,8 +94,10 @@ class SetupCase(unittest.TestCase):
 
 class TestShape(SetupCase):
     def test_the_ten_headings_in_order(self):
+        # cloud-city-1 (2026-10-01): the cloud page's sections follow the ten relay ones
+        # (tests/test_agent_city_cloud_setup.py); the relay's ten stay first, in order.
         got = [l.strip() for l in self.text.splitlines() if l.startswith("## ")]
-        self.assertEqual(got, HEADINGS)
+        self.assertEqual(got[:10], HEADINGS)
 
     def test_every_section_has_numbered_steps_and_what_you_see(self):
         for heading in HEADINGS:

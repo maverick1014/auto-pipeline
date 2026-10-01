@@ -108,4 +108,61 @@ You should see: `JOINED: <repo id> -> <host>` on every member's machine again.
 3. Open D1 and delete the database you made in section 2.
 You should see: `LEFT: ...` on each machine, and neither the Worker nor the database listed any more.
 
-The relay runs on Cloudflare's free plan: 100,000 Worker requests a day, enough for many joined machines.
+## 11. Turn the cloud page on
+Optional. Do this only after sections 1 to 8 work. The cloud page is your city on Cloudflare, behind a login, to look at from a phone or any computer. It is view only: you cannot chat or answer from it. The local city on your Mac stays as it is, and works with Cloudflare down.
+1. On your Mac, in a terminal, copy the NEW relay code to the clipboard (the same command as section 2, step 5):
+   ```
+   cat "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city-relay.js" | pbcopy
+   ```
+2. In Cloudflare, click "Workers & Pages", then your relay Worker (the one from section 2), then "Edit code".
+3. Click inside the code, press Cmd+A, then Delete, then Cmd+V. Do NOT delete the file `worker.js` itself (see section 2, step 6).
+4. Click "Deploy" (or "Save and deploy").
+5. Open the Worker's "Settings", then "Variables and Secrets", then "Add".
+6. Set the type to "Text" (not "Secret"), the name to exactly `CITY_USER`, the value to your e-mail: the one you will log in with in section 13.
+7. Click "Deploy" (or "Save").
+You should see: `CITY_USER` listed under the Worker's variables, with your e-mail as its value. The team key and the machines that joined need no change.
+
+## 12. Deploy the cloud page
+1. Find the D1 database id: in Cloudflare, click "Storage & Databases" in the left menu, then "D1", then the database you made in section 2. Copy its "Database ID" (shape: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`; not a secret). The page reads this same database.
+2. On your Mac, in a terminal, run `node --version`. If it prints a version number, go on. If it says `command not found`, install Node.js from https://nodejs.org (the LTS version), then open a new terminal.
+3. Log in to Cloudflare from the terminal:
+   ```
+   npx wrangler login
+   ```
+   A browser opens; click "Allow". If `npx` asks "Ok to proceed?", type `y`. Type this yourself, in your own terminal: never in a chat with Claude or any agent, and never let an agent run it or the deploy for you.
+4. Deploy the page:
+   ```
+   bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" cloud-deploy
+   ```
+5. Paste the database id from step 1 when asked, press Enter. It remembers the id: the next time, press Enter to keep it. If the deploy says you are not logged in, do step 3 again, then run step 4 again.
+You should see: `wrangler` prints the page's address, shape `https://agent-city-page.<account subdomain>.workers.dev`. Open it: it answers "login required", and that is right. The page stays closed until the login is set up (section 13). After a plugin update, run step 4 again to put the new page code on Cloudflare.
+
+## 13. Set up the login
+1. In Cloudflare, click "Workers & Pages", then the new Worker `agent-city-page`.
+2. Open "Settings", then "Domains & Routes" (older dashboards: the "Domains" tab).
+3. Next to `workers.dev`, click "Enable Cloudflare Access", then "Manage Cloudflare Access". Cloudflare may ask you to pick the free Zero Trust plan, and may ask for a payment card for it: pick the free plan, it costs nothing.
+4. In the Access policy, allow only your own e-mail: the same one as `CITY_USER` in section 11. Nobody else may be listed.
+5. For the login method, use the one-time code sent by e-mail ("One-time PIN", on by default).
+6. Find your team name: open Zero Trust, then "Settings". The team domain looks like `<team name>.cloudflareaccess.com`; copy the part before `.cloudflareaccess.com`.
+7. Find the audience tag: in Zero Trust, open "Access", then "Applications", then the application for `agent-city-page`. Copy its "Application Audience (AUD) Tag".
+8. Back on the Worker `agent-city-page`, open "Settings", then "Variables and Secrets", then "Add". Set the type to "Text", the name to exactly `ACCESS_TEAM`, the value to the team name from step 6. Add another, type "Text", the name exactly `ACCESS_AUD`, the value to the tag from step 7.
+9. Click "Deploy" (or "Save"). Type these two values only here in the dashboard; the deploy never writes them to a file.
+10. Do NOT enable Cloudflare Access on the relay Worker: machines join without a browser (section 4), and a login in front of the relay would stop them.
+You should see: opening the page's address shows Cloudflare's login page asking for your e-mail, then a 6-digit code sent to that e-mail, then the city. If the page still says "login required" after you logged in, `ACCESS_TEAM` or `ACCESS_AUD` is wrong or missing: check both names and values in step 8.
+
+## 14. Check the cloud page
+1. Nothing has to be typed on the machines. On a machine that joined (section 6), the city starts by itself when a Claude session starts, so there is no need to type `agent-city start`.
+2. Start (or go on with) a Claude session in a repo you joined (section 6). Wait about a minute.
+3. In a terminal, inside that repo, run (the same command as section 8, step 2):
+   ```
+   bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" status
+   ```
+4. Open the page's address on your phone and log in with the e-mail code (section 13).
+You should see: `CLOUD: on <relay host>` from step 3 (`CLOUD: off` means the relay has no `CITY_USER` (section 11), or the session has not started yet: start a new one), and on the phone a machine row on top and the city under it, view only: 只能看, no chat box, no buttons. The notices say what is missing: 还没有机器 = no machine has sent a picture yet (wait a minute more; check step 3); 这台机器现在没有会话 = that machine has no session right now; 没有机器在线 = no machine is online, with how long ago the last picture came (the picture stays); a notice that the login is lost = open the address again and log in again. Only repos that joined (section 6) show up; a repo that did not join never leaves its machine.
+
+## 15. Turn the cloud page off
+1. In Cloudflare, open the relay Worker, then "Settings", then "Variables and Secrets". Delete `CITY_USER`, then "Deploy". The machines stop sending pictures; after the next Claude session on a machine, `status` says `CLOUD: off` there.
+2. Open "Workers & Pages", then the Worker `agent-city-page`, then "Settings"; at the bottom, delete the Worker. If Zero Trust still lists an Access application for it ("Access", then "Applications"), delete that too.
+You should see: `CITY_USER` no longer listed on the relay, the page's address no longer opens, and `CLOUD: off` from `status` after the next session. The relay and the local city go on as before.
+
+Cloudflare's free plan allows 100,000 Worker requests and 100,000 D1 rows written a day. A heavy day (3 machines, 6 busy hours each, the page open 8 hours) uses about 36,000 requests and about 66,000 written rows, about four fifths of those rows by the relay's lines as before.
