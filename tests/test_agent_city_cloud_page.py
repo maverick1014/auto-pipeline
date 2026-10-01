@@ -37,12 +37,32 @@ the parallel work on the rail does not meet it.
         else the first one (the feed lists the newest first), else ''.
     cloudFeedUrl(cur) -> '/api/feed' plus ?dev=&gen=&after= from cur
         {dev, gen, after}; the dev is URI-encoded; a cur without a dev -> '/api/feed'.
-    cloudStep(cur, feed) -> {cur, apply}: the next cursor {dev, gen, after}
-        (from the feed) and the messages to hand to apply(), in order: the
-        feed's snap (when there is one), then its events. A snap that holds no
-        remote_snapshot message gets one empty remote_snapshot right after its
-        snapshot message ({type:'remote_snapshot', me:{}, people:[], govs:[],
-        teams:[]}), so guests of the machine shown before never stay.
+    cloudStep(cur, feed, known) -> {cur, apply}: the next cursor {dev, gen,
+        after} (from the feed) and the messages to hand to apply(), in order:
+        the feed's snap (when there is one), then its events. A snap that holds
+        no remote_snapshot message gets one empty remote_snapshot right after
+        its snapshot message ({type:'remote_snapshot', me:{}, people:[],
+        govs:[], teams:[]}), so guests of the machine shown before never stay.
+        A NEW PICTURE MUST ALSO MOVE THE PEOPLE ALREADY DRAWN (bounce 1,
+        2026-10-01: the page's own snapshot case only places people it does
+        not have yet; a machine sends a new picture about once a minute, and a
+        change that falls into it comes with no event). KNOWN = the people the
+        page shows now, [{id, status, done, stuck, label}] (status: 'waiting' |
+        'background' | 'idle' | ''); missing or empty = nothing to catch up.
+        For every agent of the snapshot that is in KNOWN and differs, catch-up
+        events follow the snapshot (and its remote_snapshot), before the
+        feed's events, per person in this order:
+          label differs            {type:'label', id, label, terr}
+          stuck false -> true      {type:'stuck', id, question:'', tool:''}
+          stuck true -> false      {type:'answer', id, ok:true}
+          status differs           {type: 'waiting' | 'background' | 'idle', id},
+                                   or {type:'resume', id} when it is '' now
+                                   (an agent without "status": 'waiting' when
+                                   its "waiting" is true, else '')
+          done false -> true       {type:'done', id}
+        Nothing differs -> no catch-up event (no log line is made up).
+    cloudKnown() (in the script block, not pure) -> that list from the page's
+        own people; connectCloud calls cloudStep(cur, feed, cloudKnown()).
     cloudAge(ms) -> a short text: under 10 s 刚刚 / just now; then N 秒前,
         N 分钟前, N 小时前, N 天前 (N s ago, N min ago, N h ago, N d ago).
     cloudStale(dev, now) -> true when now - dev.ts is over CLOUD_STALE_MS.
@@ -133,6 +153,13 @@ class TestFeedLoop(unittest.TestCase):
         self.assertIn("CLOUD_POLL_MS", src)
         self.assertIn("apply(", src)
         self.assertIn("cloudStep(", src)
+
+    def test_a_new_picture_reaches_the_people_already_drawn(self):
+        src = fn(self, "connectCloud")
+        self.assertIn("cloudStep(cur, feed, cloudKnown())", src)
+        known = fn(self, "cloudKnown")
+        for word in ("citizens", "waiting", "bgrun", "idle", "doneFlag", "stuck", "label"):
+            self.assertIn(word, known, "cloudKnown() reads %s of the page's people" % word)
 
     def test_no_request_while_hidden(self):
         text = script()
@@ -280,6 +307,82 @@ class TestPure(unittest.TestCase):
                                               "snap": [snap, guests], "events": []}]]])[0]
         self.assertEqual(out["apply"], [snap, guests])
         self.assertEqual(out["cur"], {"dev": "mac", "gen": 1, "after": 0})
+
+    EMPTY = {"type": "remote_snapshot", "me": {}, "people": [], "govs": [], "teams": []}
+
+    def agent(self, pid="s:1", label="one", status="", done=False, stuck=False, terr="t1"):
+        return {"id": pid, "role": "task-manager", "label": label, "task": "", "stuck": stuck,
+                "waiting": status == "waiting", "done": done, "status": status, "tools": {}, "terr": terr}
+
+    def known(self, pid="s:1", label="one", status="", done=False, stuck=False):
+        return {"id": pid, "label": label, "status": status, "done": done, "stuck": stuck}
+
+    def picture(self, gen, *agents, events=()):
+        return {"dev": "mac", "gen": gen, "after": 0,
+                "snap": [{"type": "snapshot", "agents": list(agents)}], "events": list(events)}
+
+    def test_two_pictures_in_a_row_no_events(self):
+        # bounce 1: the change is INSIDE the new picture, no event comes with it
+        cur = {"dev": "mac", "gen": 1, "after": 3}
+        waiting = self.picture(2, self.agent(status="waiting"))
+        busy = self.picture(3, self.agent(status=""))
+        out = self.run_calls([
+            ["cloudStep", [cur, waiting, [self.known(status="")]]],
+            ["cloudStep", [{"dev": "mac", "gen": 2, "after": 0}, busy, [self.known(status="waiting")]]],
+        ])
+        self.assertEqual(out[0]["apply"], [waiting["snap"][0], self.EMPTY, {"type": "waiting", "id": "s:1"}])
+        self.assertEqual(out[0]["cur"], {"dev": "mac", "gen": 2, "after": 0})
+        self.assertEqual(out[1]["apply"], [busy["snap"][0], self.EMPTY, {"type": "resume", "id": "s:1"}])
+
+    def test_catch_up_every_kind_of_change(self):
+        cases = [
+            (self.agent(status="background"), self.known(status=""), [{"type": "background", "id": "s:1"}]),
+            (self.agent(status="idle"), self.known(status="waiting"), [{"type": "idle", "id": "s:1"}]),
+            (self.agent(label="cloud-city-1 Task Manager"), self.known(label="task-manager"),
+             [{"type": "label", "id": "s:1", "label": "cloud-city-1 Task Manager", "terr": "t1"}]),
+            (self.agent(stuck=True), self.known(), [{"type": "stuck", "id": "s:1", "question": "", "tool": ""}]),
+            (self.agent(stuck=False), self.known(stuck=True), [{"type": "answer", "id": "s:1", "ok": True}]),
+            (self.agent(done=True), self.known(), [{"type": "done", "id": "s:1"}]),
+            (self.agent(label="new", status="waiting", done=True), self.known(label="old"),
+             [{"type": "label", "id": "s:1", "label": "new", "terr": "t1"},
+              {"type": "waiting", "id": "s:1"}, {"type": "done", "id": "s:1"}]),
+        ]
+        cur = {"dev": "mac", "gen": 1, "after": 0}
+        out = self.run_calls([["cloudStep", [cur, self.picture(2, a), [k]]] for a, k, _ in cases])
+        for (a, k, want), got in zip(cases, out):
+            self.assertEqual(got["apply"][2:], want, (a, k))
+
+    def test_no_change_no_catch_up(self):
+        cur = {"dev": "mac", "gen": 1, "after": 0}
+        same = self.picture(2, self.agent(status="waiting", stuck=True, done=False, label="one"))
+        new_person = self.picture(2, self.agent(pid="s:2", status="waiting"))
+        old_server = self.picture(2, {"id": "s:1", "label": "one", "waiting": True, "done": False,
+                                      "stuck": False, "terr": "t1"})
+        out = self.run_calls([
+            ["cloudStep", [cur, same, [self.known(status="waiting", stuck=True)]]],
+            ["cloudStep", [cur, new_person, [self.known()]]],        # s:2 is placed by the snapshot itself
+            ["cloudStep", [cur, same, []]],
+            ["cloudStep", [cur, same]],                              # no third argument: as before
+            ["cloudStep", [cur, old_server, [self.known(status="")]]],
+        ])
+        for got in out[:4]:
+            self.assertEqual(len(got["apply"]), 2, got["apply"])
+        self.assertEqual(out[4]["apply"][2:], [{"type": "waiting", "id": "s:1"}],
+                         "an agent without a status field: its waiting flag decides")
+
+    def test_catch_up_comes_before_the_feeds_events(self):
+        cur = {"dev": "mac", "gen": 1, "after": 0}
+        later = {"type": "tool", "id": "s:1", "tool": "Bash", "name": "Bash"}
+        feed = self.picture(2, self.agent(status="waiting"), events=[later])
+        out = self.run_calls([["cloudStep", [cur, feed, [self.known()]]]])[0]
+        self.assertEqual(out["apply"][2:], [{"type": "waiting", "id": "s:1"}, later])
+
+    def test_events_without_a_picture_need_no_catch_up(self):
+        e = {"type": "waiting", "id": "s:1"}
+        out = self.run_calls([["cloudStep", [{"dev": "mac", "gen": 1, "after": 2},
+                                             {"dev": "mac", "gen": 1, "after": 3, "events": [e]},
+                                             [self.known(status="")]]]])[0]
+        self.assertEqual(out["apply"], [e])
 
     def test_step_events_only(self):
         e3 = {"type": "waiting", "id": "s:1"}

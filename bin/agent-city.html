@@ -7510,10 +7510,15 @@ function cloudFeedUrl(cur) {
   const n = v => Math.max(0, Math.floor(Number(v) || 0));
   return '/api/feed?dev=' + encodeURIComponent(cur.dev) + '&gen=' + n(cur.gen) + '&after=' + n(cur.after);
 }
-/* cloudStep(cur, feed) -> { cur, apply }: the next cursor (from the feed) and the messages to hand to apply(),
-   in order: the feed's snap, then its events. A snap with no remote_snapshot message gets one empty one right
-   after its snapshot message, so the guests of the machine shown before never stay. */
-function cloudStep(cur, feed) {
+/* cloudStep(cur, feed, known) -> { cur, apply }: the next cursor (from the feed) and the messages to hand to
+   apply(), in order: the feed's snap, then catch-up events, then the feed's events. A snap with no
+   remote_snapshot message gets one empty one right after its snapshot message, so the guests of the machine
+   shown before never stay. The page's own snapshot case only places people it does not have yet, and a
+   machine's new picture carries a change with no event; so for every agent of the snapshot that KNOWN (the
+   people the page shows now: [{id, status, done, stuck, label}]) already holds and that differs, the events
+   the page's own handlers know follow the snap, per person: label, stuck / answer, status, done. KNOWN missing
+   or empty -> nothing to catch up. */
+function cloudStep(cur, feed, known) {
   const c = cur || {}, f = feed || {};
   const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
   const next = { dev: typeof f.dev === 'string' ? f.dev : (c.dev || ''), gen: num(f.gen, c.gen || 0), after: num(f.after, c.after || 0) };
@@ -7528,6 +7533,22 @@ function cloudStep(cur, feed) {
       if (!put && m && m.type === 'snapshot') { out.push(none()); put = true; }
     }
     if (!put) out.push(none());
+    const have = new Map();
+    for (const k of Array.isArray(known) ? known : []) if (k && k.id !== undefined) have.set(k.id, k);
+    if (have.size) for (const m of snap) {
+      if (!m || m.type !== 'snapshot') continue;
+      for (const a of Array.isArray(m.agents) ? m.agents : []) {
+        const k = a && have.get(a.id);
+        if (!k) continue;
+        if (a.label && a.label !== k.label) out.push({ type: 'label', id: a.id, label: a.label, terr: a.terr });
+        if (a.stuck && !k.stuck) out.push({ type: 'stuck', id: a.id, question: '', tool: '' });
+        else if (!a.stuck && k.stuck) out.push({ type: 'answer', id: a.id, ok: true });
+        const raw = typeof a.status === 'string' ? a.status : (a.waiting ? 'waiting' : '');
+        const st = raw === 'waiting' || raw === 'background' || raw === 'idle' ? raw : '';
+        if (st !== (k.status || '')) out.push(st ? { type: st, id: a.id } : { type: 'resume', id: a.id });
+        if (a.done && !k.done) out.push({ type: 'done', id: a.id });
+      }
+    }
   }
   for (const e of Array.isArray(f.events) ? f.events : []) out.push(e);
   return { cur: next, apply: out };
@@ -7586,6 +7607,17 @@ function cloudSetup() {
   }, true);
   // the cloud keeps no conversation: a person's window shows its activity lines (as if the steps were on)
   new MutationObserver(cloudHistory).observe($('#detail'), { childList: true, subtree: true });
+}
+/* cloudKnown() -> the people this page draws now (its own, never the guests), for cloudStep()'s catch-up:
+   [{id, status, done, stuck, label}], status = 'waiting' | 'background' | 'idle' | '' as the page holds it */
+function cloudKnown() {
+  return citizens.filter(c => !c.remote).map(c => ({
+    id: c.id,
+    status: c.waiting ? 'waiting' : c.bgrun ? 'background' : c.idle ? 'idle' : '',
+    done: !!c.doneFlag,
+    stuck: !!c.stuck,
+    label: c.label,
+  }));
 }
 /* the history under the person's head: activity lines and question cards, written again when they change */
 function cloudHistory() {
@@ -7684,7 +7716,7 @@ function connectCloud() {
       .then(feed => {
         if (!feed || mine !== epoch) return;
         if (feed.ok === false) throw new Error('feed');
-        const step = cloudStep(cur, feed);
+        const step = cloudStep(cur, feed, cloudKnown());
         for (const ev of step.apply) { try { apply(ev); } catch (err) { console.error(err); } }
         cur = step.cur;
         needFrame = true;

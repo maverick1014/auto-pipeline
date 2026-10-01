@@ -41,7 +41,8 @@ bin/agent_city.py  (its own block: "cloud-city")
       - a type in CLOUD_DROP, an unknown type, not a dict -> None
       - tool: no "file" key
       - stuck: "question" is ""
-      - snapshot: "asks" is [], no "notice"; its world cleaned as below
+      - snapshot: "asks" is [], no "notice", no "adding" (the sessions the
+        local add-agent button is opening); its world cleaned as below
       - world (and a snapshot's world): every territory without "balance" and
         "rules_note"; every building with "files": [], "hist": [], "name": ""
       - build: "files": [], "name": ""
@@ -214,10 +215,12 @@ class TestClean(unittest.TestCase):
                             "task": "", "stuck": False, "waiting": True, "done": False, "status": "waiting",
                             "tools": {"Edit": 2}, "terr": "t1", "relay": None, "lead": "", "office": None}],
                 "asks": [{"id": "q1", "what": "rm -rf " + MARK, "questions": [MARK]}],
-                "governors": 1, "shows": [], "world": self.world(), "notice": "note " + MARK}
+                "governors": 1, "shows": [], "world": self.world(), "notice": "note " + MARK,
+                "adding": [{"terr": "t1", "name": "shop Manager " + MARK}]}
         out = self.clean(snap)
         self.assertEqual(out["asks"], [])
         self.assertNotIn("notice", out)
+        self.assertNotIn("adding", out, "the add-agent button's state never goes up, also not in a picture")
         self.assertEqual(out["agents"], snap["agents"], "people keep their name and state")
         self.assertEqual((out["gov"], out["govs"], out["governors"]), (snap["gov"], snap["govs"], 1))
         self.check_world(out["world"])

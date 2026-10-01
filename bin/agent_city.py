@@ -1367,6 +1367,7 @@ def cloud_clean(msg):
     elif kind == "snapshot":
         out["asks"] = []
         out.pop("notice", None)
+        out.pop("adding", None)
         _cloud_world_clean(out.get("world"))
     elif kind == "world":
         out.pop("notice", None)
