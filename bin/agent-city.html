@@ -571,6 +571,8 @@ const TOKEN = (() => { const m = $('meta[name="city-token"]'); return m ? m.cont
 const CLOUD = '__CITY_CLOUD__' === '1';
 const CLOUD_POLL_MS = 3000;
 const CLOUD_STALE_MS = 150000;
+const CLOUD_SEND_TRIES = 3;
+const CLOUD_RETRY_MS = 1000;
 /* the cloud page's live state, in one place the chat code (above the cloud script) can reach: feed = the last
    feed answer (the machine shown, its talk flag, the server's clock), open = the window the last request
    carried, poke = ask the feed at once (set by connectCloud) */
@@ -6824,7 +6826,10 @@ function loadChat(to){
    non-ok status); demo always resolves true.
    cloud-city-2: on the cloud page the message goes to the City Worker, {dev: the machine shown, to, text, cid},
    with this page's own header (no token here); the entry shows at once (mine, state 'sent', id = cid) and the
-   feed takes it over (cloudChatMerge). Too many sends (429) is one line under the box (box.fast); any other
+   feed takes it over (cloudChatMerge). A request that gets no answer (the network failed, or a 5xx) is sent
+   again with the SAME cid, CLOUD_SEND_TRIES requests in all, a little later each time: the Worker may have
+   stored the first one, and it keeps one message per cid, so a retry never delivers twice. An answer that
+   refuses (429, any 4xx) is not retried. Too many sends (429) is one line under the box (box.fast); any other
    failure is the send error above it; either way the entry goes and the text stays in the box (false). */
 function sendChat(to, text){
   if (DEMO) { demoSendChat(to, text); return Promise.resolve(true); }
@@ -6844,8 +6849,15 @@ function sendChat(to, text){
       renderPanel();
       return false;
     };
-    return fetch('/api/chat/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-City-Page': '1' }, body: JSON.stringify({ dev, to, text, cid }) })
-      .then(r => r.json().catch(() => ({})).then(body => {
+    // try n of CLOUD_SEND_TRIES: no answer (null) waits a little and sends the same cid again
+    const attempt = n => fetch('/api/chat/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-City-Page': '1' }, body: JSON.stringify({ dev, to, text, cid }) })
+      .then(r => (r.status >= 500 ? null : r.json().catch(() => ({})).then(body => ({ r, body }))), () => null)
+      .then(got => {
+        if (!got) {
+          if (n >= CLOUD_SEND_TRIES) return fail('error', i18n('chat.sendError'));
+          return new Promise(done => setTimeout(done, CLOUD_RETRY_MS * n)).then(() => attempt(n + 1));
+        }
+        const { r, body } = got;
         if (r.status === 429) return fail('fast', i18n(body.error === 'too many today' ? 'cloud.tooMany' : 'cloud.tooFast'));
         if (!r.ok) return fail('error', i18n('chat.sendError'));
         // the Worker's word: 'sent', or 'undelivered' with its reason at once (that computer is off, or takes no cloud messages)
@@ -6854,8 +6866,8 @@ function sendChat(to, text){
         chats.set(to, box);
         renderPanel();
         return true;
-      }))
-      .catch(() => fail('error', i18n('chat.sendError')));
+      });
+    return attempt(1).catch(() => fail('error', i18n('chat.sendError')));
   }
   return fetch('/api/chat/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-City-Token': TOKEN }, body: JSON.stringify({ to, text }) })
     .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
