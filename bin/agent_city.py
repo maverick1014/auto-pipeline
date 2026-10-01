@@ -1820,6 +1820,15 @@ class CloudUploader:
     def bind(self, hub):
         self.hub = hub
 
+    def cloud_on(self, now=None):
+        # cloud-city-2: True while a relay the hub still asks about said the
+        # cloud page is on (the marker file counts until it answers, as in
+        # _host). A relay not asked for CLOUD_FORGET_SEC (its repos were
+        # unjoined) does not count. Short read of this lock, no network.
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            return any(st["on"] and now - st["seen"] <= CLOUD_FORGET_SEC for st in self._hosts.values())
+
     # -- the hub's side --------------------------------------------------
 
     def take(self, host, rids, now):
@@ -3073,6 +3082,16 @@ class CityState(_CloudTaps):
                 "label": "" if governor else info["label"], "task": "" if governor else info["task"]})
         entries.sort(key=lambda e: e["sid"])
         return entries
+
+    def live_session_repos(self):
+        """cloud-city-2: the repos (the roster's "repo": the git common dir,
+        "" for a session with none) of the sessions the roster holds whose
+        process is alive now, the check _restore_roster_locked makes; sorted,
+        each once, [] when no session lives. A short read under the lock;
+        the pid checks run after it is let go."""
+        with self.lock:
+            rows = [(e["pid"], e["repo"]) for e in self._roster_entries_locked()]
+        return sorted({repo for pid, repo in rows if _pid_state(pid) is True})
 
     def _save_roster_locked(self):
         """Caller holds self.lock. Writes roster.json only when what it lists
@@ -4578,6 +4597,12 @@ class CityState(_CloudTaps):
             self._chat_busy[to] = False
             self._chat_stop_at[to] = time.monotonic()
             self.cond.notify_all()
+        elif ev_name == "RosterRestore":
+            # cloud-city-2: a session brought back at start. Its watcher, if it
+            # has one, finds the new server within a few seconds (_watch_poll),
+            # so a message that comes first is held for the listen grace, as
+            # after a Stop, and not refused as "not-listening".
+            self._chat_stop_at[to] = time.monotonic()
 
     def _chat_note_terr_locked(self, to, terr):
         """cloud-city-2. Caller holds self.lock. A session's page and the
@@ -5277,8 +5302,10 @@ def _read_available(fh, offset, buf, city, hub=None):
 
 
 def tail_loop(directory, city, max_log_bytes, stop_event, request_shutdown,
-              idle_seconds, initial_skip, hub=None):
-    """Watch DIR/events.jsonl, feed new lines to the city, rotate when big."""
+              idle_seconds, initial_skip, hub=None, keep_up=None):
+    """Watch DIR/events.jsonl, feed new lines to the city, rotate when big.
+    KEEP_UP (cloud-city-2): a function that says true while the idle stop must
+    not happen (the cloud page is on and a live session is in the roster)."""
     log_path = os.path.join(directory, "events.jsonl")
     rotated_path = log_path + ".1"
     fh = None
@@ -5288,8 +5315,9 @@ def tail_loop(directory, city, max_log_bytes, stop_event, request_shutdown,
 
     while not stop_event.is_set():
         if city.client_count() == 0 and time.monotonic() - city.idle_since >= idle_seconds:
-            request_shutdown()
-            return
+            if keep_up is None or not keep_up():  # cloud-city-2
+                request_shutdown()
+                return
 
         if fh is None:
             try:
@@ -5859,6 +5887,22 @@ def cmd_serve(args):
                         cloud_file=uploader.cloud_file, view_source=uploader,
                         talk_file=cloud_talk_path())  # cloud-city, cloud-city-2
     uploader.bind(hub)  # cloud-city
+    # cloud-city-2: the sessions the roster brought back are known to the hub
+    # at once, with no line sent, so its first syncs carry the picture and talk
+    # (a roster with no live session seeds nothing, a repo not joined is skipped).
+    try:
+        for repo in city.live_session_repos():
+            if repo:
+                hub.seed(os.path.dirname(repo))
+    except Exception as exc:
+        print("agent_city: could not seed the hub from the roster: %s" % exc, file=sys.stderr)
+
+    def stay_up():  # cloud-city-2: no idle stop while the cloud page is on and a session lives
+        try:
+            return uploader.cloud_on() and bool(city.live_session_repos())
+        except Exception:
+            return False
+
     remote = RemoteCity(hub, remote_ttl_sec=args.remote_ttl_sec)
     city.remote = remote
     server = ThreadingHTTPServer(("127.0.0.1", args.port), CityHandler)
@@ -5890,7 +5934,7 @@ def cmd_serve(args):
     tail = threading.Thread(
         target=tail_loop,
         args=(directory, city, max_log_bytes, stop_event, request_shutdown,
-              idle_seconds, initial_skip, hub),
+              idle_seconds, initial_skip, hub, stay_up),  # cloud-city-2: stay_up
         daemon=True,
     )
     tail.start()
@@ -6214,6 +6258,40 @@ def _print_governor_question(ask):
     sys.stderr.flush()
 
 
+WATCH_RETRY_SEC = 2.0   # cloud-city-2: a watcher whose server is gone looks again this often
+WATCH_STEP_SEC = 0.25   # cloud-city-2: ... sleeping in steps this short, so a gone parent is noticed
+
+
+def _watch_poll(directory, endpoint, path_for, deadline, start_ppid):
+    """cloud-city-2: one poll of chat-watch and gov-watch, kept in one place.
+    ENDPOINT is [port, token], changed in place when the server came back with
+    a new port and token. PATH_FOR(chunk) is the request path for a poll of
+    CHUNK seconds. -> (200, the answer) of a server, or None when the watcher
+    ends quietly: the max wait (DEADLINE, monotonic) is over or the parent
+    process is not START_PPID any more. A server that is gone (no endpoint,
+    no answer, a status that is not 200: a new server has a new token) does
+    not end it: wait about WATCH_RETRY_SEC, read the endpoint again, ask again."""
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or os.getppid() != start_ppid:
+            return None
+        chunk = min(5.0, remaining)
+        if endpoint[0] is not None:
+            result = _http_json(endpoint[0], "GET", path_for(chunk), token=endpoint[1], timeout=chunk + 10.0)
+            if result is not None and result[0] == 200:
+                return result
+        end = min(time.monotonic() + WATCH_RETRY_SEC, deadline)
+        while True:
+            left = end - time.monotonic()
+            if left <= 0:
+                break
+            time.sleep(min(WATCH_STEP_SEC, left))
+            if os.getppid() != start_ppid:
+                return None
+        fresh = _city_endpoint(directory)
+        endpoint[:] = fresh if fresh is not None else (None, None)
+
+
 def cmd_gov_watch(args):
     try:
         return _cmd_gov_watch_impl(args)
@@ -6235,10 +6313,11 @@ def _cmd_gov_watch_impl(args):
     if not isinstance(payload, dict):
         return 0
 
-    endpoint = _city_endpoint(_city_dir())
+    directory = _city_dir()
+    endpoint = _city_endpoint(directory)
     if endpoint is None:
         return 0
-    port, token = endpoint
+    endpoint = list(endpoint)   # cloud-city-2: [port, token], read again by _watch_poll when the server goes
 
     cwd = payload.get("cwd") or os.getcwd()
     repo = _repo_id(cwd)
@@ -6254,23 +6333,19 @@ def _cmd_gov_watch_impl(args):
     pid = claude_pid if claude_pid.isascii() and claude_pid.isdigit() else str(start_ppid)
     deadline = time.monotonic() + args.max_wait_sec
     own_messages = False   # "not-main": wait for this session's own messages
-    while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return 0
-        if os.getppid() != start_ppid:
-            return 0
-        chunk = min(5.0, remaining)
+
+    def path_for(chunk):
         if own_messages:
-            path = "/api/chat/next?sid=%s&watcher=%s&timeout=%s" % (quote(sid, safe=""), watcher, chunk)
-        else:
-            path = "/api/gov/next?sid=%s&repo=%s&watcher=%s&timeout=%s&pid=%s" % (
-                quote(sid, safe=""), quote(repo, safe=""), watcher, chunk, quote(pid, safe=""))
-        result = _http_json(port, "GET", path, token=token, timeout=chunk + 10.0)
+            return "/api/chat/next?sid=%s&watcher=%s&timeout=%s" % (quote(sid, safe=""), watcher, chunk)
+        return "/api/gov/next?sid=%s&repo=%s&watcher=%s&timeout=%s&pid=%s" % (
+            quote(sid, safe=""), quote(repo, safe=""), watcher, chunk, quote(pid, safe=""))
+
+    while True:
+        result = _watch_poll(directory, endpoint, path_for, deadline, start_ppid)  # cloud-city-2
         if result is None:
             return 0
         status, out = result
-        if status != 200 or not isinstance(out, dict):
+        if not isinstance(out, dict):
             return 0
         state = out.get("state")
         if state == "none":
@@ -6323,29 +6398,27 @@ def _cmd_chat_watch_impl(args):
     if not isinstance(payload, dict):
         return 0
 
-    endpoint = _city_endpoint(_city_dir())
+    directory = _city_dir()
+    endpoint = _city_endpoint(directory)
     if endpoint is None:
         return 0
-    port, token = endpoint
+    endpoint = list(endpoint)   # cloud-city-2: [port, token], read again by _watch_poll when the server goes
 
     sid = payload.get("session_id") or ""
     watcher = uuid.uuid4().hex
 
     start_ppid = os.getppid()
     deadline = time.monotonic() + args.max_wait_sec
+
+    def path_for(chunk):
+        return "/api/chat/next?sid=%s&watcher=%s&timeout=%s" % (quote(sid, safe=""), watcher, chunk)
+
     while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return 0
-        if os.getppid() != start_ppid:
-            return 0
-        chunk = min(5.0, remaining)
-        path = "/api/chat/next?sid=%s&watcher=%s&timeout=%s" % (quote(sid, safe=""), watcher, chunk)
-        result = _http_json(port, "GET", path, token=token, timeout=chunk + 10.0)
+        result = _watch_poll(directory, endpoint, path_for, deadline, start_ppid)  # cloud-city-2
         if result is None:
             return 0
         status, out = result
-        if status != 200 or not isinstance(out, dict):
+        if not isinstance(out, dict):
             return 0
         state = out.get("state")
         if state == "none":

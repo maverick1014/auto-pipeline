@@ -732,6 +732,15 @@ class RelayHub:
             self._who = ids.get("who") or ""
             self._who_set = True
 
+    def seed(self, repo):
+        # cloud-city-2: the hub knows REPO (the repo's own folder, not its
+        # .git) as a joined repo with no line sent: what a first hook line of
+        # that repo does (offer()), minus the line. Used at start for the
+        # repos of the sessions the roster brought back, so the first syncs
+        # carry the picture and talk. A repo that is not joined: nothing.
+        with self._lock:
+            self._seed_team(repo)
+
     def offer(self, line):
         if not isinstance(line, dict):
             return False
