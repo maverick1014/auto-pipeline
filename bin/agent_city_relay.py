@@ -342,11 +342,18 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 _OPENER = urllib.request.build_opener(_NoRedirect)
 
 
-def sync(address, key, dev, after, lines, timeout=10.0):
-    """POST <address>/v1/sync. ("ok", {"seq", "lines"}) | ("refused", None)
-    | ("down", None)."""
+def sync(address, key, dev, after, lines, timeout=10.0, view=None):
+    """POST <address>/v1/sync. ("ok", {"seq", "lines", "city", "gen"}) |
+    ("refused", None) | ("down", None).
+
+    cloud-city-1: view (a dict) rides in the body as "view", only when given.
+    The ok data's "city" is True only when the reply says "city": true (an
+    old relay says nothing: False); "gen" is the reply's gen, else 0."""
     url = address.rstrip("/") + "/v1/sync"
-    payload = json.dumps({"dev": dev, "after": after, "lines": lines}).encode("utf-8")
+    body = {"dev": dev, "after": after, "lines": lines}
+    if view is not None:
+        body["view"] = view
+    payload = json.dumps(body).encode("utf-8")
     req = urllib.request.Request(
         url, data=payload, method="POST",
         headers={"Authorization": "Bearer " + key, "Content-Type": "application/json",
@@ -365,8 +372,61 @@ def sync(address, key, dev, after, lines, timeout=10.0):
     except (ValueError, UnicodeDecodeError):
         return ("down", None)
     if isinstance(data, dict) and data.get("ok") is True:
-        return ("ok", {"seq": data.get("seq"), "lines": data.get("lines") or []})
+        gen = data.get("gen")
+        if isinstance(gen, bool) or not isinstance(gen, int):
+            gen = 0
+        return ("ok", {"seq": data.get("seq"), "lines": data.get("lines") or [],
+                       "city": data.get("city") is True, "gen": gen})
     return ("down", None)
+
+
+# ------------------------------------------------------ cloud marker (cloud-city)
+
+def read_cloud(path):
+    """cloud-city-1: the sorted relay hosts in the marker file at path (one
+    host per line, hosts only, never a key). Missing or broken file -> []."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            text = fh.read()
+    except (OSError, ValueError):
+        return []
+    hosts = set()
+    for raw_line in text.splitlines():
+        host = raw_line.strip()
+        if host and not host.startswith("#") and not any(ch.isspace() for ch in host):
+            hosts.add(host)
+    return sorted(hosts)
+
+
+_CLOUD_LOCK = threading.Lock()
+
+
+def set_cloud(path, host, on):
+    """cloud-city-1: add (on) or remove HOST in the marker file at path,
+    written whole (a temp file, then os.replace); the file is removed when
+    the last host goes. Hosts only. Never raises."""
+    try:
+        with _CLOUD_LOCK:
+            _set_cloud(path, host, on)
+    except OSError:
+        pass
+
+
+def _set_cloud(path, host, on):
+    hosts = set(read_cloud(path))
+    if (host in hosts) == bool(on) and (hosts or not os.path.exists(path)):
+        return      # already as asked
+    if on:
+        hosts.add(host)
+    else:
+        hosts.discard(host)
+    if not hosts:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return
+    _write_lines_atomic(path, sorted(hosts))
 
 
 # -------------------------------------------------------------------- ids
@@ -428,6 +488,7 @@ class _Team:
         self.key = key
         self.outbox = Outbox(cap=cap)
         self.rids = set()
+        self.repos = set()      # cloud-city: real paths of the joined repos seen (offer / joined list)
         self.join_paths = set()
         self.after = 0
         self.last_sync = None
@@ -449,7 +510,7 @@ class RelayHub:
 
     def __init__(self, relay_sec=5.0, dev_id=None, label=None, cap=OUTBOX_CAP,
                  join_ttl=30.0, timeout=10.0, env_join=None, send_only=False,
-                 joined_list=None):
+                 joined_list=None, cloud_file=None, view_source=None):
         self.relay_sec = relay_sec
         self.dev_id = dev_id or _default_dev_id()
         self.label = label or _default_label()
@@ -466,6 +527,13 @@ class RelayHub:
         # this machine has joined; tick() seeds a team per listed repo, no
         # offer() (no local line) needed. None -> today's behaviour.
         self.joined_list = joined_list
+        # cloud-city-1: cloud_file = the marker (read_cloud / set_cloud) this
+        # hub keeps after every ANSWERED sync of a team. view_source = an
+        # object with take(host, rids, now) -> a view dict or None, and
+        # sent(host, data, now) (data = the ok data, or None when the relay
+        # was down or refused); both are called with the hub's lock released.
+        self.cloud_file = cloud_file
+        self.view_source = view_source
         self._teams = {}
         self._join_cache = {}
         self._ids_cache = {}
@@ -569,6 +637,7 @@ class RelayHub:
             self._teams[key] = team
         team.rids.add(rid)
         team.join_paths.add(join_path)
+        team.repos.add(os.path.realpath(common))
         self._repo_by_rid[rid] = os.path.realpath(common)
         if not self._who_set:
             self._who = ids.get("who") or ""
@@ -607,6 +676,7 @@ class RelayHub:
                 self._teams[key] = team
             team.outbox.add(wire)
             team.rids.add(rid)
+            team.repos.add(os.path.realpath(repo))
             if join_path is not None:
                 team.join_paths.add(join_path)
             self._repo_by_rid[rid] = os.path.realpath(repo)
@@ -636,10 +706,22 @@ class RelayHub:
                 batch = team.outbox.take(MAX_BATCH)
                 address, api_key, after = team.address, team.key, team.after
                 dev_id, timeout = self.dev_id, self.timeout
+                rids = sorted(team.rids)
+
+            # cloud-city-1: the view source is asked with the lock released
+            # (it takes its own lock), once per sync, before the network call.
+            host = urlsplit(address).netloc
+            view = None
+            if self.view_source is not None:
+                try:
+                    view = self.view_source.take(host, rids, now)
+                except Exception:
+                    view = None
 
             # The network call happens with the lock released, so a slow
             # or stuck relay never stalls offer() / other teams' ticks.
-            state, data = sync(address, api_key, dev_id, after, batch, timeout=timeout)
+            state, data = sync(address, api_key, dev_id, after, batch, timeout=timeout,
+                               view=view)
             extra_state, extra_data = None, None
             if state == "ok" and after > 0 and data.get("seq") is not None \
                     and data["seq"] < after:
@@ -650,6 +732,8 @@ class RelayHub:
                 extra_state, extra_data = sync(address, api_key, dev_id, 0, [],
                                                timeout=timeout)
             finished_at = time.monotonic()
+            # cloud-city-1: tell the source what came back (lock released).
+            self._cloud_after_sync(host, state, data, finished_at)
 
             with self._lock:
                 team = self._teams.get(key)
@@ -676,6 +760,18 @@ class RelayHub:
         # send_only (a cloud session): still synced above, "after" still
         # moved, but a cloud session shows no one.
         return [] if self.send_only else results
+
+    def _cloud_after_sync(self, host, state, data, now):
+        # cloud-city-1: an ANSWERED sync sets the marker (the reply said
+        # city, or not); a relay that is down or refuses leaves it as it is.
+        # The view source hears of every sync: the ok data, or None.
+        if state == "ok" and self.cloud_file:
+            set_cloud(self.cloud_file, host, bool(data.get("city")))
+        if self.view_source is not None:
+            try:
+                self.view_source.sent(host, data if state == "ok" else None, now)
+            except Exception:
+                pass
 
     def _team_still_joined(self, team):
         # Caller must hold self._lock.
@@ -706,6 +802,17 @@ class RelayHub:
         origin gives rid (any repo offer() has queued a line for), or None."""
         with self._lock:
             return self._repo_by_rid.get(rid)
+
+    def repos_for(self, host):
+        """cloud-city: the real paths (git common dir) of every repo joined
+        to the team at HOST (netloc) that offer() or the joined list has
+        seen, sorted. [] for an unknown host."""
+        with self._lock:
+            out = set()
+            for team in self._teams.values():
+                if urlsplit(team.address).netloc == host:
+                    out |= team.repos
+            return sorted(out)
 
     def identity(self):
         """{"who": git user.name of the first joined repo seen, else the
@@ -849,6 +956,29 @@ def cmd_send(args):
     return 0
 
 
+# ------------------------------------------------------------ cloud (cloud-city)
+
+def cmd_cloud(args):
+    """cloud-city-1: `cloud --secret <join file> --cloud-file <path> [--probe]`
+    prints ONE line, exit 0: "on <host>" | "off <host>" | "none" (no join
+    file). Without --probe: from the marker only, no network. With --probe:
+    one sync (no lines, no view); its reply sets the marker and decides the
+    line; a relay that is down or refuses -> the marker decides. The key is
+    never printed."""
+    joined = read_join(args.secret)
+    if joined is None:
+        print("none")
+        return 0
+    host = urlsplit(joined["address"]).netloc
+    if args.probe and not check_address(joined["address"]):
+        state, data = sync(joined["address"], joined["key"], _default_dev_id(), 0, [])
+        if state == "ok":
+            set_cloud(args.cloud_file, host, bool(data.get("city")))
+    on = host in read_cloud(args.cloud_file)
+    print("%s %s" % ("on" if on else "off", host))
+    return 0
+
+
 # --------------------------------------------------------------------- CLI
 
 def _cli(argv):
@@ -864,6 +994,13 @@ def _cli(argv):
     p_join.add_argument("--address", required=True)
     p_join.add_argument("--file", required=True)
 
+    p_join.add_argument("--cloud-file", default=None)
+
+    p_cloud = sub.add_parser("cloud")
+    p_cloud.add_argument("--secret", required=True)
+    p_cloud.add_argument("--cloud-file", required=True)
+    p_cloud.add_argument("--probe", action="store_true")
+
     p_send = sub.add_parser("send")
     p_send.add_argument("--dir", required=True)
     p_send.add_argument("--relay-sec", type=float, default=5.0)
@@ -875,12 +1012,14 @@ def _cli(argv):
     except SystemExit:
         return 2
 
-    if args.cmd not in ("check", "join", "send"):
+    if args.cmd not in ("check", "join", "send", "cloud"):
         parser.print_usage(sys.stderr)
         return 2
 
     if args.cmd == "send":
         return cmd_send(args)
+    if args.cmd == "cloud":
+        return cmd_cloud(args)
 
     err = check_address(args.address)
     if err:
@@ -905,6 +1044,10 @@ def _cli(argv):
 
     if args.cmd == "join":
         write_join(args.file, args.address, key)
+        if args.cloud_file:
+            # cloud-city-1: the accepted sync's reply tells whether the relay
+            # has the cloud page on; the marker keeps it (hosts only).
+            set_cloud(args.cloud_file, host, bool((_data or {}).get("city")))
 
     print("RELAY: ok %s" % host)
     return 0

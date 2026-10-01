@@ -1266,7 +1266,538 @@ def machine_resources(folder, script=None):
     return {"ram": ram, "cpu": cpu, "max": cap, "ok": cap < 0 or (ram <= cap and cpu <= cap)}
 
 
-class CityState:
+# --------------------------------------------------------------------------
+# cloud-city: the Agent City on Cloudflare, view only (requirements/city.md,
+# "Cloud page"). Everything of the upload is in this block: what may go up
+# (CLOUD_KEEP / CLOUD_DROP / cloud_clean), CityState's side of it (_CloudTaps)
+# and the uploader itself (CloudUploader), the RelayHub's view_source.
+#
+# One reducer: the uploader is ONE MORE PAGE CLIENT inside this server. It
+# gets the snapshot CityState.add_client() builds for a browser and then the
+# same events (a "tap": a queue like a browser's, but not in self.clients, so
+# it is not counted in /health, takes no MAX_CLIENTS slot, does not start an
+# era show and never keeps the idle clock from running out). What it gets is
+# cut down to the repos joined to one relay, cleaned, and rides on the sync
+# the hub already makes (no extra request). See
+# tests/test_agent_city_cloud_upload.py for the full contract.
+# --------------------------------------------------------------------------
+
+# Every page message type (the cases of apply() in bin/agent-city.html) is on
+# exactly one of these two lists; a type on neither is never uploaded, and
+# tests/test_agent_city_cloud_upload.py fails until a new page type is put on
+# one of them.
+CLOUD_DROP = frozenset(("ask", "ask_phase", "ask_closed", "chat"))   # question, command and chat text
+CLOUD_KEEP = frozenset((
+    "answer", "background", "build", "demolish", "done", "era", "gov", "governors", "idle", "label",
+    "leave", "levelup", "move", "noplot", "quality", "relay", "relay_end", "remote", "remote_snapshot",
+    "resume", "site", "site_end", "snapshot", "spawn", "stuck", "talk", "team", "tool", "touch",
+    "waiting", "world",
+))
+
+CLOUD_SNAP_SEC = 60.0          # serve --cloud-snap-sec: a new picture at most this often
+CLOUD_SIGN_SEC = 60.0          # nothing new: one sign of life this often
+CLOUD_EVENT_CAP = 400          # more events than this in one view: a new picture instead (the relay allows 500)
+CLOUD_VIEW_MAX_BYTES = 120 * 1024   # the relay's body limit is 256 KB, and the sync's own lines share it
+CLOUD_LABEL_MAX = 64           # the relay's limit for a machine's name
+CLOUD_RETRY_SEC = 30.0         # a picture that could not be made or was too big: try again after this
+CLOUD_FORGET_SEC = 180.0       # a relay the hub no longer asks about: its tap is closed after this
+
+
+def _cloud_relay():
+    """The sibling agent_city_relay module, imported only when the cloud code
+    first needs it (the hooks must not pay for urllib and friends)."""
+    bin_dir = os.path.dirname(os.path.abspath(__file__))
+    if bin_dir not in sys.path:
+        sys.path.insert(0, bin_dir)
+    import agent_city_relay
+    return agent_city_relay
+
+
+def _cloud_shorten(text):
+    # The relay's own rule for the lines it sends: a word that starts with "/"
+    # or "~/" is cut to its last part, so no full path leaves the machine.
+    if "/" not in text:
+        return text
+    return _cloud_relay()._shorten_paths(text)
+
+
+def _cloud_copy(obj):
+    """A deep copy of a JSON value with every path-like word in its strings cut."""
+    if isinstance(obj, str):
+        return _cloud_shorten(obj)
+    if isinstance(obj, dict):
+        return {k: _cloud_copy(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_cloud_copy(v) for v in obj]
+    return obj
+
+
+def _cloud_world_clean(world):
+    """Cleans a world view IN PLACE (the caller passes its own copy)."""
+    if not isinstance(world, dict):
+        return
+    for terr in world.get("territories") or []:
+        if not isinstance(terr, dict):
+            continue
+        terr.pop("balance", None)
+        terr.pop("rules_note", None)
+        for b in terr.get("buildings") or []:
+            if isinstance(b, dict):
+                b["files"] = []
+                b["hist"] = []
+                b["name"] = ""
+
+
+def cloud_clean(msg):
+    """A cleaned COPY of one page message for the cloud, or None (dropped).
+    Default deny: a type on neither CLOUD_KEEP nor CLOUD_DROP is dropped too.
+    No file name, no question text, no ask, no notice, no building files or
+    history or name, no full path in any text. The input is never changed:
+    the local page still gets everything."""
+    if not isinstance(msg, dict):
+        return None
+    kind = msg.get("type")
+    if not isinstance(kind, str) or kind in CLOUD_DROP or kind not in CLOUD_KEEP:
+        return None
+    out = _cloud_copy(msg)
+    if kind == "tool":
+        out.pop("file", None)
+    elif kind == "stuck":
+        out["question"] = ""
+    elif kind == "snapshot":
+        out["asks"] = []
+        out.pop("notice", None)
+        _cloud_world_clean(out.get("world"))
+    elif kind == "world":
+        out.pop("notice", None)
+        _cloud_world_clean(out.get("world"))
+    elif kind == "build":
+        out["files"] = []
+        out["name"] = ""
+        if "hist" in out:
+            out["hist"] = []
+    elif kind == "remote":
+        inner = out.get("ev")
+        if isinstance(inner, dict):
+            inner = cloud_clean(inner)
+            if inner is None:
+                return None
+            out["ev"] = inner
+    return out
+
+
+def cloud_home_path():
+    """The marker of the relays that have the cloud on: $AGENT_CITY_HOME/cloud,
+    else ~/.claude/agent-city/cloud (the home world.json and decisions.jsonl use)."""
+    home = os.environ.get("AGENT_CITY_HOME")
+    if home:
+        return os.path.join(home, "cloud")
+    return os.path.expanduser("~/.claude/agent-city/cloud")
+
+
+class _CloudTaps:
+    """CityState's side of the uploader (a mixin). A tap is a _Client that is
+    NOT in self.clients: _broadcast() feeds it like a browser, nothing counts
+    it. self.cloud_taps is replaced, never changed in place (copy on write)."""
+
+    cloud_taps = ()
+
+    def cloud_open(self):
+        """A new tap: its queue starts with the snapshot (and the remote one)
+        a browser would get, built under the lock, then every event."""
+        return self.add_client(cloud=True)
+
+    def cloud_close(self, tap):
+        with self.lock:
+            self.cloud_taps = tuple(t for t in self.cloud_taps if t is not tap)
+
+    def _cloud_push(self, data):
+        """Caller holds self.lock (from _broadcast). A tap whose queue is full
+        is dropped and told so with _DROP: the uploader makes a new picture."""
+        if not self.cloud_taps:
+            return
+        dead = []
+        for tap in self.cloud_taps:
+            try:
+                tap.queue.put_nowait(data)
+            except queue.Full:
+                dead.append(tap)
+        for tap in dead:
+            self.cloud_taps = tuple(t for t in self.cloud_taps if t is not tap)
+            try:
+                while True:
+                    tap.queue.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                tap.queue.put_nowait(_DROP)
+            except queue.Full:
+                pass
+
+    def cloud_identities(self):
+        """Every territory's identity (its repo), now."""
+        with self.lock:
+            return list(self.world["territories"])
+
+    def cloud_counts(self, terrs):
+        """{"people", "wait", "busy"} of the people in the territories TERRS,
+        from the Reducers' own snapshot (the one reducer): wait = waiting or
+        stuck; busy = not done, not waiting, not stuck, status ""."""
+        people = wait = busy = 0
+        with self.lock:
+            for identity, reducer in self.reducers.items():
+                if self._terr_for(identity) not in terrs:
+                    continue
+                for a in reducer.snapshot()["agents"]:
+                    people += 1
+                    waiting = bool(a["waiting"] or a["stuck"])
+                    if waiting:
+                        wait += 1
+                    elif not a["done"] and a["status"] == "":
+                        busy += 1
+        return {"people": people, "wait": wait, "busy": busy}
+
+    def cloud_governors(self, identities):
+        """The fresh governors (the snapshot's "governors" count) of the repos IDENTITIES only."""
+        with self.lock:
+            now = time.monotonic()
+            return sum(1 for repo, g in self.governors.items()
+                       if repo in identities and now - g["last_seen"] <= GOV_FRESH_SEC)
+
+
+def _cloud_world_filter(world, terrs):
+    """The world view with only the territories TERRS and the links between two of them."""
+    out = dict(world)
+    out["territories"] = [t for t in world.get("territories") or []
+                          if isinstance(t, dict) and t.get("id") in terrs]
+    out["links"] = [l for l in world.get("links") or []
+                    if isinstance(l, dict) and l.get("a") in terrs and l.get("b") in terrs]
+    return out
+
+
+def _cloud_sig(world):
+    return hashlib.sha1(json.dumps(world, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+class CloudUploader:
+    """The RelayHub's view_source (bin/agent_city_relay.py): one picture of
+    this city per joined relay, only with the repos joined to that relay.
+
+    take(host, rids, now) is asked once before every sync of a team and gives
+    the view to send with it, or None; sent(host, data, now) hears what the
+    relay answered (data: the ok data with "city" and "gen", or None when it
+    was down or refused). Both run on the hub's thread, never under the
+    hub's lock; the state lock is only taken for short reads, never while a
+    network call runs.
+
+    Per relay: a tap (see _CloudTaps) and
+      - no view at all until the relay said "city": true (or the marker file,
+        kept by the hub, says it did last time), and none while it says false;
+      - a new picture (snap) when there is none yet, the last view was lost,
+        the relay's gen is not ours, the set of joined territories changed, a
+        tap overflowed, or snap_sec passed since the last picture and
+        something happened since;
+      - else the events since the last view, else one sign of life a minute."""
+
+    def __init__(self, city, snap_sec=CLOUD_SNAP_SEC, cloud_file=None, sign_sec=CLOUD_SIGN_SEC):
+        self.city = city
+        self.snap_sec = snap_sec
+        self.sign_sec = sign_sec
+        self.cloud_file = cloud_file
+        self.hub = None
+        self._lock = threading.Lock()
+        self._hosts = {}
+        self._real = {}       # territory identity -> its realpath
+
+    def bind(self, hub):
+        self.hub = hub
+
+    # -- the hub's side --------------------------------------------------
+
+    def take(self, host, rids, now):
+        with self._lock:
+            self._forget_stale(host, now)
+            st = self._host(host, now)
+            st["seen"] = now
+            if not st["on"] or now < st["retry_at"]:
+                return None
+            try:
+                return self._take(host, st, rids, now)
+            except Exception as exc:
+                # Never break the relay thread: no view this time, a new picture next.
+                st["need_snap"] = True
+                st["retry_at"] = now + CLOUD_RETRY_SEC
+                print("agent_city: cloud view failed: %s" % exc, file=sys.stderr)
+                return None
+
+    def sent(self, host, data, now):
+        with self._lock:
+            st = self._host(host, now)
+            inflight, st["inflight"] = st["inflight"], False
+            if data is None:
+                # down or refused: what the lost view carried is gone, so a new picture
+                if inflight:
+                    st["need_snap"] = True
+                st["view_at"] = None
+                return
+            if not data.get("city"):
+                if st["on"]:
+                    self._close(st)
+                st["on"] = False
+                st["need_snap"] = True
+                return
+            if not st["on"]:
+                st["on"] = True
+                st["need_snap"] = True
+            if st["gen"] and data.get("gen") != st["gen"]:
+                st["need_snap"] = True     # the relay lost our picture (or holds another one)
+
+    # -- per relay -------------------------------------------------------
+
+    def _host(self, host, now):
+        st = self._hosts.get(host)
+        if st is None:
+            on = False
+            if self.cloud_file:
+                try:
+                    on = host in _cloud_relay().read_cloud(self.cloud_file)
+                except Exception:
+                    on = False
+            st = {"on": on, "tap": None, "need_snap": True, "gen": 0, "snap_at": 0.0, "view_at": None,
+                  "happened": False, "key": None, "inflight": False, "retry_at": 0.0, "seen": now,
+                  "ids": {}, "remote_ids": set(), "world_sig": None, "gov_count": None}
+            self._hosts[host] = st
+        return st
+
+    def _close(self, st):
+        tap, st["tap"] = st["tap"], None
+        if tap is not None:
+            self.city.cloud_close(tap)
+
+    def _forget_stale(self, current, now):
+        for host in [h for h, s in self._hosts.items()
+                     if h != current and now - s["seen"] > CLOUD_FORGET_SEC]:
+            self._close(self._hosts.pop(host))
+
+    def _label(self):
+        label = getattr(self.hub, "label", "") or ""
+        return label[:CLOUD_LABEL_MAX] or "computer"
+
+    def _allowed(self, host, rids):
+        """(the territory ids, the identities) of the repos joined to this relay."""
+        paths = set()
+        if self.hub is not None:
+            paths.update(self.hub.repos_for(host))
+            for rid in rids:
+                path = self.hub.repo_for(rid)
+                if path:
+                    paths.add(path)
+        idents = []
+        for ident in self.city.cloud_identities():
+            real = self._real.get(ident)
+            if real is None:
+                real = self._real[ident] = os.path.realpath(ident)
+            if real in paths:
+                idents.append(ident)
+        return {territory_id(i) for i in idents}, idents
+
+    def _take(self, host, st, rids, now):
+        terrs, idents = self._allowed(host, rids)
+        key = frozenset(terrs)
+        kept = []
+        lost = False
+        if st["tap"] is not None:
+            raw, lost = self._drain(st["tap"])
+            kept = self._admit_all(st, terrs, rids, host, idents, raw)
+        fresh = (st["tap"] is None or lost or st["need_snap"] or key != st["key"]
+                 or len(kept) > CLOUD_EVENT_CAP)
+        if not fresh and kept:
+            st["happened"] = True
+        if not fresh and st["happened"] and now - st["snap_at"] >= self.snap_sec:
+            fresh = True
+        view = {"label": self._label(), "gen": st["gen"]}
+        if fresh:
+            snap, kept = self._picture(st, terrs, rids, host, idents)
+            st["gen"] += 1
+            view["gen"] = st["gen"]
+            view["snap"] = snap
+            st["snap_at"] = now
+            st["happened"] = bool(kept)
+            st["key"] = key
+            st["need_snap"] = False
+        elif not kept and st["view_at"] is not None and now - st["view_at"] < self.sign_sec:
+            return None     # nothing new, and a sign of life is not due
+        if kept:
+            view["events"] = kept
+        view["counts"] = self.city.cloud_counts(terrs)
+        try:
+            size = len(json.dumps(view))
+        except (TypeError, ValueError):
+            size = CLOUD_VIEW_MAX_BYTES + 1
+        if size > CLOUD_VIEW_MAX_BYTES:
+            # too big for one sync (a poison view would hold back the team's lines too): none, later again
+            st["need_snap"] = True
+            st["retry_at"] = now + CLOUD_RETRY_SEC
+            return None
+        st["view_at"] = now
+        st["inflight"] = "snap" in view or "events" in view
+        return view
+
+    @staticmethod
+    def _drain(tap):
+        """(the messages waiting in the tap, whether it overflowed and was dropped)."""
+        out = []
+        lost = False
+        while True:
+            try:
+                item = tap.queue.get_nowait()
+            except queue.Empty:
+                break
+            if item is _DROP:
+                lost = True
+                continue
+            try:
+                msg = json.loads(item[6:-2].decode("utf-8"))   # "data: <json>\n\n"
+            except ValueError:
+                continue
+            if isinstance(msg, dict):
+                out.append(msg)
+        return out, lost
+
+    def _picture(self, st, terrs, rids, host, idents):
+        """A new tap (its snapshot is built under the state lock, atomic with
+        the tap joining the broadcast): ([snapshot, remote snapshot?] cleaned
+        and cut down to TERRS, the events that came in since)."""
+        self._close(st)
+        tap = self.city.cloud_open()
+        st["tap"] = tap
+        raw, _ = self._drain(tap)
+        snap = []
+        st["ids"] = {}
+        st["remote_ids"] = set()
+        st["world_sig"] = None
+        st["gov_count"] = None
+        rest = []
+        for msg in raw:
+            kind = msg.get("type")
+            if not rest and kind == "snapshot":
+                one = self._cut_snapshot(st, msg, terrs, idents)
+            elif not rest and kind == "remote_snapshot":
+                one = self._cut_remote_snapshot(st, msg, terrs, rids, host)
+            else:
+                rest.append(msg)
+                continue
+            one = cloud_clean(one)
+            if one is not None:
+                snap.append(one)
+                if kind == "snapshot" and isinstance(one.get("world"), dict):
+                    st["world_sig"] = _cloud_sig(one["world"])
+        return snap, self._admit_all(st, terrs, rids, host, idents, rest)
+
+    def _cut_snapshot(self, st, snap, terrs, idents):
+        out = dict(snap)
+        agents = [a for a in snap.get("agents") or [] if isinstance(a, dict) and a.get("terr") in terrs]
+        govs = [g for g in snap.get("govs") or [] if isinstance(g, dict) and g.get("terr") in terrs]
+        out["agents"] = agents
+        out["govs"] = govs
+        out["shows"] = [s for s in snap.get("shows") or [] if isinstance(s, dict) and s.get("terr") in terrs]
+        world = snap.get("world")
+        if isinstance(world, dict):
+            world = _cloud_world_filter(world, terrs)
+            out["world"] = world
+        gov = snap.get("gov") if isinstance(snap.get("gov"), dict) else {}
+        home = gov.get("terr")
+        state = gov.get("state", "idle")
+        if home not in terrs:
+            # the camera home of the machine is a repo that is not joined here: a joined one instead
+            first = (world.get("territories") or [{}])[0].get("id", "") if isinstance(world, dict) else ""
+            home = govs[0]["terr"] if govs else first
+            state = next((g.get("state", "idle") for g in govs if g["terr"] == home), "idle")
+        out["gov"] = {"state": state, "terr": home}
+        out["governors"] = self.city.cloud_governors(set(idents))
+        st["gov_count"] = out["governors"]
+        st["ids"] = {a["id"]: a["terr"] for a in agents if isinstance(a.get("id"), str)}
+        return out
+
+    def _cut_remote_snapshot(self, st, snap, terrs, rids, host):
+        out = dict(snap)
+        out["people"] = [p for p in snap.get("people") or [] if isinstance(p, dict) and p.get("rid") in rids]
+        out["govs"] = [g for g in snap.get("govs") or [] if isinstance(g, dict) and g.get("terr") in terrs]
+        out["teams"] = [t for t in snap.get("teams") or [] if isinstance(t, dict) and t.get("host") == host]
+        st["remote_ids"] = {x["id"] for x in out["people"] + out["govs"] if isinstance(x.get("id"), str)}
+        return out
+
+    # -- the events: only this relay's repos, then cleaned ------------------
+
+    def _admit_all(self, st, terrs, rids, host, idents, raw):
+        out = []
+        gov_changed = False
+        for ev in raw:
+            ev = self._admit(st, terrs, rids, host, ev)
+            if ev is None:
+                continue
+            if ev.get("type") == "governors":
+                gov_changed = True     # a count over every repo: told again below, for these repos only
+                continue
+            ev = cloud_clean(ev)
+            if ev is None:
+                continue
+            if ev["type"] == "world":
+                sig = _cloud_sig(ev["world"])
+                if sig == st["world_sig"]:
+                    continue           # a change of a repo that is not joined here: nothing to tell
+                st["world_sig"] = sig
+            out.append(ev)
+        if gov_changed:
+            count = self.city.cloud_governors(set(idents))
+            if count != st["gov_count"]:
+                st["gov_count"] = count
+                out.append({"type": "governors", "count": count})
+        return out
+
+    @staticmethod
+    def _admit(st, terrs, rids, host, ev):
+        """The event if it belongs to this relay's repos, else None. An event
+        of a territory that is not joined, or of a person this picture does
+        not know, never goes up (default deny)."""
+        kind = ev.get("type")
+        if kind == "world":
+            if not isinstance(ev.get("world"), dict):
+                return None
+            return dict(ev, world=_cloud_world_filter(ev["world"], terrs))
+        if kind == "governors":
+            return ev
+        if kind == "team":
+            return ev if ev.get("host") == host else None
+        if kind == "remote":
+            inner = ev.get("ev") if isinstance(ev.get("ev"), dict) else {}
+            who = inner.get("id") if isinstance(inner.get("id"), str) else None
+            if ev.get("rid") not in rids and who not in st["remote_ids"]:
+                return None
+            if who is not None:
+                if inner.get("type") == "leave" or inner.get("present") is False:
+                    st["remote_ids"].discard(who)
+                else:
+                    st["remote_ids"].add(who)
+            return ev
+        if kind in ("snapshot", "remote_snapshot"):
+            return None            # a picture is made by _picture, never as an event
+        terr = ev.get("terr")
+        who = ev.get("id")
+        if isinstance(terr, str) and terr:
+            if terr not in terrs:
+                return None
+        elif not isinstance(who, str) or who not in st["ids"]:
+            return None
+        if isinstance(who, str):
+            if kind == "spawn":
+                st["ids"][who] = terr
+            elif kind == "leave":
+                st["ids"].pop(who, None)
+        return ev
+
+
+class CityState(_CloudTaps):
     """Thread-safe home for the Reducer, asks, health counters and SSE clients."""
 
     def __init__(self, max_agents=40, done_ttl=600, gov_wait_sec=60.0,
@@ -1413,12 +1944,13 @@ class CityState:
 
     # -- SSE clients ----------------------------------------------------
 
-    def add_client(self):
+    def add_client(self, cloud=False):
         with self.lock:
-            if len(self.clients) >= MAX_CLIENTS:
+            if not cloud and len(self.clients) >= MAX_CLIENTS:
                 return None
             client = _Client()
-            self._start_waiting_shows_locked()
+            if not cloud:   # cloud-city: the uploader is no page, it starts no era show
+                self._start_waiting_shows_locked()
             agents = []
             govs = []
             gov_seen_resolved = set()
@@ -1460,6 +1992,9 @@ class CityState:
                 remote_snap = self.remote.snapshot_event()
                 if remote_snap is not None:
                     client.queue.put_nowait(_encode_event(remote_snap))
+            if cloud:       # cloud-city: a tap (see _CloudTaps), not in self.clients
+                self.cloud_taps = self.cloud_taps + (client,)
+                return client
             self.clients.append(client)
             return client
 
@@ -3092,6 +3627,7 @@ class CityState:
                 dead.append(client)
         for client in dead:
             self._drop(client)
+        self._cloud_push(data)   # cloud-city
 
     def _drop(self, client):
         """A slow client fell behind its queue; disconnect it."""
@@ -4764,8 +5300,11 @@ def cmd_serve(args):
                       world_path=world_path_arg, start_repo=start_repo, chat_path=chat_path, lang=lang,
                       roster_path=os.path.join(directory, "roster.json"),
                       city_dir=pass_city_dir(directory))
+    uploader = CloudUploader(city, snap_sec=args.cloud_snap_sec, cloud_file=cloud_home_path())  # cloud-city
     hub = relay.RelayHub(relay_sec=args.relay_sec, join_ttl=args.join_ttl_sec,
-                        joined_list=args.joined_list)
+                        joined_list=args.joined_list,
+                        cloud_file=uploader.cloud_file, view_source=uploader)  # cloud-city
+    uploader.bind(hub)  # cloud-city
     remote = RemoteCity(hub, remote_ttl_sec=args.remote_ttl_sec)
     city.remote = remote
     server = ThreadingHTTPServer(("127.0.0.1", args.port), CityHandler)
@@ -7020,6 +7559,7 @@ def _build_parser():
     serve.add_argument("--join-ttl-sec", type=float, default=30.0)
     serve.add_argument("--joined-list", default=None)
     serve.add_argument("--remote-ttl-sec", type=float, default=600.0)
+    serve.add_argument("--cloud-snap-sec", type=float, default=CLOUD_SNAP_SEC)  # cloud-city
     serve.add_argument("--decisions", default=None)
     serve.add_argument("--world", default=None)
     serve.add_argument("--start-dir", default=None)
