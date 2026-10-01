@@ -283,7 +283,10 @@ class TestOnlyTextToALiveSessionOfAJoinedRepo(MessageCase):
     """ADD 2 (main manager, 2026-10-01): anything else is not delivered and nothing is queued."""
 
     def refused(self, why, **kw):
-        page = self.client()
+        # one page for the whole test: the server takes four browsers at most
+        page = getattr(self, "_page", None) or self.client()
+        self._page = page
+        self.chat_events(page)
         before = self.all_entries()
         cid = "cid-%s" % abs(hash(repr(sorted(kw.items()))))
         got = self.say(cid, **kw)
