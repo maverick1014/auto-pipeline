@@ -22,7 +22,10 @@ it touches an asset or the database:
   checks  RS256 only; the signature against the team's keys
           (GET https://<team>.cloudflareaccess.com/cdn-cgi/access/certs ->
           {"keys": [JWK, ...]}, picked by "kid", kept in memory for an hour:
-          not fetched again on every request); "aud" holds ACCESS_AUD; "iss"
+          not fetched again on every request. Cloudflare changes the keys
+          now and then: a token whose "kid" is not in the kept list makes the
+          Worker fetch the list ONCE more, but at most once a minute, so a
+          flood of made-up kids costs one fetch); "aud" holds ACCESS_AUD; "iss"
           is https://<team>.cloudflareaccess.com; "exp" is in the future; an
           "email" is there.
   fail    403 {"ok": false, "error": "login required"} and NOTHING else: no
@@ -52,7 +55,10 @@ Routes (GET and HEAD only; anything else 405; no /v1/... here: 404):
                                         else those of the batches after "after".
       dev: the one asked for when this user has it, else the one seen last.
       Only rows whose user is the login e-mail are ever read (C4).
-  anything else   env.ASSETS.fetch(request): the assets, untouched.
+  anything else   env.ASSETS.fetch(request): the assets, untouched, but a 200
+                  answer to an address with ?v=<CITY_ASSET_V> gets
+                  Cache-Control: private, max-age=31536000, immutable (a phone
+                  loads the models once; the local server does the same).
 
 Run: python3 -m unittest tests.test_agent_city_cloud_worker
 """
@@ -81,8 +87,9 @@ def seed_mac():
     return [
         sync("mac", view=view(1, snap=[ANN], label="MacBook-Pro",
                               counts={"people": 1, "busy": 1, "wait": 0})),
-        sync("mac", view=view(1, events=[tool("s:1")]), now=T0 + 5000),
-        sync("mac", view=view(1, events=[tool("s:1", "Read"), tool("s:1", "Edit")]), now=T0 + 10000),
+        sync("mac", view=view(1, events=[tool("s:1")], label="MacBook-Pro"), now=T0 + 5000),
+        sync("mac", view=view(1, events=[tool("s:1", "Read"), tool("s:1", "Edit")], label="MacBook-Pro"),
+             now=T0 + 10000),
     ]
 
 
@@ -188,6 +195,27 @@ class TestLogin(CityCase):
     def test_keys_are_fetched_again_after_an_hour(self):
         out = self.run_city(seed_mac() + [feed(), feed(now=T0 + 3700 * 1000)])
         self.assertEqual(out["certs_fetches"], 2)
+
+    def test_new_team_key_is_fetched_once_not_locked_out(self):
+        # Cloudflare rotated the keys: the Worker holds the old list, the token is signed by the new key.
+        out = self.run_city(seed_mac() + [
+            feed(),                                                        # fetch 1: [k1]
+            feed(login={"email": ME, "rotated": True}, now=T0 + 1000),     # unknown kid -> fetch 2: [k1, k2]
+            feed(login={"email": ME, "rotated": True}, now=T0 + 2000),     # known now
+            feed(login={"email": ME, "kid": "k9"}, now=T0 + 3000),         # made up: no fetch within a minute
+            feed(login={"email": ME, "kid": "k8"}, now=T0 + 4000),
+            feed(now=T0 + 5000)])
+        self.assertEqual([r["status"] for r in out["responses"][-6:]], [200, 200, 200, 403, 403, 200])
+        self.assertEqual(out["certs_fetches"], 2, "one more fetch for the new key, none for made-up kids")
+
+    def test_unknown_kid_may_fetch_again_after_a_minute(self):
+        out = self.run_city(seed_mac() + [
+            feed(),
+            feed(login={"email": ME, "kid": "k9"}, now=T0 + 1000),         # fetch 2
+            feed(login={"email": ME, "kid": "k9"}, now=T0 + 30000),        # within the minute: none
+            feed(login={"email": ME, "kid": "k9"}, now=T0 + 62000)])       # fetch 3
+        self.assertEqual([r["status"] for r in out["responses"][-3:]], [403, 403, 403])
+        self.assertEqual(out["certs_fetches"], 3)
 
     def test_mail_is_compared_in_lower_case(self):
         out = self.run_city(seed_mac() + [feed(login="Owner@Example.COM")])
@@ -321,6 +349,20 @@ class TestPageAndAssets(CityCase):
         self.assertEqual((b["status"], b["body"]), (200, "glb-bytes"))
         self.assertEqual(c["status"], 404)
         self.assertEqual([r["reads"] for r in out["responses"]], [0, 0, 0], "an asset never reads the database")
+
+    def test_versioned_assets_are_cached_by_the_browser(self):
+        env = dict(ch.CITY_ENV, CITY_ASSET_V="0.15.0")
+        out = self.run_city([get("/assets/vendor/three.min.js?v=0.15.0"),
+                             get("/assets/vendor/three.min.js?v=0.14.0"),
+                             get("/assets/vendor/three.min.js"),
+                             get("/assets/none.glb?v=0.15.0")], city_env=env)
+        fresh, old, bare, missing = out["responses"]
+        cc = fresh["headers"].get("cache-control", "")
+        for word in ("private", "max-age=31536000", "immutable"):
+            self.assertIn(word, cc)
+        self.assertEqual(fresh["body"], "/* three */")
+        for r in (old, bare, missing):
+            self.assertNotIn("immutable", r["headers"].get("cache-control", ""))
 
 
 class TestViewOnly(CityCase):

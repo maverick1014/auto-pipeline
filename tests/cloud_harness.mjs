@@ -31,6 +31,9 @@
 //     exp_in: <seconds>    exp = now + this (negative = expired)
 //     wrong_key: true      signed by a key the team never published (same kid)
 //     kid: "<other>"       a key id the certs do not hold
+//     rotated: true        signed by the team's NEW key "k2": the certs hold it
+//                          only from their SECOND fetch on (a key rotation: a
+//                          Worker that keeps the old key list must fetch again)
 //     alg: "none"          unsigned token ({"alg":"none"}, empty signature)
 //     no_email: true       no email claim
 //     via: "cookie"        sent as the cookie CF_Authorization instead of the header
@@ -178,12 +181,15 @@ const good = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const rogue = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const goodJwk = Object.assign(good.publicKey.export({ format: "jwk" }),
                               { kid: "k1", alg: "RS256", use: "sig" });
+const next = generateKeyPairSync("rsa", { modulusLength: 2048 });
+const nextJwk = Object.assign(next.publicKey.export({ format: "jwk" }),
+                              { kid: "k2", alg: "RS256", use: "sig" });
 
 const b64u = (buf) => Buffer.from(buf).toString("base64url");
 
 function token(login, nowMs) {
   const now = Math.floor(nowMs / 1000);
-  const header = { alg: login.alg || "RS256", kid: login.kid || "k1", typ: "JWT" };
+  const header = { alg: login.alg || "RS256", kid: login.kid || (login.rotated ? "k2" : "k1"), typ: "JWT" };
   const payload = {
     aud: [login.aud || AUD],
     iss: login.iss || ISSUER,
@@ -198,7 +204,7 @@ function token(login, nowMs) {
   if (header.alg === "none") return head + ".";
   const signer = createSign("RSA-SHA256");
   signer.update(head);
-  const key = login.wrong_key ? rogue.privateKey : good.privateKey;
+  const key = login.wrong_key ? rogue.privateKey : login.rotated ? next.privateKey : good.privateKey;
   return head + "." + b64u(signer.sign(key));
 }
 
@@ -208,7 +214,8 @@ globalThis.fetch = async (input) => {
   const url = typeof input === "string" ? input : (input && input.url) || String(input);
   if (url === CERTS_URL) {
     certsFetches += 1;
-    return new Response(JSON.stringify({ keys: [goodJwk], public_cert: {}, public_certs: [] }),
+    const keys = certsFetches >= 2 ? [goodJwk, nextJwk] : [goodJwk];
+    return new Response(JSON.stringify({ keys, public_cert: {}, public_certs: [] }),
                         { status: 200, headers: { "content-type": "application/json" } });
   }
   otherFetches.push(url);
