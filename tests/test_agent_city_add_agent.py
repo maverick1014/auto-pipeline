@@ -1,7 +1,9 @@
 """Failing tests for city-add-agent (requirements/city.md, "Add agent"; owner,
-2026-10-01): start a new agent session from the city page, no terminal needed.
-This file: the server side of A3 (the open itself) and A7 (safety). No test
-here ever opens a real session: the opener is always a fake.
+2026-10-01; approved mock mock/city-add-agent-mock.html): start a new agent
+session from the city page, no terminal needed. This file: the server side
+(A1 "here", A3 the open itself, A4 page events, A5 over the cap, A6 no Orca,
+A7 safety). The page: tests/test_agent_city_add_agent_page.py. No test here
+ever opens a real session: the opener is always a fake.
 
 CONTRACT, server (bin/agent_city.py, Python standard library only)
 
@@ -28,12 +30,27 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
     (False, <a short reason, the script's last stderr line when it has one>).
     Never raises.
 
+  runtime_kind(folder, runtime=None) -> "orca" | "plain" | "cloud"
+    What `bash <runtime> kind` prints (runtime = bin/agent-runtime.sh when
+    None), run with cwd = FOLDER and CLAUDE_PROJECT_DIR = FOLDER, so that
+    repo's own agent.conf `runtime` line counts. Any other output, an error
+    or a timeout -> "plain". Never raises.
+
+  machine_resources(folder, script=None) -> {"ram", "cpu", "max", "ok"}
+    RAM and CPU percent as bin/agent-resources.sh reads them (its own
+    resources_read, sourced, argument list only; AGENT_FAKE_RAM /
+    AGENT_FAKE_CPU work as they do there); max = max_usage_percent of
+    <folder>/agent.conf, else of bin/agent.conf.default (never a number
+    written in the code); ok = ram <= max and cpu <= max. A number that
+    cannot be read is -1 (and counts as ok). Never raises.
+
   CityState(..., open_fn=None, kind_fn=None, resources_fn=None)
     open_fn(folder, title, command) -> (ok, detail); default open_session
       (CityState.open_fn). Tests pass a fake.
-    kind_fn() -> "orca" | "plain" | "cloud" (bin/agent-runtime.sh kind).
-    resources_fn(folder) -> {"ram", "cpu", "max", "ok"} (A5).
-    These tests always answer "orca" and ok; A5 / A6 get their own tests.
+    kind_fn(folder) -> "orca" | "plain" | "cloud"; default runtime_kind
+      (CityState.kind_fn). Raises -> counts as "plain".
+    resources_fn(folder) -> {"ram", "cpu", "max", "ok"}; default
+      machine_resources (CityState.resources_fn). Raises -> counts as ok.
 
   CityState.add_agent(terr, now, force=False) -> (code, body). NOW = monotonic.
     400 {"error": "bad"}       terr is not a str of 8 lowercase hex digits,
@@ -41,6 +58,17 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
     404 {"error": "unknown"}   no territory with that id in the world
     409 {"error": "gone", "folder"}   its folder is not a directory any more
     409 {"error": "busy"}      an open for this repo is under way
+    200 {"state": "plain", "name", "role", "command"}   A6: kind_fn(folder)
+                               is not "orca": no terminal can be opened.
+                               command = "cd " + shlex.quote(folder) + " && "
+                               + agent_command(name, folder), the one line to
+                               run by hand. Shown, never run. Asked before the
+                               cap; the repo is not held.
+    200 {"state": "cap", "ram", "cpu", "max"}   A5: resources_fn(folder) is
+                               not ok and force is false: nothing opens, the
+                               repo is not held; the owner confirms (the page
+                               asks again with force true) or cancels.
+                               force true -> opens whatever the numbers say.
     502 {"error": "failed", "detail"}   the opener said no, or raised; the
                                repo is free again at once
     200 {"state": "opening", "name", "role"}   the opener ran and said yes
@@ -52,11 +80,33 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
     folder's own name). The new session's bin/agent-start.sh still decides
     its real role from the lock; nothing here copies that.
     open_fn(folder, name, agent_command(name, folder)) is called ONCE, and
-    never while self.lock is held (opening a terminal takes seconds).
+    never while self.lock is held (opening a terminal takes seconds); the
+    same for kind_fn and resources_fn.
     One open at a time per repo: from the call that opens until (a) a session
     line (aid "") of that repo from a sid that had no line in it before the
     open, (b) ADD_WAIT_SEC later, or (c) the opener failing. Other repos are
     never held up.
+
+  A4, page events (to every page, like "chat"):
+    {"type": "adding", "terr", "state": "opening", "name", "role"}  the
+      opener said yes
+    {"type": "adding", "terr", "state": "done"}   (a): the new session's
+      first line came (the person appears through the usual events)
+    {"type": "adding", "terr", "state": "late"}   (b): ADD_WAIT_SEC passed
+      with no new session. Sent by CityState.sweep_adding(now), which
+      recount_loop calls every tick; once.
+    A new session so fast that its first line comes while the opener is
+      still running is the new session all the same: the repo is free when
+      add_agent returns, and "opening" is followed by "done" (never left
+      hanging until "late").
+    A failed open, a "plain" or a "cap" answer: no event.
+    The snapshot of a new page carries "adding": [{"terr", "name", "role"}],
+      one per repo whose open is under way ([] when none).
+
+  A1 / A2, "here": every territory in the page's world view (the snapshot's
+    "world" and every "world" event) carries "here": true when
+    repo_folder(identity) is a directory on this machine, else false. The
+    page shows the add-agent button only for a territory that is here.
 
   POST /api/agent/add  {"terr": <territory id>[, "force": true|false]}
     -> add_agent(terr, time.monotonic(), force). The gate of POST
@@ -81,6 +131,7 @@ import threading
 import time
 import unittest
 from http.server import ThreadingHTTPServer
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -108,6 +159,8 @@ class AddCase(unittest.TestCase):
         self.calls = []                 # every call of the fake opener: (folder, title, command)
         self.answer = (True, "")        # what the fake opener says
         self.mains = Mains()            # identity -> sid of its live main manager
+        self.kind = "orca"              # what the fake kind_fn says
+        self.res = {"ram": 10, "cpu": 10, "max": 80, "ok": True}   # what the fake resources_fn says
         self.now = 1000.0               # one clock for lines and clicks (monotonic seconds)
         self.shop = self.repo("shop")
         self.state = self.make()
@@ -131,8 +184,8 @@ class AddCase(unittest.TestCase):
     def make(self, **kw):
         args = dict(decisions_path=os.path.join(self.base, "decisions.jsonl"), world_path=None, token="tok",
                     count_fn=lambda i: 0, balance_fn=lambda i, r: {"kinds": {}, "files": {}, "bad": []},
-                    main_fn=self.mains, open_fn=self.opener, kind_fn=lambda: "orca",
-                    resources_fn=lambda folder: {"ram": 10, "cpu": 10, "max": 80, "ok": True})
+                    main_fn=self.mains, open_fn=self.opener, kind_fn=lambda folder: self.kind,
+                    resources_fn=lambda folder: dict(self.res))
         args.update(kw)
         return ac.CityState(**args)
 
@@ -147,6 +200,24 @@ class AddCase(unittest.TestCase):
 
     def add(self, identity, at=None, **kw):
         return self.state.add_agent(ac.territory_id(identity), self.now if at is None else at, **kw)
+
+    def client(self, state=None):
+        c = (state or self.state).add_client()
+        while not c.queue.empty():
+            c.queue.get_nowait()
+        return c
+
+    @staticmethod
+    def events(client, kind="adding"):
+        out = []
+        while not client.queue.empty():
+            raw = client.queue.get_nowait().decode("utf-8")
+            if "data:" not in raw:
+                continue
+            msg = json.loads(raw.split("data:", 1)[1])
+            if msg.get("type") == kind:
+                out.append(msg)
+        return out
 
 
 # ---------------------------------------------------------------------------
@@ -269,9 +340,11 @@ class TestOpen(AddCase):
         self.assertEqual(self.add(self.shop)[0], 200)
         self.assertEqual(free, [True], "add_agent held the city lock while the opener ran")
 
-    def test_the_default_opener_is_open_session(self):
-        state = self.make(open_fn=None)
+    def test_the_defaults_are_the_real_ones(self):
+        state = self.make(open_fn=None, kind_fn=None, resources_fn=None)
         self.assertIs(state.open_fn, ac.open_session)
+        self.assertIs(state.kind_fn, ac.runtime_kind)
+        self.assertIs(state.resources_fn, ac.machine_resources)
 
 
 # ---------------------------------------------------------------------------
@@ -431,6 +504,281 @@ class TestOpenSession(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# A6: no Orca on this machine -> the one command to run by hand
+# ---------------------------------------------------------------------------
+
+class TestPlain(AddCase):
+    def test_plain_gives_the_command_and_opens_nothing(self):
+        self.known(self.shop)
+        for kind in ("plain", "cloud"):
+            with self.subTest(kind=kind):
+                self.kind = kind
+                code, body = self.add(self.shop)
+                self.assertEqual(code, 200, body)
+                self.assertEqual((body["state"], body["name"], body["role"]), ("plain", "shop Manager", "main"))
+                self.assertEqual(shlex.split(body["command"]),
+                                 ["cd", os.path.join(self.base, "shop"), "&&", "claude", "--name", "shop Manager"] + FLAGS)
+        self.assertEqual(self.calls, [], "no terminal can be opened here")
+        self.kind = "orca"
+        self.assertEqual(self.add(self.shop)[1].get("state"), "opening", "a plain answer never holds the repo")
+
+    def test_a_helper_when_the_repo_has_a_main_manager(self):
+        self.mains[self.shop] = "g1"
+        self.known(self.shop, "g1")
+        self.kind = "plain"
+        code, body = self.add(self.shop)
+        self.assertEqual((body["name"], body["role"]), ("shop Helper", "helper"))
+        self.assertIn("'shop Helper'", body["command"])
+
+    def test_the_folder_is_one_quoted_word(self):
+        name = "my repo'; touch pwned; echo '"
+        evil = self.repo(name)
+        self.known(evil)
+        self.kind = "plain"
+        code, body = self.add(evil)
+        words = shlex.split(body["command"])
+        self.assertEqual(words[:3], ["cd", os.path.join(self.base, name), "&&"])
+        self.assertEqual(words[3:6], ["claude", "--name", name + " Manager"])
+
+    def test_plain_is_asked_before_the_cap(self):
+        self.known(self.shop)
+        self.kind = "plain"
+        self.res = {"ram": 95, "cpu": 95, "max": 80, "ok": False}
+        self.assertEqual(self.add(self.shop)[1].get("state"), "plain",
+                         "a command the owner runs by hand needs no cap question")
+
+    def test_a_broken_kind_reader_counts_as_plain(self):
+        def boom(folder):
+            raise OSError("no bash")
+
+        state = self.make(kind_fn=boom, start_repo=self.shop)
+        code, body = state.add_agent(ac.territory_id(self.shop), self.now)
+        self.assertEqual((code, body.get("state")), (200, "plain"))
+        self.assertEqual(self.calls, [])
+
+    def test_the_kind_is_asked_for_that_repos_folder(self):
+        asked = []
+        state = self.make(kind_fn=lambda folder: asked.append(folder) or "orca", start_repo=self.shop)
+        state.add_agent(ac.territory_id(self.shop), self.now)
+        self.assertEqual(asked, [os.path.join(self.base, "shop")])
+
+
+class TestRuntimeKind(unittest.TestCase):
+    """runtime_kind against the real bin/agent-runtime.sh, with the answer pinned (it never probes Orca here)."""
+
+    def setUp(self):
+        self.base = os.path.realpath(tempfile.mkdtemp(prefix="city_kind_"))
+
+    def tearDown(self):
+        shutil.rmtree(self.base, ignore_errors=True)
+
+    def test_the_callers_override(self):
+        for kind in ("plain", "orca", "cloud"):
+            with self.subTest(kind=kind), mock.patch.dict(os.environ, {"AGENT_RUNTIME": kind}):
+                self.assertEqual(ac.runtime_kind(self.base), kind)
+
+    def test_that_repos_agent_conf_counts(self):
+        with open(os.path.join(self.base, "agent.conf"), "w") as fh:
+            fh.write("runtime=plain\n")
+        env = {k: v for k, v in os.environ.items() if k not in ("AGENT_RUNTIME", "CLAUDE_PROJECT_DIR", "CLAUDE_CODE_REMOTE")}
+        env["CLAUDE_PROJECT_DIR"] = ROOT      # where the server itself was started: must not win
+        with mock.patch.dict(os.environ, env, clear=True):
+            self.assertEqual(ac.runtime_kind(self.base), "plain")
+
+    def test_anything_else_is_plain(self):
+        fake = os.path.join(self.base, "fake.sh")
+        for body in ("echo banana\n", "exit 3\n", "echo orca; exit 1\n"):
+            with self.subTest(body=body):
+                with open(fake, "w") as fh:
+                    fh.write("#!/usr/bin/env bash\n" + body)
+                self.assertEqual(ac.runtime_kind(self.base, runtime=fake), "plain")
+        self.assertEqual(ac.runtime_kind(self.base, runtime=os.path.join(self.base, "missing.sh")), "plain")
+        with open(fake, "w") as fh:
+            fh.write("#!/usr/bin/env bash\n[ \"$1\" = kind ] && echo orca\n")
+        self.assertEqual(ac.runtime_kind(self.base, runtime=fake), "orca", "the script is asked for `kind`")
+
+
+# ---------------------------------------------------------------------------
+# A5: over the resource cap -> the owner confirms or cancels
+# ---------------------------------------------------------------------------
+
+class TestCap(AddCase):
+    def test_over_the_cap_asks_first(self):
+        self.known(self.shop)
+        self.res = {"ram": 86, "cpu": 41, "max": 80, "ok": False}
+        code, body = self.add(self.shop)
+        self.assertEqual((code, body), (200, {"state": "cap", "ram": 86, "cpu": 41, "max": 80}))
+        self.assertEqual(self.calls, [], "over the cap: never just start")
+        code, body = self.add(self.shop)
+        self.assertEqual(body.get("state"), "cap", "a cap answer never holds the repo")
+
+    def test_the_owner_confirms(self):
+        self.known(self.shop)
+        self.res = {"ram": 86, "cpu": 41, "max": 80, "ok": False}
+        self.add(self.shop)
+        code, body = self.add(self.shop, force=True)
+        self.assertEqual((code, body.get("state"), body.get("name")), (200, "opening", "shop Manager"))
+        self.assertEqual(len(self.calls), 1, "it is his click")
+
+    def test_under_the_cap_just_opens(self):
+        self.known(self.shop)
+        self.res = {"ram": 80, "cpu": 80, "max": 80, "ok": True}
+        self.assertEqual(self.add(self.shop)[1].get("state"), "opening")
+
+    def test_a_broken_reader_never_blocks(self):
+        def boom(folder):
+            raise OSError("no top")
+
+        state = self.make(resources_fn=boom, start_repo=self.shop)
+        code, body = state.add_agent(ac.territory_id(self.shop), self.now)
+        self.assertEqual((code, body.get("state")), (200, "opening"))
+
+    def test_the_numbers_are_read_for_that_repos_folder(self):
+        asked = []
+
+        def res(folder):
+            asked.append(folder)
+            return {"ram": 1, "cpu": 1, "max": 80, "ok": True}
+
+        state = self.make(resources_fn=res, start_repo=self.shop)
+        state.add_agent(ac.territory_id(self.shop), self.now)
+        self.assertEqual(asked, [os.path.join(self.base, "shop")])
+
+
+class TestMachineResources(unittest.TestCase):
+    def setUp(self):
+        self.base = os.path.realpath(tempfile.mkdtemp(prefix="city_res_"))
+
+    def tearDown(self):
+        shutil.rmtree(self.base, ignore_errors=True)
+
+    def conf(self, text):
+        with open(os.path.join(self.base, "agent.conf"), "w") as fh:
+            fh.write(text)
+
+    def test_the_numbers_and_that_repos_cap(self):
+        with mock.patch.dict(os.environ, {"AGENT_FAKE_RAM": "91", "AGENT_FAKE_CPU": "12"}):
+            self.conf("max_usage_percent=80\n")
+            self.assertEqual(ac.machine_resources(self.base), {"ram": 91, "cpu": 12, "max": 80, "ok": False})
+            self.conf("max_usage_percent=95\n")
+            self.assertEqual(ac.machine_resources(self.base), {"ram": 91, "cpu": 12, "max": 95, "ok": True})
+        with mock.patch.dict(os.environ, {"AGENT_FAKE_RAM": "20", "AGENT_FAKE_CPU": "81"}):
+            self.conf("max_usage_percent=80\n")
+            self.assertEqual(ac.machine_resources(self.base), {"ram": 20, "cpu": 81, "max": 80, "ok": False})
+            self.conf("max_usage_percent=81\n")
+            self.assertTrue(ac.machine_resources(self.base)["ok"], "at the cap is not over it")
+
+    def test_no_agent_conf_takes_the_default_files_cap(self):
+        import agent_conf
+        default = int(agent_conf.load(os.path.join(BIN, "agent.conf.default"))["max_usage_percent"])
+        with mock.patch.dict(os.environ, {"AGENT_FAKE_RAM": "5", "AGENT_FAKE_CPU": "5"}):
+            self.assertEqual(ac.machine_resources(self.base), {"ram": 5, "cpu": 5, "max": default, "ok": True})
+            self.conf("max_usage_percent=lots\n")
+            self.assertEqual(ac.machine_resources(self.base)["max"], default, "a bad value is not a cap")
+
+    def test_never_raises(self):
+        got = ac.machine_resources(self.base, script=os.path.join(self.base, "missing.sh"))
+        self.assertEqual((got["ram"], got["cpu"], got["ok"]), (-1, -1, True))
+
+
+# ---------------------------------------------------------------------------
+# A4: what the pages are told
+# ---------------------------------------------------------------------------
+
+class TestPageEvents(AddCase):
+    def setUp(self):
+        super().setUp()
+        self.tid = self.known(self.shop)
+        self.page = self.client()
+
+    def test_opening_then_done(self):
+        self.add(self.shop)
+        self.assertEqual(self.events(self.page),
+                         [{"type": "adding", "terr": self.tid, "state": "opening", "name": "shop Manager", "role": "main"}])
+        self.feed(line("UserPromptSubmit", "old1", self.shop), at=self.now + 1)
+        self.assertEqual(self.events(self.page), [], "an old session's line ends nothing")
+        self.feed(line("UserPromptSubmit", "new1", self.shop), at=self.now + 2)
+        self.assertEqual(self.events(self.page), [{"type": "adding", "terr": self.tid, "state": "done"}])
+        self.feed(line("Stop", "new1", self.shop), at=self.now + 3)
+        self.assertEqual(self.events(self.page), [], "done is said once")
+
+    def test_late_after_the_wait(self):
+        self.add(self.shop)
+        self.events(self.page)
+        self.state.sweep_adding(self.now + ac.ADD_WAIT_SEC - 1)
+        self.assertEqual(self.events(self.page), [])
+        self.state.sweep_adding(self.now + ac.ADD_WAIT_SEC + 1)
+        self.assertEqual(self.events(self.page), [{"type": "adding", "terr": self.tid, "state": "late"}])
+        self.state.sweep_adding(self.now + ac.ADD_WAIT_SEC + 5)
+        self.assertEqual(self.events(self.page), [], "late is said once")
+        self.assertEqual(self.add(self.shop, at=self.now + ac.ADD_WAIT_SEC + 6)[0], 200, "and the repo is free")
+
+    def test_the_tick_sweeps(self):
+        import inspect
+        self.assertIn("sweep_adding", inspect.getsource(ac.recount_loop))
+
+    def test_a_session_faster_than_the_opener(self):
+        def fast(folder, title, command):
+            self.calls.append((folder, title, command))
+            self.state.feed_line(line("UserPromptSubmit", "new1", self.shop), self.now)   # it is already here
+            return True, ""
+
+        self.state.open_fn = fast
+        code, body = self.add(self.shop)
+        self.assertEqual((code, body.get("state")), (200, "opening"))
+        got = [e["state"] for e in self.events(self.page)]
+        self.assertEqual(got, ["opening", "done"], "the page must not wait %d s for a session that is here" % ac.ADD_WAIT_SEC)
+        self.assertEqual(self.add(self.shop, at=self.now + 1)[0], 200, "the repo is free")
+
+    def test_no_event_when_nothing_opened(self):
+        self.answer = (False, "orca: the app is not running")
+        self.add(self.shop)
+        self.answer = (True, "")
+        self.kind = "plain"
+        self.add(self.shop)
+        self.kind = "orca"
+        self.res = {"ram": 99, "cpu": 1, "max": 80, "ok": False}
+        self.add(self.shop)
+        self.add("0badc0de")
+        self.assertEqual(self.events(self.page), [])
+
+    def test_a_new_page_knows_what_is_opening(self):
+        def snapshot():
+            c = self.state.add_client()
+            return json.loads(c.queue.get_nowait().decode("utf-8").split("data:", 1)[1])
+
+        self.assertEqual(snapshot()["adding"], [])
+        self.add(self.shop)
+        self.assertEqual(snapshot()["adding"], [{"terr": self.tid, "name": "shop Manager", "role": "main"}])
+        self.feed(line("UserPromptSubmit", "new1", self.shop), at=self.now + 2)
+        self.assertEqual(snapshot()["adding"], [])
+
+
+# ---------------------------------------------------------------------------
+# A1 / A2: every territory says whether its folder is on this machine
+# ---------------------------------------------------------------------------
+
+class TestHere(AddCase):
+    def test_the_world_view_says_here(self):
+        state = self.make(start_repo=self.shop)
+        page = self.client(state)
+        state.feed_line(line("UserPromptSubmit", "s9", "/nowhere/ghost/.git"), self.now)   # a repo that is not on this machine
+        worlds = self.events(page, "world")
+        self.assertTrue(worlds, "a new territory is a world event")
+        here = {t["id"]: t.get("here") for t in worlds[-1]["world"]["territories"]}
+        self.assertEqual(here, {ac.territory_id(self.shop): True, ac.territory_id("/nowhere/ghost/.git"): False})
+        c = state.add_client()
+        snap = json.loads(c.queue.get_nowait().decode("utf-8").split("data:", 1)[1])
+        self.assertEqual({t["id"]: t.get("here") for t in snap["world"]["territories"]}, here)
+
+    def test_a_folder_that_is_not_here_never_opens(self):
+        tid = self.known("/nowhere/ghost/.git")
+        code, body = self.state.add_agent(tid, self.now)
+        self.assertEqual((code, body), (409, {"error": "gone", "folder": "/nowhere/ghost"}))
+        self.assertEqual(self.calls, [])
+
+
+# ---------------------------------------------------------------------------
 # A7: POST /api/agent/add -- the chat gate, the local page only
 # ---------------------------------------------------------------------------
 
@@ -490,8 +838,19 @@ class TestHttp(AddCase):
         self.assertEqual(len(self.calls), 1)
 
     def test_force_is_part_of_the_shape(self):
+        self.res = {"ram": 86, "cpu": 41, "max": 80, "ok": False}
+        self.assertEqual(self.call(body={"terr": self.tid}), (200, {"state": "cap", "ram": 86, "cpu": 41, "max": 80}))
+        self.assertEqual(self.call(body={"terr": self.tid, "force": False})[1].get("state"), "cap")
         code, body = self.call(body={"terr": self.tid, "force": True})
         self.assertEqual((code, body.get("state")), (200, "opening"))
+        self.assertEqual(len(self.calls), 1)
+
+    def test_plain_over_http(self):
+        self.kind = "plain"
+        code, body = self.call(body={"terr": self.tid})
+        self.assertEqual((code, body.get("state")), (200, "plain"))
+        self.assertTrue(body["command"].startswith("cd "))
+        self.assertEqual(self.calls, [])
 
     def test_the_gate(self):
         ok = {"terr": self.tid}
