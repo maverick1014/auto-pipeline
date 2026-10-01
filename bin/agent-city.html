@@ -5855,6 +5855,29 @@ document.addEventListener('submit', e => {
   if (!text.trim()) return;
   Promise.resolve(sendChat(to, text)).then(ok => { if (ok && $('#say-text') === ta) ta.value = ''; });
 });
+/* chat-enter: the chat box keys. sayKeyAction(e, coarse) -> 'send' | 'newline' | '' (leave the key alone).
+   Enter sends; Shift/Cmd/Ctrl+Enter is a new line; never while an input method is composing (the Enter
+   then only confirms the word); on a phone or tablet (coarse pointer) Enter is a new line and only the
+   send button sends. */
+function sayKeyAction(e, coarse){
+  if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return '';
+  if (e.shiftKey || e.metaKey || e.ctrlKey) return 'newline';
+  if (e.altKey) return '';
+  return coarse ? '' : 'send';
+}
+document.addEventListener('keydown', e => {
+  const ta = e.target;
+  if (!ta || ta.id !== 'say-text') return;
+  const act = sayKeyAction(e, matchMedia('(pointer: coarse)').matches);
+  if (!act) return;
+  e.preventDefault();
+  if (act === 'send') {
+    if (ta.form && ta.value.trim()) ta.form.requestSubmit();
+    return;
+  }
+  ta.setRangeText('\n', ta.selectionStart, ta.selectionEnd, 'end');
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+});
 function renderDetail(){
   // city-ux2 v2 (V1, owner 2026-09-29): the team list used to render here (U11, via teamListHtml); it
   // now lives in the left rail instead -- #rail-list is built from railGroups(), itself built from
