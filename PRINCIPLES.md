@@ -30,7 +30,7 @@ R4. No changelog
 
 R5. Task files
 - `agent_todo.txt` = open tasks only, always current
-- Done → agent_completed.txt: date, name, what, est/actual. No test data, that is report material
+- Done → agent_completed.txt: date, name, what, then one `data` block written by `agent-file.sh`: repo, type, lane, mock, est, work, wait, clock, bounces, workers, files, lines, tests, adds. No test results, that is report material
 - No other task tracking
 - All four `agent_*.txt` files are written only through `./agent-file.sh`. No agent for that, it costs tokens
 
@@ -96,7 +96,7 @@ W8. Merge and cleanup
 - Deputy merges into the integration branch
 - Deputy deletes the branch (local + remote) and the worktree right after merge
 - Never skip cleanup
-- Deputy runs `./agent-file.sh worktree rm <path>` and `./agent-file.sh todo done <name> "<result>"`
+- Deputy runs `./agent-file.sh worktree rm <path>` and `./agent-file.sh todo done <name>` with the facts from the main manager and `--merge <commit>`
 
 W9. Task routing (main manager, before every dispatch)
 - Read `agent_worktree.txt` first
@@ -124,10 +124,12 @@ W10. Second session in the same repo
 
 W11. Time
 - Every task gets an estimate in minutes before dispatch, on its todo line
-- Done = merged and cleaned. `bin/agent-file.sh todo done` records the actual minutes
-- Every done report has one line: `TIME: est <n>m, actual <n>m, human <n>m`
-- Actual over 2× estimate → say it in the report, never silent
+- Estimate = agent work only. Waiting is not work: mock gate, owner question, owner review, hold, suite slot
+- Every done report has one line: `TIME: est <n>m, actual <n>m, wait <n>m`. Actual = agent work only
+- Done = merged and cleaned. The main manager passes work, wait and the task facts to `bin/agent-file.sh todo done`
+- Work over 2× estimate → say it in the report, never silent
 - Before a new estimate: `bin/agent-file.sh time`, then pick a rubric row (dispatch skill)
+- A time question from the human → a duration AND a clock time, and when he is needed next: `bin/agent-file.sh eta`
 
 W12. Cross-repo
 - One main manager per repo (W10). Peer = the interactive session in `ListAgents` named `<other repo folder> Manager` (or its `<other repo folder>-<xx>` row), whose lock in that repo's git dir is alive

@@ -6,6 +6,8 @@ description: Main manager only. On a CLOSE CASE report from a task manager decid
 
 ## A. One CLOSE CASE report
 
+The report's TIME line keeps work and wait apart: est, actual (agent work only), wait. Missing → ask for it once.
+
 1. `finished` → run `/merge`.
 2. `unfinished` → review it against the requirement doc, then decide:
    - **finish first** → `SendMessage` it: go on to DONE, then report `DONE PASS <name>` as usual; later `/merge`.
@@ -13,7 +15,7 @@ description: Main manager only. On a CLOSE CASE report from a task manager decid
      - Close its pane (orca only): `${CLAUDE_PLUGIN_ROOT}/bin/agent-runtime.sh close <terminal handle>`.
      - Remove the worktree: orca → `orca worktree rm --worktree path:<worktree path> --json`; plain → `git worktree remove <worktree path>`, then `git worktree prune`.
      - `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree rm "<worktree path>"`.
-     - Keep the todo line open with the next steps: `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<name>" big "<what>; next: <next steps>; branch <branch>" <est_minutes>` (todo add replaces the line; never put " | " inside the text).
+     - Keep the todo line open with the next steps and the time so far: `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<name>" big "<what>; next: <next steps>; branch <branch>; work so far <n>m, wait <n>m" <est_minutes>` (todo add replaces the line; never put " | " inside the text).
 3. Log the decision in your `agent_state.txt` (date, name, decision, why). Human away → decide by the requirement doc, add "owner not seen".
 
 ## B. The human says close case (whole repo)
