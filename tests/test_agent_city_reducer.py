@@ -91,6 +91,11 @@ EVENT_KEYS = {
     "done": {"type", "id"},
     "leave": {"type", "id"},
     "gov": {"type", "state"},
+    # city-status (tests/test_agent_city_status.py): a session citizen's status events
+    "waiting": {"type", "id"},
+    "background": {"type", "id"},
+    "idle": {"type", "id"},
+    "resume": {"type", "id"},
 }
 # keys an event may carry only sometimes (tests/test_agent_city_steps.py)
 OPTIONAL_KEYS = {"tool": {"file", "desc"}}
@@ -402,7 +407,8 @@ class TestSafety(Case):
         snap = self.r.snapshot()
         self.assertEqual(set(snap), {"gov", "agents"})
         self.assertEqual(set(snap["agents"][0]),
-                         {"id", "role", "label", "task", "stuck", "waiting", "done", "tools"})  # waiting: idea-city C5
+                         {"id", "role", "label", "task", "stuck", "waiting", "status", "done",
+                          "tools"})  # waiting: idea-city C5, status: city-status
         json.dumps(snap)
 
 

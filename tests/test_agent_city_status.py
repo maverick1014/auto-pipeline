@@ -45,7 +45,8 @@ CONTRACT
        StopNote need "1"            -> waiting
        StopNote bg "1" (need "")    -> background
        StopNote, both ""            -> idle
-       Stop (no note: old hooks)    -> idle when the session was busy; a
+       Stop (no note: old hooks)    -> idle when the session was busy (also a
+                                       session first seen at this Stop); a
                                        session already waiting, background or
                                        idle is left as it is (the note
                                        decides, whichever line comes first)
@@ -420,6 +421,14 @@ class TestCitizenStatus(unittest.TestCase):
         self.assertEqual(self.feed(note("tm1")), [])
         a = self.agent("s:tm1")
         self.assertEqual((a["status"], a["waiting"], a["stuck"]), ("idle", False, False))
+
+    def test_first_seen_at_its_stop_is_idle(self):
+        # the city started in the middle of this session's turn: its first line is the Stop
+        out = self.feed(R("Stop", sid="late", role="task-manager"))
+        self.assertEqual([e["type"] for e in out], ["spawn", "idle"])
+        self.assertEqual(out[1], {"type": "idle", "id": "s:late"})
+        self.assertEqual(self.agent("s:late")["status"], "idle")
+        self.assertEqual(self.feed(note("late", need="1")), [{"type": "waiting", "id": "s:late"}])
 
     def test_idle_prompt_is_not_waiting(self):
         self.feed(R("Stop", sid="tm1", role="task-manager"))
