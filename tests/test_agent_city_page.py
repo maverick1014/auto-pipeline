@@ -41,8 +41,8 @@ CONTRACT
       ([data-speed]), the pause button (#play and its icons/label), the drag
       hint (#hint-drag, hideHint), the separator #spawn-sep. No `speed` or
       `paused` in the script, no keydown/keyup/keypress listener.
-    Kept: the status counts 干活 找总督 休息 建成, the clock (#clock), the
-      demo-only spawn control (#spawn-group, hidden outside demo), the
+    Kept: the status counts 干活 找总督 休息 建成, the
+      demo-only spawn control (#spawn-group; the whole toolbar is removed outside demo), the
       demo-only detail buttons (data-act stuck/done/leave behind DEMO ?), the
       four camera buttons #zin #zout #rot #zfit and nothing else there, the
       one-column layout under @media (max-width: 960px).
@@ -938,15 +938,24 @@ class TestKept(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertIn(label, body)
 
-    def test_clock(self):
-        self.assertIn('id="clock"', markup())
-        self.assertIn("$('#clock')", inline_script())
+    def test_no_clock(self):
+        self.assertNotIn('id="clock"', markup())
+        self.assertNotIn('#clock', inline_script())
+        self.assertNotIn('clock.now', page())
+        self.assertNotIn('clock.demo', page())
+
+    def test_live_mode_has_no_bottom_bar(self):
+        self.assertRegex(inline_script(),
+                         r"\} else \{\s*\$\('\.toolbar'\)\.remove\(\);\s*"
+                         r"\$\('\.stage-col'\)\.classList\.add\('no-bar'\);")
+        self.assertIn('.stage-col.no-bar{--stage-off:', page())
+        self.assertIn('calc(100dvh - var(--stage-off,150px))', page())
 
     def test_spawn_control_only_in_demo(self):
         self.assertIn('id="spawn-group"', markup())
         self.assertRegex(inline_script(),
                          r"if \(DEMO\) \{\s*\$\('#spawn'\)\.addEventListener[\s\S]*?\n\} else \{\s*"
-                         r"\$\('#spawn-group'\)\.hidden = true;")
+                         r"\$\('\.toolbar'\)\.remove\(\);")
 
     def test_detail_buttons_only_in_demo(self):
         text = inline_script()
