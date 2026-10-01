@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City · city-add-agent mock</title>
+<link rel="icon" href="data:,">
+<style>
+/* city-add-agent mock (owner, 2026-10-01): start a new agent session from the city page, no terminal.
+   The rail CSS below is the real page's (bin/agent-city.html); what this task adds is marked NEW:
+   every repo this city knows gets a group (A1), an "add agent" button at the bottom of each group (A2),
+   and the button's own states: opening, opened, the over-cap confirm, an error, no Orca (A4-A6).
+   The city itself is a flat stand-in (sea, islands, little people), only so the rail sits on something. */
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --sky:#CFE6FF; --berry:#FF7593; --berry-deep:#D9506E; --butter:#FFD36E; --focus:#4D7CFE;
+  --build-bg:#E1ECFF; --build-ink:#3160B5; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
+  --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488;
+  --gov-bg:#FFF0C7; --gov-ink:#8A6000; --sea:#BFDDF6; --land:#CDE9B4; --land-edge:#9FCB84;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+  --line:#2D3360; --sky:#1B2046; --focus:#8FB0FF;
+  --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+  --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
+  --gov-bg:#43381A; --gov-ink:#FFDD8A; --sea:#1A2A4A; --land:#2F4A34; --land-edge:#476B4C;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.app{max-width:1500px;margin-inline:auto;padding-inline:16px;padding-block:12px 22px;display:flex;flex-direction:column;gap:10px}
+.app.phone{max-width:400px;border:2px dashed var(--ink-3);border-radius:28px;padding-inline:8px}
+
+/* mock-only controls */
+.mockbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 12px;border:1.5px dashed var(--ink-3);border-radius:14px;font-size:12.5px;color:var(--ink-2)}
+.mockbar b{font:700 12px/1 var(--mono);color:var(--ink-3);letter-spacing:.06em}
+.mockbar .srv{flex-basis:100%;font:12px/1.5 var(--mono);color:var(--ink-2)}
+.seg{display:inline-flex;flex-wrap:wrap;border:1.5px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{all:unset;cursor:pointer;padding:5px 10px;font:600 12px/1.2 var(--round);color:var(--ink-2);background:var(--panel)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.seg button:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.sign{display:inline-flex;align-items:center;gap:10px;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:5px 16px 5px 12px;box-shadow:0 3px 0 var(--ink)}
+.sign-name{font:700 22px/1 var(--display)}
+
+/* the city stand-in */
+.stage{position:relative;overflow:hidden;height:calc(100dvh - 330px);min-height:560px;background:var(--sea);--rail-w:212px}
+.app.phone .stage{height:680px;min-height:0}
+.isle{position:absolute;background:var(--land);border:3px solid var(--land-edge);border-radius:46% 54% 50% 50% / 55% 45% 55% 45%}
+.lbl{position:absolute;transform:translate(-50%,-50%);background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:2px 10px;font:600 12px/1.5 var(--display);box-shadow:0 2px 0 rgba(42,43,69,.15);white-space:nowrap;pointer-events:none}
+.hall{position:absolute;width:34px;height:30px;transform:translate(-50%,-70%);background:#F6E2B8;border:2px solid #9C7A3C;border-radius:4px 4px 2px 2px}
+.hall::before{content:"";position:absolute;left:-6px;right:-6px;top:-12px;height:12px;background:#C9544B;clip-path:polygon(50% 0,100% 100%,0 100%)}
+.pp{all:unset;cursor:pointer;position:absolute;width:14px;height:22px;transform:translate(-50%,-100%)}
+.pp::before{content:"";position:absolute;left:3px;top:0;width:8px;height:8px;border-radius:50%;background:#F2C9A0;border:1.5px solid #6B4B33}
+.pp::after{content:"";position:absolute;left:1px;top:9px;width:12px;height:12px;border-radius:5px 5px 2px 2px;background:var(--c)}
+.pp:focus-visible{outline:2px solid var(--focus);outline-offset:3px;border-radius:4px}
+.pp.sel{filter:drop-shadow(0 0 0 #FF7593) drop-shadow(0 0 3px #FF7593)}
+.pp.fresh,.tagl.fresh{animation:pop .5s ease-out}
+.tagl{position:absolute;transform:translate(-50%,0);background:var(--c);color:#fff;border-radius:999px;padding:3px 10px;font:600 11.5px/1.3 var(--mono);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.2);cursor:pointer;z-index:1}
+@keyframes pop{from{opacity:0;scale:.4}to{opacity:1;scale:1}}
+
+.fold{all:unset;cursor:pointer;flex:none;width:26px;height:26px;display:grid;place-items:center;border-radius:8px;color:var(--ink-2);font:700 14px/1 var(--round)}
+.fold:hover{background:var(--panel-2);color:var(--ink)}
+.fold:focus-visible{outline:2px solid var(--focus)}
+.you{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--berry);color:#fff;font:700 11px/1 var(--round)}
+.btn{font:600 13px/1 var(--round);border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:12px;padding:0 12px;min-height:34px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--ink-3)}
+.btn:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+
+/* ---- the rail (real page) ---- */
+.rc{width:10px;height:10px;border-radius:50%;background:var(--rc);flex:none;display:inline-block}
+.rail{position:absolute;left:12px;top:12px;z-index:4;width:var(--rail-w);max-height:calc(100% - 24px);display:flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:16px;box-shadow:0 4px 0 rgba(42,43,69,.18);overflow:hidden}
+.rail-head{display:flex;align-items:center;gap:6px;padding:6px 6px 6px 12px;border-bottom:1.5px solid var(--line);font-weight:700;font-size:13px}
+.rail-head .n{font:600 12px/1 var(--mono);color:var(--ink-3)}
+.rail-head .fold{margin-left:auto}
+.rail-list{overflow:auto;padding:4px 4px 8px}
+.grp-h{all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:6px;padding:6px 6px 3px;font:700 11.5px/1.2 var(--mono);color:var(--ink-2)}
+.grp-h:focus-visible{outline:2px solid var(--focus);border-radius:6px}
+.grp-h .n{margin-left:auto;color:var(--ink-3);font-weight:600}
+.rail-grp{border-left:4px solid var(--rc);margin:4px 0 6px;padding-left:2px}
+.rail-grp .grp-h{padding-top:3px}
+.rrows{list-style:none;margin:0;padding:0}
+.rrow{all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:8px;font-size:12.5px;line-height:1.35}
+.rrow.sub{padding-left:16px}
+.rrow:hover{background:var(--panel-2)}
+.rrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.rrow[aria-current="true"]{background:var(--ink);color:var(--paper)}
+.rrow.resting{opacity:.7}
+.rrow.fresh{animation:pop .5s ease-out}
+.sdot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--ink-3)}
+.sdot.st-you{background:var(--berry)}
+.sdot.st-ask,.sdot.st-gov{background:#E0A526}
+.sdot.st-build{background:#4D7CFE}
+.sdot.st-walk{background:var(--walk-ink)}
+.sdot.st-rest{background:#2FB57A}
+.rrow b{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{flex:none;display:inline-block;font:600 10.5px/1.6 var(--round);border-radius:999px;padding:0 6px;white-space:nowrap}
+.chip.you{background:var(--ask-bg);color:var(--ask-ink)}
+.chip.ask{background:var(--gov-bg);color:var(--gov-ink)}
+.chip.build{background:var(--build-bg);color:var(--build-ink)}
+.chip.walk{background:var(--walk-bg);color:var(--walk-ink)}
+.chip.rest{background:var(--rest-bg);color:var(--rest-ink)}
+.chip.gov{background:var(--gov-bg);color:var(--gov-ink)}
+.rest-t{all:unset;cursor:pointer;display:block;margin:1px 0 2px 8px;padding:1px 6px;border-radius:6px;font:600 11.5px/1.5 var(--round);color:var(--rest-ink)}
+.rest-t:focus-visible{outline:2px solid var(--focus)}
+.tab{all:unset;cursor:pointer;position:absolute;z-index:4;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0;width:30px;background:var(--panel);border:2px solid var(--ink);box-shadow:0 3px 0 rgba(42,43,69,.18);font:700 12px/1.1 var(--round);color:var(--ink)}
+.tab:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.tab .v{writing-mode:vertical-rl;white-space:nowrap;max-height:180px;overflow:hidden;text-overflow:ellipsis}
+.rail-tab{left:0;top:12px;border-left:0;border-radius:0 12px 12px 0}
+
+/* ---- NEW (city-add-agent) ---- */
+/* A1: a repo with nobody online keeps its group; one quiet line where the rows would be */
+.rail-none{margin:0;padding:1px 8px 2px;font-size:12px;line-height:1.5;color:var(--ink-3)}
+/* A2: one button at the bottom of every group whose repo lives on this machine */
+.add{all:unset;cursor:pointer;box-sizing:border-box;width:calc(100% - 6px);margin:3px 3px 1px;display:flex;align-items:center;justify-content:center;gap:6px;padding:3px 8px;border:1.5px dashed var(--line);border-radius:8px;font:600 12px/1.5 var(--round);color:var(--ink-2)}
+.add:hover{border-color:var(--ink-3);background:var(--panel-2);color:var(--ink)}
+.add:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+/* A4: opening -- same box, a small spinner, not clickable (a second click opens nothing) */
+.add[aria-disabled="true"]{cursor:default;border-style:solid;color:var(--ink-3);background:none}
+.spin{flex:none;width:10px;height:10px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--focus);animation:spin .8s linear infinite}
+@keyframes spin{to{rotate:360deg}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none;border-top-color:var(--ink-3)}.fresh{animation:none!important}}
+/* A4/A5/A6: the one line (or small box) that stands in for the button: error, over-cap confirm, the command */
+.addbox{margin:3px 3px 1px;padding:6px 8px;border-radius:8px;font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+.addbox.err{background:var(--ask-bg);color:var(--ask-ink)}
+.addbox.cap{background:var(--gov-bg);color:var(--gov-ink)}
+.addbox.cmd{background:var(--panel-2);color:var(--ink-2)}
+.addbox b{font-weight:700}
+.addbox .nums{display:block;font:600 11.5px/1.5 var(--mono)}
+.addbox code{display:block;margin-top:4px;padding:5px 6px;border-radius:6px;background:var(--panel);border:1px solid var(--line);font:11px/1.45 var(--mono);color:var(--ink);word-break:break-all;user-select:all}
+.addbox .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.mini{all:unset;cursor:pointer;padding:2px 9px;border-radius:999px;background:var(--panel);border:1.5px solid currentColor;font:600 11.5px/1.5 var(--round);color:inherit}
+.mini.main{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.mini:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+
+/* phone (the real page's <= 960 px rules, here under .app.phone) */
+.app.phone .rail{left:0;top:0;bottom:0;max-height:none;width:min(250px,78%);border-left:0;border-radius:0 16px 16px 0}
+
+.note{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.card{background:var(--panel);border:1.5px solid var(--line);border-radius:16px;padding:12px 14px}
+.card h3{margin:0 0 6px;font-size:14px}
+.card ol,.card ul{margin:0;padding-left:20px}
+.card li{margin:2px 0}
+.card table{border-collapse:collapse;font-size:12.5px;width:100%}
+.card th,.card td{border:1px solid var(--line);padding:3px 6px;text-align:left;vertical-align:top}
+.card th{background:var(--panel-2)}
+.card code{font:12px/1.4 var(--mono)}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="mockbar" role="group" aria-label="mock controls">
+    <b>MOCK city-add-agent</b>
+    <span>点「加 agent」会</span>
+    <span class="seg" id="seg-mode">
+      <button type="button" data-v="ok" aria-pressed="true">正常打开</button>
+      <button type="button" data-v="cap" aria-pressed="false">电脑太忙</button>
+      <button type="button" data-v="fail" aria-pressed="false">打开失败</button>
+      <button type="button" data-v="gone" aria-pressed="false">文件夹不见了</button>
+      <button type="button" data-v="late" aria-pressed="false">开了但没上线</button>
+      <button type="button" data-v="plain" aria-pressed="false">没有 Orca</button>
+    </span>
+    <button type="button" class="btn" id="m-play-empty">▶ 重放：空仓库 v4-plus</button>
+    <button type="button" class="btn" id="m-play-live">▶ 重放：有总督的 auto-pipeline</button>
+    <button type="button" class="btn" id="m-play-double">▶ 重放：双击</button>
+    <button type="button" class="btn" id="m-reset">重置</button>
+    <span>宽度</span>
+    <span class="seg" id="seg-width"><button type="button" data-v="pc" aria-pressed="true">电脑</button><button type="button" data-v="phone" aria-pressed="false">手机</button></span>
+    <span>主题</span>
+    <span class="seg" id="seg-theme"><button type="button" data-v="light" aria-pressed="true">浅色</button><button type="button" data-v="dark" aria-pressed="false">深色</button></span>
+    <span class="srv" id="m-srv" role="status"></span>
+  </div>
+
+  <header class="bar"><div class="sign"><span class="sign-name">Agent City</span></div></header>
+
+  <div class="stage" id="stage">
+    <div id="world"></div>
+    <aside class="rail" id="rail" aria-label="在线">
+      <div class="rail-head"><span>在线</span><span class="n" id="rail-n"></span><span class="you" id="rail-you" hidden></span><button type="button" class="fold" id="rail-fold" aria-label="折起名单">«</button></div>
+      <div class="rail-list" id="rail-list"></div>
+    </aside>
+    <button type="button" class="tab rail-tab" id="rail-tab" hidden><span>›</span><span class="v" id="rail-tab-t"></span></button>
+  </div>
+
+  <section class="note">
+    <div class="card"><h3>怎么点</h3><ol>
+      <li>左边名单现在列出这台电脑上所有的仓库。<b>v4-plus</b> 没人在线：写一行「没人在线」。</li>
+      <li>每个仓库最下面有一个「＋ 加 agent」。点它：按钮变成「正在打开 …」，几秒后新的人出现在名单和城里，按钮回到原样。</li>
+      <li>仓库没有总督（v4-plus）→ 新的是 <b>Manager</b>（总督）。已经有总督（auto-pipeline、v4-pospro）→ 新的是 <b>Helper</b>。不用选。</li>
+      <li>上面选「电脑太忙 / 打开失败 / 文件夹不见了 / 开了但没上线 / 没有 Orca」，再点按钮（或点 ▶ 重放），看每一种情况。</li>
+      <li>「▶ 重放：双击」：连点两下，只开一个。</li>
+      <li><b>shop-api</b> 是别的成员的仓库，不在这台电脑上：没有按钮。</li>
+    </ol></div>
+    <div class="card"><h3>每种情况</h3>
+      <table>
+        <tr><th>情况</th><th>页面显示</th></tr>
+        <tr><td>正常</td><td>「正在打开 v4-plus Manager…」→ 人出现 → 按钮回来</td></tr>
+        <tr><td>电脑太忙（超过上限）</td><td>不拒绝也不直接开：显示 RAM / CPU 那一行，「还是打开」或「取消」</td></tr>
+        <tr><td>打开失败</td><td>红色一行写原因，「再试」「知道了」</td></tr>
+        <tr><td>文件夹不见了</td><td>红色一行写哪个文件夹找不到</td></tr>
+        <tr><td>开了但没上线</td><td>60 秒没见到它：红色一行，叫你去看那个终端（样稿里是 5 秒）</td></tr>
+        <tr><td>没有 Orca</td><td>开不了终端：给一行命令，自己在终端里跑，可以复制</td></tr>
+      </table>
+    </div>
+    <div class="card"><h3>字（中 / English）</h3>
+      <table>
+        <tr><th>中文</th><th>English</th></tr>
+        <tr><td>＋ 加 agent</td><td>+ Add agent</td></tr>
+        <tr><td>没人在线</td><td>Nobody online</td></tr>
+        <tr><td>正在打开 {name}…</td><td>Opening {name}…</td></tr>
+        <tr><td>电脑有点忙 · 还是打开 · 取消</td><td>This computer is busy · Open anyway · Cancel</td></tr>
+        <tr><td>没打开：{原因} · 再试 · 知道了</td><td>Not opened: {reason} · Try again · OK</td></tr>
+        <tr><td>这台电脑没有 Orca … 复制 · 关掉</td><td>No Orca on this computer … Copy · Close</td></tr>
+      </table>
+    </div>
+    <div class="card"><h3>我先按默认做（有意见就说）</h3><ul>
+      <li>按钮的各种状态都显示在名单里、那个仓库的下面，不弹窗。</li>
+      <li>「正在打开」时按钮点不动；服务器对同一个仓库一次只开一个。</li>
+      <li>模型、effort、权限模式都读那个仓库自己的 agent.conf（跟现在派任务一样）。</li>
+      <li>「没人在线」的仓库在城里的小岛不变：只是名单里多一组。</li>
+      <li>收起的仓库（点标题收起）不显示按钮，展开才有。</li>
+      <li>名单最上面的「在线 N」不变：只数在干活的人。</li>
+      <li>这次只管本机的页面。云端的城市页面先没有这个按钮（以后另一个任务）。</li>
+    </ul></div>
+  </section>
+</div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+// local: the repo's folder is on this machine (its territory in world.json) -> it gets the button (A2)
+const TERRS = [
+  { id:'ap', name:'auto-pipeline', color:'#4D7CFE', x:.52, y:.27, w:.26, h:.30, local:true, dir:'/Users/maverick/repo/auto-pipeline', main:'fable-5.1', effort:'xhigh' },
+  { id:'pos', name:'v4-pospro', color:'#FF7593', x:.40, y:.72, w:.22, h:.30, local:true, dir:'/Users/maverick/repo/v4-pospro', main:'fable-5.1', effort:'xhigh' },
+  { id:'plus', name:'v4-plus', color:'#2FB57A', x:.66, y:.70, w:.20, h:.28, local:true, dir:'/Users/maverick/repo/v4-plus', main:'opus-5.5', effort:'high' },
+  { id:'shop', name:'shop-api', color:'#E8A33A', x:.86, y:.36, w:.16, h:.24, local:false },
+];
+const PEOPLE0 = [
+  { id:'gov:ap', terr:'ap', gov:true, st:['gov','在忙'], x:.52, y:.23 },
+  { id:'s:c1', terr:'ap', label:'city-add-agent Task Manager', st:['build','改代码'], x:.46, y:.31, color:'#9B6BFF' },
+  { id:'a:w1', terr:'ap', label:'Worker 1: rail', lead:'s:c1', st:['build','跑命令'], x:.49, y:.35, color:'#FF9F43' },
+  { id:'gov:pos', terr:'pos', gov:true, st:['gov','空闲'], x:.40, y:.68 },
+  { id:'s:h1', terr:'pos', label:'Helper', st:['you','等你'], x:.36, y:.76, color:'#00B8D9' },
+  { id:'s:r1', terr:'pos', label:'按钮颜色 Deputy', st:['rest','休息中'], rest:true, x:.44, y:.79, color:'#8FB0FF' },
+  { id:'r:m1', terr:'shop', label:'阿明 · Helper', st:['build','施工中'], x:.86, y:.42, color:'#C77DFF', remote:true },
+];
+const HALL = { ap:[.52, .23], pos:[.40, .68], plus:[.66, .70], shop:[.86, .37] };
+const COLORS = ['#E07BFF', '#FFCF4D', '#6FD4A8', '#FF9F43', '#00B8D9'];
+let PEOPLE, add, mode = 'ok', sel = null, folded, restOpen, railFolded = false, seq, sent, opened, timers = [];
+const terr = id => TERRS.find(t => t.id === id);
+const hasGov = id => PEOPLE.some(p => p.gov && p.terr === id);
+const later = (ms, fn) => { const t = setTimeout(fn, ms); timers.push(t); };
+function reset(){
+  for (const t of timers) clearTimeout(t);
+  timers = [];
+  PEOPLE = PEOPLE0.map(p => ({ ...p }));
+  add = {}; folded = new Set(); restOpen = new Set(); seq = 0; sent = 0; opened = 0; sel = null;
+  srv('还没有请求。');
+}
+function srv(text){ $('#m-srv').textContent = '服务器（样稿里是假的）：' + text; }
+const nameOf = p => p.gov ? '总督' : p.label;
+// the role is never asked (A3): no live main manager in the repo -> its main manager; else a helper
+const newName = id => terr(id).name + (hasGov(id) ? ' Helper' : ' Manager');
+const command = id => { const t = terr(id);
+  return `cd ${t.dir} && claude --name '${newName(id)}' --model ${t.main} --effort ${t.effort} --permission-mode auto`; };
+
+/* A3/A4: the session's first event arrived -> the person appears, the button is a button again */
+function arrive(id){
+  const t = terr(id), [hx, hy] = HALL[id];
+  if (!hasGov(id)) {
+    PEOPLE.push({ id:'gov:' + id, terr:id, gov:true, st:['gov','空闲'], x:hx, y:hy, fresh:true });
+  } else {
+    const n = seq++, pid = 's:n' + n;
+    PEOPLE.push({ id:pid, terr:id, label:'Helper' + (PEOPLE.some(p => p.terr === id && p.label === 'Helper') ? ' #' + (n + 2) : ''), st:['walk','去工地'],
+      x:hx + .035 + (n % 3) * .022, y:hy + .06 + (n % 2) * .035, color:COLORS[n % COLORS.length], fresh:true });
+    later(1600, () => { const p = PEOPLE.find(o => o.id === pid); if (p) { p.st = ['build','看文件']; render(); } });
+  }
+  opened++;
+  delete add[id];
+  srv(`收到 ${sent} 个请求，打开了 ${opened} 个会话。最后一个：${t.name} 的第一条消息到了，人出现。`);
+  render();
+  later(700, () => { for (const p of PEOPLE) delete p.fresh; });
+}
+function open(id, force){
+  const t = terr(id), name = newName(id);
+  sent++;
+  if (mode === 'plain') { add[id] = { s:'cmd', cmd:command(id) }; srv(`收到 ${sent} 个请求。这台电脑没有 Orca：不开终端，回一行命令。`); return render(); }
+  if (mode === 'gone') { add[id] = { s:'err', msg:`找不到仓库文件夹 ${t.dir}（被移走或删掉了）。` }; srv(`收到 ${sent} 个请求。文件夹不在：不开。`); return render(); }
+  if (mode === 'cap' && !force) { add[id] = { s:'cap', ram:86, cpu:41, max:80 }; srv(`收到 ${sent} 个请求。RAM 超过上限：先不开，问你。`); return render(); }
+  add[id] = { s:'opening', name };
+  srv(`收到 ${sent} 个请求。在 ${t.name} 开一个新终端，跑 claude（${name}）。等它的第一条消息…`);
+  render();
+  if (mode === 'fail') return later(900, () => { add[id] = { s:'err', msg:'Orca 开终端失败了（没有回应）。', retry:true }; srv('Orca 报错：没有开成。'); render(); });
+  if (mode === 'late') return later(5000, () => { add[id] = { s:'err', msg:'终端开了，但 60 秒还没见到它上线。去 Orca 看那个终端。' }; srv('终端开了，一直没有第一条消息。'); render(); });
+  later(2600, () => arrive(id));
+}
+function clickAdd(id){
+  // A7: one open at a time per repo -- a click while it is opening does nothing
+  if (add[id] && add[id].s === 'opening') { srv(`${terr(id).name} 正在打开：这一下不算（只开一个）。已收到 ${sent} 个请求。`); return; }
+  open(id, false);
+}
+
+function addHtml(t){
+  if (!t.local) return '';
+  const a = add[t.id];
+  if (!a) return `<button type="button" class="add" data-add="${t.id}">＋ 加 agent</button>`;
+  if (a.s === 'opening') return `<button type="button" class="add" data-add="${t.id}" aria-disabled="true"><span class="spin"></span>正在打开 ${esc(a.name.replace(t.name + ' ', ''))}…</button>`;
+  if (a.s === 'cap') return `<div class="addbox cap" role="alert"><b>电脑有点忙</b><span class="nums">RAM ${a.ram}% · CPU ${a.cpu}%（上限 ${a.max}%）</span>还要打开吗？<div class="acts"><button type="button" class="mini main" data-go="${t.id}">还是打开</button><button type="button" class="mini" data-no="${t.id}">取消</button></div></div>`;
+  if (a.s === 'err') return `<div class="addbox err" role="alert"><b>没打开：</b>${esc(a.msg)}<div class="acts">${a.retry ? `<button type="button" class="mini main" data-add="${t.id}">再试</button>` : ''}<button type="button" class="mini" data-no="${t.id}">知道了</button></div></div>`;
+  return `<div class="addbox cmd" role="status">这台电脑没有 Orca，页面开不了终端。在终端里跑这一行：<code>${esc(a.cmd)}</code><div class="acts"><button type="button" class="mini main" data-copy="${t.id}">${a.copied ? '已复制' : '复制'}</button><button type="button" class="mini" data-no="${t.id}">关掉</button></div></div>`;
+}
+function railHtml(){
+  let html = '';
+  for (const t of TERRS) {
+    const rows = PEOPLE.filter(p => p.terr === t.id);
+    const active = rows.filter(p => !p.rest), resting = rows.filter(p => p.rest);
+    const closed = folded.has(t.id);
+    const you = active.filter(p => p.st[0] === 'you').length;
+    html += `<section class="rail-grp" style="--rc:${t.color}">`;
+    html += `<button type="button" class="grp-h" data-grp="${t.id}" aria-expanded="${!closed}"><span class="rc" style="--rc:${t.color}"></span>${esc(t.name)}<span class="n">${rows.length}</span>${closed && you ? `<span class="you">${you}</span>` : ''}</button>`;
+    if (!closed) {
+      if (!rows.length) html += '<p class="rail-none">没人在线</p>';
+      html += '<ul class="rrows">' + active.map(p => rowHtml(p, t)).join('') + '</ul>';
+      if (resting.length) {
+        html += `<button type="button" class="rest-t" data-rest="${t.id}" aria-expanded="${restOpen.has(t.id)}">休息 ${resting.length}</button>`;
+        if (restOpen.has(t.id)) html += '<ul class="rrows">' + resting.map(p => rowHtml(p, t)).join('') + '</ul>';
+      }
+      html += addHtml(t);
+    }
+    html += '</section>';
+  }
+  return html;
+}
+function rowHtml(p, t){
+  const cls = 'rrow' + (p.lead ? ' sub' : '') + (p.rest ? ' resting' : '') + (p.fresh ? ' fresh' : '');
+  return `<li><button type="button" class="${cls}" data-sel="${p.id}" aria-current="${p.id === sel}" style="--rc:${t.color}"><span class="sdot st-${p.st[0]}"></span><b>${esc(nameOf(p))}</b><span class="chip ${p.st[0]}">${esc(p.st[1])}</span></button></li>`;
+}
+function worldHtml(){
+  let html = '';
+  const stage = $('#stage'), W = stage.clientWidth, H = stage.clientHeight;
+  for (const t of TERRS) {
+    html += `<div class="isle" style="left:${(t.x - t.w / 2) * W}px;top:${(t.y - t.h / 2) * H}px;width:${t.w * W}px;height:${t.h * H}px"></div>`;
+    html += `<div class="lbl" style="left:${t.x * W}px;top:${(t.y - t.h / 2) * H}px">${esc(t.name)}</div>`;
+    const [hx, hy] = HALL[t.id];
+    html += `<div class="hall" style="left:${hx * W}px;top:${(hy - .03) * H}px"></div>`;
+  }
+  for (const p of PEOPLE) {
+    const c = p.gov ? '#FFD36E' : p.color, f = p.fresh ? ' fresh' : '';
+    html += `<button type="button" class="pp${p.id === sel ? ' sel' : ''}${f}" data-sel="${p.id}" aria-label="${esc(nameOf(p))}" style="--c:${c};left:${p.x * W}px;top:${p.y * H}px"></button>`;
+    html += `<div class="tagl${f}" data-sel="${p.id}" style="--c:${p.gov ? '#FF6F8B' : c};left:${p.x * W}px;top:${p.y * H + 6}px">${esc(p.gov ? '总督 · main manager' : nameOf(p))}</div>`;
+  }
+  return html;
+}
+function render(){
+  $('#world').innerHTML = worldHtml();
+  const list = $('#rail-list'), top = list.scrollTop;
+  list.innerHTML = railHtml();
+  list.scrollTop = top;
+  const active = PEOPLE.filter(p => !p.gov && !p.rest);
+  $('#rail-n').textContent = active.length;
+  const you = active.filter(p => p.st[0] === 'you').length;
+  $('#rail-you').hidden = !you; $('#rail-you').textContent = you;
+  $('#rail').hidden = railFolded; $('#rail-tab').hidden = !railFolded; $('#rail-tab-t').textContent = '在线 ' + active.length;
+}
+function segInit(id, cb){
+  const seg = $(id);
+  seg.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    for (const x of seg.querySelectorAll('button')) x.setAttribute('aria-pressed', String(x === b));
+    cb(b.dataset.v);
+  });
+}
+segInit('#seg-mode', v => { mode = v; });
+segInit('#seg-width', v => { $('#app').classList.toggle('phone', v === 'phone'); railFolded = false; render(); });
+segInit('#seg-theme', v => { document.documentElement.dataset.theme = v; });
+$('#m-reset').addEventListener('click', () => { reset(); render(); });
+$('#m-play-empty').addEventListener('click', () => { reset(); render(); later(350, () => clickAdd('plus')); });
+$('#m-play-live').addEventListener('click', () => { reset(); render(); later(350, () => clickAdd('ap')); });
+$('#m-play-double').addEventListener('click', () => { reset(); render(); later(350, () => clickAdd('ap')); later(520, () => clickAdd('ap')); });
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-add]'); if (a) return clickAdd(a.dataset.add);
+  const go = e.target.closest('[data-go]'); if (go) return open(go.dataset.go, true);
+  const no = e.target.closest('[data-no]'); if (no) { delete add[no.dataset.no]; return render(); }
+  const cp = e.target.closest('[data-copy]');
+  if (cp) { const st = add[cp.dataset.copy]; if (!st) return;
+    try { navigator.clipboard.writeText(st.cmd).catch(() => {}); } catch (err) {}
+    st.copied = true; return render(); }
+  const s = e.target.closest('[data-sel]'); if (s) { sel = sel === s.dataset.sel ? null : s.dataset.sel; return render(); }
+  const g = e.target.closest('[data-grp]'); if (g) { const id = g.dataset.grp; folded.has(id) ? folded.delete(id) : folded.add(id); return render(); }
+  const r = e.target.closest('[data-rest]'); if (r) { const id = r.dataset.rest; restOpen.has(id) ? restOpen.delete(id) : restOpen.add(id); render(); }
+});
+$('#rail-fold').addEventListener('click', () => { railFolded = true; render(); });
+$('#rail-tab').addEventListener('click', () => { railFolded = false; render(); });
+addEventListener('resize', render);
+reset();
+/* #mode=cap&play=plus (click one button), &w=phone, &theme=dark, &show=ap:opening,pos:cap,plus:err (set states at once, for screenshots) */
+{ const q = new URLSearchParams(location.hash.slice(1));
+  const press = (id, v) => { const b = document.querySelector(id + ' button[data-v="' + v + '"]'); if (b) b.click(); };
+  if (q.get('w')) press('#seg-width', q.get('w'));
+  if (q.get('theme')) press('#seg-theme', q.get('theme'));
+  if (q.get('mode')) press('#seg-mode', q.get('mode'));
+  for (const part of (q.get('show') || '').split(',').filter(Boolean)) {
+    const [id, s] = part.split(':'); const t = terr(id); if (!t) continue;
+    add[id] = s === 'opening' ? { s, name:newName(id) }
+      : s === 'cap' ? { s, ram:86, cpu:41, max:80 }
+      : s === 'cmd' ? { s, cmd:command(id) }
+      : { s:'err', msg:'Orca 开终端失败了（没有回应）。', retry:true };
+  }
+  if (q.get('play')) clickAdd(q.get('play')); }
+render();
+</script>
+</body>
+</html>

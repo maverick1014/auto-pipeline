@@ -100,6 +100,21 @@
 - Cost: the per-tool-call hook stays as today (bash builtins, one line). The text is picked up only when a prompt is submitted or a turn ends.
 - From outside this computer (phone, elsewhere): never through the relay, which carries events only (see Joining). Claude Code's own Remote Control in the Claude app is the way.
 
+## Add agent
+
+- Owner, 2026-10-01 (city-add-agent; approved mock mock/city-add-agent-mock.html): start a new agent session from the city page, no terminal needed.
+- The rail lists every repo this city knows on this machine (its territories in world.json), also a repo with nobody online: its group shows one quiet line, 没人在线.
+- At the bottom of every repo group: one button, 加 agent (Add agent). Only for a repo whose folder is on this machine; a repo that is not here gets no button. A folded group shows no button. The demo and the cloud city have no button.
+- Click → the local server opens ONE new session in that repo: with Orca, a new terminal in the repo's folder running claude, with the model, effort and permission mode of that repo's own agent.conf (`main_manager`, `permission_mode`). The model goes in as a name the claude CLI takes: fable-5.1 → fable, opus-5.5 → opus (the family word; `claude --model fable-5.1` is refused and the session's first turn dies). One rule for every script: `bin/agent_conf.py cli-model`.
+- The new session gets one fixed first message from the server ("You were opened from the Agent City page. Do your start steps now, then stop and wait: the owner will talk to you from the city page."): a session sends the city nothing before its first prompt, and the page can only talk to a session that has had a turn. So it appears within seconds and can be talked to from the page. Cost: that first turn.
+- A city that runs with its own city dir (not ~/.cache/agent-city) passes `AGENT_CITY_DIR` to the session it opens, so that session reports to this city.
+- The role is never asked. The repo has no live main manager (its agent_main.lock holder is absent or dead) → the new session is its main manager, named "<repo> Manager"; else it is a helper, "<repo> Helper". The session's own agent-start.sh decides the role from the lock. This button never creates a task manager: main managers dispatch them.
+- Feedback sits in the rail under that repo, never in a dialog: the button reads 正在打开 … until the new session's first event arrives (the person then appears in the city as usual); a failure is one line with the reason in plain words (Orca could not open the terminal, the repo's folder is gone, the terminal opened but no session came within 60 s). Never silent.
+- Over the resource cap (RAM or CPU above that repo's `max_usage_percent`): nothing starts by itself and nothing is refused: the RAM / CPU line shows, and the owner confirms or cancels. It is his click.
+- No Orca on this machine (agent-runtime.sh kind is not orca): no terminal can be opened; the page shows the one command to run by hand, with a copy button.
+- Safety: POST only, behind the same guard as the chat endpoints (token, same origin), the local page only (127.0.0.1). The request names a territory id and nothing else; the server takes the folder from its own world.json and runs a fixed command: no path, name or other text of the request ever reaches a shell line. One open at a time per repo: a double click opens one session.
+- The relay still carries events only, never orders (Joining): this is the local page only. Letting the cloud city forward the same order is a later task.
+
 ## Worktrees
 - Owner decision 2026-09-25. Mock first, owner sees it, then build.
 - One worktree = one construction site inside its repo's territory. The pipeline gives each worktree one task manager: the site office is that task manager's office (see Interaction).

@@ -169,3 +169,30 @@ def validate(conf):
         if message:
             errors[key] = message
     return errors
+
+
+MODEL_FAMILIES = ("opus", "sonnet", "haiku", "fable")
+
+
+def cli_model(spec):
+    """The model name the claude CLI takes, from a role value like
+    opus-5.5:xhigh or a bare model name. The ":effort" part is dropped. A name
+    that starts with opus, sonnet, haiku or fable becomes that family word
+    (the CLI refuses fable-5.1, it takes fable); anything else, a full id like
+    claude-fable-5-1 or a name this file has never seen, goes through
+    unchanged. The one place with this rule: agent_city.py calls it and
+    agent-resume.sh asks it with `agent_conf.py cli-model <spec>`."""
+    base = spec.split(":", 1)[0]
+    for family in MODEL_FAMILIES:
+        if base.startswith(family):
+            return family
+    return base
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) == 3 and sys.argv[1] == "cli-model":
+        sys.stdout.write(cli_model(sys.argv[2]) + "\n")
+        sys.exit(0)
+    sys.stderr.write("usage: agent_conf.py cli-model <model[:effort]>\n")
+    sys.exit(2)
