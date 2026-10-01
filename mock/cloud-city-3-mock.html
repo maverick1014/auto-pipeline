@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>云端 Agent City · 加 agent · mock</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --berry:#FF7593; --berry-deep:#D9506E; --butter:#FFD36E; --mint:#6FD4A8; --focus:#4D7CFE;
+  --ok:#1E8657; --ok-bg:#DDF5E9; --ask-bg:#FFE1E8; --ask-ink:#C2345A; --build-bg:#E1ECFF; --build-ink:#3160B5;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+    --line:#2D3360; --focus:#8FB0FF; --ok:#5FD39C; --ok-bg:#173A2C; --ask-bg:#4A1F33; --ask-ink:#FFB0C3; --build-bg:#1E3160; --build-ink:#A9C6FF;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.mock{max-width:1500px;margin-inline:auto;padding:14px 16px 28px;display:flex;flex-direction:column;gap:12px}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.sign{display:inline-flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:6px 16px;box-shadow:0 3px 0 var(--ink)}
+.sign b{font:700 21px/1.15 var(--display)}
+.sign small{font:600 10.5px/1.3 var(--mono);color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase}
+.pill{background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:8px}
+.tabs button{all:unset;cursor:pointer;padding:8px 14px;border-radius:12px;font:600 13.5px/1 var(--round);color:var(--ink-2);background:var(--panel-2)}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--panel)}
+.tabs button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.note{background:var(--panel);border:1.5px solid var(--line);border-radius:14px;padding:10px 14px;color:var(--ink-2)}
+.note b{color:var(--ink)}
+.note .en{display:block;color:var(--ink-3);font-size:12.5px}
+.screen{display:grid;gap:14px}
+.screen.side{grid-template-columns:minmax(0,1fr) 340px;align-items:start}
+.screen.cards{grid-template-columns:repeat(auto-fit,minmax(320px,1fr));align-items:start}
+@media (max-width: 960px){ .screen.side{grid-template-columns:1fr} }
+.frame{border:2px solid var(--ink);border-radius:18px;overflow:hidden;background:var(--panel);box-shadow:0 5px 0 rgba(42,43,69,.2)}
+.frame .url{display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--panel-2);border-bottom:1.5px solid var(--line);font:600 12px/1 var(--mono);color:var(--ink-2)}
+.frame .url i{width:9px;height:9px;border-radius:50%;background:var(--line);flex:none}
+.frame .url span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.frame iframe{display:block;width:100%;height:min(760px,calc(100dvh - 40px));border:0;background:var(--paper)}
+.phone-wrap{display:flex;justify-content:center}
+.phone{width:394px;border:2px solid var(--ink);border-radius:38px;padding:10px 0 12px;background:var(--ink);box-shadow:0 6px 0 rgba(42,43,69,.25)}
+.phone .notch{width:110px;height:6px;border-radius:6px;background:#6b6f93;margin:2px auto 9px}
+.phone .glass{width:390px;height:760px;margin-inline:auto;border-radius:26px;overflow:hidden;background:#D5D8E6;display:flex;flex-direction:column}
+.phone iframe{display:block;width:390px;flex:1 1 auto;min-height:0;border:0;background:var(--paper)}
+.card{background:var(--panel);border:1.5px solid var(--line);border-radius:16px;padding:12px 16px}
+.card h3{margin:0 0 6px;font:700 15px/1.3 var(--display)}
+.card ul,.card ol{margin:0;padding-left:18px}
+.card li{margin:5px 0;color:var(--ink-2)}
+.card li b{color:var(--ink)}
+.card p{margin:6px 0 0;color:var(--ink-2)}
+.card code,.note code,.tbl code{font:600 12px/1 var(--mono);background:var(--panel-2);padding:2px 5px;border-radius:6px}
+.card pre{margin:8px 0 0;padding:10px 12px;border-radius:12px;background:#1C2040;color:#EEF0FF;font:600 12px/1.6 var(--mono);overflow-x:auto}
+.card pre .dim{color:#8D91B3}
+.card pre .hi{color:#8FE3B8}
+.card pre .bad{color:#FFB0C3}
+.fail{background:var(--ask-bg);color:var(--ask-ink);border-radius:14px;padding:12px 16px;font-weight:600}
+.try{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.try button{all:unset;cursor:pointer;padding:8px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);font:600 13px/1.35 var(--round)}
+.try button small{display:block;color:var(--ink-3);font-weight:500}
+.try button[aria-pressed="true"]{border-color:var(--ink);box-shadow:0 2px 0 var(--ink);background:var(--panel)}
+.try button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.tbl th,.tbl td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{color:var(--ink-3);font-weight:600;white-space:nowrap}
+.tbl td:first-child{white-space:nowrap}
+.tbl-wrap{overflow-x:auto}
+.st{display:inline-block;padding:1px 8px;border-radius:999px;font:700 11.5px/1.6 var(--round)}
+.st.go{background:var(--butter);color:#4A3500}
+.st.ok{background:var(--ok-bg);color:var(--ok)}
+.st.bad{background:var(--ask-bg);color:var(--ask-ink)}
+.path{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
+.path span{padding:5px 9px;border-radius:10px;background:var(--panel-2);border:1.5px solid var(--line);font:600 12px/1.3 var(--round);color:var(--ink)}
+.path i{font-style:normal;color:var(--ink-3)}
+</style>
+</head>
+<body>
+<div class="mock" id="mock">
+  <div class="top">
+    <span class="sign"><b>云端 Agent City</b><small>cloud-city-3 · step 3 · 在云端页面里加 agent</small></span>
+    <span class="pill">mock</span>
+  </div>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div class="note" id="note"></div>
+  <div id="view"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const Q = new URLSearchParams(location.search);
+const PAGE_URL = '../bin/agent-city.html';
+const ME = 'you@example.com';
+const HOST = 'https://agent-city-page.<你的子域>.workers.dev';
+
+const SCREENS = [
+  { id: 'add', tab: '1 加 agent', note: '<b>名单里，每个「在这台电脑上」的仓库下面有一个按钮：＋ 加 agent。点一下，那台电脑就自己开一个新会话，和它本地页面的按钮完全一样。</b> 按钮下面依次显示：<span class="st go">在路上</span> → <span class="st go">那台电脑正在打开…</span> → <span class="st ok">已打开</span>，然后小人出现，按钮回来。角色不用选：仓库里没有总督 → 开的是 Manager；已经有总督 → 开的是 Helper。Task manager 永远不由这个按钮开。在左边名单里点一下试试（这里把等待缩短了）。<span class="en">One button under each repo that lives on the machine shown. A click = one order = at most one new session there. States: on its way, opening on the machine, opened.</span>' },
+  { id: 'fail', tab: '2 没打开', note: '<b>没打开就明说，带原因，绝不悄悄丢，也绝不晚点偷偷再开。</b> 右边选一种情况，再点名单里的「＋ 加 agent」。<span class="en">Never a silent loss and never a late open: not opened, with the reason in plain words.</span>' },
+  { id: 'cap', tab: '3 电脑有点忙', note: '<b>那台电脑的 RAM 或 CPU 超过上限：不自己开，也不拒绝，把数字给你看，你决定。</b> 「还是打开」算第二个指令（新的编号）；「取消」什么都不发。和本地按钮一样，是你的一次点击。<span class="en">Over the cap: its RAM / CPU line and "open anyway" / "cancel". The confirm is a second order.</span>' },
+  { id: 'phone', tab: '4 手机', note: '<b>手机上：点左边的小标签拉出名单，按钮和状态都在名单里，和电脑上一样。</b> 点完名单会留着，直到这个仓库的结果出来。<span class="en">Phone width: the rail is a drawer; the button and its states live in it.</span>' },
+  { id: 'talk', tab: '5 开了就能说话', note: '<b>新会话一出现，就能在云端页面里跟它说话，不用碰终端。</b> 它一开出来先做自己的启动步骤，然后停下等你。点它，窗口里有输入框（这就是第 2 步做好的对话）。<span class="en">The new session can be talked to from the cloud page as soon as it appears (step 2), with no terminal.</span>' },
+  { id: 'safe', tab: '6 开关和安全', note: '<b>这是一条从互联网进来、能在你电脑上起一个进程的指令，所以默认关着，而且和「对话」是两个开关。</b> 每台机器要你自己在它的终端里打一条命令才开；一条命令就关。下面是指令走的路、只开一次的保证、坏情况的答案、上限和花费。<span class="en">Off by default; its own switch, separate from talking; turned on per machine by a command the owner types himself.</span>' },
+];
+
+/* ---------- the real page, patched in memory so it runs here as the cloud page ---------- */
+let pageSrc = null;
+async function loadPage() {
+  if (pageSrc) return pageSrc;
+  const res = await fetch(PAGE_URL);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  pageSrc = await res.text();
+  return pageSrc;
+}
+function must(src, from, to) {
+  if (!src.includes(from)) throw new Error('the page changed, the mock cannot find: ' + from.slice(0, 60));
+  return src.split(from).join(to);
+}
+function mockCss() {
+  return `
+.toolbar,#proto,#ask,#next{display:none!important}
+.d-actions,.d-note,#detail>p.hint:not(.hist-h):not(.chat-fail){display:none!important}
+/* the new bits of this step (the real page gets the same) */
+.mc .tk.sk{background:rgba(77,124,254,.16)}
+.addbox.ok{background:var(--ok-bg,#DDF5E9);color:var(--ok,#1E8657);font-weight:600}
+.add .dim{color:var(--ink-3);font-weight:500}
+.start-note{margin:2px 10px 10px!important;font-size:12px!important;line-height:1.5!important}
+.start-note code{font-size:11.5px!important}
+`;
+}
+/* runs INSIDE the page's own script (the page is one closed function), right after its demo seed */
+function innerJs(kind, opt) {
+  return `
+;(() => {
+  const KIND = ${JSON.stringify(kind)};
+  const OPT = ${JSON.stringify(opt)};
+  const speed = OPT.fast ? 0.2 : 1;
+  const later = (ms, fn) => setTimeout(fn, ms * speed);
+  const app = document.querySelector('.app');
+
+  /* ---- the machines of this login (what the feed's "devs" says): talk and start are two flags ---- */
+  const DEVS = [
+    { dev: 'mac', label: 'MacBook-Pro', ago: 2000, counts: { people: 4, busy: 3, wait: 0 }, talk: true, start: true },
+    { dev: 'pc2', label: 'maverick-pc2', ago: 8000, counts: { people: 1, busy: 1, wait: 0 }, talk: true, start: false },
+    { dev: 'cl', label: '云端', ago: 20000, counts: { people: 2, busy: 2, wait: 0 }, talk: false, start: false },
+  ];
+  let shown = 'mac';
+  const dev = () => DEVS.find(d => d.dev === shown);
+  function drawTop() {
+    const now = Date.now();
+    const devs = DEVS.map(d => Object.assign({}, d, { ts: now - d.ago }));
+    const feed = { ok: true, user: ${JSON.stringify(ME)}, now, dev: shown, devs };
+    cloudLive.feed = feed;
+    const nav = document.querySelector('#machines');
+    nav.innerHTML = '<span class="lead">' + esc(i18n('cloud.machines')) + '</span>' + devs.map(d => {
+      const off = cloudStale(d, now);
+      return '<button type="button" class="mc' + (off ? ' off' : '') + '" data-dev="' + d.dev + '" aria-pressed="' + (d.dev === shown) + '"><i></i><b>' + esc(d.label) + '</b>' +
+        '<span>' + esc(i18n('cloud.busy', { n: d.counts.busy })) + '</span>' +
+        '<span class="tk' + (d.talk ? '' : ' no') + '">' + (d.talk ? '可对话' : '只能看') + '</span>' +
+        (d.start ? '<span class="tk sk">可开 agent</span>' : '') +
+        '<span class="t">' + esc(cloudAge(now - d.ts)) + '</span></button>';
+    }).join('');
+    nav.hidden = false;
+    app.classList.add('cloud-row');
+    cloudRenderAcct(feed);
+    cloudRenderTalk(feed);
+    drawNote();
+  }
+  /* a machine that does not take start orders: no button, one quiet note at the rail's foot with the command */
+  const old = document.querySelector('#rail > .cloud-later'); if (old) old.remove();   /* was: ＋ 加 agent · 以后开放 */
+  const note = document.createElement('p'); note.className = 'cloud-why start-note'; note.hidden = true;
+  document.querySelector('#rail').appendChild(note);
+  function drawNote() {
+    const d = dev();
+    note.hidden = !!d.start;
+    note.innerHTML = d.talk
+      ? '这台电脑不接受云端「加 agent」。要开，在它的终端里自己打：<br><code>agent-city cloud-start on</code>'
+      : '这台电脑只能看。先开对话，再开「加 agent」：<br><code>agent-city cloud-talk on</code><br><code>agent-city cloud-start on</code>';
+  }
+
+  /* ---- which repos live ON the machine shown: only those get the button ---- */
+  const HERE = new Set(['auto-pipeline', 'v4-plus']);   /* pos-lite is joined, but its folder is on another machine */
+  const baseGroups = railGroups;
+  railGroups = function () { return baseGroups().map(g => Object.assign(g, { add: HERE.has(g.name) && dev().start && !cloudStale({ ts: Date.now() - dev().ago }, Date.now()) })); };
+  const hasMain = new Set([govTerr]);                   /* repos with a live main manager: the next one is a Helper */
+
+  /* ---- the button and what stands in for it: the states of one order ---- */
+  const WHY = {
+    off: '那台电脑没开（60 秒没来取这个指令）。这个指令作废，以后也不会再开。',
+    startOff: '那台电脑不接受云端「加 agent」。在它的终端里自己打：agent-city cloud-start on',
+    noOrca: '那台电脑不能自己开终端（没有 Orca）。请到那台电脑上手动开。',
+    gone: '那台电脑上找不到这个仓库的文件夹（被移走或删掉了）。',
+    orca: 'Orca 没能开出终端：orca: worktree not found: path:auto-pipeline',
+    late: '终端开了，但 60 秒还没见到它上线。到那台电脑的 Orca 里看那个终端。',
+    busy: '这个仓库正在开另一个 agent，等它开完再点。',
+    many: '开得太多了：一小时最多 10 个。18 分钟后再试。',
+    restart: '那台电脑的城市程序中途重启了，这个指令作废，不会再执行。到那台电脑上看终端有没有开。',
+  };
+  addHtml = function (group, st) {
+    const t = esc(group.terr), s = st && st.s;
+    if (s === 'sent') return '<button type="button" class="add" data-add="' + t + '" aria-disabled="true" title="已存到云端，等那台电脑来取"><span class="spin"></span>在路上…</button>';
+    if (s === 'opening') return '<button type="button" class="add" data-add="' + t + '" aria-disabled="true"><span class="spin"></span>那台电脑正在打开 ' + esc(shortLabel(st.name, group.name)) + '…</button>';
+    if (s === 'done') return '<div class="addbox ok" role="status">已打开 ' + esc(shortLabel(st.name, group.name)) + ' · 小人马上出现</div>';
+    if (s === 'cap') return '<div class="addbox cap" role="alert"><b>那台电脑有点忙</b><span class="nums">RAM ' + st.ram + '% · CPU ' + st.cpu + '%（上限 ' + st.max + '%）</span>还要打开吗？' +
+      '<div class="acts"><button type="button" class="mini main" data-add-go="' + t + '">还是打开</button><button type="button" class="mini" data-add-no="' + t + '">取消</button></div></div>';
+    if (s === 'err') return '<div class="addbox err" role="alert"><b>没打开：</b>' + esc(st.why) + '<div class="acts"><button type="button" class="mini" data-add-no="' + t + '">知道了</button></div></div>';
+    return '<button type="button" class="add" data-add="' + t + '">＋ 加 agent</button>';
+  };
+
+  /* ---- one click = one order; the mock plays what the machine would answer (the waits are short here) ---- */
+  let mode = OPT.mode || 'ok', n = 0;
+  const STOP = OPT.stop || '';
+  addAgent = function (terr, force) {
+    const was = addState.get(terr);
+    if (was && (was.s === 'sent' || was.s === 'opening')) return;         /* one order at a time per repo */
+    const g = railGroups().find(x => x.terr === terr); if (!g) return;
+    const name = g.name + (hasMain.has(terr) ? ' Helper' : ' Manager');
+    const set = st => { addState.set(terr, st); renderRail(); return st.s === STOP; };
+    const m = force ? 'ok' : mode;
+    if (m === 'many') { set({ s: 'err', why: WHY.many }); return; }       /* the City Worker says no at once: nothing is stored */
+    if (set({ s: 'sent' })) return;
+    if (m === 'off') {                /* the machine went off: nobody takes the order (real page: 60 s) */
+      dev().ago = 200000; drawTop();
+      later(3600, () => { set({ s: 'err', why: WHY.off }); });
+    } else if (m === 'noorca' || m === 'gone' || m === 'orca' || m === 'restart') {
+      later(2400, () => set({ s: 'err', why: WHY[{ noorca: 'noOrca', gone: 'gone', orca: 'orca', restart: 'restart' }[m]] }));
+    } else if (m === 'cap') {         /* the machine answers with its RAM / CPU line; nothing was opened */
+      later(2400, () => set({ s: 'cap', ram: 86, cpu: 41, max: 80 }));
+    } else if (m === 'late') {
+      later(2200, () => { if (set({ s: 'opening', name })) return; later(5200, () => set({ s: 'err', why: WHY.late })); });
+    } else {
+      later(2200, () => {
+        if (set({ s: 'opening', name })) return;
+        later(3800, () => {
+          const id = 's:new' + (++n);
+          hasMain.add(terr);
+          apply({ type: 'spawn', id, role: 'helper', label: name, task: '从云端页面打开', terr, from: '' });
+          firstChat(id, name);
+          if (set({ s: 'done', name })) return;
+          later(3200, () => { addState.delete(terr); renderRail(); if (KIND === 'talk') selectFrom(id); });
+        });
+      });
+    }
+  };
+
+  /* ---- the new session's window (step 2's talk): its first turn is already there ---- */
+  let seq = 9000;
+  function firstChat(id, name) {
+    const at = Date.now() / 1000;
+    chats.set(id, { busy: false, canSend: true, loaded: true, entries: [
+      { id: ++seq, kind: 'prompt', text: 'You were opened from the Agent City page. Do your start steps now, then stop and wait: the owner will talk to you from the city page.', at },
+      { id: ++seq, kind: 'reply', text: '启动步骤做完了。我是 ' + name + '，在等你说话。', at: at + 1 },
+    ] });
+  }
+  const REPLIES = ['好，我先读一下 agent_todo.txt，然后告诉你现在有哪些任务。', '收到，马上做。', '明白，做完告诉你。'];
+  let rn = 0;
+  demoSendChat = function (to, text) {
+    const box = chats.get(to); if (!box) return;
+    const id = ++seq;
+    const put = (state) => { box.entries = box.entries.filter(x => x.id !== id).concat([{ id, kind: 'owner', text, at: Date.now() / 1000, state, cid: 'mock' + id }]); renderPanel(); };
+    put('sent');
+    later(2400, () => put('delivered'));
+    later(5600, () => { box.entries = box.entries.concat([{ id: ++seq, kind: 'reply', text: REPLIES[rn++ % REPLIES.length], at: Date.now() / 1000 }]); renderPanel(); });
+  };
+
+  /* ---- the mock's own switches (the buttons beside the page) ---- */
+  window.mockSet = m => {
+    mode = m;
+    DEVS[0].ago = 2000;
+    DEVS[0].start = m !== 'startoff';
+    for (const [terr, st] of addState) if (st.s !== 'sent' && st.s !== 'opening') addState.delete(terr);
+    drawTop(); renderRail();
+  };
+  window.mockClick = repo => {
+    const g = railGroups().find(x => x.name === repo);
+    const b = g && document.querySelector('#rail-list [data-add="' + g.terr + '"]');
+    if (b) b.click();
+  };
+  document.querySelector('#machines').addEventListener('click', e => {
+    const b = e.target.closest('.mc'); if (!b) return;
+    shown = b.dataset.dev; drawTop(); renderRail();
+  });
+
+  drawTop();
+  if (mode === 'startoff') window.mockSet('startoff');
+  renderRail();
+  /* phone: the rail is a drawer, pulled out from its tab */
+  if (KIND === 'phone') setTimeout(() => { const tab = document.querySelector('#rail-tab'); if (tab && !tab.hidden) tab.click(); }, 500);
+  if (KIND === 'talk') { firstChat('s:new0', 'v4-plus Manager'); const t = (map.territories.find(x => x.name === 'v4-plus') || {}).id;
+    apply({ type: 'spawn', id: 's:new0', role: 'helper', label: 'v4-plus Manager', task: '从云端页面打开', terr: t, from: '' }); hasMain.add(t);
+    setTimeout(() => selectFrom('s:new0'), 600); }
+  if (OPT.go) setTimeout(() => window.mockClick(OPT.go), 900);
+  window.mockReady = true;
+})();`;
+}
+function patched(src, kind, opt) {
+  let s = src;
+  s = must(s, '<head>', '<head><base href="' + new URL('../bin/', location.href).href + '">');
+  s = must(s, 'assets/vendor/', 'agent-city-assets/vendor/');
+  s = must(s, "const ASSET = 'assets/';", "const ASSET = 'agent-city-assets/';");
+  s = must(s, '__CITY_ASSET_V__', 'mock');
+  s = must(s, '__CITY_LANG__', 'zh');
+  s = must(s, '__CITY_TOKEN__', '');
+  s = must(s, "const DEMO = location.hash === '#demo' || location.protocol === 'file:';", 'const DEMO = true;');
+  s = must(s, "const CLOUD = '__CITY_CLOUD__' === '1';", 'const CLOUD = true;'); /* the cloud page's own look: machine row, account, notes */
+  s = must(s, 'seedDemoRemote();', ''); /* the owner's own machines only: other members are step 4 */
+  s = must(s, 'if (DEMO) seed(); else if (CLOUD) connectCloud(); else connectLive();', 'seed();' + innerJs(kind, opt));
+  s = must(s, '</head>', '<style>' + mockCss() + '</style></head>');
+  return s;
+}
+async function cityFrame(kind, opt) {
+  const f = document.createElement('iframe');
+  f.title = '云端城市';
+  f.srcdoc = patched(await loadPage(), kind, Object.assign({ fast: Q.get('fast') === '1', mode: Q.get('mode') || '', go: Q.get('go') || '', stop: Q.get('stop') || '' }, opt || {}));
+  return f;
+}
+/* call fn(win) once the page inside the frame is up */
+function whenReady(frame, fn) {
+  const t = setInterval(() => {
+    const w = frame.contentWindow;
+    if (w && w.mockReady) { clearInterval(t); fn(w); }
+  }, 150);
+}
+
+/* ---------- screens ---------- */
+function h(html) { const d = document.createElement('div'); d.innerHTML = html; return d.firstElementChild; }
+function browser(frame, url) {
+  const b = h('<div class="frame"><div class="url"><i></i><i></i><i></i><span></span></div></div>');
+  b.querySelector('span').textContent = url;
+  b.appendChild(frame);
+  return b;
+}
+function tryButtons(el, frame, first) {
+  const wrap = el.querySelector('.try');
+  const press = b => {
+    for (const x of wrap.children) x.setAttribute('aria-pressed', String(x === b));
+    whenReady(frame, w => w.mockSet(b.dataset.mode));
+  };
+  wrap.addEventListener('click', e => { const b = e.target.closest('button'); if (b) press(b); });
+  const start = wrap.querySelector('[data-mode="' + (Q.get('mode') || first) + '"]') || wrap.querySelector('[data-mode="' + first + '"]');
+  for (const x of wrap.children) x.setAttribute('aria-pressed', String(x === start));
+}
+
+const RENDER = {
+  async add() {
+    const frame = await cityFrame('add', { mode: 'ok' });
+    const el = h(`<div class="screen side"><div></div>
+      <div class="card"><h3>一次点击的一生</h3>
+        <ol>
+          <li><span class="st go">在路上</span> 指令已经存到 Cloudflare，等那台电脑来取（它每 5 秒问一次；云端从不主动连你的电脑）。</li>
+          <li><span class="st go">那台电脑正在打开 Manager…</span> 电脑取到了，正在用它自己的固定命令开终端。</li>
+          <li><span class="st ok">已打开</span> 新会话的第一条消息到了：小人出现，按钮回来。</li>
+        </ol>
+        <h3 style="margin-top:12px">谁有按钮</h3>
+        <ul>
+          <li><b>auto-pipeline</b>：文件夹在这台电脑上，已经有总督 → 开的是 <b>Helper</b>。</li>
+          <li><b>v4-plus</b>：文件夹在这台电脑上，没有总督 → 开的是 <b>Manager</b>。</li>
+          <li><b>pos-lite</b>：文件夹不在这台电脑上 → <b>没有按钮</b>。</li>
+          <li>折起来的仓库不显示按钮（和本地一样）。</li>
+        </ul>
+        <p>上面机器那一行：<b>可开 agent</b> 的机器才有按钮。点 <b>maverick-pc2</b> 看一台没开这个开关的机器：没有按钮，名单底下写着怎么开。</p>
+        <p>一个仓库同一时间只有一个指令在走：点两次也只开一个。</p></div></div>`);
+    el.firstElementChild.appendChild(browser(frame, HOST));
+    return el;
+  },
+  async fail() {
+    const frame = await cityFrame('fail', { mode: Q.get('mode') || 'off' });
+    const el = h(`<div class="screen side"><div></div>
+      <div class="card"><h3>选一种情况，再点「＋ 加 agent」</h3>
+        <div class="try">
+          <button type="button" data-mode="off">那台电脑关了<small>在路上 → 60 秒没人取 → 没打开：那台电脑没开。以后也不会再开。</small></button>
+          <button type="button" data-mode="startoff">它不接受云端的指令<small>没有按钮；名单底下写着那条要你自己打的命令</small></button>
+          <button type="button" data-mode="noorca">它没有 Orca<small>没打开：那台电脑不能自己开终端</small></button>
+          <button type="button" data-mode="gone">仓库文件夹不见了<small>没打开：找不到这个仓库的文件夹</small></button>
+          <button type="button" data-mode="orca">Orca 拒绝了<small>没打开：Orca 的原话</small></button>
+          <button type="button" data-mode="late">开了但没上线<small>正在打开 → 60 秒没见到它 → 没打开</small></button>
+          <button type="button" data-mode="many">点得太多<small>一小时 10 个的上限：当场说，什么都不存</small></button>
+          <button type="button" data-mode="restart">中途重启<small>电脑取了指令后它的城市程序重启：作废，不再执行</small></button>
+          <button type="button" data-mode="ok">恢复正常<small>再点一次 = 一个新指令（新编号）</small></button>
+        </div>
+        <p>还有 4 种少见的，同样一行字：这个仓库正在开另一个 / 那台电脑一小时已开满 10 个 / 接了指令后 3 分钟没回音 / 那台电脑不认这个仓库。</p></div></div>`);
+    el.firstElementChild.appendChild(browser(frame, HOST));
+    tryButtons(el, frame, 'off');
+    return el;
+  },
+  async cap() {
+    const frame = await cityFrame('cap', { mode: 'cap' });
+    const el = h(`<div class="screen side"><div></div>
+      <div class="card"><h3>超过上限：你决定</h3>
+        <ol>
+          <li>点「＋ 加 agent」。</li>
+          <li>那台电脑回答：<b>RAM 86% · CPU 41%（上限 80%）</b>。它什么都没开。</li>
+          <li><b>还是打开</b>：发第二个指令（新编号，带「我确认」）。它就开。</li>
+          <li><b>取消</b>：什么都不发，按钮回来。</li>
+        </ol>
+        <p>上限是那个仓库自己 agent.conf 里的 <code>max_usage_percent</code>，数字是那台电脑自己量的。</p></div></div>`);
+    el.firstElementChild.appendChild(browser(frame, HOST));
+    return el;
+  },
+  async phone() {
+    const frame = await cityFrame('phone', { mode: Q.get('mode') || 'ok' });
+    const el = h(`<div class="screen side"><div class="phone-wrap"><div class="phone"><div class="notch"></div><div class="glass"></div></div></div>
+      <div class="card"><h3>手机上</h3>
+        <ul>
+          <li><b>名单</b>从左边的小标签拉出来（这里已经拉开）。</li>
+          <li><b>按钮和状态</b>都在名单里，每个仓库自己的下面。</li>
+          <li><b>没打开的原因</b>、<b>电脑有点忙</b>的确认，也在同一个位置，不弹窗。</li>
+          <li>小人出现后点它：窗口从下半屏升起来，直接说话（第 5 页）。</li>
+        </ul>
+        <div class="try" style="margin-top:10px">
+          <button type="button" data-mode="ok">正常<small>在路上 → 正在打开 → 已打开</small></button>
+          <button type="button" data-mode="cap">电脑有点忙<small>RAM / CPU + 还是打开 / 取消</small></button>
+          <button type="button" data-mode="late">开了但没上线<small>没打开 + 原因</small></button>
+        </div></div></div>`);
+    el.querySelector('.glass').appendChild(frame);
+    tryButtons(el, frame, 'ok');
+    return el;
+  },
+  async talk() {
+    const frame = await cityFrame('talk', { mode: 'ok' });
+    const el = h(`<div class="screen side"><div></div>
+      <div class="card"><h3>新会话：马上能说话</h3>
+        <ol>
+          <li>它被打开时带着一句固定的开场话（和本地按钮一样）：做启动步骤，然后停下等你。</li>
+          <li>所以它几秒内就出现在城里，窗口里已经有它的第一句回答。</li>
+          <li>在框里打字，回车：<span class="st go">在路上</span> → <span class="st ok">已送达</span> → 它的回答。</li>
+        </ol>
+        <p>所以「加 agent」要求那台电脑<b>先开了对话</b>：开出来却不能说话的会话没有用。对话可以单独开着，而「加 agent」关着。</p>
+        <p>也可以回第 1 页自己点一个出来，再点那个小人。</p></div></div>`);
+    el.firstElementChild.appendChild(browser(frame, HOST));
+    return el;
+  },
+  safe() {
+    return h(`<div class="screen cards">
+      <div class="card"><h3>开关：每台机器，你自己打一条命令</h3>
+        <pre><span class="dim"># 开：在那台机器自己的终端里
+# （加入过的仓库里；对话要先开着）</span>
+$ agent-city cloud-start on
+对话钥匙（不显示）：
+<span class="hi">CLOUD START: on agentcity.….workers.dev</span>
+
+<span class="dim"># 看</span>
+$ agent-city status
+CLOUD: on agentcity.….workers.dev
+CLOUD TALK: on agentcity.….workers.dev
+<span class="hi">CLOUD START: on agentcity.….workers.dev</span>
+
+<span class="dim"># 关：等着的指令立刻「没打开」</span>
+$ agent-city cloud-start off
+<span class="hi">CLOUD START: off</span>
+
+<span class="dim"># 没有终端（比如 agent 来跑）：拒绝</span>
+<span class="bad">CLOUD START: run this yourself
+  in your own terminal</span></pre>
+        <p>默认是关的。开和关都在下一次同步生效（约 5 秒），不用重启。</p>
+        <p><b>不用新钥匙</b>：用的还是那把对话钥匙，开的时候再输一次（证明是你本人）。<b>两个开关分开</b>：对话可以开着而「加 agent」关着；关掉对话，「加 agent」也一起关；再开对话不会把它带回来。</p></div>
+
+      <div class="card"><h3>指令走的路</h3>
+        <b>下去（你的点击）</b>
+        <div class="path"><span>云端页面</span><i>→</i><span>City Worker · 验登录</span><i>→</i><span>D1 存一行</span><i>→</i><span>那台电脑来取（每 5 秒）</span><i>→</i><span>本地「加 agent」那个函数</span><i>→</i><span>Orca 开终端</span></div>
+        <b style="display:block;margin-top:10px">上来（结果）</b>
+        <div class="path"><span>那台电脑</span><i>→</i><span>下一次同步带上去</span><i>→</i><span>D1 那一行改状态</span><i>→</i><span>页面每 3 秒的那次请求</span></div>
+        <ul style="margin-top:10px">
+          <li><b>和对话是同一条路</b>：不新建通道，指令搭的是对话那次同步。</li>
+          <li><b>指令里只有两样东西</b>：仓库的编号（8 位），和「我确认」这个是/否。文件夹、名字、模型、参数、命令，全是那台电脑自己的。</li>
+          <li><b>和本地按钮是同一个函数</b>：同样的固定命令，同样自动定角色，同样永远不开 task manager。</li>
+        </ul></div>
+
+      <div class="card"><h3>只开一次</h3>
+        <ul>
+          <li>每次点击有自己的<b>编号</b>。同一个编号在 Cloudflare 只存一行，在电脑上最多开一个会话。</li>
+          <li><b>60 秒</b>没被取走（电脑关着）= 没打开，电脑以后再上线<b>也不会开</b>。</li>
+          <li>电脑在<b>开终端之前</b>先把编号写进硬盘。再收到同一个编号：只回答上次的结果。</li>
+          <li>写了编号但没有结果（中途重启）：回答「作废」，绝不再开。</li>
+          <li>一个仓库同一时间只有一个指令：双击、重试都只开一个。</li>
+          <li>「还是打开」是第二个指令，有新的编号。</li>
+        </ul></div>
+
+      <div class="card"><h3>上限和花费</h3>
+        <div class="tbl-wrap"><table class="tbl"><tbody>
+          <tr><th>每人</th><td>一小时 <b>10</b> 个指令，一天 <b>40</b> 个（确认也算一个）。超了：当场说，什么都不存。</td></tr>
+          <tr><th>每个仓库</th><td>同一时间 <b>1</b> 个在走的指令。</td></tr>
+          <tr><th>每台电脑</th><td>自己再数一遍：一小时最多开 <b>10</b> 个，一次同步最多取 3 个；RAM / CPU 上限照旧要你确认。</td></tr>
+          <tr><th>记录</th><td>每个指令和它的结果都记在电脑的 decisions.jsonl（via: cloud）。</td></tr>
+          <tr><th>花费</th><td>每次点击 1 个请求、约 5 行写入。重的一天（开 20 个）：请求和写入都多不到 1%。</td></tr>
+        </tbody></table></div>
+        <p><b>要你定的一件事：</b>开了「加 agent」的电脑，在没有任何会话时也让城市程序留着（改成每 15 秒问一次）。不然你想从手机开第一个 Manager 时，页面只会说「那台电脑没开」。花费：每台电脑每空闲 12 小时约多 2,900 个请求（免费额度的 3%）。</p></div>
+
+      <div class="card" style="grid-column:1/-1"><h3>坏情况</h3>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>情况</th><th>他能做什么</th><th>挡住它的</th></tr></thead><tbody>
+          <tr><td><b>登录被偷</b><br>（验证码或没锁的手机）</td><td>能在开了开关的电脑上、加入过的仓库里开一个 Manager 或 Helper，并（对话）跟它说话。别的不能。</td><td>命令是固定的：选不了角色、模型、参数、文件夹；权限模式是那个仓库自己 agent.conf 里的；一小时 10 个；每个指令记在电脑上，新小人两个页面都看得到。停掉：<code>cloud-start off</code>（一台）、删对话钥匙（全部）、在 Cloudflare 里结束登录。<b>这比「对话」多出来的风险就是这一条，请你知道。</b></td></tr>
+          <tr><td><b>别的团队成员</b><br>（只有团队钥匙）</td><td>下不了指令，也伪造不了。</td><td>指令只能由登录后的页面产生（只有 City Worker 往表里写）；取指令、回结果、亮「可开 agent」都要对话钥匙，成员和云端会话没有。</td></tr>
+          <tr><td><b>另一台机器</b></td><td>不能让你的电脑开东西。</td><td>指令只出现在电脑<b>自己那次同步的回答</b>里；没有人能往一台电脑「推」东西。</td></tr>
+          <tr><td><b>别的网站借你的登录</b></td><td>发不出指令。</td><td>只认本页面发的请求（专用请求头 + 来源地址 + JSON）；多一个不认识的字段就拒绝。</td></tr>
+          <tr><td><b>重放 / 双击 / 重试 / 重启</b></td><td>不会多开。</td><td>见「只开一次」。</td></tr>
+          <tr><td><b>往指令里塞东西</b></td><td>到不了命令行。</td><td>仓库编号必须是 8 位十六进制，「我确认」必须是是/否，编号必须是字母数字；电脑只读这三样，文件夹从它自己的 world.json 里查。</td></tr>
+          <tr><td><b>狂点</b></td><td>被限速。</td><td>见「上限」：云端数一遍，电脑自己再数一遍。</td></tr>
+          <tr><td><b>往上泄露</b></td><td>没有。</td><td>结果里没有完整路径、没有命令行；Orca 的原话先把路径截短，最多 200 字。</td></tr>
+        </tbody></table></div></div>
+    </div>`);
+  },
+};
+
+let current = null;
+async function show(id) {
+  const sc = SCREENS.find(s => s.id === id) || SCREENS[0];
+  current = sc.id;
+  for (const b of $('#tabs').children) b.setAttribute('aria-selected', String(b.dataset.id === sc.id));
+  $('#note').innerHTML = sc.note;
+  const view = $('#view');
+  view.textContent = '';
+  try {
+    const el = await RENDER[sc.id]();
+    if (current === sc.id) view.appendChild(el);
+  } catch (err) {
+    view.innerHTML = '<p class="fail">这个 mock 要从一个小网页服务器打开（它要读 ../bin/agent-city.html）。在仓库根目录跑：python3 -m http.server 8765，然后打开 http://127.0.0.1:8765/mock/cloud-city-3-mock.html<br>(' + String(err && err.message || err) + ')</p>';
+  }
+  const q = new URLSearchParams(location.search); q.set('s', sc.id);
+  history.replaceState(null, '', '?' + q.toString());
+}
+for (const s of SCREENS) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.dataset.id = s.id; b.textContent = s.tab; b.setAttribute('role', 'tab');
+  b.addEventListener('click', () => show(s.id));
+  $('#tabs').appendChild(b);
+}
+show(Q.get('s') || 'add');
+})();
+</script>
+<!-- Open through a small web server, from the repo root:  python3 -m http.server 8765
+     then http://127.0.0.1:8765/mock/cloud-city-3-mock.html   (?s=add|fail|cap|phone|talk|safe)
+     For a still picture of one state: &mode=<case>&go=<repo>&stop=<sent|opening|done|cap|err>&fast=1 -->
+</body>
+</html>

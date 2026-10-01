@@ -217,13 +217,13 @@ class TestMessageWords(RenderCase):
             self.assertEqual(t.get("zh", {}).get(key), zh, key)
         for key in list(want) + ["chat.why.refused", "chat.why.flood", "cloud.talk.on", "cloud.talk.off",
                                  "cloud.box.talkOff", "cloud.box.offline", "cloud.tooFast", "cloud.tooMany",
-                                 "cloud.later.ask", "cloud.later.add", "cloud.later.demo"]:
+                                 "cloud.later.ask", "cloud.later.demo"]:   # cloud-city-3: the add button is no longer "later"
             for lang in ("zh", "en"):
                 self.assertTrue(t.get(lang, {}).get(key), "%s has no %s text" % (key, lang))
         self.assertEqual(t["zh"]["cloud.talk.on"], "可对话")
         self.assertIn("agent-city cloud-talk on", t["zh"]["cloud.box.talkOff"])
         self.assertIn("agent-city cloud-talk on", t["en"]["cloud.box.talkOff"])
-        for key in ("cloud.later.ask", "cloud.later.add", "cloud.later.demo"):
+        for key in ("cloud.later.ask", "cloud.later.demo"):
             self.assertIn("以后开放", t["zh"][key])
 
     def test_on_its_way(self):
@@ -573,7 +573,7 @@ class TestCloudPageTalks(unittest.TestCase):
 
     def test_later_is_shown(self):
         text = script()
-        for key in ("cloud.later.ask", "cloud.later.add", "cloud.later.demo"):
+        for key in ("cloud.later.ask", "cloud.later.demo"):   # cloud-city-3: the add button works now
             self.assertRegex(text, r"i18n\('%s'" % re.escape(key), key)
 
     def test_approve_and_add_agent_still_send_nothing(self):

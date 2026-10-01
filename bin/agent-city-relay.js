@@ -25,6 +25,16 @@
 // then carries "talk": {"state": "on", "msgs": [...]}, the messages waiting
 // for that machine (10 a sync at most). A sync without the header is answered
 // as above, and no talk table is made for it.
+//
+// Starting an agent from the cloud page rides the same talk (no new secret). A
+// talk-on sync whose talk has a "start" object also gets the orders the owner
+// placed with the add-agent button (table city_order): the machine's answers in
+// "start": {"acks": [...]} change the state of its orders, and the reply's talk
+// then carries "start": {"state": "on", "orders": [...]}, the orders waiting for
+// that machine (3 a sync at most). "start": {"off": true} says starting is off
+// there. Only the City Worker makes an order row; the relay only changes its
+// state. A talk without "start" is answered as above, and no order table is
+// made for it.
 
 const WINDOW_MS = 300_000; // how long a line is handed out for
 const MAX_LINES = 200; // lines allowed in one sync
@@ -41,6 +51,13 @@ const TALK_SENT_MS = 60_000; // a message nobody took in this time is not delive
 const TALK_TAKEN_MS = 600_000; // a message taken but never answered, same
 const TALK_KEEP_MS = 7 * 24 * 3600 * 1000; // chat rows older than this leave
 const TALK_KEEP_ROWS = 200; // chat rows kept for one conversation
+
+const START_MAX_ACKS = 20; // order answers read from one sync
+const START_MAX_DOWN = 3; // orders handed down in one reply, and taken at once
+const START_MAX_NAME = 80; // characters kept of an agent's name in an answer
+const START_MAX_DETAIL = 200; // characters kept of the detail in an answer
+const START_SENT_MS = 60_000; // an order nobody took in this time failed (off)
+const START_TAKEN_MS = 180_000; // an order taken but with no word from the machine in this time failed (silent)
 
 // Each stored row (one batch) claims a block of SEQ_STEP seq numbers, the
 // row's id times SEQ_STEP, plus the line's place in the batch. SEQ_STEP
@@ -62,6 +79,13 @@ const MSG_INDEX_SQL = "CREATE INDEX IF NOT EXISTS city_msg_dev ON city_msg (user
 const CHAT_SQL = "CREATE TABLE IF NOT EXISTS city_chat (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT NOT NULL, dev TEXT NOT NULL, pg TEXT NOT NULL, k TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, at REAL NOT NULL, ts INTEGER NOT NULL, state TEXT NOT NULL, why TEXT NOT NULL, cid TEXT NOT NULL, UNIQUE (user, dev, k))";
 const CHAT_INDEX_SQL = "CREATE INDEX IF NOT EXISTS city_chat_pg ON city_chat (user, dev, pg, id)";
 const TALK_SQL = [MSG_SQL, MSG_INDEX_SQL, CHAT_SQL, CHAT_INDEX_SQL].join("\n");
+
+// Only run on a start sync (a talk sync whose talk has "start"). The City Worker
+// makes the same two tables with the same two lines (IF NOT EXISTS). One row is
+// one click on the add-agent button: at = placed, ts = last change of state (ms).
+const ORDER_SQL = "CREATE TABLE IF NOT EXISTS city_order (user TEXT NOT NULL, oid TEXT NOT NULL, dev TEXT NOT NULL, terr TEXT NOT NULL, force INTEGER NOT NULL, at INTEGER NOT NULL, ts INTEGER NOT NULL, state TEXT NOT NULL, why TEXT NOT NULL, info TEXT NOT NULL, PRIMARY KEY (user, oid))";
+const ORDER_INDEX_SQL = "CREATE INDEX IF NOT EXISTS city_order_dev ON city_order (user, dev, state)";
+const START_SQL = [ORDER_SQL, ORDER_INDEX_SQL].join("\n");
 
 // The free plan allows 50 statements a request, so lists of rows go to SQL as
 // ONE json text (?3 or ?4 below) and a statement reads them with json_each:
@@ -104,11 +128,44 @@ const DOWN_TAKE_SQL =
 const DOWN_LIST_SQL =
   `SELECT cid, pg, text, at FROM city_msg WHERE user = ?1 AND dev = ?2 AND state = 'taken' ORDER BY at, cid LIMIT ${TALK_MAX_DOWN}`;
 
+// Orders (the same ?1 user, ?2 machine). Answers (?3 = [{oid, state, why, info}],
+// ?4 = now). Only an order of this machine that is 'taken' or 'opening'
+// changes, and only when the answer says something new. info is already JSON text.
+const ORDER_ACKS_SQL =
+  "UPDATE city_order SET state = json_extract(a.value, '$.state'), why = json_extract(a.value, '$.why'), info = json_extract(a.value, '$.info'), ts = ?4 FROM json_each(?3) a " +
+  "WHERE city_order.user = ?1 AND city_order.dev = ?2 AND city_order.state IN ('taken', 'opening') AND city_order.oid = json_extract(a.value, '$.oid') " +
+  "AND (city_order.state != json_extract(a.value, '$.state') OR city_order.why != json_extract(a.value, '$.why') OR city_order.info != json_extract(a.value, '$.info'))";
+
+// Orders going down (?3 = now). Each change of state is one guarded UPDATE: an
+// order that became 'failed' is never taken later. One that was not taken in
+// time failed (off); one taken or opening with no word for too long failed (silent).
+const ORDER_EXPIRE_SQL =
+  "UPDATE city_order SET why = CASE state WHEN 'sent' THEN 'off' ELSE 'silent' END, state = 'failed', ts = ?3 WHERE user = ?1 AND dev = ?2 AND state IN ('sent', 'taken', 'opening') " +
+  `AND ?3 - CASE state WHEN 'sent' THEN at ELSE ts END >= CASE state WHEN 'sent' THEN ${START_SENT_MS} ELSE ${START_TAKEN_MS} END`;
+// The oldest 'sent' orders become 'taken', so that no more than 3 are taken at
+// once; the rest wait as 'sent' for the next sync.
+const ORDER_TAKE_SQL =
+  "UPDATE city_order SET state = 'taken', ts = ?3 WHERE user = ?1 AND dev = ?2 AND state = 'sent' AND oid IN (SELECT oid FROM city_order WHERE user = ?1 AND dev = ?2 AND state = 'sent' " +
+  `ORDER BY at, oid LIMIT MAX(0, ${START_MAX_DOWN} - (SELECT COUNT(*) FROM city_order WHERE user = ?1 AND dev = ?2 AND state = 'taken')))`;
+const ORDER_LIST_SQL =
+  `SELECT oid, terr, force, at FROM city_order WHERE user = ?1 AND dev = ?2 AND state = 'taken' ORDER BY at, oid LIMIT ${START_MAX_DOWN}`;
+
+// Starting turned off on the machine (?3 = now): what waits is failed ('opening'
+// is left, its terminal is opening) ...
+const ORDER_OFF_SQL = "UPDATE city_order SET state = 'failed', why = 'start-off', ts = ?3 WHERE user = ?1 AND dev = ?2 AND state IN ('sent', 'taken')";
+// ... and its picture loses the start flag.
+const START_FLAG_OFF_SQL = "UPDATE city_view SET counts = json_remove(counts, '$.start') WHERE user = ? AND dev = ? AND json_extract(counts, '$.start') IS NOT NULL";
+
 // What the talk keys and values may be.
 const TALK_KEY_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
 const TALK_KINDS = ["prompt", "reply", "owner"];
 const TALK_ANSWERS = ["queued", "delivered", "undelivered"];
 const TALK_WHY = ["ended", "not-listening", "off", "refused", "flood"];
+
+// What the start answers may be.
+const START_ANSWERS = ["opening", "opened", "cap", "failed"];
+const START_WHY = ["no-orca", "gone", "orca", "late", "busy", "flood", "restart", "refused", "off"];
+const START_ROLES = ["main", "helper"];
 
 function json(body, status) {
   return new Response(JSON.stringify(body), {
@@ -269,11 +326,53 @@ function readChatRow(r) {
   return { k, to, kind, text: kept, at, state, why: talkWhy(r.why), cid };
 }
 
-// A "talk" from a machine, cleaned: {off, acks, chat}. A bad answer or a bad
+// Cut by characters, not by UTF-16 units, so no pair is split in the middle.
+function cutText(text, max) {
+  return text.length > max ? Array.from(text).slice(0, max).join("") : text;
+}
+
+// The info of an order answer as JSON text: only the known keys are kept, and
+// "{}" when nothing is kept or it is no object.
+function readStartInfo(raw) {
+  const info = {};
+  if (isObject(raw)) {
+    if (typeof raw.name === "string") info.name = cutText(raw.name, START_MAX_NAME);
+    if (START_ROLES.includes(raw.role)) info.role = raw.role;
+    for (const key of ["ram", "cpu", "max"]) {
+      if (isCount(raw[key])) info[key] = raw[key];
+    }
+    if (typeof raw.detail === "string") info.detail = cutText(raw.detail, START_MAX_DETAIL);
+  }
+  return JSON.stringify(info);
+}
+
+// A "start" from a machine, cleaned: {off, acks}. A bad answer is skipped and
+// the rest is kept; it never fails the sync. One answer per order (the last one wins).
+function readStart(raw) {
+  const out = { off: false, acks: [] };
+  if (raw.off === true) {
+    out.off = true;
+    return out;
+  }
+  if (Array.isArray(raw.acks)) {
+    const acks = new Map();
+    for (const a of raw.acks.slice(0, START_MAX_ACKS)) {
+      if (!isObject(a) || typeof a.oid !== "string" || a.oid.length < 1 || a.oid.length > 64) continue;
+      if (!START_ANSWERS.includes(a.state)) continue;
+      const why = START_WHY.includes(a.why) ? a.why : "";
+      acks.set(a.oid, { oid: a.oid, state: a.state, why, info: readStartInfo(a.info) });
+    }
+    out.acks = [...acks.values()];
+  }
+  return out;
+}
+
+// A "talk" from a machine, cleaned: {off, acks, chat, start}. A bad answer or a bad
 // row is skipped and the rest is kept; it never fails the sync. One answer per
-// message and one row per key (the last one wins).
+// message and one row per key (the last one wins). start is null unless the
+// talk has a "start" object.
 function readTalk(raw) {
-  const out = { off: false, acks: [], chat: [] };
+  const out = { off: false, acks: [], chat: [], start: null };
   if (!isObject(raw)) return out;
   if (raw.off === true) {
     out.off = true;
@@ -296,6 +395,7 @@ function readTalk(raw) {
     }
     out.chat = [...rows.values()];
   }
+  if (isObject(raw.start)) out.start = readStart(raw.start);
   return out;
 }
 
@@ -342,6 +442,29 @@ async function dropTalk(db, user, dev) {
     .prepare("UPDATE city_view SET counts = json_remove(counts, '$.talk') WHERE user = ? AND dev = ? AND json_extract(counts, '$.talk') IS NOT NULL")
     .bind(user, dev)
     .run();
+}
+
+// The machine's answers for the owner's orders.
+async function keepOrderAcks(db, user, dev, acks, now) {
+  if (acks.length === 0) return;
+  await db.prepare(ORDER_ACKS_SQL).bind(user, dev, JSON.stringify(acks), now).run();
+}
+
+// The owner's orders for this machine: time out the old ones, take the oldest
+// 'sent' ones, and hand down every 'taken' one (again and again, until the
+// machine answers for it). The relay never makes an order row.
+async function handDownOrders(db, user, dev, now) {
+  await db.prepare(ORDER_EXPIRE_SQL).bind(user, dev, now).run();
+  await db.prepare(ORDER_TAKE_SQL).bind(user, dev, now).run();
+  const { results } = await db.prepare(ORDER_LIST_SQL).bind(user, dev).all();
+  return results.map((o) => ({ oid: o.oid, terr: o.terr, force: o.force !== 0, age: now - o.at }));
+}
+
+// Starting turned off on the machine: its waiting orders failed and its picture
+// loses the start flag. Each is guarded, so a second "off" writes nothing.
+async function dropStart(db, user, dev, now) {
+  await db.prepare(ORDER_OFF_SQL).bind(user, dev, now).run();
+  await db.prepare(START_FLAG_OFF_SQL).bind(user, dev).run();
 }
 
 // The cloud page's user: CITY_USER trimmed and lower case, or "" when the
@@ -439,11 +562,14 @@ async function handleSync(request, env) {
   const talk = mode === "on" ? readTalk(parsed.talk) : null;
   // The picture of a machine that talks says so, once, in its counts.
   if (talk && !talk.off && view) view.counts.talk = 1;
+  // ... and so does the picture of a machine that starts agents (not one that says start is off).
+  if (talk && talk.start && !talk.start.off && view) view.counts.start = 1;
 
   const db = env.DB;
   await db.exec(SETUP_SQL);
   if (user) await db.exec(CITY_SQL);
   if (talk) await db.exec(TALK_SQL);
+  if (talk && talk.start) await db.exec(START_SQL);
 
   const now = Date.now();
   const cutoff = now - WINDOW_MS;
@@ -492,6 +618,14 @@ async function handleSync(request, env) {
       await keepAcks(db, user, dev, talk.acks);
       await keepChat(db, user, dev, talk.chat, now);
       reply.talk = { state: "on", msgs: await handDown(db, user, dev, now) };
+      // Then the orders, only when the talk has "start": its answers, then the way down.
+      if (talk.start && talk.start.off) {
+        await dropStart(db, user, dev, now);
+        reply.talk.start = { state: "off" };
+      } else if (talk.start) {
+        await keepOrderAcks(db, user, dev, talk.start.acks, now);
+        reply.talk.start = { state: "on", orders: await handDownOrders(db, user, dev, now) };
+      }
     }
   } else if (mode !== "none") {
     reply.talk = { state: mode };

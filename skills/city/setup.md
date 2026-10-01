@@ -194,6 +194,7 @@ Optional. Do this only after sections 1 to 15 work. With talking on, you can typ
    ```
 9. Open the cloud page and log in. Wait about a minute. Tap that machine, then tap a person.
 What is stored: your messages and the conversations of machines with talking on go to your own Cloudflare database, for 7 days and at most 200 rows per conversation. The full record stays on the machine. A machine with talking off sends no conversation at all.
+To start new agents from the page as well (a button on the page opens a new agent on that machine), go on with section 18 (starting agents from the page) after this section works.
 You should see: `CLOUD TALK: on <relay host>` from step 8. On the page, that machine shows 可对话, and a person's window has the message box. A message typed there shows 在路上 (on its way), then 已送达 (delivered), then the reply of the session. A machine that did not do step 7 still shows 只能看.
 
 ## 17. Turn talking off
@@ -207,4 +208,40 @@ There are three ways to stop it. Use the one you need, or all of them.
 3. End the login. On the page, click the 退出 link. To end the Access session everywhere (for example if someone else may have your login): in Cloudflare, open Zero Trust, then "My Team", then "Users", click your user, then "Revoke". Every login on every device must log in again with an e-mail code.
 You should see: `CLOUD TALK: off` from step 1 (the same status command as section 16, step 8 shows it too), and on the page that machine shows 只能看, with no message box. After step 2, no machine takes a message. The cloud page itself, the relay and the local city go on as before.
 
-Cloudflare's free plan allows 100,000 Worker requests and 100,000 D1 rows written a day. A heavy day (3 machines, 6 busy hours each, the page open 8 hours) uses about 36,000 requests and about 72,000 written rows. This day includes talking: 600 session turns and 100 messages from the page. About 52,000 of those rows are the relay's lines as before, and talking adds about 6,000.
+## 18. Turn starting agents on
+Optional. Do this only after section 16 works: talking must be on first, on each machine that should take orders. With starting on, you can open a new agent from the cloud page, in a repo that joined (section 6) on a machine with starting on, and then type to it. Read this first, in plain words: whoever can log in as you on the page can open a Manager or a Helper (the two kinds of agent you talk to yourself) in a joined repo of a machine with starting on, and then type to it (talking is on there). So keep the login short (section 16, step 1) and keep your e-mail account safe. The command is fixed: nobody can choose the role, the model, a flag or a folder. A task manager is never made this way. At most 10 an hour can be started. Every order, and what became of it, is written in decisions.jsonl on that machine. A machine with starting on keeps its small city program running also when no session is open, so the first agent of the day can be started from the phone. After a restart of the computer it comes back with the next Claude session there (or when you run `agent-city start`). Starting is off by default: it stays off for a machine until you do step 5 on it.
+1. On your Mac, in a terminal, copy the NEW relay code to the clipboard (the same command as section 2, step 5):
+   ```
+   cat "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city-relay.js" | pbcopy
+   ```
+2. In Cloudflare, click "Workers & Pages", then your relay Worker (the one from section 2), then "Edit code". Click inside the code, press Cmd+A, then Delete, then Cmd+V. Do NOT delete the file `worker.js` itself (see section 2, step 6). Click "Deploy" (or "Save and deploy").
+3. Deploy the NEW page code (the same command as section 12, step 4):
+   ```
+   bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" cloud-deploy
+   ```
+   Press Enter to keep the database id it remembers. If it says you are not logged in, do section 12, step 3 again, then run this step again.
+4. Check that talking is on for each machine that should take orders: run the status command (the same as section 8, step 2) there and look for `CLOUD TALK: on <relay host>`. If it says `CLOUD TALK: off`, do section 16, step 7 first.
+5. Do this on each machine that should take orders. In a terminal, inside a repo that joined (section 6), run:
+   ```
+   bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" cloud-start on
+   ```
+   It asks "Talk key (hidden):". Type the talk key from section 16 again (nothing is shown), press Enter. There is no new key: it is the same talk key. Type this yourself, in your own terminal: the command refuses when an agent runs it, and never type the talk key into a chat with Claude or any agent.
+6. Check it. On that machine, in a terminal, inside the repo, run the status command (the same as section 8, step 2):
+   ```
+   bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" status
+   ```
+7. Open the cloud page and log in. Wait about a minute. Tap that machine.
+You should see: `CLOUD START: on <relay host>` from step 6. On the page, that machine's row shows 可开 agent, and each repo that lives on that machine has the button 加 agent. Click it: it shows 在路上 (on its way), then that computer opens the session, then the new person appears in the city and you can type to it. A machine that did not do step 5 has no such button.
+
+## 19. Turn starting agents off
+There are three ways to stop it. Use the one you need, or all of them.
+1. One machine. On that machine, in a terminal (from any folder), run:
+   ```
+   bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" cloud-start off
+   ```
+   Run inside the repo that joined (section 6), it also tells Cloudflare, so an order that is still waiting is never opened. Talking stays on. Turning talking off (`cloud-talk off`, section 17, step 1) turns starting off on that machine too. The other machines go on as before.
+2. All machines at once. In Cloudflare, open the relay Worker, then "Settings", then "Variables and Secrets". Delete `TALK_KEY`, then "Deploy". With no `TALK_KEY`, no machine takes an order, and talking is off for every machine too.
+3. End the login. On the page, click the 退出 link. To end the Access session everywhere (for example if someone else may have your login): the same as section 17, step 3 (Zero Trust, "My Team", "Users", your user, "Revoke").
+You should see: `CLOUD START: off` from step 1 (the status command of section 18, step 6 shows it too), and on the page no 加 agent button for that machine, with a note at the foot of the list saying how to turn it on. After step 2, no machine takes an order. The cloud page, the relay and the local city go on as before.
+
+Cloudflare's free plan allows 100,000 Worker requests and 100,000 D1 rows written a day. A heavy day (3 machines, 6 busy hours each, the page open 8 hours) uses about 44,500 requests and about 73,900 written rows. This day includes talking: 600 session turns and 100 messages from the page. It also includes starting: 20 agents started from the page, and each machine kept up the other 12 hours with nobody there. About 52,000 of those rows are the relay's lines as before, talking adds about 6,000, and starting adds about 8,700 requests and about 2,300 rows.

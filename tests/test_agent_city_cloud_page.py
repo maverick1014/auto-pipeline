@@ -19,10 +19,11 @@ the parallel work on the rail does not meet it.
       the city; a failed request shows a small "not connected" chip and tries
       again.
   View only when CLOUD: sendChat, loadChat, decide and addAgent never call
-      fetch (they return before it); no chat box, no answer / approve buttons,
-      a "?" opens nothing; no "add agent" button in the rail (addHtml() gives ''
-      at once, city-add-agent merged 2026-10-01); demo tools are gone (as on
-      the live page).
+      their LOCAL fetch (they return before it); no chat box, no answer / approve
+      buttons, a "?" opens nothing; demo tools are gone (as on the live page).
+      (cloud-city-2: sendChat talks through the City Worker; cloud-city-3: the
+      rail has the "add agent" button for a machine that takes start orders, and
+      addAgent hands over to cloudAdd, tests/test_agent_city_cloud_start_page.py.)
   New on the page when CLOUD (as in the mock): the machine row (class
       "machines": label, 干活 n, 等你 n, age; a tap picks that machine, kept in
       localStorage), the "只能看" pill, the account chip with the e-mail and
@@ -184,7 +185,8 @@ class TestViewOnly(unittest.TestCase):
                          "%s must return before its fetch when CLOUD" % name)
 
     # cloud-city-2: sendChat talks on the cloud page now (tests/test_agent_city_cloud_talk_page.py);
-    # loadChat still never fetches there (the feed brings the window), decide and addAgent stay off.
+    # loadChat still never fetches there (the feed brings the window), decide stays off, and addAgent
+    # never reaches its local fetch there (cloud-city-3: it hands over to cloudAdd first).
     def test_chat_load_is_off(self):
         self.before_fetch("loadChat")
 
@@ -194,10 +196,11 @@ class TestViewOnly(unittest.TestCase):
     def test_add_agent_is_off(self):
         self.before_fetch("addAgent")
 
-    def test_no_add_agent_button(self):
+    def test_the_add_agent_button_is_step_3(self):
+        # cloud-city-3: the cloud page has the button for a machine that takes orders
+        # (tests/test_agent_city_cloud_start_page.py); addAgent still never reaches its LOCAL fetch there (above).
         src = fn(self, "addHtml")
-        self.assertRegex(src, r"^function addHtml\(group, st\)\s*\{\s*if \(CLOUD\) return '';",
-                         "the cloud page is view only: addHtml() gives '' before anything else")
+        self.assertNotRegex(src, r"if \(CLOUD\) return '';")
 
     def test_only_feed_and_local_urls(self):
         urls = set(re.findall(r"fetch\(\s*'([^']+)'", script()))

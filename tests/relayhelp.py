@@ -10,6 +10,12 @@ client and server tests never touch Cloudflare, the network or a real key.
     relay.talk_key = "..."          cloud-city-2: the relay has this TALK_KEY (None = none);
     relay.say(cid, to, text)        a message waits for the machine (handed down until acked)
     relay.acks_of(cid), relay.chat_rows(), relay.talk_log, relay.offs, relay.talk_headers()
+    relay.order(oid, terr, force=False, age=0, **more)   cloud-city-3: an order waits for the machine; it is
+                                    handed down with every sync whose talk carries "start" (not off) until
+                                    an ack names its oid. relay.start = False: an OLD relay code, it says
+                                    nothing about start. relay.force_start = True: orders go down although
+                                    the sync carried no start. relay.order_acks, relay.order_acks_of(oid),
+                                    relay.start_log, relay.start_offs
     relay.requests                  every POST it got: {"path", "auth", "body", "status"}
     relay.sent_lines()              lines of the syncs it accepted (200) only
     relay.mode = "ok" | "refuse" | "error" | "garbage" | "redirect"
@@ -153,6 +159,21 @@ class _Handler(BaseHTTPRequestHandler):
                         reply["talk"] = {"state": "off"}
                     else:
                         reply["talk"] = {"state": "on", "msgs": [dict(m) for m in relay.talk_msgs[:10]]}
+                        # cloud-city-3: start (the rules of bin/agent-city-relay.js,
+                        # tests/test_agent_city_cloud_start_relay.py). Only when the talk carries "start".
+                        start = talk.get("start")
+                        if relay.force_start and not isinstance(start, dict):
+                            reply["talk"]["start"] = {"state": "on", "orders": [dict(o) for o in relay.orders[:3]]}
+                        if isinstance(start, dict) and relay.start:
+                            relay.start_log.append((dev, start))
+                            if start.get("off"):
+                                relay.start_offs.append(dev)
+                                reply["talk"]["start"] = {"state": "off"}
+                            else:
+                                for ack in start.get("acks") or []:
+                                    relay.order_acks.append(ack)
+                                    relay.orders = [o for o in relay.orders if o.get("oid") != ack.get("oid")]
+                                reply["talk"]["start"] = {"state": "on", "orders": [dict(o) for o in relay.orders[:3]]}
         self._send(200, reply)
 
 
@@ -175,6 +196,13 @@ class FakeRelay:
         self.chat = {}         # k -> the last row sent with that key (first-seen order)
         self.chat_log = []     # every chat row sent, in order (a row sent twice is here twice)
         self.offs = []         # the devs that said {"off": true}
+        # cloud-city-3: start. start False = an old relay code that knows nothing of it.
+        self.start = True
+        self.force_start = False   # True: orders go down in every talk reply, also when the sync carried no start
+        self.orders = []       # orders handed down with every start sync, until an ack names their oid
+        self.start_log = []    # every (dev, start body) of a talk-on sync that carried "start", in order
+        self.order_acks = []   # every order ack, in order
+        self.start_offs = []   # the devs that said start {"off": true}
         self.delay = 0
         self.redirect_to = ""
         self.redirect_code = 302
@@ -195,6 +223,17 @@ class FakeRelay:
         msg.update(more)
         with self.lock:
             self.talk_msgs.append(msg)
+
+    def order(self, oid, terr, force=False, age=0, **more):
+        """cloud-city-3: the owner clicked add agent for territory TERR on the cloud page."""
+        order = {"oid": oid, "terr": terr, "force": force, "age": age}
+        order.update(more)
+        with self.lock:
+            self.orders.append(order)
+
+    def order_acks_of(self, oid):
+        with self.lock:
+            return [a for a in self.order_acks if a.get("oid") == oid]
 
     def acks_of(self, cid):
         with self.lock:

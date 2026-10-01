@@ -27,6 +27,15 @@ cloud-city-2 (talk):
     feed(..., chat=None, cc=None)   the feed with an open window
     ORIGIN             the page's own origin in the harness (https://cloud.test)
     MSG_SQL, CHAT_SQL  the two tables, as BOTH Workers must make them (one line each)
+
+cloud-city-3 (start an agent):
+    ORDER_SQL, ORDER_INDEX_SQL, START_TABLES   the order table, as BOTH Workers must make it
+    make_order_table() the order table, laid with sql()
+    lay_order(oid, dev="mac", terr=TERR, force=0, at=T0, ts=None, state="sent", why="", info="{}", user=ME)
+                       one city_order row, laid with sql()
+    add(dev, terr, oid, force=None, login=ME, now=T0, origin=ORIGIN, page="1", ctype=..., body=None)
+                       a POST /api/agent/add to the City Worker
+    TERR               a territory id (8 lowercase hex digits)
 """
 
 import json
@@ -68,6 +77,16 @@ CHAT_SQL = ("CREATE TABLE IF NOT EXISTS city_chat (id INTEGER PRIMARY KEY AUTOIN
             "UNIQUE (user, dev, k))")
 CHAT_INDEX_SQL = "CREATE INDEX IF NOT EXISTS city_chat_pg ON city_chat (user, dev, pg, id)"
 TALK_TABLES = (MSG_SQL, MSG_INDEX_SQL, CHAT_SQL, CHAT_INDEX_SQL)
+
+# cloud-city-3: the order table. One row = one click on the cloud page's add-agent button.
+# at = when it was placed, ts = when its state last changed (both the Worker's clock, ms),
+# info = a small JSON object as text ("{}" when there is nothing to say).
+ORDER_SQL = ("CREATE TABLE IF NOT EXISTS city_order (user TEXT NOT NULL, oid TEXT NOT NULL, dev TEXT NOT NULL, "
+             "terr TEXT NOT NULL, force INTEGER NOT NULL, at INTEGER NOT NULL, ts INTEGER NOT NULL, "
+             "state TEXT NOT NULL, why TEXT NOT NULL, info TEXT NOT NULL, PRIMARY KEY (user, oid))")
+ORDER_INDEX_SQL = "CREATE INDEX IF NOT EXISTS city_order_dev ON city_order (user, dev, state)"
+START_TABLES = (ORDER_SQL, ORDER_INDEX_SQL)
+TERR = "0a1b2c3d"
 CITY_ENV = {"ACCESS_TEAM": TEAM, "ACCESS_AUD": AUD}
 
 PAGE = ("<!doctype html><html><head><meta name=\"city-token\" content=\"__CITY_TOKEN__\">"
@@ -117,6 +136,36 @@ def sql(text, *args):
 def make_tables():
     """The talk tables, laid by the test itself (so a test of one Worker does not need the other)."""
     return [sql(line) for line in TALK_TABLES]
+
+
+def make_order_table():
+    """cloud-city-3: the order table, laid by the test itself."""
+    return [sql(line) for line in START_TABLES]
+
+
+def lay_order(oid, dev="mac", terr=TERR, force=0, at=T0, ts=None, state="sent", why="", info="{}", user=ME):
+    return sql("INSERT INTO city_order (user, oid, dev, terr, force, at, ts, state, why, info) "
+               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", user, oid, dev, terr, force, at, at if ts is None else ts,
+               state, why, info)
+
+
+def add(dev="mac", terr=TERR, oid="oid-0000000000000001", force=None, login=ME, now=T0,
+        origin=ORIGIN, page="1", ctype="application/json", body=None):
+    """cloud-city-3: the page's POST /api/agent/add (force is left out of the body when None)."""
+    headers = {}
+    if origin is not None:
+        headers["Origin"] = origin
+    if page is not None:
+        headers["X-City-Page"] = page
+    if ctype is not None:
+        headers["Content-Type"] = ctype
+    req = get("/api/agent/add", login=login, now=now, method="POST", headers=headers)
+    if body is None:
+        body = {"dev": dev, "terr": terr, "oid": oid}
+        if force is not None:
+            body["force"] = force
+    req["body"] = body
+    return req
 
 
 def lay_msg(cid, dev="mac", to="s:tm1", text="hello", at=T0, state="sent", why="", user=ME):
