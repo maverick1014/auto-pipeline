@@ -155,7 +155,7 @@ const ag = (id, label, task, terr) => ({ id, role: 'task-manager', label, task, 
 apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: A.id }, governors: 1, asks: [], shows: [],
   govs: [{ terr: A.id, state: 'busy' }], agents: [ag('s:tttt0001', 'checkout Task Manager', 'auto-pipeline', A.id)] });
 const NOW = __payload.now;
-const feed = (start, ago, talk) => ({ ok: true, user: 'o@example.com', now: NOW, dev: 'mac', orders: [],
+const mkFeed = (start, ago, talk) => ({ ok: true, user: 'o@example.com', now: NOW, dev: 'mac', orders: [],
   devs: [{ dev: 'mac', label: 'MacBook-Pro', ts: NOW - (ago || 1000), counts: { people: 1, busy: 1, wait: 0 },
            talk: talk !== false, start },
          { dev: 'pc2', label: 'pc2', ts: NOW - 2000, counts: { people: 0, busy: 0, wait: 0 }, talk: true, start: true }] });
@@ -165,10 +165,10 @@ const draw = adds => railHtml(railGroups(), null, new Set(), new Set(), adds);
 const adds = () => railGroups().map(g => g.add);
 const out = { a: A.id, b: B.id, cloud: CLOUD };
 cloudLive.feed = null; out.noFeed = adds();
-cloudLive.feed = feed(false); out.startOff = adds();
-cloudLive.feed = feed(true, 200000); out.stale = adds();
-cloudLive.feed = feed(undefined); out.noFlag = adds();
-cloudLive.feed = feed(true); out.on = adds();
+cloudLive.feed = mkFeed(false); out.startOff = adds();
+cloudLive.feed = mkFeed(true, 200000); out.stale = adds();
+cloudLive.feed = mkFeed(undefined); out.noFlag = adds();
+cloudLive.feed = mkFeed(true); out.on = adds();
 delete A.here; apply({ type: 'world', world: V }); out.noHere = adds();
 A.here = true; apply({ type: 'world', world: V });
 const st = s => sec(draw(new Map([[A.id, s]])), A.id);
@@ -182,11 +182,11 @@ out.cap = st({ s: 'cap', oid: 'o1', ram: 86, cpu: 41, max: 80 });
 out.err = st({ s: 'err', oid: 'o1', why: 'Orca <b>broke</b>', retry: false });
 out.evil = st({ s: 'done', oid: 'o1', name: '<img src=x onerror=1>' }) + st({ s: 'opening', oid: 'o1', name: '<img src=x onerror=1>' });
 if (__payload.pure) {
-  out.startOn = [cloudStartOn(null), cloudStartOn({}), cloudStartOn(feed(true)), cloudStartOn(feed(false)),
-    cloudStartOn(feed(1)), cloudStartOn(feed(true, 200000)), cloudStartOn(Object.assign(feed(true), { dev: 'gone' })),
-    cloudStartOn(Object.assign(feed(false), { dev: 'pc2' }))];
-  out.note = [cloudStartNote(null), cloudStartNote(feed(true)), cloudStartNote(feed(false)), cloudStartNote(feed(false, 1000, false)),
-    cloudStartNote(feed(true, 1000, false)), cloudStartNote(feed(false, 200000)), cloudStartNote(Object.assign(feed(false), { dev: 'gone' }))];
+  out.startOn = [cloudStartOn(null), cloudStartOn({}), cloudStartOn(mkFeed(true)), cloudStartOn(mkFeed(false)),
+    cloudStartOn(mkFeed(1)), cloudStartOn(mkFeed(true, 200000)), cloudStartOn(Object.assign(mkFeed(true), { dev: 'gone' })),
+    cloudStartOn(Object.assign(mkFeed(false), { dev: 'pc2' }))];
+  out.note = [cloudStartNote(null), cloudStartNote(mkFeed(true)), cloudStartNote(mkFeed(false)), cloudStartNote(mkFeed(false, 1000, false)),
+    cloudStartNote(mkFeed(true, 1000, false)), cloudStartNote(mkFeed(false, 200000)), cloudStartNote(Object.assign(mkFeed(false), { dev: 'gone' }))];
   const O = (oid, terr, state, more) => Object.assign({ oid, terr, force: false, at: NOW - 5000, ts: NOW - 4000, state, why: '', info: {} }, more || {});
   const view = (orders, hidden) => [...cloudOrderView(orders, NOW, hidden || new Set())];
   out.view = {
@@ -224,7 +224,7 @@ if (__payload.pure) {
   for (const k of __payload.keys) out.text[k] = i18n(k, { name: 'Manager', min: 19, detail: 'why' });
   // one click: the button reads "on its way" at once and ONE request goes out
   addState.clear();
-  cloudLive.feed = feed(true);
+  cloudLive.feed = mkFeed(true);
   cloudAdd(A.id, false);
   out.click = { state: addState.get(A.id) || null, calls: calls.map(c => ({ url: c.url, opt: c.opt })) };
   cloudAdd(A.id, false); cloudAdd(A.id, true);
@@ -431,6 +431,9 @@ class TestTexts(CloudCase):
         self.assertIn("那台电脑不能自己开终端", zh["add.cloud.why.noOrca"])
         self.assertIn("{detail}", zh["add.cloud.why.orca"])
         self.assertIn("60 秒", zh["add.cloud.why.late"])
+        self.assertRegex(zh["add.cloud.why.flood"], r"一小时.*10 个", "the machine's own cap: 10 opens an hour")
+        self.assertIn("不认这个仓库", zh["add.cloud.why.refused"])
+        self.assertIn("3 分钟", zh["add.cloud.why.silent"])
         self.assertIn("{min}", zh["add.cloud.tooMany"])
         for lang in ("zh", "en"):
             self.assertIn("agent-city cloud-start on", t[lang]["cloud.start.off"])
