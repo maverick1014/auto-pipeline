@@ -1,5 +1,5 @@
 // agent-city-cloud.js — the Agent City page on Cloudflare: behind a login, and the
-// owner can talk to a session from it.
+// owner can talk to a session from it and start an agent from it.
 //
 // One Cloudflare Worker with static assets, on the team owner's own free
 // Cloudflare account. It needs:
@@ -12,12 +12,16 @@
 // Optional plain variables: `CITY_LANG` ("zh" is the default, or "en") and
 // `CITY_ASSET_V` (the ?v= of the asset addresses, default "1").
 //
-// This Worker reads the table city_view (the relay writes it) and the two talk
-// tables city_msg and city_chat (the relay writes city_chat). It writes one
-// thing: the owner's messages, the rows of city_msg (a new row; the word "not
-// delivered" on a row nobody took; the rows older than 7 days of the sender).
+// This Worker reads the table city_view (the relay writes it), the two talk
+// tables city_msg and city_chat (the relay writes city_chat) and the order table
+// city_order. It writes two things: the owner's messages, the rows of city_msg
+// (a new row; the word "not delivered" on a row nobody took; the rows older than
+// 7 days of the sender), and the owner's start orders, the rows of city_order
+// (a new row; the word "failed" on a row nobody took; the rows older than 7 days
+// of the sender). The relay writes the rest of an order, when a machine answers.
 // It never writes city_view or city_chat, it makes no call to a machine, and it
-// holds no key of any kind: a machine takes its messages at its next sync.
+// holds no key of any kind: a machine takes its messages and orders at its next
+// sync.
 //
 // Login. Cloudflare Access stands in front of the whole address and sends
 // every request on with a signed token. A Worker with static assets gets no
@@ -25,19 +29,26 @@
 // it touches an asset or the database. No good token, or Access not set up
 // here: 403 {"ok": false, "error": "login required"} and nothing else.
 //
-// Routes (GET and HEAD, and the one POST below; any other method is 405):
+// Routes (GET and HEAD, and the two POSTs below; any other method is 405):
 //   /                   the page, with its placeholders filled
 //   /index.html         the same page
-//   /api/feed           this login's city: machines (each with "talk": true or
-//                       false), the picture, the new events. With ?chat=<window>
-//                       &cc=<cursor>: also "chat", the open window of the
-//                       machine shown (its rows after the cursor, and the
-//                       messages still on their way)
+//   /api/feed           this login's city: machines (each with "talk" and
+//                       "start": true or false), the picture, the new events.
+//                       With ?chat=<window>&cc=<cursor>: also "chat", the open
+//                       window of the machine shown (its rows after the cursor,
+//                       and the messages still on their way). With a machine
+//                       shown: also "orders", its start orders of the last 10
+//                       minutes
 //   POST /api/chat/send {dev, to, text, cid}: one message of the owner, from
 //                       this page only (header, content type, own origin),
 //                       with size, shape, rate and "my machine" checks, in the
 //                       order of handleSend(). One row, state "sent", or
 //                       "undelivered" at once when no machine can take it
+//   POST /api/agent/add {dev, terr, oid} or {dev, terr, oid, force}: one start
+//                       order of the owner, from this page only, with size,
+//                       shape, "my machine", one-at-a-time and rate checks, in
+//                       the order of handleAdd(). One row, state "sent", or
+//                       "failed" at once when no machine can take it
 //   anything else       the assets, untouched (/v1/... and other /api/... are 404)
 
 const CERTS_TTL_MS = 3600 * 1000; // how long the team's keys are kept in memory
@@ -63,6 +74,20 @@ const TO_RE = /^(?:s|gov):[A-Za-z0-9_.:-]{1,120}$/; // a session or a governor, 
 const CID_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const SEND_KEYS = ["dev", "to", "text", "cid"]; // the keys of a send body, and no other
 
+// The start orders. All the limits of one owner's orders and of the list shown.
+const MAX_ADD_BODY = 1024; // bytes of one add request
+const ADD_KEYS = ["dev", "terr", "oid", "force"]; // the keys of an add body, and no other
+const ADD_NEEDED = ["dev", "terr", "oid"]; // the ones that must be there
+const TERR_RE = /^[0-9a-f]{8}$/; // a territory id, never a path or a name
+const OID_RE = /^[A-Za-z0-9_-]{16,64}$/;
+const HOUR_MS = 3600 * 1000; // the window of the first order limit ...
+const ORDER_HOUR_MAX = 10; // ... this many orders in it
+const ORDER_DAY_MAX = 40; // the second limit: this many orders in DAY_MS
+const ORDER_SENT_EXPIRE_MS = 60 * 1000; // a "sent" order nobody took in this time failed
+const ORDER_SILENT_MS = 180 * 1000; // a "taken" or "opening" one that stayed quiet this long failed
+const ORDER_SHOW_MS = 10 * 60 * 1000; // the orders of the last 10 minutes are shown ...
+const ORDERS_MAX = 20; // ... the newest of them, this many at most
+
 // The two talk tables: the same lines as the relay's. The one that needs them
 // first makes them.
 const TALK_TABLES = [
@@ -70,6 +95,15 @@ const TALK_TABLES = [
   "CREATE INDEX IF NOT EXISTS city_msg_dev ON city_msg (user, dev, state)",
   "CREATE TABLE IF NOT EXISTS city_chat (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT NOT NULL, dev TEXT NOT NULL, pg TEXT NOT NULL, k TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, at REAL NOT NULL, ts INTEGER NOT NULL, state TEXT NOT NULL, why TEXT NOT NULL, cid TEXT NOT NULL, UNIQUE (user, dev, k))",
   "CREATE INDEX IF NOT EXISTS city_chat_pg ON city_chat (user, dev, pg, id)",
+];
+
+// The order table: the same lines as the relay's. The one that needs it first
+// makes it. One row is one click on the add button of the page: `at` is when it
+// was placed, `ts` when its state last changed (ms), `info` a small JSON object
+// as text.
+const ORDER_TABLES = [
+  "CREATE TABLE IF NOT EXISTS city_order (user TEXT NOT NULL, oid TEXT NOT NULL, dev TEXT NOT NULL, terr TEXT NOT NULL, force INTEGER NOT NULL, at INTEGER NOT NULL, ts INTEGER NOT NULL, state TEXT NOT NULL, why TEXT NOT NULL, info TEXT NOT NULL, PRIMARY KEY (user, oid))",
+  "CREATE INDEX IF NOT EXISTS city_order_dev ON city_order (user, dev, state)",
 ];
 
 // The team's keys, kept in this Worker instance's memory:
@@ -322,15 +356,25 @@ async function machinesOf(db, user) {
   }
 }
 
-// Does this machine take messages? Its picture carries the flag "talk": 1 in
-// its counts when the machine has talk on (the relay puts it there).
-function talkOf(text) {
+// A flag of a machine: its picture carries "talk": 1 and "start": 1 in its
+// counts when the machine has talk on, or start on (the relay puts them there).
+function flagOf(text, name) {
   try {
     const c = JSON.parse(text);
-    return isObject(c) && c.talk === 1;
+    return isObject(c) && c[name] === 1;
   } catch (err) {
     return false;
   }
+}
+
+// Does this machine take messages?
+function talkOf(text) {
+  return flagOf(text, "talk");
+}
+
+// Does this machine take start orders?
+function startOf(text) {
+  return flagOf(text, "start");
 }
 
 // The picture part of the feed (step 1): the machines, and the snapshot and
@@ -352,6 +396,7 @@ async function pictureOf(url, db, user) {
       gen: m.gen,
       counts: countsOf(m.counts),
       talk: talkOf(m.counts),
+      start: startOf(m.counts),
     })),
     dev: "",
     gen: 0,
@@ -478,12 +523,91 @@ async function expire(db, user, dev, to, state, why, rows) {
   }
 }
 
+// The stored info of an order is a small JSON object as text; anything else
+// is an empty object.
+function infoOf(text) {
+  try {
+    const info = JSON.parse(text);
+    return isObject(info) ? info : {};
+  } catch (err) {
+    return {};
+  }
+}
+
+// The start orders of the machine shown that were placed in the last 10 minutes
+// (the 20 newest, oldest first). `start` is the machine's start flag, `now` the
+// clock of this poll. No order table yet: no orders.
+//
+// Like the chat, a poll reads through the keys only (user, dev), and a poll with
+// nothing too old writes nothing.
+async function ordersOf(db, user, dev, start, now) {
+  const rows = (
+    await rowsOf(
+      db,
+      "SELECT oid, terr, force, at, ts, state, why, info FROM city_order " +
+        "WHERE user = ? AND dev = ? AND at > ? ORDER BY at DESC, oid DESC LIMIT " + ORDERS_MAX,
+      user,
+      dev,
+      now - ORDER_SHOW_MS
+    )
+  ).reverse();
+  await lapseOrders(db, user, dev, start, now, rows);
+
+  return rows.map((r) => ({
+    oid: r.oid,
+    terr: r.terr,
+    force: !!r.force,
+    at: r.at,
+    ts: r.ts,
+    state: r.state,
+    why: r.why,
+    info: infoOf(r.info),
+  }));
+}
+
+// An order nobody took in time failed, and so did one that went quiet (`rows`:
+// orders of this machine; `start`: its start flag). Stored, so no machine takes
+// it later: one guarded change each, only when there is one. The feed and the
+// add both use this, so the rule is in one place.
+async function lapseOrders(db, user, dev, start, now, rows) {
+  const unsent = rows.filter((r) => r.state === "sent" && now - r.at >= ORDER_SENT_EXPIRE_MS);
+  const quiet = rows.filter((r) => (r.state === "taken" || r.state === "opening") && now - r.ts >= ORDER_SILENT_MS);
+  await expireOrders(db, user, dev, "state = 'sent' AND at <= ?", now - ORDER_SENT_EXPIRE_MS, start ? "off" : "start-off", now, unsent);
+  await expireOrders(db, user, dev, "state IN ('taken', 'opening') AND ts <= ?", now - ORDER_SILENT_MS, "silent", now, quiet);
+}
+
+// Make these orders "failed" for `why`, if they are still as `guard` says (the
+// state, and not changed since `cut`). Only the rows the statement really changed
+// are marked (in place): a machine that answered in between wins, and that order
+// is never shown as failed.
+async function expireOrders(db, user, dev, guard, cut, why, now, rows) {
+  if (rows.length === 0) return;
+  const marks = rows.map(() => "?").join(", ");
+  const { results } = await db
+    .prepare(
+      "UPDATE city_order SET state = 'failed', why = ?, ts = ? " +
+        "WHERE user = ? AND dev = ? AND " + guard + " AND oid IN (" + marks + ") RETURNING oid"
+    )
+    .bind(why, now, user, dev, cut, ...rows.map((r) => r.oid))
+    .all();
+  const changed = new Set((results || []).map((r) => r.oid));
+  for (const r of rows) {
+    if (!changed.has(r.oid)) continue;
+    r.state = "failed";
+    r.why = why;
+    r.ts = now;
+  }
+}
+
 async function handleFeed(url, env, user) {
   const out = await pictureOf(url, env.DB, user);
-  const to = url.searchParams.get("chat");
-  if (out.dev && typeof to === "string" && TO_RE.test(to)) {
+  if (out.dev) {
     const shown = out.devs.find((d) => d.dev === out.dev);
-    out.chat = await chatOf(env.DB, user, out.dev, !!(shown && shown.talk), to, whole(url.searchParams.get("cc")), out.now);
+    const to = url.searchParams.get("chat");
+    if (typeof to === "string" && TO_RE.test(to)) {
+      out.chat = await chatOf(env.DB, user, out.dev, !!(shown && shown.talk), to, whole(url.searchParams.get("cc")), out.now);
+    }
+    out.orders = await ordersOf(env.DB, user, out.dev, !!(shown && shown.start), out.now);
   }
   return json(out);
 }
@@ -496,6 +620,17 @@ async function rowOf(db, sql, ...args) {
     return await db.prepare(sql).bind(...args).first();
   } catch (err) {
     if (isNoTable(err)) return null;
+    throw err;
+  }
+}
+
+// A read that gives all its rows, or none when there is no table yet.
+async function rowsOf(db, sql, ...args) {
+  try {
+    const { results } = await db.prepare(sql).bind(...args).all();
+    return (results || []).slice();
+  } catch (err) {
+    if (isNoTable(err)) return [];
     throw err;
   }
 }
@@ -530,21 +665,25 @@ function refuse(error, status) {
   return json({ ok: false, error }, status);
 }
 
-// POST /api/chat/send {dev, to, text, cid}: the one route that acts. The checks
-// run in this order, and nothing is written before the last one has passed.
+// Does the request come from this page? A page of another site cannot set
+// these: the header, the content type and the origin of the request's own URL.
+function fromThisPage(request, url) {
+  const ctype = (request.headers.get("Content-Type") || "").split(";")[0].trim().toLowerCase();
+  return (
+    request.headers.get("X-City-Page") === "1" &&
+    ctype === "application/json" &&
+    request.headers.get("Origin") === url.origin
+  );
+}
+
+// POST /api/chat/send {dev, to, text, cid}: a route that acts. The checks run in
+// this order, and nothing is written before the last one has passed.
 async function handleSend(request, env, user) {
   const db = env.DB;
   const url = new URL(request.url);
 
-  // Only this page can send: a page of another site cannot set these.
-  const ctype = (request.headers.get("Content-Type") || "").split(";")[0].trim().toLowerCase();
-  if (
-    request.headers.get("X-City-Page") !== "1" ||
-    ctype !== "application/json" ||
-    request.headers.get("Origin") !== url.origin
-  ) {
-    return refuse("bad origin", 403);
-  }
+  // Only this page can send.
+  if (!fromThisPage(request, url)) return refuse("bad origin", 403);
 
   const raw = await bodyText(request, MAX_BODY);
   if (raw === null) return refuse("too big", 413);
@@ -603,6 +742,134 @@ async function handleSend(request, env, user) {
   return json({ ok: true, cid, state, why });
 }
 
+// ---- the owner's start order ----
+
+// POST /api/agent/add {dev, terr, oid} or {dev, terr, oid, force}: the second
+// route that acts. The checks run in this order, and nothing is written before
+// the last one has passed. The body names a machine and a territory id, never a
+// path, a name or a command: the machine opens the folder it knows by that id.
+async function handleAdd(request, env, user) {
+  const db = env.DB;
+  const url = new URL(request.url);
+
+  // Only this page can order.
+  if (!fromThisPage(request, url)) return refuse("bad origin", 403);
+
+  const raw = await bodyText(request, MAX_ADD_BODY);
+  if (raw === null) return refuse("too big", 413);
+  let body = null;
+  try {
+    body = JSON.parse(raw);
+  } catch (err) {
+    body = null;
+  }
+  // A JSON object with these keys and no other: nothing unknown is ignored.
+  if (!isObject(body) || Object.keys(body).some((key) => ADD_KEYS.indexOf(key) === -1)) return refuse("body", 400);
+  const has = (key) => Object.prototype.hasOwnProperty.call(body, key);
+  if (!ADD_NEEDED.every(has)) return refuse("body", 400);
+
+  const { terr, oid } = body;
+  if (typeof terr !== "string" || !TERR_RE.test(terr)) return refuse("terr", 400);
+  if (typeof oid !== "string" || !OID_RE.test(oid)) return refuse("oid", 400);
+  if (has("force") && typeof body.force !== "boolean") return refuse("force", 400);
+  const force = body.force === true ? 1 : 0;
+
+  // The machine must be one of this login.
+  const dev = typeof body.dev === "string" ? body.dev : "";
+  const machine = dev ? await rowOf(db, "SELECT ts, counts FROM city_view WHERE user = ? AND dev = ?", user, dev) : null;
+  if (!machine) return refuse("dev", 404);
+
+  // The same order again: say what became of the first one, store nothing.
+  const again = await storedOrder(db, user, oid);
+  if (again) return again;
+
+  // An order of this repo that is past its time failed (stored): a dead order
+  // never locks the repo. Only this repo's orders are touched.
+  const now = Date.now();
+  const live = await rowsOf(
+    db,
+    "SELECT oid, at, ts, state FROM city_order WHERE user = ? AND dev = ? AND terr = ? AND state IN ('sent', 'taken', 'opening') " +
+      "ORDER BY at DESC, oid DESC",
+    user,
+    dev,
+    terr
+  );
+  await lapseOrders(db, user, dev, startOf(machine.counts), now, live);
+
+  // One order at a time for a repo: a double click opens one session.
+  const busy = live.find((r) => r.state !== "failed");
+  if (busy) return json({ ok: false, error: "busy", oid: busy.oid }, 409);
+
+  // Every order counts, a confirm and a failed one too.
+  const rate = await rowOf(
+    db,
+    "SELECT COUNT(*) AS day, COALESCE(SUM(at > ?), 0) AS hour FROM city_order WHERE user = ? AND at > ?",
+    now - HOUR_MS,
+    user,
+    now - DAY_MS
+  );
+  if (rate && rate.hour >= ORDER_HOUR_MAX) {
+    // The wait ends when the 10th newest of the hour is an hour old.
+    const edge = await rowOf(
+      db,
+      "SELECT at FROM city_order WHERE user = ? AND at > ? ORDER BY at DESC LIMIT 1 OFFSET " + (ORDER_HOUR_MAX - 1),
+      user,
+      now - HOUR_MS
+    );
+    const wait = edge ? Math.max(1, Math.ceil((edge.at + HOUR_MS - now) / 1000)) : 1;
+    return json({ ok: false, error: "too many this hour", wait }, 429);
+  }
+  if (rate && rate.day >= ORDER_DAY_MAX) return refuse("too many today", 429);
+
+  // Be honest at once when no machine can take it.
+  let state = "sent";
+  let why = "";
+  if (now - machine.ts > OFF_AFTER_MS) {
+    state = "failed";
+    why = "off";
+  } else if (!startOf(machine.counts)) {
+    state = "failed";
+    why = "start-off";
+  }
+
+  await db.batch(ORDER_TABLES.map((line) => db.prepare(line)));
+  await db.prepare("DELETE FROM city_order WHERE user = ? AND at < ?").bind(user, now - KEEP_MS).run();
+
+  // The order is stored by ONE statement that stores it only when no order of
+  // this repo is in flight, so two requests at the same moment store one order.
+  const made = await db
+    .prepare(
+      "INSERT OR IGNORE INTO city_order (user, oid, dev, terr, force, at, ts, state, why, info) " +
+        "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ? " +
+        "WHERE NOT EXISTS (SELECT 1 FROM city_order WHERE user = ? AND dev = ? AND terr = ? AND state IN ('sent', 'taken', 'opening'))"
+    )
+    .bind(user, oid, dev, terr, force, now, now, state, why, "{}", user, dev, terr)
+    .run();
+  if (made.meta && made.meta.changes === 0) {
+    // Nothing stored: the same order came in between (say what became of it),
+    // or one of this repo is in flight now (busy, with its oid).
+    const first = await storedOrder(db, user, oid);
+    if (first) return first;
+    const held = await rowOf(
+      db,
+      "SELECT oid FROM city_order WHERE user = ? AND dev = ? AND terr = ? AND state IN ('sent', 'taken', 'opening') " +
+        "ORDER BY at DESC, oid DESC LIMIT 1",
+      user,
+      dev,
+      terr
+    );
+    return json({ ok: false, error: "busy", oid: held ? held.oid : "" }, 409);
+  }
+  return json({ ok: true, oid, state, why, info: {} });
+}
+
+// The answer for an order of this user that is already stored (what became of
+// it), or null when there is none.
+async function storedOrder(db, user, oid) {
+  const row = await rowOf(db, "SELECT state, why, info FROM city_order WHERE user = ? AND oid = ?", user, oid);
+  return row ? json({ ok: true, oid, state: row.state, why: row.why, info: infoOf(row.info) }) : null;
+}
+
 // ---- routes ----
 
 export default {
@@ -612,7 +879,8 @@ export default {
     if (!user) return loginRequired();
 
     const sending = request.method === "POST" && new URL(request.url).pathname === "/api/chat/send";
-    if (request.method !== "GET" && request.method !== "HEAD" && !sending) {
+    const adding = request.method === "POST" && new URL(request.url).pathname === "/api/agent/add";
+    if (request.method !== "GET" && request.method !== "HEAD" && !sending && !adding) {
       return json({ ok: false, error: "view only" }, 405, { allow: "GET, HEAD" });
     }
 
@@ -620,6 +888,7 @@ export default {
       const url = new URL(request.url);
       const path = url.pathname;
       if (sending) return await handleSend(request, env, user);
+      if (adding) return await handleAdd(request, env, user);
       if (path === "/" || path === "/index.html") return await handlePage(request, env);
       if (path === "/api/feed") return await handleFeed(url, env, user);
       if (path === "/v1" || path.startsWith("/v1/") || path === "/api" || path.startsWith("/api/")) {
