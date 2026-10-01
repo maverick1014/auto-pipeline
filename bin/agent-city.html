@@ -1102,7 +1102,7 @@ const ROLES = {
   'other':            { color:'#5FC3C9' },
 };
 const STATE = {
-  spawn:['walk','state.spawn'], to_plot:['walk','state.to_plot'], building:['build','state.building'], working:['build','state.working'],
+  spawn:['walk','state.spawn'], handover:['walk','state.spawn'], to_plot:['walk','state.to_plot'], building:['build','state.building'], working:['build','state.working'],
   to_hall:['ask','state.to_hall'], asking:['ask','state.asking'], heard:['ask','state.heard'],
   to_lead:['ask','state.to_lead'], at_lead:['ask','state.at_lead'],
   back:['walk','state.back'], finishing:['rest','state.finishing'], to_rest:['rest','state.to_rest'],
@@ -1885,12 +1885,27 @@ function homeSlotsFor(t){
   homeSlotsByTerr.set(t.id, slots);
   return slots;
 }
+/* city-talk T2: every home keeps MIN_GAP from every other home and from the governor's stand -- two slots that
+   snap to the same free walk cell are never both given out. homePoints(c, t): the spots to keep clear of. */
+function homePoints(c, t){
+  const pts = [];
+  for (const o of citizens) if (o !== c && !o.gone && o.home) pts.push({ x: o.home.x, y: o.home.y });
+  if (t) { const hs = hallStand(t); pts.push({ x: hs.x, y: hs.y }); }
+  return pts;
+}
+function homeClear(s, pts){
+  const q = snapFree(s.x, s.y);
+  return !pts.some(h => Math.hypot(q.x - h.x, q.y - h.y) < MIN_GAP);
+}
 function pickHomeSpot(c, t){
-  const slots = homeSlotsFor(t);
-  const free = slots.filter(s => !s.by);
+  const slots = homeSlotsFor(t), homes = homePoints(c, t);
+  const free = slots.filter(s => !s.by && homeClear(s, homes));
   let spot = free.length ? pick(free) : null;
   if (spot) spot.by = c.id;
-  else spot = { x: t.cx + rnd(-2.5, 2.5), y: t.cz + 2.6 + rnd(0, 1.2), by: c.id, extra: true };
+  else {
+    spot = { x: t.cx + rnd(-2.5, 2.5), y: t.cz + 2.6 + rnd(0, 1.2), by: c.id, extra: true };
+    if (!homeClear(spot, homes)) { const q = spotBeside(hallStand(t), MIN_GAP, 6, homes, spot); if (q) { spot.x = q.x; spot.y = q.y; } }
+  }
   const snapped = snapFree(spot.x, spot.y); spot.x = snapped.x; spot.y = snapped.y;
   return spot;
 }
@@ -1931,11 +1946,15 @@ function officeSlotsFor(leadC){
   return slots;
 }
 function pickOfficeHomeSpot(c, leadC){
-  const slots = officeSlotsFor(leadC);
-  const free = slots.filter(s => !s.by);
+  const slots = officeSlotsFor(leadC), homes = homePoints(c, terrOf(leadC.terr));
+  const free = slots.filter(s => !s.by && homeClear(s, homes));
   let spot = free.length ? pick(free) : null;
   if (spot) spot.by = c.id;
-  else spot = { x: leadC.office.x + .5 + rnd(-.6, .6), y: leadC.office.z + 1.6 + rnd(0, .6), by: c.id, extra: true };
+  else {
+    spot = { x: leadC.office.x + .5 + rnd(-.6, .6), y: leadC.office.z + 1.6 + rnd(0, .6), by: c.id, extra: true };
+    // city-talk T2: two spots that snap to the same free cell never both stand there
+    if (!homeClear(spot, homes)) { const q = spotBeside({ x: leadC.office.x + .5, y: leadC.office.z + .5 }, MIN_GAP, 6, homes, spot); if (q) { spot.x = q.x; spot.y = q.y; } }
+  }
   const snapped = snapFree(spot.x, spot.y); spot.x = snapped.x; spot.y = snapped.y;
   return spot;
 }
@@ -2207,6 +2226,8 @@ function turnToward(yaw, want, dt){
 /* the yaw a person who stands still wants to have, or null (keep the facing): the work it does, the
    governor it talks to, or the way its rest seat looks. Was 3D-only (updatePerson) before city-polish P1. */
 function faceWant(c){
+  const tw = talkFaceWant(c, c.x, c.y); // city-talk: whoever it talks to face to face, before its work
+  if (tw != null) return tw;
   if (c.state === 'building' && c.bld) return Math.atan2(c.bld.gx + .5 - c.x, c.bld.gy + .5 - c.y);
   if (c.state === 'asking' || c.state === 'heard') {
     const g = governorAt(c.terr) || gov;
@@ -2281,6 +2302,169 @@ function waitStand(p, taken){
   }
   return { x: p.x, y: p.y };
 }
+
+/* city-talk (requirements/city.md, Talking face to face; test_agent_city_talk.py): people talk like people.
+   The numbers: a hand-over lasts HANDOVER_SEC, a message / question / answer talk TALK_SEC; from TALK_REPLY_AT
+   of its length on, the other one speaks; "close" is TALK_NEAR; a walk over takes about TALK_TRIP_MAX_SEC;
+   more than TALK_WAIT_MAX talks waiting for one person -> no walk; WALK_GAP is how close a walker may pass
+   somebody (MIN_GAP, above, is how close anybody may stand). */
+const HANDOVER_SEC = 2.6, TALK_SEC = 2, TALK_REPLY_AT = .62, TALK_NEAR = 1.2, TALK_TRIP_MAX_SEC = 4, TALK_WAIT_MAX = 3, WALK_GAP = .3;
+const TALK_ICON = { handover: '📋', msg: '💬', ask: '❓', answer: '✅' }, TALK_REPLY_ICON = '👌';
+/* every talk going on is one record: { kind, from (page id of the one who started it), to ([page ids] of the
+   other one or ones, empty = nobody stands by), start, len (seconds), until ({ id: its own end } when a
+   person's end differs from start + len: a hand-over ends for each new one on its own), on (they stand face to
+   face now) }. Page ids: a citizen's id, or 'gov:<territory id>' for that territory's governor. */
+const talks = [];
+const talkEnd = (t, id) => t.until && t.until[id] != null ? t.until[id] : t.start + t.len;
+/* the one a page id names: a citizen (x, y), or that governor ({ x, y, yaw }); null when nobody is there */
+function talkPerson(id){
+  if (!id) return null;
+  if (id.slice(0, 4) === 'gov:') return governorAt(id.slice(4));
+  const c = byId(id);
+  return c && !c.gone ? c : null;
+}
+/* talkViewFor(id) -> null, or { kind, with, speaking, icon } while that person is IN a talk (standing face to
+   face). The one who starts speaks first (its kind's icon); from TALK_REPLY_AT of the length on the other one
+   speaks (the reply icon). A hand-over to several new ones: the one who hands over speaks all the time. */
+function talkViewFor(id){
+  for (const t of talks) {
+    if (!t.on) continue;
+    const starter = t.from === id;
+    if (!starter && !t.to.includes(id)) continue;
+    const live = t.to.filter(o => simT < talkEnd(t, o));
+    if (starter ? (t.to.length ? !live.length : simT >= t.start + t.len) : simT >= talkEnd(t, id)) continue;
+    const many = live.length > 1, ref = starter ? live[0] : id;
+    const late = ref ? (simT - (talkEnd(t, ref) - t.len)) / t.len >= TALK_REPLY_AT : false;
+    const speaking = starter ? (many || !late) : (!many && late);
+    return { kind: t.kind, with: starter ? (live[0] || '') : t.from, speaking,
+      icon: speaking ? (starter ? TALK_ICON[t.kind] : TALK_REPLY_ICON) : '' };
+  }
+  return null;
+}
+function talkOf(c){ return c ? talkViewFor(c.id) : null; }
+function govTalkOf(terr){ return talkViewFor('gov:' + terr); }
+/* the yaw a person who talks wants (to face the other one), or null; (x, y) is where it stands */
+function talkFaceWant(c, x, y){
+  const v = talkViewFor(c.id);
+  const o = v && v.with ? talkPerson(v.with) : null;
+  return o ? Math.atan2(o.x - x, o.y - y) : null;
+}
+function govFaceWant(terr, m){
+  const v = govTalkOf(terr);
+  const o = v && v.with ? talkPerson(v.with) : null;
+  return o ? Math.atan2(o.x - m.x, o.y - m.y) : null;
+}
+/* a person leaves every talk it is the other one of; a talk with nobody left on the other side is over */
+function dropFromTalk(id){
+  for (let i = talks.length - 1; i >= 0; i--) {
+    const t = talks[i], k = t.to.indexOf(id);
+    if (k < 0) continue;
+    t.to.splice(k, 1); delete t.until[id];
+    if (!t.to.length) talks.splice(i, 1);
+  }
+}
+/* talks past their end go (every tick) */
+function pruneTalks(){
+  for (let i = talks.length - 1; i >= 0; i--) {
+    const t = talks[i];
+    if (simT >= (t.to.length ? Math.max(...t.to.map(o => talkEnd(t, o))) : t.start + t.len)) talks.splice(i, 1);
+  }
+}
+/* true when the one who started the talk still stands where it started it (a hand-over breaks the moment its
+   sender walks off, or changes what it does) */
+function talkStarterStill(t){
+  const id = t.from;
+  if (id.slice(0, 4) === 'gov:') {
+    const terr = id.slice(4), g = governorAt(terr), m = govMove.get(terr);
+    return !!g && !(m && m.path && m.path.length) && Math.hypot(g.x - t.at.x, g.y - t.at.y) < .05;
+  }
+  const s = byId(id);
+  return !!s && !s.gone && s.state === t.fromState && !(s.path && s.path.length) && Math.hypot(s.x - t.at.x, s.y - t.at.y) < .05;
+}
+/* true while citizen / governor `id` is in a talk: it neither strolls off nor starts another walk meanwhile */
+const talkBusy = id => !!talkViewFor(id);
+/* a free walkable spot beside `p` {x, y}: minD..maxD away from it, at least MIN_GAP from every point of
+   `taken` (otherPositions: where everybody stands, and where the ones who walk are headed), ring by ring from
+   the nearest, on the side of `toward` first (a point, or none); null when there is none. Every candidate is
+   snapped to a free walk cell and measured after that. */
+function spotBeside(p, minD, maxD, taken, toward){
+  const a0 = toward ? Math.atan2(toward.y - p.y, toward.x - p.x) : Math.PI / 2;
+  for (let r = minD + .1; r <= maxD + 1e-9; r += .1) {
+    const n = Math.max(8, Math.round(r * 16));
+    for (let i = 0; i < n; i++) {
+      const a = a0 + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * (Math.PI * 2 / n);
+      const s = snapFree(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r);
+      const d = Math.hypot(s.x - p.x, s.y - p.y);
+      if (d < minD - 1e-9 || d > maxD + 1e-9) continue;
+      if (!walkable(Math.floor(s.x), Math.floor(s.y))) continue;
+      if (taken.some(q => Math.hypot(s.x - q.x, s.y - q.y) < MIN_GAP)) continue;
+      return s;
+    }
+  }
+  return null;
+}
+/* a new person with nobody who sent it appears on a free spot beside the hall stand: never on the governor, on
+   somebody who stands there, or on another new one (T1/T2) */
+function placeAtHall(n){
+  const t = terrOf(n.terr) || terrOf(govTerr) || (map.territories && map.territories[0]);
+  if (!t) return;
+  const hs = hallStand(t), g = governorAt(t.id), taken = otherPositions(n.id, null);
+  if (g) taken.push({ x: g.x, y: g.y });
+  const s = spotBeside(hs, MIN_GAP, 2.6, taken, n.home) || spotBeside(hs, MIN_GAP, 4, taken, n.home);
+  if (s) { n.x = s.x; n.y = s.y; }
+}
+/* who sent a new person (ev.from: '' | a citizen id | 'gov:<territory id>'): { id, x, y, c } for a citizen that
+   is alive, in the same territory and standing, or for that territory's governor when he is present and
+   standing; else null (nobody sent it: it appears at the hall) */
+function handoverSender(ev, n){
+  const from = typeof ev.from === 'string' ? ev.from : '';
+  if (!from || from === n.id) return null;
+  if (from.slice(0, 4) === 'gov:') {
+    const terr = from.slice(4);
+    if (!terr || terr !== n.terr) return null;
+    const g = governorAt(terr), m = govMove.get(terr);
+    if (!g || (m && m.path && m.path.length)) return null;
+    return { id: from, x: g.x, y: g.y, c: null };
+  }
+  const s = byId(from);
+  if (!s || s.gone || s.terr !== n.terr || (s.path && s.path.length)) return null;
+  if (['leaving', 'resting', 'to_rest', 'finishing'].includes(s.state)) return null;
+  return { id: from, x: s.x, y: s.y, c: s };
+}
+/* start n's hand-over: n stands beside its sender (MIN_GAP .. TALK_NEAR away, up to 1.6 when several arrive
+   at once), both face each other, and one 'handover' talk (shared by every new one of this sender) runs
+   HANDOVER_SEC from n's own start. false when no free spot beside the sender is left (it appears at the hall). */
+function beginHandover(n, sender){
+  const taken = otherPositions(n.id, null);
+  const s = spotBeside(sender, MIN_GAP, TALK_NEAR, taken, n.home) || spotBeside(sender, MIN_GAP, 1.6, taken, n.home);
+  if (!s) return false;
+  n.x = s.x; n.y = s.y; n.state = 'handover'; n.stateT = 0;
+  n.yaw = Math.atan2(sender.x - n.x, sender.y - n.y);
+  let t = talks.find(x => x.kind === 'handover' && x.from === sender.id && x.on && talkStarterStill(x));
+  if (!t) {
+    t = { kind: 'handover', from: sender.id, to: [], start: simT, len: HANDOVER_SEC, until: {}, on: true,
+      at: { x: sender.x, y: sender.y }, fromState: sender.c ? sender.c.state : '' };
+    talks.push(t);
+  }
+  t.to.push(n.id); t.until[n.id] = simT + HANDOVER_SEC;
+  return true;
+}
+/* true while n's hand-over goes on: its own time is not up, and its sender still stands where it was */
+function handoverOk(c){
+  const t = talks.find(x => x.kind === 'handover' && x.to.includes(c.id));
+  return !!t && simT < talkEnd(t, c.id) && talkStarterStill(t);
+}
+/* the end of a spawn / hand-over: it walks to its own spot (a stuck one goes up to the governor) */
+function leaveSpawn(c){
+  dropFromTalk(c.id);
+  if (c.stuck) goHall(c); else goTo(c, c.stand, 'to_plot');
+}
+/* a free spot beside the hall stand for a person who leaves: never on the governor */
+function leaveSpot(c, t){
+  const hs = hallStand(t), g = governorAt(t.id), taken = otherPositions(c.id, null);
+  if (g) taken.push({ x: g.x, y: g.y });
+  return spotBeside(hs, MIN_GAP, 2.6, taken, c) || spotBeside(hs, MIN_GAP, 4, taken, c) || hs;
+}
 function goHall(c){
   const t = terrOf(c.terr);
   let slot;
@@ -2334,7 +2518,7 @@ function leave(c){
   if (c.rest && !c.rest.extra) c.rest.by = 0;
   c.rest = null;
   const t = terrOf(c.terr);
-  goTo(c, t ? hallStand(t) : { x: c.x, y: c.y }, 'leaving');
+  goTo(c, t ? leaveSpot(c, t) : { x: c.x, y: c.y }, 'leaving');
 }
 function forceLeave(c){
   releaseSlot(c);
@@ -2538,6 +2722,7 @@ function updateGovernors(dt){
     const t = terrOf(terr);
     if (!t) continue;
     const m = ensureGovMove(terr), hs = hallStand(t);
+    const talking = talkBusy('gov:' + terr); // city-talk: while he talks he stays where he stands (nobody calls him away)
     if (govHasWork(terr)) {
       m.idleSince = simT;
       if (m.phase !== 'home' && (m.path.length || Math.hypot(m.x - hs.x, m.y - hs.y) > .05)) {
@@ -2547,7 +2732,7 @@ function updateGovernors(dt){
     } else if (m.phase === 'home' && !m.path.length) {
       m.phase = ''; m.idleSince = simT;
     } else if (m.phase === 'pause') {
-      if (simT >= m.pauseUntil) {
+      if (simT >= m.pauseUntil && !talking) {
         const rev = reversePath(m.outPath, hs);
         if (m.outPath.length && pathBlockedByModels(rev, m.x, m.y)) {
           // a new building went up while he was out -- a fresh route, never the stale reversed one.
@@ -2560,7 +2745,7 @@ function updateGovernors(dt){
       }
     } else if (m.phase === 'back' && !m.path.length) {
       m.phase = ''; m.idleSince = simT;
-    } else if (!m.phase && !m.path.length && simT - m.idleSince >= IDLE_STROLL_SEC) {
+    } else if (!m.phase && !m.path.length && simT - m.idleSince >= IDLE_STROLL_SEC && !talking) {
       const spot = strollSpot(hs, GOV_STROLL_MIN, GOV_STROLL_MAX, t, otherPositions(null, terr));
       if (spot) {
         const p = findPath(m.x, m.y, spot.x, spot.y) || [];
@@ -2583,7 +2768,11 @@ function updateGovernors(dt){
         m.x = tx; m.y = ty; m.path.shift();
         if (!m.path.length && m.phase === 'out') { m.phase = 'pause'; m.pauseUntil = simT + rnd(3.5, 6); }
       } else { m.x += dx / d * sp; m.y += dy / d * sp; }
-    } else if (Math.hypot(m.x - hs.x, m.y - hs.y) < .05) m.yaw = turnToward(m.yaw, 0, dt); // back on his stand: today's look; elsewhere he keeps his facing
+    } else {
+      const w = govFaceWant(terr, m); // city-talk: he faces whoever he talks to
+      if (w != null) m.yaw = turnToward(m.yaw, w, dt);
+      else if (Math.hypot(m.x - hs.x, m.y - hs.y) < .05) m.yaw = turnToward(m.yaw, 0, dt); // back on his stand: today's look; elsewhere he keeps his facing
+    }
   }
 }
 /* govAnim(terr, t) -> the governor figure's animation at sim time t (seconds): 'walk' while he actually
@@ -2761,6 +2950,10 @@ function apply(ev){
       n.lead = ev.lead || '';
       assignHome(n);
       n.label = ev.label || role;
+      // city-talk T1/T2: with a sender (ev.from) it appears beside it and they hand the task over face to
+      // face; without one, on a free spot beside the hall stand -- never on the governor or on another new one
+      const sender = handoverSender(ev, n);
+      if (!(sender && beginHandover(n, sender))) placeAtHall(n);
       citizens.push(n);
       actLog(n, i18n('hist.started', { task: ev.task })); // U10: the first line of its own history
       govSay(ev.terr || govTerr, i18n('gov.dispatch', { task: ev.task }), 1.8); gov.dispatched++;
@@ -3063,6 +3256,7 @@ function applyRemote(inner, who){
     const role = roleOrOther(inner.role || 'worker');
     const n = newCitizen(inner.id, role, inner.task, inner.terr);
     assignHome(n);
+    placeAtHall(n); // city-talk T2: never on the governor or on another new one
     n.label = inner.label || role;
     n.remote = who;
     n.remoteAt = Date.now();
@@ -3377,11 +3571,18 @@ function demoRemoteTick(dt){
 
 function update(dt){
   simT += dt;
+  pruneTalks();
   if (DEMO) demoRelayTick(dt);
   if (DEMO) demoRemoteTick(dt);
   for (const c of citizens) {
     c.stateT += dt;
-    if (c.state === 'spawn') { c.alpha = Math.min(1, c.alpha + dt * 2.5); if (c.stateT > .7) { if (c.stuck) goHall(c); else goTo(c, c.stand, 'to_plot'); } }
+    if (c.state === 'spawn') { c.alpha = Math.min(1, c.alpha + dt * 2.5); if (c.stateT > .7) leaveSpawn(c); }
+    else if (c.state === 'handover') {
+      // city-talk T1: it stands beside its sender, face to face, until the hand-over is over (or breaks)
+      c.alpha = Math.min(1, c.alpha + dt * 2.5);
+      c.yaw = turnToward(c.yaw, faceWant(c), dt);
+      if (!handoverOk(c)) leaveSpawn(c);
+    }
     else if (c.path.length) move(c, dt);
     else c.yaw = turnToward(c.yaw, faceWant(c), dt); // city-polish P1: a person who stands turns to its work / governor / seat
     switch (c.state) {
@@ -3401,6 +3602,7 @@ function update(dt){
         // keeping it near an office) that has had nothing to do for a while -- never a building citizen,
         // a lead or one of its workers, who keep to their own spot.
         if (c.bld || c.stuck || c.doneFlag || c.office || c.lead) break;
+        if (talkBusy(c.id)) break; // city-talk: not while it talks
         if (c.strollPhase === 'pause') {
           if (simT >= c.strollPauseUntil) {
             const rev = reversePath(c.strollOutPath, c.home);
@@ -5065,7 +5267,7 @@ function updatePerson(c, t, dt){
   // city-polish P1: the sim owns the facing (c.yaw: move / update); v.yaw stays in step for stepWorkProps
   v.yaw = c.yaw;
   g.rotation.y = c.yaw;
-  const grow = c.state === 'spawn' || c.state === 'leaving' ? clamp(c.alpha, 0, 1) : 1;
+  const grow = c.state === 'spawn' || c.state === 'handover' || c.state === 'leaving' ? clamp(c.alpha, 0, 1) : 1;
   const s = grow < 1 ? grow * (1 + .25 * Math.sin(grow * Math.PI)) : 1;
   g.scale.setScalar(Math.max(.001, s));
   g.position.y = pose === 'bench' ? .1 : 0;
@@ -6822,7 +7024,7 @@ let lastSim = performance.now(), lastDraw = 0, panelT = 0;
 function busy(){
   if (drag && drag.moved || pinch || camTween || autoRotating()) return true;
   if (typeof shows !== 'undefined' && shows.size) return true; // Balance: an era show is running (builders walking, about to flip)
-  return citizens.some(c => c.path.length || workAction(c) || c.state === 'spawn' || c.state === 'asking'); // city-work-anim: acting people need frames, a pausing builder does not
+  return citizens.some(c => c.path.length || workAction(c) || c.state === 'spawn' || c.state === 'handover' || c.state === 'asking'); // city-work-anim: acting people need frames, a pausing builder does not
 }
 function frame(now){
   requestAnimationFrame(frame);
