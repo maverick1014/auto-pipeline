@@ -154,7 +154,7 @@
 
 ## Limits
 - Server listens on 127.0.0.1 only, port `city_port`, stops itself after `city_idle_min` with no browser open and no idle session waiting to be talked to (city-chat, 2026-09-27: a session's watcher polling keeps it up, so a closed tab never makes an idle session unreachable).
-- Start refuses when RAM or CPU is over the cap.
+- Start never refuses: over the cap it prints one warning line (the city is small).
 - Cloud sessions: no city page (no localhost for the human). A joined cloud session sends its events to its team (see Joining).
 
 ## Joining

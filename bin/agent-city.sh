@@ -195,8 +195,7 @@ do_start() {
 
   if ! resources_ok "$max_usage_percent"; then
     resources_line "$max_usage_percent"
-    echo "not starting the city: over the resource cap"
-    return 1
+    echo "warning: over the resource cap; the city is small, starting anyway"
   fi
 
   existing=$(read_on) || existing=""
@@ -309,8 +308,7 @@ do_send() {
 
   if ! resources_ok "$max_usage_percent"; then
     resources_line "$max_usage_percent"
-    echo "not starting the sender: over the resource cap"
-    return 1
+    echo "warning: over the resource cap; the sender is small, starting anyway"
   fi
 
   existing=$(read_on) || existing=""

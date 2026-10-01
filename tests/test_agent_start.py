@@ -435,6 +435,11 @@ class TestResourcesHelper(StartCase):
                                             "AGENT_FAKE_CPU": "10"}))
         self.assertIn("(cap 30%) -> OVER CAP", out)
 
+    def test_exactly_at_the_cap_is_not_over(self):
+        out = self.assertOk(self.start(env={"AGENT_FAKE_RAM": "80",
+                                            "AGENT_FAKE_CPU": "80"}))
+        self.assertIn("(cap 80%) -> OK", out)
+
     def test_the_helper_can_be_sourced_on_its_own(self):
         self.repo.write_bin_script(
             "check.sh",

@@ -49,7 +49,7 @@ CONTRACT: bin/agent-city.sh start | stop | status | demo
   start   reads city_port and city_idle_min from the project's agent.conf
           (template value when the key is missing), checks RAM and CPU against
           max_usage_percent with agent-resources.sh. Over the cap: prints a line
-          with "OVER CAP", starts nothing, exit 1. Otherwise starts the server in
+          with "OVER CAP" plus a warning line, then starts anyway. Starts the server in
           the background, waits for DIR/on, prints
             CITY: http://127.0.0.1:<port>
             CITY: stops by itself after <city_idle_min> min with no browser open
@@ -509,11 +509,12 @@ class TestCityScript(ScriptCase):
         with open(os.path.join(self.city, "on")) as fh:
             self.assertEqual(fh.read(), first)
 
-    def test_over_cap_starts_nothing(self):
+    def test_over_cap_warns_and_still_starts(self):
         result = self.city_run("start", env={"AGENT_FAKE_RAM": "95"})
-        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("OVER CAP", result.stdout + result.stderr)
-        self.assertFalse(os.path.exists(os.path.join(self.city, "on")))
+        self.assertIn("warning: over the resource cap; the city is small, starting anyway", result.stdout)
+        self.assertTrue(os.path.exists(os.path.join(self.city, "on")))
 
     def test_status_and_stop(self):
         self.assertIn("CITY: not running", self.city_run("status").stdout)

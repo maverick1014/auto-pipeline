@@ -56,7 +56,7 @@ resources_line() {
   cap=$1
   resources_read
   r=$RAM_USED; c=$CPU_USED
-  if [ "$r" -ge "$cap" ] || [ "$c" -ge "$cap" ]; then
+  if [ "$r" -gt "$cap" ] || [ "$c" -gt "$cap" ]; then
     echo "RESOURCES: RAM ${r}% CPU ${c}% (cap ${cap}%) -> OVER CAP"
   else
     echo "RESOURCES: RAM ${r}% CPU ${c}% (cap ${cap}%) -> OK"
@@ -66,7 +66,7 @@ resources_line() {
 resources_ok() {
   cap=$1
   resources_read
-  [ "$RAM_USED" -lt "$cap" ] && [ "$CPU_USED" -lt "$cap" ]
+  [ "$RAM_USED" -le "$cap" ] && [ "$CPU_USED" -le "$cap" ]
 }
 
 # ---- relief: only runs when this file is executed directly (see foot) ----
