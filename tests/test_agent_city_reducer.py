@@ -267,9 +267,10 @@ class TestDone(Case):
         self.r = agent_city.Reducer(done_ttl=60)
         self.spawn()
         self.feed(R("SubagentStop", aid="a1", at="worker"))
-        self.assertEqual(self.feed(R("Stop", sid="s9", role="worker"), dt=30), [
+        # any line moves the clock; not a Stop: city-status makes a citizen's Stop an "idle" event
+        self.assertEqual(self.feed(R("Notification", sid="s9", role="worker", nt="auth_success"), dt=30), [
             {"type": "spawn", "id": "s:s9", "role": "worker", "label": "worker", "task": "shop"}])
-        out = self.feed(R("Stop", sid="s9", role="worker"), dt=40)
+        out = self.feed(R("Notification", sid="s9", role="worker", nt="auth_success"), dt=40)
         self.assertIn({"type": "leave", "id": "a1"}, out)
         self.assertEqual([a["id"] for a in self.r.snapshot()["agents"]], ["s:s9"])
 
@@ -320,7 +321,9 @@ class TestSessions(Case):
     def test_citizen_session_stop_is_not_done(self):
         self.govern("main")
         self.feed(R("PostToolUse", sid="tm1", role="task-manager", tool="Write"))
-        self.assertEqual(self.feed(R("Stop", sid="tm1", role="task-manager")), [])
+        # city-status: the turn ended -> idle (tests/test_agent_city_status.py), never done
+        self.assertEqual(self.feed(R("Stop", sid="tm1", role="task-manager")), [{"type": "idle", "id": "s:tm1"}])
+        self.assertFalse([a for a in self.r.snapshot()["agents"] if a["id"] == "s:tm1"][0]["done"])
 
     def test_session_end_sends_everyone_home(self):
         self.govern("main")
