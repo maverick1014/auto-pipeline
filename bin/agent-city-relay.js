@@ -10,11 +10,18 @@
 // newly joined machine can catch up on what the others just did. It never
 // keeps a history: old rows are deleted as they age out, and a sync with no
 // lines writes nothing at all.
+//
+// Optional: a plain variable named `CITY_USER` (the owner's e-mail) turns the
+// cloud page on. A sync may then carry a "view": that machine's city picture,
+// kept in one row per user + machine (table city_view) for the cloud page to
+// read. Unset or blank, the view is ignored and the relay works as above.
 
 const WINDOW_MS = 300_000; // how long a line is handed out for
 const MAX_LINES = 200; // lines allowed in one sync
 const MAX_BODY_BYTES = 256 * 1024; // body size cap
 const MAX_RETURN = 500; // lines handed back in one reply, newest kept
+const MAX_EVENTS = 500; // page messages allowed in one view
+const CITY_KEEP_MS = 24 * 3600 * 1000; // a machine not heard from this long is dropped
 
 // Each stored row (one batch) claims a block of SEQ_STEP seq numbers, the
 // row's id times SEQ_STEP, plus the line's place in the batch. SEQ_STEP
@@ -25,6 +32,9 @@ const SEQ_STEP = 1000;
 // D1 runs exec() one line at a time, so every statement here is one line.
 const SETUP_SQL = `CREATE TABLE IF NOT EXISTS relay_batch (id INTEGER PRIMARY KEY AUTOINCREMENT, dev TEXT NOT NULL, ts INTEGER NOT NULL, n INTEGER NOT NULL, lines TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS relay_batch_ts ON relay_batch (ts);`;
+
+// Only run when the cloud page is on. One line: the statement is one line.
+const CITY_SQL = "CREATE TABLE IF NOT EXISTS city_view (user TEXT NOT NULL, dev TEXT NOT NULL, label TEXT NOT NULL, ts INTEGER NOT NULL, gen INTEGER NOT NULL, n INTEGER NOT NULL, counts TEXT NOT NULL, snap TEXT NOT NULL, events TEXT NOT NULL, PRIMARY KEY (user, dev))";
 
 function json(body, status) {
   return new Response(JSON.stringify(body), {
@@ -49,9 +59,66 @@ function checkAuth(request, teamKey) {
   return sameKey(header.slice("Bearer ".length), teamKey);
 }
 
-// Turn the raw request body text into a validated {dev, after, lines}, or
-// return the error Response to send straight back.
-function readSync(text) {
+function isObject(x) {
+  return typeof x === "object" && x !== null && !Array.isArray(x);
+}
+
+function isCount(x) {
+  return Number.isSafeInteger(x) && x >= 0;
+}
+
+// JSON text that never holds a line-break character of any kind, so the
+// stored event batches can be split on lines safely.
+function oneLine(value) {
+  // U+2028 and U+2029 count as line breaks to some readers; write them escaped.
+  return JSON.stringify(value).split(String.fromCharCode(0x2028)).join("\\u2028").split(String.fromCharCode(0x2029)).join("\\u2029");
+}
+
+// A list of page messages (snap or events), or the error Response.
+function readMessages(list, name) {
+  if (!Array.isArray(list) || !list.every(isObject)) {
+    return { error: json({ ok: false, error: "view." + name + " must be a list of objects" }, 400) };
+  }
+  return { list };
+}
+
+// Check a "view" before anything is stored. Returns {view}, with counts
+// reduced to the three numbers the page uses, or the error Response.
+function readView(view) {
+  if (!isObject(view)) {
+    return { error: json({ ok: false, error: "view must be an object" }, 400) };
+  }
+  const { label, gen, counts, snap, events } = view;
+  if (typeof label !== "string" || label.length < 1 || label.length > 64) {
+    return { error: json({ ok: false, error: "view.label must be 1..64 chars" }, 400) };
+  }
+  if (!Number.isSafeInteger(gen) || gen < 1) {
+    return { error: json({ ok: false, error: "view.gen must be a whole number, 1 or more" }, 400) };
+  }
+  if (!isObject(counts) || !isCount(counts.people) || !isCount(counts.busy) || !isCount(counts.wait)) {
+    return { error: json({ ok: false, error: "view.counts must be people, busy, wait: whole numbers" }, 400) };
+  }
+  const out = { label, gen, counts: { people: counts.people, busy: counts.busy, wait: counts.wait } };
+  if (snap !== undefined) {
+    const got = readMessages(snap, "snap");
+    if (got.error) return got;
+    out.snap = got.list;
+  }
+  if (events !== undefined) {
+    if (Array.isArray(events) && events.length > MAX_EVENTS) {
+      return { error: json({ ok: false, error: "too many events, 500 max" }, 413) };
+    }
+    const got = readMessages(events, "events");
+    if (got.error) return got;
+    out.events = got.list;
+  }
+  return { view: out };
+}
+
+// Turn the raw request body text into a validated {dev, after, lines, view},
+// or return the error Response to send straight back. The view is only read
+// when the cloud page is on; otherwise it is ignored, bad or not.
+function readSync(text, cityOn) {
   if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) {
     return { error: json({ ok: false, error: "body too big" }, 413) };
   }
@@ -82,7 +149,76 @@ function readSync(text) {
   if (lines.length > MAX_LINES) {
     return { error: json({ ok: false, error: "too many lines, 200 max" }, 413) };
   }
-  return { dev, after, lines };
+  let view;
+  if (cityOn && body.view !== undefined) {
+    const got = readView(body.view);
+    if (got.error) return got;
+    view = got.view;
+  }
+  return { dev, after, lines, view };
+}
+
+// The cloud page's user: CITY_USER trimmed and lower case, or "" when the
+// page is off (unset or blank).
+function cityUser(env) {
+  return typeof env.CITY_USER === "string" ? env.CITY_USER.trim().toLowerCase() : "";
+}
+
+// The generation of the picture held for this machine, 0 = none.
+async function storedGen(db, user, dev) {
+  const gen = await db
+    .prepare("SELECT gen FROM city_view WHERE user = ? AND dev = ?")
+    .bind(user, dev)
+    .first("gen");
+  return gen || 0;
+}
+
+// Keep one machine's view. Every path writes at most one row: the free plan
+// counts rows written. Every statement goes through the (user, dev) key or
+// its `user` prefix, so none reads the whole table. Returns the gen held for
+// this machine after the view, which tells the sender when to send a picture.
+async function keepView(db, user, dev, view, now) {
+  if (!view) return storedGen(db, user, dev);
+  const counts = oneLine(view.counts);
+  const events = view.events && view.events.length > 0 ? oneLine(view.events) : "";
+
+  if (view.snap !== undefined) {
+    // A new picture replaces the row in one upsert; its events are batch 1.
+    const batch = events ? `{"n":1,"e":${events}}\n` : "";
+    await db
+      .prepare(
+        "INSERT INTO city_view (user, dev, label, ts, gen, n, counts, snap, events) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+          "ON CONFLICT (user, dev) DO UPDATE SET label = excluded.label, ts = excluded.ts, gen = excluded.gen, n = excluded.n, counts = excluded.counts, snap = excluded.snap, events = excluded.events"
+      )
+      .bind(user, dev, view.label, now, view.gen, events ? 1 : 0, counts, oneLine(view.snap), batch)
+      .run();
+    // Old machines go only now, so syncs without a picture write nothing extra.
+    await db
+      .prepare("DELETE FROM city_view WHERE user = ? AND ts <= ?")
+      .bind(user, now - CITY_KEEP_MS)
+      .run();
+    return view.gen;
+  }
+
+  // No new picture: the row is only touched when the sender's gen is the one
+  // held. Appending is one UPDATE (no read first); the new batch's number is
+  // the row's n + 1, which SQL reads from the row before the same UPDATE.
+  let res;
+  if (events) {
+    res = await db
+      .prepare(
+        `UPDATE city_view SET label = ?, ts = ?, counts = ?, n = n + 1, events = events || '{"n":' || (n + 1) || ',"e":' || ? || '}' || char(10) WHERE user = ? AND dev = ? AND gen = ?`
+      )
+      .bind(view.label, now, counts, events, user, dev, view.gen)
+      .run();
+  } else {
+    res = await db
+      .prepare("UPDATE city_view SET label = ?, ts = ?, counts = ? WHERE user = ? AND dev = ? AND gen = ?")
+      .bind(view.label, now, counts, user, dev, view.gen)
+      .run();
+  }
+  if (res.meta && res.meta.changes > 0) return view.gen;
+  return storedGen(db, user, dev);
 }
 
 // The highest seq the relay has ever handed out, read without scanning the
@@ -107,12 +243,14 @@ async function handleSync(request, env) {
   }
 
   const text = await request.text();
-  const parsed = readSync(text);
+  const user = cityUser(env);
+  const parsed = readSync(text, user !== "");
   if (parsed.error) return parsed.error;
-  const { dev, after, lines } = parsed;
+  const { dev, after, lines, view } = parsed;
 
   const db = env.DB;
   await db.exec(SETUP_SQL);
+  if (user) await db.exec(CITY_SQL);
 
   const now = Date.now();
   const cutoff = now - WINDOW_MS;
@@ -147,7 +285,12 @@ async function handleSync(request, env) {
   }
   if (out.length > MAX_RETURN) out = out.slice(out.length - MAX_RETURN);
 
-  return json({ ok: true, seq, lines: out }, 200);
+  const reply = { ok: true, seq, lines: out };
+  if (user) {
+    reply.city = true;
+    reply.gen = await keepView(db, user, dev, view, now);
+  }
+  return json(reply, 200);
 }
 
 export default {

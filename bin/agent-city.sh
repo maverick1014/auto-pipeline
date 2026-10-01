@@ -26,6 +26,15 @@
 #                            $HOME/.local/bin/agent-city, so `agent-city` works
 #                            from any folder (requirements/city.md, "Anywhere")
 #   ./agent-city.sh remove-shim    remove that copy, if it is ours
+#   ./agent-city.sh autostart   what the SessionStart hook runs: bring the city up
+#                            by itself on a joined machine whose relay has the
+#                            cloud page on; prints nothing, returns at once
+#   ./agent-city.sh cloud-build <dir> --d1-id <id> [--d1-name <name>] [--name <worker name>]
+#                            make the folder the cloud page is deployed from
+#                            (no network, no wrangler, no login)
+#   ./agent-city.sh cloud-deploy   the owner's, in his own terminal only: ask the
+#                            D1 database id, build into $AGENT_CITY_HOME/cloud-site,
+#                            run `npx wrangler deploy` there
 #   ./agent-city.sh -h       this help
 #
 # City dir: $AGENT_CITY_DIR, default $HOME/.cache/agent-city (the same dir the
@@ -72,6 +81,37 @@
 # repo listed in $AGENT_CITY_HOME/joined-repos.txt, language from
 # AGENT_CITY_LANG (en or zh, else zh); join/leave refuse and say to cd into
 # the repo first.
+#
+# Cloud page (requirements/city.md, "Cloud page"): the marker
+# $AGENT_CITY_HOME/cloud holds the relay hosts that said the cloud page is on
+# (agent_city_relay.py read_cloud / set_cloud; join writes it). status prints
+# "CLOUD: on <relay host>" or "CLOUD: off" after the TEAM line(s) of a joined
+# machine, from the marker only -- it never talks to the relay -- and nothing
+# for a machine that never joined. autostart is the SessionStart hook's verb
+# (hooks/hooks.json): the work runs in a detached background subshell, so a
+# session start never waits on the network. In order: a city server already
+# running -> nothing; a cloud session (CLAUDE_CODE_REMOTE) -> nothing; this
+# repo not joined, or no repo -> nothing, no network; the marker names this
+# repo's relay host -> start; else one quiet `cloud --probe`, on -> start.
+# start there is the plain start with --joined-list always, no browser.
+#
+# cloud-build / cloud-deploy (requirements/city.md, "Cloud page"; the steps the
+# owner follows are skills/city/setup.md sections 11-15). Logins, keys and the
+# deploy are the owner's: no agent types, prints or stores a key or a token,
+# and no agent runs a login or the deploy. cloud-build only copies files and
+# writes <dir>/wrangler.jsonc: worker.js (bin/agent-city-cloud.js),
+# site/index.html (bin/agent-city.html, byte for byte), site/assets
+# (bin/agent-city-assets). The id (a UUID, not a secret) is checked before
+# anything is written. It is built anew each time: only <dir>/site,
+# <dir>/worker.js and <dir>/wrangler.jsonc are ever removed or replaced, and a
+# folder that is not empty and not an earlier build of this command (no
+# wrangler.jsonc of ours in it) is refused. No Access value, key or e-mail goes
+# into any file: those are typed in the dashboard (the config has keep_vars).
+# cloud-deploy refuses without a terminal on stdin (exit 2, nothing runs); with
+# one it asks the database id (Enter keeps the one remembered in
+# $AGENT_CITY_HOME/cloud-site.conf, the id only), builds, then runs
+# `npx wrangler deploy` in $AGENT_CITY_HOME/cloud-site. It never runs a
+# wrangler login: when the deploy fails it tells the owner to type that himself.
 
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
@@ -107,6 +147,14 @@ agent-city.sh — start/stop/status/demo for the Agent City playground.
   ./agent-city.sh cloud-hooks   write the city hooks into user-level settings
   ./agent-city.sh install-shim   copy the agent-city command to ~/.local/bin, so it runs from any folder
   ./agent-city.sh remove-shim    remove that copy, if it is ours
+  ./agent-city.sh autostart   what the session-start hook runs: start the city by itself
+                           on a joined machine whose relay has the cloud page on
+                           (prints nothing, returns at once)
+  ./agent-city.sh cloud-build <dir> --d1-id <id> [--d1-name <name>] [--name <worker name>]
+                           make the folder the cloud page is deployed from
+                           (no network, no login)
+  ./agent-city.sh cloud-deploy   deploy the cloud page to your Cloudflare account
+                           (yours to run, in your own terminal)
   ./agent-city.sh -h       this help
 
 Outside a repo: start/demo sync every repo listed in
@@ -130,6 +178,9 @@ SERVER="$PLUGIN_ROOT/bin/agent_city.py"
 : "${city_relay_sec:=5}"
 SECRET_FILE="$PROJECT_ROOT/.secrets/agent-city-relay"
 RELAY_MODULE="$PLUGIN_ROOT/bin/agent_city_relay.py"
+CLOUD_FILE="$CITY_HOME/cloud"
+# yes: do_start always passes --joined-list (autostart, also inside a repo)
+START_JOINED=no
 
 # True when something already answers on 127.0.0.1:<port> (short connect,
 # 1s timeout) -- tells "another program holds the port" apart from a plain
@@ -190,6 +241,8 @@ do_start() {
       en|zh) language="$AGENT_CITY_LANG" ;;
       *) language="zh" ;;
     esac
+  fi
+  if [ "$OUTSIDE_REPO" = yes ] || [ "$START_JOINED" = yes ]; then
     set -- --joined-list "$CITY_HOME/joined-repos.txt"
   fi
 
@@ -249,9 +302,93 @@ do_status() {
   fi
   if [ "$OUTSIDE_REPO" = yes ]; then
     joined_list_lines
+    cloud_lines_outside || true
   else
     team_line
+    cloud_line || true
   fi
+  return 0
+}
+
+# "CLOUD: on <relay host>" or "CLOUD: off" for a joined repo, nothing when it
+# is not joined. From the marker only: no --probe, so no network. Never the key.
+cloud_line() {
+  out=$(python3 "$RELAY_MODULE" cloud --secret "$SECRET_FILE" \
+          --cloud-file "$CLOUD_FILE" 2>/dev/null) || out="none"
+  case "$out" in
+    "on "*) echo "CLOUD: $out" ;;
+    "off "*) echo "CLOUD: off" ;;
+  esac
+  return 0
+}
+
+# Outside a repo: one "CLOUD: on <host>" per joined relay host (each once, list
+# order) that the marker names, else one "CLOUD: off" when a repo is joined,
+# nothing when none is. Marker only, no network. Never the key.
+cloud_lines_outside() {
+  python3 -c '
+import os
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+from urllib.parse import urlsplit
+
+marked = rl.read_cloud(sys.argv[3])
+hosts = []
+for repo in rl.read_joined_list(sys.argv[2]):
+    if not os.path.isdir(repo):
+        continue
+    joined = rl.read_join(os.path.join(repo, ".secrets", "agent-city-relay"))
+    if not joined:
+        continue
+    host = urlsplit(joined["address"]).netloc
+    if host not in hosts:
+        hosts.append(host)
+if hosts:
+    on = [h for h in hosts if h in marked]
+    if on:
+        for h in on:
+            print("CLOUD: on " + h)
+    else:
+        print("CLOUD: off")
+' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$CLOUD_FILE"
+}
+
+# autostart (requirements/city.md, "Cloud page"): the SessionStart hook's verb.
+# Prints nothing, exits 0 and comes back at once -- the checks (and any relay
+# question) run in a detached background subshell with every stream on
+# /dev/null, so a slow or dead relay never holds up a session start.
+do_autostart() {
+  (
+    trap '' HUP
+    autostart_work || true
+  ) </dev/null >/dev/null 2>&1 &
+  disown "$!" 2>/dev/null || true
+  return 0
+}
+
+autostart_work() {
+  # 1. a city server is already running
+  read_on >/dev/null && return 0
+  # 2. a cloud session sends only, it has no page
+  [ -z "${CLAUDE_CODE_REMOTE:-}" ] || return 0
+  # 3. not in a repo, or this repo is not joined: no network at all
+  [ "$OUTSIDE_REPO" = no ] || return 0
+  [ -f "$SECRET_FILE" ] || return 0
+  state=$(python3 "$RELAY_MODULE" cloud --secret "$SECRET_FILE" \
+            --cloud-file "$CLOUD_FILE" 2>/dev/null) || return 0
+  case "$state" in
+    "on "*) ;;
+    "off "*)
+      # 5. no marker for this relay: one quiet sync asks the relay
+      state=$(python3 "$RELAY_MODULE" cloud --secret "$SECRET_FILE" \
+                --cloud-file "$CLOUD_FILE" --probe 2>/dev/null) || return 0
+      case "$state" in "on "*) ;; *) return 0 ;; esac ;;
+    *) return 0 ;;
+  esac
+  # 4. the cloud is on: today's start, with the machine's joined list
+  START_JOINED=yes
+  do_start "" || true
   return 0
 }
 
@@ -440,7 +577,8 @@ print(rl.origin_id(sys.argv[2]) or "")
 
   rc=0
   out=$(printf '%s\n' "$key" | python3 "$RELAY_MODULE" \
-          join --address "$address" --file "$SECRET_FILE" 2>&1) || rc=$?
+          join --address "$address" --file "$SECRET_FILE" \
+          --cloud-file "$CLOUD_FILE" 2>&1) || rc=$?
   if [ "$rc" -ne 0 ]; then
     echo "$out" >&2
     exit 1
@@ -660,6 +798,245 @@ do_remove_shim() {
   return 0
 }
 
+# True when $1 is a UUID (8-4-4-4-12 hex digits), the shape of a D1 database id.
+# The case pattern fixes the length first, so a value with a newline in it
+# cannot slip through grep's line by line matching.
+is_uuid() {
+  case "$1" in
+    ????????-????-????-????-????????????) ;;
+    *) return 1 ;;
+  esac
+  printf '%s\n' "$1" | LC_ALL=C grep -Eq \
+    '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+}
+
+# True when <dir>/wrangler.jsonc is one cloud-build wrote (its three fixed
+# lines), so a folder of somebody's own project is never touched.
+cloud_is_ours() {
+  [ -f "$1/wrangler.jsonc" ] || return 1
+  grep -Fq '"main": "worker.js"' "$1/wrangler.jsonc" || return 1
+  grep -Fq '"directory": "./site"' "$1/wrangler.jsonc" || return 1
+  grep -Fq '"binding": "DB"' "$1/wrangler.jsonc" || return 1
+  return 0
+}
+
+# Prints wrangler.jsonc: plain JSON (always valid, python3 writes it). The
+# asset version (the ?v= of the asset addresses) is the plugin version, else a
+# time stamp; only letters, digits, dot, dash, underscore, at most 32 long.
+# args: worker name, D1 name, D1 id, language, path of plugin.json
+cloud_config_json() {
+  python3 - "$@" <<'PY'
+import json
+import re
+import sys
+import time
+
+name, d1_name, d1_id, lang, plugin_json = sys.argv[1:6]
+version = ""
+try:
+    with open(plugin_json) as fh:
+        version = str(json.load(fh).get("version", ""))
+except (OSError, ValueError, AttributeError):
+    pass
+version = re.sub(r"[^A-Za-z0-9._-]", "", version)[:32]
+if not version:
+    version = time.strftime("%Y%m%d%H%M%S")
+config = {
+    "name": name,
+    "main": "worker.js",
+    "compatibility_date": "2026-09-01",
+    "keep_vars": True,
+    "workers_dev": True,
+    "assets": {"directory": "./site", "binding": "ASSETS", "run_worker_first": True},
+    "d1_databases": [{"binding": "DB", "database_name": d1_name, "database_id": d1_id}],
+    "vars": {"CITY_LANG": lang, "CITY_ASSET_V": version},
+}
+print(json.dumps(config, indent=2))
+PY
+}
+
+# The work of cloud-build, silent on success. args: folder, D1 id, D1 name,
+# worker name. Everything is checked before anything is written; it exits 2 on
+# a bad argument or a folder that is not ours, 1 when it cannot build.
+cloud_build_core() {
+  dir="$1"; d1_id="$2"; d1_name="$3"; wname="$4"
+
+  if [ -z "$dir" ]; then
+    echo "CLOUD: usage: agent-city.sh cloud-build <dir> --d1-id <id> [--d1-name <name>] [--name <worker name>]" >&2
+    exit 2
+  fi
+  if ! is_uuid "$d1_id"; then
+    echo "CLOUD: --d1-id must be the D1 database id (letters and digits in groups, like xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx); nothing was written" >&2
+    exit 2
+  fi
+  if [ -z "$d1_name" ]; then
+    echo "CLOUD: --d1-name is empty; nothing was written" >&2
+    exit 2
+  fi
+  case "$wname" in
+    ''|-*|*-|*[!abcdefghijklmnopqrstuvwxyz0123456789-]*)
+      echo "CLOUD: the worker name must be lowercase letters, digits and dashes (not starting or ending with a dash); nothing was written" >&2
+      exit 2 ;;
+  esac
+  if [ "${#wname}" -gt 63 ]; then
+    echo "CLOUD: the worker name is longer than 63 characters; nothing was written" >&2
+    exit 2
+  fi
+
+  # The page's language: the repo's language from agent.conf; outside a repo
+  # the same rule as start (AGENT_CITY_LANG, else zh). Only en or zh.
+  lang="$language"
+  if [ "$OUTSIDE_REPO" = yes ]; then
+    lang="${AGENT_CITY_LANG:-}"
+  fi
+  case "$lang" in
+    en|zh) : ;;
+    *) lang="zh" ;;
+  esac
+
+  src_worker="$PLUGIN_ROOT/bin/agent-city-cloud.js"
+  src_page="$PLUGIN_ROOT/bin/agent-city.html"
+  src_assets="$PLUGIN_ROOT/bin/agent-city-assets"
+  for f in "$src_worker" "$src_page"; do
+    if [ ! -f "$f" ]; then
+      echo "CLOUD: this plugin has no $f; nothing was written" >&2
+      exit 1
+    fi
+  done
+  if [ ! -d "$src_assets" ]; then
+    echo "CLOUD: this plugin has no $src_assets; nothing was written" >&2
+    exit 1
+  fi
+
+  # Only an empty folder or an earlier build of this command is built into;
+  # nothing else is ever removed.
+  if [ -e "$dir" ] || [ -L "$dir" ]; then
+    if [ ! -d "$dir" ]; then
+      echo "CLOUD: $dir is not a folder; nothing was written" >&2
+      exit 2
+    fi
+    if [ -n "$(ls -A "$dir")" ] && ! cloud_is_ours "$dir"; then
+      echo "CLOUD: $dir is not empty and is not a folder this command built; choose another folder (nothing was written)" >&2
+      exit 2
+    fi
+  fi
+
+  cfg=$(cloud_config_json "$wname" "$d1_name" "$d1_id" "$lang" \
+          "$PLUGIN_ROOT/.claude-plugin/plugin.json") || cfg=""
+  if [ -z "$cfg" ]; then
+    echo "CLOUD: could not write the settings (python3 is needed); nothing was written" >&2
+    exit 1
+  fi
+
+  mkdir -p "$dir" || { echo "CLOUD: cannot make $dir" >&2; exit 1; }
+  rm -rf "$dir/site" "$dir/worker.js"
+  if ! { printf '%s\n' "$cfg" > "$dir/wrangler.jsonc" \
+         && cp "$src_worker" "$dir/worker.js" \
+         && mkdir "$dir/site" \
+         && cp "$src_page" "$dir/site/index.html" \
+         && cp -R "$src_assets" "$dir/site/assets"; }; then
+    rm -rf "$dir/site" "$dir/worker.js"
+    echo "CLOUD: could not build $dir (is the disk full?); do not deploy it" >&2
+    exit 1
+  fi
+  return 0
+}
+
+do_cloud_build() {
+  dir=""
+  d1_id=""
+  d1_name="agent-city"
+  wname="agent-city-page"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --d1-id|--d1-name|--name)
+        if [ $# -lt 2 ]; then
+          echo "CLOUD: $1 needs a value" >&2
+          exit 2
+        fi
+        case "$1" in
+          --d1-id) d1_id="$2" ;;
+          --d1-name) d1_name="$2" ;;
+          --name) wname="$2" ;;
+        esac
+        shift 2 ;;
+      -*)
+        echo "CLOUD: unknown option $1" >&2
+        exit 2 ;;
+      *)
+        if [ -n "$dir" ]; then
+          echo "CLOUD: one folder only" >&2
+          exit 2
+        fi
+        dir="$1"
+        shift ;;
+    esac
+  done
+  cloud_build_core "$dir" "$d1_id" "$d1_name" "$wname"
+  echo "CLOUD: built $dir"
+  echo "CLOUD: deploy it yourself: cd $dir && npx wrangler deploy"
+  return 0
+}
+
+# cloud-deploy: the owner's, in his own terminal. No terminal on stdin (an
+# agent, a pipe) -> refuse before anything is asked, built or run. The database
+# id is not a secret; it is remembered, alone, in cloud-site.conf. This never
+# runs a wrangler login: wrangler's own sign-in message is passed on and the
+# owner types the login himself.
+do_cloud_deploy() {
+  if [ ! -t 0 ]; then
+    echo "CLOUD: run this yourself in your own terminal (it deploys to your Cloudflare account)" >&2
+    exit 2
+  fi
+  if ! command -v npx >/dev/null 2>&1; then
+    echo "CLOUD: npx not found; install Node.js (https://nodejs.org), then run this again" >&2
+    exit 1
+  fi
+  conf="$CITY_HOME/cloud-site.conf"
+  site="$CITY_HOME/cloud-site"
+
+  saved=""
+  if [ -f "$conf" ]; then
+    read -r saved < "$conf" || true
+    is_uuid "$saved" || saved=""
+  fi
+  if [ -n "$saved" ]; then
+    printf 'D1 database id (press Enter to keep %s): ' "$saved" >&2
+  else
+    printf 'D1 database id (dashboard: Storage & Databases, D1, your database, "Database ID"): ' >&2
+  fi
+  read -r answer || answer=""
+  answer=$(printf '%s' "$answer" | tr -d '[:space:]')
+  [ -n "$answer" ] || answer="$saved"
+  if [ -z "$answer" ]; then
+    echo "CLOUD: no database id entered" >&2
+    exit 2
+  fi
+  if ! is_uuid "$answer"; then
+    echo "CLOUD: that is not a D1 database id (letters and digits in groups, like xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)" >&2
+    exit 2
+  fi
+  if [ "$answer" != "$saved" ]; then
+    if ! { mkdir -p "$CITY_HOME" && printf '%s\n' "$answer" > "$conf"; }; then
+      echo "CLOUD: could not remember the id in $conf; going on" >&2
+    fi
+  fi
+
+  cloud_build_core "$site" "$answer" "agent-city" "agent-city-page"
+  echo "CLOUD: built $site"
+
+  echo "CLOUD: deploying to your Cloudflare account (npx wrangler deploy) ..."
+  rc=0
+  (cd "$site" && npx wrangler deploy) || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "CLOUD: the deploy did not finish." >&2
+    echo "CLOUD: if it said you are not logged in, type this yourself in this terminal, then run cloud-deploy again:  npx wrangler login" >&2
+    exit "$rc"
+  fi
+  echo "CLOUD: deployed. The page answers 'login required' until the login is set up (skills/city/setup.md, 'Set up the login')."
+  return 0
+}
+
 [ $# -eq 0 ] && { usage; exit 2; }
 case "$1" in
   -h|--help) usage; exit 0;;
@@ -677,5 +1054,8 @@ case "$1" in
   cloud-hooks) do_cloud_hooks;;
   install-shim) do_install_shim;;
   remove-shim) do_remove_shim;;
+  autostart) do_autostart;;
+  cloud-build) shift; do_cloud_build "$@";;
+  cloud-deploy) do_cloud_deploy;;
   *) usage; exit 2;;
 esac

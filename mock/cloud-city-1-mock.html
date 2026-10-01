@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>云端 Agent City · mock</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --berry:#FF7593; --berry-deep:#D9506E; --butter:#FFD36E; --mint:#6FD4A8; --focus:#4D7CFE;
+  --ok:#1E8657; --ask-bg:#FFE1E8; --ask-ink:#C2345A; --build-bg:#E1ECFF; --build-ink:#3160B5;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+    --line:#2D3360; --focus:#8FB0FF; --ok:#2FA56F; --ask-bg:#4A1F33; --ask-ink:#FFB0C3; --build-bg:#1E3160; --build-ink:#A9C6FF;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.mock{max-width:1500px;margin-inline:auto;padding:14px 16px 28px;display:flex;flex-direction:column;gap:12px}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.sign{display:inline-flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:6px 16px;box-shadow:0 3px 0 var(--ink)}
+.sign b{font:700 21px/1.15 var(--display)}
+.sign small{font:600 10.5px/1.3 var(--mono);color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase}
+.pill{background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:8px}
+.tabs button{all:unset;cursor:pointer;padding:8px 14px;border-radius:12px;font:600 13.5px/1 var(--round);color:var(--ink-2);background:var(--panel-2)}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--panel)}
+.tabs button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.note{background:var(--panel);border:1.5px solid var(--line);border-radius:14px;padding:10px 14px;color:var(--ink-2)}
+.note b{color:var(--ink)}
+.note .en{display:block;color:var(--ink-3);font-size:12.5px}
+.screen{display:grid;gap:14px}
+.screen.side{grid-template-columns:minmax(0,1fr) 340px;align-items:start}
+@media (max-width: 960px){ .screen.side{grid-template-columns:1fr} }
+.frame{border:2px solid var(--ink);border-radius:18px;overflow:hidden;background:var(--panel);box-shadow:0 5px 0 rgba(42,43,69,.2)}
+.frame .url{display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--panel-2);border-bottom:1.5px solid var(--line);font:600 12px/1 var(--mono);color:var(--ink-2)}
+.frame .url i{width:9px;height:9px;border-radius:50%;background:var(--line);flex:none}
+.frame .url span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.frame iframe{display:block;width:100%;height:min(760px,calc(100dvh - 40px));border:0;background:var(--paper)}
+.phone-wrap{display:flex;justify-content:center}
+.phone{width:394px;border:2px solid var(--ink);border-radius:38px;padding:10px 0 12px;background:var(--ink);box-shadow:0 6px 0 rgba(42,43,69,.25)}
+.phone .notch{width:110px;height:6px;border-radius:6px;background:#6b6f93;margin:2px auto 9px}
+.phone iframe{display:block;width:390px;height:760px;border:0;border-radius:26px;background:var(--paper);margin-inline:auto}
+.card{background:var(--panel);border:1.5px solid var(--line);border-radius:16px;padding:12px 16px}
+.card h3{margin:0 0 6px;font:700 15px/1.3 var(--display)}
+.card ul,.card ol{margin:0;padding-left:18px}
+.card li{margin:5px 0;color:var(--ink-2)}
+.card li b{color:var(--ink)}
+.card code,.note code{font:600 12px/1 var(--mono);background:var(--panel-2);padding:2px 5px;border-radius:6px}
+.fail{background:var(--ask-bg);color:var(--ask-ink);border-radius:14px;padding:12px 16px;font-weight:600}
+
+/* login screens (a neutral sketch: the real ones are Cloudflare's own pages) */
+.login-stage{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.sketch{background:var(--panel);border:2px dashed var(--ink-3);border-radius:18px;padding:22px 20px;display:flex;flex-direction:column;gap:12px;min-height:300px}
+.sketch .step{font:700 11px/1 var(--mono);letter-spacing:.1em;color:var(--ink-3);text-transform:uppercase}
+.sketch h4{margin:0;font:700 18px/1.25 var(--display)}
+.sketch p{margin:0;color:var(--ink-2)}
+.sketch .field{border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;font:600 14px/1.2 var(--mono);color:var(--ink);background:var(--panel-2)}
+.sketch .code{display:flex;gap:6px}
+.sketch .code span{flex:1;text-align:center;border:1.5px solid var(--line);border-radius:10px;padding:10px 0;font:700 18px/1 var(--mono);background:var(--panel-2)}
+.sketch .go{all:unset;cursor:pointer;text-align:center;background:var(--ink);color:var(--panel);border-radius:12px;padding:11px 14px;font:700 14px/1 var(--round)}
+.sketch .go:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.sketch .who{font:600 12px/1.4 var(--round);color:var(--ink-3);margin-top:auto}
+.http{width:100%;border-collapse:collapse;font-size:13.5px}
+.http th,.http td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.http th{color:var(--ink-3);font-weight:600}
+.http td code{font:600 12.5px/1 var(--mono)}
+.no{color:var(--ask-ink);font-weight:700}
+.yes{color:var(--ok);font-weight:700}
+</style>
+</head>
+<body>
+<div class="mock" id="mock">
+  <div class="top">
+    <span class="sign"><b>云端 Agent City</b><small>cloud-city-1 · step 1 · 只看 + 登录</small></span>
+    <span class="pill">mock</span>
+  </div>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div class="note" id="note"></div>
+  <div id="view"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const Q = new URLSearchParams(location.search);
+const PAGE_URL = '../bin/agent-city.html';
+const ME = 'you@example.com';
+const MACHINES = [
+  { name: 'MacBook-Pro', busy: 3, wait: 1, seen: '刚刚', on: true },
+  { name: 'maverick-pc2', busy: 1, wait: 0, seen: '8 秒前', on: true },
+  { name: '云端', busy: 2, wait: 0, seen: '20 秒前', on: true },
+];
+
+const SCREENS = [
+  { id: 'login', tab: '1 登录', note: '<b>打开网址 → Cloudflare 的登录页 → 邮箱收 6 位验证码 → 进城。</b> 这两页是 Cloudflare 自己的页面（样子以它为准，这里只是示意）。我们不做密码，也不存验证码。只有你允许的邮箱能收到码。<span class="en">Cloudflare Access, e-mail one-time code. These two screens are Cloudflare\'s own pages; this is a sketch.</span>' },
+  { id: 'blocked', tab: '2 没登录', note: '<b>没登录 = 什么都拿不到。</b> 页面、3D 模型、数据都不给：没登录的人连一个名字都看不到。登录关掉了或者令牌不对，也一样。<span class="en">Not logged in = nothing is served: no page, no asset, no feed.</span>' },
+  { id: 'desktop', tab: '3 城市 · 电脑', note: '<b>和本地城市同一个页面。</b> 多了三样：上面一行「机器」（点哪台，看哪台机器的城市；数字 = 干活 / 等你）、右上角你的邮箱和退出、「只能看」。少了：聊天输入框、回答 / 批准按钮（"?" 是灰的）。约 5 到 10 秒延迟。<span class="en">The same page file. New: the machine row, the account chip, view only. Gone: chat box, answer / approve buttons.</span>' },
+  { id: 'phone', tab: '4 城市 · 手机', note: '<b>手机宽度。</b> 机器那一行可以左右滑；左边的名单是抽屉，点人后下半屏是它的窗口（只能看）。<span class="en">Phone width: the machine row scrolls sideways, the rail is a drawer, a person opens the bottom sheet (read only).</span>' },
+  { id: 'empty', tab: '5 还没有会话', note: '<b>登录了，但这台机器现在没有会话。</b> 城市照样在（地和房子都在），中间一句话告诉你怎么让人出现。<span class="en">Logged in, no sessions yet: the land is there, one line says what to do.</span>' },
+  { id: 'offline', tab: '6 机器不在线', note: '<b>现在没有机器在发画面</b>（都关机了，或者上面没有会话很久了）。页面显示最后一次的画面，上面说清楚是多久以前的。哪台机器上一开会话，自动回来。<span class="en">No machine is sending: the last picture stays, with its age.</span>' },
+];
+
+/* ---------- the real page, patched in memory so it runs here as the cloud page ---------- */
+let pageSrc = null;
+async function loadPage() {
+  if (pageSrc) return pageSrc;
+  const res = await fetch(PAGE_URL);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  pageSrc = await res.text();
+  return pageSrc;
+}
+function must(src, from, to) {
+  if (!src.includes(from)) throw new Error('the page changed, the mock cannot find: ' + from.slice(0, 60));
+  return src.split(from).join(to);
+}
+function cloudCss() {
+  return `
+.toolbar,#proto,#ask,#next{display:none!important}
+.stage{height:calc(100dvh - 176px)!important}
+form.say,.d-actions,.d-note,ol.chat li.msg,#hist-all,#detail>p.hint:not(.hist-h):not(.chat-fail){display:none!important}
+.win::after{content:"只能看 · 回答和说话请回到那台电脑（以后在这里开放）";flex:none;border:1.5px dashed var(--line);border-radius:12px;padding:8px 10px;color:var(--ink-3);font:600 12px/1.4 var(--round);text-align:center}
+.qm{pointer-events:none!important;cursor:default!important}
+.qm span{background:#8D91B3!important;animation:none!important}
+.bub.ask{font-size:0!important}
+.bub.ask::after{content:"有问题 · 等回答";font:600 12px/1.2 var(--round)}
+.acct{display:inline-flex;align-items:center;gap:8px;font:600 12.5px/1 var(--round);color:var(--ink-2)}
+.acct .who{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel)}
+.acct .who i{width:8px;height:8px;border-radius:50%;background:#2FA56F}
+.acct button{all:unset;cursor:pointer;padding:6px 11px;border-radius:999px;background:var(--panel-2);color:var(--ink-2)}
+.ro{display:inline-flex;align-items:center;padding:6px 11px;border-radius:999px;background:var(--butter);color:#4A3500;font:700 12px/1 var(--display)}
+.machines{display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px}
+.machines .lead{flex:none;font:600 12px/1 var(--round);color:var(--ink-3);padding-right:2px}
+.mc{all:unset;cursor:pointer;flex:none;display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font:600 12.5px/1 var(--round);color:var(--ink-2)}
+.mc[aria-pressed="true"]{border-color:var(--ink);color:var(--ink);box-shadow:0 2px 0 var(--ink)}
+.mc i{width:8px;height:8px;border-radius:50%;background:#2FA56F}
+.mc.off i{background:#8D91B3}
+.mc b{font:700 12.5px/1 var(--display);color:var(--ink)}
+.mc .w{background:#FF6F8B;color:#fff;border-radius:999px;padding:3px 7px;font:700 11px/1 var(--display)}
+.mc .t{color:var(--ink-3);font-weight:500}
+.cloud-banner{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:6;max-width:calc(100% - 24px);background:var(--panel);border:2px solid var(--ink);border-radius:14px;padding:9px 14px;box-shadow:0 4px 0 rgba(42,43,69,.22);font:600 13px/1.45 var(--round);color:var(--ink);text-align:center}
+.cloud-banner small{display:block;color:var(--ink-3);font-weight:500}
+.cloud-empty{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);z-index:6;width:min(360px,calc(100% - 32px));background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:16px 18px;box-shadow:0 5px 0 rgba(42,43,69,.22);text-align:center}
+.cloud-empty b{display:block;font:700 17px/1.3 var(--display);margin-bottom:4px}
+.cloud-empty span{color:var(--ink-2);font-size:13px}
+.cloud-empty code{font:600 12px/1 ui-monospace,Menlo,monospace;background:var(--panel-2);padding:2px 6px;border-radius:6px}
+@media (max-width: 960px){
+  .stage{height:calc(100dvh - 214px)!important}
+  .acct .who span{display:none}
+}`;
+}
+function cloudJs(kind) {
+  /* runs inside the page, after its own script */
+  return `
+(() => {
+  const MACHINES = ${JSON.stringify(MACHINES)};
+  const kind = ${JSON.stringify(kind)};
+  const off = kind === 'offline';
+  const sub = document.querySelector('.sign-sub'); if (sub) sub.textContent = '云端 · 只看';
+  const bar = document.querySelector('header.bar');
+  const ro = document.createElement('span'); ro.className = 'ro'; ro.textContent = '只能看';
+  const acct = document.createElement('span'); acct.className = 'acct';
+  acct.innerHTML = '<span class="who"><i></i><span>${ME}</span></span><button type="button" title="退出登录">退出</button>';
+  bar.insertBefore(ro, document.querySelector('#stats'));
+  bar.appendChild(acct);
+  const nav = document.createElement('nav'); nav.className = 'machines'; nav.setAttribute('aria-label', '机器');
+  nav.innerHTML = '<span class="lead">机器</span>' + MACHINES.map((m, i) =>
+    '<button type="button" class="mc' + (off ? ' off' : '') + '" aria-pressed="' + (i === 0) + '"><i></i><b>' + m.name + '</b>' +
+    (off ? '<span class="t">' + ['2 小时前', '5 小时前', '昨天'][i] + '</span>'
+         : kind === 'empty' && i === 0 ? '<span class="t">没有会话 · 刚刚</span>'
+         : '<span>干活 ' + m.busy + '</span>' + (m.wait ? '<span class="w">等你 ' + m.wait + '</span>' : '') + '<span class="t">' + m.seen + '</span>') +
+    '</button>').join('');
+  document.querySelector('#repos').before(nav);
+  nav.addEventListener('click', e => {
+    const b = e.target.closest('.mc'); if (!b) return;
+    nav.querySelectorAll('.mc').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    flash('现在看：' + b.querySelector('b').textContent + ' 的城市', '真页面在这里换成那台机器的整座城');
+  });
+  const stage = document.querySelector('#stage');
+  /* the cloud keeps no chat text: a person's history is its activity lines only */
+  new MutationObserver(() => {
+    const b = document.querySelector('#hist-all[aria-pressed="false"]');
+    if (b) b.click();
+  }).observe(document.querySelector('#detail'), { childList: true, subtree: true });
+  let timer = 0;
+  function flash(text, small) {
+    let el = stage.querySelector('.cloud-banner.tmp');
+    if (!el) { el = document.createElement('div'); el.className = 'cloud-banner tmp'; el.style.top = '58px'; stage.appendChild(el); }
+    el.innerHTML = text + (small ? '<small>' + small + '</small>' : '');
+    clearTimeout(timer); timer = setTimeout(() => el.remove(), 2600);
+  }
+  if (kind === 'empty') {
+    const el = document.createElement('div'); el.className = 'cloud-empty';
+    el.innerHTML = '<b>这台机器现在没有会话</b><span>在它上面开一个 Claude 会话，人就会走出来。<br>不用自己开什么：会话一开，那台机器的城市自己起来。</span>';
+    stage.appendChild(el);
+  }
+  if (off) {
+    const el = document.createElement('div'); el.className = 'cloud-banner';
+    el.innerHTML = '没有机器在线 · 这是 2 小时前的画面（MacBook-Pro）<small>哪台机器上一开 Claude 会话，它的城市自己起来，这里自动更新</small>';
+    stage.appendChild(el);
+  }
+})();`;
+}
+function patched(src, kind) {
+  let s = src;
+  s = must(s, '<head>', '<head><base href="' + new URL('../bin/', location.href).href + '">');
+  s = must(s, 'assets/vendor/', 'agent-city-assets/vendor/');
+  s = must(s, "const ASSET = 'assets/';", "const ASSET = 'agent-city-assets/';");
+  s = must(s, '__CITY_ASSET_V__', 'mock');
+  s = must(s, '__CITY_LANG__', 'zh');
+  s = must(s, '__CITY_TOKEN__', '');
+  s = must(s, "const DEMO = location.hash === '#demo' || location.protocol === 'file:';", 'const DEMO = true;');
+  s = must(s, 'seedDemoRemote();', ''); /* the owner's own machines only: other members are step 4 */
+  if (kind === 'empty') {
+    s = must(s, 'if (DEMO) seed(); else connectLive();', '/* mock: no sessions */');
+    s = must(s, 'if (DEMO) spawner();', '');
+    s = must(s, 'if (DEMO) demoRelayTick(dt);', '');
+    s = must(s, 'if (DEMO) demoRemoteTick(dt);', '');
+    s = must(s, 'if (DEMO) demoTalkTick(dt);', '');
+  }
+  s = must(s, '</head>', '<style>' + cloudCss() + '</style></head>');
+  s = must(s, '</body>', '<script>' + cloudJs(kind) + '<\/script></body>');
+  return s;
+}
+async function cityFrame(kind) {
+  const f = document.createElement('iframe');
+  f.title = '云端城市';
+  f.srcdoc = patched(await loadPage(), kind);
+  return f;
+}
+
+/* ---------- screens ---------- */
+function h(html) { const d = document.createElement('div'); d.innerHTML = html; return d.firstElementChild; }
+function browser(frame, url) {
+  const b = h('<div class="frame"><div class="url"><i></i><i></i><i></i><span></span></div></div>');
+  b.querySelector('span').textContent = url;
+  b.appendChild(frame);
+  return b;
+}
+const HOST = 'https://agent-city-page.<你的子域>.workers.dev';
+
+const RENDER = {
+  login() {
+    const el = h(`<div class="screen"><div class="login-stage">
+      <div class="sketch"><span class="step">第 1 步 · Cloudflare 的页面</span><h4>输入你的邮箱</h4>
+        <p>只有你在 Cloudflare 里允许的邮箱才收得到验证码。</p>
+        <div class="field">${ME}</div><button type="button" class="go" data-go="code">给我发验证码</button>
+        <span class="who">别人的邮箱：不发码，也进不来。</span></div>
+      <div class="sketch"><span class="step">第 2 步 · Cloudflare 的页面</span><h4>输入邮件里的 6 位码</h4>
+        <p>码几分钟内有效。登录一次，在这台设备上保持一段时间（时长在 Cloudflare 里设）。</p>
+        <div class="code"><span>4</span><span>8</span><span>1</span><span>9</span><span>0</span><span>2</span></div>
+        <button type="button" class="go" data-go="desktop">登录 → 进城</button>
+        <span class="who">我们的代码里没有密码，也不存验证码。</span></div>
+      <div class="card"><h3>你要在 Cloudflare 里做的（一次）</h3><ol>
+        <li>把新的 relay 文件贴进去，加一个变量 <code>CITY_USER</code>（你的邮箱）</li>
+        <li>终端里 <code>npx wrangler login</code>，再跑一条部署命令（会问一次数据库的 ID，不是密钥）</li>
+        <li>在新 Worker 上点 <b>Enable Cloudflare Access</b>，只允许你的邮箱</li>
+        <li>把两个值（团队名、audience tag）填进 Worker</li>
+        <li>机器上不用做什么：加入过的机器，会话一开，城市自己起来（不开浏览器，没人用时自己停）</li>
+        </ol><p style="margin:8px 0 0;color:var(--ink-3)">登录、密钥、部署都由你自己做；agent 不碰。</p></div>
+    </div></div>`);
+    el.addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b && b.dataset.go !== 'code') show(b.dataset.go); });
+    return el;
+  },
+  blocked() {
+    return h(`<div class="screen side"><div class="card"><h3>没登录的人来要东西，得到什么</h3>
+      <table class="http"><thead><tr><th>要什么</th><th>得到</th></tr></thead><tbody>
+      <tr><td>打开网址 <code>/</code></td><td><span class="no">登录页</span>（Cloudflare 的，见第 1 屏）</td></tr>
+      <tr><td>城市数据 <code>/api/feed</code></td><td><span class="no">403</span> · 没有数据</td></tr>
+      <tr><td>3D 模型、脚本 <code>/assets/…</code></td><td><span class="no">403</span> · 一个文件也不给</td></tr>
+      <tr><td>登录关掉了、令牌过期或是假的</td><td><span class="no">403</span> · Worker 自己再查一遍令牌，不只靠 Cloudflare 挡</td></tr>
+      <tr><td>登录了，邮箱是你</td><td><span class="yes">只给你自己的那几行</span>（每一行都带着邮箱）</td></tr>
+      </tbody></table></div>
+      <div class="card"><h3>为什么两道锁</h3><ul>
+      <li><b>第一道</b>：Cloudflare Access 挡在整个网址前面，发验证码。</li>
+      <li><b>第二道</b>：Worker 每个请求自己验一次登录令牌（签名、给谁的、过没过期）。哪天 Access 被误关，页面也不会裸奔。</li>
+      <li><b>以后多人</b>：每个人登录后只读到带自己邮箱的行。现在只有你一个人。</li></ul></div></div>`);
+  },
+  async desktop() {
+    return h('<div class="screen"></div>').appendChild(browser(await cityFrame('city'), HOST)).parentNode;
+  },
+  async phone() {
+    const el = h(`<div class="screen side"><div class="phone-wrap"><div class="phone"><div class="notch"></div></div></div>
+      <div class="card"><h3>手机上</h3><ul>
+      <li><b>机器行</b>：左右滑；红色数字 = 那台机器上有人等你。</li>
+      <li><b>名单</b>：左边的小标签拉出抽屉（和本地一样）。</li>
+      <li><b>点一个人</b>：下半屏是它的窗口，只有状态和动态，没有输入框。</li>
+      <li><b>聊天、回答、派人</b>：以后几步再开（2 聊天、3 派 agent、4 多人）。</li></ul></div></div>`);
+    el.querySelector('.phone').appendChild(await cityFrame('city'));
+    return el;
+  },
+  async empty() {
+    return h('<div class="screen"></div>').appendChild(browser(await cityFrame('empty'), HOST)).parentNode;
+  },
+  async offline() {
+    return h('<div class="screen"></div>').appendChild(browser(await cityFrame('offline'), HOST)).parentNode;
+  },
+};
+
+let current = null;
+async function show(id) {
+  const sc = SCREENS.find(s => s.id === id) || SCREENS[0];
+  current = sc.id;
+  for (const b of $('#tabs').children) b.setAttribute('aria-selected', String(b.dataset.id === sc.id));
+  $('#note').innerHTML = sc.note;
+  const view = $('#view');
+  view.textContent = '';
+  try {
+    const el = await RENDER[sc.id]();
+    if (current === sc.id) view.appendChild(el);
+  } catch (err) {
+    view.innerHTML = '<p class="fail">这个 mock 要从一个小网页服务器打开（它要读 ../bin/agent-city.html）。在仓库根目录跑：python3 -m http.server 8765，然后打开 http://127.0.0.1:8765/mock/cloud-city-1-mock.html<br>(' + String(err && err.message || err) + ')</p>';
+  }
+  history.replaceState(null, '', '?s=' + sc.id);
+}
+for (const s of SCREENS) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.dataset.id = s.id; b.textContent = s.tab; b.setAttribute('role', 'tab');
+  b.addEventListener('click', () => show(s.id));
+  $('#tabs').appendChild(b);
+}
+show(Q.get('s') || 'login');
+})();
+</script>
+</body>
+</html>

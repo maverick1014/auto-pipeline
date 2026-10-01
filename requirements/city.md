@@ -98,7 +98,7 @@
 - Every delivered message is logged like an answer: who, what, when, in the page log and `$AGENT_CITY_HOME/decisions.jsonl` (default `~/.claude/agent-city/decisions.jsonl`; tests never write the real one, R7). Control requests as in Interaction: 127.0.0.1, token, Origin and Host checked.
 - Chat text stays on this computer, in `chat.jsonl` next to `events.jsonl`, readable by this user only (file mode 0600), one append per line: never sent through the relay (a joined city shows other members' people, never their conversation; their windows have no box), never written into `world.json`.
 - Cost: the per-tool-call hook stays as today (bash builtins, one line). The text is picked up only when a prompt is submitted or a turn ends.
-- From outside this computer (phone, elsewhere): never through the relay, which carries events only (see Joining). Claude Code's own Remote Control in the Claude app is the way.
+- From outside this computer (phone, elsewhere): never through the relay or the cloud page, which carry no chat text (see Joining, Cloud page). Claude Code's own Remote Control in the Claude app is the way.
 
 ## Add agent
 
@@ -203,7 +203,7 @@
 - Server loads it at start; the first snapshot carries it. Browser closed, server stopped, Mac restarted → same city.
 - The people are not in `world.json`: live sessions come back from `<city dir>/roster.json` (see Data path).
 - `events.jsonl` is the feed, not the record. It may be cleared.
-- The city is per computer. Another machine has its own city. A joined city also shows the other members live (see Joining); each machine's `world.json` stays its own.
+- The city is per computer. Another machine has its own city. A joined city also shows the other members live (see Joining); each machine's `world.json` stays its own. The cloud page shows one computer's city at a time (see Cloud page).
 
 ## Limits
 - Server listens on 127.0.0.1 only, port `city_port`, stops itself after `city_idle_min` with no browser open and no idle session waiting to be talked to (city-chat, 2026-09-27: a session's watcher polling keeps it up, so a closed tab never makes an idle session unreachable).
@@ -213,15 +213,15 @@
 ## Joining
 - Owner decision, 2026-09-25. The local city stays the default and keeps being maintained. Joining is an optional extra; the local city never needs it.
 - Not joined = the city above: this computer only, no account, nothing leaves the machine.
-- Joined = the local city also shows the other members of the same team: the owner's other machines, other people's terminals, cloud sessions. Every member still runs their own local city. There is no shared city page on the internet.
+- Joined = the local city also shows the other members of the same team: the owner's other machines, other people's terminals, cloud sessions. Every member still runs their own local city. There is no city page shared by a team; the owner's own page on Cloudflare is the Cloud page (see Cloud page; owner, 2026-10-01, replaces "there is no shared city page on the internet").
 - Path: hook → `events.jsonl` (unchanged) → local server → relay → every joined local server → its page. The page talks only to 127.0.0.1, as before; only the local server talks to the relay.
-- Relay: a small Cloudflare Worker, one per team. Holds the last few minutes only, never a history.
+- Relay: a small Cloudflare Worker, one per team. Holds the last few minutes only, never a history. With the cloud page on it also keeps each machine's latest picture (see Cloud page).
 - Sent: the same short lines, with the working folder cut down to repo and branch. Never full paths, chat text (see Talking) or files: the hook's `wt` (a full path) is sent only as the branch name, and its `file` key (city-quality) is never sent.
 - Same repo from different people = the same territory. Repo identity = the `origin` remote (host/owner/repo). No remote = not shared, stays local.
 - Other members' people: a name tag (person) and a small device tag (machine name or 云端). Several main managers in one repo = several governors at the one town hall, each with a name sign. An agent asks its own person's governor.
 - Other members' people are view only. Answering questions and permission requests works for your own agents only.
 - Other members' people and sites are shown live and never written into your `world.json`. Leave → they disappear; your own world is unchanged.
-- Orders (main manager's default, 2026-09-25; the owner may change it): the relay carries events only, never orders. Orders to agents go through the Claude Code app: local sessions via `claude remote-control`, cloud sessions are there already. The city may link a person to its session in the app. Reason: an order channel on a public site would be a way into the members' computers.
+- Orders (main manager's default, 2026-09-25; the owner may change it): the relay carries events and, with the cloud page on, each machine's picture (owner, 2026-10-01, replaces "the relay carries events only"); never orders. Orders to agents go through the Claude Code app: local sessions via `claude remote-control`, cloud sessions are there already. The city may link a person to its session in the app. Reason: an order channel on a public site would be a way into the members' computers.
 - Relay host (owner decision, 2026-09-25): self-hosted. Each team's owner makes their own free Cloudflare account and sets up the relay there by hand (see Relay setup). The plugin's author runs no server; teams share nothing.
 - Key: setting up the relay gives two values, the relay address and a team key (kept as a secret in Cloudflare). The team owner hands both to each member.
 - Joining is per repo: the address and key go into `<repo>/.secrets/agent-city-relay`. The person does this in their own terminal (`bin/agent-city.sh join` asks for both, the key hidden) or by hand. Agents never write, print or ask for the key, and it never goes into the chat. `.secrets/` is git-ignored by agent-init; join refuses when it is not. Only repos with that file send and see the team; every other repo stays local. `bin/agent-city.sh leave` deletes the file. Wrong or missing key = the relay refuses.
@@ -232,6 +232,26 @@
 - Relay down or offline: the local city keeps working. Unsent lines are kept up to a small cap, oldest dropped first. The page shows 联城断开.
 - Cost: joining adds nothing to the hook. The sender batches lines every few seconds and counts toward the server's RAM limit.
 - Build order: after the worktree sites. Mock first.
+
+## Cloud page
+- Owner decision, 2026-10-01 (cloud-city-1; approved mock mock/cloud-city-1-mock.html). The city also lives on Cloudflare: one address the owner opens from a phone or any computer, logs in, and sees his city, with no local city on the device he looks from. The local city stays the default and works exactly as before, also with Cloudflare down.
+- Step 1 of 4: view only + login. Later, not built yet, never blocked by this: 2 chat both ways, 3 start agents from the page, 4 other users, each sees only his own city. Step 1b: a cloud session shows itself when no machine is on.
+- One reducer. The machine that runs the sessions reduces them (its local city server, as today) and uploads its ready page picture. Cloudflare stores and serves it and never reduces a line. No second implementation of the rules.
+- Upload: the uploader is one more page client inside the local server: the same snapshot, then the same events, cleaned, sent with the sync that machine already makes (body key `view`, no extra request). A new picture about once a minute while things happen. Nothing new → no view, but one sign of life a minute.
+- What goes up: people (name, role, task, state), territories, buildings (type and place), sites, and the events that move them. Session names go up (owner, 2026-10-01: to his own rows). Never: chat text, question or command text, file names, a building's files and history, full paths, the control token.
+- A page message type on neither list (`CLOUD_KEEP`, `CLOUD_DROP` in bin/agent_city.py) is not sent. A new type must be put on one of them.
+- Only joined repos go up: a picture holds only the territories and people of repos joined to that relay. A repo that is not joined never leaves the machine.
+- The relay (same file, same key) keeps a picture only when its variable `CITY_USER` (the owner's e-mail) is set. Unset = exactly the relay of before. One row per user + machine (table `city_view`): the latest picture and the events since it. A machine not seen for 24 h is dropped. No history, no chat, never orders.
+- Every row has its user. A login reads only the rows of its own e-mail. One user for now.
+- The page is a second Worker (bin/agent-city-cloud.js, with bin/agent-city.html and the assets) behind Cloudflare Access with the e-mail one-time code. No password code of our own. The Worker checks the Access token itself on every request, before any asset or data. Not logged in, a bad token, or Access not set up → 403 and nothing else: no page, no asset, no data.
+- The same page file. It asks `GET /api/feed` every 3 s while the tab shows: the picture, then the events, through the page's own `apply()`. About 5 to 10 s behind.
+- One machine's city at a time, as that machine sees it: its own people exact, other machines and cloud sessions as guests, as in a joined city. A machine row on top: name, 干活 n, 等你 n, how long ago. A tap shows that machine's city. Default: the machine seen last; the choice is remembered in the browser.
+- View only: no chat box, no answer or approve buttons, no "add agent" button, a "?" opens nothing. The City Worker has no route that acts and never writes a row.
+- Notices, never silent: 还没有机器 (no machine sent yet), 这台机器现在没有会话, 没有机器在线 with the age of the last picture (the picture stays), and login lost.
+- Auto-start (owner, 2026-10-01: he never types `agent-city start` for the cloud page): on a joined machine a session start brings the local server up by itself when the cloud page is on. A SessionStart hook; a machine that never joined pays two file tests and nothing else. Marker `<city home>/cloud`: the relay hosts that said the cloud is on, never a key. No marker → one quiet question to the relay. No browser is opened; the port, idle and RAM rules are those of `start`. A cloud session is not started this way (step 1b).
+- Check line: `agent-city status` in a joined repo prints `CLOUD: on <host>` or `CLOUD: off`.
+- Setup by hand, in skills/city/setup.md after the relay steps. Logins, keys and the deploy are the owner's: agents never type, print or store a key or a token, and never run a login or the deploy.
+- Cost on Cloudflare's free plan (100,000 Worker requests and 100,000 D1 rows written a day), measured on the Worker code by tests/test_agent_city_cloud_cost.py: a heavy day (3 machines, each up 12 h and busy 6 h, the page open 8 h) is about 35,500 requests (36%) and about 65,900 rows written (66%). About 51,800 of those rows are the relay's lines, as before the cloud page; the pictures add about 14,000 (one row per view). A view never writes more than one row, a feed request never writes.
 
 ## Relay setup
 - Owner decision, 2026-09-25: the relay comes with setup steps a person can follow by hand.

@@ -67,6 +67,8 @@ COPY_BIN = [
     "agent_city_relay.py",
     "agent-city-relay.js",
     "agent-city-relay-dev.mjs",
+    "agent-city-cloud.js",
+    "agent-city-cloud-dev.mjs",
     "agent-city.html",
     "agent-city-plans.json",
     "agent-close-case.sh",
