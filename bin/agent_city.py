@@ -19,7 +19,9 @@ and its sibling agent_city_relay.py:
            "Interaction"): a governor (the repo's main manager) may answer a
            question; only the owner, from the page, may allow or deny a
            permission. See tests/test_agent_city_interact.py for the full
-           contract. Also offers every line to one RelayHub
+           contract. Keeps <dir>/roster.json, the live sessions it knows a pid
+           for, so a restart shows them again at once (tests/
+           test_agent_city_roster.py). Also offers every line to one RelayHub
            (bin/agent_city_relay.py, "Joining"), which syncs a joined repo's
            lines with its team relay on its own thread; other members' lines
            come back as "remote" SSE events. See
@@ -935,17 +937,21 @@ def _lock_main(identity):
     return pid, ("" if sid == "-" else sid)
 
 
-def _holds(main, sid, pid):
+def _holds(main, sid, pid, seat_pid=None):
     """Is the session line (SID, its "pid" field PID) the main manager MAIN's
     ((pid, sid) of the live lock holder, or None)? A lock with a sid names
     its holder by that sid alone; an older lock (no sid) by the line's pid
-    (all digits) matching the lock's."""
+    (all digits) matching the lock's. A line with no pid (an old hook) has
+    only SEAT_PID: the lock pid SID was seated with, when SID is the seated
+    governor (else None) -- an old agent-start.sh that writes the lock back
+    without a sid does not take the seat from it."""
     if main is None or not isinstance(sid, str) or sid == "":
         return False
     if main[1] != "":
         return sid == main[1]
-    return (isinstance(pid, str) and pid.isascii() and pid.isdigit()
-            and int(pid) == main[0])
+    if isinstance(pid, str) and pid.isascii() and pid.isdigit():
+        return int(pid) == main[0]
+    return seat_pid is not None and seat_pid == main[0]
 
 
 class CityState:
@@ -954,7 +960,7 @@ class CityState:
     def __init__(self, max_agents=40, done_ttl=600, gov_wait_sec=60.0,
                  decisions_path=None, token="", world_path=None, plans=None, count_fn=None,
                  balance_fn=None, start_repo=None, chat_path=None, lang="zh", titles=None,
-                 main_fn=None, listen_grace_sec=15.0):
+                 main_fn=None, listen_grace_sec=15.0, roster_path=None):
         self.lock = threading.Lock()
         self.titles = titles if titles is not None else TitleReader()  # a session's real name
         self.lang = norm_lang(lang)
@@ -979,8 +985,12 @@ class CityState:
         self.governors = {}       # repo -> {"sid", "last_seen" (monotonic)}
         self.watchers = {}        # governor sid -> current watcher id
         self.main_fn = main_fn if main_fn is not None else _lock_main  # identity -> (pid, sid) of the live lock holder, or None
-        self._gov_pids = {}       # identity -> {"lock" (pid), "line" (its "pid" field)} of the governor's last line
+        self._gov_pids = {}       # identity -> {"lock" (pid: also the pid it was seated with, R3b), "line" (its "pid" field)} of the governor's last line
         self._sid_repo = {}       # sid -> repo of its last line that carried one, bounded (SID_REPO_KEEP)
+        self.roster_path = roster_path   # None: no roster file, no restore
+        self._sess = {}           # sid -> what the roster keeps of a live session (see _note_session_locked), bounded (SID_REPO_KEEP)
+        self._roster_last = []    # the roster entries last written (or loaded): written again only when they change
+        self._restoring = False   # True while the roster is loaded: nothing is written before it is done
         self._ask_seq = 0
         self._governors_count = 0  # last count checked/broadcast (see _check_governors_count)
 
@@ -1069,6 +1079,14 @@ class CityState:
         self._chat_waiting = {}       # page id -> watchers waiting for it now
         self._chat_polled_at = {}     # page id -> monotonic time a watcher last polled it
         self._chat_stop_at = {}       # page id -> monotonic time its session last sent Stop
+
+        # The sessions of the last run that still live are here again before
+        # any line is read (see _restore_roster_locked); the chat comes after,
+        # so a governor's old messages find its page.
+        if self.roster_path is not None:
+            with self.lock:
+                self._restore_roster_locked()
+
         if self.chat_path is not None:
             for row in load_chat(self.chat_path):
                 self.feed_chat(row)
@@ -1227,6 +1245,17 @@ class CityState:
         except Exception:
             return None
 
+    def _seat_pid_locked(self, identity, sid):
+        """Caller holds self.lock. R3b: the lock pid SID was seated with, when
+        SID is the governor of IDENTITY now; else None. A line with no pid
+        (an old hook) is the holder's when the lock, written back without a
+        sid, still names this pid (see _holds)."""
+        reducer = self.reducers.get(identity)
+        seat = self._gov_pids.get(identity)
+        if reducer is None or seat is None or reducer.gov_sid != sid:
+            return None
+        return seat["lock"]
+
     def _settle_seat_locked(self, obj, identity, reducer):
         """Caller holds self.lock. A session line (sid set, aid ""): settle
         the territory's seat before the Reducer sees the line. -> (hint,
@@ -1237,7 +1266,7 @@ class CityState:
         seat here; the Reducer then makes that line a citizen."""
         sid = obj["sid"]
         main = self._main(identity)
-        holder = _holds(main, sid, obj.get("pid"))
+        holder = _holds(main, sid, obj.get("pid"), self._seat_pid_locked(identity, sid))
         events = []
         if obj["ev"] == "SessionEnd":
             return holder, events, main
@@ -1278,13 +1307,14 @@ class CityState:
                 if sid is None:
                     continue
                 seat = self._gov_pids.get(identity, {"lock": None, "line": ""})
-                if _holds(self._main(identity), sid, seat["line"]):
+                if _holds(self._main(identity), sid, seat["line"], seat["lock"]):
                     continue
                 pid = int(seat["line"]) if seat["line"] else seat["lock"]
                 if pid is not None and _pid_state(pid) is False:
                     self._feed_line_locked({"ev": "SessionEnd", "sid": sid, "repo": identity}, now)
                 else:
                     self._unseat_locked(identity, reducer, sid, tell=True)
+            self._save_roster_locked()
 
     def _remember_repo_locked(self, obj):
         """Caller holds self.lock. R2: the repo of a session's line (session
@@ -1349,6 +1379,8 @@ class CityState:
                 "lock": seat_main[0],
                 "line": pid_field if isinstance(pid_field, str) and pid_field.isascii()
                 and pid_field.isdigit() else ""}
+        if is_session_line and ev_name != "SessionEnd":
+            self._note_session_locked(obj, identity, reducer)
         gov_seen = False
         names_dirty = False
 
@@ -1453,6 +1485,125 @@ class CityState:
         if (ev_name == "SessionEnd" and isinstance(sid_field, str) and sid_field
                 and not (isinstance(aid_field, str) and aid_field)):
             self._sid_repo.pop(sid_field, None)
+            self._sess.pop(sid_field, None)
+
+        if is_session_line:
+            self._save_roster_locked()
+
+    # -- the roster: the live sessions, kept across a restart --------------
+    #
+    # <dir>/roster.json lists every live session (never a subagent) the
+    # server knows a pid for, so a restart shows it again at once, with no
+    # line read (tests/test_agent_city_roster.py). It is written only when
+    # what it lists changes: a session appears, ends, takes or loses the
+    # seat, gets its name. A plain tool line never rewrites it.
+
+    def _note_session_locked(self, obj, identity, reducer):
+        """Caller holds self.lock. What the roster keeps of a session line
+        (sid set, aid "", not SessionEnd) of a session the Reducer knows: its
+        pid (the line's "pid" field when all digits; a governor with none,
+        the lock's pid it was seated with), its territory and the raw role,
+        proj, wt and tp. An empty field never wipes a known one."""
+        sid = obj["sid"]
+        if sid not in reducer.sessions:
+            return
+        info = self._sess.get(sid)
+        if info is None:
+            info = {"pid": None, "repo": "", "role": "", "proj": "", "wt": "", "tp": "", "label": "", "task": ""}
+            self._sess[sid] = info
+            while len(self._sess) > SID_REPO_KEEP:
+                del self._sess[next(iter(self._sess))]
+        pid = obj.get("pid")
+        if isinstance(pid, str) and pid.isascii() and pid.isdigit() and int(pid) > 0:
+            info["pid"] = int(pid)
+        elif info["pid"] is None and reducer.gov_sid == sid and identity in self._gov_pids:
+            info["pid"] = self._gov_pids[identity]["lock"]
+        info["repo"] = identity if identity is not None else ""
+        for key in ("role", "proj", "wt", "tp"):
+            value = obj.get(key)
+            if isinstance(value, str) and value:
+                info[key] = value
+
+    def _roster_entries_locked(self):
+        """Caller holds self.lock. The roster as roster.json keeps it: one
+        dict per live session with a known pid (a citizen with none is left
+        out), sorted by sid. A governor stores no label or task; a citizen
+        its label and task as the snapshot shows them. No counters, no
+        times, no busy/idle state."""
+        entries = []
+        for sid, info in self._sess.items():
+            if info["pid"] is None:
+                continue
+            reducer = self.reducers.get(info["repo"] or None)
+            if reducer is None:
+                continue
+            governor = reducer.gov_sid == sid
+            record = reducer.agents.get("s:" + sid)
+            if record is not None and record["kind"] == "session":
+                info["label"], info["task"] = record["label"], record["task"]
+            entries.append({
+                "sid": sid, "pid": info["pid"], "repo": info["repo"], "gov": governor,
+                "role": info["role"], "proj": info["proj"], "wt": info["wt"], "tp": info["tp"],
+                "label": "" if governor else info["label"], "task": "" if governor else info["task"]})
+        entries.sort(key=lambda e: e["sid"])
+        return entries
+
+    def _save_roster_locked(self):
+        """Caller holds self.lock. Writes roster.json only when what it lists
+        differs from what was last written or loaded. Never crashes: a write
+        failure is one line on stderr, the server keeps running."""
+        if self.roster_path is None or self._restoring:
+            return
+        entries = self._roster_entries_locked()
+        if entries == self._roster_last:
+            return
+        self._roster_last = entries
+        try:
+            save_roster(self.roster_path, entries)
+        except (OSError, ValueError) as exc:
+            print("agent_city: could not save roster.json: %s" % exc, file=sys.stderr)
+
+    def _restore_roster_locked(self):
+        """Caller holds self.lock; the server has read no line yet. Every
+        roster entry whose pid is alive is shown again, with no line read:
+        its synthetic line (an event no handler acts on, the entry's pid
+        standing in for the line's "pid") goes through the same path a real
+        one takes, so the seat follows the lock (the holder of its territory
+        governs, any other is a citizen with its office, if a lead), the
+        pid, repo and chat page are known, and its next line is the same
+        session's. The saved label and task go back onto the citizen. A dead
+        entry is dropped, and the file is written again without it."""
+        rows = load_roster(self.roster_path)
+        self._roster_last = rows
+        now = time.monotonic()
+        names_dirty = False
+        self._restoring = True
+        try:
+            for row in rows:
+                if _pid_state(row["pid"]) is not True:
+                    continue
+                obj = {"ev": "RosterRestore", "sid": row["sid"], "aid": "", "role": row["role"],
+                       "proj": row["proj"], "repo": row["repo"], "wt": row["wt"], "tp": row["tp"],
+                       "pid": str(row["pid"])}
+                try:
+                    self._feed_line_locked(obj, now)
+                except Exception as exc:
+                    print("agent_city: could not bring back session %s: %s" % (row["sid"], exc), file=sys.stderr)
+                    continue
+                reducer = self._reducer_for(self._identity_of(obj), create=False)
+                record = reducer.agents.get("s:" + row["sid"]) if reducer is not None else None
+                if record is None or record["kind"] != "session":
+                    continue
+                label = row["label"] or record["label"]
+                task = row["task"] or record["task"]
+                if (label, task) != (record["label"], record["task"]):
+                    record["label"], record["task"] = label, task
+                    names_dirty = self._remember_name_locked("s:" + row["sid"], label, task) or names_dirty
+        finally:
+            self._restoring = False
+        if names_dirty:
+            self._save_world_locked()
+        self._save_roster_locked()
 
     # -- growth: many territories, one Reducer each ----------------------
     #
@@ -2633,7 +2784,8 @@ class CityState:
     def _still_holder_locked(self, sid, repo, pid):
         """Caller holds self.lock. Is SID the lock holder of REPO now? When
         not, a governor it was is forgotten here (it was one, it is not now)."""
-        if _holds(self._main(repo if repo else self.start_repo), sid, pid):
+        identity = repo if repo else self.start_repo
+        if _holds(self._main(identity), sid, pid, self._seat_pid_locked(identity, sid)):
             return True
         gov = self.governors.get(repo)
         if gov is not None and gov["sid"] == sid:
@@ -2750,7 +2902,7 @@ class CityState:
             if self._terr_for(identity) != terr or reducer.gov_sid is None:
                 continue
             seat = self._gov_pids.get(identity, {"lock": None, "line": ""})
-            if _holds(self._main(identity), reducer.gov_sid, seat["line"]):
+            if _holds(self._main(identity), reducer.gov_sid, seat["line"], seat["lock"]):
                 return True
         return False
 
@@ -3962,7 +4114,8 @@ def cmd_serve(args):
     except OSError:
         chat_initial_skip = 0
     city = CityState(gov_wait_sec=args.gov_wait_sec, decisions_path=decisions_path, token=token,
-                      world_path=world_path_arg, start_repo=start_repo, chat_path=chat_path, lang=lang)
+                      world_path=world_path_arg, start_repo=start_repo, chat_path=chat_path, lang=lang,
+                      roster_path=os.path.join(directory, "roster.json"))
     hub = relay.RelayHub(relay_sec=args.relay_sec, join_ttl=args.join_ttl_sec,
                         joined_list=args.joined_list)
     remote = RemoteCity(hub, remote_ttl_sec=args.remote_ttl_sec)
@@ -5357,6 +5510,56 @@ def save_world(path, world):
         except OSError:
             pass
         raise
+
+
+def save_roster(path, entries):
+    """roster.json: {"v": 1, "sessions": ENTRIES} (see CityState._roster_entries_locked).
+    Never leaves a temp file behind: write it in the same folder, then one
+    atomic os.replace onto PATH."""
+    folder = os.path.dirname(path) or "."
+    os.makedirs(folder, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(prefix=".roster-", suffix=".tmp", dir=folder)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump({"v": 1, "sessions": entries}, fh)
+        os.replace(tmp_path, path)
+    except (OSError, ValueError):
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def load_roster(path):
+    """The entries roster.json lists, sorted by sid: dicts with sid (str),
+    pid (int > 0), gov (bool) and the strings repo, role, proj, wt, tp, label,
+    task. A file that is missing, unreadable or garbage gives []; a bad entry
+    or a second one of the same sid is skipped. Never raises."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError, RecursionError):
+        return []
+    rows = data.get("sessions") if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        return []
+    out = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        sid, pid = row.get("sid"), row.get("pid")
+        if isinstance(pid, str) and pid.isascii() and pid.isdigit():
+            pid = int(pid)
+        if (not isinstance(sid, str) or sid == "" or sid in out
+                or isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0):
+            continue
+        entry = {"sid": sid, "pid": pid, "gov": row.get("gov") is True}
+        for key in ("repo", "role", "proj", "wt", "tp", "label", "task"):
+            value = row.get(key)
+            entry[key] = value if isinstance(value, str) else ""
+        out[sid] = entry
+    return sorted(out.values(), key=lambda e: e["sid"])
 
 
 def _world_looks_valid(data, plans):
