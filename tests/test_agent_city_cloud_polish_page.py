@@ -121,6 +121,26 @@ def media_block(query):
     return ""
 
 
+def base_css():
+    """The page's CSS without its @media blocks: the rules of every width."""
+    c, out, i = css(), [], 0
+    while True:
+        j = c.find("@media", i)
+        if j < 0:
+            out.append(c[i:])
+            return "".join(out)
+        out.append(c[i:j])
+        depth = 0
+        for k in range(c.index("{", j), len(c)):
+            if c[k] == "{":
+                depth += 1
+            elif c[k] == "}":
+                depth -= 1
+                if depth == 0:
+                    i = k + 1
+                    break
+
+
 def decl(sel, text=None):
     """{property: value} of the rule(s) with exactly this selector, spaces removed."""
     out = {}
@@ -198,18 +218,20 @@ class TestStripCss(unittest.TestCase):
 
     def test_the_stage_takes_what_is_left_of_the_window(self):
         """Bounce 1: no fixed "100dvh minus a number"; the stage fills the rest, so the page never scrolls."""
-        stage = decl(".stage")
+        base = base_css()     # the rules of every width (the phone block has its own smaller minimum)
+        stage = decl(".stage", base)
         self.assertEqual(stage.get("flex"), "110", "flex:1 1 0")
         self.assertEqual(stage.get("min-height"), "460px")
         self.assertNotIn("height", stage, "no fixed height")
         self.assertNotIn("100dvh", rule(".stage"))
-        col = decl(".stage-col")
+        self.assertNotIn("height:auto", flat(rule(".stage")))
+        col = decl(".stage-col", base)
         self.assertEqual(col.get("flex"), "1")
         self.assertEqual(col.get("min-height"), "0")
-        layout = decl(".layout")
+        layout = decl(".layout", base)
         self.assertEqual((layout.get("flex"), layout.get("min-height")), ("1", "0"))
-        self.assertEqual(decl(".app").get("min-height"), "100dvh")
-        canvas = decl(".stage canvas")
+        self.assertEqual(decl(".app", base).get("min-height"), "100dvh")
+        canvas = decl(".stage canvas", base)
         self.assertEqual((canvas.get("position"), canvas.get("inset")), ("absolute", "0"),
                          "the canvas fills a stage whose height comes from the flex row")
         self.assertNotIn("--stage-off", page(), "no magic offset left anywhere")
