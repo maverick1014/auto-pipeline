@@ -53,6 +53,18 @@ CONTRACT (bin/agent-city.html)
   K12 CSS: .askcard{flex:none; max-height; overflow:auto} (the history scrolls under it) and
       .askcard .cmd{max-height; overflow:auto} (a long command scrolls inside it).
 
+  Bounce 1 (task manager review, 2026-10-02):
+  K8b The slot's key also carries who closed it and how (closed.by, closed.verb): a 409 first writes
+      "someone else was first" (verb 'closed'); when the real facts arrive (ask_closed: allow / deny /
+      answer) the card is drawn again with them. The small panel always did.
+  K13 keepAskSlot(el, old): after renderDetail rebuilt the panel's html, the OLD #askslot node goes back
+      in place of the fresh empty one (fresh.replaceWith(old)), so a picked option or a typed reason
+      survives a rebuild too (a person's state changes while it walks to the hall). No fresh slot, no old
+      one, or the same node -> nothing. renderDetail takes the old node (el.querySelector('#askslot'))
+      before it rebuilds and calls keepAskSlot(el, <old>) right after, before renderAskCard().
+      renderAskCard's own key decides whether the kept node is still right (another person's ask has
+      another key, so it is rewritten).
+
 Run: python3 -m unittest tests.test_agent_city_ask_panel </dev/null
 """
 
@@ -286,6 +298,23 @@ __out = { html: slot.innerHTML, sets: slot.sets, card: cardAskId };
         self.assertEqual(r["sets"], 2)
         self.assertEqual(r["card"], "p1", "the closed card still shows its result")
 
+    def test_the_real_facts_replace_someone_else_was_first(self):
+        r = self.run_card(r"""
+current = { id: 'p1', agent: 'w1', phase: 'owner' }; asks.set('p1', current);
+renderAskCard();
+current.closed = { by: 'terminal', verb: 'closed' };   // a 409: only "someone else was first" is known
+renderAskCard();
+const after409 = slot.sets;
+current.closed = { by: 'terminal', verb: 'allow' };    // ask_closed arrives with the facts
+renderAskCard(); renderAskCard();
+const afterFacts = slot.sets;
+current.closed = { by: 'governor', verb: 'allow' };
+renderAskCard();
+__out = { after409, afterFacts, afterWho: slot.sets };
+""")
+        self.assertEqual(r, {"after409": 2, "afterFacts": 3, "afterWho": 4},
+                         "bounce 1 K8b: the key carries closed.by and closed.verb")
+
     def test_a_rebuilt_panel_gets_its_card_again(self):
         r = self.run_card(r"""
 current = { id: 'p1', agent: 'w1', phase: 'owner' }; asks.set('p1', current);
@@ -467,6 +496,38 @@ class TestPanelWiringK7K9K12(unittest.TestCase):
 
     def test_the_card_state_lives_in_the_sim_part(self):
         self.assertRegex(sim_section(), r"\bcardAskId\s*=\s*null", "declared next to openAskId")
+
+
+class TestKeepAskSlotK13(unittest.TestCase):
+    """Bounce 1: a rebuild of the panel keeps the card's node, so nothing typed or picked is lost."""
+
+    PRELUDE = r"""
+function node(name){ return { name, swaps: [], replaceWith(o){ this.swaps.push(o.name); } }; }
+function panel(fresh){ return { querySelector(sel){ return sel === '#askslot' ? fresh : null; } }; }
+"""
+
+    def test_the_old_node_goes_back(self):
+        r = run_vm(self.PRELUDE + page_fns("keepAskSlot"), r"""
+const fresh = node('fresh'), old = node('old');
+keepAskSlot(panel(fresh), old);
+const none = node('fresh2');
+keepAskSlot(panel(none), null);
+const same = node('same');
+keepAskSlot(panel(same), same);
+keepAskSlot(panel(null), node('orphan'));
+__out = { swapped: fresh.swaps, none: none.swaps, same: same.swaps };
+""")
+        self.assertEqual(r["swapped"], ["old"], "fresh.replaceWith(old)")
+        self.assertEqual(r["none"], [], "nothing to keep on a first open")
+        self.assertEqual(r["same"], [], "no rebuild happened")
+
+    def test_render_detail_keeps_it_across_a_rebuild(self):
+        body = function_source("renderDetail") or ""
+        rebuild = body.index("if (key !== lastDetailKey) {")
+        self.assertRegex(body[:rebuild], r"el\.querySelector\('#askslot'\)", "the old node is taken before the rebuild")
+        keep, card = body.find("keepAskSlot(el,"), body.find("renderAskCard(")
+        self.assertGreater(keep, rebuild, "put back after the rebuild")
+        self.assertLess(keep, card, "before renderAskCard() looks at the slot")
 
 
 class TestResultThenFoldK4K5(unittest.TestCase):
