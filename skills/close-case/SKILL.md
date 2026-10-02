@@ -25,6 +25,6 @@ The report's TIME line keeps work and wait apart: est, actual (agent work only),
 3. Apply part A to each report. Merge what passes with `/merge`.
 4. Close every pane and worktree left. Stop the crons you started: `CronList` then `CronDelete` each. Stop the monitor: `${CLAUDE_PLUGIN_ROOT}/bin/agent-monitor.sh stop`. Then `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show` to check the agent files.
 5. Then ONE final table to the human: task · result · what changed · what is left · decisions taken for the human. Every task one row, nothing dropped.
-6. Last step: the final table ends with this line, for the human to type in this session (it frees the main manager seat: the next session the human opens becomes main manager); never run it yourself, it can be denied:
-   `! ${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh --release`
-   This session is then closed, start nothing new.
+6. Under the final table, ask the human in his language: clean this session for the next round, yes or no? No, or no answer: nothing changes.
+7. Yes → `${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh --clean "<open decision for the owner>" ...` (one argument per carry line). It checks first: LEFT RUNNING → stop it, run `--clean` again. Then do its NEXT line as your last action, nothing after it (orca: it types /clear into your own pane; plain, cloud: the human types /clear). Same lock, same name: you stay the main manager.
+8. The other choice, rare: the human types the `agent-start.sh --release` line the close-case hook printed (full path there), so this session stops being main manager; never run it yourself.

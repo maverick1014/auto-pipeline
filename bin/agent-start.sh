@@ -6,8 +6,11 @@
 #   ./agent-start.sh --answer "1A 2D ... 29B"    grade your quiz answers
 #   ./agent-start.sh --take-over              this session becomes the main manager
 #                                             (only when the human asks; the old one is closed)
-#   ./agent-start.sh --release                the main manager frees its seat (last step of
-#                                             a whole-repo close case); this session is closed
+#   ./agent-start.sh --clean ["carry line" ...]
+#                                             the main manager, after a whole-repo close case: archive
+#                                             agent_state.txt, write a fresh one, keep the seat; then /clear
+#   ./agent-start.sh --release                the main manager frees its seat (the rare other choice,
+#                                             typed by the human); this session is closed
 #
 # Rule: no work until the quiz says PASS.
 #
@@ -76,9 +79,88 @@ drop_human_direct() {
   return 0
 }
 
-# ---- --take-over / --release: the seat moves by hand, only when the human asks
-# (W10, W13). Needs the roots, prints no start output, reads no stdin. ----
-if [ "${1:-}" = "--take-over" ] || [ "${1:-}" = "--release" ]; then
+# clean_session ["<carry line>" ...]: --clean (W13). The main manager archives its
+# agent_state.txt, writes a fresh short one and is told how to clear its own context.
+# The seat stays: the lock and the closed list are never touched. Returns the exit code.
+clean_session() {
+  local mp line name stamp arch day todo todo_n a n k kind handle excl tmp
+  local pat='agent_state.[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9].txt'
+  # only the lock holder; a spawned agent never is, whatever the lock names
+  if [ -n "${AGENT_ROLE:-}" ]; then
+    echo "REFUSED: $AGENT_ROLE is a spawned agent, never the main manager.${lpid:+ The lock holder is pid $lpid.}"; return 1
+  elif [ ! -f "$LOCK" ] || [ "$lpid" != "$ME" ]; then
+    if [ -f "$LOCK" ] && [ -n "$lpid" ]; then
+      echo "REFUSED: only the main manager cleans its session. The lock holder is pid $lpid, this session is pid $ME."
+    else
+      echo "REFUSED: no lock, no main manager to clean (this session is pid $ME)."
+    fi
+    return 1
+  fi
+  # the gate, checked not guessed: what is left running (crons: a script cannot see them)
+  mp=""; [ -f "$PROJECT_GITDIR/agent_monitor.pid" ] && read -r mp _ < "$PROJECT_GITDIR/agent_monitor.pid"
+  n=0
+  case "$mp" in ''|*[!0-9]*) ;; *)
+    if pid_alive "$mp"; then echo "LEFT RUNNING: monitor pid $mp -> $PLUGIN_ROOT/bin/agent-monitor.sh stop"; n=1; fi;;
+  esac
+  if [ -f "$PROJECT_ROOT/agent_worktree.txt" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in *[![:space:]]*) ;; *) continue;; esac
+      echo "LEFT RUNNING: worktree $line -> close its pane, remove the worktree, $PLUGIN_ROOT/bin/agent-file.sh worktree rm \"${line%% | *}\""; n=1
+    done < "$PROJECT_ROOT/agent_worktree.txt"
+  fi
+  [ "$n" = 0 ] || { echo "REFUSED: stop these first, then run --clean again. Nothing changed."; return 1; }
+  # the open tasks: the first field of each agent_todo.txt line
+  todo=""; todo_n=0
+  if [ -f "$PROJECT_ROOT/agent_todo.txt" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in *[![:space:]]*) ;; *) continue;; esac
+      name=${line%% | *}; todo="${todo:+$todo, }$name"; todo_n=$((todo_n+1))
+    done < "$PROJECT_ROOT/agent_todo.txt"
+  fi
+  # the archive, next to the state, same bytes; a taken name waits for the next second
+  arch=none; day=${NOW%% *}
+  if [ -f "$STATE_DIR/agent_state.txt" ]; then
+    stamp=$(date '+%Y-%m-%d-%H%M%S')
+    while [ -e "$STATE_DIR/agent_state.$stamp.txt" ]; do sleep 1; stamp=$(date '+%Y-%m-%d-%H%M%S'); done
+    arch="agent_state.$stamp.txt"; day=${stamp:0:10}
+    mv "$STATE_DIR/agent_state.txt" "$STATE_DIR/$arch" || { echo "REFUSED: could not archive agent_state.txt. Nothing changed."; return 1; }
+  fi
+  # git-ignored without touching a tracked file: the repo's own exclude list (no git: skipped)
+  if git -C "$STATE_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+    excl="$PROJECT_GITDIR/info/exclude"; mkdir -p "$PROJECT_GITDIR/info" 2>/dev/null
+    grep -qxF 'agent_state.*.txt' "$excl" 2>/dev/null || {
+      [ -s "$excl" ] && [ -n "$(tail -c1 "$excl")" ] && echo
+      echo 'agent_state.*.txt'; } >> "$excl"
+  fi
+  # the newest 5 archives stay (names sort by date), the older ones go
+  n=0; for a in "$STATE_DIR"/$pat; do [ -e "$a" ] && n=$((n+1)); done
+  k=$((n-5)); for a in "$STATE_DIR"/$pat; do [ "$k" -gt 0 ] || break; rm -f "$a"; k=$((k-1)); done
+  # the fresh state
+  tmp="$STATE_DIR/agent_state.txt.tmp.$$"
+  {
+    printf 'ROLE: main manager of "%s" (lock: pid %s). Same seat, clean session.\n' "$REPO" "$ME"
+    printf 'DATE: %s\n' "$NOW"
+    printf 'PREVIOUS: case closed %s, archive %s\n' "$day" "$arch"
+    printf 'TODO open (%s): %s\n' "$todo_n" "${todo:-none}"
+    if [ $# -eq 0 ]; then echo "CARRY: none"; else for a in "$@"; do printf 'CARRY: %s\n' "${a//$'\n'/ }"; done; fi
+  } > "$tmp" && mv "$tmp" "$STATE_DIR/agent_state.txt" || { rm -f "$tmp"; echo "REFUSED: could not write agent_state.txt ($STATE_DIR)."; return 1; }
+  # how this session clears itself: orca with a terminal handle -> the exact line, else the human
+  kind=$(. "$PLUGIN_ROOT/bin/agent-runtime.sh" && runtime_kind)
+  handle="${ORCA_TERMINAL_HANDLE:-$lterm}"; handle=${handle//[[:space:]]/_}
+  echo "ARCHIVE: $arch (the 5 newest stay). Fresh agent_state.txt written. The lock is untouched: you stay the main manager."
+  echo "CHECK: run CronList now, it must show none; delete any cron it lists."
+  if [ "$kind" = orca ] && [ -n "$handle" ]; then
+    echo "NEXT, your last action, nothing after it: orca terminal send --terminal $handle --text \"/clear\" --enter"
+  else
+    echo "NEXT: ask the human to type /clear (one word). Nothing after it from you."
+  fi
+  echo "The session is not cleared (nothing was sent, or it did nothing)? Then the human types /clear."
+  return 0
+}
+
+# ---- --take-over / --release / --clean: the seat moves by hand, only when the human
+# asks (W10, W13); --clean keeps it. Needs the roots, prints no start output, reads no stdin. ----
+if [ "${1:-}" = "--take-over" ] || [ "${1:-}" = "--release" ] || [ "${1:-}" = "--clean" ]; then
   roots_read
   if [ ! -f "$PROJECT_ROOT/agent.conf" ]; then
     echo "auto-pipeline: not set up in this repo, run /auto-pipeline:init to enable"; exit 1
@@ -116,6 +198,7 @@ if [ "${1:-}" = "--take-over" ] || [ "${1:-}" = "--release" ]; then
     [ -n "$lpid" ] && echo "Took over from pid $lpid: it is closed now and is told once."
     exit 0
   fi
+  if [ "$1" = "--clean" ]; then shift; clean_session "$@"; exit $?; fi
   # --release: only the lock holder
   if [ ! -f "$LOCK" ] || [ "$lpid" != "$ME" ]; then
     if [ -f "$LOCK" ] && [ -n "$lpid" ]; then

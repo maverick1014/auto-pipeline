@@ -106,6 +106,44 @@ esac
 
 [ "$role" = closed ] && exit 0
 
+# ver_newer <a> <b>: version a is higher than b, compared number by number.
+ver_newer() {
+  local IFS=. i=0 n x y
+  local -a a b
+  a=($1); b=($2)
+  n=${#a[@]}; [ "${#b[@]}" -gt "$n" ] && n=${#b[@]}
+  while [ "$i" -lt "$n" ]; do
+    x=$((10#${a[$i]:-0})); y=$((10#${b[$i]:-0}))
+    [ "$x" -gt "$y" ] && return 0
+    [ "$x" -lt "$y" ] && return 1
+    i=$((i + 1))
+  done
+  return 1
+}
+# is_version <name>: only digits and dots, like 0.14.0.
+is_version() {
+  case "$1" in
+    ""|*[!0-9.]*|.*|*.|*..*) return 1 ;;
+  esac
+  return 0
+}
+# plugin_now <running plugin dir>: the plugin installed now. A running plugin in a
+# folder named like a version -> the highest version folder next to it that has
+# bin/agent-start.sh (a neighbour with another name or without it never wins).
+# Any other folder name -> the plugin itself. bash 3.2: no GNU flags, no assoc arrays.
+plugin_now() {
+  local base name best="" cand
+  base=$(dirname "$1"); name=$(basename "$1")
+  is_version "$name" || { printf '%s' "$1"; return 0; }
+  for cand in "$base"/*/; do
+    cand=${cand%/}
+    [ -f "$cand/bin/agent-start.sh" ] || continue
+    is_version "${cand##*/}" || continue
+    if [ -z "$best" ] || ver_newer "${cand##*/}" "${best##*/}"; then best="$cand"; fi
+  done 2>/dev/null
+  printf '%s' "${best:-$1}"
+}
+
 IGNORE_LINE="Only a mention of the words (a brief, a question)? Ignore this. The upper decision on your report (finish first, close now)? Follow it."
 
 case "$role" in
@@ -133,8 +171,8 @@ case "$role" in
       printf 'CLOSE CASE report: %s. You are the main manager (PRINCIPLES.md W13).\nOnly a mention of the words? Ignore this.\nfinished -> the normal path: /auto-pipeline:merge (browser E2E, merge deputy, cleanup).\nunfinished -> review it against the requirement, then decide:\n  finish first -> tell it to go on to DONE, then /auto-pipeline:merge\n  close now -> /auto-pipeline:close-case: branch stays pushed, todo line stays open with the next steps, pane closed, worktree removed\nLog the decision in agent_state.txt. Human away -> decide by the requirement doc and mark it "owner not seen".\n' \
         "$parts"
     else
-      printf 'CLOSE CASE: you are the main manager. From the human this means the whole repo wraps up (PRINCIPLES.md W13).\nOnly a mention of the words? Ignore this.\nOtherwise run /auto-pipeline:close-case: send "close case" to every live task manager and human-direct session in agent_worktree.txt, collect every CLOSE CASE report, decide each, merge what passes, close all panes and worktrees, stop the crons and monitors you started, update the agent files. Then one final table to the human: task, result, what changed, what is left, decisions taken for the human. Nothing dropped.\nLast step: end the final table with this line for the human to type in this session (frees the main manager seat); never run it yourself:\n! %s/bin/agent-start.sh --release\n' \
-        "$PLUGIN_ROOT"
+      printf 'CLOSE CASE: you are the main manager. From the human this means the whole repo wraps up (PRINCIPLES.md W13).\nOnly a mention of the words? Ignore this.\nOtherwise run /auto-pipeline:close-case: send "close case" to every live task manager and human-direct session in agent_worktree.txt, collect every CLOSE CASE report, decide each, merge what passes, close all panes and worktrees, stop the crons and monitors you started, update the agent files. Then one final table to the human: task, result, what changed, what is left, decisions taken for the human. Nothing dropped.\nThen ask the human, in his language, one short question: clean this session for the next round, yes or no? No, or no answer: nothing changes.\nYes: run agent-start.sh --clean (skill step 7), then /clear. You stay the main manager.\nOther choice, rare (this session stops being main manager): the human types this line; never run it yourself:\n! %s/bin/agent-start.sh --release\n' \
+        "$(plugin_now "$PLUGIN_ROOT")"
     fi
     ;;
 esac
