@@ -563,7 +563,9 @@ if hosts:
 ' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$TALK_FILE" "$START_FILE"
 }
 
-# The last status line: "NOT SHOWN IN THE CLOUD: <name>, <name> (not joined)",
+# This status line comes right after the cloud lines (CLOUD, CLOUD TALK, CLOUD START)
+# and before LOGIN START, which stays the last status line:
+# "NOT SHOWN IN THE CLOUD: <name>, <name> (not joined)",
 # the repos with a live session that the cloud page does not show. Only when the
 # city server runs, the cloud marker names a relay host and the server's /health
 # answers within 2 s with a "not_joined" list holding at least one usable name (a

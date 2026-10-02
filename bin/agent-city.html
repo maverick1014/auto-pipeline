@@ -350,6 +350,9 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .stage-top .machines .lead{background:var(--panel);border:1.5px solid var(--line);border-radius:999px;padding:8px 10px;color:var(--ink-2);box-shadow:0 2px 0 rgba(42,43,69,.18)}
 .stage.rail-folded .stage-top{left:42px}
 .stage.rail-none .stage-top{left:12px}
+/* cloud-polish: the connection chip sits under the strip, so it starts where the strip starts */
+.stage.rail-folded .proto{left:42px}
+.stage.rail-none .proto{left:12px}
 .stage.win-open .stage-top{right:calc(var(--msg-w) + 78px)}
 .stage.win-tab-open .stage-top{right:106px}
 .repo{all:unset;cursor:pointer;flex:none;display:inline-flex;align-items:center;gap:7px;padding:5px 12px 5px 8px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font:600 13px/1.2 var(--round);color:var(--ink-2);white-space:nowrap}
@@ -408,13 +411,15 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
   .stage.rail-folded .stage-top,.stage.win-open .stage-top,.stage.win-tab-open .stage-top{left:38px;right:58px}
   .stage.rail-none .stage-top{left:8px}
   .proto{left:38px}
+  .stage.rail-folded .proto{left:38px}
+  .stage.rail-none .proto{left:8px}
   .bar{flex-wrap:wrap;gap:8px 10px}
   .stats{order:9;flex:1 1 100%;margin-left:0;justify-content:flex-start}
   .acct,#logbtn{margin-left:auto}
   .acct~#logbtn,#logbtn~.acct{margin-left:0}
   .add-i{width:28px;height:28px;font-size:17px}
   .rail{left:0;top:0;bottom:0;max-height:none;width:min(250px,78%);border-left:0;border-radius:0 16px 16px 0}
-  .stage.drawer-open .win,.stage.drawer-open .ask-panel{visibility:hidden}
+  .stage.drawer-open .win,.stage.drawer-open .ask-panel,.stage.drawer-open .follow{visibility:hidden}
   .ask-panel{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:72%}
   /* V1 (city-ux2 v2): the message panel is a bottom sheet on a phone; its folded tab sits centred at
      the bottom edge, horizontal (the rail's own tab stays vertical, on the left edge). */
@@ -441,6 +446,9 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .cloud-page .stage-col.no-bar{--stage-off:82px}
 .cloud-locked .stage>:not(#cloud-notice),.cloud-locked #stats,.cloud-locked .repos,.cloud-locked #logbtn{visibility:hidden}
 .ro{display:inline-flex;align-items:center;padding:6px 11px;border-radius:999px;background:var(--butter);color:#4A3500;font:700 12px/1 var(--display)}
+/* cloud-polish: a narrow phone keeps 动态 and the account on the title row; the machine's own chip on the map says 只能看
+   (this block comes after the .ro rule above, so the same-specificity .ro{display:none} wins) */
+@media (max-width: 520px){ .ro{display:none} .sign-name{font-size:20px} }
 .acct{display:inline-flex;align-items:center;gap:8px;font:600 12.5px/1 var(--round);color:var(--ink-2)}
 .acct .who{display:inline-flex;flex-direction:row;align-items:center;white-space:nowrap;gap:6px;padding:6px 11px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel)}
 .acct .who i{width:8px;height:8px;border-radius:50%;background:#2FA56F}
