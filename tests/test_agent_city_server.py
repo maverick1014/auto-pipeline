@@ -444,8 +444,9 @@ class TestBudget(ServerCase):
         self.assertLess(size, 4096 + 30 * 200)
         # token: the per-start control token (tests/test_agent_city_interact.py)
         # roster.json: the live sessions, for a restart (tests/test_agent_city_roster.py)
+        # history.jsonl: each person's history lines (city-data, tests/test_agent_city_data.py)
         self.assertLessEqual(set(os.listdir(self.dir)),
-                             {"on", "token", "events.jsonl", "events.jsonl.1", "roster.json"})
+                             {"on", "token", "events.jsonl", "events.jsonl.1", "roster.json", "history.jsonl"})
 
     def test_memory_stays_small(self):
         if not os.path.exists("/proc/self/status"):
