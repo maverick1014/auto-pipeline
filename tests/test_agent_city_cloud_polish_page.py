@@ -53,6 +53,17 @@ C1  THE ACCOUNT CHIP IS ONE LINE (owner, with the mock yes): the green dot and t
     .acct .who: flex-direction:row, align-items:center, white-space:nowrap: the chip is as low as the
     other header chips.
 
+E   FOUND ON THE REAL PAGES (headless, 2026-10-02: the local city and the cloud page on the dev runner):
+    E1 the connection chip (.proto) sits under the strip, so it starts where the strip starts:
+       .stage.rail-folded .proto{left:42px}, .stage.rail-none .proto{left:12px}; phone (first 960 block):
+       .stage.rail-folded .proto{left:38px}, .stage.rail-none .proto{left:8px}.
+    E2 a narrow phone with a view-only machine: the header's 只能看 chip pushed the account onto a row of
+       its own (three header rows). In a block @media (max-width: 520px): .ro{display:none} (the machine's
+       own chip on the map says 只能看, and so does the window) and .sign-name{font-size:20px} (the title
+       row then holds 动态 and the account on a 375 px phone too).
+    E3 phone, the rail drawer open: the "跟随" chip, now under the strip, lay over a row of the drawer:
+       .stage.drawer-open .follow{visibility:hidden} (first 960 block; following goes on).
+
 Q5  the small + (phone): inside the first @media (max-width: 960px) block .add-i is 28 x 28 px (a finger).
     Its markup and states: tests/test_agent_city_add_agent_page.py (A2) and
     tests/test_agent_city_cloud_start_page.py.
@@ -78,6 +89,23 @@ def body_html():
     text = page()
     start = text.index("<body>")
     return text[start:text.index("<script", start)]
+
+
+def media_block(query):
+    """The first @media block of the page's CSS with exactly this query, e.g. "(max-width: 520px)"."""
+    c = css()
+    i = c.find("@media " + query)
+    if i < 0:
+        return ""
+    depth = 0
+    for j in range(c.index("{", i), len(c)):
+        if c[j] == "{":
+            depth += 1
+        elif c[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return c[i:j + 1]
+    return ""
 
 
 def flat(decls):
@@ -199,6 +227,24 @@ class TestStripScript(unittest.TestCase):
         self.assertRegex(script, r"new ResizeObserver\([^\n]{0,80}?\)\.observe\(\s*(?:\$\('#stage-top'\)|stageTop)\b",
                          "a ResizeObserver on the strip (stageTop = $('#stage-top')) keeps --top-h")
         self.assertRegex(script, r"classList\.toggle\('more',", "and the fade class of each row")
+
+
+class TestFoundOnTheRealPages(unittest.TestCase):
+    def test_the_connection_chip_starts_where_the_strip_starts(self):
+        self.assertIn("left:42px", flat(rule(".stage.rail-folded .proto")))
+        self.assertIn("left:12px", flat(rule(".stage.rail-none .proto")))
+        m = media_960()
+        self.assertIn("left:38px", flat(rule(".stage.rail-folded .proto", m)))
+        self.assertIn("left:8px", flat(rule(".stage.rail-none .proto", m)))
+
+    def test_a_narrow_phone_keeps_the_account_on_the_title_row(self):
+        block = media_block("(max-width: 520px)")
+        self.assertTrue(block, "no @media (max-width: 520px) block")
+        self.assertIn("display:none", flat(rule(".ro", block)), "the machine's own chip says 只能看")
+        self.assertIn("font-size:20px", flat(rule(".sign-name", block)))
+
+    def test_the_follow_chip_is_not_over_the_open_drawer(self):
+        self.assertIn("visibility:hidden", flat(rule(".stage.drawer-open .follow", media_960())))
 
 
 class TestAccountChip(unittest.TestCase):
