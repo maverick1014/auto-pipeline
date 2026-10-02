@@ -1,2 +1,0 @@
-/Users/maverick/orca/workspaces/auto-pipeline/city-ask-panel | city-ask-panel (TM: auto-pipeline Helper, human-direct) | working | since 2026-10-02 10:07
-/Users/maverick/auto-pipeline | task manager, human-direct | task: (ask the human) | since 2026-10-02 10:11
