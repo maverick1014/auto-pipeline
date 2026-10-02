@@ -31,9 +31,19 @@ Q1  THE TWO ROWS SIT ON THE STAGE (owner: "this part should be on the screen, I 
     The chips get their own small shadow over the map: .stage-top .repo and .stage-top .mc (box-shadow).
     What sat at the top middle of the map goes under the strip: .proto, .follow -> top:calc(18px +
       var(--top-h,34px)); .cloud-banner -> top:calc(20px + var(--top-h,34px)). None keeps top:12px/14px.
-    The stage gets the freed height: .stage height calc(100dvh - var(--stage-off,102px)) (was 150);
-      .stage-col.no-bar --stage-off:37px (was 85); .cloud-page .stage-col.no-bar --stage-off:82px (was
-      130); the rule .cloud-row .stage-col.no-bar is gone (the machine row takes no header height).
+    The stage gets the freed height, and the page FITS THE WINDOW (bounce 1, main manager's E2E, 2026-10-02:
+      at 1440 x 900 the page was 969 px high, the stage and an open person window ran 69 px under the
+      screen and the reply box was cut; the old "100dvh minus a fixed number" never counted the bottom
+      padding nor what sits under the stage, before this task too). No fixed number any more: the stage
+      takes what is left of the window, at every width, the way the phone layout already did:
+        .app keeps min-height:100dvh; .layout keeps flex:1;min-height:0;
+        .stage-col{...;flex:1;min-height:0}
+        .stage{...;flex:1 1 0;min-height:460px}   no height, no 100dvh, no calc
+        .stage canvas{...;position:absolute;inset:0}
+      --stage-off is gone from the page (the rules .stage-col.no-bar{--stage-off}, .cloud-page
+      .stage-col.no-bar{--stage-off} and .cloud-row .stage-col.no-bar are removed; the script may keep the
+      class no-bar). The phone block keeps .stage{min-height:340px}. Seen in a browser by the task manager:
+      no page scroll at 1440 x 900 and 1280 x 720 on both pages, an open window's reply box fully on screen.
     The header is one row: .bar flex-wrap:nowrap; .stats flex-wrap:nowrap, min-width:0, overflow-x:auto.
   CSS, phone (inside the FIRST @media (max-width: 960px) block):
     .stage-top{top:8px;left:38px;right:58px} in every state (the rail tab is at the left edge, the camera
@@ -111,6 +121,16 @@ def media_block(query):
     return ""
 
 
+def decl(sel, text=None):
+    """{property: value} of the rule(s) with exactly this selector, spaces removed."""
+    out = {}
+    for part in (rule(sel, text) or "").split(";"):
+        if ":" in part:
+            k, v = part.split(":", 1)
+            out[k.strip()] = re.sub(r"\s+", "", v)
+    return out
+
+
 def flat(decls):
     return re.sub(r"\s+", "", decls or "")
 
@@ -176,11 +196,27 @@ class TestStripCss(unittest.TestCase):
         self.assertIn("top:calc(20px+var(--top-h,34px))", banner)
         self.assertNotIn("top:14px", banner)
 
-    def test_the_stage_gets_the_freed_height(self):
-        self.assertIn("height:calc(100dvh-var(--stage-off,102px))", flat(rule(".stage")), "150 minus the repo row's 48")
-        self.assertIn("--stage-off:37px", flat(rule(".stage-col.no-bar")), "85 minus 48")
-        self.assertIn("--stage-off:82px", flat(rule(".cloud-page .stage-col.no-bar")), "130 minus 48")
-        self.assertEqual(rule(".cloud-row .stage-col.no-bar").strip(), "", "the machine row takes no header height any more")
+    def test_the_stage_takes_what_is_left_of_the_window(self):
+        """Bounce 1: no fixed "100dvh minus a number"; the stage fills the rest, so the page never scrolls."""
+        stage = decl(".stage")
+        self.assertEqual(stage.get("flex"), "110", "flex:1 1 0")
+        self.assertEqual(stage.get("min-height"), "460px")
+        self.assertNotIn("height", stage, "no fixed height")
+        self.assertNotIn("100dvh", rule(".stage"))
+        col = decl(".stage-col")
+        self.assertEqual(col.get("flex"), "1")
+        self.assertEqual(col.get("min-height"), "0")
+        layout = decl(".layout")
+        self.assertEqual((layout.get("flex"), layout.get("min-height")), ("1", "0"))
+        self.assertEqual(decl(".app").get("min-height"), "100dvh")
+        canvas = decl(".stage canvas")
+        self.assertEqual((canvas.get("position"), canvas.get("inset")), ("absolute", "0"),
+                         "the canvas fills a stage whose height comes from the flex row")
+        self.assertNotIn("--stage-off", page(), "no magic offset left anywhere")
+        self.assertEqual(rule(".cloud-row .stage-col.no-bar").strip(), "")
+
+    def test_phone_keeps_its_own_minimum(self):
+        self.assertEqual(decl(".stage", media_960()).get("min-height"), "340px")
 
     def test_the_header_is_one_row(self):
         self.assertIn("flex-wrap:nowrap", flat(rule(".bar")))
