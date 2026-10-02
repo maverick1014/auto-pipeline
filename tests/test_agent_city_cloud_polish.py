@@ -56,7 +56,8 @@ Q4  `agent-city status` SAYS WHICH REPOS THE CLOUD DOES NOT SHOW (only repos joi
       governor or a session citizen) and whose repo folder (repo_folder(identity)) has no join file that
       agent_city_relay.read_join() accepts (<folder>/.secrets/agent-city-relay). Names only: never a path.
   bin/agent-city.sh status
-    One more line, the LAST one, only when all three hold: the city server runs (DIR/on), the cloud marker
+    One more line, right after the cloud lines (CLOUD, CLOUD TALK, CLOUD START) and before the LOGIN START
+    line (city-login-start: that one stays the last line of status), only when all three hold: the city server runs (DIR/on), the cloud marker
     (<AGENT_CITY_HOME>/cloud) names at least one relay host, and /health's "not_joined" is a list with at
     least one name:
         NOT SHOWN IN THE CLOUD: v4-plus, v4-pospro (not joined)
@@ -473,7 +474,8 @@ class TestStatusLine(ScriptCase):
         self.cloud_on()
         lines = self.status()
         self.assertEqual(self.hidden(lines), [LINE + "v4-plus, v4-pospro (not joined)"])
-        self.assertEqual(lines[-1], LINE + "v4-plus, v4-pospro (not joined)", "the last line")
+        self.assertEqual(lines[-2], LINE + "v4-plus, v4-pospro (not joined)", "after the cloud lines")
+        self.assertTrue(lines[-1].startswith("LOGIN START: "), "LOGIN START stays the last line (city-login-start)")
         self.assertTrue(lines[0].startswith("CITY: running"), lines)
 
     def test_one_repo(self):
