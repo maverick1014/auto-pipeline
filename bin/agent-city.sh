@@ -176,8 +176,9 @@
 # no python3, orca or claude, and a versioned entry goes stale), plus AGENT_CITY_HOME,
 # AGENT_CITY_DIR, AGENT_CITY_PORT each only when set; no KeepAlive, no StartInterval:
 # the server's own idle rule stays. Then `launchctl bootout` (quiet, not loaded is
-# fine) and `launchctl bootstrap gui/<uid>`; a bootstrap that fails removes the plist
-# and the launcher again (exit 1). launchctl and uname are found on PATH. `off` needs
+# fine) and `launchctl bootstrap gui/<uid>`; a bootstrap that fails is tried again, at
+# most 3 times, 1 s apart: the old copy can still be going away; when all 3 fail it
+# removes the plist and the launcher again (exit 1). launchctl and uname are found on PATH. `off` needs
 # no terminal: bootout, then the plist and the launcher go, nothing else.
 # `run` is what the login item runs (not in the help; a login has no folder, and
 # autostart does nothing outside a repo): in the foreground, prints nothing, always
@@ -1503,13 +1504,22 @@ PY
     exit 1
   fi
 
-  # unload an older copy first (failing is normal: it was not loaded), then load
+  # unload an older copy first (failing is normal: it was not loaded), then load.
+  # A bootstrap right after a bootout can fail while the old copy is still going
+  # away: try again, at most 3 tries in all, 1 s apart (no sleep after the last).
   uid=$(id -u)
   launchctl bootout "gui/$uid/$LOGIN_LABEL" >/dev/null 2>&1 || true
-  if launchctl bootstrap "gui/$uid" "$LOGIN_PLIST" >/dev/null 2>&1; then
-    echo "LOGIN START: on"
-    return 0
-  fi
+  try=1
+  while [ "$try" -le 3 ]; do
+    if launchctl bootstrap "gui/$uid" "$LOGIN_PLIST" >/dev/null 2>&1; then
+      echo "LOGIN START: on"
+      return 0
+    fi
+    if [ "$try" -lt 3 ]; then
+      sleep 1
+    fi
+    try=$((try + 1))
+  done
   rm -f "$LOGIN_PLIST" "$LOGIN_LAUNCHER" 2>/dev/null || true
   echo "LOGIN START: launchctl would not load the login item; nothing was left in place" >&2
   exit 1
