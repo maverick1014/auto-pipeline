@@ -70,10 +70,10 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .stat.refused{border-color:var(--ask-ink);background:var(--ask-bg);color:var(--ask-ink)}
 
 .layout{display:flex;flex-direction:column;gap:14px;flex:1;min-height:0}
-.stage-col{display:flex;flex-direction:column;gap:10px;min-width:0}
-.stage-col.no-bar{--stage-off:37px}
-.stage{position:relative;overflow:hidden;height:calc(100dvh - var(--stage-off,102px));min-height:460px;--rail-w:212px;--msg-w:380px}
-.stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+/* cloud-polish: the stage fills what is left of the window (no fixed offset: the page never scrolls on a computer, an open window's reply box stays on screen) */
+.stage-col{display:flex;flex-direction:column;gap:10px;min-width:0;flex:1;min-height:0}
+.stage{position:relative;overflow:hidden;flex:1 1 0;min-height:460px;--rail-w:212px;--msg-w:380px}
+.stage canvas{display:block;position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:grab}
 .stage canvas.grabbing{cursor:grabbing}
 .proto{position:absolute;top:calc(18px + var(--top-h,34px));left:calc(var(--rail-w) + 24px);z-index:3;background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px;box-shadow:0 2px 0 rgba(42,43,69,.18);pointer-events:none}
 .cam{position:absolute;top:12px;right:12px;z-index:3;display:flex;flex-direction:column;gap:6px;transition:right .2s}
@@ -402,9 +402,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .md th{background:var(--panel)}
 
 @media (max-width: 960px){
-  .stage-col{flex:1}
-  .stage{flex:1 1 0;height:auto;min-height:340px}
-  .stage canvas{position:absolute;inset:0}
+  .stage{min-height:340px}
   /* cloud-polish Q1 / Q5 (phone): the strip is a thin line between the rail tab (left) and the camera buttons (right), in
      every state (a window is a bottom sheet); the header title row keeps the account, the counters get a line of their own;
      the connection chip keeps its line under the follow chip */
@@ -444,7 +442,6 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .cloud-page .qm{pointer-events:none!important;cursor:default}
 .cloud-page .qm span{background:#8D91B3;animation:none}
 .cloud-page .win[data-cloud-note]::after{content:attr(data-cloud-note);flex:none;border:1.5px dashed var(--line);border-radius:12px;padding:8px 10px;color:var(--ink-3);font:600 12px/1.4 var(--round);text-align:center}
-.cloud-page .stage-col.no-bar{--stage-off:82px}
 .cloud-locked .stage>:not(#cloud-notice),.cloud-locked #stats,.cloud-locked .repos,.cloud-locked #logbtn{visibility:hidden}
 .ro{display:inline-flex;align-items:center;padding:6px 11px;border-radius:999px;background:var(--butter);color:#4A3500;font:700 12px/1 var(--display)}
 /* cloud-polish: a narrow phone keeps 动态 and the account on the title row; the machine's own chip on the map says 只能看
