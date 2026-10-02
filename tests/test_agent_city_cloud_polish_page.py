@@ -196,8 +196,8 @@ class TestStripScript(unittest.TestCase):
     def test_top_h_follows_the_strip(self):
         script = inline_script()
         self.assertRegex(script, r"setProperty\('--top-h',")
-        self.assertRegex(script, r"new ResizeObserver\([^)]*\)\.observe\(\s*(?:\$\('#stage-top'\)|stageTop|strip)\b",
-                         "a ResizeObserver on the strip keeps --top-h")
+        self.assertRegex(script, r"new ResizeObserver\([^\n]{0,80}?\)\.observe\(\s*(?:\$\('#stage-top'\)|stageTop)\b",
+                         "a ResizeObserver on the strip (stageTop = $('#stage-top')) keeps --top-h")
         self.assertRegex(script, r"classList\.toggle\('more',", "and the fade class of each row")
 
 
