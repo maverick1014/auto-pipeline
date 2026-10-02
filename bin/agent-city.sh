@@ -405,11 +405,13 @@ do_status() {
     cloud_lines_outside || true
     talk_lines_outside || true
     start_lines_outside || true
+    not_shown_line || true
   else
     team_line
     cloud_line || true
     talk_line || true
     start_line || true
+    not_shown_line || true
   fi
   login_line
   return 0
@@ -559,6 +561,37 @@ if hosts:
     else:
         print("CLOUD START: off")
 ' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$TALK_FILE" "$START_FILE"
+}
+
+# The last status line: "NOT SHOWN IN THE CLOUD: <name>, <name> (not joined)",
+# the repos with a live session that the cloud page does not show. Only when the
+# city server runs, the cloud marker names a relay host and the server's /health
+# answers within 2 s with a "not_joined" list holding at least one usable name (a
+# non-empty string with no "/" in it: never a path). Anything else: no line.
+not_shown_line() {
+  found=$(read_on) || found=""
+  [ -n "$found" ] || return 0
+  python3 -c '
+import json
+import sys
+sys.path.insert(0, sys.argv[1])
+from urllib.request import ProxyHandler, build_opener
+
+try:
+    import agent_city_relay as rl
+    if rl.read_cloud(sys.argv[2]):
+        opener = build_opener(ProxyHandler({}))
+        with opener.open("http://127.0.0.1:%s/health" % sys.argv[3], timeout=2) as reply:
+            body = json.loads(reply.read(1000000).decode("utf-8"))
+        listed = body.get("not_joined") if isinstance(body, dict) else None
+        if isinstance(listed, list):
+            names = [n for n in listed if isinstance(n, str) and n != "" and "/" not in n]
+            if names:
+                print("NOT SHOWN IN THE CLOUD: " + ", ".join(names) + " (not joined)")
+except Exception:
+    pass
+' "$PLUGIN_ROOT/bin" "$CLOUD_FILE" "$(printf '%s' "$found" | awk '{print $2}')" 2>/dev/null
+  return 0
 }
 
 # autostart (requirements/city.md, "Cloud page"): the SessionStart hook's verb.

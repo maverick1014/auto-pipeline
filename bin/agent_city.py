@@ -1636,12 +1636,22 @@ class _CloudTaps:
     def cloud_counts(self, terrs):
         """{"people", "wait", "busy"} of the people in the territories TERRS,
         from the Reducers' own snapshot (the one reducer): wait = waiting or
-        stuck; busy = not done, not waiting, not stuck, status ""."""
+        stuck; busy = not done, not waiting, not stuck, status "". A governor
+        is a session too: the seated one (gov_sid is not None) of each of those
+        territories counts as a person, as waiting when its state is "waiting"
+        and as busy when "busy" ("idle" and "background": a person only). One
+        seen in a past run and not seated now ("unknown") is not counted."""
         people = wait = busy = 0
         with self.lock:
             for identity, reducer in self.reducers.items():
                 if self._terr_for(identity) not in terrs:
                     continue
+                if reducer.gov_sid is not None:
+                    people += 1
+                    if reducer.gov_state == "waiting":
+                        wait += 1
+                    elif reducer.gov_state == "busy":
+                        busy += 1
                 for a in reducer.snapshot()["agents"]:
                     people += 1
                     waiting = bool(a["waiting"] or a["stuck"])
@@ -2759,6 +2769,7 @@ class CityState(_CloudTaps):
         self.resources_fn = resources_fn if resources_fn is not None else machine_resources   # folder -> {"ram", "cpu", "max", "ok"}
         self.city_dir = city_dir  # None: the default city dir; else this city's own dir, passed on to the session it opens (agent_command)
         self._adding = {}         # identity -> {"terr", "name", "role", "at" (monotonic), "pending", "seen", "before"}: an open under way
+        self._added_names = {}    # sid -> (identity, name) of a session this city opened that showed up: it holds that name while it lives, bounded (SID_REPO_KEEP)
 
         # -- world: territories, growth, town plans, persistence ----------
         self.plans = plans if plans is not None else load_plans()
@@ -3002,8 +3013,14 @@ class CityState(_CloudTaps):
         self.idle_since = time.monotonic()
 
     def health(self):
+        """The server's /health. "not_joined": the names (as the world view
+        names the territory), sorted, each once, of every territory with a live
+        session now (its Reducer has a session: a seated governor or a session
+        citizen) whose repo folder has no join file the relay accepts
+        (<folder>/.secrets/agent-city-relay). Names only, never a path; the
+        join files are read after the lock is let go, and never raise."""
         with self.lock:
-            return {
+            out = {
                 "ok": True,
                 "lines": self.lines,
                 "agents": sum(len(r.agents) for r in self.reducers.values()),
@@ -3012,6 +3029,33 @@ class CityState(_CloudTaps):
                 "gov_wait_sec": self.gov_wait_sec,
                 "governors": self._fresh_governor_count(),
             }
+            live = []
+            for identity, reducer in self.reducers.items():
+                if isinstance(identity, str) and reducer.sessions:
+                    territory = self.world["territories"].get(identity)
+                    name = territory.get("name") if isinstance(territory, dict) else None
+                    live.append((identity, name if isinstance(name, str) and name else repo_name(identity)))
+        out["not_joined"] = self._not_joined(live)
+        return out
+
+    @staticmethod
+    def _not_joined(live):
+        """LIVE: (identity, name) of the territories with a live session. The
+        sorted names, each once, of those whose repo folder has no join file
+        read_join() accepts. Any trouble with one repo leaves that repo out."""
+        names = set()
+        try:
+            relay = _cloud_relay()
+        except Exception:
+            return []
+        for identity, name in live:
+            try:
+                path = os.path.join(repo_folder(identity), relay._JOIN_FOLDER, relay._JOIN_NAME)
+                if relay.read_join(path) is None:
+                    names.add(name)
+            except Exception:
+                pass
+        return sorted(names)
 
     def _fresh_governor_count(self):
         """Caller holds self.lock. Repos with a governor seen in the last
@@ -3127,7 +3171,12 @@ class CityState(_CloudTaps):
         page's add-agent button) -> (code, body); NOW is monotonic seconds. The
         folder, name and role are the server's own: the request names only a
         territory id. The role comes from the repo's lock (_main): no live main
-        manager -> "main", else "helper". Order: 400 bad, 404 unknown, 409
+        manager -> "main", else "helper". The name: "main" is "<repo> Manager"
+        always; "helper" is the first free one of "<repo> Helper", "<repo> Helper
+        2", "<repo> Helper 3", ... -- taken is a live session citizen of that
+        repo's territory with exactly that label, or a live session this city
+        opened under that name (see _helper_name_locked); an ended session frees
+        its name; another repo's sessions never count. Order: 400 bad, 404 unknown, 409
         gone, 409 busy, kind (not orca: 200 "plain" with the line to run by
         hand), the cap (over it, and not FORCE: 200 "cap"), the opener (no or
         raises: 502), then 200 "opening". One open at a time per repo: the repo
@@ -3152,8 +3201,8 @@ class CityState(_CloudTaps):
             if identity in self._adding:
                 return 409, {"error": "busy"}
             role = "main" if self._main(identity) is None else "helper"
-            name = "%s %s" % (os.path.basename(folder.rstrip("/")) or repo_name(identity),
-                              "Manager" if role == "main" else "Helper")
+            base = os.path.basename(folder.rstrip("/")) or repo_name(identity)
+            name = base + " Manager" if role == "main" else self._helper_name_locked(identity, base)
             self._adding[identity] = {"terr": terr, "name": name, "role": role, "at": now,
                                       "pending": True, "seen": False,
                                       "before": self._sids_in_locked(identity)}
@@ -3201,6 +3250,25 @@ class CityState(_CloudTaps):
                 with self.lock:
                     self._adding.pop(identity, None)
 
+    def _helper_name_locked(self, identity, base):
+        """Caller holds self.lock. The first free name of "<BASE> Helper",
+        "<BASE> Helper 2", "<BASE> Helper 3", ... in IDENTITY's territory. Taken:
+        a live session citizen's label is exactly that name, or a session this
+        city opened under it (_added_names) is still in the Reducer's sessions
+        (whatever its label says: its title may not have been read yet)."""
+        taken = set()
+        reducer = self.reducers.get(identity)
+        if reducer is not None:
+            taken.update(a["label"] for a in reducer.agents.values()
+                         if a["kind"] == "session" and not a["done"])
+            taken.update(held for sid, (repo, held) in self._added_names.items()
+                         if repo == identity and sid in reducer.sessions)
+        name, n = base + " Helper", 1
+        while name in taken:
+            n += 1
+            name = "%s Helper %d" % (base, n)
+        return name
+
     def sweep_adding(self, now):
         """An open whose new session has not shown up ADD_WAIT_SEC after the
         click is let go, and the pages are told once ("late"). The server calls
@@ -3231,7 +3299,8 @@ class CityState(_CloudTaps):
         SessionEnd) of IDENTITY from a session with no line in it before the
         open began is the new session: the repo is free and the pages are told
         ("done"). While the opener still runs it is only noted: add_agent
-        tells "opening", then "done", when the opener answers."""
+        tells "opening", then "done", when the opener answers. The new session's
+        sid is remembered with the name it was opened under (_added_names)."""
         entry = self._adding.get(identity)
         if entry is None:
             return
@@ -3239,6 +3308,10 @@ class CityState(_CloudTaps):
         if (not isinstance(sid, str) or sid == "" or (isinstance(aid, str) and aid != "")
                 or not isinstance(ev, str) or ev in ("", "SessionEnd") or sid in entry["before"]):
             return
+        self._added_names.pop(sid, None)
+        self._added_names[sid] = (identity, entry["name"])      # the new session holds the name it was opened under
+        while len(self._added_names) > SID_REPO_KEEP:
+            del self._added_names[next(iter(self._added_names))]
         if entry["pending"]:
             entry["seen"] = True
             return
@@ -3437,6 +3510,7 @@ class CityState(_CloudTaps):
                 and not (isinstance(aid_field, str) and aid_field)):
             self._sid_repo.pop(sid_field, None)
             self._sess.pop(sid_field, None)
+            self._added_names.pop(sid_field, None)
 
         if is_session_line:
             self._save_roster_locked()
