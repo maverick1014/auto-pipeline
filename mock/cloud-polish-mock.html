@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City · 头部一行 + 小加号 · mock</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --berry:#FF7593; --butter:#FFD36E; --focus:#4D7CFE;
+  --ok:#1E8657; --ok-bg:#DDF5E9; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+    --line:#2D3360; --focus:#8FB0FF; --ok:#5FD39C; --ok-bg:#173A2C; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.mock{max-width:1560px;margin-inline:auto;padding:14px 16px 28px;display:flex;flex-direction:column;gap:12px}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.sign{display:inline-flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:6px 16px;box-shadow:0 3px 0 var(--ink)}
+.sign b{font:700 21px/1.15 var(--display)}
+.sign small{font:600 10.5px/1.3 var(--mono);color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase}
+.pill{background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:8px}
+.tabs button,.seg button{all:unset;cursor:pointer;padding:8px 14px;border-radius:12px;font:600 13.5px/1 var(--round);color:var(--ink-2);background:var(--panel-2)}
+.tabs button[aria-selected="true"],.seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+.tabs button:focus-visible,.seg button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.seg{display:inline-flex;gap:6px;background:var(--panel);border:1.5px solid var(--line);border-radius:16px;padding:6px}
+.note{background:var(--panel);border:1.5px solid var(--line);border-radius:14px;padding:10px 14px;color:var(--ink-2)}
+.note b{color:var(--ink)}
+.note .en{display:block;color:var(--ink-3);font-size:12.5px}
+.screen{display:grid;gap:14px}
+.screen.side{grid-template-columns:minmax(0,1fr) 320px;align-items:start}
+.screen.pair{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+.screen.phones{grid-template-columns:repeat(auto-fit,minmax(400px,1fr));align-items:start}
+@media (max-width: 1100px){ .screen.side{grid-template-columns:1fr} }
+@media (max-width: 760px){ .screen.pair{grid-template-columns:1fr} }
+.col{display:flex;flex-direction:column;gap:8px;min-width:0}
+.cap{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font:700 14px/1.3 var(--display)}
+.cap .tag{font:700 11.5px/1 var(--round);padding:5px 9px;border-radius:999px;background:var(--panel-2);border:1.5px solid var(--line);color:var(--ink-2)}
+.cap .tag.new{background:var(--ok-bg);border-color:transparent;color:var(--ok)}
+.num{font:600 12.5px/1.5 var(--mono);color:var(--ink-2)}
+.num b{color:var(--ink)}
+.num .gain{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;background:var(--ok-bg);color:var(--ok);font:700 12px/1.6 var(--round)}
+.frame{border:2px solid var(--ink);border-radius:18px;overflow:hidden;background:var(--panel);box-shadow:0 5px 0 rgba(42,43,69,.2)}
+.frame .url{display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--panel-2);border-bottom:1.5px solid var(--line);font:600 12px/1 var(--mono);color:var(--ink-2)}
+.frame .url i{width:9px;height:9px;border-radius:50%;background:var(--line);flex:none}
+.frame .url span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.frame iframe{display:block;width:100%;height:727px;border:0;background:var(--paper)}
+/* a whole 1280 x 727 window, made smaller to fit its column (the page inside still thinks it is 1280 wide) */
+.shrink{position:relative;overflow:hidden}
+.shrink iframe{position:absolute;left:0;top:0;width:1280px;height:727px;transform-origin:0 0}
+.phone-wrap{display:flex;flex-direction:column;align-items:center;gap:8px}
+.phone{width:394px;border:2px solid var(--ink);border-radius:38px;padding:10px 0 12px;background:var(--ink);box-shadow:0 6px 0 rgba(42,43,69,.25)}
+.phone .notch{width:110px;height:6px;border-radius:6px;background:#6b6f93;margin:2px auto 9px}
+.phone .glass{width:390px;height:760px;margin-inline:auto;border-radius:26px;overflow:hidden;background:#D5D8E6;display:flex;flex-direction:column}
+.phone iframe{display:block;width:390px;flex:1 1 auto;min-height:0;border:0;background:var(--paper)}
+.card{background:var(--panel);border:1.5px solid var(--line);border-radius:16px;padding:12px 16px}
+.card h3{margin:0 0 6px;font:700 15px/1.3 var(--display)}
+.card ul,.card ol{margin:0;padding-left:18px}
+.card li{margin:5px 0;color:var(--ink-2)}
+.card li b{color:var(--ink)}
+.card p{margin:6px 0 0;color:var(--ink-2)}
+.fail{background:var(--ask-bg);color:var(--ask-ink);border-radius:14px;padding:12px 16px;font-weight:600}
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.tbl th,.tbl td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{color:var(--ink-3);font-weight:600;white-space:nowrap}
+.tbl-wrap{overflow-x:auto}
+.bar-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.try{display:flex;flex-direction:column;gap:6px}
+.try button{all:unset;cursor:pointer;padding:8px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);font:600 13px/1.35 var(--round)}
+.try button small{display:block;color:var(--ink-3);font-weight:500}
+.try button[aria-pressed="true"]{border-color:var(--ink);box-shadow:0 2px 0 var(--ink);background:var(--panel)}
+.try button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="mock" id="mock">
+  <div class="top">
+    <span class="sign"><b>Agent City · 少一点东西</b><small>cloud-polish · 两行搬到地图上 · 「加 agent」变成小加号</small></span>
+    <span class="pill">mock</span>
+  </div>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div class="note" id="note"></div>
+  <div id="view"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const Q = new URLSearchParams(location.search);
+const PAGE_URL = '../bin/agent-city.html';
+const ME = 'you@example.com';
+const HOST = { cloud: 'https://agent-city-page.<你的子域>.workers.dev', local: 'http://127.0.0.1:8787  (本地页面)' };
+
+const SCREENS = [
+  { id: 'cmp', tab: '1 前后对比', note: '<b>「机器」那一行和「全部 + 仓库」那一行，从头部搬到地图上面，像左边的名单和右边的 + / − 按钮一样浮在地图上。头部只剩一行：标题、数字、账号。</b> 下面是同一个 1280 × 727 的窗口，左边是现在，右边是改完以后；数字是从页面里量出来的。<span class="en">The machine row and the repo row leave the header and sit ON the stage, over the map. The header is one row. Same 1280 x 727 window, before and after; the numbers are measured from the page.</span>' },
+  { id: 'cloud', tab: '2 云端页面', note: '<b>云端页面，改完以后（可以点）。</b> 两行浮在地图顶上，夹在名单和 + / − 按钮中间。点机器、点仓库、折起名单、点一个小人开窗口，看它们怎么让位。<span class="en">The cloud page after the change; it is live, click it.</span>' },
+  { id: 'local', tab: '3 本地页面', note: '<b>本地页面，改完以后（可以点）。</b> 本地只有「全部 + 仓库」一行，同样搬到地图上。<span class="en">The local page has the repo row only; it moves the same way.</span>' },
+  { id: 'add', tab: '4 小加号', note: '<b>「＋ 加 agent」不再是每个仓库下面一整行，而是仓库名那一行最右边的一个小 ＋（在人数旁边）。</b> 鼠标停上去 / 读屏：加 agent。点了以后小 ＋ 变成转圈；需要说话的时候（正在打开谁、电脑有点忙、没打开的原因、没有 Orca 的那行命令、云端的「在路上」和「已打开」），在这个仓库名字下面出<b>一行</b>，说完就收走。右边选一种情况，再点名单里的小 ＋。<span class="en">Add agent = a small + at the right end of the repo name row. Words appear as one inline row under that repo only while they apply.</span>' },
+  { id: 'phone', tab: '5 手机', note: '<b>手机宽度：两行各占一条细线，贴在地图顶上，夹在左边的名单标签和右边的 + / − 按钮中间；放不下就左右滑。</b> 它们不盖住名单标签、+ / − 按钮和打开的窗口。头部的数字改成一行（放不下也是左右滑）。<span class="en">Phone width: each row is one thin line at the top of the stage, between the rail tab and the camera buttons; it scrolls sideways. The counters in the header become one line too.</span>' },
+];
+
+/* ---------- the real page, patched in memory so it runs here ---------- */
+let pageSrc = null;
+async function loadPage() {
+  if (pageSrc) return pageSrc;
+  const res = await fetch(PAGE_URL);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  pageSrc = await res.text();
+  return pageSrc;
+}
+function must(src, from, to) {
+  if (!src.includes(from)) throw new Error('the page changed, the mock cannot find: ' + from.slice(0, 60));
+  return src.split(from).join(to);
+}
+/* THE CHANGE (Q1): what the real page gets. Everything is scoped to .q1 (on .app), so "before" is the page as it is. */
+function afterCss() {
+  return `
+/* the two rows, on the stage: one strip between the rail (left) and the camera buttons (right) */
+.q1 .stage-top{position:absolute;top:12px;left:calc(var(--rail-w) + 24px);right:66px;z-index:3;display:flex;flex-direction:column;align-items:flex-start;gap:6px;pointer-events:none;transition:left .2s,right .2s}
+.q1 .stage-top>nav{pointer-events:auto;max-width:100%;padding:2px 2px 4px;scrollbar-width:none}
+.q1 .stage-top>nav::-webkit-scrollbar{display:none}
+/* a line that is longer than its room fades out at the cut edge (it scrolls sideways) */
+.q1 .stage-top>nav.more{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}
+/* over the map each chip needs its own little shadow, like the + / - buttons */
+.q1 .stage-top .repo,.q1 .stage-top .mc{box-shadow:0 2px 0 rgba(42,43,69,.18)}
+.q1 .stage-top .mc[aria-pressed="true"]{box-shadow:0 2px 0 var(--ink)}
+.q1 .stage-top .machines .lead{background:var(--panel);border:1.5px solid var(--line);border-radius:999px;padding:8px 10px;color:var(--ink-2);box-shadow:0 2px 0 rgba(42,43,69,.18)}
+/* it makes room: the rail folded to its tab, no rail at all, an open window, a folded window */
+.q1 .stage:has(#rail-tab:not([hidden])) .stage-top{left:42px}
+.q1 .stage:has(#rail[hidden]):has(#rail-tab[hidden]) .stage-top{left:12px}
+.q1 .stage.win-open .stage-top{right:calc(var(--msg-w) + 78px)}
+.q1 .stage.win-tab-open .stage-top{right:106px}
+/* what used to sit at the top middle of the map goes under the strip (--top-h = the strip's own height) */
+.q1 .proto,.q1 .follow{top:calc(18px + var(--top-h,34px))}
+.q1 .cloud-banner{top:calc(20px + var(--top-h,34px))}
+/* the header: one row */
+.q1 .bar{flex-wrap:nowrap}
+.q1 .bar>*{flex:none}
+.q1 .stats{flex:1 1 auto;min-width:0;flex-wrap:nowrap;justify-content:flex-end;overflow-x:auto;scrollbar-width:none}
+.q1 .stats::-webkit-scrollbar{display:none}
+.q1 .stat{flex:none}
+/* Q5: add agent = a small + at the right end of the repo NAME row; words = ONE inline row under that row */
+.q1 .grp-row{display:flex;align-items:center;gap:2px}
+.q1 .grp-row .grp-h{flex:1 1 auto;width:auto;min-width:0}
+.q1 .add-i{all:unset;cursor:pointer;flex:none;box-sizing:border-box;width:22px;height:22px;margin:2px 4px 0 0;display:grid;place-items:center;border-radius:7px;border:1.5px solid var(--line);color:var(--ink-2);font:700 15px/1 var(--round)}
+.q1 .add-i:hover{border-color:var(--ink-3);background:var(--panel-2);color:var(--ink)}
+.q1 .add-i:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+.q1 .add-i[aria-disabled="true"]{cursor:default;color:var(--ink-3);background:none;border-color:var(--line)}
+.q1 .add-i.ok{border-color:transparent;background:var(--rest-bg);color:var(--rest-ink)}
+.q1 .add-line{display:flex;align-items:center;gap:6px;margin:2px 3px 3px;padding:3px 8px;border-radius:8px;background:var(--panel-2);color:var(--ink-2);font:600 12px/1.5 var(--round);overflow-wrap:anywhere}
+.q1 .addbox{margin-top:2px;margin-bottom:3px}
+@media (max-width: 960px){
+  .q1 .add-i{width:28px;height:28px;font-size:17px}
+  /* phone: thin lines between the rail tab (left) and the camera buttons (right); each line scrolls sideways */
+  .q1 .stage-top{top:8px;left:38px;right:58px;gap:4px}
+  .q1 .stage:has(#rail-tab:not([hidden])) .stage-top,.q1 .stage.win-open .stage-top,.q1 .stage.win-tab-open .stage-top{left:38px;right:58px}
+  .q1 .stage:has(#rail[hidden]):has(#rail-tab[hidden]) .stage-top{left:8px}
+  .q1 .proto{left:38px}
+  /* phone header: the title and the account on one row, the counters on ONE line under it */
+  .q1 .bar{flex-wrap:wrap;gap:8px 10px}
+  .q1 .stats{order:9;flex:1 1 100%;justify-content:flex-start}
+  .q1 .acct,.q1 #logbtn{margin-left:auto}
+  .q1 .acct~#logbtn,.q1 #logbtn~.acct{margin-left:0}
+}
+`;
+}
+function mockCss() {
+  return `
+#ask,#next{display:none!important}
+.d-actions,.d-note{display:none!important}
+` + afterCss();
+}
+/* runs INSIDE the page's own script (the page is one closed function), right after its demo seed */
+function innerJs(kind, mode, opt) {
+  return `
+;(() => {
+  const KIND = ${JSON.stringify(kind)}, MODE = ${JSON.stringify(mode)}, OPT = ${JSON.stringify(opt)};
+  const app = document.querySelector('.app');
+  const stageEl = document.querySelector('#stage'), col = document.querySelector('.stage-col');
+  /* like the real pages (they are not the demo): no demo tools under the stage */
+  document.querySelector('.toolbar').remove();
+  col.classList.add('no-bar');
+
+  if (KIND === 'cloud') {
+    /* ---- the machines of this login (what the feed's "devs" says) ---- */
+    const DEVS = [
+      { dev: 'mac', label: 'MacBook-Pro', ago: 2000, counts: { people: 4, busy: 3, wait: 0 }, talk: true, start: true },
+      { dev: 'pc2', label: 'maverick-pc2', ago: 8000, counts: { people: 1, busy: 1, wait: 0 }, talk: true, start: false },
+    ];
+    let shown = 'mac';
+    const drawTop = () => {
+      const now = Date.now();
+      const devs = DEVS.map(d => Object.assign({}, d, { ts: now - d.ago }));
+      const feed = { ok: true, user: ${JSON.stringify(ME)}, now, dev: shown, devs };
+      cloudLive.feed = feed;
+      cloudRenderRow(feed);
+      cloudRenderAcct(feed);
+      cloudRenderTalk(feed);
+    };
+    document.querySelector('#machines').addEventListener('click', e => {
+      const b = e.target.closest('.mc'); if (!b) return;
+      shown = b.dataset.dev; drawTop();
+    });
+    document.querySelector('#proto').hidden = true;   /* the cloud page shows this chip only while it is not connected */
+    drawTop();
+  } else {
+    /* the real local page's chip says the link is up */
+    document.querySelector('#proto').textContent = i18n('proto.connected');
+  }
+
+  /* ---- THE CHANGE (Q1): both rows move from the header onto the stage ---- */
+  const strip = document.createElement('div');
+  strip.className = 'stage-top'; strip.id = 'stage-top';
+  const rows = [document.querySelector('#machines'), document.querySelector('#repos')];
+  const fit = () => {
+    stageEl.style.setProperty('--top-h', strip.offsetHeight + 'px');
+    for (const n of rows) n.classList.toggle('more', n.scrollWidth - n.clientWidth - n.scrollLeft > 4);
+  };
+  for (const n of rows) n.addEventListener('scroll', fit, { passive: true });
+  if (MODE === 'after') {
+    /* the height the rows took in the header (each row + the 14px gap under it) goes to the stage */
+    let freed = 0;
+    for (const n of rows) if (!n.hidden) freed += n.offsetHeight + 14;
+    const base = parseFloat(getComputedStyle(col).getPropertyValue('--stage-off')) || 150;
+    app.classList.add('q1');
+    for (const n of rows) strip.appendChild(n);
+    stageEl.insertBefore(strip, document.querySelector('#rail'));
+    col.style.setProperty('--stage-off', (base - freed) + 'px');
+    new ResizeObserver(fit).observe(strip);
+    for (const n of rows) new ResizeObserver(fit).observe(n);
+    fit();
+  }
+
+  /* ---- which repos get the control: the ones whose folder is on the machine shown ---- */
+  const HERE = KIND === 'cloud' ? new Set(['auto-pipeline', 'v4-plus']) : null;   /* cloud: pos-lite lives on another machine */
+  const baseGroups = railGroups;
+  railGroups = function () { return baseGroups().map(g => Object.assign(g, { add: !HERE || HERE.has(g.name) })); };
+
+  /* ---- THE CHANGE (Q5): the + icon on the repo name row, and one inline row for the words ---- */
+  if (MODE === 'after') {
+    const TIP = '加 agent';
+    /* the icon: + (a click = add), a spinner while an order is on its way or opening, a tick on "opened", quiet while a box shows */
+    const addIcon = (g, st) => {
+      const t = esc(g.terr), s = st && st.s, label = esc(TIP + ' · ' + g.name);
+      if (s === 'sent' || s === 'opening') return '<button type="button" class="add-i" aria-disabled="true" title="' + esc(TIP) + '" aria-label="' + label + '"><span class="spin"></span></button>';
+      if (s === 'done') return '<span class="add-i ok" aria-hidden="true">✓</span>';
+      if (s) return '<button type="button" class="add-i" aria-disabled="true" title="' + esc(TIP) + '" aria-label="' + label + '">＋</button>';
+      return '<button type="button" class="add-i" data-add="' + t + '" title="' + esc(TIP) + '" aria-label="' + label + '">＋</button>';
+    };
+    /* the one row under the name row: nothing when there is nothing to say */
+    const boxes = addHtml;   /* the page's own boxes: cap, err, cmd, done */
+    const addLine = (g, st) => {
+      const s = st && st.s;
+      if (!s) return '';
+      if (s === 'sent') return '<p class="add-line" role="status" style="margin-top:0">' + esc(i18n('add.cloud.sent')) + '</p>';
+      if (s === 'opening') {
+        const who = shortLabel(st.name, g.name);
+        const words = CLOUD ? ['add.cloud.opening', 'add.cloud.openingBare'] : ['add.opening', 'add.openingBare'];
+        return '<p class="add-line" role="status" style="margin-top:0">' + esc(who ? i18n(words[0], { name: who }) : i18n(words[1])) + '</p>';
+      }
+      return boxes(g, st);
+    };
+    railHtml = function (groups, selId, closed, openRest, adds) {
+      let html = '';
+      for (const g of groups) {
+        const grp = { color: g.color, selId };
+        const isClosed = closed.has(g.terr);
+        const active = g.rows.filter(r => !r.rest), resting = g.rows.filter(r => r.rest);
+        const you = active.filter(r => r.id.slice(0, 4) !== 'gov:').reduce((n, r) => n + (byId(r.id) && citizenStatus(byId(r.id))[0] === 'you' ? 1 : 0), 0);
+        const st = adds ? adds.get(g.terr) : undefined;
+        html += '<section class="rail-grp" data-terr="' + esc(g.terr) + '" style="--rc:' + g.color + '">';
+        html += '<div class="grp-row"><button type="button" class="grp-h" data-grp="' + esc(g.terr) + '" aria-expanded="' + !isClosed + '">' +
+          '<span class="rc" style="--rc:' + g.color + '"></span>' + esc(g.name) + '<span class="n">' + g.rows.length + '</span>' +
+          (isClosed && you ? '<span class="you">' + you + '</span>' : '') + '</button>' + (g.add ? addIcon(g, st) : '') + '</div>';
+        if (g.add) html += addLine(g, st);   /* shows on a folded repo too: an answer is never hidden */
+        if (!isClosed) {
+          if (!g.rows.length) html += '<p class="rail-none">' + esc(i18n('rail.none')) + '</p>';
+          html += '<ul class="rrows">' + active.map(r => railRowHtml(r, grp)).join('') + '</ul>';
+          if (resting.length) {
+            const open = openRest.has(g.terr);
+            html += '<button type="button" class="rest-t" data-rest="' + esc(g.terr) + '" aria-expanded="' + open + '">' + esc(i18n('rail.rest', { n: resting.length })) + '</button>';
+            if (open) html += '<ul class="rrows">' + resting.map(r => railRowHtml(r, grp)).join('') + '</ul>';
+          }
+        }
+        html += '</section>';
+      }
+      return html;
+    };
+  }
+
+  /* ---- one click = one order; the mock plays what the machine would answer (short waits) ---- */
+  let addMode = OPT.add || 'ok', made = 0;
+  const hasMain = new Set([govTerr]);
+  const helpers = new Map();
+  addAgent = function (terr, force) {
+    const was = addState.get(terr);
+    if (was && (was.s === 'sent' || was.s === 'opening')) return;
+    const g = railGroups().find(x => x.terr === terr); if (!g) return;
+    const k = helpers.get(terr) || 0;
+    const name = g.name + (hasMain.has(terr) ? ' Helper' + (k ? ' ' + (k + 1) : '') : ' Manager');   /* Q6: a second helper gets a free name */
+    const set = st => { addState.set(terr, st); lastRail = ''; renderRail(); return st.s === OPT.stop; };
+    const m = force ? 'ok' : addMode;
+    const open = () => {
+      if (set({ s: 'opening', name })) return;
+      setTimeout(() => {
+        if (hasMain.has(terr)) helpers.set(terr, k + 1); else hasMain.add(terr);
+        apply({ type: 'spawn', id: 's:new' + (++made), role: 'helper', label: name, task: '从页面打开', terr, from: '' });
+        if (!CLOUD) { addState.delete(terr); lastRail = ''; renderRail(); return; }
+        if (set({ s: 'done', name })) return;
+        setTimeout(() => { addState.delete(terr); lastRail = ''; renderRail(); }, 3000);
+      }, 3200);
+    };
+    const answer = () => {
+      if (m === 'cap') set({ s: 'cap', ram: 86, cpu: 41, max: 80 });
+      else if (m === 'err') set(CLOUD ? { s: 'err', why: i18n('add.cloud.why.off') } : { s: 'err', why: i18n('add.errFailed', { detail: 'orca: worktree not found' }), retry: true });
+      else if (m === 'cmd') set(CLOUD ? { s: 'err', why: i18n('add.cloud.why.noOrca') } : { s: 'cmd', cmd: "cd ~/repo/" + g.name + " && claude --name '" + name + "'" });
+      else open();
+    };
+    if (CLOUD) { if (set({ s: 'sent' })) return; setTimeout(answer, 2000); }
+    else { if (set({ s: 'opening', name: '' })) return; setTimeout(answer, 1200); }
+  };
+  window.mockSet = m => { addMode = m; for (const [terr, st] of [...addState]) if (st.s !== 'sent' && st.s !== 'opening') addState.delete(terr); lastRail = ''; renderRail(); };
+  window.mockClick = repo => {
+    const g = railGroups().find(x => x.name === repo);
+    const b = g && document.querySelector('#rail-list [data-add="' + g.terr + '"]');
+    if (b) b.click();
+  };
+  if (OPT.go) setTimeout(() => window.mockClick(OPT.go), 600);
+  lastRail = ''; renderRail();
+
+  /* the numbers the mock prints under each frame */
+  window.mockMeasure = () => {
+    const r = stageEl.getBoundingClientRect(), b = document.querySelector('header.bar').getBoundingClientRect();
+    return { top: Math.round(r.top), height: Math.round(r.height), bar: Math.round(b.height), win: innerHeight };
+  };
+  /* stills for a screenshot: ?open=1 opens a person's window, ?fold=1 folds the rail, ?follow=1 follows somebody */
+  const someone = () => (citizens.find(c => !c.remote) || {}).id;
+  if (OPT.fold) setTimeout(() => setRailFolded(true), 400);
+  if (OPT.drawer) setTimeout(() => setRailFolded(false), 400);
+  if (OPT.open) setTimeout(() => { const id = someone(); if (id) selectFrom(id); }, 700);
+  setTimeout(() => { window.mockReady = true; }, 900);
+})();`;
+}
+function patched(src, kind, mode, opt) {
+  let s = src;
+  s = must(s, '<head>', '<head><base href="' + new URL('../bin/', location.href).href + '">');
+  s = must(s, 'assets/vendor/', 'agent-city-assets/vendor/');
+  s = must(s, "const ASSET = 'assets/';", "const ASSET = 'agent-city-assets/';");
+  s = must(s, '__CITY_ASSET_V__', 'mock');
+  s = must(s, '__CITY_LANG__', 'zh');
+  s = must(s, '__CITY_TOKEN__', '');
+  s = must(s, "const DEMO = location.hash === '#demo' || location.protocol === 'file:';", 'const DEMO = true;');
+  if (kind === 'cloud') s = must(s, "const CLOUD = '__CITY_CLOUD__' === '1';", 'const CLOUD = true;');
+  s = must(s, 'seedDemoRemote();', '');
+  s = must(s, 'if (DEMO) seed(); else if (CLOUD) connectCloud(); else connectLive();', 'seed();' + innerJs(kind, mode, opt));
+  s = must(s, '</head>', '<style>' + mockCss() + '</style></head>');
+  return s;
+}
+const OPT = { open: Q.get('open') === '1', fold: Q.get('fold') === '1', drawer: Q.get('drawer') === '1', add: Q.get('add') || '', go: Q.get('go') || '', stop: Q.get('stop') || '' };
+async function cityFrame(kind, mode, opt) {
+  const f = document.createElement('iframe');
+  f.title = (kind === 'cloud' ? '云端城市' : '本地城市') + (mode === 'after' ? ' · 改完以后' : ' · 现在');
+  f.srcdoc = patched(await loadPage(), kind, mode, Object.assign({}, OPT, opt || {}));
+  return f;
+}
+function whenReady(frame, fn) {
+  const t = setInterval(() => {
+    const w = frame.contentWindow;
+    if (w && w.mockReady) { clearInterval(t); fn(w); }
+  }, 150);
+}
+
+/* ---------- screens ---------- */
+function h(html) { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstElementChild; }
+function browser(frame, url) {
+  const b = h('<div class="frame"><div class="url"><i></i><i></i><i></i><span></span></div></div>');
+  b.querySelector('span').textContent = url;
+  b.appendChild(frame);
+  return b;
+}
+/* a 1280 x 727 window drawn smaller, with its measured numbers under it */
+function small(frame, kind, mode) {
+  const el = h(`<div class="col">
+    <div class="cap">${mode === 'after' ? '改完以后' : '现在'}<span class="tag${mode === 'after' ? ' new' : ''}">${mode === 'after' ? 'after' : 'before'}</span></div>
+    <div class="frame"><div class="url"><i></i><i></i><i></i><span></span></div><div class="shrink"></div></div>
+    <div class="num" data-num>正在量…</div></div>`);
+  el.querySelector('.url span').textContent = HOST[kind] + '  ·  1280 × 727';
+  const box = el.querySelector('.shrink');
+  box.appendChild(frame);
+  const size = () => { const k = box.clientWidth / 1280; frame.style.transform = 'scale(' + k + ')'; box.style.height = Math.round(727 * k) + 'px'; };
+  new ResizeObserver(size).observe(box);
+  requestAnimationFrame(size);
+  return el;
+}
+function numbers(el, m, before) {
+  const gain = before ? m.height - before.height : 0;
+  el.innerHTML = '地图从上往下 <b>' + m.top + ' px</b> 处开始 · 地图高 <b>' + m.height + ' px</b> · 头部 ' + m.bar + ' px' +
+    (before ? '<span class="gain">地图多了 ' + gain + ' px（+' + Math.round(gain / before.height * 100) + '%）</span>' : '');
+}
+async function pair(kind, title) {
+  const fb = await cityFrame(kind, 'before'), fa = await cityFrame(kind, 'after');
+  const b = small(fb, kind, 'before'), a = small(fa, kind, 'after');
+  const wrap = h('<div class="col"><div class="cap" style="font-size:16px"></div><div class="screen pair"></div></div>');
+  wrap.querySelector('.cap').textContent = title;
+  wrap.querySelector('.pair').append(b, a);
+  let mb = null;
+  whenReady(fb, w => { mb = w.mockMeasure(); numbers(b.querySelector('[data-num]'), mb); });
+  whenReady(fa, w => { const go = () => { if (!mb) return setTimeout(go, 150); numbers(a.querySelector('[data-num]'), w.mockMeasure(), mb); }; go(); });
+  return wrap;
+}
+/* one live frame with a now / after switch above it */
+async function live(kind, put) {
+  const seg = h('<div class="seg" role="group" aria-label="现在 / 改完以后"><button type="button" data-mode="after">改完以后</button><button type="button" data-mode="before">现在</button></div>');
+  const set = async mode => {
+    for (const b of seg.children) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
+    put(await cityFrame(kind, mode), mode);
+  };
+  seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) set(b.dataset.mode); });
+  await set(Q.get('mode') === 'before' ? 'before' : 'after');
+  return seg;
+}
+const RULES = `<div class="card"><h3>什么在哪里</h3>
+  <div class="tbl-wrap"><table class="tbl"><tbody>
+    <tr><th>头部</th><td>只有一行：标题、数字、动态、账号。</td></tr>
+    <tr><th>机器那一行</th><td>地图顶上第一条（只有云端页面有）。</td></tr>
+    <tr><th>仓库那一行</th><td>地图顶上，机器下面（本地页面只有这一条）。</td></tr>
+    <tr><th>左边</th><td>从名单右边开始。名单折起来，它们往左挪到小标签旁边。</td></tr>
+    <tr><th>右边</th><td>到 + / − 按钮左边为止。开窗口时，和按钮一起往左让。</td></tr>
+    <tr><th>放不下</th><td>那一条自己左右滑，不换行，不变高。</td></tr>
+    <tr><th>「跟随」和提示条</th><td>原来在地图顶上正中，现在在这两条的下面。</td></tr>
+    <tr><th>＋ 加 agent</th><td>仓库名那一行最右边的小 ＋，不再每个仓库占一整行（第 4 页）。</td></tr>
+  </tbody></table></div></div>`;
+
+const RENDER = {
+  async cmp() {
+    const el = h('<div class="col" style="gap:18px"></div>');
+    el.append(await pair('cloud', '云端页面（两行都搬）'), await pair('local', '本地页面（只有仓库一行）'), h(RULES));
+    return el;
+  },
+  async cloud() {
+    const el = h(`<div class="col"><div class="bar-row"></div><div class="screen side"><div></div>
+      <div class="card"><h3>点点看</h3>
+        <ul>
+          <li><b>点一台机器</b>：和原来一样换机器。</li>
+          <li><b>点一个仓库 / 全部</b>：镜头飞过去，和原来一样。</li>
+          <li><b>折起名单（«）</b>：两条往左挪，占掉名单让出来的地方。</li>
+          <li><b>点名单里的一个人</b>：右边开窗口，两条和 + / − 一起往左让，不被窗口盖住。</li>
+          <li><b>拖地图 / 滚轮</b>：条和条之间是透的，地图照常能拖。</li>
+        </ul>
+        <p>上面的「现在 / 改完以后」可以来回切，看地图高了多少。</p></div></div></div>`);
+    const slot = el.querySelector('.side > div');
+    el.querySelector('.bar-row').appendChild(await live('cloud', f => { slot.textContent = ''; slot.appendChild(browser(f, HOST.cloud)); }));
+    return el;
+  },
+  async local() {
+    const el = h(`<div class="col"><div class="bar-row"></div><div class="screen side"><div></div>
+      <div class="card"><h3>本地页面</h3>
+        <ul>
+          <li>头部一行：标题、数字、<b>动态</b>按钮。</li>
+          <li><b>全部 + 仓库</b>在地图顶上，名单右边。</li>
+          <li>「实时 · 已连接」那个小条原来就在这个位置，现在在仓库条的<b>下面</b>。</li>
+          <li>别的都不变：名单、窗口、+ / − 按钮的位置和原来一样。</li>
+        </ul></div></div></div>`);
+    const slot = el.querySelector('.side > div');
+    el.querySelector('.bar-row').appendChild(await live('local', f => { slot.textContent = ''; slot.appendChild(browser(f, HOST.local)); }));
+    return el;
+  },
+  async add() {
+    const el = h(`<div class="col"><div class="bar-row"></div><div class="screen side"><div></div>
+      <div class="card"><h3>选一种情况，再点名单里的小 ＋</h3>
+        <div class="try">
+          <button type="button" data-mode="ok">正常<small>小 ＋ 转圈，名字下面一行：正在打开 Helper… → 小人出现，那一行收走</small></button>
+          <button type="button" data-mode="cap">电脑有点忙<small>一行：RAM / CPU + 还是打开 / 取消</small></button>
+          <button type="button" data-mode="err">没打开<small>一行：原因 + 再试 / 知道了（云端只有 知道了）</small></button>
+          <button type="button" data-mode="cmd">没有 Orca<small>本地：那行要自己跑的命令 + 复制 / 关掉；云端：一句原因</small></button>
+        </div>
+        <ul style="margin-top:10px">
+          <li><b>平时</b>：每个仓库只多一个小 ＋，名单短了一截。</li>
+          <li><b>云端页面</b>多两句：<b>在路上…</b>（等那台电脑来取）和 <b>已打开 Helper</b>（小 ＋ 变成 ✓，几秒后恢复）。</li>
+          <li><b>同一个仓库再点一次</b>：第二个帮手叫 <b>Helper 2</b>，不再重名。</li>
+          <li><b>折起来的仓库</b>：小 ＋ 还在（它在名字那一行）；那一行话也照样出，不会被折掉。</li>
+          <li><b>文件夹不在这台机器上的仓库</b>（云端的 pos-lite）：没有小 ＋，和现在一样。</li>
+        </ul></div></div></div>`);
+    const slot = el.querySelector('.side > div');
+    let frame = null, kind = Q.get('kind') === 'cloud' ? 'cloud' : 'local', mode = Q.get('mode') === 'before' ? 'before' : 'after';
+    const segK = h('<div class="seg" role="group" aria-label="页面"><button type="button" data-kind="local">本地页面</button><button type="button" data-kind="cloud">云端页面</button></div>');
+    const segM = h('<div class="seg" role="group" aria-label="现在 / 改完以后"><button type="button" data-mode="after">改完以后</button><button type="button" data-mode="before">现在</button></div>');
+    const wrap = el.querySelector('.try');
+    const pressed = () => (wrap.querySelector('[aria-pressed="true"]') || wrap.firstElementChild).dataset.mode;
+    const draw = async () => {
+      for (const b of segK.children) b.setAttribute('aria-pressed', String(b.dataset.kind === kind));
+      for (const b of segM.children) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
+      frame = await cityFrame(kind, mode, { add: pressed() });
+      slot.textContent = ''; slot.appendChild(browser(frame, HOST[kind]));
+    };
+    segK.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { kind = b.dataset.kind; draw(); } });
+    segM.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { mode = b.dataset.mode; draw(); } });
+    wrap.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      for (const x of wrap.children) x.setAttribute('aria-pressed', String(x === b));
+      if (frame) whenReady(frame, w => w.mockSet(b.dataset.mode));
+    });
+    const first = wrap.querySelector('[data-mode="' + (Q.get('add') || 'ok') + '"]') || wrap.firstElementChild;
+    for (const x of wrap.children) x.setAttribute('aria-pressed', String(x === first));
+    el.querySelector('.bar-row').append(segK, segM);
+    await draw();
+    return el;
+  },
+  async phone() {
+    const el = h(`<div class="col"><div class="bar-row"></div><div class="screen phones">
+      <div class="phone-wrap"><div class="cap">云端页面</div><div class="phone"><div class="notch"></div><div class="glass" data-k="cloud"></div></div><div class="num" data-num="cloud"></div></div>
+      <div class="phone-wrap"><div class="cap">本地页面</div><div class="phone"><div class="notch"></div><div class="glass" data-k="local"></div></div><div class="num" data-num="local"></div></div>
+      <div class="card"><h3>手机上</h3>
+        <ul>
+          <li><b>两条细线</b>贴在地图顶上：机器一条，仓库一条。放不下就<b>左右滑</b>。</li>
+          <li>左边留给<b>名单标签</b>，右边留给 <b>+ / − 按钮</b>：都不盖。</li>
+          <li><b>窗口</b>是从下面升上来的，这两条在顶上，碰不到；键盘弹出来时窗口盖住它们（窗口在上）。</li>
+          <li>拉开<b>名单</b>：名单在最上面，这两条在它下面。</li>
+          <li><b>头部</b>：标题和账号一行，数字一行（放不下也是左右滑），不再换成两三行。</li>
+          <li><b>小 ＋</b> 在名单里每个仓库名的右边，手机上大一点（好点）。</li>
+        </ul>
+        <p>点左边的小标签拉出名单；点一个人，看窗口升上来。</p></div></div></div>`);
+    const before = {};
+    const seg = h('<div class="seg" role="group" aria-label="现在 / 改完以后"><button type="button" data-mode="after">改完以后</button><button type="button" data-mode="before">现在</button></div>');
+    const set = async mode => {
+      for (const b of seg.children) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
+      for (const kind of ['cloud', 'local']) {
+        const f = await cityFrame(kind, mode), glass = el.querySelector('.glass[data-k="' + kind + '"]'), num = el.querySelector('[data-num="' + kind + '"]');
+        glass.textContent = ''; glass.appendChild(f); num.textContent = '正在量…';
+        whenReady(f, async w => {
+          if (mode === 'before') { before[kind] = w.mockMeasure(); numbers(num, before[kind]); return; }
+          if (!before[kind]) {   /* measure the page as it is once, in a frame nobody sees */
+            const g = await cityFrame(kind, 'before'); g.style.cssText = 'position:absolute;left:-9999px;top:0;width:390px;height:' + glass.clientHeight + 'px';
+            document.body.appendChild(g);
+            await new Promise(done => whenReady(g, x => { before[kind] = x.mockMeasure(); done(); }));
+            g.remove();
+          }
+          numbers(num, w.mockMeasure(), before[kind]);
+        });
+      }
+    };
+    seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) set(b.dataset.mode); });
+    el.querySelector('.bar-row').appendChild(seg);
+    await set(Q.get('mode') === 'before' ? 'before' : 'after');
+    return el;
+  },
+};
+
+let current = null;
+async function show(id) {
+  const sc = SCREENS.find(s => s.id === id) || SCREENS[0];
+  current = sc.id;
+  for (const b of $('#tabs').children) b.setAttribute('aria-selected', String(b.dataset.id === sc.id));
+  $('#note').innerHTML = sc.note;
+  const view = $('#view');
+  view.textContent = '';
+  try {
+    const el = await RENDER[sc.id]();
+    if (current === sc.id) view.appendChild(el);
+  } catch (err) {
+    view.innerHTML = '<p class="fail">这个 mock 要从一个小网页服务器打开（它要读 ../bin/agent-city.html）。在仓库根目录跑：python3 -m http.server 8765，然后打开 http://127.0.0.1:8765/mock/cloud-polish-mock.html<br>(' + String(err && err.message || err) + ')</p>';
+  }
+  const q = new URLSearchParams(location.search); q.set('s', sc.id);
+  history.replaceState(null, '', '?' + q.toString());
+}
+for (const s of SCREENS) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.dataset.id = s.id; b.textContent = s.tab; b.setAttribute('role', 'tab');
+  b.addEventListener('click', () => show(s.id));
+  $('#tabs').appendChild(b);
+}
+show(Q.get('s') || 'cmp');
+})();
+</script>
+<!-- Open through a small web server, from the repo root:  python3 -m http.server 8765
+     then http://127.0.0.1:8765/mock/cloud-polish-mock.html
+     (?s=cmp|cloud|local|add|phone)
+     For a still picture: &mode=before|after  &open=1 (a person's window)  &fold=1 (the rail folded)  &drawer=1 (phone: the rail pulled out)
+     the small +: &kind=local|cloud &add=ok|cap|err|cmd &go=<repo> &stop=<sent|opening|done|cap|err|cmd> -->
+</body>
+</html>
