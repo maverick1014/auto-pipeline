@@ -943,6 +943,9 @@ const DEMO_SITES = [
 /* topCounts() -> [[label, n], ...]: the top bar's own numbers (requirements/city.md, Interaction: "top
    counts stay: 干活, 找总督, 休息, 建成"), then Worktrees' own 卡住的工地 (stalled live sites), only when
    there is at least one -- reward, never punish (never a 0 chip sitting there on a calm day).
+   cloud-polish: a governor is a session, so 干活 also counts every present governor of my own city whose state
+   is 'busy' (waiting, idle, background, away and unknown ones change nothing; #demo's governor has no
+   govsByTerr entry, so nothing changes there).
    renderStats (3D view) draws straight from this, never recomputes its own counts. */
 function topCounts(){
   let work = 0, ask = 0, rest = 0;
@@ -950,6 +953,7 @@ function topCounts(){
     if (c.remote) continue;
     const g = STATE[c.state][0]; if (g === 'ask') ask++; else if (g === 'rest') rest++; else if (c.state !== 'leaving') work++;
   }
+  for (const f of governorFigures()) { const g = govsByTerr.get(f.terr); if (g && g.state === 'busy') work++; }
   const done = buildings.filter(b => b.done).length;
   const out = [[i18n('top.work'), work], [i18n('top.ask'), ask], [i18n('top.rest'), rest], [i18n('top.done'), done]];
   let stalled = 0;
@@ -4024,6 +4028,26 @@ function govRowStatus(terr){
 function govRowText(terr){
   return govRowStatus(terr)[1];
 }
+/* cloud-polish Q3: headPill(sel) -> [class, text] of the head chip of the window of selection sel, or null:
+   {t:'gov', terr} -> govRowStatus(terr || govTerr) (the very words of the rail row); {t:'c', id} ->
+   citizenStatus(that person, governorCount), an unknown id -> null; anything else (a building, another
+   member's governor, null) -> null. */
+function headPill(sel){
+  if (!sel) return null;
+  if (sel.t === 'gov') return govRowStatus(sel.terr || govTerr);
+  if (sel.t === 'c') { const c = byId(sel.id); return c ? citizenStatus(c, governorCount) : null; }
+  return null;
+}
+/* cloud-polish Q3: refreshHeadPill(el, sel): the open window's head chip (.p-head .pill of el) says what
+   headPill(sel) says -- class and text, each written only when it differs. Nothing to say, or no chip in the
+   card: nothing, never an error. renderDetail() calls it on every call, so the head follows its person. */
+function refreshHeadPill(el, sel){
+  const pill = el.querySelector('.p-head .pill'), st = headPill(sel);
+  if (!pill || !st) return;
+  const cls = 'pill ' + st[0];
+  if (pill.className !== cls) pill.className = cls;
+  if (pill.textContent !== st[1]) pill.textContent = st[1];
+}
 /* rosterGroups() -> [{terr, name, rows: [{id, depth}]}] in map order: per territory, the governor first
    (id "gov:<terr>"), then each lead (its own office -- Interaction) followed by its workers (depth 1),
    then everyone else (depth 0). renderDetail() draws a territory's group as its governor's team list
@@ -4078,16 +4102,24 @@ function railGroups(){
   }
   return out;
 }
-/* V1 (sim): railCount(groups) -> {active, you}: active = rows that are neither the governor nor
-   resting; you = those among them whose citizenStatus(c)[0] === 'you' (waiting on the owner), read fresh
-   every call (the rows themselves only carry id/depth/rest, never a cached status). */
+/* cloud-polish Q2 (sim): rowWaitsOnYou(row) -> true when the rail row's person waits on the owner: a citizen
+   whose citizenStatus(c)[0] === 'you', or a governor ("gov:<terr>") whose state in govsByTerr is 'waiting'.
+   Read fresh every call; railCount() and railHtml()'s folded head badge count the same way. */
+function rowWaitsOnYou(row){
+  if (row.id.slice(0, 4) === 'gov:') { const g = govsByTerr.get(row.id.slice(4)); return !!g && g.state === 'waiting'; }
+  const c = byId(row.id);
+  return !!c && citizenStatus(c)[0] === 'you';
+}
+/* V1 (sim): railCount(groups) -> {active, you}: active = every row that is not resting (cloud-polish: a
+   governor is a session, so its row counts too -- railGroups() only has one while that governor is present);
+   you = those among them waiting on the owner (rowWaitsOnYou), read fresh every call (the rows themselves
+   only carry id/depth/rest, never a cached status). */
 function railCount(groups){
   let active = 0, you = 0;
   for (const g of groups) for (const row of g.rows) {
-    if (row.rest || row.id.slice(0, 4) === 'gov:') continue;
+    if (row.rest) continue;
     active++;
-    const c = byId(row.id);
-    if (c && citizenStatus(c)[0] === 'you') you++;
+    if (rowWaitsOnYou(row)) you++;
   }
   return { active, you };
 }
@@ -4124,9 +4156,8 @@ function railHtml(groups, selId, closed, openRest, adds){
     const grp = { color: g.color, selId };
     const isClosed = closed.has(g.terr);
     const active = g.rows.filter(r => !r.rest), resting = g.rows.filter(r => r.rest);
-    // the head's "waiting on you" count (shown while folded): active rows that are neither the governor nor resting
-    const activeCount = active.filter(r => r.id.slice(0, 4) !== 'gov:');
-    const you = activeCount.reduce((n, r) => n + (byId(r.id) && citizenStatus(byId(r.id))[0] === 'you' ? 1 : 0), 0);
+    // the head's "waiting on you" count (shown while folded): active rows waiting on the owner, a waiting governor too
+    const you = active.reduce((n, r) => n + (rowWaitsOnYou(r) ? 1 : 0), 0);
     // city-polish P4: the group's colour sits on the section (one straight bar for head + rows); the head's
     // count is everyone in the group (the governor, the active and the resting people)
     html += '<section class="rail-grp" data-terr="' + esc(g.terr) + '" style="--rc:' + g.color + '">';
@@ -7180,14 +7211,8 @@ function renderDetail(){
   renderAskCard(); // city-ask-panel K8: the open ask's card in this panel (its own slot), on every call
   // city-work-anim: the status word changes with every work step, so the open person's pill is
   // refreshed on every call (text and class, only when changed) -- never by rebuilding the card.
-  if (c && selected && selected.t === 'c') {
-    const pill = el.querySelector('.p-head .pill');
-    if (pill) {
-      const [pg, pzh] = citizenStatus(c, governorCount), pcls = 'pill ' + pg;
-      if (pill.className !== pcls) pill.className = pcls;
-      if (pill.textContent !== pzh) pill.textContent = pzh;
-    }
-  }
+  // cloud-polish: the governor's head follows its state the same way (the card key holds no governor state).
+  refreshHeadPill(el, selected);
   if (c && !c.remote && selected && selected.t === 'c') {
     const bar = el.querySelector('.p-bar i'); if (bar) bar.style.width = pct(c) + '%';
   }
@@ -7966,15 +7991,19 @@ function cloudStale(dev, now) {
   if (!dev || typeof dev.ts !== 'number') return true;
   return now - dev.ts > CLOUD_STALE_MS;
 }
-/* cloudNotice(feed, now) -> the text key of the notice the city shows, or '':
+/* cloudNotice(feed, now, sessions) -> the text key of the notice the city shows, or '':
    cloud.noMachine (the user has no machine yet), cloud.offline (every machine is stale, the last picture
-   stays), cloud.noSessions (the machine shown has no people), '' otherwise. */
-function cloudNotice(feed, now) {
+   stays), cloud.noSessions (the machine shown has no session at all: its counts say people 0 AND sessions,
+   what the page itself draws for it -- its own people and its present governors -- is 0; sessions left out or
+   not a number: the counts alone decide, so a machine on the old upload with only a governor shows no false
+   notice), '' otherwise. */
+function cloudNotice(feed, now, sessions) {
   const devs = feed && Array.isArray(feed.devs) ? feed.devs : [];
   if (!devs.length) return 'cloud.noMachine';
   if (devs.every(d => cloudStale(d, now))) return 'cloud.offline';
   const shown = devs.find(d => d && d.dev === feed.dev);
-  if (shown && shown.counts && shown.counts.people === 0) return 'cloud.noSessions';
+  const drawn = typeof sessions === 'number' && sessions > 0;
+  if (shown && shown.counts && shown.counts.people === 0 && !drawn) return 'cloud.noSessions';
   return '';
 }
 /* cloudTalkNote(dev, now) -> why the message box is off for the machine shown (dev = its row of the feed), a text
@@ -8290,10 +8319,11 @@ function cloudRenderAcct(feed) {
   if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
   el.hidden = !feed.user;
 }
-/* the notice of cloudNotice(): a card in the middle of the stage, or a banner at its top */
+/* the notice of cloudNotice(): a card in the middle of the stage, or a banner at its top. The sessions it is
+   told about are the ones the page draws: my machine's people (not remote, not gone) and its present governors. */
 function cloudRenderNotice(feed) {
   const el = $('#cloud-notice');
-  const key = cloudNotice(feed, feed.now);
+  const key = cloudNotice(feed, feed.now, citizens.filter(c => !c.remote && !c.gone).length + governorFigures().length);
   let cls = '', html = '';
   if (key === 'cloud.noMachine' || key === 'cloud.noSessions') {
     cls = 'cloud-empty';

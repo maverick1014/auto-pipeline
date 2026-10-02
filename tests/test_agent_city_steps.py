@@ -327,8 +327,10 @@ class TestHeadLine3D(unittest.TestCase):
     def test_panel_pill_follows_the_work(self):
         rd = function_source("renderDetail") or ""
         tail = rd[rd.index("lastChatTo = chatTo;"):] if "lastChatTo = chatTo;" in rd else ""
-        self.assertIn(".pill", tail, "after the rebuild part, every call refreshes the pill")
-        self.assertIn("citizenStatus(", tail)
+        # cloud-polish Q3 (2026-10-02): the per-call refresh is refreshHeadPill(el, selected), for a governor too
+        self.assertIn("refreshHeadPill(", tail, "after the rebuild part, every call refreshes the pill")
+        self.assertIn(".p-head .pill", function_source("refreshHeadPill") or "")
+        self.assertIn("citizenStatus(", function_source("headPill") or "")
 
     def test_update_calls_the_demo_tick(self):
         self.assertRegex(function_source("update") or "", r"DEMO[^\n]*demoRemoteTick\(")
