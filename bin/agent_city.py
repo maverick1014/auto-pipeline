@@ -1295,7 +1295,7 @@ def machine_resources(folder, script=None):
 # exactly one of these two lists; a type on neither is never uploaded, and
 # tests/test_agent_city_cloud_upload.py fails until a new page type is put on
 # one of them.
-CLOUD_DROP = frozenset(("ask", "ask_phase", "ask_closed", "chat", "adding"))   # question, command and chat text; the state of the local add-agent button
+CLOUD_DROP = frozenset(("ask", "ask_phase", "ask_closed", "chat", "adding", "hidden"))   # question, command and chat text; the state of the local add-agent button; the list of what this page hides (the cloud never learns that a hidden repo exists)
 CLOUD_KEEP = frozenset((
     "answer", "background", "build", "demolish", "done", "era", "gov", "governors", "idle", "label",
     "leave", "levelup", "move", "noplot", "quality", "relay", "relay_end", "remote", "remote_snapshot",
@@ -1403,6 +1403,7 @@ def cloud_clean(msg):
         out["asks"] = []
         out.pop("notice", None)
         out.pop("adding", None)
+        out.pop("hidden", None)
         _cloud_world_clean(out.get("world"))
     elif kind == "world":
         out.pop("notice", None)
@@ -1629,9 +1630,10 @@ class _CloudTaps:
                 pass
 
     def cloud_identities(self):
-        """Every territory's identity (its repo), now."""
+        """Every shown territory's identity (its repo), now: a repo hidden on
+        this machine is not a cloud repo (city-layout)."""
         with self.lock:
-            return list(self.world["territories"])
+            return [i for i, t in self.world["territories"].items() if not t.get("hidden")]
 
     def cloud_counts(self, terrs):
         """{"people", "wait", "busy"} of the people in the territories TERRS,
@@ -2257,6 +2259,7 @@ class CloudUploader:
             fresh = True
         view = {"label": self._label(), "gen": st["gen"]}
         if fresh:
+            st["need_snap"] = False     # before the picture: a new snapshot that waits in the tap sets it again
             snap, kept = self._picture(st, terrs, rids, host, idents)
             st["gen"] += 1
             view["gen"] = st["gen"]
@@ -2264,7 +2267,6 @@ class CloudUploader:
             st["snap_at"] = now
             st["happened"] = bool(kept)
             st["key"] = key
-            st["need_snap"] = False
         elif not kept and st["view_at"] is not None and now - st["view_at"] < self.sign_sec:
             return None     # nothing new, and a sign of life is not due
         if kept:
@@ -2420,6 +2422,7 @@ class CloudUploader:
                     st["remote_ids"].add(who)
             return ev
         if kind in ("snapshot", "remote_snapshot"):
+            st["need_snap"] = True  # the city made a new picture (the arrangement changed): ours is old
             return None            # a picture is made by _picture, never as an event
         terr = ev.get("terr")
         who = ev.get("id")
@@ -2782,6 +2785,7 @@ class CityState(_CloudTaps):
         else:
             self.world, self.notice = load_world(world_path, self.plans, lang=self.lang)
         self._view_cache = None
+        self._hidden_last = []    # city-layout: the "hidden" list the pages were last told (see _check_hidden_locked)
         self.last_activity = {}   # identity -> "now" of its last feed_line, this run only
         self.last_count = {}      # identity -> the recount() "now" it was last counted at
         self.agent_terr = {}      # citizen id -> territory id, for the snapshot's agents
@@ -2910,52 +2914,291 @@ class CityState(_CloudTaps):
             client = _Client()
             if not cloud:   # cloud-city: the uploader is no page, it starts no era show
                 self._start_waiting_shows_locked()
-            agents = []
-            govs = []
-            gov_seen_resolved = set()
-            for identity, reducer in self.reducers.items():
-                terr = self._terr_for(identity)
-                chain = self.terr_chain.get(identity)
-                for a in reducer.snapshot()["agents"]:
-                    agents.append(self._decorate_agent(a, identity, terr, chain))
-                if reducer.gov_sid is not None:
-                    govs.append({"terr": terr, "state": reducer.gov_state})
-                    gov_seen_resolved.add(identity)
-            # A territory's governor from a past run (world.json "gov_seen")
-            # that has not yet acted in this run is "unknown", never a
-            # present governor, until it acts (then resolved above) or its
-            # sid ends (then forgotten, see _forget_gov_seen_locked).
-            # Only while that territory has a live main manager (lock holder).
-            for identity in self.world.get("gov_seen", {}):
-                if identity in gov_seen_resolved or self._main(identity) is None:
-                    continue
-                govs.append({"terr": self._terr_for(identity), "state": "unknown"})
-            # The snapshot's "gov" is the page's camera home: with a start
-            # territory, that is always home, even when the last live "gov"
-            # event (self.gov_terr) belongs to a different governor who
-            # spoke after the page connected but before this snapshot was
-            # built (headless E2E: models load for a few seconds first).
-            # Live "gov" events keep broadcasting their own territory.
-            home_terr = self.start_terr if self.start_terr else self.gov_terr
-            gov = {"state": self.gov_state, "terr": home_terr}
-            snap = {"type": "snapshot", "gov": gov, "govs": govs, "agents": agents,
-                    "asks": [ask.view() for ask in self.open.values()],
-                    "governors": self._fresh_governor_count(),
-                    "shows": self._shows_view_locked(),
-                    "adding": self._adding_view_locked(),
-                    "world": self._view()}
-            if self.notice is not None:
-                snap["notice"] = self.notice
-            client.queue.put_nowait(_encode_event(snap))
-            if self.remote is not None:
-                remote_snap = self.remote.snapshot_event()
-                if remote_snap is not None:
-                    client.queue.put_nowait(_encode_event(remote_snap))
+            client.queue.put_nowait(_encode_event(self._snapshot_locked()))
+            remote_snap = self._remote_snapshot_locked()
+            if remote_snap is not None:
+                client.queue.put_nowait(_encode_event(remote_snap))
             if cloud:       # cloud-city: a tap (see _CloudTaps), not in self.clients
                 self.cloud_taps = self.cloud_taps + (client,)
                 return client
             self.clients.append(client)
             return client
+
+    def _snapshot_locked(self):
+        """Caller holds self.lock. The {"type": "snapshot"} a new page (or a
+        tap) gets, and every page again when the arrangement changes
+        (set_layout). A hidden territory (city-layout) is cut out of it: its
+        land (layout() leaves it out), people, governors, asks, shows and
+        adding; "hidden" lists what is hidden instead."""
+        hidden = self._hidden_terrs_locked()
+        agents = []
+        govs = []
+        gov_seen_resolved = set()
+        for identity, reducer in self.reducers.items():
+            terr = self._terr_for(identity)
+            if terr in hidden:
+                continue
+            chain = self.terr_chain.get(identity)
+            for a in reducer.snapshot()["agents"]:
+                agents.append(self._decorate_agent(a, identity, terr, chain))
+            if reducer.gov_sid is not None:
+                govs.append({"terr": terr, "state": reducer.gov_state})
+                gov_seen_resolved.add(identity)
+        # A territory's governor from a past run (world.json "gov_seen")
+        # that has not yet acted in this run is "unknown", never a
+        # present governor, until it acts (then resolved above) or its
+        # sid ends (then forgotten, see _forget_gov_seen_locked).
+        # Only while that territory has a live main manager (lock holder).
+        for identity in self.world.get("gov_seen", {}):
+            if identity in gov_seen_resolved or self._main(identity) is None:
+                continue
+            terr = self._terr_for(identity)
+            if terr in hidden:
+                continue
+            govs.append({"terr": terr, "state": "unknown"})
+        # The snapshot's "gov" is the page's camera home: with a start
+        # territory, that is always home, even when the last live "gov"
+        # event (self.gov_terr) belongs to a different governor who
+        # spoke after the page connected but before this snapshot was
+        # built (headless E2E: models load for a few seconds first).
+        # Live "gov" events keep broadcasting their own territory.
+        # It never names a hidden territory (see _shown_home_locked).
+        home_terr = self.start_terr if self.start_terr else self.gov_terr
+        gov = {"state": self.gov_state, "terr": home_terr}
+        if home_terr in hidden:
+            gov = self._shown_home_locked()
+        snap = {"type": "snapshot", "gov": gov, "govs": govs, "agents": agents,
+                "asks": [v for v in (ask.view() for ask in self.open.values()) if v["terr"] not in hidden],
+                "governors": self._fresh_governor_count(),
+                "shows": [x for x in self._shows_view_locked() if x["terr"] not in hidden],
+                "adding": [x for x in self._adding_view_locked() if x["terr"] not in hidden],
+                "world": self._view(),
+                "hidden": self._hidden_view_locked()}
+        if self.notice is not None:
+            snap["notice"] = self.notice
+        return snap
+
+    def _remote_snapshot_locked(self):
+        """Caller holds self.lock. The remote snapshot (other team members'
+        people and governors) a page gets after the snapshot, or None: no team.
+        The people and governors of a territory hidden here are cut out; the
+        remote city's own lists are never changed."""
+        if self.remote is None:
+            return None
+        snap = self.remote.snapshot_event()
+        if snap is None:
+            return None
+        hidden = self._hidden_terrs_locked()
+        if hidden:
+            snap = dict(snap)
+            for key in ("people", "govs"):
+                snap[key] = [x for x in snap.get(key) or [] if not (isinstance(x, dict) and x.get("terr") in hidden)]
+        return snap
+
+    # -- city-layout: the owner's arrangement and the hidden repos ------------
+
+    def _hidden_terrs_locked(self):
+        """Caller holds self.lock. The territory ids of the hidden territories
+        (a set; empty when none). Cheap: only a hidden one is hashed."""
+        return {territory_id(i) for i, t in self.world["territories"].items() if t.get("hidden")}
+
+    def _shown_home_locked(self):
+        """Caller holds self.lock. The camera home ("gov" of the snapshot)
+        when the usual one is hidden: the first shown territory (world order)
+        that has a governor, with its governor's state; else the first shown
+        one, "idle" (it has no governor)."""
+        shown = [i for i in self.world["order"]
+                 if i in self.world["territories"] and not self.world["territories"][i].get("hidden")]
+        for identity in shown:
+            reducer = self.reducers.get(identity)
+            if reducer is not None and reducer.gov_sid is not None:
+                return {"state": reducer.gov_state, "terr": territory_id(identity)}
+        return {"state": "idle", "terr": territory_id(shown[0]) if shown else ""}
+
+    def _hidden_view_locked(self):
+        """Caller holds self.lock. The snapshot's "hidden": one entry per
+        hidden territory, in world order: {"id", "name", "people", "wait"}.
+        people = its agents as the snapshot counts them (the Reducer's).
+        wait = those of them that wait for the owner (waiting, stuck, or with
+        an open ask in phase "owner"; each person once), plus 1 when its
+        governor's state is "waiting" or the governor has an open ask in
+        phase "owner"."""
+        out = []
+        for identity in self.world["order"]:
+            t = self.world["territories"].get(identity)
+            if t is None or not t.get("hidden"):
+                continue
+            terr = territory_id(identity)
+            people = 0
+            wait = set()
+            gov_waits = False
+            reducer = self.reducers.get(identity)
+            agents = reducer.snapshot()["agents"] if reducer is not None else []
+            for a in agents:
+                people += 1
+                if a["waiting"] or a["stuck"]:
+                    wait.add(a["id"])
+            for ask in self.open.values():
+                if ask.phase != "owner" or not ask.repo or territory_id(ask.repo) != terr:
+                    continue
+                if ask.agent == "gov":
+                    gov_waits = True
+                elif any(a["id"] == ask.agent for a in agents):
+                    wait.add(ask.agent)
+            if reducer is not None and reducer.gov_sid is not None and reducer.gov_state == "waiting":
+                gov_waits = True
+            out.append({"id": terr, "name": t["name"], "people": people, "wait": len(wait) + (1 if gov_waits else 0)})
+        return out
+
+    def _check_hidden_locked(self):
+        """Caller holds self.lock. Tell every client the "hidden" list when it
+        changed since it was last told (a person came or left, waits or
+        stopped waiting). Cheap when nothing is hidden: no work at all."""
+        if not self._hidden_last and not any(t.get("hidden") for t in self.world["territories"].values()):
+            return
+        now = self._hidden_view_locked()
+        if now != self._hidden_last:
+            self._hidden_last = now
+            self._broadcast({"type": "hidden", "lands": now})
+
+    def _event_hidden_locked(self, ev, hidden):
+        """Caller holds self.lock. True when EV tells of a territory in HIDDEN
+        (the set of hidden territory ids): its "terr" is hidden, or its "id" is
+        an agent of such a territory, or it is an ask, ask_phase or ask_closed
+        of an ask of one, or a chat line of a page of one, or a "remote" event
+        whose inner event has it as "terr". The one place this is decided.
+        Default: not hidden (sent)."""
+        kind = ev.get("type")
+        terr = ev.get("terr")
+        if isinstance(terr, str) and terr in hidden:
+            return True
+        who = ev.get("id")
+        if kind in ("ask_phase", "ask_closed"):
+            ask = self.open.get(who) or self.closed.get(who)
+            return ask is not None and bool(ask.repo) and territory_id(ask.repo) in hidden
+        if kind == "remote":
+            inner = ev.get("ev")
+            return isinstance(inner, dict) and isinstance(inner.get("terr"), str) and inner["terr"] in hidden
+        if kind == "chat":
+            return self._page_terr_locked(ev.get("to")) in hidden
+        return isinstance(who, str) and self.agent_terr.get(who) in hidden
+
+    def _page_terr_locked(self, to):
+        """Caller holds self.lock. The territory id of the chat page TO (a
+        governor's "gov:<terr>", a session's "s:<sid>", a subagent's own id), or
+        None when it is not known."""
+        if not isinstance(to, str):
+            return None
+        if to.startswith("gov:"):
+            return to[len("gov:"):]
+        return self._chat_page_terr.get(to) or self.agent_terr.get(to)
+
+    def set_layout(self, lands):
+        """The owner's arrangement (city-layout): LANDS, a list of 1..81 dicts
+        {"id": a territory id, "slot": [i, j] (two ints, -4..4), "hidden":
+        true | false} (no other key; "slot" or "hidden" is needed) -> (code,
+        body). 400 {"error": "bad"} for anything else (an id twice too), 404
+        "unknown" for an id that is no territory. All of it is applied
+        together, then the rule is checked on the SHOWN territories: 409
+        "taken" (two on one slot), "sea" (one on the cell just south of a land
+        whose plan has sea), "empty" (none is left). A land shown again with
+        no slot keeps its old one when the rule holds there, else it takes the
+        first free cell a new repo of its plan would get. Nothing changes on a
+        refusal. 200 {"lands": [{"id", "slot", "hidden"}, ...]}: every
+        territory, in world order. world.json is saved before this returns;
+        the pages are told (a fresh snapshot) only when something changed.
+        Nothing is read from LANDS but ids, numbers and the flag."""
+        bad = (400, {"error": "bad"})
+        if not isinstance(lands, list) or not 1 <= len(lands) <= len(SLOTS):
+            return bad
+        asks = {}
+        for land in lands:
+            if not isinstance(land, dict) or not set(land) <= {"id", "slot", "hidden"}:
+                return bad
+            tid = land.get("id")
+            if not isinstance(tid, str) or not re.fullmatch(r"[0-9a-f]{8}", tid) or tid in asks:
+                return bad
+            if "slot" not in land and "hidden" not in land:
+                return bad
+            if "slot" in land:
+                slot = land["slot"]
+                if (not isinstance(slot, list) or len(slot) != 2
+                        or any(type(n) is not int or not -4 <= n <= 4 for n in slot)):
+                    return bad
+            if "hidden" in land and type(land["hidden"]) is not bool:
+                return bad
+            asks[tid] = land
+        with self.lock:
+            known = {territory_id(i): i for i in self.world["territories"]}
+            if any(tid not in known for tid in asks):
+                return 404, {"error": "unknown"}
+            plan_by_id = {p["id"]: p for p in self.plans}
+            now = {i: (list(t["slot"]), bool(t.get("hidden"))) for i, t in self.world["territories"].items()}
+            new = dict(now)
+            again = []      # shown again, no slot named: its slot is settled after the rest
+            for tid, land in asks.items():
+                identity = known[tid]
+                slot, hidden = new[identity]
+                if "slot" in land:
+                    slot = list(land["slot"])
+                if "hidden" in land:
+                    hidden = land["hidden"]
+                    if not hidden and now[identity][1] and "slot" not in land:
+                        again.append(identity)
+                new[identity] = (slot, hidden)
+
+            def shown_records(skip=None):
+                return [{"slot": new[i][0], "plan": self.world["territories"][i]["plan"]}
+                        for i in self.world["order"]
+                        if i in new and i != skip and not new[i][1]]
+
+            def refusal(records):
+                """The rule on shown RECORDS: the answer, or None when it holds."""
+                seen = set()
+                for r in records:
+                    if tuple(r["slot"]) in seen:
+                        return {"error": "taken"}
+                    seen.add(tuple(r["slot"]))
+                for r in records:
+                    if plan_by_id[r["plan"]]["sea"] and (r["slot"][0], r["slot"][1] + 1) in seen:
+                        return {"error": "sea"}
+                return None
+
+            for identity in again:
+                others = shown_records(skip=identity)
+                mine = {"slot": new[identity][0], "plan": self.world["territories"][identity]["plan"]}
+                if refusal(others + [mine]) is not None:
+                    free = _free_slot(others, plan_by_id, plan_by_id[mine["plan"]])
+                    if free is None:
+                        return 409, {"error": "taken"}
+                    new[identity] = (list(free), False)
+            records = shown_records()
+            if not records:
+                return 409, {"error": "empty"}
+            answer = refusal(records)
+            if answer is not None:
+                return 409, answer
+
+            changed = new != now
+            if changed:
+                for identity, (slot, hidden) in new.items():
+                    t = self.world["territories"][identity]
+                    t["slot"] = slot
+                    if hidden:
+                        t["hidden"] = True
+                    else:
+                        t.pop("hidden", None)
+                self._invalidate_view()
+            self._save_world_locked()   # at once, even when nothing moved: the file is the truth
+            if changed:
+                self._broadcast(self._snapshot_locked())
+                remote_snap = self._remote_snapshot_locked()
+                if remote_snap is not None:
+                    self._broadcast(remote_snap)
+                self._hidden_last = self._hidden_view_locked()
+            return 200, {"lands": [{"id": territory_id(i), "slot": list(self.world["territories"][i]["slot"]),
+                                    "hidden": bool(self.world["territories"][i].get("hidden"))}
+                                   for i in self.world["order"] if i in self.world["territories"]]}
 
     def _start_waiting_shows_locked(self):
         """Caller holds self.lock. Any show still waiting (start None) for a
@@ -3163,6 +3406,7 @@ class CityState(_CloudTaps):
                 else:
                     self._unseat_locked(identity, reducer, sid, tell=True)
             self._save_roster_locked()
+            self._check_hidden_locked()
 
     # -- add agent: the page's button opens one new session -------------------
 
@@ -3442,13 +3686,14 @@ class CityState(_CloudTaps):
                 ev["terr"] = terr
                 ev.setdefault("present", ev_name != "SessionEnd")
             elif etype == "leave":
-                self.agent_terr.pop(ev["id"], None)
                 self._on_leave(ev["id"], identity, terr)
                 if self._forget_name_locked(ev["id"]):
                     names_dirty = True
             elif etype == "done":
                 self._maybe_open_rest(identity)
             self._broadcast(ev)
+            if etype == "leave":
+                self.agent_terr.pop(ev["id"], None)   # after the event: _broadcast needs it (a hidden land's person)
 
         if title and not title_in_spawn:
             record = reducer.agents.get(title_cid)
@@ -3514,6 +3759,7 @@ class CityState(_CloudTaps):
 
         if is_session_line:
             self._save_roster_locked()
+        self._check_hidden_locked()
 
     # -- the roster: the live sessions, kept across a restart --------------
     #
@@ -4652,10 +4898,16 @@ class CityState(_CloudTaps):
             self._check_governors_count()
 
     def _broadcast(self, ev):
-        """Push one event to every connected client. Caller holds self.lock."""
-        data = _encode_event(ev)
+        """Push one event to every connected client. Caller holds self.lock.
+        An event of a hidden territory (city-layout) is not sent to anybody,
+        page or cloud tap: that is decided here and nowhere else (the state
+        it belongs to went on all the same)."""
         if ev.get("type") == "chat":
             self._chat_rev += 1   # cloud-city-2: the uploader reads the windows when this moved
+        hidden = self._hidden_terrs_locked()
+        if hidden and self._event_hidden_locked(ev, hidden):
+            return
+        data = _encode_event(ev)
         dead = []
         for client in self.clients:
             try:
@@ -4761,6 +5013,7 @@ class CityState(_CloudTaps):
 
             self.open[ask_id] = ask
             self._broadcast(dict(ask.view(), type="ask"))
+            self._check_hidden_locked()
             self.cond.notify_all()
             return {"id": ask_id, "phase": ask.phase, "why": ask.why}, 200
 
@@ -4775,6 +5028,7 @@ class CityState(_CloudTaps):
             self._broadcast({"type": "ask_phase", "id": ask.id, "agent": ask.agent,
                               "kind": ask.kind, "phase": "owner", "why": "timeout",
                               "wait": self.gov_wait_sec, "at": _now_ms()})
+            self._check_hidden_locked()
             self.cond.notify_all()
 
     # -- asks: views --------------------------------------------------------
@@ -4883,6 +5137,7 @@ class CityState(_CloudTaps):
             self._broadcast({"type": "ask_phase", "id": ask.id, "agent": ask.agent,
                               "kind": ask.kind, "phase": "owner", "why": "pass",
                               "wait": self.gov_wait_sec, "at": _now_ms()})
+            self._check_hidden_locked()
             self._log_decision(ask, "governor", "pass", "", "")
             self.cond.notify_all()
             return 200, {"ok": True}
@@ -4909,6 +5164,7 @@ class CityState(_CloudTaps):
                           "kind": ask.kind, "tool": ask.tool, "what": ask.what,
                           "by": by, "verb": verb, "text": text, "reason": reason,
                           "at": _now_ms()})
+        self._check_hidden_locked()
         self._log_decision(ask, by, verb, text, reason)
         self.cond.notify_all()
 
@@ -5496,10 +5752,10 @@ class CityHandler(BaseHTTPRequestHandler):
             return self._json(403, {})
         path = urlsplit(self.path).path
         if path not in ("/api/ask", "/api/decide", "/api/closed",
-                         "/api/gov/answer", "/api/gov/pass", "/api/chat/send", "/api/agent/add"):
+                         "/api/gov/answer", "/api/gov/pass", "/api/chat/send", "/api/agent/add", "/api/layout"):
             self.close_connection = True
             return self.send_error(404)
-        if path in ("/api/decide", "/api/chat/send", "/api/agent/add") and self.headers.get("Origin") is None:
+        if path in ("/api/decide", "/api/chat/send", "/api/agent/add", "/api/layout") and self.headers.get("Origin") is None:
             self.close_connection = True
             return self._json(403, {})
         if not self._check_token():
@@ -5517,6 +5773,8 @@ class CityHandler(BaseHTTPRequestHandler):
             return self._api_gov_pass()
         if path == "/api/agent/add":
             return self._api_agent_add()
+        if path == "/api/layout":
+            return self._api_layout()
         return self._api_chat_send()
 
     def do_OPTIONS(self):
@@ -5595,6 +5853,15 @@ class CityHandler(BaseHTTPRequestHandler):
         if any(key not in ("terr", "force") for key in obj):
             return self._json(400, {})   # a territory id, nothing else: never a path, a name or a command
         code, body = self.server.city.add_agent(obj.get("terr"), time.monotonic(), obj.get("force", False))
+        return self._json(code, body)
+
+    def _api_layout(self):
+        obj, err = self._read_body()
+        if err:
+            return self._json(err, {})
+        if any(key != "lands" for key in obj):
+            return self._json(400, {})   # the lands, nothing else: never a path, a name or a command
+        code, body = self.server.city.set_layout(obj.get("lands"))
         return self._json(code, body)
 
     # -- plain routes -------------------------------------------------------
@@ -7445,29 +7712,40 @@ def new_world():
     return {"v": 1, "territories": {}, "order": []}
 
 
+def _free_slot(territories, plan_by_id, plan):
+    """The first cell in SLOTS order that a land of PLAN may take next to the
+    territory records TERRITORIES (the shown ones: the caller leaves the
+    hidden out), or None. It is no cell of theirs, not the cell just south of
+    a sea plan, it touches one of them (when there is one), and a sea plan
+    takes no cell with one of them just south of it."""
+    occupied = {tuple(t["slot"]) for t in territories}
+    blocked = {(t["slot"][0], t["slot"][1] + 1) for t in territories if plan_by_id[t["plan"]]["sea"]}
+    for i, j in SLOTS:
+        if (i, j) in occupied or (i, j) in blocked:
+            continue
+        if occupied and not any((i + a, j + b) in occupied for a, b in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+            continue
+        if plan["sea"] and (i, j + 1) in occupied:
+            continue
+        return (i, j)
+    return None
+
+
 def add_territory(world, plans, identity, name, lines=0):
-    """A known identity is never moved or replanned: same slot, same plan,
-    lines/peak untouched, whatever LINES is passed this time."""
+    """A known identity is never moved or replanned (hidden or not): same
+    slot, same plan, lines/peak untouched, whatever LINES is passed this
+    time. A new one is measured against the shown territories alone (city-
+    layout): a hidden territory's slot is free and it is nobody's neighbour."""
     existing = world["territories"].get(identity)
     if existing is not None:
         return existing
 
-    territories = list(world["territories"].values())
+    territories = [t for t in world["territories"].values() if not t.get("hidden")]
     plan_by_id = {p["id"]: p for p in plans}
     used_plans = {t["plan"] for t in territories}
-    occupied = {tuple(t["slot"]) for t in territories}
-    blocked = {(t["slot"][0], t["slot"][1] + 1) for t in territories if plan_by_id[t["plan"]]["sea"]}
 
     def slot_for(plan):
-        for i, j in SLOTS:
-            if (i, j) in occupied or (i, j) in blocked:
-                continue
-            if occupied and not any((i + a, j + b) in occupied for a, b in ((1, 0), (-1, 0), (0, 1), (0, -1))):
-                continue
-            if plan["sea"] and (i, j + 1) in occupied:
-                continue
-            return (i, j)
-        return None
+        return _free_slot(territories, plan_by_id, plan)
 
     order_start = fnv1a(identity) % len(plans)
     pick = None
@@ -7578,7 +7856,11 @@ def layout(world, plans):
     "territories", "links"} -- see the CONTRACT in
     tests/test_agent_city_world.py for the exact shape of each."""
     plan_by_id = {p["id"]: p for p in plans}
-    order = [ident for ident in world["order"] if ident in world["territories"]]
+    # city-layout: a hidden territory is not there at all (the view is the
+    # layout of the world without that record); two records may hold one slot
+    # when at most one of them is shown
+    order = [ident for ident in world["order"]
+             if ident in world["territories"] and not world["territories"][ident].get("hidden")]
     if not order:
         return {"cell": CELL, "x0": 0, "z0": 0, "w": 0, "h": 0, "rows": [],
                 "territories": [], "links": []}
@@ -7750,6 +8032,7 @@ def layout(world, plans):
         territories_view.append({
             "id": territory_id(ident), "name": t["name"], "plan": plan["id"],
             "terrain": plan["terrain"], "slot": list(t["slot"]), "cx": ox, "cz": oz,
+            "sea": bool(plan["sea"]),
             "lines": t["lines"], "size": growth(t["peak"]), "r": tr["r"], "open": tr["open"],
             "plots_total": len(plan["plots"]), "plots": plots_view, "buildings": buildings_view,
             "era": era, "balance": balance,

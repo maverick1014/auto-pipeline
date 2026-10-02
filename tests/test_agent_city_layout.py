@@ -554,7 +554,7 @@ class TestPagesFollow(PageCase):
         self.hide()
         self.feed(line("UserPromptSubmit", "b2", self.ident["blog"]))
         self.assertEqual(self.state.health()["agents"], before + 1, "hidden is a matter of the picture, the sessions run")
-        self.assertEqual(self.state.cloud_counts({self.blog})["people"], 2)
+        self.assertEqual(self.state.cloud_counts({self.blog})["people"], 3, "g1 (a governor is a session), b1 and b2")
 
     def test_the_hidden_line_knows_who_waits(self):
         self.hide()
