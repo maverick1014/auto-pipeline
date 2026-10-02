@@ -10,9 +10,13 @@ as they are (tests/test_agent_city_add_agent_page.py still passes untouched).
       cloudStartOn(cloudLive.feed). On the local page: as before.
   addHtml(group, st): no longer '' on the cloud page. The states it draws
       (st.s), the same boxes as the mock:
-        none      <button type="button" class="add" data-add="<terr>">＋ 加 agent</button>
-        sent      the same box, aria-disabled="true", a .spin, add.cloud.sent 在路上…
-        opening   aria-disabled, a .spin; on the cloud page add.cloud.opening
+        (cloud-polish Q5, 2026-10-02: the control is the small + on the repo name
+        row, addIconHtml, and addHtml is the one row of words under it; see
+        tests/test_agent_city_add_agent_page.py A2. The + shows a spinner for
+        sent / opening and a tick for done.)
+        none      '' (the + alone)
+        sent      <p class="add-line" role="status" title="<add.cloud.sentTip>">add.cloud.sent 在路上…</p>
+        opening   <p class="add-line" role="status">: on the cloud page add.cloud.opening
                   那台电脑正在打开 {name}… (the name without the repo, as before;
                   no name: add.cloud.openingBare); on the local page as before
         done      <div class="addbox ok" role="status">add.cloud.done 已打开 {name} · 小人马上出现</div>
@@ -253,7 +257,8 @@ class CloudCase(unittest.TestCase):
         cls.a, cls.b = cls.r["a"], cls.r["b"]
 
     def button(self, terr):
-        return '<button type="button" class="add" data-add="%s">＋ 加 agent</button>' % terr
+        return ('<button type="button" class="add-i" data-add="%s" title="加 agent" aria-label="加 agent · auto-pipeline">＋</button>'
+                % terr)
 
 
 class TestWhoGetsTheButton(CloudCase):
@@ -262,10 +267,10 @@ class TestWhoGetsTheButton(CloudCase):
 
     def test_a_repo_on_that_machine_with_start_on(self):
         self.assertEqual(self.r["on"], [True, False], "auto-pipeline is here; v4-plus lives on another machine")
-        self.assertIn(self.button(self.a), self.r["plain"])
-        self.assertTrue(self.r["plain"].rstrip().endswith(self.button(self.a) + "</section>"),
-                        "the button is the last thing in the group")
+        self.assertIn("</button>" + self.button(self.a) + "</div>", self.r["plain"], "the + ends the repo name row")
+        self.assertNotIn("add-line", self.r["plain"])
         self.assertNotIn("data-add", self.r["plainB"])
+        self.assertNotIn("add-i", self.r["plainB"])
 
     def test_no_button_when_the_machine_does_not_take_orders(self):
         for name in ("noFeed", "startOff", "stale", "noFlag", "noHere"):
@@ -286,17 +291,19 @@ class TestWhoGetsTheButton(CloudCase):
 class TestStates(CloudCase):
     def test_on_its_way(self):
         html = self.r["sent"]
-        self.assertRegex(html, r'<button type="button" class="add" data-add="%s" aria-disabled="true"[^>]*>'
-                               r'<span class="spin"></span>在路上…</button>' % self.a)
-        self.assertEqual(html.count("data-add="), 1)
+        self.assertIn('<p class="add-line" role="status" title="已存到云端，等那台电脑来取">在路上…</p>', html)
+        self.assertRegex(html, r'<button type="button" class="add-i" aria-disabled="true"[^>]*><span class="spin"></span></button></div>')
+        self.assertEqual(html.count("data-add="), 0, "nothing to click while the order is on its way")
 
     def test_opening_on_the_machine(self):
-        self.assertRegex(self.r["opening"], r'aria-disabled="true"[^>]*><span class="spin"></span>那台电脑正在打开 Helper…</button>')
-        self.assertRegex(self.r["openingBare"], r'<span class="spin"></span>那台电脑正在打开…</button>')
+        self.assertIn('<p class="add-line" role="status">那台电脑正在打开 Helper…</p>', self.r["opening"])
+        self.assertRegex(self.r["opening"], r'class="add-i" aria-disabled="true"[^>]*><span class="spin"></span></button></div>')
+        self.assertIn('<p class="add-line" role="status">那台电脑正在打开…</p>', self.r["openingBare"])
 
     def test_opened(self):
         self.assertIn('<div class="addbox ok" role="status">已打开 Helper · 小人马上出现</div>', self.r["done"])
         self.assertNotIn("data-add=", self.r["done"], "the button comes back when the box goes")
+        self.assertIn('<span class="add-i ok" aria-hidden="true">✓</span></div>', self.r["done"], "the + is a tick meanwhile")
 
     def test_over_the_cap(self):
         html = self.r["cap"]

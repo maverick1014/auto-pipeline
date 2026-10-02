@@ -970,7 +970,8 @@ class TestKept(unittest.TestCase):
                          r"\} else \{\s*\$\('\.toolbar'\)\.remove\(\);\s*"
                          r"\$\('\.stage-col'\)\.classList\.add\('no-bar'\);")
         self.assertIn('.stage-col.no-bar{--stage-off:', page())
-        self.assertIn('calc(100dvh - var(--stage-off,150px))', page())
+        # cloud-polish Q1 (2026-10-02): the repo row left the header for the stage, its 48 px went to the stage (was 150)
+        self.assertIn('calc(100dvh - var(--stage-off,102px))', page())
 
     def test_spawn_control_only_in_demo(self):
         self.assertIn('id="spawn-group"', markup())

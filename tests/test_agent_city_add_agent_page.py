@@ -14,17 +14,32 @@ A1 the rail lists every repo
       no "here": no button there.
   (sim) railHtml(groups, selId, closed, openRest, adds): an open group with no row shows one quiet line
       <p class="rail-none"> + i18n('rail.none') where the rows would be (its head count reads 0). A closed
-      group shows its head only, as before: no line, no button.
+      group shows its name row only (and the row of words, A2, while there is something to say): no quiet
+      line, no people.
 
-A2 one button at the bottom of every repo group that is here
-  (sim) railHtml: the LAST thing inside an open group's <section> whose add is true is addHtml(group,
-      adds.get(group.terr)) (after the rows and after the resting people). A group whose add is false gets
-      nothing. `adds` = a Map terr -> the button's state; left out = no state anywhere.
-  (sim) addHtml(group, st) -> the button, or what stands in for it:
-      no st          <button type="button" class="add" data-add="<terr>"> + i18n('add.btn')
-      st.s 'opening' the same button with aria-disabled="true", a <span class="spin"></span> and
-                     i18n('add.opening', {name}) -- name = st.name without the repo name ("v4-plus Manager"
-                     reads "Manager", shortLabel) -- or i18n('add.openingBare') while the name is not known
+A2 one small + on the name row of every repo group that is here
+  cloud-polish Q5 (owner, 2026-10-02, a screenshot of 7 repo groups each with a full-width "＋ 加 agent" row:
+  "too many things already"; approved mock mock/cloud-polish-mock.html, c3c1f4f, screen 4). Before, the
+  button was a full-width row at the bottom of every group.
+  (sim) railHtml: every group's head is ONE row
+        <div class="grp-row"> + the head button (.grp-h, as before: dot, name, <span class="n">, the folded
+        .you badge) + addIconHtml(group, adds.get(group.terr)) when the group's add is true + </div>
+      and, right after that row, addHtml(group, adds.get(group.terr)) when add is true: the ONE row of words,
+      '' while there is nothing to say. Both show on a folded group too (the + sits on the name row; an
+      answer is never hidden by a fold). Nothing comes after the people any more. A group whose add is
+      false gets neither. `adds` = a Map terr -> the state; left out = no state anywhere.
+  (sim) addIconHtml(group, st) -> the control on the name row (tip = i18n('add.tip'), 加 agent / Add agent):
+      no st          <button type="button" class="add-i" data-add="<terr>" title="<tip>"
+                     aria-label="<tip> · <repo name>">＋</button>   (the only form a click works on)
+      'sent', 'opening'   <button type="button" class="add-i" aria-disabled="true" title aria-label><span
+                     class="spin"></span></button>   (no data-add: one open at a time per repo)
+      'done'         <span class="add-i ok" aria-hidden="true">✓</span>
+      'cap', 'err', 'cmd' the first button with aria-disabled="true" and no data-add (the box has its own buttons)
+  (sim) addHtml(group, st) -> the row of words under the name row:
+      no st          ''
+      st.s 'opening' <p class="add-line" role="status"> + i18n('add.opening', {name}) -- name = st.name
+                     without the repo name ("v4-plus Manager" reads "Manager", shortLabel) -- or
+                     i18n('add.openingBare') while the name is not known
       st.s 'cap'     <div class="addbox cap" role="alert">: i18n('add.cap'), i18n('add.capNums', {ram, cpu,
                      max}), i18n('add.capAsk'), a button data-add-go="<terr>" (i18n('add.go')) and a button
                      data-add-no="<terr>" (i18n('add.cancel'))
@@ -34,8 +49,8 @@ A2 one button at the bottom of every repo group that is here
       st.s 'cmd'     <div class="addbox cmd" role="status">: i18n('add.plain'), <code> + st.cmd + </code>, a
                      button data-add-copy="<terr>" (i18n('add.copy'), or i18n('add.copied') once st.copied)
                      and a button data-add-no="<terr>" (i18n('add.close'))
-      Every text from the server (name, why, cmd) goes through esc(). 'cap', 'err' and 'cmd' show no
-      .add button of their own (only the retry one, when st.retry).
+      Every text from the server (name, why, cmd) goes through esc(). 'cap', 'err' and 'cmd' carry no
+      data-add of their own (only the retry button, when st.retry).
 
 A4 / A5 / A6 the button's states
   (sim) addState: a Map terr -> st, the one the rail draws from.
@@ -62,9 +77,10 @@ A4 / A5 / A6 the button's states
       true); [data-add-no] -> the state is removed; [data-add-copy] -> navigator.clipboard.writeText(st.cmd)
       (a failure is ignored) and st.copied = true; each redraws the rail. renderRail() passes addState to
       railHtml, and redraws when an 'adding' event comes.
-  CSS (the mock's): .rail-none, .add, .add[aria-disabled="true"], .spin (an animation, stopped under
-      prefers-reduced-motion), .addbox, .addbox.err, .addbox.cap, .addbox.cmd, .mini.
-  TEXT, zh and en: rail.none 没人在线 / Nobody online; add.btn ＋ 加 agent / + Add agent; add.opening
+  CSS (the mock's): .rail-none, .grp-row, .add-i, .add-i[aria-disabled="true"], .add-line, .spin (an
+      animation, stopped under prefers-reduced-motion), .addbox, .addbox.err, .addbox.cap, .addbox.cmd,
+      .mini. The full-width button's own rules (.add) are gone.
+  TEXT, zh and en: rail.none 没人在线 / Nobody online; add.tip 加 agent / Add agent (add.btn is gone); add.opening
       正在打开 {name}… / Opening {name}…; add.openingBare; add.cap; add.capNums (holds {ram}, {cpu}, {max});
       add.capAsk; add.go; add.cancel; add.err; add.retry; add.ok; add.errGone (holds {folder});
       add.errFailed (holds {detail}); add.errLate; add.errOther; add.plain; add.copy; add.copied; add.close.
@@ -84,10 +100,10 @@ from test_agent_city_people import function_source, page, run_sim  # noqa: E402
 from test_agent_city_chain import TA, TB, two_territory_view  # noqa: E402
 from test_agent_city_ux_page import css, listener_block, rule, text_keys  # noqa: E402
 
-SIM_REQUIRED = ("apply", "landState", "railGroups", "railHtml", "addHtml", "addState", "addAnswer", "addReason",
+SIM_REQUIRED = ("apply", "landState", "railGroups", "railHtml", "addHtml", "addIconHtml", "addState", "addAnswer", "addReason",
                 "citizens", "byId", "i18n", "esc")
 
-KEYS = ("rail.none", "add.btn", "add.opening", "add.openingBare", "add.cap", "add.capNums", "add.capAsk", "add.go",
+KEYS = ("rail.none", "add.tip", "add.opening", "add.openingBare", "add.cap", "add.capNums", "add.capAsk", "add.go",
         "add.cancel", "add.err", "add.retry", "add.ok", "add.errGone", "add.errFailed", "add.errLate", "add.errOther",
         "add.plain", "add.copy", "add.copied", "add.close")
 
@@ -124,6 +140,8 @@ out.errNoRetry = st({ s: 'err', why: 'gone', retry: false });
 out.cmd = st({ s: 'cmd', cmd: "cd /r/v4-plus && claude --name 'v4-plus Manager' <x>" });
 out.copied = st({ s: 'cmd', cmd: 'cd /r', copied: true });
 out.direct = addHtml(railGroups()[1], undefined);
+out.directIcon = addIconHtml(railGroups()[1], undefined);
+out.closedOpening = sec(draw(new Map([[B.id, { s: 'opening', name: 'v4-plus Manager' }]]), new Set([B.id])), B.id);
 // a repo that is not on this machine: the group stays, the button goes
 B.here = false;
 apply({ type: 'world', world: V });
@@ -212,13 +230,21 @@ class TestEveryRepo(SimCase):
         self.assertRegex(b, r'<span class="n">\s*0\s*</span>')
         self.assertNotIn("rail-none", self.r["plainA"], "auto-pipeline has people")
 
-    def test_a_closed_group_is_its_head_only(self):
+    def test_a_closed_group_is_its_name_row_only(self):
         for name in ("closedA", "closedB"):
             with self.subTest(group=name):
                 html = self.r[name]
                 self.assertIn('aria-expanded="false"', html)
                 self.assertNotIn("rail-none", html)
-                self.assertNotIn("data-add", html)
+                self.assertNotIn("data-focus", html, "no people")
+                self.assertNotIn("add-line", html, "nothing to say")
+                self.assertEqual(html.count("data-add="), 1, "cloud-polish Q5: the + sits on the name row, a fold keeps it")
+
+    def test_a_closed_group_still_shows_the_words(self):
+        html = self.r["closedOpening"]
+        self.assertIn('aria-expanded="false"', html)
+        self.assertIn('<p class="add-line" role="status">正在打开 Manager…</p>', html, "an answer is never hidden by a fold")
+        self.assertNotIn("rail-none", html)
 
 
 # ---------------------------------------------------------------------------
@@ -226,36 +252,46 @@ class TestEveryRepo(SimCase):
 # ---------------------------------------------------------------------------
 
 class TestButton(SimCase):
-    def button(self, terr):
-        return '<button type="button" class="add" data-add="%s">＋ 加 agent</button>' % terr
+    """cloud-polish Q5: the control is a small + at the right end of the repo name row, not a row of its own."""
+
+    def icon(self, terr, name):
+        return ('<button type="button" class="add-i" data-add="%s" title="加 agent" aria-label="加 agent · %s">＋</button>'
+                % (terr, name))
 
     def test_every_repo_that_is_here_has_one(self):
         self.assertEqual([g["add"] for g in self.r["groups"]], [True, True])
         self.assertEqual(self.r["plainA"].count("data-add="), 1)
         self.assertEqual(self.r["plainB"].count("data-add="), 1)
-        self.assertIn(self.button(self.a), self.r["plainA"])
-        self.assertIn(self.button(self.b), self.r["plainB"])
-        self.assertEqual(self.r["direct"], self.button(self.b))
+        self.assertIn(self.icon(self.a, "auto-pipeline"), self.r["plainA"])
+        self.assertIn(self.icon(self.b, "v4-plus"), self.r["plainB"])
+        self.assertEqual(self.r["directIcon"], self.icon(self.b, "v4-plus"))
+        self.assertEqual(self.r["direct"], "", "addHtml is the row of words: nothing to say, nothing drawn")
 
-    def test_at_the_bottom_of_the_group(self):
+    def test_on_the_name_row_after_the_count(self):
         a = self.r["plainA"]
-        self.assertTrue(a.rstrip().endswith(self.button(self.a) + "</section>"),
-                        "the button is the last thing in the group, after the resting people")
-        self.assertLess(a.rindex("data-focus="), a.index("data-add="))
-        self.assertLess(a.index("data-rest="), a.index("data-add="))
+        self.assertRegex(a, r'<div class="grp-row"><button type="button" class="grp-h" data-grp="%s"[^>]*>.*?<span class="n">\s*3\s*'
+                            r'</span></button>%s</div>' % (self.a, re.escape(self.icon(self.a, "auto-pipeline"))),
+                         "the name row: the head button (dot, name, count), then the +")
+        self.assertLess(a.index("data-add="), a.index("data-focus="), "before the first person")
+        self.assertNotIn('class="add"', a, "no full-width button any more")
+        self.assertNotIn("add-line", a, "nothing to say: no row of words")
+        self.assertTrue(a.rstrip().endswith("</ul></section>"), "nothing comes after the people")
         b = self.r["plainB"]
-        self.assertLess(b.index("rail-none"), b.index("data-add="))
+        self.assertLess(b.index("data-add="), b.index("rail-none"))
+        self.assertNotIn('class="add"', b)
 
     def test_adds_may_be_left_out(self):
-        self.assertIn(self.button(self.b), self.r["noAdds"] or "")
+        self.assertIn(self.icon(self.b, "v4-plus"), self.r["noAdds"] or "")
 
     def test_a_repo_that_is_not_on_this_machine_has_none(self):
         self.assertIs(self.r["notHere"]["add"], False)
         html = self.r["notHere"]["html"]
         self.assertIsNotNone(html, "the group itself stays")
         self.assertIn("rail-none", html)
+        self.assertIn('<div class="grp-row">', html, "the name row is the same row everywhere")
         self.assertNotIn("data-add", html)
-        self.assertNotIn('class="add"', html)
+        self.assertNotIn("add-i", html)
+        self.assertNotIn("add-line", html, "and no row of words either")
         self.assertIs(self.r["noFlag"], False, "no `here` at all (demo, the cloud city) = no button")
 
 
@@ -266,13 +302,15 @@ class TestButton(SimCase):
 class TestStates(SimCase):
     def test_opening(self):
         html = self.r["opening"]
-        self.assertRegex(html, r'<button type="button" class="add" data-add="%s" aria-disabled="true">' % self.b)
-        self.assertIn('<span class="spin"></span>', html)
-        self.assertIn("正在打开 Manager…", html)
+        self.assertRegex(html, r'<button type="button" class="add-i" aria-disabled="true" title="加 agent" '
+                               r'aria-label="加 agent · v4-plus"><span class="spin"></span></button></div>',
+                         "the + shows the spinner while it opens")
+        self.assertIn('<p class="add-line" role="status">正在打开 Manager…</p>', html)
+        self.assertNotIn("Manager</b>", html)
         self.assertNotIn("v4-plus Manager", html, "the repo name is in the group head already")
-        self.assertEqual(html.count("data-add="), 1)
+        self.assertNotIn("data-add=", html, "one open at a time per repo: nothing to click while it opens")
         bare = self.r["openingBare"]
-        self.assertIn(self.r["text"]["add.openingBare"], bare)
+        self.assertIn('<p class="add-line" role="status">%s</p>' % self.r["text"]["add.openingBare"], bare)
         self.assertIn('aria-disabled="true"', bare)
 
     def test_over_the_cap(self):
@@ -286,6 +324,8 @@ class TestStates(SimCase):
         self.assertRegex(html, r'<button[^>]*data-add-go="%s"[^>]*>%s</button>' % (self.b, re.escape(self.r["text"]["add.go"])))
         self.assertRegex(html, r'<button[^>]*data-add-no="%s"[^>]*>%s</button>' % (self.b, re.escape(self.r["text"]["add.cancel"])))
         self.assertNotRegex(html, r'data-add="', "confirm or cancel, no plain add button beside them")
+        self.assertRegex(html, r'<button type="button" class="add-i" aria-disabled="true"[^>]*>＋</button></div>',
+                         "the + is quiet while the box asks")
 
     def test_error(self):
         html = self.r["err"]
@@ -295,6 +335,7 @@ class TestStates(SimCase):
         self.assertRegex(html, r'<button[^>]*data-add="%s"[^>]*>%s</button>' % (self.b, re.escape(self.r["text"]["add.retry"])))
         self.assertRegex(html, r'<button[^>]*data-add-no="%s"[^>]*>%s</button>' % (self.b, re.escape(self.r["text"]["add.ok"])))
         self.assertNotIn('class="add"', html)
+        self.assertEqual(html.count('data-add="'), 1, "the retry button only: the + is quiet")
         self.assertNotRegex(self.r["errNoRetry"], r'data-add="')
         self.assertIn("data-add-no=", self.r["errNoRetry"])
 
@@ -308,10 +349,14 @@ class TestStates(SimCase):
         self.assertNotRegex(html, r'data-add="')
         self.assertRegex(self.r["copied"], r'data-add-copy="%s"[^>]*>%s</button>' % (self.b, re.escape(self.r["text"]["add.copied"])))
 
-    def test_the_state_is_the_last_thing_in_the_group(self):
-        for name in ("cap", "err", "cmd"):
+    def test_the_words_sit_right_under_the_name_row(self):
+        for name, start in (("opening", '<p class="add-line"'), ("cap", '<div class="addbox cap"'),
+                            ("err", '<div class="addbox err"'), ("cmd", '<div class="addbox cmd"')):
             with self.subTest(state=name):
-                self.assertTrue(self.r[name].rstrip().endswith("</div></section>"))
+                html = self.r[name]
+                self.assertIn("</button></div>" + start, html, "right after the name row")
+                self.assertLess(html.index(start), html.index("rail-none"), "above the people (here: the quiet line)")
+                self.assertEqual(html.count("add-line") + html.count('class="addbox'), 1, "ONE row of words")
 
 
 class TestAnswers(SimCase):
@@ -403,21 +448,23 @@ class TestWiring(unittest.TestCase):
         self.assertRegex(function_source("renderRail"), r"railHtml\([^;]*addState\)")
 
     def test_css(self):
-        for sel in (".rail-none", ".add", '.add[aria-disabled="true"]', ".spin", ".addbox", ".addbox.err", ".addbox.cap",
-                    ".addbox.cmd", ".mini"):
+        for sel in (".rail-none", ".grp-row", ".add-i", '.add-i[aria-disabled="true"]', ".add-line", ".spin", ".addbox",
+                    ".addbox.err", ".addbox.cap", ".addbox.cmd", ".mini"):
             with self.subTest(sel=sel):
                 self.assertTrue(rule(sel).strip(), "no CSS rule for %s" % sel)
         self.assertIn("animation", rule(".spin"))
         reduced = [m.group(0) for m in re.finditer(r"@media \(prefers-reduced-motion:\s*reduce\)\s*\{(?:[^{}]|\{[^{}]*\})*\}", css())]
         self.assertTrue(any(".spin" in block for block in reduced), "the spinner must stop under prefers-reduced-motion")
-        self.assertIn("dashed", rule(".add"), "the mock's quiet dashed button")
+        self.assertEqual(rule(".add").strip(), "", "the full-width button is gone, and its rules with it")
+        self.assertRegex(rule(".add-i"), r"width:22px;height:22px", "a small square at the end of the name row")
 
     def test_texts(self):
         for key in KEYS:
             with self.subTest(key=key):
                 self.assertEqual(text_keys(key), 2, "one zh and one en text")
         src = page()
-        for key, zh, en in (("rail.none", "没人在线", "Nobody online"), ("add.btn", "＋ 加 agent", "+ Add agent"),
+        self.assertEqual(text_keys("add.btn"), 0, "the full-width button's text is gone")
+        for key, zh, en in (("rail.none", "没人在线", "Nobody online"), ("add.tip", "加 agent", "Add agent"),
                             ("add.opening", "正在打开 {name}…", "Opening {name}…")):
             with self.subTest(key=key):
                 self.assertIn("'%s': '%s'" % (key, zh), src)
