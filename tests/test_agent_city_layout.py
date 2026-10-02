@@ -21,6 +21,8 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
     tiles in "rows", no link to it; its neighbours get their outer edge on
     that side. The answer is exactly layout() of the same world without that
     record. Two records may hold the same slot when at most one is shown.
+    Every territory of the view says whether its plan has sea: "sea": true |
+    false (the page offers no slot just south of such a land).
 
   add_territory(world, plans, identity, name, lines=0)
     A known identity is never moved (hidden or not), as today. A new one
@@ -59,7 +61,8 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
     After a 200 that changed something, every client gets a fresh
     {"type": "snapshot", ...}: the one add_client builds for a new page
     (then the remote snapshot, when there is one). People follow their land
-    through it.
+    through it: every place in it (the land, the buildings, an agent's
+    "office") is the new one.
     A hidden territory is cut out of everything a page hears:
       the snapshot (a new page's too): not in "world" (layout() leaves it
         out), none of its "agents", "govs", "asks", "shows", "adding"; its
@@ -185,6 +188,11 @@ class TestLayoutLeavesHiddenOut(unittest.TestCase):
         view = ac.layout(world_of(*rows), PLANS)
         self.assertEqual([(t["name"], t["slot"]) for t in view["territories"]], [("shop", [0, 0]), ("wood", [1, 0])])
         self.assertEqual(view, ac.layout(world_of(rows[0], rows[2]), PLANS))
+
+    def test_the_view_says_which_land_has_sea(self):
+        view = ac.layout(world_of(*self.rows()), PLANS)
+        self.assertEqual({t["name"]: t.get("sea") for t in view["territories"]},
+                         {"shop": False, "blog": False, "dock": True, "wood": False})
 
     def test_hidden_false_is_shown(self):
         world = world_of(*self.rows())
@@ -487,6 +495,18 @@ class TestPagesFollow(PageCase):
             self.assertEqual(slots["wood"], [1, 1])
             self.assertEqual(sorted(x["id"] for x in snaps[0]["agents"]), ["s:b1", "s:s1"])
             self.assertEqual(snaps[0]["hidden"], [])
+
+    def test_an_office_moves_with_its_land(self):
+        was = [a for a in self.first_picture()["agents"] if a["id"] == "s:s1"][0].get("office")
+        self.assertTrue(was, "the fixture: shop's session has an office in its land")
+        page = self.client()
+        self.ok({"id": self.shop, "slot": [2, 1]})
+        snap = [m for m in self.drain(page) if m.get("type") == "snapshot"][-1]
+        now = [a for a in snap["agents"] if a["id"] == "s:s1"][0]["office"]
+        self.assertEqual((now["x"] - was["x"], now["z"] - was["z"]), (2 * ac.CELL, 1 * ac.CELL))
+        land = [t for t in snap["world"]["territories"] if t["id"] == self.shop][0]
+        self.assertEqual((land["cx"], land["cz"]), (2 * ac.CELL, 1 * ac.CELL))
+        self.assertIn({"x": now["x"], "z": now["z"]}, [{"x": o["x"], "z": o["z"]} for o in land["offices"]])
 
     def test_the_same_arrangement_again_tells_nobody(self):
         page = self.client()
