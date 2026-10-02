@@ -28,7 +28,9 @@ off).
            No versioned plugin path anywhere in the file.
         5. `launchctl bootout gui/<uid>/<label>` (quiet; "not loaded" is fine),
            then `launchctl bootstrap gui/<uid> <plist>`. launchctl is found on
-           PATH, never by an absolute path.
+           PATH, never by an absolute path. A bootstrap that fails is tried
+           again, at most 3 times in all, 1 s apart (on a real Mac the old copy
+           can still be going away right after the bootout).
         6. loaded -> "LOGIN START: on", exit 0. Not loaded -> the plist and the
            launcher are removed again, a line starting "LOGIN START:" that
            names launchctl, exit 1.
@@ -102,10 +104,17 @@ MAC_ONLY = "LOGIN START: macOS only for now"
 
 # Like the real one: bootstrap of a loaded label fails (5), bootout of one that
 # is not loaded fails (3). LAUNCHCTL_FAIL=1: bootstrap always fails.
+# LAUNCHCTL_SLOW=1: the first bootstrap after a bootout of a loaded label fails
+# once (the old copy is still going away), the next one works.
 LAUNCHCTL_STUB = r"""#!/bin/sh
 { printf 'CALL'; for a in "$@"; do printf '\t%s' "$a"; done; printf '\n'; } >> "$LAUNCHCTL_LOG"
 case "${1:-}" in
   bootstrap)
+    if [ -f "$LAUNCHCTL_STATE.busy" ]; then
+      rm -f "$LAUNCHCTL_STATE.busy"
+      echo "Bootstrap failed: 5: Input/output error" >&2
+      exit 5
+    fi
     if [ -n "${LAUNCHCTL_FAIL:-}" ] || [ -f "$LAUNCHCTL_STATE" ]; then
       echo "Bootstrap failed: 5: Input/output error" >&2
       exit 5
@@ -115,6 +124,7 @@ case "${1:-}" in
   bootout)
     if [ -f "$LAUNCHCTL_STATE" ]; then
       rm -f "$LAUNCHCTL_STATE"
+      [ -z "${LAUNCHCTL_SLOW:-}" ] || : > "$LAUNCHCTL_STATE.busy"
       exit 0
     fi
     echo "Boot-out failed: 3: No such process" >&2
@@ -157,6 +167,7 @@ class LoginCase(CloudCase):
         env.pop("AGENT_CITY_PLUGIN_ROOT", None)
         env.pop("FAKE_UNAME", None)
         env.pop("LAUNCHCTL_FAIL", None)
+        env.pop("LAUNCHCTL_SLOW", None)
         env.update(extra or {})
         for key in unset:
             env.pop(key, None)
@@ -282,6 +293,25 @@ class TestOn(LoginCase):
         self.assertEqual(os.listdir(self.agents), [LABEL + ".plist"])
         self.assertTrue(os.path.exists(self.ctl_state), "the login item is loaded after the second on")
         self.assertEqual(self.plist_data().get("Label"), LABEL)
+
+    def test_a_slow_unload_is_tried_again(self):
+        """Found in review: on a real Mac a bootstrap right after a bootout can fail
+        (5) while the old copy is still going away. A second `on` must not end
+        with the working login item removed."""
+        self.assertOn(self.on())
+        self.assertOn(self.on(extra={"LAUNCHCTL_SLOW": "1"}))
+        self.assertTrue(os.path.exists(self.ctl_state), "loaded after the second try")
+        self.assertTrue(os.path.isfile(self.plist))
+        self.assertTrue(os.path.isfile(self.launcher))
+        boots = [c for c in self.calls() if c and c[0] == "bootstrap"]
+        self.assertEqual(len(boots), 3, "one for the first on, two for the second")
+
+    def test_it_gives_up_after_three_tries(self):
+        code, out, err = self.on(extra={"LAUNCHCTL_FAIL": "1"})
+        self.assertEqual(code, 1, out + err)
+        boots = [c for c in self.calls() if c and c[0] == "bootstrap"]
+        self.assertEqual(len(boots), 3, "tried 3 times, then it gives up")
+        self.assert_nothing_installed()
 
     def test_no_versioned_plugin_path_in_the_login_item(self):
         stale = os.path.join(self.cache, "0.18.0", "bin")
