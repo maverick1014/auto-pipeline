@@ -512,6 +512,9 @@ class TestThePage(unittest.TestCase):
     def test_only_the_live_local_page_has_it(self):
         self.assertRegex(self.script, r"\$\('#arr-btn'\)\.hidden\s*=\s*DEMO\s*\|\|\s*CLOUD",
                          "the demo and the cloud page have no arrange control")
+        enter = function_source("arrEnter") or ""
+        self.assertRegex(enter[:enter.find("arr.on = true")], r"if \([^)]*DEMO \|\| CLOUD[^)]*\)\s*return",
+                         "and no mode: the cloud page never sends /api/layout (its Worker has no such route)")
 
     def test_the_bar_and_the_plates(self):
         stage = self.html[self.html.index('<div class="stage" id="stage">'):self.html.index("</main>")]

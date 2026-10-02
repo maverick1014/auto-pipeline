@@ -584,7 +584,8 @@ class TestCloudPageTalks(unittest.TestCase):
 
     def test_only_known_addresses(self):
         urls = set(re.findall(r"fetch\(\s*'([^']+)'", script()))
-        self.assertLessEqual(urls, {"/api/chat?to=", "/api/chat/send", "/api/decide", "/api/agent/add"})
+        self.assertLessEqual(urls, {"/api/chat?to=", "/api/chat/send", "/api/decide", "/api/agent/add",
+                                    "/api/layout"})   # city-layout: the local page's arrange mode; the cloud page never opens it (arrEnter)
 
     def test_phone_sheet_follows_the_keyboard(self):
         html = page()

@@ -363,6 +363,57 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 /* U1: the zoom-out hint -- shown briefly when a zoom-out was stopped by the limit. */
 .cap-hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:4;background:var(--panel);color:var(--ink-2);border:1.5px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12.5px;pointer-events:none}
 
+/* city-layout L4 (approved mock mock/city-layout-mock.html, "THE CHANGE (city-layout)"): arrange the lands on the
+   real island. One small control, pinned at the right end of the repo row on the stage (position:absolute in the
+   strip, left of it = the width of the repo row, so it never scrolls away with the tags; the script keeps
+   --repos-w and --arr-w and the class .has-arr on the strip, which leaves the repo row the room). */
+.arr-btn{all:unset;box-sizing:border-box;position:absolute;left:calc(var(--repos-w,0px) + 6px);bottom:3px;pointer-events:auto;cursor:pointer;display:inline-flex;align-items:center;gap:5px;height:31px;padding:0 11px 0 9px;border:1.5px dashed var(--ink-3);border-radius:999px;background:var(--panel);color:var(--ink-2);font:600 13px/1 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.18);white-space:nowrap}
+.stage-top.has-arr>nav.repos{max-width:calc(100% - var(--arr-w,96px))}
+.arr-btn:hover{border-color:var(--ink);color:var(--ink)}
+.arr-btn:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.arr-btn[aria-pressed="true"]{border-style:solid;border-color:var(--ink);background:var(--ink);color:var(--paper)}
+.arr-btn svg{width:14px;height:14px;flex:none}
+/* the mode: a name plate on every land (drag it, or the land itself), the bar at the bottom edge */
+.arranging .proto,.arranging .follow{display:none!important}
+.arranging canvas{cursor:grab}
+.arr-ov{position:absolute;inset:0;z-index:3;pointer-events:none;overflow:hidden}
+.arr-h{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;display:inline-flex;align-items:center;padding:3px 3px 3px 8px;border:2px solid var(--ink);border-radius:999px;background:var(--panel);color:var(--ink);font:700 12.5px/1 var(--round);box-shadow:0 3px 0 rgba(42,43,69,.25);cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap}
+.arr-h .grip{color:var(--ink-3);margin-right:5px;letter-spacing:-2px}
+.arr-h .rc{width:10px;height:10px;border-radius:50%;background:var(--rc);margin-right:6px;flex:none}
+.arr-h.on{background:var(--butter);color:#4A3500}
+.arr-h.dragging{opacity:.4}
+.arr-h.swap{border-style:dashed}
+.arr-eye{all:unset;cursor:pointer;margin-left:7px;padding:5px 9px;border-radius:999px;background:var(--panel-2);color:var(--ink-2);font:600 12px/1 var(--round)}
+.arr-eye:hover{background:var(--ask-bg);color:var(--ask-ink)}
+.arr-eye:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.arr-eye[aria-disabled="true"]{opacity:.45;cursor:default}
+.arr-ghost{position:absolute;z-index:6;pointer-events:none;transform:translate(-50%,-150%);padding:7px 12px;border-radius:999px;background:var(--ink);color:var(--paper);font:700 12.5px/1 var(--round);box-shadow:0 3px 0 rgba(42,43,69,.3);white-space:nowrap}
+.arr-bar{position:absolute;z-index:5;left:calc(var(--rail-w) + 24px);right:12px;bottom:12px;margin-inline:auto;max-width:780px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 8px 8px 14px;border:2px solid var(--ink);border-radius:16px;background:var(--panel);box-shadow:0 4px 0 rgba(42,43,69,.18);font:600 13px/1.4 var(--round);color:var(--ink-2)}
+.stage.rail-folded .arr-bar{left:42px}
+.stage.rail-none .arr-bar{left:12px}
+.arr-say{flex:1 1 240px;min-width:0}
+.arr-say b{color:var(--ink);margin-right:8px}
+.arr-act{display:flex;gap:6px;margin-left:auto}
+.arr-act button{all:unset;cursor:pointer;padding:9px 16px;border-radius:11px;border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);font:700 13px/1 var(--round)}
+.arr-act button:focus-visible,.arr-hid button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.arr-act #arr-done{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.arr-err{order:2;flex:1 1 100%;margin:0;padding:5px 10px;border-radius:10px;background:var(--ask-bg);color:var(--ask-ink)}
+.arr-tray{order:3;flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding-top:8px;border-top:1.5px solid var(--line)}
+.arr-tray:empty{display:none}
+.arr-tray .lbl{color:var(--ink-3);margin-right:2px}
+.arr-hid{display:inline-flex;align-items:center;gap:6px;padding:3px 4px 3px 9px;border:1.5px dashed var(--ink-3);border-radius:999px;background:var(--panel-2);color:var(--ink)}
+.arr-hid .rc{width:9px;height:9px;border-radius:50%;background:var(--rc)}
+.arr-hid em{font-style:normal;color:var(--ask-ink);background:var(--ask-bg);border-radius:999px;padding:1px 7px;font-size:12px}
+.arr-hid button{all:unset;cursor:pointer;padding:5px 10px;border-radius:999px;background:var(--panel);border:1.5px solid var(--line);color:var(--ink);font:700 12px/1 var(--round)}
+/* city-layout L2: the one quiet line at the rail's foot; it turns red when somebody in a hidden repo waits */
+.rail-hid{all:unset;box-sizing:border-box;cursor:pointer;flex:none;display:flex;align-items:center;gap:6px;width:100%;padding:7px 10px 7px 12px;border-top:1.5px solid var(--line);color:var(--ink-3);font:600 12px/1.4 var(--round)}
+.rail-hid:hover{color:var(--ink)}
+.rail-hid:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.rail-hid i{display:none;width:8px;height:8px;border-radius:50%;background:var(--berry);flex:none}
+.rail-hid u{margin-left:auto;text-decoration:none;border-bottom:1.5px dotted currentColor;white-space:nowrap}
+.rail-hid.you{color:var(--ask-ink)}
+.rail-hid.you i{display:block}
+
 /* the window: click a person / building / the governor, or open 动态 -- V1 (city-ux2 v2, owner
    2026-09-29): a right-docked message panel, one person's own (the left rail, V1, is the team list; no
    two columns, no 'wide' any more). Folds to a thin tab on its own right edge, like the rail
@@ -431,6 +482,17 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
   /* city-polish: the bottom sheet is short (44% of a small stage), so the history must never shrink to
      nothing here -- #detail (overflow:auto) scrolls down to the input row instead. */
   .chat{min-height:96px}
+  /* city-layout L4 (phone): the bar is one thin block at the very bottom, the lands stay above it; a plate is the
+     name alone (two lands are about 120px apart), only the plate that is picked shows its hide button */
+  .arr-bar,.stage.rail-folded .arr-bar,.stage.rail-none .arr-bar{left:8px;right:8px;bottom:8px;padding:7px 7px 7px 11px;gap:6px 8px;font-size:12.5px}
+  .arr-say{flex:1 1 100%}
+  .arr-tray{order:0;padding-top:0;border-top:0;flex:1 1 auto}
+  .arr-act button{padding:10px 16px}
+  .arr-h{font-size:12px;padding:6px 9px 6px 7px}
+  .arr-h .nm{max-width:92px;overflow:hidden;text-overflow:ellipsis}
+  .arr-h .arr-eye{display:none}
+  .arr-h.on{padding:2px 2px 2px 7px;z-index:1}
+  .arr-h.on .arr-eye{display:inline;padding:7px 9px}
 }
 @media (prefers-reduced-motion: reduce){ .qm span,.zz span{animation:none} .track i,.btn{transition:none} .spin{animation:none;border-top-color:var(--ink-3)} }
 /* cloud-city: css -- the same page as the cloud page: view only, fed by polling (mock/cloud-city-1-mock.html).
@@ -521,10 +583,14 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
           <nav class="machines" id="machines" data-t-aria="cloud.machines" hidden></nav>
           <!-- end cloud-city: html -->
           <nav class="repos" id="repos" data-t-aria="aria.repos"></nav>
+          <!-- city-layout L4: the arrange control, pinned at the right end of the repo row (shown by the script on the live local page only) -->
+          <button type="button" class="arr-btn" id="arr-btn" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg><span data-t="arr.btn"></span></button>
         </div>
         <aside class="rail" id="rail" data-t-aria="rail.title">
           <div class="rail-head"><span data-t="rail.title"></span><span class="n" id="rail-n"></span><span class="you" id="rail-you" hidden></span><button type="button" class="fold" id="rail-fold" data-t-aria="fold.rail">«</button></div>
           <div class="rail-list" id="rail-list"></div>
+          <!-- city-layout L2: the quiet line at the rail's foot (what is hidden); a click opens the arrange mode -->
+          <button type="button" class="rail-hid" id="rail-hid" hidden></button>
         </aside>
         <button type="button" class="tab rail-tab" id="rail-tab" aria-controls="rail" hidden><span>›</span><span class="v" id="rail-tab-t"></span><span class="you" id="rail-tab-you" hidden></span></button>
         <div class="follow" id="follow" role="status" hidden><span id="follow-t"></span><kbd>Esc</kbd><button type="button" id="follow-stop" data-t="follow.stop"></button></div>
@@ -540,6 +606,15 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
           <button class="btn" id="zfit" type="button" data-t-aria="btn.resetView"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
           </button>
         </div>
+        <!-- city-layout L4: the arrange mode -- a name plate on every land (.arr-h, made by the script), the bar at the stage's bottom edge, the label that follows a dragged land -->
+        <div class="arr-ov" id="arr-ov"></div>
+        <div class="arr-bar" id="arr-bar" role="region" data-t-aria="arr.on" hidden>
+          <div class="arr-say"><b data-t="arr.on"></b><span id="arr-tip"></span></div>
+          <p class="arr-err" id="arr-err" role="alert" hidden></p>
+          <div class="arr-act"><button type="button" id="arr-cancel" data-t="arr.cancel"></button><button type="button" id="arr-done" data-t="arr.done"></button></div>
+          <div class="arr-tray" id="arr-tray"></div>
+        </div>
+        <div class="arr-ghost" id="arr-ghost" hidden></div>
         <div class="ask-panel" id="ask" role="dialog" aria-labelledby="ask-title" hidden></div>
         <div class="win" id="win" role="dialog" aria-labelledby="win-title" hidden>
           <div class="win-head"><div class="win-title" id="win-title"></div><button type="button" class="fold" id="win-fold" data-t-aria="fold.msg">»</button><button type="button" id="win-close" data-t-aria="btn.close" class="x">✕</button></div>
@@ -4863,7 +4938,7 @@ function dragBy(dx, dy, limit){
 // owner 2026-09-25: the camera never stops turning — clicks, drags, pinch/wheel zoom and any
 // panel (cards, the "?" panel) leave it running; only reduced motion, or a camera tween (reset/
 // fit) that needs to finish without a fight, pause it.
-function autoRotating(){ return !RM && !camTween; }
+function autoRotating(){ return !RM && !camTween && !(typeof arr !== 'undefined' && arr.on); } // city-layout L4: in the arrange mode the camera looks square to the grid and does not turn (the typeof guard: the camera tests run this function alone)
 /* autoRotate(now, dt): the never-stop rotation, turning cam.az by autoRotDir's way, one turn per
    AUTO_ROT_SEC (now is unused; kept for the caller's convenience). */
 function autoRotate(now, dt){
@@ -5670,6 +5745,7 @@ function buildLand(view){
   if (!firstViewDone && territories.length && lastTouch === -Infinity) { firstViewDone = true; resetCam(); } // only the first world with a territory goes home; a later one never snaps the camera back
   scanTall();
   syncAllSiteMeshes(); // Worktrees: every current site (sites map, not just this view's own) gets its meshes
+  arrAfterLand(); // city-layout L4: the island came (again) from the server -- the arrange mode's plates and slot marks follow it
 }
 
 /* ---------- Worktrees: site meshes (fence/sign/light/scaffold/barrier/flag), the merge lane and the
@@ -7540,8 +7616,8 @@ function setRailFolded(v){
   writeStoredBool('agent-city.railFolded', v);
   renderRail();
 }
-let lastRail = '';
-/* renderRail(): #rail-list from railGroups()/railHtml() (only touches the DOM when the html actually
+let lastRail = '', lastHid = '';
+/* renderRail():#rail-list from railGroups()/railHtml() (only touches the DOM when the html actually
    changed, through lastRail); #rail-n / #rail-you (+ the tab's own badges) from railCount(); #rail /
    #rail-tab show by railFolded, both hidden when railGroups() is empty. On a phone, the rail unfolded is
    the drawer open -- the stage gets .drawer-open while it covers the win/ask panels. renderPanel() calls
@@ -7564,6 +7640,12 @@ function renderRail(){
   // cloud-polish Q1: the strip of rows at the top of the stage makes room for the rail's tab, or sits at the edge with no rail at all
   stage.classList.toggle('rail-folded', has && railFolded);
   stage.classList.toggle('rail-none', !has);
+  // city-layout L2: the quiet line at the rail's foot -- how many repos are hidden, red when somebody there waits;
+  // only the live local page has it (the demo and the cloud page know no hidden repo); the DOM is touched on change only
+  const hidHtml = hiddenHtml(hiddenLands);
+  if (hidHtml !== lastHid) { lastHid = hidHtml; $('#rail-hid').innerHTML = hidHtml; }
+  $('#rail-hid').hidden = !hiddenLands.length || DEMO || CLOUD;
+  $('#rail-hid').classList.toggle('you', hiddenLands.some(h => h.wait > 0));
 }
 /* city-add-agent A2/A4: addAgent(terr, force) -- the "add agent" button of one repo group. Nothing while
    that repo already reads "opening" (one open at a time per repo); else the button reads opening at
@@ -7620,7 +7702,7 @@ $('#rail-list').addEventListener('click', e => {
     return;
   }
   const row = e.target.closest('[data-focus]');
-  if (row) selectFrom(row.dataset.focus);
+  if (row && !arr.on) selectFrom(row.dataset.focus); // city-layout L4: in the arrange mode a rail row opens nobody either (the camera stays on the whole island)
 });
 $('#rail-fold').addEventListener('click', () => { setRailFolded(true); $('#rail-tab').focus(); });
 $('#rail-tab').addEventListener('click', () => setRailFolded(false));
@@ -7653,7 +7735,7 @@ function renderFollow(){
   el.style.left = left + 'px';
 }
 $('#follow-stop').addEventListener('click', () => stopFollow());
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && follow) stopFollow(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (follow) stopFollow(); else if (arr.on && arr.pick) { arr.pick = null; arrDraw(); } } });
 
 function renderPanel(){ renderRail(); renderStats(); renderDetail(); renderLog(); renderWin(); }
 
@@ -8845,6 +8927,7 @@ canvas.addEventListener('lostpointercapture', e => {
 /* U6: selectPick(pk) is exactly what a tap on a person/governor does -- endPointer's tap branch and an
    #ov click on a [data-pick-t] tag both call it. */
 function selectPick(pk){
+  if (arr.on) return; // city-layout L4: in the arrange mode a tap arranges, it opens nobody
   selected = pk;
   winLog = false;
   afterPick();
@@ -8896,6 +8979,279 @@ stage.addEventListener('gesturechange', e => {
   cam.dist = capped;
   camChanged();
 });
+
+/* ---------- city-layout L4 (3D part): the arrange mode (approved mock mock/city-layout-mock.html) ----------
+   The owner arranges the real island: the camera flies out and looks from above, square to the grid; every land
+   gets a name plate (.arr-h, in #arr-ov); the free slots are dashed squares on the ground (three.js planes with
+   a CanvasTexture), the one a drop would take is solid. A press on a land or its plate picks it up (a label
+   follows the pointer); a press on the sea pans the map; a tap on a land picks it, a tap on a slot or on another
+   land moves / swaps it. Every change is ONE layoutPost(rows): the island itself is never changed by this
+   script, the server's fresh snapshot redraws it (apply() -> buildLand() -> arrAfterLand() redraws the plates
+   and the marks). Done only leaves the mode; Cancel posts what arrBack() says and leaves. The rule (landMove,
+   landFree), the rows (arrEntry, arrBack) and the words (arrWhy) are the sim section's. */
+$('#arr-btn').hidden = DEMO || CLOUD;
+const ARR_EL = 64 * Math.PI / 180; // the tilt the mode looks from: almost straight down
+const ARR_PLATE_Z = 8.5; // a plate stands this far north of its cell's middle (on the land's north part)
+const ARR_DRIFT_PX = 8; // a press that moves less than this is a tap
+const arrBtn = $('#arr-btn'), arrOv = $('#arr-ov'), arrBar = $('#arr-bar'), arrGhost = $('#arr-ghost');
+// 3D-part state of the mode (the sim's `arr` keeps on / pick / entry / err): down = the press in hand, target = the
+// slot a drop would take now, tap = a press on the sea (a tap there lands on a slot), back = the tilt to go back to
+// after the mode, cam = the camera when the mode opened, az0 = the square-to-the-grid turn, sig / hk = what the
+// plates were last drawn from
+const arrUi = { down: null, target: null, tap: null, back: null, cam: null, az0: 0, sig: '', hk: '', easeAt: performance.now() };
+const arrCell = () => (map && map.cell) || 22;
+const arrActive = () => (arrUi.down && arrUi.down.moved && arrUi.down.id) || arr.pick; // the land in hand: dragged, or picked by a tap
+const arrSlotKey = c => c ? c[0] + ',' + c[1] : '';
+const arrLandAt = (lands, c) => lands.find(l => l.slot[0] === c[0] && l.slot[1] === c[1]);
+
+/* the slots on the ground: dashed = a free slot, solid = where the drop lands */
+let arrTex = null;
+function arrTexture(solid, color){
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.lineWidth = solid ? 12 : 8; g.strokeStyle = color; g.fillStyle = solid ? 'rgba(255,211,110,.5)' : 'rgba(255,255,255,.2)';
+  if (!solid) g.setLineDash([26, 18]);
+  g.beginPath();
+  g.moveTo(54, 14); g.arcTo(242, 14, 242, 242, 40); g.arcTo(242, 242, 14, 242, 40); g.arcTo(14, 242, 14, 14, 40); g.arcTo(14, 14, 242, 14, 40); g.closePath();
+  g.fill(); g.stroke();
+  return new THREE.CanvasTexture(c);
+}
+const arrMarks = [];
+function arrMark(c, kind){
+  if (!arrTex) arrTex = { free: arrTexture(false, 'rgba(42,43,69,.85)'), dim: arrTexture(false, 'rgba(42,43,69,.4)'), hot: arrTexture(true, '#2A2B45') };
+  const cw = arrCell(), m = new THREE.Mesh(new THREE.PlaneGeometry(cw - 2.5, cw - 2.5),
+    new THREE.MeshBasicMaterial({ map: arrTex[kind], transparent: true, depthTest: false, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.set(c[0] * cw, .3, c[1] * cw); m.renderOrder = kind === 'hot' ? 31 : 30;
+  world.add(m); arrMarks.push(m);
+}
+function arrClearMarks(){
+  while (arrMarks.length) { const m = arrMarks.pop(); world.remove(m); m.geometry.dispose(); m.material.dispose(); }
+}
+
+/* arrDraw(): everything the mode shows, from the page's own picture (map, hiddenLands, arr): the control's look,
+   the marks on the ground, a plate per land, the tip, the refusal line and the tray of hidden lands */
+function arrDraw(){
+  arrClearMarks();
+  arrOv.textContent = '';
+  arrBtn.setAttribute('aria-pressed', String(arr.on));
+  arrBtn.lastElementChild.textContent = arr.on ? i18n('arr.on') : i18n('arr.btn');
+  needFrame = true;
+  if (!arr.on) return;
+  const lands = landsOf(map), id = arrActive(), many = lands.length > 1;
+  if (arr.pick && !lands.some(l => l.id === arr.pick)) arr.pick = null; // the picked land is gone (hidden, or the server's picture moved on)
+  for (const c of landFree(lands, id)) arrMark(c, id ? 'free' : 'dim');
+  if (arrUi.target) arrMark(arrUi.target, 'hot');
+  const held = arrUi.down && arrUi.down.moved ? arrUi.down.id : null;
+  for (const l of lands) {
+    const h = document.createElement('div'), swap = id && id !== l.id && !!landMove(lands, id, l.slot);
+    h.className = 'arr-h' + (l.id === arr.pick ? ' on' : '') + (l.id === held ? ' dragging' : '') + (swap ? ' swap' : '');
+    h.dataset.id = l.id; h.dataset.i = l.slot[0]; h.dataset.j = l.slot[1];
+    h.style.setProperty('--rc', terrColor(l.id));
+    h.innerHTML = '<span class="grip" aria-hidden="true">⋮⋮</span><span class="rc"></span><span class="nm">' + esc(l.name) + '</span>' +
+      '<button type="button" class="arr-eye" data-hide="' + esc(l.id) + '"' + (many ? '' : ' aria-disabled="true" title="' + esc(i18n('arr.last')) + '"') + '>' + esc(i18n('arr.hide')) + '</button>';
+    arrOv.appendChild(h);
+  }
+  const picked = arr.pick && lands.find(l => l.id === arr.pick);
+  $('#arr-tip').textContent = picked ? i18n('arr.tipPick', { name: picked.name }) : i18n('arr.tip');
+  $('#arr-err').textContent = arr.err; $('#arr-err').hidden = !arr.err;
+  arrUi.hk = JSON.stringify(hiddenLands);
+  $('#arr-tray').innerHTML = hiddenLands.length ? '<span class="lbl">' + esc(i18n('arr.tray')) + '</span>' + hiddenLands.map(h =>
+    '<span class="arr-hid" style="--rc:' + terrColor(h.id) + '"><span class="rc"></span>' + esc(h.name) +
+    (h.wait > 0 ? '<em>' + esc(i18n('arr.waits', { n: h.wait })) + '</em>' : '') +
+    '<button type="button" data-show="' + esc(h.id) + '">' + esc(i18n('arr.show')) + '</button></span>').join('') : '';
+  arrPlace();
+}
+/* the plates sit on the screen spot of their land's north part; every frame, so they follow a pan or a zoom */
+function arrPlace(){
+  const cw = arrCell();
+  for (const h of arrOv.children) {
+    const p = toScreen(+h.dataset.i * cw, 0, +h.dataset.j * cw - ARR_PLATE_Z);
+    h.style.left = p[0] + 'px'; h.style.top = p[1] + 'px';
+  }
+}
+/* arrFrame(): frame() calls it every frame. In the mode the camera eases to the top view, square to the grid (a
+   quarter-turn button moves the grid's own turn on); after the mode the tilt eases back. The tray follows a change
+   of the hidden list (somebody there now waits) */
+function arrFrame(){
+  const now = performance.now(), k = 1 - Math.exp(-Math.min(.25, (now - arrUi.easeAt) / 1000) * 7);
+  arrUi.easeAt = now;
+  if (arr.on) {
+    if (camTween) arrUi.az0 = Math.round(camTween.to / (Math.PI / 2)) * Math.PI / 2;
+    if (Math.abs(cam.el - ARR_EL) > .002 || Math.abs(cam.az - arrUi.az0) > .002) {
+      cam.el += (ARR_EL - cam.el) * k; cam.az += (arrUi.az0 - cam.az) * k; needFrame = true;
+    }
+    if (JSON.stringify(hiddenLands) !== arrUi.hk) arrDraw();
+    arrPlace();
+  } else if (arrUi.back) {
+    if (drag && drag.moved) { arrUi.back = null; return; }
+    cam.el += (arrUi.back.el - cam.el) * k; needFrame = true;
+    if (Math.abs(cam.el - arrUi.back.el) < .004) { cam.el = arrUi.back.el; arrUi.back = null; }
+  }
+}
+/* the whole island in view, a little above the middle: the bar at the bottom covers no land */
+function arrWhole(d){ flyTo(land.cx || 0, (land.cz || 0) + d * (W < 960 ? .1 : .055), d); }
+function arrHome(){ flyTo(home.x, home.z, Math.min(arrUi.cam ? arrUi.cam.dist : cam.dist, distMax())); }
+const arrSig = () => JSON.stringify([landsOf(map).map(l => [l.id, l.slot]), land.cx, land.cz, land.hx, land.hz]);
+/* arrAfterLand(): buildLand() ends with it -- the server's picture came. In the mode the plates and the marks are
+   drawn again, and the camera flies to the whole island when the lands changed (not for a building that grew);
+   just after the mode the camera goes to the new home */
+function arrAfterLand(){
+  if (arr.on) {
+    const sig = arrSig();
+    if (sig !== arrUi.sig) { arrUi.sig = sig; arrWhole(distMax()); }
+    arrDraw();
+  } else if (arrUi.back) arrHome();
+}
+
+/* the one request. The answer (200, 400, 403, 404, 409, or none) becomes arr.err in plain words (arrWhy), shown in the
+   bar; the island changes only when the server's snapshot comes. Returns the promise (it never rejects). */
+function layoutPost(lands){
+  arr.err = '';
+  if (arr.on) arrDraw();
+  return fetch('/api/layout', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-City-Token': TOKEN }, body: JSON.stringify({ lands }) })
+    .then(r => r.json().catch(() => ({})).then(body => { arr.err = arrWhy(r.status, body); }))
+    .catch(() => { arr.err = arrWhy(0, {}); })
+    .then(() => { arr.pick = null; if (arr.on) arrDraw(); });
+}
+function arrEnter(){
+  if (arr.on || DEMO || CLOUD) return;
+  arr.on = true; arr.pick = null; arr.err = '';
+  arrUi.target = null; arrUi.down = null; arrUi.tap = null; arrUi.back = null;
+  arr.entry = arrEntry(landsOf(map), hiddenLands);
+  arrUi.cam = { el: Math.min(cam.el, EL_MAX), dist: cam.dist };
+  arrUi.az0 = Math.round(cam.az / (2 * Math.PI)) * 2 * Math.PI;
+  stopFollow(); closeWin();
+  if (W < 960) setRailFolded(true); // a phone: the drawer folds, the island has the room
+  stage.classList.add('arranging'); arrBar.hidden = false;
+  arrWhole(distMax());
+  arrUi.sig = arrSig();
+  arrDraw();
+}
+function arrLeave(){
+  if (!arr.on) return;
+  arr.on = false; arr.pick = null; arr.err = '';
+  arrUi.target = null; arrUi.down = null; arrUi.tap = null; arrGhost.hidden = true;
+  stage.classList.remove('arranging'); arrBar.hidden = true;
+  arrUi.back = { el: arrUi.cam ? arrUi.cam.el : cam.el };
+  arrHome();
+  arrDraw();
+}
+arrBtn.addEventListener('click', () => { if (arr.on) arrLeave(); else arrEnter(); });
+$('#rail-hid').addEventListener('click', () => arrEnter());
+$('#arr-done').addEventListener('click', () => arrLeave());
+$('#arr-cancel').addEventListener('click', () => {
+  const rows = arrBack(arr.entry, landsOf(map), hiddenLands);
+  if (!rows.length) { arrLeave(); return; }
+  layoutPost(rows).then(() => { if (!arr.err) arrLeave(); }); // a refusal stays in the bar: the mode is not left on a lie
+});
+$('#arr-tray').addEventListener('click', e => {
+  const b = e.target.closest('[data-show]');
+  if (b) layoutPost([{ id: b.dataset.show, hidden: false }]);
+});
+
+/* a move: the rule says what the rows are (a free slot, or a swap with the land there); null = the page offers no such move */
+function arrMove(id, cell){
+  const rows = landMove(landsOf(map), id, cell);
+  if (!rows) return false;
+  arr.pick = null; arrUi.target = null;
+  layoutPost(rows);
+  return true;
+}
+function arrHide(id){
+  if (landsOf(map).length < 2) { arr.err = i18n('arr.last'); arrDraw(); return; }
+  layoutPost([{ id, hidden: true }]);
+}
+/* the tap + tap way: a tap on a land picks it (again = lets it go); with a land picked, a tap on another land swaps the
+   two, a tap on a free slot moves it there, a tap anywhere else lets it go */
+function arrTapLand(id){
+  const lands = landsOf(map);
+  if (arr.pick && arr.pick !== id) {
+    const to = lands.find(l => l.id === id);
+    if (!to || !arrMove(arr.pick, to.slot)) { arr.err = i18n('arr.errSea'); arr.pick = null; arrDraw(); }
+    return;
+  }
+  arr.pick = arr.pick === id ? null : id;
+  arr.err = '';
+  arrDraw();
+}
+function arrTapCell(c){
+  if (arr.pick && c && landFree(landsOf(map), arr.pick).some(f => f[0] === c[0] && f[1] === c[1])) { arrMove(arr.pick, c); return; }
+  if (arr.pick) { arr.pick = null; arrDraw(); }
+}
+
+/* -- the pointer: a press on a land (or its plate) picks it up; a tap picks it for the tap + tap way -- */
+const arrPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), arrHit = new THREE.Vector3(), arrRay = new THREE.Raycaster(), arrNdc = new THREE.Vector2();
+function arrCellAt(px, py){ // the slot under a screen point (the ground plane, then the grid), or null
+  const r = canvas.getBoundingClientRect(), cw = arrCell();
+  arrNdc.set((px - r.left) / W * 2 - 1, -((py - r.top) / H) * 2 + 1);
+  arrRay.setFromCamera(arrNdc, camera);
+  if (!arrRay.ray.intersectPlane(arrPlane, arrHit)) return null;
+  return [Math.floor((arrHit.x + mid.x + cw / 2) / cw), Math.floor((arrHit.z + mid.z + cw / 2) / cw)];
+}
+function arrOver(e){ // dragging: where would it land, and the label that follows the pointer
+  const d = arrUi.down, lands = landsOf(map), c = arrCellAt(e.clientX, e.clientY), r = stage.getBoundingClientRect();
+  const from = lands.find(l => l.id === d.id);
+  arrGhost.hidden = false; arrGhost.style.left = (e.clientX - r.left) + 'px'; arrGhost.style.top = (e.clientY - r.top) + 'px';
+  const ok = !!(c && landMove(lands, d.id, c)), other = ok && arrLandAt(lands, c);
+  arrGhost.textContent = (from ? from.name : '') + (other ? ' ⇄ ' + other.name : '');
+  if (arrSlotKey(ok ? c : null) !== arrSlotKey(arrUi.target)) { arrUi.target = ok ? c : null; arrDraw(); }
+}
+function arrPress(e, id, el){
+  arr.err = '';
+  arrUi.down = { id, x: e.clientX, y: e.clientY, moved: false, pid: e.pointerId, el };
+  try { el.setPointerCapture(e.pointerId); } catch (err) {}
+}
+function arrDrift(e){
+  const d = arrUi.down;
+  if (!d || d.pid !== e.pointerId) return false;
+  if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) >= ARR_DRIFT_PX) { d.moved = true; arr.pick = null; arrDraw(); }
+  if (d.moved) arrOver(e);
+  return true;
+}
+function arrLift(e, cancelled){
+  const d = arrUi.down;
+  if (!d || d.pid !== e.pointerId) return false;
+  arrUi.down = null; arrGhost.hidden = true;
+  try { d.el.releasePointerCapture(e.pointerId); } catch (err) {}
+  const t = arrUi.target; arrUi.target = null;
+  if (cancelled) arrDraw();
+  else if (!d.moved) arrTapLand(d.id);
+  else if (!t || !arrMove(d.id, t)) arrDraw();
+  return true;
+}
+// these run before the page's own pointer handlers (capture), and keep them out of a press on a land
+canvas.addEventListener('pointerdown', e => {
+  if (!arr.on || e.button === 2) return;
+  if (arrUi.down) { e.stopImmediatePropagation(); return; } // a land is in hand: a second finger does nothing
+  const c = arrCellAt(e.clientX, e.clientY), l = c && arrLandAt(landsOf(map), c);
+  if (l) { e.stopImmediatePropagation(); arrPress(e, l.id, canvas); return; }
+  arrUi.tap = { x: e.clientX, y: e.clientY, cell: c };
+}, true);
+canvas.addEventListener('pointerdown', () => { if (arr.on && drag) drag.pan = true; }); // in the mode a drag on the sea moves the map, it never tilts it
+canvas.addEventListener('pointermove', e => { if (arr.on && arrDrift(e)) e.stopImmediatePropagation(); }, true);
+canvas.addEventListener('pointerup', e => {
+  if (!arr.on) return;
+  if (arrLift(e, false)) { e.stopImmediatePropagation(); return; }
+  const t = arrUi.tap; arrUi.tap = null;
+  if (t && Math.hypot(e.clientX - t.x, e.clientY - t.y) < ARR_DRIFT_PX) arrTapCell(t.cell);
+}, true);
+canvas.addEventListener('pointercancel', e => { if (arr.on && arrLift(e, true)) e.stopImmediatePropagation(); }, true);
+arrOv.addEventListener('pointerdown', e => {
+  const eye = e.target.closest('[data-hide]'), h = e.target.closest('.arr-h');
+  if (eye) {
+    if (eye.getAttribute('aria-disabled') === 'true') { arr.err = i18n('arr.last'); arrDraw(); } else arrHide(eye.dataset.hide);
+    return;
+  }
+  if (h) { e.preventDefault(); arrPress(e, h.dataset.id, arrOv); }
+});
+arrOv.addEventListener('click', e => { // a key press on a plate's hide button (a pointer press already did it at pointerdown)
+  const eye = e.target.closest('[data-hide]');
+  if (eye && e.detail === 0 && eye.getAttribute('aria-disabled') !== 'true') arrHide(eye.dataset.hide);
+});
+arrOv.addEventListener('pointermove', e => { arrDrift(e); });
+arrOv.addEventListener('pointerup', e => { arrLift(e, false); });
+arrOv.addEventListener('pointercancel', e => { arrLift(e, true); });
 
 /* ---------- opening scene: a city mid-day, not an empty land (Growth: DEMO_WORLD already has some grown territories) ---------- */
 function seed(){
@@ -8993,6 +9349,7 @@ function frame(now){
   applyTheme();
   updateCamera();
   renderFollow(); // V1: the follow chip tracks the map's free middle every frame, not just every renderPanel
+  arrFrame(); // city-layout L4: the arrange mode's camera easing and its name plates (nothing when the mode is off)
   applyFade(viewBlockers(cam.el + camLiftNow));
   stepShows(now); // Balance: the running era show(s) — builders walking, then the one-moment flip
   sync(simT, raw);
@@ -9016,11 +9373,17 @@ Promise.all([
   // cloud-polish Q1: --top-h = the height of the strip of rows on the stage (the banner, the follow chip and the
   // "not connected" chip sit under it); and each row that has more to the right than fits gets .more (it fades at the cut edge)
   const stageTop = $('#stage-top'), stageRows = [$('#machines'), $('#repos')];
+  // city-layout L4: the arrange control is pinned at the right end of the repo row: --repos-w = the width of that row,
+  // --arr-w = what the control takes (its width and the gap), and .has-arr leaves the repo row that room
   const fitStageTop = () => {
     stage.style.setProperty('--top-h', stageTop.offsetHeight + 'px');
     for (const n of stageRows) n.classList.toggle('more', n.scrollWidth - n.clientWidth - n.scrollLeft > 4);
+    stageTop.style.setProperty('--repos-w', $('#repos').offsetWidth + 'px');
+    stageTop.style.setProperty('--arr-w', ($('#arr-btn').offsetWidth + 6) + 'px');
+    stageTop.classList.toggle('has-arr', !$('#arr-btn').hidden);
   };
   new ResizeObserver(fitStageTop).observe(stageTop);
+  new ResizeObserver(fitStageTop).observe($('#arr-btn'));
   for (const n of stageRows) { new ResizeObserver(fitStageTop).observe(n); n.addEventListener('scroll', fitStageTop, { passive: true }); }
   fitStageTop();
   applyTheme(); updateCamera(); sync(0, 0); renderer.render(scene, camera); renderPanel();
