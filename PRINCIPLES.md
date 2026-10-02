@@ -154,7 +154,9 @@ W13. Close case
 - Main manager gets close case from the human = the whole repo: close case to every live task manager and human-direct session in agent_worktree.txt
 - Collect every report, decide each, merge what passes, close all panes and worktrees, stop its own crons and monitors, update the agent files
 - Then one final table to the human: task, result, what changed, what is left, decisions taken for the human. Nothing dropped (the H3 five-row cap does not apply)
-- Last line of the final table: the human types `! agent-start.sh --release`; the agent never runs it. It frees the main seat: the next new session is main manager, never Helper
+- After the table the main manager asks the human, in his language: clean this session for the next round, yes or no? No, or no answer: nothing changes
+- Yes: `agent-start.sh --clean` (archives agent_state.txt, writes a short fresh one, says what still runs), then `/clear`. Same main manager, same lock, same name
+- Rare, the human wants this session to stop being main manager: he types `! agent-start.sh --release`; the agent never runs it. The next new session is main manager, never Helper
 
 ## C. Human
 
@@ -225,6 +227,7 @@ S8. Context guard (forgetting)
 - First action of every agent: copy its brief into `agent_state.txt`. The main manager keeps one too, in the main repo: open decisions, live sessions and terminal handles
 - After a compaction the startup hook re-prints PRINCIPLES.md and `agent_state.txt`. No quiz then. Continue from the file, not from memory
 - Compacted 2 times → write state, then `/clear`: the main manager types it into the pane (`orca terminal send --terminal <handle> --text "/clear" --enter`) or the human does; the hook re-prints role, rules and state; continue from the file
+- After a close case the main manager clears itself the same way: it types `/clear` into its own pane (its handle is in the lock line). Plain or cloud → the human types it
 - No pane to type into (plain, cloud) or the send is refused → end the session, restart from the file (S2)
 - One worker = one slice, then it ends. A second slice gets a fresh worker
 
