@@ -61,6 +61,9 @@ E   FOUND ON THE REAL PAGES (headless, 2026-10-02: the local city and the cloud 
        its own (three header rows). In a block @media (max-width: 520px): .ro{display:none} (the machine's
        own chip on the map says 只能看, and so does the window) and .sign-name{font-size:20px} (the title
        row then holds 动态 and the account on a 375 px phone too).
+       Phone: the connection chip keeps a line of its own UNDER the "跟随" chip, as before (it was at
+       top:52px, 40 px under the follow chip's 12px; both under the strip they lay on each other):
+       .proto{left:38px;top:calc(50px + var(--top-h,34px))} in the first 960 block.
     E3 phone, the rail drawer open: the "跟随" chip, now under the strip, lay over a row of the drawer:
        .stage.drawer-open .follow{visibility:hidden} (first 960 block; following goes on).
 
@@ -236,6 +239,11 @@ class TestFoundOnTheRealPages(unittest.TestCase):
         m = media_960()
         self.assertIn("left:38px", flat(rule(".stage.rail-folded .proto", m)))
         self.assertIn("left:8px", flat(rule(".stage.rail-none .proto", m)))
+
+    def test_phone_the_connection_chip_is_under_the_follow_chip(self):
+        r = flat(rule(".proto", media_960()))
+        self.assertIn("left:38px", r)
+        self.assertIn("top:calc(50px+var(--top-h,34px))", r, "one line under the follow chip, as before the move")
 
     def test_a_narrow_phone_keeps_the_account_on_the_title_row(self):
         block = media_block("(max-width: 520px)")
