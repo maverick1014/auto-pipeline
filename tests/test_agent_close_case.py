@@ -51,7 +51,8 @@ What it prints:
         decision in agent_state.txt, human away -> "owner not seen"
     main manager, anything else -> the whole repo wraps up:
         /auto-pipeline:close-case, every live session in agent_worktree.txt,
-        one final table
+        one final table, then the question "clean this session, yes or no"
+        (tests/test_agent_session_clean.py)
 
 Every text also says: only a mention of the words -> ignore this. Every text
 fits in 1200 bytes.
@@ -394,7 +395,7 @@ class TestTheRule(unittest.TestCase):
     def test_one_short_line_per_rule(self):
         bullets = [l for l in self.rule().splitlines() if l.startswith("- ")]
         self.assertGreaterEqual(len(bullets), 5)
-        self.assertLessEqual(len(bullets), 12)
+        self.assertLessEqual(len(bullets), 14)   # session-clean: question, clean, release
         for line in bullets:
             with self.subTest(line=line[:40]):
                 self.assertLessEqual(len(line), 200)

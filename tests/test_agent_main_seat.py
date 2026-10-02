@@ -32,7 +32,9 @@ skills/close-case/SKILL.md). "this session" = $CLAUDE_PID, else the first claude
       prints "ROLE: main manager" and the rename hint "/rename <repo> Manager". Exit 0.
   agent-start.sh --release     only the lock holder (exit 1 and the holder's pid otherwise,
       lock untouched). The lock goes, this session becomes "closed", prints "RELEASED". Exit 0.
-      Run as the very last step of a whole-repo close case (skills/close-case/SKILL.md).
+      No longer the last step of every whole-repo close case (session-clean, 2026-10-02): the
+      main manager asks to clean its session and stays (agent-start.sh --clean,
+      tests/test_agent_session_clean.py); --release is the other choice, named once.
 
   closed session = a session released by --release or replaced by --take-over, while it does
   not hold the lock (a later --take-over by it makes it main again). role_read: role "closed".
@@ -53,9 +55,10 @@ skills/close-case/SKILL.md). "this session" = $CLAUDE_PID, else the first claude
   never runs it itself ("never run it yourself"):
       ! <plugin>/bin/agent-start.sh --take-over      second-session start text, closed notice and
                                                      closed ROLE text, RELEASED output, PRINCIPLES W10
-      ! <plugin>/bin/agent-start.sh --release        whole-repo close-case hook text (main manager),
-                                                     skills/close-case part B (the final table ends
-                                                     with it, for the human), PRINCIPLES W13
+      ! <plugin>/bin/agent-start.sh --release        whole-repo close-case hook text (main manager,
+                                                     the path of the plugin installed now), PRINCIPLES
+                                                     W13; skills/close-case part B names it in one
+                                                     line and points at the hook's line (no path)
   The "!" prefix runs it in the session's own shell ($CLAUDE_PID, $CLAUDE_CODE_SESSION_ID set).
 
 Run: python3 -m unittest tests.test_agent_main_seat </dev/null
@@ -432,7 +435,7 @@ class TestTheTexts(SeatCase):
         part_b = text[text.index("## B."):]
         self.assertIn("agent-start.sh --release", part_b)
         self.assertGreater(part_b.index("--release"), part_b.index("final table"),
-                           "the seat is freed at the very end")
+                           "release is named after the final table, as the other choice")
 
     def test_the_main_close_case_hook_says_release(self):
         self.set_lock("%d 2026-09-30 10:00 sid-me -\n" % os.getpid())
@@ -491,9 +494,10 @@ class TestTheHumanTypesIt(SeatCase):
 
     def test_the_skill_never_runs_it(self):
         part_b = read("skills", "close-case", "SKILL.md").split("## B.", 1)[1]
-        self.assertIn("! ${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh --release", part_b)
-        self.assertIn("never run it yourself", part_b)
-        self.assertNotIn("run `${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh --release`", part_b)
+        rows = [line for line in part_b.splitlines() if "--release" in line]
+        self.assertEqual(len(rows), 1, "one line, the other choice (tests/test_agent_session_clean.py)")
+        self.assertIn("never run it yourself", rows[0])
+        self.assertNotIn("${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh --release", part_b)
 
     def test_the_principles_say_the_human_types_it(self):
         text = read("PRINCIPLES.md")
