@@ -42,6 +42,15 @@ L2 what is hidden
       empty and the page is the live local one (not DEMO, not CLOUD), and sets the class "you" when
       somebody there waits. A click on it opens the mode (arrEnter()).
 
+L2b a repo keeps its colour (bounce 1 of the main manager's E2E, 2026-10-02: hiding blog turned dock pink and wood
+    green; a new repo was orange while blog was hidden and purple when it was shown)
+  (sim) terrColor(terr): the territory's own number decides, not its place among the lands in view: a territory
+      of the map with a number t.n (the server's view: its place in the machine's saved order, hidden repos
+      counted) -> REPO_COLORS[t.n % REPO_COLORS.length]; a view without n (the demo's first paint, an older
+      server) -> its index in map.territories, as before; a territory not in the map -> '#8D91B3', as before.
+      Rail dots, repo tags, name plates and the tray all read terrColor, on the local and the cloud page.
+  DEMO_WORLD carries the server's "n" (tests/test_agent_city_page.py compares it with `agent_city.py demo-world`).
+
 L3 people follow their land
   (sim) landState(view): compared with the view before it,
       a territory with another cx / cz: everything of it moves by that step at once -- every citizen (x, y,
@@ -125,7 +134,7 @@ SHOP, BLOG = "/work/layout/shop/.git", "/work/layout/blog/.git"
 TA, TB = ac.territory_id(SHOP), ac.territory_id(BLOG)
 SEA = {p["id"]: bool(p["sea"]) for p in PLANS}
 
-SIM_REQUIRED = ("apply", "update", "landState", "citizens", "buildings", "occupied", "byId", "governorAt", "railGroups",
+SIM_REQUIRED = ("apply", "update", "landState", "terrColor", "REPO_COLORS", "citizens", "buildings", "occupied", "byId", "governorAt", "railGroups",
                 "railCount", "topCounts", "i18n", "landsOf", "landsOk", "landMove", "landFree", "hiddenHtml", "arr",
                 "arrEntry", "arrBack", "arrWhy")
 
@@ -288,6 +297,14 @@ out.goneLater = citizens.filter(c => c.terr === TB && !c.gone).length;
 snap(P.v2, agents.map(a => a.id === 'a1' ? Object.assign({}, a, { stuck: true }) : a));
 const c = byId('b1');
 out.back1 = { there: !!c && !c.gone, off: c ? [Math.abs(c.x - c2[TB][0]), Math.abs(c.y - c2[TB][1])] : null, hid: hiddenLands.length, blds: blds(TB).length };
+
+// L2b: a repo keeps its colour (last: it replaces the map)
+const numbered = Object.assign({}, P.v2, { territories: P.v2.territories.map(t => Object.assign({}, t, { n: t.id === TA ? 2 : 13 })) });
+landState(numbered);
+out.colN = [terrColor(TA), terrColor(TB), terrColor('nope')];
+landState(Object.assign({}, P.v2, { territories: P.v2.territories.map(t => { const c = Object.assign({}, t); delete c.n; return c; }) }));
+out.colOld = [terrColor(TA), terrColor(TB)];
+out.palette = REPO_COLORS;
 __out = out;
 """
 
@@ -400,6 +417,18 @@ class TestHidden(SimCase):
         self.assertEqual(sum(self.r["count1"]["top"][:3]), 5, "the fixture: 3 in shop and its busy governor, 1 in blog")
         self.assertEqual(self.r["count2"]["top"], self.r["count2a"]["top"], "people the server only counts are not in the top counts")
         self.assertEqual(sum(self.r["count3"]["top"][:3]), 4, "blog is hidden: its person leaves the counts at once")
+
+
+class TestColours(SimCase):
+    def test_a_repo_keeps_its_colour(self):
+        pal = self.r["palette"]
+        self.assertEqual(len(pal), 8)
+        self.assertEqual(self.r["colN"], [pal[2], pal[13 % 8], "#8D91B3"],
+                         "the colour goes by the server's number n, not by the place among the lands in view")
+
+    def test_a_view_without_numbers_is_coloured_as_before(self):
+        pal = self.r["palette"]
+        self.assertEqual(self.r["colOld"], [pal[0], pal[1]])
 
 
 # ---------------------------------------------------------------------------

@@ -23,6 +23,14 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
     record. Two records may hold the same slot when at most one is shown.
     Every territory of the view says whether its plan has sea: "sea": true |
     false (the page offers no slot just south of such a land).
+    Every territory of the view carries "n": its place in world["order"],
+    counting every identity of that list (shown, hidden, or cut away from
+    this view). The page picks a repo's colour by it, so a repo keeps its
+    colour when others are hidden, shown or added (bounce 1 of the main
+    manager's E2E, 2026-10-02: hiding blog turned dock pink and wood green).
+    cloud_world() keeps the machine's own numbers (the cut keeps the full
+    order), and cloud_clean() lets "n" through: the cloud page shows the
+    same colours as the local page.
 
   add_territory(world, plans, identity, name, lines=0)
     A known identity is never moved (hidden or not), as today. A new one
@@ -193,6 +201,25 @@ class TestLayoutLeavesHiddenOut(unittest.TestCase):
         view = ac.layout(world_of(*self.rows()), PLANS)
         self.assertEqual({t["name"]: t.get("sea") for t in view["territories"]},
                          {"shop": False, "blog": False, "dock": True, "wood": False})
+
+    def test_every_land_keeps_its_number(self):
+        shown = ac.layout(world_of(*self.rows()), PLANS)
+        self.assertEqual({t["name"]: t.get("n") for t in shown["territories"]}, {"shop": 0, "blog": 1, "dock": 2, "wood": 3})
+        hidden = ac.layout(world_of(*self.rows(hidden=True)), PLANS)
+        self.assertEqual({t["name"]: t.get("n") for t in hidden["territories"]}, {"shop": 0, "dock": 2, "wood": 3},
+                         "hiding blog must not renumber (recolour) the others")
+        world = world_of(*self.rows(hidden=True))
+        new = ac.add_territory(world, PLANS, "/r/new/.git", "new")
+        self.assertIsNotNone(new)
+        view = ac.layout(world, PLANS)
+        self.assertEqual({t["name"]: t["n"] for t in view["territories"]}, {"shop": 0, "dock": 2, "wood": 3, "new": 4},
+                         "a new repo takes the next number, also while another one is hidden")
+
+    def test_a_cut_world_keeps_the_numbers(self):
+        world = world_of(*self.rows())
+        del world["territories"]["/r/blog/.git"]   # the order still names it (a cut for the cloud does this)
+        view = ac.layout(world, PLANS)
+        self.assertEqual({t["name"]: t.get("n") for t in view["territories"]}, {"shop": 0, "dock": 2, "wood": 3})
 
     def test_hidden_false_is_shown(self):
         world = world_of(*self.rows())
@@ -752,6 +779,18 @@ class TestCloudCut(PageCase):
         self.ok({"id": self.tid("wood"), "slot": [1, 1]})
         world = self.state.cloud_world([self.ident["shop"], self.ident["wood"]])
         self.assertEqual({t["name"]: t["slot"] for t in world["territories"]}, {"shop": [0, 0], "wood": [1, 1]})
+
+    def test_the_cloud_shows_the_machines_colours(self):
+        numbers = lambda world: {t["name"]: t.get("n") for t in world["territories"]}
+        self.assertEqual(numbers(self.state.cloud_world([self.ident["shop"], self.ident["wood"]])), {"shop": 0, "wood": 3},
+                         "a repo that is not joined does not renumber the joined ones")
+        self.hide()
+        self.assertEqual(numbers(self.state.cloud_world([self.ident[n] for n, _, _ in LANDS])), {"shop": 0, "dock": 2, "wood": 3})
+        local = self.first_picture()
+        self.assertEqual(numbers(local["world"]), {"shop": 0, "dock": 2, "wood": 3})
+        self.assertEqual(numbers(ac.cloud_clean(local)["world"]), {"shop": 0, "dock": 2, "wood": 3}, "the number goes up with the picture")
+        self.ok({"id": self.blog, "hidden": False})
+        self.assertEqual(numbers(self.first_picture()["world"]), {"shop": 0, "blog": 1, "dock": 2, "wood": 3})
 
     def test_a_tap_gets_a_fresh_picture_too(self):
         tap = self.state.cloud_open()

@@ -139,6 +139,7 @@
 - Show again: hidden repos sit in the mode's bar with 显示. A land comes back at its old slot when that is still free, else at the first free slot next to the island.
 - Never miss a question: while a repo is hidden, one quiet line at the rail's foot says 已隐藏 n 个 and opens the mode (管理). Somebody there waits for the owner (等你, a question, a permission request, its governor too): the line turns red and says 其中 n 个在等你, and the rail's red 等你 count (its head and its folded tab) counts those people.
 - Top counts (owner, 2026-10-02): the shown repos only.
+- A repo keeps its colour (rail dot, repo tag, name plate) when other repos are hidden, shown or added: the colour goes by the repo's place in the machine's saved order, hidden repos counted. The cloud page shows the same colours as the local page.
 - Per machine: the arrangement lives in that machine's world.json (a slot and a hidden flag per territory). Reload, server restart, restart of the computer: the same arrangement. A new repo takes a free slot next to the island and moves nobody. Nothing of the arrangement goes through the team relay: a joined member's page shows his own arrangement, and a repo hidden here still shows on his page.
 - Another member's people in a repo hidden here are not drawn here.
 - Cloud: the uploaded picture is the machine's arrangement. A repo hidden on the machine is not in its picture at all: no land, no people, no name; the cloud never learns it exists. The cloud page has no arrange mode in this step.
