@@ -1295,7 +1295,7 @@ def machine_resources(folder, script=None):
 # exactly one of these two lists; a type on neither is never uploaded, and
 # tests/test_agent_city_cloud_upload.py fails until a new page type is put on
 # one of them.
-CLOUD_DROP = frozenset(("ask", "ask_phase", "ask_closed", "chat", "adding", "hidden"))   # question, command and chat text; the state of the local add-agent button; the list of what this page hides (the cloud never learns that a hidden repo exists)
+CLOUD_DROP = frozenset(("ask", "ask_phase", "ask_closed", "chat", "adding", "hidden", "hist"))   # question, command and chat text; the state of the local add-agent button; the list of what this page hides (the cloud never learns that a hidden repo exists); a person's history lines (task and question text, file names)
 CLOUD_KEEP = frozenset((
     "answer", "background", "build", "demolish", "done", "era", "gov", "governors", "idle", "label",
     "leave", "levelup", "move", "noplot", "quality", "relay", "relay_end", "remote", "remote_snapshot",
@@ -1387,13 +1387,16 @@ def cloud_clean(msg):
     """A cleaned COPY of one page message for the cloud, or None (dropped).
     Default deny: a type on neither CLOUD_KEEP nor CLOUD_DROP is dropped too.
     No file name, no question text, no ask, no notice, no building files or
-    history or name, no full path in any text. The input is never changed:
-    the local page still gets everything."""
+    history or name, no person history ("hist": the snapshot's key, the
+    event), no full path in any text. The input is never changed: the local
+    page still gets everything."""
     if not isinstance(msg, dict):
         return None
     kind = msg.get("type")
     if not isinstance(kind, str) or kind in CLOUD_DROP or kind not in CLOUD_KEEP:
         return None
+    if kind == "snapshot" and "hist" in msg:   # city-data: the history stays local; not even copied
+        msg = {k: v for k, v in msg.items() if k != "hist"}
     out = _cloud_copy(msg)
     if kind == "tool":
         out.pop("file", None)
@@ -2724,6 +2727,209 @@ class CloudUploader:
         return out
 
 
+# --------------------------------------------------------------------------
+# city-data: the history of a person, kept by the server (requirements/city.md,
+# "Persistence", "History"; tests/test_agent_city_data.py, H1..H5, is the
+# contract). A reload, a second page and a server restart show the same lines.
+# --------------------------------------------------------------------------
+
+HIST_KEEP = 200            # lines kept per person, the oldest go
+HIST_GONE_SEC = 86400      # a person who left more than this long ago is forgotten
+HIST_STEPS = 3             # steps one "steps" line holds
+HIST_COMPACT_ROWS = 5000   # rows appended in one run after which a sweep writes the file compact again
+HIST_KINDS = frozenset(("started", "steps", "stuck", "qa", "toLead", "toGov", "waiting", "done", "left"))
+
+
+def _hist_str(value):
+    return value if isinstance(value, str) else ""
+
+
+def _hist_copy(line):
+    """A copy of one history line that shares nothing with it."""
+    out = dict(line)
+    if isinstance(out.get("steps"), list):
+        out["steps"] = [dict(s) if isinstance(s, dict) else s for s in out["steps"]]
+    return out
+
+
+def _hist_line_ok(line):
+    """Whether LINE (a row read from the file) is a history line this code can hold."""
+    if not isinstance(line, dict) or not isinstance(line.get("k"), str) or line["k"] not in HIST_KINDS:
+        return False
+    at = line.get("at")
+    if isinstance(at, bool) or not isinstance(at, (int, float)):
+        return False
+    if line["k"] == "steps":
+        steps = line.get("steps")
+        return isinstance(steps, list) and bool(steps) and all(isinstance(s, dict) for s in steps)
+    return True
+
+
+class History:
+    """What each person did, as short lines (oldest first), at most KEEP per
+    person. note() turns one page event into the line (or the change of the
+    last line) it adds; lines() reads them; sweep() forgets the people who
+    left more than GONE_SEC ago. Not thread-safe: CityState holds its lock.
+
+    PATH (None: memory only): history.jsonl, mode 0600 (task and question
+    text). Every answer of note() is ONE appended row {"id", "line", "fold"};
+    a sweep appends {"id", "drop": true} for each person it drops, so it
+    holds after a restart. A new History reads the rows back (a missing file
+    or a bad row never raises: the row is skipped), applies the folds, KEEP
+    and the people gone more than GONE_SEC before NOW (default time.time()),
+    then writes the file compact (tmp + os.replace). A person is gone from its
+    "left" line on, until a "started" line brings it back, so both come out
+    of the lines themselves: nothing else is saved."""
+
+    def __init__(self, path=None, keep=HIST_KEEP, gone_sec=HIST_GONE_SEC, now=None):
+        self.path = path
+        self.keep = max(1, keep)
+        self.gone_sec = gone_sec
+        self._lines = {}      # person id -> its lines, oldest first
+        self._gone = {}       # person id -> epoch seconds it left, while it is gone
+        self._rows = 0        # rows appended since the file was last written compact
+        if path:
+            self._load(time.time() if now is None else now)
+
+    def note(self, ev, at):
+        """What the page event EV adds, as {"id", "line", "fold"}, or None
+        (EV makes no history, or adds nothing). AT: epoch seconds. FOLD True:
+        the line replaces that person's last line (tools in a row share one)."""
+        if not isinstance(ev, dict):
+            return None
+        pid = ev.get("id")
+        kind = ev.get("type")
+        if not isinstance(pid, str) or not pid:
+            return None
+        fold = False
+        if kind == "spawn":
+            line = {"k": "started", "task": _hist_str(ev.get("task")), "at": at}
+        elif kind == "tool":
+            step = {"tool": _hist_str(ev.get("tool")), "name": _hist_str(ev.get("name"))}
+            for key in ("file", "desc"):
+                if isinstance(ev.get(key), str) and ev[key]:
+                    step[key] = ev[key]
+            rows = self._lines.get(pid)
+            last = rows[-1] if rows else None
+            if last is not None and last["k"] == "steps":
+                if step in last["steps"]:
+                    return None
+                line = {"k": "steps", "steps": (last["steps"] + [step])[-HIST_STEPS:], "at": last["at"]}
+                fold = True
+            else:
+                line = {"k": "steps", "steps": [step], "at": at}
+        elif kind == "stuck":
+            line = {"k": "stuck", "question": _hist_str(ev.get("question")), "tool": _hist_str(ev.get("tool")), "at": at}
+        elif kind == "answer":
+            question, tool = "", ""
+            for old in reversed(self._lines.get(pid, ())):
+                if old["k"] == "stuck":
+                    question, tool = _hist_str(old.get("question")), _hist_str(old.get("tool"))
+                    break
+            line = {"k": "qa", "question": question, "tool": tool, "ok": bool(ev.get("ok")), "at": at}
+            if isinstance(ev.get("answer"), str) and ev["answer"]:
+                line["answer"] = ev["answer"]
+        elif kind == "relay" and ev.get("to") in ("lead", "governor"):
+            line = {"k": "toLead" if ev["to"] == "lead" else "toGov", "at": at}
+        elif kind == "waiting":
+            line = {"k": "waiting", "at": at}
+        elif kind == "done":
+            line = {"k": "done", "at": at}
+        elif kind == "leave":
+            line = {"k": "left", "at": at}
+        else:
+            return None
+        self._put(pid, line, fold)
+        self._append({"id": pid, "line": line, "fold": fold})
+        return {"id": pid, "line": _hist_copy(line), "fold": fold}
+
+    def lines(self, pid):
+        """PID's lines, oldest first, as a copy ([] for a person nobody knows)."""
+        if not isinstance(pid, str):
+            return []
+        return [_hist_copy(x) for x in self._lines.get(pid, ())]
+
+    def sweep(self, now):
+        """Drops every person gone more than GONE_SEC before NOW (a person who
+        never left stays). Returns how many. Every so often it also writes
+        the file compact, so a long run does not grow it without end."""
+        dropped = [pid for pid, at in self._gone.items() if now - at > self.gone_sec]
+        for pid in dropped:
+            self._lines.pop(pid, None)
+            self._gone.pop(pid, None)
+            self._append({"id": pid, "drop": True})
+        if self.path and self._rows > HIST_COMPACT_ROWS:
+            self._write_compact()
+        return len(dropped)
+
+    def _put(self, pid, line, fold):
+        rows = self._lines.setdefault(pid, [])
+        if fold and rows and rows[-1]["k"] == "steps":
+            rows[-1] = line
+        else:
+            rows.append(line)
+            if len(rows) > self.keep:
+                del rows[:len(rows) - self.keep]
+        if line["k"] == "left":
+            self._gone[pid] = line["at"]
+        elif line["k"] == "started":
+            self._gone.pop(pid, None)
+
+    def _append(self, row):
+        if not self.path:
+            return
+        _append_private_jsonl(self.path, row)
+        self._rows += 1
+
+    def _load(self, now):
+        try:
+            with open(self.path, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            return
+        for raw in text.split("\n"):    # not splitlines(): U+2028 and friends may sit inside a text
+            if not raw.strip():
+                continue
+            try:
+                row = json.loads(raw)
+            except (ValueError, RecursionError):
+                continue
+            pid = row.get("id") if isinstance(row, dict) else None
+            if not isinstance(pid, str) or not pid:
+                continue
+            if row.get("drop") is True:
+                self._lines.pop(pid, None)
+                self._gone.pop(pid, None)
+            elif _hist_line_ok(row.get("line")):
+                self._put(pid, row["line"], row.get("fold") is True)
+        for pid in [p for p, at in self._gone.items() if now - at > self.gone_sec]:
+            del self._lines[pid]
+            del self._gone[pid]
+        self._write_compact()
+
+    def _write_compact(self):
+        """The file again with the kept lines only, one row each: a temp file
+        in the same folder (mode 0600), then one os.replace. Never raises."""
+        tmp_path = None
+        try:
+            folder = os.path.dirname(self.path) or "."
+            os.makedirs(folder, exist_ok=True)
+            fd, tmp_path = tempfile.mkstemp(prefix=".history-", suffix=".tmp", dir=folder)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                for pid, rows in self._lines.items():
+                    for line in rows:
+                        fh.write(json.dumps({"id": pid, "line": line, "fold": False}, ensure_ascii=False) + "\n")
+            os.replace(tmp_path, self.path)
+            self._rows = 0
+        except (OSError, ValueError) as exc:
+            print("agent_city: could not write history.jsonl: %s" % exc, file=sys.stderr)
+            if tmp_path is not None:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+
+
 class CityState(_CloudTaps):
     """Thread-safe home for the Reducer, asks, health counters and SSE clients."""
 
@@ -2732,10 +2938,11 @@ class CityState(_CloudTaps):
                  balance_fn=None, start_repo=None, chat_path=None, lang="zh", titles=None,
                  main_fn=None, listen_grace_sec=15.0, roster_path=None,
                  open_fn=None, kind_fn=None, resources_fn=None, city_dir=None,
-                 cloud_seen_path=None, cloud_orders_path=None):
+                 cloud_seen_path=None, cloud_orders_path=None, history_path=None):
         self.lock = threading.Lock()
         self.titles = titles if titles is not None else TitleReader()  # a session's real name
         self.lang = norm_lang(lang)
+        self.history = History(history_path)   # city-data: what each person did, kept per person (None: memory only)
         self.cond = threading.Condition(self.lock)
         self._max_agents = max_agents
         self._done_ttl = done_ttl
@@ -2784,6 +2991,8 @@ class CityState(_CloudTaps):
             self.world, self.notice = new_world(), None
         else:
             self.world, self.notice = load_world(world_path, self.plans, lang=self.lang)
+        # city-data: a building from before names has its name now (once; the next start finds it named).
+        named = name_world(self.world, self.lang)
         self._view_cache = None
         self._hidden_last = []    # city-layout: the "hidden" list the pages were last told (see _check_hidden_locked)
         self.last_activity = {}   # identity -> "now" of its last feed_line, this run only
@@ -2794,7 +3003,7 @@ class CityState(_CloudTaps):
         # Old data is dropped: a territory saved under a "dir:..." identity
         # (no repo -- the old proj fallback) never comes back.
         dropped = [i for i in self.world["territories"] if i.startswith("dir:")]
-        dirty = bool(dropped)
+        dirty = bool(dropped) or named > 0
         if dropped:
             for i in dropped:
                 del self.world["territories"][i]
@@ -2929,7 +3138,8 @@ class CityState(_CloudTaps):
         tap) gets, and every page again when the arrangement changes
         (set_layout). A hidden territory (city-layout) is cut out of it: its
         land (layout() leaves it out), people, governors, asks, shows and
-        adding; "hidden" lists what is hidden instead."""
+        adding; "hidden" lists what is hidden instead. "hist" (city-data) is
+        the history lines of every person it lists, {id: lines}."""
         hidden = self._hidden_terrs_locked()
         agents = []
         govs = []
@@ -2973,7 +3183,8 @@ class CityState(_CloudTaps):
                 "shows": [x for x in self._shows_view_locked() if x["terr"] not in hidden],
                 "adding": [x for x in self._adding_view_locked() if x["terr"] not in hidden],
                 "world": self._view(),
-                "hidden": self._hidden_view_locked()}
+                "hidden": self._hidden_view_locked(),
+                "hist": {a["id"]: self.history.lines(a["id"]) for a in agents}}   # city-data: local only (CLOUD_DROP, cloud_clean)
         if self.notice is not None:
             snap["notice"] = self.notice
         return snap
@@ -4441,7 +4652,10 @@ class CityState(_CloudTaps):
         building); no line without "file" (old hook lines) ever touches or
         levels a building it does not already own -- it stays silent, as
         before. Never counts code lines. Every building of the district
-        already at level 3: says so (noplot)."""
+        already at level 3: says so (noplot). A new building gets its name
+        here, once (city-data, build()): from its files, else the builder's
+        task (the reducer's, none for the governor), else an address; a touch
+        or a level-up never renames it."""
         if identity is None:
             return
         file_val = obj.get("file")
@@ -4484,8 +4698,10 @@ class CityState(_CloudTaps):
 
         wt_val = obj.get("wt")
         wt = wt_val if isinstance(wt_val, str) else ""
+        known = reducer.agents.get(owner)
+        task = known["task"] if known is not None and not is_gov else ""   # city-data: the governor has no task
         b = build(self.world, self.plans, identity, kind, owner, by, time.time(),
-                  file_rel=file_rel, wt=wt, building_type=building_type)
+                  file_rel=file_rel, wt=wt, building_type=building_type, task=task, lang=self.lang)
         if b is not None:
             self._invalidate_view()
             x, z = self._plot_xz_locked(t, b["plot"])
@@ -4901,9 +5117,24 @@ class CityState(_CloudTaps):
         """Push one event to every connected client. Caller holds self.lock.
         An event of a hidden territory (city-layout) is not sent to anybody,
         page or cloud tap: that is decided here and nowhere else (the state
-        it belongs to went on all the same)."""
+        it belongs to went on all the same). city-data: after EV went out,
+        the history keeps what it adds to that person's lines (hidden or
+        not), and the same pages get it as {"type": "hist", "id", "line",
+        "fold"}: sent by _send_locked, never by _broadcast again, so a "hist"
+        makes no history. The sessions the roster brings back at start are no
+        new start: a person who already has lines gets none for them."""
         if ev.get("type") == "chat":
             self._chat_rev += 1   # cloud-city-2: the uploader reads the windows when this moved
+        self._send_locked(ev)
+        if self._restoring and self.history.lines(ev.get("id")):
+            return
+        got = self.history.note(ev, time.time())
+        if got is not None:
+            self._send_locked({"type": "hist", "id": got["id"], "line": got["line"], "fold": got["fold"]})
+
+    def _send_locked(self, ev):
+        """Caller holds self.lock. EV to every page and cloud tap, unless it
+        tells of a hidden territory (see _broadcast)."""
         hidden = self._hidden_terrs_locked()
         if hidden and self._event_hidden_locked(ev, hidden):
             return
@@ -5421,6 +5652,19 @@ class CityState(_CloudTaps):
                         changed = True
             if changed:
                 self.cond.notify_all()
+
+    def history_view(self, pid):
+        """PID's history lines, oldest first (a copy; [] for a person nobody
+        knows): what the snapshot's "hist" holds for it (city-data)."""
+        with self.lock:
+            return self.history.lines(pid)
+
+    def sweep_history(self, now):
+        """Forgets every person who left more than a day before NOW (epoch
+        seconds, time.time()); a person who never left stays. The server
+        calls this every recount tick. Returns how many it dropped."""
+        with self.lock:
+            return self.history.sweep(now)
 
     def feed_chat(self, obj):
         """One chat.jsonl line: kinds prompt, reply, owner; bad lines
@@ -6171,8 +6415,10 @@ def recount_loop(city, stop_event):
     construction sites (city.scan_sites()) and checks the governor seats
     (city.check_seats()) and tells the owner of chat messages nobody will take
     (city.sweep_chat()) and lets go of an add-agent open whose new session
-    never came (city.sweep_adding()) every tick: an exception there is printed
-    to stderr and never stops the loop. Stops with the server."""
+    never came (city.sweep_adding()) and forgets the history of people gone
+    more than a day (city.sweep_history(), epoch seconds) every tick: an
+    exception there is printed to stderr and never stops the loop. Stops
+    with the server."""
     while not stop_event.is_set():
         city.recount(time.monotonic())
         try:
@@ -6191,6 +6437,10 @@ def recount_loop(city, stop_event):
             city.sweep_adding(time.monotonic())
         except Exception as exc:
             print("agent_city: sweep_adding failed: %s" % exc, file=sys.stderr)
+        try:
+            city.sweep_history(time.time())
+        except Exception as exc:
+            print("agent_city: sweep_history failed: %s" % exc, file=sys.stderr)
         stop_event.wait(RECOUNT_POLL_SEC)
 
 
@@ -6638,7 +6888,8 @@ def cmd_serve(args):
                       roster_path=os.path.join(directory, "roster.json"),
                       city_dir=pass_city_dir(directory),
                       cloud_seen_path=os.path.join(directory, "cloud-seen"),  # cloud-city-2
-                      cloud_orders_path=os.path.join(directory, "cloud-orders"))  # cloud-city-3
+                      cloud_orders_path=os.path.join(directory, "cloud-orders"),  # cloud-city-3
+                      history_path=os.path.join(directory, "history.jsonl"))  # city-data
     uploader = CloudUploader(city, snap_sec=args.cloud_snap_sec, cloud_file=cloud_home_path())  # cloud-city
 
     def slow():  # cloud-city-3: nobody at the page, no session, only a start order to wait for: sync slowly
@@ -7770,7 +8021,151 @@ def add_territory(world, plans, identity, name, lines=0):
     return record
 
 
-def build(world, plans, identity, kind, owner, by, now, file_rel=None, wt="", building_type=None):
+# -- city-data: the name of a building (requirements/city.md, Growth, "Building
+# names"; tests/test_agent_city_data.py, N1..N4, is the contract) -----------
+
+NAME_MAX = 24   # a name longer than this is cut to NAME_MAX - 1 characters and "…"
+NAME_COMMON_STEMS = frozenset((
+    "index", "main", "__init__", "init", "mod", "app", "util", "utils", "readme", "test", "tests", "spec",
+    "setup", "conftest", "page", "layout", "route", "view", "style", "styles",
+))   # a file stem (lower case) that names nothing: its folder is used instead
+NAME_COMMON_DIRS = frozenset((
+    "src", "lib", "test", "tests", "bin", "app", "pkg", "internal", "cmd", "web", "docs", "scripts",
+    "components", "pages",
+))   # a folder (lower case) that names nothing: the folder above it is used instead
+NAME_ROLE_WORDS = frozenset(("worker", "task-manager", "fast-lane-deputy", "merge-deputy", "other", "session"))   # a bare role is no task
+NAME_KIND_WORD = {
+    "zh": {"tower": "测试", "shop": "页面", "workshop": "脚本", "library": "文档", "house": "模块"},
+    "en": {"tower": "tests", "shop": "page", "workshop": "script", "library": "docs", "house": "module"},
+}   # building type -> what the building is, after its subject
+NAME_DISTRICT_WORD = {
+    "zh": {"house": "住宅区", "shop": "商业街", "tower": "测试区", "workshop": "工坊区", "library": "图书馆区"},
+    "en": {"house": "Homes", "shop": "Shops", "tower": "Tests", "workshop": "Workshops", "library": "Library"},
+}   # building type -> its district, for a building that has nothing to be named after
+NAME_TASK_ENDING = re.compile(r"\.[A-Za-z0-9]{1,5}$")   # "fix a.py": a file, not a task
+
+
+def _name_cut(text):
+    return text if len(text) <= NAME_MAX else text[:NAME_MAX - 1] + "…"
+
+
+def _name_of_file(path):
+    """What one file points at: its name (no extension, no test_ / _test /
+    .test / .spec), or its folder when that is too common (NAME_COMMON_STEMS),
+    or the folder above a too-common folder (NAME_COMMON_DIRS); "" when none
+    is left. Both "/" and "\\" split the path."""
+    if not isinstance(path, str):
+        return ""
+    parts = [p for p in re.split(r"[/\\]", path) if p not in ("", ".", "..")]
+    if not parts:
+        return ""
+    stem = parts[-1]
+    dot = stem.rfind(".")
+    if dot >= 0:
+        stem = stem[:dot]
+    low = stem.lower()
+    if low.startswith("test_"):
+        stem = stem[len("test_"):]
+    else:
+        for ending in ("_test", ".test", ".spec"):
+            if low.endswith(ending):
+                stem = stem[:-len(ending)]
+                break
+    if stem and stem.lower() not in NAME_COMMON_STEMS:
+        return stem
+    for folder in reversed(parts[:-1]):
+        if folder.lower() not in NAME_COMMON_DIRS:
+            return folder
+    return ""
+
+
+def name_subject(files):
+    """What the building's FILES (newest first) point at: the subject most of
+    them point at, a tie going to the oldest file (the last one); "" when
+    nothing does. Cut to NAME_MAX characters ("…"). Never a "/" or "\\"."""
+    if not isinstance(files, (list, tuple)):
+        return ""
+    counts = {}
+    for path in reversed(files):   # oldest first: the first of the best is the oldest file's
+        subject = _name_of_file(path)
+        if subject:
+            counts[subject] = counts.get(subject, 0) + 1
+    if not counts:
+        return ""
+    best = max(counts.values())
+    for subject, n in counts.items():
+        if n == best:
+            return _name_cut(subject)
+    return ""
+
+
+def _name_of_task(task):
+    """TASK as a name, or "": the text after strip(), cut to NAME_MAX; no
+    path, no file ending (".py") and no bare role word can be a name."""
+    if not isinstance(task, str):
+        return ""
+    text = task.strip()
+    if (not text or "/" in text or "\\" in text or NAME_TASK_ENDING.search(text)
+            or text.lower() in NAME_ROLE_WORDS):
+        return ""
+    return _name_cut(text)
+
+
+def building_name(btype, files, task, plot, lang="zh", taken=()):
+    """The name of a new building, never "" and never the bare type word: its
+    subject and what it is ("checkout 页面"), else the builder's TASK, else
+    its address in the district ("住宅区 5 号", plot + 1). A name that is in
+    TAKEN (the names used in that land) gets " 2", " 3", ... until it is free."""
+    lang = "en" if lang == "en" else "zh"
+    btype = btype if isinstance(btype, str) and btype in NAME_KIND_WORD[lang] else "house"
+    subject = name_subject(files)
+    if subject:
+        base = "%s %s" % (subject, NAME_KIND_WORD[lang][btype])
+    else:
+        base = _name_of_task(task)
+    if not base:
+        number = plot + 1 if isinstance(plot, int) and not isinstance(plot, bool) else 1
+        if lang == "en":
+            base = "%s no. %d" % (NAME_DISTRICT_WORD[lang][btype], number)
+        else:
+            base = "%s %d 号" % (NAME_DISTRICT_WORD[lang][btype], number)
+    used = set(taken)
+    name, n = base, 1
+    while name in used:
+        n += 1
+        name = "%s %d" % (base, n)
+    return name
+
+
+def name_world(world, lang="zh"):
+    """Names every building of WORLD that has no name (no "name" key, None or
+    ""), land by land in the order the buildings are listed; what the land
+    already has (also a building listed later) and what this run gave are
+    taken. A building that has a name is never touched. Returns how many it
+    named (0 the second time). It has no task to name them after: files, else
+    an address."""
+    def has_name(b):
+        return isinstance(b.get("name"), str) and b["name"].strip() != ""
+
+    count = 0
+    territories = world.get("territories") if isinstance(world, dict) else None
+    if not isinstance(territories, dict):
+        return 0
+    for t in territories.values():
+        listed = t.get("buildings") if isinstance(t, dict) else None
+        blds = [b for b in listed if isinstance(b, dict)] if isinstance(listed, list) else []
+        taken = {b["name"] for b in blds if has_name(b)}
+        for b in blds:
+            if has_name(b):
+                continue
+            b["name"] = building_name(b.get("type"), b.get("files"), "", b.get("plot"), lang, taken)
+            taken.add(b["name"])
+            count += 1
+    return count
+
+
+def build(world, plans, identity, kind, owner, by, now, file_rel=None, wt="", building_type=None,
+          task="", lang="zh"):
     """The first free open plot of KIND's district (or BUILDING_TYPE's, when
     given -- idea-city C4: the server picks the building straight from a
     "file", bypassing KIND_TYPE), in plan order. None when the identity is
@@ -7786,7 +8181,11 @@ def build(world, plans, identity, kind, owner, by, now, file_rel=None, wt="", bu
     wrong_district(FILE_REL) -> the first free open plot of another
     district in plan order, "home" false; else its own district, "home"
     true. No FILE_REL (old hook lines): files [], q "good", home true, its
-    own district, as before."""
+    own district, as before.
+
+    city-data: the new building has its name at once (building_name(): its
+    file, else TASK -- the builder's -- else an address; LANG zh | en), a name
+    nobody in this land has. It is never changed later."""
     t = world["territories"].get(identity)
     if t is None:
         return None
@@ -7817,7 +8216,9 @@ def build(world, plans, identity, kind, owner, by, now, file_rel=None, wt="", bu
         matches = (district == building_type) if home else (district != building_type)
         if matches:
             b = {"plot": k, "type": building_type, "owner": owner, "owners": [owner], "by": by,
-                 "at": now, "files": files, "hist": [], "q": q, "home": home, "lv": 0, "name": ""}
+                 "at": now, "files": files, "hist": [], "q": q, "home": home, "lv": 0,
+                 "name": building_name(building_type, files, task, k, lang,
+                                       {x.get("name") for x in t["buildings"]})}
             t["buildings"].append(b)
             return b
     return None

@@ -303,7 +303,7 @@ class TestNoServerHistory(unittest.TestCase):
 
     def test_the_cloud_page_never_switches_it_on(self):
         src = inline_script()
-        m = re.search(r"serverHist\s*=\s*([^;]+);", src[src.index("case 'snapshot'"):])
+        m = re.search(r"serverHist\s*=\s*([^;]+);", src[src.index("case 'snapshot': {"):])   # the case itself, not a comment
         self.assertIsNotNone(m, "the snapshot case sets serverHist")
         self.assertIn("!CLOUD", m.group(1), "the cloud picture carries no hist; the cloud page keeps its own lines")
 

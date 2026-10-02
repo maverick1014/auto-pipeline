@@ -140,7 +140,8 @@ class TestLists(unittest.TestCase):
                          "does not know): decide whether it goes to the cloud")
 
     def test_what_never_goes_up(self):
-        self.assertEqual(set(need(self, "CLOUD_DROP")), {"ask", "ask_phase", "ask_closed", "chat", "adding", "hidden"})
+        self.assertEqual(set(need(self, "CLOUD_DROP")), {"ask", "ask_phase", "ask_closed", "chat", "adding", "hidden",
+                                                            "hist"})   # city-data: a person's history lines stay local
 
 
 class TestClean(unittest.TestCase):

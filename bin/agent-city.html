@@ -1362,7 +1362,7 @@ function stuckText(ev) {
 /* applyAsk(c, ask): snapshot = live. With an ask view it sets c.askKind,
    c.askPhase, c.stuck and c.question the same way the live 'ask' event
    does; with null it clears the ask fields (a reconnect may find the ask
-   already closed). `case 'ask'` and `case 'snapshot'` both use it, so a
+   already closed). The live ask event and the snapshot both use it, so a
    page opened after the fact shows exactly what an open page shows. */
 function applyAsk(c, ask) {
   if (ask) {
@@ -1580,10 +1580,12 @@ function chatScroll(prev, next){
    rewriting it while the last line is still a steps line, else starting a new one. */
 const ACT_KEEP = 60;
 function actLog(c, text){
+  if (!ownHist(c)) return; // city-data: the server writes this line
   c.acts.push({ at: Date.now() / 1000, text });
   if (c.acts.length > ACT_KEEP) c.acts.splice(0, c.acts.length - ACT_KEEP);
 }
 function actTool(c, step){
+  if (!ownHist(c)) return; // city-data: the server writes this line
   const last = c.acts[c.acts.length - 1];
   if (last && last.steps) {
     if (last.steps.includes(step)) return;
@@ -1594,6 +1596,35 @@ function actTool(c, step){
     c.acts.push({ at: Date.now() / 1000, steps: [step], text: step });
     if (c.acts.length > ACT_KEEP) c.acts.splice(0, c.acts.length - ACT_KEEP);
   }
+}
+/* city-data: the server keeps every person's history and sends it (the snapshot's hist, then one 'hist' line
+   per new line); the page only words the lines, with the same words as the live ones. serverHist is on once a
+   snapshot carries hist -- never on the cloud page (its picture has none), never with an older server. Then
+   actLog / actTool / giveAnswer write nothing for this machine's own people, so two tabs show the same list.
+   Another member's person (c.remote) stays the page's own, as before. HIST_KEEP: the most lines a person holds. */
+const HIST_KEEP = 200;
+let serverHist = false;
+function ownHist(c){ return !serverHist || !!c.remote; }
+/* histLine(c, line, fold): one server line {k, at, ...} into c's own stores: acts (started, steps, stuck, toLead,
+   toGov, waiting, done, left) or qa (a question with its answer); any other k, or no line, adds nothing. With
+   fold, a steps line replaces the last act when that is a steps line too (the server grows one line). */
+function histLine(c, line, fold){
+  if (!c || !line) return;
+  const at = line.at, k = line.k;
+  if (k === 'started') c.acts.push({ at, text: i18n('hist.started', { task: line.task }) });
+  else if (k === 'steps') {
+    const steps = [];
+    for (const s of Array.isArray(line.steps) ? line.steps : []) { const t = stepText(s || {}); if (!steps.includes(t)) steps.push(t); }
+    if (!steps.length) return;
+    const act = { at, steps, text: steps.join(' · ') }, last = c.acts[c.acts.length - 1];
+    if (fold && last && last.steps) c.acts[c.acts.length - 1] = act; else c.acts.push(act);
+  }
+  else if (k === 'stuck') c.acts.push({ at, text: i18n('hist.stuck', { text: stuckText(line) }) });
+  else if (k === 'toLead' || k === 'toGov' || k === 'waiting' || k === 'done' || k === 'left') c.acts.push({ at, text: i18n('hist.' + k) });
+  else if (k === 'qa') c.qa.push({ q: stuckText(line), a: typeof line.answer === 'string' && line.answer ? line.answer : i18n('answer.default'), at });
+  else return;
+  if (c.acts.length > HIST_KEEP) c.acts.splice(0, c.acts.length - HIST_KEEP);
+  if (c.qa.length > HIST_KEEP) c.qa.splice(0, c.qa.length - HIST_KEEP);
 }
 /* city-polish C2 (owner: "like Claude Code itself hides its mechanism"): the history shows the MAIN
    messages -- the human's prompts and the agent's final replies to the human -- and one small toggle
@@ -3220,7 +3251,7 @@ function goOffice(c, leadC){
 function releaseSlot(c){ if (c.slot && !c.slot.extra) c.slot.by = 0; c.slot = null; }
 function giveAnswer(c){
   if (DEMO) { govSay(c.terr || govTerr, c.answer, 2.6); gov.answered++; }
-  c.qa.push({ q: c.question, a: c.answer, at: Date.now() / 1000 });
+  if (ownHist(c)) c.qa.push({ q: c.question, a: c.answer, at: Date.now() / 1000 }); // city-data: else the server's line
   c.state = 'heard'; c.stateT = 0;
   heardTalk(c); // city-talk T3: the governor tells it face to face while it stands there
 }
@@ -3640,6 +3671,18 @@ function apply(ev){
       if (ev.notice) log(ev.notice);
       for (const old of citizens) applyAsk(old, null);
       for (const a of agents) if (!byId(a.id)) placeAgent(a);
+      // city-data: a snapshot with hist says the server keeps the history: every person of this machine gets
+      // exactly the server's lines (a reload replaces, never doubles); no hist (cloud page, older server): off,
+      // the page's own lines stay as they are
+      serverHist = !CLOUD && !!ev.hist && typeof ev.hist === 'object';
+      if (serverHist) {
+        for (const old of citizens) {
+          if (old.remote) continue;
+          old.acts = []; old.qa = [];
+          const lines = ev.hist[old.id];
+          for (const line of Array.isArray(lines) ? lines : []) histLine(old, line, false);
+        }
+      }
       // snapshot = live: govs replaces the whole picture of who is present, empty means nobody
       govsByTerr.clear();
       for (const g of ev.govs || []) govsByTerr.set(g.terr, { state: g.state });
@@ -3656,6 +3699,12 @@ function apply(ev){
         for (const a of ev.adding || []) addState.set(a.terr, { s: 'opening', name: a.name || '' });
       }
       return null;
+    }
+    // city-data: one new line of a person's history, from the server (fold: it grows the last steps line)
+    case 'hist': {
+      if (!c || c.remote) return null;
+      histLine(c, ev.line, !!ev.fold);
+      return c;
     }
     case 'world': {
       syncSites(ev.world); // Worktrees: before buildLand -- see the snapshot case's own comment above
@@ -5126,6 +5175,48 @@ function nearestPick(px, py, cands, maxPx){
   }
   return best;
 }
+/* city-data (sim): a bubble never covers a name label (a land's name, a site's sign). The boxes are { l, r, t, b }
+   in screen px. Two boxes TOUCH when they are closer than LABEL_GAP in both directions. labelDodge(box, bubbles,
+   others, top) -> how far (px, up is negative, 0 = stays) the name label BOX moves: nothing touches it -> it stays
+   (another label alone never moves it); else up, just clear of every bubble and every one of OTHERS it would touch
+   (a few rounds at most); no room up there (above TOP) -> down, the same way. dodgeTargets(boxes, bubbles, top) ->
+   that for every label of BOXES in order, each one clear of where the labels before it END and of the labels after it
+   where they are now (so two labels at one bubble end apart). easeDodge(cur, to, dt) -> the next offset: it glides
+   to TO, never jumps, never passes it. The view part (pin / dodgeNameLabels, below) draws the result. */
+const LABEL_GAP = 6;
+function labelDodge(box, bubbles, others, top){
+  const touches = (a, b) => a.l < b.r + LABEL_GAP && a.r > b.l - LABEL_GAP && a.t < b.b + LABEL_GAP && a.b > b.t - LABEL_GAP;
+  if (!bubbles.some(b => touches(box, b))) return 0;
+  const all = bubbles.concat(others);
+  const move = up => {
+    let dy = 0;
+    for (let i = 0; i < 8; i++) {
+      const at = { l: box.l, r: box.r, t: box.t + dy, b: box.b + dy };
+      const hit = all.filter(b => touches(at, b));
+      if (!hit.length) break;
+      dy = up ? Math.min(...hit.map(b => b.t)) - LABEL_GAP - box.b : Math.max(...hit.map(b => b.b)) + LABEL_GAP - box.t;
+    }
+    return dy;
+  };
+  const dy = move(true);
+  return box.t + dy < top ? move(false) : dy;
+}
+function dodgeTargets(boxes, bubbles, top){
+  const to = [];
+  if (!bubbles.length) { for (let i = 0; i < boxes.length; i++) to.push(0); return to; }
+  const ends = [];
+  for (let i = 0; i < boxes.length; i++) {
+    const b = boxes[i];
+    const dy = labelDodge(b, bubbles, ends.concat(boxes.slice(i + 1)), top);
+    to.push(dy);
+    ends.push(dy ? { l: b.l, r: b.r, t: b.t + dy, b: b.b + dy } : b);
+  }
+  return to;
+}
+function easeDodge(cur, to, dt){
+  const next = cur + (to - cur) * Math.min(1, dt * 10);
+  return Math.abs(to - next) < .4 ? to : next;
+}
 
 /* =========================================================
    3D view. Every model is a ready-made CC0 asset from Kenney
@@ -6337,7 +6428,9 @@ const tmpV = new THREE.Vector3();
 function toScreen(x, h, z){ tmpV.set(x - mid.x, h, z - mid.z).project(camera); if (tmpV.z > 1) return [-9999, -9999]; return [(tmpV.x + 1) / 2 * W, (1 - tmpV.y) / 2 * H]; }
 function ovEl(cls, html){ const el = document.createElement('div'); el.className = cls; if (html) el.innerHTML = html; el.hidden = true; ovRoot.appendChild(el); return el; }
 function ovBtn(cls, html){ const el = document.createElement('button'); el.type = 'button'; el.className = cls; if (html) el.innerHTML = html; el.hidden = true; ovRoot.appendChild(el); return el; }
-function pin(el, x, y, show){ if (!show) { if (!el.hidden) el.hidden = true; return; } if (el.hidden) el.hidden = false; el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
+/* pin(el, x, y, show): the overlay's bottom centre goes to (x, y), or it hides. city-data: a shown one also keeps
+   that point (el._px, el._py) for bubbleBoxes() / dodgeNameLabels() below. */
+function pin(el, x, y, show){ if (!show) { if (!el.hidden) el.hidden = true; return; } if (el.hidden) el.hidden = false; el._px = x; el._py = y; el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
 function setText(el, text){ if (el._t !== text) { el._t = text; el.textContent = text; } }
 /* V3: a .bub's ellipsis lives on an inner <span> now (the outer .bub can no longer clip its own
    ::after hit area) -- every bubble is made with that span as its only child (el.firstChild), and
@@ -6379,6 +6472,55 @@ function pinLandOverlays(){
     pin(l.el, sx, sy, true);
     if (l.mark) l.el.classList.toggle('far', far);
   }
+}
+/* city-data: a bubble never covers a name label (requirements/city.md, Look; the maths is labelDodge above). Every
+   frame, after all the pins, dodgeNameLabels() moves a land's name or a site's sign that a head bubble would cover
+   (the bubble's own words are never moved), gliding there and back. nameLabels() -> the records ({ el, ... }) of
+   those labels, never the small district ones; bubbleBoxes() -> the boxes of the head bubbles on screen (bottom
+   centre = the point pin() kept; -9999 = behind the camera); labelTop() -> the highest y a moved label may reach.
+   Cost: a size is read (a forced layout) only when an element's text changed -- cached on the element, el._bk. */
+function nameLabels(){
+  const out = [];
+  for (const l of labels) if (!l.mark) out.push(l);
+  for (const s of siteSigns.values()) out.push(s);
+  return out;
+}
+function bubbleBoxes(){
+  const out = [];
+  for (const el of ovRoot.children) {
+    if (el.hidden || !(el._px > -5000)) continue;
+    const c = el.classList;
+    if (!(c.contains('bub') || c.contains('qm') || c.contains('talkb'))) continue;
+    const k = el._t != null ? el._t : el.textContent;
+    if (el._bk !== k || !el._bw) { el._bk = k; el._bw = el.offsetWidth; el._bh = el.offsetHeight; }
+    out.push({ l: el._px - el._bw / 2, r: el._px + el._bw / 2, t: el._py - el._bh, b: el._py });
+  }
+  return out;
+}
+function labelTop(){
+  const strip = $('#stage-top');
+  return strip ? strip.offsetTop + strip.offsetHeight + LABEL_GAP : LABEL_GAP;
+}
+function dodgeNameLabels(dt){
+  const recs = [], boxes = [];
+  for (const rec of nameLabels()) {
+    const el = rec.el;
+    if (el.hidden || !(el._px > -5000)) { rec.dy = 0; continue; } // hidden or behind the camera: no obstacle, back at 0
+    const k = el._t != null ? el._t : el.textContent;
+    if (el._bk !== k || !el._bw) { el._bk = k; el._bw = el.offsetWidth; el._bh = el.offsetHeight; }
+    recs.push(rec);
+    boxes.push({ l: el._px - el._bw / 2, r: el._px + el._bw / 2, t: el._py - el._bh, b: el._py });
+  }
+  const bubbles = bubbleBoxes();
+  const to = dodgeTargets(boxes, bubbles, bubbles.length ? labelTop() : 0); // no bubble: nothing moves, no strip to read
+  let moving = false;
+  for (let i = 0; i < recs.length; i++) {
+    const rec = recs[i], el = rec.el;
+    const dy = rec.dy = easeDodge(rec.dy || 0, to[i], dt);
+    if (dy !== to[i]) moving = true;
+    if (dy) el.style.transform = `translate(${el._px.toFixed(1)}px,${(el._py + dy).toFixed(1)}px) translate(-50%,-100%)`;
+  }
+  if (moving) needFrame = true; // the glide needs its frames even when the page is otherwise idle
 }
 const govBub = ovEl('bub gov', '<span></span>'), govTag = ovEl('tagl tag'), govQm = ovBtn('qm', '<span>?</span>');
 govTag.style.setProperty('--c', '#FF6F8B'); setText(govTag, i18n('gov.tagLabel'));
@@ -7135,6 +7277,7 @@ function sync(t, dt){
   stepWorkFx(dt); // city-work-anim: dust and sparks fade and rise; the lit laptop screen redraws while someone types
   pinSiteSigns();
   pinLandOverlays();
+  dodgeNameLabels(dt); // city-data: after every pin, a name label moves out of a bubble's way
 }
 /* ---------- panel ---------- */
 const dirty = { log:true };
