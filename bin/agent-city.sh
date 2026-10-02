@@ -44,6 +44,10 @@
 #                            talk key again (hidden), let the cloud page start
 #                            agents on this machine (talk must be on first)
 #   ./agent-city.sh cloud-start off  stop that (no terminal needed)
+#   ./agent-city.sh login-start on   start the small city program when you log in, so the
+#                            cloud page sees this computer after a restart (the owner's,
+#                            in his own terminal only; macOS only for now)
+#   ./agent-city.sh login-start off  stop that (no terminal needed)
 #   ./agent-city.sh -h       this help
 #
 # City dir: $AGENT_CITY_DIR, default $HOME/.cache/agent-city (the same dir the
@@ -152,6 +156,39 @@
 # -- on only when talk is on too; no network, never the key.
 # A start typed inside a repo also passes --joined-list while the start file
 # names a host (see START_JOINED).
+#
+# login-start on | off | run (requirements/city.md, "Cloud page", "Login start"): the
+# small city program comes back by itself after a restart, so the cloud page sees
+# this computer without anybody opening a session. A macOS LaunchAgent, off by
+# default, macOS only for now (`uname -s` is not Darwin: one line, exit 1, nothing
+# touched, launchctl never called). `on` is the owner's, in his own terminal: it
+# refuses without a terminal on stdin (exit 2, nothing written), so an agent, a hook
+# or a plugin update can never install it. It copies bin/agent-city-shim byte for
+# byte to $CITY_HOME/login-start.sh (mode 0755, temp file then mv): the launcher is a
+# copy of the shim, outside the versioned plugin folder, so no plugin path goes stale
+# (the shim picks the newest installed plugin at every run; an update needs no new
+# `on`). It writes $HOME/Library/LaunchAgents/com.auto-pipeline.agent-city.login.plist
+# (python3 plistlib, temp file then replace): ProgramArguments /bin/sh <launcher>
+# login-start run; RunAtLoad (at once and at every login); AbandonProcessGroup (else
+# launchd kills the city server, a child of the launcher, when the launcher exits);
+# EnvironmentVariables PATH = this terminal's PATH without the entries inside a plugin
+# folder (the running plugin's own, any .../plugins/cache/...: launchd's own PATH has
+# no python3, orca or claude, and a versioned entry goes stale), plus AGENT_CITY_HOME,
+# AGENT_CITY_DIR, AGENT_CITY_PORT each only when set; no KeepAlive, no StartInterval:
+# the server's own idle rule stays. Then `launchctl bootout` (quiet, not loaded is
+# fine) and `launchctl bootstrap gui/<uid>`; a bootstrap that fails removes the plist
+# and the launcher again (exit 1). launchctl and uname are found on PATH. `off` needs
+# no terminal: bootout, then the plist and the launcher go, nothing else.
+# `run` is what the login item runs (not in the help; a login has no folder, and
+# autostart does nothing outside a repo): in the foreground, prints nothing, always
+# exit 0. It walks $CITY_HOME/joined-repos.txt in order (repos whose folder and join
+# file are there, each relay host once) and for each runs autostart_work from that
+# repo (this script again, in that folder, as the internal verb `run-here`: its
+# agent.conf decides port, idle and language, --start-dir is the repo, --joined-list
+# always, no browser), until a city server runs. A server already running, or a cloud
+# session, or nothing joined: nothing, no network. status prints "LOGIN START: on"
+# (the plist file is there) or "LOGIN START: off" as its last line, from the file
+# only: launchctl is never called there.
 
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
@@ -202,6 +239,10 @@ agent-city.sh — start/stop/status/demo for the Agent City playground.
                            (yours to run, in your own terminal; asks the talk key
                            again; talk must be on first)
   ./agent-city.sh cloud-start off  stop that
+  ./agent-city.sh login-start on   start the small city program when you log in, so the cloud
+                           page sees this computer after a restart (yours to run, in your
+                           own terminal; macOS only for now)
+  ./agent-city.sh login-start off  stop that
   ./agent-city.sh -h       this help
 
 Outside a repo: start/demo sync every repo listed in
@@ -228,6 +269,10 @@ RELAY_MODULE="$PLUGIN_ROOT/bin/agent_city_relay.py"
 CLOUD_FILE="$CITY_HOME/cloud"
 TALK_FILE="$CITY_HOME/cloud-talk"
 START_FILE="$CITY_HOME/cloud-start"
+LOGIN_LABEL="com.auto-pipeline.agent-city.login"
+LOGIN_DIR="$HOME/Library/LaunchAgents"
+LOGIN_PLIST="$LOGIN_DIR/$LOGIN_LABEL.plist"
+LOGIN_LAUNCHER="$CITY_HOME/login-start.sh"
 # yes: do_start always passes --joined-list (autostart, also inside a repo).
 # Also passed when the start file names a host (do_start checks it): a machine
 # that takes start orders syncs every repo it joined from the first moment, so a
@@ -364,6 +409,18 @@ do_status() {
     cloud_line || true
     talk_line || true
     start_line || true
+  fi
+  login_line
+  return 0
+}
+
+# "LOGIN START: on" when the login item's plist is there, else "LOGIN START: off".
+# The file only: launchctl is never called here. Always the last status line.
+login_line() {
+  if [ -f "$LOGIN_PLIST" ]; then
+    echo "LOGIN START: on"
+  else
+    echo "LOGIN START: off"
   fi
   return 0
 }
@@ -1342,6 +1399,174 @@ start_need_joined() {
   fi
 }
 
+# login-start on | off | run: see the header comment. `run-here` is internal (one
+# repo of the walk of `run`), not for people and not in the help.
+do_login_start() {
+  case "${1:-}" in
+    on) login_on ;;
+    off) login_off ;;
+    run) login_run >/dev/null 2>&1 </dev/null || true ;;
+    run-here) autostart_work >/dev/null 2>&1 </dev/null || true ;;
+    *)
+      echo "LOGIN START: usage: agent-city.sh login-start on | off" >&2
+      exit 2 ;;
+  esac
+  return 0
+}
+
+# Only macOS has the LaunchAgent this needs. One plain line, nothing touched,
+# launchctl never called.
+login_need_mac() {
+  if [ "$(uname -s 2>/dev/null)" != "Darwin" ]; then
+    echo "LOGIN START: macOS only for now; nothing was changed" >&2
+    exit 1
+  fi
+}
+
+# `on` is the owner's, in his own terminal: no terminal on stdin (an agent, a
+# hook, a pipe) -> refuse before anything is written or launchctl is called.
+login_on() {
+  login_need_mac
+  if [ ! -t 0 ]; then
+    echo "LOGIN START: run this yourself in your own terminal (it lets the small city program start when you log in)" >&2
+    exit 2
+  fi
+
+  # the launcher: a byte copy of the shim, temp file in the same folder, then mv
+  tmp="$CITY_HOME/.login-start.$$"
+  if ! { mkdir -p "$CITY_HOME" "$LOGIN_DIR" \
+         && cp "$PLUGIN_ROOT/bin/agent-city-shim" "$tmp" \
+         && chmod 755 "$tmp" \
+         && mv -f "$tmp" "$LOGIN_LAUNCHER"; }; then
+    rm -f "$tmp" 2>/dev/null || true
+    echo "LOGIN START: could not write $LOGIN_LAUNCHER; nothing was changed" >&2
+    exit 1
+  fi
+
+  # the plist: python3 plistlib (always valid XML), temp file in the same folder,
+  # then replace, so LaunchAgents never holds a half-written or a stray file
+  rc=0
+  python3 - "$LOGIN_PLIST" "$LOGIN_LABEL" "$LOGIN_LAUNCHER" "$PLUGIN_ROOT" <<'PY' || rc=$?
+import os
+import plistlib
+import sys
+
+path, label, launcher, plugin_root = sys.argv[1:5]
+roots = {plugin_root.rstrip("/") or "/", os.path.realpath(plugin_root)}
+
+
+def in_a_plugin_folder(entry):
+    forms = {entry}
+    if os.path.isabs(entry):
+        forms.add(os.path.realpath(entry))
+    for form in forms:
+        if "/plugins/cache/" in form + "/":
+            return True
+        for root in roots:
+            if form == root or form.startswith(root.rstrip("/") + "/"):
+                return True
+    return False
+
+
+# this terminal's PATH, order kept, without the entries inside a plugin folder
+kept = [e for e in os.environ.get("PATH", "").split(os.pathsep) if not in_a_plugin_folder(e)]
+env = {"PATH": os.pathsep.join(kept)}
+for key in ("AGENT_CITY_HOME", "AGENT_CITY_DIR", "AGENT_CITY_PORT"):
+    if os.environ.get(key):
+        env[key] = os.environ[key]
+
+data = {
+    "Label": label,
+    "ProgramArguments": ["/bin/sh", launcher, "login-start", "run"],
+    "RunAtLoad": True,
+    "AbandonProcessGroup": True,
+    "EnvironmentVariables": env,
+}
+
+tmp = os.path.join(os.path.dirname(path), ".%s.tmp%d" % (os.path.basename(path), os.getpid()))
+try:
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    with os.fdopen(fd, "wb") as fh:
+        plistlib.dump(data, fh)
+    os.replace(tmp, path)
+except OSError:
+    sys.exit(1)
+finally:
+    try:
+        os.remove(tmp)
+    except OSError:
+        pass
+PY
+  if [ "$rc" -ne 0 ]; then
+    rm -f "$LOGIN_PLIST" "$LOGIN_LAUNCHER" 2>/dev/null || true
+    echo "LOGIN START: could not write the login item $LOGIN_PLIST; nothing was left in place" >&2
+    exit 1
+  fi
+
+  # unload an older copy first (failing is normal: it was not loaded), then load
+  uid=$(id -u)
+  launchctl bootout "gui/$uid/$LOGIN_LABEL" >/dev/null 2>&1 || true
+  if launchctl bootstrap "gui/$uid" "$LOGIN_PLIST" >/dev/null 2>&1; then
+    echo "LOGIN START: on"
+    return 0
+  fi
+  rm -f "$LOGIN_PLIST" "$LOGIN_LAUNCHER" 2>/dev/null || true
+  echo "LOGIN START: launchctl would not load the login item; nothing was left in place" >&2
+  exit 1
+}
+
+# off must always work, it is the way to stop: no terminal needed, fine when it
+# never was on. Only the plist and the launcher go; nothing else in LaunchAgents
+# or in the city home.
+login_off() {
+  login_need_mac
+  uid=$(id -u)
+  launchctl bootout "gui/$uid/$LOGIN_LABEL" >/dev/null 2>&1 || true
+  rm -f "$LOGIN_PLIST" "$LOGIN_LAUNCHER" 2>/dev/null || true
+  echo "LOGIN START: off"
+  return 0
+}
+
+# What the login item runs. Foreground: when it returns, the server is up or will
+# not come. The caller keeps every stream on /dev/null. A city server already
+# running, or a cloud session: nothing. Else the joined repos in list order (the
+# first repo of each relay host, folder and join file there): for each, this
+# script again from that repo (autostart_work with that repo's own agent.conf),
+# stopping as soon as a server runs. CLAUDE_PROJECT_DIR is set to the repo, so
+# the child never takes the repo from an inherited one.
+login_run() {
+  read_on >/dev/null && return 0
+  [ -z "${CLAUDE_CODE_REMOTE:-}" ] || return 0
+  repos=$(python3 -c '
+import os
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+from urllib.parse import urlsplit
+
+hosts = []
+for repo in rl.read_joined_list(sys.argv[2]):
+    if not os.path.isdir(repo):
+        continue
+    joined = rl.read_join(os.path.join(repo, ".secrets", "agent-city-relay"))
+    if not joined:
+        continue
+    host = urlsplit(joined["address"]).netloc
+    if host not in hosts:
+        hosts.append(host)
+        print(repo)
+' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" 2>/dev/null) || return 0
+  while IFS= read -r repo; do
+    [ -n "$repo" ] || continue
+    ( cd "$repo" && CLAUDE_PROJECT_DIR="$repo" bash "$PLUGIN_ROOT/bin/agent-city.sh" login-start run-here
+    ) </dev/null >/dev/null 2>&1 || true
+    read_on >/dev/null && return 0
+  done <<EOF
+$repos
+EOF
+  return 0
+}
+
 [ $# -eq 0 ] && { usage; exit 2; }
 case "$1" in
   -h|--help) usage; exit 0;;
@@ -1364,5 +1589,6 @@ case "$1" in
   cloud-deploy) do_cloud_deploy;;
   cloud-talk) shift; do_cloud_talk "$@";;
   cloud-start) shift; do_cloud_start "$@";;
+  login-start) shift; do_login_start "$@";;
   *) usage; exit 2;;
 esac

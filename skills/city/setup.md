@@ -209,7 +209,7 @@ There are three ways to stop it. Use the one you need, or all of them.
 You should see: `CLOUD TALK: off` from step 1 (the same status command as section 16, step 8 shows it too), and on the page that machine shows 只能看, with no message box. After step 2, no machine takes a message. The cloud page itself, the relay and the local city go on as before.
 
 ## 18. Turn starting agents on
-Optional. Do this only after section 16 works: talking must be on first, on each machine that should take orders. With starting on, you can open a new agent from the cloud page, in a repo that joined (section 6) on a machine with starting on, and then type to it. Read this first, in plain words: whoever can log in as you on the page can open a Manager or a Helper (the two kinds of agent you talk to yourself) in a joined repo of a machine with starting on, and then type to it (talking is on there). So keep the login short (section 16, step 1) and keep your e-mail account safe. The command is fixed: nobody can choose the role, the model, a flag or a folder. A task manager is never made this way. At most 10 an hour can be started. Every order, and what became of it, is written in decisions.jsonl on that machine. A machine with starting on keeps its small city program running also when no session is open, so the first agent of the day can be started from the phone. After a restart of the computer it comes back with the next Claude session there (or when you run `agent-city start`). Starting is off by default: it stays off for a machine until you do step 5 on it.
+Optional. Do this only after section 16 works: talking must be on first, on each machine that should take orders. With starting on, you can open a new agent from the cloud page, in a repo that joined (section 6) on a machine with starting on, and then type to it. Read this first, in plain words: whoever can log in as you on the page can open a Manager or a Helper (the two kinds of agent you talk to yourself) in a joined repo of a machine with starting on, and then type to it (talking is on there). So keep the login short (section 16, step 1) and keep your e-mail account safe. The command is fixed: nobody can choose the role, the model, a flag or a folder. A task manager is never made this way. At most 10 an hour can be started. Every order, and what became of it, is written in decisions.jsonl on that machine. A machine with starting on keeps its small city program running also when no session is open, so the first agent of the day can be started from the phone. After a restart of the computer it comes back with the next Claude session there, when you run `agent-city start`, or by itself at login when you turn that on (section 20). Starting is off by default: it stays off for a machine until you do step 5 on it.
 1. On your Mac, in a terminal, copy the NEW relay code to the clipboard (the same command as section 2, step 5):
    ```
    cat "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city-relay.js" | pbcopy
@@ -243,5 +243,25 @@ There are three ways to stop it. Use the one you need, or all of them.
 2. All machines at once. In Cloudflare, open the relay Worker, then "Settings", then "Variables and Secrets". Delete `TALK_KEY`, then "Deploy". With no `TALK_KEY`, no machine takes an order, and talking is off for every machine too.
 3. End the login. On the page, click the 退出 link. To end the Access session everywhere (for example if someone else may have your login): the same as section 17, step 3 (Zero Trust, "My Team", "Users", your user, "Revoke").
 You should see: `CLOUD START: off` from step 1 (the status command of section 18, step 6 shows it too), and on the page no 加 agent button for that machine, with a note at the foot of the list saying how to turn it on. After step 2, no machine takes an order. The cloud page, the relay and the local city go on as before.
+
+## 20. Start the city when you log in
+Optional. It lets the small city program start by itself when you log in, so the cloud page sees this computer after a restart. Read this first, in plain words: the cloud page shows a machine only while its small city program runs. That program starts when a Claude session starts. After the computer restarts, nothing runs until you open a session, so the cloud page says the machine is off. This step fixes that. It works only on a Mac for now. It only does something while the cloud page is on for this machine (section 11 and section 14). It is off by default: it stays off until you do step 1. After a plugin update there is nothing to do again.
+1. Turn it on. On your Mac, in a terminal (from any folder), run:
+   ```
+   bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" login-start on
+   ```
+   Type this yourself, in your own terminal: the command refuses when an agent runs it.
+2. Check it. Run the status command (the same as section 8, step 2):
+   ```
+   bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" status
+   ```
+3. Check it for real. Restart the computer (or log out and log in). Do not open a Claude session. Wait about a minute. Then open the cloud page on your phone and log in (section 13).
+4. To turn it off, run this on the same Mac, in a terminal, from any folder:
+   ```
+   bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" login-start off
+   ```
+   A small city program that runs now stays up until it stops by itself, or until you run `agent-city stop`.
+About the idle rule: with starting agents off (section 18 not done), the small city program stops by itself after 30 minutes with no session and no browser. It comes back with the next session or the next login. With section 18 done, it stays up.
+You should see: `LOGIN START: on` after step 1, and as the last line of step 2. After step 3, this machine is on the cloud page. After step 4, `LOGIN START: off`.
 
 Cloudflare's free plan allows 100,000 Worker requests and 100,000 D1 rows written a day. A heavy day (3 machines, 6 busy hours each, the page open 8 hours) uses about 44,500 requests and about 73,900 written rows. This day includes talking: 600 session turns and 100 messages from the page. It also includes starting: 20 agents started from the page, and each machine kept up the other 12 hours with nobody there. About 52,000 of those rows are the relay's lines as before, talking adds about 6,000, and starting adds about 8,700 requests and about 2,300 rows.
