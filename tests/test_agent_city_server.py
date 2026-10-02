@@ -239,11 +239,13 @@ class TestServe(ServerCase):
         self.assertEqual(status, 200)
         data = json.loads(body)
         # Interaction adds asks, gov_wait_sec and governors
-        # (tests/test_agent_city_interact.py); nothing else.
+        # (tests/test_agent_city_interact.py); cloud-polish Q4 adds not_joined
+        # (tests/test_agent_city_cloud_polish.py); nothing else.
         base = {k: data.get(k) for k in ("ok", "lines", "agents", "clients")}
         self.assertEqual(base, {"ok": True, "lines": 0, "agents": 0, "clients": 0})
         self.assertLessEqual(set(data), {"ok", "lines", "agents", "clients",
-                                         "asks", "gov_wait_sec", "governors"})
+                                         "asks", "gov_wait_sec", "governors", "not_joined"})
+        self.assertEqual(data.get("not_joined"), [], "nobody live: nothing to name")
 
     def test_unknown_path_is_404(self):
         self.start()

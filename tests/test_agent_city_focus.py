@@ -137,9 +137,17 @@ class TestWindowMarkup(unittest.TestCase):
     def test_phone_city_fills_the_screen(self):
         block = media_block("@media (max-width: 960px)")
         self.assertNotIn("66vh", block)
-        self.assertRegex(block, r"\.stage-col\{[^}]*flex:1")
-        self.assertRegex(block, r"\.stage\{[^}]*flex:1 1 0")
-        self.assertRegex(block, r"\.stage canvas\{[^}]*position:absolute")
+        # cloud-polish (2026-10-02, bounce 1 D1): the stage takes what is left of the window at EVERY width now,
+        # so the three rules that fill the screen are the page's base rules (before, they were in the phone
+        # block only and a computer got a fixed height that ran under the screen). The phone block keeps its
+        # smaller minimum and must not undo them. Seen in a browser at 390 x 844: the page is 844 px high.
+        base = style()[:style().index("@media (max-width: 960px)")]
+        self.assertRegex(base, r"\.stage-col\{[^}]*flex:1")
+        self.assertRegex(base, r"\.stage\{[^}]*flex:1 1 0")
+        self.assertRegex(base, r"\.stage canvas\{[^}]*position:absolute")
+        self.assertRegex(block, r"\.stage\{[^}]*min-height:340px")
+        self.assertNotRegex(block, r"\.stage(?:-col)?\{[^}]*flex:none")
+        self.assertNotRegex(block, r"\.stage\{(?:[^}]*;)?height:")
 
     def test_log_button_in_the_top_bar(self):
         bar = re.search(r'<header class="bar"[^>]*>(.*?)</header>', zh_resolved(markup()), re.S)

@@ -17,8 +17,9 @@ V1 a compact left rail = the team list; a click on a person = follow it + its me
         it (c.remote, not gone; depth 0). Last, every row whose person rests (citizenStatus(c)[0] ===
         'rest') is moved to the end of its group with rest: true, the order among them kept.
         name = the territory's name, color = terrColor(terr).
-  (sim) railCount(groups) -> {active, you}: active = rows that are neither the governor nor resting;
-        you = those among them whose citizenStatus(c)[0] === 'you' (waiting on the owner).
+  (sim) railCount(groups) -> {active, you}: active = rows that are not resting (cloud-polish Q2, 2026-10-02:
+        the governor's row counts too, it is a session); you = those among them waiting on the owner (a
+        citizen whose citizenStatus(c)[0] === 'you', a governor whose state is 'waiting').
   (sim) railHtml(groups, selId, closed, openRest) -> the HTML of #rail-list. selId = the selected row id
         (selKey(selected)); closed = a Set of terr ids folded by the owner; openRest = a Set of terr ids whose
         resting rows are shown. Per group:
@@ -258,8 +259,9 @@ class TestRailData(unittest.TestCase):
         self.assertEqual(self.r["noB"][1][1], 0, "B has nobody: its group stays, with no rows")
 
     def test_counts(self):
-        self.assertEqual(self.r["cnt0"], {"active": 5, "you": 0}, "s:L w1 f1 remote y1")
-        self.assertEqual(self.r["cnt1"], {"active": 5, "you": 1})
+        # cloud-polish Q2 (2026-10-02): a governor is a session, its row counts (tests/test_agent_city_cloud_polish.py)
+        self.assertEqual(self.r["cnt0"], {"active": 6, "you": 0}, "gov s:L w1 f1 remote y1")
+        self.assertEqual(self.r["cnt1"], {"active": 6, "you": 1})
 
     def test_sel_key(self):
         a, b = self.r["a"], self.r["b"]

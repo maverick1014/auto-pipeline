@@ -33,8 +33,9 @@ U1 repo tags + zoom-out limit
         (wheel/ctrl-wheel, pinch, gesture*, zoomStep buttons) goes through capZoom(..., distLimit(),
         distMax()); dragBy's limit argument is distLimit(); camTarget() uses pullShare(cam.dist,
         distLimit(), distMax()). updateCamera() still clamps to distMax() only.
-  Markup: <nav class="repos" id="repos" data-t-aria="aria.repos"> in .app, after header.bar, before
-        main (always visible, above the city). renderRepos() fills it: first a
+  Markup: <nav class="repos" id="repos" data-t-aria="aria.repos">, always visible. cloud-polish Q1
+        (2026-10-02): it sits ON the stage, in <div class="stage-top" id="stage-top"> (was: in .app, after
+        header.bar, before main; tests/test_agent_city_cloud_polish_page.py). renderRepos() fills it: first a
         <button type="button" class="repo all" data-terr="*"> (i18n repo.all: 全部 / All), then one
         <button type="button" class="repo" data-terr="<id>"> per repoTags() entry with the repo name.
         buildLand() calls renderRepos(). Click ($('#repos').addEventListener('click', ...)): "*" -> flyTo(land.cx, land.cz,
@@ -409,8 +410,9 @@ class TestRepoTagsWiring(unittest.TestCase):
         self.assertIsNotNone(m, '<nav id="repos"> missing')
         self.assertIn('class="repos"', m.group(0))
         self.assertIn('data-t-aria="aria.repos"', m.group(0))
-        self.assertLess(text.index("</header>"), m.start(), "under the top bar")
-        self.assertLess(m.start(), text.index('<main class="layout">'), "above the city")
+        # cloud-polish Q1 (2026-10-02): the row sits ON the stage now, in the strip at its top (was: above the city)
+        self.assertLess(text.index('<div class="stage-top" id="stage-top">'), m.start(), "in the strip on the stage")
+        self.assertLess(m.start(), text.index('<aside class="rail" id="rail"'), "before the rail")
 
     def test_text_keys_both_languages(self):
         for key in ("repo.all", "aria.repos", "repo.goAria"):

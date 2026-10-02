@@ -969,8 +969,10 @@ class TestKept(unittest.TestCase):
         self.assertRegex(inline_script(),
                          r"\} else \{\s*\$\('\.toolbar'\)\.remove\(\);\s*"
                          r"\$\('\.stage-col'\)\.classList\.add\('no-bar'\);")
-        self.assertIn('.stage-col.no-bar{--stage-off:', page())
-        self.assertIn('calc(100dvh - var(--stage-off,150px))', page())
+        # cloud-polish (2026-10-02, bounce 1): no fixed offset any more, the stage takes what is left of the window
+        # (tests/test_agent_city_cloud_polish_page.py); the script keeps the class
+        self.assertNotIn('--stage-off', page())
+        self.assertRegex(page(), r'\.stage\{[^}]*flex:1 1 0')
 
     def test_spawn_control_only_in_demo(self):
         self.assertIn('id="spawn-group"', markup())
