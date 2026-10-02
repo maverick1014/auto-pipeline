@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City · city-ask-panel mock</title>
+<link rel="icon" href="data:,">
+<style>
+/* city-ask-panel mock (owner, 2026-10-02): a person who waits on the owner shows its open question or
+   permission request INSIDE its own message panel. Today the panel says only 等你; the question and the
+   buttons sit in a separate "?" dialog that opens only from the small red "?" or the top 等你 button.
+   The rail, the panel, the pills and the question / permission body below are the real page's CSS
+   (bin/agent-city.html); what this task adds is marked NEW. The city itself is a flat stand-in. */
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --berry:#FF7593; --berry-deep:#D9506E; --focus:#4D7CFE;
+  --build-bg:#E1ECFF; --build-ink:#3160B5; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
+  --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488;
+  --me-bg:#D9FDD3; --me-ink:#1F3D2B; --gov-bg:#FFF0C7; --gov-ink:#8A6000; --ok:#1E8657; --ok-deep:#146342;
+  --sea:#BFDDF6; --land:#CDE9B4; --land-edge:#9FCB84;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+    --line:#2D3360; --focus:#8FB0FF;
+    --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+    --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
+    --me-bg:#144D37; --me-ink:#E3F7EA; --gov-bg:#43381A; --gov-ink:#FFDD8A; --ok:#2FA56F; --ok-deep:#1B7049;
+    --sea:#1A2A4A; --land:#2F4A34; --land-edge:#476B4C;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.app{max-width:1500px;margin-inline:auto;padding-inline:16px;padding-block:12px 22px;display:flex;flex-direction:column;gap:10px}
+.app.phone{max-width:400px;border:2px dashed var(--ink-3);border-radius:28px;padding-inline:8px}
+
+/* mock-only controls */
+.mockbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 12px;border:1.5px dashed var(--ink-3);border-radius:14px;font-size:12.5px;color:var(--ink-2)}
+.mockbar b{font:700 12px/1 var(--mono);color:var(--ink-3);letter-spacing:.06em}
+.mockbar .note{flex-basis:100%;margin:0;font-size:12.5px;line-height:1.5;color:var(--ink-2)}
+.seg{display:inline-flex;flex-wrap:wrap;border:1.5px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{all:unset;cursor:pointer;padding:5px 10px;font:600 12px/1.2 var(--round);color:var(--ink-2);background:var(--panel)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.seg button:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.sign{display:inline-flex;align-items:center;gap:10px;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:5px 16px 5px 12px;box-shadow:0 3px 0 var(--ink)}
+.sign-name{font:700 22px/1 var(--display)}
+.stats{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
+.stat{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font-size:13px;color:var(--ink-2)}
+.stat b{color:var(--ink);font:700 14px/1 var(--display);font-variant-numeric:tabular-nums}
+.stat.wait{font:inherit;font-size:13px;cursor:pointer;border-color:var(--berry);background:var(--ask-bg);color:var(--ask-ink)}
+.stat.wait b{color:var(--ask-ink)}
+.stat.wait:disabled{cursor:default;border-color:var(--line);background:var(--panel);color:var(--ink-3)}
+.stat.wait:disabled b{color:var(--ink-3)}
+.stat.wait:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+
+/* the city stand-in */
+.stage{position:relative;overflow:hidden;height:calc(100dvh - 250px);min-height:600px;background:var(--sea);border-radius:18px;--rail-w:212px;--msg-w:380px}
+.app.phone .stage{height:720px;min-height:0}
+.isle{position:absolute;left:36%;top:26%;width:30%;height:46%;background:var(--land);border:3px solid var(--land-edge);border-radius:46% 54% 50% 50% / 55% 45% 55% 45%}
+.app.phone .isle{left:8%;top:8%;width:84%;height:34%}
+.lbl{position:absolute;transform:translate(-50%,-50%);background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:2px 10px;font:600 12px/1.5 var(--display);box-shadow:0 2px 0 rgba(42,43,69,.15);white-space:nowrap;pointer-events:none}
+.hall{position:absolute;width:34px;height:30px;transform:translate(-50%,-70%);background:#F6E2B8;border:2px solid #9C7A3C;border-radius:4px 4px 2px 2px}
+.hall::before{content:"";position:absolute;left:-6px;right:-6px;top:-12px;height:12px;background:#C9544B;clip-path:polygon(50% 0,100% 100%,0 100%)}
+.who{position:absolute;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;gap:3px}
+.pp{all:unset;cursor:pointer;position:relative;width:14px;height:22px}
+.pp::before{content:"";position:absolute;left:3px;top:0;width:8px;height:8px;border-radius:50%;background:#F2C9A0;border:1.5px solid #6B4B33}
+.pp::after{content:"";position:absolute;left:1px;top:9px;width:12px;height:12px;border-radius:5px 5px 2px 2px;background:var(--c)}
+.pp:focus-visible{outline:2px solid var(--focus);outline-offset:3px;border-radius:4px}
+.who.sel .pp{filter:drop-shadow(0 0 3px #FF7593) drop-shadow(0 0 3px #FF7593)}
+.tagl{all:unset;cursor:pointer;background:var(--c);color:#fff;border-radius:999px;padding:3px 10px;font:600 11.5px/1.3 var(--mono);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.2)}
+.bub{all:unset;cursor:pointer;background:#FFFFFF;color:#2A2B45;border:2px solid #2A2B45;border-radius:14px;padding:3px 10px;font:600 12.5px/1.4 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.2);white-space:nowrap}
+.bub.ask{border-color:#E4476F}
+.qm{all:unset;cursor:pointer;display:block;width:28px;height:28px}
+.qm span{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#FF6F8B;color:#fff;font:700 17px/1 var(--display);border:2px solid #fff;box-shadow:0 2px 0 rgba(42,43,69,.25);animation:hop .7s ease-in-out infinite}
+.qm:focus-visible,.bub:focus-visible,.tagl:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+@keyframes hop{0%,100%{translate:0 0}50%{translate:0 -4px}}
+@media (prefers-reduced-motion:reduce){.qm span{animation:none}}
+
+.fold{all:unset;cursor:pointer;flex:none;width:26px;height:26px;display:grid;place-items:center;border-radius:8px;color:var(--ink-2);font:700 14px/1 var(--round)}
+.fold:hover{background:var(--panel-2);color:var(--ink)}
+.btn{font:600 13px/1 var(--round);border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:12px;padding:0 12px;min-height:36px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--ink-3)}
+.btn:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.btn.primary{background:var(--berry);border-color:var(--berry);color:#fff;box-shadow:0 3px 0 var(--berry-deep)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff;box-shadow:0 3px 0 var(--ok-deep);white-space:nowrap;min-width:92px;justify-content:center}
+.btn.no{background:var(--panel);border-color:var(--ask-ink);color:var(--ask-ink);white-space:nowrap;min-width:92px;justify-content:center}
+
+/* ---- the rail (real page) ---- */
+.rc{width:10px;height:10px;border-radius:50%;background:var(--rc);flex:none;display:inline-block}
+.rail{position:absolute;left:12px;top:12px;z-index:4;width:var(--rail-w);max-height:calc(100% - 24px);display:flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:16px;box-shadow:0 4px 0 rgba(42,43,69,.18);overflow:hidden}
+.app.phone .rail{display:none}
+.rail-head{display:flex;align-items:center;gap:6px;padding:6px 6px 6px 12px;border-bottom:1.5px solid var(--line);font-weight:700;font-size:13px}
+.rail-head .n{font:600 12px/1 var(--mono);color:var(--ink-3)}
+.rail-head .fold{margin-left:auto}
+.rail-list{overflow:auto;padding:4px 4px 8px}
+.grp-h{display:flex;align-items:center;gap:6px;padding:3px 6px;font:700 11.5px/1.2 var(--mono);color:var(--ink-2)}
+.grp-h .n{margin-left:auto;color:var(--ink-3);font-weight:600}
+.rail-grp{border-left:4px solid var(--rc);margin:4px 0 6px;padding-left:2px}
+.rrows{list-style:none;margin:0;padding:0}
+.rrow{all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:8px;font-size:12.5px;line-height:1.35}
+.rrow.sub{padding-left:16px}
+.rrow:hover{background:var(--panel-2)}
+.rrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.rrow[aria-current="true"]{background:var(--ink);color:var(--paper)}
+.sdot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--ink-3)}
+.sdot.st-you{background:var(--berry)}
+.sdot.st-build{background:#4D7CFE}
+.sdot.st-rest{background:#2FB57A}
+.rrow b{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{flex:none;display:inline-block;font:600 10.5px/1.6 var(--round);border-radius:999px;padding:0 6px;white-space:nowrap}
+.chip.you{background:var(--ask-bg);color:var(--ask-ink)}
+.chip.build{background:var(--build-bg);color:var(--build-ink)}
+.chip.rest{background:var(--rest-bg);color:var(--rest-ink)}
+
+/* ---- the message panel (real page) ---- */
+.win{position:absolute;right:12px;top:12px;bottom:12px;z-index:5;width:var(--msg-w);overflow:hidden;background:var(--panel);color:var(--ink);border:2px solid var(--ink);border-radius:20px;box-shadow:0 6px 0 rgba(42,43,69,.22);padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px}
+.app.phone .win{left:0;right:0;top:50%;bottom:0;width:auto;border-radius:20px 20px 0 0}
+.win-head{display:flex;align-items:center;gap:10px}
+.win-head .fold{margin-left:auto}
+.win-title{flex:1;min-width:0;font-weight:700;font-size:17px;line-height:1.3;overflow-wrap:anywhere}
+.x{all:unset;cursor:pointer;display:grid;place-items:center;width:32px;height:32px;border-radius:10px;color:var(--ink-2)}
+.x:hover{background:var(--panel-2)}
+.x:focus-visible{outline:2.5px solid var(--focus)}
+.detail{display:flex;flex-direction:column;gap:11px;flex:1;min-height:0;overflow:hidden}
+.p-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding-bottom:10px;border-bottom:1.5px solid var(--line)}
+.p-name{font-weight:700;font-size:15px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.p-facts{font:12px/1.4 var(--mono);color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rdot{width:18px;height:18px;border-radius:50%;border:4px solid var(--c);background:var(--panel);flex:none}
+.pill{font:600 12px/1 var(--round);padding:6px 10px;border-radius:999px;white-space:nowrap}
+.pill.build{background:var(--build-bg);color:var(--build-ink)}
+.pill.rest{background:var(--rest-bg);color:var(--rest-ink)}
+.pill.you{background:#FF4F72;color:#fff}
+.hint{margin:0;font-size:12.5px;color:var(--ink-3)}
+.hist-h{font-weight:600}
+.chat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;flex:1 1 auto;min-height:60px;overflow:auto}
+.chat .msg{display:flex;flex-direction:column;gap:2px;max-width:88%;padding:7px 10px;border-radius:14px;background:var(--panel-2);font-size:13px;line-height:1.4;align-self:flex-start}
+.chat .msg[data-kind="owner"]{align-self:flex-end;background:var(--me-bg);color:var(--me-ink)}
+.chat .msg b{font:600 11px/1.3 var(--mono);color:var(--ink-3)}
+.chat .act{display:flex;gap:8px;align-items:baseline;font-size:12px;color:var(--ink-3);padding:0 4px}
+.chat .act time{font:11px/1.4 var(--mono);flex:none}
+.chat .qa{align-self:stretch;border:1.5px solid var(--berry);background:var(--ask-bg);color:var(--ask-ink);border-radius:14px;padding:7px 10px;font-size:13px}
+.chat .qa p{margin:2px 0 0}
+.chat .qa .wait{font-style:italic}
+.say{display:flex;gap:8px;align-items:flex-end}
+.say textarea{flex:1;min-height:40px;max-height:90px;resize:none;font:14px/1.4 var(--round);color:var(--ink);background:var(--panel-2);border:1.5px solid var(--line);border-radius:12px;padding:9px 10px}
+
+/* ---- the question / permission body (real page, today inside the "?" dialog) ---- */
+.ask-panel{position:absolute;right:12px;top:12px;z-index:6;width:min(410px,calc(100% - 24px));max-height:calc(100% - 24px);overflow:auto;background:var(--panel);color:var(--ink);border:2px solid var(--ink);border-radius:20px;box-shadow:0 6px 0 rgba(42,43,69,.22);padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px}
+.ask-head{display:grid;grid-template-columns:minmax(0,1fr) auto 32px;gap:10px;align-items:center}
+.ask-title{font-weight:700;font-size:17px;line-height:1.3;overflow-wrap:anywhere}
+.ask-role{font:12px/1.3 var(--mono);color:var(--ink-3)}
+.why{display:flex;gap:8px;align-items:flex-start;background:var(--ask-bg);color:var(--ask-ink);border-radius:12px;padding:8px 10px;font-size:13px;line-height:1.45}
+.why.gov{background:var(--gov-bg);color:var(--gov-ink)}
+.q{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.q legend{padding:0;margin-bottom:6px;font-weight:700;font-size:15px;line-height:1.4}
+.qchip{display:inline-block;font:600 11px/1 var(--mono);letter-spacing:.04em;background:var(--panel-2);color:var(--ink-2);border:1.5px solid var(--line);border-radius:999px;padding:4px 8px;margin-right:6px;vertical-align:2px}
+.opt{display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;align-items:start;border:1.5px solid var(--line);border-radius:14px;padding:8px 10px;cursor:pointer;background:var(--panel)}
+.opt:hover{border-color:var(--ink-3)}
+.opt:has(input:checked){border-color:var(--berry);background:var(--panel-2)}
+.opt input{margin:3px 0 0;accent-color:var(--berry)}
+.opt b{display:block;font-weight:700}
+.opt small{display:block;color:var(--ink-3);font-size:12.5px}
+.opt input[type=text]{width:100%;margin-top:6px;font:14px/1.3 var(--round);color:var(--ink);background:var(--panel-2);border:1.5px solid var(--line);border-radius:10px;padding:8px 10px}
+.perm{display:flex;flex-direction:column;gap:8px}
+.kv{display:grid;grid-template-columns:44px minmax(0,1fr);gap:8px;align-items:baseline;font-size:13px}
+.kv>span{color:var(--ink-3)}
+.kv code{font:12.5px/1.4 var(--mono);overflow-wrap:anywhere;color:var(--ink-2)}
+.cmd{margin:0;font:13px/1.5 var(--mono);background:var(--panel-2);border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.said{margin:0;font-size:13px;color:var(--ink-2)}
+.field{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--ink-2)}
+.field input{font:14px/1.3 var(--round);color:var(--ink);background:var(--panel-2);border:1.5px solid var(--line);border-radius:10px;padding:9px 10px}
+.acts{display:flex;flex-wrap:wrap;gap:8px}
+.acts .btn{min-height:40px;padding:0 16px;font-size:14px}
+.foot{margin:0;font-size:12.5px;color:var(--ink-3)}
+.closed{display:flex;gap:8px;align-items:flex-start;border-radius:12px;padding:9px 11px;font-size:13.5px;line-height:1.45;background:var(--rest-bg);color:var(--rest-ink)}
+.closed.no{background:var(--ask-bg);color:var(--ask-ink)}
+.closed.late{background:var(--gov-bg);color:var(--gov-ink)}
+
+/* ---- NEW (city-ask-panel) ---- */
+/* K1: the open question or permission request sits in the person's own panel, between the head and
+   the history. It never scrolls away with the history; a long command scrolls inside the card, the
+   buttons stay in sight. */
+.askcard{flex:none;display:flex;flex-direction:column;gap:9px;max-height:62%;border:2px solid var(--berry);border-radius:16px;padding:10px 12px 12px;background:var(--panel)}
+.askcard-h{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px}
+.askcard-h .more{margin-left:auto;font:600 11.5px/1 var(--mono);color:var(--ink-3)}
+.askcard-body{display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto}
+.askcard .cmd{max-height:150px;overflow:auto}
+.askcard.done{border-color:var(--line)}
+/* K4: "new" marker of the mock only */
+.newmark{font:700 10px/1 var(--mono);letter-spacing:.06em;color:#fff;background:var(--focus);border-radius:6px;padding:3px 5px}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <div class="mockbar" aria-label="mock controls">
+    <b>原型 · 模拟数据</b>
+    <span>情况</span>
+    <div class="seg" id="seg-case">
+      <button type="button" data-case="perm" aria-pressed="true">总督要权限（你截图那种）</button>
+      <button type="button" data-case="question" aria-pressed="false">任务经理问问题</button>
+    </div>
+    <span>页面</span>
+    <div class="seg" id="seg-mode">
+      <button type="button" data-mode="new" aria-pressed="true">修好后</button>
+      <button type="button" data-mode="old" aria-pressed="false">现在的样子</button>
+    </div>
+    <div class="seg" id="seg-dev">
+      <button type="button" data-dev="pc" aria-pressed="true">电脑</button>
+      <button type="button" data-dev="phone" aria-pressed="false">手机</button>
+    </div>
+    <button type="button" class="btn" id="term-first">模拟：终端里先答了</button>
+    <button type="button" class="btn" id="reset">重来</button>
+    <p class="note" id="note"></p>
+  </div>
+
+  <div class="bar">
+    <div class="sign"><span class="sign-name">Agent City</span></div>
+    <div class="stats">
+      <span class="stat">在线 <b>3</b></span>
+      <button class="stat wait" type="button" id="next">等你 <b id="next-n">1</b></button>
+    </div>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="isle"></div>
+    <span class="lbl" id="lbl" style="left:51%;top:30%">auto-pipeline</span>
+    <span class="hall" id="hall" style="left:51%;top:50%"></span>
+
+    <!-- people: the governor (main manager), one task manager, one helper -->
+    <div class="who" id="who-gov" style="left:53.5%;top:53%;--c:#E0A526">
+      <button type="button" class="qm" data-open="gov" hidden aria-label="总督 等你批，点开看"><span>?</span></button>
+      <button type="button" class="bub ask" data-pick="gov" hidden>等你回话</button>
+      <button type="button" class="tagl" data-pick="gov">总督</button>
+      <button type="button" class="pp" data-pick="gov" aria-label="总督"></button>
+    </div>
+    <div class="who" id="who-tm" style="left:44%;top:62%;--c:#4D7CFE">
+      <button type="button" class="qm" data-open="tm" hidden aria-label="cloud-polish Task Manager 等你回答，点开看"><span>?</span></button>
+      <button type="button" class="bub ask" data-pick="tm" hidden>等你回话</button>
+      <button type="button" class="tagl" data-pick="tm">cloud-polish Task Manager</button>
+      <button type="button" class="pp" data-pick="tm" aria-label="cloud-polish Task Manager"></button>
+    </div>
+    <div class="who" id="who-helper" style="left:59%;top:64%;--c:#2FB57A">
+      <button type="button" class="tagl" data-pick="helper">Helper</button>
+      <button type="button" class="pp" data-pick="helper" aria-label="Helper"></button>
+    </div>
+
+    <!-- the rail -->
+    <nav class="rail" aria-label="团队">
+      <div class="rail-head">团队 <span class="n">3</span><button type="button" class="fold" aria-label="收起">«</button></div>
+      <div class="rail-list">
+        <div class="rail-grp" style="--rc:#E0A526">
+          <div class="grp-h"><span class="rc"></span>auto-pipeline<span class="n">3</span></div>
+          <ul class="rrows">
+            <li><button type="button" class="rrow" data-pick="gov"><span class="sdot" id="rd-gov"></span><b>总督</b><span class="chip" id="rc-gov"></span></button></li>
+            <li><button type="button" class="rrow" data-pick="tm"><span class="sdot" id="rd-tm"></span><b>cloud-polish Task Manager</b><span class="chip" id="rc-tm"></span></button></li>
+            <li><button type="button" class="rrow" data-pick="helper"><span class="sdot st-rest"></span><b>Helper</b><span class="chip rest">空闲</span></button></li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <!-- today's separate "?" dialog (only in 现在的样子) -->
+    <div class="ask-panel" id="ask" role="dialog" aria-labelledby="ask-title" hidden></div>
+
+    <!-- the message panel -->
+    <div class="win" id="win" role="dialog" aria-labelledby="win-title" hidden>
+      <div class="win-head"><div class="win-title" id="win-title"></div><button type="button" class="fold" aria-label="收起">»</button><button type="button" class="x" id="win-close" aria-label="关闭">✕</button></div>
+      <div class="detail" id="detail" aria-live="polite"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- mock data: two people who can wait on the owner ---------- */
+const PEOPLE = {
+  gov: { name: '总督', title: 'auto-pipeline 总督', facts: 'auto-pipeline · main manager · 主对话', color: '#E0A526', busy: '在忙',
+    history: [
+      { k: 'owner', who: '你（终端）', text: '帮我把云端页面查一遍，用我的 Chrome。' },
+      { k: 'msg', text: '收到：我先在你的 Chrome 里把云端页面查一遍，把问题收齐，一起派出去修。' },
+      { k: 'act', at: '10:03', text: 'Bash ×3' },
+    ] },
+  tm: { name: 'cloud-polish Task Manager', title: 'cloud-polish Task Manager', facts: 'auto-pipeline · cloud-polish · 改云端页面的页头', color: '#4D7CFE', busy: '在忙',
+    history: [
+      { k: 'act', at: '10:05', text: '出门：cloud-polish' },
+      { k: 'act', at: '10:11', text: 'Edit ×4' },
+    ] },
+  helper: { name: 'Helper', title: 'auto-pipeline Helper', facts: 'auto-pipeline · helper', color: '#2FB57A', busy: '空闲', history: [{ k: 'msg', text: '启动步骤完成，等你下任务。' }] },
+};
+const ASKS = {
+  perm: { who: 'gov', kind: 'permission', tool: 'Bash', short: 'Bash：osascript -e \'tell application "Google Chrome"…',
+    command: 'osascript -e \'tell application "Google Chrome" to set active tab index of window 1 to 4\'; osascript -e \'tell application "Google Chrome" to get title of active tab of window 1\'; cd /Users/maverick/auto-pipeline && cat agent_worktree.txt | cut -c1-160; orca terminal list --json 2>&1 | python3 -c "…"',
+    said: 'Give the owner his own tab back and see which sessions are open in this repo', dir: '/Users/maverick/auto-pipeline' },
+  question: { who: 'tm', kind: 'question', tool: 'AskUserQuestion', short: '机器那一排放在哪里？',
+    header: '页头', question: '机器那一排和仓库那一排，放在地图上的哪里？',
+    options: [
+      { label: '地图左上角，叠在一起', description: '两排都压在地图上，页头只留城名和登录。' },
+      { label: '地图顶部一整条', description: '一条横栏，在地图里面，不占页头。' },
+      { label: '收进团队列表', description: '放到左边列表的最上面。' },
+    ] },
+};
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+const hhmmss = () => new Date().toTimeString().slice(0, 8);
+const CLOSE_MS = 4000; // the real page: 10 s
+
+let scen = 'perm', mode = 'new', selected = null, ask = null, closeTimer = null, extra = {};
+
+function reset() {
+  clearTimeout(closeTimer);
+  ask = Object.assign({ state: 'open', closed: null }, ASKS[scen]);
+  extra = { gov: [], tm: [], helper: [] };
+  selected = null;
+  $('#ask').hidden = true; $('#ask').innerHTML = '';
+  render();
+}
+
+/* ---------- the body both places share (the real page's askPermissionBody / askQuestionBody) ---------- */
+function permissionBody() {
+  return `<div class="perm">
+    <div class="kv"><span>工具</span><b>${esc(ask.tool)}</b></div>
+    <pre class="cmd">${esc(ask.command)}</pre>
+    <p class="said">它说：${esc(ask.said)}</p>
+    <div class="kv"><span>目录</span><code>${esc(ask.dir)}</code></div>
+    <label class="field" for="reason">拒绝理由（可以不填；填了会原样告诉它）<input id="reason" type="text" placeholder="比如：先别删 dist/，里面有发布包"></label>
+  </div>`;
+}
+function permissionActs() {
+  return `<div class="acts"><button class="btn ok" type="button" data-verb="allow">批准</button><button class="btn no" type="button" data-verb="deny">拒绝</button></div>`;
+}
+function questionBody() {
+  return `<form id="qform" class="perm" novalidate>
+    <fieldset class="q"><legend><span class="qchip">${esc(ask.header)}</span>${esc(ask.question)}</legend>
+      ${ask.options.map(o => `<label class="opt"><input type="radio" name="q0" value="${esc(o.label)}"><span><b>${esc(o.label)}</b><small>${esc(o.description)}</small></span></label>`).join('')}
+      <label class="opt"><input type="radio" name="q0" value="" data-other><span><b>其他</b><input type="text" data-text="0" placeholder="自己写回答" aria-label="自己写回答"></span></label>
+    </fieldset></form>`;
+}
+function questionActs() {
+  return `<div class="acts"><button class="btn primary" type="submit" form="qform" id="send" disabled>发送回答</button></div>`;
+}
+function closedLine() {
+  const k = ask.closed, late = k.by !== '你';
+  const text = ask.kind === 'question' ? `回答了：“${esc(k.text)}”` : (k.verb === 'allow' ? '批准了' : '拒绝了' + (k.reason ? `，理由：“${esc(k.reason)}”` : ''));
+  return `<div class="closed ${late ? 'late' : (k.verb === 'deny' ? 'no' : '')}"><span>${late
+    ? `晚了一步：<b>${k.by}</b>在 ${k.at} 先${text}。这里不用再点了。`
+    : `<b>你</b>在 ${k.at} ${text}。已记下。`}</span></div>`;
+}
+const whyLine = () => ask.kind === 'permission'
+  ? `<div class="why">权限只由你来批，总督不批。</div>`
+  : `<div class="why gov">总督定不了，交给你。</div>`;
+
+/* ---------- NEW: the card inside the person's panel ---------- */
+function askCardHtml() {
+  if (ask.state === 'gone') return '';
+  const title = ask.kind === 'permission' ? '要权限' : '在问你';
+  if (ask.state === 'closed') return `<section class="askcard done" id="askcard"><div class="askcard-h">${title}<span class="pill rest">已关闭</span></div>${closedLine()}</section>`;
+  return `<section class="askcard" id="askcard" aria-label="${title}，等你">
+    <div class="askcard-h">${title}<span class="pill you">等你</span><span class="newmark">NEW</span></div>
+    <div class="askcard-body">${whyLine()}${ask.kind === 'permission' ? permissionBody() : questionBody()}</div>
+    ${ask.kind === 'permission' ? permissionActs() : questionActs()}
+    <p class="foot">终端里也能答，先答的算。</p>
+  </section>`;
+}
+
+/* ---------- the panel ---------- */
+function historyHtml(id) {
+  const p = PEOPLE[id];
+  let items = p.history.concat(extra[id]).map(it =>
+    it.k === 'act' ? `<li class="act"><time>${it.at}</time><span>${esc(it.text)}</span></li>`
+    : it.k === 'qa' ? `<li class="qa"><p>问：${esc(it.q)}</p><p>答：${esc(it.a)}</p></li>`
+    : `<li class="msg" data-kind="${it.k}"><b>${esc(it.who || p.name)}</b><span>${esc(it.text)}</span></li>`).join('');
+  // today: an open ask is one line in the history, with nothing to click (NEW: the card stands for it)
+  if (mode === 'old' && ask.who === id && ask.state === 'open') items += `<li class="qa"><p>问：${esc(ask.kind === 'question' ? ask.question : ask.tool)}</p><p class="wait">等回答…</p></li>`;
+  return items;
+}
+function renderPanel() {
+  const win = $('#win');
+  if (!selected) { win.hidden = true; return; }
+  const p = PEOPLE[selected], waiting = ask.who === selected && ask.state === 'open';
+  $('#win-title').textContent = p.title;
+  const card = mode === 'new' && ask.who === selected ? askCardHtml() : '';
+  $('#detail').innerHTML = `
+    <div class="p-head">
+      <span class="rdot" style="--c:${p.color}"></span>
+      <div><div class="p-name">${esc(p.name)}</div><div class="p-facts">${esc(p.facts)}</div></div>
+      <span class="pill ${waiting ? 'you' : (p.busy === '空闲' ? 'rest' : 'build')}">${waiting ? '等你' : p.busy}</span>
+    </div>
+    ${card}
+    <p class="hint hist-h">历史（新的在下面）</p>
+    <ol class="chat" id="chat">${historyHtml(selected)}</ol>
+    <form class="say" onsubmit="return false"><textarea placeholder="跟它说…"></textarea><button class="btn primary" type="submit" aria-label="发送">➤</button></form>`;
+  win.hidden = false;
+  const chat = $('#chat'); chat.scrollTop = chat.scrollHeight;
+  wire($('#detail'));
+}
+
+/* ---------- today's separate dialog ---------- */
+function renderDialog() {
+  const el = $('#ask');
+  if (el.hidden) return;
+  if (ask.state === 'gone') { el.hidden = true; el.innerHTML = ''; return; }
+  const p = PEOPLE[ask.who], closed = ask.state === 'closed';
+  el.innerHTML = `<div class="ask-head"><div><div class="ask-title" id="ask-title">${esc(p.title)} ${ask.kind === 'question' ? '在问' : '要权限'}</div><div class="ask-role">${esc(p.facts)}</div></div><span class="pill ${closed ? 'rest' : 'you'}">${closed ? '已关闭' : '等你'}</span><button type="button" class="x" data-close aria-label="关闭">✕</button></div>`
+    + (closed ? closedLine() : whyLine() + (ask.kind === 'permission' ? permissionBody() + permissionActs() : questionBody() + questionActs()) + `<p class="foot">终端里也能答，先答的算。</p>`);
+  wire(el);
+}
+
+/* ---------- answering ---------- */
+function wire(root) {
+  root.querySelectorAll('[data-verb]').forEach(btn => btn.addEventListener('click', () => {
+    const reason = root.querySelector('#reason');
+    close({ by: '你', verb: btn.dataset.verb, reason: btn.dataset.verb === 'deny' && reason ? reason.value.trim() : '' });
+  }));
+  const form = root.querySelector('#qform');
+  if (form) {
+    const answer = () => {
+      const on = form.querySelector('input[name="q0"]:checked');
+      if (!on) return '';
+      return on.hasAttribute('data-other') ? form.querySelector('[data-text="0"]').value.trim() : on.value;
+    };
+    const sync = () => { const send = root.querySelector('#send'); if (send) send.disabled = !answer(); };
+    form.addEventListener('input', e => { if (e.target.matches('[data-text]')) e.target.closest('.opt').querySelector('input[type=radio]').checked = true; sync(); });
+    form.addEventListener('change', sync);
+    form.addEventListener('submit', e => { e.preventDefault(); const a = answer(); if (a) close({ by: '你', verb: 'answer', text: a }); });
+  }
+}
+function close(k) {
+  if (ask.state !== 'open') return;
+  k.at = hhmmss();
+  ask.state = 'closed'; ask.closed = k;
+  const a = ask.kind === 'question' ? k.text : (k.verb === 'allow' ? `${k.by}批准了` : `${k.by}拒绝了` + (k.reason ? `：${k.reason}` : ''));
+  extra[ask.who].push({ k: 'qa', q: ask.kind === 'question' ? ask.question : ask.short, a });
+  render();
+  closeTimer = setTimeout(() => { ask.state = 'gone'; render(); }, CLOSE_MS);
+}
+
+/* ---------- the city, the rail, the counters ---------- */
+function render() {
+  const open = ask.state === 'open';
+  for (const id of ['gov', 'tm']) {
+    const waiting = open && ask.who === id, who = $('#who-' + id);
+    who.querySelector('.qm').hidden = !waiting;
+    who.querySelector('.bub').hidden = !waiting;
+    $('#rd-' + id).className = 'sdot ' + (waiting ? 'st-you' : 'st-build');
+    $('#rc-' + id).className = 'chip ' + (waiting ? 'you' : 'build');
+    $('#rc-' + id).textContent = waiting ? '等你' : '在忙';
+  }
+  for (const id of Object.keys(PEOPLE)) $('#who-' + id).classList.toggle('sel', selected === id);
+  document.querySelectorAll('.rrow').forEach(r => r.setAttribute('aria-current', String(r.dataset.pick === selected)));
+  $('#next-n').textContent = open ? 1 : 0;
+  $('#next').disabled = !open;
+  renderPanel();
+  renderDialog();
+  $('#note').textContent = mode === 'new'
+    ? '修好后：点这个人（地图上的小人、名字、「等你回话」气泡、红色「?」、左边列表那一行、右上角「等你 1」）都打开同一个窗口，问题和按钮就在窗口里。答完显示结果，几秒后卡片收起（真页面 10 秒，这里 4 秒）。'
+    : '现在的样子：点这个人只看到「等你」，没有问题也没有按钮。只有点那个小小的红色「?」或右上角「等你 1」，才弹出另一个框。';
+}
+function pick(id) { selected = id; $('#ask').hidden = true; render(); }
+function openAsk(id) {
+  if (mode === 'new') { pick(id); return; }   // NEW: the "?" and the pending button lead to the person's panel
+  $('#ask').hidden = false; render();         // today: a separate dialog
+}
+
+$('#stage').addEventListener('click', e => {
+  const open = e.target.closest('[data-open]');
+  if (open) { openAsk(open.dataset.open); return; }
+  const p = e.target.closest('[data-pick]');
+  if (p) { pick(p.dataset.pick); return; }
+  if (e.target.closest('[data-close]')) { $('#ask').hidden = true; return; }
+});
+$('#next').addEventListener('click', () => { if (ask.state === 'open') openAsk(ask.who); });
+$('#win-close').addEventListener('click', () => { selected = null; render(); });
+$('#term-first').addEventListener('click', () => close({ by: '终端', verb: ask.kind === 'question' ? 'answer' : 'allow', text: ask.kind === 'question' ? ask.options[1].label : '' }));
+$('#reset').addEventListener('click', reset);
+function seg(id, key, fn) {
+  $(id).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    $(id).querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    fn(b.dataset[key]);
+  });
+}
+seg('#seg-case', 'case', v => { scen = v; reset(); });
+seg('#seg-mode', 'mode', v => { mode = v; reset(); });
+seg('#seg-dev', 'dev', v => { $('#app').classList.toggle('phone', v === 'phone'); const ph = v === 'phone'; $('#lbl').style.cssText = ph ? 'left:50%;top:11%' : 'left:51%;top:30%'; $('#hall').style.cssText = ph ? 'left:50%;top:22%' : 'left:51%;top:50%'; $('#who-gov').style.left = ph ? '56%' : '53.5%'; $('#who-gov').style.top = ph ? '26%' : '53%'; $('#who-tm').style.left = ph ? '32%' : '44%'; $('#who-tm').style.top = ph ? '34%' : '62%'; $('#who-helper').style.left = ph ? '74%' : '59%'; $('#who-helper').style.top = ph ? '36%' : '64%'; });
+reset();
+</script>
+</body>
+</html>
