@@ -65,6 +65,37 @@ CONTRACT (bin/agent-city.html)
       renderAskCard's own key decides whether the kept node is still right (another person's ask has
       another key, so it is rewritten).
 
+  Bounce 2 (main manager's browser check, 2026-10-02, 1440x900): the card was capped at 261 px of 424,
+  the deny-reason box and 批准 / 拒绝 were below its visible bottom; a gap under the card; the folder
+  was a full scratch path on 4 lines.
+  K14 The open card's parts: head (.askcard-h), then ONE main element, then the foot line.
+      Permission: <div class="askcard-main">. Question: <form id="qform" class="askcard-main" novalidate>.
+      Inside main, in this order, exactly two children:
+        <div class="askcard-body">  why line + the details (they scroll when long):
+                                    askPermissionDetail(view) inside <div class="perm">, or
+                                    askQuestionFields(view) (the fieldsets with the options)
+        <div class="askcard-acts">  what the owner clicks, always in sight: askPermissionActs()
+                                    (the deny-reason field #reason + 批准 / 拒绝) or askQuestionActs()
+                                    (发送回答 #send).
+      New top-level functions: askPermissionDetail(view) (工具, the command / file / url, 它说, 目录; no
+      field, no button), askPermissionActs(), askQuestionFields(view), askQuestionActs().
+      askPermissionBody(view) and askQuestionBody(view) are built from them and give the small dialog
+      what it had before (one .perm block / one form#qform with everything).
+  K15 CSS, no percent and no max-height on the card (the percent was the 261 px cap):
+        #askslot{flex:0 1 auto;min-height:0;display:flex;flex-direction:column}   the slot is the flex item of the panel
+        #askslot:empty{display:none}                                              no doubled gap without a card
+        .askcard{flex:0 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden; + its look}
+        .askcard-main{flex:0 1 auto;min-height:0;display:flex;flex-direction:column;gap}
+        .askcard-body{flex:0 1 auto;min-height:48px;overflow:auto;display:flex;flex-direction:column;gap}
+        .askcard-acts{flex:none;display:flex;flex-direction:column;gap}
+        .detail:has(.askcard) .chat{flex:1 1 0;min-height:56px}   the card takes the free height first,
+                                                                 the history keeps a strip
+      The `.askcard .cmd` rule with its own max-height / overflow goes (one scroll area: the body).
+  K16 shortDir(path, repo) -> the folder, short. repo = the ask's own repo (its git dir, ".../name/.git").
+      Inside the repo: "name" or "name/<path inside>". Else under /Users/<u>/ or /home/<u>/: "~" or "~/<rest>".
+      Then, when the result is longer than 48 characters: "…/" + its last two parts. '' -> ''.
+      askPermissionDetail shows <code title="<full path>">shortDir(d.cwd, view.repo)</code> (both escaped).
+
 Run: python3 -m unittest tests.test_agent_city_ask_panel </dev/null
 """
 
@@ -72,6 +103,7 @@ import os
 import re
 import sys
 import unittest
+from html.parser import HTMLParser
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -483,19 +515,203 @@ class TestPanelWiringK7K9K12(unittest.TestCase):
         self.assertIn("wireAskControls(", panel)
         self.assertNotIn("addEventListener('submit'", panel, "the wiring moved out")
 
-    def test_the_card_never_scrolls_away(self):
+    def test_the_controls_never_scroll_away(self):
+        """Bounce 2 K15: the slot is the panel's flex item, the card shrinks, only its body scrolls."""
         css = style().replace(" ", "")
-        card = re.search(r"\.askcard\{([^}]*)\}", css)
-        self.assertIsNotNone(card, ".askcard rule")
-        for bit in ("flex:none", "max-height:", "overflow:auto"):
-            self.assertIn(bit, card.group(1))
-        cmd = re.search(r"\.askcard\.cmd\{([^}]*)\}", css)
-        self.assertIsNotNone(cmd, ".askcard .cmd rule")
-        for bit in ("max-height:", "overflow:auto"):
-            self.assertIn(bit, cmd.group(1), "a long command scrolls inside the card")
+
+        def rule(selector):
+            m = re.search(r"(?:^|\})" + re.escape(selector) + r"\{([^}]*)\}", css, re.M)
+            self.assertIsNotNone(m, selector + " rule")
+            return m.group(1)
+
+        for bit in ("flex:01auto", "min-height:0", "display:flex", "flex-direction:column"):
+            self.assertIn(bit, rule("#askslot"))
+        self.assertIn("display:none", rule("#askslot:empty"))
+        card = rule(".askcard")
+        for bit in ("flex:01auto", "min-height:0", "display:flex", "flex-direction:column", "overflow:hidden"):
+            self.assertIn(bit, card)
+        self.assertNotIn("max-height", card, "the percent cap hid the buttons (261 px of 424)")
+        self.assertNotIn("%", card)
+        for bit in ("flex:01auto", "min-height:0", "display:flex", "flex-direction:column"):
+            self.assertIn(bit, rule(".askcard-main"))
+        for bit in ("flex:01auto", "min-height:48px", "overflow:auto"):
+            self.assertIn(bit, rule(".askcard-body"), "only the details scroll")
+        self.assertIn("flex:none", rule(".askcard-acts"), "the controls keep their height")
+        chat = rule(".detail:has(.askcard).chat")
+        for bit in ("flex:110", "min-height:56px"):
+            self.assertIn(bit, chat, "the card takes the free height first, the history keeps a strip")
+        self.assertNotRegex(css, r"\.askcard\.cmd\{[^}]*(?:max-height|overflow)", "one scroll area, the body")
 
     def test_the_card_state_lives_in_the_sim_part(self):
         self.assertRegex(sim_section(), r"\bcardAskId\s*=\s*null", "declared next to openAskId")
+
+
+class Tree(HTMLParser):
+    """A tiny DOM: nodes are dicts {tag, attrs, kids, parent, text}; void tags never open a level."""
+
+    VOID = {"input", "br", "img", "hr", "meta", "link"}
+
+    def __init__(self, html):
+        super().__init__()
+        self.root = {"tag": "#root", "attrs": {}, "kids": [], "parent": None, "text": ""}
+        self.cur = self.root
+        self.feed(html)
+
+    def handle_starttag(self, tag, attrs):
+        node = {"tag": tag, "attrs": dict(attrs), "kids": [], "parent": self.cur, "text": ""}
+        self.cur["kids"].append(node)
+        if tag not in self.VOID:
+            self.cur = node
+
+    def handle_endtag(self, tag):
+        node = self.cur
+        while node is not self.root and node["tag"] != tag:
+            node = node["parent"]
+        if node is not self.root:
+            self.cur = node["parent"]
+
+    def handle_data(self, data):
+        node = self.cur
+        while node:
+            node["text"] += data
+            node = node["parent"]
+
+    def all(self, node=None):
+        node = node or self.root
+        for kid in node["kids"]:
+            yield kid
+            yield from self.all(kid)
+
+    def one(self, test, what):
+        found = [n for n in self.all() if test(n)]
+        if len(found) != 1:
+            raise AssertionError("%s: expected one, found %d" % (what, len(found)))
+        return found[0]
+
+
+def has_class(node, name):
+    return name in (node["attrs"].get("class") or "").split()
+
+
+def inside(node, name):
+    node = node["parent"]
+    while node:
+        if has_class(node, name):
+            return True
+        node = node["parent"]
+    return False
+
+
+LONG_CMD = "echo " + " && echo ".join("line-%04d" % i for i in range(400))
+LONG_DIR = "/private/tmp/claude-502/-Users-me-repo/a8712f6d-e725-4809-9737-067022907c06/scratchpad/deep/er"
+
+
+class TestControlsAlwaysInSightK14(unittest.TestCase):
+    """Bounce 2: the deny-reason box and the buttons are never inside the part that scrolls."""
+
+    @classmethod
+    def setUpClass(cls):
+        fns = (constants_prelude() + "\n" + esc_source() + "\n"
+               + page_fns("askCardHtml", "askWhyLine", "askQuestionBody", "askPermissionBody", "askClosedLine",
+                          "askPermissionDetail", "askPermissionActs", "askQuestionFields", "askQuestionActs",
+                          "shortDir"))
+        long_perm = dict(PERM, repo="/Users/me/repo/.git",
+                         detail={"command": LONG_CMD, "description": "x" * 300, "cwd": LONG_DIR})
+        many = dict(QUESTION, questions=[dict(QUESTION["questions"][0],
+                                              options=[{"label": "option %d" % i, "description": "d" * 80}
+                                                       for i in range(12)])])
+        out = run_vm(fns, "__out = [askCardHtml(__payload.p), askCardHtml(__payload.q), askPermissionBody(__payload.p),"
+                          " askQuestionBody(__payload.q), askCardHtml(__payload.s)];",
+                     {"p": long_perm, "q": many, "s": dict(PERM, repo="/Users/me/repo/.git")})
+        cls.perm, cls.question, cls.dialog_perm, cls.dialog_question, cls.short_perm = out
+
+    def parts(self, html):
+        t = Tree(html)
+        card = t.one(lambda n: has_class(n, "askcard"), ".askcard")
+        main = t.one(lambda n: has_class(n, "askcard-main"), ".askcard-main")
+        body = t.one(lambda n: has_class(n, "askcard-body"), ".askcard-body")
+        acts = t.one(lambda n: has_class(n, "askcard-acts"), ".askcard-acts")
+        self.assertIs(main["parent"], card, "main is a child of the card")
+        self.assertEqual([k for k in main["kids"]], [body, acts], "main holds the body, then the controls, nothing else")
+        tags = [k["tag"] for k in card["kids"]]
+        self.assertEqual(len(card["kids"]), 3, "head, main, foot: %s" % tags)
+        self.assertTrue(has_class(card["kids"][0], "askcard-h"))
+        self.assertIs(card["kids"][1], main)
+        self.assertTrue(has_class(card["kids"][2], "foot"))
+        return t, main, body, acts
+
+    def test_a_long_permission_keeps_its_controls_out_of_the_scroll(self):
+        t, main, body, acts = self.parts(self.perm)
+        self.assertEqual(main["tag"], "div")
+        controls = [n for n in t.all() if n["attrs"].get("data-verb") or n["attrs"].get("id") == "reason"]
+        self.assertEqual(sorted(n["attrs"].get("data-verb") or "reason" for n in controls), ["allow", "deny", "reason"])
+        for n in controls:
+            self.assertTrue(inside(n, "askcard-acts"), "always in sight")
+            self.assertFalse(inside(n, "askcard-body"), "never in the part that scrolls")
+        self.assertIn("line-0399", body["text"], "the whole long command is in the body")
+        self.assertIn("权限只由你来批", body["text"], "the why line scrolls with the details")
+        self.assertNotIn("line-0000", acts["text"])
+
+    def test_a_question_with_many_options(self):
+        t, main, body, acts = self.parts(self.question)
+        self.assertEqual(main["tag"], "form", "the form holds both, so 发送回答 submits it")
+        self.assertEqual(main["attrs"].get("id"), "qform")
+        send = t.one(lambda n: n["attrs"].get("id") == "send", "#send")
+        self.assertTrue(inside(send, "askcard-acts"))
+        radios = [n for n in t.all() if n["attrs"].get("type") == "radio"]
+        self.assertEqual(len(radios), 13, "12 options and the write-your-own one")
+        for n in radios:
+            self.assertTrue(inside(n, "askcard-body"), "the options scroll")
+        self.assertEqual(len([n for n in t.all() if n["attrs"].get("id") == "qform"]), 1)
+
+    def test_the_folder_is_short_with_the_full_path_on_hover(self):
+        t = Tree(self.perm)
+        code = t.one(lambda n: n["tag"] == "code" and n["attrs"].get("title") == LONG_DIR, "the folder <code>")
+        self.assertEqual(code["text"], "…/deep/er")
+        self.assertTrue(inside(code, "askcard-body"))
+        t2 = Tree(self.short_perm)
+        code2 = t2.one(lambda n: n["tag"] == "code" and n["attrs"].get("title") == "/Users/me/repo", "the folder <code>")
+        self.assertEqual(code2["text"], "repo", "the repo's own folder is just its name")
+
+    def test_the_small_dialog_keeps_everything_in_one_block(self):
+        t = Tree(self.dialog_perm)
+        self.assertEqual(len([n for n in t.all() if has_class(n, "perm")]), 1)
+        verbs = sorted(n["attrs"]["data-verb"] for n in t.all() if n["attrs"].get("data-verb"))
+        self.assertEqual(verbs, ["allow", "deny"])
+        t.one(lambda n: n["attrs"].get("id") == "reason", "#reason")
+        self.assertNotIn("askcard", self.dialog_perm)
+        q = Tree(self.dialog_question)
+        form = q.one(lambda n: n["attrs"].get("id") == "qform", "form#qform")
+        self.assertEqual(form["tag"], "form")
+        send = q.one(lambda n: n["attrs"].get("id") == "send", "#send")
+        node = send
+        while node and node is not form:
+            node = node["parent"]
+        self.assertIs(node, form, "发送回答 is inside the form")
+        self.assertNotIn("askcard", self.dialog_question)
+
+
+class TestShortDirK16(unittest.TestCase):
+
+    def test_cases(self):
+        repo = "/Users/me/work/auto-pipeline/.git"
+        cases = [
+            ["/Users/me/work/auto-pipeline", repo, "auto-pipeline"],
+            ["/Users/me/work/auto-pipeline/bin/sub", repo, "auto-pipeline/bin/sub"],
+            ["/Users/me/work/auto-pipeline-2/x", repo, "~/work/auto-pipeline-2/x"],
+            ["/Users/me/orca/workspaces/auto-pipeline/city-ask-panel", repo, "~/orca/workspaces/auto-pipeline/city-ask-panel"],
+            ["/Users/me", repo, "~"],
+            ["/home/dev/src/app", "", "~/src/app"],
+            ["/home/dev/src/app", None, "~/src/app"],
+            [LONG_DIR, repo, "…/deep/er"],
+            ["/Users/me/" + "/".join(["folder-%d" % i for i in range(8)]), repo, "…/folder-6/folder-7"],
+            ["/opt/tool", repo, "/opt/tool"],
+            ["", repo, ""],
+        ]
+        out = run_vm(page_fns("shortDir"), "__out = __payload.cases.map(c => shortDir(c[0], c[1]));", {"cases": cases})
+        for case, got in zip(cases, out):
+            with self.subTest(path=case[0]):
+                self.assertEqual(got, case[2])
 
 
 class TestKeepAskSlotK13(unittest.TestCase):

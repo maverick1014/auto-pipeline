@@ -53,7 +53,8 @@
 - Owner, 2026-10-02 (city-ask-panel; approved mock mock/city-ask-panel-mock.html; replaces "the owner clicks the ?" as the only way in): a person who waits on the owner shows its open question or permission request inside its own message panel, as a card between the panel's head and the history: the exact question with its options, or the request (tool + command or path, what it said, the folder), and the answer, approve and deny controls. The owner found the panel saying only 等你, with nothing to answer.
 - Every way to that person opens that panel with the card: the person, its name tag, its 等你回话 bubble, its rail row, the red "?" over its head, and the 等你 button at the top (the oldest one waiting). No second click.
 - The card shows only while the ask is with the owner (the red "?"). While the governor still decides there is nothing to answer.
-- The card stays in sight: the history scrolls under it, a long command scrolls inside it.
+- The card stays in sight and its controls too: the deny-reason box, 批准 / 拒绝 and 发送回答 are always visible at the bottom of the card; only the details above them (the command, what it said, the folder, the options) scroll when they are long. The card takes the free height of the panel first; the history keeps a small strip under it. Found in the first browser check, 2026-10-02: the buttons were below the card's visible bottom.
+- The folder is shown short: the repo name plus the path inside it, else ~/… for a path in the home folder, else its last two parts after "…/"; the full path on hover.
 - The asking person is not on the page (nobody to pick) → the "?" and the 等你 button open the small "?" panel over the city, as before.
 - Another member's person and the cloud page: no card (view only).
 - First answer wins, from any side (governor, page, terminal). The others see it closed.
