@@ -394,9 +394,9 @@ class TestHidden(SimCase):
         self.assertEqual(self.r["count3"]["rail"]["you"], self.r["count3a"]["rail"]["you"] + 1, "the one who waits in hidden blog")
 
     def test_the_top_counts_are_the_shown_repos(self):
-        self.assertEqual(sum(self.r["count1"]["top"][:3]), 4, "the fixture: 3 in shop, 1 in blog")
+        self.assertEqual(sum(self.r["count1"]["top"][:3]), 5, "the fixture: 3 in shop and its busy governor, 1 in blog")
         self.assertEqual(self.r["count2"]["top"], self.r["count2a"]["top"], "people the server only counts are not in the top counts")
-        self.assertEqual(sum(self.r["count3"]["top"][:3]), 3, "blog is hidden: its person leaves the counts at once")
+        self.assertEqual(sum(self.r["count3"]["top"][:3]), 4, "blog is hidden: its person leaves the counts at once")
 
 
 # ---------------------------------------------------------------------------
