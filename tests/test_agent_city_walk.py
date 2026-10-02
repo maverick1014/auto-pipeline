@@ -36,6 +36,7 @@ Run: python3 -m unittest tests.test_agent_city_walk </dev/null
 """
 
 import os
+import random
 import sys
 import unittest
 
@@ -44,9 +45,16 @@ sys.path.insert(0, HERE)
 
 from test_agent_city_people import REQUIRED, ac, run_sim  # noqa: E402
 
-WALK_REQUIRED = REQUIRED + ("footprints", "freeAt", "findPath")
+WALK_REQUIRED = REQUIRED + ("footprints", "freeAt", "findPath", "seedRandom")
 KINDS = ("build", "rules", "beauty", "knowledge", "infra")
 ERAS = ("village", "town", "city")
+# The page's random is seeded per run; a failure prints the seed. Replay: WALK_SEED=<seed> python3 -m unittest ...
+SEED = int(os.environ.get("WALK_SEED") or random.randrange(1, 2 ** 31))
+SEED_JS = "seedRandom(__payload.seed);\n"
+
+
+def why(text):
+    return "%s (page random seed %d; replay with WALK_SEED=%d)" % (text, SEED, SEED)
 
 
 def tile(view, x, z):
@@ -180,7 +188,7 @@ class TestWalkAroundModels(unittest.TestCase):
         cls.r = {}
         for plan in ac.load_plans():
             for era in ERAS:
-                cls.r[(plan["id"], era)] = run_sim(WALK_DRIVER, {"view": plan_view(plan["id"], era)}, WALK_REQUIRED)
+                cls.r[(plan["id"], era)] = run_sim(SEED_JS + WALK_DRIVER, {"view": plan_view(plan["id"], era), "seed": SEED}, WALK_REQUIRED)
 
     def test_every_model_has_a_footprint(self):
         for key, r in self.r.items():
@@ -195,19 +203,19 @@ class TestWalkAroundModels(unittest.TestCase):
     def test_nobody_walks_through_a_model(self):
         for key, r in self.r.items():
             with self.subTest(case=key):
-                self.assertEqual(r["bad"], [], "moving people inside a footprint")
+                self.assertEqual(r["bad"], [], why("moving people inside a footprint"))
 
     def test_nobody_stands_in_a_model(self):
         for key, r in self.r.items():
             with self.subTest(case=key):
-                self.assertEqual(r["standBad"], [])
+                self.assertEqual(r["standBad"], [], why("people standing in a footprint"))
 
     def test_paths_go_around(self):
         for key, r in self.r.items():
             with self.subTest(case=key):
                 self.assertGreater(r["points"], 30, "free walk points around the hall")
                 self.assertGreaterEqual(r["found"], r["tries"] * .7, "most free points reach each other")
-                self.assertEqual(r["pathBad"], [])
+                self.assertEqual(r["pathBad"], [], why("a path crosses a footprint"))
 
 
 REROUTE_DRIVER = r"""
@@ -264,13 +272,13 @@ class TestRerouteAndRoads(unittest.TestCase):
         runs = 0
         for plan in ac.load_plans():
             for era in ERAS:
-                r = run_sim(REROUTE_DRIVER, {"view": plan_view(plan["id"], era)}, WALK_REQUIRED + ("goTo",))
+                r = run_sim(SEED_JS + REROUTE_DRIVER, {"view": plan_view(plan["id"], era), "seed": SEED}, WALK_REQUIRED + ("goTo",) + ("seedRandom",))
                 if not r["crossed"]:
                     continue
                 runs += 1
                 with self.subTest(plan=plan["id"], era=era):
                     self.assertGreater(r["newFootprints"], 0, "the rest place brings models")
-                    self.assertEqual(r["bad"], [])
+                    self.assertEqual(r["bad"], [], why("a re-routed walker inside a footprint"))
         self.assertGreater(runs, 0, "no fixture had a way over the empty rest area")
 
     def test_roads_before_wild_land(self):

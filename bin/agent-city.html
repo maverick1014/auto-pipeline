@@ -673,8 +673,16 @@ applyText();
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#city'), ovRoot = $('#ov');
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const rnd = (a, b) => a + Math.random() * (b - a);
-const pick = a => a[Math.floor(Math.random() * a.length)];
+/* The page's random. Unseeded it is Math.random, as always. A test (or ?seed=N in the address) makes it a
+   repeatable stream with seedRandom(n). */
+let rand = Math.random;
+function seedRandom(n) {
+  let s = (n >>> 0) || 1;
+  rand = () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+{ const m = /[?&]seed=(\d+)/.exec(location.search || ''); if (m) seedRandom(+m[1]); }
+const rnd = (a, b) => a + rand() * (b - a);
+const pick = a => a[Math.floor(rand() * a.length)];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const BASE = Date.now();
 const FRAME_MS = 33;
@@ -2527,7 +2535,7 @@ function newCitizen(id, role, task, terr){
   return { id, role, label:role, task, terr, color:R.color, skin:pick(SKIN), x:stand.x, y:stand.y, path:[], state:'spawn', stateT:0,
     alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0,Other:0}, work:0, bld:null, stand, home:null, slot:null, rest:null, pendingBuild:null,
     question:'', answer:'', answered:false, pendingAnswer:'', askT:0, stuck:false, doneFlag:false, leaveFlag:false,
-    askKind:'', askPhase:'', qa:[], bubble:null, walkT:Math.random()*5, workKind:'', workAt:0, workSince:0, step:'', feed:null, gone:false,
+    askKind:'', askPhase:'', qa:[], bubble:null, walkT:rand()*5, workKind:'', workAt:0, workSince:0, step:'', feed:null, gone:false,
     office:null, lead:'', relay:'', toolAt:0, strollPhase:'', strollPauseUntil:0, strollOutPath:[], waiting:false, acts:[],
     yaw:0 };
 }
@@ -4430,22 +4438,22 @@ function freeDistrictPlot(terr, type){
 function makeFeed(role, stuckChance, terr){
   const s = [];
   if (role === 'worker') {
-    s.push('Read'); if (Math.random() < .5) s.push('Read');
+    s.push('Read'); if (rand() < .5) s.push('Read');
     const n = Math.floor(rnd(6, 11));
-    for (let i = 0; i < n; i++) { s.push(Math.random() < .8 ? 'Edit' : 'Write'); if (i % 3 === 2) s.push('Bash'); }
+    for (let i = 0; i < n; i++) { s.push(rand() < .8 ? 'Edit' : 'Write'); if (i % 3 === 2) s.push('Bash'); }
     s.push('Bash');
   } else if (role === 'task-manager') {
     s.push('Read', 'Read');
     const n = Math.floor(rnd(5, 8)); for (let i = 0; i < n; i++) s.push('Write');
     s.push('Bash', 'Bash');
   } else if (role === 'fast-lane-deputy') {
-    s.push('Read', 'Edit', 'Edit'); if (Math.random() < .5) s.push('Edit');
+    s.push('Read', 'Edit', 'Edit'); if (rand() < .5) s.push('Edit');
   } else {
-    s.push('Bash', 'Bash', 'Bash', 'Bash'); if (Math.random() < .4) s.push('Bash');
+    s.push('Bash', 'Bash', 'Bash', 'Bash'); if (rand() < .4) s.push('Bash');
   }
   const seq = s.map(tool => ({ t:'tool', tool }));
   const p = stuckChance ?? (role === 'merge-deputy' ? .2 : .4);
-  if (Math.random() < p) { const [q, a] = pick(QA); seq.splice(Math.floor(rnd(1, seq.length - 1)), 0, { t:'stuck', q, a }); }
+  if (rand() < p) { const [q, a] = pick(QA); seq.splice(Math.floor(rnd(1, seq.length - 1)), 0, { t:'stuck', q, a }); }
   const plot = freeDistrictPlot(terr, ROLE_TYPE[role] || 'house');
   if (plot) seq.splice(Math.min(seq.length - 1, Math.floor(rnd(1, Math.max(2, seq.length - 1)))), 0, { t:'build', plot });
   seq.push({ t:'done' }, { t:'leave' });
@@ -4489,7 +4497,7 @@ function spawner(){
   if (!(map.territories || []).length) return;
   const active = citizens.filter(c => !c.remote && STATE[c.state][0] !== 'rest' && c.state !== 'leaving').length;
   if (active >= 6) return;
-  const r = Math.random();
+  const r = rand();
   spawnDemo(r < .5 ? 'worker' : r < .65 ? 'task-manager' : r < .85 ? 'fast-lane-deputy' : 'merge-deputy');
 }
 
