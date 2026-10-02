@@ -406,11 +406,12 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
   .stage{flex:1 1 0;height:auto;min-height:340px}
   .stage canvas{position:absolute;inset:0}
   /* cloud-polish Q1 / Q5 (phone): the strip is a thin line between the rail tab (left) and the camera buttons (right), in
-     every state (a window is a bottom sheet); the header title row keeps the account, the counters get a line of their own */
+     every state (a window is a bottom sheet); the header title row keeps the account, the counters get a line of their own;
+     the connection chip keeps its line under the follow chip */
   .stage-top{top:8px;left:38px;right:58px;gap:4px}
   .stage.rail-folded .stage-top,.stage.win-open .stage-top,.stage.win-tab-open .stage-top{left:38px;right:58px}
   .stage.rail-none .stage-top{left:8px}
-  .proto{left:38px}
+  .proto{left:38px;top:calc(50px + var(--top-h,34px))}
   .stage.rail-folded .proto{left:38px}
   .stage.rail-none .proto{left:8px}
   .bar{flex-wrap:wrap;gap:8px 10px}
