@@ -1,0 +1,1030 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City · 整理你的城 · mock</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --berry:#FF7593; --butter:#FFD36E; --focus:#4D7CFE;
+  --ok:#1E8657; --ok-bg:#DDF5E9; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+    --line:#2D3360; --focus:#8FB0FF; --ok:#5FD39C; --ok-bg:#173A2C; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.mock{max-width:1560px;margin-inline:auto;padding:14px 16px 28px;display:flex;flex-direction:column;gap:12px}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.sign{display:inline-flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:6px 16px;box-shadow:0 3px 0 var(--ink)}
+.sign b{font:700 21px/1.15 var(--display)}
+.sign small{font:600 10.5px/1.3 var(--mono);color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase}
+.pill{background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:8px}
+.tabs button{all:unset;cursor:pointer;padding:8px 14px;border-radius:12px;font:600 13.5px/1 var(--round);color:var(--ink-2);background:var(--panel-2)}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--panel)}
+.tabs button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.note{background:var(--panel);border:1.5px solid var(--line);border-radius:14px;padding:10px 14px;color:var(--ink-2)}
+.note b{color:var(--ink)}
+.note .en{display:block;color:var(--ink-3);font-size:12.5px}
+.screen{display:grid;gap:14px}
+.screen.side{grid-template-columns:minmax(0,1fr) 330px;align-items:start}
+.screen.phones{grid-template-columns:420px minmax(0,1fr);align-items:start}
+@media (max-width: 1100px){ .screen.side,.screen.phones{grid-template-columns:1fr} }
+.col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.frame{border:2px solid var(--ink);border-radius:18px;overflow:hidden;background:var(--panel);box-shadow:0 5px 0 rgba(42,43,69,.2)}
+.frame .url{display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--panel-2);border-bottom:1.5px solid var(--line);font:600 12px/1 var(--mono);color:var(--ink-2)}
+.frame .url i{width:9px;height:9px;border-radius:50%;background:var(--line);flex:none}
+.frame .url span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.frame iframe{display:block;width:100%;height:727px;border:0;background:var(--paper)}
+.phone-wrap{display:flex;flex-direction:column;align-items:center;gap:8px}
+.phone{width:394px;border:2px solid var(--ink);border-radius:38px;padding:10px 0 12px;background:var(--ink);box-shadow:0 6px 0 rgba(42,43,69,.25)}
+.phone .notch{width:110px;height:6px;border-radius:6px;background:#6b6f93;margin:2px auto 9px}
+.phone .glass{width:390px;height:760px;margin-inline:auto;border-radius:26px;overflow:hidden;background:#D5D8E6;display:flex;flex-direction:column}
+.phone iframe{display:block;width:390px;flex:1 1 auto;min-height:0;border:0;background:var(--paper)}
+.card{background:var(--panel);border:1.5px solid var(--line);border-radius:16px;padding:12px 16px}
+.card h3{margin:0 0 6px;font:700 15px/1.3 var(--display)}
+.card ul,.card ol{margin:0;padding-left:18px}
+.card li{margin:5px 0;color:var(--ink-2)}
+.card li b{color:var(--ink)}
+.card p{margin:6px 0 0;color:var(--ink-2)}
+.card code,.tbl code{font:600 12px/1 var(--mono);background:var(--panel-2);padding:2px 5px;border-radius:6px}
+.fail{background:var(--ask-bg);color:var(--ask-ink);border-radius:14px;padding:12px 16px;font-weight:600}
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.tbl th,.tbl td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{color:var(--ink-3);font-weight:600;white-space:nowrap}
+.tbl td b{color:var(--ink)}
+.tbl-wrap{overflow-x:auto}
+.try{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.try button{all:unset;cursor:pointer;padding:8px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);font:600 13px/1.35 var(--round)}
+.try button small{display:block;color:var(--ink-3);font-weight:500}
+.try button:hover{border-color:var(--ink-3)}
+.try button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.ask{display:inline-block;padding:1px 8px;border-radius:999px;background:var(--butter);color:#4A3500;font:700 11.5px/1.6 var(--round)}
+</style>
+</head>
+<body>
+<div class="mock" id="mock">
+  <div class="top">
+    <span class="sign"><b>Agent City · 整理你的城</b><small>city-layout · 自己摆仓库的位置 · 不想看的仓库藏起来</small></span>
+    <span class="pill">mock</span>
+  </div>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div class="note" id="note"></div>
+  <div id="view"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const Q = new URLSearchParams(location.search);
+const PAGE_URL = '../bin/agent-city.html', PLANS_URL = '../bin/agent-city-plans.json';
+const ME = 'you@example.com';
+const HOST = { cloud: 'https://agent-city-page.<你的子域>.workers.dev  (云端页面)', local: 'http://127.0.0.1:8787  (本地页面)' };
+
+const SCREENS = [
+  { id: 'pc', tab: '1 整理', note: '<b>地图顶上那一排仓库的最右边，多一个小按钮「整理」。点它：镜头拉高看整座岛，每块地上出一个名牌，岛边上的空位变成虚线格子。</b> 把一块地<b>拖</b>到虚线格子 = 搬过去；拖到另一块地上 = 两块<b>交换</b>。也可以不拖：<b>点一块地，再点一个格子</b>（或另一块地）。名牌上的「隐藏」把这个仓库收起来。底下那一条：<b>取消</b>全部放回去，<b>完成</b>收工。整理的时候城里照常：人照样干活、说话、盖楼。<span class="en">One small control "整理" at the right end of the repo row on the stage. In the mode: drag a land to a dashed slot (move) or onto another land (swap); or tap a land, then tap a slot. Cancel puts everything back, Done leaves the mode. The city stays live.</span>' },
+  { id: 'hid', tab: '2 隐藏的仓库', note: '<b>隐藏 = 不画，不是删。</b> 这一页已经帮你把 pos-lite 隐藏了，而且里面有一个人在等你。它的地、人、名单里的那一组、顶上的仓库标签都不画；它的会话照常跑。<b>名单最底下有一行小字：已隐藏 1 个 · 其中 1 个在等你 · 管理</b>（有人等你时这行变红，名单折起来时小标签上的红点也算上他）。点这行 = 打开整理，在底下那条里点「显示」把它放回来。<span class="en">Hidden = not drawn, never deleted; its sessions go on. One quiet line at the rail\'s foot says how many are hidden and whether someone there waits for you; it opens the arrange mode.</span>' },
+  { id: 'phone', tab: '3 手机', note: '<b>手机宽度：一样能拖（手指按住一块地拖），也能点两下（点地，再点格子）。</b> 「整理」在仓库那一条的最右边；整理的那一条贴在最底下，不盖住地。<span class="en">Phone width: finger drag works, and so does tap + tap. The mode bar sits at the bottom edge and never covers the lands.</span>' },
+  { id: 'cloud', tab: '4 云端和别的电脑', note: '<b>每台电脑各摆各的。</b> 云端页面显示的是「那台电脑」的摆法；在那台电脑上隐藏的仓库，云端上<b>完全没有</b>（没有地、没有人、没有名字）。云端页面这一步<b>只能看</b>，没有「整理」按钮。下面这个云端页面用的就是你在第 1、2 页摆出来的样子。<span class="en">Each machine keeps its own arrangement. The cloud picture is the machine\'s arrangement; a repo hidden there is not in it at all. No arrange mode on the cloud page in this step.</span>' },
+  { id: 'rules', tab: '5 规则和要你定的', note: '<b>我替你先定了 8 件事，都写在下面。</b> 标着 <span class="ask">你来定</span> 的三件最值得你看一眼；不说话就按这里写的做。<span class="en">The decisions taken for you; three of them are marked for a look.</span>' },
+];
+
+/* ---------- layout() of bin/agent_city.py in JS: for this mock only (on the real page the SERVER lays the island out) ---------- */
+function makeLayout(plans) {
+  const CELL = 22, HALF = 11, BOX_LO = -8, BOX_HI = 7, R0 = 1.9, RMAX = 8.6, L0 = 50, LCAP = 1000000, SEA_ROWS = 8;
+  const GAP_CH = { river: 'w', ravine: 'k', pass: 'm', forest: 'f' };
+  const GAPS = { 'grassland|mountain': 'pass', 'desert|grassland': 'ravine', 'forest|grassland': 'forest', 'coast|grassland': 'river', 'desert|mountain': 'ravine',
+    'forest|mountain': 'pass', 'coast|mountain': 'river', 'desert|forest': 'river', 'coast|desert': 'river', 'coast|forest': 'forest' };
+  const gapOf = (a, b) => GAPS[[a, b].sort().join('|')] || 'river';
+  const fnv1a = text => { let h = 0x811c9dc5; for (const b of new TextEncoder().encode(text)) { h = (h ^ b) >>> 0; h = Math.imul(h, 0x01000193) >>> 0; } return h; };
+  const terrId = ident => ('0000000' + fnv1a(ident).toString(16)).slice(-8);
+  const growth = lines => Math.min(1, Math.log1p(Math.max(0, lines) / L0) / Math.log1p(LCAP / L0));
+  const radius = lines => R0 + (RMAX - R0) * growth(lines);
+  const mulberry32 = seed => { let a = seed >>> 0; return () => {
+    a = (a + 0x6D2B79F5) >>> 0; let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+    t = (t ^ ((t + (Math.imul(t ^ (t >>> 7), t | 61) >>> 0)) >>> 0)) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
+  const interpEdge = (edge, theta) => {
+    let a = theta / (2 * Math.PI) * 12; a = (a % 12 + 12) % 12;
+    const i = Math.floor(a) % 12, t = a - Math.floor(a), j = (i + 1) % 12, s = (1 - Math.cos(Math.PI * t)) / 2;
+    return edge[i] * (1 - s) + edge[j] * s;
+  };
+  const shapeOf = (ident, plan) => { const rnd = mulberry32(fnv1a(ident)); const edge = plan.edge.map(e => e * (1 + 0.16 * (rnd() - 0.5))); const p1 = rnd() * 2 * Math.PI, p2 = rnd() * 2 * Math.PI; return { edge, p1, p2 }; };
+  const mult = (sh, th) => Math.max(0.75, Math.min(1.17, interpEdge(sh.edge, th) * (1 + 0.06 * Math.sin(5 * th + sh.p1) + 0.04 * Math.sin(8 * th + sh.p2))));
+  const K = (x, z) => x + ',' + z;
+  const roadSet = plan => { const roads = new Set(); for (const [x0, z0, x1, z1] of plan.roads) {
+    const xlo = Math.max(Math.min(x0, x1), BOX_LO), xhi = Math.min(Math.max(x0, x1), BOX_HI), zlo = Math.max(Math.min(z0, z1), BOX_LO), zhi = Math.min(Math.max(z0, z1), BOX_HI);
+    for (let x = xlo; x <= xhi; x++) for (let z = zlo; z <= zhi; z++) roads.add(K(x, z)); } return roads; };
+  const clipToBox = ([x, z]) => [Math.max(BOX_LO, Math.min(BOX_HI, x)), Math.max(BOX_LO, Math.min(BOX_HI, z))];
+  const frontOfPlot = (roads, x, z) => { for (const [a, b] of [[x, z + 1], [x + 1, z], [x - 1, z], [x, z - 1]]) if (roads.has(K(a, b))) return [a, b]; return null; };
+  const isHall = (x, z) => x >= -1 && x <= 0 && z >= -1 && z <= 0;
+  const plotNeed = (plan, x, z) => { const cx = x + 0.5, cz = z + 0.5; return (Math.hypot(cx, cz) + 0.7) / interpEdge(plan.edge, Math.atan2(cz, cx)); };
+  const openCount = (plan, r) => { let m = 0, n = 0; for (const [x, z] of plan.plots) { m = Math.max(m, plotNeed(plan, x, z)); if (m > r) break; n++; } return n; };
+  const openPlots = (plan, lines) => { const first = {}; plan.plots.forEach(([, , d], k) => { if (!(d in first)) first[d] = k; });
+    const set = new Set(Object.values(first)); const n = openCount(plan, radius(lines)); for (let k = 0; k < n; k++) set.add(k); return [...set].sort((a, b) => a - b); };
+  const territoryTiles = (plan, ident, lines) => {
+    const r = radius(lines), shape = shapeOf(ident, plan), roads = roadSet(plan), land = new Set();
+    for (let x = -HALF; x < HALF; x++) for (let z = -HALF; z < HALF; z++) { const cx = x + 0.5, cz = z + 0.5; if (isHall(x, z) || Math.hypot(cx, cz) <= r * mult(shape, Math.atan2(cz, cx))) land.add(K(x, z)); }
+    const opens = openPlots(plan, lines);
+    for (const k of opens) { const [x, z] = plan.plots[k]; land.add(K(x, z)); const f = frontOfPlot(roads, x, z); if (f) land.add(K(f[0], f[1])); }
+    return { r, open: opens.length, land };
+  };
+  const trimDepth = (a, c) => 1 + Math.max(0, Math.min(2, Math.floor(1.3 + 0.45 * Math.sin(a * 0.7 + c) + 0.4 * Math.sin(a * 1.7 + 2 * c) + 0.35 * Math.sin(a * 3.1 + 3 * c) + 0.3 * Math.sin(a * 5.3 + 5 * c) + 0.5)));
+  const beltOffset = (a, c) => Math.max(-2, Math.min(2, Math.floor(1.5 * Math.sin(a * 0.23 + c) + 0.8 * Math.sin(a * 0.61 + 2 * c) + 0.5)));
+  const cornerCut = (x, z) => 4 + Math.floor(2 * Math.sin(x * 0.5 + z * 0.3) + 0.5);
+  const planBy = {}; for (const p of plans) planBy[p.id] = p;
+
+  function layout(world) {
+    const order = world.order.filter(i => world.territories[i]);
+    if (!order.length) return { cell: CELL, x0: 0, z0: 0, w: 0, h: 0, rows: [], territories: [], links: [] };
+    const T = i => world.territories[i];
+    const bySlot = {}; for (const i of order) bySlot[K(T(i).slot[0], T(i).slot[1])] = i;
+    let x0 = null, z0 = null, x1 = null, z1 = null;
+    for (const ident of order) {
+      const t = T(ident), [i, j] = t.slot, sea = planBy[t.plan].sea;
+      const cx0 = i * CELL - HALF, cx1 = i * CELL + HALF - 1, cz0 = j * CELL - HALF, cz1 = j * CELL + HALF - 1 + (sea ? SEA_ROWS : 0);
+      x0 = x0 === null ? cx0 : Math.min(x0, cx0); x1 = x1 === null ? cx1 : Math.max(x1, cx1);
+      z0 = z0 === null ? cz0 : Math.min(z0, cz0); z1 = z1 === null ? cz1 : Math.max(z1, cz1);
+    }
+    const w = x1 - x0 + 1, h = z1 - z0 + 1;
+    const grid = []; for (let r = 0; r < h; r++) grid.push(new Array(w).fill(' '));
+    const get = (x, z) => { const row = z - z0, col = x - x0; return row >= 0 && row < h && col >= 0 && col < w ? grid[row][col] : null; };
+    const setTile = (x, z, c) => { const row = z - z0, col = x - x0; if (row >= 0 && row < h && x >= x0 && x <= x1) grid[row][col] = c; };
+    const links = [];
+    for (const ident of order) {
+      const t = T(ident), [i, j] = t.slot;
+      for (const [di, dj, side] of [[1, 0, 'E'], [0, 1, 'S']]) {
+        const nb = bySlot[K(i + di, j + dj)]; if (!nb) continue;
+        const gap = gapOf(planBy[t.plan].terrain, planBy[T(nb).plan].terrain);
+        links.push({ a: ident, b: nb, side, gap, kind: gap === 'river' || gap === 'ravine' ? 'bridge' : 'road' });
+      }
+    }
+    const linkAt = (a, b) => links.find(l => (l.a === a && l.b === b) || (l.a === b && l.b === a)) || null;
+    const views = [];
+    for (const ident of order) {
+      const t = T(ident), plan = planBy[t.plan], [i, j] = t.slot, ox = i * CELL, oz = j * CELL;
+      const nb = { N: bySlot[K(i, j - 1)], S: bySlot[K(i, j + 1)], W: bySlot[K(i - 1, j)], E: bySlot[K(i + 1, j)] };
+      const vBelt = (bx, z) => { const o = beltOffset(z, bx * 0.37); return [bx - 1 + o, bx + o]; };
+      const hBelt = (bz, x) => { const o = beltOffset(x, bz * 0.41); return [bz - 1 + o, bz + o]; };
+      for (let x = -HALF; x < HALF; x++) for (let z = -HALF; z < HALF; z++) {
+        const X = ox + x, Z = oz + z, kN = z + HALF, kS = HALF - 1 - z, kW = x + HALF, kE = HALF - 1 - x;
+        const tN = trimDepth(X, 0.7), tS = trimDepth(X, 2.1), tW = trimDepth(Z, 1.3), tE = trimDepth(Z, 3.3), cc = cornerCut(X, Z);
+        const cut = (!nb.N && kN < tN) || (!nb.W && kW < tW) || (!nb.E && kE < tE) || (!plan.sea && !nb.S && kS < tS)
+          || (!nb.N && !nb.W && kN + kW < cc) || (!nb.N && !nb.E && kN + kE < cc) || (!nb.S && !nb.W && kS + kW < cc) || (!nb.S && !nb.E && kS + kE < cc);
+        let c = '.';
+        const seaOk = (nb.E || kE >= trimDepth(Z, 6.1) - 1) && (nb.W || kW >= trimDepth(Z, 6.9) - 1);
+        if (plan.sea && (kS < tS + 1 || (cut && kS < 9))) c = seaOk ? 's' : ' ';
+        else if (cut) c = ' ';
+        else if (plan.sea && kS < tS + 3) c = 'b';
+        else {
+          let hit = null;
+          if (nb.E && vBelt(ox + HALF, Z).includes(X)) hit = nb.E;
+          else if (nb.W && vBelt(ox - HALF, Z).includes(X)) hit = nb.W;
+          else if (nb.S && hBelt(oz + HALF, X).includes(Z)) hit = nb.S;
+          else if (nb.N && hBelt(oz - HALF, X).includes(Z)) hit = nb.N;
+          if (hit) c = GAP_CH[linkAt(ident, hit).gap];
+        }
+        setTile(X, Z, c);
+      }
+      if (plan.sea) for (let x = -HALF; x < HALF; x++) for (let z = HALF; z < HALF + SEA_ROWS; z++) {
+        if (z - HALF < 1 + trimDepth(ox + x, 5.5) && get(ox + x, oz + z - 1) === 's' && x + HALF >= trimDepth(oz + z, 6.9) + z - HALF && HALF - 1 - x >= trimDepth(oz + z, 6.1) + z - HALF) setTile(ox + x, oz + z, 's');
+      }
+      const tr = territoryTiles(plan, ident, t.peak), roads = roadSet(plan);
+      for (const key of tr.land) { const [x, z] = key.split(',').map(Number); if (get(ox + x, oz + z) === '.') setTile(ox + x, oz + z, roads.has(key) ? 'r' : 'g'); }
+      const opens = openPlots(plan, t.peak);
+      for (const k of opens) setTile(ox + plan.plots[k][0], oz + plan.plots[k][1], 'P');
+      for (let x = -1; x < 1; x++) for (let z = -1; z < 1; z++) setTile(ox + x, oz + z, 'H');
+      let rest = null;
+      if (t.rest) { const [rx, rz] = plan.rest; rest = { x: ox + rx, z: oz + rz }; for (const dx of [0, 1]) for (const dz of [0, 1]) setTile(ox + rx + dx, oz + rz + dz, 'g'); }
+      views.push({ id: terrId(ident), name: t.name, plan: plan.id, terrain: plan.terrain, slot: [i, j], cx: ox, cz: oz, lines: t.lines, size: growth(t.peak), r: tr.r, open: tr.open,
+        plots_total: plan.plots.length, plots: opens.map(k => ({ k, x: ox + plan.plots[k][0], z: oz + plan.plots[k][1], d: plan.plots[k][2] })),
+        buildings: (t.buildings || []).filter(b => opens.includes(b.plot)).map(b => ({ plot: b.plot, type: b.type, by: b.by, x: ox + plan.plots[b.plot][0], z: oz + plan.plots[b.plot][1], files: [], hist: [], q: 'good', home: true, lv: 0, name: '' })),
+        era: t.era || 'village', balance: {}, rules_note: '', offices: [], rest, sites: [], here: t.here !== false });
+    }
+    const trunk = (ident, dir) => {
+      const t = T(ident), plan = planBy[t.plan], ox = t.slot[0] * CELL, oz = t.slot[1] * CELL, roads = roadSet(plan);
+      const ex = clipToBox(plan.exits[dir]);
+      const prev = new Map([[K(ex[0], ex[1]), null]]), queue = [ex];
+      let hit = null;
+      while (queue.length) {
+        const [x, z] = queue.shift(), c = get(ox + x, oz + z);
+        if (c === 'r' || c === 'H' || c === 'g') { hit = [x, z]; break; }
+        for (const [a, b] of [[x + 1, z], [x - 1, z], [x, z + 1], [x, z - 1]]) {
+          if (prev.has(K(a, b)) || !(roads.has(K(a, b)) || isHall(a, b))) continue;
+          prev.set(K(a, b), [x, z]); queue.push([a, b]);
+        }
+      }
+      for (let p = hit; p; p = prev.get(K(p[0], p[1]))) if (get(ox + p[0], oz + p[1]) === '.') setTile(ox + p[0], oz + p[1], 't');
+      return [ox + ex[0], oz + ex[1]];
+    };
+    for (const l of links) {
+      const A = trunk(l.a, l.side), B = trunk(l.b, l.side === 'E' ? 'W' : 'N'), cross = [];
+      const lay = (x, z) => { const c = get(x, z); if (c === '.') setTile(x, z, 't'); else if (c && 'wkmf'.includes(c)) { setTile(x, z, l.kind === 'bridge' ? 'B' : 't'); cross.push([x, z]); } };
+      if (l.side === 'E') { for (let x = A[0]; x <= B[0]; x++) lay(x, A[1]); for (let z = Math.min(A[1], B[1]); z <= Math.max(A[1], B[1]); z++) lay(B[0], z); }
+      else { for (let z = A[1]; z <= B[1]; z++) lay(A[0], z); for (let x = Math.min(A[0], B[0]); x <= Math.max(A[0], B[0]); x++) lay(x, B[1]); }
+      l.cross = cross;
+    }
+    return { cell: CELL, x0, z0, w, h, rows: grid.map(r => r.join('')), territories: views,
+      links: links.map(l => ({ a: terrId(l.a), b: terrId(l.b), gap: l.gap, kind: l.kind, cross: l.cross })) };
+  }
+  layout.terrId = terrId;
+  return layout;
+}
+
+/* ---------- the mock's own "world.json": the lands of this machine, their slot and hidden flag ---------- */
+/* slot = a cell [i, j] of the island's 9 x 9 grid (the same numbers world.json holds today) */
+const SLOTS = (() => {
+  const cells = []; for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) cells.push([i, j]);
+  const ang = ([i, j]) => { const a = Math.atan2(j, i); return a < 0 ? a + 2 * Math.PI : a; };
+  return cells.sort((a, b) => Math.max(Math.abs(a[0]), Math.abs(a[1])) - Math.max(Math.abs(b[0]), Math.abs(b[1])) || (Math.abs(a[0]) + Math.abs(a[1])) - (Math.abs(b[0]) + Math.abs(b[1])) || ang(a) - ang(b));
+})();
+const sk = s => s[0] + ',' + s[1];
+const CAST = {
+  'auto-pipeline': [['task-manager', 'city-layout Task Manager', '整理你的城'], ['worker', 'worker', '写服务器测试'], ['worker', 'worker', '改页面']],
+  'v4-plus': [['task-manager', 'checkout Task Manager', '结账流程'], ['worker', 'worker', '支付重试'], ['fast-lane-deputy', 'msg-sides Deputy', '改一句提示']],
+  'pos-lite': [['task-manager', 'pos-lite Helper', '收银小票'], ['worker', 'worker', '打印模板']],
+  'website': [['worker', 'worker', '首页文案']],
+  'event-app': [['task-manager', 'event-app Manager', '报名页']],
+  'docs-site': [['worker', 'worker', '整理文档']],
+};
+const NEW_REPOS = [{ name: 'event-app', plan: 'oasis', lines: 900, era: 'village', n: 2 }, { name: 'docs-site', plan: 'meadow', lines: 300, era: 'village', n: 1 }];
+const M = window.mockApi = {
+  lands: null, layout: null, planBy: {}, SLOTS, newN: 0, seq: 0,
+  make(name, plan, slot, lines, era, n) {
+    const ident = '/Users/you/repo/' + name + '/.git', p = this.planBy[plan];
+    return { ident, id: this.layout.terrId(ident), name, plan, slot, lines, era, hidden: false,
+      buildings: p.plots.slice(0, n).map((x, k) => ({ plot: k, type: x[2], by: 'worker' })),
+      people: (CAST[name] || []).map(([role, label, task], k) => ({ id: 's:' + name + ':' + k, role, label, task, waiting: false })) };
+  },
+  reset() {
+    this.newN = 0;
+    this.lands = [this.make('auto-pipeline', 'meadow', [0, 0], 12000, 'town', 7), this.make('v4-plus', 'harbor', [1, 0], 300000, 'city', 12),
+      this.make('pos-lite', 'ridge', [0, 1], 20000, 'town', 6), this.make('website', 'woods', [-1, 0], 4000, 'village', 3)];
+  },
+  sea(l) { return !!this.planBy[l.plan].sea; },
+  vis() { return this.lands.filter(l => !l.hidden); },
+  layoutOf() {
+    const world = { order: [], territories: {} };
+    for (const l of this.vis()) { world.order.push(l.ident); world.territories[l.ident] = { name: l.name, plan: l.plan, slot: l.slot, lines: l.lines, peak: l.lines, buildings: l.buildings, era: l.era, rest: true }; }
+    return this.layout(world);
+  },
+  /* the rule the server checks: every visible land on its own cell of the grid, and no land on the cell just south of a coast land (its sea is there) */
+  okArr(list) {
+    const seen = new Set();
+    for (const l of list) { if (Math.abs(l.slot[0]) > 4 || Math.abs(l.slot[1]) > 4 || seen.has(sk(l.slot))) return false; seen.add(sk(l.slot)); }
+    return !list.some(l => l.sea && seen.has(sk([l.slot[0], l.slot[1] + 1])));
+  },
+  /* land ID goes to SLOT; a land that is there takes ID's old slot (swap). -> the new slots, or null when the rule says no */
+  after(id, slot) {
+    const vis = this.vis(), a = vis.find(l => l.id === id), b = vis.find(l => l !== a && sk(l.slot) === sk(slot));
+    if (!a || sk(a.slot) === sk(slot)) return null;
+    const next = vis.map(l => ({ id: l.id, sea: this.sea(l), slot: l === a ? slot.slice() : l === b ? a.slot.slice() : l.slot.slice() }));
+    return this.okArr(next) ? next : null;
+  },
+  /* the free cells next to the island (4 sides) where land ID may go; ID null: where any land could */
+  free(id) {
+    const vis = this.vis(), others = vis.filter(l => l.id !== id), base = others.length ? others : vis, out = [];
+    for (const c of SLOTS) {
+      if (vis.some(l => sk(l.slot) === sk(c))) continue;
+      if (!base.some(l => Math.abs(l.slot[0] - c[0]) + Math.abs(l.slot[1] - c[1]) === 1)) continue;
+      if (id ? !this.after(id, c) : vis.some(l => this.sea(l) && sk([l.slot[0], l.slot[1] + 1]) === sk(c))) continue;
+      out.push(c);
+    }
+    return out;
+  },
+  /* a land that comes (a new repo, or one shown again): its own slot when that is still fine, else the first free cell next to the island */
+  place(l) {
+    const vis = this.vis().filter(x => x !== l), as = slot => vis.map(x => ({ slot: x.slot, sea: this.sea(x) })).concat([{ slot, sea: this.sea(l) }]);
+    if (l.slot && this.okArr(as(l.slot))) return l.slot;
+    for (const c of SLOTS) {
+      if (vis.length && !vis.some(x => Math.abs(x.slot[0] - c[0]) + Math.abs(x.slot[1] - c[1]) === 1)) continue;
+      if (this.okArr(as(c))) return c;
+    }
+    return l.slot;
+  },
+  newRepo() {
+    const d = NEW_REPOS[this.newN]; if (!d) return null;
+    this.newN++;
+    const l = this.make(d.name, d.plan, null, d.lines, d.era, d.n);
+    l.slot = this.place(l); this.lands.push(l);
+    return l;
+  },
+};
+
+/* ---------- the real page, patched in memory so it runs here ---------- */
+let pageSrc = null;
+async function loadPage() {
+  if (pageSrc) return pageSrc;
+  const [res, pl] = await Promise.all([fetch(PAGE_URL), fetch(PLANS_URL)]);
+  if (!res.ok || !pl.ok) throw new Error('HTTP ' + res.status + ' / ' + pl.status);
+  const plans = (await pl.json()).plans;
+  for (const p of plans) M.planBy[p.id] = p;
+  M.layout = makeLayout(plans);
+  M.reset();
+  pageSrc = await res.text();
+  return pageSrc;
+}
+function must(src, from, to) {
+  if (!src.includes(from)) throw new Error('the page changed, the mock cannot find: ' + from.slice(0, 60));
+  return src.split(from).join(to);
+}
+function mockCss() {
+  return `
+#ask,#next{display:none!important}
+.d-actions,.d-note{display:none!important}
+/* ---- the approved cloud-polish look (mock/cloud-polish-mock.html): the rows sit on the stage, the header is one row, add agent = a small + ---- */
+.q1 .stage-top{position:absolute;top:12px;left:calc(var(--rail-w) + 24px);right:66px;z-index:3;display:flex;flex-direction:column;align-items:flex-start;gap:6px;pointer-events:none;transition:left .2s,right .2s}
+.q1 .stage-top nav{pointer-events:auto;max-width:100%;padding:2px 2px 4px;scrollbar-width:none}
+.q1 .stage-top nav::-webkit-scrollbar{display:none}
+.q1 .stage-top nav.more{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}
+.q1 .stage-top .repo,.q1 .stage-top .mc{box-shadow:0 2px 0 rgba(42,43,69,.18)}
+.q1 .stage-top .mc[aria-pressed="true"]{box-shadow:0 2px 0 var(--ink)}
+.q1 .stage-top .machines .lead{background:var(--panel);border:1.5px solid var(--line);border-radius:999px;padding:8px 10px;color:var(--ink-2);box-shadow:0 2px 0 rgba(42,43,69,.18)}
+.q1 .stage:has(#rail-tab:not([hidden])) .stage-top{left:42px}
+.q1 .stage:has(#rail[hidden]):has(#rail-tab[hidden]) .stage-top{left:12px}
+.q1 .stage.win-open .stage-top{right:calc(var(--msg-w) + 78px)}
+.q1 .stage.win-tab-open .stage-top{right:106px}
+.q1 .proto,.q1 .follow{top:calc(18px + var(--top-h,34px))}
+.q1 .cloud-banner{top:calc(20px + var(--top-h,34px))}
+.q1 .bar{flex-wrap:nowrap}
+.q1 .bar>*{flex:none}
+.q1 .stats{flex:1 1 auto;min-width:0;flex-wrap:nowrap;justify-content:flex-end;overflow-x:auto;scrollbar-width:none}
+.q1 .stats::-webkit-scrollbar{display:none}
+.q1 .stat{flex:none}
+.q1 .grp-row{display:flex;align-items:center;gap:2px}
+.q1 .grp-row .grp-h{flex:1 1 auto;width:auto;min-width:0}
+.q1 .add-i{all:unset;cursor:pointer;flex:none;box-sizing:border-box;width:22px;height:22px;margin:2px 4px 0 0;display:grid;place-items:center;border-radius:7px;border:1.5px solid var(--line);color:var(--ink-2);font:700 15px/1 var(--round)}
+.q1 .add-i:hover{border-color:var(--ink-3);background:var(--panel-2);color:var(--ink)}
+
+/* ---- THE CHANGE (city-layout) ---- */
+/* Y1: one small control, pinned at the right end of the repo row on the stage (it never scrolls away with the tags) */
+.repo-line{display:flex;align-items:center;gap:6px;max-width:100%;pointer-events:none}
+.repo-line>nav{flex:0 1 auto;min-width:0}
+.arr-btn{all:unset;box-sizing:border-box;pointer-events:auto;cursor:pointer;flex:none;display:inline-flex;align-items:center;gap:5px;height:31px;margin-bottom:2px;padding:0 11px 0 9px;border:1.5px dashed var(--ink-3);border-radius:999px;background:var(--panel);color:var(--ink-2);font:600 13px/1 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.18);white-space:nowrap}
+.arr-btn:hover{border-color:var(--ink);color:var(--ink)}
+.arr-btn:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.arr-btn[aria-pressed="true"]{border-style:solid;border-color:var(--ink);background:var(--ink);color:var(--paper)}
+.arr-btn svg{width:14px;height:14px;flex:none}
+/* the mode: a name plate on every land (drag it, or the land itself), the bar at the bottom edge */
+.arranging .proto,.arranging .follow{display:none!important}
+.arranging canvas{cursor:grab}
+.arr-ov{position:absolute;inset:0;z-index:3;pointer-events:none;overflow:hidden}
+.arr-h{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;display:inline-flex;align-items:center;padding:3px 3px 3px 8px;border:2px solid var(--ink);border-radius:999px;background:var(--panel);color:var(--ink);font:700 12.5px/1 var(--round);box-shadow:0 3px 0 rgba(42,43,69,.25);cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap}
+.arr-h .grip{color:var(--ink-3);margin-right:5px;letter-spacing:-2px}
+.arr-h .rc{width:10px;height:10px;border-radius:50%;background:var(--rc);margin-right:6px;flex:none}
+.arr-h.on{background:var(--butter);color:#4A3500}
+.arr-h.dragging{opacity:.4}
+.arr-h.swap{border-style:dashed}
+.arr-eye{all:unset;cursor:pointer;margin-left:7px;padding:5px 9px;border-radius:999px;background:var(--panel-2);color:var(--ink-2);font:600 12px/1 var(--round)}
+.arr-eye:hover{background:var(--ask-bg);color:var(--ask-ink)}
+.arr-eye[aria-disabled="true"]{opacity:.45;cursor:default}
+.arr-ghost{position:absolute;z-index:6;pointer-events:none;transform:translate(-50%,-150%);padding:7px 12px;border-radius:999px;background:var(--ink);color:var(--paper);font:700 12.5px/1 var(--round);box-shadow:0 3px 0 rgba(42,43,69,.3);white-space:nowrap}
+.arr-bar{position:absolute;z-index:5;left:calc(var(--rail-w) + 24px);right:12px;bottom:12px;margin-inline:auto;max-width:780px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 8px 8px 14px;border:2px solid var(--ink);border-radius:16px;background:var(--panel);box-shadow:0 4px 0 rgba(42,43,69,.18);font:600 13px/1.4 var(--round);color:var(--ink-2)}
+.stage:has(#rail-tab:not([hidden])) .arr-bar{left:42px}
+.arr-say{flex:1 1 240px;min-width:0}
+.arr-say b{color:var(--ink);margin-right:8px}
+.arr-act{display:flex;gap:6px;margin-left:auto}
+.arr-act button{all:unset;cursor:pointer;padding:9px 16px;border-radius:11px;border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);font:700 13px/1 var(--round)}
+.arr-act button:focus-visible,.arr-hid button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.arr-act #arr-done{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.arr-tray{order:3;flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding-top:8px;border-top:1.5px solid var(--line)}
+.arr-tray:empty{display:none}
+.arr-tray .lbl{color:var(--ink-3);margin-right:2px}
+.arr-hid{display:inline-flex;align-items:center;gap:6px;padding:3px 4px 3px 9px;border:1.5px dashed var(--ink-3);border-radius:999px;background:var(--panel-2);color:var(--ink)}
+.arr-hid .rc{width:9px;height:9px;border-radius:50%;background:var(--rc)}
+.arr-hid em{font-style:normal;color:var(--ask-ink);background:var(--ask-bg);border-radius:999px;padding:1px 7px;font-size:12px}
+.arr-hid button{all:unset;cursor:pointer;padding:5px 10px;border-radius:999px;background:var(--panel);border:1.5px solid var(--line);color:var(--ink);font:700 12px/1 var(--round)}
+/* Y2: the one quiet line at the rail's foot */
+.rail-hid{all:unset;box-sizing:border-box;cursor:pointer;flex:none;display:flex;align-items:center;gap:6px;width:100%;padding:7px 10px 7px 12px;border-top:1.5px solid var(--line);color:var(--ink-3);font:600 12px/1.4 var(--round)}
+.rail-hid:hover{color:var(--ink)}
+.rail-hid:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.rail-hid i{display:none;width:8px;height:8px;border-radius:50%;background:var(--berry);flex:none}
+.rail-hid u{margin-left:auto;text-decoration:none;border-bottom:1.5px dotted currentColor;white-space:nowrap}
+.rail-hid.you{color:var(--ask-ink)}
+.rail-hid.you i{display:block}
+.arr-toast{position:absolute;z-index:6;left:50%;top:46%;transform:translate(-50%,-50%);padding:8px 14px;border-radius:12px;background:var(--ink);color:var(--paper);font:600 13px/1.4 var(--round);pointer-events:none}
+@media (max-width: 960px){
+  .q1 .add-i{width:28px;height:28px;font-size:17px}
+  .q1 .stage-top{top:8px;left:38px;right:58px;gap:4px}
+  .q1 .stage:has(#rail-tab:not([hidden])) .stage-top,.q1 .stage.win-open .stage-top,.q1 .stage.win-tab-open .stage-top{left:38px;right:58px}
+  .q1 .stage:has(#rail[hidden]):has(#rail-tab[hidden]) .stage-top{left:8px}
+  .q1 .proto{left:38px}
+  .q1 .bar{flex-wrap:wrap;gap:8px 10px}
+  .q1 .stats{order:9;flex:1 1 100%;justify-content:flex-start}
+  .q1 .acct,.q1 #logbtn{margin-left:auto}
+  /* Y5: the bar is one thin block at the very bottom; the lands stay above it */
+  .arr-bar,.stage:has(#rail-tab:not([hidden])) .arr-bar{left:8px;right:8px;bottom:8px;padding:7px 7px 7px 11px;gap:6px 8px;font-size:12.5px}
+  .arr-say{flex:1 1 100%}
+  .arr-tray{order:0;padding-top:0;border-top:0;flex:1 1 auto}
+  .arr-act button{padding:10px 16px}
+  /* narrow: a plate is the name alone (two lands are about 120px apart); the plate that is picked shows 隐藏 */
+  .arr-h{font-size:12px;padding:6px 9px 6px 7px}
+  .arr-h .nm{max-width:92px;overflow:hidden;text-overflow:ellipsis}
+  .arr-h .arr-eye{display:none}
+  .arr-h.on{padding:2px 2px 2px 7px;z-index:1}
+  .arr-h.on .arr-eye{display:inline;padding:7px 9px}
+}
+`;
+}
+/* runs INSIDE the page's own script (the page is one closed function), in the place of its demo seed */
+function innerJs(kind, opt) {
+  return `
+;(() => {
+  const KIND = ${JSON.stringify(kind)}, OPT = ${JSON.stringify(opt)};
+  const M = parent.mockApi, LANDS = M.lands;
+  const q = s => document.querySelector(s);
+  const app = q('.app'), stageEl = q('#stage'), col = q('.stage-col');
+  q('.toolbar').remove();
+  col.classList.add('no-bar');
+  spawner = function () {};   /* the mock's cast is fixed: nobody comes or goes by chance */
+
+  if (KIND === 'cloud') {
+    const DEVS = [{ dev: 'mac', label: 'MacBook-Pro', ago: 2000, counts: { people: 6, busy: 5, wait: 0 }, talk: true, start: true },
+      { dev: 'pc2', label: 'maverick-pc2', ago: 8000, counts: { people: 1, busy: 1, wait: 0 }, talk: true, start: false }];
+    const now = Date.now(), feed = { ok: true, user: ${JSON.stringify(ME)}, now, dev: 'mac', devs: DEVS.map(d => Object.assign({}, d, { ts: now - d.ago })) };
+    cloudLive.feed = feed; cloudRenderRow(feed); cloudRenderAcct(feed); cloudRenderTalk(feed);
+    q('#proto').hidden = true;
+  } else q('#proto').textContent = i18n('proto.connected');
+
+  /* ---- the approved cloud-polish look: both rows on the stage, the small + in the rail ---- */
+  const strip = document.createElement('div');
+  strip.className = 'stage-top'; strip.id = 'stage-top';
+  const rows = [q('#machines'), q('#repos')];
+  const fit = () => {
+    stageEl.style.setProperty('--top-h', strip.offsetHeight + 'px');
+    for (const n of rows) n.classList.toggle('more', n.scrollWidth - n.clientWidth - n.scrollLeft > 4);
+  };
+  for (const n of rows) n.addEventListener('scroll', fit, { passive: true });
+  app.classList.add('q1');
+  strip.appendChild(rows[0]);
+  const line = document.createElement('div');
+  line.className = 'repo-line';
+  line.appendChild(rows[1]);
+  strip.appendChild(line);
+  stageEl.insertBefore(strip, q('#rail'));
+  /* the stage takes the height the two rows left in the header: it ends 14px above the window's bottom edge */
+  const fitStage = () => col.style.setProperty('--stage-off', Math.round(stageEl.getBoundingClientRect().top + scrollY + 14) + 'px');
+  fitStage(); addEventListener('resize', fitStage);
+  new ResizeObserver(fit).observe(strip);
+  for (const n of rows) new ResizeObserver(fit).observe(n);
+  const baseGroups = railGroups;
+  railGroups = function () { return baseGroups().map(g => Object.assign(g, { add: true })); };
+  railHtml = function (groups, selId, closed, openRest) {
+    let html = '';
+    for (const g of groups) {
+      const grp = { color: g.color, selId }, isClosed = closed.has(g.terr);
+      const active = g.rows.filter(r => !r.rest), resting = g.rows.filter(r => r.rest);
+      const you = active.filter(r => r.id.slice(0, 4) !== 'gov:').reduce((n, r) => n + (byId(r.id) && citizenStatus(byId(r.id))[0] === 'you' ? 1 : 0), 0);
+      html += '<section class="rail-grp" data-terr="' + esc(g.terr) + '" style="--rc:' + g.color + '">';
+      html += '<div class="grp-row"><button type="button" class="grp-h" data-grp="' + esc(g.terr) + '" aria-expanded="' + !isClosed + '">' +
+        '<span class="rc" style="--rc:' + g.color + '"></span>' + esc(g.name) + '<span class="n">' + g.rows.length + '</span>' +
+        (isClosed && you ? '<span class="you">' + you + '</span>' : '') + '</button><span class="add-i" title="加 agent">＋</span></div>';
+      if (!isClosed) {
+        if (!g.rows.length) html += '<p class="rail-none">' + esc(i18n('rail.none')) + '</p>';
+        html += '<ul class="rrows">' + active.map(r => railRowHtml(r, grp)).join('') + '</ul>';
+        if (resting.length) {
+          const open = openRest.has(g.terr);
+          html += '<button type="button" class="rest-t" data-rest="' + esc(g.terr) + '" aria-expanded="' + open + '">' + esc(i18n('rail.rest', { n: resting.length })) + '</button>';
+          if (open) html += '<ul class="rrows">' + resting.map(r => railRowHtml(r, grp)).join('') + '</ul>';
+        }
+      }
+      html += '</section>';
+    }
+    return html;
+  };
+
+  /* ================= THE CHANGE (city-layout) ================= */
+  const CELLW = 22;
+  const landOf = id => LANDS.find(l => l.id === id);
+  const visAt = c => M.vis().find(l => l.slot[0] === c[0] && l.slot[1] === c[1]);
+  const arr = { on: false, pick: null, down: null, target: null, entry: null, cam: null, back: null };
+  let toastT = 0;
+  const toast = text => {
+    let el = q('#arr-toast');
+    if (!el) { el = document.createElement('div'); el.id = 'arr-toast'; el.className = 'arr-toast'; stageEl.appendChild(el); }
+    el.textContent = text; el.hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, 2200);
+  };
+
+  /* -- people: the mock's stand-in for "the server sends a fresh picture after every change" -- */
+  function spawnCast(l) {
+    for (const p of l.people) {
+      if (byId(p.id)) continue;
+      apply({ type: 'spawn', id: p.id, role: p.role, label: p.label, task: p.task, terr: l.id, from: '' });
+      if (p.waiting) apply({ type: 'waiting', id: p.id });
+    }
+  }
+  function takeCast(l) {   /* a hidden repo: its people are not drawn; they go on working (here: kept in the mock's store) */
+    const mine = citizens.filter(c => c.terr === l.id && !c.remote && !c.gone);
+    l.people = mine.map(c => ({ id: c.id, role: c.role, label: c.label, task: c.task, waiting: citizenStatus(c)[0] === 'you' }));
+    for (const c of mine) c.gone = true;
+  }
+  function shift(c, dx, dz) {
+    const sh = o => { if (o && typeof o === 'object' && typeof o.x === 'number') { o.x += dx; if (typeof o.y === 'number') o.y += dz; if (typeof o.z === 'number') o.z += dz; } };
+    c.x += dx; c.y += dz;
+    for (const k of ['stand', 'home', 'slot', 'rest', 'office']) sh(c[k]);
+    for (const p of c.path || []) sh(p);
+    for (const p of c.strollOutPath || []) sh(p);
+    c.bld = null;
+  }
+  /* the island again, from the store (on the real page: the server's layout, sent to every page) */
+  function relayout() {
+    const before = new Map((map.territories || []).map(t => [t.id, t]));
+    const view = M.layoutOf();
+    const moved = new Map(), stay = new Set(view.territories.map(t => t.id));
+    for (const t of view.territories) { const o = before.get(t.id); if (o && (o.cx !== t.cx || o.cz !== t.cz)) moved.set(t.id, [t.cx - o.cx, t.cz - o.cz]); }
+    for (let i = buildings.length - 1; i >= 0; i--) if (moved.has(buildings[i].terr) || !stay.has(buildings[i].terr)) buildings.splice(i, 1);
+    for (const c of citizens) { const d = moved.get(c.terr); if (d) shift(c, d[0], d[1]); }
+    if (typeof govMove !== 'undefined') govMove.clear();
+    if (!stay.has(govTerr)) govTerr = view.territories.length ? view.territories[0].id : null;
+    apply({ type: 'world', world: view });
+    lastRail = ''; renderRail(); renderHid();
+    if (arr.on) { whole(); draw(); }
+    needFrame = true;
+  }
+
+  /* -- Y2: the quiet line at the rail's foot, and the rail's red count takes the hidden waiting people in -- */
+  const hidWait = () => LANDS.filter(l => l.hidden).reduce((n, l) => n + l.people.filter(p => p.waiting).length, 0);
+  const baseCount = railCount;
+  railCount = function (groups) { const r = baseCount(groups); r.you += KIND === 'local' ? hidWait() : 0; return r; };
+  const hidLine = document.createElement('button');
+  hidLine.type = 'button'; hidLine.className = 'rail-hid'; hidLine.id = 'rail-hid'; hidLine.hidden = true;
+  q('#rail').appendChild(hidLine);
+  hidLine.addEventListener('click', () => enter());
+  function renderHid() {
+    const hid = LANDS.filter(l => l.hidden), w = hid.filter(l => l.people.some(p => p.waiting)).length;
+    hidLine.hidden = KIND !== 'local' || !hid.length;   /* the cloud page knows nothing of a hidden repo: no line there */
+    hidLine.className = 'rail-hid' + (w ? ' you' : '');
+    hidLine.innerHTML = '<i></i><span>已隐藏 ' + hid.length + ' 个' + (w ? ' · 其中 ' + w + ' 个在等你' : '') + '</span><u>管理</u>';
+  }
+
+  /* -- Y1: the control and the mode -- */
+  const ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>';
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'arr-btn'; btn.id = 'arr-btn'; btn.setAttribute('aria-pressed', 'false');
+  btn.innerHTML = ICON + '<span>整理</span>';
+  if (KIND === 'local') line.appendChild(btn);   /* the cloud page: view only, no control */
+  btn.addEventListener('click', () => { if (arr.on) done(); else enter(); });
+  const ov = document.createElement('div'); ov.className = 'arr-ov'; ov.id = 'arr-ov'; stageEl.appendChild(ov);
+  const bar = document.createElement('div');
+  bar.className = 'arr-bar'; bar.id = 'arr-bar'; bar.hidden = true; bar.setAttribute('role', 'region'); bar.setAttribute('aria-label', '整理');
+  bar.innerHTML = '<div class="arr-say"><b>整理中</b><span id="arr-tip"></span></div><div class="arr-act"><button type="button" id="arr-cancel">取消</button><button type="button" id="arr-done">完成</button></div><div class="arr-tray" id="arr-tray"></div>';
+  stageEl.appendChild(bar);
+  const ghost = document.createElement('div'); ghost.className = 'arr-ghost'; ghost.hidden = true; stageEl.appendChild(ghost);
+
+  /* the slots on the ground: dashed = free, solid = where it lands */
+  const tex = (kind, col) => {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const g = c.getContext('2d');
+    g.lineWidth = kind === 'free' ? 8 : 12; g.strokeStyle = col; g.fillStyle = kind === 'free' ? 'rgba(255,255,255,.2)' : 'rgba(255,211,110,.5)';
+    if (kind === 'free') g.setLineDash([26, 18]);
+    g.beginPath(); g.roundRect(14, 14, 228, 228, 40); g.fill(); g.stroke();
+    return new THREE.CanvasTexture(c);
+  };
+  const TEX = { free: tex('free', 'rgba(42,43,69,.85)'), dim: tex('free', 'rgba(42,43,69,.4)'), hot: tex('hot', '#2A2B45') };
+  const marks = [];
+  const mark = (c, kind) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(CELLW - 2.5, CELLW - 2.5), new THREE.MeshBasicMaterial({ map: TEX[kind], transparent: true, depthTest: false, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2; m.position.set(c[0] * CELLW, .3, c[1] * CELLW); m.renderOrder = kind === 'hot' ? 31 : 30;
+    world.add(m); marks.push(m);
+  };
+  const clearMarks = () => { while (marks.length) { const m = marks.pop(); world.remove(m); m.geometry.dispose(); m.material.dispose(); } };
+  const active = () => (arr.down && arr.down.moved && arr.down.id) || arr.pick;   /* the land in hand: dragged, or picked by a tap */
+
+  function draw() {
+    clearMarks();
+    ov.textContent = '';
+    btn.setAttribute('aria-pressed', String(arr.on));
+    btn.lastChild.textContent = arr.on ? '整理中' : '整理';
+    if (!arr.on) { needFrame = true; return; }
+    const id = active(), vis = M.vis();
+    for (const c of M.free(id || null)) mark(c, id ? 'free' : 'dim');
+    if (arr.target) mark(arr.target, 'hot');
+    for (const l of vis) {
+      const h = document.createElement('div');
+      const swap = id && id !== l.id && !!M.after(id, l.slot);
+      h.className = 'arr-h' + (l.id === arr.pick ? ' on' : '') + (arr.down && arr.down.moved && arr.down.id === l.id ? ' dragging' : '') + (swap ? ' swap' : '');
+      h.dataset.id = l.id; h.style.setProperty('--rc', terrColor(l.id));
+      h.innerHTML = '<span class="grip" aria-hidden="true">⋮⋮</span><span class="rc"></span><span class="nm">' + esc(l.name) + '</span>' +
+        '<button type="button" class="arr-eye" data-hide="' + esc(l.id) + '"' + (vis.length < 2 ? ' aria-disabled="true" title="至少留一块地"' : '') + '>隐藏</button>';
+      ov.appendChild(h);
+    }
+    const picked = arr.pick && landOf(arr.pick);
+    q('#arr-tip').textContent = picked ? '选中了 ' + picked.name + '：点一个虚线格子搬过去，或点另一块地交换。'
+      : '拖一块地到虚线格子；拖到另一块地上 = 交换。也可以先点地，再点格子。';
+    const hid = LANDS.filter(l => l.hidden);
+    q('#arr-tray').innerHTML = hid.length ? '<span class="lbl">已隐藏</span>' + hid.map(l => {
+      const w = l.people.filter(p => p.waiting).length;
+      return '<span class="arr-hid" style="--rc:' + terrColor(l.id) + '"><span class="rc"></span>' + esc(l.name) + (w ? '<em>' + w + ' 人在等你</em>' : '') + '<button type="button" data-show="' + esc(l.id) + '">显示</button></span>';
+    }).join('') : '';
+    place(); needFrame = true;
+  }
+  function place() {
+    for (const h of ov.children) {
+      const l = landOf(h.dataset.id); if (!l) continue;
+      const [x, y] = toScreen(l.slot[0] * CELLW, 0, l.slot[1] * CELLW - 8.5);
+      h.style.left = x + 'px'; h.style.top = y + 'px';
+    }
+  }
+  /* each frame: the camera looks from above, square to the grid, and does not turn by itself (the one thing that pauses) */
+  const ARR_EL = 64 * Math.PI / 180;
+  const baseRot = autoRotating;
+  autoRotating = function () { return !arr.on && !arr.back && baseRot(); };
+  const baseFollow = renderFollow;
+  let easeAt = performance.now();
+  renderFollow = function () {
+    baseFollow();
+    const now = performance.now(), k = 1 - Math.exp(-Math.min(.25, (now - easeAt) / 1000) * 7);
+    easeAt = now;
+    if (arr.on) {
+      const az0 = Math.round(cam.az / (2 * Math.PI)) * 2 * Math.PI;
+      if (Math.abs(cam.el - ARR_EL) > .002 || Math.abs(cam.az - az0) > .002) { cam.el += (ARR_EL - cam.el) * k; cam.az += (az0 - cam.az) * k; needFrame = true; }
+      place();
+    } else if (arr.back) {
+      cam.el += (arr.back.el - cam.el) * k; needFrame = true;
+      if (Math.abs(cam.el - arr.back.el) < .004) { cam.el = arr.back.el; arr.back = null; }
+    }
+  };
+  const basePick = selectPick;
+  selectPick = function (pk) { if (!arr.on) basePick(pk); };   /* in the mode a tap arranges, it does not open a person */
+
+  /* the whole island in view, a little above the middle: the bar at the bottom covers no land */
+  function whole() { const d = distMax(); flyTo(land.cx || 0, (land.cz || 0) + d * (W < 960 ? .1 : .055), d); }
+  function enter() {
+    if (arr.on || KIND !== 'local') return;
+    arr.on = true; arr.pick = null; arr.target = null; arr.back = null;
+    arr.entry = LANDS.map(l => ({ id: l.id, slot: l.slot.slice(), hidden: l.hidden }));
+    arr.cam = { el: Math.min(cam.el, EL_MAX), dist: cam.dist };
+    stopFollow(); selected = null; lastDetailKey = ''; renderPanel();
+    if (W < 960) setRailFolded(true);
+    stageEl.classList.add('arranging'); bar.hidden = false;
+    whole();
+    draw();
+  }
+  function close() {
+    arr.on = false; arr.pick = null; arr.target = null; arr.down = null; ghost.hidden = true;
+    stageEl.classList.remove('arranging'); bar.hidden = true;
+    arr.back = { el: arr.cam.el };
+    flyTo(home.x, home.z, Math.min(arr.cam.dist, distMax()));
+    draw();
+  }
+  function done() { if (arr.on) close(); }
+  function cancel() {
+    if (!arr.on) return;
+    /* everything back as it was when the mode opened; a repo that arrived meanwhile keeps a free slot */
+    const was = new Map(arr.entry.map(e => [e.id, e]));
+    const show = [], hide = [];
+    for (const l of LANDS) { const e = was.get(l.id); if (!e) continue; l.slot = e.slot.slice(); if (l.hidden && !e.hidden) show.push(l); if (!l.hidden && e.hidden) hide.push(l); }
+    for (const l of hide) { takeCast(l); l.hidden = true; }
+    for (const l of show) l.hidden = false;
+    for (const l of LANDS) if (!was.has(l.id) && !l.hidden) l.slot = M.place(l);
+    relayout();
+    for (const l of show) spawnCast(l);
+    close();
+  }
+  function move(id, cell) {
+    const next = M.after(id, cell);
+    if (!next) return false;
+    for (const n of next) landOf(n.id).slot = n.slot;
+    arr.pick = null; arr.target = null;
+    relayout();
+    return true;
+  }
+  function hide(id) {
+    const l = landOf(id);
+    if (!l || l.hidden) return;
+    if (M.vis().length < 2) { toast('至少留一块地'); return; }
+    takeCast(l); l.hidden = true;
+    if (arr.pick === id) arr.pick = null;
+    relayout();
+  }
+  function show(id) {
+    const l = landOf(id);
+    if (!l || !l.hidden) return;
+    l.slot = M.place(l); l.hidden = false;
+    relayout(); spawnCast(l);
+    lastRail = ''; renderRail(); renderHid();
+  }
+  q('#arr-done').addEventListener('click', done);
+  q('#arr-cancel').addEventListener('click', cancel);
+  q('#arr-tray').addEventListener('click', e => { const b = e.target.closest('[data-show]'); if (b) show(b.dataset.show); });
+
+  /* -- the pointer: a press on a land (or its name plate) picks it up; a tap picks it for the tap + tap way -- */
+  const gPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), gHit = new THREE.Vector3(), gRay = new THREE.Raycaster(), gNdc = new THREE.Vector2();
+  function cellAt(cx, cy) {
+    const r = canvas.getBoundingClientRect();
+    gNdc.set((cx - r.left) / W * 2 - 1, -((cy - r.top) / H) * 2 + 1);
+    gRay.setFromCamera(gNdc, camera);
+    if (!gRay.ray.intersectPlane(gPlane, gHit)) return null;
+    return [Math.floor((gHit.x + mid.x + CELLW / 2) / CELLW), Math.floor((gHit.z + mid.z + CELLW / 2) / CELLW)];
+  }
+  function over(e) {   /* dragging: where would it land */
+    const d = arr.down, c = cellAt(e.clientX, e.clientY), r = stageEl.getBoundingClientRect();
+    ghost.hidden = false; ghost.style.left = (e.clientX - r.left) + 'px'; ghost.style.top = (e.clientY - r.top) + 'px';
+    const ok = c && M.after(d.id, c);
+    const other = ok && visAt(c);
+    ghost.textContent = landOf(d.id).name + (other ? ' ⇄ ' + other.name : '');
+    const key = ok ? c[0] + ',' + c[1] : '';
+    if (key !== (arr.target ? arr.target[0] + ',' + arr.target[1] : '')) { arr.target = ok ? c : null; draw(); }
+  }
+  function tapLand(id) {
+    if (arr.pick && arr.pick !== id) { if (!move(arr.pick, landOf(id).slot)) { toast('这两块换不了：海边那块地的南边要留给海'); arr.pick = null; draw(); } return; }
+    arr.pick = arr.pick === id ? null : id; draw();
+  }
+  function tapCell(c) {
+    if (arr.pick && c && M.free(arr.pick).some(f => f[0] === c[0] && f[1] === c[1])) { move(arr.pick, c); return; }
+    if (arr.pick) { arr.pick = null; draw(); }
+  }
+  function press(e, id, el) {
+    arr.down = { id, x: e.clientX, y: e.clientY, moved: false, pid: e.pointerId, el, cell: null };
+    try { el.setPointerCapture(e.pointerId); } catch (err) {}
+  }
+  function drift(e) {
+    const d = arr.down;
+    if (!d || d.pid !== e.pointerId) return false;
+    if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) >= 8) { d.moved = true; arr.pick = null; draw(); }
+    if (d.moved) over(e);
+    return true;
+  }
+  function lift(e, cancelled) {
+    const d = arr.down;
+    if (!d || d.pid !== e.pointerId) return false;
+    arr.down = null; ghost.hidden = true;
+    try { d.el.releasePointerCapture(e.pointerId); } catch (err) {}
+    const t = arr.target; arr.target = null;
+    if (cancelled) draw();
+    else if (!d.moved) tapLand(d.id);
+    else if (!t || !move(d.id, t)) draw();
+    return true;
+  }
+  canvas.addEventListener('pointerdown', e => {
+    if (!arr.on || e.button === 2) return;
+    const c = cellAt(e.clientX, e.clientY), l = c && visAt(c);
+    if (l) { e.stopImmediatePropagation(); press(e, l.id, canvas); return; }
+    arr.tap = { x: e.clientX, y: e.clientY, cell: c };
+  }, true);
+  canvas.addEventListener('pointerdown', () => { if (arr.on && drag) drag.pan = true; });   /* in the mode a drag on the sea moves the map, it never tilts it */
+  canvas.addEventListener('pointermove', e => { if (arr.on && drift(e)) e.stopImmediatePropagation(); }, true);
+  canvas.addEventListener('pointerup', e => {
+    if (!arr.on) return;
+    if (lift(e, false)) { e.stopImmediatePropagation(); return; }
+    const t = arr.tap; arr.tap = null;
+    if (t && Math.hypot(e.clientX - t.x, e.clientY - t.y) < 8) tapCell(t.cell);
+  }, true);
+  canvas.addEventListener('pointercancel', e => { if (arr.on && lift(e, true)) e.stopImmediatePropagation(); }, true);
+  ov.addEventListener('pointerdown', e => {
+    const eye = e.target.closest('[data-hide]'), h = e.target.closest('.arr-h');
+    if (eye) { if (eye.getAttribute('aria-disabled') === 'true') toast('至少留一块地'); else hide(eye.dataset.hide); return; }
+    if (h) { e.preventDefault(); press(e, h.dataset.id, ov); }
+  });
+  ov.addEventListener('pointermove', e => { drift(e); });
+  ov.addEventListener('pointerup', e => { lift(e, false); });
+  ov.addEventListener('pointercancel', e => { lift(e, true); });
+  window.addEventListener('keydown', e => { if (e.key === 'Escape' && arr.on) { if (arr.pick) { arr.pick = null; draw(); } } });
+
+  /* ---- the opening scene: the island from the store, its people at work ---- */
+  govTerr = (M.vis()[0] || {}).id || null;
+  relayout();
+  resetCam(); camChanged();
+  for (const l of M.vis()) spawnCast(l);
+  setInterval(() => {   /* people keep working, in the mode too */
+    const live = citizens.filter(c => !c.remote && !c.gone && !c.waiting && c.state === 'working');
+    if (!live.length) return;
+    const c = live[Math.floor(Math.random() * live.length)], tool = ['Edit', 'Read', 'Bash', 'Edit'][Math.floor(Math.random() * 4)];
+    apply({ type: 'tool', id: c.id, tool, file: tool === 'Edit' ? ['checkout.py', 'city.md', 'layout.js', 'README.md'][Math.floor(Math.random() * 4)] : '' });
+  }, 1700);
+  if (innerWidth > 960) setRailFolded(false);   /* a computer: the rail is open, as on the real page */
+  lastRail = ''; renderRail(); renderHid();
+
+  /* ---- what the mock's side buttons call ---- */
+  const byName = n => LANDS.find(l => l.name === n);
+  const api = {
+    enter, done, cancel,
+    hide: n => { const l = byName(n); if (l) hide(l.id); },
+    show: n => { const l = byName(n); if (l) show(l.id); },
+    pick: n => { const l = byName(n); if (l && arr.on) { arr.pick = l.id; draw(); } },
+    move: (n, i, j) => { const l = byName(n); return !!l && move(l.id, [Number(i), Number(j)]); },
+    /* somebody in that repo now waits for the owner */
+    ask: n => {
+      const l = byName(n); if (!l) return;
+      if (l.hidden) { const p = l.people.find(x => !x.waiting) || l.people[0]; if (p) p.waiting = true; }
+      else { const c = citizens.find(x => x.terr === l.id && !x.remote && !x.gone && !x.waiting); if (c) apply({ type: 'waiting', id: c.id }); }
+      lastRail = ''; renderRail(); renderHid(); if (arr.on) draw();
+    },
+    /* a repo this city has never seen: it takes a free slot next to the island, nothing else moves */
+    fresh: () => {
+      const l = M.newRepo();
+      if (!l) { toast('这个 mock 只准备了两个新仓库'); return; }
+      relayout(); spawnCast(l);
+      log('新仓库 ' + l.name + '：放在岛边的空位上');
+    },
+    fold: () => setRailFolded(true), drawer: () => setRailFolded(false),
+  };
+  window.mockDo = (name, ...a) => api[name] && api[name](...a);
+  let wait = 900;
+  for (const step of (OPT.do || '').split(',').filter(Boolean)) {
+    const [name, ...a] = step.split(':');
+    setTimeout(() => window.mockDo(name, ...a), wait); wait += 700;
+  }
+  setTimeout(() => { window.mockReady = true; }, wait);
+})();`;
+}
+function patched(src, kind, opt) {
+  let s = src;
+  s = must(s, '<head>', '<head><base href="' + new URL('../bin/', location.href).href + '">');
+  s = must(s, 'assets/vendor/', 'agent-city-assets/vendor/');
+  s = must(s, "const ASSET = 'assets/';", "const ASSET = 'agent-city-assets/';");
+  s = must(s, '__CITY_ASSET_V__', 'mock');
+  s = must(s, '__CITY_LANG__', 'zh');
+  s = must(s, '__CITY_TOKEN__', '');
+  s = must(s, "const DEMO = location.hash === '#demo' || location.protocol === 'file:';", 'const DEMO = true;');
+  if (kind === 'cloud') s = must(s, "const CLOUD = '__CITY_CLOUD__' === '1';", 'const CLOUD = true;');
+  s = must(s, 'if (DEMO) seed(); else if (CLOUD) connectCloud(); else connectLive();', innerJs(kind, opt));
+  s = must(s, '</head>', '<style>' + mockCss() + '</style></head>');
+  return s;
+}
+async function cityFrame(kind, opt) {
+  const f = document.createElement('iframe');
+  f.title = kind === 'cloud' ? '云端城市' : '本地城市';
+  f.srcdoc = patched(await loadPage(), kind, Object.assign({ do: Q.get('do') || '' }, opt || {}));
+  return f;
+}
+function h(html) { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstElementChild; }
+function browser(frame, url) {
+  const b = h('<div class="frame"><div class="url"><i></i><i></i><i></i><span></span></div></div>');
+  b.querySelector('span').textContent = url;
+  b.appendChild(frame);
+  return b;
+}
+/* the side buttons: they act inside the frame that shows now */
+function wire(el, get, redraw) {
+  el.addEventListener('click', e => {
+    const b = e.target.closest('button[data-do]'); if (!b) return;
+    if (b.dataset.do === 'reload') return redraw();
+    if (b.dataset.do === 'reset') { M.reset(); return redraw(); }
+    const w = get() && get().contentWindow;
+    if (w && w.mockDo) w.mockDo(...b.dataset.do.split(':'));
+  });
+}
+const TRY = `<div class="try">
+  <button type="button" data-do="fresh">来一个新仓库<small>它自己占岛边的一个空位，别的地都不动</small></button>
+  <button type="button" data-do="ask:pos-lite">让 pos-lite 里有个人等你<small>它显示着：名单里变红。它隐藏着：名单底下那行变红</small></button>
+  <button type="button" data-do="reload">刷新页面 / 重启服务器<small>摆法存在这台电脑的 world.json 里，回来还是这样</small></button>
+  <button type="button" data-do="reset">回到最开始的样子<small>只是这个 mock 用的</small></button>
+</div>`;
+
+const RENDER = {
+  async pc() {
+    const el = h(`<div class="screen side"><div></div>
+      <div class="col"><div class="card"><h3>照着点一遍</h3>
+        <ol>
+          <li>点地图顶上最右边的 <b>整理</b>。</li>
+          <li>按住 <b>website</b> 那块地（或它的名牌），<b>拖</b>到一个虚线格子：搬过去了，海岸、河、桥跟着重画。</li>
+          <li>把 <b>pos-lite</b> 拖到 <b>auto-pipeline</b> 上：两块<b>交换</b>。</li>
+          <li>不拖也行：<b>点</b>一块地（名牌变黄），再<b>点</b>一个格子。</li>
+          <li>点 <b>pos-lite</b> 名牌上的「隐藏」：它去了底下那一条；点「显示」回来。</li>
+          <li><b>取消</b>：全部回到点「整理」之前。<b>完成</b>：收工，镜头回去。</li>
+        </ol>
+        <p>整理时只停一样东西：镜头自己慢慢转（不然地在手指下面跑）。人、对话、盖楼都照常。</p></div>
+      <div class="card"><h3>顺便试试</h3>${TRY}</div></div></div>`);
+    const slot = el.firstElementChild;
+    let frame = null;
+    const drawF = async () => { frame = await cityFrame('local'); slot.textContent = ''; slot.appendChild(browser(frame, HOST.local)); };
+    wire(el, () => frame, drawF);
+    await drawF();
+    return el;
+  },
+  async hid() {
+    const l = M.lands.find(x => x.name === 'pos-lite');
+    if (l) { l.hidden = true; if (l.people[0]) l.people[0].waiting = true; }
+    const el = h(`<div class="screen side"><div></div>
+      <div class="col"><div class="card"><h3>隐藏的仓库</h3>
+        <ul>
+          <li><b>不画</b>：地、人、名单里那一组、顶上的仓库标签。</li>
+          <li><b>照常</b>：它的会话继续跑，数据一样记，什么都不删。</li>
+          <li><b>不会漏问题</b>：名单最底下那一行。现在是红的：<b>已隐藏 1 个 · 其中 1 个在等你 · 管理</b>。</li>
+          <li>名单折成小标签时（点名单右上角的 «），标签上的<b>红点数字也算上</b>隐藏仓库里等你的人。</li>
+          <li>点那一行 → 整理打开 → 底下那条里 pos-lite 写着 <b>1 人在等你</b> → 点「显示」→「完成」→ 像平常一样回他。</li>
+          <li><b>顶上的数字</b>（干活 / 找总督 / 休息 / 建成）只数你看得见的仓库。</li>
+        </ul></div>
+      <div class="card"><h3>顺便试试</h3>${TRY}</div></div></div>`);
+    const slot = el.firstElementChild;
+    let frame = null;
+    const drawF = async () => { frame = await cityFrame('local'); slot.textContent = ''; slot.appendChild(browser(frame, HOST.local)); };
+    wire(el, () => frame, drawF);
+    await drawF();
+    return el;
+  },
+  async phone() {
+    const el = h(`<div class="screen phones">
+      <div class="phone-wrap"><div class="phone"><div class="notch"></div><div class="glass"></div></div></div>
+      <div class="col"><div class="card"><h3>手机上</h3>
+        <ul>
+          <li><b>整理</b>在仓库那一条的最右边，一直看得见（仓库多了，标签自己左右滑，它不动）。</li>
+          <li><b>两种手法都行</b>：手指按住一块地<b>拖</b>；或者<b>点</b>一块地，再<b>点</b>格子 / 另一块地。</li>
+          <li>地挨得近，名牌只写名字；<b>点一块地，它的名牌变黄，才出「隐藏」</b>。</li>
+          <li><b>底下那一条</b>贴着屏幕底边：一句提示、已隐藏的、取消 / 完成。镜头把整座岛放在它上面，不盖地。</li>
+          <li>在空海上拖 = 挪地图；两指捏 = 放大缩小。和平时一样。</li>
+          <li>名单是抽屉（点左边的小标签）；那行「已隐藏 n 个」在抽屉最底下，小标签上的红点也算上。</li>
+        </ul></div>
+      <div class="card"><h3>顺便试试</h3>${TRY}</div></div></div>`);
+    const glass = el.querySelector('.glass');
+    let frame = null;
+    const drawF = async () => { frame = await cityFrame('local'); glass.textContent = ''; glass.appendChild(frame); };
+    wire(el, () => frame, drawF);
+    await drawF();
+    return el;
+  },
+  async cloud() {
+    const el = h(`<div class="screen side"><div></div>
+      <div class="col"><div class="card"><h3>云端页面</h3>
+        <ul>
+          <li>这是 <b>MacBook-Pro</b> 的城：地的位置 = 那台电脑上摆的位置。</li>
+          <li>在那台电脑上<b>隐藏</b>的仓库：云端这里<b>没有地、没有人、没有名字</b>，上传的图里根本没有它。</li>
+          <li>没有「整理」按钮，名单底下也没有「已隐藏」那一行（云端不知道有它）。</li>
+          <li>回第 1 页换个摆法，再来这里看：跟着变。</li>
+        </ul></div>
+      <div class="card"><h3>别的电脑、团队成员</h3>
+        <div class="tbl-wrap"><table class="tbl"><tbody>
+          <tr><th>存在哪</th><td>每台电脑自己的 <code>world.json</code>。</td></tr>
+          <tr><th>pc2</th><td>有它自己的摆法；你在笔记本上怎么摆，它不知道。</td></tr>
+          <tr><th>加入联城的成员</th><td>他的页面是<b>他的</b>摆法。你隐藏一个仓库，他那边照样看得见（除非他自己也隐藏）。</td></tr>
+          <tr><th>你隐藏的仓库里别人的小人</th><td>在你这里也不画：整个仓库都收起来了。</td></tr>
+        </tbody></table></div></div></div></div>`);
+    const frame = await cityFrame('cloud');
+    el.firstElementChild.appendChild(browser(frame, HOST.cloud));
+    return el;
+  },
+  async rules() {
+    return h(`<div class="col">
+      <div class="card"><h3>我替你定的</h3>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>事</th><th>定成这样</th><th>为什么</th></tr></thead><tbody>
+          <tr><td>1</td><td>按钮在哪</td><td>地图顶上「全部 + 仓库」那一排的<b>最右边</b>，一个虚线小按钮「整理」，不跟着标签滑走。</td><td>它管的就是这一排仓库。</td></tr>
+          <tr><td>2 <span class="ask">你来定</span></td><td>在哪里整理</td><td>就在<b>真的 3D 岛上</b>拖，不另开一张平面图。镜头拉高、摆正。</td><td>你看到的就是结果。另一种做法是弹一张平面小地图，简单但不直观。</td></tr>
+          <tr><td>3</td><td>停什么</td><td>只停<b>镜头自己转</b>和「跟随」。人、对话、盖楼、问题都照常。</td><td>地在手指下面转就拖不准。</td></tr>
+          <tr><td>4 <span class="ask">你来定</span></td><td>什么时候存</td><td><b>每放下一次就存一次</b>，岛马上重画。「取消」= 再存一次，存回进来时的样子。「完成」= 收工。</td><td>海岸、河、桥是服务器画的，页面自己画不了。整理到一半关掉页面：已经放下的那几步留着。</td></tr>
+          <tr><td>5</td><td>能放哪</td><td>岛边上<b>挨着别的地</b>的空格子；拖到另一块地上 = 交换。海边那种地（v4-plus）南边一格留给它的海，不能放。</td><td>拖的时候岛不会散开。只有一种情况会留空：你隐藏了中间那块。别的地不会自己动，想补上就拖一块过去。</td></tr>
+          <tr><td>6</td><td>隐藏的仓库回来放哪</td><td>原来的格子还空着就回原处；被占了就放岛边第一个空格。</td><td>和新仓库来的规则一样。</td></tr>
+          <tr><td>7 <span class="ask">你来定</span></td><td>顶上的数字</td><td><b>只数看得见的仓库。</b>隐藏仓库里有人等你：名单底下那一行变红 + 名单小标签的红点算上他。</td><td>数字和你看到的城对得上；等你的人另有一行，不会漏。</td></tr>
+          <tr><td>8</td><td>至少留一块</td><td>最后一块地不能隐藏。</td><td>城永远不空（原来就有这条规则）。</td></tr>
+        </tbody></table></div></div>
+      <div class="card"><h3>保存和安全</h3>
+        <div class="tbl-wrap"><table class="tbl"><tbody>
+          <tr><th>一个接口</th><td><code>POST /api/layout</code>，和聊天、加 agent 同一道门：只收本机、带页面的令牌、来源必须是页面自己。</td></tr>
+          <tr><th>里面只有</th><td>仓库的编号、格子的两个数字、隐藏是 / 否。多一个别的字段 → 拒绝（400）。没有路径、没有名字、没有文字。</td></tr>
+          <tr><th>不合规则</th><td>两块地同一格、放在海边地的南边、全部隐藏 → 拒绝（409），什么都不变。</td></tr>
+          <tr><th>刷新 / 重启 / 新仓库</th><td>摆法在 <code>world.json</code> 里，都还在。新仓库占岛边的空格，不挤别人。</td></tr>
+          <tr><th>云端</th><td>上传的图 = 这台电脑的摆法，隐藏的仓库不上传。云端页面这一步不能整理。</td></tr>
+        </tbody></table></div></div></div>`);
+  },
+};
+
+let current = null;
+async function show(id) {
+  const sc = SCREENS.find(s => s.id === id) || SCREENS[0];
+  current = sc.id;
+  for (const b of $('#tabs').children) b.setAttribute('aria-selected', String(b.dataset.id === sc.id));
+  $('#note').innerHTML = sc.note;
+  const view = $('#view');
+  view.textContent = '';
+  try {
+    await loadPage();
+    const el = await RENDER[sc.id]();
+    if (current === sc.id) view.appendChild(el);
+  } catch (err) {
+    view.innerHTML = '<p class="fail">这个 mock 要从一个小网页服务器打开（它要读 ../bin/agent-city.html）。在仓库根目录跑：python3 -m http.server 8765，然后打开 http://127.0.0.1:8765/mock/city-layout-mock.html<br>(' + String(err && err.message || err) + ')</p>';
+  }
+  const q = new URLSearchParams(location.search); q.set('s', sc.id);
+  history.replaceState(null, '', '?' + q.toString());
+}
+for (const s of SCREENS) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.dataset.id = s.id; b.textContent = s.tab; b.setAttribute('role', 'tab');
+  b.addEventListener('click', () => show(s.id));
+  $('#tabs').appendChild(b);
+}
+show(Q.get('s') || 'pc');
+})();
+</script>
+<!-- Open through a small web server, from the repo root:  python3 -m http.server 8765
+     then http://127.0.0.1:8765/mock/city-layout-mock.html
+     (?s=pc|hid|phone|cloud|rules)
+     For a still picture: &do=<steps, comma separated>, played inside the frame:
+       enter | done | cancel | pick:<repo> | move:<repo>:<i>:<j> | hide:<repo> | show:<repo> | ask:<repo> | fresh | fold | drawer -->
+</body>
+</html>
