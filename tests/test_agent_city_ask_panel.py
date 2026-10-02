@@ -228,7 +228,9 @@ class TestAskCardHtmlK6(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         fns = (constants_prelude() + "\n" + esc_source() + "\n"
-               + page_fns("askCardHtml", "askWhyLine", "askQuestionBody", "askPermissionBody", "askClosedLine"))
+               + page_fns("askCardHtml", "askWhyLine", "askQuestionBody", "askPermissionBody", "askClosedLine",
+                          "askPermissionDetail", "askPermissionActs", "askQuestionFields", "askQuestionActs",
+                          "shortDir"))
         closed = dict(PERM, closed={"by": "owner", "verb": "allow", "text": "", "reason": "", "at": 1790000000000})
         cls.perm, cls.question, cls.closed = run_vm(
             fns, "__out = [askCardHtml(__payload.p), askCardHtml(__payload.q), askCardHtml(__payload.c)];",

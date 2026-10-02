@@ -309,12 +309,20 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .closed.no{background:var(--ask-bg);color:var(--ask-ink)}
 .closed.late{background:var(--gov-bg);color:var(--gov-ink)}
 /* city-ask-panel: the open question or permission request is a card in the person's own message panel,
-   between its head and the history (mock/city-ask-panel-mock.html). It never scrolls away with the
-   history (flex:none); a tall card scrolls itself, and a long command scrolls inside the card. */
-.askcard{flex:none;display:flex;flex-direction:column;gap:9px;max-height:62%;overflow:auto;border:2px solid var(--berry);border-radius:16px;padding:10px 12px 12px;background:var(--panel)}
+   between its head and the history (mock/city-ask-panel-mock.html). The slot is the panel's flex item and
+   the card shrinks inside it; only the body (the details) scrolls, what the owner clicks (.askcard-acts)
+   keeps its height and stays in sight. The card takes the free height first, the history keeps a strip. */
+#askslot{flex:0 1 auto;min-height:0;display:flex;flex-direction:column}
+#askslot:empty{display:none}
+.askcard{flex:0 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden;gap:9px;border:2px solid var(--berry);border-radius:16px;padding:10px 12px 12px;background:var(--panel)}
 .askcard-h{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px}
 .askcard-t{outline:none}
-.askcard .cmd{max-height:150px;overflow:auto}
+.askcard-main{flex:0 1 auto;min-height:0;display:flex;flex-direction:column;gap:9px}
+.askcard-body{flex:0 1 auto;min-height:48px;overflow:auto;display:flex;flex-direction:column;gap:8px}
+.askcard-body>*{flex:none}
+.askcard-body .q{min-width:0}
+.askcard-acts{flex:none;display:flex;flex-direction:column;gap:8px}
+.detail:has(.askcard) .chat{flex:1 1 0;min-height:56px}
 .askcard.done{border-color:var(--line)}
 
 /* U1: the repo row -- always visible, above the city, one tag per territory; click flies the camera
@@ -7483,27 +7491,65 @@ function askWhyLine(view){
   if (view.why === 'pass') return `<div class="why gov">${i18n('why.pass')}</div>`;
   return `<div class="why gov">${i18n('why.noGov')}</div>`;
 }
-function askQuestionBody(view){
+/* city-ask-panel K14: an ask's body is built from four parts, so the small dialog (one block with
+   everything: askQuestionBody / askPermissionBody) and the card (the details scroll, what the owner
+   clicks stays in sight) show the same things. askQuestionFields(view): the fieldsets with the options.
+   askQuestionActs(): the send button. */
+function askQuestionFields(view){
   const qs = view.questions || [];
-  return `<form id="qform" class="perm" novalidate>` + qs.map((q, i) => `
+  return qs.map((q, i) => `
     <fieldset class="q"><legend>${q.header ? `<span class="chip">${esc(q.header)}</span>` : ''}${esc(q.question || '')}</legend>
       ${(q.options || []).map(o => `<label class="opt"><input type="radio" name="q${i}" value="${esc(o.label)}"><span><b>${esc(o.label)}</b>${o.description ? `<small>${esc(o.description)}</small>` : ''}</span></label>`).join('')}
       <label class="opt"><input type="radio" name="q${i}" value="" data-other><span><b>${i18n('opt.other')}</b><input type="text" data-text="${i}" placeholder="${i18n('opt.customAnswer')}" aria-label="${i18n('opt.customAnswer')}"></span></label>
-    </fieldset>`).join('') + `<div class="acts"><button class="btn primary" type="submit" id="send" disabled>${i18n('btn.sendAnswer')}</button></div></form>`;
+    </fieldset>`).join('');
 }
-function askPermissionBody(view){
+function askQuestionActs(){
+  return `<div class="acts"><button class="btn primary" type="submit" id="send" disabled>${i18n('btn.sendAnswer')}</button></div>`;
+}
+function askQuestionBody(view){
+  return `<form id="qform" class="perm" novalidate>${askQuestionFields(view)}${askQuestionActs()}</form>`;
+}
+/* city-ask-panel K16: shortDir(path, repo) -> a folder, short (pure). repo = the ask's own repo (its git
+   dir, ".../name/.git"). Inside the repo: "name" or "name/<path inside>". Else under /Users/<u>/ or
+   /home/<u>/: "~" or "~/<rest>". Then, when the result is longer than 48 characters: "…/" and its last two
+   parts. An empty path -> ''. The full path stays on the title of the <code> that shows it. */
+function shortDir(path, repo){
+  if (!path) return '';
+  const trim = s => String(s).replace(/\/+$/, '');
+  const dir = trim(path);
+  let out = dir;
+  const root = repo ? trim(repo).replace(/\/\.git$/, '') : '';
+  const name = root ? root.slice(root.lastIndexOf('/') + 1) : '';
+  if (root && name && (dir === root || dir.startsWith(root + '/'))) out = name + dir.slice(root.length);
+  else {
+    const home = /^\/(?:Users|home)\/[^/]+(\/.*)?$/.exec(dir);
+    if (home) out = '~' + (home[1] || '');
+  }
+  if (out.length > 48) out = '…/' + out.split('/').filter(Boolean).slice(-2).join('/');
+  return out;
+}
+/* askPermissionDetail(view): what the request is -- the tool, the command / file / url, what it said, the
+   folder (short, the full path on hover); no field, no button. askPermissionActs(): the deny reason field
+   and 批准 / 拒绝. */
+function askPermissionDetail(view){
   const d = view.detail || {};
   const main = d.command ? `<pre class="cmd">${esc(d.command)}</pre>`
     : d.file_path ? `<div class="kv"><span>${i18n('kv.file')}</span><code>${esc(d.file_path)}</code></div>`
     : d.url ? `<div class="kv"><span>${i18n('kv.url')}</span><code>${esc(d.url)}</code></div>`
     : (view.what ? `<pre class="cmd">${esc(view.what)}</pre>` : '');
-  return `<div class="perm">
+  return `
     <div class="kv"><span>${i18n('kv.tool')}</span><b>${esc(view.tool || '')}</b></div>
     ${main}
     ${d.description ? `<p class="said">${i18n('said', { text: esc(d.description) })}</p>` : ''}
-    ${d.cwd ? `<div class="kv"><span>${i18n('kv.dir')}</span><code>${esc(d.cwd)}</code></div>` : ''}
-    <label class="field" for="reason">${i18n('field.denyReason')}<input id="reason" type="text" placeholder="${i18n('field.denyPlaceholder')}"></label>
-    <div class="acts"><button class="btn ok" type="button" data-verb="allow">${i18n('btn.allow')}</button><button class="btn no" type="button" data-verb="deny">${i18n('btn.deny')}</button></div>
+    ${d.cwd ? `<div class="kv"><span>${i18n('kv.dir')}</span><code title="${esc(d.cwd)}">${esc(shortDir(d.cwd, view.repo))}</code></div>` : ''}`;
+}
+function askPermissionActs(){
+  return `<label class="field" for="reason">${i18n('field.denyReason')}<input id="reason" type="text" placeholder="${i18n('field.denyPlaceholder')}"></label>
+    <div class="acts"><button class="btn ok" type="button" data-verb="allow">${i18n('btn.allow')}</button><button class="btn no" type="button" data-verb="deny">${i18n('btn.deny')}</button></div>`;
+}
+function askPermissionBody(view){
+  return `<div class="perm">${askPermissionDetail(view)}
+    ${askPermissionActs()}
   </div>`;
 }
 /* idea-city C1: routes through i18n() (closed.*, and TEXT's own who.* for the "who" table). */
@@ -7528,8 +7574,9 @@ function askClosedLine(view){
     : i18n('closed.doneByYou', { who: byName, time: at, text })}</span></div>`;
 }
 /* city-ask-panel K6: askCardHtml(view) -> the card of an ask inside the person's own message panel: a head
-   (the title -- 要权限 or 在问你 -- and the 等你 pill), why it is with the owner, the same body as the small
-   "?" dialog (askPermissionBody / askQuestionBody) and its foot line. A closed view -> the .done card:
+   (the title -- 要权限 or 在问你 -- and the 等你 pill), ONE main part (K14: .askcard-body with why it is
+   with the owner and the details, which scroll when long, then .askcard-acts with the reason field and
+   the buttons, or the send button, which never scroll away) and the foot line. A closed view -> the .done card:
    the 已关闭 pill and the result line only, nothing left to click. */
 function askCardHtml(view){
   const closed = view.closed;
@@ -7538,8 +7585,11 @@ function askCardHtml(view){
   const head = `<div class="askcard-h"><span class="askcard-t" id="askcard-title" tabindex="-1">${title}</span>${pill}</div>`;
   const tag = `id="askcard" data-ask="${esc(view.id)}" aria-label="${title}"`;
   if (closed) return `<section class="askcard done" ${tag}>${head}${askClosedLine(view)}</section>`;
-  const body = view.kind === 'question' ? askQuestionBody(view) : askPermissionBody(view);
-  return `<section class="askcard" ${tag}>${head}${askWhyLine(view)}${body}<p class="foot">${i18n('foot.terminalAnswers')}</p></section>`;
+  // one main part: the details scroll in .askcard-body, what the owner clicks sits in .askcard-acts, always in sight
+  const main = view.kind === 'question'
+    ? `<form id="qform" class="askcard-main" novalidate><div class="askcard-body">${askWhyLine(view)}${askQuestionFields(view)}</div><div class="askcard-acts">${askQuestionActs()}</div></form>`
+    : `<div class="askcard-main"><div class="askcard-body">${askWhyLine(view)}<div class="perm">${askPermissionDetail(view)}</div></div><div class="askcard-acts">${askPermissionActs()}</div></div>`;
+  return `<section class="askcard" ${tag}>${head}${main}<p class="foot">${i18n('foot.terminalAnswers')}</p></section>`;
 }
 /* city-ask-panel K7: wireAskControls(root, view) -> the form and button wiring of an open ask, looked up
    inside `root` only (the card and the small dialog both have #qform, #send and #reason, so a page-wide
