@@ -28,7 +28,9 @@ A2 one small + on the name row of every repo group that is here
       '' while there is nothing to say. Both show on a folded group too (the + sits on the name row; an
       answer is never hidden by a fold). Nothing comes after the people any more. A group whose add is
       false gets neither. `adds` = a Map terr -> the state; left out = no state anywhere.
-  (sim) addIconHtml(group, st) -> the control on the name row (tip = i18n('add.tip'), 加 agent / Add agent):
+  (sim) addIconHtml(group, st) -> the control on the name row (tip = i18n('add.tip'), 加 agent / Add agent;
+      the + itself is i18n('add.plus'): ＋ in zh, + in en -- the full-width sign is a CJK character and the page
+      keeps every one of those in TEXT, tests/test_agent_city_idea_page.py):
       no st          <button type="button" class="add-i" data-add="<terr>" title="<tip>"
                      aria-label="<tip> · <repo name>">＋</button>   (the only form a click works on)
       'sent', 'opening'   <button type="button" class="add-i" aria-disabled="true" title aria-label><span
@@ -103,7 +105,7 @@ from test_agent_city_ux_page import css, listener_block, rule, text_keys  # noqa
 SIM_REQUIRED = ("apply", "landState", "railGroups", "railHtml", "addHtml", "addIconHtml", "addState", "addAnswer", "addReason",
                 "citizens", "byId", "i18n", "esc")
 
-KEYS = ("rail.none", "add.tip", "add.opening", "add.openingBare", "add.cap", "add.capNums", "add.capAsk", "add.go",
+KEYS = ("rail.none", "add.tip", "add.plus", "add.opening", "add.openingBare", "add.cap", "add.capNums", "add.capAsk", "add.go",
         "add.cancel", "add.err", "add.retry", "add.ok", "add.errGone", "add.errFailed", "add.errLate", "add.errOther",
         "add.plain", "add.copy", "add.copied", "add.close")
 
@@ -279,6 +281,11 @@ class TestButton(SimCase):
         b = self.r["plainB"]
         self.assertLess(b.index("data-add="), b.index("rail-none"))
         self.assertNotIn('class="add"', b)
+
+    def test_the_plus_sign_is_a_text(self):
+        """The full-width ＋ is a CJK character: it lives in TEXT (add.plus), never in the script itself."""
+        self.assertIn("i18n('add.plus')", function_source("addIconHtml") or "")
+        self.assertNotIn("＋", function_source("addIconHtml") or "")
 
     def test_adds_may_be_left_out(self):
         self.assertIn(self.icon(self.b, "v4-plus"), self.r["noAdds"] or "")
@@ -465,6 +472,7 @@ class TestWiring(unittest.TestCase):
         src = page()
         self.assertEqual(text_keys("add.btn"), 0, "the full-width button's text is gone")
         for key, zh, en in (("rail.none", "没人在线", "Nobody online"), ("add.tip", "加 agent", "Add agent"),
+                            ("add.plus", "＋", "+"),
                             ("add.opening", "正在打开 {name}…", "Opening {name}…")):
             with self.subTest(key=key):
                 self.assertIn("'%s': '%s'" % (key, zh), src)
