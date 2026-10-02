@@ -96,6 +96,27 @@ CONTRACT (bin/agent-city.html)
       Then, when the result is longer than 48 characters: "…/" + its last two parts. '' -> ''.
       askPermissionDetail shows <code title="<full path>">shortDir(d.cwd, view.repo)</code> (both escaped).
 
+  Bounce 3 (main manager's second browser check, phone 390x844): the bottom sheet is 44% of a small map,
+  the slot (min-height:0) was squeezed to ONE line 26 px tall and 批准 was below the screen. A shrinking
+  chain with min-height:0 has no floor, and CSS cannot say "never smaller than head + controls".
+  K17 The floor is measured. const ASK_BODY_MIN = 48 (the body's CSS min-height).
+      askCardFloor(cardH, bodyH) -> Math.round(cardH - bodyH + Math.min(bodyH, ASK_BODY_MIN)), never
+      below 0: the card's natural height with its details cut down to 48 px (a closed card has no body:
+      bodyH 0 -> its whole height).
+      fitAskSlot(slot): no .askcard inside -> slot.style.minHeight = '' and slot.dataset.w = ''.
+      Else, only when String(slot.clientWidth) !== slot.dataset.w or slot.style.minHeight is empty
+      (a new card, or the width changed: the text wraps differently): set slot.style.minHeight = '' and
+      slot.style.flex = 'none' (nothing squeezes the card now), read card.offsetHeight and
+      body.offsetHeight (the .askcard-body; none -> 0), set slot.style.flex = '' again,
+      slot.style.minHeight = askCardFloor(...) + 'px' and slot.dataset.w = that width.
+      renderAskCard(): after it wrote a card (the key changed) it clears slot.style.minHeight (the new
+      card is measured again), and on EVERY call that has a slot it ends with fitAskSlot(slot) -- also
+      when the key did not change.
+  K18 Phone: inside the FIRST "@media (max-width: 960px)" block, after its .win rule:
+        .win:has(.askcard){height:auto;max-height:calc(100% - 16px)}
+      While a card is open the sheet takes what its content needs, up to the whole map; above that the
+      details scroll inside the card (down to 48 px), then the panel body scrolls.
+
 Run: python3 -m unittest tests.test_agent_city_ask_panel </dev/null
 """
 
@@ -299,9 +320,12 @@ function askCardHtml(v){ return '<card ' + v.id + (v.closed ? ' closed' : ' open
 var wired = [];
 function wireAskControls(root, v){ wired.push([root === slot ? 'slot' : 'other', v.id]); }
 function mkSlot(){
-  return { dataset: {}, sets: 0, _h: '', get innerHTML(){ return this._h; }, set innerHTML(v){ this._h = v; this.sets++; },
+  return { dataset: {}, style: { minHeight: 'old' }, clientWidth: 348, sets: 0, _h: '',
+           get innerHTML(){ return this._h; }, set innerHTML(v){ this._h = v; this.sets++; },
            querySelector(){ return null; }, querySelectorAll(){ return []; } };
 }
+var fits = [];
+function fitAskSlot(s){ fits.push(s === slot ? s.style.minHeight : 'other'); }
 var slot = mkSlot();
 function $(sel){ return sel === '#askslot' ? slot : null; }
 """
@@ -348,6 +372,21 @@ __out = { after409, afterFacts, afterWho: slot.sets };
 """)
         self.assertEqual(r, {"after409": 2, "afterFacts": 3, "afterWho": 4},
                          "bounce 1 K8b: the key carries closed.by and closed.verb")
+
+    def test_every_call_fits_the_slot_and_a_new_card_is_measured_again(self):
+        r = self.run_card(r"""
+current = { id: 'p1', agent: 'w1', phase: 'owner' }; asks.set('p1', current);
+renderAskCard();                       // the card is written: the old floor is cleared before the fit
+slot.style.minHeight = '272px';        // (what the real fitAskSlot would leave)
+renderAskCard(); renderAskCard();      // same key: nothing rewritten, the floor is kept, the fit still runs
+const kept = fits.slice();
+current.closed = { by: 'owner', verb: 'allow' };
+renderAskCard();                       // another card (the result): measured again
+__out = { kept, afterResult: fits[fits.length - 1], n: fits.length };
+""")
+        self.assertEqual(r["kept"], ["", "272px", "272px"], "bounce 3 K17: fitAskSlot(slot) on every call")
+        self.assertEqual(r["afterResult"], "", "a newly written card clears the old floor first")
+        self.assertEqual(r["n"], 4)
 
     def test_a_rebuilt_panel_gets_its_card_again(self):
         r = self.run_card(r"""
@@ -714,6 +753,79 @@ class TestShortDirK16(unittest.TestCase):
         for case, got in zip(cases, out):
             with self.subTest(path=case[0]):
                 self.assertEqual(got, case[2])
+
+
+class TestCardFloorK17(unittest.TestCase):
+    """Bounce 3: the card is never squeezed below its head, 48 px of details, its controls and its foot."""
+
+    def test_the_floor(self):
+        fns = constants_prelude() + "\n" + page_fns("askCardFloor")
+        out = run_vm(fns, "__out = [askCardFloor(424, 200), askCardFloor(300, 30), askCardFloor(120, 0), "
+                          "askCardFloor(0, 0), askCardFloor(271.6, 48), ASK_BODY_MIN];")
+        self.assertEqual(out, [272, 300, 120, 0, 272, 48])
+        self.assertRegex(style().replace(" ", ""), r"(?:^|\})\.askcard-body\{[^}]*min-height:48px",
+                         "ASK_BODY_MIN is the body's CSS min-height")
+
+    PRELUDE = r"""
+var reads = [];
+function mk(cardH, bodyH, width){
+  const slot = { style: { minHeight: '', flex: '' }, dataset: {}, clientWidth: width };
+  const card = cardH === null ? null : { get offsetHeight(){ reads.push([slot.style.flex, slot.style.minHeight]); return cardH; } };
+  const body = bodyH === null ? null : { offsetHeight: bodyH };
+  slot.querySelector = sel => sel === '.askcard' ? card : (sel === '.askcard-body' ? body : null);
+  return slot;
+}
+"""
+
+    def fit(self, driver):
+        return run_vm(constants_prelude() + "\n" + self.PRELUDE + page_fns("fitAskSlot", "askCardFloor"), driver)
+
+    def test_it_measures_the_card_unsqueezed(self):
+        r = self.fit(r"""
+const slot = mk(424, 200, 348);
+slot.style.minHeight = '26px';
+slot.dataset.w = '';
+fitAskSlot(slot);
+__out = { min: slot.style.minHeight, flex: slot.style.flex, w: slot.dataset.w, reads };
+""")
+        self.assertEqual(r["min"], "272px")
+        self.assertEqual(r["flex"], "", "the inline flex is taken off again")
+        self.assertEqual(r["w"], "348")
+        self.assertEqual(r["reads"], [["none", ""]], "measured with flex:none and no old floor: its natural height")
+
+    def test_once_per_width(self):
+        r = self.fit(r"""
+const slot = mk(424, 200, 348);
+fitAskSlot(slot); fitAskSlot(slot); fitAskSlot(slot);
+const same = reads.length;
+slot.clientWidth = 300;                // the phone turned: the text wraps differently
+fitAskSlot(slot);
+const turned = reads.length;
+slot.style.minHeight = '';             // renderAskCard wrote another card
+fitAskSlot(slot);
+__out = { same, turned, again: reads.length, w: slot.dataset.w };
+""")
+        self.assertEqual(r, {"same": 1, "turned": 2, "again": 3, "w": "300"})
+
+    def test_a_closed_card_and_no_card(self):
+        r = self.fit(r"""
+const closed = mk(96, null, 348);
+fitAskSlot(closed);
+const none = mk(null, null, 348);
+none.style.minHeight = '272px'; none.dataset.w = '348';
+fitAskSlot(none);
+__out = { closed: closed.style.minHeight, none: none.style.minHeight, w: none.dataset.w };
+""")
+        self.assertEqual(r, {"closed": "96px", "none": "", "w": ""}, "a result card is never cut; no card, no floor")
+
+    def test_the_sheet_grows_on_a_phone(self):
+        from test_agent_city_page import media_block
+        block = media_block("@media (max-width: 960px)").replace(" ", "")
+        m = re.search(r"\.win:has\(\.askcard\)\{([^}]*)\}", block)
+        self.assertIsNotNone(m, "bounce 3 K18: .win:has(.askcard) in the first phone block")
+        for bit in ("height:auto", "max-height:calc(100%-16px)"):
+            self.assertIn(bit, m.group(1))
+        self.assertLess(block.index(".win{"), m.start(), "after the sheet's own .win rule")
 
 
 class TestKeepAskSlotK13(unittest.TestCase):

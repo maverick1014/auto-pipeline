@@ -54,6 +54,7 @@
 - Every way to that person opens that panel with the card: the person, its name tag, its 等你回话 bubble, its rail row, the red "?" over its head, and the 等你 button at the top (the oldest one waiting). No second click.
 - The card shows only while the ask is with the owner (the red "?"). While the governor still decides there is nothing to answer.
 - The card stays in sight and its controls too: the deny-reason box, 批准 / 拒绝 and 发送回答 are always visible at the bottom of the card; only the details above them (the command, what it said, the folder, the options) scroll when they are long. The card takes the free height of the panel first; the history keeps a small strip under it. Found in the first browser check, 2026-10-02: the buttons were below the card's visible bottom.
+- The card is never squeezed below its head, 48 px of details, its controls and its foot line (measured when the card is drawn): when the panel is too small for that, the panel body scrolls instead. Phone: while a card is open the bottom sheet grows, up to the whole map, and the history may shrink to its strip. Found in the second browser check, 2026-10-02 (390x844: the card was one line, 批准 was off the screen).
 - The folder is shown short: the repo name plus the path inside it, else ~/… for a path in the home folder, else its last two parts after "…/"; the full path on hover.
 - The asking person is not on the page (nobody to pick) → the "?" and the 等你 button open the small "?" panel over the city, as before.
 - Another member's person and the cloud page: no card (view only).
