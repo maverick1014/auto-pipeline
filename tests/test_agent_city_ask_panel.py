@@ -763,7 +763,7 @@ class TestCardFloorK17(unittest.TestCase):
         out = run_vm(fns, "__out = [askCardFloor(424, 200), askCardFloor(300, 30), askCardFloor(120, 0), "
                           "askCardFloor(0, 0), askCardFloor(271.6, 48), ASK_BODY_MIN];")
         self.assertEqual(out, [272, 300, 120, 0, 272, 48])
-        self.assertRegex(style().replace(" ", ""), r"(?:^|\})\.askcard-body\{[^}]*min-height:48px",
+        self.assertRegex(style().replace(" ", ""), re.compile(r"(?:^|\})\.askcard-body\{[^}]*min-height:48px", re.M),
                          "ASK_BODY_MIN is the body's CSS min-height")
 
     PRELUDE = r"""

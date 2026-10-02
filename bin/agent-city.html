@@ -317,8 +317,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .askcard{flex:0 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden;gap:9px;border:2px solid var(--berry);border-radius:16px;padding:10px 12px 12px;background:var(--panel)}
 .askcard-h{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px}
 .askcard-t{outline:none}
-.askcard-main{flex:0 1 auto;min-height:0;display:flex;flex-direction:column;gap:9px}
-.askcard-body{flex:0 1 auto;min-height:48px;overflow:auto;display:flex;flex-direction:column;gap:8px}
+.askcard-main{flex:0 1 auto;min-height:0;display:flex;flex-direction:column;gap:9px}.askcard-body{flex:0 1 auto;min-height:48px;overflow:auto;display:flex;flex-direction:column;gap:8px}
 .askcard-body>*{flex:none}
 .askcard-body .q{min-width:0}
 .askcard-acts{flex:none;display:flex;flex-direction:column;gap:8px}
@@ -386,6 +385,8 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
   /* V1 (city-ux2 v2): the message panel is a bottom sheet on a phone; its folded tab sits centred at
      the bottom edge, horizontal (the rail's own tab stays vertical, on the left edge). */
   .win{left:8px;right:8px;top:auto;bottom:8px;width:auto;height:44%}
+  /* city-ask-panel: while a card is open the sheet takes what its content needs, up to the whole map */
+  .win:has(.askcard){height:auto;max-height:calc(100% - 16px)}
   .win-tab{right:auto;left:50%;top:auto;bottom:0;transform:translateX(-50%);width:auto;flex-direction:row;padding:6px 14px;border:2px solid var(--ink);border-bottom:0;border-radius:12px 12px 0 0}
   .win-tab .v{writing-mode:horizontal-tb;max-width:220px}
   .newmsg{bottom:68px}
@@ -7630,6 +7631,31 @@ function keepAskSlot(el, old){
   const fresh = el.querySelector('#askslot');
   if (fresh && old && old !== fresh) fresh.replaceWith(old);
 }
+/* city-ask-panel K17: the card is never squeezed below its head, ASK_BODY_MIN px of details, its controls
+   and its foot. CSS cannot say that (a shrinking chain with min-height:0 has no floor, and on a phone the
+   sheet is short), so the floor is measured. ASK_BODY_MIN is the body's CSS min-height.
+   askCardFloor(cardH, bodyH) -> the card's natural height with its details cut down to ASK_BODY_MIN
+   (a closed card has no body: its whole height), never below 0. fitAskSlot(slot) -> sets that floor as the
+   slot's min-height: no card inside -> none; otherwise measured once per card and per width (the text wraps
+   differently), with the slot's flex taken off while reading so nothing squeezes the card. */
+const ASK_BODY_MIN = 48;
+function askCardFloor(cardH, bodyH){
+  return Math.max(0, Math.round(cardH - bodyH + Math.min(bodyH, ASK_BODY_MIN)));
+}
+function fitAskSlot(slot){
+  const card = slot.querySelector('.askcard');
+  if (!card) { slot.style.minHeight = ''; slot.dataset.w = ''; return; }
+  const w = String(slot.clientWidth);
+  if (w === slot.dataset.w && slot.style.minHeight) return;
+  slot.style.minHeight = '';
+  slot.style.flex = 'none';
+  const cardH = card.offsetHeight;
+  const body = slot.querySelector('.askcard-body');
+  const bodyH = body ? body.offsetHeight : 0;
+  slot.style.flex = '';
+  slot.style.minHeight = askCardFloor(cardH, bodyH) + 'px';
+  slot.dataset.w = w;
+}
 /* city-ask-panel K8: renderAskCard() -> fills #askslot (the slot renderDetail leaves in a local person's
    card and in the governor's card) with the card of panelAsk(selected), or '' when there is none, and sets
    cardAskId. The slot is rewritten only when its key changes (ask id + open, or closed with who closed it
@@ -7637,7 +7663,8 @@ function keepAskSlot(el, old){
    slot.dataset.key), so a picked option or a typed reason survives the next frames, and a rebuilt panel
    (a fresh slot) gets its card again. An open card is wired with wireAskControls(slot, view). A card that
    stops showing takes its closed view out of `asks` (unless the small dialog still shows it). No slot (the
-   panel is closed, a building's card) -> no card; the cloud page has none (view only). */
+   panel is closed, a building's card) -> no card; the cloud page has none (view only). With a slot the last
+   step is always fitAskSlot(slot) (K17). */
 function renderAskCard(){
   const was = cardAskId;
   const slot = CLOUD ? null : $('#askslot');
@@ -7649,10 +7676,13 @@ function renderAskCard(){
   }
   if (!slot) return;
   const key = view ? view.id + (view.closed ? '|closed|' + view.closed.by + '|' + view.closed.verb : '|open') : '';
-  if ((slot.dataset.key || '') === key) return;
-  slot.dataset.key = key;
-  slot.innerHTML = view ? askCardHtml(view) : '';
-  if (view && !view.closed) wireAskControls(slot, view);
+  if ((slot.dataset.key || '') !== key) {
+    slot.dataset.key = key;
+    slot.innerHTML = view ? askCardHtml(view) : '';
+    slot.style.minHeight = ''; // a newly written card is measured again
+    if (view && !view.closed) wireAskControls(slot, view);
+  }
+  fitAskSlot(slot); // K17: on every call, the key changed or not
 }
 function renderAskPanel(){
   const view = asks.get(openAskId);
@@ -7680,6 +7710,7 @@ function showAskFailure(text, id){
     el.className = 'why fail';
     const head = root.querySelector('.askcard-h, .ask-head'); // after the card's head, or the dialog's
     if (head) head.insertAdjacentElement('afterend', el); else root.insertBefore(el, root.firstChild);
+    root.style.minHeight = ''; // the card grew a line: fitAskSlot measures its floor again (the small dialog has none)
   }
   el.innerHTML = `<span>${esc(text)}</span>`;
 }
