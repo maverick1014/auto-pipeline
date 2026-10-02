@@ -86,6 +86,9 @@ L4 the mode
       A drop / a second tap = layoutPost(landMove(...)). 隐藏 on a plate = layoutPost([{id, hidden:
         true}]) (the last shown land: the button is aria-disabled, i18n('arr.last')). 显示 in the tray =
         layoutPost([{id, hidden: false}]).
+      An era show that runs on a land that moves: buildLand() drops that land's show run (showRuns,
+        dropShowRun) -- it knows which lands moved from landSteps(view), asked before landState(view) -- and
+        stepShows() makes it again from the new view: the builders stand on the land, never in the sea.
       While arr.on: autoRotating() is false (the one thing that pauses, with follow); selectPick() opens
         nobody; a press on a land or its plate drags it (a footprint on the slot under the pointer), a
         press on the sea pans the map.
@@ -581,6 +584,15 @@ class TestThePage(unittest.TestCase):
         done = listener_block(r"\$\('#arr-done'\)", "click") or ""
         self.assertIn("arrLeave(", done)
         self.assertNotIn("layoutPost(", done, "every drop is saved when it is made: Done only leaves")
+
+    def test_a_running_era_show_follows_its_land(self):
+        # seen in the browser (task manager, 2026-10-02): a land moved while its era show ran (a fresh server, the
+        # first page): the show's small builders stayed on the old cell, in the sea, until the show ended (60 s)
+        src = function_source("buildLand") or ""
+        self.assertIn("showRuns", src, "buildLand() must look at the running shows")
+        self.assertIn("dropShowRun(", src, "the show of a land that moved is dropped there: stepShows() starts it "
+                      "again from the new view, so its builders stand on the land")
+        self.assertIn("landSteps(", src, "which lands moved: the same compare landState() uses, taken before it runs")
 
     def test_css_has_no_leftover_of_the_mock(self):
         self.assertNotIn(".q1", css())

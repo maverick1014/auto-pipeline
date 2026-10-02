@@ -5643,6 +5643,16 @@ function updateReposAria(now){
   el.querySelectorAll('.repo').forEach(b => b.setAttribute('aria-current', String(b.dataset.terr === cur)));
 }
 function buildLand(view){
+  // city-layout L3: an era show that runs on a land that moves goes with it -- its builders and planks were made from the old
+  // cell (world coordinates), so they would stand in the sea until the show ends; the run is dropped here (landSteps() reads the
+  // old `map`, so it is asked before landState() replaces it) and stepShows() makes it again from the new view on the next frame
+  for (const id of landSteps(view).moved.keys()) {
+    const run = showRuns.get(id);
+    if (!run) continue;
+    for (const b of run.builders) dropShowBuilder(b);
+    dropShowRun(run);
+    showRuns.delete(id);
+  }
   landState(view); // map, mid, land, the tile pools, building records, updateHome() -- city-people
   renderRepos(); // U1: the repo row follows every world event, not only the first
   while (landGroup.children.length) landGroup.remove(landGroup.children[0]);
@@ -7066,7 +7076,7 @@ function stepShows(now){
   if (!shows.size) return;
   for (const [id, s] of [...shows]) {
     const t = terrOf(id);
-    if (!t) { const gone = showRuns.get(id); if (gone) dropShowRun(gone); shows.delete(id); showRuns.delete(id); continue; }
+    if (!t) { const gone = showRuns.get(id); if (gone) { for (const b of gone.builders) dropShowBuilder(b); dropShowRun(gone); } shows.delete(id); showRuns.delete(id); continue; } // city-layout: a hidden land's builders go too, not only its planks
     let run = showRuns.get(id);
     if (!run) { run = makeShowRun(t, map, s); showRuns.set(id, run); }
     const elapsed = SHOW_SEC - (s.end - now) / 1000;
