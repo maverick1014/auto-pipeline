@@ -1683,7 +1683,7 @@ class _CloudTaps:
             if view is None:
                 cut = dict(self.world)
                 cut["territories"] = {i: t for i, t in self.world["territories"].items() if i in keep}
-                cut["order"] = [i for i in self.world["order"] if i in cut["territories"]]
+                cut["order"] = list(self.world["order"])   # the full order: the numbers (colours) stay the machine's, layout() skips what is cut
                 view = cache[1][keep] = json.loads(json.dumps(layout(cut, self.plans)))
             idents = {territory_id(i): i for i in self.world["territories"]}
             terrs = []
@@ -7866,6 +7866,12 @@ def layout(world, plans):
                 "territories": [], "links": []}
 
     by_slot = {tuple(world["territories"][ident]["slot"]): ident for ident in order}
+    # "n": a territory's place in world["order"], counting every identity of
+    # that list (hidden, or cut away from this view too). The page colours a
+    # repo by it, so a repo keeps its colour when others are hidden or shown.
+    number = {}
+    for k, ident in enumerate(world["order"]):
+        number.setdefault(ident, k)
 
     x0 = z0 = x1 = z1 = None
     for ident in order:
@@ -8032,7 +8038,7 @@ def layout(world, plans):
         territories_view.append({
             "id": territory_id(ident), "name": t["name"], "plan": plan["id"],
             "terrain": plan["terrain"], "slot": list(t["slot"]), "cx": ox, "cz": oz,
-            "sea": bool(plan["sea"]),
+            "sea": bool(plan["sea"]), "n": number[ident],
             "lines": t["lines"], "size": growth(t["peak"]), "r": tr["r"], "open": tr["open"],
             "plots_total": len(plan["plots"]), "plots": plots_view, "buildings": buildings_view,
             "era": era, "balance": balance,

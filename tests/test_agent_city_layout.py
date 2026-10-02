@@ -19,8 +19,9 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
   layout(world, plans)
     A hidden territory is not there: no entry in "territories", none of its
     tiles in "rows", no link to it; its neighbours get their outer edge on
-    that side. The answer is exactly layout() of the same world without that
-    record. Two records may hold the same slot when at most one is shown.
+    that side. The answer is layout() of the same world without that record
+    (but for "n", below). Two records may hold the same slot when at most
+    one is shown.
     Every territory of the view says whether its plan has sea: "sea": true |
     false (the page offers no slot just south of such a land).
     Every territory of the view carries "n": its place in world["order"],
@@ -173,6 +174,11 @@ def need(case, name, obj=ac):
 # the pure part: layout() and add_territory() with hidden territories
 # ---------------------------------------------------------------------------
 
+def unnumbered(view):
+    """The view without the territories' "n" (a land's number counts the hidden records too)."""
+    return dict(view, territories=[{k: v for k, v in t.items() if k != "n"} for t in view["territories"]])
+
+
 class TestLayoutLeavesHiddenOut(unittest.TestCase):
     def rows(self, hidden=False):
         return [("/r/shop/.git", "shop", "meadow", [0, 0]), ("/r/blog/.git", "blog", "ridge", [1, 0], hidden),
@@ -187,7 +193,8 @@ class TestLayoutLeavesHiddenOut(unittest.TestCase):
 
     def test_it_is_the_layout_of_the_world_without_it(self):
         without = [r for r in self.rows() if r[1] != "blog"]
-        self.assertEqual(ac.layout(world_of(*self.rows(hidden=True)), PLANS), ac.layout(world_of(*without), PLANS),
+        self.assertEqual(unnumbered(ac.layout(world_of(*self.rows(hidden=True)), PLANS)),
+                         unnumbered(ac.layout(world_of(*without), PLANS)),
                          "the neighbours must get their own outer edge where the hidden land was")
 
     def test_a_shown_land_may_stand_on_a_hidden_lands_slot(self):
@@ -195,7 +202,7 @@ class TestLayoutLeavesHiddenOut(unittest.TestCase):
                 ("/r/wood/.git", "wood", "woods", [1, 0])]
         view = ac.layout(world_of(*rows), PLANS)
         self.assertEqual([(t["name"], t["slot"]) for t in view["territories"]], [("shop", [0, 0]), ("wood", [1, 0])])
-        self.assertEqual(view, ac.layout(world_of(rows[0], rows[2]), PLANS))
+        self.assertEqual(unnumbered(view), unnumbered(ac.layout(world_of(rows[0], rows[2]), PLANS)))
 
     def test_the_view_says_which_land_has_sea(self):
         view = ac.layout(world_of(*self.rows()), PLANS)
