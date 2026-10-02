@@ -293,7 +293,7 @@ class CityCase(unittest.TestCase):
                   balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}},
                   start_repo=self.ident, main_fn=Mains({self.ident: "tm"}))
         kw.update(more)
-        return ac.CityState(**kw)
+        return ac.CityState(decisions_path=kw.pop("decisions_path"), **kw)   # never the owner's real decisions file
 
     def feed(self, ev, sid="tm", st=None, **f):
         line = {"ev": ev, "sid": sid, "aid": "", "at": "", "tool": "", "nt": "", "proj": "app", "role": "",
