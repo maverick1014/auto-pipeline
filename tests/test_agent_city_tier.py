@@ -692,14 +692,14 @@ class TestLayoutBig(unittest.TestCase):
         t = v.by_name["v4-plus"]
         cx, cz = t["cx"], t["cz"]
         for z in range(cz - 15, cz + 16):
-            self.assertTrue(any(v.tile(x, z) == "w" for x in range(cx + 8, cx + 21)), "the river at row %d" % z)
+            self.assertTrue(any(v.tile(x, z) in "wB" for x in range(cx + 8, cx + 21)), "the river (or its bridge) at row %d" % z)
         ez = PLAN["oasis"]["exits"]["E"][1]
         self.assertTrue(any(v.tile(x, cz + ez) == "B" for x in range(cx + 8, cx + 21)), "the bridge on the east road")
         self.assertTrue(v.reach((cx, cz), lambda x, z: x > cx + 18 and v.tile(x, z) in "rg"),
                         "the hall reaches the far bank")
         mark = t.get("mark")
         self.assertIsInstance(mark, list)
-        river_x = max(x for x in range(cx + 8, cx + 21) if v.tile(x, int(math.floor(mark[1]))) == "w")
+        river_x = max(x for x in range(cx + 8, cx + 21) if v.tile(x, int(math.floor(mark[1]))) in "wB")
         self.assertGreater(mark[0], river_x)
         self.assertEqual(v.tile(int(math.floor(mark[0])), int(math.floor(mark[1]))), "u")
         for b in buildings(t):
