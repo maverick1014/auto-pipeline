@@ -336,8 +336,9 @@ class SimCase(unittest.TestCase):
 
 class TestTheRule(SimCase):
     def test_the_lands_of_a_view(self):
-        self.assertEqual(self.r["landsOf"], [{"id": TA, "name": "shop", "slot": [0, 0], "sea": False},
-                                             {"id": TB, "name": "blog", "slot": [1, 0], "sea": False}])
+        # city-tier: a land also carries the size of its square (1 cell when the view says nothing)
+        self.assertEqual(self.r["landsOf"], [{"id": TA, "name": "shop", "slot": [0, 0], "sea": False, "cells": 1},
+                                             {"id": TB, "name": "blog", "slot": [1, 0], "sea": False, "cells": 1}])
 
     def test_what_is_a_good_arrangement(self):
         self.assertEqual(self.r["ok"], [True, False, False, False, False, False, True, True])
