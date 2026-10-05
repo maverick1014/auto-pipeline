@@ -128,7 +128,7 @@ W11. Time
 - Every done report has one line: `TIME: est <n>m, actual <n>m, wait <n>m`. Actual = agent work only
 - Done = merged and cleaned. The main manager passes work, wait and the task facts to `bin/agent-file.sh todo done`
 - Work over 2× estimate → say it in the report, never silent
-- Before a new estimate: `bin/agent-file.sh time`, then pick a rubric row (dispatch skill)
+- Before a new estimate: `bin/agent-file.sh time`, then `bin/agent-file.sh estimate` (dispatch skill)
 - A time question from the human → a duration AND a clock time, and when he is needed next: `bin/agent-file.sh eta`
 
 W12. Cross-repo
