@@ -655,7 +655,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
    (data-t / data-t-aria / data-t-title / data-t-placeholder) is filled once, at start, by applyText(). */
 const LANG = '__CITY_LANG__';
 document.documentElement.lang = LANG === 'en' ? 'en' : 'zh-CN';
-const TEXT = { zh: { 'btn.log': '动态', 'aria.city': '城市', 'aria.canvas': '3D 小岛：每个小人是一个 agent', 'proto.banner': '原型 · 模拟数据', 'btn.zoomIn': '放大', 'btn.zoomOut': '缩小', 'btn.rotate': '转一下', 'btn.resetView': '回到默认视角', 'repo.all': '全部', 'aria.repos': '仓库：点一个飞过去', 'repo.goAria': '飞到 {name}', 'cap.hint': '已经是最远了 · 点「全部」看所有仓库','btn.close': '关闭', 'aria.toolbar': '控制', 'label.spawn': '派一个', 'opt.worker': 'worker · 盖房子', 'opt.taskManager': 'task manager · 测试塔', 'opt.fastLaneDeputy': 'fast-lane deputy · 花园', 'opt.mergeDeputy': 'merge deputy · 桥', 'btn.spawn': '派出', 'btn.remoteOff': '中继断开', 'btn.remoteOn': '恢复', 'btn.remoteLeave': '退出联城', 'type.house': '住宅', 'type.shop': '商店', 'type.tower': '测试塔', 'type.workshop': '工坊', 'type.library': '图书馆', 'district.house': '住宅区', 'district.shop': '商业街', 'district.tower': '测试区', 'district.workshop': '工坊区', 'district.library': '图书馆区', 'chat.state.queued': '排队中', 'chat.state.delivered': '已送达', 'chat.state.undelivered': '没送到', 'chat.why.notListening': '它没在听，收不到', 'chat.state.sent': '在路上', 'chat.you.cloud': '你（云端）', 'chat.you.local': '你（电脑上的页面）', 'chat.why.off': '那台电脑没开', 'chat.why.ended': '这个会话已经结束', 'chat.why.talkOff': '那台电脑不接收云端消息', 'chat.why.refused': '那台电脑没收这条消息', 'chat.why.flood': '发得太快，那台电脑没收', 'chat.resend': '重发', 'chat.new': '有新消息 ↓', 'hist.title': '历史（新的在下面）', 'hist.empty': '还没有记录', 'hist.all': '显示过程 {n}', 'hist.hide': '隐藏过程', 'hist.onlyMech': '只有过程记录，点「显示过程」看', 'hist.started': '出门：{task}', 'hist.stuck': '卡住了：{text}', 'hist.toLead': '去问经理', 'hist.toGov': '去问总督', 'hist.waiting': '等你回话', 'hist.done': '完工，去休息', 'hist.left': '下班了', 'chat.task': '任务（派它时的话）', 'team.title': '{repo} · 团队', 'role.task-manager': '任务经理', 'role.worker': '工人', 'role.fast-lane-deputy': '快车道副手', 'role.merge-deputy': '合并副手', 'role.other': '帮手', 'era.village': '村', 'era.town': '镇', 'era.city': '城', 'quality.good': '整齐', 'quality.fair': '还行', 'quality.poor': '有点乱', 'who.governor': '总督', 'who.owner': '你', 'who.terminal': '终端', 'state.spawn': '出门', 'state.to_plot': '去工地', 'state.building': '施工中', 'state.working': '干活', 'state.to_hall': '去问总督', 'state.asking': '在问总督', 'state.heard': '拿到答案', 'state.to_lead': '去问经理', 'state.at_lead': '问经理', 'state.back': '回工地', 'state.finishing': '封顶了', 'state.to_rest': '去休息', 'state.resting': '休息中', 'state.leaving': '下班回家', 'status.need_approval': '等你批', 'status.asking_gov': '在问总督', 'status.waiting_answer': '等你回答', 'status.waiting_reply': '等你回话', 'status.waiting': '等你', 'status.background': '后台在跑', 'status.idle': '空闲', 'stuck.permission': '要权限：{tool}', 'stuck.default': '需要你看一下', 'gov.away': '不在', 'gov.busy': '忙着', 'gov.home': '坐镇市政厅', 'top.work': '干活', 'top.ask': '找总督', 'top.rest': '休息', 'top.done': '建成', 'top.stalled': '卡住的工地', 'top.pending': '等你', 'top.pendingAria': '等你决定 {n} 个，点开最早的一个', 'empty.noLand': '还没有领地 · 在一个 git 仓库里启动，或等代理开工', 'loading.text': '正在搬来素材…', 'loading.progress': '正在搬来素材 {n}/{total}', 'loading.error': '素材没加载成功：{err}', 'site.human': '亲自带', 'log.eraUpgrade': '{name} 开始升级成{era}', 'say.done': '完工啦！', 'log.leftWork': '{task} 下班了', 'gov.dispatch': '去吧：{task}', 'log.govDispatch': '总督派出 {label}：{task}', 'log.siteMerged': '{branch} 合并进主线，工地收工', 'log.siteRemoved': '{branch} 的工地撤了', 'log.levelUp': '{label} 升到 {lv} 级', 'log.movedBack': '{label} 搬回{kind}区', 'log.demolished': '{label} 的文件都没了，拆掉', 'log.stuckDemo': '{task} 卡住了：“{text}” → 去问总督', 'answer.default': '已回答', 'log.govAnswer': '总督回答 {task}：“{text}”', 'log.doneRestPlain': '{task} 完工，去休息', 'log.doneRestBuilt': '{task} 完工：{kind}封顶，去休息', 'log.noplot': '{name} 没有空地了，先等等', 'gov.unknown': '未知', 'gov.busyRow': '在忙', 'gov.idleRow': '空闲', 'gov.title': '{name} 总督', 'chain.lead': '经理', 'chain.leadTask': '经理 {task}', 'chat.empty': '还没有对话', 'chat.you.page': '你（页面）', 'chat.you.terminal': '你（终端）', 'chat.wait': '等它做完这一步', 'chat.loadError': '对话没加载出来，等会儿再打开看看。', 'kv.repo': '仓库', 'kv.branch': '分支', 'kv.doing': '在做', 'qa.ask': '问：“{q}”', 'qa.answer': '答：“{a}”', 'qa.waiting': '问：“{q}” 等回答…', 'act.makeStuck': '让它卡住', 'act.makeDone': '让它完工', 'act.makeLeave': '让它下班', 'act.demoNote': '这三个按钮只在原型里有，用来试流程。', 'gov.ownTag': 'main manager · 主对话', 'gov.tagLabel': '总督 · main manager', 'gov.rgRole': 'main manager · 总督', 'pill.hall': '市政厅', 'gov.awayNote': '总督不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等总督。', 'hint.team': '团队', 'hint.noAgents': '还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。', 'hint.pickSomething': '点城里的小人、房子，或下面名单里的一行。', 'building.misplaced': ' · 放错区了', 'building.level': ' · 等级 {level}', 'building.district': '{kind}区', 'building.module': '{name} 模块', 'hint.files': '盖它的文件', 'hint.history': '改过它的人（新的在前）', 'detail.title': '详情', 'opt.other': '其他', 'opt.customAnswer': '自己写回答', 'btn.sendAnswer': '发送回答', 'kv.tool': '工具', 'kv.file': '文件', 'kv.url': '网址', 'said': '它说：{text}', 'kv.dir': '目录', 'field.denyReason': '拒绝理由（可以不填；填了会原样告诉它）', 'field.denyPlaceholder': '比如：先别删 dist/，里面有发布包', 'btn.allow': '批准', 'btn.deny': '拒绝', 'ask.asking': '在问', 'card.permission': '要权限', 'card.question': '在问你', 'ask.needsPermission': '要权限', 'pill.closed': '已关闭', 'aria.collapse': '收起（不回答）', 'foot.terminalAnswers': '终端里也能答，先答的算。', 'err.decideNetwork': '没发出去（连不上城市服务器）。终端里还能答。', 'err.decideStatus': '没发出去（{status}）。终端里还能答，可以再试一次。', 'proto.live': '实时 · 等服务器', 'proto.connected': '实时 · 已连接', 'proto.reconnecting': '实时 · 重连中…', 'log.relayOff': '联城中继断开：其他成员定格，我的城市照常干活。', 'log.relayOn': '联城恢复：其他成员更新到最新。', 'log.relayLeave': '退出联城：其他成员从我的城市消失，我的城市不变。', 'demo.task.checkoutTest': '写结账测试', 'demo.task.paymentRetry': '改支付超时重试', 'demo.q.paymentRetry': '支付超时要不要自动重试？', 'demo.task.depsScan': '扫描依赖漏洞', 'demo.task.worker.0': '设置页表单', 'demo.task.worker.1': '登录 API', 'demo.task.worker.2': '导出 CSV', 'demo.task.worker.3': '深色模式', 'demo.task.worker.4': '小票打印', 'demo.task.worker.5': '搜索框', 'demo.task.worker.6': '分页', 'demo.task.worker.7': '价格计算', 'demo.task.worker.8': '库存提醒', 'demo.task.worker.9': '客户列表', 'demo.task.taskManager.0': '设置页', 'demo.task.taskManager.1': '登录', 'demo.task.taskManager.2': '报表', 'demo.task.taskManager.3': '打印', 'demo.task.taskManager.4': '库存', 'demo.task.fastLaneDeputy.0': '错别字', 'demo.task.fastLaneDeputy.1': '按钮颜色', 'demo.task.fastLaneDeputy.2': '图标大小', 'demo.task.fastLaneDeputy.3': '标题换行', 'demo.task.fastLaneDeputy.4': '空状态文案', 'demo.task.mergeDeputy.0': '合并 settings', 'demo.task.mergeDeputy.1': '合并 login', 'demo.task.mergeDeputy.2': '合并 report', 'demo.task.mergeDeputy.3': '合并 print', 'demo.qa.0.q': '测试名不清楚，用哪个？', 'demo.qa.0.a': '按默认，记进日志', 'demo.qa.1.q': 'API 路径用哪个？', 'demo.qa.1.a': '用 /api/settings', 'demo.qa.2.q': '要不要加分页？', 'demo.qa.2.a': '先不加，写进 ideas', 'demo.qa.3.q': '默认语言是？', 'demo.qa.3.a': 'zh，跟 agent.conf', 'demo.qa.4.q': '旧数据要迁移吗？', 'demo.qa.4.a': '要，先写测试', 'demo.qa.5.q': '这个文件能改吗？', 'demo.qa.5.a': '能，只改你那份', 'demo.qa.6.q': '可以跑这条命令吗？', 'demo.qa.6.a': '批了，继续', 'aria.needsApproval': '{task} 等你批，点开看', 'aria.needsAnswer': '{task} 等你回答，点开看', 'aria.stuckOnlyThem': '{name} 卡住了，只有 {name} 能回答', 'aria.govNeedsApproval': '总督 等你批，点开看', 'aria.govNeedsAnswer': '总督 等你回答，点开看', 'gov.waitCountdown': '总督 {s}s', 'chat.sendError': '没发出去（连不上城市服务器）。', 'btn.findLead': '找组长：{name}', 'hint.readOnlySub': '它是子任务，这份对话只能看；有事去找组长。', 'placeholder.saySomething': '跟它说…', 'btn.send': '发送', 'label.ask': '问：', 'label.answer': '答：', 'label.awaitingAnswer': '等回答…', 'member.unknown': '未知', 'chip.off': '联城断开 · 待发 {n} 条', 'chip.refused': '联城拒绝了密钥', 'chip.ok': '联城 · {people} 人 · {devices} 台设备', 'remote.note': '只能看：这是 {who} 的 agent，只有 {who} 能回答。', 'stale.sec': '最后更新 {n} 秒前', 'stale.min': '最后更新 {n} 分钟前', 'ask.permission': '{name} 要权限：{what} → 等你批', 'ask.toOwner': '{name} 问你：“{what}”', 'ask.toGov': '{name} 问总督：“{what}”', 'ask.toGovNoGov': '{name} 问总督：“{what}”，没有总督在 → 等你回答', 'askphase.pass': '总督：这个我定不了 → 等你回答 {name}', 'askphase.timeout': '总督 {wait} 秒没回答 {name} → 等你', 'closed.routed': '{name} 的请求转到{who}处理：{what}', 'closed.answered': '{who}回答 {name}：“{text}”', 'closed.answeredDefault': '{who}已回答 {name}', 'closed.allowed': '{who}批准 {name}：{what}', 'closed.denied': '{who}拒绝 {name}：{what}', 'closed.deniedReason': '，理由：“{reason}”', 'closed.ended': '{who}结束了 {name}：{what}', 'why.permission': '权限只由你来批，总督不批。', 'why.gov': '总督定不了，交给你。', 'why.timeout': '总督 {wait} 秒没回答，交给你。', 'why.pass': '总督说：这个我定不了，交给你。', 'why.noGov': '没有总督在，直接交给你。', 'closed.late': '晚了一步：<b>{who}</b>在 {time} 已经处理了。这里不用再点了。', 'closed.pending': '在 {time} 已经处理了，结果还没传回来。已记下。', 'closed.answeredText': '回答了：“{text}”', 'closed.allowedText': '批准了', 'closed.deniedText': '拒绝了', 'closed.lateFull': '晚了一步：<b>{who}</b>在 {time} 先{text}。这里不用再点了。', 'closed.doneByYou': '<b>{who}</b>在 {time} {text}。已记下。', 'log.chatSent': '你 → {to}：{text}', 'log.remoteSpawn': '{who}（{device}）的 {label} 开始：{task}', 'log.remoteDone': '{who}（{device}）的 {task} 完工了', 'log.remoteLeft': '{who}（{device}）的 {task} 下线了', 'say.understood': '明白！', 'log.eraBecame': '{name} 变成{era}了', 'demo.seed.prompt': '先把这页做完，别的先不要动', 'demo.seed.reply': '好，先做这页，其它先不碰', 'chat.stateSuffix': '（{state}）', 'punct.answerJoin': '；', 'rail.title': '在线', 'rail.count': '{n}', 'rail.rest': '休息 {n}', 'rail.tab': '在线 {n}', 'rail.none': '没人在线', 'add.tip': '加 agent', 'add.plus': '＋', 'add.opening': '正在打开 {name}…', 'add.openingBare': '正在打开…', 'add.cap': '电脑有点忙', 'add.capNums': 'RAM {ram}% · CPU {cpu}%（上限 {max}%）', 'add.capAsk': '还要打开吗？', 'add.go': '还是打开', 'add.cancel': '取消', 'add.err': '没打开：', 'add.retry': '再试', 'add.ok': '知道了', 'add.errGone': '找不到仓库文件夹 {folder}（被移走或删掉了）。', 'add.errFailed': 'Orca 没能开出终端：{detail}', 'add.errLate': '终端开了，但 60 秒还没见到它上线。去 Orca 看那个终端。', 'add.errOther': '服务器没有给出原因（可能没连上）。', 'add.plain': '这台电脑没有 Orca，页面开不了终端。在终端里跑这一行：', 'add.copy': '复制', 'add.copied': '已复制', 'add.close': '关掉', 'fold.rail': '折起名单', 'fold.msg': '折起消息', 'msg.tab': '消息 · {name}', 'b.focus': '看看它', 'follow.on': '跟随 {name}', 'follow.stop': '停止', 'demo.device.cloud': '云端', 'work.edit': '改代码', 'work.read': '看文件', 'work.bash': '跑命令', 'work.other': '忙着', 'work.pause': '停一下', 'step.edit': '改 {file}', 'step.write': '写 {file}', 'step.editAny': '改代码', 'step.writeAny': '写代码', 'step.read': '看文件', 'step.search': '找代码', 'step.web': '查资料', 'step.bash': '跑命令', 'step.send': '派出：{desc}', 'step.sendAny': '派出帮手', 'step.plan': '排计划', 'step.message': '发消息', 'step.other': '忙着', /* cloud-city: texts */ 'cloud.readOnly': '只能看', 'cloud.sign': '云端', 'cloud.machines': '机器', 'cloud.busy': '干活 {n}', 'cloud.wait': '等你 {n}', 'cloud.noMachine': '还没有机器', 'cloud.noMachineHint': '在一台加入过城市的电脑上开一个 Claude 会话，它会自己出现在这里。', 'cloud.noSessions': '这台机器现在没有会话', 'cloud.noSessionsHint': '在它上面开一个 Claude 会话，人就会走出来。会话一开，那台机器的城市自己起来。', 'cloud.offline': '没有机器在线 · 这是 {age}的画面（{label}）', 'cloud.offlineHint': '哪台机器上一开 Claude 会话，它的城市自己起来，这里自动更新', 'cloud.login': '登录已经失效，或者还没登录。请重新登录。', 'cloud.reload': '重新登录', 'cloud.logout': '退出', 'cloud.viewNote': '只能看 · 这台电脑没开云端对话，回答和说话请回到那台电脑', 'cloud.notConnected': '没连上 · 重试中…', 'cloud.justNow': '刚刚', 'cloud.ageSec': '{n} 秒前', 'cloud.ageMin': '{n} 分钟前', 'cloud.ageHour': '{n} 小时前', 'cloud.ageDay': '{n} 天前', 'cloud.talk.on': '可对话', 'cloud.talk.off': '只能看', 'cloud.box.talkOff': '这台电脑没开「云端对话」，只能看。在它的终端里自己打这条命令就开：agent-city cloud-talk on', 'cloud.box.offline': '那台电脑现在不在线，发不了。它一上线，这里自己恢复。', 'cloud.tooFast': '发得太快了，等一会儿再发。', 'cloud.tooMany': '今天发得太多了，明天再发。', 'cloud.later.ask': '它在等你批准或选择（"?"）：在这里批准、选择，以后开放。现在请到那台电脑上回答。', 'cloud.later.demo': '演示工具 · 以后开放', 'cloud.start.on': '可开 agent', 'cloud.start.off': '这台电脑不接受云端「加 agent」。要开，在它的终端里自己打：\nagent-city cloud-start on', 'cloud.start.needTalk': '这台电脑只能看。先开对话，再开「加 agent」：\nagent-city cloud-talk on\nagent-city cloud-start on', 'add.cloud.sent': '在路上…', 'add.cloud.sentTip': '已存到云端，等那台电脑来取', 'add.cloud.opening': '那台电脑正在打开 {name}…', 'add.cloud.openingBare': '那台电脑正在打开…', 'add.cloud.done': '已打开 {name} · 小人马上出现', 'add.cloud.cap': '那台电脑有点忙', 'add.cloud.tooMany': '开得太多了：一小时最多 10 个。{min} 分钟后再试。', 'add.cloud.tooManyDay': '今天开得太多了，明天再试。', 'add.cloud.noAnswer': '没连上云端，不确定指令有没有存上。等一下再点一次。', 'add.cloud.why.off': '那台电脑没开（60 秒没来取这个指令）。这个指令作废，以后也不会再开。', 'add.cloud.why.startOff': '那台电脑不接受云端「加 agent」。在它的终端里自己打：agent-city cloud-start on', 'add.cloud.why.noOrca': '那台电脑不能自己开终端（没有 Orca）。请到那台电脑上手动开。', 'add.cloud.why.gone': '那台电脑上找不到这个仓库的文件夹（被移走或删掉了）。', 'add.cloud.why.orca': 'Orca 没能开出终端：{detail}', 'add.cloud.why.late': '终端开了，但 60 秒还没见到它上线。到那台电脑的 Orca 里看那个终端。', 'add.cloud.why.busy': '这个仓库正在开另一个 agent，等它开完再点。', 'add.cloud.why.flood': '那台电脑一小时内已经开了 10 个，它不再接。过一会儿再试。', 'add.cloud.why.silent': '那台电脑接了指令后 3 分钟没回音（可能关机了）。到那台电脑上看终端有没有开。', 'add.cloud.why.restart': '那台电脑的城市程序中途重启了，这个指令作废，不会再执行。到那台电脑上看终端有没有开。', 'add.cloud.why.refused': '那台电脑不认这个仓库（它没加入云端，或文件夹不在那台电脑上）。', 'add.cloud.why.other': '没打开，原因不明。到那台电脑上看看。', 'arr.btn': '整理', 'arr.on': '整理中', 'arr.tip': '拖一块地到虚线格子；拖到另一块地上 = 交换。也可以先点地，再点格子。', 'arr.tipPick': '选中了 {name}：点一个虚线格子搬过去，或点另一块地交换。', 'arr.hide': '隐藏', 'arr.show': '显示', 'arr.cancel': '取消', 'arr.done': '完成', 'arr.tray': '已隐藏', 'arr.waits': '{n} 人在等你', 'arr.last': '至少留一块地', 'arr.hidden': '已隐藏 {n} 个', 'arr.hiddenWait': ' · 其中 {n} 个在等你', 'arr.manage': '管理', 'arr.errTaken': '那个格子已经有地了', 'arr.errSea': '海边那块地的南边要留给海', 'arr.errEmpty': '至少留一块地', 'arr.errOther': '没存上，再试一次' }, en: { 'btn.log': 'Activity', 'aria.city': 'City', 'aria.canvas': '3D island: each little person is one agent', 'proto.banner': 'Prototype - demo data', 'btn.zoomIn': 'Zoom in', 'btn.zoomOut': 'Zoom out', 'btn.rotate': 'Rotate', 'btn.resetView': 'Reset the view', 'repo.all': 'All', 'aria.repos': 'Repos: click one to fly there', 'repo.goAria': 'Fly to {name}', 'cap.hint': 'That is as far as it goes - click "All" to see every repo','btn.close': 'Close', 'aria.toolbar': 'Controls', 'label.spawn': 'Send a', 'opt.worker': 'worker - builds houses', 'opt.taskManager': 'task manager - test tower', 'opt.fastLaneDeputy': 'fast-lane deputy - garden', 'opt.mergeDeputy': 'merge deputy - bridge', 'btn.spawn': 'Send', 'btn.remoteOff': 'Disconnect relay', 'btn.remoteOn': 'Resume', 'btn.remoteLeave': 'Leave the linked city', 'type.house': 'House', 'type.shop': 'Shop', 'type.tower': 'Tower', 'type.workshop': 'Workshop', 'type.library': 'Library', 'district.house': 'Homes', 'district.shop': 'Shops', 'district.tower': 'Tests', 'district.workshop': 'Workshops', 'district.library': 'Library', 'chat.state.queued': 'Queued', 'chat.state.delivered': 'Delivered', 'chat.state.undelivered': 'Undelivered', 'chat.why.notListening': 'it is not listening, it did not get this', 'chat.state.sent': 'On its way', 'chat.you.cloud': 'You (cloud)', 'chat.you.local': 'You (page on the computer)', 'chat.why.off': 'that computer is off', 'chat.why.ended': 'this session has ended', 'chat.why.talkOff': 'that computer does not take cloud messages', 'chat.why.refused': 'that computer did not accept it', 'chat.why.flood': 'too many messages too fast, that computer did not accept it', 'chat.resend': 'Send again', 'chat.new': 'New messages ↓', 'hist.title': 'History (newest at the bottom)', 'hist.empty': 'Nothing yet', 'hist.all': 'Show steps {n}', 'hist.hide': 'Hide steps', 'hist.onlyMech': 'Only steps so far - tap "Show steps"', 'hist.started': 'Headed out: {task}', 'hist.stuck': 'Stuck: {text}', 'hist.toLead': 'To the manager', 'hist.toGov': 'To the governor', 'hist.waiting': 'Waiting on you', 'hist.done': 'Finished, heading to rest', 'hist.left': 'Clocked out', 'chat.task': 'Task (what it was sent with)', 'team.title': '{repo} · Team', 'role.task-manager': 'Task manager', 'role.worker': 'Worker', 'role.fast-lane-deputy': 'Fast-lane deputy', 'role.merge-deputy': 'Merge deputy', 'role.other': 'Helper', 'era.village': 'Village', 'era.town': 'Town', 'era.city': 'City', 'quality.good': 'Tidy', 'quality.fair': 'OK', 'quality.poor': 'Messy', 'who.governor': 'Governor', 'who.owner': 'You', 'who.terminal': 'Terminal', 'state.spawn': 'Heading out', 'state.to_plot': 'To the site', 'state.building': 'Building', 'state.working': 'Working', 'state.to_hall': 'To the governor', 'state.asking': 'Asking the governor', 'state.heard': 'Got the answer', 'state.to_lead': 'To the manager', 'state.at_lead': 'Asking the manager', 'state.back': 'Back to the site', 'state.finishing': 'Topped out', 'state.to_rest': 'Heading to rest', 'state.resting': 'Resting', 'state.leaving': 'Heading home', 'status.need_approval': 'Needs your OK', 'status.asking_gov': 'Asking the governor', 'status.waiting_answer': 'Waiting on your answer', 'status.waiting_reply': 'Waiting on you', 'status.waiting': 'Waiting on you', 'status.background': 'Working in background', 'status.idle': 'Idle', 'stuck.permission': 'Needs permission: {tool}', 'stuck.default': 'Needs your eyes', 'gov.away': 'Away', 'gov.busy': 'Busy', 'gov.home': 'At the town hall', 'top.work': 'Working', 'top.ask': 'Need governor', 'top.rest': 'Resting', 'top.done': 'Built', 'top.stalled': 'Stalled site', 'top.pending': 'Waiting', 'top.pendingAria': '{n} waiting on your call - click to open the earliest', 'empty.noLand': 'No territory yet - start inside a git repo, or wait for an agent', 'loading.text': 'Loading assets…', 'loading.progress': 'Loading assets {n}/{total}', 'loading.error': 'Assets failed to load: {err}', 'site.human': 'Hands-on', 'log.eraUpgrade': '{name} is upgrading to {era}', 'say.done': 'Done!', 'log.leftWork': '{task} clocked out', 'gov.dispatch': 'Go: {task}', 'log.govDispatch': 'The governor sent {label}: {task}', 'log.siteMerged': '{branch} merged into main, the site wrapped up', 'log.siteRemoved': 'The {branch} site was pulled down', 'log.levelUp': '{label} leveled up to {lv}', 'log.movedBack': '{label} moved back to the {kind} district', 'log.demolished': 'Every file behind {label} is gone, demolished', 'log.stuckDemo': '{task} got stuck: "{text}" -> asking the governor', 'answer.default': 'Answered', 'log.govAnswer': 'The governor answered {task}: "{text}"', 'log.doneRestPlain': '{task} finished, heading to rest', 'log.doneRestBuilt': '{task} finished: {kind} topped out, heading to rest', 'log.noplot': '{name} found no empty plot, waiting a bit', 'gov.unknown': 'Unknown', 'gov.busyRow': 'Busy', 'gov.idleRow': 'Idle', 'gov.title': '{name} governor', 'chain.lead': 'Manager', 'chain.leadTask': 'Manager {task}', 'chat.empty': 'No conversation yet', 'chat.you.page': 'You (page)', 'chat.you.terminal': 'You (terminal)', 'chat.wait': 'Waiting for it to finish this step', 'chat.loadError': 'Could not load the conversation - try opening it again in a moment.', 'kv.repo': 'Repo', 'kv.branch': 'Branch', 'kv.doing': 'Doing', 'qa.ask': 'Q: “{q}”', 'qa.answer': 'A: “{a}”', 'qa.waiting': 'Q: “{q}” - waiting for an answer…', 'act.makeStuck': 'Make it stuck', 'act.makeDone': 'Make it finish', 'act.makeLeave': 'Make it clock out', 'act.demoNote': 'These three buttons exist only in the prototype, to try the flow.', 'gov.ownTag': 'main manager · main conversation', 'gov.tagLabel': 'Governor · main manager', 'gov.rgRole': 'main manager · Governor', 'pill.hall': 'Town hall', 'gov.awayNote': 'The governor is away: this repo has no main manager session right now. Agent questions go straight to you, without waiting for the governor first.', 'hint.team': 'Team', 'hint.noAgents': 'No agents at work yet. Open a Claude Code session and send an agent - it will walk out of the town hall.', 'hint.pickSomething': 'Click a person or building in the city, or a row in the list below.', 'building.misplaced': ' - in the wrong district', 'building.level': ' - level {level}', 'building.district': '{kind} district', 'building.module': '{name} module', 'hint.files': 'The files that built it', 'hint.history': 'Who has touched it (newest first)', 'detail.title': 'Details', 'opt.other': 'Other', 'opt.customAnswer': 'Write your own answer', 'btn.sendAnswer': 'Send answer', 'kv.tool': 'Tool', 'kv.file': 'File', 'kv.url': 'URL', 'said': 'It said: {text}', 'kv.dir': 'Directory', 'field.denyReason': 'Reason for denying (optional; if filled in, it is told to it as-is)', 'field.denyPlaceholder': 'e.g. do not delete dist/ yet, it has the release package', 'btn.allow': 'Allow', 'btn.deny': 'Deny', 'ask.asking': 'is asking', 'card.permission': 'Needs permission', 'card.question': 'Asks you', 'ask.needsPermission': 'needs permission', 'pill.closed': 'Closed', 'aria.collapse': 'Collapse (without answering)', 'foot.terminalAnswers': 'The terminal can answer too - whichever answers first wins.', 'err.decideNetwork': 'Could not send (cannot reach the city server). The terminal can still answer.', 'err.decideStatus': 'Could not send ({status}). The terminal can still answer, or try again.', 'proto.live': 'Live - waiting for the server', 'proto.connected': 'Live - connected', 'proto.reconnecting': 'Live - reconnecting…', 'log.relayOff': 'City-link relay disconnected: other members are frozen, my city keeps working as normal.', 'log.relayOn': 'City-link resumed: other members update to the latest.', 'log.relayLeave': 'Left the linked city: other members disappear from my city; my city is unchanged.', 'demo.task.checkoutTest': 'Write checkout tests', 'demo.task.paymentRetry': 'Fix payment-timeout retry', 'demo.q.paymentRetry': 'Should a payment timeout retry automatically?', 'demo.task.depsScan': 'Scan dependencies for vulnerabilities', 'demo.task.worker.0': 'Settings page form', 'demo.task.worker.1': 'Login API', 'demo.task.worker.2': 'Export CSV', 'demo.task.worker.3': 'Dark mode', 'demo.task.worker.4': 'Receipt printing', 'demo.task.worker.5': 'Search box', 'demo.task.worker.6': 'Pagination', 'demo.task.worker.7': 'Price calculation', 'demo.task.worker.8': 'Inventory alerts', 'demo.task.worker.9': 'Customer list', 'demo.task.taskManager.0': 'Settings page', 'demo.task.taskManager.1': 'Login', 'demo.task.taskManager.2': 'Reports', 'demo.task.taskManager.3': 'Printing', 'demo.task.taskManager.4': 'Inventory', 'demo.task.fastLaneDeputy.0': 'Typos', 'demo.task.fastLaneDeputy.1': 'Button colour', 'demo.task.fastLaneDeputy.2': 'Icon size', 'demo.task.fastLaneDeputy.3': 'Title wrapping', 'demo.task.fastLaneDeputy.4': 'Empty-state copy', 'demo.task.mergeDeputy.0': 'Merge settings', 'demo.task.mergeDeputy.1': 'Merge login', 'demo.task.mergeDeputy.2': 'Merge report', 'demo.task.mergeDeputy.3': 'Merge print', 'demo.qa.0.q': 'Which test name is unclear - which one?', 'demo.qa.0.a': 'Go with the default, log it', 'demo.qa.1.q': 'Which API path should I use?', 'demo.qa.1.a': 'Use /api/settings', 'demo.qa.2.q': 'Should I add pagination?', 'demo.qa.2.a': 'Not yet, write it into ideas', 'demo.qa.3.q': 'What is the default language?', 'demo.qa.3.a': 'zh, matching agent.conf', 'demo.qa.4.q': 'Does the old data need migrating?', 'demo.qa.4.a': 'Yes, write a test first', 'demo.qa.5.q': 'Can I change this file?', 'demo.qa.5.a': 'Yes, only your own copy', 'demo.qa.6.q': 'Can I run this command?', 'demo.qa.6.a': 'Approved, go ahead', 'aria.needsApproval': '{task} needs your approval, click to open', 'aria.needsAnswer': '{task} needs your answer, click to open', 'aria.stuckOnlyThem': '{name} is stuck; only {name} can answer', 'aria.govNeedsApproval': 'The governor needs your approval, click to open', 'aria.govNeedsAnswer': 'The governor needs your answer, click to open', 'gov.waitCountdown': 'Governor {s}s', 'chat.sendError': 'Could not send (cannot reach the city server).', 'btn.findLead': 'Find the lead: {name}', 'hint.readOnlySub': 'This is a subtask; the conversation is view only - go to its lead for anything else.', 'placeholder.saySomething': 'Say something to it…', 'btn.send': 'Send', 'label.ask': 'Q: ', 'label.answer': 'A: ', 'label.awaitingAnswer': 'awaiting an answer…', 'member.unknown': 'Unknown', 'chip.off': 'City-link disconnected - {n} queued', 'chip.refused': 'City-link refused the key', 'chip.ok': 'City-link - {people} people - {devices} devices', 'remote.note': 'View only: this agent belongs to {who} - only {who} can answer it.', 'stale.sec': 'Last updated {n}s ago', 'stale.min': 'Last updated {n}m ago', 'ask.permission': '{name} needs permission: {what} -> waiting on you', 'ask.toOwner': '{name} asks you: “{what}”', 'ask.toGov': '{name} asks the governor: “{what}”', 'ask.toGovNoGov': '{name} asks the governor: “{what}”, no governor around -> waiting on your answer', 'askphase.pass': 'The governor: not mine to decide -> waiting on your answer for {name}', 'askphase.timeout': 'The governor did not answer {name} in {wait}s -> waiting on you', 'closed.routed': 'The request from {name} was routed to {who}: {what}', 'closed.answered': '{who} answered {name}: “{text}”', 'closed.answeredDefault': '{who} already answered {name}', 'closed.allowed': '{who} allowed {name}: {what}', 'closed.denied': '{who} denied {name}: {what}', 'closed.deniedReason': ', reason: “{reason}”', 'closed.ended': '{who} closed {name}: {what}', 'why.permission': 'Only you can approve permissions - the governor does not.', 'why.gov': 'The governor cannot decide this - it is yours.', 'why.timeout': 'The governor did not answer in {wait}s - it is yours.', 'why.pass': 'The governor said: not mine to decide - it is yours.', 'why.noGov': 'No governor around - it goes straight to you.', 'closed.late': 'Too late: <b>{who}</b> already handled it at {time}. No need to click here.', 'closed.pending': 'Handled at {time}; the result has not come back yet. Noted.', 'closed.answeredText': 'Answered: “{text}”', 'closed.allowedText': 'Allowed', 'closed.deniedText': 'Denied', 'closed.lateFull': 'Too late: <b>{who}</b> already {text} at {time}. No need to click here.', 'closed.doneByYou': '<b>{who}</b> {text} at {time}. Noted.', 'log.chatSent': 'You -> {to}: {text}', 'log.remoteSpawn': '{who} ({device}) - {label} started: {task}', 'log.remoteDone': '{who} ({device}) - {task} finished', 'log.remoteLeft': '{who} ({device}) - {task} went offline', 'say.understood': 'Got it!', 'log.eraBecame': '{name} became a {era}', 'demo.seed.prompt': 'Finish this page first, do not touch anything else yet', 'demo.seed.reply': 'OK, doing this page first, leaving the rest alone', 'chat.stateSuffix': ' ({state})', 'punct.answerJoin': '; ', 'rail.title': 'Now', 'rail.count': '{n}', 'rail.rest': 'Resting {n}', 'rail.tab': 'Now {n}', 'rail.none': 'Nobody online', 'add.tip': 'Add agent', 'add.plus': '+', 'add.opening': 'Opening {name}…', 'add.openingBare': 'Opening…', 'add.cap': 'The computer is busy', 'add.capNums': 'RAM {ram}% · CPU {cpu}% (limit {max}%)', 'add.capAsk': 'Open it anyway?', 'add.go': 'Open anyway', 'add.cancel': 'Cancel', 'add.err': 'Not opened: ', 'add.retry': 'Try again', 'add.ok': 'Got it', 'add.errGone': 'Cannot find the repo folder {folder} (moved or deleted).', 'add.errFailed': 'Orca could not open a terminal: {detail}', 'add.errLate': 'The terminal opened, but nothing showed up in 60 seconds. Look at that terminal in Orca.', 'add.errOther': 'The server gave no reason (it may be out of reach).', 'add.plain': 'This computer has no Orca, so the page cannot open a terminal. Run this line in a terminal:', 'add.copy': 'Copy', 'add.copied': 'Copied', 'add.close': 'Close', 'fold.rail': 'Fold the list', 'fold.msg': 'Fold the messages', 'msg.tab': 'Messages · {name}', 'b.focus': 'Show it', 'follow.on': 'Following {name}', 'follow.stop': 'Stop', 'demo.device.cloud': 'Cloud', 'work.edit': 'Editing', 'work.read': 'Reading', 'work.bash': 'Running', 'work.other': 'Busy', 'work.pause': 'Pausing', 'step.edit': 'Editing {file}', 'step.write': 'Writing {file}', 'step.editAny': 'Editing code', 'step.writeAny': 'Writing code', 'step.read': 'Reading files', 'step.search': 'Searching code', 'step.web': 'Looking things up', 'step.bash': 'Running a command', 'step.send': 'Sending out: {desc}', 'step.sendAny': 'Sending a helper', 'step.plan': 'Planning', 'step.message': 'Sending a message', 'step.other': 'Busy', /* cloud-city: texts */ 'cloud.readOnly': 'View only', 'cloud.sign': 'Cloud', 'cloud.machines': 'Machines', 'cloud.busy': 'Working {n}', 'cloud.wait': 'Waiting {n}', 'cloud.noMachine': 'No machine yet', 'cloud.noMachineHint': 'Open a Claude session on a machine that has joined the city. It shows up here by itself.', 'cloud.noSessions': 'This machine has no sessions right now', 'cloud.noSessionsHint': 'Open a Claude session on it and the people walk out. The city on that machine starts by itself once a session opens.', 'cloud.offline': 'No machine is online - this is the picture from {age} ({label})', 'cloud.offlineHint': 'When a Claude session opens on any machine, its city starts by itself and this page updates', 'cloud.login': 'You are signed out, or the login has expired. Please sign in again.', 'cloud.reload': 'Sign in again', 'cloud.logout': 'Sign out', 'cloud.viewNote': 'View only - this computer has not turned on cloud talk; to answer or talk, go back to that computer', 'cloud.notConnected': 'Not connected - trying again…', 'cloud.justNow': 'just now', 'cloud.ageSec': '{n} s ago', 'cloud.ageMin': '{n} min ago', 'cloud.ageHour': '{n} h ago', 'cloud.ageDay': '{n} d ago', 'cloud.talk.on': 'Can talk', 'cloud.talk.off': 'View only', 'cloud.box.talkOff': 'This computer has not turned on "cloud talk", so it is view only. Type this command in its own terminal to turn it on: agent-city cloud-talk on', 'cloud.box.offline': 'That computer is offline, so nothing can be sent. When it is back, this box returns by itself.', 'cloud.tooFast': 'Too fast - wait a moment, then send again.', 'cloud.tooMany': 'Too many messages today - try again tomorrow.', 'cloud.later.ask': 'It is waiting for you to approve or choose ("?"): doing that here comes later. For now, answer it on that computer.', 'cloud.later.demo': 'Demo tools · later', 'cloud.start.on': 'Can start agents', 'cloud.start.off': 'This computer does not take cloud "Add agent" orders. To turn it on, type this in its own terminal:\nagent-city cloud-start on', 'cloud.start.needTalk': 'This computer is view only. Turn on talk first, then "Add agent":\nagent-city cloud-talk on\nagent-city cloud-start on', 'add.cloud.sent': 'On its way…', 'add.cloud.sentTip': 'Saved in the cloud, waiting for that computer to pick it up', 'add.cloud.opening': 'That computer is opening {name}…', 'add.cloud.openingBare': 'That computer is opening…', 'add.cloud.done': 'Opened {name} · the person shows up in a moment', 'add.cloud.cap': 'That computer is busy', 'add.cloud.tooMany': 'Too many opened: at most 10 an hour. Try again in {min} min.', 'add.cloud.tooManyDay': 'Too many opened today - try again tomorrow.', 'add.cloud.noAnswer': 'No answer from the cloud, so it is not sure the order was saved. Wait a moment, then click again.', 'add.cloud.why.off': 'That computer is off (it did not pick up this order in 60 seconds). The order is cancelled and will never run later.', 'add.cloud.why.startOff': 'That computer does not take cloud "Add agent" orders. Type this in its own terminal: agent-city cloud-start on', 'add.cloud.why.noOrca': 'That computer cannot open a terminal by itself (no Orca). Open one there by hand.', 'add.cloud.why.gone': 'That computer cannot find the folder of this repo (moved or deleted).', 'add.cloud.why.orca': 'Orca could not open a terminal: {detail}', 'add.cloud.why.late': 'The terminal opened, but nothing showed up in 60 seconds. Look at that terminal in Orca on that computer.', 'add.cloud.why.busy': 'This repo is already opening another agent. Wait until it is done, then click.', 'add.cloud.why.flood': 'That computer already opened 10 this hour and takes no more. Try again later.', 'add.cloud.why.silent': 'That computer took the order and said nothing for 3 minutes (it may be off). Look on that computer to see if a terminal opened.', 'add.cloud.why.restart': 'The city program on that computer restarted midway, so this order is cancelled and will not run. Look on that computer to see if a terminal opened.', 'add.cloud.why.refused': 'That computer does not know this repo (it has not joined the cloud, or its folder is not on that computer).', 'add.cloud.why.other': 'Not opened, and the reason is unknown. Look on that computer.', 'arr.btn': 'Arrange', 'arr.on': 'Arranging', 'arr.tip': 'Drag a land to a dashed slot; drop it on another land to swap. Or tap a land, then a slot.', 'arr.tipPick': '{name} is picked: tap a dashed slot to move it, or another land to swap.', 'arr.hide': 'Hide', 'arr.show': 'Show', 'arr.cancel': 'Cancel', 'arr.done': 'Done', 'arr.tray': 'Hidden', 'arr.waits': '{n} waiting for you', 'arr.last': 'Keep at least one land', 'arr.hidden': '{n} hidden', 'arr.hiddenWait': ' · {n} waiting for you', 'arr.manage': 'Manage', 'arr.errTaken': 'That slot is taken', 'arr.errSea': 'The cell south of a coast land is its sea', 'arr.errEmpty': 'Keep at least one land', 'arr.errOther': 'Not saved, try again.' } };
+const TEXT = { zh: { 'btn.log': '动态', 'aria.city': '城市', 'aria.canvas': '3D 小岛：每个小人是一个 agent', 'proto.banner': '原型 · 模拟数据', 'btn.zoomIn': '放大', 'btn.zoomOut': '缩小', 'btn.rotate': '转一下', 'btn.resetView': '回到默认视角', 'repo.all': '全部', 'aria.repos': '仓库：点一个飞过去', 'repo.goAria': '飞到 {name}', 'cap.hint': '已经是最远了 · 点「全部」看所有仓库','btn.close': '关闭', 'aria.toolbar': '控制', 'label.spawn': '派一个', 'opt.worker': 'worker · 盖房子', 'opt.taskManager': 'task manager · 测试塔', 'opt.fastLaneDeputy': 'fast-lane deputy · 花园', 'opt.mergeDeputy': 'merge deputy · 桥', 'btn.spawn': '派出', 'btn.remoteOff': '中继断开', 'btn.remoteOn': '恢复', 'btn.remoteLeave': '退出联城', 'type.house': '住宅', 'type.shop': '商店', 'type.tower': '测试塔', 'type.workshop': '工坊', 'type.library': '图书馆', 'district.house': '住宅区', 'district.shop': '商业街', 'district.tower': '测试区', 'district.workshop': '工坊区', 'district.library': '图书馆区', 'chat.state.queued': '排队中', 'chat.state.delivered': '已送达', 'chat.state.undelivered': '没送到', 'chat.why.notListening': '它没在听，收不到', 'chat.state.sent': '在路上', 'chat.you.cloud': '你（云端）', 'chat.you.local': '你（电脑上的页面）', 'chat.why.off': '那台电脑没开', 'chat.why.ended': '这个会话已经结束', 'chat.why.talkOff': '那台电脑不接收云端消息', 'chat.why.refused': '那台电脑没收这条消息', 'chat.why.flood': '发得太快，那台电脑没收', 'chat.resend': '重发', 'chat.new': '有新消息 ↓', 'hist.title': '历史（新的在下面）', 'hist.empty': '还没有记录', 'hist.all': '显示过程 {n}', 'hist.hide': '隐藏过程', 'hist.onlyMech': '只有过程记录，点「显示过程」看', 'hist.started': '出门：{task}', 'hist.stuck': '卡住了：{text}', 'hist.toLead': '去问经理', 'hist.toGov': '去问总督', 'hist.waiting': '等你回话', 'hist.done': '完工，去休息', 'hist.left': '下班了', 'chat.task': '任务（派它时的话）', 'team.title': '{repo} · 团队', 'role.task-manager': '任务经理', 'role.worker': '工人', 'role.fast-lane-deputy': '快车道副手', 'role.merge-deputy': '合并副手', 'role.other': '帮手', 'era.village': '村', 'era.town': '镇', 'era.city': '城', 'tier.1': '一线城市', 'tier.2': '二线城市', 'tier.3': '三线城市', 'hall.lines': '{n} 行', 'hall.wan': '{n} 万行', 'quality.good': '整齐', 'quality.fair': '还行', 'quality.poor': '有点乱', 'who.governor': '总督', 'who.owner': '你', 'who.terminal': '终端', 'state.spawn': '出门', 'state.to_plot': '去工地', 'state.building': '施工中', 'state.working': '干活', 'state.to_hall': '去问总督', 'state.asking': '在问总督', 'state.heard': '拿到答案', 'state.to_lead': '去问经理', 'state.at_lead': '问经理', 'state.back': '回工地', 'state.finishing': '封顶了', 'state.to_rest': '去休息', 'state.resting': '休息中', 'state.leaving': '下班回家', 'status.need_approval': '等你批', 'status.asking_gov': '在问总督', 'status.waiting_answer': '等你回答', 'status.waiting_reply': '等你回话', 'status.waiting': '等你', 'status.background': '后台在跑', 'status.idle': '空闲', 'stuck.permission': '要权限：{tool}', 'stuck.default': '需要你看一下', 'gov.away': '不在', 'gov.busy': '忙着', 'gov.home': '坐镇市政厅', 'top.work': '干活', 'top.ask': '找总督', 'top.rest': '休息', 'top.done': '建成', 'top.stalled': '卡住的工地', 'top.pending': '等你', 'top.pendingAria': '等你决定 {n} 个，点开最早的一个', 'empty.noLand': '还没有领地 · 在一个 git 仓库里启动，或等代理开工', 'loading.text': '正在搬来素材…', 'loading.progress': '正在搬来素材 {n}/{total}', 'loading.error': '素材没加载成功：{err}', 'site.human': '亲自带', 'log.eraUpgrade': '{name} 开始升级成{era}', 'say.done': '完工啦！', 'log.leftWork': '{task} 下班了', 'gov.dispatch': '去吧：{task}', 'log.govDispatch': '总督派出 {label}：{task}', 'log.siteMerged': '{branch} 合并进主线，工地收工', 'log.siteRemoved': '{branch} 的工地撤了', 'log.levelUp': '{label} 升到 {lv} 级', 'log.movedBack': '{label} 搬回{kind}区', 'log.demolished': '{label} 的文件都没了，拆掉', 'log.stuckDemo': '{task} 卡住了：“{text}” → 去问总督', 'answer.default': '已回答', 'log.govAnswer': '总督回答 {task}：“{text}”', 'log.doneRestPlain': '{task} 完工，去休息', 'log.doneRestBuilt': '{task} 完工：{kind}封顶，去休息', 'log.noplot': '{name} 没有空地了，先等等', 'gov.unknown': '未知', 'gov.busyRow': '在忙', 'gov.idleRow': '空闲', 'gov.title': '{name} 总督', 'chain.lead': '经理', 'chain.leadTask': '经理 {task}', 'chat.empty': '还没有对话', 'chat.you.page': '你（页面）', 'chat.you.terminal': '你（终端）', 'chat.wait': '等它做完这一步', 'chat.loadError': '对话没加载出来，等会儿再打开看看。', 'kv.repo': '仓库', 'kv.branch': '分支', 'kv.doing': '在做', 'qa.ask': '问：“{q}”', 'qa.answer': '答：“{a}”', 'qa.waiting': '问：“{q}” 等回答…', 'act.makeStuck': '让它卡住', 'act.makeDone': '让它完工', 'act.makeLeave': '让它下班', 'act.demoNote': '这三个按钮只在原型里有，用来试流程。', 'gov.ownTag': 'main manager · 主对话', 'gov.tagLabel': '总督 · main manager', 'gov.rgRole': 'main manager · 总督', 'pill.hall': '市政厅', 'gov.awayNote': '总督不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等总督。', 'hint.team': '团队', 'hint.noAgents': '还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。', 'hint.pickSomething': '点城里的小人、房子，或下面名单里的一行。', 'building.misplaced': ' · 放错区了', 'building.level': ' · 等级 {level}', 'building.district': '{kind}区', 'building.module': '{name} 模块', 'hint.files': '盖它的文件', 'hint.history': '改过它的人（新的在前）', 'detail.title': '详情', 'opt.other': '其他', 'opt.customAnswer': '自己写回答', 'btn.sendAnswer': '发送回答', 'kv.tool': '工具', 'kv.file': '文件', 'kv.url': '网址', 'said': '它说：{text}', 'kv.dir': '目录', 'field.denyReason': '拒绝理由（可以不填；填了会原样告诉它）', 'field.denyPlaceholder': '比如：先别删 dist/，里面有发布包', 'btn.allow': '批准', 'btn.deny': '拒绝', 'ask.asking': '在问', 'card.permission': '要权限', 'card.question': '在问你', 'ask.needsPermission': '要权限', 'pill.closed': '已关闭', 'aria.collapse': '收起（不回答）', 'foot.terminalAnswers': '终端里也能答，先答的算。', 'err.decideNetwork': '没发出去（连不上城市服务器）。终端里还能答。', 'err.decideStatus': '没发出去（{status}）。终端里还能答，可以再试一次。', 'proto.live': '实时 · 等服务器', 'proto.connected': '实时 · 已连接', 'proto.reconnecting': '实时 · 重连中…', 'log.relayOff': '联城中继断开：其他成员定格，我的城市照常干活。', 'log.relayOn': '联城恢复：其他成员更新到最新。', 'log.relayLeave': '退出联城：其他成员从我的城市消失，我的城市不变。', 'demo.task.checkoutTest': '写结账测试', 'demo.task.paymentRetry': '改支付超时重试', 'demo.q.paymentRetry': '支付超时要不要自动重试？', 'demo.task.depsScan': '扫描依赖漏洞', 'demo.task.worker.0': '设置页表单', 'demo.task.worker.1': '登录 API', 'demo.task.worker.2': '导出 CSV', 'demo.task.worker.3': '深色模式', 'demo.task.worker.4': '小票打印', 'demo.task.worker.5': '搜索框', 'demo.task.worker.6': '分页', 'demo.task.worker.7': '价格计算', 'demo.task.worker.8': '库存提醒', 'demo.task.worker.9': '客户列表', 'demo.task.taskManager.0': '设置页', 'demo.task.taskManager.1': '登录', 'demo.task.taskManager.2': '报表', 'demo.task.taskManager.3': '打印', 'demo.task.taskManager.4': '库存', 'demo.task.fastLaneDeputy.0': '错别字', 'demo.task.fastLaneDeputy.1': '按钮颜色', 'demo.task.fastLaneDeputy.2': '图标大小', 'demo.task.fastLaneDeputy.3': '标题换行', 'demo.task.fastLaneDeputy.4': '空状态文案', 'demo.task.mergeDeputy.0': '合并 settings', 'demo.task.mergeDeputy.1': '合并 login', 'demo.task.mergeDeputy.2': '合并 report', 'demo.task.mergeDeputy.3': '合并 print', 'demo.qa.0.q': '测试名不清楚，用哪个？', 'demo.qa.0.a': '按默认，记进日志', 'demo.qa.1.q': 'API 路径用哪个？', 'demo.qa.1.a': '用 /api/settings', 'demo.qa.2.q': '要不要加分页？', 'demo.qa.2.a': '先不加，写进 ideas', 'demo.qa.3.q': '默认语言是？', 'demo.qa.3.a': 'zh，跟 agent.conf', 'demo.qa.4.q': '旧数据要迁移吗？', 'demo.qa.4.a': '要，先写测试', 'demo.qa.5.q': '这个文件能改吗？', 'demo.qa.5.a': '能，只改你那份', 'demo.qa.6.q': '可以跑这条命令吗？', 'demo.qa.6.a': '批了，继续', 'aria.needsApproval': '{task} 等你批，点开看', 'aria.needsAnswer': '{task} 等你回答，点开看', 'aria.stuckOnlyThem': '{name} 卡住了，只有 {name} 能回答', 'aria.govNeedsApproval': '总督 等你批，点开看', 'aria.govNeedsAnswer': '总督 等你回答，点开看', 'gov.waitCountdown': '总督 {s}s', 'chat.sendError': '没发出去（连不上城市服务器）。', 'btn.findLead': '找组长：{name}', 'hint.readOnlySub': '它是子任务，这份对话只能看；有事去找组长。', 'placeholder.saySomething': '跟它说…', 'btn.send': '发送', 'label.ask': '问：', 'label.answer': '答：', 'label.awaitingAnswer': '等回答…', 'member.unknown': '未知', 'chip.off': '联城断开 · 待发 {n} 条', 'chip.refused': '联城拒绝了密钥', 'chip.ok': '联城 · {people} 人 · {devices} 台设备', 'remote.note': '只能看：这是 {who} 的 agent，只有 {who} 能回答。', 'stale.sec': '最后更新 {n} 秒前', 'stale.min': '最后更新 {n} 分钟前', 'ask.permission': '{name} 要权限：{what} → 等你批', 'ask.toOwner': '{name} 问你：“{what}”', 'ask.toGov': '{name} 问总督：“{what}”', 'ask.toGovNoGov': '{name} 问总督：“{what}”，没有总督在 → 等你回答', 'askphase.pass': '总督：这个我定不了 → 等你回答 {name}', 'askphase.timeout': '总督 {wait} 秒没回答 {name} → 等你', 'closed.routed': '{name} 的请求转到{who}处理：{what}', 'closed.answered': '{who}回答 {name}：“{text}”', 'closed.answeredDefault': '{who}已回答 {name}', 'closed.allowed': '{who}批准 {name}：{what}', 'closed.denied': '{who}拒绝 {name}：{what}', 'closed.deniedReason': '，理由：“{reason}”', 'closed.ended': '{who}结束了 {name}：{what}', 'why.permission': '权限只由你来批，总督不批。', 'why.gov': '总督定不了，交给你。', 'why.timeout': '总督 {wait} 秒没回答，交给你。', 'why.pass': '总督说：这个我定不了，交给你。', 'why.noGov': '没有总督在，直接交给你。', 'closed.late': '晚了一步：<b>{who}</b>在 {time} 已经处理了。这里不用再点了。', 'closed.pending': '在 {time} 已经处理了，结果还没传回来。已记下。', 'closed.answeredText': '回答了：“{text}”', 'closed.allowedText': '批准了', 'closed.deniedText': '拒绝了', 'closed.lateFull': '晚了一步：<b>{who}</b>在 {time} 先{text}。这里不用再点了。', 'closed.doneByYou': '<b>{who}</b>在 {time} {text}。已记下。', 'log.chatSent': '你 → {to}：{text}', 'log.remoteSpawn': '{who}（{device}）的 {label} 开始：{task}', 'log.remoteDone': '{who}（{device}）的 {task} 完工了', 'log.remoteLeft': '{who}（{device}）的 {task} 下线了', 'say.understood': '明白！', 'log.eraBecame': '{name} 变成{era}了', 'log.tierUp': '{name} 升级为{tier}', 'demo.seed.prompt': '先把这页做完，别的先不要动', 'demo.seed.reply': '好，先做这页，其它先不碰', 'chat.stateSuffix': '（{state}）', 'punct.answerJoin': '；', 'rail.title': '在线', 'rail.count': '{n}', 'rail.rest': '休息 {n}', 'rail.tab': '在线 {n}', 'rail.none': '没人在线', 'add.tip': '加 agent', 'add.plus': '＋', 'add.opening': '正在打开 {name}…', 'add.openingBare': '正在打开…', 'add.cap': '电脑有点忙', 'add.capNums': 'RAM {ram}% · CPU {cpu}%（上限 {max}%）', 'add.capAsk': '还要打开吗？', 'add.go': '还是打开', 'add.cancel': '取消', 'add.err': '没打开：', 'add.retry': '再试', 'add.ok': '知道了', 'add.errGone': '找不到仓库文件夹 {folder}（被移走或删掉了）。', 'add.errFailed': 'Orca 没能开出终端：{detail}', 'add.errLate': '终端开了，但 60 秒还没见到它上线。去 Orca 看那个终端。', 'add.errOther': '服务器没有给出原因（可能没连上）。', 'add.plain': '这台电脑没有 Orca，页面开不了终端。在终端里跑这一行：', 'add.copy': '复制', 'add.copied': '已复制', 'add.close': '关掉', 'fold.rail': '折起名单', 'fold.msg': '折起消息', 'msg.tab': '消息 · {name}', 'b.focus': '看看它', 'follow.on': '跟随 {name}', 'follow.stop': '停止', 'demo.device.cloud': '云端', 'work.edit': '改代码', 'work.read': '看文件', 'work.bash': '跑命令', 'work.other': '忙着', 'work.pause': '停一下', 'step.edit': '改 {file}', 'step.write': '写 {file}', 'step.editAny': '改代码', 'step.writeAny': '写代码', 'step.read': '看文件', 'step.search': '找代码', 'step.web': '查资料', 'step.bash': '跑命令', 'step.send': '派出：{desc}', 'step.sendAny': '派出帮手', 'step.plan': '排计划', 'step.message': '发消息', 'step.other': '忙着', /* cloud-city: texts */ 'cloud.readOnly': '只能看', 'cloud.sign': '云端', 'cloud.machines': '机器', 'cloud.busy': '干活 {n}', 'cloud.wait': '等你 {n}', 'cloud.noMachine': '还没有机器', 'cloud.noMachineHint': '在一台加入过城市的电脑上开一个 Claude 会话，它会自己出现在这里。', 'cloud.noSessions': '这台机器现在没有会话', 'cloud.noSessionsHint': '在它上面开一个 Claude 会话，人就会走出来。会话一开，那台机器的城市自己起来。', 'cloud.offline': '没有机器在线 · 这是 {age}的画面（{label}）', 'cloud.offlineHint': '哪台机器上一开 Claude 会话，它的城市自己起来，这里自动更新', 'cloud.login': '登录已经失效，或者还没登录。请重新登录。', 'cloud.reload': '重新登录', 'cloud.logout': '退出', 'cloud.viewNote': '只能看 · 这台电脑没开云端对话，回答和说话请回到那台电脑', 'cloud.notConnected': '没连上 · 重试中…', 'cloud.justNow': '刚刚', 'cloud.ageSec': '{n} 秒前', 'cloud.ageMin': '{n} 分钟前', 'cloud.ageHour': '{n} 小时前', 'cloud.ageDay': '{n} 天前', 'cloud.talk.on': '可对话', 'cloud.talk.off': '只能看', 'cloud.box.talkOff': '这台电脑没开「云端对话」，只能看。在它的终端里自己打这条命令就开：agent-city cloud-talk on', 'cloud.box.offline': '那台电脑现在不在线，发不了。它一上线，这里自己恢复。', 'cloud.tooFast': '发得太快了，等一会儿再发。', 'cloud.tooMany': '今天发得太多了，明天再发。', 'cloud.later.ask': '它在等你批准或选择（"?"）：在这里批准、选择，以后开放。现在请到那台电脑上回答。', 'cloud.later.demo': '演示工具 · 以后开放', 'cloud.start.on': '可开 agent', 'cloud.start.off': '这台电脑不接受云端「加 agent」。要开，在它的终端里自己打：\nagent-city cloud-start on', 'cloud.start.needTalk': '这台电脑只能看。先开对话，再开「加 agent」：\nagent-city cloud-talk on\nagent-city cloud-start on', 'add.cloud.sent': '在路上…', 'add.cloud.sentTip': '已存到云端，等那台电脑来取', 'add.cloud.opening': '那台电脑正在打开 {name}…', 'add.cloud.openingBare': '那台电脑正在打开…', 'add.cloud.done': '已打开 {name} · 小人马上出现', 'add.cloud.cap': '那台电脑有点忙', 'add.cloud.tooMany': '开得太多了：一小时最多 10 个。{min} 分钟后再试。', 'add.cloud.tooManyDay': '今天开得太多了，明天再试。', 'add.cloud.noAnswer': '没连上云端，不确定指令有没有存上。等一下再点一次。', 'add.cloud.why.off': '那台电脑没开（60 秒没来取这个指令）。这个指令作废，以后也不会再开。', 'add.cloud.why.startOff': '那台电脑不接受云端「加 agent」。在它的终端里自己打：agent-city cloud-start on', 'add.cloud.why.noOrca': '那台电脑不能自己开终端（没有 Orca）。请到那台电脑上手动开。', 'add.cloud.why.gone': '那台电脑上找不到这个仓库的文件夹（被移走或删掉了）。', 'add.cloud.why.orca': 'Orca 没能开出终端：{detail}', 'add.cloud.why.late': '终端开了，但 60 秒还没见到它上线。到那台电脑的 Orca 里看那个终端。', 'add.cloud.why.busy': '这个仓库正在开另一个 agent，等它开完再点。', 'add.cloud.why.flood': '那台电脑一小时内已经开了 10 个，它不再接。过一会儿再试。', 'add.cloud.why.silent': '那台电脑接了指令后 3 分钟没回音（可能关机了）。到那台电脑上看终端有没有开。', 'add.cloud.why.restart': '那台电脑的城市程序中途重启了，这个指令作废，不会再执行。到那台电脑上看终端有没有开。', 'add.cloud.why.refused': '那台电脑不认这个仓库（它没加入云端，或文件夹不在那台电脑上）。', 'add.cloud.why.other': '没打开，原因不明。到那台电脑上看看。', 'arr.btn': '整理', 'arr.on': '整理中', 'arr.tip': '拖一块地到虚线格子；拖到另一块地上 = 交换。也可以先点地，再点格子。', 'arr.tipPick': '选中了 {name}：点一个虚线格子搬过去，或点另一块地交换。', 'arr.hide': '隐藏', 'arr.show': '显示', 'arr.cancel': '取消', 'arr.done': '完成', 'arr.tray': '已隐藏', 'arr.waits': '{n} 人在等你', 'arr.last': '至少留一块地', 'arr.hidden': '已隐藏 {n} 个', 'arr.hiddenWait': ' · 其中 {n} 个在等你', 'arr.manage': '管理', 'arr.errTaken': '那个格子已经有地了', 'arr.errSea': '海边那块地的南边要留给海', 'arr.errSize': '大小不一样，不能对换', 'arr.errEmpty': '至少留一块地', 'arr.errOther': '没存上，再试一次' }, en: { 'btn.log': 'Activity', 'aria.city': 'City', 'aria.canvas': '3D island: each little person is one agent', 'proto.banner': 'Prototype - demo data', 'btn.zoomIn': 'Zoom in', 'btn.zoomOut': 'Zoom out', 'btn.rotate': 'Rotate', 'btn.resetView': 'Reset the view', 'repo.all': 'All', 'aria.repos': 'Repos: click one to fly there', 'repo.goAria': 'Fly to {name}', 'cap.hint': 'That is as far as it goes - click "All" to see every repo','btn.close': 'Close', 'aria.toolbar': 'Controls', 'label.spawn': 'Send a', 'opt.worker': 'worker - builds houses', 'opt.taskManager': 'task manager - test tower', 'opt.fastLaneDeputy': 'fast-lane deputy - garden', 'opt.mergeDeputy': 'merge deputy - bridge', 'btn.spawn': 'Send', 'btn.remoteOff': 'Disconnect relay', 'btn.remoteOn': 'Resume', 'btn.remoteLeave': 'Leave the linked city', 'type.house': 'House', 'type.shop': 'Shop', 'type.tower': 'Tower', 'type.workshop': 'Workshop', 'type.library': 'Library', 'district.house': 'Homes', 'district.shop': 'Shops', 'district.tower': 'Tests', 'district.workshop': 'Workshops', 'district.library': 'Library', 'chat.state.queued': 'Queued', 'chat.state.delivered': 'Delivered', 'chat.state.undelivered': 'Undelivered', 'chat.why.notListening': 'it is not listening, it did not get this', 'chat.state.sent': 'On its way', 'chat.you.cloud': 'You (cloud)', 'chat.you.local': 'You (page on the computer)', 'chat.why.off': 'that computer is off', 'chat.why.ended': 'this session has ended', 'chat.why.talkOff': 'that computer does not take cloud messages', 'chat.why.refused': 'that computer did not accept it', 'chat.why.flood': 'too many messages too fast, that computer did not accept it', 'chat.resend': 'Send again', 'chat.new': 'New messages ↓', 'hist.title': 'History (newest at the bottom)', 'hist.empty': 'Nothing yet', 'hist.all': 'Show steps {n}', 'hist.hide': 'Hide steps', 'hist.onlyMech': 'Only steps so far - tap "Show steps"', 'hist.started': 'Headed out: {task}', 'hist.stuck': 'Stuck: {text}', 'hist.toLead': 'To the manager', 'hist.toGov': 'To the governor', 'hist.waiting': 'Waiting on you', 'hist.done': 'Finished, heading to rest', 'hist.left': 'Clocked out', 'chat.task': 'Task (what it was sent with)', 'team.title': '{repo} · Team', 'role.task-manager': 'Task manager', 'role.worker': 'Worker', 'role.fast-lane-deputy': 'Fast-lane deputy', 'role.merge-deputy': 'Merge deputy', 'role.other': 'Helper', 'era.village': 'Village', 'era.town': 'Town', 'era.city': 'City', 'tier.1': 'Tier-1 city', 'tier.2': 'Tier-2 city', 'tier.3': 'Tier-3 city', 'hall.lines': '{n} lines', 'hall.wan': '{n} lines', 'quality.good': 'Tidy', 'quality.fair': 'OK', 'quality.poor': 'Messy', 'who.governor': 'Governor', 'who.owner': 'You', 'who.terminal': 'Terminal', 'state.spawn': 'Heading out', 'state.to_plot': 'To the site', 'state.building': 'Building', 'state.working': 'Working', 'state.to_hall': 'To the governor', 'state.asking': 'Asking the governor', 'state.heard': 'Got the answer', 'state.to_lead': 'To the manager', 'state.at_lead': 'Asking the manager', 'state.back': 'Back to the site', 'state.finishing': 'Topped out', 'state.to_rest': 'Heading to rest', 'state.resting': 'Resting', 'state.leaving': 'Heading home', 'status.need_approval': 'Needs your OK', 'status.asking_gov': 'Asking the governor', 'status.waiting_answer': 'Waiting on your answer', 'status.waiting_reply': 'Waiting on you', 'status.waiting': 'Waiting on you', 'status.background': 'Working in background', 'status.idle': 'Idle', 'stuck.permission': 'Needs permission: {tool}', 'stuck.default': 'Needs your eyes', 'gov.away': 'Away', 'gov.busy': 'Busy', 'gov.home': 'At the town hall', 'top.work': 'Working', 'top.ask': 'Need governor', 'top.rest': 'Resting', 'top.done': 'Built', 'top.stalled': 'Stalled site', 'top.pending': 'Waiting', 'top.pendingAria': '{n} waiting on your call - click to open the earliest', 'empty.noLand': 'No territory yet - start inside a git repo, or wait for an agent', 'loading.text': 'Loading assets…', 'loading.progress': 'Loading assets {n}/{total}', 'loading.error': 'Assets failed to load: {err}', 'site.human': 'Hands-on', 'log.eraUpgrade': '{name} is upgrading to {era}', 'say.done': 'Done!', 'log.leftWork': '{task} clocked out', 'gov.dispatch': 'Go: {task}', 'log.govDispatch': 'The governor sent {label}: {task}', 'log.siteMerged': '{branch} merged into main, the site wrapped up', 'log.siteRemoved': 'The {branch} site was pulled down', 'log.levelUp': '{label} leveled up to {lv}', 'log.movedBack': '{label} moved back to the {kind} district', 'log.demolished': 'Every file behind {label} is gone, demolished', 'log.stuckDemo': '{task} got stuck: "{text}" -> asking the governor', 'answer.default': 'Answered', 'log.govAnswer': 'The governor answered {task}: "{text}"', 'log.doneRestPlain': '{task} finished, heading to rest', 'log.doneRestBuilt': '{task} finished: {kind} topped out, heading to rest', 'log.noplot': '{name} found no empty plot, waiting a bit', 'gov.unknown': 'Unknown', 'gov.busyRow': 'Busy', 'gov.idleRow': 'Idle', 'gov.title': '{name} governor', 'chain.lead': 'Manager', 'chain.leadTask': 'Manager {task}', 'chat.empty': 'No conversation yet', 'chat.you.page': 'You (page)', 'chat.you.terminal': 'You (terminal)', 'chat.wait': 'Waiting for it to finish this step', 'chat.loadError': 'Could not load the conversation - try opening it again in a moment.', 'kv.repo': 'Repo', 'kv.branch': 'Branch', 'kv.doing': 'Doing', 'qa.ask': 'Q: “{q}”', 'qa.answer': 'A: “{a}”', 'qa.waiting': 'Q: “{q}” - waiting for an answer…', 'act.makeStuck': 'Make it stuck', 'act.makeDone': 'Make it finish', 'act.makeLeave': 'Make it clock out', 'act.demoNote': 'These three buttons exist only in the prototype, to try the flow.', 'gov.ownTag': 'main manager · main conversation', 'gov.tagLabel': 'Governor · main manager', 'gov.rgRole': 'main manager · Governor', 'pill.hall': 'Town hall', 'gov.awayNote': 'The governor is away: this repo has no main manager session right now. Agent questions go straight to you, without waiting for the governor first.', 'hint.team': 'Team', 'hint.noAgents': 'No agents at work yet. Open a Claude Code session and send an agent - it will walk out of the town hall.', 'hint.pickSomething': 'Click a person or building in the city, or a row in the list below.', 'building.misplaced': ' - in the wrong district', 'building.level': ' - level {level}', 'building.district': '{kind} district', 'building.module': '{name} module', 'hint.files': 'The files that built it', 'hint.history': 'Who has touched it (newest first)', 'detail.title': 'Details', 'opt.other': 'Other', 'opt.customAnswer': 'Write your own answer', 'btn.sendAnswer': 'Send answer', 'kv.tool': 'Tool', 'kv.file': 'File', 'kv.url': 'URL', 'said': 'It said: {text}', 'kv.dir': 'Directory', 'field.denyReason': 'Reason for denying (optional; if filled in, it is told to it as-is)', 'field.denyPlaceholder': 'e.g. do not delete dist/ yet, it has the release package', 'btn.allow': 'Allow', 'btn.deny': 'Deny', 'ask.asking': 'is asking', 'card.permission': 'Needs permission', 'card.question': 'Asks you', 'ask.needsPermission': 'needs permission', 'pill.closed': 'Closed', 'aria.collapse': 'Collapse (without answering)', 'foot.terminalAnswers': 'The terminal can answer too - whichever answers first wins.', 'err.decideNetwork': 'Could not send (cannot reach the city server). The terminal can still answer.', 'err.decideStatus': 'Could not send ({status}). The terminal can still answer, or try again.', 'proto.live': 'Live - waiting for the server', 'proto.connected': 'Live - connected', 'proto.reconnecting': 'Live - reconnecting…', 'log.relayOff': 'City-link relay disconnected: other members are frozen, my city keeps working as normal.', 'log.relayOn': 'City-link resumed: other members update to the latest.', 'log.relayLeave': 'Left the linked city: other members disappear from my city; my city is unchanged.', 'demo.task.checkoutTest': 'Write checkout tests', 'demo.task.paymentRetry': 'Fix payment-timeout retry', 'demo.q.paymentRetry': 'Should a payment timeout retry automatically?', 'demo.task.depsScan': 'Scan dependencies for vulnerabilities', 'demo.task.worker.0': 'Settings page form', 'demo.task.worker.1': 'Login API', 'demo.task.worker.2': 'Export CSV', 'demo.task.worker.3': 'Dark mode', 'demo.task.worker.4': 'Receipt printing', 'demo.task.worker.5': 'Search box', 'demo.task.worker.6': 'Pagination', 'demo.task.worker.7': 'Price calculation', 'demo.task.worker.8': 'Inventory alerts', 'demo.task.worker.9': 'Customer list', 'demo.task.taskManager.0': 'Settings page', 'demo.task.taskManager.1': 'Login', 'demo.task.taskManager.2': 'Reports', 'demo.task.taskManager.3': 'Printing', 'demo.task.taskManager.4': 'Inventory', 'demo.task.fastLaneDeputy.0': 'Typos', 'demo.task.fastLaneDeputy.1': 'Button colour', 'demo.task.fastLaneDeputy.2': 'Icon size', 'demo.task.fastLaneDeputy.3': 'Title wrapping', 'demo.task.fastLaneDeputy.4': 'Empty-state copy', 'demo.task.mergeDeputy.0': 'Merge settings', 'demo.task.mergeDeputy.1': 'Merge login', 'demo.task.mergeDeputy.2': 'Merge report', 'demo.task.mergeDeputy.3': 'Merge print', 'demo.qa.0.q': 'Which test name is unclear - which one?', 'demo.qa.0.a': 'Go with the default, log it', 'demo.qa.1.q': 'Which API path should I use?', 'demo.qa.1.a': 'Use /api/settings', 'demo.qa.2.q': 'Should I add pagination?', 'demo.qa.2.a': 'Not yet, write it into ideas', 'demo.qa.3.q': 'What is the default language?', 'demo.qa.3.a': 'zh, matching agent.conf', 'demo.qa.4.q': 'Does the old data need migrating?', 'demo.qa.4.a': 'Yes, write a test first', 'demo.qa.5.q': 'Can I change this file?', 'demo.qa.5.a': 'Yes, only your own copy', 'demo.qa.6.q': 'Can I run this command?', 'demo.qa.6.a': 'Approved, go ahead', 'aria.needsApproval': '{task} needs your approval, click to open', 'aria.needsAnswer': '{task} needs your answer, click to open', 'aria.stuckOnlyThem': '{name} is stuck; only {name} can answer', 'aria.govNeedsApproval': 'The governor needs your approval, click to open', 'aria.govNeedsAnswer': 'The governor needs your answer, click to open', 'gov.waitCountdown': 'Governor {s}s', 'chat.sendError': 'Could not send (cannot reach the city server).', 'btn.findLead': 'Find the lead: {name}', 'hint.readOnlySub': 'This is a subtask; the conversation is view only - go to its lead for anything else.', 'placeholder.saySomething': 'Say something to it…', 'btn.send': 'Send', 'label.ask': 'Q: ', 'label.answer': 'A: ', 'label.awaitingAnswer': 'awaiting an answer…', 'member.unknown': 'Unknown', 'chip.off': 'City-link disconnected - {n} queued', 'chip.refused': 'City-link refused the key', 'chip.ok': 'City-link - {people} people - {devices} devices', 'remote.note': 'View only: this agent belongs to {who} - only {who} can answer it.', 'stale.sec': 'Last updated {n}s ago', 'stale.min': 'Last updated {n}m ago', 'ask.permission': '{name} needs permission: {what} -> waiting on you', 'ask.toOwner': '{name} asks you: “{what}”', 'ask.toGov': '{name} asks the governor: “{what}”', 'ask.toGovNoGov': '{name} asks the governor: “{what}”, no governor around -> waiting on your answer', 'askphase.pass': 'The governor: not mine to decide -> waiting on your answer for {name}', 'askphase.timeout': 'The governor did not answer {name} in {wait}s -> waiting on you', 'closed.routed': 'The request from {name} was routed to {who}: {what}', 'closed.answered': '{who} answered {name}: “{text}”', 'closed.answeredDefault': '{who} already answered {name}', 'closed.allowed': '{who} allowed {name}: {what}', 'closed.denied': '{who} denied {name}: {what}', 'closed.deniedReason': ', reason: “{reason}”', 'closed.ended': '{who} closed {name}: {what}', 'why.permission': 'Only you can approve permissions - the governor does not.', 'why.gov': 'The governor cannot decide this - it is yours.', 'why.timeout': 'The governor did not answer in {wait}s - it is yours.', 'why.pass': 'The governor said: not mine to decide - it is yours.', 'why.noGov': 'No governor around - it goes straight to you.', 'closed.late': 'Too late: <b>{who}</b> already handled it at {time}. No need to click here.', 'closed.pending': 'Handled at {time}; the result has not come back yet. Noted.', 'closed.answeredText': 'Answered: “{text}”', 'closed.allowedText': 'Allowed', 'closed.deniedText': 'Denied', 'closed.lateFull': 'Too late: <b>{who}</b> already {text} at {time}. No need to click here.', 'closed.doneByYou': '<b>{who}</b> {text} at {time}. Noted.', 'log.chatSent': 'You -> {to}: {text}', 'log.remoteSpawn': '{who} ({device}) - {label} started: {task}', 'log.remoteDone': '{who} ({device}) - {task} finished', 'log.remoteLeft': '{who} ({device}) - {task} went offline', 'say.understood': 'Got it!', 'log.eraBecame': '{name} became a {era}', 'log.tierUp': '{name} grew into a {tier}', 'demo.seed.prompt': 'Finish this page first, do not touch anything else yet', 'demo.seed.reply': 'OK, doing this page first, leaving the rest alone', 'chat.stateSuffix': ' ({state})', 'punct.answerJoin': '; ', 'rail.title': 'Now', 'rail.count': '{n}', 'rail.rest': 'Resting {n}', 'rail.tab': 'Now {n}', 'rail.none': 'Nobody online', 'add.tip': 'Add agent', 'add.plus': '+', 'add.opening': 'Opening {name}…', 'add.openingBare': 'Opening…', 'add.cap': 'The computer is busy', 'add.capNums': 'RAM {ram}% · CPU {cpu}% (limit {max}%)', 'add.capAsk': 'Open it anyway?', 'add.go': 'Open anyway', 'add.cancel': 'Cancel', 'add.err': 'Not opened: ', 'add.retry': 'Try again', 'add.ok': 'Got it', 'add.errGone': 'Cannot find the repo folder {folder} (moved or deleted).', 'add.errFailed': 'Orca could not open a terminal: {detail}', 'add.errLate': 'The terminal opened, but nothing showed up in 60 seconds. Look at that terminal in Orca.', 'add.errOther': 'The server gave no reason (it may be out of reach).', 'add.plain': 'This computer has no Orca, so the page cannot open a terminal. Run this line in a terminal:', 'add.copy': 'Copy', 'add.copied': 'Copied', 'add.close': 'Close', 'fold.rail': 'Fold the list', 'fold.msg': 'Fold the messages', 'msg.tab': 'Messages · {name}', 'b.focus': 'Show it', 'follow.on': 'Following {name}', 'follow.stop': 'Stop', 'demo.device.cloud': 'Cloud', 'work.edit': 'Editing', 'work.read': 'Reading', 'work.bash': 'Running', 'work.other': 'Busy', 'work.pause': 'Pausing', 'step.edit': 'Editing {file}', 'step.write': 'Writing {file}', 'step.editAny': 'Editing code', 'step.writeAny': 'Writing code', 'step.read': 'Reading files', 'step.search': 'Searching code', 'step.web': 'Looking things up', 'step.bash': 'Running a command', 'step.send': 'Sending out: {desc}', 'step.sendAny': 'Sending a helper', 'step.plan': 'Planning', 'step.message': 'Sending a message', 'step.other': 'Busy', /* cloud-city: texts */ 'cloud.readOnly': 'View only', 'cloud.sign': 'Cloud', 'cloud.machines': 'Machines', 'cloud.busy': 'Working {n}', 'cloud.wait': 'Waiting {n}', 'cloud.noMachine': 'No machine yet', 'cloud.noMachineHint': 'Open a Claude session on a machine that has joined the city. It shows up here by itself.', 'cloud.noSessions': 'This machine has no sessions right now', 'cloud.noSessionsHint': 'Open a Claude session on it and the people walk out. The city on that machine starts by itself once a session opens.', 'cloud.offline': 'No machine is online - this is the picture from {age} ({label})', 'cloud.offlineHint': 'When a Claude session opens on any machine, its city starts by itself and this page updates', 'cloud.login': 'You are signed out, or the login has expired. Please sign in again.', 'cloud.reload': 'Sign in again', 'cloud.logout': 'Sign out', 'cloud.viewNote': 'View only - this computer has not turned on cloud talk; to answer or talk, go back to that computer', 'cloud.notConnected': 'Not connected - trying again…', 'cloud.justNow': 'just now', 'cloud.ageSec': '{n} s ago', 'cloud.ageMin': '{n} min ago', 'cloud.ageHour': '{n} h ago', 'cloud.ageDay': '{n} d ago', 'cloud.talk.on': 'Can talk', 'cloud.talk.off': 'View only', 'cloud.box.talkOff': 'This computer has not turned on "cloud talk", so it is view only. Type this command in its own terminal to turn it on: agent-city cloud-talk on', 'cloud.box.offline': 'That computer is offline, so nothing can be sent. When it is back, this box returns by itself.', 'cloud.tooFast': 'Too fast - wait a moment, then send again.', 'cloud.tooMany': 'Too many messages today - try again tomorrow.', 'cloud.later.ask': 'It is waiting for you to approve or choose ("?"): doing that here comes later. For now, answer it on that computer.', 'cloud.later.demo': 'Demo tools · later', 'cloud.start.on': 'Can start agents', 'cloud.start.off': 'This computer does not take cloud "Add agent" orders. To turn it on, type this in its own terminal:\nagent-city cloud-start on', 'cloud.start.needTalk': 'This computer is view only. Turn on talk first, then "Add agent":\nagent-city cloud-talk on\nagent-city cloud-start on', 'add.cloud.sent': 'On its way…', 'add.cloud.sentTip': 'Saved in the cloud, waiting for that computer to pick it up', 'add.cloud.opening': 'That computer is opening {name}…', 'add.cloud.openingBare': 'That computer is opening…', 'add.cloud.done': 'Opened {name} · the person shows up in a moment', 'add.cloud.cap': 'That computer is busy', 'add.cloud.tooMany': 'Too many opened: at most 10 an hour. Try again in {min} min.', 'add.cloud.tooManyDay': 'Too many opened today - try again tomorrow.', 'add.cloud.noAnswer': 'No answer from the cloud, so it is not sure the order was saved. Wait a moment, then click again.', 'add.cloud.why.off': 'That computer is off (it did not pick up this order in 60 seconds). The order is cancelled and will never run later.', 'add.cloud.why.startOff': 'That computer does not take cloud "Add agent" orders. Type this in its own terminal: agent-city cloud-start on', 'add.cloud.why.noOrca': 'That computer cannot open a terminal by itself (no Orca). Open one there by hand.', 'add.cloud.why.gone': 'That computer cannot find the folder of this repo (moved or deleted).', 'add.cloud.why.orca': 'Orca could not open a terminal: {detail}', 'add.cloud.why.late': 'The terminal opened, but nothing showed up in 60 seconds. Look at that terminal in Orca on that computer.', 'add.cloud.why.busy': 'This repo is already opening another agent. Wait until it is done, then click.', 'add.cloud.why.flood': 'That computer already opened 10 this hour and takes no more. Try again later.', 'add.cloud.why.silent': 'That computer took the order and said nothing for 3 minutes (it may be off). Look on that computer to see if a terminal opened.', 'add.cloud.why.restart': 'The city program on that computer restarted midway, so this order is cancelled and will not run. Look on that computer to see if a terminal opened.', 'add.cloud.why.refused': 'That computer does not know this repo (it has not joined the cloud, or its folder is not on that computer).', 'add.cloud.why.other': 'Not opened, and the reason is unknown. Look on that computer.', 'arr.btn': 'Arrange', 'arr.on': 'Arranging', 'arr.tip': 'Drag a land to a dashed slot; drop it on another land to swap. Or tap a land, then a slot.', 'arr.tipPick': '{name} is picked: tap a dashed slot to move it, or another land to swap.', 'arr.hide': 'Hide', 'arr.show': 'Show', 'arr.cancel': 'Cancel', 'arr.done': 'Done', 'arr.tray': 'Hidden', 'arr.waits': '{n} waiting for you', 'arr.last': 'Keep at least one land', 'arr.hidden': '{n} hidden', 'arr.hiddenWait': ' · {n} waiting for you', 'arr.manage': 'Manage', 'arr.errTaken': 'That slot is taken', 'arr.errSea': 'The cell south of a coast land is its sea', 'arr.errSize': 'Lands of another size cannot swap', 'arr.errEmpty': 'Keep at least one land', 'arr.errOther': 'Not saved, try again.' } };
 /* idea-city C1: i18n(key, vars) -> TEXT[en or zh][key], every "{name}" replaced by vars[name]; an
    unknown key gives the key itself back. A plain top-level function declaration -- every caller in
    this file reaches it by that name (never `T`: several test drivers use a local `T` for "the
@@ -733,16 +733,37 @@ function h2r(h){ h = h.replace('#',''); return [0,2,4].map(i => parseInt(h.slice
 function r2h(c){ return '#' + c.map(v => Math.round(clamp(v,0,255)).toString(16).padStart(2,'0')).join(''); }
 /* Growth ground/water: a hex colour as 0..1 rgb, for BufferGeometry vertex colours */
 function rgbOf(hex){ const c = h2r(hex); return [c[0] / 255, c[1] / 255, c[2] / 255]; }
-/* Growth ground/water: the terrain of the territory cell a world tile sits in (cell (i, j) = floor((X+13)/26), floor((Z+13)/26)) */
-function terrAtOf(view, X, Z){
-  const bySlot = new Map((view.territories || []).map(t => [t.slot[0] + ',' + t.slot[1], t.terrain]));
-  return bySlot.get(Math.floor((X + 13) / 26) + ',' + Math.floor((Z + 13) / 26)) || 'grassland';
-}
-/* Balance: the territory object that owns a world tile's cell (used to pick the era's road colour); same
-   cell math as terrAtOf, but returns the whole territory instead of only its terrain name. */
+/* city-tier T1: the territory whose SQUARE holds a world tile. A square is cells (i .. i + cells - 1, j .. j +
+   cells - 1) from the territory's slot [i, j] (cells missing = 1); cell (a, b) holds the tiles a * cell - cell / 2
+   .. a * cell + cell / 2 - 1 (cell = view.cell, the server's own number). Used to pick the era's road colour
+   (Balance) and the ground's terrain; null when no square holds the tile. */
 function cellTerrain(view, X, Z){
-  const key = Math.floor((X + 13) / 26) + ',' + Math.floor((Z + 13) / 26);
-  return (view.territories || []).find(t => t.slot && (t.slot[0] + ',' + t.slot[1]) === key) || null;
+  const cell = view.cell || 22, a = Math.floor((X + cell / 2) / cell), b = Math.floor((Z + cell / 2) / cell);
+  for (const t of view.territories || []) {
+    if (!t.slot) continue;
+    const n = t.cells || 1;
+    if (a >= t.slot[0] && a < t.slot[0] + n && b >= t.slot[1] && b < t.slot[1] + n) return t;
+  }
+  return null;
+}
+/* Growth ground/water: the terrain of the territory whose square holds a world tile (grassland when none does) */
+function terrAtOf(view, X, Z){
+  const t = cellTerrain(view, X, Z);
+  return (t && t.terrain) || 'grassland';
+}
+/* city-tier T1: the middle of a territory's square, in tile coordinates: [x, z]. One cell: its hall's cx, cz;
+   a big city's square is wider than its hall's spot (the hall stands a little off the middle). */
+function terrMid(view, t){
+  const cell = view.cell || 22, n = t.cells || 1;
+  if (n <= 1 || !t.slot) return [t.cx, t.cz];
+  return [t.slot[0] * cell + (n - 1) * cell / 2, t.slot[1] * cell + (n - 1) * cell / 2];
+}
+/* city-tier T1: the biggest square of a view, in cells (1 when no territory says): the zoom-out stop never
+   comes closer than a whole big city (distLimit) */
+function zoomCells(view){
+  let n = 1;
+  for (const t of (view && view.territories) || []) n = Math.max(n, t.cells || 1);
+  return n;
 }
 /* Balance: era shows (village -> town -> city). shows: Map<territory id, {from, to, end}>, set by the
    'era' event (startShow, next worker's slice); showOf(id) reads it back.
@@ -757,6 +778,53 @@ function eraShown(t){
 }
 /* Balance: eraLook(t) = ERA_LOOK[eraShown(t)] (models, hall, road colour, lamps for the era shown now) */
 function eraLook(t){ return ERA_LOOK[eraShown(t)]; }
+/* city-tier T3 (decision 5: the level shows only on the town hall's card). The level word: for tier 1 to 3 the
+   tier's own word, else the era's word (镇 / 村 as before). linesText: the lines the way the owner reads them --
+   zh: under 10,000 the number + ' 行', from 10,000 in 万 to one decimal (a trailing '.0' dropped); en: always the
+   number + ' lines'. hallLine: the one line of the hall card. Nothing else on the page calls these. */
+function tierWord(t){
+  return t && t.tier >= 1 && t.tier <= 3 ? i18n('tier.' + t.tier) : i18n('era.' + ((t && t.era) || 'village'));
+}
+function linesText(n){
+  n = Math.max(0, Math.round(+n || 0));
+  if (LANG === 'en' || n < 10000) return i18n('hall.lines', { n: n.toLocaleString('en-US') });
+  return i18n('hall.wan', { n: String(+(n / 10000).toFixed(1)) });
+}
+function hallLine(t){ return tierWord(t) + ' · ' + linesText(t.lines || 0); }
+/* city-tier T4: background buildings (scenery, the server's "bg" list per territory: [x, z, w, d, h, zone], tile
+   coordinates). BG_FAR: past this camera distance they are plain boxes (bgFar(dist)). tierShowing(t): a level-up
+   show of t runs and has not flipped yet (the same moment eraShown flips): the new city is not there yet.
+   bgFor(t, phone): the entries to draw (a phone draws the first half of the list). */
+const BG_FAR = 100;
+function bgFar(dist){ return dist > BG_FAR; }
+function tierShowing(t){
+  const s = t && showOf(t.id);
+  return !!(s && s.tier && performance.now() < s.end - (SHOW_SEC - SHOW_FLIP) * 1000);
+}
+function bgFor(t, phone){
+  const bg = (t && t.bg) || [];
+  if (!bg.length || tierShowing(t)) return [];
+  return phone ? bg.slice(0, Math.ceil(bg.length / 2)) : bg;
+}
+/* bgModel(b, tier) -> the MODELS key an entry stands as, null for a park (it gets trees): the core's towers are
+   skyscrapers; mid-rise blocks, the bund and a tier 1 / 2 town's free lots are commercial buildings; industry is
+   industrial; a tier 3 / small town's main street and lots, the city's edge and its houses are suburban houses.
+   The same entry always gets the same model (a hash of its own place, never a random). */
+const BG_KINDS = {
+  cbd: ['commercial/building-skyscraper-a', 'commercial/building-skyscraper-b'],
+  com: ['commercial/building-a', 'commercial/building-b', 'commercial/building-c', 'commercial/building-d', 'commercial/building-f', 'commercial/building-g'],
+  house: ['suburban/building-type-a', 'suburban/building-type-c', 'suburban/building-type-f', 'suburban/building-type-k', 'suburban/building-type-n', 'suburban/building-type-r'],
+  ind: ['industrial/building-a', 'industrial/building-b', 'industrial/building-h', 'industrial/building-k'],
+};
+function bgHash(b){ return Math.abs(Math.floor(b[0] * 13.7 + b[1] * 7.3 + b[2] * 3.1)) ; }
+function bgModel(b, tier){
+  const zone = b[5];
+  if (zone === 'park') return null;
+  const kind = zone === 'cbd' ? 'cbd' : zone === 'ind' ? 'ind'
+    : (zone === 'mid' || zone === 'bund' || (zone === 'fill' && (tier === 1 || tier === 2))) ? 'com' : 'house';
+  const list = BG_KINDS[kind];
+  return list[bgHash(b) % list.length];
+}
 /* Balance: the road colour for t's era: village keeps the terrain's dirt path, town and city get the
    era's own paved colour (roadColor(t) itself, all three differ) */
 function roadColor(t){
@@ -1163,12 +1231,17 @@ function wildDecor(view){
    end}>) and asks for a frame; left = seconds still to run (SHOW_SEC for a fresh 'era' event, less for a
    page that joins mid-show via the snapshot's `shows`). One 动态 line only when it actually starts (never
    on a rejoin, so left is (about) the full SHOW_SEC). */
-function startShow(terr, from, to, left){
-  shows.set(terr, { from, to, end: performance.now() + left * 1000 });
+function startShow(terr, from, to, left, tier){
+  const rec = { from, to, end: performance.now() + left * 1000 };
+  // city-tier T5: a level-up show carries [old, new] -- the same show (builders, scaffolding, the one-moment flip), but the
+  // new city's background stands only at the flip (bgFor), and the 动态 line names the new level, not the era
+  if (Array.isArray(tier) && tier.length === 2) rec.tier = [tier[0], tier[1]];
+  shows.set(terr, rec);
   needFrame = true;
   if (left >= SHOW_SEC - .5) {
     const name = (typeof terrOf === 'function' && terrOf(terr) && terrOf(terr).name) || terr;
-    logAt(typeof simT !== 'undefined' ? simT : 0, i18n('log.eraUpgrade', { name, era: i18n('era.' + to) }));
+    const up = rec.tier && rec.tier[1] >= 1 && rec.tier[1] <= 3;
+    logAt(typeof simT !== 'undefined' ? simT : 0, up ? i18n('log.tierUp', { name, tier: i18n('tier.' + rec.tier[1]) }) : i18n('log.eraUpgrade', { name, era: i18n('era.' + to) }));
   }
 }
 /* Balance: showPlan(t, view, to) -> {builders, targets: [{what, x, z}]}: one 'building' visit per building
@@ -3666,7 +3739,7 @@ function apply(ev){
       // Balance: rejoin every era show still running BEFORE buildLand (a finished show is never replayed:
       // left > 0 only) — eraShown(t) reads `shows`, so a page opened mid-show must draw the OLD era with
       // its show running, never jump straight to the new one.
-      for (const sw of ev.shows || []) if (sw.left > 0) startShow(sw.terr, sw.from, sw.to, sw.left);
+      for (const sw of ev.shows || []) if (sw.left > 0) startShow(sw.terr, sw.from, sw.to, sw.left, sw.tier);
       // city-land First view: govTerr must be set BEFORE buildLand (which calls updateHome()), so the very
       // first camera home is the governor's own hall, not whichever territory happens to sort first.
       if (ev.gov && ev.gov.terr) govTerr = ev.gov.terr;
@@ -3748,7 +3821,7 @@ function apply(ev){
     }
     case 'era': {
       // Balance: an era show just started for ev.terr (requirements/city.md, Balance)
-      startShow(ev.terr, ev.from, ev.to, ev.left);
+      startShow(ev.terr, ev.from, ev.to, ev.left, ev.tier); // city-tier T5: a level up carries tier: [old, new]
       return null;
     }
     case 'spawn': {
@@ -4857,51 +4930,92 @@ function landState(view){
 }
 
 /* city-layout L1 (sim): the arrangement rule, the same one the server checks (the server checks it again; the
-   page only offers what will pass). A land = {id, name, slot: [i, j], sea}; a slot is a cell of the island's
-   9 x 9 grid, -4..4 each way. landsOf(view) -> one land per territory of the view, in view order; sea is true
-   only when the server's view says so (t.sea === true). */
+   page only offers what will pass). A land = {id, name, slot: [i, j], sea, cells}; a slot is a cell of the island's
+   9 x 9 grid, -4..4 each way. city-tier T2: a big city takes a SQUARE of cells x cells cells, slot = its north-west
+   cell (cells missing = 1, the one-cell rule as before). landsOf(view) -> one land per territory of the view, in
+   view order; sea is true only when the server's view says so (t.sea === true). */
 const ARR_MIN = -4, ARR_MAX = 4;
 function landsOf(view){
   return ((view && view.territories) || []).map(t => ({ id: t.id, name: t.name,
-    slot: Array.isArray(t.slot) ? [t.slot[0], t.slot[1]] : [0, 0], sea: t.sea === true }));
+    slot: Array.isArray(t.slot) ? [t.slot[0], t.slot[1]] : [0, 0], sea: t.sea === true, cells: t.cells || 1 }));
 }
-/* landsOk(lands) -> true when every slot is inside the grid, no two lands share a slot, and no land stands on
-   the cell just south ([i, j + 1]) of a land with sea (that cell is its sea). */
+/* landHolds(l, c): the cell c = [i, j] is one of the cells of land l's square */
+function landHolds(l, c){
+  const n = l.cells || 1;
+  return c[0] >= l.slot[0] && c[0] < l.slot[0] + n && c[1] >= l.slot[1] && c[1] < l.slot[1] + n;
+}
+/* landsOk(lands) -> true when every square is inside the grid, no two squares share a cell, and no land stands on
+   the row just south of a sea land's square (cells (i .. i + cells - 1, j + cells): that row is its sea). */
 function landsOk(lands){
   const held = new Set();
   for (const l of lands) {
-    const i = l.slot[0], j = l.slot[1], k = i + ',' + j;
-    if (!Number.isInteger(i) || !Number.isInteger(j) || i < ARR_MIN || i > ARR_MAX || j < ARR_MIN || j > ARR_MAX || held.has(k)) return false;
-    held.add(k);
+    const n = l.cells || 1, i = l.slot[0], j = l.slot[1];
+    if (!Number.isInteger(i) || !Number.isInteger(j) || i < ARR_MIN || j < ARR_MIN || i + n - 1 > ARR_MAX || j + n - 1 > ARR_MAX) return false;
+    for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) {
+      const k = (i + a) + ',' + (j + b);
+      if (held.has(k)) return false;
+      held.add(k);
+    }
   }
-  return !lands.some(l => l.sea && held.has(l.slot[0] + ',' + (l.slot[1] + 1)));
+  return !lands.some(l => { const n = l.cells || 1; for (let a = 0; a < n; a++) if (l.sea && held.has((l.slot[0] + a) + ',' + (l.slot[1] + n))) return true; return false; });
 }
-/* landMove(lands, id, slot) -> the request rows for "land id goes to slot": a free slot [{id, slot}]; a land
-   is there [{id, slot}, {id: that land, slot: id's own slot}] (the two swap); null when id is no land of the
-   list, slot is id's own slot, or landsOk fails after the move. Changes nothing of `lands`. */
-function landMove(lands, id, slot){
+/* landPlace(lands, id, cell) -> [i, j]: where land id's square goes for a drop on the free cell `cell`: of the squares
+   that hold the cell, the ones inside the grid, free of the other lands, keeping the sea rule both ways and touching
+   (4 sides) another land (id alone on the island: its own old square); the one whose middle is nearest the cell's
+   middle (a tie: the smaller j, then the smaller i); null when none. One cell: the cell itself when allowed. */
+function landPlace(lands, id, cell){
   const a = lands.find(l => l.id === id);
-  if (!a || !Array.isArray(slot) || (a.slot[0] === slot[0] && a.slot[1] === slot[1])) return null;
-  const to = [slot[0], slot[1]], from = [a.slot[0], a.slot[1]];
-  const b = lands.find(l => l !== a && l.slot[0] === to[0] && l.slot[1] === to[1]);
-  const after = lands.map(l => l === a ? Object.assign({}, l, { slot: to }) : l === b ? Object.assign({}, l, { slot: from }) : l);
-  if (!landsOk(after)) return null;
-  return b ? [{ id, slot: to }, { id: b.id, slot: from }] : [{ id, slot: to }];
+  if (!a || !Array.isArray(cell)) return null;
+  const n = a.cells || 1, others = lands.filter(l => l.id !== id), near = others.length ? others : lands, next = new Set();
+  for (const l of near) for (let x = 0; x < (l.cells || 1); x++) for (let z = 0; z < (l.cells || 1); z++) next.add((l.slot[0] + x) + ',' + (l.slot[1] + z));
+  let best = null;
+  for (let i = cell[0] - n + 1; i <= cell[0]; i++) for (let j = cell[1] - n + 1; j <= cell[1]; j++) {
+    if (!landsOk(others.concat([Object.assign({}, a, { slot: [i, j], cells: n })]))) continue;
+    let touch = false;
+    for (let x = 0; x < n && !touch; x++) for (let z = 0; z < n && !touch; z++)
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (next.has((i + x + dx) + ',' + (j + z + dz))) { touch = true; break; }
+    if (!touch) continue;
+    const mx = i + (n - 1) / 2 - cell[0], mz = j + (n - 1) / 2 - cell[1], d = mx * mx + mz * mz;
+    if (!best || d < best.d || (d === best.d && (j < best.j || (j === best.j && i < best.i)))) best = { i, j, d };
+  }
+  return best ? [best.i, best.j] : null;
 }
-/* landFree(lands, id) -> the free cells [[i, j], ...] land id may go to: no land on it, it touches (4 sides) a
-   land that is not id (id alone on the island: it touches id), and landMove(lands, id, cell) is not null.
-   id null -> the free cells any land could take: no land on it, it touches a land, and it is not the cell
-   just south of a land with sea. */
+/* landMove(lands, id, cell) -> the request rows for a drop of land id on `cell`: a cell of another land of the same
+   size -> [{id, slot: that land's slot}, {id: that land, slot: id's own slot}] (the two swap) when landsOk holds after
+   it, else null; a cell of a land of another size -> the string 'size' (the bar says arr.errSize, nothing is sent); a
+   free cell -> [{id, slot: landPlace(...)}], null when landPlace is null; null when id is no land of the list or
+   the cell is a cell of id's own square. Changes nothing of `lands`. */
+function landMove(lands, id, cell){
+  const a = lands.find(l => l.id === id);
+  if (!a || !Array.isArray(cell) || landHolds(a, cell)) return null;
+  const b = lands.find(l => l !== a && landHolds(l, cell));
+  if (b) {
+    if ((b.cells || 1) !== (a.cells || 1)) return 'size';
+    const to = [b.slot[0], b.slot[1]], from = [a.slot[0], a.slot[1]];
+    const after = lands.map(l => l === a ? Object.assign({}, l, { slot: to }) : l === b ? Object.assign({}, l, { slot: from }) : l);
+    return landsOk(after) ? [{ id, slot: to }, { id: b.id, slot: from }] : null;
+  }
+  const slot = landPlace(lands, id, cell);
+  return slot ? [{ id, slot }] : null;
+}
+/* landFree(lands, id) -> the free cells [[i, j], ...] a drop of land id may land on: no square holds it and
+   landMove(lands, id, cell) gives rows. id null -> the free cells a one-cell land could take: no square holds it,
+   it touches a land, and it is not on the row just south of a sea land's square. */
 function landFree(lands, id){
-  const held = new Set(lands.map(l => l.slot[0] + ',' + l.slot[1]));
-  const others = lands.filter(l => l.id !== id);
-  const near = others.length ? others : lands;
-  const out = [];
+  const held = new Set(), sea = new Set(), out = [];
+  for (const l of lands) {
+    const n = l.cells || 1;
+    for (let a = 0; a < n; a++) {
+      for (let b = 0; b < n; b++) held.add((l.slot[0] + a) + ',' + (l.slot[1] + b));
+      if (l.sea) sea.add((l.slot[0] + a) + ',' + (l.slot[1] + n));
+    }
+  }
   for (let i = ARR_MIN; i <= ARR_MAX; i++) for (let j = ARR_MIN; j <= ARR_MAX; j++) {
     if (held.has(i + ',' + j)) continue;
-    if (!near.some(l => Math.abs(l.slot[0] - i) + Math.abs(l.slot[1] - j) === 1)) continue;
-    if (id == null) { if (lands.some(l => l.sea && l.slot[0] === i && l.slot[1] + 1 === j)) continue; }
-    else if (!landMove(lands, id, [i, j])) continue;
+    if (id == null) {
+      if (sea.has(i + ',' + j)) continue;
+      if (![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => held.has((i + dx) + ',' + (j + dz)))) continue;
+    } else if (!Array.isArray(landMove(lands, id, [i, j]))) continue;
     out.push([i, j]);
   }
   return out;
@@ -5051,7 +5165,8 @@ function cameraStep(dt){
    null with no tags. */
 function repoTags(view){
   const mid = { x: Math.round(view.x0 + view.w / 2), z: Math.round(view.z0 + view.h / 2) };
-  return (view.territories || []).map(t => ({ id: t.id, name: t.name, x: t.cx - mid.x, z: t.cz - mid.z }));
+  // city-tier T1: a tag sits at the middle of the territory's square (a big city's tag is its whole city's middle)
+  return (view.territories || []).map(t => { const m = terrMid(view, t); return { id: t.id, name: t.name, x: m[0] - mid.x, z: m[1] - mid.z }; });
 }
 function nearestTerr(tags, x, z){
   let best = null, bestD = Infinity;
@@ -5289,7 +5404,7 @@ const ROCK_GREY = '#8A8A86';
 const RAVINE_FLOOR = '#33312F';
 const WATER_COLOR = '#3E86C4';
 /* #demo / file://: exactly `python3 bin/agent_city.py demo-world` prints (tests/test_agent_city_world.py) */
-const DEMO_WORLD = {"cell": 22, "x0": -11, "z0": -11, "w": 44, "h": 44, "rows": ["                                            ", "                .       w   .      ..       ", "     .. ...   . ... . . w ...   g ...       ", "   ...................ww......gggggrgggg..  ", "   ..................ww...grggggggPrggggg.  ", " ....................ww..ggrgPrPgggrPgggg.  ", "  ...................ww..ggrPgrgggPrgggrg.  ", "  ........grP........ww..gPrgPrPgPgrPgPrg   ", "  ......rrrrrr.......ww..rrrrrrrrrrrrrrrP   ", "  .....Prggggr.......ww.gggrPgrggggrgPgrgg  ", "   ....rrgHHgrP......ww.gggrgPrgHHgrPgPrPg  ", "   .....rgHHgrrttttttBBtgggrPgrgHHgrgggrgg  ", "  ......rggggr......ww..gggrgPrggggrPgPrP   ", "  ......rrrrrr......ww..gggrPgrrrrrrgggrggs ", "   .......rP.......ww....ggrgPrgPgPrPgPrg.  ", "  ........t.Pr.....ww....tgrggrPgPgrgPgrg.  ", "  ........t........ww....ttbbrrrbrrrbrbbbs  ", "  ........t........ww.b.bbbbbbbbPbPbbbbbb.ss", "   .......t.........wwbbbbbssbbbsbbbsbssssss", "  ........t.mmmm.....wsbsssssssssssssssssss ", "  ...mm...tmmmmmm....wssssssssssssssssssss  ", "   mmmmmmmtm....mmm...sssssssssssssssssssss ", "   mm..mmmt......mmm    sssssssssssssssss   ", "  m.......t........m      ssssssssssssss    ", "  ........t.........      sssssssssssss     ", "  ........tt........           ss           ", "  .......rrrr......                         ", "  ......ggPgg......                         ", "   ....ggggggg......                        ", "   ....gPgPgPgP.....                        ", "   ...rrrrrrrrrr....                        ", "  ....ggrggggPgPgg..                        ", "  ...ggPrgHHgggggg..                        ", "  ...gggrgHHgggggg.                         ", "  ...ggPrggggPgPg..                         ", "  ...rrrrrrrrrrr...                         ", "   ...gPgPgPgPg.....                        ", "   .....ggggggg....                         ", "  ........gggg......                        ", "   .........r.......                        ", "   .................                        ", "   ......  .. .....                         ", "    .          .                            ", "                                            "], "territories": [{"id": "4d5d7e95", "name": "auto-pipeline", "plan": "meadow", "terrain": "grassland", "sea": false, "n": 0, "slot": [0, 0], "cx": 0, "cz": 0, "lines": 500, "size": 0.24212512553021587, "r": 3.522238341052446, "open": 5, "plots_total": 36, "plots": [{"k": 0, "x": 0, "z": 3, "d": "house"}, {"k": 2, "x": 1, "z": -4, "d": "tower"}, {"k": 3, "x": 3, "z": -1, "d": "shop"}, {"k": 4, "x": -4, "z": -2, "d": "library"}, {"k": 11, "x": 1, "z": 4, "d": "workshop"}], "buildings": [], "era": "village", "balance": {"build": {"state": "healthy", "value": 500, "n": 3, "text": "500 \u884c\u4ee3\u7801"}, "rules": {"state": "missing", "value": 0, "n": 0, "text": "\u8fd8\u6ca1\u6709"}, "beauty": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 1.0, "n": 1, "text": "1/1 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u6587\u4ef6"}}, "rules_note": "", "offices": [], "rest": null, "sites": []}, {"id": "8329562e", "name": "v4-plus", "plan": "harbor", "terrain": "coast", "sea": true, "n": 1, "slot": [1, 0], "cx": 22, "cz": 0, "lines": 1000000, "size": 1.0, "r": 8.6, "open": 35, "plots_total": 35, "plots": [{"k": 0, "x": 18, "z": -1, "d": "workshop"}, {"k": 1, "x": 22, "z": -4, "d": "tower"}, {"k": 2, "x": 25, "z": -1, "d": "house"}, {"k": 3, "x": 18, "z": 1, "d": "workshop"}, {"k": 4, "x": 25, "z": 1, "d": "house"}, {"k": 5, "x": 20, "z": -4, "d": "library"}, {"k": 6, "x": 21, "z": 3, "d": "shop"}, {"k": 7, "x": 17, "z": 0, "d": "workshop"}, {"k": 8, "x": 23, "z": 3, "d": "shop"}, {"k": 9, "x": 26, "z": -2, "d": "house"}, {"k": 10, "x": 17, "z": -2, "d": "workshop"}, {"k": 11, "x": 23, "z": -5, "d": "tower"}, {"k": 12, "x": 25, "z": -4, "d": "tower"}, {"k": 13, "x": 18, "z": -4, "d": "library"}, {"k": 14, "x": 17, "z": 2, "d": "workshop"}, {"k": 15, "x": 27, "z": -1, "d": "house"}, {"k": 16, "x": 18, "z": 3, "d": "workshop"}, {"k": 17, "x": 22, "z": 4, "d": "shop"}, {"k": 18, "x": 25, "z": 3, "d": "shop"}, {"k": 19, "x": 20, "z": 4, "d": "shop"}, {"k": 20, "x": 27, "z": 1, "d": "house"}, {"k": 21, "x": 20, "z": -6, "d": "library"}, {"k": 22, "x": 27, "z": -4, "d": "tower"}, {"k": 23, "x": 23, "z": -7, "d": "tower"}, {"k": 24, "x": 17, "z": -5, "d": "library"}, {"k": 25, "x": 25, "z": -6, "d": "tower"}, {"k": 26, "x": 27, "z": 3, "d": "house"}, {"k": 27, "x": 26, "z": 4, "d": "shop"}, {"k": 28, "x": 18, "z": -6, "d": "library"}, {"k": 29, "x": 29, "z": -1, "d": "house"}, {"k": 30, "x": 15, "z": -4, "d": "library"}, {"k": 31, "x": 29, "z": -3, "d": "house"}, {"k": 32, "x": 29, "z": 1, "d": "house"}, {"k": 33, "x": 21, "z": 6, "d": "shop"}, {"k": 34, "x": 23, "z": 6, "d": "shop"}], "buildings": [{"plot": 6, "type": "shop", "by": "worker", "x": 21, "z": 3, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": "\u5546\u4e1a\u8857 7 \u53f7"}, {"plot": 1, "type": "tower", "by": "worker", "x": 22, "z": -4, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": "\u6d4b\u8bd5\u533a 2 \u53f7"}], "era": "city", "balance": {"build": {"state": "healthy", "value": 1000000, "n": 400, "text": "1,000,000 \u884c\u4ee3\u7801"}, "rules": {"state": "healthy", "value": 0.8, "n": 320, "text": "80% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 40, "n": 40, "text": "40 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 3.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.9, "n": 36, "text": "36/40 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 20, "n": 20, "text": "20 \u4e2a\u6587\u4ef6"}}, "rules_note": "", "offices": [], "rest": null, "sites": []}, {"id": "db8c2db6", "name": "pos-lite", "plan": "ridge", "terrain": "mountain", "sea": false, "n": 2, "slot": [0, 1], "cx": 0, "cz": 22, "lines": 20000, "size": 0.6052343817819053, "r": 5.955070357938764, "open": 15, "plots_total": 37, "plots": [{"k": 0, "x": 2, "z": 20, "d": "workshop"}, {"k": 1, "x": -1, "z": 18, "d": "tower"}, {"k": 2, "x": 2, "z": 23, "d": "shop"}, {"k": 3, "x": 0, "z": 25, "d": "house"}, {"k": 4, "x": -4, "z": 23, "d": "house"}, {"k": 5, "x": -4, "z": 21, "d": "library"}, {"k": 6, "x": -3, "z": 18, "d": "library"}, {"k": 7, "x": 1, "z": 18, "d": "tower"}, {"k": 8, "x": -2, "z": 25, "d": "house"}, {"k": 9, "x": 4, "z": 20, "d": "workshop"}, {"k": 10, "x": 2, "z": 25, "d": "shop"}, {"k": 11, "x": -1, "z": 16, "d": "tower"}, {"k": 12, "x": 4, "z": 23, "d": "shop"}, {"k": 13, "x": -4, "z": 25, "d": "house"}, {"k": 14, "x": 3, "z": 18, "d": "workshop"}], "buildings": [{"plot": 3, "type": "house", "by": "worker", "x": 0, "z": 25, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": "\u4f4f\u5b85\u533a 4 \u53f7"}], "era": "town", "balance": {"build": {"state": "healthy", "value": 20000, "n": 60, "text": "20,000 \u884c\u4ee3\u7801"}, "rules": {"state": "low", "value": 0.3, "n": 18, "text": "30% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 6, "n": 8, "text": "6 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.5 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.6, "n": 12, "text": "12/20 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 4, "n": 4, "text": "4 \u4e2a\u6587\u4ef6"}}, "rules_note": "", "offices": [], "rest": null, "sites": []}], "links": [{"a": "4d5d7e95", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[10, 0], [11, 0]]}, {"a": "4d5d7e95", "b": "db8c2db6", "gap": "pass", "kind": "road", "cross": [[-1, 9], [-1, 10]]}]};
+const DEMO_WORLD = {"cell": 22, "x0": -55, "z0": -55, "w": 88, "h": 96, "rows": ["                                                                                        ", "                                                            .                           ", "                                                 .. ggg   . ...                         ", "                                               ...gggggrgu.....                         ", "                                              ....rrrrrrrrr.....                        ", "                                             ....gggggPggggg....                        ", "                                              ...gggggggggggg..                         ", "                                              ..rgggPuPuPuPggug                         ", "                                              .rrrrrrrrrrrrrrrr                         ", "                                               gggguruuuuPgPgggg                        ", "                                               ggggPruHHgggggggg                        ", "                                              .gggguruHHgggggggg                        ", "                                              gggguPruuuuPgPggg                         ", "                                              grrrrrrrrrrrrrrrrg                        ", "                                               rgggPgPgPgPggggg.                        ", "                                              .rgggggggggggggg..                        ", "                                              ..ggggggggggggg..                         ", "                                              ....rrrrrrrrrrr...                        ", "                                               .....grgggggg...                         ", "                                              .......twwwggg...                         ", "                                               wwwwwwBwwww......                        ", "                                               wwwwwwB...www.....                       ", "                                            w........t....wwwwwwww                      ", "                                  ..      . .........t......wwwwww  .   .      ..       ", "                         ....  ......   .............t........wwwww . ...   . ...       ", "                        .............................t........wwwww...................  ", "                        .............................t........wwwww..................   ", "                        .............................t........wwwww...................  ", "                         ............................t........wwwww...................  ", "                         ...........................ggggg.....wwwww.................... ", "                        .........................gggggggggggggwwwww..................   ", "                       ........................gggggggggggggggwwwwwg..................  ", "                        .....................gggggggggggggggggwwwwwgggg...............  ", "                        ...................ggrrrrrrrrrrrrrrrrrwwwwwggggggg...........   ", "                        ...............ggggggruuuruuuruuuruuurwwwwwgggggggg..........   ", "                        ............gggggggggruuuruuuruuuruuurwwwwwggggggggg..........  ", "                         .........gggggggggggruuuruuuruuuruuurwwwwwgggggggggg.........  ", "                        .........ggggrrrrrrrrrrrrrrrrrrrrrrrrrwwwwwggrrrrrgggg........  ", "                        ........gggggruuuruuuruuuruuuruuuruuurwwwwwggruuurgggg.......   ", "                        ........gggggruuuruuuruuuruuuruuuruuurwwwwwggruuurgggg......... ", "                         .......gggggruuuruuuruuuruuuruuuruuurwwwwwggruuurggggg.......  ", "                        .......ggggggrrrrrrrrrrrrrrrrrrrrrrrrrwwwwwggrrrrrggggg.......  ", "                        .......ggggggruuuruuuruuuruuuruuuruuurwwwwwggruuurggggg.......  ", "                        .......ggggggruuuruuuruuuruuuruuuruuurwwwwgggruuurggggg.......  ", "                      .........ggggggruuuruuuruuuruuuruuuruuurwwwwgggruuurggggg......   ", "         .      .     .........ggrrrrrrrrrrrrrrrrrrrrrrrrrrrrrwwwwgggrrrrrrrrrgg.....   ", "   . .....   . ...   w.........ggruuuruuurggggggggggggggggggggwwwwgggruuuruuurgg......  ", "   .................ww........gggruuuruuurgggrggggggurugggggguwwwwgggruuuruuurgg....... ", "   .................ww........gggruuuruuurgggrugugggPruggggguwwwwwgggruuuruuurggg.....  ", " ...................ww........gggrrrrrrrrrgguruPrPggurPggggggwwwwrrrrrrrrrrrrrggg.....  ", "  .................ww........ggggruuuruuurggurPuruggPrugurgguwwwwruuuruuuruuurggg.....  ", "  ........grP......ww........ggggruuuruuurguPruPrPuPurPuPruguwwwwruuuruuuruuurggg....   ", "  ......rrrrrr......ww.......ggggruuuruuurgrrrrrrrrrrrrrrrPgwwwwwruuuruuuruuurgggg...   ", "  .....Prggggr......ww......gggggrrrrrrrrrguurPuruuuurgPuruuwwwwgrrrrrrrrrrrrrgggg....  ", "   ....rrgHHgrP......ww.....gggggrgggrgggrgguruPruHHurPgPrPuwwwwgruuuruuuruuurgggg....  ", "   .....rgHHgrrtttttttBBttttgggggrrrrrrrrrggurPuruHHgrggurugwwwwgruuuruuuruuurgggg....  ", "  ......rggggr.........ww...gggggrgggrgggrgguruPruuuurPgPrPuwwwwgruuuruuuruuurgggg...   ", "  ......rrrrrr.........ww...gggggrrrrrrrrrggurPurrrrrrgguruuwwwwwrrrrrrrrrrrrrgggg....  ", "   .......rP...........ww...gggggruuuruuurgguruPrgPgPrPgPruggwwwwruuuruuuruuurgggg....  ", "  ..........Pr........ww....gggggruuuruuurgguruurPuPuruPurgguwwwwruuuruuuruuurgggg....  ", "  ....................ww....gggggruuuruuurgrrrrrrrrrrrrrrrrrrBBBBruuuruuuruuurgggg...   ", "  ....................ww.....ggggrrrrrrrrrggggguuuPuPuuugggguwwwwwrrrrrrrrrrrrggg.....  ", "   ...................ww.....ggggruuuruuurggggggggggggggggggggwwwwgggruuuruuurggg....   ", "    ..... ... ... .   ww......gggruuuruuurggggggggggggggggggggwwwwgggruuuruuurgg.....   ", "    .         .       ww.......ggruuuruuurggggggggggggggggggggwwwwgggruuuruuurgg.....   ", "                      ww.......ggrrrrrrrrrrrrrrrrrrrrrrrrrrrrrwwwwgggrrrrrrrrrgg......  ", "                         .......gggggruuuruuuruuuruuuruuuruuurwwwwgggruuurggggg.......  ", "                        .........ggggruuuruuuruuuruuuruuuruuurwwwwwggruuurggggg.......  ", "                        .........ggggruuuruuuruuuruuuruuuruuurwwwwwggruuurgggg........  ", "                        ..........gggrrrrrrrrrrrrrrrrrrrrrrrrrwwwwwggrrrrrgggg........  ", "                        ...........ggruuuruuuruuuruuuruuuruuurwwwwwggruuurggg........   ", "                        ............gruuuruuuruuuruuuruuuruuurwwwwwggruuurgg.........   ", "                         ............ruuuruuuruuuruuuruuuruuurwwwwwggruuurg...........  ", "                         .............rrrrrrrrrrrrrrrrrrrrrrrrwwwwwggrrrr.............  ", "                         ...............gggggggggruuuruuuruuurwwwwwgggg...............  ", "                        ..................gggggggruuuruuuruuurwwwwwgg.................  ", "                        ....................gggggruuuruuuruuurwwwww...................  ", "                        .......................ggrrrrrrrrrrrrrwwwww..................   ", "                        .........................gggggggggggggwwwww..................   ", "                      ss.............................ggggg....wwwww..................ss ", "                       ss.....................................wwwww...................s ", "                        s.....................................wwwww..................sss", "                        .b.bb..b...b.bbb...b.bb......bb..b....wwbbw....bb...b...b.bbb.  ", "                        sbbbbb.bbbbbbbbb.bbbbbbb.bbbbbbbbbb.bbbbbbb.bbbbbbbbbbbbbbbbb.s ", "                        ssbssbbsbbbsbsssbbbsbssbbbbbbssbbsbbbbbbssbbbbbssbbbsbbbsbsssb  ", "                        ssssssbsssssssssbsssssssbssssssssssbsssssssbsssssssssssssssssb  ", "                       sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss  ", "                       sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss", "                        ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss  ", "                          sssssssssssssssssssssssssssssssssssssssssssssssssssssssssss   ", "                          sssssssssssssssssssssssssssssssssssssssssssssssssssssssss     ", "                              sss     s   s     sss     sss s      sss     ss           ", "                                                                                        ", "                                                                                        ", "                                                                                        ", "                                                                                        "], "territories": [{"id": "4d5d7e95", "name": "auto-pipeline", "plan": "meadow", "terrain": "grassland", "slot": [-2, 0], "cx": -44, "cz": 0, "sea": false, "n": 0, "tier": 0, "cells": 1, "lines": 500, "size": 0.24212512553021587, "r": 3.522238341052446, "open": 5, "plots_total": 36, "plots": [{"k": 0, "x": -44, "z": 3, "d": "house"}, {"k": 2, "x": -43, "z": -4, "d": "tower"}, {"k": 3, "x": -41, "z": -1, "d": "shop"}, {"k": 4, "x": -48, "z": -2, "d": "library"}, {"k": 11, "x": -43, "z": 4, "d": "workshop"}], "buildings": [], "era": "village", "balance": {"build": {"state": "healthy", "value": 500, "n": 3, "text": "500 \u884c\u4ee3\u7801"}, "rules": {"state": "missing", "value": 0, "n": 0, "text": "\u8fd8\u6ca1\u6709"}, "beauty": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 1.0, "n": 1, "text": "1/1 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u6587\u4ef6"}}, "rules_note": "", "offices": [], "rest": null, "sites": [], "bg": [], "rings": [], "mark": null}, {"id": "8329562e", "name": "v4-plus", "plan": "harbor", "terrain": "coast", "slot": [-1, -1], "cx": -4, "cz": 0, "sea": true, "n": 1, "tier": 1, "cells": 3, "lines": 1000000, "size": 1.0, "r": 8.6, "open": 35, "plots_total": 35, "plots": [{"k": 0, "x": -8, "z": -1, "d": "workshop"}, {"k": 1, "x": -4, "z": -4, "d": "tower"}, {"k": 2, "x": -1, "z": -1, "d": "house"}, {"k": 3, "x": -8, "z": 1, "d": "workshop"}, {"k": 4, "x": -1, "z": 1, "d": "house"}, {"k": 5, "x": -6, "z": -4, "d": "library"}, {"k": 6, "x": -5, "z": 3, "d": "shop"}, {"k": 7, "x": -9, "z": 0, "d": "workshop"}, {"k": 8, "x": -3, "z": 3, "d": "shop"}, {"k": 9, "x": 0, "z": -2, "d": "house"}, {"k": 10, "x": -9, "z": -2, "d": "workshop"}, {"k": 11, "x": -3, "z": -5, "d": "tower"}, {"k": 12, "x": -1, "z": -4, "d": "tower"}, {"k": 13, "x": -8, "z": -4, "d": "library"}, {"k": 14, "x": -9, "z": 2, "d": "workshop"}, {"k": 15, "x": 1, "z": -1, "d": "house"}, {"k": 16, "x": -8, "z": 3, "d": "workshop"}, {"k": 17, "x": -4, "z": 4, "d": "shop"}, {"k": 18, "x": -1, "z": 3, "d": "shop"}, {"k": 19, "x": -6, "z": 4, "d": "shop"}, {"k": 20, "x": 1, "z": 1, "d": "house"}, {"k": 21, "x": -6, "z": -6, "d": "library"}, {"k": 22, "x": 1, "z": -4, "d": "tower"}, {"k": 23, "x": -3, "z": -7, "d": "tower"}, {"k": 24, "x": -9, "z": -5, "d": "library"}, {"k": 25, "x": -1, "z": -6, "d": "tower"}, {"k": 26, "x": 1, "z": 3, "d": "house"}, {"k": 27, "x": 0, "z": 4, "d": "shop"}, {"k": 28, "x": -8, "z": -6, "d": "library"}, {"k": 29, "x": 3, "z": -1, "d": "house"}, {"k": 30, "x": -11, "z": -4, "d": "library"}, {"k": 31, "x": 3, "z": -3, "d": "house"}, {"k": 32, "x": 3, "z": 1, "d": "house"}, {"k": 33, "x": -5, "z": 6, "d": "shop"}, {"k": 34, "x": -3, "z": 6, "d": "shop"}], "buildings": [{"plot": 6, "type": "shop", "by": "worker", "x": -5, "z": 3, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": "\u5546\u4e1a\u8857 7 \u53f7"}, {"plot": 1, "type": "tower", "by": "worker", "x": -4, "z": -4, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": "\u6d4b\u8bd5\u533a 2 \u53f7"}], "era": "city", "balance": {"build": {"state": "healthy", "value": 1000000, "n": 400, "text": "1,000,000 \u884c\u4ee3\u7801"}, "rules": {"state": "healthy", "value": 0.8, "n": 320, "text": "80% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 40, "n": 40, "text": "40 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 3.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.9, "n": 36, "text": "36/40 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 20, "n": 20, "text": "20 \u4e2a\u6587\u4ef6"}}, "rules_note": "", "offices": [], "rest": null, "sites": [], "bg": [[-5.5, -0.5, 0.86, 0.86, 2.07, "fill"], [-5.5, 0.5, 0.86, 0.86, 3.14, "fill"], [-4.5, -1.5, 0.86, 0.86, 2.24, "fill"], [-4.5, 1.5, 0.86, 0.86, 3.15, "fill"], [-3.5, -1.5, 0.86, 0.86, 2.77, "fill"], [-3.5, 1.5, 0.86, 0.86, 2.74, "fill"], [-2.5, -0.5, 0.86, 0.86, 2.52, "fill"], [-5.5, -1.5, 0.86, 0.86, 2.68, "fill"], [-5.5, 1.5, 0.86, 0.86, 2.95, "fill"], [-2.5, -1.5, 0.86, 0.86, 2.96, "fill"], [-2.5, 1.5, 0.86, 0.86, 3.17, "fill"], [-7.5, 0.5, 0.86, 0.86, 2.52, "fill"], [-4.5, -3.5, 0.86, 0.86, 3.18, "fill"], [-7.5, -1.5, 0.86, 0.86, 2.74, "fill"], [-2.5, -3.5, 0.86, 0.86, 2.86, "fill"], [-7.5, 2.5, 0.86, 0.86, 2.16, "fill"], [-8.5, -0.5, 0.86, 0.86, 2.7, "fill"], [-4.5, 4.5, 0.86, 0.86, 2.46, "fill"], [-8.5, 1.5, 0.86, 0.86, 2.89, "fill"], [-5.5, -4.5, 0.86, 0.86, 2.47, "fill"], [-2.5, 4.5, 0.86, 0.86, 3.1, "fill"], [1.5, 0.5, 0.86, 0.86, 3.09, "fill"], [-8.5, -3.5, 0.86, 0.86, 2.75, "fill"], [-8.5, 3.5, 0.86, 0.86, 3.2, "fill"], [-7.5, -4.5, 0.86, 0.86, 3.13, "fill"], [-7.5, 4.5, 0.86, 0.86, 2.39, "fill"], [-2.5, -5.5, 0.86, 0.86, 2.31, "fill"], [-0.5, -4.5, 0.86, 0.86, 2.19, "fill"], [-0.5, 4.5, 0.86, 0.86, 2.15, "fill"], [0.5, -3.5, 0.86, 0.86, 2.17, "fill"], [1.5, -1.5, 0.86, 0.86, 2.19, "fill"], [1.5, 2.5, 0.86, 0.86, 2.62, "fill"], [-8.5, 4.5, 0.86, 0.86, 2.9, "fill"], [-10.5, -0.5, 0.86, 0.86, 2.47, "fill"], [-10.5, 0.5, 0.86, 0.86, 2.61, "fill"], [-3.5, 6.5, 0.86, 0.86, 2.83, "fill"], [-10.5, -1.5, 0.86, 0.86, 2.86, "fill"], [-10.5, 1.5, 0.86, 0.86, 2.22, "fill"], [-5.5, 6.5, 0.86, 0.86, 2.97, "fill"], [-10.5, 2.5, 0.86, 0.86, 2.21, "fill"], [-6.5, -6.5, 0.86, 0.86, 3.14, "fill"], [-6.5, 6.5, 0.86, 0.86, 3.15, "fill"], [-1.5, 6.5, 0.86, 0.86, 2.87, "fill"], [-8.5, -5.5, 0.86, 0.86, 2.61, "fill"], [1.5, -4.5, 0.86, 0.86, 3.01, "fill"], [1.5, 4.5, 0.86, 0.86, 2.93, "fill"], [-10.5, 3.5, 0.86, 0.86, 2.94, "fill"], [-7.5, 6.5, 0.86, 0.86, 2.91, "fill"], [-0.5, -6.5, 0.86, 0.86, 2.69, "fill"], [-0.5, 6.5, 0.86, 0.86, 2.11, "fill"], [3.5, 0.5, 0.86, 0.86, 2.25, "fill"], [-11.5, -1.5, 0.86, 0.86, 2.55, "fill"], [-2.5, -7.5, 0.86, 0.86, 2.15, "fill"], [3.5, -1.5, 0.86, 0.86, 2.61, "fill"], [-10.5, -4.5, 0.86, 0.86, 2.99, "fill"], [-10.5, 4.5, 0.86, 0.86, 2.01, "fill"], [-8.5, -6.5, 0.86, 0.86, 2.78, "fill"], [0.5, 6.5, 0.86, 0.86, 2.78, "fill"], [3.5, 2.5, 0.86, 0.86, 2.38, "fill"], [-11.5, -3.5, 0.86, 0.86, 2.25, "fill"], [-0.5, -7.5, 0.86, 0.86, 2.11, "fill"], [3.5, -3.5, 0.86, 0.86, 2.24, "fill"], [3.5, 3.5, 0.86, 0.86, 2.12, "fill"], [-10.5, -5.5, 0.86, 0.86, 2.26, "fill"], [6.5, -7.5, 0.96, 0.96, 1.84, "bund"], [5.5, -6.5, 0.96, 0.96, 1.78, "bund"], [5.5, -4.5, 0.96, 0.96, 1.69, "bund"], [5.5, -3.5, 0.96, 0.96, 1.49, "bund"], [4.5, -1.5, 0.96, 0.96, 1.8, "bund"], [4.5, -0.5, 0.96, 0.96, 1.71, "bund"], [4.5, 1.5, 0.96, 0.96, 1.34, "bund"], [4.5, 2.5, 0.96, 0.96, 1.58, "bund"], [5.5, 4.5, 0.96, 0.96, 1.51, "bund"], [5.5, 6.5, 0.96, 0.96, 1.73, "bund"], [12.8, -3.5, 2.1, 2.1, 6.64, "cbd"], [12.8, 4.5, 2.1, 2.1, 5.92, "cbd"], [16.5, 0.5, 2.3, 2.3, 9.71, "cbd"], [16.5, -3.5, 2.3, 2.3, 11.65, "cbd"], [16.5, 4.5, 2.3, 2.3, 8.3, "cbd"], [15.7, -8.3, 1.4, 1.4, 5.33, "cbd"], [17.3, -6.7, 1.4, 1.4, 4.67, "cbd"], [15.7, 7.7, 1.4, 1.4, 4.45, "cbd"], [17.3, 9.3, 1.4, 1.4, 3.93, "cbd"], [-0.32, -12.32, 1.3, 1.3, 2.27, "mid"], [1.32, -12.32, 1.3, 1.3, 2.57, "mid"], [-0.32, -10.68, 1.3, 1.3, 2.27, "mid"], [1.32, -10.68, 1.3, 1.3, 3.42, "mid"], [-0.32, 11.68, 1.3, 1.3, 3.13, "mid"], [1.32, 11.68, 1.3, 1.3, 3.23, "mid"], [-0.32, 13.32, 1.3, 1.3, 2.49, "mid"], [1.32, 13.32, 1.3, 1.3, 2.64, "mid"], [-4.32, -12.32, 1.3, 1.3, 2.2, "mid"], [-2.68, -12.32, 1.3, 1.3, 2.13, "mid"], [-4.32, -10.68, 1.3, 1.3, 2.14, "mid"], [-2.68, -10.68, 1.3, 1.3, 3.59, "mid"], [-4.32, 11.68, 1.3, 1.3, 2.54, "mid"], [-2.68, 11.68, 1.3, 1.3, 3.05, "mid"], [-4.32, 13.32, 1.3, 1.3, 2.34, "mid"], [-2.68, 13.32, 1.3, 1.3, 2.58, "mid"], [3.68, -12.32, 1.3, 1.3, 3.15, "mid"], [5.32, -12.32, 1.3, 1.3, 2.75, "mid"], [3.68, -10.68, 1.3, 1.3, 2.85, "mid"], [5.32, -10.68, 1.3, 1.3, 3.04, "mid"], [3.68, 11.68, 1.3, 1.3, 3.42, "mid"], [5.32, 11.68, 1.3, 1.3, 2.36, "mid"], [3.68, 13.32, 1.3, 1.3, 3.15, "mid"], [5.32, 13.32, 1.3, 1.3, 2.27, "mid"], [-8.32, -12.32, 1.3, 1.3, 3.24, "mid"], [-6.68, -12.32, 1.3, 1.3, 3.2, "mid"], [-8.32, -10.68, 1.3, 1.3, 3.36, "mid"], [-6.68, -10.68, 1.3, 1.3, 2.31, "mid"], [-8.32, 11.68, 1.3, 1.3, 2.81, "mid"], [-6.68, 11.68, 1.3, 1.3, 2.84, "mid"], [-8.32, 13.32, 1.3, 1.3, 3.12, "mid"], [-6.68, 13.32, 1.3, 1.3, 2.96, "mid"], [-16.32, -4.32, 1.3, 1.3, 2.46, "mid"], [-14.68, -4.32, 1.3, 1.3, 3.6, "mid"], [-16.32, -2.68, 1.3, 1.3, 2.74, "mid"], [-14.68, -2.68, 1.3, 1.3, 2.38, "mid"], [-16.32, 3.68, 1.3, 1.3, 2.82, "mid"], [-14.68, 3.68, 1.3, 1.3, 2.68, "mid"], [-16.32, 5.32, 1.3, 1.3, 2.87, "mid"], [-14.68, 5.32, 1.3, 1.3, 2.07, "mid"], [-12.32, -12.32, 1.3, 1.3, 2.21, "mid"], [-10.68, -12.32, 1.3, 1.3, 3.44, "mid"], [-12.32, -10.68, 1.3, 1.3, 2.48, "mid"], [-10.68, -10.68, 1.3, 1.3, 2.86, "mid"], [-12.32, 11.68, 1.3, 1.3, 2.47, "mid"], [-10.68, 11.68, 1.3, 1.3, 2.22, "mid"], [-12.32, 13.32, 1.3, 1.3, 3.5, "mid"], [-10.68, 13.32, 1.3, 1.3, 2.78, "mid"], [-16.32, -8.32, 1.3, 1.3, 3.34, "mid"], [-14.68, -8.32, 1.3, 1.3, 2.53, "mid"], [-16.32, -6.68, 1.3, 1.3, 3.2, "mid"], [-14.68, -6.68, 1.3, 1.3, 3.53, "mid"], [-16.32, 7.68, 1.3, 1.3, 3.22, "mid"], [-14.68, 7.68, 1.3, 1.3, 2.53, "mid"], [-16.32, 9.32, 1.3, 1.3, 2.81, "mid"], [-14.68, 9.32, 1.3, 1.3, 2.18, "mid"], [-16.32, -12.32, 1.3, 1.3, 2.9, "mid"], [-14.68, -12.32, 1.3, 1.3, 2.86, "mid"], [-16.32, -10.68, 1.3, 1.3, 3.47, "mid"], [-14.68, -10.68, 1.3, 1.3, 2.05, "mid"], [-16.32, 11.68, 1.3, 1.3, 2.4, "mid"], [-14.68, 11.68, 1.3, 1.3, 2.55, "mid"], [-16.32, 13.32, 1.3, 1.3, 2.33, "mid"], [-14.68, 13.32, 1.3, 1.3, 2.65, "mid"], [15.68, -12.32, 1.3, 1.3, 2.19, "mid"], [17.32, -12.32, 1.3, 1.3, 2.59, "mid"], [15.68, -10.68, 1.3, 1.3, 2.42, "mid"], [17.32, -10.68, 1.3, 1.3, 2.4, "mid"], [15.68, 11.68, 1.3, 1.3, 2.73, "mid"], [17.32, 11.68, 1.3, 1.3, 2.95, "mid"], [15.68, 13.32, 1.3, 1.3, 3.28, "mid"], [17.32, 13.32, 1.3, 1.3, 2.06, "mid"], [0.5, -15.5, 3, 3, 0, "park"], [-0.32, 15.68, 1.2, 1.2, 1.51, "res"], [1.32, 15.68, 1.2, 1.2, 1.21, "res"], [-0.32, 17.32, 1.2, 1.2, 1.31, "res"], [1.32, 17.32, 1.2, 1.2, 1.47, "res"], [-4.32, -16.32, 1.2, 1.2, 1.56, "res"], [-2.68, -16.32, 1.2, 1.2, 2.72, "res"], [-4.32, -14.68, 1.2, 1.2, 1.45, "res"], [-2.68, -14.68, 1.2, 1.2, 1.49, "res"], [-4.32, 15.68, 1.2, 1.2, 1.76, "res"], [-2.68, 15.68, 1.2, 1.2, 1.2, "res"], [-4.32, 17.32, 1.2, 1.2, 1.14, "res"], [-2.68, 17.32, 1.2, 1.2, 1.56, "res"], [3.68, -16.32, 1.2, 1.2, 1.65, "res"], [5.32, -16.32, 1.2, 1.2, 1.49, "res"], [3.68, -14.68, 1.2, 1.2, 1.49, "res"], [5.32, -14.68, 1.2, 1.2, 1.54, "res"], [3.68, 15.68, 1.2, 1.2, 1.49, "res"], [5.32, 15.68, 1.2, 1.2, 1.51, "res"], [3.68, 17.32, 1.2, 1.2, 1.75, "res"], [5.32, 17.32, 1.2, 1.2, 1.31, "res"], [-8.32, -16.32, 1.2, 1.2, 1.31, "res"], [-6.68, -16.32, 1.2, 1.2, 1.48, "res"], [-8.32, -14.68, 1.2, 1.2, 1.08, "res"], [-6.68, -14.68, 1.2, 1.2, 1.09, "res"], [-8.32, 15.68, 1.2, 1.2, 1.56, "res"], [-6.68, 15.68, 1.2, 1.2, 1.74, "res"], [-8.32, 17.32, 1.2, 1.2, 1.45, "res"], [-6.68, 17.32, 1.2, 1.2, 1.74, "res"], [-12.32, -16.32, 1.2, 1.2, 1.37, "res"], [-10.68, -16.32, 1.2, 1.2, 1.72, "res"], [-12.32, -14.68, 1.2, 1.2, 1.2, "res"], [-10.68, -14.68, 1.2, 1.2, 1.46, "res"], [-12.32, 15.68, 1.2, 1.2, 2.71, "res"], [-10.68, 15.68, 1.2, 1.2, 1.6, "res"], [-12.32, 17.32, 1.2, 1.2, 2.71, "res"], [-10.68, 17.32, 1.2, 1.2, 1.29, "res"], [-0.32, -20.32, 1.2, 1.2, 1.54, "res"], [1.32, -20.32, 1.2, 1.2, 1.66, "res"], [-0.32, -18.68, 1.2, 1.2, 1.73, "res"], [1.32, -18.68, 1.2, 1.2, 1.2, "res"], [-0.32, 19.68, 1.2, 1.2, 2.72, "res"], [1.32, 19.68, 1.2, 1.2, 2.73, "res"], [-0.32, 21.32, 1.2, 1.2, 1.22, "res"], [1.32, 21.32, 1.2, 1.2, 1.1, "res"], [19.68, -0.32, 1.2, 1.2, 2.72, "res"], [21.32, -0.32, 1.2, 1.2, 1.35, "res"], [19.68, 1.32, 1.2, 1.2, 1.15, "res"], [21.32, 1.32, 1.2, 1.2, 1.22, "res"], [-20.32, -4.32, 1.2, 1.2, 1.25, "res"], [-18.68, -4.32, 1.2, 1.2, 1.38, "res"], [-20.32, -2.68, 1.2, 1.2, 1.49, "res"], [-18.68, -2.68, 1.2, 1.2, 1.69, "res"], [-20.32, 3.68, 1.2, 1.2, 1.3, "res"], [-18.68, 3.68, 1.2, 1.2, 2.73, "res"], [-20.32, 5.32, 1.2, 1.2, 1.23, "res"], [-18.68, 5.32, 1.2, 1.2, 1.29, "res"], [-4.32, -20.32, 1.2, 1.2, 1.26, "res"], [-2.68, -20.32, 1.2, 1.2, 1.7, "res"], [-4.32, -18.68, 1.2, 1.2, 1.34, "res"], [-2.68, -18.68, 1.2, 1.2, 1.4, "res"], [-4.32, 19.68, 1.2, 1.2, 1.22, "res"], [-2.68, 19.68, 1.2, 1.2, 1.13, "res"], [-4.32, 21.32, 1.2, 1.2, 1.34, "res"], [-2.68, 21.32, 1.2, 1.2, 1.47, "res"], [3.68, -20.32, 1.2, 1.2, 1.58, "res"], [5.32, -20.32, 1.2, 1.2, 1.72, "res"], [3.68, -18.68, 1.2, 1.2, 1.69, "res"], [5.32, -18.68, 1.2, 1.2, 1.45, "res"], [3.68, 19.68, 1.2, 1.2, 1.31, "res"], [5.32, 19.68, 1.2, 1.2, 2.7, "res"], [3.68, 21.32, 1.2, 1.2, 1.39, "res"], [5.32, 21.32, 1.2, 1.2, 1.22, "res"], [19.68, -4.32, 1.2, 1.2, 1.75, "res"], [21.32, -4.32, 1.2, 1.2, 1.32, "res"], [19.68, -2.68, 1.2, 1.2, 1.62, "res"], [21.32, -2.68, 1.2, 1.2, 1.59, "res"], [19.68, 3.68, 1.2, 1.2, 1.55, "res"], [21.32, 3.68, 1.2, 1.2, 1.6, "res"], [19.68, 5.32, 1.2, 1.2, 1.57, "res"], [21.32, 5.32, 1.2, 1.2, 1.58, "res"], [-20.32, -8.32, 1.2, 1.2, 1.23, "res"], [-18.68, -8.32, 1.2, 1.2, 2.73, "res"], [-20.32, -6.68, 1.2, 1.2, 1.56, "res"], [-18.68, -6.68, 1.2, 1.2, 1.74, "res"], [-20.32, 7.68, 1.2, 1.2, 2.71, "res"], [-18.68, 7.68, 1.2, 1.2, 1.76, "res"], [-20.32, 9.32, 1.2, 1.2, 1.12, "res"], [-18.68, 9.32, 1.2, 1.2, 1.63, "res"], [-8.32, -20.32, 1.2, 1.2, 1.22, "res"], [-6.68, -20.32, 1.2, 1.2, 2.72, "res"], [-8.32, -18.68, 1.2, 1.2, 1.36, "res"], [-6.68, -18.68, 1.2, 1.2, 1.65, "res"], [19.68, -8.32, 1.2, 1.2, 1.36, "res"], [21.32, -8.32, 1.2, 1.2, 1.37, "res"], [19.68, -6.68, 1.2, 1.2, 1.09, "res"], [21.32, -6.68, 1.2, 1.2, 2.71, "res"], [20.5, 8.5, 3, 3, 0, "park"], [-16.32, -16.32, 1.2, 1.2, 1.19, "res"], [-14.68, -16.32, 1.2, 1.2, 1.29, "res"], [-16.32, -14.68, 1.2, 1.2, 1.66, "res"], [-14.68, -14.68, 1.2, 1.2, 1.23, "res"], [-16.32, 15.68, 1.2, 1.2, 1.07, "res"], [-14.68, 15.68, 1.2, 1.2, 1.54, "res"], [-16.32, 17.32, 1.2, 1.2, 1.13, "res"], [-14.68, 17.32, 1.2, 1.2, 1.41, "res"], [16.5, -16.3, 2.8, 1.25, 0.84, "ind"], [16.5, -14.7, 2.8, 1.25, 0.92, "ind"], [16.5, 16.5, 3, 3, 0, "park"]], "rings": [{"kind": "elev", "pts": [[18.0, 9.0], [17.9, 9.98], [17.62, 10.91], [17.16, 11.78], [16.54, 12.54], [15.78, 13.16], [14.91, 13.62], [13.98, 13.9], [13.0, 14.0], [11.56, 14.0], [10.11, 14.0], [8.67, 14.0], [7.22, 14.0], [5.78, 14.0], [4.33, 14.0], [2.89, 14.0], [1.44, 14.0], [0.0, 14.0], [-1.44, 14.0], [-2.89, 14.0], [-4.33, 14.0], [-5.78, 14.0], [-7.22, 14.0], [-8.67, 14.0], [-10.11, 14.0], [-11.56, 14.0], [-13.0, 14.0], [-13.98, 13.9], [-14.91, 13.62], [-15.78, 13.16], [-16.54, 12.54], [-17.16, 11.78], [-17.62, 10.91], [-17.9, 9.98], [-18.0, 9.0], [-18.0, 7.5], [-18.0, 6.0], [-18.0, 4.5], [-18.0, 3.0], [-18.0, 1.5], [-18.0, 0.0], [-18.0, -1.5], [-18.0, -3.0], [-18.0, -4.5], [-18.0, -6.0], [-18.0, -7.5], [-18.0, -9.0], [-17.9, -9.98], [-17.62, -10.91], [-17.16, -11.78], [-16.54, -12.54], [-15.78, -13.16], [-14.91, -13.62], [-13.98, -13.9], [-13.0, -14.0], [-11.56, -14.0], [-10.11, -14.0], [-8.67, -14.0], [-7.22, -14.0], [-5.78, -14.0], [-4.33, -14.0], [-2.89, -14.0], [-1.44, -14.0], [0.0, -14.0], [1.44, -14.0], [2.89, -14.0], [4.33, -14.0], [5.78, -14.0], [7.22, -14.0], [8.67, -14.0], [10.11, -14.0], [11.56, -14.0], [13.0, -14.0], [13.98, -13.9], [14.91, -13.62], [15.78, -13.16], [16.54, -12.54], [17.16, -11.78], [17.62, -10.91], [17.9, -9.98], [18.0, -9.0], [18.0, -7.5], [18.0, -6.0], [18.0, -4.5], [18.0, -3.0], [18.0, -1.5], [18.0, 0.0], [18.0, 1.5], [18.0, 3.0], [18.0, 4.5], [18.0, 6.0], [18.0, 7.5], [18.0, 9.0]]}], "mark": [12.5, 0.5]}, {"id": "db8c2db6", "name": "pos-lite", "plan": "ridge", "terrain": "mountain", "slot": [0, -2], "cx": 0, "cz": -44, "sea": false, "n": 2, "tier": 3, "cells": 1, "lines": 20000, "size": 0.6052343817819053, "r": 5.955070357938764, "open": 15, "plots_total": 37, "plots": [{"k": 0, "x": 2, "z": -46, "d": "workshop"}, {"k": 1, "x": -1, "z": -48, "d": "tower"}, {"k": 2, "x": 2, "z": -43, "d": "shop"}, {"k": 3, "x": 0, "z": -41, "d": "house"}, {"k": 4, "x": -4, "z": -43, "d": "house"}, {"k": 5, "x": -4, "z": -45, "d": "library"}, {"k": 6, "x": -3, "z": -48, "d": "library"}, {"k": 7, "x": 1, "z": -48, "d": "tower"}, {"k": 8, "x": -2, "z": -41, "d": "house"}, {"k": 9, "x": 4, "z": -46, "d": "workshop"}, {"k": 10, "x": 2, "z": -41, "d": "shop"}, {"k": 11, "x": -1, "z": -50, "d": "tower"}, {"k": 12, "x": 4, "z": -43, "d": "shop"}, {"k": 13, "x": -4, "z": -41, "d": "house"}, {"k": 14, "x": 3, "z": -48, "d": "workshop"}], "buildings": [{"plot": 3, "type": "house", "by": "worker", "x": 0, "z": -41, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": "\u4f4f\u5b85\u533a 4 \u53f7"}], "era": "town", "balance": {"build": {"state": "healthy", "value": 20000, "n": 60, "text": "20,000 \u884c\u4ee3\u7801"}, "rules": {"state": "low", "value": 0.3, "n": 18, "text": "30% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 6, "n": 8, "text": "6 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.5 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.6, "n": 12, "text": "12/20 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 4, "n": 4, "text": "4 \u4e2a\u6587\u4ef6"}}, "rules_note": "", "offices": [], "rest": null, "sites": [], "bg": [[-1.5, -44.5, 0.86, 0.86, 2.65, "main"], [-1.5, -43.5, 0.86, 0.86, 2.11, "main"], [-0.5, -45.5, 0.86, 0.86, 2.22, "main"], [-0.5, -42.5, 0.86, 0.86, 2.51, "main"], [0.5, -45.5, 0.86, 0.86, 2.07, "main"], [0.5, -42.5, 0.86, 0.86, 2.13, "main"], [-1.5, -45.5, 0.8, 0.8, 1.03, "fill"], [-1.5, -42.5, 0.8, 0.8, 1.33, "fill"], [1.5, -45.5, 0.8, 0.8, 1.58, "fill"], [1.5, -42.5, 0.8, 0.8, 1.02, "fill"], [-3.5, -43.5, 0.8, 0.8, 1.43, "fill"], [0.5, -47.5, 0.8, 0.8, 1.4, "fill"], [-3.5, -45.5, 0.8, 0.8, 1.53, "fill"], [-1.5, -47.5, 0.8, 0.8, 1.15, "fill"], [2.5, -47.5, 0.8, 0.8, 1.17, "fill"], [-4.5, -42.5, 0.8, 0.8, 1.36, "fill"], [2.5, -51.5, 0.72, 0.72, 0.72, "edge"], [6.5, -47.5, 0.72, 0.72, 0.85, "edge"]], "rings": [], "mark": null}], "links": [{"a": "4d5d7e95", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[-33, 0], [-32, 0]]}, {"a": "db8c2db6", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[-2, -35], [-2, -34]]}]};
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, powerPreference:'low-power' });
 renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
@@ -5449,28 +5564,29 @@ function tileColor(view, X, Z, ch){
   const look = TERRAIN_LOOK[terrAtOf(view, X, Z)];
   return rgbOf(ch === '.' || ch === 't' ? look.wild : ch === 'b' ? BEACH_COLOR : ch === 'm' ? PASS_COLOR : ch === 'f' ? FOREST_FLOOR : look.ground);
 }
-/* SPEED: the dense gaussian sampling below (fieldAt/colorAt) runs tens of thousands of times per view —
-   terrAtOf/rgbOf must never run per sample point (buildLand runs on every world event). prepView(view)
-   reads every map tile exactly once (a plain Uint8Array of char codes, a Float32Array of each land tile's
-   own colour) and is cached by the view object itself, so groundGeometry + waterGeometry + laneGeometry
-   (called back to back, on the same view) only ever pay this cost once. */
+/* SPEED (city-tier W4: the owner's island is 154 x 110 tiles; buildLand runs on every world event, so the ground
+   must build fast FROM SCRATCH, no cache of an earlier build): the gaussian field and the colour mix are only
+   ever sampled densely where something can change. prepView(view) reads every map tile exactly once (plain typed
+   arrays: char codes, a land flag, each land tile's own colour), cached by the view object itself so
+   groundGeometry + waterGeometry + laneGeometry (called back to back, on the same view) pay it once. */
 const viewPrep = new WeakMap();
 function prepView(view){
   let p = viewPrep.get(view);
   if (p) return p;
   const w = view.w, h = view.h, n = Math.max(1, w * h);
-  const chars = new Uint8Array(n), rgb = new Float32Array(n * 3);
+  const chars = new Uint8Array(n), land = new Uint8Array(n), rgb = new Float32Array(n * 3);
   for (let r = 0; r < h; r++) {
     const row = view.rows[r] || '';
     for (let c = 0; c < w; c++) {
       const ch = row[c] || ' ', i = r * w + c;
       chars[i] = ch.charCodeAt(0);
       if (!isLand(ch)) continue;
+      land[i] = 1;
       const c3 = tileColor(view, view.x0 + c, view.z0 + r, ch);
       rgb[i * 3] = c3[0]; rgb[i * 3 + 1] = c3[1]; rgb[i * 3 + 2] = c3[2];
     }
   }
-  p = { w, h, x0: view.x0, z0: view.z0, chars, rgb };
+  p = { w, h, x0: view.x0, z0: view.z0, chars, land, rgb, grid: null };
   viewPrep.set(view, p);
   return p;
 }
@@ -5479,105 +5595,198 @@ function landAt(view, X, Z){
   const p = prepView(view), c = X - p.x0, r = Z - p.z0;
   return r < 0 || r >= p.h || c < 0 || c >= p.w ? ' ' : String.fromCharCode(p.chars[r * p.w + c]);
 }
-/* weighted share of the land tiles around (x, z) (tile centres at X+.5) that pass pred, gaussian falloff:
-   this is the hidden field marching squares contours into a smooth outline (mock's fieldAt). */
-function fieldAt(view, pred, x, z, sigma){
-  const X0 = Math.floor(x - .5), Z0 = Math.floor(z - .5), k = 1 / (2 * sigma * sigma);
-  let s = 0, n = 0;
-  for (let dz = -1; dz <= 2; dz++) for (let dx = -1; dx <= 2; dx++) {
-    const X = X0 + dx, Z = Z0 + dz, ex = X + .5 - x, ez = Z + .5 - z, w = Math.exp(-(ex * ex + ez * ez) * k);
-    n += w; if (pred(landAt(view, X, Z))) s += w;
-  }
-  return s / n;
-}
-/* ground colour at any point: a gaussian mix of the land tiles' own precomputed colour around it (prepView:
-   never a per-sample terrAtOf/rgbOf call) — never a per-tile step */
-function colorAt(view, x, z){
-  const p = prepView(view), X0 = Math.floor(x - .5) - p.x0, Z0 = Math.floor(z - .5) - p.z0, k = 1 / (2 * COLOR_SIGMA * COLOR_SIGMA);
+/* the colour mix at one point: a gaussian mix of the land tiles' own precomputed colour (6 x 6 tiles around it;
+   the weight is separable, wx[ox + dx] * wz[oz + dz]) — never a per-tile step, never a terrAtOf/rgbOf call.
+   X0, Z0 = the tile column/row (local to the view) of floor(x - .5), floor(z - .5). Writes out[0..2]. */
+function mixColor(p, X0, Z0, wx, ox, wz, oz, out){
+  const w = p.w, h = p.h, land = p.land, rgb = p.rgb;
   let r = 0, g = 0, b = 0, n = 0;
-  for (let dz = -2; dz <= 3; dz++) for (let dx = -2; dx <= 3; dx++) {
-    const cx = X0 + dx, cz = Z0 + dz;
-    if (cx < 0 || cx >= p.w || cz < 0 || cz >= p.h) continue;
-    const i = cz * p.w + cx;
-    if (!isLand(String.fromCharCode(p.chars[i]))) continue;
-    const ex = (cx + p.x0) + .5 - x, ez = (cz + p.z0) + .5 - z, w = Math.exp(-(ex * ex + ez * ez) * k);
-    r += p.rgb[i * 3] * w; g += p.rgb[i * 3 + 1] * w; b += p.rgb[i * 3 + 2] * w; n += w;
+  for (let dz = 0; dz < 6; dz++) {
+    const cz = Z0 + dz - 2;
+    if (cz < 0 || cz >= h) continue;
+    const wzv = wz[oz + dz];
+    for (let dx = 0; dx < 6; dx++) {
+      const cx = X0 + dx - 2;
+      if (cx < 0 || cx >= w) continue;
+      const i = cz * w + cx;
+      if (!land[i]) continue;
+      const wgt = wx[ox + dx] * wzv;
+      r += rgb[i * 3] * wgt; g += rgb[i * 3 + 1] * wgt; b += rgb[i * 3 + 2] * wgt; n += wgt;
+    }
   }
-  return n ? [r / n, g / n, b / n] : rgbOf(TERRAIN_LOOK.grassland.wild);
+  if (n) { out[0] = r / n; out[1] = g / n; out[2] = b / n; }
+  else { const f = rgbOf(TERRAIN_LOOK.grassland.wild); out[0] = f[0]; out[1] = f[1]; out[2] = f[2]; }
+  return out;
 }
-/* SPEED: fieldAt's own gaussian weight along one axis depends only on that axis's sample index (i or j),
-   never on the other one — so contourMesh's whole (w*SUB+1) x (h*SUB+1) grid needs each weight computed
-   only once per row and once per column (Float64Array tables), not once per sample point per neighbour.
-   Same numbers as calling fieldAt(view, pred, x0+i/SUB, z0+j/SUB, sigma) at every grid point, far fewer
-   Math.exp calls and pred() called once per map tile (a mask), never per sample. */
-function buildField(view, pred, sigma){
-  const p = prepView(view), w = p.w, h = p.h, k = 1 / (2 * sigma * sigma);
-  const mask = new Uint8Array(Math.max(1, w * h));
-  for (let i = 0; i < w * h; i++) mask[i] = pred(String.fromCharCode(p.chars[i])) ? 1 : 0;
-  const nx = w * SUB + 1, nz = h * SUB + 1;
-  const xBase = new Int32Array(nx), xW = new Float64Array(nx * 4);
+const COLOR_K = 1 / (2 * COLOR_SIGMA * COLOR_SIGMA);
+const _cwx = new Float64Array(6), _cwz = new Float64Array(6);
+/* ground colour at any world point (a fresh [r, g, b]) */
+function colorAt(view, x, z){
+  const p = prepView(view), lx = x - p.x0, lz = z - p.z0, X0 = Math.floor(lx - .5), Z0 = Math.floor(lz - .5);
+  for (let d = 0; d < 6; d++) {
+    const ex = X0 + d - 2 + .5 - lx, ez = Z0 + d - 2 + .5 - lz;
+    _cwx[d] = Math.exp(-(ex * ex) * COLOR_K); _cwz[d] = Math.exp(-(ez * ez) * COLOR_K);
+  }
+  return mixColor(p, X0, Z0, _cwx, 0, _cwz, 0, [0, 0, 0]);
+}
+/* the colour weights of every contour grid point (x = i / SUB), one table per axis: the colour of a grid
+   vertex is a few multiplications, no Math.exp */
+function colorTables(p){
+  if (p.grid) return p.grid;
+  const axis = n => {
+    const base = new Int32Array(n), wt = new Float64Array(n * 6);
+    for (let i = 0; i < n; i++) {
+      const t = i / SUB, B = Math.floor(t - .5); base[i] = B;
+      for (let d = 0; d < 6; d++) { const e = B + d - 2 + .5 - t; wt[i * 6 + d] = Math.exp(-(e * e) * COLOR_K); }
+    }
+    return { base, wt };
+  };
+  p.grid = { x: axis(p.w * SUB + 1), z: axis(p.h * SUB + 1) };
+  return p.grid;
+}
+/* a paint tells contourMesh the colour of a vertex: at(x, z, i, j) -> [r, g, b] (read at once; i, j = the grid
+   point when the vertex is one, else -1) and flat(c, r) -> true when the colour is one constant all over the
+   closed square of tile (c, r), so that tile may be drawn as one plain quad. */
+function groundPaint(view){
+  const p = prepView(view), tb = colorTables(p), out = [0, 0, 0];
+  return {
+    at: (x, z, i, j) => {
+      if (i < 0) { const c = colorAt(view, x, z); out[0] = c[0]; out[1] = c[1]; out[2] = c[2]; return out; }
+      return mixColor(p, tb.x.base[i], tb.z.base[j], tb.x.wt, i * 6, tb.z.wt, j * 6, out);
+    },
+    // the colour mix of any point of the square reads the land tiles c-3 .. c+3 / r-3 .. r+3 only
+    flat: (c, r) => {
+      const rgb = p.rgb, a = (r * p.w + c) * 3, R = rgb[a], G = rgb[a + 1], B = rgb[a + 2];
+      for (let rr = Math.max(0, r - 3); rr <= Math.min(p.h - 1, r + 3); rr++)
+        for (let cc = Math.max(0, c - 3); cc <= Math.min(p.w - 1, c + 3); cc++) {
+          const i = rr * p.w + cc;
+          if (p.land[i] && (rgb[i * 3] !== R || rgb[i * 3 + 1] !== G || rgb[i * 3 + 2] !== B)) return false;
+        }
+      return true;
+    },
+  };
+}
+const plainPaint = c => ({ at: () => c, flat: () => true });
+/* marching squares over the gaussian field of the tiles that pass pred (the hidden field: the weighted share of
+   pred tiles in the 4 x 4 tiles around a point, tile centres at X+.5, gaussian falloff): fills where f >= level
+   at height y, one vertex position one colour (paint), and calls edge(P, Q) for every piece of the outline
+   (P -> Q runs with the filled side on its right, so the outward normal is (dz, -dx)) so the caller can add a
+   skirt or a bank exactly along the smooth border, never the tile grid (mock's contourMesh).
+   SPEED: a tile's whole closed square reads the 5 x 5 tiles around it, so it is classified from a prefix sum
+   of the pred mask — nothing within reach (skipped), or everything within reach and one flat colour (one plain
+   quad, 2 triangles; fanned from its centre only along an edge shared with a sampled tile, so no T-junction),
+   else sampled (SUB x SUB cells, the field computed once per grid point). Vertices live in typed id tables,
+   never in a Map. Output identical to sampling the whole grid. */
+const CELL_DI = [0, 1, 1, 0], CELL_DJ = [0, 0, 1, 1];
+function contourMesh(view, pred, sigma, level, y, paint, edge){
+  const p = prepView(view), w = p.w, h = p.h, x0 = view.x0, z0 = view.z0, T = SUB;
+  const positions = [], colors = [], indices = [], res = { positions, colors, indices };
+  const mask = new Uint8Array(Math.max(1, w * h)), sw = w + 1, S = new Int32Array(sw * (h + 1));
+  let any = 0;
+  for (let r = 0; r < h; r++) {
+    let run = 0;
+    for (let c = 0; c < w; c++) {
+      const m = pred(String.fromCharCode(p.chars[r * w + c])) ? 1 : 0;
+      mask[r * w + c] = m; run += m; any |= m;
+      S[(r + 1) * sw + c + 1] = S[r * sw + c + 1] + run;
+    }
+  }
+  if (!any) return res;
+  const cls = new Uint8Array(w * h); // 0 nothing in reach, 1 sampled, 2 one plain flat quad
+  for (let r = 0; r < h; r++) {
+    const ra = r < 2 ? 0 : r - 2, rb = r + 3 > h ? h : r + 3;
+    for (let c = 0; c < w; c++) {
+      const ca = c < 2 ? 0 : c - 2, cb = c + 3 > w ? w : c + 3;
+      const n = S[rb * sw + cb] - S[ra * sw + cb] - S[rb * sw + ca] + S[ra * sw + ca];
+      cls[r * w + c] = n === 0 ? 0 : n === 25 && paint.flat(c, r) ? 2 : 1;
+    }
+  }
+  const nx = w * T + 1, nz = h * T + 1, k = 1 / (2 * sigma * sigma);
+  const xBase = new Int32Array(nx), xW = new Float64Array(nx * 4), zBase = new Int32Array(nz), zW = new Float64Array(nz * 4);
   for (let i = 0; i < nx; i++) {
-    const x = i / SUB, X0 = Math.floor(x - .5); xBase[i] = X0;
+    const x = i / T, X0 = Math.floor(x - .5); xBase[i] = X0;
     for (let d = 0; d < 4; d++) { const ex = X0 + (d - 1) + .5 - x; xW[i * 4 + d] = Math.exp(-(ex * ex) * k); }
   }
-  const zBase = new Int32Array(nz), zW = new Float64Array(nz * 4);
   for (let j = 0; j < nz; j++) {
-    const z = j / SUB, Z0 = Math.floor(z - .5); zBase[j] = Z0;
+    const z = j / T, Z0 = Math.floor(z - .5); zBase[j] = Z0;
     for (let d = 0; d < 4; d++) { const ez = Z0 + (d - 1) + .5 - z; zW[j * 4 + d] = Math.exp(-(ez * ez) * k); }
   }
-  const F = new Float32Array(nx * nz);
-  for (let j = 0; j < nz; j++) {
-    const Z0 = zBase[j];
-    for (let i = 0; i < nx; i++) {
-      const X0 = xBase[i];
-      let s = 0, n = 0;
-      for (let dz = 0; dz < 4; dz++) {
-        const Z = Z0 + dz - 1, inZ = Z >= 0 && Z < h, wz = zW[j * 4 + dz];
-        for (let dx = 0; dx < 4; dx++) {
-          const X = X0 + dx - 1, wgt = xW[i * 4 + dx] * wz;
-          n += wgt;
-          if (inZ && X >= 0 && X < w && mask[Z * w + X]) s += wgt;
-        }
+  const NONE = 9; // F holds field - level, never near 9
+  const F = new Float32Array(nx * nz).fill(NONE), cid = new Int32Array(nx * nz).fill(-1);
+  const eh = new Int32Array((nx - 1) * nz).fill(-1), ev = new Int32Array(nx * (nz - 1)).fill(-1);
+  const sample = (i, j) => {
+    const X0 = xBase[i], Z0 = zBase[j];
+    let s = 0, n = 0;
+    for (let dz = 0; dz < 4; dz++) {
+      const Z = Z0 + dz - 1, inZ = Z >= 0 && Z < h, wz = zW[j * 4 + dz];
+      for (let dx = 0; dx < 4; dx++) {
+        const X = X0 + dx - 1, wgt = xW[i * 4 + dx] * wz;
+        n += wgt;
+        if (inZ && X >= 0 && X < w && mask[Z * w + X]) s += wgt;
       }
-      F[j * nx + i] = s / n;
     }
-  }
-  return F;
-}
-/* marching squares over a sampled field: fills where f >= level at height y (one vertex position, one
-   colour: colorFn(x, z)); calls edge(P, Q) for every piece of the outline (mock's contourMesh) so the
-   caller can add a skirt or a bank exactly along the smooth border, never the tile grid. */
-function contourMesh(view, pred, sigma, level, y, colorFn, edge){
-  const positions = [], colors = [], indices = [];
-  const nx = view.w * SUB + 1, nz = view.h * SUB + 1, x0 = view.x0, z0 = view.z0;
-  const F = buildField(view, pred, sigma);
-  for (let idx = 0; idx < F.length; idx++) F[idx] -= level;
-  const vid = new Map();
-  const vert = (key, x, z) => {
-    let id = vid.get(key);
-    if (id === undefined) { id = positions.length / 3; vid.set(key, id); positions.push(x, y, z); colors.push(...colorFn(x, z)); }
+    return s / n - level;
+  };
+  const addVertex = (x, z, i, j) => {
+    const id = positions.length / 3, c = paint.at(x, z, i, j);
+    positions.push(x, y, z); colors.push(c[0], c[1], c[2]);
     return id;
   };
-  const corner = (i, j) => vert('c' + i + ',' + j, x0 + i / SUB, z0 + j / SUB);
-  const cut = (i0, j0, i1, j1) => {
-    const a = F[j0 * nx + i0], b = F[j1 * nx + i1], t = a / (a - b);
-    const x = x0 + (i0 + (i1 - i0) * t) / SUB, z = z0 + (j0 + (j1 - j0) * t) / SUB;
-    return { id: vert('e' + Math.min(i0, i1) + ',' + Math.min(j0, j1) + (i0 !== i1 ? 'h' : 'v'), x, z), x, z };
-  };
-  for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
-    const cs = [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]];
-    const inside = cs.map(([a, b]) => F[b * nx + a] >= 0);
-    if (!inside.some(Boolean)) continue;
-    const poly = [];
-    for (let k = 0; k < 4; k++) {
-      const [a, b] = cs[k], [c, d] = cs[(k + 1) % 4];
-      if (inside[k]) poly.push({ id: corner(a, b), x: x0 + a / SUB, z: z0 + b / SUB, c: true });
-      if (inside[k] !== inside[(k + 1) % 4]) poly.push(cut(a, b, c, d));
+  const corner = (i, j) => { const a = j * nx + i; return cid[a] >= 0 ? cid[a] : (cid[a] = addVertex(x0 + i / T, z0 + j / T, i, j)); };
+  const cut = (ia, ja, ib, jb) => { // the point on a grid edge where the field crosses the level (one vertex per edge)
+    if (ja === jb) {
+      const lo = ia < ib ? ia : ib, e = ja * (nx - 1) + lo;
+      if (eh[e] >= 0) return eh[e];
+      const a = F[ja * nx + lo], b = F[ja * nx + lo + 1];
+      return (eh[e] = addVertex(x0 + (lo + a / (a - b)) / T, z0 + ja / T, -1, -1));
     }
-    for (let k = 1; k + 1 < poly.length; k++) indices.push(poly[0].id, poly[k + 1].id, poly[k].id); // wound to face up
-    if (edge) for (let k = 0; k < poly.length; k++) { const p = poly[k], q = poly[(k + 1) % poly.length]; if (!p.c && !q.c) edge(p, q); }
+    const lo = ja < jb ? ja : jb, e = lo * nx + ia;
+    if (ev[e] >= 0) return ev[e];
+    const a = F[lo * nx + ia], b = F[(lo + 1) * nx + ia];
+    return (ev[e] = addVertex(x0 + ia / T, z0 + (lo + a / (a - b)) / T, -1, -1));
+  };
+  const ring = new Int32Array(4 * T), pid = new Int32Array(8), pc = new Uint8Array(8), ins = new Uint8Array(4);
+  for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
+    const cl = cls[r * w + c];
+    if (cl === 0) continue;
+    const i0 = c * T, j0 = r * T;
+    if (cl === 2) {
+      // an edge shared with a sampled tile carries that tile's grid vertices (conforming mesh)
+      const sT = r > 0 ? cls[(r - 1) * w + c] !== 2 : true, sR = c + 1 < w ? cls[r * w + c + 1] !== 2 : true;
+      const sB = r + 1 < h ? cls[(r + 1) * w + c] !== 2 : true, sL = c > 0 ? cls[r * w + c - 1] !== 2 : true;
+      if (!(sT || sR || sB || sL)) {
+        const a = corner(i0, j0), b = corner(i0 + T, j0), d = corner(i0 + T, j0 + T), e = corner(i0, j0 + T);
+        indices.push(a, d, b, a, e, d);
+        continue;
+      }
+      let m = 0;
+      ring[m++] = corner(i0, j0); if (sT) for (let s = 1; s < T; s++) ring[m++] = corner(i0 + s, j0);
+      ring[m++] = corner(i0 + T, j0); if (sR) for (let s = 1; s < T; s++) ring[m++] = corner(i0 + T, j0 + s);
+      ring[m++] = corner(i0 + T, j0 + T); if (sB) for (let s = 1; s < T; s++) ring[m++] = corner(i0 + T - s, j0 + T);
+      ring[m++] = corner(i0, j0 + T); if (sL) for (let s = 1; s < T; s++) ring[m++] = corner(i0, j0 + T - s);
+      const hub = addVertex(x0 + c + .5, z0 + r + .5, -1, -1);
+      for (let q = 0; q < m; q++) indices.push(hub, ring[(q + 1) % m], ring[q]); // wound to face up
+      continue;
+    }
+    for (let j = j0; j <= j0 + T; j++) for (let i = i0; i <= i0 + T; i++) { const a = j * nx + i; if (F[a] === NONE) F[a] = sample(i, j); }
+    for (let j = j0; j < j0 + T; j++) for (let i = i0; i < i0 + T; i++) {
+      const a = j * nx + i;
+      ins[0] = F[a] >= 0 ? 1 : 0; ins[1] = F[a + 1] >= 0 ? 1 : 0; ins[2] = F[a + nx + 1] >= 0 ? 1 : 0; ins[3] = F[a + nx] >= 0 ? 1 : 0;
+      if (!(ins[0] | ins[1] | ins[2] | ins[3])) continue;
+      let n = 0;
+      for (let q = 0; q < 4; q++) {
+        const q1 = (q + 1) & 3, ia = i + CELL_DI[q], ja = j + CELL_DJ[q], ib = i + CELL_DI[q1], jb = j + CELL_DJ[q1];
+        if (ins[q]) { pid[n] = corner(ia, ja); pc[n++] = 1; }
+        if (ins[q] !== ins[q1]) { pid[n] = cut(ia, ja, ib, jb); pc[n++] = 0; }
+      }
+      for (let q = 1; q + 1 < n; q++) indices.push(pid[0], pid[q + 1], pid[q]); // wound to face up
+      if (edge) for (let q = 0; q < n; q++) {
+        const q1 = q + 1 < n ? q + 1 : 0;
+        if (!pc[q] && !pc[q1]) edge({ x: positions[pid[q] * 3], z: positions[pid[q] * 3 + 2] }, { x: positions[pid[q1] * 3], z: positions[pid[q1] * 3 + 2] });
+      }
+    }
   }
-  return { positions, colors, indices };
+  return res;
 }
 /* two geometries, one buffer (index offsets fixed up) */
 function merge(a, b){
@@ -5602,33 +5811,27 @@ function fixUp(g){
    in well below ground (mock's newGround + newRavine). */
 function groundGeometry(view){
   const skirts = { positions: [], colors: [], indices: [] };
-  const rock = rgbOf(ROCK_GREY);
+  const rock = rgbOf(ROCK_GREY), rockDark = rock.map(v => v * .7);
   const wall = (p, q, yb, rgbTop, rgbBot) => {
-    // outward = the side where the land field is lower
-    const mx = (p.x + q.x) / 2, mz = (p.z + q.z) / 2, dx = q.x - p.x, dz = q.z - p.z, l = Math.hypot(dx, dz) || 1;
-    let nx = dz / l, nz = -dx / l;
-    if (fieldAt(view, isLand, mx + nx * .1, mz + nz * .1, LAND_SIGMA) > fieldAt(view, isLand, mx - nx * .1, mz - nz * .1, LAND_SIGMA)) { nx = -nx; nz = -nz; }
+    // contourMesh winds every outline piece with the land on its right: the outward side is (dz, -dx), so the
+    // wall's own winding (p, q, q-bottom) already faces out
     const b = skirts.positions.length / 3;
     skirts.positions.push(p.x, 0, p.z, q.x, 0, q.z, q.x, yb, q.z, p.x, yb, p.z);
-    skirts.colors.push(...rgbTop, ...rgbTop, ...rgbBot, ...rgbBot);
-    const fx = dz, fz = -dx; // normal of (p, q, q-bottom) points along (dz, -dx)
-    if ((fx * nx + fz * nz) > 0) skirts.indices.push(b, b + 1, b + 2, b, b + 2, b + 3); else skirts.indices.push(b, b + 2, b + 1, b, b + 3, b + 2);
+    skirts.colors.push(rgbTop[0], rgbTop[1], rgbTop[2], rgbTop[0], rgbTop[1], rgbTop[2], rgbBot[0], rgbBot[1], rgbBot[2], rgbBot[0], rgbBot[1], rgbBot[2]);
+    skirts.indices.push(b, b + 1, b + 2, b, b + 2, b + 3);
   };
-  const top = contourMesh(view, isLand, LAND_SIGMA, .5, 0, (x, z) => colorAt(view, x, z), (p, q) => {
+  const top = contourMesh(view, isLand, LAND_SIGMA, .5, 0, groundPaint(view), (p, q) => {
     const mx = (p.x + q.x) / 2, mz = (p.z + q.z) / 2, dx = q.x - p.x, dz = q.z - p.z, l = Math.hypot(dx, dz) || 1;
-    let nx = dz / l, nz = -dx / l;
-    if (fieldAt(view, isLand, mx + nx * .1, mz + nz * .1, LAND_SIGMA) > fieldAt(view, isLand, mx - nx * .1, mz - nz * .1, LAND_SIGMA)) { nx = -nx; nz = -nz; }
-    const out = landAt(view, Math.floor(mx + nx * .45), Math.floor(mz + nz * .45));
+    const out = landAt(view, Math.floor(mx + dz / l * .45), Math.floor(mz - dx / l * .45));
     if (isWater(out)) { const c = colorAt(view, mx, mz); wall(p, q, -.3, c.map(v => v * .72), c.map(v => v * .55)); }
-    else wall(p, q, out === 'k' ? -1.25 : -1, rock, rock.map(v => v * .7));
+    else wall(p, q, out === 'k' ? -1.25 : -1, rock, rockDark);
   });
-  const ravine = fixUp(contourMesh(view, ch => ch === 'k', LAND_SIGMA, .3, -1.2, () => rgbOf(RAVINE_FLOOR)));
+  const ravine = fixUp(contourMesh(view, ch => ch === 'k', LAND_SIGMA, .3, -1.2, plainPaint(rgbOf(RAVINE_FLOOR))));
   return merge(merge(top, skirts), ravine);
 }
 /* waterGeometry(view) -> the same shape: one continuous flat surface over every river/bridge/sea tile */
 function waterGeometry(view){
-  const c = rgbOf(WATER_COLOR);
-  return fixUp(contourMesh(view, isWater, LAND_SIGMA, .3, -.06, () => c));
+  return fixUp(contourMesh(view, isWater, LAND_SIGMA, .3, -.06, plainPaint(rgbOf(WATER_COLOR))));
 }
 /* laneGraph(view) -> {paths: [{pts}], joints}: smooth centre lines along the road/track tiles (through
    bridges), walked from every junction/dead end and Chaikin-smoothed (ends pinned); a lane tile with no
@@ -5760,6 +5963,7 @@ function buildLand(view){
   }
   landState(view); // map, mid, land, the tile pools, building records, updateHome() -- city-people
   renderRepos(); // U1: the repo row follows every world event, not only the first
+  tierClear(); // city-tier: the last picture's background buildings, rings and landmark go (their buffers freed), the halls' pick records too
   while (landGroup.children.length) landGroup.remove(landGroup.children[0]);
   tall.clear();
   for (let i = fadeables.length - 1; i >= 0; i--) if (fadeables[i].fromLand) fadeables.splice(i, 1);
@@ -5798,6 +6002,9 @@ function buildLand(view){
     const flag = place('flag', t.cx - .4, t.cz - .25, { y: lib[hallKey].size.y * hallS - hallSink * hallS, s: .7, parent: landGroup });
     const hTiles = [[-1, 0], [0, 0], [-1, 1], [0, 1]].map(([dx, dz]) => (t.cx - mid.x + dx) + ',' + (t.cz - mid.z + dz));
     for (const g of [hall, flag]) fadeables.push({ g, tiles: hTiles, fromLand: true });
+    hall.userData.pick = { t: 'hall', terr: t.id }; pickables.push(hall); // city-tier T3: a click on a town hall opens its short card
+    if (t.mark && !tierShowing(t)) { const lm = pearlTower(); lm.position.set(t.mark[0], 0, t.mark[1]); landGroup.add(lm); } // city-tier T4: tier 1's landmark, where the server put it
+    drawRings(t); // city-tier T4: the elevated ring on pillars, the flat ring roads, their lamps, the cable bridges
     const decor = hallDecor(t, view), lamps = decor.filter(d => d.key === 'lantern');
     for (const d of decor) if (d.key !== 'lantern') place(d.key, d.x, d.z, { fit: .8, parent: landGroup });
     instanced('lantern', lamps.map(({ x, z }) => ({ x, z, h: .55 })), { parent: landGroup });
@@ -5856,11 +6063,276 @@ function buildLand(view){
       if (existing.v && existing.builtEra !== eraShown(t)) dropBuildingMesh(existing);
     }
   }
+  drawBg(view); // city-tier T4: every land's background buildings -- one instanced mesh per model, a far set of boxes, trees for the parks
+  cityNight(isDark()); // city-tier T4: the lights follow the page's dark mode, also for what was just drawn
   updateHome(); // the world changed: look at a town hall, never at the empty middle of the land (landState() already did this; harmless twice)
   if (!firstViewDone && territories.length && lastTouch === -Infinity) { firstViewDone = true; resetCam(); } // only the first world with a territory goes home; a later one never snaps the camera back
   scanTall();
   syncAllSiteMeshes(); // Worktrees: every current site (sites map, not just this view's own) gets its meshes
   arrAfterLand(); // city-layout L4: the island came (again) from the server -- the arrange mode's plates and slot marks follow it
+}
+
+/* ---------- city-tier (3D part): a big city's scenery -- background buildings, the landmark tower, the rings, the night.
+   The look is the approved mock's (mock/city-tier-mock.html: buildWorld, landmark, PAL, winTex); the city itself is the
+   server's (view.territories[].bg / rings / mark, tile coordinates like everything buildLand draws), never worked out here.
+   Cost: instanced meshes only (one per model, one per height class of far boxes, of window overlays), never a Mesh per
+   building; far away plain boxes; no shadow, no pick. ---------- */
+const tmpM3 = new THREE.Matrix4(), tmpV3 = new THREE.Vector3(), tmpC = new THREE.Color();
+const BG_PAL = { cbd: ['#8FB4EC', '#79C6DA', '#9AA5EE', '#B4CDF3', '#6E9BE0', '#A9E0E4'], mid: ['#F3E4C8', '#EAD3B3', '#DCE5EE', '#F1DBD2', '#D2E3D6', '#E7DDF0'],
+  res: ['#F8E8D2', '#F4D9C6', '#EAE2D3', '#F6EDDB', '#F2D2C0'], bund: ['#E8D6AC', '#DCC69D', '#D0BE98'], ind: ['#C2C6CB', '#ADB4BC', '#CBC2B3'],
+  cot: ['#F8E3C2', '#F3D2B4', '#EFE2CC'], park: ['#86C977'] };
+/* the window texture's repeat per height class (columns, rows): the windows keep their size on a low and a tall box */
+const WIN_CLS = { low: [2, 2], mid: [3, 5], high: [3, 12], sup: [4, 24] };
+/* what to dispose when the picture is drawn again (instanced meshes' buffers, own geometry and material); tierLit = the far
+   boxes' materials whose windows light up at night; tierGlow = the landmark's glowing materials; tierLamps = the lamp point
+   sets (shown at night); tierNear / tierFar = the two sets of background buildings (the models near, the boxes far);
+   tierWin = the lit-window overlays of the near models (shown at night, near only); cityDark = the night is on */
+let tierOwn = [], tierLit = [], tierGlow = [], tierLamps = [], tierNear = [], tierFar = [], tierWin = [], bgFarNow = null, cityDark = false;
+function tierClear(){
+  for (const o of tierOwn) if (o && o.dispose) o.dispose();
+  tierOwn = []; tierLit = []; tierGlow = []; tierLamps = []; tierNear = []; tierFar = []; tierWin = []; bgFarNow = null;
+  for (let i = pickables.length - 1; i >= 0; i--) { const pk = pickables[i].userData.pick; if (pk && pk.t === 'hall') pickables.splice(i, 1); }
+}
+const hexNum = hex => parseInt(hex.slice(1), 16);
+/* winTex(night): the mock's window texture, a CanvasTexture made once per mode and kept (never freed with a picture):
+   day = blue-grey windows on white (it tints with the building's colour), night = warm lit windows on black (the emissive
+   map of the far boxes, the additive overlay of the near models) */
+const winCache = {};
+function winTex(night){
+  const k = night ? 'n' : 'd';
+  if (winCache[k]) return winCache[k];
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const x = cv.getContext('2d');
+  x.fillStyle = night ? '#000' : '#fff'; x.fillRect(0, 0, 64, 64);
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+    const lit = ((i * 7 + j * 13 + i * j * 5) % 10) < 6;
+    x.fillStyle = night ? (lit ? ((i + j) % 3 ? '#FFD98A' : '#FFF3C4') : '#000') : '#7389B0';
+    x.fillRect(i * 16 + 4, j * 16 + 4, 8, 9);
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding;
+  winCache[k] = t;
+  return t;
+}
+/* a unit box standing on y 0 (its own geometry, freed with the picture); with a height class its four sides carry the window
+   texture's repeat of that class (the top and the bottom keep the plain UV) */
+function winBox(cls){
+  const g = new THREE.BoxGeometry(1, 1, 1);
+  g.translate(0, .5, 0);
+  if (cls) {
+    const uv = g.attributes.uv, c = WIN_CLS[cls];
+    for (let i = 0; i < uv.count; i++) if (i < 8 || i >= 16) uv.setXY(i, uv.getX(i) * c[0] / 4, uv.getY(i) * c[1] / 4);
+  }
+  tierOwn.push(g);
+  return g;
+}
+const winClass = h => h < 1.7 ? 'low' : h < 3.6 ? 'mid' : h < 7.6 ? 'high' : 'sup';
+/* a building's colour from the mock's PAL by its zone, picked by its own place (stable, never random) */
+function bgHex(zone, tier, x, z){
+  const pal = BG_PAL[zone === 'main' ? 'mid' : zone === 'edge' ? 'cot' : zone === 'fill' ? (tier === 1 || tier === 2 ? 'mid' : tier === 3 ? 'res' : 'cot') : zone] || BG_PAL.res;
+  return pal[Math.floor(Math.abs(x * 13.7 + z * 7.3)) % pal.length];
+}
+/* instancedBox(key, items, opt): instanced() for buildings scaled to a box -- each item {x, z, w, d, h, hex} (the middle of
+   its footprint, its width, depth and height in tiles, its colour) stands on the ground with the model stretched to w x h x d
+   and tinted by instanceColor (setColorAt). Returns the instanced meshes made (one per mesh of the model). */
+function instancedBox(key, items, opt){
+  const o = opt || {}, L = lib[key], made = [];
+  if (!L || !items.length) return made;
+  const c = L.box.getCenter(tmpV3), sx = L.size.x || 1, sy = L.size.y || 1, sz = L.size.z || 1;
+  tmpM3.makeTranslation(-c.x, -L.box.min.y, -c.z);
+  L.scene.traverse(n => {
+    if (!n.isMesh) return;
+    const im = new THREE.InstancedMesh(n.geometry, n.material, items.length);
+    items.forEach((it, i) => {
+      tmpM.compose(tmpP.set(it.x, 0, it.z), tmpQ.identity(), tmpS.set(it.w / sx, it.h / sy, it.d / sz));
+      im.setMatrixAt(i, tmpM2.multiplyMatrices(tmpM, tmpM3).multiply(n.matrixWorld));
+      if (it.hex) im.setColorAt(i, tmpC.setHex(hexNum(it.hex)).convertSRGBToLinear());
+    });
+    im.castShadow = false; im.receiveShadow = false; im.frustumCulled = false;
+    (o.parent || world).add(im);
+    made.push(im);
+  });
+  return made;
+}
+/* one instanced mesh of boxes from a list [{x, z, w, d, h, hex?}] standing on y 0: geo + material(s) given */
+function boxSet(geo, mat, items){
+  const im = new THREE.InstancedMesh(geo, mat, items.length);
+  items.forEach((it, i) => {
+    tmpM.compose(tmpP.set(it.x, 0, it.z), tmpQ.identity(), tmpS.set(it.w, it.h, it.d));
+    im.setMatrixAt(i, tmpM);
+    if (it.hex) im.setColorAt(i, tmpC.setHex(hexNum(it.hex)).convertSRGBToLinear());
+  });
+  im.castShadow = false; im.receiveShadow = false; im.frustumCulled = false;
+  landGroup.add(im); tierOwn.push(im);
+  return im;
+}
+/* drawBg(view): every territory's background buildings (bgFor: none while a level-up show has not flipped, half on a
+   phone). Near: one instanced mesh per model (bgModel), scaled to the entry's w x h x d and tinted by the zone's pastel
+   (setColorAt), no shadow, never in pickables, no click; a tier 1 / 2 building also gets a lit-window overlay (an instanced
+   box a little bigger, winTex(true), additive, shown only at night). Far: instanced plain boxes with winTex windows (by
+   height class; the tier 1 / 2 ones light up at night). A park gets trees (instanced). bgDetail() shows one set and
+   hides the other by the camera's distance. */
+function drawBg(view){
+  const phone = matchMedia('(max-width: 960px)').matches, near = new Map(), far = {}, wins = {}, trees = {};
+  const farAdd = (k, it) => (far[k] = far[k] || []).push(it);
+  for (const t of view.territories || []) {
+    const tier = t.tier || 0, lit = tier === 1 || tier === 2;
+    for (const b of bgFor(t, phone)) {
+      const x = b[0], z = b[1], w = b[2], d = b[3], h = b[4], zone = b[5], key = bgModel(b, tier);
+      if (zone === 'park') {
+        const n = Math.max(3, Math.min(8, Math.round(w * d / 1.8)));
+        for (let i = 0; i < n; i++) (trees[i % 2 ? 'nature/tree_oak' : 'nature/tree_default'] = trees[i % 2 ? 'nature/tree_oak' : 'nature/tree_default'] || [])
+          .push({ x: x + (sr(x * 31 + z, i) - .5) * w * .8, z: z + (sr(z * 17 + x, i + 7) - .5) * d * .8, h: .9 + sr(x + z, i + 3) * .5 });
+        farAdd('Dlow', { x, z, w, d, h: .1, hex: BG_PAL.park[0] });
+        continue;
+      }
+      if (!lib[key]) continue;
+      const hex = bgHex(zone, tier, x, z), cls = winClass(h);
+      if (!near.has(key)) near.set(key, []);
+      near.get(key).push({ x, z, w, d, h, hex });
+      farAdd((lit ? 'L' : 'D') + cls, { x, z, w, d, h, hex });
+      if (lit) (wins[cls] = wins[cls] || []).push({ x, z, w: w * 1.05 + .04, d: d * 1.05 + .04, h: h + .03 });
+    }
+  }
+  for (const [key, items] of near) for (const im of instancedBox(key, items, { parent: landGroup })) { tierNear.push(im); tierOwn.push(im); }
+  for (const k in trees) {
+    const n0 = landGroup.children.length;
+    instanced(k, trees[k], { shadow: false, parent: landGroup });
+    for (let i = n0; i < landGroup.children.length; i++) tierOwn.push(landGroup.children[i]);
+  }
+  if (Object.keys(far).length) {
+    const roof = new THREE.MeshLambertMaterial({ color: 0xD6DAE6 }), dark = new THREE.MeshLambertMaterial({ map: winTex(false) }),
+      glow = new THREE.MeshLambertMaterial({ map: winTex(false), emissiveMap: winTex(true), emissive: 0xffffff, emissiveIntensity: 0 });
+    tierOwn.push(roof, dark, glow); tierLit.push(glow);
+    for (const k in far) { const side = k[0] === 'L' ? glow : dark; tierFar.push(boxSet(winBox(k.slice(1)), [side, side, roof, roof, side, side], far[k])); }
+  }
+  if (Object.keys(wins).length) {
+    const side = new THREE.MeshBasicMaterial({ map: winTex(true), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
+      none = new THREE.MeshBasicMaterial({ visible: false });
+    tierOwn.push(side, none);
+    for (const k in wins) tierWin.push(boxSet(winBox(k), [side, side, none, none, side, side], wins[k]));
+  }
+  bgFarNow = null; bgDetail();
+}
+/* bgApply(): what shows now -- the models and their lit windows (night only) near, the plain boxes far */
+function bgApply(){
+  const far = !!bgFarNow;
+  for (const m of tierNear) m.visible = !far;
+  for (const m of tierFar) m.visible = far;
+  for (const m of tierWin) m.visible = cityDark && !far;
+}
+/* bgDetail(): the camera is far (bgFar) -> the plain boxes show and the models hide, else the other way round; a cheap
+   check every frame that touches the scene only when the answer changes */
+function bgDetail(){
+  const far = bgFar(cam.dist);
+  if (far === bgFarNow) return;
+  bgFarNow = far;
+  bgApply();
+  needFrame = true;
+}
+/* lampSet(pos, size, color, map): a point set (positions x, y, z, ...) that shines at night: a round soft glow (map) or a
+   small bright core; additive, never hidden by fog; hidden by day (cityNight) */
+function lampSet(pos, size, color, map){
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const m = new THREE.PointsMaterial({ size, color, map: map || null, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+  const p = new THREE.Points(g, m);
+  p.visible = cityDark; p.frustumCulled = false;
+  tierLamps.push(p); tierOwn.push(g, m);
+  return p;
+}
+/* pearlTower(): the landmark of a tier-1 city, drawn in code (the mock's 'pearl'): three pink spheres on grey columns and
+   a spire, about 17 tall, standing on y 0 at the group's own spot; its spheres glow and a red light shines on top at night */
+function pearlTower(){
+  const g = new THREE.Group();
+  const mat = (hex, glow) => {
+    const m = new THREE.MeshPhongMaterial({ color: tmpC.setStyle(hex).clone().convertSRGBToLinear(), flatShading: true, shininess: 8 });
+    if (glow) { m.userData.glow = glow; tierGlow.push(m); }
+    tierOwn.push(m);
+    return m;
+  };
+  const add = (geo, m, y) => { const o = new THREE.Mesh(geo, m); o.position.y = y; tierOwn.push(geo); g.add(o); };
+  const pink = mat('#F0508A', 0xB02A62), grey = mat('#E6E9F2');
+  add(new THREE.CylinderGeometry(.5, 1.35, 3.2, 6), grey, 1.6); add(new THREE.SphereGeometry(1.3, 10, 7), pink, 3.9);
+  add(new THREE.CylinderGeometry(.36, .46, 6.4, 6), grey, 7.6); add(new THREE.SphereGeometry(.9, 10, 7), pink, 11.2);
+  add(new THREE.CylinderGeometry(.18, .24, 2, 6), grey, 12.9); add(new THREE.SphereGeometry(.42, 8, 6), pink, 14);
+  add(new THREE.ConeGeometry(.12, 3, 5), grey, 15.7);
+  g.add(lampSet([0, 17.3, 0], 3.2, 0xFF4050, glowTex), lampSet([0, 17.3, 0], .7, 0xFFB0B8));
+  return g;
+}
+/* ringCrossings(pts): where a polyline (tile coordinates) crosses water -> [{a, b}] with a = the last dry spot before and
+   b = the first dry spot after (the cable bridge's two ends); a crossing shorter than a tile and a half is no bridge */
+function ringCrossings(pts){
+  const out = [];
+  let run = null, prev = null;
+  for (let i = 1; i < pts.length; i++) {
+    const ax = pts[i - 1][0], az = pts[i - 1][1], L = Math.hypot(pts[i][0] - ax, pts[i][1] - az), n = Math.max(1, Math.ceil(L / .5));
+    for (let k = 0; k < n; k++) {
+      const x = ax + (pts[i][0] - ax) * k / n, z = az + (pts[i][1] - az) * k / n, wet = isWater(landAt(map, Math.floor(x), Math.floor(z)));
+      if (wet && !run) run = { a: prev || [x, z], b: [x, z] };
+      else if (wet) run.b = [x, z];
+      else if (run) { run.b = [x, z]; if (Math.hypot(run.b[0] - run.a[0], run.b[1] - run.a[1]) >= 1.5) out.push(run); run = null; }
+      prev = [x, z];
+    }
+  }
+  return out;
+}
+/* drawRings(t): the territory's rings (the server's {kind, pts}): "elev" an elevated deck on pillars (y about 1.05), "ring"
+   and "outer" a flat road; a lamp about every 2.4 tiles along it (lit at night: a soft glow and a bright core); a cable
+   bridge (two towers, cables) where the elevated ring crosses water. One instanced mesh of boxes for all of it, one line
+   set, the lamp point sets. */
+function drawRings(t){
+  if (!t.rings || !t.rings.length || tierShowing(t)) return;
+  const boxes = [], lines = [], lamps = [];
+  const box = (x, y, z, sx, sy, sz, ry, hex) => boxes.push({ x, y, z, sx, sy, sz, ry, hex });
+  for (const r of t.rings) {
+    const pts = r.pts || [], elev = r.kind === 'elev', y = elev ? 1.05 : .02, th = elev ? .16 : .06, w = elev ? 1 : .95, hex = elev ? '#8E93A6' : '#4D505C';
+    let acc = 0, next = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const dx = pts[i][0] - pts[i - 1][0], dz = pts[i][1] - pts[i - 1][1], L = Math.hypot(dx, dz);
+      if (L < .01) continue;
+      box((pts[i][0] + pts[i - 1][0]) / 2, y, (pts[i][1] + pts[i - 1][1]) / 2, L + w * .5, th, w, -Math.atan2(dz, dx), hex);
+      if (elev && i % 2 === 0 && !isWater(landAt(map, Math.floor(pts[i][0]), Math.floor(pts[i][1])))) box(pts[i][0], 0, pts[i][1], .22, 1.05, .22, 0, '#A9AEBF');
+      for (; next <= acc + L; next += 2.4) { const s = (next - acc) / L; lamps.push(pts[i - 1][0] + dx * s, elev ? 1.6 : .6, pts[i - 1][1] + dz * s); }
+      acc += L;
+    }
+    if (!elev) continue;
+    for (const c of ringCrossings(pts)) { // a cable bridge: a tower pair at each end, four cables each side down to the deck
+      const L = Math.hypot(c.b[0] - c.a[0], c.b[1] - c.a[1]), ux = (c.b[0] - c.a[0]) / L, uz = (c.b[1] - c.a[1]) / L, nx = -uz * .62, nz = ux * .62;
+      for (const [e, o] of [[c.a, c.b], [c.b, c.a]]) {
+        for (const s of [-1, 1]) {
+          box(e[0] + nx * s, 0, e[1] + nz * s, .22, 4.4, .22, 0, '#E9ECF5');
+          for (let i = 1; i <= 4; i++) { const f = i / 4 * .46, px = e[0] + (o[0] - e[0]) * f, pz = e[1] + (o[1] - e[1]) * f; lines.push(e[0] + nx * s, 4.3, e[1] + nz * s, px + nx * s, 1.2, pz + nz * s); }
+        }
+      }
+    }
+  }
+  if (boxes.length) {
+    const mat = new THREE.MeshLambertMaterial({ color: 0xffffff }), im = new THREE.InstancedMesh(winBox(), mat, boxes.length);
+    boxes.forEach((b, i) => {
+      tmpM.compose(tmpP.set(b.x, b.y, b.z), tmpQ.setFromEuler(tmpE.set(0, b.ry, 0)), tmpS.set(b.sx, b.sy, b.sz));
+      im.setMatrixAt(i, tmpM); im.setColorAt(i, tmpC.setHex(hexNum(b.hex)).convertSRGBToLinear());
+    });
+    im.castShadow = false; im.receiveShadow = false; im.frustumCulled = false;
+    landGroup.add(im); tierOwn.push(mat, im);
+  }
+  if (lines.length) {
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
+    const m = new THREE.LineBasicMaterial({ color: 0xE9ECF5 }), l = new THREE.LineSegments(g, m);
+    l.frustumCulled = false; landGroup.add(l); tierOwn.push(g, m);
+  }
+  if (lamps.length) landGroup.add(lampSet(lamps, 4.2, 0xFFC860, glowTex), lampSet(lamps, .7, 0xFFF4C8));
+}
+/* cityNight(on): the page's dark mode is the city's night. On: the lit-window overlays of the near tier 1 / 2 buildings and
+   the far boxes' windows (emissive map) light up, the ring lamps and the landmark's top light shine, the landmark's spheres
+   glow. The models themselves never glow. Off: none of it. */
+function cityNight(on){
+  cityDark = !!on;
+  for (const m of tierLit) m.emissiveIntensity = cityDark ? 1 : 0;
+  for (const m of tierGlow) m.emissive.setHex(cityDark ? m.userData.glow : 0x000000);
+  for (const o of tierLamps) o.visible = cityDark;
+  bgApply();
+  needFrame = true;
 }
 
 /* ---------- Worktrees: site meshes (fence/sign/light/scaffold/barrier/flag), the merge lane and the
@@ -6893,6 +7365,7 @@ function applyTheme(){
   hemi.color.set(P.sky); hemi.groundColor.set(P.gnd); hemi.intensity = P.hemiI;
   sun.color.set(P.sun); sun.intensity = P.sunI;
   glows.forEach(s => { s.visible = P.night; });
+  cityNight(P.night); // city-tier T4: the page's dark mode is the city's night
 }
 /* the top of whatever stands on a 1x1 tile, in scene coordinates: static scenery once, buildings live */
 const tall = new Map();
@@ -6993,7 +7466,11 @@ function distMax(){
 /* U1: the zoom-out limit -- never past distMax(), and never past a view that shows more than
    ZOOM_OUT_TERR territories across the stage's shorter side (so a land of many repos does not shrink
    to a confusing size). Every user zoom control goes through capZoom(..., distLimit(), distMax()). */
-function distLimit(){ return Math.min(distMax(), zoomCapDist((typeof map !== 'undefined' && map.cell) || 26, W, H)); }
+function distLimit(){
+  const cell = (typeof map !== 'undefined' && map.cell) || 26, big = typeof zoomCells === 'function' && typeof map !== 'undefined' ? zoomCells(map) : 1;
+  // city-tier T1: never closer than a whole big city (its square, a little loose) -- a tier 1 city is 3 cells wide
+  return Math.min(distMax(), Math.max(zoomCapDist(cell, W, H), spanDist(cell * big * 1.15, W, H)));
+}
 /* the point the camera looks at, [x, y, z]: the user's target, drawn to the land's real middle (its
    box centre cx, cz -- city-idea C7, not the scene origin), then nudged sideways by the same amount
    centreHeight()'s lx cancels in landSpread (undoing the shift convention there: a positive lx there
@@ -7255,7 +7732,7 @@ function stepShows(now){
         const bld = occupied.get(Math.floor(g2.x) + ',' + Math.floor(g2.z));
         if (bld) bld.showScaf = false;
       }
-      logAt(simT, i18n('log.eraBecame', { name: t.name, era: i18n('era.' + s.to) }));
+      if (!s.tier) logAt(simT, i18n('log.eraBecame', { name: t.name, era: i18n('era.' + s.to) })); // a level up said its line when it began (log.tierUp)
     }
     if (now >= s.end) {
       for (const b of run.builders) dropShowBuilder(b);
@@ -7574,6 +8051,10 @@ function renderDetail(){
     if (!b) selected = null; else key = `b${b.id}|${b.done}|${b.q}|${b.home}|${b.lv}|${b.files.length}|${b.hist.length}`;
   }
   if (selected && selected.t === 'gov') key = `gov|${selected.terr || govTerr}|${gov.answered}|${gov.dispatched}|${governorCount}`;
+  if (selected && selected.t === 'hall') { // city-tier T3: the town hall's short card follows the repo's name, level and lines
+    const ht = terrOf(selected.terr);
+    if (!ht) selected = null; else key = `hall|${ht.id}|${ht.name}|${ht.tier}|${ht.era}|${ht.lines}|${LANG}`;
+  }
   if (selected && selected.t === 'rg') { if (!remoteGovs.has(selected.id)) selected = null; else key = `rg${selected.id}|${remoteGovs.get(selected.id).state}`; }
   const chatTo = curChatTo();
   const chatName = chatTo ? (selected && selected.t === 'gov' ? i18n('who.governor') : (c ? nameOf(c) : '')) : '';
@@ -7667,6 +8148,13 @@ function renderDetail(){
       el.innerHTML = `
         <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">${esc(govSign(rg))}</div><div class="d-role">${i18n('gov.rgRole')}</div></div><span class="pill gov">${i18n('pill.hall')}</span></div>
         <div class="why">${esc(remoteNote(memberName(rg.who, rg.device)))}</div>`;
+    } else if (selected && selected.t === 'hall') {
+      // city-tier T3 (decision 5): the town hall's short card -- the repo's name, its level and lines in one line, and the
+      // same "show it" button a building has; this card is the only place on the page that says the level
+      const ht = terrOf(selected.terr);
+      el.innerHTML = `
+        <div class="d-head"><span class="rdot" style="--c:${terrColor(ht.id)}"></span><div><div class="d-name">${esc(ht.name)}</div><div class="d-role">${esc(hallLine(ht))}</div></div></div>
+        <button type="button" class="btn b-focus" data-focus-hall="${esc(ht.id)}">${i18n('b.focus')}</button>`;
     } else if (b) {
       // U13: the building card's head only -- buildingName(b) and one line with the type word and its
       // district (the 3D look of a building does not change; no quality pill, no level, no files list,
@@ -7928,6 +8416,7 @@ function winTitle(){
   }
   if (selected.t === 'b') { const b = buildings.find(x => x.id === selected.id); if (!b) return i18n('detail.title'); const info = buildingInfo(b); return info.name || i18n('type.' + b.type) || b.type; }
   if (selected.t === 'gov') return i18n('who.governor'); // city-polish P3: the repo is in the subtitle, never twice
+  if (selected.t === 'hall') { const ht = terrOf(selected.terr); return ht ? ht.name : i18n('detail.title'); } // city-tier T3: the repo's name
   if (selected.t === 'rg') { const rg = remoteGovs.get(selected.id); return rg ? govSign(rg) : i18n('who.governor'); }
   return i18n('detail.title');
 }
@@ -7981,7 +8470,7 @@ function renderWin(){
   const state = winState();
   const shown = !!state && !winFolded, tabShown = !!state && winFolded;
   $('#win').hidden = !shown;
-  $('#win').classList.toggle('short', state === 'detail' && !!(selected && (selected.t === 'b' || selected.t === 'rg')));
+  $('#win').classList.toggle('short', state === 'detail' && !!(selected && (selected.t === 'b' || selected.t === 'rg' || selected.t === 'hall')));
   $('#detail').hidden = state !== 'detail';
   $('#log').hidden = state !== 'log';
   const title = state === 'log' ? i18n('btn.log') : winTitle();
@@ -8354,6 +8843,13 @@ $('#detail').addEventListener('click', e => {
   if (focusB) {
     const bld = buildings.find(x => String(x.id) === focusB.dataset.focusB);
     if (bld) { stopFollow(); flyTo(bld.gx + .5 - mid.x, bld.gy + .5 - mid.z, Math.min(cam.dist, FOLLOW_DIST)); }
+    return;
+  }
+  // city-tier T3: the town hall card's "show it" button -- the same fly, to the hall
+  const focusH = e.target.closest('[data-focus-hall]');
+  if (focusH) {
+    const ht = terrOf(focusH.dataset.focusHall);
+    if (ht) { stopFollow(); flyTo(ht.cx - mid.x, ht.cz - mid.z, Math.min(cam.dist, FOLLOW_DIST)); }
     return;
   }
   const btn = e.target.closest('[data-act]'); if (!btn || !selected || selected.t !== 'c') return;
@@ -8990,7 +9486,8 @@ $('#repos').addEventListener('click', e => {
   if (terr === '*') { flyTo(land.cx || 0, land.cz || 0, distMax()); return; }
   const tag = repoTags(map).find(t => t.id === terr);
   if (!tag) return;
-  flyTo(tag.x, tag.z, Math.min(spanDist((map && map.cell) || 26, W, H), distLimit()));
+  const terrRec = terrOf(terr), cells = (terrRec && terrRec.cells) || 1; // city-tier T1: a big city's tag flies out until the whole city is in view
+  flyTo(tag.x, tag.z, Math.min(spanDist(((map && map.cell) || 26) * (cells > 1 ? cells * 1.15 : 1), W, H), distLimit()));
 });
 
 const pointers = new Map();
@@ -9165,11 +9662,11 @@ const arrBtn = $('#arr-btn'), arrOv = $('#arr-ov'), arrBar = $('#arr-bar'), arrG
 // slot a drop would take now, tap = a press on the sea (a tap there lands on a slot), back = the tilt to go back to
 // after the mode, cam = the camera when the mode opened, az0 = the square-to-the-grid turn, sig / hk = what the
 // plates were last drawn from
-const arrUi = { down: null, target: null, tap: null, back: null, cam: null, az0: 0, sig: '', hk: '', easeAt: performance.now() };
+const arrUi = { down: null, target: null, foot: null, tap: null, back: null, cam: null, az0: 0, sig: '', hk: '', easeAt: performance.now() };
 const arrCell = () => (map && map.cell) || 22;
 const arrActive = () => (arrUi.down && arrUi.down.moved && arrUi.down.id) || arr.pick; // the land in hand: dragged, or picked by a tap
 const arrSlotKey = c => c ? c[0] + ',' + c[1] : '';
-const arrLandAt = (lands, c) => lands.find(l => l.slot[0] === c[0] && l.slot[1] === c[1]);
+const arrLandAt = (lands, c) => lands.find(l => landHolds(l, c)); // city-tier T2: any cell of a land's square
 
 /* the slots on the ground: dashed = a free slot, solid = where the drop lands */
 let arrTex = null;
@@ -9185,11 +9682,11 @@ function arrTexture(solid, color){
   return new THREE.CanvasTexture(c);
 }
 const arrMarks = [];
-function arrMark(c, kind){
+function arrMark(c, kind, cells){
   if (!arrTex) arrTex = { free: arrTexture(false, 'rgba(42,43,69,.85)'), dim: arrTexture(false, 'rgba(42,43,69,.4)'), hot: arrTexture(true, '#2A2B45') };
-  const cw = arrCell(), m = new THREE.Mesh(new THREE.PlaneGeometry(cw - 2.5, cw - 2.5),
+  const cw = arrCell(), n = cells || 1, side = n * cw - 2.5, m = new THREE.Mesh(new THREE.PlaneGeometry(side, side), // city-tier T2: n x n cells wide (the whole square of a big city)
     new THREE.MeshBasicMaterial({ map: arrTex[kind], transparent: true, depthTest: false, depthWrite: false }));
-  m.rotation.x = -Math.PI / 2; m.position.set(c[0] * cw, .3, c[1] * cw); m.renderOrder = kind === 'hot' ? 31 : 30;
+  m.rotation.x = -Math.PI / 2; m.position.set((c[0] + (n - 1) / 2) * cw, .3, (c[1] + (n - 1) / 2) * cw); m.renderOrder = kind === 'hot' ? 31 : 30;
   world.add(m); arrMarks.push(m);
 }
 function arrClearMarks(){
@@ -9208,12 +9705,12 @@ function arrDraw(){
   const lands = landsOf(map), id = arrActive(), many = lands.length > 1;
   if (arr.pick && !lands.some(l => l.id === arr.pick)) arr.pick = null; // the picked land is gone (hidden, or the server's picture moved on)
   for (const c of landFree(lands, id)) arrMark(c, id ? 'free' : 'dim');
-  if (arrUi.target) arrMark(arrUi.target, 'hot');
+  if (arrUi.target && arrUi.foot && id) arrMark(arrUi.foot, 'hot', (lands.find(l => l.id === id) || {}).cells); // the whole square the drop would take
   const held = arrUi.down && arrUi.down.moved ? arrUi.down.id : null;
   for (const l of lands) {
-    const h = document.createElement('div'), swap = id && id !== l.id && !!landMove(lands, id, l.slot);
+    const h = document.createElement('div'), swap = id && id !== l.id && Array.isArray(landMove(lands, id, l.slot));
     h.className = 'arr-h' + (l.id === arr.pick ? ' on' : '') + (l.id === held ? ' dragging' : '') + (swap ? ' swap' : '');
-    h.dataset.id = l.id; h.dataset.i = l.slot[0]; h.dataset.j = l.slot[1];
+    h.dataset.id = l.id; h.dataset.i = l.slot[0]; h.dataset.j = l.slot[1]; h.dataset.n = l.cells || 1;
     h.style.setProperty('--rc', terrColor(l.id));
     h.innerHTML = '<span class="grip" aria-hidden="true">⋮⋮</span><span class="rc"></span><span class="nm">' + esc(l.name) + '</span>' +
       '<button type="button" class="arr-eye" data-hide="' + esc(l.id) + '"' + (many ? '' : ' aria-disabled="true" title="' + esc(i18n('arr.last')) + '"') + '>' + esc(i18n('arr.hide')) + '</button>';
@@ -9233,7 +9730,8 @@ function arrDraw(){
 function arrPlace(){
   const cw = arrCell();
   for (const h of arrOv.children) {
-    const p = toScreen(+h.dataset.i * cw, 0, +h.dataset.j * cw - ARR_PLATE_Z);
+    const half = ((+h.dataset.n || 1) - 1) / 2; // city-tier T2: a big city's plate stands at its square's middle
+    const p = toScreen((+h.dataset.i + half) * cw, 0, (+h.dataset.j + half) * cw - ARR_PLATE_Z);
     h.style.left = p[0] + 'px'; h.style.top = p[1] + 'px';
   }
 }
@@ -9259,7 +9757,7 @@ function arrFrame(){
 /* the whole island in view, a little above the middle: the bar at the bottom covers no land */
 function arrWhole(d){ flyTo(land.cx || 0, (land.cz || 0) + d * (W < 960 ? .1 : .055), d); }
 function arrHome(){ flyTo(home.x, home.z, Math.min(arrUi.cam ? arrUi.cam.dist : cam.dist, distMax())); }
-const arrSig = () => JSON.stringify([landsOf(map).map(l => [l.id, l.slot]), land.cx, land.cz, land.hx, land.hz]);
+const arrSig = () => JSON.stringify([landsOf(map).map(l => [l.id, l.slot, l.cells]), land.cx, land.cz, land.hx, land.hz]);
 /* arrAfterLand(): buildLand() ends with it -- the server's picture came. In the mode the plates and the marks are
    drawn again, and the camera flies to the whole island when the lands changed (not for a building that grew);
    just after the mode the camera goes to the new home */
@@ -9322,9 +9820,11 @@ function arrMove(id, cell){
   const rows = landMove(landsOf(map), id, cell);
   if (!rows) return false;
   arr.pick = null; arrUi.target = null;
+  if (rows === 'size') { arr.err = i18n('arr.errSize'); arrDraw(); return true; } // city-tier T2: another size cannot swap -- said in the bar, nothing is sent
   layoutPost(rows);
   return true;
 }
+
 function arrHide(id){
   if (landsOf(map).length < 2) { arr.err = i18n('arr.last'); arrDraw(); return; }
   layoutPost([{ id, hidden: true }]);
@@ -9360,7 +9860,9 @@ function arrOver(e){ // dragging: where would it land, and the label that follow
   const d = arrUi.down, lands = landsOf(map), c = arrCellAt(e.clientX, e.clientY), r = stage.getBoundingClientRect();
   const from = lands.find(l => l.id === d.id);
   arrGhost.hidden = false; arrGhost.style.left = (e.clientX - r.left) + 'px'; arrGhost.style.top = (e.clientY - r.top) + 'px';
-  const ok = !!(c && landMove(lands, d.id, c)), other = ok && arrLandAt(lands, c);
+  // city-tier T2: the footprint is the whole square the land would take (landPlace); a land of another size is no swap
+  const rows = c ? landMove(lands, d.id, c) : null, ok = Array.isArray(rows) || rows === 'size', other = Array.isArray(rows) && arrLandAt(lands, c);
+  arrUi.foot = Array.isArray(rows) ? (other ? other.slot : landPlace(lands, d.id, c)) : null; // the slot of the square a drop would take
   arrGhost.textContent = (from ? from.name : '') + (other ? ' ⇄ ' + other.name : '');
   if (arrSlotKey(ok ? c : null) !== arrSlotKey(arrUi.target)) { arrUi.target = ok ? c : null; arrDraw(); }
 }
@@ -9514,6 +10016,7 @@ function frame(now){
   cameraStep(raw); // the never-stop rotation (through autoRotate) plus the quarter-turn tween
   updateReposAria(now); // U1: aria-current follows the look point, throttled
   applyTheme();
+  bgDetail(); // city-tier T4: far away the background buildings are plain boxes, near they are the models
   updateCamera();
   renderFollow(); // V1: the follow chip tracks the map's free middle every frame, not just every renderPanel
   arrFrame(); // city-layout L4: the arrange mode's camera easing and its name plates (nothing when the mode is off)

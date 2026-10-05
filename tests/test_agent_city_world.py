@@ -726,10 +726,10 @@ class TestLines(unittest.TestCase):
             "src/a.py": "a\nb\nc\n", "src/b.js": "x\n" * 10, "README.md": "# hi\n\ntext\n",
             "logo.png": b"\x89PNG\r\n\x1a\n" + bytes(range(256)) * 4, "package-lock.json": "{\n}\n" * 50,
             "vendor/v.py": "v\n" * 99, "blob.bin": b"\x00\x01\x02" * 100})
-        self.assertEqual(ac.count_lines(ident), 16)
+        self.assertEqual(ac.count_lines(ident), 13, "README.md is a doc: the size counts hand-written code only (city-tier)")
         with open(os.path.join(self.base, "shop", "src", "c.py"), "w") as fh:
             fh.write("not committed\n" * 7)
-        self.assertEqual(ac.count_lines(ident), 16, "only what HEAD holds")
+        self.assertEqual(ac.count_lines(ident), 13, "only what HEAD holds")
 
     def test_worktree_counts_the_main_repo(self):
         ident = make_repo(os.path.join(self.base, "main"), {"a.py": "1\n2\n"})
