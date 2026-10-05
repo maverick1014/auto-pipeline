@@ -68,7 +68,15 @@ T4 background buildings (sim + 3D part)
     (CylinderGeometry) and a spire (ConeGeometry), about 17 tall, at t.mark; buildLand places it.
   Rings: drawRings(t): "elev" an elevated deck on pillars, "ring" / "outer" a flat road; lamps along them.
   Night: cityNight(on) (3D part), called by applyTheme(): on = the page's dark mode: background buildings
-    of tier 1 and 2 show lit windows (emissive), ring lamps on, the landmark's spheres glow; off: none.
+    of tier 1 and 2 show lit windows, ring lamps on, the landmark's spheres glow; off: none.
+  The look (task manager's headless check, 2026-10-05: near models were all one white-grey, and at night they
+    glowed whole instead of showing windows): winTex(night) (3D part) is the mock's window texture (a
+    CanvasTexture: day blue-grey windows, night warm lit windows). By day every model building takes its
+    zone's pastel from the mock's PAL (instanceColor, setColorAt in drawBg), so the core reads blue, the blocks
+    pastel, the houses warm. At night the models themselves never glow (their materials keep emissive black);
+    the lit windows of tier 1 and 2 buildings are one instanced overlay box per building, a little bigger than
+    it, textured with winTex(true), transparent, shown only at night (cityNight sets its visible). The far
+    boxes use winTex too (day / night).
 
 T5 a level up (sim)
   apply() of {"type": "era", "terr", "from", "to", "left", "tier": [old, new]}: shows.get(terr).tier is
@@ -396,8 +404,16 @@ class TestBackground(SimCase):
     def test_night(self):
         src = function_source("cityNight") or ""
         self.assertTrue(src, "cityNight is missing")
-        self.assertIn("emissive", src)
+        self.assertIn("visible", src)
         self.assertIn("cityNight(", function_source("applyTheme") or "")
+
+    def test_windows_and_tint(self):
+        win = function_source("winTex") or ""
+        self.assertTrue(win, "winTex is missing")
+        self.assertIn("CanvasTexture", win)
+        draw = function_source("drawBg") or ""
+        self.assertIn("setColorAt", draw + (function_source("instancedBox") or ""), "each model takes its zone's pastel")
+        self.assertIn("winTex(", draw + (function_source("cityNight") or ""), "lit windows from the mock's texture")
 
 
 class TestLevelUp(SimCase):
