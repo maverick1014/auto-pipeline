@@ -15,7 +15,10 @@
 #   agent-file.sh time                                        -> table: name est work wait clock ratio (agent_completed.txt)
 #   agent-file.sh backfill [--dry-run]                        -> old lines: take work and wait from the text of each line
 #   agent-file.sh backfill <name> [--dry-run] [--force] <todo done options>   -> set the data of one finished line
-#   agent-file.sh data [<repo path>...]                       -> table: one row per finished task, every repo on this machine
+#   agent-file.sh data [--what] [<repo path>...]              -> table: one row per finished task, every repo on this machine
+#   agent-file.sh estimate --lane fast|full --mock yes|no --type <t> [--name <name>] "<what>"   -> work minutes, range, like tasks
+#   agent-file.sh backtest [--tasks]                          -> the estimator against the rubric and the todo est, rolling
+#   agent-file.sh retrain [--force]                           -> learn agent_estimate.txt when 30 tasks, then every 10 new ones
 #   agent-file.sh eta <name> [--step <n>] [--work-so-far <m>] [--wait <m>]    -> one line: work left, done around, owner needed next
 #
 # todo done: every option is optional; a number is a whole number, 0 or more. "<result>" is not stored.
@@ -28,6 +31,7 @@
 #   Neither given: files=- lines=- and "not counted" is printed. Both given, or a commit git does not know: refused.
 #   A bad option is refused: one line on stderr that names it, exit 1, nothing moves.
 #   It prints "todo done: <name>" and "TIME DATA: <n> of 30" (finished tasks that have a work number).
+#   Then the retrain, only when due: one line "estimate retrain: ...", never the table. A failure never stops todo done.
 #
 # The line in agent_completed.txt (keys in this order, "-" when not known):
 #   <date> | <name> | <what> | data repo=<r> type=<t> lane=<l> mock=<yes|no> est=<m> work=<m> wait=<m> clock=<m> bounces=<n> workers=<n> files=<n> lines=<n> tests=<n> adds=<n>
@@ -58,6 +62,20 @@
 #     4. the paths given as arguments
 #   It reads only <repo>/agent_completed.txt of another repo and writes nothing there.
 #   No such file or folder: one line "skipped ..." on stderr, exit stays 0.
+#   --what adds one last column, what: the text between the name and the data block ("-" when empty).
+#
+# estimate, backtest, retrain: the work is done by agent_estimate.py (python3), from the table of data --what.
+#   Read requirements/estimate.md. An estimate = agent work minutes, from what is known before dispatch only.
+#   estimate: read only. First line "estimate: <m>m work, range <lo>-<hi>m (<estimator|rubric> v<n>, <N> past tasks)",
+#     then up to 3 "like <name>: <m>m work (...)" lines. A fact known only after the task (--work --wait --clock --est
+#     --bounces --workers --files --lines --tests --adds), a missing or bad --lane --mock --type, or no what:
+#     refused, one line on stderr that names it, exit 1, nothing on stdout.
+#   backtest: read only. Each task with 10 tasks before it is estimated from those only; the estimator, the rubric
+#     and the todo est are scored (median error, within 30%, in range); winner = estimator only when strictly better.
+#     --tasks adds one row per tested task. Fewer than 11 tasks: "backtest: <N> tasks, needs at least 11".
+#   retrain: due at 30 tasks, then every 10 new ones (--force skips the 10, never the 30). Writes agent_estimate.txt
+#     (JSON, atomic) in the project root: v1 = the setting picked from all tasks and its backtest; a later check keeps
+#     the new version only when its error on the new tasks is strictly lower. Prints the table and one verdict line.
 #
 # eta: one line, nothing written. est comes from the open todo line <name>. step = how far the work is, 0 to 7
 #   (7 = done; no step = 0). All minutes round up.
@@ -82,7 +100,7 @@ roots_read
 ROOT="$PROJECT_ROOT"
 TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agent_ideas.txt"; WT="$ROOT/agent_worktree.txt"
 NOW=${AGENT_FAKE_NOW:-$(date '+%Y-%m-%d %H:%M')}; WHO=${AGENT_ROLE:-main}
-case "${1:-}" in data|eta) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # data and eta only read
+case "${1:-}" in data|eta|estimate|backtest|retrain) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only)
 
 # the whole header comment block, whatever its length
 usage() { awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 2; }
@@ -267,6 +285,8 @@ backfill_name() {
 
 # --- data
 DATA_FMT='%-14s %-30s %-10s %-6s %-4s %-4s %5s %5s %5s %6s %7s %7s %5s %6s %5s %4s\n'
+DATA_FMT_WHAT='%-14s %-30s %-10s %-6s %-4s %-4s %5s %5s %5s %6s %7s %7s %5s %6s %5s %4s %s\n'   # data --what: one more column
+DATA_WHAT=
 DATA_SEEN="
 "
 # dload "<line>": d_* from the data block of the line ("-" for a key it does not say)
@@ -292,7 +312,7 @@ for k in (t if isinstance(t, dict) else []):
 }
 # data_repo <path>: the rows of one repo, once
 data_repo() {
-  local rp ln name date repo
+  local rp ln name date repo rest what
   rp=$(cd "$1" 2>/dev/null && pwd -P) || { echo "skipped: no such folder: $1" >&2; return 0; }
   case "$DATA_SEEN" in *"
 $rp
@@ -309,15 +329,36 @@ $rp
       *) dreset; d_est=$(old_est "$ln"); d_clock=$(old_clock "$ln");;
     esac
     [ "${d_repo:--}" != - ] || d_repo=$repo
-    printf "$DATA_FMT" "${d_repo// /_}" "${name// /_}" "${date// /_}" "${d_type:--}" "${d_lane:--}" "${d_mock:--}" \
-      "${d_est:--}" "${d_work:--}" "${d_wait:--}" "${d_clock:--}" "${d_bounces:--}" "${d_workers:--}" \
-      "${d_files:--}" "${d_lines:--}" "${d_tests:--}" "${d_adds:--}"
+    if [ -n "$DATA_WHAT" ]; then
+      # what = the text between the name and the data block (an old line: the text before its last field)
+      rest=${ln#* | }; rest=${rest#* | }
+      case "$ln" in
+        *' | data '*) case "$rest" in *' | data '*) what=${rest% | data *};; *) what=;; esac;;
+        *) case "$rest" in *' | '*) what=${rest% | *};; *) what=;; esac;;
+      esac
+      printf "$DATA_FMT_WHAT" "${d_repo// /_}" "${name// /_}" "${date// /_}" "${d_type:--}" "${d_lane:--}" "${d_mock:--}" \
+        "${d_est:--}" "${d_work:--}" "${d_wait:--}" "${d_clock:--}" "${d_bounces:--}" "${d_workers:--}" \
+        "${d_files:--}" "${d_lines:--}" "${d_tests:--}" "${d_adds:--}" "${what:--}"
+    else
+      printf "$DATA_FMT" "${d_repo// /_}" "${name// /_}" "${date// /_}" "${d_type:--}" "${d_lane:--}" "${d_mock:--}" \
+        "${d_est:--}" "${d_work:--}" "${d_wait:--}" "${d_clock:--}" "${d_bounces:--}" "${d_workers:--}" \
+        "${d_files:--}" "${d_lines:--}" "${d_tests:--}" "${d_adds:--}"
+    fi
   done < "$rp/agent_completed.txt"
 }
-# data [<repo path>...]
+# data [--what] [<repo path>...]
 data_run() {
-  local city="${AGENT_CITY_HOME:-${HOME:-}/.claude/agent-city}" p list
-  printf "$DATA_FMT" repo name date type lane mock est work wait clock bounces workers files lines tests adds
+  local city="${AGENT_CITY_HOME:-${HOME:-}/.claude/agent-city}" p list a i=$#
+  DATA_WHAT=
+  while [ "$i" -gt 0 ]; do   # --what may stand anywhere; the rest are repo paths
+    a=$1; shift; i=$((i - 1))
+    case "$a" in --what) DATA_WHAT=1;; *) set -- "$@" "$a";; esac
+  done
+  if [ -n "$DATA_WHAT" ]; then
+    printf "$DATA_FMT_WHAT" repo name date type lane mock est work wait clock bounces workers files lines tests adds what
+  else
+    printf "$DATA_FMT" repo name date type lane mock est work wait clock bounces workers files lines tests adds
+  fi
   data_repo "$ROOT"
   list=$(world_repos "$city/world.json")
   while IFS= read -r p; do [ -z "$p" ] || data_repo "$p"; done <<< "$list"
@@ -327,6 +368,26 @@ data_run() {
     done < "$city/joined-repos.txt"
   fi
   for p in "$@"; do data_repo "$p"; done
+}
+
+# --- estimate, backtest, retrain
+# est_py <estimate|backtest|retrain> [option...]: the table of data --what into agent_estimate.py (python3 only).
+# The model file is the project root's agent_estimate.txt, today is the date of $NOW (AGENT_FAKE_NOW works).
+est_py() {
+  local cmd="$1" rows
+  shift
+  command -v python3 >/dev/null 2>&1 || refuse "$cmd: python3 is needed and was not found"
+  rows=$(data_run --what 2>/dev/null) || true
+  python3 "$(dirname "$0")/agent_estimate.py" "$cmd" "$ROOT/agent_estimate.txt" "${NOW%% *}" "$@" <<< "$rows"
+}
+# the retrain after todo done: one verdict line only when it ran; any failure is swallowed (one short line)
+retrain_auto() {
+  local out rc=0
+  out=$(est_py retrain --auto 2>/dev/null) || rc=$?
+  if [ "$rc" -ne 0 ]; then echo "estimate retrain: failed"
+  elif [ -n "$out" ]; then printf '%s\n' "$out"
+  fi
+  return 0
 }
 
 # --- eta
@@ -403,7 +464,8 @@ case "${1:-}:${2:-}" in
     drop "$TODO" "$name"; append "$DONE" "$date | $name | $what | $(dblock)"
     echo "todo done: $name"
     [ -n "$counted" ] || echo "files and lines: not counted (no --merge or --range)"
-    echo "TIME DATA: $(time_data) of $TIME_DATA_GOAL";;
+    echo "TIME DATA: $(time_data) of $TIME_DATA_GOAL"
+    retrain_auto;;
   todo:drop)
     need 5 "$@"; line=$(first "$TODO" "$3")
     [ -n "$line" ] || { echo "no todo line named: $3" >&2; exit 1; }
@@ -461,6 +523,8 @@ case "${1:-}:${2:-}" in
     case "${1:-}" in ''|--*) backfill_text "$@";; *) backfill_name "$@";; esac;;
   data:*)
     shift; data_run "$@";;
+  estimate:*|backtest:*|retrain:*)
+    cmd="$1"; shift; est_py "$cmd" "$@";;
   eta:*)
     [ $# -ge 2 ] || usage
     case "$2" in --*) usage;; esac
