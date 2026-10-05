@@ -69,6 +69,31 @@ def read_join(path):
     return {"address": address, "key": key}
 
 
+def effective_join(root, device):
+    """The join that counts for the repo whose folder is ROOT, on a computer
+    whose device join file is DEVICE (a path, or None). {"address", "key",
+    "path"} (path = the file it came from) or None.
+    ROOT's own <root>/.secrets/agent-city-relay wins when read_join takes it
+    and the device gives no join or names another relay host; on the device's
+    relay host the device key counts. Else the device file, when read_join
+    takes it. Else None. Relay host = urlsplit(address).netloc."""
+    own_path = os.path.join(root, _JOIN_FOLDER, _JOIN_NAME)
+    own = read_join(own_path)
+    dev = read_join(device) if device else None
+    if own is not None and (dev is None or _relay_host(own["address"]) != _relay_host(dev["address"])):
+        return {"address": own["address"], "key": own["key"], "path": own_path}
+    if dev is not None:
+        return {"address": dev["address"], "key": dev["key"], "path": device}
+    return None
+
+
+def _relay_host(address):
+    try:
+        return urlsplit(address).netloc
+    except ValueError:
+        return address
+
+
 def write_join(path, address, key):
     """Write the join file at path, atomically, mode 0600."""
     folder = os.path.dirname(path)
@@ -638,6 +663,7 @@ class _Team:
         self.rids = set()
         self.repos = set()      # cloud-city: real paths of the joined repos seen (offer / joined list)
         self.join_paths = set()
+        self.listed = set()     # device-join: real paths of the repos already put in the joined list for this team
         self.after = 0
         self.last_sync = None
         self.soon = False       # cloud-city-2: the source has talk to hand up: sync again in TALK_SOON_SEC
@@ -660,7 +686,8 @@ class RelayHub:
     def __init__(self, relay_sec=5.0, dev_id=None, label=None, cap=OUTBOX_CAP,
                  join_ttl=30.0, timeout=10.0, env_join=None, send_only=False,
                  joined_list=None, cloud_file=None, view_source=None, talk_file=None,
-                 start_file=None, slow_fn=None, slow_sec=SLOW_SEC, join_dir=None):
+                 start_file=None, slow_fn=None, slow_sec=SLOW_SEC, join_dir=None,
+                 device_join=None):
         self.relay_sec = relay_sec
         self.dev_id = dev_id or _default_dev_id()
         self.label = label or _default_label()
@@ -707,6 +734,11 @@ class RelayHub:
         # repo is join_dir/<its folder's name>, and the repo's own
         # .secrets/agent-city-relay is not read at all.
         self.join_dir = join_dir
+        # device_join (city-device-join): path to this computer's join file
+        # (<home>/team-relay). A repo with no join file of its own, or one on
+        # the device's relay host, joins through it. None -> today's
+        # behaviour: the file is never read. Never used with env_join.
+        self.device_join = device_join
         self._teams = {}
         self._join_cache = {}
         self._ids_cache = {}
@@ -737,6 +769,40 @@ class RelayHub:
         if self.join_dir:
             return os.path.join(self.join_dir, os.path.basename(root.rstrip("/")))
         return os.path.join(root, _JOIN_FOLDER, _JOIN_NAME)
+
+    def _pick_join(self, root):
+        # Caller must hold self._lock. The same choice effective_join() makes,
+        # read through the join_ttl cache: (joined, path) for the repo whose
+        # folder is ROOT, or (None, None). With no device_join this is the
+        # repo's own file, as before.
+        own_path = self._join_path(root)
+        own = self._read_join(own_path)
+        dev_path = self.device_join
+        dev = self._read_join(dev_path) if dev_path else None
+        if own and (not dev or _relay_host(own["address"]) != _relay_host(dev["address"])):
+            return own, own_path
+        if dev:
+            return dev, dev_path
+        return None, None
+
+    def _list_device_repo(self, team, root):
+        # Caller must hold self._lock. A line of ROOT went to the team through
+        # the device file: ROOT joins the joined list (realpath, once, never a
+        # key). The team remembers the repos it handled, so a busy session
+        # does not touch the list per line.
+        if self.joined_list is None:
+            return
+        real = os.path.realpath(root)
+        if real in team.listed:
+            return
+        try:
+            listed = self._cached(self._list_cache, self.joined_list,
+                                  lambda: read_joined_list(self.joined_list))
+            if not any(os.path.realpath(p) == real for p in listed):
+                add_joined(self.joined_list, real)
+        except OSError:
+            return
+        team.listed.add(real)
 
     def _repo_ids(self, root):
         def compute():
@@ -796,8 +862,7 @@ class RelayHub:
         # only the relay sync itself in tick() ever runs unlocked. A gone
         # folder, a gone join file or a local-only origin: skip quietly,
         # same as offer() returning False.
-        join_path = self._join_path(repo)
-        joined = self._read_join(join_path)
+        joined, join_path = self._pick_join(repo)
         if not joined:
             return
         ids = self._repo_ids(repo)
@@ -843,8 +908,7 @@ class RelayHub:
             if self.env_join is not None:
                 joined = self.env_join
             else:
-                join_path = self._join_path(root)
-                joined = self._read_join(join_path)
+                joined, join_path = self._pick_join(root)
                 if not joined:
                     return False
             ids = self._repo_ids(root)
@@ -867,6 +931,8 @@ class RelayHub:
             team.repos.add(os.path.realpath(repo))
             if join_path is not None:
                 team.join_paths.add(join_path)
+                if self.device_join and join_path == self.device_join:
+                    self._list_device_repo(team, root)
             self._repo_by_rid[rid] = os.path.realpath(repo)
             if not self._who_set:
                 self._who = ids.get("who") or ""
