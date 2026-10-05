@@ -14,7 +14,7 @@ Shape the tests hold it to:
       ## 3. Set the team key
       ## 4. Find the relay address
       ## 5. Hand the address and key to members
-      ## 6. Join a local repo
+      ## 6. Join this computer
       ## 7. Join a cloud environment
       ## 8. Check it works
       ## 9. Change the key
@@ -28,7 +28,9 @@ Shape the tests hold it to:
      code block) and says how to turn Cloudflare Access off when it stands
      in front of the relay.
   6  gives the join command in a code block (agent-city.sh join, or
-     agent-city.sh" join when the path is quoted), names .secrets.
+     agent-city.sh" join when the path is quoted), once per computer, from
+     any folder (city-device-join, 2026-10-05: was "Join a local repo",
+     per repo, naming .secrets).
   7  names the environment secret AGENT_CITY_RELAY (value: the address, one
      space, the key) and the network setting.
   8  gives agent-city.sh status (path may be quoted) and the line
@@ -59,7 +61,7 @@ HEADINGS = [
     "## 3. Set the team key",
     "## 4. Find the relay address",
     "## 5. Hand the address and key to members",
-    "## 6. Join a local repo",
+    "## 6. Join this computer",
     "## 7. Join a cloud environment",
     "## 8. Check it works",
     "## 9. Change the key",
@@ -142,7 +144,8 @@ class TestContent(SetupCase):
         blocks = re.findall(r"```[a-z]*\n(.*?)```", body, re.S)
         self.assertTrue(any(re.search(r'agent-city\.sh"? join', b) for b in blocks),
                         "the join command must be in a code block, ready to paste")
-        self.assertIn(".secrets", body)
+        self.assertRegex(body, r"(?i)once")
+        self.assertRegex(body, r"(?i)any folder")
 
     def test_join_cloud(self):
         self.assert_names(7, "AGENT_CITY_RELAY")

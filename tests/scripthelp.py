@@ -458,6 +458,11 @@ class ScriptRepo:
                 env.pop(key)
         if self.home is not None:
             env["HOME"] = self.home
+        elif "HOME" not in (extra or {}):
+            # city-device-join: the owner's real city home holds the device
+            # join (team-relay); a run with the real $HOME gets its own, so a
+            # test can never send to the owner's real relay
+            env["AGENT_CITY_HOME"] = os.path.join(self.base, "cityhome-default")
         env.setdefault("AGENT_FAKE_RAM", "10")
         env.setdefault("AGENT_FAKE_CPU", "10")
         # relief run by a test stops only what lies under this test's own

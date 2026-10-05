@@ -55,14 +55,15 @@ You should see: both the browser and `curl` show `{"ok":true,"relay":"agent-city
 2. Send the team key over a private channel you trust (in person, a password manager, a phone call) — never in a chat with an agent.
 You should see: each member has both the address and the key.
 
-## 6. Join a local repo
-1. Open a terminal inside the repo you want to join (the main repo or a worktree).
-2. Run:
+## 6. Join this computer
+Do this once per computer, from any folder. Every repo on this computer is then in the team, new repos too: there is no step per repo.
+1. In a terminal (any folder), run:
    ```
    bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" join
    ```
-3. Enter the relay address, then the team key (typed hidden, nothing shown).
-You should see: `JOINED: <repo id> -> <host>`. This saves the address and key to `<repo>/.secrets/agent-city-relay`, on that machine only.
+2. Enter the relay address, then the team key (typed hidden, nothing shown). If a repo on this computer joined the old way, it first asks one line ending `Use it for every repo on this computer? [Y/n]`. Press Enter: no key is typed again.
+3. To keep one repo out of the cloud page, hide it: in the city, click 管理 (arrange), then 隐藏 on its land. There is no other switch.
+You should see: `JOINED: this device -> <host> (all repos)`. The address and key stay on this computer only, never in a repo.
 
 ## 7. Join a cloud environment
 1. On your Mac, inside the repo, run:
@@ -83,30 +84,30 @@ You should see: at the session's start, the line `CITY: sending to the team rela
    You should see: `CITY: user hooks written to .../settings.json` (or `CITY: user hooks already there`), and the session shows up in the city like step 6.
 
 ## 8. Check it works
-1. On a second machine, or in a cloud session, join the same repo (section 6, or the cloud secret from section 7).
-2. In a terminal, inside the repo, run:
+1. Join that computer (section 6). Do the same on a second computer, or use a cloud session (the secret from section 7).
+2. In a terminal, from any folder, run:
    ```
    bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" status
    ```
 3. Open the city page on one machine while agents run on the other.
-You should see: `TEAM: joined <host>` from step 2, and the other machine's people showing up in the city page. If the relay is down or offline, the page shows 联城断开 instead.
+You should see: `TEAM: joined <host> (this device, all repos)` from step 2, and the other machine's people showing up in the city page. If the relay is down or offline, the page shows 联城断开 instead.
 
 ## 9. Change the key
 1. In Cloudflare, open the Worker's "Settings", then "Variables and Secrets".
 2. Edit `TEAM_KEY`, set a new value (same way as section 3: `openssl rand -hex 24`).
 3. Deploy.
 4. Hand the new key to every member the same way as section 5.
-5. Every member runs `join` again, with the address and the new key.
-You should see: `JOINED: <repo id> -> <host>` on every member's machine again.
+5. Every member runs `join` again (section 6), once per computer, with the address and the new key.
+You should see: `JOINED: this device -> <host> (all repos)` on every member's computer again.
 
 ## 10. Remove the relay
-1. On every member's machine, in every joined repo, run:
+1. On every member's computer, once per computer, from any folder, run:
    ```
    bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" leave
    ```
 2. In Cloudflare, open the Worker and delete it.
 3. Open D1 and delete the database you made in section 2.
-You should see: `LEFT: ...` on each machine, and neither the Worker nor the database listed any more.
+You should see: `LEFT: ...` on each computer (no repo on it sends any more), and neither the Worker nor the database listed any more.
 
 ## 11. Turn the cloud page on
 Optional. Do this only after sections 1 to 8 work. The cloud page is your city on Cloudflare, behind a login, to look at from a phone or any computer. It is view only until you turn talking on (section 16). The local city on your Mac stays as it is, and works with Cloudflare down.
@@ -158,7 +159,7 @@ You should see: opening the page's address shows Cloudflare's login page asking 
    bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" status
    ```
 4. Open the page's address on your phone and log in with the e-mail code (section 13).
-You should see: `CLOUD: on <relay host>` from step 3 (`CLOUD: off` means the relay has no `CITY_USER` (section 11), or the session has not started yet: start a new one), and on the phone a machine row on top and the city under it, view only: 只能看, no chat box, no buttons. The notices say what is missing: 还没有机器 = no machine has sent a picture yet (wait a minute more; check step 3); 这台机器现在没有会话 = that machine has no session right now; 没有机器在线 = no machine is online, with how long ago the last picture came (the picture stays); a notice that the login is lost = open the address again and log in again. Only repos that joined (section 6) show up; a repo that did not join never leaves its machine.
+You should see: `CLOUD: on <relay host>` from step 3 (`CLOUD: off` means the relay has no `CITY_USER` (section 11), or the session has not started yet: start a new one), and on the phone a machine row on top and the city under it, view only: 只能看, no chat box, no buttons. The notices say what is missing: 还没有机器 = no machine has sent a picture yet (wait a minute more; check step 3); 这台机器现在没有会话 = that machine has no session right now; 没有机器在线 = no machine is online, with how long ago the last picture came (the picture stays); a notice that the login is lost = open the address again and log in again. Only repos on a joined computer (section 6) show up, and not a repo you hid in the city.
 
 ## 15. Turn the cloud page off
 1. In Cloudflare, open the relay Worker, then "Settings", then "Variables and Secrets". Delete `CITY_USER`, then "Deploy". The machines stop sending pictures; after the next Claude session on a machine, `status` says `CLOUD: off` there.
@@ -166,7 +167,7 @@ You should see: `CLOUD: on <relay host>` from step 3 (`CLOUD: off` means the rel
 You should see: `CITY_USER` no longer listed on the relay, the page's address no longer opens, and `CLOUD: off` from `status` after the next session. The relay and the local city go on as before.
 
 ## 16. Turn talking on
-Optional. Do this only after sections 1 to 15 work. With talking on, you can type to your agents from the cloud page, and the reply shows in the same window. Read this first, in plain words: whoever can log in as you on the page can type to your agents on the machines with talking on. So keep the login short (step 1) and keep your e-mail account safe: use a strong password and two-step login on the e-mail account, because the login code goes there. A message is only text for a session's chat. Approving a permission request stays on the machine: you cannot do it from the page. Talking is off by default: it stays off for a machine until you do step 7 on it.
+Optional. Do this only after sections 1 to 15 work. With talking on, you can type to your agents from the cloud page, and the reply shows in the same window. Read this first, in plain words: whoever can log in as you on the page can type to your agents on the machines with talking on. So keep the login short (step 1) and keep your e-mail account safe: use a strong password and two-step login on it, because the login code goes there. A message is only text for a session's chat. Approving a permission request stays on the machine. Talking is off by default: it stays off for a machine until you do step 7 on it.
 1. Set how long a login lasts. In Cloudflare, open Zero Trust, then "Access", then "Applications", then the application for `agent-city-page`, then "Edit". Find the setting "Session Duration" and pick a short one (for example 24 hours or less). Save.
 2. On your Mac, in a terminal, copy the NEW relay code to the clipboard (the same command as section 2, step 5):
    ```
@@ -183,33 +184,33 @@ Optional. Do this only after sections 1 to 15 work. With talking on, you can typ
    bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" cloud-deploy
    ```
    Press Enter to keep the database id it remembers. If it says you are not logged in, do section 12, step 3 again, then run this step again.
-7. Do this on each machine that should take messages. In a terminal, inside a repo that joined (section 6), run:
+7. Do this once on each machine that should take messages, from any folder (the computer must have joined, section 6). Run:
    ```
    bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" cloud-talk on
    ```
    It asks "Talk key (hidden):". Paste the talk key from step 4 (nothing is shown), press Enter. Type this yourself, in your own terminal: the command refuses when an agent runs it, and you never give the key to an agent.
-8. Check it. On that machine, in a terminal, inside the repo, run the status command (the same as section 8, step 2):
+8. Check it. On that machine, from any folder, run the status command (the same as section 8, step 2):
    ```
    bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" status
    ```
 9. Open the cloud page and log in. Wait about a minute. Tap that machine, then tap a person.
-What is stored: your messages and the conversations of machines with talking on go to your own Cloudflare database, for 7 days and at most 200 rows per conversation. The full record stays on the machine. A machine with talking off sends no conversation at all.
-To start new agents from the page as well (a button on the page opens a new agent on that machine), go on with section 18 (starting agents from the page) after this section works.
+What is stored: your messages and the conversations of machines with talking on go to your own Cloudflare database, for 7 days and at most 200 rows per conversation. The full record stays on the machine. A machine with talking off sends none.
+To open new agents from the page too, go on with section 18 after this section works.
 You should see: `CLOUD TALK: on <relay host>` from step 8. On the page, that machine shows 可对话, and a person's window has the message box. A message typed there shows 在路上 (on its way), then 已送达 (delivered), then the reply of the session. A machine that did not do step 7 still shows 只能看.
 
 ## 17. Turn talking off
 There are three ways to stop it. Use the one you need, or all of them.
-1. One machine. On that machine, in a terminal (from any folder), run:
+1. One machine. Once on that machine, in a terminal (from any folder), run:
    ```
    bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" cloud-talk off
    ```
-   Run inside the repo that joined (section 6), it also deletes the conversations of that machine on Cloudflare at once. Run from another folder, it still turns talking off on that machine, and its conversations on Cloudflare leave by themselves within 7 days. The other machines go on as before.
+   It turns talking off on that machine and also deletes that machine's conversations on Cloudflare at once. The other machines go on as before.
 2. All machines at once. In Cloudflare, open the relay Worker, then "Settings", then "Variables and Secrets". Delete `TALK_KEY`, then "Deploy". With no `TALK_KEY`, talking is off for every machine.
 3. End the login. On the page, click the 退出 link. To end the Access session everywhere (for example if someone else may have your login): in Cloudflare, open Zero Trust, then "My Team", then "Users", click your user, then "Revoke". Every login on every device must log in again with an e-mail code.
 You should see: `CLOUD TALK: off` from step 1 (the same status command as section 16, step 8 shows it too), and on the page that machine shows 只能看, with no message box. After step 2, no machine takes a message. The cloud page itself, the relay and the local city go on as before.
 
 ## 18. Turn starting agents on
-Optional. Do this only after section 16 works: talking must be on first, on each machine that should take orders. With starting on, you can open a new agent from the cloud page, in a repo that joined (section 6) on a machine with starting on, and then type to it. Read this first, in plain words: whoever can log in as you on the page can open a Manager or a Helper (the two kinds of agent you talk to yourself) in a joined repo of a machine with starting on, and then type to it (talking is on there). So keep the login short (section 16, step 1) and keep your e-mail account safe. The command is fixed: nobody can choose the role, the model, a flag or a folder. A task manager is never made this way. At most 10 an hour can be started. Every order, and what became of it, is written in decisions.jsonl on that machine. A machine with starting on keeps its small city program running also when no session is open, so the first agent of the day can be started from the phone. After a restart of the computer it comes back with the next Claude session there, when you run `agent-city start`, or by itself at login when you turn that on (section 20). Starting is off by default: it stays off for a machine until you do step 5 on it.
+Optional. Do this only after section 16 works: talking must be on first, on each machine that should take orders. With starting on, you can open a new agent from the cloud page and then type to it. Read this first, in plain words: whoever can log in as you on the page can open a Manager or a Helper (the two kinds of agent you talk to yourself) in any joined repo (section 6) of a machine with starting on, and then type to it (talking is on there). So keep the login short (section 16, step 1) and keep your e-mail account safe. The command is fixed: nobody can choose the role, the model, a flag or a folder. A task manager is never made this way. At most 10 an hour can be started. Every order, and what became of it, is written in decisions.jsonl on that machine. A machine with starting on keeps its small city program running also when no session is open, so the first agent of the day can be started from the phone. After a restart of the computer it comes back with the next Claude session there, when you run `agent-city start`, or by itself at login when you turn that on (section 20). Starting is off by default: it stays off for a machine until you do step 5 on it.
 1. On your Mac, in a terminal, copy the NEW relay code to the clipboard (the same command as section 2, step 5):
    ```
    cat "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city-relay.js" | pbcopy
@@ -221,12 +222,12 @@ Optional. Do this only after section 16 works: talking must be on first, on each
    ```
    Press Enter to keep the database id it remembers. If it says you are not logged in, do section 12, step 3 again, then run this step again.
 4. Check that talking is on for each machine that should take orders: run the status command (the same as section 8, step 2) there and look for `CLOUD TALK: on <relay host>`. If it says `CLOUD TALK: off`, do section 16, step 7 first.
-5. Do this on each machine that should take orders. In a terminal, inside a repo that joined (section 6), run:
+5. Do this once on each machine that should take orders, from any folder (the computer must have joined, section 6). Run:
    ```
    bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" cloud-start on
    ```
    It asks "Talk key (hidden):". Type the talk key from section 16 again (nothing is shown), press Enter. There is no new key: it is the same talk key. Type this yourself, in your own terminal: the command refuses when an agent runs it, and never type the talk key into a chat with Claude or any agent.
-6. Check it. On that machine, in a terminal, inside the repo, run the status command (the same as section 8, step 2):
+6. Check it. On that machine, from any folder, run the status command (the same as section 8, step 2):
    ```
    bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" status
    ```
@@ -235,11 +236,11 @@ You should see: `CLOUD START: on <relay host>` from step 6. On the page, that ma
 
 ## 19. Turn starting agents off
 There are three ways to stop it. Use the one you need, or all of them.
-1. One machine. On that machine, in a terminal (from any folder), run:
+1. One machine. Once on that machine, in a terminal (from any folder), run:
    ```
    bash "$(ls -d ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/*/ | sort -V | tail -1)bin/agent-city.sh" cloud-start off
    ```
-   Run inside the repo that joined (section 6), it also tells Cloudflare, so an order that is still waiting is never opened. Talking stays on. Turning talking off (`cloud-talk off`, section 17, step 1) turns starting off on that machine too. The other machines go on as before.
+   It also tells Cloudflare, so an order that is still waiting is never opened. Talking stays on. Turning talking off (`cloud-talk off`, section 17, step 1) turns starting off on that machine too. The other machines go on as before.
 2. All machines at once. In Cloudflare, open the relay Worker, then "Settings", then "Variables and Secrets". Delete `TALK_KEY`, then "Deploy". With no `TALK_KEY`, no machine takes an order, and talking is off for every machine too.
 3. End the login. On the page, click the 退出 link. To end the Access session everywhere (for example if someone else may have your login): the same as section 17, step 3 (Zero Trust, "My Team", "Users", your user, "Revoke").
 You should see: `CLOUD START: off` from step 1 (the status command of section 18, step 6 shows it too), and on the page no 加 agent button for that machine, with a note at the foot of the list saying how to turn it on. After step 2, no machine takes an order. The cloud page, the relay and the local city go on as before.

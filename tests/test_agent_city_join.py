@@ -1,7 +1,15 @@
 """Failing tests: bin/agent-city.sh join | leave | status, and the relay
 interval it passes to the server (requirements/city.md, "Joining").
 
-  ./agent-city.sh join
+city-device-join (2026-10-05): on a computer, `join` and `leave` are per
+computer now (tests/test_agent_city_device_join.py). A cloud session
+(CLAUDE_CODE_REMOTE set) has no device and keeps the per-repo join below, so
+JoinCase.join() and the leave test here run as a cloud session. The repo file
+such a join writes is also what an old per-repo join left on a computer: every
+case built on JoinCase (the cloud page, talk, start, login start) proves that
+old joins keep working.
+
+  ./agent-city.sh join     (a cloud session)
       Run by the person, in their own terminal, inside the repo (main repo
       or any of its worktrees). Joining is per repo.
       1. Refuses, before asking anything, when:
@@ -18,7 +26,7 @@ interval it passes to the server (requirements/city.md, "Joining").
       Bad address, empty key, relay refused or unreachable: a short reason,
       nothing saved, exit 1. The key never appears in stdout or stderr.
 
-  ./agent-city.sh leave
+  ./agent-city.sh leave    (a cloud session)
       Deletes <main repo root>/.secrets/agent-city-relay. "LEFT: ..." and
       exit 0, also when it was not joined.
 
@@ -51,6 +59,9 @@ if HERE not in sys.path:
 
 from relayhelp import FAKE_KEY, FakeRelay, wait_for  # noqa: E402
 from scripthelp import ScriptCase  # noqa: E402
+
+
+REMOTE = {"CLAUDE_CODE_REMOTE": "true"}
 
 
 def closed_port():
@@ -91,14 +102,16 @@ class JoinCase(ScriptCase):
         return subprocess.run(["git", "-C", cwd or self.repo.dir] + list(args),
                               check=True, capture_output=True, text=True).stdout
 
-    def city_run(self, *args, stdin=None, cwd=None):
+    def city_run(self, *args, stdin=None, cwd=None, extra=None):
         env = {"AGENT_CITY_DIR": self.city,
                "AGENT_CITY_HOME": os.path.join(self.repo.base, "cityhome")}
+        env.update(extra or {})
         return self.repo.run("agent-city.sh", *args, env=env, stdin=stdin, cwd=cwd, timeout=30)
 
     def join(self, address=None, key=FAKE_KEY, cwd=None):
+        """The per-repo join: a cloud session's, or what an old join left behind."""
         address = self.fake.url if address is None else address
-        return self.city_run("join", stdin="%s\n%s\n" % (address, key), cwd=cwd)
+        return self.city_run("join", stdin="%s\n%s\n" % (address, key), cwd=cwd, extra=REMOTE)
 
     @property
     def secret(self):
@@ -183,11 +196,11 @@ class TestJoin(JoinCase):
 class TestLeaveAndStatus(JoinCase):
     def test_leave(self):
         self.assertOk(self.join())
-        result = self.city_run("leave")
+        result = self.city_run("leave", extra=REMOTE)
         self.assertOk(result)
         self.assertIn("LEFT", result.stdout)
         self.assertFalse(os.path.exists(self.secret))
-        again = self.city_run("leave")
+        again = self.city_run("leave", extra=REMOTE)
         self.assertOk(again)
         self.assertIn("LEFT", again.stdout)
 

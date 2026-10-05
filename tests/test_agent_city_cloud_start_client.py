@@ -361,7 +361,8 @@ class TestCommand(CloudCase):
         outside = tempfile.mkdtemp(prefix="city_out_", dir=self.repo.base)
         code, out, err = self.on_in_a_terminal(cwd=outside)
         self.assertEqual(code, 1, out + err)
-        self.assertRegex(out + err, r"CLOUD START: .*repo")
+        # city-device-join: outside a repo on a computer that never joined, the line says to join
+        self.assertRegex(out + err, r"CLOUD START: .*join")
         self.assertFalse(os.path.exists(self.start_file))
 
     def test_off_is_one_command_and_needs_no_terminal(self):

@@ -49,8 +49,10 @@ CONTRACT
     - status: the CITY line as today, then one line per listed repo that
       still has its folder and join file: "TEAM: joined <host> (<repo>)";
       none -> "TEAM: not joined". Never the key.
-    - join and leave refuse (exit 1, a message with "repo"): run them
-      inside the repo. Nothing asked, nothing sent, the list untouched.
+    - join and leave work here (city-device-join, 2026-10-05: once per
+      computer, tests/test_agent_city_device_join.py). Only a cloud session
+      (CLAUDE_CODE_REMOTE set) keeps the old rule: they refuse (exit 1, a
+      message with "repo"), nothing asked, nothing sent, the list untouched.
   bin/agent-city.sh start/demo, anywhere (inside or outside a repo)
     - AGENT_CITY_PORT, a whole number 1024-65535, wins over city_port
       (agent.conf or the plugin default). Any other non-empty value: a
@@ -66,8 +68,9 @@ CONTRACT
   one TEAM line for this repo), plus
     - join adds the main repo root to $AGENT_CITY_HOME/joined-repos.txt
       after the relay said ok (once, never the key);
-    - leave removes this repo's line (other lines and comments kept), also
-      when the join file was already gone.
+    - leave (a cloud session: per repo) removes this repo's line (other
+      lines and comments kept), also when the join file was already gone;
+      on a computer leave empties the list.
 
   bin/agent_city_relay.py
     read_joined_list(path)       absolute paths in file order, realpath
@@ -621,9 +624,14 @@ class TestStatusOutsideARepo(OutsideCase):
         self.assertIn("CITY: running http://127.0.0.1:%d" % self.port, result.stdout)
 
 
+REMOTE = {"CLAUDE_CODE_REMOTE": "true"}
+
+
 class TestJoinLeaveOutsideARepo(OutsideCase):
+    """A cloud session only (city-device-join): on a computer they work from any folder."""
+
     def test_join_refuses(self):
-        result = self.city_run("join", stdin="%s\n%s\n" % (self.fake.url, FAKE_KEY))
+        result = self.city_run("join", stdin="%s\n%s\n" % (self.fake.url, FAKE_KEY), extra=REMOTE)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("repo", (result.stdout + result.stderr).lower())
         self.assertNotIn(FAKE_KEY, result.stdout + result.stderr)
@@ -632,7 +640,7 @@ class TestJoinLeaveOutsideARepo(OutsideCase):
         self.assertFalse(os.path.exists(os.path.join(self.plain, ".secrets")))
 
     def test_leave_refuses(self):
-        result = self.city_run("leave")
+        result = self.city_run("leave", extra=REMOTE)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("repo", (result.stdout + result.stderr).lower())
 
@@ -676,12 +684,12 @@ class JoinListCase(OutsideCase):
         write_text(self.repo.path(".gitignore"), ".secrets/\n")
         self.root = os.path.realpath(self.repo.dir)
 
-    def join(self, key=FAKE_KEY, cwd=None):
+    def join(self, key=FAKE_KEY, cwd=None, extra=None):
         return self.city_run("join", cwd=cwd or self.repo.dir,
-                             stdin="%s\n%s\n" % (self.fake.url, key))
+                             stdin="%s\n%s\n" % (self.fake.url, key), extra=extra)
 
-    def leave(self):
-        return self.city_run("leave", cwd=self.repo.dir)
+    def leave(self, extra=None):
+        return self.city_run("leave", cwd=self.repo.dir, extra=extra)
 
 
 class TestJoinLeaveKeepTheList(JoinListCase):
@@ -706,10 +714,11 @@ class TestJoinLeaveKeepTheList(JoinListCase):
         self.assertEqual(list_paths(self.list_path), [])
 
     def test_leave_removes_only_this_repo(self):
+        """A cloud session: per repo (on a computer leave empties the list)."""
         write_text(self.list_path, "# mine\n/some/other/repo\n")
-        self.assertOk(self.join())
+        self.assertOk(self.join(extra=REMOTE))
         self.assertEqual(list_paths(self.list_path), ["/some/other/repo", self.root])
-        self.assertOk(self.leave())
+        self.assertOk(self.leave(extra=REMOTE))
         text = read_text(self.list_path)
         self.assertIn("# mine", text)
         self.assertEqual(list_paths(self.list_path), ["/some/other/repo"])
@@ -720,11 +729,12 @@ class TestJoinLeaveKeepTheList(JoinListCase):
         self.assertEqual(list_paths(self.list_path), [])
 
     def test_status_inside_a_repo_is_as_today(self):
+        """Old per-repo joins (a cloud session's join writes the same file)."""
         other = FakeRelay()
         self.addCleanup(other.stop)
         docs = self.joined_repo("docs", relay=other)
         self.write_list([docs])
-        self.assertOk(self.join())
+        self.assertOk(self.join(extra=REMOTE))
         result = self.city_run("status", cwd=self.repo.dir)
         self.assertOk(result)
         self.assertEqual(team_lines(result.stdout), ["TEAM: joined " + self.fake.host])

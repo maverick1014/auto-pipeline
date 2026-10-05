@@ -9,8 +9,9 @@
 #   ./agent-city.sh answer ID TEXT...   the governor answers a question waiting on it
 #   ./agent-city.sh pass ID             the governor hands a question to the owner
 #   ./agent-city.sh pending             list what is waiting in the city
-#   ./agent-city.sh join     join this repo's team relay (address + key, asked here)
-#   ./agent-city.sh leave    leave this repo's team relay
+#   ./agent-city.sh join     join the team relay, once for this computer (address + key,
+#                            asked here)
+#   ./agent-city.sh leave    this computer leaves the team relay (no repo sends)
 #   ./agent-city.sh send     cloud sender: send this session's lines to the
 #                            team relay named by the environment secret
 #                            AGENT_CITY_RELAY (no page, no join file)
@@ -61,10 +62,26 @@
 # started. city_relay_sec (agent.conf, default 5) is passed to serve as
 # --relay-sec, how often a joined team relay is synced.
 #
-# join/leave use bin/agent_city_relay.py (requirements/city.md, "Joining"):
-# a per-repo join file at <main repo root>/.secrets/agent-city-relay, mode
-# 0600, written only after the relay accepts the key. The team key is never
-# an argv or on screen.
+# join/leave use bin/agent_city_relay.py (requirements/city.md, "Joining").
+# Not in a cloud session: join is once per computer, from any folder. The
+# device join file is $AGENT_CITY_HOME/team-relay (DEVICE_FILE), mode 0600, never
+# inside a repo, written only after the relay accepts the key; no origin or
+# .gitignore check. Inside a repo with a shared origin its main root also goes into
+# $AGENT_CITY_HOME/joined-repos.txt. A computer with no device join and a repo joined
+# the old way (first listed repo whose folder and own .secrets/agent-city-relay
+# are there) is offered that repo's relay first ("Use it for every repo on this
+# computer? [Y/n]"): yes = the relay checks that same key (join --from-file: the
+# key goes from the repo's file to the relay check inside python, never typed,
+# shown or on an argv), then it is the computer's join. leave removes the device
+# join, the own join file of every listed repo and of the repo it runs in, and
+# every path line of the list. "The join here" is effective_join(<main repo
+# root>, DEVICE_FILE) inside a repo (the repo's own file wins when it names
+# another relay), the device file outside one; status, cloud-talk, cloud-start,
+# autostart and login-start run use it. The team key is never an argv or on screen.
+# A cloud session (CLAUDE_CODE_REMOTE set) has no device: it never reads or
+# writes the device file, and join/leave stay per repo, as before: a per-repo join
+# file at <main repo root>/.secrets/agent-city-relay, inside a repo only, a shared
+# origin and a git-ignored .secrets/ needed.
 #
 # answer/pass/pending talk to an already-running server (bin/agent_city.py
 # gov-answer / gov-pass / gov-pending). The governor may answer or pass a
@@ -92,7 +109,8 @@
 # inside a git work tree), start/status/join/leave still work -- plugin
 # defaults only, no agent.conf from that folder. start/demo there sync every
 # repo listed in $AGENT_CITY_HOME/joined-repos.txt, language from
-# AGENT_CITY_LANG (en or zh, else zh); join/leave refuse and say to cd into
+# AGENT_CITY_LANG (en or zh, else zh). join/leave work there too (the computer's
+# join); only in a cloud session do they refuse outside a repo and say to cd into
 # the repo first.
 #
 # Cloud page (requirements/city.md, "Cloud page"): the marker
@@ -103,10 +121,11 @@
 # for a machine that never joined. autostart is the SessionStart hook's verb
 # (hooks/hooks.json): the work runs in a detached background subshell, so a
 # session start never waits on the network. In order: a city server already
-# running -> nothing; a cloud session (CLAUDE_CODE_REMOTE) -> nothing; this
-# repo not joined, or no repo -> nothing, no network; the marker names this
-# repo's relay host -> start; else one quiet `cloud --probe`, on -> start.
-# start there is the plain start with --joined-list always, no browser.
+# running -> nothing; a cloud session (CLAUDE_CODE_REMOTE) -> nothing; no join
+# here (the computer's join, or this repo's own on another relay) -> nothing, no
+# network; the marker names that relay host -> start; else one quiet
+# `cloud --probe`, on -> start. start there is the plain start with --joined-list
+# always, no browser.
 #
 # cloud-build / cloud-deploy (requirements/city.md, "Cloud page"; the steps the
 # owner follows are skills/city/setup.md sections 11-15). Logins, keys and the
@@ -127,29 +146,36 @@
 # wrangler login: when the deploy fails it tells the owner to type that himself.
 #
 # cloud-talk on | off (requirements/city.md, "Cloud page", talk from the cloud
-# page): `on` is the owner's, in his own terminal, inside a joined repo. It
-# refuses without a terminal on stdin (exit 2: nothing asked, sent or saved), asks
+# page): `on` is the owner's, in his own terminal, from any folder on a joined
+# computer (the join here: inside a repo that repo's join, else the computer's;
+# a cloud session: the repo's own join only). It refuses without a terminal on
+# stdin (exit 2: nothing asked, sent or saved), then, with no join here, exits 1
+# saying to join first (nothing asked), asks
 # the talk key with echo off ("Talk key (hidden): "), hands it to
 # agent_city_relay.py talk on on stdin only, and the relay must take it before
 # anything is saved: the key goes to $AGENT_CITY_HOME/cloud-talk (mode 0600, one
-# line "<relay host> <talk key>"). `off` needs no terminal and always works: in
-# a joined repo it tells the relay, then forgets the key here; outside a repo,
-# or in a repo that has not joined, it removes the whole file, no request. status prints "CLOUD TALK: on <relay host>" or
+# line "<relay host> <talk key>"). `off` needs no terminal and always works: with
+# a join here it tells the relay, then forgets the key here (outside a repo the
+# whole file goes after that); with no join here it removes the whole file, no
+# request. status prints "CLOUD TALK: on <relay host>" or
 # "CLOUD TALK: off" right after the CLOUD line, from that file only -- no
 # network, never the key.
 #
 # cloud-start on | off (requirements/city.md, "Cloud page", "Start"): the switch
 # that lets the cloud page open an agent on this machine. No new secret: the key
-# is the talk key, typed again. `on` is the owner's, in his own terminal, inside
-# a joined repo, and talk must be on there first (a talk key for that host in
+# is the talk key, typed again. `on` is the owner's, in his own terminal, from any
+# folder on a joined computer (the join here, as for cloud-talk), and talk must be
+# on there first (a talk key for that host in
 # the talk file). It refuses without a terminal on stdin (exit 2: nothing asked,
-# sent or saved), asks the talk key with echo off ("Talk key (hidden): "), hands
+# sent or saved), then, with no join here, exits 1 saying to join first, asks the
+# talk key with echo off ("Talk key (hidden): "), hands
 # it to agent_city_relay.py start on on stdin only, and the relay must say
 # starting is on before anything is saved: the host (never a key) goes to
 # $AGENT_CITY_HOME/cloud-start (mode 0600, one relay host per line). `off` needs
-# no terminal and always works: in a joined repo it tells the relay (with the
-# key of the talk file), then forgets that host; outside a repo, or in a repo
-# that has not joined, it removes the whole file, no request. cloud-talk off
+# no terminal and always works: with a join here it tells the relay (with the
+# key of the talk file), then forgets that host (outside a repo the whole file
+# goes after that); with no join here it removes the whole file, no request.
+# cloud-talk off
 # also turns starting off (the relay is told first: it needs the key);
 # cloud-talk on never turns it on. status prints "CLOUD START: on <relay host>"
 # or "CLOUD START: off" right after the CLOUD TALK line, from the two files only
@@ -180,14 +206,15 @@
 # most 3 times, 1 s apart: the old copy can still be going away; when all 3 fail it
 # removes the plist and the launcher again (exit 1). launchctl and uname are found on PATH. `off` needs
 # no terminal: bootout, then the plist and the launcher go, nothing else.
-# `run` is what the login item runs (not in the help; a login has no folder, and
-# autostart does nothing outside a repo): in the foreground, prints nothing, always
-# exit 0. It walks $CITY_HOME/joined-repos.txt in order (repos whose folder and join
-# file are there, each relay host once) and for each runs autostart_work from that
+# `run` is what the login item runs (not in the help; a login has no folder): in the
+# foreground, prints nothing, always exit 0. It walks $CITY_HOME/joined-repos.txt in
+# order (repos whose folder is there and that have a join -- their own file, or the
+# computer's -- each relay host once) and for each runs autostart_work from that
 # repo (this script again, in that folder, as the internal verb `run-here`: its
 # agent.conf decides port, idle and language, --start-dir is the repo, --joined-list
-# always, no browser), until a city server runs. A server already running, or a cloud
-# session, or nothing joined: nothing, no network. status prints "LOGIN START: on"
+# always, no browser), until a city server runs. When none does and the computer
+# has a valid device join, it runs autostart_work from where it is (outside a repo).
+# A server already running, or a cloud session, or nothing joined: nothing, no network. status prints "LOGIN START: on"
 # (the plist file is there) or "LOGIN START: off" as its last line, from the file
 # only: launchctl is never called there.
 
@@ -218,8 +245,8 @@ agent-city.sh — start/stop/status/demo for the Agent City playground.
   ./agent-city.sh answer ID TEXT...   the governor answers a question waiting on it
   ./agent-city.sh pass ID             the governor hands a question to the owner
   ./agent-city.sh pending             list what is waiting in the city
-  ./agent-city.sh join     join this repo's team relay (address + key, asked here)
-  ./agent-city.sh leave    leave this repo's team relay
+  ./agent-city.sh join     join the team relay, once for this computer (address + key, asked here)
+  ./agent-city.sh leave    this computer leaves the team relay (no repo sends)
   ./agent-city.sh send     cloud sender: send this session's lines to the team relay
   ./agent-city.sh relay-dev [port]   run the dev relay for a two-machine LAN test
   ./agent-city.sh cloud-hooks   write the city hooks into user-level settings
@@ -248,8 +275,9 @@ agent-city.sh — start/stop/status/demo for the Agent City playground.
 
 Outside a repo: start/demo sync every repo listed in
 $AGENT_CITY_HOME/joined-repos.txt (language from AGENT_CITY_LANG, en or zh,
-else zh); status shows them; join/leave refuse there and say to cd into the
-repo first.
+else zh); status shows them. join, leave, cloud-talk and cloud-start work from
+any folder too. Only a cloud session (join and leave stay per repo there) is told
+to cd into the repo first.
 
 AGENT_CITY_PORT=<1024-65535>   start/demo use this port instead of city_port,
                                 inside or outside a repo.
@@ -267,6 +295,15 @@ SERVER="$PLUGIN_ROOT/bin/agent_city.py"
 : "${city_relay_sec:=5}"
 SECRET_FILE="$PROJECT_ROOT/.secrets/agent-city-relay"
 RELAY_MODULE="$PLUGIN_ROOT/bin/agent_city_relay.py"
+# city-device-join: this computer's join, written once by `join` from any folder.
+# A cloud session (CLAUDE_CODE_REMOTE set) has no device: DEVICE_JOIN is empty
+# there and nothing ever reads or writes DEVICE_FILE.
+DEVICE_FILE="$CITY_HOME/team-relay"
+DEVICE_JOIN="$DEVICE_FILE"
+[ -z "${CLAUDE_CODE_REMOTE:-}" ] || DEVICE_JOIN=""
+# The join file that counts here (join_here sets it): the computer's, or this
+# repo's own one on another relay; empty = nothing joined here.
+JOIN_HERE=""
 CLOUD_FILE="$CITY_HOME/cloud"
 TALK_FILE="$CITY_HOME/cloud-talk"
 START_FILE="$CITY_HOME/cloud-start"
@@ -280,6 +317,42 @@ LOGIN_LAUNCHER="$CITY_HOME/login-start.sh"
 # server started by hand inside a repo, with nobody working there, is still seen
 # by the cloud page. No start file, or one with no host: as before.
 START_JOINED=no
+
+# Sets JOIN_HERE to the join file that counts here, or "" when nothing is joined.
+# Inside a repo: effective_join(<main repo root>, device) -- the repo's own file
+# when it names another relay than the computer's, else the computer's. Outside
+# a repo: the device file when read_join takes it. A cloud session has no device:
+# only the repo's own file, inside a repo. Never the key, no network.
+join_here() {
+  inside=yes
+  [ "$OUTSIDE_REPO" = no ] || inside=no
+  JOIN_HERE=$(python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+
+root, device, inside = sys.argv[2], sys.argv[3], sys.argv[4] == "yes"
+if inside:
+    got = rl.effective_join(root, device)
+    if got:
+        print(got["path"])
+elif device and rl.read_join(device):
+    print(device)
+' "$PLUGIN_ROOT/bin" "$PROJECT_ROOT" "$DEVICE_JOIN" "$inside" 2>/dev/null) || JOIN_HERE=""
+  return 0
+}
+
+# True when the computer's join file is there and read_join takes it (never in
+# a cloud session).
+device_valid() {
+  [ -n "$DEVICE_JOIN" ] || return 1
+  python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+sys.exit(0 if rl.read_join(sys.argv[2]) else 1)
+' "$PLUGIN_ROOT/bin" "$DEVICE_JOIN" >/dev/null 2>&1
+}
 
 # True when something already answers on 127.0.0.1:<port> (short connect,
 # 1s timeout) -- tells "another program holds the port" apart from a plain
@@ -341,9 +414,17 @@ do_start() {
       *) language="zh" ;;
     esac
   fi
-  if [ "$OUTSIDE_REPO" = yes ] || [ "$START_JOINED" = yes ] \
+  # city-device-join: not in a cloud session, serve always knows the computer's
+  # join file (a join made later is picked up); a valid one also brings the
+  # joined list, so every repo of a joined computer syncs from the first moment.
+  device_ok=no
+  if [ -n "$DEVICE_JOIN" ]; then
+    set -- --device-join "$DEVICE_FILE"
+    if device_valid; then device_ok=yes; fi
+  fi
+  if [ "$OUTSIDE_REPO" = yes ] || [ "$START_JOINED" = yes ] || [ "$device_ok" = yes ] \
      || grep -qE '^[[:space:]]*[^#[:space:]][^[:space:]]*[[:space:]]*$' "$START_FILE" 2>/dev/null; then
-    set -- --joined-list "$CITY_HOME/joined-repos.txt"
+    set -- "$@" --joined-list "$CITY_HOME/joined-repos.txt"
   fi
 
   if ! resources_ok "$max_usage_percent"; then
@@ -407,6 +488,7 @@ do_status() {
     start_lines_outside || true
     not_shown_line || true
   else
+    join_here
     team_line
     cloud_line || true
     talk_line || true
@@ -428,10 +510,12 @@ login_line() {
   return 0
 }
 
-# "CLOUD: on <relay host>" or "CLOUD: off" for a joined repo, nothing when it
-# is not joined. From the marker only: no --probe, so no network. Never the key.
+# "CLOUD: on <relay host>" or "CLOUD: off" for the join here, nothing when
+# nothing is joined here. From the marker only: no --probe, so no network.
+# Never the key.
 cloud_line() {
-  out=$(python3 "$RELAY_MODULE" cloud --secret "$SECRET_FILE" \
+  [ -n "$JOIN_HERE" ] || return 0
+  out=$(python3 "$RELAY_MODULE" cloud --secret "$JOIN_HERE" \
           --cloud-file "$CLOUD_FILE" 2>/dev/null) || out="none"
   case "$out" in
     "on "*) echo "CLOUD: $out" ;;
@@ -440,10 +524,12 @@ cloud_line() {
   return 0
 }
 
-# Outside a repo: one "CLOUD: on <host>" per joined relay host (each once, list
-# order) that the marker names, else one "CLOUD: off" when a repo is joined,
-# nothing when none is. Marker only, no network. Never the key.
-cloud_lines_outside() {
+# Outside a repo: the relay hosts this computer is joined to, one per line, each
+# once: the computer's own join host first (when it is joined), then the join host
+# of each listed repo whose folder is there (effective_join: its own file when it
+# names another relay, else the computer's). Nothing when nothing is joined. Hosts
+# only, never the key, no network.
+outside_hosts() {
   python3 -c '
 import os
 import sys
@@ -451,31 +537,51 @@ sys.path.insert(0, sys.argv[1])
 import agent_city_relay as rl
 from urllib.parse import urlsplit
 
-marked = rl.read_cloud(sys.argv[3])
+device = sys.argv[3]
 hosts = []
+dev = rl.read_join(device) if device else None
+if dev:
+    hosts.append(urlsplit(dev["address"]).netloc)
 for repo in rl.read_joined_list(sys.argv[2]):
     if not os.path.isdir(repo):
         continue
-    joined = rl.read_join(os.path.join(repo, ".secrets", "agent-city-relay"))
+    joined = rl.effective_join(repo, device)
     if not joined:
         continue
     host = urlsplit(joined["address"]).netloc
     if host not in hosts:
         hosts.append(host)
-if hosts:
-    on = [h for h in hosts if h in marked]
-    if on:
-        for h in on:
-            print("CLOUD: on " + h)
-    else:
-        print("CLOUD: off")
-' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$CLOUD_FILE"
+for host in hosts:
+    print(host)
+' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$DEVICE_JOIN"
 }
 
-# "CLOUD TALK: on <relay host>" or "CLOUD TALK: off" for a joined repo, nothing
-# when it is not joined. From the talk file only, no network. Never the key.
+# Outside a repo: one "CLOUD: on <host>" per joined relay host that the marker
+# names, else one "CLOUD: off" when anything is joined, nothing when nothing is.
+# Marker only, no network. Never the key.
+cloud_lines_outside() {
+  hosts=$(outside_hosts 2>/dev/null) || hosts=""
+  [ -n "$hosts" ] || return 0
+  python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+
+marked = rl.read_cloud(sys.argv[2])
+on = [h for h in sys.argv[3].split() if h in marked]
+if on:
+    for h in on:
+        print("CLOUD: on " + h)
+else:
+    print("CLOUD: off")
+' "$PLUGIN_ROOT/bin" "$CLOUD_FILE" "$hosts"
+}
+
+# "CLOUD TALK: on <relay host>" or "CLOUD TALK: off" for the join here, nothing
+# when nothing is joined here. From the talk file only, no network. Never the key.
 talk_line() {
-  out=$(python3 "$RELAY_MODULE" talk --secret "$SECRET_FILE" \
+  [ -n "$JOIN_HERE" ] || return 0
+  out=$(python3 "$RELAY_MODULE" talk --secret "$JOIN_HERE" \
           --talk-file "$TALK_FILE" status 2>/dev/null) || out="none"
   case "$out" in
     "on "*) echo "CLOUD TALK: $out" ;;
@@ -484,43 +590,33 @@ talk_line() {
   return 0
 }
 
-# Outside a repo: one "CLOUD TALK: on <host>" per joined relay host (each once,
-# list order) that the talk file names, else one "CLOUD TALK: off" when a repo
-# is joined, nothing when none is. Talk file only, no network. Never the key.
+# Outside a repo: one "CLOUD TALK: on <host>" per joined relay host that the talk
+# file names, else one "CLOUD TALK: off" when anything is joined, nothing when
+# nothing is. Talk file only, no network. Never the key.
 talk_lines_outside() {
+  hosts=$(outside_hosts 2>/dev/null) || hosts=""
+  [ -n "$hosts" ] || return 0
   python3 -c '
-import os
 import sys
 sys.path.insert(0, sys.argv[1])
 import agent_city_relay as rl
-from urllib.parse import urlsplit
 
-held = rl.read_talk(sys.argv[3])
-hosts = []
-for repo in rl.read_joined_list(sys.argv[2]):
-    if not os.path.isdir(repo):
-        continue
-    joined = rl.read_join(os.path.join(repo, ".secrets", "agent-city-relay"))
-    if not joined:
-        continue
-    host = urlsplit(joined["address"]).netloc
-    if host not in hosts:
-        hosts.append(host)
-if hosts:
-    on = [h for h in hosts if h in held]
-    if on:
-        for h in on:
-            print("CLOUD TALK: on " + h)
-    else:
-        print("CLOUD TALK: off")
-' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$TALK_FILE"
+held = rl.read_talk(sys.argv[2])
+on = [h for h in sys.argv[3].split() if h in held]
+if on:
+    for h in on:
+        print("CLOUD TALK: on " + h)
+else:
+    print("CLOUD TALK: off")
+' "$PLUGIN_ROOT/bin" "$TALK_FILE" "$hosts"
 }
 
-# "CLOUD START: on <relay host>" or "CLOUD START: off" for a joined repo, nothing
-# when it is not joined. From the start file and the talk file only, no network
+# "CLOUD START: on <relay host>" or "CLOUD START: off" for the join here, nothing
+# when nothing is joined here. From the start file and the talk file only, no network
 # (on only when the talk file has the host too). Never the key.
 start_line() {
-  out=$(python3 "$RELAY_MODULE" start --secret "$SECRET_FILE" \
+  [ -n "$JOIN_HERE" ] || return 0
+  out=$(python3 "$RELAY_MODULE" start --secret "$JOIN_HERE" \
           --talk-file "$TALK_FILE" --start-file "$START_FILE" status 2>/dev/null) || out="none"
   case "$out" in
     "on "*) echo "CLOUD START: $out" ;;
@@ -529,38 +625,26 @@ start_line() {
   return 0
 }
 
-# Outside a repo: one "CLOUD START: on <host>" per joined relay host (each once,
-# list order) that the start file and the talk file both name, else one "CLOUD
-# START: off" when a repo is joined, nothing when none is. Files only, no
-# network. Never the key.
+# Outside a repo: one "CLOUD START: on <host>" per joined relay host that the
+# start file and the talk file both name, else one "CLOUD START: off" when anything
+# is joined, nothing when nothing is. Files only, no network. Never the key.
 start_lines_outside() {
+  hosts=$(outside_hosts 2>/dev/null) || hosts=""
+  [ -n "$hosts" ] || return 0
   python3 -c '
-import os
 import sys
 sys.path.insert(0, sys.argv[1])
 import agent_city_relay as rl
-from urllib.parse import urlsplit
 
-started = rl.read_start(sys.argv[4])
-held = rl.read_talk(sys.argv[3])
-hosts = []
-for repo in rl.read_joined_list(sys.argv[2]):
-    if not os.path.isdir(repo):
-        continue
-    joined = rl.read_join(os.path.join(repo, ".secrets", "agent-city-relay"))
-    if not joined:
-        continue
-    host = urlsplit(joined["address"]).netloc
-    if host not in hosts:
-        hosts.append(host)
-if hosts:
-    on = [h for h in hosts if h in started and h in held]
-    if on:
-        for h in on:
-            print("CLOUD START: on " + h)
-    else:
-        print("CLOUD START: off")
-' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$TALK_FILE" "$START_FILE"
+started = rl.read_start(sys.argv[3])
+held = rl.read_talk(sys.argv[2])
+on = [h for h in sys.argv[4].split() if h in started and h in held]
+if on:
+    for h in on:
+        print("CLOUD START: on " + h)
+else:
+    print("CLOUD START: off")
+' "$PLUGIN_ROOT/bin" "$TALK_FILE" "$START_FILE" "$hosts"
 }
 
 # This status line comes right after the cloud lines (CLOUD, CLOUD TALK, CLOUD START)
@@ -614,16 +698,17 @@ autostart_work() {
   read_on >/dev/null && return 0
   # 2. a cloud session sends only, it has no page
   [ -z "${CLAUDE_CODE_REMOTE:-}" ] || return 0
-  # 3. not in a repo, or this repo is not joined: no network at all
-  [ "$OUTSIDE_REPO" = no ] || return 0
-  [ -f "$SECRET_FILE" ] || return 0
-  state=$(python3 "$RELAY_MODULE" cloud --secret "$SECRET_FILE" \
+  # 3. no join here (outside a repo: the computer's join; inside one: its own
+  #    file on another relay, else the computer's): no network at all
+  join_here
+  [ -n "$JOIN_HERE" ] || return 0
+  state=$(python3 "$RELAY_MODULE" cloud --secret "$JOIN_HERE" \
             --cloud-file "$CLOUD_FILE" 2>/dev/null) || return 0
   case "$state" in
     "on "*) ;;
     "off "*)
       # 5. no marker for this relay: one quiet sync asks the relay
-      state=$(python3 "$RELAY_MODULE" cloud --secret "$SECRET_FILE" \
+      state=$(python3 "$RELAY_MODULE" cloud --secret "$JOIN_HERE" \
                 --cloud-file "$CLOUD_FILE" --probe 2>/dev/null) || return 0
       case "$state" in "on "*) ;; *) return 0 ;; esac ;;
     *) return 0 ;;
@@ -634,24 +719,34 @@ autostart_work() {
   return 0
 }
 
-# "TEAM: not joined" or "TEAM: joined <relay host>". Never the key.
+# Inside a repo, from the join here: "TEAM: joined <relay host> (this device, all
+# repos)" when it is the computer's join, "TEAM: joined <relay host>" when it is
+# the repo's own file, else "TEAM: not joined". Never the key.
 team_line() {
   python3 -c '
 import sys
 sys.path.insert(0, sys.argv[1])
 import agent_city_relay as rl
 from urllib.parse import urlsplit
-joined = rl.read_join(sys.argv[2])
+
+path, device = sys.argv[2], sys.argv[3]
+joined = rl.read_join(path) if path else None
 if joined:
-    print("TEAM: joined " + urlsplit(joined["address"]).netloc)
+    host = urlsplit(joined["address"]).netloc
+    if device and path == device:
+        print("TEAM: joined %s (this device, all repos)" % host)
+    else:
+        print("TEAM: joined " + host)
 else:
     print("TEAM: not joined")
-' "$PLUGIN_ROOT/bin" "$SECRET_FILE"
+' "$PLUGIN_ROOT/bin" "$JOIN_HERE" "$DEVICE_JOIN"
 }
 
-# Outside a repo: one "TEAM: joined <host> (<repo>)" per listed repo whose
-# folder and join file are both there (list order), else "TEAM: not
-# joined". Never the key.
+# Outside a repo: "TEAM: joined <host> (this device, all repos)" when the
+# computer is joined, then one "TEAM: joined <host> (<repo>)" per listed repo
+# whose folder and own join file are there and whose relay is not the computer's;
+# with no device join, one line per such listed repo; "TEAM: not joined" when
+# there is no line at all. Never the key.
 joined_list_lines() {
   python3 -c '
 import os
@@ -660,19 +755,23 @@ sys.path.insert(0, sys.argv[1])
 import agent_city_relay as rl
 from urllib.parse import urlsplit
 
-repos = rl.read_joined_list(sys.argv[2])
+device = sys.argv[3]
 printed = False
-for repo in repos:
+dev = rl.read_join(device) if device else None
+if dev:
+    print("TEAM: joined %s (this device, all repos)" % urlsplit(dev["address"]).netloc)
+    printed = True
+for repo in rl.read_joined_list(sys.argv[2]):
     if not os.path.isdir(repo):
         continue
-    joined = rl.read_join(os.path.join(repo, ".secrets", "agent-city-relay"))
-    if not joined:
+    joined = rl.effective_join(repo, device)
+    if not joined or joined["path"] == device:
         continue
     print("TEAM: joined %s (%s)" % (urlsplit(joined["address"]).netloc, repo))
     printed = True
 if not printed:
     print("TEAM: not joined")
-' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt"
+' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$DEVICE_JOIN"
 }
 
 # Cloud sender (requirements/city.md, "Joining": cloud sessions send only, no
@@ -781,12 +880,114 @@ do_pending() {
   python3 "$SERVER" gov-pending --dir "$CITY_DIR"
 }
 
-# Join this repo's team relay (requirements/city.md, "Joining"). Refuses,
-# before asking anything, when there is no origin remote, the origin is not
-# shared (a local path or file:// URL -- origin_id() is empty), or .secrets/
-# is not git-ignored. The team key is read with echo off and handed to
-# agent_city_relay.py on stdin only -- never argv, never on screen.
+# Join the team relay (requirements/city.md, "Joining"). Not in a cloud session:
+# once per computer, from any folder (do_join_device). A cloud session has no
+# device and keeps the join per repo (do_join_repo).
 do_join() {
+  if [ -n "${CLAUDE_CODE_REMOTE:-}" ]; then
+    do_join_repo
+  else
+    do_join_device
+  fi
+}
+
+# This computer's join: <city home>/team-relay, written (0600) only after the
+# relay takes the key. No origin or .gitignore check: the file is never inside a
+# repo. The team key is read with echo off and handed to agent_city_relay.py on
+# stdin only -- never argv, never on screen.
+do_join_device() {
+  # Moving up: no valid device join, and a listed repo (list order) whose folder
+  # and own join file are there -> offer that repo's relay first. Its key goes
+  # from its own file to the relay check inside agent_city_relay.py (join
+  # --from-file): never typed, shown or on an argv.
+  offer=""
+  if ! device_valid; then
+    offer=$(python3 -c '
+import os
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+from urllib.parse import urlsplit
+
+for repo in rl.read_joined_list(sys.argv[2]):
+    if not os.path.isdir(repo):
+        continue
+    joined = rl.read_join(os.path.join(repo, ".secrets", "agent-city-relay"))
+    if joined:
+        print(repo)
+        print(urlsplit(joined["address"]).netloc)
+        break
+' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" 2>/dev/null) || offer=""
+  fi
+
+  if [ -n "$offer" ]; then
+    up_repo=$(printf '%s\n' "$offer" | sed -n 1p)
+    up_host=$(printf '%s\n' "$offer" | sed -n 2p)
+    printf 'JOIN: a repo on this computer is in the team %s (%s). Use it for every repo on this computer? [Y/n] ' \
+      "$up_host" "$(basename "$up_repo")" >&2
+    # no answer line at all (a closed stdin) is not a yes
+    answer=""
+    read -r answer || [ -n "$answer" ] || answer="n"
+    answer=$(printf '%s' "$answer" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+    case "$answer" in
+      n|no) ;;
+      *)
+        rc=0
+        out=$(python3 "$RELAY_MODULE" join --from-file "$up_repo/.secrets/agent-city-relay" \
+                --file "$DEVICE_FILE" --cloud-file "$CLOUD_FILE" 2>&1 </dev/null) || rc=$?
+        if [ "$rc" -ne 0 ]; then
+          echo "$out" >&2
+          exit 1
+        fi
+        join_device_done "${out#RELAY: ok }"
+        return 0 ;;
+    esac
+  fi
+
+  printf 'Relay address: ' >&2
+  read -r address || address=""
+  printf 'Team key (hidden): ' >&2
+  read -rs key || key=""
+  printf '\n' >&2
+
+  rc=0
+  out=$(printf '%s\n' "$key" | python3 "$RELAY_MODULE" \
+          join --address "$address" --file "$DEVICE_FILE" \
+          --cloud-file "$CLOUD_FILE" 2>&1) || rc=$?
+  key=""
+  if [ "$rc" -ne 0 ]; then
+    echo "$out" >&2
+    exit 1
+  fi
+
+  join_device_done "${out#RELAY: ok }"
+  return 0
+}
+
+# The computer is joined: say so. Inside a repo with a shared origin, its main
+# root also goes into the joined list, once, never the key. $1 = relay host.
+join_device_done() {
+  echo "JOINED: this device -> $1 (all repos)"
+  if [ "$OUTSIDE_REPO" = no ]; then
+    origin=$(git -C "$PROJECT_ROOT" config --get remote.origin.url 2>/dev/null) || origin=""
+    python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+
+if rl.origin_id(sys.argv[3]):
+    rl.add_joined(sys.argv[2], sys.argv[4])
+' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$origin" "$PROJECT_ROOT" || true
+  fi
+  return 0
+}
+
+# Cloud sessions only: join this repo's team relay (requirements/city.md,
+# "Joining"). Refuses, before asking anything, when there is no origin remote,
+# the origin is not shared (a local path or file:// URL -- origin_id() is empty),
+# or .secrets/ is not git-ignored. The team key is read with echo off and handed
+# to agent_city_relay.py on stdin only -- never argv, never on screen.
+do_join_repo() {
   if [ "$OUTSIDE_REPO" = yes ]; then
     echo "JOIN: not inside a repo; cd into the repo you want to join, then run join" >&2
     exit 1
@@ -957,7 +1158,57 @@ else:
 PY
 }
 
+# leave. Not in a cloud session: this computer leaves, from any folder. The
+# device join, the own join file of every listed repo and of the repo it runs in
+# go, and the list keeps no path line (comments stay). The talk and start files
+# are not touched. A cloud session has no device: it leaves only its own repo
+# (do_leave_repo).
 do_leave() {
+  if [ -n "${CLAUDE_CODE_REMOTE:-}" ]; then
+    do_leave_repo
+    return 0
+  fi
+  inside=yes
+  [ "$OUTSIDE_REPO" = no ] || inside=no
+  gone=$(python3 -c '
+import os
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_city_relay as rl
+
+device, listing, root, inside = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5] == "yes"
+removed = False
+
+
+def drop(path):
+    global removed
+    if os.path.lexists(path):
+        os.remove(path)
+        removed = True
+
+
+drop(device)
+repos = list(rl.read_joined_list(listing))
+if inside:
+    repos.append(root)
+for repo in repos:
+    try:
+        drop(os.path.join(repo, ".secrets", "agent-city-relay"))
+    except OSError:
+        pass
+    rl.remove_joined(listing, repo)
+print("yes" if removed else "no")
+' "$PLUGIN_ROOT/bin" "$DEVICE_FILE" "$CITY_HOME/joined-repos.txt" "$PROJECT_ROOT" "$inside") || gone="no"
+  if [ "$gone" = yes ]; then
+    echo "LEFT: this computer left the team; no repo sends now"
+  else
+    echo "LEFT: was not joined"
+  fi
+  return 0
+}
+
+# Cloud sessions only: leave this repo's team relay.
+do_leave_repo() {
   if [ "$OUTSIDE_REPO" = yes ]; then
     echo "LEFT: not inside a repo; cd into the joined repo, then run leave" >&2
     exit 1
@@ -1305,7 +1556,7 @@ do_talk_on() {
   printf '\n' >&2
 
   rc=0
-  out=$(printf '%s\n' "$key" | python3 "$RELAY_MODULE" talk --secret "$SECRET_FILE" \
+  out=$(printf '%s\n' "$key" | python3 "$RELAY_MODULE" talk --secret "$JOIN_HERE" \
           --talk-file "$TALK_FILE" on 2>/dev/null) || rc=$?
   key=""
   case "$rc" in
@@ -1317,45 +1568,52 @@ do_talk_on() {
     4) echo "CLOUD TALK: the relay has no TALK_KEY (or its cloud page is off); nothing was saved" >&2 ;;
     5) echo "CLOUD TALK: cannot reach the relay; nothing was saved" >&2 ;;
     6) echo "CLOUD TALK: cannot write $TALK_FILE; nothing was saved" >&2 ;;
-    *) echo "CLOUD TALK: this repo has not joined a team relay (run join first); nothing was saved" >&2 ;;
+    *) echo "CLOUD TALK: nothing is joined here (run agent-city join first); nothing was saved" >&2 ;;
   esac
   exit 1
 }
 
-# off must always work, it is the way to stop. In a joined repo it tells the
-# relay and forgets that host. Outside a repo, or in a repo that has not joined
-# (any more), there is no host to name: the whole talk file goes, with no
-# request to anybody (that machine's copy on Cloudflare ages out). Starting needs
-# talk, so it goes off too: in a joined repo the relay is told about it FIRST
-# (it needs the key, which the talk off below forgets), and the start file loses
-# the host; else the whole start file goes with the talk file.
+# off must always work, it is the way to stop. With a join here it tells the
+# relay and forgets that host; outside a repo the whole talk file goes after
+# that. With no join here (or a failed answer) there is no host to name: the whole
+# talk file goes, with no request to anybody (that machine's copy on Cloudflare
+# ages out). Starting needs talk, so it goes off too: with a join here the relay
+# is told about it FIRST (it needs the key, which the talk off below forgets), and
+# the start file loses the host; else the whole start file goes with the talk file.
 do_talk_off() {
+  join_here
   rc=1
-  if [ "$OUTSIDE_REPO" = no ] && [ -f "$SECRET_FILE" ]; then
+  if [ -n "$JOIN_HERE" ]; then
     rc=0
-    python3 "$RELAY_MODULE" start --secret "$SECRET_FILE" --talk-file "$TALK_FILE" \
+    python3 "$RELAY_MODULE" start --secret "$JOIN_HERE" --talk-file "$TALK_FILE" \
       --start-file "$START_FILE" off >/dev/null 2>&1 || rm -f "$START_FILE" 2>/dev/null || true
-    python3 "$RELAY_MODULE" talk --secret "$SECRET_FILE" --talk-file "$TALK_FILE" off \
+    python3 "$RELAY_MODULE" talk --secret "$JOIN_HERE" --talk-file "$TALK_FILE" off \
       >/dev/null 2>&1 || rc=$?
   fi
-  if [ "$rc" -ne 0 ]; then
+  if [ "$rc" -ne 0 ] || [ "$OUTSIDE_REPO" = yes ]; then
     rm -f "$TALK_FILE" "$START_FILE" 2>/dev/null || true
   fi
   echo "CLOUD TALK: off"
   return 0
 }
 
-# cloud-talk on needs a repo that has joined a team relay: the relay host comes
-# from its join file. $1 = the word, for the message.
+# cloud-talk on needs a join here: the relay host comes from its file. $1 = the
+# word, for the message. A cloud session has no device: its repo's own file only.
 talk_need_joined() {
-  if [ "$OUTSIDE_REPO" = yes ]; then
-    echo "CLOUD TALK: not inside a repo; cd into the joined repo, then run cloud-talk $1" >&2
-    exit 1
+  join_here
+  if [ -n "$JOIN_HERE" ]; then
+    return 0
   fi
-  if [ ! -f "$SECRET_FILE" ]; then
-    echo "CLOUD TALK: this repo has not joined a team relay; run join first" >&2
-    exit 1
+  if [ -n "${CLAUDE_CODE_REMOTE:-}" ]; then
+    if [ "$OUTSIDE_REPO" = yes ]; then
+      echo "CLOUD TALK: not inside a repo; cd into the joined repo, then run cloud-talk $1" >&2
+    else
+      echo "CLOUD TALK: this repo has not joined a team relay; run join first" >&2
+    fi
+  else
+    echo "CLOUD TALK: this computer has not joined a team relay; run agent-city join first" >&2
   fi
+  exit 1
 }
 
 # cloud-start on | off: see the header comment. `on` is the owner's, in his own
@@ -1385,7 +1643,7 @@ do_start_on() {
   printf '\n' >&2
 
   rc=0
-  out=$(printf '%s\n' "$key" | python3 "$RELAY_MODULE" start --secret "$SECRET_FILE" \
+  out=$(printf '%s\n' "$key" | python3 "$RELAY_MODULE" start --secret "$JOIN_HERE" \
           --talk-file "$TALK_FILE" --start-file "$START_FILE" on 2>/dev/null) || rc=$?
   key=""
   case "$rc" in
@@ -1399,40 +1657,48 @@ do_start_on() {
     6) echo "CLOUD START: cannot write $START_FILE; nothing was saved" >&2 ;;
     7) echo "CLOUD START: turn talking on first (agent-city cloud-talk on); nothing was saved" >&2 ;;
     8) echo "CLOUD START: the relay does not know starting yet; put the new relay code on Cloudflare (skills/city/setup.md), then run this again; nothing was saved" >&2 ;;
-    *) echo "CLOUD START: this repo has not joined a team relay (run join first); nothing was saved" >&2 ;;
+    *) echo "CLOUD START: nothing is joined here (run agent-city join first); nothing was saved" >&2 ;;
   esac
   exit 1
 }
 
-# off must always work, it is the way to stop. In a joined repo it tells the
-# relay (so an order that waits is never opened) and forgets that host. Outside
-# a repo, or in a repo that has not joined (any more), there is no host to name:
-# the whole start file goes, with no request to anybody. Talk stays as it is.
+# off must always work, it is the way to stop. With a join here it tells the
+# relay (so an order that waits is never opened) and forgets that host; outside a
+# repo the whole start file goes after that. With no join here (or a failed
+# answer) there is no host to name: the whole start file goes, with no request to
+# anybody. Talk stays as it is.
 do_start_off() {
+  join_here
   rc=1
-  if [ "$OUTSIDE_REPO" = no ] && [ -f "$SECRET_FILE" ]; then
+  if [ -n "$JOIN_HERE" ]; then
     rc=0
-    python3 "$RELAY_MODULE" start --secret "$SECRET_FILE" --talk-file "$TALK_FILE" \
+    python3 "$RELAY_MODULE" start --secret "$JOIN_HERE" --talk-file "$TALK_FILE" \
       --start-file "$START_FILE" off >/dev/null 2>&1 || rc=$?
   fi
-  if [ "$rc" -ne 0 ]; then
+  if [ "$rc" -ne 0 ] || [ "$OUTSIDE_REPO" = yes ]; then
     rm -f "$START_FILE" 2>/dev/null || true
   fi
   echo "CLOUD START: off"
   return 0
 }
 
-# cloud-start on needs a repo that has joined a team relay: the relay host comes
-# from its join file.
+# cloud-start on needs a join here: the relay host comes from its file. A cloud
+# session has no device: its repo's own file only.
 start_need_joined() {
-  if [ "$OUTSIDE_REPO" = yes ]; then
-    echo "CLOUD START: not inside a repo; cd into the joined repo, then run cloud-start on" >&2
-    exit 1
+  join_here
+  if [ -n "$JOIN_HERE" ]; then
+    return 0
   fi
-  if [ ! -f "$SECRET_FILE" ]; then
-    echo "CLOUD START: this repo has not joined a team relay; run join first" >&2
-    exit 1
+  if [ -n "${CLAUDE_CODE_REMOTE:-}" ]; then
+    if [ "$OUTSIDE_REPO" = yes ]; then
+      echo "CLOUD START: not inside a repo; cd into the joined repo, then run cloud-start on" >&2
+    else
+      echo "CLOUD START: this repo has not joined a team relay; run join first" >&2
+    fi
+  else
+    echo "CLOUD START: this computer has not joined a team relay; run agent-city join first" >&2
   fi
+  exit 1
 }
 
 # login-start on | off | run: see the header comment. `run-here` is internal (one
@@ -1575,10 +1841,13 @@ login_off() {
 # What the login item runs. Foreground: when it returns, the server is up or will
 # not come. The caller keeps every stream on /dev/null. A city server already
 # running, or a cloud session: nothing. Else the joined repos in list order (the
-# first repo of each relay host, folder and join file there): for each, this
-# script again from that repo (autostart_work with that repo's own agent.conf),
-# stopping as soon as a server runs. CLAUDE_PROJECT_DIR is set to the repo, so
-# the child never takes the repo from an inherited one.
+# first repo of each relay host, folder there and a join that counts: its own file,
+# or the computer's -- effective_join): for each, this script again from that repo
+# (autostart_work with that repo's own agent.conf), stopping as soon as a server
+# runs. CLAUDE_PROJECT_DIR is set to the repo, so the child never takes the repo
+# from an inherited one. After the walk, with no server and a valid device join,
+# autostart_work runs from where this is (outside a repo: the login item has no
+# folder).
 login_run() {
   read_on >/dev/null && return 0
   [ -z "${CLAUDE_CODE_REMOTE:-}" ] || return 0
@@ -1593,14 +1862,14 @@ hosts = []
 for repo in rl.read_joined_list(sys.argv[2]):
     if not os.path.isdir(repo):
         continue
-    joined = rl.read_join(os.path.join(repo, ".secrets", "agent-city-relay"))
+    joined = rl.effective_join(repo, sys.argv[3])
     if not joined:
         continue
     host = urlsplit(joined["address"]).netloc
     if host not in hosts:
         hosts.append(host)
         print(repo)
-' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" 2>/dev/null) || return 0
+' "$PLUGIN_ROOT/bin" "$CITY_HOME/joined-repos.txt" "$DEVICE_JOIN" 2>/dev/null) || repos=""
   while IFS= read -r repo; do
     [ -n "$repo" ] || continue
     ( cd "$repo" && CLAUDE_PROJECT_DIR="$repo" bash "$PLUGIN_ROOT/bin/agent-city.sh" login-start run-here
@@ -1609,6 +1878,9 @@ for repo in rl.read_joined_list(sys.argv[2]):
   done <<EOF
 $repos
 EOF
+  if device_valid; then
+    autostart_work || true
+  fi
   return 0
 }
 

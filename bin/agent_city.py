@@ -3466,13 +3466,17 @@ class CityState(_CloudTaps):
         """Caller holds self.lock (or self.cond, the same lock)."""
         self.idle_since = time.monotonic()
 
+    device_join = None  # city-device-join: this computer's join file (serve --device-join), or None
+
     def health(self):
         """The server's /health. "not_joined": the names (as the world view
         names the territory), sorted, each once, of every territory with a live
         session now (its Reducer has a session: a seated governor or a session
         citizen) whose repo folder has no join file the relay accepts
         (<folder>/.secrets/agent-city-relay). Names only, never a path; the
-        join files are read after the lock is let go, and never raise."""
+        join files are read after the lock is let go, and never raise.
+        A computer whose device join file the relay module accepts has every
+        repo in: "not_joined" is []."""
         with self.lock:
             out = {
                 "ok": True,
@@ -3489,8 +3493,18 @@ class CityState(_CloudTaps):
                     territory = self.world["territories"].get(identity)
                     name = territory.get("name") if isinstance(territory, dict) else None
                     live.append((identity, name if isinstance(name, str) and name else repo_name(identity)))
-        out["not_joined"] = self._not_joined(live)
+        out["not_joined"] = [] if self._device_joined() else self._not_joined(live)
         return out
+
+    def _device_joined(self):
+        """True when device_join names a file read_join accepts. Never raises."""
+        path = getattr(self, "device_join", None)
+        if not path:
+            return False
+        try:
+            return _cloud_relay().read_join(path) is not None
+        except Exception:
+            return False
 
     @staticmethod
     def _not_joined(live):
@@ -6905,7 +6919,9 @@ def cmd_serve(args):
                         talk_file=cloud_talk_path(),  # cloud-city, cloud-city-2
                         start_file=cloud_start_path(), slow_fn=slow,
                         slow_sec=args.slow_sec if args.slow_sec is not None else relay.SLOW_SEC,
-                        join_dir=args.join_dir)  # cloud-city-3 (join_dir: tests only)
+                        join_dir=args.join_dir,  # cloud-city-3 (join_dir: tests only)
+                        device_join=args.device_join)  # city-device-join
+    city.device_join = args.device_join  # city-device-join: health() counts a joined computer
     uploader.bind(hub)  # cloud-city
     # cloud-city-2: the sessions the roster brought back are known to the hub
     # at once, with no line sent, so its first syncs carry the picture and talk
@@ -9378,6 +9394,7 @@ def _build_parser():
     serve.add_argument("--relay-sec", type=float, default=5.0)
     serve.add_argument("--join-ttl-sec", type=float, default=30.0)
     serve.add_argument("--joined-list", default=None)
+    serve.add_argument("--device-join", default=None)  # city-device-join: this computer's join file
     serve.add_argument("--remote-ttl-sec", type=float, default=600.0)
     serve.add_argument("--cloud-snap-sec", type=float, default=CLOUD_SNAP_SEC)  # cloud-city
     serve.add_argument("--slow-sec", type=float, default=None)  # cloud-city-3: None = the relay module's SLOW_SEC
