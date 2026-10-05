@@ -408,7 +408,14 @@ def views():
         t = ac.add_territory(w, pl, ident, ident.split("/")[2], 30000)
         t["plan"], t["slot"], t["era"] = plan, list(slot), era
         t["peak"] = t["lines"] = 30000
-    return {"demo": ac.demo_world(), "gaps": ac.layout(w, pl)}
+    # city-tier: the owner's real island laid out by level (a tier-1 city in 3 x 3 cells, two tier-2 coast
+    # cities in 2 x 2, four tier-3 towns): the biggest map the page builds, so the same rules and the same
+    # time budget hold there too
+    from test_agent_city_tier import owner_world
+    big = owner_world(counted=True)
+    ac.re_lay(big, pl)
+    big["tiers"] = True
+    return {"demo": ac.demo_world(), "gaps": ac.layout(w, pl), "owner": ac.layout(big, pl)}
 
 
 LAND_JS = r"""
@@ -638,7 +645,7 @@ def land_results():
     return _CACHE["land"]
 
 
-VIEWS = ("demo", "gaps")
+VIEWS = ("demo", "gaps", "owner")
 
 
 class TestSmoothGround(unittest.TestCase):
