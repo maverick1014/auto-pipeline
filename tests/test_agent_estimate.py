@@ -612,6 +612,16 @@ class TestRetrainCheck(EstimateCase):
         out = self.assertOk(self.af("retrain"))
         self.assertEqual(self.lines(out), ["estimate retrain: not due (45 tasks, next check on 2026-10-12)"])
 
+    def test_the_target_line_follows_the_table_and_the_verdict(self):
+        self.completed(steady(40))
+        self.model(versions=[version(k=3, text=0, type=0.5)], date="2026-09-28")
+        tgt = re.compile(r"target 5m: (met|error \d+\.\dm, gap \d+\.\dm)$")
+        rows = self.lines(self.assertOk(self.af("retrain")))
+        self.assertEqual(len([r for r in rows if r.startswith("target 5m: ")]), 2, rows)
+        self.assertRegex(rows[-1], tgt)
+        self.assertRegex(rows[rows.index([r for r in rows if r.startswith("winner: ")][0]) + 1], tgt)
+        self.assertRegex(self.lines(self.assertOk(self.af("backtest")))[-1], tgt)
+
     def test_6_days_is_not_due(self):
         self.completed(steady(35))
         self.model(date="2026-09-29")

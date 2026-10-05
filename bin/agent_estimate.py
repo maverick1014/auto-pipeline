@@ -23,6 +23,7 @@ import sys
 MIN_TASKS = 30        # tasks needed for the first version
 RETRAIN_DAYS = 7      # days between two checks (and at least 1 new task)
 OLD_EVERY = 10        # a file with no check date: due after this many new tasks, once
+TARGET = 5            # owner target: median absolute error under this many minutes
 MIN_BEFORE = 10       # tasks before a task, to backtest it
 TYPES = ("page", "server", "script", "docs", "cloud", "app", "data", "mixed")
 AFTER_FACTS = ("--work", "--wait", "--clock", "--est", "--bounces", "--workers",
@@ -262,6 +263,14 @@ def score(items):
     return out
 
 
+def target_line(err):
+    if err is None:
+        return []
+    if err <= TARGET:
+        return ["target %dm: met" % TARGET]
+    return ["target %dm: error %.1fm, gap %.1fm" % (TARGET, err, err - TARGET)]
+
+
 def backtest_lines(tasks, bt, with_tasks):
     if bt is None:
         return ["backtest: %d tasks, needs at least 11" % len(tasks)]
@@ -280,6 +289,7 @@ def backtest_lines(tasks, bt, with_tasks):
         out.append(fmt % (name, m["tasks"], "%.1fm" % m["error"], "%d%%" % m["within30"],
                           "-" if m["inrange"] is None else "%d%%" % m["inrange"]))
     out.append("winner: " + bt["winner"])
+    out.extend(target_line(bt["methods"][bt["winner"]]["error"]))
     return out
 
 
@@ -468,6 +478,8 @@ def cmd_retrain(tasks, model_path, today, args):
         else:
             detail = "error %.1fm against the estimator's %.1fm on %d tasks" % (rub_err, est_err, bt["tested"])
         print("estimate retrain: v1 made from %d tasks: %s (%s)" % (n, method, detail))
+        for ln in target_line(bt["methods"][method]["error"]):
+            print(ln)
         return 0
 
     data, cur = model
@@ -502,6 +514,8 @@ def cmd_retrain(tasks, model_path, today, args):
     else:
         text = "current v%d error %.1fm, new %s error %.1fm" % (cur["version"], cur_err, method, new_err)
     print("estimate retrain: kept v%d (on the %d new tasks: %s)" % (kept, len(positions), text))
+    for ln in target_line(new_err if keep_new else cur_err):
+        print(ln)
     return 0
 
 

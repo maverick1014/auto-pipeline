@@ -2,6 +2,7 @@
 
 - Requirement doc for the time estimator. Read before changing `bin/agent_estimate.py`, the `estimate`, `backtest`, `retrain` parts of `bin/agent-file.sh`, or the estimate step of `skills/dispatch/SKILL.md`.
 - Owner ask, 2026-09-30: when the time data has 30 tasks, learn an estimate from it, backtest it against today's rubric, ship the better one; owner 2026-10-05: once a week learn again (every 1 week improve 1 time) and keep the new version only if its backtest error is lower.
+- Owner target, 2026-10-05: median absolute error under 5 minutes. Every weekly check reports the gap: the backtest table and the retrain verdict are each followed by `target 5m: error <x>m, gap <x-5>m`, or `target 5m: met` when the error is 5 or less (error = the kept version's median error).
 - Owner rules: an estimate = agent WORK minutes only; waits (mock gate, owner question or review, hold, suite slot) never count. No hand-made formula like a median ratio: learn from the data. A time answer to the owner = a duration AND a clock time AND when he is needed next (`bin/agent-file.sh eta`, unchanged).
 
 ## Inputs
