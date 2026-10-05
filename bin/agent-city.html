@@ -6073,35 +6073,68 @@ function buildLand(view){
 }
 
 /* ---------- city-tier (3D part): a big city's scenery -- background buildings, the landmark tower, the rings, the night.
-   The look is the approved mock's (mock/city-tier-mock.html: buildWorld, landmark, PAL); the city itself is the server's
-   (view.territories[].bg / rings / mark, tile coordinates like everything buildLand draws), never worked out here.
-   Cost: one InstancedMesh per model, never a Mesh per building; far away one set of plain boxes; no shadow, no pick. ---------- */
+   The look is the approved mock's (mock/city-tier-mock.html: buildWorld, landmark, PAL, winTex); the city itself is the
+   server's (view.territories[].bg / rings / mark, tile coordinates like everything buildLand draws), never worked out here.
+   Cost: instanced meshes only (one per model, one per height class of far boxes, of window overlays), never a Mesh per
+   building; far away plain boxes; no shadow, no pick. ---------- */
 const tmpM3 = new THREE.Matrix4(), tmpV3 = new THREE.Vector3(), tmpC = new THREE.Color();
 const BG_PAL = { cbd: ['#8FB4EC', '#79C6DA', '#9AA5EE', '#B4CDF3', '#6E9BE0', '#A9E0E4'], mid: ['#F3E4C8', '#EAD3B3', '#DCE5EE', '#F1DBD2', '#D2E3D6', '#E7DDF0'],
   res: ['#F8E8D2', '#F4D9C6', '#EAE2D3', '#F6EDDB', '#F2D2C0'], bund: ['#E8D6AC', '#DCC69D', '#D0BE98'], ind: ['#C2C6CB', '#ADB4BC', '#CBC2B3'],
   cot: ['#F8E3C2', '#F3D2B4', '#EFE2CC'], park: ['#86C977'] };
-/* what to dispose when the picture is drawn again (instanced meshes' buffers, own geometry and material), the lit
-   materials (emissive at night), the glowing materials of the landmark, the lamp point sets (shown at night), and the
-   two sets of background buildings (the models near, the boxes far) */
-let tierOwn = [], tierLit = [], tierGlow = [], tierLamps = [], tierNear = [], tierFar = [], tierLitCache = new Map(), bgFarNow = null;
+/* the window texture's repeat per height class (columns, rows): the windows keep their size on a low and a tall box */
+const WIN_CLS = { low: [2, 2], mid: [3, 5], high: [3, 12], sup: [4, 24] };
+/* what to dispose when the picture is drawn again (instanced meshes' buffers, own geometry and material); tierLit = the far
+   boxes' materials whose windows light up at night; tierGlow = the landmark's glowing materials; tierLamps = the lamp point
+   sets (shown at night); tierNear / tierFar = the two sets of background buildings (the models near, the boxes far);
+   tierWin = the lit-window overlays of the near models (shown at night, near only); cityDark = the night is on */
+let tierOwn = [], tierLit = [], tierGlow = [], tierLamps = [], tierNear = [], tierFar = [], tierWin = [], bgFarNow = null, cityDark = false;
 function tierClear(){
   for (const o of tierOwn) if (o && o.dispose) o.dispose();
-  tierOwn = []; tierLit = []; tierGlow = []; tierLamps = []; tierNear = []; tierFar = []; tierLitCache = new Map(); bgFarNow = null;
+  tierOwn = []; tierLit = []; tierGlow = []; tierLamps = []; tierNear = []; tierFar = []; tierWin = []; bgFarNow = null;
   for (let i = pickables.length - 1; i >= 0; i--) { const pk = pickables[i].userData.pick; if (pk && pk.t === 'hall') pickables.splice(i, 1); }
 }
 const hexNum = hex => parseInt(hex.slice(1), 16);
-/* a copy of a model's material that can glow (emissive, off by day); cached per source material */
-function litMat(m){
-  let l = tierLitCache.get(m.uuid);
-  if (!l) {
-    l = m.clone(); l.emissive.setHex(0xFFD98A); l.emissiveIntensity = 0;
-    tierLitCache.set(m.uuid, l); tierLit.push(l); tierOwn.push(l);
+/* winTex(night): the mock's window texture, a CanvasTexture made once per mode and kept (never freed with a picture):
+   day = blue-grey windows on white (it tints with the building's colour), night = warm lit windows on black (the emissive
+   map of the far boxes, the additive overlay of the near models) */
+const winCache = {};
+function winTex(night){
+  const k = night ? 'n' : 'd';
+  if (winCache[k]) return winCache[k];
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const x = cv.getContext('2d');
+  x.fillStyle = night ? '#000' : '#fff'; x.fillRect(0, 0, 64, 64);
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+    const lit = ((i * 7 + j * 13 + i * j * 5) % 10) < 6;
+    x.fillStyle = night ? (lit ? ((i + j) % 3 ? '#FFD98A' : '#FFF3C4') : '#000') : '#7389B0';
+    x.fillRect(i * 16 + 4, j * 16 + 4, 8, 9);
   }
-  return l;
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding;
+  winCache[k] = t;
+  return t;
 }
-/* instancedBox(key, items, opt): instanced() for buildings scaled to a box -- each item {x, z, w, d, h} (the middle of its
-   footprint, its width, depth and height in tiles) stands on the ground with the model stretched to w x h x d. opt.lit: the
-   windows may glow at night (litMat). Returns the instanced meshes made (one per mesh of the model). */
+/* a unit box standing on y 0 (its own geometry, freed with the picture); with a height class its four sides carry the window
+   texture's repeat of that class (the top and the bottom keep the plain UV) */
+function winBox(cls){
+  const g = new THREE.BoxGeometry(1, 1, 1);
+  g.translate(0, .5, 0);
+  if (cls) {
+    const uv = g.attributes.uv, c = WIN_CLS[cls];
+    for (let i = 0; i < uv.count; i++) if (i < 8 || i >= 16) uv.setXY(i, uv.getX(i) * c[0] / 4, uv.getY(i) * c[1] / 4);
+  }
+  tierOwn.push(g);
+  return g;
+}
+const winClass = h => h < 1.7 ? 'low' : h < 3.6 ? 'mid' : h < 7.6 ? 'high' : 'sup';
+/* a building's colour from the mock's PAL by its zone, picked by its own place (stable, never random) */
+function bgHex(zone, tier, x, z){
+  const pal = BG_PAL[zone === 'main' ? 'mid' : zone === 'edge' ? 'cot' : zone === 'fill' ? (tier === 1 || tier === 2 ? 'mid' : tier === 3 ? 'res' : 'cot') : zone] || BG_PAL.res;
+  return pal[Math.floor(Math.abs(x * 13.7 + z * 7.3)) % pal.length];
+}
+/* instancedBox(key, items, opt): instanced() for buildings scaled to a box -- each item {x, z, w, d, h, hex} (the middle of
+   its footprint, its width, depth and height in tiles, its colour) stands on the ground with the model stretched to w x h x d
+   and tinted by instanceColor (setColorAt). Returns the instanced meshes made (one per mesh of the model). */
 function instancedBox(key, items, opt){
   const o = opt || {}, L = lib[key], made = [];
   if (!L || !items.length) return made;
@@ -6109,11 +6142,11 @@ function instancedBox(key, items, opt){
   tmpM3.makeTranslation(-c.x, -L.box.min.y, -c.z);
   L.scene.traverse(n => {
     if (!n.isMesh) return;
-    const mat = o.lit ? (Array.isArray(n.material) ? n.material.map(litMat) : litMat(n.material)) : n.material;
-    const im = new THREE.InstancedMesh(n.geometry, mat, items.length);
+    const im = new THREE.InstancedMesh(n.geometry, n.material, items.length);
     items.forEach((it, i) => {
       tmpM.compose(tmpP.set(it.x, 0, it.z), tmpQ.identity(), tmpS.set(it.w / sx, it.h / sy, it.d / sz));
       im.setMatrixAt(i, tmpM2.multiplyMatrices(tmpM, tmpM3).multiply(n.matrixWorld));
+      if (it.hex) im.setColorAt(i, tmpC.setHex(hexNum(it.hex)).convertSRGBToLinear());
     });
     im.castShadow = false; im.receiveShadow = false; im.frustumCulled = false;
     (o.parent || world).add(im);
@@ -6121,14 +6154,27 @@ function instancedBox(key, items, opt){
   });
   return made;
 }
-/* a unit box standing on y 0 (its own geometry, freed with the picture) */
-function unitBox(){ const g = new THREE.BoxGeometry(1, 1, 1); g.translate(0, .5, 0); tierOwn.push(g); return g; }
+/* one instanced mesh of boxes from a list [{x, z, w, d, h, hex?}] standing on y 0: geo + material(s) given */
+function boxSet(geo, mat, items){
+  const im = new THREE.InstancedMesh(geo, mat, items.length);
+  items.forEach((it, i) => {
+    tmpM.compose(tmpP.set(it.x, 0, it.z), tmpQ.identity(), tmpS.set(it.w, it.h, it.d));
+    im.setMatrixAt(i, tmpM);
+    if (it.hex) im.setColorAt(i, tmpC.setHex(hexNum(it.hex)).convertSRGBToLinear());
+  });
+  im.castShadow = false; im.receiveShadow = false; im.frustumCulled = false;
+  landGroup.add(im); tierOwn.push(im);
+  return im;
+}
 /* drawBg(view): every territory's background buildings (bgFor: none while a level-up show has not flipped, half on a
-   phone). Near: one instanced mesh per model (bgModel), scaled to the entry's w x h x d, no shadow, never in pickables,
-   no click. Far: one set of plain boxes (instance colour by zone, the mock's PAL), one more for the lit (tier 1 / 2)
-   ones. A park gets trees (instanced). bgDetail() shows one set and hides the other by the camera's distance. */
+   phone). Near: one instanced mesh per model (bgModel), scaled to the entry's w x h x d and tinted by the zone's pastel
+   (setColorAt), no shadow, never in pickables, no click; a tier 1 / 2 building also gets a lit-window overlay (an instanced
+   box a little bigger, winTex(true), additive, shown only at night). Far: instanced plain boxes with winTex windows (by
+   height class; the tier 1 / 2 ones light up at night). A park gets trees (instanced). bgDetail() shows one set and
+   hides the other by the camera's distance. */
 function drawBg(view){
-  const phone = matchMedia('(max-width: 960px)').matches, near = new Map(), far = { lit: [], dark: [] }, trees = {};
+  const phone = matchMedia('(max-width: 960px)').matches, near = new Map(), far = {}, wins = {}, trees = {};
+  const farAdd = (k, it) => (far[k] = far[k] || []).push(it);
   for (const t of view.territories || []) {
     const tier = t.tier || 0, lit = tier === 1 || tier === 2;
     for (const b of bgFor(t, phone)) {
@@ -6137,39 +6183,43 @@ function drawBg(view){
         const n = Math.max(3, Math.min(8, Math.round(w * d / 1.8)));
         for (let i = 0; i < n; i++) (trees[i % 2 ? 'nature/tree_oak' : 'nature/tree_default'] = trees[i % 2 ? 'nature/tree_oak' : 'nature/tree_default'] || [])
           .push({ x: x + (sr(x * 31 + z, i) - .5) * w * .8, z: z + (sr(z * 17 + x, i + 7) - .5) * d * .8, h: .9 + sr(x + z, i + 3) * .5 });
-        far.dark.push({ x, z, w, d, h: .1, hex: BG_PAL.park[0] });
+        farAdd('Dlow', { x, z, w, d, h: .1, hex: BG_PAL.park[0] });
         continue;
       }
       if (!lib[key]) continue;
-      const g = key + '|' + lit;
-      if (!near.has(g)) near.set(g, { key, lit, items: [] });
-      near.get(g).items.push({ x, z, w, d, h });
-      const pal = BG_PAL[zone === 'main' ? 'mid' : zone === 'edge' ? 'cot' : zone === 'fill' ? (tier === 1 || tier === 2 ? 'mid' : tier === 3 ? 'res' : 'cot') : zone] || BG_PAL.res;
-      far[lit ? 'lit' : 'dark'].push({ x, z, w, d, h, hex: pal[Math.floor(Math.abs(x * 13.7 + z * 7.3)) % pal.length] });
+      const hex = bgHex(zone, tier, x, z), cls = winClass(h);
+      if (!near.has(key)) near.set(key, []);
+      near.get(key).push({ x, z, w, d, h, hex });
+      farAdd((lit ? 'L' : 'D') + cls, { x, z, w, d, h, hex });
+      if (lit) (wins[cls] = wins[cls] || []).push({ x, z, w: w * 1.05 + .04, d: d * 1.05 + .04, h: h + .03 });
     }
   }
-  for (const g of near.values()) for (const im of instancedBox(g.key, g.items, { parent: landGroup, lit: g.lit })) { tierNear.push(im); tierOwn.push(im); }
+  for (const [key, items] of near) for (const im of instancedBox(key, items, { parent: landGroup })) { tierNear.push(im); tierOwn.push(im); }
   for (const k in trees) {
     const n0 = landGroup.children.length;
     instanced(k, trees[k], { shadow: false, parent: landGroup });
     for (let i = n0; i < landGroup.children.length; i++) tierOwn.push(landGroup.children[i]);
   }
-  for (const lit of [true, false]) {
-    const items = far[lit ? 'lit' : 'dark'];
-    if (!items.length) continue;
-    const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-    if (lit) { mat.emissive.setHex(0xFFD98A); mat.emissiveIntensity = 0; tierLit.push(mat); }
-    tierOwn.push(mat);
-    const im = new THREE.InstancedMesh(unitBox(), mat, items.length);
-    items.forEach((it, i) => {
-      tmpM.compose(tmpP.set(it.x, 0, it.z), tmpQ.identity(), tmpS.set(it.w, it.h, it.d));
-      im.setMatrixAt(i, tmpM);
-      im.setColorAt(i, tmpC.setHex(hexNum(it.hex)).convertSRGBToLinear());
-    });
-    im.castShadow = false; im.receiveShadow = false; im.frustumCulled = false;
-    landGroup.add(im); tierFar.push(im); tierOwn.push(im);
+  if (Object.keys(far).length) {
+    const roof = new THREE.MeshLambertMaterial({ color: 0xD6DAE6 }), dark = new THREE.MeshLambertMaterial({ map: winTex(false) }),
+      glow = new THREE.MeshLambertMaterial({ map: winTex(false), emissiveMap: winTex(true), emissive: 0xffffff, emissiveIntensity: 0 });
+    tierOwn.push(roof, dark, glow); tierLit.push(glow);
+    for (const k in far) { const side = k[0] === 'L' ? glow : dark; tierFar.push(boxSet(winBox(k.slice(1)), [side, side, roof, roof, side, side], far[k])); }
+  }
+  if (Object.keys(wins).length) {
+    const side = new THREE.MeshBasicMaterial({ map: winTex(true), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
+      none = new THREE.MeshBasicMaterial({ visible: false });
+    tierOwn.push(side, none);
+    for (const k in wins) tierWin.push(boxSet(winBox(k), [side, side, none, none, side, side], wins[k]));
   }
   bgFarNow = null; bgDetail();
+}
+/* bgApply(): what shows now -- the models and their lit windows (night only) near, the plain boxes far */
+function bgApply(){
+  const far = !!bgFarNow;
+  for (const m of tierNear) m.visible = !far;
+  for (const m of tierFar) m.visible = far;
+  for (const m of tierWin) m.visible = cityDark && !far;
 }
 /* bgDetail(): the camera is far (bgFar) -> the plain boxes show and the models hide, else the other way round; a cheap
    check every frame that touches the scene only when the answer changes */
@@ -6177,9 +6227,19 @@ function bgDetail(){
   const far = bgFar(cam.dist);
   if (far === bgFarNow) return;
   bgFarNow = far;
-  for (const m of tierNear) m.visible = !far;
-  for (const m of tierFar) m.visible = far;
+  bgApply();
   needFrame = true;
+}
+/* lampSet(pos, size, color, map): a point set (positions x, y, z, ...) that shines at night: a round soft glow (map) or a
+   small bright core; additive, never hidden by fog; hidden by day (cityNight) */
+function lampSet(pos, size, color, map){
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const m = new THREE.PointsMaterial({ size, color, map: map || null, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+  const p = new THREE.Points(g, m);
+  p.visible = cityDark; p.frustumCulled = false;
+  tierLamps.push(p); tierOwn.push(g, m);
+  return p;
 }
 /* pearlTower(): the landmark of a tier-1 city, drawn in code (the mock's 'pearl'): three pink spheres on grey columns and
    a spire, about 17 tall, standing on y 0 at the group's own spot; its spheres glow and a red light shines on top at night */
@@ -6197,11 +6257,7 @@ function pearlTower(){
   add(new THREE.CylinderGeometry(.36, .46, 6.4, 6), grey, 7.6); add(new THREE.SphereGeometry(.9, 10, 7), pink, 11.2);
   add(new THREE.CylinderGeometry(.18, .24, 2, 6), grey, 12.9); add(new THREE.SphereGeometry(.42, 8, 6), pink, 14);
   add(new THREE.ConeGeometry(.12, 3, 5), grey, 15.7);
-  const pg = new THREE.BufferGeometry();
-  pg.setAttribute('position', new THREE.Float32BufferAttribute([0, 17.3, 0], 3));
-  const pts = new THREE.Points(pg, new THREE.PointsMaterial({ size: 1.1, color: 0xFF4050, transparent: true, opacity: .95, depthWrite: false, fog: false }));
-  pts.visible = false; pts.frustumCulled = false; g.add(pts);
-  tierLamps.push(pts); tierOwn.push(pg, pts.material);
+  g.add(lampSet([0, 17.3, 0], 3.2, 0xFF4050, glowTex), lampSet([0, 17.3, 0], .7, 0xFFB0B8));
   return g;
 }
 /* ringCrossings(pts): where a polyline (tile coordinates) crosses water -> [{a, b}] with a = the last dry spot before and
@@ -6222,21 +6278,24 @@ function ringCrossings(pts){
   return out;
 }
 /* drawRings(t): the territory's rings (the server's {kind, pts}): "elev" an elevated deck on pillars (y about 1.05), "ring"
-   and "outer" a flat road; a lamp every third point (lit at night); a cable bridge (two towers, cables) where the elevated
-   ring crosses water. One instanced mesh of boxes for all of it, one line set, one point set. */
+   and "outer" a flat road; a lamp about every 2.4 tiles along it (lit at night: a soft glow and a bright core); a cable
+   bridge (two towers, cables) where the elevated ring crosses water. One instanced mesh of boxes for all of it, one line
+   set, the lamp point sets. */
 function drawRings(t){
   if (!t.rings || !t.rings.length || tierShowing(t)) return;
   const boxes = [], lines = [], lamps = [];
   const box = (x, y, z, sx, sy, sz, ry, hex) => boxes.push({ x, y, z, sx, sy, sz, ry, hex });
   for (const r of t.rings) {
     const pts = r.pts || [], elev = r.kind === 'elev', y = elev ? 1.05 : .02, th = elev ? .16 : .06, w = elev ? 1 : .95, hex = elev ? '#8E93A6' : '#4D505C';
+    let acc = 0, next = 0;
     for (let i = 1; i < pts.length; i++) {
       const dx = pts[i][0] - pts[i - 1][0], dz = pts[i][1] - pts[i - 1][1], L = Math.hypot(dx, dz);
       if (L < .01) continue;
       box((pts[i][0] + pts[i - 1][0]) / 2, y, (pts[i][1] + pts[i - 1][1]) / 2, L + w * .5, th, w, -Math.atan2(dz, dx), hex);
       if (elev && i % 2 === 0 && !isWater(landAt(map, Math.floor(pts[i][0]), Math.floor(pts[i][1])))) box(pts[i][0], 0, pts[i][1], .22, 1.05, .22, 0, '#A9AEBF');
+      for (; next <= acc + L; next += 2.4) { const s = (next - acc) / L; lamps.push(pts[i - 1][0] + dx * s, elev ? 1.6 : .6, pts[i - 1][1] + dz * s); }
+      acc += L;
     }
-    for (let i = 0; i < pts.length; i += 3) lamps.push(pts[i][0], elev ? 1.5 : .5, pts[i][1]);
     if (!elev) continue;
     for (const c of ringCrossings(pts)) { // a cable bridge: a tower pair at each end, four cables each side down to the deck
       const L = Math.hypot(c.b[0] - c.a[0], c.b[1] - c.a[1]), ux = (c.b[0] - c.a[0]) / L, uz = (c.b[1] - c.a[1]) / L, nx = -uz * .62, nz = ux * .62;
@@ -6249,7 +6308,7 @@ function drawRings(t){
     }
   }
   if (boxes.length) {
-    const mat = new THREE.MeshLambertMaterial({ color: 0xffffff }), im = new THREE.InstancedMesh(unitBox(), mat, boxes.length);
+    const mat = new THREE.MeshLambertMaterial({ color: 0xffffff }), im = new THREE.InstancedMesh(winBox(), mat, boxes.length);
     boxes.forEach((b, i) => {
       tmpM.compose(tmpP.set(b.x, b.y, b.z), tmpQ.setFromEuler(tmpE.set(0, b.ry, 0)), tmpS.set(b.sx, b.sy, b.sz));
       im.setMatrixAt(i, tmpM); im.setColorAt(i, tmpC.setHex(hexNum(b.hex)).convertSRGBToLinear());
@@ -6262,18 +6321,17 @@ function drawRings(t){
     const m = new THREE.LineBasicMaterial({ color: 0xE9ECF5 }), l = new THREE.LineSegments(g, m);
     l.frustumCulled = false; landGroup.add(l); tierOwn.push(g, m);
   }
-  if (lamps.length) {
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(lamps, 3));
-    const m = new THREE.PointsMaterial({ size: 1.1, color: 0xFFD173, transparent: true, opacity: .95, depthWrite: false, fog: false }), p = new THREE.Points(g, m);
-    p.visible = false; p.frustumCulled = false; landGroup.add(p); tierLamps.push(p); tierOwn.push(g, m);
-  }
+  if (lamps.length) landGroup.add(lampSet(lamps, 4.2, 0xFFC860, glowTex), lampSet(lamps, .7, 0xFFF4C8));
 }
-/* cityNight(on): the page's dark mode is the city's night. On: the lit (tier 1 / 2) background buildings show lit windows
-   (emissive), the ring lamps and the landmark's top light shine, the landmark's spheres glow. Off: none of it. */
+/* cityNight(on): the page's dark mode is the city's night. On: the lit-window overlays of the near tier 1 / 2 buildings and
+   the far boxes' windows (emissive map) light up, the ring lamps and the landmark's top light shine, the landmark's spheres
+   glow. The models themselves never glow. Off: none of it. */
 function cityNight(on){
-  for (const m of tierLit) { m.emissive.setHex(0xFFD98A); m.emissiveIntensity = on ? .3 : 0; }
-  for (const m of tierGlow) m.emissive.setHex(on ? m.userData.glow : 0x000000);
-  for (const o of tierLamps) o.visible = !!on;
+  cityDark = !!on;
+  for (const m of tierLit) m.emissiveIntensity = cityDark ? 1 : 0;
+  for (const m of tierGlow) m.emissive.setHex(cityDark ? m.userData.glow : 0x000000);
+  for (const o of tierLamps) o.visible = cityDark;
+  bgApply();
   needFrame = true;
 }
 
