@@ -35,13 +35,16 @@ python 3.9 standard library only)
 
     retrain [--force]
         estimate retrain: not yet (<N> of 30 tasks)
-        estimate retrain: not due (<N> tasks, next check at <M>)
+        estimate retrain: not due (<N> tasks, next check on <YYYY-MM-DD>)
+        (due once a week: 7+ days since checked_date AND 1+ new task; a file
+         with no checked_date is due after 10 new tasks, once, and says
+         "next check at <M>" until then)
         estimate retrain: v1 made from <N> tasks: estimator|rubric (...)
         estimate retrain: kept v<n> (on the <k> new tasks: ...)
         The first train and a check also print the backtest table before it.
 
     agent_estimate.txt (project root, JSON)
-        {"current": 1, "checked_tasks": 30,
+        {"current": 1, "checked_tasks": 30, "checked_date": "YYYY-MM-DD",
          "versions": [{"version": 1, "date": "YYYY-MM-DD", "tasks": 30,
                        "method": "estimator", "k": 3, "text": 1, "type": 0.5,
                        "backtest": {"tasks": 20,
@@ -171,9 +174,11 @@ class EstimateCase(ScriptCase):
     def completed(self, rows):
         self.write("agent_completed.txt", "".join(r + "\n" for r in rows))
 
-    def model(self, current=1, checked=30, versions=None, checks=None):
+    def model(self, current=1, checked=30, versions=None, checks=None, date=None):
         data = {"current": current, "checked_tasks": checked,
                 "versions": versions or [version()], "checks": checks or []}
+        if date:
+            data["checked_date"] = date
         self.write("agent_estimate.txt", json.dumps(data, indent=1) + "\n")
 
     def model_text(self):
@@ -556,7 +561,7 @@ class TestRetrainFirst(EstimateCase):
 
 class TestRetrainCheck(EstimateCase):
 
-    def test_not_due_before_10_new_tasks(self):
+    def test_an_undated_file_is_not_due_before_10_new_tasks(self):
         self.completed(steady(39))
         self.model()
         before = self.model_text()
@@ -580,6 +585,7 @@ class TestRetrainCheck(EstimateCase):
         c = data["checks"][0]
         self.assertEqual((c["date"], c["tasks"], c["new"], c["current"], c["kept"]),
                          (TODAY, 40, 10, 1, 2))
+        self.assertEqual(data["checked_date"], TODAY)
         # the rubric on the 10 newest: 28 45 7 65 28 45 7 65 28 45 -> median 36.5
         self.assertEqual(c["current_error"], 36.5)
         self.assertLess(c["new_error"], c["current_error"])
@@ -597,13 +603,52 @@ class TestRetrainCheck(EstimateCase):
         self.assertEqual((c["tasks"], c["new"], c["current"], c["kept"]), (40, 10, 1, 1))
         self.assertEqual(c["current_error"], 0.0)
 
-    def test_the_next_check_is_10_tasks_later(self):
+    def test_the_next_check_is_7_days_later(self):
         self.completed(steady(40))
         self.model(versions=[version(k=3, text=0, type=0.5)])
         self.assertOk(self.af("retrain"))
+        self.assertEqual(self.model_json()["checked_date"], TODAY)
         self.completed(steady(45))
         out = self.assertOk(self.af("retrain"))
-        self.assertEqual(self.lines(out), ["estimate retrain: not due (45 tasks, next check at 50)"])
+        self.assertEqual(self.lines(out), ["estimate retrain: not due (45 tasks, next check on 2026-10-12)"])
+
+    def test_the_target_line_follows_the_table_and_the_verdict(self):
+        self.completed(steady(40))
+        self.model(versions=[version(k=3, text=0, type=0.5)], date="2026-09-28")
+        tgt = re.compile(r"target 5m: (met|error \d+\.\dm, gap \d+\.\dm)$")
+        rows = self.lines(self.assertOk(self.af("retrain")))
+        self.assertEqual(len([r for r in rows if r.startswith("target 5m: ")]), 2, rows)
+        self.assertRegex(rows[-1], tgt)
+        self.assertRegex(rows[rows.index([r for r in rows if r.startswith("winner: ")][0]) + 1], tgt)
+        self.assertRegex(self.lines(self.assertOk(self.af("backtest")))[-1], tgt)
+
+    def test_6_days_is_not_due(self):
+        self.completed(steady(35))
+        self.model(date="2026-09-29")
+        before = self.model_text()
+        out = self.assertOk(self.af("retrain"))
+        self.assertEqual(self.lines(out), ["estimate retrain: not due (35 tasks, next check on 2026-10-06)"])
+        self.assertEqual(self.model_text(), before)
+
+    def test_7_days_and_1_new_task_is_due(self):
+        self.completed(steady(31))
+        self.model(date="2026-09-28")
+        out = self.assertOk(self.af("retrain"))
+        v = self.verdicts(out)
+        self.assertTrue(v[0].startswith("estimate retrain: kept v"), out)
+        data = self.model_json()
+        self.assertEqual((data["checked_tasks"], data["checked_date"]), (31, TODAY))
+        self.assertEqual(data["checks"][0]["new"], 1)
+
+    def test_7_days_and_no_new_task_is_not_due(self):
+        self.completed(steady(30))
+        self.model(date="2026-09-28")
+        before = self.model_text()
+        out = self.assertOk(self.af("retrain"))
+        v = self.verdicts(out)
+        self.assertEqual(len(v), 1, out)
+        self.assertTrue(v[0].startswith("estimate retrain: not due (30 tasks, next check on %s" % TODAY), v[0])
+        self.assertEqual(self.model_text(), before)
 
     def test_force_checks_when_not_due(self):
         self.completed(steady(33))
@@ -646,7 +691,7 @@ class TestTodoDoneRetrains(EstimateCase):
         self.assertEqual(self.verdicts(out), [])
         self.assertEqual(self.model_text(), before)
 
-    def test_the_10th_new_task_checks(self):
+    def test_the_10th_new_task_checks_an_undated_file(self):
         self.completed(steady(39))
         self.model(versions=[version(k=3, text=0, type=0.5)])
         self.todo()

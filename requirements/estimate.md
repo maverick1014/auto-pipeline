@@ -1,7 +1,8 @@
 # ESTIMATE
 
 - Requirement doc for the time estimator. Read before changing `bin/agent_estimate.py`, the `estimate`, `backtest`, `retrain` parts of `bin/agent-file.sh`, or the estimate step of `skills/dispatch/SKILL.md`.
-- Owner ask, 2026-09-30: when the time data has 30 tasks, learn an estimate from it, backtest it against today's rubric, ship the better one; every 10 new tasks learn again and keep the new version only if its backtest error is lower.
+- Owner ask, 2026-09-30: when the time data has 30 tasks, learn an estimate from it, backtest it against today's rubric, ship the better one; owner 2026-10-05: once a week learn again (every 1 week improve 1 time) and keep the new version only if its backtest error is lower.
+- Owner target, 2026-10-05: median absolute error under 5 minutes. Every weekly check reports the gap: the backtest table and the retrain verdict are each followed by `target 5m: error <x>m, gap <x-5>m`, or `target 5m: met` when the error is 5 or less (error = the kept version's median error).
 - Owner rules: an estimate = agent WORK minutes only; waits (mock gate, owner question or review, hold, suite slot) never count. No hand-made formula like a median ratio: learn from the data. A time answer to the owner = a duration AND a clock time AND when he is needed next (`bin/agent-file.sh eta`, unchanged).
 
 ## Inputs
@@ -40,15 +41,15 @@
 ## Versions and retraining
 - The file `agent_estimate.txt` in the project root holds the versions and their backtest numbers. Committed with the agent files. Written only by `agent-file.sh retrain` (also when `todo done` runs it), atomic.
 - First version (no file, at least 30 tasks): pick the setting from all tasks, run the backtest. Its method = estimator if the estimator won, else rubric. Saved as v1 either way, with the backtest numbers.
-- Retrain is due every 10 new tasks: tasks >= the tasks at the last check + 10.
-- The check: a new version is trained the same way from all tasks. Both are judged on the new tasks only (the newest, in finish order, since the last check), each estimated only from the tasks before it: the current version with its saved setting (it never saw them), the new one picking its setting from the tasks before each one. A rubric version gives the rubric middle. Keep the new version only if its median error there is strictly lower (decision, task manager, 2026-10-05: neither version is graded on tasks it learned from). Either way the check is saved and the next one is 10 tasks later.
+- Retrain is due once a week: 7 or more days since the last check AND at least 1 new finished task since then (no new data = nothing to learn). The check date is `checked_date` in `agent_estimate.txt`. A file with no `checked_date` is due by the old rule once (10 new tasks since the last check); that check writes the date.
+- The check: a new version is trained the same way from all tasks. Both are judged on the new tasks only (the newest, in finish order, since the last check), each estimated only from the tasks before it: the current version with its saved setting (it never saw them), the new one picking its setting from the tasks before each one. A rubric version gives the rubric middle. Keep the new version only if its median error there is strictly lower (decision, task manager, 2026-10-05: neither version is graded on tasks it learned from). Either way the check is saved and the check date is saved and the next one is 7 days later.
 - `todo done` runs the retrain after its line is written, only when due. One line out. A failure never stops `todo done`.
 
 ## Commands (all through `bin/agent-file.sh`, the project root as usual)
 - `estimate --lane fast|full --mock yes|no --type <t> [--name <name>] "<what>"` → read only. First line `estimate: <m>m work, range <lo>-<hi>m (<estimator|rubric> v<n>, <N> past tasks)`. Then up to 3 lines, the nearest past tasks as the reason, most alike first: `like <name>: <m>m work (<type>, <lane>, mock <yes|no>, <date>)` (an unknown type shows "-"). `<N>` = every task that counts. A rubric version or no file (v0) gives the rubric's estimate and range; the like lines still come from the data (no file: the setting k 3, text 1, type 0.5). A file that does not read is taken as no file.
 - `backtest [--tasks]` → read only. First line `backtest: <N> tasks, <T> tested, each from the tasks before it`, then the table (header `method tasks error within 30% in range`, rows `estimator`, `rubric`, `todo est`, columns split by spaces, error like `23.0m`, shares like `40%`, todo est in range `-`), then `winner: estimator` or `winner: rubric`. `--tasks` adds one row per tested task before the table: `task <name> work <w> estimator <e> (<lo>-<hi>) rubric <r>`.
 - `retrain [--force]` → due (or --force, with at least 30 tasks): the check, the backtest table, one verdict line last. Not due: one line, nothing written. The file's keys are in the CONTRACT of `tests/test_agent_estimate.py`.
-- Verdict lines: `estimate retrain: v1 made from <N> tasks: <estimator|rubric> (...)`, `estimate retrain: kept v<n> (on the <k> new tasks: ...)`, `estimate retrain: not due (<N> tasks, next check at <M>)`, `estimate retrain: not yet (<N> of 30 tasks)`.
+- Verdict lines: `estimate retrain: v1 made from <N> tasks: <estimator|rubric> (...)`, `estimate retrain: kept v<n> (on the <k> new tasks: ...)`, `estimate retrain: not due (<N> tasks, next check on <date>)` (no new task yet: `next check on <today> or later, needs 1 new task`; file with no date: `next check at <M>` tasks), `estimate retrain: not yet (<N> of 30 tasks)`.
 - Speed: on 60 tasks, `retrain` well under 30 s, `estimate` under 5 s.
 
 ## Wired in

@@ -18,7 +18,7 @@
 #   agent-file.sh data [--what] [<repo path>...]              -> table: one row per finished task, every repo on this machine
 #   agent-file.sh estimate --lane fast|full --mock yes|no --type <t> [--name <name>] "<what>"   -> work minutes, range, like tasks
 #   agent-file.sh backtest [--tasks]                          -> the estimator against the rubric and the todo est, rolling
-#   agent-file.sh retrain [--force]                           -> learn agent_estimate.txt when 30 tasks, then every 10 new ones
+#   agent-file.sh retrain [--force]                           -> learn agent_estimate.txt when 30 tasks, then once a week
 #   agent-file.sh eta <name> [--step <n>] [--work-so-far <m>] [--wait <m>]    -> one line: work left, done around, owner needed next
 #
 # todo done: every option is optional; a number is a whole number, 0 or more. "<result>" is not stored.
@@ -73,7 +73,7 @@
 #   backtest: read only. Each task with 10 tasks before it is estimated from those only; the estimator, the rubric
 #     and the todo est are scored (median error, within 30%, in range); winner = estimator only when strictly better.
 #     --tasks adds one row per tested task. Fewer than 11 tasks: "backtest: <N> tasks, needs at least 11".
-#   retrain: due at 30 tasks, then every 10 new ones (--force skips the 10, never the 30). Writes agent_estimate.txt
+#   retrain: due at 30 tasks, then once a week with 1+ new task (--force skips the week, never the 30). Writes agent_estimate.txt
 #     (JSON, atomic) in the project root: v1 = the setting picked from all tasks and its backtest; a later check keeps
 #     the new version only when its error on the new tasks is strictly lower. Prints the table and one verdict line.
 #
