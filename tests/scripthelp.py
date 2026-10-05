@@ -73,6 +73,7 @@ COPY_BIN = [
     "agent-city-plans.json",
     "agent-close-case.sh",
     "agent-name.sh",
+    "agent_estimate.py",
 ]
 
 # Copied into the temp plugin's root.

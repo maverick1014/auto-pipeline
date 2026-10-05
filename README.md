@@ -19,6 +19,7 @@ Main manager   (Fable 5.1, xhigh · the main chat · only one with the browser)
 Scripts, not agents (cost no tokens):
   bin/agent-start.sh   RAM/CPU guard, prints the rules, 29-question quiz gate, main-manager lock
   bin/agent-file.sh    the only writer of agent_*.txt
+  bin/agent_estimate.py  the time estimator: learns work minutes from the finished tasks, backtests against the rubric
   bin/agent-settings.sh  show or change agent.conf, validated
   bin/agent-resume.sh    one command to bring the pipeline back after a restart
   bin/agent-monitor.sh   watches every worktree, writes agent_monitor.txt
@@ -67,6 +68,7 @@ Checked in this order, first match wins.
 |---|---|---|
 | `agent_todo.txt` | `agent-file.sh todo add` / `todo done` | Every agent at start |
 | `agent_completed.txt` | `agent-file.sh todo done`, one data line per task | Human, `agent-file.sh time` |
+| `agent_estimate.txt` | `agent-file.sh retrain`, also `todo done` every 10 new tasks | `agent-file.sh estimate` |
 | `agent_ideas.txt` | `agent-file.sh idea add` | Human, on his own time |
 | `agent_worktree.txt` | `agent-file.sh worktree set` / `rm` | Main manager before every dispatch |
 | `agent.conf` | `./bin/agent-settings.sh` | `agent-start.sh` |
@@ -159,6 +161,9 @@ bin/agent-settings.sh sync          # add any key missing from agent.conf, templ
 bin/agent-file.sh time              # est, work, wait, clock of every finished task
 bin/agent-file.sh data              # the same data of every repo on this machine, one table
 bin/agent-file.sh eta <name>        # work left as minutes and a clock time, and when the human is needed next
+bin/agent-file.sh estimate ...      # work minutes of a new task, with a range and the 3 nearest past tasks
+bin/agent-file.sh backtest          # estimator against the rubric on the finished tasks, who wins
+bin/agent-file.sh retrain           # learn the estimate again from the finished tasks, keep it only if better
 ./bin/agent-city.sh start           # agent city visualiser, off by default, costs almost nothing
 /auto-pipeline:city              # start the agent city, prints the URL
 ```
