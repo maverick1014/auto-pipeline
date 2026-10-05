@@ -363,6 +363,57 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 /* U1: the zoom-out hint -- shown briefly when a zoom-out was stopped by the limit. */
 .cap-hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:4;background:var(--panel);color:var(--ink-2);border:1.5px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12.5px;pointer-events:none}
 
+/* city-layout L4 (approved mock mock/city-layout-mock.html, "THE CHANGE (city-layout)"): arrange the lands on the
+   real island. One small control, pinned at the right end of the repo row on the stage (position:absolute in the
+   strip, left of it = the width of the repo row, so it never scrolls away with the tags; the script keeps
+   --repos-w and --arr-w and the class .has-arr on the strip, which leaves the repo row the room). */
+.arr-btn{all:unset;box-sizing:border-box;position:absolute;left:calc(var(--repos-w,0px) + 6px);bottom:3px;pointer-events:auto;cursor:pointer;display:inline-flex;align-items:center;gap:5px;height:31px;padding:0 11px 0 9px;border:1.5px dashed var(--ink-3);border-radius:999px;background:var(--panel);color:var(--ink-2);font:600 13px/1 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.18);white-space:nowrap}
+.stage-top.has-arr>nav.repos{max-width:calc(100% - var(--arr-w,96px))}
+.arr-btn:hover{border-color:var(--ink);color:var(--ink)}
+.arr-btn:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.arr-btn[aria-pressed="true"]{border-style:solid;border-color:var(--ink);background:var(--ink);color:var(--paper)}
+.arr-btn svg{width:14px;height:14px;flex:none}
+/* the mode: a name plate on every land (drag it, or the land itself), the bar at the bottom edge */
+.arranging .proto,.arranging .follow{display:none!important}
+.arranging canvas{cursor:grab}
+.arr-ov{position:absolute;inset:0;z-index:3;pointer-events:none;overflow:hidden}
+.arr-h{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;display:inline-flex;align-items:center;padding:3px 3px 3px 8px;border:2px solid var(--ink);border-radius:999px;background:var(--panel);color:var(--ink);font:700 12.5px/1 var(--round);box-shadow:0 3px 0 rgba(42,43,69,.25);cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;white-space:nowrap}
+.arr-h .grip{color:var(--ink-3);margin-right:5px;letter-spacing:-2px}
+.arr-h .rc{width:10px;height:10px;border-radius:50%;background:var(--rc);margin-right:6px;flex:none}
+.arr-h.on{background:var(--butter);color:#4A3500}
+.arr-h.dragging{opacity:.4}
+.arr-h.swap{border-style:dashed}
+.arr-eye{all:unset;cursor:pointer;margin-left:7px;padding:5px 9px;border-radius:999px;background:var(--panel-2);color:var(--ink-2);font:600 12px/1 var(--round)}
+.arr-eye:hover{background:var(--ask-bg);color:var(--ask-ink)}
+.arr-eye:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.arr-eye[aria-disabled="true"]{opacity:.45;cursor:default}
+.arr-ghost{position:absolute;z-index:6;pointer-events:none;transform:translate(-50%,-150%);padding:7px 12px;border-radius:999px;background:var(--ink);color:var(--paper);font:700 12.5px/1 var(--round);box-shadow:0 3px 0 rgba(42,43,69,.3);white-space:nowrap}
+.arr-bar{position:absolute;z-index:5;left:calc(var(--rail-w) + 24px);right:12px;bottom:12px;margin-inline:auto;max-width:780px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 8px 8px 14px;border:2px solid var(--ink);border-radius:16px;background:var(--panel);box-shadow:0 4px 0 rgba(42,43,69,.18);font:600 13px/1.4 var(--round);color:var(--ink-2)}
+.stage.rail-folded .arr-bar{left:42px}
+.stage.rail-none .arr-bar{left:12px}
+.arr-say{flex:1 1 240px;min-width:0}
+.arr-say b{color:var(--ink);margin-right:8px}
+.arr-act{display:flex;gap:6px;margin-left:auto}
+.arr-act button{all:unset;cursor:pointer;padding:9px 16px;border-radius:11px;border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);font:700 13px/1 var(--round)}
+.arr-act button:focus-visible,.arr-hid button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.arr-act #arr-done{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.arr-err{order:2;flex:1 1 100%;margin:0;padding:5px 10px;border-radius:10px;background:var(--ask-bg);color:var(--ask-ink)}
+.arr-tray{order:3;flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding-top:8px;border-top:1.5px solid var(--line)}
+.arr-tray:empty{display:none}
+.arr-tray .lbl{color:var(--ink-3);margin-right:2px}
+.arr-hid{display:inline-flex;align-items:center;gap:6px;padding:3px 4px 3px 9px;border:1.5px dashed var(--ink-3);border-radius:999px;background:var(--panel-2);color:var(--ink)}
+.arr-hid .rc{width:9px;height:9px;border-radius:50%;background:var(--rc)}
+.arr-hid em{font-style:normal;color:var(--ask-ink);background:var(--ask-bg);border-radius:999px;padding:1px 7px;font-size:12px}
+.arr-hid button{all:unset;cursor:pointer;padding:5px 10px;border-radius:999px;background:var(--panel);border:1.5px solid var(--line);color:var(--ink);font:700 12px/1 var(--round)}
+/* city-layout L2: the one quiet line at the rail's foot; it turns red when somebody in a hidden repo waits */
+.rail-hid{all:unset;box-sizing:border-box;cursor:pointer;flex:none;display:flex;align-items:center;gap:6px;width:100%;padding:7px 10px 7px 12px;border-top:1.5px solid var(--line);color:var(--ink-3);font:600 12px/1.4 var(--round)}
+.rail-hid:hover{color:var(--ink)}
+.rail-hid:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.rail-hid i{display:none;width:8px;height:8px;border-radius:50%;background:var(--berry);flex:none}
+.rail-hid u{margin-left:auto;text-decoration:none;border-bottom:1.5px dotted currentColor;white-space:nowrap}
+.rail-hid.you{color:var(--ask-ink)}
+.rail-hid.you i{display:block}
+
 /* the window: click a person / building / the governor, or open 动态 -- V1 (city-ux2 v2, owner
    2026-09-29): a right-docked message panel, one person's own (the left rail, V1, is the team list; no
    two columns, no 'wide' any more). Folds to a thin tab on its own right edge, like the rail
@@ -431,6 +482,17 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
   /* city-polish: the bottom sheet is short (44% of a small stage), so the history must never shrink to
      nothing here -- #detail (overflow:auto) scrolls down to the input row instead. */
   .chat{min-height:96px}
+  /* city-layout L4 (phone): the bar is one thin block at the very bottom, the lands stay above it; a plate is the
+     name alone (two lands are about 120px apart), only the plate that is picked shows its hide button */
+  .arr-bar,.stage.rail-folded .arr-bar,.stage.rail-none .arr-bar{left:8px;right:8px;bottom:8px;padding:7px 7px 7px 11px;gap:6px 8px;font-size:12.5px}
+  .arr-say{flex:1 1 100%}
+  .arr-tray{order:0;padding-top:0;border-top:0;flex:1 1 auto}
+  .arr-act button{padding:10px 16px}
+  .arr-h{font-size:12px;padding:6px 9px 6px 7px}
+  .arr-h .nm{max-width:92px;overflow:hidden;text-overflow:ellipsis}
+  .arr-h .arr-eye{display:none}
+  .arr-h.on{padding:2px 2px 2px 7px;z-index:1}
+  .arr-h.on .arr-eye{display:inline;padding:7px 9px}
 }
 @media (prefers-reduced-motion: reduce){ .qm span,.zz span{animation:none} .track i,.btn{transition:none} .spin{animation:none;border-top-color:var(--ink-3)} }
 /* cloud-city: css -- the same page as the cloud page: view only, fed by polling (mock/cloud-city-1-mock.html).
@@ -521,10 +583,14 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
           <nav class="machines" id="machines" data-t-aria="cloud.machines" hidden></nav>
           <!-- end cloud-city: html -->
           <nav class="repos" id="repos" data-t-aria="aria.repos"></nav>
+          <!-- city-layout L4: the arrange control, pinned at the right end of the repo row (shown by the script on the live local page only) -->
+          <button type="button" class="arr-btn" id="arr-btn" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg><span data-t="arr.btn"></span></button>
         </div>
         <aside class="rail" id="rail" data-t-aria="rail.title">
           <div class="rail-head"><span data-t="rail.title"></span><span class="n" id="rail-n"></span><span class="you" id="rail-you" hidden></span><button type="button" class="fold" id="rail-fold" data-t-aria="fold.rail">«</button></div>
           <div class="rail-list" id="rail-list"></div>
+          <!-- city-layout L2: the quiet line at the rail's foot (what is hidden); a click opens the arrange mode -->
+          <button type="button" class="rail-hid" id="rail-hid" hidden></button>
         </aside>
         <button type="button" class="tab rail-tab" id="rail-tab" aria-controls="rail" hidden><span>›</span><span class="v" id="rail-tab-t"></span><span class="you" id="rail-tab-you" hidden></span></button>
         <div class="follow" id="follow" role="status" hidden><span id="follow-t"></span><kbd>Esc</kbd><button type="button" id="follow-stop" data-t="follow.stop"></button></div>
@@ -540,6 +606,15 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
           <button class="btn" id="zfit" type="button" data-t-aria="btn.resetView"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
           </button>
         </div>
+        <!-- city-layout L4: the arrange mode -- a name plate on every land (.arr-h, made by the script), the bar at the stage's bottom edge, the label that follows a dragged land -->
+        <div class="arr-ov" id="arr-ov"></div>
+        <div class="arr-bar" id="arr-bar" role="region" data-t-aria="arr.on" hidden>
+          <div class="arr-say"><b data-t="arr.on"></b><span id="arr-tip"></span></div>
+          <p class="arr-err" id="arr-err" role="alert" hidden></p>
+          <div class="arr-act"><button type="button" id="arr-cancel" data-t="arr.cancel"></button><button type="button" id="arr-done" data-t="arr.done"></button></div>
+          <div class="arr-tray" id="arr-tray"></div>
+        </div>
+        <div class="arr-ghost" id="arr-ghost" hidden></div>
         <div class="ask-panel" id="ask" role="dialog" aria-labelledby="ask-title" hidden></div>
         <div class="win" id="win" role="dialog" aria-labelledby="win-title" hidden>
           <div class="win-head"><div class="win-title" id="win-title"></div><button type="button" class="fold" id="win-fold" data-t-aria="fold.msg">»</button><button type="button" id="win-close" data-t-aria="btn.close" class="x">✕</button></div>
@@ -580,7 +655,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
    (data-t / data-t-aria / data-t-title / data-t-placeholder) is filled once, at start, by applyText(). */
 const LANG = '__CITY_LANG__';
 document.documentElement.lang = LANG === 'en' ? 'en' : 'zh-CN';
-const TEXT = { zh: { 'btn.log': '动态', 'aria.city': '城市', 'aria.canvas': '3D 小岛：每个小人是一个 agent', 'proto.banner': '原型 · 模拟数据', 'btn.zoomIn': '放大', 'btn.zoomOut': '缩小', 'btn.rotate': '转一下', 'btn.resetView': '回到默认视角', 'repo.all': '全部', 'aria.repos': '仓库：点一个飞过去', 'repo.goAria': '飞到 {name}', 'cap.hint': '已经是最远了 · 点「全部」看所有仓库','btn.close': '关闭', 'aria.toolbar': '控制', 'label.spawn': '派一个', 'opt.worker': 'worker · 盖房子', 'opt.taskManager': 'task manager · 测试塔', 'opt.fastLaneDeputy': 'fast-lane deputy · 花园', 'opt.mergeDeputy': 'merge deputy · 桥', 'btn.spawn': '派出', 'btn.remoteOff': '中继断开', 'btn.remoteOn': '恢复', 'btn.remoteLeave': '退出联城', 'type.house': '住宅', 'type.shop': '商店', 'type.tower': '测试塔', 'type.workshop': '工坊', 'type.library': '图书馆', 'district.house': '住宅区', 'district.shop': '商业街', 'district.tower': '测试区', 'district.workshop': '工坊区', 'district.library': '图书馆区', 'chat.state.queued': '排队中', 'chat.state.delivered': '已送达', 'chat.state.undelivered': '没送到', 'chat.why.notListening': '它没在听，收不到', 'chat.state.sent': '在路上', 'chat.you.cloud': '你（云端）', 'chat.you.local': '你（电脑上的页面）', 'chat.why.off': '那台电脑没开', 'chat.why.ended': '这个会话已经结束', 'chat.why.talkOff': '那台电脑不接收云端消息', 'chat.why.refused': '那台电脑没收这条消息', 'chat.why.flood': '发得太快，那台电脑没收', 'chat.resend': '重发', 'chat.new': '有新消息 ↓', 'hist.title': '历史（新的在下面）', 'hist.empty': '还没有记录', 'hist.all': '显示过程 {n}', 'hist.hide': '隐藏过程', 'hist.onlyMech': '只有过程记录，点「显示过程」看', 'hist.started': '出门：{task}', 'hist.stuck': '卡住了：{text}', 'hist.toLead': '去问经理', 'hist.toGov': '去问总督', 'hist.waiting': '等你回话', 'hist.done': '完工，去休息', 'hist.left': '下班了', 'chat.task': '任务（派它时的话）', 'team.title': '{repo} · 团队', 'role.task-manager': '任务经理', 'role.worker': '工人', 'role.fast-lane-deputy': '快车道副手', 'role.merge-deputy': '合并副手', 'role.other': '帮手', 'era.village': '村', 'era.town': '镇', 'era.city': '城', 'quality.good': '整齐', 'quality.fair': '还行', 'quality.poor': '有点乱', 'who.governor': '总督', 'who.owner': '你', 'who.terminal': '终端', 'state.spawn': '出门', 'state.to_plot': '去工地', 'state.building': '施工中', 'state.working': '干活', 'state.to_hall': '去问总督', 'state.asking': '在问总督', 'state.heard': '拿到答案', 'state.to_lead': '去问经理', 'state.at_lead': '问经理', 'state.back': '回工地', 'state.finishing': '封顶了', 'state.to_rest': '去休息', 'state.resting': '休息中', 'state.leaving': '下班回家', 'status.need_approval': '等你批', 'status.asking_gov': '在问总督', 'status.waiting_answer': '等你回答', 'status.waiting_reply': '等你回话', 'status.waiting': '等你', 'status.background': '后台在跑', 'status.idle': '空闲', 'stuck.permission': '要权限：{tool}', 'stuck.default': '需要你看一下', 'gov.away': '不在', 'gov.busy': '忙着', 'gov.home': '坐镇市政厅', 'top.work': '干活', 'top.ask': '找总督', 'top.rest': '休息', 'top.done': '建成', 'top.stalled': '卡住的工地', 'top.pending': '等你', 'top.pendingAria': '等你决定 {n} 个，点开最早的一个', 'empty.noLand': '还没有领地 · 在一个 git 仓库里启动，或等代理开工', 'loading.text': '正在搬来素材…', 'loading.progress': '正在搬来素材 {n}/{total}', 'loading.error': '素材没加载成功：{err}', 'site.human': '亲自带', 'log.eraUpgrade': '{name} 开始升级成{era}', 'say.done': '完工啦！', 'log.leftWork': '{task} 下班了', 'gov.dispatch': '去吧：{task}', 'log.govDispatch': '总督派出 {label}：{task}', 'log.siteMerged': '{branch} 合并进主线，工地收工', 'log.siteRemoved': '{branch} 的工地撤了', 'log.levelUp': '{label} 升到 {lv} 级', 'log.movedBack': '{label} 搬回{kind}区', 'log.demolished': '{label} 的文件都没了，拆掉', 'log.stuckDemo': '{task} 卡住了：“{text}” → 去问总督', 'answer.default': '已回答', 'log.govAnswer': '总督回答 {task}：“{text}”', 'log.doneRestPlain': '{task} 完工，去休息', 'log.doneRestBuilt': '{task} 完工：{kind}封顶，去休息', 'log.noplot': '{name} 没有空地了，先等等', 'gov.unknown': '未知', 'gov.busyRow': '在忙', 'gov.idleRow': '空闲', 'gov.title': '{name} 总督', 'chain.lead': '经理', 'chain.leadTask': '经理 {task}', 'chat.empty': '还没有对话', 'chat.you.page': '你（页面）', 'chat.you.terminal': '你（终端）', 'chat.wait': '等它做完这一步', 'chat.loadError': '对话没加载出来，等会儿再打开看看。', 'kv.repo': '仓库', 'kv.branch': '分支', 'kv.doing': '在做', 'qa.ask': '问：“{q}”', 'qa.answer': '答：“{a}”', 'qa.waiting': '问：“{q}” 等回答…', 'act.makeStuck': '让它卡住', 'act.makeDone': '让它完工', 'act.makeLeave': '让它下班', 'act.demoNote': '这三个按钮只在原型里有，用来试流程。', 'gov.ownTag': 'main manager · 主对话', 'gov.tagLabel': '总督 · main manager', 'gov.rgRole': 'main manager · 总督', 'pill.hall': '市政厅', 'gov.awayNote': '总督不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等总督。', 'hint.team': '团队', 'hint.noAgents': '还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。', 'hint.pickSomething': '点城里的小人、房子，或下面名单里的一行。', 'building.misplaced': ' · 放错区了', 'building.level': ' · 等级 {level}', 'building.district': '{kind}区', 'building.module': '{name} 模块', 'hint.files': '盖它的文件', 'hint.history': '改过它的人（新的在前）', 'detail.title': '详情', 'opt.other': '其他', 'opt.customAnswer': '自己写回答', 'btn.sendAnswer': '发送回答', 'kv.tool': '工具', 'kv.file': '文件', 'kv.url': '网址', 'said': '它说：{text}', 'kv.dir': '目录', 'field.denyReason': '拒绝理由（可以不填；填了会原样告诉它）', 'field.denyPlaceholder': '比如：先别删 dist/，里面有发布包', 'btn.allow': '批准', 'btn.deny': '拒绝', 'ask.asking': '在问', 'card.permission': '要权限', 'card.question': '在问你', 'ask.needsPermission': '要权限', 'pill.closed': '已关闭', 'aria.collapse': '收起（不回答）', 'foot.terminalAnswers': '终端里也能答，先答的算。', 'err.decideNetwork': '没发出去（连不上城市服务器）。终端里还能答。', 'err.decideStatus': '没发出去（{status}）。终端里还能答，可以再试一次。', 'proto.live': '实时 · 等服务器', 'proto.connected': '实时 · 已连接', 'proto.reconnecting': '实时 · 重连中…', 'log.relayOff': '联城中继断开：其他成员定格，我的城市照常干活。', 'log.relayOn': '联城恢复：其他成员更新到最新。', 'log.relayLeave': '退出联城：其他成员从我的城市消失，我的城市不变。', 'demo.task.checkoutTest': '写结账测试', 'demo.task.paymentRetry': '改支付超时重试', 'demo.q.paymentRetry': '支付超时要不要自动重试？', 'demo.task.depsScan': '扫描依赖漏洞', 'demo.task.worker.0': '设置页表单', 'demo.task.worker.1': '登录 API', 'demo.task.worker.2': '导出 CSV', 'demo.task.worker.3': '深色模式', 'demo.task.worker.4': '小票打印', 'demo.task.worker.5': '搜索框', 'demo.task.worker.6': '分页', 'demo.task.worker.7': '价格计算', 'demo.task.worker.8': '库存提醒', 'demo.task.worker.9': '客户列表', 'demo.task.taskManager.0': '设置页', 'demo.task.taskManager.1': '登录', 'demo.task.taskManager.2': '报表', 'demo.task.taskManager.3': '打印', 'demo.task.taskManager.4': '库存', 'demo.task.fastLaneDeputy.0': '错别字', 'demo.task.fastLaneDeputy.1': '按钮颜色', 'demo.task.fastLaneDeputy.2': '图标大小', 'demo.task.fastLaneDeputy.3': '标题换行', 'demo.task.fastLaneDeputy.4': '空状态文案', 'demo.task.mergeDeputy.0': '合并 settings', 'demo.task.mergeDeputy.1': '合并 login', 'demo.task.mergeDeputy.2': '合并 report', 'demo.task.mergeDeputy.3': '合并 print', 'demo.qa.0.q': '测试名不清楚，用哪个？', 'demo.qa.0.a': '按默认，记进日志', 'demo.qa.1.q': 'API 路径用哪个？', 'demo.qa.1.a': '用 /api/settings', 'demo.qa.2.q': '要不要加分页？', 'demo.qa.2.a': '先不加，写进 ideas', 'demo.qa.3.q': '默认语言是？', 'demo.qa.3.a': 'zh，跟 agent.conf', 'demo.qa.4.q': '旧数据要迁移吗？', 'demo.qa.4.a': '要，先写测试', 'demo.qa.5.q': '这个文件能改吗？', 'demo.qa.5.a': '能，只改你那份', 'demo.qa.6.q': '可以跑这条命令吗？', 'demo.qa.6.a': '批了，继续', 'aria.needsApproval': '{task} 等你批，点开看', 'aria.needsAnswer': '{task} 等你回答，点开看', 'aria.stuckOnlyThem': '{name} 卡住了，只有 {name} 能回答', 'aria.govNeedsApproval': '总督 等你批，点开看', 'aria.govNeedsAnswer': '总督 等你回答，点开看', 'gov.waitCountdown': '总督 {s}s', 'chat.sendError': '没发出去（连不上城市服务器）。', 'btn.findLead': '找组长：{name}', 'hint.readOnlySub': '它是子任务，这份对话只能看；有事去找组长。', 'placeholder.saySomething': '跟它说…', 'btn.send': '发送', 'label.ask': '问：', 'label.answer': '答：', 'label.awaitingAnswer': '等回答…', 'member.unknown': '未知', 'chip.off': '联城断开 · 待发 {n} 条', 'chip.refused': '联城拒绝了密钥', 'chip.ok': '联城 · {people} 人 · {devices} 台设备', 'remote.note': '只能看：这是 {who} 的 agent，只有 {who} 能回答。', 'stale.sec': '最后更新 {n} 秒前', 'stale.min': '最后更新 {n} 分钟前', 'ask.permission': '{name} 要权限：{what} → 等你批', 'ask.toOwner': '{name} 问你：“{what}”', 'ask.toGov': '{name} 问总督：“{what}”', 'ask.toGovNoGov': '{name} 问总督：“{what}”，没有总督在 → 等你回答', 'askphase.pass': '总督：这个我定不了 → 等你回答 {name}', 'askphase.timeout': '总督 {wait} 秒没回答 {name} → 等你', 'closed.routed': '{name} 的请求转到{who}处理：{what}', 'closed.answered': '{who}回答 {name}：“{text}”', 'closed.answeredDefault': '{who}已回答 {name}', 'closed.allowed': '{who}批准 {name}：{what}', 'closed.denied': '{who}拒绝 {name}：{what}', 'closed.deniedReason': '，理由：“{reason}”', 'closed.ended': '{who}结束了 {name}：{what}', 'why.permission': '权限只由你来批，总督不批。', 'why.gov': '总督定不了，交给你。', 'why.timeout': '总督 {wait} 秒没回答，交给你。', 'why.pass': '总督说：这个我定不了，交给你。', 'why.noGov': '没有总督在，直接交给你。', 'closed.late': '晚了一步：<b>{who}</b>在 {time} 已经处理了。这里不用再点了。', 'closed.pending': '在 {time} 已经处理了，结果还没传回来。已记下。', 'closed.answeredText': '回答了：“{text}”', 'closed.allowedText': '批准了', 'closed.deniedText': '拒绝了', 'closed.lateFull': '晚了一步：<b>{who}</b>在 {time} 先{text}。这里不用再点了。', 'closed.doneByYou': '<b>{who}</b>在 {time} {text}。已记下。', 'log.chatSent': '你 → {to}：{text}', 'log.remoteSpawn': '{who}（{device}）的 {label} 开始：{task}', 'log.remoteDone': '{who}（{device}）的 {task} 完工了', 'log.remoteLeft': '{who}（{device}）的 {task} 下线了', 'say.understood': '明白！', 'log.eraBecame': '{name} 变成{era}了', 'demo.seed.prompt': '先把这页做完，别的先不要动', 'demo.seed.reply': '好，先做这页，其它先不碰', 'chat.stateSuffix': '（{state}）', 'punct.answerJoin': '；', 'rail.title': '在线', 'rail.count': '{n}', 'rail.rest': '休息 {n}', 'rail.tab': '在线 {n}', 'rail.none': '没人在线', 'add.tip': '加 agent', 'add.plus': '＋', 'add.opening': '正在打开 {name}…', 'add.openingBare': '正在打开…', 'add.cap': '电脑有点忙', 'add.capNums': 'RAM {ram}% · CPU {cpu}%（上限 {max}%）', 'add.capAsk': '还要打开吗？', 'add.go': '还是打开', 'add.cancel': '取消', 'add.err': '没打开：', 'add.retry': '再试', 'add.ok': '知道了', 'add.errGone': '找不到仓库文件夹 {folder}（被移走或删掉了）。', 'add.errFailed': 'Orca 没能开出终端：{detail}', 'add.errLate': '终端开了，但 60 秒还没见到它上线。去 Orca 看那个终端。', 'add.errOther': '服务器没有给出原因（可能没连上）。', 'add.plain': '这台电脑没有 Orca，页面开不了终端。在终端里跑这一行：', 'add.copy': '复制', 'add.copied': '已复制', 'add.close': '关掉', 'fold.rail': '折起名单', 'fold.msg': '折起消息', 'msg.tab': '消息 · {name}', 'b.focus': '看看它', 'follow.on': '跟随 {name}', 'follow.stop': '停止', 'demo.device.cloud': '云端', 'work.edit': '改代码', 'work.read': '看文件', 'work.bash': '跑命令', 'work.other': '忙着', 'work.pause': '停一下', 'step.edit': '改 {file}', 'step.write': '写 {file}', 'step.editAny': '改代码', 'step.writeAny': '写代码', 'step.read': '看文件', 'step.search': '找代码', 'step.web': '查资料', 'step.bash': '跑命令', 'step.send': '派出：{desc}', 'step.sendAny': '派出帮手', 'step.plan': '排计划', 'step.message': '发消息', 'step.other': '忙着', /* cloud-city: texts */ 'cloud.readOnly': '只能看', 'cloud.sign': '云端', 'cloud.machines': '机器', 'cloud.busy': '干活 {n}', 'cloud.wait': '等你 {n}', 'cloud.noMachine': '还没有机器', 'cloud.noMachineHint': '在一台加入过城市的电脑上开一个 Claude 会话，它会自己出现在这里。', 'cloud.noSessions': '这台机器现在没有会话', 'cloud.noSessionsHint': '在它上面开一个 Claude 会话，人就会走出来。会话一开，那台机器的城市自己起来。', 'cloud.offline': '没有机器在线 · 这是 {age}的画面（{label}）', 'cloud.offlineHint': '哪台机器上一开 Claude 会话，它的城市自己起来，这里自动更新', 'cloud.login': '登录已经失效，或者还没登录。请重新登录。', 'cloud.reload': '重新登录', 'cloud.logout': '退出', 'cloud.viewNote': '只能看 · 这台电脑没开云端对话，回答和说话请回到那台电脑', 'cloud.notConnected': '没连上 · 重试中…', 'cloud.justNow': '刚刚', 'cloud.ageSec': '{n} 秒前', 'cloud.ageMin': '{n} 分钟前', 'cloud.ageHour': '{n} 小时前', 'cloud.ageDay': '{n} 天前', 'cloud.talk.on': '可对话', 'cloud.talk.off': '只能看', 'cloud.box.talkOff': '这台电脑没开「云端对话」，只能看。在它的终端里自己打这条命令就开：agent-city cloud-talk on', 'cloud.box.offline': '那台电脑现在不在线，发不了。它一上线，这里自己恢复。', 'cloud.tooFast': '发得太快了，等一会儿再发。', 'cloud.tooMany': '今天发得太多了，明天再发。', 'cloud.later.ask': '它在等你批准或选择（"?"）：在这里批准、选择，以后开放。现在请到那台电脑上回答。', 'cloud.later.demo': '演示工具 · 以后开放', 'cloud.start.on': '可开 agent', 'cloud.start.off': '这台电脑不接受云端「加 agent」。要开，在它的终端里自己打：\nagent-city cloud-start on', 'cloud.start.needTalk': '这台电脑只能看。先开对话，再开「加 agent」：\nagent-city cloud-talk on\nagent-city cloud-start on', 'add.cloud.sent': '在路上…', 'add.cloud.sentTip': '已存到云端，等那台电脑来取', 'add.cloud.opening': '那台电脑正在打开 {name}…', 'add.cloud.openingBare': '那台电脑正在打开…', 'add.cloud.done': '已打开 {name} · 小人马上出现', 'add.cloud.cap': '那台电脑有点忙', 'add.cloud.tooMany': '开得太多了：一小时最多 10 个。{min} 分钟后再试。', 'add.cloud.tooManyDay': '今天开得太多了，明天再试。', 'add.cloud.noAnswer': '没连上云端，不确定指令有没有存上。等一下再点一次。', 'add.cloud.why.off': '那台电脑没开（60 秒没来取这个指令）。这个指令作废，以后也不会再开。', 'add.cloud.why.startOff': '那台电脑不接受云端「加 agent」。在它的终端里自己打：agent-city cloud-start on', 'add.cloud.why.noOrca': '那台电脑不能自己开终端（没有 Orca）。请到那台电脑上手动开。', 'add.cloud.why.gone': '那台电脑上找不到这个仓库的文件夹（被移走或删掉了）。', 'add.cloud.why.orca': 'Orca 没能开出终端：{detail}', 'add.cloud.why.late': '终端开了，但 60 秒还没见到它上线。到那台电脑的 Orca 里看那个终端。', 'add.cloud.why.busy': '这个仓库正在开另一个 agent，等它开完再点。', 'add.cloud.why.flood': '那台电脑一小时内已经开了 10 个，它不再接。过一会儿再试。', 'add.cloud.why.silent': '那台电脑接了指令后 3 分钟没回音（可能关机了）。到那台电脑上看终端有没有开。', 'add.cloud.why.restart': '那台电脑的城市程序中途重启了，这个指令作废，不会再执行。到那台电脑上看终端有没有开。', 'add.cloud.why.refused': '那台电脑不认这个仓库（它没加入云端，或文件夹不在那台电脑上）。', 'add.cloud.why.other': '没打开，原因不明。到那台电脑上看看。' }, en: { 'btn.log': 'Activity', 'aria.city': 'City', 'aria.canvas': '3D island: each little person is one agent', 'proto.banner': 'Prototype - demo data', 'btn.zoomIn': 'Zoom in', 'btn.zoomOut': 'Zoom out', 'btn.rotate': 'Rotate', 'btn.resetView': 'Reset the view', 'repo.all': 'All', 'aria.repos': 'Repos: click one to fly there', 'repo.goAria': 'Fly to {name}', 'cap.hint': 'That is as far as it goes - click "All" to see every repo','btn.close': 'Close', 'aria.toolbar': 'Controls', 'label.spawn': 'Send a', 'opt.worker': 'worker - builds houses', 'opt.taskManager': 'task manager - test tower', 'opt.fastLaneDeputy': 'fast-lane deputy - garden', 'opt.mergeDeputy': 'merge deputy - bridge', 'btn.spawn': 'Send', 'btn.remoteOff': 'Disconnect relay', 'btn.remoteOn': 'Resume', 'btn.remoteLeave': 'Leave the linked city', 'type.house': 'House', 'type.shop': 'Shop', 'type.tower': 'Tower', 'type.workshop': 'Workshop', 'type.library': 'Library', 'district.house': 'Homes', 'district.shop': 'Shops', 'district.tower': 'Tests', 'district.workshop': 'Workshops', 'district.library': 'Library', 'chat.state.queued': 'Queued', 'chat.state.delivered': 'Delivered', 'chat.state.undelivered': 'Undelivered', 'chat.why.notListening': 'it is not listening, it did not get this', 'chat.state.sent': 'On its way', 'chat.you.cloud': 'You (cloud)', 'chat.you.local': 'You (page on the computer)', 'chat.why.off': 'that computer is off', 'chat.why.ended': 'this session has ended', 'chat.why.talkOff': 'that computer does not take cloud messages', 'chat.why.refused': 'that computer did not accept it', 'chat.why.flood': 'too many messages too fast, that computer did not accept it', 'chat.resend': 'Send again', 'chat.new': 'New messages ↓', 'hist.title': 'History (newest at the bottom)', 'hist.empty': 'Nothing yet', 'hist.all': 'Show steps {n}', 'hist.hide': 'Hide steps', 'hist.onlyMech': 'Only steps so far - tap "Show steps"', 'hist.started': 'Headed out: {task}', 'hist.stuck': 'Stuck: {text}', 'hist.toLead': 'To the manager', 'hist.toGov': 'To the governor', 'hist.waiting': 'Waiting on you', 'hist.done': 'Finished, heading to rest', 'hist.left': 'Clocked out', 'chat.task': 'Task (what it was sent with)', 'team.title': '{repo} · Team', 'role.task-manager': 'Task manager', 'role.worker': 'Worker', 'role.fast-lane-deputy': 'Fast-lane deputy', 'role.merge-deputy': 'Merge deputy', 'role.other': 'Helper', 'era.village': 'Village', 'era.town': 'Town', 'era.city': 'City', 'quality.good': 'Tidy', 'quality.fair': 'OK', 'quality.poor': 'Messy', 'who.governor': 'Governor', 'who.owner': 'You', 'who.terminal': 'Terminal', 'state.spawn': 'Heading out', 'state.to_plot': 'To the site', 'state.building': 'Building', 'state.working': 'Working', 'state.to_hall': 'To the governor', 'state.asking': 'Asking the governor', 'state.heard': 'Got the answer', 'state.to_lead': 'To the manager', 'state.at_lead': 'Asking the manager', 'state.back': 'Back to the site', 'state.finishing': 'Topped out', 'state.to_rest': 'Heading to rest', 'state.resting': 'Resting', 'state.leaving': 'Heading home', 'status.need_approval': 'Needs your OK', 'status.asking_gov': 'Asking the governor', 'status.waiting_answer': 'Waiting on your answer', 'status.waiting_reply': 'Waiting on you', 'status.waiting': 'Waiting on you', 'status.background': 'Working in background', 'status.idle': 'Idle', 'stuck.permission': 'Needs permission: {tool}', 'stuck.default': 'Needs your eyes', 'gov.away': 'Away', 'gov.busy': 'Busy', 'gov.home': 'At the town hall', 'top.work': 'Working', 'top.ask': 'Need governor', 'top.rest': 'Resting', 'top.done': 'Built', 'top.stalled': 'Stalled site', 'top.pending': 'Waiting', 'top.pendingAria': '{n} waiting on your call - click to open the earliest', 'empty.noLand': 'No territory yet - start inside a git repo, or wait for an agent', 'loading.text': 'Loading assets…', 'loading.progress': 'Loading assets {n}/{total}', 'loading.error': 'Assets failed to load: {err}', 'site.human': 'Hands-on', 'log.eraUpgrade': '{name} is upgrading to {era}', 'say.done': 'Done!', 'log.leftWork': '{task} clocked out', 'gov.dispatch': 'Go: {task}', 'log.govDispatch': 'The governor sent {label}: {task}', 'log.siteMerged': '{branch} merged into main, the site wrapped up', 'log.siteRemoved': 'The {branch} site was pulled down', 'log.levelUp': '{label} leveled up to {lv}', 'log.movedBack': '{label} moved back to the {kind} district', 'log.demolished': 'Every file behind {label} is gone, demolished', 'log.stuckDemo': '{task} got stuck: "{text}" -> asking the governor', 'answer.default': 'Answered', 'log.govAnswer': 'The governor answered {task}: "{text}"', 'log.doneRestPlain': '{task} finished, heading to rest', 'log.doneRestBuilt': '{task} finished: {kind} topped out, heading to rest', 'log.noplot': '{name} found no empty plot, waiting a bit', 'gov.unknown': 'Unknown', 'gov.busyRow': 'Busy', 'gov.idleRow': 'Idle', 'gov.title': '{name} governor', 'chain.lead': 'Manager', 'chain.leadTask': 'Manager {task}', 'chat.empty': 'No conversation yet', 'chat.you.page': 'You (page)', 'chat.you.terminal': 'You (terminal)', 'chat.wait': 'Waiting for it to finish this step', 'chat.loadError': 'Could not load the conversation - try opening it again in a moment.', 'kv.repo': 'Repo', 'kv.branch': 'Branch', 'kv.doing': 'Doing', 'qa.ask': 'Q: “{q}”', 'qa.answer': 'A: “{a}”', 'qa.waiting': 'Q: “{q}” - waiting for an answer…', 'act.makeStuck': 'Make it stuck', 'act.makeDone': 'Make it finish', 'act.makeLeave': 'Make it clock out', 'act.demoNote': 'These three buttons exist only in the prototype, to try the flow.', 'gov.ownTag': 'main manager · main conversation', 'gov.tagLabel': 'Governor · main manager', 'gov.rgRole': 'main manager · Governor', 'pill.hall': 'Town hall', 'gov.awayNote': 'The governor is away: this repo has no main manager session right now. Agent questions go straight to you, without waiting for the governor first.', 'hint.team': 'Team', 'hint.noAgents': 'No agents at work yet. Open a Claude Code session and send an agent - it will walk out of the town hall.', 'hint.pickSomething': 'Click a person or building in the city, or a row in the list below.', 'building.misplaced': ' - in the wrong district', 'building.level': ' - level {level}', 'building.district': '{kind} district', 'building.module': '{name} module', 'hint.files': 'The files that built it', 'hint.history': 'Who has touched it (newest first)', 'detail.title': 'Details', 'opt.other': 'Other', 'opt.customAnswer': 'Write your own answer', 'btn.sendAnswer': 'Send answer', 'kv.tool': 'Tool', 'kv.file': 'File', 'kv.url': 'URL', 'said': 'It said: {text}', 'kv.dir': 'Directory', 'field.denyReason': 'Reason for denying (optional; if filled in, it is told to it as-is)', 'field.denyPlaceholder': 'e.g. do not delete dist/ yet, it has the release package', 'btn.allow': 'Allow', 'btn.deny': 'Deny', 'ask.asking': 'is asking', 'card.permission': 'Needs permission', 'card.question': 'Asks you', 'ask.needsPermission': 'needs permission', 'pill.closed': 'Closed', 'aria.collapse': 'Collapse (without answering)', 'foot.terminalAnswers': 'The terminal can answer too - whichever answers first wins.', 'err.decideNetwork': 'Could not send (cannot reach the city server). The terminal can still answer.', 'err.decideStatus': 'Could not send ({status}). The terminal can still answer, or try again.', 'proto.live': 'Live - waiting for the server', 'proto.connected': 'Live - connected', 'proto.reconnecting': 'Live - reconnecting…', 'log.relayOff': 'City-link relay disconnected: other members are frozen, my city keeps working as normal.', 'log.relayOn': 'City-link resumed: other members update to the latest.', 'log.relayLeave': 'Left the linked city: other members disappear from my city; my city is unchanged.', 'demo.task.checkoutTest': 'Write checkout tests', 'demo.task.paymentRetry': 'Fix payment-timeout retry', 'demo.q.paymentRetry': 'Should a payment timeout retry automatically?', 'demo.task.depsScan': 'Scan dependencies for vulnerabilities', 'demo.task.worker.0': 'Settings page form', 'demo.task.worker.1': 'Login API', 'demo.task.worker.2': 'Export CSV', 'demo.task.worker.3': 'Dark mode', 'demo.task.worker.4': 'Receipt printing', 'demo.task.worker.5': 'Search box', 'demo.task.worker.6': 'Pagination', 'demo.task.worker.7': 'Price calculation', 'demo.task.worker.8': 'Inventory alerts', 'demo.task.worker.9': 'Customer list', 'demo.task.taskManager.0': 'Settings page', 'demo.task.taskManager.1': 'Login', 'demo.task.taskManager.2': 'Reports', 'demo.task.taskManager.3': 'Printing', 'demo.task.taskManager.4': 'Inventory', 'demo.task.fastLaneDeputy.0': 'Typos', 'demo.task.fastLaneDeputy.1': 'Button colour', 'demo.task.fastLaneDeputy.2': 'Icon size', 'demo.task.fastLaneDeputy.3': 'Title wrapping', 'demo.task.fastLaneDeputy.4': 'Empty-state copy', 'demo.task.mergeDeputy.0': 'Merge settings', 'demo.task.mergeDeputy.1': 'Merge login', 'demo.task.mergeDeputy.2': 'Merge report', 'demo.task.mergeDeputy.3': 'Merge print', 'demo.qa.0.q': 'Which test name is unclear - which one?', 'demo.qa.0.a': 'Go with the default, log it', 'demo.qa.1.q': 'Which API path should I use?', 'demo.qa.1.a': 'Use /api/settings', 'demo.qa.2.q': 'Should I add pagination?', 'demo.qa.2.a': 'Not yet, write it into ideas', 'demo.qa.3.q': 'What is the default language?', 'demo.qa.3.a': 'zh, matching agent.conf', 'demo.qa.4.q': 'Does the old data need migrating?', 'demo.qa.4.a': 'Yes, write a test first', 'demo.qa.5.q': 'Can I change this file?', 'demo.qa.5.a': 'Yes, only your own copy', 'demo.qa.6.q': 'Can I run this command?', 'demo.qa.6.a': 'Approved, go ahead', 'aria.needsApproval': '{task} needs your approval, click to open', 'aria.needsAnswer': '{task} needs your answer, click to open', 'aria.stuckOnlyThem': '{name} is stuck; only {name} can answer', 'aria.govNeedsApproval': 'The governor needs your approval, click to open', 'aria.govNeedsAnswer': 'The governor needs your answer, click to open', 'gov.waitCountdown': 'Governor {s}s', 'chat.sendError': 'Could not send (cannot reach the city server).', 'btn.findLead': 'Find the lead: {name}', 'hint.readOnlySub': 'This is a subtask; the conversation is view only - go to its lead for anything else.', 'placeholder.saySomething': 'Say something to it…', 'btn.send': 'Send', 'label.ask': 'Q: ', 'label.answer': 'A: ', 'label.awaitingAnswer': 'awaiting an answer…', 'member.unknown': 'Unknown', 'chip.off': 'City-link disconnected - {n} queued', 'chip.refused': 'City-link refused the key', 'chip.ok': 'City-link - {people} people - {devices} devices', 'remote.note': 'View only: this agent belongs to {who} - only {who} can answer it.', 'stale.sec': 'Last updated {n}s ago', 'stale.min': 'Last updated {n}m ago', 'ask.permission': '{name} needs permission: {what} -> waiting on you', 'ask.toOwner': '{name} asks you: “{what}”', 'ask.toGov': '{name} asks the governor: “{what}”', 'ask.toGovNoGov': '{name} asks the governor: “{what}”, no governor around -> waiting on your answer', 'askphase.pass': 'The governor: not mine to decide -> waiting on your answer for {name}', 'askphase.timeout': 'The governor did not answer {name} in {wait}s -> waiting on you', 'closed.routed': 'The request from {name} was routed to {who}: {what}', 'closed.answered': '{who} answered {name}: “{text}”', 'closed.answeredDefault': '{who} already answered {name}', 'closed.allowed': '{who} allowed {name}: {what}', 'closed.denied': '{who} denied {name}: {what}', 'closed.deniedReason': ', reason: “{reason}”', 'closed.ended': '{who} closed {name}: {what}', 'why.permission': 'Only you can approve permissions - the governor does not.', 'why.gov': 'The governor cannot decide this - it is yours.', 'why.timeout': 'The governor did not answer in {wait}s - it is yours.', 'why.pass': 'The governor said: not mine to decide - it is yours.', 'why.noGov': 'No governor around - it goes straight to you.', 'closed.late': 'Too late: <b>{who}</b> already handled it at {time}. No need to click here.', 'closed.pending': 'Handled at {time}; the result has not come back yet. Noted.', 'closed.answeredText': 'Answered: “{text}”', 'closed.allowedText': 'Allowed', 'closed.deniedText': 'Denied', 'closed.lateFull': 'Too late: <b>{who}</b> already {text} at {time}. No need to click here.', 'closed.doneByYou': '<b>{who}</b> {text} at {time}. Noted.', 'log.chatSent': 'You -> {to}: {text}', 'log.remoteSpawn': '{who} ({device}) - {label} started: {task}', 'log.remoteDone': '{who} ({device}) - {task} finished', 'log.remoteLeft': '{who} ({device}) - {task} went offline', 'say.understood': 'Got it!', 'log.eraBecame': '{name} became a {era}', 'demo.seed.prompt': 'Finish this page first, do not touch anything else yet', 'demo.seed.reply': 'OK, doing this page first, leaving the rest alone', 'chat.stateSuffix': ' ({state})', 'punct.answerJoin': '; ', 'rail.title': 'Now', 'rail.count': '{n}', 'rail.rest': 'Resting {n}', 'rail.tab': 'Now {n}', 'rail.none': 'Nobody online', 'add.tip': 'Add agent', 'add.plus': '+', 'add.opening': 'Opening {name}…', 'add.openingBare': 'Opening…', 'add.cap': 'The computer is busy', 'add.capNums': 'RAM {ram}% · CPU {cpu}% (limit {max}%)', 'add.capAsk': 'Open it anyway?', 'add.go': 'Open anyway', 'add.cancel': 'Cancel', 'add.err': 'Not opened: ', 'add.retry': 'Try again', 'add.ok': 'Got it', 'add.errGone': 'Cannot find the repo folder {folder} (moved or deleted).', 'add.errFailed': 'Orca could not open a terminal: {detail}', 'add.errLate': 'The terminal opened, but nothing showed up in 60 seconds. Look at that terminal in Orca.', 'add.errOther': 'The server gave no reason (it may be out of reach).', 'add.plain': 'This computer has no Orca, so the page cannot open a terminal. Run this line in a terminal:', 'add.copy': 'Copy', 'add.copied': 'Copied', 'add.close': 'Close', 'fold.rail': 'Fold the list', 'fold.msg': 'Fold the messages', 'msg.tab': 'Messages · {name}', 'b.focus': 'Show it', 'follow.on': 'Following {name}', 'follow.stop': 'Stop', 'demo.device.cloud': 'Cloud', 'work.edit': 'Editing', 'work.read': 'Reading', 'work.bash': 'Running', 'work.other': 'Busy', 'work.pause': 'Pausing', 'step.edit': 'Editing {file}', 'step.write': 'Writing {file}', 'step.editAny': 'Editing code', 'step.writeAny': 'Writing code', 'step.read': 'Reading files', 'step.search': 'Searching code', 'step.web': 'Looking things up', 'step.bash': 'Running a command', 'step.send': 'Sending out: {desc}', 'step.sendAny': 'Sending a helper', 'step.plan': 'Planning', 'step.message': 'Sending a message', 'step.other': 'Busy', /* cloud-city: texts */ 'cloud.readOnly': 'View only', 'cloud.sign': 'Cloud', 'cloud.machines': 'Machines', 'cloud.busy': 'Working {n}', 'cloud.wait': 'Waiting {n}', 'cloud.noMachine': 'No machine yet', 'cloud.noMachineHint': 'Open a Claude session on a machine that has joined the city. It shows up here by itself.', 'cloud.noSessions': 'This machine has no sessions right now', 'cloud.noSessionsHint': 'Open a Claude session on it and the people walk out. The city on that machine starts by itself once a session opens.', 'cloud.offline': 'No machine is online - this is the picture from {age} ({label})', 'cloud.offlineHint': 'When a Claude session opens on any machine, its city starts by itself and this page updates', 'cloud.login': 'You are signed out, or the login has expired. Please sign in again.', 'cloud.reload': 'Sign in again', 'cloud.logout': 'Sign out', 'cloud.viewNote': 'View only - this computer has not turned on cloud talk; to answer or talk, go back to that computer', 'cloud.notConnected': 'Not connected - trying again…', 'cloud.justNow': 'just now', 'cloud.ageSec': '{n} s ago', 'cloud.ageMin': '{n} min ago', 'cloud.ageHour': '{n} h ago', 'cloud.ageDay': '{n} d ago', 'cloud.talk.on': 'Can talk', 'cloud.talk.off': 'View only', 'cloud.box.talkOff': 'This computer has not turned on "cloud talk", so it is view only. Type this command in its own terminal to turn it on: agent-city cloud-talk on', 'cloud.box.offline': 'That computer is offline, so nothing can be sent. When it is back, this box returns by itself.', 'cloud.tooFast': 'Too fast - wait a moment, then send again.', 'cloud.tooMany': 'Too many messages today - try again tomorrow.', 'cloud.later.ask': 'It is waiting for you to approve or choose ("?"): doing that here comes later. For now, answer it on that computer.', 'cloud.later.demo': 'Demo tools · later', 'cloud.start.on': 'Can start agents', 'cloud.start.off': 'This computer does not take cloud "Add agent" orders. To turn it on, type this in its own terminal:\nagent-city cloud-start on', 'cloud.start.needTalk': 'This computer is view only. Turn on talk first, then "Add agent":\nagent-city cloud-talk on\nagent-city cloud-start on', 'add.cloud.sent': 'On its way…', 'add.cloud.sentTip': 'Saved in the cloud, waiting for that computer to pick it up', 'add.cloud.opening': 'That computer is opening {name}…', 'add.cloud.openingBare': 'That computer is opening…', 'add.cloud.done': 'Opened {name} · the person shows up in a moment', 'add.cloud.cap': 'That computer is busy', 'add.cloud.tooMany': 'Too many opened: at most 10 an hour. Try again in {min} min.', 'add.cloud.tooManyDay': 'Too many opened today - try again tomorrow.', 'add.cloud.noAnswer': 'No answer from the cloud, so it is not sure the order was saved. Wait a moment, then click again.', 'add.cloud.why.off': 'That computer is off (it did not pick up this order in 60 seconds). The order is cancelled and will never run later.', 'add.cloud.why.startOff': 'That computer does not take cloud "Add agent" orders. Type this in its own terminal: agent-city cloud-start on', 'add.cloud.why.noOrca': 'That computer cannot open a terminal by itself (no Orca). Open one there by hand.', 'add.cloud.why.gone': 'That computer cannot find the folder of this repo (moved or deleted).', 'add.cloud.why.orca': 'Orca could not open a terminal: {detail}', 'add.cloud.why.late': 'The terminal opened, but nothing showed up in 60 seconds. Look at that terminal in Orca on that computer.', 'add.cloud.why.busy': 'This repo is already opening another agent. Wait until it is done, then click.', 'add.cloud.why.flood': 'That computer already opened 10 this hour and takes no more. Try again later.', 'add.cloud.why.silent': 'That computer took the order and said nothing for 3 minutes (it may be off). Look on that computer to see if a terminal opened.', 'add.cloud.why.restart': 'The city program on that computer restarted midway, so this order is cancelled and will not run. Look on that computer to see if a terminal opened.', 'add.cloud.why.refused': 'That computer does not know this repo (it has not joined the cloud, or its folder is not on that computer).', 'add.cloud.why.other': 'Not opened, and the reason is unknown. Look on that computer.' } };
+const TEXT = { zh: { 'btn.log': '动态', 'aria.city': '城市', 'aria.canvas': '3D 小岛：每个小人是一个 agent', 'proto.banner': '原型 · 模拟数据', 'btn.zoomIn': '放大', 'btn.zoomOut': '缩小', 'btn.rotate': '转一下', 'btn.resetView': '回到默认视角', 'repo.all': '全部', 'aria.repos': '仓库：点一个飞过去', 'repo.goAria': '飞到 {name}', 'cap.hint': '已经是最远了 · 点「全部」看所有仓库','btn.close': '关闭', 'aria.toolbar': '控制', 'label.spawn': '派一个', 'opt.worker': 'worker · 盖房子', 'opt.taskManager': 'task manager · 测试塔', 'opt.fastLaneDeputy': 'fast-lane deputy · 花园', 'opt.mergeDeputy': 'merge deputy · 桥', 'btn.spawn': '派出', 'btn.remoteOff': '中继断开', 'btn.remoteOn': '恢复', 'btn.remoteLeave': '退出联城', 'type.house': '住宅', 'type.shop': '商店', 'type.tower': '测试塔', 'type.workshop': '工坊', 'type.library': '图书馆', 'district.house': '住宅区', 'district.shop': '商业街', 'district.tower': '测试区', 'district.workshop': '工坊区', 'district.library': '图书馆区', 'chat.state.queued': '排队中', 'chat.state.delivered': '已送达', 'chat.state.undelivered': '没送到', 'chat.why.notListening': '它没在听，收不到', 'chat.state.sent': '在路上', 'chat.you.cloud': '你（云端）', 'chat.you.local': '你（电脑上的页面）', 'chat.why.off': '那台电脑没开', 'chat.why.ended': '这个会话已经结束', 'chat.why.talkOff': '那台电脑不接收云端消息', 'chat.why.refused': '那台电脑没收这条消息', 'chat.why.flood': '发得太快，那台电脑没收', 'chat.resend': '重发', 'chat.new': '有新消息 ↓', 'hist.title': '历史（新的在下面）', 'hist.empty': '还没有记录', 'hist.all': '显示过程 {n}', 'hist.hide': '隐藏过程', 'hist.onlyMech': '只有过程记录，点「显示过程」看', 'hist.started': '出门：{task}', 'hist.stuck': '卡住了：{text}', 'hist.toLead': '去问经理', 'hist.toGov': '去问总督', 'hist.waiting': '等你回话', 'hist.done': '完工，去休息', 'hist.left': '下班了', 'chat.task': '任务（派它时的话）', 'team.title': '{repo} · 团队', 'role.task-manager': '任务经理', 'role.worker': '工人', 'role.fast-lane-deputy': '快车道副手', 'role.merge-deputy': '合并副手', 'role.other': '帮手', 'era.village': '村', 'era.town': '镇', 'era.city': '城', 'quality.good': '整齐', 'quality.fair': '还行', 'quality.poor': '有点乱', 'who.governor': '总督', 'who.owner': '你', 'who.terminal': '终端', 'state.spawn': '出门', 'state.to_plot': '去工地', 'state.building': '施工中', 'state.working': '干活', 'state.to_hall': '去问总督', 'state.asking': '在问总督', 'state.heard': '拿到答案', 'state.to_lead': '去问经理', 'state.at_lead': '问经理', 'state.back': '回工地', 'state.finishing': '封顶了', 'state.to_rest': '去休息', 'state.resting': '休息中', 'state.leaving': '下班回家', 'status.need_approval': '等你批', 'status.asking_gov': '在问总督', 'status.waiting_answer': '等你回答', 'status.waiting_reply': '等你回话', 'status.waiting': '等你', 'status.background': '后台在跑', 'status.idle': '空闲', 'stuck.permission': '要权限：{tool}', 'stuck.default': '需要你看一下', 'gov.away': '不在', 'gov.busy': '忙着', 'gov.home': '坐镇市政厅', 'top.work': '干活', 'top.ask': '找总督', 'top.rest': '休息', 'top.done': '建成', 'top.stalled': '卡住的工地', 'top.pending': '等你', 'top.pendingAria': '等你决定 {n} 个，点开最早的一个', 'empty.noLand': '还没有领地 · 在一个 git 仓库里启动，或等代理开工', 'loading.text': '正在搬来素材…', 'loading.progress': '正在搬来素材 {n}/{total}', 'loading.error': '素材没加载成功：{err}', 'site.human': '亲自带', 'log.eraUpgrade': '{name} 开始升级成{era}', 'say.done': '完工啦！', 'log.leftWork': '{task} 下班了', 'gov.dispatch': '去吧：{task}', 'log.govDispatch': '总督派出 {label}：{task}', 'log.siteMerged': '{branch} 合并进主线，工地收工', 'log.siteRemoved': '{branch} 的工地撤了', 'log.levelUp': '{label} 升到 {lv} 级', 'log.movedBack': '{label} 搬回{kind}区', 'log.demolished': '{label} 的文件都没了，拆掉', 'log.stuckDemo': '{task} 卡住了：“{text}” → 去问总督', 'answer.default': '已回答', 'log.govAnswer': '总督回答 {task}：“{text}”', 'log.doneRestPlain': '{task} 完工，去休息', 'log.doneRestBuilt': '{task} 完工：{kind}封顶，去休息', 'log.noplot': '{name} 没有空地了，先等等', 'gov.unknown': '未知', 'gov.busyRow': '在忙', 'gov.idleRow': '空闲', 'gov.title': '{name} 总督', 'chain.lead': '经理', 'chain.leadTask': '经理 {task}', 'chat.empty': '还没有对话', 'chat.you.page': '你（页面）', 'chat.you.terminal': '你（终端）', 'chat.wait': '等它做完这一步', 'chat.loadError': '对话没加载出来，等会儿再打开看看。', 'kv.repo': '仓库', 'kv.branch': '分支', 'kv.doing': '在做', 'qa.ask': '问：“{q}”', 'qa.answer': '答：“{a}”', 'qa.waiting': '问：“{q}” 等回答…', 'act.makeStuck': '让它卡住', 'act.makeDone': '让它完工', 'act.makeLeave': '让它下班', 'act.demoNote': '这三个按钮只在原型里有，用来试流程。', 'gov.ownTag': 'main manager · 主对话', 'gov.tagLabel': '总督 · main manager', 'gov.rgRole': 'main manager · 总督', 'pill.hall': '市政厅', 'gov.awayNote': '总督不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等总督。', 'hint.team': '团队', 'hint.noAgents': '还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。', 'hint.pickSomething': '点城里的小人、房子，或下面名单里的一行。', 'building.misplaced': ' · 放错区了', 'building.level': ' · 等级 {level}', 'building.district': '{kind}区', 'building.module': '{name} 模块', 'hint.files': '盖它的文件', 'hint.history': '改过它的人（新的在前）', 'detail.title': '详情', 'opt.other': '其他', 'opt.customAnswer': '自己写回答', 'btn.sendAnswer': '发送回答', 'kv.tool': '工具', 'kv.file': '文件', 'kv.url': '网址', 'said': '它说：{text}', 'kv.dir': '目录', 'field.denyReason': '拒绝理由（可以不填；填了会原样告诉它）', 'field.denyPlaceholder': '比如：先别删 dist/，里面有发布包', 'btn.allow': '批准', 'btn.deny': '拒绝', 'ask.asking': '在问', 'card.permission': '要权限', 'card.question': '在问你', 'ask.needsPermission': '要权限', 'pill.closed': '已关闭', 'aria.collapse': '收起（不回答）', 'foot.terminalAnswers': '终端里也能答，先答的算。', 'err.decideNetwork': '没发出去（连不上城市服务器）。终端里还能答。', 'err.decideStatus': '没发出去（{status}）。终端里还能答，可以再试一次。', 'proto.live': '实时 · 等服务器', 'proto.connected': '实时 · 已连接', 'proto.reconnecting': '实时 · 重连中…', 'log.relayOff': '联城中继断开：其他成员定格，我的城市照常干活。', 'log.relayOn': '联城恢复：其他成员更新到最新。', 'log.relayLeave': '退出联城：其他成员从我的城市消失，我的城市不变。', 'demo.task.checkoutTest': '写结账测试', 'demo.task.paymentRetry': '改支付超时重试', 'demo.q.paymentRetry': '支付超时要不要自动重试？', 'demo.task.depsScan': '扫描依赖漏洞', 'demo.task.worker.0': '设置页表单', 'demo.task.worker.1': '登录 API', 'demo.task.worker.2': '导出 CSV', 'demo.task.worker.3': '深色模式', 'demo.task.worker.4': '小票打印', 'demo.task.worker.5': '搜索框', 'demo.task.worker.6': '分页', 'demo.task.worker.7': '价格计算', 'demo.task.worker.8': '库存提醒', 'demo.task.worker.9': '客户列表', 'demo.task.taskManager.0': '设置页', 'demo.task.taskManager.1': '登录', 'demo.task.taskManager.2': '报表', 'demo.task.taskManager.3': '打印', 'demo.task.taskManager.4': '库存', 'demo.task.fastLaneDeputy.0': '错别字', 'demo.task.fastLaneDeputy.1': '按钮颜色', 'demo.task.fastLaneDeputy.2': '图标大小', 'demo.task.fastLaneDeputy.3': '标题换行', 'demo.task.fastLaneDeputy.4': '空状态文案', 'demo.task.mergeDeputy.0': '合并 settings', 'demo.task.mergeDeputy.1': '合并 login', 'demo.task.mergeDeputy.2': '合并 report', 'demo.task.mergeDeputy.3': '合并 print', 'demo.qa.0.q': '测试名不清楚，用哪个？', 'demo.qa.0.a': '按默认，记进日志', 'demo.qa.1.q': 'API 路径用哪个？', 'demo.qa.1.a': '用 /api/settings', 'demo.qa.2.q': '要不要加分页？', 'demo.qa.2.a': '先不加，写进 ideas', 'demo.qa.3.q': '默认语言是？', 'demo.qa.3.a': 'zh，跟 agent.conf', 'demo.qa.4.q': '旧数据要迁移吗？', 'demo.qa.4.a': '要，先写测试', 'demo.qa.5.q': '这个文件能改吗？', 'demo.qa.5.a': '能，只改你那份', 'demo.qa.6.q': '可以跑这条命令吗？', 'demo.qa.6.a': '批了，继续', 'aria.needsApproval': '{task} 等你批，点开看', 'aria.needsAnswer': '{task} 等你回答，点开看', 'aria.stuckOnlyThem': '{name} 卡住了，只有 {name} 能回答', 'aria.govNeedsApproval': '总督 等你批，点开看', 'aria.govNeedsAnswer': '总督 等你回答，点开看', 'gov.waitCountdown': '总督 {s}s', 'chat.sendError': '没发出去（连不上城市服务器）。', 'btn.findLead': '找组长：{name}', 'hint.readOnlySub': '它是子任务，这份对话只能看；有事去找组长。', 'placeholder.saySomething': '跟它说…', 'btn.send': '发送', 'label.ask': '问：', 'label.answer': '答：', 'label.awaitingAnswer': '等回答…', 'member.unknown': '未知', 'chip.off': '联城断开 · 待发 {n} 条', 'chip.refused': '联城拒绝了密钥', 'chip.ok': '联城 · {people} 人 · {devices} 台设备', 'remote.note': '只能看：这是 {who} 的 agent，只有 {who} 能回答。', 'stale.sec': '最后更新 {n} 秒前', 'stale.min': '最后更新 {n} 分钟前', 'ask.permission': '{name} 要权限：{what} → 等你批', 'ask.toOwner': '{name} 问你：“{what}”', 'ask.toGov': '{name} 问总督：“{what}”', 'ask.toGovNoGov': '{name} 问总督：“{what}”，没有总督在 → 等你回答', 'askphase.pass': '总督：这个我定不了 → 等你回答 {name}', 'askphase.timeout': '总督 {wait} 秒没回答 {name} → 等你', 'closed.routed': '{name} 的请求转到{who}处理：{what}', 'closed.answered': '{who}回答 {name}：“{text}”', 'closed.answeredDefault': '{who}已回答 {name}', 'closed.allowed': '{who}批准 {name}：{what}', 'closed.denied': '{who}拒绝 {name}：{what}', 'closed.deniedReason': '，理由：“{reason}”', 'closed.ended': '{who}结束了 {name}：{what}', 'why.permission': '权限只由你来批，总督不批。', 'why.gov': '总督定不了，交给你。', 'why.timeout': '总督 {wait} 秒没回答，交给你。', 'why.pass': '总督说：这个我定不了，交给你。', 'why.noGov': '没有总督在，直接交给你。', 'closed.late': '晚了一步：<b>{who}</b>在 {time} 已经处理了。这里不用再点了。', 'closed.pending': '在 {time} 已经处理了，结果还没传回来。已记下。', 'closed.answeredText': '回答了：“{text}”', 'closed.allowedText': '批准了', 'closed.deniedText': '拒绝了', 'closed.lateFull': '晚了一步：<b>{who}</b>在 {time} 先{text}。这里不用再点了。', 'closed.doneByYou': '<b>{who}</b>在 {time} {text}。已记下。', 'log.chatSent': '你 → {to}：{text}', 'log.remoteSpawn': '{who}（{device}）的 {label} 开始：{task}', 'log.remoteDone': '{who}（{device}）的 {task} 完工了', 'log.remoteLeft': '{who}（{device}）的 {task} 下线了', 'say.understood': '明白！', 'log.eraBecame': '{name} 变成{era}了', 'demo.seed.prompt': '先把这页做完，别的先不要动', 'demo.seed.reply': '好，先做这页，其它先不碰', 'chat.stateSuffix': '（{state}）', 'punct.answerJoin': '；', 'rail.title': '在线', 'rail.count': '{n}', 'rail.rest': '休息 {n}', 'rail.tab': '在线 {n}', 'rail.none': '没人在线', 'add.tip': '加 agent', 'add.plus': '＋', 'add.opening': '正在打开 {name}…', 'add.openingBare': '正在打开…', 'add.cap': '电脑有点忙', 'add.capNums': 'RAM {ram}% · CPU {cpu}%（上限 {max}%）', 'add.capAsk': '还要打开吗？', 'add.go': '还是打开', 'add.cancel': '取消', 'add.err': '没打开：', 'add.retry': '再试', 'add.ok': '知道了', 'add.errGone': '找不到仓库文件夹 {folder}（被移走或删掉了）。', 'add.errFailed': 'Orca 没能开出终端：{detail}', 'add.errLate': '终端开了，但 60 秒还没见到它上线。去 Orca 看那个终端。', 'add.errOther': '服务器没有给出原因（可能没连上）。', 'add.plain': '这台电脑没有 Orca，页面开不了终端。在终端里跑这一行：', 'add.copy': '复制', 'add.copied': '已复制', 'add.close': '关掉', 'fold.rail': '折起名单', 'fold.msg': '折起消息', 'msg.tab': '消息 · {name}', 'b.focus': '看看它', 'follow.on': '跟随 {name}', 'follow.stop': '停止', 'demo.device.cloud': '云端', 'work.edit': '改代码', 'work.read': '看文件', 'work.bash': '跑命令', 'work.other': '忙着', 'work.pause': '停一下', 'step.edit': '改 {file}', 'step.write': '写 {file}', 'step.editAny': '改代码', 'step.writeAny': '写代码', 'step.read': '看文件', 'step.search': '找代码', 'step.web': '查资料', 'step.bash': '跑命令', 'step.send': '派出：{desc}', 'step.sendAny': '派出帮手', 'step.plan': '排计划', 'step.message': '发消息', 'step.other': '忙着', /* cloud-city: texts */ 'cloud.readOnly': '只能看', 'cloud.sign': '云端', 'cloud.machines': '机器', 'cloud.busy': '干活 {n}', 'cloud.wait': '等你 {n}', 'cloud.noMachine': '还没有机器', 'cloud.noMachineHint': '在一台加入过城市的电脑上开一个 Claude 会话，它会自己出现在这里。', 'cloud.noSessions': '这台机器现在没有会话', 'cloud.noSessionsHint': '在它上面开一个 Claude 会话，人就会走出来。会话一开，那台机器的城市自己起来。', 'cloud.offline': '没有机器在线 · 这是 {age}的画面（{label}）', 'cloud.offlineHint': '哪台机器上一开 Claude 会话，它的城市自己起来，这里自动更新', 'cloud.login': '登录已经失效，或者还没登录。请重新登录。', 'cloud.reload': '重新登录', 'cloud.logout': '退出', 'cloud.viewNote': '只能看 · 这台电脑没开云端对话，回答和说话请回到那台电脑', 'cloud.notConnected': '没连上 · 重试中…', 'cloud.justNow': '刚刚', 'cloud.ageSec': '{n} 秒前', 'cloud.ageMin': '{n} 分钟前', 'cloud.ageHour': '{n} 小时前', 'cloud.ageDay': '{n} 天前', 'cloud.talk.on': '可对话', 'cloud.talk.off': '只能看', 'cloud.box.talkOff': '这台电脑没开「云端对话」，只能看。在它的终端里自己打这条命令就开：agent-city cloud-talk on', 'cloud.box.offline': '那台电脑现在不在线，发不了。它一上线，这里自己恢复。', 'cloud.tooFast': '发得太快了，等一会儿再发。', 'cloud.tooMany': '今天发得太多了，明天再发。', 'cloud.later.ask': '它在等你批准或选择（"?"）：在这里批准、选择，以后开放。现在请到那台电脑上回答。', 'cloud.later.demo': '演示工具 · 以后开放', 'cloud.start.on': '可开 agent', 'cloud.start.off': '这台电脑不接受云端「加 agent」。要开，在它的终端里自己打：\nagent-city cloud-start on', 'cloud.start.needTalk': '这台电脑只能看。先开对话，再开「加 agent」：\nagent-city cloud-talk on\nagent-city cloud-start on', 'add.cloud.sent': '在路上…', 'add.cloud.sentTip': '已存到云端，等那台电脑来取', 'add.cloud.opening': '那台电脑正在打开 {name}…', 'add.cloud.openingBare': '那台电脑正在打开…', 'add.cloud.done': '已打开 {name} · 小人马上出现', 'add.cloud.cap': '那台电脑有点忙', 'add.cloud.tooMany': '开得太多了：一小时最多 10 个。{min} 分钟后再试。', 'add.cloud.tooManyDay': '今天开得太多了，明天再试。', 'add.cloud.noAnswer': '没连上云端，不确定指令有没有存上。等一下再点一次。', 'add.cloud.why.off': '那台电脑没开（60 秒没来取这个指令）。这个指令作废，以后也不会再开。', 'add.cloud.why.startOff': '那台电脑不接受云端「加 agent」。在它的终端里自己打：agent-city cloud-start on', 'add.cloud.why.noOrca': '那台电脑不能自己开终端（没有 Orca）。请到那台电脑上手动开。', 'add.cloud.why.gone': '那台电脑上找不到这个仓库的文件夹（被移走或删掉了）。', 'add.cloud.why.orca': 'Orca 没能开出终端：{detail}', 'add.cloud.why.late': '终端开了，但 60 秒还没见到它上线。到那台电脑的 Orca 里看那个终端。', 'add.cloud.why.busy': '这个仓库正在开另一个 agent，等它开完再点。', 'add.cloud.why.flood': '那台电脑一小时内已经开了 10 个，它不再接。过一会儿再试。', 'add.cloud.why.silent': '那台电脑接了指令后 3 分钟没回音（可能关机了）。到那台电脑上看终端有没有开。', 'add.cloud.why.restart': '那台电脑的城市程序中途重启了，这个指令作废，不会再执行。到那台电脑上看终端有没有开。', 'add.cloud.why.refused': '那台电脑不认这个仓库（它没加入云端，或文件夹不在那台电脑上）。', 'add.cloud.why.other': '没打开，原因不明。到那台电脑上看看。', 'arr.btn': '整理', 'arr.on': '整理中', 'arr.tip': '拖一块地到虚线格子；拖到另一块地上 = 交换。也可以先点地，再点格子。', 'arr.tipPick': '选中了 {name}：点一个虚线格子搬过去，或点另一块地交换。', 'arr.hide': '隐藏', 'arr.show': '显示', 'arr.cancel': '取消', 'arr.done': '完成', 'arr.tray': '已隐藏', 'arr.waits': '{n} 人在等你', 'arr.last': '至少留一块地', 'arr.hidden': '已隐藏 {n} 个', 'arr.hiddenWait': ' · 其中 {n} 个在等你', 'arr.manage': '管理', 'arr.errTaken': '那个格子已经有地了', 'arr.errSea': '海边那块地的南边要留给海', 'arr.errEmpty': '至少留一块地', 'arr.errOther': '没存上，再试一次' }, en: { 'btn.log': 'Activity', 'aria.city': 'City', 'aria.canvas': '3D island: each little person is one agent', 'proto.banner': 'Prototype - demo data', 'btn.zoomIn': 'Zoom in', 'btn.zoomOut': 'Zoom out', 'btn.rotate': 'Rotate', 'btn.resetView': 'Reset the view', 'repo.all': 'All', 'aria.repos': 'Repos: click one to fly there', 'repo.goAria': 'Fly to {name}', 'cap.hint': 'That is as far as it goes - click "All" to see every repo','btn.close': 'Close', 'aria.toolbar': 'Controls', 'label.spawn': 'Send a', 'opt.worker': 'worker - builds houses', 'opt.taskManager': 'task manager - test tower', 'opt.fastLaneDeputy': 'fast-lane deputy - garden', 'opt.mergeDeputy': 'merge deputy - bridge', 'btn.spawn': 'Send', 'btn.remoteOff': 'Disconnect relay', 'btn.remoteOn': 'Resume', 'btn.remoteLeave': 'Leave the linked city', 'type.house': 'House', 'type.shop': 'Shop', 'type.tower': 'Tower', 'type.workshop': 'Workshop', 'type.library': 'Library', 'district.house': 'Homes', 'district.shop': 'Shops', 'district.tower': 'Tests', 'district.workshop': 'Workshops', 'district.library': 'Library', 'chat.state.queued': 'Queued', 'chat.state.delivered': 'Delivered', 'chat.state.undelivered': 'Undelivered', 'chat.why.notListening': 'it is not listening, it did not get this', 'chat.state.sent': 'On its way', 'chat.you.cloud': 'You (cloud)', 'chat.you.local': 'You (page on the computer)', 'chat.why.off': 'that computer is off', 'chat.why.ended': 'this session has ended', 'chat.why.talkOff': 'that computer does not take cloud messages', 'chat.why.refused': 'that computer did not accept it', 'chat.why.flood': 'too many messages too fast, that computer did not accept it', 'chat.resend': 'Send again', 'chat.new': 'New messages ↓', 'hist.title': 'History (newest at the bottom)', 'hist.empty': 'Nothing yet', 'hist.all': 'Show steps {n}', 'hist.hide': 'Hide steps', 'hist.onlyMech': 'Only steps so far - tap "Show steps"', 'hist.started': 'Headed out: {task}', 'hist.stuck': 'Stuck: {text}', 'hist.toLead': 'To the manager', 'hist.toGov': 'To the governor', 'hist.waiting': 'Waiting on you', 'hist.done': 'Finished, heading to rest', 'hist.left': 'Clocked out', 'chat.task': 'Task (what it was sent with)', 'team.title': '{repo} · Team', 'role.task-manager': 'Task manager', 'role.worker': 'Worker', 'role.fast-lane-deputy': 'Fast-lane deputy', 'role.merge-deputy': 'Merge deputy', 'role.other': 'Helper', 'era.village': 'Village', 'era.town': 'Town', 'era.city': 'City', 'quality.good': 'Tidy', 'quality.fair': 'OK', 'quality.poor': 'Messy', 'who.governor': 'Governor', 'who.owner': 'You', 'who.terminal': 'Terminal', 'state.spawn': 'Heading out', 'state.to_plot': 'To the site', 'state.building': 'Building', 'state.working': 'Working', 'state.to_hall': 'To the governor', 'state.asking': 'Asking the governor', 'state.heard': 'Got the answer', 'state.to_lead': 'To the manager', 'state.at_lead': 'Asking the manager', 'state.back': 'Back to the site', 'state.finishing': 'Topped out', 'state.to_rest': 'Heading to rest', 'state.resting': 'Resting', 'state.leaving': 'Heading home', 'status.need_approval': 'Needs your OK', 'status.asking_gov': 'Asking the governor', 'status.waiting_answer': 'Waiting on your answer', 'status.waiting_reply': 'Waiting on you', 'status.waiting': 'Waiting on you', 'status.background': 'Working in background', 'status.idle': 'Idle', 'stuck.permission': 'Needs permission: {tool}', 'stuck.default': 'Needs your eyes', 'gov.away': 'Away', 'gov.busy': 'Busy', 'gov.home': 'At the town hall', 'top.work': 'Working', 'top.ask': 'Need governor', 'top.rest': 'Resting', 'top.done': 'Built', 'top.stalled': 'Stalled site', 'top.pending': 'Waiting', 'top.pendingAria': '{n} waiting on your call - click to open the earliest', 'empty.noLand': 'No territory yet - start inside a git repo, or wait for an agent', 'loading.text': 'Loading assets…', 'loading.progress': 'Loading assets {n}/{total}', 'loading.error': 'Assets failed to load: {err}', 'site.human': 'Hands-on', 'log.eraUpgrade': '{name} is upgrading to {era}', 'say.done': 'Done!', 'log.leftWork': '{task} clocked out', 'gov.dispatch': 'Go: {task}', 'log.govDispatch': 'The governor sent {label}: {task}', 'log.siteMerged': '{branch} merged into main, the site wrapped up', 'log.siteRemoved': 'The {branch} site was pulled down', 'log.levelUp': '{label} leveled up to {lv}', 'log.movedBack': '{label} moved back to the {kind} district', 'log.demolished': 'Every file behind {label} is gone, demolished', 'log.stuckDemo': '{task} got stuck: "{text}" -> asking the governor', 'answer.default': 'Answered', 'log.govAnswer': 'The governor answered {task}: "{text}"', 'log.doneRestPlain': '{task} finished, heading to rest', 'log.doneRestBuilt': '{task} finished: {kind} topped out, heading to rest', 'log.noplot': '{name} found no empty plot, waiting a bit', 'gov.unknown': 'Unknown', 'gov.busyRow': 'Busy', 'gov.idleRow': 'Idle', 'gov.title': '{name} governor', 'chain.lead': 'Manager', 'chain.leadTask': 'Manager {task}', 'chat.empty': 'No conversation yet', 'chat.you.page': 'You (page)', 'chat.you.terminal': 'You (terminal)', 'chat.wait': 'Waiting for it to finish this step', 'chat.loadError': 'Could not load the conversation - try opening it again in a moment.', 'kv.repo': 'Repo', 'kv.branch': 'Branch', 'kv.doing': 'Doing', 'qa.ask': 'Q: “{q}”', 'qa.answer': 'A: “{a}”', 'qa.waiting': 'Q: “{q}” - waiting for an answer…', 'act.makeStuck': 'Make it stuck', 'act.makeDone': 'Make it finish', 'act.makeLeave': 'Make it clock out', 'act.demoNote': 'These three buttons exist only in the prototype, to try the flow.', 'gov.ownTag': 'main manager · main conversation', 'gov.tagLabel': 'Governor · main manager', 'gov.rgRole': 'main manager · Governor', 'pill.hall': 'Town hall', 'gov.awayNote': 'The governor is away: this repo has no main manager session right now. Agent questions go straight to you, without waiting for the governor first.', 'hint.team': 'Team', 'hint.noAgents': 'No agents at work yet. Open a Claude Code session and send an agent - it will walk out of the town hall.', 'hint.pickSomething': 'Click a person or building in the city, or a row in the list below.', 'building.misplaced': ' - in the wrong district', 'building.level': ' - level {level}', 'building.district': '{kind} district', 'building.module': '{name} module', 'hint.files': 'The files that built it', 'hint.history': 'Who has touched it (newest first)', 'detail.title': 'Details', 'opt.other': 'Other', 'opt.customAnswer': 'Write your own answer', 'btn.sendAnswer': 'Send answer', 'kv.tool': 'Tool', 'kv.file': 'File', 'kv.url': 'URL', 'said': 'It said: {text}', 'kv.dir': 'Directory', 'field.denyReason': 'Reason for denying (optional; if filled in, it is told to it as-is)', 'field.denyPlaceholder': 'e.g. do not delete dist/ yet, it has the release package', 'btn.allow': 'Allow', 'btn.deny': 'Deny', 'ask.asking': 'is asking', 'card.permission': 'Needs permission', 'card.question': 'Asks you', 'ask.needsPermission': 'needs permission', 'pill.closed': 'Closed', 'aria.collapse': 'Collapse (without answering)', 'foot.terminalAnswers': 'The terminal can answer too - whichever answers first wins.', 'err.decideNetwork': 'Could not send (cannot reach the city server). The terminal can still answer.', 'err.decideStatus': 'Could not send ({status}). The terminal can still answer, or try again.', 'proto.live': 'Live - waiting for the server', 'proto.connected': 'Live - connected', 'proto.reconnecting': 'Live - reconnecting…', 'log.relayOff': 'City-link relay disconnected: other members are frozen, my city keeps working as normal.', 'log.relayOn': 'City-link resumed: other members update to the latest.', 'log.relayLeave': 'Left the linked city: other members disappear from my city; my city is unchanged.', 'demo.task.checkoutTest': 'Write checkout tests', 'demo.task.paymentRetry': 'Fix payment-timeout retry', 'demo.q.paymentRetry': 'Should a payment timeout retry automatically?', 'demo.task.depsScan': 'Scan dependencies for vulnerabilities', 'demo.task.worker.0': 'Settings page form', 'demo.task.worker.1': 'Login API', 'demo.task.worker.2': 'Export CSV', 'demo.task.worker.3': 'Dark mode', 'demo.task.worker.4': 'Receipt printing', 'demo.task.worker.5': 'Search box', 'demo.task.worker.6': 'Pagination', 'demo.task.worker.7': 'Price calculation', 'demo.task.worker.8': 'Inventory alerts', 'demo.task.worker.9': 'Customer list', 'demo.task.taskManager.0': 'Settings page', 'demo.task.taskManager.1': 'Login', 'demo.task.taskManager.2': 'Reports', 'demo.task.taskManager.3': 'Printing', 'demo.task.taskManager.4': 'Inventory', 'demo.task.fastLaneDeputy.0': 'Typos', 'demo.task.fastLaneDeputy.1': 'Button colour', 'demo.task.fastLaneDeputy.2': 'Icon size', 'demo.task.fastLaneDeputy.3': 'Title wrapping', 'demo.task.fastLaneDeputy.4': 'Empty-state copy', 'demo.task.mergeDeputy.0': 'Merge settings', 'demo.task.mergeDeputy.1': 'Merge login', 'demo.task.mergeDeputy.2': 'Merge report', 'demo.task.mergeDeputy.3': 'Merge print', 'demo.qa.0.q': 'Which test name is unclear - which one?', 'demo.qa.0.a': 'Go with the default, log it', 'demo.qa.1.q': 'Which API path should I use?', 'demo.qa.1.a': 'Use /api/settings', 'demo.qa.2.q': 'Should I add pagination?', 'demo.qa.2.a': 'Not yet, write it into ideas', 'demo.qa.3.q': 'What is the default language?', 'demo.qa.3.a': 'zh, matching agent.conf', 'demo.qa.4.q': 'Does the old data need migrating?', 'demo.qa.4.a': 'Yes, write a test first', 'demo.qa.5.q': 'Can I change this file?', 'demo.qa.5.a': 'Yes, only your own copy', 'demo.qa.6.q': 'Can I run this command?', 'demo.qa.6.a': 'Approved, go ahead', 'aria.needsApproval': '{task} needs your approval, click to open', 'aria.needsAnswer': '{task} needs your answer, click to open', 'aria.stuckOnlyThem': '{name} is stuck; only {name} can answer', 'aria.govNeedsApproval': 'The governor needs your approval, click to open', 'aria.govNeedsAnswer': 'The governor needs your answer, click to open', 'gov.waitCountdown': 'Governor {s}s', 'chat.sendError': 'Could not send (cannot reach the city server).', 'btn.findLead': 'Find the lead: {name}', 'hint.readOnlySub': 'This is a subtask; the conversation is view only - go to its lead for anything else.', 'placeholder.saySomething': 'Say something to it…', 'btn.send': 'Send', 'label.ask': 'Q: ', 'label.answer': 'A: ', 'label.awaitingAnswer': 'awaiting an answer…', 'member.unknown': 'Unknown', 'chip.off': 'City-link disconnected - {n} queued', 'chip.refused': 'City-link refused the key', 'chip.ok': 'City-link - {people} people - {devices} devices', 'remote.note': 'View only: this agent belongs to {who} - only {who} can answer it.', 'stale.sec': 'Last updated {n}s ago', 'stale.min': 'Last updated {n}m ago', 'ask.permission': '{name} needs permission: {what} -> waiting on you', 'ask.toOwner': '{name} asks you: “{what}”', 'ask.toGov': '{name} asks the governor: “{what}”', 'ask.toGovNoGov': '{name} asks the governor: “{what}”, no governor around -> waiting on your answer', 'askphase.pass': 'The governor: not mine to decide -> waiting on your answer for {name}', 'askphase.timeout': 'The governor did not answer {name} in {wait}s -> waiting on you', 'closed.routed': 'The request from {name} was routed to {who}: {what}', 'closed.answered': '{who} answered {name}: “{text}”', 'closed.answeredDefault': '{who} already answered {name}', 'closed.allowed': '{who} allowed {name}: {what}', 'closed.denied': '{who} denied {name}: {what}', 'closed.deniedReason': ', reason: “{reason}”', 'closed.ended': '{who} closed {name}: {what}', 'why.permission': 'Only you can approve permissions - the governor does not.', 'why.gov': 'The governor cannot decide this - it is yours.', 'why.timeout': 'The governor did not answer in {wait}s - it is yours.', 'why.pass': 'The governor said: not mine to decide - it is yours.', 'why.noGov': 'No governor around - it goes straight to you.', 'closed.late': 'Too late: <b>{who}</b> already handled it at {time}. No need to click here.', 'closed.pending': 'Handled at {time}; the result has not come back yet. Noted.', 'closed.answeredText': 'Answered: “{text}”', 'closed.allowedText': 'Allowed', 'closed.deniedText': 'Denied', 'closed.lateFull': 'Too late: <b>{who}</b> already {text} at {time}. No need to click here.', 'closed.doneByYou': '<b>{who}</b> {text} at {time}. Noted.', 'log.chatSent': 'You -> {to}: {text}', 'log.remoteSpawn': '{who} ({device}) - {label} started: {task}', 'log.remoteDone': '{who} ({device}) - {task} finished', 'log.remoteLeft': '{who} ({device}) - {task} went offline', 'say.understood': 'Got it!', 'log.eraBecame': '{name} became a {era}', 'demo.seed.prompt': 'Finish this page first, do not touch anything else yet', 'demo.seed.reply': 'OK, doing this page first, leaving the rest alone', 'chat.stateSuffix': ' ({state})', 'punct.answerJoin': '; ', 'rail.title': 'Now', 'rail.count': '{n}', 'rail.rest': 'Resting {n}', 'rail.tab': 'Now {n}', 'rail.none': 'Nobody online', 'add.tip': 'Add agent', 'add.plus': '+', 'add.opening': 'Opening {name}…', 'add.openingBare': 'Opening…', 'add.cap': 'The computer is busy', 'add.capNums': 'RAM {ram}% · CPU {cpu}% (limit {max}%)', 'add.capAsk': 'Open it anyway?', 'add.go': 'Open anyway', 'add.cancel': 'Cancel', 'add.err': 'Not opened: ', 'add.retry': 'Try again', 'add.ok': 'Got it', 'add.errGone': 'Cannot find the repo folder {folder} (moved or deleted).', 'add.errFailed': 'Orca could not open a terminal: {detail}', 'add.errLate': 'The terminal opened, but nothing showed up in 60 seconds. Look at that terminal in Orca.', 'add.errOther': 'The server gave no reason (it may be out of reach).', 'add.plain': 'This computer has no Orca, so the page cannot open a terminal. Run this line in a terminal:', 'add.copy': 'Copy', 'add.copied': 'Copied', 'add.close': 'Close', 'fold.rail': 'Fold the list', 'fold.msg': 'Fold the messages', 'msg.tab': 'Messages · {name}', 'b.focus': 'Show it', 'follow.on': 'Following {name}', 'follow.stop': 'Stop', 'demo.device.cloud': 'Cloud', 'work.edit': 'Editing', 'work.read': 'Reading', 'work.bash': 'Running', 'work.other': 'Busy', 'work.pause': 'Pausing', 'step.edit': 'Editing {file}', 'step.write': 'Writing {file}', 'step.editAny': 'Editing code', 'step.writeAny': 'Writing code', 'step.read': 'Reading files', 'step.search': 'Searching code', 'step.web': 'Looking things up', 'step.bash': 'Running a command', 'step.send': 'Sending out: {desc}', 'step.sendAny': 'Sending a helper', 'step.plan': 'Planning', 'step.message': 'Sending a message', 'step.other': 'Busy', /* cloud-city: texts */ 'cloud.readOnly': 'View only', 'cloud.sign': 'Cloud', 'cloud.machines': 'Machines', 'cloud.busy': 'Working {n}', 'cloud.wait': 'Waiting {n}', 'cloud.noMachine': 'No machine yet', 'cloud.noMachineHint': 'Open a Claude session on a machine that has joined the city. It shows up here by itself.', 'cloud.noSessions': 'This machine has no sessions right now', 'cloud.noSessionsHint': 'Open a Claude session on it and the people walk out. The city on that machine starts by itself once a session opens.', 'cloud.offline': 'No machine is online - this is the picture from {age} ({label})', 'cloud.offlineHint': 'When a Claude session opens on any machine, its city starts by itself and this page updates', 'cloud.login': 'You are signed out, or the login has expired. Please sign in again.', 'cloud.reload': 'Sign in again', 'cloud.logout': 'Sign out', 'cloud.viewNote': 'View only - this computer has not turned on cloud talk; to answer or talk, go back to that computer', 'cloud.notConnected': 'Not connected - trying again…', 'cloud.justNow': 'just now', 'cloud.ageSec': '{n} s ago', 'cloud.ageMin': '{n} min ago', 'cloud.ageHour': '{n} h ago', 'cloud.ageDay': '{n} d ago', 'cloud.talk.on': 'Can talk', 'cloud.talk.off': 'View only', 'cloud.box.talkOff': 'This computer has not turned on "cloud talk", so it is view only. Type this command in its own terminal to turn it on: agent-city cloud-talk on', 'cloud.box.offline': 'That computer is offline, so nothing can be sent. When it is back, this box returns by itself.', 'cloud.tooFast': 'Too fast - wait a moment, then send again.', 'cloud.tooMany': 'Too many messages today - try again tomorrow.', 'cloud.later.ask': 'It is waiting for you to approve or choose ("?"): doing that here comes later. For now, answer it on that computer.', 'cloud.later.demo': 'Demo tools · later', 'cloud.start.on': 'Can start agents', 'cloud.start.off': 'This computer does not take cloud "Add agent" orders. To turn it on, type this in its own terminal:\nagent-city cloud-start on', 'cloud.start.needTalk': 'This computer is view only. Turn on talk first, then "Add agent":\nagent-city cloud-talk on\nagent-city cloud-start on', 'add.cloud.sent': 'On its way…', 'add.cloud.sentTip': 'Saved in the cloud, waiting for that computer to pick it up', 'add.cloud.opening': 'That computer is opening {name}…', 'add.cloud.openingBare': 'That computer is opening…', 'add.cloud.done': 'Opened {name} · the person shows up in a moment', 'add.cloud.cap': 'That computer is busy', 'add.cloud.tooMany': 'Too many opened: at most 10 an hour. Try again in {min} min.', 'add.cloud.tooManyDay': 'Too many opened today - try again tomorrow.', 'add.cloud.noAnswer': 'No answer from the cloud, so it is not sure the order was saved. Wait a moment, then click again.', 'add.cloud.why.off': 'That computer is off (it did not pick up this order in 60 seconds). The order is cancelled and will never run later.', 'add.cloud.why.startOff': 'That computer does not take cloud "Add agent" orders. Type this in its own terminal: agent-city cloud-start on', 'add.cloud.why.noOrca': 'That computer cannot open a terminal by itself (no Orca). Open one there by hand.', 'add.cloud.why.gone': 'That computer cannot find the folder of this repo (moved or deleted).', 'add.cloud.why.orca': 'Orca could not open a terminal: {detail}', 'add.cloud.why.late': 'The terminal opened, but nothing showed up in 60 seconds. Look at that terminal in Orca on that computer.', 'add.cloud.why.busy': 'This repo is already opening another agent. Wait until it is done, then click.', 'add.cloud.why.flood': 'That computer already opened 10 this hour and takes no more. Try again later.', 'add.cloud.why.silent': 'That computer took the order and said nothing for 3 minutes (it may be off). Look on that computer to see if a terminal opened.', 'add.cloud.why.restart': 'The city program on that computer restarted midway, so this order is cancelled and will not run. Look on that computer to see if a terminal opened.', 'add.cloud.why.refused': 'That computer does not know this repo (it has not joined the cloud, or its folder is not on that computer).', 'add.cloud.why.other': 'Not opened, and the reason is unknown. Look on that computer.', 'arr.btn': 'Arrange', 'arr.on': 'Arranging', 'arr.tip': 'Drag a land to a dashed slot; drop it on another land to swap. Or tap a land, then a slot.', 'arr.tipPick': '{name} is picked: tap a dashed slot to move it, or another land to swap.', 'arr.hide': 'Hide', 'arr.show': 'Show', 'arr.cancel': 'Cancel', 'arr.done': 'Done', 'arr.tray': 'Hidden', 'arr.waits': '{n} waiting for you', 'arr.last': 'Keep at least one land', 'arr.hidden': '{n} hidden', 'arr.hiddenWait': ' · {n} waiting for you', 'arr.manage': 'Manage', 'arr.errTaken': 'That slot is taken', 'arr.errSea': 'The cell south of a coast land is its sea', 'arr.errEmpty': 'Keep at least one land', 'arr.errOther': 'Not saved, try again.' } };
 /* idea-city C1: i18n(key, vars) -> TEXT[en or zh][key], every "{name}" replaced by vars[name]; an
    unknown key gives the key itself back. A plain top-level function declaration -- every caller in
    this file reaches it by that name (never `T`: several test drivers use a local `T` for "the
@@ -598,8 +673,16 @@ applyText();
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#city'), ovRoot = $('#ov');
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const rnd = (a, b) => a + Math.random() * (b - a);
-const pick = a => a[Math.floor(Math.random() * a.length)];
+/* The page's random. Unseeded it is Math.random, as always. A test (or ?seed=N in the address) makes it a
+   repeatable stream with seedRandom(n). */
+let rand = Math.random;
+function seedRandom(n) {
+  let s = (n >>> 0) || 1;
+  rand = () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+{ const m = /[?&]seed=(\d+)/.exec(location.search || ''); if (m) seedRandom(+m[1]); }
+const rnd = (a, b) => a + rand() * (b - a);
+const pick = a => a[Math.floor(rand() * a.length)];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const BASE = Date.now();
 const FRAME_MS = 33;
@@ -991,7 +1074,7 @@ const DEMO_SITES = [
 function topCounts(){
   let work = 0, ask = 0, rest = 0;
   for (const c of citizens) {
-    if (c.remote) continue;
+    if (c.remote || c.gone) continue; // city-layout L3: a person of a hidden land is gone at once, even before the next tick
     const g = STATE[c.state][0]; if (g === 'ask') ask++; else if (g === 'rest') rest++; else if (c.state !== 'leaving') work++;
   }
   for (const f of governorFigures()) { const g = govsByTerr.get(f.terr); if (g && g.state === 'busy') work++; }
@@ -1287,7 +1370,7 @@ function stuckText(ev) {
 /* applyAsk(c, ask): snapshot = live. With an ask view it sets c.askKind,
    c.askPhase, c.stuck and c.question the same way the live 'ask' event
    does; with null it clears the ask fields (a reconnect may find the ask
-   already closed). `case 'ask'` and `case 'snapshot'` both use it, so a
+   already closed). The live ask event and the snapshot both use it, so a
    page opened after the fact shows exactly what an open page shows. */
 function applyAsk(c, ask) {
   if (ask) {
@@ -1505,10 +1588,12 @@ function chatScroll(prev, next){
    rewriting it while the last line is still a steps line, else starting a new one. */
 const ACT_KEEP = 60;
 function actLog(c, text){
+  if (!ownHist(c)) return; // city-data: the server writes this line
   c.acts.push({ at: Date.now() / 1000, text });
   if (c.acts.length > ACT_KEEP) c.acts.splice(0, c.acts.length - ACT_KEEP);
 }
 function actTool(c, step){
+  if (!ownHist(c)) return; // city-data: the server writes this line
   const last = c.acts[c.acts.length - 1];
   if (last && last.steps) {
     if (last.steps.includes(step)) return;
@@ -1519,6 +1604,35 @@ function actTool(c, step){
     c.acts.push({ at: Date.now() / 1000, steps: [step], text: step });
     if (c.acts.length > ACT_KEEP) c.acts.splice(0, c.acts.length - ACT_KEEP);
   }
+}
+/* city-data: the server keeps every person's history and sends it (the snapshot's hist, then one 'hist' line
+   per new line); the page only words the lines, with the same words as the live ones. serverHist is on once a
+   snapshot carries hist -- never on the cloud page (its picture has none), never with an older server. Then
+   actLog / actTool / giveAnswer write nothing for this machine's own people, so two tabs show the same list.
+   Another member's person (c.remote) stays the page's own, as before. HIST_KEEP: the most lines a person holds. */
+const HIST_KEEP = 200;
+let serverHist = false;
+function ownHist(c){ return !serverHist || !!c.remote; }
+/* histLine(c, line, fold): one server line {k, at, ...} into c's own stores: acts (started, steps, stuck, toLead,
+   toGov, waiting, done, left) or qa (a question with its answer); any other k, or no line, adds nothing. With
+   fold, a steps line replaces the last act when that is a steps line too (the server grows one line). */
+function histLine(c, line, fold){
+  if (!c || !line) return;
+  const at = line.at, k = line.k;
+  if (k === 'started') c.acts.push({ at, text: i18n('hist.started', { task: line.task }) });
+  else if (k === 'steps') {
+    const steps = [];
+    for (const s of Array.isArray(line.steps) ? line.steps : []) { const t = stepText(s || {}); if (!steps.includes(t)) steps.push(t); }
+    if (!steps.length) return;
+    const act = { at, steps, text: steps.join(' · ') }, last = c.acts[c.acts.length - 1];
+    if (fold && last && last.steps) c.acts[c.acts.length - 1] = act; else c.acts.push(act);
+  }
+  else if (k === 'stuck') c.acts.push({ at, text: i18n('hist.stuck', { text: stuckText(line) }) });
+  else if (k === 'toLead' || k === 'toGov' || k === 'waiting' || k === 'done' || k === 'left') c.acts.push({ at, text: i18n('hist.' + k) });
+  else if (k === 'qa') c.qa.push({ q: stuckText(line), a: typeof line.answer === 'string' && line.answer ? line.answer : i18n('answer.default'), at });
+  else return;
+  if (c.acts.length > HIST_KEEP) c.acts.splice(0, c.acts.length - HIST_KEEP);
+  if (c.qa.length > HIST_KEEP) c.qa.splice(0, c.qa.length - HIST_KEEP);
 }
 /* city-polish C2 (owner: "like Claude Code itself hides its mechanism"): the history shows the MAIN
    messages -- the human's prompts and the agent's final replies to the human -- and one small toggle
@@ -1978,8 +2092,11 @@ function rerouteBlocked(){
     // a new footprint just landed right on the citizen itself -- moving or standing still, it is moved to
     // the nearest free point at once (never a frame inside it, moving or not), then re-routed to the same
     // target from there (city-people, Walk: re-route).
+    // city-layout L3: not a person sitting on its own rest seat -- the bench stands there by design (rest seats
+    // are never snapped), so a new picture of the island (a land that moved) must not throw it off its seat.
     let onNew = false;
-    if (!freeAt(c.x, c.y)) { const s = snapFree(c.x, c.y); c.x = s.x; c.y = s.y; onNew = true; }
+    const seated = c.state === 'resting' && c.rest && Math.hypot(c.x - c.rest.x, c.y - c.rest.y) < .05;
+    if (!seated && !freeAt(c.x, c.y)) { const s = snapFree(c.x, c.y); c.x = s.x; c.y = s.y; onNew = true; }
     if (!c.path || !c.path.length) continue;
     let ax = c.x, az = c.y, hit = onNew;
     if (!hit) for (const [bx, bz] of c.path) { if (!segFree([ax, az], [bx, bz])) { hit = true; break; } ax = bx; az = bz; }
@@ -2449,7 +2566,7 @@ function newCitizen(id, role, task, terr){
   return { id, role, label:role, task, terr, color:R.color, skin:pick(SKIN), x:stand.x, y:stand.y, path:[], state:'spawn', stateT:0,
     alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0,Other:0}, work:0, bld:null, stand, home:null, slot:null, rest:null, pendingBuild:null,
     question:'', answer:'', answered:false, pendingAnswer:'', askT:0, stuck:false, doneFlag:false, leaveFlag:false,
-    askKind:'', askPhase:'', qa:[], bubble:null, walkT:Math.random()*5, workKind:'', workAt:0, workSince:0, step:'', feed:null, gone:false,
+    askKind:'', askPhase:'', qa:[], bubble:null, walkT:rand()*5, workKind:'', workAt:0, workSince:0, step:'', feed:null, gone:false,
     office:null, lead:'', relay:'', toolAt:0, strollPhase:'', strollPauseUntil:0, strollOutPath:[], waiting:false, acts:[],
     yaw:0 };
 }
@@ -3142,7 +3259,7 @@ function goOffice(c, leadC){
 function releaseSlot(c){ if (c.slot && !c.slot.extra) c.slot.by = 0; c.slot = null; }
 function giveAnswer(c){
   if (DEMO) { govSay(c.terr || govTerr, c.answer, 2.6); gov.answered++; }
-  c.qa.push({ q: c.question, a: c.answer, at: Date.now() / 1000 });
+  if (ownHist(c)) c.qa.push({ q: c.question, a: c.answer, at: Date.now() / 1000 }); // city-data: else the server's line
   c.state = 'heard'; c.stateT = 0;
   heardTalk(c); // city-talk T3: the governor tells it face to face while it stands there
 }
@@ -3532,7 +3649,13 @@ function apply(ev){
     case 'snapshot': {
       const agents = ev.agents || [];
       const seen = new Set(agents.map(a => a.id));
+      // city-layout L2: the repos the owner hid (a picture without the key: none)
+      hiddenLands = hiddenOf(ev.hidden);
+      // city-layout L3: people of a land that is no longer in this view are gone at once -- never a walk to
+      // the edge of a land that is not there (landState() below drops the rest of it)
+      const lostLands = ev.world ? landSteps(ev.world).lost : new Set();
       for (const old of citizens.slice()) {
+        if (lostLands.has(old.terr)) { old.gone = true; continue; }
         if (seen.has(old.id)) continue;
         old.leaveFlag = true;
         if (old.state === 'resting' || !old.doneFlag) forceLeave(old);
@@ -3556,6 +3679,18 @@ function apply(ev){
       if (ev.notice) log(ev.notice);
       for (const old of citizens) applyAsk(old, null);
       for (const a of agents) if (!byId(a.id)) placeAgent(a);
+      // city-data: a snapshot with hist says the server keeps the history: every person of this machine gets
+      // exactly the server's lines (a reload replaces, never doubles); no hist (cloud page, older server): off,
+      // the page's own lines stay as they are
+      serverHist = !CLOUD && !!ev.hist && typeof ev.hist === 'object';
+      if (serverHist) {
+        for (const old of citizens) {
+          if (old.remote) continue;
+          old.acts = []; old.qa = [];
+          const lines = ev.hist[old.id];
+          for (const line of Array.isArray(lines) ? lines : []) histLine(old, line, false);
+        }
+      }
       // snapshot = live: govs replaces the whole picture of who is present, empty means nobody
       govsByTerr.clear();
       for (const g of ev.govs || []) govsByTerr.set(g.terr, { state: g.state });
@@ -3573,10 +3708,21 @@ function apply(ev){
       }
       return null;
     }
+    // city-data: one new line of a person's history, from the server (fold: it grows the last steps line)
+    case 'hist': {
+      if (!c || c.remote) return null;
+      histLine(c, ev.line, !!ev.fold);
+      return c;
+    }
     case 'world': {
       syncSites(ev.world); // Worktrees: before buildLand -- see the snapshot case's own comment above
       buildLand(ev.world);
       if (ev.notice) log(ev.notice);
+      return null;
+    }
+    // city-layout L2: the server says which repos are hidden and who waits there (its own message, never the picture's)
+    case 'hidden': {
+      hiddenLands = hiddenOf(ev.lands);
       return null;
     }
     case 'site': {
@@ -4044,14 +4190,20 @@ function applyRemote(inner, who){
   }
   return null;
 }
-/* V1 (sim): REPO_COLORS -- one accent colour per territory (the rail's dots, --rc), cycling by the
-   territory's own index in map.territories (so the same territory keeps the same colour as others come
-   and go around it). terrColor(terr) -> that colour; '#8D91B3' (--ink-3, a neutral) for a territory not
-   in the map at all. */
+/* V1 (sim): REPO_COLORS -- one accent colour per territory (the rail's dots, the repo tags, the name plates,
+   --rc), cycling by the territory's own number. terrColor(terr) -> that colour. city-layout L2b: the number
+   is t.n, the territory's place in the machine's saved order that the server's view carries (hidden repos
+   counted), so a repo keeps its colour when other repos are hidden or shown around it. A view without n (the
+   demo's first paint, an older server) goes by the territory's index in map.territories, as before.
+   '#8D91B3' (--ink-3, a neutral) for a territory not in the map at all. Every place that colours a repo
+   goes through terrColor, never through an index of its own. */
 const REPO_COLORS = ['#4D7CFE', '#FF7593', '#2FB57A', '#E8A33A', '#8A6FE0', '#2FAFC4', '#E0577E', '#6FA33A'];
 function terrColor(terr){
-  const i = (map.territories || []).findIndex(t => t.id === terr);
-  return i < 0 ? '#8D91B3' : REPO_COLORS[i % REPO_COLORS.length];
+  const list = map.territories || [];
+  const i = list.findIndex(t => t.id === terr);
+  if (i < 0) return '#8D91B3';
+  const n = Number.isInteger(list[i].n) && list[i].n >= 0 ? list[i].n : i;
+  return REPO_COLORS[n % REPO_COLORS.length];
 }
 /* the governor row's own status, per territory (Interaction: a governor per territory) ->
    [class, text]: 不在 only when governorAt(terr) is null, else its state (busy/idle/waiting ->
@@ -4154,7 +4306,9 @@ function rowWaitsOnYou(row){
 /* V1 (sim): railCount(groups) -> {active, you}: active = every row that is not resting (cloud-polish: a
    governor is a session, so its row counts too -- railGroups() only has one while that governor is present);
    you = those among them waiting on the owner (rowWaitsOnYou), read fresh every call (the rows themselves
-   only carry id/depth/rest, never a cached status). */
+   only carry id/depth/rest, never a cached status).
+   city-layout L2: you also counts the people who wait in hidden repos (the sum of wait in hiddenLands): the
+   rail head's and the folded tab's red count never hide them. active is as before (hidden repos have no rows). */
 function railCount(groups){
   let active = 0, you = 0;
   for (const g of groups) for (const row of g.rows) {
@@ -4162,7 +4316,26 @@ function railCount(groups){
     active++;
     if (rowWaitsOnYou(row)) you++;
   }
+  for (const h of hiddenLands) if (h.wait > 0) you += h.wait;
   return { active, you };
+}
+/* city-layout L2 (sim): hiddenLands -- the server's list of hidden repos, [{id, name, people, wait}] ([] at
+   start): people = how many sessions are there, wait = how many of them wait for the owner. apply() sets it
+   from the snapshot's `hidden` key (missing: nothing is hidden) and from the 'hidden' message. hiddenOf(list)
+   -> a clean copy of such a list ([] for anything that is no list). */
+let hiddenLands = [];
+function hiddenOf(list){
+  if (!Array.isArray(list)) return [];
+  return list.filter(h => h && typeof h === 'object').map(h => ({ id: h.id, name: h.name, people: Number(h.people) || 0, wait: Number(h.wait) || 0 }));
+}
+/* city-layout L2 (sim): hiddenHtml(list) -> the quiet line at the rail's foot: '' for an empty list, else the
+   count of hidden repos, "and N of them wait for you" when somebody does, and the "manage" word. A repo's
+   name is never in it (the page shows names of hidden repos only inside the arrange mode). */
+function hiddenHtml(list){
+  if (!list || !list.length) return '';
+  const w = list.filter(l => l.wait > 0).length;
+  return '<i></i><span>' + i18n('arr.hidden', { n: list.length }) + (w ? i18n('arr.hiddenWait', { n: w }) : '') +
+    '</span><u>' + i18n('arr.manage') + '</u>';
 }
 /* V1 (sim): selKey(sel) -> the rail row id a selection corresponds to: {t:'c', id} -> id; {t:'gov',
    terr} -> 'gov:' + (terr || govTerr); anything else (a building, a remote governor, null) -> null. */
@@ -4314,22 +4487,22 @@ function freeDistrictPlot(terr, type){
 function makeFeed(role, stuckChance, terr){
   const s = [];
   if (role === 'worker') {
-    s.push('Read'); if (Math.random() < .5) s.push('Read');
+    s.push('Read'); if (rand() < .5) s.push('Read');
     const n = Math.floor(rnd(6, 11));
-    for (let i = 0; i < n; i++) { s.push(Math.random() < .8 ? 'Edit' : 'Write'); if (i % 3 === 2) s.push('Bash'); }
+    for (let i = 0; i < n; i++) { s.push(rand() < .8 ? 'Edit' : 'Write'); if (i % 3 === 2) s.push('Bash'); }
     s.push('Bash');
   } else if (role === 'task-manager') {
     s.push('Read', 'Read');
     const n = Math.floor(rnd(5, 8)); for (let i = 0; i < n; i++) s.push('Write');
     s.push('Bash', 'Bash');
   } else if (role === 'fast-lane-deputy') {
-    s.push('Read', 'Edit', 'Edit'); if (Math.random() < .5) s.push('Edit');
+    s.push('Read', 'Edit', 'Edit'); if (rand() < .5) s.push('Edit');
   } else {
-    s.push('Bash', 'Bash', 'Bash', 'Bash'); if (Math.random() < .4) s.push('Bash');
+    s.push('Bash', 'Bash', 'Bash', 'Bash'); if (rand() < .4) s.push('Bash');
   }
   const seq = s.map(tool => ({ t:'tool', tool }));
   const p = stuckChance ?? (role === 'merge-deputy' ? .2 : .4);
-  if (Math.random() < p) { const [q, a] = pick(QA); seq.splice(Math.floor(rnd(1, seq.length - 1)), 0, { t:'stuck', q, a }); }
+  if (rand() < p) { const [q, a] = pick(QA); seq.splice(Math.floor(rnd(1, seq.length - 1)), 0, { t:'stuck', q, a }); }
   const plot = freeDistrictPlot(terr, ROLE_TYPE[role] || 'house');
   if (plot) seq.splice(Math.min(seq.length - 1, Math.floor(rnd(1, Math.max(2, seq.length - 1)))), 0, { t:'build', plot });
   seq.push({ t:'done' }, { t:'leave' });
@@ -4373,7 +4546,7 @@ function spawner(){
   if (!(map.territories || []).length) return;
   const active = citizens.filter(c => !c.remote && STATE[c.state][0] !== 'rest' && c.state !== 'leaving').length;
   if (active >= 6) return;
-  const r = Math.random();
+  const r = rand();
   spawnDemo(r < .5 ? 'worker' : r < .65 ? 'task-manager' : r < .85 ? 'fast-lane-deputy' : 'merge-deputy');
 }
 
@@ -4576,11 +4749,86 @@ function landBox(view){
   const hull = lower.concat(upper).map(p => [p[0] - cx, p[1] - cz]);
   return { hx: (x1 - x0) / 2, hz: (z1 - z0) / 2, cx, cz, pts: hull };
 }
+/* city-layout L3 (sim): landSteps(view) compares a new view with the one the page shows now (`map`) and
+   answers {moved, lost}: moved = a Map territory id -> {dx, dz}, the step of every territory that is in both
+   with another cx / cz; lost = the Set of ids that were in `map` and are not in the view any more (a land the
+   owner hid). A territory that did not move is in neither. Reads only; call it before `map = view`. */
+function landSteps(view){
+  const now = new Map(), moved = new Map(), lost = new Set();
+  for (const t of (view && view.territories) || []) now.set(t.id, t);
+  for (const o of map.territories || []) {
+    const t = now.get(o.id);
+    if (!t) { lost.add(o.id); continue; }
+    const dx = t.cx - o.cx, dz = t.cz - o.cz;
+    if (Number.isFinite(dx) && Number.isFinite(dz) && (dx || dz)) moved.set(o.id, { dx, dz });
+  }
+  return { moved, lost };
+}
+/* city-layout L3 (sim): shiftSpot(p, dx, dz, seen) moves one spot by the step: {x, y} (a stand, a home, a
+   rest seat, a waiting slot) or {x, z} (an office); a spot that two fields share (stand is often home) moves
+   once -- seen holds the ones already moved. shiftPath(path, dx, dz) -> a new path with every point moved
+   (never in place: a stroll's way out is a copy that shares its points). */
+function shiftSpot(p, dx, dz, seen){
+  if (!p || typeof p !== 'object' || seen.has(p)) return;
+  seen.add(p);
+  if (typeof p.x === 'number') p.x += dx;
+  if (typeof p.y === 'number') p.y += dz;
+  if (typeof p.z === 'number') p.z += dz;
+}
+function shiftPath(path, dx, dz){ return (path || []).map(p => [p[0] + dx, p[1] + dz]); }
+/* city-layout L3 (sim): people follow their land. landFollow(steps) (landSteps' answer) runs at the start of
+   landState, before the new view is read: every person of a moved territory moves with it at once -- x, y,
+   every spot it holds (stand, home, slot, rest, office) and its way (path, a stroll's way out) -- so nobody
+   walks back over the sea to a world tile that is not there any more; its governor's own stroll state, the
+   spots of its talks and its building records move by the same step. A territory that is no longer in the
+   view: its people are gone at once (c.gone: no walk to the edge of a land that is not there), its
+   governor's stroll state and its building records are dropped. Nothing else is touched. */
+function landFollow(steps){
+  const { moved, lost } = steps;
+  if (!moved.size && !lost.size) return;
+  const seen = new Set();
+  for (const c of citizens) {
+    if (lost.has(c.terr)) { c.gone = true; continue; }
+    const s = moved.get(c.terr);
+    if (!s) continue;
+    c.x += s.dx; c.y += s.dz;
+    for (const k of ['stand', 'home', 'slot', 'rest', 'office']) shiftSpot(c[k], s.dx, s.dz, seen);
+    c.path = shiftPath(c.path, s.dx, s.dz);
+    c.strollOutPath = shiftPath(c.strollOutPath, s.dx, s.dz);
+  }
+  for (const [terr, s] of moved) {
+    const m = govMove.get(terr);
+    if (!m) continue;
+    m.x += s.dx; m.y += s.dz;
+    m.path = shiftPath(m.path, s.dx, s.dz);
+    m.outPath = shiftPath(m.outPath, s.dx, s.dz);
+  }
+  for (const terr of lost) govMove.delete(terr);
+  for (const j of talkJobs) { const s = j.origin && moved.get(talkTerr(j.from)); if (s) j.origin = { x: j.origin.x + s.dx, y: j.origin.y + s.dz }; }
+  for (const t of talks) { const s = t.at && moved.get(talkTerr(t.from)); if (s) t.at = { x: t.at.x + s.dx, y: t.at.y + s.dz }; }
+  for (let i = buildings.length - 1; i >= 0; i--) {
+    const b = buildings[i];
+    if (lost.has(b.terr)) {
+      if (selected && selected.t === 'b' && selected.id === b.id) selected = null;
+      buildings.splice(i, 1);
+      continue;
+    }
+    const s = moved.get(b.terr);
+    if (!s) continue;
+    b.gx += s.dx; b.gy += s.dz;
+    if (b.moveTo) { b.moveTo.x += s.dx; b.moveTo.z += s.dz; }
+  }
+}
 /* the non-3D half of buildLand(view): map, mid, land, the occupied/rest/home tile pools (a plot may have
    opened by the hall), a record for every already-built building in the view, then updateHome() (the
    world changed: look at a town hall, never at the empty middle of the land). buildLand() calls this
-   first, then does the meshes. Runs with no three.js: the tests drive it straight (city-people). */
+   first, then does the meshes. Runs with no three.js: the tests drive it straight (city-people).
+   city-layout L3: before `map = view` it compares the view with the old one (landSteps) and lets the
+   people, the governors and the building records follow a land that moved, or go with a land that left
+   (landFollow); a record of a moved land takes the view's own place for its plot. */
 function landState(view){
+  const steps = landSteps(view);
+  landFollow(steps);
   buildingLandState = true; // city-people, Walk: newBuildingRecord() below skips its own reroute -- one reroute at the end instead
   walkGridDirty = true; // a fresh view can move, add or drop any model -- never reuse the old walk grid
   occupied.clear();
@@ -4595,14 +4843,105 @@ function landState(view){
     for (const bd of t.buildings || []) {
       const existing = buildings.find(b => b.terr === t.id && b.plot === bd.plot);
       if (!existing) { newBuildingRecord(t.id, bd.plot, bd.type, bd.x, bd.z, bd.by, true, bd); continue; }
+      if (steps.moved.has(t.id)) { existing.gx = bd.x; existing.gy = bd.z; }
       occupied.set(bd.x + ',' + bd.z, existing);
     }
     // offices are not walkable for people (Interaction: a lead's office stands on its own tile)
     for (const o of t.offices || []) blocked.add(o.x + ',' + o.z);
   }
+  // a record of a moved land that the view does not list (a live build) stands on its new tile too
+  for (const b of buildings) if (steps.moved.has(b.terr) && !occupied.has(b.gx + ',' + b.gy)) occupied.set(b.gx + ',' + b.gy, b);
   updateHome();
   buildingLandState = false;
   rerouteBlocked(); // city-people, Walk (re-route): the footprints just changed -- move whoever now walks through one
+}
+
+/* city-layout L1 (sim): the arrangement rule, the same one the server checks (the server checks it again; the
+   page only offers what will pass). A land = {id, name, slot: [i, j], sea}; a slot is a cell of the island's
+   9 x 9 grid, -4..4 each way. landsOf(view) -> one land per territory of the view, in view order; sea is true
+   only when the server's view says so (t.sea === true). */
+const ARR_MIN = -4, ARR_MAX = 4;
+function landsOf(view){
+  return ((view && view.territories) || []).map(t => ({ id: t.id, name: t.name,
+    slot: Array.isArray(t.slot) ? [t.slot[0], t.slot[1]] : [0, 0], sea: t.sea === true }));
+}
+/* landsOk(lands) -> true when every slot is inside the grid, no two lands share a slot, and no land stands on
+   the cell just south ([i, j + 1]) of a land with sea (that cell is its sea). */
+function landsOk(lands){
+  const held = new Set();
+  for (const l of lands) {
+    const i = l.slot[0], j = l.slot[1], k = i + ',' + j;
+    if (!Number.isInteger(i) || !Number.isInteger(j) || i < ARR_MIN || i > ARR_MAX || j < ARR_MIN || j > ARR_MAX || held.has(k)) return false;
+    held.add(k);
+  }
+  return !lands.some(l => l.sea && held.has(l.slot[0] + ',' + (l.slot[1] + 1)));
+}
+/* landMove(lands, id, slot) -> the request rows for "land id goes to slot": a free slot [{id, slot}]; a land
+   is there [{id, slot}, {id: that land, slot: id's own slot}] (the two swap); null when id is no land of the
+   list, slot is id's own slot, or landsOk fails after the move. Changes nothing of `lands`. */
+function landMove(lands, id, slot){
+  const a = lands.find(l => l.id === id);
+  if (!a || !Array.isArray(slot) || (a.slot[0] === slot[0] && a.slot[1] === slot[1])) return null;
+  const to = [slot[0], slot[1]], from = [a.slot[0], a.slot[1]];
+  const b = lands.find(l => l !== a && l.slot[0] === to[0] && l.slot[1] === to[1]);
+  const after = lands.map(l => l === a ? Object.assign({}, l, { slot: to }) : l === b ? Object.assign({}, l, { slot: from }) : l);
+  if (!landsOk(after)) return null;
+  return b ? [{ id, slot: to }, { id: b.id, slot: from }] : [{ id, slot: to }];
+}
+/* landFree(lands, id) -> the free cells [[i, j], ...] land id may go to: no land on it, it touches (4 sides) a
+   land that is not id (id alone on the island: it touches id), and landMove(lands, id, cell) is not null.
+   id null -> the free cells any land could take: no land on it, it touches a land, and it is not the cell
+   just south of a land with sea. */
+function landFree(lands, id){
+  const held = new Set(lands.map(l => l.slot[0] + ',' + l.slot[1]));
+  const others = lands.filter(l => l.id !== id);
+  const near = others.length ? others : lands;
+  const out = [];
+  for (let i = ARR_MIN; i <= ARR_MAX; i++) for (let j = ARR_MIN; j <= ARR_MAX; j++) {
+    if (held.has(i + ',' + j)) continue;
+    if (!near.some(l => Math.abs(l.slot[0] - i) + Math.abs(l.slot[1] - j) === 1)) continue;
+    if (id == null) { if (lands.some(l => l.sea && l.slot[0] === i && l.slot[1] + 1 === j)) continue; }
+    else if (!landMove(lands, id, [i, j])) continue;
+    out.push([i, j]);
+  }
+  return out;
+}
+/* city-layout L4 (sim): the arrange mode's own state. arr = {on, pick, entry, err}: on = the mode is open;
+   pick = the id of the land picked by a tap (or null); entry = what Cancel goes back to (arrEntry), set when
+   the mode opens; err = the last refusal in plain words ('' none). */
+const arr = { on: false, pick: null, entry: null, err: '' };
+/* arrEntry(lands, hidden) -> what Cancel goes back to: [{id, slot, hidden: false}] for every shown land, then
+   [{id, hidden: true}] for every land of the hidden list. */
+function arrEntry(lands, hidden){
+  return lands.map(l => ({ id: l.id, slot: [l.slot[0], l.slot[1]], hidden: false }))
+    .concat((hidden || []).map(h => ({ id: h.id, hidden: true })));
+}
+/* arrBack(entry, lands, hidden) -> the request rows that put everything back to the entry, [] when nothing
+   differs: a row that was shown and is now somewhere else or hidden -> {id, slot, hidden: false}; one that was
+   hidden and is now shown -> {id, hidden: true}; a row whose id is in neither list any more is left out; a
+   land that came after the mode opened is not named (the server keeps it). */
+function arrBack(entry, lands, hidden){
+  const shown = new Map(lands.map(l => [l.id, l])), hid = new Set((hidden || []).map(h => h.id)), rows = [];
+  for (const e of entry || []) {
+    const now = shown.get(e.id);
+    if (!now && !hid.has(e.id)) continue;
+    if (e.hidden) { if (now) rows.push({ id: e.id, hidden: true }); }
+    else if (!now || now.slot[0] !== e.slot[0] || now.slot[1] !== e.slot[1]) rows.push({ id: e.id, slot: [e.slot[0], e.slot[1]], hidden: false });
+  }
+  return rows;
+}
+/* arrWhy(code, body) -> the owner's words for what the server answered to POST /api/layout: '' for 200; 409
+   "taken" / "sea" / "empty" each its own sentence; anything else (400, 403, 404, no answer at all = code 0)
+   one sentence. Never silent: the bar shows it (#arr-err, role="alert"). */
+function arrWhy(code, body){
+  if (code === 200) return '';
+  if (code === 409) {
+    const why = body && body.error;
+    if (why === 'taken') return i18n('arr.errTaken');
+    if (why === 'sea') return i18n('arr.errSea');
+    if (why === 'empty') return i18n('arr.errEmpty');
+  }
+  return i18n('arr.errOther');
 }
 
 /* askName(view): who asks, as people read it (owner E2E, 2026-09-25: the panel and the log used to
@@ -4662,7 +5001,7 @@ function dragBy(dx, dy, limit){
 // owner 2026-09-25: the camera never stops turning — clicks, drags, pinch/wheel zoom and any
 // panel (cards, the "?" panel) leave it running; only reduced motion, or a camera tween (reset/
 // fit) that needs to finish without a fight, pause it.
-function autoRotating(){ return !RM && !camTween; }
+function autoRotating(){ return !RM && !camTween && !(typeof arr !== 'undefined' && arr.on); } // city-layout L4: in the arrange mode the camera looks square to the grid and does not turn (the typeof guard: the camera tests run this function alone)
 /* autoRotate(now, dt): the never-stop rotation, turning cam.az by autoRotDir's way, one turn per
    AUTO_ROT_SEC (now is unused; kept for the caller's convenience). */
 function autoRotate(now, dt){
@@ -4844,6 +5183,48 @@ function nearestPick(px, py, cands, maxPx){
   }
   return best;
 }
+/* city-data (sim): a bubble never covers a name label (a land's name, a site's sign). The boxes are { l, r, t, b }
+   in screen px. Two boxes TOUCH when they are closer than LABEL_GAP in both directions. labelDodge(box, bubbles,
+   others, top) -> how far (px, up is negative, 0 = stays) the name label BOX moves: nothing touches it -> it stays
+   (another label alone never moves it); else up, just clear of every bubble and every one of OTHERS it would touch
+   (a few rounds at most); no room up there (above TOP) -> down, the same way. dodgeTargets(boxes, bubbles, top) ->
+   that for every label of BOXES in order, each one clear of where the labels before it END and of the labels after it
+   where they are now (so two labels at one bubble end apart). easeDodge(cur, to, dt) -> the next offset: it glides
+   to TO, never jumps, never passes it. The view part (pin / dodgeNameLabels, below) draws the result. */
+const LABEL_GAP = 6;
+function labelDodge(box, bubbles, others, top){
+  const touches = (a, b) => a.l < b.r + LABEL_GAP && a.r > b.l - LABEL_GAP && a.t < b.b + LABEL_GAP && a.b > b.t - LABEL_GAP;
+  if (!bubbles.some(b => touches(box, b))) return 0;
+  const all = bubbles.concat(others);
+  const move = up => {
+    let dy = 0;
+    for (let i = 0; i < 8; i++) {
+      const at = { l: box.l, r: box.r, t: box.t + dy, b: box.b + dy };
+      const hit = all.filter(b => touches(at, b));
+      if (!hit.length) break;
+      dy = up ? Math.min(...hit.map(b => b.t)) - LABEL_GAP - box.b : Math.max(...hit.map(b => b.b)) + LABEL_GAP - box.t;
+    }
+    return dy;
+  };
+  const dy = move(true);
+  return box.t + dy < top ? move(false) : dy;
+}
+function dodgeTargets(boxes, bubbles, top){
+  const to = [];
+  if (!bubbles.length) { for (let i = 0; i < boxes.length; i++) to.push(0); return to; }
+  const ends = [];
+  for (let i = 0; i < boxes.length; i++) {
+    const b = boxes[i];
+    const dy = labelDodge(b, bubbles, ends.concat(boxes.slice(i + 1)), top);
+    to.push(dy);
+    ends.push(dy ? { l: b.l, r: b.r, t: b.t + dy, b: b.b + dy } : b);
+  }
+  return to;
+}
+function easeDodge(cur, to, dt){
+  const next = cur + (to - cur) * Math.min(1, dt * 10);
+  return Math.abs(to - next) < .4 ? to : next;
+}
 
 /* =========================================================
    3D view. Every model is a ready-made CC0 asset from Kenney
@@ -4908,7 +5289,7 @@ const ROCK_GREY = '#8A8A86';
 const RAVINE_FLOOR = '#33312F';
 const WATER_COLOR = '#3E86C4';
 /* #demo / file://: exactly `python3 bin/agent_city.py demo-world` prints (tests/test_agent_city_world.py) */
-const DEMO_WORLD = {"cell": 22, "x0": -11, "z0": -11, "w": 44, "h": 44, "rows": ["                                            ", "                .       w   .      ..       ", "     .. ...   . ... . . w ...   g ...       ", "   ...................ww......gggggrgggg..  ", "   ..................ww...grggggggPrggggg.  ", " ....................ww..ggrgPrPgggrPgggg.  ", "  ...................ww..ggrPgrgggPrgggrg.  ", "  ........grP........ww..gPrgPrPgPgrPgPrg   ", "  ......rrrrrr.......ww..rrrrrrrrrrrrrrrP   ", "  .....Prggggr.......ww.gggrPgrggggrgPgrgg  ", "   ....rrgHHgrP......ww.gggrgPrgHHgrPgPrPg  ", "   .....rgHHgrrttttttBBtgggrPgrgHHgrgggrgg  ", "  ......rggggr......ww..gggrgPrggggrPgPrP   ", "  ......rrrrrr......ww..gggrPgrrrrrrgggrggs ", "   .......rP.......ww....ggrgPrgPgPrPgPrg.  ", "  ........t.Pr.....ww....tgrggrPgPgrgPgrg.  ", "  ........t........ww....ttbbrrrbrrrbrbbbs  ", "  ........t........ww.b.bbbbbbbbPbPbbbbbb.ss", "   .......t.........wwbbbbbssbbbsbbbsbssssss", "  ........t.mmmm.....wsbsssssssssssssssssss ", "  ...mm...tmmmmmm....wssssssssssssssssssss  ", "   mmmmmmmtm....mmm...sssssssssssssssssssss ", "   mm..mmmt......mmm    sssssssssssssssss   ", "  m.......t........m      ssssssssssssss    ", "  ........t.........      sssssssssssss     ", "  ........tt........           ss           ", "  .......rrrr......                         ", "  ......ggPgg......                         ", "   ....ggggggg......                        ", "   ....gPgPgPgP.....                        ", "   ...rrrrrrrrrr....                        ", "  ....ggrggggPgPgg..                        ", "  ...ggPrgHHgggggg..                        ", "  ...gggrgHHgggggg.                         ", "  ...ggPrggggPgPg..                         ", "  ...rrrrrrrrrrr...                         ", "   ...gPgPgPgPg.....                        ", "   .....ggggggg....                         ", "  ........gggg......                        ", "   .........r.......                        ", "   .................                        ", "   ......  .. .....                         ", "    .          .                            ", "                                            "], "territories": [{"id": "4d5d7e95", "name": "auto-pipeline", "plan": "meadow", "terrain": "grassland", "slot": [0, 0], "cx": 0, "cz": 0, "lines": 500, "size": 0.24212512553021587, "r": 3.522238341052446, "open": 5, "plots_total": 36, "plots": [{"k": 0, "x": 0, "z": 3, "d": "house"}, {"k": 2, "x": 1, "z": -4, "d": "tower"}, {"k": 3, "x": 3, "z": -1, "d": "shop"}, {"k": 4, "x": -4, "z": -2, "d": "library"}, {"k": 11, "x": 1, "z": 4, "d": "workshop"}], "buildings": [], "era": "village", "balance": {"build": {"state": "healthy", "value": 500, "n": 3, "text": "500 \u884c\u4ee3\u7801"}, "rules": {"state": "missing", "value": 0, "n": 0, "text": "\u8fd8\u6ca1\u6709"}, "beauty": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 1.0, "n": 1, "text": "1/1 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u6587\u4ef6"}}, "rules_note": "", "offices": [], "rest": null, "sites": []}, {"id": "8329562e", "name": "v4-plus", "plan": "harbor", "terrain": "coast", "slot": [1, 0], "cx": 22, "cz": 0, "lines": 1000000, "size": 1.0, "r": 8.6, "open": 35, "plots_total": 35, "plots": [{"k": 0, "x": 18, "z": -1, "d": "workshop"}, {"k": 1, "x": 22, "z": -4, "d": "tower"}, {"k": 2, "x": 25, "z": -1, "d": "house"}, {"k": 3, "x": 18, "z": 1, "d": "workshop"}, {"k": 4, "x": 25, "z": 1, "d": "house"}, {"k": 5, "x": 20, "z": -4, "d": "library"}, {"k": 6, "x": 21, "z": 3, "d": "shop"}, {"k": 7, "x": 17, "z": 0, "d": "workshop"}, {"k": 8, "x": 23, "z": 3, "d": "shop"}, {"k": 9, "x": 26, "z": -2, "d": "house"}, {"k": 10, "x": 17, "z": -2, "d": "workshop"}, {"k": 11, "x": 23, "z": -5, "d": "tower"}, {"k": 12, "x": 25, "z": -4, "d": "tower"}, {"k": 13, "x": 18, "z": -4, "d": "library"}, {"k": 14, "x": 17, "z": 2, "d": "workshop"}, {"k": 15, "x": 27, "z": -1, "d": "house"}, {"k": 16, "x": 18, "z": 3, "d": "workshop"}, {"k": 17, "x": 22, "z": 4, "d": "shop"}, {"k": 18, "x": 25, "z": 3, "d": "shop"}, {"k": 19, "x": 20, "z": 4, "d": "shop"}, {"k": 20, "x": 27, "z": 1, "d": "house"}, {"k": 21, "x": 20, "z": -6, "d": "library"}, {"k": 22, "x": 27, "z": -4, "d": "tower"}, {"k": 23, "x": 23, "z": -7, "d": "tower"}, {"k": 24, "x": 17, "z": -5, "d": "library"}, {"k": 25, "x": 25, "z": -6, "d": "tower"}, {"k": 26, "x": 27, "z": 3, "d": "house"}, {"k": 27, "x": 26, "z": 4, "d": "shop"}, {"k": 28, "x": 18, "z": -6, "d": "library"}, {"k": 29, "x": 29, "z": -1, "d": "house"}, {"k": 30, "x": 15, "z": -4, "d": "library"}, {"k": 31, "x": 29, "z": -3, "d": "house"}, {"k": 32, "x": 29, "z": 1, "d": "house"}, {"k": 33, "x": 21, "z": 6, "d": "shop"}, {"k": 34, "x": 23, "z": 6, "d": "shop"}], "buildings": [{"plot": 6, "type": "shop", "by": "worker", "x": 21, "z": 3, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": ""}, {"plot": 1, "type": "tower", "by": "worker", "x": 22, "z": -4, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": ""}], "era": "city", "balance": {"build": {"state": "healthy", "value": 1000000, "n": 400, "text": "1,000,000 \u884c\u4ee3\u7801"}, "rules": {"state": "healthy", "value": 0.8, "n": 320, "text": "80% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 40, "n": 40, "text": "40 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 3.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.9, "n": 36, "text": "36/40 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 20, "n": 20, "text": "20 \u4e2a\u6587\u4ef6"}}, "rules_note": "", "offices": [], "rest": null, "sites": []}, {"id": "db8c2db6", "name": "pos-lite", "plan": "ridge", "terrain": "mountain", "slot": [0, 1], "cx": 0, "cz": 22, "lines": 20000, "size": 0.6052343817819053, "r": 5.955070357938764, "open": 15, "plots_total": 37, "plots": [{"k": 0, "x": 2, "z": 20, "d": "workshop"}, {"k": 1, "x": -1, "z": 18, "d": "tower"}, {"k": 2, "x": 2, "z": 23, "d": "shop"}, {"k": 3, "x": 0, "z": 25, "d": "house"}, {"k": 4, "x": -4, "z": 23, "d": "house"}, {"k": 5, "x": -4, "z": 21, "d": "library"}, {"k": 6, "x": -3, "z": 18, "d": "library"}, {"k": 7, "x": 1, "z": 18, "d": "tower"}, {"k": 8, "x": -2, "z": 25, "d": "house"}, {"k": 9, "x": 4, "z": 20, "d": "workshop"}, {"k": 10, "x": 2, "z": 25, "d": "shop"}, {"k": 11, "x": -1, "z": 16, "d": "tower"}, {"k": 12, "x": 4, "z": 23, "d": "shop"}, {"k": 13, "x": -4, "z": 25, "d": "house"}, {"k": 14, "x": 3, "z": 18, "d": "workshop"}], "buildings": [{"plot": 3, "type": "house", "by": "worker", "x": 0, "z": 25, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": ""}], "era": "town", "balance": {"build": {"state": "healthy", "value": 20000, "n": 60, "text": "20,000 \u884c\u4ee3\u7801"}, "rules": {"state": "low", "value": 0.3, "n": 18, "text": "30% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 6, "n": 8, "text": "6 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.5 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.6, "n": 12, "text": "12/20 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 4, "n": 4, "text": "4 \u4e2a\u6587\u4ef6"}}, "rules_note": "", "offices": [], "rest": null, "sites": []}], "links": [{"a": "4d5d7e95", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[10, 0], [11, 0]]}, {"a": "4d5d7e95", "b": "db8c2db6", "gap": "pass", "kind": "road", "cross": [[-1, 9], [-1, 10]]}]};
+const DEMO_WORLD = {"cell": 22, "x0": -11, "z0": -11, "w": 44, "h": 44, "rows": ["                                            ", "                .       w   .      ..       ", "     .. ...   . ... . . w ...   g ...       ", "   ...................ww......gggggrgggg..  ", "   ..................ww...grggggggPrggggg.  ", " ....................ww..ggrgPrPgggrPgggg.  ", "  ...................ww..ggrPgrgggPrgggrg.  ", "  ........grP........ww..gPrgPrPgPgrPgPrg   ", "  ......rrrrrr.......ww..rrrrrrrrrrrrrrrP   ", "  .....Prggggr.......ww.gggrPgrggggrgPgrgg  ", "   ....rrgHHgrP......ww.gggrgPrgHHgrPgPrPg  ", "   .....rgHHgrrttttttBBtgggrPgrgHHgrgggrgg  ", "  ......rggggr......ww..gggrgPrggggrPgPrP   ", "  ......rrrrrr......ww..gggrPgrrrrrrgggrggs ", "   .......rP.......ww....ggrgPrgPgPrPgPrg.  ", "  ........t.Pr.....ww....tgrggrPgPgrgPgrg.  ", "  ........t........ww....ttbbrrrbrrrbrbbbs  ", "  ........t........ww.b.bbbbbbbbPbPbbbbbb.ss", "   .......t.........wwbbbbbssbbbsbbbsbssssss", "  ........t.mmmm.....wsbsssssssssssssssssss ", "  ...mm...tmmmmmm....wssssssssssssssssssss  ", "   mmmmmmmtm....mmm...sssssssssssssssssssss ", "   mm..mmmt......mmm    sssssssssssssssss   ", "  m.......t........m      ssssssssssssss    ", "  ........t.........      sssssssssssss     ", "  ........tt........           ss           ", "  .......rrrr......                         ", "  ......ggPgg......                         ", "   ....ggggggg......                        ", "   ....gPgPgPgP.....                        ", "   ...rrrrrrrrrr....                        ", "  ....ggrggggPgPgg..                        ", "  ...ggPrgHHgggggg..                        ", "  ...gggrgHHgggggg.                         ", "  ...ggPrggggPgPg..                         ", "  ...rrrrrrrrrrr...                         ", "   ...gPgPgPgPg.....                        ", "   .....ggggggg....                         ", "  ........gggg......                        ", "   .........r.......                        ", "   .................                        ", "   ......  .. .....                         ", "    .          .                            ", "                                            "], "territories": [{"id": "4d5d7e95", "name": "auto-pipeline", "plan": "meadow", "terrain": "grassland", "sea": false, "n": 0, "slot": [0, 0], "cx": 0, "cz": 0, "lines": 500, "size": 0.24212512553021587, "r": 3.522238341052446, "open": 5, "plots_total": 36, "plots": [{"k": 0, "x": 0, "z": 3, "d": "house"}, {"k": 2, "x": 1, "z": -4, "d": "tower"}, {"k": 3, "x": 3, "z": -1, "d": "shop"}, {"k": 4, "x": -4, "z": -2, "d": "library"}, {"k": 11, "x": 1, "z": 4, "d": "workshop"}], "buildings": [], "era": "village", "balance": {"build": {"state": "healthy", "value": 500, "n": 3, "text": "500 \u884c\u4ee3\u7801"}, "rules": {"state": "missing", "value": 0, "n": 0, "text": "\u8fd8\u6ca1\u6709"}, "beauty": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 1.0, "n": 1, "text": "1/1 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 2, "n": 2, "text": "2 \u4e2a\u6587\u4ef6"}}, "rules_note": "", "offices": [], "rest": null, "sites": []}, {"id": "8329562e", "name": "v4-plus", "plan": "harbor", "terrain": "coast", "sea": true, "n": 1, "slot": [1, 0], "cx": 22, "cz": 0, "lines": 1000000, "size": 1.0, "r": 8.6, "open": 35, "plots_total": 35, "plots": [{"k": 0, "x": 18, "z": -1, "d": "workshop"}, {"k": 1, "x": 22, "z": -4, "d": "tower"}, {"k": 2, "x": 25, "z": -1, "d": "house"}, {"k": 3, "x": 18, "z": 1, "d": "workshop"}, {"k": 4, "x": 25, "z": 1, "d": "house"}, {"k": 5, "x": 20, "z": -4, "d": "library"}, {"k": 6, "x": 21, "z": 3, "d": "shop"}, {"k": 7, "x": 17, "z": 0, "d": "workshop"}, {"k": 8, "x": 23, "z": 3, "d": "shop"}, {"k": 9, "x": 26, "z": -2, "d": "house"}, {"k": 10, "x": 17, "z": -2, "d": "workshop"}, {"k": 11, "x": 23, "z": -5, "d": "tower"}, {"k": 12, "x": 25, "z": -4, "d": "tower"}, {"k": 13, "x": 18, "z": -4, "d": "library"}, {"k": 14, "x": 17, "z": 2, "d": "workshop"}, {"k": 15, "x": 27, "z": -1, "d": "house"}, {"k": 16, "x": 18, "z": 3, "d": "workshop"}, {"k": 17, "x": 22, "z": 4, "d": "shop"}, {"k": 18, "x": 25, "z": 3, "d": "shop"}, {"k": 19, "x": 20, "z": 4, "d": "shop"}, {"k": 20, "x": 27, "z": 1, "d": "house"}, {"k": 21, "x": 20, "z": -6, "d": "library"}, {"k": 22, "x": 27, "z": -4, "d": "tower"}, {"k": 23, "x": 23, "z": -7, "d": "tower"}, {"k": 24, "x": 17, "z": -5, "d": "library"}, {"k": 25, "x": 25, "z": -6, "d": "tower"}, {"k": 26, "x": 27, "z": 3, "d": "house"}, {"k": 27, "x": 26, "z": 4, "d": "shop"}, {"k": 28, "x": 18, "z": -6, "d": "library"}, {"k": 29, "x": 29, "z": -1, "d": "house"}, {"k": 30, "x": 15, "z": -4, "d": "library"}, {"k": 31, "x": 29, "z": -3, "d": "house"}, {"k": 32, "x": 29, "z": 1, "d": "house"}, {"k": 33, "x": 21, "z": 6, "d": "shop"}, {"k": 34, "x": 23, "z": 6, "d": "shop"}], "buildings": [{"plot": 6, "type": "shop", "by": "worker", "x": 21, "z": 3, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": "\u5546\u4e1a\u8857 7 \u53f7"}, {"plot": 1, "type": "tower", "by": "worker", "x": 22, "z": -4, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": "\u6d4b\u8bd5\u533a 2 \u53f7"}], "era": "city", "balance": {"build": {"state": "healthy", "value": 1000000, "n": 400, "text": "1,000,000 \u884c\u4ee3\u7801"}, "rules": {"state": "healthy", "value": 0.8, "n": 320, "text": "80% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 40, "n": 40, "text": "40 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 3.0 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.9, "n": 36, "text": "36/40 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 20, "n": 20, "text": "20 \u4e2a\u6587\u4ef6"}}, "rules_note": "", "offices": [], "rest": null, "sites": []}, {"id": "db8c2db6", "name": "pos-lite", "plan": "ridge", "terrain": "mountain", "sea": false, "n": 2, "slot": [0, 1], "cx": 0, "cz": 22, "lines": 20000, "size": 0.6052343817819053, "r": 5.955070357938764, "open": 15, "plots_total": 37, "plots": [{"k": 0, "x": 2, "z": 20, "d": "workshop"}, {"k": 1, "x": -1, "z": 18, "d": "tower"}, {"k": 2, "x": 2, "z": 23, "d": "shop"}, {"k": 3, "x": 0, "z": 25, "d": "house"}, {"k": 4, "x": -4, "z": 23, "d": "house"}, {"k": 5, "x": -4, "z": 21, "d": "library"}, {"k": 6, "x": -3, "z": 18, "d": "library"}, {"k": 7, "x": 1, "z": 18, "d": "tower"}, {"k": 8, "x": -2, "z": 25, "d": "house"}, {"k": 9, "x": 4, "z": 20, "d": "workshop"}, {"k": 10, "x": 2, "z": 25, "d": "shop"}, {"k": 11, "x": -1, "z": 16, "d": "tower"}, {"k": 12, "x": 4, "z": 23, "d": "shop"}, {"k": 13, "x": -4, "z": 25, "d": "house"}, {"k": 14, "x": 3, "z": 18, "d": "workshop"}], "buildings": [{"plot": 3, "type": "house", "by": "worker", "x": 0, "z": 25, "files": [], "hist": [], "q": "good", "home": true, "lv": 0, "name": "\u4f4f\u5b85\u533a 4 \u53f7"}], "era": "town", "balance": {"build": {"state": "healthy", "value": 20000, "n": 60, "text": "20,000 \u884c\u4ee3\u7801"}, "rules": {"state": "low", "value": 0.3, "n": 18, "text": "30% \u6e90\u6587\u4ef6\u6709\u6d4b\u8bd5"}, "beauty": {"state": "healthy", "value": 6, "n": 8, "text": "6 \u4e2a\u7ec4\u4ef6\uff0c\u5e73\u5747\u590d\u7528 2.5 \u6b21"}, "knowledge": {"state": "healthy", "value": 0.6, "n": 12, "text": "12/20 \u4e2a\u6a21\u5757\u6709\u6587\u6863"}, "infra": {"state": "healthy", "value": 4, "n": 4, "text": "4 \u4e2a\u6587\u4ef6"}}, "rules_note": "", "offices": [], "rest": null, "sites": []}], "links": [{"a": "4d5d7e95", "b": "8329562e", "gap": "river", "kind": "bridge", "cross": [[10, 0], [11, 0]]}, {"a": "4d5d7e95", "b": "db8c2db6", "gap": "pass", "kind": "road", "cross": [[-1, 9], [-1, 10]]}]};
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, powerPreference:'low-power' });
 renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
@@ -5367,6 +5748,16 @@ function updateReposAria(now){
   el.querySelectorAll('.repo').forEach(b => b.setAttribute('aria-current', String(b.dataset.terr === cur)));
 }
 function buildLand(view){
+  // city-layout L3: an era show that runs on a land that moves goes with it -- its builders and planks were made from the old
+  // cell (world coordinates), so they would stand in the sea until the show ends; the run is dropped here (landSteps() reads the
+  // old `map`, so it is asked before landState() replaces it) and stepShows() makes it again from the new view on the next frame
+  for (const id of landSteps(view).moved.keys()) {
+    const run = showRuns.get(id);
+    if (!run) continue;
+    for (const b of run.builders) dropShowBuilder(b);
+    dropShowRun(run);
+    showRuns.delete(id);
+  }
   landState(view); // map, mid, land, the tile pools, building records, updateHome() -- city-people
   renderRepos(); // U1: the repo row follows every world event, not only the first
   while (landGroup.children.length) landGroup.remove(landGroup.children[0]);
@@ -5469,6 +5860,7 @@ function buildLand(view){
   if (!firstViewDone && territories.length && lastTouch === -Infinity) { firstViewDone = true; resetCam(); } // only the first world with a territory goes home; a later one never snaps the camera back
   scanTall();
   syncAllSiteMeshes(); // Worktrees: every current site (sites map, not just this view's own) gets its meshes
+  arrAfterLand(); // city-layout L4: the island came (again) from the server -- the arrange mode's plates and slot marks follow it
 }
 
 /* ---------- Worktrees: site meshes (fence/sign/light/scaffold/barrier/flag), the merge lane and the
@@ -6044,7 +6436,9 @@ const tmpV = new THREE.Vector3();
 function toScreen(x, h, z){ tmpV.set(x - mid.x, h, z - mid.z).project(camera); if (tmpV.z > 1) return [-9999, -9999]; return [(tmpV.x + 1) / 2 * W, (1 - tmpV.y) / 2 * H]; }
 function ovEl(cls, html){ const el = document.createElement('div'); el.className = cls; if (html) el.innerHTML = html; el.hidden = true; ovRoot.appendChild(el); return el; }
 function ovBtn(cls, html){ const el = document.createElement('button'); el.type = 'button'; el.className = cls; if (html) el.innerHTML = html; el.hidden = true; ovRoot.appendChild(el); return el; }
-function pin(el, x, y, show){ if (!show) { if (!el.hidden) el.hidden = true; return; } if (el.hidden) el.hidden = false; el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
+/* pin(el, x, y, show): the overlay's bottom centre goes to (x, y), or it hides. city-data: a shown one also keeps
+   that point (el._px, el._py) for bubbleBoxes() / dodgeNameLabels() below. */
+function pin(el, x, y, show){ if (!show) { if (!el.hidden) el.hidden = true; return; } if (el.hidden) el.hidden = false; el._px = x; el._py = y; el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`; }
 function setText(el, text){ if (el._t !== text) { el._t = text; el.textContent = text; } }
 /* V3: a .bub's ellipsis lives on an inner <span> now (the outer .bub can no longer clip its own
    ::after hit area) -- every bubble is made with that span as its only child (el.firstChild), and
@@ -6086,6 +6480,55 @@ function pinLandOverlays(){
     pin(l.el, sx, sy, true);
     if (l.mark) l.el.classList.toggle('far', far);
   }
+}
+/* city-data: a bubble never covers a name label (requirements/city.md, Look; the maths is labelDodge above). Every
+   frame, after all the pins, dodgeNameLabels() moves a land's name or a site's sign that a head bubble would cover
+   (the bubble's own words are never moved), gliding there and back. nameLabels() -> the records ({ el, ... }) of
+   those labels, never the small district ones; bubbleBoxes() -> the boxes of the head bubbles on screen (bottom
+   centre = the point pin() kept; -9999 = behind the camera); labelTop() -> the highest y a moved label may reach.
+   Cost: a size is read (a forced layout) only when an element's text changed -- cached on the element, el._bk. */
+function nameLabels(){
+  const out = [];
+  for (const l of labels) if (!l.mark) out.push(l);
+  for (const s of siteSigns.values()) out.push(s);
+  return out;
+}
+function bubbleBoxes(){
+  const out = [];
+  for (const el of ovRoot.children) {
+    if (el.hidden || !(el._px > -5000)) continue;
+    const c = el.classList;
+    if (!(c.contains('bub') || c.contains('qm') || c.contains('talkb'))) continue;
+    const k = el._t != null ? el._t : el.textContent;
+    if (el._bk !== k || !el._bw) { el._bk = k; el._bw = el.offsetWidth; el._bh = el.offsetHeight; }
+    out.push({ l: el._px - el._bw / 2, r: el._px + el._bw / 2, t: el._py - el._bh, b: el._py });
+  }
+  return out;
+}
+function labelTop(){
+  const strip = $('#stage-top');
+  return strip ? strip.offsetTop + strip.offsetHeight + LABEL_GAP : LABEL_GAP;
+}
+function dodgeNameLabels(dt){
+  const recs = [], boxes = [];
+  for (const rec of nameLabels()) {
+    const el = rec.el;
+    if (el.hidden || !(el._px > -5000)) { rec.dy = 0; continue; } // hidden or behind the camera: no obstacle, back at 0
+    const k = el._t != null ? el._t : el.textContent;
+    if (el._bk !== k || !el._bw) { el._bk = k; el._bw = el.offsetWidth; el._bh = el.offsetHeight; }
+    recs.push(rec);
+    boxes.push({ l: el._px - el._bw / 2, r: el._px + el._bw / 2, t: el._py - el._bh, b: el._py });
+  }
+  const bubbles = bubbleBoxes();
+  const to = dodgeTargets(boxes, bubbles, bubbles.length ? labelTop() : 0); // no bubble: nothing moves, no strip to read
+  let moving = false;
+  for (let i = 0; i < recs.length; i++) {
+    const rec = recs[i], el = rec.el;
+    const dy = rec.dy = easeDodge(rec.dy || 0, to[i], dt);
+    if (dy !== to[i]) moving = true;
+    if (dy) el.style.transform = `translate(${el._px.toFixed(1)}px,${(el._py + dy).toFixed(1)}px) translate(-50%,-100%)`;
+  }
+  if (moving) needFrame = true; // the glide needs its frames even when the page is otherwise idle
 }
 const govBub = ovEl('bub gov', '<span></span>'), govTag = ovEl('tagl tag'), govQm = ovBtn('qm', '<span>?</span>');
 govTag.style.setProperty('--c', '#FF6F8B'); setText(govTag, i18n('gov.tagLabel'));
@@ -6789,7 +7232,7 @@ function stepShows(now){
   if (!shows.size) return;
   for (const [id, s] of [...shows]) {
     const t = terrOf(id);
-    if (!t) { const gone = showRuns.get(id); if (gone) dropShowRun(gone); shows.delete(id); showRuns.delete(id); continue; }
+    if (!t) { const gone = showRuns.get(id); if (gone) { for (const b of gone.builders) dropShowBuilder(b); dropShowRun(gone); } shows.delete(id); showRuns.delete(id); continue; } // city-layout: a hidden land's builders go too, not only its planks
     let run = showRuns.get(id);
     if (!run) { run = makeShowRun(t, map, s); showRuns.set(id, run); }
     const elapsed = SHOW_SEC - (s.end - now) / 1000;
@@ -6842,6 +7285,7 @@ function sync(t, dt){
   stepWorkFx(dt); // city-work-anim: dust and sparks fade and rise; the lit laptop screen redraws while someone types
   pinSiteSigns();
   pinLandOverlays();
+  dodgeNameLabels(dt); // city-data: after every pin, a name label moves out of a bubble's way
 }
 /* ---------- panel ---------- */
 const dirty = { log:true };
@@ -7339,8 +7783,8 @@ function setRailFolded(v){
   writeStoredBool('agent-city.railFolded', v);
   renderRail();
 }
-let lastRail = '';
-/* renderRail(): #rail-list from railGroups()/railHtml() (only touches the DOM when the html actually
+let lastRail = '', lastHid = '';
+/* renderRail():#rail-list from railGroups()/railHtml() (only touches the DOM when the html actually
    changed, through lastRail); #rail-n / #rail-you (+ the tab's own badges) from railCount(); #rail /
    #rail-tab show by railFolded, both hidden when railGroups() is empty. On a phone, the rail unfolded is
    the drawer open -- the stage gets .drawer-open while it covers the win/ask panels. renderPanel() calls
@@ -7363,6 +7807,12 @@ function renderRail(){
   // cloud-polish Q1: the strip of rows at the top of the stage makes room for the rail's tab, or sits at the edge with no rail at all
   stage.classList.toggle('rail-folded', has && railFolded);
   stage.classList.toggle('rail-none', !has);
+  // city-layout L2: the quiet line at the rail's foot -- how many repos are hidden, red when somebody there waits;
+  // only the live local page has it (the demo and the cloud page know no hidden repo); the DOM is touched on change only
+  const hidHtml = hiddenHtml(hiddenLands);
+  if (hidHtml !== lastHid) { lastHid = hidHtml; $('#rail-hid').innerHTML = hidHtml; }
+  $('#rail-hid').hidden = !hiddenLands.length || DEMO || CLOUD;
+  $('#rail-hid').classList.toggle('you', hiddenLands.some(h => h.wait > 0));
 }
 /* city-add-agent A2/A4: addAgent(terr, force) -- the "add agent" button of one repo group. Nothing while
    that repo already reads "opening" (one open at a time per repo); else the button reads opening at
@@ -7419,7 +7869,7 @@ $('#rail-list').addEventListener('click', e => {
     return;
   }
   const row = e.target.closest('[data-focus]');
-  if (row) selectFrom(row.dataset.focus);
+  if (row && !arr.on) selectFrom(row.dataset.focus); // city-layout L4: in the arrange mode a rail row opens nobody either (the camera stays on the whole island)
 });
 $('#rail-fold').addEventListener('click', () => { setRailFolded(true); $('#rail-tab').focus(); });
 $('#rail-tab').addEventListener('click', () => setRailFolded(false));
@@ -7452,7 +7902,7 @@ function renderFollow(){
   el.style.left = left + 'px';
 }
 $('#follow-stop').addEventListener('click', () => stopFollow());
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && follow) stopFollow(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (follow) stopFollow(); else if (arr.on && arr.pick) { arr.pick = null; arrDraw(); } } });
 
 function renderPanel(){ renderRail(); renderStats(); renderDetail(); renderLog(); renderWin(); }
 
@@ -8644,6 +9094,7 @@ canvas.addEventListener('lostpointercapture', e => {
 /* U6: selectPick(pk) is exactly what a tap on a person/governor does -- endPointer's tap branch and an
    #ov click on a [data-pick-t] tag both call it. */
 function selectPick(pk){
+  if (arr.on) return; // city-layout L4: in the arrange mode a tap arranges, it opens nobody
   selected = pk;
   winLog = false;
   afterPick();
@@ -8695,6 +9146,279 @@ stage.addEventListener('gesturechange', e => {
   cam.dist = capped;
   camChanged();
 });
+
+/* ---------- city-layout L4 (3D part): the arrange mode (approved mock mock/city-layout-mock.html) ----------
+   The owner arranges the real island: the camera flies out and looks from above, square to the grid; every land
+   gets a name plate (.arr-h, in #arr-ov); the free slots are dashed squares on the ground (three.js planes with
+   a CanvasTexture), the one a drop would take is solid. A press on a land or its plate picks it up (a label
+   follows the pointer); a press on the sea pans the map; a tap on a land picks it, a tap on a slot or on another
+   land moves / swaps it. Every change is ONE layoutPost(rows): the island itself is never changed by this
+   script, the server's fresh snapshot redraws it (apply() -> buildLand() -> arrAfterLand() redraws the plates
+   and the marks). Done only leaves the mode; Cancel posts what arrBack() says and leaves. The rule (landMove,
+   landFree), the rows (arrEntry, arrBack) and the words (arrWhy) are the sim section's. */
+$('#arr-btn').hidden = DEMO || CLOUD;
+const ARR_EL = 64 * Math.PI / 180; // the tilt the mode looks from: almost straight down
+const ARR_PLATE_Z = 8.5; // a plate stands this far north of its cell's middle (on the land's north part)
+const ARR_DRIFT_PX = 8; // a press that moves less than this is a tap
+const arrBtn = $('#arr-btn'), arrOv = $('#arr-ov'), arrBar = $('#arr-bar'), arrGhost = $('#arr-ghost');
+// 3D-part state of the mode (the sim's `arr` keeps on / pick / entry / err): down = the press in hand, target = the
+// slot a drop would take now, tap = a press on the sea (a tap there lands on a slot), back = the tilt to go back to
+// after the mode, cam = the camera when the mode opened, az0 = the square-to-the-grid turn, sig / hk = what the
+// plates were last drawn from
+const arrUi = { down: null, target: null, tap: null, back: null, cam: null, az0: 0, sig: '', hk: '', easeAt: performance.now() };
+const arrCell = () => (map && map.cell) || 22;
+const arrActive = () => (arrUi.down && arrUi.down.moved && arrUi.down.id) || arr.pick; // the land in hand: dragged, or picked by a tap
+const arrSlotKey = c => c ? c[0] + ',' + c[1] : '';
+const arrLandAt = (lands, c) => lands.find(l => l.slot[0] === c[0] && l.slot[1] === c[1]);
+
+/* the slots on the ground: dashed = a free slot, solid = where the drop lands */
+let arrTex = null;
+function arrTexture(solid, color){
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.lineWidth = solid ? 12 : 8; g.strokeStyle = color; g.fillStyle = solid ? 'rgba(255,211,110,.5)' : 'rgba(255,255,255,.2)';
+  if (!solid) g.setLineDash([26, 18]);
+  g.beginPath();
+  g.moveTo(54, 14); g.arcTo(242, 14, 242, 242, 40); g.arcTo(242, 242, 14, 242, 40); g.arcTo(14, 242, 14, 14, 40); g.arcTo(14, 14, 242, 14, 40); g.closePath();
+  g.fill(); g.stroke();
+  return new THREE.CanvasTexture(c);
+}
+const arrMarks = [];
+function arrMark(c, kind){
+  if (!arrTex) arrTex = { free: arrTexture(false, 'rgba(42,43,69,.85)'), dim: arrTexture(false, 'rgba(42,43,69,.4)'), hot: arrTexture(true, '#2A2B45') };
+  const cw = arrCell(), m = new THREE.Mesh(new THREE.PlaneGeometry(cw - 2.5, cw - 2.5),
+    new THREE.MeshBasicMaterial({ map: arrTex[kind], transparent: true, depthTest: false, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.set(c[0] * cw, .3, c[1] * cw); m.renderOrder = kind === 'hot' ? 31 : 30;
+  world.add(m); arrMarks.push(m);
+}
+function arrClearMarks(){
+  while (arrMarks.length) { const m = arrMarks.pop(); world.remove(m); m.geometry.dispose(); m.material.dispose(); }
+}
+
+/* arrDraw(): everything the mode shows, from the page's own picture (map, hiddenLands, arr): the control's look,
+   the marks on the ground, a plate per land, the tip, the refusal line and the tray of hidden lands */
+function arrDraw(){
+  arrClearMarks();
+  arrOv.textContent = '';
+  arrBtn.setAttribute('aria-pressed', String(arr.on));
+  arrBtn.lastElementChild.textContent = arr.on ? i18n('arr.on') : i18n('arr.btn');
+  needFrame = true;
+  if (!arr.on) return;
+  const lands = landsOf(map), id = arrActive(), many = lands.length > 1;
+  if (arr.pick && !lands.some(l => l.id === arr.pick)) arr.pick = null; // the picked land is gone (hidden, or the server's picture moved on)
+  for (const c of landFree(lands, id)) arrMark(c, id ? 'free' : 'dim');
+  if (arrUi.target) arrMark(arrUi.target, 'hot');
+  const held = arrUi.down && arrUi.down.moved ? arrUi.down.id : null;
+  for (const l of lands) {
+    const h = document.createElement('div'), swap = id && id !== l.id && !!landMove(lands, id, l.slot);
+    h.className = 'arr-h' + (l.id === arr.pick ? ' on' : '') + (l.id === held ? ' dragging' : '') + (swap ? ' swap' : '');
+    h.dataset.id = l.id; h.dataset.i = l.slot[0]; h.dataset.j = l.slot[1];
+    h.style.setProperty('--rc', terrColor(l.id));
+    h.innerHTML = '<span class="grip" aria-hidden="true">⋮⋮</span><span class="rc"></span><span class="nm">' + esc(l.name) + '</span>' +
+      '<button type="button" class="arr-eye" data-hide="' + esc(l.id) + '"' + (many ? '' : ' aria-disabled="true" title="' + esc(i18n('arr.last')) + '"') + '>' + esc(i18n('arr.hide')) + '</button>';
+    arrOv.appendChild(h);
+  }
+  const picked = arr.pick && lands.find(l => l.id === arr.pick);
+  $('#arr-tip').textContent = picked ? i18n('arr.tipPick', { name: picked.name }) : i18n('arr.tip');
+  $('#arr-err').textContent = arr.err; $('#arr-err').hidden = !arr.err;
+  arrUi.hk = JSON.stringify(hiddenLands);
+  $('#arr-tray').innerHTML = hiddenLands.length ? '<span class="lbl">' + esc(i18n('arr.tray')) + '</span>' + hiddenLands.map(h =>
+    '<span class="arr-hid" style="--rc:' + terrColor(h.id) + '"><span class="rc"></span>' + esc(h.name) +
+    (h.wait > 0 ? '<em>' + esc(i18n('arr.waits', { n: h.wait })) + '</em>' : '') +
+    '<button type="button" data-show="' + esc(h.id) + '">' + esc(i18n('arr.show')) + '</button></span>').join('') : '';
+  arrPlace();
+}
+/* the plates sit on the screen spot of their land's north part; every frame, so they follow a pan or a zoom */
+function arrPlace(){
+  const cw = arrCell();
+  for (const h of arrOv.children) {
+    const p = toScreen(+h.dataset.i * cw, 0, +h.dataset.j * cw - ARR_PLATE_Z);
+    h.style.left = p[0] + 'px'; h.style.top = p[1] + 'px';
+  }
+}
+/* arrFrame(): frame() calls it every frame. In the mode the camera eases to the top view, square to the grid (a
+   quarter-turn button moves the grid's own turn on); after the mode the tilt eases back. The tray follows a change
+   of the hidden list (somebody there now waits) */
+function arrFrame(){
+  const now = performance.now(), k = 1 - Math.exp(-Math.min(.25, (now - arrUi.easeAt) / 1000) * 7);
+  arrUi.easeAt = now;
+  if (arr.on) {
+    if (camTween) arrUi.az0 = Math.round(camTween.to / (Math.PI / 2)) * Math.PI / 2;
+    if (Math.abs(cam.el - ARR_EL) > .002 || Math.abs(cam.az - arrUi.az0) > .002) {
+      cam.el += (ARR_EL - cam.el) * k; cam.az += (arrUi.az0 - cam.az) * k; needFrame = true;
+    }
+    if (JSON.stringify(hiddenLands) !== arrUi.hk) arrDraw();
+    arrPlace();
+  } else if (arrUi.back) {
+    if (drag && drag.moved) { arrUi.back = null; return; }
+    cam.el += (arrUi.back.el - cam.el) * k; needFrame = true;
+    if (Math.abs(cam.el - arrUi.back.el) < .004) { cam.el = arrUi.back.el; arrUi.back = null; }
+  }
+}
+/* the whole island in view, a little above the middle: the bar at the bottom covers no land */
+function arrWhole(d){ flyTo(land.cx || 0, (land.cz || 0) + d * (W < 960 ? .1 : .055), d); }
+function arrHome(){ flyTo(home.x, home.z, Math.min(arrUi.cam ? arrUi.cam.dist : cam.dist, distMax())); }
+const arrSig = () => JSON.stringify([landsOf(map).map(l => [l.id, l.slot]), land.cx, land.cz, land.hx, land.hz]);
+/* arrAfterLand(): buildLand() ends with it -- the server's picture came. In the mode the plates and the marks are
+   drawn again, and the camera flies to the whole island when the lands changed (not for a building that grew);
+   just after the mode the camera goes to the new home */
+function arrAfterLand(){
+  if (arr.on) {
+    const sig = arrSig();
+    if (sig !== arrUi.sig) { arrUi.sig = sig; arrWhole(distMax()); }
+    arrDraw();
+  } else if (arrUi.back) arrHome();
+}
+
+/* the one request. The answer (200, 400, 403, 404, 409, or none) becomes arr.err in plain words (arrWhy), shown in the
+   bar; the island changes only when the server's snapshot comes. Returns the promise (it never rejects). */
+function layoutPost(lands){
+  arr.err = '';
+  if (arr.on) arrDraw();
+  return fetch('/api/layout', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-City-Token': TOKEN }, body: JSON.stringify({ lands }) })
+    .then(r => r.json().catch(() => ({})).then(body => { arr.err = arrWhy(r.status, body); }))
+    .catch(() => { arr.err = arrWhy(0, {}); })
+    .then(() => { arr.pick = null; if (arr.on) arrDraw(); });
+}
+function arrEnter(){
+  if (arr.on || DEMO || CLOUD) return;
+  arr.on = true; arr.pick = null; arr.err = '';
+  arrUi.target = null; arrUi.down = null; arrUi.tap = null; arrUi.back = null;
+  arr.entry = arrEntry(landsOf(map), hiddenLands);
+  arrUi.cam = { el: Math.min(cam.el, EL_MAX), dist: cam.dist };
+  arrUi.az0 = Math.round(cam.az / (2 * Math.PI)) * 2 * Math.PI;
+  stopFollow(); closeWin();
+  if (W < 960) setRailFolded(true); // a phone: the drawer folds, the island has the room
+  stage.classList.add('arranging'); arrBar.hidden = false;
+  arrWhole(distMax());
+  arrUi.sig = arrSig();
+  arrDraw();
+}
+function arrLeave(){
+  if (!arr.on) return;
+  arr.on = false; arr.pick = null; arr.err = '';
+  arrUi.target = null; arrUi.down = null; arrUi.tap = null; arrGhost.hidden = true;
+  stage.classList.remove('arranging'); arrBar.hidden = true;
+  arrUi.back = { el: arrUi.cam ? arrUi.cam.el : cam.el };
+  arrHome();
+  arrDraw();
+}
+arrBtn.addEventListener('click', () => { if (arr.on) arrLeave(); else arrEnter(); });
+$('#rail-hid').addEventListener('click', () => arrEnter());
+$('#arr-done').addEventListener('click', () => arrLeave());
+$('#arr-cancel').addEventListener('click', () => {
+  const rows = arrBack(arr.entry, landsOf(map), hiddenLands);
+  if (!rows.length) { arrLeave(); return; }
+  layoutPost(rows).then(() => { if (!arr.err) arrLeave(); }); // a refusal stays in the bar: the mode is not left on a lie
+});
+$('#arr-tray').addEventListener('click', e => {
+  const b = e.target.closest('[data-show]');
+  if (b) layoutPost([{ id: b.dataset.show, hidden: false }]);
+});
+
+/* a move: the rule says what the rows are (a free slot, or a swap with the land there); null = the page offers no such move */
+function arrMove(id, cell){
+  const rows = landMove(landsOf(map), id, cell);
+  if (!rows) return false;
+  arr.pick = null; arrUi.target = null;
+  layoutPost(rows);
+  return true;
+}
+function arrHide(id){
+  if (landsOf(map).length < 2) { arr.err = i18n('arr.last'); arrDraw(); return; }
+  layoutPost([{ id, hidden: true }]);
+}
+/* the tap + tap way: a tap on a land picks it (again = lets it go); with a land picked, a tap on another land swaps the
+   two, a tap on a free slot moves it there, a tap anywhere else lets it go */
+function arrTapLand(id){
+  const lands = landsOf(map);
+  if (arr.pick && arr.pick !== id) {
+    const to = lands.find(l => l.id === id);
+    if (!to || !arrMove(arr.pick, to.slot)) { arr.err = i18n('arr.errSea'); arr.pick = null; arrDraw(); }
+    return;
+  }
+  arr.pick = arr.pick === id ? null : id;
+  arr.err = '';
+  arrDraw();
+}
+function arrTapCell(c){
+  if (arr.pick && c && landFree(landsOf(map), arr.pick).some(f => f[0] === c[0] && f[1] === c[1])) { arrMove(arr.pick, c); return; }
+  if (arr.pick) { arr.pick = null; arrDraw(); }
+}
+
+/* -- the pointer: a press on a land (or its plate) picks it up; a tap picks it for the tap + tap way -- */
+const arrPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), arrHit = new THREE.Vector3(), arrRay = new THREE.Raycaster(), arrNdc = new THREE.Vector2();
+function arrCellAt(px, py){ // the slot under a screen point (the ground plane, then the grid), or null
+  const r = canvas.getBoundingClientRect(), cw = arrCell();
+  arrNdc.set((px - r.left) / W * 2 - 1, -((py - r.top) / H) * 2 + 1);
+  arrRay.setFromCamera(arrNdc, camera);
+  if (!arrRay.ray.intersectPlane(arrPlane, arrHit)) return null;
+  return [Math.floor((arrHit.x + mid.x + cw / 2) / cw), Math.floor((arrHit.z + mid.z + cw / 2) / cw)];
+}
+function arrOver(e){ // dragging: where would it land, and the label that follows the pointer
+  const d = arrUi.down, lands = landsOf(map), c = arrCellAt(e.clientX, e.clientY), r = stage.getBoundingClientRect();
+  const from = lands.find(l => l.id === d.id);
+  arrGhost.hidden = false; arrGhost.style.left = (e.clientX - r.left) + 'px'; arrGhost.style.top = (e.clientY - r.top) + 'px';
+  const ok = !!(c && landMove(lands, d.id, c)), other = ok && arrLandAt(lands, c);
+  arrGhost.textContent = (from ? from.name : '') + (other ? ' ⇄ ' + other.name : '');
+  if (arrSlotKey(ok ? c : null) !== arrSlotKey(arrUi.target)) { arrUi.target = ok ? c : null; arrDraw(); }
+}
+function arrPress(e, id, el){
+  arr.err = '';
+  arrUi.down = { id, x: e.clientX, y: e.clientY, moved: false, pid: e.pointerId, el };
+  try { el.setPointerCapture(e.pointerId); } catch (err) {}
+}
+function arrDrift(e){
+  const d = arrUi.down;
+  if (!d || d.pid !== e.pointerId) return false;
+  if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) >= ARR_DRIFT_PX) { d.moved = true; arr.pick = null; arrDraw(); }
+  if (d.moved) arrOver(e);
+  return true;
+}
+function arrLift(e, cancelled){
+  const d = arrUi.down;
+  if (!d || d.pid !== e.pointerId) return false;
+  arrUi.down = null; arrGhost.hidden = true;
+  try { d.el.releasePointerCapture(e.pointerId); } catch (err) {}
+  const t = arrUi.target; arrUi.target = null;
+  if (cancelled) arrDraw();
+  else if (!d.moved) arrTapLand(d.id);
+  else if (!t || !arrMove(d.id, t)) arrDraw();
+  return true;
+}
+// these run before the page's own pointer handlers (capture), and keep them out of a press on a land
+canvas.addEventListener('pointerdown', e => {
+  if (!arr.on || e.button === 2) return;
+  if (arrUi.down) { e.stopImmediatePropagation(); return; } // a land is in hand: a second finger does nothing
+  const c = arrCellAt(e.clientX, e.clientY), l = c && arrLandAt(landsOf(map), c);
+  if (l) { e.stopImmediatePropagation(); arrPress(e, l.id, canvas); return; }
+  arrUi.tap = { x: e.clientX, y: e.clientY, cell: c };
+}, true);
+canvas.addEventListener('pointerdown', () => { if (arr.on && drag) drag.pan = true; }); // in the mode a drag on the sea moves the map, it never tilts it
+canvas.addEventListener('pointermove', e => { if (arr.on && arrDrift(e)) e.stopImmediatePropagation(); }, true);
+canvas.addEventListener('pointerup', e => {
+  if (!arr.on) return;
+  if (arrLift(e, false)) { e.stopImmediatePropagation(); return; }
+  const t = arrUi.tap; arrUi.tap = null;
+  if (t && Math.hypot(e.clientX - t.x, e.clientY - t.y) < ARR_DRIFT_PX) arrTapCell(t.cell);
+}, true);
+canvas.addEventListener('pointercancel', e => { if (arr.on && arrLift(e, true)) e.stopImmediatePropagation(); }, true);
+arrOv.addEventListener('pointerdown', e => {
+  const eye = e.target.closest('[data-hide]'), h = e.target.closest('.arr-h');
+  if (eye) {
+    if (eye.getAttribute('aria-disabled') === 'true') { arr.err = i18n('arr.last'); arrDraw(); } else arrHide(eye.dataset.hide);
+    return;
+  }
+  if (h) { e.preventDefault(); arrPress(e, h.dataset.id, arrOv); }
+});
+arrOv.addEventListener('click', e => { // a key press on a plate's hide button (a pointer press already did it at pointerdown)
+  const eye = e.target.closest('[data-hide]');
+  if (eye && e.detail === 0 && eye.getAttribute('aria-disabled') !== 'true') arrHide(eye.dataset.hide);
+});
+arrOv.addEventListener('pointermove', e => { arrDrift(e); });
+arrOv.addEventListener('pointerup', e => { arrLift(e, false); });
+arrOv.addEventListener('pointercancel', e => { arrLift(e, true); });
 
 /* ---------- opening scene: a city mid-day, not an empty land (Growth: DEMO_WORLD already has some grown territories) ---------- */
 function seed(){
@@ -8792,6 +9516,7 @@ function frame(now){
   applyTheme();
   updateCamera();
   renderFollow(); // V1: the follow chip tracks the map's free middle every frame, not just every renderPanel
+  arrFrame(); // city-layout L4: the arrange mode's camera easing and its name plates (nothing when the mode is off)
   applyFade(viewBlockers(cam.el + camLiftNow));
   stepShows(now); // Balance: the running era show(s) — builders walking, then the one-moment flip
   sync(simT, raw);
@@ -8815,11 +9540,17 @@ Promise.all([
   // cloud-polish Q1: --top-h = the height of the strip of rows on the stage (the banner, the follow chip and the
   // "not connected" chip sit under it); and each row that has more to the right than fits gets .more (it fades at the cut edge)
   const stageTop = $('#stage-top'), stageRows = [$('#machines'), $('#repos')];
+  // city-layout L4: the arrange control is pinned at the right end of the repo row: --repos-w = the width of that row,
+  // --arr-w = what the control takes (its width and the gap), and .has-arr leaves the repo row that room
   const fitStageTop = () => {
     stage.style.setProperty('--top-h', stageTop.offsetHeight + 'px');
     for (const n of stageRows) n.classList.toggle('more', n.scrollWidth - n.clientWidth - n.scrollLeft > 4);
+    stageTop.style.setProperty('--repos-w', $('#repos').offsetWidth + 'px');
+    stageTop.style.setProperty('--arr-w', ($('#arr-btn').offsetWidth + 6) + 'px');
+    stageTop.classList.toggle('has-arr', !$('#arr-btn').hidden);
   };
   new ResizeObserver(fitStageTop).observe(stageTop);
+  new ResizeObserver(fitStageTop).observe($('#arr-btn'));
   for (const n of stageRows) { new ResizeObserver(fitStageTop).observe(n); n.addEventListener('scroll', fitStageTop, { passive: true }); }
   fitStageTop();
   applyTheme(); updateCamera(); sync(0, 0); renderer.render(scene, camera); renderPanel();

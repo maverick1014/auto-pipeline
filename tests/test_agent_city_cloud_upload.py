@@ -35,8 +35,10 @@ bin/agent_city.py  (its own block: "cloud-city")
       type on neither list is not uploaded. A new page message type must be
       put on one of them (this test fails until then).
       CLOUD_DROP = ask, ask_phase, ask_closed, chat (question and command
-      text, chat text) and adding (the state of the local "add agent" button:
-      the cloud page is view only and has no such button).
+      text, chat text), adding (the state of the local "add agent" button:
+      the cloud page is view only and has no such button) and hidden
+      (city-layout: the repos the owner hid on this machine; the cloud never
+      learns they exist, tests/test_agent_city_layout.py).
   cloud_clean(msg) -> a cleaned COPY for the cloud, or None (dropped):
       - a type in CLOUD_DROP, an unknown type, not a dict -> None
       - tool: no "file" key
@@ -138,7 +140,8 @@ class TestLists(unittest.TestCase):
                          "does not know): decide whether it goes to the cloud")
 
     def test_what_never_goes_up(self):
-        self.assertEqual(set(need(self, "CLOUD_DROP")), {"ask", "ask_phase", "ask_closed", "chat", "adding"})
+        self.assertEqual(set(need(self, "CLOUD_DROP")), {"ask", "ask_phase", "ask_closed", "chat", "adding", "hidden",
+                                                            "hist"})   # city-data: a person's history lines stay local
 
 
 class TestClean(unittest.TestCase):

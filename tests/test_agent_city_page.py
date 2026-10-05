@@ -2086,7 +2086,8 @@ def page_fns(*names, optional=()):
             fns.append(src)
     # cloud-city-1: some page functions return early when CLOUD (the page on Cloudflare,
     # view only). A harness runs the LOCAL page's functions, where CLOUD is false.
-    return "var CLOUD = false;\n" + "\n".join(fns)
+    # The page's random is `let rand = Math.random` (seedable); a harness gets the unseeded one.
+    return "var CLOUD = false;\nvar rand = Math.random;\n" + "\n".join(fns)
 
 
 def consts(*names):

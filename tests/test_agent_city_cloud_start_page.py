@@ -503,7 +503,8 @@ class TestWiring(unittest.TestCase):
 
     def test_only_known_addresses(self):
         urls = set(re.findall(r"fetch\(\s*'([^']+)'", tp.inline_script()))
-        self.assertLessEqual(urls, {"/api/chat?to=", "/api/chat/send", "/api/decide", "/api/agent/add"})
+        self.assertLessEqual(urls, {"/api/chat?to=", "/api/chat/send", "/api/decide", "/api/agent/add",
+                                    "/api/layout"})   # city-layout: the local page's arrange mode; the cloud page never opens it (arrEnter)
 
 
 if __name__ == "__main__":

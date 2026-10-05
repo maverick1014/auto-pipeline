@@ -204,7 +204,9 @@ class TestViewOnly(unittest.TestCase):
 
     def test_only_feed_and_local_urls(self):
         urls = set(re.findall(r"fetch\(\s*'([^']+)'", script()))
-        self.assertLessEqual(urls, {"/api/chat?to=", "/api/chat/send", "/api/decide", "/api/agent/add"},
+        # city-layout: /api/layout is the LOCAL page's arrange mode; the cloud page never opens it (arrEnter
+        # returns at once on DEMO || CLOUD, tests/test_agent_city_layout_page.py)
+        self.assertLessEqual(urls, {"/api/chat?to=", "/api/chat/send", "/api/decide", "/api/agent/add", "/api/layout"},
                              "no new acting address; the feed address comes from cloudFeedUrl()")
 
 
