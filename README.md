@@ -68,7 +68,7 @@ Checked in this order, first match wins.
 |---|---|---|
 | `agent_todo.txt` | `agent-file.sh todo add` / `todo done` | Every agent at start |
 | `agent_completed.txt` | `agent-file.sh todo done`, one data line per task | Human, `agent-file.sh time` |
-| `agent_estimate.txt` | `agent-file.sh retrain`, also `todo done` every 10 new tasks | `agent-file.sh estimate` |
+| `agent_estimate.txt` | `agent-file.sh retrain`, also `todo done` once a week | `agent-file.sh estimate` |
 | `agent_ideas.txt` | `agent-file.sh idea add` | Human, on his own time |
 | `agent_worktree.txt` | `agent-file.sh worktree set` / `rm` | Main manager before every dispatch |
 | `agent.conf` | `./bin/agent-settings.sh` | `agent-start.sh` |

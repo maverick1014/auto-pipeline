@@ -12,6 +12,7 @@ An estimate = agent WORK minutes. Nearest past tasks: lane pool, then likeness
 leave-one-out errors. Training = picking k, text, type by leave-one-out error.
 """
 
+import datetime
 import json
 import math
 import os
@@ -20,7 +21,8 @@ import statistics
 import sys
 
 MIN_TASKS = 30        # tasks needed for the first version
-RETRAIN_EVERY = 10    # new tasks between two checks
+RETRAIN_DAYS = 7      # days between two checks (and at least 1 new task)
+OLD_EVERY = 10        # a file with no check date: due after this many new tasks, once
 MIN_BEFORE = 10       # tasks before a task, to backtest it
 TYPES = ("page", "server", "script", "docs", "cloud", "app", "data", "mixed")
 AFTER_FACTS = ("--work", "--wait", "--clock", "--est", "--bounces", "--workers",
@@ -301,6 +303,8 @@ def read_model(path):
         if setting[0] < 1 or not all(isinstance(x, (int, float)) for x in setting[1:]):
             return None
         data.setdefault("checks", [])
+        if "checked_date" in data and not isinstance(data["checked_date"], str):
+            return None
         if not isinstance(data["checks"], list):
             return None
         return data, ver
@@ -312,6 +316,8 @@ def save_model(path, data):
     """Atomic: a temp file beside it, then os.replace."""
     out = {"current": data["current"], "checked_tasks": data["checked_tasks"],
            "versions": data["versions"], "checks": data["checks"]}
+    if data.get("checked_date"):
+        out["checked_date"] = data["checked_date"]
     tmp = "%s.%d.tmp" % (path, os.getpid())
     try:
         with open(tmp, "w") as fh:
@@ -320,6 +326,13 @@ def save_model(path, data):
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)
+
+
+def day(text):
+    try:
+        return datetime.date.fromisoformat(text)
+    except (TypeError, ValueError):
+        return None
 
 
 def setting_of(ver):
@@ -407,12 +420,25 @@ def cmd_retrain(tasks, model_path, today, args):
         if not auto:
             print("estimate retrain: not yet (%d of %d tasks)" % (n, MIN_TASKS))
         return 0
-    if model is not None:
-        due_at = model[0]["checked_tasks"] + RETRAIN_EVERY
-        if n < due_at and not force:
-            if not auto:
-                print("estimate retrain: not due (%d tasks, next check at %d)" % (n, due_at))
-            return 0
+    if model is not None and not force:
+        last, now = day(model[0].get("checked_date")), day(today)
+        new_tasks = n - model[0]["checked_tasks"]
+        if last is None or now is None:
+            due_at = model[0]["checked_tasks"] + OLD_EVERY     # no date yet: the old task rule, once
+            if n < due_at:
+                if not auto:
+                    print("estimate retrain: not due (%d tasks, next check at %d)" % (n, due_at))
+                return 0
+        else:
+            next_day = last + datetime.timedelta(days=RETRAIN_DAYS)
+            if now < next_day or new_tasks < 1:
+                if not auto:
+                    if now < next_day:
+                        print("estimate retrain: not due (%d tasks, next check on %s)" % (n, next_day.isoformat()))
+                    else:
+                        print("estimate retrain: not due (%d tasks, next check on %s or later, needs 1 new task)"
+                              % (n, now.isoformat()))
+                return 0
 
     bt = backtest(tasks)
     ctx = Ctx(tasks, None)
@@ -434,7 +460,8 @@ def cmd_retrain(tasks, model_path, today, args):
     est_err, rub_err = bt["methods"]["estimator"]["error"], bt["methods"]["rubric"]["error"]
 
     if model is None:
-        save_model(model_path, {"current": 1, "checked_tasks": n, "versions": [new], "checks": []})
+        save_model(model_path, {"current": 1, "checked_tasks": n, "checked_date": today,
+                                "versions": [new], "checks": []})
         if method == "estimator":
             detail = "k %s, text %s, type %s; error %.1fm against the rubric's %.1fm on %d tasks" % (
                 setting[0], setting[1], setting[2], est_err, rub_err, bt["tested"])
@@ -466,6 +493,7 @@ def cmd_retrain(tasks, model_path, today, args):
         data["versions"].append(new)
         data["current"] = new["version"]
     data["checked_tasks"] = n
+    data["checked_date"] = today
     data["checks"].append({"date": today, "tasks": n, "new": len(positions), "current": cur["version"],
                            "current_error": cur_err, "new_error": new_err, "kept": kept})
     save_model(model_path, data)
