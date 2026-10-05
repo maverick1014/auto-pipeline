@@ -43,7 +43,8 @@ P  Page (bin/agent-city.html). "sim section" as in tests/test_agent_city_people.
        Active rows: rest false; depth = how many active ancestors (0 = right under the repo); up = the
          parent's row id ('' = the repo); kids = how many active rows are under it, all levels; siblings keep
          members order (the governor first at the top).
-       lost: true only for a worker (role 'worker') whose up is '' (no parent in this group); else false.
+       lost: true only for a worker (role 'worker') that has no parent member in this group (a resting parent
+         still counts: it is in the 休息 fold, so the worker is not lost); else false.
      railCount() is unchanged (active rows, the ones waiting on the owner, hidden repos' waits).
   P3 (sim) railHtml(groups, selId, closed, openRest, adds, shut): shut (6th, optional: missing = nothing shut)
      = a Set of row ids folded by the owner. Everything else as before (section, head with every row counted,
@@ -293,7 +294,7 @@ TREE_DRIVER = TREE_SETUP + r"""
 const G = railGroups();
 const none = new Set();
 const h0 = railHtml(G, 'w21', none, none);
-const h0b = railHtml(G, null, none, none, undefined, new Set());
+const h0b = railHtml(G, 'w21', none, none, undefined, new Set());
 byId('w12').waiting = true;
 const G1 = railGroups();
 const h1 = railHtml(G1, null, none, none, undefined, new Set(['s:T1']));
@@ -515,7 +516,7 @@ class TestWiringP4(unittest.TestCase):
         self.assertIn("try", near)
 
     def test_render_passes_it(self):
-        self.assertRegex(function_source("renderRail") or "", r"railHtml\([^)]*railShut\)")
+        self.assertRegex(function_source("renderRail") or "", r"railHtml\([^;]*\brailShut\)")
 
     def test_arrow_click(self):
         block = listener_block(r"\$\('#rail-list'\)", "click") or ""

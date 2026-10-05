@@ -452,7 +452,8 @@ class TestWiring(unittest.TestCase):
         self.assertIn("addState.delete(", block)
 
     def test_the_rail_draws_from_the_state(self):
-        self.assertRegex(function_source("renderRail"), r"railHtml\([^;]*addState\)")
+        # city-rail-tree: railShut may follow addState (railHtml's 6th argument)
+        self.assertRegex(function_source("renderRail"), r"railHtml\([^;]*\baddState\b")
 
     def test_css(self):
         for sel in (".rail-none", ".grp-row", ".add-i", '.add-i[aria-disabled="true"]', ".add-line", ".spin", ".addbox",

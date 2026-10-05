@@ -2932,6 +2932,35 @@ class History:
                     pass
 
 
+def _session_page_id(reducer, sid, terr):
+    """SID's page id in REDUCER's territory TERR: "gov:<terr>" when it is
+    that territory's governor, "s:<sid>" when that session citizen is live,
+    else "". CityState and RemoteCity both use it (city-talk, city-rail-tree)."""
+    if sid == "":
+        return ""
+    if reducer.gov_sid == sid:
+        return "gov:" + terr
+    record = reducer.agents.get("s:" + sid)
+    if record is not None and record["kind"] == "session" and not record["done"]:
+        return "s:" + sid
+    return ""
+
+
+def _spawn_up(reducer, terr, obj):
+    """city-rail-tree: the "up" of a spawn event made by line OBJ (the page
+    id of the new person's parent, "" = the repo itself): a subagent -> the
+    session that started it (the same page id as "from"); a session whose
+    hook role is "task-manager" -> "gov:<terr>" ALWAYS (unlike "from", also
+    while the repo has no governor); any other session -> ""."""
+    sid = obj.get("sid") if isinstance(obj.get("sid"), str) else ""
+    aid = obj.get("aid") if isinstance(obj.get("aid"), str) else ""
+    if aid:
+        return _session_page_id(reducer, sid, terr)
+    if obj.get("role") == "task-manager":
+        return "gov:" + terr
+    return ""
+
+
 class CityState(_CloudTaps):
     """Thread-safe home for the Reducer, asks, health counters and SSE clients."""
 
@@ -3000,6 +3029,7 @@ class CityState(_CloudTaps):
         self.last_activity = {}   # identity -> "now" of its last feed_line, this run only
         self.last_count = {}      # identity -> the recount() "now" it was last counted at
         self.agent_terr = {}      # citizen id -> territory id, for the snapshot's agents
+        self.agent_up = {}        # citizen id -> its "up" (parent page id or ""), for the snapshot's agents (city-rail-tree)
         self.gov_terr = ""        # the governor's current territory id
 
         # Old data is dropped: a territory saved under a "dir:..." identity
@@ -3913,6 +3943,7 @@ class CityState(_CloudTaps):
                 ev["terr"] = terr
                 self.agent_terr[ev["id"]] = terr
                 ev["from"] = self._spawn_from_locked(obj, reducer, terr)
+                ev["up"] = self.agent_up[ev["id"]] = _spawn_up(reducer, terr, obj)   # city-rail-tree
                 self._decorate_spawn(ev, obj, identity, terr)
                 if self._remember_name_locked(ev["id"], ev["label"], ev["task"]):
                     names_dirty = True
@@ -3931,6 +3962,7 @@ class CityState(_CloudTaps):
             self._broadcast(ev)
             if etype == "leave":
                 self.agent_terr.pop(ev["id"], None)   # after the event: _broadcast needs it (a hidden land's person)
+                self.agent_up.pop(ev["id"], None)
 
         if title and not title_in_spawn:
             record = reducer.agents.get(title_cid)
@@ -4177,10 +4209,13 @@ class CityState(_CloudTaps):
         office free). Leads/offices/relays need a real territory (a plan):
         no repo (identity None) -> just "terr", as before this feature.
         A lead standing in a live worktree site (self._lead_site) uses that
-        site's office tile instead of one of its own (city-worktrees)."""
-        if identity is None or chain is None:
-            return dict(a, terr=terr)
+        site's office tile instead of one of its own (city-worktrees).
+        Every record also carries "up" (city-rail-tree): its spawn's parent
+        page id, "" when unknown."""
         cid = a["id"]
+        up = self.agent_up.get(cid, "")
+        if identity is None or chain is None:
+            return dict(a, terr=terr, up=up)
         relay = ""
         office = None
         entry = chain["open"].get(cid)
@@ -4190,7 +4225,7 @@ class CityState(_CloudTaps):
         if cid in chain["leads"]:
             site_sid = self._lead_site.get(cid)
             office = self._office_view(identity, site_sid if site_sid is not None else cid)
-        return dict(a, terr=terr, relay=relay, lead=lead, office=office)
+        return dict(a, terr=terr, relay=relay, lead=lead, office=office, up=up)
 
     def _decorate_spawn(self, ev, obj, identity, terr):
         """Caller holds self.lock. A task-manager session citizen is a lead
@@ -4231,14 +4266,7 @@ class CityState(_CloudTaps):
         """Caller holds self.lock. SID's page id in REDUCER's territory:
         "gov:<terr>" when it is that territory's governor, "s:<sid>" when
         that session citizen is live, else ""."""
-        if sid == "":
-            return ""
-        if reducer.gov_sid == sid:
-            return "gov:" + terr
-        record = reducer.agents.get("s:" + sid)
-        if record is not None and record["kind"] == "session" and not record["done"]:
-            return "s:" + sid
-        return ""
+        return _session_page_id(reducer, sid, terr)
 
     def _spawn_from_locked(self, obj, reducer, terr):
         """Caller holds self.lock. The "from" of a spawn event made by line
@@ -6564,6 +6592,7 @@ class RemoteCity:
         self._chains = {}        # (sender dev id, rid) -> {"leads", "lead_of", "open"} (idea-city C16)
         self._last_seen = {}     # sender dev id -> monotonic time of its last line (any of its repos)
         self._meta = {}          # "r:<dev>:<id>" -> {"who","device","rid","br","terr","dev"}
+        self._up = {}            # "r:<dev>:<id>" -> that person's "up", already remapped (city-rail-tree)
         self._team_state = {}    # host -> {"state", "queued", "at"} last sent to the page
         self._team_rids = {}     # host -> set(rid), last known (to forget on "left")
 
@@ -6644,6 +6673,7 @@ class RemoteCity:
             etype = ev.get("type")
             if etype == "spawn":
                 ev["terr"] = terr
+                ev["up"] = _spawn_up(reducer, terr, line)   # city-rail-tree: remapped below, like "lead"
                 self._chain_spawn(chain, ev, aid, sid)
             elif etype == "gov":
                 ev["id"] = "gov:" + terr
@@ -6663,8 +6693,13 @@ class RemoteCity:
                 ev["id"] = remote_id
                 if ev.get("lead"):
                     ev["lead"] = "r:%s:%s" % (dev_id, ev["lead"])
+                if ev.get("up"):
+                    ev["up"] = "r:%s:%s" % (dev_id, ev["up"])
+                if ev.get("type") == "spawn":
+                    self._up[remote_id] = ev.get("up", "")
                 if ev.get("type") == "leave" or ev.get("present") is False:
                     self._meta.pop(remote_id, None)
+                    self._up.pop(remote_id, None)
                 else:
                     self._meta[remote_id] = {"who": who, "device": device, "rid": rid,
                                              "br": br, "terr": terr, "dev": dev_id}
@@ -6805,6 +6840,7 @@ class RemoteCity:
         for aid in list(reducer.agents.keys()):
             remote_id = "r:%s:%s" % (dev_id, aid)
             meta = self._meta.pop(remote_id, None)
+            self._up.pop(remote_id, None)
             events.append(self._wrap(dev_id, meta, {"type": "leave", "id": remote_id}))
         if reducer.gov_sid is not None:
             remote_id = "r:%s:gov:%s" % (dev_id, terr)
@@ -6826,7 +6862,7 @@ class RemoteCity:
         meta = self._meta.get(remote_id, {})
         person = dict(agent, id=remote_id, terr=meta.get("terr", ""), who=meta.get("who", ""),
                      device=meta.get("device", ""), rid=meta.get("rid", ""),
-                     br=meta.get("br", ""), dev=dev_id)
+                     br=meta.get("br", ""), dev=dev_id, up=self._up.get(remote_id, ""))
         return person
 
     def _gov(self, dev_id, terr, state):
