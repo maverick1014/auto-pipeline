@@ -733,7 +733,7 @@ class TestTalkAndStartFromAnyFolder(DeviceCase):
         code, out, err = self.in_a_terminal("cloud-start", "on")
         self.assertEqual(code, 0, out + err)
         self.assertEqual(lines_of(out, "CLOUD START:"), ["CLOUD START: on " + self.fake.host])
-        self.assertEqual(rl.read_start(self.start_file), [self.fake.host])
+        self.assertEqual(rl.read_start(self.start_file), {self.fake.host})
         status = self.city_run("status")
         self.assertEqual(lines_of(status.stdout, "CLOUD TALK:"), ["CLOUD TALK: on " + self.fake.host])
         self.assertEqual(lines_of(status.stdout, "CLOUD START:"), ["CLOUD START: on " + self.fake.host])

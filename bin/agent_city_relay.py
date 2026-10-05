@@ -1444,8 +1444,11 @@ def _cli(argv):
     p_check.add_argument("--address", required=True)
 
     p_join = sub.add_parser("join")
-    p_join.add_argument("--address", required=True)
+    p_join.add_argument("--address", default=None)
     p_join.add_argument("--file", required=True)
+    # city-device-join: the move-up reads address and key from another join
+    # file, so the key never passes the shell
+    p_join.add_argument("--from-file", default=None)
 
     p_join.add_argument("--cloud-file", default=None)
 
@@ -1489,19 +1492,34 @@ def _cli(argv):
     if args.cmd == "start":
         return cmd_start(args)
 
-    err = check_address(args.address)
+    address = args.address
+    key = None
+    if args.cmd == "join" and getattr(args, "from_file", None):
+        # join --from-file <join file>: address and key come from that file
+        # (an older per-repo join); nothing is read from stdin, nothing printed
+        taken = read_join(args.from_file)
+        if taken is None:
+            print("RELAY: no address and key in that join file")
+            return 2
+        address, key = taken["address"], taken["key"]
+    elif address is None:
+        print("RELAY: no address")
+        return 2
+
+    err = check_address(address)
     if err:
         print("RELAY: %s" % err)
         return 2
 
-    key = sys.stdin.readline().strip()
+    if key is None:
+        key = sys.stdin.readline().strip()
     if not key:
         print("RELAY: no key on stdin")
         return 2
 
     dev_id = _default_dev_id()
-    state, _data = sync(args.address, key, dev_id, 0, [])
-    host = urlsplit(args.address).netloc
+    state, _data = sync(address, key, dev_id, 0, [])
+    host = urlsplit(address).netloc
 
     if state == "refused":
         print("RELAY: the relay refused the key")
@@ -1511,7 +1529,7 @@ def _cli(argv):
         return 4
 
     if args.cmd == "join":
-        write_join(args.file, args.address, key)
+        write_join(args.file, address, key)
         if args.cloud_file:
             # cloud-city-1: the accepted sync's reply tells whether the relay
             # has the cloud page on; the marker keeps it (hosts only).
