@@ -2288,7 +2288,7 @@ class TestEraShow(unittest.TestCase):
         self.assertRegex(text, r"const SHOW_FLIP = 52\b")
         era = case_block("era")
         self.assertIsNotNone(era, "case 'era': not handled")
-        self.assertRegex(era, r"startShow\(ev\.terr, ev\.from, ev\.to, ev\.left\)")
+        self.assertRegex(era, r"startShow\(ev\.terr, ev\.from, ev\.to, ev\.left(, ev\.tier)?\)")   # city-tier: a level up adds its tier
         snap = case_block("snapshot") or ""
         self.assertIn(".shows", snap)
         self.assertIn("startShow(", snap)
