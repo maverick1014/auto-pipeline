@@ -2983,7 +2983,7 @@ class CityState(_CloudTaps):
 
         # -- world: territories, growth, town plans, persistence ----------
         self.plans = plans if plans is not None else load_plans()
-        self.count_fn = count_fn or count_lines
+        self.count_fn = count_fn or count_here   # city-tier: None = could not count (not on this machine)
         self.balance_fn = balance_fn if balance_fn is not None else balance_of
         self.balance_files = {}   # identity -> {"files": ...}["kind"] from the last count (memory only)
         self.world_path = world_path
@@ -3359,27 +3359,34 @@ class CityState(_CloudTaps):
                 new[identity] = (slot, hidden)
 
             def shown_records(skip=None):
-                return [{"slot": new[i][0], "plan": self.world["territories"][i]["plan"]}
+                return [{"slot": new[i][0], "plan": self.world["territories"][i]["plan"],
+                         "cells": _cells_of(self.world["territories"][i])}
                         for i in self.world["order"]
                         if i in new and i != skip and not new[i][1]]
 
             def refusal(records):
-                """The rule on shown RECORDS: the answer, or None when it holds."""
+                """The rule on the squares of shown RECORDS (a record's square is
+                its "cells" each way from its slot): the answer, or None when it
+                holds. A square that leaves the grid or shares a cell with
+                another is "taken"; one on the row just south of a sea plan's
+                square is "sea"."""
                 seen = set()
                 for r in records:
-                    if tuple(r["slot"]) in seen:
+                    square = _square(r["slot"], r["cells"])
+                    if not _in_grid(r["slot"], r["cells"]) or square & seen:
                         return {"error": "taken"}
-                    seen.add(tuple(r["slot"]))
+                    seen |= square
                 for r in records:
-                    if plan_by_id[r["plan"]]["sea"] and (r["slot"][0], r["slot"][1] + 1) in seen:
+                    if plan_by_id[r["plan"]]["sea"] and _south_row(r["slot"], r["cells"]) & seen:
                         return {"error": "sea"}
                 return None
 
             for identity in again:
                 others = shown_records(skip=identity)
-                mine = {"slot": new[identity][0], "plan": self.world["territories"][identity]["plan"]}
+                mine = {"slot": new[identity][0], "plan": self.world["territories"][identity]["plan"],
+                        "cells": _cells_of(self.world["territories"][identity])}
                 if refusal(others + [mine]) is not None:
-                    free = _free_slot(others, plan_by_id, plan_by_id[mine["plan"]])
+                    free = _free_slot(others, plan_by_id, plan_by_id[mine["plan"]], mine["cells"])
                     if free is None:
                         return 409, {"error": "taken"}
                     new[identity] = (list(free), False)
@@ -3433,8 +3440,11 @@ class CityState(_CloudTaps):
                 continue
             left = SHOW_SEC - (time.time() - show["start"])
             if left > 0:
-                out.append({"terr": territory_id(identity), "from": show["from"],
-                            "to": show["to"], "left": left})
+                one = {"terr": territory_id(identity), "from": show["from"],
+                       "to": show["to"], "left": left}
+                if show.get("tier") is not None:    # city-tier: a level up
+                    one["tier"] = list(show["tier"])
+                out.append(one)
         return out
 
     def remove_client(self, client):
@@ -4141,7 +4151,7 @@ class CityState(_CloudTaps):
         local = t.get("offices", {}).get(cid)
         if local is None:
             return None
-        ox, oz = t["slot"][0] * CELL, t["slot"][1] * CELL
+        ox, oz = town_origin(t)
         return {"x": ox + local[0], "z": oz + local[1]}
 
     def _decorate_agent(self, a, identity, terr, chain):
@@ -4594,12 +4604,12 @@ class CityState(_CloudTaps):
 
     def _plot_xz_locked(self, t, plot):
         """Caller holds self.lock. World (x, z) of T's plot number PLOT --
-        the same math layout() uses (territory slot * CELL + the plan's
-        local plot coordinates)."""
+        the same math layout() uses (the town's origin, see town_origin, + the
+        plan's local plot coordinates)."""
         plan = _plan_by_id(self.plans, t["plan"])
         px, pz, _ = plan["plots"][plot]
-        i, j = t["slot"]
-        return i * CELL + px, j * CELL + pz
+        ox, oz = town_origin(t)
+        return ox + px, oz + pz
 
     def _owned_building_locked(self, t, owner):
         """Caller holds self.lock. T's building OWNER counts as owning
@@ -4734,41 +4744,105 @@ class CityState(_CloudTaps):
         last count, RECOUNT_SEC or more ago (never counted in this run, but
         with a line: due at once). A territory only ever loaded from
         world.json, with no line yet, is never due -- last_activity holds
-        no entry for it until feed_line sees it. count_fn and balance_fn run
+        no entry for it until feed_line sees it -- except one that was never
+        counted by COUNT_RULE (city-tier: "the new count, once"): it is due at
+        once, in the first count of this run. count_fn and balance_fn run
         outside the lock, so a line that arrives while either runs (bumping
         last_activity past the "now" this count is about to be stamped with)
         keeps that territory due again next time, instead of losing it.
-        Returns how many territories were counted."""
+        A count_fn answer of None is "could not count" (the repo is not on
+        this machine): nothing of that territory changes. A territory that was
+        never counted by COUNT_RULE takes the new count as its lines AND its
+        peak, once (the old peak was counted the old way); after that its peak
+        is max(peak, lines) as before. When all of the counts are in, the
+        levels step (see _levels_locked). Returns how many territories were
+        counted."""
         with self.lock:
-            due = [i for i in self.world["territories"]
-                   if i in self.last_activity
-                   and (i not in self.last_count
-                        or (self.last_activity[i] > self.last_count[i]
-                            and (now - self.last_count[i]) >= RECOUNT_SEC))]
+            due = [i for i, t in self.world["territories"].items()
+                   if (i in self.last_activity
+                       and (i not in self.last_count
+                            or (self.last_activity[i] > self.last_count[i]
+                                and (now - self.last_count[i]) >= RECOUNT_SEC)))
+                   or (t.get("count") != COUNT_RULE and i not in self.last_count)]
         if not due:
             return 0
         counted = {i: self.count_fn(i) for i in due}
-        balances = {i: self.balance_fn(i, self._rules_text_for(i)) for i in due}
-        for i in due:
+        here = [i for i in due if counted[i] is not None]
+        balances = {i: self.balance_fn(i, self._rules_text_for(i)) for i in here}
+        for i in here:
             self.requality(i)
         with self.lock:
             changed = False
+            done = []
+            shows = []      # the era messages of this count: sent after the levels, once each
             for i in due:
                 self.last_count[i] = now
                 t = self.world["territories"].get(i)
-                if t is None:
+                if t is None or counted[i] is None:
                     continue
-                before = (t["lines"], t["peak"])
+                before = (t["lines"], t["peak"], t.get("count"))
                 val = counted[i]
-                t["lines"] = val
-                t["peak"] = max(t["peak"], val)
-                if (t["lines"], t["peak"]) != before:
+                if t.get("count") != COUNT_RULE:
+                    t["lines"] = t["peak"] = val
+                    t["count"] = COUNT_RULE
+                else:
+                    t["lines"] = val
+                    t["peak"] = max(t["peak"], val)
+                if (t["lines"], t["peak"], t.get("count")) != before:
                     changed = True
-                if self._apply_balance_locked(i, t, balances[i]):
+                if self._apply_balance_locked(i, t, balances[i], pending=shows):
                     changed = True
+                done.append(i)
+            if self._levels_locked(done, shows):
+                changed = True
+            if self.clients:
+                for msg in shows:
+                    self._broadcast(msg)
             if changed:
                 self._emit_world_locked()
-        return len(due)
+        return len(done)
+
+    def _levels_locked(self, done, shows):
+        """Caller holds self.lock. The levels, after ALL the counts of one
+        recount are in (city-tier, "Tiers"). Every territory of DONE (the ones
+        counted just now) whose tier_of(peak) is a bigger city than its "tier"
+        steps up: when any of them needs a bigger square and the island was
+        not laid out again yet (world["tiers"]), the whole island is laid out
+        again, once (re_lay), and nobody gets a show in this count; else a land
+        that needs a bigger square grows (grow_land; no room: nothing changes,
+        its next count tries again) and the others keep their square, and each
+        one that stepped up gets "tier" set and one show. A show is an era show
+        carrying "tier": [old, new]; an era show of the same count (SHOWS holds
+        its message) is the same one show. Returns whether anything changed."""
+        territories = self.world["territories"]
+        ups = []
+        for i in done:
+            t = territories.get(i)
+            if t is None:
+                continue
+            old, new = t.get("tier", 0), tier_of(t["peak"])
+            if _TIER_RANK[new] > _TIER_RANK[old]:
+                ups.append((i, t, old, new))
+        if not ups:
+            return False
+        if not self.world.get("tiers") and any(TIER_CELLS[new] > _cells_of(t) for _, t, _, new in ups):
+            re_lay(self.world, self.plans)
+            self.world["tiers"] = True
+            return True
+        for i, t, old, new in ups:
+            if TIER_CELLS[new] > _cells_of(t) and not grow_land(self.world, self.plans, i, TIER_CELLS[new]):
+                continue
+            t["tier"] = new
+            era = t.get("era", "village")
+            msg = next((m for m in shows if m["terr"] == territory_id(i)), None)
+            if msg is None:
+                start = time.time() if self.clients else None
+                t["show"] = {"from": era, "to": era, "start": start, "tier": [old, new]}
+                shows.append({"type": "era", "terr": territory_id(i), "from": era, "to": era,
+                              "left": SHOW_SEC, "tier": [old, new]})
+            else:
+                t["show"]["tier"] = msg["tier"] = [old, new]
+        return True
 
     def requality(self, identity):
         """Rechecks IDENTITY's buildings against the files on disk
@@ -5008,11 +5082,14 @@ class CityState(_CloudTaps):
             return "removed"
         return "merged" if res.returncode == 0 else "removed"
 
-    def _apply_balance_locked(self, identity, t, result):
+    def _apply_balance_locked(self, identity, t, result, pending=None):
         """Caller holds self.lock. Stores balance/rules_bad/files from one
         balance_fn result, advances the era, and starts (or queues) a show
         on a raise -- the era event, when a page is open, before the caller's
-        world event. Returns whether anything actually changed."""
+        world event. PENDING (a list): the era message is added there instead
+        of being sent, the caller sends it (city-tier: a level up of the same
+        count joins the same show). Returns whether anything actually
+        changed."""
         changed = self.balance_files.get(identity) != result["files"]
         self.balance_files[identity] = result["files"]
         if t.get("balance") != result["kinds"]:
@@ -5028,9 +5105,12 @@ class CityState(_CloudTaps):
             start = time.time() if self.clients else None
             t["show"] = {"from": old_era, "to": new_era, "start": start}
             changed = True
-            if self.clients:
-                self._broadcast({"type": "era", "terr": territory_id(identity),
-                                  "from": old_era, "to": new_era, "left": SHOW_SEC})
+            msg = {"type": "era", "terr": territory_id(identity),
+                   "from": old_era, "to": new_era, "left": SHOW_SEC}
+            if pending is not None:
+                pending.append(msg)
+            elif self.clients:
+                self._broadcast(msg)
         return changed
 
     def _rules_conf_path(self, identity):
@@ -7963,20 +8043,108 @@ def new_world():
     return {"v": 1, "territories": {}, "order": []}
 
 
-def _free_slot(territories, plan_by_id, plan):
-    """The first cell in SLOTS order that a land of PLAN may take next to the
+# -- city-tier: levels and squares (requirements/city.md, "Tiers"; tests/
+# test_agent_city_tier.py is the contract). A land's square is TIER_CELLS[tier]
+# cells each way from its slot (its north-west cell); a record with no "cells"
+# is one cell, as before. ------------------------------------------------------
+
+TIER_LINES = (800000, 200000, 20000)        # tier 1, 2, 3 from this many hand-written lines
+TIER_CELLS = {0: 1, 1: 3, 2: 2, 3: 1}       # a land's square is this many cells each way
+TIER_SHIFT = {1: 4, 2: 2}                   # the hall sits this many tiles west of a big square's middle
+COUNT_RULE = 2                              # a record carries "count": COUNT_RULE once counted by this rule
+BG_CAP = {1: 480, 2: 170, 3: 60}            # background buildings per land (layout)
+BG_TOTAL = 900                              # background buildings in a whole view (layout)
+GRID_LO, GRID_HI = -4, 4                    # the island's grid, both ways
+_NEIGHBOURS = ((1, 0), (-1, 0), (0, 1), (0, -1))
+_TIER_RANK = {0: 0, 3: 1, 2: 2, 1: 3}       # a bigger rank is a bigger city
+
+
+def tier_of(lines):
+    """1 from 800,000 lines, 2 from 200,000, 3 from 20,000, else 0."""
+    for tier, floor in zip((1, 2, 3), TIER_LINES):
+        if lines >= floor:
+            return tier
+    return 0
+
+
+def _cells_of(rec):
+    """The size of RECORD's square: its "cells" (1 when missing or odd)."""
+    cells = rec.get("cells", 1)
+    return cells if type(cells) is int and 1 <= cells <= 3 else 1
+
+
+def _square(slot, cells):
+    return {(slot[0] + a, slot[1] + b) for a in range(cells) for b in range(cells)}
+
+
+def _south_row(slot, cells):
+    """The cells just south of a square: the sea row of a coast land."""
+    return {(slot[0] + a, slot[1] + cells) for a in range(cells)}
+
+
+def _in_grid(slot, cells):
+    return (slot[0] >= GRID_LO and slot[1] >= GRID_LO
+            and slot[0] + cells - 1 <= GRID_HI and slot[1] + cells - 1 <= GRID_HI)
+
+
+def _touches(square, held):
+    return any((i + a, j + b) in held for i, j in square for a, b in _NEIGHBOURS)
+
+
+def _fits(slot, cells, sea, held, coast):
+    """True when a square of CELLS at SLOT is inside the grid, holds no cell of
+    HELD (the cells of the other squares), none of COAST (the cells just south
+    of their coast squares) and, when it is a coast land itself (SEA), has no
+    other square on the row just south of it."""
+    if not _in_grid(slot, cells):
+        return False
+    square = _square(slot, cells)
+    if square & held or square & coast:
+        return False
+    return not (sea and _south_row(slot, cells) & held)
+
+
+def _middle2(slot, cells):
+    """The middle of a square, doubled (whole numbers: no rounding in a tie)."""
+    return 2 * slot[0] + cells - 1, 2 * slot[1] + cells - 1
+
+
+def _far(slot, cells, centre):
+    """(squared distance to CENTRE (doubled middle), j, i): the smallest wins."""
+    mx, mz = _middle2(slot, cells)
+    return (mx - centre[0]) ** 2 + (mz - centre[1]) ** 2, slot[1], slot[0]
+
+
+def town_origin(t):
+    """World (x, z) of the town hall's origin of territory record T: the plan's
+    local coordinates are laid from here. A one-cell land: its slot's origin
+    (slot * CELL); a big city: the middle of its square, TIER_SHIFT tiles to
+    the west."""
+    cells = _cells_of(t)
+    half = (cells - 1) * CELL // 2
+    return (t["slot"][0] * CELL + half - TIER_SHIFT.get(t.get("tier", 0), 0),
+            t["slot"][1] * CELL + half)
+
+
+def _free_slot(territories, plan_by_id, plan, cells=1):
+    """The first cell in SLOTS order where a land of PLAN, CELLS x CELLS
+    cells big (one for a new repo), may take its north-west cell next to the
     territory records TERRITORIES (the shown ones: the caller leaves the
-    hidden out), or None. It is no cell of theirs, not the cell just south of
-    a sea plan, it touches one of them (when there is one), and a sea plan
-    takes no cell with one of them just south of it."""
-    occupied = {tuple(t["slot"]) for t in territories}
-    blocked = {(t["slot"][0], t["slot"][1] + 1) for t in territories if plan_by_id[t["plan"]]["sea"]}
+    hidden out), or None. Its square is inside the grid, holds no cell of a
+    square of theirs, not the cell just south of a sea plan's square, it
+    touches one of them (when there is one), and a sea plan takes no place
+    with one of them just south of it."""
+    held = set()
+    coast = set()
+    for t in territories:
+        size = _cells_of(t)
+        held |= _square(t["slot"], size)
+        if plan_by_id[t["plan"]]["sea"]:
+            coast |= _south_row(t["slot"], size)
     for i, j in SLOTS:
-        if (i, j) in occupied or (i, j) in blocked:
+        if not _fits((i, j), cells, bool(plan["sea"]), held, coast):
             continue
-        if occupied and not any((i + a, j + b) in occupied for a, b in ((1, 0), (-1, 0), (0, 1), (0, -1))):
-            continue
-        if plan["sea"] and (i, j + 1) in occupied:
+        if held and not _touches(_square((i, j), cells), held):
             continue
         return (i, j)
     return None
@@ -7986,7 +8154,9 @@ def add_territory(world, plans, identity, name, lines=0):
     """A known identity is never moved or replanned (hidden or not): same
     slot, same plan, lines/peak untouched, whatever LINES is passed this
     time. A new one is measured against the shown territories alone (city-
-    layout): a hidden territory's slot is free and it is nobody's neighbour."""
+    layout): a hidden territory's slot is free and it is nobody's neighbour.
+    It is one cell, and counted by COUNT_RULE (city-tier): it never takes a
+    cell of a big square or the sea row south of a coast square."""
     existing = world["territories"].get(identity)
     if existing is not None:
         return existing
@@ -8015,10 +8185,124 @@ def add_territory(world, plans, identity, name, lines=0):
     lines_val = lines or 0
     record = {"name": name, "plan": pick["id"], "slot": list(slot_for(pick)),
               "lines": lines_val, "peak": lines_val, "buildings": [], "era": "village",
-              "balance": {}, "rules_bad": [], "offices": {}, "rest": False}
+              "balance": {}, "rules_bad": [], "offices": {}, "rest": False,
+              "count": COUNT_RULE}
     world["territories"][identity] = record
     world["order"].append(identity)
     return record
+
+
+def re_lay(world, plans):
+    """The island laid out again, once (city-tier, "Re-lay once"). Changes
+    WORLD in place, nothing else. Every territory gets its size: counted by
+    COUNT_RULE -> "tier" = tier_of(peak) and "cells" = TIER_CELLS of it, else
+    it keeps its "tier" and takes one cell. Then the shown squares are placed
+    again, one by one: bigger squares first, then more peak lines, then world
+    order. The first around the grid's middle cell; each next on the free
+    place nearest the first one's middle (a tie: the smaller j, then the
+    smaller i) that is inside the grid, free, touches a placed square, is
+    not on a cell just south of a placed coast square and, when its plan has
+    sea, has no placed square just south of it. No place at all: it keeps
+    its slot and one cell. Hidden territories keep their slot."""
+    plan_by_id = {p["id"]: p for p in plans}
+    todo = []
+    for n, identity in enumerate(world["order"]):
+        t = world["territories"].get(identity)
+        if t is None:
+            continue
+        counted = t.get("count") == COUNT_RULE
+        before = t.get("tier")
+        if counted:
+            tier = tier_of(t.get("peak", 0))
+            t["tier"] = tier
+            t["cells"] = TIER_CELLS[tier]
+        else:
+            t["cells"] = 1
+        if not t.get("hidden"):
+            todo.append((-t["cells"], -t.get("peak", 0), n, t, before))
+    todo.sort(key=lambda row: row[:3])
+    held = set()
+    coast = set()
+    centre = None
+    for _cells, _peak, _n, t, before in todo:
+        cells = t["cells"]
+        sea = bool(plan_by_id[t["plan"]]["sea"])
+        if centre is None:
+            slot = (-(cells // 2), -(cells // 2))
+            centre = _middle2(slot, cells)
+        else:
+            best = None
+            for i in range(GRID_LO, GRID_HI + 2 - cells):
+                for j in range(GRID_LO, GRID_HI + 2 - cells):
+                    if not _fits((i, j), cells, sea, held, coast):
+                        continue
+                    if not _touches(_square((i, j), cells), held):
+                        continue
+                    key = _far((i, j), cells, centre)
+                    if best is None or key < best[0]:
+                        best = (key, (i, j))
+            if best is None:
+                if cells > 1:       # no room for its size: it stays as small as it was
+                    t["cells"] = cells = 1
+                    if before is None:
+                        t.pop("tier", None)
+                    else:
+                        t["tier"] = before
+                slot = tuple(t["slot"])
+            else:
+                slot = best[1]
+        t["slot"] = list(slot)
+        held |= _square(slot, cells)
+        if sea:
+            coast |= _south_row(slot, cells)
+
+
+def grow_land(world, plans, identity, cells):
+    """A land grows to a square of CELLS x CELLS (city-tier, "A level up
+    later"). True when placed, False (and nothing changed) when the grid has
+    no room. Changes WORLD in place: only this land's "cells" and "slot";
+    nobody else moves. The new square holds the old one, is inside the grid,
+    free of the other shown squares and keeps the coast rule, nearest the old
+    middle (a tie: the smaller j, then the smaller i); else the free place
+    touching another shown square nearest the old middle. A hidden land: its
+    "cells" is set and its slot stays (it is placed when it is shown again)."""
+    t = world["territories"][identity]
+    if t.get("hidden"):
+        t["cells"] = cells
+        return True
+    plan_by_id = {p["id"]: p for p in plans}
+    sea = bool(plan_by_id[t["plan"]]["sea"])
+    held = set()
+    coast = set()
+    for other, o in world["territories"].items():
+        if other == identity or o.get("hidden"):
+            continue
+        size = _cells_of(o)
+        held |= _square(o["slot"], size)
+        if plan_by_id[o["plan"]]["sea"]:
+            coast |= _south_row(o["slot"], size)
+    old_slot, old_cells = t["slot"], _cells_of(t)
+    centre = _middle2(old_slot, old_cells)
+    old_square = _square(old_slot, old_cells)
+    best_in = best_near = None
+    for i in range(GRID_LO, GRID_HI + 2 - cells):
+        for j in range(GRID_LO, GRID_HI + 2 - cells):
+            if not _fits((i, j), cells, sea, held, coast):
+                continue
+            square = _square((i, j), cells)
+            key = _far((i, j), cells, centre)
+            if old_square <= square:
+                if best_in is None or key < best_in[0]:
+                    best_in = (key, (i, j))
+            elif best_in is None and _touches(square, held):
+                if best_near is None or key < best_near[0]:
+                    best_near = (key, (i, j))
+    best = best_in or best_near
+    if best is None:
+        return False
+    t["slot"] = list(best[1])
+    t["cells"] = cells
+    return True
 
 
 # -- city-data: the name of a building (requirements/city.md, Growth, "Building
@@ -8665,12 +8949,17 @@ _LOCK_NAMES = {
 _BLOCKED_DIRS = {"vendor", "node_modules", "dist", "build", "third_party"}
 
 
+_DOC_EXT = {".md", ".mdx", ".rst", ".adoc"}
+
+
 def counts_as_code(path):
     """False for images, 3D models, fonts, audio, video, archives, pdf,
-    lock files, minified or generated files, and anything under a
-    vendor/node_modules/dist/build/third_party folder. True otherwise."""
+    lock files, minified or generated files (Go, Python, Dart: *.g.dart,
+    *.freezed.dart), and anything under a vendor/node_modules/dist/build/
+    third_party folder or a design bundle (a folder whose name ends with
+    _unzipped). True otherwise."""
     parts = path.replace("\\", "/").split("/")
-    if any(seg in _BLOCKED_DIRS for seg in parts[:-1]):
+    if any(seg in _BLOCKED_DIRS or seg.lower().endswith("_unzipped") for seg in parts[:-1]):
         return False
     name = parts[-1].lower()
     if name in _LOCK_NAMES or name.endswith(".lock"):
@@ -8681,46 +8970,79 @@ def counts_as_code(path):
         return False
     if name.endswith(".pb.go") or name.endswith("_pb2.py"):
         return False
+    if name.endswith(".g.dart") or name.endswith(".freezed.dart"):
+        return False
     return True
 
 
-def count_lines(identity):
-    """Added lines of `git --git-dir=IDENTITY diff --numstat <empty tree>
-    HEAD`, counting only rows counts_as_code keeps (a binary row's "added"
-    is "-", never counted). 0 when IDENTITY is not a git dir, has no
-    commit, or git times out or errors -- runs git only, nothing else. The
-    empty tree id comes from git itself (`hash-object -t tree --stdin` on
-    empty input), so SHA-256 repos (a different empty tree id than SHA-1)
-    count too."""
+def counts_for_size(path):
+    """city-tier: what a repo's SIZE counts, hand-written code only. What
+    counts_as_code keeps, but no doc (.md .mdx .rst .adoc), nothing under an
+    l10n folder and no .arb file. (The 5 kinds still see docs and l10n.)"""
+    if not counts_as_code(path):
+        return False
+    parts = path.replace("\\", "/").split("/")
+    if any(seg.lower() == "l10n" for seg in parts[:-1]):
+        return False
+    ext = os.path.splitext(parts[-1].lower())[1]
+    return ext not in _DOC_EXT and ext != ".arb"
+
+
+def _git_lines(identity):
+    """count_lines' work: the number, or None when git could not answer
+    (IDENTITY is not a git dir, has no commit, git times out or errors)."""
     try:
         empty_tree = subprocess.run(
             ["git", "--git-dir=" + identity, "hash-object", "-t", "tree", "--stdin"],
             input="", capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
-        return 0
+        return None
     if empty_tree.returncode != 0:
-        return 0
+        return None
     try:
         result = subprocess.run(
             ["git", "--git-dir=" + identity, "diff", "--numstat", empty_tree.stdout.strip(), "HEAD"],
             capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
-        return 0
+        return None
     if result.returncode != 0:
-        return 0
+        return None
     total = 0
     for line in result.stdout.splitlines():
         parts = line.split("\t", 2)
         if len(parts) != 3:
             continue
         added, _removed, path = parts
-        if added == "-" or not counts_as_code(path):
+        if added == "-" or not counts_for_size(path):
             continue
         try:
             total += int(added)
         except ValueError:
             continue
     return total
+
+
+def count_lines(identity):
+    """Added lines of `git --git-dir=IDENTITY diff --numstat <empty tree>
+    HEAD`, counting only rows counts_for_size keeps: hand-written code (a
+    binary row's "added" is "-", never counted; generated files, design
+    bundles, l10n and docs are not counted either, city-tier). 0 when
+    IDENTITY is not a git dir, has no commit, or git times out or errors --
+    runs git only, nothing else. The empty tree id comes from git itself
+    (`hash-object -t tree --stdin` on empty input), so SHA-256 repos (a
+    different empty tree id than SHA-1) count too."""
+    lines = _git_lines(identity)
+    return 0 if lines is None else lines
+
+
+def count_here(identity):
+    """CityState's own count_fn (city-tier): None -- "could not count", nothing
+    of that territory changes -- when IDENTITY's folder is not on this machine
+    or git could not answer (a timeout must never write a 0 over a peak), else
+    count_lines' number."""
+    if not os.path.isdir(identity):
+        return None
+    return _git_lines(identity)
 
 
 # --------------------------------------------------------------------------
