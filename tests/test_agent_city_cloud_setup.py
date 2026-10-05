@@ -189,7 +189,7 @@ class TestSetupSteps(unittest.TestCase):
     def test_old_sections_stay(self):
         titles = [t for _, t, _ in self.sections]
         for word in ("Make a Cloudflare account", "Make the relay", "Set the team key",
-                     "Join a local repo", "Change the key", "Remove the relay"):
+                     "Join this computer", "Change the key", "Remove the relay"):
             self.assertTrue([t for t in titles if word in t], word)
 
     def test_numbers_run_on(self):

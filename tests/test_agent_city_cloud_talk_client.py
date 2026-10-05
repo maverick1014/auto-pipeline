@@ -51,8 +51,9 @@ bin/agent-city.sh
   cloud-talk on    for the owner, in his own terminal, inside a joined repo.
       stdin is not a terminal -> exit 2, "CLOUD TALK: run this yourself in
       your own terminal ...", nothing is asked, sent or saved (an agent can
-      never turn it on). Outside a repo, or the repo has not joined -> exit 1
-      with a line that says so. Else it asks "Talk key (hidden): " with echo
+      never turn it on). Not joined (no device join, and outside a repo or
+      the repo has not joined) -> exit 1 with a line that says to join
+      (city-device-join: from any folder of a joined computer it works). Else it asks "Talk key (hidden): " with echo
       off, hands the key to the CLI above on stdin, and prints
           CLOUD TALK: on <host>                                              exit 0
           CLOUD TALK: the relay did not take this key; nothing was saved     exit 1
@@ -536,7 +537,8 @@ class TestCommand(CloudCase):
         outside = tempfile.mkdtemp(prefix="city_out_", dir=self.repo.base)
         code, out, err = self.on_in_a_terminal(cwd=outside)
         self.assertEqual(code, 1, out + err)
-        self.assertRegex(out + err, r"CLOUD TALK: .*repo")
+        # city-device-join: outside a repo on a computer that never joined, the line says to join
+        self.assertRegex(out + err, r"CLOUD TALK: .*join")
         self.assertFalse(os.path.exists(self.talk_file))
 
     def test_a_bad_word_is_refused(self):
