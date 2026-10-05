@@ -1,1 +1,2 @@
 pc2:/Users/maverick/orca/workspaces/auto-pipeline/city-tier | city-tier (TM on maverick-pc2) | working | since 2026-10-05 13:53
+pc2:/Users/maverick/orca/workspaces/auto-pipeline/city-device-join | city-device-join (TM on maverick-pc2) | working | since 2026-10-05 14:21
