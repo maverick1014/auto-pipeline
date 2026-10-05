@@ -247,7 +247,8 @@ class TestRailData(unittest.TestCase):
         self.assertEqual(order, [t for t in self.r["terrs"] if t in g], "map order")
         a = g[self.r["a"]]
         self.assertEqual(a["rows"], [["gov:" + self.r["a"], 0, False], ["s:L", 0, False], ["w1", 1, False],
-                                     ["f1", 0, False], ["r:dev-ann:s:9", 0, False], ["w2", 1, True]])
+                                     ["f1", 0, False], ["r:dev-ann:s:9", 0, False], ["w2", 0, True]])
+        # city-rail-tree P2: the 休息 fold is flat, a resting row has depth 0 (was its lead's depth 1)
         self.assertEqual(a["color"], self.r["cA"])
         b = g[self.r["b"]]
         self.assertEqual(b["rows"], [["y1", 0, False], ["y2", 0, True]], "no governor row while B has no governor")
@@ -526,7 +527,8 @@ class TestRailCss(unittest.TestCase):
         c = css()
         m = re.search(r"--rail-w\s*:\s*(\d+)px", c)
         self.assertIsNotNone(m, "--rail-w")
-        self.assertTrue(190 <= int(m.group(1)) <= 230, "compact: " + m.group(1))
+        # city-rail-tree (owner, 2026-10-05, pick B): about 300px, was compact 190 .. 230
+        self.assertTrue(290 <= int(m.group(1)) <= 310, "about 300px: " + m.group(1))
         m = re.search(r"--msg-w\s*:\s*(\d+)px", c)
         self.assertIsNotNone(m, "--msg-w")
         self.assertTrue(360 <= int(m.group(1)) <= 400, m.group(1))  # city-polish P2: about 380

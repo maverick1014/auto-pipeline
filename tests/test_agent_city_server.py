@@ -275,8 +275,9 @@ class TestServe(ServerCase):
         spawn, tool = client.events("spawn")[0], client.events("tool")[0]
         self.assertIn("terr", spawn, "growth: a spawn names its territory (tests/test_agent_city_world.py)")
         # city-people adds lead/office/relay to every spawn (tests/test_agent_city_chain.py),
-        # city-talk adds "from", who sent it (tests/test_agent_city_talk.py)
-        spawn = {k: v for k, v in spawn.items() if k not in ("terr", "lead", "office", "relay", "from")}
+        # city-talk adds "from", who sent it (tests/test_agent_city_talk.py),
+        # city-rail-tree adds "up", its parent (tests/test_agent_city_rail_tree.py)
+        spawn = {k: v for k, v in spawn.items() if k not in ("terr", "lead", "office", "relay", "from", "up")}
         self.assertEqual(spawn, {"type": "spawn", "id": "a1", "role": "worker",
                                  "label": "worker", "task": "设置页表单"})
         self.assertEqual(tool, {"type": "tool", "id": "a1", "tool": "Edit", "name": "Edit"})

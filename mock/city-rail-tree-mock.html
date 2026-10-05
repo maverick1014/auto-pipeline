@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Agent City · 在线列表变成树 · mock</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --guide:#B9C1E2; --berry:#FF7593; --butter:#FFD36E; --focus:#4D7CFE;
+  --build-bg:#E1ECFF; --build-ink:#3160B5; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
+  --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488;
+  --gov-bg:#FFF0C7; --gov-ink:#8A6000; --ok:#1E8657; --ok-bg:#DDF5E9;
+  --sea:#CFE6FF;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#13162A; --panel:#1C2040; --panel-2:#242951; --ink:#EEF0FF; --ink-2:#B0B5DB; --ink-3:#7B81AA;
+    --line:#2D3360; --guide:#4A5290; --focus:#8FB0FF;
+    --build-bg:#1E3160; --build-ink:#A9C6FF; --ask-bg:#4A1F33; --ask-ink:#FFB0C3;
+    --rest-bg:#173D33; --rest-ink:#93E8C0; --walk-bg:#262B50; --walk-ink:#B3B8DE;
+    --gov-bg:#43381A; --gov-ink:#FFDD8A; --ok:#5FD39C; --ok-bg:#173A2C; --sea:#1B2046;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--round)}
+.mock{max-width:1560px;margin-inline:auto;padding:14px 16px 28px;display:flex;flex-direction:column;gap:12px}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.sign{display:inline-flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:6px 16px;box-shadow:0 3px 0 var(--ink)}
+.sign b{font:700 21px/1.15 var(--display)}
+.sign small{font:600 10.5px/1.3 var(--mono);color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase}
+.pill{background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px}
+.note{background:var(--panel);border:1.5px solid var(--line);border-radius:14px;padding:10px 14px;color:var(--ink-2)}
+.note b{color:var(--ink)}
+.decide{background:var(--panel);border:2px solid var(--ink);border-radius:16px;padding:10px 14px;box-shadow:0 3px 0 rgba(42,43,69,.18)}
+.decide h2{margin:0 0 6px;font:700 15px/1.3 var(--display)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1.5px solid var(--line);vertical-align:top}
+th{font:700 12px/1.3 var(--round);color:var(--ink-3)}
+td .now{display:inline-block;padding:1px 8px;border-radius:999px;background:var(--ok-bg);color:var(--ok);font-weight:700}
+.ctl{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center}
+.ctl label{font:700 12.5px/1 var(--round);color:var(--ink-2)}
+.seg{display:inline-flex;gap:4px;background:var(--panel);border:1.5px solid var(--line);border-radius:14px;padding:4px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;background:var(--panel);border:1.5px solid var(--line);border-radius:18px;padding:8px}
+.tabs button,.seg button{all:unset;cursor:pointer;padding:7px 12px;border-radius:10px;font:600 13px/1 var(--round);color:var(--ink-2);background:var(--panel-2)}
+.tabs button{padding:9px 14px;border-radius:12px;font-size:13.5px}
+.tabs button[aria-selected="true"],.seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+.tabs button:focus-visible,.seg button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.seg button[disabled]{opacity:.45;cursor:default}
+.screen{display:grid;gap:16px;align-items:start}
+.screen.pair{grid-template-columns:repeat(2,minmax(0,1fr))}
+.screen.phones{grid-template-columns:repeat(auto-fit,minmax(330px,1fr))}
+@media (max-width: 860px){ .screen.pair{grid-template-columns:1fr} }
+.col{display:flex;flex-direction:column;gap:8px;min-width:0}
+.cap{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font:700 14px/1.3 var(--display)}
+.cap .tag{font:700 11.5px/1 var(--round);padding:5px 9px;border-radius:999px;background:var(--panel-2);border:1.5px solid var(--line);color:var(--ink-2)}
+.cap .tag.new{background:var(--ok-bg);border-color:transparent;color:var(--ok)}
+.cap .tag.bad{background:var(--ask-bg);border-color:transparent;color:var(--ask-ink)}
+.num{font:600 12.5px/1.5 var(--mono);color:var(--ink-2)}
+.num b{color:var(--ink)}
+.hint{font-size:12.5px;color:var(--ink-3)}
+ul.say{margin:4px 0 0;padding-left:18px;color:var(--ink-2);font-size:13px}
+ul.say li{margin:2px 0}
+code{font:600 12px/1.4 var(--mono);background:var(--panel-2);padding:1px 5px;border-radius:5px}
+
+/* a piece of map behind a rail: the sea, a few islands (only so the rail sits on something real) */
+.map{position:relative;overflow:hidden;border:2px solid var(--ink);border-radius:18px;background:
+  radial-gradient(closest-side,#9BD38A 70%,transparent 72%) 62% 30%/150px 110px no-repeat,
+  radial-gradient(closest-side,#B5DE9C 70%,transparent 72%) 82% 70%/180px 130px no-repeat,
+  radial-gradient(closest-side,#A8D98F 70%,transparent 72%) 48% 78%/130px 100px no-repeat,
+  var(--sea);box-shadow:0 5px 0 rgba(42,43,69,.2)}
+.map.tall{height:560px}
+
+/* ===================== the rail (page CSS, proposed) ===================== */
+.rail{position:absolute;left:12px;top:12px;z-index:4;width:var(--rail-w,212px);max-height:calc(100% - 24px);display:flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:16px;box-shadow:0 4px 0 rgba(42,43,69,.18);overflow:hidden;transition:width .2s}
+.rail-head{display:flex;align-items:center;gap:6px;padding:6px 6px 6px 12px;border-bottom:1.5px solid var(--line);font-weight:700;font-size:13px}
+.rail-head .n{font:600 12px/1 var(--mono);color:var(--ink-3)}
+.fold{all:unset;cursor:pointer;flex:none;width:26px;height:26px;display:grid;place-items:center;border-radius:8px;color:var(--ink-2);font:700 14px/1 var(--round);margin-left:auto}
+.fold:hover{background:var(--panel-2);color:var(--ink)}
+.fold:focus-visible{outline:2px solid var(--focus)}
+.rail-list{overflow:auto;padding:4px 4px 8px}
+.rail-grp{border-left:4px solid var(--rc);margin:4px 0 6px;padding-left:2px}
+.grp-row{display:flex;align-items:center;gap:2px}
+.grp-h{all:unset;cursor:pointer;box-sizing:border-box;flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:6px;padding:6px 6px 3px;font:700 11.5px/1.2 var(--mono);color:var(--ink-2)}
+.grp-h:focus-visible{outline:2px solid var(--focus);border-radius:6px}
+.grp-h .n{margin-left:auto;color:var(--ink-3);font-weight:600}
+.rc{width:10px;height:10px;border-radius:50%;background:var(--rc);flex:none;display:inline-block}
+.you{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--berry);color:#fff;font:700 11px/1 var(--round);flex:none}
+.add-i{all:unset;cursor:pointer;flex:none;box-sizing:border-box;width:22px;height:22px;margin:2px 4px 0 0;display:grid;place-items:center;border-radius:7px;border:1.5px solid var(--line);color:var(--ink-2);font:700 15px/1 var(--round)}
+.add-i:hover{border-color:var(--ink-3);background:var(--panel-2);color:var(--ink)}
+.rrows{list-style:none;margin:0;padding:0}
+.rrow{all:unset;cursor:pointer;box-sizing:border-box;width:100%;flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:8px;font-size:12.5px;line-height:1.35}
+.rrow:hover{background:var(--panel-2)}
+.rrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.rrow[aria-current="true"]{background:var(--ink);color:var(--paper)}
+.rrow.resting{opacity:.7}
+.rrow b{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sdot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--ink-3)}
+.sdot.st-you{background:var(--berry)} .sdot.st-ask,.sdot.st-gov{background:#E0A526} .sdot.st-build{background:#4D7CFE}
+.sdot.st-walk{background:var(--walk-ink)} .sdot.st-rest{background:#2FB57A}
+.chip{display:inline-block;flex:none;font:600 11px/1 var(--mono);letter-spacing:.04em;background:var(--panel-2);color:var(--ink-2);border:1.5px solid var(--line);border-radius:999px;padding:4px 8px}
+.chip.you{background:var(--ask-bg);color:var(--ask-ink);border-color:transparent}
+.chip.ask,.chip.gov{background:var(--gov-bg);color:var(--gov-ink);border-color:transparent}
+.chip.build{background:var(--build-bg);color:var(--build-ink);border-color:transparent}
+.chip.walk{background:var(--walk-bg);color:var(--walk-ink);border-color:transparent}
+.chip.rest{background:var(--rest-bg);color:var(--rest-ink);border-color:transparent}
+.rest-t{all:unset;cursor:pointer;display:block;margin:1px 0 2px 8px;padding:1px 6px;border-radius:6px;font:600 11.5px/1.5 var(--round);color:var(--rest-ink)}
+.rest-t:focus-visible{outline:2px solid var(--focus)}
+.tab{all:unset;cursor:pointer;position:absolute;z-index:4;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0;width:30px;background:var(--panel);border:2px solid var(--ink);box-shadow:0 3px 0 rgba(42,43,69,.18);font:700 12px/1.1 var(--round);color:var(--ink)}
+.tab .v{writing-mode:vertical-rl;white-space:nowrap}
+.rail-tab{left:0;top:12px;border-left:0;border-radius:0 12px 12px 0}
+
+/* NEW: the tree. A node = one line (arrow + the row button); its children sit in a nested list, indented one
+   level (--ind) with a thin guide line: a vertical line down the children, a short elbow into each child,
+   the last child's line stops at its elbow (├ ... └). */
+.tree .rl{display:flex;align-items:center;gap:0}
+.tw{all:unset;cursor:pointer;flex:none;box-sizing:border-box;width:16px;height:26px;display:grid;place-items:center;border-radius:5px;color:var(--ink-3);font:700 9px/1 var(--round);transition:rotate .15s}
+.tw:hover{background:var(--panel-2);color:var(--ink)}
+.tw:focus-visible{outline:2px solid var(--focus)}
+.tw[aria-expanded="false"]{rotate:-90deg}
+.tw.leaf{visibility:hidden;pointer-events:none}
+.tree .rrow{padding-left:3px}
+.tree ul.kids{list-style:none;margin:0 0 0 7px;padding:0}
+.tree ul.kids>li{position:relative;padding-left:7px}
+.tree ul.kids>li::before{content:"";position:absolute;left:0;top:13px;width:7px;border-top:1.5px solid var(--guide)}
+.tree ul.kids>li.leaf::before{width:20px}
+.tree ul.kids>li::after{content:"";position:absolute;left:0;top:0;bottom:0;border-left:1.5px solid var(--guide)}
+.tree ul.kids>li:last-child::after{bottom:auto;height:13.5px}
+.more{flex:none;font:700 10.5px/1 var(--mono);color:var(--ink-3);background:var(--panel-2);border:1.5px solid var(--line);border-radius:999px;padding:3px 6px}
+.rrow[aria-current="true"] .more{color:var(--paper);background:transparent}
+.who{flex:none;font:600 10px/1 var(--round);color:var(--ink-3);border:1.2px dashed var(--guide);border-radius:999px;padding:2px 6px}
+.rrow[aria-current="true"] .who{color:var(--paper)}
+/* long names, option 1: wrap to two lines (then cut) */
+.rail.wrap .rrow{align-items:flex-start}
+.rail.wrap .rrow b{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.rail.wrap .rrow .sdot{margin-top:5px}
+.rail.wrap .tree .rl{align-items:flex-start}
+/* long names, option 2: one line, the full name in a small tip on hover / keyboard focus */
+.tip{position:fixed;z-index:50;max-width:340px;padding:6px 10px;border-radius:10px;background:var(--ink);color:var(--paper);font:600 12.5px/1.4 var(--round);box-shadow:0 4px 0 rgba(42,43,69,.25);pointer-events:none}
+
+/* the person's window, right side (1440x900 view only) */
+.win{position:absolute;top:12px;right:12px;bottom:12px;width:380px;z-index:4;background:var(--panel);border:2px solid var(--ink);border-radius:16px;box-shadow:0 4px 0 rgba(42,43,69,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.win .h{display:flex;align-items:center;gap:8px;font:700 15px/1.3 var(--display)}
+.win .sub{color:var(--ink-3);font-size:12.5px}
+.win .msg{background:var(--panel-2);border-radius:12px;padding:8px 10px;font-size:13px;color:var(--ink-2)}
+.cam{position:absolute;top:12px;right:404px;z-index:3;display:flex;flex-direction:column;gap:6px}
+.cam i{width:38px;height:38px;border:2px solid var(--ink);border-radius:12px;background:var(--panel);display:block}
+.free{position:absolute;z-index:3;top:46%;height:0;border-top:2px dashed var(--ink-2)}
+.free span{position:absolute;left:50%;top:-14px;transform:translate(-50%,-100%);white-space:nowrap;background:var(--butter);color:#4A3500;font:700 13px/1 var(--display);padding:7px 12px;border-radius:999px}
+.desk{position:relative;width:1440px;height:900px;transform-origin:0 0;background:var(--paper);padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.desk .bar{display:flex;align-items:center;gap:10px;height:44px}
+.desk .stage{position:relative;flex:1;border:2px solid var(--ink);border-radius:18px;overflow:hidden}
+.desk .stage .map{position:absolute;inset:0;border:0;border-radius:0;box-shadow:none}
+.deskwrap{overflow:hidden;border-radius:12px;border:1.5px solid var(--line)}
+
+/* phone */
+.phone{position:relative;width:390px;height:780px;border:3px solid var(--ink);border-radius:36px;overflow:hidden;background:var(--paper);box-shadow:0 6px 0 rgba(42,43,69,.2);margin-inline:auto}
+.phone .pbar{height:96px;padding:40px 14px 0;display:flex;align-items:center;gap:8px}
+.phone .pbar b{font:700 18px/1 var(--display)}
+.phone .pstage{position:absolute;left:0;right:0;top:96px;bottom:0}
+.phone .pstage .map{position:absolute;inset:0;border:0;border-radius:0;box-shadow:none}
+.phone .rail{left:0;top:0;bottom:0;max-height:none;width:var(--phone-w);border-left:0;border-radius:0 16px 16px 0}
+.phone .shade{all:unset;cursor:pointer;position:absolute;inset:0;z-index:3;background:rgba(19,22,42,.28)}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:60;background:var(--ink);color:var(--paper);padding:9px 16px;border-radius:999px;font:600 13px/1.3 var(--round);box-shadow:0 4px 0 rgba(42,43,69,.25)}
+</style>
+</head>
+<body>
+<div class="mock">
+  <div class="top">
+    <div class="sign"><small>Agent City · mock</small><b>在线列表变成一棵树</b></div>
+    <span class="pill">原型 · 模拟数据</span>
+    <span class="hint">电脑页面和云端页面用同一份列表代码，两边一样改。</span>
+  </div>
+
+  <div class="decide">
+    <h2>要你决定（3 件）</h2>
+    <table>
+      <thead><tr><th>#</th><th>问题</th><th>选项</th><th>我建议</th><th>你现在看的</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>列表多宽</td><td>A 260px · B 300px（现在 212px）</td><td>B 300px：名字基本不截断，1440×900 开着窗口时地图还空出约 680px</td><td><span class="now" id="cur-w">B 300px</span></td></tr>
+        <tr><td>2</td><td>长名字怎么办</td><td>两行显示 · 一行 + 悬停看全名</td><td>两行：手机也能看全（手机没有悬停）</td><td><span class="now" id="cur-n">两行</span></td></tr>
+        <tr><td>3</td><td>服务器加一个小字段 <code>up</code>（谁派的）</td><td>加 · 不加</td><td>加：不加的话，刷新页面或在云端，任务经理和人开的 Helper 分不清，没法挂到总督下面（见「5 数据」）</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="ctl">
+    <label>宽度</label>
+    <div class="seg" id="seg-w">
+      <button type="button" data-w="260" aria-pressed="false">A 260px</button>
+      <button type="button" data-w="300" aria-pressed="true">B 300px</button>
+    </div>
+    <label>长名字</label>
+    <div class="seg" id="seg-n">
+      <button type="button" data-n="wrap" aria-pressed="true">两行</button>
+      <button type="button" data-n="hover" aria-pressed="false">一行 + 悬停看全名</button>
+    </div>
+    <span class="hint">这两个开关对下面每一页都有效。点 ▾ 收起，点名字＝打开这个人。</span>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="t1" aria-selected="true">1 前后对比（你的真实情况）</button>
+    <button type="button" role="tab" data-tab="t2" aria-selected="false">2 更深一层</button>
+    <button type="button" role="tab" data-tab="t3" aria-selected="false">3 电脑 1440×900</button>
+    <button type="button" role="tab" data-tab="t4" aria-selected="false">4 手机</button>
+    <button type="button" role="tab" data-tab="t5" aria-selected="false">5 数据：要改什么</button>
+  </div>
+
+  <!-- 1 before / after -->
+  <section id="t1" class="col">
+    <div class="note">你截图里的云端页面：<b>在线 9</b>，5 个仓库。左边是现在（全部一样缩进，名字被截），右边是改后（树：仓库 → 总督 → 任务经理 → 工人）。
+      <span class="hint">名字里被截掉的后半段是编的示例。</span></div>
+    <div class="screen pair">
+      <div class="col">
+        <div class="cap">现在 <span class="tag bad">212px · 平铺</span></div>
+        <div class="map tall" id="m-before"></div>
+        <div class="num" id="cut-before"></div>
+      </div>
+      <div class="col">
+        <div class="cap">改后 <span class="tag new">树 · 缩进 + 细线</span><span class="tag" id="tag-after">B 300px · 两行</span></div>
+        <div class="map tall" id="m-after"></div>
+        <div class="num" id="cut-after"></div>
+      </div>
+    </div>
+    <ul class="say">
+      <li>总督下面挂它派的任务经理，任务经理下面挂它的工人。一级缩进 14px，加一条细线，一眼看出谁属于谁。</li>
+      <li><b>Helper</b>（你自己开的会话）和普通 <b>session</b> 直接挂在仓库下，和总督平级。</li>
+      <li>仓库头上的数字、顶上的「在线 9」都不变：还是数所有人。</li>
+    </ul>
+  </section>
+
+  <!-- 2 deeper case -->
+  <section id="t2" class="col" hidden>
+    <div class="note">更深的例子：一个总督派了 2 个任务经理，每个有 2 个工人，还派了 1 个快车道副手（deputy）。另外：一个你自己开的 Helper，一个找不到上级的工人，一个在休息的工人。
+      <b>点 ▾ 收起</b>：孩子藏起来，这一行出现「+2」；藏起来的人里有等你的，红色数字留在这一行上，不会被藏掉。</div>
+    <div class="screen pair">
+      <div class="col">
+        <div class="cap">改后 · 全部展开 <span class="tag new">可以点</span></div>
+        <div class="map tall" id="m-deep"></div>
+      </div>
+      <div class="col">
+        <div class="cap">同一个，收起「estimate-skill」和「city-rail-tree」 <span class="tag new">可以点</span></div>
+        <div class="map tall" id="m-deep2"></div>
+      </div>
+    </div>
+    <ul class="say">
+      <li><b>上级不明</b>的工人（服务器不知道是谁派的）挂在仓库下，带一个虚线小标「上级不明」，永远不会丢。</li>
+      <li>休息的人还是收在仓库最下面的「休息 n」里（和现在一样）。父亲在休息但孩子还在干活：父亲留在树里，变淡。</li>
+      <li>收起 / 展开只是这个页面记住，不影响别人。默认全部展开。</li>
+    </ul>
+  </section>
+
+  <!-- 3 desktop 1440x900 -->
+  <section id="t3" class="col" hidden>
+    <div class="note">真实大小 1440×900（缩小显示）。右边开着一个人的窗口（380px），中间的虚线是地图还剩的宽度。用上面的「宽度」开关换 A / B。</div>
+    <div class="deskwrap" id="deskwrap"><div class="desk" id="desk"></div></div>
+  </section>
+
+  <!-- 4 phone -->
+  <section id="t4" class="col" hidden>
+    <div class="note">手机：列表平时收成左边一个小竖条「在线 9」（和现在一样），点开是抽屉。抽屉宽度从 min(250px, 78%) 改成 <b>min(300px, 84%)</b>，给缩进留地方。手机没有悬停，所以手机上名字总是两行。</div>
+    <div class="screen phones">
+      <div class="col"><div class="cap">平时：收起 <span class="tag">点竖条打开</span></div><div class="phone" id="ph1"></div></div>
+      <div class="col"><div class="cap">点开以后 <span class="tag new">树</span></div><div class="phone" id="ph2"></div></div>
+    </div>
+  </section>
+
+  <!-- 5 data -->
+  <section id="t5" class="col" hidden>
+    <div class="note">页面画树需要知道「谁派了谁」。现在有的、没有的：</div>
+    <table class="note">
+      <thead><tr><th>关系</th><th>电脑页面现在</th><th>云端页面现在</th><th>要改</th></tr></thead>
+      <tbody>
+        <tr><td>工人 → 任务经理</td><td>有（<code>lead</code>）</td><td>服务器发了 <code>lead</code>，页面没存（远程的人都平铺）</td><td>只改页面</td></tr>
+        <tr><td>任务经理 → 总督</td><td>只在出生那一下有（<code>from</code>），刷新就没了</td><td>没有</td><td>服务器：把 <code>from</code> 存成 <code>up</code></td></tr>
+        <tr><td>总督派的副手 → 总督</td><td>同上</td><td>同上</td><td>同上</td></tr>
+        <tr><td>Helper / session → 仓库</td><td>和任务经理分不清（都算 task-manager）</td><td>同左</td><td><code>up</code> 为空 ＝ 直接挂仓库</td></tr>
+        <tr><td>上级不明的工人</td><td>—</td><td>—</td><td>挂仓库，不丢</td></tr>
+      </tbody>
+    </table>
+    <div class="note"><b>建议的最小服务器改动</b>：服务器在每个人出生时已经算好了 <code>from</code>（工人 → 派它的会话；带 task-manager 角色的会话 → 本仓库总督；其他会话 → 空）。
+      改动只有一件事：把它存进这个人的记录，叫 <code>up</code>，快照里也带上；云端中继像 <code>lead</code> 一样把它换成远程 id。不需要新的 hook 字段。
+      <br><span class="hint">不加的话：只能用 <code>lead</code> 画「任务经理 → 工人」；任务经理、副手都只能平挂在仓库下。</span></div>
+  </section>
+</div>
+<div class="tip" id="tip" hidden></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+'use strict';
+/* st = [chip class, pill words]; you = waits on the owner; who = a small tag after the name */
+const REAL = [
+  { terr: 'ap', name: 'auto-pipeline', color: '#4D7CFE', add: true, rows: [
+    { id: 'ap-gov', name: '总督', st: ['gov', '在忙'], kids: [
+      { id: 'ap-tm', name: 'task-manager', st: ['build', '停一下'], kids: [
+        { id: 'ap-w1', name: 'Worker 1 · estimate-skill rubric table', st: ['build', '停一下'] },
+        { id: 'ap-w2', name: 'Worker 2 · skill file and its tests', st: ['build', '停一下'] } ] } ] } ] },
+  { terr: 'pos', name: 'v4-pospro', color: '#FF7593', add: true, rows: [
+    { id: 'pos-gov', name: '总督', st: ['gov', '等你'], you: true } ] },
+  { terr: 'plus', name: 'v4-plus', color: '#2FB57A', add: true, rows: [
+    { id: 'plus-gov', name: '总督', st: ['gov', '空闲'] },
+    { id: 'plus-h', name: 'Helper', st: ['build', '干活'] } ] },
+  { terr: 'api', name: 'plus-api', color: '#E8A33A', add: true, rows: [
+    { id: 'api-s', name: 'Anas Fahmi Em（全名示例）· plus-api login fix', st: ['build', '干活'] } ] },
+  { terr: 'off', name: 'v4-office', color: '#8A6FE0', add: true, rows: [
+    { id: 'off-s', name: 'session', st: ['build', '干活'] } ] },
+];
+const DEEP = [
+  { terr: 'ap', name: 'auto-pipeline', color: '#4D7CFE', add: true, rows: [
+    { id: 'd-gov', name: '总督', st: ['gov', '在忙'], kids: [
+      { id: 'd-tm1', name: 'city-rail-tree Task Manager', st: ['build', '干活'], kids: [
+        { id: 'd-w11', name: 'Worker 1 · rail tree rows and arrows', st: ['build', '改文件'] },
+        { id: 'd-w12', name: 'Worker 2 · rail width and phone drawer', st: ['you', '要你批准'], you: true } ] },
+      { id: 'd-tm2', name: 'estimate-skill Task Manager', st: ['walk', '空闲'], kids: [
+        { id: 'd-w21', name: 'Worker 1 · estimate rubric rows', st: ['ask', '去问经理'] },
+        { id: 'd-w22', name: 'Worker 2 · skill file', st: ['build', '停一下'] } ] },
+      { id: 'd-dep', name: 'README picture Deputy', st: ['build', '跑命令'] } ] },
+    { id: 'd-help', name: 'auto-pipeline Helper', st: ['build', '干活'] },
+    { id: 'd-orph', name: 'Worker 3 · city tier map', st: ['build', '看文件'], who: '上级不明' },
+    { id: 'd-rest', name: 'Worker 1 · cloud polish pills', st: ['rest', '休息中'], rest: true } ] },
+  { terr: 'plus', name: 'v4-plus', color: '#2FB57A', add: true, rows: [
+    { id: 'd-pgov', name: '总督', st: ['gov', '空闲'] } ] },
+];
+
+const ui = { w: 300, n: 'wrap' };
+const rails = new Map();   // rail element id -> its own state
+
+const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+const walk = (rows, f) => { for (const r of rows) { f(r); if (r.kids) walk(r.kids, f); } };
+const countAll = rows => { let n = 0; walk(rows, () => n++); return n; };
+const activeOf = rows => { let n = 0; walk(rows, r => { if (!r.rest) n++; }); return n; };
+const youUnder = r => { let n = 0; if (r.kids) walk(r.kids, k => { if (k.you && !k.rest) n++; }); return n; };
+const kidsCount = r => r.kids ? countAll(r.kids) : 0;
+
+function rowBtn(r, s, extra){
+  const cur = s.sel === r.id;
+  return '<button type="button" class="rrow' + (r.rest ? ' resting' : '') + '" data-focus="' + esc(r.id) + '" data-name="' + esc(r.name) +
+    '" aria-current="' + cur + '"><span class="sdot st-' + r.st[0] + '"></span><b>' + esc(r.name) + '</b>' + (extra || '') +
+    (r.who ? '<span class="who">' + esc(r.who) + '</span>' : '') + '<span class="chip ' + r.st[0] + '">' + esc(r.st[1]) + '</span></button>';
+}
+function nodeHtml(r, s){
+  const has = r.kids && r.kids.length, shut = has && s.shut.has(r.id);
+  let extra = '';
+  if (shut) {
+    extra = '<span class="more" title="藏起来的人">+' + kidsCount(r) + '</span>';
+    const y = youUnder(r);
+    if (y) extra += '<span class="you" title="藏起来的人里等你的">' + y + '</span>';
+  }
+  let h = '<li' + (has ? '' : ' class="leaf"') + '><div class="rl">' +
+    (has ? '<button type="button" class="tw" data-tw="' + esc(r.id) + '" aria-expanded="' + !shut + '" aria-label="' + (shut ? '展开' : '收起') + '">▼</button>'
+         : '<span class="tw leaf"></span>') + rowBtn(r, s, extra) + '</div>';
+  if (has && !shut) h += '<ul class="kids">' + r.kids.map(k => nodeHtml(k, s)).join('') + '</ul>';
+  return h + '</li>';
+}
+function flatRows(rows){ const out = []; walk(rows, r => out.push(r)); return out; }
+
+function railHtml(groups, s){
+  const total = groups.reduce((n, g) => n + activeOf(g.rows), 0);
+  if (s.folded) return '<button type="button" class="tab rail-tab" data-unfold="1"><span class="v">在线 ' + total + '</span><span class="you" style="' + (youTotal(groups) ? '' : 'display:none') + '">' + youTotal(groups) + '</span></button>';
+  let h = '<div class="rail ' + (s.tree ? 'is-tree ' : '') + (s.wrap ? 'wrap' : '') + '" style="--rail-w:' + s.w + 'px">' +
+    '<div class="rail-head">在线 <span class="n">' + total + '</span><button type="button" class="fold" data-fold="1" aria-label="收起列表">‹</button></div><div class="rail-list">';
+  for (const g of groups) {
+    const closed = s.closed.has(g.terr);
+    const live = g.rows.filter(r => !r.rest), resting = g.rows.filter(r => r.rest);
+    const you = (() => { let n = 0; walk(live, r => { if (r.you) n++; }); return n; })();
+    h += '<section class="rail-grp" style="--rc:' + g.color + '"><div class="grp-row"><button type="button" class="grp-h" data-grp="' + g.terr + '" aria-expanded="' + !closed + '">' +
+      '<span class="rc"></span>' + esc(g.name) + '<span class="n">' + countAll(g.rows) + '</span>' + (closed && you ? '<span class="you">' + you + '</span>' : '') + '</button>' +
+      (g.add ? '<button type="button" class="add-i" data-add="' + g.terr + '" title="加一个 agent">+</button>' : '') + '</div>';
+    if (!closed) {
+      if (s.tree) h += '<ul class="rrows tree">' + live.map(r => nodeHtml(r, s)).join('') + '</ul>';
+      else h += '<ul class="rrows">' + flatRows(live).map(r => '<li>' + rowBtn(r, s) + '</li>').join('') + '</ul>';
+      if (resting.length) {
+        const open = s.rest.has(g.terr);
+        h += '<button type="button" class="rest-t" data-rest="' + g.terr + '" aria-expanded="' + open + '">休息 ' + resting.length + ' ' + (open ? '▾' : '▸') + '</button>';
+        if (open) h += '<ul class="rrows' + (s.tree ? ' tree' : '') + '">' + resting.map(r => s.tree ? nodeHtml(r, s) : '<li>' + rowBtn(r, s) + '</li>').join('') + '</ul>';
+      }
+    }
+    h += '</section>';
+  }
+  return h + '</div></div>';
+}
+function youTotal(groups){ let n = 0; for (const g of groups) walk(g.rows, r => { if (r.you && !r.rest) n++; }); return n; }
+
+/* one rail instance: host element, data, fixed options (tree/width/wrap may follow the global switches) */
+function mount(hostId, groups, opt){
+  const s = Object.assign({ shut: new Set(), closed: new Set(), rest: new Set(), sel: '', folded: false, tree: true, follow: true }, opt);
+  rails.set(hostId, { groups, s });
+  const host = document.getElementById(hostId);
+  host.addEventListener('click', e => {
+    const t = e.target.closest('button'); if (!t || !host.contains(t)) return;
+    const d = t.dataset;
+    if (d.tw) { s.shut.has(d.tw) ? s.shut.delete(d.tw) : s.shut.add(d.tw); }
+    else if (d.grp) { s.closed.has(d.grp) ? s.closed.delete(d.grp) : s.closed.add(d.grp); }
+    else if (d.rest) { s.rest.has(d.rest) ? s.rest.delete(d.rest) : s.rest.add(d.rest); }
+    else if (d.fold) { s.folded = true; }
+    else if (d.unfold) { s.folded = false; }
+    else if (d.add) { toast('「+」和现在一样：给这个仓库加一个 agent'); return; }
+    else if (d.focus) { s.sel = d.focus; toast('打开「' + d.name + '」的窗口（和现在一样）'); if (s.onSel) s.onSel(d.name); }
+    else return;
+    draw(hostId);
+  });
+  draw(hostId);
+}
+function draw(hostId){
+  const { groups, s } = rails.get(hostId), host = document.getElementById(hostId);
+  if (s.follow) { s.w = ui.w; s.wrap = ui.n === 'wrap'; }
+  if (s.phone) s.wrap = true;
+  const keep = host.querySelector('.rail-list'), top = keep ? keep.scrollTop : 0;
+  let h = railHtml(groups, s);
+  if (s.phone) h = phoneShell(groups, s, h);
+  if (s.desk) h = deskShell(s, h);
+  const slot = host.querySelector(':scope > .slot') || host;
+  slot.innerHTML = h;
+  const list = host.querySelector('.rail-list'); if (list) list.scrollTop = top;
+  if (s.after) s.after(host);
+}
+function cutCount(host){
+  const names = [...host.querySelectorAll('.rrow b')];
+  const cut = names.filter(b => b.scrollWidth > b.clientWidth + 1 || b.scrollHeight > b.clientHeight + 1);
+  return [cut.length, names.length];
+}
+
+/* phone: a status bar, the map, the rail as a drawer (or its tab) */
+function phoneShell(groups, s, railH){
+  return '<div class="pbar"><b>Agent City</b><span class="pill" style="margin-left:auto">动态</span></div><div class="pstage"><div class="map"></div>' +
+    (s.folded ? '' : '<button type="button" class="shade" data-fold="1" aria-label="关闭列表"></button>') + railH + '</div>';
+}
+/* desktop 1440x900: top bar, stage with map, rail, camera buttons, the open window, the free width */
+function deskShell(s, railH){
+  // the stage is 1404px inside its border; the window takes 380px + 12px on the right; the rail ends at 12 + w
+  const free = 1404 - 392 - 12 - (24 + s.w);
+  return '<div class="bar"><div class="sign" style="padding:4px 14px"><b style="font-size:18px">Agent City</b></div><span class="pill">动态</span></div>' +
+    '<div class="stage"><div class="map"></div>' + railH +
+    '<div class="cam"><i></i><i></i><i></i></div>' +
+    '<div class="free" style="left:' + (24 + s.w) + 'px;width:' + free + 'px"><span>地图空出 ≈ ' + free + 'px</span></div>' +
+    '<div class="win"><div class="h"><span class="sdot st-build"></span>' + esc(s.winName) + '<span class="chip build" style="margin-left:auto">停一下</span></div>' +
+    '<div class="sub">auto-pipeline · estimate-skill</div><div class="msg">（这个人的窗口，和现在一样）</div></div></div>';
+}
+
+/* the long-name tip (option 2 only): on hover or keyboard focus of a row whose name is cut */
+const tip = document.getElementById('tip');
+function showTip(btn){
+  if (ui.n !== 'hover' || !btn) return hideTip();
+  const b = btn.querySelector('b'); if (!b || b.scrollWidth <= b.clientWidth + 1) return hideTip();
+  tip.textContent = btn.dataset.name; tip.hidden = false;
+  const r = btn.getBoundingClientRect();
+  tip.style.left = Math.min(r.left + 20, innerWidth - 350) + 'px'; tip.style.top = (r.bottom + 4) + 'px';
+}
+function hideTip(){ tip.hidden = true; }
+document.addEventListener('mouseover', e => { const b = e.target.closest('.rrow'); b ? showTip(b) : hideTip(); });
+document.addEventListener('focusin', e => { const b = e.target.closest('.rrow'); b ? showTip(b) : hideTip(); });
+document.addEventListener('scroll', hideTip, true);
+
+let toastT = 0;
+function toast(msg){
+  const t = document.getElementById('toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 1800);
+}
+
+/* the switches */
+function seg(id, key, attr){
+  document.getElementById(id).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    ui[key] = key === 'w' ? Number(b.dataset[attr]) : b.dataset[attr];
+    for (const x of e.currentTarget.querySelectorAll('button')) x.setAttribute('aria-pressed', String(x === b));
+    redrawAll();
+  });
+}
+seg('seg-w', 'w', 'w'); seg('seg-n', 'n', 'n');
+function redrawAll(){
+  const wTxt = (ui.w === 260 ? 'A ' : 'B ') + ui.w + 'px', nTxt = ui.n === 'wrap' ? '两行' : '一行 + 悬停';
+  document.getElementById('cur-w').textContent = wTxt;
+  document.getElementById('cur-n').textContent = nTxt;
+  document.getElementById('tag-after').textContent = wTxt + ' · ' + nTxt;
+  for (const id of rails.keys()) draw(id);
+  fitDesk();
+  hideTip();
+}
+
+/* tabs */
+document.querySelector('.tabs').addEventListener('click', e => {
+  const b = e.target.closest('button[role="tab"]'); if (!b) return;
+  for (const x of document.querySelectorAll('.tabs button')) {
+    x.setAttribute('aria-selected', String(x === b));
+    document.getElementById(x.dataset.tab).hidden = x !== b;
+  }
+  redrawAll();
+});
+
+function cutLine(id, label){
+  return host => {
+    const [c, n] = cutCount(host);
+    document.getElementById(id).innerHTML = label + '：<b>' + c + '</b> / ' + n + ' 个名字被截断';
+  };
+}
+mount('m-before', REAL, { tree: false, follow: false, w: 212, wrap: false, after: cutLine('cut-before', '212px 平铺') });
+mount('m-after', REAL, { after: cutLine('cut-after', '改后') });
+mount('m-deep', DEEP, {});
+mount('m-deep2', DEEP, { shut: new Set(['d-tm1', 'd-tm2']) });
+mount('ph1', REAL, { phone: true, folded: true, follow: false, w: 0, tree: true });
+mount('ph2', REAL, { phone: true, folded: false, follow: false, w: 0, tree: true });
+for (const id of ['ph1', 'ph2']) document.getElementById(id).style.setProperty('--phone-w', 'min(300px, 84%)');
+const deskState = { desk: true, winName: 'Worker 1 · estimate-skill rubric table', sel: 'ap-w1' };
+deskState.onSel = name => { deskState.winName = name; };
+mount('desk', REAL, deskState);
+function fitDesk(){
+  const wrap = document.getElementById('deskwrap'), desk = document.getElementById('desk');
+  const k = Math.min(1, wrap.clientWidth / 1440) || 1;
+  desk.style.transform = 'scale(' + k + ')';
+  wrap.style.height = Math.round(900 * k) + 'px';
+}
+addEventListener('resize', fitDesk);
+/* a link can open one page with its switches: #t3&w=260&n=hover */
+(function fromHash(){
+  const q = new URLSearchParams(location.hash.slice(1).replace(/^(t\d)/, 'tab=$1'));
+  if (q.get('w') === '260' || q.get('w') === '300') ui.w = Number(q.get('w'));
+  if (q.get('n') === 'wrap' || q.get('n') === 'hover') ui.n = q.get('n');
+  for (const x of document.querySelectorAll('#seg-w button')) x.setAttribute('aria-pressed', String(Number(x.dataset.w) === ui.w));
+  for (const x of document.querySelectorAll('#seg-n button')) x.setAttribute('aria-pressed', String(x.dataset.n === ui.n));
+  const tab = document.querySelector('.tabs button[data-tab="' + q.get('tab') + '"]');
+  if (tab) for (const x of document.querySelectorAll('.tabs button')) {
+    x.setAttribute('aria-selected', String(x === tab));
+    document.getElementById(x.dataset.tab).hidden = x !== tab;
+  }
+})();
+redrawAll();
+</script>
+</body>
+</html>
