@@ -1,0 +1,1 @@
+city-tier-revert | small | owner 2026-10-06: not happy with city tiers, prefers the previous city; undo merge d3f4d79 (revert), keep city-rail-tree; then restore his island layout from the pre-tier backup | est 6m | opened 2026-10-06 09:01 | by main
