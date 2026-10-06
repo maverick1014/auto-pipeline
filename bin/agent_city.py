@@ -1368,9 +1368,7 @@ def _cloud_copy(obj):
 
 
 def _cloud_world_clean(world):
-    """Cleans a world view IN PLACE (the caller passes its own copy). City-tier:
-    a territory's "tier", "cells", "bg", "rings" and "mark" stay, the cloud page
-    shows the same city; they carry no name (a background building has none)."""
+    """Cleans a world view IN PLACE (the caller passes its own copy)."""
     if not isinstance(world, dict):
         return
     for terr in world.get("territories") or []:
@@ -3014,7 +3012,7 @@ class CityState(_CloudTaps):
 
         # -- world: territories, growth, town plans, persistence ----------
         self.plans = plans if plans is not None else load_plans()
-        self.count_fn = count_fn or count_here   # city-tier: None = could not count (not on this machine)
+        self.count_fn = count_fn or count_lines
         self.balance_fn = balance_fn if balance_fn is not None else balance_of
         self.balance_files = {}   # identity -> {"files": ...}["kind"] from the last count (memory only)
         self.world_path = world_path
@@ -3391,34 +3389,27 @@ class CityState(_CloudTaps):
                 new[identity] = (slot, hidden)
 
             def shown_records(skip=None):
-                return [{"slot": new[i][0], "plan": self.world["territories"][i]["plan"],
-                         "cells": _cells_of(self.world["territories"][i])}
+                return [{"slot": new[i][0], "plan": self.world["territories"][i]["plan"]}
                         for i in self.world["order"]
                         if i in new and i != skip and not new[i][1]]
 
             def refusal(records):
-                """The rule on the squares of shown RECORDS (a record's square is
-                its "cells" each way from its slot): the answer, or None when it
-                holds. A square that leaves the grid or shares a cell with
-                another is "taken"; one on the row just south of a sea plan's
-                square is "sea"."""
+                """The rule on shown RECORDS: the answer, or None when it holds."""
                 seen = set()
                 for r in records:
-                    square = _square(r["slot"], r["cells"])
-                    if not _in_grid(r["slot"], r["cells"]) or square & seen:
+                    if tuple(r["slot"]) in seen:
                         return {"error": "taken"}
-                    seen |= square
+                    seen.add(tuple(r["slot"]))
                 for r in records:
-                    if plan_by_id[r["plan"]]["sea"] and _south_row(r["slot"], r["cells"]) & seen:
+                    if plan_by_id[r["plan"]]["sea"] and (r["slot"][0], r["slot"][1] + 1) in seen:
                         return {"error": "sea"}
                 return None
 
             for identity in again:
                 others = shown_records(skip=identity)
-                mine = {"slot": new[identity][0], "plan": self.world["territories"][identity]["plan"],
-                        "cells": _cells_of(self.world["territories"][identity])}
+                mine = {"slot": new[identity][0], "plan": self.world["territories"][identity]["plan"]}
                 if refusal(others + [mine]) is not None:
-                    free = _free_slot(others, plan_by_id, plan_by_id[mine["plan"]], mine["cells"])
+                    free = _free_slot(others, plan_by_id, plan_by_id[mine["plan"]])
                     if free is None:
                         return 409, {"error": "taken"}
                     new[identity] = (list(free), False)
@@ -3472,11 +3463,8 @@ class CityState(_CloudTaps):
                 continue
             left = SHOW_SEC - (time.time() - show["start"])
             if left > 0:
-                one = {"terr": territory_id(identity), "from": show["from"],
-                       "to": show["to"], "left": left}
-                if show.get("tier") is not None:    # city-tier: a level up
-                    one["tier"] = list(show["tier"])
-                out.append(one)
+                out.append({"terr": territory_id(identity), "from": show["from"],
+                            "to": show["to"], "left": left})
         return out
 
     def remove_client(self, client):
@@ -4199,7 +4187,7 @@ class CityState(_CloudTaps):
         local = t.get("offices", {}).get(cid)
         if local is None:
             return None
-        ox, oz = town_origin(t)
+        ox, oz = t["slot"][0] * CELL, t["slot"][1] * CELL
         return {"x": ox + local[0], "z": oz + local[1]}
 
     def _decorate_agent(self, a, identity, terr, chain):
@@ -4648,12 +4636,12 @@ class CityState(_CloudTaps):
 
     def _plot_xz_locked(self, t, plot):
         """Caller holds self.lock. World (x, z) of T's plot number PLOT --
-        the same math layout() uses (the town's origin, see town_origin, + the
-        plan's local plot coordinates)."""
+        the same math layout() uses (territory slot * CELL + the plan's
+        local plot coordinates)."""
         plan = _plan_by_id(self.plans, t["plan"])
         px, pz, _ = plan["plots"][plot]
-        ox, oz = town_origin(t)
-        return ox + px, oz + pz
+        i, j = t["slot"]
+        return i * CELL + px, j * CELL + pz
 
     def _owned_building_locked(self, t, owner):
         """Caller holds self.lock. T's building OWNER counts as owning
@@ -4788,105 +4776,41 @@ class CityState(_CloudTaps):
         last count, RECOUNT_SEC or more ago (never counted in this run, but
         with a line: due at once). A territory only ever loaded from
         world.json, with no line yet, is never due -- last_activity holds
-        no entry for it until feed_line sees it -- except one that was never
-        counted by COUNT_RULE (city-tier: "the new count, once"): it is due at
-        once, in the first count of this run. count_fn and balance_fn run
+        no entry for it until feed_line sees it. count_fn and balance_fn run
         outside the lock, so a line that arrives while either runs (bumping
         last_activity past the "now" this count is about to be stamped with)
         keeps that territory due again next time, instead of losing it.
-        A count_fn answer of None is "could not count" (the repo is not on
-        this machine): nothing of that territory changes. A territory that was
-        never counted by COUNT_RULE takes the new count as its lines AND its
-        peak, once (the old peak was counted the old way); after that its peak
-        is max(peak, lines) as before. When all of the counts are in, the
-        levels step (see _levels_locked). Returns how many territories were
-        counted."""
+        Returns how many territories were counted."""
         with self.lock:
-            due = [i for i, t in self.world["territories"].items()
-                   if (i in self.last_activity
-                       and (i not in self.last_count
-                            or (self.last_activity[i] > self.last_count[i]
-                                and (now - self.last_count[i]) >= RECOUNT_SEC)))
-                   or (t.get("count") != COUNT_RULE and i not in self.last_count)]
+            due = [i for i in self.world["territories"]
+                   if i in self.last_activity
+                   and (i not in self.last_count
+                        or (self.last_activity[i] > self.last_count[i]
+                            and (now - self.last_count[i]) >= RECOUNT_SEC))]
         if not due:
             return 0
         counted = {i: self.count_fn(i) for i in due}
-        here = [i for i in due if counted[i] is not None]
-        balances = {i: self.balance_fn(i, self._rules_text_for(i)) for i in here}
-        for i in here:
+        balances = {i: self.balance_fn(i, self._rules_text_for(i)) for i in due}
+        for i in due:
             self.requality(i)
         with self.lock:
             changed = False
-            done = []
-            shows = []      # the era messages of this count: sent after the levels, once each
             for i in due:
                 self.last_count[i] = now
                 t = self.world["territories"].get(i)
-                if t is None or counted[i] is None:
+                if t is None:
                     continue
-                before = (t["lines"], t["peak"], t.get("count"))
+                before = (t["lines"], t["peak"])
                 val = counted[i]
-                if t.get("count") != COUNT_RULE:
-                    t["lines"] = t["peak"] = val
-                    t["count"] = COUNT_RULE
-                else:
-                    t["lines"] = val
-                    t["peak"] = max(t["peak"], val)
-                if (t["lines"], t["peak"], t.get("count")) != before:
+                t["lines"] = val
+                t["peak"] = max(t["peak"], val)
+                if (t["lines"], t["peak"]) != before:
                     changed = True
-                if self._apply_balance_locked(i, t, balances[i], pending=shows):
+                if self._apply_balance_locked(i, t, balances[i]):
                     changed = True
-                done.append(i)
-            if self._levels_locked(done, shows):
-                changed = True
-            if self.clients:
-                for msg in shows:
-                    self._broadcast(msg)
             if changed:
                 self._emit_world_locked()
-        return len(done)
-
-    def _levels_locked(self, done, shows):
-        """Caller holds self.lock. The levels, after ALL the counts of one
-        recount are in (city-tier, "Tiers"). Every territory of DONE (the ones
-        counted just now) whose tier_of(peak) is a bigger city than its "tier"
-        steps up: when any of them needs a bigger square and the island was
-        not laid out again yet (world["tiers"]), the whole island is laid out
-        again, once (re_lay), and nobody gets a show in this count; else a land
-        that needs a bigger square grows (grow_land; no room: nothing changes,
-        its next count tries again) and the others keep their square, and each
-        one that stepped up gets "tier" set and one show. A show is an era show
-        carrying "tier": [old, new]; an era show of the same count (SHOWS holds
-        its message) is the same one show. Returns whether anything changed."""
-        territories = self.world["territories"]
-        ups = []
-        for i in done:
-            t = territories.get(i)
-            if t is None:
-                continue
-            old, new = t.get("tier", 0), tier_of(t["peak"])
-            if _TIER_RANK[new] > _TIER_RANK[old]:
-                ups.append((i, t, old, new))
-        if not ups:
-            return False
-        if not self.world.get("tiers") and any(TIER_CELLS[new] > _cells_of(t) for _, t, _, new in ups):
-            re_lay(self.world, self.plans)
-            self.world["tiers"] = True
-            return True
-        for i, t, old, new in ups:
-            if TIER_CELLS[new] > _cells_of(t) and not grow_land(self.world, self.plans, i, TIER_CELLS[new]):
-                continue
-            t["tier"] = new
-            era = t.get("era", "village")
-            msg = next((m for m in shows if m["terr"] == territory_id(i)), None)
-            if msg is None:
-                start = time.time() if self.clients else None
-                t["show"] = {"from": era, "to": era, "start": start, "tier": [old, new]}
-                shows.append({"type": "era", "terr": territory_id(i), "from": era, "to": era,
-                              "left": SHOW_SEC, "tier": [old, new]})
-            else:
-                t["show"]["tier"] = msg["tier"] = [old, new]
-        return True
+        return len(due)
 
     def requality(self, identity):
         """Rechecks IDENTITY's buildings against the files on disk
@@ -5126,14 +5050,11 @@ class CityState(_CloudTaps):
             return "removed"
         return "merged" if res.returncode == 0 else "removed"
 
-    def _apply_balance_locked(self, identity, t, result, pending=None):
+    def _apply_balance_locked(self, identity, t, result):
         """Caller holds self.lock. Stores balance/rules_bad/files from one
         balance_fn result, advances the era, and starts (or queues) a show
         on a raise -- the era event, when a page is open, before the caller's
-        world event. PENDING (a list): the era message is added there instead
-        of being sent, the caller sends it (city-tier: a level up of the same
-        count joins the same show). Returns whether anything actually
-        changed."""
+        world event. Returns whether anything actually changed."""
         changed = self.balance_files.get(identity) != result["files"]
         self.balance_files[identity] = result["files"]
         if t.get("balance") != result["kinds"]:
@@ -5149,12 +5070,9 @@ class CityState(_CloudTaps):
             start = time.time() if self.clients else None
             t["show"] = {"from": old_era, "to": new_era, "start": start}
             changed = True
-            msg = {"type": "era", "terr": territory_id(identity),
-                   "from": old_era, "to": new_era, "left": SHOW_SEC}
-            if pending is not None:
-                pending.append(msg)
-            elif self.clients:
-                self._broadcast(msg)
+            if self.clients:
+                self._broadcast({"type": "era", "terr": territory_id(identity),
+                                  "from": old_era, "to": new_era, "left": SHOW_SEC})
         return changed
 
     def _rules_conf_path(self, identity):
@@ -8033,21 +7951,18 @@ def open_plots(plan, lines):
     return sorted(set(first.values()) | set(range(n)))
 
 
-def territory_tiles(plan, identity, lines, land_r=None):
+def territory_tiles(plan, identity, lines):
     """{"r", "g", "open", "land"}: the organic land shape (local tile
     coords) a territory this size has on this plan, for this repo's
-    identity (shape_of makes it repo-specific but repeatable). LAND_R
-    (city-tier, a tier-3 city) draws the land with that radius instead of
-    radius(lines); the open plots and "r" stay the town's."""
+    identity (shape_of makes it repo-specific but repeatable)."""
     r = radius(lines)
-    reach = r if land_r is None else land_r
     shape = _shape_of(identity, plan)
     roads = _road_set(plan)
     land = set()
     for x in range(-HALF, HALF):
         for z in range(-HALF, HALF):
             cx, cz = x + 0.5, z + 0.5
-            if _is_hall(x, z) or math.hypot(cx, cz) <= reach * _mult(shape, math.atan2(cz, cx)):
+            if _is_hall(x, z) or math.hypot(cx, cz) <= r * _mult(shape, math.atan2(cz, cx)):
                 land.add((x, z))
     opens = open_plots(plan, lines)
     for k in opens:
@@ -8100,108 +8015,20 @@ def new_world():
     return {"v": 1, "territories": {}, "order": []}
 
 
-# -- city-tier: levels and squares (requirements/city.md, "Tiers"; tests/
-# test_agent_city_tier.py is the contract). A land's square is TIER_CELLS[tier]
-# cells each way from its slot (its north-west cell); a record with no "cells"
-# is one cell, as before. ------------------------------------------------------
-
-TIER_LINES = (800000, 200000, 20000)        # tier 1, 2, 3 from this many hand-written lines
-TIER_CELLS = {0: 1, 1: 3, 2: 2, 3: 1}       # a land's square is this many cells each way
-TIER_SHIFT = {1: 4, 2: 2}                   # the hall sits this many tiles west of a big square's middle
-COUNT_RULE = 2                              # a record carries "count": COUNT_RULE once counted by this rule
-BG_CAP = {1: 480, 2: 170, 3: 60}            # background buildings per land (layout)
-BG_TOTAL = 900                              # background buildings in a whole view (layout)
-GRID_LO, GRID_HI = -4, 4                    # the island's grid, both ways
-_NEIGHBOURS = ((1, 0), (-1, 0), (0, 1), (0, -1))
-_TIER_RANK = {0: 0, 3: 1, 2: 2, 1: 3}       # a bigger rank is a bigger city
-
-
-def tier_of(lines):
-    """1 from 800,000 lines, 2 from 200,000, 3 from 20,000, else 0."""
-    for tier, floor in zip((1, 2, 3), TIER_LINES):
-        if lines >= floor:
-            return tier
-    return 0
-
-
-def _cells_of(rec):
-    """The size of RECORD's square: its "cells" (1 when missing or odd)."""
-    cells = rec.get("cells", 1)
-    return cells if type(cells) is int and 1 <= cells <= 3 else 1
-
-
-def _square(slot, cells):
-    return {(slot[0] + a, slot[1] + b) for a in range(cells) for b in range(cells)}
-
-
-def _south_row(slot, cells):
-    """The cells just south of a square: the sea row of a coast land."""
-    return {(slot[0] + a, slot[1] + cells) for a in range(cells)}
-
-
-def _in_grid(slot, cells):
-    return (slot[0] >= GRID_LO and slot[1] >= GRID_LO
-            and slot[0] + cells - 1 <= GRID_HI and slot[1] + cells - 1 <= GRID_HI)
-
-
-def _touches(square, held):
-    return any((i + a, j + b) in held for i, j in square for a, b in _NEIGHBOURS)
-
-
-def _fits(slot, cells, sea, held, coast):
-    """True when a square of CELLS at SLOT is inside the grid, holds no cell of
-    HELD (the cells of the other squares), none of COAST (the cells just south
-    of their coast squares) and, when it is a coast land itself (SEA), has no
-    other square on the row just south of it."""
-    if not _in_grid(slot, cells):
-        return False
-    square = _square(slot, cells)
-    if square & held or square & coast:
-        return False
-    return not (sea and _south_row(slot, cells) & held)
-
-
-def _middle2(slot, cells):
-    """The middle of a square, doubled (whole numbers: no rounding in a tie)."""
-    return 2 * slot[0] + cells - 1, 2 * slot[1] + cells - 1
-
-
-def _far(slot, cells, centre):
-    """(squared distance to CENTRE (doubled middle), j, i): the smallest wins."""
-    mx, mz = _middle2(slot, cells)
-    return (mx - centre[0]) ** 2 + (mz - centre[1]) ** 2, slot[1], slot[0]
-
-
-def town_origin(t):
-    """World (x, z) of the town hall's origin of territory record T: the plan's
-    local coordinates are laid from here. A one-cell land: its slot's origin
-    (slot * CELL); a big city: the middle of its square, TIER_SHIFT tiles to
-    the west."""
-    cells = _cells_of(t)
-    half = (cells - 1) * CELL // 2
-    return (t["slot"][0] * CELL + half - TIER_SHIFT.get(t.get("tier", 0), 0),
-            t["slot"][1] * CELL + half)
-
-
-def _free_slot(territories, plan_by_id, plan, cells=1):
-    """The first cell in SLOTS order where a land of PLAN, CELLS x CELLS
-    cells big (one for a new repo), may take its north-west cell next to the
+def _free_slot(territories, plan_by_id, plan):
+    """The first cell in SLOTS order that a land of PLAN may take next to the
     territory records TERRITORIES (the shown ones: the caller leaves the
-    hidden out), or None. Its square is inside the grid, holds no cell of a
-    square of theirs, not the cell just south of a sea plan's square, it
-    touches one of them (when there is one), and a sea plan takes no place
-    with one of them just south of it."""
-    held = set()
-    coast = set()
-    for t in territories:
-        size = _cells_of(t)
-        held |= _square(t["slot"], size)
-        if plan_by_id[t["plan"]]["sea"]:
-            coast |= _south_row(t["slot"], size)
+    hidden out), or None. It is no cell of theirs, not the cell just south of
+    a sea plan, it touches one of them (when there is one), and a sea plan
+    takes no cell with one of them just south of it."""
+    occupied = {tuple(t["slot"]) for t in territories}
+    blocked = {(t["slot"][0], t["slot"][1] + 1) for t in territories if plan_by_id[t["plan"]]["sea"]}
     for i, j in SLOTS:
-        if not _fits((i, j), cells, bool(plan["sea"]), held, coast):
+        if (i, j) in occupied or (i, j) in blocked:
             continue
-        if held and not _touches(_square((i, j), cells), held):
+        if occupied and not any((i + a, j + b) in occupied for a, b in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+            continue
+        if plan["sea"] and (i, j + 1) in occupied:
             continue
         return (i, j)
     return None
@@ -8211,9 +8038,7 @@ def add_territory(world, plans, identity, name, lines=0):
     """A known identity is never moved or replanned (hidden or not): same
     slot, same plan, lines/peak untouched, whatever LINES is passed this
     time. A new one is measured against the shown territories alone (city-
-    layout): a hidden territory's slot is free and it is nobody's neighbour.
-    It is one cell, and counted by COUNT_RULE (city-tier): it never takes a
-    cell of a big square or the sea row south of a coast square."""
+    layout): a hidden territory's slot is free and it is nobody's neighbour."""
     existing = world["territories"].get(identity)
     if existing is not None:
         return existing
@@ -8242,124 +8067,10 @@ def add_territory(world, plans, identity, name, lines=0):
     lines_val = lines or 0
     record = {"name": name, "plan": pick["id"], "slot": list(slot_for(pick)),
               "lines": lines_val, "peak": lines_val, "buildings": [], "era": "village",
-              "balance": {}, "rules_bad": [], "offices": {}, "rest": False,
-              "count": COUNT_RULE}
+              "balance": {}, "rules_bad": [], "offices": {}, "rest": False}
     world["territories"][identity] = record
     world["order"].append(identity)
     return record
-
-
-def re_lay(world, plans):
-    """The island laid out again, once (city-tier, "Re-lay once"). Changes
-    WORLD in place, nothing else. Every territory gets its size: counted by
-    COUNT_RULE -> "tier" = tier_of(peak) and "cells" = TIER_CELLS of it, else
-    it keeps its "tier" and takes one cell. Then the shown squares are placed
-    again, one by one: bigger squares first, then more peak lines, then world
-    order. The first around the grid's middle cell; each next on the free
-    place nearest the first one's middle (a tie: the smaller j, then the
-    smaller i) that is inside the grid, free, touches a placed square, is
-    not on a cell just south of a placed coast square and, when its plan has
-    sea, has no placed square just south of it. No place at all: it keeps
-    its slot and one cell. Hidden territories keep their slot."""
-    plan_by_id = {p["id"]: p for p in plans}
-    todo = []
-    for n, identity in enumerate(world["order"]):
-        t = world["territories"].get(identity)
-        if t is None:
-            continue
-        counted = t.get("count") == COUNT_RULE
-        before = t.get("tier")
-        if counted:
-            tier = tier_of(t.get("peak", 0))
-            t["tier"] = tier
-            t["cells"] = TIER_CELLS[tier]
-        else:
-            t["cells"] = 1
-        if not t.get("hidden"):
-            todo.append((-t["cells"], -t.get("peak", 0), n, t, before))
-    todo.sort(key=lambda row: row[:3])
-    held = set()
-    coast = set()
-    centre = None
-    for _cells, _peak, _n, t, before in todo:
-        cells = t["cells"]
-        sea = bool(plan_by_id[t["plan"]]["sea"])
-        if centre is None:
-            slot = (-(cells // 2), -(cells // 2))
-            centre = _middle2(slot, cells)
-        else:
-            best = None
-            for i in range(GRID_LO, GRID_HI + 2 - cells):
-                for j in range(GRID_LO, GRID_HI + 2 - cells):
-                    if not _fits((i, j), cells, sea, held, coast):
-                        continue
-                    if not _touches(_square((i, j), cells), held):
-                        continue
-                    key = _far((i, j), cells, centre)
-                    if best is None or key < best[0]:
-                        best = (key, (i, j))
-            if best is None:
-                if cells > 1:       # no room for its size: it stays as small as it was
-                    t["cells"] = cells = 1
-                    if before is None:
-                        t.pop("tier", None)
-                    else:
-                        t["tier"] = before
-                slot = tuple(t["slot"])
-            else:
-                slot = best[1]
-        t["slot"] = list(slot)
-        held |= _square(slot, cells)
-        if sea:
-            coast |= _south_row(slot, cells)
-
-
-def grow_land(world, plans, identity, cells):
-    """A land grows to a square of CELLS x CELLS (city-tier, "A level up
-    later"). True when placed, False (and nothing changed) when the grid has
-    no room. Changes WORLD in place: only this land's "cells" and "slot";
-    nobody else moves. The new square holds the old one, is inside the grid,
-    free of the other shown squares and keeps the coast rule, nearest the old
-    middle (a tie: the smaller j, then the smaller i); else the free place
-    touching another shown square nearest the old middle. A hidden land: its
-    "cells" is set and its slot stays (it is placed when it is shown again)."""
-    t = world["territories"][identity]
-    if t.get("hidden"):
-        t["cells"] = cells
-        return True
-    plan_by_id = {p["id"]: p for p in plans}
-    sea = bool(plan_by_id[t["plan"]]["sea"])
-    held = set()
-    coast = set()
-    for other, o in world["territories"].items():
-        if other == identity or o.get("hidden"):
-            continue
-        size = _cells_of(o)
-        held |= _square(o["slot"], size)
-        if plan_by_id[o["plan"]]["sea"]:
-            coast |= _south_row(o["slot"], size)
-    old_slot, old_cells = t["slot"], _cells_of(t)
-    centre = _middle2(old_slot, old_cells)
-    old_square = _square(old_slot, old_cells)
-    best_in = best_near = None
-    for i in range(GRID_LO, GRID_HI + 2 - cells):
-        for j in range(GRID_LO, GRID_HI + 2 - cells):
-            if not _fits((i, j), cells, sea, held, coast):
-                continue
-            square = _square((i, j), cells)
-            key = _far((i, j), cells, centre)
-            if old_square <= square:
-                if best_in is None or key < best_in[0]:
-                    best_in = (key, (i, j))
-            elif best_in is None and _touches(square, held):
-                if best_near is None or key < best_near[0]:
-                    best_near = (key, (i, j))
-    best = best_in or best_near
-    if best is None:
-        return False
-    t["slot"] = list(best[1])
-    t["cells"] = cells
-    return True
 
 
 # -- city-data: the name of a building (requirements/city.md, Growth, "Building
@@ -8593,359 +8304,10 @@ def _corner_cut(x, z):
     return 4 + math.floor(2 * math.sin(x * 0.5 + z * 0.3) + 0.5)
 
 
-# -- city-tier: the city a big town grows (requirements/city.md, "Tiers"; the
-# approved mock's genCity is the plan). Local coordinates: x east, z south, the
-# town hall at (0, 0); tile (x, z) covers [x, x + 1) x [z, z + 1); a big land's
-# middle is TIER_SHIFT tiles east of the hall. A block is 3 x 3 tiles centred on
-# the tile (4 m, 4 n); the streets run on the tile lines between blocks. -------
-
-RIVER_HW = 2.1      # the half width of tier 1's river, in tiles
-_WALK_CHARS = frozenset(".grtBbH")     # the tiles a person walks on
-
-
-def _tier_growth(tier, lines):
-    """0..1: how far LINES are inside the level TIER (the mock's tierG): tier 1
-    log(n / 800,000) / log(4), tier 2 log(n / 200,000) / log(4), tier 3
-    log(n / 20,000) / log(10)."""
-    if tier not in (1, 2, 3) or not lines or lines <= 0:
-        return 0.0
-    floor = TIER_LINES[tier - 1]
-    span = {1: 4.0, 2: TIER_LINES[0] / TIER_LINES[1], 3: TIER_LINES[1] / TIER_LINES[2]}[tier]
-    return max(0.0, min(1.0, math.log(lines / floor) / math.log(span)))
-
-
-def _river_x(z):
-    """The middle of tier 1's river at row Z (local): runs north to south east
-    of the town, bending towards it at the town's latitude."""
-    return 13.5 - 2.2 * math.exp(-(z / 7.0) ** 2)
-
-
-def _bg_rnd(identity):
-    """A repeatable 0..1 noise of (x, z, k), seeded from the repo identity."""
-    seed = fnv1a(identity) % 9973
-
-    def rnd(x, z, k=0):
-        v = math.sin(x * 127.1 + z * 311.7 + k * 74.7 + seed * 0.913) * 43758.5453
-        return v - math.floor(v)
-
-    return rnd
-
-
-def _bg_tiles(entry):
-    """The tiles a background building [x, z, w, d, h, zone] stands on."""
-    x, z, w, d = entry[0], entry[1], entry[2], entry[3]
-    e = 1e-6
-    return [(tx, tz)
-            for tx in range(math.floor(x - w / 2 + e), math.floor(x + w / 2 - e) + 1)
-            for tz in range(math.floor(z - d / 2 + e), math.floor(z + d / 2 - e) + 1)]
-
-
-def _elev_ring():
-    """Tier 1's elevated inner ring: the mock's rounded rectangle x -14..22,
-    z -14..14, corner 5, as local points."""
-    r = 5.0
-    x0, x1, z0, z1 = -14.0, 22.0, -14.0, 14.0
-    pts = []
-
-    def arc(cx, cz, a0):
-        for k in range(9):
-            th = a0 + k / 8.0 * math.pi / 2
-            pts.append((cx + r * math.cos(th), cz + r * math.sin(th)))
-
-    def line(xa, za, xb, zb):
-        n = math.ceil(math.hypot(xb - xa, zb - za) / 1.5)
-        for k in range(1, n):
-            pts.append((xa + (xb - xa) * k / n, za + (zb - za) * k / n))
-
-    arc(x1 - r, z1 - r, 0.0)
-    line(x1 - r, z1, x0 + r, z1)
-    arc(x0 + r, z1 - r, math.pi / 2)
-    line(x0, z1 - r, x0, z0 + r)
-    arc(x0 + r, z0 + r, math.pi)
-    line(x0 + r, z0, x1 - r, z0)
-    arc(x1 - r, z0 + r, math.pi * 1.5)
-    line(x1, z0 + r, x1, z1 - r)
-    pts.append(pts[0])
-    return pts
-
-
-def _lay_city(ident, plan, peak, tier, shape, hx, hz, box, get, put):
-    """The city of a tier 1, 2 or 3 land: puts its ground into the grid (GET /
-    PUT take world tiles; HX, HZ is the hall's origin, BOX the land's square
-    (x0, x1, z0, z1)) -- tier 1's river "w" and the east road over it, the built
-    blocks "u" with "r" streets round them, the lots of background buildings
-    "u" -- and returns {"items": [(entry, source)], "srcs": {source: tiles},
-    "rings", "mark"}. An entry is [x, z, w, d, h, zone] in world tiles; the
-    caller drops what a link then built over, and caps the lists."""
-    rnd = _bg_rnd(ident)
-    g = _tier_growth(tier, peak)
-    big = tier in (1, 2)
-    lc = TIER_SHIFT.get(tier, 0)
-    rl = {1: 25.5 + 2.5 * g, 2: 17.5 + 2.5 * g}.get(tier, 8.8 + 1.6 * g)
-    rmax = {1: 28.0, 2: 20.0}.get(tier, 10.4)
-    bx0, bx1, bz0, bz1 = box[0] - hx, box[1] - hx, box[2] - hz, box[3] - hz
-    srcs = {}
-
-    def land_r(theta, radius_):
-        m = _mult(shape, theta)
-        return radius_ * ((1 + 0.6 * (m - 1)) if big else m)
-
-    def in_land(x, z, margin=0.0, radius_=None):
-        dx = x - lc
-        return math.hypot(dx, z) < land_r(math.atan2(z, dx), rl if radius_ is None else radius_) - margin
-
-    def claim(src, tiles):
-        wt = [(hx + x, hz + z) for x, z in tiles]
-        for x, z in wt:
-            put(x, z, "u")
-        srcs[src] = wt
-
-    def entry(out, src, x, z, w, d, h, zone):
-        out.append(([round(hx + x, 2), round(hz + z, 2), round(w, 2), round(d, 2), round(h, 2), zone], src))
-
-    # -- the town's free lots along its streets ("fill"; tier 3 "main" first) --
-    roads = _road_set(plan)
-    used = {(-1, -1), (0, -1), (-1, 0), (0, 0)}
-    used.update((x, z) for x, z in plan["offices"])
-    used.update((plan["rest"][0] + a, plan["rest"][1] + b) for a in (0, 1) for b in (0, 1))
-    used.update((x, z) for x, z, _ in plan["plots"])
-    cand = []
-    for x in range(BOX_LO, BOX_HI + 1):
-        for z in range(BOX_LO, BOX_HI + 1):
-            if (x, z) in roads or (x, z) in used:
-                continue
-            if not ((x + 1, z) in roads or (x - 1, z) in roads or (x, z + 1) in roads or (x, z - 1) in roads):
-                continue
-            if not in_land(x + 0.5, z + 0.5, 0.7) or get(hx + x, hz + z) != "g":
-                continue
-            cand.append((math.hypot(x + 0.5, z + 0.5), x, z))
-    cand.sort(key=lambda c: c[0])
-    n_fill = int(16 + 26 * g + 0.5) if tier == 3 else len(cand)
-
-    # A lot never walls anybody in: the hall keeps its way to the town's exits, offices
-    # and rest place (a person walks there; "u" is not walkable).
-    ways = [_clip_to_box(pt) for pt in plan["exits"].values() if pt]
-    ways += [tuple(o) for o in plan["offices"]]
-    ways += [(plan["rest"][0] + a, plan["rest"][1] + b) for a in (0, 1) for b in (0, 1)]
-
-    near = BOX_HI + 3
-    floor = {(x, z) for x in range(-near, near + 1) for z in range(-near, near + 1)
-             if get(hx + x, hz + z) in _WALK_CHARS}
-
-    def reaches(goals, blocked):
-        """The GOALS (local tiles) a person walks to from the hall's tile, with the BLOCKED
-        lots added to the grid; the set of those found."""
-        seen = {(0, 0)}
-        stack = [(0, 0)]
-        found = set()
-        while stack and len(found) < len(goals):
-            x, z = stack.pop()
-            if (x, z) in goals:
-                found.add((x, z))
-            for p in ((x + 1, z), (x - 1, z), (x, z + 1), (x, z - 1)):
-                if p in floor and p not in seen and p not in blocked:
-                    seen.add(p)
-                    stack.append(p)
-        return found
-
-    goals = reaches(set(ways), set())
-    fill = []
-    lots = set()
-    for _, x, z in cand:
-        if len(fill) >= min(n_fill, 64):
-            break
-        lots.add((x, z))
-        open_sides = sum(1 for q in ((x + 1, z), (x - 1, z), (x, z + 1), (x, z - 1)) if q in floor and q not in lots)
-        if open_sides > 1 and not goals <= reaches(goals, lots):    # a dead end walls nobody in
-            lots.discard((x, z))
-            continue
-        k = len(fill)
-        r = rnd(x + 0.5, z + 0.5, 2)
-        if tier == 3:
-            if k < 6:
-                entry(fill, ("l", x, z), x + 0.5, z + 0.5, 0.86, 0.86, 2 + r * 0.7, "main")
-            else:
-                entry(fill, ("l", x, z), x + 0.5, z + 0.5, 0.8, 0.8, 1 + r * 0.6, "fill")
-        else:
-            entry(fill, ("l", x, z), x + 0.5, z + 0.5, 0.86, 0.86, (2 if tier == 1 else 1.5) + r * 1.2, "fill")
-        claim(("l", x, z), [(x, z)])
-
-    if tier == 3:       # small houses at the town's edge
-        edge = []
-        n = int(8 + 10 * g + 0.5)
-        for k in range(n):
-            th = (k + rnd(k, 0, 4) * 0.6) / n * 2 * math.pi
-            r = land_r(th, rl) - 0.9 - rnd(k, 1, 4) * 0.5
-            tx, tz = math.floor(r * math.cos(th)), math.floor(r * math.sin(th))
-            if (tx, tz) in roads or (tx, tz) in used or get(hx + tx, hz + tz) != "g":
-                continue
-            entry(edge, ("l", tx, tz), tx + 0.5, tz + 0.5, 0.72, 0.72, 0.65 + rnd(k, 2, 4) * 0.3, "edge")
-            claim(("l", tx, tz), [(tx, tz)])
-        return {"items": fill + edge, "srcs": srcs, "rings": [], "mark": None}
-
-    # -- tier 1 and 2: the river, street blocks round the old town ------------
-    half = 33 if tier == 1 else 22
-    hw = RIVER_HW
-    xr = _river_x if tier == 1 else None
-    exit_e = plan["exits"].get("E")
-    ez = _clip_to_box(exit_e)[1] if exit_e else 0       # the east road's row (a tile row)
-    if xr:
-        for z in range(bz0, bz1 + 1):
-            c = xr(z + 0.5)
-            for x in range(max(bx0, math.floor(c - hw) - 1), min(bx1, math.ceil(c + hw)) + 1):
-                if abs(x + 0.5 - c) < hw and get(hx + x, hz + z) in (".", "g", "r"):
-                    put(hx + x, hz + z, "w")
-
-    margin = 3.5 if tier == 2 else 2.2      # (the mock's 2.8: a 3 x 3 block's corner is 2.12 from its middle)
-    lo, hi = -((half + lc) // 4) * 4, ((half + lc) // 4) * 4
-    blocks = []
-    for cx in range(lo, hi + 1, 4):
-        for cz in range(lo, hi + 1, 4):
-            if abs(cx) <= 8 and abs(cz) <= 8:
-                continue
-            mx, mz = cx + 0.5, cz + 0.5
-            if not in_land(mx, mz, margin, rmax):
-                continue
-            if xr and any(abs(mx - xr(mz + dz)) < hw + 1.9 for dz in (-1.6, 0, 1.6)):
-                continue
-            if tier == 1:
-                if cx in (16, 20) and abs(cz) <= 8:
-                    zone, pri = "cbd", 1
-                elif -14 < cx < 22 and -14 < cz < 14:
-                    zone, pri = "mid", 2
-                elif cx > 12 and cz < -14:
-                    zone, pri = "ind", 3
-                elif cx in (20, 24) and cz == 16:
-                    zone, pri = "park", 3
-                else:
-                    zone, pri = ("park" if rnd(cx, cz, 3) < 0.09 else "res"), 3
-            else:
-                if (cx == 12 and abs(cz) <= 4) or (cx == 16 and cz == 0):
-                    zone, pri = "cbd", 1
-                elif cx == 4 and cz == -12:
-                    zone, pri = "park", 2
-                elif cx < 0 and cz >= 12:
-                    zone, pri = "ind", 3
-                elif max(abs(cx), abs(cz)) <= 12:
-                    zone, pri = "mid", 2
-                else:
-                    zone, pri = "res", 3
-            blocks.append({"cx": cx, "cz": cz, "zone": zone, "ord": pri * 1000 + math.hypot(cx - lc, cz) * 10,
-                           "now": in_land(mx, mz, margin), "built": False})
-    blocks.sort(key=lambda b: b["ord"])
-    now = [b for b in blocks if b["now"]]
-    n_built = int(len(now) * (0.78 + 0.22 * g) + 0.5)
-    for b in now[:n_built]:
-        tiles = [(b["cx"] + a, b["cz"] + c) for a in (-1, 0, 1) for c in (-1, 0, 1)]
-        if all(get(hx + x, hz + z) == "g" for x, z in tiles):
-            b["built"] = True
-            claim(("b", b["cx"], b["cz"]), tiles)
-    for b in blocks:
-        if b["built"]:
-            for a in range(-2, 3):
-                for c in range(-2, 3):
-                    x, z = b["cx"] + a, b["cz"] + c
-                    if max(abs(a), abs(c)) == 2 and get(hx + x, hz + z) == "g":
-                        put(hx + x, hz + z, "r")
-
-    hk = 0.86 + 0.14 * g
-    bund = []
-    if tier == 1:       # a row of old buildings on the river's west bank
-        z = -7.6
-        while z <= 7.7:
-            tz = math.floor(z)
-            if abs(z - (ez + 0.5)) >= 0.9:
-                k = math.floor(xr(tz + 0.5) - hw - 0.5)      # the tile before the river's first tile
-                if get(hx + k, hz + tz) == "g":
-                    entry(bund, ("l", k, tz), k + 0.5, tz + 0.5, 0.96, 0.96, (1.5 + rnd(1, z, 8) * 0.6) * hk, "bund")
-                    claim(("l", k, tz), [(k, tz)])
-            z += 1.45
-
-    mark = [round(hx + 16.5, 2), round(hz + 0.5, 2)] if tier == 1 else None
-    out = []
-    for b in blocks:
-        if not b["built"]:
-            continue
-        cx, cz, zone = b["cx"], b["cz"], b["zone"]
-        src = ("b", cx, cz)
-        mx, mz = cx + 0.5, cz + 0.5
-        r = rnd(cx, cz, 5)
-
-        def add(x, z, w, d, h, zn=zone):
-            entry(out, src, x, z, w, d, h * hk, zn)
-
-        if zone == "cbd":
-            if tier == 1:
-                if cx == 16 and cz == 0:      # the landmark block holds the tower alone
-                    continue
-                trio = {(20, -4): 13.2, (20, 0): 11.0, (20, 4): 9.4}.get((cx, cz), 0)
-                if trio:
-                    add(mx, mz, 2.3, 2.3, trio)
-                elif cx == 16:
-                    add(mx + 0.3, mz, 2.1, 2.1, 6.6 + r * 1.4)
-                else:
-                    add(mx - 0.8, mz - 0.8, 1.4, 1.4, 5 + r * 1.2)
-                    add(mx + 0.8, mz + 0.8, 1.4, 1.4, 4.4 + rnd(cx, cz, 6) * 1.4)
-            elif cx == 12 and cz == 0:
-                add(mx, mz, 2.1, 2.1, 6.2)
-            else:
-                add(mx - 0.8, mz - 0.8, 1.4, 1.4, 4 + r)
-                add(mx + 0.8, mz + 0.8, 1.4, 1.4, 3.6 + rnd(cx, cz, 6) * 0.9)
-        elif zone == "park":
-            entry(out, src, mx, mz, 3, 3, 0, "park")
-        elif zone == "ind":
-            add(mx, mz - 0.8, 2.8, 1.25, 0.8 + r * 0.3)
-            add(mx, mz + 0.8, 2.8, 1.25, 0.8 + rnd(cx, cz, 6) * 0.3)
-            if r < 0.5:
-                add(mx + 1.1, mz - 0.8, 0.28, 0.28, 2.2)
-        else:
-            for dx, dz in ((-0.82, -0.82), (0.82, -0.82), (-0.82, 0.82), (0.82, 0.82)):
-                q = rnd(cx + dx, cz + dz, 4)     # (the mock leaves a tree on some slots; here every slot has its building)
-                if zone == "mid":
-                    add(mx + dx, mz + dz, 1.3, 1.3,
-                        (2.3 if tier == 1 else 1.9) + q * (1.8 if tier == 1 else 1.3))
-                else:
-                    add(mx + dx, mz + dz, 1.2, 1.2, (2.7 + q * 0.4) if q > 0.88 else 1.2 + q * 0.9)
-
-    if tier == 1:       # the town's east road, on over the river to the far bank
-        c = xr(ez + 0.5)
-        for x in range(BOX_HI + 1, math.ceil(c + hw - 0.5) + 2):
-            ch = get(hx + x, hz + ez)
-            if ch == "u":
-                break
-            if ch == "w":
-                put(hx + x, hz + ez, "B")
-            elif ch in (".", "g", "r"):
-                put(hx + x, hz + ez, "r")
-
-    # -- the rings ---------------------------------------------------------------
-    def world_pts(pts):
-        return [[round(min(max(hx + x, box[0]), box[1] + 1), 2), round(min(max(hz + z, box[2]), box[3] + 1), 2)]
-                for x, z in pts]
-
-    def circle():
-        pts = []
-        for k in range(121):
-            th = k / 120.0 * 2 * math.pi
-            r = land_r(th, rl) - 1
-            pts.append((lc + r * math.cos(th), r * math.sin(th)))
-        return pts
-
-    if tier == 1:
-        rings = [{"kind": "elev", "pts": world_pts(_elev_ring())}]
-        if g >= 0.5:
-            rings.append({"kind": "outer", "pts": world_pts(circle())})
-    else:
-        rings = [{"kind": "ring", "pts": world_pts(circle())}]
-    return {"items": fill + bund + out, "srcs": srcs, "rings": rings, "mark": mark}
-
-
 def layout(world, plans):
     """The view the page draws: {"cell", "x0", "z0", "w", "h", "rows",
-    "territories", "links"} -- see the CONTRACT in tests/test_agent_city_world.py
-    for the exact shape of each, and tests/test_agent_city_tier.py for the
-    squares, the cities ("tier", "cells", "bg", "rings", "mark") and the links
-    of a big land."""
+    "territories", "links"} -- see the CONTRACT in
+    tests/test_agent_city_world.py for the exact shape of each."""
     plan_by_id = {p["id"]: p for p in plans}
     # city-layout: a hidden territory is not there at all (the view is the
     # layout of the world without that record); two records may hold one slot
@@ -8956,6 +8318,7 @@ def layout(world, plans):
         return {"cell": CELL, "x0": 0, "z0": 0, "w": 0, "h": 0, "rows": [],
                 "territories": [], "links": []}
 
+    by_slot = {tuple(world["territories"][ident]["slot"]): ident for ident in order}
     # "n": a territory's place in world["order"], counting every identity of
     # that list (hidden, or cut away from this view too). The page colours a
     # repo by it, so a repo keeps its colour when others are hidden or shown.
@@ -8963,33 +8326,17 @@ def layout(world, plans):
     for k, ident in enumerate(world["order"]):
         number.setdefault(ident, k)
 
-    # -- city-tier: every shown land's square (its tile box) and who holds which cell
-    lands = {}
-    owner = {}
     x0 = z0 = x1 = z1 = None
     for ident in order:
         t = world["territories"][ident]
-        plan = plan_by_id[t["plan"]]
         i, j = t["slot"]
-        s = _cells_of(t)
-        tier = t.get("tier", 0)
-        if type(tier) is not int or not 0 <= tier <= 3:
-            tier = 0
-        hx, hz = town_origin(t)
-        sea = bool(plan["sea"])
-        L = {"t": t, "plan": plan, "i": i, "j": j, "s": s, "tier": tier, "sea": sea, "hx": hx, "hz": hz,
-             # a big city is drawn only on the square it needs
-             "drawn": tier if (tier == 3 or (tier in (1, 2) and s >= TIER_CELLS[tier])) else 0,
-             "fx0": i * CELL - HALF, "fx1": (i + s - 1) * CELL + HALF - 1,
-             "fz0": j * CELL - HALF, "fz1": (j + s - 1) * CELL + HALF - 1}
-        lands[ident] = L
-        for a in range(s):
-            for b in range(s):
-                owner[(i + a, j + b)] = ident
-        x0 = L["fx0"] if x0 is None else min(x0, L["fx0"])
-        x1 = L["fx1"] if x1 is None else max(x1, L["fx1"])
-        z0 = L["fz0"] if z0 is None else min(z0, L["fz0"])
-        z1 = L["fz1"] + (SEA_ROWS if sea else 0) if z1 is None else max(z1, L["fz1"] + (SEA_ROWS if sea else 0))
+        sea = plan_by_id[t["plan"]]["sea"]
+        cx0, cx1 = i * CELL - HALF, i * CELL + HALF - 1
+        cz0, cz1 = j * CELL - HALF, j * CELL + HALF - 1 + (SEA_ROWS if sea else 0)
+        x0 = cx0 if x0 is None else min(x0, cx0)
+        x1 = cx1 if x1 is None else max(x1, cx1)
+        z0 = cz0 if z0 is None else min(z0, cz0)
+        z1 = cz1 if z1 is None else max(z1, cz1)
 
     w, h = x1 - x0 + 1, z1 - z0 + 1
     grid = [[" "] * w for _ in range(h)]
@@ -9005,131 +8352,96 @@ def layout(world, plans):
         if 0 <= row < h and x0 <= x <= x1:
             grid[row][col] = c
 
-    # -- links: every two squares that touch, once --------------------------
+    # -- links: every 4-adjacent pair of cells, once ------------------------
     links = []
-    pair_link = {}
     for ident in order:
-        L = lands[ident]
-        i, j, s = L["i"], L["j"], L["s"]
-        for side, cells in (("E", [(i + s, j + b) for b in range(s)]),
-                            ("S", [(i + a, j + s) for a in range(s)])):
-            for cell in cells:
-                nb = owner.get(cell)
-                if nb is None or nb == ident or (ident, nb) in pair_link or (nb, ident) in pair_link:
-                    continue
-                gap = gap_of(L["plan"]["terrain"], lands[nb]["plan"]["terrain"])
-                link = {"a": ident, "b": nb, "side": side, "gap": gap,
-                        "kind": "bridge" if gap in ("river", "ravine") else "road"}
-                links.append(link)
-                pair_link[(ident, nb)] = pair_link[(nb, ident)] = link
+        t = world["territories"][ident]
+        i, j = t["slot"]
+        for di, dj, side in ((1, 0, "E"), (0, 1, "S")):
+            nb = by_slot.get((i + di, j + dj))
+            if nb is None:
+                continue
+            gap = gap_of(plan_by_id[t["plan"]]["terrain"], plan_by_id[world["territories"][nb]["plan"]]["terrain"])
+            links.append({"a": ident, "b": nb, "side": side, "gap": gap,
+                          "kind": "bridge" if gap in ("river", "ravine") else "road"})
 
-    # -- one land at a time: void cuts, coast sea/beach, bent gap belts -----
-    def v_belt(bx, z):
-        o = _belt_offset(z, bx * 0.37)
-        return (bx - 1 + o, bx + o)
+    def link_at(a, b):
+        for l in links:
+            if (l["a"] == a and l["b"] == b) or (l["a"] == b and l["b"] == a):
+                return l
+        return None
 
-    def h_belt(bz, x):
-        o = _belt_offset(x, bz * 0.41)
-        return (bz - 1 + o, bz + o)
-
-    belts = set()
+    # -- one cell at a time: void cuts, coast sea/beach, bent gap belts -----
     territories_view = []
     for ident in order:
-        L = lands[ident]
-        t, plan, s = L["t"], L["plan"], L["s"]
-        i, j = L["i"], L["j"]
-        ox, oz = L["hx"], L["hz"]
-        fx0, fx1, fz0, fz1 = L["fx0"], L["fx1"], L["fz0"], L["fz1"]
-        sea = L["sea"]
-        # the neighbour across a side, looked up per tile
-        nb_e = {Z: owner.get((i + s, (Z + HALF) // CELL)) for Z in range(fz0, fz1 + 1)}
-        nb_w = {Z: owner.get((i - 1, (Z + HALF) // CELL)) for Z in range(fz0, fz1 + 1)}
-        nb_n = {X: owner.get(((X + HALF) // CELL, j - 1)) for X in range(fx0, fx1 + 1)}
-        nb_s = {X: owner.get(((X + HALF) // CELL, j + s)) for X in range(fx0, fx1 + 1)}
-        t_n = {X: _trim_depth(X, 0.7) for X in nb_n}
-        t_s = {X: _trim_depth(X, 2.1) for X in nb_n}
-        t_w = {Z: _trim_depth(Z, 1.3) for Z in nb_e}
-        t_e = {Z: _trim_depth(Z, 3.3) for Z in nb_e}
-        if sea:
-            s_e = {Z: _trim_depth(Z, 6.1) for Z in nb_e}
-            s_w = {Z: _trim_depth(Z, 6.9) for Z in nb_e}
+        t = world["territories"][ident]
+        plan = plan_by_id[t["plan"]]
+        i, j = t["slot"]
+        ox, oz = i * CELL, j * CELL
+        nb = {"N": by_slot.get((i, j - 1)), "S": by_slot.get((i, j + 1)),
+              "W": by_slot.get((i - 1, j)), "E": by_slot.get((i + 1, j))}
 
-        for X in range(fx0, fx1 + 1):
-            nN, nS = nb_n[X], nb_s[X]
-            tN, tS = t_n[X], t_s[X]
-            kW = X - fx0
-            kE = fx1 - X
-            for Z in range(fz0, fz1 + 1):
-                nW, nE = nb_w[Z], nb_e[Z]
-                kN, kS = Z - fz0, fz1 - Z
-                tW, tE = t_w[Z], t_e[Z]
-                cut = ((not nN and kN < tN) or (not nW and kW < tW)
-                       or (not nE and kE < tE)
-                       or (not sea and not nS and kS < tS))
-                if not cut and (kN + kW < 6 or kN + kE < 6 or kS + kW < 6 or kS + kE < 6):
-                    cc = _corner_cut(X, Z)
-                    cut = ((not nN and not nW and kN + kW < cc)
-                           or (not nN and not nE and kN + kE < cc)
-                           or (not nS and not nW and kS + kW < cc)
-                           or (not nS and not nE and kS + kE < cc))
+        def v_belt(bx, z):
+            o = _belt_offset(z, bx * 0.37)
+            return (bx - 1 + o, bx + o)
+
+        def h_belt(bz, x):
+            o = _belt_offset(x, bz * 0.41)
+            return (bz - 1 + o, bz + o)
+
+        for x in range(-HALF, HALF):
+            for z in range(-HALF, HALF):
+                X, Z = ox + x, oz + z
+                kN, kS = z + HALF, HALF - 1 - z
+                kW, kE = x + HALF, HALF - 1 - x
+                tN, tS = _trim_depth(X, 0.7), _trim_depth(X, 2.1)
+                tW, tE = _trim_depth(Z, 1.3), _trim_depth(Z, 3.3)
+                cc = _corner_cut(X, Z)
+                cut = ((not nb["N"] and kN < tN) or (not nb["W"] and kW < tW)
+                       or (not nb["E"] and kE < tE)
+                       or (not plan["sea"] and not nb["S"] and kS < tS)
+                       or (not nb["N"] and not nb["W"] and kN + kW < cc)
+                       or (not nb["N"] and not nb["E"] and kN + kE < cc)
+                       or (not nb["S"] and not nb["W"] and kS + kW < cc)
+                       or (not nb["S"] and not nb["E"] and kS + kE < cc))
                 c = "."
-                if sea and (kS < tS + 1 or (cut and kS < 9)):
-                    sea_ok = ((nE or kE >= s_e[Z] - 1) and (nW or kW >= s_w[Z] - 1))
+                sea_ok = ((nb["E"] or kE >= _trim_depth(Z, 6.1) - 1)
+                          and (nb["W"] or kW >= _trim_depth(Z, 6.9) - 1))
+                if plan["sea"] and (kS < tS + 1 or (cut and kS < 9)):
                     c = "s" if sea_ok else " "
                 elif cut:
                     c = " "
-                elif sea and kS < tS + 3:
+                elif plan["sea"] and kS < tS + 3:
                     c = "b"
                 else:
                     hit = None
-                    if nE and X in v_belt(fx1 + 1, Z):
-                        hit = nE
-                    elif nW and X in v_belt(fx0, Z):
-                        hit = nW
-                    elif nS and Z in h_belt(fz1 + 1, X):
-                        hit = nS
-                    elif nN and Z in h_belt(fz0, X):
-                        hit = nN
+                    if nb["E"] and X in v_belt(ox + HALF, Z):
+                        hit = nb["E"]
+                    elif nb["W"] and X in v_belt(ox - HALF, Z):
+                        hit = nb["W"]
+                    elif nb["S"] and Z in h_belt(oz + HALF, X):
+                        hit = nb["S"]
+                    elif nb["N"] and Z in h_belt(oz - HALF, X):
+                        hit = nb["N"]
                     if hit is not None:
-                        c = GAP_CH[pair_link[(ident, hit)]["gap"]]
-                        belts.add((X, Z))
+                        c = GAP_CH[link_at(ident, hit)["gap"]]
                 set_tile(X, Z, c)
 
-        if sea:
-            for X in range(fx0, fx1 + 1):
-                limit = 1 + _trim_depth(X, 5.5)
-                for d in range(SEA_ROWS):
-                    Zs = fz1 + 1 + d
-                    if (d < limit
-                            and get(X, Zs - 1) == "s"
-                            and X - fx0 >= _trim_depth(Zs, 6.9) + d
-                            and fx1 - X >= _trim_depth(Zs, 6.1) + d):
-                        set_tile(X, Zs, "s")
+        if plan["sea"]:
+            for x in range(-HALF, HALF):
+                for z in range(HALF, HALF + SEA_ROWS):
+                    if (z - HALF < 1 + _trim_depth(ox + x, 5.5)
+                            and get(ox + x, oz + z - 1) == "s"
+                            and x + HALF >= _trim_depth(oz + z, 6.9) + z - HALF
+                            and HALF - 1 - x >= _trim_depth(oz + z, 6.1) + z - HALF):
+                        set_tile(ox + x, oz + z, "s")
 
-        drawn = L["drawn"]
-        peak = t["peak"]  # peak: land never shrinks
-        shape = _shape_of(ident, plan)
-        if drawn == 3:
-            tr = territory_tiles(plan, ident, peak, land_r=8.8 + 1.6 * _tier_growth(3, peak))
-        else:
-            tr = territory_tiles(plan, ident, peak)
-        land = tr["land"]
-        if drawn in (1, 2):     # the city's land: round the square's middle, the repo's shape softened
-            lc = TIER_SHIFT[drawn]
-            reach = (25.5 if drawn == 1 else 17.5) + 2.5 * _tier_growth(drawn, peak)
-            cut_at = reach * 1.11
-            land = set(land)
-            for x in range(fx0 - ox, fx1 - ox + 1):
-                for z in range(fz0 - oz, fz1 - oz + 1):
-                    dx, dz = x + 0.5 - lc, z + 0.5
-                    d = math.hypot(dx, dz)
-                    if d <= cut_at and d <= reach * (1 + 0.6 * (_mult(shape, math.atan2(dz, dx)) - 1)):
-                        land.add((x, z))
+        tr = territory_tiles(plan, ident, t["peak"])  # peak: land never shrinks
         roads = _road_set(plan)
-        for x, z in land:
+        for x, z in tr["land"]:
             if get(ox + x, oz + z) == ".":
                 set_tile(ox + x, oz + z, "r" if (x, z) in roads else "g")
-        opens = open_plots(plan, peak)
+        opens = open_plots(plan, t["peak"])
         for k in opens:
             x, z, _ = plan["plots"][k]
             set_tile(ox + x, oz + z, "P")
@@ -9147,9 +8459,6 @@ def layout(world, plans):
             for dx in (0, 1):
                 for dz in (0, 1):
                     set_tile(ox + rx + dx, oz + rz + dz, "g")
-
-        if drawn:
-            L["city"] = _lay_city(ident, plan, peak, drawn, shape, ox, oz, (fx0, fx1, fz0, fz1), get, set_tile)
 
         plots_view = [{"k": k, "x": ox + plan["plots"][k][0], "z": oz + plan["plots"][k][1],
                        "d": plan["plots"][k][2]} for k in opens]
@@ -9179,32 +8488,24 @@ def layout(world, plans):
 
         era = t.get("era", "village")
         balance = t.get("balance", {})
-        city = L.get("city")
-        view = {
+        territories_view.append({
             "id": territory_id(ident), "name": t["name"], "plan": plan["id"],
             "terrain": plan["terrain"], "slot": list(t["slot"]), "cx": ox, "cz": oz,
             "sea": bool(plan["sea"]), "n": number[ident],
-            "tier": L["tier"], "cells": s,
             "lines": t["lines"], "size": growth(t["peak"]), "r": tr["r"], "open": tr["open"],
             "plots_total": len(plan["plots"]), "plots": plots_view, "buildings": buildings_view,
             "era": era, "balance": balance,
             "rules_note": _rules_note(t["name"], t.get("rules_bad", [])),
             "offices": offices_view, "rest": rest_view, "sites": sites_view,
-            "bg": [], "rings": city["rings"] if city else [], "mark": city["mark"] if city else None,
-        }
-        L["view"] = view
-        territories_view.append(view)
+        })
 
     # -- tracks: plan road from the territory out to its exit, across the gap -
-    road_sets = {}
-
     def trunk(ident, direction):
-        L = lands[ident]
-        plan = L["plan"]
-        ox, oz = L["hx"], L["hz"]
-        roads = road_sets.get(plan["id"])
-        if roads is None:
-            roads = road_sets[plan["id"]] = _road_set(plan)
+        t = world["territories"][ident]
+        plan = plan_by_id[t["plan"]]
+        i, j = t["slot"]
+        ox, oz = i * CELL, j * CELL
+        roads = _road_set(plan)
         ex = _clip_to_box(plan["exits"][direction])
         prev = {ex: None}
         queue_ = deque([ex])
@@ -9228,93 +8529,29 @@ def layout(world, plans):
         return (ox + ex[0], oz + ex[1])
 
     for l in links:
-        A, B = lands[l["a"]], lands[l["b"]]
-        pa = trunk(l["a"], l["side"])
-        pb = trunk(l["b"], "W" if l["side"] == "E" else "N")
+        A = trunk(l["a"], l["side"])
+        B = trunk(l["b"], "W" if l["side"] == "E" else "N")
         cross = []
 
-        def lay(x, z, l=l, cross=cross):
+        def lay(x, z):
             c = get(x, z)
-            if c is None:
-                return
-            if (x, z) in belts:
-                if c in "wkmf":
-                    set_tile(x, z, "B" if l["kind"] == "bridge" else "t")
-                    cross.append([x, z])
-            elif c == ".":
+            if c == ".":
                 set_tile(x, z, "t")
-            elif c == "u":      # a street through a built block
-                set_tile(x, z, "r")
-            elif c == "w":      # the river inside a big land
-                set_tile(x, z, "B")
+            elif c in "wkmf":
+                set_tile(x, z, "B" if l["kind"] == "bridge" else "t")
+                cross.append([x, z])
 
-        def run(xa, za, xb, zb, lay=lay):
-            if za == zb:
-                for x in range(min(xa, xb), max(xa, xb) + 1):
-                    lay(x, za)
-            else:
-                for z in range(min(za, zb), max(za, zb) + 1):
-                    lay(xa, z)
-
-        # each side lays its own part inside its own square: from its exit along
-        # its own axis to the crossing line, then along that line to the shared edge
         if l["side"] == "E":
-            lo, hi = max(A["fz0"], B["fz0"]), min(A["fz1"], B["fz1"])
-            cr = pa[1] if lo <= pa[1] <= hi else pb[1] if lo <= pb[1] <= hi else (lo + hi) // 2
-            run(pa[0], pa[1], pa[0], cr)
-            run(pa[0], cr, A["fx1"], cr)
-            run(pb[0], pb[1], pb[0], cr)
-            run(B["fx0"], cr, pb[0], cr)
+            for x in range(A[0], B[0] + 1):
+                lay(x, A[1])
+            for z in range(min(A[1], B[1]), max(A[1], B[1]) + 1):
+                lay(B[0], z)
         else:
-            lo, hi = max(A["fx0"], B["fx0"]), min(A["fx1"], B["fx1"])
-            cr = pa[0] if lo <= pa[0] <= hi else pb[0] if lo <= pb[0] <= hi else (lo + hi) // 2
-            run(pa[0], pa[1], cr, pa[1])
-            run(cr, pa[1], cr, A["fz1"])
-            run(pb[0], pb[1], cr, pb[1])
-            run(cr, B["fz0"], cr, pb[1])
+            for z in range(A[1], B[1] + 1):
+                lay(A[0], z)
+            for x in range(min(A[0], B[0]), max(A[0], B[0]) + 1):
+                lay(x, B[1])
         l["cross"] = cross
-
-    # -- city-tier: the background buildings. A building a link has built over is
-    # dropped; then each land's list is cut to BG_CAP (a prefix, parks do not
-    # count), then the view's to BG_TOTAL (the longest list loses its last entry
-    # first, a tie: the later land).
-    kept = {}
-    for ident in order:
-        city = lands[ident].get("city")
-        if city is None:
-            continue
-        cap = BG_CAP.get(lands[ident]["drawn"], 0)
-        have = [(e, src) for e, src in city["items"] if all(get(x, z) == "u" for x, z in _bg_tiles(e))]
-        cut = []
-        n = 0
-        for e, src in have:
-            if e[5] != "park":
-                if n >= cap:
-                    break
-                n += 1
-            cut.append((e, src))
-        kept[ident] = cut
-    counts = {ident: sum(1 for e, _ in lst if e[5] != "park") for ident, lst in kept.items()}
-    total = sum(counts.values())
-    while total > BG_TOTAL:
-        ident = max((i for i in order if i in kept), key=lambda i: (counts[i], order.index(i)))
-        lst = kept[ident]
-        while lst and lst[-1][0][5] == "park":
-            lst.pop()
-        if not lst:
-            break
-        lst.pop()
-        counts[ident] -= 1
-        total -= 1
-    for ident, lst in kept.items():
-        city = lands[ident]["city"]
-        standing = {src for _, src in lst}
-        had = {src for _, src in city["items"]}
-        for src in had - standing:      # a site whose buildings are all gone is grass again
-            for x, z in city["srcs"].get(src, ()):
-                if get(x, z) == "u":
-                    set_tile(x, z, "g")
-        lands[ident]["view"]["bg"] = [e for e, _ in lst]
 
     links_view = [{"a": territory_id(l["a"]), "b": territory_id(l["b"]),
                    "gap": l["gap"], "kind": l["kind"], "cross": l["cross"]} for l in links]
@@ -9480,17 +8717,12 @@ _LOCK_NAMES = {
 _BLOCKED_DIRS = {"vendor", "node_modules", "dist", "build", "third_party"}
 
 
-_DOC_EXT = {".md", ".mdx", ".rst", ".adoc"}
-
-
 def counts_as_code(path):
     """False for images, 3D models, fonts, audio, video, archives, pdf,
-    lock files, minified or generated files (Go, Python, Dart: *.g.dart,
-    *.freezed.dart), and anything under a vendor/node_modules/dist/build/
-    third_party folder or a design bundle (a folder whose name ends with
-    _unzipped). True otherwise."""
+    lock files, minified or generated files, and anything under a
+    vendor/node_modules/dist/build/third_party folder. True otherwise."""
     parts = path.replace("\\", "/").split("/")
-    if any(seg in _BLOCKED_DIRS or seg.lower().endswith("_unzipped") for seg in parts[:-1]):
+    if any(seg in _BLOCKED_DIRS for seg in parts[:-1]):
         return False
     name = parts[-1].lower()
     if name in _LOCK_NAMES or name.endswith(".lock"):
@@ -9501,79 +8733,46 @@ def counts_as_code(path):
         return False
     if name.endswith(".pb.go") or name.endswith("_pb2.py"):
         return False
-    if name.endswith(".g.dart") or name.endswith(".freezed.dart"):
-        return False
     return True
 
 
-def counts_for_size(path):
-    """city-tier: what a repo's SIZE counts, hand-written code only. What
-    counts_as_code keeps, but no doc (.md .mdx .rst .adoc), nothing under an
-    l10n folder and no .arb file. (The 5 kinds still see docs and l10n.)"""
-    if not counts_as_code(path):
-        return False
-    parts = path.replace("\\", "/").split("/")
-    if any(seg.lower() == "l10n" for seg in parts[:-1]):
-        return False
-    ext = os.path.splitext(parts[-1].lower())[1]
-    return ext not in _DOC_EXT and ext != ".arb"
-
-
-def _git_lines(identity):
-    """count_lines' work: the number, or None when git could not answer
-    (IDENTITY is not a git dir, has no commit, git times out or errors)."""
+def count_lines(identity):
+    """Added lines of `git --git-dir=IDENTITY diff --numstat <empty tree>
+    HEAD`, counting only rows counts_as_code keeps (a binary row's "added"
+    is "-", never counted). 0 when IDENTITY is not a git dir, has no
+    commit, or git times out or errors -- runs git only, nothing else. The
+    empty tree id comes from git itself (`hash-object -t tree --stdin` on
+    empty input), so SHA-256 repos (a different empty tree id than SHA-1)
+    count too."""
     try:
         empty_tree = subprocess.run(
             ["git", "--git-dir=" + identity, "hash-object", "-t", "tree", "--stdin"],
             input="", capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
-        return None
+        return 0
     if empty_tree.returncode != 0:
-        return None
+        return 0
     try:
         result = subprocess.run(
             ["git", "--git-dir=" + identity, "diff", "--numstat", empty_tree.stdout.strip(), "HEAD"],
             capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
-        return None
+        return 0
     if result.returncode != 0:
-        return None
+        return 0
     total = 0
     for line in result.stdout.splitlines():
         parts = line.split("\t", 2)
         if len(parts) != 3:
             continue
         added, _removed, path = parts
-        if added == "-" or not counts_for_size(path):
+        if added == "-" or not counts_as_code(path):
             continue
         try:
             total += int(added)
         except ValueError:
             continue
     return total
-
-
-def count_lines(identity):
-    """Added lines of `git --git-dir=IDENTITY diff --numstat <empty tree>
-    HEAD`, counting only rows counts_for_size keeps: hand-written code (a
-    binary row's "added" is "-", never counted; generated files, design
-    bundles, l10n and docs are not counted either, city-tier). 0 when
-    IDENTITY is not a git dir, has no commit, or git times out or errors --
-    runs git only, nothing else. The empty tree id comes from git itself
-    (`hash-object -t tree --stdin` on empty input), so SHA-256 repos (a
-    different empty tree id than SHA-1) count too."""
-    lines = _git_lines(identity)
-    return 0 if lines is None else lines
-
-
-def count_here(identity):
-    """CityState's own count_fn (city-tier): None -- "could not count", nothing
-    of that territory changes -- when IDENTITY's folder is not on this machine
-    or git could not answer (a timeout must never write a 0 over a peak), else
-    count_lines' number."""
-    if not os.path.isdir(identity):
-        return None
-    return _git_lines(identity)
 
 
 # --------------------------------------------------------------------------
@@ -10208,13 +9407,6 @@ def demo_world():
         "infra": _demo_entry("healthy", 4, 4, "4 个文件"),
     }
 
-    # city-tier: the levels. The records are counted by the new rule, so the
-    # island is laid out again once: v4-plus a tier-1 city (3 x 3 cells),
-    # pos-lite tier 3, auto-pipeline stays a small town.
-    for rec in world["territories"].values():
-        rec["count"] = COUNT_RULE
-    re_lay(world, plans)
-    world["tiers"] = True
     return layout(world, plans)
 
 
