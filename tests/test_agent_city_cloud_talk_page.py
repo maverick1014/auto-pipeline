@@ -78,7 +78,7 @@ bin/agent-city.html stays ONE file. Cloud code stays in the blocks marked
     Each machine in the row shows cloud.talk.on 可对话 or cloud.talk.off 只能看.
     Later, shown not hidden (T6): cloud.later.ask (a "?" = a permission or a
         choice: answer it on that computer), cloud.later.add (the add-agent
-        button), cloud.later.demo (the demo tools). decide() and addAgent()
+        button), (the demo bar is gone, owner 2026-10-06). decide() and addAgent()
         still send nothing on the cloud page.
     Phone (T7): in the page's 960px rule a cloud window (.cloud-page .win) is
         a sheet over the lower part of the SCREEN (position: fixed), its
@@ -217,14 +217,15 @@ class TestMessageWords(RenderCase):
             self.assertEqual(t.get("zh", {}).get(key), zh, key)
         for key in list(want) + ["chat.why.refused", "chat.why.flood", "cloud.talk.on", "cloud.talk.off",
                                  "cloud.box.talkOff", "cloud.box.offline", "cloud.tooFast", "cloud.tooMany",
-                                 "cloud.later.ask", "cloud.later.demo"]:   # cloud-city-3: the add button is no longer "later"
+                                 "cloud.later.ask"]:   # cloud-city-3: the add button is no longer "later"; the demo bar is gone (2026-10-06)
             for lang in ("zh", "en"):
                 self.assertTrue(t.get(lang, {}).get(key), "%s has no %s text" % (key, lang))
         self.assertEqual(t["zh"]["cloud.talk.on"], "可对话")
         self.assertIn("agent-city cloud-talk on", t["zh"]["cloud.box.talkOff"])
         self.assertIn("agent-city cloud-talk on", t["en"]["cloud.box.talkOff"])
-        for key in ("cloud.later.ask", "cloud.later.demo"):
-            self.assertIn("以后开放", t["zh"][key])
+        self.assertIn("以后开放", t["zh"]["cloud.later.ask"])
+        for lang in ("zh", "en"):
+            self.assertNotIn("cloud.later.demo", t[lang], "the demo bar is gone (owner, 2026-10-06)")
 
     def test_on_its_way(self):
         for state in ("sent", "taken"):
@@ -573,8 +574,8 @@ class TestCloudPageTalks(unittest.TestCase):
 
     def test_later_is_shown(self):
         text = script()
-        for key in ("cloud.later.ask", "cloud.later.demo"):   # cloud-city-3: the add button works now
-            self.assertRegex(text, r"i18n\('%s'" % re.escape(key), key)
+        self.assertRegex(text, r"i18n\('cloud\.later\.ask'")   # cloud-city-3: the add button works now
+        self.assertNotIn("cloud.later.demo", text)   # the demo bar is gone (owner, 2026-10-06)
 
     def test_approve_and_add_agent_still_send_nothing(self):
         for name in ("decide", "addAgent"):

@@ -74,7 +74,7 @@ as they are (tests/test_agent_city_add_agent_page.py still passes untouched).
   The machine row: a machine with start shows a second chip, cloud.start.on 可开 agent.
   The rail's foot: cloudStartNote's text for the machine shown (the command
       shown as code), instead of the old chip "＋ 加 agent · 以后开放"
-      (cloud.later.add is gone; cloud.later.ask and cloud.later.demo stay).
+      (cloud.later.add is gone; cloud.later.ask stays; cloud.later.demo is gone, 2026-10-06).
   CSS: .addbox.ok.
   TEXT, zh and en: see KEYS below.
 
@@ -453,8 +453,8 @@ class TestTexts(CloudCase):
         for lang in ("zh", "en"):
             self.assertNotIn("cloud.later.add", t.get(lang, {}))
         self.assertNotIn("cloud.later.add", tp.inline_script())
-        for key in ("cloud.later.ask", "cloud.later.demo"):
-            self.assertIn("以后开放", t["zh"][key], "approve and the demo tools are still later")
+        self.assertIn("以后开放", t["zh"]["cloud.later.ask"], "approve is still later")
+        self.assertNotIn("cloud.later.demo", t["zh"], "the demo bar is gone (owner, 2026-10-06)")
 
 
 class TestWiring(unittest.TestCase):
