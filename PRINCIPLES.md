@@ -175,9 +175,13 @@ H2. Words
 H3. Report
 - Result (pass/fail)
 - What changed
-- What to decide
+- Every report, job summary, recap, proposal or audit to the human ends with a decide section
+- Heading in the `language` of agent.conf: zh `## 要你决定`, en `## To decide`, other languages a short translation of "to decide"
+- Open questions numbered, each with a recommendation (zh `建议`, en `Recommendation`)
+- Nothing open: keep the heading, one line: none (zh `无`)
+- Never drop the decide section as a closer. Never cut it for brevity
 - Few numbers. One table at most, five rows or fewer, unless the human asks for the full list
-- Nothing else
+- Nothing else, except the decide section
 
 H4. Tables
 - Comparison, series, feature list, task list, options → table
