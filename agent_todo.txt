@@ -1,2 +1,1 @@
-remove-orchestrate | small | cross-repo: v4-plus Manager removes the unused /orchestrate skill | est 10m | opened 2026-10-07 10:19 | by v4-plus
 daily-rules | big | fold i-have-adhd (MIT notice kept) + concise style into the plugin, on by default with an agent.conf switch, every session; add missing manager charter laws; add generic time and command lessons; drop unused bits | est 60m | opened 2026-10-07 10:19 | by main
