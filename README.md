@@ -157,6 +157,7 @@ and the packed skills/agents, and never touches `agent.conf`, `agent_*.txt`, `CL
 /auto-pipeline:init              # one-time project setup, prints the permissions block
 ./bin/agent-settings.sh          # show or change agent.conf, no agent
 bin/agent-settings.sh language zh   # talk to the human in Chinese
+bin/agent-settings.sh adhd off      # plain replies, no output shape (section E); on by default
 bin/agent-settings.sh sync          # add any key missing from agent.conf, template value
 bin/agent-file.sh time              # est, work, wait, clock of every finished task
 bin/agent-file.sh data              # the same data of every repo on this machine, one table
@@ -164,7 +165,8 @@ bin/agent-file.sh eta <name>        # work left as minutes and a clock time, and
 bin/agent-file.sh estimate ...      # work minutes of a new task, with a range and the 3 nearest past tasks
 bin/agent-file.sh backtest          # estimator against the rubric on the finished tasks, who wins
 bin/agent-file.sh retrain           # learn the estimate again from the finished tasks, keep it only if better
-./bin/agent-city.sh start           # agent city visualiser, off by default, costs almost nothing
+bin/agent-city.sh install-shim      # one time: puts the agent-city command in ~/.local/bin; nothing installs it by itself, the init skill offers it
+agent-city start                    # agent city visualiser, off by default, costs almost nothing
 /auto-pipeline:city              # start the agent city, prints the URL
 ```
 

@@ -28,6 +28,7 @@ ROLE_KEYS = [
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
 PERMISSION_MODES = ["default", "acceptEdits", "auto", "plan"]
 YES_NO = ["yes", "no"]
+ON_OFF = ["on", "off"]
 RUNTIME_VALUES = ["auto", "orca", "plain", "cloud"]
 
 ROLE_VALUE_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9.\-]*):(low|medium|high|xhigh|max)$")
@@ -47,6 +48,7 @@ HINTS = {
     "permission_mode": "How much an agent may do without asking. One of: default, acceptEdits, auto, plan.",
     "auto_resume": "Run agent-resume.sh by itself when a main manager starts. yes or no.",
     "language": "Language for talking to the human, e.g. en, zh, ms. Code and rules stay English.",
+    "adhd": "Shape replies for a reader with ADHD (PRINCIPLES.md section E). on or off.",
     "runtime": "How this machine runs agents. One of: auto, orca, plain, cloud.",
     "city_port": "Port the agent city listens on, on 127.0.0.1 only. Whole number, 1024 to 65535.",
     "city_idle_min": "Minutes the agent city keeps running with no browser open, then it stops by itself. Whole number, 1 to 240.",
@@ -58,7 +60,7 @@ GROUPS = [
     ("limits", ["max_usage_percent", "heavy_test_slots", "max_agents",
                 "monitor_interval_min", "stall_min"]),
     ("roles", list(ROLE_KEYS)),
-    ("permission", ["permission_mode", "auto_resume", "language"]),
+    ("permission", ["permission_mode", "auto_resume", "language", "adhd"]),
     ("runtime", ["runtime"]),
     ("city", ["city_port", "city_idle_min", "city_governor_wait_sec", "city_relay_sec"]),
 ]
@@ -146,6 +148,12 @@ def _validate_language(value):
     return None
 
 
+def _validate_on_off(value):
+    if value not in ON_OFF:
+        return "Must be on or off."
+    return None
+
+
 def validate_value(key, value):
     if key in NUMBER_BOUNDS:
         return _validate_number(key, value)
@@ -159,6 +167,8 @@ def validate_value(key, value):
         return _validate_language(value)
     if key == "runtime":
         return _validate_runtime(value)
+    if key == "adhd":
+        return _validate_on_off(value)
     return None
 
 

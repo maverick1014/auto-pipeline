@@ -236,42 +236,44 @@ fi
 
 usage() {
   cat <<'EOF'
-agent-city.sh — start/stop/status/demo for the Agent City playground.
+agent-city — start/stop/status/demo for the Agent City playground.
 
-  ./agent-city.sh start    start the server in the background, print its URL
-  ./agent-city.sh stop     stop it
-  ./agent-city.sh status   is it running, and where
-  ./agent-city.sh demo     same as start, URL opens straight into the demo scene
-  ./agent-city.sh answer ID TEXT...   the governor answers a question waiting on it
-  ./agent-city.sh pass ID             the governor hands a question to the owner
-  ./agent-city.sh pending             list what is waiting in the city
-  ./agent-city.sh join     join the team relay, once for this computer (address + key, asked here)
-  ./agent-city.sh leave    this computer leaves the team relay (no repo sends)
-  ./agent-city.sh send     cloud sender: send this session's lines to the team relay
-  ./agent-city.sh relay-dev [port]   run the dev relay for a two-machine LAN test
-  ./agent-city.sh cloud-hooks   write the city hooks into user-level settings
-  ./agent-city.sh install-shim   copy the agent-city command to ~/.local/bin, so it runs from any folder
-  ./agent-city.sh remove-shim    remove that copy, if it is ours
-  ./agent-city.sh autostart   what the session-start hook runs: start the city by itself
-                           on a joined machine whose relay has the cloud page on
-                           (prints nothing, returns at once)
-  ./agent-city.sh cloud-build <dir> --d1-id <id> [--d1-name <name>] [--name <worker name>]
-                           make the folder the cloud page is deployed from
-                           (no network, no login)
-  ./agent-city.sh cloud-deploy   deploy the cloud page to your Cloudflare account
-                           (yours to run, in your own terminal)
-  ./agent-city.sh cloud-talk on    let the cloud page send messages to your sessions
-                           (yours to run, in your own terminal; asks the talk key)
-  ./agent-city.sh cloud-talk off   stop that (it also turns starting off)
-  ./agent-city.sh cloud-start on   let the cloud page start agents on this machine
-                           (yours to run, in your own terminal; asks the talk key
-                           again; talk must be on first)
-  ./agent-city.sh cloud-start off  stop that
-  ./agent-city.sh login-start on   start the small city program when you log in, so the cloud
-                           page sees this computer after a restart (yours to run, in your
-                           own terminal; macOS only for now)
-  ./agent-city.sh login-start off  stop that
-  ./agent-city.sh -h       this help
+First time: run bin/agent-city.sh install-shim once to get the agent-city command (~/.local/bin).
+
+  agent-city start              start the server in the background, print its URL
+  agent-city stop               stop it
+  agent-city status             is it running, and where
+  agent-city demo               same as start, URL opens straight into the demo scene
+  agent-city answer ID TEXT...  the governor answers a question waiting on it
+  agent-city pass ID            the governor hands a question to the owner
+  agent-city pending            list what is waiting in the city
+  agent-city join               join the team relay, once for this computer (address + key, asked here)
+  agent-city leave              this computer leaves the team relay (no repo sends)
+  agent-city send               cloud sender: send this session's lines to the team relay
+  agent-city relay-dev [port]   run the dev relay for a two-machine LAN test
+  agent-city cloud-hooks        write the city hooks into user-level settings
+  agent-city install-shim       copy the agent-city command to ~/.local/bin, so it runs from any folder
+  agent-city remove-shim        remove that copy, if it is ours
+  agent-city autostart          what the session-start hook runs: start the city by itself
+                                on a joined machine whose relay has the cloud page on
+                                (prints nothing, returns at once)
+  agent-city cloud-build <dir> --d1-id <id> [--d1-name <name>] [--name <worker name>]
+                                make the folder the cloud page is deployed from
+                                (no network, no login)
+  agent-city cloud-deploy       deploy the cloud page to your Cloudflare account
+                                (yours to run, in your own terminal)
+  agent-city cloud-talk on      let the cloud page send messages to your sessions
+                                (yours to run, in your own terminal; asks the talk key)
+  agent-city cloud-talk off     stop that (it also turns starting off)
+  agent-city cloud-start on     let the cloud page start agents on this machine
+                                (yours to run, in your own terminal; asks the talk key
+                                again; talk must be on first)
+  agent-city cloud-start off    stop that
+  agent-city login-start on     start the small city program when you log in, so the cloud
+                                page sees this computer after a restart (yours to run, in your
+                                own terminal; macOS only for now)
+  agent-city login-start off    stop that
+  agent-city -h                 this help
 
 Outside a repo: start/demo sync every repo listed in
 $AGENT_CITY_HOME/joined-repos.txt (language from AGENT_CITY_LANG, en or zh,
@@ -280,7 +282,7 @@ any folder too. Only a cloud session (join and leave stay per repo there) is tol
 to cd into the repo first.
 
 AGENT_CITY_PORT=<1024-65535>   start/demo use this port instead of city_port,
-                                inside or outside a repo.
+                               inside or outside a repo.
 EOF
 }
 

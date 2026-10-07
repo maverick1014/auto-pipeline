@@ -1,7 +1,7 @@
 # PRINCIPLES
 
 - Read first. Binding for every agent in this repo.
-- Output reader: Maverick, non-native English. Keep output simple.
+- Output shape: section E. Human language: `language` in agent.conf (H2).
 - All numbers, models and effort levels are config values (`agent.conf`, written by `./agent-settings.sh`, S1). Never hard-code.
 
 ## A. Repo
@@ -49,6 +49,8 @@ R7. Worktree file
 W1. Finish in one run
 - Never wait for the human
 - Unknown → pick default, log it, continue
+- Only owner-level or irreversible calls stop the line. Everything else: default, log, continue
+- A rule and reality collide → report the collision, never route around it
 - New ideas → `agent_ideas.txt` (R6), never in the work or the report, except the CLOSE CASE report (W13), which lists them too
 
 W2. UI
@@ -65,11 +67,15 @@ W3. TDD
 W4. Multi-agent tests
 - Run tests for your changed files only
 - Full suite: manager, once, at the end. Never twice
+- The full gate runs CI's steps in CI's order, at handoff and before merge (still once each)
 - After a bounce: re-run only the tests that failed, not the suite
 
 W5. Web UI testing
 - Claude in Chrome, not Playwright, on orca and plain
 - Main manager only, saves RAM. Others write the click path and hand it to the main manager
+- Unit tests are not proof, the UI E2E is
+- Builders never verify their own work: they ship an E2E click path, a verifier drives the UI, the main manager has the last word before merge
+- What a browser cannot prove goes on a standing "needs a real device" list, never counted as verified
 - Ask `agent-runtime.sh browser` first: chrome, headless or none
 - cloud → headless Chromium via Playwright, the extension can never reach a VM
 - none → print the click path under NEEDS HUMAN E2E and stop, wait for the human. Never silent, never forever
@@ -91,11 +97,13 @@ W7. Big feature (> 2 hours)
 - Task manager spawns workers as needed
 - plain or cloud → no worktree, no second terminal. Main manager runs the task itself with `Agent` subagents, up to `max_agents`
 - Every spawned agent counts toward `max_agents` (S6). The main manager does not
+- One agent = one worktree = one branch = one terminal. Push at every stage
 
 W8. Merge and cleanup
 - Deputy merges into the integration branch
 - Deputy deletes the branch (local + remote) and the worktree right after merge
 - Never skip cleanup
+- Clean up only after the merge is verified
 - Deputy runs `./agent-file.sh worktree rm <path>` and `./agent-file.sh todo done <name>` with the facts from the main manager and `--merge <commit>`
 
 W9. Task routing (main manager, before every dispatch)
@@ -128,6 +136,8 @@ W11. Time
 - Every done report has one line: `TIME: est <n>m, actual <n>m, wait <n>m`. Actual = agent work only
 - Done = merged and cleaned. The main manager passes work, wait and the task facts to `bin/agent-file.sh todo done`
 - Work over 2× estimate → say it in the report, never silent
+- Time comes from `date`, never guessed (a remote machine's clock can drift)
+- Scope grows → re-estimate, on the record
 - Before a new estimate: `bin/agent-file.sh time`, then `bin/agent-file.sh estimate` (dispatch skill)
 - A time question from the human → a duration AND a clock time, and when he is needed next: `bin/agent-file.sh eta`
 
@@ -158,12 +168,28 @@ W13. Close case
 - Yes: `agent-start.sh --clean` (archives agent_state.txt, writes a short fresh one, says what still runs), then `/clear`. Same main manager, same lock, same name
 - Rare, the human wants this session to stop being main manager: he types `! agent-start.sh --release`; the agent never runs it. The next new session is main manager, never Helper
 
+W14. Watch
+- Monitor sweep on three signals: process, terminal output, git movement
+- Verify every launch within 2 min
+- A stall → nudge once, wait 10 min, then salvage (commit what is there) and redispatch
+- Every brief says how to report, how to ask, how to report done (pass/fail) and the heartbeat
+
+W15. Known traps
+- A push to the integration branch denied by the auto-mode classifier → never retry or work around. Hand the owner one `! git push ...` line, or ask for an allow rule (init prints `Bash(git push origin main)` as optional)
+- A cross-session message held because permission modes differ → say so, ask the owner to click Deliver, never type it into the pane
+- Remote Orca pane: a long `terminal send` (~4 KB) arrives cut → write the brief into the worktree's `agent_state.txt` in chunks, send a one-line pointer
+- `terminal read` shows only the visible screen → use `--cursor`
+- A send while the target is mid-turn can be lost → re-read and resend
+- Screen locked → the Chrome extension tab is hidden → use headless Chrome and tell the owner
+
 ## C. Human
 
 H1. One topic
 - Ask only about the current task
 - Park other questions
 - Show them at the end, one table
+- Ask everything while the human is here, in one batch
+- Human gone → never block, park it. On return lead with one table: issue, evidence, blocks what, interim default, decide, recommendation
 
 H2. Words
 - Short sentences
@@ -214,12 +240,14 @@ S4. Usage cap
 S5. Heavy tests
 - One at a time across all agents
 - Others queue
+- Every test run caps its own parallelism, e.g. `jest --maxWorkers=2`, `flutter test -j 2`
 - Config `heavy_test_slots`=1
 
 S6. Agent cap
 - Per device
-- Config `max_agents`: this laptop 4, maverick-pc2 6
+- Config `max_agents`: per machine, the value is in agent.conf
 - Counts spawned agents only. The main manager is not counted
+- Reviewers count toward the cap too
 
 S7. Session recovery
 - Each agent saves state to `agent_state.txt` in its own worktree while working: task, progress, decisions, next step
@@ -237,8 +265,77 @@ S8. Context guard (forgetting)
 
 S9. Token guard (cost)
 - Cheapest model that can do the job (`agent.conf`). Managers judge, they do not read whole repos
+- Model by kind of thinking: deciding roles get the strongest model, executing roles a cheaper one (`agent.conf`)
 - A worker gets only the files it needs, named in its brief. No repo-wide reads
 - Passing tests are not re-run. Full suite once, at the end (W4)
 - Quiz once per session start. Not after compaction, not for subagents
 - Briefs, reports, heartbeats: short (H2, H3). One line per heartbeat
 - Mechanical work (settings, file lines, cleanup) → a script, never an agent
+
+## E. Output
+
+E1. Shape
+- For every reply a human reads
+- Adapted from i-have-adhd v0.4.1 by Ayoub Ghriss (github.com/ayghri/i-have-adhd), MIT, notice at the end of this file
+- On for the rest of the session
+- Off: `adhd=off` in agent.conf (`bin/agent-settings.sh adhd off`), or the human says "stop adhd mode" or "normal mode"
+- Then: confirm in one line, default style for the rest of that session. A reprint of this section after a compaction does not turn it back on
+- Lead with the next action. A command, path or snippet goes first
+- Number multi-step work, fewest steps
+- End with one concrete next action
+- No tangents: finish one, offer the other as a separate question. A mid-work question you can answer yourself is not a tangent
+- Restate state every turn: Step <n> of <m> done, next
+- Time estimates in real units
+- Show what now works
+- Errors: cause and fix, never "Uh oh"
+- Lists: 5 items or fewer per group, ranked. Keep the rest, never drop them
+- No preamble, no recap, no closer
+- Break the shape: "explain" or "walk me through" → full length, headers
+- Destructive action → confirm first
+- 3 turns of "still broken" → name the assumption, ask one question
+- Ambiguous request → one short question
+- A rule that would delete the answer → the task wins, the shape stays
+- The harness or system prompt outranks this section
+- Pre-send check: delete an announcing first line, a recap or "anything else" last line, by-the-way sidebars
+- Also delete empty hedges (keep a hedge with real uncertainty) and idioms
+- Then: first line and last line tell what to do next and what just happened
+
+E2. Owner overrides
+- These win over E1
+- Never fail silently: blocked, ambiguous, refused or broken is said at once. Never hidden as a tangent, trimmed as a hedge, or put behind a partial success
+- Tables and ledgers are not lists: the 5-item cap never cuts a record whose value is completeness
+- "verified", "works", "fixed" only with the real evidence named. A green suite is not a real device check
+- The decide section (H3) is never deleted by "one next action" or "no closers"
+- Language stays H2 (`language` in agent.conf)
+
+E3. Concise
+- Lead with the result
+- Cut narration
+- Short by default
+- State plainly
+- Full detail on request
+- Never trade correctness for brevity
+
+## Notice
+
+Section E is adapted from i-have-adhd (https://github.com/ayghri/i-have-adhd) under the MIT License.
+
+Copyright (c) 2026 Ayoub Ghriss
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

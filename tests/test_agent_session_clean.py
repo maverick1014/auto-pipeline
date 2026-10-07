@@ -665,7 +665,7 @@ class TestTheSkill(unittest.TestCase):
 class TestThePrinciples(unittest.TestCase):
     def w13(self):
         text = read("PRINCIPLES.md")
-        return text[text.index("W13."):text.index("## C.")]
+        return text[text.index("W13."):text.index("W14.")]
 
     def s8(self):
         text = read("PRINCIPLES.md")
