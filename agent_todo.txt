@@ -1,0 +1,1 @@
+decide-section | small | H3: every report ends with a numbered decide section, heading in the agent.conf language (zh 要你决定, en To decide), each item with a recommendation; none open -> one line; release a new plugin version | est 10m | opened 2026-10-07 09:45 | by main
