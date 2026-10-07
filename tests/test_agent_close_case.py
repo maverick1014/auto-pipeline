@@ -385,7 +385,7 @@ class TestTheRule(unittest.TestCase):
     """PRINCIPLES.md W13, short lines, same style as the other rules."""
 
     def rule(self):
-        return section(read("PRINCIPLES.md"), "W13. Close case", "## C.")
+        return section(read("PRINCIPLES.md"), "W13. Close case", "W14.")
 
     def test_it_sits_after_w12_in_the_work_section(self):
         text = read("PRINCIPLES.md")

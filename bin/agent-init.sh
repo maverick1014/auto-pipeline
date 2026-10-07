@@ -177,6 +177,7 @@ BLOCK
 
 echo "Paste that permission block into .claude/settings.json in this project."
 echo "A plugin cannot add permission rules by itself, so a human must paste it."
+echo "Optional: if the auto-mode classifier denies the merge push to your integration branch, also allow \"Bash(git push origin main)\" (use your integration branch name)."
 
 echo "For cloud sessions (claude.ai/code): the default cloud image already ships Playwright and Chromium. Paste this into the cloud environment's Setup script only if $PLUGIN_ROOT/bin/agent-runtime.sh browser prints none there, it is not a repo file, a plugin cannot set it:"
 echo "npx playwright install --with-deps chromium || true"

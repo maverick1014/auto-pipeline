@@ -20,6 +20,9 @@
 # With a session_id on stdin, the real work runs once per SessionStart event
 # (two hooks, repo-packed plus user-scope, can fire for the same session):
 # see the once-per-session dedupe below (AGENT_START_DEDUPE_SEC, default 60s).
+#
+# The hook also prints PRINCIPLES.md section "## E. Output" (how to shape what a
+# human reads) before the RULES line, unless agent.conf says adhd=off.
 
 set -u
 . "$(dirname "$0")/agent-roots.sh"
@@ -436,6 +439,21 @@ try:
 except Exception: print("SRC=startup; SID=; CWD=")' 2>/dev/null)"
 fi
 
+# print_output_section: PRINCIPLES.md from the line "## E. Output" up to, not
+# including, the next "## " line (or the end), blank lines at its end dropped.
+# Nothing when adhd=off, or no PRINCIPLES.md, or no such section. Never fails.
+# Outside the CAP byte budget: it is not part of any `fixed` sum.
+print_output_section() {
+  [ "${adhd:-on}" = off ] && return 0
+  [ -f "$PLUGIN_ROOT/PRINCIPLES.md" ] || return 0
+  awk '
+    !p && index($0, "## E. Output") == 1 { p = 1; print; next }
+    p && index($0, "## ") == 1 { exit }
+    p { if ($0 ~ /^[[:space:]]*$/) b++; else { for (; b > 0; b--) print ""; print } }
+  ' "$PLUGIN_ROOT/PRINCIPLES.md" 2>/dev/null
+  return 0
+}
+
 # ---- the two roots (bad or empty stdin JSON falls back to $PWD) ----
 roots_read "$CWD"
 conf_read
@@ -469,10 +487,12 @@ auto-pipeline: run /auto-pipeline:init once to see the permission block and the 
       SETUP_TEXT="auto-pipeline: setup failed, run /auto-pipeline:init by hand
 "
       printf '%s' "$SETUP_TEXT"
+      print_output_section
       exit 0
     fi
   else
     echo "auto-pipeline: not set up in this repo, run /auto-pipeline:init to enable"
+    print_output_section
     exit 0
   fi
 fi
@@ -722,6 +742,7 @@ if [ "$SRC" = compact ] && [ -n "$SID" ]; then
   printf '%s' "$ROLE_TEXT"
   printf '%s' "$COMPACT_TEXT"
   print_state_block "$budget"
+  print_output_section
   printf '%s\n' "$RULES_LINE"
   exit 0
 fi
@@ -738,6 +759,7 @@ if [ "$SRC" = clear ] && [ -n "$SID" ]; then
   printf '%s' "$ROLE_TEXT"
   printf '%s\n' "$CLEARED_LINE"
   print_state_block "$budget"
+  print_output_section
   printf '%s\n' "$RULES_LINE"
   exit 0
 fi
@@ -801,5 +823,6 @@ printf '%s' "$NORMAL_TEXT"
 printf '%s' "$MON_TEXT"
 print_state_block "$budget"
 printf '%s' "$RESUME_TEXT"
+print_output_section
 printf '%s\n' "$RULES_LINE"
 printf '%s\n' "$QUIZ_LINE"
