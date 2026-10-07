@@ -23,7 +23,9 @@ Normal start, in this order:
     QUIZ: run <plugin>/bin/agent-start.sh --quiz, then --answer. No work until PASS.
 
 The last two lines are exactly those. No PRINCIPLES.md text and no quiz
-question ever appears in the hook output.
+question ever appears in the hook output, except the output section
+("## E. Output", right before the RULES line; tests/test_output_hook.py).
+The byte limits below are for the rest: pointer_part() drops the section.
 
     --quiz    prints the 29 questions and nothing else
     --answer  unchanged, still grades and still says PASS
@@ -78,6 +80,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from scripthelp import ScriptCase, ScriptRepo
+from test_output_hook import pointer_part
 
 MONITOR_LINE = ("/tmp/wt | alpha | pane working | commit 2m ago | "
                 "activity 0m ago | OK | 2026-09-21 18:00")
@@ -104,7 +107,7 @@ class StartCase(ScriptCase):
 
 class TestItFitsThePreview(StartCase):
     def test_an_empty_project_stays_under_two_kilobytes(self):
-        out = self.assertOk(self.start())
+        out = pointer_part(self.assertOk(self.start()))
         self.assertLess(len(out.encode()), 2048,
                         "the hook is %d bytes, the preview cuts it"
                         % len(out.encode()))
@@ -156,7 +159,7 @@ class TestItFitsThePreviewOnARealProject(StartCase):
 
     def test_a_busy_project_still_fits(self):
         self.busy_project()
-        out = self.assertOk(self.start())
+        out = pointer_part(self.assertOk(self.start()))
         self.assertLessEqual(len(out.encode()), self.CAP,
                              "the hook is %d bytes:\n%s"
                              % (len(out.encode()), out[:600]))
@@ -188,7 +191,7 @@ class TestItFitsThePreviewOnARealProject(StartCase):
     def test_a_single_huge_line_does_not_break_the_cap(self):
         with open(self.repo.path("agent_state.txt"), "w") as fh:
             fh.write("y" * 9000 + "\n")
-        out = self.assertOk(self.start())
+        out = pointer_part(self.assertOk(self.start()))
         self.assertLessEqual(len(out.encode()), self.CAP,
                              "one long line blew the cap: %d bytes"
                              % len(out.encode()))
@@ -196,9 +199,9 @@ class TestItFitsThePreviewOnARealProject(StartCase):
 
     def test_the_compact_path_fits_too(self):
         self.busy_project()
-        out = self.assertOk(self.start(
+        out = pointer_part(self.assertOk(self.start(
             stdin='{"cwd": "%s", "session_id": "s1", "source": "compact"}'
-                  % self.repo.dir))
+                  % self.repo.dir)))
         self.assertLessEqual(len(out.encode()), self.CAP,
                              "compact output is %d bytes" % len(out.encode()))
 
@@ -586,7 +589,7 @@ class TestNoQuizForSubagents(StartCase):
 
     def test_it_still_fits_the_cap(self):
         self.pass_quiz()
-        out = self.assertOk(self.start(env=self.sid()))
+        out = pointer_part(self.assertOk(self.start(env=self.sid())))
         self.assertLessEqual(len(out.encode()), 2000)
 
     def test_an_old_quiz_marker_is_cleaned_at_startup(self):
@@ -607,7 +610,7 @@ class TestAutoResume(StartCase):
     taken over, on a real startup, when auto_resume=yes (default)."""
 
     def test_main_manager_startup_prints_it_and_stays_under_cap(self):
-        out = self.assertOk(self.start())
+        out = pointer_part(self.assertOk(self.start()))
         self.assertIn("=== auto resume ===", out)
         self.assertLessEqual(len(out.encode()), 2000,
                              "hook is %d bytes" % len(out.encode()))
@@ -950,7 +953,7 @@ class TestFirstRunInAnEnabledRepo(BareProjectCase):
 
     def test_it_still_fits_the_preview(self):
         self.repo.enable_plugin()
-        out = self.assertOk(self.start())
+        out = pointer_part(self.assertOk(self.start()))
         self.assertLessEqual(len(out.encode()), 2000, out)
 
     def test_the_second_run_is_quiet(self):
@@ -995,7 +998,7 @@ class TestUserScopeLeavesTheRepoAlone(BareProjectCase):
 
     def test_that_is_the_only_line(self):
         out = self.assertOk(self.start())
-        self.assertEqual(self.lines(out.strip()), [NOT_HERE_LINE])
+        self.assertEqual(self.lines(pointer_part(out).strip()), [NOT_HERE_LINE])
 
     def test_it_exits_zero(self):
         self.assertEqual(self.start().returncode, 0)
@@ -1039,7 +1042,7 @@ class TestUserScopeLeavesTheRepoAlone(BareProjectCase):
         out = self.assertOk(self.start(
             stdin='{"cwd": "%s", "session_id": "s1", "source": "startup"}'
                   % self.repo.dir))
-        self.assertEqual(self.lines(out.strip()), [NOT_HERE_LINE])
+        self.assertEqual(self.lines(pointer_part(out).strip()), [NOT_HERE_LINE])
         left = [n for n in os.listdir(os.path.join(self.repo.dir, ".git"))
                 if n.startswith("agent_started_")]
         self.assertEqual(left, [])

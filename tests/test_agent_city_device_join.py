@@ -557,7 +557,7 @@ class TestJoinOnce(DeviceCase):
     def test_usage_says_once_per_computer(self):
         result = self.city_run("-h")
         self.assertOk(result)
-        join_lines = [l for l in result.stdout.splitlines() if re.match(r"\s*\./agent-city\.sh join\b", l)]
+        join_lines = [l for l in result.stdout.splitlines() if re.match(r"\s*agent-city join\b", l)]
         self.assertTrue(join_lines, result.stdout)
         self.assertNotIn("this repo", join_lines[0])
         self.assertRegex(join_lines[0], r"(?i)computer|device")
