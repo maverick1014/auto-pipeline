@@ -24,8 +24,9 @@
 #   .claude/agents/<name>.md         every source agent
 #   .claude/settings.json            merged: every existing key and hook is
 #                                     kept, the SessionStart (start, name),
-#                                     UserPromptSubmit (close case) and city
-#                                     hooks and the permission rules are added
+#                                     UserPromptSubmit (close case, Helper
+#                                     title) and city hooks and the
+#                                     permission rules are added
 #   CLAUDE.md                        one pointer line appended once, never
 #                                     overwritten
 #   agent.conf, agent_*.txt,
@@ -424,16 +425,18 @@ if not has_hook:
     session_start.append({"hooks": [{"type": "command", "command": HOOK_CMD}]})
     changed = True
 
-# The plugin's other two hooks: the session name line and the close case rule.
-# Same packed path, same marker test, so a rerun or an older pack adds each once.
-for event, script, timeout in (("SessionStart", "agent-name.sh", 5),
-                               ("UserPromptSubmit", "agent-close-case.sh", 10)):
+# The plugin's other hooks: the session name line, the Helper task title (the
+# name script's --prompt mode) and the close case rule. Same packed path, same
+# marker test per event, so a rerun or an older pack adds each once.
+for event, script, args, timeout in (("SessionStart", "agent-name.sh", "", 5),
+                                     ("UserPromptSubmit", "agent-name.sh", " --prompt", 5),
+                                     ("UserPromptSubmit", "agent-close-case.sh", "", 10)):
     marker = ".claude/auto-pipeline/bin/" + script
     event_list = hooks.setdefault(event, [])
     if not any(marker in hook.get("command", "")
                for entry in event_list for hook in entry.get("hooks", [])):
         event_list.append({"hooks": [{"type": "command",
-                                      "command": 'bash "$CLAUDE_PROJECT_DIR"/' + marker,
+                                      "command": 'bash "$CLAUDE_PROJECT_DIR"/' + marker + args,
                                       "timeout": timeout}]})
         changed = True
 

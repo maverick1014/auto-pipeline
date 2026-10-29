@@ -92,6 +92,8 @@ SCRIPT = os.path.join(ROOT, "bin", "agent-cloud-pack.sh")
 PACK = os.path.join(".claude", "auto-pipeline")
 HOOK_CMD = 'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-start.sh'
 NAME_CMD = 'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-name.sh'
+# helper-task-title (owner, 2026-10-28): the Helper's task title, on every prompt
+PROMPT_NAME_CMD = 'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-name.sh --prompt'
 
 # Agent City in the cloud (requirements/city.md, "Joining": cloud sessions
 # send only, no page). The pack also ships:
@@ -611,6 +613,61 @@ class TestCloseCaseAndNameHooks(PackCase):
                 self.assertEqual(self.count(event, script), 1)
         for entry in USER_SETTINGS["hooks"]["SessionStart"]:
             self.assertIn(entry, self.settings()["hooks"]["SessionStart"])
+
+
+class TestHelperTaskHook(PackCase):
+    """The UserPromptSubmit name hook (agent-name.sh --prompt) is packed too."""
+
+    def prompt_hooks(self):
+        return [h for e in self.settings().get("hooks", {}).get("UserPromptSubmit", [])
+                for h in e.get("hooks", []) if "agent-name.sh" in h.get("command", "")]
+
+    def test_a_fresh_pack_has_it_once(self):
+        self.assertOk(self.pack())
+        self.assertEqual(self.prompt_hooks(),
+                         [{"type": "command", "command": PROMPT_NAME_CMD, "timeout": 5}])
+        start = [h for e in self.settings()["hooks"]["SessionStart"]
+                 for h in e.get("hooks", []) if "agent-name.sh" in h.get("command", "")]
+        self.assertEqual([h["command"] for h in start], [NAME_CMD])
+
+    def test_a_second_run_and_an_update_add_no_duplicate(self):
+        self.assertOk(self.pack())
+        self.assertOk(self.pack())
+        self.assertOk(self.pack("--update"))
+        self.assertEqual(len(self.prompt_hooks()), 1)
+
+    def test_update_adds_it_to_an_older_pack(self):
+        self.assertOk(self.pack())
+        data = self.settings()
+        data["hooks"]["UserPromptSubmit"] = [
+            e for e in data["hooks"]["UserPromptSubmit"]
+            if "agent-name.sh" not in json.dumps(e)]
+        write_text(self.t(".claude", "settings.json"), json.dumps(data, indent=2) + "\n")
+        self.assertEqual(self.prompt_hooks(), [])
+        self.assertOk(self.pack("--update"))
+        self.assertEqual(len(self.prompt_hooks()), 1)
+        self.assertIn("agent-close-case.sh", json.dumps(self.settings()["hooks"]["UserPromptSubmit"]))
+
+    def test_the_packed_hook_titles_a_helper(self):
+        self.assertOk(self.pack())
+        lock = subprocess.run(["git", "-C", self.target, "rev-parse", "--path-format=absolute",
+                               "--git-common-dir"], capture_output=True, text=True,
+                              check=True).stdout.strip()
+        write_text(os.path.join(lock, "agent_main.lock"), "%d 2026-10-28 10:00\n" % os.getpid())
+        sid = "55555555-eeee-4eee-8eee-000000000005"
+        env = {"CLAUDE_PID": "999999", "CLAUDE_CODE_SESSION_ID": sid,
+               "ORCA_TERMINAL_HANDLE": "", "CLAUDE_PROJECT_DIR": self.target}
+        self.assertOk(self.packed("agent-file.sh", "helper-task", "SST Calculation", env=env))
+        stdin = json.dumps({"session_id": sid, "transcript_path": "/tmp/n.jsonl",
+                            "cwd": self.target, "permission_mode": "auto",
+                            "hook_event_name": "UserPromptSubmit", "prompt": "next"})
+        result = subprocess.run(["bash", "-c", PROMPT_NAME_CMD], cwd=self.target,
+                                env=self.env(env), capture_output=True, text=True,
+                                input=stdin, timeout=60)
+        self.assertEqual((result.returncode, result.stderr), (0, ""), result.stdout)
+        self.assertEqual(json.loads(result.stdout)["hookSpecificOutput"],
+                         {"hookEventName": "UserPromptSubmit",
+                          "sessionTitle": "target Helper - SST Calculation"})
 
 
 class TestCityInTheCloud(PackCase):

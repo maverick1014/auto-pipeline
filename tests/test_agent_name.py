@@ -62,10 +62,66 @@ human-direct session also how to pick one of two sessions with the same name
 (the [ref] ListAgents prints). The main manager and the human-direct session
 are told how to make their own address match: `claude --name`, or ask the
 human once for `/rename <repo> Manager` (or `/rename <repo> Helper`).
+
+HELPER TASK. Owner, 2026-10-28: "v4 Manager" stays; a Helper shows its
+current task so /resume tells sessions apart. The agent names the task
+itself. Owner change, 2026-10-29: " - " between, "<repo> Helper - <Task Name>"
+(e.g. "v4 Helper - SST Invoice"); the repo part is the folder name as it is
+(no case change).
+
+    bin/agent-file.sh helper-task "<Task Name>"
+
+sets the task of THIS session only. Keyed by the session id: the Bash tool
+gets $CLAUDE_CODE_SESSION_ID, every hook gets the same id as stdin
+"session_id" (Claude Code 2.1.312 keeps that env var current after /clear).
+Two Helpers in one folder have two ids, so they never share a name; a
+`claude --resume` keeps the id (the pid changes), so the resumed Helper keeps
+its task. A fork is a new id: it starts with no task. Stored in the project's
+shared git dir, never in a work tree. No $CLAUDE_CODE_SESSION_ID, or a session
+that is not a Helper (role second): refused, exit 1, one line on stderr,
+nothing written. It also sets field 3 of this folder's human-direct line in
+agent_worktree.txt to "task: <Task Name>" (adds the line when there is none).
+
+The task is cleaned: every character that is not an ASCII letter, digit or
+hyphen is a space; hyphens at the ends of a word go; role words go, any
+letter case (E2E 2026-10-29: the agent picked "SST Invoice Helper", title
+"v4 Helper SST Invoice Helper"): the pair "Task Manager", then every
+"Helper", "Manager", "Agent" ("Task" alone stays); then the first 4 words are
+kept; each word gets a capital first letter, the rest as typed; then whole
+words are dropped from the end while it is over 40 characters (one word alone
+is cut to 40). Nothing left: refused.
+
+Rule text (start text TASK line, PRINCIPLES W10): every new or switched
+task, a plain question too, gets its name first, even before the quiz PASS
+(E2E 2026-10-29: asked only to compute SST, the Helper answered and skipped
+the quiz and the command, "no repo was touched"); name the work, not the
+role; run the exact full-path command the start text prints, alone, from the
+project folder, never cd, never chain it. The command finds the project from
+its working folder. It never checks the quiz: it works before PASS.
+
+    role second, task set     "<repo> Helper - <Task Name>"
+    role second, no task      "<repo> Helper"
+    any other role            as above, a task never changes it
+
+UserPromptSubmit: `agent-name.sh --prompt` (hooks.json, timeout 5). Prints
+exactly one JSON line
+
+    {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
+                            "sessionTitle": "<repo> Helper - <Task Name>"}}
+
+only for a Helper with a task, and only when that name differs from the last
+one this hook printed for this session id; otherwise nothing, so a human
+/rename is never overridden for no reason. The title changes at the human's
+next prompt after the command. Orca tab rename only when it prints, with the
+same 2 s cut. Runs on every prompt in every repo: no network, fast (target
+under 300 ms), always exit 0, nothing on stderr; it writes only its own
+last-title marker in the shared git dir. SessionStart (startup, resume, fork)
+uses the task the same way.
 """
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -81,6 +137,11 @@ NAME_COMMAND = '"${CLAUDE_PLUGIN_ROOT}"/bin/agent-name.sh'
 NAME_ENTRY = {"hooks": [{"type": "command", "command": NAME_COMMAND, "timeout": 5}]}
 NOBODY = "999999"   # a CLAUDE_PID no lock ever names
 HANDLE = "term_test-1234"
+PROMPT_COMMAND = '"${CLAUDE_PLUGIN_ROOT}"/bin/agent-name.sh --prompt'
+PROMPT_ENTRY = {"hooks": [{"type": "command", "command": PROMPT_COMMAND, "timeout": 5}]}
+SID_A = "11111111-aaaa-4aaa-8aaa-000000000001"
+SID_B = "22222222-bbbb-4bbb-8bbb-000000000002"
+SID_C = "33333333-cccc-4ccc-8ccc-000000000003"
 
 
 def read(*parts):
@@ -407,6 +468,400 @@ class TestCloseCaseNamesTheManager(ScriptCase):
         out = self.close_case({})
         self.assertIn('"project Manager"', out)
         self.assertIn('"project-<xx>"', out)
+
+
+# ---------------------------------------------------------------------------
+# Helper task (owner, 2026-10-28): "<repo> Helper - <Task Name>"
+# ---------------------------------------------------------------------------
+
+class HelperCase(NameCase):
+    """A second session: the lock is held by this live test process, and the
+    session (CLAUDE_PID=NOBODY) is not it."""
+
+    def setUp(self):
+        super().setUp()
+        self.set_lock(os.getpid())
+
+    def helper_task(self, text, sid=SID_A, env=None, cwd=None):
+        base = {"CLAUDE_PID": NOBODY}
+        if sid is not None:
+            base["CLAUDE_CODE_SESSION_ID"] = sid
+        base.update(env or {})
+        return self.repo.run("agent-file.sh", "helper-task", text, env=base, cwd=cwd)
+
+    def set_task(self, text, sid=SID_A, **kw):
+        result = self.helper_task(text, sid, **kw)
+        self.assertOk(result)
+        return result.stdout
+
+    def refused(self, text, sid=SID_A, **kw):
+        """The command says no: exit 1, a reason on stderr, not one file changed."""
+        before = self.snapshot()
+        result = self.helper_task(text, sid, **kw)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertTrue(result.stderr.strip(), "a refusal says why on stderr")
+        self.assertEqual(self.snapshot(), before)
+        return result
+
+    def snapshot(self):
+        found = {}
+        for dirpath, _dirs, files in os.walk(self.repo.base):
+            for name in files:
+                full = os.path.join(dirpath, name)
+                if full == self.repo.orca_log:
+                    continue
+                with open(full, "rb") as fh:
+                    found[full] = fh.read()
+        return found
+
+    def start_name(self, sid=SID_A, source="startup", env=None):
+        data = json.loads(self.payload(source))
+        data["session_id"] = sid
+        return self.name(source, stdin=json.dumps(data), env=env)
+
+    def prompt_payload(self, sid=SID_A, prompt="go on"):
+        return json.dumps({"session_id": sid, "transcript_path": "/tmp/none.jsonl",
+                           "cwd": self.repo.cwd, "permission_mode": "auto",
+                           "hook_event_name": "UserPromptSubmit", "prompt": prompt})
+
+    def run_prompt(self, sid=SID_A, env=None, stdin=None, prompt="go on", timeout=90):
+        base = {"CLAUDE_PID": NOBODY}
+        base.update(env or {})
+        if stdin is None:
+            stdin = self.prompt_payload(sid, prompt)
+        return self.repo.run("agent-name.sh", "--prompt", env=base, stdin=stdin,
+                             timeout=timeout)
+
+    def prompt(self, sid=SID_A, **kw):
+        """The prompt hook: exit 0 and an empty stderr, always. Returns stdout."""
+        result = self.run_prompt(sid, **kw)
+        self.assertOk(result)
+        self.assertEqual(result.stderr, "", result.stderr)
+        return result.stdout
+
+    def prompt_title(self, out):
+        """The one UserPromptSubmit JSON line, exact shape. Returns the name."""
+        self.assertTrue(out.strip(), "the prompt hook printed nothing")
+        self.assertEqual(len(out.strip().splitlines()), 1, out)
+        data = json.loads(out)
+        self.assertEqual(sorted(data), ["hookSpecificOutput"], data)
+        inner = data["hookSpecificOutput"]
+        self.assertEqual(sorted(inner), ["hookEventName", "sessionTitle"], inner)
+        self.assertEqual(inner["hookEventName"], "UserPromptSubmit")
+        return inner["sessionTitle"]
+
+    def untracked(self):
+        out = subprocess.run(["git", "-C", self.repo.dir, "status", "--porcelain",
+                              "--untracked-files=all"], capture_output=True,
+                             text=True, check=True).stdout
+        return [l for l in out.splitlines() if l.startswith("??")]
+
+
+class TestHelperTaskCommand(HelperCase):
+
+    def test_sets_the_name_of_this_session(self):
+        self.set_task("SST Calculation")
+        self.assertEqual(self.start_name(), "project Helper - SST Calculation")
+
+    def test_works_before_the_quiz_pass(self):
+        gitdir = self.repo.path(".git")
+        self.assertEqual([f for f in os.listdir(gitdir) if f.startswith("agent_quiz_")], [])
+        self.set_task("SST Invoice")
+        self.assertEqual(self.start_name(), "project Helper - SST Invoice")
+
+    def test_says_the_name_and_when_it_shows(self):
+        out = self.set_task("SST Calculation")
+        self.assertIn("project Helper - SST Calculation", out)
+        self.assertIn("next prompt", out)
+
+    def test_a_new_task_replaces_the_old_one(self):
+        self.set_task("SST Calculation")
+        self.set_task("Login Page")
+        self.assertEqual(self.start_name(), "project Helper - Login Page")
+
+    def test_two_helpers_in_one_folder_keep_their_own_names(self):
+        self.set_task("Alpha Report", SID_A)
+        self.set_task("Beta Fix", SID_B)
+        self.assertEqual(self.start_name(SID_A), "project Helper - Alpha Report")
+        self.assertEqual(self.start_name(SID_B), "project Helper - Beta Fix")
+        self.assertEqual(self.start_name(SID_C), "project Helper")
+
+    def test_a_resumed_helper_keeps_its_task(self):
+        self.set_task("SST Calculation")
+        self.assertEqual(self.start_name(source="resume", env={"CLAUDE_PID": "888888"}),
+                         "project Helper - SST Calculation")
+
+    def test_a_fork_is_a_new_session_with_no_task(self):
+        self.set_task("SST Calculation")
+        self.assertEqual(self.start_name(SID_C, source="fork"), "project Helper")
+
+    def test_clear_and_compact_still_print_nothing(self):
+        self.set_task("SST Calculation")
+        for source in ("clear", "compact"):
+            with self.subTest(source=source):
+                data = json.loads(self.payload(source))
+                data["session_id"] = SID_A
+                self.assertEqual(self.hook(source, stdin=json.dumps(data)), "")
+
+    def test_the_name_is_cleaned(self):
+        cases = [
+            ("SST Calculation", "SST Calculation"),
+            ("sst calculation", "Sst Calculation"),
+            ('fix "login"\npage', "Fix Login Page"),
+            ("one two three four five six", "One Two Three Four"),
+            ("Internationalization Localization Accessibility Work",
+             "Internationalization Localization"),
+            ("a" * 60, "A" + "a" * 39),
+            ("--rm -rf", "Rm Rf"),
+            ("登录 page fix", "Page Fix"),
+            ('back\\slash {json} it', "Back Slash Json It"),
+            ("  log-in\tpage  ", "Log-in Page"),
+            ("SST Invoice Helper", "SST Invoice"),
+            ("helper for sst invoices", "For Sst Invoices"),
+            ("Task Manager Login Page", "Login Page"),
+            ("task queue fix", "Task Queue Fix"),
+            ("Agent City Fix", "City Fix"),
+            ("Manager Report", "Report"),
+            ("HELPER sst AGENT", "Sst"),
+            ("SST Invoice Helper Fix Now", "SST Invoice Fix Now"),
+        ]
+        for i, (raw, want) in enumerate(cases):
+            sid = "44444444-dddd-4ddd-8ddd-%012d" % i
+            with self.subTest(raw=raw):
+                self.set_task(raw, sid)
+                got = self.start_name(sid)
+                self.assertEqual(got, "project Helper - " + want)
+                self.assertLessEqual(len(got) - len("project Helper - "), 40)
+
+    def test_no_english_words_is_refused(self):
+        for raw in ("登录页面", "   ", '""', "--", "", "Helper", "Task Manager",
+                    "helper agent manager"):
+            with self.subTest(raw=raw):
+                self.refused(raw)
+        self.assertEqual(self.start_name(), "project Helper")
+
+    def test_no_session_id_is_refused(self):
+        self.refused("SST Calculation", sid=None)
+
+    def test_the_main_manager_is_refused(self):
+        os.remove(self.repo.path(".git", "agent_main.lock"))
+        self.refused("SST Calculation")
+        self.assertEqual(self.start_name(), "project Manager")
+
+    def test_the_lock_owner_is_refused(self):
+        self.refused("SST Calculation", env={"CLAUDE_PID": str(os.getpid())})
+
+    def test_a_spawned_agent_is_refused(self):
+        self.refused("SST Calculation", env={"AGENT_ROLE": "task-manager"})
+
+    def test_a_task_never_renames_another_role(self):
+        self.set_task("SST Calculation")
+        self.assertEqual(self.start_name(env={"AGENT_ROLE": "task-manager"}),
+                         "project Task Manager")
+        self.assertEqual(self.start_name(env={"CLAUDE_PID": str(os.getpid())}),
+                         "project Manager")
+        self.set_lock(dead_pid())
+        self.assertEqual(self.start_name(), "project Manager")
+
+    def test_stored_outside_the_work_tree(self):
+        self.set_task("SST Calculation")
+        self.assertEqual(self.untracked(), [])
+
+    def test_usage_names_the_command(self):
+        result = self.repo.run("agent-file.sh")
+        self.assertIn("helper-task", result.stdout)
+
+
+class TestHelperTaskWorktreeLine(HelperCase):
+    """The task field of this folder's human-direct line in agent_worktree.txt."""
+
+    OTHER = "/somewhere/else | other-module | working | since 2026-10-28 08:00"
+
+    def seed(self):
+        line = "%s | task manager, human-direct | task: (ask the human) | since 2026-10-28 09:00" \
+            % self.repo.dir
+        with open(self.repo.path("agent_worktree.txt"), "w") as fh:
+            fh.write(self.OTHER + "\n" + line + "\n")
+
+    def rows(self):
+        return [l for l in self.repo.read("agent_worktree.txt").splitlines() if l.strip()]
+
+    def test_fills_the_task_field(self):
+        self.seed()
+        self.set_task("SST Calculation")
+        self.assertEqual(sorted(self.rows()), sorted([
+            self.OTHER,
+            "%s | task manager, human-direct | task: SST Calculation | since 2026-10-28 09:00"
+            % self.repo.dir]))
+
+    def test_a_new_task_replaces_the_field_in_the_same_line(self):
+        self.seed()
+        self.set_task("SST Calculation")
+        self.set_task("Login Page")
+        mine = [r for r in self.rows() if r.startswith(self.repo.dir + " | ")]
+        self.assertEqual(mine, [
+            "%s | task manager, human-direct | task: Login Page | since 2026-10-28 09:00"
+            % self.repo.dir])
+
+    def test_no_line_yet_adds_one(self):
+        self.set_task("SST Calculation")
+        mine = [r for r in self.rows() if r.startswith(self.repo.dir + " | ")]
+        self.assertEqual(len(mine), 1, self.rows())
+        self.assertRegex(mine[0], r"^%s \| task manager, human-direct \| task: SST Calculation"
+                         r" \| since \d{4}-\d\d-\d\d \d\d:\d\d$" % re.escape(self.repo.dir))
+
+
+class TestPromptHook(HelperCase):
+    """UserPromptSubmit: the title, once per change, only for a Helper with a task."""
+
+    RENAME = ["terminal", "rename", "--terminal", HANDLE, "--title"]
+
+    def test_no_task_prints_nothing(self):
+        self.assertEqual(self.prompt(), "")
+
+    def test_the_title_comes_once_after_the_task_is_set(self):
+        self.set_task("SST Calculation")
+        self.assertEqual(self.prompt_title(self.prompt()), "project Helper - SST Calculation")
+        for _ in range(3):
+            self.assertEqual(self.prompt(), "")   # a human /rename is kept
+
+    def test_a_new_task_comes_once_more(self):
+        self.set_task("SST Calculation")
+        self.prompt()
+        self.set_task("Login Page")
+        self.assertEqual(self.prompt_title(self.prompt()), "project Helper - Login Page")
+        self.assertEqual(self.prompt(), "")
+
+    def test_each_session_gets_its_own_title(self):
+        self.set_task("Alpha Report", SID_A)
+        self.set_task("Beta Fix", SID_B)
+        self.assertEqual(self.prompt_title(self.prompt(SID_A)), "project Helper - Alpha Report")
+        self.assertEqual(self.prompt_title(self.prompt(SID_B)), "project Helper - Beta Fix")
+        self.assertEqual(self.prompt(SID_A), "")
+        self.assertEqual(self.prompt(SID_C), "")
+
+    def test_other_roles_print_nothing(self):
+        self.set_task("SST Calculation")
+        self.assertEqual(self.prompt(env={"AGENT_ROLE": "task-manager"}), "")
+        self.assertEqual(self.prompt(env={"CLAUDE_PID": str(os.getpid())}), "")
+        self.set_lock(dead_pid())
+        self.assertEqual(self.prompt(), "")
+        os.remove(self.repo.path(".git", "agent_main.lock"))
+        self.assertEqual(self.prompt(), "")
+
+    def test_no_agent_conf_prints_nothing(self):
+        self.set_task("SST Calculation")
+        os.remove(self.repo.path("agent.conf"))
+        self.assertEqual(self.prompt(env={"ORCA_TERMINAL_HANDLE": HANDLE}), "")
+        self.assertEqual(self.repo.calls(), [])
+
+    def test_bad_or_empty_stdin_prints_nothing(self):
+        self.set_task("SST Calculation")
+        for stdin in ("", "not json {"):
+            with self.subTest(stdin=stdin):
+                self.assertEqual(self.prompt(stdin=stdin), "")
+
+    def test_the_prompt_text_cannot_pick_the_session(self):
+        self.set_task("Beta Fix", SID_B)
+        text = 'see {"session_id": "%s"} and "quotes"\nand \\ too' % SID_B
+        self.assertEqual(self.prompt(SID_A, prompt=text), "")
+        self.assertEqual(self.prompt_title(self.prompt(SID_B, prompt=text)),
+                         "project Helper - Beta Fix")
+
+    def test_a_resume_does_not_repeat_the_title(self):
+        self.set_task("SST Calculation")
+        self.prompt_title(self.prompt())
+        self.start_name(source="resume", env={"CLAUDE_PID": "888888"})
+        self.assertEqual(self.prompt(env={"CLAUDE_PID": "888888"}), "")
+
+    def test_it_is_fast(self):
+        # target under 300 ms; the bound is loose for a busy test machine
+        self.set_task("SST Calculation")
+        for _ in range(2):
+            start = time.monotonic()
+            self.prompt()
+            self.assertLess(time.monotonic() - start, 1.0)
+
+    def test_writes_nothing_in_the_work_tree(self):
+        self.set_task("SST Calculation")
+        self.prompt()
+        self.prompt()
+        self.assertEqual(self.untracked(), [])
+
+    def test_the_tab_is_renamed_only_when_the_title_changes(self):
+        env = {"ORCA_TERMINAL_HANDLE": HANDLE}
+        self.set_task("SST Calculation")
+        self.prompt(env=env)
+        self.prompt(env=env)
+        self.set_task("Login Page")
+        self.prompt(env=env)
+        self.assertEqual(self.repo.calls(), [
+            self.RENAME + ["project Helper - SST Calculation", "--json"],
+            self.RENAME + ["project Helper - Login Page", "--json"]])
+
+    def test_no_title_no_tab_rename(self):
+        self.prompt(env={"ORCA_TERMINAL_HANDLE": HANDLE})
+        self.assertEqual(self.repo.calls(), [])
+
+    def test_a_slow_orca_is_cut_off(self):
+        self.set_task("SST Calculation")
+        start = time.time()
+        out = self.prompt(env={"ORCA_TERMINAL_HANDLE": HANDLE, "ORCA_STUB_SLEEP": "20"},
+                          timeout=30)
+        self.assertLess(time.time() - start, 5)
+        self.assertEqual(self.prompt_title(out), "project Helper - SST Calculation")
+
+
+class TestPromptHookJson(unittest.TestCase):
+
+    def test_user_prompt_submit_runs_the_prompt_hook_once(self):
+        entries = json.loads(read("hooks", "hooks.json"))["hooks"]["UserPromptSubmit"]
+        self.assertEqual(entries.count(PROMPT_ENTRY), 1, entries)
+        self.assertIn("agent-close-case.sh", json.dumps(entries))
+
+    def test_no_other_event_runs_the_prompt_mode(self):
+        for event, entries in json.loads(read("hooks", "hooks.json"))["hooks"].items():
+            if event != "UserPromptSubmit":
+                with self.subTest(event=event):
+                    self.assertNotIn("--prompt", json.dumps(entries))
+
+    def test_readme_says_it_names_the_helper_task(self):
+        line = next(l for l in read("README.md").splitlines() if "bin/agent-name.sh" in l)
+        self.assertIn("UserPromptSubmit", line)
+        self.assertIn("<repo> Helper - <Task Name>", line)
+
+
+class TestStartTellsTheHelper(ScriptCase):
+    """The human-direct start text says when and how to name the task."""
+
+    script = "agent-start.sh"
+
+    def start(self, env, lock=True):
+        if lock:
+            with open(self.repo.path(".git", "agent_main.lock"), "w") as fh:
+                fh.write("%s 2026-10-28 10:00\n" % os.getpid())
+        result = self.repo.run("agent-start.sh", env=dict({"CLAUDE_PID": NOBODY}, **env))
+        self.assertOk(result)
+        return result.stdout
+
+    def test_the_helper_is_told_the_command(self):
+        out = self.start({})
+        lines = [l for l in out.splitlines() if "helper-task" in l]
+        self.assertEqual(len(lines), 1, out)
+        line = lines[0]
+        self.assertIn(self.repo.plugin + '/bin/agent-file.sh helper-task "<Task Name>"', line)
+        for word in ("2-4 English words", "Title Case", "next prompt",
+                     '"project Helper - <Task Name>"', "the work, not the role",
+                     "every new or switched task", "a plain question too",
+                     "before the quiz PASS", "alone", "project folder",
+                     "never cd", "never chain"):
+            with self.subTest(word=word):
+                self.assertIn(word, line)
+        self.assertLessEqual(len(line.replace(self.repo.plugin, "<plugin>")), 400)
+
+    def test_other_roles_are_not_told(self):
+        self.assertNotIn("helper-task", self.start({}, lock=False))
+        self.assertNotIn("helper-task", self.start({"AGENT_ROLE": "task-manager"}))
 
 
 if __name__ == "__main__":

@@ -612,7 +612,8 @@ print_role_and_project() {
       echo "Announced: line added to agent_worktree.txt. Send the main manager a direct message too if Orca is available."
       echo "Will change files? Open your own worktree first (W7). Human says finish -> report done + click path to the main manager."
       echo "Reach the main manager: ListAgents -> \"$REPO Manager\" (not listed: the \"$REPO-<xx>\" row; two with that name: add the [ref] ListAgents prints) -> SendMessage to that name. Reply to the from name."
-      echo "NAME: you show as \"$REPO Helper\"; ListAgents calls you something else -> ask the human once: /rename $REPO Helper";;
+      echo "NAME: you show as \"$REPO Helper\"; ListAgents calls you something else -> ask the human once: /rename $REPO Helper"
+      echo "TASK: every new or switched task, a plain question too, gets its name FIRST, even before the quiz PASS: run this exact command alone, from the project folder (never cd, never chain it): $PLUGIN_ROOT/bin/agent-file.sh helper-task \"<Task Name>\"; 2-4 English words, Title Case, the work, not the role; shows as \"$REPO Helper - <Task Name>\" from the human's next prompt.";;
   esac
   echo "PROJECT: $PROJECT_ROOT | PLUGIN: $PLUGIN_ROOT"
 }
