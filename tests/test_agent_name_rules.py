@@ -36,6 +36,16 @@ CONTRACT.
     - the sessions that get the words close case are found by name:
       "<feature> Task Manager" or "<name> Task Manager", and "<repo> Helper"
       or its folder row "<repo>-<xx>"
+
+  Helper task (owner, 2026-10-28; the hook and the command are in
+  tests/test_agent_name.py):
+    - the PRINCIPLES naming line shows the Helper as `<repo> Helper <Task Name>`
+    - exactly one PRINCIPLES line names `helper-task "<Task Name>"`: when (a new
+      or switched task), the words (2-4 English words, Title Case), and that
+      the name shows from the human's next prompt. At most 240 characters
+    - the close-case skill finds the Helper as `<repo> Helper <Task Name>`
+    - the closed-session hint (bin/agent-roots.sh) gives the /rename with the
+      task too: `/rename <repo> Helper <Task Name>`
 """
 
 import os
@@ -84,6 +94,19 @@ class TestPrinciples(unittest.TestCase):
 
     def test_the_rule_is_short(self):
         self.assertLessEqual(len(self.naming_lines()[0]), 320)
+
+    def test_the_rule_shows_the_helper_task(self):
+        self.assertIn("<repo> Helper <Task Name>", self.naming_lines()[0])
+
+    def test_one_helper_task_rule(self):
+        lines = [l for l in self.text.splitlines() if "helper-task" in l]
+        self.assertEqual(len(lines), 1, lines)
+        line = lines[0]
+        for word in ('helper-task "<Task Name>"', "2-4 English words", "Title Case",
+                     "next prompt"):
+            with self.subTest(word=word):
+                self.assertIn(word, line)
+        self.assertLessEqual(len(line), 240)
 
     def test_the_rule_says_when_the_name_is_the_address(self):
         line = self.naming_lines()[0]
@@ -150,6 +173,18 @@ class TestCloseCase(unittest.TestCase):
         self.assertTrue(re.search(r"<(feature|name)> Task Manager", text), text)
         self.assertIn("<repo> Helper", text)
         self.assertIn("<repo>-<xx>", text)
+
+    def test_the_helper_is_found_by_its_task_name(self):
+        text = section(read("skills", "close-case", "SKILL.md"), "## B.", "5.")
+        self.assertIn("<repo> Helper <Task Name>", text)
+
+
+class TestClosedHint(unittest.TestCase):
+
+    def test_the_rename_hint_gives_the_task_form(self):
+        line = next(l for l in read("bin", "agent-roots.sh").splitlines()
+                    if "ask the human once to type /rename" in l)
+        self.assertIn("Helper <Task Name>", line)
 
 
 if __name__ == "__main__":
