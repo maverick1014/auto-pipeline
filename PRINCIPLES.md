@@ -129,7 +129,7 @@ W10. Second session in the same repo
 - Lock owner dead → take over as main manager, run recovery (S7)
 - Talk between sessions: `ListAgents` → find the peer by its name (W6), not listed → the row named after its folder (`<folder>-<xx>`) → `SendMessage` to that name. Two share a name → add the `[ref]` ListAgents prints. Reply to the `from` name. First line of every message = one clear sentence
 - Open a second session with the same permission mode and effort as the main manager (`permission_mode` and `main_manager` in `agent.conf`, effort form model:effort): `orca terminal create --worktree path:<repo> --command "claude --name '<repo> Helper' --permission-mode auto --effort <effort>" --json`, then `orca terminal wait --for tui-idle`
-- Task name: a new or switched task -> run `bin/agent-file.sh helper-task "<Task Name>"` (2-4 English words, Title Case); `<repo> Helper <Task Name>` shows from the human's next prompt
+- Task name: a new or switched task -> run the full-path `<plugin>/bin/agent-file.sh helper-task "<Task Name>"` from the start text, alone, from the project folder (never cd, never chain it); 2-4 English words, Title Case, the work, not the role; `<repo> Helper <Task Name>` shows from the human's next prompt
 
 W11. Time
 - Every task gets an estimate in minutes before dispatch, on its todo line

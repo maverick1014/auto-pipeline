@@ -93,8 +93,10 @@
 #   Refused (exit 1, one line on stderr that says why, nothing written): any other role (main, takeover, closed, spawned),
 #   no session id, a name with no English word left. No argument: usage, exit 2.
 #   The name is cleaned: every character that is not an ASCII letter, digit or hyphen becomes a space; hyphens at the
-#   ends of a word go; the first 4 words are kept, each with a capital first letter (the rest as typed); then whole words
-#   leave from the end while it is over 40 characters (one word alone is cut to 40). Use 2-4 English words, Title Case.
+#   ends of a word go; role words go, any letter case (the pair "Task Manager", then every "Helper", "Manager", "Agent";
+#   "Task" alone stays): name the work, not the role; the first 4 words are kept, each with a capital first letter (the
+#   rest as typed); then whole words leave from the end while it is over 40 characters (one word alone is cut to 40).
+#   Use 2-4 English words, Title Case.
 #   The task is one line in "<git dir of the project>/agent_helper_task_<session id>" (atomic; never in a work tree).
 #   Files agent_helper_task_* and agent_helper_title_* in that folder older than 30 days are deleted.
 #   Field 3 of this folder's human-direct line in agent_worktree.txt becomes "task: <Task Name>" (the line is added when
@@ -460,10 +462,22 @@ helper_clean() {
   local words
   words=$(printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9-' ' ')   # only letters, digits, hyphens and spaces remain
   LC_ALL=C awk -v s="$words" 'BEGIN {
-    m = split(s, raw, " "); n = 0
-    for (i = 1; i <= m && n < 4; i++) {
+    m = split(s, raw, " "); k = 0
+    for (i = 1; i <= m; i++) {
       w = raw[i]; sub(/^-+/, "", w); sub(/-+$/, "", w)
-      if (w != "") w_[++n] = toupper(substr(w, 1, 1)) substr(w, 2)
+      if (w != "") a_[++k] = w
+    }
+    # role words go, any letter case: the pair "task manager" first, then "helper", "manager", "agent"
+    j = 0
+    for (i = 1; i <= k; i++) {
+      if (tolower(a_[i]) == "task" && i < k && tolower(a_[i + 1]) == "manager") { i++; continue }
+      b_[++j] = a_[i]
+    }
+    n = 0
+    for (i = 1; i <= j && n < 4; i++) {
+      lw = tolower(b_[i])
+      if (lw == "helper" || lw == "manager" || lw == "agent") continue
+      w_[++n] = toupper(substr(b_[i], 1, 1)) substr(b_[i], 2)
     }
     out = ""
     for (i = 1; i <= n; i++) out = out (i > 1 ? " " : "") w_[i]
@@ -484,7 +498,7 @@ helper_task() {
     ''|*[!A-Za-z0-9_-]*) refuse "helper-task: no usable session id (CLAUDE_CODE_SESSION_ID is empty or has other characters than letters, digits, _ and -)";;
   esac
   task=$(helper_clean "$1")
-  [ -n "$task" ] || refuse "helper-task: no English word left in that name; use 2-4 English words, Title Case"
+  [ -n "$task" ] || refuse "helper-task: no English word left in that name; name the work, not the role; use 2-4 English words, Title Case"
   mkdir -p "$PROJECT_GITDIR" 2>/dev/null || refuse "helper-task: cannot write in $PROJECT_GITDIR"
   f="$PROJECT_GITDIR/agent_helper_task_$sid"; tmp="$f.tmp.$$"
   { printf '%s\n' "$task" > "$tmp" && mv "$tmp" "$f"; } 2>/dev/null || { rm -f "$tmp"; refuse "helper-task: cannot write $f"; }
