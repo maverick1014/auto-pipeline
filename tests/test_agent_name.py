@@ -81,10 +81,18 @@ nothing written. It also sets field 3 of this folder's human-direct line in
 agent_worktree.txt to "task: <Task Name>" (adds the line when there is none).
 
 The task is cleaned: every character that is not an ASCII letter, digit or
-hyphen is a space; hyphens at the ends of a word go; the first 4 words are
+hyphen is a space; hyphens at the ends of a word go; role words go, any
+letter case (E2E 2026-10-29: the agent picked "SST Invoice Helper", title
+"v4 Helper SST Invoice Helper"): the pair "Task Manager", then every
+"Helper", "Manager", "Agent" ("Task" alone stays); then the first 4 words are
 kept; each word gets a capital first letter, the rest as typed; then whole
 words are dropped from the end while it is over 40 characters (one word alone
 is cut to 40). Nothing left: refused.
+
+Rule text (start text TASK line, PRINCIPLES W10): name the work, not the
+role; run the exact full-path command the start text prints, alone, from the
+project folder, never cd, never chain it (E2E 2026-10-29). The command finds
+the project from its working folder.
 
     role second, task set     "<repo> Helper <Task Name>"
     role second, no task      "<repo> Helper"
@@ -597,6 +605,14 @@ class TestHelperTaskCommand(HelperCase):
             ("登录 page fix", "Page Fix"),
             ('back\\slash {json} it', "Back Slash Json It"),
             ("  log-in\tpage  ", "Log-in Page"),
+            ("SST Invoice Helper", "SST Invoice"),
+            ("helper for sst invoices", "For Sst Invoices"),
+            ("Task Manager Login Page", "Login Page"),
+            ("task queue fix", "Task Queue Fix"),
+            ("Agent City Fix", "City Fix"),
+            ("Manager Report", "Report"),
+            ("HELPER sst AGENT", "Sst"),
+            ("SST Invoice Helper Fix Now", "SST Invoice Fix Now"),
         ]
         for i, (raw, want) in enumerate(cases):
             sid = "44444444-dddd-4ddd-8ddd-%012d" % i
@@ -607,7 +623,8 @@ class TestHelperTaskCommand(HelperCase):
                 self.assertLessEqual(len(got) - len("project Helper "), 40)
 
     def test_no_english_words_is_refused(self):
-        for raw in ("登录页面", "   ", '""', "--", ""):
+        for raw in ("登录页面", "   ", '""', "--", "", "Helper", "Task Manager",
+                    "helper agent manager"):
             with self.subTest(raw=raw):
                 self.refused(raw)
         self.assertEqual(self.start_name(), "project Helper")
@@ -822,10 +839,12 @@ class TestStartTellsTheHelper(ScriptCase):
         self.assertEqual(len(lines), 1, out)
         line = lines[0]
         self.assertIn(self.repo.plugin + '/bin/agent-file.sh helper-task "<Task Name>"', line)
-        for word in ("2-4 English words", "Title Case", "next prompt"):
+        for word in ("2-4 English words", "Title Case", "next prompt",
+                     "the work, not the role", "alone", "project folder",
+                     "never cd", "never chain"):
             with self.subTest(word=word):
                 self.assertIn(word, line)
-        self.assertLessEqual(len(line.replace(self.repo.plugin, "<plugin>")), 240)
+        self.assertLessEqual(len(line.replace(self.repo.plugin, "<plugin>")), 320)
 
     def test_other_roles_are_not_told(self):
         self.assertNotIn("helper-task", self.start({}, lock=False))

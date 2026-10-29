@@ -41,8 +41,10 @@ CONTRACT.
   tests/test_agent_name.py):
     - the PRINCIPLES naming line shows the Helper as `<repo> Helper <Task Name>`
     - exactly one PRINCIPLES line names `helper-task "<Task Name>"`: when (a new
-      or switched task), the words (2-4 English words, Title Case), and that
-      the name shows from the human's next prompt. At most 240 characters
+      or switched task), the words (2-4 English words, Title Case, the work,
+      not the role), how (the exact full-path command, alone, from the project
+      folder, never cd, never chain it; E2E 2026-10-29), and that the name
+      shows from the human's next prompt. At most 320 characters
     - the close-case skill finds the Helper as `<repo> Helper <Task Name>`
     - the closed-session hint (bin/agent-roots.sh) gives the /rename with the
       task too: `/rename <repo> Helper <Task Name>`
@@ -103,10 +105,11 @@ class TestPrinciples(unittest.TestCase):
         self.assertEqual(len(lines), 1, lines)
         line = lines[0]
         for word in ('helper-task "<Task Name>"', "2-4 English words", "Title Case",
-                     "next prompt"):
+                     "next prompt", "the work, not the role", "full-path", "alone",
+                     "project folder", "never cd", "never chain"):
             with self.subTest(word=word):
                 self.assertIn(word, line)
-        self.assertLessEqual(len(line), 240)
+        self.assertLessEqual(len(line), 320)
 
     def test_the_rule_says_when_the_name_is_the_address(self):
         line = self.naming_lines()[0]
