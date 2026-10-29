@@ -956,7 +956,7 @@ class TestRunsFromThePack(PackCase):
 
     def test_the_quiz_runs_from_the_pack(self):
         out = self.assertOk(self.packed("agent-start.sh", "--quiz"))
-        self.assertIn("Q29.", out)
+        self.assertIn("Q30.", out)
 
     def test_the_settings_script_runs_from_the_pack(self):
         self.assertOk(self.packed("agent-settings.sh", "language", "en"))

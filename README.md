@@ -17,7 +17,7 @@ Main manager   (Fable 5.1, xhigh · the main chat · only one with the browser)
               └── Worker (Sonnet 5, medium)  code until the tests pass, slice 2
 
 Scripts, not agents (cost no tokens):
-  bin/agent-start.sh   RAM/CPU guard, prints the rules, 29-question quiz gate, main-manager lock
+  bin/agent-start.sh   RAM/CPU guard, prints the rules, 30-question quiz gate, main-manager lock
   bin/agent-file.sh    the only writer of agent_*.txt
   bin/agent_estimate.py  the time estimator: learns work minutes from the finished tasks, backtests against the rubric
   bin/agent-settings.sh  show or change agent.conf, validated

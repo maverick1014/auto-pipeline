@@ -27,7 +27,7 @@ question ever appears in the hook output, except the output section
 ("## E. Output", right before the RULES line; tests/test_output_hook.py).
 The byte limits below are for the rest: pointer_part() drops the section.
 
-    --quiz    prints the 29 questions and nothing else
+    --quiz    prints the 30 questions and nothing else
     --answer  unchanged, still grades and still says PASS
 
 Compaction (stdin source "compact"), nothing else at all:
@@ -510,11 +510,11 @@ class TestResourcesHelper(StartCase):
 
 class TestQuizStillWorks(StartCase):
     ANSWERS = ("1A 2D 3C 4B 5D 6D 7A 8C 9A 10D 11A 12C 13D 14C 15B 16C 17C "
-               "18D 19B 20A 21D 22C 23B 24D 25A 26D 27A 28B 29B")
+               "18D 19B 20A 21D 22C 23B 24D 25A 26D 27A 28B 29B 30B")
 
     def test_all_right_is_a_pass(self):
         out = self.assertOk(self.start("--answer", self.ANSWERS))
-        self.assertIn("29/29 PASS", out)
+        self.assertIn("30/30 PASS", out)
 
     def test_one_wrong_is_a_fail(self):
         result = self.start("--answer", self.ANSWERS.replace("1A", "1B"))
@@ -536,7 +536,7 @@ class TestNoQuizForSubagents(StartCase):
     def pass_quiz(self, sid="sess-1"):
         out = self.assertOk(self.start("--answer", self.ANSWERS,
                                        env=self.sid(sid)))
-        self.assertIn("29/29 PASS", out)
+        self.assertIn("30/30 PASS", out)
 
     def test_a_pass_writes_the_session_marker(self):
         self.pass_quiz()
@@ -585,7 +585,7 @@ class TestNoQuizForSubagents(StartCase):
         out = self.assertOk(self.start("--answer", self.ANSWERS,
                                        env=self.sid()))
         self.assertEqual(self.lines(out),
-                         ["QUIZ RESULT: 29/29 PASS", "You may start work."])
+                         ["QUIZ RESULT: 30/30 PASS", "You may start work."])
 
     def test_it_still_fits_the_cap(self):
         self.pass_quiz()

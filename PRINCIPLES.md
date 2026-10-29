@@ -187,6 +187,10 @@ W15. Known traps
 
 H1. One topic
 - Ask only about the current task
+- Edge-case question + read access to the real data → count first: how many records or companies it touches. Read-only, aggregates only, name the DB the count came from
+- Count is 0 or tiny → take the simplest default, state the count in one line, do not ask
+- No read access → ask as before, say the count could not be checked. Never guess a count
+- Prefer the simplest change that gives the same result over machinery the data does not need
 - Park other questions
 - Show them at the end, one table
 - Ask everything while the human is here, in one batch
