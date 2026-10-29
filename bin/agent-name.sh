@@ -10,7 +10,7 @@
 #   {"hookSpecificOutput": {"hookEventName": "SessionStart", "sessionTitle": name}}
 #
 #   main manager (or a takeover)      "<repo> Manager"
-#   second session, human-direct      "<repo> Helper <Task Name>" (its task), else "<repo> Helper"
+#   second session, human-direct      "<repo> Helper - <Task Name>" (its task), else "<repo> Helper"
 #   spawned, AGENT_ROLE=task-manager  "<feature> Task Manager"
 #   spawned, any other AGENT_ROLE     "<feature> <Words Of The Role>"
 #   closed (released or replaced)     no name: it is not the main manager any more
@@ -30,7 +30,7 @@
 #
 # 2. UserPromptSubmit: agent-name.sh --prompt
 #   Claude Code -> stdin JSON {"session_id","cwd","prompt",...} -> stdout is nothing, or one JSON line
-#   {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "sessionTitle": "<repo> Helper <Task Name>"}}
+#   {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "sessionTitle": "<repo> Helper - <Task Name>"}}
 #
 #   Only a Helper (role second) with a task, and only when that name differs from the last one this mode
 #   printed for this session id (marker "<git dir>/agent_helper_title_<session id>", written atomically
@@ -107,7 +107,7 @@ if [ "$role" = second ] && [ -n "$SID" ]; then task=$(first_line "$PROJECT_GITDI
 if [ -n "$PROMPT" ]; then
   # a title only for a Helper with a task, and only when it is not the one already printed
   [ "$role" = second ] && [ -n "$task" ] || exit 0
-  name="$repo Helper $task"
+  name="$repo Helper - $task"
   marker="$PROJECT_GITDIR/agent_helper_title_$SID"
   [ "$(first_line "$marker")" != "$name" ] || exit 0
   EVENT=UserPromptSubmit
@@ -127,7 +127,7 @@ else
         set +f; IFS=$oldifs
         name="$feature${words:- $AGENT_ROLE}"
       fi;;
-    second) name="$repo Helper${task:+ $task}";;
+    second) name="$repo Helper${task:+ - $task}";;
     *)      name="$repo Manager";;
   esac
   EVENT=SessionStart

@@ -11,7 +11,7 @@
 #   agent-file.sh idea rm   <n>                                -> remove line n from agent_ideas.txt
 #   agent-file.sh worktree set "<path>" "<module>" "<status>" -> agent_worktree.txt (add or replace)
 #   agent-file.sh worktree rm  "<path>"                       -> agent_worktree.txt
-#   agent-file.sh helper-task "<Task Name>"                   -> the task of THIS human-direct Helper session: its name becomes "<repo> Helper <Task Name>"
+#   agent-file.sh helper-task "<Task Name>"                   -> the task of THIS human-direct Helper session: its name becomes "<repo> Helper - <Task Name>"
 #   agent-file.sh show                                        -> print all four files
 #   agent-file.sh time                                        -> table: name est work wait clock ratio (agent_completed.txt)
 #   agent-file.sh backfill [--dry-run]                        -> old lines: take work and wait from the text of each line
@@ -101,7 +101,7 @@
 #   Files agent_helper_task_* and agent_helper_title_* in that folder older than 30 days are deleted.
 #   Field 3 of this folder's human-direct line in agent_worktree.txt becomes "task: <Task Name>" (the line is added when
 #   there is none; fields 1, 2, 4 and every other line stay). One atomic write.
-#   Prints one line: helper task: <Task Name> -> "<repo> Helper <Task Name>" from the human's next prompt
+#   Prints one line: helper task: <Task Name> -> "<repo> Helper - <Task Name>" from the human's next prompt
 #   The title shows from the human's next prompt: bin/agent-name.sh --prompt (UserPromptSubmit) prints it once per change.
 #
 # AGENT_FAKE_NOW="YYYY-MM-DD HH:MM" replaces the machine clock (tests). Unset or empty: the machine clock.
@@ -509,7 +509,7 @@ helper_task() {
     { print }
     END { if (!seen) print p, "task manager, human-direct", t, "since " now }' "$WT" > "$WT.tmp" && mv "$WT.tmp" "$WT"
   repo=$(basename "$PROJECT_ROOT")
-  echo "helper task: $task -> \"$repo Helper $task\" from the human's next prompt"
+  echo "helper task: $task -> \"$repo Helper - $task\" from the human's next prompt"
 }
 
 case "${1:-}:${2:-}" in

@@ -124,7 +124,7 @@ closed_lines() {
   else
     echo "The lock names pid $lpid, which is gone: the next session the human opens becomes the main manager."
   fi
-  echo "Your session name may still say \"$(basename "$PROJECT_ROOT") Manager\": ask the human once to type /rename $(basename "$PROJECT_ROOT") Helper (with a task: /rename $(basename "$PROJECT_ROOT") Helper <Task Name>)"
+  echo "Your session name may still say \"$(basename "$PROJECT_ROOT") Manager\": ask the human once to type /rename $(basename "$PROJECT_ROOT") Helper (with a task: /rename $(basename "$PROJECT_ROOT") Helper - <Task Name>)"
   echo "Take over again only when the human asks. The human types this line in this session; never run it yourself:"
   echo "! $PLUGIN_ROOT/bin/agent-start.sh --take-over"
 }
