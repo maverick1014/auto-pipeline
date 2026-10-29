@@ -64,8 +64,10 @@ are told how to make their own address match: `claude --name`, or ask the
 human once for `/rename <repo> Manager` (or `/rename <repo> Helper`).
 
 HELPER TASK. Owner, 2026-10-28: "v4 Manager" stays; a Helper shows its
-current task, "<repo> Helper <Task Name>" (e.g. "v4 Helper SST Calculation"),
-so /resume tells sessions apart. The agent names the task itself.
+current task so /resume tells sessions apart. The agent names the task
+itself. Owner change, 2026-10-29: " - " between, "<repo> Helper - <Task Name>"
+(e.g. "v4 Helper - SST Invoice"); the repo part is the folder name as it is
+(no case change).
 
     bin/agent-file.sh helper-task "<Task Name>"
 
@@ -89,12 +91,15 @@ kept; each word gets a capital first letter, the rest as typed; then whole
 words are dropped from the end while it is over 40 characters (one word alone
 is cut to 40). Nothing left: refused.
 
-Rule text (start text TASK line, PRINCIPLES W10): name the work, not the
+Rule text (start text TASK line, PRINCIPLES W10): every new or switched
+task, a plain question too, gets its name first, even before the quiz PASS
+(E2E 2026-10-29: asked only to compute SST, the Helper answered and skipped
+the quiz and the command, "no repo was touched"); name the work, not the
 role; run the exact full-path command the start text prints, alone, from the
-project folder, never cd, never chain it (E2E 2026-10-29). The command finds
-the project from its working folder.
+project folder, never cd, never chain it. The command finds the project from
+its working folder. It never checks the quiz: it works before PASS.
 
-    role second, task set     "<repo> Helper <Task Name>"
+    role second, task set     "<repo> Helper - <Task Name>"
     role second, no task      "<repo> Helper"
     any other role            as above, a task never changes it
 
@@ -102,7 +107,7 @@ UserPromptSubmit: `agent-name.sh --prompt` (hooks.json, timeout 5). Prints
 exactly one JSON line
 
     {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
-                            "sessionTitle": "<repo> Helper <Task Name>"}}
+                            "sessionTitle": "<repo> Helper - <Task Name>"}}
 
 only for a Helper with a task, and only when that name differs from the last
 one this hook printed for this session id; otherwise nothing, so a human
@@ -466,7 +471,7 @@ class TestCloseCaseNamesTheManager(ScriptCase):
 
 
 # ---------------------------------------------------------------------------
-# Helper task (owner, 2026-10-28): "<repo> Helper <Task Name>"
+# Helper task (owner, 2026-10-28): "<repo> Helper - <Task Name>"
 # ---------------------------------------------------------------------------
 
 class HelperCase(NameCase):
@@ -556,29 +561,35 @@ class TestHelperTaskCommand(HelperCase):
 
     def test_sets_the_name_of_this_session(self):
         self.set_task("SST Calculation")
-        self.assertEqual(self.start_name(), "project Helper SST Calculation")
+        self.assertEqual(self.start_name(), "project Helper - SST Calculation")
+
+    def test_works_before_the_quiz_pass(self):
+        gitdir = self.repo.path(".git")
+        self.assertEqual([f for f in os.listdir(gitdir) if f.startswith("agent_quiz_")], [])
+        self.set_task("SST Invoice")
+        self.assertEqual(self.start_name(), "project Helper - SST Invoice")
 
     def test_says_the_name_and_when_it_shows(self):
         out = self.set_task("SST Calculation")
-        self.assertIn("project Helper SST Calculation", out)
+        self.assertIn("project Helper - SST Calculation", out)
         self.assertIn("next prompt", out)
 
     def test_a_new_task_replaces_the_old_one(self):
         self.set_task("SST Calculation")
         self.set_task("Login Page")
-        self.assertEqual(self.start_name(), "project Helper Login Page")
+        self.assertEqual(self.start_name(), "project Helper - Login Page")
 
     def test_two_helpers_in_one_folder_keep_their_own_names(self):
         self.set_task("Alpha Report", SID_A)
         self.set_task("Beta Fix", SID_B)
-        self.assertEqual(self.start_name(SID_A), "project Helper Alpha Report")
-        self.assertEqual(self.start_name(SID_B), "project Helper Beta Fix")
+        self.assertEqual(self.start_name(SID_A), "project Helper - Alpha Report")
+        self.assertEqual(self.start_name(SID_B), "project Helper - Beta Fix")
         self.assertEqual(self.start_name(SID_C), "project Helper")
 
     def test_a_resumed_helper_keeps_its_task(self):
         self.set_task("SST Calculation")
         self.assertEqual(self.start_name(source="resume", env={"CLAUDE_PID": "888888"}),
-                         "project Helper SST Calculation")
+                         "project Helper - SST Calculation")
 
     def test_a_fork_is_a_new_session_with_no_task(self):
         self.set_task("SST Calculation")
@@ -619,8 +630,8 @@ class TestHelperTaskCommand(HelperCase):
             with self.subTest(raw=raw):
                 self.set_task(raw, sid)
                 got = self.start_name(sid)
-                self.assertEqual(got, "project Helper " + want)
-                self.assertLessEqual(len(got) - len("project Helper "), 40)
+                self.assertEqual(got, "project Helper - " + want)
+                self.assertLessEqual(len(got) - len("project Helper - "), 40)
 
     def test_no_english_words_is_refused(self):
         for raw in ("登录页面", "   ", '""', "--", "", "Helper", "Task Manager",
@@ -710,7 +721,7 @@ class TestPromptHook(HelperCase):
 
     def test_the_title_comes_once_after_the_task_is_set(self):
         self.set_task("SST Calculation")
-        self.assertEqual(self.prompt_title(self.prompt()), "project Helper SST Calculation")
+        self.assertEqual(self.prompt_title(self.prompt()), "project Helper - SST Calculation")
         for _ in range(3):
             self.assertEqual(self.prompt(), "")   # a human /rename is kept
 
@@ -718,14 +729,14 @@ class TestPromptHook(HelperCase):
         self.set_task("SST Calculation")
         self.prompt()
         self.set_task("Login Page")
-        self.assertEqual(self.prompt_title(self.prompt()), "project Helper Login Page")
+        self.assertEqual(self.prompt_title(self.prompt()), "project Helper - Login Page")
         self.assertEqual(self.prompt(), "")
 
     def test_each_session_gets_its_own_title(self):
         self.set_task("Alpha Report", SID_A)
         self.set_task("Beta Fix", SID_B)
-        self.assertEqual(self.prompt_title(self.prompt(SID_A)), "project Helper Alpha Report")
-        self.assertEqual(self.prompt_title(self.prompt(SID_B)), "project Helper Beta Fix")
+        self.assertEqual(self.prompt_title(self.prompt(SID_A)), "project Helper - Alpha Report")
+        self.assertEqual(self.prompt_title(self.prompt(SID_B)), "project Helper - Beta Fix")
         self.assertEqual(self.prompt(SID_A), "")
         self.assertEqual(self.prompt(SID_C), "")
 
@@ -755,7 +766,7 @@ class TestPromptHook(HelperCase):
         text = 'see {"session_id": "%s"} and "quotes"\nand \\ too' % SID_B
         self.assertEqual(self.prompt(SID_A, prompt=text), "")
         self.assertEqual(self.prompt_title(self.prompt(SID_B, prompt=text)),
-                         "project Helper Beta Fix")
+                         "project Helper - Beta Fix")
 
     def test_a_resume_does_not_repeat_the_title(self):
         self.set_task("SST Calculation")
@@ -785,8 +796,8 @@ class TestPromptHook(HelperCase):
         self.set_task("Login Page")
         self.prompt(env=env)
         self.assertEqual(self.repo.calls(), [
-            self.RENAME + ["project Helper SST Calculation", "--json"],
-            self.RENAME + ["project Helper Login Page", "--json"]])
+            self.RENAME + ["project Helper - SST Calculation", "--json"],
+            self.RENAME + ["project Helper - Login Page", "--json"]])
 
     def test_no_title_no_tab_rename(self):
         self.prompt(env={"ORCA_TERMINAL_HANDLE": HANDLE})
@@ -798,7 +809,7 @@ class TestPromptHook(HelperCase):
         out = self.prompt(env={"ORCA_TERMINAL_HANDLE": HANDLE, "ORCA_STUB_SLEEP": "20"},
                           timeout=30)
         self.assertLess(time.time() - start, 5)
-        self.assertEqual(self.prompt_title(out), "project Helper SST Calculation")
+        self.assertEqual(self.prompt_title(out), "project Helper - SST Calculation")
 
 
 class TestPromptHookJson(unittest.TestCase):
@@ -817,7 +828,7 @@ class TestPromptHookJson(unittest.TestCase):
     def test_readme_says_it_names_the_helper_task(self):
         line = next(l for l in read("README.md").splitlines() if "bin/agent-name.sh" in l)
         self.assertIn("UserPromptSubmit", line)
-        self.assertIn("<repo> Helper <Task Name>", line)
+        self.assertIn("<repo> Helper - <Task Name>", line)
 
 
 class TestStartTellsTheHelper(ScriptCase):
@@ -840,11 +851,13 @@ class TestStartTellsTheHelper(ScriptCase):
         line = lines[0]
         self.assertIn(self.repo.plugin + '/bin/agent-file.sh helper-task "<Task Name>"', line)
         for word in ("2-4 English words", "Title Case", "next prompt",
-                     "the work, not the role", "alone", "project folder",
+                     '"project Helper - <Task Name>"', "the work, not the role",
+                     "every new or switched task", "a plain question too",
+                     "before the quiz PASS", "alone", "project folder",
                      "never cd", "never chain"):
             with self.subTest(word=word):
                 self.assertIn(word, line)
-        self.assertLessEqual(len(line.replace(self.repo.plugin, "<plugin>")), 320)
+        self.assertLessEqual(len(line.replace(self.repo.plugin, "<plugin>")), 400)
 
     def test_other_roles_are_not_told(self):
         self.assertNotIn("helper-task", self.start({}, lock=False))

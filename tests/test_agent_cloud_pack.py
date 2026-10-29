@@ -667,7 +667,7 @@ class TestHelperTaskHook(PackCase):
         self.assertEqual((result.returncode, result.stderr), (0, ""), result.stdout)
         self.assertEqual(json.loads(result.stdout)["hookSpecificOutput"],
                          {"hookEventName": "UserPromptSubmit",
-                          "sessionTitle": "target Helper SST Calculation"})
+                          "sessionTitle": "target Helper - SST Calculation"})
 
 
 class TestCityInTheCloud(PackCase):
