@@ -11,6 +11,7 @@
 #   agent-file.sh idea rm   <n>                                -> remove line n from agent_ideas.txt
 #   agent-file.sh worktree set "<path>" "<module>" "<status>" -> agent_worktree.txt (add or replace)
 #   agent-file.sh worktree rm  "<path>"                       -> agent_worktree.txt
+#   agent-file.sh helper-task "<Task Name>"                   -> the task of THIS human-direct Helper session: its name becomes "<repo> Helper <Task Name>"
 #   agent-file.sh show                                        -> print all four files
 #   agent-file.sh time                                        -> table: name est work wait clock ratio (agent_completed.txt)
 #   agent-file.sh backfill [--dry-run]                        -> old lines: take work and wait from the text of each line
@@ -87,6 +88,20 @@
 #   now + work left x (3 - step) / (7 - step) (the wait is not added); else "review", at the done time.
 #   A time that is not today is shown as "<HH:MM> tomorrow" or "<HH:MM> on <YYYY-MM-DD>".
 #
+# helper-task: only a human-direct Helper (role second, role_read in agent-roots.sh) may set a task, and only for its own
+#   session: the id is $CLAUDE_CODE_SESSION_ID (letters, digits, "_" and "-"). Two Helpers in one folder never share a name.
+#   Refused (exit 1, one line on stderr that says why, nothing written): any other role (main, takeover, closed, spawned),
+#   no session id, a name with no English word left. No argument: usage, exit 2.
+#   The name is cleaned: every character that is not an ASCII letter, digit or hyphen becomes a space; hyphens at the
+#   ends of a word go; the first 4 words are kept, each with a capital first letter (the rest as typed); then whole words
+#   leave from the end while it is over 40 characters (one word alone is cut to 40). Use 2-4 English words, Title Case.
+#   The task is one line in "<git dir of the project>/agent_helper_task_<session id>" (atomic; never in a work tree).
+#   Files agent_helper_task_* and agent_helper_title_* in that folder older than 30 days are deleted.
+#   Field 3 of this folder's human-direct line in agent_worktree.txt becomes "task: <Task Name>" (the line is added when
+#   there is none; fields 1, 2, 4 and every other line stay). One atomic write.
+#   Prints one line: helper task: <Task Name> -> "<repo> Helper <Task Name>" from the human's next prompt
+#   The title shows from the human's next prompt: bin/agent-name.sh --prompt (UserPromptSubmit) prints it once per change.
+#
 # AGENT_FAKE_NOW="YYYY-MM-DD HH:MM" replaces the machine clock (tests). Unset or empty: the machine clock.
 # Files live in the main repo, never in a worktree. Writes are atomic (tmp + mv).
 
@@ -100,7 +115,7 @@ roots_read
 ROOT="$PROJECT_ROOT"
 TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agent_ideas.txt"; WT="$ROOT/agent_worktree.txt"
 NOW=${AGENT_FAKE_NOW:-$(date '+%Y-%m-%d %H:%M')}; WHO=${AGENT_ROLE:-main}
-case "${1:-}" in data|eta|estimate|backtest|retrain) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only)
+case "${1:-}" in data|eta|estimate|backtest|retrain|helper-task) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure)
 
 # the whole header comment block, whatever its length
 usage() { awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 2; }
@@ -439,7 +454,54 @@ eta_run() {
   echo "$msg, done around $(eta_when "$done_e"); owner needed next: $who about $(eta_when "$who_e")"
 }
 
+# --- helper-task
+# helper_clean "<text>": the Task Name (see the header), nothing when no English word is left
+helper_clean() {
+  local words
+  words=$(printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9-' ' ')   # only letters, digits, hyphens and spaces remain
+  LC_ALL=C awk -v s="$words" 'BEGIN {
+    m = split(s, raw, " "); n = 0
+    for (i = 1; i <= m && n < 4; i++) {
+      w = raw[i]; sub(/^-+/, "", w); sub(/-+$/, "", w)
+      if (w != "") w_[++n] = toupper(substr(w, 1, 1)) substr(w, 2)
+    }
+    out = ""
+    for (i = 1; i <= n; i++) out = out (i > 1 ? " " : "") w_[i]
+    while (length(out) > 40 && n > 1) {
+      n--; out = ""
+      for (i = 1; i <= n; i++) out = out (i > 1 ? " " : "") w_[i]
+    }
+    if (length(out) > 40) out = substr(out, 1, 40)
+    print out
+  }'
+}
+# helper_task "<text>": validate everything first (refuse = exit 1, nothing written), then write
+helper_task() {
+  local sid="${CLAUDE_CODE_SESSION_ID:-}" task f tmp repo
+  role_read
+  [ "$role" = second ] || refuse "helper-task: only a human-direct Helper (a second session) can set a task; this session is: $role${AGENT_ROLE:+ ($AGENT_ROLE)}"
+  case "$sid" in
+    ''|*[!A-Za-z0-9_-]*) refuse "helper-task: no usable session id (CLAUDE_CODE_SESSION_ID is empty or has other characters than letters, digits, _ and -)";;
+  esac
+  task=$(helper_clean "$1")
+  [ -n "$task" ] || refuse "helper-task: no English word left in that name; use 2-4 English words, Title Case"
+  mkdir -p "$PROJECT_GITDIR" 2>/dev/null || refuse "helper-task: cannot write in $PROJECT_GITDIR"
+  f="$PROJECT_GITDIR/agent_helper_task_$sid"; tmp="$f.tmp.$$"
+  { printf '%s\n' "$task" > "$tmp" && mv "$tmp" "$f"; } 2>/dev/null || { rm -f "$tmp"; refuse "helper-task: cannot write $f"; }
+  find "$PROJECT_GITDIR" -maxdepth 1 -type f \( -name 'agent_helper_task_*' -o -name 'agent_helper_title_*' \) -mtime +30 -exec rm -f {} + 2>/dev/null || true
+  touch "$WT"
+  awk -F' \\| ' -v p="$PROJECT_CWD" -v t="task: $task" -v now="$NOW" 'BEGIN { OFS = " | " }
+    $1 == p && $2 == "task manager, human-direct" { $3 = t; seen = 1 }
+    { print }
+    END { if (!seen) print p, "task manager, human-direct", t, "since " now }' "$WT" > "$WT.tmp" && mv "$WT.tmp" "$WT"
+  repo=$(basename "$PROJECT_ROOT")
+  echo "helper task: $task -> \"$repo Helper $task\" from the human's next prompt"
+}
+
 case "${1:-}:${2:-}" in
+  helper-task:*)
+    [ $# -ge 2 ] || usage
+    helper_task "$2";;
   todo:add)
     need 5 "$@"; drop "$TODO" "$3"
     what="$5"
