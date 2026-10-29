@@ -454,6 +454,10 @@ class ScriptRepo:
         # the session a test run is started from; a quiz marker is keyed on
         # it, so a test that wants one sets it itself
         env.pop("CLAUDE_CODE_SESSION_ID", None)
+        # the runner's own session pid decides the role; a test that needs a
+        # live session sets CLAUDE_PID itself
+        env.pop("CLAUDE_PID", None)
+        env.pop("CLAUDECODE", None)
         for key in list(env):
             if key.startswith("CLAUDE_PLUGIN_OPTION_"):
                 env.pop(key)
