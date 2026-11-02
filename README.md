@@ -17,11 +17,12 @@ Main manager   (Fable 5.1, xhigh · the main chat · only one with the browser)
               └── Worker (Sonnet 5, medium)  code until the tests pass, slice 2
 
 Scripts, not agents (cost no tokens):
-  bin/agent-start.sh   RAM/CPU guard, prints the rules, 31-question quiz gate, main-manager lock
+  bin/agent-start.sh   RAM/CPU guard, prints the rules, 32-question quiz gate, main-manager lock
   bin/agent-file.sh    the only writer of agent_*.txt
   bin/agent_estimate.py  the time estimator: learns work minutes from the finished tasks, backtests against the rubric
   bin/agent-settings.sh  show or change agent.conf, validated
   bin/agent-resume.sh    one command to bring the pipeline back after a restart
+  bin/agent-cleanup.sh   the main manager's sweep: removes merged, clean, idle worktrees and branches; lists the rest in one table
   bin/agent-monitor.sh   watches every worktree, writes agent_monitor.txt
   bin/agent-init.sh      sets a project up: agent.conf, the four task files, .secrets/, .gitignore lines, AGENTS.md, and it prints the permissions block
   bin/agent-cloud-pack.sh  lays this pipeline into a repo as plain files, for cloud sessions

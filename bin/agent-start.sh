@@ -2,8 +2,8 @@
 # agent-start.sh — every agent runs this first, before any work.
 #
 #   ./agent-start.sh                          resource check + pointers + open tasks
-#   ./agent-start.sh --quiz                   print the 31 quiz questions
-#   ./agent-start.sh --answer "1A 2D ... 31B"    grade your quiz answers
+#   ./agent-start.sh --quiz                   print the 32 quiz questions
+#   ./agent-start.sh --answer "1A 2D ... 32B"    grade your quiz answers
 #   ./agent-start.sh --take-over              this session becomes the main manager
 #                                             (only when the human asks; the old one is closed)
 #   ./agent-start.sh --clean ["carry line" ...]
@@ -29,9 +29,9 @@ set -u
 
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
-KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 2c0aa4aa4d1dc695 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 ffa4bdb3449e9897 ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 496f90a01d738ae5 ba6a4831a815a230 d956db8d1ed42790 72241f6e3363d877 64d26f41c9262571 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 a4dfa8b418c5d6de 5bc49497d74f49dc 96ebc45b039cdeb7 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 )
-RULE=( _ W1 R6 H1 W2 W3 W4 W5 S4 S5 H3 R5 R2 R3 H4 S7 R1 W7 W6 W8 W5 W7 W9 W9 W9 R7 W10 W10 S8 S8 H1 H3 )
-N=31
+KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 2c0aa4aa4d1dc695 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 ffa4bdb3449e9897 ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 496f90a01d738ae5 ba6a4831a815a230 d956db8d1ed42790 72241f6e3363d877 64d26f41c9262571 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 a4dfa8b418c5d6de 5bc49497d74f49dc 96ebc45b039cdeb7 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e )
+RULE=( _ W1 R6 H1 W2 W3 W4 W5 S4 S5 H3 R5 R2 R3 H4 S7 R1 W7 W6 W8 W5 W7 W9 W9 W9 R7 W10 W10 S8 S8 H1 H3 W8 )
+N=32
 
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
 h()   { printf '%s' "$1" | sha | cut -c1-16; }
@@ -222,8 +222,8 @@ fi
 # ---- --quiz: print the questions only, nothing else, no lock, no roots ----
 if [ "${1:-}" = "--quiz" ]; then
   cat <<'QUIZ'
-=== QUIZ — answer all 31 before any work ===
-Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 31D"
+=== QUIZ — answer all 32 before any work ===
+Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 32D"
 Do not start work until you see PASS.
 
 Q1. Mid-task, part of the spec is unclear.
@@ -411,13 +411,19 @@ Q31. Your decide section must get the owner's yes to merge two PRs.
   B. "Merge #305 (stock lock settings page) and #306 (bank recon manual match)? Both passed the browser check. Recommendation: merge both"
   C. Leave it out; he can look on GitHub
   D. A full paragraph about each PR's code
+
+Q32. You are the main manager. Your last open task just closed. One worktree is merged, clean and idle; another one's branch is not merged.
+  A. Delete both worktrees and their branches
+  B. Leave both; the human cleans up
+  C. agent-cleanup.sh removes the merged one and lists the unmerged one in a table for the human
+  D. Spawn a deputy to look at both
 QUIZ
   exit 0
 fi
 
 # ---- grade ----
 if [ "${1:-}" = "--answer" ]; then
-  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 31B"'; exit 2; }
+  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 32B"'; exit 2; }
   ok=0; wrong=""
   for q in $(seq 1 $N); do
     tok=$(printf '%s\n' $2 | grep -i "^${q}[a-d]$" | head -1)
