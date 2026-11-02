@@ -21,6 +21,15 @@
 #   agent-file.sh backtest [--tasks]                          -> the estimator against the rubric and the todo est, rolling
 #   agent-file.sh retrain [--force]                           -> learn agent_estimate.txt when 30 tasks, then once a week
 #   agent-file.sh eta <name> [--step <n>] [--work-so-far <m>] [--wait <m>]    -> one line: work left, done around, owner needed next
+#   agent-file.sh todo wait "<name>" on <mock|question|review|hold|queue> ["<note>"]  -> the todo line starts a wait
+#   agent-file.sh todo wait "<name>" off                      -> the wait closes; its minutes join "waited <m>m"
+#   agent-file.sh todo where "<name>" <machine> ["<worktree path>"]   -> the todo line says where it runs
+#   agent-file.sh park add "<question>" ["<task>"]            -> agent_state.txt: PARKED: <question> | <task> | since <date>
+#   agent-file.sh park list                                   -> the PARKED lines, numbered
+#   agent-file.sh park rm <n>                                 -> remove the n-th PARKED line
+#   agent-file.sh worker on <n> "<slice>"                     -> agent_state.txt: WORKER <n>: <slice> | since <date> (replaces worker n)
+#   agent-file.sh worker off <n>                              -> remove WORKER <n>
+#   agent-file.sh board [--self]                              -> the table of everything open ("show todo"); --self: this session's task only
 #
 # todo done: every option is optional; a number is a whole number, 0 or more. "<result>" is not stored.
 #   work = agent minutes. wait = minutes spent waiting (mock gate, owner, suite slot). Never mixed.
@@ -104,7 +113,26 @@
 #   Prints one line: helper task: <Task Name> -> "<repo> Helper - <Task Name>" from the human's next prompt
 #   The title shows from the human's next prompt: bin/agent-name.sh --prompt (UserPromptSubmit) prints it once per change.
 #
+# todo wait, todo where: the todo line is edited in place (one atomic write); the other fields keep their place,
+#   a new field goes at the end, a field set again is replaced, once.
+#   todo wait on: field " | waiting <kind> since <YYYY-MM-DD HH:MM>" (+ ": <note>"). Already waiting: that wait is closed first.
+#   todo wait off: closes the open wait: " | waited <m>m" = the sum of every closed wait; the "waiting" field goes.
+#   todo where: field " | on <machine>[ <path>]".
+#   Refused (one line on stderr, exit 1, nothing written): no todo line of that name, a kind not in the list, off when not
+#   waiting, no on|off, a machine with a space, " | " or a line break in a note or a path.
+#
+# park, worker: lines of agent_state.txt in the folder of this session (the git toplevel of the cwd), never the main repo's
+#   unless this is it. Every other line is kept byte for byte; park rm and worker on|off are one atomic write.
+#   park add: task defaults to the name of that folder. worker on: replaces the line of that worker.
+#   Refused (one line on stderr, exit 1, nothing written): empty text, " | " or a line break in it, n not a whole number
+#   from 1, no such n, an unknown verb.
+#
+# board: read only. One markdown table of everything open (or one line "无" / "none"), then note lines; the work is done by
+#   agent_board.py (python3). The columns and words follow `language` in agent.conf (zh, else en). --self: the session's own
+#   task only. Any other option: refused.
+#
 # AGENT_FAKE_NOW="YYYY-MM-DD HH:MM" replaces the machine clock (tests). Unset or empty: the machine clock.
+# AGENT_FAKE_HOST replaces the machine name that board prints (tests). Unset: the short host name.
 # Files live in the main repo, never in a worktree. Writes are atomic (tmp + mv).
 
 set -eu
@@ -117,7 +145,7 @@ roots_read
 ROOT="$PROJECT_ROOT"
 TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agent_ideas.txt"; WT="$ROOT/agent_worktree.txt"
 NOW=${AGENT_FAKE_NOW:-$(date '+%Y-%m-%d %H:%M')}; WHO=${AGENT_ROLE:-main}
-case "${1:-}" in data|eta|estimate|backtest|retrain|helper-task) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure)
+case "${1:-}" in data|eta|estimate|backtest|retrain|helper-task|board|park|worker) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the whole header comment block, whatever its length
 usage() { awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 2; }
@@ -526,6 +554,166 @@ helper_task() {
   echo "helper task: $task -> \"$repo Helper - $task\" from the human's next prompt"
 }
 
+# --- todo wait, todo where
+# bad_text "<text>": true when it holds " | " or a line break (it would break the line it goes into)
+bad_text() {
+  case "$1" in *' | '*|*$'\n'*|*$'\r'*) return 0;; esac
+  return 1
+}
+# todo_wait <name> on <kind> ["<note>"] | todo_wait <name> off
+todo_wait() {
+  local name="${1:-}" verb="${2:-}" kind note line open since m closed=0 new=""
+  [ -n "$name" ] || refuse "todo wait: needs a todo name"
+  line=$(first "$TODO" "$name")
+  [ -n "$line" ] || refuse "no todo line named: $name"
+  open=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^waiting /) { print $i; exit } }')
+  case "$verb" in
+    on)
+      kind="${3:-}"
+      case "$kind" in
+        mock|question|review|hold|queue) ;;
+        *) refuse "todo wait: the kind is one of: mock question review hold queue (got: ${kind:-nothing})";;
+      esac
+      [ $# -le 4 ] || refuse "todo wait: too many arguments; quote the note"
+      note="${4:-}"
+      if bad_text "$note"; then refuse "todo wait: the note must not hold \" | \" or a line break"; fi
+      new="waiting $kind since $NOW${note:+: $note}";;
+    off)
+      [ $# -eq 2 ] || refuse "todo wait: off takes nothing after it"
+      [ -n "$open" ] || refuse "todo wait: $name is not waiting";;
+    *) refuse "todo wait: on or off (got: ${verb:-nothing})";;
+  esac
+  if [ -n "$open" ]; then
+    since=$(printf '%s' "$open" | sed -n 's/^waiting [^ ]* since \([0-9][0-9-]* [0-9:]*\).*/\1/p')
+    m=$(minutes_between "$since" "$NOW"); closed=${m:-0}
+  fi
+  NEW="$new" awk -F' \\| ' -v OFS=' | ' -v k="$name" -v add="$closed" '
+    $1 == k && !hit {
+      hit = 1; oi = 0; wi = 0; w = 0
+      for (i = 4; i <= NF; i++) {
+        if (!wi && $i ~ /^waited [0-9]+m$/) { wi = i; w = substr($i, 8) + 0 }
+        else if (!oi && $i ~ /^waiting /) oi = i
+      }
+      n = 0
+      for (i = 1; i <= NF; i++) {
+        if (i == oi) { if (ENVIRON["NEW"] != "") out[++n] = ENVIRON["NEW"]; continue }
+        if (i == wi && oi) { out[++n] = "waited " (w + add) "m"; continue }
+        out[++n] = $i
+      }
+      if (!oi && ENVIRON["NEW"] != "") out[++n] = ENVIRON["NEW"]
+      if (oi && !wi) out[++n] = "waited " add "m"
+      s = out[1]
+      for (i = 2; i <= n; i++) s = s OFS out[i]
+      print s; next
+    }
+    { print }' "$TODO" > "$TODO.tmp" && mv "$TODO.tmp" "$TODO"
+  if [ "$verb" = on ]; then echo "todo wait on: $name ($kind)"; else echo "todo wait off: $name (+${closed}m waited)"; fi
+}
+# todo_where <name> <machine> ["<worktree path>"]
+todo_where() {
+  local name="${1:-}" machine="${2:-}" path="${3:-}" line
+  [ -n "$name" ] || refuse "todo where: needs a todo name"
+  line=$(first "$TODO" "$name")
+  [ -n "$line" ] || refuse "no todo line named: $name"
+  [ -n "$machine" ] || refuse "todo where: needs a machine name"
+  case "$machine" in *[[:space:]]*) refuse "todo where: the machine name has no space (got: $machine)";; esac
+  [ $# -le 3 ] || refuse "todo where: too many arguments; quote the path"
+  if bad_text "$machine" || bad_text "$path"; then refuse "todo where: the machine and the path must not hold \" | \" or a line break"; fi
+  NEW="on $machine${path:+ $path}" awk -F' \\| ' -v OFS=' | ' -v k="$name" '
+    $1 == k && !hit {
+      hit = 1; wi = 0
+      for (i = 4; i <= NF; i++) if (!wi && $i ~ /^on /) wi = i
+      if (wi) $wi = ENVIRON["NEW"]; else $(NF + 1) = ENVIRON["NEW"]
+    }
+    { print }' "$TODO" > "$TODO.tmp" && mv "$TODO.tmp" "$TODO"
+  echo "todo where: $name -> $machine${path:+ $path}"
+}
+
+# --- park, worker (agent_state.txt of the folder this session is in)
+STATE_FILE="$STATE_DIR/agent_state.txt"
+# state_text <command> "<text>": refuses an empty text, " | " and a line break
+state_text() {
+  case "$2" in *[![:space:]]*) ;; *) refuse "$1: the text is empty";; esac
+  if bad_text "$2"; then refuse "$1: the text must not hold \" | \" or a line break"; fi
+}
+# state_n <command> <n>: a whole number from 1 (nothing else is let through)
+state_n() {
+  is_num "$2" && [ "${#2}" -le 9 ] && [ $((10#$2)) -ge 1 ] || refuse "$1: n is a whole number from 1 (got: $2)"
+}
+state_append() {
+  if [ -s "$STATE_FILE" ] && [ -n "$(tail -c 1 "$STATE_FILE")" ]; then printf '\n' >> "$STATE_FILE"; fi
+  printf '%s\n' "$1" >> "$STATE_FILE"
+}
+park_run() {
+  local sub="${1:-}" n line task
+  [ $# -eq 0 ] || shift
+  case "$sub" in
+    add)
+      [ $# -ge 1 ] || refuse "park add: needs the question"
+      [ $# -le 2 ] || refuse "park add: too many arguments; quote the question"
+      state_text "park add" "$1"
+      task="${2:-}"; [ -n "$task" ] || task=$(basename "$STATE_DIR")
+      state_text "park add" "$task"
+      state_append "PARKED: $1 | $task | since $NOW"
+      echo "parked: $1";;
+    list)
+      [ $# -eq 0 ] || refuse "park list: takes nothing after it"
+      if [ -f "$STATE_FILE" ]; then
+        awk '/^PARKED: / { n++; sub(/^PARKED: /, ""); print n ". " $0 } END { if (!n) print "(empty)" }' "$STATE_FILE"
+      else
+        echo "(empty)"
+      fi;;
+    rm)
+      [ $# -eq 1 ] || refuse "park rm: needs one number"
+      state_n "park rm" "$1"; n=$((10#$1))
+      line=; [ ! -f "$STATE_FILE" ] || line=$(awk -v n="$n" '/^PARKED: / { c++; if (c == n) { print; exit } }' "$STATE_FILE")
+      [ -n "$line" ] || refuse "park rm: no parked item number $n"
+      awk -v n="$n" '/^PARKED: / { c++; if (c == n) next } { print }' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+      printf 'parked %s removed: %s\n' "$n" "$(printf '%s' "${line#PARKED: }" | cut -c1-60)";;
+    *) refuse "park: add, list or rm (got: ${sub:-nothing})";;
+  esac
+}
+worker_run() {
+  local sub="${1:-}" n line
+  [ $# -eq 0 ] || shift
+  case "$sub" in
+    on)
+      [ $# -ge 2 ] || refuse "worker on: needs <n> and the slice"
+      [ $# -le 2 ] || refuse "worker on: too many arguments; quote the slice"
+      state_n "worker on" "$1"; n=$((10#$1))
+      state_text "worker on" "$2"
+      line="WORKER $n: $2 | since $NOW"
+      if [ -f "$STATE_FILE" ] && grep -q "^WORKER $n: " "$STATE_FILE"; then
+        NEW="$line" awk -v p="WORKER $n: " 'index($0, p) == 1 { if (!d) print ENVIRON["NEW"]; d = 1; next } { print }' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+      else
+        state_append "$line"
+      fi
+      echo "worker $n on: $2";;
+    off)
+      [ $# -eq 1 ] || refuse "worker off: needs one number"
+      state_n "worker off" "$1"; n=$((10#$1))
+      if [ ! -f "$STATE_FILE" ] || ! grep -q "^WORKER $n: " "$STATE_FILE"; then refuse "worker off: no worker $n"; fi
+      awk -v p="WORKER $n: " 'index($0, p) != 1' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+      echo "worker $n off";;
+    *) refuse "worker: on or off (got: ${sub:-nothing})";;
+  esac
+}
+
+# --- board
+# board [--self]: agent_board.py draws it (python3 only); nothing is written
+board_run() {
+  local self="" a host lang
+  for a in "$@"; do
+    case "$a" in --self) self=1;; *) refuse "board: unknown option: $a (only --self)";; esac
+  done
+  command -v python3 >/dev/null 2>&1 || refuse "board: python3 is needed and was not found"
+  lang=$(unset language; conf_read; printf '%s' "${language:-en}") || lang=en
+  case "$lang" in zh) ;; *) lang=en;; esac
+  host=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
+  python3 "$(dirname "$0")/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
+    --now "$NOW" --lang "$lang" --host "$host" ${self:+--self}
+}
+
 case "${1:-}:${2:-}" in
   helper-task:*)
     [ $# -ge 2 ] || usage
@@ -557,6 +745,16 @@ case "${1:-}:${2:-}" in
     echo "TIME DATA: $(time_data) of $TIME_DATA_GOAL"
     retrain_auto
     sweep_after_last_task;;
+  todo:wait)
+    shift 2; todo_wait "$@";;
+  todo:where)
+    shift 2; todo_where "$@";;
+  park:*)
+    shift; park_run "$@";;
+  worker:*)
+    shift; worker_run "$@";;
+  board:*)
+    shift; board_run "$@";;
   todo:drop)
     need 5 "$@"; line=$(first "$TODO" "$3")
     [ -n "$line" ] || { echo "no todo line named: $3" >&2; exit 1; }

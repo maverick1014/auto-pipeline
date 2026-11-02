@@ -17,7 +17,7 @@ Main manager   (Fable 5.1, xhigh · the main chat · only one with the browser)
               └── Worker (Sonnet 5, medium)  code until the tests pass, slice 2
 
 Scripts, not agents (cost no tokens):
-  bin/agent-start.sh   RAM/CPU guard, prints the rules, 32-question quiz gate, main-manager lock
+  bin/agent-start.sh   RAM/CPU guard, prints the rules, 33-question quiz gate, main-manager lock
   bin/agent-file.sh    the only writer of agent_*.txt
   bin/agent_estimate.py  the time estimator: learns work minutes from the finished tasks, backtests against the rubric
   bin/agent-settings.sh  show or change agent.conf, validated
@@ -30,6 +30,8 @@ Scripts, not agents (cost no tokens):
   bin/agent-city-shim     the ~/.local/bin/agent-city command; runs the newest installed plugin's agent-city.sh
   bin/agent-city-hook.sh  hook that feeds the city; off costs a `test -f`, on appends one JSON line
   bin/agent-close-case.sh  UserPromptSubmit hook: "close case" in the prompt injects the close-case rule for the session's role
+  bin/agent-show-todo.sh  UserPromptSubmit hook: "show todo" (or just "todo") injects the board rule for the session's role
+  bin/agent_board.py     the show-todo board: one table of every open task, wait, owner to-do and parked question
   bin/agent-name.sh       SessionStart + UserPromptSubmit hook: names the session by role (<repo> Manager, <feature> Task Manager, <repo> Helper - <Task Name>), also the Orca tab
 ```
 
@@ -166,6 +168,7 @@ bin/agent-file.sh eta <name>        # work left as minutes and a clock time, and
 bin/agent-file.sh estimate ...      # work minutes of a new task, with a range and the 3 nearest past tasks
 bin/agent-file.sh backtest          # estimator against the rubric on the finished tasks, who wins
 bin/agent-file.sh retrain           # learn the estimate again from the finished tasks, keep it only if better
+bin/agent-file.sh board             # the show-todo table: open tasks, waits on the owner, owner to-dos, parked questions
 bin/agent-city.sh install-shim      # one time: puts the agent-city command in ~/.local/bin; nothing installs it by itself, the init skill offers it
 agent-city start                    # agent city visualiser, off by default, costs almost nothing
 /auto-pipeline:city              # start the agent city, prints the URL

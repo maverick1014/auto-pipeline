@@ -37,10 +37,11 @@ the cwd, like agent_state.txt itself):
     inside it, n not a whole number from 1, no such n.
 
 OWNER TODO items are written by hand: a line of an agent_state.txt with the
-capitals OWNER TODO at the start of its text (after spaces, a "-" or "*"
-bullet, or a "YYYY-MM-DD[ HH:MM]" stamp) or followed by ":"; a quote mark
-right before it makes it a mention. The item text is what follows the marker
-(and its ":"). A leading stamp is its date.
+marker OWNER TODO: (capitals, then the colon) anywhere in it; a quote mark
+right before it makes it a mention. Without the colon it is only a mention
+(a note about the rule is not an item: found on the real state file). The
+item text is what follows the colon. A "YYYY-MM-DD[ HH:MM]" stamp at the start
+of the line (after spaces or a "-" / "*" bullet) is its date.
 
     board            the whole repo (main manager)
     board --self     the session's own task (task manager, Helper)
@@ -432,14 +433,17 @@ class TestWorkerEnglish(BoardCase):
 
 class TestOwnerTodo(BoardCase):
     ITEMS = ("OWNER TODO: check the phone build\n"
-             "- OWNER TODO sign the form\n"
+             "- OWNER TODO: sign the form\n"
              "* OWNER TODO: pay the bill\n"
              "2026-11-01 09:00 OWNER TODO: renew the domain\n"
              "decision 14:00: merged. OWNER TODO: try it on the phone\n")
     MENTIONS = ('the owner\'s own OWNER TODO items from agent_state.txt (lines containing "OWNER TODO")\n'
                 'lines with "OWNER TODO" are shown\n'
                 "owner todo: lowercase is not the marker\n"
-                "- Table contents: every open task, the OWNER TODO items\n")
+                "- Table contents: every open task, the OWNER TODO items\n"
+                "- OWNER TODO sign the form, no colon: only a mention\n"
+                "- OWNER TODO item = line with OWNER TODO in capitals, not right after a quote mark\n"
+                "OWNER TODO items from agent_state.txt\n")
 
     def test_items_and_mentions(self):
         self.state(self.MENTIONS + self.ITEMS)

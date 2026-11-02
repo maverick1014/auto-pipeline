@@ -19,6 +19,10 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
    ```
    ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<name>" big "<one line what>" <est_minutes>
    ```
+   Once the worktree path is known (the board reads it), record where it runs:
+   ```
+   ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo where "<name>" <machine> "<worktree path>"
+   ```
    **orca** — open a worktree. Read `<model>` and `<effort>` from `task_manager` in the project's `agent.conf` (form model:effort) and `<mode>` from `permission_mode`:
    ```
    orca worktree create --name <name> --repo path:<main repo> --base-branch main --no-parent --json
@@ -32,6 +36,17 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
 
 8. Early merge: a fix from a still-running branch merged into main → at once `SendMessage` that task manager: merge main back into your branch now. Never cherry-pick slices; merge the branch (or its prefix) — cherry-picks cost a conflict round at the final merge.
 
+## Board records
+
+The board (PRINCIPLES.md W14) reads these. Write each as it happens, never later from memory:
+- Each wait gets `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo wait "<name>" on mock|question|review|hold|queue ["<note>"]` when it starts and `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo wait "<name>" off` when it ends
+- Mock sent -> on mock; mock yes -> off
+- Owner question -> on question; answered -> off
+- DONE PASS waiting for the owner -> on review; he decides -> off
+- Held -> on hold; released -> off
+- Waiting for a slot -> on queue; slot found -> off
+- Parked question for later (H1): `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh park add "<question>"`
+
 ## Time question from the human
 
 The human asks how long a task takes or when it is done (a time question) → run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh eta "<name>" --step <n> --work-so-far <m> [--wait <m>]`. Step and work come from the last HEARTBEAT; `--wait` = known waiting still ahead.
@@ -42,17 +57,18 @@ Answer with its line: a duration AND a clock time, and when he is needed next. N
 ```
 Brief from the main manager (<my session name>): you are the task manager for "<name>".
 WHERE: worktree <worktree path>, branch <branch>. Main repo <main repo> only for ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh.
+TODO LINE: <the todo line, as agent-file.sh show prints it>
 FEATURE: <requirement, 5 to 10 lines. Files to produce. What the user sees. Validation rules.>
 STEPS: 0 save this whole brief into agent_state.txt in your worktree, first action (S8)
  1 register: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" working
  2 mock first if UI (W2): commit mock/<name>-mock.html, send me the path, STOP until "mock yes"
  3 write the failing tests yourself (W3), commit
- 4 workers: Agent subagent_type worker, description "<name> Worker <n>: <slice>", max 2 at once, each gets named files + one test command (W4). Check RESOURCES before each spawn (S3, S4)
+ 4 workers: Agent subagent_type worker, description "<name> Worker <n>: <slice>", max 2 at once, each gets named files + one test command (W4). Check RESOURCES before each spawn (S3, S4). Record each worker: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worker on <n> "<slice>" when it starts, ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worker off <n> when it ends
  5 verify every worker result yourself. Full suite once. Defect → back to the worker with evidence. Set status final: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" final
  6 commit, git push -u origin <branch>
  7 report done, set status done, stay idle
 REPORT: SendMessage to "<my session name>". First line "DONE PASS <name>" or "DONE FAIL <name>: <why>". Then Result (test count), What changed (files), What to decide. Then the E2E click path: start command, URL, exact clicks, expected result, how to restore. Then one line: TIME: est <n>m, actual <n>m, wait <n>m (actual = agent work only; wait = mock gate, owner question or review, hold, suite slot). Then one line: FACTS: type <page|server|script|docs|cloud|app|data|mixed>, lane full, mock <yes|no>, bounces <n>, workers <n>, tests <n added>, scope adds <n>.
-ASK: first line "QUESTION:". Wait max 10 min, then default + log + continue (W1). Mock gate always waits.
+ASK: first line "QUESTION:". Wait max 10 min, then default + log + continue (W1). Mock gate always waits. A question for later: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh park add "<question>"
 HEARTBEAT: every 15 min, one line "HEARTBEAT <name>: step <n> of 7, work <m>m, <what runs now>".
 CLOSE: on "close case" from me or the human: start nothing new, commit + push (WIP if unfinished), report first line "CLOSE CASE <name>: finished" or "CLOSE CASE <name>: unfinished", then done, left + next steps, tests, click path, ideas, TIME. Wait for my decision; never close yourself.
 STATE: write agent_state.txt after every step (S7, S8).
