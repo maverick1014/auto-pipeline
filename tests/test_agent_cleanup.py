@@ -76,6 +76,24 @@ outside the main checkout:
     line: "closed: pane <handle> in <path> (<why>)"; list "would close: ..."
     Never a pane of the main checkout, of another repo, or a live one.
 
+Done panes (orca only, scope add 2 of show-todo, owner 2026-11-02): a pane of
+this repo in a local worktree the sweep keeps (not the main checkout), where
+every ps agent at that path is in state "done" (finished and idle; "idle",
+"working", "permission" are not), is closed when its task is finished:
+    task name   the agent_worktree.txt line's module (field 2) for that path,
+                else the folder name
+    finished    no open agent_todo.txt line of that name, and either
+                agent_completed.txt has a line of that name (done or
+                dropped), or the path has no agent_worktree.txt line and its
+                branch tip is merged into origin/main
+    line        "closed: pane <handle> in <path> (done, task finished)";
+                list mode "would close: ..."
+    not finished, or a human-direct line for that path -> kept row
+                "pane <handle>" | "this machine" | "done pane, task <name> not
+                finished" (human-direct: "done pane, human-direct") |
+                a suggestion. Never closed: it may wait on a merge, a
+                question or a decision.
+
 Paired machines (orca only): `orca environment list --json` ->
 result.environments[].name. Per machine, every call adds --environment
 <name>: worktree list, worktree ps, terminal list. A machine that fails or
@@ -717,6 +735,142 @@ class TestPanes(CleanupCase):
         self.assertEqual(self.repo.calls(), [])
 
 
+class TestDonePanes(CleanupCase):
+    """A done pane is closed when its task is finished, else one kept row."""
+
+    def setUp(self):
+        super().setUp()
+        self.path, self.branch = self.worktree("fin")   # pushed, not merged: kept
+
+    def write(self, name, text):
+        with open(self.repo.path(name), "w") as fh:
+            fh.write(text)
+
+    def finished(self, name="fin"):
+        self.write("agent_completed.txt",
+                   "2026-11-02 | %s | the login form | data repo=project type=script "
+                   "lane=full mock=no est=60 work=50 wait=0 clock=70 bounces=0 workers=1 "
+                   "files=2 lines=40 tests=5 adds=0\n" % name)
+
+    def open_todo(self, name="fin"):
+        self.write("agent_todo.txt", "%s | big | the login form | est 60m | "
+                   "opened 2026-11-02 10:00 | by main\n" % name)
+
+    def run_with(self, states, path=None, terminals=None, apply_=True):
+        path = path or self.path
+        self.repo.set_panes([{"path": path, "agents": states}])
+        self.terminals = (terminals if terminals is not None
+                          else [self.term("t1", path, agent="claude")])
+        self.save_orca()
+        self.repo.clear_calls()
+        return self.ok("--apply") if apply_ else self.ok()
+
+    def closed(self):
+        return [c[c.index("--terminal") + 1]
+                for c in self.orca_calls(["terminal", "close"])
+                if "--terminal" in c]
+
+    def test_a_done_pane_of_a_finished_task_is_closed(self):
+        self.repo.set_worktree_lines([(self.path, "fin", "idle")])
+        self.finished()
+        out = self.run_with(["done"])
+        self.assertEqual(self.closed(), ["t1"])
+        self.assertIn(["terminal", "close", "--terminal", "t1", "--json"], self.repo.calls())
+        self.assertIn("closed: pane t1 in %s (done, task finished)" % self.path,
+                      self.lines(out))
+        self.assertTrue(os.path.isdir(self.path), "the worktree itself stays (unmerged)")
+
+    def test_a_dropped_task_is_finished_too(self):
+        self.repo.set_worktree_lines([(self.path, "fin", "working")])
+        self.write("agent_completed.txt", "2026-11-02 | fin | the login form | est 60m "
+                   "actual - | dropped: the owner said no\n")
+        self.run_with(["done"])
+        self.assertEqual(self.closed(), ["t1"])
+
+    def test_the_task_name_is_the_module_of_its_line(self):
+        self.repo.set_worktree_lines([(self.path, "login-form", "idle")])
+        self.finished("login-form")
+        self.run_with(["done"])
+        self.assertEqual(self.closed(), ["t1"])
+
+    def test_a_done_pane_of_an_open_task_is_kept(self):
+        self.repo.set_worktree_lines([(self.path, "fin", "final")])
+        self.open_todo()
+        out = self.run_with(["done"])
+        self.assertEqual(self.closed(), [])
+        row = self.row_for(out, "pane t1")
+        self.assertEqual(row[1], "this machine")
+        self.assertIn("done pane, task fin not finished", row[2])
+        self.assertTrue(row[3].strip(), "no suggestion")
+
+    def test_an_open_todo_line_wins_over_an_old_completed_one(self):
+        self.repo.set_worktree_lines([(self.path, "fin", "working")])
+        self.finished()
+        self.open_todo()
+        self.run_with(["done"])
+        self.assertEqual(self.closed(), [])
+
+    def test_no_line_and_not_merged_is_kept(self):
+        # a task dispatched from another machine never has a line here: it may
+        # wait on its merge
+        out = self.run_with(["done"])
+        self.assertEqual(self.closed(), [])
+        self.assertIn("not finished", self.row_for(out, "pane t1")[2])
+
+    def test_no_line_and_merged_is_finished(self):
+        path, _ = self.merged_worktree("old", dirty=True)   # kept: uncommitted
+        out = self.run_with(["done"], path=path)
+        self.assertEqual(self.closed(), ["t1"])
+        self.assertIn("closed: pane t1 in %s (done, task finished)" % path, self.lines(out))
+        self.assertTrue(os.path.isdir(path))
+
+    def test_a_human_direct_session_is_kept(self):
+        with open(self.repo.path("agent_worktree.txt"), "w") as fh:
+            fh.write("%s | task manager, human-direct | task: Stock Lock Page | "
+                     "since 2026-11-02 10:00\n" % self.path)
+        self.finished()
+        out = self.run_with(["done"])
+        self.assertEqual(self.closed(), [])
+        self.assertIn("done pane, human-direct", self.row_for(out, "pane t1")[2])
+
+    def test_a_busy_or_idle_pane_is_never_closed(self):
+        self.repo.set_worktree_lines([(self.path, "fin", "idle")])
+        self.finished()
+        for states in (["working"], ["permission"], ["done", "working"], ["idle"],
+                       ["done", "permission"]):
+            with self.subTest(states=states):
+                out = self.run_with(states)
+                self.assertEqual(self.closed(), [])
+                self.assertNotIn("pane t1", [r[0] for r in self.rows(out)])
+
+    def test_list_mode_only_says_it(self):
+        self.repo.set_worktree_lines([(self.path, "fin", "idle")])
+        self.finished()
+        out = self.run_with(["done"], apply_=False)
+        self.assertEqual(self.closed(), [])
+        self.assertIn("would close: pane t1 in %s (done, task finished)" % self.path,
+                      self.lines(out))
+
+    def test_the_main_checkout_and_another_repo_are_never_touched(self):
+        self.finished(os.path.basename(self.repo.dir))
+        self.run_with(["done"], path=self.repo.dir,
+                      terminals=[self.term("t5", self.repo.dir, agent="claude")])
+        self.assertEqual(self.closed(), [])
+        self.finished()
+        self.run_with(["done"], terminals=[self.term("t7", self.path, agent="claude",
+                                                     repo_id=OTHER_REPO_ID)])
+        self.assertEqual(self.closed(), [])
+
+    def test_a_removed_worktree_is_closed_once(self):
+        path, _ = self.merged_worktree("gone")      # safe: removed with its panes
+        self.repo.set_worktree_lines([(path, "gone", "idle")])
+        self.finished("gone")
+        self.run_with(["done"], path=path)
+        self.assertFalse(os.path.exists(path))
+        self.assertEqual(self.closed(), [])          # --worktree --all did it
+        self.assertEqual(len(self.orca_calls(["terminal", "close"])), 1)
+
+
 # ---------------------------------------------------------------- paired machines
 
 
@@ -1285,8 +1439,36 @@ class TestTheRules(unittest.TestCase):
     def test_s4_names_stop_leftovers(self):
         self.assertIn("stop-leftovers", section("S4", "S5"))
 
+    def test_s6_counts_busy_agents_only(self):
+        s6 = section("S6", "S7")
+        for words in ("working or permission", "done", "not counted", "main manager"):
+            self.assertIn(words, s6)
+        self.assertNotIn("Counts spawned agents only", s6)
+
+    def test_s6_says_who_closes_a_finished_pane_and_when_never(self):
+        s6 = section("S6", "S7")
+        for words in ("closes it", "merged, dropped or closed",
+                      "waiting on a merge, a question or a decision",
+                      "another repo"):
+            self.assertIn(words, s6)
+
+    def test_w8_names_the_done_pane(self):
+        w8 = section("W8", "W9")
+        self.assertIn("done pane", w8)
+        self.assertIn("kept row", w8)
+
+    def test_dispatch_step_6_counts_the_same_way(self):
+        with open(os.path.join(ROOT, "skills", "dispatch", "SKILL.md")) as fh:
+            step6 = next(l for l in fh.read().splitlines() if l.startswith("6. "))
+        self.assertIn("working or permission", step6)
+        self.assertIn("done", step6)
+        self.assertIn("max_agents", step6)
+
+    def test_w14_names_the_owner_todo_marker(self):
+        self.assertIn("`OWNER TODO:`", section("W14", "W15"))
+
     def test_one_line_per_rule(self):
-        for code, nxt in (("W8", "W9"), ("S4", "S5")):
+        for code, nxt in (("W8", "W9"), ("S4", "S5"), ("S6", "S7"), ("W14", "W15")):
             for line in section(code, nxt).splitlines():
                 if line.startswith("- "):
                     self.assertLessEqual(len(line), 200, line)
