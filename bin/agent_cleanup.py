@@ -529,7 +529,11 @@ class Sweep(object):
         has_origin = branch in self.origin_refs
         hold = self.origin_hold(branch) if has_origin else None
         if apply_:
-            if not self.git("branch", "-D", branch).ok:
+            # Orca's worktree rm may have dropped a merged branch already:
+            # a branch that is gone is not a failure.
+            still_there = self.git("show-ref", "--verify", "--quiet",
+                                   "refs/heads/" + branch).ok
+            if still_there and not self.git("branch", "-D", branch).ok:
                 self.keep("branch " + branch, "local", "delete failed",
                           "git branch -D " + branch)
             if has_origin and not hold:
