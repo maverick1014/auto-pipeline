@@ -986,7 +986,11 @@ class TestStopLeftovers(unittest.TestCase):
             except subprocess.TimeoutExpired:
                 pass
         self.addCleanup(reap)
-        self.assertTrue(wait_until(lambda: alive(proc)))
+        # running = its loop already has its `sleep` child, so bash has read
+        # the script (a folder removed before that just makes bash fail)
+        self.assertTrue(wait_until(lambda: alive(proc) and subprocess.run(
+            ["pgrep", "-P", str(proc.pid)], capture_output=True).returncode == 0),
+            "fake monitor loop never started")
         return proc
 
     def fake(self, *parts):
