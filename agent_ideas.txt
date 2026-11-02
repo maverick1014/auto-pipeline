@@ -85,3 +85,8 @@ tests/test_agent_cloud_pack.py PackCase.env keeps ORCA_TERMINAL_HANDLE (scripthe
 agent-file.sh helper-task - : clear the Helper's task when it is done, name back to '<repo> Helper' (helper-task-title TM on pc2, 2026-10-29) | 2026-10-29 09:58 | by main
 Helper start text is ~2245 bytes outside the output rules (budget 2000; 0.25.0 already ~2157), whole 4539 of 5000: trim the Helper's fixed lines or test the second role against both caps (helper-task-title TM on pc2, 2026-10-29) | 2026-10-29 09:58 | by main
 pc2 orca terminal send cuts a ~1.4 KB message too (bounce 1 of helper-task-title arrived as its tail only): keep sends under ~500 chars or put the text in the worktree's agent_state.txt (main, 2026-10-29) | 2026-10-29 09:58 | by main
+Sweep on pc2 itself: run agent-cleanup.sh list mode in a pc2 Orca pane so pc2's merged clean worktrees can be removed, not only listed (idle-cleanup TM, 2026-11-02) | 2026-11-02 15:45 | by main
+Sweep: repo not registered in Orca -> derive projectId from the origin URL so pc2 worktrees still protect their origin branches (idle-cleanup TM, 2026-11-02) | 2026-11-02 15:45 | by main
+Sweep in plain mode never removes worktrees: an lsof cwd check could tell 'no agent here' without Orca (idle-cleanup TM, 2026-11-02) | 2026-11-02 15:45 | by main
+Suite time: main-role start/resume/todo-done tests now run the sweep; an AGENT_CLEANUP=off env for unrelated tests would cut minutes (idle-cleanup TM, 2026-11-02) | 2026-11-02 15:45 | by main
+Sweep keeps a fast-forward-merged worktree as 'no own commits' (tip on main first-parent line); use the branch reflog to tell ff-merged from fresh (main, 2026-11-02) | 2026-11-02 15:45 | by main

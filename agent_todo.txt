@@ -1,0 +1,1 @@
+show-todo | big | owner: keyword 'show todo' (or prompt just 'todo') -> one table of every open task, waiting-on-owner, owner todos, parked questions, sorted, est/work/wait/done-by; routed to idle-cleanup TM | est 45m | opened 2026-11-02 14:26 | by main
