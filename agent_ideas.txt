@@ -97,3 +97,4 @@ done-pane close covers this machine only; paired machines (do_remote_panes) coul
 a remote task manager's own board needs TODO LINE: in its brief; dispatch could write it into the brief file by itself | 2026-11-02 18:56 | by main
 a Helper without a worktree shares the main repo's agent_state.txt, so its park add lands in the main manager's file | 2026-11-02 18:56 | by main
 board: a parked row shows the hostname (Bryants-Mac-Mini-2), not the machine name pc2 | 2026-11-02 18:56 | by main
+board: a mid-sentence 'OWNER TODO:' in a log line counts as an owner to-do (seen 2026-11-02 on a main-manager E2E log line); count it only at the start of the line text (after a date, bullet or CARRY:) | 2026-11-02 19:03 | by main
