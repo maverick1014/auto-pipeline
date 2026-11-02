@@ -123,7 +123,14 @@ case "${1:-} ${2:-}" in
       [ "$a" = "--force" ] && force="--force"
       prev=$a
     done
+    b=""; gd=""
+    if [ -n "$p" ] && [ -z "$env" ]; then
+      b=$(git -C "$p" symbolic-ref --short HEAD 2>/dev/null)
+      gd=$(git -C "$p" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+    fi
     if [ -n "$p" ] && [ -z "$env" ] && git -C "$p" worktree remove $force "$p" >/dev/null 2>&1; then
+      # and, like Orca, its local branch when git calls it merged
+      [ -n "$b" ] && [ -n "$gd" ] && git --git-dir="$gd" branch -d "$b" >/dev/null 2>&1
       printf '{"ok":true,"result":{}}\n'
     elif [ -n "$env" ]; then
       printf '{"ok":true,"result":{}}\n'

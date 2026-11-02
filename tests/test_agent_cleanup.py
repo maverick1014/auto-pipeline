@@ -608,6 +608,8 @@ class TestBranches(CleanupCase):
 
     def test_a_merged_local_only_branch(self):
         branch = self.branch_only("mine", push=False)
+        # the branch was never pushed, its merge was
+        git(self.repo.dir, "push", "-q", "origin", "main")
         out = self.ok("--apply")
         self.assertFalse(self.has_local(branch))
         self.assertIn("removed: branch %s (local)" % branch, self.lines(out))
