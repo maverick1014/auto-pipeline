@@ -109,6 +109,7 @@ W8. Merge and cleanup
 - Main manager only. Task managers, Helpers and workers never run it
 - Own repo only: this machine and every paired Orca machine
 - Removes only safe items: merged into origin/main, no live agent, no uncommitted or unpushed work, no working/final/human-direct line
+- A done pane (finished, idle) in a kept worktree: closed when its task is done or dropped, or its line is gone and its branch merged; else one kept row
 - Everything else is never deleted: one table to the human (what, where, why kept, suggestion)
 - A paired machine unreachable → one line, skipped. Never hangs the start
 
@@ -180,12 +181,12 @@ W14. Show todo
 - A quoted mention is not an order; todo inside a sentence never fires
 - One script, no agent: `bin/agent-file.sh board`. Show its table as printed, every row, then the decide section (H3)
 - Main manager: the whole repo. Task manager or Helper: `board --self`, its own task and its workers only. Subagents never
-- Rows: every open task (running, held, queued), every wait on the owner (mock check, owner question, owner review), OWNER TODO and PARKED lines of agent_state.txt
+- Rows: every open task (running, held, queued), every wait on the owner (mock check, owner question, owner review), `OWNER TODO:` and `PARKED:` lines of agent_state.txt
 - Each row: task, what in a few words (H3), status, where (machine, worktree), est, work so far, wait so far, done by (clock time)
 - Sort: waiting on the owner, running, held or queued, OWNER TODO, parked questions last; oldest first in each group
 - Times come from the files, never guessed: wait = the sum of the `todo wait` intervals; work = clock since opened minus wait; done by = now + est - work
 - Record as it happens: `agent-file.sh todo wait <name> on <kind>|off` at every mock check, owner question, owner review, hold, queue; `todo where` at dispatch
-- `park add` for a parked question (H1), `worker on <n>` / `worker off <n>` for each worker; OWNER TODO lines are written by hand
+- `park add` for a parked question (H1), `worker on <n>` / `worker off <n>` for each worker; `OWNER TODO:` lines are written by hand
 - Headers and status words in the `language` of agent.conf
 
 W15. Watch
@@ -274,7 +275,9 @@ S5. Heavy tests
 S6. Agent cap
 - Per device
 - Config `max_agents`: per machine, the value is in agent.conf
-- Counts spawned agents only. The main manager is not counted
+- Counts spawned agents in state working or permission only. A done or idle pane and the main manager are not counted
+- A finished idle pane (state done): its own repo's main manager closes it once its task is merged, dropped or closed
+- Never one still waiting on a merge, a question or a decision (W8 closes it after the merge). Never another repo's panes
 - Reviewers count toward the cap too
 
 S7. Session recovery

@@ -6,8 +6,10 @@ Run by the bash entry, never by hand:
     agent_cleanup.py --root <PROJECT_ROOT> --plugin <PLUGIN_ROOT>
                      --kind orca|plain|cloud [--apply] [--short]
 
-One mechanical sweep: finished worktrees and branches, dead panes, leftover
-pipeline processes. Every external call goes through run(): its own process
+One mechanical sweep: finished worktrees and branches, dead panes, done panes
+of finished tasks (every agent there in state "done", the task closed or its
+branch merged; else one kept row), leftover pipeline processes. Every
+external call goes through run(): its own process
 group, no stdin, a timeout, and a kill of the whole group when cut off. A
 failed call is a result, never an exception out of this file.
 """
@@ -176,6 +178,7 @@ class Sweep(object):
         self.wts = []        # git worktree list rows, [0] is the main checkout
         self.wts_ok = False
         self.removed_paths = set()
+        self.close_tried = set()   # (machine, handle) of every pane close tried
         self.origin_refs = {}    # branch name -> tip, refs/remotes/origin
         self.local_refs = {}     # branch name -> tip, refs/heads
         self.merged = set()      # full refnames reachable from origin/main
@@ -628,6 +631,7 @@ class Sweep(object):
 
     def close_pane(self, handle, path, why, machine=None):
         where = machine or "this machine"
+        self.close_tried.add((machine or "", handle))
         if not self.apply:
             self.lines.append("would close: pane %s in %s (%s)"
                               % (handle, path, why))
@@ -677,6 +681,100 @@ class Sweep(object):
             why = self.pane_why(term, gone)
             if why:
                 self.close_pane(str(handle), path, why)
+
+    # ---- done panes: a finished agent idle in a worktree the sweep kept
+
+    def read_fields(self, name):
+        """The lines of one project file, each split on " | " (else empty)."""
+        try:
+            with open(os.path.join(self.root, name)) as fh:
+                text = fh.read()
+        except (OSError, UnicodeDecodeError):
+            return []
+        return [[f.strip() for f in line.split(" | ")]
+                for line in text.splitlines() if line.strip()]
+
+    def path_lines(self, path):
+        """(task name, human-direct, has a line) of this path's
+        agent_worktree.txt lines; the name is field 2 of the first line that
+        has one, else the folder name."""
+        want = real(path)
+        name = None
+        human = False
+        found = False
+        for line in self.registered_lines:
+            parts = [f.strip() for f in line.split(" | ")]
+            if not parts[0] or real(parts[0]) != want:
+                continue
+            found = True
+            second = parts[1] if len(parts) > 1 else ""
+            if "human-direct" in second:
+                human = True
+            elif name is None and second:
+                name = second
+        return (name or os.path.basename(path.rstrip("/")), human, found)
+
+    def task_finished(self, name, row, has_line):
+        """No open agent_todo.txt line of that name, and a completed or
+        dropped line of that name, or (no agent_worktree.txt line for the
+        path) the branch tip merged into origin/main and not on its
+        first-parent line (a branch with no commit of its own is a task just
+        started)."""
+        for fields in self.read_fields("agent_todo.txt"):
+            if fields[0] == name:
+                return False
+        for fields in self.read_fields("agent_completed.txt"):
+            if len(fields) > 1 and fields[1] == name:
+                return True
+        if has_line or not self.base_ok or not row.get("head"):
+            return False
+        if not self.git("merge-base", "--is-ancestor", row["head"],
+                        "refs/remotes/origin/main").ok:
+            return False
+        fp = self.first_parent_set()
+        return fp is not False and row["head"] not in fp
+
+    def do_done_panes(self):
+        if (self.kind != "orca" or not self.term_ok or not self.ps_ok
+                or not self.repo_id or not self.wts_ok):
+            return
+        root = real(self.root)
+        prefix = self.repo_id + "::"
+        for row in self.wts[1:]:
+            path = row["path"]
+            key = real(path)
+            if key == root or key in self.removed_paths \
+                    or not os.path.isdir(path):
+                continue
+            states = self.ps.get(key, [])
+            if not states or any(st != "done" for st in states):
+                continue
+            panes = []
+            for term in self.terminals:
+                wid = str(term.get("worktreeId") or "")
+                handle = term.get("handle")
+                if not handle or not wid.startswith(prefix):
+                    continue
+                at = term.get("worktreePath") or wid[len(prefix):]
+                if real(at) == key and ("", str(handle)) not in self.close_tried:
+                    panes.append(str(handle))
+            if not panes:
+                continue
+            name, human, has_line = self.path_lines(path)
+            if not human and self.task_finished(name, row, has_line):
+                for handle in panes:
+                    self.close_pane(handle, path, "done, task finished")
+                continue
+            for handle in panes:
+                if human:
+                    self.keep("pane " + handle, "this machine",
+                              "done pane, human-direct",
+                              "close it by hand when the human is done")
+                else:
+                    self.keep("pane " + handle, "this machine",
+                              "done pane, task %s not finished" % name,
+                              "finish or drop the task, or close it by hand: "
+                              "orca terminal close --terminal " + handle)
 
     def do_remote_panes(self):
         for machine in self.machines:
@@ -729,6 +827,7 @@ class Sweep(object):
         self.do_remote_worktrees()
         self.do_branches()
         self.do_panes()
+        self.do_done_panes()
         self.do_remote_panes()
         self.do_processes()
 

@@ -14,7 +14,7 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
 3. Touches a live worktree's module? → `SendMessage` the task to that task manager. Status `final` → hold it, tell the human.
 4. Big, and a live task manager has capacity? → `SendMessage` it to that task manager.
 5. Idle or done worktrees in `agent_worktree.txt`? → run `/merge` for each first.
-6. RESOURCES over cap, or spawned agents at `max_agents`? → wait, tell the human.
+6. RESOURCES over cap, or agents in state working or permission at `max_agents` (done or idle panes do not count)? → wait, tell the human.
 7. Otherwise, ask `${CLAUDE_PLUGIN_ROOT}/bin/agent-runtime.sh kind` first: orca, plain or cloud.
    ```
    ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<name>" big "<one line what>" <est_minutes>

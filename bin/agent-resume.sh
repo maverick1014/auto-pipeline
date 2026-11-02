@@ -115,15 +115,21 @@ for w in data.get("result", {}).get("worktrees", []):
     path = w.get("path", "")
     agents = w.get("agents") or []
     is_main = 1 if w.get("isMainWorktree") else 0
-    print("%s\t%d\t%d" % (path, len(agents), is_main))
+    busy = 0
+    for a in agents:
+        state = a.get("state") if isinstance(a, dict) else a
+        if state in ("working", "permission"):
+            busy += 1
+    print("%s\t%d\t%d\t%d" % (path, len(agents), is_main, busy))
 ')
   fi
 
-  # The cap counts spawned agents, not main managers (rule S6). A main
-  # manager pane is still a live pane, so live_pane() must still see it;
-  # it just does not fill a cap slot.
+  # The cap counts spawned agents in state working or permission, not main
+  # managers and not done or idle panes (rule S6). Column 2 (any agent at the
+  # path) is a live pane for live_pane(): a done pane or a main manager pane
+  # still blocks a relaunch. Column 4 (busy agents) is what fills a cap slot.
   if [ "$orca_down" -eq 0 ] && [ -n "$ps_tsv" ]; then
-    total_live_panes=$(printf '%s\n' "$ps_tsv" | awk -F'\t' '$3!=1{sum+=$2} END{print sum+0}')
+    total_live_panes=$(printf '%s\n' "$ps_tsv" | awk -F'\t' '$3!=1{sum+=$4} END{print sum+0}')
   fi
 fi
 relaunch_count=0

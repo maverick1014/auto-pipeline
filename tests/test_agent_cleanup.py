@@ -85,7 +85,9 @@ every ps agent at that path is in state "done" (finished and idle; "idle",
     finished    no open agent_todo.txt line of that name, and either
                 agent_completed.txt has a line of that name (done or
                 dropped), or the path has no agent_worktree.txt line and its
-                branch tip is merged into origin/main
+                branch tip is merged into origin/main and is not on
+                origin/main's first-parent line (a new branch with no commit
+                of its own is a task just started, never finished)
     line        "closed: pane <handle> in <path> (done, task finished)";
                 list mode "would close: ..."
     not finished, or a human-direct line for that path -> kept row
@@ -823,6 +825,13 @@ class TestDonePanes(CleanupCase):
         self.assertEqual(self.closed(), ["t1"])
         self.assertIn("closed: pane t1 in %s (done, task finished)" % path, self.lines(out))
         self.assertTrue(os.path.isdir(path))
+
+    def test_no_line_and_no_own_commits_is_kept(self):
+        # a task manager that has only just started: its tip is still main's
+        path, _ = self.worktree("fresh", commits=0)
+        out = self.run_with(["done"], path=path)
+        self.assertEqual(self.closed(), [])
+        self.assertIn("not finished", self.row_for(out, "pane t1")[2])
 
     def test_a_human_direct_session_is_kept(self):
         with open(self.repo.path("agent_worktree.txt"), "w") as fh:
