@@ -407,6 +407,20 @@ retrain_auto() {
   return 0
 }
 
+# the sweep after the last task closes: agent_todo.txt has no non-blank line, agent_worktree.txt has no
+# working or final line and no human-direct line, and this is the main manager (or a takeover). Prints the
+# sweep's --short lines. Any failure of it is swallowed: it never changes the exit code of todo done.
+sweep_after_last_task() {
+  local busy
+  if grep -q '[^[:space:]]' "$TODO" 2>/dev/null; then return 0; fi
+  busy=$(awk -F' \\| ' '$3 == "working" || $3 == "final" || $2 == "task manager, human-direct" { n++ } END { print n + 0 }' "$WT" 2>/dev/null) || return 0
+  [ "${busy:-0}" -eq 0 ] || return 0
+  role_read
+  case "$role" in main|takeover) ;; *) return 0;; esac
+  "$PLUGIN_ROOT/bin/agent-cleanup.sh" --apply --short 2>/dev/null </dev/null || true
+  return 0
+}
+
 # --- eta
 # epoch seconds -> "YYYY-MM-DD HH:MM", BSD date first (macOS), GNU date as fallback
 from_epoch() { date -r "$1" '+%Y-%m-%d %H:%M' 2>/dev/null || date -d "@$1" '+%Y-%m-%d %H:%M'; }
@@ -541,7 +555,8 @@ case "${1:-}:${2:-}" in
     echo "todo done: $name"
     [ -n "$counted" ] || echo "files and lines: not counted (no --merge or --range)"
     echo "TIME DATA: $(time_data) of $TIME_DATA_GOAL"
-    retrain_auto;;
+    retrain_auto
+    sweep_after_last_task;;
   todo:drop)
     need 5 "$@"; line=$(first "$TODO" "$3")
     [ -n "$line" ] || { echo "no todo line named: $3" >&2; exit 1; }

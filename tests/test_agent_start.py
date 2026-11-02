@@ -723,7 +723,17 @@ class TestOncePerSession(StartCase):
                 cwd=self.repo.dir, env=self.repo._env({}),
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, text=True) for _ in range(2)]
-            outs = [p.communicate(self.hook_json(sid), timeout=60) for p in procs]
+            # both get their stdin at once, as Claude Code gives it to two
+            # hooks; feeding copy 2 only after copy 1 ends would let its
+            # `read -t 1` time out whenever a start takes over a second
+            for p in procs:
+                p.stdin.write(self.hook_json(sid))
+                p.stdin.close()
+            outs = [(p.stdout.read(), p.stderr.read()) for p in procs]
+            for p in procs:
+                p.wait(timeout=60)
+                p.stdout.close()
+                p.stderr.close()
             with self.subTest(round=round_no):
                 self.assertEqual([p.returncode for p in procs], [0, 0],
                                  [o[1] for o in outs])

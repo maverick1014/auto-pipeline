@@ -796,6 +796,15 @@ else
     -mtime "+$MARKER_DAYS" -delete 2>/dev/null || true
 fi
 
+# ---- cleanup sweep: main manager or takeover only, before the counts and the
+# worktree lines are built, so they show the cleaned state. Its --short lines
+# (empty when there is nothing to report) print after the monitor block. Never
+# fails the hook: stderr dropped, any exit code ignored. ----
+CLEAN_TEXT=""
+if [ "$role" = main ] || [ "$role" = takeover ]; then
+  CLEAN_TEXT=$("$PLUGIN_ROOT/bin/agent-cleanup.sh" --apply --short 2>/dev/null </dev/null || true; printf 'X'); CLEAN_TEXT=${CLEAN_TEXT%X}
+fi
+
 NORMAL_TEXT=$(print_normal_lines; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
 MON_TEXT=$(print_monitor_block; printf 'X'); MON_TEXT=${MON_TEXT%X}
 RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
@@ -812,10 +821,10 @@ fi
 RESUME_TEXT=""
 if [ "$SRC" = startup ] && { [ "$role" = main ] || [ "$role" = takeover ]; } \
    && [ "$auto_resume" = yes ]; then
-  resume_out=$("$PLUGIN_ROOT/bin/agent-resume.sh" 2>&1) || true
+  resume_out=$(AGENT_CLEANUP_DONE=1 "$PLUGIN_ROOT/bin/agent-resume.sh" 2>&1) || true
   header="=== auto resume ==="
   other_fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
-                 + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
+                 + $(text_bytes "$CLEAN_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
   candidate_bytes=$(( $(line_bytes "$header") + $(text_bytes "$resume_out") + 1 ))
   if [ $(( other_fixed + candidate_bytes )) -gt "$CAP" ]; then
     resume_out=$(printf '%s\n' "$resume_out" | head -n 6)
@@ -828,12 +837,13 @@ $resume_out
 fi
 
 fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
-        + $(text_bytes "$RESUME_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
+        + $(text_bytes "$CLEAN_TEXT") + $(text_bytes "$RESUME_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
 budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
 
 printf '%s' "$ROLE_TEXT"
 printf '%s' "$NORMAL_TEXT"
 printf '%s' "$MON_TEXT"
+printf '%s' "$CLEAN_TEXT"
 print_state_block "$budget"
 printf '%s' "$RESUME_TEXT"
 print_output_section

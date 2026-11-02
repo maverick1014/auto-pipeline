@@ -63,6 +63,21 @@ KIND=$(runtime_kind)
 # lives for hours and must re-derive the kind on its own, sweep by sweep.
 export AGENT_RUNTIME="$KIND"
 
+# ---- cleanup sweep: main manager or takeover only, before agent_worktree.txt
+# and the live panes are read, so a worktree the sweep removes is not a row
+# below. The start hook already swept and says so with AGENT_CLEANUP_DONE=1.
+# --dry-run lists, removes nothing. Its lines print last. A failing sweep never
+# breaks the resume. ----
+CLEAN_OUT=""
+role_read
+if { [ "$role" = main ] || [ "$role" = takeover ]; } && [ "${AGENT_CLEANUP_DONE:-}" != 1 ]; then
+  if [ "$DRY_RUN" -eq 1 ]; then
+    CLEAN_OUT=$("$PLUGIN_ROOT/bin/agent-cleanup.sh" --short 2>/dev/null </dev/null) || true
+  else
+    CLEAN_OUT=$("$PLUGIN_ROOT/bin/agent-cleanup.sh" --apply --short 2>/dev/null </dev/null) || true
+  fi
+fi
+
 # ---- resources line, one reading reused everywhere ----
 resources_read
 resources_line "$max_usage_percent"
@@ -219,3 +234,4 @@ ideas_n=0
 [ -s "$IDEAS" ] && ideas_n=$(grep -c . "$IDEAS" || true)
 echo "todo: ${todo_n:-0} open"
 echo "ideas: ${ideas_n:-0} waiting"
+[ -z "$CLEAN_OUT" ] || printf '%s\n' "$CLEAN_OUT"
