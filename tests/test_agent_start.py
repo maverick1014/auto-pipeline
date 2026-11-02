@@ -27,7 +27,7 @@ question ever appears in the hook output, except the output section
 ("## E. Output", right before the RULES line; tests/test_output_hook.py).
 The byte limits below are for the rest: pointer_part() drops the section.
 
-    --quiz    prints the 31 questions and nothing else
+    --quiz    prints the 32 questions and nothing else
     --answer  unchanged, still grades and still says PASS
 
 Compaction (stdin source "compact"), nothing else at all:
@@ -510,11 +510,11 @@ class TestResourcesHelper(StartCase):
 
 class TestQuizStillWorks(StartCase):
     ANSWERS = ("1A 2D 3C 4B 5D 6D 7A 8C 9A 10D 11A 12C 13D 14C 15B 16C 17C "
-               "18D 19B 20A 21D 22C 23B 24D 25A 26D 27A 28B 29B 30B 31B")
+               "18D 19B 20A 21D 22C 23B 24D 25A 26D 27A 28B 29B 30B 31B 32C")
 
     def test_all_right_is_a_pass(self):
         out = self.assertOk(self.start("--answer", self.ANSWERS))
-        self.assertIn("31/31 PASS", out)
+        self.assertIn("32/32 PASS", out)
 
     def test_one_wrong_is_a_fail(self):
         result = self.start("--answer", self.ANSWERS.replace("1A", "1B"))
@@ -536,7 +536,7 @@ class TestNoQuizForSubagents(StartCase):
     def pass_quiz(self, sid="sess-1"):
         out = self.assertOk(self.start("--answer", self.ANSWERS,
                                        env=self.sid(sid)))
-        self.assertIn("31/31 PASS", out)
+        self.assertIn("32/32 PASS", out)
 
     def test_a_pass_writes_the_session_marker(self):
         self.pass_quiz()
@@ -585,7 +585,7 @@ class TestNoQuizForSubagents(StartCase):
         out = self.assertOk(self.start("--answer", self.ANSWERS,
                                        env=self.sid()))
         self.assertEqual(self.lines(out),
-                         ["QUIZ RESULT: 31/31 PASS", "You may start work."])
+                         ["QUIZ RESULT: 32/32 PASS", "You may start work."])
 
     def test_it_still_fits_the_cap(self):
         self.pass_quiz()
@@ -723,7 +723,17 @@ class TestOncePerSession(StartCase):
                 cwd=self.repo.dir, env=self.repo._env({}),
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, text=True) for _ in range(2)]
-            outs = [p.communicate(self.hook_json(sid), timeout=60) for p in procs]
+            # both get their stdin at once, as Claude Code gives it to two
+            # hooks; feeding copy 2 only after copy 1 ends would let its
+            # `read -t 1` time out whenever a start takes over a second
+            for p in procs:
+                p.stdin.write(self.hook_json(sid))
+                p.stdin.close()
+            outs = [(p.stdout.read(), p.stderr.read()) for p in procs]
+            for p in procs:
+                p.wait(timeout=60)
+                p.stdout.close()
+                p.stderr.close()
             with self.subTest(round=round_no):
                 self.assertEqual([p.returncode for p in procs], [0, 0],
                                  [o[1] for o in outs])

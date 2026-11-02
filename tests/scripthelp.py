@@ -74,6 +74,8 @@ COPY_BIN = [
     "agent-close-case.sh",
     "agent-name.sh",
     "agent_estimate.py",
+    "agent-cleanup.sh",
+    "agent_cleanup.py",
 ]
 
 # Copied into the temp plugin's root.
@@ -94,8 +96,47 @@ ORCA_STUB = r"""#!/usr/bin/env bash
 # Test stub for orca. Never talks to the real app.
 { printf 'CALL'; for a in "$@"; do printf '\t%s' "$a"; done; printf '\n'; } >> "$ORCA_STUB_LOG"
 [ -n "${ORCA_STUB_SLEEP:-}" ] && sleep "$ORCA_STUB_SLEEP"
+# --environment <name>: answers come from $ORCA_STUB_DIR/env/<name>/ instead.
+# A "down" file there: the paired machine is unreachable (exit 1).
+# A "hang" file there: it never answers (sleeps 60 s).
+env=""; prev=""
+for a in "$@"; do [ "$prev" = "--environment" ] && env=$a; prev=$a; done
+dir="${ORCA_STUB_DIR:-/nonexistent}"
+if [ -n "$env" ]; then
+  dir="$dir/env/$env"
+  [ -e "$dir/hang" ] && sleep 60
+  [ -e "$dir/down" ] && { echo "orca: environment $env is not reachable" >&2; exit 1; }
+fi
+answer() { if [ -f "$dir/$1" ]; then cat "$dir/$1"; else printf '{"ok":true,"result":{}}\n'; fi; }
 case "${1:-} ${2:-}" in
-  "worktree ps") cat "$ORCA_STUB_PS";;
+  "worktree ps")
+    if [ -n "$env" ]; then answer ps.json; else cat "$ORCA_STUB_PS"; fi;;
+  "worktree list") answer list.json;;
+  "environment list") answer envs.json;;
+  "terminal list") answer terminals.json;;
+  "worktree rm")
+    # Same as Orca on a git worktree: git worktree remove, no --force unless
+    # asked, so a dirty one is refused. Only ever a test fixture's worktree.
+    p=""; force=""; prev=""
+    for a in "$@"; do
+      [ "$prev" = "--worktree" ] && p=${a#path:}
+      [ "$a" = "--force" ] && force="--force"
+      prev=$a
+    done
+    b=""; gd=""
+    if [ -n "$p" ] && [ -z "$env" ]; then
+      b=$(git -C "$p" symbolic-ref --short HEAD 2>/dev/null)
+      gd=$(git -C "$p" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+    fi
+    if [ -n "$p" ] && [ -z "$env" ] && git -C "$p" worktree remove $force "$p" >/dev/null 2>&1; then
+      # and, like Orca, its local branch when git calls it merged
+      [ -n "$b" ] && [ -n "$gd" ] && git --git-dir="$gd" branch -d "$b" >/dev/null 2>&1
+      printf '{"ok":true,"result":{}}\n'
+    elif [ -n "$env" ]; then
+      printf '{"ok":true,"result":{}}\n'
+    else
+      printf '{"ok":false,"error":{"code":"worktree_remove_failed"}}\n'; exit 1
+    fi;;
   *) printf '{"ok":true,"result":{}}\n';;
 esac
 """
@@ -161,6 +202,8 @@ class ScriptRepo:
         self.bin = os.path.join(self.dir, "stubbin")
         self.orca_log = os.path.join(self.base, "orca_calls.log")
         self.orca_ps = os.path.join(self.base, "orca_ps.json")
+        self.orca_dir = os.path.join(self.base, "orca_stub")
+        os.makedirs(self.orca_dir)
         self.hidden = []
         self.home = None
 
@@ -243,6 +286,22 @@ class ScriptRepo:
     def set_panes(self, worktrees):
         with open(self.orca_ps, "w") as fh:
             json.dump(ps_json(worktrees), fh)
+
+    def set_orca_answer(self, name, data, env=None):
+        """What the stub prints for one verb: list.json (worktree list),
+        envs.json (environment list), terminals.json (terminal list), ps.json
+        (worktree ps, with env only). env: the paired machine it answers for."""
+        folder = self.orca_dir if env is None else os.path.join(
+            self.orca_dir, "env", env)
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, name), "w") as fh:
+            json.dump(data, fh)
+
+    def set_orca_env_state(self, env, state):
+        """state: "down" (unreachable) or "hang" (never answers)."""
+        folder = os.path.join(self.orca_dir, "env", env)
+        os.makedirs(folder, exist_ok=True)
+        open(os.path.join(folder, state), "w").close()
 
     def set_conf(self, key, value, path=None):
         """Write one key straight into the project's agent.conf."""
@@ -443,6 +502,11 @@ class ScriptRepo:
         env["PATH"] = self._path()
         env["ORCA_STUB_LOG"] = self.orca_log
         env["ORCA_STUB_PS"] = self.orca_ps
+        env["ORCA_STUB_DIR"] = self.orca_dir
+        # a cleanup sweep run by any test fetches and pushes only to the
+        # fixture's own origin, and never waits long on a stub
+        env.pop("AGENT_CLEANUP_DONE", None)
+        env.setdefault("AGENT_CLEANUP_TIMEOUT", "3")
         env.pop("ORCA_STUB_SLEEP", None)
         env.pop("AGENT_ROLE", None)
         env.pop("CLAUDE_PROJECT_DIR", None)

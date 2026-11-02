@@ -11,8 +11,12 @@
 # AGENT_FAKE_RAM and AGENT_FAKE_CPU, when set, replace the real readings.
 # Meant to be sourced, not executed directly.
 #
-#   ./agent-resources.sh relief   run this file directly with this one
-#                                 argument (S4) to bring load back under cap
+#   ./agent-resources.sh relief          run this file directly with this one
+#                                        argument (S4) to bring load back under cap
+#   ./agent-resources.sh stop-leftovers  run directly: stops only the pipeline's own
+#                                        leftovers (finished test monitors, orphan
+#                                        monitors), prints "stopped ..." lines, no
+#                                        human table, no RESOURCES line, no RAM/CPU read
 #
 # relief stops only what the pipeline owns: test-run monitor loops, and
 # monitors of repos with no live main manager. It never touches a process it
@@ -25,6 +29,12 @@
 # Unset or empty -> everything, as before. Every kill path stops a loop's
 # children too (a TERM to the loop pid alone can leave its `sleep` running
 # for minutes).
+#
+# AGENT_RELIEF_REPO=<folder> (stop-leftovers only; relief never sets it):
+# the orphan-monitor pass leaves alone every monitor whose repo root is not
+# that folder (real paths compared). A monitor whose folder is gone has no
+# repo root: it is left alone too, unless its old working folder lies under
+# that folder. Unset or empty -> every repo, as before.
 
 ram_used() {
   if [ -n "${AGENT_FAKE_RAM:-}" ]; then echo "$AGENT_FAKE_RAM"; return; fi
@@ -130,11 +140,51 @@ relief_kill_test_monitors() {
   echo "stopped $n test monitors"
 }
 
+# Kills the test monitor loops whose test is over: the same processes as
+# relief_kill_test_monitors, but only those whose ".../auto_pipeline_<x>"
+# folder (taken out of the command line) no longer exists. A test still
+# running keeps its loop. A folder that cannot be told (not an absolute path)
+# is kept. Prints the count, also when it is 0.
+relief_kill_finished_test_monitors() {
+  pids=$(pgrep -f 'auto_pipeline_[a-z0-9_]*/plugin/bin/agent-monitor\.sh' 2>/dev/null || true)
+  n=0
+  for pid in $pids; do
+    relief_scope_ok "$pid" || continue
+    test_args=$(ps -o args= -p "$pid" 2>/dev/null || true)
+    test_folder=$(printf '%s\n' "$test_args" \
+      | sed -En 's#(^|.*[[:space:]])([^[:space:]]*auto_pipeline_[a-z0-9_]*)/plugin/bin/agent-monitor\.sh.*#\2#p' \
+      | head -n 1)
+    case "$test_folder" in /*) ;; *) continue ;; esac
+    [ -e "$test_folder" ] && continue
+    relief_stop_loop "$pid" && n=$((n + 1))
+  done
+  echo "stopped $n finished test monitors"
+}
+
+# $1 resolved with cd -P when it exists, else as given (no trailing slash).
+relief_realpath() {
+  rp_in=${1%/}
+  [ -n "$rp_in" ] || rp_in=$1
+  ( cd -P "$rp_in" 2>/dev/null && pwd ) || echo "$rp_in"
+}
+
+# true when $1 is the folder $2 or lies under it.
+relief_path_under() {
+  case "$1" in "$2"|"$2"/*) return 0 ;; esac
+  return 1
+}
+
 # Every other "agent-monitor.sh start" process still alive after
 # relief_kill_test_monitors: find the repo it watches, and stop it only when
 # that repo's own main-manager lock is missing or its owner is dead.
 relief_kill_orphan_monitors() {
   pids=$(pgrep -f 'agent-monitor\.sh start' 2>/dev/null || true)
+  only_repo="${AGENT_RELIEF_REPO:-}"
+  only_repo_real=""
+  if [ -n "$only_repo" ]; then
+    only_repo=${only_repo%/}
+    only_repo_real=$(relief_realpath "$only_repo")
+  fi
   for pid in $pids; do
     # skip anything the test-monitor pass above already owns/would have killed
     case "$(ps -o args= -p "$pid" 2>/dev/null)" in
@@ -150,6 +200,10 @@ relief_kill_orphan_monitors() {
       # folder is gone (deleted E2E temp repo, deleted scratchpad clone):
       # "agent-monitor.sh stop" cannot run from a folder that no longer
       # exists, so kill the loop and any child it left running (its sleep).
+      # With AGENT_RELIEF_REPO set, only when that folder held it.
+      if [ -n "$only_repo" ]; then
+        relief_path_under "$cwd" "$only_repo" || relief_path_under "$cwd" "$only_repo_real" || continue
+      fi
       relief_stop_loop "$pid"
       echo "stopped monitor of $cwd (folder gone)"
       continue
@@ -160,6 +214,10 @@ relief_kill_orphan_monitors() {
     repo_root=$(git -C "$cwd" worktree list --porcelain 2>/dev/null \
                 | awk '/^worktree /{print $2; exit}')
     [ -n "$repo_root" ] || repo_root=$(dirname "$gitdir")
+
+    if [ -n "$only_repo" ]; then
+      [ "$(relief_realpath "$repo_root")" = "$only_repo_real" ] || continue
+    fi
 
     lock="$gitdir/agent_main.lock"
     lock_pid=""
@@ -252,11 +310,19 @@ do_relief() {
   resources_line "${max_usage_percent:-80}"
 }
 
+# The pipeline's own leftovers only: no human table, no RESOURCES line, no
+# RAM/CPU reading.
+do_stop_leftovers() {
+  relief_kill_finished_test_monitors
+  relief_kill_orphan_monitors
+}
+
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   case "${1:-}" in
     relief) do_relief; exit 0 ;;
+    stop-leftovers) do_stop_leftovers; exit 0 ;;
     *)
-      echo "usage: agent-resources.sh relief" >&2
+      echo "usage: agent-resources.sh relief|stop-leftovers" >&2
       exit 2
       ;;
   esac

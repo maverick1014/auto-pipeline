@@ -105,6 +105,12 @@ W8. Merge and cleanup
 - Never skip cleanup
 - Clean up only after the merge is verified
 - Deputy runs `./agent-file.sh worktree rm <path>` and `./agent-file.sh todo done <name>` with the facts from the main manager and `--merge <commit>`
+- Sweep: `bin/agent-cleanup.sh --apply` at session start and when the last open task closes (todo empty, no live worktree). The scripts run it, no loop
+- Main manager only. Task managers, Helpers and workers never run it
+- Own repo only: this machine and every paired Orca machine
+- Removes only safe items: merged into origin/main, no live agent, no uncommitted or unpushed work, no working/final/human-direct line
+- Everything else is never deleted: one table to the human (what, where, why kept, suggestion)
+- A paired machine unreachable → one line, skipped. Never hangs the start
 
 W9. Task routing (main manager, before every dispatch)
 - Read `agent_worktree.txt` first
@@ -241,6 +247,7 @@ S4. Usage cap
 - Over → no new job to any agent until it drops back
 - Over → run `bin/agent-resources.sh relief` first, then wait
 - relief stops only what the pipeline owns: monitor loops left by tests, monitors of repos with no live main manager
+- The sweep (W8) runs `agent-resources.sh stop-leftovers`: this repo's orphan monitor and finished test loops only, no table
 - Finished or idle worktrees → merge deputy cleans them (W8). A task manager over cap parks: commit, write state, set idle; the main manager closes its pane; resume brings it back
 - The human's apps, other repos' sessions, Gradle or node runners: never killed by an agent. One table to the human: process · MB · CPU · what · suggestion
 - Config `max_usage_percent`=80
