@@ -45,6 +45,7 @@ SHELL_SCRIPTS = [
     "agent-city.sh",
     "agent-city-hook.sh",
     "agent-name.sh",
+    "agent-cleanup.sh",
 ]
 # Sourced only, never run. agent-runtime.sh is in the list above instead,
 # because it is both: sourced by its callers and run by a skill.
@@ -56,7 +57,8 @@ BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py", "agent.conf.default
                                             "agent_city.py", "agent-city.html",
                                             "agent-city-plans.json",
                                             "agent_city_relay.py", "agent-city-relay.js",
-                                            "agent_estimate.py"]
+                                            "agent_estimate.py",
+                                            "agent_cleanup.py"]
 
 AGENT_FILES = ["fast-lane-deputy.md", "merge-deputy.md", "worker.md"]
 SKILL_DIRS = ["dispatch", "merge", "init", "cloud-pack", "city", "close-case"]
