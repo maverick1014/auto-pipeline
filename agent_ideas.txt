@@ -90,3 +90,10 @@ Sweep: repo not registered in Orca -> derive projectId from the origin URL so pc
 Sweep in plain mode never removes worktrees: an lsof cwd check could tell 'no agent here' without Orca (idle-cleanup TM, 2026-11-02) | 2026-11-02 15:45 | by main
 Suite time: main-role start/resume/todo-done tests now run the sweep; an AGENT_CLEANUP=off env for unrelated tests would cut minutes (idle-cleanup TM, 2026-11-02) | 2026-11-02 15:45 | by main
 Sweep keeps a fast-forward-merged worktree as 'no own commits' (tip on main first-parent line); use the branch reflog to tell ff-merged from fresh (main, 2026-11-02) | 2026-11-02 15:45 | by main
+todo done could take the recorded wait (waited + the open wait) when --wait is not given | 2026-11-02 18:56 | by main
+todo add on an existing name (close-case close now) drops waited/waiting/on and resets opened; carry them over | 2026-11-02 18:56 | by main
+worker on/off could be written by SubagentStart/SubagentStop hooks instead of by hand | 2026-11-02 18:56 | by main
+done-pane close covers this machine only; paired machines (do_remote_panes) could get the same rule | 2026-11-02 18:56 | by main
+a remote task manager's own board needs TODO LINE: in its brief; dispatch could write it into the brief file by itself | 2026-11-02 18:56 | by main
+a Helper without a worktree shares the main repo's agent_state.txt, so its park add lands in the main manager's file | 2026-11-02 18:56 | by main
+board: a parked row shows the hostname (Bryants-Mac-Mini-2), not the machine name pc2 | 2026-11-02 18:56 | by main
