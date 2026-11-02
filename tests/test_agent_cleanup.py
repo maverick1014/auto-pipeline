@@ -1290,3 +1290,44 @@ class TestTheRules(unittest.TestCase):
     def test_the_readme_tree_names_the_script(self):
         with open(os.path.join(ROOT, "README.md")) as fh:
             self.assertIn("bin/agent-cleanup.sh", fh.read())
+
+
+# ---------------------------------------------------------------- the quiz
+
+
+class TestTheQuiz(ScriptCase):
+    """W8 changed, and the quiz covers W8: question 32, answer C."""
+
+    script = "agent-start.sh"
+    ANSWERS = ("1A 2D 3C 4B 5D 6D 7A 8C 9A 10D 11A 12C 13D 14C 15B 16C 17C "
+               "18D 19B 20A 21D 22C 23B 24D 25A 26D 27A 28B 29B 30B 31B 32C")
+
+    def quiz(self):
+        return self.assertOk(self.repo.run("agent-start.sh", "--quiz"))
+
+    def test_question_32_is_the_sweep(self):
+        out = self.quiz()
+        q = out[out.index("Q32. "):]
+        self.assertIn("last open task", q)
+        options = [l.strip() for l in q.splitlines()[1:5]]
+        self.assertEqual([o[:2] for o in options], ["A.", "B.", "C.", "D."])
+        self.assertIn("agent-cleanup.sh", options[2])
+        self.assertIn("table", options[2])
+
+    def test_the_quiz_says_32(self):
+        out = self.quiz()
+        self.assertIn("=== QUIZ — answer all 32 before any work ===", out)
+        self.assertIn('--answer "1A 2B 3C ... 32D"', out)
+
+    def test_c_passes(self):
+        out = self.assertOk(self.repo.run("agent-start.sh", "--answer",
+                                          self.ANSWERS))
+        self.assertIn("QUIZ RESULT: 32/32 PASS", out)
+
+    def test_another_letter_fails_and_names_w8(self):
+        for wrong in ("32A", "32B", "32D"):
+            with self.subTest(wrong=wrong):
+                result = self.repo.run("agent-start.sh", "--answer",
+                                       self.ANSWERS.replace("32C", wrong))
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("Q32(W8)", result.stdout)
