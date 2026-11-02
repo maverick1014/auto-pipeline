@@ -572,7 +572,8 @@ class TestCityHooks(PackCase):
 
 class TestCloseCaseAndNameHooks(PackCase):
     WANTED = (("SessionStart", "agent-name.sh"),
-              ("UserPromptSubmit", "agent-close-case.sh"))
+              ("UserPromptSubmit", "agent-close-case.sh"),
+              ("UserPromptSubmit", "agent-show-todo.sh"))
 
     def count(self, event, script):
         marker = ".claude/auto-pipeline/bin/" + script
@@ -588,6 +589,10 @@ class TestCloseCaseAndNameHooks(PackCase):
                 self.assertTrue(os.path.exists(self.t(".claude", "auto-pipeline", "bin", script)))
         self.assertIn('bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-close-case.sh',
                       json.dumps(self.settings()).replace("\\\"", '"'))
+        show = [h for e in self.settings()["hooks"]["UserPromptSubmit"] for h in e["hooks"]
+                if "agent-show-todo.sh" in h.get("command", "")]
+        self.assertEqual(show, [{"type": "command", "timeout": 10, "command":
+                                 'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-show-todo.sh'}])
 
     def test_a_second_run_and_an_update_add_no_duplicate(self):
         self.assertOk(self.pack())
@@ -603,7 +608,8 @@ class TestCloseCaseAndNameHooks(PackCase):
         for event, _ in self.WANTED:
             data["hooks"][event] = [e for e in data["hooks"].get(event, [])
                                     if not any("agent-name.sh" in h.get("command", "") or
-                                               "agent-close-case.sh" in h.get("command", "")
+                                               "agent-close-case.sh" in h.get("command", "") or
+                                               "agent-show-todo.sh" in h.get("command", "")
                                                for h in e.get("hooks", []))]
         write_text(self.t(".claude", "settings.json"), json.dumps(data, indent=2) + "\n")
         self.assertEqual(self.count("UserPromptSubmit", "agent-close-case.sh"), 0)

@@ -72,6 +72,8 @@ COPY_BIN = [
     "agent-city.html",
     "agent-city-plans.json",
     "agent-close-case.sh",
+    "agent-show-todo.sh",
+    "agent_board.py",
     "agent-name.sh",
     "agent_estimate.py",
     "agent-cleanup.sh",

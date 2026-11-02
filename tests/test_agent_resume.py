@@ -48,11 +48,13 @@ Relaunch, one orca call per worktree, with exactly these arguments:
 A live pane = the worktree is in `orca worktree ps --json` with a non-empty agents list.
 An empty agents list means the pane is gone, even when a plain shell is still open.
 
-The agent cap (S6). Before each relaunch, count every live agent pane in
-`orca worktree ps --json`, across every worktree and every repo, plus the
-relaunches this run has already made. The cap is per device, so panes in other
-repos count. A pane in a worktree the JSON marks "isMainWorktree": true is a
-main manager and does NOT count -- S6 counts spawned agents only. At or over max_agents from agent.conf:
+The agent cap (S6). Before each relaunch, count every agent in state working
+or permission in `orca worktree ps --json`, across every worktree and every
+repo, plus the relaunches this run has already made. The cap is per device, so
+agents in other repos count. An agent in state done or idle does NOT count
+(owner 2026-11-02: a finished idle pane is no load). A pane in a worktree the
+JSON marks "isMainWorktree": true is a main manager and does NOT count either.
+At or over max_agents from agent.conf:
   - the row reads "no, cap reached"
   - and one plain line prints after the table, one per skipped worktree:
         cap reached (<n>/<max>), not relaunching <path>
@@ -418,6 +420,30 @@ class TestAgentCap(ResumeCase):
         out = self.assertOk(self.resume())
         self.assertEqual(len(self.repo.create_calls()), 2, out)
         self.assertEqual(self.relaunched_for(out, paths[2]), "no, cap reached")
+
+    def test_done_and_idle_agents_do_not_count(self):
+        paths = self.setup_cap(max_agents=2, dead=1)
+        self.repo.set_panes([{"path": paths[0], "agents": []},
+                             {"path": "/elsewhere/a", "agents": ["done"]},
+                             {"path": "/elsewhere/b", "agents": ["done", "idle"]},
+                             {"path": "/elsewhere/c", "agents": ["idle"]}])
+        out = self.assertOk(self.resume())
+        self.assertEqual(self.relaunched_for(out, paths[0]), "yes")
+
+    def test_working_and_permission_agents_count(self):
+        paths = self.setup_cap(max_agents=2, dead=1)
+        self.repo.set_panes([{"path": paths[0], "agents": []},
+                             {"path": "/elsewhere/a", "agents": ["working"]},
+                             {"path": "/elsewhere/b", "agents": ["permission", "done"]}])
+        out = self.assertOk(self.resume())
+        self.assertEqual(self.relaunched_for(out, paths[0]), "no, cap reached")
+        self.assertIn("cap reached (2/2), not relaunching %s" % paths[0], out)
+
+    def test_a_done_pane_is_still_a_live_pane(self):
+        paths = self.setup_cap(max_agents=3, dead=1)
+        self.repo.set_panes([{"path": paths[0], "agents": ["done"]}])
+        out = self.assertOk(self.resume())
+        self.assertEqual(self.relaunched_for(out, paths[0]), "no, pane is live")
 
     def test_a_full_cap_relaunches_nothing(self):
         paths = self.setup_cap(max_agents=1, dead=2, live_elsewhere=1)

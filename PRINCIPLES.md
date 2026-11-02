@@ -109,6 +109,7 @@ W8. Merge and cleanup
 - Main manager only. Task managers, Helpers and workers never run it
 - Own repo only: this machine and every paired Orca machine
 - Removes only safe items: merged into origin/main, no live agent, no uncommitted or unpushed work, no working/final/human-direct line
+- A done pane (finished, idle) in a kept worktree: closed when its task is done or dropped, or its line is gone and its branch merged; else one kept row
 - Everything else is never deleted: one table to the human (what, where, why kept, suggestion)
 - A paired machine unreachable → one line, skipped. Never hangs the start
 
@@ -175,13 +176,26 @@ W13. Close case
 - Yes: `agent-start.sh --clean` (archives agent_state.txt, writes a short fresh one, says what still runs), then `/clear`. Same main manager, same lock, same name
 - Rare, the human wants this session to stop being main manager: he types `! agent-start.sh --release`; the agent never runs it. The next new session is main manager, never Helper
 
-W14. Watch
+W14. Show todo
+- Trigger: the human types show todo, any case, anywhere, or the whole prompt is just todo. The UserPromptSubmit hook `bin/agent-show-todo.sh` injects this rule for the role
+- A quoted mention is not an order; todo inside a sentence never fires
+- One script, no agent: `bin/agent-file.sh board`. Show its table as printed, every row, then the decide section (H3)
+- Main manager: the whole repo. Task manager or Helper: `board --self`, its own task and its workers only. Subagents never
+- Rows: every open task (running, held, queued), every wait on the owner (mock check, owner question, owner review), `OWNER TODO:` and `PARKED:` lines of agent_state.txt
+- Each row: task, what in a few words (H3), status, where (machine, worktree), est, work so far, wait so far, done by (clock time)
+- Sort: waiting on the owner, running, held or queued, OWNER TODO, parked questions last; oldest first in each group
+- Times come from the files, never guessed: wait = the sum of the `todo wait` intervals; work = clock since opened minus wait; done by = now + est - work
+- Record as it happens: `agent-file.sh todo wait <name> on <kind>|off` at every mock check, owner question, owner review, hold, queue; `todo where` at dispatch
+- `park add` for a parked question (H1), `worker on <n>` / `worker off <n>` for each worker; `OWNER TODO:` lines are written by hand
+- Headers and status words in the `language` of agent.conf
+
+W15. Watch
 - Monitor sweep on three signals: process, terminal output, git movement
 - Verify every launch within 2 min
 - A stall → nudge once, wait 10 min, then salvage (commit what is there) and redispatch
 - Every brief says how to report, how to ask, how to report done (pass/fail) and the heartbeat
 
-W15. Known traps
+W16. Known traps
 - A push to the integration branch denied by the auto-mode classifier → never retry or work around. Hand the owner one `! git push ...` line, or ask for an allow rule (init prints `Bash(git push origin main)` as optional)
 - A cross-session message held because permission modes differ → say so, ask the owner to click Deliver, never type it into the pane
 - Remote Orca pane: a long `terminal send` (~4 KB) arrives cut → write the brief into the worktree's `agent_state.txt` in chunks, send a one-line pointer
@@ -261,7 +275,9 @@ S5. Heavy tests
 S6. Agent cap
 - Per device
 - Config `max_agents`: per machine, the value is in agent.conf
-- Counts spawned agents only. The main manager is not counted
+- Counts spawned agents in state working or permission only. A done or idle pane and the main manager are not counted
+- A finished idle pane (state done): its own repo's main manager closes it once its task is merged, dropped or closed
+- Never one still waiting on a merge, a question or a decision (W8 closes it after the merge). Never another repo's panes
 - Reviewers count toward the cap too
 
 S7. Session recovery
