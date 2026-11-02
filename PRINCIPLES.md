@@ -209,6 +209,9 @@ H3. Report
 - Every report, job summary, recap, proposal or audit to the human ends with a decide section
 - Heading in the `language` of agent.conf: zh `## 要你决定`, en `## To decide`, other languages a short translation of "to decide"
 - Open questions numbered, each with a recommendation (zh `建议`, en `Recommendation`)
+- Each question stands alone: a reader who sees only that line knows what it is about and can decide
+- A named thing (PR, task, branch, ticket, file) gets what it is in a few words: `#305 (stock lock settings page)`, never a bare number, tag or code name
+- Per question: what, why it needs the human now, one line of evidence, then the recommendation. One or two lines, no long explanation
 - Nothing open: keep the heading, one line: none (zh `无`)
 - Never drop the decide section as a closer. Never cut it for brevity
 - Few numbers. One table at most, five rows or fewer, unless the human asks for the full list
@@ -311,6 +314,7 @@ E2. Owner overrides
 - Tables and ledgers are not lists: the 5-item cap never cuts a record whose value is completeness
 - "verified", "works", "fixed" only with the real evidence named. A green suite is not a real device check
 - The decide section (H3) is never deleted by "one next action" or "no closers"
+- Every decide question stands alone (H3): what each named thing is, why now, the evidence
 - Language stays H2 (`language` in agent.conf)
 
 E3. Concise
