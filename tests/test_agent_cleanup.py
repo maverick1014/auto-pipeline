@@ -1304,7 +1304,7 @@ class TestTheQuiz(ScriptCase):
 
     script = "agent-start.sh"
     ANSWERS = ("1A 2D 3C 4B 5D 6D 7A 8C 9A 10D 11A 12C 13D 14C 15B 16C 17C "
-               "18D 19B 20A 21D 22C 23B 24D 25A 26D 27A 28B 29B 30B 31B 32C")
+               "18D 19B 20A 21D 22C 23B 24D 25A 26D 27A 28B 29B 30B 31B 32C 33B")
 
     def quiz(self):
         return self.assertOk(self.repo.run("agent-start.sh", "--quiz"))
@@ -1318,15 +1318,15 @@ class TestTheQuiz(ScriptCase):
         self.assertIn("agent-cleanup.sh", options[2])
         self.assertIn("table", options[2])
 
-    def test_the_quiz_says_32(self):
+    def test_the_quiz_says_33(self):
         out = self.quiz()
-        self.assertIn("=== QUIZ — answer all 32 before any work ===", out)
-        self.assertIn('--answer "1A 2B 3C ... 32D"', out)
+        self.assertIn("=== QUIZ — answer all 33 before any work ===", out)
+        self.assertIn('--answer "1A 2B 3C ... 33D"', out)
 
     def test_c_passes(self):
         out = self.assertOk(self.repo.run("agent-start.sh", "--answer",
                                           self.ANSWERS))
-        self.assertIn("QUIZ RESULT: 32/32 PASS", out)
+        self.assertIn("QUIZ RESULT: 33/33 PASS", out)
 
     def test_another_letter_fails_and_names_w8(self):
         for wrong in ("32A", "32B", "32D"):
