@@ -1237,3 +1237,52 @@ class TestTodoDoneWiring(CleanupCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------- the rules
+
+
+def section(code, nxt):
+    """PRINCIPLES.md from the line "<code>. ..." up to the line "<nxt>. ..."."""
+    with open(os.path.join(ROOT, "PRINCIPLES.md")) as fh:
+        text = fh.read()
+    start = text.index("\n%s. " % code)
+    end = text.index("\n%s. " % nxt, start)
+    return text[start:end]
+
+
+class TestTheRules(unittest.TestCase):
+    """One terse English line per rule, where they fit: W8 and S4."""
+
+    def test_w8_names_the_sweep_and_when_it_runs(self):
+        w8 = section("W8", "W9")
+        for words in ("agent-cleanup.sh --apply", "session start",
+                      "last open task closes", "no loop"):
+            self.assertIn(words, w8)
+
+    def test_w8_says_who_never_runs_it(self):
+        w8 = section("W8", "W9")
+        self.assertIn("Main manager only", w8)
+        self.assertIn("never run it", w8)
+
+    def test_w8_says_what_is_safe_and_what_is_never_deleted(self):
+        w8 = section("W8", "W9")
+        for words in ("origin/main", "live agent", "uncommitted",
+                      "unpushed", "never deleted", "one table",
+                      "why kept"):
+            self.assertIn(words, w8)
+
+    def test_w8_says_own_repo_and_every_paired_machine(self):
+        w8 = section("W8", "W9")
+        self.assertIn("own repo only", w8.lower())
+        self.assertIn("paired", w8)
+        self.assertIn("unreachable", w8)
+
+    def test_s4_names_stop_leftovers(self):
+        self.assertIn("stop-leftovers", section("S4", "S5"))
+
+    def test_one_line_per_rule(self):
+        for code, nxt in (("W8", "W9"), ("S4", "S5")):
+            for line in section(code, nxt).splitlines():
+                if line.startswith("- "):
+                    self.assertLessEqual(len(line), 200, line)
