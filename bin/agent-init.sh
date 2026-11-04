@@ -4,6 +4,10 @@
 #
 #   bin/agent-init.sh              set up the current project
 #   bin/agent-init.sh <dir>        set up that project
+#   bin/agent-init.sh --mode bypass|auto [<dir>]
+#                                  also set permission_mode for every agent
+#                                  (bypass = bypassPermissions, auto = auto);
+#                                  any other value exits 2, nothing created
 #   bin/agent-init.sh -h           print this block, create nothing, exit 0
 #
 # Creates, only when missing, in the project root: agent.conf (a copy of
@@ -20,6 +24,17 @@
 # CLAUDE_PLUGIN_OPTION_MAX_AGENTS that Claude Code collected at enable time
 # are written over it, key by key, when set and not empty.
 #
+# Permission mode: only when agent.conf is created in this run. --mode writes
+# it through bin/agent-settings.sh permission_mode. Without --mode, a fresh
+# agent.conf and a terminal on stdin: one question, "Permission mode for every
+# agent: bypass (recommended) or auto?"; Enter or anything else keeps the
+# template value. agent.conf already there: never changed; with --mode, one
+# line says it was kept and how to change it.
+# When the project's permission_mode is bypassPermissions and
+# ~/.claude/settings.json lacks "skipDangerousModePermissionPrompt": true, one
+# line says new panes stop on the bypass warning screen. The file is only
+# read, never written.
+#
 # Ends by printing two blocks a human pastes himself, since a plugin cannot
 # reach either place:
 #   1. the Bash permission block, for the project's .claude/settings.json.
@@ -32,8 +47,28 @@ set -eu
 . "$(dirname "$0")/agent-roots.sh"
 
 case "${1:-}" in
-  -h|--help) sed -n '2,30p' "$0"; exit 0;;
+  -h|--help) sed -n '2,45p' "$0"; exit 0;;
 esac
+
+MODE=""
+MODE_GIVEN=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --mode)
+      if [ $# -lt 2 ]; then
+        echo "agent-init.sh: --mode needs a value: bypass or auto" >&2
+        exit 2
+      fi
+      MODE_GIVEN=1
+      case "$2" in
+        bypass) MODE="bypassPermissions";;
+        auto) MODE="auto";;
+        *) echo "agent-init.sh: --mode must be bypass or auto, got: $2" >&2; exit 2;;
+      esac
+      shift 2;;
+    *) break;;
+  esac
+done
 
 TARGET="${1:-}"
 if [ -n "$TARGET" ] && [ ! -d "$TARGET" ]; then
@@ -63,7 +98,48 @@ file_conf() {
     cp "$PLUGIN_ROOT/bin/agent.conf.default" "$path"
     seed_conf_from_env "$path"
     echo "created: agent.conf"
+    CONF_FRESH=1
   fi
+}
+
+conf_permission_mode() {
+  PYTHONPATH="$PLUGIN_ROOT/bin${PYTHONPATH:+:$PYTHONPATH}" python3 -c '
+import sys, agent_conf
+print(agent_conf.load(sys.argv[1]).get("permission_mode", ""))' "$ROOT/agent.conf"
+}
+
+set_permission_mode() {
+  CLAUDE_PROJECT_DIR="$ROOT" "$PLUGIN_ROOT/bin/agent-settings.sh" permission_mode "$1"
+}
+
+ask_permission_mode() {
+  [ -t 0 ] || return 0
+  printf 'Permission mode for every agent: bypass (recommended) or auto? [bypass/auto, Enter = template default]: ' >&2
+  ans=""
+  read -r ans || ans=""
+  ans=$(printf '%s' "$ans" | tr '[:upper:]' '[:lower:]')
+  case "$ans" in
+    bypass|b) set_permission_mode bypassPermissions;;
+    auto|a) set_permission_mode auto;;
+  esac
+}
+
+skip_warning_line() {
+  [ "$(conf_permission_mode)" = "bypassPermissions" ] || return 0
+  if python3 - "$HOME/.claude/settings.json" <<'PY'
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        d = json.load(f)
+    ok = isinstance(d, dict) and d.get("skipDangerousModePermissionPrompt") is True
+except Exception:
+    ok = False
+sys.exit(0 if ok else 1)
+PY
+  then
+    return 0
+  fi
+  echo 'Note: new panes stop on the bypass warning screen until you add this to ~/.claude/settings.json yourself (this script never writes it): "skipDangerousModePermissionPrompt": true'
 }
 
 # Write the enable-time answers Claude Code collected over a freshly copied
@@ -151,6 +227,7 @@ file_gitignore() {
   echo "$status: .gitignore"
 }
 
+CONF_FRESH=0
 file_conf
 file_empty agent_todo.txt
 file_empty agent_completed.txt
@@ -159,6 +236,17 @@ file_empty agent_worktree.txt
 dir_secrets
 file_agents_md
 file_gitignore
+
+if [ "$CONF_FRESH" = 1 ]; then
+  if [ "$MODE_GIVEN" = 1 ]; then
+    set_permission_mode "$MODE"
+  else
+    ask_permission_mode
+  fi
+elif [ "$MODE_GIVEN" = 1 ]; then
+  echo "kept: agent.conf permission_mode=$(conf_permission_mode), change it with: $PLUGIN_ROOT/bin/agent-settings.sh permission_mode <mode>"
+fi
+skip_warning_line
 
 cat <<'BLOCK'
 {
