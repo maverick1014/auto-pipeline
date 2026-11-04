@@ -918,8 +918,8 @@ calc_fixed() {
 calc_fixed
 
 # The state block must keep at least its pointer line. Cuts, in order, while
-# fixed + pointer is over the CAP: 1 auto resume body, 2 worktree rows,
-# (3 monitor rows, below, as before), 4 the AUTO UPDATE line's long form.
+# fixed + pointer is over the CAP: 1 auto resume body, 2 monitor rows,
+# 3 the AUTO UPDATE line's long form, 4 worktree rows (last, W9).
 ptr_bytes=0
 if [ -f "$STATE_DIR/agent_state.txt" ]; then
   ptr_n=$(count_lines "$STATE_DIR/agent_state.txt")
@@ -934,23 +934,7 @@ if [ -n "$RESUME_TEXT" ] && [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
   calc_fixed
 fi
 
-# 2. worktree rows, dropped from the end; the header keeps the real count.
-if [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
-  wt_line=$(printf '%s' "$NORMAL_TEXT" | awk '/^agent_worktree.txt: /{print NR; exit}')
-  wt_total=$(printf '%s' "$NORMAL_TEXT" | awk 'END{print NR}')
-  if [ -n "$wt_line" ] && [ "$wt_total" -gt "$wt_line" ]; then
-    wt_rows=$(( wt_total - wt_line )); wt_orig=$NORMAL_TEXT; wt_keep=$wt_rows
-    while [ "$wt_keep" -gt 0 ]; do
-      wt_keep=$(( wt_keep - 1 ))
-      NORMAL_TEXT=$(printf '%s' "$wt_orig" | head -n $(( wt_line + wt_keep )); \
-        printf '  (%s more: agent_worktree.txt)\n' $(( wt_rows - wt_keep )); printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
-      calc_fixed
-      [ $(( fixed + ptr_bytes )) -le "$CAP" ] && break
-    done
-  fi
-fi
-
-# 3. monitor rows: cut from the end (the header keeps the real count) until
+# 2. monitor rows: cut from the end (the header keeps the real count) until
 # the state header and its "truncated" marker fit.
 if [ -n "$MON_TEXT" ] && [ $(( fixed + 70 )) -gt "$CAP" ]; then
   mon_total=$(printf '%s' "$MON_TEXT" | awk 'END{print NR}')
@@ -967,12 +951,28 @@ if [ -n "$MON_TEXT" ] && [ $(( fixed + 70 )) -gt "$CAP" ]; then
   done
 fi
 
-# 4. AUTO UPDATE: short form without the plugin path.
+# 3. AUTO UPDATE: short form without the plugin path.
 if [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
   export AU_SHORT="AUTO UPDATE: not set. Ask once: on (recommended) or off, then PLUGIN/bin/agent-settings.sh --user auto_update on|off"
   NORMAL_TEXT=$(printf '%s' "$NORMAL_TEXT" | awk '/^AUTO UPDATE: not set/{print ENVIRON["AU_SHORT"]; next} {print}'; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
   calc_fixed
 fi
+# 4. worktree rows, last, dropped from the end; the header keeps the real count.
+if [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
+  wt_line=$(printf '%s' "$NORMAL_TEXT" | awk '/^agent_worktree.txt: /{print NR; exit}')
+  wt_total=$(printf '%s' "$NORMAL_TEXT" | awk 'END{print NR}')
+  if [ -n "$wt_line" ] && [ "$wt_total" -gt "$wt_line" ]; then
+    wt_rows=$(( wt_total - wt_line )); wt_orig=$NORMAL_TEXT; wt_keep=$wt_rows
+    while [ "$wt_keep" -gt 0 ]; do
+      wt_keep=$(( wt_keep - 1 ))
+      NORMAL_TEXT=$(printf '%s' "$wt_orig" | head -n $(( wt_line + wt_keep )); \
+        printf '  (%s more: agent_worktree.txt)\n' $(( wt_rows - wt_keep )); printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
+      calc_fixed
+      [ $(( fixed + ptr_bytes )) -le "$CAP" ] && break
+    done
+  fi
+fi
+
 budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
 
 printf '%s' "$ROLE_TEXT"
