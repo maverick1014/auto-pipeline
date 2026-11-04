@@ -769,6 +769,16 @@ print_state_block() {
   header_bytes=$(line_bytes "$header")
   marker_bytes=$(line_bytes "$marker")
 
+  # Budget too small for the header plus the marker: one short pointer line
+  # if it fits, else the bare header if it fits, else nothing. The CAP holds.
+  if [ "$budget" -lt $(( header_bytes + marker_bytes )) ]; then
+    local ptr="$header, read it now (S8)"
+    if [ "$(line_bytes "$ptr")" -le "$budget" ]; then printf '%s\n' "$ptr"
+    elif [ "$header_bytes" -le "$budget" ]; then printf '%s\n' "$header"
+    fi
+    return 0
+  fi
+
   printf '%s\n' "$header"
 
   remaining=$(( budget - header_bytes - marker_bytes ))
