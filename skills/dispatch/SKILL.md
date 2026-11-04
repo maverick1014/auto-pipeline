@@ -37,7 +37,7 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
    ${CLAUDE_PLUGIN_ROOT}/bin/agent-watch.sh --terminal <handle> --worktree "<worktree path>" --name <name>
    ```
    Task manager on another machine: add `--environment <env> --shell <shell handle>` (a plain shell pane on that machine; the script sends only a short read command into it, never anything into the task manager's pane).
-   It exits on WATCH SIGNAL (a DONE PASS, DONE FAIL, CLOSE CASE or QUESTION: line in agent_state.txt, or a ⏺ line on screen), WATCH STALL, WATCH LOST or WATCH MAX. Handle it, then start it again, until the task is merged.
+   It exits on WATCH SIGNAL (a DONE PASS, DONE FAIL, CLOSE CASE, QUESTION: or MOCK READY line in agent_state.txt), WATCH STALL, WATCH LOST or WATCH MAX. Handle it, then start it again, until the task is merged.
    Then `ListAgents`, find `<name> Task Manager`, `SendMessage` it the brief below. Keep the terminal handle for `/merge`.
 
    **plain or cloud** — no terminal can be opened here, so no worktree either. The main manager does the task itself, from the session it is already in, with `Agent` subagents (`subagent_type: worker`, description `<name> Worker <n>: <slice>`), up to `max_agents` at a time. Use the task manager brief below as its own task list and run the steps in order.
@@ -69,7 +69,7 @@ TODO LINE: <the todo line, as agent-file.sh show prints it>
 FEATURE: <requirement, 5 to 10 lines. Files to produce. What the user sees. Validation rules.>
 STEPS: 0 save this whole brief into agent_state.txt in your worktree, first action (S8)
  1 register: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" working
- 2 mock first if UI (W2): commit mock/<name>-mock.html, send me the path, STOP until "mock yes"
+ 2 mock first if UI (W2): commit mock/<name>-mock.html, send me the path, STOP until "mock yes"; on another machine also append one line "MOCK READY <name>: <mock path>" to agent_state.txt in your worktree
  3 write the failing tests yourself (W3), commit
  4 workers: Agent subagent_type worker, description "<name> Worker <n>: <slice>", max 2 at once, each gets named files + one test command (W4); every worker brief starts with your own `[<model> <effort>]`. Check RESOURCES before each spawn (S3, S4). Record each worker: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worker on <n> "<slice>" when it starts, ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worker off <n> when it ends
  5 verify every worker result yourself. Full suite once. Defect → back to the worker with evidence. Set status final: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" final
