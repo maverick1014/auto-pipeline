@@ -218,6 +218,22 @@ W17. Decider floor
 - Same check for every agent: task manager, Helper, worker, deputy
 - `agent_conf.py` refuses `main_manager` or `task_manager` below the floor
 
+W18. Show question
+- Trigger: the human types show question (or pending questions, 显示问题 ...), or the whole prompt is just questions or 问题. UserPromptSubmit hook `bin/agent-show-question.sh`
+- A quoted mention is not an order; a question inside a sentence never fires (这段代码有什么问题)
+- One script, no agent: `bin/agent-file.sh questions`. Main manager: the whole repo. Task manager or Helper: `questions --self`, its own task only. Subagents never
+- Sources: `PARKED:` lines, every `todo wait` of kind mock, question or review, and `QUESTION:` lines of agent_state.txt
+- A `QUESTION:` line is answered by an `ANSWER:` line after it, before the next QUESTION: line or "=== " header. A worktree on another machine gives one `not read: <path> on <machine>` line
+- Each question has a stable id; its title, sub line, facts and lettered options come from `park add` fields (H3), the recommended one marked
+- 10 or fewer: a numbered list in chat under the decide heading (H3), nothing dropped; the human answers like `1A 2B — note`
+- More than 10: `questions --page <file>` (a file in your scratchpad), publish it with the Artifact tool, capabilities db and user. Then one chat line: the count, the link, answer all, then tell me
+- `QUESTIONS PAGE:` line of agent_state.txt holds the url: one url per repo and session, publish with that url (redeploy); a first publish records it with `questions --url <url>`
+- No Artifact tool: the chat list of all, nothing dropped
+- Done: the human says 答完了, done or answered (or pastes `1A 2B`) while the page still has an open question. The hook injects the read-answers rule
+- Read all answers at once with ArtifactData (list, the answers collection) and the map file; pasted lines go by number through it. Show one table: question, answer
+- Per answered question: `questions answer <id> "<answer>"`, then carry on. An unpicked question is still open
+- Headers and words in the `language` of agent.conf
+
 ## C. Human
 
 H1. One topic
@@ -248,6 +264,7 @@ H3. Report
 - A named thing (PR, task, branch, ticket, file) gets what it is in a few words: `#305 (stock lock settings page)`, never a bare number, tag or code name
 - Per question: what, why it needs the human now, one line of evidence, then the recommendation. One or two lines, no long explanation
 - Nothing open: keep the heading, one line: none (zh `无`)
+- Every question the main manager puts to the owner in a decide section is recorded with `park add` (--why --evidence --options --rec if known), removed when answered (`park rm` or `questions answer`)
 - Never drop the decide section as a closer. Never cut it for brevity
 - Few numbers. One table at most, five rows or fewer, unless the human asks for the full list
 - Nothing else, except the decide section

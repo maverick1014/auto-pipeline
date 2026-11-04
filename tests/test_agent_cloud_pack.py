@@ -573,7 +573,8 @@ class TestCityHooks(PackCase):
 class TestCloseCaseAndNameHooks(PackCase):
     WANTED = (("SessionStart", "agent-name.sh"),
               ("UserPromptSubmit", "agent-close-case.sh"),
-              ("UserPromptSubmit", "agent-show-todo.sh"))
+              ("UserPromptSubmit", "agent-show-todo.sh"),
+              ("UserPromptSubmit", "agent-show-question.sh"))
 
     def count(self, event, script):
         marker = ".claude/auto-pipeline/bin/" + script
@@ -593,6 +594,17 @@ class TestCloseCaseAndNameHooks(PackCase):
                 if "agent-show-todo.sh" in h.get("command", "")]
         self.assertEqual(show, [{"type": "command", "timeout": 10, "command":
                                  'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-show-todo.sh'}])
+        ask = [h for e in self.settings()["hooks"]["UserPromptSubmit"] for h in e["hooks"]
+               if "agent-show-question.sh" in h.get("command", "")]
+        self.assertEqual(ask, [{"type": "command", "timeout": 10, "command":
+                                'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-show-question.sh'}])
+        commands = [h.get("command", "") for e in self.settings()["hooks"]["UserPromptSubmit"]
+                    for h in e["hooks"]]
+        at = [i for i, c in enumerate(commands) if "agent-show-todo.sh" in c]
+        self.assertTrue(at and "agent-show-question.sh" in commands[at[0] + 1], commands)
+        for name in ("agent_questions.py", "agent-questions-page.html"):
+            with self.subTest(name=name):
+                self.assertTrue(os.path.exists(self.t(".claude", "auto-pipeline", "bin", name)))
 
     def test_a_second_run_and_an_update_add_no_duplicate(self):
         self.assertOk(self.pack())
@@ -609,7 +621,8 @@ class TestCloseCaseAndNameHooks(PackCase):
             data["hooks"][event] = [e for e in data["hooks"].get(event, [])
                                     if not any("agent-name.sh" in h.get("command", "") or
                                                "agent-close-case.sh" in h.get("command", "") or
-                                               "agent-show-todo.sh" in h.get("command", "")
+                                               "agent-show-todo.sh" in h.get("command", "") or
+                                               "agent-show-question.sh" in h.get("command", "")
                                                for h in e.get("hooks", []))]
         write_text(self.t(".claude", "settings.json"), json.dumps(data, indent=2) + "\n")
         self.assertEqual(self.count("UserPromptSubmit", "agent-close-case.sh"), 0)

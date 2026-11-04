@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>待决定问题 Mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* One reading column of numbered decision cards, grouped by task, under a sticky answer bar. */
+:root {
+  --bg: #f3f5f7; --paper: #ffffff; --ink: #17202a; --muted: #5d6b78; --line: #d9dfe5;
+  --accent: #0a6b9c; --accent-soft: #e3f2fa; --rec: #13703f; --rec-soft: #e4f4ea;
+  --warn: #8a5a00; --warn-soft: #fff4d6; --pick: #0a6b9c; --pick-fg: #ffffff; --bad: #a3261f;
+  --mock: #5b2bbf; --mock-soft: #efe8fd;
+  --font-body: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161b; --paper: #192129; --ink: #e6ecf1; --muted: #9aa8b5; --line: #2c3742;
+    --accent: #5cc0f0; --accent-soft: #11303f; --rec: #6fd39a; --rec-soft: #12301f;
+    --warn: #f0c46a; --warn-soft: #33290f; --pick: #5cc0f0; --pick-fg: #0b1720; --bad: #ff8a80;
+    --mock: #c3a6ff; --mock-soft: #2b2340; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161b; --paper: #192129; --ink: #e6ecf1; --muted: #9aa8b5; --line: #2c3742;
+  --accent: #5cc0f0; --accent-soft: #11303f; --rec: #6fd39a; --rec-soft: #12301f;
+  --warn: #f0c46a; --warn-soft: #33290f; --pick: #5cc0f0; --pick-fg: #0b1720; --bad: #ff8a80;
+  --mock: #c3a6ff; --mock-soft: #2b2340; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { overflow-x: hidden; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.65; }
+button, textarea { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* MOCK ONLY: the real page has no .mockbar */
+.mockbar { background: var(--mock-soft); color: var(--mock); border-bottom: 1px dashed var(--mock); font-size: 12.5px; padding: 6px 16px; }
+.mockbar-in { max-width: 880px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+.mockbar b { font-family: var(--font-mono); letter-spacing: .06em; }
+.mockbar .grp { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.mockbar button { border: 1px solid var(--mock); background: transparent; color: var(--mock); border-radius: 6px; padding: 0 8px; font-size: 12.5px; cursor: pointer; }
+.mockbar button[aria-pressed="true"] { background: var(--mock); color: var(--paper); }
+
+.bar { position: sticky; top: 0; z-index: 5; background: var(--paper); border-bottom: 1px solid var(--line); padding: 10px 16px; }
+.bar-in { max-width: 880px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
+.count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.count b { color: var(--ink); }
+.bar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { border: 1px solid var(--line); background: var(--paper); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--pick-fg); font-weight: 500; }
+.btn.armed { border-color: var(--bad); color: var(--bad); }
+.btn:disabled { opacity: .45; cursor: default; }
+.copyrow { max-width: 880px; margin: 8px auto 0; display: flex; gap: 8px; align-items: flex-start; }
+.copybox { flex: 1; min-width: 0; min-height: 96px; max-height: 40vh; font-family: var(--font-mono); font-size: 12.5px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--bg); resize: vertical; }
+
+.wrap { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; padding: 24px 16px 64px; }
+header h1 { margin: 0 0 6px; font-size: 24px; line-height: 1.3; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); max-width: 65ch; }
+.callout { background: var(--warn-soft); color: var(--warn); border-radius: 10px; padding: 10px 14px; font-size: 14px; }
+.group { display: flex; flex-direction: column; gap: 14px; }
+.group-head h2 { margin: 0; font-size: 18px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; overflow-wrap: anywhere; }
+.group-head h2 .range { font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-weight: 400; }
+.group-head p { margin: 4px 0 0; color: var(--muted); font-size: 14px; max-width: 70ch; overflow-wrap: anywhere; }
+.q { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 4px 12px; scroll-margin-top: 72px; }
+.q.done { border-color: var(--accent); }
+.num { grid-row: 1 / span 6; width: 34px; height: 34px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-family: var(--font-mono); font-weight: 600; font-size: 14px; }
+.q.done .num { background: var(--pick); color: var(--pick-fg); }
+.q h3 { margin: 4px 0 2px; font-size: 16px; line-height: 1.45; overflow-wrap: anywhere; }
+.amount { font-family: var(--font-mono); font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.facts { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; min-width: 0; }
+.facts li { display: grid; grid-template-columns: 5em minmax(0, 1fr); gap: 8px; font-size: 14px; }
+.facts li > span:last-child { overflow-wrap: anywhere; min-width: 0; }
+.facts .k { color: var(--muted); font-size: 12.5px; padding-top: 1px; }
+code, .mono { font-family: var(--font-mono); font-size: 12.5px; }
+code { background: var(--bg); border-radius: 4px; padding: 0 4px; overflow-wrap: anywhere; }
+.opts { margin-top: 10px; display: grid; gap: 8px; min-width: 0; }
+.opt { text-align: left; border: 1.5px solid var(--line); background: var(--paper); border-radius: 10px; padding: 9px 12px; cursor: pointer; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 8px; align-items: start; font-size: 14px; line-height: 1.55; }
+.opt > span:last-child { overflow-wrap: anywhere; min-width: 0; }
+.opt .l { font-family: var(--font-mono); font-weight: 600; color: var(--accent); }
+.opt .rec { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 500; color: var(--rec); background: var(--rec-soft); border-radius: 999px; padding: 0 8px; }
+.opt[aria-checked="true"] { border-color: var(--pick); background: var(--accent-soft); }
+.opt:disabled { cursor: not-allowed; opacity: .6; }
+.note { margin-top: 8px; width: 100%; min-height: 38px; resize: vertical; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 7px 10px; font-size: 13.5px; }
+.save { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); min-height: 16px; margin-top: 2px; }
+.save.bad { color: var(--bad); }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 8px; font-size: 13px; z-index: 20; max-width: calc(100% - 32px); }
+.empty { color: var(--muted); }
+@media (max-width: 520px) { .q { grid-template-columns: minmax(0, 1fr); padding: 14px; } .num { grid-row: auto; } .facts li { grid-template-columns: minmax(0, 1fr); gap: 0; } }
+</style></head>
+<body>
+
+<!-- MOCK ONLY: the real page has no .mockbar and no fake db -->
+<div class="mockbar"><div class="mockbar-in">
+  <b>MOCK</b>
+  <span class="grp">数据库 <button id="m-db-on" aria-pressed="true">有（模拟）</button><button id="m-db-off" aria-pressed="false">无</button><button id="m-db-ro" aria-pressed="false">只读</button></span>
+  <span class="grp">语言 <button id="m-zh" aria-pressed="true">中文</button><button id="m-en" aria-pressed="false">English</button></span>
+  <span class="grp"><button id="m-reset">清空模拟数据库</button><button id="m-reload">模拟重新打开</button></span>
+</div></div>
+
+<div class="bar"><div class="bar-in">
+  <span class="count" id="count"></span>
+  <div class="bar-actions">
+    <button type="button" class="btn" id="all-rec"></button>
+    <button type="button" class="btn" id="clear"></button>
+    <button type="button" class="btn primary" id="copy"></button>
+  </div>
+</div>
+<div class="copyrow" id="copyrow" hidden><textarea class="copybox" id="copybox" readonly></textarea><button type="button" class="btn" id="copyclose" aria-label="close">✕</button></div>
+</div>
+
+<main class="wrap" id="main">
+  <header><h1 id="h1"></h1><p id="intro"></p></header>
+  <div class="callout" id="b-nodb" hidden></div>
+  <div class="callout" id="b-ro" hidden></div>
+  <div id="groups"></div>
+</main>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<!-- Filled by agent-file.sh questions --page: JSON with <, >, & and U+2028/9 written as \u escapes. Read with textContent only. -->
+<script type="application/json" id="sq-data">{"lang":"zh","repo":"auto-pipeline","generated":"2026-11-04 17:50","intros":{"show-question":"新关键词 show question：列出所有等你回答的问题","city-tier":"城市楼层分级（已撤回）","remote-watch":"Watch the panes of a paired machine","auto-pipeline":"整个 repo 的事"},"questions":[{"id":"t-show-question-mock","source":"todo","kind":"mock","task":"show-question","title":"show-question 答题页面的第二版 mock 可以吗？","sub":"12 题 · 按 owner 给的格式重做","facts":[["为什么现在","写代码要等 mock 通过"],["依据","`mock/show-question-mock.html`"]],"options":[{"letter":"A","text":"可以，开始写代码","rec":true},{"letter":"B","text":"要改（写在备注里）","rec":false}],"since":"2026-11-04 17:50"},{"id":"p-9e0c3d71","source":"parked","kind":"","task":"show-question","title":"Should \"list questions\" fire inside a `code` block \u0026 inside quotes like 'show question'?","sub":"hook trigger","facts":[["Why now","The hook skips quoted mentions; a code block is not handled yet"],["Evidence","prompt = \"\u003c/script\u003e\u003cb\u003ex\u003c/b\u003e list questions\" \u0026 \u003cimg src=x onerror=alert(1)\u003e"]],"options":[{"letter":"A","text":"No: a code block counts as quoted","rec":true},{"letter":"B","text":"Yes: only real quotes are skipped","rec":false}],"since":"2026-11-04 17:35"},{"id":"p-3f2a91c0","source":"parked","kind":"","task":"city-tier","title":"新的楼层分级要不要整个放弃？","sub":"1 个分支 · 1 个 worktree","facts":[["现在","城市页面已经改回旧版"],["依据","commit `2114fb2` 撤回了 city-tier"],["为什么现在","分支还开着，占一个 worktree"]],"options":[{"letter":"A","text":"放弃，删掉分支","rec":true},{"letter":"B","text":"保留分支，以后再做","rec":false},{"letter":"C","text":"只留楼层数据，页面不要","rec":false}],"since":"2026-11-04 11:02"},{"id":"t-city-tier-question","source":"todo","kind":"question","task":"city-tier","title":"楼层颜色用哪一套？","sub":"3 套","facts":[["依据","三套截图在 `mock/city-layout-mock.html` 第 2 页"],["为什么现在","颜色定了才能做截图对比"]],"options":[{"letter":"A","text":"暖色","rec":true},{"letter":"B","text":"冷色","rec":false},{"letter":"C","text":"跟系统主题","rec":false}],"since":"2026-11-04 13:50"},{"id":"t-bypass-mode-conf-question","source":"todo","kind":"question","task":"bypass-mode-conf","title":"v4-plus 和 v4-pospro 都改成 bypassPermissions 吗？","sub":"2 个 repo","facts":[["现在","两个 repo 的 `agent.conf` 都是 `permission_mode=auto`"],["为什么现在","两个 main manager 在等你点头"]],"options":[{"letter":"A","text":"两个都改","rec":true},{"letter":"B","text":"只改 v4-plus","rec":false},{"letter":"C","text":"都不改","rec":false}],"since":"2026-11-04 09:34"},{"id":"w-8c1d07aa","source":"worktree","kind":"","task":"remote-watch","title":"Remote watch: poll every 30 s or every 60 s?","sub":"pc2","facts":[["Now","polls every 30 s"],["Evidence","30 s ≈ 2% CPU, 60 s ≈ 1% (measured on pc2)"],["Why now","It sets the CPU use on pc2 for every live task"]],"options":[{"letter":"A","text":"60 s","rec":true},{"letter":"B","text":"30 s","rec":false}],"since":"2026-11-04 16:58"},{"id":"t-personal-mode-review","source":"todo","kind":"review","task":"personal-mode","title":"在你的电脑上看一下新的 PERMISSION 启动行","sub":"真机检查","facts":[["怎么看","开一个新终端，看启动文字里的 `PERMISSION:` 那一行"],["依据","单元测试全过；真机还没看"],["为什么现在","合并前要你在真机上看过"]],"options":[{"letter":"A","text":"看过了，可以合并","rec":false},{"letter":"B","text":"有问题（写在备注里）","rec":false}],"since":"2026-11-04 16:20"},{"id":"p-b70e4413","source":"parked","kind":"","task":"decider-floor","title":"Haiku 做 reviewer 时，也要拒绝它的意见吗？","sub":"现在 0 个 Haiku reviewer","facts":[["现在","规则里 reviewer 算决策者"],["依据","`agent.conf` 里 reviewer=sonnet；没有 Haiku 的配置"]],"options":[{"letter":"A","text":"要拒绝，和 Sonnet 一样","rec":true},{"letter":"B","text":"Haiku 只能看，不能拦合并","rec":false}],"since":"2026-11-04 15:40"},{"id":"p-0d55e9b2","source":"parked","kind":"","task":"city-polish","title":"城市要不要做夜景模式？","sub":"","facts":[],"options":[],"since":"2026-10-28 10:15"},{"id":"w-41aa6f3e","source":"worktree","kind":"","task":"city-device-join","title":"Pairing code for a new device: 6 digits or 8?","sub":"the code lives 5 min","facts":[["Evidence","6 digits = 1 in a million per guess"],["Why now","The join screen is built next"]],"options":[{"letter":"A","text":"6 digits","rec":true},{"letter":"B","text":"8 digits","rec":false}],"since":"2026-11-04 14:05"},{"id":"w-c2f90b18","source":"worktree","kind":"","task":"mode-and-floor","title":"Keep the 2000-byte cap on the start text?","sub":"busy start 2,640 bytes","facts":[["Now","A long state block pushes the quiz line off the first screen"],["Evidence","with a pointer instead: 1,870 bytes"]],"options":[{"letter":"A","text":"Yes, show a pointer to the file","rec":true},{"letter":"B","text":"No, print the full state block","rec":false}],"since":"2026-11-04 15:55"},{"id":"p-5a7b2e60","source":"parked","kind":"","task":"auto-pipeline","title":"agent_ideas.txt 要不要整理一次？","sub":"106 行","facts":[["依据","31 行超过 30 天没人看"],["为什么现在","每次启动都会读它，越长越费 token"]],"options":[{"letter":"A","text":"要，旧的移到归档段","rec":true},{"letter":"B","text":"只删重复的","rec":false},{"letter":"C","text":"先不动","rec":false}],"since":"2026-11-02 18:20"}]}</script>
+
+<script type="application/json" id="sq-labels">
+{"zh":{"title":"待决定问题","h1":"要你决定的 {n} 题 · {date}","intro":"每题都有背景、依据和选项，建议的选项标了「建议」。选好后回到聊天告诉 Claude「答完了」（答案已经存在这个页面里）；或者按「复制我的答案」贴回聊天。没选的题会留着，下次还在。","count":"已选 <b>{a}</b> / {n}","allRec":"全部按建议","clear":"清空","clearArm":"再点一次清空","copy":"复制我的答案","rec":"建议","notePh":"备注（可选）","noteOnlyPh":"你的回答","since":"since {d}","saving":"保存中…","saved":"已保存 {t}","saveFail":"没保存上（{e}），再改一下会重试","noDb":"这里不保存答案：请用「复制我的答案」贴回聊天。","ro":"你只能看，不能答：这个页面没给你写入权限。","tCopied":"已复制 {k} 题的答案","tCopyFail":"没能自动复制：请从上面的框里手动复制","tNone":"还没有选任何一题","tAllRec":"{k} 题按建议填好了","tAllRecNone":"没有可以按建议填的题","tCleared":"已清空","empty":"没有待决定的问题。"},
+"en":{"title":"Open decisions","h1":"{n} questions for you · {date}","intro":"Each question has its background, evidence and options; the recommended option is marked. Pick, then tell Claude \"done\" in the chat (your answers are saved in this page), or press \"Copy my answers\" and paste them into the chat. A question you leave unpicked stays open for next time.","count":"<b>{a}</b> / {n} picked","allRec":"Take all recommendations","clear":"Clear","clearArm":"Tap again to clear","copy":"Copy my answers","rec":"Recommended","notePh":"Note (optional)","noteOnlyPh":"Your answer","since":"since {d}","saving":"Saving…","saved":"Saved {t}","saveFail":"Not saved ({e}); change it again to retry","noDb":"Answers are not saved here: use \"Copy my answers\" and paste them into the chat.","ro":"You can read but not answer: this page gives you no write access.","tCopied":"Copied {k} answers","tCopyFail":"Could not copy by itself: copy from the box above","tNone":"Nothing picked yet","tAllRec":"Filled {k} with the recommendation","tAllRecNone":"Nothing left to fill with a recommendation","tCleared":"Cleared","empty":"No open questions."}}
+</script>
+
+<script>
+(function () {
+"use strict";
+var DATA = JSON.parse(document.getElementById("sq-data").textContent);
+var LABELS = JSON.parse(document.getElementById("sq-labels").textContent);
+var Q = Array.isArray(DATA.questions) ? DATA.questions : [];
+var L = LABELS[DATA.lang] || LABELS.en;
+
+// One answer per question id: {pick: "A" | "", note: "", answeredAt: ISO}. Unpicked = still open.
+var S = { ans: {}, db: null, dbState: "wait", readOnly: false, status: {} };
+
+function $(id) { return document.getElementById(id); }
+function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function fmt(s, v) { return String(s).replace(/\{(\w+)\}/g, function (_, k) { return v && v[k] != null ? v[k] : ""; }); }
+function hhmm(iso) { var d = new Date(iso); return isNaN(d) ? "" : ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
+function shortDate(s) { s = String(s || ""); var y = String(DATA.generated || "").slice(0, 5); return y && s.indexOf(y) === 0 ? s.slice(5) : s; }
+// The only markup in the data: `backtick` spans become <code>. Everything else is plain text.
+function inline(parent, text) {
+  String(text == null ? "" : text).split(/`([^`\n]+)`/).forEach(function (part, i) {
+    if (!part) return;
+    parent.appendChild(i % 2 ? el("code", "", part) : document.createTextNode(part));
+  });
+  return parent;
+}
+function opts(q) { return Array.isArray(q.options) ? q.options : []; }
+function recLetter(q) { var r = opts(q).filter(function (o) { return o && o.rec; })[0]; return r ? String(r.letter) : ""; }
+function optText(q, letter) { var o = opts(q).filter(function (o) { return String(o.letter) === letter; })[0]; return o ? String(o.text) : ""; }
+function isAnswered(q) { var a = S.ans[q.id]; if (!a) return false; return opts(q).length ? !!a.pick : !!String(a.note || "").trim(); }
+function answeredCount() { return Q.filter(isAnswered).length; }
+
+/* ---------- saving: answers/<id> = {pick, option, note, answeredAt}; one write at a time per doc, only on change ---------- */
+var W = {};
+function bodyFor(q) {
+  var a = S.ans[q.id];
+  if (!a || (!a.pick && !String(a.note || "").trim())) return null;   // nothing left: delete the doc
+  return { pick: a.pick || "", option: a.pick ? optText(q, a.pick) : "", note: String(a.note || ""), answeredAt: a.answeredAt };
+}
+function save(q) {
+  if (!S.db || S.readOnly) return;
+  var w = W[q.id] || (W[q.id] = { busy: false, pending: undefined, last: "null" });
+  w.pending = bodyFor(q);
+  pump(q, w);
+}
+function pump(q, w) {
+  if (w.busy || w.pending === undefined) return;
+  var body = w.pending, key = JSON.stringify(body); w.pending = undefined;
+  if (key === w.last) return;
+  w.busy = true; setStatus(q, "", L.saving);
+  var ref = S.db.collection("answers").doc(q.id), tries = 0;
+  (function attempt() {
+    tries++;
+    (body === null ? ref.delete() : ref.set(body)).then(function () {
+      w.busy = false; w.last = key;
+      setStatus(q, "", body ? fmt(L.saved, { t: hhmm(body.answeredAt) }) : "");
+      pump(q, w);
+    }, function (e) {
+      var code = (e && e.code) || "error";
+      if (code === "unavailable" && tries < 2) { setTimeout(attempt, 400 + Math.random() * 600); return; }
+      w.busy = false;
+      if (code === "invalid_argument" || code === "not_granted" || code === "revoked") { S.readOnly = true; paintBanners(); paintCards(); }
+      setStatus(q, "bad", fmt(L.saveFail, { e: code }));
+      pump(q, w);
+    });
+  })();
+}
+function setStatus(q, cls, text) {
+  S.status[q.id] = { cls: cls, text: text };
+  var box = document.querySelector('.save[data-id="' + cssId(q.id) + '"]');
+  if (box) { box.className = "save " + cls; box.textContent = text; }
+}
+function cssId(id) { return String(id).replace(/["\\]/g, "\\$&"); }
+function setAnswer(q, pick, note) {
+  var a = S.ans[q.id] || { pick: "", note: "" };
+  if (a.pick === pick && (a.note || "") === note) return false;
+  S.ans[q.id] = { pick: pick, note: note, answeredAt: new Date().toISOString() };
+  return true;
+}
+
+/* ---------- painting ---------- */
+function paintBar() {
+  $("count").innerHTML = "";   // the label holds <b>; the numbers go in as text
+  var parts = L.count.split(/<b>\{a\}<\/b>/);
+  $("count").appendChild(document.createTextNode(fmt(parts[0], { n: Q.length })));
+  $("count").appendChild(el("b", "", String(answeredCount())));
+  $("count").appendChild(document.createTextNode(fmt(parts[1] || "", { n: Q.length })));
+  $("all-rec").textContent = L.allRec; $("copy").textContent = L.copy;
+  if (!clearArmed) $("clear").textContent = L.clear;
+  $("all-rec").disabled = $("clear").disabled = S.readOnly;
+}
+function paintHead() {
+  document.title = L.title;
+  document.documentElement.lang = DATA.lang === "zh" ? "zh" : "en";
+  $("h1").textContent = fmt(L.h1, { n: Q.length, date: String(DATA.generated || "").slice(0, 10) });
+  $("intro").textContent = L.intro;
+}
+function paintBanners() {
+  $("b-nodb").textContent = L.noDb; $("b-nodb").hidden = S.dbState !== "off";
+  $("b-ro").textContent = L.ro; $("b-ro").hidden = !(S.readOnly && S.dbState === "on");
+}
+var noteTimers = {};
+function card(q, n) {
+  var sec = el("section", "q" + (isAnswered(q) ? " done" : "")); sec.id = "q" + n;
+  sec.appendChild(el("span", "num", String(n)));
+  var head = el("div");
+  head.appendChild(inline(el("h3"), q.title));
+  var sub = [q.sub, q.since ? fmt(L.since, { d: shortDate(q.since) }) : ""].filter(function (x) { return x && String(x).trim(); }).join(" · ");
+  if (sub) head.appendChild(inline(el("div", "amount"), sub));
+  sec.appendChild(head);
+  var body = el("div");
+  var facts = Array.isArray(q.facts) ? q.facts.filter(function (f) { return Array.isArray(f) && f.length >= 2; }) : [];
+  if (facts.length) {
+    var ul = el("ul", "facts");
+    facts.forEach(function (f) { var li = el("li"); li.appendChild(el("span", "k", f[0])); li.appendChild(inline(el("span"), f[1])); ul.appendChild(li); });
+    body.appendChild(ul);
+  }
+  var a = S.ans[q.id] || { pick: "", note: "" };
+  if (opts(q).length) {
+    var box = el("div", "opts"); box.setAttribute("role", "radiogroup"); box.setAttribute("aria-label", q.title);
+    opts(q).forEach(function (o) {
+      var letter = String(o.letter);
+      var b = el("button", "opt"); b.type = "button"; b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", String(a.pick === letter)); b.disabled = S.readOnly;
+      b.appendChild(el("span", "l", letter));
+      var t = inline(el("span"), o.text);
+      if (o.rec) t.appendChild(el("span", "rec", L.rec));
+      b.appendChild(t);
+      b.addEventListener("click", function () {
+        var cur = S.ans[q.id] || { pick: "", note: "" };
+        if (setAnswer(q, cur.pick === letter ? "" : letter, cur.note || "")) { save(q); refresh(q, n); }   // click again = unpick
+      });
+      box.appendChild(b);
+    });
+    body.appendChild(box);
+  }
+  var ta = el("textarea", "note"); ta.placeholder = opts(q).length ? L.notePh : L.noteOnlyPh;
+  ta.value = a.note || ""; ta.disabled = S.readOnly; ta.setAttribute("aria-label", q.title);
+  ta.addEventListener("input", function () {
+    var cur = S.ans[q.id] || { pick: "", note: "" };
+    setAnswer(q, cur.pick || "", ta.value);
+    sec.classList.toggle("done", isAnswered(q)); paintBar();
+    clearTimeout(noteTimers[q.id]); noteTimers[q.id] = setTimeout(function () { save(q); }, 700);
+  });
+  ta.addEventListener("blur", function () { clearTimeout(noteTimers[q.id]); save(q); });
+  body.appendChild(ta);
+  var st = S.status[q.id] || { cls: "", text: "" };
+  var sv = el("div", "save " + st.cls, st.text); sv.setAttribute("data-id", q.id); sv.setAttribute("aria-live", "polite");
+  body.appendChild(sv);
+  sec.appendChild(body);
+  return sec;
+}
+function refresh(q, n) {
+  paintBar();
+  var old = $("q" + n); if (old) old.parentNode.replaceChild(card(q, n), old);
+}
+// Groups: by task, in the order the tasks first come; numbers run on across groups (the writer already ordered them).
+function groupsOf() {
+  var out = [], at = {};
+  Q.forEach(function (q, i) {
+    var k = String(q.task || "");
+    if (!(k in at)) { at[k] = out.length; out.push({ task: k, items: [] }); }
+    out[at[k]].items.push({ q: q, n: i + 1 });
+  });
+  return out;
+}
+function paintCards() {
+  var root = $("groups"); root.textContent = "";
+  if (!Q.length) { root.appendChild(el("p", "empty", L.empty)); return; }
+  var intros = DATA.intros || {};
+  groupsOf().forEach(function (g) {
+    var sec = el("section", "group");
+    var gh = el("div", "group-head"), h2 = el("h2");
+    h2.appendChild(document.createTextNode(g.task));
+    var first = g.items[0].n, last = g.items[g.items.length - 1].n;
+    h2.appendChild(el("span", "range", first === last ? String(first) : first + "–" + last));
+    gh.appendChild(h2);
+    if (intros[g.task]) gh.appendChild(inline(el("p"), intros[g.task]));
+    sec.appendChild(gh);
+    g.items.forEach(function (it) { sec.appendChild(card(it.q, it.n)); });
+    root.appendChild(sec);
+  });
+}
+function paintAll() { paintHead(); paintBar(); paintBanners(); paintCards(); }
+
+/* ---------- the bar ---------- */
+var toastTimer = null;
+function toast(text) { var t = $("toast"); t.textContent = text; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.hidden = true; }, 2600); }
+function copyText() {
+  var lines = [];
+  Q.forEach(function (q, i) {
+    var a = S.ans[q.id]; if (!a) return;
+    var note = String(a.note || "").replace(/\s+/g, " ").trim();
+    if (!a.pick && !note) return;
+    lines.push((i + 1) + (a.pick || "") + (note ? " — " + note : ""));
+  });
+  return lines.join("\n");
+}
+$("copy").addEventListener("click", function () {
+  var text = copyText();
+  if (!text) { toast(L.tNone); return; }
+  var box = $("copybox"); box.value = text; $("copyrow").hidden = false;
+  var done = function () { toast(fmt(L.tCopied, { k: text.split("\n").length })); };
+  var fail = function () { box.focus(); box.select(); toast(L.tCopyFail); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function () {
+    box.select(); var ok = false; try { ok = document.execCommand("copy"); } catch (e) {} ok ? done() : fail();
+  });
+  else { box.select(); var ok = false; try { ok = document.execCommand("copy"); } catch (e) {} ok ? done() : fail(); }
+});
+$("copyclose").addEventListener("click", function () { $("copyrow").hidden = true; });
+$("all-rec").addEventListener("click", function () {
+  if (S.readOnly) return;
+  var k = 0;
+  Q.forEach(function (q) {
+    var a = S.ans[q.id] || { pick: "", note: "" }, r = recLetter(q);
+    if (a.pick || !r) return;            // only the unpicked ones that have a recommendation
+    if (setAnswer(q, r, a.note || "")) { save(q); k++; }
+  });
+  paintCards(); paintBar();
+  toast(k ? fmt(L.tAllRec, { k: k }) : L.tAllRecNone);
+});
+var clearArmed = false, clearTimer = null;
+$("clear").addEventListener("click", function () {
+  if (S.readOnly) return;
+  if (!clearArmed) {   // two taps, no browser dialog
+    clearArmed = true; $("clear").textContent = L.clearArm; $("clear").classList.add("armed");
+    clearTimer = setTimeout(function () { clearArmed = false; $("clear").classList.remove("armed"); paintBar(); }, 3000);
+    return;
+  }
+  clearTimeout(clearTimer); clearArmed = false; $("clear").classList.remove("armed");
+  Q.forEach(function (q) { if (S.ans[q.id] && setAnswer(q, "", "")) save(q); });
+  paintCards(); paintBar(); $("copyrow").hidden = true; toast(L.tCleared);
+});
+
+/* ---------- capabilities: render first, light up later; never write on load ---------- */
+function startCaps(use) {
+  S.dbState = "wait";
+  if (!use && window.claude && typeof window.claude.use === "function") use = function (n) { return window.claude.use(n); };
+  if (!use) { S.dbState = "off"; paintAll(); return; }
+  var timer = setTimeout(function () { if (S.dbState === "wait") { S.dbState = "off"; paintBanners(); } }, 10000);
+  Promise.resolve(use("db")).then(function (db) {
+    if (!db) { clearTimeout(timer); S.dbState = "off"; paintBanners(); return; }
+    return db.collection("answers").get().then(function (snap) {
+      clearTimeout(timer); S.db = db; S.dbState = "on";
+      var byId = {}; Q.forEach(function (q) { byId[q.id] = q; });
+      (snap && snap.docs || []).forEach(function (d) {
+        var q = byId[d.id]; if (!d.exists || !q) return;
+        var v = d.data() || {};
+        var pick = String(v.pick || ""); if (pick && !optText(q, pick)) pick = "";   // the options changed: keep only the note
+        S.ans[q.id] = { pick: pick, note: String(v.note || ""), answeredAt: String(v.answeredAt || "") };
+        W[q.id] = { busy: false, pending: undefined, last: JSON.stringify(v.pick === pick ? { pick: pick, option: String(v.option || ""), note: String(v.note || ""), answeredAt: v.answeredAt } : null) };
+        S.status[q.id] = { cls: "", text: fmt(L.saved, { t: hhmm(v.answeredAt) }) };
+      });
+      paintAll();
+    });
+  }).catch(function () { clearTimeout(timer); S.db = null; S.dbState = "off"; paintBanners(); });
+  Promise.resolve(use("user")).then(function (user) {
+    if (!user || typeof user.can !== "function") return;
+    return user.can("data.write").then(function (ok) { if (ok === false) { S.readOnly = true; paintAll(); } });
+  }).catch(function () {});
+}
+
+/* ---------- MOCK ONLY: a fake db with the same calls (kept in localStorage) and the toolbar ---------- */
+var mockMode = "on", MOCK_KEY = "sq-mock2-answers";
+function mockStore() { try { return JSON.parse(localStorage.getItem(MOCK_KEY) || "{}") || {}; } catch (e) { return {}; } }
+function mockWrite(o) { try { localStorage.setItem(MOCK_KEY, JSON.stringify(o)); } catch (e) {} }
+function later(v, ms) { return new Promise(function (r) { setTimeout(function () { r(v); }, ms); }); }
+var fakeDb = { collection: function () { return {
+  get: function () { var s = mockStore(); return later({ docs: Object.keys(s).map(function (id) { return { id: id, exists: true, data: function () { return s[id]; } }; }) }, 250); },
+  doc: function (id) { return {
+    set: function (b) { return later(null, 300).then(function () { if (mockMode === "ro") { var e = new Error("no write"); e.code = "invalid_argument"; throw e; } var s = mockStore(); s[id] = b; mockWrite(s); }); },
+    delete: function () { return later(null, 200).then(function () { var s = mockStore(); delete s[id]; mockWrite(s); }); }
+  }; }
+}; } };
+var fakeUser = { can: function () { return later(mockMode !== "ro", 100); } };
+function mockUse(name) { return mockMode === "off" ? later(null, 300) : later(name === "db" ? fakeDb : name === "user" ? fakeUser : null, 300); }
+function reopen() { S = { ans: {}, db: null, dbState: "wait", readOnly: false, status: {} }; W = {}; $("copyrow").hidden = true; paintAll(); startCaps(mockUse); }
+function press(ids, on) { ids.forEach(function (i) { $(i).setAttribute("aria-pressed", String(i === on)); }); }
+var DBB = ["m-db-on", "m-db-off", "m-db-ro"];
+$("m-db-on").onclick = function () { mockMode = "on"; press(DBB, "m-db-on"); reopen(); };
+$("m-db-off").onclick = function () { mockMode = "off"; press(DBB, "m-db-off"); reopen(); };
+$("m-db-ro").onclick = function () { mockMode = "ro"; press(DBB, "m-db-ro"); reopen(); };
+$("m-zh").onclick = function () { DATA.lang = "zh"; L = LABELS.zh; press(["m-zh", "m-en"], "m-zh"); paintAll(); };
+$("m-en").onclick = function () { DATA.lang = "en"; L = LABELS.en; press(["m-zh", "m-en"], "m-en"); paintAll(); };
+$("m-reset").onclick = function () { mockWrite({}); reopen(); };
+$("m-reload").onclick = reopen;
+/* ---------- end MOCK ONLY ---------- */
+
+paintAll();
+startCaps(mockUse);   // real page: startCaps() — window.claude.use, or no db when the file is opened on its own
+})();
+</script>
+</body></html>

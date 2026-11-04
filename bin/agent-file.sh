@@ -24,9 +24,16 @@
 #   agent-file.sh todo wait "<name>" on <mock|question|review|hold|queue> ["<note>"]  -> the todo line starts a wait
 #   agent-file.sh todo wait "<name>" off                      -> the wait closes; its minutes join "waited <m>m"
 #   agent-file.sh todo where "<name>" <machine> ["<worktree path>"]   -> the todo line says where it runs
-#   agent-file.sh park add "<question>" ["<task>"]            -> agent_state.txt: PARKED: <question> | <task> | since <date>
+#   agent-file.sh park add "<question>" ["<task>"] [--sub "<line>"] [--why "<text>"] [--evidence "<text>"]
+#                 [--fact "<key>: <value>"]... [--options "A text|B text"] [--rec <letter or option text>]
+#                                                             -> agent_state.txt: PARKED: <question> | <task> | since <date> | sub .. | fact .. | option A: .. | rec A
 #   agent-file.sh park list                                   -> the PARKED lines, numbered
 #   agent-file.sh park rm <n>                                 -> remove the n-th PARKED line
+#   agent-file.sh park rm --id <id>                           -> remove the PARKED line with that id (the id `questions` gives)
+#   agent-file.sh questions [--self] [--json]                 -> every question that waits on the owner ("show question")
+#   agent-file.sh questions [--self] --page <file>            -> write the answer page, its map, and the "QUESTIONS PAGE:" line
+#   agent-file.sh questions --url <url>                       -> set the published url on the "QUESTIONS PAGE:" line
+#   agent-file.sh questions answer <id> "<answer>"            -> close one question (parked: line goes; todo: wait closes; QUESTION: gets "ANSWER:")
 #   agent-file.sh worker on <n> "<slice>"                     -> agent_state.txt: WORKER <n>: <slice> | since <date> (replaces worker n)
 #   agent-file.sh worker off <n>                              -> remove WORKER <n>
 #   agent-file.sh board [--self]                              -> the table of everything open ("show todo"); --self: this session's task only
@@ -127,6 +134,15 @@
 #   Refused (one line on stderr, exit 1, nothing written): empty text, " | " or a line break in it, n not a whole number
 #   from 1, no such n, an unknown verb.
 #
+# questions: the work is done by agent_questions.py (python3); the template is agent-questions-page.html.
+#   Read only, except --page (page + map + one "QUESTIONS PAGE: <url> | <page> | <map> | since <date>" line in the own
+#   agent_state.txt, url kept), --url and answer. Sources, order, ids, fields and the page: tests/test_agent_questions.py.
+#   An open "QUESTION: <text>" line of an agent_state.txt is answered by a later line "ANSWER: <text>" (before the next
+#   QUESTION: line and the next "=== " header). park add: --why and --evidence are facts; --fact keeps its key; --options
+#   gives letters A to H (at most 8); --rec is a letter or an option text (with no --options: a fact).
+#   Refused (one line on stderr, exit 1, nothing written): an empty value, " | " or a line break in a value, an unknown option,
+#   a flag with no value, a bad --fact, an empty or ninth option, a --rec that is no option, an id that is not listed.
+#
 # board: read only. One markdown table of everything open (or one line "无" / "none"), then note lines; the work is done by
 #   agent_board.py (python3). The columns and words follow `language` in agent.conf (zh, else en). --self: the session's own
 #   task only. Any other option: refused.
@@ -145,7 +161,7 @@ roots_read
 ROOT="$PROJECT_ROOT"
 TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agent_ideas.txt"; WT="$ROOT/agent_worktree.txt"
 NOW=${AGENT_FAKE_NOW:-$(date '+%Y-%m-%d %H:%M')}; WHO=${AGENT_ROLE:-main}
-case "${1:-}" in data|eta|estimate|backtest|retrain|helper-task|board|park|worker) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+case "${1:-}" in data|eta|estimate|backtest|retrain|helper-task|board|park|worker|questions) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the whole header comment block, whatever its length
 usage() { awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 2; }
@@ -644,18 +660,36 @@ state_append() {
   if [ -s "$STATE_FILE" ] && [ -n "$(tail -c 1 "$STATE_FILE")" ]; then printf '\n' >> "$STATE_FILE"; fi
   printf '%s\n' "$1" >> "$STATE_FILE"
 }
+# questions_py <command> [args...]: agent_questions.py does the work (python3 only)
+questions_py() {
+  local lang
+  command -v python3 >/dev/null 2>&1 || refuse "questions: python3 is needed and was not found"
+  lang=$(unset language; conf_read; printf '%s' "${language:-en}") || lang=en
+  case "$lang" in zh) ;; *) lang=en;; esac
+  python3 "$(dirname "$0")/agent_questions.py" "$PROJECT_ROOT" "$STATE_DIR" "$PROJECT_CWD" "$NOW" "$lang" "$@"
+}
+questions_run() {
+  local out first
+  case "${1:-}" in
+    answer)
+      shift
+      out=$(questions_py answer "$@")
+      first=${out%%$'\n'*}
+      case "$first" in
+        @TODO-WAIT-OFF$'\t'*) todo_wait "${first#*$'\t'}" off >/dev/null; printf '%s\n' "${out#*$'\n'}";;
+        *) printf '%s\n' "$out";;
+      esac;;
+    --url) shift; questions_py url "$@";;
+    *) questions_py list "$@";;
+  esac
+}
 park_run() {
   local sub="${1:-}" n line task
   [ $# -eq 0 ] || shift
   case "$sub" in
     add)
       [ $# -ge 1 ] || refuse "park add: needs the question"
-      [ $# -le 2 ] || refuse "park add: too many arguments; quote the question"
-      state_text "park add" "$1"
-      task="${2:-}"; [ -n "$task" ] || task=$(basename "$STATE_DIR")
-      state_text "park add" "$task"
-      state_append "PARKED: $1 | $task | since $NOW"
-      echo "parked: $1";;
+      questions_py park-add "$@";;
     list)
       [ $# -eq 0 ] || refuse "park list: takes nothing after it"
       if [ -f "$STATE_FILE" ]; then
@@ -664,6 +698,7 @@ park_run() {
         echo "(empty)"
       fi;;
     rm)
+      if [ "${1:-}" = "--id" ]; then shift; questions_py park-rm-id "$@"; return 0; fi
       [ $# -eq 1 ] || refuse "park rm: needs one number"
       state_n "park rm" "$1"; n=$((10#$1))
       line=; [ ! -f "$STATE_FILE" ] || line=$(awk -v n="$n" '/^PARKED: / { c++; if (c == n) { print; exit } }' "$STATE_FILE")
@@ -755,6 +790,8 @@ case "${1:-}:${2:-}" in
     shift; worker_run "$@";;
   board:*)
     shift; board_run "$@";;
+  questions:*)
+    shift; questions_run "$@";;
   todo:drop)
     need 5 "$@"; line=$(first "$TODO" "$3")
     [ -n "$line" ] || { echo "no todo line named: $3" >&2; exit 1; }
