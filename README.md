@@ -17,7 +17,7 @@ Main manager   (Fable 5.1, xhigh · the main chat · only one with the browser)
               └── Worker (Sonnet 5, medium)  code until the tests pass, slice 2
 
 Scripts, not agents (cost no tokens):
-  bin/agent-start.sh   RAM/CPU guard, prints the rules, 36-question quiz gate, main-manager lock
+  bin/agent-start.sh   RAM/CPU guard, prints the rules, 37-question quiz gate, main-manager lock
   bin/agent-file.sh    the only writer of agent_*.txt
   bin/agent_estimate.py  the time estimator: learns work minutes from the finished tasks, backtests against the rubric
   bin/agent-settings.sh  show or change agent.conf, validated
@@ -32,6 +32,9 @@ Scripts, not agents (cost no tokens):
   bin/agent-close-case.sh  UserPromptSubmit hook: "close case" in the prompt injects the close-case rule for the session's role
   bin/agent-show-todo.sh  UserPromptSubmit hook: "show todo" (or just "todo") injects the board rule for the session's role
   bin/agent_board.py     the show-todo board: one table of every open task, wait, owner to-do and parked question
+  bin/agent-show-question.sh  UserPromptSubmit hook: "show question" (or just "questions") injects the question-list rule; "done" / "1A 2B" after a page injects the read-the-answers rule
+  bin/agent_questions.py  the show-question collector: every question pending on the owner, as a chat list, JSON or an Artifact page; records the answers
+  bin/agent-questions-page.html  the page template (one page grouped by task, lettered options, answer bar)
   bin/agent-name.sh       SessionStart + UserPromptSubmit hook: names the session by role (<repo> Manager, <feature> Task Manager, <repo> Helper - <Task Name>), also the Orca tab
 ```
 
@@ -169,6 +172,7 @@ bin/agent-file.sh estimate ...      # work minutes of a new task, with a range a
 bin/agent-file.sh backtest          # estimator against the rubric on the finished tasks, who wins
 bin/agent-file.sh retrain           # learn the estimate again from the finished tasks, keep it only if better
 bin/agent-file.sh board             # the show-todo table: open tasks, waits on the owner, owner to-dos, parked questions
+bin/agent-file.sh questions         # the show-question list: every question pending on the owner (--self, --json, --page <file>, --url <url>, answer <id> "<answer>")
 bin/agent-city.sh install-shim      # one time: puts the agent-city command in ~/.local/bin; nothing installs it by itself, the init skill offers it
 agent-city start                    # agent city visualiser, off by default, costs almost nothing
 /auto-pipeline:city              # start the agent city, prints the URL

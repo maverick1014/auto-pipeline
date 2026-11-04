@@ -569,6 +569,7 @@ class TestTheRule(unittest.TestCase):
                        "mock", "review", "QUESTION:", "ANSWER:", "not read", "stable id",
                        "10 or fewer", "More than 10", "--page", "Artifact", "db", "user",
                        "QUESTIONS PAGE", "one url per repo", "答完了", "ArtifactData",
+                       "another machine", "not read: <path> on <machine>",
                        "answers", "questions answer", "still open", "1A 2B", "nothing dropped"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, rule)
@@ -582,6 +583,16 @@ class TestTheRule(unittest.TestCase):
                        "answered"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, line)
+        # the questions OF the decide section are the ones recorded (owner brief point 4)
+        self.assertNotIn("outside", line)
+        self.assertRegex(line, r"(in|of) (a|the|its) decide section")
+
+    def test_an_answered_question_line_is_named_plainly(self):
+        rule = self.rule()
+        self.assertNotIn("is not read", rule)
+        line = next((l for l in rule.splitlines() if "ANSWER:" in l), "")
+        self.assertIn("QUESTION:", line)
+        self.assertIn("before the next", line)
 
 
 # ---------------------------------------------------------------- the quiz
