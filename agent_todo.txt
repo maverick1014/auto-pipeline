@@ -1,0 +1,1 @@
+bypass-mode-conf | small | v4-plus and v4-pospro main managers set agent.conf permission_mode=bypassPermissions + cloud_permission_mode via 0.29.0 agent-settings.sh and commit (cross-repo) | est 5m | opened 2026-11-04 09:33 | by v4-plus,v4-pospro
