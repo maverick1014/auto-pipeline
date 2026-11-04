@@ -895,7 +895,8 @@ class TestOrderComesDown(StartCase):
         creates = self.creates()
         self.assertEqual(len(creates), 1, "one order = one terminal: %r" % creates)
         self.assertEqual(creates[0], ["terminal", "create", "--worktree", "path:" + self.repo, "--title", "shop Manager",
-                                      "--command", ac.agent_command("shop Manager", self.repo, ac.pass_city_dir(self.dir)),
+                                      "--command", ac.agent_command("shop Manager", self.repo, ac.pass_city_dir(self.dir),
+                                                                    cloud=True),
                                       "--json"])
         self.add(sid="new1", ev="UserPromptSubmit", tool="")           # the new session's first line
         ack = self.answered(self.OID, "opened")

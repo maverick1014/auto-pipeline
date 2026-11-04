@@ -85,7 +85,7 @@ CONTRACT
    "--permission-mode auto"; one line: new terminals use permission_mode,
    a session started from the cloud page uses cloud_permission_mode.
    requirements/city.md: the cloud start lines ("From the cloud page too",
-   "A stolen login") say cloud_permission_mode. skills/dispatch keeps
+   "A stolen login can open") say cloud_permission_mode. skills/dispatch keeps
    "--permission-mode <mode>" from permission_mode.
    Quiz: Q34 (rule W10), answer B (see TestQuiz34). The quiz has 34.
 """
@@ -702,11 +702,11 @@ class TestRuleText(unittest.TestCase):
 
     def test_city_requirements_cloud_start_lines(self):
         text = read("requirements", "city.md")
-        for start in ("- From the cloud page too", "- A stolen login"):
+        for start in ("- From the cloud page too", "- A stolen login can open"):
             with self.subTest(line=start):
                 line = next(l for l in text.splitlines() if l.startswith(start))
                 self.assertIn("cloud_permission_mode", line)
-        stolen = next(l for l in text.splitlines() if l.startswith("- A stolen login"))
+        stolen = next(l for l in text.splitlines() if l.startswith("- A stolen login can open"))
         self.assertNotIn("own `permission_mode`", stolen)
 
     def test_the_local_click_line_keeps_permission_mode(self):

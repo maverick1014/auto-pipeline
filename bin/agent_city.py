@@ -1140,7 +1140,7 @@ def pass_city_dir(directory):
     return os.path.abspath(directory)
 
 
-def agent_command(name, folder, city_dir=None):
+def agent_command(name, folder, city_dir=None, cloud=False):
     """The one fixed line a new terminal runs: `claude --name <name>`, then
     `--model <m> --effort <e>` and `--permission-mode <p>` from FOLDER's
     agent.conf (main_manager, permission_mode: a second session opens with
@@ -1150,7 +1150,11 @@ def agent_command(name, folder, city_dir=None):
     missing file or value, or one agent_conf refuses, leaves that part out.
     CITY_DIR given: the line starts with `AGENT_CITY_DIR=<city_dir> `, so the
     session reports to this city; None: it starts with `claude `. Never the
-    folder, never AGENT_ROLE. Never raises."""
+    folder, never AGENT_ROLE. CLOUD False (a local click): the mode is
+    permission_mode. CLOUD True (a cloud start): the mode is cloud_permission_mode
+    only, and a missing or refused value, no agent.conf or a failed load gives
+    `--permission-mode auto`: never bypass by default, and a cloud line always
+    has an explicit --permission-mode. Never raises."""
     import shlex
     words = ["claude", "--name", shlex.quote(name)]
     if city_dir:
@@ -1162,11 +1166,14 @@ def agent_command(name, folder, city_dir=None):
         if model is not None:
             model_name, effort = model.rsplit(":", 1)
             words += ["--model", shlex.quote(conf_mod.cli_model(model_name)), "--effort", shlex.quote(effort)]
-        mode = _conf_value(conf_mod, conf, "permission_mode")
+        mode = _conf_value(conf_mod, conf, "cloud_permission_mode" if cloud else "permission_mode")
         if mode is not None:
             words += ["--permission-mode", shlex.quote(mode)]
+        elif cloud:
+            words += ["--permission-mode", "auto"]
     except Exception:
-        pass
+        if cloud and "--permission-mode" not in words:
+            words += ["--permission-mode", "auto"]
     words.append(shlex.quote(FIRST_PROMPT))
     return " ".join(words)
 
@@ -1840,7 +1847,7 @@ class _CloudTaps:
         """One click on the cloud page's add-agent button, for territory TERR.
         TERRS: the territory ids of the repos joined to the relay it came
         from. NOW: monotonic seconds, what add_agent takes. The ONE thing it
-        ever does with an order is add_agent(terr, now, force), the function
+        ever does with an order is add_agent(terr, now, force, cloud=True), the function
         of the local button: the folder, the name, the role and the command
         are this server's own, so no part of the order reaches a shell, a
         path, a flag, the opener's arguments or the server's options. Returns
@@ -1870,7 +1877,7 @@ class _CloudTaps:
             if terr not in self._cloud_open:
                 self._cloud_open[terr] = {"oid": oid, "repo": repo, "force": force}
         try:
-            code, body = self.add_agent(terr, now, force)
+            code, body = self.add_agent(terr, now, force, cloud=True)
         except Exception:
             code, body = 0, {}
         answer = self._cloud_order_words(oid, code, body)
@@ -3665,7 +3672,7 @@ class CityState(_CloudTaps):
 
     # -- add agent: the page's button opens one new session -------------------
 
-    def add_agent(self, terr, now, force=False):
+    def add_agent(self, terr, now, force=False, cloud=False):
         """Open ONE new claude session in the folder of territory TERR (the
         page's add-agent button) -> (code, body); NOW is monotonic seconds. The
         folder, name and role are the server's own: the request names only a
@@ -3685,8 +3692,11 @@ class CityState(_CloudTaps):
         resources_fn and open_fn run free, then the mark is finished or undone.
         The line (the opener's and the "plain" one alike) is agent_command with
         self.city_dir: a city with its own dir hands it to the new session, and
-        the line ends with FIRST_PROMPT. See tests/test_agent_city_add_agent.py."""
-        if not isinstance(terr, str) or re.fullmatch(r"[0-9a-f]{8}", terr) is None or not isinstance(force, bool):
+        the line ends with FIRST_PROMPT. CLOUD (only cloud_order sets it): a local
+        click keeps permission_mode; a cloud start uses cloud_permission_mode,
+        missing or refused -> auto, never bypass by default. See tests/test_agent_city_add_agent.py."""
+        if not isinstance(terr, str) or re.fullmatch(r"[0-9a-f]{8}", terr) is None or not isinstance(force, bool) \
+                or not isinstance(cloud, bool):
             return 400, {"error": "bad"}
         with self.lock:
             identity = next((i for i in self.world["territories"] if territory_id(i) == terr), None)
@@ -3708,7 +3718,7 @@ class CityState(_CloudTaps):
         held = False
         try:
             import shlex
-            command = agent_command(name, folder, self.city_dir)
+            command = agent_command(name, folder, self.city_dir, cloud=cloud)
             try:
                 kind = self.kind_fn(folder)
             except Exception:

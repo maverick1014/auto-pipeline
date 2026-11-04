@@ -135,7 +135,8 @@ W10. Second session in the same repo
 - The main manager closes every human-direct session after the human says finish: `orca terminal close --terminal <handle> --json`. Nothing stays parked
 - Lock owner dead → take over as main manager, run recovery (S7)
 - Talk between sessions: `ListAgents` → find the peer by its name (W6), not listed → the row named after its folder (`<folder>-<xx>`) → `SendMessage` to that name. Two share a name → add the `[ref]` ListAgents prints. Reply to the `from` name. First line of every message = one clear sentence
-- Open a second session with the same permission mode and effort as the main manager (`permission_mode` and `main_manager` in `agent.conf`, effort form model:effort): `orca terminal create --worktree path:<repo> --command "claude --name '<repo> Helper' --permission-mode auto --effort <effort>" --json`, then `orca terminal wait --for tui-idle`
+- Open a second session with the same permission mode and effort as the main manager (`permission_mode` and `main_manager` in `agent.conf`, effort form model:effort): `orca terminal create --worktree path:<repo> --command "claude --name '<repo> Helper' --permission-mode <mode> --effort <effort>" --json`, then `orca terminal wait --for tui-idle`
+- New terminals (dispatch, resume, a Helper, a city click) use `permission_mode`; a session started from the Agent City cloud page uses `cloud_permission_mode` (missing or refused: auto, never bypass)
 - Task name: every new or switched task, a plain question too, gets its name first, even before the quiz PASS -> run the full-path `<plugin>/bin/agent-file.sh helper-task "<Task Name>"` from the start text, alone, from the project folder (never cd, never chain it); 2-4 English words, Title Case, the work, not the role; `<repo> Helper - <Task Name>` shows from the human's next prompt
 
 W11. Time
