@@ -427,7 +427,7 @@ class TestTheRule(unittest.TestCase):
 class TestTheQuiz(ScriptCase):
     script = "agent-start.sh"
     ANSWERS = ("1A 2D 3C 4B 5D 6D 7A 8C 9A 10D 11A 12C 13D 14C 15B 16C 17C "
-               "18D 19B 20A 21D 22C 23B 24D 25A 26D 27A 28B 29B 30B 31B 32C 33B")
+               "18D 19B 20A 21D 22C 23B 24D 25A 26D 27A 28B 29B 30B 31B 32C 33B 34B")
 
     def quiz(self):
         return self.assertOk(self.repo.run("agent-start.sh", "--quiz"))
@@ -442,15 +442,15 @@ class TestTheQuiz(ScriptCase):
         self.assertIn("board --self", options[1])
         self.assertIn("as printed", options[1])
 
-    def test_the_quiz_says_33(self):
+    def test_the_quiz_says_34(self):
         out = self.quiz()
-        self.assertIn("=== QUIZ — answer all 33 before any work ===", out)
-        self.assertIn('--answer "1A 2B 3C ... 33D"', out)
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 33)
+        self.assertIn("=== QUIZ — answer all 34 before any work ===", out)
+        self.assertIn('--answer "1A 2B 3C ... 34D"', out)
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 34)
 
     def test_b_passes(self):
         out = self.assertOk(self.repo.run("agent-start.sh", "--answer", self.ANSWERS))
-        self.assertIn("QUIZ RESULT: 33/33 PASS", out)
+        self.assertIn("QUIZ RESULT: 34/34 PASS", out)
 
     def test_another_letter_fails_and_names_w14(self):
         for wrong in ("33A", "33C", "33D"):
@@ -461,7 +461,7 @@ class TestTheQuiz(ScriptCase):
                 self.assertIn("Q33(W14)", result.stdout)
 
     def test_the_old_32_answers_no_longer_pass(self):
-        result = self.repo.run("agent-start.sh", "--answer", self.ANSWERS[:-4])
+        result = self.repo.run("agent-start.sh", "--answer", self.ANSWERS[:-8])
         self.assertEqual(result.returncode, 1)
         self.assertIn("Q33(W14)", result.stdout)
 
@@ -473,10 +473,10 @@ class TestTheDocs(unittest.TestCase):
     def test_the_readme_names_the_hook_and_the_board(self):
         text = read("README.md")
         for phrase in ("bin/agent-show-todo.sh", "bin/agent_board.py",
-                       "bin/agent-file.sh board", "33-question quiz"):
+                       "bin/agent-file.sh board", "34-question quiz"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
-        self.assertNotIn("32-question quiz", text)
+        self.assertNotIn("33-question quiz", text)
 
     def test_the_dispatch_skill_records_what_the_board_reads(self):
         text = read("skills", "dispatch", "SKILL.md")

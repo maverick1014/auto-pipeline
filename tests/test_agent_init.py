@@ -319,7 +319,7 @@ class TestTemplate(InitCase):
 
         conf = agent_conf.load(self.repo.plugin_path("bin", "agent.conf.default"))
         for key in list(agent_conf.NUMBER_BOUNDS) + agent_conf.ROLE_KEYS \
-                + ["permission_mode", "runtime", "language", "auto_resume"]:
+                + ["permission_mode", "cloud_permission_mode", "runtime", "language", "auto_resume"]:
             with self.subTest(key=key):
                 self.assertIn(key, conf)
 

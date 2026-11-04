@@ -150,6 +150,10 @@ class TestSync(SettingsCase):
         self.assertEqual(after_first, after_second)
 
     def test_nothing_missing_prints_up_to_date(self):
+        # a conf with every template key (this repo's own agent.conf may lag
+        # one key behind the template: it is the main manager's to sync)
+        import shutil
+        shutil.copy2(self.repo.plugin_path("bin", "agent.conf.default"), self.repo.path("agent.conf"))
         out = self.assertOk(self.settings("sync"))
         self.assertEqual(out.strip(), "agent.conf is up to date")
 

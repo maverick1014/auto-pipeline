@@ -51,6 +51,7 @@ REAL_KEYS = [
     "city_idle_min",
     "city_governor_wait_sec",
     "city_relay_sec",
+    "cloud_permission_mode",
 ]
 
 GOOD_CONF_TEXT = (
@@ -73,6 +74,7 @@ GOOD_CONF_TEXT = (
     "city_idle_min=30\n"
     "city_governor_wait_sec=60\n"
     "city_relay_sec=5\n"
+    "cloud_permission_mode=auto\n"
 )
 
 
@@ -240,21 +242,31 @@ class TestValidateRoles(unittest.TestCase):
 
 
 class TestValidatePermissionMode(unittest.TestCase):
-    def test_the_four_modes_are_accepted(self):
-        for mode in ("default", "acceptEdits", "auto", "plan"):
-            with self.subTest(mode=mode):
-                self.assertIsNone(agent_conf.validate_value("permission_mode", mode))
+    # bypass-mode (owner, 2026-11-04): bypassPermissions is the fifth mode,
+    # for permission_mode and cloud_permission_mode alike.
+    MODES = ("default", "acceptEdits", "auto", "plan", "bypassPermissions")
+
+    def test_the_five_modes_are_accepted(self):
+        for key in ("permission_mode", "cloud_permission_mode"):
+            for mode in self.MODES:
+                with self.subTest(key=key, mode=mode):
+                    self.assertIsNone(agent_conf.validate_value(key, mode))
 
     def test_anything_else_is_rejected(self):
-        for mode in ("", "Auto", "accept_edits", "yolo", "default plan"):
-            with self.subTest(mode=mode):
-                self.assertTrue(agent_conf.validate_value("permission_mode", mode))
+        for key in ("permission_mode", "cloud_permission_mode"):
+            for mode in ("", "Auto", "accept_edits", "yolo", "default plan", "bypass",
+                         "bypasspermissions", "BypassPermissions", "bypassPermissions ",
+                         "dontAsk", "auto; touch pwned", "bypassPermissions$(touch pwned)"):
+                with self.subTest(key=key, mode=mode):
+                    self.assertTrue(agent_conf.validate_value(key, mode))
 
-    def test_error_message_names_the_four_modes(self):
-        message = agent_conf.validate_value("permission_mode", "yolo")
-        self.assertTrue(message)
-        for mode in ("default", "acceptEdits", "auto", "plan"):
-            self.assertIn(mode, message)
+    def test_error_message_names_the_five_modes(self):
+        for key in ("permission_mode", "cloud_permission_mode"):
+            message = agent_conf.validate_value(key, "yolo")
+            self.assertTrue(message)
+            for mode in self.MODES:
+                with self.subTest(key=key, mode=mode):
+                    self.assertIn(mode, message)
 
 
 class TestValidateAutoResume(unittest.TestCase):
@@ -300,7 +312,10 @@ class TestValidateWholeConf(TempConfCase):
     def test_repo_agent_conf_is_valid(self):
         conf = agent_conf.load(os.path.join(ROOT, "agent.conf"))
         self.assertEqual(agent_conf.validate(conf), {})
-        self.assertEqual(list(conf.keys()), REAL_KEYS)
+        # bypass-mode: this repo's own agent.conf is the main manager's to
+        # change (agent-settings.sh sync appends the new last key), so it may
+        # still lack cloud_permission_mode
+        self.assertIn(list(conf.keys()), (REAL_KEYS, REAL_KEYS[:-1]))
 
 
 class TestHints(unittest.TestCase):
@@ -380,7 +395,8 @@ class TestGroups(unittest.TestCase):
                         "worker",
                     ],
                 ),
-                ("permission", ["permission_mode", "auto_resume", "language", "adhd"]),
+                ("permission", ["permission_mode", "cloud_permission_mode", "auto_resume",
+                                "language", "adhd"]),
                 ("runtime", ["runtime"]),
                 ("city", ["city_port", "city_idle_min", "city_governor_wait_sec",
                           "city_relay_sec"]),

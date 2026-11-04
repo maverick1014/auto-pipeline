@@ -271,19 +271,20 @@ class TestOpens(OrderCase):
         folder, title, command = self.calls[0]
         self.assertEqual(folder, os.path.dirname(self.shop))
         self.assertEqual(title, "shop Manager")
-        self.assertEqual(command, ac.agent_command("shop Manager", os.path.dirname(self.shop), None),
-                         "the same fixed line as the local button's")
+        self.assertEqual(command, ac.agent_command("shop Manager", os.path.dirname(self.shop), None, cloud=True),
+                         "the local button's fixed line, with the cloud permission mode (bypass-mode)")
 
     def test_it_is_the_same_function(self):
         seen = []
         real = self.state.add_agent
 
-        def spy(terr, now, force=False):
-            seen.append((terr, force))
-            return real(terr, now, force)
+        def spy(terr, now, force=False, cloud=False):
+            seen.append((terr, force, cloud))
+            return real(terr, now, force, cloud=cloud)
         self.state.add_agent = spy
         self.order(oid(1))
-        self.assertEqual(seen, [(self.terr, False)], "cloud_order calls add_agent once: no second way to open a session")
+        self.assertEqual(seen, [(self.terr, False, True)],
+                         "cloud_order calls add_agent once, as a cloud start: no second way to open a session")
 
     def test_a_live_main_manager_means_a_helper(self):
         self.mains[self.shop] = "old1"
@@ -466,7 +467,7 @@ class TestNothingOfTheOrderReachesTheOpener(OrderCase):
         for word in (MARK, mark_oid, self.terr, "force", "True"):
             self.assertNotIn(word, blob)
         self.assertEqual((folder, title), (os.path.dirname(self.shop), "shop Manager"))
-        self.assertEqual(command, ac.agent_command("shop Manager", os.path.dirname(self.shop), None))
+        self.assertEqual(command, ac.agent_command("shop Manager", os.path.dirname(self.shop), None, cloud=True))
 
     def test_the_real_opener_runs_a_fixed_argument_list(self):
         seen = []
@@ -490,7 +491,8 @@ class TestNothingOfTheOrderReachesTheOpener(OrderCase):
         args = launches[0]
         folder = os.path.dirname(self.shop)
         self.assertEqual(args[0], "bash")
-        self.assertEqual(args[2:], ["launch", folder, "shop Manager", ac.agent_command("shop Manager", folder, None)])
+        self.assertEqual(args[2:], ["launch", folder, "shop Manager",
+                                    ac.agent_command("shop Manager", folder, None, cloud=True)])
         for a, kw in seen:
             self.assertFalse(kw.get("shell"), "never a shell line")
             for word in a:

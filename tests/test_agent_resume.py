@@ -298,6 +298,16 @@ class TestLaunchCommand(ResumeCase):
         command = args[args.index("--command") + 1]
         self.assertIn("--permission-mode acceptEdits", command)
 
+    def test_bypass_mode_reaches_the_relaunched_terminal(self):
+        """bypass-mode (owner, 2026-11-04): a resumed task manager opens in
+        permission_mode, bypassPermissions too; never cloud_permission_mode."""
+        self.repo.clear_calls()
+        self.repo.set_conf("cloud_permission_mode", "plan")
+        _, args = self.launch_args(permission_mode="bypassPermissions", module="bp")
+        command = args[args.index("--command") + 1]
+        self.assertIn("--permission-mode bypassPermissions", command)
+        self.assertNotIn("plan", command)
+
     def test_command_sets_the_task_manager_role(self):
         _, args = self.launch_args()
         command = args[args.index("--command") + 1]
