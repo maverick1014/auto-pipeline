@@ -1322,9 +1322,14 @@ class TestStartWiring(CleanupCase):
                        "PERMISSION:", "YOU:", "AUTO UPDATE:", "RULES:", "QUIZ:"):
             self.assertTrue(any(l.startswith(prefix) for l in lines),
                             "%s line missing\n%s" % (prefix, out))
-        # S8: the state file is at least named, with its line count
-        self.assertTrue(any(l.startswith("agent_state.txt: 60 lines") for l in lines),
-                        "agent_state.txt pointer missing\n%s" % out)
+        # S8: the state file is at least pointed to: its pointer line, or its
+        # header with the "truncated" marker. A bare header (no hint that
+        # anything was left out) is not enough.
+        self.assertTrue(
+            "agent_state.txt: 60 lines, read it now (S8)" in lines
+            or ("agent_state.txt: 60 lines" in lines
+                and "  (truncated, read the file)" in lines),
+            "agent_state.txt pointer missing\n%s" % out)
         # the worktree header keeps the real count; rows cut to fit end in
         # one "(<n> more ...)" line naming the file
         self.assertIn("agent_worktree.txt: 4 lines", lines)
