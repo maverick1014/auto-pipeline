@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>待答问题 Mock</title>
+<style>
+:root{
+  --bg:#f6f5f1; --card:#ffffff; --fg:#1d1d1b; --muted:#6b6a64; --line:#e2e0d8;
+  --chip:#efede6; --accent:#2f5bd3; --accent-fg:#ffffff; --accent-soft:#e6ecfb;
+  --ok:#1f7a45; --ok-soft:#e2f3e8; --warn-bg:#fff4d6; --warn-fg:#6b4a00; --warn-line:#e8c766;
+  --bad:#a3261f; --mock:#5b2bbf; --mock-soft:#efe8fd; --shadow:0 1px 2px rgba(0,0,0,.06);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#151513; --card:#1f1f1c; --fg:#ecebe6; --muted:#a3a198; --line:#34332e;
+    --chip:#2a2926; --accent:#7f9fff; --accent-fg:#0d1530; --accent-soft:#232c48;
+    --ok:#6fd39a; --ok-soft:#1b3326; --warn-bg:#3a2f12; --warn-fg:#f3d98c; --warn-line:#6e5a1f;
+    --bad:#ff8a80; --mock:#c3a6ff; --mock-soft:#2b2340; --shadow:none;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#151513; --card:#1f1f1c; --fg:#ecebe6; --muted:#a3a198; --line:#34332e;
+  --chip:#2a2926; --accent:#7f9fff; --accent-fg:#0d1530; --accent-soft:#232c48;
+  --ok:#6fd39a; --ok-soft:#1b3326; --warn-bg:#3a2f12; --warn-fg:#f3d98c; --warn-line:#6e5a1f;
+  --bad:#ff8a80; --mock:#c3a6ff; --mock-soft:#2b2340; --shadow:none;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;overflow-x:hidden}
+.wrap{max-width:720px;margin:0 auto;padding:0 16px 48px}
+button,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+[hidden]{display:none !important}
+
+/* mock-only bar: never in the real page */
+.mockbar{background:var(--mock-soft);color:var(--mock);border-bottom:1px dashed var(--mock);font-size:13px}
+.mockbar .wrap{padding-top:8px;padding-bottom:8px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.mockbar b{letter-spacing:.05em}
+.mockbar .grp{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.mockbar button{border:1px solid var(--mock);background:transparent;color:var(--mock);border-radius:6px;padding:2px 8px;font-size:13px}
+.mockbar button[aria-pressed="true"]{background:var(--mock);color:var(--card)}
+
+header{padding:20px 0 8px}
+h1{font-size:22px;line-height:1.25;margin:0}
+.sub{color:var(--muted);font-size:14px;margin-top:2px;overflow-wrap:anywhere}
+.progress{height:6px;background:var(--line);border-radius:3px;margin:14px 0 6px;overflow:hidden}
+.progress>div{height:100%;width:0;background:var(--ok);transition:width .25s}
+.countrow{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.count{font-size:14px;color:var(--muted)}
+.tabs{display:flex;gap:4px;background:var(--chip);border-radius:8px;padding:3px}
+.tabs button{border:0;background:transparent;border-radius:6px;padding:4px 12px;font-size:14px}
+.tabs button[aria-pressed="true"]{background:var(--card);box-shadow:var(--shadow);font-weight:600}
+
+.banner{border:1px solid var(--warn-line);background:var(--warn-bg);color:var(--warn-fg);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 16px;margin-top:12px;box-shadow:var(--shadow)}
+.pos{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.pos .n{font-weight:700;color:var(--fg);font-size:15px;font-variant-numeric:tabular-nums}
+.chip{display:inline-block;background:var(--chip);border-radius:999px;padding:1px 9px;font-size:12px;color:var(--fg);white-space:nowrap}
+.chip.task{background:var(--accent-soft);color:var(--accent);max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.q{font-size:19px;line-height:1.4;font-weight:650;margin:12px 0 14px;overflow-wrap:anywhere}
+.field{margin:10px 0}
+.field .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.field .v{overflow-wrap:anywhere;white-space:pre-wrap}
+.field .v.ev{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px;background:var(--chip);border-radius:8px;padding:6px 8px}
+.rec{border-left:3px solid var(--ok);background:var(--ok-soft);border-radius:0 8px 8px 0;padding:6px 10px}
+.rec .k{color:var(--ok);font-weight:700}
+.missing{color:var(--muted)}
+
+.opts{display:flex;flex-direction:column;gap:8px;margin:16px 0 10px}
+.opt{display:flex;align-items:center;gap:10px;text-align:left;width:100%;border:1.5px solid var(--line);background:var(--card);border-radius:10px;padding:10px 12px;min-height:44px;overflow-wrap:anywhere}
+.opt:hover{border-color:var(--accent)}
+.opt .dot{flex:none;width:18px;height:18px;border-radius:50%;border:2px solid var(--muted)}
+.opt .t{flex:1;min-width:0}
+.opt .tag{flex:none;font-size:11px;font-weight:700;color:var(--ok);border:1px solid var(--ok);border-radius:999px;padding:0 7px}
+.opt[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.opt[aria-pressed="true"] .dot{border-color:var(--accent);background:var(--accent);box-shadow:inset 0 0 0 3px var(--card)}
+.opt:disabled{cursor:not-allowed;opacity:.6}
+label.note{display:block;font-size:13px;color:var(--muted);margin-top:6px}
+textarea{width:100%;min-height:72px;resize:vertical;border:1.5px solid var(--line);background:var(--card);border-radius:10px;padding:8px 10px;margin-top:4px}
+textarea:focus,.opt:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.save{font-size:13px;min-height:20px;margin-top:6px;color:var(--muted);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.save.ok{color:var(--ok)} .save.bad{color:var(--bad)}
+.linkbtn{border:0;background:none;padding:0;color:var(--muted);text-decoration:underline;font-size:13px}
+
+.nav{display:flex;gap:8px;margin-top:16px}
+.nav button{flex:1;min-height:44px;border-radius:10px;border:1.5px solid var(--line);background:var(--card);font-weight:600}
+.nav button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.nav button:disabled{opacity:.4;cursor:default}
+
+.filter{display:flex;gap:6px;margin:14px 0 4px}
+.filter button{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:3px 12px;font-size:13px}
+.filter button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);font-weight:600}
+.rows{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.row{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:10px 12px}
+.row:hover{border-color:var(--accent)}
+.row .num{flex:none;width:26px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--muted)}
+.row .body{flex:1;min-width:0}
+.row .rq{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.row .ra{font-size:13px;color:var(--ok);margin-top:2px;overflow-wrap:anywhere}
+.row .meta{font-size:12px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
+.st{flex:none;font-size:12px;border-radius:999px;padding:1px 8px;white-space:nowrap}
+.st.answered{background:var(--ok-soft);color:var(--ok)}
+.st.skipped{background:var(--warn-bg);color:var(--warn-fg)}
+.st.open{background:var(--chip);color:var(--muted)}
+
+.done{text-align:center;padding:28px 16px}
+.done .big{font-size:22px;font-weight:700;margin-bottom:6px}
+.done .jump{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:12px}
+.done .jump button{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:4px 10px}
+.textout{margin-top:16px;text-align:left}
+.textout textarea{min-height:180px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+.secbtn{border:1.5px solid var(--line);background:var(--card);border-radius:10px;padding:8px 14px;font-weight:600;margin-top:14px}
+.empty{color:var(--muted);text-align:center;padding:40px 0}
+@media (max-width:420px){ .q{font-size:17.5px} .card{padding:16px 14px} h1{font-size:20px} }
+</style>
+</head>
+<body>
+
+<!-- MOCK ONLY: the real page has no .mockbar and no fake db -->
+<div class="mockbar"><div class="wrap">
+  <b>MOCK</b>
+  <span class="grp">数据库 <button id="m-db-on" aria-pressed="true">有（模拟）</button><button id="m-db-off" aria-pressed="false">无</button><button id="m-db-ro" aria-pressed="false">只读</button></span>
+  <span class="grp">语言 <button id="m-zh" aria-pressed="true">中文</button><button id="m-en" aria-pressed="false">English</button></span>
+  <span class="grp"><button id="m-reset">清空模拟答案</button><button id="m-reload">模拟重新打开</button></span>
+</div></div>
+
+<div class="wrap">
+  <header>
+    <h1 id="h-title"></h1>
+    <div class="sub" id="h-sub"></div>
+    <div class="progress"><div id="h-bar"></div></div>
+    <div class="countrow">
+      <span class="count" id="h-count"></span>
+      <span class="tabs" role="group"><button id="t-one" aria-pressed="true"></button><button id="t-list" aria-pressed="false"></button></span>
+    </div>
+  </header>
+  <div class="banner" id="b-nodb" hidden></div>
+  <div class="banner" id="b-ro" hidden></div>
+  <main id="main"></main>
+</div>
+
+<!-- Filled by agent-file.sh questions --page: JSON with <, >, & and U+2028/9 written as \u escapes. Read with textContent only. -->
+<script type="application/json" id="sq-data">
+{"lang":"zh","repo":"auto-pipeline","generated":"2026-11-04 17:40","questions":[
+{"id":"t-show-question-mock","source":"todo","kind":"mock","task":"show-question","question":"show-question 的答题页面 mock 可以吗？","why":"写代码要等这个 mock 通过","evidence":"mock/show-question-mock.html，12 道示例题","rec":"可以，开始写代码","options":["可以，开始写代码","要改（写在下面）"],"since":"2026-11-04 17:40"},
+{"id":"p-3f2a91c0","source":"parked","kind":"","task":"city-tier","question":"城市页面已经改回旧版，新的楼层分级要不要整个放弃？","why":"分支还开着，占一个 worktree","evidence":"commit 2114fb2 撤回了 city-tier","rec":"放弃，删掉分支","options":["放弃，删掉分支","保留分支，以后再做","只留楼层数据，页面不要"],"since":"2026-11-04 11:02"},
+{"id":"t-bypass-mode-conf-question","source":"todo","kind":"question","task":"bypass-mode-conf","question":"v4-plus 和 v4-pospro 两个 repo 都改成 bypassPermissions 吗？","why":"两个 repo 的 main manager 在等你点头","evidence":"todo 行从 09:34 一直在等","rec":"两个都改","options":["两个都改","只改 v4-plus","都不改"],"since":"2026-11-04 09:34"},
+{"id":"w-8c1d07aa","source":"worktree","kind":"","task":"remote-watch","question":"Remote watch: poll every 30 s or every 60 s?","why":"It sets the CPU use on pc2 for every live task","evidence":"30 s: about 2% CPU, 60 s: about 1% (measured on pc2)","rec":"60 s","options":["60 s","30 s"],"since":"2026-11-04 16:58"},
+{"id":"t-personal-mode-review","source":"todo","kind":"review","task":"personal-mode","question":"personal-mode 做完了：请在你的电脑上开一个新终端，看启动文字里的 PERMISSION 那一行对不对。","why":"合并前要你在真机上看过","evidence":"单元测试全过；真机还没看","rec":"","options":["看过了，可以合并","有问题（写在下面）"],"since":"2026-11-04 16:20"},
+{"id":"p-b70e4413","source":"parked","kind":"","task":"decider-floor","question":"Haiku 被用来做 reviewer 时，也要拒绝它的意见吗？","why":"规则里 reviewer 算决策者，但现在没有一个 reviewer 是 Haiku","evidence":"agent.conf 里 reviewer=sonnet；没有 Haiku 的配置","rec":"要拒绝，和 Sonnet 一样","options":["要拒绝，和 Sonnet 一样","Haiku 只能看，不能拦合并"],"since":"2026-11-04 15:40"},
+{"id":"p-0d55e9b2","source":"parked","kind":"","task":"city-polish","question":"城市要不要做夜景模式？","why":"","evidence":"","rec":"","options":[],"since":"2026-10-28 10:15"},
+{"id":"w-41aa6f3e","source":"worktree","kind":"","task":"city-device-join","question":"Pairing code for a new device: 6 digits or 8 digits?","why":"The join screen is built next","evidence":"6 digits = 1 in a million guesses, the code lives 5 min","rec":"6 digits","options":[],"since":"2026-11-04 14:05"},
+{"id":"p-9e0c3d71","source":"parked","kind":"","task":"show-question","question":"Should \"list questions\" fire inside a \u003ccode\u003e block \u0026 inside quotes like 'show question'?","why":"The hook skips quoted mentions; a code block is not handled yet","evidence":"prompt = \"\u003c/script\u003e\u003cb\u003ex\u003c/b\u003e list questions\"","rec":"No: a code block counts as quoted","options":["No: a code block counts as quoted","Yes: only real quotes are skipped"],"since":"2026-11-04 17:35"},
+{"id":"t-city-tier-question","source":"todo","kind":"question","task":"city-tier","question":"楼层颜色用哪一套？","why":"颜色定了才能做截图对比","evidence":"三套截图在 mock/city-layout-mock.html 第 2 页","rec":"A 暖色","options":["A 暖色","B 冷色","C 跟系统主题"],"since":"2026-11-04 13:50"},
+{"id":"w-c2f90b18","source":"worktree","kind":"","task":"mode-and-floor","question":"Keep the 2000-byte cap on the start text when the state block is long?","why":"A long state block pushes the quiz line out of the first screen","evidence":"busy start = 2,640 bytes; with a pointer = 1,870 bytes","rec":"Yes, show a pointer to the file instead","options":["Yes, show a pointer to the file instead","No, print the full state block"],"since":"2026-11-04 15:55"},
+{"id":"p-5a7b2e60","source":"parked","kind":"","task":"auto-pipeline","question":"agent_ideas.txt 已经 106 行，要不要整理一次？","why":"每次启动都会读它，越长越费 token","evidence":"106 行，其中 31 行超过 30 天没人看","rec":"要，旧的移到 agent_completed.txt 下面的 ideas 段","options":["要，旧的移到 agent_completed.txt 下面的 ideas 段","要，但只删重复的","先不动"],"since":"2026-11-02 18:20"}
+]}
+</script>
+
+<script type="application/json" id="sq-labels">
+{"zh":{"title":"待你回答","sub":"{repo} · {n} 个问题 · 生成于 {t}","count":"已答 {a} / {n}","one":"逐题","list":"列表","why":"为什么现在问","evidence":"依据","rec":"建议","recTag":"建议","acceptRec":"同意建议","note":"补充说明，或写你自己的回答","notePh":"可以不填","back":"上一题","skip":"跳过","next":"下一题","finish":"完成","saving":"保存中…","saved":"已保存 {t}","saveFail":"没保存上：{e}。再改一下会重试。","unsaved":"没保存（这个页面没有数据库）","clear":"清除这题的答案","since":"提出于 {d}","src_parked":"暂存的问题","src_mock":"等你看 mock","src_question":"等你回答","src_review":"等你检查","src_hold":"暂停中","src_queue":"排队中","src_worktree":"任务经理在问","all":"全部","openOnly":"只看未答","st_answered":"已答","st_skipped":"跳过","st_open":"未答","noDb":"答案不会保存：这个页面现在没有数据库。不要关掉页面。答完后点「显示全部答案」，把文字贴到聊天里。","ro":"你只能看，不能答：这个页面没给你写入权限。","doneAll":"全部答完了 ✓","doneAllSub":"回到聊天，告诉 Claude「答完了」。Claude 会一次读完所有答案。","doneSome":"还有 {k} 题没答","doneSomeSub":"没答的题会留着，下次还在。现在去答：","showText":"显示全部答案","copy":"复制","copied":"已复制","empty":"没有待回答的问题。","none":"—","ans":"答："},
+"en":{"title":"Open questions","sub":"{repo} · {n} questions · made {t}","count":"{a} / {n} answered","one":"One by one","list":"List","why":"Why now","evidence":"Evidence","rec":"Recommendation","recTag":"Recommended","acceptRec":"Take the recommendation","note":"Add a note, or write your own answer","notePh":"Optional","back":"Back","skip":"Skip","next":"Next","finish":"Finish","saving":"Saving…","saved":"Saved {t}","saveFail":"Not saved: {e}. Change it again to retry.","unsaved":"Not saved (this page has no database)","clear":"Clear this answer","since":"Asked {d}","src_parked":"Parked question","src_mock":"Mock check","src_question":"Owner question","src_review":"Owner review","src_hold":"On hold","src_queue":"Queued","src_worktree":"A task manager asks","all":"All","openOnly":"Open only","st_answered":"Answered","st_skipped":"Skipped","st_open":"Open","noDb":"Answers are not saved: this page has no database right now. Keep it open. When done, press \"Show all answers\" and paste the text into the chat.","ro":"You can read but not answer: this page gives you no write access.","doneAll":"All answered ✓","doneAllSub":"Go back to the chat and tell Claude \"done\". Claude reads every answer at once.","doneSome":"{k} still open","doneSomeSub":"Open questions stay for next time. Answer them now:","showText":"Show all answers","copy":"Copy","copied":"Copied","empty":"No open questions.","none":"—","ans":"Answer: "}}
+</script>
+
+<script>
+(function(){
+"use strict";
+var DATA = JSON.parse(document.getElementById("sq-data").textContent);
+var ALL_LABELS = JSON.parse(document.getElementById("sq-labels").textContent);
+var Q = Array.isArray(DATA.questions) ? DATA.questions : [];
+var L = ALL_LABELS[DATA.lang] || ALL_LABELS.en;
+
+var S = {
+  view: "one",          // one | list | done
+  idx: 0,
+  filterOpen: false,
+  answers: {},          // id -> {answer, note, answeredAt}
+  skipped: {},          // id -> true (this visit only; skipped = still open)
+  status: {},           // id -> {cls, text}
+  db: null,             // the db namespace, null = absent
+  dbState: "wait",      // wait | on | off
+  readOnly: false,
+  textShown: false
+};
+
+function fmt(s, v){ return String(s).replace(/\{(\w+)\}/g, function(_, k){ return v && v[k] != null ? v[k] : ""; }); }
+function el(tag, cls, text){ var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function $(id){ return document.getElementById(id); }
+function hhmm(iso){ try { var d = new Date(iso); return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2); } catch(e){ return ""; } }
+function isAnswered(q){ var a = S.answers[q.id]; return !!(a && String(a.answer || "").trim()); }
+function answeredCount(){ var n = 0; Q.forEach(function(q){ if (isAnswered(q)) n++; }); return n; }
+function srcLabel(q){ return q.source === "todo" ? (L["src_" + q.kind] || L.src_question) : (L["src_" + q.source] || q.source); }
+// Recommended option first; the rest keep their order.
+function orderedOptions(q){
+  var opts = Array.isArray(q.options) ? q.options.slice() : [];
+  var r = String(q.rec || "").trim().toLowerCase(), at = -1;
+  opts.forEach(function(o, i){ if (at < 0 && r && String(o).trim().toLowerCase() === r) at = i; });
+  if (at > 0) { var x = opts.splice(at, 1)[0]; opts.unshift(x); at = 0; }
+  return {opts: opts, rec: at};
+}
+
+/* ---------- saving: one write at a time per document, only on change ---------- */
+var W = {}; // id -> {busy, pending, last}
+function bodyFor(q){
+  var a = S.answers[q.id];
+  if (!a || !String(a.answer || "").trim()) return null;   // nothing left -> delete
+  return {answer: String(a.answer), note: String(a.note || ""), answeredAt: a.answeredAt};
+}
+function queueSave(q){
+  if (!S.db) { S.status[q.id] = {cls: "bad", text: L.unsaved}; paintSave(q); return; }
+  var w = W[q.id] || (W[q.id] = {busy: false, pending: undefined, last: undefined});
+  w.pending = bodyFor(q);
+  pump(q, w);
+}
+function pump(q, w){
+  if (w.busy || w.pending === undefined) return;
+  var body = w.pending; w.pending = undefined;
+  var key = JSON.stringify(body);
+  if (key === w.last) return;
+  w.busy = true;
+  S.status[q.id] = {cls: "", text: L.saving}; paintSave(q);
+  var ref = S.db.collection("answers").doc(q.id);
+  var tries = 0;
+  (function attempt(){
+    tries++;
+    (body === null ? ref.delete() : ref.set(body)).then(function(){
+      w.last = key; w.busy = false;
+      S.status[q.id] = body === null ? {cls: "", text: ""} : {cls: "ok", text: fmt(L.saved, {t: hhmm(body.answeredAt)})};
+      paintSave(q); pump(q, w);
+    }, function(e){
+      if (e && e.code === "unavailable" && tries < 2) { setTimeout(attempt, 400 + Math.random() * 600); return; }
+      w.busy = false;
+      if (e && (e.code === "invalid_argument" || e.code === "not_granted")) S.readOnly = true;
+      S.status[q.id] = {cls: "bad", text: fmt(L.saveFail, {e: (e && e.code) || "error"})};
+      paintSave(q); paintBanners(); pump(q, w);
+    });
+  })();
+}
+var typingTimer = null;
+function setAnswer(q, answer, note){
+  var prev = S.answers[q.id] || {};
+  var next = {answer: answer, note: note};
+  if (prev.answer === next.answer && (prev.note || "") === (next.note || "")) return;
+  next.answeredAt = new Date().toISOString();
+  S.answers[q.id] = next;
+  delete S.skipped[q.id];
+  paintHead();
+}
+
+/* ---------- capabilities: render first, light up later ---------- */
+function startCaps(useFn){
+  S.dbState = "wait";
+  var c = useFn ? useFn : (window.claude && typeof window.claude.use === "function" ? function(n){ return window.claude.use(n); } : null);
+  if (!c) { S.dbState = "off"; paintAll(); return; }
+  var timer = setTimeout(function(){ if (S.dbState === "wait") { S.dbState = "off"; paintAll(); } }, 10000);
+  Promise.resolve(c("db")).then(function(db){
+    if (!db) { clearTimeout(timer); S.dbState = "off"; paintAll(); return; }
+    S.db = db;
+    return db.collection("answers").get().then(function(snap){
+      clearTimeout(timer);
+      var ids = {}; Q.forEach(function(q){ ids[q.id] = 1; });
+      (snap && snap.docs || []).forEach(function(d){
+        if (!d.exists || !ids[d.id]) return;
+        var v = d.data() || {};
+        S.answers[d.id] = {answer: String(v.answer || ""), note: String(v.note || ""), answeredAt: String(v.answeredAt || "")};
+        W[d.id] = {busy: false, pending: undefined, last: JSON.stringify({answer: String(v.answer || ""), note: String(v.note || ""), answeredAt: v.answeredAt})};
+        S.status[d.id] = {cls: "ok", text: fmt(L.saved, {t: hhmm(v.answeredAt)})};
+      });
+      S.dbState = "on"; paintAll();
+    });
+  }).catch(function(){ clearTimeout(timer); S.db = null; S.dbState = "off"; paintAll(); });
+  Promise.resolve(c("user")).then(function(user){
+    if (!user || typeof user.can !== "function") return;
+    return user.can("data.write").then(function(ok){ if (ok === false) { S.readOnly = true; paintAll(); } });
+  }).catch(function(){});
+}
+
+/* ---------- painting ---------- */
+function paintHead(){
+  document.title = L.title;
+  $("h-title").textContent = L.title;
+  $("h-sub").textContent = fmt(L.sub, {repo: DATA.repo || "", n: Q.length, t: DATA.generated || ""});
+  var a = answeredCount();
+  $("h-count").textContent = fmt(L.count, {a: a, n: Q.length});
+  $("h-bar").style.width = (Q.length ? Math.round(100 * a / Q.length) : 0) + "%";
+  $("t-one").textContent = L.one; $("t-list").textContent = L.list;
+  $("t-one").setAttribute("aria-pressed", String(S.view !== "list"));
+  $("t-list").setAttribute("aria-pressed", String(S.view === "list"));
+}
+function paintBanners(){
+  var nodb = $("b-nodb"); nodb.textContent = L.noDb; nodb.hidden = S.dbState !== "off";
+  var ro = $("b-ro"); ro.textContent = L.ro; ro.hidden = !(S.readOnly && S.dbState === "on");
+}
+function paintSave(q){
+  var box = document.querySelector('[data-save="1"]');
+  if (!box || box.getAttribute("data-id") !== q.id) return;
+  var st = S.status[q.id] || {cls: "", text: ""};
+  box.className = "save " + (st.cls || "");
+  box.firstChild.textContent = st.text || "";
+  box.lastChild.hidden = !isAnswered(q) || S.readOnly;
+}
+function fieldRow(k, v, cls, vcls){
+  var has = !!(v && String(v).trim());
+  var f = el("div", "field" + (cls ? " " + cls : ""));
+  f.appendChild(el("div", "k", k));
+  f.appendChild(el("div", "v" + (has ? (vcls ? " " + vcls : "") : " missing"), has ? v : L.none));
+  return f;
+}
+function paintOne(main){
+  if (!Q.length) { main.appendChild(el("div", "empty", L.empty)); return; }
+  var q = Q[S.idx], ord = orderedOptions(q), a = S.answers[q.id] || {answer: "", note: ""};
+  var card = el("section", "card");
+  var pos = el("div", "pos");
+  pos.appendChild(el("span", "n", (S.idx + 1) + " / " + Q.length));
+  var chips = el("span"); chips.style.display = "flex"; chips.style.gap = "6px"; chips.style.flexWrap = "wrap"; chips.style.minWidth = "0";
+  chips.appendChild(el("span", "chip task", q.task || L.none));
+  chips.appendChild(el("span", "chip", srcLabel(q)));
+  pos.appendChild(chips);
+  card.appendChild(pos);
+  card.appendChild(el("div", "q", q.question));
+  card.appendChild(fieldRow(L.why, q.why));
+  card.appendChild(fieldRow(L.evidence, q.evidence, "", "ev"));
+  card.appendChild(fieldRow(L.rec, q.rec, "rec"));
+
+  var choices = ord.opts.slice(), recIdx = ord.rec;
+  if (!choices.length && q.rec) { choices = [L.acceptRec]; recIdx = -2; }   // no options, but a recommendation
+  var chosen = -1;
+  choices.forEach(function(o, i){
+    var val = recIdx === -2 ? q.rec : o;
+    if (a.answer && a.answer === val) chosen = i;
+  });
+  var noteText = chosen >= 0 ? (a.note || "") : (a.answer || "");
+  if (choices.length) {
+    var opts = el("div", "opts");
+    choices.forEach(function(o, i){
+      var b = el("button", "opt"); b.type = "button";
+      b.setAttribute("aria-pressed", String(i === chosen));
+      b.disabled = S.readOnly;
+      b.appendChild(el("span", "dot"));
+      b.appendChild(el("span", "t", o));
+      if (i === recIdx || recIdx === -2) b.appendChild(el("span", "tag", L.recTag));
+      b.addEventListener("click", function(){
+        var val = recIdx === -2 ? q.rec : o;
+        var ta = card.querySelector("textarea"), t = ta ? ta.value : "";
+        var cur = S.answers[q.id] || {};
+        var curChosen = cur.answer === val;
+        if (curChosen) setAnswer(q, t.trim() ? t : "", "");      // click again = unselect; the text becomes the answer
+        else setAnswer(q, val, t);
+        queueSave(q); paintMain();
+      });
+      opts.appendChild(b);
+    });
+    card.appendChild(opts);
+  }
+  var lab = el("label", "note", L.note); lab.htmlFor = "sq-note";
+  var ta = el("textarea"); ta.id = "sq-note"; ta.placeholder = L.notePh; ta.value = noteText; ta.disabled = S.readOnly;
+  ta.addEventListener("input", function(){
+    var cur = S.answers[q.id] || {}, val = ta.value;
+    var picked = chosen >= 0 ? (recIdx === -2 ? q.rec : choices[chosen]) : "";
+    if (picked && cur.answer === picked) setAnswer(q, picked, val); else setAnswer(q, val, "");
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(function(){ queueSave(q); paintList(); }, 700);
+  });
+  ta.addEventListener("blur", function(){ clearTimeout(typingTimer); queueSave(q); });
+  card.appendChild(lab); card.appendChild(ta);
+
+  var save = el("div", "save"); save.setAttribute("data-save", "1"); save.setAttribute("data-id", q.id);
+  save.appendChild(el("span"));
+  var clr = el("button", "linkbtn", L.clear); clr.type = "button";
+  clr.addEventListener("click", function(){ S.answers[q.id] = {answer: "", note: "", answeredAt: new Date().toISOString()}; queueSave(q); paintMain(); paintHead(); });
+  save.appendChild(clr);
+  card.appendChild(save);
+
+  var nav = el("div", "nav");
+  var back = el("button", "", L.back); back.type = "button"; back.disabled = S.idx === 0;
+  back.addEventListener("click", function(){ flushTyping(q); S.idx--; paintMain(); });
+  var skip = el("button", "", L.skip); skip.type = "button";
+  skip.addEventListener("click", function(){ flushTyping(q); if (!isAnswered(q)) S.skipped[q.id] = true; go(1); });
+  var last = S.idx === Q.length - 1;
+  var next = el("button", "primary", last ? L.finish : L.next); next.type = "button";
+  next.addEventListener("click", function(){ flushTyping(q); go(1); });
+  nav.appendChild(back); nav.appendChild(skip); nav.appendChild(next);
+  card.appendChild(nav);
+  main.appendChild(card);
+  paintSave(q);
+}
+function flushTyping(q){ if (typingTimer) { clearTimeout(typingTimer); typingTimer = null; queueSave(q); } }
+function go(d){
+  if (S.idx + d >= Q.length) { S.view = "done"; paintAll(); window.scrollTo(0, 0); return; }
+  S.idx = Math.max(0, S.idx + d); paintMain(); window.scrollTo(0, 0);
+}
+function rowFor(q, i){
+  var li = el("li");
+  var b = el("button", "row"); b.type = "button";
+  b.appendChild(el("span", "num", String(i + 1)));
+  var body = el("span", "body");
+  body.appendChild(el("span", "rq", q.question));
+  var meta = el("span", "meta", (q.task || "") + " · " + srcLabel(q)); meta.style.display = "block"; body.appendChild(meta);
+  if (isAnswered(q)) { var ra = el("span", "ra", L.ans + S.answers[q.id].answer); ra.style.display = "block"; body.appendChild(ra); }
+  b.appendChild(body);
+  var st = isAnswered(q) ? "answered" : (S.skipped[q.id] ? "skipped" : "open");
+  b.appendChild(el("span", "st " + st, L["st_" + st]));
+  b.addEventListener("click", function(){ S.idx = i; S.view = "one"; paintAll(); window.scrollTo(0, 0); });
+  li.appendChild(b);
+  return li;
+}
+function paintList(){
+  if (S.view !== "list") return;
+  var main = $("main"); main.textContent = "";
+  var f = el("div", "filter");
+  [["all", false], ["openOnly", true]].forEach(function(p){
+    var b = el("button", "", L[p[0]]); b.type = "button"; b.setAttribute("aria-pressed", String(S.filterOpen === p[1]));
+    b.addEventListener("click", function(){ S.filterOpen = p[1]; paintList(); });
+    f.appendChild(b);
+  });
+  main.appendChild(f);
+  var ul = el("ul", "rows");
+  Q.forEach(function(q, i){ if (S.filterOpen && isAnswered(q)) return; ul.appendChild(rowFor(q, i)); });
+  main.appendChild(ul);
+  main.appendChild(doneBlock(true));
+}
+function answersText(){
+  return Q.map(function(q, i){
+    var a = S.answers[q.id];
+    var line = (i + 1) + ". [" + q.id + "] " + q.question + "\n   " + L.ans + (isAnswered(q) ? a.answer : L.st_open);
+    if (a && a.note && isAnswered(q) && a.note !== a.answer) line += "\n   + " + a.note;
+    return line;
+  }).join("\n");
+}
+function doneBlock(compact){
+  var box = el("section", compact ? "done card" : "done card");
+  var openQs = []; Q.forEach(function(q, i){ if (!isAnswered(q)) openQs.push(i); });
+  if (!openQs.length) {
+    box.appendChild(el("div", "big", L.doneAll));
+    box.appendChild(el("div", "", L.doneAllSub));
+  } else {
+    box.appendChild(el("div", "big", fmt(L.doneSome, {k: openQs.length})));
+    box.appendChild(el("div", "", L.doneSomeSub));
+    var j = el("div", "jump");
+    openQs.forEach(function(i){
+      var b = el("button", "", String(i + 1)); b.type = "button"; b.title = Q[i].question;
+      b.addEventListener("click", function(){ S.idx = i; S.view = "one"; paintAll(); window.scrollTo(0, 0); });
+      j.appendChild(b);
+    });
+    box.appendChild(j);
+  }
+  var tb = el("button", "secbtn", L.showText); tb.type = "button";
+  tb.addEventListener("click", function(){ S.textShown = !S.textShown; paintMain(); });
+  box.appendChild(tb);
+  if (S.textShown) {
+    var out = el("div", "textout");
+    var ta = el("textarea"); ta.readOnly = true; ta.value = answersText();
+    out.appendChild(ta);
+    var cp = el("button", "secbtn", L.copy); cp.type = "button";
+    cp.addEventListener("click", function(){
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch(e) {}
+      if (!ok && navigator.clipboard) navigator.clipboard.writeText(ta.value).then(function(){ cp.textContent = L.copied; }, function(){});
+      else if (ok) cp.textContent = L.copied;
+    });
+    out.appendChild(cp);
+    box.appendChild(out);
+  }
+  return box;
+}
+function paintMain(){
+  var main = $("main");
+  if (S.view === "list") { paintList(); return; }
+  main.textContent = "";
+  if (S.view === "done") { main.appendChild(doneBlock(false)); return; }
+  paintOne(main);
+}
+function paintAll(){ document.documentElement.lang = DATA.lang === "zh" ? "zh" : "en"; paintHead(); paintBanners(); paintMain(); }
+
+$("t-one").addEventListener("click", function(){ S.view = "one"; paintAll(); });
+$("t-list").addEventListener("click", function(){ S.view = "list"; paintAll(); });
+
+/* ---------- MOCK ONLY: a fake db with the same calls, kept in localStorage, and the toolbar ---------- */
+var MOCK_KEY = "sq-mock-answers";
+function mockStore(){ try { return JSON.parse(localStorage.getItem(MOCK_KEY) || "{}") || {}; } catch(e){ return {}; } }
+function mockWrite(o){ try { localStorage.setItem(MOCK_KEY, JSON.stringify(o)); } catch(e){} }
+function later(v, ms){ return new Promise(function(r){ setTimeout(function(){ r(v); }, ms); }); }
+var fakeDb = {
+  collection: function(name){
+    return {
+      get: function(){ var s = mockStore(); return later({docs: Object.keys(s).map(function(id){ return {id: id, exists: true, data: function(){ return s[id]; }}; })}, 250); },
+      doc: function(id){
+        return {
+          set: function(body){ return later(null, 350).then(function(){ if (mockMode === "ro") { var e = new Error("no write"); e.code = "invalid_argument"; throw e; } var s = mockStore(); s[id] = body; mockWrite(s); }); },
+          delete: function(){ return later(null, 200).then(function(){ var s = mockStore(); delete s[id]; mockWrite(s); }); },
+          get: function(){ var s = mockStore(); return later({id: id, exists: id in s, data: function(){ return s[id]; }}, 150); }
+        };
+      }
+    };
+  }
+};
+var fakeUser = { can: function(){ return later(mockMode === "ro" ? false : true, 100); } };
+var mockMode = "on";
+function mockUse(name){
+  if (mockMode === "off") return later(null, 300);
+  return later(name === "db" ? fakeDb : name === "user" ? fakeUser : null, 300);
+}
+function reopen(){
+  S.answers = {}; S.skipped = {}; S.status = {}; S.db = null; S.readOnly = false; W = {}; S.view = "one"; S.idx = 0; S.textShown = false;
+  paintAll(); startCaps(mockUse);
+}
+function press(ids, on){ ids.forEach(function(i){ $(i).setAttribute("aria-pressed", String(i === on)); }); }
+$("m-db-on").onclick = function(){ mockMode = "on"; press(["m-db-on","m-db-off","m-db-ro"], "m-db-on"); reopen(); };
+$("m-db-off").onclick = function(){ mockMode = "off"; press(["m-db-on","m-db-off","m-db-ro"], "m-db-off"); reopen(); };
+$("m-db-ro").onclick = function(){ mockMode = "ro"; press(["m-db-on","m-db-off","m-db-ro"], "m-db-ro"); reopen(); };
+$("m-zh").onclick = function(){ DATA.lang = "zh"; L = ALL_LABELS.zh; press(["m-zh","m-en"], "m-zh"); paintAll(); };
+$("m-en").onclick = function(){ DATA.lang = "en"; L = ALL_LABELS.en; press(["m-zh","m-en"], "m-en"); paintAll(); };
+$("m-reset").onclick = function(){ mockWrite({}); reopen(); };
+$("m-reload").onclick = reopen;
+/* ---------- end MOCK ONLY ---------- */
+
+paintAll();
+// Real page: startCaps() with no argument (window.claude.use). The mock uses its fake db.
+startCaps(mockUse);
+})();
+</script>
+</body>
+</html>
