@@ -144,7 +144,9 @@ elif verb == "terminal send" and os.path.isdir(shell):
 elif verb == "terminal send" and os.path.isdir(screens):
     print(json.dumps({"ok": True, "result": {}}))
 elif verb.startswith("terminal"):
-    sys.stderr.write("orca: terminal %s not found\n" % term)
+    # real orca: a gone handle is a JSON error on stdout, exit 1
+    print(json.dumps({"ok": False, "error": {"code": "terminal_handle_stale",
+                                             "message": "terminal_handle_stale"}}))
     sys.exit(1)
 else:
     print(json.dumps({"ok": True, "result": {}}))
@@ -450,6 +452,15 @@ class TestStallLostMax(WatchCase):
         text = self.out(self.watch(max_sweeps="10"))
         self.assertEqual(self.watch_line(text), "WATCH LOST feat")
         self.assertLessEqual(len(self.terminal_calls("read")), 5)
+
+    def test_lost_names_the_orca_error(self):
+        """Real orca puts the error on stdout as JSON ({"ok": false, "error":
+        {"code": ...}}), not on stderr. The evidence names it, so the main
+        manager can tell a gone pane from an unreachable machine."""
+        self.screens(self.moving(), handle="term_other")
+        text = self.out(self.watch(max_sweeps="10"))
+        self.assertEqual(self.watch_line(text), "WATCH LOST feat")
+        self.assertIn("terminal_handle_stale", "\n".join(self.after_watch(text)))
 
     def test_a_good_read_resets_the_lost_count(self):
         bad = ["FAIL"]
