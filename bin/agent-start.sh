@@ -969,7 +969,7 @@ fi
 
 # 4. AUTO UPDATE: short form without the plugin path.
 if [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
-  export AU_SHORT="AUTO UPDATE: not set. Ask once: on (recommended) or off, then PLUGIN/bin/agent-settings.sh --user auto_update on|off (PLUGIN as on the PROJECT line)"
+  export AU_SHORT="AUTO UPDATE: not set. Ask once: on (recommended) or off, then PLUGIN/bin/agent-settings.sh --user auto_update on|off"
   NORMAL_TEXT=$(printf '%s' "$NORMAL_TEXT" | awk '/^AUTO UPDATE: not set/{print ENVIRON["AU_SHORT"]; next} {print}'; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
   calc_fixed
 fi
