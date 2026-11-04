@@ -446,7 +446,7 @@ class TestTheQuiz(ScriptCase):
         out = self.quiz()
         self.assertIn("=== QUIZ — answer all 36 before any work ===", out)
         self.assertIn('--answer "1A 2B 3C ... 36D"', out)
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 34)
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 36)
 
     def test_b_passes(self):
         out = self.assertOk(self.repo.run("agent-start.sh", "--answer", self.ANSWERS))
@@ -461,7 +461,7 @@ class TestTheQuiz(ScriptCase):
                 self.assertIn("Q33(W14)", result.stdout)
 
     def test_the_old_32_answers_no_longer_pass(self):
-        result = self.repo.run("agent-start.sh", "--answer", self.ANSWERS[:-8])
+        result = self.repo.run("agent-start.sh", "--answer", self.ANSWERS.replace(" 33B", ""))
         self.assertEqual(result.returncode, 1)
         self.assertIn("Q33(W14)", result.stdout)
 

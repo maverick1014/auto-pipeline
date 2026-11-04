@@ -8,6 +8,10 @@
 #                                  also set permission_mode for every agent
 #                                  (bypass = bypassPermissions, auto = auto);
 #                                  any other value exits 2, nothing created
+#   bin/agent-init.sh --auto-update on|off [<dir>]
+#                                  save auto_update in the user file and apply
+#                                  it (agent-settings.sh --user auto_update);
+#                                  any other value exits 2, nothing created
 #   bin/agent-init.sh -h           print this block, create nothing, exit 0
 #
 # Creates, only when missing, in the project root: agent.conf (a copy of
@@ -35,6 +39,11 @@
 # line says new panes stop on the bypass warning screen. The file is only
 # read, never written.
 #
+# Auto update: after the permission step. --auto-update given: saved. Else
+# auto_update already in the user file: nothing. Else a terminal on stdin: one
+# question on stderr, "Auto update: on (recommended) or off?" (Enter, EOF or
+# anything else = on). Else on. Saved through agent-settings.sh --user.
+#
 # Ends by printing two blocks a human pastes himself, since a plugin cannot
 # reach either place:
 #   1. the Bash permission block, for the project's .claude/settings.json.
@@ -47,11 +56,12 @@ set -eu
 . "$(dirname "$0")/agent-roots.sh"
 
 case "${1:-}" in
-  -h|--help) sed -n '2,45p' "$0"; exit 0;;
+  -h|--help) sed -n '2,55p' "$0"; exit 0;;
 esac
 
 MODE=""
 MODE_GIVEN=0
+AUTO_UPDATE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --mode)
@@ -64,6 +74,16 @@ while [ $# -gt 0 ]; do
         bypass) MODE="bypassPermissions";;
         auto) MODE="auto";;
         *) echo "agent-init.sh: --mode must be bypass or auto, got: $2" >&2; exit 2;;
+      esac
+      shift 2;;
+    --auto-update)
+      if [ $# -lt 2 ]; then
+        echo "agent-init.sh: --auto-update needs a value: on or off" >&2
+        exit 2
+      fi
+      case "$2" in
+        on|off) AUTO_UPDATE="$2";;
+        *) echo "agent-init.sh: --auto-update must be on or off, got: $2" >&2; exit 2;;
       esac
       shift 2;;
     *) break;;
@@ -122,6 +142,28 @@ ask_permission_mode() {
     bypass|b) set_permission_mode bypassPermissions;;
     auto|a) set_permission_mode auto;;
   esac
+}
+
+save_auto_update() {
+  "$PLUGIN_ROOT/bin/agent-settings.sh" --user auto_update "$1"
+}
+
+auto_update_step() {
+  if [ -n "$AUTO_UPDATE" ]; then
+    save_auto_update "$AUTO_UPDATE"
+    return 0
+  fi
+  if python3 "$PLUGIN_ROOT/bin/agent_conf.py" effective auto_update "$ROOT/agent.conf" >/dev/null 2>&1; then
+    return 0
+  fi
+  ans=on
+  if [ -t 0 ]; then
+    printf 'Auto update: on (recommended) or off? [on/off, Enter = on]: ' >&2
+    read -r ans || ans=""
+    ans=$(printf '%s' "$ans" | tr '[:upper:]' '[:lower:]')
+    [ "$ans" = off ] || ans=on
+  fi
+  save_auto_update "$ans"
 }
 
 skip_warning_line() {
@@ -246,6 +288,7 @@ if [ "$CONF_FRESH" = 1 ]; then
 elif [ "$MODE_GIVEN" = 1 ]; then
   echo "kept: agent.conf permission_mode=$(conf_permission_mode), change it with: $PLUGIN_ROOT/bin/agent-settings.sh permission_mode <mode>"
 fi
+auto_update_step
 skip_warning_line
 
 cat <<'BLOCK'
