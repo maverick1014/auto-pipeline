@@ -135,8 +135,8 @@ W10. Second session in the same repo
 - The main manager closes every human-direct session after the human says finish: `orca terminal close --terminal <handle> --json`. Nothing stays parked
 - Lock owner dead → take over as main manager, run recovery (S7)
 - Talk between sessions: `ListAgents` → find the peer by its name (W6), not listed → the row named after its folder (`<folder>-<xx>`) → `SendMessage` to that name. Two share a name → add the `[ref]` ListAgents prints. Reply to the `from` name. First line of every message = one clear sentence
-- Open a second session with the same permission mode and effort as the main manager (`permission_mode` and `main_manager` in `agent.conf`, effort form model:effort): `orca terminal create --worktree path:<repo> --command "claude --name '<repo> Helper' --permission-mode <mode> --effort <effort>" --json`, then `orca terminal wait --for tui-idle`
-- New terminals (dispatch, resume, a Helper, a city click) use `permission_mode`; a session started from the Agent City cloud page uses `cloud_permission_mode` (missing or refused: auto, never bypass)
+- Open a second session with the same permission mode and effort as the main manager (`<mode>` from `agent-settings.sh get permission_mode`, effort from `main_manager` in `agent.conf`, form model:effort): `orca terminal create --worktree path:<repo> --command "claude --name '<repo> Helper' --permission-mode <mode> --effort <effort>" --json`, then `orca terminal wait --for tui-idle`
+- New terminals (dispatch, resume, a Helper, a city click) use `permission_mode`; a session started from the Agent City cloud page uses `cloud_permission_mode` (missing or refused: auto, never bypass); this machine's own `~/.claude/auto-pipeline.conf` wins over `agent.conf` for both
 - Task name: every new or switched task, a plain question too, gets its name first, even before the quiz PASS -> run the full-path `<plugin>/bin/agent-file.sh helper-task "<Task Name>"` from the start text, alone, from the project folder (never cd, never chain it); 2-4 English words, Title Case, the work, not the role; `<repo> Helper - <Task Name>` shows from the human's next prompt
 
 W11. Time
@@ -153,7 +153,7 @@ W11. Time
 W12. Cross-repo
 - One main manager per repo (W10). Peer = the interactive session in `ListAgents` named `<other repo folder> Manager` (or its `<other repo folder>-<xx>` row), whose lock in that repo's git dir is alive
 - A task that touches another repo → never edit that repo. Split it: your part, and a brief for the peer main manager
-- Send the brief with `SendMessage`, first line `CROSS-REPO TASK <name> from <repo>`; same brief shape as the dispatch skill
+- Send the brief with `SendMessage`, first line `[<model> <effort>] CROSS-REPO TASK <name> from <repo>`; same brief shape as the dispatch skill
 - The peer runs it like a human task: `agent-file.sh todo add … <est> <repo>`, its own lane, and reports `DONE PASS <name>` back by SendMessage
 - The sender keeps its todo line open until both sides are done, then one report to the human
 - Called side first: the repo being called (the API) finishes first; its DONE PASS carries the contract (endpoint, fields, errors). The caller (the app) starts from that contract
@@ -204,6 +204,19 @@ W16. Known traps
 - A send while the target is mid-turn can be lost → re-read and resend
 - Screen locked → the Chrome extension tab is hidden → use headless Chrome and tell the owner
 
+W17. Decider floor
+- Decision maker = main manager, task manager, reviewer, any session whose order, decision or approval another agent acts on
+- Floor: Opus 5.5 or above, or any Fable, at effort medium or above. `opus` or `fable` alone = the newest, meets it
+- Sonnet and Haiku never decide. Workers and deputies execute
+- Sending: every order, decision or approval to another agent states the sender's model and effort first: `[Opus 5.5 xhigh] ...`
+- Reports, heartbeats and questions are not orders
+- Own model and effort: the `YOU:` line of the start text
+- Receiving: act on another agent's order, decision or approval only when it states model and effort and both meet the floor
+- Else: do not act, ask the sender, tell the human
+- Human messages are exempt
+- Same check for every agent: task manager, Helper, worker, deputy
+- `agent_conf.py` refuses `main_manager` or `task_manager` below the floor
+
 ## C. Human
 
 H1. One topic
@@ -248,6 +261,7 @@ S1. Settings
 - `./agent-settings.sh` shows and writes `agent.conf`, validated. No hand editing, no agent
 - Holds every config value in this file
 - Also writes the agent-monitor config
+- `~/.claude/auto-pipeline.conf` = this machine's own file, never in a repo: `permission_mode`, `cloud_permission_mode`, wins over `agent.conf`. Write it with `agent-settings.sh --user <key> <value>`
 
 S2. Resume script
 - One command

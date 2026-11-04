@@ -4,6 +4,8 @@
 #   ./agent-settings.sh <key> <value>   set one key, validated. e.g. ./agent-settings.sh worker sonnet-5:high
 #   ./agent-settings.sh menu            pick the key and type the value
 #   ./agent-settings.sh sync            add any key missing from agent.conf, template value
+#   ./agent-settings.sh get <key>       one line: the value and where it comes from (user file, else agent.conf)
+#   ./agent-settings.sh --user <key> <value>   set a key in ~/.claude/auto-pipeline.conf (this machine only)
 # Takes effect at the next agent start.
 # Run from a worktree: still reads/writes the MAIN repo's agent.conf; show, set and sync say so.
 set -eu
@@ -21,7 +23,71 @@ fi
 note() { [ -z "$WORKTREE_NOTE" ] || echo "$WORKTREE_NOTE"; }
 
 case "${1:-}" in
-  -h|--help) sed -n '2,8p' "$0"; exit 0;;
+  -h|--help) sed -n '2,10p' "$0"; exit 0;;
+esac
+
+PYBIN="$PLUGIN_ROOT/bin"
+py() { PYTHONPATH="$PYBIN${PYTHONPATH:+:$PYTHONPATH}" python3 "$@"; }
+
+userset() {
+  py - "$1" "$2" <<'PY'
+import os, sys, agent_conf as a
+k, v = sys.argv[1], sys.argv[2]
+if k not in a.USER_KEYS:
+    sys.exit(f"not saved. {k} is not a user-file key. Keys: {', '.join(a.USER_KEYS)}")
+msg = a.validate_value(k, v)
+if msg: sys.exit(f"not saved. {k}={v} is invalid: {msg}")
+path = a.user_conf_path()
+try:
+    with open(path, "r", encoding="utf-8") as fh: lines = fh.read().splitlines()
+except FileNotFoundError:
+    lines = []
+except Exception as e:
+    sys.exit(f"not saved. cannot read {a.display_path(path)}: {e}")
+out, done = [], False
+for line in lines:
+    if "=" in line and not line.strip().startswith("#") and line.split("=", 1)[0].strip() == k:
+        if not done: out.append(f"{k}={v}")
+        done = True
+    else:
+        out.append(line)
+if not done: out.append(f"{k}={v}")
+try:
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh: fh.write("\n".join(out) + "\n")
+except Exception as e:
+    sys.exit(f"not saved. cannot write {a.display_path(path)}: {e}")
+print(f"saved: {k}={v} in {a.display_path(path)}")
+PY
+}
+
+getv() {
+  py - "$1" "$CONF" <<'PY'
+import sys, agent_conf as a
+k = sys.argv[1]
+try: conf = a.load(sys.argv[2])
+except Exception: conf = {}
+v, src = a.effective(k, conf)
+if v is not None:
+    print(f"{v} (from {src})")
+elif k in ("permission_mode", "cloud_permission_mode"):
+    print("auto (default)")
+elif k == "auto_update":
+    print("on (default)")
+else:
+    sys.exit(f"{k} is not set in agent.conf")
+PY
+}
+
+case "${1:-}" in
+  get) [ $# -eq 2 ] || { sed -n '2,10p' "$0"; exit 2; }; getv "$2"; exit $?;;
+  --user)
+    [ $# -eq 3 ] || { sed -n '2,10p' "$0"; exit 2; }
+    userset "$2" "$3" || exit 1
+    if [ "$2" = auto_update ] && [ -f "$PLUGIN_ROOT/bin/agent_update.py" ]; then
+      python3 "$PLUGIN_ROOT/bin/agent_update.py" apply "$3" || true
+    fi
+    exit 0;;
 esac
 
 if [ ! -f "$CONF" ]; then
@@ -29,7 +95,17 @@ if [ ! -f "$CONF" ]; then
   exit 2
 fi
 
-show() { note; awk -F= 'NF==2{printf "  %-20s %s\n",$1,$2}' "$CONF"; }
+show() {
+  note; awk -F= 'NF==2{printf "  %-20s %s\n",$1,$2}' "$CONF"
+  py - <<'PY'
+import agent_conf as a
+values, ignored = a.read_user_conf()
+if values or ignored:
+    print(f"user file: {a.display_path(a.user_conf_path())}")
+    for k, v in values.items(): print(f"  {k:<20} {v}")
+    for e in ignored: print(f"  ignored: {e}")
+PY
+}
 setv() {
   note
   PYTHONPATH="$PLUGIN_ROOT/bin${PYTHONPATH:+:$PYTHONPATH}" python3 - "$1" "$2" "$CONF" "$TEMPLATE" <<'PY'
@@ -74,7 +150,7 @@ PY
 }
 
 case "${1:-}" in
-  "") show;;
+  ""|show) show;;
   sync) sync;;
   menu)
     keys=$(awk -F= 'NF==2{print $1}' "$CONF"); i=0
@@ -83,6 +159,6 @@ case "${1:-}" in
     k=$(printf '%s\n' $keys | sed -n "${n}p"); [ -n "$k" ] || { echo "no such number"; exit 1; }
     printf 'new value for %s: ' "$k"; read -r v
     setv "$k" "$v";;
-  -h|--help) sed -n '2,8p' "$0";;
-  *) [ $# -eq 2 ] || { sed -n '2,8p' "$0"; exit 2; }; setv "$1" "$2";;
+  -h|--help) sed -n '2,10p' "$0";;
+  *) [ $# -eq 2 ] || { sed -n '2,10p' "$0"; exit 2; }; setv "$1" "$2";;
 esac

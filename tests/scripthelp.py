@@ -59,6 +59,7 @@ COPY_BIN = [
     "agent-roots.sh",
     "agent-runtime.sh",
     "agent_conf.py",
+    "agent_update.py",
     "agent.conf.default",
     "agent-city.sh",
     "agent-city-shim",

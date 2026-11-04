@@ -6,11 +6,13 @@ description: Main manager only. Route a new task by W9, open a worktree by W7 wh
 
 Run these in order. First match wins.
 
+Every order you send another agent (brief, task, decision) starts with `[<model> <effort>]`: your own, from the `YOU:` line of your start text (PRINCIPLES.md W17).
+
 1. `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show`, `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh time`, and the RESOURCES line. Estimate the task in minutes of agent work only; the waits (mock gate, owner question or review, hold, suite slot) are not in it. Then run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh estimate --type <t> --lane fast|full --mock yes|no "<one line what>"` (only facts known before dispatch). Its minutes go on the todo line as est. Its range and its `like` lines (the 3 nearest past tasks) are the reason you give. It says `rubric`: the rubric won its backtest (or no version is trained yet), so its numbers are the rubric row.
 
 Touches another repo? → W12: keep your part, send the peer main manager the cross-repo brief below, called side first, hold your todo line until its DONE PASS.
 
-2. Small task (fast lane, R1)? → `Agent` with `subagent_type: fast-lane-deputy`, description `<task> Deputy`. Brief: the task, the file(s), the one test if any. Done. After its DONE PASS: `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo done "<name>" --lane fast --work <m> --type <t>`.
+2. Small task (fast lane, R1)? → `Agent` with `subagent_type: fast-lane-deputy`, description `<task> Deputy`. Brief: `[<model> <effort>]` first, then the task, the file(s), the one test if any. Done. After its DONE PASS: `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo done "<name>" --lane fast --work <m> --type <t>`.
 3. Touches a live worktree's module? → `SendMessage` the task to that task manager. Status `final` → hold it, tell the human.
 4. Big, and a live task manager has capacity? → `SendMessage` it to that task manager.
 5. Idle or done worktrees in `agent_worktree.txt`? → run `/merge` for each first.
@@ -23,7 +25,7 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
    ```
    ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo where "<name>" <machine> "<worktree path>"
    ```
-   **orca** — open a worktree. Read `<model>` and `<effort>` from `task_manager` in the project's `agent.conf` (form model:effort) and `<mode>` from `permission_mode`:
+   **orca** — open a worktree. Read `<model>` and `<effort>` from `task_manager` in the project's `agent.conf` (form model:effort) and `<mode>` from `permission_mode`, read with `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get permission_mode` (its first word; this machine's ~/.claude/auto-pipeline.conf wins over agent.conf):
    ```
    orca worktree create --name <name> --repo path:<main repo> --base-branch main --no-parent --json
    orca terminal create --worktree path:<worktree path> --title "<name> Task Manager" --command "AGENT_ROLE=task-manager claude --name '<name> Task Manager' --model <model> --effort <effort> --permission-mode <mode>" --json
@@ -55,7 +57,7 @@ Answer with its line: a duration AND a clock time, and when he is needed next. N
 ## Task manager brief (fill the <>)
 
 ```
-Brief from the main manager (<my session name>): you are the task manager for "<name>".
+[<model> <effort>] Brief from the main manager (<my session name>): you are the task manager for "<name>".
 WHERE: worktree <worktree path>, branch <branch>. Main repo <main repo> only for ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh.
 TODO LINE: <the todo line, as agent-file.sh show prints it>
 FEATURE: <requirement, 5 to 10 lines. Files to produce. What the user sees. Validation rules.>
@@ -63,7 +65,7 @@ STEPS: 0 save this whole brief into agent_state.txt in your worktree, first acti
  1 register: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" working
  2 mock first if UI (W2): commit mock/<name>-mock.html, send me the path, STOP until "mock yes"
  3 write the failing tests yourself (W3), commit
- 4 workers: Agent subagent_type worker, description "<name> Worker <n>: <slice>", max 2 at once, each gets named files + one test command (W4). Check RESOURCES before each spawn (S3, S4). Record each worker: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worker on <n> "<slice>" when it starts, ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worker off <n> when it ends
+ 4 workers: Agent subagent_type worker, description "<name> Worker <n>: <slice>", max 2 at once, each gets named files + one test command (W4); every worker brief starts with your own `[<model> <effort>]`. Check RESOURCES before each spawn (S3, S4). Record each worker: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worker on <n> "<slice>" when it starts, ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worker off <n> when it ends
  5 verify every worker result yourself. Full suite once. Defect → back to the worker with evidence. Set status final: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" final
  6 commit, git push -u origin <branch>
  7 report done, set status done, stay idle
@@ -78,7 +80,7 @@ NEVER: Claude in Chrome (W5). Product code. Full suite twice (W4). Files outside
 ## Cross-repo brief (W12, fill the <>)
 
 ```
-CROSS-REPO TASK <name> from <repo>
+[<model> <effort>] CROSS-REPO TASK <name> from <repo>
 WHAT: <requirement, 5 lines max. What the peer repo must build or change.>
 CONTRACT NEEDED: <what the sender must get back: endpoint, fields, errors>
 REPORT: SendMessage to "<sender session name>". First line "DONE PASS <name>" or "DONE FAIL <name>: <why>". Then the contract.
