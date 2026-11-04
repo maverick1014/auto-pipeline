@@ -14,6 +14,7 @@ description: Main manager only. After a task manager reports DONE PASS, run the 
 3. Stop the app server, close whatever ran the click path: the tab, the headless Playwright browser, or nothing if the answer was none.
 4. `Agent` with `subagent_type: merge-deputy`, description `<name> Merge`. Brief, all six values:
    ```
+   [<model> <effort>]   (yours, from the YOU: line of your start text)
    name: <name>
    branch: <branch>
    worktree path: <path>
@@ -25,3 +26,4 @@ description: Main manager only. After a task manager reports DONE PASS, run the 
 5. On `MERGE PASS`: `git log --oneline -2`, `git worktree list`, `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show`. All clean → report to the human in H3 shape.
 6. On `MERGE FAIL`: report the first line to the human with the deputy's evidence. Do not retry on your own.
 7. Merged a fix early, while its branch is still running? → `SendMessage` that task manager at once: merge main back into your branch. Never cherry-pick slices; merge the branch (or its prefix).
+8. Every release bumps `version` in `.claude-plugin/plugin.json`; users get nothing without it (no update notice, no auto update).

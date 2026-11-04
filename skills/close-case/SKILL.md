@@ -4,13 +4,15 @@ description: Main manager only. On a CLOSE CASE report from a task manager decid
 ---
 # /close-case — settle a case, or wrap up the whole repo (PRINCIPLES.md W13)
 
+`[<model> <effort>]` = yours, from the `YOU:` line of your start text.
+
 ## A. One CLOSE CASE report
 
 The report's TIME line keeps work and wait apart: est, actual (agent work only), wait. Missing → ask for it once.
 
 1. `finished` → run `/merge`.
 2. `unfinished` → review it against the requirement doc, then decide:
-   - **finish first** → `SendMessage` it: go on to DONE, then report `DONE PASS <name>` as usual; later `/merge`.
+   - **finish first** → `SendMessage` it, text starting `[<model> <effort>]`: go on to DONE, then report `DONE PASS <name>` as usual; later `/merge`.
    - **close now** → keep the pushed branch, never delete it.
      - Close its pane (orca only): `${CLAUDE_PLUGIN_ROOT}/bin/agent-runtime.sh close <terminal handle>`.
      - Remove the worktree: orca → `orca worktree rm --worktree path:<worktree path> --json`; plain → `git worktree remove <worktree path>`, then `git worktree prune`.
@@ -20,7 +22,7 @@ The report's TIME line keeps work and wait apart: est, actual (agent work only),
 
 ## B. The human says close case (whole repo)
 
-1. Read `agent_worktree.txt`. Send the words close case to every live task manager (`<name> Task Manager`) and human-direct session (`<repo> Helper - <Task Name>`, or `<repo> Helper`, or its `<repo>-<xx>` row): `SendMessage`, or type it into its pane, `orca terminal send --terminal <handle> --text "close case" --enter`. A session on another machine: tell the human it must be read in its own terminal.
+1. Read `agent_worktree.txt`. Send the words `[<model> <effort>] close case` to every live task manager (`<name> Task Manager`) and human-direct session (`<repo> Helper - <Task Name>`, or `<repo> Helper`, or its `<repo>-<xx>` row): `SendMessage`, or type it into its pane, `orca terminal send --terminal <handle> --text "[<model> <effort>] close case" --enter`. A session on another machine: tell the human it must be read in its own terminal.
 2. Hold new dispatches. Collect every CLOSE CASE report, wait max 30 min each, then record it "no report".
 3. Apply part A to each report. Merge what passes with `/merge`.
 4. Close every pane and worktree left. Stop the crons you started: `CronList` then `CronDelete` each. Stop the monitor: `${CLAUDE_PLUGIN_ROOT}/bin/agent-monitor.sh stop`. Then `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show` to check the agent files.

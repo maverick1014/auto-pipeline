@@ -3,6 +3,8 @@
 agent.conf is a simple key=value text file. Order and unknown keys are kept.
 """
 
+import json
+import os
 import re
 
 NUMBER_BOUNDS = {
@@ -40,10 +42,10 @@ HINTS = {
     "max_agents": "How many agents may run at once on this machine. Whole number, 1 to 16.",
     "monitor_interval_min": "How often the monitor checks every worktree. Whole number, 1 to 60.",
     "stall_min": "How long all three signals may stay quiet before a worktree is called stalled. Whole number, 1 to 120.",
-    "main_manager": "Model and effort for the main manager. Form: model-name:effort.",
+    "main_manager": "Model and effort for the main manager. Form: model-name:effort. Floor: Opus 5.5 or above, or any Fable, effort medium or above.",
     "fast_lane_deputy": "Model and effort for the fast-lane deputy. Form: model-name:effort.",
     "merge_deputy": "Model and effort for the merge deputy. Form: model-name:effort.",
-    "task_manager": "Model and effort for a task manager. Form: model-name:effort.",
+    "task_manager": "Model and effort for a task manager. Form: model-name:effort. Floor: Opus 5.5 or above, or any Fable, effort medium or above.",
     "worker": "Model and effort for a worker. Form: model-name:effort.",
     "permission_mode": "How much an agent may do without asking. One of: default, acceptEdits, auto, plan, bypassPermissions.",
     "cloud_permission_mode": "Permission mode of a session started from the Agent City cloud page. One of: default, acceptEdits, auto, plan, bypassPermissions. Missing or refused means auto.",
@@ -125,6 +127,34 @@ def _validate_role(value):
     return None
 
 
+DECIDER_KEYS = ("main_manager", "task_manager")
+FLOOR_MESSAGE = ("A deciding role must run Opus 5.5 or above, or any Fable, "
+                 "at effort medium or above.")
+_OPUS_RE = re.compile(r"^opus-(\d+)(?:[.-](\d{1,2})(?!\d))?(?:[-.].*)?$")
+
+
+def _meets_model_floor(model):
+    """True for any Fable, the opus alias, or Opus 5.5 and above."""
+    name = model[7:] if model.startswith("claude-") else model
+    if name == "fable" or name.startswith("fable-") or name == "opus":
+        return True
+    match = _OPUS_RE.match(name)
+    if not match:
+        return False
+    minor = int(match.group(2)) if match.group(2) else 0
+    return (int(match.group(1)), minor) >= (5, 5)
+
+
+def _validate_decider(value):
+    message = _validate_role(value)
+    if message:
+        return message
+    model, effort = value.rsplit(":", 1)
+    if not _meets_model_floor(model) or effort == "low":
+        return FLOOR_MESSAGE
+    return None
+
+
 def _validate_permission_mode(value):
     if value not in PERMISSION_MODES:
         return "Must be one of: default, acceptEdits, auto, plan, bypassPermissions."
@@ -158,6 +188,8 @@ def _validate_on_off(value):
 def validate_value(key, value):
     if key in NUMBER_BOUNDS:
         return _validate_number(key, value)
+    if key in DECIDER_KEYS:
+        return _validate_decider(value)
     if key in ROLE_KEYS:
         return _validate_role(value)
     if key in ("permission_mode", "cloud_permission_mode"):
@@ -168,7 +200,7 @@ def validate_value(key, value):
         return _validate_language(value)
     if key == "runtime":
         return _validate_runtime(value)
-    if key == "adhd":
+    if key in ("adhd", "auto_update"):
         return _validate_on_off(value)
     return None
 
@@ -183,6 +215,169 @@ def validate(conf):
 
 
 MODEL_FAMILIES = ("opus", "sonnet", "haiku", "fable")
+
+
+USER_CONF_ENV = "AUTO_PIPELINE_USER_CONF"
+USER_KEYS = ("permission_mode", "cloud_permission_mode", "auto_update")
+
+
+def user_conf_path():
+    """The user-wide conf file: $AUTO_PIPELINE_USER_CONF, else ~/.claude/auto-pipeline.conf."""
+    env = os.environ.get(USER_CONF_ENV)
+    if env:
+        return env
+    return os.path.join(os.path.expanduser("~"), ".claude", "auto-pipeline.conf")
+
+
+def display_path(path):
+    """PATH as ~/<rest> when it is under $HOME, else unchanged."""
+    try:
+        home = os.path.expanduser("~").rstrip("/")
+        if home and path.startswith(home + "/"):
+            return "~/" + path[len(home) + 1:]
+    except Exception:
+        pass
+    return path
+
+
+def read_user_conf(path=None):
+    """(values, ignored) of the user file. Never raises."""
+    values, ignored = {}, []
+    try:
+        with open(path or user_conf_path(), "r", encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except Exception:
+        return {}, []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key, value = key.strip(), value.strip()
+        if key in USER_KEYS and validate_value(key, value) is None:
+            values[key] = value
+        else:
+            ignored.append("%s=%s" % (key, value))
+    return values, ignored
+
+
+def effective(key, conf, user_path=None):
+    """(value, source) for KEY: the user file, else agent.conf, else (None, None)."""
+    try:
+        if key in USER_KEYS:
+            values, _ = read_user_conf(user_path)
+            if key in values:
+                return values[key], display_path(user_path or user_conf_path())
+        if key != "auto_update":
+            value = conf.get(key)
+            if isinstance(value, str) and validate_value(key, value) is None:
+                return value, "agent.conf"
+    except Exception:
+        pass
+    return None, None
+
+
+def _text(value):
+    return value if isinstance(value, str) and value else None
+
+
+def _flag(args, name):
+    """The value of --NAME X or --NAME=X in ARGS, the last one."""
+    found = None
+    for i, arg in enumerate(args):
+        if not isinstance(arg, str):
+            continue
+        if arg == name and i + 1 < len(args):
+            found = _text(args[i + 1]) or found
+        elif arg.startswith(name + "="):
+            found = _text(arg[len(name) + 1:]) or found
+    return found
+
+
+def _family_effort(model, model_settings):
+    """The effortLevel of the newest claude-<family>-... entry for a bare family word."""
+    family = re.sub(r"\[.*\]$", "", model)
+    if family not in MODEL_FAMILIES:
+        return None
+    best, best_version = None, None
+    for key, entry in model_settings.items():
+        if not isinstance(key, str) or not key.startswith("claude-%s-" % family):
+            continue
+        effort = _text(entry.get("effortLevel")) if isinstance(entry, dict) else None
+        if not effort:
+            continue
+        version = tuple(int(n) for n in re.findall(r"-(\d{1,2})(?=-|$)", key))
+        if best_version is None or version > best_version:
+            best, best_version = effort, version
+    return best
+
+
+def _you(args, env, settings, conf, role_key):
+    settings = settings if isinstance(settings, dict) else {}
+    role = _text(conf.get(role_key)) or ""
+    role_model, role_effort = (role.split(":", 1) + [""])[:2] if ":" in role else ("", "")
+    where = "agent.conf " + role_key
+
+    model, model_src = _flag(args, "--model"), "flag"
+    if not model:
+        model, model_src = _text(env.get("ANTHROPIC_MODEL")), "env"
+    if not model:
+        model, model_src = _text(settings.get("model")), "settings.json"
+    if not model:
+        model, model_src = _text(role_model), where
+    if not model:
+        model, model_src = "unknown", "unknown"
+
+    effort, effort_src = _flag(args, "--effort"), "flag"
+    if not effort:
+        effort, effort_src = _text(env.get("CLAUDE_CODE_EFFORT_LEVEL")), "env"
+    if not effort:
+        effort_src = "settings.json"
+        table = settings.get("modelSettings")
+        if isinstance(table, dict) and model != "unknown":
+            entry = table.get(model)
+            if isinstance(entry, dict) and _text(entry.get("effortLevel")):
+                effort = entry["effortLevel"]
+            else:
+                effort = _family_effort(model, table)
+    if not effort:
+        effort = _text(settings.get("effortLevel"))
+    if not effort:
+        effort, effort_src = _text(role_effort), where
+    if not effort:
+        effort, effort_src = "unknown", "unknown"
+    return "YOU: %s %s (model: %s, effort: %s)" % (model, effort, model_src, effort_src)
+
+
+def you_line(args, env, settings, conf, role_key):
+    """The YOU line: own model and effort and where each came from. Never raises."""
+    try:
+        return _you(args, env, settings, conf, role_key)
+    except Exception:
+        return "YOU: unknown unknown (model: unknown, effort: unknown)"
+
+
+def _you_cli(role_key, conf_path, pid):
+    import subprocess
+    try:
+        out = subprocess.run(["ps", "-o", "args=", "-p", str(pid)], capture_output=True,
+                             text=True, timeout=10).stdout
+        args = out.split()
+    except Exception:
+        args = []
+    try:
+        conf = load(conf_path)
+    except Exception:
+        conf = {}
+    settings = None
+    try:
+        cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+        with open(os.path.join(cfg, "settings.json"), "r", encoding="utf-8") as fh:
+            settings = json.load(fh)
+    except Exception:
+        settings = None
+    return you_line(args, dict(os.environ), settings, conf, role_key)
+
 
 
 def cli_model(spec):
@@ -205,5 +400,26 @@ if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "cli-model":
         sys.stdout.write(cli_model(sys.argv[2]) + "\n")
         sys.exit(0)
-    sys.stderr.write("usage: agent_conf.py cli-model <model[:effort]>\n")
+    if len(sys.argv) == 4 and sys.argv[1] == "effective":
+        try:
+            try:
+                conf = load(sys.argv[3])
+            except Exception:
+                conf = {}
+            value, source = effective(sys.argv[2], conf)
+        except Exception:
+            value, source = None, None
+        if value is None:
+            sys.exit(1)
+        sys.stdout.write("%s\t%s\n" % (value, source))
+        sys.exit(0)
+    if len(sys.argv) == 5 and sys.argv[1] == "you":
+        try:
+            line = _you_cli(sys.argv[2], sys.argv[3], sys.argv[4])
+        except Exception:
+            line = "YOU: unknown unknown (model: unknown, effort: unknown)"
+        sys.stdout.write(line + "\n")
+        sys.exit(0)
+    sys.stderr.write("usage: agent_conf.py cli-model <model[:effort]> | effective <key> <agent.conf> "
+                     "| you <role_key> <agent.conf> <pid>\n")
     sys.exit(2)

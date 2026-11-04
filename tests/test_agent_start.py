@@ -27,7 +27,7 @@ question ever appears in the hook output, except the output section
 ("## E. Output", right before the RULES line; tests/test_output_hook.py).
 The byte limits below are for the rest: pointer_part() drops the section.
 
-    --quiz    prints the 34 questions and nothing else
+    --quiz    prints the 36 questions and nothing else
     --answer  unchanged, still grades and still says PASS
 
 Compaction (stdin source "compact"), nothing else at all:
@@ -139,6 +139,15 @@ class TestItFitsThePreviewOnARealProject(StartCase):
     whatever budget is left and saying so when it trims."""
 
     CAP = 2000
+
+    def start(self, *args, **kwargs):
+        # A session pid with no --model/--effort flags (this runner), so the
+        # YOU line reads agent.conf on every machine: the longest form, the
+        # one a gate runner with no claude ancestor sees. Without it the
+        # runner's own claude flags shorten the line and hide a cut.
+        env = dict(kwargs.pop("env", None) or {})
+        env.setdefault("CLAUDE_PID", str(os.getpid()))
+        return super().start(*args, env=env, **kwargs)
 
     def busy_project(self):
         long_line = "x" * 400
@@ -510,11 +519,11 @@ class TestResourcesHelper(StartCase):
 
 class TestQuizStillWorks(StartCase):
     ANSWERS = ("1A 2D 3C 4B 5D 6D 7A 8C 9A 10D 11A 12C 13D 14C 15B 16C 17C "
-               "18D 19B 20A 21D 22C 23B 24D 25A 26D 27A 28B 29B 30B 31B 32C 33B 34B")
+               "18D 19B 20A 21D 22C 23B 24D 25A 26D 27A 28B 29B 30B 31B 32C 33B 34B 35B 36C")
 
     def test_all_right_is_a_pass(self):
         out = self.assertOk(self.start("--answer", self.ANSWERS))
-        self.assertIn("34/34 PASS", out)
+        self.assertIn("36/36 PASS", out)
 
     def test_one_wrong_is_a_fail(self):
         result = self.start("--answer", self.ANSWERS.replace("1A", "1B"))
@@ -536,7 +545,7 @@ class TestNoQuizForSubagents(StartCase):
     def pass_quiz(self, sid="sess-1"):
         out = self.assertOk(self.start("--answer", self.ANSWERS,
                                        env=self.sid(sid)))
-        self.assertIn("34/34 PASS", out)
+        self.assertIn("36/36 PASS", out)
 
     def test_a_pass_writes_the_session_marker(self):
         self.pass_quiz()
@@ -585,7 +594,7 @@ class TestNoQuizForSubagents(StartCase):
         out = self.assertOk(self.start("--answer", self.ANSWERS,
                                        env=self.sid()))
         self.assertEqual(self.lines(out),
-                         ["QUIZ RESULT: 34/34 PASS", "You may start work."])
+                         ["QUIZ RESULT: 36/36 PASS", "You may start work."])
 
     def test_it_still_fits_the_cap(self):
         self.pass_quiz()

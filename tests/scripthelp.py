@@ -59,6 +59,7 @@ COPY_BIN = [
     "agent-roots.sh",
     "agent-runtime.sh",
     "agent_conf.py",
+    "agent_update.py",
     "agent.conf.default",
     "agent-city.sh",
     "agent-city-shim",
@@ -208,6 +209,9 @@ class ScriptRepo:
         os.makedirs(self.orca_dir)
         self.hidden = []
         self.home = None
+        # the user-wide file a run sees (AUTO_PIPELINE_USER_CONF); absent
+        # until a test writes it
+        self.user_conf = os.path.join(self.base, "user", "auto-pipeline.conf")
 
         os.makedirs(self.plugin_bin)
         os.makedirs(self.dir)
@@ -403,6 +407,13 @@ class ScriptRepo:
             json.dump({"enabledPlugins": {name: True}}, fh)
         return full
 
+    def set_user_conf(self, text):
+        """Write the user-wide file (personal-mode) this run sees."""
+        os.makedirs(os.path.dirname(self.user_conf), exist_ok=True)
+        with open(self.user_conf, "w") as fh:
+            fh.write(text)
+        return self.user_conf
+
     def unset_conf(self, key, path=None):
         """Drop a key, the way a conf written before that key existed looks."""
         path = path or os.path.join(self.dir, "agent.conf")
@@ -524,6 +535,21 @@ class ScriptRepo:
         # live session sets CLAUDE_PID itself
         env.pop("CLAUDE_PID", None)
         env.pop("CLAUDECODE", None)
+        # personal-mode: the user-wide file (~/.claude/auto-pipeline.conf) of
+        # the machine running the tests never decides a test; a test that
+        # wants one writes self.user_conf (set_user_conf) or sets the var
+        env["AUTO_PIPELINE_USER_CONF"] = self.user_conf
+        # decider-floor / auto-update: the runner's own model, effort and
+        # Claude config dir never leak into a test
+        for key in ("ANTHROPIC_MODEL", "CLAUDE_CODE_EFFORT_LEVEL", "CLAUDE_CONFIG_DIR",
+                    "AUTO_PIPELINE_VERSION_URL"):
+            env.pop(key, None)
+        # auto-update writes the Claude config dir (settings.json,
+        # plugins/known_marketplaces.json). A run without a fake $HOME gets a
+        # config dir that does not exist, so the real ~/.claude is never
+        # written or read; with a fake $HOME it is <fake home>/.claude
+        if self.home is None:
+            env["CLAUDE_CONFIG_DIR"] = os.path.join(self.base, "no-claude-config")
         for key in list(env):
             if key.startswith("CLAUDE_PLUGIN_OPTION_"):
                 env.pop(key)

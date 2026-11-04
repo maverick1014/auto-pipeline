@@ -177,7 +177,9 @@ else
         cap_lines="${cap_lines}cap reached ($((total_live_panes + relaunch_count))/$max_agents), not relaunching $path
 "
       else
-        cmd="AGENT_ROLE=task-manager claude --model $MODEL --effort $EFFORT --permission-mode $permission_mode"
+        mode_eff=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" effective permission_mode "$PROJECT_ROOT/agent.conf" 2>/dev/null | cut -f1) || mode_eff=""
+        [ -n "$mode_eff" ] || mode_eff=auto
+        cmd="AGENT_ROLE=task-manager claude --model $MODEL --effort $EFFORT --permission-mode $mode_eff"
         if [ "$DRY_RUN" -eq 1 ]; then
           relaunched="would"
         else

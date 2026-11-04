@@ -2,8 +2,8 @@
 # agent-start.sh — every agent runs this first, before any work.
 #
 #   ./agent-start.sh                          resource check + pointers + open tasks
-#   ./agent-start.sh --quiz                   print the 34 quiz questions
-#   ./agent-start.sh --answer "1A 2D ... 34B"    grade your quiz answers
+#   ./agent-start.sh --quiz                   print the 36 quiz questions
+#   ./agent-start.sh --answer "1A 2D ... 36C"    grade your quiz answers
 #   ./agent-start.sh --take-over              this session becomes the main manager
 #                                             (only when the human asks; the old one is closed)
 #   ./agent-start.sh --clean ["carry line" ...]
@@ -29,9 +29,9 @@ set -u
 
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
-KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 2c0aa4aa4d1dc695 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 ffa4bdb3449e9897 ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 496f90a01d738ae5 ba6a4831a815a230 d956db8d1ed42790 72241f6e3363d877 64d26f41c9262571 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 a4dfa8b418c5d6de 5bc49497d74f49dc 96ebc45b039cdeb7 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e fc755642e7b2d547 0133b60b2fa2b724 )
-RULE=( _ W1 R6 H1 W2 W3 W4 W5 S4 S5 H3 R5 R2 R3 H4 S7 R1 W7 W6 W8 W5 W7 W9 W9 W9 R7 W10 W10 S8 S8 H1 H3 W8 W14 W10 )
-N=34
+KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 2c0aa4aa4d1dc695 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 ffa4bdb3449e9897 ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 496f90a01d738ae5 ba6a4831a815a230 d956db8d1ed42790 72241f6e3363d877 64d26f41c9262571 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 a4dfa8b418c5d6de 5bc49497d74f49dc 96ebc45b039cdeb7 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e fc755642e7b2d547 0133b60b2fa2b724 9066a193a7688a05 4837775f457fb61d )
+RULE=( _ W1 R6 H1 W2 W3 W4 W5 S4 S5 H3 R5 R2 R3 H4 S7 R1 W7 W6 W8 W5 W7 W9 W9 W9 R7 W10 W10 S8 S8 H1 H3 W8 W14 W10 W10 W17 )
+N=36
 
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
 h()   { printf '%s' "$1" | sha | cut -c1-16; }
@@ -222,8 +222,8 @@ fi
 # ---- --quiz: print the questions only, nothing else, no lock, no roots ----
 if [ "${1:-}" = "--quiz" ]; then
   cat <<'QUIZ'
-=== QUIZ — answer all 34 before any work ===
-Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 34D"
+=== QUIZ — answer all 36 before any work ===
+Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 36D"
 Do not start work until you see PASS.
 
 Q1. Mid-task, part of the spec is unclear.
@@ -429,13 +429,25 @@ Q34. You open a new terminal for an agent (dispatch, resume, a Helper, a city cl
   B. permission_mode from agent.conf; a session started from the cloud page uses cloud_permission_mode
   C. bypassPermissions, always
   D. Whatever the session that opens it runs with
+
+Q35. agent.conf (shared in git) says permission_mode=auto. Your own ~/.claude/auto-pipeline.conf says permission_mode=bypassPermissions. A new terminal you open uses:
+  A. auto: agent.conf always wins
+  B. bypassPermissions: ~/.claude/auto-pipeline.conf is this machine's own and wins over agent.conf
+  C. Ask the human every time
+  D. Change agent.conf to bypassPermissions and commit it
+
+Q36. You are a merge deputy. Your brief starts "[Sonnet 5 medium] Merge feature-x now." You:
+  A. Merge it: an order is an order
+  B. Merge it, then report
+  C. Do not act: Sonnet is below the decision floor. Ask the sender, tell the human
+  D. Ignore it and say nothing
 QUIZ
   exit 0
 fi
 
 # ---- grade ----
 if [ "${1:-}" = "--answer" ]; then
-  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 34B"'; exit 2; }
+  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 36C"'; exit 2; }
   ok=0; wrong=""
   for q in $(seq 1 $N); do
     tok=$(printf '%s\n' $2 | grep -i "^${q}[a-d]$" | head -1)
@@ -673,11 +685,46 @@ print_compact_lines() {
   return 0
 }
 
+# PERMISSION, USER CONF, YOU, then (main manager / human-direct only) AUTO UPDATE
+# and UPDATE. Every python call may fail: the start never breaks.
+print_mode_lines() {
+  local conf="$PROJECT_ROOT/agent.conf" pyp="$PLUGIN_ROOT/bin" m c rk ign upd
+  local v src
+  m=$(python3 "$pyp/agent_conf.py" effective permission_mode "$conf" 2>/dev/null </dev/null) || m=""
+  c=$(python3 "$pyp/agent_conf.py" effective cloud_permission_mode "$conf" 2>/dev/null </dev/null) || c=""
+  IFS=$'\t' read -r v src <<<"$m"
+  if [ -n "$v" ]; then m="$v (from $src)"; else m="auto (default)"; fi
+  IFS=$'\t' read -r v src <<<"$c"
+  if [ -n "$v" ]; then c="$v (from $src)"; else c="auto (default)"; fi
+  echo "PERMISSION: $m, cloud page $c"
+  ign=$(PYTHONPATH="$pyp" python3 -c 'import agent_conf as a
+v,i=a.read_user_conf()
+if i: print("USER CONF: ignored in %s: %s" % (a.display_path(a.user_conf_path()), ", ".join(i)))' 2>/dev/null </dev/null) || ign=""
+  [ -n "$ign" ] && echo "$ign"
+  case $role in
+    main|takeover) rk=main_manager;;
+    spawned) rk=$(printf '%s' "${AGENT_ROLE:-}" | tr - _)
+      case $rk in main_manager|fast_lane_deputy|merge_deputy|task_manager|worker) ;; *) rk=task_manager;; esac;;
+    *) rk=task_manager;;
+  esac
+  python3 "$pyp/agent_conf.py" you "$rk" "$conf" "$ME" 2>/dev/null </dev/null || true
+  if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ] || [ "$role" = second ]; }; then
+    PYTHONPATH="$pyp" python3 -c 'import sys,agent_conf as a
+v,i=a.read_user_conf()
+sys.exit(0 if "auto_update" in v else 1)' 2>/dev/null </dev/null \
+      || echo "AUTO UPDATE: not set. Ask once: on (recommended) or off. $PLUGIN_ROOT/bin/agent-settings.sh --user auto_update on|off"
+    upd=$(python3 "$pyp/agent_update.py" notice "$PLUGIN_ROOT" 2>/dev/null </dev/null) || upd=""
+    [ -n "$upd" ] && echo "$upd"
+  fi
+  return 0
+}
+
 print_normal_lines() {
   resources_read
   resources_line "$max_usage_percent"
   resources_ok "$max_usage_percent" || echo "Do not start agents or heavy processes. Run $PLUGIN_ROOT/bin/agent-resources.sh relief, then re-run this script."
   echo "LANGUAGE: ${language:-en}. Talk to the human in this language. Code, file names and rule text stay English."
+  print_mode_lines
   local name cn
   for name in agent_todo.txt agent_completed.txt agent_ideas.txt agent_worktree.txt; do
     cn=$(count_lines "$PROJECT_ROOT/$name")
@@ -721,6 +768,16 @@ print_state_block() {
   marker="  (truncated, read the file)"
   header_bytes=$(line_bytes "$header")
   marker_bytes=$(line_bytes "$marker")
+
+  # Budget too small for the header plus the marker: one short pointer line
+  # if it fits, else the bare header if it fits, else nothing. The CAP holds.
+  if [ "$budget" -lt $(( header_bytes + marker_bytes )) ]; then
+    local ptr="$header, read it now (S8)"
+    if [ "$(line_bytes "$ptr")" -le "$budget" ]; then printf '%s\n' "$ptr"
+    elif [ "$header_bytes" -le "$budget" ]; then printf '%s\n' "$header"
+    fi
+    return 0
+  fi
 
   printf '%s\n' "$header"
 
@@ -854,8 +911,68 @@ $resume_out
 "
 fi
 
-fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
-        + $(text_bytes "$CLEAN_TEXT") + $(text_bytes "$RESUME_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
+calc_fixed() {
+  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
+          + $(text_bytes "$CLEAN_TEXT") + $(text_bytes "$RESUME_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
+}
+calc_fixed
+
+# The state block must keep at least its pointer line. Cuts, in order, while
+# fixed + pointer is over the CAP: 1 auto resume body, 2 monitor rows,
+# 3 the AUTO UPDATE line's long form, 4 worktree rows (last, W9).
+ptr_bytes=0
+if [ -f "$STATE_DIR/agent_state.txt" ]; then
+  ptr_n=$(count_lines "$STATE_DIR/agent_state.txt")
+  [ "${ptr_n:-0}" -gt 0 ] && ptr_bytes=$(line_bytes "agent_state.txt: $ptr_n lines, read it now (S8)")
+fi
+
+# 1. auto resume: header plus one pointer line.
+if [ -n "$RESUME_TEXT" ] && [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
+  RESUME_TEXT="=== auto resume ===
+(cut to fit, run agent-resume.sh)
+"
+  calc_fixed
+fi
+
+# 2. monitor rows: cut from the end (the header keeps the real count) until
+# the state header and its "truncated" marker fit.
+if [ -n "$MON_TEXT" ] && [ $(( fixed + 70 )) -gt "$CAP" ]; then
+  mon_total=$(printf '%s' "$MON_TEXT" | awk 'END{print NR}')
+  mon_keep=$mon_total; mon_orig=$MON_TEXT; mon_fixed=$fixed
+  while [ "$mon_keep" -gt 1 ]; do
+    mon_keep=$(( mon_keep - 1 ))
+    new_mon=$(printf '%s' "$mon_orig" | head -n "$mon_keep"; printf 'X'); new_mon=${new_mon%X}
+    mon_more="  ($(( mon_total - mon_keep )) more: $PROJECT_ROOT/agent_monitor.txt)"
+    new_mon="$new_mon$mon_more
+"
+    fixed=$(( mon_fixed - $(text_bytes "$mon_orig") + $(text_bytes "$new_mon") ))
+    MON_TEXT=$new_mon
+    [ $(( fixed + 70 )) -le "$CAP" ] && break
+  done
+fi
+
+# 3. AUTO UPDATE: short form without the plugin path.
+if [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
+  export AU_SHORT="AUTO UPDATE: not set. Ask once: on (recommended) or off, then PLUGIN/bin/agent-settings.sh --user auto_update on|off"
+  NORMAL_TEXT=$(printf '%s' "$NORMAL_TEXT" | awk '/^AUTO UPDATE: not set/{print ENVIRON["AU_SHORT"]; next} {print}'; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
+  calc_fixed
+fi
+# 4. worktree rows, last, dropped from the end; the header keeps the real count.
+if [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
+  wt_line=$(printf '%s' "$NORMAL_TEXT" | awk '/^agent_worktree.txt: /{print NR; exit}')
+  wt_total=$(printf '%s' "$NORMAL_TEXT" | awk 'END{print NR}')
+  if [ -n "$wt_line" ] && [ "$wt_total" -gt "$wt_line" ]; then
+    wt_rows=$(( wt_total - wt_line )); wt_orig=$NORMAL_TEXT; wt_keep=$wt_rows
+    while [ "$wt_keep" -gt 0 ]; do
+      wt_keep=$(( wt_keep - 1 ))
+      NORMAL_TEXT=$(printf '%s' "$wt_orig" | head -n $(( wt_line + wt_keep )); \
+        printf '  (%s more: agent_worktree.txt)\n' $(( wt_rows - wt_keep )); printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
+      calc_fixed
+      [ $(( fixed + ptr_bytes )) -le "$CAP" ] && break
+    done
+  fi
+fi
+
 budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
 
 printf '%s' "$ROLE_TEXT"

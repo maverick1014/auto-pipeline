@@ -1161,12 +1161,15 @@ def agent_command(name, folder, city_dir=None, cloud=False):
         words.insert(0, "AGENT_CITY_DIR=" + shlex.quote(city_dir))
     try:
         conf_mod = _conf_module()
-        conf = conf_mod.load(os.path.join(folder, "agent.conf"))
+        try:
+            conf = conf_mod.load(os.path.join(folder, "agent.conf"))
+        except Exception:
+            conf = {}
         model = _conf_value(conf_mod, conf, "main_manager")
         if model is not None:
             model_name, effort = model.rsplit(":", 1)
             words += ["--model", shlex.quote(conf_mod.cli_model(model_name)), "--effort", shlex.quote(effort)]
-        mode = _conf_value(conf_mod, conf, "cloud_permission_mode" if cloud else "permission_mode")
+        mode, _src = conf_mod.effective("cloud_permission_mode" if cloud else "permission_mode", conf)
         if mode is not None:
             words += ["--permission-mode", shlex.quote(mode)]
         elif cloud:
