@@ -46,6 +46,7 @@ SHELL_SCRIPTS = [
     "agent-city-hook.sh",
     "agent-name.sh",
     "agent-cleanup.sh",
+    "agent-watch.sh",
 ]
 # Sourced only, never run. agent-runtime.sh is in the list above instead,
 # because it is both: sourced by its callers and run by a skill.

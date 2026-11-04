@@ -917,11 +917,31 @@ $resume_out
 "
 fi
 
-fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
-        + $(text_bytes "$CLEAN_TEXT") + $(text_bytes "$RESUME_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
-# Over the CAP before the state block even starts: cut monitor rows from the
-# end (the header keeps the real count) until the state header and its
-# "truncated" marker fit.
+calc_fixed() {
+  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
+          + $(text_bytes "$CLEAN_TEXT") + $(text_bytes "$RESUME_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
+}
+calc_fixed
+
+# The state block must keep at least its pointer line. Cuts, in order, while
+# fixed + pointer is over the CAP: 1 auto resume body, 2 monitor rows,
+# 3 the AUTO UPDATE line's long form, 4 worktree rows (last, W9).
+ptr_bytes=0
+if [ -f "$STATE_DIR/agent_state.txt" ]; then
+  ptr_n=$(count_lines "$STATE_DIR/agent_state.txt")
+  [ "${ptr_n:-0}" -gt 0 ] && ptr_bytes=$(line_bytes "agent_state.txt: $ptr_n lines, read it now (S8)")
+fi
+
+# 1. auto resume: header plus one pointer line.
+if [ -n "$RESUME_TEXT" ] && [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
+  RESUME_TEXT="=== auto resume ===
+(cut to fit, run agent-resume.sh)
+"
+  calc_fixed
+fi
+
+# 2. monitor rows: cut from the end (the header keeps the real count) until
+# the state header and its "truncated" marker fit.
 if [ -n "$MON_TEXT" ] && [ $(( fixed + 70 )) -gt "$CAP" ]; then
   mon_total=$(printf '%s' "$MON_TEXT" | awk 'END{print NR}')
   mon_keep=$mon_total; mon_orig=$MON_TEXT; mon_fixed=$fixed
@@ -936,6 +956,29 @@ if [ -n "$MON_TEXT" ] && [ $(( fixed + 70 )) -gt "$CAP" ]; then
     [ $(( fixed + 70 )) -le "$CAP" ] && break
   done
 fi
+
+# 3. AUTO UPDATE: short form without the plugin path.
+if [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
+  export AU_SHORT="AUTO UPDATE: not set. Ask once: on (recommended) or off, then PLUGIN/bin/agent-settings.sh --user auto_update on|off"
+  NORMAL_TEXT=$(printf '%s' "$NORMAL_TEXT" | awk '/^AUTO UPDATE: not set/{print ENVIRON["AU_SHORT"]; next} {print}'; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
+  calc_fixed
+fi
+# 4. worktree rows, last, dropped from the end; the header keeps the real count.
+if [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
+  wt_line=$(printf '%s' "$NORMAL_TEXT" | awk '/^agent_worktree.txt: /{print NR; exit}')
+  wt_total=$(printf '%s' "$NORMAL_TEXT" | awk 'END{print NR}')
+  if [ -n "$wt_line" ] && [ "$wt_total" -gt "$wt_line" ]; then
+    wt_rows=$(( wt_total - wt_line )); wt_orig=$NORMAL_TEXT; wt_keep=$wt_rows
+    while [ "$wt_keep" -gt 0 ]; do
+      wt_keep=$(( wt_keep - 1 ))
+      NORMAL_TEXT=$(printf '%s' "$wt_orig" | head -n $(( wt_line + wt_keep )); \
+        printf '  (%s more: agent_worktree.txt)\n' $(( wt_rows - wt_keep )); printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
+      calc_fixed
+      [ $(( fixed + ptr_bytes )) -le "$CAP" ] && break
+    done
+  fi
+fi
+
 budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
 
 printf '%s' "$ROLE_TEXT"

@@ -140,6 +140,15 @@ class TestItFitsThePreviewOnARealProject(StartCase):
 
     CAP = 2000
 
+    def start(self, *args, **kwargs):
+        # A session pid with no --model/--effort flags (this runner), so the
+        # YOU line reads agent.conf on every machine: the longest form, the
+        # one a gate runner with no claude ancestor sees. Without it the
+        # runner's own claude flags shorten the line and hide a cut.
+        env = dict(kwargs.pop("env", None) or {})
+        env.setdefault("CLAUDE_PID", str(os.getpid()))
+        return super().start(*args, env=env, **kwargs)
+
     def busy_project(self):
         long_line = "x" * 400
         with open(self.repo.path("agent_worktree.txt"), "w") as fh:

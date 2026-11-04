@@ -24,6 +24,7 @@ Scripts, not agents (cost no tokens):
   bin/agent-resume.sh    one command to bring the pipeline back after a restart
   bin/agent-cleanup.sh   the main manager's sweep: removes merged, clean, idle worktrees and branches; lists the rest in one table
   bin/agent-monitor.sh   watches every worktree, writes agent_monitor.txt
+  bin/agent-watch.sh     the main manager's background watch on one task manager: its pane and its agent_state.txt; exits on a report, question, stall or lost machine
   bin/agent-init.sh      sets a project up: agent.conf, the four task files, .secrets/, .gitignore lines, AGENTS.md, and it prints the permissions block
   bin/agent-cloud-pack.sh  lays this pipeline into a repo as plain files, for cloud sessions
   bin/agent-city.sh       starts/stops the agent city visualiser, a local server
