@@ -9,11 +9,13 @@
 #
 # --environment: the TM runs on another machine; agent_state.txt is then read
 # through the --shell pane (one short command, answer read back with --cursor).
+# Only file lines fire. The screen feeds the stall and the sweep line, nothing else.
 # The TM pane is only ever read, never sent to.
 #
 # Exits (all code 0, the WATCH line first, then the evidence):
-#   WATCH SIGNAL <name>: <line>   a new DONE PASS/FAIL, CLOSE CASE or QUESTION:
-#                                 line in the file or on the screen
+#   WATCH SIGNAL <name>: <line>   a new file line: DONE PASS/FAIL, CLOSE CASE,
+#                                 QUESTION: or MOCK READY (then the last 15
+#                                 screen lines)
 #   WATCH STALL <name>            3 sweeps, same screen, file unchanged
 #   WATCH LOST <name>             3 failed reads in a row
 #   WATCH MAX <name>              --max sweeps done
@@ -67,8 +69,7 @@ E=()
 ERRF=$(mktemp "${TMPDIR:-/tmp}/agent-watch.XXXXXX")
 trap 'rm -f "$ERRF"' EXIT
 
-RE='^(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:)'
-SCREEN_RE='^[[:space:]]*⏺.*(DONE PASS|DONE FAIL|QUESTION:|CLOSE CASE)'
+RE='^(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)'
 LASTERR=""
 
 # JSON from orca on stdin -> the tail lines (or the cursor with "cursor"); fails
@@ -157,20 +158,13 @@ file_read() {
   return 0
 }
 
-# the ⏺ signal lines of a screen, trimmed, one per line
-screen_signals() {
-  printf '%s\n' "$1" | grep -E "$SCREEN_RE" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
-}
-
 last15() { printf '%s\n' "$SCREEN" | tail -15; }
 
 # ---- baselines ----
-BASE_N=""; SBASE_OK=0; SBASE=""
+BASE_N=""
 PREV_OK=0; PREV_SCREEN=""; PREV_N=""; PREV_L=""
 if file_read; then BASE_N=$FN; PREV_N=$FN; PREV_L=$FL; fi
-if tm_read; then
-  SBASE_OK=1; SBASE=$(screen_signals "$SCREEN"); PREV_OK=1; PREV_SCREEN=$SCREEN
-fi
+if tm_read; then PREV_OK=1; PREV_SCREEN=$SCREEN; fi
 echo "$(date '+%H:%M') watch $NAME: start, file signals already there: ${BASE_N:-unknown}"
 
 same=0; fails=0
@@ -193,23 +187,9 @@ while [ "$i" -le "$MAX" ]; do
 
   # baselines that could not be read at the start: this read is the baseline
   if [ -z "$BASE_N" ]; then BASE_N=$FN; fi
-  if [ "$SBASE_OK" -eq 0 ]; then SBASE=$(screen_signals "$SCREEN"); SBASE_OK=1; fi
 
   if [ "$FN" -gt "$BASE_N" ] 2>/dev/null; then
     echo "WATCH SIGNAL $NAME: $FLAST"
-    last15
-    exit 0
-  fi
-
-  hit=""
-  while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    printf '%s\n' "$SBASE" | grep -qxF -- "$line" || hit=$line
-  done <<EOF
-$(screen_signals "$SCREEN")
-EOF
-  if [ -n "$hit" ]; then
-    echo "WATCH SIGNAL $NAME: $hit"
     last15
     exit 0
   fi
