@@ -63,7 +63,7 @@ GOOD_CONF_TEXT = (
     "main_manager=fable-5.1:xhigh\n"
     "fast_lane_deputy=sonnet-5:medium\n"
     "merge_deputy=sonnet-5:medium\n"
-    "task_manager=opus-5:xhigh\n"
+    "task_manager=opus-5.5:xhigh\n"
     "worker=sonnet-5:medium\n"
     "permission_mode=auto\n"
     "auto_resume=yes\n"
@@ -202,7 +202,7 @@ class TestValidateRoles(unittest.TestCase):
     def test_all_six_role_keys_accept_a_good_value(self):
         for key in self.ROLE_KEYS:
             with self.subTest(key=key):
-                self.assertIsNone(agent_conf.validate_value(key, "sonnet-5:medium"))
+                self.assertIsNone(agent_conf.validate_value(key, "opus-5.5:medium"))
 
     def test_every_effort_level_is_accepted(self):
         for effort in ("low", "medium", "high", "xhigh", "max"):
@@ -212,7 +212,7 @@ class TestValidateRoles(unittest.TestCase):
     def test_real_model_names_are_accepted(self):
         for value in ("fable-5.1:xhigh", "opus-5:xhigh", "haiku-4.5:low", "sonnet-5:medium"):
             with self.subTest(value=value):
-                self.assertIsNone(agent_conf.validate_value("main_manager", value))
+                self.assertIsNone(agent_conf.validate_value("worker", value))
 
     def test_bad_shapes_are_rejected(self):
         for value in (

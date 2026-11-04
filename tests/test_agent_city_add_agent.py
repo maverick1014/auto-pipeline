@@ -310,14 +310,14 @@ class TestOpen(AddCase):
         self.assertTrue(command.startswith("claude "), command)
 
     def test_the_values_are_that_repos_own(self):
-        bar = self.repo("bar", "main_manager=sonnet-5:medium\npermission_mode=acceptEdits\n")
+        bar = self.repo("bar", "main_manager=fable-5.1:medium\npermission_mode=acceptEdits\n")
         self.known(self.shop)
         self.known(bar, "old2")
         self.add(self.shop)
         self.add(bar)
         self.assertEqual([c[0] for c in self.calls], [os.path.join(self.base, "shop"), os.path.join(self.base, "bar")])
         self.assertEqual(shlex.split(self.calls[1][2]),
-                         ["claude", "--name", "bar Manager", "--model", "sonnet", "--effort", "medium",
+                         ["claude", "--name", "bar Manager", "--model", "fable", "--effort", "medium",
                           "--permission-mode", "acceptEdits", PROMPT])
 
     def test_no_agent_conf_leaves_the_flags_out(self):
@@ -527,10 +527,12 @@ class TestCommand(AddCase):
         """Bounce 1: `claude --model fable-5.1` is refused and the opened session's first turn dies."""
         for value, flags in (("fable-5.1:xhigh", ["--model", "fable", "--effort", "xhigh"]),
                              ("opus-5.5:high", ["--model", "opus", "--effort", "high"]),
-                             ("sonnet-5:medium", ["--model", "sonnet", "--effort", "medium"]),
-                             ("haiku-4.5:low", ["--model", "haiku", "--effort", "low"]),
+                             # decider-floor: a main manager below Opus 5.5 / Fable /
+                             # effort medium is refused, so no model flags at all
+                             ("sonnet-5:medium", []),
+                             ("haiku-4.5:low", []),
                              ("claude-fable-5-1:max", ["--model", "claude-fable-5-1", "--effort", "max"]),
-                             ("mystery-7:high", ["--model", "mystery-7", "--effort", "high"])):
+                             ("mystery-7:high", [])):
             with self.subTest(main_manager=value):
                 name = "m-" + value.split(":")[0].replace(".", "-")
                 self.repo(name, "main_manager=%s\n" % value)
