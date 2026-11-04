@@ -99,7 +99,7 @@ import agent_conf  # noqa: E402
 from scripthelp import ScriptCase  # noqa: E402
 
 ANSWERS = ("1A 2D 3C 4B 5D 6D 7A 8C 9A 10D 11A 12C 13D 14C 15B 16C 17C "
-           "18D 19B 20A 21D 22C 23B 24D 25A 26D 27A 28B 29B 30B 31B 32C 33B 34B 35B 36C")
+           "18D 19B 20A 21D 22C 23B 24D 25A 26D 27A 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C")
 
 
 def read(*parts):
@@ -408,9 +408,9 @@ class TestQuiz36(ScriptCase):
 
     def test_36_questions(self):
         out = self.quiz()
-        self.assertIn("=== QUIZ — answer all 36 before any work ===", out)
-        self.assertIn('--answer "1A 2B 3C ... 36D"', out)
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 36)
+        self.assertIn("=== QUIZ — answer all 37 before any work ===", out)
+        self.assertIn('--answer "1A 2B 3C ... 37D"', out)
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 37)
 
     def test_q35_is_the_user_file(self):
         head, options = self.question(self.quiz(), 35)
@@ -426,7 +426,7 @@ class TestQuiz36(ScriptCase):
 
     def test_all_pass(self):
         out = self.assertOk(self.repo.run("agent-start.sh", "--answer", ANSWERS))
-        self.assertIn("QUIZ RESULT: 36/36 PASS", out)
+        self.assertIn("QUIZ RESULT: 37/37 PASS", out)
 
     def test_wrong_letters_name_the_rule(self):
         for good, rule_code, wrongs in (("35B", "W10", ("35A", "35C", "35D")),
@@ -443,9 +443,9 @@ class TestQuiz36(ScriptCase):
 
     def test_usage_and_readme_say_36(self):
         src = read("bin", "agent-start.sh")
-        self.assertIn("print the 36 quiz questions", src)
-        self.assertIn('--answer "1A 2D ... 36C"', src)
-        self.assertIn("36-question quiz", read("README.md"))
+        self.assertIn("print the 37 quiz questions", src)
+        self.assertIn('--answer "1A 2D ... 37C"', src)
+        self.assertIn("37-question quiz", read("README.md"))
 
 
 # -------------------------------------------------------------- 5: text

@@ -223,14 +223,15 @@ class TestCityHooks(unittest.TestCase):
               "Stop", "SessionEnd"]
 
     def hooks(self):
-        """The city's entries only: the close-case and show-todo hooks
-        (UserPromptSubmit, not the city's, tests/test_agent_close_case.py,
-        tests/test_agent_show_todo.py) and the naming hook
+        """The city's entries only: the close-case, show-todo and show-question
+        hooks (UserPromptSubmit, not the city's, tests/test_agent_close_case.py,
+        tests/test_agent_show_todo.py, tests/test_agent_show_question.py) and the naming hook
         (SessionStart, tests/test_agent_name.py) are left out."""
         hooks = load_json("hooks", "hooks.json")["hooks"]
         return {event: [e for e in entries
                         if "agent-close-case.sh" not in json.dumps(e)
                         and "agent-show-todo.sh" not in json.dumps(e)
+                        and "agent-show-question.sh" not in json.dumps(e)
                         and "agent-name.sh" not in json.dumps(e)]
                 for event, entries in hooks.items()}
 
