@@ -193,6 +193,7 @@ W14. Show todo
 W15. Watch
 - Monitor sweep on three signals: process, terminal output, git movement
 - Verify every launch within 2 min
+- A task manager on another machine reports into its worktree `agent_state.txt` under `=== REPORT ===`; the main manager watches every task manager with `agent-watch.sh` in the background (pane and file)
 - A stall → nudge once, wait 10 min, then salvage (commit what is there) and redispatch
 - Every brief says how to report, how to ask, how to report done (pass/fail) and the heartbeat
 
