@@ -1228,7 +1228,15 @@ class TestStopLeftovers(unittest.TestCase):
 
 class TestStartWiring(CleanupCase):
     def start(self, **kwargs):
-        return self.repo.run("agent-start.sh", **kwargs)
+        # A live session pid, the way a real hook sees one. Without it the
+        # role comes from the runner's process tree: under a runner with no
+        # claude ancestor, agent-start.sh (which writes the lock) and its
+        # child agent-cleanup.sh each fall back to their own $PPID, the child
+        # reads itself as "second" and refuses, and no sweep runs. A test
+        # that wants another pid passes its own CLAUDE_PID.
+        env = dict(kwargs.pop("env", None) or {})
+        env.setdefault("CLAUDE_PID", str(os.getpid()))
+        return self.repo.run("agent-start.sh", env=env, **kwargs)
 
     def test_a_main_manager_start_sweeps(self):
         path, _ = self.merged_worktree()
@@ -1308,6 +1316,47 @@ class TestStartWiring(CleanupCase):
         # kept: the unmerged worktree, and the merged one's origin branch,
         # which waits until every paired machine answers
         self.assertIn("CLEANUP: removed 1, kept 2.", out)
+        # the lines a start never drops to make room, however long the path
+        lines = self.lines(out)
+        for prefix in ("ROLE:", "PROJECT:", "RESOURCES:", "LANGUAGE:",
+                       "PERMISSION:", "YOU:", "AUTO UPDATE:", "RULES:", "QUIZ:"):
+            self.assertTrue(any(l.startswith(prefix) for l in lines),
+                            "%s line missing\n%s" % (prefix, out))
+        # S8: the state file is at least named, with its line count
+        self.assertTrue(any(l.startswith("agent_state.txt: 60 lines") for l in lines),
+                        "agent_state.txt pointer missing\n%s" % out)
+        # the worktree header keeps the real count; rows cut to fit end in
+        # one "(<n> more ...)" line naming the file
+        self.assertIn("agent_worktree.txt: 4 lines", lines)
+        rows = [l for l in lines if l.startswith("  /very/long/path/to/worktree/")]
+        if len(rows) < 4:
+            more = [l for l in lines if l.startswith("  (%d more" % (4 - len(rows)))]
+            self.assertEqual(len(more), 1, out)
+            self.assertIn("agent_worktree.txt", more[0])
+
+
+class TestStartWiringLongPath(TestStartWiring):
+    """Every start-wiring case again, under a long temp path (a Claude Code
+    scratchpad is ~140 characters). The project and plugin paths are printed
+    several times, so the 2000-byte cap must hold by cutting, not by luck."""
+
+    LONG = 160
+
+    def setUp(self):
+        base = os.path.realpath(tempfile.gettempdir())
+        pad = max(1, self.LONG - len(base) - 1)
+        long_dir = os.path.join(base, "p" * pad)
+        os.makedirs(long_dir, exist_ok=True)
+        # runs after the repo's own cleanup (LIFO); left alone if not empty
+        self.addCleanup(lambda: os.path.isdir(long_dir) and not os.listdir(long_dir)
+                        and os.rmdir(long_dir))
+        old = tempfile.tempdir
+        tempfile.tempdir = long_dir
+        try:
+            super().setUp()
+        finally:
+            tempfile.tempdir = old
+        self.assertGreaterEqual(len(self.repo.base), self.LONG)
 
 
 # ---------------------------------------------------------------- wiring: resume
