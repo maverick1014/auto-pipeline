@@ -25,7 +25,8 @@ CONTRACT.
     signals    each sweep reads two things:
                (a) the TM pane: orca terminal read --terminal <TM> --json
                (b) agent_state.txt in the worktree: the lines that START with
-                   "DONE PASS", "DONE FAIL", "CLOSE CASE" or "QUESTION:".
+                   "DONE PASS", "DONE FAIL", "CLOSE CASE", "QUESTION:" or
+                   "MOCK READY".
                    Local (no --environment): read the file directly, no shell
                    pane, no orca terminal send at all.
                    Another machine: through the --shell pane. Read it first
@@ -34,15 +35,12 @@ CONTRACT.
                    the answer with --cursor. Every orca call carries
                    --environment <env>.
                The file count at start is the baseline: only new lines fire.
-               The ⏺ signal lines already on the TM screen at start are the
-               screen baseline: only a new one fires (a watch restarted after
-               an exit must not fire again on the same screen).
+               The screen never fires a SIGNAL (SCOPE ADD 1, main manager
+               17:41: a TM's plan line "⏺ ... then write DONE PASS ..." fired
+               it). The screen is read for the stall and the sweep line only.
 
     exits      the WATCH line first, then the evidence:
-               "WATCH SIGNAL <name>: <line>"  a new file line (the line itself),
-                   or a new screen line that starts with ⏺ and holds DONE PASS,
-                   DONE FAIL, QUESTION: or CLOSE CASE; then the last 15 screen
-                   lines
+               "WATCH SIGNAL <name>: <line>"  a new file line (the line itself)
                "WATCH STALL <name>"  3 sweeps, same screen, no file change
                    (file = signal count and line count), unless the screen
                    says "shell still running"; then the last 15 screen lines
@@ -332,7 +330,8 @@ class TestRuntimeAndArgs(WatchCase):
 class TestFileSignal(WatchCase):
     def test_baseline_lines_do_not_fire(self):
         self.append_state("DONE PASS feat", "QUESTION: an old one?",
-                          "CLOSE CASE feat: unfinished", "DONE FAIL feat: old")
+                          "CLOSE CASE feat: unfinished", "DONE FAIL feat: old",
+                          "MOCK READY feat: mock/feat-mock.html")
         self.screens([STILL])
         text = self.out(self.watch())
         self.assertNotIn("WATCH SIGNAL", text)
@@ -340,7 +339,8 @@ class TestFileSignal(WatchCase):
 
     def test_a_new_line_of_each_kind_fires(self):
         for line in ("QUESTION: which port, 8080 or 9090?", "DONE PASS feat",
-                     "DONE FAIL feat: 2 tests red", "CLOSE CASE feat: finished"):
+                     "DONE FAIL feat: 2 tests red", "CLOSE CASE feat: finished",
+                     "MOCK READY feat: mock/feat-mock.html"):
             with self.subTest(line=line):
                 self.setUp()
                 self.screens(self.moving())
@@ -362,7 +362,8 @@ class TestFileSignal(WatchCase):
         self.screens(self.moving())
         self.hook('[ "$1" = "2" ] && echo "note: DONE PASS comes after the suite" >> %s\n'
                   '[ "$1" = "3" ] && echo "  QUESTION: indented" >> %s\n'
-                  % (sh_quote(self.state), sh_quote(self.state)))
+                  '[ "$1" = "4" ] && echo "next: MOCK READY when the page is up" >> %s\n'
+                  % (sh_quote(self.state), sh_quote(self.state), sh_quote(self.state)))
         text = self.out(self.watch(max_sweeps="5"))
         self.assertNotIn("WATCH SIGNAL", text)
         self.assertEqual(self.watch_line(text), "WATCH MAX feat")
@@ -374,36 +375,41 @@ class TestFileSignal(WatchCase):
         self.assertLessEqual(len(self.sweeps(text)), 3, text)
 
 
-class TestScreenSignal(WatchCase):
+class TestScreenNeverFires(WatchCase):
+    """SCOPE ADD 1: only file lines fire. The screen feeds the stall and the
+    sweep line, nothing else."""
+
     DONE = ["⏺ DONE PASS feat", "", "  Result: 42 tests OK"]
 
-    def test_a_new_done_line_on_screen_fires(self):
+    def test_a_new_done_line_on_screen_does_not_fire(self):
         self.screens(self.moving(extra_at=3, extra=self.DONE))
-        text = self.out(self.watch())
-        line = self.watch_line(text)
-        self.assertTrue(line.startswith("WATCH SIGNAL feat: "), line)
-        self.assertIn("DONE PASS feat", line)
+        text = self.out(self.watch(max_sweeps="5"))
+        self.assertNotIn("WATCH SIGNAL", text)
+        self.assertEqual(self.watch_line(text), "WATCH MAX feat")
 
-    def test_each_screen_word_fires(self):
+    def test_no_screen_word_fires(self):
         for word in ("DONE PASS feat", "DONE FAIL feat: red", "QUESTION: port?",
-                     "CLOSE CASE feat: finished"):
+                     "CLOSE CASE feat: finished", "MOCK READY feat: mock/x.html"):
             with self.subTest(word=word):
                 self.setUp()
-                self.screens(self.moving(extra_at=3, extra=["⏺ " + word]))
-                text = self.out(self.watch())
-                line = self.watch_line(text)
-                self.assertTrue(line.startswith("WATCH SIGNAL feat: "), line)
-                self.assertIn(word, line)
+                self.screens(self.moving(extra_at=2, extra=["⏺ " + word]))
+                text = self.out(self.watch(max_sweeps="4"))
+                self.assertNotIn("WATCH SIGNAL", text)
+                self.assertEqual(self.watch_line(text), "WATCH MAX feat")
 
-    def test_screen_evidence_is_the_last_15_lines(self):
-        body = ["line %02d" % i for i in range(1, 21)]
-        done = body[:12] + ["⏺ DONE PASS feat"] + body[12:]
-        self.screens([frame(1), frame(2), done, done])
+    def test_a_plan_line_on_screen_does_not_fire(self):
+        """The 17:39 case: a plan, not a report."""
+        plan = ["⏺ Next: run the suite, then write DONE PASS remote-watch into "
+                "agent_state.txt."]
+        self.screens(self.moving(extra_at=2, extra=plan))
+        text = self.out(self.watch(max_sweeps="4"))
+        self.assertNotIn("WATCH SIGNAL", text)
+
+    def test_the_file_line_still_fires_with_a_done_screen(self):
+        self.screens(self.moving(extra_at=2, extra=self.DONE))
+        self.append_on_read(4, "DONE PASS feat")
         text = self.out(self.watch())
-        after = "\n".join(self.after_watch(text))
-        self.assertIn("line 20", after)
-        self.assertIn("line 07", after)
-        self.assertNotIn("line 05", after)
+        self.assertEqual(self.watch_line(text), "WATCH SIGNAL feat: DONE PASS feat")
 
     def test_a_done_line_already_on_screen_at_start_does_not_fire(self):
         self.screens([frame(0, self.DONE)])
@@ -423,6 +429,16 @@ class TestScreenSignal(WatchCase):
         text = self.out(self.watch(max_sweeps="5"))
         self.assertNotIn("WATCH SIGNAL", text)
         self.assertEqual(self.watch_line(text), "WATCH MAX feat")
+
+    def test_stall_evidence_is_the_last_15_screen_lines(self):
+        body = ["line %02d" % i for i in range(1, 22)]
+        self.screens([body])
+        text = self.out(self.watch(max_sweeps="10"))
+        self.assertEqual(self.watch_line(text), "WATCH STALL feat")
+        after = "\n".join(self.after_watch(text))
+        self.assertIn("line 21", after)
+        self.assertIn("line 07", after)
+        self.assertNotIn("line 06", after)
 
 
 class TestStallLostMax(WatchCase):
@@ -523,6 +539,13 @@ class TestRemote(WatchCase):
         self.assertEqual(self.watch_line(text),
                          "WATCH SIGNAL feat: QUESTION: remote port?")
 
+    def test_a_new_mock_ready_fires_through_the_shell_pane(self):
+        self.screens(self.moving())
+        self.append_on_read(2, "MOCK READY feat: mock/feat-mock.html")
+        text = self.out(self.watch(remote=True))
+        self.assertEqual(self.watch_line(text),
+                         "WATCH SIGNAL feat: MOCK READY feat: mock/feat-mock.html")
+
     def test_remote_sends_one_short_command_and_reads_with_cursor(self):
         self.screens(self.moving())
         self.append_on_read(3, "DONE PASS feat")
@@ -606,8 +629,19 @@ class TestText(unittest.TestCase):
         self.assertLess(steps.index("terminal wait"), at)
         near = steps[max(0, at - 300):at + 1200]
         for word in ("run_in_background", "--environment", "--shell", "again",
-                     "merged"):
+                     "merged", "MOCK READY"):
             self.assertIn(word, near)
+        # SCOPE ADD 1: the screen no longer fires
+        block = steps[at:steps.index("ListAgents", at)]
+        self.assertNotIn("⏺", block)
+        self.assertNotIn("on screen", block)
+
+    def test_dispatch_brief_mock_step_names_mock_ready(self):
+        brief = section(read("skills", "dispatch", "SKILL.md"),
+                        "## Task manager brief", "## Cross-repo brief")
+        mock = next(l for l in brief.splitlines() if l.startswith(" 2 mock first"))
+        self.assertIn("MOCK READY", mock)
+        self.assertIn("agent_state.txt", mock)
 
     def test_dispatch_brief_names_the_report_block(self):
         brief = section(read("skills", "dispatch", "SKILL.md"),
