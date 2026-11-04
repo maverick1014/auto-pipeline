@@ -84,6 +84,19 @@ else:
 ' "$1" 2>/dev/null
 }
 
+# LASTERR from a failed orca call: error.code/message from the JSON on stdout
+# ($1), else stderr, else "<what> exit <rc>"
+orca_error() {
+  local msg
+  msg=$(printf '%s' "$1" | python3 -c '
+import json, sys
+e = json.load(sys.stdin).get("error") or {}
+sys.stdout.write(str(e.get("code") or e.get("message") or ""))' 2>/dev/null)
+  [ -n "$msg" ] || msg=$(head -c 300 "$ERRF" | tr '\n' ' ')
+  [ -n "$msg" ] || msg="$2 exit $3"
+  LASTERR=$msg
+}
+
 # orca terminal read <handle> [cursor] -> RAW; sets LASTERR on failure
 orca_read() {
   local rc
@@ -93,8 +106,7 @@ orca_read() {
     RAW=$(orca terminal read "${E[@]}" --terminal "$1" --json 2>"$ERRF"); rc=$?
   fi
   if [ $rc -ne 0 ]; then
-    LASTERR=$(head -c 300 "$ERRF" | tr '\n' ' ')
-    [ -n "$LASTERR" ] || LASTERR="orca terminal read exit $rc"
+    orca_error "$RAW" "orca terminal read" "$rc"
     return 1
   fi
   return 0
@@ -108,7 +120,7 @@ tm_read() {
 
 # sets FN (signal count), FL (line count), FLAST (last signal line)
 file_read() {
-  local f q cmd cur body rest k mark
+  local f q cmd cur body rest k mark rc
   if [ -z "$ENVNAME" ]; then
     f="$W/agent_state.txt"
     [ -r "$f" ] || { LASTERR="cannot read $f"; return 1; }
@@ -122,9 +134,9 @@ file_read() {
   [ -n "$cur" ] || { LASTERR="no latestCursor in the shell pane read"; return 1; }
   q=$(printf '%s' "$W/agent_state.txt" | sed "s/'/'\\\\''/g")
   cmd="f='$q'; R='$RE'; echo FSIG \$(grep -cE \"\$R\" \"\$f\") \$(wc -l <\"\$f\") \"\$(grep -E \"\$R\" \"\$f\"|tail -1|cut -c1-100)\" FEND"
-  if ! orca terminal send "${E[@]}" --terminal "$SH" --text "$cmd" --enter --json >/dev/null 2>"$ERRF"; then
-    LASTERR=$(head -c 300 "$ERRF" | tr '\n' ' ')
-    [ -n "$LASTERR" ] || LASTERR="orca terminal send to the shell pane failed"
+  RAW=$(orca terminal send "${E[@]}" --terminal "$SH" --text "$cmd" --enter --json 2>"$ERRF"); rc=$?
+  if [ $rc -ne 0 ]; then
+    orca_error "$RAW" "orca terminal send" "$rc"
     return 1
   fi
   mark=""
@@ -180,9 +192,8 @@ while [ "$i" -le "$MAX" ]; do
   fails=0
 
   # baselines that could not be read at the start: this read is the baseline
-  fresh=0
-  if [ -z "$BASE_N" ]; then BASE_N=$FN; fresh=1; fi
-  if [ "$SBASE_OK" -eq 0 ]; then SBASE=$(screen_signals "$SCREEN"); SBASE_OK=1; fresh=1; fi
+  if [ -z "$BASE_N" ]; then BASE_N=$FN; fi
+  if [ "$SBASE_OK" -eq 0 ]; then SBASE=$(screen_signals "$SCREEN"); SBASE_OK=1; fi
 
   if [ "$FN" -gt "$BASE_N" ] 2>/dev/null; then
     echo "WATCH SIGNAL $NAME: $FLAST"
