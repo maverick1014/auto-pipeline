@@ -31,6 +31,15 @@ CONTRACT (bin/agent-city.html, the simulation section, runs in node)
     crosses a new footprint gets a new path at once, and anyone a new
     footprint lands on is moved to the nearest free point at once (never a
     frame inside it).
+  The walker's own first leg (five-fixes S5, 2026-11-05): a walker is often
+    NOT on a walk cell's centre (after a side step around somebody, or a
+    re-route mid-leg). findPath(sx, sz, ...) from such a free point: every
+    straight leg, the first one FROM (sx, sz) itself, stays on free cells
+    (segFree(a, b), the page's own leg check), so it never crosses a
+    footprint. The bug: findPath dropped its start cell's centre but had
+    checked the first leg from that centre, not from (sx, sz); seed
+    1407638661 (harbor, city) walked w1 into building:3. That seed is a fixed
+    case now (TestWalkSeed1407638661).
 
 Run: python3 -m unittest tests.test_agent_city_walk </dev/null
 """
@@ -285,6 +294,84 @@ class TestRerouteAndRoads(unittest.TestCase):
         r = run_sim(ROADS_DRIVER, {}, WALK_REQUIRED)
         self.assertIsNotNone(r["p"])
         self.assertEqual(r["wild"], 0, "a short road detour beats cutting through wild land")
+
+
+# five-fixes S5: the walker's own first leg -----------------------------------------------------
+
+OWN_POINT_DRIVER = r"""
+const V = __payload.view, T = V.territories[0];
+landState(V);
+let seed = 13; const lcg = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const fps = footprints(), near = fps.filter(f => Math.hypot(f.x - T.cx, f.z - T.cz) < 9);
+const inside = (p, f) => Math.abs(p[0] - f.x) < f.hw - 1e-6 && Math.abs(p[1] - f.z) < f.hd - 1e-6;
+// a free point close to a model, anywhere in its walk cell (not the cell's centre)
+function nearPoint(){
+  for (let k = 0; k < 400; k++) {
+    const f = near[Math.floor(lcg() * near.length)];
+    const x = f.x + (lcg() * 2 - 1) * (f.hw + .6), z = f.z + (lcg() * 2 - 1) * (f.hd + .6);
+    if (freeAt(x, z)) return [x, z];
+  }
+  return null;
+}
+function legs(a, p){ const out = []; let prev = a; for (const q of p) { out.push([prev, q]); prev = q; } return out; }
+const offFree = [], found = [];
+let tries = 0, paths = 0;
+for (let k = 0; k < __payload.n; k++) {
+  const a = nearPoint(), b = nearPoint();
+  if (!a || !b) continue;
+  tries++;
+  const p = findPath(a[0], a[1], b[0], b[1]);
+  if (!p) continue;
+  paths++;
+  for (const [u, v] of legs(a, p)) if (!segFree(u, v)) { if (offFree.length < 4) offFree.push({ from: a, to: b, leg: [u, v] }); break; }
+}
+// the exact calls seen failing on main (walker point, target)
+for (const [sx, sz, tx, tz] of __payload.calls) {
+  const p = findPath(sx, sz, tx, tz) || [];
+  let hit = null;
+  for (const [u, v] of legs([sx, sz], p)) {
+    const n = Math.max(1, Math.ceil(Math.hypot(v[0] - u[0], v[1] - u[1]) / .01));
+    for (let i = 0; i <= n && !hit; i++) {
+      const pt = [u[0] + (v[0] - u[0]) * i / n, u[1] + (v[1] - u[1]) * i / n];
+      for (const f of fps) if (inside(pt, f)) { hit = [f.key, +pt[0].toFixed(3), +pt[1].toFixed(3)]; break; }
+    }
+  }
+  found.push({ call: [sx, sz, tx, tz], free: freeAt(sx, sz), path: p, hit });
+}
+__out = { offFree, tries, paths, found };
+"""
+OWN_POINT_REQUIRED = WALK_REQUIRED + ("segFree",)
+# (plan, era) -> findPath calls from a walker's own free point that crossed a model on main 17079f4
+OWN_POINT_CALLS = {("harbor", "city"): [[0.225, -2.998, -1.5, -4.5]],      # seed 1407638661: w1 into building:3
+                   ("meadow", "village"): [[1.03, 2.004, -5.634, 1.754]]}  # a straight leg through a tree_oak
+
+
+class TestPathFromTheWalkersOwnPoint(unittest.TestCase):
+    """5 plans x 3 eras, 200 fixed pairs each (no random seed: the same pairs every run)."""
+
+    def test_every_leg_from_the_own_point_is_on_free_cells(self):
+        for plan in ac.load_plans():
+            for era in ERAS:
+                key = (plan["id"], era)
+                r = run_sim(OWN_POINT_DRIVER, {"view": plan_view(*key), "n": 200, "calls": OWN_POINT_CALLS.get(key, [])},
+                            OWN_POINT_REQUIRED)
+                with self.subTest(plan=key[0], era=era):
+                    self.assertGreaterEqual(r["paths"], r["tries"] * .7, "most points near models reach each other")
+                    self.assertEqual(r["offFree"], [], "a leg from the walker's own point leaves the free cells")
+                    for f in r["found"]:
+                        self.assertTrue(f["free"], "the fixture point must be free: %r" % f)
+                        self.assertTrue(f["path"], "the fixture call finds a way: %r" % f)
+                        self.assertIsNone(f["hit"], "a leg crosses a model: %r" % f)
+
+
+class TestWalkSeed1407638661(unittest.TestCase):
+    """The seed that walked w1 into building:3 on main (harbor, city), a fixed case."""
+
+    def test_harbor_city(self):
+        r = run_sim(SEED_JS + WALK_DRIVER, {"view": plan_view("harbor", "city"), "seed": 1407638661}, WALK_REQUIRED)
+        self.assertEqual(r["bad"], [], "moving people inside a footprint (seed 1407638661)")
+        self.assertEqual(r["standBad"], [], "people standing in a footprint (seed 1407638661)")
+        self.assertEqual(r["pathBad"], [], "a path crosses a footprint (seed 1407638661)")
 
 
 if __name__ == "__main__":

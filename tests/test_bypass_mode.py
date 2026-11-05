@@ -6,11 +6,13 @@ any code.
 CONTRACT
 
 1. bin/agent_conf.py
-   PERMISSION_MODES = default, acceptEdits, auto, plan, bypassPermissions.
+   PERMISSION_MODES = acceptEdits, auto, bypassPermissions, manual, dontAsk,
+   plan (five-fixes S1, 2026-11-05: the list `claude --help` gives; "default"
+   is refused).
    validate_value("permission_mode", v) and validate_value(
-   "cloud_permission_mode", v): None for those five exactly (case and spaces
-   count), else a message that names all five.
-   HINTS["permission_mode"] names the five; HINTS["cloud_permission_mode"]
+   "cloud_permission_mode", v): None for those six exactly (case and spaces
+   count), else a message that names all six.
+   HINTS["permission_mode"] names the six; HINTS["cloud_permission_mode"]
    says it is for a session started from the Agent City cloud page, and that
    missing or refused means auto.
    GROUPS "permission" = permission_mode, cloud_permission_mode, auto_resume,
@@ -115,7 +117,8 @@ from scripthelp import ScriptCase, ScriptRepo  # noqa: E402
 from test_agent_city_add_agent import AddCase, PROMPT  # noqa: E402
 from test_agent_city_cloud_start_machine import OrderCase, oid  # noqa: E402
 
-FIVE = ("default", "acceptEdits", "auto", "plan", "bypassPermissions")
+# five-fixes S1: the modes `claude --help` lists; "default" is not one
+FIVE = ("acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")
 MODEL = ["--model", "opus", "--effort", "high"]
 SKIP_KEY = '"skipDangerousModePermissionPrompt": true'
 WARN = "new panes stop on the bypass warning screen"
@@ -266,7 +269,7 @@ class TestLaunchLine(LineCase):
                          ["claude", "--name", "x Manager"] + MODEL + ["--permission-mode", "auto", PROMPT])
 
     def test_cloud_key_refused_is_auto(self):
-        for i, bad in enumerate(("yolo", "Bypass", "bypass", "", "bypassPermissions!", "dontAsk")):
+        for i, bad in enumerate(("yolo", "Bypass", "bypass", "", "bypassPermissions!", "default")):
             with self.subTest(value=bad):
                 conf = conf_text(permission_mode="bypassPermissions", cloud_permission_mode=bad)
                 words = self.words("bad%d" % i, conf, cloud=True)
