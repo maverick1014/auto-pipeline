@@ -2078,20 +2078,39 @@ function findPath(sx, sz, tx, tz){
   while (cur !== -1) { idxPath.push(cur); if (cur === startIdx) break; cur = prev[cur]; }
   idxPath.reverse();
   const pts = idxPath.map(idx => cellCentre(idx % w, (idx - idx % w) / w));
-  const smoothed = [pts[0]];
-  let i = 0;
-  while (i < pts.length - 1) {
-    let j = pts.length - 1;
-    while (j > i + 1 && !segFree(pts[i], pts[j])) j--;
-    smoothed.push(pts[j]);
-    i = j;
-  }
+  // a free (sx, sz) in its own start cell is smoothed FROM itself, not from the cell's centre: the walker
+  // really walks its first leg from (sx, sz) (often off the centre after a side step or a re-route), so
+  // that leg is the one segFree() has to check -- dropping the start below then never skips a check.
+  const ownStart = freeAt(sx, sz) && g.free[startIdx] === 1 &&
+    Math.floor((sx - g.x0) * WALK_SUB) === start[0] && Math.floor((sz - g.z0) * WALK_SUB) === start[1];
+  const smooth = a => {
+    const out = [a[0]];
+    let i = 0;
+    while (i < a.length - 1) {
+      let j = a.length - 1;
+      while (j > i + 1 && !segFree(a[i], a[j])) j--;
+      out.push(a[j]);
+      i = j;
+    }
+    return out;
+  };
   // the walker's own current cell is dropped -- the path is the steps ahead of it -- only when (sx, sz)
   // itself is already free: it is then close enough to pts[0] that heading straight for the next kept
   // point is the same safe move move() already makes every tick. When (sx, sz) is not free (a standing
   // point some new footprint has since grown over), pts[0] -- the nearest free cell -- stays as the walk's
   // own first, explicit step, so the walker's very first leg out is never a blind line past it.
-  if (freeAt(sx, sz)) smoothed.shift();
+  let smoothed = smooth(pts);
+  if (ownStart) {
+    smoothed = smooth([[sx, sz]].concat(pts.slice(1)));
+    smoothed.shift();
+    // smoothing from the point can force a longer first leg than the old way round the cell centre (a
+    // diagonal that only the centre could take): when the point can walk to its centre freely, and
+    // centre-first is the shorter way, take that -- every leg of it is checked too.
+    if (pts.length > 1 && segFree([sx, sz], pts[0])) {
+      const viaCentre = smooth(pts);
+      if (smoothed.length && pathLength(sx, sz, viaCentre) < pathLength(sx, sz, smoothed) - 1e-9) smoothed = viaCentre;
+    }
+  }
   if (!smoothed.length) smoothed.push(pts[pts.length - 1]);
   // the last point is the exact target (contract) only when that exact point is itself free and the last
   // safe leg reaches it in a straight line; a caller-given target that is not on a free cell (a rest seat,
@@ -2102,7 +2121,13 @@ function findPath(sx, sz, tx, tz){
     // the plot exception itself: no model reaches this exact cell (noFoot said so already), so the exact
     // target is used outright, even though its own tile ('P') is never freeAt() on its own.
     smoothed[smoothed.length - 1] = [tx, tz];
-  } else if (freeAt(tx, tz) && segFree(lastFree, [tx, tz])) smoothed[smoothed.length - 1] = [tx, tz];
+  } else if (freeAt(tx, tz) && segFree(lastFree, [tx, tz])) {
+    // replacing the last kept point by the exact target changes the leg INTO it too: that leg (from the
+    // point before it, or from the walker itself) must be clear as well, else the target is appended.
+    const before = smoothed.length > 1 ? smoothed[smoothed.length - 2] : [sx, sz];
+    if (segFree(before, [tx, tz])) smoothed[smoothed.length - 1] = [tx, tz];
+    else smoothed.push([tx, tz]);
+  }
   return smoothed;
 }
 /* re-route (city-people, Growth): every walker whose remaining path now crosses a blocked cell gets a
