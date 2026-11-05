@@ -341,9 +341,11 @@ def _you(args, env, settings, conf, role_key):
         effort_src = "settings.json"
         table = settings.get("modelSettings")
         if isinstance(table, dict) and model != "unknown":
-            entry = table.get(model)
-            if isinstance(entry, dict) and _text(entry.get("effortLevel")):
-                effort = entry["effortLevel"]
+            for key in (model, _strip_context_suffix(model)):
+                entry = table.get(key)
+                if isinstance(entry, dict) and _text(entry.get("effortLevel")):
+                    effort = entry["effortLevel"]
+                    break
             else:
                 effort = _family_effort(model, table)
     if not effort:
@@ -388,17 +390,22 @@ def _you_cli(role_key, conf_path, pid):
 
 def cli_model(spec):
     """The model name the claude CLI takes, from a role value like
-    opus-5.5:xhigh or a bare model name. The ":effort" part is dropped. A name
+    opus-5.5:xhigh or a bare model name. The ":effort" part is dropped. A
+    trailing "[1m]" (1M context) of the model part is kept: the family rule
+    runs first, then the suffix goes back on (opus-5.5[1m]:xhigh gives
+    opus[1m], claude-opus-5-5[1m] stays as it is). A name
     that starts with opus, sonnet, haiku or fable becomes that family word
     (the CLI refuses fable-5.1, it takes fable); anything else, a full id like
     claude-fable-5-1 or a name this file has never seen, goes through
     unchanged. The one place with this rule: agent_city.py calls it and
     agent-resume.sh asks it with `agent_conf.py cli-model <spec>`."""
-    base = _strip_context_suffix(spec.split(":", 1)[0])
+    head = spec.split(":", 1)[0]
+    base = _strip_context_suffix(head)
+    suffix = head[len(base):]
     for family in MODEL_FAMILIES:
         if base.startswith(family):
-            return family
-    return base
+            return family + suffix
+    return base + suffix
 
 
 if __name__ == "__main__":

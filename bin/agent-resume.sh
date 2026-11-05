@@ -91,11 +91,15 @@ if [ "$RAM_USED" -ge "$max_usage_percent" ] || [ "$CPU_USED" -ge "$max_usage_per
 # unchanged) lives in one place, bin/agent_conf.py cli-model, so the city page
 # and this script cannot drift apart. If python3 cannot answer, fall back to
 # the spec without its ":effort" part, so a relaunch still gets a --model word.
+# The word may end in "[1m]" and the relaunch cmd is a line a zsh pane runs
+# (opus[1m] is a glob there), so the word is quoted with printf %q: a plain
+# name stays bare, a suffixed one reaches claude exactly as opus[1m].
 model_name() {
-  if ! python3 "$PLUGIN_ROOT/bin/agent_conf.py" cli-model "$1" 2>/dev/null; then
+  if ! name=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" cli-model "$1" 2>/dev/null); then
     spec=$1
-    echo "${spec%%:*}"
+    name="${spec%%:*}"
   fi
+  printf '%q\n' "$name"
 }
 
 # ---- orca-only setup: live pane lookup, one runtime call. orca may be down. ----
