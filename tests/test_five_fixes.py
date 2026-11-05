@@ -41,11 +41,12 @@ S2. bin/agent_conf.py: a model with the context suffix "[1m]"
     fable-5.1[1m], fable[1m], opus[1m] ... pass; sonnet, haiku, opus-5.4,
     opus-5 with the suffix are refused with the floor message; effort low is
     still refused.
-  cli_model drops the suffix (the launch line never carries "[" or "]":
-    bin/agent-resume.sh puts --model unquoted into a shell line, and zsh
-    reads "[1m]" as a glob): "opus-5.5[1m]:xhigh" -> "opus",
-    "claude-opus-5-5[1m]:high" -> "claude-opus-5-5". Without the suffix:
-    unchanged. `agent_conf.py cli-model <spec>` says the same.
+  cli_model keeps the suffix (model-suffix, 2026-11-05; it was dropped in
+    0.30.2): "opus-5.5[1m]:xhigh" -> "opus[1m]",
+    "claude-opus-5-5[1m]:high" -> "claude-opus-5-5[1m]". Without the suffix:
+    unchanged. `agent_conf.py cli-model <spec>` says the same. Every launch
+    line quotes the model word, so zsh never reads "[1m]" as a glob
+    (tests/test_model_suffix.py).
   bin/agent-settings.sh saves task_manager=opus-5.5[1m]:xhigh and refuses
     sonnet-5[1m]:high.
 
@@ -349,11 +350,11 @@ class TestContextSuffix(unittest.TestCase):
         self.assertEqual(agent_conf.validate_value("task_manager", "sonnet-5:xhigh"), agent_conf.FLOOR_MESSAGE)
 
 
-class TestCliModelDropsTheSuffix(unittest.TestCase):
-    TABLE = (("opus-5.5[1m]:xhigh", "opus"), ("opus-5.5[1m]", "opus"), ("fable-5.1[1m]:high", "fable"),
-             ("fable[1m]", "fable"), ("opus[1m]:max", "opus"), ("sonnet-5[1m]:medium", "sonnet"),
-             ("claude-opus-5-5[1m]:high", "claude-opus-5-5"), ("claude-fable-5-1[1m]", "claude-fable-5-1"),
-             ("mystery-7[1m]:high", "mystery-7"),
+class TestCliModelKeepsTheSuffix(unittest.TestCase):
+    TABLE = (("opus-5.5[1m]:xhigh", "opus[1m]"), ("opus-5.5[1m]", "opus[1m]"), ("fable-5.1[1m]:high", "fable[1m]"),
+             ("fable[1m]", "fable[1m]"), ("opus[1m]:max", "opus[1m]"), ("sonnet-5[1m]:medium", "sonnet[1m]"),
+             ("claude-opus-5-5[1m]:high", "claude-opus-5-5[1m]"), ("claude-fable-5-1[1m]", "claude-fable-5-1[1m]"),
+             ("mystery-7[1m]:high", "mystery-7[1m]"),
              ("opus-5.5:xhigh", "opus"), ("claude-opus-5-5:high", "claude-opus-5-5"))
 
     def test_the_rule(self):
@@ -370,15 +371,15 @@ class TestCliModelDropsTheSuffix(unittest.TestCase):
 
 
 class TestCityLineWithTheSuffix(TmpCase):
-    def test_the_model_word_has_no_brackets(self):
-        for spec, want in (("opus-5.5[1m]:high", "opus"), ("claude-opus-5-5[1m]:high", "claude-opus-5-5")):
+    def test_the_model_word_keeps_the_suffix_quoted(self):
+        for spec, want in (("opus-5.5[1m]:high", "opus[1m]"), ("claude-opus-5-5[1m]:high", "claude-opus-5-5[1m]")):
             with self.subTest(spec=spec):
                 folder = self.folder("s%d" % len(os.listdir(self.base)),
                                      "main_manager=%s\npermission_mode=auto\n" % spec)
                 line = ac.agent_command("x Manager", folder)
                 words = shlex.split(line)
                 self.assertEqual((flag(words, "--model"), flag(words, "--effort")), (want, "high"))
-                self.assertNotIn("[", line)
+                self.assertIn("--model '%s'" % want, line)
 
 
 class TestSettingsWithTheSuffix(ScriptCase):
