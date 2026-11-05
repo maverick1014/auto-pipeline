@@ -25,7 +25,7 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
    ```
    ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo where "<name>" <machine> "<worktree path>"
    ```
-   **orca** — open a worktree. Read `task_manager` in the project's `agent.conf` (form model:effort): `<model>` is what `${CLAUDE_PLUGIN_ROOT}/bin/agent_conf.py cli-model <task_manager value>` prints (the CLI refuses opus-5.5, takes opus), `<effort>` is the part after the colon. Read `<mode>` from `permission_mode`, read with `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get permission_mode` (its first word; this machine's ~/.claude/auto-pipeline.conf wins over agent.conf):
+   **orca** — open a worktree. Read `task_manager` in the project's `agent.conf` (form model:effort): `<model>` is what `python3 ${CLAUDE_PLUGIN_ROOT}/bin/agent_conf.py cli-model '<task_manager value>'` prints (the CLI refuses opus-5.5, takes opus), `<effort>` is the part after the colon. Read `<mode>` from `permission_mode`, read with `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get permission_mode` (its first word; this machine's ~/.claude/auto-pipeline.conf wins over agent.conf):
    ```
    orca worktree create --name <name> --repo path:<main repo> --base-branch main --no-parent --json
    orca terminal create --worktree path:<worktree path> --title "<name> Task Manager" --command "AGENT_ROLE=task-manager claude --name '<name> Task Manager' --model '<model>' --effort <effort> --permission-mode <mode>" --json
