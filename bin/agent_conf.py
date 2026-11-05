@@ -28,7 +28,7 @@ ROLE_KEYS = [
 ]
 
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
-PERMISSION_MODES = ["default", "acceptEdits", "auto", "plan", "bypassPermissions"]
+PERMISSION_MODES = ["acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan"]
 YES_NO = ["yes", "no"]
 ON_OFF = ["on", "off"]
 RUNTIME_VALUES = ["auto", "orca", "plain", "cloud"]
@@ -47,8 +47,8 @@ HINTS = {
     "merge_deputy": "Model and effort for the merge deputy. Form: model-name:effort.",
     "task_manager": "Model and effort for a task manager. Form: model-name:effort. Floor: Opus 5.5 or above, or any Fable, effort medium or above.",
     "worker": "Model and effort for a worker. Form: model-name:effort.",
-    "permission_mode": "How much an agent may do without asking. One of: default, acceptEdits, auto, plan, bypassPermissions.",
-    "cloud_permission_mode": "Permission mode of a session started from the Agent City cloud page. One of: default, acceptEdits, auto, plan, bypassPermissions. Missing or refused means auto.",
+    "permission_mode": "How much an agent may do without asking. One of: " + ", ".join(PERMISSION_MODES) + ".",
+    "cloud_permission_mode": "Permission mode of a session started from the Agent City cloud page. One of: " + ", ".join(PERMISSION_MODES) + ". Missing or refused means auto.",
     "auto_resume": "Run agent-resume.sh by itself when a main manager starts. yes or no.",
     "language": "Language for talking to the human, e.g. en, zh, ms. Code and rules stay English.",
     "adhd": "Shape replies for a reader with ADHD (PRINCIPLES.md section E). on or off.",
@@ -157,7 +157,7 @@ def _validate_decider(value):
 
 def _validate_permission_mode(value):
     if value not in PERMISSION_MODES:
-        return "Must be one of: default, acceptEdits, auto, plan, bypassPermissions."
+        return "Must be one of: " + ", ".join(PERMISSION_MODES) + "."
     return None
 
 

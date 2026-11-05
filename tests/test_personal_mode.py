@@ -212,14 +212,14 @@ class TestReadUserConf(TmpCase):
 
 
 class TestEffective(TmpCase):
-    CONF = {"permission_mode": "auto", "cloud_permission_mode": "default", "auto_update": "off"}
+    CONF = {"permission_mode": "auto", "cloud_permission_mode": "manual", "auto_update": "off"}  # five-fixes S1: default is refused
 
     def test_user_file_wins(self):
         self.write_user("permission_mode=bypassPermissions\n")
         self.assertEqual(agent_conf.effective("permission_mode", self.CONF),
                          ("bypassPermissions", agent_conf.display_path(self.user)))
         self.assertEqual(agent_conf.effective("cloud_permission_mode", self.CONF),
-                         ("default", "agent.conf"))
+                         ("manual", "agent.conf"))
 
     def test_agent_conf_next(self):
         self.assertEqual(agent_conf.effective("permission_mode", self.CONF), ("auto", "agent.conf"))
