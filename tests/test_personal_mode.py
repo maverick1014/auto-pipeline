@@ -212,14 +212,14 @@ class TestReadUserConf(TmpCase):
 
 
 class TestEffective(TmpCase):
-    CONF = {"permission_mode": "auto", "cloud_permission_mode": "default", "auto_update": "off"}
+    CONF = {"permission_mode": "auto", "cloud_permission_mode": "manual", "auto_update": "off"}  # five-fixes S1: default is refused
 
     def test_user_file_wins(self):
         self.write_user("permission_mode=bypassPermissions\n")
         self.assertEqual(agent_conf.effective("permission_mode", self.CONF),
                          ("bypassPermissions", agent_conf.display_path(self.user)))
         self.assertEqual(agent_conf.effective("cloud_permission_mode", self.CONF),
-                         ("default", "agent.conf"))
+                         ("manual", "agent.conf"))
 
     def test_agent_conf_next(self):
         self.assertEqual(agent_conf.effective("permission_mode", self.CONF), ("auto", "agent.conf"))
@@ -334,11 +334,11 @@ class TestSettingsUser(SettingsCase):
 
     def test_replaces_one_line_and_keeps_the_rest(self):
         self.repo.set_user_conf("# mine\npermission_mode=auto\ncloud_permission_mode=plan\n")
-        self.assertOk(self.settings("--user", "permission_mode", "default"))
-        self.assertEqual(self.user_text(), "# mine\npermission_mode=default\ncloud_permission_mode=plan\n")
+        self.assertOk(self.settings("--user", "permission_mode", "manual"))
+        self.assertEqual(self.user_text(), "# mine\npermission_mode=manual\ncloud_permission_mode=plan\n")
         self.assertOk(self.settings("--user", "cloud_permission_mode", "bypassPermissions"))
         self.assertEqual(agent_conf.load(self.repo.user_conf),
-                         {"permission_mode": "default", "cloud_permission_mode": "bypassPermissions"})
+                         {"permission_mode": "manual", "cloud_permission_mode": "bypassPermissions"})
 
     def test_only_the_user_keys(self):
         for key, value in (("worker", "sonnet-5:high"), ("language", "zh"), ("max_agents", "3")):
@@ -469,9 +469,9 @@ class TestResume(ScriptCase):
         self.assertTrue(self.command().endswith("--permission-mode plan"))
 
     def test_only_cloud_in_the_user_file_does_not_count(self):
-        self.repo.set_conf("permission_mode", "default")
+        self.repo.set_conf("permission_mode", "manual")
         self.repo.set_user_conf("cloud_permission_mode=bypassPermissions\n")
-        self.assertTrue(self.command().endswith("--permission-mode default"))
+        self.assertTrue(self.command().endswith("--permission-mode manual"))
 
     def test_nothing_set_is_auto(self):
         self.repo.unset_conf("permission_mode")

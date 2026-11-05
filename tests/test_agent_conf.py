@@ -242,11 +242,12 @@ class TestValidateRoles(unittest.TestCase):
 
 
 class TestValidatePermissionMode(unittest.TestCase):
-    # bypass-mode (owner, 2026-11-04): bypassPermissions is the fifth mode,
-    # for permission_mode and cloud_permission_mode alike.
-    MODES = ("default", "acceptEdits", "auto", "plan", "bypassPermissions")
+    # five-fixes S1 (2026-11-05): the modes `claude --help` (2.1.318) lists for
+    # --permission-mode, for permission_mode and cloud_permission_mode alike.
+    # "default" is no claude mode any more: refused, never mapped.
+    MODES = ("acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")
 
-    def test_the_five_modes_are_accepted(self):
+    def test_the_six_modes_are_accepted(self):
         for key in ("permission_mode", "cloud_permission_mode"):
             for mode in self.MODES:
                 with self.subTest(key=key, mode=mode):
@@ -256,11 +257,12 @@ class TestValidatePermissionMode(unittest.TestCase):
         for key in ("permission_mode", "cloud_permission_mode"):
             for mode in ("", "Auto", "accept_edits", "yolo", "default plan", "bypass",
                          "bypasspermissions", "BypassPermissions", "bypassPermissions ",
-                         "dontAsk", "auto; touch pwned", "bypassPermissions$(touch pwned)"):
+                         "default", "Default", "dontask", "Manual",
+                         "auto; touch pwned", "bypassPermissions$(touch pwned)"):
                 with self.subTest(key=key, mode=mode):
                     self.assertTrue(agent_conf.validate_value(key, mode))
 
-    def test_error_message_names_the_five_modes(self):
+    def test_error_message_names_the_six_modes(self):
         for key in ("permission_mode", "cloud_permission_mode"):
             message = agent_conf.validate_value(key, "yolo")
             self.assertTrue(message)

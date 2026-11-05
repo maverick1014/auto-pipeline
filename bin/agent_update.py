@@ -57,7 +57,8 @@ def _apply_file(path, on, getter):
             return "%s: no %s entry, untouched" % (path, MARKETPLACE)
         if isinstance(entry.get("autoUpdate"), bool) and entry["autoUpdate"] is on:
             return "%s: autoUpdate already %s" % (path, "true" if on else "false")
-        shutil.copyfile(path, path + BAK)
+        if not os.path.lexists(path + BAK):
+            shutil.copyfile(path, path + BAK)
         entry["autoUpdate"] = on
         out = json.dumps(data, indent=2, ensure_ascii=False)
         if raw.endswith(b"\n"):

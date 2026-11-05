@@ -35,6 +35,12 @@ CONTRACT: the server
   DIR/events.jsonl past --max-log-kb: moved to events.jsonl.1 (replacing any
   older one) and read to its end, so no line is lost and the folder never holds
   more than on, token, roster.json, events.jsonl and events.jsonl.1.
+  five-fixes S4 (2026-11-05): a writer (the hook's `>>`) that opened
+  events.jsonl before the rename and writes after it writes into the moved
+  file. The server keeps reading the moved file for a while after the rename
+  (at least 3 s), so those lines are read too: once each, none lost, none
+  twice. The rotation test waits up to 60 s (a full suite on a loaded machine
+  is slow; a lost line still fails it).
   (Interaction: token, the control API and the extra /health fields are in
   tests/test_agent_city_interact.py.)
 
@@ -439,13 +445,40 @@ class TestBudget(ServerCase):
             self.append("".join(line("PostToolUse", aid="a1", at="worker", tool="Edit")
                                 for _ in range(30)))
             time.sleep(0.15)
-        self.assertTrue(wait_for(lambda: len(client.events("tool")) == 300, timeout=15),
+        # five-fixes S4: 60 s, not 15: under a loaded full suite the lines come late, never lost
+        self.assertTrue(wait_for(lambda: len(client.events("tool")) == 300, timeout=60),
                         "got %d tool events" % len(client.events("tool")))
         size = os.path.getsize(os.path.join(self.dir, "events.jsonl"))
         self.assertLess(size, 4096 + 30 * 200)
         # token: the per-start control token (tests/test_agent_city_interact.py)
         # roster.json: the live sessions, for a restart (tests/test_agent_city_roster.py)
         # history.jsonl: each person's history lines (city-data, tests/test_agent_city_data.py)
+        self.assertLessEqual(set(os.listdir(self.dir)),
+                             {"on", "token", "events.jsonl", "events.jsonl.1", "roster.json", "history.jsonl"})
+
+    def test_a_write_through_a_handle_from_before_the_rename_is_read(self):
+        """five-fixes S4: the hook's `>>` opened the log before the rename and
+        writes after it, into the moved file: read anyway, once."""
+        self.start("--idle-sec", "60", "--max-log-kb", "4")
+        client = self.sse()
+        path = os.path.join(self.dir, "events.jsonl")
+        self.append(line("SubagentStart", aid="a1", at="worker"))
+        batch = "".join(line("PostToolUse", aid="a1", at="worker", tool="Edit") for _ in range(30))
+        held = open(path, "a")                       # opened before the rename
+        ino = os.stat(path).st_ino
+        self.append(batch)                           # 30 lines, past 4 KB: the server renames
+        self.assertTrue(wait_for(lambda: os.path.exists(path) and os.stat(path).st_ino != ino, timeout=15),
+                        "the log was never renamed")
+        self.assertTrue(wait_for(lambda: len(client.events("tool")) == 30, timeout=15))
+        self.append(batch[:len(batch) // 30 * 2])    # 2 lines into the new log
+        time.sleep(1.0)
+        held.write(batch)                            # 30 lines into the moved file, 1 s after the rename
+        held.close()
+        self.assertTrue(wait_for(lambda: len(client.events("tool")) == 62, timeout=15),
+                        "got %d of 62 tool events: lines written after the rename were lost"
+                        % len(client.events("tool")))
+        time.sleep(1.0)
+        self.assertEqual(len(client.events("tool")), 62, "a line was read twice")
         self.assertLessEqual(set(os.listdir(self.dir)),
                              {"on", "token", "events.jsonl", "events.jsonl.1", "roster.json", "history.jsonl"})
 
