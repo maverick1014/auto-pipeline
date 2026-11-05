@@ -33,7 +33,7 @@ YES_NO = ["yes", "no"]
 ON_OFF = ["on", "off"]
 RUNTIME_VALUES = ["auto", "orca", "plain", "cloud"]
 
-ROLE_VALUE_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9.\-]*):(low|medium|high|xhigh|max)$")
+ROLE_VALUE_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9.\-]*)(?:\[1m\])?:(low|medium|high|xhigh|max)$")
 LANGUAGE_RE = re.compile(r"^[a-z]{2}(-[a-z]{2})?$")
 
 HINTS = {
@@ -121,6 +121,11 @@ def _validate_number(key, value):
     return None
 
 
+def _strip_context_suffix(name):
+    """Drop a trailing "[1m]" (the 1M context marker) from a model name."""
+    return name[:-4] if name.endswith("[1m]") else name
+
+
 def _validate_role(value):
     if not ROLE_VALUE_RE.match(value):
         return "Must look like model-name:effort, effort one of low, medium, high, xhigh, max."
@@ -135,6 +140,7 @@ _OPUS_RE = re.compile(r"^opus-(\d+)(?:[.-](\d{1,2})(?!\d))?(?:[-.].*)?$")
 
 def _meets_model_floor(model):
     """True for any Fable, the opus alias, or Opus 5.5 and above."""
+    model = _strip_context_suffix(model)
     name = model[7:] if model.startswith("claude-") else model
     if name == "fable" or name.startswith("fable-") or name == "opus":
         return True
@@ -388,7 +394,7 @@ def cli_model(spec):
     claude-fable-5-1 or a name this file has never seen, goes through
     unchanged. The one place with this rule: agent_city.py calls it and
     agent-resume.sh asks it with `agent_conf.py cli-model <spec>`."""
-    base = spec.split(":", 1)[0]
+    base = _strip_context_suffix(spec.split(":", 1)[0])
     for family in MODEL_FAMILIES:
         if base.startswith(family):
             return family
