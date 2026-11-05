@@ -904,6 +904,9 @@ MAX_CLIENTS = 4
 QUEUE_MAXSIZE = 500
 PING_INTERVAL = 2.0
 TAIL_INTERVAL = 0.25
+# Seconds the tail keeps reading a log file after rotating it away: a writer
+# that opened it before the rename may still append to the moved file.
+TAIL_ROTATED_GRACE = 5.0
 RECOUNT_POLL_SEC = 2.0
 RELAY_POLL_SEC = 0.1
 
@@ -6360,6 +6363,9 @@ def _read_available(fh, offset, buf, city, hub=None):
 def tail_loop(directory, city, max_log_bytes, stop_event, request_shutdown,
               idle_seconds, initial_skip, hub=None, keep_up=None):
     """Watch DIR/events.jsonl, feed new lines to the city, rotate when big.
+    A rotated-away file is still read for TAIL_ROTATED_GRACE seconds (a writer
+    that opened it before the rename may still append); a second rotation
+    finishes the earlier moved file first. Every handle is closed on exit.
     KEEP_UP (cloud-city-2): a function that says true while the idle stop must
     not happen (the cloud page is on and a live session is in the roster)."""
     log_path = os.path.join(directory, "events.jsonl")
@@ -6368,52 +6374,77 @@ def tail_loop(directory, city, max_log_bytes, stop_event, request_shutdown,
     offset = 0
     buf = b""
     skip = initial_skip
+    old = []  # [fh, offset, buf, deadline]: moved files still watched
 
-    while not stop_event.is_set():
-        if city.client_count() == 0 and time.monotonic() - city.idle_since >= idle_seconds:
-            if keep_up is None or not keep_up():  # cloud-city-2
-                request_shutdown()
-                return
-
-        if fh is None:
-            try:
-                fh = open(log_path, "rb")
-            except OSError:
-                time.sleep(TAIL_INTERVAL)
-                continue
-            size_now = os.fstat(fh.fileno()).st_size
-            offset = min(skip, size_now)
-            skip = 0
-            buf = b""
-
-        offset, buf = _read_available(fh, offset, buf, city, hub)
-
+    def drop(item):
         try:
-            on_disk = os.path.getsize(log_path)
-        except OSError:
-            on_disk = 0
+            _read_available(item[0], item[1], item[2], city, hub)
+        except (OSError, ValueError):
+            pass
+        item[0].close()
+        old.remove(item)
 
-        if on_disk >= max_log_bytes:
-            try:
-                os.replace(log_path, rotated_path)
-            except OSError:
-                pass
-            else:
-                offset, buf = _read_available(fh, offset, buf, city, hub)
-                fh.close()
-                fh = None
-                # Leave a fresh, empty file at the original path: the next
-                # writer append just re-creates it anyway, but a reader
-                # (or a test) checking the path right after rotation should
-                # still find it there.
+    try:
+        while not stop_event.is_set():
+            if city.client_count() == 0 and time.monotonic() - city.idle_since >= idle_seconds:
+                if keep_up is None or not keep_up():  # cloud-city-2
+                    request_shutdown()
+                    return
+
+            for item in list(old):
+                if time.monotonic() >= item[3]:
+                    drop(item)
+                else:
+                    item[1], item[2] = _read_available(
+                        item[0], item[1], item[2], city, hub)
+
+            if fh is None:
                 try:
-                    open(log_path, "ab").close()
+                    fh = open(log_path, "rb")
                 except OSError:
-                    pass
-                offset = 0
+                    time.sleep(TAIL_INTERVAL)
+                    continue
+                size_now = os.fstat(fh.fileno()).st_size
+                offset = min(skip, size_now)
+                skip = 0
                 buf = b""
 
-        time.sleep(TAIL_INTERVAL)
+            offset, buf = _read_available(fh, offset, buf, city, hub)
+
+            try:
+                on_disk = os.path.getsize(log_path)
+            except OSError:
+                on_disk = 0
+
+            if on_disk >= max_log_bytes:
+                try:
+                    os.replace(log_path, rotated_path)
+                except OSError:
+                    pass
+                else:
+                    offset, buf = _read_available(fh, offset, buf, city, hub)
+                    while old:
+                        drop(old[0])
+                    old.append([fh, offset, buf,
+                                time.monotonic() + TAIL_ROTATED_GRACE])
+                    fh = None
+                    # Leave a fresh, empty file at the original path: the next
+                    # writer append just re-creates it anyway, but a reader
+                    # (or a test) checking the path right after rotation should
+                    # still find it there.
+                    try:
+                        open(log_path, "ab").close()
+                    except OSError:
+                        pass
+                    offset = 0
+                    buf = b""
+
+            time.sleep(TAIL_INTERVAL)
+    finally:
+        for item in list(old):
+            item[0].close()
+        if fh is not None:
+            fh.close()
 
 
 def _consume_chat_line(raw_line, city):
