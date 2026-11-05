@@ -236,6 +236,38 @@ class TestTypedLaunchLines(unittest.TestCase):
         text = self.dispatch()
         self.assertIn("cli-model", text, "<model> is what agent_conf.py cli-model prints, not the raw conf name")
 
+    def cli_model_command(self):
+        """The one backticked `... agent_conf.py cli-model ...` command of the dispatch skill."""
+        found = re.findall(r"`([^`]*agent_conf\.py cli-model[^`]*)`", self.dispatch())
+        self.assertEqual(len(found), 1, found)
+        return found[0]
+
+    @unittest.skipUnless(ZSH, "no zsh on PATH")
+    def test_the_dispatch_cli_model_command_runs_in_zsh(self):
+        """Bounce 1: agent_conf.py has no exec bit and no shebang (needs python3),
+        and an unquoted opus-5.5[1m]:xhigh is a zsh glob."""
+        command = self.cli_model_command().replace("<task_manager value>", "opus-5.5[1m]:xhigh")
+        self.assertNotIn("<", command, command)
+        env = dict(os.environ, CLAUDE_PLUGIN_ROOT=ROOT)
+        done = subprocess.run([ZSH, "-f", "-c", command], capture_output=True, text=True, env=env,
+                              timeout=30, stdin=subprocess.DEVNULL)
+        self.assertEqual((done.returncode, done.stdout), (0, "opus[1m]\n"), done.stderr)
+
+    @unittest.skipUnless(ZSH, "no zsh on PATH")
+    def test_the_dispatch_launch_line_runs_in_zsh(self):
+        """The typed --command, its placeholders filled the way the skill says, runs in zsh."""
+        line = [l for l in self.dispatch().splitlines() if "orca terminal create" in l and "claude" in l][0]
+        inner = re.search(r'--command "([^"]*)"', line).group(1)
+        filled = (inner.replace("<name>", "demo").replace("<model>", "opus[1m]")
+                  .replace("<effort>", "xhigh").replace("<mode>", "auto"))
+        self.assertNotIn("<", filled, filled)
+        base = os.path.realpath(tempfile.mkdtemp(prefix="model_suffix_"))
+        self.addCleanup(shutil.rmtree, base, True)
+        code, out, err = ZshRun(base)(filled)
+        self.assertNotIn("no matches found", err)
+        self.assertEqual((code, out), (0, ["--name", "demo Task Manager", "--model", "opus[1m]", "--effort", "xhigh",
+                                           "--permission-mode", "auto", "ROLE=task-manager"]), err)
+
     def test_no_unquoted_model_placeholder_anywhere(self):
         files = [os.path.join(ROOT, "PRINCIPLES.md"), os.path.join(ROOT, "README.md")]
         for folder in ("skills", "agents"):
