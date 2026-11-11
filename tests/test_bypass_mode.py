@@ -138,6 +138,10 @@ def conf_text(**keys):
 
 # --------------------------------------------------------------- 1, 2: conf
 
+PROGRESS_KEYS = ["stage_brief", "stage_register", "stage_mock", "stage_tests", "stage_workers",
+                 "stage_verify", "stage_push", "stage_report", "stage_e2e", "stage_merge",
+                 "board_watch_sec", "progress_eta_min_pct"]
+
 class TestConfKeys(unittest.TestCase):
     def test_bypass_is_a_mode_for_both_keys(self):
         for key in ("permission_mode", "cloud_permission_mode"):
@@ -176,7 +180,11 @@ class TestTemplate(unittest.TestCase):
         self.assertEqual(self.conf["cloud_permission_mode"], "auto")
 
     def test_the_cloud_key_is_the_last_line(self):
-        self.assertEqual(self.lines[-1], "cloud_permission_mode=auto")
+        # progress-bar (2026-11-11): newer keys are appended after it, never before it,
+        # so an old agent.conf still syncs into the template order
+        keys = [l.split("=", 1)[0] for l in self.lines]
+        after = keys[keys.index("cloud_permission_mode") + 1:]
+        self.assertEqual(after, PROGRESS_KEYS)
         self.assertEqual(sum(1 for l in self.lines if l.startswith("cloud_permission_mode=")), 1)
 
     def test_permission_mode_keeps_its_place(self):
@@ -210,7 +218,10 @@ class TestSync(ScriptCase):
 
     def test_a_synced_conf_has_the_fresh_key_order(self):
         template = agent_conf.load(self.repo.plugin_path("bin", "agent.conf.default"))
-        old = {k: v for k, v in template.items() if k != "cloud_permission_mode"}
+        # a conf written before bypass-mode: every key before cloud_permission_mode
+        # (the keys after it are newer still, tests/test_agent_progress.py)
+        keys = list(template)
+        old = {k: template[k] for k in keys[:keys.index("cloud_permission_mode")]}
         with open(self.repo.path("agent.conf"), "w") as fh:
             fh.write(agent_conf.dumps(old))
         self.assertOk(self.repo.run("agent-settings.sh", "sync"))

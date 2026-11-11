@@ -30,7 +30,7 @@ CONTRACT.
                    Local (no --environment): read the file directly, no shell
                    pane, no orca terminal send at all.
                    Another machine: through the --shell pane. Read it first
-                   for latestCursor, send ONE command shorter than 300 chars
+                   for latestCursor, send ONE command shorter than 400 chars
                    that prints one marker line (count + last such line), read
                    the answer with --cursor. Every orca call carries
                    --environment <env>.
@@ -554,7 +554,8 @@ class TestRemote(WatchCase):
         self.assertTrue(sends, "no command sent to the shell pane")
         for call in sends:
             self.assertEqual(self.opt(call, "--terminal"), SHELL, call)
-            self.assertLess(len(self.opt(call, "--text") or ""), 300, call)
+            # progress-bar: the one command also reads the last STAGE line (was 300)
+            self.assertLess(len(self.opt(call, "--text") or ""), 400, call)
         shell_reads = [c for c in self.terminal_calls("read")
                        if self.opt(c, "--terminal") == SHELL]
         self.assertTrue([c for c in shell_reads if "--cursor" in c],
@@ -600,6 +601,99 @@ class TestRemote(WatchCase):
         self.assertEqual(self.watch_line(text), "WATCH SIGNAL feat: QUESTION: spaced?")
 
 
+class TestStageCarry(WatchCase):
+    """progress-bar (owner 2026-11-11): a task manager on another machine writes
+    its stage into its own checkout, so the laptop board never sees it. The
+    watch carries it.
+
+    Each sweep (and the first read) the watch also reads the last line that
+    starts "STAGE <name>: " in the worktree's agent_state.txt (local: the file;
+    another machine: the same one shell command, still one send per sweep).
+    Its value is "<stage>[ <i>/<m>]", the text up to " | since". When the value
+    differs from the last one carried, the watch runs this machine's
+    bin/agent-file.sh todo stage "<name>" <stage> [<i>/<m>] (the main repo of
+    the watch's working folder) and prints one line
+    "<HH:MM> stage <name>: <stage>[ <i>/<m>]". The same value is carried once.
+    A STAGE line is never a signal and never ends the watch. A refused carry
+    (no todo line of that name here) prints one line and the watch goes on.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.assertOk(self.repo.run("agent-file.sh", "todo", "add", "feat", "big", "the feature", "60"))
+
+    def todo_line(self):
+        for line in (self.repo.read("agent_todo.txt") or "").splitlines():
+            if line.split(" | ")[0] == "feat":
+                return line
+        return None
+
+    def on_reads(self, mapping):
+        body = "".join('[ "$1" = "%d" ] && printf "%%s\\n" %s >> %s\n'
+                       % (k, sh_quote(line), sh_quote(self.state))
+                       for k, line in sorted(mapping.items()))
+        self.hook(body)
+
+    def stage_lines(self, text):
+        return [l for l in self.lines(text) if re.match(r"^\d\d:\d\d stage feat: ", l)]
+
+    def check_carry(self, remote):
+        self.append_state("STAGE feat: tests | since 2026-11-11 10:00")
+        self.screens(self.moving())
+        self.on_reads({2: "STAGE feat: workers 1/2 | since 2026-11-11 10:30",
+                       5: "DONE PASS feat"})
+        text = self.out(self.watch(remote=remote))
+        self.assertEqual(self.watch_line(text), "WATCH SIGNAL feat: DONE PASS feat")
+        self.assertEqual([l[6:] for l in self.stage_lines(text)],
+                         ["stage feat: tests", "stage feat: workers 1/2"])
+        line = self.todo_line()
+        self.assertIn(" | stage workers 1/2 since ", line)
+        self.assertEqual(line.count(" | stage "), 1, line)
+        return text
+
+    def test_local_stage_is_carried_to_the_todo_line(self):
+        self.check_carry(remote=False)
+
+    def test_remote_stage_is_carried_to_the_todo_line(self):
+        self.shell_pane()
+        self.check_carry(remote=True)
+        for call in self.terminal_calls("send"):
+            self.assertEqual(self.opt(call, "--terminal"), SHELL, call)
+            self.assertLess(len(self.opt(call, "--text") or ""), 400, call)
+
+    def test_the_same_stage_is_carried_once(self):
+        self.append_state("STAGE feat: verify | since 2026-11-11 10:00")
+        self.screens(self.moving())
+        self.append_on_read(4, "DONE PASS feat")
+        text = self.out(self.watch())
+        self.assertEqual(len(self.stage_lines(text)), 1, text)
+        self.assertIn(" | stage verify since ", self.todo_line())
+
+    def test_a_stage_line_never_fires(self):
+        self.screens([STILL])
+        self.append_on_read(2, "STAGE feat: push | since 2026-11-11 11:00")
+        text = self.out(self.watch(max_sweeps="10"))
+        self.assertNotIn("WATCH SIGNAL", text)
+        self.assertEqual(self.watch_line(text), "WATCH STALL feat")
+        self.assertIn(" | stage push since ", self.todo_line())
+
+    def test_another_tasks_stage_line_is_not_carried(self):
+        self.append_state("STAGE other: verify | since 2026-11-11 10:00")
+        self.screens(self.moving())
+        self.append_on_read(3, "DONE PASS feat")
+        text = self.out(self.watch())
+        self.assertEqual(self.stage_lines(text), [])
+        self.assertNotIn(" | stage ", self.todo_line())
+
+    def test_no_todo_line_here_the_watch_goes_on(self):
+        self.assertOk(self.repo.run("agent-file.sh", "todo", "drop", "feat", "gone", "-"))
+        self.append_state("STAGE feat: tests | since 2026-11-11 10:00")
+        self.screens(self.moving())
+        self.append_on_read(3, "DONE PASS feat")
+        text = self.out(self.watch())
+        self.assertEqual(self.watch_line(text), "WATCH SIGNAL feat: DONE PASS feat")
+
+
 def read(*parts):
     with open(os.path.join(ROOT, *parts)) as fh:
         return fh.read()
@@ -639,7 +733,7 @@ class TestText(unittest.TestCase):
     def test_dispatch_brief_mock_step_names_mock_ready(self):
         brief = section(read("skills", "dispatch", "SKILL.md"),
                         "## Task manager brief", "## Cross-repo brief")
-        mock = next(l for l in brief.splitlines() if l.startswith(" 2 mock first"))
+        mock = next(l for l in brief.splitlines() if l.startswith(" 2 mock"))   # progress-bar: the line now starts with its stage call
         self.assertIn("MOCK READY", mock)
         self.assertIn("agent_state.txt", mock)
 

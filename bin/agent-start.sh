@@ -721,6 +721,7 @@ sys.exit(0 if "auto_update" in v else 1)' 2>/dev/null </dev/null \
       || echo "AUTO UPDATE: not set. Ask once: on (recommended) or off. $PLUGIN_ROOT/bin/agent-settings.sh --user auto_update on|off"
     upd=$(python3 "$pyp/agent_update.py" notice "$PLUGIN_ROOT" 2>/dev/null </dev/null) || upd=""
     [ -n "$upd" ] && echo "$upd"
+    "$PLUGIN_ROOT/bin/agent-settings.sh" statusline refresh >/dev/null 2>&1 </dev/null || true
   fi
   return 0
 }

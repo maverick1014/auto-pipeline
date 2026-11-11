@@ -183,12 +183,13 @@ W14. Show todo
 - One script, no agent: `bin/agent-file.sh board`. Show its table as printed, every row, then the decide section (H3)
 - Main manager: the whole repo. Task manager or Helper: `board --self`, its own task and its workers only. Subagents never
 - Rows: every open task (running, held, queued), every wait on the owner (mock check, owner question, owner review), `OWNER TODO:` and `PARKED:` lines of agent_state.txt
-- Each row: task, what in a few words (H3), status, where (machine, worktree), est, work so far, wait so far, done by (clock time)
+- Each row: task, what in a few words (H3), status, where (machine, worktree), est, work so far, wait so far, progress (bar and percent), done by (clock time)
 - Sort: waiting on the owner, running, held or queued, OWNER TODO, parked questions last; oldest first in each group
-- Times come from the files, never guessed: wait = the sum of the `todo wait` intervals; work = clock since opened minus wait; done by = now + est - work
+- Times come from the files, never guessed. Wait = sum of `todo wait`. Work = since opened minus wait. Done by = now + est - work. Over est: by progress once progress_eta_min_pct is hit, else 超出 <n>m
+- Progress: `agent-file.sh todo stage <name> <stage> [i/m]` at each step boundary. Task manager: brief register mock tests workers verify push report. Main manager: e2e merge. Weights in agent.conf
+- See it live with `board --watch`, and in the Claude Code status line with `agent-settings.sh statusline on|off`. Headers and status words in the `language` of agent.conf
 - Record as it happens: `agent-file.sh todo wait <name> on <kind>|off` at every mock check, owner question, owner review, hold, queue; `todo where` at dispatch
 - `park add` for a parked question (H1), `worker on <n>` / `worker off <n>` for each worker; `OWNER TODO:` lines are written by hand
-- Headers and status words in the `language` of agent.conf
 
 W15. Watch
 - Monitor sweep on three signals: process, terminal output, git movement

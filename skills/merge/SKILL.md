@@ -7,12 +7,12 @@ description: Main manager only. After a task manager reports DONE PASS, run the 
 0. A CLOSE CASE report instead of DONE PASS? → run `/close-case` first. Finished → it sends you back here to continue. Unfinished → it decides finish first or close now.
 
 1. Read the task manager's done report. No click path → bounce it: "no E2E script, not done". No TIME line with work and wait apart, or no FACTS line → bounce it: "no TIME, not done".
-2. Ask `${CLAUDE_PLUGIN_ROOT}/bin/agent-runtime.sh browser` first: chrome, headless or none.
+2. First run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" e2e`. Ask `${CLAUDE_PLUGIN_ROOT}/bin/agent-runtime.sh browser`: chrome, headless or none.
    - **chrome** — run the click path yourself in Claude in Chrome (W5). Every step must match. A miss → send the evidence back to the task manager, stop here.
    - **headless** — cloud only, the extension can never reach a VM. Run the same click path with Playwright against the dev server, and save one screenshot per step as evidence. Same rule: a miss → send the evidence back to the task manager, stop here.
    - **none** — no browser at all. Print the click path under the heading NEEDS HUMAN E2E and stop. Do not merge, do not pass, and never call a path "verified" when nobody drove it. Wait for the human to sign it off.
 3. Stop the app server, close whatever ran the click path: the tab, the headless Playwright browser, or nothing if the answer was none.
-4. `Agent` with `subagent_type: merge-deputy`, description `<name> Merge`. Brief, all six values:
+4. Run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" merge`, then `Agent` with `subagent_type: merge-deputy`, description `<name> Merge`. Brief, all six values:
    ```
    [<model> <effort>]   (yours, from the YOU: line of your start text)
    name: <name>

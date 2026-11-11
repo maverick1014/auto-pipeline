@@ -83,6 +83,7 @@ COPY_BIN = [
     "agent-cleanup.sh",
     "agent_cleanup.py",
     "agent-watch.sh",
+    "agent-statusline.sh",
 ]
 
 # Copied into the temp plugin's root.
