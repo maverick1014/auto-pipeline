@@ -104,7 +104,7 @@ class TestStatusLine(LineCase):
         self.state("TODO LINE: alpha | big | the login form | est 60m | opened 2026-11-02 14:30 | by main\n",
                    folder=alpha)
         self.stage("alpha", "workers", "1/2", now="2026-11-02 14:50", cwd=alpha)
-        self.assertEqual(self.line(alpha), "alpha ████░░░░░░ 46% 15:36")
+        self.assertEqual(self.line(alpha), "alpha ████░░░░░░ 46% 15:30")
 
     def test_no_done_by_is_left_out(self):
         self.add("alpha", "the login form", None, opened="2026-11-02 14:00")

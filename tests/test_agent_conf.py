@@ -64,6 +64,7 @@ REAL_KEYS = [
     "stage_e2e",
     "stage_merge",
     "board_watch_sec",
+    "progress_eta_min_pct",
 ]
 # the keys this repo's own agent.conf had before progress-bar
 OLD_KEYS = REAL_KEYS[:REAL_KEYS.index("cloud_permission_mode") + 1]
@@ -100,6 +101,7 @@ GOOD_CONF_TEXT = (
     "stage_e2e=10\n"
     "stage_merge=5\n"
     "board_watch_sec=60\n"
+    "progress_eta_min_pct=20\n"
 )
 
 
@@ -431,7 +433,8 @@ class TestGroups(unittest.TestCase):
                           "city_relay_sec"]),
                 ("progress", ["stage_brief", "stage_register", "stage_mock", "stage_tests",
                               "stage_workers", "stage_verify", "stage_push", "stage_report",
-                              "stage_e2e", "stage_merge", "board_watch_sec"]),
+                              "stage_e2e", "stage_merge", "board_watch_sec",
+                              "progress_eta_min_pct"]),
             ],
         )
 

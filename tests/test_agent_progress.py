@@ -9,6 +9,8 @@ OWNER DECISIONS (locked, 2026-11-11):
     1 progress % is by STAGE, not by time
     2 over the estimate, done-by comes from progress: remaining = work x (1-p)/p,
       shown as a clock time like today
+      (bounce 1, main manager 2026-11-11: only over the estimate, and only from
+      progress_eta_min_pct on; under the estimate done-by stays est-based)
     3 shown in three places: the board, the Claude Code status line
       (tests/test_agent_statusline.py), a live-refresh watch
     4 the bar: 10 cells of full/light blocks plus a right-aligned percent,
@@ -24,6 +26,8 @@ relative, whole numbers 0 to 100, group "progress" (with board_watch_sec):
     stage_brief=1 stage_register=1 stage_mock=4 stage_tests=20 stage_workers=40
     stage_verify=15 stage_push=2 stage_report=2 stage_e2e=10 stage_merge=5
     board_watch_sec=60 (1 to 3600)
+    progress_eta_min_pct=20 (0 to 100): over the estimate, progress gives the
+    done-by only from this percent of progress on
     A key missing from agent.conf, or not valid there: the template value.
 Progress p of a stage = (the sum of the weights of the stages before it, plus
     stage_workers x i/m for "workers i/m") / the sum of all weights. Exact (no
@@ -54,15 +58,13 @@ Progress p of a stage = (the sum of the weights of the stages before it, plus
 Board (agent-file.sh board), a new column after Status: zh 进度, en Progress.
     A todo line with a stage: the bar. --self: its line has no stage field ->
     the STAGE line of that name in its own agent_state.txt. Every other row "-".
-Done by (board and status line). work = work so far, p = progress:
-    a stage and p > 0:
-        work >= est  -> now + ceil(work x (1-p) / p)
-        work <  est  -> the later of now + (est - work) and the one above
-        no est       -> the one above
-    no stage, or p = 0:
-        work < est -> now + (est - work), as before
-        work >= est -> zh "超出 <n>" / en "over by <n>", n = work - est in real
-        units ("30m", "1h 30m"); no est -> "-"
+Done by (board and status line). work = work so far, p = progress (exact),
+"far enough" = a stage and p > 0 and 100 p >= progress_eta_min_pct:
+    work <  est  -> now + (est - work), as before, stage or not
+    work >= est  -> far enough: now + ceil(work x (1-p) / p)
+                    else: zh "超出 <n>" / en "over by <n>", n = work - est in
+                    real units ("30m", "1h 30m")
+    no est       -> far enough: now + ceil(work x (1-p) / p); else "-"
     The clock words as before: "HH:MM", zh "明天 HH:MM" / en "HH:MM tomorrow",
     a later day zh "YYYY-MM-DD HH:MM" / en "HH:MM on YYYY-MM-DD".
 
@@ -100,7 +102,9 @@ NOW = tb.NOW   # "2026-11-02 15:00"
 STAGES = ["brief", "register", "mock", "tests", "workers", "verify", "push", "report", "e2e", "merge"]
 DEFAULTS = {"stage_brief": "1", "stage_register": "1", "stage_mock": "4", "stage_tests": "20",
             "stage_workers": "40", "stage_verify": "15", "stage_push": "2", "stage_report": "2",
-            "stage_e2e": "10", "stage_merge": "5", "board_watch_sec": "60"}
+            "stage_e2e": "10", "stage_merge": "5", "board_watch_sec": "60",
+            "progress_eta_min_pct": "20"}
+BOUNDS = {"board_watch_sec": (1, 3600)}   # every other key: (0, 100)
 CLEAR = "\x1b[H\x1b[2J"
 
 
@@ -331,11 +335,16 @@ class TestDoneBy(StageCase):
         self.stage("alpha", "verify")
         self.assertEqual(self.done_by("alpha"), "15:31")
 
-    def test_under_the_estimate_progress_is_later(self):
-        # work 30 < est 120: est says 16:30; tests p = 6/100: 30 x 94/6 = 470 -> 22:50
+    def test_under_the_estimate_it_is_the_estimate(self):
+        # bounce 1: work 30 < est 120 -> 16:30, even where progress would say 22:50 (tests)
         self.add("alpha", "the login form", 120, opened="2026-11-02 14:30")
         self.stage("alpha", "tests")
-        self.assertEqual(self.done_by("alpha"), "22:50")
+        self.assertEqual(self.done_by("alpha"), "16:30")
+        # the main manager's evidence: a 60m task, register at 14:02, board at 14:03 and 14:20
+        self.add("beta", "bank recon match", 60, opened="2026-11-02 14:02")
+        self.stage("beta", "register", now="2026-11-02 14:02")
+        self.assertEqual(self.done_by("beta", now="2026-11-02 14:03"), "15:02")
+        self.assertEqual(self.done_by("beta", now="2026-11-02 14:20"), "15:02")
 
     def test_under_the_estimate_the_estimate_is_later(self):
         # work 60 < est 120: est says 16:00; verify says 15:31
@@ -361,6 +370,29 @@ class TestDoneBy(StageCase):
         self.add("alpha", "the login form", 40, opened="2026-11-02 14:00")
         self.stage("alpha", "brief")
         self.assertEqual(self.done_by("alpha"), "超出 20m")
+
+    def test_over_the_estimate_below_the_minimum_progress(self):
+        # tests p = 6/100 < 20/100 -> no progress clock yet
+        self.add("alpha", "the login form", 40, opened="2026-11-02 14:00")
+        self.stage("alpha", "tests")
+        self.assertEqual(self.done_by("alpha"), "超出 20m")
+
+    def test_the_minimum_comes_from_agent_conf(self):
+        # workers p = 26/100: at 26 progress counts (60 x 74/26 = 170.8 -> 171 -> 17:51), at 27 not
+        self.add("alpha", "the login form", 40, opened="2026-11-02 14:00")
+        self.stage("alpha", "workers")
+        self.assertEqual(self.done_by("alpha"), "17:51")
+        self.repo.set_conf("progress_eta_min_pct", "26")
+        self.assertEqual(self.done_by("alpha"), "17:51")
+        self.repo.set_conf("progress_eta_min_pct", "27")
+        self.assertEqual(self.done_by("alpha"), "超出 20m")
+        self.repo.set_conf("progress_eta_min_pct", "lots")   # bad -> the template value, 20
+        self.assertEqual(self.done_by("alpha"), "17:51")
+
+    def test_no_estimate_below_the_minimum_progress(self):
+        self.add("alpha", "the login form", None, opened="2026-11-02 14:00")
+        self.stage("alpha", "tests")
+        self.assertEqual(self.done_by("alpha"), "-")
 
     def test_no_stage_over_by_real_units(self):
         self.add("alpha", "the login form", 30, opened="2026-11-02 13:00")
@@ -411,8 +443,8 @@ class TestSelfStage(StageCase):
                    folder=self.alpha)
         self.stage("alpha", "workers", "1/2", now="2026-11-02 14:50", cwd=self.alpha)
         r = self.board_row("alpha", "--self", cwd=self.alpha)
-        # work 30 < est 60: est says 15:30; 30 x 54/46 = 35.2 -> 36 -> 15:36
-        self.assertEqual((r["Progress"], r["Done by"]), ("████░░░░░░  46%", "15:36"))
+        # work 30 < est 60: the estimate, 15:30
+        self.assertEqual((r["Progress"], r["Done by"]), ("████░░░░░░  46%", "15:30"))
 
 
 # ---------------------------------------------------------------- the watch
@@ -507,7 +539,7 @@ class TestConfKeys(unittest.TestCase):
     def test_bounds(self):
         for key in DEFAULTS:
             with self.subTest(key=key):
-                want = (1, 3600) if key == "board_watch_sec" else (0, 100)
+                want = BOUNDS.get(key, (0, 100))
                 self.assertEqual(self.ac.NUMBER_BOUNDS.get(key), want)
 
     def test_template_defaults(self):
