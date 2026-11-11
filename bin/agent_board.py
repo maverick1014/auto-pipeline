@@ -155,6 +155,17 @@ def read_weights(root):
     return weights
 
 
+def read_eta_min_pct(root):
+    """progress_eta_min_pct (whole number 0-100): <root>/agent.conf, else the template; missing or bad in both: 0."""
+    mine = conf_numbers(os.path.join(root, "agent.conf"))
+    template = conf_numbers(os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent.conf.default"))
+    for source in (mine, template):
+        v = source.get("progress_eta_min_pct", "")
+        if re.match(r"^\d+$", v) and len(v) <= 9 and int(v) <= 100:
+            return int(v)
+    return 0
+
+
 def parse_stage(text):
     """(stage, i, m) from "<stage>[ <i>/<m>]"; None when it is no known stage."""
     m = re.match(r"^(\w+)(?: (\d+)/(\d+))?$", text.strip())
@@ -205,21 +216,20 @@ def clock_text(lang, now, when):
     return ("%s %s" % (stamp, clock)) if lang == "zh" else ("%s on %s" % (clock, stamp))
 
 
-def done_by_text(lang, now, est, work, p):
-    """Done by: est / work in minutes (None = unknown), p = Fraction of progress or None."""
+def done_by_text(lang, now, est, work, p, min_pct=0):
+    """Done by: est / work in minutes (None = unknown), p = Fraction of progress or None.
+
+    Far enough = a stage, p > 0 and 100 p >= min_pct (progress_eta_min_pct)."""
     if work is None:
         return "-"
-    if p is not None and p > 0:
+    if est is not None and work < est:
+        return clock_text(lang, now, now + datetime.timedelta(minutes=est - work))
+    if p is not None and p > 0 and p * 100 >= min_pct:
         ahead = math.ceil(Fraction(work) * (1 - p) / p)
-        mins = ahead
-        if est is not None and work < est:
-            mins = max(est - work, ahead)
-        return clock_text(lang, now, now + datetime.timedelta(minutes=mins))
+        return clock_text(lang, now, now + datetime.timedelta(minutes=ahead))
     if est is None:
         return "-"
-    if work >= est:
-        return ("超出 " if lang == "zh" else "over by ") + fmt_min(work - est)
-    return clock_text(lang, now, now + datetime.timedelta(minutes=est - work))
+    return ("超出 " if lang == "zh" else "over by ") + fmt_min(work - est)
 
 
 # ---------------------------------------------------------------- the board
@@ -237,6 +247,7 @@ class Board:
         self.home = os.path.expanduser("~")
         self.words = STATUS[self.lang]
         self.weights = read_weights(self.root)
+        self.eta_min_pct = read_eta_min_pct(self.root)
         self.rows = []
         self.notes = []
         self.seq = 0
@@ -256,7 +267,7 @@ class Board:
         return short_path(path, self.home)
 
     def done_by(self, est, work, stage=None):
-        return done_by_text(self.lang, self.now, est, work, stage_progress(self.weights, stage))
+        return done_by_text(self.lang, self.now, est, work, stage_progress(self.weights, stage), self.eta_min_pct)
 
     def progress_cell(self, stage):
         p = stage_progress(self.weights, stage)
