@@ -17,6 +17,17 @@ NUMBER_BOUNDS = {
     "city_idle_min": (1, 240),
     "city_governor_wait_sec": (5, 3600),
     "city_relay_sec": (2, 60),
+    "stage_brief": (0, 100),
+    "stage_register": (0, 100),
+    "stage_mock": (0, 100),
+    "stage_tests": (0, 100),
+    "stage_workers": (0, 100),
+    "stage_verify": (0, 100),
+    "stage_push": (0, 100),
+    "stage_report": (0, 100),
+    "stage_e2e": (0, 100),
+    "stage_merge": (0, 100),
+    "board_watch_sec": (1, 3600),
 }
 
 ROLE_KEYS = [
@@ -57,6 +68,17 @@ HINTS = {
     "city_idle_min": "Minutes the agent city keeps running with no browser open, then it stops by itself. Whole number, 1 to 240.",
     "city_governor_wait_sec": "Seconds the governor has to answer an agent's question before the owner gets it in the city page. Whole number, 5 to 3600.",
     "city_relay_sec": "Seconds between syncs with a joined team relay. Whole number, 2 to 60.",
+    "stage_brief": "How much of the progress bar the brief step of the task manager is worth. Relative weight, whole number 0 to 100.",
+    "stage_register": "How much of the progress bar the register step (the todo line and worktree) is worth. Relative weight, whole number 0 to 100.",
+    "stage_mock": "How much of the progress bar the mock step is worth. Relative weight, whole number 0 to 100.",
+    "stage_tests": "How much of the progress bar the tests step is worth. Relative weight, whole number 0 to 100.",
+    "stage_workers": "How much of the progress bar the workers step is worth. Relative weight, whole number 0 to 100.",
+    "stage_verify": "How much of the progress bar the verify step is worth. Relative weight, whole number 0 to 100.",
+    "stage_push": "How much of the progress bar the push step is worth. Relative weight, whole number 0 to 100.",
+    "stage_report": "How much of the progress bar the report step is worth. Relative weight, whole number 0 to 100.",
+    "stage_e2e": "How much of the progress bar the end-to-end check by the main manager is worth. Relative weight, whole number 0 to 100.",
+    "stage_merge": "How much of the progress bar the merge step is worth. Relative weight, whole number 0 to 100.",
+    "board_watch_sec": "Seconds between refreshes of the live board (agent-file.sh board --watch). Whole number, 1 to 3600.",
 }
 
 GROUPS = [
@@ -66,6 +88,9 @@ GROUPS = [
     ("permission", ["permission_mode", "cloud_permission_mode", "auto_resume", "language", "adhd"]),
     ("runtime", ["runtime"]),
     ("city", ["city_port", "city_idle_min", "city_governor_wait_sec", "city_relay_sec"]),
+    ("progress", ["stage_brief", "stage_register", "stage_mock", "stage_tests", "stage_workers",
+                  "stage_verify", "stage_push", "stage_report", "stage_e2e", "stage_merge",
+                  "board_watch_sec"]),
 ]
 
 _GROUP_OF = {}

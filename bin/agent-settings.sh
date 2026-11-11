@@ -6,6 +6,7 @@
 #   ./agent-settings.sh sync            add any key missing from agent.conf, template value
 #   ./agent-settings.sh get <key>       one line: the value and where it comes from (user file, else agent.conf)
 #   ./agent-settings.sh --user <key> <value>   set a key in ~/.claude/auto-pipeline.conf (this machine only)
+#   ./agent-settings.sh statusline on|off|refresh   progress status line in Claude Code settings.json (needs no agent.conf)
 # Takes effect at the next agent start.
 # Run from a worktree: still reads/writes the MAIN repo's agent.conf; show, set and sync say so.
 set -eu
@@ -23,7 +24,7 @@ fi
 note() { [ -z "$WORKTREE_NOTE" ] || echo "$WORKTREE_NOTE"; }
 
 case "${1:-}" in
-  -h|--help) sed -n '2,10p' "$0"; exit 0;;
+  -h|--help) sed -n '2,11p' "$0"; exit 0;;
 esac
 
 PYBIN="$PLUGIN_ROOT/bin"
@@ -80,14 +81,77 @@ PY
 }
 
 case "${1:-}" in
-  get) [ $# -eq 2 ] || { sed -n '2,10p' "$0"; exit 2; }; getv "$2"; exit $?;;
+  get) [ $# -eq 2 ] || { sed -n '2,11p' "$0"; exit 2; }; getv "$2"; exit $?;;
   --user)
-    [ $# -eq 3 ] || { sed -n '2,10p' "$0"; exit 2; }
+    [ $# -eq 3 ] || { sed -n '2,11p' "$0"; exit 2; }
     userset "$2" "$3" || exit 1
     if [ "$2" = auto_update ] && [ -f "$PLUGIN_ROOT/bin/agent_update.py" ]; then
       python3 "$PLUGIN_ROOT/bin/agent_update.py" apply "$3" || true
     fi
     exit 0;;
+esac
+
+statusline() {
+  python3 - "$1" "$PLUGIN_ROOT" <<'PY'
+import json, os, sys, tempfile
+mode, root = sys.argv[1], sys.argv[2]
+d = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+path = os.path.join(d, "settings.json")
+cmd = '"%s/bin/agent-statusline.sh"' % root
+refresh = mode == "refresh"
+def done():
+    if not refresh: print("statusline %s: %s" % (mode, path))
+    sys.exit(0)
+def stop(msg):
+    if refresh: sys.exit(0)
+    sys.exit(msg)
+try:
+    with open(path, "r", encoding="utf-8") as fh: data = json.load(fh)
+    if not isinstance(data, dict): raise ValueError("not an object")
+except FileNotFoundError:
+    if refresh: sys.exit(0)
+    data = {}
+except Exception as e:
+    stop("not changed. %s is not valid JSON, left as it is" % path)
+sl = data.get("statusLine")
+has = "statusLine" in data
+ours = isinstance(sl, dict) and isinstance(sl.get("command"), str) and "/bin/agent-statusline.sh" in sl["command"]
+if has and not ours:
+    stop("not changed. the statusLine in %s is not ours, left as it is" % path)
+if mode == "on":
+    if ours and sl.get("command") == cmd: done()
+    data["statusLine"] = {"type": "command", "command": cmd}
+elif mode == "off":
+    if not has: done()
+    del data["statusLine"]
+else:
+    if not ours or sl.get("command") == cmd: sys.exit(0)
+    sl["command"] = cmd
+try:
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".settings.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2, ensure_ascii=False); fh.write("\n")
+        try: os.chmod(tmp, os.stat(path).st_mode & 0o777)
+        except OSError: pass
+        os.replace(tmp, path)
+    except BaseException:
+        try: os.unlink(tmp)
+        except OSError: pass
+        raise
+except Exception as e:
+    stop("not changed. cannot write %s: %s" % (path, e))
+done()
+PY
+}
+
+case "${1:-}" in
+  statusline)
+    case "${2:-}" in
+      on|off|refresh) [ $# -eq 2 ] || { sed -n '2,11p' "$0" >&2; exit 2; }; statusline "$2" || exit 1; exit 0;;
+      *) echo "usage: agent-settings.sh statusline on|off|refresh" >&2; exit 2;;
+    esac;;
 esac
 
 if [ ! -f "$CONF" ]; then
@@ -159,6 +223,6 @@ case "${1:-}" in
     k=$(printf '%s\n' $keys | sed -n "${n}p"); [ -n "$k" ] || { echo "no such number"; exit 1; }
     printf 'new value for %s: ' "$k"; read -r v
     setv "$k" "$v";;
-  -h|--help) sed -n '2,10p' "$0";;
-  *) [ $# -eq 2 ] || { sed -n '2,10p' "$0"; exit 2; }; setv "$1" "$2";;
+  -h|--help) sed -n '2,11p' "$0";;
+  *) [ $# -eq 2 ] || { sed -n '2,11p' "$0"; exit 2; }; setv "$1" "$2";;
 esac

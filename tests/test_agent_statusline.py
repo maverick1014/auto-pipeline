@@ -283,6 +283,39 @@ class TestInstall(InstallCase):
         self.assertTrue(result.stdout.startswith("alpha ██████░░░░ 66% "), result.stdout)
 
 
+class TestInstallWords(InstallCase):
+    """Bounce 1 (task manager, 2026-11-11): a human runs on and off, so a success
+    says one line on stdout that names the file (on: "statusline on: <file>",
+    off: "statusline off: <file>"); refresh stays silent. Text that is not ASCII
+    in settings.json stays as it was written (no \\u escapes)."""
+
+    def test_on_and_off_say_one_line(self):
+        self.write({"theme": "dark"})
+        out = self.assertOk(self.run_settings("on"))
+        self.assertEqual(len(out.strip().splitlines()), 1, out)
+        self.assertIn("statusline on", out)
+        self.assertIn(self.settings, out)
+        out = self.assertOk(self.run_settings("off"))
+        self.assertEqual(len(out.strip().splitlines()), 1, out)
+        self.assertIn("statusline off", out)
+        self.assertIn(self.settings, out)
+
+    def test_refresh_is_silent(self):
+        self.write({"statusLine": {"type": "command", "command": OURS_OLD}})
+        result = self.run_settings("refresh")
+        self.assertOk(result)
+        self.assertEqual(result.stdout + result.stderr, "")
+
+    def test_text_that_is_not_ascii_stays(self):
+        self.write(raw='{\n  "note": "中文 设置"\n}\n')
+        self.assertOk(self.run_settings("on"))
+        text = self.raw().decode("utf-8")
+        self.assertIn('"note": "中文 设置"', text)
+        self.assertNotIn("\\u", text)
+        self.assertOk(self.run_settings("off"))
+        self.assertIn('"note": "中文 设置"', self.raw().decode("utf-8"))
+
+
 class TestStartRefreshes(InstallCase):
     def test_a_main_manager_start_points_ours_at_this_plugin(self):
         self.write({"statusLine": {"type": "command", "command": OURS_OLD}, "theme": "dark"})

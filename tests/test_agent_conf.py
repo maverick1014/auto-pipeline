@@ -89,6 +89,17 @@ GOOD_CONF_TEXT = (
     "city_governor_wait_sec=60\n"
     "city_relay_sec=5\n"
     "cloud_permission_mode=auto\n"
+    "stage_brief=1\n"
+    "stage_register=1\n"
+    "stage_mock=4\n"
+    "stage_tests=20\n"
+    "stage_workers=40\n"
+    "stage_verify=15\n"
+    "stage_push=2\n"
+    "stage_report=2\n"
+    "stage_e2e=10\n"
+    "stage_merge=5\n"
+    "board_watch_sec=60\n"
 )
 
 

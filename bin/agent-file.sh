@@ -128,6 +128,15 @@
 #   Refused (one line on stderr, exit 1, nothing written): no todo line of that name, a kind not in the list, off when not
 #   waiting, no on|off, a machine with a space, " | " or a line break in a note or a path.
 #
+# todo stage <name> <stage> [<i>/<m>]: the stage field of the todo line, " | stage <stage>[ <i>/<m>] since <date>" (one atomic
+#   write, replaced in place, once). The stages: brief register mock tests workers verify push report e2e merge. <i>/<m> only
+#   with workers (i of m slices done, whole numbers, m >= 1, 0 <= i <= m). The same value again: nothing is written.
+#   In a work tree (the git toplevel of the cwd is not the main repo) it also writes "STAGE <name>: <stage>[ <i>/<m>] | since
+#   <date>" into that folder's agent_state.txt (one line per name, replaced in place, every other line kept byte for byte).
+#   No todo line of that name: in a work tree only the STAGE line is written (exit 0); in the main repo: refused.
+#   Refused (one line on stderr, exit 1, nothing written): no name, no stage, an unknown stage, <i>/<m> with another stage,
+#   a bad <i>/<m>, too many arguments.
+#
 # park, worker: lines of agent_state.txt in the folder of this session (the git toplevel of the cwd), never the main repo's
 #   unless this is it. Every other line is kept byte for byte; park rm and worker on|off are one atomic write.
 #   park add: task defaults to the name of that folder. worker on: replaces the line of that worker.
@@ -145,7 +154,8 @@
 #
 # board: read only. One markdown table of everything open (or one line "无" / "none"), then note lines; the work is done by
 #   agent_board.py (python3). The columns and words follow `language` in agent.conf (zh, else en). --self: the session's own
-#   task only. Any other option: refused.
+#   task only. --watch [<sec>]: clear the screen and draw it again every <sec> seconds (whole number from 1; default
+#   board_watch_sec in agent.conf, else the template bin/agent.conf.default) until Ctrl-C. Any other option: refused.
 #
 # AGENT_FAKE_NOW="YYYY-MM-DD HH:MM" replaces the machine clock (tests). Unset or empty: the machine clock.
 # AGENT_FAKE_HOST replaces the machine name that board prints (tests). Unset: the short host name.
@@ -647,6 +657,55 @@ todo_where() {
 
 # --- park, worker (agent_state.txt of the folder this session is in)
 STATE_FILE="$STATE_DIR/agent_state.txt"
+# todo_stage <name> <stage> [<i>/<m>]
+STAGE_WORDS="brief register mock tests workers verify push report e2e merge"
+todo_stage() {
+  local name="${1:-}" stage="${2:-}" frac="${3:-}" line val cur i m wt_here=
+  [ -n "$name" ] || refuse "todo stage: needs a todo name"
+  [ -n "$stage" ] || refuse "todo stage: needs a stage"
+  case " $STAGE_WORDS " in *" $stage "*) ;; *) refuse "todo stage: the stage is one of: $STAGE_WORDS (got: $stage)";; esac
+  if [ "$stage" = workers ]; then
+    [ $# -le 3 ] || refuse "todo stage: too many arguments"
+    if [ -n "$frac" ]; then
+      case "$frac" in */*) ;; *) refuse "todo stage: workers takes <i>/<m> (got: $frac)";; esac
+      i=${frac%%/*}; m=${frac#*/}
+      is_num "$i" && is_num "$m" && [ "${#i}" -le 9 ] && [ "${#m}" -le 9 ] || refuse "todo stage: <i>/<m> are whole numbers (got: $frac)"
+      [ $((10#$m)) -ge 1 ] && [ $((10#$i)) -le $((10#$m)) ] || refuse "todo stage: <i>/<m> needs m >= 1 and i <= m (got: $frac)"
+      frac="$((10#$i))/$((10#$m))"
+    fi
+  else
+    [ $# -le 2 ] || refuse "todo stage: <i>/<m> goes only with workers"
+  fi
+  val="$stage${frac:+ $frac}"
+  if [ "$(cd "$STATE_DIR" 2>/dev/null && pwd -P)" != "$(cd "$PROJECT_ROOT" 2>/dev/null && pwd -P)" ]; then wt_here=1; fi
+  line=$(first "$TODO" "$name")
+  if [ -z "$line" ] && [ -z "$wt_here" ]; then refuse "no todo line named: $name"; fi
+  if [ -n "$line" ]; then
+    cur=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage /) { sub(/^stage /, "", $i); sub(/ since .*$/, "", $i); print $i; exit } }')
+    if [ "$cur" != "$val" ]; then
+      NEW="stage $val since $NOW" awk -F' \\| ' -v OFS=' | ' -v k="$name" '
+        $1 == k && !hit {
+          hit = 1; wi = 0
+          for (i = 4; i <= NF; i++) if (!wi && $i ~ /^stage /) wi = i
+          if (wi) $wi = ENVIRON["NEW"]; else $(NF + 1) = ENVIRON["NEW"]
+        }
+        { print }' "$TODO" > "$TODO.tmp" && mv "$TODO.tmp" "$TODO"
+    fi
+  fi
+  if [ -n "$wt_here" ]; then
+    cur=
+    [ ! -f "$STATE_FILE" ] || cur=$(awk -v p="STAGE $name: " 'index($0, p) == 1 { s = substr($0, length(p) + 1); sub(/ \| since .*$/, "", s); print s; exit }' "$STATE_FILE")
+    if [ "$cur" != "$val" ]; then
+      local src="$STATE_FILE"; [ -f "$src" ] || src=/dev/null
+      NEW="STAGE $name: $val | since $NOW" awk -v p="STAGE $name: " '
+        index($0, p) == 1 { if (!d) print ENVIRON["NEW"]; d = 1; next }
+        { print }
+        END { if (!d) print ENVIRON["NEW"] }' "$src" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+    fi
+  fi
+  echo "todo stage: $name -> $val"
+}
+
 # state_text <command> "<text>": refuses an empty text, " | " and a line break
 state_text() {
   case "$2" in *[![:space:]]*) ;; *) refuse "$1: the text is empty";; esac
@@ -735,16 +794,42 @@ worker_run() {
 }
 
 # --- board
-# board [--self]: agent_board.py draws it (python3 only); nothing is written
-board_run() {
-  local self="" a host lang
-  for a in "$@"; do
-    case "$a" in --self) self=1;; *) refuse "board: unknown option: $a (only --self)";; esac
+# board [--self] [--watch [<sec>]]: agent_board.py draws it (python3 only); nothing is written
+# conf_num <key> <low> <high>: the whole number of <key> in agent.conf, else the one in the template bin/agent.conf.default
+conf_num() {
+  local f v
+  for f in "$PROJECT_ROOT/agent.conf" "$(dirname "$0")/agent.conf.default"; do
+    [ -f "$f" ] || continue
+    v=$(awk -F= -v k="$1" '$1 == k { v = $2 } END { print v }' "$f" | tr -d '[:space:]')
+    if is_num "$v" && [ "${#v}" -le 9 ] && [ $((10#$v)) -ge "$2" ] && [ $((10#$v)) -le "$3" ]; then echo $((10#$v)); return 0; fi
   done
+  return 1
+}
+board_run() {
+  local self="" watch="" sec="" host lang
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --self) self=1;;
+      --watch)
+        watch=1
+        if [ $# -ge 2 ] && [ "$2" != "--self" ]; then sec="$2"; shift; fi;;
+      *) refuse "board: unknown option: $1 (only --self and --watch [<sec>])";;
+    esac
+    shift
+  done
+  if [ -n "$watch" ]; then
+    if [ -z "$sec" ]; then sec=$(conf_num board_watch_sec 1 3600) || refuse "board: --watch needs <sec>: board_watch_sec is not set in agent.conf or bin/agent.conf.default"; fi
+    is_num "$sec" && [ "${#sec}" -le 9 ] && [ $((10#$sec)) -ge 1 ] || refuse "board: --watch takes a whole number of seconds from 1 (got: $sec)"
+    sec=$((10#$sec))
+  fi
   command -v python3 >/dev/null 2>&1 || refuse "board: python3 is needed and was not found"
   lang=$(unset language; conf_read; printf '%s' "${language:-en}") || lang=en
   case "$lang" in zh) ;; *) lang=en;; esac
   host=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
+  if [ -n "$watch" ]; then
+    exec python3 "$(dirname "$0")/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
+      --now "$NOW" --lang "$lang" --host "$host" ${self:+--self} --watch "$sec"
+  fi
   python3 "$(dirname "$0")/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
     --now "$NOW" --lang "$lang" --host "$host" ${self:+--self}
 }
@@ -784,6 +869,8 @@ case "${1:-}:${2:-}" in
     shift 2; todo_wait "$@";;
   todo:where)
     shift 2; todo_where "$@";;
+  todo:stage)
+    shift 2; todo_stage "$@";;
   park:*)
     shift; park_run "$@";;
   worker:*)

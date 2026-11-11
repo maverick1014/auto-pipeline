@@ -733,7 +733,7 @@ class TestText(unittest.TestCase):
     def test_dispatch_brief_mock_step_names_mock_ready(self):
         brief = section(read("skills", "dispatch", "SKILL.md"),
                         "## Task manager brief", "## Cross-repo brief")
-        mock = next(l for l in brief.splitlines() if l.startswith(" 2 mock first"))
+        mock = next(l for l in brief.splitlines() if l.startswith(" 2 mock"))   # progress-bar: the line now starts with its stage call
         self.assertIn("MOCK READY", mock)
         self.assertIn("agent_state.txt", mock)
 

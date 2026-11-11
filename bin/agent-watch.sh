@@ -11,6 +11,12 @@
 # through the --shell pane (one short command, answer read back with --cursor).
 # Only file lines fire. The screen feeds the stall and the sweep line, nothing else.
 # The TM pane is only ever read, never sent to.
+# Stage carry: each read (the first and every sweep) also takes the last line
+# "STAGE <name>: <stage>[ <i>/<m>] | since ..." of that file (local: the file;
+# another machine: the same one shell command). A value that differs from the last
+# one carried runs this machine's bin/agent-file.sh todo stage <name> <stage> [<i>/<m>]
+# and prints "<HH:MM> stage <name>: <value>"; a refused carry prints one line and
+# the watch goes on. A STAGE line is never a signal.
 #
 # Exits (all code 0, the WATCH line first, then the evidence):
 #   WATCH SIGNAL <name>: <line>   a new file line: DONE PASS/FAIL, CLOSE CASE,
@@ -71,6 +77,7 @@ trap 'rm -f "$ERRF"' EXIT
 
 RE='^(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)'
 LASTERR=""
+LASTSTAGE=""; FSTAGE=""
 
 # JSON from orca on stdin -> the tail lines (or the cursor with "cursor"); fails
 # when there is no result.terminal.
@@ -119,22 +126,29 @@ tm_read() {
   return 0
 }
 
-# sets FN (signal count), FL (line count), FLAST (last signal line)
+# the last "STAGE <name>: " value of the file $1 (text up to " | since"), local
+stage_of() {
+  awk -v p="STAGE $NAME: " 'index($0,p)==1{v=substr($0,length(p)+1)}END{sub(/ \| since.*/,"",v);print v}' "$1" 2>/dev/null
+}
+
+# sets FN (signal count), FL (line count), FLAST (last signal line), FSTAGE (stage value)
 file_read() {
-  local f q cmd cur body rest k mark rc
+  local f q qn cmd cur body rest k mark rc
   if [ -z "$ENVNAME" ]; then
     f="$W/agent_state.txt"
     [ -r "$f" ] || { LASTERR="cannot read $f"; return 1; }
     FN=$(grep -cE "$RE" "$f")
     FL=$(wc -l <"$f" | tr -d ' ')
     FLAST=$(grep -E "$RE" "$f" | tail -1)
+    FSTAGE=$(stage_of "$f")
     return 0
   fi
   orca_read "$SH" "" || return 1
   cur=$(printf '%s' "$RAW" | json_part cursor)
   [ -n "$cur" ] || { LASTERR="no latestCursor in the shell pane read"; return 1; }
   q=$(printf '%s' "$W/agent_state.txt" | sed "s/'/'\\\\''/g")
-  cmd="f='$q'; R='$RE'; echo FSIG \$(grep -cE \"\$R\" \"\$f\") \$(wc -l <\"\$f\") \"\$(grep -E \"\$R\" \"\$f\"|tail -1|cut -c1-100)\" FEND"
+  qn=$(printf '%s' "STAGE $NAME: " | sed "s/'/'\\\\''/g")
+  cmd="awk -v R='$RE' -v p='$qn' '\$0~R{n++;l=\$0}index(\$0,p)==1{v=substr(\$0,length(p)+1)}END{sub(/ \\| since.*/,\"\",v);print \"FSIG\",n+0,NR,v \"|\" substr(l,1,100),\"FEND\"}' '$q'"
   RAW=$(orca terminal send "${E[@]}" --terminal "$SH" --text "$cmd" --enter --json 2>"$ERRF"); rc=$?
   if [ $rc -ne 0 ]; then
     orca_error "$RAW" "orca terminal send" "$rc"
@@ -153,9 +167,23 @@ file_read() {
   [ -n "$mark" ] || { LASTERR="no FSIG marker line in the shell pane"; return 1; }
   body=${mark#FSIG }; body=${body% FEND}
   FN=${body%% *}; rest=${body#* }
-  FL=${rest%% *}; FLAST=${rest#* }
-  [ "$FLAST" = "$rest" ] && FLAST=""
+  FL=${rest%% *}; rest=${rest#* }
+  FSTAGE=${rest%%|*}; FLAST=${rest#*|}
+  [ "$rest" = "$FLAST" ] && FLAST=""
   return 0
+}
+
+# a new stage value in FSTAGE -> agent-file.sh todo stage; one line, never stops the watch
+carry_stage() {
+  local st i out
+  [ -n "$FSTAGE" ] && [ "$FSTAGE" != "$LASTSTAGE" ] || return 0
+  LASTSTAGE=$FSTAGE
+  read -r st i <<<"$FSTAGE"
+  if out=$("$(dirname "$0")/agent-file.sh" todo stage "$NAME" "$st" ${i:+"$i"} 2>&1); then
+    echo "$(date '+%H:%M') stage $NAME: $FSTAGE"
+  else
+    echo "$(date '+%H:%M') stage $NAME: not carried ($(printf '%s' "$out" | head -1 | cut -c1-150))"
+  fi
 }
 
 last15() { printf '%s\n' "$SCREEN" | tail -15; }
@@ -164,6 +192,8 @@ last15() { printf '%s\n' "$SCREEN" | tail -15; }
 BASE_N=""
 PREV_OK=0; PREV_SCREEN=""; PREV_N=""; PREV_L=""
 if file_read; then BASE_N=$FN; PREV_N=$FN; PREV_L=$FL; fi
+set -f
+carry_stage
 if tm_read; then PREV_OK=1; PREV_SCREEN=$SCREEN; fi
 echo "$(date '+%H:%M') watch $NAME: start, file signals already there: ${BASE_N:-unknown}"
 
@@ -184,6 +214,8 @@ while [ "$i" -le "$MAX" ]; do
     continue
   fi
   fails=0
+
+  carry_stage
 
   # baselines that could not be read at the start: this read is the baseline
   if [ -z "$BASE_N" ]; then BASE_N=$FN; fi
