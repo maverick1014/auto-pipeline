@@ -49,8 +49,9 @@ of the line (after spaces or a "-" / "*" bullet) is its date.
 Read only: writes nothing, touches nothing. Prints one GitHub markdown table
 (or one line "无" / "none" when there is no row), then note lines.
 Columns, in the agent.conf language (zh, else en):
-    zh  任务 | 内容 | 状态 | 位置 | 估时 | 已工作 | 已等待 | 预计完成
-    en  Task | What | Status | Where | Est | Work | Wait | Done by
+    zh  任务 | 内容 | 状态 | 进度 | 位置 | 估时 | 已工作 | 已等待 | 预计完成
+    en  Task | What | Status | Progress | Where | Est | Work | Wait | Done by
+    (进度 / Progress: progress-bar, tests/test_agent_progress.py)
 
 Rows, whole repo:
     every todo line          task, what (field 3), status from its waiting field
@@ -96,8 +97,9 @@ Cells:
               since -> now (worker); "-" for the rest
     done by   now + est - work, as "HH:MM" today, zh "明天 HH:MM" /
               en "HH:MM tomorrow", later zh "YYYY-MM-DD HH:MM" /
-              en "HH:MM on YYYY-MM-DD"; work >= est -> zh "超出估时" /
-              en "over est"; no est -> "-"
+              en "HH:MM on YYYY-MM-DD"; work >= est -> zh "超出 <n>m" /
+              en "over by <n>m" (n = work - est, real units); with a stage
+              record: tests/test_agent_progress.py; no est -> "-"
     minutes   "45m", "1h", "1h 35m", "1d", "1d 1h" (a day or more: no minutes)
     unknown   "-"
 
@@ -119,8 +121,8 @@ from scripthelp import ScriptCase
 
 NOW = "2026-11-02 15:00"
 HOST = "pc2"
-HEAD = {"zh": ["任务", "内容", "状态", "位置", "估时", "已工作", "已等待", "预计完成"],
-        "en": ["Task", "What", "Status", "Where", "Est", "Work", "Wait", "Done by"]}
+HEAD = {"zh": ["任务", "内容", "状态", "进度", "位置", "估时", "已工作", "已等待", "预计完成"],
+        "en": ["Task", "What", "Status", "Progress", "Where", "Est", "Work", "Wait", "Done by"]}
 STATUS = {
     "zh": {"mock": "等你：看样稿", "question": "等你：回答问题", "review": "等你：验收",
            "running": "进行中", "hold": "暂缓", "queue": "排队中", "owner": "你的待办",
@@ -211,13 +213,13 @@ class BoardCase(ScriptCase):
         head = cells(lines[0])
         self.assertEqual(head, HEAD[self.lang])
         sep = cells(lines[1])
-        self.assertEqual(len(sep), 8)
+        self.assertEqual(len(sep), 9)
         for c in sep:
             self.assertRegex(c, r"^:?-{3,}:?$")
         rows = []
         for line in lines[2:]:
             row = cells(line)
-            self.assertEqual(len(row), 8, line)
+            self.assertEqual(len(row), 9, line)
             rows.append(dict(zip(HEAD["en"], row)))
         return rows
 
@@ -507,7 +509,8 @@ class TestCells(BoardCase):
 
     def test_over_the_estimate(self):
         self.add("late", "a task past its estimate", 30, opened="2026-11-02 14:00")
-        self.assertEqual(self.row(self.rows(), task="late")["Done by"], "超出估时")
+        # progress-bar (owner 2026-11-11): over the estimate with no stage says by how much
+        self.assertEqual(self.row(self.rows(), task="late")["Done by"], "超出 30m")
 
     def test_done_tomorrow_and_later(self):
         self.add("night", "finishes after midnight", 60, opened="2026-11-02 23:20")
@@ -558,7 +561,7 @@ class TestCellsEnglish(BoardCase):
         self.add("night", "finishes after midnight", 60, opened="2026-11-02 14:50")
         self.add("long", "a long one", 3000, opened="2026-11-02 15:00")
         rows = self.rows(now="2026-11-02 15:00")
-        self.assertEqual(self.row(rows, task="late")["Done by"], "over est")
+        self.assertEqual(self.row(rows, task="late")["Done by"], "over by 30m")
         self.assertEqual(self.row(rows, task="night")["Done by"], "15:50")
         self.assertEqual(self.row(rows, task="long")["Done by"], "17:00 on 2026-11-04")
         rows = self.rows(now="2026-11-02 23:59")
@@ -647,7 +650,7 @@ class TestSelf(BoardCase):
         self.assertEqual(sorted(r["Task"] for r in rows), ["alpha", "alpha", "alpha 工人 1"])
         r = self.row(rows, task="alpha", what="the login form")
         self.assertEqual((r["Status"], r["Where"], r["Work"], r["Done by"]),
-                         (self.st("running"), "pc2, " + self.alpha, "1h", "超出估时"))
+                         (self.st("running"), "pc2, " + self.alpha, "1h", "超出 0m"))
         self.assertEqual(self.row(rows, what="keep the old API?")["Status"], self.st("parked"))
         self.assertIn("PARKED: keep the old API? | alpha | since", self.state_text(self.alpha))
 
@@ -662,7 +665,7 @@ class TestSelf(BoardCase):
     def test_nothing_at_all_is_one_bare_row(self):
         rows = self.rows("--self", cwd=self.alpha)
         self.assertEqual(rows, [{"Task": "alpha", "What": "-", "Status": self.st("running"),
-                                 "Where": "pc2, " + self.alpha, "Est": "-", "Work": "-",
+                                 "Progress": "-", "Where": "pc2, " + self.alpha, "Est": "-", "Work": "-",
                                  "Wait": "-", "Done by": "-"}])
 
     def test_a_helper_in_the_main_repo_never_shows_the_main_state(self):

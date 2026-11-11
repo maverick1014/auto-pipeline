@@ -52,7 +52,21 @@ REAL_KEYS = [
     "city_governor_wait_sec",
     "city_relay_sec",
     "cloud_permission_mode",
+    # progress-bar (owner 2026-11-11): stage weights and the board watch, tests/test_agent_progress.py
+    "stage_brief",
+    "stage_register",
+    "stage_mock",
+    "stage_tests",
+    "stage_workers",
+    "stage_verify",
+    "stage_push",
+    "stage_report",
+    "stage_e2e",
+    "stage_merge",
+    "board_watch_sec",
 ]
+# the keys this repo's own agent.conf had before progress-bar
+OLD_KEYS = REAL_KEYS[:REAL_KEYS.index("cloud_permission_mode") + 1]
 
 GOOD_CONF_TEXT = (
     "max_usage_percent=80\n"
@@ -315,9 +329,11 @@ class TestValidateWholeConf(TempConfCase):
         conf = agent_conf.load(os.path.join(ROOT, "agent.conf"))
         self.assertEqual(agent_conf.validate(conf), {})
         # bypass-mode: this repo's own agent.conf is the main manager's to
-        # change (agent-settings.sh sync appends the new last key), so it may
-        # still lack cloud_permission_mode
-        self.assertIn(list(conf.keys()), (REAL_KEYS, REAL_KEYS[:-1]))
+        # change (agent-settings.sh sync appends the new keys at the end), so it
+        # may still lack cloud_permission_mode and the progress-bar keys
+        keys = list(conf.keys())
+        self.assertEqual(keys, REAL_KEYS[:len(keys)])
+        self.assertGreaterEqual(len(keys), len(OLD_KEYS) - 1)
 
 
 class TestHints(unittest.TestCase):
@@ -402,6 +418,9 @@ class TestGroups(unittest.TestCase):
                 ("runtime", ["runtime"]),
                 ("city", ["city_port", "city_idle_min", "city_governor_wait_sec",
                           "city_relay_sec"]),
+                ("progress", ["stage_brief", "stage_register", "stage_mock", "stage_tests",
+                              "stage_workers", "stage_verify", "stage_push", "stage_report",
+                              "stage_e2e", "stage_merge", "board_watch_sec"]),
             ],
         )
 

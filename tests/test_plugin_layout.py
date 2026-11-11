@@ -47,6 +47,7 @@ SHELL_SCRIPTS = [
     "agent-name.sh",
     "agent-cleanup.sh",
     "agent-watch.sh",
+    "agent-statusline.sh",   # progress-bar: the Claude Code status line
 ]
 # Sourced only, never run. agent-runtime.sh is in the list above instead,
 # because it is both: sourced by its callers and run by a skill.
