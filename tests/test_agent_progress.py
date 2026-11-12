@@ -7,6 +7,9 @@ waiting (the last 3 tasks ran 20-50% over their estimate).
 
 OWNER DECISIONS (locked, 2026-11-11):
     1 progress % is by STAGE, not by time
+      (statusline-vertical, owner 2026-11-12: it also grows inside a stage by
+      time, capped below the next stage: tests/test_statusline_vertical.py;
+      a new <i>/<m> of the same stage keeps its since)
     2 over the estimate, done-by comes from progress: remaining = work x (1-p)/p,
       shown as a clock time like today
       (bounce 1, main manager 2026-11-11: only over the estimate, and only from
@@ -103,8 +106,8 @@ STAGES = ["brief", "register", "mock", "tests", "workers", "verify", "push", "re
 DEFAULTS = {"stage_brief": "1", "stage_register": "1", "stage_mock": "4", "stage_tests": "20",
             "stage_workers": "40", "stage_verify": "15", "stage_push": "2", "stage_report": "2",
             "stage_e2e": "10", "stage_merge": "5", "board_watch_sec": "60",
-            "progress_eta_min_pct": "20"}
-BOUNDS = {"board_watch_sec": (1, 3600)}   # every other key: (0, 100)
+            "progress_eta_min_pct": "20", "statusline_refresh_sec": "60"}
+BOUNDS = {"board_watch_sec": (1, 3600), "statusline_refresh_sec": (1, 3600)}   # every other key: (0, 100)
 CLEAR = "\x1b[H\x1b[2J"
 
 
@@ -159,7 +162,8 @@ class TestStageRecord(StageCase):
         self.stage("alpha", "workers", "1/2", now="2026-11-02 14:40")
         self.assertEqual(self.todo_line("alpha"), before)
         self.stage("alpha", "workers", "2/2", now="2026-11-02 14:50")
-        self.assertIn(" | stage workers 2/2 since 2026-11-02 14:50", self.todo_line("alpha"))
+        # statusline-vertical: a new slice of the same stage keeps the stage's since
+        self.assertIn(" | stage workers 2/2 since 2026-11-02 14:10", self.todo_line("alpha"))
 
     def test_wait_where_eta_and_done_still_read_the_line(self):
         self.add("alpha", "the login form", 120, opened="2026-11-02 13:00")
@@ -405,7 +409,7 @@ class TestDoneBy(StageCase):
     def test_tomorrow(self):
         # work 60 > est 30, verify -> 31 minutes after 23:30
         self.add("alpha", "the login form", 30, opened="2026-11-02 22:30")
-        self.stage("alpha", "verify", now="2026-11-02 23:00")
+        self.stage("alpha", "verify", now="2026-11-02 23:30")
         self.assertEqual(self.done_by("alpha", now="2026-11-02 23:30"), "明天 00:01")
 
 
@@ -417,7 +421,7 @@ class TestDoneByEnglish(StageCase):
         self.stage("alpha", "verify")
         self.add("beta", "bank recon match", 40, opened="2026-11-02 14:00")
         self.add("night", "finishes after midnight", 30, opened="2026-11-02 22:30")
-        self.stage("night", "verify")
+        self.stage("night", "verify", now="2026-11-02 23:30")
         rows = self.rows()
         self.assertEqual(self.row(rows, task="alpha")["Done by"], "15:31")
         self.assertEqual(self.row(rows, task="beta")["Done by"], "over by 20m")
@@ -434,7 +438,7 @@ class TestSelfStage(StageCase):
 
     def test_its_todo_line_without_a_stage_reads_its_stage_line(self):
         self.add("alpha", "the login form", 120, opened="2026-11-02 14:00")
-        self.state("STAGE alpha: verify | since 2026-11-02 14:50\n", folder=self.alpha)
+        self.state("STAGE alpha: verify | since 2026-11-02 15:00\n", folder=self.alpha)
         r = self.board_row("alpha", "--self", cwd=self.alpha)
         self.assertEqual((r["Progress"], r["Done by"]), ("██████░░░░  66%", "16:00"))
 

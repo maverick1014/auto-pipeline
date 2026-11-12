@@ -17,9 +17,9 @@ CONTRACT
         Another worktree -> its own task only, found like `board --self`: its
             todo line (name = the folder name), else the TODO LINE: of its own
             agent_state.txt; the stage from the line, else its STAGE line.
-        One task: "<name> <bar> <p>% <done by>": bar = 10 cells, one space,
-            the percent with no padding; done by as on the board, left out
-            (with its space) when it is "-". Tasks joined by " · ".
+        One line per task (statusline-vertical, 2026-11-12): name, bar,
+            percent, stage, done by; the columns, the 5-line limit and the
+            "+N" line: tests/test_statusline_vertical.py.
         No task with a stage, no agent.conf, not a git repo -> nothing.
         Fast: it refreshes often; one run takes well under 2 seconds.
 
@@ -27,7 +27,8 @@ CONTRACT
         The file: $CLAUDE_CONFIG_DIR/settings.json, else $HOME/.claude/settings.json.
         Ours = a statusLine whose command holds "/bin/agent-statusline.sh".
         on   no statusLine -> statusLine = {"type": "command",
-                 "command": "\\"<plugin root>/bin/agent-statusline.sh\\""}; every
+                 "command": "\\"<plugin root>/bin/agent-statusline.sh\\"",
+                 "refreshInterval": <statusline_refresh_sec>}; every
                  other key kept; the file and its folder made when missing
              ours -> pointed at this plugin root
              not ours -> refused: exit 1, one stderr line that says it is not
@@ -85,8 +86,9 @@ class TestStatusLine(LineCase):
         self.add("gamma", "no stage yet", 60)
         self.add("beta", "bank recon match", 40, opened="2026-11-02 14:00")
         self.stage("beta", "workers", "1/2")
-        self.assertEqual(self.line(self.repo.dir),
-                         "alpha ██████░░░░ 66% 16:00 · beta ████░░░░░░ 46% 16:11")
+        self.assertEqual(self.line(self.repo.dir), "\n".join([
+            "alpha                     ██████░░░░  66%  验证        16:00",
+            "beta                      ████░░░░░░  46%  写代码 1/2  16:11"]))
 
     def test_a_worktree_shows_its_own_task_only(self):
         alpha = self.task_worktree("alpha")
@@ -94,22 +96,22 @@ class TestStatusLine(LineCase):
         self.stage("alpha", "verify")
         self.add("beta", "bank recon match", 40, opened="2026-11-02 14:00")
         self.stage("beta", "workers", "1/2")
-        self.assertEqual(self.line(alpha), "alpha ██████░░░░ 66% 16:00")
+        self.assertEqual(self.line(alpha), "alpha                     ██████░░░░  66%  验证  16:00")
         sub = os.path.join(alpha, "sub")
         os.mkdir(sub)
-        self.assertEqual(self.line(sub), "alpha ██████░░░░ 66% 16:00")
+        self.assertEqual(self.line(sub), "alpha                     ██████░░░░  66%  验证  16:00")
 
     def test_a_task_manager_on_another_machine_reads_its_own_state(self):
         alpha = self.task_worktree("alpha")
         self.state("TODO LINE: alpha | big | the login form | est 60m | opened 2026-11-02 14:30 | by main\n",
                    folder=alpha)
         self.stage("alpha", "workers", "1/2", now="2026-11-02 14:50", cwd=alpha)
-        self.assertEqual(self.line(alpha), "alpha ████░░░░░░ 46% 15:30")
+        self.assertEqual(self.line(alpha), "alpha                     ████░░░░░░  46%  写代码 1/2  15:30")
 
     def test_no_done_by_is_left_out(self):
         self.add("alpha", "the login form", None, opened="2026-11-02 14:00")
         self.stage("alpha", "brief")
-        self.assertEqual(self.line(self.repo.dir), "alpha ░░░░░░░░░░ 0%")
+        self.assertEqual(self.line(self.repo.dir), "alpha                     ░░░░░░░░░░   0%  简报")
 
     def test_nothing_with_a_stage_prints_nothing(self):
         self.assertEqual(self.line(self.repo.dir), "")
@@ -124,9 +126,9 @@ class TestStatusLine(LineCase):
         self.add("alpha", "the login form", 120, opened="2026-11-02 14:00")
         self.stage("alpha", "verify")
         self.assertEqual(self.line(None, cwd=self.repo.dir, stdin="not json"),
-                         "alpha ██████░░░░ 66% 16:00")
+                         "alpha                     ██████░░░░  66%  验证  16:00")
         self.assertEqual(self.line(None, cwd=self.repo.dir, stdin=""),
-                         "alpha ██████░░░░ 66% 16:00")
+                         "alpha                     ██████░░░░  66%  验证  16:00")
 
     def test_it_is_fast(self):
         self.add("alpha", "the login form", 120, opened="2026-11-02 14:00")
@@ -141,9 +143,9 @@ class TestStatusLineEnglish(LineCase):
 
     def test_tomorrow_and_over(self):
         self.add("night", "finishes after midnight", 30, opened="2026-11-02 22:30")
-        self.stage("night", "verify")
+        self.stage("night", "verify", now="2026-11-02 23:30")
         self.assertEqual(self.line(self.repo.dir, now="2026-11-02 23:30"),
-                         "night ██████░░░░ 66% 00:01 tomorrow")
+                         "night                     ██████░░░░  66%  verify  00:01 tomorrow")
 
 
 # ---------------------------------------------------------------- install
@@ -161,7 +163,8 @@ class InstallCase(ScriptCase):
         self.home = self.repo.fake_home()
         self.settings = os.path.join(self.home, ".claude", "settings.json")
         self.ours = {"type": "command",
-                     "command": '"%s/bin/agent-statusline.sh"' % self.repo.plugin}
+                     "command": '"%s/bin/agent-statusline.sh"' % self.repo.plugin,
+                     "refreshInterval": 60}
 
     def write(self, data=None, raw=None):
         os.makedirs(os.path.dirname(self.settings), exist_ok=True)
@@ -280,7 +283,8 @@ class TestInstall(InstallCase):
         result = subprocess.run(["/bin/sh", "-c", command], input=stdin, capture_output=True,
                                 text=True, env=env, cwd=self.repo.base, timeout=20)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue(result.stdout.startswith("alpha ██████░░░░ 66% "), result.stdout)
+        # verify since 14:30, est 60: 30 minutes in a 9-minute share -> stops at 80%
+        self.assertRegex(result.stdout, r"^alpha +████████░░  80%  ")
 
 
 class TestInstallWords(InstallCase):
