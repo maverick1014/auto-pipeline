@@ -528,6 +528,15 @@ class TestRefreshInterval(RefreshCase):
         self.assertOk(self.run_settings("on"))
         self.assertEqual(self.raw(), before)
 
+    def test_on_adds_it_to_an_install_from_before(self):
+        # bounce 1 (task manager): ours, same command, no refreshInterval -> on must still add it
+        self.write({"statusLine": {"type": "command", "command": self.cmd}, "theme": "dark"})
+        self.assertOk(self.run_settings("on"))
+        self.assertEqual(self.load(), {"statusLine": self.ours(60), "theme": "dark"})
+        self.repo.set_conf("statusline_refresh_sec", "30")
+        self.assertOk(self.run_settings("on"))
+        self.assertEqual(self.load()["statusLine"], self.ours(30))
+
     def test_refresh_adds_it_to_ours(self):
         self.write({"statusLine": {"type": "command", "command": self.cmd}, "theme": "dark"})
         result = self.run_settings("refresh")
