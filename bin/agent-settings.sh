@@ -6,7 +6,7 @@
 #   ./agent-settings.sh sync            add any key missing from agent.conf, template value
 #   ./agent-settings.sh get <key>       one line: the value and where it comes from (user file, else agent.conf)
 #   ./agent-settings.sh --user <key> <value>   set a key in ~/.claude/auto-pipeline.conf (this machine only)
-#   ./agent-settings.sh statusline on|off|refresh   progress status line in Claude Code settings.json (needs no agent.conf)
+#   ./agent-settings.sh statusline on|off|refresh   progress status line in Claude Code settings.json (needs no agent.conf), sets refreshInterval
 # Takes effect at the next agent start.
 # Run from a worktree: still reads/writes the MAIN repo's agent.conf; show, set and sync say so.
 set -eu
@@ -92,9 +92,20 @@ case "${1:-}" in
 esac
 
 statusline() {
-  python3 - "$1" "$PLUGIN_ROOT" <<'PY'
+  PYTHONPATH="$PYBIN${PYTHONPATH:+:$PYTHONPATH}" python3 - "$1" "$PLUGIN_ROOT" "$CONF" "$TEMPLATE" <<'PY'
 import json, os, sys, tempfile
-mode, root = sys.argv[1], sys.argv[2]
+import agent_conf as ac
+mode, root, conf_path, tmpl_path = sys.argv[1:5]
+def interval():
+    for p in (conf_path, tmpl_path):
+        try:
+            v = ac.load(p).get("statusline_refresh_sec")
+        except Exception:
+            continue
+        if v is not None and ac.validate_value("statusline_refresh_sec", v) is None:
+            return int(v)
+    return None
+n = interval()
 d = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
 path = os.path.join(d, "settings.json")
 cmd = '"%s/bin/agent-statusline.sh"' % root
@@ -119,14 +130,19 @@ ours = isinstance(sl, dict) and isinstance(sl.get("command"), str) and "/bin/age
 if has and not ours:
     stop("not changed. the statusLine in %s is not ours, left as it is" % path)
 if mode == "on":
-    if ours and sl.get("command") == cmd: done()
-    data["statusLine"] = {"type": "command", "command": cmd}
+    want = {"type": "command", "command": cmd}
+    if n is not None: want["refreshInterval"] = n
+    if ours and sl == want: done()
+    data["statusLine"] = want
 elif mode == "off":
     if not has: done()
     del data["statusLine"]
 else:
-    if not ours or sl.get("command") == cmd: sys.exit(0)
+    if not ours: sys.exit(0)
+    if n is not None and sl.get("refreshInterval") == n and sl.get("command") == cmd: sys.exit(0)
+    if n is None and sl.get("command") == cmd: sys.exit(0)
     sl["command"] = cmd
+    if n is not None: sl["refreshInterval"] = n
 try:
     os.makedirs(d, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=d, prefix=".settings.", suffix=".tmp")

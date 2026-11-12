@@ -81,7 +81,7 @@ W5. Web UI testing
 - none → print the click path under NEEDS HUMAN E2E and stop, wait for the human. Never silent, never forever
 
 W6. Roles
-- Main manager (Fable 5.1, xhigh) = the main chat. Assigns tasks, talks to the human, reports, accepts decisions, brainstorms. Nothing else
+- Main manager (Opus 5.5, xhigh) = the main chat. Assigns tasks, talks to the human, reports, accepts decisions, brainstorms. Nothing else
 - Fast-lane deputy (Sonnet 5, medium) = `.claude/agents/fast-lane-deputy.md`, new one per small task. Does the task, no worktree
 - Merge deputy (Sonnet 5, medium) = `.claude/agents/merge-deputy.md`. Merges, then deletes branch and worktree
 - Task manager (Opus 5.5, xhigh) = one agent per big feature, in its own worktree (exception: human-direct, W10). Writes the tests, briefs workers, judges, verifies every worker result before reporting done to the main manager. Never writes product code

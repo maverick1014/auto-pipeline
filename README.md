@@ -8,7 +8,7 @@ Rules live in [PRINCIPLES.md](PRINCIPLES.md). This page is the picture.
 ```
 Human
   │  task ↓   report ↑
-Main manager   (Fable 5.1, xhigh · the main chat · only one with the browser)
+Main manager   (Opus 5.5, xhigh · the main chat · only one with the browser)
   ├── Fast-lane deputy   (Sonnet 5, medium)  one small task, no worktree, then gone
   ├── Merge deputy       (Sonnet 5, medium)  merge → push → delete branch → remove worktree
   └── Worktree, one per big feature
