@@ -140,7 +140,8 @@ def conf_text(**keys):
 
 PROGRESS_KEYS = ["stage_brief", "stage_register", "stage_mock", "stage_tests", "stage_workers",
                  "stage_verify", "stage_push", "stage_report", "stage_e2e", "stage_merge",
-                 "board_watch_sec", "progress_eta_min_pct"]
+                 "board_watch_sec", "progress_eta_min_pct",
+                 "statusline_refresh_sec"]   # statusline-vertical (2026-11-12), appended last
 
 class TestConfKeys(unittest.TestCase):
     def test_bypass_is_a_mode_for_both_keys(self):

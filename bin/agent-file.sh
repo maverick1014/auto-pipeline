@@ -124,12 +124,15 @@
 #   a new field goes at the end, a field set again is replaced, once.
 #   todo wait on: field " | waiting <kind> since <YYYY-MM-DD HH:MM>" (+ ": <note>"). Already waiting: that wait is closed first.
 #   todo wait off: closes the open wait: " | waited <m>m" = the sum of every closed wait; the "waiting" field goes.
+#   The closed wait also adds its minutes inside the current stage (from max(wait since, stage since) to now) to
+#   " | waited in stage <n>m" (replaced in place, once; added at the end when new; never on a line with no stage field).
 #   todo where: field " | on <machine>[ <path>]".
 #   Refused (one line on stderr, exit 1, nothing written): no todo line of that name, a kind not in the list, off when not
 #   waiting, no on|off, a machine with a space, " | " or a line break in a note or a path.
 #
 # todo stage <name> <stage> [<i>/<m>]: the stage field of the todo line, " | stage <stage>[ <i>/<m>] since <date>" (one atomic
-#   write, replaced in place, once). The stages: brief register mock tests workers verify push report e2e merge. <i>/<m> only
+#   write, replaced in place, once). A new <i>/<m> of the same stage keeps its "since" (todo line and STAGE line); a new
+#   stage name sets since = now and drops the " | waited in stage <n>m" field. The stages: brief register mock tests workers verify push report e2e merge. <i>/<m> only
 #   with workers (i of m slices done, whole numbers, m >= 1, 0 <= i <= m). The same value again: nothing is written.
 #   In a work tree (the git toplevel of the cwd is not the main repo) it also writes "STAGE <name>: <stage>[ <i>/<m>] | since
 #   <date>" into that folder's agent_state.txt (one line per name, replaced in place, every other line kept byte for byte).
@@ -588,7 +591,7 @@ bad_text() {
 }
 # todo_wait <name> on <kind> ["<note>"] | todo_wait <name> off
 todo_wait() {
-  local name="${1:-}" verb="${2:-}" kind note line open since m closed=0 new=""
+  local name="${1:-}" verb="${2:-}" kind note line open since m closed=0 new="" ssince="" ins=0 hasst=0 from
   [ -n "$name" ] || refuse "todo wait: needs a todo name"
   line=$(first "$TODO" "$name")
   [ -n "$line" ] || refuse "no todo line named: $name"
@@ -612,22 +615,31 @@ todo_wait() {
   if [ -n "$open" ]; then
     since=$(printf '%s' "$open" | sed -n 's/^waiting [^ ]* since \([0-9][0-9-]* [0-9:]*\).*/\1/p')
     m=$(minutes_between "$since" "$NOW"); closed=${m:-0}
+    ssince=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage .* since [0-9]/) { sub(/^.* since /, "", $i); print $i; exit } }')
+    if [ -n "$ssince" ]; then
+      hasst=1; from="$since"
+      if [[ "$ssince" > "$since" ]]; then from="$ssince"; fi
+      m=$(minutes_between "$from" "$NOW"); ins=${m:-0}
+    fi
   fi
-  NEW="$new" awk -F' \\| ' -v OFS=' | ' -v k="$name" -v add="$closed" '
+  NEW="$new" awk -F' \\| ' -v OFS=' | ' -v k="$name" -v add="$closed" -v ins="$ins" -v hasst="$hasst" '
     $1 == k && !hit {
-      hit = 1; oi = 0; wi = 0; w = 0
+      hit = 1; oi = 0; wi = 0; w = 0; si = 0; sw = 0
       for (i = 4; i <= NF; i++) {
         if (!wi && $i ~ /^waited [0-9]+m$/) { wi = i; w = substr($i, 8) + 0 }
+        else if (!si && $i ~ /^waited in stage [0-9]+m$/) { si = i; sw = substr($i, 17) + 0 }
         else if (!oi && $i ~ /^waiting /) oi = i
       }
       n = 0
       for (i = 1; i <= NF; i++) {
         if (i == oi) { if (ENVIRON["NEW"] != "") out[++n] = ENVIRON["NEW"]; continue }
         if (i == wi && oi) { out[++n] = "waited " (w + add) "m"; continue }
+        if (i == si && oi && hasst) { out[++n] = "waited in stage " (sw + ins) "m"; continue }
         out[++n] = $i
       }
       if (!oi && ENVIRON["NEW"] != "") out[++n] = ENVIRON["NEW"]
       if (oi && !wi) out[++n] = "waited " add "m"
+      if (oi && hasst && !si) out[++n] = "waited in stage " ins "m"
       s = out[1]
       for (i = 2; i <= n; i++) s = s OFS out[i]
       print s; next
@@ -660,7 +672,7 @@ STATE_FILE="$STATE_DIR/agent_state.txt"
 # todo_stage <name> <stage> [<i>/<m>]
 STAGE_WORDS="brief register mock tests workers verify push report e2e merge"
 todo_stage() {
-  local name="${1:-}" stage="${2:-}" frac="${3:-}" line val cur i m wt_here=
+  local name="${1:-}" stage="${2:-}" frac="${3:-}" line val cur i m wt_here= csince tsince keep
   [ -n "$name" ] || refuse "todo stage: needs a todo name"
   [ -n "$stage" ] || refuse "todo stage: needs a stage"
   case " $STAGE_WORDS " in *" $stage "*) ;; *) refuse "todo stage: the stage is one of: $STAGE_WORDS (got: $stage)";; esac
@@ -683,21 +695,37 @@ todo_stage() {
   if [ -n "$line" ]; then
     cur=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage /) { sub(/^stage /, "", $i); sub(/ since .*$/, "", $i); print $i; exit } }')
     if [ "$cur" != "$val" ]; then
-      NEW="stage $val since $NOW" awk -F' \\| ' -v OFS=' | ' -v k="$name" '
+      tsince=$NOW; keep=0
+      if [ "${cur%% *}" = "$stage" ]; then
+        csince=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage /) { if (sub(/^.* since /, "", $i)) print $i; exit } }')
+        if [ -n "$csince" ]; then tsince=$csince; keep=1; fi
+      fi
+      NEW="stage $val since $tsince" awk -F' \\| ' -v OFS=' | ' -v k="$name" -v keep="$keep" '
         $1 == k && !hit {
           hit = 1; wi = 0
           for (i = 4; i <= NF; i++) if (!wi && $i ~ /^stage /) wi = i
           if (wi) $wi = ENVIRON["NEW"]; else $(NF + 1) = ENVIRON["NEW"]
+          if (!keep) {
+            n = 0
+            for (i = 1; i <= NF; i++) if (!(i >= 4 && $i ~ /^waited in stage [0-9]+m$/)) out[++n] = $i
+            s = out[1]
+            for (i = 2; i <= n; i++) s = s OFS out[i]
+            print s; next
+          }
         }
         { print }' "$TODO" > "$TODO.tmp" && mv "$TODO.tmp" "$TODO"
     fi
   fi
   if [ -n "$wt_here" ]; then
-    cur=
-    [ ! -f "$STATE_FILE" ] || cur=$(awk -v p="STAGE $name: " 'index($0, p) == 1 { s = substr($0, length(p) + 1); sub(/ \| since .*$/, "", s); print s; exit }' "$STATE_FILE")
+    cur=; csince=
+    if [ -f "$STATE_FILE" ]; then
+      cur=$(awk -v p="STAGE $name: " 'index($0, p) == 1 { s = substr($0, length(p) + 1); sub(/ \| since .*$/, "", s); print s; exit }' "$STATE_FILE")
+      csince=$(awk -v p="STAGE $name: " 'index($0, p) == 1 { s = $0; if (sub(/^.* \| since /, "", s)) print s; exit }' "$STATE_FILE")
+    fi
     if [ "$cur" != "$val" ]; then
-      local src="$STATE_FILE"; [ -f "$src" ] || src=/dev/null
-      NEW="STAGE $name: $val | since $NOW" awk -v p="STAGE $name: " '
+      local src="$STATE_FILE" ssn=$NOW; [ -f "$src" ] || src=/dev/null
+      if [ -n "$cur" ] && [ "${cur%% *}" = "$stage" ] && [ -n "$csince" ]; then ssn=$csince; fi
+      NEW="STAGE $name: $val | since $ssn" awk -v p="STAGE $name: " '
         index($0, p) == 1 { if (!d) print ENVIRON["NEW"]; d = 1; next }
         { print }
         END { if (!d) print ENVIRON["NEW"] }' "$src" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"

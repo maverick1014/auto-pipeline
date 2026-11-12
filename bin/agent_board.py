@@ -14,8 +14,9 @@ Progress column: the "stage <stage>[ <i>/<m>] since <date>" field of a todo line
 line of its own agent_state.txt) gives a bar by the stage weights of agent.conf (template agent.conf.default next to
 this script for a missing or bad key). The parse, progress and done-by functions are plain module functions (a status
 line can call them). --watch <sec>: redraw every <sec> seconds until Ctrl-C.
-    agent_board.py --statusline    (stdin: Claude Code's session JSON) one status line of the tasks with a stage, or nothing;
-                                   always exit 0 (bin/agent-statusline.sh runs it)
+    agent_board.py --statusline    (stdin: Claude Code's session JSON) one line per task with a stage (name, bar, stage,
+                                   done by; at most 5 lines, then "+N more"), or nothing; always exit 0
+                                   (bin/agent-statusline.sh runs it)
 Rows (--self): the session's own task (its todo line, else its "TODO LINE:" in its own agent_state.txt, else the
 human-direct line of its folder, else one bare row) plus the state lines of its own agent_state.txt only.
 """
@@ -30,6 +31,7 @@ import signal
 import subprocess
 import sys
 import time
+import unicodedata
 from fractions import Fraction
 
 DATE = r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}"
@@ -178,19 +180,34 @@ def parse_stage(text):
     return (m.group(1), int(m.group(2)), int(m.group(3)))
 
 
-def stage_progress(weights, stage):
-    """Fraction 0..1 of the stage (stage = (name, i, m)), or None when the weights sum to 0 or no stage."""
+def stage_progress(weights, stage, est=None, since=None, now=None, waited=0, wsince=None):
+    """Fraction 0..1 of the stage (stage = (name, i, m)), or None when the weights sum to 0 or no stage.
+
+    Inside the stage it grows with time: share = est x weight / total minutes; t = minutes from since (a datetime)
+    to now (an open wait, wsince, stops the clock) minus waited; the time part stops one percent point below the
+    next stage's start. workers i/m: the larger of the slices and the time part."""
     if not stage:
         return None
     total = sum(weights.values())
     if total <= 0:
         return None
     name, i, m = stage
-    done = sum(weights[s] for s in STAGES[:STAGES.index(name)])
-    p = Fraction(done, 1)
+    before = sum(weights[s] for s in STAGES[:STAGES.index(name)])
+    start = Fraction(before, total)
+    end = start + Fraction(weights[name], total)
+    p_t = start
+    if est and weights[name] > 0 and since is not None and now is not None:
+        stop = now
+        if wsince is not None:
+            stop = max(since, wsince)
+        t = max(0, (minutes(since, stop) or 0) - (waited or 0))
+        share = Fraction(est * weights[name], total)
+        p_t = start + (end - start) * min(Fraction(1), Fraction(t) / share)
+        cap = Fraction(math.ceil(end * 100) - 1, 100)
+        p_t = max(start, min(p_t, cap))
     if name == "workers" and m:
-        p += Fraction(weights["workers"] * i, m)
-    return p / total
+        return max(start + (end - start) * Fraction(i, m), p_t)
+    return p_t
 
 
 def percent_of(p):
@@ -266,22 +283,21 @@ class Board:
             return self.where_here(path)
         return short_path(path, self.home)
 
-    def done_by(self, est, work, stage=None):
-        return done_by_text(self.lang, self.now, est, work, stage_progress(self.weights, stage), self.eta_min_pct)
-
-    def progress_cell(self, stage):
-        p = stage_progress(self.weights, stage)
-        return "-" if p is None else bar_text(p)
+    def progress_of(self, t):
+        wsince = parse_time(t["wsince"]) if t["wsince"] else None
+        return stage_progress(self.weights, t["stage"], t["est"], parse_time(t["since"]) if t["since"] else None,
+                              self.now, t["wis"], wsince)
 
     # -- rows
 
-    def add(self, group, when, task, what, status, where, est="-", work="-", wait="-", done="-", progress="-"):
+    def add(self, group, when, task, what, status, where, est="-", work="-", wait="-", done="-", progress="-",
+            info=None):
         """when: "YYYY-MM-DD HH:MM" or None (no date sorts last, file order)."""
         self.seq += 1
         key = (group, 0 if when else 1, when or "", self.seq)
         cells = [cell(task), cell(cut_what(what)), cell(status), progress.replace("|", "\\|"), cell(where), cell(est),
                  cell(work), cell(wait), cell(done)]
-        self.rows.append((key, cells))
+        self.rows.append((key, cells, info))
 
     # -- the todo lines
 
@@ -289,7 +305,7 @@ class Board:
         f = line.split(" | ")
         t = {"name": f[0].strip(), "what": f[2] if len(f) > 2 else "", "est": None,
              "opened": None, "wkind": None, "wsince": None, "wnote": "", "waited": 0,
-             "machine": None, "path": None, "stage": None}
+             "machine": None, "path": None, "stage": None, "since": None, "wis": 0}
         for x in f[3:]:
             m = re.match(r"est (\d+)m$", x)
             if m and t["est"] is None:
@@ -303,9 +319,14 @@ class Board:
             if m and t["wkind"] is None:
                 t["wkind"], t["wsince"], t["wnote"] = m.group(1), m.group(2), m.group(3) or ""
                 continue
-            m = re.match(r"stage (\S+(?: \d+/\d+)?) since %s" % DATE, x)
+            m = re.match(r"stage (\S+(?: \d+/\d+)?) since (%s)" % DATE, x)
             if m and t["stage"] is None:
                 t["stage"] = parse_stage(m.group(1))
+                t["since"] = m.group(2)
+                continue
+            m = re.match(r"waited in stage (\d+)m$", x)
+            if m:
+                t["wis"] = int(m.group(1))
                 continue
             m = re.match(r"waited (\d+)m$", x)
             if m:
@@ -345,9 +366,12 @@ class Board:
             where = self.worktree_where(t["name"], wt_lines)
             if where is None:
                 where = self.where_here(own_dir) if own_dir else "-"
+        p = self.progress_of(t)
+        done = done_by_text(self.lang, self.now, t["est"], work, p, self.eta_min_pct)
         self.add(group, when, t["name"], t["what"] or "-", status, where,
                  est=fmt_min(t["est"]), work=fmt_min(work), wait=fmt_min(wait),
-                 done=self.done_by(t["est"], work, t["stage"]), progress=self.progress_cell(t["stage"]))
+                 done=done, progress="-" if p is None else bar_text(p),
+                 info=(t["name"], t["stage"]) if p is not None else None)
 
     def helper_row(self, f):
         what = "-"
@@ -415,12 +439,13 @@ class Board:
         return m.group(1).strip(), stamp
 
     def own_stage(self, name):
-        """The stage of the "STAGE <name>:" line of this folder's agent_state.txt, or None."""
+        """(stage, since text or None) of the "STAGE <name>:" line of this folder's agent_state.txt, or None."""
         found = None
         for line in read_lines(os.path.join(self.state_dir, "agent_state.txt")):
-            m = re.match(r"STAGE %s: (.*?)(?: \| since %s)?\s*$" % (re.escape(name), DATE), line)
+            m = re.match(r"STAGE %s: (.*?)(?: \| since (%s))?\s*$" % (re.escape(name), DATE), line)
             if m:
-                found = parse_stage(m.group(1))
+                stage = parse_stage(m.group(1))
+                found = (stage, m.group(2)) if stage else None
         return found
 
     def own_todo_line(self):
@@ -471,7 +496,7 @@ class Board:
             t = self.parse_todo(line)
             if t["name"] == name:
                 if t["stage"] is None:
-                    t["stage"] = self.own_stage(name)
+                    t["stage"], t["since"] = self.own_stage(name) or (None, None)
                 self.todo_row(t, wt_lines, own_dir=folder)
                 found = True
                 break
@@ -481,7 +506,7 @@ class Board:
                 t = self.parse_todo(line)
                 if t["name"]:
                     if t["stage"] is None:
-                        t["stage"] = self.own_stage(t["name"])
+                        t["stage"], t["since"] = self.own_stage(t["name"]) or (None, None)
                     self.todo_row(t, wt_lines, own_dir=folder)
                     found = True
         if not found:
@@ -504,7 +529,7 @@ class Board:
             out += self.notes
             return "\n".join(out) + "\n"
         out = ["| " + " | ".join(HEAD[self.lang]) + " |", "|" + "---|" * len(HEAD[self.lang])]
-        for _, cells in sorted(self.rows, key=lambda r: r[0]):
+        for _, cells, _info in sorted(self.rows, key=lambda r: r[0]):
             out.append("| " + " | ".join(cells) + " |")
         if self.notes:
             out.append("")
@@ -550,8 +575,35 @@ def git_out(folder, *cmd):
     return out.stdout if out.returncode == 0 else ""
 
 
+ZH_STAGE = {"brief": "简报", "register": "登记", "mock": "样稿", "tests": "写测试", "workers": "写代码",
+            "verify": "验证", "push": "推送", "report": "报告", "e2e": "浏览器验收", "merge": "合并"}
+NAME_COLS = 24
+STATUS_LINES = 5
+
+
+def char_width(ch):
+    return 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+
+
+def display_width(text):
+    return sum(char_width(c) for c in text)
+
+
+def fit(text, cols):
+    """text padded with spaces to cols display columns; longer: its first cols-1 columns and "…"."""
+    if display_width(text) <= cols:
+        return text + " " * (cols - display_width(text))
+    kept, used = "", 0
+    for ch in text:
+        if used + char_width(ch) > cols - 1:
+            break
+        kept, used = kept + ch, used + char_width(ch)
+    return kept + "…" + " " * (cols - 1 - used)
+
+
 def statusline_text(stdin_text):
-    """The status line: one line "<name> <bar> <p>% <done by>" per task with a stage, joined by " · "; "" for none."""
+    """The status line: one line per task with a stage (name, bar, stage, done by), the board's order, at most
+    5 lines and "+N more"; "" for none."""
     folder = None
     try:
         data = json.loads(stdin_text)
@@ -574,15 +626,27 @@ def statusline_text(stdin_text):
     args = argparse.Namespace(root=main, state_dir=top, cwd=folder, now=clock_now(), lang=lang, host="-",
                               self_mode=own)
     board = build(args)
-    parts = []
-    for _, cells in sorted(board.rows, key=lambda r: r[0][3]):
-        if cells[3] == "-":
+    zh = lang == "zh"
+    lines = []
+    for _, cells, info in sorted(board.rows, key=lambda r: r[0]):
+        if info is None:
             continue
-        part = "%s %s" % (cells[0], collapse(cells[3]))
-        if cells[8] != "-":
-            part += " " + cells[8]
-        parts.append(part)
-    return " · ".join(parts)
+        name, (stage, i, m) = info
+        word = ZH_STAGE[stage] if zh else stage
+        if i is not None:
+            word += " %d/%d" % (i, m)
+        lines.append((name, cells[3], word, cells[8]))
+    shown = lines[:STATUS_LINES]
+    wide = max([display_width(l[2]) for l in shown] or [0])
+    out = []
+    for name, bar, word, done in shown:
+        row = "  ".join([fit(name, NAME_COLS), bar, word + " " * (wide - display_width(word))])
+        if done != "-":
+            row += "  " + done
+        out.append(row.rstrip())
+    if len(lines) > len(shown):
+        out.append(("+%d 个" if zh else "+%d more") % (len(lines) - len(shown)))
+    return "\n".join(out)
 
 
 def statusline():

@@ -65,6 +65,8 @@ REAL_KEYS = [
     "stage_merge",
     "board_watch_sec",
     "progress_eta_min_pct",
+    # statusline-vertical (owner 2026-11-12): the status line refresh, tests/test_statusline_vertical.py
+    "statusline_refresh_sec",
 ]
 # the keys this repo's own agent.conf had before progress-bar
 OLD_KEYS = REAL_KEYS[:REAL_KEYS.index("cloud_permission_mode") + 1]
@@ -102,6 +104,7 @@ GOOD_CONF_TEXT = (
     "stage_merge=5\n"
     "board_watch_sec=60\n"
     "progress_eta_min_pct=20\n"
+    "statusline_refresh_sec=60\n"
 )
 
 
@@ -434,7 +437,7 @@ class TestGroups(unittest.TestCase):
                 ("progress", ["stage_brief", "stage_register", "stage_mock", "stage_tests",
                               "stage_workers", "stage_verify", "stage_push", "stage_report",
                               "stage_e2e", "stage_merge", "board_watch_sec",
-                              "progress_eta_min_pct"]),
+                              "progress_eta_min_pct", "statusline_refresh_sec"]),
             ],
         )
 
