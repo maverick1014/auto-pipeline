@@ -1501,10 +1501,11 @@ class TestDocs(unittest.TestCase):
         self.assertSectionHas("W12", "todo cross")
 
     def test_one_line_per_rule(self):
-        for code in ("R5", "R6", "R7", "W8"):
+        # the same 200-character cap test_agent_cleanup.TestTheRules keeps on W8
+        for code in ("R5", "R6", "R7", "W8", "W12"):
             for line in principles_section(code):
-                if "housekeep" in line.lower():
-                    self.assertLess(len(line), 260, line)
+                if line.startswith("- ") and ("housekeep" in line.lower() or "todo cross" in line):
+                    self.assertLessEqual(len(line), 200, line)
 
     def test_readme_lists_the_script(self):
         self.assertIn("bin/agent-housekeep.sh", read_root("README.md"))
