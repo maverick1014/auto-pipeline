@@ -526,6 +526,15 @@ class TestBacktestBlend(BlendCase):
         self.assertTrue([r for r in rows if re.match(r"^todo est\s+0\s+-\s+-\s+-\s*$", r)], rows)
         self.assertTrue([r for r in rows if re.match(r"^big todo est\s+0\s+-\s+-\s+-\s*$", r)], rows)
 
+    def test_a_todo_est_of_0_is_no_guess(self):
+        # bounce 2 (task manager): log(0) must never be reached; an est of 0 is no guess
+        rows = alt(30, 50, 100, "est")
+        rows[20] = rows[20].replace(" est=50 ", " est=0 ")
+        self.completed(rows)
+        got = self.rows3(self.assertOk(self.af("backtest", "--tasks")))
+        self.assertEqual(got[10].group(1, 3), ("t-20", "-"))
+        self.assertEqual(got[10].group(7, 8, 9), got[10].group(4, 5, 6))
+
     def test_the_guess_goes_before_the_todo_est(self):
         rows = [r.replace(" est=-", " est=999") for r in alt(30, 50, 100, "guess")]
         self.completed(rows)
