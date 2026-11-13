@@ -67,6 +67,10 @@ REAL_KEYS = [
     "progress_eta_min_pct",
     # statusline-vertical (owner 2026-11-12): the status line refresh, tests/test_statusline_vertical.py
     "statusline_refresh_sec",
+    # estimate-blend (owner 2026-11-13): the estimator target and limits, tests/test_agent_estimate_blend.py
+    "estimate_target_pct",
+    "estimate_bias_min",
+    "estimate_big_min",
 ]
 # the keys this repo's own agent.conf had before progress-bar
 OLD_KEYS = REAL_KEYS[:REAL_KEYS.index("cloud_permission_mode") + 1]
@@ -105,6 +109,9 @@ GOOD_CONF_TEXT = (
     "board_watch_sec=60\n"
     "progress_eta_min_pct=20\n"
     "statusline_refresh_sec=60\n"
+    "estimate_target_pct=50\n"
+    "estimate_bias_min=5\n"
+    "estimate_big_min=120\n"
 )
 
 
@@ -438,6 +445,7 @@ class TestGroups(unittest.TestCase):
                               "stage_workers", "stage_verify", "stage_push", "stage_report",
                               "stage_e2e", "stage_merge", "board_watch_sec",
                               "progress_eta_min_pct", "statusline_refresh_sec"]),
+                ("estimate", ["estimate_target_pct", "estimate_bias_min", "estimate_big_min"]),
             ],
         )
 
