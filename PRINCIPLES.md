@@ -108,8 +108,10 @@ W8. Merge and cleanup
 - Never skip cleanup
 - Clean up only after the merge is verified
 - Deputy runs `./agent-file.sh worktree rm <path>` and `./agent-file.sh todo done <name>` with the facts from the main manager and `--merge <commit>`
-- Sweep: `bin/agent-cleanup.sh --apply` at session start, when the last open task closes, and every housekeep_interval_min minutes (default 120, 0 = off) from the monitor loop via `bin/agent-housekeep.sh --apply`. Plain and cloud: no loop, run it by hand
-- The main manager reads the HOUSEKEEP block of its agent_state.txt at its next activity, judges each idea suspect (`agent-file.sh idea rm <n>` only when it is done, or voided by a recorded owner decision) and acts on the flags
+- Sweep: `bin/agent-cleanup.sh --apply` at session start and when the last open task closes (todo empty, no live worktree). The scripts run it, no loop
+- Housekeep: every housekeep_interval_min minutes (default 120, 0 = off) the monitor loop runs `bin/agent-housekeep.sh --apply`, which ends with this sweep. Plain and cloud: no loop, run it by hand
+- The main manager reads the HOUSEKEEP block in agent_state.txt at its next activity and judges each idea suspect: `agent-file.sh idea rm <n>` only when done, or voided by a recorded owner decision
+- It then acts on the other flags of the block
 - Main manager only. Task managers, Helpers and workers never run it
 - Own repo only: this machine and every paired Orca machine
 - Removes only safe items: merged into origin/main, no live agent, no uncommitted or unpushed work, no working/final/human-direct line
@@ -159,7 +161,8 @@ W12. Cross-repo
 - A task that touches another repo → never edit that repo. Split it: your part, and a brief for the peer main manager
 - Send the brief with `SendMessage`, first line `[<model> <effort>] CROSS-REPO TASK <name> from <repo>`; same brief shape as the dispatch skill
 - The peer runs it like a human task: `agent-file.sh todo add … <est> <repo>`, its own lane, and reports `DONE PASS <name>` back by SendMessage
-- The sender keeps its todo line open until both sides are done, then one report to the human. The sender marks it with `agent-file.sh todo cross <name> <other repo>` (so the housekeep pass can read the other side)
+- The sender keeps its todo line open until both sides are done, then one report to the human
+- The sender marks its line `agent-file.sh todo cross <name> <other repo>`, so the housekeep pass reads the other side
 - Called side first: the repo being called (the API) finishes first; its DONE PASS carries the contract (endpoint, fields, errors). The caller (the app) starts from that contract
 - Only main managers cross repos. Task managers and workers never
 - Need to know the other repo's code → ask its main manager. Never read or edit another repo
