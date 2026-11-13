@@ -118,14 +118,62 @@ CONTRACT the workers implement.
       suspects, never removed, one line per idea, numbers as the file is after
           this run's removals:
           "names task <t>, done <date>" / "names task <t>, dropped <date>":
-              a line "<date> | <t> | ..." of agent_completed.txt, date >= the
-              idea's day, <t> in the text as a whole word (case does not
-              matter; a word char is a letter, digit, "_" or "-")
+              a line "<date> | <t> | ..." of agent_completed.txt, date AFTER
+              the idea's day (housekeep-suspects: the same day no longer
+              counts), <t> as a whole word (case does not matter; a word char
+              is a letter, digit, "_" or "-") in the text OUTSIDE its
+              provenance note (see HOUSEKEEP-SUSPECTS below)
           "names <word>, no such file": a word (letters, digits, _ . / ~ -;
-              trailing . , : ; ) cut) ending in .sh .py .md .txt .json .js
-              .mjs .html .conf .default, URLs (scheme://...) skipped; found
-              when it exists (absolute, ~, or under PROJECT_ROOT) or, a bare
-              name, when `git ls-files` of PROJECT_ROOT has a file of that name
+              trailing . , : ; ) cut, a leading "./" cut) ending in .sh .py
+              .md .txt .json .js .mjs .html .conf .default, URLs
+              (scheme://...) skipped; checked ONLY when it is (housekeep-
+              suspects) a repo path with a slash under a listed top folder
+              that exists, or a bare agent_*.txt / *.md name (see below)
+          a kept line (" | kept <date>" at its end) is never a suspect
+
+HOUSEKEEP-SUSPECTS (2026-11-13, failing tests by the task manager, real data:
+75 of 117 ideas were suspects, about 70 only because the provenance note named
+the task that wrote the idea, the rest bare names of files outside the repo).
+
+   P. provenance note: the parts of an idea's text that say who found it. Task
+      names in them are never evidence. Cut, in this order:
+        P1 every "(...)" (no nested parentheses) whose inside has, as a whole
+           word, case not mattering: TM, TMs, task manager, task managers,
+           bounce, worker or S<digits>
+              "(idea-city TM 2026-09-28)", "(mode-and-floor bounce 1)",
+              "(five-fixes S5 worker note, pc2)", "(pc2 task manager, 2026-11-04)"
+        P2 the last "(...)" of the text when it ends the text (only spaces
+           and "." after it)
+              "... or skip (seen merging idea-pipeline, 2026-09-28)"
+        P3 a sentence that starts with "From " or "Seen " (capital F / S; at
+           the start of the text or right after ". "), up to the next ". "
+           or the end of the text
+              "... polling. From pc2 city-relay task manager 2026-09-25 14:26"
+              "... reason. Seen merging idea-pipeline 2026-09-28."
+      Everything else counts: a lowercase "from" inside a sentence, a "(...)"
+      in the middle without one of the words ("(city-polish P1)"), the sentence
+      after a Seen sentence.
+   D. day: the agent_completed.txt date must be a later day than the idea's
+      day. (A task is finished on or after the day it was opened, so "opened or
+      finished on a later day" is the finish date.) No date tail: no task check.
+   F. file: a word is checked only when it is
+        F1 a path with a "/" whose first folder is one of bin tests skills
+           agents hooks requirements mock AND that folder exists under
+           PROJECT_ROOT: a suspect when the path does not exist there
+        F2 a bare name (no "/") that looks like agent_*.txt or *.md: a suspect
+           when it is not at PROJECT_ROOT and `git ls-files` has no file of
+           that name
+      Every other word is never a suspect: bare world.json, cdp.mjs,
+      nothere.py; docs/x.md (folder not listed); mock/x.html with no mock/;
+      /abs/x.json; ~/x.conf.
+   K. agent-file.sh idea keep <n> (tests/test_agent_file_idea_keep.py) puts
+      " | kept <YYYY-MM-DD>" at the end of line n. The housekeep pass cuts it
+      before it reads the date tail: a kept line is never a suspect (no task
+      reason, no file reason); duplicate detection compares the text without
+      it (the first line still stays); the shown text never has it.
+   DOCS: one W8 line: the main manager judges each suspect with
+      `idea rm <n>` (done, or voided by a recorded owner decision) or
+      `idea keep <n>` (still wanted); <= 200 chars. Release 0.34.1.
    d. related repos (read only, never written)
       an open todo line names another repo by its "by <x>" field (written by
       todo add) or its "cross <x>" field (new: agent-file.sh todo cross)
@@ -860,12 +908,19 @@ class TestIdeaSuspects(HousekeepCase):
             "suspect: idea 1: teach todo-est to keep the reason | names task todo-est, done 2026-11-12"])
         self.assertEqual(self.file_lines("agent_ideas.txt"), [idea])
 
-    def test_the_same_day_counts(self):
+    def test_the_same_day_does_not_count(self):
+        # housekeep-suspects D: the task must be finished on a LATER day
         self.set_file("agent_completed.txt", ["2026-11-05 | five-fixes | x | data repo=project"])
-        self.set_file("agent_ideas.txt", ["a gap seen (five-fixes S1, pc2) | 2026-11-05 10:02 | by main"])
+        self.set_file("agent_ideas.txt", ["more five-fixes work | 2026-11-05 10:02 | by main"])
         self.apply()
-        self.assertEqual(len(self.suspects()), 1)
-        self.assertIn("names task five-fixes, done 2026-11-05", self.suspects()[0])
+        self.assertEqual(self.suspects(), [])
+
+    def test_the_next_day_counts(self):
+        self.set_file("agent_completed.txt", ["2026-11-06 | five-fixes | x | data repo=project"])
+        self.set_file("agent_ideas.txt", ["more five-fixes work | 2026-11-05 23:50 | by main"])
+        self.apply()
+        self.assertEqual(self.suspects(), [
+            "suspect: idea 1: more five-fixes work | names task five-fixes, done 2026-11-06"])
 
     def test_a_task_done_before_the_idea_is_not_a_suspect(self):
         self.set_file("agent_completed.txt", ["2026-11-01 | todo-est | x | data repo=project"])
@@ -894,6 +949,7 @@ class TestIdeaSuspects(HousekeepCase):
         self.assertEqual(len(self.suspects()), 1)
 
     def test_a_missing_file_is_a_suspect(self):
+        os.makedirs(self.repo.path("bin"), exist_ok=True)   # F1: the folder exists
         self.set_file("agent_ideas.txt", ["teach bin/agent-gone.sh to stop | 2026-11-10 10:00 | by main"])
         self.apply()
         self.assertEqual(self.suspects(), [
@@ -915,12 +971,13 @@ class TestIdeaSuspects(HousekeepCase):
         self.assertEqual(self.suspects(), [])
 
     def test_two_reasons_on_one_line(self):
+        os.makedirs(self.repo.path("bin"), exist_ok=True)
         self.set_file("agent_completed.txt", ["2026-11-12 | todo-est | x | data repo=project"])
-        self.set_file("agent_ideas.txt", ["todo-est in nothere.py | 2026-11-10 10:00 | by main"])
+        self.set_file("agent_ideas.txt", ["todo-est in bin/nothere.py | 2026-11-10 10:00 | by main"])
         self.apply()
         self.assertEqual(self.suspects(), [
-            "suspect: idea 1: todo-est in nothere.py | names task todo-est, done 2026-11-12; "
-            "names nothere.py, no such file"])
+            "suspect: idea 1: todo-est in bin/nothere.py | names task todo-est, done 2026-11-12; "
+            "names bin/nothere.py, no such file"])
 
     def test_numbers_are_after_this_runs_removals(self):
         self.set_file("agent_completed.txt", ["2026-11-12 | todo-est | x | data repo=project"])
@@ -939,6 +996,226 @@ class TestIdeaSuspects(HousekeepCase):
         out = self.listing()
         self.assertIn("suspect: idea 3: more todo-est | names task todo-est, done 2026-11-12",
                       self.body_of(out))
+
+
+# ---------------------------------------------------------------- housekeep-suspects
+# Fixture ideas copied from the real provenance shapes of agent_ideas.txt
+# (2026-09-24 .. 2026-11-13). Every task below is done on 2026-11-12, every idea
+# is from 2026-11-05: only the provenance rule (P) can keep them quiet.
+
+LATER_TASKS = ("idea-city", "city-ux", "city-status", "city-rediscover", "city-relay",
+               "idea-pipeline", "mode-and-floor", "five-fixes", "city-tier",
+               "helper-task-title", "city-talk", "model-suffix", "todo-est",
+               "city-polish", "close-case")
+
+PROVENANCE_ONLY = [
+    # P1: a "(...)" with a role word, at the end or in the middle
+    "one shared helper would keep them in step (idea-city TM 2026-09-28)",
+    "keep it on the server (city-ux TM 2026-09-28)",
+    "show the idle word after a Stop (city-status TM, 2026-10-01)",
+    "a session with no pid is not brought back at all (city-rediscover / city-status TMs, 2026-10-01)",
+    "take the parent's pid (mode-and-floor bounce 1) when no claude process is above the run",
+    "no test covers it (five-fixes S5 worker note, pc2)",
+    "name it, like the USER CONF: ignored line (five-fixes S1, pc2)",
+    "would keep the town readable. (from the city-tier TM on pc2)",
+    "pop it there too (helper-task-title TM on pc2, 2026-10-29)",
+    "a demo governor still walks to an empty hall (old demo behaviour, seen by the city-talk TM 2026-10-01)",
+    "Add --model from agent_conf.py cli-model of main_manager (model-suffix TM, pc2)",
+    "the words do fire it (Close-Case Task Manager 2026-09-28)",
+    # P2: the last "(...)" ends the text, no role word in it
+    "Pick a Node >= 22 from PATH or skip with a clear reason (seen merging idea-pipeline, 2026-09-28).",
+    # P3: a From / Seen sentence
+    "push over one WebSocket per machine instead of polling. From pc2 city-relay task manager 2026-09-25 14:26",
+    "Pick a Node >= 22 or skip with a clear reason. Seen merging idea-pipeline 2026-09-28.",
+    "stack or offset them. Seen in idea-city E2E 2026-09-28",
+]
+
+
+class SuspectCase(HousekeepCase):
+    def suspects(self):
+        return [l for l in self.body() if l.startswith("suspect: ")]
+
+    def later_tasks(self):
+        self.set_file("agent_completed.txt", [
+            "2026-11-12 | %s | x | data repo=project type=script" % t for t in LATER_TASKS])
+
+    def ideas(self, *texts, day="2026-11-05 10:02"):
+        self.set_file("agent_ideas.txt", ["%s | %s | by main" % (t, day) for t in texts])
+
+
+class TestIdeaProvenance(SuspectCase):
+    def test_a_task_named_only_in_the_provenance_note_is_no_evidence(self):
+        self.later_tasks()
+        self.ideas(*PROVENANCE_ONLY)
+        self.apply()
+        self.assertEqual(self.suspects(), [])
+
+    def test_a_name_outside_the_note_still_counts(self):
+        self.later_tasks()
+        self.ideas("teach idea-city to stop the chain (idea-city TM 2026-09-28)")
+        self.apply()
+        self.assertEqual(self.suspects(), [
+            "suspect: idea 1: teach idea-city to stop the chain (idea-city TM 2026-09-28) | "
+            "names task idea-city, done 2026-11-12"])
+
+    def test_a_middle_parenthesis_without_a_role_word_counts(self):
+        self.later_tasks()
+        self.ideas("its first step (city-polish P1); an idle clip would read better")
+        self.apply()
+        self.assertEqual(self.suspects(), [
+            "suspect: idea 1: its first step (city-polish P1); an idle clip would read better | "
+            "names task city-polish, done 2026-11-12"])
+
+    def test_a_lowercase_from_inside_a_sentence_counts(self):
+        self.later_tasks()
+        self.ideas("read the guess from todo-est first, then blend it")
+        self.apply()
+        self.assertEqual(self.suspects(), [
+            "suspect: idea 1: read the guess from todo-est first, then blend it | "
+            "names task todo-est, done 2026-11-12"])
+
+    def test_the_sentence_after_a_seen_sentence_counts(self):
+        self.later_tasks()
+        self.ideas("Seen merging idea-pipeline 2026-09-28. Then todo-est should keep the reason")
+        self.apply()
+        self.assertEqual(self.suspects(), [
+            "suspect: idea 1: Seen merging idea-pipeline 2026-09-28. Then todo-est should keep the reason | "
+            "names task todo-est, done 2026-11-12"])
+
+    def test_only_the_last_parenthesis_is_the_trailing_note(self):
+        self.later_tasks()
+        self.ideas("the labels are Chinese only (todo-est shows them) (main, 2026-10-29)")
+        self.apply()
+        self.assertEqual(self.suspects(), [
+            "suspect: idea 1: the labels are Chinese only (todo-est shows them) (main, 2026-10-29) | "
+            "names task todo-est, done 2026-11-12"])
+
+    def test_a_note_task_finished_the_same_day_and_a_body_task_finished_later(self):
+        self.set_file("agent_completed.txt", [
+            "2026-11-05 | idea-city | x | data repo=project",
+            "2026-11-12 | todo-est | x | data repo=project"])
+        self.ideas("idea-city and todo-est share a helper (idea-city TM 2026-11-05)")
+        self.apply()
+        self.assertEqual(self.suspects(), [
+            "suspect: idea 1: idea-city and todo-est share a helper (idea-city TM 2026-11-05) | "
+            "names task todo-est, done 2026-11-12"])
+
+
+class TestIdeaFileRule(SuspectCase):
+    def test_bare_names_of_files_outside_the_repo_are_never_suspects(self):
+        self.ideas("the territories in world.json and roster.json; installed_plugins.json "
+                   "keeps old paths; scratchpad cdp.mjs worked; nothere.py and gone.sh too")
+        self.apply()
+        self.assertEqual(self.suspects(), [])
+
+    def test_absolute_and_home_paths_are_never_suspects(self):
+        self.ideas("read /nowhere/at/all/gone.json and ~/.claude/nowhere/gone.conf")
+        self.apply()
+        self.assertEqual(self.suspects(), [])
+
+    def test_a_repo_path_under_a_listed_folder_that_exists(self):
+        for folder in ("bin", "tests", "skills", "agents", "hooks", "requirements", "mock"):
+            os.makedirs(self.repo.path(folder), exist_ok=True)
+        self.ideas("bin/agent-gone.sh, tests/test_gone.py, skills/gone/SKILL.md, agents/gone.md, "
+                   "hooks/gone.json, requirements/gone.md and mock/gone.html")
+        self.apply()
+        self.assertEqual(len(self.suspects()), 1, self.suspects())
+        self.assertTrue(self.suspects()[0].endswith(
+            " | names bin/agent-gone.sh, no such file; names tests/test_gone.py, no such file; "
+            "names skills/gone/SKILL.md, no such file; names agents/gone.md, no such file; "
+            "names hooks/gone.json, no such file; names requirements/gone.md, no such file; "
+            "names mock/gone.html, no such file"), self.suspects()[0])
+
+    def test_a_path_that_exists_under_a_listed_folder_is_fine(self):
+        write(self.repo.path("bin", "agent-here.sh"), "x\n")
+        self.ideas("teach bin/agent-here.sh to stop")
+        self.apply()
+        self.assertEqual(self.suspects(), [])
+
+    def test_a_listed_folder_the_repo_does_not_have(self):
+        self.assertFalse(os.path.exists(self.repo.path("mock")))
+        self.ideas("the old mock/old-page.html had a hall")
+        self.apply()
+        self.assertEqual(self.suspects(), [])
+
+    def test_a_folder_not_on_the_list(self):
+        os.makedirs(self.repo.path("docs"), exist_ok=True)
+        self.ideas("see docs/gone.md and scratchpad/gone.mjs")
+        self.apply()
+        self.assertEqual(self.suspects(), [])
+
+    def test_a_leading_dot_slash_is_cut(self):
+        os.makedirs(self.repo.path("bin"), exist_ok=True)
+        self.ideas("run ./bin/agent-gone.sh first")
+        self.apply()
+        self.assertEqual(self.suspects(), [
+            "suspect: idea 1: run ./bin/agent-gone.sh first | names bin/agent-gone.sh, no such file"])
+
+    def test_a_missing_root_file_by_name_pattern(self):
+        self.ideas("move it to agent_gone.txt and write GONE.md")
+        self.apply()
+        self.assertEqual(self.suspects(), [
+            "suspect: idea 1: move it to agent_gone.txt and write GONE.md | "
+            "names agent_gone.txt, no such file; names GONE.md, no such file"])
+
+    def test_a_root_name_found_at_the_root_or_tracked_anywhere(self):
+        r = self.repo
+        write(r.path("skills", "x", "SKILL.md"), "x\n")
+        git(r.dir, "add", "skills/x/SKILL.md")
+        git(r.dir, "commit", "-q", "-m", "skill")
+        write(r.path("agent_state.txt"), "x\n")   # git-ignored in real repos: at the root is enough
+        self.ideas("SKILL.md, agent_state.txt and agent_ideas.txt stay")
+        self.apply()
+        self.assertEqual(self.suspects(), [])
+
+
+class TestIdeaKept(SuspectCase):
+    def test_a_kept_idea_is_never_a_suspect(self):
+        os.makedirs(self.repo.path("bin"), exist_ok=True)
+        self.set_file("agent_completed.txt", ["2026-11-12 | todo-est | x | data repo=project"])
+        self.set_file("agent_ideas.txt", [
+            "teach todo-est in bin/agent-gone.sh | 2026-11-05 10:02 | by main | kept 2026-11-06",
+            "more todo-est | 2026-11-05 10:03 | by main"])
+        self.apply()
+        self.assertEqual(self.suspects(), [
+            "suspect: idea 2: more todo-est | names task todo-est, done 2026-11-12"])
+
+    def test_list_mode_skips_a_kept_idea_too(self):
+        os.makedirs(self.repo.path("bin"), exist_ok=True)
+        self.set_file("agent_completed.txt", ["2026-11-12 | todo-est | x | data repo=project"])
+        self.set_file("agent_ideas.txt", [
+            "more todo-est in bin/agent-gone.sh | 2026-11-05 10:02 | by main | kept 2026-11-06"])
+        out = self.listing()
+        self.assertEqual([l for l in self.body_of(out) if l.startswith("suspect: ")], [])
+
+    def test_a_kept_line_with_no_date_tail(self):
+        os.makedirs(self.repo.path("bin"), exist_ok=True)
+        self.set_file("agent_ideas.txt", ["fix bin/agent-gone.sh | kept 2026-11-06"])
+        self.apply()
+        self.assertEqual(self.suspects(), [])
+
+    def test_duplicates_ignore_the_kept_field(self):
+        self.set_file("agent_ideas.txt", [
+            "x y | 2026-11-10 10:00 | by main | kept 2026-11-12",
+            "x y | 2026-11-11 10:00 | by main",
+            "plain idea | kept 2026-11-12",
+            "plain idea"])
+        self.apply()
+        self.assertEqual(self.file_lines("agent_ideas.txt"), [
+            "x y | 2026-11-10 10:00 | by main | kept 2026-11-12",
+            "plain idea | kept 2026-11-12"])
+        body = self.body()
+        self.assertIn("removed: idea 2, a duplicate of idea 1: x y", body)
+        self.assertIn("removed: idea 4, a duplicate of idea 3: plain idea", body)
+
+    def test_the_shown_text_never_has_the_field(self):
+        # the first line stays, even when the later copy is the kept one
+        self.set_file("agent_ideas.txt", [
+            "same | 2026-11-10 10:00 | by main",
+            "same | 2026-11-11 10:00 | by main | kept 2026-11-12"])
+        self.apply()
+        self.assertIn("removed: idea 2, a duplicate of idea 1: same", self.body())
+        self.assertNotIn("kept 2026", "\n".join(self.body()))
 
 
 # ---------------------------------------------------------------- d. related repos
@@ -1508,6 +1785,20 @@ class TestDocs(unittest.TestCase):
             for line in principles_section(code):
                 if line.startswith("- ") and ("housekeep" in line.lower() or "todo cross" in line):
                     self.assertLessEqual(len(line), 200, line)
+
+    def test_the_main_manager_removes_or_keeps_each_suspect(self):
+        # housekeep-suspects: one W8 line, <= 200 chars
+        lines = [l for l in principles_section("W8")
+                 if l.startswith("- ") and "idea rm" in l and "idea keep" in l]
+        self.assertEqual(len(lines), 1, "W8: one line names idea rm and idea keep")
+        line = lines[0]
+        for word in ("HOUSEKEEP", "suspect", "owner decision", "still wanted"):
+            self.assertIn(word, line)
+        self.assertLessEqual(len(line), 200, line)
+
+    def test_release_housekeep_suspects(self):
+        ver = json.loads(read_root(".claude-plugin", "plugin.json"))["version"]
+        self.assertGreaterEqual(tuple(int(x) for x in ver.split(".")), (0, 34, 1))
 
     def test_readme_lists_the_script(self):
         self.assertIn("bin/agent-housekeep.sh", read_root("README.md"))
