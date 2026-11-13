@@ -9,6 +9,7 @@
 #   agent-file.sh idea add  "<text>"                          -> agent_ideas.txt
 #   agent-file.sh idea list                                   -> print agent_ideas.txt, numbered (cat -n)
 #   agent-file.sh idea rm   <n>                                -> remove line n from agent_ideas.txt
+#   agent-file.sh idea keep <n>                                -> line n gets " | kept <date>": still wanted, never a housekeep suspect again
 #   agent-file.sh worktree set "<path>" "<module>" "<status>" -> agent_worktree.txt (add or replace)
 #   agent-file.sh worktree rm  "<path>"                       -> agent_worktree.txt
 #   agent-file.sh helper-task "<Task Name>"                   -> the task of THIS human-direct Helper session: its name becomes "<repo> Helper - <Task Name>"
@@ -996,6 +997,13 @@ case "${1:-}:${2:-}" in
     [ -n "$line" ] || { echo "no idea number $n" >&2; exit 1; }
     sed "${n}d" "$IDEAS" > "$IDEAS.tmp" && mv "$IDEAS.tmp" "$IDEAS"
     printf 'idea %s removed: %s\n' "$n" "$(printf '%s' "$line" | cut -c1-60)";;
+  idea:keep)
+    need 4 "$@"; n="$3"
+    case "$n" in ''|*[!0-9]*) echo "no idea number $n" >&2; exit 1;; esac
+    line=$(sed -n "${n}p" "$IDEAS")
+    [ -n "$line" ] || { echo "no idea number $n" >&2; exit 1; }
+    awk -v n="$n" -v d="${NOW%% *}" 'NR==n { if ($0 ~ / \| kept [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) $0 = substr($0, 1, length($0) - 10) d; else $0 = $0 " | kept " d } { print }' "$IDEAS" > "$IDEAS.tmp" && mv "$IDEAS.tmp" "$IDEAS"
+    printf 'idea %s kept: %s\n' "$n" "$(printf '%s' "$line" | cut -c1-60)";;
   worktree:set)
     need 5 "$@"; old=$(first "$WT" "$3"); since=$(printf '%s' "$old" | awk -F' \\| ' '{print $4}')
     [ -n "$since" ] || since="since $NOW"

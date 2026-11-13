@@ -110,7 +110,7 @@ W8. Merge and cleanup
 - Deputy runs `./agent-file.sh worktree rm <path>` and `./agent-file.sh todo done <name>` with the facts from the main manager and `--merge <commit>`
 - Sweep: `bin/agent-cleanup.sh --apply` at session start and when the last open task closes (todo empty, no live worktree). The scripts run it, no loop
 - Housekeep: every housekeep_interval_min minutes (default 120, 0 = off) the monitor loop runs `bin/agent-housekeep.sh --apply`, which ends with this sweep. Plain and cloud: no loop, run it by hand
-- The main manager reads the HOUSEKEEP block in agent_state.txt at its next activity and judges each idea suspect: `agent-file.sh idea rm <n>` only when done, or voided by a recorded owner decision
+- The main manager reads the HOUSEKEEP block in agent_state.txt at its next activity. Per suspect: `idea rm <n>` if done or voided by a recorded owner decision, else `idea keep <n>` (still wanted)
 - It then acts on the other flags of the block
 - Main manager only. Task managers, Helpers and workers never run it
 - Own repo only: this machine and every paired Orca machine
