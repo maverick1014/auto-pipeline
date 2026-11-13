@@ -91,12 +91,14 @@
 #     refused, one line on stderr that names it, exit 1, nothing on stdout.
 #   estimate --guess <m>: the manager's own minutes, blended in only when the version is a blend.
 #   estimate and backtest read estimate_target_pct, estimate_bias_min, estimate_big_min from agent.conf.
-#   backtest: read only. Each task with 10 tasks before it is estimated from those only; the estimator, the rubric
-#     and the todo est are scored (median error, within 30%, in range); winner = estimator only when strictly better.
-#     --tasks adds one row per tested task. Fewer than 11 tasks: "backtest: <N> tasks, needs at least 11".
+#   backtest: read only. Each task with 10 tasks before it is estimated from those only. Rows: estimator, blend, blend+repo,
+#     rubric, todo est (median error, within 30%, in range), then "work >= <big>m: <n> tasks" and the same rows for big tasks.
+#     winner = a blend only when its within 30% beats the base winner (estimator or rubric). Last line:
+#     "target within 30% <goal>%: ...". --tasks: one row per tested task, with guess, blend and blend+repo. Under 11 tasks: one line "backtest: <N> tasks, needs at least 11", exit 0.
 #   retrain: due at 30 tasks, then once a week with 1+ new task (--force skips the week, never the 30). Writes agent_estimate.txt
-#     (JSON, atomic) in the project root: v1 = the setting picked from all tasks and its backtest; a later check keeps
-#     the new version only when its error on the new tasks is strictly lower. Prints the table and one verdict line.
+#     (JSON, atomic) in the project root: v1 = the winner's method from all tasks (a blend only when it wins); a later check
+#     keeps the new version only when its error on the new tasks is strictly lower, and switches from a non-blend version
+#     to the blend only when the blend's backtest within 30% beats it. Prints the table and one verdict line.
 #
 # eta: one line, nothing written. est comes from the open todo line <name>. step = how far the work is, 0 to 7
 #   (7 = done; no step = 0). All minutes round up.

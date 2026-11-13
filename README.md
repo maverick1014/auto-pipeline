@@ -170,7 +170,7 @@ bin/agent-file.sh time              # est, work, wait, clock of every finished t
 bin/agent-file.sh data              # the same data of every repo on this machine, one table
 bin/agent-file.sh eta <name>        # work left as minutes and a clock time, and when the human is needed next
 bin/agent-file.sh estimate ... [--guess <m>]   # work minutes of a new task, with a range and the 3 nearest past tasks; --guess blends in your own minutes
-bin/agent-file.sh backtest          # estimator against the rubric on the finished tasks, who wins
+bin/agent-file.sh backtest          # estimator, blend and rubric on the finished tasks, who wins
 bin/agent-file.sh retrain           # learn the estimate again from the finished tasks, keep it only if better
 bin/agent-file.sh board             # the show-todo table: open tasks, waits on the owner, owner to-dos, parked questions
 bin/agent-file.sh questions         # the show-question list: every question pending on the owner (--self, --json, --page <file>, --url <url>, answer <id> "<answer>")

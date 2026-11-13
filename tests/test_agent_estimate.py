@@ -744,10 +744,10 @@ class TestRealData(EstimateCase):
 
     def test_v1_and_three_example_tasks(self):
         out = self.assertOk(self.af("retrain"))
-        # estimate-blend: the todo est of these old lines is their guess, so v1 may be a blend;
-        # without --guess the estimate below is the estimator of that version either way
-        self.assertRegex(self.verdicts(out)[0],
-                         r"^estimate retrain: v1 made from 30 tasks: (estimator|blend) ")
+        # estimate-blend: the todo est of these old lines is their guess; the blend ties the
+        # estimator here (within 30% 40% both), so v1 stays the estimator
+        self.assertTrue(self.verdicts(out)[0].startswith(
+            "estimate retrain: v1 made from 30 tasks: estimator"), out)
         ver = self.model_json()["versions"][0]
         self.assertEqual((ver["k"], ver["text"], ver["type"]), (3, 1, 0.5))
         m, likes = self.estimate("fast", "no", "page", "agent-city: fix a typo in the rail label",
