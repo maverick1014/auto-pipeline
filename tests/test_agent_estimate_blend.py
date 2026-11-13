@@ -52,8 +52,10 @@ CONTRACT (all through bin/agent-file.sh; the estimator work is in bin/agent_esti
         The guess of a task = its guess, else its todo est (old lines), else none.
         Rows: estimator, blend, blend+repo, rubric, todo est; then the line
             work >= <big>m: <n> tasks                  big = estimate_big_min (120)
-        and the same 5 rows named "big <method>" over only those tasks
-        (0 tasks: "big <method> 0 - - -"); then "winner: ..."; the target line last.
+        and the same 5 rows named "big <method>" over only those tasks; then
+        "winner: ..."; the target line last. A row with 0 tasks, in both
+        tables, is "<method> 0 - - -" as before. The todo est row is the est of
+        the todo line only (info, as before), never the guess.
         --tasks rows:
             task <name> work <w> guess <g|-> estimator <e> (<lo>-<hi>) blend <b> (<lo>-<hi>) blend+repo <c> (<lo>-<hi>) rubric <r>
         Each task only from the tasks before it (rolling), also the weight,
@@ -67,7 +69,8 @@ CONTRACT (all through bin/agent-file.sh; the estimator work is in bin/agent_esti
           AND a lower median error. Else 0.5.
         blend+repo c = max(1, half_up(b x f)); f = median of work / b over the
           tested tasks before it of the same repo that have a guess, when there
-          are at least estimate_bias_min (5) of them, else 1.
+          are at least estimate_bias_min (5) of them, else 1. The b of those
+          earlier tasks is taken at this task's weight w.
         Range of blend and blend+repo: the 20th and 80th percentile of that
           method's own work / estimate over the tested tasks before it that have
           a guess, when at least 10; else the estimator's (leave-one-out) ratios;
@@ -206,7 +209,8 @@ class BlendCase(EstimateCase):
         found = {}
         for label in METHODS:
             want = mrow(prefix + label, label != "todo est")
-            hits = [m for m in (want.match(r) for r in rows) if m]
+            zero = re.compile(r"^%s\s+(0)\s+(-)\s+(-)\s+(-)\s*$" % re.escape(prefix + label))
+            hits = [m for m in (want.match(r) or zero.match(r) for r in rows) if m]
             self.assertEqual(len(hits), 1, "one %r row in:\n%s" % (prefix + label, out))
             found[label] = hits[0]
         return found
@@ -516,6 +520,12 @@ class TestBacktestBlend(BlendCase):
         new = self.rows3(self.assertOk(self.af("backtest", "--tasks")))
         self.assertEqual([m.group(0) for m in old], [m.group(0) for m in new])
 
+    def test_no_est_anywhere_the_todo_est_rows_are_empty(self):
+        self.completed(alt(30, 50, 100, "guess"))
+        rows = self.lines(self.assertOk(self.af("backtest")))
+        self.assertTrue([r for r in rows if re.match(r"^todo est\s+0\s+-\s+-\s+-\s*$", r)], rows)
+        self.assertTrue([r for r in rows if re.match(r"^big todo est\s+0\s+-\s+-\s+-\s*$", r)], rows)
+
     def test_the_guess_goes_before_the_todo_est(self):
         rows = [r.replace(" est=-", " est=999") for r in alt(30, 50, 100, "guess")]
         self.completed(rows)
@@ -574,12 +584,12 @@ class TestBacktestBlend(BlendCase):
             self.assertEqual((m.group(2), m.group(3)), (str(p), str(50 - p)))
         self.repo.set_conf("estimate_target_pct", "1")
         self.assertEqual(self.lines(self.assertOk(self.af("backtest")))[-1],
-                         "target within 30% 1%: met (%d%%)" % p if p >= 1 else
+                         "target within 30% 1%: met ({}%)".format(p) if p >= 1 else
                          "target within 30% 1%: 0%, gap 1 points")
         self.repo.set_conf("estimate_target_pct", "100")
         last = self.lines(self.assertOk(self.af("backtest")))[-1]
         self.assertEqual(last, "target within 30% 100%: met (100%)" if p == 100 else
-                         "target within 30% 100%: %d%%, gap %d points" % (p, 100 - p))
+                         "target within 30% 100%: {}%, gap {} points".format(p, 100 - p))
 
 
 # ---------------------------------------------------------------- retrain
