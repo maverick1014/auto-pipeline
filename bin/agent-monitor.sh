@@ -7,6 +7,12 @@
 #   ./agent-monitor.sh once     one sweep, then print the file
 #   ./agent-monitor.sh -h       this help
 #
+# The loop also runs `agent-housekeep.sh --apply` every housekeep_interval_min
+# minutes (agent.conf, 0 = off), after a sweep, and only when the session that
+# started the loop is the main manager and the main-manager lock names a live
+# pid. Plain and cloud have no loop, so there you run agent-housekeep.sh --apply
+# by hand.
+#
 # One sweep reads agent_worktree.txt (main repo) and writes agent_monitor.txt
 # (main repo), one line per worktree line, written atomically (tmp + mv).
 #
@@ -35,6 +41,10 @@ agent-monitor.sh — background health sweep of live worktrees.
   ./agent-monitor.sh status   pid and the time of the last sweep
   ./agent-monitor.sh once     one sweep, then print the file
   ./agent-monitor.sh -h       this help
+
+The loop runs agent-housekeep.sh --apply every housekeep_interval_min minutes
+(agent.conf, 0 = off), main manager only.
+In plain and cloud there is no loop: run agent-housekeep.sh --apply by hand.
 EOF
 }
 
@@ -147,6 +157,45 @@ for w in data.get("result", {}).get("worktrees", []):
   echo "$ts" > "$LASTSWEEP"
 }
 
+# Housekeep pass, run by the forked loop after a sweep. Every read is fresh.
+# Never ends the loop: every command is guarded.
+hk_interval() {
+  local v=""
+  v=$(sed -n 's/^housekeep_interval_min=//p' "$ROOT/agent.conf" 2>/dev/null | tail -n 1) || v=""
+  v=$(printf '%s' "$v" | tr -d '[:space:]"'"'"'') || v=""
+  case "$v" in
+    ""|*[!0-9]*) v=120;;
+  esac
+  printf '%s\n' "$((10#$v))"
+}
+
+housekeep_round() {
+  local n lp="" last="" now due=1
+  n=$(hk_interval) || return 0
+  [ "$n" -gt 0 ] 2>/dev/null || return 0
+  [ -f "$GITDIR/agent_main.lock" ] || return 0
+  lp=$(awk 'NR==1{print $1; exit}' "$GITDIR/agent_main.lock" 2>/dev/null) || lp=""
+  case "$lp" in ""|*[!0-9]*) return 0;; esac
+  kill -0 "$lp" 2>/dev/null || return 0
+  if [ -f "$GITDIR/agent_housekeep.last" ]; then
+    last=$(awk 'NR==1{print $1; exit}' "$GITDIR/agent_housekeep.last" 2>/dev/null) || last=""
+    case "$last" in
+      ""|*[!0-9]*) due=1;;
+      *)
+        now=$(date +%s) || return 0
+        if [ "$((now - 10#$last))" -ge "$((n * 60))" ]; then due=1; else due=0; fi;;
+    esac
+  fi
+  [ "$due" -eq 1 ] || return 0
+  [ -x "$PLUGIN_ROOT/bin/agent-housekeep.sh" ] || return 0
+  env -u AGENT_ROLE CLAUDE_PID="$lp" "$PLUGIN_ROOT/bin/agent-housekeep.sh" --apply \
+    </dev/null >/dev/null 2>&1 &
+  hk_pid=$!
+  wait "$hk_pid" 2>/dev/null || true
+  hk_pid=""
+  return 0
+}
+
 do_once() {
   if [ "$KIND" != "orca" ]; then
     not_used_line
@@ -171,15 +220,20 @@ do_start() {
     return 0
   fi
   sweep
+  hk_allowed=0
+  role_read || true
+  [ "${role:-}" = "main" ] && hk_allowed=1
   (
     unset AGENT_RUNTIME
     sleep_pid=""
-    trap '[ -n "$sleep_pid" ] && kill "$sleep_pid" 2>/dev/null || true; rm -f "$PIDFILE"; exit 0' TERM
+    hk_pid=""
+    trap '[ -n "$sleep_pid" ] && kill "$sleep_pid" 2>/dev/null || true; [ -n "$hk_pid" ] && kill "$hk_pid" 2>/dev/null || true; rm -f "$PIDFILE"; exit 0' TERM
     while true; do
       sleep "$((monitor_interval_min * 60))" &
       sleep_pid=$!
       wait "$sleep_pid" 2>/dev/null || true
       sweep
+      if [ "$hk_allowed" -eq 1 ]; then housekeep_round || true; fi
     done
   ) >/dev/null 2>&1 </dev/null &
   pid=$!
@@ -222,6 +276,16 @@ do_status() {
     echo "last sweep: $(cat "$LASTSWEEP")"
   else
     echo "last sweep: (none)"
+  fi
+  n=$(hk_interval)
+  if [ "$n" = "0" ]; then
+    echo "housekeep: off"
+  else
+    hk_last=""
+    if [ -f "$GITDIR/agent_housekeep.last" ]; then
+      hk_last=$(awk 'NR==1{$1=""; sub(/^ +/,""); print; exit}' "$GITDIR/agent_housekeep.last" 2>/dev/null) || hk_last=""
+    fi
+    echo "housekeep: every $n minutes, last ${hk_last:-(none)}"
   fi
 }
 

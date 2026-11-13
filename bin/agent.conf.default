@@ -31,3 +31,4 @@ stage_merge=5
 board_watch_sec=60
 progress_eta_min_pct=20
 statusline_refresh_sec=60
+housekeep_interval_min=120
