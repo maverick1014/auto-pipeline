@@ -1192,7 +1192,9 @@ class TestConfKey(unittest.TestCase):
 
     def test_the_template_has_it_last_on_by_default(self):
         lines = [l for l in read_root("bin", "agent.conf.default").splitlines() if l.strip()]
-        self.assertEqual(lines[-1], "housekeep_interval_min=120")
+        # it was the last line; estimate-blend (2026-11-13) appended its keys after it
+        at = lines.index("statusline_refresh_sec=60")
+        self.assertEqual(lines[at + 1], "housekeep_interval_min=120")
         conf = agent_conf.load(os.path.join(ROOT, "bin", "agent.conf.default"))
         self.assertEqual(agent_conf.validate(conf), {})
 
@@ -1511,7 +1513,9 @@ class TestDocs(unittest.TestCase):
         self.assertIn("bin/agent-housekeep.sh", read_root("README.md"))
 
     def test_release(self):
-        self.assertEqual(json.loads(read_root(".claude-plugin", "plugin.json"))["version"], "0.33.0")
+        # estimate-blend (2026-11-13) released 0.34.0 on top: at least 0.33.0, like the other release tests
+        ver = json.loads(read_root(".claude-plugin", "plugin.json"))["version"]
+        self.assertGreaterEqual(tuple(int(x) for x in ver.split(".")), (0, 33, 0))
 
 
 if __name__ == "__main__":

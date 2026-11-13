@@ -21,8 +21,9 @@ CONTRACT (E1, E2: todo done)
 
     The line leaves agent_todo.txt and lands in agent_completed.txt as
 
-        <date> | <name> | <what> | data repo=<r> type=<t> lane=<l> mock=<yes|no> est=<m> work=<m> wait=<m> clock=<m> bounces=<n> workers=<n> files=<n> lines=<n> tests=<n> adds=<n>
+        <date> | <name> | <what> | data repo=<r> type=<t> lane=<l> mock=<yes|no> est=<m> work=<m> wait=<m> clock=<m> bounces=<n> workers=<n> files=<n> lines=<n> tests=<n> adds=<n> guess=<m>
 
+    (guess: estimate-blend, 2026-11-13, tests/test_agent_estimate_blend.py)
     Keys always in that order, one space between them, "-" for a value that
     is not known. Computed by the script itself:
         repo    the folder name of the project's main repo
@@ -144,7 +145,8 @@ if HERE not in sys.path:
 from scripthelp import ScriptCase
 
 KEYS = ["repo", "type", "lane", "mock", "est", "work", "wait", "clock",
-        "bounces", "workers", "files", "lines", "tests", "adds"]
+        "bounces", "workers", "files", "lines", "tests", "adds",
+        "guess"]   # estimate-blend (2026-11-13): the manager's guess, the last key
 TYPES = ["page", "server", "script", "docs", "cloud", "app", "data", "mixed"]
 NOW = "2026-10-01 20:30"
 
@@ -775,19 +777,19 @@ HERE_DATA = "2026-10-01 | here-new | a data line | " + block(
     wait=45, clock=150, bounces=1, workers=3, files=7, lines=412, tests=38,
     adds=2)
 HERE_ROW = ["project", "here-new", "2026-10-01", "script", "full", "no", "90",
-            "85", "45", "150", "1", "3", "7", "412", "38", "2"]
+            "85", "45", "150", "1", "3", "7", "412", "38", "2", "-"]
 SHOP_OLD = "2026-09-01 | shop-old | a legacy line of the shop | est 60m actual 75m"
 SHOP_ROW = ["shop", "shop-old", "2026-09-01", "-", "-", "-", "60", "-", "-",
-            "75", "-", "-", "-", "-", "-", "-"]
+            "75", "-", "-", "-", "-", "-", "-", "-"]
 SHOP_DROPPED = "2026-09-02 | shop-gone | dropped | est 60m actual - | dropped: no"
 API_DATA = "2026-09-03 | api-new | a data line of the api | " + block(
     repo="api", type="server", lane="fast", mock="no", est=15, work=9, wait=0,
     clock=11, bounces=0, workers=0, files=2, lines=31, tests=1, adds=0)
 API_ROW = ["api", "api-new", "2026-09-03", "server", "fast", "no", "15", "9",
-           "0", "11", "0", "0", "2", "31", "1", "0"]
+           "0", "11", "0", "0", "2", "31", "1", "0", "-"]
 EXTRA_OLD = "2026-09-04 | extra-old | given by hand | est 20m actual 33m"
 EXTRA_ROW = ["extra", "extra-old", "2026-09-04", "-", "-", "-", "20", "-", "-",
-             "33", "-", "-", "-", "-", "-", "-"]
+             "33", "-", "-", "-", "-", "-", "-", "-"]
 
 
 class TestDataAllRepos(DataCase):
@@ -941,7 +943,7 @@ class TestDataAllRepos(DataCase):
                               "45", "--type", "docs", "--lane", "full",
                               "--mock", "no"))
         self.assertIn(["project", "t1", "2026-10-01", "docs", "full", "no",
-                       "90", "85", "45", "150", "-", "-", "-", "-", "-", "-"],
+                       "90", "85", "45", "150", "-", "-", "-", "-", "-", "-", "-"],
                       self.rows())
 
 

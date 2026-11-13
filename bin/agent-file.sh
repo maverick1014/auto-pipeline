@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # agent-file.sh — the only way to write agent_*.txt. No agent, no tokens, one format.
 #
-#   agent-file.sh todo add  "<name>" "<size>" "<what>" [est_minutes] [by]  -> agent_todo.txt (by defaults to "main")
+#   agent-file.sh todo add  "<name>" "<size>" "<what>" [est_minutes] [by] [--guess <m>]  -> agent_todo.txt (by defaults to "main")
 #   agent-file.sh todo done "<name>" ["<result>"] [--work <m>] [--wait <m>] [--bounces <n>] [--workers <n>]
 #                 [--mock yes|no] [--lane fast|full] [--type <t>] [--tests <n>] [--adds <n>]
 #                 [--merge <commit> | --range <a>..<b>]       -> line moves to agent_completed.txt as one data line
@@ -19,7 +19,7 @@
 #   agent-file.sh data [--what] [<repo path>...]              -> table: one row per finished task, every repo on this machine
 #   agent-file.sh repos                                       -> read only: real paths one per line: this repo, then world.json territories, then joined-repos.txt; each once, a missing folder is skipped
 #   agent-file.sh todo cross "<name>" <repo>                  -> the todo line says the other repo of a two-repo task: " | cross <repo>" (replaced in place, else appended)
-#   agent-file.sh estimate --lane fast|full --mock yes|no --type <t> [--name <name>] "<what>"   -> work minutes, range, like tasks
+#   agent-file.sh estimate --lane fast|full --mock yes|no --type <t> [--name <name>] [--guess <m>] "<what>"   -> work minutes, range, like tasks
 #   agent-file.sh backtest [--tasks]                          -> the estimator against the rubric and the todo est, rolling
 #   agent-file.sh retrain [--force]                           -> learn agent_estimate.txt when 30 tasks, then once a week
 #   agent-file.sh eta <name> [--step <n>] [--work-so-far <m>] [--wait <m>]    -> one line: work left, done around, owner needed next
@@ -50,10 +50,12 @@
 #   Neither given: files=- lines=- and "not counted" is printed. Both given, or a commit git does not know: refused.
 #   A bad option is refused: one line on stderr that names it, exit 1, nothing moves.
 #   It prints "todo done: <name>" and "TIME DATA: <n> of 30" (finished tasks that have a work number).
+#   No --type or no --lane: one warning line on stderr ("todo done: warning: no --type --lane given (...)"), exit 0.
+#   --guess <m> (whole number, 1 or more; anywhere after "todo add") adds the field " | guess <m>m" after est; done copies it to guess=<m>.
 #   Then the retrain, only when due: one line "estimate retrain: ...", never the table. A failure never stops todo done.
 #
 # The line in agent_completed.txt (keys in this order, "-" when not known):
-#   <date> | <name> | <what> | data repo=<r> type=<t> lane=<l> mock=<yes|no> est=<m> work=<m> wait=<m> clock=<m> bounces=<n> workers=<n> files=<n> lines=<n> tests=<n> adds=<n>
+#   <date> | <name> | <what> | data repo=<r> type=<t> lane=<l> mock=<yes|no> est=<m> work=<m> wait=<m> clock=<m> bounces=<n> workers=<n> files=<n> lines=<n> tests=<n> adds=<n> guess=<m>
 #   An old line ("est <n>m actual <n>m") has no data block.
 #
 # time: ratio = work / est, one decimal; "-" when work or est is missing. An old line is est + clock, never work.
@@ -71,7 +73,7 @@
 #   Refused (one line on stderr, exit 1, nothing written): no such line, only a dropped line, no fact given.
 #   Prints "wrote: <the new line>" and "TIME DATA: <n> of 30". --dry-run prints "would write: <the new line>" only.
 #
-# data: read-only. Columns: repo name date type lane mock est work wait clock bounces workers files lines tests adds.
+# data: read-only. Columns: repo name date type lane mock est work wait clock bounces workers files lines tests adds guess.
 #   An old line gives est and clock, "-" elsewhere. The repo column is the data block's repo, else the folder name.
 #   Repos, in this order, the same repo (real path) once:
 #     1. this repo
@@ -81,7 +83,7 @@
 #     4. the paths given as arguments
 #   It reads only <repo>/agent_completed.txt of another repo and writes nothing there.
 #   No such file or folder: one line "skipped ..." on stderr, exit stays 0.
-#   --what adds one last column, what: the text between the name and the data block ("-" when empty).
+#   guess = the manager's own minutes from the todo line, "-" when none. --what adds one last column, what: the text between the name and the data block ("-" when empty).
 #
 # estimate, backtest, retrain: the work is done by agent_estimate.py (python3), from the table of data --what.
 #   Read requirements/estimate.md. An estimate = agent work minutes, from what is known before dispatch only.
@@ -89,12 +91,16 @@
 #     then up to 3 "like <name>: <m>m work (...)" lines. A fact known only after the task (--work --wait --clock --est
 #     --bounces --workers --files --lines --tests --adds), a missing or bad --lane --mock --type, or no what:
 #     refused, one line on stderr that names it, exit 1, nothing on stdout.
-#   backtest: read only. Each task with 10 tasks before it is estimated from those only; the estimator, the rubric
-#     and the todo est are scored (median error, within 30%, in range); winner = estimator only when strictly better.
-#     --tasks adds one row per tested task. Fewer than 11 tasks: "backtest: <N> tasks, needs at least 11".
+#   estimate --guess <m>: the manager's own minutes, blended in only when the version is a blend.
+#   estimate and backtest read estimate_target_pct, estimate_bias_min, estimate_big_min from agent.conf.
+#   backtest: read only. Each task with 10 tasks before it is estimated from those only. Rows: estimator, blend, blend+repo,
+#     rubric, todo est (median error, within 30%, in range), then "work >= <big>m: <n> tasks" and the same rows for big tasks.
+#     winner = a blend only when its within 30% beats the base winner (estimator or rubric). Last line:
+#     "target within 30% <goal>%: ...". --tasks: one row per tested task, with guess, blend and blend+repo. Under 11 tasks: one line "backtest: <N> tasks, needs at least 11", exit 0.
 #   retrain: due at 30 tasks, then once a week with 1+ new task (--force skips the week, never the 30). Writes agent_estimate.txt
-#     (JSON, atomic) in the project root: v1 = the setting picked from all tasks and its backtest; a later check keeps
-#     the new version only when its error on the new tasks is strictly lower. Prints the table and one verdict line.
+#     (JSON, atomic) in the project root: v1 = the winner's method from all tasks (a blend only when it wins); a later check
+#     keeps the new version only when its error on the new tasks is strictly lower, and switches from a non-blend version
+#     to the blend only when the blend's backtest within 30% beats it. Prints the table and one verdict line.
 #
 # eta: one line, nothing written. est comes from the open todo line <name>. step = how far the work is, 0 to 7
 #   (7 = done; no step = 0). All minutes round up.
@@ -169,7 +175,7 @@
 set -eu
 TIME_DATA_GOAL=30
 DATA_TYPES="page server script docs cloud app data mixed"
-DATA_KEYS="repo type lane mock est work wait clock bounces workers files lines tests adds"
+DATA_KEYS="repo type lane mock est work wait clock bounces workers files lines tests adds guess"
 OPT_CMD="todo done"   # the prefix of a refusal from done_opts; backfill sets it to "backfill"
 . "$(dirname "$0")/agent-roots.sh"
 roots_read
@@ -204,12 +210,12 @@ minutes_between() {
 # the data block as d_<key> variables: dreset sets them all to "-", dblock prints "data repo=... adds=..."
 dreset() {
   d_repo=-; d_type=-; d_lane=-; d_mock=-; d_est=-; d_work=-; d_wait=-; d_clock=-
-  d_bounces=-; d_workers=-; d_files=-; d_lines=-; d_tests=-; d_adds=-
+  d_bounces=-; d_workers=-; d_files=-; d_lines=-; d_tests=-; d_adds=-; d_guess=-
 }
 dblock() {
-  printf 'data repo=%s type=%s lane=%s mock=%s est=%s work=%s wait=%s clock=%s bounces=%s workers=%s files=%s lines=%s tests=%s adds=%s' \
+  printf 'data repo=%s type=%s lane=%s mock=%s est=%s work=%s wait=%s clock=%s bounces=%s workers=%s files=%s lines=%s tests=%s adds=%s guess=%s' \
     "$d_repo" "$d_type" "$d_lane" "$d_mock" "$d_est" "$d_work" "$d_wait" "$d_clock" \
-    "$d_bounces" "$d_workers" "$d_files" "$d_lines" "$d_tests" "$d_adds"
+    "$d_bounces" "$d_workers" "$d_files" "$d_lines" "$d_tests" "$d_adds" "$d_guess"
 }
 # dkey "<line>" <key>: that key of the line's data block (can be "-"); nothing when the line has no block
 dkey() {
@@ -360,8 +366,8 @@ backfill_name() {
 }
 
 # --- data
-DATA_FMT='%-14s %-30s %-10s %-6s %-4s %-4s %5s %5s %5s %6s %7s %7s %5s %6s %5s %4s\n'
-DATA_FMT_WHAT='%-14s %-30s %-10s %-6s %-4s %-4s %5s %5s %5s %6s %7s %7s %5s %6s %5s %4s %s\n'   # data --what: one more column
+DATA_FMT='%-14s %-30s %-10s %-6s %-4s %-4s %5s %5s %5s %6s %7s %7s %5s %6s %5s %4s %5s\n'
+DATA_FMT_WHAT='%-14s %-30s %-10s %-6s %-4s %-4s %5s %5s %5s %6s %7s %7s %5s %6s %5s %4s %5s %s\n'   # data --what: one more column
 DATA_WHAT=
 DATA_SEEN="
 "
@@ -414,11 +420,11 @@ $rp
       esac
       printf "$DATA_FMT_WHAT" "${d_repo// /_}" "${name// /_}" "${date// /_}" "${d_type:--}" "${d_lane:--}" "${d_mock:--}" \
         "${d_est:--}" "${d_work:--}" "${d_wait:--}" "${d_clock:--}" "${d_bounces:--}" "${d_workers:--}" \
-        "${d_files:--}" "${d_lines:--}" "${d_tests:--}" "${d_adds:--}" "${what:--}"
+        "${d_files:--}" "${d_lines:--}" "${d_tests:--}" "${d_adds:--}" "${d_guess:--}" "${what:--}"
     else
       printf "$DATA_FMT" "${d_repo// /_}" "${name// /_}" "${date// /_}" "${d_type:--}" "${d_lane:--}" "${d_mock:--}" \
         "${d_est:--}" "${d_work:--}" "${d_wait:--}" "${d_clock:--}" "${d_bounces:--}" "${d_workers:--}" \
-        "${d_files:--}" "${d_lines:--}" "${d_tests:--}" "${d_adds:--}"
+        "${d_files:--}" "${d_lines:--}" "${d_tests:--}" "${d_adds:--}" "${d_guess:--}"
     fi
   done < "$rp/agent_completed.txt"
 }
@@ -457,9 +463,9 @@ data_run() {
     case "$a" in --what) DATA_WHAT=1;; *) set -- "$@" "$a";; esac
   done
   if [ -n "$DATA_WHAT" ]; then
-    printf "$DATA_FMT_WHAT" repo name date type lane mock est work wait clock bounces workers files lines tests adds what
+    printf "$DATA_FMT_WHAT" repo name date type lane mock est work wait clock bounces workers files lines tests adds guess what
   else
-    printf "$DATA_FMT" repo name date type lane mock est work wait clock bounces workers files lines tests adds
+    printf "$DATA_FMT" repo name date type lane mock est work wait clock bounces workers files lines tests adds guess
   fi
   list=$(repos_list)
   while IFS= read -r p; do [ -z "$p" ] || data_repo "$p"; done <<< "$list"
@@ -474,6 +480,10 @@ est_py() {
   shift
   command -v python3 >/dev/null 2>&1 || refuse "$cmd: python3 is needed and was not found"
   rows=$(data_run --what 2>/dev/null) || true
+  AGENT_ESTIMATE_REPO=$(repo_name "$ROOT") \
+  AGENT_ESTIMATE_TARGET_PCT=$(conf_num estimate_target_pct 1 100 || true) \
+  AGENT_ESTIMATE_BIAS_MIN=$(conf_num estimate_bias_min 1 1000 || true) \
+  AGENT_ESTIMATE_BIG_MIN=$(conf_num estimate_big_min 1 10000 || true) \
   python3 "$(dirname "$0")/agent_estimate.py" "$cmd" "$ROOT/agent_estimate.txt" "${NOW%% *}" "$@" <<< "$rows"
 }
 # the retrain after todo done: one verdict line only when it ran; any failure is swallowed (one short line)
@@ -909,9 +919,18 @@ case "${1:-}:${2:-}" in
     [ $# -ge 2 ] || usage
     helper_task "$2";;
   todo:add)
+    shift 2; guess=""; rest=()
+    while [ $# -gt 0 ]; do   # --guess <m> may stand anywhere after "todo add"; the other args keep their order
+      if [ "$1" = "--guess" ]; then
+        [ $# -ge 2 ] && is_num "$2" && [ "${#2}" -le 9 ] && [ $((10#$2)) -ge 1 ] || refuse "todo add: --guess wants a whole number, 1 or more (got: ${2:-nothing})"
+        guess=$((10#$2)); shift 2
+      else rest+=("$1"); shift; fi
+    done
+    set -- todo add ${rest[@]+"${rest[@]}"}
     need 5 "$@"; drop "$TODO" "$3"
     what="$5"
     [ -n "${6:-}" ] && what="$5 | est ${6}m"
+    [ -z "$guess" ] || what="$what | guess ${guess}m"
     by="${7:-$WHO}"
     append "$TODO" "$3 | $4 | $what | opened $NOW | by $by"
     echo "todo added: $3";;
@@ -922,12 +941,16 @@ case "${1:-}:${2:-}" in
     case "${1:-}" in --*) ;; *) [ $# -eq 0 ] || shift;; esac   # the "<result>" text is not stored
     dreset; d_files=; d_lines=
     done_opts "$@"
+    miss=; [ "$d_type" != - ] || miss=" --type"; [ "$d_lane" != - ] || miss="$miss --lane"
+    [ -z "$miss" ] || echo "todo done: warning: no${miss} given (the estimator learns less from this line)" >&2
     counted=yes; [ -n "$d_files" ] || { counted=; d_files=-; d_lines=-; }
     what=$(printf '%s\n' "$line" | awk -F' \\| ' '{print $3}')
     est=$(old_num "$line" est)
     opened=$(printf '%s\n' "$line" | sed -n 's/.*opened \([0-9][0-9-]* [0-9:]*\).*/\1/p')
     clock=; [ -z "$opened" ] || clock=$(minutes_between "$opened" "$NOW")
     d_repo=$(repo_name "$ROOT"); d_est=${est:--}; d_clock=${clock:--}
+    d_guess=$(printf '%s\n' "$line" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^guess [0-9]+m$/) {v = $i; sub(/^guess /, "", v); sub(/m$/, "", v); print v; exit}}')
+    d_guess=${d_guess:--}
     date="${NOW%% *}"
     drop "$TODO" "$name"; append "$DONE" "$date | $name | $what | $(dblock)"
     echo "todo done: $name"

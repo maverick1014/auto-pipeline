@@ -30,7 +30,9 @@ python 3.9 standard library only)
         winner: estimator|rubric
         (error = median absolute error, one decimal; columns split by spaces)
         --tasks: one row per tested task, before the table:
-        task <name> work <w> estimator <e> (<lo>-<hi>) rubric <r>
+        task <name> work <w> guess <g|-> estimator <e> (<lo>-<hi>) blend .. rubric <r>
+        (estimate-blend, 2026-11-13: the blend rows, the big rows and the
+         target as a within 30% share: tests/test_agent_estimate_blend.py)
         Fewer than 11 tasks: backtest: <N> tasks, needs at least 11
 
     retrain [--force]
@@ -83,7 +85,8 @@ FIRST_LINE = re.compile(
 LIKE_LINE = re.compile(
     r"^like (\S+): (\d+)m work \((\S+), (fast|full), mock (yes|no), (\d{4}-\d\d-\d\d)\)$")
 TASK_ROW = re.compile(
-    r"^task (\S+) work (\d+) estimator (\d+) \((\d+)-(\d+)\) rubric (\d+)$")
+    r"^task (\S+) work (\d+) guess (?:\d+|-) estimator (\d+) \((\d+)-(\d+)\) "
+    r"blend \d+ \(\d+-\d+\) blend\+repo \d+ \(\d+-\d+\) rubric (\d+)$")
 
 
 def row_re(label, has_range=True):
@@ -240,7 +243,7 @@ class TestDataWhat(EstimateCase):
 
     def test_without_the_option_the_table_stays_as_it_was(self):
         rows = self.lines(self.assertOk(self.af("data")))
-        self.assertEqual(rows[0].split()[-1], "adds")
+        self.assertEqual(rows[0].split()[-1], "guess")   # estimate-blend: guess after adds
         self.assertNotIn("agent-city", rows[1])
 
 
@@ -613,11 +616,13 @@ class TestRetrainCheck(EstimateCase):
         self.assertEqual(self.lines(out), ["estimate retrain: not due (45 tasks, next check on 2026-10-12)"])
 
     def test_the_target_line_follows_the_table_and_the_verdict(self):
+        # estimate-blend (owner brief 2026-11-13): the target is a within 30% share, the 5m line goes
         self.completed(steady(40))
         self.model(versions=[version(k=3, text=0, type=0.5)], date="2026-09-28")
-        tgt = re.compile(r"target 5m: (met|error \d+\.\dm, gap \d+\.\dm)$")
+        tgt = re.compile(r"^target within 30% 50%: (met \(\d+%\)|\d+%, gap \d+ points)$")
         rows = self.lines(self.assertOk(self.af("retrain")))
-        self.assertEqual(len([r for r in rows if r.startswith("target 5m: ")]), 2, rows)
+        self.assertEqual(len([r for r in rows if r.startswith("target within 30% ")]), 2, rows)
+        self.assertFalse([r for r in rows if r.startswith("target 5m")], rows)
         self.assertRegex(rows[-1], tgt)
         self.assertRegex(rows[rows.index([r for r in rows if r.startswith("winner: ")][0]) + 1], tgt)
         self.assertRegex(self.lines(self.assertOk(self.af("backtest")))[-1], tgt)
@@ -732,11 +737,15 @@ class TestRealData(EstimateCase):
     def test_a_task_row(self):
         rows = self.task_rows(self.assertOk(self.af("backtest", "--tasks")))
         self.assertEqual(len(rows), 20)
-        self.assertIn("task city-device-join work 43 estimator 28 (18-57) rubric 53", rows)
+        row = [TASK_ROW.match(r) for r in rows if r.startswith("task city-device-join ")]
+        self.assertEqual(len(row), 1, rows)
+        self.assertEqual(row[0].group(2, 3, 4, 5, 6), ("43", "28", "18", "57", "53"))
         self.assertEqual(TASK_ROW.match(rows[0]).group(1), "msg-sides")
 
     def test_v1_and_three_example_tasks(self):
         out = self.assertOk(self.af("retrain"))
+        # estimate-blend: the todo est of these old lines is their guess; the blend ties the
+        # estimator here (within 30% 40% both), so v1 stays the estimator
         self.assertTrue(self.verdicts(out)[0].startswith(
             "estimate retrain: v1 made from 30 tasks: estimator"), out)
         ver = self.model_json()["versions"][0]
