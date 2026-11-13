@@ -58,6 +58,7 @@
 - PRINCIPLES.md (time rules): before a new estimate, `bin/agent-file.sh time`, then `bin/agent-file.sh estimate`. README: the command list shows estimate, backtest, retrain; the files table has `agent_estimate.txt`.
 
 ## v3: the blend (owner 2026-11-13, task estimate-blend)
+- Where this section and the sections above differ (backtest rows, task rows, winner, target, model keys), this section wins.
 - Owner ask: "for the estimate time skill, so far used until now, got any data for you to improve?" -> "can improve also". Laptop backtest, 178 tasks: v2 within 30% on 30%, the manager's todo est 35%, sqrt(estimator x manager guess) 39% (error 17.6m), that blend x per-repo bias error 16.4m; repo bias alone is worse (25.9m). Big tasks (work >= 120m, n=31): work / estimator 2.21, 58% above the range.
 - The exact contract (lines, keys, rules) is the docstring of `tests/test_agent_estimate_blend.py`. The short form:
 - The manager's guess is an input known before dispatch: `estimate ... --guess <m>`. The dispatch skill: write your own guess first, then estimate with `--guess`; `todo add ... --guess <m>` keeps it on the todo line (field `guess <m>m`); `todo done` copies it into the data block, key `guess`, the last key. Old lines read "-"; in the backtest an old line's todo est is its guess.
