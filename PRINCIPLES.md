@@ -141,7 +141,7 @@ W10. Second session in the same repo
 
 W11. Time
 - Every task gets an estimate in minutes before dispatch, on its todo line
-- The manager writes its own guess in minutes first, then runs `bin/agent-file.sh estimate ... --guess <m>`; the estimate minutes go on the todo line, the guess too (`todo add ... --guess <m>`)
+- Write your own guess in minutes first, then `estimate ... --guess <m>`; est and guess both go on the todo line (`todo add ... --guess <m>`)
 - Estimate = agent work only. Waiting is not work: mock gate, owner question, owner review, hold, suite slot
 - Every done report has one line: `TIME: est <n>m, actual <n>m, wait <n>m`. Actual = agent work only
 - Done = merged and cleaned. The main manager passes work, wait and the task facts to `bin/agent-file.sh todo done`
