@@ -32,17 +32,20 @@ R5. Task files
 - `agent_todo.txt` = open tasks only, always current
 - Done → agent_completed.txt: date, name, what, then one `data` block written by `agent-file.sh`: repo, type, lane, mock, est, work, wait, clock, bounces, workers, files, lines, tests, adds. No test results, that is report material
 - No other task tracking
+- The housekeep pass never closes a todo line: it flags one whose branch is merged into origin/main, or one that is stale (no worktree line, no open wait, quiet longer than housekeep_interval_min)
 - All four `agent_*.txt` files are written only through `./agent-file.sh`. No agent for that, it costs tokens
 
 R6. Ideas file
 - `agent_ideas.txt` = ideas outside the current task
 - Agents append, keep it clean and current
 - Human reviews it on his own time
+- The housekeep pass removes an exact duplicate idea (the first stays) and flags suspects (an idea naming a task finished after it, or a file that is gone), never removes a suspect
 
 R7. Worktree file
 - `agent_worktree.txt` = one line per live worktree: path, task manager, module, status (working | final | idle)
 - Task manager updates its own line. Deputy removes the line after cleanup
 - Main manager reads it before every dispatch (W9)
+- The housekeep pass removes a line whose worktree folder is gone and has no live pane; a working, final or human-direct line is only flagged
 
 ## B. Work
 
@@ -106,6 +109,9 @@ W8. Merge and cleanup
 - Clean up only after the merge is verified
 - Deputy runs `./agent-file.sh worktree rm <path>` and `./agent-file.sh todo done <name>` with the facts from the main manager and `--merge <commit>`
 - Sweep: `bin/agent-cleanup.sh --apply` at session start and when the last open task closes (todo empty, no live worktree). The scripts run it, no loop
+- Housekeep: every housekeep_interval_min minutes (default 120, 0 = off) the monitor loop runs `bin/agent-housekeep.sh --apply`, which ends with this sweep. Plain and cloud: no loop, run it by hand
+- The main manager reads the HOUSEKEEP block in agent_state.txt at its next activity and judges each idea suspect: `agent-file.sh idea rm <n>` only when done, or voided by a recorded owner decision
+- It then acts on the other flags of the block
 - Main manager only. Task managers, Helpers and workers never run it
 - Own repo only: this machine and every paired Orca machine
 - Removes only safe items: merged into origin/main, no live agent, no uncommitted or unpushed work, no working/final/human-direct line
@@ -156,6 +162,7 @@ W12. Cross-repo
 - Send the brief with `SendMessage`, first line `[<model> <effort>] CROSS-REPO TASK <name> from <repo>`; same brief shape as the dispatch skill
 - The peer runs it like a human task: `agent-file.sh todo add … <est> <repo>`, its own lane, and reports `DONE PASS <name>` back by SendMessage
 - The sender keeps its todo line open until both sides are done, then one report to the human
+- The sender marks its line `agent-file.sh todo cross <name> <other repo>`, so the housekeep pass reads the other side
 - Called side first: the repo being called (the API) finishes first; its DONE PASS carries the contract (endpoint, fields, errors). The caller (the app) starts from that contract
 - Only main managers cross repos. Task managers and workers never
 - Need to know the other repo's code → ask its main manager. Never read or edit another repo
