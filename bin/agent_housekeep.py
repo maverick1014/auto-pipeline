@@ -13,6 +13,7 @@ An internal error is a note line, never a traceback.
 """
 
 import argparse
+import fnmatch
 import os
 import re
 import sys
@@ -26,6 +27,14 @@ import agent_cleanup  # noqa: E402
 import agent_conf  # noqa: E402
 
 TAIL = re.compile(r" \| \d{4}-\d\d-\d\d \d\d:\d\d \| by \S+$")
+KEPT = re.compile(r" \| kept \d{4}-\d\d-\d\d\s*$")
+NOTE_WORDS = re.compile(r"(?<![A-Za-z0-9_-])(?:TMs?|task managers?|bounce"
+                        r"|worker|S\d+)(?![A-Za-z0-9_-])", re.I)
+NOTE_PAREN = re.compile(r"\([^()]*\)")
+NOTE_LAST = re.compile(r"\([^()]*\)[ .]*$")
+NOTE_SENT = re.compile(r"(?:^|(?<=\. ))(?:From|Seen) .*?(?:\. |$)", re.S)
+REPO_DIRS = ("bin", "tests", "skills", "agents", "hooks", "requirements",
+             "mock")
 DATE_TIME = re.compile(r"\d{4}-\d\d-\d\d \d\d:\d\d")
 EXTS = (".sh", ".py", ".md", ".txt", ".json", ".js", ".mjs", ".html", ".conf",
         ".default")
@@ -65,13 +74,22 @@ def whole_word(name, text):
 
 
 def idea_text(line):
+    line = KEPT.sub("", line)
     m = TAIL.search(line)
     return (line[:m.start()] if m else line).strip()
 
 
 def idea_day(line):
-    m = TAIL.search(line)
+    m = TAIL.search(KEPT.sub("", line))
     return m.group(0)[3:13] if m else None
+
+
+def cut_note(text):
+    """The text without its provenance note (P1, P2, P3)."""
+    text = NOTE_PAREN.sub(lambda m: " " if NOTE_WORDS.search(m.group(0))
+                          else m.group(0), text)
+    text = NOTE_LAST.sub(" ", text)
+    return NOTE_SENT.sub(" ", text)
 
 
 class Housekeep(object):
@@ -357,11 +375,14 @@ class Housekeep(object):
             text = idea_text(line)
             if not text:
                 continue
+            if KEPT.search(line):
+                continue
             reasons = []
             day = idea_day(line)
             if day:
+                body = cut_note(text)
                 for date, task, dropped in done:
-                    if date >= day and task and whole_word(task, text):
+                    if date > day and task and whole_word(task, body):
                         r = "names task %s, %s %s" % (
                             task, "dropped" if dropped else "done", date)
                         if r not in reasons:
@@ -385,14 +406,20 @@ class Housekeep(object):
         out = []
         for word in re.findall(r"[A-Za-z0-9_./~-]+", text):
             word = word.rstrip(".,:;)")
+            if word.startswith("./"):
+                word = word[2:]
             if not word.endswith(EXTS) or word in out:
                 continue
-            if word.startswith("/") or word.startswith("~"):
-                found = os.path.exists(os.path.expanduser(word))
-            else:
+            if "/" in word:
+                if word.split("/")[0] not in REPO_DIRS or not os.path.isdir(
+                        os.path.join(self.root, word.split("/")[0])):
+                    continue
                 found = os.path.exists(os.path.join(self.root, word))
-                if not found and "/" not in word:
-                    found = word in self.tracked_names()
+            elif fnmatch.fnmatch(word, "agent_*.txt") or word.endswith(".md"):
+                found = os.path.exists(os.path.join(self.root, word)) \
+                    or word in self.tracked_names()
+            else:
+                continue
             if not found:
                 out.append(word)
         return out
