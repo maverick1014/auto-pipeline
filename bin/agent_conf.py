@@ -13,6 +13,7 @@ NUMBER_BOUNDS = {
     "max_agents": (1, 16),
     "monitor_interval_min": (1, 60),
     "stall_min": (1, 120),
+    "housekeep_interval_min": (0, 1440),
     "city_port": (1024, 65535),
     "city_idle_min": (1, 240),
     "city_governor_wait_sec": (5, 3600),
@@ -58,6 +59,7 @@ HINTS = {
     "max_agents": "How many agents may run at once on this machine. Whole number, 1 to 16.",
     "monitor_interval_min": "How often the monitor checks every worktree. Whole number, 1 to 60.",
     "stall_min": "How long all three signals may stay quiet before a worktree is called stalled. Whole number, 1 to 120.",
+    "housekeep_interval_min": "Minutes between housekeep passes (bin/agent-housekeep.sh) run by the monitor loop. 0 = off. Whole number, 0 to 1440.",
     "main_manager": "Model and effort for the main manager. Form: model-name:effort. Floor: Opus 5.5 or above, or any Fable, effort medium or above.",
     "fast_lane_deputy": "Model and effort for the fast-lane deputy. Form: model-name:effort.",
     "merge_deputy": "Model and effort for the merge deputy. Form: model-name:effort.",
@@ -93,7 +95,7 @@ HINTS = {
 
 GROUPS = [
     ("limits", ["max_usage_percent", "heavy_test_slots", "max_agents",
-                "monitor_interval_min", "stall_min"]),
+                "monitor_interval_min", "stall_min", "housekeep_interval_min"]),
     ("roles", list(ROLE_KEYS)),
     ("permission", ["permission_mode", "cloud_permission_mode", "auto_resume", "language", "adhd"]),
     ("runtime", ["runtime"]),

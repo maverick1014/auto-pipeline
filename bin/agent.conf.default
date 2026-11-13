@@ -31,6 +31,7 @@ stage_merge=5
 board_watch_sec=60
 progress_eta_min_pct=20
 statusline_refresh_sec=60
+housekeep_interval_min=120
 estimate_target_pct=50
 estimate_bias_min=5
 estimate_big_min=120

@@ -743,8 +743,10 @@ class TestEstimateConf(unittest.TestCase):
         conf = self.ac.load(os.path.join(BIN, "agent.conf.default"))
         for key, (default, _, _) in self.KEYS.items():
             self.assertEqual(conf.get(key), default, key)
+        # appended last, after statusline_refresh_sec and housekeep-2h's housekeep_interval_min (merged first)
         at = keys.index("statusline_refresh_sec")
-        self.assertEqual(keys[at + 1:at + 4], ["estimate_target_pct", "estimate_bias_min", "estimate_big_min"])
+        self.assertEqual(keys[at + 1:], ["housekeep_interval_min",
+                                         "estimate_target_pct", "estimate_bias_min", "estimate_big_min"])
 
 
 # ---------------------------------------------------------------- wired in

@@ -17,6 +17,8 @@
 #   agent-file.sh backfill [--dry-run]                        -> old lines: take work and wait from the text of each line
 #   agent-file.sh backfill <name> [--dry-run] [--force] <todo done options>   -> set the data of one finished line
 #   agent-file.sh data [--what] [<repo path>...]              -> table: one row per finished task, every repo on this machine
+#   agent-file.sh repos                                       -> read only: real paths one per line: this repo, then world.json territories, then joined-repos.txt; each once, a missing folder is skipped
+#   agent-file.sh todo cross "<name>" <repo>                  -> the todo line says the other repo of a two-repo task: " | cross <repo>" (replaced in place, else appended)
 #   agent-file.sh estimate --lane fast|full --mock yes|no --type <t> [--name <name>] [--guess <m>] "<what>"   -> work minutes, range, like tasks
 #   agent-file.sh backtest [--tasks]                          -> the estimator against the rubric and the todo est, rolling
 #   agent-file.sh retrain [--force]                           -> learn agent_estimate.txt when 30 tasks, then once a week
@@ -180,7 +182,7 @@ roots_read
 ROOT="$PROJECT_ROOT"
 TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agent_ideas.txt"; WT="$ROOT/agent_worktree.txt"
 NOW=${AGENT_FAKE_NOW:-$(date '+%Y-%m-%d %H:%M')}; WHO=${AGENT_ROLE:-main}
-case "${1:-}" in data|eta|estimate|backtest|retrain|helper-task|board|park|worker|questions) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+case "${1:-}" in data|repos|eta|estimate|backtest|retrain|helper-task|board|park|worker|questions) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the whole header comment block, whatever its length
 usage() { awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 2; }
@@ -426,9 +428,35 @@ $rp
     fi
   done < "$rp/agent_completed.txt"
 }
+# repos_list: the real paths of this repo, the world.json territories, then joined-repos.txt; each once, a missing folder skipped
+repos_list() {
+  local city="${AGENT_CITY_HOME:-${HOME:-}/.claude/agent-city}" p rp all joined= seen="
+"
+  all=$(printf '%s\n' "$ROOT"; world_repos "$city/world.json")
+  if [ -f "$city/joined-repos.txt" ]; then
+    while read -r p || [ -n "$p" ]; do
+      case "$p" in
+        /*) joined="$joined$p
+";;
+      esac
+    done < "$city/joined-repos.txt"
+    all="$all
+$joined"
+  fi
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    rp=$(cd "$p" 2>/dev/null && pwd -P) || { echo "skipped: no such folder: $p" >&2; continue; }
+    case "$seen" in *"
+$rp
+"*) continue;; esac
+    seen="$seen$rp
+"
+    printf '%s\n' "$rp"
+  done <<< "$all"
+}
 # data [--what] [<repo path>...]
 data_run() {
-  local city="${AGENT_CITY_HOME:-${HOME:-}/.claude/agent-city}" p list a i=$#
+  local p list a i=$#
   DATA_WHAT=
   while [ "$i" -gt 0 ]; do   # --what may stand anywhere; the rest are repo paths
     a=$1; shift; i=$((i - 1))
@@ -439,14 +467,8 @@ data_run() {
   else
     printf "$DATA_FMT" repo name date type lane mock est work wait clock bounces workers files lines tests adds guess
   fi
-  data_repo "$ROOT"
-  list=$(world_repos "$city/world.json")
+  list=$(repos_list)
   while IFS= read -r p; do [ -z "$p" ] || data_repo "$p"; done <<< "$list"
-  if [ -f "$city/joined-repos.txt" ]; then
-    while read -r p || [ -n "$p" ]; do
-      case "$p" in /*) data_repo "$p";; esac
-    done < "$city/joined-repos.txt"
-  fi
   for p in "$@"; do data_repo "$p"; done
 }
 
@@ -675,6 +697,26 @@ todo_where() {
     }
     { print }' "$TODO" > "$TODO.tmp" && mv "$TODO.tmp" "$TODO"
   echo "todo where: $name -> $machine${path:+ $path}"
+}
+
+# todo_cross <name> <repo>
+todo_cross() {
+  local name="${1:-}" repo="${2:-}" line
+  [ -n "$name" ] || refuse "todo cross: needs a todo name"
+  line=$(first "$TODO" "$name")
+  [ -n "$line" ] || refuse "no todo line named: $name"
+  [ -n "$repo" ] || refuse "todo cross: needs a repo"
+  [ $# -le 2 ] || refuse "todo cross: too many arguments; the repo has no space"
+  case "$repo" in *[[:space:]]*) refuse "todo cross: the repo has no space (got: $repo)";; esac
+  if bad_text "$repo"; then refuse "todo cross: the repo must not hold \" | \" or a line break"; fi
+  NEW="cross $repo" awk -F' \\| ' -v OFS=' | ' -v k="$name" '
+    $1 == k && !hit {
+      hit = 1; wi = 0
+      for (i = 4; i <= NF; i++) if (!wi && $i ~ /^cross /) wi = i
+      if (wi) $wi = ENVIRON["NEW"]; else $(NF + 1) = ENVIRON["NEW"]
+    }
+    { print }' "$TODO" > "$TODO.tmp" && mv "$TODO.tmp" "$TODO"
+  echo "todo cross: $name -> $repo"
 }
 
 # --- park, worker (agent_state.txt of the folder this session is in)
@@ -920,6 +962,8 @@ case "${1:-}:${2:-}" in
     shift 2; todo_wait "$@";;
   todo:where)
     shift 2; todo_where "$@";;
+  todo:cross)
+    shift 2; todo_cross "$@";;
   todo:stage)
     shift 2; todo_stage "$@";;
   park:*)
@@ -987,6 +1031,8 @@ case "${1:-}:${2:-}" in
     case "${1:-}" in ''|--*) backfill_text "$@";; *) backfill_name "$@";; esac;;
   data:*)
     shift; data_run "$@";;
+  repos:*)
+    repos_list;;
   estimate:*|backtest:*|retrain:*)
     cmd="$1"; shift; est_py "$cmd" "$@";;
   eta:*)

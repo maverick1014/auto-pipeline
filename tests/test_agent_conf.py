@@ -67,6 +67,8 @@ REAL_KEYS = [
     "progress_eta_min_pct",
     # statusline-vertical (owner 2026-11-12): the status line refresh, tests/test_statusline_vertical.py
     "statusline_refresh_sec",
+    # housekeep-2h (owner 2026-11-13): the housekeep pass of the monitor loop, tests/test_agent_housekeep.py
+    "housekeep_interval_min",
     # estimate-blend (owner 2026-11-13): the estimator target and limits, tests/test_agent_estimate_blend.py
     "estimate_target_pct",
     "estimate_bias_min",
@@ -109,6 +111,7 @@ GOOD_CONF_TEXT = (
     "board_watch_sec=60\n"
     "progress_eta_min_pct=20\n"
     "statusline_refresh_sec=60\n"
+    "housekeep_interval_min=120\n"
     "estimate_target_pct=50\n"
     "estimate_bias_min=5\n"
     "estimate_big_min=120\n"
@@ -424,6 +427,7 @@ class TestGroups(unittest.TestCase):
                         "max_agents",
                         "monitor_interval_min",
                         "stall_min",
+                        "housekeep_interval_min",
                     ],
                 ),
                 (
