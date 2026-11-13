@@ -943,7 +943,7 @@ class TestDataAllRepos(DataCase):
                               "45", "--type", "docs", "--lane", "full",
                               "--mock", "no"))
         self.assertIn(["project", "t1", "2026-10-01", "docs", "full", "no",
-                       "90", "85", "45", "150", "-", "-", "-", "-", "-", "-"],
+                       "90", "85", "45", "150", "-", "-", "-", "-", "-", "-", "-"],
                       self.rows())
 
 

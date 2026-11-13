@@ -30,6 +30,9 @@ NUMBER_BOUNDS = {
     "board_watch_sec": (1, 3600),
     "progress_eta_min_pct": (0, 100),
     "statusline_refresh_sec": (1, 3600),
+    "estimate_target_pct": (1, 100),
+    "estimate_bias_min": (1, 1000),
+    "estimate_big_min": (1, 10000),
 }
 
 ROLE_KEYS = [
@@ -81,6 +84,9 @@ HINTS = {
     "stage_e2e": "How much of the progress bar the end-to-end check by the main manager is worth. Relative weight, whole number 0 to 100.",
     "stage_merge": "How much of the progress bar the merge step is worth. Relative weight, whole number 0 to 100.",
     "statusline_refresh_sec": "Seconds between status line refreshes in Claude Code. Whole number, 1 to 3600.",
+    "estimate_target_pct": "Target for the estimator: percent of tasks that should land within 30 percent of the estimate. Whole number, 1 to 100.",
+    "estimate_bias_min": "Fewest earlier tasks of one repo before the estimator applies a per-repo bias. Whole number, 1 to 1000.",
+    "estimate_big_min": "Work minutes from which a task counts as big in the backtest. Whole number, 1 to 10000.",
     "progress_eta_min_pct": "Lowest progress percent at which done-by is worked out from progress. Below it the board shows over by or a dash. Whole number, 0 to 100.",
     "board_watch_sec": "Seconds between refreshes of the live board (agent-file.sh board --watch). Whole number, 1 to 3600.",
 }
@@ -95,6 +101,7 @@ GROUPS = [
     ("progress", ["stage_brief", "stage_register", "stage_mock", "stage_tests", "stage_workers",
                   "stage_verify", "stage_push", "stage_report", "stage_e2e", "stage_merge",
                   "board_watch_sec", "progress_eta_min_pct", "statusline_refresh_sec"]),
+    ("estimate", ["estimate_target_pct", "estimate_bias_min", "estimate_big_min"]),
 ]
 
 _GROUP_OF = {}
