@@ -1060,6 +1060,8 @@ class TestRelated(RelatedCase):
 
 
 class TestFileVerbs(RelatedCase):
+    script = "agent-file.sh"   # these need only agent-file.sh, not the pass
+
     def af(self, *args, **kwargs):
         return self.repo.run("agent-file.sh", *args, **kwargs)
 
