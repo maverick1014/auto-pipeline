@@ -48,6 +48,7 @@ SHELL_SCRIPTS = [
     "agent-cleanup.sh",
     "agent-watch.sh",
     "agent-statusline.sh",   # progress-bar: the Claude Code status line
+    "agent-housekeep.sh",    # housekeep-2h: the pass the monitor loop runs
 ]
 # Sourced only, never run. agent-runtime.sh is in the list above instead,
 # because it is both: sourced by its callers and run by a skill.
@@ -60,7 +61,8 @@ BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py", "agent.conf.default
                                             "agent-city-plans.json",
                                             "agent_city_relay.py", "agent-city-relay.js",
                                             "agent_estimate.py",
-                                            "agent_cleanup.py"]
+                                            "agent_cleanup.py",
+                                            "agent_housekeep.py"]
 
 AGENT_FILES = ["fast-lane-deputy.md", "merge-deputy.md", "worker.md"]
 SKILL_DIRS = ["dispatch", "merge", "init", "cloud-pack", "city", "close-case"]

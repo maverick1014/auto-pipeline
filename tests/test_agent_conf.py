@@ -67,6 +67,8 @@ REAL_KEYS = [
     "progress_eta_min_pct",
     # statusline-vertical (owner 2026-11-12): the status line refresh, tests/test_statusline_vertical.py
     "statusline_refresh_sec",
+    # housekeep-2h (owner 2026-11-13): the housekeep pass of the monitor loop, tests/test_agent_housekeep.py
+    "housekeep_interval_min",
 ]
 # the keys this repo's own agent.conf had before progress-bar
 OLD_KEYS = REAL_KEYS[:REAL_KEYS.index("cloud_permission_mode") + 1]
@@ -105,6 +107,7 @@ GOOD_CONF_TEXT = (
     "board_watch_sec=60\n"
     "progress_eta_min_pct=20\n"
     "statusline_refresh_sec=60\n"
+    "housekeep_interval_min=120\n"
 )
 
 
@@ -417,6 +420,7 @@ class TestGroups(unittest.TestCase):
                         "max_agents",
                         "monitor_interval_min",
                         "stall_min",
+                        "housekeep_interval_min",
                     ],
                 ),
                 (
