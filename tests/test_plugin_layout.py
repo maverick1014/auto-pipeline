@@ -49,6 +49,7 @@ SHELL_SCRIPTS = [
     "agent-watch.sh",
     "agent-statusline.sh",   # progress-bar: the Claude Code status line
     "agent-housekeep.sh",    # housekeep-2h: the pass the monitor loop runs
+    "agent-version.sh",      # stale-plugin-guard: running vs installed, UserPromptSubmit hook
 ]
 # Sourced only, never run. agent-runtime.sh is in the list above instead,
 # because it is both: sourced by its callers and run by a skill.
