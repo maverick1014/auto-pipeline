@@ -237,7 +237,9 @@ class TestCityHooks(unittest.TestCase):
                         if "agent-close-case.sh" not in json.dumps(e)
                         and "agent-show-todo.sh" not in json.dumps(e)
                         and "agent-show-question.sh" not in json.dumps(e)
-                        and "agent-name.sh" not in json.dumps(e)]
+                        and "agent-name.sh" not in json.dumps(e)
+                        # stale-plugin-guard: UserPromptSubmit, tests/test_stale_plugin_guard.py
+                        and "agent-version.sh" not in json.dumps(e)]
                 for event, entries in hooks.items()}
 
     # Interaction (tests/test_agent_city_interact.py): PermissionRequest also

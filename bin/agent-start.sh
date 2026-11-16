@@ -721,6 +721,7 @@ sys.exit(0 if "auto_update" in v else 1)' 2>/dev/null </dev/null \
       || echo "AUTO UPDATE: not set. Ask once: on (recommended) or off. $PLUGIN_ROOT/bin/agent-settings.sh --user auto_update on|off"
     upd=$(python3 "$pyp/agent_update.py" notice "$PLUGIN_ROOT" 2>/dev/null </dev/null) || upd=""
     [ -n "$upd" ] && echo "$upd"
+    "$PLUGIN_ROOT/bin/agent-version.sh" scopes "$PROJECT_ROOT" "$STATE_DIR" 2>/dev/null </dev/null || true
     "$PLUGIN_ROOT/bin/agent-settings.sh" statusline refresh >/dev/null 2>&1 </dev/null || true
   fi
   return 0
@@ -870,11 +871,11 @@ fi
 # `2>/dev/null || true` so a failure here never breaks the hook. ----
 MARKER_DAYS="${AGENT_MARKER_DAYS:-7}"
 if [ -n "$SID" ]; then
-  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' \) \
-    ! -name "agent_started_$SID" ! -name "agent_compact_$SID" ! -name "agent_quiz_$SID" \
+  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' -o -name 'agent_stale_*' \) \
+    ! -name "agent_started_$SID" ! -name "agent_compact_$SID" ! -name "agent_quiz_$SID" ! -name "agent_stale_$SID" \
     -mtime "+$MARKER_DAYS" -delete 2>/dev/null || true
 else
-  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' \) \
+  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' -o -name 'agent_stale_*' \) \
     -mtime "+$MARKER_DAYS" -delete 2>/dev/null || true
 fi
 
