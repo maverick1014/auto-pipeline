@@ -213,6 +213,7 @@ W16. Known traps
 - `terminal read` shows only the visible screen → use `--cursor`
 - A send while the target is mid-turn can be lost → re-read and resend
 - Screen locked → the Chrome extension tab is hidden → use headless Chrome and tell the owner
+- STALE PLUGIN line → call the newest bin path, in every brief too, and restart at a quiet point; an older version never retrains agent_estimate.txt
 
 W17. Decider floor
 - Decision maker = main manager, task manager, reviewer, any session whose order, decision or approval another agent acts on

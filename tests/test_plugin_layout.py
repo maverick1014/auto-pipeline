@@ -49,6 +49,7 @@ SHELL_SCRIPTS = [
     "agent-watch.sh",
     "agent-statusline.sh",   # progress-bar: the Claude Code status line
     "agent-housekeep.sh",    # housekeep-2h: the pass the monitor loop runs
+    "agent-version.sh",      # stale-plugin-guard: running vs installed, UserPromptSubmit hook
 ]
 # Sourced only, never run. agent-runtime.sh is in the list above instead,
 # because it is both: sourced by its callers and run by a skill.
@@ -236,7 +237,9 @@ class TestCityHooks(unittest.TestCase):
                         if "agent-close-case.sh" not in json.dumps(e)
                         and "agent-show-todo.sh" not in json.dumps(e)
                         and "agent-show-question.sh" not in json.dumps(e)
-                        and "agent-name.sh" not in json.dumps(e)]
+                        and "agent-name.sh" not in json.dumps(e)
+                        # stale-plugin-guard: UserPromptSubmit, tests/test_stale_plugin_guard.py
+                        and "agent-version.sh" not in json.dumps(e)]
                 for event, entries in hooks.items()}
 
     # Interaction (tests/test_agent_city_interact.py): PermissionRequest also
