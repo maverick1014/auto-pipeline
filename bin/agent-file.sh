@@ -23,6 +23,7 @@
 #   agent-file.sh estimate --lane fast|full --mock yes|no --type <t> [--name <name>] [--guess <m>] "<what>"   -> work minutes, range, like tasks
 #   agent-file.sh backtest [--tasks]                          -> the estimator against the rubric and the todo est, rolling
 #   agent-file.sh retrain [--force]                           -> learn agent_estimate.txt when 30 tasks, then once a week
+#                                                             -> an older plugin than installed: one line "retrain skipped: <running> is older than installed <newest>", nothing changes
 #   agent-file.sh eta <name> [--step <n>] [--work-so-far <m>] [--wait <m>]    -> one line: work left, done around, owner needed next
 #   agent-file.sh todo wait "<name>" on <mock|question|review|hold|queue> ["<note>"]  -> the todo line starts a wait
 #   agent-file.sh todo wait "<name>" off                      -> the wait closes; its minutes join "waited <m>m"
@@ -487,9 +488,18 @@ est_py() {
   AGENT_ESTIMATE_BIG_MIN=$(conf_num estimate_big_min 1 10000 || true) \
   python3 "$(dirname "$0")/agent_estimate.py" "$cmd" "$ROOT/agent_estimate.txt" "${NOW%% *}" "$@" <<< "$rows"
 }
+# stale_skip: when this session runs an older plugin than the newest installed, print the one skip line and return 0
+stale_skip() {
+  local v="$(dirname "$0")/agent-version.sh" run newest rest
+  [ -f "$v" ] || return 1
+  IFS=$'\t' read -r run newest rest < <("$v" check 2>/dev/null) || return 1
+  [ -n "$run" ] && [ -n "$newest" ] || return 1
+  echo "retrain skipped: $run is older than installed $newest"
+}
 # the retrain after todo done: one verdict line only when it ran; any failure is swallowed (one short line)
 retrain_auto() {
   local out rc=0
+  if stale_skip; then return 0; fi
   out=$(est_py retrain --auto 2>/dev/null) || rc=$?
   if [ "$rc" -ne 0 ]; then echo "estimate retrain: failed"
   elif [ -n "$out" ]; then printf '%s\n' "$out"
@@ -1042,7 +1052,9 @@ case "${1:-}:${2:-}" in
   repos:*)
     repos_list;;
   estimate:*|backtest:*|retrain:*)
-    cmd="$1"; shift; est_py "$cmd" "$@";;
+    cmd="$1"; shift
+    if [ "$cmd" = retrain ] && stale_skip; then exit 0; fi
+    est_py "$cmd" "$@";;
   eta:*)
     [ $# -ge 2 ] || usage
     case "$2" in --*) usage;; esac
