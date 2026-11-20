@@ -134,6 +134,7 @@ W8. Merge and cleanup
 - Deputy runs `./agent-file.sh worktree rm <path>` and `./agent-file.sh todo done <name>` with the facts from the main manager and `--merge <commit>`
 - Sweep: `bin/agent-cleanup.sh --apply` at session start and when the last open task closes (todo empty, no live worktree). The scripts run it, no loop
 - Housekeep: every housekeep_interval_min minutes (default 120, 0 = off) the monitor loop runs `bin/agent-housekeep.sh --apply`, which ends with this sweep. Plain and cloud: no loop, run it by hand
+- The housekeep pass runs `agent-file.sh state trim` on the main repo's agent_state.txt before it writes its block (S8)
 - The main manager reads the HOUSEKEEP block in agent_state.txt at its next activity. Per suspect: `idea rm <n>` if done or voided by a recorded owner decision, else `idea keep <n>` (still wanted)
 - It then acts on the other flags of the block
 - Main manager only. Task managers, Helpers and workers never run it
@@ -221,7 +222,7 @@ W14. Show todo
 - Progress: `agent-file.sh todo stage <name> <stage> [i/m]` at each step boundary. Task manager: brief register mock tests workers verify push report. Main manager: e2e merge. Weights in agent.conf
 - See it live with `board --watch`, and in the Claude Code status line with `agent-settings.sh statusline on|off`. Headers and status words in the `language` of agent.conf
 - Record as it happens: `agent-file.sh todo wait <name> on <kind>|off` at every mock check, owner question, owner review, hold, queue; `todo where` at dispatch
-- `park add` for a parked question (H1), `worker on <n>` / `worker off <n>` for each worker; `OWNER TODO:` lines are written by hand
+- `park add` for a parked question (H1), `worker on <n>` / `worker off <n>` for each worker; `OWNER TODO:` lines are written with `agent-file.sh state add`
 
 W15. Watch
 - Monitor sweep on three signals: process, terminal output, git movement
@@ -355,10 +356,15 @@ S7. Session recovery
 S8. Context guard (forgetting)
 - Memory is the file, not the chat. Brief, decisions, next step live in `agent_state.txt`. Re-read it before every step, write it after every step
 - First action of every agent: copy its brief into `agent_state.txt`. The main manager keeps one too, in the main repo: open decisions, live sessions and terminal handles
+- A state line: `agent-file.sh state add "<line>"` (it adds the date), never `echo >>`. A brief or report block: one append, then one blank line
+- `agent-file.sh state trim` keeps the header, RULE/CARRY and machine lines, open questions, open-task lines, standing OWNER lines and the last `state_keep_hours`
+- `state trim` moves the rest to `agent_state.trim-<date>.txt` next to it, never lost. `todo done` and the housekeep pass run it (`state_trim_auto`); check with `--dry-run`
+- Over `state_warn_lines` lines the start text says STATE LONG: trim it
 - After a compaction the startup hook re-prints PRINCIPLES.md and `agent_state.txt`. No quiz then. Continue from the file, not from memory
-- Compacted 2 times → write state, then `/clear`: the main manager types it into the pane (`orca terminal send --terminal <handle> --text "/clear" --enter`) or the human does; the hook re-prints role, rules and state; continue from the file
+- Compacted `compact_clear_at` times → save state. Orca: `agent-autoclear.sh` types a save prompt, `/clear`, then `/goal` into the own pane, only at an idle prompt with an empty input box
+- A task manager runs under `/goal` from the GOAL: line of its brief: typed after the brief and after each answer; the auto clear types it again
 - After a close case the main manager clears itself the same way: it types `/clear` into its own pane (its handle is in the lock line). Plain or cloud → the human types it
-- No pane to type into (plain, cloud) or the send is refused → end the session, restart from the file (S2)
+- No pane to type into (plain, cloud) or the send is refused → tell the human to type `/clear`; else end the session, restart from the file (S2)
 - One worker = one slice, then it ends. A second slice gets a fresh worker
 
 S9. Token guard (cost)

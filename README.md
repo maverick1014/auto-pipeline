@@ -85,6 +85,7 @@ Every task gets a risk level 0-4 at dispatch (R8); level 3 and 4 take the full l
 | `agent_worktree.txt` | `agent-file.sh worktree set` / `rm` | Main manager before every dispatch |
 | `agent.conf` | `./bin/agent-settings.sh` | `agent-start.sh` |
 | `agent_monitor.txt` | `./bin/agent-monitor.sh` | Every agent at start |
+| `agent_state.txt` | Each session: `agent-file.sh state add`; `state trim` moves old lines to `agent_state.trim-<date>.txt` (todo done, housekeep) | The same session, after a start, compaction or clear |
 | `.secrets/` | Human only | Any agent, read only, never printed |
 
 ## Install

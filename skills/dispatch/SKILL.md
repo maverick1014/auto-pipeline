@@ -39,6 +39,8 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
    Task manager on another machine: add `--environment <env> --shell <shell handle>` (a plain shell pane on that machine; the script sends only a short read command into it, never anything into the task manager's pane).
    It exits on WATCH SIGNAL (a DONE PASS, DONE FAIL, CLOSE CASE, QUESTION: or MOCK READY line in agent_state.txt), WATCH STALL, WATCH LOST or WATCH MAX. Handle it, then start it again, until the task is merged.
    Then `ListAgents`, find `<name> Task Manager`, `SendMessage` it the brief below. Keep the terminal handle for `/merge`.
+   Then /goal: once the task manager has the brief (its `STAGE <name>: brief` line or its first reply), `orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 600000 --json`, read the pane (`orca terminal read --terminal <handle> --json`: nothing after the ❯ of the input box), then `orca terminal send --terminal <handle> --text "/goal <the GOAL: text of the brief>" --enter`; read back, not shown → send once more.
+   Re-type /goal the same way after you send an answer to a QUESTION: line and after a mock or rules answer (mock yes, rules yes, or changes). The auto clear types it again by itself. Never on plain or cloud, never for a Helper.
 
    **plain or cloud** — no terminal can be opened here, so no worktree either. The main manager does the task itself, from the session it is already in, with `Agent` subagents (`subagent_type: worker`, description `<name> Worker <n>: <slice>`), up to `max_agents` at a time. Use the task manager brief below as its own task list and run the steps in order.
 
@@ -67,9 +69,10 @@ Answer with its line: a duration AND a clock time, and when he is needed next. N
 WHERE: worktree <worktree path>, branch <branch>. Main repo <main repo> only for ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh.
 TODO LINE: <the todo line, as agent-file.sh show prints it>
 LEVEL: <n> (R8 gate: <the gate of that level>)
+GOAL: task manager <name>: done when DONE PASS or DONE FAIL is written under === REPORT === in agent_state.txt and the branch is pushed, or a QUESTION:, MOCK READY or CLOSE CASE line waits for an answer, or you saved agent_state.txt after an AUTO CLEAR notice
 FEATURE: <requirement, 5 to 10 lines. Files to produce. What the user sees. Validation rules.>
 STEPS (at the start of each step run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" <stage>`; on another machine it writes a STAGE line into agent_state.txt and the main manager's watch carries it):
- 0 brief: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" brief, then save this whole brief into agent_state.txt in your worktree, first action (S8)
+ 0 brief: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" brief, then save this whole brief into agent_state.txt in your worktree, first action (S8), then one blank line
  1 register: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" register, then ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" working
  2 mock: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" mock; first if UI (W2): commit mock/<name>-mock.html, send me the path, STOP until "mock yes"; on another machine also append one line "MOCK READY <name>: <mock path>" to agent_state.txt in your worktree
  3 tests: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" tests; write the failing tests yourself (W3), commit
@@ -81,7 +84,7 @@ REPORT: SendMessage to "<my session name>"; on another machine also append the s
 ASK: first line "QUESTION:". Wait max 10 min, then default + log + continue (W1). Mock gate always waits. A question for later: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh park add "<question>"
 HEARTBEAT: every 15 min, one line "HEARTBEAT <name>: step <n> of 7, work <m>m, <what runs now>".
 CLOSE: on "close case" from me or the human: start nothing new, commit + push (WIP if unfinished), report first line "CLOSE CASE <name>: finished" or "CLOSE CASE <name>: unfinished", then done, left + next steps, tests, click path, ideas, TIME. Wait for my decision; never close yourself.
-STATE: write agent_state.txt after every step (S7, S8).
+STATE: write agent_state.txt after every step (S7, S8): one line = `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh state add "<line>"`, never echo >>.
 NEVER: Claude in Chrome (W5). Product code. Full suite twice (W4). Files outside the worktree except via ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh.
 ```
 
