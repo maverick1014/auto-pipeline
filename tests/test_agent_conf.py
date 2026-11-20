@@ -127,6 +127,13 @@ GOOD_CONF_TEXT = (
     "estimate_big_min=120\n"
     "level3_paths=\n"
     "level4_paths=\n"
+    # state-trim (owner 2026-11-20): appended last, like the template
+    "state_keep_hours=24\n"
+    "state_warn_lines=300\n"
+    "state_header_lines=40\n"
+    "state_trim_auto=on\n"
+    "compact_clear_at=2\n"
+    "compact_clear_check_sec=30\n"
 )
 
 
