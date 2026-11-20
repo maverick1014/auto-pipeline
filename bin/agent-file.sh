@@ -671,7 +671,12 @@ todo_wait() {
           --who|--after)
             opt="$1"
             [ $# -ge 2 ] || refuse "todo wait: $opt needs a name"
+            case "$2" in
+              ''|*[![:space:]]*) ;;
+              *) refuse "todo wait: $opt needs a name, not blank text";;
+            esac
             [ -n "$2" ] || refuse "todo wait: $opt needs a name, not an empty one"
+            case "$2" in --*) refuse "todo wait: $opt needs a name (got: $2)";; esac
             if bad_text "$2"; then refuse "todo wait: the $opt value must not hold \" | \" or a line break"; fi
             if [ "$opt" = --who ]; then
               [ "$havewho" -eq 0 ] || refuse "todo wait: --who given twice"
@@ -697,7 +702,7 @@ todo_wait() {
     *) refuse "todo wait: on or off (got: ${verb:-nothing})";;
   esac
   if [ -n "$open" ]; then
-    since=$(printf '%s' "$open" | sed -n 's/^waiting [^ ]* since \([0-9][0-9-]* [0-9:]*\).*/\1/p')
+    since=$(printf '%s' "$open" | sed -n 's/^waiting [^ ]* since \([0-9]\{4\}-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]\).*/\1/p')
     m=$(minutes_between "$since" "$NOW"); closed=${m:-0}
     ssince=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage .* since [0-9]/) { sub(/^.* since /, "", $i); print $i; exit } }')
     if [ -n "$ssince" ]; then
@@ -707,6 +712,7 @@ todo_wait() {
     fi
     if [ "$verb" = on ]; then
       oldrun=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^wait run since /) { sub(/^wait run since /, "", $i); print $i; exit } }')
+      oldrun=$(printf '%s' "$oldrun" | sed -n 's/^\([0-9]\{4\}-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]\).*/\1/p')
       run="${oldrun:-$since}"
     fi
   fi
@@ -813,7 +819,7 @@ todo_stage() {
       if [ -z "$cur" ] && ! printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^(stage |started )/) exit 0; exit 1 }'; then
         wn=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^waited [0-9]+m$/) { print substr($i, 8) + 0; exit } }')
         wn=${wn:-0}
-        wo=$(printf '%s\n' "$line" | sed -n 's/.* | waiting [^ ]* since \([0-9][0-9-]* [0-9:]*\).*/\1/p')
+        wo=$(printf '%s\n' "$line" | sed -n 's/.* | waiting [^ ]* since \([0-9]\{4\}-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]\).*/\1/p')
         if [ -n "$wo" ]; then m=$(minutes_between "$wo" "$NOW"); wn=$((wn + ${m:-0})); fi
         started="started $NOW"
         if [ "$wn" -gt 0 ]; then started="$started after ${wn}m waited"; fi
@@ -1068,7 +1074,7 @@ case "${1:-}:${2:-}" in
     counted=yes; [ -n "$d_files" ] || { counted=; d_files=-; d_lines=-; }
     what=$(printf '%s\n' "$line" | awk -F' \\| ' '{print $3}')
     est=$(old_num "$line" est)
-    opened=$(printf '%s\n' "$line" | sed -n 's/.*opened \([0-9][0-9-]* [0-9:]*\).*/\1/p')
+    opened=$(printf '%s\n' "$line" | sed -n 's/.*opened \([0-9]\{4\}-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]\).*/\1/p')
     clock=; [ -z "$opened" ] || clock=$(minutes_between "$opened" "$NOW")
     d_repo=$(repo_name "$ROOT"); d_est=${est:--}; d_clock=${clock:--}
     d_guess=$(printf '%s\n' "$line" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^guess [0-9]+m$/) {v = $i; sub(/^guess /, "", v); sub(/m$/, "", v); print v; exit}}')

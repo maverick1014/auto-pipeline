@@ -70,6 +70,8 @@ CONTRACT
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import unittest
 
@@ -558,9 +560,23 @@ class TestRefreshInterval(RefreshCase):
         self.assertOk(self.run_settings("on"))
         self.assertEqual(self.load()["statusLine"], self.ours(30))
 
+    # board-waiting scope add (2026-11-20): refresh repoints only from a root under <config dir>/plugins/cache/
+    # (requirements/board-waiting.md F); these two run refresh from a copy of the plugin in the cache
+    def refresh_from_the_cache(self):
+        root = os.path.join(self.home, ".claude", "plugins", "cache", "auto-pipeline", "auto-pipeline", "0.38.0")
+        shutil.copytree(self.repo.plugin, root)
+        root = os.path.realpath(root)
+        self.cmd = '"%s/bin/agent-statusline.sh"' % root
+        return subprocess.run([os.path.join(root, "bin", "agent-settings.sh"), "statusline", "refresh"],
+                              cwd=self.repo.dir, env=self.repo._env({"CLAUDE_PLUGIN_ROOT": ""}),
+                              capture_output=True, text=True, input="", timeout=30)
+
     def test_refresh_adds_it_to_ours(self):
-        self.write({"statusLine": {"type": "command", "command": self.cmd}, "theme": "dark"})
-        result = self.run_settings("refresh")
+        root = os.path.realpath(os.path.join(self.home, ".claude", "plugins", "cache", "auto-pipeline",
+                                             "auto-pipeline", "0.38.0"))
+        self.write({"statusLine": {"type": "command", "command": '"%s/bin/agent-statusline.sh"' % root},
+                    "theme": "dark"})
+        result = self.refresh_from_the_cache()
         self.assertOk(result)
         self.assertEqual(result.stdout + result.stderr, "")
         self.assertEqual(self.load(), {"statusLine": self.ours(60), "theme": "dark"})
@@ -568,8 +584,15 @@ class TestRefreshInterval(RefreshCase):
     def test_refresh_points_and_sets(self):
         self.repo.set_conf("statusline_refresh_sec", "30")
         self.write({"statusLine": {"type": "command", "command": OURS_OLD, "refreshInterval": 60}})
-        self.assertOk(self.run_settings("refresh"))
+        self.assertOk(self.refresh_from_the_cache())
         self.assertEqual(self.load(), {"statusLine": self.ours(30)})
+
+    def test_refresh_from_a_checkout_changes_nothing(self):
+        self.repo.set_conf("statusline_refresh_sec", "30")
+        self.write({"statusLine": {"type": "command", "command": OURS_OLD, "refreshInterval": 60}})
+        before = self.raw()
+        self.assertOk(self.run_settings("refresh"))
+        self.assertEqual(self.raw(), before)
 
     def test_refresh_with_nothing_to_change_keeps_the_file(self):
         self.write({"statusLine": self.ours(60), "theme": "dark"})

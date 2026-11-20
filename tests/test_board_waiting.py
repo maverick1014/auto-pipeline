@@ -597,6 +597,21 @@ class TestTodoWaitCli(Case):
         r = self.row(self.rows(now="2026-11-20 12:50"), task="x")
         self.assertEqual(r["Status"], "等待 B · 已等 50分钟")
 
+    def test_4_5c_a_wait_over_a_wait_with_a_note(self):
+        # reviewer finding 1: the date of a waiting field with a note was read with the note's colon
+        self.wait("x", "on", "mock", "看规则表", now="2026-11-20 12:00")
+        self.wait("x", "on", "mock", "看规则表 v2", now="2026-11-20 12:21")
+        line = self.todo_line("x")
+        self.assertIn(" | waiting mock since 2026-11-20 12:21: 看规则表 v2 | wait run since 2026-11-20 12:00 | "
+                      "waited 21m", line)
+        self.assertNotIn("12:00:", line)
+        r = self.row(self.rows(now=NOW), task="x")
+        self.assertEqual(r["Status"], "等待 你 · 看规则表 v2 · 已等 31分钟")
+        self.wait("x", "on", "hold", "下一个: 等 v4", "--who", "v4-Manager", now="2026-11-20 12:25")
+        self.assertIn(" | who v4-Manager | wait run since 2026-11-20 12:00 | waited 25m", self.todo_line("x"))
+        self.wait("x", "off", now=NOW)
+        self.assertIn(" | waited 31m", self.todo_line("x"))
+
     def test_4_5b_the_field_order(self):
         self.wait("x", "on", "queue", "--after", "a", now="2026-11-20 12:00")
         self.wait("x", "on", "queue", "--after", "b", now=NOW)
@@ -622,6 +637,10 @@ class TestTodoWaitCli(Case):
                      ("on", "hold", "--who"),
                      ("on", "hold", "--who", ""),
                      ("on", "hold", "--who", "a | b"),
+                     ("on", "hold", "--who", " "),
+                     ("on", "hold", "--who", "--after"),
+                     ("on", "queue", "--after", "--who"),
+                     ("on", "queue", "--after", "  "),
                      ("on", "review", "--who", "a\nb"),
                      ("on", "hold", "--who", "a", "--who", "b"),
                      ("on", "queue", "--after"),
@@ -667,6 +686,13 @@ class TestTodoStageCli(Case):
         self.wait("x", "off", now="2026-11-20 12:41")
         r = self.row(self.rows(now="2026-11-20 12:51"), task="x")
         self.assertEqual((r["Status"], r["Work"], r["Wait"], r["Done by"]), ("进行中", "10m", "1h", "13:41"))
+
+    def test_6_7b_an_open_wait_with_a_note_at_the_start(self):
+        # reviewer finding 2: the open wait's since, read with the note's colon
+        self.add("x", "the task", 60, opened="2026-11-20 11:00", started=False)
+        self.wait("x", "on", "hold", "等: 槽位", now="2026-11-20 11:51")
+        self.stage("x", "brief", now="2026-11-20 12:21")
+        self.assertIn(" | started 2026-11-20 12:21 after 30m waited", self.todo_line("x"))
 
     def test_6_8_later_stages_never_change_it(self):
         self.add("x", "the task", 60, opened="2026-11-20 12:00", started=False)
