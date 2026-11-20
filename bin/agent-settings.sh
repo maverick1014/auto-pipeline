@@ -6,7 +6,7 @@
 #   ./agent-settings.sh sync            add any key missing from agent.conf, template value
 #   ./agent-settings.sh get <key>       one line: the value and where it comes from (user file, else agent.conf)
 #   ./agent-settings.sh --user <key> <value>   set a key in ~/.claude/auto-pipeline.conf (this machine only)
-#   ./agent-settings.sh statusline on|off|refresh   progress status line in Claude Code settings.json (needs no agent.conf), sets refreshInterval
+#   ./agent-settings.sh statusline on|off|refresh   progress status line in Claude Code settings.json (needs no agent.conf), sets refreshInterval; refresh: only to a plugin cache root
 # Takes effect at the next agent start.
 # Run from a worktree: still reads/writes the MAIN repo's agent.conf; show, set and sync say so.
 set -eu
@@ -108,8 +108,17 @@ def interval():
 n = interval()
 d = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
 path = os.path.join(d, "settings.json")
-cmd = '"%s/bin/agent-statusline.sh"' % root
 refresh = mode == "refresh"
+if refresh:
+    cache = os.path.realpath(os.path.join(d, "plugins", "cache")) + "/"
+    target = None
+    for cand in (root, os.environ.get("CLAUDE_PLUGIN_ROOT") or ""):
+        if cand and os.path.realpath(cand).startswith(cache) and os.path.isfile(os.path.join(cand, "bin", "agent-statusline.sh")):
+            target = cand
+            break
+    if target is None: sys.exit(0)
+    root = target
+cmd = '"%s/bin/agent-statusline.sh"' % root
 def done():
     if not refresh: print("statusline %s: %s" % (mode, path))
     sys.exit(0)

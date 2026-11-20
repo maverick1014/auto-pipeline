@@ -70,16 +70,18 @@ Rows, --self (name = the folder name of the git toplevel of the cwd):
     only. In the main repo folder itself (a Helper with no worktree) that
     file is the main manager's: no state lines then.
 
-Status (zh / en), a todo wait note after " · ":
-    mock      等你：看样稿     waits on you: mock check
-    question  等你：回答问题   waits on you: question
-    review    等你：验收       waits on you: review
+Status (zh / en):
     running   进行中           running        (tasks, Helpers, workers)
-    hold      暂缓             held
-    queue     排队中           queued
     OWNER TODO  你的待办       your to-do
     PARKED    搁置的问题       parked question
-Sort: waiting on the owner, running, held or queued, OWNER TODO, parked.
+    a wait, a queue, a hold, a line not started: board-waiting (owner 2026-11-20),
+    requirements/board-waiting.md and tests/test_board_waiting.py:
+    waiting   等待 <who> · <what> · 已等 <n>     waiting <who> · <what> · waited <n>
+    hold      暂缓 · <what> · 已等 <n>            hold · <what> · waited <n>
+    queue     排队 · 在 <task> 之后               queue · after <task>
+    not started  未开始                           not started
+    (their progress, est, work, wait and done by cells are "-"; est stays on a not started row)
+Sort: waiting on the owner, running, waiting on others, queued and not started, held, OWNER TODO, parked.
 Oldest first in a group: a waiting row by when its wait began, the rest by
 when they began (opened, since, the stamp); no date -> last, file order.
 
@@ -94,7 +96,9 @@ Cells:
     est       from "est <n>m"
     wait      waited + the open wait up to now (task); since -> now (parked);
               stamp -> now (OWNER TODO)
-    work      clock from opened to now, minus wait, 0 at least (task);
+    work      from the first stage ("started", board-waiting rule 6) to now, minus the waits after it;
+              no started field: clock from opened to now, minus wait, when the line has a stage,
+              else "-" (task, 0 at least);
               since -> now (worker); "-" for the rest
     done by   now + est - work, as "HH:MM" today, zh "明天 HH:MM" /
               en "HH:MM tomorrow", later zh "YYYY-MM-DD HH:MM" /
@@ -125,13 +129,12 @@ HOST = "pc2"
 # 级别 / Level: test-levels (2026-11-20), tests/test_risk_levels.py
 HEAD = {"zh": ["任务", "内容", "状态", "进度", "位置", "级别", "估时", "已工作", "已等待", "预计完成"],
         "en": ["Task", "What", "Status", "Progress", "Where", "Level", "Est", "Work", "Wait", "Done by"]}
+# board-waiting (2026-11-20): a wait's status is built from parts (tests/test_board_waiting.py)
 STATUS = {
-    "zh": {"mock": "等你：看样稿", "question": "等你：回答问题", "review": "等你：验收",
-           "running": "进行中", "hold": "暂缓", "queue": "排队中", "owner": "你的待办",
-           "parked": "搁置的问题"},
-    "en": {"mock": "waits on you: mock check", "question": "waits on you: question",
-           "review": "waits on you: review", "running": "running", "hold": "held",
-           "queue": "queued", "owner": "your to-do", "parked": "parked question"},
+    "zh": {"running": "进行中", "hold": "暂缓", "queue": "排队", "owner": "你的待办",
+           "parked": "搁置的问题", "not_started": "未开始"},
+    "en": {"running": "running", "hold": "hold", "queue": "queue", "owner": "your to-do",
+           "parked": "parked question", "not_started": "not started"},
 }
 
 
@@ -166,9 +169,22 @@ class BoardCase(ScriptCase):
         self.assertEqual({n: self.repo.read(n) for n in files}, files, args)
         return result
 
-    def add(self, name, what, est=None, opened="2026-11-02 14:00", size="big"):
+    def add(self, name, what, est=None, opened="2026-11-02 14:00", size="big", started=True):
+        """A todo line. started (board-waiting rule 6, work counts from the first stage): True -> the line
+        gets " | started <opened>" (a task already under way, as these tests mean); a date -> that date;
+        False -> none (a task that never started)."""
         args = ["todo", "add", name, size, what] + ([str(est)] if est is not None else [])
         self.af(*args, now=opened)
+        if started:
+            at = opened if started is True else started
+            path = self.repo.path("agent_todo.txt")
+            with open(path) as fh:
+                lines = fh.read().splitlines()
+            with open(path, "w") as fh:
+                for line in lines:
+                    if line.split(" | ")[0] == name:
+                        line += " | started " + at
+                    fh.write(line + "\n")
 
     def wait(self, name, *rest, now=NOW):
         self.af("todo", "wait", name, *rest, now=now)
@@ -263,8 +279,9 @@ class TestTodoWait(BoardCase):
         self.wait("beta", "on", "review", now="2026-11-02 14:30")
         self.assertIn(" | waiting review since 2026-11-02 14:30", self.todo_line("beta"))
         r = self.row(self.rows(), task="beta")
+        # board-waiting: a waiting row says how long it waits; its time cells are "-"
         self.assertEqual((r["Status"], r["Work"], r["Wait"], r["Done by"]),
-                         (self.st("review"), "30m", "30m", "15:30"))
+                         ("等待 你 · 合并前签字 · 已等 30分钟", "-", "-", "-"))
 
     def test_a_new_wait_closes_the_open_one(self):
         self.add("gamma", "stock lock page", 60, opened="2026-11-02 14:00")
@@ -275,9 +292,10 @@ class TestTodoWait(BoardCase):
         self.assertIn(" | waiting question since 2026-11-02 14:20: which DB?", line)
         self.assertEqual(line.count("waiting "), 1, line)
         r = self.row(self.rows(now="2026-11-02 14:30"), task="gamma")
-        self.assertEqual(r["Status"], self.st("question") + " · which DB?")
-        self.assertEqual(r["Wait"], "30m")
-        self.assertEqual(r["Work"], "0m")
+        # board-waiting: one run of waits since 14:00 (no work between)
+        self.assertEqual(r["Status"], "等待 你 · which DB? · 已等 30分钟")
+        self.assertEqual(r["Wait"], "-")
+        self.assertEqual(r["Work"], "-")
 
     def test_held_and_queued(self):
         self.add("held-one", "font size option", 30)
@@ -285,7 +303,7 @@ class TestTodoWait(BoardCase):
         self.wait("held-one", "on", "hold", now="2026-11-02 14:10")
         self.wait("queued-one", "on", "queue", now="2026-11-02 14:20")
         rows = self.rows()
-        self.assertEqual(self.row(rows, task="held-one")["Status"], self.st("hold"))
+        self.assertEqual(self.row(rows, task="held-one")["Status"], self.st("hold") + " · 已等 50分钟")
         self.assertEqual(self.row(rows, task="queued-one")["Status"], self.st("queue"))
 
     def test_the_other_fields_stay(self):
@@ -657,8 +675,10 @@ class TestSelf(BoardCase):
         self.assertIn("PARKED: keep the old API? | alpha | since", self.state_text(self.alpha))
 
     def test_no_todo_line_here_reads_its_todo_line_in_the_state(self):
+        # board-waiting: a line with no stage is not started; its STAGE line makes it run
         self.state("Brief from the main manager: you are the task manager for \"alpha\".\n"
-                   "TODO LINE: alpha | big | the login form | est 60m | opened 2026-11-02 14:30 | by main\n",
+                   "TODO LINE: alpha | big | the login form | est 60m | opened 2026-11-02 14:30 | by main\n"
+                   "STAGE alpha: brief | since 2026-11-02 14:30\n",
                    folder=self.alpha)
         r = self.row(self.rows("--self", cwd=self.alpha), task="alpha")
         self.assertEqual((r["What"], r["Est"], r["Work"], r["Done by"]),

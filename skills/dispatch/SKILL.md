@@ -49,12 +49,13 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
 ## Board records
 
 The board (PRINCIPLES.md W14) reads these. Write each as it happens, never later from memory:
-- Each wait gets `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo wait "<name>" on mock|question|review|hold|queue ["<note>"]` when it starts and `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo wait "<name>" off` when it ends
+- Each wait gets `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo wait "<name>" on mock|question|review|hold|queue ["<note>"] [--who <name>] [--after <task>]` when it starts and `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo wait "<name>" off` when it ends
 - Mock sent -> on mock; mock yes -> off
 - Owner question -> on question; answered -> off
 - DONE PASS waiting for the owner -> on review; he decides -> off
 - Held -> on hold; released -> off
-- Waiting for a slot -> on queue; slot found -> off
+- Waiting on someone other than the owner (a peer manager, a reviewer) -> --who <name>; the owner is the default for mock, question, review
+- Waiting for a slot or another task -> on queue --after <task>; slot found -> off
 - Parked question for later (H1): `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh park add "<question>"`
 
 ## Time question from the human

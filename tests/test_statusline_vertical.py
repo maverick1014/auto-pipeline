@@ -24,6 +24,9 @@ CONTRACT
     columns, everything else 1.
     At most 5 task lines. More tasks -> one more line "+<N> 个" (zh) or
     "+<N> more" (en), N = the tasks not shown.
+    board-waiting (2026-11-20) changes this: at most 5 lines in all, waits shown
+    too, queued, held and not started rows fold into "+<N> 排队/暂缓" (en
+    "+<N> queued/held"): requirements/board-waiting.md, tests/test_board_waiting.py.
     No task with a stage -> nothing (as before). Always exit 0.
     The header comment of bin/agent-statusline.sh says one line per task.
 
@@ -67,6 +70,8 @@ CONTRACT
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import unittest
 
@@ -104,6 +109,16 @@ class Case(tb.BoardCase):
 
     def done_by(self, name, **kw):
         return self.board_row(name, **kw)["Done by"]
+
+    def frozen(self, stage, since, now, wsince, est=60):
+        """The bar of agent_board.stage_progress with an open wait (a waiting row shows "-" on the board)."""
+        if BIN not in sys.path:
+            sys.path.insert(0, BIN)
+        import agent_board
+        t = agent_board.parse_time
+        p = agent_board.stage_progress(agent_board.read_weights(self.repo.dir), (stage, None, None), est,
+                                       t(since), t(now), 0, t(wsince))
+        return agent_board.bar_text(p)
 
     def clear_todo(self):
         with open(self.repo.path("agent_todo.txt"), "w") as fh:
@@ -244,15 +259,19 @@ class TestGrowth(Case):
         self.add("alpha", "the login form", 60, opened="2026-11-02 14:00")
         self.stage("alpha", "verify", now="2026-11-02 14:54")
         self.wait("alpha", "on", "question", now="2026-11-02 14:57")
-        self.assertEqual(self.progress("alpha"), "███████░░░  71%")
-        self.assertEqual(self.progress("alpha", now="2026-11-02 15:30"), "███████░░░  71%")
+        # board-waiting: a waiting row shows "-" for progress; the function still stops the clock
+        self.assertEqual(self.progress("alpha"), "-")
+        self.assertEqual(self.frozen("verify", "2026-11-02 14:54", "2026-11-02 15:30", "2026-11-02 14:57"),
+                         "███████░░░  71%")
 
     def test_a_wait_opened_before_the_stage_freezes_it_at_the_start(self):
         self.add("alpha", "the login form", 60, opened="2026-11-02 14:00")
         self.stage("alpha", "tests", now="2026-11-02 14:30")
         self.wait("alpha", "on", "hold", now="2026-11-02 14:40")
         self.stage("alpha", "verify", now="2026-11-02 14:50")
-        self.assertEqual(self.progress("alpha"), "██████░░░░  66%")
+        # board-waiting: a held row shows "-" for progress; the function still stops the clock
+        self.assertEqual(self.progress("alpha"), "-")
+        self.assertEqual(self.frozen("verify", "2026-11-02 14:50", NOW, "2026-11-02 14:40"), "██████░░░░  66%")
 
     def test_a_closed_wait_is_taken_off(self):
         # 10 minutes in verify, 6 of them waited -> 4/9 -> 72.6
@@ -383,9 +402,10 @@ class TestVertical(Case):
             self.add("t%d" % i, "task %d" % i, 120, opened="2026-11-02 14:%02d" % i)
             self.stage("t%d" % i, "tests")
         lines = self.line().split("\n")
-        self.assertEqual(len(lines), 6, lines)
-        self.assertEqual([l.split()[0] for l in lines[:5]], ["t1", "t2", "t3", "t4", "t5"])
-        self.assertEqual(lines[5], "+2 个")
+        # board-waiting: 5 lines in all, the "+N" line counted
+        self.assertEqual(len(lines), 5, lines)
+        self.assertEqual([l.split()[0] for l in lines[:4]], ["t1", "t2", "t3", "t4"])
+        self.assertEqual(lines[4], "+3 排队/暂缓")
 
     def test_five_tasks_no_extra_line(self):
         for i in range(1, 6):
@@ -408,7 +428,9 @@ class TestVertical(Case):
         self.wait("mock-wait", "on", "mock", now="2026-11-02 14:45")
         self.add("no-stage", "not shown", 120, opened="2026-11-02 14:00")
         lines = self.line().split("\n")
-        self.assertEqual([l.split()[0] for l in lines], ["mock-wait", "run-early", "run-late", "held"])
+        # board-waiting: the held row folds into the "+N" line; a running row with no stage is not counted
+        self.assertEqual([l.split()[0] for l in lines], ["mock-wait", "run-early", "run-late", "+1"])
+        self.assertEqual(lines[3], "+1 排队/暂缓")
 
     def test_the_line_grows_with_time(self):
         self.add("alpha", "the login form", 60, opened="2026-11-02 14:00")
@@ -438,10 +460,11 @@ class TestVerticalEnglish(Case):
         for i in range(2, 7):
             self.stage("t%d" % i, "e2e")
         lines = self.line().split("\n")
-        self.assertEqual(len(lines), 6, lines)
+        # board-waiting: 5 lines in all, the "+N" line counted
+        self.assertEqual(len(lines), 5, lines)
         self.assertEqual(lines[0], "t1                        ███░░░░░░░  39%  workers 1/3  16:01")
         self.assertEqual(lines[1], "t2                        ████████░░  85%  e2e          16:02")
-        self.assertEqual(lines[5], "+1 more")
+        self.assertEqual(lines[4], "+2 queued/held")
 
     def test_every_stage_word(self):
         for stage in ZH:
@@ -537,9 +560,23 @@ class TestRefreshInterval(RefreshCase):
         self.assertOk(self.run_settings("on"))
         self.assertEqual(self.load()["statusLine"], self.ours(30))
 
+    # board-waiting scope add (2026-11-20): refresh repoints only from a root under <config dir>/plugins/cache/
+    # (requirements/board-waiting.md F); these two run refresh from a copy of the plugin in the cache
+    def refresh_from_the_cache(self):
+        root = os.path.join(self.home, ".claude", "plugins", "cache", "auto-pipeline", "auto-pipeline", "0.38.0")
+        shutil.copytree(self.repo.plugin, root)
+        root = os.path.realpath(root)
+        self.cmd = '"%s/bin/agent-statusline.sh"' % root
+        return subprocess.run([os.path.join(root, "bin", "agent-settings.sh"), "statusline", "refresh"],
+                              cwd=self.repo.dir, env=self.repo._env({"CLAUDE_PLUGIN_ROOT": ""}),
+                              capture_output=True, text=True, input="", timeout=30)
+
     def test_refresh_adds_it_to_ours(self):
-        self.write({"statusLine": {"type": "command", "command": self.cmd}, "theme": "dark"})
-        result = self.run_settings("refresh")
+        root = os.path.realpath(os.path.join(self.home, ".claude", "plugins", "cache", "auto-pipeline",
+                                             "auto-pipeline", "0.38.0"))
+        self.write({"statusLine": {"type": "command", "command": '"%s/bin/agent-statusline.sh"' % root},
+                    "theme": "dark"})
+        result = self.refresh_from_the_cache()
         self.assertOk(result)
         self.assertEqual(result.stdout + result.stderr, "")
         self.assertEqual(self.load(), {"statusLine": self.ours(60), "theme": "dark"})
@@ -547,8 +584,15 @@ class TestRefreshInterval(RefreshCase):
     def test_refresh_points_and_sets(self):
         self.repo.set_conf("statusline_refresh_sec", "30")
         self.write({"statusLine": {"type": "command", "command": OURS_OLD, "refreshInterval": 60}})
-        self.assertOk(self.run_settings("refresh"))
+        self.assertOk(self.refresh_from_the_cache())
         self.assertEqual(self.load(), {"statusLine": self.ours(30)})
+
+    def test_refresh_from_a_checkout_changes_nothing(self):
+        self.repo.set_conf("statusline_refresh_sec", "30")
+        self.write({"statusLine": {"type": "command", "command": OURS_OLD, "refreshInterval": 60}})
+        before = self.raw()
+        self.assertOk(self.run_settings("refresh"))
+        self.assertEqual(self.raw(), before)
 
     def test_refresh_with_nothing_to_change_keeps_the_file(self):
         self.write({"statusLine": self.ours(60), "theme": "dark"})

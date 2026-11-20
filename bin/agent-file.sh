@@ -26,8 +26,8 @@
 #   agent-file.sh retrain [--force]                           -> learn agent_estimate.txt when 30 tasks, then once a week
 #                                                             -> an older plugin than installed: one line "retrain skipped: <running> is older than installed <newest>", nothing changes
 #   agent-file.sh eta <name> [--step <n>] [--work-so-far <m>] [--wait <m>]    -> one line: work left, done around, owner needed next
-#   agent-file.sh todo wait "<name>" on <mock|question|review|hold|queue> ["<note>"]  -> the todo line starts a wait
-#   agent-file.sh todo wait "<name>" off                      -> the wait closes; its minutes join "waited <m>m"
+#   agent-file.sh todo wait "<name>" on <mock|question|review|hold|queue> ["<note>"] [--who <name>] [--after <task>]  -> the todo line starts a wait
+#   agent-file.sh todo wait "<name>" off                      -> the wait closes; its minutes join "waited <m>m"; who, after, wait run since go
 #   agent-file.sh todo where "<name>" <machine> ["<worktree path>"]   -> the todo line says where it runs
 #   agent-file.sh park add "<question>" ["<task>"] [--sub "<line>"] [--why "<text>"] [--evidence "<text>"]
 #                 [--fact "<key>: <value>"]... [--options "A text|B text"] [--rec <letter or option text>]
@@ -140,14 +140,24 @@
 # todo wait, todo where: the todo line is edited in place (one atomic write); the other fields keep their place,
 #   a new field goes at the end, a field set again is replaced, once.
 #   todo wait on: field " | waiting <kind> since <YYYY-MM-DD HH:MM>" (+ ": <note>"). Already waiting: that wait is closed first.
-#   todo wait off: closes the open wait: " | waited <m>m" = the sum of every closed wait; the "waiting" field goes.
+#     The options and the one note come in any order after the kind.
+#     --who <name>: field " | who <name>" (spaces inside are fine; not with queue). --after <task>: field " | after <task>" (only with queue).
+#     Field order: waiting, who, after, wait run since. Already waiting: the old who and after go, the new ones are written, and
+#     " | wait run since <r>" is written: r = the old line's "wait run since", else the old wait's since. No open wait: no
+#     "wait run since" (a stale one goes).
+#   todo wait off: closes the open wait: " | waited <m>m" = the sum of every closed wait; the waiting, who, after and
+#     wait run since fields go.
 #   The closed wait also adds its minutes inside the current stage (from max(wait since, stage since) to now) to
 #   " | waited in stage <n>m" (replaced in place, once; added at the end when new; never on a line with no stage field).
 #   todo where: field " | on <machine>[ <path>]".
 #   Refused (one line on stderr, exit 1, nothing written): no todo line of that name, a kind not in the list, off when not
-#   waiting, no on|off, a machine with a space, " | " or a line break in a note or a path.
+#   waiting, no on|off, a machine with a space, " | " or a line break in a note or a path; --who with queue, --after with
+#   any other kind; --who or --after with no value, an empty value, " | " or a line break in it, or given twice; an unknown
+#   option starting with "--"; two notes; anything after off.
 #
-# todo stage <name> <stage> [<i>/<m>]: the stage field of the todo line, " | stage <stage>[ <i>/<m>] since <date>" (one atomic
+# todo stage <name> <stage> [<i>/<m>]: (first stage: a line with no stage and no started field also gets " | started <date>[ after <n>m waited]"
+#   right before the stage field; n = closed waited <m>m + an open wait up to now, no " after " when 0; never added or changed later.)
+#   The stage field of the todo line, " | stage <stage>[ <i>/<m>] since <date>" (one atomic
 #   write, replaced in place, once). A new <i>/<m> of the same stage keeps its "since" (todo line and STAGE line); a new
 #   stage name sets since = now and drops the " | waited in stage <n>m" field. The stages: brief register mock tests workers verify push report e2e merge. <i>/<m> only
 #   with workers (i of m slices done, whole numbers, m >= 1, 0 <= i <= m). The same value again: nothing is written.
@@ -639,9 +649,10 @@ bad_text() {
   case "$1" in *' | '*|*$'\n'*|*$'\r'*) return 0;; esac
   return 1
 }
-# todo_wait <name> on <kind> ["<note>"] | todo_wait <name> off
+# todo_wait <name> on <kind> ["<note>"] [--who <name>] [--after <task>] | todo_wait <name> off
 todo_wait() {
   local name="${1:-}" verb="${2:-}" kind note line open since m closed=0 new="" ssince="" ins=0 hasst=0 from
+  local who="" after="" havewho=0 haveafter=0 havenote=0 opt run="" oldrun=""
   [ -n "$name" ] || refuse "todo wait: needs a todo name"
   line=$(first "$TODO" "$name")
   [ -n "$line" ] || refuse "no todo line named: $name"
@@ -653,8 +664,36 @@ todo_wait() {
         mock|question|review|hold|queue) ;;
         *) refuse "todo wait: the kind is one of: mock question review hold queue (got: ${kind:-nothing})";;
       esac
-      [ $# -le 4 ] || refuse "todo wait: too many arguments; quote the note"
-      note="${4:-}"
+      [ $# -ge 3 ] && shift 3
+      note=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --who|--after)
+            opt="$1"
+            [ $# -ge 2 ] || refuse "todo wait: $opt needs a name"
+            case "$2" in
+              ''|*[![:space:]]*) ;;
+              *) refuse "todo wait: $opt needs a name, not blank text";;
+            esac
+            [ -n "$2" ] || refuse "todo wait: $opt needs a name, not an empty one"
+            case "$2" in --*) refuse "todo wait: $opt needs a name (got: $2)";; esac
+            if bad_text "$2"; then refuse "todo wait: the $opt value must not hold \" | \" or a line break"; fi
+            if [ "$opt" = --who ]; then
+              [ "$havewho" -eq 0 ] || refuse "todo wait: --who given twice"
+              [ "$kind" != queue ] || refuse "todo wait: --who does not go with queue (use --after)"
+              havewho=1; who="$2"
+            else
+              [ "$haveafter" -eq 0 ] || refuse "todo wait: --after given twice"
+              [ "$kind" = queue ] || refuse "todo wait: --after goes only with queue"
+              haveafter=1; after="$2"
+            fi
+            shift 2;;
+          --*) refuse "todo wait: unknown option: $1";;
+          *)
+            [ "$havenote" -eq 0 ] || refuse "todo wait: too many arguments; quote the note"
+            havenote=1; note="$1"; shift;;
+        esac
+      done
       if bad_text "$note"; then refuse "todo wait: the note must not hold \" | \" or a line break"; fi
       new="waiting $kind since $NOW${note:+: $note}";;
     off)
@@ -663,7 +702,7 @@ todo_wait() {
     *) refuse "todo wait: on or off (got: ${verb:-nothing})";;
   esac
   if [ -n "$open" ]; then
-    since=$(printf '%s' "$open" | sed -n 's/^waiting [^ ]* since \([0-9][0-9-]* [0-9:]*\).*/\1/p')
+    since=$(printf '%s' "$open" | sed -n 's/^waiting [^ ]* since \([0-9]\{4\}-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]\).*/\1/p')
     m=$(minutes_between "$since" "$NOW"); closed=${m:-0}
     ssince=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage .* since [0-9]/) { sub(/^.* since /, "", $i); print $i; exit } }')
     if [ -n "$ssince" ]; then
@@ -671,6 +710,16 @@ todo_wait() {
       if [[ "$ssince" > "$since" ]]; then from="$ssince"; fi
       m=$(minutes_between "$from" "$NOW"); ins=${m:-0}
     fi
+    if [ "$verb" = on ]; then
+      oldrun=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^wait run since /) { sub(/^wait run since /, "", $i); print $i; exit } }')
+      oldrun=$(printf '%s' "$oldrun" | sed -n 's/^\([0-9]\{4\}-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]\).*/\1/p')
+      run="${oldrun:-$since}"
+    fi
+  fi
+  if [ "$verb" = on ]; then
+    [ -z "$who" ] || new="$new | who $who"
+    [ -z "$after" ] || new="$new | after $after"
+    [ -z "$run" ] || new="$new | wait run since $run"
   fi
   NEW="$new" awk -F' \\| ' -v OFS=' | ' -v k="$name" -v add="$closed" -v ins="$ins" -v hasst="$hasst" '
     $1 == k && !hit {
@@ -682,6 +731,7 @@ todo_wait() {
       }
       n = 0
       for (i = 1; i <= NF; i++) {
+        if (i >= 4 && i != oi && ($i ~ /^who / || $i ~ /^after / || $i ~ /^wait run since /)) continue
         if (i == oi) { if (ENVIRON["NEW"] != "") out[++n] = ENVIRON["NEW"]; continue }
         if (i == wi && oi) { out[++n] = "waited " (w + add) "m"; continue }
         if (i == si && oi && hasst) { out[++n] = "waited in stage " (sw + ins) "m"; continue }
@@ -742,7 +792,7 @@ STATE_FILE="$STATE_DIR/agent_state.txt"
 # todo_stage <name> <stage> [<i>/<m>]
 STAGE_WORDS="brief register mock tests workers verify push report e2e merge"
 todo_stage() {
-  local name="${1:-}" stage="${2:-}" frac="${3:-}" line val cur i m wt_here= csince tsince keep
+  local name="${1:-}" stage="${2:-}" frac="${3:-}" line val cur i m wt_here= csince tsince keep started wn wo
   [ -n "$name" ] || refuse "todo stage: needs a todo name"
   [ -n "$stage" ] || refuse "todo stage: needs a stage"
   case " $STAGE_WORDS " in *" $stage "*) ;; *) refuse "todo stage: the stage is one of: $STAGE_WORDS (got: $stage)";; esac
@@ -765,16 +815,25 @@ todo_stage() {
   if [ -n "$line" ]; then
     cur=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage /) { sub(/^stage /, "", $i); sub(/ since .*$/, "", $i); print $i; exit } }')
     if [ "$cur" != "$val" ]; then
-      tsince=$NOW; keep=0
+      tsince=$NOW; keep=0; started=
+      if [ -z "$cur" ] && ! printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^(stage |started )/) exit 0; exit 1 }'; then
+        wn=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^waited [0-9]+m$/) { print substr($i, 8) + 0; exit } }')
+        wn=${wn:-0}
+        wo=$(printf '%s\n' "$line" | sed -n 's/.* | waiting [^ ]* since \([0-9]\{4\}-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]\).*/\1/p')
+        if [ -n "$wo" ]; then m=$(minutes_between "$wo" "$NOW"); wn=$((wn + ${m:-0})); fi
+        started="started $NOW"
+        if [ "$wn" -gt 0 ]; then started="$started after ${wn}m waited"; fi
+      fi
       if [ "${cur%% *}" = "$stage" ]; then
         csince=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage /) { if (sub(/^.* since /, "", $i)) print $i; exit } }')
         if [ -n "$csince" ]; then tsince=$csince; keep=1; fi
       fi
-      NEW="stage $val since $tsince" awk -F' \\| ' -v OFS=' | ' -v k="$name" -v keep="$keep" '
+      NEW="stage $val since $tsince" STARTED="$started" awk -F' \\| ' -v OFS=' | ' -v k="$name" -v keep="$keep" '
         $1 == k && !hit {
           hit = 1; wi = 0
           for (i = 4; i <= NF; i++) if (!wi && $i ~ /^stage /) wi = i
-          if (wi) $wi = ENVIRON["NEW"]; else $(NF + 1) = ENVIRON["NEW"]
+          if (wi) $wi = ENVIRON["NEW"]
+          else { if (ENVIRON["STARTED"] != "") $(NF + 1) = ENVIRON["STARTED"]; $(NF + 1) = ENVIRON["NEW"] }
           if (!keep) {
             n = 0
             for (i = 1; i <= NF; i++) if (!(i >= 4 && $i ~ /^waited in stage [0-9]+m$/)) out[++n] = $i
@@ -1015,7 +1074,7 @@ case "${1:-}:${2:-}" in
     counted=yes; [ -n "$d_files" ] || { counted=; d_files=-; d_lines=-; }
     what=$(printf '%s\n' "$line" | awk -F' \\| ' '{print $3}')
     est=$(old_num "$line" est)
-    opened=$(printf '%s\n' "$line" | sed -n 's/.*opened \([0-9][0-9-]* [0-9:]*\).*/\1/p')
+    opened=$(printf '%s\n' "$line" | sed -n 's/.*opened \([0-9]\{4\}-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]\).*/\1/p')
     clock=; [ -z "$opened" ] || clock=$(minutes_between "$opened" "$NOW")
     d_repo=$(repo_name "$ROOT"); d_est=${est:--}; d_clock=${clock:--}
     d_guess=$(printf '%s\n' "$line" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^guess [0-9]+m$/) {v = $i; sub(/^guess /, "", v); sub(/m$/, "", v); print v; exit}}')

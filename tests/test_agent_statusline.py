@@ -38,6 +38,10 @@ CONTRACT
              not ours -> refused (exit 1, one stderr line), the file the same
         refresh  ours, pointing at another plugin root -> pointed at this one;
              anything else -> nothing changes; exit 0 always
+             board-waiting scope add (2026-11-20): only when this root (or
+             CLAUDE_PLUGIN_ROOT) is under <config dir>/plugins/cache/; any other
+             root leaves it (requirements/board-waiting.md F,
+             tests/test_statusline_refresh.py)
         A file that is not valid JSON: on and off refused (exit 1), refresh
         exit 0; the file stays the same.
     agent-start.sh, at a main manager start, runs the refresh: after a plugin
@@ -230,9 +234,12 @@ class TestInstall(InstallCase):
         self.assertEqual(self.raw(), before)
 
     def test_refresh(self):
+        # board-waiting scope add (2026-11-20): this plugin copy is not under the plugin cache, so refresh leaves
+        # an ours statusLine as it is; the repoint from a cache root: tests/test_statusline_refresh.py
         self.write({"statusLine": {"type": "command", "command": OURS_OLD}, "theme": "dark"})
+        before = self.raw()
         self.assertOk(self.run_settings("refresh"))
-        self.assertEqual(self.load(), {"statusLine": self.ours, "theme": "dark"})
+        self.assertEqual(self.raw(), before)
         for data in ({"statusLine": FOREIGN}, {"theme": "dark"}):
             with self.subTest(data=data):
                 self.write(data)
@@ -321,10 +328,12 @@ class TestInstallWords(InstallCase):
 
 
 class TestStartRefreshes(InstallCase):
-    def test_a_main_manager_start_points_ours_at_this_plugin(self):
+    def test_a_main_manager_start_from_a_checkout_leaves_ours(self):
+        # board-waiting scope add (2026-11-20): a start from a root that is not under the plugin cache never
+        # repoints; a start from a cache root does: tests/test_statusline_refresh.py
         self.write({"statusLine": {"type": "command", "command": OURS_OLD}, "theme": "dark"})
         self.assertOk(self.repo.run("agent-start.sh"))
-        self.assertEqual(self.load(), {"statusLine": self.ours, "theme": "dark"})
+        self.assertEqual(self.load()["statusLine"], {"type": "command", "command": OURS_OLD})
 
     def test_a_start_never_touches_a_status_line_that_is_not_ours(self):
         self.write({"statusLine": FOREIGN})
