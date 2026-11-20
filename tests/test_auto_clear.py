@@ -81,6 +81,8 @@ case "${1:-} ${2:-}" in
     if [ -f "$d/read$n.json" ]; then cat "$d/read$n.json"; else cat "$d/read_default.json"; fi;;
   "terminal send")
     if [ -f "$d/send_fail" ]; then cat "$d/send_fail"; exit 1; fi
+    t=""; prev=""; for a in "$@"; do [ "$prev" = "--text" ] && t=$a; prev=$a; done
+    [ -f "$d/send_hook.sh" ] && bash "$d/send_hook.sh" "$t"
     printf '{"ok":true,"result":{}}\n';;
   *) printf '{"ok":true,"result":{}}\n';;
 esac
@@ -451,6 +453,44 @@ class TestWaiter(ClearCase):
                 self.assertEqual(int(fh.read().split()[0]), proc.pid)
         finally:
             proc.wait(timeout=60)
+        self.assertFalse(os.path.exists(self.pid_file()))
+
+    # ---- reviewer findings (verify, 2026-11-20)
+
+    def test_it_pauses_after_each_typed_text(self):
+        # finding 7: tui-idle can come back before the pane went busy; a pause of
+        # compact_clear_check_sec after each typed text lets the save turn start first
+        self.write_state(["ROLE: x", ""])
+        t0 = time.time()
+        self.assertOk(self.waiter())
+        self.assertGreaterEqual(time.time() - t0, 2.0, "no pause after the save prompt and /clear")
+        self.assertEqual(self.sends(), [SAVE, "/clear", CONT])
+
+    def test_the_goal_line_is_read_when_it_is_typed(self):
+        self.write_state(["ROLE: x", "GOAL: the old goal", ""])
+        self.stub_file("send_hook.sh", 'case "$1" in "AUTO CLEAR: save"*) echo "GOAL: the new goal" >> %s;; esac\n'
+                       % self.state_path)
+        self.assertOk(self.waiter())
+        self.assertEqual(self.sends()[-1], "/goal the new goal")
+
+    def test_an_empty_prompt_outside_the_box_is_not_empty(self):
+        self.write_state(["ROLE: x", ""])
+        bare = {"ok": True, "result": {"terminal": {"handle": HANDLE, "tail": ["⏺ x", "❯", "no rule lines here"]}}}
+        self.set_reads(bare)
+        self.assertOk(self.waiter())
+        self.assertEqual(self.verbs()[:5], ["wait", "read", "wait", "read", "send"])
+
+    def test_a_term_signal_leaves_a_line_at_once(self):
+        self.write_state(["ROLE: x", ""])
+        self.stub_file("wait_sleep", "30")
+        proc = self.repo.popen("agent-autoclear.sh", HANDLE, "s1", env={"AGENT_FAKE_NOW": NOW})
+        self.assertTrue(self.wait_for(lambda: "wait" in self.verbs(), 10))
+        time.sleep(0.5)
+        t0 = time.time()
+        proc.terminate()
+        proc.wait(timeout=20)
+        self.assertLess(time.time() - t0, 5, "the trap waited for the orca call")
+        self.assertEqual(self.state_lines()[-1], "AUTO CLEAR failed at step 1: stopped by a signal | %s" % NOW)
         self.assertFalse(os.path.exists(self.pid_file()))
 
     def test_missing_arguments_are_usage(self):

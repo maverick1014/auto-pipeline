@@ -43,7 +43,7 @@ A2.1 Stamps, first match wins:
 3. a field `since YYYY-MM-DD HH:MM` (STAGE, WORKER, PARKED, QUESTIONS PAGE)
 4. a header `=== <words> YYYY-MM-DD HH:MM ===` or `HOUSEKEEP YYYY-MM-DD HH:MM: clean`
 
-Why "next stamped line below" for an unstamped line: lines are appended, so a line is never newer than a line written after it. This can only make a line look younger than it is (kept too long), never older (moved too early).
+Why "next stamped line below" for an unstamped line: lines are appended, so a line is never newer than a line written after it. Only stamps of form 1, 3 or 4 count for the lines above (they are write times); a leading date (form 2) can be a content date (`2026-11-01 OWNER TODO: renew the cert`), so it dates only its own line (reviewer finding 5).
 
 A2.2 A line is KEPT when any row says so. Every other line is MOVED.
 
@@ -51,11 +51,11 @@ A2.2 A line is KEPT when any row says so. Every other line is MOVED.
 |---|---|---|---|---|
 | K1 | header | line 1-28 of this task's brief: `[Opus 5.5 xhigh] Brief from the main manager ...` | kept | the brief / the ROLE..CARRY block of `--clean` is the session's memory (S8) |
 | K2 | line starts with `RULE` or `CARRY:` (word, then `:` or space; a leading stamp allowed) | `RULE: pc2 full suite only under /tmp/pc2-heavy.lock \| 2026-11-12 09:00` | kept (8 days old) | owner rules carry across sessions |
-| K2 | `PARKED: `, `QUESTIONS PAGE: `, `STAGE `, `WORKER `, `TODO LINE:`, `GOAL:` at the line start | `STAGE state-trim: mock \| since 2026-11-20 11:40` | kept | scripts parse them: board, questions, watch, show question, the auto clear (GOAL) |
+| K2 | `PARKED: `, `QUESTIONS PAGE: `, `STAGE `, `WORKER `, `TODO LINE:` (leading spaces allowed, as the board reads it), `GOAL:` at the line start | `STAGE state-trim: mock \| since 2026-11-20 11:40` | kept | scripts parse them: board, questions, watch, show question, the auto clear (GOAL) |
 | K2 | holds `OWNER TODO:` (not right after a quote mark, the board's rule) | `2026-11-10 OWNER TODO: sign the Apple form` | kept | board row |
 | K3 | an open `QUESTION:` (no `ANSWER:` after it before the next `QUESTION:` or `=== ` line) | `QUESTION: keep HEARTBEAT lines of open tasks? \| 2026-11-18 10:00` | kept (2 days old) | show question and the watch must still see it |
 | K3b | the first `QUESTION:` or `=== ` line after an open question (and, when it is a question, its answer) | `=== REPORT ===` right after an open QUESTION | kept | else a later young ANSWER would close the open question |
-| K4 | the HOUSEKEEP block (`=== HOUSEKEEP <date> ===` + its two-space lines) or the `HOUSEKEEP <date>: clean` line | `=== HOUSEKEEP 2026-11-18 08:00 ===` | kept | the pass replaces it in place, there is at most one; the main manager acts on it (W8) |
+| K4 | the HOUSEKEEP block (`=== HOUSEKEEP <date> ===` + its two-space lines), the line right after the block (so a later indented line never joins it), or the `HOUSEKEEP <date>: clean` line | `=== HOUSEKEEP 2026-11-18 08:00 ===` | kept | the pass replaces it in place, there is at most one; the main manager acts on it (W8) |
 | K5 | a `=== REPORT ===` block (header to the line before the next `=== ` line) in which a line names an open task | `=== REPORT ===` / `DONE PASS state-trim` / ... | kept whole | the watch and the merge read it until the task is merged |
 | K6 | names an open task (not for any line starting with HEARTBEAT, see H) | `DECIDED one-watcher: --all reads agent_worktree.txt \| 2026-11-16 14:00` | kept | open-task memory |
 | K6 | a LIVE line is kept only by K6 or K7 (review change 1) | `LIVE: one-watcher \| laptop \| term_a1b2 \| 2026-11-18 09:00` | kept (names one-watcher, open) | |
@@ -83,15 +83,16 @@ MOVED examples (all old, no keep rule):
 |---|---|
 | T1 | Only the session's own state file. Never another folder's, never across machines |
 | T2 | One archive per DAY (owner Q2 C): moved lines are appended, verbatim and in file order, to `agent_state.trim-<YYYY-MM-DD>.txt` (date of the trim run) next to the file. A second trim the same day appends to the same file. Nothing to move: the day file is not touched, prints `state trim: nothing to move (<n> lines)` |
-| T3 | Checked before writing: kept + moved = every original line exactly once; open questions, PARKED, WORKER, STAGE, QUESTIONS PAGE, OWNER TODO, TODO LINE, GOAL, HOUSEKEEP are the same before and after. Fail: refused, nothing written |
-| T4 | Order: the day archive first (its old bytes + the moved lines, tmp + mv), then the state file (tmp + mv). Just before the state write the state file is read again; changed meanwhile (an agent appended) → the archive gets its old bytes back, start over, at most 3 times, then refused (`state trim: refused ...` on stderr, exit 1), nothing changed |
-| T5 | After writing both: read back, check that the state file = kept lines and the day file = its old bytes + moved lines; fail → the state file gets the original bytes, the day file its old bytes, refused. "Old bytes" of a day file this run created = no file: it held only this run's lines, which are still in the state file. An existing day file is never deleted |
+| T3 | Checked before writing (the dry run runs the same check and says when the real run would refuse): kept + moved = every original line exactly once; open questions, PARKED, WORKER, STAGE, QUESTIONS PAGE, OWNER TODO, TODO LINE, GOAL, HOUSEKEEP are the same before and after. Fail: refused, nothing written |
+| T4 | One trim at a time: the whole trim holds an exclusive lock in the git dir of the state folder; `state add` takes the same lock. Order: the day archive first (its old bytes + the moved lines, tmp + mv), then the state file (tmp + mv). Just before the state write the state file is read again; changed meanwhile (an agent appended) → the archive gets its old bytes back, start over, at most 3 times, then refused (`state trim: refused ...` on stderr, exit 1), nothing changed |
+| T5 | A line another writer appends right after the state write, or into the old file during the swap, is kept at the end of the new file. After writing both: read back, check that the state file = kept lines and the day file = its old bytes + moved lines; fail → the state file gets the original bytes, the day file its old bytes, refused. "Old bytes" of a day file this run created = no file: it held only this run's lines, which are still in the state file. An existing day file is never deleted |
 | T6 | Prints `state trim: kept <k>, moved <m> of <n> -> agent_state.trim-<date>.txt (checked)` |
 | T7 | `--dry-run`: writes nothing; prints `state trim (dry run): keep <k>, move <m> of <n>`, then `by rule: K1 <n>, K2 <n>, K3 <n>, K3b <n>, K4 <n>, K5 <n>, K6 <n>, K7 <n>, K8 <n>, H <n>, P <n>` (a line counts once, under the first rule of that order that keeps it), then `first kept:` and `first moved:`, each with up to 5 lines `  <line cut to 100 chars>` |
 | T8 | The day file matches the `agent_state.*.txt` git-ignore line that `--clean` writes (trim adds the line when missing) |
 | T9 | Trim never deletes an archive. `--clean` keeps the 5 newest of each kind: its own copies `agent_state.<YYYY-MM-DD-HHMMSS>.txt` (as today) and the trim day files `agent_state.trim-<date>.txt` (about 5 days of trims) |
 | T10 | Run by `todo done` (after the line moved to agent_completed.txt, so the finished task no longer counts as open) and by `agent-housekeep.sh --apply` (before it writes its block). They print the trim line only when lines moved (housekeep: one body line `note: state trim moved <m> of <n> lines -> <day file>`). A refused trim never fails them: one warning line on stderr, exit as before |
 | T11 | `state_trim_auto=off` in agent.conf: todo done and housekeep do not trim; `state trim` by hand still works |
+| T12 | The watch (`agent-watch.sh`): a signal count below its baseline becomes the new baseline (a trim moved old signal lines), so the next new line still fires |
 
 ### A4. Start text warning
 
@@ -107,9 +108,9 @@ MOVED examples (all old, no keep rule):
 |---|---|---|
 | C1 | compaction 1 | as today: `COMPACTED 1 time(s) this session ...` |
 | C2 | compaction 2 (`compact_clear_at`), orca, `ORCA_TERMINAL_HANDLE` set, `orca` found | hook prints `LIMIT: compacted 2 times. Save agent_state.txt now, then stop. This pane gets a save prompt and /clear at its next idle prompt (S8).`, appends `AUTO CLEAR queued: compacted 2 times \| <date>` to the state file, starts the waiter `bin/agent-autoclear.sh` detached (the hook returns at once) |
-| C3 | waiter | 1 waits until the pane may be typed into (C10) → 2 types `AUTO CLEAR: save agent_state.txt now (S8), nothing else. /clear comes next.` → 3 waits (C10) → 4 types `/clear` → 5 waits (C10) → 6 a `GOAL:` line in the state file: types `/goal <that text>`; none: types `CLEARED: continue from agent_state.txt (S8).` → 7 appends `AUTO CLEAR done \| <date>` |
-| C10 | may type (owner Q3 A), checked before every typed text, task manager and main manager panes alike | `orca terminal wait --for tui-idle` succeeds AND a pane read shows the input box empty: the last line starting with `❯` between the two `─` rule lines has nothing after the `❯` but spaces. Text there → wait `compact_clear_check_sec` (30), check again; never type over it. The first time it waits on text it appends `AUTO CLEAR waiting: input box not empty \| <date>` once (a dim hint text reads as text too; never silent) |
-| C4 | a step fails (send refused, orca error; a wait error whose code holds `timeout` only means wait again) | appends `AUTO CLEAR failed at step <n>: <error code> \| <date>` (steps: 1 wait, 2 save prompt, 3 wait, 4 /clear, 5 wait, 6 goal or continue), exits. The next compaction tries again |
+| C3 | waiter (after each typed text it pauses `compact_clear_check_sec`, so the pane is busy before the next idle check; the GOAL: line is read at step 6) | 1 waits until the pane may be typed into (C10) → 2 types `AUTO CLEAR: save agent_state.txt now (S8), nothing else. /clear comes next.` → 3 waits (C10) → 4 types `/clear` → 5 waits (C10) → 6 a `GOAL:` line in the state file: types `/goal <that text>`; none: types `CLEARED: continue from agent_state.txt (S8).` → 7 appends `AUTO CLEAR done \| <date>` |
+| C10 | may type (owner Q3 A), checked before every typed text, task manager and main manager panes alike | `orca terminal wait --for tui-idle` succeeds AND a pane read shows the input box empty: the last line starting with `❯` sits between two `─` rule lines and has nothing after the `❯` but spaces. Text there → wait `compact_clear_check_sec` (30), check again; never type over it. The first time it waits on text it appends `AUTO CLEAR waiting: input box not empty \| <date>` once (a dim hint text reads as text too; never silent) |
+| C4 | a step fails (send refused, orca error; a wait error whose code holds `timeout` only means wait again) | appends `AUTO CLEAR failed at step <n>: <error code> \| <date>` (steps: 1 wait, 2 save prompt, 3 wait, 4 /clear, 5 wait, 6 goal or continue), exits. A TERM/INT/HUP signal: `AUTO CLEAR failed at step <n>: stopped by a signal` at once. The next compaction tries again |
 | C5 | compaction 3 while a waiter for this session lives | LIMIT line only, no second waiter (pid file `<git dir>/agent_autoclear_<session id>`) |
 | C6 | plain or cloud, no handle, no orca | one line: `LIMIT: compacted 2 times. No pane to type into: save agent_state.txt, then tell the human to type /clear.` |
 | C7 | `/clear` happened (SessionStart source clear) | the compaction count of that session starts again at 0 |
@@ -226,5 +227,6 @@ Read as default, logged (W1): T9 "5 newest" counts each kind on its own, so the 
 5. `--clean` writes a blank line after its header and keeps 5 day files (A8, T9).
 6. Review change 1: LIVE lines (K6, K7).
 7. Review change 2: standing OWNER lines (K8).
+8. Reviewer findings at verify (2026-11-20): trim lock, late appends kept, HOUSEKEEP block end, leading dates no bound, indented TODO LINE, watch baseline (T12), waiter pause / signal line / GOAL read late / box between rule lines.
 
 No change to hooks/hooks.json: the compaction branch of agent-start.sh (SessionStart) is the compact hook. The release (.claude-plugin/) keeps the task at level 4.

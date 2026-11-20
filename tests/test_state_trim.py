@@ -40,6 +40,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -680,6 +681,102 @@ class TestOwnFileOnly(TrimCase):
         self.assertEqual(self.day_lines(folder=wt), ["wt old | %s" % OLD])
         self.assertEqual(self.state_lines(), main_rows)
         self.assertIsNone(read(self.day_path()))
+
+
+# =============================================================== reviewer findings (verify, 2026-11-20)
+
+
+class TestOneTrimAtATime(TrimCase):
+    """Finding 1: two trims at once lost the moved lines. A lock holds the whole trim and every state add.
+    AGENT_FAKE_TRIM_HOLD=<sec> (tests only): the trim sleeps that long right after it read the day file."""
+
+    def start_held_trim(self, sec="2"):
+        env = {"AGENT_FAKE_NOW": NOW, "AGENT_FAKE_TRIM_HOLD": sec}
+        t0 = time.time()
+        proc = self.repo.popen("agent-file.sh", "state", "trim", env=env)
+        time.sleep(0.5)
+        return proc, t0
+
+    def test_two_trims_at_once_lose_nothing(self):
+        original = self.write_state(["old note one | 2026-11-10 10:00", "old note two | 2026-11-10 11:00"])
+        proc, t0 = self.start_held_trim()
+        t1 = time.time()
+        second = self.af("state", "trim")
+        waited = time.time() - t1
+        out_a, err_a = proc.communicate(timeout=60)
+        self.assertGreaterEqual(time.time() - t0, 1.5, "the hold did not hold")
+        self.assertEqual(proc.returncode, 0, out_a + err_a)
+        self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+        self.assertGreaterEqual(waited, 1.0, "the second trim did not wait for the lock")
+        self.assertEqual(self.day_lines(), ["old note one | 2026-11-10 10:00", "old note two | 2026-11-10 11:00"])
+        self.assertEqual(sorted(self.state_lines() + self.day_lines()), sorted(original))
+
+    def test_state_add_waits_for_a_running_trim_and_its_line_stays(self):
+        self.write_state(["old | %s" % OLD])
+        proc, t0 = self.start_held_trim()
+        t1 = time.time()
+        self.assertOk(self.af("state", "add", "added meanwhile"))
+        waited = time.time() - t1
+        proc.communicate(timeout=60)
+        self.assertGreaterEqual(waited, 1.0, "state add did not wait for the lock")
+        self.assertEqual(self.state_lines(), HEAD + ["added meanwhile | %s" % NOW])
+        self.assertEqual(self.day_lines(), ["old | %s" % OLD])
+
+
+class TestLateAppends(TrimCase):
+    """Finding 2: a line appended by another writer right around the swap must survive.
+    Tests only: AGENT_FAKE_TRIM_LATE_NEW=<line> appends it to agent_state.txt right after the trim wrote it;
+    AGENT_FAKE_TRIM_LATE_OLD=<line> appends it, right after the swap, through a handle opened on the old file."""
+
+    def test_a_line_appended_right_after_the_write_survives(self):
+        self.write_state(["old | %s" % OLD, "young | %s" % YOUNG])
+        out = self.trim(env={"AGENT_FAKE_TRIM_LATE_NEW": "QUESTION: new one"})
+        self.assertIn("(checked)", out)
+        self.assertEqual(self.state_lines(), HEAD + ["young | %s" % YOUNG, "QUESTION: new one"])
+        self.assertEqual(self.day_lines(), ["old | %s" % OLD])
+
+    def test_a_line_written_to_the_old_file_during_the_swap_survives(self):
+        self.write_state(["old | %s" % OLD, "young | %s" % YOUNG])
+        self.trim(env={"AGENT_FAKE_TRIM_LATE_OLD": "late line"})
+        self.assertEqual(self.state_lines(), HEAD + ["young | %s" % YOUNG, "late line"])
+        self.assertEqual(self.day_lines(), ["old | %s" % OLD])
+
+
+class TestHousekeepBlockEnd(TrimCase):
+    """Finding 4: the line that ends a HOUSEKEEP block stays (K4), so an indented line never joins the block."""
+
+    def test_the_line_after_the_block_stays(self):
+        lines = ["older | %s" % OLD, "=== HOUSEKEEP 2026-11-18 08:00 ===", "  stale: 1 worktree",
+                 "old note | %s" % OLD, "  - detail of the next step", "young note | %s" % YOUNG]
+        self.assertSplit(lines, keep=lines[1:])
+
+    def test_the_dry_run_counts_it_under_k4(self):
+        lines = ["older | %s" % OLD, "=== HOUSEKEEP 2026-11-18 08:00 ===", "  stale: 1 worktree",
+                 "old note | %s" % OLD, "  - detail of the next step", "young note | %s" % YOUNG]
+        self.write_state(lines)
+        rows = self.trim("--dry-run").splitlines()
+        self.assertEqual(rows[0], "state trim (dry run): keep 7, move 1 of 8")
+        self.assertEqual(rows[1], "by rule: K1 2, K2 0, K3 0, K3b 0, K4 3, K5 0, K6 0, K7 2, K8 0, H 0, P 0")
+
+
+class TestLeadingDatesAreNoBound(TrimCase):
+    """Finding 5: a leading date can be a content date, so it dates only its own line, never the lines above."""
+
+    def test_a_note_above_an_owner_todo_with_an_old_date_stays(self):
+        lines = ["waiting for CI on the cert fix", "2026-11-01 OWNER TODO: renew the cert", "young | %s" % YOUNG]
+        self.assertSplit(lines, keep=lines)
+
+    def test_an_unstamped_line_above_only_leading_dates_is_now(self):
+        lines = ["legacy at the top", "2026-11-01 09:00 note b"]
+        self.assertSplit(lines, keep=["legacy at the top"])
+
+
+class TestIndentedTodoLine(TrimCase):
+    """Finding 6: the board and show question read an indented TODO LINE:, so trim keeps it too."""
+
+    def test_an_indented_todo_line_stays(self):
+        line = "  TODO LINE: goal-probe | big | Test /goal | est 30m | %s" % OLD
+        self.assertSplit([line, "old | %s" % OLD], keep=[line])
 
 
 # =============================================================== callers (T10, T11)
