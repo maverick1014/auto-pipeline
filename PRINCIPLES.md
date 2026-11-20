@@ -215,13 +215,13 @@ W14. Show todo
 - A quoted mention is not an order; todo inside a sentence never fires
 - One script, no agent: `bin/agent-file.sh board`. Show its table as printed, every row, then the decide section (H3)
 - Main manager: the whole repo. Task manager or Helper: `board --self`, its own task and its workers only. Subagents never
-- Rows: every open task (running, held, queued), every wait on the owner (mock check, owner question, owner review), `OWNER TODO:` and `PARKED:` lines of agent_state.txt
-- Each row: task, what in a few words (H3), status, where (machine, worktree), est, work so far, wait so far, progress (bar and percent), done by (clock time)
-- Sort: waiting on the owner, running, held or queued, OWNER TODO, parked questions last; oldest first in each group
-- Times come from the files, never guessed. Wait = sum of `todo wait`. Work = since opened minus wait. Done by = now + est - work. Over est: by progress once progress_eta_min_pct is hit, else 超出 <n>m
+- Rows: open tasks, waits on the owner (mock check, owner question, owner review), `OWNER TODO:` and `PARKED:` lines. Each: task, what in a few words, status, where, est, work, wait, progress, done by
+- Status of a wait: `waiting <who> · <what> · waited <n>`, held `hold · <what> · waited <n>`, queued `queue · after <task>`; no stage, no wait: not started. Time cells `-` (not started keeps est)
+- Sort: waiting on the owner, running, waiting on others, queued and not started, held, OWNER TODO, parked questions last; oldest first in each group
+- Times come from the files, never guessed. Work counts from the first stage minus later waits. Waited: since a run of waits began. Done by = now + est - work; over: by progress, else 超出 <n>m
 - Progress: `agent-file.sh todo stage <name> <stage> [i/m]` at each step boundary. Task manager: brief register mock tests workers verify push report. Main manager: e2e merge. Weights in agent.conf
-- See it live with `board --watch`, and in the Claude Code status line with `agent-settings.sh statusline on|off`. Headers and status words in the `language` of agent.conf
-- Record as it happens: `agent-file.sh todo wait <name> on <kind>|off` at every mock check, owner question, owner review, hold, queue; `todo where` at dispatch
+- Live: `board --watch`; status line `agent-settings.sh statusline on|off`, 5 lines at most, queued, held and not started fold into `+N queued/held`. Words in the `language` of agent.conf
+- Record as it happens: `todo wait <name> on <kind> ["<note>"] [--who <name>] [--after <task>]|off` at every mock check, owner question, owner review, hold, queue; `todo where` at dispatch
 - `park add` for a parked question (H1), `worker on <n>` / `worker off <n>` for each worker; `OWNER TODO:` lines are written with `agent-file.sh state add`
 
 W15. Watch

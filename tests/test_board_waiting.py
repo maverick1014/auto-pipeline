@@ -531,6 +531,17 @@ class TestOldLines(Case):
         self.assertEqual(len(self.table(result.stdout)), 6)
         self.line()
 
+    def test_10_a_wait_since_that_is_no_real_time(self):
+        # verify finding (Worker 2 bounce 1): the date pattern matches, the date does not exist -> no crash,
+        # the row keeps its kind and leaves the waited part out
+        self.put("a | big | w | opened 2026-11-20 10:00 | by main | waiting hold since 2026-13-40 99:99: x",
+                 "c | big | w | opened 2026-11-20 10:00 | by main | waiting review since 2026-02-30 10:00 | who v4-Manager")
+        result = self.af("board", now=NOW)
+        self.assertNotIn("Traceback", result.stderr)
+        got = {r["Task"]: r["Status"] for r in self.table(result.stdout)}
+        self.assertEqual(got, {"a": "暂缓 · x", "c": "等待 v4-Manager · 合并前签字"})
+        self.assertEqual(self.line(), name_col("c") + "等待 v4-Manager\n+1 排队/暂缓")   # a: a hold folds (9.4)
+
 
 # ---------------------------------------------------------------- rule 4: todo wait --who --after
 

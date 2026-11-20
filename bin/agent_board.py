@@ -14,9 +14,10 @@ Progress column: the "stage <stage>[ <i>/<m>] since <date>" field of a todo line
 line of its own agent_state.txt) gives a bar by the stage weights of agent.conf (template agent.conf.default next to
 this script for a missing or bad key). The parse, progress and done-by functions are plain module functions (a status
 line can call them). --watch <sec>: redraw every <sec> seconds until Ctrl-C.
-    agent_board.py --statusline    (stdin: Claude Code's session JSON) one line per task with a stage (name, bar, stage,
-                                   done by; at most 5 lines, then "+N more"), or nothing; always exit 0
-                                   (bin/agent-statusline.sh runs it)
+    agent_board.py --statusline    (stdin: Claude Code's session JSON) one line per todo task that runs with a stage
+                                   (name, bar, stage, done by) or waits on the owner or on others; queue, hold and
+                                   not started rows fold into "+N queued/held"; at most 5 lines in all, or nothing;
+                                   always exit 0 (bin/agent-statusline.sh runs it)
 Rows (--self): the session's own task (its todo line, else its "TODO LINE:" in its own agent_state.txt, else the
 human-direct line of its folder, else one bare row) plus the state lines of its own agent_state.txt only.
 """
@@ -43,18 +44,25 @@ HEAD = {
     "en": ["Task", "What", "Status", "Progress", "Where", "Level", "Est", "Work", "Wait", "Done by"],
 }
 STATUS = {
-    "zh": {"mock": "等你：看样稿", "question": "等你：回答问题", "review": "等你：验收",
-           "running": "进行中", "hold": "暂缓", "queue": "排队中", "owner": "你的待办",
-           "parked": "搁置的问题"},
-    "en": {"mock": "waits on you: mock check", "question": "waits on you: question",
-           "review": "waits on you: review", "running": "running", "hold": "held",
-           "queue": "queued", "owner": "your to-do", "parked": "parked question"},
+    "zh": {"running": "进行中", "owner": "你的待办", "parked": "搁置的问题", "waiting": "等待", "hold": "暂缓",
+           "queue": "排队", "notstarted": "未开始", "after": "在 %s 之后", "waited": "已等 %s", "you": "你",
+           "fold": "+%d 排队/暂缓"},
+    "en": {"running": "running", "owner": "your to-do", "parked": "parked question", "waiting": "waiting",
+           "hold": "hold", "queue": "queue", "notstarted": "not started", "after": "after %s",
+           "waited": "waited %s", "you": "you", "fold": "+%d queued/held"},
 }
-# sort groups: waiting on the owner, running, held or queued, OWNER TODO, parked
-G_OWNER_WAIT, G_RUNNING, G_HELD, G_OWNER_TODO, G_PARKED = 0, 1, 2, 3, 4
-KIND_GROUP = {"mock": G_OWNER_WAIT, "question": G_OWNER_WAIT, "review": G_OWNER_WAIT,
-              "hold": G_HELD, "queue": G_HELD}
+DEFAULT_WHAT = {
+    "zh": {"mock": "确认样稿或规则表", "question": "回答问题", "review": "合并前签字"},
+    "en": {"mock": "check mock or rules table", "question": "answer a question", "review": "sign off before merge"},
+}
+# sort groups: waiting on the owner, running, waiting on others, queue and not started, hold, OWNER TODO, parked
+G_OWNER_WAIT, G_RUNNING, G_OTHER_WAIT, G_QUEUE, G_HOLD, G_OWNER_TODO, G_PARKED = 0, 1, 2, 3, 4, 5, 6
+OWNER_KINDS = ("mock", "question", "review")
+KNOWN_KINDS = OWNER_KINDS + ("hold", "queue")
+OWNER_WHO = ("you", "owner", "你")
 WHAT_MAX = 60
+WAIT_WHAT_COLS = 40
+LINE_WHAT_COLS = 24
 STAGES = ["brief", "register", "mock", "tests", "workers", "verify", "push", "report", "e2e", "merge"]
 BAR_CELLS = 10
 CLEAR = "\033[H\033[2J"
@@ -91,8 +99,47 @@ def fmt_min(n):
     return "%dm" % n
 
 
+def fmt_waited(lang, n):
+    """The short waited time: zh 5分钟 / 2小时10分 / 3天20小时, en fmt_min."""
+    if lang != "zh":
+        return fmt_min(n)
+    if n >= 1440:
+        d, h = divmod(n // 60, 24)
+        return "%d天%d小时" % (d, h) if h else "%d天" % d
+    if n >= 60:
+        h, m = divmod(n, 60)
+        return "%d小时%d分" % (h, m) if m else "%d小时" % h
+    return "%d分钟" % n
+
+
 def collapse(text):
     return " ".join(str(text).split())
+
+
+def char_width(ch):
+    return 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+
+
+def display_width(text):
+    return sum(char_width(c) for c in text)
+
+
+def cut_cols(text, cols):
+    """text (white space collapsed) cut to cols display columns: longer keeps at most cols-1 columns, then back to the
+    last space when the next character is not a space, and "…"."""
+    s = collapse(text)
+    if display_width(s) <= cols:
+        return s
+    kept, used = "", 0
+    for ch in s:
+        if used + char_width(ch) > cols - 1:
+            break
+        kept, used = kept + ch, used + char_width(ch)
+    if s[len(kept)] != " ":
+        i = kept.rfind(" ")
+        if i > 0:
+            kept = kept[:i]
+    return kept.rstrip() + "…"
 
 
 def cut_what(text):
@@ -305,7 +352,8 @@ class Board:
         f = line.split(" | ")
         t = {"name": f[0].strip(), "what": f[2] if len(f) > 2 else "", "est": None,
              "opened": None, "wkind": None, "wsince": None, "wnote": "", "waited": 0,
-             "machine": None, "path": None, "stage": None, "since": None, "wis": 0, "level": None}
+             "machine": None, "path": None, "stage": None, "since": None, "wis": 0, "level": None,
+             "who": None, "after": None, "wrun": None, "started": None, "swaited": 0}
         for x in f[3:]:
             m = re.match(r"est (\d+)m$", x)
             if m and t["est"] is None:
@@ -323,6 +371,24 @@ class Board:
             if m and t["stage"] is None:
                 t["stage"] = parse_stage(m.group(1))
                 t["since"] = m.group(2)
+                continue
+            m = re.match(r"who (.*)$", x)
+            if m and t["who"] is None:
+                if m.group(1).strip():
+                    t["who"] = m.group(1).strip()
+                continue
+            m = re.match(r"after (.*)$", x)
+            if m and t["after"] is None:
+                if m.group(1).strip():
+                    t["after"] = m.group(1).strip()
+                continue
+            m = re.match(r"wait run since (%s)$" % DATE, x.strip())
+            if m and t["wrun"] is None and parse_time(m.group(1)):
+                t["wrun"] = m.group(1)
+                continue
+            m = re.match(r"started (%s)(?: after (\d+)m waited)?$" % DATE, x.strip())
+            if m and t["started"] is None and parse_time(m.group(1)):
+                t["started"], t["swaited"] = m.group(1), int(m.group(2) or 0)
                 continue
             m = re.match(r"level (\d+)$", x)
             if m and t["level"] is None:
@@ -347,36 +413,105 @@ class Board:
                 return self.where_path(f[0])
         return None
 
+    def waited_minutes(self, t):
+        """Minutes of the open wait run, None when its start is unknown (rule 5.0): from the open wait's since, or from opened when the closed waits
+        fill all the time before it, else from the "wait run since" field."""
+        s = parse_time(t["wsince"])
+        opened = parse_time(t["opened"]) if t["opened"] else None
+        start = s
+        if opened is not None and s is not None and t["waited"] >= minutes(opened, s):
+            start = opened
+        elif t["wrun"]:
+            start = parse_time(t["wrun"]) or s
+        return minutes(start, self.now)
+
+    def wait_text(self, t, kind, owner, cols):
+        """The Status cell of a waiting or hold row; cols = display columns of the what part (None: no what part)."""
+        w = self.words
+        n = self.waited_minutes(t)
+        note = collapse(t["wnote"])
+        what = note or DEFAULT_WHAT[self.lang].get(kind, "")
+        parts = []
+        if t["who"] or kind in OWNER_KINDS:
+            parts.append("%s %s" % (w["waiting"], w["you"] if owner else t["who"]))
+        else:
+            parts.append(w["hold"])
+        if what and cols is not None:
+            parts.append(cut_cols(what, cols))
+        if n is not None:
+            parts.append(w["waited"] % fmt_waited(self.lang, n))
+        return " · ".join(parts)
+
+    def queue_text(self, t):
+        w = self.words
+        task = t["after"]
+        if not task:
+            m = re.match(r"after\s+(\S+)", collapse(t["wnote"]), re.IGNORECASE)
+            task = m.group(1).rstrip(",;:.") if m else ""
+        return w["queue"] + (" · " + w["after"] % task if task else "")
+
     def todo_row(self, t, wt_lines, own_dir=None):
         opened = parse_time(t["opened"]) if t["opened"] else None
+        started = parse_time(t["started"]) if t["started"] else None
         wsince = parse_time(t["wsince"]) if t["wsince"] else None
         wait = t["waited"]
         if wsince is not None:
             wait += minutes(wsince, self.now)
-        clock = minutes(opened, self.now)
-        work = None if clock is None else max(0, clock - wait)
-        kind = t["wkind"] if t["wkind"] in KIND_GROUP else None
-        status = self.word(kind or "running")
-        if kind and t["wnote"]:
-            status += " · " + t["wnote"]
-        group = KIND_GROUP.get(kind, G_RUNNING)
-        if kind:
-            when = t["wsince"]
+        kind = t["wkind"] if t["wkind"] in KNOWN_KINDS else None
+        who = t["who"]
+        owner = bool(kind in OWNER_KINDS and not who) or bool(who and who.lower() in OWNER_WHO)
+        info = None
+        dash = False
+        est = fmt_min(t["est"])
+        work, done, progress = "-", "-", "-"
+        if kind == "queue":
+            group, when, dash = G_QUEUE, t["wsince"], True
+            status = self.queue_text(t)
+            info = {"type": "fold"}
+        elif kind:
+            group = G_OWNER_WAIT if owner else (G_OTHER_WAIT if who else G_HOLD)
+            when, dash = t["wsince"], True
+            status = self.wait_text(t, kind, owner, WAIT_WHAT_COLS)
+            if group == G_OWNER_WAIT:
+                info = {"type": "wait", "name": t["name"], "text": self.wait_text(t, kind, owner, LINE_WHAT_COLS)}
+            elif group == G_OTHER_WAIT:
+                info = {"type": "wait", "name": t["name"], "text": self.wait_text(t, kind, owner, None)}
+            else:
+                info = {"type": "fold"}
+        elif t["since"] is None and started is None:
+            group, when = G_QUEUE, t["opened"]
+            status = self.word("notstarted")
+            wait = None
+            info = {"type": "fold"}
         else:
-            when = t["opened"]
+            group, when = G_RUNNING, t["opened"]
+            status = self.word("running")
+        if dash or wait is None:
+            wait_cell = "-"
+            if dash:
+                est = "-"
+        else:
+            if started is not None:
+                work = max(0, minutes(started, self.now) - (wait - t["swaited"]))
+            else:
+                clock = minutes(opened, self.now)
+                work = None if clock is None else max(0, clock - wait)
+            p = self.progress_of(t)
+            done = done_by_text(self.lang, self.now, t["est"], work, p, self.eta_min_pct)
+            work = fmt_min(work)
+            wait_cell = fmt_min(wait)
+            progress = "-" if p is None else bar_text(p)
+            if p is not None:
+                info = {"type": "run", "name": t["name"], "stage": t["stage"], "bar": progress, "done": done}
         if t["machine"]:
             where = t["machine"] + (", " + short_path(t["path"], self.home) if t["path"] else "")
         else:
             where = self.worktree_where(t["name"], wt_lines)
             if where is None:
                 where = self.where_here(own_dir) if own_dir else "-"
-        p = self.progress_of(t)
-        done = done_by_text(self.lang, self.now, t["est"], work, p, self.eta_min_pct)
         self.add(group, when, t["name"], t["what"] or "-", status, where,
-                 est=fmt_min(t["est"]), work=fmt_min(work), wait=fmt_min(wait),
-                 done=done, progress="-" if p is None else bar_text(p),
-                 level="-" if t["level"] is None else "L%d" % t["level"],
-                 info=(t["name"], t["stage"]) if p is not None else None)
+                 est=est, work=work, wait=wait_cell, done=done, progress=progress,
+                 level="-" if t["level"] is None else "L%d" % t["level"], info=info)
 
     def helper_row(self, f):
         what = "-"
@@ -586,14 +721,6 @@ NAME_COLS = 24
 STATUS_LINES = 5
 
 
-def char_width(ch):
-    return 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
-
-
-def display_width(text):
-    return sum(char_width(c) for c in text)
-
-
 def fit(text, cols):
     """text padded with spaces to cols display columns; longer: its first cols-1 columns and "…"."""
     if display_width(text) <= cols:
@@ -607,8 +734,9 @@ def fit(text, cols):
 
 
 def statusline_text(stdin_text):
-    """The status line: one line per task with a stage (name, bar, stage, done by), the board's order, at most
-    5 lines and "+N more"; "" for none."""
+    """The status line: todo rows only, the board's order: a run with a stage (name, bar, stage, done by), a wait on
+    the owner or on others; queue, hold and not started rows fold into "+N queued/held"; at most 5 lines in all;
+    "" for none."""
     folder = None
     try:
         data = json.loads(stdin_text)
@@ -636,21 +764,36 @@ def statusline_text(stdin_text):
     for _, cells, info in sorted(board.rows, key=lambda r: r[0]):
         if info is None:
             continue
-        name, (stage, i, m) = info
-        word = ZH_STAGE[stage] if zh else stage
-        if i is not None:
-            word += " %d/%d" % (i, m)
-        lines.append((name, cells[3], word, cells[9]))
-    shown = lines[:STATUS_LINES]
-    wide = max([display_width(l[2]) for l in shown] or [0])
+        if info["type"] == "fold":
+            lines.append(None)
+        elif info["type"] == "wait":
+            lines.append(("wait", info["name"], info["text"]))
+        else:
+            stage, i, m = info["stage"]
+            word = ZH_STAGE[stage] if zh else stage
+            if i is not None:
+                word += " %d/%d" % (i, m)
+            lines.append(("run", info["name"], word, info["bar"], info["done"]))
+    folded = sum(1 for l in lines if l is None)
+    cands = [l for l in lines if l is not None]
+    if folded or len(cands) > STATUS_LINES:
+        shown = cands[:STATUS_LINES - 1]
+    else:
+        shown = cands
+    wide = max([display_width(l[2]) for l in shown if l[0] == "run"] or [0])
     out = []
-    for name, bar, word, done in shown:
-        row = "  ".join([fit(name, NAME_COLS), bar, word + " " * (wide - display_width(word))])
-        if done != "-":
-            row += "  " + done
+    for l in shown:
+        if l[0] == "run":
+            _, name, word, bar, done = l
+            row = "  ".join([fit(name, NAME_COLS), bar, word + " " * (wide - display_width(word))])
+            if done != "-":
+                row += "  " + done
+        else:
+            row = fit(l[1], NAME_COLS) + "  " + l[2]
         out.append(row.rstrip())
-    if len(lines) > len(shown):
-        out.append(("+%d 个" if zh else "+%d more") % (len(lines) - len(shown)))
+    rest = folded + len(cands) - len(shown)
+    if rest:
+        out.append(STATUS[lang]["fold"] % rest)
     return "\n".join(out)
 
 
