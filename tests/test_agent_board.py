@@ -166,9 +166,22 @@ class BoardCase(ScriptCase):
         self.assertEqual({n: self.repo.read(n) for n in files}, files, args)
         return result
 
-    def add(self, name, what, est=None, opened="2026-11-02 14:00", size="big"):
+    def add(self, name, what, est=None, opened="2026-11-02 14:00", size="big", started=True):
+        """A todo line. started (board-waiting rule 6, work counts from the first stage): True -> the line
+        gets " | started <opened>" (a task already under way, as these tests mean); a date -> that date;
+        False -> none (a task that never started)."""
         args = ["todo", "add", name, size, what] + ([str(est)] if est is not None else [])
         self.af(*args, now=opened)
+        if started:
+            at = opened if started is True else started
+            path = self.repo.path("agent_todo.txt")
+            with open(path) as fh:
+                lines = fh.read().splitlines()
+            with open(path, "w") as fh:
+                for line in lines:
+                    if line.split(" | ")[0] == name:
+                        line += " | started " + at
+                    fh.write(line + "\n")
 
     def wait(self, name, *rest, now=NOW):
         self.af("todo", "wait", name, *rest, now=now)
