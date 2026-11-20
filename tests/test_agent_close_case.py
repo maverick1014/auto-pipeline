@@ -416,7 +416,8 @@ class TestTheRule(unittest.TestCase):
 
     def test_the_quiz_still_has_twenty_nine_questions(self):
         text = read("bin", "agent-start.sh")
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", text)), 37)
+        # test-levels (2026-11-20): Q38 and Q39 (R8)
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", text)), 39)
 
 
 class TestTheSkills(unittest.TestCase):
