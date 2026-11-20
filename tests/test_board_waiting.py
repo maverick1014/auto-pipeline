@@ -738,6 +738,11 @@ class TestRuleTexts(unittest.TestCase):
             with self.subTest(word=word):
                 self.assertIn(word, part)
 
+    def test_release_0_38_0(self):
+        # main manager bounce 2026-11-20: board-waiting ships as release 0.38.0
+        version = json.loads(read(".claude-plugin", "plugin.json"))["version"]
+        self.assertGreaterEqual(tuple(int(n) for n in version.split(".")), (0, 38, 0))
+
     def test_agent_file_header(self):
         head = "\n".join(l for l in read("bin", "agent-file.sh").splitlines()[:200] if l.startswith("#"))
         for word in ("--who", "--after", "wait run since", "started"):

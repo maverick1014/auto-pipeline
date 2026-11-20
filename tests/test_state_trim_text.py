@@ -108,7 +108,8 @@ class TestReadmeAndRelease(unittest.TestCase):
 
     def test_release_0_37_0(self):
         data = json.loads(read(".claude-plugin", "plugin.json"))
-        self.assertEqual(data["version"], "0.37.0")
+        # board-waiting ships 0.38.0 (2026-11-20): 0.37.0 or later
+        self.assertGreaterEqual(tuple(int(n) for n in data["version"].split(".")), (0, 37, 0))
 
 
 if __name__ == "__main__":
