@@ -1,6 +1,6 @@
 # board-waiting — requirements (level 3 rules gate)
 
-Status: rules table for the main manager's check against the owner's simulation (2026-11-20). No code before "rules yes".
+Status: main manager "rules yes" 2026-11-20 15:0x (checked against the owner's simulation): Q1 B, Q2 A, Q3 A, and one change to rule 6.3 (a line with no stage and no wait is not started). Section D keeps the questions and answers.
 Task: `board-waiting` (level 3). Base a3aee91 (release 0.37.0).
 Source: owner decisions 2026-11-20 (simulation approved; correction 12:5x: the waited time stays, in waiting and hold rows).
 
@@ -38,14 +38,15 @@ Examples: now = **2026-11-20 12:31**, machine maverick-pc2, home /Users/maverick
 | 3.2 | queue, old line, note "after <task>" | `waiting queue since 2026-11-20 11:35: after one-watcher` | `排队 · 在 one-watcher 之后` | `queue · after one-watcher` | `<task>` = the first word after `after ` (any case), a trailing `,;:.` dropped |
 | 3.3 | queue, `--after` and a note | `waiting queue since 2026-11-20 11:35: slot on pc2 \| after state-trim` | `排队 · 在 state-trim 之后` | `queue · after state-trim` | the note is not shown |
 | 3.4 | queue, neither | `waiting queue since 2026-11-20 11:35` or `...: slot on pc2` | `排队` | `queue` | dash columns |
-| 5.1 | waited, short form | wait since 2026-11-20 12:31 / 12:26 / 10:21 / 10:31 / 2026-11-16 15:47 / 2026-11-19 12:31 | `已等 0分钟` / `5分钟` / `2小时10分` / `2小时` / `3天20小时` / `1天` | `waited 0m` / `5m` / `2h 10m` / `2h` / `3d 20h` / `1d` | from the open wait's since (see Q1) |
+| 5.0 | where waited counts from (Q1 B) | `waited <c>m` = the closed waits, `<s>` = the open wait's since | from **opened** when c ≥ minutes(opened, s) (every minute since opened was a wait); else from the `wait run since` field; else from s | same | a run of waits with no work between counts as one: a note change never resets the clock |
+| 5.1 | waited, short form | wait since 2026-11-20 12:31 / 12:26 / 10:21 / 10:31 / 2026-11-16 15:47 / 2026-11-19 12:31 | `已等 0分钟` / `5分钟` / `2小时10分` / `2小时` / `3天20小时` / `1天` | `waited 0m` / `5m` / `2h 10m` / `2h` / `3d 20h` / `1d` | here the waits start after some work (rule 5.0) |
 | 6.1 | work from the first stage, minus the waits after it | state-trim: `est 70m \| ... \| opened 2026-11-20 11:20 \| ... \| started 2026-11-20 11:24 \| waited 38m \| stage tests since 2026-11-20 12:21` | `进行中` | `running` | 进度 `██░░░░░░░░  20%`, 估时 `1h 10m`, 已工作 `29m` (67 − 38), 已等待 `38m`, 预计完成 `13:12` |
 | 6.2 | time before the first stage is no work | `est 39m \| opened 2026-11-20 11:35 \| started 2026-11-20 12:21 \| stage brief since 2026-11-20 12:21` | `进行中` | `running` | 已工作 `10m` (today: 56m), 已等待 `0m`, 预计完成 `13:00` |
 | 6.2b | waits before the start do not count twice | `est 39m \| opened 2026-11-20 10:00 \| started 2026-11-20 12:21 after 46m waited \| waited 46m \| stage brief since 2026-11-20 12:21` | `进行中` | `running` | 已工作 `10m` (today: 1h 45m), 已等待 `46m`, 预计完成 `13:00` |
-| 6.3 | never started: no stage, no wait (real owner-relay line) | `est 42m \| guess 45m \| level 3 \| opened 2026-11-20 11:35 \| by main` | `进行中` | `running` | 进度 `-`, 估时 `42m`, 已工作 `-`, 已等待 `0m`, 预计完成 `-` (never 超出 / over by) |
+| 6.3 | never started: no stage, no started field, no wait (real owner-relay line) | `est 42m \| guess 45m \| level 3 \| opened 2026-11-20 11:35 \| by main` | `未开始` | `not started` | 进度 `-`, 估时 `42m`, 已工作 `-`, 已等待 `-`, 预计完成 `-` (never 超出 / over by); 位置 and 级别 as today; sorts in group 4 with the queue rows; folds into the `+N` line (9.4). Main manager change at the gate |
 | 6.4 | old line: a stage but no `started` field | `est 60m \| opened 2026-11-20 10:31 \| waited 30m \| stage workers since 2026-11-20 12:00` | `进行中` | `running` | 已工作 `1h 30m` (today's rule: opened → now minus every wait), 预计完成 by today's rule |
 | 7.1 | the wait ends | 1.3 after `todo wait state-trim off` at 12:31: `... \| waited 43m \| stage verify since 2026-11-20 12:10 \| waited in stage 5m` | `进行中` | `running` | progress bar, 估时, 已工作, 已等待 `43m`, 预计完成 come back |
-| 10.1 | old lines never crash | every real pc2 line of 2026-11-20 (section C2) | rules 2, 3.2/3.4, 6.3/6.4 | same | no traceback, exit 0 |
+| 10.1 | old lines never crash | every real pc2 line of 2026-11-20 (section C2) | rules 2, 3.2/3.4, 5.0, 6.3/6.4 | same | no traceback, exit 0 |
 
 ### A4. `todo wait` (agent-file.sh)
 
@@ -55,8 +56,9 @@ Examples: now = **2026-11-20 12:31**, machine maverick-pc2, home /Users/maverick
 | 4.2 | `todo wait x on review --who v4-Manager` | ` \| waiting review since <now> \| who v4-Manager` |
 | 4.3 | `todo wait x on hold "回复插件更新和同步脚本" --who v4-Manager` (the note may stand before or after the options) | ` \| waiting hold since <now>: 回复插件更新和同步脚本 \| who v4-Manager` |
 | 4.4 | `todo wait x on queue --after state-trim` | ` \| waiting queue since <now> \| after state-trim` |
-| 4.5 | `todo wait x on <kind> ...` while a wait is open | the open wait closes first (today); the old who and after fields go, the new ones are written |
-| 4.6 | `todo wait x off` | the waiting, who and after fields go; `waited <m>m` and `waited in stage` as today |
+| 4.5 | `todo wait x on <kind> ...` while a wait is open | the open wait closes first (today); the old who and after fields go, the new ones are written; ` \| wait run since <r>` is written, r = the old line's `wait run since`, else the old wait's since (Q1 B) |
+| 4.5b | field order | `who`, `after`, `wait run since` come right after the waiting field, in that order |
+| 4.6 | `todo wait x off` | the waiting, who, after and wait run since fields go; a first `on` (no open wait) writes no wait run since; `waited <m>m` and `waited in stage` as today |
 | 4.7 | refused (one stderr line, exit 1, nothing written) | `--who` with queue; `--after` with any kind but queue; `--who` / `--after` with no value, an empty value, `" \| "` or a line break; the same option twice; an unknown option `--x`; two notes |
 | 4.8 | `who` on a line with no wait | ignored by the board (a stray field never crashes) |
 
@@ -71,7 +73,7 @@ Examples: now = **2026-11-20 12:31**, machine maverick-pc2, home /Users/maverick
 | 6.9 | a line that has a stage field but no started field (old line) | no started field is added (work keeps today's rule, 6.4) |
 | 6.10 | worktree with no todo line (STAGE line only) | unchanged: only the STAGE line |
 
-Work of a started line = minutes(started, now) − (waited + the open wait up to now − `<n>` of `after <n>m waited`), 0 at least.
+Work: a `started` field → minutes(started, now) − (waited + the open wait up to now − `<n>` of `after <n>m waited`), 0 at least (also on a hand-written line with no stage field). No started field: a stage field → today's rule (6.4); neither → `-` (6.3).
 
 ### A8. Sort (board and status line)
 
@@ -80,9 +82,9 @@ Groups, oldest first in each (a wait by its since, the rest as today):
 | Group | Rows |
 |---|---|
 | 1 | waiting on the owner (1.1–1.4, 1.7) |
-| 2 | running (todo lines with no wait, Helpers, workers) |
+| 2 | running (todo lines with no wait and a stage or started field, Helpers, workers) |
 | 3 | waiting on others (1.5, 1.6, 1.8) |
-| 4 | queue |
+| 4 | queue, and not started (6.3) |
 | 5 | hold without who |
 | 6 | OWNER TODO |
 | 7 | parked questions |
@@ -96,7 +98,7 @@ Groups, oldest first in each (a wait by its since, the rest as today):
 | 9.1 | running with a stage (today's line) | `state-trim` padded to 24 columns, 2 spaces, bar, 2 spaces, stage word, 2 spaces, done by: `state-trim                ██░░░░░░░░  20%  写测试  13:12` |
 | 9.2 | waiting on the owner: keeps what (cut to 24) | `state-trim                等待 你 · 合并前签字 · 已等 5分钟` / en `state-trim                waiting you · sign off before merge · waited 5m` |
 | 9.3 | waiting on others: drops what | `v4plus-followups          等待 v4-Manager · 已等 3天20小时` / en `v4plus-followups          waiting v4-Manager · waited 3d 20h` |
-| 9.4 | queue, hold without who, and todo lines with no stage and no wait (never started, e.g. owner-relay, comment-shape) fold into one last line | `+5 排队/暂缓` / en `+5 queued/held` |
+| 9.4 | queue, hold without who, and not started lines (6.3, e.g. owner-relay, comment-shape) fold into one last line | `+5 排队/暂缓` / en `+5 queued/held` |
 | 9.5 | at most 5 lines in all, the fold line included (Q3): more than 5 → the first 4 by sort, the rest join the fold line | 7 running + 1 hold → 4 lines + `+4 排队/暂缓` |
 | 9.6 | nothing to fold, 5 lines or fewer | no fold line; nothing at all → prints nothing (today) |
 | 9.7 | Helpers, workers, OWNER TODO, parked rows | not on the status line, not counted (today) |
@@ -113,22 +115,22 @@ The words and cells outside rules 1–10 stay as today: the what column (60 char
 | 任务 | 内容 | 状态 | 进度 | 位置 | 级别 | 估时 | 已工作 | 已等待 | 预计完成 |
 |---|---|---|---|---|---|---|---|---|---|
 | state-trim | State file trim + auto clear… | 进行中 | ██░░░░░░░░  20% | maverick-pc2, ~/orca/workspaces/auto-pipeline/state-trim | L4 | 1h 10m | 29m | 38m | 13:12 |
-| owner-relay | OWNER ORDER relay … | 进行中 | - | - | L3 | 42m | - | 0m | - |
-| comment-shape | agent-level.sh: a comment-only … | 进行中 | - | - | L3 | 28m | - | 0m | - |
 | v4plus-followups | Cross-repo asks … | 等待 v4-Manager · 回复插件更新和同步脚本 · 已等 3天20小时 | - | - | - | - | - | - | - |
-| pc2-plugin-update | Update auto-pipeline … | 等待 v4-Manager · pc2 空闲时更新 plugin · 已等 2天4小时 (Q1 B: 2天19小时) | - | maverick-pc2 | - | - | - | - | - |
+| pc2-plugin-update | Update auto-pipeline … | 等待 v4-Manager · pc2 空闲时更新 plugin · 已等 2天19小时 | - | maverick-pc2 | - | - | - | - | - |
+| owner-relay | OWNER ORDER relay … | 未开始 | - | - | L3 | 42m | - | - | - |
+| comment-shape | agent-level.sh: a comment-only … | 未开始 | - | - | L3 | 28m | - | - | - |
 | board-waiting | Board waiting status … | 排队 · 在 state-trim 之后 | - | - | L3 | - | - | - | - |
 | usage-track | Track tied repos … | 暂缓 · 你说合并监控之后再做 · 已等 3天19小时 | - | - | - | - | - | - | - |
 | one-watcher | One watcher … | 暂缓 · owner close case 2026-11-18: next… · 已等 2天4小时 | - | - | L3 | - | - | - | - |
 
-(The what cells are cut at 60 characters as today; shortened here for the page.) The simulation leaves out owner-relay, comment-shape and one-watcher; by rule 8 they are on the board. The simulation's 预计完成 13:35 is the same rule at 12:54.
+(The what cells are cut at 60 characters as today; shortened here for the page.) The simulation leaves out owner-relay, comment-shape and one-watcher; by rule 8 they are on the board (group 4: board-waiting and the two not started rows share the time 11:35, so file order). The simulation's 预计完成 13:35 is the same rule at 12:54.
 
 Status line:
 
 ```
 state-trim                ██░░░░░░░░  20%  写测试  13:12
 v4plus-followups          等待 v4-Manager · 已等 3天20小时
-pc2-plugin-update         等待 v4-Manager · 已等 2天4小时
+pc2-plugin-update         等待 v4-Manager · 已等 2天19小时
 +5 排队/暂缓
 ```
 
@@ -140,9 +142,9 @@ Owner moment (state-trim on review since 12:26, rule 1.3): first board row `| st
 |---|---|---|
 | v4plus-followups | `waiting hold since 2026-11-16 15:47: v4-Manager: not now, ledger rollout final suite + staging; …` (no who) | `暂缓 · v4-Manager: not now, ledger rollout… · 已等 3天20小时` |
 | usage-track | rule 2.3 | `暂缓 · owner close case 2026-11-16: after… · 已等 3天19小时` |
-| pc2-plugin-update | `waited 895m \| waiting hold since 2026-11-18 08:16: handed to v4-Manager 2026-11-18 (owner); …` | `暂缓 · handed to v4-Manager 2026-11-18… · 已等 2天4小时` (Q1 B: 2天19小时) |
+| pc2-plugin-update | `waited 895m \| waiting hold since 2026-11-18 08:16: handed to v4-Manager 2026-11-18 (owner); …` | `暂缓 · handed to v4-Manager 2026-11-18… · 已等 2天19小时` (5.0: 895m ≥ 17:21 → 08:16) |
 | one-watcher | hold, no who | `暂缓 · owner close case 2026-11-18: next… · 已等 2天4小时` |
-| owner-relay, comment-shape | no stage, no wait | `进行中`, 已工作 `-`, 预计完成 `-` (rule 6.3) |
+| owner-relay, comment-shape | no stage, no wait | `未开始`, 估时 and 级别 only (rule 6.3) |
 
 The old who sits inside the note ("v4-Manager: not now"); it is not read out. The main manager re-records a line with `--who` to get rule 1.
 
@@ -150,9 +152,9 @@ The old who sits inside the note ("v4-Manager: not now"); it is not read out. Th
 
 | # | Question | Options | Recommendation |
 |---|---|---|---|
-| Q1 | pc2-plugin-update: the simulation says `已等 2天19小时`; rule 5 ("from the wait's start") gives `2天4小时`. The line waited 895m (11-17 17:21 → 11-18 08:16), then a new hold began the same minute (a note change). | A: rule 5 as written, the open wait only (2天4小时). B: a run of waits with no work between counts as one: `todo wait on` over an open wait keeps the run's start (new field ` \| wait run since <date>`, gone at `off`); an old line whose waits fill all the time from opened counts from opened (2天19小时, as the simulation). | B: a note change never resets the clock, and it matches the simulation |
-| Q2 | The simulation shortens some cells by hand: what (~30 characters), 位置 (`~/orca/…/state-trim`), the stage word (`测试`), the status line padding (17 columns). | A: keep today's cells (section B). B: shorten like the simulation | A: not in rules 1–10 |
-| Q3 | "Status line max 5 lines": with the `+N` line or without? | A: 5 in all, the `+N` line counted. B: 5 task lines, then the `+N` line (6) | A |
+| Q1 | pc2-plugin-update: the simulation says `已等 2天19小时`; rule 5 ("from the wait's start") gives `2天4小时`. The line waited 895m (11-17 17:21 → 11-18 08:16), then a new hold began the same minute (a note change). | A: rule 5 as written, the open wait only (2天4小时). B: a run of waits with no work between counts as one: `todo wait on` over an open wait keeps the run's start (` \| wait run since <date>`, gone at `off`); an old line whose waits fill all the time from opened counts from opened (2天19小时, as the simulation). | B. **Answer: B** |
+| Q2 | The simulation shortens some cells by hand: what (~30 characters), 位置 (`~/orca/…/state-trim`), the stage word (`测试`), the status line padding (17 columns). | A: keep today's cells (section B). B: shorten like the simulation | A: not in rules 1–10. **Answer: A** |
+| Q3 | "Status line max 5 lines": with the `+N` line or without? | A: 5 in all, the `+N` line counted. B: 5 task lines, then the `+N` line (6) | A. **Answer: A** |
 
 ## E. Files
 
