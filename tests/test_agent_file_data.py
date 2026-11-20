@@ -146,7 +146,8 @@ from scripthelp import ScriptCase
 
 KEYS = ["repo", "type", "lane", "mock", "est", "work", "wait", "clock",
         "bounces", "workers", "files", "lines", "tests", "adds",
-        "guess"]   # estimate-blend (2026-11-13): the manager's guess, the last key
+        "guess",   # estimate-blend (2026-11-13): the manager's guess
+        "level"]   # test-levels (2026-11-20): the risk level of the todo line, the last key
 TYPES = ["page", "server", "script", "docs", "cloud", "app", "data", "mixed"]
 NOW = "2026-10-01 20:30"
 
@@ -770,7 +771,8 @@ class TestBackfillByName(DataCase):
 # E5: data, all repos on this machine
 # --------------------------------------------------------------------------
 
-HEADER = ["repo", "name", "date"] + KEYS[1:]
+# test-levels (2026-11-20): level is in the data block, not a column of the table
+HEADER = ["repo", "name", "date"] + [k for k in KEYS[1:] if k != "level"]
 
 HERE_DATA = "2026-10-01 | here-new | a data line | " + block(
     repo="project", type="script", lane="full", mock="no", est=90, work=85,

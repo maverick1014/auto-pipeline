@@ -542,7 +542,8 @@ class TestRuleAndRelease(unittest.TestCase):
 
     def test_release(self):
         ver = json.loads(read(".claude-plugin", "plugin.json"))["version"]
-        self.assertEqual(ver, "0.35.0")
+        # test-levels (2026-11-20) released 0.36.0 on top: at least 0.35.0, like the other release tests
+        self.assertGreaterEqual(tuple(int(x) for x in ver.split(".")), (0, 35, 0))
 
 
 if __name__ == "__main__":

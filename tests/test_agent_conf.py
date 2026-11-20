@@ -73,6 +73,9 @@ REAL_KEYS = [
     "estimate_target_pct",
     "estimate_bias_min",
     "estimate_big_min",
+    # test-levels (owner 2026-11-20): core and danger folders, tests/test_risk_levels.py
+    "level3_paths",
+    "level4_paths",
 ]
 # the keys this repo's own agent.conf had before progress-bar
 OLD_KEYS = REAL_KEYS[:REAL_KEYS.index("cloud_permission_mode") + 1]
@@ -115,6 +118,8 @@ GOOD_CONF_TEXT = (
     "estimate_target_pct=50\n"
     "estimate_bias_min=5\n"
     "estimate_big_min=120\n"
+    "level3_paths=\n"
+    "level4_paths=\n"
 )
 
 
@@ -450,6 +455,7 @@ class TestGroups(unittest.TestCase):
                               "stage_e2e", "stage_merge", "board_watch_sec",
                               "progress_eta_min_pct", "statusline_refresh_sec"]),
                 ("estimate", ["estimate_target_pct", "estimate_bias_min", "estimate_big_min"]),
+                ("levels", ["level3_paths", "level4_paths"]),
             ],
         )
 

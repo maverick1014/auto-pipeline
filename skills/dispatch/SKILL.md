@@ -8,18 +8,18 @@ Run these in order. First match wins.
 
 Every order you send another agent (brief, task, decision) starts with `[<model> <effort>]`: your own, from the `YOU:` line of your start text (PRINCIPLES.md W17).
 
-1. `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show`, `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh time`, and the RESOURCES line. Estimate the task in minutes of agent work only; the waits (mock gate, owner question or review, hold, suite slot) are not in it. First write your own guess in minutes, before you run the estimator. Then run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh estimate --type <t> --lane fast|full --mock yes|no "<one line what>" --guess <your minutes>` (only facts known before dispatch). Its minutes go on the todo line as est. A blend version shows a `blend:` line; any other version says `guess: <g>m, not used` until a retrain picks the blend. Its range and its `like` lines (the 3 nearest past tasks) are the reason you give. It says `rubric`: the rubric won its backtest (or no version is trained yet), so its numbers are the rubric row.
+1. `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show`, `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh time`, and the RESOURCES line. Pick the risk level 0-4 (R8) with the estimate; unsure between two, take the higher. Estimate the task in minutes of agent work only; the waits (mock gate, owner question or review, hold, suite slot) are not in it. First write your own guess in minutes, before you run the estimator. Then run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh estimate --type <t> --lane fast|full --mock yes|no "<one line what>" --guess <your minutes>` (only facts known before dispatch). Its minutes go on the todo line as est. A blend version shows a `blend:` line; any other version says `guess: <g>m, not used` until a retrain picks the blend. Its range and its `like` lines (the 3 nearest past tasks) are the reason you give. It says `rubric`: the rubric won its backtest (or no version is trained yet), so its numbers are the rubric row.
 
 Touches another repo? → W12: keep your part, send the peer main manager the cross-repo brief below, called side first, hold your todo line until its DONE PASS.
 
-2. Small task (fast lane, R1)? → `Agent` with `subagent_type: fast-lane-deputy`, description `<task> Deputy`. Brief: `[<model> <effort>]` first, then the task, the file(s), the one test if any. Done. After its DONE PASS: `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo done "<name>" --lane fast --work <m> --type <t>`.
+2. Small task (fast lane, R1)? → `Agent` with `subagent_type: fast-lane-deputy`, description `<task> Deputy`. Level 3 or 4 never takes the fast lane (R8): it goes to step 4 or 7. The deputy brief carries the level: `[<model> <effort>]` first, then `level: <n>`, the task, the file(s), the one test if any. Done. After its DONE PASS: `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo done "<name>" --lane fast --work <m> --type <t>`.
 3. Touches a live worktree's module? → `SendMessage` the task to that task manager. Status `final` → hold it, tell the human.
 4. Big, and a live task manager has capacity? → `SendMessage` it to that task manager.
 5. Idle or done worktrees in `agent_worktree.txt`? → run `/merge` for each first.
 6. RESOURCES over cap, or agents in state working or permission at `max_agents` (done or idle panes do not count)? → wait, tell the human.
 7. Otherwise, ask `${CLAUDE_PLUGIN_ROOT}/bin/agent-runtime.sh kind` first: orca, plain or cloud.
    ```
-   ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<name>" big "<one line what>" <est_minutes> --guess <your_guess>
+   ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<name>" big "<one line what>" <est_minutes> --guess <your_guess> --level <n>
    ```
    Once the worktree path is known (the board reads it), record where it runs:
    ```
@@ -66,6 +66,7 @@ Answer with its line: a duration AND a clock time, and when he is needed next. N
 [<model> <effort>] Brief from the main manager (<my session name>): you are the task manager for "<name>".
 WHERE: worktree <worktree path>, branch <branch>. Main repo <main repo> only for ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh.
 TODO LINE: <the todo line, as agent-file.sh show prints it>
+LEVEL: <n> (R8 gate: <the gate of that level>)
 FEATURE: <requirement, 5 to 10 lines. Files to produce. What the user sees. Validation rules.>
 STEPS (at the start of each step run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" <stage>`; on another machine it writes a STAGE line into agent_state.txt and the main manager's watch carries it):
  0 brief: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" brief, then save this whole brief into agent_state.txt in your worktree, first action (S8)

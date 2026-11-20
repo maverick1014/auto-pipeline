@@ -601,7 +601,7 @@ class TestTheRule(unittest.TestCase):
 class TestTheQuiz(ScriptCase):
     script = "agent-start.sh"
     ANSWERS = ("1A 2D 3C 4B 5D 6D 7A 8C 9A 10D 11A 12C 13D 14C 15B 16C 17C "
-               "18D 19B 20A 21D 22C 23B 24D 25A 26D 27A 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C")
+               "18D 19B 20A 21D 22C 23B 24D 25A 26D 27A 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39D")
 
     def quiz(self):
         return self.assertOk(self.repo.run("agent-start.sh", "--quiz"))
@@ -613,13 +613,13 @@ class TestTheQuiz(ScriptCase):
 
     def test_the_quiz_says_37(self):
         out = self.quiz()
-        self.assertIn("=== QUIZ — answer all 37 before any work ===", out)
-        self.assertIn('--answer "1A 2B 3C ... 37D"', out)
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 37)
+        self.assertIn("=== QUIZ — answer all 39 before any work ===", out)
+        self.assertIn('--answer "1A 2B 3C ... 39D"', out)
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 39)
 
     def test_c_passes(self):
         out = self.assertOk(self.repo.run("agent-start.sh", "--answer", self.ANSWERS))
-        self.assertIn("QUIZ RESULT: 37/37 PASS", out)
+        self.assertIn("QUIZ RESULT: 39/39 PASS", out)
 
     def test_another_letter_fails_and_names_w18(self):
         for wrong in ("37A", "37B", "37D"):
@@ -636,9 +636,9 @@ class TestTheQuiz(ScriptCase):
 
     def test_the_usage_says_37(self):
         src = read("bin", "agent-start.sh")
-        self.assertIn("print the 37 quiz questions", src)
-        self.assertEqual(src.count('--answer "1A 2D ... 37C"'), 2, "the header and the usage line")
-        self.assertNotIn("... 36C", src)
+        self.assertIn("print the 39 quiz questions", src)
+        self.assertEqual(src.count('--answer "1A 2D ... 39D"'), 2, "the header and the usage line")
+        self.assertNotIn("... 37C", src)
 
 
 # ---------------------------------------------------------------- docs
@@ -649,7 +649,7 @@ class TestTheDocs(unittest.TestCase):
         text = read("README.md")
         for phrase in ("bin/agent-show-question.sh", "bin/agent_questions.py",
                        "bin/agent-questions-page.html", "bin/agent-file.sh questions",
-                       "37-question quiz"):
+                       "39-question quiz"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
 

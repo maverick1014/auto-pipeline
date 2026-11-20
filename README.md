@@ -17,7 +17,8 @@ Main manager   (Opus 5.5, xhigh · the main chat · only one with the browser)
               └── Worker (Sonnet 5, medium)  code until the tests pass, slice 2
 
 Scripts, not agents (cost no tokens):
-  bin/agent-start.sh   RAM/CPU guard, prints the rules, 37-question quiz gate, main-manager lock
+  bin/agent-start.sh   RAM/CPU guard, prints the rules, 39-question quiz gate, main-manager lock
+  bin/agent-level.sh   the risk level a diff needs (0-4): built-in and agent.conf paths, L0 shapes; RAISE when the declared level is lower
   bin/agent-file.sh    the only writer of agent_*.txt
   bin/agent_estimate.py  the time estimator: learns work minutes from the finished tasks, backtests against the rubric
   bin/agent-settings.sh  show or change agent.conf, validated
@@ -61,6 +62,8 @@ Checked in this order, first match wins.
 3. Big, and a task manager has capacity → that task manager.
 4. Idle or done worktrees → merge deputy cleans them first.
 5. RAM and CPU under 80%, agents under cap → open a worktree with a task manager. Else wait.
+
+Every task gets a risk level 0-4 at dispatch (R8); level 3 and 4 take the full lane; bin/agent-level.sh check raises it before merge, never lowers it.
 
 ## One real day
 

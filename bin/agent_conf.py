@@ -90,6 +90,8 @@ HINTS = {
     "estimate_bias_min": "Fewest earlier tasks of one repo before the estimator applies a per-repo bias. Whole number, 1 to 1000.",
     "estimate_big_min": "Work minutes from which a task counts as big in the backtest. Whole number, 1 to 10000.",
     "progress_eta_min_pct": "Lowest progress percent at which done-by is worked out from progress. Below it the board shows over by or a dash. Whole number, 0 to 100.",
+    "level3_paths": "Paths that always need risk level 3 (heavy logic). Comma-separated globs, e.g. src/money/,core. Empty = none.",
+    "level4_paths": "Paths that always need risk level 4 (danger). Comma-separated globs, e.g. db/,*.rules. Empty = none.",
     "board_watch_sec": "Seconds between refreshes of the live board (agent-file.sh board --watch). Whole number, 1 to 3600.",
 }
 
@@ -104,6 +106,7 @@ GROUPS = [
                   "stage_verify", "stage_push", "stage_report", "stage_e2e", "stage_merge",
                   "board_watch_sec", "progress_eta_min_pct", "statusline_refresh_sec"]),
     ("estimate", ["estimate_target_pct", "estimate_bias_min", "estimate_big_min"]),
+    ("levels", ["level3_paths", "level4_paths"]),
 ]
 
 _GROUP_OF = {}
@@ -229,7 +232,25 @@ def _validate_on_off(value):
     return None
 
 
+def _validate_level_paths(value):
+    if value.strip() == "":
+        return None
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            return "Empty item. Use comma-separated globs, no empty item."
+        if re.search(r"\s", item):
+            return "No white space inside a glob: %s" % item
+        if item.startswith("/"):
+            return "A glob must not start with /: %s" % item
+        if ".." in item.split("/"):
+            return "A glob must not hold a .. part: %s" % item
+    return None
+
+
 def validate_value(key, value):
+    if key in ("level3_paths", "level4_paths"):
+        return _validate_level_paths(value)
     if key in NUMBER_BOUNDS:
         return _validate_number(key, value)
     if key in DECIDER_KEYS:

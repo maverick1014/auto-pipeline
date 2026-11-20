@@ -87,6 +87,8 @@ COPY_BIN = [
     "agent-housekeep.sh",
     "agent_housekeep.py",
     "agent-version.sh",      # stale-plugin-guard: running vs installed version, the hook
+    "agent-level.sh",        # test-levels: the risk level a diff needs
+    "agent_level.py",
 ]
 
 # Copied into the temp plugin's root.

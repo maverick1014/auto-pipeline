@@ -281,18 +281,19 @@ class TestTodoGuess(BlendCase):
     def test_todo_done_writes_the_guess_last(self):
         self.write("agent_todo.txt", "t1 | big | build it | est 70m | guess 35m | opened 2026-10-05 15:00 | by main\n")
         self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
-        self.assertEqual(self.done_line(), "%s | t1 | build it | %s" % (TODAY, gblock(
+        # test-levels (2026-11-20): level= follows guess=, the last key
+        self.assertEqual(self.done_line(), "%s | t1 | build it | %s level=-" % (TODAY, gblock(
             repo="project", type="script", lane="full", est=70, work=60, clock=60, guess=35)))
 
     def test_todo_done_with_no_guess_writes_a_dash(self):
         self.write("agent_todo.txt", "t1 | big | build it | est 70m | opened 2026-10-05 15:00 | by main\n")
         self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
-        self.assertTrue(self.done_line().endswith(" adds=- guess=-"), self.done_line())
+        self.assertTrue(self.done_line().endswith(" adds=- guess=- level=-"), self.done_line())
 
     def test_a_guess_word_in_the_what_is_not_the_guess(self):
         self.write("agent_todo.txt", "t1 | big | guess 99m is a word here | est 70m | opened 2026-10-05 15:00 | by main\n")
         self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
-        self.assertTrue(self.done_line().endswith(" guess=-"), self.done_line())
+        self.assertTrue(self.done_line().endswith(" guess=- level=-"), self.done_line())
 
     def test_the_warning_names_the_missing_facts(self):
         for opts, want in ((("--type", "script", "--lane", "full"), None),
@@ -745,8 +746,10 @@ class TestEstimateConf(unittest.TestCase):
             self.assertEqual(conf.get(key), default, key)
         # appended last, after statusline_refresh_sec and housekeep-2h's housekeep_interval_min (merged first)
         at = keys.index("statusline_refresh_sec")
+        # test-levels (2026-11-20) appended level3_paths and level4_paths after them
         self.assertEqual(keys[at + 1:], ["housekeep_interval_min",
-                                         "estimate_target_pct", "estimate_bias_min", "estimate_big_min"])
+                                         "estimate_target_pct", "estimate_bias_min", "estimate_big_min",
+                                         "level3_paths", "level4_paths"])
 
 
 # ---------------------------------------------------------------- wired in
