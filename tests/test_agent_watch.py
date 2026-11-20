@@ -368,6 +368,17 @@ class TestFileSignal(WatchCase):
         self.assertNotIn("WATCH SIGNAL", text)
         self.assertEqual(self.watch_line(text), "WATCH MAX feat")
 
+    def test_a_trim_that_lowers_the_count_does_not_hide_the_next_signal(self):
+        # state-trim (2026-11-20, reviewer finding 3): `state trim` can move old answered QUESTION
+        # lines; a count below the baseline becomes the new baseline, so the next new line still fires
+        self.append_state("QUESTION: old one? | 2026-11-10 09:00", "ANSWER: yes | 2026-11-10 09:10",
+                          "QUESTION: older one? | 2026-11-09 09:00", "ANSWER: no | 2026-11-09 09:10")
+        self.screens(self.moving())
+        self.hook('[ "$1" = "2" ] && printf "%%s" %s > %s\n[ "$1" = "4" ] && echo "DONE PASS feat" >> %s\n'
+                  % (sh_quote(STATE_HEAD), sh_quote(self.state), sh_quote(self.state)))
+        text = self.out(self.watch())
+        self.assertEqual(self.watch_line(text), "WATCH SIGNAL feat: DONE PASS feat")
+
     def test_the_signal_ends_the_watch_at_once(self):
         self.screens(self.moving())
         self.append_on_read(2, "DONE PASS feat")

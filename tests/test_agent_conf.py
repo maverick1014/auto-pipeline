@@ -76,6 +76,13 @@ REAL_KEYS = [
     # test-levels (owner 2026-11-20): core and danger folders, tests/test_risk_levels.py
     "level3_paths",
     "level4_paths",
+    # state-trim (owner 2026-11-20): state trim, the start warning, the auto clear, tests/test_state_trim.py
+    "state_keep_hours",
+    "state_warn_lines",
+    "state_header_lines",
+    "state_trim_auto",
+    "compact_clear_at",
+    "compact_clear_check_sec",
 ]
 # the keys this repo's own agent.conf had before progress-bar
 OLD_KEYS = REAL_KEYS[:REAL_KEYS.index("cloud_permission_mode") + 1]
@@ -120,6 +127,13 @@ GOOD_CONF_TEXT = (
     "estimate_big_min=120\n"
     "level3_paths=\n"
     "level4_paths=\n"
+    # state-trim (owner 2026-11-20): appended last, like the template
+    "state_keep_hours=24\n"
+    "state_warn_lines=300\n"
+    "state_header_lines=40\n"
+    "state_trim_auto=on\n"
+    "compact_clear_at=2\n"
+    "compact_clear_check_sec=30\n"
 )
 
 
@@ -456,6 +470,8 @@ class TestGroups(unittest.TestCase):
                               "progress_eta_min_pct", "statusline_refresh_sec"]),
                 ("estimate", ["estimate_target_pct", "estimate_bias_min", "estimate_big_min"]),
                 ("levels", ["level3_paths", "level4_paths"]),
+                ("state", ["state_keep_hours", "state_warn_lines", "state_header_lines", "state_trim_auto",
+                           "compact_clear_at", "compact_clear_check_sec"]),
             ],
         )
 

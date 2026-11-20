@@ -87,7 +87,9 @@ drop_human_direct() {
 # The seat stays: the lock and the closed list are never touched. Returns the exit code.
 clean_session() {
   local mp line name stamp arch day todo todo_n a n k kind handle excl tmp
-  local pat='agent_state.[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9].txt'
+  local pat pats
+  pats=('agent_state.[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9].txt' \
+        'agent_state.trim-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].txt')
   # only the lock holder; a spawned agent never is, whatever the lock names
   if [ -n "${AGENT_ROLE:-}" ]; then
     echo "REFUSED: $AGENT_ROLE is a spawned agent, never the main manager.${lpid:+ The lock holder is pid $lpid.}"; return 1
@@ -135,9 +137,11 @@ clean_session() {
       [ -s "$excl" ] && [ -n "$(tail -c1 "$excl")" ] && echo
       echo 'agent_state.*.txt'; } >> "$excl"
   fi
-  # the newest 5 archives stay (names sort by date), the older ones go
-  n=0; for a in "$STATE_DIR"/$pat; do [ -e "$a" ] && n=$((n+1)); done
-  k=$((n-5)); for a in "$STATE_DIR"/$pat; do [ "$k" -gt 0 ] || break; rm -f "$a"; k=$((k-1)); done
+  # the newest 5 of each kind stay (names sort by date): the copies and the trim day files
+  for pat in "${pats[@]}"; do
+    n=0; for a in "$STATE_DIR"/$pat; do [ -e "$a" ] && n=$((n+1)); done
+    k=$((n-5)); for a in "$STATE_DIR"/$pat; do [ "$k" -gt 0 ] || break; rm -f "$a"; k=$((k-1)); done
+  done
   # the fresh state
   tmp="$STATE_DIR/agent_state.txt.tmp.$$"
   {
@@ -146,6 +150,7 @@ clean_session() {
     printf 'PREVIOUS: case closed %s, archive %s\n' "$day" "$arch"
     printf 'TODO open (%s): %s\n' "$todo_n" "${todo:-none}"
     if [ $# -eq 0 ]; then echo "CARRY: none"; else for a in "$@"; do printf 'CARRY: %s\n' "${a//$'\n'/ }"; done; fi
+    echo
   } > "$tmp" && mv "$tmp" "$STATE_DIR/agent_state.txt" || { rm -f "$tmp"; echo "REFUSED: could not write agent_state.txt ($STATE_DIR)."; return 1; }
   # how this session clears itself: orca with a terminal handle -> the exact line, else the human
   kind=$(. "$PLUGIN_ROOT/bin/agent-runtime.sh" && runtime_kind)
@@ -693,13 +698,59 @@ line_bytes() { printf '%s\n' "$1" | wc -c | tr -d ' '; }
 # byte length of $1 exactly as given (no newline added)
 text_bytes() { printf '%s' "$1" | wc -c | tr -d ' '; }
 
+# conf_int <key> <default>: the whole number of <key> in agent.conf, else in the template
+# bin/agent.conf.default, else <default>.
+conf_int() {
+  local f v
+  for f in "$PROJECT_ROOT/agent.conf" "$PLUGIN_ROOT/bin/agent.conf.default"; do
+    [ -f "$f" ] || continue
+    v=$(awk -F= -v k="$1" '$1 == k { v = $2 } END { print v }' "$f" | tr -d '[:space:]')
+    case "$v" in ''|*[!0-9]*) continue;; esac
+    [ "${#v}" -le 9 ] || continue
+    echo $((10#$v)); return 0
+  done
+  echo "$2"
+}
+
+# state_warn_text: the one STATE LONG line (with its newline), or nothing.
+state_warn_text() {
+  local n w
+  [ -f "$STATE_DIR/agent_state.txt" ] || return 0
+  n=$(count_lines "$STATE_DIR/agent_state.txt")
+  w=$(conf_int state_warn_lines 300)
+  [ "${n:-0}" -gt "$w" ] || return 0
+  printf 'STATE LONG: agent_state.txt has %s lines (over %s). Trim: %s/bin/agent-file.sh state trim --dry-run, then state trim\n' "$n" "$w" "$PLUGIN_ROOT"
+}
+
+# autoclear_queue <handle>: the state line, then the waiter, fully detached, unless one lives.
+autoclear_queue() {
+  local pf="$PROJECT_GITDIR/agent_autoclear_$SID" pid="" sf="$STATE_DIR/agent_state.txt"
+  [ -f "$pf" ] && read -r pid _ < "$pf"
+  case "$pid" in ''|*[!0-9]*) ;; *) if kill -0 "$pid" 2>/dev/null; then return 0; fi;; esac
+  { [ -s "$sf" ] && [ -n "$(tail -c1 "$sf")" ] && echo
+    printf 'AUTO CLEAR queued: compacted %s times | %s\n' "$2" "$NOW"; } >> "$sf" 2>/dev/null
+  ( cd "$STATE_DIR" 2>/dev/null && nohup "$PLUGIN_ROOT/bin/agent-autoclear.sh" "$1" "$SID" </dev/null >/dev/null 2>&1 & ) </dev/null >/dev/null 2>&1
+  return 0
+}
+
 print_compact_lines() {
-  local CF cn
+  local CF cn at kind
   CF="$PROJECT_GITDIR/agent_compact_$SID"
   cn=$(( $(cat "$CF" 2>/dev/null || echo 0) + 1 ))
   echo "$cn" > "$CF"
   echo "COMPACTED $cn time(s) this session. Continue from agent_state.txt, not from memory (S8)."
-  [ "$cn" -ge 2 ] && echo "LIMIT: compacted $cn times. Write agent_state.txt, end this session, restart from the file (S8, S2)."
+  at=$(conf_int compact_clear_at 2)
+  if [ "$at" -eq 0 ]; then
+    [ "$cn" -ge 2 ] && echo "LIMIT: compacted $cn times. Write agent_state.txt, end this session, restart from the file (S8, S2)."
+  elif [ "$cn" -ge "$at" ]; then
+    kind=$(. "$PLUGIN_ROOT/bin/agent-runtime.sh" && runtime_kind 2>/dev/null </dev/null) || kind=""
+    if [ "$kind" = orca ] && [ -n "${ORCA_TERMINAL_HANDLE:-}" ] && command -v orca >/dev/null 2>&1; then
+      echo "LIMIT: compacted $cn times. Save agent_state.txt now, then stop. This pane gets a save prompt and /clear at its next idle prompt (S8)."
+      autoclear_queue "${ORCA_TERMINAL_HANDLE//[[:space:]]/_}" "$cn"
+    else
+      echo "LIMIT: compacted $cn times. No pane to type into: save agent_state.txt, then tell the human to type /clear."
+    fi
+  fi
   return 0
 }
 
@@ -845,10 +896,12 @@ ROLE_TEXT=$(print_role_and_project; printf 'X'); ROLE_TEXT=${ROLE_TEXT%X}
 if [ "$SRC" = compact ] && [ -n "$SID" ]; then
   COMPACT_TEXT=$(print_compact_lines; printf 'X'); COMPACT_TEXT=${COMPACT_TEXT%X}
   RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
-  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$COMPACT_TEXT") + $(line_bytes "$RULES_LINE") ))
+  WARN_TEXT=$(state_warn_text; printf 'X'); WARN_TEXT=${WARN_TEXT%X}
+  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$COMPACT_TEXT") + $(text_bytes "$WARN_TEXT") + $(line_bytes "$RULES_LINE") ))
   budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
   printf '%s' "$ROLE_TEXT"
   printf '%s' "$COMPACT_TEXT"
+  printf '%s' "$WARN_TEXT"
   print_state_block "$budget"
   print_output_section
   printf '%s\n' "$RULES_LINE"
@@ -857,15 +910,18 @@ fi
 
 # ---- /clear: same idea as compact — write state, /clear, keep going from
 # the file instead of ending the session (S8). Short, no resources, no
-# counts, no quiz, no auto-resume. Same byte cap. The compact counter is
-# untouched: a clear is not a compaction. ----
+# counts, no quiz, no auto-resume. Same byte cap. The compact counter of
+# this session starts again at 0 (A5 C7). ----
 if [ "$SRC" = clear ] && [ -n "$SID" ]; then
   CLEARED_LINE="CLEARED. Continue from agent_state.txt, not from memory (S8)."
   RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
-  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(line_bytes "$CLEARED_LINE") + $(line_bytes "$RULES_LINE") ))
+  rm -f "$PROJECT_GITDIR/agent_compact_$SID"
+  WARN_TEXT=$(state_warn_text; printf 'X'); WARN_TEXT=${WARN_TEXT%X}
+  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(line_bytes "$CLEARED_LINE") + $(text_bytes "$WARN_TEXT") + $(line_bytes "$RULES_LINE") ))
   budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
   printf '%s' "$ROLE_TEXT"
   printf '%s\n' "$CLEARED_LINE"
+  printf '%s' "$WARN_TEXT"
   print_state_block "$budget"
   print_output_section
   printf '%s\n' "$RULES_LINE"
@@ -883,11 +939,11 @@ fi
 # `2>/dev/null || true` so a failure here never breaks the hook. ----
 MARKER_DAYS="${AGENT_MARKER_DAYS:-7}"
 if [ -n "$SID" ]; then
-  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' -o -name 'agent_stale_*' \) \
-    ! -name "agent_started_$SID" ! -name "agent_compact_$SID" ! -name "agent_quiz_$SID" ! -name "agent_stale_$SID" \
+  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' -o -name 'agent_stale_*' -o -name 'agent_autoclear_*' \) \
+    ! -name "agent_started_$SID" ! -name "agent_compact_$SID" ! -name "agent_quiz_$SID" ! -name "agent_stale_$SID" ! -name "agent_autoclear_$SID" \
     -mtime "+$MARKER_DAYS" -delete 2>/dev/null || true
 else
-  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' -o -name 'agent_stale_*' \) \
+  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' -o -name 'agent_stale_*' -o -name 'agent_autoclear_*' \) \
     -mtime "+$MARKER_DAYS" -delete 2>/dev/null || true
 fi
 
@@ -901,6 +957,7 @@ if [ "$role" = main ] || [ "$role" = takeover ]; then
 fi
 
 NORMAL_TEXT=$(print_normal_lines; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
+WARN_TEXT=$(state_warn_text; printf 'X'); WARN_TEXT=${WARN_TEXT%X}
 MON_TEXT=$(print_monitor_block; printf 'X'); MON_TEXT=${MON_TEXT%X}
 RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
 QUIZ_SID="${SID:-${CLAUDE_CODE_SESSION_ID:-}}"
@@ -919,7 +976,7 @@ if [ "$SRC" = startup ] && { [ "$role" = main ] || [ "$role" = takeover ]; } \
   resume_out=$(AGENT_CLEANUP_DONE=1 "$PLUGIN_ROOT/bin/agent-resume.sh" 2>&1) || true
   header="=== auto resume ==="
   other_fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
-                 + $(text_bytes "$CLEAN_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
+                 + $(text_bytes "$CLEAN_TEXT") + $(text_bytes "$WARN_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
   candidate_bytes=$(( $(line_bytes "$header") + $(text_bytes "$resume_out") + 1 ))
   if [ $(( other_fixed + candidate_bytes )) -gt "$CAP" ]; then
     resume_out=$(printf '%s\n' "$resume_out" | head -n 6)
@@ -933,7 +990,7 @@ fi
 
 calc_fixed() {
   fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
-          + $(text_bytes "$CLEAN_TEXT") + $(text_bytes "$RESUME_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
+          + $(text_bytes "$CLEAN_TEXT") + $(text_bytes "$WARN_TEXT") + $(text_bytes "$RESUME_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
 }
 calc_fixed
 
@@ -999,6 +1056,7 @@ printf '%s' "$ROLE_TEXT"
 printf '%s' "$NORMAL_TEXT"
 printf '%s' "$MON_TEXT"
 printf '%s' "$CLEAN_TEXT"
+printf '%s' "$WARN_TEXT"
 print_state_block "$budget"
 printf '%s' "$RESUME_TEXT"
 print_output_section

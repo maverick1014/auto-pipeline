@@ -25,6 +25,7 @@ if HERE not in sys.path:
 
 import agent_cleanup  # noqa: E402
 import agent_conf  # noqa: E402
+import agent_state  # noqa: E402
 
 TAIL = re.compile(r" \| \d{4}-\d\d-\d\d \d\d:\d\d \| by \S+$")
 KEPT = re.compile(r" \| kept \d{4}-\d\d-\d\d\s*$")
@@ -558,6 +559,16 @@ class Housekeep(object):
             out.append(new)
         atomic_write(path, "".join(out))
 
+    def trim_state(self):
+        if not agent_state.trim_auto_on(self.root):
+            return
+        res = agent_state.trim(self.root, self.root, self.now, dry_run=False)
+        if res.kind == "moved":
+            self.note("state trim moved %d of %d lines -> %s"
+                      % (res.moved, res.n, res.day_name))
+        elif res.kind == "refused":
+            self.note(res.message)
+
     def go(self):
         if self.apply:
             try:
@@ -566,6 +577,8 @@ class Housekeep(object):
                              "%d %s\n" % (self.epoch, self.now))
             except OSError:
                 self.note("stamp not written")
+        if self.apply:
+            self.stage(self.trim_state)
         self.stage(self.gather)
         self.stage(self.worktree_lines)
         self.stage(self.todos)

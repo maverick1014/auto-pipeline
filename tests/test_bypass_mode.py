@@ -145,7 +145,9 @@ PROGRESS_KEYS = ["stage_brief", "stage_register", "stage_mock", "stage_tests", "
                  "housekeep_interval_min",   # housekeep-2h (2026-11-13)
                  "estimate_target_pct", "estimate_bias_min",
                  "estimate_big_min",   # estimate-blend (2026-11-13)
-                 "level3_paths", "level4_paths"]   # test-levels (2026-11-20), appended last
+                 "level3_paths", "level4_paths",   # test-levels (2026-11-20)
+                 "state_keep_hours", "state_warn_lines", "state_header_lines", "state_trim_auto",
+                 "compact_clear_at", "compact_clear_check_sec"]   # state-trim (2026-11-20), appended last
 
 class TestConfKeys(unittest.TestCase):
     def test_bypass_is_a_mode_for_both_keys(self):

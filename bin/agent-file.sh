@@ -42,6 +42,8 @@
 #   agent-file.sh worker on <n> "<slice>"                     -> agent_state.txt: WORKER <n>: <slice> | since <date> (replaces worker n)
 #   agent-file.sh worker off <n>                              -> remove WORKER <n>
 #   agent-file.sh board [--self]                              -> the table of everything open ("show todo"); --self: this session's task only
+#   agent-file.sh state add "<line>"                          -> agent_state.txt of this folder gets "<line> | <date time>" (one line, " | " inside is fine)
+#   agent-file.sh state trim [--dry-run]                      -> old lines of agent_state.txt move to agent_state.trim-<date>.txt (rules: requirements/state-trim.md); --dry-run only counts
 #
 # todo done: every option is optional; a number is a whole number, 0 or more. "<result>" is not stored.
 #   work = agent minutes. wait = minutes spent waiting (mock gate, owner, suite slot). Never mixed.
@@ -189,7 +191,7 @@ roots_read
 ROOT="$PROJECT_ROOT"
 TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agent_ideas.txt"; WT="$ROOT/agent_worktree.txt"
 NOW=${AGENT_FAKE_NOW:-$(date '+%Y-%m-%d %H:%M')}; WHO=${AGENT_ROLE:-main}
-case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|todo:level) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|todo:level) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the whole header comment block, whatever its length
 usage() { awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 2; }
@@ -823,6 +825,17 @@ questions_py() {
   case "$lang" in zh) ;; *) lang=en;; esac
   python3 "$(dirname "$0")/agent_questions.py" "$PROJECT_ROOT" "$STATE_DIR" "$PROJECT_CWD" "$NOW" "$lang" "$@"
 }
+# state_py <command> [args...]: agent_state.py does the work (python3 only)
+state_py() {
+  command -v python3 >/dev/null 2>&1 || refuse "state: python3 is needed and was not found"
+  python3 "$(dirname "$0")/agent_state.py" "$PROJECT_ROOT" "$STATE_DIR" "$NOW" "$@"
+}
+state_run() {
+  case "${1:-}" in
+    add|trim) state_py "$@";;
+    *) refuse "state: unknown command: ${1:-} (add or trim)";;
+  esac
+}
 questions_run() {
   local out first
   case "${1:-}" in
@@ -1013,6 +1026,8 @@ case "${1:-}:${2:-}" in
     echo "todo done: $name"
     [ -n "$counted" ] || echo "files and lines: not counted (no --merge or --range)"
     echo "TIME DATA: $(time_data) of $TIME_DATA_GOAL"
+    # the finished task no longer counts as open: trim the state file (silent unless lines moved; a refusal is a warning)
+    if command -v python3 >/dev/null 2>&1; then python3 "$(dirname "$0")/agent_state.py" "$PROJECT_ROOT" "$STATE_DIR" "$NOW" trim --auto || true; fi
     retrain_auto
     sweep_after_last_task;;
   todo:wait)
@@ -1033,6 +1048,8 @@ case "${1:-}:${2:-}" in
     shift; board_run "$@";;
   questions:*)
     shift; questions_run "$@";;
+  state:*)
+    shift; state_run "$@";;
   todo:drop)
     need 5 "$@"; line=$(first "$TODO" "$3")
     [ -n "$line" ] || { echo "no todo line named: $3" >&2; exit 1; }

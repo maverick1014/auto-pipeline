@@ -89,6 +89,8 @@ COPY_BIN = [
     "agent-version.sh",      # stale-plugin-guard: running vs installed version, the hook
     "agent-level.sh",        # test-levels: the risk level a diff needs
     "agent_level.py",
+    "agent_state.py",        # state-trim: state add / state trim
+    "agent-autoclear.sh",    # state-trim: the auto /clear waiter
 ]
 
 # Copied into the temp plugin's root.

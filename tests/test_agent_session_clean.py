@@ -690,7 +690,8 @@ class TestThePrinciples(unittest.TestCase):
         self.assertEqual(len([l for l in bullets if "--clean" in l]), 1)
 
     def test_s8_says_the_main_manager_clears_its_own_pane(self):
-        rows = [l for l in self.s8().splitlines() if "own pane" in l]
+        # state-trim (2026-11-20): the auto clear line names the own pane too; this is the close case line
+        rows = [l for l in self.s8().splitlines() if "own pane" in l and "close case" in l]
         self.assertEqual(len(rows), 1, rows)
         self.assertIn("main manager", rows[0])
         self.assertLessEqual(len(rows[0]), 200)

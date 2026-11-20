@@ -734,7 +734,9 @@ class TestConfKeys(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertTrue(agent_conf.HINTS.get(key, "").strip())
                 self.assertEqual(agent_conf.group_of(key), "levels")
-        self.assertEqual(agent_conf.GROUPS[-1], ("levels", ["level3_paths", "level4_paths"]))
+        # state-trim (2026-11-20) appended its "state" group after it: levels is no longer the last group
+        self.assertIn(("levels", ["level3_paths", "level4_paths"]), agent_conf.GROUPS)
+        self.assertEqual(agent_conf.GROUPS[-1][0], "state")
 
 
 class TestSettings(ScriptCase):
