@@ -159,3 +159,22 @@ The old who sits inside the note ("v4-Manager: not now"); it is not read out. Th
 ## E. Files
 
 bin/agent_board.py (board + status line), bin/agent-statusline.sh (comment), bin/agent-file.sh (todo wait --who/--after, todo stage started, header), PRINCIPLES.md W14, skills/dispatch/SKILL.md "Board records", README.md (the status line line), tests: tests/test_board_waiting.py (new), and the old expectations in tests/test_agent_board.py, tests/test_agent_progress.py, tests/test_agent_statusline.py, tests/test_statusline_vertical.py, tests/test_agent_show_todo.py that name the old status words (`等你：看样稿`, `排队中`, `+N 个`).
+
+## F. Scope add: status line refresh (main manager 2026-11-20 15:2x, +1)
+
+Why: `agent-start.sh` runs `agent-settings.sh statusline refresh` at every start, and refresh points an ours statusLine at the bin of whatever checkout ran the start. At 14:04 a start from a throwaway checkout pointed it at a folder deleted 4 minutes later: the status bar went blank.
+
+Words: config dir = `CLAUDE_CONFIG_DIR`, else `~/.claude`. Cache = `<config dir>/plugins/cache/`. A root is **under the cache** when its real path starts with the cache's real path + `/`. Ours = a statusLine whose command holds `/bin/agent-statusline.sh` (today). Target = the running root when it is under the cache, else `CLAUDE_PLUGIN_ROOT` when that is under the cache, else none; a root whose `bin/agent-statusline.sh` does not exist is no target.
+
+| # | Case | Result |
+|---|---|---|
+| 11.1 | `statusline refresh` run from a root under the cache, ours statusLine points elsewhere | command = `"<target>/bin/agent-statusline.sh"`, refreshInterval as today, every other key kept |
+| 11.2 | refresh from any other root (repo checkout, git worktree, temp dir), no target | settings.json byte for byte the same, silent, exit 0 (also when ours points at a missing script: nothing to heal to) |
+| 11.3 | refresh from another root, `CLAUDE_PLUGIN_ROOT` under the cache | repointed to `CLAUDE_PLUGIN_ROOT` |
+| 11.4 | self-heal: ours points at a script that no longer exists, a target exists | repointed to the target |
+| 11.5 | `statusline on` (the human) from any root, cache or not | writes that root, as today |
+| 11.6 | refresh: not ours, no settings.json, not JSON | as today: nothing changes, silent, exit 0 |
+| 11.7 | `agent-start.sh` (it runs refresh) from a root that is not under the cache, no target | statusLine unchanged |
+| 11.8 | `agent-start.sh` from a root under the cache | ours repointed to it (today's start refresh) |
+
+Tests: `CLAUDE_CONFIG_DIR` (or a fake HOME) is always a temp folder, never the real `~/.claude`. pc2's own statusLine (Orca's) is never touched.
