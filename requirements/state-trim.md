@@ -133,7 +133,7 @@ Not empty: `❯ rules yes, and one more thing` on that line.
 
 | # | Rule | Example |
 |---|---|---|
-| G1 | The dispatch brief carries one line `GOAL: <text>` (kept by trim, K2) | `GOAL: task manager state-trim: done when DONE PASS or DONE FAIL is written under === REPORT === in agent_state.txt and the branch is pushed, or a QUESTION:, MOCK READY or CLOSE CASE line waits for an answer, or you saved agent_state.txt after an AUTO CLEAR notice` |
+| G1 | The dispatch brief carries one line `GOAL: <text>` (kept by trim, K2) | `GOAL: task manager state-trim: done when DONE PASS or DONE FAIL is written under === REPORT === in agent_state.txt and the branch is pushed, or a "QUESTION:", "MOCK READY" or "CLOSE CASE" line waits for an answer, or you saved agent_state.txt after an AUTO CLEAR notice` (the signal words in quotes: an unquoted close case in a brief fires the close-case hook) |
 | G2 | Typed by the main manager after the brief is received (the TM's `STAGE <name>: brief` line or its first reply), at the TM's next idle prompt with an empty input box (C10): `orca terminal wait --for tui-idle`, read, then `orca terminal send --text "/goal <text>" --enter`, then a read back; not shown → send once more | /goal starts a turn at once (docs), so it is typed only at an idle prompt |
 | G3 | Re-typed by the main manager after it sends an answer to a QUESTION, and after a mock or rules answer (`mock yes`, `rules yes`, or changes) | met at the question → the goal is cleared → a new one is needed |
 | G4 | Re-typed by the waiter after the auto /clear (C3 step 6), from the GOAL: line. The main manager does nothing for it | /clear wipes /goal |

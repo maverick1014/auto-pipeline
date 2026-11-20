@@ -749,7 +749,10 @@ class TestEstimateConf(unittest.TestCase):
         # test-levels (2026-11-20) appended level3_paths and level4_paths after them
         self.assertEqual(keys[at + 1:], ["housekeep_interval_min",
                                          "estimate_target_pct", "estimate_bias_min", "estimate_big_min",
-                                         "level3_paths", "level4_paths"])
+                                         "level3_paths", "level4_paths",
+                                         # state-trim (2026-11-20) appended its 6 keys last
+                                         "state_keep_hours", "state_warn_lines", "state_header_lines",
+                                         "state_trim_auto", "compact_clear_at", "compact_clear_check_sec"])
 
 
 # ---------------------------------------------------------------- wired in

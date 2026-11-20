@@ -69,7 +69,7 @@ Answer with its line: a duration AND a clock time, and when he is needed next. N
 WHERE: worktree <worktree path>, branch <branch>. Main repo <main repo> only for ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh.
 TODO LINE: <the todo line, as agent-file.sh show prints it>
 LEVEL: <n> (R8 gate: <the gate of that level>)
-GOAL: task manager <name>: done when DONE PASS or DONE FAIL is written under === REPORT === in agent_state.txt and the branch is pushed, or a QUESTION:, MOCK READY or CLOSE CASE line waits for an answer, or you saved agent_state.txt after an AUTO CLEAR notice
+GOAL: task manager <name>: done when DONE PASS or DONE FAIL is written under === REPORT === in agent_state.txt and the branch is pushed, or a "QUESTION:", "MOCK READY" or "CLOSE CASE" line waits for an answer, or you saved agent_state.txt after an AUTO CLEAR notice
 FEATURE: <requirement, 5 to 10 lines. Files to produce. What the user sees. Validation rules.>
 STEPS (at the start of each step run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" <stage>`; on another machine it writes a STAGE line into agent_state.txt and the main manager's watch carries it):
  0 brief: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" brief, then save this whole brief into agent_state.txt in your worktree, first action (S8), then one blank line

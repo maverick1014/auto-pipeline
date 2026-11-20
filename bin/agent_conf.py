@@ -117,9 +117,9 @@ GROUPS = [
                   "stage_verify", "stage_push", "stage_report", "stage_e2e", "stage_merge",
                   "board_watch_sec", "progress_eta_min_pct", "statusline_refresh_sec"]),
     ("estimate", ["estimate_target_pct", "estimate_bias_min", "estimate_big_min"]),
+    ("levels", ["level3_paths", "level4_paths"]),
     ("state", ["state_keep_hours", "state_warn_lines", "state_header_lines", "state_trim_auto",
                "compact_clear_at", "compact_clear_check_sec"]),
-    ("levels", ["level3_paths", "level4_paths"]),
 ]
 
 _GROUP_OF = {}
