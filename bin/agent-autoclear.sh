@@ -25,8 +25,20 @@ PIDF="$PROJECT_GITDIR/agent_autoclear_$SID"
 SF="$STATE_DIR/agent_state.txt"
 mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
 echo "$$" > "$PIDF"
-trap 'rm -f "$PIDF"' EXIT
-trap 'exit 143' TERM INT HUP
+STEP=1; CHILD=""
+trap '[ -n "$CHILD" ] && kill "$CHILD" 2>/dev/null; rm -f "$PIDF" "$TMPO"' EXIT
+trap 'trap - TERM INT HUP; [ -n "$CHILD" ] && kill "$CHILD" 2>/dev/null; add "AUTO CLEAR failed at step $STEP: stopped by a signal"; exit 143' TERM INT HUP
+
+# bg_out <file> <cmd...>: run in the background and wait, so a signal trap runs at once; rc = the command's
+TMPO="${TMPDIR:-/tmp}/agent_autoclear_$$.out"
+bg() {
+  "$@" >"$TMPO" 2>&1 </dev/null &
+  CHILD=$!
+  wait "$CHILD"; local rc=$?
+  CHILD=""
+  OUT=$(cat "$TMPO" 2>/dev/null); rm -f "$TMPO"
+  return $rc
+}
 
 now() { echo "${AGENT_FAKE_NOW:-$(date '+%Y-%m-%d %H:%M')}"; }
 add() {
@@ -66,13 +78,15 @@ except Exception:
 if isinstance(t, str):
     t = t.split("\n")
 last = None
-for l in t:
-    if l.startswith("❯"):
-        last = l
+for i, l in enumerate(t):
+    if l.startswith("\u276f"):
+        last = i
 if last is None:
     print("none")
+elif last == 0 or last + 1 >= len(t) or not t[last - 1].startswith("\u2500") or not t[last + 1].startswith("\u2500"):
+    print("text")
 else:
-    print("empty" if last[1:].replace(" ", " ").strip() == "" else "text")
+    print("empty" if t[last][1:].replace("\u00a0", " ").strip() == "" else "text")
 ' 2>/dev/null
 }
 
@@ -82,15 +96,16 @@ warned=0
 # ready <step>: wait for idle, check the box is empty; returns only when typing is allowed
 ready() {
   local out rc code st
+  STEP=$1
   while :; do
-    out=$(orca terminal wait --terminal "$H" --for tui-idle --json 2>&1 </dev/null); rc=$?
+    bg orca terminal wait --terminal "$H" --for tui-idle --json; rc=$?; out=$OUT
     if [ $rc -ne 0 ]; then
       code=$(printf '%s' "$out" | errcode)
       case "$code" in *timeout*) continue;; esac
       fail "$1" "$code"
     fi
     while :; do
-      out=$(orca terminal read --terminal "$H" --json 2>&1 </dev/null); rc=$?
+      bg orca terminal read --terminal "$H" --json; rc=$?; out=$OUT
       [ $rc -eq 0 ] || fail "$1" "$(printf '%s' "$out" | errcode)"
       st=$(printf '%s' "$out" | box_state)
       case "$st" in
@@ -98,7 +113,7 @@ ready() {
         ERR) fail "$1" "bad_read";;
       esac
       if [ "$warned" = 0 ]; then add "AUTO CLEAR waiting: input box not empty"; warned=1; fi
-      sleep "$check_sec"
+      bg sleep "$check_sec"
       # the pane may have changed state: wait for idle again before the next read
       continue 2
     done
@@ -107,22 +122,28 @@ ready() {
 
 type_text() {
   local out
-  out=$(orca terminal send --terminal "$H" --text "$2" --enter 2>&1 </dev/null) || fail "$1" "$(printf '%s' "$out" | errcode)"
+  STEP=$1
+  bg orca terminal send --terminal "$H" --text "$2" --enter || fail "$1" "$(printf '%s' "$OUT" | errcode)"
+  # tui-idle can come back before the pane went busy: let the turn start first
+  bg sleep "$check_sec"
 }
 
-goal=""
-if [ -f "$SF" ]; then
-  goal=$(grep '^GOAL: ' "$SF" | tail -n 1)
-  goal=${goal#GOAL: }
-  # one trailing " | YYYY-MM-DD HH:MM" stamp (state add) is not part of the goal
-  if [[ "$goal" =~ ^(.*)\ \|\ [0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}$ ]]; then goal=${BASH_REMATCH[1]}; fi
-fi
+read_goal() {
+  goal=""
+  if [ -f "$SF" ]; then
+    goal=$(grep '^GOAL: ' "$SF" | tail -n 1)
+    goal=${goal#GOAL: }
+    # one trailing " | YYYY-MM-DD HH:MM" stamp (state add) is not part of the goal
+    if [[ "$goal" =~ ^(.*)\ \|\ [0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}$ ]]; then goal=${BASH_REMATCH[1]}; fi
+  fi
+}
 
 ready 1
 type_text 2 "AUTO CLEAR: save agent_state.txt now (S8), nothing else. /clear comes next."
 ready 3
 type_text 4 "/clear"
 ready 5
+read_goal
 if [ -n "$goal" ]; then type_text 6 "/goal $goal"; else type_text 6 "CLEARED: continue from agent_state.txt (S8)."; fi
 add "AUTO CLEAR done"
 exit 0

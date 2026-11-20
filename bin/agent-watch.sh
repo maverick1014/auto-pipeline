@@ -219,6 +219,8 @@ while [ "$i" -le "$MAX" ]; do
 
   # baselines that could not be read at the start: this read is the baseline
   if [ -z "$BASE_N" ]; then BASE_N=$FN; fi
+  # a state trim can move old signal lines out: a lower count is the new baseline
+  if [ "$FN" -lt "$BASE_N" ] 2>/dev/null; then BASE_N=$FN; fi
 
   if [ "$FN" -gt "$BASE_N" ] 2>/dev/null; then
     echo "WATCH SIGNAL $NAME: $FLAST"

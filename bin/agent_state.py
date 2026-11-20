@@ -26,10 +26,12 @@ Rules: requirements/state-trim.md sections 0, A1, A2, A3. Files are read and wri
 """
 
 import datetime
+import fcntl
 import os
 import re
 import subprocess
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
@@ -57,7 +59,8 @@ HEARTBEAT = re.compile(LEAD_STRIP + r"HEARTBEAT(?:$|[ :])")
 HEARTBEAT_TASK = re.compile(LEAD_STRIP + r"HEARTBEAT ([^\s:]+):")
 OWNER_LINE = re.compile(LEAD_STRIP + r"OWNER ")
 OWNER_TODO = re.compile(r"(?<![%s])OWNER TODO:" % re.escape(QUOTES))
-K2_PREFIXES = ("PARKED: ", "QUESTIONS PAGE: ", "STAGE ", "WORKER ", "TODO LINE:", "GOAL:")
+K2_PREFIXES = ("PARKED: ", "QUESTIONS PAGE: ", "STAGE ", "WORKER ", "GOAL:")
+TODO_LINE = re.compile(r"\s*TODO LINE:")
 
 
 class Refuse(Exception):
@@ -161,6 +164,47 @@ def trim_auto_on(root):
     return conf_of(root).get("state_trim_auto", "on") != "off"
 
 
+# ---------------------------------------------------------------- the lock
+
+
+def lock_path(state_dir):
+    """A lock file in the git dir of the state folder (never replaced by tmp + mv, never in the work tree)."""
+    try:
+        out = subprocess.run(["git", "-C", state_dir, "rev-parse", "--absolute-git-dir"],
+                             capture_output=True, text=True, timeout=20)
+        if out.returncode == 0 and out.stdout.strip():
+            return os.path.join(out.stdout.strip(), "agent_state.lock")
+    except Exception:
+        pass
+    return os.path.join(state_dir, "agent_state.lock")
+
+
+class Lock(object):
+    """One exclusive flock for a trim or a state add. Blocks until it is free."""
+
+    def __init__(self, state_dir):
+        self.path = lock_path(state_dir)
+        self.fd = None
+
+    def __enter__(self):
+        try:
+            self.fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o644)
+            fcntl.flock(self.fd, fcntl.LOCK_EX)
+        except OSError:
+            if self.fd is not None:
+                os.close(self.fd)
+            self.fd = None
+        return self
+
+    def __exit__(self, *exc):
+        if self.fd is not None:
+            try:
+                fcntl.flock(self.fd, fcntl.LOCK_UN)
+            finally:
+                os.close(self.fd)
+        return False
+
+
 # ---------------------------------------------------------------- state add
 
 
@@ -173,10 +217,11 @@ def add(state_dir, now, args):
     if "\n" in text or "\r" in text:
         raise Refuse("state add: the text must not hold a line break")
     path = os.path.join(state_dir, STATE_NAME)
-    old = read_bytes(path) or b""
-    prefix = b"\n" if old and not old.endswith(b"\n") else b""
-    with open(path, "ab") as fh:
-        fh.write(prefix + to_bytes("%s | %s\n" % (text, now)))
+    with Lock(state_dir):
+        old = read_bytes(path) or b""
+        prefix = b"\n" if old and not old.endswith(b"\n") else b""
+        with open(path, "ab") as fh:
+            fh.write(prefix + to_bytes("%s | %s\n" % (text, now)))
     sys.stdout.write("state add: %s\n" % text[:60])
 
 
@@ -278,6 +323,9 @@ def plan(lines, open_re, closed_re, now, keep_hours, header_cap, open_names):
     when = [None] * n
     below = now
     for i in range(n - 1, -1, -1):
+        if info[i][0] == 2:
+            when[i] = info[i][1]    # a leading date dates only its own line
+            continue
         if info[i][1] is not None:
             below = info[i][1]
         when[i] = below
@@ -304,6 +352,7 @@ def plan(lines, open_re, closed_re, now, keep_hours, header_cap, open_names):
     open_set = set(opened)
 
     k4 = set()
+    k4_after = []
     i = 0
     while i < n:
         if lines[i].startswith("=== HOUSEKEEP "):
@@ -312,6 +361,8 @@ def plan(lines, open_re, closed_re, now, keep_hours, header_cap, open_names):
             while j < n and lines[j].startswith("  "):
                 k4.add(j)
                 j += 1
+            if j < n:
+                k4_after.append(j)
             i = j
             continue
         if CLEAN_STAMP.match(lines[i]):
@@ -342,7 +393,8 @@ def plan(lines, open_re, closed_re, now, keep_hours, header_cap, open_names):
     for i, line in enumerate(lines):
         if lab[i] is not None:
             continue
-        if (RULE_CARRY.match(line) or line.startswith(K2_PREFIXES) or OWNER_TODO.search(line)):
+        if (RULE_CARRY.match(line) or line.startswith(K2_PREFIXES) or TODO_LINE.match(line)
+                or OWNER_TODO.search(line)):
             lab[i] = "K2"
         elif i in open_set:
             lab[i] = "K3"
@@ -368,6 +420,11 @@ def plan(lines, open_re, closed_re, now, keep_hours, header_cap, open_names):
             lab[a] = "P"
         elif lab[a] is not None and lab[q] is None:
             lab[q] = "P"
+    # the line right after a HOUSEKEEP block stays when a kept "  " line follows it: else that line
+    # would join the block (and the T3 check would refuse every run)
+    for j in k4_after:
+        if lab[j] is None and j + 1 < n and lines[j + 1].startswith("  ") and lab[j + 1] is not None:
+            lab[j] = "K4"
     return lab
 
 
@@ -385,7 +442,8 @@ def machine_view(lines):
             view.append(("hk", line))
             continue
         in_block = False
-        if line.startswith(K2_PREFIXES) or OWNER_TODO.search(line) or CLEAN_STAMP.match(line):
+        if (line.startswith(K2_PREFIXES) or TODO_LINE.match(line) or OWNER_TODO.search(line)
+                or CLEAN_STAMP.match(line)):
             view.append(("m", line))
     return view
 
@@ -464,11 +522,39 @@ def trim(root, state_dir, now, dry_run=False):
     """The whole trim. Never raises: a refusal is TrimResult('refused')."""
     now = now_of(now)
     try:
-        return _trim(root, state_dir, now, dry_run)
+        if dry_run:
+            return _trim(root, state_dir, now, True)
+        with Lock(state_dir):
+            return _trim(root, state_dir, now, False)
     except Refuse as e:
         return TrimResult("refused", "state trim: refused (%s). Nothing was lost." % e)
     except Exception as e:  # an internal error is a refusal, never a traceback
         return TrimResult("refused", "state trim: refused (%s: %s). Nothing was lost." % (type(e).__name__, e))
+
+
+def _swap(state_path, kept_bytes, original):
+    """Write the new state file (tmp + mv). Bytes another writer put into the old file around the
+    swap are appended to the new one. Returns the bytes the new file must start with."""
+    old_fh = open(state_path, "rb") if original is not None else None
+    late_old = os.environ.get("AGENT_FAKE_TRIM_LATE_OLD")
+    second = open(state_path, "ab") if late_old and original is not None else None
+    try:
+        write_atomic(state_path, kept_bytes)
+        if second is not None:
+            second.write(to_bytes(late_old + "\n"))
+            second.flush()
+        grown = b""
+        if old_fh is not None:
+            old_fh.seek(len(original))
+            grown = old_fh.read()
+        if grown:
+            with open(state_path, "ab") as fh:
+                fh.write(grown)
+        return kept_bytes + grown
+    finally:
+        for fh in (old_fh, second):
+            if fh is not None:
+                fh.close()
 
 
 def _trim(root, state_dir, now, dry_run):
@@ -485,12 +571,20 @@ def _trim(root, state_dir, now, dry_run):
             return TrimResult("nothing", "state trim: nothing to move (0 lines)", n=0)
         lab = build(root, lines, now)
         if dry_run:
-            return TrimResult("dry", dry_text(lines, lab), n=n)
+            text = dry_text(lines, lab)
+            try:
+                check_plan(lines, lab)
+            except Refuse as e:
+                text += "state trim (dry run): the real run would refuse: %s\n" % e
+            return TrimResult("dry", text, n=n)
         kept, moved = check_plan(lines, lab)
         if not moved:
             return TrimResult("nothing", "state trim: nothing to move (%d lines)" % n, kept=n, n=n)
         ensure_exclude(state_dir)
         day_old = read_bytes(day_path)
+        hold = os.environ.get("AGENT_FAKE_TRIM_HOLD")
+        if hold:
+            time.sleep(float(hold))
         sep = b"\n" if day_old and not day_old.endswith(b"\n") else b""
         day_new = (day_old or b"") + sep + join_lines(moved)
         kept_bytes = join_lines(kept)
@@ -504,8 +598,13 @@ def _trim(root, state_dir, now, dry_run):
             if read_bytes(state_path) != original:
                 restore(day_path, day_old)
                 continue
-            write_atomic(state_path, kept_bytes)
-            good = (read_bytes(state_path) == kept_bytes and read_bytes(day_path) == day_new
+            expect = _swap(state_path, kept_bytes, original)
+            late_new = os.environ.get("AGENT_FAKE_TRIM_LATE_NEW")
+            if late_new:
+                with open(state_path, "ab") as fh:
+                    fh.write(to_bytes(late_new + "\n"))
+            # another writer's appends after our bytes are fine; anything else is a mismatch
+            good = (read_bytes(state_path).startswith(expect) and read_bytes(day_path) == day_new
                     and not os.environ.get("AGENT_FAKE_TRIM_BAD_READBACK"))
             if not good:
                 restore(state_path, original if original is not None else b"")
