@@ -1,6 +1,6 @@
 {
- "current": 3,
- "checked_tasks": 180,
+ "current": 4,
+ "checked_tasks": 229,
  "versions": [
   {
    "version": 1,
@@ -84,6 +84,45 @@
     0.597,
     1.508
    ]
+  },
+  {
+   "version": 4,
+   "date": "2026-11-20",
+   "tasks": 229,
+   "method": "blend",
+   "k": 7,
+   "text": 0,
+   "type": 0,
+   "backtest": {
+    "tasks": 219,
+    "estimator": {
+     "error": 21.0,
+     "within30": 31,
+     "inrange": 58
+    },
+    "rubric": {
+     "error": 29.0,
+     "within30": 28,
+     "inrange": 30
+    },
+    "blend": {
+     "error": 17.0,
+     "within30": 39,
+     "inrange": 56
+    },
+    "blend_repo": {
+     "error": 15.0,
+     "within30": 37,
+     "inrange": 56
+    }
+   },
+   "weight": 0.5,
+   "repo_bias": false,
+   "bias": {},
+   "span": [
+    0.565,
+    1.491
+   ]
   }
  ],
  "checks": [
@@ -141,7 +180,17 @@
    "new_error": 19.0,
    "kept": 3,
    "basis": "backtest"
+  },
+  {
+   "date": "2026-11-20",
+   "tasks": 229,
+   "new": 49,
+   "current": 3,
+   "current_error": 17.0,
+   "new_error": 15.0,
+   "kept": 4,
+   "basis": "new tasks"
   }
  ],
- "checked_date": "2026-11-13"
+ "checked_date": "2026-11-20"
 }
