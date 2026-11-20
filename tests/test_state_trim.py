@@ -409,13 +409,19 @@ class TestHousekeepBlock(TrimCase):
 
 
 class TestReportBlocks(TrimCase):
-    def test_a_block_that_names_an_open_task_stays_whole(self):
-        block = ["=== REPORT ===", "DONE PASS one-watcher", "Result: 12 tests", "TIME: est 30m"]
-        self.assertSplit(block + ["after | %s" % OLD], keep=block)
+    def test_a_block_that_names_an_open_task_stays_whole_to_the_next_section_line(self):
+        # the block runs to the line before the next "=== " line, stamped lines included (K5)
+        block = ["=== REPORT ===", "DONE PASS one-watcher", "Result: 12 tests", "TIME: est 30m",
+                 "a later old line still in the block | %s" % OLD]
+        self.assertSplit(block + ["=== NOTES ===", "after | %s" % OLD], keep=block)
+
+    def test_a_block_to_the_end_of_the_file(self):
+        block = ["=== REPORT ===", "DONE PASS one-watcher", "old line | %s" % OLD]
+        self.assertSplit(block, keep=block)
 
     def test_a_later_line_naming_an_open_task_is_enough(self):
         block = ["=== REPORT ===", "DONE FAIL goal-probe: blocked", "next: hand it to state-trim"]
-        self.assertSplit(block + ["after | %s" % OLD], keep=block)
+        self.assertSplit(block + ["=== NOTES ===", "after | %s" % OLD], keep=block)
 
     def test_a_block_of_a_closed_task_moves(self):
         lines = ["=== REPORT ===", "DONE PASS goal-probe", "Result: 3 tests", "after | %s" % OLD]

@@ -603,7 +603,8 @@ class TestAnswer(SourcesCase):
         self.af("questions", "answer", i, "yes, a pointer")
         lines = self.state_text(self.wt).splitlines()
         at = lines.index("QUESTION: keep the cap?")
-        self.assertEqual(lines[at + 1], "ANSWER: yes, a pointer")
+        # state-trim (2026-11-20): the answer line carries its stamp, so state trim can date it
+        self.assertEqual(lines[at + 1], "ANSWER: yes, a pointer | %s" % NOW)
         self.assertEqual(lines[at + 2], "=== HEARTBEAT ===")
         self.assertNotIn("keep the cap?", [q["title"] for q in self.qjson()["questions"]])
 

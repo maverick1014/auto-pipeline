@@ -375,6 +375,11 @@ class TestWaiter(ClearCase):
         self.assertEqual(self.state_lines()[-1], "AUTO CLEAR done | %s" % NOW)
         self.assertFalse(os.path.exists(self.pid_file()))
 
+    def test_a_goal_line_written_by_state_add_loses_its_stamp(self):
+        self.write_state(["ROLE: x", "", "GOAL: %s | 2026-11-20 11:00" % GOAL, "LIVE: a | b | c"])
+        self.assertOk(self.waiter())
+        self.assertEqual(self.sends()[-1], "/goal " + GOAL)
+
     def test_no_goal_line_sends_the_continue_prompt(self):
         self.write_state(["ROLE: main manager", ""])
         self.assertOk(self.waiter())

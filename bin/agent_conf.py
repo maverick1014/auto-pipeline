@@ -34,6 +34,11 @@ NUMBER_BOUNDS = {
     "estimate_target_pct": (1, 100),
     "estimate_bias_min": (1, 1000),
     "estimate_big_min": (1, 10000),
+    "state_keep_hours": (1, 720),
+    "state_warn_lines": (10, 100000),
+    "state_header_lines": (0, 500),
+    "compact_clear_at": (0, 20),
+    "compact_clear_check_sec": (1, 600),
 }
 
 ROLE_KEYS = [
@@ -92,6 +97,12 @@ HINTS = {
     "progress_eta_min_pct": "Lowest progress percent at which done-by is worked out from progress. Below it the board shows over by or a dash. Whole number, 0 to 100.",
     "level3_paths": "Paths that always need risk level 3 (heavy logic). Comma-separated globs, e.g. src/money/,core. Empty = none.",
     "level4_paths": "Paths that always need risk level 4 (danger). Comma-separated globs, e.g. db/,*.rules. Empty = none.",
+    "state_keep_hours": "Hours a state line stays after it was written before state trim may move it to the day archive. Whole number, 1 to 720.",
+    "state_warn_lines": "Lines of agent_state.txt above which the start text warns that it is long. Whole number, 10 to 100000.",
+    "state_header_lines": "Most lines at the top of agent_state.txt that state trim always keeps as the header. Whole number, 0 to 500.",
+    "state_trim_auto": "Trim agent_state.txt by itself in todo done and housekeep --apply. on or off.",
+    "compact_clear_at": "Compaction number at which the pane gets a save prompt and /clear. 0 = off. Whole number, 0 to 20.",
+    "compact_clear_check_sec": "Seconds between checks that the input box is empty before the auto clear types. Whole number, 1 to 600.",
     "board_watch_sec": "Seconds between refreshes of the live board (agent-file.sh board --watch). Whole number, 1 to 3600.",
 }
 
@@ -106,6 +117,8 @@ GROUPS = [
                   "stage_verify", "stage_push", "stage_report", "stage_e2e", "stage_merge",
                   "board_watch_sec", "progress_eta_min_pct", "statusline_refresh_sec"]),
     ("estimate", ["estimate_target_pct", "estimate_bias_min", "estimate_big_min"]),
+    ("state", ["state_keep_hours", "state_warn_lines", "state_header_lines", "state_trim_auto",
+               "compact_clear_at", "compact_clear_check_sec"]),
     ("levels", ["level3_paths", "level4_paths"]),
 ]
 
@@ -265,7 +278,7 @@ def validate_value(key, value):
         return _validate_language(value)
     if key == "runtime":
         return _validate_runtime(value)
-    if key in ("adhd", "auto_update"):
+    if key in ("adhd", "auto_update", "state_trim_auto"):
         return _validate_on_off(value)
     return None
 

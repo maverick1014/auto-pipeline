@@ -57,12 +57,12 @@ A2.2 A line is KEPT when any row says so. Every other line is MOVED.
 | K3b | the first `QUESTION:` or `=== ` line after an open question (and, when it is a question, its answer) | `=== REPORT ===` right after an open QUESTION | kept | else a later young ANSWER would close the open question |
 | K4 | the HOUSEKEEP block (`=== HOUSEKEEP <date> ===` + its two-space lines) or the `HOUSEKEEP <date>: clean` line | `=== HOUSEKEEP 2026-11-18 08:00 ===` | kept | the pass replaces it in place, there is at most one; the main manager acts on it (W8) |
 | K5 | a `=== REPORT ===` block (header to the line before the next `=== ` line) in which a line names an open task | `=== REPORT ===` / `DONE PASS state-trim` / ... | kept whole | the watch and the merge read it until the task is merged |
-| K6 | names an open task (not for HEARTBEAT lines, see H) | `DECIDED one-watcher: --all reads agent_worktree.txt \| 2026-11-16 14:00` | kept | open-task memory |
+| K6 | names an open task (not for any line starting with HEARTBEAT, see H) | `DECIDED one-watcher: --all reads agent_worktree.txt \| 2026-11-16 14:00` | kept | open-task memory |
 | K6 | a LIVE line is kept only by K6 or K7 (review change 1) | `LIVE: one-watcher \| laptop \| term_a1b2 \| 2026-11-18 09:00` | kept (names one-watcher, open) | |
 | K7 | young | `HEARTBEAT test-levels: step 7 of 7, work 60m \| 2026-11-20 09:30` | kept until 2026-11-21 09:30 | the last day stays |
 | K8 | a standing owner decision: starts with `OWNER ` (a leading stamp allowed), not `OWNER TODO:`, and names NO open task and NO closed task (review change 2) | `OWNER 2026-11-13: ideas -> script finds suspects, owner decides each` | kept forever | owner decisions outlive tasks |
 | H | an old HEARTBEAT line of an open heartbeat task: only the last one of that task in the file is kept (owner Q1 A). Young ones stay (K7) | `HEARTBEAT one-watcher: step 4 of 7, work 50m \| 2026-11-18 16:00` (the last old one of one-watcher) | kept; every earlier old one-watcher heartbeat moves | v4-plus kept 102 heartbeat lines of one task |
-| P | an answered `QUESTION:` and its `ANSWER:` are one unit: kept when either line is kept by K5-K8, else both move | `QUESTION: level 4 for goal-probe? \| 2026-11-17 10:00` + `ANSWER: no \| 2026-11-17 10:20` | both moved | never split a pair: a kept question without its answer would open again |
+| P | an answered `QUESTION:` and its `ANSWER:` are one unit: kept when either line is kept by any rule, else both move | `QUESTION: level 4 for goal-probe? \| 2026-11-17 10:00` + `ANSWER: no \| 2026-11-17 10:20` | both moved | never split a pair: a kept question without its answer would open again |
 
 MOVED examples (all old, no keep rule):
 

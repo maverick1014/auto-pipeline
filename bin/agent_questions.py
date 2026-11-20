@@ -489,7 +489,7 @@ def cmd_answer(c, args):
     else:
         text = read_text(q["file"]) or ""
         parts = text.split("\n")
-        parts.insert(q["_line"] + 1, "ANSWER: " + answer.strip())
+        parts.insert(q["_line"] + 1, "ANSWER: %s | %s" % (answer.strip(), c.now))
         write_atomic(q["file"], "\n".join(parts))
         sys.stdout.write("answered %s: ANSWER line written under: %s\n" % (qid, short))
 
