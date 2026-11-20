@@ -49,8 +49,9 @@ of the line (after spaces or a "-" / "*" bullet) is its date.
 Read only: writes nothing, touches nothing. Prints one GitHub markdown table
 (or one line "无" / "none" when there is no row), then note lines.
 Columns, in the agent.conf language (zh, else en):
-    zh  任务 | 内容 | 状态 | 进度 | 位置 | 估时 | 已工作 | 已等待 | 预计完成
-    en  Task | What | Status | Progress | Where | Est | Work | Wait | Done by
+    zh  任务 | 内容 | 状态 | 进度 | 位置 | 级别 | 估时 | 已工作 | 已等待 | 预计完成
+    en  Task | What | Status | Progress | Where | Level | Est | Work | Wait | Done by
+    (级别 / Level: test-levels, tests/test_risk_levels.py)
     (进度 / Progress: progress-bar, tests/test_agent_progress.py)
 
 Rows, whole repo:
@@ -121,8 +122,9 @@ from scripthelp import ScriptCase
 
 NOW = "2026-11-02 15:00"
 HOST = "pc2"
-HEAD = {"zh": ["任务", "内容", "状态", "进度", "位置", "估时", "已工作", "已等待", "预计完成"],
-        "en": ["Task", "What", "Status", "Progress", "Where", "Est", "Work", "Wait", "Done by"]}
+# 级别 / Level: test-levels (2026-11-20), tests/test_risk_levels.py
+HEAD = {"zh": ["任务", "内容", "状态", "进度", "位置", "级别", "估时", "已工作", "已等待", "预计完成"],
+        "en": ["Task", "What", "Status", "Progress", "Where", "Level", "Est", "Work", "Wait", "Done by"]}
 STATUS = {
     "zh": {"mock": "等你：看样稿", "question": "等你：回答问题", "review": "等你：验收",
            "running": "进行中", "hold": "暂缓", "queue": "排队中", "owner": "你的待办",
@@ -213,13 +215,13 @@ class BoardCase(ScriptCase):
         head = cells(lines[0])
         self.assertEqual(head, HEAD[self.lang])
         sep = cells(lines[1])
-        self.assertEqual(len(sep), 9)
+        self.assertEqual(len(sep), len(HEAD[self.lang]))
         for c in sep:
             self.assertRegex(c, r"^:?-{3,}:?$")
         rows = []
         for line in lines[2:]:
             row = cells(line)
-            self.assertEqual(len(row), 9, line)
+            self.assertEqual(len(row), len(HEAD[self.lang]), line)
             rows.append(dict(zip(HEAD["en"], row)))
         return rows
 

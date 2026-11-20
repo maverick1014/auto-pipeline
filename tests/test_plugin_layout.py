@@ -50,6 +50,7 @@ SHELL_SCRIPTS = [
     "agent-statusline.sh",   # progress-bar: the Claude Code status line
     "agent-housekeep.sh",    # housekeep-2h: the pass the monitor loop runs
     "agent-version.sh",      # stale-plugin-guard: running vs installed, UserPromptSubmit hook
+    "agent-level.sh",        # test-levels: the risk level a diff needs
 ]
 # Sourced only, never run. agent-runtime.sh is in the list above instead,
 # because it is both: sourced by its callers and run by a skill.
@@ -63,7 +64,8 @@ BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py", "agent.conf.default
                                             "agent_city_relay.py", "agent-city-relay.js",
                                             "agent_estimate.py",
                                             "agent_cleanup.py",
-                                            "agent_housekeep.py"]
+                                            "agent_housekeep.py",
+                                            "agent_level.py"]
 
 AGENT_FILES = ["fast-lane-deputy.md", "merge-deputy.md", "worker.md"]
 SKILL_DIRS = ["dispatch", "merge", "init", "cloud-pack", "city", "close-case"]
