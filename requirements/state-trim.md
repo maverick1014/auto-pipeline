@@ -84,13 +84,13 @@ MOVED examples (all old, no keep rule):
 | T1 | Only the session's own state file. Never another folder's, never across machines |
 | T2 | One archive per DAY (owner Q2 C): moved lines are appended, verbatim and in file order, to `agent_state.trim-<YYYY-MM-DD>.txt` (date of the trim run) next to the file. A second trim the same day appends to the same file. Nothing to move: the day file is not touched, prints `state trim: nothing to move (<n> lines)` |
 | T3 | Checked before writing: kept + moved = every original line exactly once; open questions, PARKED, WORKER, STAGE, QUESTIONS PAGE, OWNER TODO, TODO LINE, GOAL, HOUSEKEEP are the same before and after. Fail: refused, nothing written |
-| T4 | Order: the day archive first (its old bytes + the moved lines, tmp + mv), then the state file (tmp + mv). Just before the state write the state file is read again; changed meanwhile (an agent appended) → the archive gets its old bytes back, start over, at most 3 times, then refused, nothing changed |
-| T5 | After writing both: read back, check that the state file = kept lines and the day file = its old bytes + moved lines; fail → the state file gets the original bytes, the day file its old bytes (a day file this run created is left empty, never deleted), refused |
+| T4 | Order: the day archive first (its old bytes + the moved lines, tmp + mv), then the state file (tmp + mv). Just before the state write the state file is read again; changed meanwhile (an agent appended) → the archive gets its old bytes back, start over, at most 3 times, then refused (`state trim: refused ...` on stderr, exit 1), nothing changed |
+| T5 | After writing both: read back, check that the state file = kept lines and the day file = its old bytes + moved lines; fail → the state file gets the original bytes, the day file its old bytes, refused. "Old bytes" of a day file this run created = no file: it held only this run's lines, which are still in the state file. An existing day file is never deleted |
 | T6 | Prints `state trim: kept <k>, moved <m> of <n> -> agent_state.trim-<date>.txt (checked)` |
-| T7 | `--dry-run`: writes nothing; prints `state trim (dry run): keep <k>, move <m> of <n>`, the keep count per rule (K1..K8, H, P), then the first 5 kept and first 5 moved lines (cut to 100 chars) |
+| T7 | `--dry-run`: writes nothing; prints `state trim (dry run): keep <k>, move <m> of <n>`, then `by rule: K1 <n>, K2 <n>, K3 <n>, K3b <n>, K4 <n>, K5 <n>, K6 <n>, K7 <n>, K8 <n>, H <n>, P <n>` (a line counts once, under the first rule of that order that keeps it), then `first kept:` and `first moved:`, each with up to 5 lines `  <line cut to 100 chars>` |
 | T8 | The day file matches the `agent_state.*.txt` git-ignore line that `--clean` writes (trim adds the line when missing) |
 | T9 | Trim never deletes an archive. `--clean` keeps the 5 newest of each kind: its own copies `agent_state.<YYYY-MM-DD-HHMMSS>.txt` (as today) and the trim day files `agent_state.trim-<date>.txt` (about 5 days of trims) |
-| T10 | Run by `todo done` (after the line moved to agent_completed.txt, so the finished task no longer counts as open) and by `agent-housekeep.sh --apply` (before it writes its block). Its line goes into their output (housekeep: one `note:` line when lines moved). A trim failure never fails them: one warning line, exit as before |
+| T10 | Run by `todo done` (after the line moved to agent_completed.txt, so the finished task no longer counts as open) and by `agent-housekeep.sh --apply` (before it writes its block). They print the trim line only when lines moved (housekeep: one body line `note: state trim moved <m> of <n> lines -> <day file>`). A refused trim never fails them: one warning line on stderr, exit as before |
 | T11 | `state_trim_auto=off` in agent.conf: todo done and housekeep do not trim; `state trim` by hand still works |
 
 ### A4. Start text warning
@@ -109,13 +109,13 @@ MOVED examples (all old, no keep rule):
 | C2 | compaction 2 (`compact_clear_at`), orca, `ORCA_TERMINAL_HANDLE` set, `orca` found | hook prints `LIMIT: compacted 2 times. Save agent_state.txt now, then stop. This pane gets a save prompt and /clear at its next idle prompt (S8).`, appends `AUTO CLEAR queued: compacted 2 times \| <date>` to the state file, starts the waiter `bin/agent-autoclear.sh` detached (the hook returns at once) |
 | C3 | waiter | 1 waits until the pane may be typed into (C10) → 2 types `AUTO CLEAR: save agent_state.txt now (S8), nothing else. /clear comes next.` → 3 waits (C10) → 4 types `/clear` → 5 waits (C10) → 6 a `GOAL:` line in the state file: types `/goal <that text>`; none: types `CLEARED: continue from agent_state.txt (S8).` → 7 appends `AUTO CLEAR done \| <date>` |
 | C10 | may type (owner Q3 A), checked before every typed text, task manager and main manager panes alike | `orca terminal wait --for tui-idle` succeeds AND a pane read shows the input box empty: the last line starting with `❯` between the two `─` rule lines has nothing after the `❯` but spaces. Text there → wait `compact_clear_check_sec` (30), check again; never type over it. The first time it waits on text it appends `AUTO CLEAR waiting: input box not empty \| <date>` once (a dim hint text reads as text too; never silent) |
-| C4 | a step fails (send refused, orca error) | appends `AUTO CLEAR failed at step <n>: <error> \| <date>`, exits. The next compaction tries again |
+| C4 | a step fails (send refused, orca error; a wait error whose code holds `timeout` only means wait again) | appends `AUTO CLEAR failed at step <n>: <error code> \| <date>` (steps: 1 wait, 2 save prompt, 3 wait, 4 /clear, 5 wait, 6 goal or continue), exits. The next compaction tries again |
 | C5 | compaction 3 while a waiter for this session lives | LIMIT line only, no second waiter (pid file `<git dir>/agent_autoclear_<session id>`) |
 | C6 | plain or cloud, no handle, no orca | one line: `LIMIT: compacted 2 times. No pane to type into: save agent_state.txt, then tell the human to type /clear.` |
 | C7 | `/clear` happened (SessionStart source clear) | the compaction count of that session starts again at 0 |
 | C8 | `compact_clear_at=0` | off: the hook prints today's LIMIT line, no waiter |
 | C9 | a task manager with an active /goal | the goal text (A6) ends with "or you saved agent_state.txt after an AUTO CLEAR notice", so the goal evaluator lets it stop; the waiter then sees idle |
-| C11 | the pane is gone (session ended) | the waiter exits, removes its pid file |
+| C11 | the pane is gone (session ended): the wait fails with its error code | C4 line, the waiter exits; it always removes its pid file when it ends. Old pid files are swept with the other session markers (7 days) |
 
 Why a save prompt before /clear: after a manual `/compact` nobody gets a turn, so the hook text alone never makes the agent save. The typed prompt always gives it one turn to save.
 
@@ -150,7 +150,7 @@ Not empty: `❯ rules yes, and one more thing` on that line.
 | `state_header_lines` | 40 | 0-500 |
 | `state_trim_auto` | on | on, off |
 | `compact_clear_at` | 2 | 0-20 (0 = off) |
-| `compact_clear_check_sec` | 30 | 5-600 |
+| `compact_clear_check_sec` | 30 | 1-600 |
 
 ### A8. Text changes
 
@@ -189,6 +189,8 @@ Not empty: `❯ rules yes, and one more thing` on that line.
 | old stamped notes naming nothing | 691 | 0 | 691 | |
 | total | 1500 | 212 | 1288 | |
 
+Expected dry-run rule line (only the questions name the task in the 2 kept pairs): `by rule: K1 6, K2 10, K3 2, K3b 3, K4 5, K5 10, K6 67, K7 100, K8 3, H 4, P 2`.
+
 3. Run `state trim --dry-run` on each copy (`AGENT_FAKE_NOW` fixed), then `state trim`, then a second `state trim` the same day (appends to the same day file, moves nothing new). Report keep/move counts per rule against the table.
 4. Check kept + archived = original: sorted lines of (state + day file) equal sorted lines of the original copy, `diff` empty. `questions --json` and `board --self` give the same output before and after.
 5. Restore check (rollback C1) on the copy: the restore command gives back every original line, `diff` of sorted lines empty.
@@ -213,7 +215,7 @@ Not empty: `❯ rules yes, and one more thing` on that line.
 | R1 | main manager review change 1 | LIVE lines are kept only by K6 or K7; RULE and CARRY stay kept forever |
 | R2 | main manager review change 2 | standing owner decisions: `OWNER ` lines that name no open and no closed task are kept forever (K8) |
 
-Read as default, logged (W1): T9 "5 newest" counts each kind on its own, so the existing `--clean` copies keep their rule and the day files get the same 5.
+Read as default, logged (W1): T9 "5 newest" counts each kind on its own, so the existing `--clean` copies keep their rule and the day files get the same 5. T5 "do not delete the day file" = never delete an existing day file; a day file the failed run itself created goes (no line is lost).
 
 ## E. Scope adds against the todo line
 
