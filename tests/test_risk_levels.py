@@ -68,12 +68,13 @@ CONTRACT
 
    agent.conf keys (the main repo's agent.conf, also when run from a worktree):
      level3_paths, level4_paths: comma-separated globs, spaces around a comma
-     ignored, empty or missing = none. A glob with no "/" (a trailing "/" does
-     not count) matches when any folder or the file name of the path matches it
-     (fnmatch): "core", "*.rules". Any other glob is anchored at the repo root
-     and matches when the path or a leading part of it matches (fnmatch, "*"
-     also crosses "/", "**" is the same): "api/" matches api/x.py and
-     api/v1/y.py, not src/api/x.py; "src/*/ledger" matches src/a/ledger/x.ts.
+     ignored, empty or missing = none. A glob with no "/" at all matches when
+     any folder or the file name of the path matches it (fnmatch): "core",
+     "*.rules". Any other glob, a trailing "/" too, is anchored at the repo root
+     (the trailing "/" is dropped) and matches when the path or a leading part
+     of it matches (fnmatch, "*" also crosses "/", "**" is the same): "api/"
+     matches api/x.py and api/v1/y.py, not src/api/x.py; "src/*/ledger" matches
+     src/a/ledger/x.ts.
 
    L0 shapes. Lines are compared without trailing white space. In one hunk the
    removed and added lines pair up in order, the same count; a hunk that only

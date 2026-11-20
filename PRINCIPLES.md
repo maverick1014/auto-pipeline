@@ -10,6 +10,7 @@ R1. Two lanes
 - Small task → fast lane, no pipeline
 - Big task → full pipeline
 - Task size picks the lane
+- Risk level is the second axis (R8): 3 and 4 always take the full lane
 - Fast lane: no TDD while doing, human verifies directly, minimal test at merge
 
 R2. Secrets
@@ -47,6 +48,26 @@ R7. Worktree file
 - Main manager reads it before every dispatch (W9)
 - The housekeep pass removes a line whose worktree folder is gone and has no live pane; a working, final or human-direct line is only flagged
 
+R8. Risk levels
+- Second axis next to size: a risk level per task, picked at dispatch, on the todo line (`todo add ... --level <n>`, raise with `todo level <name> <n>`)
+- Size still picks fast or full lane; 3 and 4 always take the full lane
+- 0 wording: text values, one colour value, a switch to an existing style or variant, a move inside the same container with no responsive effect
+- 0 gate: the main manager reads the diff and approves. No test, no staging, no E2E, no mock
+- 1 UI only: a component's own CSS, a new style, a shared colour token or theme variable, a move with responsive effect. No API, data or calculation
+- 1 gate: lint + type-check; a non-builder takes before/after screenshots at desktop and phone width, console clean; owner OK
+- Owner away at level 1: the main manager decides and logs "owner not seen". Mock only for a new page or whole-page re-layout (W2). No unit tests, no full suite
+- 2 simple logic: one module, no money, schema, auth or permission. Gate: failing test first (TDD), touched-module tests + lint/type-check, E2E happy path + one error path
+- 3 heavy logic: accounting core, money, cross-module, business rules, state flows, principles
+- 3 gate: rules first as a table with examples in the requirement doc, owner yes before code; tests cover the table's edge cases
+- 3 gate: a separate reviewer at the decider floor (Opus) reviews the logic; touched module + core integration group; full suite once
+- 3 gate: E2E several paths incl. a failure path; real-data count first (H1)
+- 4 danger: schema, migration, dependency, security, release. Gate: all of 3 + migration dry-run on a data copy + written rollback plan + owner signs before merge
+- `bin/agent-level.sh check --base <ref> --declared <n>` before E2E and merge prints REQUIRED LEVEL; declared lower → RAISE, exit 1
+- On RAISE: raise the todo line, bounce, follow the higher gate. A level only goes up, never down
+- Built-in level 4 paths: lockfile, package.json deps, pubspec, dependency lists, migrations, schema files
+- Each repo lists its core and danger folders in agent.conf: level3_paths, level4_paths (`agent-settings.sh`)
+- The script cannot see a responsive effect: a level 0 move prints "manager: check responsive"; unsure → 1
+
 ## B. Work
 
 W1. Finish in one run
@@ -60,6 +81,7 @@ W2. UI
 - Clickable mock first (prototype artifact)
 - Human says yes
 - Then real code
+- Level 0: no mock. Level 1: a mock only for a new page or a whole-page re-layout (R8)
 
 W3. TDD
 - Task manager writes the failing tests → worker writes code → tests pass
@@ -72,6 +94,7 @@ W4. Multi-agent tests
 - Full suite: manager, once, at the end. Never twice
 - The full gate runs CI's steps in CI's order, at handoff and before merge (still once each)
 - After a bounce: re-run only the tests that failed, not the suite
+- Which tests run follows the level gate (R8)
 
 W5. Web UI testing
 - Claude in Chrome, not Playwright, on orca and plain
@@ -79,6 +102,7 @@ W5. Web UI testing
 - Unit tests are not proof, the UI E2E is
 - Builders never verify their own work: they ship an E2E click path, a verifier drives the UI, the main manager has the last word before merge
 - What a browser cannot prove goes on a standing "needs a real device" list, never counted as verified
+- Level 0 skips the E2E, the main manager reads the diff (R8)
 - Ask `agent-runtime.sh browser` first: chrome, headless or none
 - cloud → headless Chromium via Playwright, the extension can never reach a VM
 - none → print the click path under NEEDS HUMAN E2E and stop, wait for the human. Never silent, never forever

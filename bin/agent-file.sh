@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # agent-file.sh — the only way to write agent_*.txt. No agent, no tokens, one format.
 #
-#   agent-file.sh todo add  "<name>" "<size>" "<what>" [est_minutes] [by] [--guess <m>]  -> agent_todo.txt (by defaults to "main")
+#   agent-file.sh todo add  "<name>" "<size>" "<what>" [est_minutes] [by] [--guess <m>] [--level <n>]  -> agent_todo.txt (by defaults to "main")
 #   agent-file.sh todo done "<name>" ["<result>"] [--work <m>] [--wait <m>] [--bounces <n>] [--workers <n>]
 #                 [--mock yes|no] [--lane fast|full] [--type <t>] [--tests <n>] [--adds <n>]
 #                 [--merge <commit> | --range <a>..<b>]       -> line moves to agent_completed.txt as one data line
+#   agent-file.sh todo level "<name>" <n>                     -> the todo line says its risk level, " | level <n>" (n 0-4; replaced in place, only goes up)
 #   agent-file.sh todo drop "<name>" "<reason>"               -> line moves to agent_completed.txt as: date | name | what | est <n>m actual - | dropped: <reason>
 #   agent-file.sh idea add  "<text>"                          -> agent_ideas.txt
 #   agent-file.sh idea list                                   -> print agent_ideas.txt, numbered (cat -n)
@@ -54,10 +55,14 @@
 #   It prints "todo done: <name>" and "TIME DATA: <n> of 30" (finished tasks that have a work number).
 #   No --type or no --lane: one warning line on stderr ("todo done: warning: no --type --lane given (...)"), exit 0.
 #   --guess <m> (whole number, 1 or more; anywhere after "todo add") adds the field " | guess <m>m" after est; done copies it to guess=<m>.
+#   --level <n> (one of 0 1 2 3 4; anywhere after "todo add") adds " | level <n>" right after guess (else after est, else after the what); done copies it to level=<n>.
+#   todo level "<name>" <n>: sets it in place, every other field stays; prints "todo level: <name> <old> -> <n>" ("-" for none) or "todo level: <name> already level <n>" (writes nothing).
+#     A lower level, no such line, a bad or missing n: refused (one line on stderr, exit 1, nothing written).
 #   Then the retrain, only when due: one line "estimate retrain: ...", never the table. A failure never stops todo done.
 #
 # The line in agent_completed.txt (keys in this order, "-" when not known):
-#   <date> | <name> | <what> | data repo=<r> type=<t> lane=<l> mock=<yes|no> est=<m> work=<m> wait=<m> clock=<m> bounces=<n> workers=<n> files=<n> lines=<n> tests=<n> adds=<n> guess=<m>
+#   <date> | <name> | <what> | data repo=<r> type=<t> lane=<l> mock=<yes|no> est=<m> work=<m> wait=<m> clock=<m> bounces=<n> workers=<n> files=<n> lines=<n> tests=<n> adds=<n> guess=<m> level=<n>
+#   level = the risk level from the todo line's "level <n>" field, "-" when none. An older block has no level key (read as "-").
 #   An old line ("est <n>m actual <n>m") has no data block.
 #
 # time: ratio = work / est, one decimal; "-" when work or est is missing. An old line is est + clock, never work.
@@ -177,14 +182,14 @@
 set -eu
 TIME_DATA_GOAL=30
 DATA_TYPES="page server script docs cloud app data mixed"
-DATA_KEYS="repo type lane mock est work wait clock bounces workers files lines tests adds guess"
+DATA_KEYS="repo type lane mock est work wait clock bounces workers files lines tests adds guess level"
 OPT_CMD="todo done"   # the prefix of a refusal from done_opts; backfill sets it to "backfill"
 . "$(dirname "$0")/agent-roots.sh"
 roots_read
 ROOT="$PROJECT_ROOT"
 TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agent_ideas.txt"; WT="$ROOT/agent_worktree.txt"
 NOW=${AGENT_FAKE_NOW:-$(date '+%Y-%m-%d %H:%M')}; WHO=${AGENT_ROLE:-main}
-case "${1:-}" in data|repos|eta|estimate|backtest|retrain|helper-task|board|park|worker|questions) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|todo:level) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the whole header comment block, whatever its length
 usage() { awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 2; }
@@ -212,12 +217,12 @@ minutes_between() {
 # the data block as d_<key> variables: dreset sets them all to "-", dblock prints "data repo=... adds=..."
 dreset() {
   d_repo=-; d_type=-; d_lane=-; d_mock=-; d_est=-; d_work=-; d_wait=-; d_clock=-
-  d_bounces=-; d_workers=-; d_files=-; d_lines=-; d_tests=-; d_adds=-; d_guess=-
+  d_bounces=-; d_workers=-; d_files=-; d_lines=-; d_tests=-; d_adds=-; d_guess=-; d_level=-
 }
 dblock() {
-  printf 'data repo=%s type=%s lane=%s mock=%s est=%s work=%s wait=%s clock=%s bounces=%s workers=%s files=%s lines=%s tests=%s adds=%s guess=%s' \
+  printf 'data repo=%s type=%s lane=%s mock=%s est=%s work=%s wait=%s clock=%s bounces=%s workers=%s files=%s lines=%s tests=%s adds=%s guess=%s level=%s' \
     "$d_repo" "$d_type" "$d_lane" "$d_mock" "$d_est" "$d_work" "$d_wait" "$d_clock" \
-    "$d_bounces" "$d_workers" "$d_files" "$d_lines" "$d_tests" "$d_adds" "$d_guess"
+    "$d_bounces" "$d_workers" "$d_files" "$d_lines" "$d_tests" "$d_adds" "$d_guess" "$d_level"
 }
 # dkey "<line>" <key>: that key of the line's data block (can be "-"); nothing when the line has no block
 dkey() {
@@ -925,16 +930,55 @@ board_run() {
     --now "$NOW" --lang "$lang" --host "$host" ${self:+--self}
 }
 
+# the risk level of a todo line: fields 4+ only ("level <n>"); nothing when none
+todo_line_level() {
+  printf '%s\n' "$1" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^level [0-9]+$/) {v = $i; sub(/^level /, "", v); print v; exit}}'
+}
+# todo level "<name>" <n>: the line's level field, set in place (only goes up)
+todo_level() {
+  local name="${1:-}" n="${2:-}" line old
+  [ $# -eq 2 ] || refuse "todo level: usage: todo level \"<name>\" <n>  (n one of 0 1 2 3 4)"
+  case "$n" in [0-4]) ;; *) refuse "todo level: the level wants one of 0 1 2 3 4 (got: $n)";; esac
+  line=""; [ ! -f "$TODO" ] || line=$(first "$TODO" "$name")
+  [ -n "$line" ] || refuse "no todo line named: $name"
+  old=$(todo_line_level "$line")
+  if [ -n "$old" ]; then
+    old=$((10#$old))
+    [ "$n" -ge "$old" ] || refuse "todo level: $name: level only goes up ($old -> $n)"
+    if [ "$n" -eq "$old" ]; then echo "todo level: $name already level $n"; return 0; fi
+  fi
+  NAME="$name" LV="$n" awk -F' \\| ' '
+    !done && $1 == ENVIRON["NAME"] {
+      done = 1; lv = "level " ENVIRON["LV"]; out = ""; hasl = 0
+      for (i = 4; i <= NF; i++) if ($i ~ /^level [0-9]+$/) hasl = 1
+      gi = 0; ei = 0
+      for (i = 4; i <= NF; i++) { if (!gi && $i ~ /^guess [0-9]+m$/) gi = i; if (!ei && $i ~ /^est [0-9]+m$/) ei = i }
+      at = gi ? gi : (ei ? ei : 3)
+      for (i = 1; i <= NF; i++) {
+        f = $i
+        if (i >= 4 && f ~ /^level [0-9]+$/) f = lv
+        out = out (i > 1 ? " | " : "") f
+        if (!hasl && i == at) out = out " | " lv
+      }
+      print out; next
+    }
+    {print}' "$TODO" > "$TODO.tmp" && mv "$TODO.tmp" "$TODO"
+  echo "todo level: $name ${old:--} -> $n"
+}
+
 case "${1:-}:${2:-}" in
   helper-task:*)
     [ $# -ge 2 ] || usage
     helper_task "$2";;
   todo:add)
-    shift 2; guess=""; rest=()
+    shift 2; guess=""; level=""; rest=()
     while [ $# -gt 0 ]; do   # --guess <m> may stand anywhere after "todo add"; the other args keep their order
       if [ "$1" = "--guess" ]; then
         [ $# -ge 2 ] && is_num "$2" && [ "${#2}" -le 9 ] && [ $((10#$2)) -ge 1 ] || refuse "todo add: --guess wants a whole number, 1 or more (got: ${2:-nothing})"
         guess=$((10#$2)); shift 2
+      elif [ "$1" = "--level" ]; then
+        case "${2:-}" in [0-4]) ;; *) refuse "todo add: --level wants one of 0 1 2 3 4 (got: ${2:-nothing})";; esac
+        level=$2; shift 2
       else rest+=("$1"); shift; fi
     done
     set -- todo add ${rest[@]+"${rest[@]}"}
@@ -942,6 +986,7 @@ case "${1:-}:${2:-}" in
     what="$5"
     [ -n "${6:-}" ] && what="$5 | est ${6}m"
     [ -z "$guess" ] || what="$what | guess ${guess}m"
+    [ -z "$level" ] || what="$what | level $level"
     by="${7:-$WHO}"
     append "$TODO" "$3 | $4 | $what | opened $NOW | by $by"
     echo "todo added: $3";;
@@ -962,6 +1007,7 @@ case "${1:-}:${2:-}" in
     d_repo=$(repo_name "$ROOT"); d_est=${est:--}; d_clock=${clock:--}
     d_guess=$(printf '%s\n' "$line" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^guess [0-9]+m$/) {v = $i; sub(/^guess /, "", v); sub(/m$/, "", v); print v; exit}}')
     d_guess=${d_guess:--}
+    d_level=$(todo_line_level "$line"); d_level=${d_level:--}
     date="${NOW%% *}"
     drop "$TODO" "$name"; append "$DONE" "$date | $name | $what | $(dblock)"
     echo "todo done: $name"
@@ -975,6 +1021,8 @@ case "${1:-}:${2:-}" in
     shift 2; todo_where "$@";;
   todo:cross)
     shift 2; todo_cross "$@";;
+  todo:level)
+    shift 2; todo_level "$@";;
   todo:stage)
     shift 2; todo_stage "$@";;
   park:*)

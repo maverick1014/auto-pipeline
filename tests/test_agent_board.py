@@ -667,7 +667,7 @@ class TestSelf(BoardCase):
     def test_nothing_at_all_is_one_bare_row(self):
         rows = self.rows("--self", cwd=self.alpha)
         self.assertEqual(rows, [{"Task": "alpha", "What": "-", "Status": self.st("running"),
-                                 "Progress": "-", "Where": "pc2, " + self.alpha, "Est": "-", "Work": "-",
+                                 "Progress": "-", "Where": "pc2, " + self.alpha, "Level": "-", "Est": "-", "Work": "-",
                                  "Wait": "-", "Done by": "-"}])
 
     def test_a_helper_in_the_main_repo_never_shows_the_main_state(self):

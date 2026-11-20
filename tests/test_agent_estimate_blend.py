@@ -746,8 +746,10 @@ class TestEstimateConf(unittest.TestCase):
             self.assertEqual(conf.get(key), default, key)
         # appended last, after statusline_refresh_sec and housekeep-2h's housekeep_interval_min (merged first)
         at = keys.index("statusline_refresh_sec")
+        # test-levels (2026-11-20) appended level3_paths and level4_paths after them
         self.assertEqual(keys[at + 1:], ["housekeep_interval_min",
-                                         "estimate_target_pct", "estimate_bias_min", "estimate_big_min"])
+                                         "estimate_target_pct", "estimate_bias_min", "estimate_big_min",
+                                         "level3_paths", "level4_paths"])
 
 
 # ---------------------------------------------------------------- wired in

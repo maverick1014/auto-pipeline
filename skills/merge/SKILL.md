@@ -7,15 +7,18 @@ description: Main manager only. After a task manager reports DONE PASS, run the 
 0. A CLOSE CASE report instead of DONE PASS? → run `/close-case` first. Finished → it sends you back here to continue. Unfinished → it decides finish first or close now.
 
 1. Read the task manager's done report. No click path → bounce it: "no E2E script, not done". No TIME line with work and wait apart, or no FACTS line → bounce it: "no TIME, not done".
+   Then, in the task's worktree, before any E2E: `${CLAUDE_PLUGIN_ROOT}/bin/agent-level.sh check --base origin/main --declared <level of the todo line>` (R8). It prints REQUIRED LEVEL. RAISE (exit 1) → `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo level "<name>" <n>`, bounce to the task manager, follow the gate of the higher level. A level only goes up.
+   Follow the gate list of the level (R8). Level 0: skip the E2E (steps 2 and 3), read the diff and approve, then go on at step 4. Level 1: screenshots at desktop and phone width, console clean, owner OK.
 2. First run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" e2e`. Ask `${CLAUDE_PLUGIN_ROOT}/bin/agent-runtime.sh browser`: chrome, headless or none.
    - **chrome** — run the click path yourself in Claude in Chrome (W5). Every step must match. A miss → send the evidence back to the task manager, stop here.
    - **headless** — cloud only, the extension can never reach a VM. Run the same click path with Playwright against the dev server, and save one screenshot per step as evidence. Same rule: a miss → send the evidence back to the task manager, stop here.
    - **none** — no browser at all. Print the click path under the heading NEEDS HUMAN E2E and stop. Do not merge, do not pass, and never call a path "verified" when nobody drove it. Wait for the human to sign it off.
 3. Stop the app server, close whatever ran the click path: the tab, the headless Playwright browser, or nothing if the answer was none.
-4. Run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" merge`, then `Agent` with `subagent_type: merge-deputy`, description `<name> Merge`. Brief, all six values:
+4. Run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" merge`, then `Agent` with `subagent_type: merge-deputy`, description `<name> Merge`. Brief, all values:
    ```
    [<model> <effort>]   (yours, from the YOU: line of your start text)
    name: <name>
+   level: <n>
    branch: <branch>
    worktree path: <path>
    terminal handle: <term_...>   (orca only, leave empty in plain and cloud)

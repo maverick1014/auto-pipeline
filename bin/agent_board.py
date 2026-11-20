@@ -39,8 +39,8 @@ FMT = "%Y-%m-%d %H:%M"
 HELPER_ROLE = "task manager, human-direct"
 
 HEAD = {
-    "zh": ["任务", "内容", "状态", "进度", "位置", "估时", "已工作", "已等待", "预计完成"],
-    "en": ["Task", "What", "Status", "Progress", "Where", "Est", "Work", "Wait", "Done by"],
+    "zh": ["任务", "内容", "状态", "进度", "位置", "级别", "估时", "已工作", "已等待", "预计完成"],
+    "en": ["Task", "What", "Status", "Progress", "Where", "Level", "Est", "Work", "Wait", "Done by"],
 }
 STATUS = {
     "zh": {"mock": "等你：看样稿", "question": "等你：回答问题", "review": "等你：验收",
@@ -291,11 +291,11 @@ class Board:
     # -- rows
 
     def add(self, group, when, task, what, status, where, est="-", work="-", wait="-", done="-", progress="-",
-            info=None):
+            info=None, level="-"):
         """when: "YYYY-MM-DD HH:MM" or None (no date sorts last, file order)."""
         self.seq += 1
         key = (group, 0 if when else 1, when or "", self.seq)
-        cells = [cell(task), cell(cut_what(what)), cell(status), progress.replace("|", "\\|"), cell(where), cell(est),
+        cells = [cell(task), cell(cut_what(what)), cell(status), progress.replace("|", "\\|"), cell(where), cell(level), cell(est),
                  cell(work), cell(wait), cell(done)]
         self.rows.append((key, cells, info))
 
@@ -305,7 +305,7 @@ class Board:
         f = line.split(" | ")
         t = {"name": f[0].strip(), "what": f[2] if len(f) > 2 else "", "est": None,
              "opened": None, "wkind": None, "wsince": None, "wnote": "", "waited": 0,
-             "machine": None, "path": None, "stage": None, "since": None, "wis": 0}
+             "machine": None, "path": None, "stage": None, "since": None, "wis": 0, "level": None}
         for x in f[3:]:
             m = re.match(r"est (\d+)m$", x)
             if m and t["est"] is None:
@@ -323,6 +323,10 @@ class Board:
             if m and t["stage"] is None:
                 t["stage"] = parse_stage(m.group(1))
                 t["since"] = m.group(2)
+                continue
+            m = re.match(r"level (\d+)$", x)
+            if m and t["level"] is None:
+                t["level"] = int(m.group(1))
                 continue
             m = re.match(r"waited in stage (\d+)m$", x)
             if m:
@@ -371,6 +375,7 @@ class Board:
         self.add(group, when, t["name"], t["what"] or "-", status, where,
                  est=fmt_min(t["est"]), work=fmt_min(work), wait=fmt_min(wait),
                  done=done, progress="-" if p is None else bar_text(p),
+                 level="-" if t["level"] is None else "L%d" % t["level"],
                  info=(t["name"], t["stage"]) if p is not None else None)
 
     def helper_row(self, f):
@@ -635,7 +640,7 @@ def statusline_text(stdin_text):
         word = ZH_STAGE[stage] if zh else stage
         if i is not None:
             word += " %d/%d" % (i, m)
-        lines.append((name, cells[3], word, cells[8]))
+        lines.append((name, cells[3], word, cells[9]))
     shown = lines[:STATUS_LINES]
     wide = max([display_width(l[2]) for l in shown] or [0])
     out = []
