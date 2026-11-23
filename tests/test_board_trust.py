@@ -251,7 +251,8 @@ class TestMainManager(GuardCase):
         rows = self.rows()
         i = self.index(rows, "board-waiting 窗格")
         self.assertEqual(i, self.index(rows, "board-waiting") + 1)
-        self.assertEqual(rows[i]["What"], SHELL_TITLE)
+        # the board cuts every What cell at 60 characters (WHAT_MAX), the record keeps the whole title
+        self.assertEqual(rows[i]["What"], "[auto-pipeline] board-waiting pc2 shell · LIVE - do not…")
         close = "orca terminal close --terminal term_bc68aaf3-5722-4519-b334-5b19d9d2661e --environment pc2 --json"
         c = self.pre_bash(close)
         self.assertAllowed(c)
@@ -739,7 +740,7 @@ class TestBoardEnglish(BoardOnly):
         self.put_todo()
         self.put_launch("LAUNCH toolu_1: explore | task project Manager | look | since 2026-11-20 16:40 | pid %d | "
                         "by main | agent a1" % LIVE)
-        r = self.row(self.rows(), task="project Manager explore")
+        r = self.row(self.rows(now=NOW), task="project Manager explore")
         self.assertEqual((r["What"], r["Status"], r["Work"]), ("look", "running", "10m"))
 
     def test_a_broken_launch_line_never_crashes(self):

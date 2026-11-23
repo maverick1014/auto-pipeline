@@ -296,6 +296,110 @@ def done_by_text(lang, now, est, work, p, min_pct=0):
     return ("超出 " if lang == "zh" else "over by ") + fmt_min(work - est)
 
 
+# ---------------------------------------------------------------- LAUNCH records (written by the guard hook)
+
+AGENT_KINDS = ("deputy", "merge", "reviewer", "explore", "plan", "guide", "agent")
+PANE_KINDS = ("tm-pane", "shell-pane", "pane", "helper-pane")
+KIND_WORD = {
+    "zh": {"worker": "工人", "deputy": "副手", "merge": "合并", "reviewer": "审查", "explore": "探查", "plan": "规划",
+           "guide": "指南", "agent": "代理", "pane": "窗格"},
+    "en": {"worker": "worker", "deputy": "deputy", "merge": "merge", "reviewer": "reviewer", "explore": "explore",
+           "plan": "plan", "guide": "guide", "agent": "agent", "pane": "pane"},
+}
+LAUNCH_STALE_MIN = 2
+ORCA_TIMEOUT = 5
+
+
+def parse_launch(line):
+    """The record of one LAUNCH line as a dict, or None for a broken line."""
+    try:
+        if not line.startswith("LAUNCH "):
+            return None
+        key, sep, rest = line[7:].partition(": ")
+        if not sep or not key.strip():
+            return None
+        parts = rest.split(" | ")
+        if len(parts) < 6:
+            return None
+        kind = parts[0].strip()
+        num = None
+        m = re.match(r"worker (\d+)$", kind)
+        if m:
+            num, word = int(m.group(1)), "worker"
+        elif kind in AGENT_KINDS:
+            word = kind
+        elif kind in PANE_KINDS:
+            word = "pane"
+        else:
+            return None
+        if not parts[1].startswith("task ") or not parts[1][5:].strip():
+            return None
+        rec = {"key": key.strip(), "kind": kind, "word": word, "num": num, "is_pane": kind in PANE_KINDS,
+               "task": parts[1][5:].strip(), "title": parts[2].strip() or "-"}
+        for x in parts[3:]:
+            k, _, v = x.strip().partition(" ")
+            if k and k not in rec:
+                rec.setdefault("f_" + k, v.strip())
+        since = rec.get("f_since")
+        if not since or not re.match(r"%s$" % DATE, since) or parse_time(since) is None:
+            return None
+        if not re.match(r"\d+$", rec.get("f_pid", "")) or not rec.get("f_by"):
+            return None
+        rec["since"], rec["pid"] = since, int(rec["f_pid"])
+        rec["agent"], rec["pane"], rec["env"] = rec.get("f_agent"), rec.get("f_pane"), rec.get("f_env")
+        return rec
+    except Exception:
+        return None
+
+
+def pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return True
+    except (ProcessLookupError, OverflowError, ValueError, OSError):
+        return False
+    return True
+
+
+def launch_records(folder):
+    return [r for r in (parse_launch(l) for l in read_lines(os.path.join(folder, "agent_state.txt"))) if r]
+
+
+def launch_young(rec, now):
+    age = minutes(parse_time(rec["since"]), now)
+    return age is not None and age <= LAUNCH_STALE_MIN
+
+
+def agent_visible(rec, now):
+    """An agent-kind record: pid alive, and linked to an agent or at most 2 minutes old."""
+    return pid_alive(rec["pid"]) and (bool(rec["agent"]) or launch_young(rec, now))
+
+
+def terminal_handles(env):
+    """The set of pane handles orca lists (for env, else the local one), None when orca cannot say."""
+    cmd = ["orca", "terminal", "list", "--json"] + (["--environment", env] if env else [])
+    try:
+        out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True,
+                             timeout=ORCA_TIMEOUT, stdin=subprocess.DEVNULL)
+        if out.returncode != 0:
+            return None
+        data = json.loads(out.stdout)
+        terms = data["result"]["terminals"]
+        return {t.get("handle") for t in terms if isinstance(t, dict)}
+    except Exception:
+        return None
+
+
+def pane_visible(rec, now, listed):
+    """A pane-kind record: a dead pid does not hide it; no handle: 2 minutes; a handle: it must be in the orca
+    list (listed(env) -> set or None; None = orca cannot say = shown)."""
+    if not rec["pane"]:
+        return launch_young(rec, now)
+    handles = listed(rec["env"])
+    return handles is None or rec["pane"] in handles
+
+
 # ---------------------------------------------------------------- the board
 
 
@@ -315,6 +419,8 @@ class Board:
         self.rows = []
         self.notes = []
         self.seq = 0
+        self.records = []       # (folder, record) of every LAUNCH line read
+        self.hand_workers = {}  # label -> row of a hand WORKER line
 
     # -- words
 
@@ -554,6 +660,11 @@ class Board:
                 label = ("%s 工人 %s" if self.lang == "zh" else "%s worker %s") % (name, int(m.group(1)))
                 work = fmt_min(minutes(parse_time(since), self.now)) if since else "-"
                 self.add(G_RUNNING, since, label, parts[0], self.word("running"), where, work=work)
+                self.hand_workers[label] = self.rows[-1]
+                continue
+            rec = parse_launch(line)
+            if rec:
+                self.records.append((folder, rec))
                 continue
             item = self.owner_item(line)
             if item:
@@ -661,6 +772,50 @@ class Board:
         if not in_root:
             self.state_rows(folder)
 
+    # -- the LAUNCH records
+
+    def add_launches(self):
+        """One row per visible record, right under its task's row; a hand WORKER row of the same label goes."""
+        now = self.now
+        cache = {}
+
+        def listed(env):
+            if env not in cache:
+                cache[env] = terminal_handles(env)
+            return cache[env]
+
+        parents = {}
+        for row in self.rows:
+            parents.setdefault(row[1][0], row)
+        words = KIND_WORD[self.lang]
+        kids = {}
+        for folder, rec in self.records:
+            if rec["is_pane"]:
+                if not pane_visible(rec, now, listed):
+                    continue
+            elif not agent_visible(rec, now):
+                continue
+            label = "%s %s" % (rec["task"], words[rec["word"]])
+            if rec["num"] is not None:
+                label += " %d" % rec["num"]
+            hand = self.hand_workers.get(label)
+            if hand is not None and hand in self.rows:
+                self.rows.remove(hand)
+            work = fmt_min(minutes(parse_time(rec["since"]), now))
+            cells = [cell(label), cell(cut_what(rec["title"])), cell(self.word("running")), "-",
+                     cell(self.where_here(folder)), "-", "-", cell(work), "-", "-"]
+            kids.setdefault(rec["task"], []).append((rec["since"], label, cells))
+        for task, items in kids.items():
+            parent = parents.get(task)
+            for i, (since, label, cells) in enumerate(sorted(items, key=lambda x: x[0])):
+                if parent is not None and parent in self.rows:
+                    group, flag, when, seq = parent[0]
+                    key = (group, flag, when, seq + (i + 1) / 100000.0)
+                else:
+                    self.seq += 1
+                    key = (G_RUNNING, 0, since, self.seq)
+                self.rows.append((key, cells, None))
+
     # -- print
 
     def render(self):
@@ -677,8 +832,9 @@ class Board:
         return "\n".join(out) + "\n"
 
 
-def build(args, now=None):
-    """One fresh Board for these args (now: "YYYY-MM-DD HH:MM", else args.now)."""
+def build(args, now=None, records=True):
+    """One fresh Board for these args (now: "YYYY-MM-DD HH:MM", else args.now). records=False: no LAUNCH rows (and
+    no orca call)."""
     if now is not None:
         args = argparse.Namespace(**dict(vars(args), now=now))
     board = Board(args)
@@ -686,6 +842,8 @@ def build(args, now=None):
         board.own_view()
     else:
         board.whole_repo()
+    if records:
+        board.add_launches()
     return board
 
 
@@ -758,7 +916,7 @@ def statusline_text(stdin_text):
     own = os.path.realpath(top) != os.path.realpath(main)
     args = argparse.Namespace(root=main, state_dir=top, cwd=folder, now=clock_now(), lang=lang, host="-",
                               self_mode=own)
-    board = build(args)
+    board = build(args, records=False)
     zh = lang == "zh"
     lines = []
     for _, cells, info in sorted(board.rows, key=lambda r: r[0]):
@@ -794,6 +952,14 @@ def statusline_text(stdin_text):
     rest = folded + len(cands) - len(shown)
     if rest:
         out.append(STATUS[lang]["fold"] % rest)
+    now = parse_time(args.now)
+    count = sum(1 for r in launch_records(top) if not r["is_pane"] and agent_visible(r, now))
+    if count:
+        tail = "%d 代理" % count if zh else "%d agent%s" % (count, "" if count == 1 else "s")
+        if out:
+            out[0] += " · " + tail
+        else:
+            out.append(tail)
     return "\n".join(out)
 
 
