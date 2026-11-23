@@ -1,6 +1,6 @@
 # board-trust — requirements (level 4 rules gate)
 
-Status: rules yes 2026-11-23 (1A 2A 3A: Q1 block, Q2 subagents only, Q3 record value). Base a0f4d31 (release 0.38.0) → release 0.39.0.
+Status: rules yes 2026-11-23 (1A 2A 3A: Q1 block, Q2 subagents only, Q3 record value); rule 4 changed after the dry-run (default taken 08:40, to confirm). Base a0f4d31 (release 0.38.0) → release 0.39.0.
 Source: owner 2026-11-20 (1A 2A): "ensure the manager every time issue new agent or task will update my tracker display ... so that i only can trust it". Seen today: a merge deputy never showed on the board.
 Examples: now = 2026-11-20 16:50, real names of 2026-11-20 (transcripts on pc2, the live pc2 pane list).
 
@@ -21,7 +21,7 @@ Examples: now = 2026-11-20 16:50, real names of 2026-11-20 (transcripts on pc2, 
 | 1 | main → Agent `merge-deputy`, "state-trim Merge" (state-trim open) | `merge \| task state-trim \| state-trim Merge` | row `state-trim 合并` right under the state-trim row, 进行中, 已工作 since launch | SubagentStop with its agent id | allowed |
 | 2 | main → same, after `todo done state-trim` | nothing | - | - | **blocked**: `board guard: "state-trim Merge" names state-trim, which is not an open todo task. Run agent-file.sh todo add "state-trim" ... first, then launch again.` |
 | 3 | tm board-waiting (pc2) → Agent `worker`, "board-waiting Worker 1: board rows" | `worker \| task board-waiting \| board rows` in the worktree's agent_state.txt | `board-waiting 工人 1` under its row (`board --self` and the pc2 board); status line `board-waiting  ███░░  写代码  17:30 · 1 代理` | SubagentStop | allowed: own task |
-| 4 | tm board-trust → "state-trim Worker 1: trim engine" | nothing | - | - | **blocked**: `board guard: you are the board-trust task manager; "state-trim Worker 1: ..." names task state-trim. Launch only for board-trust.` |
+| 4 | tm board-trust → "state-trim Worker 1: trim engine" | `worker 1 \| task state-trim \| trim engine` | `state-trim 工人 1` under the state-trim row | SubagentStop | allowed, recorded under the task it names (changed 2026-11-23 after the dry-run, default taken: was **blocked**; 150 of 519 real v4-plus task manager launches name a batch, short or -2 task name) |
 | 5 | tm state-trim → `claude-code-guide`, "Check /goal command semantics" (free) | `guide \| task state-trim \| Check /goal command semantics` | `state-trim 指南` under its row | SubagentStop | allowed: a tm's free launch is its own task |
 | 6 | main → `Explore`, "Find hook payload fields" (free) | `explore \| task auto-pipeline Manager \| Find hook payload fields` | `auto-pipeline Manager 探查`, running group | SubagentStop | allowed: read-only types (Explore, Plan, claude-code-guide, web-fetch, statusline-setup) never need a task |
 | 7 | main → `general-purpose`, "Find hook payload fields" (free) | nothing | - | - | **blocked**: a type that can write (worker, deputies, general-purpose, claude, fork, any other) must name an open task (Q1) |
@@ -52,7 +52,7 @@ Task name NAME = `[A-Za-z0-9][A-Za-z0-9._-]*`. Agent description, trimmed, role 
 
 Pane title (`--title`, else `--name '<x>'` inside `--command`): T1 `[<repo>] NAME Task Manager` or `NAME Task Manager` → tm pane; T2 `[<repo>] NAME <rest>` → shell pane if rest has "shell", else pane; T3 `NAME Helper[ - <Task>]` → helper pane, no task needed; T4 first word = open task → pane; else no task. Worktree: `--name NAME`. `run_in_background` may be `true` or `"true"` (real transcripts).
 
-A tm's own task: its line in agent_worktree.txt (this folder), else `TODO LINE: <name> |` of its agent_state.txt, else the folder name. A tm launch is blocked only when P1-P5/T1-T4 name a task that is not its own.
+A tm's own task: its line in agent_worktree.txt (this folder), else `TODO LINE: <name> |` of its agent_state.txt, else the folder name. A tm launch is never blocked: P1-P4/T1-T2 record it under the task it names, anything else under the own task (rule 4, changed 2026-11-23).
 
 ## C. Fail open, switch, speed
 
@@ -77,7 +77,7 @@ Hooks: PreToolUse `Agent|Task|Bash` (check + record), PostToolUse `Agent|Task|Ba
 
 1. One line, no restart: `bin/agent-settings.sh board_guard off` (or `record` to keep records and stop blocks).
 2. Full: `git revert` the merge commit on main, release 0.39.1, plugin update on each machine.
-3. Records are plain LAUNCH lines in git-ignored agent_state.txt: the old board ignores them, `state trim` moves them out after state_keep_hours. Todo, worktree and done files are never written by the guard.
+3. Records are plain LAUNCH lines in git-ignored agent_state.txt: the old board ignores them, `board_guard=off` makes the new board and status line ignore them too, `state trim` keeps them (K2) and the guard prunes dead ones. Todo, worktree and done files are never written by the guard.
 
 ## F. Rule text (item 6)
 
@@ -94,3 +94,19 @@ Panes opened by scripts (`agent-resume.sh`, city clicks) are not seen by the hoo
 | Q1 | Main manager launches a type that can write files (general-purpose, claude) with a free description: block (rule 7) or allow like Explore? | block |
 | Q2 | Status line counts subagents only, panes on the board only? | yes |
 | Q3 | Third switch value `record` (keep records, never block) as the soft rollback? | yes |
+
+## I. Changes after the dry-run and the review (2026-11-23)
+
+| # | Change | Why |
+|---|---|---|
+| I1 | Rule 4: a task manager is never blocked. P1-P4/T1-T2 naming an open todo task (or its own) record under that task; any other name is a role label ("Code Reviewer", "Backend Worker 1") and records under the own task | dry-run: 150 of 519 real v4-plus task manager launches name a batch, short or -2 task name; review 3 |
+| I2 | A plain `worker` kind (type worker, no number) shows as `<task> 工人` / `<task> worker` | review 1: such records were never shown |
+| I3 | Pane with a handle and orca cannot answer (down, error, list cut by `truncated` or omitted hosts) → shown while the session pid lives; the guard prunes pane lines with a dead pid older than state_keep_hours | review 4, 14: ghost panes |
+| I4 | Status line: each task line counts its own live subagent records | review 8, spec C "of the task" |
+| I5 | `board_guard=off`: the guard does nothing and the board and status line ignore LAUNCH lines | review 15: a clean rollback |
+| I6 | Guard writes take the same flock as `state add` / `state trim` (`<git dir>/agent_state.lock`, 2 s, then allow loudly); a newline is added before a record when the file does not end in one; the temp file lives in the git dir; one record per key | review 2, 7, 17, 18 |
+| I7 | Foreground links: SubagentStart links the oldest unlinked record of that type; `completed` removes by agent id when given; only `completed` removes, any other status keeps the record (and links its agentId) | review 5, 11 |
+| I8 | Parse: every orca operation of one command counts (any block blocks the whole call); heredoc bodies are cut before quotes are read; a title with `$` or a backtick is unknown (allowed, recorded under the parse or the Manager); trailing `,.;:)` is cut from a first-word task name; orca by full path and after `env`, `time`, `then`, `do`, `{` counts | review 6, 9, 12, 21 |
+| I9 | Unknown session pid (CLAUDE_PID not a number, or no claude process up the chain) → no record; no git on PATH → silent; `board_guard=off  # note` reads as off | review 13, 19, 20 |
+| I10 | Dispatch fast lane: `todo add` before the `<task> Deputy` launch | review 16 |
+| - | Not done: a PostToolUseFailure hook (review 10, an idea: an unknown hook event key could break the plugin's whole hooks file); `$(...)`-captured pane create gets no handle (pruned after 2 min) | |

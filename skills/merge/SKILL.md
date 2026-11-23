@@ -26,6 +26,7 @@ description: Main manager only. After a task manager reports DONE PASS, run the 
    todo done arguments: --work <actual> --wait <wait> --bounces <n> --workers <n> --mock <yes|no> --lane full --type <t> --tests <n> --adds <n>
    ```
    The numbers come from the report's TIME and FACTS lines (actual = agent work only). A number you do not know → leave that option out, never guess.
+   The guard (`bin/agent-guard.sh`) records the merge deputy under the task and refuses it when the task line is no longer open, so the todo line stays open until the deputy's own `todo done`.
 5. On `MERGE PASS`: `git log --oneline -2`, `git worktree list`, `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show`. All clean → report to the human in H3 shape.
 6. On `MERGE FAIL`: report the first line to the human with the deputy's evidence. Do not retry on your own.
 7. Merged a fix early, while its branch is still running? → `SendMessage` that task manager at once: merge main back into your branch. Never cherry-pick slices; merge the branch (or its prefix).

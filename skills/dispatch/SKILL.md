@@ -56,6 +56,7 @@ The board (PRINCIPLES.md W14) reads these. Write each as it happens, never later
 - Held -> on hold; released -> off
 - Waiting on someone other than the owner (a peer manager, a reviewer) -> --who <name>; the owner is the default for mock, question, review
 - Waiting for a slot or another task -> on queue --after <task>; slot found -> off
+- Launches record themselves (`bin/agent-guard.sh`, W14). Every Agent description and pane title must start with the task name, else the launch is refused. Read-only agents (Explore, Plan) and Helper panes need no task name. Run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add` first
 - Parked question for later (H1): `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh park add "<question>"`
 
 ## Time question from the human
@@ -77,7 +78,7 @@ STEPS (at the start of each step run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh to
  1 register: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" register, then ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" working
  2 mock: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" mock; first if UI (W2): commit mock/<name>-mock.html, send me the path, STOP until "mock yes"; on another machine also append one line "MOCK READY <name>: <mock path>" to agent_state.txt in your worktree
  3 tests: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" tests; write the failing tests yourself (W3), commit
- 4 workers: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" workers; after each verified slice ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" workers <i>/<m> (i of m slices done). Agent subagent_type worker, description "<name> Worker <n>: <slice>", max 2 at once, each gets named files + one test command (W4); every worker brief starts with your own `[<model> <effort>]`. Check RESOURCES before each spawn (S3, S4). Record each worker: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worker on <n> "<slice>" when it starts, ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worker off <n> when it ends
+ 4 workers: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" workers; after each verified slice ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" workers <i>/<m> (i of m slices done). Agent subagent_type worker, description "<name> Worker <n>: <slice>", max 2 at once, each gets named files + one test command (W4); every worker brief starts with your own `[<model> <effort>]`. Check RESOURCES before each spawn (S3, S4). The board records each worker by itself (bin/agent-guard.sh). Only in a session without hooks (plain or cloud): ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worker on <n> "<slice>" when it starts, ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worker off <n> when it ends
  5 verify: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" verify; every worker result yourself. Full suite once. Defect → back to the worker with evidence. Set status final: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" final
  6 push: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" push; commit, git push -u origin <branch>
  7 report: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" report; done, set status done, stay idle

@@ -395,7 +395,8 @@ class TestTheRule(unittest.TestCase):
     def test_one_short_line_per_rule(self):
         bullets = [l for l in self.rule().splitlines() if l.startswith("- ")]
         self.assertGreaterEqual(len(bullets), 5)
-        self.assertLessEqual(len(bullets), 12)
+        # board-trust (2026-11-23): one bullet for the launch guard, 13 at most
+        self.assertLessEqual(len(bullets), 13)
         for line in self.rule().splitlines()[1:]:
             with self.subTest(line=line[:40]):
                 self.assertTrue(line.startswith("- ") or not line.strip(), line)

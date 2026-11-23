@@ -330,7 +330,12 @@ class TestMainManager(GuardCase):
         for cmd in ('H=$(orca terminal create --worktree path:/w --title "zz Task Manager" --json)',
                     'cd /w && orca terminal create --title "zz Task Manager" --json',
                     'ls; orca worktree create --name zz --repo path:/r --json',
-                    'S=1 orca terminal create --title="zz Task Manager" --json'):
+                    'S=1 orca terminal create --title="zz Task Manager" --json',
+                    # review 21: a full path, env / time prefixes, after then
+                    '/opt/homebrew/bin/orca terminal create --title "zz Task Manager" --json',
+                    'env X=1 orca terminal create --title "zz Task Manager" --json',
+                    'time orca worktree create --name zz --repo path:/r --json',
+                    'if true; then orca terminal create --title "zz Task Manager" --json; fi'):
             with self.subTest(cmd=cmd):
                 self.assertBlocked(self.pre_bash(cmd), "zz")
 
@@ -459,10 +464,22 @@ class TestTaskManager(GuardCase):
                 self.assertEqual(i, self.index(rows, "board-waiting") + 1)
                 self.assertEqual(rows[i]["What"], "board rows")
 
-    def test_4_a_worker_for_another_task_is_blocked(self):
-        r = self.tm("state-trim Worker 1: trim engine")
-        self.assertBlocked(r, "board-waiting", "state-trim")
-        self.assertEqual(self.launches(self.wt), [])
+    def test_4_a_worker_for_another_task_is_recorded_under_that_task(self):
+        # rule 4 changed 2026-11-23 after the dry-run: 150 of 519 real v4-plus task manager launches name another
+        # task (batch worktrees, short names, -2 folders); a task manager is never blocked. A name that is not an
+        # open todo task (review 3: "Code Reviewer", "Backend Worker 1") is a role label: its own task
+        self.put_todo("board-waiting", "state-trim", "utc-server-dates", "coa-v3")
+        for desc, kind, task, title in (
+                ("state-trim Worker 1: trim engine", "worker 1", "state-trim", "trim engine"),
+                ("utc-server-dates Worker 1: four date fixes", "worker 1", "utc-server-dates", "four date fixes"),
+                ("coa-v3 Worker 12: V3 tool required ledgers", "worker 12", "coa-v3", "V3 tool required ledgers"),
+                ("Code Reviewer: slice 2 hook logic", "reviewer", "board-waiting", "slice 2 hook logic"),
+                ("Backend Worker 1: api", "worker 1", "board-waiting", "api")):
+            with self.subTest(desc=desc):
+                r = self.tm(desc)
+                self.assertEqual((r.returncode, r.stderr), (0, ""))
+                f = self.fields(self.launches(self.wt)[-1])
+                self.assertEqual((f["kind"], f["task"], f["title"], f["by"]), (kind, task, title, "tm"))
 
     def test_5_and_14_a_free_launch_is_its_own_task(self):
         for desc, stype, kind in (("Check /goal command semantics", "claude-code-guide", "guide"),
@@ -474,26 +491,46 @@ class TestTaskManager(GuardCase):
                 self.assertEqual((f["kind"], f["task"], f["title"]), (kind, "board-waiting", desc))
 
     def test_own_task_from_the_worktree_line_then_todo_line_then_folder(self):
+        def free_task():
+            self.assertAllowed(self.tm("look around", "general-purpose"))
+            return self.fields(self.launches(self.wt)[-1])["task"]
         self.worktree_lines((self.wt, "alpha", "working"))
-        self.assertAllowed(self.tm("alpha Worker 1: x"))
-        self.assertBlocked(self.tm("board-waiting Worker 1: x"), "alpha")
+        self.assertEqual(free_task(), "alpha")
+        self.assertAllowed(self.tm("board-waiting Worker 1: x"))
+        self.assertEqual(self.fields(self.launches(self.wt)[-1])["task"], "board-waiting")
         self.worktree_lines()
         self.state("TODO LINE: beta | big | the beta task | est 48m", folder=self.wt)
-        self.assertAllowed(self.tm("beta Worker 2: y"))
+        self.assertEqual(free_task(), "beta")
         open(os.path.join(self.wt, "agent_state.txt"), "w").close()
-        self.assertAllowed(self.tm("board-waiting Worker 3: z"))
+        self.assertEqual(free_task(), "board-waiting")
 
     def test_the_tm_task_need_not_be_in_this_machines_todo(self):
         self.put_todo()
         self.assertAllowed(self.tm("board-waiting Worker 1: board rows"))
 
-    def test_a_tm_pane_for_another_task_is_blocked(self):
+    def test_a_tm_pane_for_another_task_is_recorded_under_that_task(self):
+        self.put_todo("board-waiting", "state-trim")
         r = self.pre_bash('orca terminal create --title "[auto-pipeline] state-trim shell" --json',
                           role="task-manager", cwd=self.wt)
-        self.assertBlocked(r, "state-trim")
+        self.assertEqual((r.returncode, r.stderr), (0, ""))
+        self.assertEqual(self.fields(self.launches(self.wt)[-1])["task"], "state-trim")
         r = self.pre_bash('orca terminal create --title "e2e test pane" --json', role="task-manager", cwd=self.wt)
         self.assertAllowed(r)
         self.assertEqual(self.fields(self.launches(self.wt)[-1])["task"], "board-waiting")
+        r = self.pre_bash('orca terminal create --title "[v4-plus] Backend shell" --json', role="task-manager",
+                          cwd=self.wt)
+        self.assertAllowed(r)
+        f = self.fields(self.launches(self.wt)[-1])
+        self.assertEqual((f["kind"], f["task"]), ("shell-pane", "board-waiting"))
+
+    def test_a_task_manager_is_never_blocked(self):
+        self.put_todo()
+        for r in (self.tm("old-task Merge", "auto-pipeline:merge-deputy"), self.tm("Find hook payload fields"),
+                  self.pre_bash('orca terminal create --title "old-task Task Manager" --json', role="task-manager",
+                                cwd=self.wt),
+                  self.pre_bash("orca worktree create --name old-task --repo path:/r --json", role="task-manager",
+                                cwd=self.wt)):
+            self.assertEqual((r.returncode, r.stderr), (0, ""))
 
 
 # ---------------------------------------------------------------- A13. free roles never block
@@ -580,27 +617,46 @@ class TestFailOpen(GuardCase):
             fh.write("raise SystemExit(7)\n")
         self.assertLoudAllow(self.pre_agent("old-task Merge", "auto-pipeline:merge-deputy"))
 
-    def test_a_busy_lock_allows_and_writes_nothing(self):
-        self.put_todo("board-trust")
-        gd = subprocess.run(["git", "-C", self.repo.dir, "rev-parse", "--path-format=absolute", "--git-dir"],
+    def hold_state_lock(self, seconds):
+        """A child holds the flock that agent-file.sh state add / trim take (<git dir>/agent_state.lock)."""
+        gd = subprocess.run(["git", "-C", self.repo.dir, "rev-parse", "--absolute-git-dir"],
                             capture_output=True, text=True, check=True).stdout.strip()
-        os.mkdir(os.path.join(gd, "agent_guard.lock"))
+        code = ("import fcntl, os, sys, time\n"
+                "fd = os.open(sys.argv[1], os.O_RDWR | os.O_CREAT, 0o644)\n"
+                "fcntl.flock(fd, fcntl.LOCK_EX)\n"
+                "print('held', flush=True)\n"
+                "time.sleep(float(sys.argv[2]))\n")
+        p = subprocess.Popen([sys.executable, "-c", code, os.path.join(gd, "agent_state.lock"), str(seconds)],
+                             stdout=subprocess.PIPE, text=True)
+        self.addCleanup(p.wait)
+        self.addCleanup(p.kill)
+        self.assertEqual(p.stdout.readline().strip(), "held")
+        return p
+
+    def test_a_busy_lock_allows_and_writes_nothing(self):
+        # review 7: the guard waits on the same flock as state add and trim, at most 2 s
+        self.put_todo("board-trust")
+        self.hold_state_lock(8)
         t = time.time()
         self.assertLoudAllow(self.pre_agent("board-trust Worker 1: x"))
         self.assertLess(time.time() - t, 4.5)
         self.assertEqual(self.launches(), [])
 
-    def test_a_stale_lock_is_taken_over(self):
+    def test_a_lock_freed_by_a_dead_holder_is_taken(self):
         self.put_todo("board-trust")
-        gd = subprocess.run(["git", "-C", self.repo.dir, "rev-parse", "--path-format=absolute", "--git-dir"],
-                            capture_output=True, text=True, check=True).stdout.strip()
-        lock = os.path.join(gd, "agent_guard.lock")
-        os.mkdir(lock)
-        old = time.time() - 60
-        os.utime(lock, (old, old))
+        p = self.hold_state_lock(30)
+        p.kill()
+        p.wait()
         self.assertAllowed(self.pre_agent("board-trust Worker 1: x"))
         self.assertEqual(len(self.launches()), 1)
-        self.assertFalse(os.path.exists(lock))
+
+    def test_a_leftover_guard_lock_directory_is_ignored(self):
+        self.put_todo("board-trust")
+        gd = subprocess.run(["git", "-C", self.repo.dir, "rev-parse", "--absolute-git-dir"],
+                            capture_output=True, text=True, check=True).stdout.strip()
+        os.mkdir(os.path.join(gd, "agent_guard.lock"))
+        self.assertAllowed(self.pre_agent("board-trust Worker 1: x"))
+        self.assertEqual(len(self.launches()), 1)
 
     def test_bash_without_orca_never_starts_python(self):
         os.remove(os.path.join(self.repo.plugin_bin, "agent_guard.py"))
@@ -656,6 +712,124 @@ class TestSwitch(GuardCase):
         self.assertEqual(self.repo.read("agent.conf"), before)
 
 
+# ---------------------------------------------------------------- reviewer findings (step 5, 2026-11-23)
+
+
+class TestReviewFixes(GuardCase):
+    def setUp(self):
+        super().setUp()
+        self.make_main()
+        self.put_todo("state-trim", "board-waiting")
+
+    def test_r1_a_worker_type_without_number_shows_as_a_worker_row(self):
+        r = self.pre_agent("state-trim fix the hook", "auto-pipeline:worker")
+        self.assertAllowed(r)
+        self.assertEqual(self.one_launch()["kind"], "worker")
+        self.assertAllowed(self.post_agent(r.tid, "aw1"))
+        rows = self.rows(now="2026-11-20 16:52")
+        self.assertEqual(self.index(rows, "state-trim 工人"), self.index(rows, "state-trim") + 1)
+
+    def test_r2_a_last_line_without_newline_is_kept_whole(self):
+        for stale in (True, False):
+            with self.subTest(stale=stale):
+                open(self.repo.path("agent_state.txt"), "w").close()
+                if stale:  # a stale unlinked record: the guard rewrites the file (prune)
+                    self.put_launch("LAUNCH toolu_old: worker 1 | task state-trim | x | since 2026-11-20 16:40 | "
+                                    "pid %d | by main" % LIVE)
+                with open(self.repo.path("agent_state.txt"), "a") as fh:
+                    fh.write("OWNER TODO: call the bank | 2026-11-20 16:40")
+                self.assertAllowed(self.pre_agent("state-trim Merge", "auto-pipeline:merge-deputy"))
+                lines = self.state_text().splitlines()
+                self.assertIn("OWNER TODO: call the bank | 2026-11-20 16:40", lines)
+                self.assertEqual(len(self.launches()), 1, lines)
+                self.assertTrue(self.state_text().endswith("\n"))
+
+    def test_r4_an_old_pane_of_a_dead_session_is_pruned_a_young_one_kept(self):
+        dead = dead_pid()
+        old = ("LAUNCH toolu_p1: tm-pane | task state-trim | state-trim Task Manager | since 2026-11-19 10:00 | "
+               "pid %d | by main | pane term_old" % dead)
+        young = ("LAUNCH toolu_p2: tm-pane | task state-trim | state-trim Task Manager | since 2026-11-20 15:00 | "
+                 "pid %d | by main | pane term_young" % dead)
+        self.put_launch(old)
+        self.put_launch(young)
+        self.assertAllowed(self.pre_agent("state-trim Worker 1: x"))
+        rows = self.launches()
+        self.assertNotIn(old, rows)  # dead session, older than state_keep_hours (24)
+        self.assertIn(young, rows)
+
+    def test_r4_orca_down_falls_back_to_the_session_pid(self):
+        for key, pid in (("live", LIVE), ("dead", dead_pid())):
+            self.put_launch("LAUNCH toolu_%s: shell-pane | task board-waiting | %s | since 2026-11-20 16:40 | pid %d | "
+                            "by main | pane term_%s | env pc2" % (key, key, pid, key))
+        self.repo.set_orca_env_state("pc2", "down")
+        self.assertEqual([r["What"] for r in self.rows(now=NOW) if r["Task"] == "board-waiting 窗格"], ["live"])
+
+    def test_r14_a_cut_orca_list_shows_the_pane(self):
+        self.put_launch("LAUNCH toolu_x: shell-pane | task board-waiting | t | since 2026-11-20 16:40 | pid %d | "
+                        "by main | pane term_far | env pc2" % LIVE)
+        self.repo.set_orca_answer("terminals.json", {"ok": True, "result": {
+            "terminals": [{"handle": "term_other"}], "truncated": True, "totalCount": 300}}, env="pc2")
+        self.assertIn("board-waiting 窗格", [x["Task"] for x in self.rows(now=NOW)])
+
+    def test_r5_two_foreground_agents_of_one_type_keep_their_ids(self):
+        a = self.pre_agent("state-trim Worker 1: slice a", bg=False)
+        b = self.pre_agent("state-trim Worker 2: slice b", bg=False)
+        self.assertAllowed(self.sub("SubagentStart", "agA"))
+        self.assertAllowed(self.sub("SubagentStart", "agB"))
+        agents = {self.fields(l)["key"]: self.fields(l).get("agent") for l in self.launches()}
+        self.assertEqual(agents, {a.tid: "agA", b.tid: "agB"})
+        self.assertAllowed(self.sub("SubagentStop", "agA"))
+        self.assertAllowed(self.post_agent(a.tid, "agA", status="completed"))
+        self.assertEqual([self.fields(l)["key"] for l in self.launches()], [b.tid])
+
+    def test_r11_an_unknown_launch_status_keeps_the_record(self):
+        r = self.pre_agent("state-trim Worker 1: x")
+        self.assertAllowed(self.post_agent(r.tid, "ar1", status="remote_launched"))
+        self.assertEqual(self.one_launch()["agent"], "ar1")
+
+    def test_r6_every_orca_operation_of_one_command_counts(self):
+        cmd = ('orca worktree create --name state-trim --repo path:/r --json && orca terminal create --worktree '
+               'path:/w/st --title "state-trim Task Manager" --json')
+        self.assertAllowed(self.pre_bash(cmd))
+        f = self.one_launch()
+        self.assertEqual((f["kind"], f["task"]), ("tm-pane", "state-trim"))
+        self.assertBlocked(self.pre_bash(cmd + ' && orca terminal create --title "closed-task Task Manager" --json'),
+                           "closed-task")
+        self.assertEqual(len(self.launches()), 1)
+
+    def test_r9_a_shell_variable_title_is_unknown_and_allowed(self):
+        r = self.pre_bash('name=state-trim; orca terminal create --title "$name Task Manager" --json')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = self.pre_bash('orca terminal create --title "`cat name` Task Manager" --json')
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_r9_punctuation_after_the_task_name(self):
+        self.assertAllowed(self.pre_agent("state-trim, fix the hook", "general-purpose"))
+        self.assertEqual(self.one_launch()["task"], "state-trim")
+
+    def test_r12_a_commit_message_heredoc_is_not_a_launch(self):
+        cmd = 'git commit -q -m "$(cat <<\'EOF\'\nboard-trust: the "guard\norca terminal create --title x\nEOF\n)"'
+        r = self.pre_bash(cmd)
+        self.assertEqual((r.returncode, r.stderr), (0, ""))
+        self.assertEqual(self.launches(), [])
+
+    def test_r13_an_unknown_session_pid_writes_no_record(self):
+        r = self.pre_agent("state-trim Worker 1: x", extra_env={"CLAUDE_PID": "unknown"})
+        self.assertEqual((r.returncode, r.stderr), (0, ""))
+        self.assertEqual(self.launches(), [])
+
+    def test_r17_the_same_launch_twice_is_one_record(self):
+        self.assertAllowed(self.pre_agent("state-trim Worker 1: x", tid="toolu_dup"))
+        self.assertAllowed(self.pre_agent("state-trim Worker 1: x", tid="toolu_dup"))
+        self.assertEqual(len(self.launches()), 1)
+
+    def test_r18_no_temp_file_is_left_in_the_folder(self):
+        self.put_launch("LAUNCH toolu_old: worker 1 | task state-trim | x | since 2026-11-20 16:40 | pid %d | by main"
+                        % LIVE)
+        self.assertAllowed(self.pre_agent("state-trim Merge", "auto-pipeline:merge-deputy"))
+        self.assertEqual([n for n in os.listdir(self.repo.dir) if "agent_state" in n], ["agent_state.txt"])
+
+
 # ---------------------------------------------------------------- board and status line
 
 
@@ -693,6 +867,27 @@ class TestStatusLine(BoardOnly):
         self.rec(2)
         self.assertEqual(self.line(), before + " · 2 agents")
 
+    def test_count_per_task_line(self):
+        # review 8: each task line counts its own records
+        self.put_todo("board-waiting", "state-trim")
+        pick = lambda text, task: [l for l in text.splitlines() if l.startswith(task + " ")][0]
+        before = self.line()
+        self.rec(1)
+        self.rec(2)
+        self.rec(3, task="state-trim")
+        after = self.line()
+        self.assertEqual(pick(after, "board-waiting"), pick(before, "board-waiting") + " · 2 代理")
+        self.assertEqual(pick(after, "state-trim"), pick(before, "state-trim") + " · 1 代理")
+
+    def test_off_shows_no_records(self):
+        # review 15: board_guard=off is the rollback: the board and the status line ignore LAUNCH lines
+        self.put_todo("board-waiting")
+        before = self.line()
+        self.rec(1)
+        self.repo.set_conf("board_guard", "off")
+        self.assertEqual(self.line(), before)
+        self.assertNotIn("board-waiting 工人 1", [x["Task"] for x in self.rows(now=NOW)])
+
     def test_self_view_counts_its_worktree(self):
         self.put_todo("board-waiting")
         wt = self.task_worktree("board-waiting")
@@ -707,7 +902,7 @@ class TestBoardEnglish(BoardOnly):
 
     def test_kind_words(self):
         self.put_todo("t")
-        words = {"worker 1": "t worker 1", "deputy": "t deputy", "merge": "t merge", "reviewer": "t reviewer",
+        words = {"worker 1": "t worker 1", "worker": "t worker", "deputy": "t deputy", "merge": "t merge", "reviewer": "t reviewer",
                  "explore": "t explore", "plan": "t plan", "guide": "t guide", "agent": "t agent",
                  "tm-pane": "t pane", "shell-pane": "t pane", "pane": "t pane"}
         for i, kind in enumerate(words):
@@ -724,7 +919,7 @@ class TestBoardEnglish(BoardOnly):
         self.repo.set_conf("language", "zh")
         self.lang = "zh"
         self.put_todo("t")
-        words = {"worker 1": "t 工人 1", "deputy": "t 副手", "merge": "t 合并", "reviewer": "t 审查",
+        words = {"worker 1": "t 工人 1", "worker": "t 工人", "deputy": "t 副手", "merge": "t 合并", "reviewer": "t 审查",
                  "explore": "t 探查", "plan": "t 规划", "guide": "t 指南", "agent": "t 代理", "pane": "t 窗格"}
         for i, kind in enumerate(words):
             pane = " | pane term_%d" % i if kind == "pane" else ""
@@ -825,6 +1020,12 @@ class TestRuleText(unittest.TestCase):
         self.assertIn("agent-guard.sh", board)
         self.assertIn("todo add", board)
         self.assertNotIn("Record each worker: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worker on", s)
+
+    def test_fast_lane_adds_the_todo_line_first(self):
+        # review 16: the guard refuses "<task> Deputy" for a task with no todo line
+        s = read("skills", "dispatch", "SKILL.md")
+        step2 = [l for l in s.splitlines() if l.startswith("2. Small task")][0]
+        self.assertIn("todo add", step2)
 
     def test_merge_skill_keeps_the_line_open_for_the_launch(self):
         s = read("skills", "merge", "SKILL.md")
