@@ -1,6 +1,6 @@
 # board-trust — requirements (level 4 rules gate)
 
-Status: MOCK READY, waiting for "rules yes". Base a0f4d31 (release 0.38.0) → release 0.39.0.
+Status: rules yes 2026-11-23 (1A 2A 3A: Q1 block, Q2 subagents only, Q3 record value). Base a0f4d31 (release 0.38.0) → release 0.39.0.
 Source: owner 2026-11-20 (1A 2A): "ensure the manager every time issue new agent or task will update my tracker display ... so that i only can trust it". Seen today: a merge deputy never showed on the board.
 Examples: now = 2026-11-20 16:50, real names of 2026-11-20 (transcripts on pc2, the live pc2 pane list).
 
