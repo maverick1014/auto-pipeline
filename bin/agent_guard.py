@@ -13,6 +13,7 @@ This script never raises and always exits 0: any error becomes
 """
 
 import datetime
+import fcntl
 import json
 import os
 import re
@@ -69,7 +70,11 @@ def alive(pid):
 
 
 def git(cwd, *args):
-    r = subprocess.run(["git", "-C", cwd] + list(args), capture_output=True, text=True, timeout=2)
+    """(returncode, stdout); (None, "") when git is missing or too slow (the caller allows silently)."""
+    try:
+        r = subprocess.run(["git", "-C", cwd] + list(args), capture_output=True, text=True, timeout=2)
+    except (OSError, subprocess.TimeoutExpired):
+        return None, ""
     return r.returncode, r.stdout
 
 
@@ -86,8 +91,8 @@ def parse_time(s):
 
 def session_pid():
     v = os.environ.get("CLAUDE_PID", "").strip()
-    if v.isdigit():
-        return int(v)
+    if v:
+        return int(v) if v.isdigit() and int(v) > 0 else None
     p = os.getppid()
     for _ in range(10):
         if p <= 1:
@@ -104,17 +109,28 @@ def session_pid():
     return None
 
 
-def read_conf_mode(main):
-    mode = "on"
+def read_conf(main):
+    """(board_guard mode, state_keep_hours) of the main repo's agent.conf; a trailing comment is cut."""
+    mode, hours = "on", 24.0
     try:
         with open(os.path.join(main, "agent.conf"), encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 k, eq, v = line.partition("=")
-                if eq and k.strip() == "board_guard":
-                    mode = v.strip().strip("\"'").lower()
+                if not eq:
+                    continue
+                k = k.strip()
+                v = v.split("#", 1)[0].strip().strip("\"'").strip()
+                if k == "board_guard":
+                    mode = v.lower()
+                elif k == "state_keep_hours":
+                    try:
+                        if float(v) > 0:
+                            hours = float(v)
+                    except ValueError:
+                        pass
     except OSError:
         pass
-    return mode if mode in ("record", "off") else "on"
+    return (mode if mode in ("record", "off") else "on"), hours
 
 
 def read_todo(main):
@@ -133,12 +149,40 @@ def read_todo(main):
 
 # ------------------------------------------------------------------ the Bash command parse
 
+RE_HEREDOC = re.compile(r"<<(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|([A-Za-z_][A-Za-z0-9_]*))")
+
+
+def cut_heredocs(s):
+    """The text without heredoc bodies and their terminator lines (cut before any quote is read)."""
+    if "<<" not in s:
+        return s
+    lines = s.split("\n")
+    out, i = [], 0
+    while i < len(lines):
+        line = lines[i]
+        out.append(line)
+        i += 1
+        pending = []
+        for m in RE_HEREDOC.finditer(line):
+            if line[max(0, m.start() - 1):m.start()] == "<":
+                continue
+            pending.append((m.group(1) == "-", m.group(2) if m.group(2) is not None else
+                            (m.group(3) if m.group(3) is not None else m.group(4))))
+        for strip, delim in pending:
+            while i < len(lines):
+                body = lines[i].rstrip("\r")
+                i += 1
+                if (body.lstrip("\t") if strip else body) == delim:
+                    break
+    return "\n".join(out)
+
+
 def split_commands(s):
     """Simple commands of a shell text: lists of words, quotes removed. Heredoc bodies, comments and
     quoted text never start a command; a command starts after ; & && || | ( $( ` and newline."""
+    s = cut_heredocs(s)
     cmds, words = [], []
     cur = [None]
-    heredocs = []
     i, n = 0, len(s)
 
     def endword():
@@ -194,14 +238,6 @@ def split_commands(s):
             endword()
             endcmd()
             i += 1
-            for delim, strip in heredocs:
-                while i < n:
-                    j = s.find("\n", i)
-                    line = s[i:n if j < 0 else j]
-                    i = n if j < 0 else j + 1
-                    if (line.lstrip("\t") if strip else line).rstrip("\r") == delim:
-                        break
-            del heredocs[:]
             continue
         if c == "#" and cur[0] is None:
             j = s.find("\n", i)
@@ -211,26 +247,6 @@ def split_commands(s):
             endword()
             endcmd()
             i += 2
-            continue
-        if c == "<" and s.startswith("<<", i) and not s.startswith("<<<", i):
-            j = i + 2
-            strip = False
-            if s[j:j + 1] == "-":
-                strip = True
-                j += 1
-            while j < n and s[j] in " \t":
-                j += 1
-            if j < n and s[j] in "'\"":
-                e = s.find(s[j], j + 1)
-                e = n if e < 0 else e
-                delim, j = s[j + 1:e], e + 1
-            else:
-                m = re.match(r"[^\s;&|()<>]+", s[j:])
-                delim = m.group(0) if m else ""
-                j += len(delim)
-            heredocs.append((delim, strip))
-            endword()
-            i = j
             continue
         if c in ";&|()`":
             if c == "&" and i > 0 and s[i - 1] in "<>":
@@ -265,22 +281,27 @@ def opt_values(words, keys):
     return out
 
 
-def bash_launch(command):
-    """(op, opts) of the first orca launch command in a Bash text, else None.
+SKIP_WORDS = ("env", "time", "then", "do", "else", "{", "!")
+OPS = {("terminal", "create"): "create", ("terminal", "close"): "close",
+       ("worktree", "create"): "wt_create", ("worktree", "rm"): "wt_rm"}
+
+
+def bash_launches(command):
+    """[(op, opts)] of every orca launch command in a Bash text, in order.
     op: create | close | wt_create | wt_rm."""
+    found = []
     for words in split_commands(command):
         k = 0
-        while k < len(words) and RE_ASSIGN.match(words[k]):
+        while k < len(words) and (RE_ASSIGN.match(words[k]) or words[k] in SKIP_WORDS):
             k += 1
         w = words[k:]
-        if len(w) < 3 or w[0] != "orca":
+        if len(w) < 3 or os.path.basename(w[0]) != "orca":
             continue
         pair = (w[1], w[2])
-        ops = {("terminal", "create"): "create", ("terminal", "close"): "close",
-               ("worktree", "create"): "wt_create", ("worktree", "rm"): "wt_rm"}
-        if pair in ops:
-            return ops[pair], opt_values(w[3:], ("title", "command", "environment", "worktree", "terminal", "name"))
-    return None
+        if pair in OPS:
+            found.append((OPS[pair], opt_values(w[3:], ("title", "command", "environment", "worktree", "terminal",
+                                                         "name"))))
+    return found
 
 
 def pane_title(opts):
@@ -332,23 +353,28 @@ def clean_title(t):
     return t or "-"
 
 
-def should_prune(d, now):
+def should_prune(d, now, keep_hours):
     kind = d.get("kind", "")
     pid = d.get("pid", "")
-    if kind not in PANE_KINDS and pid.isdigit() and not alive(int(pid)):
+    since, nw = parse_time(d.get("since", "")), parse_time(now)
+    dead = pid.isdigit() and not alive(int(pid))
+    if kind in PANE_KINDS:
+        # a pane outlives the session that opened it: pruned only when the session is dead and the line is old
+        if dead and since and nw and (nw - since).total_seconds() > keep_hours * 3600:
+            return True
+    elif dead:
         return True
     if not d.get("agent") and not d.get("pane"):
-        since, nw = parse_time(d.get("since", "")), parse_time(now)
         if since and nw and (nw - since).total_seconds() > 120:
             return True
     return False
 
 
-def prune(lines, now):
+def prune(lines, ctx):
     out = []
     for line in lines:
         d = parse_launch(line)
-        if d is not None and should_prune(d, now):
+        if d is not None and should_prune(d, ctx["now"], ctx["keep"]):
             continue
         out.append(line)
     return out
@@ -376,77 +402,92 @@ def read_lines(path):
         return []
 
 
-def rewrite(path, compute):
+def with_newline(lines):
+    """The lines, the last one ended by a newline."""
+    if lines and not lines[-1].endswith("\n"):
+        lines = lines[:-1] + [lines[-1] + "\n"]
+    return lines
+
+
+def rewrite(ctx, path, compute):
     for _ in range(3):
         before = sig(path)
         new = compute(read_lines(path))
         if new is None:
             return
-        tmp = "%s.guard.%d.tmp" % (path, os.getpid())
-        try:
-            with open(tmp, "w", encoding="utf-8", errors="surrogateescape", newline="") as fh:
-                fh.write("".join(new))
+        data = "".join(new)
+        for tmpdir in (ctx["gitdir"], os.path.dirname(path)):
+            tmp = os.path.join(tmpdir, "agent_state.guard.%d.tmp" % os.getpid())
             try:
-                os.chmod(tmp, os.stat(path).st_mode & 0o7777)
-            except OSError:
-                pass
-            if sig(path) != before:
-                continue
-            os.replace(tmp, path)
-            return
-        finally:
-            if os.path.exists(tmp):
+                with open(tmp, "w", encoding="utf-8", errors="surrogateescape", newline="") as fh:
+                    fh.write(data)
                 try:
-                    os.remove(tmp)
+                    os.chmod(tmp, os.stat(path).st_mode & 0o7777)
                 except OSError:
                     pass
+                if sig(path) != before:
+                    break
+                os.replace(tmp, path)
+                return
+            except OSError:
+                continue  # e.g. across devices: try the folder itself
+            finally:
+                if os.path.exists(tmp):
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
     raise Warn("state file changed while writing")
 
 
 class StateLock:
+    """The flock `state add` / `state trim` take: <git dir>/agent_state.lock. 2 s, then Busy."""
+
     def __init__(self, gitdir):
-        self.path = os.path.join(gitdir, "agent_guard.lock")
-        self.held = False
+        self.path = os.path.join(gitdir, "agent_state.lock")
+        self.fd = None
 
     def __enter__(self):
+        self.fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o644)
         deadline = time.time() + 2.0
         while True:
             try:
-                os.mkdir(self.path)
-                self.held = True
+                fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 return self
-            except FileExistsError:
-                try:
-                    if time.time() - os.stat(self.path).st_mtime > 10:
-                        os.rmdir(self.path)
-                        continue
-                except OSError:
-                    pass
-            if time.time() >= deadline:
-                raise Busy()
-            time.sleep(0.05)
+            except OSError:
+                if time.time() >= deadline:
+                    os.close(self.fd)
+                    self.fd = None
+                    raise Busy()
+                time.sleep(0.05)
 
     def __exit__(self, *exc):
-        if self.held:
+        if self.fd is not None:
             try:
-                os.rmdir(self.path)
-            except OSError:
-                pass
+                fcntl.flock(self.fd, fcntl.LOCK_UN)
+            finally:
+                os.close(self.fd)
         return False
 
 
 def add_record(ctx, line):
+    """Append one record (one per key); prune on the way."""
     path = os.path.join(ctx["folder"], "agent_state.txt")
+    key = parse_launch(line)["key"]
     with StateLock(ctx["gitdir"]):
         lines = read_lines(path)
-        pruned = prune(lines, ctx["now"])
+        for old in lines:
+            d = parse_launch(old)
+            if d is not None and d["key"] == key:
+                return
+        pruned = prune(lines, ctx)
         if len(pruned) == len(lines):
             with open(path, "a", encoding="utf-8", errors="surrogateescape", newline="") as fh:
                 if lines and not lines[-1].endswith("\n"):
                     fh.write("\n")
                 fh.write(line)
         else:
-            rewrite(path, lambda ls: prune(ls, ctx["now"]) + [line])
+            rewrite(ctx, path, lambda ls: with_newline(prune(ls, ctx)) + [line])
 
 
 def edit_records(ctx, mutate):
@@ -457,8 +498,8 @@ def edit_records(ctx, mutate):
     with StateLock(ctx["gitdir"]):
         def compute(lines):
             new = mutate(lines)
-            return None if new is None else prune(new, ctx["now"])
-        rewrite(path, compute)
+            return None if new is None else prune(new, ctx)
+        rewrite(ctx, path, compute)
 
 
 def mut_set(match, **fields):
@@ -551,20 +592,31 @@ def not_open_msg(desc, task):
             'first, then launch again.' % (q(desc), task, task))
 
 
+def first_word(text):
+    t = text.strip()
+    w = re.split(r"[\s:]", t, 1)[0] if t else ""
+    return w.rstrip(",.;:)")
+
+
+def quiet_todo(ctx):
+    opens, _ = read_todo(ctx["main"])
+    return opens or set()
+
+
 def decide_agent(ctx, desc, stype):
     base = base_type(stype)
     kind_t = TYPE_KINDS.get(base, "agent")
     pd = parse_desc(desc)
-    first = re.split(r"[\s:]", desc.strip(), 1)[0] if desc.strip() else ""
+    first = first_word(desc)
     role = ctx["role"]
     if role == "tm":
+        # rule 4: never blocked. A name counts only when it is the own task or an open todo task of the main
+        # repo; any other name is a role label: own task, kind and title from the pattern.
         own = own_task(ctx)
-        if pd and pd[0] != own:
-            return Decision(pd[1], pd[0], pd[2], block='board guard: you are the %s task manager; "%s" names task '
-                            '%s. Launch only for %s.' % (own, q(desc), pd[0], own))
+        opens = quiet_todo(ctx)
         if pd:
-            return Decision(pd[1], pd[0], pd[2])
-        return Decision(kind_t, own, desc)
+            return Decision(pd[1], pd[0] if (pd[0] == own or pd[0] in opens) else own, pd[2])
+        return Decision(kind_t, first if (first == own or first in opens) else own, desc)
     opens, why = read_todo(ctx["main"])
     if role == "free":
         if pd:
@@ -610,7 +662,7 @@ def parse_title(title):
         if m2:
             return ("shell-pane" if "shell" in (m2.group(2) or "").lower() else "pane"), m2.group(1), "T2"
         return "pane", None, None
-    word = re.split(r"[\s:]", rest.strip(), 1)[0] if rest.strip() else ""
+    word = first_word(rest)
     return "pane", word or None, "T4"
 
 
@@ -618,13 +670,14 @@ def decide_pane(ctx, title):
     kind, task, src = parse_title(title)
     role = ctx["role"]
     folder_name = os.path.basename(ctx["folder"].rstrip("/"))
+    main_name = os.path.basename(ctx["main"].rstrip("/"))
+    unknown = "$" in title or "`" in title  # a shell variable or substitution: the real title is not known
     if src == "T3":
         return Decision(kind, task, title)
     if role == "tm":
         own = own_task(ctx)
-        if src in ("T1", "T2") and task != own:
-            return Decision(kind, task, title, block='board guard: you are the %s task manager; "%s" names task '
-                            '%s. Launch only for %s.' % (own, q(title), task, own))
+        if src in ("T1", "T2") and (task == own or task in quiet_todo(ctx)):
+            return Decision(kind, task, title)
         return Decision(kind, own, title)
     opens, why = read_todo(ctx["main"])
     if role == "free":
@@ -642,10 +695,14 @@ def decide_pane(ctx, title):
     if src in ("T1", "T2"):
         if task in opens:
             return Decision(kind, task, title)
+        if unknown:
+            return Decision(kind, task, title)
         return Decision(kind, task, title, block='board guard: pane "%s" names %s, which is not an open todo task. '
                         'Run agent-file.sh todo add "%s" ... first.' % (q(title), task, task))
     if src == "T4" and task in opens:
         return Decision("pane", task, title)
+    if unknown:
+        return Decision("pane", "%s Manager" % main_name, title)
     return Decision("pane", folder_name, title,
                     block='board guard: pane "%s" names no open todo task. Title it "<task> ..." or run '
                           'agent-file.sh todo add first.' % q(title))
@@ -685,13 +742,19 @@ def make_context(payload):
                 break
     if not main or not os.path.isfile(os.path.join(main, "agent.conf")):
         return None
-    mode = read_conf_mode(main)
+    mode, keep = read_conf(main)
     if mode == "off":
         return None
     ctx = {"folder": folder, "gitdir": gitdir, "common": common, "main": main, "mode": mode,
-           "now": now_str(), "pid": session_pid()}
+           "keep": keep, "now": now_str(), "pid": session_pid()}
     ctx["role"] = find_role(payload, ctx)
     return ctx
+
+
+def key_of(tid, n):
+    """The record key of the n-th (1-based) create of one Bash call."""
+    tid = tid or "toolu_none_%d" % int(time.time())
+    return tid if n == 1 else "%s#%d" % (tid, n)
 
 
 def handle(payload):
@@ -699,16 +762,15 @@ def handle(payload):
     tool = payload.get("tool_name")
     tin = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
     tid = payload.get("tool_use_id") or ""
-    op, opts = None, {}
+    ops = []
     kind = None
     if ev in ("PreToolUse", "PostToolUse"):
         if tool in ("Agent", "Task"):
             kind = "agent"
         elif tool == "Bash":
-            found = bash_launch(str(tin.get("command") or ""))
-            if not found:
+            ops = bash_launches(str(tin.get("command") or ""))
+            if not ops:
                 return OK
-            op, opts = found
             kind = "bash"
         else:
             return OK
@@ -721,108 +783,98 @@ def handle(payload):
     quiet = ctx["role"] == "free"
 
     if ev == "PreToolUse":
-        if kind == "bash" and op in ("close", "wt_rm"):
+        if ctx["pid"] is None:  # unknown session: no record, never main
             return OK
-        if kind == "bash" and op == "wt_create":
-            d = decide_worktree(ctx, opts.get("name", ""))
-            return finish(ctx, d, None, quiet)
         if kind == "bash":
-            d = decide_pane(ctx, pane_title(opts))
-            extra = {}
-            if opts.get("environment"):
-                extra["env"] = opts["environment"]
-            if opts.get("worktree"):
-                extra["worktree"] = path_value(opts["worktree"])
-            return finish(ctx, d, (tid, extra, None), quiet)
+            items, n = [], 0
+            for op, opts in ops:
+                if op == "wt_create":
+                    items.append((decide_worktree(ctx, opts.get("name", "")), None))
+                elif op == "create":
+                    n += 1
+                    d = decide_pane(ctx, pane_title(opts))
+                    extra = {}
+                    if opts.get("environment"):
+                        extra["env"] = opts["environment"]
+                    if opts.get("worktree"):
+                        extra["worktree"] = path_value(opts["worktree"])
+                    items.append((d, (key_of(tid, n), extra)))
+            return finish(ctx, items, quiet)
         desc = str(tin.get("description") or "")
         stype = str(tin.get("subagent_type") or "") or "general-purpose"
         d = decide_agent(ctx, desc, stype)
-        extra = {"type": stype}
-        if payload.get("agent_id"):
-            pass
-        return finish(ctx, d, (tid, extra, None), quiet)
+        return finish(ctx, [(d, (key_of(tid, 1), {"type": stype}))], quiet)
 
     if ev == "PostToolUse":
         if not tid:
             return OK
         if kind == "agent":
             resp = payload.get("tool_response")
-            status = resp.get("status") if isinstance(resp, dict) else None
-            if not status:
+            if not isinstance(resp, dict) or not resp.get("status"):
                 return OK
-            if status == "async_launched":
-                aid = resp.get("agentId")
-                if not aid:
-                    return OK
-                aid = str(aid)
+            aid = str(resp.get("agentId") or "")
+            if resp.get("status") == "completed":
+                run_edit(ctx, mut_remove(lambda d: d["key"] == tid or (aid != "" and d.get("agent") == aid)))
+                return OK
+            if not aid:
+                return OK
 
-                def mutate(lines):
-                    out, hit = [], False
-                    for line in lines:
-                        d = parse_launch(line)
-                        if d is not None:
-                            if d["key"] == tid:
-                                d["agent"] = aid
-                                line = build_launch(d)
-                                hit = True
-                            elif d.get("agent") == aid:
-                                d.pop("agent")
-                                line = build_launch(d)
-                                hit = True
-                        out.append(line)
-                    return out if hit else None
-                run_edit(ctx, mutate)
-            else:
-                run_edit(ctx, mut_remove(lambda d: d["key"] == tid))
+            def mutate(lines):
+                out, hit = [], False
+                for line in lines:
+                    d = parse_launch(line)
+                    if d is not None:
+                        if d["key"] == tid:
+                            d["agent"] = aid
+                            line = build_launch(d)
+                            hit = True
+                        elif d.get("agent") == aid:
+                            d.pop("agent")
+                            line = build_launch(d)
+                            hit = True
+                    out.append(line)
+                return out if hit else None
+            run_edit(ctx, mutate)
             return OK
-        if op == "create":
-            resp = payload.get("tool_response")
-            text = resp.get("stdout") if isinstance(resp, dict) else resp
-            text = text if isinstance(text, str) else json.dumps(text)
-            m = re.search(r'"handle"\s*:\s*"([^"]+)"', text) or re.search(r"term_[\w-]+", text)
-            if not m:
-                return OK
-            handle_ = m.group(1) if m.re.groups else m.group(0)
-            run_edit(ctx, mut_set(lambda d: d["key"] == tid, pane=handle_))
-            return OK
-        if op == "close":
-            h = opts.get("terminal", "")
-            if h:
-                run_edit(ctx, mut_remove(lambda d: d.get("pane") == h))
-            return OK
-        if op == "wt_rm":
-            p = path_value(opts.get("worktree", ""))
-            if p:
-                run_edit(ctx, mut_remove(lambda d: d.get("worktree") == p))
-            return OK
+        resp = payload.get("tool_response")
+        text = resp.get("stdout") if isinstance(resp, dict) else resp
+        text = text if isinstance(text, str) else json.dumps(text)
+        handles = re.findall(r'"handle"\s*:\s*"([^"]+)"', text) or re.findall(r"term_[\w-]+", text)
+        n = 0
+        for op, opts in ops:
+            if op == "create":
+                n += 1
+                if n <= len(handles):
+                    run_edit(ctx, mut_set(lambda d, k=key_of(tid, n): d["key"] == k, pane=handles[n - 1]))
+            elif op == "close":
+                h = opts.get("terminal", "")
+                if h:
+                    run_edit(ctx, mut_remove(lambda d, h=h: d.get("pane") == h))
+            elif op == "wt_rm":
+                w = path_value(opts.get("worktree", ""))
+                if w:
+                    run_edit(ctx, mut_remove(lambda d, w=w: d.get("worktree") == w))
         return OK
 
     if ev == "SubagentStart":
         aid = str(payload.get("agent_id") or "")
         atype = base_type(str(payload.get("agent_type") or ""))
-        if not aid:
-            return OK
         pid = ctx["pid"]
+        if not aid or pid is None:
+            return OK
 
         def mutate(lines):
-            pick = None
-            for idx in range(len(lines) - 1, -1, -1):
+            for idx in range(len(lines)):  # the OLDEST unlinked record of this session and type
                 d = parse_launch(lines[idx])
                 if d is None or d.get("agent") or d.get("kind") in PANE_KINDS:
                     continue
-                if pid is not None and d.get("pid") != str(pid):
+                if d.get("pid") != str(pid) or base_type(d.get("type", "")) != atype:
                     continue
-                if base_type(d.get("type", "")) != atype:
-                    continue
-                pick = idx
-                break
-            if pick is None:
-                return None
-            d = parse_launch(lines[pick])
-            d["agent"] = aid
-            out = list(lines)
-            out[pick] = build_launch(d)
-            return out
+                d["agent"] = aid
+                out = list(lines)
+                out[idx] = build_launch(d)
+                return out
+            return None
         run_edit(ctx, mutate)
         return OK
 
@@ -835,7 +887,7 @@ def handle(payload):
 
 
 def run_edit(ctx, mutate):
-    """Post-side edits: failures here never block; they surface as a WARN through Warn."""
+    """Post-side edits: failures here never block; a busy lock is a WARN (silent for the free role)."""
     try:
         edit_records(ctx, mutate)
     except Busy:
@@ -843,22 +895,26 @@ def run_edit(ctx, mutate):
             raise Warn("board guard: state file busy; allowed")
 
 
-def finish(ctx, d, rec, quiet):
-    """Block or record, then the protocol line."""
-    if d.block and ctx["mode"] == "on":
-        return ("BLOCK", d.block)
-    warn = d.warn
-    if rec is not None:
-        tid, extra, _ = rec
-        fields = {"key": tid or "toolu_none_%d" % int(time.time()), "kind": d.kind, "task": d.task,
-                  "title": clean_title(d.title), "since": ctx["now"],
-                  "pid": str(ctx["pid"] if ctx["pid"] is not None else 0), "by": ctx["role"]}
+def finish(ctx, items, quiet):
+    """items: [(Decision, (key, extra) or None)]. Block (whole call) or record, then the protocol line."""
+    if ctx["mode"] == "on":
+        for d, _ in items:
+            if d.block:
+                return ("BLOCK", d.block)
+    warn = next((d.warn for d, _ in items if d.warn), None)
+    for d, rec in items:
+        if rec is None:
+            continue
+        key, extra = rec
+        fields = {"key": key, "kind": d.kind, "task": d.task, "title": clean_title(d.title), "since": ctx["now"],
+                  "pid": str(ctx["pid"]), "by": ctx["role"]}
         fields.update(extra)
         try:
             add_record(ctx, build_launch(fields))
         except Busy:
             if not quiet and not warn:
                 warn = "board guard: state file busy; allowed"
+            break
     if warn and not quiet:
         return ("WARN", warn)
     return OK

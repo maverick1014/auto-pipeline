@@ -326,6 +326,8 @@ def parse_launch(line):
         m = re.match(r"worker (\d+)$", kind)
         if m:
             num, word = int(m.group(1)), "worker"
+        elif kind == "worker":
+            word = "worker"
         elif kind in AGENT_KINDS:
             word = kind
         elif kind in PANE_KINDS:
@@ -362,6 +364,16 @@ def pid_alive(pid):
     return True
 
 
+def guard_off(root):
+    """board_guard=off in the main repo's agent.conf (the last such line; any other value is on)."""
+    value = "on"
+    for line in read_lines(os.path.join(root, "agent.conf")):
+        k, sep, v = line.partition("=")
+        if sep and k.strip() == "board_guard":
+            value = v.split("#")[0].strip()
+    return value == "off"
+
+
 def launch_records(folder):
     return [r for r in (parse_launch(l) for l in read_lines(os.path.join(folder, "agent_state.txt"))) if r]
 
@@ -385,7 +397,16 @@ def terminal_handles(env):
         if out.returncode != 0:
             return None
         data = json.loads(out.stdout)
-        terms = data["result"]["terminals"]
+        res = data["result"]
+        terms = res["terminals"]
+        if not isinstance(terms, list) or res.get("truncated"):
+            return None
+        total = res.get("totalCount")
+        if isinstance(total, int) and total > len(terms):
+            return None
+        scope = res.get("hostScope")
+        if isinstance(scope, dict) and scope.get("omittedHostIds"):
+            return None
         return {t.get("handle") for t in terms if isinstance(t, dict)}
     except Exception:
         return None
@@ -393,11 +414,13 @@ def terminal_handles(env):
 
 def pane_visible(rec, now, listed):
     """A pane-kind record: a dead pid does not hide it; no handle: 2 minutes; a handle: it must be in the orca
-    list (listed(env) -> set or None; None = orca cannot say = shown)."""
+    list (listed(env) -> set or None; None = orca cannot answer fully: shown while the session pid lives)."""
     if not rec["pane"]:
         return launch_young(rec, now)
     handles = listed(rec["env"])
-    return handles is None or rec["pane"] in handles
+    if handles is None:
+        return pid_alive(rec["pid"])
+    return rec["pane"] in handles
 
 
 # ---------------------------------------------------------------- the board
@@ -776,6 +799,8 @@ class Board:
 
     def add_launches(self):
         """One row per visible record, right under its task's row; a hand WORKER row of the same label goes."""
+        if guard_off(self.root):
+            return
         now = self.now
         cache = {}
 
@@ -938,6 +963,19 @@ def statusline_text(stdin_text):
         shown = cands[:STATUS_LINES - 1]
     else:
         shown = cands
+    counts = {}
+    if not guard_off(main):
+        now = parse_time(args.now)
+        for r in launch_records(top):
+            if not r["is_pane"] and agent_visible(r, now):
+                counts[r["task"]] = counts.get(r["task"], 0) + 1
+
+    def tail(name):
+        n = counts.get(name, 0)
+        if not n:
+            return ""
+        return " · " + ("%d 代理" % n if zh else "%d agent%s" % (n, "" if n == 1 else "s"))
+
     wide = max([display_width(l[2]) for l in shown if l[0] == "run"] or [0])
     out = []
     for l in shown:
@@ -948,18 +986,10 @@ def statusline_text(stdin_text):
                 row += "  " + done
         else:
             row = fit(l[1], NAME_COLS) + "  " + l[2]
-        out.append(row.rstrip())
+        out.append(row.rstrip() + tail(l[1]))
     rest = folded + len(cands) - len(shown)
     if rest:
         out.append(STATUS[lang]["fold"] % rest)
-    now = parse_time(args.now)
-    count = sum(1 for r in launch_records(top) if not r["is_pane"] and agent_visible(r, now))
-    if count:
-        tail = "%d 代理" % count if zh else "%d agent%s" % (count, "" if count == 1 else "s")
-        if out:
-            out[0] += " · " + tail
-        else:
-            out.append(tail)
     return "\n".join(out)
 
 

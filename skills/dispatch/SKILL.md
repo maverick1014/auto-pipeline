@@ -12,7 +12,7 @@ Every order you send another agent (brief, task, decision) starts with `[<model>
 
 Touches another repo? → W12: keep your part, send the peer main manager the cross-repo brief below, called side first, hold your todo line until its DONE PASS.
 
-2. Small task (fast lane, R1)? → `Agent` with `subagent_type: fast-lane-deputy`, description `<task> Deputy`. Level 3 or 4 never takes the fast lane (R8): it goes to step 4 or 7. The deputy brief carries the level: `[<model> <effort>]` first, then `level: <n>`, the task, the file(s), the one test if any. Done. After its DONE PASS: `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo done "<name>" --lane fast --work <m> --type <t>`.
+2. Small task (fast lane, R1)? → first `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<task>" small "<one line what>" <est_minutes> --guess <your_guess> --level <n>` (the guard refuses a deputy for a task with no todo line), then `Agent` with `subagent_type: fast-lane-deputy`, description `<task> Deputy`. Level 3 or 4 never takes the fast lane (R8): it goes to step 4 or 7. The deputy brief carries the level: `[<model> <effort>]` first, then `level: <n>`, the task, the file(s), the one test if any. Done. After its DONE PASS: `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo done "<name>" --lane fast --work <m> --type <t>`.
 3. Touches a live worktree's module? → `SendMessage` the task to that task manager. Status `final` → hold it, tell the human.
 4. Big, and a live task manager has capacity? → `SendMessage` it to that task manager.
 5. Idle or done worktrees in `agent_worktree.txt`? → run `/merge` for each first.
