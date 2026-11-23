@@ -83,6 +83,8 @@ REAL_KEYS = [
     "state_trim_auto",
     "compact_clear_at",
     "compact_clear_check_sec",
+    # board-trust (owner 2026-11-20): the board guard switch, tests/test_board_trust.py
+    "board_guard",
 ]
 # the keys this repo's own agent.conf had before progress-bar
 OLD_KEYS = REAL_KEYS[:REAL_KEYS.index("cloud_permission_mode") + 1]
@@ -134,6 +136,8 @@ GOOD_CONF_TEXT = (
     "state_trim_auto=on\n"
     "compact_clear_at=2\n"
     "compact_clear_check_sec=30\n"
+    # board-trust (owner 2026-11-20): appended last, like the template
+    "board_guard=on\n"
 )
 
 
@@ -460,7 +464,7 @@ class TestGroups(unittest.TestCase):
                     ],
                 ),
                 ("permission", ["permission_mode", "cloud_permission_mode", "auto_resume",
-                                "language", "adhd"]),
+                                "language", "adhd", "board_guard"]),
                 ("runtime", ["runtime"]),
                 ("city", ["city_port", "city_idle_min", "city_governor_wait_sec",
                           "city_relay_sec"]),

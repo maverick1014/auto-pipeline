@@ -151,6 +151,7 @@ W9. Task routing (main manager, before every dispatch)
 - Big task, and a live task manager has capacity → that task manager
 - Task manager in final stage (compiling worker results) → do not disturb. Hold the task until it finishes
 - Otherwise → new worktree (W7). Never spawn a worktree for a small task
+- The todo line comes first: `todo add` before the worktree, the pane or any agent. The guard refuses a main manager launch for a task that is not open (W14)
 
 W10. Second session in the same repo
 - One main manager per repo. `agent-start.sh` keeps a lock in the shared git dir: pid, date, session id, terminal
@@ -222,7 +223,8 @@ W14. Show todo
 - Progress: `agent-file.sh todo stage <name> <stage> [i/m]` at each step boundary. Task manager: brief register mock tests workers verify push report. Main manager: e2e merge. Weights in agent.conf
 - Live: `board --watch`; status line `agent-settings.sh statusline on|off`, 5 lines at most, queued, held and not started fold into `+N queued/held`. Words in the `language` of agent.conf
 - Record as it happens: `todo wait <name> on <kind> ["<note>"] [--who <name>] [--after <task>]|off` at every mock check, owner question, owner review, hold, queue; `todo where` at dispatch
-- `park add` for a parked question (H1), `worker on <n>` / `worker off <n>` for each worker; `OWNER TODO:` lines are written with `agent-file.sh state add`
+- `park add` for a parked question (H1); `OWNER TODO:` lines are written with `agent-file.sh state add`
+- `agent-guard.sh` records launches by task; default `board_guard=record`. Only `board_guard=on` refuses a main manager launch naming no open todo task: `todo add` first. `worker on`: no hooks only.
 
 W15. Watch
 - Monitor sweep on three signals: process, terminal output, git movement

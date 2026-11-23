@@ -75,6 +75,7 @@ HINTS = {
     "auto_resume": "Run agent-resume.sh by itself when a main manager starts. yes or no.",
     "language": "Language for talking to the human, e.g. en, zh, ms. Code and rules stay English.",
     "adhd": "Shape replies for a reader with ADHD (PRINCIPLES.md section E). on or off.",
+    "board_guard": "Launch guard. One of: record (default: record launches on the board only), on (also block a launch naming no open todo task), off.",
     "runtime": "How this machine runs agents. One of: auto, orca, plain, cloud.",
     "city_port": "Port the agent city listens on, on 127.0.0.1 only. Whole number, 1024 to 65535.",
     "city_idle_min": "Minutes the agent city keeps running with no browser open, then it stops by itself. Whole number, 1 to 240.",
@@ -110,7 +111,7 @@ GROUPS = [
     ("limits", ["max_usage_percent", "heavy_test_slots", "max_agents",
                 "monitor_interval_min", "stall_min", "housekeep_interval_min"]),
     ("roles", list(ROLE_KEYS)),
-    ("permission", ["permission_mode", "cloud_permission_mode", "auto_resume", "language", "adhd"]),
+    ("permission", ["permission_mode", "cloud_permission_mode", "auto_resume", "language", "adhd", "board_guard"]),
     ("runtime", ["runtime"]),
     ("city", ["city_port", "city_idle_min", "city_governor_wait_sec", "city_relay_sec"]),
     ("progress", ["stage_brief", "stage_register", "stage_mock", "stage_tests", "stage_workers",
@@ -278,6 +279,8 @@ def validate_value(key, value):
         return _validate_language(value)
     if key == "runtime":
         return _validate_runtime(value)
+    if key == "board_guard":
+        return None if value in ("on", "record", "off") else "board_guard must be one of: on, record, off"
     if key in ("adhd", "auto_update", "state_trim_auto"):
         return _validate_on_off(value)
     return None

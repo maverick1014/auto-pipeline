@@ -91,6 +91,8 @@ COPY_BIN = [
     "agent_level.py",
     "agent_state.py",        # state-trim: state add / state trim
     "agent-autoclear.sh",    # state-trim: the auto /clear waiter
+    "agent-guard.sh",        # board-trust: the launch hook (bash prefilter)
+    "agent_guard.py",        # board-trust: its logic
 ]
 
 # Copied into the temp plugin's root.

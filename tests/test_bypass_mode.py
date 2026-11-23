@@ -147,7 +147,8 @@ PROGRESS_KEYS = ["stage_brief", "stage_register", "stage_mock", "stage_tests", "
                  "estimate_big_min",   # estimate-blend (2026-11-13)
                  "level3_paths", "level4_paths",   # test-levels (2026-11-20)
                  "state_keep_hours", "state_warn_lines", "state_header_lines", "state_trim_auto",
-                 "compact_clear_at", "compact_clear_check_sec"]   # state-trim (2026-11-20), appended last
+                 "compact_clear_at", "compact_clear_check_sec",   # state-trim (2026-11-20)
+                 "board_guard"]   # board-trust (2026-11-23), appended last
 
 class TestConfKeys(unittest.TestCase):
     def test_bypass_is_a_mode_for_both_keys(self):
@@ -172,7 +173,8 @@ class TestConfKeys(unittest.TestCase):
     def test_group(self):
         self.assertEqual(agent_conf.group_of("cloud_permission_mode"), "permission")
         self.assertEqual(dict(agent_conf.GROUPS)["permission"],
-                         ["permission_mode", "cloud_permission_mode", "auto_resume", "language", "adhd"])
+                         ["permission_mode", "cloud_permission_mode", "auto_resume", "language", "adhd",
+                          "board_guard"])   # board-trust (2026-11-23)
 
 
 class TestTemplate(unittest.TestCase):

@@ -241,7 +241,9 @@ class TestCityHooks(unittest.TestCase):
                         and "agent-show-question.sh" not in json.dumps(e)
                         and "agent-name.sh" not in json.dumps(e)
                         # stale-plugin-guard: UserPromptSubmit, tests/test_stale_plugin_guard.py
-                        and "agent-version.sh" not in json.dumps(e)]
+                        and "agent-version.sh" not in json.dumps(e)
+                        # board-trust: the launch guard, tests/test_board_trust.py
+                        and "agent-guard.sh" not in json.dumps(e)]
                 for event, entries in hooks.items()}
 
     # Interaction (tests/test_agent_city_interact.py): PermissionRequest also

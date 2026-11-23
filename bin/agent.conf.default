@@ -43,3 +43,4 @@ state_header_lines=40
 state_trim_auto=on
 compact_clear_at=2
 compact_clear_check_sec=30
+board_guard=record

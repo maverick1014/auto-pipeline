@@ -59,7 +59,7 @@ HEARTBEAT = re.compile(LEAD_STRIP + r"HEARTBEAT(?:$|[ :])")
 HEARTBEAT_TASK = re.compile(LEAD_STRIP + r"HEARTBEAT ([^\s:]+):")
 OWNER_LINE = re.compile(LEAD_STRIP + r"OWNER ")
 OWNER_TODO = re.compile(r"(?<![%s])OWNER TODO:" % re.escape(QUOTES))
-K2_PREFIXES = ("PARKED: ", "QUESTIONS PAGE: ", "STAGE ", "WORKER ", "GOAL:")
+K2_PREFIXES = ("PARKED: ", "QUESTIONS PAGE: ", "STAGE ", "WORKER ", "GOAL:", "LAUNCH ")
 TODO_LINE = re.compile(r"\s*TODO LINE:")
 
 
