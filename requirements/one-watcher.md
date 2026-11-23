@@ -1,0 +1,125 @@
+# one-watcher — requirements (level 3 rules gate)
+
+Status: RULES READY 2026-11-23, waiting for the owner's yes. Base 5beb3d3 (release 0.39.0).
+Source: v4-plus audit 2026-11-16 (ideas 123-125, 141-142): 30+ own watch scripts, 695 remote sends + 832 reads, DONE/QUESTION missed 7x (a SKIP regex hid lines signed `[Opus 5.5 xhigh]`), 5 cut or lost sends in Nov, heartbeats and ACKs by SendMessage = 46% of the main manager's cache-read; a closed TM pane reported as WATCH STALL twice in 36 min; one flaky orca probe made a watch exit 0 as "plain". Owner 2026-11-17: start or resume rebuilds every watch from agent_worktree.txt. Owner 2026-11-20: board stale flag.
+Real orca, probed on pc2 2026-11-23: a closed pane reads `ok: true, status: "exited", tail: []`; `orca terminal wait --for exit` then gives `exitCode: 0, exitCause: {kind: "operator_close"}`. A live pane reads `status: "running"`.
+Real data count (H1): pc2 main repo today: 2 worktree lines (board-trust done, one-watcher working), 0 LAUNCH records, 0 orca environments saved on pc2.
+
+## 0. Words
+
+| Word | Meaning |
+|---|---|
+| watch | `bin/agent-watch.sh`. Single mode: `--terminal <h> --worktree <p>` (today's, kept). All mode: `--all` (new, the one the main manager runs) |
+| target | one task the all mode watches: name, worktree path, env (none = this machine), TM pane handle, shell pane handle (remote only) |
+| wake line | a state file line that, after at most one leading `[<model> <effort>] ` group, starts with `DONE PASS`, `DONE FAIL`, `CLOSE CASE`, `QUESTION:` or `MOCK READY` |
+| status file | `<git common dir of the main repo>/agent_watch.json`, written by the all mode each sweep (atomic); read by tell, the board, the status line and the start text |
+| live pid | the pid in the status file answers `kill -0` and its last sweep is at most 2 x interval + 2 min old |
+| idle prompt | the TM screen has no line with `esc to interrupt` and has a line starting with `❯` (box chars and spaces before it ignored) |
+| login expired | a screen line holds `Please run /login`, `OAuth token has expired`, `Invalid API key` or `API Error: 401` |
+| waiting by design | the task's last wake line is `QUESTION:` or `MOCK READY` with no `ANSWER:` line after it, or `DONE PASS`, `DONE FAIL`, `CLOSE CASE` |
+
+## A. Targets (all mode) — part 1
+
+| # | Rule | Example |
+|---|---|---|
+| A1 | Targets, re-read every sweep: every line of the main repo's agent_worktree.txt with status `working` or `final` (name = field 2, path = field 1), plus every open todo line with an `on <machine> <path>` field and no such worktree line (name = todo name, path = that path) | `…/one-watcher \| one-watcher \| working \| since …` → target one-watcher. `…/board-trust \| board-trust \| done` → not a target. A human-direct line → not a target |
+| A2 | A new line is watched from the next sweep; a line that leaves (merged, done) is dropped with its saved state, no exit | dispatch of city-tier at 10:02 → `10:05 watch: + city-tier` |
+| A3 | Where: the path is a folder on this machine → local. Else remote, env = the `env` of the task's newest live `tm pane` LAUNCH record, else the `<machine>` of its todo `on` field. Neither → not watched, why `folder not here and no machine known` | todo `… \| on maverick-pc2 /Users/m/orca/workspaces/auto-pipeline/one-watcher` on the laptop → env maverick-pc2 |
+| A4 | TM pane, first hit: the newest LAUNCH record `tm pane \| task <name> \| … \| pane <h>` in the main repo's agent_state.txt; else `orca terminal list [--environment <env>] --worktree path:<path> --json` → the terminal whose title holds `Task Manager`, else the only one with `agentIdentity: claude`. None → not watched, why `no task manager pane` | `"title": "◑ one-watcher Task Manager"` → that handle |
+| A5 | Shell pane (remote only), first hit: newest LAUNCH record `shell pane \| task <name>` with the same env; else the same list → a terminal with no `agentIdentity`. None → not watched, why `no shell pane on <env>; open one: orca terminal create --environment <env> --worktree path:<path> --title "<name> shell"` | |
+| A6 | A read that fails with a gone handle (`terminal_handle_stale`, `terminal_not_found`) re-resolves the pane once (A4/A5) before it counts as a failed read | Orca restart gave the TM a new handle → watched again, no LOST |
+| A7 | Never filter by signature: no line or target is skipped for a `[...]` prefix or any other text | `[Opus 5.5 xhigh] QUESTION: rules yes?` is a wake line. `[Opus 5.5 xhigh] Brief from …` is not (no wake word after the group) |
+| A8 | Not a wake line: indented, or the word mid-line, or two bracket groups | `  QUESTION: x`, `note: DONE PASS later`, `[a] [b] DONE PASS x` → no wake |
+| A9 | Not watched targets are printed once at start and on change (`<HH:MM> watch: <name> not watched: <why>`), kept in the status file; they never end the watch | |
+
+## B. Sweep and wake (all mode) — parts 1, 2, 4
+
+| # | Rule | Example |
+|---|---|---|
+| B1 | Each sweep reads every watched target: its TM pane (`orca terminal read`) and its state file (local: the file; remote: one short command through its shell pane, under 400 chars, answer read with `--cursor`, as the single mode does today) | |
+| B2 | Wake lines fire: `WATCH SIGNAL <name>: <line>`, then the last 15 screen lines of that TM | `WATCH SIGNAL one-watcher: QUESTION: RULES READY one-watcher: requirements/one-watcher.md, rules yes? \| 2026-11-23 18:10` |
+| B3 | Never wake (part 4): HEARTBEAT, ACK, STAGE, ANSWER, TELL lines, any other line. They count as a file change (no stall). STAGE is still carried to the todo line as today | `HEARTBEAT one-watcher: step 4 of 7, work 40m, worker 1` → sweep line only |
+| B4 | One sweep finishes every target first, then prints one WATCH line (+ evidence) per event, in target order, then exits 0. Two tasks with a new line in one sweep → two WATCH lines, one exit | `WATCH SIGNAL a: DONE PASS a` and `WATCH SIGNAL b: QUESTION: port?` |
+| B5 | Saved baseline: the status file keeps, per task, the number of wake lines already reported. A restarted all mode fires only lines it never reported; a line written while no watch ran fires at the next start. A task seen for the first time: its existing lines are the baseline (no fire). A count below the saved one (state trim) becomes the new baseline | DONE PASS a fired, watch restarted → no second fire. b wrote QUESTION between exit and restart → fires on the first sweep |
+| B6 | Stall, busy screen: 3 sweeps with the same screen and no file change → `WATCH STALL <name>: no change`. `shell still running` on screen resets it (as today) | |
+| B7 | Stall, idle prompt: 2 sweeps at an idle prompt with no file change → `WATCH STALL <name>: idle prompt` | TM ended its turn without a report |
+| B8 | Login expired on screen → `WATCH STALL <name>: login expired` on the first sweep that sees it | `API Error: 401 · Please run /login` |
+| B9 | Waiting by design → never a stall (B6, B7); the sweep line says `waiting`. Login expired (B8) still fires | open `QUESTION:` 2 h, owner away → no wake |
+| B10 | A stall is reported once: the status file keeps the screen of the reported stall; the same task with the same screen and file does not wake again; any change clears it | |
+| B11 | LOST, pane exited (part 2): a read with `status` other than `running` → at once `WATCH LOST <name>: pane exited (<exitCause.kind>, exit <exitCode>)`, cause from `orca terminal wait --terminal <h> --for exit --timeout-ms 2000 --json`; no cause → `pane exited (cause unknown)` | `WATCH LOST city-tier: pane exited (operator_close, exit 0)` — never WATCH STALL |
+| B12 | LOST, failed reads: 3 failed reads in a row of one target (after A6) → `WATCH LOST <name>: <orca error>` | machine down → `WATCH LOST one-watcher: orca: environment maverick-pc2 is not reachable` |
+| B13 | Sweep line, one per sweep: `<HH:MM> sweep: <name> <state>, …` with state `ok`, `same <k>`, `idle <k>`, `waiting`, `fail <k>/3` or `not watched`; time from `date` | `18:05 sweep: one-watcher ok, city-tier waiting` |
+| B14 | `--max <n>` sweeps done → `WATCH MAX all`. Zero targets is fine: it keeps sweeping (a dispatch adds one) | |
+| B15 | One all mode per repo: a new `--all` stops an older live one (its pid from the status file, only when that pid's command line holds `agent-watch` or `agent_watch` and `--all`) and prints `watch --all: replaced pid <p>` | |
+| B16 | Live pane with no task line: each sweep, `orca terminal list --json` (this machine) → a terminal with `agentIdentity: claude` whose worktree path is not the main repo, not a path of agent_worktree.txt and not the path of an open todo `on` field → kept in the status file as an orphan, printed once `<HH:MM> watch: live pane with no task line: <path> (<title>)`. Never a wake | |
+| B17 | The TM pane is only read, never sent to. The shell pane gets only the read command | |
+| B18 | Status file per sweep: `pid`, `started`, `sweep` (date time), `interval_min`, `tasks` {name: path, env, pane, shell, watched, why, signals, confirmed (last good read), changed (last file change), stall}, `orphans` [path, title, handle] | |
+
+## C. Probe and single mode — part 2
+
+| # | Rule | Example |
+|---|---|---|
+| C1 | `AGENT_RUNTIME`, agent.conf `runtime` or `CLAUDE_CODE_REMOTE=true` say plain or cloud → `watch: not used in <kind> mode`, exit 0 (as today, both modes) | |
+| C2 | The probe alone says plain (none of C1 set) → probe again, 2 more times, `AGENT_WATCH_RETRY_S` (default 2) apart; orca on any try → watch on. Plain all 3 times → `watch: orca did not answer 3 times; a watch needs orca; not watching`, exit 1. Never exit 0 as plain (both modes) | 2026-11-16 17:22 case: one cut-off probe, orca up → watch runs |
+| C3 | Single mode keeps every rule and line of today (tests/test_agent_watch.py), plus: B11 (exited → `WATCH LOST <name>: pane exited (…)` at once) and A7/A8 (one signature group before the wake word) | |
+
+## D. tell — part 3
+
+`bin/agent-file.sh tell <task> "<msg>"` (work in the watch engine).
+
+| # | Rule | Example |
+|---|---|---|
+| D1 | `<msg>` must start with `[<model> <effort>] ` (decider floor: orders say who sends) and have text after it; else refused: one stderr line, exit 1, nothing written or sent | `tell one-watcher "rules yes"` → `tell: the message must start with [<model> <effort>]` |
+| D2 | The pane, env and shell come from the status file, else A3-A5. None → `tell: no pane for <task>: <why>`, exit 1, nothing written | |
+| D3 | sha8 = first 8 hex of sha256 of `<msg>` as given (UTF-8). The block, appended to the task's worktree agent_state.txt, then one blank line: line `TELL <sha8> <signature> \| <YYYY-MM-DD HH:MM>`, every message line after the signature indented by two spaces, line `END TELL <sha8>` | msg `[Opus 5.5 xhigh] ANSWER: rules yes` → `TELL 564b1788 [Opus 5.5 xhigh] \| 2026-11-23 18:20` / `  ANSWER: rules yes` / `END TELL 564b1788` |
+| D4 | The indent means a told line never wakes the watch and is never a `=== ` header or a QUESTION:; an indented `ANSWER:` still answers the open QUESTION: before it (the questions tool strips leading spaces) | |
+| D5 | Local: one append under the state lock (`agent_state.lock`, as `state add`). Remote: the block base64 in chunks of at most 300 characters per send through the shell pane into a temp file, then one command decodes and appends it | a 4 KB brief → about 18 short sends, never one long send |
+| D6 | Read back before the pointer: the block's bytes read back from the file (remote: one command printing its sha256) must equal what was written; else write once more; still wrong → `TELL FAIL <task> <sha8>: file check`, exit 1 | |
+| D7 | Pointer, one line into the TM pane: `<signature> TELL <sha8>: read the TELL <sha8> block at the end of agent_state.txt and act on it`. Before it `orca terminal wait --for tui-idle --timeout-ms 120000` (a timeout still sends) | |
+| D8 | Echo check: read the TM pane with `--cursor` (from before the send) up to 10 s for `TELL <sha8>`. Not seen → one more tui-idle wait and send. Seen → `TELL OK <task> <sha8>`, exit 0. Still not → `TELL FAIL <task> <sha8>: pointer not seen (block is in the file)`, exit 1 | a send lost mid-turn → resent once |
+
+## E. Heartbeats and wakes — part 4 (rule text)
+
+| # | Rule |
+|---|---|
+| E1 | A task manager writes heartbeats, ACKs, reports and questions into its worktree agent_state.txt only (`agent-file.sh state add`, a report block = one append). Never by SendMessage |
+| E2 | Only DONE PASS, DONE FAIL, QUESTION:, MOCK READY, CLOSE CASE (file lines) and the watch's STALL and LOST wake the main manager |
+| E3 | The task manager's start line says: report into agent_state.txt, the main manager's watch reads it (was: report with SendMessage) |
+| E4 | The dispatch brief template: REPORT, ASK, HEARTBEAT, CLOSE lines say agent_state.txt, no SendMessage; the main manager sends any text to a task manager with `agent-file.sh tell` |
+
+## F. Start, resume and the board — part 5
+
+| # | Rule | Example |
+|---|---|---|
+| F1 | Main manager start (`agent-start.sh`, role main or takeover) and `agent-resume.sh`, orca only, print one WATCH line. Live pid → `WATCH: running (pid <p>), <n> tasks, last sweep <HH:MM>` | |
+| F2 | No live pid and at least one target (A1, from the files only, no orca call) → `WATCH: not running, <n> tasks to watch (<names>). Start it now with Bash run_in_background, timeout 7200000: <plugin>/bin/agent-watch.sh --all`. No targets → no line. Plain or cloud → no line | a script cannot start a watch that wakes the session; the main manager's own background Bash can, so the start text hands it the command |
+| F3 | Board row warning, appended to the status cell: zh `未确认 <n>m`, en `not confirmed <n>m`, for a row whose task is a target (A1) when (a) no live pid, or (b) the status file says not watched, or (c) its row is running (no open wait) and its file has not changed for `watch_quiet_min` (agent.conf, default 15) minutes | `进行中 · 未确认 22m` |
+| F4 | n = minutes since the task's `changed` in the status file, else its `confirmed`, else since the todo line's `started`, else since `opened` | |
+| F5 | Orphan panes (B16) of a live status file → one note line under the table: zh `看板可能不准：<path> 有活动窗格但没有任务行`, en `board may be wrong: <path> has a live pane but no task line` | |
+| F6 | Status line: any F3 warning or orphan → the first line is zh `看板可能不准：<k> 个未确认` (or `…：看守未运行` when no live pid, `…：有窗格无任务行` for orphans only), en `board may be wrong: <k> not confirmed` / `watch not running` / `a pane has no task line`; it counts in the 5-line limit | |
+| F7 | The board and the status line stay read only: they read the status file and test the pid with `kill -0`, never call orca | |
+
+## G. Rule text
+
+PRINCIPLES W15: one line each — one `agent-watch.sh --all` for every task manager (pane + state file, local and remote, restart after each wake); heartbeats and ACKs to the state file only, the six wakes; `agent-file.sh tell` for long text; start/resume print the watch command; board `not confirmed`. Dispatch skill: start or restart `--all` instead of one watch per task; tell instead of pane sends; brief template E4. Merge skill: one line (the merged task leaves the watch by itself). README one line. agent.conf.default + agent_conf.py: `watch_quiet_min=15` (1-240).
+
+## H. Not in this task
+
+No plugin version bump (`.claude-plugin/` is a level 4 path): the main manager bumps at release. The questions tool still reads only unsigned `QUESTION:` lines (an idea). Remote tell has no lock on the other machine: a TM rewrite in the same millisecond could drop the block; the read-back and the pointer echo catch most, the TM sees the pointer either way.
+
+## I. E2E plan (step 5, on pc2, real orca)
+
+1. Live pane: a scratch worktree line (status working) whose pane is a plain shell titled `<scratch> Task Manager`; `AGENT_WATCH_INTERVAL_S=20 bin/agent-watch.sh --all --max 3`; append `QUESTION: e2e?` to its agent_state.txt → `WATCH SIGNAL <scratch>: QUESTION: e2e?`.
+2. Exited pane (failure path): the same with the pane closed by `orca terminal close` → `WATCH LOST <name>: pane exited (operator_close, exit 0)` on the first sweep.
+3. tell: `agent-file.sh tell <scratch> "[Opus 5.5 xhigh] hello"` against a plain shell pane → block in the file, `TELL OK`.
+4. Restore: remove the scratch worktree line, close the scratch panes, delete the status file.
+
+## J. Questions (defaults taken if no answer)
+
+| # | Question | Default |
+|---|---|---|
+| Q1 | Reports (DONE, QUESTION, MOCK READY, CLOSE CASE) go to the state file only, no SendMessage copy (E1)? | yes: one channel, the watch wakes |
+| Q2 | A task waiting by design (open QUESTION, DONE, CLOSE CASE) never wakes as a stall (B9)? | yes |
+| Q3 | Start/resume print the watch command (F2) rather than start a detached watch that nobody hears? | print |
+| Q4 | Quiet limit for the board warning `watch_quiet_min` = 15 (F3)? | 15 |
+| Q5 | tell refuses a message without `[<model> <effort>]` (D1)? | refuse |
