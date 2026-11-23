@@ -752,7 +752,9 @@ class TestEstimateConf(unittest.TestCase):
                                          "level3_paths", "level4_paths",
                                          # state-trim (2026-11-20) appended its 6 keys last
                                          "state_keep_hours", "state_warn_lines", "state_header_lines",
-                                         "state_trim_auto", "compact_clear_at", "compact_clear_check_sec"])
+                                         "state_trim_auto", "compact_clear_at", "compact_clear_check_sec",
+                                         # board-trust (2026-11-23) appended board_guard last
+                                         "board_guard"])
 
 
 # ---------------------------------------------------------------- wired in

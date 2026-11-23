@@ -56,7 +56,7 @@ The board (PRINCIPLES.md W14) reads these. Write each as it happens, never later
 - Held -> on hold; released -> off
 - Waiting on someone other than the owner (a peer manager, a reviewer) -> --who <name>; the owner is the default for mock, question, review
 - Waiting for a slot or another task -> on queue --after <task>; slot found -> off
-- Launches record themselves (`bin/agent-guard.sh`, W14). Every Agent description and pane title must start with the task name, else the launch is refused. Read-only agents (Explore, Plan) and Helper panes need no task name. Run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add` first
+- Launches record themselves (`bin/agent-guard.sh`, W14). Every Agent description and pane title must start with the task name, else the launch is refused. Read-only agents (Explore, Plan) and Helper panes need no task name. Run the `todo add` line of step 2 or 7 first
 - Parked question for later (H1): `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh park add "<question>"`
 
 ## Time question from the human
