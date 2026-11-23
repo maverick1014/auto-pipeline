@@ -679,9 +679,42 @@ class TestSwitch(GuardCase):
         self.make_main()
         self.put_todo("board-trust")
 
-    def test_default_is_on(self):
+    # owner 3A 2026-11-20 (bounce 3): every repo records only by default; only auto-pipeline blocks (its agent.conf)
+    def test_default_is_record(self):
         with open(os.path.join(ROOT, "bin", "agent.conf.default")) as fh:
+            self.assertIn("\nboard_guard=record\n", "\n" + fh.read())
+
+    def test_this_repo_is_on(self):
+        with open(os.path.join(ROOT, "agent.conf")) as fh:
             self.assertIn("\nboard_guard=on\n", "\n" + fh.read())
+
+    def drop_key(self):
+        path = self.repo.path("agent.conf")
+        with open(path) as fh:
+            lines = [l for l in fh.read().splitlines(True) if not l.startswith("board_guard")]
+        with open(path, "w") as fh:
+            fh.write("".join(lines))
+
+    def assertRecordsOnly(self):
+        for desc, stype in (("old-task Merge", "auto-pipeline:merge-deputy"),
+                            ("Find hook payload fields", "general-purpose")):
+            r = self.pre_agent(desc, stype)
+            self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual([self.fields(l)["task"] for l in self.launches()], ["old-task", "project Manager"])
+
+    def test_a_repo_without_the_key_records_and_never_blocks(self):
+        self.drop_key()
+        self.assertRecordsOnly()
+
+    def test_an_empty_value_records_and_never_blocks(self):
+        self.repo.set_conf("board_guard", "")
+        self.assertRecordsOnly()
+
+    def test_an_unreadable_conf_records_and_never_blocks(self):
+        path = self.repo.path("agent.conf")
+        os.chmod(path, 0)
+        self.addCleanup(os.chmod, path, 0o644)
+        self.assertRecordsOnly()
 
     def test_off_records_nothing_blocks_nothing(self):
         self.repo.set_conf("board_guard", "off")
@@ -696,9 +729,10 @@ class TestSwitch(GuardCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.one_launch()["task"], "old-task")
 
-    def test_a_bad_value_is_on(self):
+    def test_a_bad_value_records_and_never_blocks(self):
+        # bounce 3: only an explicit on blocks
         self.repo.set_conf("board_guard", "maybe")
-        self.assertBlocked(self.pre_agent("old-task Merge", "auto-pipeline:merge-deputy"))
+        self.assertRecordsOnly()
 
     def test_settings_write_and_refuse(self):
         r = self.repo.run("agent-settings.sh", "board_guard", "off")
@@ -1033,6 +1067,18 @@ class TestRuleText(unittest.TestCase):
 
     def test_readme(self):
         self.assertIn("bin/agent-guard.sh", read("README.md"))
+
+    def test_the_texts_say_the_default_records_only(self):
+        # bounce 3 (owner 3A 2026-11-20): record is the default, only board_guard=on refuses
+        line = [l for l in read("README.md").splitlines() if "bin/agent-guard.sh" in l][0]
+        self.assertIn("board_guard=on", line)
+        self.assertRegex(line, r"default.{0,30}record|record.{0,30}default")
+        w14 = section(read("PRINCIPLES.md"), "W14. Show todo")
+        self.assertRegex(w14, r"default.{0,30}record|record.{0,30}default")
+        s = read("skills", "dispatch", "SKILL.md")
+        board = s[s.index("## Board records"):s.index("## Time question")]
+        self.assertIn("board_guard=on", board)
+        self.assertIn("board_guard=on", read("skills", "merge", "SKILL.md"))
 
     def test_release(self):
         self.assertEqual(json.loads(read(".claude-plugin", "plugin.json"))["version"], "0.39.0")

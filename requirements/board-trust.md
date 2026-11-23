@@ -1,6 +1,6 @@
 # board-trust — requirements (level 4 rules gate)
 
-Status: rules yes 2026-11-23 (1A 2A 3A: Q1 block, Q2 subagents only, Q3 record value); rule 4 changed after the dry-run (default taken 08:40, to confirm). Base a0f4d31 (release 0.38.0) → release 0.39.0.
+Status: rules yes 2026-11-23 (1A 2A 3A: Q1 block, Q2 subagents only, Q3 record value); rule 4 change kept by the owner; default record everywhere, on in auto-pipeline (owner 3A 2026-11-20, bounce 3). Base a0f4d31 (release 0.38.0) → release 0.39.0.
 Source: owner 2026-11-20 (1A 2A): "ensure the manager every time issue new agent or task will update my tracker display ... so that i only can trust it". Seen today: a merge deputy never showed on the board.
 Examples: now = 2026-11-20 16:50, real names of 2026-11-20 (transcripts on pc2, the live pc2 pane list).
 
@@ -60,7 +60,7 @@ A tm's own task: its line in agent_worktree.txt (this folder), else `TODO LINE: 
 |---|---|
 | not a pipeline repo (no agent.conf at the main repo) | silent exit 0, nothing recorded: the plugin is user-wide |
 | any error, unreadable or missing agent_todo.txt, bad JSON, lock busy > 2 s, hook timeout (5 s) | allowed + one stderr line `board guard: <what>; allowed` |
-| `board_guard=on` (default) / `record` / `off` in agent.conf, `agent-settings.sh board_guard <v>` (validated) | block + record / record only / nothing. Read at every call: no restart |
+| `board_guard=record` (template default, every repo) / `on` (auto-pipeline's own agent.conf) / `off` in agent.conf, `agent-settings.sh board_guard <v>` (validated). A missing, empty, unreadable or bad value = record (owner 3A 2026-11-20) | record only / block + record / nothing. Read at every call: no restart |
 | Bash call with no `orca` in the command | bash builtins only, no python start (~5 ms) |
 | status line | counts live subagent records of the task (`· 2 代理` / `· 2 agents`); panes only on the board (an orca list call is too slow for the status line) |
 
@@ -75,7 +75,7 @@ Hooks: PreToolUse `Agent|Task|Bash` (check + record), PostToolUse `Agent|Task|Ba
 
 ## E. Rollback plan
 
-1. One line, no restart: `bin/agent-settings.sh board_guard off` (or `record` to keep records and stop blocks).
+1. One line, no restart: `bin/agent-settings.sh board_guard off` (or `record`, the default of every other repo, to keep records and stop blocks).
 2. Full: `git revert` the merge commit on main, release 0.39.1, plugin update on each machine.
 3. Records are plain LAUNCH lines in git-ignored agent_state.txt: the old board ignores them, `board_guard=off` makes the new board and status line ignore them too, `state trim` keeps them (K2) and the guard prunes dead ones. Todo, worktree and done files are never written by the guard.
 
@@ -94,6 +94,7 @@ Panes opened by scripts (`agent-resume.sh`, city clicks) are not seen by the hoo
 | Q1 | Main manager launches a type that can write files (general-purpose, claude) with a free description: block (rule 7) or allow like Explore? | block |
 | Q2 | Status line counts subagents only, panes on the board only? | yes |
 | Q3 | Third switch value `record` (keep records, never block) as the soft rollback? | yes |
+| Q3 (main manager's) | Owner 3A 2026-11-20, reached this task at bounce 3: every repo records only by default; only auto-pipeline blocks | default record, auto-pipeline agent.conf on |
 
 ## I. Changes after the dry-run and the review (2026-11-23)
 
@@ -109,4 +110,5 @@ Panes opened by scripts (`agent-resume.sh`, city clicks) are not seen by the hoo
 | I8 | Parse: every orca operation of one command counts (any block blocks the whole call); heredoc bodies are cut before quotes are read; a title with `$` or a backtick is unknown (allowed, recorded under the parse or the Manager); trailing `,.;:)` is cut from a first-word task name; orca by full path and after `env`, `time`, `then`, `do`, `{` counts | review 6, 9, 12, 21 |
 | I9 | Unknown session pid (CLAUDE_PID not a number, or no claude process up the chain) → no record; no git on PATH → silent; `board_guard=off  # note` reads as off | review 13, 19, 20 |
 | I10 | Dispatch fast lane: `todo add` before the `<task> Deputy` launch | review 16 |
+| I11 | Default `board_guard=record` in the template; a missing, empty, unreadable or bad value = record; auto-pipeline's agent.conf says `on`. Only an explicit `on` blocks | owner 3A 2026-11-20 (bounce 3, 2026-11-23) |
 | - | Not done: a PostToolUseFailure hook (review 10, an idea: an unknown hook event key could break the plugin's whole hooks file); `$(...)`-captured pane create gets no handle (pruned after 2 min) | |
