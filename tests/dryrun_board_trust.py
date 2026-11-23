@@ -15,8 +15,11 @@ What it does, and never more:
   call from inside a subagent or anything else -> free)
 - pipes PreToolUse, then PostToolUse with the real tool result, then SubagentStop (async agents) through
   the hook of this checkout, with CLAUDE_CONFIG_DIR = a temp dir and a stub `orca` that always fails
-- prints allowed / blocked / recorded / not a launch / loud allows, every block with its line, and
-  whether each linked record was gone at the end; deletes the temp folder
+- the switch: the main checkout's own agent.conf (auto-pipeline: board_guard=on), else the template
+- prints allowed / blocked / recorded / not recorded (split by why: an orca call that is not a pane
+  create, such as terminal read/send/wait/list/close or worktree ps/rm, a checked-only worktree create,
+  or an agent), loud allows, every block with its line, and whether each linked record was gone at the
+  end; deletes the temp folder
 
 It never writes outside its temp folder, never touches ~/.claude or a real repo.
 """
@@ -109,12 +112,12 @@ def git(*args, cwd):
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
 
 
-def make_repo(base, repo, open_tasks, role, own):
+def make_repo(base, repo, open_tasks, role, own, conf):
     main = os.path.join(base, repo)
     os.makedirs(main)
     git("init", "-q", "-b", "main", cwd=main)
     git("-c", "user.email=d@d", "-c", "user.name=d", "commit", "-q", "--allow-empty", "-m", "seed", cwd=main)
-    shutil.copy(os.path.join(ROOT, "bin", "agent.conf.default"), os.path.join(main, "agent.conf"))
+    shutil.copy(conf, os.path.join(main, "agent.conf"))
     with open(os.path.join(main, "agent_todo.txt"), "w") as fh:
         fh.write("".join("%s | big | the %s task | est 60m | opened 2026-01-01 00:00 | by main\n" % (n, n)
                          for n in open_tasks))
@@ -176,7 +179,7 @@ def replay(args, tmp):
         now = local_now(d.get("timestamp", ""))
         opened = sorted(set(current) | {k for k, v in done.items() if v >= now[:10]})
         base = os.path.join(tmp, "r%04d" % i)
-        main, folder = make_repo(base, args.repo, opened, role, own or "task")
+        main, folder = make_repo(base, args.repo, opened, role, own or "task", args.conf)
         env = {k: v for k, v in os.environ.items() if k in ("HOME", "LANG", "LC_ALL", "TMPDIR", "USER")}
         env.update({"PATH": stub + ":" + os.environ.get("PATH", "/usr/bin:/bin"), "CLAUDE_PID": str(LIVE),
                     "CLAUDE_CONFIG_DIR": cfg, "AGENT_FAKE_NOW": now})
@@ -208,6 +211,13 @@ def replay(args, tmp):
             loud.append((now, role, what, err))
         recorded = len(launches(folder)) > before
         n["recorded" if recorded else "not recorded"] += 1
+        if not recorded:  # why: an orca call that is not a pane create, a checked worktree create, else an agent
+            m = re.search(r"orca\s+(terminal|worktree)\s+(\w+)", inp.get("command") or "") if name == "Bash" else None
+            why = ("orca %s %s" % m.groups() if m else "orca (other)") if name == "Bash" else "agent (unknown pid or off)"
+            if why in ("orca terminal create", "orca worktree create"):
+                why += " in text only (grep, heredoc, script), not a launch" if why.endswith("terminal create") \
+                    else ", checked, never recorded"
+            n["  not recorded: " + why] += 1
         if isinstance(res, dict) and name == "Bash":
             response = {"stdout": res.get("stdout", ""), "stderr": res.get("stderr", ""),
                         "interrupted": res.get("interrupted", False)}
@@ -241,10 +251,16 @@ def main():
     ap.add_argument("--since", default="0000-00-00")
     args = ap.parse_args()
     args.main = os.path.realpath(args.main)
+    # the repo's own switch (auto-pipeline: board_guard=on); the template (default record) when it has none
+    args.conf = os.path.join(args.main, "agent.conf")
+    if not os.path.isfile(args.conf):
+        args.conf = os.path.join(ROOT, "bin", "agent.conf.default")
     args.workspaces = (args.workspaces or os.path.expanduser("~/orca/workspaces/%s" % args.repo)).rstrip("/") + "/"
     args.projects = args.projects or os.path.join(os.path.expanduser("~/.claude/projects"), "*%s*" % args.repo)
     n, blocks, loud, kept = run(args)
-    print("dry-run %s since %s: %s" % (args.repo, args.since, ", ".join("%s %d" % kv for kv in sorted(n.items()))))
+    print("dry-run %s since %s, switch from %s:" % (args.repo, args.since, args.conf))
+    for k, v in sorted(n.items(), key=lambda kv: (kv[0].startswith(" "), kv[0])):
+        print("  %s %d" % (k, v))
     for b in blocks:
         print("BLOCK %s %s%s %r -> %s" % (b[0], b[1], " " + b[2] if b[2] else "", (b[3] or "")[:100], b[4]))
     for l in loud:

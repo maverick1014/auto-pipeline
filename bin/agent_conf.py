@@ -75,7 +75,7 @@ HINTS = {
     "auto_resume": "Run agent-resume.sh by itself when a main manager starts. yes or no.",
     "language": "Language for talking to the human, e.g. en, zh, ms. Code and rules stay English.",
     "adhd": "Shape replies for a reader with ADHD (PRINCIPLES.md section E). on or off.",
-    "board_guard": "Whether launches must name an open task and are recorded on the board. One of: on (block and record), record (record only), off.",
+    "board_guard": "Launch guard. One of: record (default: record launches on the board only), on (also block a launch naming no open todo task), off.",
     "runtime": "How this machine runs agents. One of: auto, orca, plain, cloud.",
     "city_port": "Port the agent city listens on, on 127.0.0.1 only. Whole number, 1024 to 65535.",
     "city_idle_min": "Minutes the agent city keeps running with no browser open, then it stops by itself. Whole number, 1 to 240.",

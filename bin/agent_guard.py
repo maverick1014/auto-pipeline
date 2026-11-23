@@ -110,8 +110,10 @@ def session_pid():
 
 
 def read_conf(main):
-    """(board_guard mode, state_keep_hours) of the main repo's agent.conf; a trailing comment is cut."""
-    mode, hours = "on", 24.0
+    """(board_guard mode, state_keep_hours) of the main repo's agent.conf; a trailing comment is cut.
+    Mode "on" only when the file says board_guard=on; a missing key, empty, bad value or an unreadable
+    file all mean "record" (never block); "off" means off."""
+    mode, hours = "record", 24.0
     try:
         with open(os.path.join(main, "agent.conf"), encoding="utf-8", errors="replace") as fh:
             for line in fh:
@@ -129,8 +131,8 @@ def read_conf(main):
                     except ValueError:
                         pass
     except OSError:
-        pass
-    return (mode if mode in ("record", "off") else "on"), hours
+        return "record", hours
+    return (mode if mode in ("on", "off") else "record"), hours
 
 
 def read_todo(main):

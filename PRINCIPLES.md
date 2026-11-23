@@ -224,7 +224,7 @@ W14. Show todo
 - Live: `board --watch`; status line `agent-settings.sh statusline on|off`, 5 lines at most, queued, held and not started fold into `+N queued/held`. Words in the `language` of agent.conf
 - Record as it happens: `todo wait <name> on <kind> ["<note>"] [--who <name>] [--after <task>]|off` at every mock check, owner question, owner review, hold, queue; `todo where` at dispatch
 - `park add` for a parked question (H1); `OWNER TODO:` lines are written with `agent-file.sh state add`
-- `agent-guard.sh` records launches by task. A main manager launch naming no open todo task is refused: `todo add` first. Errors allow. `board_guard=on|record|off`. `worker on`: no hooks only.
+- `agent-guard.sh` records launches by task; default `board_guard=record`. Only `board_guard=on` refuses a main manager launch naming no open todo task: `todo add` first. `worker on`: no hooks only.
 
 W15. Watch
 - Monitor sweep on three signals: process, terminal output, git movement
