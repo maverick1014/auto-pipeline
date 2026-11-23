@@ -3,7 +3,7 @@
 
 Not a unit test (no test_ prefix). Run by hand before a merge, on each machine that runs managers:
 
-    python3 tests/dryrun_board_trust.py [--since 2026-11-20] [--repo auto-pipeline] [--main <main checkout>]
+    python3 tests/dryrun_board_trust.py [--since 2026-11-20] [--switch on] [--repo auto-pipeline] [--main <main checkout>]
                                         [--workspaces <folder of the task worktrees>] [--projects <glob>]
 
 What it does, and never more:
@@ -39,6 +39,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GUARD = os.path.join(ROOT, "bin", "agent-guard.sh")
 ORCA_RE = re.compile(r"orca\s+(terminal|worktree)")
 LIVE = os.getpid()
+SWITCH = ""  # --switch: board_guard for the replay (before a merge the main checkout has no board_guard line)
 
 
 def main_worktree(path):
@@ -118,6 +119,9 @@ def make_repo(base, repo, open_tasks, role, own, conf):
     git("init", "-q", "-b", "main", cwd=main)
     git("-c", "user.email=d@d", "-c", "user.name=d", "commit", "-q", "--allow-empty", "-m", "seed", cwd=main)
     shutil.copy(conf, os.path.join(main, "agent.conf"))
+    if SWITCH:
+        with open(os.path.join(main, "agent.conf"), "a") as fh:
+            fh.write("\nboard_guard=%s\n" % SWITCH)
     with open(os.path.join(main, "agent_todo.txt"), "w") as fh:
         fh.write("".join("%s | big | the %s task | est 60m | opened 2026-01-01 00:00 | by main\n" % (n, n)
                          for n in open_tasks))
@@ -249,7 +253,11 @@ def main():
     ap.add_argument("--workspaces", default=None)
     ap.add_argument("--projects", default=None)
     ap.add_argument("--since", default="0000-00-00")
+    ap.add_argument("--switch", choices=("on", "record", "off"), default="",
+                    help="board_guard for the replay; default: the repo's own agent.conf")
     args = ap.parse_args()
+    global SWITCH
+    SWITCH = args.switch
     args.main = os.path.realpath(args.main)
     # the repo's own switch (auto-pipeline: board_guard=on); the template (default record) when it has none
     args.conf = os.path.join(args.main, "agent.conf")
@@ -258,7 +266,7 @@ def main():
     args.workspaces = (args.workspaces or os.path.expanduser("~/orca/workspaces/%s" % args.repo)).rstrip("/") + "/"
     args.projects = args.projects or os.path.join(os.path.expanduser("~/.claude/projects"), "*%s*" % args.repo)
     n, blocks, loud, kept = run(args)
-    print("dry-run %s since %s, switch from %s:" % (args.repo, args.since, args.conf))
+    print("dry-run %s since %s, switch %s:" % (args.repo, args.since, args.switch or "from " + args.conf))
     for k, v in sorted(n.items(), key=lambda kv: (kv[0].startswith(" "), kv[0])):
         print("  %s %d" % (k, v))
     for b in blocks:
