@@ -1,4 +1,4 @@
-"""Failing tests for comment-shape: a comment-only change is a fifth L0 shape (R8).
+"""Failing tests for comment-shape: a comment-only change is a fifth A shape (R8).
 
 Written by the task manager before any code. The rules: requirements/comment-shape.md
 (owner rules yes 2026-11-24: all 6 families of table B, decisions D1-D7). "rN" in a test
@@ -41,7 +41,9 @@ import test_risk_levels as trl  # noqa: E402
 
 CO = "comment only"
 WS = "whitespace only"
-CODE = (2, "code change")
+CODE = ("C", "code change")
+COMPONENT = ("B", "component file")   # a UI component file is B at most, never C (R8)
+COMPONENT_EXT = (".html", ".htm", ".jsx", ".tsx", ".vue", ".svelte")
 
 
 class ShapeCase(trl.LevelCase):
@@ -69,7 +71,8 @@ class ShapeCase(trl.LevelCase):
             with self.subTest(path=path, before=before[:60], after=after[:60]):
                 if i:
                     self.fresh()
-                self.assertEqual(self.got(path, before, after), want)
+                exp = COMPONENT if want == CODE and path.endswith(COMPONENT_EXT) else want
+                self.assertEqual(self.got(path, before, after), exp)
 
     def swap(self, want, path, plain, directives, head="", tail=""):
         """Each directive in place of the plain comment: head + plain + tail -> head + d + tail."""
@@ -82,7 +85,7 @@ class ShapeCase(trl.LevelCase):
 class TestHashShape(ShapeCase):
 
     def test_r1_a_whole_line_comment_in_each_hash_family(self):
-        self.each((0, CO), [
+        self.each(("A", CO), [
             ("bin/run.sh", "#!/bin/bash\n# retry twice\nrun\n", "#!/bin/bash\n# retry three times\nrun\n"),
             ("bin/run.bash", "# retry twice\nrun\n", "# retry three times\nrun\n"),
             ("bin/run.zsh", "# retry twice\nrun\n", "# retry three times\nrun\n"),
@@ -93,7 +96,7 @@ class TestHashShape(ShapeCase):
         ])
 
     def test_r2_a_comment_line_added_or_a_block_removed(self):
-        self.each((0, CO), [
+        self.each(("A", CO), [
             ("app/run.py", "def f():\n    run()\n", "def f():\n    # keep the order: R5\n    run()\n"),
             ("app/run.py", "# one\n# two\n# three\nrun()\n", "run()\n"),
             ("bin/run.sh", "run\n", "run\n# done\n"),
@@ -101,7 +104,7 @@ class TestHashShape(ShapeCase):
         ])
 
     def test_r3_a_trailing_comment_with_the_same_code(self):
-        self.each((0, CO), [
+        self.each(("A", CO), [
             ("app/run.py", "n = 3  # tries\n", "n = 3  # max tries\n"),
             ("app/run.py", "n = 3  # tries\n", "n = 3 # max tries\n"),
             ("app/run.py", "n = 3  # don't\n", "n = 3  # do not\n"),
@@ -112,7 +115,7 @@ class TestHashShape(ShapeCase):
         ])
 
     def test_r4_blank_lines_only(self):
-        self.each((0, WS), [
+        self.each(("A", WS), [
             ("app/run.py", "def a():\n    pass\ndef b():\n    pass\n",
              "def a():\n    pass\n\n\ndef b():\n    pass\n"),
             ("bin/run.sh", "a\nb\n", "a\n\nb\n"),
@@ -120,7 +123,7 @@ class TestHashShape(ShapeCase):
         ])
 
     def test_a_comment_and_a_blank_line_say_comment_only(self):
-        self.each((0, CO), [("app/run.py", "# a\nrun()\n", "# b\n\nrun()\n")])
+        self.each(("A", CO), [("app/run.py", "# a\nrun()\n", "# b\n\nrun()\n")])
 
     def test_r9_comment_and_code_on_one_line(self):
         self.each(CODE, [
@@ -142,13 +145,13 @@ class TestHashShape(ShapeCase):
         self.each(CODE, [("app/run.py", "x=1  # a\n", "x = 1  # b\n")])
 
     def test_r26_trailing_white_space_only(self):
-        self.each((0, WS), [("app/run.py", "run()  \n", "run()\n")])
+        self.each(("A", WS), [("app/run.py", "run()  \n", "run()\n")])
 
     def test_conf_a_hash_after_code_is_code(self):
         self.each(CODE, [("etc/app.conf", "port=80 # http\n", "port=80 # https\n")])
 
     def test_conf_an_indented_comment_line(self):
-        self.each((0, CO), [("etc/app.conf", "[a]\n  # note\n  x=1\n", "[a]\n  # note 2\n  x=1\n")])
+        self.each(("A", CO), [("etc/app.conf", "[a]\n  # note\n  x=1\n", "[a]\n  # note 2\n  x=1\n")])
 
     def test_sh_a_hash_inside_a_word_is_code(self):
         self.each(CODE, [
@@ -173,7 +176,7 @@ class TestHashStrings(ShapeCase):
         self.each(CODE, [("app/help.py", 'X = """a\n\nb"""\n', 'X = """a\nb"""\n')])
 
     def test_r13_a_hash_inside_a_one_line_string(self):
-        self.each((0, "text change"), [
+        self.each(("A", "text change"), [
             ("app/a.py", 's = "# a"\n', 's = "# b"\n'),
             ("bin/a.sh", 'echo "# a"\n', 'echo "# b"\n'),
         ])
@@ -182,7 +185,7 @@ class TestHashStrings(ShapeCase):
         self.each(CODE, [("app/a.py", 't = f"{n} # a"\n', 't = f"{n} # b"\n')])
 
     def test_r14_docstrings_are_strings(self):
-        self.each((0, "text change"), [("app/a.py", 'def f():\n    """Old."""\n', 'def f():\n    """New."""\n')])
+        self.each(("A", "text change"), [("app/a.py", 'def f():\n    """Old."""\n', 'def f():\n    """New."""\n')])
         self.fresh()
         self.each(CODE, [("app/a.py", 'def f():\n    """Old.\n\n    More.\n    """\n',
                           'def f():\n    """Old.\n\n    Much more.\n    """\n')])
@@ -200,19 +203,19 @@ class TestHashStrings(ShapeCase):
         ])
 
     def test_sh_a_comment_after_the_heredoc_end(self):
-        self.each((0, CO), [
+        self.each(("A", CO), [
             ("bin/a.sh", "cat <<EOF\nhi\nEOF\n# after\n", "cat <<EOF\nhi\nEOF\n# later\n"),
             ("bin/a.sh", "cat <<-EOF\n\thi\n\tEOF\n# after\n", "cat <<-EOF\n\thi\n\tEOF\n# later\n"),
         ])
 
     def test_sh_a_here_string_is_no_heredoc(self):
-        self.each((0, CO), [("bin/a.sh", 'cat <<< "x"\n# note\n', 'cat <<< "x"\n# note 2\n')])
+        self.each(("A", CO), [("bin/a.sh", 'cat <<< "x"\n# note\n', 'cat <<< "x"\n# note 2\n')])
 
     def test_sh_quotes(self):
         # an escaped " inside "..." does not end it: the # is in the string (today: text change)
-        self.each((0, "text change"), [("bin/a.sh", 'echo "a \\" # b"\n', 'echo "a \\" # c"\n')])
+        self.each(("A", "text change"), [("bin/a.sh", 'echo "a \\" # b"\n', 'echo "a \\" # c"\n')])
         self.fresh()
-        self.each((0, CO), [
+        self.each(("A", CO), [
             # no escapes in '...': the string is a\ and the comment follows
             ("bin/a.sh", "echo 'a\\' # note\n", "echo 'a\\' # note 2\n"),
             # $'...' has escapes: the string is a'b
@@ -231,7 +234,7 @@ class TestHashStrings(ShapeCase):
         ])
 
     def test_yaml_after_the_block_a_comment_is_a_comment(self):
-        self.each((0, CO), [
+        self.each(("A", CO), [
             ("ci/a.yml", "run: |\n  echo hi\n# after\nname: x\n", "run: |\n  echo hi\n# later\nname: x\n"),
             ("ci/a.yml", "run: | # the script\n  echo a\n", "run: | # script\n  echo a\n"),
         ])
@@ -239,7 +242,7 @@ class TestHashStrings(ShapeCase):
     def test_yaml_quoted_values(self):
         self.each(CODE, [("ci/a.yml", 'msg: "a\n  # b\n  c"\n', 'msg: "a\n  # d\n  c"\n')])
         self.fresh()
-        self.each((0, "text change"), [
+        self.each(("A", "text change"), [
             ("ci/a.yml", 'a: ["x # y", 1]\n', 'a: ["x # z", 1]\n'),
             ("ci/a.yml", "b: 'x # y'\n", "b: 'x # z'\n"),
             # the apostrophe in a plain value opens no string, so the next quote still does
@@ -247,7 +250,7 @@ class TestHashStrings(ShapeCase):
         ])
 
     def test_yaml_an_apostrophe_inside_a_plain_value(self):
-        self.each((0, CO), [("ci/a.yml", "a: it's here\n# note\nb: 1\n", "a: it's here\n# note 2\nb: 1\n")])
+        self.each(("A", CO), [("ci/a.yml", "a: it's here\n# note\nb: 1\n", "a: it's here\n# note 2\nb: 1\n")])
 
 
 C2_WORDS = [
@@ -284,7 +287,7 @@ class TestHashDirectives(ShapeCase):
         ])
 
     def test_c1_not_tight_comments_are_plain(self):
-        self.each((0, CO), [
+        self.each(("A", CO), [
             ("app/a.py", "## Part 2\nrun()\n", "## Part 3\nrun()\n"),
             ("bin/a.sh", "#----\nrun\n", "#====\nrun\n"),
             ("bin/a.sh", "#~~~\nrun\n", "#~~~~~\nrun\n"),
@@ -304,7 +307,7 @@ class TestHashDirectives(ShapeCase):
     def test_c4_an_at_word(self):
         self.swap(CODE, "app/a.py", "# note", ["# see @alice", "# @package _global_"], tail="run()\n")
         self.fresh()
-        self.each((0, CO), [("app/a.py", "# mail a@b.io\nrun()\n", "# mail c@d.io\nrun()\n")])
+        self.each(("A", CO), [("app/a.py", "# mail a@b.io\nrun()\n", "# mail c@d.io\nrun()\n")])
 
     def test_r16_c5_license(self):
         self.each(CODE, [
@@ -347,42 +350,42 @@ class TestScope(ShapeCase):
         self.base({"app/run.py": "# a\nrun()\n"})
         self.put({"app/run.py": "# b\nrun()\n"})
         r = self.ok("--declared", "0")
-        self.assertEqual(r.stdout.splitlines(), ["REQUIRED LEVEL 0", "app/run.py: L0 comment only"])
+        self.assertEqual(r.stdout.splitlines(), ["REQUIRED TYPE A", "app/run.py: A comment only", "PART A: app/run.py"])
 
     def test_a_comment_only_file_next_to_a_style_file(self):
         self.base({"app/run.py": "# a\nrun()\n", "web/a.css": "a{}\n"})
         self.put({"app/run.py": "# b\nrun()\n", "web/a.css": "b{}\n"})
         r = self.ok()
-        self.assertEqual(self.required(r), 1)
-        self.assertEqual(self.files(r), {"app/run.py": (0, CO), "web/a.css": (1, "style file")})
+        self.assertEqual(self.required(r), "A+B")
+        self.assertEqual(self.files(r), {"app/run.py": ("A", CO), "web/a.css": ("B", "style file")})
 
     def test_r21_path_levels_stay(self):
         self.assertEqual(self.got("requirements.txt", "# pinned\nflask==2.0\n", "# pinned for py3.9\nflask==2.0\n"),
-                         (4, "built-in L4: dependency list"))
+                         ("D", "built-in D: dependency list"))
         self.fresh()
-        self.assertEqual(self.got("db/seed.sql", "-- a\nselect 1;\n", "-- b\nselect 1;\n"), (4, "built-in L4: schema"))
+        self.assertEqual(self.got("db/seed.sql", "-- a\nselect 1;\n", "-- b\nselect 1;\n"), ("D", "built-in D: schema"))
         self.fresh()
         self.assertEqual(self.got("src/money/calc.py", "# a\nrun()\n", "# b\nrun()\n",
-                                  conf={"level3_paths": "src/money/"}), (3, "level3_paths src/money/"))
+                                  conf={"level3_paths": "src/money/"}), ("C", "level3_paths src/money/"))
         self.fresh()
         self.assertEqual(self.got("db/load.py", "# a\nrun()\n", "# b\nrun()\n", conf={"level4_paths": "db/"}),
-                         (4, "level4_paths db/"))
+                         ("D", "level4_paths db/"))
 
     def test_r22_new_deleted_and_binary_files(self):
         self.base({"app/a.py": "x\n"})
         self.put({"bin/new.sh": "# only a comment\n"})
-        self.assertEqual(self.files(self.ok())["bin/new.sh"], (2, "new file"))
+        self.assertEqual(self.files(self.ok())["bin/new.sh"], ("C", "new file"))
         self.fresh()
         self.base({"app/a.py": "x\n", "bin/old.sh": "# only a comment\n"})
         self.put({"bin/old.sh": None})
-        self.assertEqual(self.files(self.ok())["bin/old.sh"], (2, "deleted file"))
+        self.assertEqual(self.files(self.ok())["bin/old.sh"], ("C", "deleted file"))
         self.fresh()
-        self.assertEqual(self.got("app/b.py", b"\x00# a\n", b"\x00# b\n"), (2, "binary file"))
+        self.assertEqual(self.got("app/b.py", b"\x00# a\n", b"\x00# b\n"), ("C", "binary file"))
 
     def test_r23_style_and_text_files_as_now(self):
-        self.assertEqual(self.got("web/a.css", "/* a */\n.a{}\n", "/* b */\n.a{}\n"), (1, "style file"))
+        self.assertEqual(self.got("web/a.css", "/* a */\n.a{}\n", "/* b */\n.a{}\n"), ("B", "style file"))
         self.fresh()
-        self.assertEqual(self.got("docs/a.md", "<!-- a -->\nHi\n", "<!-- b -->\nHi\n"), (0, "text file"))
+        self.assertEqual(self.got("docs/a.md", "<!-- a -->\nHi\n", "<!-- b -->\nHi\n"), ("A", "text file"))
 
     def test_r24_extensions_not_in_v1(self):
         paths = ["lib/a.rb", "web/a.php", "conf/a.toml", "conf/a.ini", "conf/a.cfg", "app/a.pyi",
@@ -415,14 +418,14 @@ class TestScope(ShapeCase):
 
 class TestTheRuleLine(unittest.TestCase):
 
-    def test_the_level_0_line_names_it(self):
-        rule = trl.section(trl.read("PRINCIPLES.md"), "R8. Risk levels", "## B. Work")
-        line = [l for l in rule.splitlines() if l.startswith("- 0 wording:")]
+    def test_the_type_a_line_names_it(self):
+        rule = trl.section(trl.read("PRINCIPLES.md"), "R8. Risk types", "## B. Work")
+        line = [l for l in rule.splitlines() if l.startswith("- A = text, style, simple move:")]
         self.assertEqual(len(line), 1, rule)
         line = line[0]
-        self.assertIn("comment-only change", line)
+        self.assertIn("comments", line)
         self.assertLessEqual(len(line), 200)
-        for phrase in ("text values", "one colour value", "existing style or variant", "same container"):
+        for phrase in ("text values", "colours", "simple UI move"):
             self.assertIn(phrase, line)
 
 
@@ -436,11 +439,11 @@ SLASH_EXT = [".js", ".mjs", ".cjs", ".jsx", ".ts", ".mts", ".cts", ".tsx", ".dar
 class TestSlashShape(ShapeCase):
 
     def test_r1_a_whole_line_comment_in_each_extension(self):
-        self.each((0, CO), [("src/a" + e, "// retry twice\nrun();\n", "// retry three times\nrun();\n")
+        self.each(("A", CO), [("src/a" + e, "// retry twice\nrun();\n", "// retry three times\nrun();\n")
                             for e in SLASH_EXT])
 
     def test_r3_a_trailing_comment(self):
-        self.each((0, CO), [
+        self.each(("A", CO), [
             ("src/a.js", "run(); // fast\n", "run(); // faster\n"),
             ("src/a.js", "run();\t// fast\n", "run();\t// faster\n"),
         ])
@@ -449,27 +452,27 @@ class TestSlashShape(ShapeCase):
         self.each(CODE, [("src/a.js", "run();// fast\n", "run();// faster\n")])
 
     def test_r5_a_block_comment_over_lines(self):
-        self.each((0, CO), [
+        self.each(("A", CO), [
             ("src/a.js", "/* a\n * b\n */\nrun();\n", "/* a\n * c\n */\nrun();\n"),
             ("src/a.c", "int a; /* a\n b */\n", "int a; /* a\n c */\n"),
         ])
 
     def test_an_inline_block_comment(self):
-        self.each((0, CO), [("src/a.js", "f(1/* a */);\n", "f(1/* bb */);\n")])
+        self.each(("A", CO), [("src/a.js", "f(1/* a */);\n", "f(1/* bb */);\n")])
 
     def test_an_inline_block_comment_counts_as_one_space(self):
         self.each(CODE, [("src/a.js", "x = a/**/b;\n", "x = ab;\n")])
 
     def test_r6_a_jsx_comment(self):
         before = "export const A = () => (\n  <div>\n    {/* old */}\n    <p>Hi</p>\n  </div>\n);\n"
-        self.each((0, CO), [("src/A.tsx", before, before.replace("old", "new")),
+        self.each(("A", CO), [("src/A.tsx", before, before.replace("old", "new")),
                             ("src/A.jsx", before, before.replace("old", "new"))])
 
     def test_r4_blank_lines_only(self):
-        self.each((0, WS), [("src/a.js", "a();\nb();\n", "a();\n\nb();\n")])
+        self.each(("A", WS), [("src/a.js", "a();\nb();\n", "a();\n\nb();\n")])
 
     def test_moved_comment_lines_are_comment_only_not_a_line_move(self):
-        self.each((0, CO), [("lib/a.dart", "// a\n// b\nrun();\n", "// b\n// a\nrun();\n")])
+        self.each(("A", CO), [("lib/a.dart", "// a\n// b\nrun();\n", "// b\n// a\nrun();\n")])
 
     def test_r9_r10_code(self):
         self.each(CODE, [
@@ -479,7 +482,7 @@ class TestSlashShape(ShapeCase):
         ])
 
     def test_a_hash_line_is_code_in_slash_files(self):
-        self.each((0, CO), [
+        self.each(("A", CO), [
             ("src/a.c", "#define N 1 // n\n", "#define N 1 // count\n"),
             ("src/a.js", "#!/usr/bin/env node\n// a\nrun();\n", "#!/usr/bin/env node\n// b\nrun();\n"),
         ])
@@ -499,7 +502,7 @@ class TestSlashStrings(ShapeCase):
         ])
 
     def test_after_a_template_a_comment_is_a_comment(self):
-        self.each((0, CO), [
+        self.each(("A", CO), [
             ("src/a.js", "const t = `a ${b} c`; // note\n", "const t = `a ${b} c`; // note 2\n"),
             ("src/a.js", 'const t = `a ${"`"} b`; // note\n', 'const t = `a ${"`"} b`; // note 2\n'),
         ])
@@ -507,7 +510,7 @@ class TestSlashStrings(ShapeCase):
     def test_go_raw_strings(self):
         self.each(CODE, [("src/a.go", "var s = `\n// x\n`\n", "var s = `\n// y\n`\n")])
         self.fresh()
-        self.each((0, CO), [("src/a.go", "var s = `a\\` // note\n", "var s = `a\\` // note 2\n")])
+        self.each(("A", CO), [("src/a.go", "var s = `a\\` // note\n", "var s = `a\\` // note 2\n")])
 
     def test_triple_quoted_strings(self):
         self.each(CODE, [
@@ -520,10 +523,10 @@ class TestSlashStrings(ShapeCase):
         ])
 
     def test_kotlin_triple_quotes_have_no_escapes(self):
-        self.each((0, CO), [("src/a.kt", 'val s = """a\\""" // note\n', 'val s = """a\\""" // note 2\n')])
+        self.each(("A", CO), [("src/a.kt", 'val s = """a\\""" // note\n', 'val s = """a\\""" // note 2\n')])
 
     def test_one_line_strings_hide_comment_markers(self):
-        self.each((0, "text change"), [("src/a.js", 'const u = "a // b";\n', 'const u = "a // c";\n')])
+        self.each(("A", "text change"), [("src/a.js", 'const u = "a // b";\n', 'const u = "a // c";\n')])
         self.fresh()
         self.each(CODE, [
             ("src/a.js", "const u = 'a /* b';\nrun(1);\nconst v = '*/';\n",
@@ -532,7 +535,7 @@ class TestSlashStrings(ShapeCase):
         ])
 
     def test_a_char_literal(self):
-        self.each((0, CO), [("src/a.c", "char q = '\"'; // note\n", "char q = '\"'; // note 2\n")])
+        self.each(("A", CO), [("src/a.c", "char q = '\"'; // note\n", "char q = '\"'; // note 2\n")])
 
     def test_slash_slash_after_a_colon_is_code(self):
         self.each(CODE, [("src/A.jsx", "<p>See https://a.io/{p}</p>\n", "<p>See https://a.io/{q}</p>\n")])
@@ -558,7 +561,7 @@ class TestSlashStrings(ShapeCase):
         self.each(CODE, [("src/a.go", 'package main\n\n// #include <stdio.h>\nimport "C"\n',
                           'package main\n\n// #include <stdlib.h>\nimport "C"\n')])
         self.fresh()
-        self.each((0, CO), [("src/a.go", 'package main\n\n// a note\nimport "fmt"\n',
+        self.each(("A", CO), [("src/a.go", 'package main\n\n// a note\nimport "fmt"\n',
                              'package main\n\n// a longer note\nimport "fmt"\n')])
 
 
@@ -590,7 +593,7 @@ class TestSlashDirectives(ShapeCase):
                           "// eslint-disable-next-line b\nrun();\n")])
 
     def test_plain_slash_comments(self):
-        self.each((0, CO), [
+        self.each(("A", CO), [
             ("lib/a.dart", "/// doc\nrun();\n", "/// docs\nrun();\n"),
             ("src/a.js", "/** doc */\nrun();\n", "/** docs */\nrun();\n"),
             ("src/a.js", "//----\nrun();\n", "//====\nrun();\n"),
@@ -610,7 +613,7 @@ MARKUP_DIRECTIVES = [
 class TestMarkup(ShapeCase):
 
     def test_r7_html_and_xml_comments(self):
-        self.each((0, CO), [
+        self.each(("A", CO), [
             ("web/a.html", "<!-- old -->\n<p>Hi</p>\n", "<!-- new -->\n<p>Hi</p>\n"),
             ("web/a.htm", "<!-- old -->\n<p>Hi</p>\n", "<!-- new -->\n<p>Hi</p>\n"),
             ("res/a.xml", "<a>\n  <!-- x -->\n  <b/>\n</a>\n", "<a>\n  <!-- y -->\n  <b/>\n</a>\n"),
@@ -622,11 +625,11 @@ class TestMarkup(ShapeCase):
         ])
 
     def test_r4_blank_lines_only(self):
-        self.each((0, WS), [("web/a.html", "<p>a</p>\n<p>b</p>\n", "<p>a</p>\n\n<p>b</p>\n")])
+        self.each(("A", WS), [("web/a.html", "<p>a</p>\n<p>b</p>\n", "<p>a</p>\n\n<p>b</p>\n")])
 
     def test_an_attribute_value_is_no_comment(self):
         # a text attribute: today's level is a text change, never "comment only"
-        self.each((0, "text change"), [("web/a.html", '<a title="<!-- x -->">t</a>\n', '<a title="<!-- y -->">t</a>\n')])
+        self.each(("A", "text change"), [("web/a.html", '<a title="<!-- x -->">t</a>\n', '<a title="<!-- y -->">t</a>\n')])
 
     def test_script_style_and_cdata_bodies_are_code(self):
         self.each(CODE, [
@@ -666,13 +669,13 @@ class TestReviewCore(ShapeCase):
         ])
         self.fresh()
         # the hidden part is string text: today's level is a text change, never "comment only"
-        self.each((0, "text change"), [
+        self.each(("A", "text change"), [
             ("bin/a.sh", "x=1;# don't\necho 'a' # c\necho \"it's # here\"\n",
              "x=1;# don't\necho 'a' # c\necho \"it's # there\"\n"),
         ])
 
     def test_f1_sh_a_hash_after_an_operator_is_a_comment(self):
-        self.each((0, CO), [("bin/a.sh", "x=1;# don't\nrun\n", "x=1;# do not\nrun\n")])
+        self.each(("A", CO), [("bin/a.sh", "x=1;# don't\nrun\n", "x=1;# do not\nrun\n")])
 
     def test_f2_the_first_lines_keep_their_place(self):
         self.each(CODE, [
@@ -686,7 +689,7 @@ class TestReviewCore(ShapeCase):
         ])
 
     def test_f2_a_comment_after_the_shebang_is_fine(self):
-        self.each((0, CO), [
+        self.each(("A", CO), [
             ("bin/a.sh", "#!/bin/bash\necho hi\n", "#!/bin/bash\n# say hi\necho hi\n"),
             ("bin/a.sh", "# tool a\nrun\n", "# tool b\nrun\n"),
         ])
@@ -700,7 +703,7 @@ class TestReviewCore(ShapeCase):
         ])
 
     def test_f3_yaml_tags_and_anchors_before_a_quote(self):
-        self.each((0, "text change"), [
+        self.each(("A", "text change"), [
             ("ci/a.yml", 'msg: !!str "a # b"\n', 'msg: !!str "a # c"\n'),
             ("ci/a.yml", 'msg: &m "a # b"\n', 'msg: &m "a # c"\n'),
         ])
@@ -721,7 +724,7 @@ class TestReviewCore(ShapeCase):
     def test_f5_pep723_inline_dependencies(self):
         before = '# /// script\n# dependencies = [\n#   "requests<3",\n# ]\n# ///\nimport requests\n'
         # today's level: the old pair rule sees a quoted string change (L0 text change), never "comment only"
-        self.each((0, "text change"), [("app/a.py", before, before.replace("requests<3", "requests-evil"))])
+        self.each(("A", "text change"), [("app/a.py", before, before.replace("requests<3", "requests-evil"))])
 
     def test_f6_a_line_break_inside_a_comment(self):
         self.each(CODE, [
@@ -744,7 +747,7 @@ class TestReviewCore(ShapeCase):
         ])
 
     def test_f11_yaml_comment_lines_still_go(self):
-        self.each((0, CO), [("ci/a.yml", "a: 1\n# x\nb: 2\n", "a: 1\nb: 2\n")])
+        self.each(("A", CO), [("ci/a.yml", "a: 1\n# x\nb: 2\n", "a: 1\nb: 2\n")])
 
     def test_f12_the_line_after_a_whole_line_directive(self):
         self.each(CODE, [
@@ -757,7 +760,7 @@ class TestReviewCore(ShapeCase):
         ])
 
     def test_f12_other_comments_near_a_directive_are_fine(self):
-        self.each((0, CO), [
+        self.each(("A", CO), [
             ("src/a.js", '// @flow\n\nimport x from "y";\n// a\n', '// @flow\n\nimport x from "y";\n// b\n'),
             ("bin/a.sh", "# Copyright 2026 Acme\n# plain note\nrun\n", "# Copyright 2026 Acme\n# plain note 2\nrun\n"),
             ("src/a.go", "//go:build linux\n\npackage x\n// a\n", "//go:build linux\n\npackage x\n// b\n"),
@@ -779,7 +782,7 @@ class TestReviewCore(ShapeCase):
                          ("app/a.py", b"# a\ns = 'caf\xe9'\n", b"# b\ns = 'caf\xe8'\n")])
 
     def test_f15_a_moved_comment_is_comment_only(self):
-        self.each((0, CO), [("app/a.py", "x = 1\n# keep sorted\ny = 2\nz = 3\n", "x = 1\ny = 2\n# keep sorted\nz = 3\n")])
+        self.each(("A", CO), [("app/a.py", "x = 1\n# keep sorted\ny = 2\nz = 3\n", "x = 1\ny = 2\n# keep sorted\nz = 3\n")])
 
 
 class TestReviewSlash(ShapeCase):
@@ -804,7 +807,7 @@ class TestReviewSlash(ShapeCase):
             ("lib/a.dart", 'var s = r"""\n// x\n""";\n', 'var s = r"""\n// y\n""";\n'),
         ])
         self.fresh()
-        self.each((0, CO), [("lib/a.dart", "f(r'C:\\'); // a\n", "f(r'C:\\'); // b\n")])
+        self.each(("A", CO), [("lib/a.dart", "f(r'C:\\'); // a\n", "f(r'C:\\'); // b\n")])
 
     def test_f10_jsx_text_with_comment_markers(self):
         before = ("export const Help = () => (\n  <div>\n    <p>Block comments start with /* and</p>\n"
@@ -812,7 +815,7 @@ class TestReviewSlash(ShapeCase):
         self.each(CODE, [("src/Help.js", before, before.replace("save", "wipeAll"))])
         self.fresh()
         # .jsx/.tsx are markup files: today's level for a changed {handler} is the old prop rule (L1)
-        self.each((1, "new prop value"), [
+        self.each(("B", "new prop value"), [
             ("src/Help.jsx", before, before.replace("save", "wipeAll")),
             ("src/Help.tsx", "const A = () => <p>a // b</p>;<Btn onClick={save} />\n",
              "const A = () => <p>a // b</p>;<Btn onClick={wipeAll} />\n"),
@@ -850,7 +853,7 @@ class TestReviewMarkup(ShapeCase):
         self.each(CODE, cases)
 
     def test_f9_after_a_raw_text_element(self):
-        self.each((0, CO), [("web/a.html", "<textarea>x</textarea>\n<!-- a -->\n", "<textarea>x</textarea>\n<!-- b -->\n")])
+        self.each(("A", CO), [("web/a.html", "<textarea>x</textarea>\n<!-- a -->\n", "<textarea>x</textarea>\n<!-- b -->\n")])
 
 
 # ================================================================ after re-review (bounce 2)
@@ -893,7 +896,7 @@ class TestReview2Slash(ShapeCase):
         ])
 
     def test_g3_other_slash_files_keep_a_comment_after_a_division(self):
-        self.each((0, CO), [("src/a.go", "a := b / c // note\n", "a := b / c // note 2\n"),
+        self.each(("A", CO), [("src/a.go", "a := b / c // note\n", "a := b / c // note 2\n"),
                             ("src/a.js", "// a / b\nrun();\n", "// a / c\nrun();\n")])
 
 
@@ -910,7 +913,7 @@ class TestReview3(ShapeCase):
         ])
 
     def test_h1_a_closed_flow_quote_still_works(self):
-        self.each((0, CO), [("ci/a.yml", 'k: ["b # c", 1] # x\n', 'k: ["b # c", 1] # y\n')])
+        self.each(("A", CO), [("ci/a.yml", 'k: ["b # c", 1] # x\n', 'k: ["b # c", 1] # y\n')])
 
     def test_h2_a_lone_slash_then_a_string_that_runs_past_the_line(self):
         self.each(CODE, [
@@ -921,7 +924,7 @@ class TestReview3(ShapeCase):
         ])
 
     def test_h2_a_template_after_a_division_on_another_line_is_fine(self):
-        self.each((0, CO), [("src/a.js", "const h = w / 2;\nconst t = `a\nb`; // x\n", "const h = w / 2;\nconst t = `a\nb`; // y\n")])
+        self.each(("A", CO), [("src/a.js", "const h = w / 2;\nconst t = `a\nb`; // x\n", "const h = w / 2;\nconst t = `a\nb`; // y\n")])
 
 
 if __name__ == "__main__":

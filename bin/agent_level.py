@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""agent_level.py - the risk level a diff needs (R8). Python 3.9, stdlib only.
+"""agent_level.py - the risk type of each file and task part of a diff (R8). Python 3.9, stdlib only.
 
-Started by agent-level.sh:  agent_level.py <agent.conf path> <cwd> check --base <ref> [--declared <n>]
+Started by agent-level.sh:  agent_level.py <agent.conf path> <cwd> check --base <ref> [--declared <A-D>]
 """
 
 import fnmatch
@@ -59,7 +59,7 @@ def ext_of(path):
 
 
 def builtin_l4(path):
-    """The kind of the built-in L4 path, or None (package.json is judged apart)."""
+    """The kind of the built-in D path, or None (package.json is judged apart)."""
     name = os.path.basename(path)
     if name in LOCK_NAMES or name.endswith(".lock"):
         return "lockfile"
@@ -1102,15 +1102,38 @@ def code_view(segments, own, keep_blank=False, edge=None):
     return lines, [(before[min(ln, len(before) - 1)], t) for ln, t in plain]
 
 
+def component_level(path, status, chk):
+    if status == "A":
+        return 1, "new component file"
+    if status == "D":
+        return 1, "deleted component file"
+    hunks, binary = chk.hunks(path)
+    if not binary:
+        shape = chk.comment_shape(path)
+        if shape:
+            return 0, shape
+        lvl, why = chk.code(path, hunks)
+        if lvl < 2:
+            return lvl, why
+    return 1, "component file"
+
+
+TYPES = "ABCCD"   # old level 0 1 2 3 4 -> type; level 3 (level3_paths) is C too
+
+
+def type_of(level):
+    return TYPES[level]
+
+
 def level_of(path, status, chk, l3, l4):
     name = os.path.basename(path)
     if name == "package.json":
         if package_deps_changed(chk.top, chk.mb, path, status):
-            return 4, "built-in L4: package.json deps"
+            return 4, "built-in D: package.json deps"
     else:
         kind = builtin_l4(path)
         if kind:
-            return 4, "built-in L4: %s" % kind
+            return 4, "built-in D: %s" % kind
     glob = first_glob(l4, path)
     if glob is not None:
         return 4, "level4_paths %s" % glob
@@ -1124,6 +1147,9 @@ def level_of(path, status, chk, l3, l4):
         return 1, "asset file"
     if ext in TEXT_EXT:
         return 0, "text file"
+    if ext in MARKUP_EXT:
+        # a UI component file never raises by itself: B at most (R8); only a path rule above makes it C or D
+        return component_level(path, status, chk)
     if status == "A":
         return 2, "new file"
     if status == "D":
@@ -1139,9 +1165,13 @@ def level_of(path, status, chk, l3, l4):
 
 # ------------------------------------------------------------------ main
 
+DECLARED = {"A": 0, "B": 1, "C": 2, "D": 4, "0": 0, "1": 1, "2": 2, "3": 2, "4": 4}   # old 0-4 read as types
+RANK = {"A": 0, "B": 1, "C": 2, "D": 3}
+
+
 def parse(argv):
     if not argv or argv[0] != "check":
-        raise Stop("usage: agent-level.sh check --base <ref> [--declared <0-4>]")
+        raise Stop("usage: agent-level.sh check --base <ref> [--declared <A-D>]")
     base, declared, i = None, None, 1
     while i < len(argv):
         opt = argv[i]
@@ -1155,9 +1185,9 @@ def parse(argv):
                 raise Stop("--base needs a ref")
             base = value
         else:
-            if value not in ("0", "1", "2", "3", "4"):
-                raise Stop("--declared must be one of 0 1 2 3 4, got: %s" % value)
-            declared = int(value)
+            if value not in DECLARED:
+                raise Stop("--declared must be one of A B C D (old 0-4 still read), got: %s" % value)
+            declared = type_of(DECLARED[value])
         i += 2
     if base is None:
         raise Stop("--base <ref> is required")
@@ -1166,7 +1196,7 @@ def parse(argv):
 
 def run(argv):
     if len(argv) < 2:
-        raise Stop("usage: agent_level.py <agent.conf> <cwd> check --base <ref> [--declared <n>]")
+        raise Stop("usage: agent_level.py <agent.conf> <cwd> check --base <ref> [--declared <A-D>]")
     conf_path, cwd = argv[0], argv[1]
     base, declared = parse(argv[2:])
 
@@ -1180,7 +1210,7 @@ def run(argv):
         l3 = split_globs(conf.get("level3_paths", ""))
         l4 = split_globs(conf.get("level4_paths", ""))
     else:
-        notes.append("no agent.conf: built-in L4 paths only")
+        notes.append("no agent.conf: built-in D paths only")
 
     proc = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"],
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -1205,21 +1235,27 @@ def run(argv):
             changed[path] = "A"
 
     chk = Checker(top, mb)
-    lines, need = [], 0
+    lines, parts = [], {}
     for path in sorted(changed):
         lvl, why = level_of(path, changed[path], chk, l3, l4)
-        need = max(need, lvl)
-        lines.append("%s: L%d %s" % (path, lvl, why))
+        typ = type_of(lvl)
+        parts.setdefault(typ, []).append(path)
+        lines.append("%s: %s %s" % (path, typ, why))
     if not changed:
         notes.insert(0, "no changes")
-    if declared is not None:
-        need = max(need, declared)
 
-    out = ["REQUIRED LEVEL %d" % need] + lines + notes
+    out = ["REQUIRED TYPE %s" % "+".join(sorted(parts) or ["A"])] + lines
+    for typ in sorted(parts):
+        out.append("PART %s: %s" % (typ, ", ".join(parts[typ])))
+    out += notes
     code = 0
-    if declared is not None and declared < need:
-        out.append("RAISE: declared %d, needs %d" % (declared, need))
-        code = 1
+    if declared is not None:
+        # RAISE only for a C or D file above the declared type; A and B files never raise (R8)
+        high = [t for t in ("C", "D") if RANK[t] > RANK[declared] and t in parts]
+        if high:
+            files = [p for t in high for p in parts[t]]
+            out.append("RAISE: declared %s, needs %s (%s)" % (declared, high[-1], ", ".join(files)))
+            code = 1
     sys.stdout.write("\n".join(out) + "\n")
     return code
 
