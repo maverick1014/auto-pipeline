@@ -396,4 +396,4 @@ echo "npx playwright install --with-deps chromium || true"
 echo "Skip this if you never run this repo in a cloud session."
 
 echo "Setup done. To change a setting later: /auto-pipeline:settings, for example /auto-pipeline:settings language en"
-echo "Main commands: /auto-pipeline:todo (add a task), /auto-pipeline:question (ask the agents or answer their questions)."
+echo "Main commands: /auto-pipeline:todo (see all open tasks), /auto-pipeline:question (answer the agents' questions)."
