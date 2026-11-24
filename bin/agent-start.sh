@@ -1045,6 +1045,27 @@ if [ -n "$MON_TEXT" ] && [ $(( fixed + 70 )) -gt "$CAP" ]; then
   done
 fi
 
+# 2b. WATCH line: short forms, the command part is never cut: first without the "(<names>)" list.
+if [ -n "$WATCH_TEXT" ] && [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
+  WATCH_TEXT=$(printf '%s' "$WATCH_TEXT" | sed 's/ tasks to watch ([^)]*)\./ tasks to watch./'; printf 'X'); WATCH_TEXT=${WATCH_TEXT%X}
+  calc_fixed
+fi
+# still over: PLUGIN/bin/... for the plugin path (the PLUGIN: field of the PROJECT line names it), as the AUTO UPDATE line
+# does: first in the CLEANUP table pointer, then, last, in the WATCH command
+if [ -n "$CLEAN_TEXT" ] && [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
+  w_head=${CLEAN_TEXT%%"$PLUGIN_ROOT/bin/"*}
+  if [ "$w_head" != "$CLEAN_TEXT" ]; then
+    w_tail=${CLEAN_TEXT#*"$PLUGIN_ROOT/bin/"}
+    CLEAN_TEXT="${w_head}PLUGIN/bin/${w_tail}"
+    calc_fixed
+  fi
+fi
+if [ -n "$WATCH_TEXT" ] && [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
+  w_head=${WATCH_TEXT%%"$PLUGIN_ROOT/bin/"*}; w_tail=${WATCH_TEXT#*"$PLUGIN_ROOT/bin/"}
+  WATCH_TEXT="${w_head}PLUGIN/bin/${w_tail}"
+  calc_fixed
+fi
+
 # 3. AUTO UPDATE: short form without the plugin path.
 if [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
   export AU_SHORT="AUTO UPDATE: not set. Ask once: on (recommended) or off, then PLUGIN/bin/agent-settings.sh --user auto_update on|off"
