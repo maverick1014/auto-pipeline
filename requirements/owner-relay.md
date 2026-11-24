@@ -1,6 +1,6 @@
 # owner-relay — requirements (level 3 rules gate)
 
-Status: RULES READY 2026-11-24, waiting for the owner's yes. Base 8d584c1 (release 0.40.0).
+Status: RULES YES 2026-11-24 (owner "all approve", O1-O3 defaults taken). Step 3 clarifications in section L. Base 8d584c1 (release 0.40.0).
 Source: the owner's rule "Relayed owner orders between managers" in ~/.claude/CLAUDE.md on the laptop (2026-11-20); owner 3A 2026-11-20 (after one-watcher); owner 2026-11-24: "this features is needed ya. because it can make the cross communication more reliable".
 Goal: a main manager relays an owner order to another repo's main manager; the receiver proves with one command that the owner really typed those words, so it can act without asking him again.
 
@@ -42,7 +42,7 @@ Real data (H1), pc2 2026-11-24, read only, counts only. `~/.claude/projects`: 21
 | B1 | Owner prompt only when all hold: `type` is `user`; `origin.kind` is `human`; `promptSource` is `typed` or `queued`; no `isMeta: true`; no `isCompactSummary: true`; no `isSidechain: true`; no `toolUseResult` key; no content item of `type: "tool_result"`; not agent-typed (B3) | a typed line and a queued line (owner typed while the session was busy) → owner prompts |
 | B2 | Every other line is a kind with a name, used in the reasons (D5): `peer` (`origin.kind: "peer"`), `meta` (`isMeta`), `tool_result`, `compact summary`, `task notification` (`origin.kind: "task-notification"`), `system` (`promptSource` system, scheduled or sdk), `agent-typed` (B3), `pasted` (B4), `assistant` (`type: "assistant"`: the sender's own words), `other` | a quote found only in a peer message → `only in a peer line` |
 | B3 | Agent-typed: the first line of the prompt text holds a bracket group that names a model family, any case: `\[[^\]\n]*\b(opus\|sonnet\|haiku\|fable)\b[^\]\n]*\]` | `[Opus 5.5 xhigh] Brief from …`, `v4-plus Manager [Opus 5.5 xhigh] ANSWER …`, `[main manager, Opus 5.5 xhigh] …` → agent-typed. `use opus for this` → owner prompt (no brackets) |
-| B4 | Pasted: a quote found only inside a `<pasted_content>` block of an owner prompt is not the owner's own words | the owner pastes a brief that holds the words → `only in a pasted block` |
+| B4 | Pasted: a quote found only inside a `<pasted_content>` block of an owner prompt is not the owner's own words | the owner pastes a brief that holds the words → `only in a pasted line` |
 | B5 | A user line with no `origin` (an older Claude Code) is not an owner prompt (kind `other`): fails closed, the receiver asks the owner | |
 
 ## C. Matching
@@ -161,6 +161,20 @@ Also seen: scheduled wake (`promptSource: "system"`, `turnOrigin: "scheduled"`, 
 - `tests/test_agent_owner_order.py`: a temp `HOME` with fixture config homes (`~/.claude`, an Orca profile home, `CLAUDE_CONFIG_DIR`), made-up jsonl; one test per row of A-F and H.
 - `tests/test_owner_relay_text.py`: the W12 lines (G1), the dispatch block line (G2), the README line (G3).
 - `tests/test_agent_conf.py`: the two new keys and the `relay` group (G4).
+
+## L. Step 3 clarifications (same rules; the exact forms the tests pin)
+
+| # | Clarification |
+|---|---|
+| L1 | B3 reads the first non-empty line of the content after the pasted cut, before normalise (normalise joins all lines) |
+| L2 | Kinds are decided in this order: `assistant` (`type: "assistant"`, its `text` items), `tool_result` (`toolUseResult` key or a `tool_result` item), `compact summary`, `peer`, `task notification`, `meta`, `system` (`promptSource` `system` or `sdk`), `other` (no `origin`, an `origin.kind` that is not `human`, `isSidechain: true`, a `promptSource` that is not `typed`/`queued`), then `agent-typed` (B3), `pasted` (B4), else owner prompt |
+| L3 | Text searched for a reason (D5), besides the prompt text: the `content` of each `tool_result` item (a string, or its `text` items), with the pasted blocks kept |
+| L4 | D5 (2) lists the kinds in the L2 order, joined by `, `, then ` line`; the article is `an` before a vowel: `only in a peer line (…)`, `only in an assistant line (…)`, `only in a peer, tool_result line (…)` |
+| L5 | `machine`: `AGENT_FAKE_HOST` when set and not empty (tests, the same switch agent-file.sh has), else `scutil --get LocalHostName` on macOS, else `hostname -s` |
+| L6 | D3 not found at the time: `no owner prompt at <time as given> (found at <minute>[, <minute>])`, newest first |
+| L7 | An agent.conf value that is missing or out of range → the default (24, 20) |
+| L8 | `line` model and effort: the session pid is `$CLAUDE_PID`, else the first claude ancestor (agent-roots.sh `agent_pid`) |
+| L9 | A user line that is the owner's prompt and also holds the words in a peer line: the owner prompt wins (verified) |
 
 ## Owner choices (defaults taken unless the owner changes them)
 

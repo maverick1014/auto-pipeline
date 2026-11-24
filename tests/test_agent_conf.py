@@ -87,6 +87,9 @@ REAL_KEYS = [
     "board_guard",
     # one-watcher (owner 2026-11-24): the board's quiet limit, tests/test_watch_board.py
     "watch_quiet_min",
+    # owner-relay (owner 2026-11-24): the relayed owner order check, tests/test_agent_owner_order.py
+    "owner_order_hours",
+    "owner_order_min_chars",
 ]
 # the keys this repo's own agent.conf had before progress-bar
 OLD_KEYS = REAL_KEYS[:REAL_KEYS.index("cloud_permission_mode") + 1]
@@ -142,6 +145,9 @@ GOOD_CONF_TEXT = (
     "board_guard=on\n"
     # one-watcher (owner 2026-11-24): appended last, like the template
     "watch_quiet_min=15\n"
+    # owner-relay (owner 2026-11-24): appended last, like the template
+    "owner_order_hours=24\n"
+    "owner_order_min_chars=20\n"
 )
 
 
@@ -482,6 +488,8 @@ class TestGroups(unittest.TestCase):
                            "compact_clear_at", "compact_clear_check_sec"]),
                 # one-watcher (owner 2026-11-24)
                 ("watch", ["watch_quiet_min"]),
+                # owner-relay (owner 2026-11-24)
+                ("relay", ["owner_order_hours", "owner_order_min_chars"]),
             ],
         )
 

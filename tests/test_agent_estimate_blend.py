@@ -755,8 +755,10 @@ class TestEstimateConf(unittest.TestCase):
                                          "state_trim_auto", "compact_clear_at", "compact_clear_check_sec",
                                          # board-trust (2026-11-23) appended board_guard
                                          "board_guard",
-                                         # one-watcher (2026-11-24) appended watch_quiet_min last
-                                         "watch_quiet_min"])
+                                         # one-watcher (2026-11-24) appended watch_quiet_min
+                                         "watch_quiet_min",
+                                         # owner-relay (2026-11-24) appended its 2 keys last
+                                         "owner_order_hours", "owner_order_min_chars"])
 
 
 # ---------------------------------------------------------------- wired in
