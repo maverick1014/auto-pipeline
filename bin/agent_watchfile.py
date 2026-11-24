@@ -9,15 +9,16 @@ Python 3.9, standard library only. Read only: it writes nothing and never calls 
                   the human-direct line is never one), plus every todo line with an "on <machine> <path>" field and
                   no worktree line of that name
 
-    agent_watchfile.py start-line <main repo> <plugin root>
+    agent_watchfile.py start-line <main repo> <plugin root> [takeover]
         prints the F1/F2 line (WATCH: running ... / WATCH: not running ...) or nothing; the caller checks the
-        runtime kind (only orca prints it)
+        runtime kind (only orca prints it); a third word "takeover" is the takeover start (R5)
 """
 
 import datetime
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -167,11 +168,18 @@ def no_watch_runtime(root):
     value = conf_value(root, "runtime")
     if value in ("orca", "plain", "cloud"):
         return value != "orca"
-    return os.environ.get("CLAUDE_CODE_REMOTE", "") == "true"
+    if os.environ.get("CLAUDE_CODE_REMOTE", "") == "true":
+        return True
+    return shutil.which("orca") is None     # a PATH lookup, never an orca call (R6)
 
 
-def start_line(root, plugin_root, now=None):
+def start_line(root, plugin_root, now=None, takeover=False):
     status = read_status(root)
+    command = "Start it now with Bash run_in_background, timeout 7200000: %s/bin/agent-watch.sh --all" % plugin_root.rstrip("/")
+    if live(status, now) and takeover:
+        # R5: the live watch belongs to the dead main manager; its wakes reach no one
+        return ("WATCH: running (pid %d) for the previous main manager; its wakes reach no one. %s"
+                % (status["pid"], command))
     if live(status, now):
         sweep = parse_time(status.get("sweep"))
         return "WATCH: running (pid %d), %d tasks, last sweep %s" % (status["pid"], len(tasks_of(status)),
@@ -185,15 +193,15 @@ def start_line(root, plugin_root, now=None):
 
 
 def main(argv):
-    if len(argv) == 3 and argv[0] == "start-line":
+    if len(argv) in (3, 4) and argv[0] == "start-line":
         try:
-            line = start_line(argv[1], argv[2])
+            line = start_line(argv[1], argv[2], takeover=len(argv) == 4 and argv[3] == "takeover")
         except Exception:
             line = ""
         if line:
             print(line)
         return 0
-    sys.stderr.write("usage: agent_watchfile.py start-line <main repo> <plugin root>\n")
+    sys.stderr.write("usage: agent_watchfile.py start-line <main repo> <plugin root> [takeover]\n")
     return 2
 
 

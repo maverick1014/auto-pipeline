@@ -969,7 +969,7 @@ MON_TEXT=$(print_monitor_block; printf 'X'); MON_TEXT=${MON_TEXT%X}
 # the runtime probe is made only when there is a line to print.
 WATCH_TEXT=""
 if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }; then
-  watch_line=$(python3 "$PLUGIN_ROOT/bin/agent_watchfile.py" start-line "$PROJECT_ROOT" "$PLUGIN_ROOT" 2>/dev/null </dev/null) || watch_line=""
+  watch_line=$(python3 "$PLUGIN_ROOT/bin/agent_watchfile.py" start-line "$PROJECT_ROOT" "$PLUGIN_ROOT" $([ "$role" = takeover ] && echo takeover) 2>/dev/null </dev/null) || watch_line=""
   if [ -n "$watch_line" ]; then
     watch_kind=$(. "$PLUGIN_ROOT/bin/agent-runtime.sh" && runtime_kind 2>/dev/null </dev/null) || watch_kind=""
     [ "$watch_kind" = orca ] && WATCH_TEXT="$watch_line
