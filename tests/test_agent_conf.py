@@ -85,6 +85,8 @@ REAL_KEYS = [
     "compact_clear_check_sec",
     # board-trust (owner 2026-11-20): the board guard switch, tests/test_board_trust.py
     "board_guard",
+    # one-watcher (owner 2026-11-24): the board's quiet limit, tests/test_watch_board.py
+    "watch_quiet_min",
 ]
 # the keys this repo's own agent.conf had before progress-bar
 OLD_KEYS = REAL_KEYS[:REAL_KEYS.index("cloud_permission_mode") + 1]
@@ -138,6 +140,8 @@ GOOD_CONF_TEXT = (
     "compact_clear_check_sec=30\n"
     # board-trust (owner 2026-11-20): appended last, like the template
     "board_guard=on\n"
+    # one-watcher (owner 2026-11-24): appended last, like the template
+    "watch_quiet_min=15\n"
 )
 
 
@@ -476,6 +480,8 @@ class TestGroups(unittest.TestCase):
                 ("levels", ["level3_paths", "level4_paths"]),
                 ("state", ["state_keep_hours", "state_warn_lines", "state_header_lines", "state_trim_auto",
                            "compact_clear_at", "compact_clear_check_sec"]),
+                # one-watcher (owner 2026-11-24)
+                ("watch", ["watch_quiet_min"]),
             ],
         )
 

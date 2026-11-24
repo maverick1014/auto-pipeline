@@ -428,9 +428,10 @@ class TestVertical(Case):
         self.wait("mock-wait", "on", "mock", now="2026-11-02 14:45")
         self.add("no-stage", "not shown", 120, opened="2026-11-02 14:00")
         lines = self.line().split("\n")
-        # board-waiting: the held row folds into the "+N" line; a running row with no stage is not counted
-        self.assertEqual([l.split()[0] for l in lines], ["mock-wait", "run-early", "run-late", "+1"])
-        self.assertEqual(lines[3], "+1 排队/暂缓")
+        # one-watcher K (owner 2026-11-24): the held row gets its own row while there is room; a running row
+        # with no stage is still not counted
+        self.assertEqual([l.split()[0] for l in lines], ["mock-wait", "run-early", "run-late", "held"])
+        self.assertEqual(lines[3], "held" + " " * 22 + "暂缓 · 已等 30分钟")
 
     def test_the_line_grows_with_time(self):
         self.add("alpha", "the login form", 60, opened="2026-11-02 14:00")

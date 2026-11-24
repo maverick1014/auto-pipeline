@@ -43,6 +43,7 @@
 #   agent-file.sh worker off <n>                              -> remove WORKER <n>
 #   agent-file.sh board [--self]                              -> the table of everything open ("show todo"); --self: this session's task only
 #   agent-file.sh state add "<line>"                          -> agent_state.txt of this folder gets "<line> | <date time>" (one line, " | " inside is fine)
+#   agent-file.sh tell "<task>" "[<model> <effort>] <msg>"    -> the block "TELL <sha8> ..." at the end of that task's agent_state.txt, then one pointer line into its TM pane (rules D1-D8, requirements/one-watcher.md); prints "TELL OK <task> <sha8>"
 #   agent-file.sh state trim [--dry-run]                      -> old lines of agent_state.txt move to agent_state.trim-<date>.txt (rules: requirements/state-trim.md); --dry-run only counts
 #
 # todo done: every option is optional; a number is a whole number, 0 or more. "<result>" is not stored.
@@ -201,7 +202,7 @@ roots_read
 ROOT="$PROJECT_ROOT"
 TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agent_ideas.txt"; WT="$ROOT/agent_worktree.txt"
 NOW=${AGENT_FAKE_NOW:-$(date '+%Y-%m-%d %H:%M')}; WHO=${AGENT_ROLE:-main}
-case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|todo:level) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|todo:level) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the whole header comment block, whatever its length
 usage() { awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 2; }
@@ -1168,6 +1169,10 @@ case "${1:-}:${2:-}" in
       fi
       printf '%-30s %8s %8s %8s %8s %8s\n' "$name" "$est" "$work" "$wt" "$clock" "$ratio"
     done < "$DONE";;
+  tell:*)
+    need 3 "$@"; [ $# -eq 3 ] || usage
+    command -v python3 >/dev/null 2>&1 || refuse "tell: python3 is needed and was not found"
+    exec python3 "$(dirname "$0")/agent_watch.py" tell "$PROJECT_ROOT" "$NOW" "$2" "$3";;
   backfill:*)
     shift
     case "${1:-}" in ''|--*) backfill_text "$@";; *) backfill_name "$@";; esac;;

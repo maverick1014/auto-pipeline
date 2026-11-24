@@ -221,7 +221,7 @@ W14. Show todo
 - Sort: waiting on the owner, running, waiting on others, queued and not started, held, OWNER TODO, parked questions last; oldest first in each group
 - Times come from the files, never guessed. Work counts from the first stage minus later waits. Waited: since a run of waits began. Done by = now + est - work; over: by progress, else 超出 <n>m
 - Progress: `agent-file.sh todo stage <name> <stage> [i/m]` at each step boundary. Task manager: brief register mock tests workers verify push report. Main manager: e2e merge. Weights in agent.conf
-- Live: `board --watch`; status line `agent-settings.sh statusline on|off`, 5 lines at most, queued, held and not started fold into `+N queued/held`. Words in the `language` of agent.conf
+- Live: `board --watch` · `agent-settings.sh statusline on|off`, 5 lines at most (a warning line counts), queued/held/not started own row if room, rest `+N queued/held`. `language` of agent.conf
 - Record as it happens: `todo wait <name> on <kind> ["<note>"] [--who <name>] [--after <task>]|off` at every mock check, owner question, owner review, hold, queue; `todo where` at dispatch
 - `park add` for a parked question (H1); `OWNER TODO:` lines are written with `agent-file.sh state add`
 - `agent-guard.sh` records launches by task; default `board_guard=record`. Only `board_guard=on` refuses a main manager launch naming no open todo task: `todo add` first. `worker on`: no hooks only.
@@ -229,7 +229,11 @@ W14. Show todo
 W15. Watch
 - Monitor sweep on three signals: process, terminal output, git movement
 - Verify every launch within 2 min
-- A task manager on another machine reports into its worktree `agent_state.txt` under `=== REPORT ===`; the main manager watches every task manager with `agent-watch.sh` in the background (pane and file)
+- One `agent-watch.sh --all` in the background (Bash run_in_background) watches every task manager, local and on another machine: its pane and its worktree `agent_state.txt` (a report goes under `=== REPORT ===`); restart it after each wake
+- A task manager's HEARTBEAT, ACK, report and question go into `agent_state.txt` only, never SendMessage; only DONE PASS, DONE FAIL, QUESTION:, MOCK READY, CLOSE CASE and the watch's STALL and LOST wake the main manager
+- Long text to a task manager: `agent-file.sh tell <task> "<msg>"` (the block goes into its file, one pointer line to its pane, receipt checked)
+- Start and resume print the `agent-watch.sh --all` command when no watch runs
+- The board says `not confirmed <n>m` when a task is not watched or has been quiet
 - A stall → nudge once, wait 10 min, then salvage (commit what is there) and redispatch
 - Every brief says how to report, how to ask, how to report done (pass/fail) and the heartbeat
 

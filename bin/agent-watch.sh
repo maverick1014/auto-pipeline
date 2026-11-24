@@ -25,7 +25,12 @@
 #   WATCH STALL <name>            3 sweeps, same screen, file unchanged
 #   WATCH LOST <name>             3 failed reads in a row
 #   WATCH MAX <name>              --max sweeps done
-# plain or cloud runtime: prints "watch: not used in <kind> mode", exit 0.
+# plain or cloud runtime (AGENT_RUNTIME, agent.conf runtime, CLAUDE_CODE_REMOTE): prints
+# "watch: not used in <kind> mode", exit 0. A probe that alone says plain is tried 3 times
+# (AGENT_WATCH_RETRY_S seconds apart, default 2); plain all 3: exit 1, never 0.
+# WATCH LOST <name>: pane exited (<cause>, exit <code>)  a TM read whose status is not "running"
+#                                 (cause from orca terminal wait --for exit); at once, never a STALL
+#   bin/agent-watch.sh --all [--interval-min 5] [--max n]   one watch for every task: bin/agent_watch.py
 # Missing --terminal/--worktree, or --environment without --shell: usage, exit 2.
 #
 # Env: AGENT_WATCH_INTERVAL_S  seconds between sweeps; wins over --interval-min.
@@ -38,7 +43,7 @@ usage() {
   exit 2
 }
 
-T=""; W=""; ENVNAME=""; SH=""; MIN=5; MAX=36; NAME=""
+T=""; W=""; ENVNAME=""; SH=""; MIN=5; MAX=36; NAME=""; ALL=""; MAXGIVEN=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --terminal) T=$2; shift 2 || usage "--terminal needs a value" ;;
@@ -46,17 +51,44 @@ while [ $# -gt 0 ]; do
     --environment) ENVNAME=$2; shift 2 || usage "--environment needs a value" ;;
     --shell) SH=$2; shift 2 || usage "--shell needs a value" ;;
     --interval-min) MIN=$2; shift 2 || usage "--interval-min needs a value" ;;
-    --max) MAX=$2; shift 2 || usage "--max needs a value" ;;
+    --max) MAX=$2; MAXGIVEN=1; shift 2 || usage "--max needs a value" ;;
+    --all) ALL=1; shift ;;
     --name) NAME=$2; shift 2 || usage "--name needs a value" ;;
     -h|--help) usage "" ;;
     *) usage "unknown argument: $1" ;;
   esac
 done
 
-KIND=$("$(dirname "$0")/agent-runtime.sh" kind 2>/dev/null)
+# runtime (C1, C2): explicit plain/cloud -> not used, exit 0. A probe that alone says
+# plain is tried 3 times; plain all 3 -> exit 1.
+. "$(dirname "$0")/agent-runtime.sh"
+EXPLICIT=""
+case "${AGENT_RUNTIME:-}" in orca|plain|cloud) EXPLICIT=1 ;; esac
+case "$(_runtime_conf_value 2>/dev/null)" in orca|plain|cloud) EXPLICIT=1 ;; esac
+[ "${CLAUDE_CODE_REMOTE:-}" = "true" ] && EXPLICIT=1
+KIND=$(runtime_kind 2>/dev/null)
+if [ "$KIND" = plain ] && [ -z "$EXPLICIT" ]; then
+  TRIES=1
+  while [ "$TRIES" -lt 3 ] && [ "$KIND" = plain ]; do
+    sleep "${AGENT_WATCH_RETRY_S:-2}"
+    KIND=$(runtime_kind 2>/dev/null)
+    TRIES=$((TRIES+1))
+  done
+  if [ "$KIND" = plain ]; then
+    echo "watch: orca did not answer 3 times; a watch needs orca; not watching"
+    exit 1
+  fi
+fi
 case "$KIND" in
   plain|cloud) echo "watch: not used in $KIND mode"; exit 0 ;;
 esac
+
+awk -v m="$MIN" 'BEGIN{exit !(m ~ /^[0-9]+([.][0-9]+)?$/ && m+0 > 0)}' || usage "--interval-min must be a number above 0"
+
+if [ -n "$ALL" ]; then
+  case "$MAX" in ''|*[!0-9]*) usage "--max must be a number" ;; esac
+  exec python3 "$(dirname "$0")/agent_watch.py" --all --interval-min "$MIN" ${MAXGIVEN:+--max "$MAX"}
+fi
 
 [ -n "$T" ] || usage "missing --terminal"
 [ -n "$W" ] || usage "missing --worktree"
@@ -75,7 +107,7 @@ E=()
 ERRF=$(mktemp "${TMPDIR:-/tmp}/agent-watch.XXXXXX")
 trap 'rm -f "$ERRF"' EXIT
 
-RE='^(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)'
+RE='^([[][^]]*[]] )?(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)'
 LASTERR=""
 LASTSTAGE=""; FSTAGE=""
 
@@ -87,6 +119,8 @@ import json, sys
 t = json.load(sys.stdin)["result"]["terminal"]
 if sys.argv[1] == "cursor":
     sys.stdout.write(str(t.get("latestCursor") or ""))
+elif sys.argv[1] == "status":
+    sys.stdout.write(str(t.get("status") or "running"))
 else:
     sys.stdout.write("\n".join(str(x) for x in (t.get("tail") or [])))
 ' "$1" 2>/dev/null
@@ -121,7 +155,9 @@ orca_read() {
 }
 
 tm_read() {
+  EXITED=0
   orca_read "$T" "" || return 1
+  [ "$(printf '%s' "$RAW" | json_part status)" = "running" ] || EXITED=1
   SCREEN=$(printf '%s' "$RAW" | json_part tail) || { LASTERR="no result.terminal in the TM pane read"; return 1; }
   return 0
 }
@@ -186,6 +222,21 @@ carry_stage() {
   fi
 }
 
+# B11: the TM pane is gone. The cause from orca terminal wait --for exit.
+lost_exited() {
+  local w cause
+  w=$(orca terminal wait "${E[@]}" --terminal "$T" --for exit --timeout-ms 2000 --json 2>/dev/null)
+  cause=$(printf '%s' "$w" | python3 -c '
+import json, sys
+w = json.load(sys.stdin)["result"]["wait"]
+k = w["exitCause"]["kind"]
+c = w.get("exitCode")
+sys.stdout.write("%s, exit %s" % (k, "?" if c is None else c))' 2>/dev/null)
+  [ -n "$cause" ] || cause="cause unknown"
+  echo "WATCH LOST $NAME: pane exited ($cause)"
+  exit 0
+}
+
 last15() { printf '%s\n' "$SCREEN" | tail -15; }
 
 # ---- baselines ----
@@ -196,6 +247,7 @@ set -f
 carry_stage
 if tm_read; then PREV_OK=1; PREV_SCREEN=$SCREEN; fi
 echo "$(date '+%H:%M') watch $NAME: start, file signals already there: ${BASE_N:-unknown}"
+[ "${EXITED:-0}" = 1 ] && lost_exited
 
 same=0; fails=0
 i=1
@@ -203,7 +255,9 @@ while [ "$i" -le "$MAX" ]; do
   i=$((i+1))
   sleep "$IV"
   now=$(date '+%H:%M')
-  if ! { tm_read && file_read; }; then
+  tm_read; TMRC=$?
+  if [ "$TMRC" -eq 0 ] && [ "$EXITED" = 1 ]; then lost_exited; fi
+  if ! { [ "$TMRC" -eq 0 ] && file_read; }; then
     fails=$((fails+1))
     echo "$now read failed ($fails of 3): $LASTERR"
     if [ "$fails" -ge 3 ]; then

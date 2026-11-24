@@ -99,6 +99,12 @@ def name_col(name):
 class Case(tb.BoardCase):
     lang = "zh"
 
+    def setUp(self):
+        super().setUp()
+        # one-watcher (2026-11-24): a target row with no live watch gets " · 未确认 <n>m" and the status line a
+        # warning line (tests/test_watch_board.py); runtime plain has no watch, so these wait tests stay as they are
+        self.repo.set_conf("runtime", "plain")
+
     def put(self, *lines):
         with open(self.repo.path("agent_todo.txt"), "w") as fh:
             fh.write("".join(l + "\n" for l in lines))
@@ -386,7 +392,8 @@ class TestSimulation(Case):
             name_col("state-trim") + "██░░░░░░░░  20%  写测试  13:12",
             name_col("v4plus-followups") + "等待 v4-Manager · 已等 3天20小时",
             name_col("pc2-plugin-update") + "等待 v4-Manager · 已等 2天19小时",
-            "+5 排队/暂缓"]))
+            name_col("owner-relay") + "未开始",   # one-watcher K: an own row while there is room
+            "+4 排队/暂缓"]))
 
     def test_the_owner_moment(self):
         self.put(*[ST_REVIEW if l is ST_RUN else l for l in FIXTURE_F])
@@ -398,7 +405,8 @@ class TestSimulation(Case):
             name_col("state-trim") + "等待 你 · 合并前签字 · 已等 5分钟",
             name_col("v4plus-followups") + "等待 v4-Manager · 已等 3天20小时",
             name_col("pc2-plugin-update") + "等待 v4-Manager · 已等 2天19小时",
-            "+5 排队/暂缓"]))
+            name_col("owner-relay") + "未开始",   # one-watcher K: an own row while there is room
+            "+4 排队/暂缓"]))
 
 
 class TestSimulationEnglish(Case):
@@ -424,7 +432,8 @@ class TestSimulationEnglish(Case):
             name_col("state-trim") + "██░░░░░░░░  20%  tests  13:12",
             name_col("v4plus-followups") + "waiting v4-Manager · waited 3d 20h",
             name_col("pc2-plugin-update") + "waiting v4-Manager · waited 2d 19h",
-            "+5 queued/held"]))
+            name_col("owner-relay") + "not started",   # one-watcher K
+            "+4 queued/held"]))
 
     def test_the_owner_moment_and_defaults(self):
         self.put(*[ST_REVIEW if l is ST_RUN else l for l in FIXTURE_F])
@@ -472,15 +481,17 @@ class TestStatusLine(Case):
         self.assertEqual(self.line(), "")
 
     def test_9_4_only_rows_that_fold(self):
+        # one-watcher K (owner 2026-11-24): they fit, so each gets its own row, board order
         self.put(OR, CS, BW)
-        self.assertEqual(self.line(), "+3 排队/暂缓")
+        self.assertEqual(self.line(), "\n".join([name_col("owner-relay") + "未开始", name_col("comment-shape") + "未开始",
+                                                 name_col("board-waiting") + "排队 · 在 state-trim 之后"]))
 
     def test_9_7_helpers_workers_owner_todo_parked_are_not_counted(self):
         self.put(BW)
         self.state("OWNER TODO: check the phone build\n")
         self.af("park", "add", "which DB?", now=NOW)
         self.af("worker", "on", "1", "a slice", now=NOW)
-        self.assertEqual(self.line(), "+1 排队/暂缓")
+        self.assertEqual(self.line(), name_col("board-waiting") + "排队 · 在 state-trim 之后")   # one-watcher K
 
     def test_owner_what_is_cut_to_24_columns(self):
         self.put(BASE + " | waiting mock since 2026-11-20 12:21: please check the rules table and the simulation")
@@ -497,7 +508,7 @@ class TestStatusLine(Case):
         self.assertEqual(self.line(alpha), name_col("alpha") + "等待 你 · 确认样稿或规则表 · 已等 10分钟")
         self.put("alpha | big | w | est 60m | opened 2026-11-20 10:00 | by main | "
                  "waiting queue since 2026-11-20 11:00 | after state-trim")
-        self.assertEqual(self.line(alpha), "+1 排队/暂缓")
+        self.assertEqual(self.line(alpha), name_col("alpha") + "排队 · 在 state-trim 之后")   # one-watcher K6
 
 
 # ---------------------------------------------------------------- rule 10: old lines
@@ -517,7 +528,11 @@ class TestOldLines(Case):
             "owner-relay": "未开始",
             "comment-shape": "未开始",
         })
-        self.assertEqual(self.line(), "+6 排队/暂缓")
+        # one-watcher K: 6 rows, 5 lines: 4 own rows by board order, the rest fold
+        self.assertEqual(self.line(), "\n".join([
+            name_col("owner-relay") + "未开始", name_col("comment-shape") + "未开始",
+            name_col("v4plus-followups") + "暂缓 · 已等 3天20小时", name_col("usage-track") + "暂缓 · 已等 3天19小时",
+            "+2 排队/暂缓"]))
 
     def test_10_odd_lines_never_crash(self):
         self.put("bare",
@@ -540,7 +555,8 @@ class TestOldLines(Case):
         self.assertNotIn("Traceback", result.stderr)
         got = {r["Task"]: r["Status"] for r in self.table(result.stdout)}
         self.assertEqual(got, {"a": "暂缓 · x", "c": "等待 v4-Manager · 合并前签字"})
-        self.assertEqual(self.line(), name_col("c") + "等待 v4-Manager\n+1 排队/暂缓")   # a: a hold folds (9.4)
+        # one-watcher K: the hold gets its own row; no real time -> no waited part
+        self.assertEqual(self.line(), name_col("c") + "等待 v4-Manager\n" + name_col("a") + "暂缓")
 
 
 # ---------------------------------------------------------------- rule 4: todo wait --who --after
