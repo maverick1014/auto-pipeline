@@ -27,6 +27,7 @@ import fnmatch
 import os
 import re
 import sys
+import tempfile
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -99,14 +100,23 @@ def clean(text):
 
 def read_text(path):
     try:
-        with open(path, encoding="utf-8", errors="replace") as fh:
+        with open(path, encoding="utf-8", errors="replace", newline="") as fh:
             return fh.read()
     except OSError:
         return ""
 
 
 def read_lines(path):
-    return read_text(path).splitlines()
+    """Lines split on \\n only, like agent-file.sh (never splitlines())."""
+    parts = read_text(path).split("\n")
+    if parts and parts[-1] == "":
+        parts.pop()
+    return parts
+
+
+def first_field(line):
+    """The raw first field, as agent-file.sh reads it (split on " | ")."""
+    return line.split(" | ", 1)[0]
 
 
 class Ctx(object):
@@ -120,18 +130,21 @@ class Ctx(object):
         return os.path.join(self.root, *parts)
 
     def git(self, *args, **kw):
-        argv = ["git", "--no-optional-locks"] + list(args)
+        argv = ["git", "--literal-pathspecs", "--no-optional-locks"] + list(args)
         return agent_cleanup.run(argv, cwd=self.root,
                                  timeout=kw.get("timeout", 60.0))
 
     def git_plain(self, *args, **kw):
-        return agent_cleanup.run(["git"] + list(args), cwd=self.root,
+        return agent_cleanup.run(["git", "--literal-pathspecs"] + list(args),
+                                 cwd=self.root,
                                  timeout=kw.get("timeout", 60.0))
 
     def file_cmd(self, *args):
         script = os.path.join(self.plugin, "bin", "agent-file.sh")
+        env = dict(os.environ)
+        env["AGENT_CLEANUP_DONE"] = "1"
         return agent_cleanup.run([script] + list(args), cwd=self.root,
-                                 timeout=180.0)
+                                 timeout=180.0, env=env)
 
 
 def first_line(text):
@@ -151,7 +164,7 @@ def res_why(res):
 
 
 def read_conf(ctx):
-    days, keep = DEFAULT_DAYS, []
+    days, keep, problem = DEFAULT_DAYS, [], None
     conf = {}
     try:
         conf = agent_conf.load(ctx.path("agent.conf"))
@@ -161,9 +174,11 @@ def read_conf(ctx):
     if value is not None and agent_conf.validate_value("cleanup_days", value) is None:
         days = int(value)
     value = conf.get("docs_keep", "")
-    if value.strip() and agent_conf.validate_value("docs_keep", value) is None:
-        keep = [item.strip() for item in value.split(",") if item.strip()]
-    return days, keep
+    if value.strip():
+        problem = agent_conf.validate_value("docs_keep", value)
+        if problem is None:
+            keep = [item.strip() for item in value.split(",") if item.strip()]
+    return days, keep, problem, bool(value.strip())
 
 
 # ---------------------------------------------------------------- git facts
@@ -207,19 +222,40 @@ def dirty_paths(ctx):
     return dirty
 
 
-def in_use(ctx, rel):
-    """The first other tracked file that holds the basename in one quoted string."""
-    name = os.path.basename(rel)
-    res = ctx.git("grep", "-F", "-l", "-I", "-z", "-e", name, "--")
+def in_use_map(ctx, rels):
+    """rel -> the first other tracked file that holds its basename in one
+    quoted string. One git grep for every name."""
+    names = sorted(set(os.path.basename(r) for r in rels))
+    if not names:
+        return {}
+    handle, patfile = tempfile.mkstemp(prefix="agent-cleanfiles-")
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8", errors="surrogateescape") as fh:
+            fh.write("".join(n + "\n" for n in names))
+        res = ctx.git("grep", "-F", "-l", "-I", "-z", "-f", patfile, "--",
+                      timeout=300.0)
+    finally:
+        try:
+            os.unlink(patfile)
+        except OSError:
+            pass
     if res.rc not in (0, 1) or res.timed_out:
         raise Fail("git grep failed: %s" % res_why(res))
-    pattern = re.compile(r"([\"'])(?:[^\"'\s]*/)?" + re.escape(name) + r"\1")
+    patterns = dict((n, re.compile(r"([\"'])(?:[^\"'\s]*/)?" + re.escape(n) + r"\1"))
+                    for n in names)
+    holders = {}
     for other in sorted(split_z(res.out)):
-        if other == rel:
-            continue
-        if pattern.search(read_text(ctx.path(other))):
-            return other
-    return None
+        text = read_text(ctx.path(other))
+        for name in names:
+            if name in text and patterns[name].search(text):
+                holders.setdefault(name, []).append(other)
+    found = {}
+    for rel in rels:
+        for other in holders.get(os.path.basename(rel), []):
+            if other != rel:
+                found[rel] = other
+                break
+    return found
 
 
 # ---------------------------------------------------------------- doc rules
@@ -369,7 +405,8 @@ def line_rows(ctx, days):
     got = func(ctx.root, ctx.plugin, ctx.gitdir, ctx.kind, days * 1440)
     rows = []
     for item in sorted(got.get("ideas", []), key=lambda i: i["n"]):
-        text = item["line"].split(" | ", 1)[0].strip()
+        cut = getattr(agent_housekeep, "idea_text", None)
+        text = (cut(item["line"]) if cut else item["line"].split(" | ", 1)[0]).strip()
         rows.append({"kind": "I", "key": item["line"], "n": item["n"],
                      "what": "idea: " + text[:60],
                      "where": "agent_ideas.txt line %d" % item["n"],
@@ -397,16 +434,17 @@ def line_rows(ctx, days):
 
 def compute(ctx):
     """(rows with ids, kept [(what, why)], notes)."""
-    days, docs_keep = read_conf(ctx)
+    days, docs_keep, keep_problem, keep_set = read_conf(ctx)
     tracked, seen = seen_files(ctx)
     candidates = (doc_rows(seen, tracked, docs_keep)
                   + state_rows(ctx, tracked, days)
                   + mock_rows(ctx, seen, tracked))
     dirty = dirty_paths(ctx)
     rows, kept = [], []
+    used = in_use_map(ctx, [r["path"] for r in candidates if r["kind"] != "S"])
     for row in candidates:
         if row["kind"] != "S":
-            other = in_use(ctx, row["path"])
+            other = used.get(row["path"])
             if other:
                 kept.append((row["what"], "in use: " + other))
                 continue
@@ -415,7 +453,9 @@ def compute(ctx):
             continue
         rows.append(row)
     notes = []
-    if not docs_keep and any(r["kind"] == "D" for r in rows):
+    if keep_problem:
+        notes.append("docs_keep not valid: " + keep_problem)
+    elif not keep_set and any(r["kind"] == "D" for r in rows):
         notes.append(DOCS_KEEP_NOTE)
     lines, line_notes = line_rows(ctx, days)
     rows += lines
@@ -523,8 +563,35 @@ def backup_file(ctx):
     return os.path.join(ctx.gitdir, "agent-cleanup", stamp + ".txt")
 
 
+def removal_key(row):
+    """The first field agent-file.sh matches for a W or T row (raw, as in the file)."""
+    return first_field(row["key"])
+
+
+def backup_items(ctx, rows):
+    """(file, line) of every line the calls will remove, each once. W and T
+    calls remove every line with that first field."""
+    items, seen = [], set()
+    for row in rows:
+        name = LINE_FILES[row["kind"]]
+        if row["kind"] == "I":
+            hits = [(row["n"] - 1, row["key"])]
+        else:
+            key = removal_key(row)
+            hits = [(i, l) for i, l in enumerate(read_lines(ctx.path(name)))
+                    if first_field(l) == key]
+            if not hits:
+                hits = [(-1, row["key"])]
+        for index, line in hits:
+            mark = (name, index, line)
+            if mark not in seen:
+                seen.add(mark)
+                items.append((name, line))
+    return items
+
+
 def write_backup(ctx, rows):
-    items = [(LINE_FILES[r["kind"]], r["key"]) for r in rows if r["kind"] in LINE_FILES]
+    items = backup_items(ctx, [r for r in rows if r["kind"] in LINE_FILES])
     if not items:
         return None, 0
     path = backup_file(ctx)
@@ -538,11 +605,17 @@ def write_backup(ctx, rows):
     return path, len(items)
 
 
-def remove_line(ctx, row):
-    """None when it went, else the reason."""
+def remove_line(ctx, row, gone):
+    """None when it went, else the reason. `gone` holds the (kind, first
+    field) of lines an earlier call already removed."""
     kind = row["kind"]
+    if kind in "WT":
+        mark = (kind, removal_key(row))
+        if mark in gone:
+            return None
+        gone.add(mark)
     if kind == "W":
-        res = ctx.file_cmd("worktree", "rm", row["wpath"])
+        res = ctx.file_cmd("worktree", "rm", removal_key(row))
     elif kind == "T":
         if row["merged"]:
             args = ["todo", "done", row["name"]]
@@ -623,9 +696,10 @@ def do_yes(ctx, value):
             mine.sort(key=lambda r: -r["n"])
         return mine
 
+    gone = set()
     for kind in "WTI":
         for row in order(kind):
-            why = remove_line(ctx, row)
+            why = remove_line(ctx, row, gone)
             if why:
                 return failed(row["id"], why)
             removed.append(row["id"])
@@ -647,7 +721,12 @@ def do_yes(ctx, value):
         message = "clean-up: %d files" % len(tracked)
         res = ctx.git_plain("commit", "-q", "-m", message, "--", *paths)
         if not res.ok:
-            return failed(tracked[0]["id"], "git commit: " + res_why(res))
+            why = "git commit: " + res_why(res)
+            ctx.git_plain("reset", "-q", "--", *paths)
+            back = ctx.git_plain("checkout", "-q", "HEAD", "--", *paths)
+            if not back.ok:
+                why += " (and the files could not be put back: %s)" % res_why(back)
+            return failed(tracked[0]["id"], why)
         removed += [r["id"] for r in tracked]
         out += ["removed: %s %s" % (r["id"], r["what"]) for r in tracked]
         sha = ctx.git_plain("rev-parse", "--short=7", "HEAD").out.strip()

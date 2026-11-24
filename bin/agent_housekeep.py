@@ -44,10 +44,14 @@ CLEAN_LINE = re.compile(r"^HOUSEKEEP \d{4}-\d\d-\d\d \d\d:\d\d: clean$")
 
 def read_lines(path):
     try:
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            return fh.read().splitlines()
+        with open(path, encoding="utf-8", errors="replace",
+                  newline="") as fh:
+            parts = fh.read().split("\n")
     except OSError:
         return []
+    if parts and parts[-1] == "":
+        parts.pop()
+    return parts
 
 
 def atomic_write(path, text):
@@ -204,7 +208,7 @@ class Housekeep(object):
             if not present:
                 if pane:
                     continue
-                if not uncertain:
+                if not uncertain and not os.path.isdir(path):
                     why = "folder gone, no live pane"
                     if human:
                         why += " (line says human-direct)"
@@ -402,9 +406,10 @@ class Housekeep(object):
                     continue
             removed_ns.add(n)
         for n, m, text in sorted(dups):
-            self.rows_idea.setdefault(n, {"line": lines[n - 1], "reasons": []}
-                                      )["reasons"].append(
-                "a duplicate of idea %d" % m)
+            if not KEPT.search(lines[n - 1]):
+                self.rows_idea.setdefault(
+                    n, {"line": lines[n - 1], "reasons": []})[
+                    "reasons"].append("a duplicate of idea %d" % m)
             if n in removed_ns or not self.apply:
                 self.removed.append("%s: idea %d, a duplicate of idea %d: %s"
                                     % (self.verb, n, m, text[:80]))
@@ -463,6 +468,8 @@ class Housekeep(object):
                         os.path.join(self.root, word.split("/")[0])):
                     continue
                 found = os.path.exists(os.path.join(self.root, word))
+            elif word in ("agent_state.txt", "agent_monitor.txt"):
+                continue
             elif fnmatch.fnmatch(word, "agent_*.txt") or word.endswith(".md"):
                 found = os.path.exists(os.path.join(self.root, word)) \
                     or word in self.tracked_names()
