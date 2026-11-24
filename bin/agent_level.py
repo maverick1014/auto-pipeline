@@ -782,6 +782,9 @@ def lex_slash(text, ext):
         if guard and lone[0] >= text.rfind("\n", 0, i) + 1 and lone[0] >= 0:
             raise Unsure()
 
+    def lone_on_line(i):
+        return guard and lone[0] >= 0 and lone[0] >= text.rfind("\n", 0, i) + 1
+
     def scan(i, expr):
         depth = 0
         while i < n:
@@ -824,6 +827,8 @@ def lex_slash(text, ext):
                     e = slash_triple_end(text, i + 3, c, esc3)
                     if e < 0:
                         raise Unsure()
+                    if lone_on_line(i) and "\n" in text[i:e + 3]:
+                        raise Unsure()
                     segs.add("str", i, e + 3)
                     i = e + 3
                 else:
@@ -840,13 +845,15 @@ def lex_slash(text, ext):
                     segs.add("str", i, j + 1)
                     i = j + 1
             elif c == "`" and js:
-                s, k = i, i + 1
+                s, k, was_lone = i, i + 1, lone_on_line(i)
                 while True:
                     if k >= n:
                         raise Unsure()
                     if text[k] == "\\":
                         k += 2
                     elif text[k] == "`":
+                        if was_lone and "\n" in text[i:k + 1]:
+                            raise Unsure()
                         segs.add("str", s, k + 1)
                         i = k + 1
                         break
