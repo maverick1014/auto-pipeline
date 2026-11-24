@@ -16,7 +16,7 @@ CONTRACT
    says it is for a session started from the Agent City cloud page, and that
    missing or refused means auto.
    GROUPS "permission" = permission_mode, cloud_permission_mode, auto_resume,
-   language, adhd.
+   language.
 
 2. bin/agent.conf.default: permission_mode=bypassPermissions (its old place);
    cloud_permission_mode=auto is the LAST line, so `agent-settings.sh sync`
@@ -176,7 +176,7 @@ class TestConfKeys(unittest.TestCase):
     def test_group(self):
         self.assertEqual(agent_conf.group_of("cloud_permission_mode"), "permission")
         self.assertEqual(dict(agent_conf.GROUPS)["permission"],
-                         ["permission_mode", "cloud_permission_mode", "auto_resume", "language", "adhd",
+                         ["permission_mode", "cloud_permission_mode", "auto_resume", "language",
                           "board_guard"])   # board-trust (2026-11-23)
 
 

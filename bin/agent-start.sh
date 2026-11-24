@@ -22,7 +22,7 @@
 # see the once-per-session dedupe below (AGENT_START_DEDUPE_SEC, default 60s).
 #
 # The hook also prints PRINCIPLES.md section "## E. Output" (how to shape what a
-# human reads) before the RULES line, unless agent.conf says adhd=off.
+# human reads) before the RULES line.
 
 set -u
 . "$(dirname "$0")/agent-roots.sh"
@@ -506,10 +506,9 @@ fi
 
 # print_output_section: PRINCIPLES.md from the line "## E. Output" up to, not
 # including, the next "## " line (or the end), blank lines at its end dropped.
-# Nothing when adhd=off, or no PRINCIPLES.md, or no such section. Never fails.
+# Nothing when no PRINCIPLES.md, or no such section. Never fails.
 # Outside the CAP byte budget: it is not part of any `fixed` sum.
 print_output_section() {
-  [ "${adhd:-on}" = off ] && return 0
   [ -f "$PLUGIN_ROOT/PRINCIPLES.md" ] || return 0
   awk '
     !p && index($0, "## E. Output") == 1 { p = 1; print; next }

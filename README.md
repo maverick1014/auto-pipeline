@@ -172,9 +172,9 @@ and the packed skills/agents, and never touches `agent.conf`, `agent_*.txt`, `CL
 /auto-pipeline:close-case        # main manager: settle one CLOSE CASE report, or wrap up the whole repo
 /auto-pipeline:clean-up          # main manager: list rubbish docs and outdated agent_* lines, remove only the rows the human says yes to
 /auto-pipeline:init              # one-time project setup, prints the permissions block
+/auto-pipeline:settings          # show the settings, change one ("language en", "max_agents 3")
 ./bin/agent-settings.sh          # show or change agent.conf, no agent
 bin/agent-settings.sh language zh   # talk to the human in Chinese
-bin/agent-settings.sh adhd off      # plain replies, no output shape (section E); on by default
 bin/agent-settings.sh sync          # add any key missing from agent.conf, template value
 bin/agent-file.sh time              # est, work, wait, clock of every finished task
 bin/agent-file.sh data              # the same data of every repo on this machine, one table

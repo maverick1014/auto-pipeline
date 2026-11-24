@@ -17,12 +17,7 @@ on, also in a repo that was never set up. So bin/agent-start.sh prints it.
                                    "auto-pipeline: not set up in this repo, ..."
                                    (still no file, no folder, no marker)
 
-  agent.conf key adhd=on|off. Missing key or no agent.conf -> on.
-    off -> the section is never printed (normal, compact, clear).
-  bin/agent.conf.default has adhd=on; agent_conf.py validates it (on or off,
-  anything else is refused with a message naming both); it has a hint and a
-  group; `agent-settings.sh sync` adds adhd=on to a conf that lacks it.
-  The repo's own agent.conf has adhd=on, right after language.
+  Always printed: there is no agent.conf switch for it (owner 2026-11-24).
 
   A PRINCIPLES.md with no "## E. Output" -> nothing extra, exit 0.
 
@@ -163,14 +158,6 @@ class TestAnInitializedRepo(OutputCase):
     def test_a_main_manager_gets_it_too(self):
         self.assert_block_before_rules(self.start(role=None))
 
-    def test_a_missing_key_means_on(self):
-        self.repo.unset_conf("adhd")
-        self.assert_block_before_rules(self.start())
-
-    def test_on_means_on(self):
-        self.repo.set_conf("adhd", "on")
-        self.assert_block_before_rules(self.start())
-
     def test_the_last_section_of_the_file_is_printed_to_the_end(self):
         self.write_principles(FIXTURE_E_LAST)
         out = self.start()
@@ -187,23 +174,6 @@ class TestCompactAndClear(OutputCase):
 
     def test_compact_has_no_quiz_still(self):
         self.assertNotIn("QUIZ:", self.hook("compact"))
-
-
-class TestOff(OutputCase):
-    def setUp(self):
-        super().setUp()
-        self.repo.set_conf("adhd", "off")
-
-    def test_normal_start(self):
-        out = self.start()
-        self.assert_no_block(out)
-        self.assertTrue(self.lines(out)[-1].startswith("QUIZ: "))
-
-    def test_compact(self):
-        self.assert_no_block(self.hook("compact"))
-
-    def test_clear(self):
-        self.assert_no_block(self.hook("clear"))
 
 
 class TestNoSection(OutputCase):
@@ -303,64 +273,18 @@ class TestTheRealSizeOnABusyProject(ScriptCase):
                               "source": "compact"}))))
 
 
-class TestTheConfKey(ScriptCase):
+class TestNoAdhdKey(ScriptCase):
     script = "agent-settings.sh"
 
-    def conf_value(self, key):
-        for line in open(self.repo.path("agent.conf")):
-            if line.split("=", 1)[0].strip() == key:
-                return line.split("=", 1)[1].strip()
-        return None
-
-    def test_the_template_says_on(self):
+    def test_no_adhd_key_anywhere(self):
         import agent_conf
-        conf = agent_conf.load(os.path.join(BIN, "agent.conf.default"))
-        self.assertEqual(conf.get("adhd"), "on")
+        self.assertNotIn("adhd", agent_conf.load(os.path.join(BIN, "agent.conf.default")))
+        self.assertNotIn("adhd", agent_conf.load(os.path.join(ROOT, "agent.conf")))
+        self.assertNotIn("adhd", agent_conf.HINTS)
 
-    def test_the_repo_conf_says_on_right_after_language(self):
-        import agent_conf
-        keys = list(agent_conf.load(os.path.join(ROOT, "agent.conf")))
-        self.assertIn("adhd", keys)
-        self.assertEqual(keys.index("adhd"), keys.index("language") + 1)
-        self.assertEqual(agent_conf.load(os.path.join(ROOT, "agent.conf"))["adhd"], "on")
-
-    def test_the_template_puts_it_right_after_language(self):
-        import agent_conf
-        keys = list(agent_conf.load(os.path.join(BIN, "agent.conf.default")))
-        self.assertEqual(keys.index("adhd"), keys.index("language") + 1)
-
-    def test_validate_value(self):
-        import agent_conf
-        self.assertIsNone(agent_conf.validate_value("adhd", "on"))
-        self.assertIsNone(agent_conf.validate_value("adhd", "off"))
-        for bad in ("yes", "ON", "", "true"):
-            with self.subTest(bad=bad):
-                message = agent_conf.validate_value("adhd", bad)
-                self.assertTrue(message)
-                self.assertIn("on", message)
-                self.assertIn("off", message)
-
-    def test_hint_and_group(self):
-        import agent_conf
-        self.assertTrue(agent_conf.HINTS.get("adhd", "").strip())
-        self.assertNotEqual(agent_conf.group_of("adhd"), "other")
-
-    def test_settings_saves_off(self):
-        out = self.assertOk(self.repo.run("agent-settings.sh", "adhd", "off"))
-        self.assertIn("saved: adhd=off", out)
-        self.assertEqual(self.conf_value("adhd"), "off")
-
-    def test_settings_refuses_a_bad_value(self):
-        before = self.conf_value("adhd")
-        result = self.repo.run("agent-settings.sh", "adhd", "maybe")
+    def test_settings_does_not_know_it(self):
+        result = self.repo.run("agent-settings.sh", "adhd", "off")
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(self.conf_value("adhd"), before)
-
-    def test_sync_adds_it(self):
-        self.repo.unset_conf("adhd")
-        out = self.assertOk(self.repo.run("agent-settings.sh", "sync"))
-        self.assertIn("added adhd=on", out)
-        self.assertEqual(self.conf_value("adhd"), "on")
 
 
 class TestInitNamesThePushRule(ScriptCase):

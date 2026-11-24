@@ -45,7 +45,6 @@ REAL_KEYS = [
     "permission_mode",
     "auto_resume",
     "language",
-    "adhd",
     "runtime",
     "city_port",
     "city_idle_min",
@@ -111,7 +110,6 @@ GOOD_CONF_TEXT = (
     "permission_mode=auto\n"
     "auto_resume=yes\n"
     "language=en\n"
-    "adhd=on\n"
     "runtime=auto\n"
     "city_port=4777\n"
     "city_idle_min=30\n"
@@ -479,7 +477,7 @@ class TestGroups(unittest.TestCase):
                     ],
                 ),
                 ("permission", ["permission_mode", "cloud_permission_mode", "auto_resume",
-                                "language", "adhd", "board_guard"]),
+                                "language", "board_guard"]),
                 ("runtime", ["runtime"]),
                 ("city", ["city_port", "city_idle_min", "city_governor_wait_sec",
                           "city_relay_sec"]),

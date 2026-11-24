@@ -120,6 +120,7 @@ W6. Roles
 W7. Big feature (> 2 hours)
 - Before opening a worktree: idle or done worktrees > 0 → deputy cleans them all first (W8)
 - A worktree needs Orca. `agent-runtime.sh kind` picks the shape
+- On Orca: read Orca's own guide first, `orca skills get --topic orca-cli --full --json`. Flags change: `orca agent-context --json` is the current schema
 - Then new worktree
 - One task manager inside it
 - Task manager spawns workers as needed
@@ -245,7 +246,9 @@ W16. Known traps
 - A push to the integration branch denied by the auto-mode classifier → never retry or work around. Hand the owner one `! git push ...` line, or ask for an allow rule (init prints `Bash(git push origin main)` as optional)
 - A cross-session message held because permission modes differ → say so, ask the owner to click Deliver, never type it into the pane
 - Remote Orca pane: a long `terminal send` (~4 KB) arrives cut → write the brief into the worktree's `agent_state.txt` in chunks, send a one-line pointer
+- Find another agent's pane with `orca worktree ps --json`, never by its title (titles are often from an old task)
 - `terminal read` shows only the visible screen → use `--cursor`
+- Linux outside Orca: bare `orca` is the screen reader → use `orca-ide`
 - A send while the target is mid-turn can be lost → re-read and resend
 - Screen locked → the Chrome extension tab is hidden → use headless Chrome and tell the owner
 - STALE PLUGIN line → call the newest bin path, in every brief too, and restart at a quiet point; an older version never retrains agent_estimate.txt
@@ -391,9 +394,6 @@ S9. Token guard (cost)
 E1. Shape
 - For every reply a human reads
 - Adapted from i-have-adhd v0.4.1 by Ayoub Ghriss (github.com/ayghri/i-have-adhd), MIT, notice at the end of this file
-- On for the rest of the session
-- Off: `adhd=off` in agent.conf (`bin/agent-settings.sh adhd off`), or the human says "stop adhd mode" or "normal mode"
-- Then: confirm in one line, default style for the rest of that session. A reprint of this section after a compaction does not turn it back on
 - Lead with the next action. A command, path or snippet goes first
 - Number multi-step work, fewest steps
 - End with one concrete next action

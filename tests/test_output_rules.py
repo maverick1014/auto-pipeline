@@ -25,8 +25,7 @@ CONTRACT, PRINCIPLES.md:
       check); the decide section (H3) is never deleted. Language: H2.
   F3  concise: lead with the result, cut narration, short by default, state
       plainly, full detail on request, never trade correctness for brevity.
-  F4  adhd=off in agent.conf turns it off; "stop adhd mode" or "normal mode"
-      turns it off for the session.
+  F4  no off switch: no agent.conf key, no "normal mode" phrase.
 
   The MIT notice (the copyright line and the whole permission notice, same
   words as the LICENSE, any line wrapping) sits in PRINCIPLES.md outside
@@ -41,7 +40,7 @@ CONTRACT, F8: README.md and `agent-city.sh -h` show the short command
 `agent-city <cmd>` (the ~/.local/bin shim), never `./agent-city.sh <cmd>` or
 `./bin/agent-city.sh <cmd>`. Nothing installs the shim by itself (only the init
 skill, on a yes), so both say once: run `agent-city.sh install-shim` one time.
-README keeps its bin/ file list as is. README names the adhd setting.
+README keeps its bin/ file list as is.
 """
 
 import os
@@ -158,9 +157,6 @@ class TestF1TheRuleset(PrinciplesCase):
     def test_pre_send_check(self):
         self.has("pre-send", "first line", "last line", "hedge", "idiom")
 
-    def test_it_stays_on(self):
-        self.has("rest of the session")
-
 
 class TestF2OwnerOverrides(PrinciplesCase):
     def test_never_fail_silently(self):
@@ -187,8 +183,9 @@ class TestF3Concise(PrinciplesCase):
 
 
 class TestF4Switch(PrinciplesCase):
-    def test_off_switches(self):
-        self.has("adhd=off", "stop adhd mode", "normal mode")
+    def test_no_off_switch(self):
+        for word in ("adhd=off", "stop adhd mode", "normal mode"):
+            self.assertNotIn(word, self.low)
 
 
 class TestTheNotice(PrinciplesCase):
@@ -278,9 +275,6 @@ class TestF8ShortCityCommand(unittest.TestCase):
                     "  bin/agent-city-hook.sh  hook that feeds the city"):
             with self.subTest(row=row):
                 self.assertIn(row, self.readme)
-
-    def test_readme_names_the_adhd_setting(self):
-        self.assertIn("adhd", self.readme)
 
     def help(self):
         repo = ScriptRepo()
