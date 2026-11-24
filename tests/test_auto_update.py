@@ -493,7 +493,7 @@ class TestInit(ScriptCase):
             os.close(slave)
             slave = None
             if answer is not None:
-                os.write(master, answer.encode())
+                os.write(master, (answer + "\n").encode())   # the last prompt (add permissions) gets Enter = no
             out, err = proc.communicate(timeout=60)
         finally:
             if slave is not None:

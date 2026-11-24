@@ -625,12 +625,7 @@ class TestRefreshKey(unittest.TestCase):
         for bad in ("0", "-1", "abc", "1.5", "", "3601"):
             self.assertTrue(self.ac.validate_value("statusline_refresh_sec", bad), bad)
 
-    def test_hint_group_and_template(self):
-        self.assertTrue(self.ac.HINTS.get("statusline_refresh_sec", "").strip())
-        self.assertEqual(self.ac.group_of("statusline_refresh_sec"), "progress")
-        keys = dict(self.ac.GROUPS)["progress"]
-        self.assertEqual(keys[-1], "statusline_refresh_sec")
-        self.assertEqual(keys[-2], "progress_eta_min_pct")
+    def test_template_default(self):
         conf = self.ac.load(os.path.join(ROOT, "bin", "agent.conf.default"))
         self.assertEqual(conf.get("statusline_refresh_sec"), "60")
         self.assertEqual(self.ac.validate(conf), {})
@@ -643,8 +638,8 @@ class TestModelAndRelease(unittest.TestCase):
     def test_the_template_main_manager(self):
         import agent_conf
         conf = agent_conf.load(os.path.join(ROOT, "bin", "agent.conf.default"))
-        self.assertEqual(conf["main_manager"], "opus-5.5:xhigh")
-        self.assertEqual(conf["task_manager"], "opus-5.5:xhigh")
+        self.assertEqual(conf["main_manager"], "opus-5.5:high")
+        self.assertEqual(conf["task_manager"], "opus-5.5:high")
         self.assertEqual(conf["worker"], "sonnet-5:medium")
         self.assertEqual(conf["fast_lane_deputy"], "sonnet-5:medium")
         self.assertEqual(conf["merge_deputy"], "sonnet-5:medium")
@@ -654,12 +649,6 @@ class TestModelAndRelease(unittest.TestCase):
         w6 = text[text.index("W6. Roles"):text.index("W7. ")]
         self.assertIn("- Main manager (Opus 5.5, xhigh) = the main chat.", w6)
         self.assertNotIn("Fable 5.1", w6)
-
-    def test_the_readme(self):
-        line = read("README.md").splitlines()[10]
-        self.assertTrue(line.startswith("Main manager"), line)
-        self.assertIn("Opus 5.5", line)
-        self.assertNotIn("Fable", line)
 
     def test_the_version(self):
         version = json.loads(read(".claude-plugin", "plugin.json"))["version"]

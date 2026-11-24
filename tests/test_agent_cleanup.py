@@ -1536,8 +1536,8 @@ class TestTheRules(unittest.TestCase):
                 if line.startswith("- "):
                     self.assertLessEqual(len(line), 200, line)
 
-    def test_the_readme_tree_names_the_script(self):
-        with open(os.path.join(ROOT, "README.md")) as fh:
+    def test_the_map_names_the_script(self):
+        with open(os.path.join(ROOT, "PRINCIPLES.md")) as fh:
             self.assertIn("bin/agent-cleanup.sh", fh.read())
 
 

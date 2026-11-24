@@ -553,13 +553,6 @@ class TestConfKeys(unittest.TestCase):
                 self.assertEqual(conf.get(key), value)
         self.assertEqual(self.ac.validate(conf), {})
 
-    def test_hints_and_group(self):
-        self.assertIn(("progress", list(DEFAULTS)), self.ac.GROUPS)
-        for key in DEFAULTS:
-            with self.subTest(key=key):
-                self.assertTrue(self.ac.HINTS.get(key, "").strip())
-                self.assertEqual(self.ac.group_of(key), "progress")
-
 
 class TestSettingsWritesWeights(tb.BoardCase):
     script = "agent-settings.sh"
@@ -600,7 +593,7 @@ class TestSkills(unittest.TestCase):
 
     def test_principles_show_todo_names_the_stage_record(self):
         text = read("PRINCIPLES.md")
-        w14 = text[text.index("W14. Show todo"):text.index("W15. Watch")]
+        w14 = text[text.index("W14. Todo board"):text.index("W15. Watch")]
         self.assertIn("todo stage", w14)
         self.assertIn("progress", w14.lower())
 

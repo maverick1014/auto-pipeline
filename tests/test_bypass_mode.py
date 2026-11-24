@@ -154,12 +154,6 @@ class TestConfKeys(unittest.TestCase):
                 self.assertIn(mode, hint)
         self.assertNotIn("cloud_permission_mode", agent_conf.HINTS)
 
-    def test_group(self):
-        self.assertEqual(agent_conf.group_of("permission_mode"), "permission")
-        self.assertEqual(dict(agent_conf.GROUPS)["permission"],
-                         ["permission_mode", "auto_resume", "language",
-                          "board_guard"])   # board-trust (2026-11-23)
-
 
 class TestTemplate(unittest.TestCase):
     def setUp(self):

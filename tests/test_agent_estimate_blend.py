@@ -726,7 +726,7 @@ class TestEstimateConf(unittest.TestCase):
     def setUp(self):
         self.ac = load_conf_module()
 
-    def test_bounds_hints_and_group(self):
+    def test_bounds_and_hints(self):
         for key, (_, low, high) in self.KEYS.items():
             with self.subTest(key=key):
                 self.assertIsNone(self.ac.validate_value(key, str(low)))
@@ -734,9 +734,6 @@ class TestEstimateConf(unittest.TestCase):
                 self.assertTrue(self.ac.validate_value(key, str(low - 1)))
                 self.assertTrue(self.ac.validate_value(key, str(high + 1)))
                 self.assertTrue(self.ac.HINTS.get(key, "").strip())
-                self.assertEqual(self.ac.group_of(key), "estimate")
-        self.assertEqual(dict(self.ac.GROUPS)["estimate"],
-                         ["estimate_target_pct", "estimate_bias_min", "estimate_big_min"])
 
     def test_template_defaults_after_the_status_line_key(self):
         with open(os.path.join(BIN, "agent.conf.default")) as fh:

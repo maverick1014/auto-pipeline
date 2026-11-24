@@ -442,11 +442,6 @@ class TestMonitorBounds(unittest.TestCase):
                 self.assertIn(str(low), message)
                 self.assertIn(str(high), message)
 
-    def test_both_keys_sit_in_the_limits_group(self):
-        for key in self.BOUNDS:
-            with self.subTest(key=key):
-                self.assertEqual(agent_conf.group_of(key), "limits")
-
 
 class TestGroups(unittest.TestCase):
     def test_group_order_and_membership(self):
@@ -497,6 +492,13 @@ class TestGroups(unittest.TestCase):
         placed = [key for _, keys in agent_conf.GROUPS for key in keys]
         self.assertEqual(sorted(placed), sorted(REAL_KEYS))
 
+    def test_every_placed_key_has_a_hint_and_knows_its_group(self):
+        for name, keys in agent_conf.GROUPS:
+            for key in keys:
+                with self.subTest(key=key):
+                    self.assertTrue(agent_conf.HINTS.get(key, "").strip())
+                    self.assertEqual(agent_conf.group_of(key), name)
+
     def test_group_of_known_and_unknown(self):
         self.assertEqual(agent_conf.group_of("max_agents"), "limits")
         self.assertEqual(agent_conf.group_of("worker"), "roles")
@@ -528,9 +530,6 @@ class TestRuntimeKey(unittest.TestCase):
     def test_it_has_a_hint(self):
         self.assertTrue(agent_conf.HINTS.get("runtime", "").strip())
 
-    def test_it_sits_in_its_own_group(self):
-        self.assertEqual(agent_conf.group_of("runtime"), "runtime")
-
 
 
 class TestCityKeys(unittest.TestCase):
@@ -553,12 +552,6 @@ class TestCityKeys(unittest.TestCase):
                 self.assertIsNone(agent_conf.validate_value(key, str(high)))
                 self.assertTrue(agent_conf.validate_value(key, str(low - 1)))
                 self.assertTrue(agent_conf.validate_value(key, str(high + 1)))
-
-    def test_hints_and_group(self):
-        for key in self.BOUNDS:
-            with self.subTest(key=key):
-                self.assertTrue(agent_conf.HINTS.get(key, "").strip())
-                self.assertEqual(agent_conf.group_of(key), "city")
 
     def test_template_defaults(self):
         conf = agent_conf.load(os.path.join(ROOT, "bin", "agent.conf.default"))

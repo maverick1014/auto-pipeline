@@ -766,8 +766,8 @@ class TestText(unittest.TestCase):
         self.assertIn("=== REPORT ===", report)
         self.assertIn("agent_state.txt", report)
 
-    def test_readme_names_the_watch_script(self):
-        self.assertIn("bin/agent-watch.sh", read("README.md"))
+    def test_map_names_the_watch_script(self):
+        self.assertIn("bin/agent-watch.sh", read("PRINCIPLES.md"))
 
 
 if __name__ == "__main__":

@@ -545,7 +545,7 @@ class TestRuleText(unittest.TestCase):
         self.line_with(lines, "not confirmed")
 
     def test_k_w14_status_line_rows(self):
-        w14 = section(read("PRINCIPLES.md"), "W14. Show todo", "W15.").splitlines()
+        w14 = section(read("PRINCIPLES.md"), "W14. Todo board", "W15.").splitlines()
         line = self.line_with(w14, "statusline", "5 lines")
         for word in ("own row", "+N queued/held", "warning"):
             self.assertIn(word, line)
@@ -574,8 +574,8 @@ class TestRuleText(unittest.TestCase):
     def test_g_merge_skill_names_the_all_watch(self):
         self.assertTrue([l for l in read("skills", "merge", "SKILL.md").splitlines() if "agent-watch.sh --all" in l])
 
-    def test_g_readme_names_the_all_watch_and_tell(self):
-        text = read("README.md")
+    def test_g_map_names_the_all_watch_and_tell(self):
+        text = read("PRINCIPLES.md")
         self.assertIn("agent-watch.sh --all", text)
         self.assertIn("agent-file.sh tell", text)
 

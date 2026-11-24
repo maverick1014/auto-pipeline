@@ -1462,10 +1462,6 @@ class TestConfKey(unittest.TestCase):
         self.assertIn("0", hint)
         self.assertIn("off", hint)
 
-    def test_it_sits_in_limits_after_max_agents(self):
-        keys = dict(agent_conf.GROUPS)["limits"]
-        self.assertEqual(keys[-2:], ["max_agents", "housekeep_interval_min"])
-
     def test_the_template_has_it_last_on_by_default(self):
         lines = [l for l in read_root("bin", "agent.conf.default").splitlines() if l.strip()]
         # it was the last line; estimate-blend (2026-11-13) appended its keys after it
