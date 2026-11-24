@@ -765,6 +765,15 @@ class TestSettings(ScriptCase):
         self.assertEqual(self.repo.read("agent.conf"), before)
 
     def test_sync_adds_both_keys_empty(self):
+        # own fixture: the temp conf is seeded from the live repo agent.conf, which sets level3_paths on
+        # purpose; drop both keys so sync has to add them back from the template
+        path = self.repo.path("agent.conf")
+        with open(path) as fh:
+            rows = [l for l in fh if l.split("=", 1)[0].strip() not in ("level3_paths", "level4_paths")]
+        with open(path, "w") as fh:
+            fh.writelines(rows)
+        self.assertIsNone(self.value("level3_paths"))
+        self.assertIsNone(self.value("level4_paths"))
         self.assertOk(self.repo.run("agent-settings.sh", "sync"))
         self.assertEqual(self.value("level3_paths"), "")
         self.assertEqual(self.value("level4_paths"), "")
