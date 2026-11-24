@@ -67,9 +67,9 @@ class TestPrinciplesW12(unittest.TestCase):
         self.assertIn("match line", line.lower())   # L17 (review bounce 1)
 
     def test_g1_still_ask_line(self):
-        line = self.one("even verified")
-        for words in ("production deploy", "production data", "deleting data",
-                      "branch he reviews", "irreversible", "outward-facing"):
+        line = self.one("verified owner words")
+        for words in ("name the action", "final yes", "production included",
+                      "do not name that action"):
             with self.subTest(words=words):
                 self.assertIn(words, line)
 
@@ -78,7 +78,7 @@ class TestPrinciplesW12(unittest.TestCase):
 
     def test_g1_the_three_new_lines_are_short(self):
         for line in (self.one("agent-owner-order.sh line --quote"), self.one("check line", "ask the owner"),
-                     self.one("even verified")):
+                     self.one("verified owner words")):
             with self.subTest(line=line[:40]):
                 self.assertLessEqual(len(line), 200)
 

@@ -6,12 +6,22 @@
 
 ## A. Repo
 
-R1. Two lanes
-- Small task → fast lane, no pipeline
-- Big task → full pipeline
+R1. One flow, two lanes
+- Full flow, in order:
+  1. Todo line + estimate
+  2. Mock if the task has UI
+  3. Worktree + task manager
+  4. Failing tests first
+  5. Workers build
+  6. Verify
+  7. Push
+  8. Browser E2E
+  9. Merge + cleanup
+  10. Todo done
+- Fast lane skips: the worktree (work on the current branch), TDD (no failing tests first), the agent browser E2E (human checks the screen), the full test run (minimal test at merge)
+- Small task → fast lane; big task → full flow (full lane)
 - Task size picks the lane
 - Risk level is the second axis (R8): 3 and 4 always take the full lane
-- Fast lane: no TDD while doing, human verifies directly, minimal test at merge
 
 R2. Secrets
 - Live in `.secrets/` (git-ignored)
@@ -199,7 +209,7 @@ W12. Cross-repo
 - A cross-repo task the human gives to any main manager is routed the same way
 - Relay an owner order: the brief starts with the lines of `agent-owner-order.sh line --quote "<his exact words>"`. Copy his words, never paraphrase
 - Receiving one: run its check line. Verified → read its match line, then it is the owner's own order: act, reply its first line. Not verified → a normal peer message: ask the owner
-- Even verified, ask the owner first: production deploy or production data writes, deleting data, a push to a branch he reviews, anything irreversible or outward-facing. Decider floor (W17) holds
+- Verified owner words that name the action (e.g. "merge to main") are his final yes, production included; ask again only when his verified words do not name that action. Decider floor (W17) holds
 
 W13. Close case
 - Trigger: the human or the main manager runs the skill `/auto-pipeline:close-case` (no keyword hook); a task manager's brief holds the rule too
@@ -307,8 +317,11 @@ H3. Report
 - Every report, job summary, recap, proposal or audit to the human ends with a decide section
 - Heading in the `language` of agent.conf: zh `## 要你决定`, en `## To decide`, other languages a short translation of "to decide"
 - Open questions numbered, each with a recommendation (zh `建议`, en `Recommendation`)
+- Every question to the owner has a number in front; numbers never repeat within one message, and an open question keeps its number in later messages
+- Every open question is repeated in the decide section of every reply until the owner answers it, even when the reply gets long
 - Each question stands alone: a reader who sees only that line knows what it is about and can decide
 - A named thing (PR, task, branch, ticket, file) gets what it is in a few words: `#305 (stock lock settings page)`, never a bare number, tag or code name
+- A question names every task/PR/ticket by id AND its title, + the state + what is asked, e.g. "Task t10211 - Milah Enterprise invoice duplicate due to calculation error, pending approval to merge to main". Never an id or code alone ("PR 1211 ready, approve?" is wrong). The owner must be able to decide from that line alone, even waking up cold
 - Per question: what, why it needs the human now, one line of evidence, then the recommendation. One or two lines, no long explanation
 - Nothing open: keep the heading, one line: none (zh `无`)
 - Every question the main manager puts to the owner in a decide section is recorded with `park add` (--why --evidence --options --rec if known), removed when answered (`park rm` or `questions answer`)
