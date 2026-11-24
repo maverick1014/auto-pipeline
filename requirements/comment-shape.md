@@ -117,3 +117,13 @@ The Opus reviewer proved 14 kinds of false L0. Each fix only moves files back to
 | f13 | the exec bit of the merge-base entry must match the working file | 644 → 755 plus a comment edit | today's level |
 | f14 | old and new must decode as UTF-8 (strict) | latin-1 `rm -f café` → `cafè` plus a comment edit | today's level |
 | f15 | plain comments are compared with their place (the code line they follow) | `# keep sorted` moved down one line | `L0 comment only` (was whitespace only) |
+
+### Bounce 2 (re-review of the fixes)
+
+| # | Rule added | Example: old → new | Result |
+|---|---|---|---|
+| g1 | sh: a `'` inside a double-quoted `${…}` → unsure (dash and zsh read it as a plain character, bash as a quote) | `echo "${greet:-it's}"` … `run 1` → `rm -rf ~/x` | today's level |
+| g2 | js family: a comment holding `{` or `}` → unsure (JSX text with an expression) | `Home // {page.title}` → `{deleteAll()}` | today's level |
+| g3 | js family and swift: a comment that starts on a line whose code before it holds a lone `/` (not part of `//`, `/*`, `*/`) → unsure (a regex literal may hold a quote); a division before a trailing comment falls back too | `x.split(/"/).join(" // "); run(1);` → `run(2);` | today's level |
+| g4 | yaml: a `!tag` or `&anchor` right after `[`, `{` or `,` | `k: [!!str "a # b", 1]` → `2]` | today's level |
+| g5 | `<?` in a comment is template code (C3 list of f4) | `<!-- <?php echo 1; ?> -->` | today's level |

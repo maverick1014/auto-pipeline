@@ -853,5 +853,49 @@ class TestReviewMarkup(ShapeCase):
         self.each((0, CO), [("web/a.html", "<textarea>x</textarea>\n<!-- a -->\n", "<textarea>x</textarea>\n<!-- b -->\n")])
 
 
+# ================================================================ after re-review (bounce 2)
+# requirements/comment-shape.md section G rows g1-g5. Worker 1: TestReview2Core. Worker 2: TestReview2Slash.
+
+
+class TestReview2Core(ShapeCase):
+
+    def test_g1_an_apostrophe_inside_a_quoted_parameter_expansion(self):
+        before = 'echo "${greet:-it\'s}"\n# don\'t panic\nf() { :; }\necho "a # b"; run 1\n'
+        self.each(CODE, [("bin/a.sh", before, before.replace("run 1", "rm -rf ~/x")),
+                         ("bin/a.zsh", before, before.replace("run 1", "rm -rf ~/x"))])
+
+    def test_g4_a_yaml_tag_right_after_a_flow_bracket(self):
+        self.each(CODE, [("ci/a.yml", 'k: [!!str "a # b", 1]\n', 'k: [!!str "a # b", 2]\n'),
+                         ("ci/a.yml", 'k: {a: &x "a # b", b: 1}\n', 'k: {a: &x "a # b", b: 2}\n')])
+
+    def test_g5_php_in_an_html_comment(self):
+        self.each(CODE, [("web/a.html", "<body>\n<!-- note -->\n</body>\n", "<body>\n<!-- <?php echo 1; ?> -->\n</body>\n")])
+
+
+class TestReview2Slash(ShapeCase):
+
+    def test_g2_a_js_comment_holding_a_brace(self):
+        self.each(CODE, [
+            ("src/A.jsx", "export const A = () => (\n  <p>\n    Home // {page.title}\n  </p>\n);\n",
+             "export const A = () => (\n  <p>\n    Home // {deleteAll()}\n  </p>\n);\n"),
+            ("src/A.jsx", "export const A = () => <p>a /* {save()} */ b</p>;\n",
+             "export const A = () => <p>a /* {wipe()} */ b</p>;\n"),
+        ])
+
+    def test_g3_a_comment_after_a_lone_slash_on_its_line(self):
+        self.each(CODE, [
+            ("src/a.js", 'x.split(/"/).join(" // "); run(1);\n', 'x.split(/"/).join(" // "); run(2);\n'),
+            ("src/a.js", 'x.split(/"/).join(" /* "); run(1); /* x */\n', 'x.split(/"/).join(" /* "); run(2); /* x */\n'),
+            ("src/a.ts", 'x.split(/"/).join(" // "); run(1);\n', 'x.split(/"/).join(" // "); run(2);\n'),
+            ("src/a.swift", 'let r = #/"/#; let s = " // "; run(1)\n', 'let r = #/"/#; let s = " // "; run(2)\n'),
+            # the safe side: a division before a trailing comment also falls back
+            ("src/a.js", "a = b / c; // note\n", "a = b / c; // note 2\n"),
+        ])
+
+    def test_g3_other_slash_files_keep_a_comment_after_a_division(self):
+        self.each((0, CO), [("src/a.go", "a := b / c // note\n", "a := b / c // note 2\n"),
+                            ("src/a.js", "// a / b\nrun();\n", "// a / c\nrun();\n")])
+
+
 if __name__ == "__main__":
     unittest.main()
