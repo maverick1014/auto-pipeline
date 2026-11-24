@@ -95,3 +95,25 @@ Body = the text inside the marker: after `#` or `//`, between `/*` and `*/`, bet
 ## F. Time
 
 Re-estimate on the record: est 28m assumed a line-by-line check; real files need a small lexer per family (E). New est 100m (rules 15, tests 30, two workers 35, review + suite + E2E 20).
+
+## G. After review (bounce 1, 2026-11-24)
+
+The Opus reviewer proved 14 kinds of false L0. Each fix only moves files back to today's level (safe side), so they were taken as defaults, logged, and are listed for the owner. Tests: TestReviewCore, TestReviewSlash, TestReviewMarkup.
+
+| # | Rule added | Example: old → new | Result |
+|---|---|---|---|
+| f1 | sh: `$(…)`, `$((…))`, `${…}` and backticks nest inside `"…"`; no comment inside `${…}` or `$((…))`; `#` starts a comment only at a word start: line start, after an unescaped space or tab, or after `;` `&` `\|` `(` `)` `<` `>` (zsh: not `(`) | `echo "$(printf "%s" "a # b")"; echo ok` → `…; rm -rf ~/tmp`; `cd ${DIR:-/srv #old}`; `echo a\ #b`; `x=1;# don't` | today's level |
+| f2 | line 1 must be the same in old and new unless it is blank or a plain comment in both; line 2 the same when it holds a directive in old or new | a comment or blank line added above `#!/bin/bash`, `# -*- coding -*-`, `<?xml …?>`, `#cloud-config` | today's level |
+| f3 | yaml: `!tag` and `&anchor` may stand before `\|`, `>` or a quote | `Code: !Sub \|` then `print("total # of items"); x = 1` | today's level |
+| f4 | a comment holding `{{`, `{%`, `{#`, `<%` or `${` is a directive (template code) | Helm `# keep {{- "" -}}`; Jinja `<!-- {% include "x" %} -->` | today's level |
+| f5 | py: a text with a `# /// <type>` line (PEP 723 inline metadata) → unsure | `#   "requests<3"` → `"requests-evil"` | today's level |
+| f6 | a comment holding a line break other than `\n` (`\r` not before `\n`, U+0085, U+2028, U+2029) → unsure; java: a `\uXXXX` escape anywhere → unsure | py `# note\rn = 2`; java `// note \u000a return 2;` | today's level |
+| f7 | a plain comment is replaced by its own line breaks, or one space when it has none | js `return x;` → `return/*⏎*/x;` (ASI) | today's level |
+| f8 | swift `#"…"#` and c++ raw `R"(…)"` (any prefix) → unsure; dart `r'…'` `r"…"` `r'''…'''` `r"""…"""` are lexed with no escapes | swift `#"say " // b"#; run(1)` → `run(2)` | today's level; dart `f(r'C:\'); // a` → `// b` is `L0 comment only` |
+| f9 | html: a comment also ends at `<!-->`, `<!--->`, `--!>`; the bodies of textarea, title, noscript, xmp, iframe, noembed, noframes and plaintext are code like script and style | `<!-- a --!>` then an added `<script>`; `<textarea><!-- … --></textarea>` | today's level |
+| f10 | js family: a comment holding `</` or `/>` → unsure (JSX text) | `<p>start with /* and</p>` … `onClick={save}` → `{wipeAll}` | today's level |
+| f11 | yaml: a line that is blank in the file stays in the code view (D3 changed for yaml: blank-only yaml → today's level) | `description: first part⏎  second part` with a blank line added | today's level |
+| f12 | the line right after a whole-line directive stays in the code view as it is (not after a shebang on line 1, a license, a coding cookie or a modeline); `swift-tools-version` is a C2 word; go: a text with `// Output:` or `// Unordered output:` → unsure | a comment inserted under `// eslint-disable-next-line`; the blank line after `//go:build` removed | today's level |
+| f13 | the exec bit of the merge-base entry must match the working file | 644 → 755 plus a comment edit | today's level |
+| f14 | old and new must decode as UTF-8 (strict) | latin-1 `rm -f café` → `cafè` plus a comment edit | today's level |
+| f15 | plain comments are compared with their place (the code line they follow) | `# keep sorted` moved down one line | `L0 comment only` (was whitespace only) |

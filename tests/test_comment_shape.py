@@ -116,7 +116,6 @@ class TestHashShape(ShapeCase):
             ("app/run.py", "def a():\n    pass\ndef b():\n    pass\n",
              "def a():\n    pass\n\n\ndef b():\n    pass\n"),
             ("bin/run.sh", "a\nb\n", "a\n\nb\n"),
-            ("ci/a.yml", "a: 1\nb: 2\n", "a: 1\n\nb: 2\n"),
             ("etc/app.conf", "a=1\nb=2\n", "a=1\n\nb=2\n"),
         ])
 
@@ -646,6 +645,207 @@ class TestMarkup(ShapeCase):
 
     def test_a_comment_open_at_the_end(self):
         self.each(CODE, [("web/a.html", "<!-- a\n<p>x</p>\n", "<!-- b\n<p>x</p>\n")])
+
+
+# ================================================================ after review (bounce 1)
+# The Opus reviewer proved false L0 cases (requirements/comment-shape.md section G, f1-f15).
+# Worker 1: TestReviewCore. Worker 2: TestReviewSlash TestReviewMarkup.
+
+
+class TestReviewCore(ShapeCase):
+
+    def test_f1_sh_nested_quotes_and_parameter_expansions(self):
+        self.each(CODE, [
+            ("bin/a.sh", 'echo "$(printf "%s" "a # b")"; echo ok\n', 'echo "$(printf "%s" "a # b")"; rm -rf ~/tmp\n'),
+            ("bin/a.sh", "cd ${DIR:-/srv #old}\nls\n", "cd ${DIR:-/srv #new}\nls\n"),
+            ("bin/a.sh", 'v=${x:-a # }; echo "$v"\nls\n', 'v=${x:-a # }; rm -rf "$v"\nls\n'),
+            ("bin/a.sh", "echo a\\ #b\nls\n", "echo a\\ #c\nls\n"),
+        ])
+        self.fresh()
+        # the hidden part is string text: today's level is a text change, never "comment only"
+        self.each((0, "text change"), [
+            ("bin/a.sh", 'echo "$(printf "%s" "a # b")"\n', 'echo "$(printf "%s" "a # c")"\n'),
+            ("bin/a.sh", "x=1;# don't\necho 'a' # c\necho \"it's # here\"\n",
+             "x=1;# don't\necho 'a' # c\necho \"it's # there\"\n"),
+        ])
+
+    def test_f1_sh_a_hash_after_an_operator_is_a_comment(self):
+        self.each((0, CO), [("bin/a.sh", "x=1;# don't\nrun\n", "x=1;# do not\nrun\n")])
+
+    def test_f2_the_first_lines_keep_their_place(self):
+        self.each(CODE, [
+            ("bin/a.sh", "#!/bin/bash\necho hi\n", "# helper script\n#!/bin/bash\necho hi\n"),
+            ("bin/a.sh", "#!/bin/bash\necho hi\n", "\n#!/bin/bash\necho hi\n"),
+            ("app/a.py", "# -*- coding: latin-1 -*-\ns = 'x'\n", "# a\n# b\n# -*- coding: latin-1 -*-\ns = 'x'\n"),
+            ("app/a.py", "#!/usr/bin/env python\n# -*- coding: latin-1 -*-\nrun()\n",
+             "#!/usr/bin/env python\n# note\n# -*- coding: latin-1 -*-\nrun()\n"),
+            ("res/a.xml", '<?xml version="1.0"?>\n<root/>\n', '<!-- note -->\n<?xml version="1.0"?>\n<root/>\n'),
+            ("ci/a.yml", "#cloud-config\nruncmd: []\n", "# note\n#cloud-config\nruncmd: []\n"),
+        ])
+
+    def test_f2_a_comment_after_the_shebang_is_fine(self):
+        self.each((0, CO), [
+            ("bin/a.sh", "#!/bin/bash\necho hi\n", "#!/bin/bash\n# say hi\necho hi\n"),
+            ("bin/a.sh", "# tool a\nrun\n", "# tool b\nrun\n"),
+        ])
+
+    def test_f3_yaml_tags_and_anchors_before_a_block(self):
+        self.each(CODE, [
+            ("ci/a.yml", 'Code: !Sub |\n  print("total # of items"); x = 1\n',
+             'Code: !Sub |\n  print("total # of items"); x = 2\n'),
+            ("ci/a.yml", 'base: &script |\n  echo "a # b"; x=1\n', 'base: &script |\n  echo "a # b"; x=2\n'),
+            ("ci/a.yml", 'base: !!str &s |\n  echo "a # b"; x=1\n', 'base: !!str &s |\n  echo "a # b"; x=2\n'),
+        ])
+
+    def test_f3_yaml_tags_and_anchors_before_a_quote(self):
+        self.each((0, "text change"), [
+            ("ci/a.yml", 'msg: !!str "a # b"\n', 'msg: !!str "a # c"\n'),
+            ("ci/a.yml", 'msg: &m "a # b"\n', 'msg: &m "a # c"\n'),
+        ])
+
+    def test_f4_template_code_in_a_comment(self):
+        self.each(CODE, [
+            ("ci/a.yml", "spec:\n  # keep\n  replicas: 3\n", 'spec:\n  # keep {{- "" -}}\n  replicas: 3\n'),
+            ("ci/a.yml", 'data:\n  # note\n  a: "1"\n', 'data:\n  # {{ .Values.extra }}\n  a: "1"\n'),
+            ("web/a.html", "<body>\n<!-- build: {{ build_id }} -->\n</body>\n",
+             "<body>\n<!-- build: {{ request.user.password }} -->\n</body>\n"),
+            ("web/a.html", "<body>\n<!-- note -->\n</body>\n",
+             '<body>\n<!-- {% include "admin_tools.html" %} -->\n</body>\n'),
+            ("web/a.html", "<body>\n<!-- note -->\n</body>\n", "<body>\n<!-- {# x #} -->\n</body>\n"),
+            ("web/a.html", "<body>\n<!-- note -->\n</body>\n", "<body>\n<!-- <%= user.secret %> -->\n</body>\n"),
+            ("bin/a.sh", "# note\nrun\n", "# uses ${HOME}\nrun\n"),
+        ])
+
+    def test_f5_pep723_inline_dependencies(self):
+        before = '# /// script\n# dependencies = [\n#   "requests<3",\n# ]\n# ///\nimport requests\n'
+        self.each(CODE, [("app/a.py", before, before.replace("requests<3", "requests-evil"))])
+
+    def test_f6_a_line_break_inside_a_comment(self):
+        self.each(CODE, [
+            ("app/a.py", "n = 1\n# note\nprint(n)\n", "n = 1\n# note\rn = 2\nprint(n)\n"),
+            ("ci/a.yml", "a: 1\n# note\n", "a: 1\n# note\rb: 2\n"),
+            ("ci/a.yml", "a: 1\n# note\n", "a: 1\n# note\x85b: 2\n"),
+            ("src/a.js", "let n = 1;\n// note\nexport { n };\n", "let n = 1;\n// note\rn = 2;\nexport { n };\n"),
+            ("src/a.js", "let n = 1;\n// note\nexport { n };\n", "let n = 1;\n// note\u2028n = 2;\nexport { n };\n"),
+            ("src/a.js", "let n = 1;\n// note\nexport { n };\n", "let n = 1;\n// note\u2029n = 2;\nexport { n };\n"),
+            ("src/a.c", "int n = 1;\n// note\n", "int n = 1;\n// note\rint m = 2;\n"),
+        ])
+
+    def test_f7_a_block_comment_keeps_its_line_breaks(self):
+        self.each(CODE, [("src/a.js", "function f(x) {\n  return x;\n}\n", "function f(x) {\n  return/*\n*/x;\n}\n")])
+
+    def test_f11_yaml_blank_lines_stay(self):
+        self.each(CODE, [
+            ("ci/a.yml", "description: first part\n  second part\n", "description: first part\n\n  second part\n"),
+            ("ci/a.yml", "a: 1\nb: 2\n", "a: 1\n\nb: 2\n"),
+        ])
+
+    def test_f11_yaml_comment_lines_still_go(self):
+        self.each((0, CO), [("ci/a.yml", "a: 1\n# x\nb: 2\n", "a: 1\nb: 2\n")])
+
+    def test_f12_the_line_after_a_whole_line_directive(self):
+        self.each(CODE, [
+            ("src/a.js", "// eslint-disable-next-line no-eval\neval(x);\n",
+             "// eslint-disable-next-line no-eval\n// why we eval\neval(x);\n"),
+            ("app/a.py", "# pylint: disable-next=eval-used\neval(x)\n",
+             "# pylint: disable-next=eval-used\n# why\neval(x)\n"),
+            ("src/a.js", "/* istanbul ignore next */\nf();\n", "/* istanbul ignore next */\n\nf();\n"),
+            ("src/a.go", "//go:build linux\n\npackage x\n", "//go:build linux\npackage x\n"),
+        ])
+
+    def test_f12_other_comments_near_a_directive_are_fine(self):
+        self.each((0, CO), [
+            ("src/a.js", '// @flow\n\nimport x from "y";\n// a\n', '// @flow\n\nimport x from "y";\n// b\n'),
+            ("bin/a.sh", "# Copyright 2026 Acme\n# plain note\nrun\n", "# Copyright 2026 Acme\n# plain note 2\nrun\n"),
+            ("src/a.go", "//go:build linux\n\npackage x\n// a\n", "//go:build linux\n\npackage x\n// b\n"),
+            ("app/a.py", "# -*- coding: utf-8 -*-\n# a\nrun()\n", "# -*- coding: utf-8 -*-\n# b\nrun()\n"),
+        ])
+
+    def test_f12_swift_tools_version(self):
+        self.each(CODE, [("Package.swift", "// swift-tools-version:5.5\nimport PackageDescription\n",
+                          "// swift-tools-version:5.9\nimport PackageDescription\n")])
+
+    def test_f13_an_exec_bit_change(self):
+        self.base({"bin/hook.sh": "echo hi\n# a\n"})
+        self.put({"bin/hook.sh": "echo hi\n# b\n"})
+        os.chmod(self.repo.path("bin/hook.sh"), 0o755)
+        self.assertEqual(self.files(self.ok())["bin/hook.sh"], CODE)
+
+    def test_f14_bytes_that_are_not_utf8(self):
+        self.each(CODE, [("bin/a.sh", b"# a\nrm -f caf\xe9\n", b"# b\nrm -f caf\xe8\n"),
+                         ("app/a.py", b"# a\ns = 'caf\xe9'\n", b"# b\ns = 'caf\xe8'\n")])
+
+    def test_f15_a_moved_comment_is_comment_only(self):
+        self.each((0, CO), [("app/a.py", "x = 1\n# keep sorted\ny = 2\nz = 3\n", "x = 1\ny = 2\n# keep sorted\nz = 3\n")])
+
+
+class TestReviewSlash(ShapeCase):
+
+    def test_f6_java_unicode_escapes(self):
+        self.each(CODE, [
+            ("src/A.java", "class A { static int n() {\n  // note\n  return 1;\n} }\n",
+             "class A { static int n() {\n  // note \\u000a if (true) return 2;\n  return 1;\n} }\n"),
+            ("src/A.java", 'String s = "\\u0022"; // a\n', 'String s = "\\u0022"; // b\n'),
+        ])
+
+    def test_f8_raw_strings_swift_and_cpp(self):
+        self.each(CODE, [
+            ("src/a.swift", 'let s = #"say " // b"#; run(1)\n', 'let s = #"say " // b"#; run(2)\n'),
+            ("src/a.cpp", 'auto s = R"(say " // b)"; run(1);\n', 'auto s = R"(say " // b)"; run(2);\n'),
+            ("src/a.cc", 'auto s = u8R"x(a " // b)x"; run(1);\n', 'auto s = u8R"x(a " // b)x"; run(2);\n'),
+        ])
+
+    def test_f8_dart_raw_strings(self):
+        self.each(CODE, [
+            ("lib/a.dart", "f(r'C:\\', 'x // y'); run(1);\n", "f(r'C:\\', 'x // y'); run(2);\n"),
+            ("lib/a.dart", 'var s = r"""\n// x\n""";\n', 'var s = r"""\n// y\n""";\n'),
+        ])
+        self.fresh()
+        self.each((0, CO), [("lib/a.dart", "f(r'C:\\'); // a\n", "f(r'C:\\'); // b\n")])
+
+    def test_f10_jsx_text_with_comment_markers(self):
+        before = ("export const Help = () => (\n  <div>\n    <p>Block comments start with /* and</p>\n"
+                  "    <button onClick={save}>Go</button>\n    <p>end with */ in JS.</p>\n  </div>\n);\n")
+        self.each(CODE, [
+            ("src/Help.jsx", before, before.replace("save", "wipeAll")),
+            ("src/Help.js", before, before.replace("save", "wipeAll")),
+            ("src/Help.tsx", "const A = () => <p>a // b</p>;<Btn onClick={save} />\n",
+             "const A = () => <p>a // b</p>;<Btn onClick={wipeAll} />\n"),
+        ])
+
+    def test_f12_go_example_output(self):
+        self.each(CODE, [
+            ("src/x_test.go", 'package x\nimport "fmt"\nfunc Example() {\n\tfmt.Println("hi")\n\t// Output: hi\n}\n',
+             'package x\nimport "fmt"\nfunc Example() {\n\tfmt.Println("hi")\n\t// Output: bye\n}\n'),
+            ("src/x_test.go", 'package x\nfunc Example() {\n\tf()\n\t// Output:\n\t// hi\n}\n',
+             'package x\nfunc Example() {\n\tf()\n\t// Output:\n\t// bye\n}\n'),
+            ("src/x_test.go", 'package x\nfunc Example() {\n\tf()\n\t// Unordered output:\n\t// a\n}\n',
+             'package x\nfunc Example() {\n\tf()\n\t// Unordered output:\n\t// b\n}\n'),
+        ])
+
+
+class TestReviewMarkup(ShapeCase):
+
+    def test_f9_other_comment_endings(self):
+        self.each(CODE, [
+            ("web/a.html", "<p>a</p>\n<!-- a --!>\n<!-- b -->\n",
+             "<p>a</p>\n<!-- a --!>\n<script>steal()</script>\n<!-- b -->\n"),
+            ("web/a.html", "<p>a</p>\n<!--->\n<!-- end -->\n",
+             '<p>a</p>\n<!--->\n<script src="https://x.example/e.js"></script>\n<!-- end -->\n'),
+            ("web/a.html", "<p>a</p>\n<!-->\n<!-- end -->\n",
+             "<p>a</p>\n<!-->\n<script>steal()</script>\n<!-- end -->\n"),
+        ])
+
+    def test_f9_raw_text_elements(self):
+        cases = [("web/a.html", "<textarea><!-- </textarea> --></textarea>\n",
+                  "<textarea><!-- </textarea><script>steal()</script> --></textarea>\n")]
+        for tag in ("textarea", "title", "noscript", "xmp", "iframe", "noembed", "noframes", "TITLE"):
+            cases.append(("web/a.html", "<%s><!-- a --></%s>\n" % (tag, tag), "<%s><!-- b --></%s>\n" % (tag, tag)))
+        cases.append(("web/a.html", "<plaintext><!-- a -->\n", "<plaintext><!-- b -->\n"))
+        self.each(CODE, cases)
+
+    def test_f9_after_a_raw_text_element(self):
+        self.each((0, CO), [("web/a.html", "<textarea>x</textarea>\n<!-- a -->\n", "<textarea>x</textarea>\n<!-- b -->\n")])
 
 
 if __name__ == "__main__":
