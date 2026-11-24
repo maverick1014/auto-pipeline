@@ -1008,8 +1008,13 @@ def fmt_num(x):
 
 
 def shells_running(screen):
-    """B6, B7: background shells still run (`shell still running` or `<n> shells still running` on screen)."""
-    return "shell still running" in screen or re.search(r"\b\d+ shells? still running", screen) is not None
+    """B6, B7: something still runs in the background: `shell still running`, `<n> shells still running`,
+    `Waiting for <n> background agent(s) to finish`, or an agents-panel row of a running subagent
+    (`  ◯ <type>  <task>  2m 45s · ...`). The bare `⏺ main` row shows on idle panes too: not busy."""
+    return ("shell still running" in screen
+            or re.search(r"\b\d+ shells? still running", screen) is not None
+            or re.search(r"Waiting for \d+ background agents? to finish", screen) is not None
+            or re.search(r"(?m)^ +[\u25ef\u25d0\u25d1\u25d2\u25d3\u2800-\u28ff] +\S.*\b\d+s\b", screen) is not None)
 
 
 def is_idle_prompt(lines):
