@@ -248,6 +248,7 @@ class TestCityHooks(unittest.TestCase):
         return {event: [e for e in entries
                         if "agent-close-case.sh" not in json.dumps(e)
                         and "agent-name.sh" not in json.dumps(e)
+                        and "agent-keyword.sh" not in json.dumps(e)
                         # stale-plugin-guard: UserPromptSubmit, tests/test_stale_plugin_guard.py
                         and "agent-version.sh" not in json.dumps(e)
                         # board-trust: the launch guard, tests/test_board_trust.py
