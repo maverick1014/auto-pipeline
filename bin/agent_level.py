@@ -317,6 +317,11 @@ class Checker(object):
         mode = text_of(tree.stdout).split(" ", 1)[0]
         if tree.returncode != 0 or not mode or mode == "120000":
             return None
+        try:
+            if bool(int(mode, 8) & 0o111) != bool(os.stat(full).st_mode & 0o111):
+                return None
+        except (OSError, ValueError):
+            return None
         old = git(self.top, "show", "%s:%s" % (self.mb, path), check=False)
         if old.returncode != 0:
             return None
@@ -325,17 +330,28 @@ class Checker(object):
                 new = fh.read()
         except OSError:
             return None
-        a, b = text_of(old.stdout), text_of(new)
+        try:
+            a, b = old.stdout.decode("utf-8"), new.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
         if a == b:
             return None
-        views = []
+        views, edges = [], []
         for text in (a, b):
             segs = lexer(text)
-            view = code_view(segs, own) if segs is not None else None
+            edge = {}
+            view = (code_view(segs, own, ext_of(path) in (".yaml", ".yml"), edge)
+                    if segs is not None else None)
             if view is None:
                 return None
             views.append(view)
+            edges.append(edge)
         if views[0][0] != views[1][0]:
+            return None
+        e1, e2 = edges
+        if e1["l1"] != e2["l1"] and (e1["l1s"] or e2["l1s"]):
+            return None
+        if e1["l2"] != e2["l2"] and (e1["l2d"] or e2["l2d"]):
             return None
         return "comment only" if views[0][1] != views[1][1] else "whitespace only"
 
@@ -385,7 +401,12 @@ class Segs(object):
         return self.out
 
 
+PEP723 = re.compile(r"^[ \t]*#[ \t]*///[ \t]*[A-Za-z0-9-]+", re.M)
+
+
 def lex_py(text):
+    if PEP723.search(text):
+        return None
     starts, pos = [], 0
     for piece in text.split("\n"):
         starts.append(pos)
@@ -433,11 +454,77 @@ def escaped_end(text, k, quote):
     return -1
 
 
-def lex_sh(text):
-    n, segs, i, pend = len(text), Segs(text), 0, []
+def sh_dq_end(text, k, quote):
+    """Index of the closing quote (" or `) from k on; $(...), ${...} and quotes nest. -1 if open."""
+    n = len(text)
+    while k < n:
+        c = text[k]
+        if c == "\\":
+            k += 2
+            continue
+        if c == quote:
+            return k
+        j = k
+        if c == "$" and text[k + 1:k + 2] == "(":
+            j = sh_skip(text, k + 2, ")")
+        elif c == "$" and text[k + 1:k + 2] == "{":
+            j = sh_skip(text, k + 2, "}")
+        elif c == "`" and quote == '"':
+            j = sh_dq_end(text, k + 1, "`")
+        elif quote == "`" and c == "'":
+            j = text.find("'", k + 1)
+        elif quote == "`" and c == '"':
+            j = sh_dq_end(text, k + 1, '"')
+        elif quote == "`" and c == "$" and text[k + 1:k + 2] == "'":
+            j = escaped_end(text, k + 2, "'")
+        if j < 0:
+            return -1
+        k = j + 1 if j != k else k + 1
+    return -1
+
+
+def sh_skip(text, k, closer):
+    """Index of the closer that ends a $(...) or ${...} body started before k, or -1."""
+    n, depth = len(text), 1
+    while k < n:
+        c = text[k]
+        j = k
+        if c == "\\":
+            k += 2
+            continue
+        if c == "'":
+            j = text.find("'", k + 1)
+        elif c == '"' or c == "`":
+            j = sh_dq_end(text, k + 1, c)
+        elif c == "$" and text[k + 1:k + 2] == "'":
+            j = escaped_end(text, k + 2, "'")
+        elif c == "$" and text[k + 1:k + 2] == "(":
+            j = sh_skip(text, k + 2, ")")
+        elif c == "$" and text[k + 1:k + 2] == "{":
+            j = sh_skip(text, k + 2, "}")
+        elif closer == ")" and c == "(":
+            depth += 1
+        elif c == closer:
+            depth -= 1
+            if depth == 0:
+                return k
+        if j < 0:
+            return -1
+        k = j + 1 if j != k else k + 1
+    return -1
+
+
+def lex_zsh(text):
+    return lex_sh(text, True)
+
+
+def lex_sh(text, zsh=False):
+    n, segs, i, pend, esc = len(text), Segs(text), 0, [], -1
+    starters = ";&|)<>" if zsh else ";&|()<>"
     while i < n:
         c = text[i]
         if c == "\\":
+            esc = i + 1
             i += 2
         elif c == "'":
             j = text.find("'", i + 1)
@@ -446,13 +533,24 @@ def lex_sh(text):
             segs.add("str", i, j + 1)
             i = j + 1
         elif c in "\"`" or (c == "$" and text.startswith("$'", i)):
-            quote, k = (c, i + 1) if c != "$" else ("'", i + 2)
-            j = escaped_end(text, k, quote)
+            j = escaped_end(text, i + 2, "'") if c == "$" else sh_dq_end(text, i + 1, c)
             if j < 0:
                 return None
             segs.add("str", i, j + 1)
             i = j + 1
-        elif c == "#" and (i == 0 or text[i - 1] in " \t\n"):
+        elif c == "$" and text.startswith("${", i):
+            j = sh_skip(text, i + 2, "}")
+            if j < 0:
+                return None
+            segs.add("str", i, j + 1)
+            i = j + 1
+        elif c == "$" and text.startswith("$((", i):
+            j = sh_skip(text, i + 2, ")")
+            if j < 0:
+                return None
+            segs.add("str", i, j + 1)
+            i = j + 1
+        elif c == "#" and (i == 0 or (text[i - 1] in " \t" and i - 1 != esc) or text[i - 1] in "\n" + starters):
             e = text.find("\n", i)
             e = n if e < 0 else e
             segs.add("comment", i, e)
@@ -506,16 +604,24 @@ def lex_sh(text):
     return segs.done()
 
 
-YAML_BLOCK = re.compile(r"(?:^[ \t]*|[:\-?][ \t]+)[|>][1-9+\-]{0,2}$")
+YAML_BLOCK = re.compile(r"(?:^[ \t]*|[:\-?][ \t]+)(?:[!&][^ \t]*[ \t]+)*[|>][1-9+\-]{0,2}$")
 
 
 def yaml_value_start(text, pos, base, ls):
     """Does a value start at pos? (base: where the scan of this line began)"""
     k, ws = pos - 1, False
-    while k >= base and text[k] in " \t":
-        k, ws = k - 1, True
-    if k < base:
-        return base == ls
+    while True:
+        while k >= base and text[k] in " \t":
+            k, ws = k - 1, True
+        if k < base:
+            return base == ls
+        r = k
+        while r >= base and text[r] not in " \t":
+            r -= 1
+        if ws and text[r + 1] in "!&":
+            k, ws = r, False
+            continue
+        break
     ch = text[k]
     if ch in "[{,":
         return True
@@ -781,8 +887,8 @@ for _ext in SLASH_EXT:
 for _ext in (".html", ".htm", ".xml"):
     COMMENT_FAMILIES[_ext] = (lex_markup, "-")
 for _ext in (".py", ".sh", ".bash", ".zsh", ".yaml", ".yml", ".conf"):
-    COMMENT_FAMILIES[_ext] = ({".py": lex_py, ".yaml": lex_yaml, ".yml": lex_yaml,
-                               ".conf": lex_conf}.get(_ext, lex_sh), "#")
+    COMMENT_FAMILIES[_ext] = ({".py": lex_py, ".yaml": lex_yaml, ".yml": lex_yaml, ".conf": lex_conf,
+                               ".zsh": lex_zsh}.get(_ext, lex_sh), "#")
 
 
 # ---- directives (table C)
@@ -794,11 +900,12 @@ C2_WORDS = (
     "prettier-ignore", "istanbul", "c8 ", "v8 ", "biome-ignore", "deno-", "tslint:", "jshint",
     "jscs:", "swiftlint:", "ignore:", "ignore_for_file:", "go:", "+build", "<reference", "<amd-",
     "clang-format", "noinspection", "checkstyle:", "$", "webpack", "ko ", "/ko", "build:",
-    "endbuild", "inject:", "endinject", "htmlmin:", "[if", "[endif", "<![endif")
+    "endbuild", "inject:", "endinject", "htmlmin:", "[if", "[endif", "<![endif", "swift-tools-version")
 C3_WORDS = ("noqa", "nolint", "pragma", "type: ignore", "eslint-", "@ts-", "-*-", "coding:", "coding=",
             "prettier-ignore", "fallthrough", "fall through", "falls through", "fallthru")
 C4_AT = re.compile(r"(?:^|[\s*])@[^\W\d_]")
 C5_WORDS = ("licen", "copyright", "©", "spdx")
+TEMPLATE_MARKS = ("{{", "{%", "{#", "<%", "${")
 HEAD_STRIP = "#/*-" + " \t\r\n\f\v"
 
 
@@ -819,6 +926,8 @@ def comment_body(comment):
 def is_directive(comment, own):
     """Table C rules C1-C5: does this comment stay in the code view?"""
     body = comment_body(comment)
+    if any(w in comment for w in TEMPLATE_MARKS):
+        return True
     if body and not body[0].isspace() and body[0] not in own and body[0] not in "=-~":
         return True
     low = body.lower()
@@ -832,47 +941,98 @@ def is_directive(comment, own):
     return any(w in low for w in C5_WORDS)
 
 
-def code_view(segments, own):
-    """(lines, plain_comments), or None when a guard (17, 18) says today's level."""
-    orig, okind, out, kinds, plain = [], [], [], [], []
+def sticky_ok(text, own, first):
+    """May the line after this whole-line directive comment be pinned (f12)?"""
+    low = comment_body(text).lower()
+    head = low.lstrip(HEAD_STRIP)
+    if first and text.startswith("#!"):
+        return False
+    if any(w in low for w in C5_WORDS) or "coding:" in low or "coding=" in low or "-*-" in low:
+        return False
+    return not head.startswith(("vim:", "vi:", "ex:"))
+
+
+ODD_BREAKS = re.compile("[\u0085\u2028\u2029]|\r(?!\n)")
+
+
+def code_view(segments, own, keep_blank=False, edge=None):
+    """(lines, plain_comments), or None when a guard (17, 18, f6) says today's level.
+
+    plain_comments: (code-view lines before it, text). edge (a dict) gets the first lines for f2."""
+    otext = "".join(t for _, t in segments)
+    # pass 1: kinds per original character, the sticky lines (f12)
+    okind, info, sticky, off, ln = [], [], set(), 0, 0
     for kind, text in segments:
-        orig.append(text)
         if kind == "comment":
             if text.rstrip().endswith("\\"):
                 return None
-            okind.append("m" * len(text))
-            if is_directive(text, own):
-                out.append(text)
-                kinds.append("c" * len(text))
-            else:
-                out.append(" ")
-                kinds.append("c")
-                plain.append(text)
+            for m in ODD_BREAKS.finditer(text):
+                if m.group() == "\r" and otext[off + m.end():off + m.end() + 1] == "\n":
+                    continue
+                return None
+            direct = is_directive(text, own)
+            okind.append(("m" if direct else "p") * len(text))
+            if direct and sticky_ok(text, own, ln == 0):
+                end = off + len(text)
+                nl = otext.find("\n", end)
+                rest = otext[end:len(otext) if nl < 0 else nl]
+                if rest.strip() == "" and otext[otext.rfind("\n", 0, off) + 1:off].strip() == "":
+                    sticky.add(ln + text.count("\n") + 1)
         else:
-            mark = "s" if kind == "str" else "c"
-            okind.append(mark * len(text))
-            out.append(text)
-            kinds.append(mark * len(text))
-    otext, okind = "".join(orig), "".join(okind)
+            direct = False
+            okind.append(("s" if kind == "str" else "c") * len(text))
+        info.append((kind, text, direct, ln))
+        off += len(text)
+        ln += text.count("\n")
+    okind = "".join(okind)
+    olines = otext.split("\n")
+    # guard 17: a comment or blank line right after a code line ending in a backslash
     pos, cont = 0, False
-    for line in otext.split("\n"):
+    for line in olines:
         ks = okind[pos:pos + len(line)]
         if cont:
-            blank = all(k == "m" or (k == "c" and ch.isspace()) for ch, k in zip(line, ks))
+            blank = all(k in "mp" or (k == "c" and ch.isspace()) for ch, k in zip(line, ks))
             if blank and not (line == "" and okind[pos:pos + 1] == "s"):
                 return None
         cont = "".join(ch for ch, k in zip(line, ks) if k == "c").rstrip().endswith("\\")
         pos += len(line) + 1
+    if edge is not None:
+        ks = okind[:len(olines[0])]
+        edge["l1s"] = "m" in ks or olines[0].lstrip().lower().startswith(("<?", "<!doctype"))
+        second = olines[1] if len(olines) > 1 else ""
+        start = len(olines[0]) + 1
+        edge["l2d"] = "m" in okind[start:start + len(second)]
+    # pass 2: the code text, a plain comment gone but its line breaks kept (f7)
+    out, kinds, plain = [], [], []
+    for kind, text, direct, ln in info:
+        if kind == "comment" and not direct and ln not in sticky:
+            breaks = text.count("\n")
+            out.append("\n" * breaks if breaks else " ")
+            kinds.append("c" * max(breaks, 1))
+            plain.append((ln, text))
+        else:
+            out.append(text)
+            kinds.append(("s" if kind == "str" else "c") * len(text))
     text, kinds = "".join(out), "".join(kinds)
-    lines, pos = [], 0
-    for line in text.split("\n"):
+    pieces = text.split("\n")
+    if edge is not None:
+        edge["l1"] = pieces[0].rstrip()
+        edge["l2"] = pieces[1].rstrip() if len(pieces) > 1 else ""
+    lines, before, pos = [], [], 0
+    for idx, line in enumerate(pieces):
+        before.append(len(lines))
+        last = idx == len(pieces) - 1
         inside = pos > 0 and pos < len(kinds) and kinds[pos - 1] == "s" and kinds[pos] == "s"
-        if inside:
+        if last and line == "":
+            pass
+        elif idx in sticky or inside:
             lines.append(line)
         elif line.strip() != "":
             lines.append(line.rstrip())
+        elif keep_blank and idx < len(olines) and olines[idx].strip() == "":
+            lines.append("")
         pos += len(line) + 1
-    return lines, plain
+    return lines, [(before[min(ln, len(before) - 1)], t) for ln, t in plain]
 
 
 def level_of(path, status, chk, l3, l4):

@@ -103,10 +103,10 @@ The Opus reviewer proved 14 kinds of false L0. Each fix only moves files back to
 | # | Rule added | Example: old → new | Result |
 |---|---|---|---|
 | f1 | sh: `$(…)`, `$((…))`, `${…}` and backticks nest inside `"…"`; no comment inside `${…}` or `$((…))`; `#` starts a comment only at a word start: line start, after an unescaped space or tab, or after `;` `&` `\|` `(` `)` `<` `>` (zsh: not `(`) | `echo "$(printf "%s" "a # b")"; echo ok` → `…; rm -rf ~/tmp`; `cd ${DIR:-/srv #old}`; `echo a\ #b`; `x=1;# don't` | today's level |
-| f2 | line 1 must be the same in old and new unless it is blank or a plain comment in both; line 2 the same when it holds a directive in old or new | a comment or blank line added above `#!/bin/bash`, `# -*- coding -*-`, `<?xml …?>`, `#cloud-config` | today's level |
+| f2 | line 1 must be the same in old and new when it holds a directive or starts with `<?` or `<!doctype` in old or new; line 2 the same when it holds a directive in old or new (Worker 1: the first wording broke row 2, a removed comment block above code) | a comment or blank line added above `#!/bin/bash`, `# -*- coding -*-`, `<?xml …?>`, `#cloud-config` | today's level |
 | f3 | yaml: `!tag` and `&anchor` may stand before `\|`, `>` or a quote | `Code: !Sub \|` then `print("total # of items"); x = 1` | today's level |
 | f4 | a comment holding `{{`, `{%`, `{#`, `<%` or `${` is a directive (template code) | Helm `# keep {{- "" -}}`; Jinja `<!-- {% include "x" %} -->` | today's level |
-| f5 | py: a text with a `# /// <type>` line (PEP 723 inline metadata) → unsure | `#   "requests<3"` → `"requests-evil"` | today's level |
+| f5 | py: a text with a `# /// <type>` line (PEP 723 inline metadata) → unsure | `#   "requests<3"` → `"requests-evil"` | today's level (L0 text change: the old pair rule sees a quoted string; idea logged) |
 | f6 | a comment holding a line break other than `\n` (`\r` not before `\n`, U+0085, U+2028, U+2029) → unsure; java: a `\uXXXX` escape anywhere → unsure | py `# note\rn = 2`; java `// note \u000a return 2;` | today's level |
 | f7 | a plain comment is replaced by its own line breaks, or one space when it has none | js `return x;` → `return/*⏎*/x;` (ASI) | today's level |
 | f8 | swift `#"…"#` and c++ raw `R"(…)"` (any prefix) → unsure; dart `r'…'` `r"…"` `r'''…'''` `r"""…"""` are lexed with no escapes | swift `#"say " // b"#; run(1)` → `run(2)` | today's level; dart `f(r'C:\'); // a` → `// b` is `L0 comment only` |

@@ -659,12 +659,14 @@ class TestReviewCore(ShapeCase):
             ("bin/a.sh", 'echo "$(printf "%s" "a # b")"; echo ok\n', 'echo "$(printf "%s" "a # b")"; rm -rf ~/tmp\n'),
             ("bin/a.sh", "cd ${DIR:-/srv #old}\nls\n", "cd ${DIR:-/srv #new}\nls\n"),
             ("bin/a.sh", 'v=${x:-a # }; echo "$v"\nls\n', 'v=${x:-a # }; rm -rf "$v"\nls\n'),
+            ("bin/a.sh", 'echo "$(printf "%s" "a # b")"\n', 'echo "$(printf "%s" "a # c")"\n'),
             ("bin/a.sh", "echo a\\ #b\nls\n", "echo a\\ #c\nls\n"),
+            ("bin/a.sh", "echo a\\;# b\nls\n", "echo a\\;# c\nls\n"),
+            ("bin/a.sh", "echo a\\|# b\nls\n", "echo a\\|# c\nls\n"),
         ])
         self.fresh()
         # the hidden part is string text: today's level is a text change, never "comment only"
         self.each((0, "text change"), [
-            ("bin/a.sh", 'echo "$(printf "%s" "a # b")"\n', 'echo "$(printf "%s" "a # c")"\n'),
             ("bin/a.sh", "x=1;# don't\necho 'a' # c\necho \"it's # here\"\n",
              "x=1;# don't\necho 'a' # c\necho \"it's # there\"\n"),
         ])
@@ -718,7 +720,8 @@ class TestReviewCore(ShapeCase):
 
     def test_f5_pep723_inline_dependencies(self):
         before = '# /// script\n# dependencies = [\n#   "requests<3",\n# ]\n# ///\nimport requests\n'
-        self.each(CODE, [("app/a.py", before, before.replace("requests<3", "requests-evil"))])
+        # today's level: the old pair rule sees a quoted string change (L0 text change), never "comment only"
+        self.each((0, "text change"), [("app/a.py", before, before.replace("requests<3", "requests-evil"))])
 
     def test_f6_a_line_break_inside_a_comment(self):
         self.each(CODE, [
