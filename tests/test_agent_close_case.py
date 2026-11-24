@@ -195,7 +195,7 @@ class TestTheSkills(unittest.TestCase):
                        "${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree rm",
                        "${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add",
                        "${CLAUDE_PLUGIN_ROOT}/bin/agent-runtime.sh close",
-                       "agent-monitor.sh stop", "CronDelete", "/merge", "final table",
+                       "CronDelete", "/merge", "final table",
                        "agent_state.txt"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)

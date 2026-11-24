@@ -21,7 +21,7 @@ agent-housekeep.sh — the housekeeping pass: stale worktree lines, duplicate an
   agent-housekeep.sh --apply   do it, write the block into agent_state.txt, print it
   agent-housekeep.sh -h        this help
 
-This is main manager only. The monitor loop runs it with --apply every
+This is main manager only. The agent-watch.sh --all loop runs it with --apply every
 housekeep_interval_min minutes (agent.conf, 0 = off). In plain and cloud there is no
 loop: run agent-housekeep.sh --apply by hand there.
 EOF2

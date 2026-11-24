@@ -31,7 +31,7 @@
 #
 # AGENT_RUNTIME is something a CALLER sets, never something this script writes
 # or exports itself: a caller that already paid for the probe once (a
-# resume/monitor run working the kind out at the top) can pass it down so
+# resume run working the kind out at the top) can pass it down so
 # every later runtime_ps/runtime_launch/runtime_close is free instead of
 # probing again.
 #
@@ -44,7 +44,7 @@
 # cut-off call (2, worth one retry) apart from one that ran to completion,
 # whether that was a success (0) or a real, fast error (1, no retry).
 #
-# plain and cloud are the same shape: no terminals, no panes, no monitor loop.
+# plain and cloud are the same shape: no terminals, no panes, no watch.
 # They differ only in the browser: Claude in Chrome can never reach a cloud
 # VM, so cloud looks for a headless browser instead.
 

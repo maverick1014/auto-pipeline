@@ -23,10 +23,7 @@ It prints, in this order:
        "no, status is idle"   status is neither working nor final
        "no, over cap"         RAM or CPU at or over max_usage_percent
      when agent_worktree.txt is empty, print "(no live worktrees)" instead of rows
-  6. the monitor line, one of:
-       "monitor: started (pid <n>)"
-       "monitor: already running (pid <n>)"
-       "monitor: would start"          (--dry-run only)
+  6. (the monitor line is gone with bin/agent-monitor.sh, 2026-11-24)
   7. "todo: <n> open"
   8. "ideas: <n> waiting"
 
@@ -74,8 +71,7 @@ to sweep. They are a different shape, not a crippled copy:
   - <relaunched> reads "no, plain mode" or "no, cloud mode". Never "yes"
   - after the table, one line per worktree that needs a task manager, naming
     the path, so the reader knows what to start with the Agent tool
-  - the monitor line reads "monitor: not used in plain mode" (or cloud), and no
-    background loop is started
+  - no background loop is started
   - orca is never called, and "orca is not answering" is never printed: orca
     being absent is the normal case there, not a fault
   - the counts still print, and the exit code is 0
@@ -322,14 +318,6 @@ class TestDryRun(ResumeCase):
         self.assertEqual(self.repo.create_calls(), [])
         self.assertEqual(self.relaunched_for(out, path), "would")
 
-    def test_dry_run_starts_no_monitor(self):
-        self.assertOk(self.resume("--dry-run"))
-        self.assertFalse(os.path.exists(self.repo.path(".git", "agent_monitor.pid")))
-
-    def test_dry_run_says_the_monitor_would_start(self):
-        out = self.assertOk(self.resume("--dry-run"))
-        self.assertIn("monitor: would start", out)
-
     def test_dry_run_still_shows_the_reasons(self):
         live = self.repo.make_worktree("live")
         idle = self.repo.make_worktree("idle")
@@ -339,22 +327,6 @@ class TestDryRun(ResumeCase):
         out = self.assertOk(self.resume("--dry-run"))
         self.assertEqual(self.relaunched_for(out, live), "no, pane is live")
         self.assertEqual(self.relaunched_for(out, idle), "no, status is idle")
-
-
-class TestMonitorHandover(ResumeCase):
-    def test_starts_the_monitor_when_it_is_not_running(self):
-        out = self.assertOk(self.resume())
-        self.assertRegex(out, r"monitor: started \(pid \d+\)")
-        self.assertTrue(os.path.exists(self.repo.path(".git", "agent_monitor.pid")))
-
-    def test_does_not_start_a_second_monitor(self):
-        self.assertOk(self.resume())
-        out = self.assertOk(self.resume())
-        self.assertRegex(out, r"monitor: already running \(pid \d+\)")
-
-    def test_starts_the_monitor_even_when_over_the_cap(self):
-        out = self.assertOk(self.resume(env={"AGENT_FAKE_RAM": "95"}))
-        self.assertRegex(out, r"monitor: (started|already running) \(pid \d+\)")
 
 
 class TestTable(ResumeCase):
@@ -511,7 +483,7 @@ class TestAgentCap(ResumeCase):
         out = self.assertOk(self.resume())
         self.assertLess(out.index("worktree | status | relaunched"),
                         out.index("cap reached"))
-        self.assertLess(out.index("cap reached"), out.index("monitor:"))
+        self.assertLess(out.index("cap reached"), out.index("todo:"))
 
 
 class TestMainManagersDoNotCount(ResumeCase):
@@ -618,11 +590,6 @@ class TestOrcaDownOnAuto(ResumeCase):
     def test_it_does_not_blame_orca(self):
         self.assertNotIn("orca is not answering", self.assertOk(self.resume()))
 
-    def test_it_starts_no_monitor(self):
-        self.assertIn("monitor: not used in plain mode",
-                      self.assertOk(self.resume()))
-
-
 class TestStdinIsSafe(ResumeCase):
     def test_a_launch_that_reads_stdin_does_not_eat_the_worktree_file(self):
         """The orca call sits inside a `while read` loop. It must not steal its input."""
@@ -648,14 +615,7 @@ class TestRunsFromItsOwnDirectory(ResumeCase):
         out = self.assertOk(self.resume("--dry-run"))
         self.assertIn("RESOURCES:", out)
         self.assertIn("=== resume ===", out)
-        self.assertIn("monitor: would start", out)
         self.assertTrue(worktree)
-
-    def test_starts_the_monitor_next_to_itself(self):
-        self.repo.detach_scripts_to_worktree()
-        out = self.assertOk(self.resume())
-        self.assertRegex(out, r"monitor: started \(pid \d+\)")
-
 
 class TestCountsAlwaysPrint(ResumeCase):
     def test_counts_print_after_a_real_start(self):
@@ -745,17 +705,16 @@ class TestPlainRelaunchesNothing(PlainCase):
         self.assertTrue(self.lines(self.out())[0].startswith("RESOURCES:"))
 
 
-class TestPlainStartsNoMonitor(PlainCase):
-    def test_the_monitor_line_says_it_is_not_used(self):
-        self.assertIn("monitor: not used in %s mode" % self.KIND, self.out())
+class TestNoMonitorAnyMore(PlainCase):
+    """bin/agent-monitor.sh is gone (2026-11-24): resume prints no monitor line and starts no loop."""
+
+    def test_no_monitor_line(self):
+        self.assertNotIn("monitor:", self.out())
 
     def test_no_pid_file_appears(self):
         self.out()
         self.assertFalse(os.path.exists(os.path.join(
             self.repo.dir, ".git", "agent_monitor.pid")))
-
-    def test_it_never_says_started(self):
-        self.assertNotIn("monitor: started", self.out())
 
 
 class TestCloudIsTheSameShape(PlainCase):
@@ -768,9 +727,6 @@ class TestCloudIsTheSameShape(PlainCase):
     def test_the_row_names_the_cloud(self):
         self.assertEqual(self.relaunched_for(self.out(), self.alpha),
                          "no, cloud mode")
-
-    def test_the_monitor_line_names_the_cloud(self):
-        self.assertIn("monitor: not used in cloud mode", self.out())
 
     def test_the_remote_marker_alone_is_enough(self):
         self.repo.set_conf("runtime", "auto")
