@@ -733,11 +733,12 @@ class TestText(unittest.TestCase):
         at = steps.index("agent-watch.sh")
         self.assertLess(steps.index("terminal wait"), at)
         near = steps[max(0, at - 300):at + 1200]
-        for word in ("run_in_background", "--environment", "--shell", "again",
-                     "merged", "MOCK READY"):
+        # one-watcher (owner 2026-11-24): one --all watch for every task manager, local and remote, so the
+        # dispatch text no longer names --environment/--shell or "until merged" (tests/test_watch_board.py)
+        for word in ("run_in_background", "--all", "again", "MOCK READY"):
             self.assertIn(word, near)
         # SCOPE ADD 1: the screen no longer fires
-        block = steps[at:steps.index("ListAgents", at)]
+        block = steps[at:at + 600]
         self.assertNotIn("⏺", block)
         self.assertNotIn("on screen", block)
 

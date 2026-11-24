@@ -83,6 +83,7 @@ COPY_BIN = [
     "agent-cleanup.sh",
     "agent_cleanup.py",
     "agent-watch.sh",
+    "agent_watch.py",        # one-watcher: the --all engine and tell (requirements/one-watcher.md)
     "agent-statusline.sh",
     "agent-housekeep.sh",
     "agent_housekeep.py",
