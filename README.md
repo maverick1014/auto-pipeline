@@ -170,6 +170,7 @@ and the packed skills/agents, and never touches `agent.conf`, `agent_*.txt`, `CL
 /auto-pipeline:dispatch          # main manager: route one task
 /auto-pipeline:merge             # main manager: E2E, then merge deputy
 /auto-pipeline:close-case        # main manager: settle one CLOSE CASE report, or wrap up the whole repo
+/auto-pipeline:clean-up          # main manager: list rubbish docs and outdated agent_* lines, remove only the rows the human says yes to
 /auto-pipeline:init              # one-time project setup, prints the permissions block
 ./bin/agent-settings.sh          # show or change agent.conf, no agent
 bin/agent-settings.sh language zh   # talk to the human in Chinese

@@ -87,6 +87,9 @@ REAL_KEYS = [
     "board_guard",
     # one-watcher (owner 2026-11-24): the board's quiet limit, tests/test_watch_board.py
     "watch_quiet_min",
+    # clean-up (owner 2026-11-24): old state copies and quiet todo lines, a repo's own docs, tests/test_agent_cleanfiles.py
+    "cleanup_days",
+    "docs_keep",
     # owner-relay (owner 2026-11-24): the relayed owner order check, tests/test_agent_owner_order.py
     "owner_order_hours",
     "owner_order_min_chars",
@@ -145,6 +148,8 @@ GOOD_CONF_TEXT = (
     "board_guard=on\n"
     # one-watcher (owner 2026-11-24): appended last, like the template
     "watch_quiet_min=15\n"
+    "cleanup_days=14\n"
+    "docs_keep=\n"
     # owner-relay (owner 2026-11-24): appended last, like the template
     "owner_order_hours=24\n"
     "owner_order_min_chars=20\n"
@@ -488,6 +493,8 @@ class TestGroups(unittest.TestCase):
                            "compact_clear_at", "compact_clear_check_sec"]),
                 # one-watcher (owner 2026-11-24)
                 ("watch", ["watch_quiet_min"]),
+                # clean-up (owner 2026-11-24)
+                ("cleanup", ["cleanup_days", "docs_keep"]),
                 # owner-relay (owner 2026-11-24)
                 ("relay", ["owner_order_hours", "owner_order_min_chars"]),
             ],

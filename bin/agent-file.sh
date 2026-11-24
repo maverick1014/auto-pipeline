@@ -530,6 +530,7 @@ retrain_auto() {
 # sweep's --short lines. Any failure of it is swallowed: it never changes the exit code of todo done.
 sweep_after_last_task() {
   local busy
+  [ "${AGENT_CLEANUP_DONE:-}" = 1 ] && return 0
   if grep -q '[^[:space:]]' "$TODO" 2>/dev/null; then return 0; fi
   busy=$(awk -F' \\| ' '$3 == "working" || $3 == "final" || $2 == "task manager, human-direct" { n++ } END { print n + 0 }' "$WT" 2>/dev/null) || return 0
   [ "${busy:-0}" -eq 0 ] || return 0

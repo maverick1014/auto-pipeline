@@ -147,7 +147,7 @@ class TestConfKeys(unittest.TestCase):
         with open(os.path.join(BIN, "agent.conf.default")) as fh:
             lines = [l for l in fh.read().splitlines() if "=" in l and not l.startswith("#")]
         self.assertEqual(lines[-2:], ["owner_order_hours=24", "owner_order_min_chars=20"])
-        self.assertEqual(lines[-3], "watch_quiet_min=15")
+        self.assertLess(lines.index("watch_quiet_min=15"), len(lines) - 2)   # clean-up keys may sit between
 
 
 if __name__ == "__main__":
