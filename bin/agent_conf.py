@@ -476,7 +476,7 @@ def _you_cli(role_key, conf_path, pid):
 
 def cli_model(spec):
     """The model name the claude CLI takes, from a role value like
-    opus-5.5:xhigh or a bare model name. The ":effort" part is dropped. A
+    opus-5.5:high or a bare model name. The ":effort" part is dropped. A
     trailing "[1m]" (1M context) of the model part is kept: the family rule
     runs first, then the suffix goes back on (opus-5.5[1m]:xhigh gives
     opus[1m], claude-opus-5-5[1m] stays as it is). A name

@@ -578,13 +578,15 @@ class TestUserConfig(unittest.TestCase):
     Values reach a hook as CLAUDE_PLUGIN_OPTION_<KEY uppercased>.
     """
 
-    KEYS = {"runtime": "string", "language": "string", "max_agents": "number"}
-    DEFAULTS = {"runtime": "auto", "language": "en", "max_agents": 4}
+    KEYS = {"runtime": "string", "language": "string",
+            "manager_model": "string", "max_agents": "number"}
+    DEFAULTS = {"runtime": "auto", "language": "en",
+                "manager_model": "opus-5.5:high", "max_agents": 4}
 
     def config(self):
         return load_json(".claude-plugin", "plugin.json")["userConfig"]
 
-    def test_the_three_keys_are_there(self):
+    def test_the_four_keys_are_there(self):
         self.assertEqual(sorted(self.config()), sorted(self.KEYS))
 
     def test_each_key_has_its_type(self):
@@ -609,6 +611,10 @@ class TestUserConfig(unittest.TestCase):
     def test_runtime_offers_the_four_choices(self):
         self.assertEqual(self.config()["runtime"]["options"],
                          ["auto", "orca", "plain", "cloud"])
+
+    def test_manager_model_offers_high_and_xhigh(self):
+        self.assertEqual(self.config()["manager_model"]["options"],
+                         ["opus-5.5:high", "opus-5.5:xhigh"])
 
     def test_nothing_here_is_a_secret(self):
         for key, entry in self.config().items():

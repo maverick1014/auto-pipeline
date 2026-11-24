@@ -44,7 +44,7 @@ esac
 # The four agent_*.txt data files live in the main repo (ROOT), which can be a
 # different place when this script runs from inside a worktree.
 : "${max_usage_percent:=80}"
-: "${task_manager:=opus-5.5:xhigh}"
+: "${task_manager:=opus-5.5:high}"
 : "${permission_mode:=auto}"
 : "${max_agents:=4}"
 
