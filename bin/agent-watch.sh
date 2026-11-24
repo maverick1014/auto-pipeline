@@ -83,6 +83,8 @@ case "$KIND" in
   plain|cloud) echo "watch: not used in $KIND mode"; exit 0 ;;
 esac
 
+awk -v m="$MIN" 'BEGIN{exit !(m ~ /^[0-9]+([.][0-9]+)?$/ && m+0 > 0)}' || usage "--interval-min must be a number above 0"
+
 if [ -n "$ALL" ]; then
   case "$MAX" in ''|*[!0-9]*) usage "--max must be a number" ;; esac
   exec python3 "$(dirname "$0")/agent_watch.py" --all --interval-min "$MIN" ${MAXGIVEN:+--max "$MAX"}

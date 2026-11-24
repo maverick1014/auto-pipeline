@@ -15,6 +15,7 @@ Env: AGENT_WATCH_INTERVAL_S  seconds between sweeps, wins over --interval-min.
 """
 
 import datetime
+import fcntl
 import json
 import os
 import re
@@ -28,6 +29,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 WAKE = re.compile(r"^(\[[^\]]*\] )?(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)")
 ANSWER = re.compile(r"^ *(\[[^\]]*\] +)?ANSWER:")
+TELL_LINE = re.compile(r"^TELL [0-9a-f]{8} ")
 LOGIN_TEXTS = ("Please run /login", "OAuth token has expired", "Invalid API key", "API Error: 401")
 GONE_CODES = ("terminal_handle_stale", "terminal_not_found")
 BOX_CHARS = " \t\u2502\u2503\u256d\u256e\u2570\u256f\u2500\u250c\u2510\u2514\u2518\u251c\u2524\u2551\u2550\u2554\u2557\u255a\u255d"
@@ -113,6 +115,37 @@ def run_git(args, cwd):
     except (OSError, subprocess.SubprocessError):
         return ""
     return r.stdout if r.returncode == 0 else ""
+
+
+class ShellLock:
+    """R16: one fcntl lock per shell pane, <git common dir>/agent_shell_<handle>.lock. Waits up to 120 s,
+    then goes on without it (a hung holder must not stop the watch)."""
+
+    def __init__(self, gitdir, handle):
+        safe = re.sub(r"[^A-Za-z0-9_.-]", "_", handle or "none")
+        self.gitdir, self.path, self.fh = gitdir, os.path.join(gitdir, "agent_shell_%s.lock" % safe), None
+
+    def __enter__(self):
+        try:
+            os.makedirs(self.gitdir, exist_ok=True)
+            self.fh = open(self.path, "a")
+        except OSError:
+            return self
+        deadline = time.time() + 120
+        while True:
+            try:
+                fcntl.flock(self.fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.time() > deadline:
+                    break
+                time.sleep(0.1)
+        return self
+
+    def __exit__(self, *exc):
+        if self.fh:
+            self.fh.close()
+        return False
 
 
 # ---------------------------------------------------------------- orca
@@ -300,7 +333,10 @@ def list_terminals(env, path):
     if not r.ok:
         return []
     terms = r.result().get("terminals")
-    return [t for t in terms if isinstance(t, dict) and t.get("handle")] if isinstance(terms, list) else []
+    if not isinstance(terms, list):
+        return []
+    return [t for t in terms if isinstance(t, dict) and t.get("handle")
+            and t.get("connected") is not False and t.get("orphaned") is not True]
 
 
 def locate(ctx, target):
@@ -336,10 +372,15 @@ def resolve_shell(ctx, target, env, tm_handle="", skip=()):
             if r["kind"] == "shell-pane" and r["env"] == env and r["pane"] and r["pane"] not in skip]
     if recs:
         return recs[-1]["pane"]
-    for t in list_terminals(env, target.path):
-        if not t.get("agentIdentity") and t["handle"] not in skip and t["handle"] != tm_handle:
+    cands = [t for t in list_terminals(env, target.path)
+             if not t.get("agentIdentity") and t["handle"] not in skip and t["handle"] != tm_handle]
+    for t in cands:
+        if str(t.get("title") or "") == "%s shell" % target.name:
             return t["handle"]
-    return None
+    for t in cands:
+        if "shell" in str(t.get("title") or "").lower():
+            return t["handle"]
+    return cands[0]["handle"] if cands else None
 
 
 def no_shell_why(env, target):
@@ -351,8 +392,8 @@ def no_shell_why(env, target):
 
 
 def scan_state(text):
-    """(n wake lines, line count, last wake line, stage value, waiting)."""
-    n, last, stage, w = 0, "", "", 0
+    """(n wake lines, line count, last wake line, waiting 0|1|2, every wake line)."""
+    n, last, w, wakes = 0, "", 0, []
     lines = text.split("\n")
     count = len(lines) - (1 if lines and lines[-1] == "" else 0)
     for line in lines[:count]:
@@ -361,11 +402,14 @@ def scan_state(text):
         if m:
             n += 1
             last = line
+            wakes.append(line)
             w = 1 if m.group(2)[0] in "QM" else 2
+        elif TELL_LINE.match(line):
+            w = 0
         elif ANSWER.match(line):
             if w == 1:
                 w = 0
-    return n, count, last, w
+    return n, count, last, w, wakes
 
 
 def stage_of(text, name):
@@ -377,13 +421,14 @@ def stage_of(text, name):
     return re.sub(r" \| since.*", "", value.rstrip("\r"))
 
 
-def remote_command(path, name):
-    """The one short command: FSIG <n> <lines> <waiting> <stage>|<last wake line> FEND. Under 400 chars."""
-    return ("awk -v p=%s '$0~/^([[][^]]*[]] )?(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)/"
-            "{n++;l=$0;w=$0~/^([[][^]]*[]] )?[QM]/?1:2}/^ *([[][^]]*[]] +)?ANSWER:/{if(w==1)w=0}"
-            "index($0,p)==1{v=substr($0,length(p)+1)}END{sub(/ [|] since.*/,\"\",v);"
+def remote_command(path):
+    """The one short command: FSIG <n> <lines> <waiting> <last STAGE line>|<last wake line> FEND (R1: no
+    task name in it; Python picks the task's own stage). Under 400 chars or the task is not watched."""
+    return ("awk '/^([[][^]]*[]] )?(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)/"
+            "{n++;l=$0;w=/^([[][^]]*[]] )?[QM]/?1:2}/^TELL /{w=0}/^ *([[][^]]*[]] +)?ANSWER:/{if(w==1)w=0}"
+            "/^STAGE /{v=substr($0,7)}END{sub(/ [|] since.*/,\"\",v);"
             "print \"FSIG\",n+0,NR,w+0,v \"|\" substr(l,1,%d),\"FEND\"}' %s"
-            % (shlex.quote("STAGE %s: " % name), LAST_CUT, shlex.quote(path + "/agent_state.txt")))
+            % (LAST_CUT, shlex.quote(path + "/agent_state.txt")))
 
 
 FSIG = re.compile(r"^FSIG (\d+) (\d+) (\d+) (.*) FEND$")
@@ -396,6 +441,8 @@ class Obs:
         self.kind, self.err, self.lines = kind, err, lines or []
         self.fn = self.fl = self.w = 0
         self.last = self.stage = ""
+        self.wakes = []
+        self.exited = False
 
 
 # ---------------------------------------------------------------- the engine
@@ -411,6 +458,8 @@ class Task:
         self.watched, self.why = False, ""
         self.based = False
         self.base = None            # reported wake line count
+        self.last = None            # last wake line seen (R13)
+        self.lost = set()           # pane handles already reported LOST (R3)
         self.prev_ok, self.prev_screen, self.prev_fp = False, "", None
         self.same = self.idle = self.fails = 0
         self.laststage = ""
@@ -447,15 +496,24 @@ class Engine:
             stall = ""
             if t.stall_reason:
                 stall = t.stall_reason + "\n" + t.stall_screen
+            old = self.saved.get(name) or {}
             tasks[name] = {
                 "path": t.path, "env": t.env, "pane": t.pane, "shell": t.shell, "watched": t.watched,
-                "why": t.why, "signals": t.base if t.base is not None else 0, "confirmed": t.confirmed,
-                "changed": t.changed, "stall": stall,
+                "why": t.why,
+                "signals": t.base if t.base is not None else (old.get("signals")
+                                                              if isinstance(old.get("signals"), int) else None),
+                "last": t.last if t.last is not None else old.get("last"),
+                "confirmed": t.confirmed or old.get("confirmed") or "",
+                "changed": t.changed or old.get("changed") or "", "stall": stall,
                 "stall_file": list(t.stall_fp) if t.stall_fp else None,
-                "lines": t.prev_fp[1] if t.prev_fp else None,
+                "lines": t.prev_fp[1] if t.prev_fp else old.get("lines"),
+                "lost": sorted(t.lost),
             }
         data = {"pid": os.getpid(), "started": self.started, "sweep": self.sweep_time,
                 "interval_min": self.interval_min, "tasks": tasks, "orphans": self.orphans}
+        self.dump_status(data)
+
+    def dump_status(self, data):
         try:
             os.makedirs(self.ctx.gitdir, exist_ok=True)
             tmp = "%s.tmp.%d" % (self.ctx.status_path, os.getpid())
@@ -485,6 +543,8 @@ class Engine:
         except (OSError, subprocess.SubprocessError):
             return
         if ("agent-watch" in args or "agent_watch" in args) and "--all" in args:
+            st["pid"] = os.getpid()          # R9: the replaced watch reads who replaced it
+            self.dump_status(st)
             try:
                 os.kill(pid, signal.SIGTERM)
             except OSError:
@@ -502,6 +562,11 @@ class Engine:
             self.mark(t, "", "", "", False, why)
             return
         t.env = env
+        if env:
+            n = len(remote_command(t.path))
+            if n >= 400:
+                self.mark(t, env, "", "", False, "read command too long (%d chars)" % n)
+                return
         pane = resolve_tm_cached(ctx, t, env)
         if not pane:
             self.mark(t, env, "", "", False, "no task manager pane")
@@ -537,6 +602,7 @@ class Engine:
             t = self.tasks.get(x.name)
             if t is None:
                 t = Task(x)
+                t.lost = set((self.saved.get(x.name) or {}).get("lost") or [])
             else:
                 t.path, t.machine = x.path, x.machine
             ordered[x.name] = t
@@ -570,10 +636,18 @@ class Engine:
         return r, None
 
     def shell_exchange(self, t, cmd):
-        """Send cmd through the shell pane, read the answer with --cursor -> (FSIG match or None, err)."""
+        """Send cmd through the shell pane under its lock, read the answer with --cursor
+        -> (FSIG match or None, err). A shell pane that is gone or not running is resolved once more (A6, R10)."""
+        r = None
         for attempt in (0, 1):
-            r = term_read(t.env, t.shell)
-            if not r.ok and r.code in GONE_CODES and attempt == 0:
+            with ShellLock(self.ctx.gitdir, t.shell):
+                r = term_read(t.env, t.shell)
+                term = terminal_of(r) if r.ok else None
+                status = (term or {}).get("status")
+                bad = (not r.ok and r.code in GONE_CODES) or (r.ok and status is not None and status != "running")
+                if not bad:
+                    return self.shell_send_read(t, cmd, r)
+            if attempt == 0:
                 t.gone.add(t.shell)
                 t.listed_shell = ""
                 new = resolve_shell(self.ctx, t, t.env, t.pane, t.gone)
@@ -581,10 +655,10 @@ class Engine:
                     t.shell = new
                     continue
             break
-        if not r.ok:
-            return None, r.err
-        term = terminal_of(r)
-        cursor = str((term or {}).get("latestCursor") or "")
+        return None, r.err if not r.ok else "shell pane exited"
+
+    def shell_send_read(self, t, cmd, r):
+        cursor = str((terminal_of(r) or {}).get("latestCursor") or "")
         if not cursor:
             return None, "no latestCursor in the shell pane read"
         s = orca(["terminal", "send"] + env_args(t.env) + ["--terminal", t.shell, "--text", cmd, "--enter",
@@ -595,9 +669,8 @@ class Engine:
             a = term_read(t.env, t.shell, cursor)
             if not a.ok:
                 return None, a.err
-            term = terminal_of(a) or {}
             hit = None
-            for line in tail_of(term):
+            for line in tail_of(terminal_of(a) or {}):
                 m = FSIG.match(line.replace("\r", ""))
                 if m:
                     hit = m
@@ -607,6 +680,7 @@ class Engine:
         return None, "no FSIG marker line in the shell pane"
 
     def observe(self, t):
+        """One read cycle. R3: an exited pane still gets its state file read (o.exited)."""
         r, term = self.read_tm(t)
         if not r.ok:
             return Obs("fail", r.err)
@@ -614,22 +688,24 @@ class Engine:
             return Obs("fail", "no result.terminal in the TM pane read")
         lines = tail_of(term)
         status = term.get("status")
-        if status is not None and status != "running":
-            return Obs("exited", lines=lines)
+        exited = status is not None and status != "running"
         o = Obs("ok", lines=lines)
+        o.exited = exited
         if not t.env:
             f = os.path.join(t.path, "agent_state.txt")
             text = read_text(f)
             if text is None:
-                return Obs("fail", "cannot read %s" % f, lines)
-            o.fn, o.fl, o.last, o.w = scan_state(text)
+                return Obs("exited", lines=lines) if exited else Obs("fail", "cannot read %s" % f, lines)
+            o.fn, o.fl, o.last, o.w, o.wakes = scan_state(text)
             o.stage = stage_of(text, t.name)
             return o
-        hit, err = self.shell_exchange(t, remote_command(t.path, t.name))
+        hit, err = self.shell_exchange(t, remote_command(t.path))
         if hit is None:
-            return Obs("fail", err, lines)
+            return Obs("exited", lines=lines) if exited else Obs("fail", err, lines)
         o.fn, o.fl, o.w = int(hit.group(1)), int(hit.group(2)), int(hit.group(3))
-        o.stage, _, o.last = hit.group(4).partition("|")
+        v, _, o.last = hit.group(4).partition("|")
+        prefix = "%s: " % t.name
+        o.stage = v[len(prefix):] if v.startswith(prefix) else ""
         return o
 
     def carry_stage(self, t, stage):
@@ -650,21 +726,31 @@ class Engine:
             out("%s stage %s: not carried (%s)" % (hhmm(), t.name, (msg.strip().splitlines() or [""])[0][:150]))
 
     def baseline(self, t):
-        """The first read of a task: file signals already there are the baseline (B5)."""
+        """The first read of a task: file signals already there are the baseline (B5, R2, R13)."""
         t.based = True
         saved = self.saved.get(t.name) or {}
         o = self.observe(t)
-        if o.kind == "exited":
-            t.urgent = True
+        sig = saved.get("signals")
+        if o.kind == "exited" or (o.kind == "ok" and o.exited):
+            if t.pane not in t.lost:
+                t.urgent = True
         if o.kind != "ok":
-            if isinstance(saved.get("signals"), int):
-                t.base = saved["signals"]
+            if isinstance(sig, int):
+                t.base = sig
+                if isinstance(saved.get("last"), str):
+                    t.last = saved["last"]
             self.load_stall(t, saved)
             return
         self.carry_stage(t, o.stage)
-        sig = saved.get("signals")
-        t.base = o.fn if not isinstance(sig, int) else min(sig, o.fn)
-        if o.fn > t.base:
+        if isinstance(sig, int):
+            if o.fn < sig:
+                t.base, t.last = o.fn, o.last
+            else:
+                t.base = sig
+                t.last = saved["last"] if isinstance(saved.get("last"), str) else o.last
+        else:
+            t.base, t.last = o.fn, o.last
+        if o.fn > t.base or (o.fn == t.base and o.last[:LAST_CUT] != (t.last or "")[:LAST_CUT]):
             t.urgent = True
         screen = "\n".join(o.lines)
         t.prev_ok, t.prev_screen, t.prev_fp = True, screen, (o.fn, o.fl)
@@ -681,7 +767,7 @@ class Engine:
         if not t.changed:
             t.changed = t.confirmed
         self.load_stall(t, saved)
-        if t.stall_reason and (screen != t.stall_screen or t.prev_fp != t.stall_fp):
+        if t.stall_reason and not stall_held(t, screen, t.prev_fp):
             t.stall_reason = ""
 
     def load_stall(self, t, saved):
@@ -693,11 +779,17 @@ class Engine:
 
     # ---- one sweep
 
+    def lost(self, t, events):
+        """R3: LOST once per pane handle."""
+        if t.pane not in t.lost:
+            t.lost.add(t.pane)
+            events.append(("WATCH LOST %s: pane exited %s" % (t.name, exit_cause_text(t.env, t.pane)), None))
+        return "lost"
+
     def evaluate(self, t, o, events):
         """Folds one Obs into the task; returns the state word of the sweep line."""
         if o.kind == "exited":
-            events.append(("WATCH LOST %s: pane exited %s" % (t.name, exit_cause_text(t.env, t.pane)), None))
-            return "lost"
+            return self.lost(t, events)
         if o.kind == "fail":
             t.fails += 1
             if t.fails >= 3:
@@ -709,8 +801,6 @@ class Engine:
         t.confirmed = now
         screen = "\n".join(o.lines)
         fp = (o.fn, o.fl)
-        if t.base is None or o.fn < t.base:
-            t.base = o.fn
         if t.prev_fp is not None and fp != t.prev_fp:
             t.changed = now
         elif not t.changed:
@@ -726,16 +816,37 @@ class Engine:
         waiting = o.w > 0
         held = False
         if t.stall_reason:
-            if screen == t.stall_screen and fp == t.stall_fp:
-                held = True
-            else:
+            held = stall_held(t, screen, fp)
+            if not held:
                 t.stall_reason = ""
-        if o.fn > t.base:
-            t.base = o.fn
-            events.append(("WATCH SIGNAL %s: %s" % (t.name, o.last), o.lines[-15:]))
+        # wake lines (B5, R12, R13)
+        fired, note = [], ""
+        if t.base is None or o.fn < t.base:
+            t.base, t.last = o.fn, o.last
+        elif o.fn > t.base:
+            k = o.fn - t.base
+            if o.wakes:
+                fired = o.wakes[t.base:o.fn]
+            else:
+                fired = [o.last]
+                if k > 1:
+                    note = "+%d earlier new wake line%s: read agent_state.txt" % (k - 1, "" if k == 2 else "s")
+            t.base, t.last = o.fn, o.last
+        elif t.last is not None and o.last[:LAST_CUT] != t.last[:LAST_CUT]:
+            fired = [o.last]
+            t.last = o.last
         else:
+            t.last = o.last
+        for i, line in enumerate(fired):
+            ev = list(o.lines[-15:])
+            if note and i == len(fired) - 1:
+                ev = [note] + ev
+            events.append(("WATCH SIGNAL %s: %s" % (t.name, line), ev))
+        if o.exited:
+            return self.lost(t, events)
+        if not fired:
             reason = ""
-            if any(w in screen for w in LOGIN_TEXTS):
+            if login_expired(o.lines):
                 reason = "login expired"
             elif not waiting:
                 if idle_prompt and t.idle >= 2:
@@ -830,21 +941,46 @@ class Engine:
     def run(self):
         self.replace_older()
         self.saved = {k: v for k, v in (self.load_status().get("tasks") or {}).items() if isinstance(v, dict)}
+        signal.signal(signal.SIGTERM, self.on_term)
         out("%s watch --all: start (pid %d), every %s min" % (hhmm(), os.getpid(), fmt_num(self.interval_min)))
         self.prepare(True)
         urgent = any(t.urgent for t in self.tasks.values())
         self.sweep_time = now_text()
         self.write_status()
         n = 0
+        next_at = time.time() + self.iv
         while True:
             if not (urgent and n == 0):
-                time.sleep(self.iv)
+                time.sleep(max(0.0, next_at - time.time()))      # R8: a fixed cadence
+            next_at = max(next_at + self.iv, time.time())
             n += 1
             if self.one_sweep():
                 return 0
             if n >= self.max:
                 out("WATCH MAX all")
                 return 0
+
+    def on_term(self, signum, frame):
+        """R9: a newer --all replaced this one (it wrote its pid into the status file first)."""
+        pid = self.load_status().get("pid")
+        if isinstance(pid, int) and pid != os.getpid():
+            out("WATCH REPLACED all: a newer watch runs (pid %d); do not restart" % pid)
+            os._exit(0)
+        os._exit(143)
+
+
+def stall_held(t, screen, fp):
+    """R4: an idle-prompt or login stall is held by (reason, file) only; a no-change stall also by the screen."""
+    if fp != t.stall_fp:
+        return False
+    return t.stall_reason in ("idle prompt", "login expired") or screen == t.stall_screen
+
+
+def login_expired(lines):
+    """R22: on a screen that is not busy, in its last 10 lines."""
+    if any("esc to interrupt" in l for l in lines):
+        return False
+    return any(w in l for l in lines[-10:] for w in LOGIN_TEXTS)
 
 
 def fmt_num(x):
@@ -902,6 +1038,15 @@ def tell_block(sha, sig, when, body):
     return "TELL %s %s | %s\n%s\nEND TELL %s\n\n" % (sha, sig, when, "\n".join(lines), sha)
 
 
+def pane_gone(env, pane):
+    """R15: the pane read says gone, or its status is not running."""
+    r = term_read(env, pane)
+    if not r.ok:
+        return r.code in GONE_CODES
+    status = (terminal_of(r) or {}).get("status")
+    return status is not None and status != "running"
+
+
 def tell_resolve(ctx, task):
     """D2: (path, env, pane, shell, "") or (None, ..., why). The status file first, else A3-A5."""
     try:
@@ -914,6 +1059,17 @@ def tell_resolve(ctx, task):
         path, env, pane = str(entry["path"]), str(entry.get("env") or ""), str(entry["pane"])
         target = Target(task, path, env)
         shell = str(entry.get("shell") or "")
+        if pane_gone(env, pane):                        # R15: a gone or exited pane: A3-A5 once more
+            target = next((t for t in read_targets(ctx) if t.name == task), target)
+            env2, why = locate(ctx, target)
+            if env2 is None:
+                return None, "", "", "", why
+            if env2 != env:
+                env, shell = env2, ""
+            pane = resolve_tm(ctx, target, env, skip=(pane,))
+            if not pane:
+                return None, "", "", "", "no task manager pane"
+            path = target.path
     else:
         target = next((t for t in read_targets(ctx) if t.name == task), None)
         if target is None:
@@ -957,9 +1113,14 @@ def shell_send(env, shell, cmd):
     return orca(["terminal", "send"] + env_args(env) + ["--terminal", shell, "--text", cmd, "--enter", "--json"])
 
 
-def tell_write_remote(env, shell, path, block, sha):
+def tell_write_remote(env, shell, path, block, sha, gitdir=None):
     """D5, D6: base64 chunks into a temp file, one command decodes and appends, one command prints the
-    sha256 of the block's length at the end of the file. (ok, why)."""
+    sha256 of the block's length at the end of the file. All under the shell pane's lock (R16). (ok, why)."""
+    with ShellLock(gitdir or ".", shell):
+        return tell_write_remote_locked(env, shell, path, block, sha)
+
+
+def tell_write_remote_locked(env, shell, path, block, sha):
     import base64
     import hashlib
     data = block.encode("utf-8")
@@ -984,6 +1145,7 @@ def tell_write_remote(env, shell, path, block, sha):
     if not r.ok:
         return False, "shell pane: " + r.err
     want = hashlib.sha256(data).hexdigest()
+    seen_other = False
     for _ in range(20):
         a = term_read(env, shell, cursor)
         if not a.ok:
@@ -991,9 +1153,11 @@ def tell_write_remote(env, shell, path, block, sha):
         for line in tail_of(terminal_of(a) or {}):
             m = TELL_HASH.match(line.replace("\r", "").strip())
             if m:
-                return m.group(1) == want, "hash differs"
+                if m.group(1) == want:
+                    return True, ""
+                seen_other = True
         time.sleep(0.5)
-    return False, "no answer from the shell pane"
+    return False, "hash differs" if seen_other else "no answer from the shell pane"
 
 
 def tell_pointer(env, pane, sha, sig, cursor, echo_s):
@@ -1033,7 +1197,7 @@ def tell_main(argv):
     block = tell_block(sha, sig, (when or now_text())[:16], body)
     for _ in range(2):
         if env:
-            ok, _why = tell_write_remote(env, shell, path, block, sha)
+            ok, _why = tell_write_remote(env, shell, path, block, sha, ctx.gitdir)
         else:
             ok = tell_write_local(path, block)
         if ok:
@@ -1082,8 +1246,10 @@ def main(argv):
                     max_sweeps = int(argv[i + 1])
                 else:
                     minutes = float(argv[i + 1])
+                    if not minutes > 0 or minutes == float("inf"):
+                        raise ValueError
             except ValueError:
-                return usage("%s must be a number" % a)
+                return usage("%s must be a number%s" % (a, " above 0" if a == "--interval-min" else ""))
             i += 2
         else:
             return usage("unknown argument: %s" % a)
