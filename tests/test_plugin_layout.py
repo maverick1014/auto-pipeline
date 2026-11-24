@@ -71,7 +71,7 @@ BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py", "agent.conf.default
                                             "agent_release.py"]
 
 AGENT_FILES = ["fast-lane-deputy.md", "merge-deputy.md", "worker.md"]
-SKILL_DIRS = ["dispatch", "merge", "init", "cloud-pack", "city", "close-case"]
+SKILL_DIRS = ["dispatch", "merge", "init", "cloud-pack", "city", "close-case", "clean-up"]
 
 ALLOW_RULES = [
     "Bash(git push origin --delete *)",
