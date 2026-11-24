@@ -815,16 +815,6 @@ class TestPageCitizen(unittest.TestCase):
         self.assertEqual(r["govWaiting"], [["gov", "等你"], "等你回话…"])
         self.assertEqual(r["govBg"], [["bgrun", "后台在跑"], ""])
 
-    def test_another_members_people_get_the_same_cases(self):
-        remote = tp.function_source("applyRemote") or ""
-        for kind in ("waiting", "background", "idle", "resume"):
-            with self.subTest(kind=kind):
-                self.assertIn("'%s'" % kind, remote)
-        for flag in ("bgrun", "idle"):
-            with self.subTest(flag=flag):
-                self.assertRegex(remote, r"\.%s\b" % flag)
-
-
 class TestPageColour(unittest.TestCase):
     def test_violet_in_every_theme(self):
         style = tp.style()

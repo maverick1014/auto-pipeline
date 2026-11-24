@@ -21,8 +21,6 @@ CONTRACT
   bin/agent-city-hook.sh: every line also has "tp", the payload's
     transcript_path as the JSON-escaped string value; "" when missing or
     longer than 1024 bytes. (tests/test_agent_city_hook.py KEYS has "tp".)
-    The relay never sends it: to_wire (bin/agent_city_relay.py) keeps its own
-    field list, "tp" is not in it.
 
   bin/agent_city.py:
     TitleReader(root=None, tail_bytes=2 MB)
@@ -58,7 +56,7 @@ CONTRACT
       tag, the rail row, the panel title and the chat lines all go through
       nameOf(c)); an unknown id does nothing.
     nameOf(c): as before ("<label> · <task>", never the same text twice),
-      plus: when another citizen that is not gone and not remote has the
+      plus: when another citizen that is not gone has the
       same text, " #" and the last 4 characters of c.id are added, so two
       rows never read the same.
 
@@ -77,7 +75,6 @@ sys.path.insert(0, HERE)
 
 from test_agent_city_people import REQUIRED, ac, run_sim  # noqa: E402
 
-import agent_city_relay as relay  # noqa: E402  (bin/ is on sys.path via test_agent_city_people)
 
 REPO = "/work/v4/v4-plus/.git"
 
@@ -355,21 +352,11 @@ class TestCitySessionNames(CityCase):
         self.assertEqual(spawn["label"], "session")
 
 
-class TestRelayNeverSendsThePath(unittest.TestCase):
-
-    def test_to_wire_drops_tp(self):
-        wire = relay.to_wire({"ev": "PostToolUse", "sid": "s1", "tp": "/Users/u/.claude/projects/x/s1.jsonl"},
-                             {"rid": "r", "br": "main", "who": "me", "dev": "pc2"})
-        self.assertNotIn("tp", wire)
-        self.assertFalse([k for k, v in wire.items() if ".jsonl" in v])
-
-
 PAGE_DRIVER = r"""
 citizens.length = 0;
 const mk = (id, label, task, extra) => Object.assign({ id, label, task, gone: false }, extra || {});
 citizens.push(mk('s:aaaa1111', 'session', 'v4-plus'), mk('s:bbbb2222', 'session', 'v4-plus'),
-              mk('s:cccc3333', 'plus-manager', 'v4-plus'), mk('w9', 'worker', 'Slice A'),
-              mk('r:x', 'session', 'v4-plus', { remote: { who: 'ann', device: 'pc9' } }));
+              mk('s:cccc3333', 'plus-manager', 'v4-plus'), mk('w9', 'worker', 'Slice A'));
 const twins = [nameOf(citizens[0]), nameOf(citizens[1]), nameOf(citizens[2]), nameOf(citizens[3])];
 apply({ type: 'label', id: 's:bbbb2222', label: 'consignment' });
 const renamed = [nameOf(citizens[0]), nameOf(citizens[1]), citizens[1].label];
@@ -394,7 +381,7 @@ class TestPageShowsTheName(unittest.TestCase):
         self.assertEqual(self.out["renamed"], ["session · v4-plus", "consignment · v4-plus",
                                                "consignment"])
 
-    def test_gone_and_remote_people_do_not_count(self):
+    def test_gone_people_do_not_count(self):
         self.assertEqual(self.out["goneIgnored"], "plus-manager · v4-plus")
 
 

@@ -65,11 +65,6 @@ COPY_BIN = [
     "agent-city-shim",
     "agent-city-hook.sh",
     "agent_city.py",
-    "agent_city_relay.py",
-    "agent-city-relay.js",
-    "agent-city-relay-dev.mjs",
-    "agent-city-cloud.js",
-    "agent-city-cloud-dev.mjs",
     "agent-city.html",
     "agent-city-plans.json",
     "agent-close-case.sh",
@@ -573,9 +568,8 @@ class ScriptRepo:
         if self.home is not None:
             env["HOME"] = self.home
         elif "HOME" not in (extra or {}):
-            # city-device-join: the owner's real city home holds the device
-            # join (team-relay); a run with the real $HOME gets its own, so a
-            # test can never send to the owner's real relay
+            # a run with the real $HOME gets its own city home, so a test
+            # never touches the owner's real one
             env["AGENT_CITY_HOME"] = os.path.join(self.base, "cityhome-default")
         env.setdefault("AGENT_FAKE_RAM", "10")
         env.setdefault("AGENT_FAKE_CPU", "10")

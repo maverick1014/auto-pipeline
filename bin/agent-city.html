@@ -208,13 +208,12 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .bub.done{border-color:#2FB57A;background:#EFFFF6}
 .talkb{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;padding:0 6px;background:#fff;color:#2A2B45;border:2px solid #2A2B45;border-radius:15px;font:600 15px/1 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.2);pointer-events:auto;cursor:pointer}
 .talkb::after{content:"";position:absolute;left:50%;bottom:-9px;width:10px;height:10px;margin-left:-5px;box-sizing:border-box;background:#fff;border:2px solid #2A2B45;border-top:0;border-left:0;transform:rotate(45deg)}
-.bub::after,.tagl::after,.qm::after,.rdev::after{content:"";position:absolute;inset:-8px}
+.bub::after,.tagl::after,.qm::after{content:"";position:absolute;inset:-8px}
 .qm{all:unset;cursor:pointer;display:block;width:28px;height:28px;pointer-events:auto;z-index:3}
 .qm span{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#FF6F8B;color:#fff;font:700 17px/1 var(--display);border:2px solid #fff;box-shadow:0 2px 0 rgba(42,43,69,.25);animation:hop .7s ease-in-out infinite}
 .qm:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
 .qm.grey span{background:#8D91B3;animation:none}
 @keyframes hop{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-.stale{background:#585D82;color:#fff;border-radius:999px;padding:2px 9px;font:600 11px/1.4 var(--mono);white-space:nowrap}
 .gwait{display:inline-flex;align-items:center;gap:5px;background:var(--gov-bg);color:var(--gov-ink);border:1.5px solid var(--gov-ink);border-radius:999px;padding:2px 9px;font:600 11px/1.4 var(--mono);white-space:nowrap;font-variant-numeric:tabular-nums;pointer-events:none}
 .zz{font:700 14px/1 var(--display);color:#8D91B3;letter-spacing:.1em}
 .zz span{display:inline-block;animation:zz 2.4s ease-in-out infinite}
@@ -222,7 +221,6 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .zz span:nth-child(3){animation-delay:.8s}
 @keyframes zz{0%{transform:translate(0,0);opacity:0}30%{opacity:1}100%{transform:translate(8px,-14px);opacity:0}}
 .tagl{background:var(--c);color:#fff;border-radius:999px;padding:3px 10px;font:600 11.5px/1.3 var(--mono);white-space:nowrap;box-shadow:0 2px 0 rgba(42,43,69,.2);pointer-events:auto;cursor:pointer}
-.rdev{background:var(--panel-2);color:var(--ink-3);border:1px solid var(--line);border-radius:999px;padding:2px 7px;font:600 9.5px/1.3 var(--mono);white-space:nowrap;pointer-events:auto;cursor:pointer}
 .tag{z-index:2}
 .doing{background:rgba(255,255,255,.92);color:var(--ink-2);border-radius:999px;padding:2px 9px;font:600 10.5px/1.3 var(--mono);box-shadow:0 1px 0 rgba(42,43,69,.15);white-space:nowrap;pointer-events:none}
 .lbl{background:rgba(255,255,255,.94);color:#2A2B45;border-radius:999px;padding:2px 10px;font:600 12px/1.5 var(--display);box-shadow:0 2px 0 rgba(42,43,69,.15);white-space:nowrap}
@@ -524,67 +522,6 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
   .arr-h.on .arr-eye{display:inline;padding:7px 9px}
 }
 @media (prefers-reduced-motion: reduce){ .qm span,.zz span{animation:none} .track i,.btn{transition:none} .spin{animation:none;border-top-color:var(--ink-3)} }
-/* cloud-city: css -- the same page as the cloud page: view only, fed by polling (mock/cloud-city-1-mock.html).
-   Every rule is scoped to a class that the script puts on .app only when CLOUD is true (.cloud-page,
-   .cloud-row, .cloud-locked), or to an element the script itself makes; the machine row (.machines; cloud-polish Q1:
-   it sits on the stage, over the map, above the repo row) is hidden by its own attribute. So the local city and
-   #demo look exactly as before. */
-.cloud-page #next,.cloud-page #ask,.cloud-page #empty-land{display:none!important}
-.cloud-page .qm{pointer-events:none!important;cursor:default}
-.cloud-page .qm span{background:#8D91B3;animation:none}
-.cloud-page .win[data-cloud-note]::after{content:attr(data-cloud-note);flex:none;border:1.5px dashed var(--line);border-radius:12px;padding:8px 10px;color:var(--ink-3);font:600 12px/1.4 var(--round);text-align:center}
-.cloud-locked .stage>:not(#cloud-notice),.cloud-locked #stats,.cloud-locked .repos,.cloud-locked #logbtn{visibility:hidden}
-.ro{display:inline-flex;align-items:center;padding:6px 11px;border-radius:999px;background:var(--butter);color:#4A3500;font:700 12px/1 var(--display)}
-/* cloud-polish: a narrow phone keeps 动态 and the account on the title row; the machine's own chip on the map says 只能看
-   (this block comes after the .ro rule above, so the same-specificity .ro{display:none} wins) */
-@media (max-width: 520px){ .ro{display:none} .sign-name{font-size:20px} }
-.acct{display:inline-flex;align-items:center;gap:8px;font:600 12.5px/1 var(--round);color:var(--ink-2)}
-.acct .who{display:inline-flex;flex-direction:row;align-items:center;white-space:nowrap;gap:6px;padding:6px 11px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel)}
-.acct .who i{width:8px;height:8px;border-radius:50%;background:#2FA56F}
-.acct a{padding:6px 11px;border-radius:999px;background:var(--panel-2);color:var(--ink-2);text-decoration:none}
-.acct a:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
-.machines{display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px}
-.machines::-webkit-scrollbar{display:none}
-.machines .lead{flex:none;font:600 12px/1 var(--round);color:var(--ink-3);padding-right:2px}
-.mc{all:unset;cursor:pointer;flex:none;display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font:600 12.5px/1 var(--round);color:var(--ink-2)}
-.mc:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
-.mc[aria-pressed="true"]{border-color:var(--ink);color:var(--ink);box-shadow:0 2px 0 var(--ink)}
-.mc i{width:8px;height:8px;border-radius:50%;background:#2FA56F}
-.mc.off i{background:#8D91B3}
-.mc b{font:700 12.5px/1 var(--display);color:var(--ink)}
-.mc .w{background:#FF6F8B;color:#fff;border-radius:999px;padding:3px 7px;font:700 11px/1 var(--display)}
-.mc .t{color:var(--ink-3);font-weight:500}
-.mc .tk{border-radius:999px;padding:3px 7px;font:700 11px/1 var(--round);background:rgba(47,165,111,.18);color:var(--ink)}
-.mc .tk.no{background:var(--panel-2);color:var(--ink-3)}
-.mc .tk.sk{background:rgba(77,124,254,.16)}
-/* talk (cloud-city-2, mock/cloud-city-2-mock.html): send again under a message that did not arrive, the note that
-   replaces the box, the line under the box, and what comes later shown as quiet dashed chips */
-.chat .msg .resend{all:unset;cursor:pointer;align-self:flex-end;margin-top:4px;padding:2px 10px;border-radius:999px;border:1.5px solid currentColor;font:700 11.5px/1.5 var(--round)}
-.chat .msg .resend:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
-.cloud-why{flex:none;margin:0;border:1.5px dashed var(--line);border-radius:12px;padding:9px 11px;color:var(--ink-2);font:600 12.5px/1.5 var(--round)}
-.cloud-why code{display:inline-block;margin-top:3px;font:600 12px/1.5 var(--mono);background:var(--panel-2);padding:1px 7px;border-radius:6px;color:var(--ink)}
-.cloud-fast{flex:none;margin:0;color:var(--ask-ink);font:600 12px/1.4 var(--round)}
-.rail>.cloud-why{margin:2px 10px 10px;font-size:12px;line-height:1.5}
-.rail>.cloud-why code{font-size:11.5px}
-.cloud-banner{position:absolute;left:50%;top:calc(20px + var(--top-h,34px));transform:translateX(-50%);z-index:6;max-width:calc(100% - 24px);background:var(--panel);border:2px solid var(--ink);border-radius:14px;padding:9px 14px;box-shadow:0 4px 0 rgba(42,43,69,.22);font:600 13px/1.45 var(--round);color:var(--ink);text-align:center}
-.cloud-banner small{display:block;color:var(--ink-3);font-weight:500}
-.cloud-empty{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);z-index:6;width:min(360px,calc(100% - 32px));background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:16px 18px;box-shadow:0 5px 0 rgba(42,43,69,.22);text-align:center}
-.cloud-empty b{display:block;font:700 17px/1.3 var(--display);margin-bottom:4px}
-.cloud-empty span{color:var(--ink-2);font-size:13px}
-.cloud-empty button{all:unset;cursor:pointer;display:inline-block;margin-top:10px;padding:8px 16px;border-radius:12px;background:var(--ink);color:var(--panel);font:700 13.5px/1 var(--round)}
-.cloud-empty button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
-@media (max-width: 960px){
-  .machines{flex-wrap:nowrap;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
-  .acct .who span{display:none}
-  /* a window is a sheet over the lower part of the SCREEN (the stage alone is too small for a conversation); its
-     height and place come from --vvh / --vvt, which the cloud script keeps equal to the visible part of the screen
-     (height and top), so with the keyboard up the sheet takes nearly all the room that is left and the box stays
-     above the keyboard. 56% of a full screen; with little room: the room minus 12px, at most 400px. The two
-     defaults are for a browser that never says (the script sets both on .app). */
-  .cloud-page{--vvh:100dvh;--vvt:0px}
-  .cloud-page .win{position:fixed;left:8px;right:8px;width:auto;bottom:auto;z-index:30;--sheet:max(calc(var(--vvh) * 0.56), min(calc(var(--vvh) - 12px), 400px));height:var(--sheet);top:calc(var(--vvt) + var(--vvh) - var(--sheet) - 8px)}
-}
-/* end cloud-city: css */
 </style>
 </head>
 <body>
@@ -606,9 +543,6 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
         <div class="ov" id="ov"></div>
         <!-- cloud-polish Q1: the machine row and the repo row sit ON the stage, over the map (one strip between the rail and the camera buttons) -->
         <div class="stage-top" id="stage-top">
-          <!-- cloud-city: html -- the machine row of the cloud page; hidden for ever on the local city, the script fills and shows it from the feed -->
-          <nav class="machines" id="machines" data-t-aria="cloud.machines" hidden></nav>
-          <!-- end cloud-city: html -->
           <nav class="repos" id="repos" data-t-aria="aria.repos"></nav>
           <!-- city-layout L4: the arrange control, pinned at the right end of the repo row (shown by the script on the live local page only) -->
           <button type="button" class="arr-btn" id="arr-btn" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg><span data-t="arr.btn"></span></button>
@@ -660,9 +594,6 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
             <option value="merge-deputy" data-t="opt.mergeDeputy"></option>
           </select>
           <button class="btn primary" id="spawn" type="button" data-t="btn.spawn"></button>
-          <button class="btn" type="button" data-remote="off" data-t="btn.remoteOff"></button>
-          <button class="btn" type="button" data-remote="on" data-t="btn.remoteOn"></button>
-          <button class="btn" type="button" data-remote="leave" data-t="btn.remoteLeave"></button>
         </div>
       </div>
     </section>
@@ -682,7 +613,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
    (data-t / data-t-aria / data-t-title / data-t-placeholder) is filled once, at start, by applyText(). */
 const LANG = '__CITY_LANG__';
 document.documentElement.lang = LANG === 'en' ? 'en' : 'zh-CN';
-const TEXT = { zh: { 'btn.log': '动态', 'aria.city': '城市', 'aria.canvas': '3D 小岛：每个小人是一个 agent', 'proto.banner': '原型 · 模拟数据', 'btn.zoomIn': '放大', 'btn.zoomOut': '缩小', 'btn.rotate': '转一下', 'btn.resetView': '回到默认视角', 'repo.all': '全部', 'aria.repos': '仓库：点一个飞过去', 'repo.goAria': '飞到 {name}', 'cap.hint': '已经是最远了 · 点「全部」看所有仓库','btn.close': '关闭', 'aria.toolbar': '控制', 'label.spawn': '派一个', 'opt.worker': 'worker · 盖房子', 'opt.taskManager': 'task manager · 测试塔', 'opt.fastLaneDeputy': 'fast-lane deputy · 花园', 'opt.mergeDeputy': 'merge deputy · 桥', 'btn.spawn': '派出', 'btn.remoteOff': '中继断开', 'btn.remoteOn': '恢复', 'btn.remoteLeave': '退出联城', 'type.house': '住宅', 'type.shop': '商店', 'type.tower': '测试塔', 'type.workshop': '工坊', 'type.library': '图书馆', 'district.house': '住宅区', 'district.shop': '商业街', 'district.tower': '测试区', 'district.workshop': '工坊区', 'district.library': '图书馆区', 'chat.state.queued': '排队中', 'chat.state.delivered': '已送达', 'chat.state.undelivered': '没送到', 'chat.why.notListening': '它没在听，收不到', 'chat.state.sent': '在路上', 'chat.you.cloud': '你（云端）', 'chat.you.local': '你（电脑上的页面）', 'chat.why.off': '那台电脑没开', 'chat.why.ended': '这个会话已经结束', 'chat.why.talkOff': '那台电脑不接收云端消息', 'chat.why.refused': '那台电脑没收这条消息', 'chat.why.flood': '发得太快，那台电脑没收', 'chat.resend': '重发', 'chat.new': '有新消息 ↓', 'hist.title': '历史（新的在下面）', 'hist.empty': '还没有记录', 'hist.all': '显示过程 {n}', 'hist.hide': '隐藏过程', 'hist.onlyMech': '只有过程记录，点「显示过程」看', 'hist.started': '出门：{task}', 'hist.stuck': '卡住了：{text}', 'hist.toLead': '去问经理', 'hist.toGov': '去问总督', 'hist.waiting': '等你回话', 'hist.done': '完工，去休息', 'hist.left': '下班了', 'chat.task': '任务（派它时的话）', 'team.title': '{repo} · 团队', 'role.task-manager': '任务经理', 'role.worker': '工人', 'role.fast-lane-deputy': '快车道副手', 'role.merge-deputy': '合并副手', 'role.other': '帮手', 'era.village': '村', 'era.town': '镇', 'era.city': '城', 'quality.good': '整齐', 'quality.fair': '还行', 'quality.poor': '有点乱', 'who.governor': '总督', 'who.owner': '你', 'who.terminal': '终端', 'state.spawn': '出门', 'state.to_plot': '去工地', 'state.building': '施工中', 'state.working': '干活', 'state.to_hall': '去问总督', 'state.asking': '在问总督', 'state.heard': '拿到答案', 'state.to_lead': '去问经理', 'state.at_lead': '问经理', 'state.back': '回工地', 'state.finishing': '封顶了', 'state.to_rest': '去休息', 'state.resting': '休息中', 'state.leaving': '下班回家', 'status.need_approval': '等你批', 'status.asking_gov': '在问总督', 'status.waiting_answer': '等你回答', 'status.waiting_reply': '等你回话', 'status.waiting': '等你', 'status.background': '后台在跑', 'status.idle': '空闲', 'stuck.permission': '要权限：{tool}', 'stuck.default': '需要你看一下', 'gov.away': '不在', 'gov.busy': '忙着', 'gov.home': '坐镇市政厅', 'top.work': '干活', 'top.ask': '找总督', 'top.rest': '休息', 'top.done': '建成', 'top.stalled': '卡住的工地', 'top.pending': '等你', 'top.pendingAria': '等你决定 {n} 个，点开最早的一个', 'empty.noLand': '还没有领地 · 在一个 git 仓库里启动，或等代理开工', 'loading.text': '正在搬来素材…', 'loading.progress': '正在搬来素材 {n}/{total}', 'loading.error': '素材没加载成功：{err}', 'site.human': '亲自带', 'log.eraUpgrade': '{name} 开始升级成{era}', 'say.done': '完工啦！', 'log.leftWork': '{task} 下班了', 'gov.dispatch': '去吧：{task}', 'log.govDispatch': '总督派出 {label}：{task}', 'log.siteMerged': '{branch} 合并进主线，工地收工', 'log.siteRemoved': '{branch} 的工地撤了', 'log.levelUp': '{label} 升到 {lv} 级', 'log.movedBack': '{label} 搬回{kind}区', 'log.demolished': '{label} 的文件都没了，拆掉', 'log.stuckDemo': '{task} 卡住了：“{text}” → 去问总督', 'answer.default': '已回答', 'log.govAnswer': '总督回答 {task}：“{text}”', 'log.doneRestPlain': '{task} 完工，去休息', 'log.doneRestBuilt': '{task} 完工：{kind}封顶，去休息', 'log.noplot': '{name} 没有空地了，先等等', 'gov.unknown': '未知', 'gov.busyRow': '在忙', 'gov.idleRow': '空闲', 'gov.title': '{name} 总督', 'chain.lead': '经理', 'chain.leadTask': '经理 {task}', 'chat.empty': '还没有对话', 'chat.you.page': '你（页面）', 'chat.you.terminal': '你（终端）', 'chat.wait': '等它做完这一步', 'chat.loadError': '对话没加载出来，等会儿再打开看看。', 'kv.repo': '仓库', 'kv.branch': '分支', 'kv.doing': '在做', 'qa.ask': '问：“{q}”', 'qa.answer': '答：“{a}”', 'qa.waiting': '问：“{q}” 等回答…', 'act.makeStuck': '让它卡住', 'act.makeDone': '让它完工', 'act.makeLeave': '让它下班', 'act.demoNote': '这三个按钮只在原型里有，用来试流程。', 'gov.ownTag': 'main manager · 主对话', 'gov.tagLabel': '总督 · main manager', 'gov.rgRole': 'main manager · 总督', 'pill.hall': '市政厅', 'gov.awayNote': '总督不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等总督。', 'hint.team': '团队', 'hint.noAgents': '还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。', 'hint.pickSomething': '点城里的小人、房子，或下面名单里的一行。', 'building.misplaced': ' · 放错区了', 'building.level': ' · 等级 {level}', 'building.district': '{kind}区', 'building.module': '{name} 模块', 'hint.files': '盖它的文件', 'hint.history': '改过它的人（新的在前）', 'detail.title': '详情', 'opt.other': '其他', 'opt.customAnswer': '自己写回答', 'btn.sendAnswer': '发送回答', 'kv.tool': '工具', 'kv.file': '文件', 'kv.url': '网址', 'said': '它说：{text}', 'kv.dir': '目录', 'field.denyReason': '拒绝理由（可以不填；填了会原样告诉它）', 'field.denyPlaceholder': '比如：先别删 dist/，里面有发布包', 'btn.allow': '批准', 'btn.deny': '拒绝', 'ask.asking': '在问', 'card.permission': '要权限', 'card.question': '在问你', 'ask.needsPermission': '要权限', 'pill.closed': '已关闭', 'aria.collapse': '收起（不回答）', 'foot.terminalAnswers': '终端里也能答，先答的算。', 'err.decideNetwork': '没发出去（连不上城市服务器）。终端里还能答。', 'err.decideStatus': '没发出去（{status}）。终端里还能答，可以再试一次。', 'proto.live': '实时 · 等服务器', 'proto.connected': '实时 · 已连接', 'proto.reconnecting': '实时 · 重连中…', 'log.relayOff': '联城中继断开：其他成员定格，我的城市照常干活。', 'log.relayOn': '联城恢复：其他成员更新到最新。', 'log.relayLeave': '退出联城：其他成员从我的城市消失，我的城市不变。', 'demo.task.checkoutTest': '写结账测试', 'demo.task.paymentRetry': '改支付超时重试', 'demo.q.paymentRetry': '支付超时要不要自动重试？', 'demo.task.depsScan': '扫描依赖漏洞', 'demo.task.worker.0': '设置页表单', 'demo.task.worker.1': '登录 API', 'demo.task.worker.2': '导出 CSV', 'demo.task.worker.3': '深色模式', 'demo.task.worker.4': '小票打印', 'demo.task.worker.5': '搜索框', 'demo.task.worker.6': '分页', 'demo.task.worker.7': '价格计算', 'demo.task.worker.8': '库存提醒', 'demo.task.worker.9': '客户列表', 'demo.task.taskManager.0': '设置页', 'demo.task.taskManager.1': '登录', 'demo.task.taskManager.2': '报表', 'demo.task.taskManager.3': '打印', 'demo.task.taskManager.4': '库存', 'demo.task.fastLaneDeputy.0': '错别字', 'demo.task.fastLaneDeputy.1': '按钮颜色', 'demo.task.fastLaneDeputy.2': '图标大小', 'demo.task.fastLaneDeputy.3': '标题换行', 'demo.task.fastLaneDeputy.4': '空状态文案', 'demo.task.mergeDeputy.0': '合并 settings', 'demo.task.mergeDeputy.1': '合并 login', 'demo.task.mergeDeputy.2': '合并 report', 'demo.task.mergeDeputy.3': '合并 print', 'demo.qa.0.q': '测试名不清楚，用哪个？', 'demo.qa.0.a': '按默认，记进日志', 'demo.qa.1.q': 'API 路径用哪个？', 'demo.qa.1.a': '用 /api/settings', 'demo.qa.2.q': '要不要加分页？', 'demo.qa.2.a': '先不加，写进 ideas', 'demo.qa.3.q': '默认语言是？', 'demo.qa.3.a': 'zh，跟 agent.conf', 'demo.qa.4.q': '旧数据要迁移吗？', 'demo.qa.4.a': '要，先写测试', 'demo.qa.5.q': '这个文件能改吗？', 'demo.qa.5.a': '能，只改你那份', 'demo.qa.6.q': '可以跑这条命令吗？', 'demo.qa.6.a': '批了，继续', 'aria.needsApproval': '{task} 等你批，点开看', 'aria.needsAnswer': '{task} 等你回答，点开看', 'aria.stuckOnlyThem': '{name} 卡住了，只有 {name} 能回答', 'aria.govNeedsApproval': '总督 等你批，点开看', 'aria.govNeedsAnswer': '总督 等你回答，点开看', 'gov.waitCountdown': '总督 {s}s', 'chat.sendError': '没发出去（连不上城市服务器）。', 'btn.findLead': '找组长：{name}', 'hint.readOnlySub': '它是子任务，这份对话只能看；有事去找组长。', 'placeholder.saySomething': '跟它说…', 'btn.send': '发送', 'label.ask': '问：', 'label.answer': '答：', 'label.awaitingAnswer': '等回答…', 'member.unknown': '未知', 'chip.off': '联城断开 · 待发 {n} 条', 'chip.refused': '联城拒绝了密钥', 'chip.ok': '联城 · {people} 人 · {devices} 台设备', 'remote.note': '只能看：这是 {who} 的 agent，只有 {who} 能回答。', 'stale.sec': '最后更新 {n} 秒前', 'stale.min': '最后更新 {n} 分钟前', 'ask.permission': '{name} 要权限：{what} → 等你批', 'ask.toOwner': '{name} 问你：“{what}”', 'ask.toGov': '{name} 问总督：“{what}”', 'ask.toGovNoGov': '{name} 问总督：“{what}”，没有总督在 → 等你回答', 'askphase.pass': '总督：这个我定不了 → 等你回答 {name}', 'askphase.timeout': '总督 {wait} 秒没回答 {name} → 等你', 'closed.routed': '{name} 的请求转到{who}处理：{what}', 'closed.answered': '{who}回答 {name}：“{text}”', 'closed.answeredDefault': '{who}已回答 {name}', 'closed.allowed': '{who}批准 {name}：{what}', 'closed.denied': '{who}拒绝 {name}：{what}', 'closed.deniedReason': '，理由：“{reason}”', 'closed.ended': '{who}结束了 {name}：{what}', 'why.permission': '权限只由你来批，总督不批。', 'why.gov': '总督定不了，交给你。', 'why.timeout': '总督 {wait} 秒没回答，交给你。', 'why.pass': '总督说：这个我定不了，交给你。', 'why.noGov': '没有总督在，直接交给你。', 'closed.late': '晚了一步：<b>{who}</b>在 {time} 已经处理了。这里不用再点了。', 'closed.pending': '在 {time} 已经处理了，结果还没传回来。已记下。', 'closed.answeredText': '回答了：“{text}”', 'closed.allowedText': '批准了', 'closed.deniedText': '拒绝了', 'closed.lateFull': '晚了一步：<b>{who}</b>在 {time} 先{text}。这里不用再点了。', 'closed.doneByYou': '<b>{who}</b>在 {time} {text}。已记下。', 'log.chatSent': '你 → {to}：{text}', 'log.remoteSpawn': '{who}（{device}）的 {label} 开始：{task}', 'log.remoteDone': '{who}（{device}）的 {task} 完工了', 'log.remoteLeft': '{who}（{device}）的 {task} 下线了', 'say.understood': '明白！', 'log.eraBecame': '{name} 变成{era}了', 'demo.seed.prompt': '先把这页做完，别的先不要动', 'demo.seed.reply': '好，先做这页，其它先不碰', 'chat.stateSuffix': '（{state}）', 'punct.answerJoin': '；', 'rail.title': '在线', 'rail.count': '{n}', 'rail.rest': '休息 {n}', 'rail.tab': '在线 {n}', 'rail.none': '没人在线', 'rail.lost': '上级不明', 'rail.fold': '收起', 'rail.unfold': '展开', 'add.tip': '加 agent', 'add.plus': '＋', 'add.opening': '正在打开 {name}…', 'add.openingBare': '正在打开…', 'add.cap': '电脑有点忙', 'add.capNums': 'RAM {ram}% · CPU {cpu}%（上限 {max}%）', 'add.capAsk': '还要打开吗？', 'add.go': '还是打开', 'add.cancel': '取消', 'add.err': '没打开：', 'add.retry': '再试', 'add.ok': '知道了', 'add.errGone': '找不到仓库文件夹 {folder}（被移走或删掉了）。', 'add.errFailed': 'Orca 没能开出终端：{detail}', 'add.errLate': '终端开了，但 60 秒还没见到它上线。去 Orca 看那个终端。', 'add.errOther': '服务器没有给出原因（可能没连上）。', 'add.plain': '这台电脑没有 Orca，页面开不了终端。在终端里跑这一行：', 'add.copy': '复制', 'add.copied': '已复制', 'add.close': '关掉', 'fold.rail': '折起名单', 'fold.msg': '折起消息', 'msg.tab': '消息 · {name}', 'b.focus': '看看它', 'follow.on': '跟随 {name}', 'follow.stop': '停止', 'demo.device.cloud': '云端', 'work.edit': '改代码', 'work.read': '看文件', 'work.bash': '跑命令', 'work.other': '忙着', 'work.pause': '停一下', 'step.edit': '改 {file}', 'step.write': '写 {file}', 'step.editAny': '改代码', 'step.writeAny': '写代码', 'step.read': '看文件', 'step.search': '找代码', 'step.web': '查资料', 'step.bash': '跑命令', 'step.send': '派出：{desc}', 'step.sendAny': '派出帮手', 'step.plan': '排计划', 'step.message': '发消息', 'step.other': '忙着', /* cloud-city: texts */ 'cloud.readOnly': '只能看', 'cloud.sign': '云端', 'cloud.machines': '机器', 'cloud.busy': '干活 {n}', 'cloud.wait': '等你 {n}', 'cloud.noMachine': '还没有机器', 'cloud.noMachineHint': '在一台加入过城市的电脑上开一个 Claude 会话，它会自己出现在这里。', 'cloud.noSessions': '这台机器现在没有会话', 'cloud.noSessionsHint': '在它上面开一个 Claude 会话，人就会走出来。会话一开，那台机器的城市自己起来。', 'cloud.offline': '没有机器在线 · 这是 {age}的画面（{label}）', 'cloud.offlineHint': '哪台机器上一开 Claude 会话，它的城市自己起来，这里自动更新', 'cloud.login': '登录已经失效，或者还没登录。请重新登录。', 'cloud.reload': '重新登录', 'cloud.logout': '退出', 'cloud.viewNote': '只能看 · 这台电脑没开云端对话，回答和说话请回到那台电脑', 'cloud.notConnected': '没连上 · 重试中…', 'cloud.justNow': '刚刚', 'cloud.ageSec': '{n} 秒前', 'cloud.ageMin': '{n} 分钟前', 'cloud.ageHour': '{n} 小时前', 'cloud.ageDay': '{n} 天前', 'cloud.talk.on': '可对话', 'cloud.talk.off': '只能看', 'cloud.box.talkOff': '这台电脑没开「云端对话」，只能看。在它的终端里自己打这条命令就开：agent-city cloud-talk on', 'cloud.box.offline': '那台电脑现在不在线，发不了。它一上线，这里自己恢复。', 'cloud.tooFast': '发得太快了，等一会儿再发。', 'cloud.tooMany': '今天发得太多了，明天再发。', 'cloud.later.ask': '它在等你批准或选择（"?"）：在这里批准、选择，以后开放。现在请到那台电脑上回答。', 'cloud.start.on': '可开 agent', 'cloud.start.off': '这台电脑不接受云端「加 agent」。要开，在它的终端里自己打：\nagent-city cloud-start on', 'cloud.start.needTalk': '这台电脑只能看。先开对话，再开「加 agent」：\nagent-city cloud-talk on\nagent-city cloud-start on', 'add.cloud.sent': '在路上…', 'add.cloud.sentTip': '已存到云端，等那台电脑来取', 'add.cloud.opening': '那台电脑正在打开 {name}…', 'add.cloud.openingBare': '那台电脑正在打开…', 'add.cloud.done': '已打开 {name} · 小人马上出现', 'add.cloud.cap': '那台电脑有点忙', 'add.cloud.tooMany': '开得太多了：一小时最多 10 个。{min} 分钟后再试。', 'add.cloud.tooManyDay': '今天开得太多了，明天再试。', 'add.cloud.noAnswer': '没连上云端，不确定指令有没有存上。等一下再点一次。', 'add.cloud.why.off': '那台电脑没开（60 秒没来取这个指令）。这个指令作废，以后也不会再开。', 'add.cloud.why.startOff': '那台电脑不接受云端「加 agent」。在它的终端里自己打：agent-city cloud-start on', 'add.cloud.why.noOrca': '那台电脑不能自己开终端（没有 Orca）。请到那台电脑上手动开。', 'add.cloud.why.gone': '那台电脑上找不到这个仓库的文件夹（被移走或删掉了）。', 'add.cloud.why.orca': 'Orca 没能开出终端：{detail}', 'add.cloud.why.late': '终端开了，但 60 秒还没见到它上线。到那台电脑的 Orca 里看那个终端。', 'add.cloud.why.busy': '这个仓库正在开另一个 agent，等它开完再点。', 'add.cloud.why.flood': '那台电脑一小时内已经开了 10 个，它不再接。过一会儿再试。', 'add.cloud.why.silent': '那台电脑接了指令后 3 分钟没回音（可能关机了）。到那台电脑上看终端有没有开。', 'add.cloud.why.restart': '那台电脑的城市程序中途重启了，这个指令作废，不会再执行。到那台电脑上看终端有没有开。', 'add.cloud.why.refused': '那台电脑不认这个仓库（它没加入云端，或文件夹不在那台电脑上）。', 'add.cloud.why.other': '没打开，原因不明。到那台电脑上看看。', 'arr.btn': '整理', 'arr.on': '整理中', 'arr.tip': '拖一块地到虚线格子；拖到另一块地上 = 交换。也可以先点地，再点格子。', 'arr.tipPick': '选中了 {name}：点一个虚线格子搬过去，或点另一块地交换。', 'arr.hide': '隐藏', 'arr.show': '显示', 'arr.cancel': '取消', 'arr.done': '完成', 'arr.tray': '已隐藏', 'arr.waits': '{n} 人在等你', 'arr.last': '至少留一块地', 'arr.hidden': '已隐藏 {n} 个', 'arr.hiddenWait': ' · 其中 {n} 个在等你', 'arr.manage': '管理', 'arr.errTaken': '那个格子已经有地了', 'arr.errSea': '海边那块地的南边要留给海', 'arr.errEmpty': '至少留一块地', 'arr.errOther': '没存上，再试一次' }, en: { 'btn.log': 'Activity', 'aria.city': 'City', 'aria.canvas': '3D island: each little person is one agent', 'proto.banner': 'Prototype - demo data', 'btn.zoomIn': 'Zoom in', 'btn.zoomOut': 'Zoom out', 'btn.rotate': 'Rotate', 'btn.resetView': 'Reset the view', 'repo.all': 'All', 'aria.repos': 'Repos: click one to fly there', 'repo.goAria': 'Fly to {name}', 'cap.hint': 'That is as far as it goes - click "All" to see every repo','btn.close': 'Close', 'aria.toolbar': 'Controls', 'label.spawn': 'Send a', 'opt.worker': 'worker - builds houses', 'opt.taskManager': 'task manager - test tower', 'opt.fastLaneDeputy': 'fast-lane deputy - garden', 'opt.mergeDeputy': 'merge deputy - bridge', 'btn.spawn': 'Send', 'btn.remoteOff': 'Disconnect relay', 'btn.remoteOn': 'Resume', 'btn.remoteLeave': 'Leave the linked city', 'type.house': 'House', 'type.shop': 'Shop', 'type.tower': 'Tower', 'type.workshop': 'Workshop', 'type.library': 'Library', 'district.house': 'Homes', 'district.shop': 'Shops', 'district.tower': 'Tests', 'district.workshop': 'Workshops', 'district.library': 'Library', 'chat.state.queued': 'Queued', 'chat.state.delivered': 'Delivered', 'chat.state.undelivered': 'Undelivered', 'chat.why.notListening': 'it is not listening, it did not get this', 'chat.state.sent': 'On its way', 'chat.you.cloud': 'You (cloud)', 'chat.you.local': 'You (page on the computer)', 'chat.why.off': 'that computer is off', 'chat.why.ended': 'this session has ended', 'chat.why.talkOff': 'that computer does not take cloud messages', 'chat.why.refused': 'that computer did not accept it', 'chat.why.flood': 'too many messages too fast, that computer did not accept it', 'chat.resend': 'Send again', 'chat.new': 'New messages ↓', 'hist.title': 'History (newest at the bottom)', 'hist.empty': 'Nothing yet', 'hist.all': 'Show steps {n}', 'hist.hide': 'Hide steps', 'hist.onlyMech': 'Only steps so far - tap "Show steps"', 'hist.started': 'Headed out: {task}', 'hist.stuck': 'Stuck: {text}', 'hist.toLead': 'To the manager', 'hist.toGov': 'To the governor', 'hist.waiting': 'Waiting on you', 'hist.done': 'Finished, heading to rest', 'hist.left': 'Clocked out', 'chat.task': 'Task (what it was sent with)', 'team.title': '{repo} · Team', 'role.task-manager': 'Task manager', 'role.worker': 'Worker', 'role.fast-lane-deputy': 'Fast-lane deputy', 'role.merge-deputy': 'Merge deputy', 'role.other': 'Helper', 'era.village': 'Village', 'era.town': 'Town', 'era.city': 'City', 'quality.good': 'Tidy', 'quality.fair': 'OK', 'quality.poor': 'Messy', 'who.governor': 'Governor', 'who.owner': 'You', 'who.terminal': 'Terminal', 'state.spawn': 'Heading out', 'state.to_plot': 'To the site', 'state.building': 'Building', 'state.working': 'Working', 'state.to_hall': 'To the governor', 'state.asking': 'Asking the governor', 'state.heard': 'Got the answer', 'state.to_lead': 'To the manager', 'state.at_lead': 'Asking the manager', 'state.back': 'Back to the site', 'state.finishing': 'Topped out', 'state.to_rest': 'Heading to rest', 'state.resting': 'Resting', 'state.leaving': 'Heading home', 'status.need_approval': 'Needs your OK', 'status.asking_gov': 'Asking the governor', 'status.waiting_answer': 'Waiting on your answer', 'status.waiting_reply': 'Waiting on you', 'status.waiting': 'Waiting on you', 'status.background': 'Working in background', 'status.idle': 'Idle', 'stuck.permission': 'Needs permission: {tool}', 'stuck.default': 'Needs your eyes', 'gov.away': 'Away', 'gov.busy': 'Busy', 'gov.home': 'At the town hall', 'top.work': 'Working', 'top.ask': 'Need governor', 'top.rest': 'Resting', 'top.done': 'Built', 'top.stalled': 'Stalled site', 'top.pending': 'Waiting', 'top.pendingAria': '{n} waiting on your call - click to open the earliest', 'empty.noLand': 'No territory yet - start inside a git repo, or wait for an agent', 'loading.text': 'Loading assets…', 'loading.progress': 'Loading assets {n}/{total}', 'loading.error': 'Assets failed to load: {err}', 'site.human': 'Hands-on', 'log.eraUpgrade': '{name} is upgrading to {era}', 'say.done': 'Done!', 'log.leftWork': '{task} clocked out', 'gov.dispatch': 'Go: {task}', 'log.govDispatch': 'The governor sent {label}: {task}', 'log.siteMerged': '{branch} merged into main, the site wrapped up', 'log.siteRemoved': 'The {branch} site was pulled down', 'log.levelUp': '{label} leveled up to {lv}', 'log.movedBack': '{label} moved back to the {kind} district', 'log.demolished': 'Every file behind {label} is gone, demolished', 'log.stuckDemo': '{task} got stuck: "{text}" -> asking the governor', 'answer.default': 'Answered', 'log.govAnswer': 'The governor answered {task}: "{text}"', 'log.doneRestPlain': '{task} finished, heading to rest', 'log.doneRestBuilt': '{task} finished: {kind} topped out, heading to rest', 'log.noplot': '{name} found no empty plot, waiting a bit', 'gov.unknown': 'Unknown', 'gov.busyRow': 'Busy', 'gov.idleRow': 'Idle', 'gov.title': '{name} governor', 'chain.lead': 'Manager', 'chain.leadTask': 'Manager {task}', 'chat.empty': 'No conversation yet', 'chat.you.page': 'You (page)', 'chat.you.terminal': 'You (terminal)', 'chat.wait': 'Waiting for it to finish this step', 'chat.loadError': 'Could not load the conversation - try opening it again in a moment.', 'kv.repo': 'Repo', 'kv.branch': 'Branch', 'kv.doing': 'Doing', 'qa.ask': 'Q: “{q}”', 'qa.answer': 'A: “{a}”', 'qa.waiting': 'Q: “{q}” - waiting for an answer…', 'act.makeStuck': 'Make it stuck', 'act.makeDone': 'Make it finish', 'act.makeLeave': 'Make it clock out', 'act.demoNote': 'These three buttons exist only in the prototype, to try the flow.', 'gov.ownTag': 'main manager · main conversation', 'gov.tagLabel': 'Governor · main manager', 'gov.rgRole': 'main manager · Governor', 'pill.hall': 'Town hall', 'gov.awayNote': 'The governor is away: this repo has no main manager session right now. Agent questions go straight to you, without waiting for the governor first.', 'hint.team': 'Team', 'hint.noAgents': 'No agents at work yet. Open a Claude Code session and send an agent - it will walk out of the town hall.', 'hint.pickSomething': 'Click a person or building in the city, or a row in the list below.', 'building.misplaced': ' - in the wrong district', 'building.level': ' - level {level}', 'building.district': '{kind} district', 'building.module': '{name} module', 'hint.files': 'The files that built it', 'hint.history': 'Who has touched it (newest first)', 'detail.title': 'Details', 'opt.other': 'Other', 'opt.customAnswer': 'Write your own answer', 'btn.sendAnswer': 'Send answer', 'kv.tool': 'Tool', 'kv.file': 'File', 'kv.url': 'URL', 'said': 'It said: {text}', 'kv.dir': 'Directory', 'field.denyReason': 'Reason for denying (optional; if filled in, it is told to it as-is)', 'field.denyPlaceholder': 'e.g. do not delete dist/ yet, it has the release package', 'btn.allow': 'Allow', 'btn.deny': 'Deny', 'ask.asking': 'is asking', 'card.permission': 'Needs permission', 'card.question': 'Asks you', 'ask.needsPermission': 'needs permission', 'pill.closed': 'Closed', 'aria.collapse': 'Collapse (without answering)', 'foot.terminalAnswers': 'The terminal can answer too - whichever answers first wins.', 'err.decideNetwork': 'Could not send (cannot reach the city server). The terminal can still answer.', 'err.decideStatus': 'Could not send ({status}). The terminal can still answer, or try again.', 'proto.live': 'Live - waiting for the server', 'proto.connected': 'Live - connected', 'proto.reconnecting': 'Live - reconnecting…', 'log.relayOff': 'City-link relay disconnected: other members are frozen, my city keeps working as normal.', 'log.relayOn': 'City-link resumed: other members update to the latest.', 'log.relayLeave': 'Left the linked city: other members disappear from my city; my city is unchanged.', 'demo.task.checkoutTest': 'Write checkout tests', 'demo.task.paymentRetry': 'Fix payment-timeout retry', 'demo.q.paymentRetry': 'Should a payment timeout retry automatically?', 'demo.task.depsScan': 'Scan dependencies for vulnerabilities', 'demo.task.worker.0': 'Settings page form', 'demo.task.worker.1': 'Login API', 'demo.task.worker.2': 'Export CSV', 'demo.task.worker.3': 'Dark mode', 'demo.task.worker.4': 'Receipt printing', 'demo.task.worker.5': 'Search box', 'demo.task.worker.6': 'Pagination', 'demo.task.worker.7': 'Price calculation', 'demo.task.worker.8': 'Inventory alerts', 'demo.task.worker.9': 'Customer list', 'demo.task.taskManager.0': 'Settings page', 'demo.task.taskManager.1': 'Login', 'demo.task.taskManager.2': 'Reports', 'demo.task.taskManager.3': 'Printing', 'demo.task.taskManager.4': 'Inventory', 'demo.task.fastLaneDeputy.0': 'Typos', 'demo.task.fastLaneDeputy.1': 'Button colour', 'demo.task.fastLaneDeputy.2': 'Icon size', 'demo.task.fastLaneDeputy.3': 'Title wrapping', 'demo.task.fastLaneDeputy.4': 'Empty-state copy', 'demo.task.mergeDeputy.0': 'Merge settings', 'demo.task.mergeDeputy.1': 'Merge login', 'demo.task.mergeDeputy.2': 'Merge report', 'demo.task.mergeDeputy.3': 'Merge print', 'demo.qa.0.q': 'Which test name is unclear - which one?', 'demo.qa.0.a': 'Go with the default, log it', 'demo.qa.1.q': 'Which API path should I use?', 'demo.qa.1.a': 'Use /api/settings', 'demo.qa.2.q': 'Should I add pagination?', 'demo.qa.2.a': 'Not yet, write it into ideas', 'demo.qa.3.q': 'What is the default language?', 'demo.qa.3.a': 'zh, matching agent.conf', 'demo.qa.4.q': 'Does the old data need migrating?', 'demo.qa.4.a': 'Yes, write a test first', 'demo.qa.5.q': 'Can I change this file?', 'demo.qa.5.a': 'Yes, only your own copy', 'demo.qa.6.q': 'Can I run this command?', 'demo.qa.6.a': 'Approved, go ahead', 'aria.needsApproval': '{task} needs your approval, click to open', 'aria.needsAnswer': '{task} needs your answer, click to open', 'aria.stuckOnlyThem': '{name} is stuck; only {name} can answer', 'aria.govNeedsApproval': 'The governor needs your approval, click to open', 'aria.govNeedsAnswer': 'The governor needs your answer, click to open', 'gov.waitCountdown': 'Governor {s}s', 'chat.sendError': 'Could not send (cannot reach the city server).', 'btn.findLead': 'Find the lead: {name}', 'hint.readOnlySub': 'This is a subtask; the conversation is view only - go to its lead for anything else.', 'placeholder.saySomething': 'Say something to it…', 'btn.send': 'Send', 'label.ask': 'Q: ', 'label.answer': 'A: ', 'label.awaitingAnswer': 'awaiting an answer…', 'member.unknown': 'Unknown', 'chip.off': 'City-link disconnected - {n} queued', 'chip.refused': 'City-link refused the key', 'chip.ok': 'City-link - {people} people - {devices} devices', 'remote.note': 'View only: this agent belongs to {who} - only {who} can answer it.', 'stale.sec': 'Last updated {n}s ago', 'stale.min': 'Last updated {n}m ago', 'ask.permission': '{name} needs permission: {what} -> waiting on you', 'ask.toOwner': '{name} asks you: “{what}”', 'ask.toGov': '{name} asks the governor: “{what}”', 'ask.toGovNoGov': '{name} asks the governor: “{what}”, no governor around -> waiting on your answer', 'askphase.pass': 'The governor: not mine to decide -> waiting on your answer for {name}', 'askphase.timeout': 'The governor did not answer {name} in {wait}s -> waiting on you', 'closed.routed': 'The request from {name} was routed to {who}: {what}', 'closed.answered': '{who} answered {name}: “{text}”', 'closed.answeredDefault': '{who} already answered {name}', 'closed.allowed': '{who} allowed {name}: {what}', 'closed.denied': '{who} denied {name}: {what}', 'closed.deniedReason': ', reason: “{reason}”', 'closed.ended': '{who} closed {name}: {what}', 'why.permission': 'Only you can approve permissions - the governor does not.', 'why.gov': 'The governor cannot decide this - it is yours.', 'why.timeout': 'The governor did not answer in {wait}s - it is yours.', 'why.pass': 'The governor said: not mine to decide - it is yours.', 'why.noGov': 'No governor around - it goes straight to you.', 'closed.late': 'Too late: <b>{who}</b> already handled it at {time}. No need to click here.', 'closed.pending': 'Handled at {time}; the result has not come back yet. Noted.', 'closed.answeredText': 'Answered: “{text}”', 'closed.allowedText': 'Allowed', 'closed.deniedText': 'Denied', 'closed.lateFull': 'Too late: <b>{who}</b> already {text} at {time}. No need to click here.', 'closed.doneByYou': '<b>{who}</b> {text} at {time}. Noted.', 'log.chatSent': 'You -> {to}: {text}', 'log.remoteSpawn': '{who} ({device}) - {label} started: {task}', 'log.remoteDone': '{who} ({device}) - {task} finished', 'log.remoteLeft': '{who} ({device}) - {task} went offline', 'say.understood': 'Got it!', 'log.eraBecame': '{name} became a {era}', 'demo.seed.prompt': 'Finish this page first, do not touch anything else yet', 'demo.seed.reply': 'OK, doing this page first, leaving the rest alone', 'chat.stateSuffix': ' ({state})', 'punct.answerJoin': '; ', 'rail.title': 'Now', 'rail.count': '{n}', 'rail.rest': 'Resting {n}', 'rail.tab': 'Now {n}', 'rail.none': 'Nobody online', 'rail.lost': 'Parent unknown', 'rail.fold': 'Fold', 'rail.unfold': 'Unfold', 'add.tip': 'Add agent', 'add.plus': '+', 'add.opening': 'Opening {name}…', 'add.openingBare': 'Opening…', 'add.cap': 'The computer is busy', 'add.capNums': 'RAM {ram}% · CPU {cpu}% (limit {max}%)', 'add.capAsk': 'Open it anyway?', 'add.go': 'Open anyway', 'add.cancel': 'Cancel', 'add.err': 'Not opened: ', 'add.retry': 'Try again', 'add.ok': 'Got it', 'add.errGone': 'Cannot find the repo folder {folder} (moved or deleted).', 'add.errFailed': 'Orca could not open a terminal: {detail}', 'add.errLate': 'The terminal opened, but nothing showed up in 60 seconds. Look at that terminal in Orca.', 'add.errOther': 'The server gave no reason (it may be out of reach).', 'add.plain': 'This computer has no Orca, so the page cannot open a terminal. Run this line in a terminal:', 'add.copy': 'Copy', 'add.copied': 'Copied', 'add.close': 'Close', 'fold.rail': 'Fold the list', 'fold.msg': 'Fold the messages', 'msg.tab': 'Messages · {name}', 'b.focus': 'Show it', 'follow.on': 'Following {name}', 'follow.stop': 'Stop', 'demo.device.cloud': 'Cloud', 'work.edit': 'Editing', 'work.read': 'Reading', 'work.bash': 'Running', 'work.other': 'Busy', 'work.pause': 'Pausing', 'step.edit': 'Editing {file}', 'step.write': 'Writing {file}', 'step.editAny': 'Editing code', 'step.writeAny': 'Writing code', 'step.read': 'Reading files', 'step.search': 'Searching code', 'step.web': 'Looking things up', 'step.bash': 'Running a command', 'step.send': 'Sending out: {desc}', 'step.sendAny': 'Sending a helper', 'step.plan': 'Planning', 'step.message': 'Sending a message', 'step.other': 'Busy', /* cloud-city: texts */ 'cloud.readOnly': 'View only', 'cloud.sign': 'Cloud', 'cloud.machines': 'Machines', 'cloud.busy': 'Working {n}', 'cloud.wait': 'Waiting {n}', 'cloud.noMachine': 'No machine yet', 'cloud.noMachineHint': 'Open a Claude session on a machine that has joined the city. It shows up here by itself.', 'cloud.noSessions': 'This machine has no sessions right now', 'cloud.noSessionsHint': 'Open a Claude session on it and the people walk out. The city on that machine starts by itself once a session opens.', 'cloud.offline': 'No machine is online - this is the picture from {age} ({label})', 'cloud.offlineHint': 'When a Claude session opens on any machine, its city starts by itself and this page updates', 'cloud.login': 'You are signed out, or the login has expired. Please sign in again.', 'cloud.reload': 'Sign in again', 'cloud.logout': 'Sign out', 'cloud.viewNote': 'View only - this computer has not turned on cloud talk; to answer or talk, go back to that computer', 'cloud.notConnected': 'Not connected - trying again…', 'cloud.justNow': 'just now', 'cloud.ageSec': '{n} s ago', 'cloud.ageMin': '{n} min ago', 'cloud.ageHour': '{n} h ago', 'cloud.ageDay': '{n} d ago', 'cloud.talk.on': 'Can talk', 'cloud.talk.off': 'View only', 'cloud.box.talkOff': 'This computer has not turned on "cloud talk", so it is view only. Type this command in its own terminal to turn it on: agent-city cloud-talk on', 'cloud.box.offline': 'That computer is offline, so nothing can be sent. When it is back, this box returns by itself.', 'cloud.tooFast': 'Too fast - wait a moment, then send again.', 'cloud.tooMany': 'Too many messages today - try again tomorrow.', 'cloud.later.ask': 'It is waiting for you to approve or choose ("?"): doing that here comes later. For now, answer it on that computer.', 'cloud.start.on': 'Can start agents', 'cloud.start.off': 'This computer does not take cloud "Add agent" orders. To turn it on, type this in its own terminal:\nagent-city cloud-start on', 'cloud.start.needTalk': 'This computer is view only. Turn on talk first, then "Add agent":\nagent-city cloud-talk on\nagent-city cloud-start on', 'add.cloud.sent': 'On its way…', 'add.cloud.sentTip': 'Saved in the cloud, waiting for that computer to pick it up', 'add.cloud.opening': 'That computer is opening {name}…', 'add.cloud.openingBare': 'That computer is opening…', 'add.cloud.done': 'Opened {name} · the person shows up in a moment', 'add.cloud.cap': 'That computer is busy', 'add.cloud.tooMany': 'Too many opened: at most 10 an hour. Try again in {min} min.', 'add.cloud.tooManyDay': 'Too many opened today - try again tomorrow.', 'add.cloud.noAnswer': 'No answer from the cloud, so it is not sure the order was saved. Wait a moment, then click again.', 'add.cloud.why.off': 'That computer is off (it did not pick up this order in 60 seconds). The order is cancelled and will never run later.', 'add.cloud.why.startOff': 'That computer does not take cloud "Add agent" orders. Type this in its own terminal: agent-city cloud-start on', 'add.cloud.why.noOrca': 'That computer cannot open a terminal by itself (no Orca). Open one there by hand.', 'add.cloud.why.gone': 'That computer cannot find the folder of this repo (moved or deleted).', 'add.cloud.why.orca': 'Orca could not open a terminal: {detail}', 'add.cloud.why.late': 'The terminal opened, but nothing showed up in 60 seconds. Look at that terminal in Orca on that computer.', 'add.cloud.why.busy': 'This repo is already opening another agent. Wait until it is done, then click.', 'add.cloud.why.flood': 'That computer already opened 10 this hour and takes no more. Try again later.', 'add.cloud.why.silent': 'That computer took the order and said nothing for 3 minutes (it may be off). Look on that computer to see if a terminal opened.', 'add.cloud.why.restart': 'The city program on that computer restarted midway, so this order is cancelled and will not run. Look on that computer to see if a terminal opened.', 'add.cloud.why.refused': 'That computer does not know this repo (it has not joined the cloud, or its folder is not on that computer).', 'add.cloud.why.other': 'Not opened, and the reason is unknown. Look on that computer.', 'arr.btn': 'Arrange', 'arr.on': 'Arranging', 'arr.tip': 'Drag a land to a dashed slot; drop it on another land to swap. Or tap a land, then a slot.', 'arr.tipPick': '{name} is picked: tap a dashed slot to move it, or another land to swap.', 'arr.hide': 'Hide', 'arr.show': 'Show', 'arr.cancel': 'Cancel', 'arr.done': 'Done', 'arr.tray': 'Hidden', 'arr.waits': '{n} waiting for you', 'arr.last': 'Keep at least one land', 'arr.hidden': '{n} hidden', 'arr.hiddenWait': ' · {n} waiting for you', 'arr.manage': 'Manage', 'arr.errTaken': 'That slot is taken', 'arr.errSea': 'The cell south of a coast land is its sea', 'arr.errEmpty': 'Keep at least one land', 'arr.errOther': 'Not saved, try again.' } };
+const TEXT = { zh: { 'btn.log': '动态', 'aria.city': '城市', 'aria.canvas': '3D 小岛：每个小人是一个 agent', 'proto.banner': '原型 · 模拟数据', 'btn.zoomIn': '放大', 'btn.zoomOut': '缩小', 'btn.rotate': '转一下', 'btn.resetView': '回到默认视角', 'repo.all': '全部', 'aria.repos': '仓库：点一个飞过去', 'repo.goAria': '飞到 {name}', 'cap.hint': '已经是最远了 · 点「全部」看所有仓库','btn.close': '关闭', 'aria.toolbar': '控制', 'label.spawn': '派一个', 'opt.worker': 'worker · 盖房子', 'opt.taskManager': 'task manager · 测试塔', 'opt.fastLaneDeputy': 'fast-lane deputy · 花园', 'opt.mergeDeputy': 'merge deputy · 桥', 'btn.spawn': '派出', 'type.house': '住宅', 'type.shop': '商店', 'type.tower': '测试塔', 'type.workshop': '工坊', 'type.library': '图书馆', 'district.house': '住宅区', 'district.shop': '商业街', 'district.tower': '测试区', 'district.workshop': '工坊区', 'district.library': '图书馆区', 'chat.state.queued': '排队中', 'chat.state.delivered': '已送达', 'chat.state.undelivered': '没送到', 'chat.why.notListening': '它没在听，收不到', 'chat.state.sent': '在路上', 'chat.why.off': '那台电脑没开', 'chat.why.ended': '这个会话已经结束', 'chat.why.talkOff': '那台电脑不接收云端消息', 'chat.why.refused': '那台电脑没收这条消息', 'chat.why.flood': '发得太快，那台电脑没收', 'chat.new': '有新消息 ↓', 'hist.title': '历史（新的在下面）', 'hist.empty': '还没有记录', 'hist.all': '显示过程 {n}', 'hist.hide': '隐藏过程', 'hist.onlyMech': '只有过程记录，点「显示过程」看', 'hist.started': '出门：{task}', 'hist.stuck': '卡住了：{text}', 'hist.toLead': '去问经理', 'hist.toGov': '去问总督', 'hist.waiting': '等你回话', 'hist.done': '完工，去休息', 'hist.left': '下班了', 'chat.task': '任务（派它时的话）', 'role.task-manager': '任务经理', 'role.worker': '工人', 'role.fast-lane-deputy': '快车道副手', 'role.merge-deputy': '合并副手', 'role.other': '帮手', 'era.village': '村', 'era.town': '镇', 'era.city': '城', 'quality.good': '整齐', 'quality.fair': '还行', 'quality.poor': '有点乱', 'who.governor': '总督', 'who.owner': '你', 'who.terminal': '终端', 'state.spawn': '出门', 'state.to_plot': '去工地', 'state.building': '施工中', 'state.working': '干活', 'state.to_hall': '去问总督', 'state.asking': '在问总督', 'state.heard': '拿到答案', 'state.to_lead': '去问经理', 'state.at_lead': '问经理', 'state.back': '回工地', 'state.finishing': '封顶了', 'state.to_rest': '去休息', 'state.resting': '休息中', 'state.leaving': '下班回家', 'status.need_approval': '等你批', 'status.asking_gov': '在问总督', 'status.waiting_answer': '等你回答', 'status.waiting_reply': '等你回话', 'status.waiting': '等你', 'status.background': '后台在跑', 'status.idle': '空闲', 'stuck.permission': '要权限：{tool}', 'stuck.default': '需要你看一下', 'gov.away': '不在', 'gov.busy': '忙着', 'gov.home': '坐镇市政厅', 'top.work': '干活', 'top.ask': '找总督', 'top.rest': '休息', 'top.done': '建成', 'top.stalled': '卡住的工地', 'top.pending': '等你', 'top.pendingAria': '等你决定 {n} 个，点开最早的一个', 'empty.noLand': '还没有领地 · 在一个 git 仓库里启动，或等代理开工', 'loading.text': '正在搬来素材…', 'loading.progress': '正在搬来素材 {n}/{total}', 'loading.error': '素材没加载成功：{err}', 'site.human': '亲自带', 'log.eraUpgrade': '{name} 开始升级成{era}', 'say.done': '完工啦！', 'log.leftWork': '{task} 下班了', 'gov.dispatch': '去吧：{task}', 'log.govDispatch': '总督派出 {label}：{task}', 'log.siteMerged': '{branch} 合并进主线，工地收工', 'log.siteRemoved': '{branch} 的工地撤了', 'log.levelUp': '{label} 升到 {lv} 级', 'log.movedBack': '{label} 搬回{kind}区', 'log.demolished': '{label} 的文件都没了，拆掉', 'log.stuckDemo': '{task} 卡住了：“{text}” → 去问总督', 'answer.default': '已回答', 'log.govAnswer': '总督回答 {task}：“{text}”', 'log.doneRestPlain': '{task} 完工，去休息', 'log.doneRestBuilt': '{task} 完工：{kind}封顶，去休息', 'log.noplot': '{name} 没有空地了，先等等', 'gov.unknown': '未知', 'gov.busyRow': '在忙', 'gov.idleRow': '空闲', 'gov.title': '{name} 总督', 'chain.lead': '经理', 'chain.leadTask': '经理 {task}', 'chat.empty': '还没有对话', 'chat.you.page': '你（页面）', 'chat.you.terminal': '你（终端）', 'chat.wait': '等它做完这一步', 'chat.loadError': '对话没加载出来，等会儿再打开看看。', 'kv.repo': '仓库', 'kv.branch': '分支', 'kv.doing': '在做', 'qa.ask': '问：“{q}”', 'qa.answer': '答：“{a}”', 'qa.waiting': '问：“{q}” 等回答…', 'act.makeStuck': '让它卡住', 'act.makeDone': '让它完工', 'act.makeLeave': '让它下班', 'act.demoNote': '这三个按钮只在原型里有，用来试流程。', 'gov.ownTag': 'main manager · 主对话', 'gov.tagLabel': '总督 · main manager', 'pill.hall': '市政厅', 'gov.awayNote': '总督不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等总督。', 'hint.team': '团队', 'hint.noAgents': '还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。', 'hint.pickSomething': '点城里的小人、房子，或下面名单里的一行。', 'building.misplaced': ' · 放错区了', 'building.level': ' · 等级 {level}', 'building.district': '{kind}区', 'building.module': '{name} 模块', 'hint.files': '盖它的文件', 'hint.history': '改过它的人（新的在前）', 'detail.title': '详情', 'opt.other': '其他', 'opt.customAnswer': '自己写回答', 'btn.sendAnswer': '发送回答', 'kv.tool': '工具', 'kv.file': '文件', 'kv.url': '网址', 'said': '它说：{text}', 'kv.dir': '目录', 'field.denyReason': '拒绝理由（可以不填；填了会原样告诉它）', 'field.denyPlaceholder': '比如：先别删 dist/，里面有发布包', 'btn.allow': '批准', 'btn.deny': '拒绝', 'ask.asking': '在问', 'card.permission': '要权限', 'card.question': '在问你', 'ask.needsPermission': '要权限', 'pill.closed': '已关闭', 'aria.collapse': '收起（不回答）', 'foot.terminalAnswers': '终端里也能答，先答的算。', 'err.decideNetwork': '没发出去（连不上城市服务器）。终端里还能答。', 'err.decideStatus': '没发出去（{status}）。终端里还能答，可以再试一次。', 'proto.live': '实时 · 等服务器', 'proto.connected': '实时 · 已连接', 'proto.reconnecting': '实时 · 重连中…', 'demo.task.worker.0': '设置页表单', 'demo.task.worker.1': '登录 API', 'demo.task.worker.2': '导出 CSV', 'demo.task.worker.3': '深色模式', 'demo.task.worker.4': '小票打印', 'demo.task.worker.5': '搜索框', 'demo.task.worker.6': '分页', 'demo.task.worker.7': '价格计算', 'demo.task.worker.8': '库存提醒', 'demo.task.worker.9': '客户列表', 'demo.task.taskManager.0': '设置页', 'demo.task.taskManager.1': '登录', 'demo.task.taskManager.2': '报表', 'demo.task.taskManager.3': '打印', 'demo.task.taskManager.4': '库存', 'demo.task.fastLaneDeputy.0': '错别字', 'demo.task.fastLaneDeputy.1': '按钮颜色', 'demo.task.fastLaneDeputy.2': '图标大小', 'demo.task.fastLaneDeputy.3': '标题换行', 'demo.task.fastLaneDeputy.4': '空状态文案', 'demo.task.mergeDeputy.0': '合并 settings', 'demo.task.mergeDeputy.1': '合并 login', 'demo.task.mergeDeputy.2': '合并 report', 'demo.task.mergeDeputy.3': '合并 print', 'demo.qa.0.q': '测试名不清楚，用哪个？', 'demo.qa.0.a': '按默认，记进日志', 'demo.qa.1.q': 'API 路径用哪个？', 'demo.qa.1.a': '用 /api/settings', 'demo.qa.2.q': '要不要加分页？', 'demo.qa.2.a': '先不加，写进 ideas', 'demo.qa.3.q': '默认语言是？', 'demo.qa.3.a': 'zh，跟 agent.conf', 'demo.qa.4.q': '旧数据要迁移吗？', 'demo.qa.4.a': '要，先写测试', 'demo.qa.5.q': '这个文件能改吗？', 'demo.qa.5.a': '能，只改你那份', 'demo.qa.6.q': '可以跑这条命令吗？', 'demo.qa.6.a': '批了，继续', 'aria.needsApproval': '{task} 等你批，点开看', 'aria.needsAnswer': '{task} 等你回答，点开看', 'aria.govNeedsApproval': '总督 等你批，点开看', 'aria.govNeedsAnswer': '总督 等你回答，点开看', 'gov.waitCountdown': '总督 {s}s', 'chat.sendError': '没发出去（连不上城市服务器）。', 'btn.findLead': '找组长：{name}', 'hint.readOnlySub': '它是子任务，这份对话只能看；有事去找组长。', 'placeholder.saySomething': '跟它说…', 'btn.send': '发送', 'label.ask': '问：', 'label.answer': '答：', 'label.awaitingAnswer': '等回答…', 'ask.permission': '{name} 要权限：{what} → 等你批', 'ask.toOwner': '{name} 问你：“{what}”', 'ask.toGov': '{name} 问总督：“{what}”', 'ask.toGovNoGov': '{name} 问总督：“{what}”，没有总督在 → 等你回答', 'askphase.pass': '总督：这个我定不了 → 等你回答 {name}', 'askphase.timeout': '总督 {wait} 秒没回答 {name} → 等你', 'closed.routed': '{name} 的请求转到{who}处理：{what}', 'closed.answered': '{who}回答 {name}：“{text}”', 'closed.answeredDefault': '{who}已回答 {name}', 'closed.allowed': '{who}批准 {name}：{what}', 'closed.denied': '{who}拒绝 {name}：{what}', 'closed.deniedReason': '，理由：“{reason}”', 'closed.ended': '{who}结束了 {name}：{what}', 'why.permission': '权限只由你来批，总督不批。', 'why.gov': '总督定不了，交给你。', 'why.timeout': '总督 {wait} 秒没回答，交给你。', 'why.pass': '总督说：这个我定不了，交给你。', 'why.noGov': '没有总督在，直接交给你。', 'closed.late': '晚了一步：<b>{who}</b>在 {time} 已经处理了。这里不用再点了。', 'closed.pending': '在 {time} 已经处理了，结果还没传回来。已记下。', 'closed.answeredText': '回答了：“{text}”', 'closed.allowedText': '批准了', 'closed.deniedText': '拒绝了', 'closed.lateFull': '晚了一步：<b>{who}</b>在 {time} 先{text}。这里不用再点了。', 'closed.doneByYou': '<b>{who}</b>在 {time} {text}。已记下。', 'log.chatSent': '你 → {to}：{text}', 'say.understood': '明白！', 'log.eraBecame': '{name} 变成{era}了', 'demo.seed.prompt': '先把这页做完，别的先不要动', 'demo.seed.reply': '好，先做这页，其它先不碰', 'chat.stateSuffix': '（{state}）', 'punct.answerJoin': '；', 'rail.title': '在线', 'rail.count': '{n}', 'rail.rest': '休息 {n}', 'rail.tab': '在线 {n}', 'rail.none': '没人在线', 'rail.lost': '上级不明', 'rail.fold': '收起', 'rail.unfold': '展开', 'add.tip': '加 agent', 'add.plus': '＋', 'add.opening': '正在打开 {name}…', 'add.openingBare': '正在打开…', 'add.cap': '电脑有点忙', 'add.capNums': 'RAM {ram}% · CPU {cpu}%（上限 {max}%）', 'add.capAsk': '还要打开吗？', 'add.go': '还是打开', 'add.cancel': '取消', 'add.err': '没打开：', 'add.retry': '再试', 'add.ok': '知道了', 'add.errGone': '找不到仓库文件夹 {folder}（被移走或删掉了）。', 'add.errFailed': 'Orca 没能开出终端：{detail}', 'add.errLate': '终端开了，但 60 秒还没见到它上线。去 Orca 看那个终端。', 'add.errOther': '服务器没有给出原因（可能没连上）。', 'add.plain': '这台电脑没有 Orca，页面开不了终端。在终端里跑这一行：', 'add.copy': '复制', 'add.copied': '已复制', 'add.close': '关掉', 'fold.rail': '折起名单', 'fold.msg': '折起消息', 'msg.tab': '消息 · {name}', 'b.focus': '看看它', 'follow.on': '跟随 {name}', 'follow.stop': '停止', 'work.edit': '改代码', 'work.read': '看文件', 'work.bash': '跑命令', 'work.other': '忙着', 'work.pause': '停一下', 'step.edit': '改 {file}', 'step.write': '写 {file}', 'step.editAny': '改代码', 'step.writeAny': '写代码', 'step.read': '看文件', 'step.search': '找代码', 'step.web': '查资料', 'step.bash': '跑命令', 'step.send': '派出：{desc}', 'step.sendAny': '派出帮手', 'step.plan': '排计划', 'step.message': '发消息', 'step.other': '忙着', /* cloud-city: texts */ 'add.done': '已打开 {name} · 小人马上出现', 'arr.btn': '整理', 'arr.on': '整理中', 'arr.tip': '拖一块地到虚线格子；拖到另一块地上 = 交换。也可以先点地，再点格子。', 'arr.tipPick': '选中了 {name}：点一个虚线格子搬过去，或点另一块地交换。', 'arr.hide': '隐藏', 'arr.show': '显示', 'arr.cancel': '取消', 'arr.done': '完成', 'arr.tray': '已隐藏', 'arr.waits': '{n} 人在等你', 'arr.last': '至少留一块地', 'arr.hidden': '已隐藏 {n} 个', 'arr.hiddenWait': ' · 其中 {n} 个在等你', 'arr.manage': '管理', 'arr.errTaken': '那个格子已经有地了', 'arr.errSea': '海边那块地的南边要留给海', 'arr.errEmpty': '至少留一块地', 'arr.errOther': '没存上，再试一次' }, en: { 'btn.log': 'Activity', 'aria.city': 'City', 'aria.canvas': '3D island: each little person is one agent', 'proto.banner': 'Prototype - demo data', 'btn.zoomIn': 'Zoom in', 'btn.zoomOut': 'Zoom out', 'btn.rotate': 'Rotate', 'btn.resetView': 'Reset the view', 'repo.all': 'All', 'aria.repos': 'Repos: click one to fly there', 'repo.goAria': 'Fly to {name}', 'cap.hint': 'That is as far as it goes - click "All" to see every repo','btn.close': 'Close', 'aria.toolbar': 'Controls', 'label.spawn': 'Send a', 'opt.worker': 'worker - builds houses', 'opt.taskManager': 'task manager - test tower', 'opt.fastLaneDeputy': 'fast-lane deputy - garden', 'opt.mergeDeputy': 'merge deputy - bridge', 'btn.spawn': 'Send', 'type.house': 'House', 'type.shop': 'Shop', 'type.tower': 'Tower', 'type.workshop': 'Workshop', 'type.library': 'Library', 'district.house': 'Homes', 'district.shop': 'Shops', 'district.tower': 'Tests', 'district.workshop': 'Workshops', 'district.library': 'Library', 'chat.state.queued': 'Queued', 'chat.state.delivered': 'Delivered', 'chat.state.undelivered': 'Undelivered', 'chat.why.notListening': 'it is not listening, it did not get this', 'chat.state.sent': 'On its way', 'chat.why.off': 'that computer is off', 'chat.why.ended': 'this session has ended', 'chat.why.talkOff': 'that computer does not take cloud messages', 'chat.why.refused': 'that computer did not accept it', 'chat.why.flood': 'too many messages too fast, that computer did not accept it', 'chat.new': 'New messages ↓', 'hist.title': 'History (newest at the bottom)', 'hist.empty': 'Nothing yet', 'hist.all': 'Show steps {n}', 'hist.hide': 'Hide steps', 'hist.onlyMech': 'Only steps so far - tap "Show steps"', 'hist.started': 'Headed out: {task}', 'hist.stuck': 'Stuck: {text}', 'hist.toLead': 'To the manager', 'hist.toGov': 'To the governor', 'hist.waiting': 'Waiting on you', 'hist.done': 'Finished, heading to rest', 'hist.left': 'Clocked out', 'chat.task': 'Task (what it was sent with)', 'role.task-manager': 'Task manager', 'role.worker': 'Worker', 'role.fast-lane-deputy': 'Fast-lane deputy', 'role.merge-deputy': 'Merge deputy', 'role.other': 'Helper', 'era.village': 'Village', 'era.town': 'Town', 'era.city': 'City', 'quality.good': 'Tidy', 'quality.fair': 'OK', 'quality.poor': 'Messy', 'who.governor': 'Governor', 'who.owner': 'You', 'who.terminal': 'Terminal', 'state.spawn': 'Heading out', 'state.to_plot': 'To the site', 'state.building': 'Building', 'state.working': 'Working', 'state.to_hall': 'To the governor', 'state.asking': 'Asking the governor', 'state.heard': 'Got the answer', 'state.to_lead': 'To the manager', 'state.at_lead': 'Asking the manager', 'state.back': 'Back to the site', 'state.finishing': 'Topped out', 'state.to_rest': 'Heading to rest', 'state.resting': 'Resting', 'state.leaving': 'Heading home', 'status.need_approval': 'Needs your OK', 'status.asking_gov': 'Asking the governor', 'status.waiting_answer': 'Waiting on your answer', 'status.waiting_reply': 'Waiting on you', 'status.waiting': 'Waiting on you', 'status.background': 'Working in background', 'status.idle': 'Idle', 'stuck.permission': 'Needs permission: {tool}', 'stuck.default': 'Needs your eyes', 'gov.away': 'Away', 'gov.busy': 'Busy', 'gov.home': 'At the town hall', 'top.work': 'Working', 'top.ask': 'Need governor', 'top.rest': 'Resting', 'top.done': 'Built', 'top.stalled': 'Stalled site', 'top.pending': 'Waiting', 'top.pendingAria': '{n} waiting on your call - click to open the earliest', 'empty.noLand': 'No territory yet - start inside a git repo, or wait for an agent', 'loading.text': 'Loading assets…', 'loading.progress': 'Loading assets {n}/{total}', 'loading.error': 'Assets failed to load: {err}', 'site.human': 'Hands-on', 'log.eraUpgrade': '{name} is upgrading to {era}', 'say.done': 'Done!', 'log.leftWork': '{task} clocked out', 'gov.dispatch': 'Go: {task}', 'log.govDispatch': 'The governor sent {label}: {task}', 'log.siteMerged': '{branch} merged into main, the site wrapped up', 'log.siteRemoved': 'The {branch} site was pulled down', 'log.levelUp': '{label} leveled up to {lv}', 'log.movedBack': '{label} moved back to the {kind} district', 'log.demolished': 'Every file behind {label} is gone, demolished', 'log.stuckDemo': '{task} got stuck: "{text}" -> asking the governor', 'answer.default': 'Answered', 'log.govAnswer': 'The governor answered {task}: "{text}"', 'log.doneRestPlain': '{task} finished, heading to rest', 'log.doneRestBuilt': '{task} finished: {kind} topped out, heading to rest', 'log.noplot': '{name} found no empty plot, waiting a bit', 'gov.unknown': 'Unknown', 'gov.busyRow': 'Busy', 'gov.idleRow': 'Idle', 'gov.title': '{name} governor', 'chain.lead': 'Manager', 'chain.leadTask': 'Manager {task}', 'chat.empty': 'No conversation yet', 'chat.you.page': 'You (page)', 'chat.you.terminal': 'You (terminal)', 'chat.wait': 'Waiting for it to finish this step', 'chat.loadError': 'Could not load the conversation - try opening it again in a moment.', 'kv.repo': 'Repo', 'kv.branch': 'Branch', 'kv.doing': 'Doing', 'qa.ask': 'Q: “{q}”', 'qa.answer': 'A: “{a}”', 'qa.waiting': 'Q: “{q}” - waiting for an answer…', 'act.makeStuck': 'Make it stuck', 'act.makeDone': 'Make it finish', 'act.makeLeave': 'Make it clock out', 'act.demoNote': 'These three buttons exist only in the prototype, to try the flow.', 'gov.ownTag': 'main manager · main conversation', 'gov.tagLabel': 'Governor · main manager', 'pill.hall': 'Town hall', 'gov.awayNote': 'The governor is away: this repo has no main manager session right now. Agent questions go straight to you, without waiting for the governor first.', 'hint.team': 'Team', 'hint.noAgents': 'No agents at work yet. Open a Claude Code session and send an agent - it will walk out of the town hall.', 'hint.pickSomething': 'Click a person or building in the city, or a row in the list below.', 'building.misplaced': ' - in the wrong district', 'building.level': ' - level {level}', 'building.district': '{kind} district', 'building.module': '{name} module', 'hint.files': 'The files that built it', 'hint.history': 'Who has touched it (newest first)', 'detail.title': 'Details', 'opt.other': 'Other', 'opt.customAnswer': 'Write your own answer', 'btn.sendAnswer': 'Send answer', 'kv.tool': 'Tool', 'kv.file': 'File', 'kv.url': 'URL', 'said': 'It said: {text}', 'kv.dir': 'Directory', 'field.denyReason': 'Reason for denying (optional; if filled in, it is told to it as-is)', 'field.denyPlaceholder': 'e.g. do not delete dist/ yet, it has the release package', 'btn.allow': 'Allow', 'btn.deny': 'Deny', 'ask.asking': 'is asking', 'card.permission': 'Needs permission', 'card.question': 'Asks you', 'ask.needsPermission': 'needs permission', 'pill.closed': 'Closed', 'aria.collapse': 'Collapse (without answering)', 'foot.terminalAnswers': 'The terminal can answer too - whichever answers first wins.', 'err.decideNetwork': 'Could not send (cannot reach the city server). The terminal can still answer.', 'err.decideStatus': 'Could not send ({status}). The terminal can still answer, or try again.', 'proto.live': 'Live - waiting for the server', 'proto.connected': 'Live - connected', 'proto.reconnecting': 'Live - reconnecting…', 'demo.task.worker.0': 'Settings page form', 'demo.task.worker.1': 'Login API', 'demo.task.worker.2': 'Export CSV', 'demo.task.worker.3': 'Dark mode', 'demo.task.worker.4': 'Receipt printing', 'demo.task.worker.5': 'Search box', 'demo.task.worker.6': 'Pagination', 'demo.task.worker.7': 'Price calculation', 'demo.task.worker.8': 'Inventory alerts', 'demo.task.worker.9': 'Customer list', 'demo.task.taskManager.0': 'Settings page', 'demo.task.taskManager.1': 'Login', 'demo.task.taskManager.2': 'Reports', 'demo.task.taskManager.3': 'Printing', 'demo.task.taskManager.4': 'Inventory', 'demo.task.fastLaneDeputy.0': 'Typos', 'demo.task.fastLaneDeputy.1': 'Button colour', 'demo.task.fastLaneDeputy.2': 'Icon size', 'demo.task.fastLaneDeputy.3': 'Title wrapping', 'demo.task.fastLaneDeputy.4': 'Empty-state copy', 'demo.task.mergeDeputy.0': 'Merge settings', 'demo.task.mergeDeputy.1': 'Merge login', 'demo.task.mergeDeputy.2': 'Merge report', 'demo.task.mergeDeputy.3': 'Merge print', 'demo.qa.0.q': 'Which test name is unclear - which one?', 'demo.qa.0.a': 'Go with the default, log it', 'demo.qa.1.q': 'Which API path should I use?', 'demo.qa.1.a': 'Use /api/settings', 'demo.qa.2.q': 'Should I add pagination?', 'demo.qa.2.a': 'Not yet, write it into ideas', 'demo.qa.3.q': 'What is the default language?', 'demo.qa.3.a': 'zh, matching agent.conf', 'demo.qa.4.q': 'Does the old data need migrating?', 'demo.qa.4.a': 'Yes, write a test first', 'demo.qa.5.q': 'Can I change this file?', 'demo.qa.5.a': 'Yes, only your own copy', 'demo.qa.6.q': 'Can I run this command?', 'demo.qa.6.a': 'Approved, go ahead', 'aria.needsApproval': '{task} needs your approval, click to open', 'aria.needsAnswer': '{task} needs your answer, click to open', 'aria.govNeedsApproval': 'The governor needs your approval, click to open', 'aria.govNeedsAnswer': 'The governor needs your answer, click to open', 'gov.waitCountdown': 'Governor {s}s', 'chat.sendError': 'Could not send (cannot reach the city server).', 'btn.findLead': 'Find the lead: {name}', 'hint.readOnlySub': 'This is a subtask; the conversation is view only - go to its lead for anything else.', 'placeholder.saySomething': 'Say something to it…', 'btn.send': 'Send', 'label.ask': 'Q: ', 'label.answer': 'A: ', 'label.awaitingAnswer': 'awaiting an answer…', 'ask.permission': '{name} needs permission: {what} -> waiting on you', 'ask.toOwner': '{name} asks you: “{what}”', 'ask.toGov': '{name} asks the governor: “{what}”', 'ask.toGovNoGov': '{name} asks the governor: “{what}”, no governor around -> waiting on your answer', 'askphase.pass': 'The governor: not mine to decide -> waiting on your answer for {name}', 'askphase.timeout': 'The governor did not answer {name} in {wait}s -> waiting on you', 'closed.routed': 'The request from {name} was routed to {who}: {what}', 'closed.answered': '{who} answered {name}: “{text}”', 'closed.answeredDefault': '{who} already answered {name}', 'closed.allowed': '{who} allowed {name}: {what}', 'closed.denied': '{who} denied {name}: {what}', 'closed.deniedReason': ', reason: “{reason}”', 'closed.ended': '{who} closed {name}: {what}', 'why.permission': 'Only you can approve permissions - the governor does not.', 'why.gov': 'The governor cannot decide this - it is yours.', 'why.timeout': 'The governor did not answer in {wait}s - it is yours.', 'why.pass': 'The governor said: not mine to decide - it is yours.', 'why.noGov': 'No governor around - it goes straight to you.', 'closed.late': 'Too late: <b>{who}</b> already handled it at {time}. No need to click here.', 'closed.pending': 'Handled at {time}; the result has not come back yet. Noted.', 'closed.answeredText': 'Answered: “{text}”', 'closed.allowedText': 'Allowed', 'closed.deniedText': 'Denied', 'closed.lateFull': 'Too late: <b>{who}</b> already {text} at {time}. No need to click here.', 'closed.doneByYou': '<b>{who}</b> {text} at {time}. Noted.', 'log.chatSent': 'You -> {to}: {text}', 'say.understood': 'Got it!', 'log.eraBecame': '{name} became a {era}', 'demo.seed.prompt': 'Finish this page first, do not touch anything else yet', 'demo.seed.reply': 'OK, doing this page first, leaving the rest alone', 'chat.stateSuffix': ' ({state})', 'punct.answerJoin': '; ', 'rail.title': 'Now', 'rail.count': '{n}', 'rail.rest': 'Resting {n}', 'rail.tab': 'Now {n}', 'rail.none': 'Nobody online', 'rail.lost': 'Parent unknown', 'rail.fold': 'Fold', 'rail.unfold': 'Unfold', 'add.tip': 'Add agent', 'add.plus': '+', 'add.opening': 'Opening {name}…', 'add.openingBare': 'Opening…', 'add.cap': 'The computer is busy', 'add.capNums': 'RAM {ram}% · CPU {cpu}% (limit {max}%)', 'add.capAsk': 'Open it anyway?', 'add.go': 'Open anyway', 'add.cancel': 'Cancel', 'add.err': 'Not opened: ', 'add.retry': 'Try again', 'add.ok': 'Got it', 'add.errGone': 'Cannot find the repo folder {folder} (moved or deleted).', 'add.errFailed': 'Orca could not open a terminal: {detail}', 'add.errLate': 'The terminal opened, but nothing showed up in 60 seconds. Look at that terminal in Orca.', 'add.errOther': 'The server gave no reason (it may be out of reach).', 'add.plain': 'This computer has no Orca, so the page cannot open a terminal. Run this line in a terminal:', 'add.copy': 'Copy', 'add.copied': 'Copied', 'add.close': 'Close', 'fold.rail': 'Fold the list', 'fold.msg': 'Fold the messages', 'msg.tab': 'Messages · {name}', 'b.focus': 'Show it', 'follow.on': 'Following {name}', 'follow.stop': 'Stop', 'work.edit': 'Editing', 'work.read': 'Reading', 'work.bash': 'Running', 'work.other': 'Busy', 'work.pause': 'Pausing', 'step.edit': 'Editing {file}', 'step.write': 'Writing {file}', 'step.editAny': 'Editing code', 'step.writeAny': 'Writing code', 'step.read': 'Reading files', 'step.search': 'Searching code', 'step.web': 'Looking things up', 'step.bash': 'Running a command', 'step.send': 'Sending out: {desc}', 'step.sendAny': 'Sending a helper', 'step.plan': 'Planning', 'step.message': 'Sending a message', 'step.other': 'Busy', /* cloud-city: texts */ 'add.done': 'Opened {name} · the person shows up in a moment', 'arr.btn': 'Arrange', 'arr.on': 'Arranging', 'arr.tip': 'Drag a land to a dashed slot; drop it on another land to swap. Or tap a land, then a slot.', 'arr.tipPick': '{name} is picked: tap a dashed slot to move it, or another land to swap.', 'arr.hide': 'Hide', 'arr.show': 'Show', 'arr.cancel': 'Cancel', 'arr.done': 'Done', 'arr.tray': 'Hidden', 'arr.waits': '{n} waiting for you', 'arr.last': 'Keep at least one land', 'arr.hidden': '{n} hidden', 'arr.hiddenWait': ' · {n} waiting for you', 'arr.manage': 'Manage', 'arr.errTaken': 'That slot is taken', 'arr.errSea': 'The cell south of a coast land is its sea', 'arr.errEmpty': 'Keep at least one land', 'arr.errOther': 'Not saved, try again.' } };
 /* idea-city C1: i18n(key, vars) -> TEXT[en or zh][key], every "{name}" replaced by vars[name]; an
    unknown key gives the key itself back. A plain top-level function declaration -- every caller in
    this file reaches it by that name (never `T`: several test drivers use a local `T` for "the
@@ -715,7 +646,6 @@ const BASE = Date.now();
 const FRAME_MS = 33;
 const IDLE_FRAME_MS = 100;
 const MAX_CITIZENS = 40;
-const MAX_REMOTE = 20;
 const MAX_LOG = 40;
 const LIVE_REST_SEC = 180;
 /* city-quality, city-levelups: how long the move/demolish show plays before the record itself changes. */
@@ -741,20 +671,6 @@ const SHOW_SEC = 60;
 const SHOW_FLIP = 52;
 const DEMO = location.hash === '#demo' || location.protocol === 'file:';
 const TOKEN = (() => { const m = $('meta[name="city-token"]'); return m ? m.content : ''; })();
-/* cloud-city: constants -- CLOUD is true only on the cloud page (the City Worker fills the placeholder with 1; the
-   local server leaves it as it is), so the local city and #demo stay exactly as they were. */
-const CLOUD = '__CITY_CLOUD__' === '1';
-const CLOUD_POLL_MS = 3000;
-const CLOUD_STALE_MS = 150000;
-const CLOUD_SEND_TRIES = 3;
-const CLOUD_RETRY_MS = 1000;
-/* an order that opened shows "opened" for this long (by the Worker's clock), then the button is back */
-const CLOUD_ADD_DONE_MS = 15000;
-/* the cloud page's live state, in one place the chat code (above the cloud script) can reach: feed = the last
-   feed answer (the machine shown, its talk flag, the server's clock), open = the window the last request
-   carried, poke = ask the feed at once (set by connectCloud) */
-const cloudLive = { feed: null, open: '', poke: null };
-/* end cloud-city: constants */
 
 function h2r(h){ h = h.replace('#',''); return [0,2,4].map(i => parseInt(h.slice(i,i+2),16)); }
 function r2h(c){ return '#' + c.map(v => Math.round(clamp(v,0,255)).toString(16).padStart(2,'0')).join(''); }
@@ -1101,7 +1017,7 @@ const DEMO_SITES = [
 function topCounts(){
   let work = 0, ask = 0, rest = 0;
   for (const c of citizens) {
-    if (c.remote || c.gone) continue; // city-layout L3: a person of a hidden land is gone at once, even before the next tick
+    if (c.gone) continue; // city-layout L3: a person of a hidden land is gone at once, even before the next tick
     const g = STATE[c.state][0]; if (g === 'ask') ask++; else if (g === 'rest') rest++; else if (c.state !== 'leaving') work++;
   }
   for (const f of governorFigures()) { const g = govsByTerr.get(f.terr); if (g && g.state === 'busy') work++; }
@@ -1266,105 +1182,10 @@ function askLine(ev, name) {
   return '';
 }
 
-/* city-join: pure */
-/* memberName(who, device) -> who trimmed; blank -> device trimmed; both blank -> member.unknown.
-   Never blank (owner decision 2026-09-25: a blank who -- e.g. pc2 has no git user.name -- is never
-   shown as-is). idea-city C1: the words route through i18n() (TEXT/i18n come first even when this
-   section is pinned alone, tests/test_agent_city_remote_page.py). */
-function memberName(who, device) {
-  const w = (who || '').trim();
-  if (w) return w;
-  const d = (device || '').trim();
-  return d || i18n('member.unknown');
-}
-/* remoteChip(relays, me, people, govs) -> null | {cls, text} for the top-bar 联城 chip.
-   relays: [{host, state, queued}]; me: {who, device} or null; people/govs: [{who, device, dev}].
-   P counts distinct memberName(who, device), never a raw (possibly blank) who. */
-function remoteChip(relays, me, people, govs) {
-  if (!relays.some(r => r.state !== 'left')) return null;
-  const off = relays.filter(r => r.state === 'off');
-  if (off.length) {
-    const n = off.reduce((s, r) => s + r.queued, 0);
-    return { cls: 'off', text: i18n('chip.off', { n }) };
-  }
-  if (relays.some(r => r.state === 'refused')) return { cls: 'refused', text: i18n('chip.refused') };
-  const names = new Set();
-  if (me) names.add(memberName(me.who, me.device));
-  for (const p of people) names.add(memberName(p.who, p.device));
-  for (const g of govs) names.add(memberName(g.who, g.device));
-  const dev = new Set();
-  for (const p of people) if (p.dev) dev.add(p.dev);
-  for (const g of govs) if (g.dev) dev.add(g.dev);
-  const D = (me ? 1 : 0) + dev.size;
-  return { cls: 'ok', text: i18n('chip.ok', { people: names.size, devices: D }) };
-}
-/* remoteNote(who) -> the lock explanation under another member's agent */
-function remoteNote(who) {
-  return i18n('remote.note', { who });
-}
-/* memberLabel(who, device) -> "<memberName> · <device>", or just the name when the name IS the
-   device (a blank who falls back to the device via memberName -- never shows "pc2 · pc2"). */
-function memberLabel(who, device) {
-  const name = memberName(who, device);
-  return name === device ? name : name + ' · ' + device;
-}
-/* govSign(g) -> the name sign over another member's governor figure */
-function govSign(g) { return memberLabel(g.who, g.device); }
-/* staleText(sec) -> "最后更新 …" while a team's relay is off */
-function staleText(sec) {
-  return sec < 60 ? i18n('stale.sec', { n: Math.floor(sec) }) : i18n('stale.min', { n: Math.floor(sec / 60) });
-}
-/* MEMBER_COLORS: a fixed palette, [0] reserved for "me". Owner decision 2026-09-05: while joined,
-   every ring (mine, other members', governors too) is coloured by the member it belongs to. */
-const MEMBER_COLORS = ['#FF5D73', '#2EC4B6', '#FFB627', '#5E60CE', '#06D6A0', '#EF476F', '#118AB2', '#F4A261', '#8338EC', '#3A86FF'];
-/* a small deterministic string hash (djb2-xor), used only to pick a starting colour slot */
-function memberHash(s) {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
-  return h;
-}
-/* memberColors(keys, meKey) -> {key: colour}. meKey -> MEMBER_COLORS[0]; every other key gets a
-   colour from MEMBER_COLORS[1..], picked from a hash of the key (the next free slot when taken),
-   the same regardless of the order `keys` arrives in (non-me keys are sorted first), distinct while
-   slots are free, never MEMBER_COLORS[0]. */
-function memberColors(keys, meKey) {
-  const uniq = Array.from(new Set(keys));
-  const out = {};
-  if (uniq.includes(meKey)) out[meKey] = MEMBER_COLORS[0];
-  const pool = MEMBER_COLORS.slice(1);
-  const used = new Set();
-  const others = uniq.filter(k => k !== meKey).sort();
-  for (const k of others) {
-    let idx = memberHash(k) % pool.length, tries = 0;
-    while (used.has(idx) && tries < pool.length) { idx = (idx + 1) % pool.length; tries++; }
-    used.add(idx);
-    out[k] = pool[idx];
-  }
-  return out;
-}
-/* ringColor(joined, roleColor, memberColor) -> the colour a person's ring should be right now.
-   Local-only city (not joined): the role colour as always. Joined: the colour of the member the
-   ring belongs to (mine included). */
-function ringColor(joined, roleColor, memberColor) { return joined ? memberColor : roleColor; }
-/* tagVisible(hover, selected, followed) -> a floating name tag / device chip is off by default; it
+/* tagVisible(hover, selected, followed) -> a floating name tag is off by default; it
    shows only while the pointer is over that person, the person is selected, or (V1) it is the followed
    person -- the same as a selected one (owner decision 2026-09-25; V1 adds follow). */
 function tagVisible(hover, selected, followed) { return !!(hover || selected || followed); }
-/* memberLegend(me, people, govs, colors) -> [{key, name, device, color}]. me first (key "me") when
-   not null, then one entry per dev in order of first appearance (people, then govs). Feeds both the
-   联城 chip and the roster group headers. */
-function memberLegend(me, people, govs, colors) {
-  const out = [];
-  if (me) out.push({ key: 'me', name: memberName(me.who, me.device), device: me.device, color: colors.me });
-  const seen = new Set();
-  for (const p of people.concat(govs)) {
-    if (!p.dev || seen.has(p.dev)) continue;
-    seen.add(p.dev);
-    out.push({ key: p.dev, name: memberName(p.who, p.device), device: p.device, color: colors[p.dev] });
-  }
-  return out;
-}
-/* end city-join: pure */
 
 /* =========================================================
    Simulation: the same event contract the real city reads
@@ -1510,7 +1331,7 @@ function nameOf(c) {
   const repo = repoOf(c), base = nameBase(c, repo);
   for (let i = 0; i < citizens.length; i++) {
     const o = citizens[i];
-    if (o !== c && !o.gone && !o.remote && o.terr === c.terr && nameBase(o, repo) === base) return base + ' #' + String(c.id).slice(-4);
+    if (o !== c && !o.gone && o.terr === c.terr && nameBase(o, repo) === base) return base + ' #' + String(c.id).slice(-4);
   }
   return base;
 }
@@ -1634,12 +1455,12 @@ function actTool(c, step){
 }
 /* city-data: the server keeps every person's history and sends it (the snapshot's hist, then one 'hist' line
    per new line); the page only words the lines, with the same words as the live ones. serverHist is on once a
-   snapshot carries hist -- never on the cloud page (its picture has none), never with an older server. Then
+   snapshot carries hist -- never with an older server. Then
    actLog / actTool / giveAnswer write nothing for this machine's own people, so two tabs show the same list.
-   Another member's person (c.remote) stays the page's own, as before. HIST_KEEP: the most lines a person holds. */
+   HIST_KEEP: the most lines a person holds. */
 const HIST_KEEP = 200;
 let serverHist = false;
-function ownHist(c){ return !serverHist || !!c.remote; }
+function ownHist(c){ return !serverHist; }
 /* histLine(c, line, fold): one server line {k, at, ...} into c's own stores: acts (started, steps, stuck, toLead,
    toGov, waiting, done, left) or qa (a question with its answer); any other k, or no line, adds nothing. With
    fold, a steps line replaces the last act when that is a steps line too (the server grows one line). */
@@ -1700,12 +1521,12 @@ function mainOnly(items){ return (items || []).filter(it => it.main !== false); 
    line, every c.qa pair, every chat entry (prompt/reply/owner), and last of all -- while c is still
    stuck -- its still-open question (a: null). C2: every item carries main -- an activity line never,
    a question/answer card always, a chat entry as markMain() says. A chat entry's item also carries its
-   state, why and cid (cloud-city-2: historyHtml() words them). */
+   state and why (historyHtml() words them). */
 function personHistory(c, entries){
   const items = [];
   for (const a of c.acts || []) items.push({ k: 'act', at: a.at, text: a.text, main: false });
   for (const qa of c.qa || []) items.push({ k: 'ask', q: qa.q, a: qa.a, at: qa.at, main: true });
-  for (const e of markMain(entries, !!c.lead)) items.push({ k: e.kind, text: e.text, at: e.at, state: e.state, why: e.why, cid: e.cid, main: e.main });
+  for (const e of markMain(entries, !!c.lead)) items.push({ k: e.kind, text: e.text, at: e.at, state: e.state, why: e.why, main: e.main });
   items.sort((x, y) => x.at - y.at);
   if (c.stuck) items.push({ k: 'ask', q: c.question, a: null, main: true });
   return items;
@@ -1713,19 +1534,19 @@ function personHistory(c, entries){
 /* historyHtml(items, name, busy) -> the <li> rows personHistory() feeds the window: an activity line,
    a question/answer card, or a message rendered as chatHtml() renders one (text through mdLite, class
    "md"; a subagent's own task line is labelled chat.task rather than 你（终端）); no items -> hist.empty.
-   An owner's message shows its state, its reason and "send again" as chatHtml() does (cloud-city-2), and a
+   An owner's message shows its state and its reason as chatHtml() does, and a
    busy window whose last item is a queued owner message ends with the chat.wait line. */
 function historyHtml(items, name, busy){
   if (!items || !items.length) return `<li class="msg-empty">${i18n('hist.empty')}</li>`;
   const hhmm = at => new Date(at * 1000).toTimeString().slice(0, 5);
-  // cloud-city-2: an owner's message is worded as chatHtml() words it (who, state, reason, send again) -- the
+  // an owner's message is worded as chatHtml() words it (who, state, reason) -- the
   // same few lines, kept here so each function runs alone (esc, i18n, mdLite)
   const CHAT_STATES = ['queued', 'delivered', 'undelivered', 'sent', 'taken'];
   const WHY = { 'not-listening': 'notListening', off: 'off', ended: 'ended', 'talk-off': 'talkOff', refused: 'refused', flood: 'flood' };
   const ownerWho = it => {
     const known = it.state && CHAT_STATES.includes(it.state);
     const why = it.state === 'undelivered' && typeof it.why === 'string' && Object.prototype.hasOwnProperty.call(WHY, it.why) ? ' · ' + i18n('chat.why.' + WHY[it.why]) : '';
-    return `${i18n(it.cid ? 'chat.you.cloud' : CLOUD ? 'chat.you.local' : 'chat.you.page')}${known ? i18n('chat.stateSuffix', { state: i18n('chat.state.' + (it.state === 'taken' ? 'sent' : it.state)) }) : ''}${why}`;
+    return `${i18n('chat.you.page')}${known ? i18n('chat.stateSuffix', { state: i18n('chat.state.' + (it.state === 'taken' ? 'sent' : it.state)) }) : ''}${why}`;
   };
   let html = items.map(it => {
     if (it.k === 'act') return `<li class="act"><time>${hhmm(it.at)}</time><span>${esc(it.text)}</span></li>`;
@@ -1734,8 +1555,7 @@ function historyHtml(items, name, busy){
       return `<li class="qa"><p>${i18n('label.ask')}${esc(it.q)}</p>${answer}</li>`;
     }
     const who = it.k === 'owner' ? ownerWho(it) : it.k === 'prompt' ? i18n('chat.task') : esc(name);
-    const again = it.k === 'owner' && it.state === 'undelivered' && it.cid ? `<button type="button" class="resend" data-resend="${esc(it.cid)}">${i18n('chat.resend')}</button>` : '';
-    return `<li class="msg" data-kind="${esc(it.k)}"${it.main === false ? ' data-main="0"' : ''}><b>${who}</b><div class="md">${mdLite(it.text)}</div>${again}</li>`;
+    return `<li class="msg" data-kind="${esc(it.k)}"${it.main === false ? ' data-main="0"' : ''}><b>${who}</b><div class="md">${mdLite(it.text)}</div></li>`;
   }).join('');
   const last = items[items.length - 1];
   if (busy && last && last.k === 'owner' && last.state === 'queued') html += `<li class="msg-wait">${i18n('chat.wait')}</li>`;
@@ -2398,7 +2218,7 @@ function workActionOf(c, state, still){
   return simT - c.workAt < WORK_HOLD_SEC ? c.workKind : '';
 }
 function workAction(c){ return workActionOf(c, c.state, false); }
-/* city-work-anim: a tool event (live, or a joined member's relayed line) sets what the person works at.
+/* city-work-anim: a tool event sets what the person works at.
    workSince marks the start of a work spell (no action right before this event); events inside a spell
    leave it alone, so the 3D rhythm keeps going and people who began at different times never move in step. */
 function noteWork(c, tool){
@@ -2447,8 +2267,8 @@ let simT = 0;
 const citizens = [], buildings = [], logEntries = [];
 let cid = 0, bid = 0;
 let selected = null;
-/* city-join: the {t, id} under the pointer right now (pointermove, no button down), or null --
-   drives tagVisible() so a floating name tag / device chip shows on hover, same as on select. */
+/* the {t, id} under the pointer right now (pointermove, no button down), or null --
+   drives tagVisible() so a floating name tag shows on hover, same as on select. */
 let hovered = null;
 /* V1 (sim): follow -- the rail row id (a citizen id, or 'gov:<terr>') the camera is locked onto, or
    null. FOLLOW_DIST: how close a follow flies in -- startFollow() never zooms further OUT than the
@@ -2476,19 +2296,19 @@ const oldestOpenAsk = () => { let best = null; for (const a of asks.values()) if
 function askPick(view){
   if (view.agent === 'gov') return view.terr ? { t: 'gov', terr: view.terr } : { t: 'gov' };
   const c = byId(view.agent);
-  return c && !c.remote ? { t: 'c', id: view.agent } : null;
+  return c ? { t: 'c', id: view.agent } : null;
 }
 /* city-ask-panel K3: panelAsk(sel) -> the ask whose card shows in the message panel of selection `sel`,
    else null. A person of this machine: the asks with agent === id. The governor: the asks with agent
    'gov' and terr === (sel.terr || govTerr). Only an ask in phase 'owner' counts (before that the governor
    decides). An open one wins over a closed one that still shows its result; among open ones the oldest
-   (.at). A building, a remote governor, another member's person, nothing selected -> null. */
+   (.at). A building, nothing selected -> null. */
 function panelAsk(sel){
   if (!sel) return null;
   let mine;
   if (sel.t === 'c') {
     const c = byId(sel.id);
-    if (!c || c.remote) return null;
+    if (!c) return null;
     mine = a => a.agent === sel.id;
   } else if (sel.t === 'gov') {
     const terr = sel.terr || govTerr;
@@ -3252,7 +3072,6 @@ function askAnswerer(c){
 }
 /* it got to its lead / the governor: it asks, face to face, TALK_SEC (then it keeps waiting there) */
 function askTalk(c){
-  if (c.remote) return;
   const a = askAnswerer(c);
   if (!a) return;
   for (const j of talkJobs.slice()) if (j.kind === 'ask' && j.asker === c.id) endTalkJob(j, 'moved');
@@ -3261,7 +3080,6 @@ function askTalk(c){
 /* relay_end by the lead / the governor while c waits there: the answer talk first (the lead / the governor speaks,
    c listens without moving), then c walks back. false when nobody stands by: c goes straight back. */
 function answerTalk(c){
-  if (c.remote) return false;
   const a = askAnswerer(c), o = a ? talkPerson(a) : null;
   if (!o || talkWalks(a) || Math.hypot(o.x - c.x, o.y - c.y) > TALK_STAND_RANGE) return false;
   breakTalks(c.id, false);
@@ -3272,7 +3090,7 @@ function answerTalk(c){
 }
 /* the owner's answer reached c (state 'heard'): the governor tells it, face to face, while it stands there */
 function heardTalk(c){
-  if (c.remote || !governorAt(c.terr)) return;
+  if (!governorAt(c.terr)) return;
   addTalkJob('answer', 'gov:' + c.terr, c.id, { mode: 'stand', mover: c.id, asker: c.id, states: ['heard'], len: HEARD_TALK_SEC });
 }
 /* a free spot beside the hall stand for a person who leaves: never on the governor */
@@ -3374,37 +3192,6 @@ function govTalk(terr){
   if (g && g.state === 'waiting') return i18n('status.waiting_reply') + '…';
   const b = govSay.talk && govSay.talk.get(terr);
   return (b && simT < b.until) ? b.text : '';
-}
-/* city-join: another team's governor sessions, keyed by their wrapped id ("r:<dev>:gov") ->
-   {id, terr, who, device, dev, state, at}; other members' people live in `citizens` too, each
-   flagged with a `remote` field {who, device, dev, rid, br} (city-people's own newCitizen/
-   placeAgent already draw them like any citizen -- only the parts that must never happen for
-   someone else's agent, like a governor's "去吧" dispatch or a real ask panel, are skipped). */
-const remoteGovs = new Map();
-/* [{host, state, queued}], replaced by 'team' events and the 'teams' list of a remote_snapshot */
-let relays = [];
-/* city-join: true while any joined team's relay is off (requirements/city.md, Joining: "联城断开") */
-function anyRelayOff(){ return relays.some(r => r.state === 'off'); }
-/* {who, device} of this machine's own joined identity, or null while not joined (remote_snapshot) */
-let meInfo = null;
-/* city-join: "joined" (remoteChip(...) is not null -- same gate remoteChip itself opens with), and
-   the member -> colour map (memberColors()) rings are painted from. Recomputed only when the joined
-   state or the member set (which devs are present) changes, not every frame -- see refreshMembers(). */
-let joined = false;
-let memberColorMap = { me: MEMBER_COLORS[0] };
-let memberSig = '\u0000';
-function refreshMembers(){
-  const now = relays.some(r => r.state !== 'left');
-  const keys = [];
-  if (meInfo) keys.push('me');
-  const seen = new Set();
-  for (const c of citizens) if (c.remote && c.remote.dev && !seen.has(c.remote.dev)) { seen.add(c.remote.dev); keys.push(c.remote.dev); }
-  for (const g of remoteGovs.values()) if (g.dev && !seen.has(g.dev)) { seen.add(g.dev); keys.push(g.dev); }
-  const sig = now + '|' + keys.slice().sort().join(',');
-  if (sig === memberSig) return;
-  memberSig = sig;
-  joined = now;
-  memberColorMap = memberColors(keys, 'me');
 }
 /* city-talk, #demo: the demo governor's facing per territory (he never walks there; demoGovTurn keeps it) */
 const demoGovYaw = new Map();
@@ -3733,12 +3520,11 @@ function apply(ev){
       for (const old of citizens) applyAsk(old, null);
       for (const a of agents) if (!byId(a.id)) placeAgent(a);
       // city-data: a snapshot with hist says the server keeps the history: every person of this machine gets
-      // exactly the server's lines (a reload replaces, never doubles); no hist (cloud page, older server): off,
+      // exactly the server's lines (a reload replaces, never doubles); no hist (older server): off,
       // the page's own lines stay as they are
-      serverHist = !CLOUD && !!ev.hist && typeof ev.hist === 'object';
+      serverHist = !!ev.hist && typeof ev.hist === 'object';
       if (serverHist) {
         for (const old of citizens) {
-          if (old.remote) continue;
           old.acts = []; old.qa = [];
           const lines = ev.hist[old.id];
           for (const line of Array.isArray(lines) ? lines : []) histLine(old, line, false);
@@ -3754,16 +3540,13 @@ function apply(ev){
       for (const a of ev.asks || []) { const ac = byId(a.agent); if (ac) applyAsk(ac, a); }
       // city-add-agent A4: snapshot = live -- what is opening now comes from the server (an older server
       // sends no `adding`: nothing opens); this page's own cap / err / cmd boxes stay.
-      // cloud-city-3: not on the cloud page, there the buttons follow the feed's orders (cloudFollowOrders)
-      if (!CLOUD) {
-        for (const [terr, st] of addState) if (st.s === 'opening') addState.delete(terr);
-        for (const a of ev.adding || []) addState.set(a.terr, { s: 'opening', name: a.name || '' });
-      }
+      for (const [terr, st] of addState) if (st.s === 'opening') addState.delete(terr);
+      for (const a of ev.adding || []) addState.set(a.terr, { s: 'opening', name: a.name || '' });
       return null;
     }
     // city-data: one new line of a person's history, from the server (fold: it grows the last steps line)
     case 'hist': {
-      if (!c || c.remote) return null;
+      if (!c) return null;
       histLine(c, ev.line, !!ev.fold);
       return c;
     }
@@ -3806,12 +3589,9 @@ function apply(ev){
     }
     case 'spawn': {
       if (byId(ev.id)) return null;
-      // MAX_CITIZENS is my own city's cap: a remote person never counts against it, and is the
-      // first one sacrificed if my own city is full (city-join: a remote person never pushes out
-      // one of my own).
-      if (localCount() >= MAX_CITIZENS) {
-        const old = citizens.find(x => x.remote && x.state === 'resting') || citizens.find(x => x.state === 'resting')
-          || citizens.find(x => x.remote) || citizens[0];
+      // MAX_CITIZENS is the city's cap: a resting person is the first one sacrificed when it is full.
+      if (citizens.length >= MAX_CITIZENS) {
+        const old = citizens.find(x => x.state === 'resting') || citizens[0];
         if (old) old.gone = true;
       }
       const role = roleOrOther(ev.role || 'worker');
@@ -4068,50 +3848,6 @@ function apply(ev){
       }
       return null;
     }
-    // city-join (requirements/city.md, Joining): another team member's own event, wire-wrapped by
-    // the local server. It is never mine to dispatch or answer -- applyRemote() only ever plays it
-    // back onto a citizen flagged `remote`, or (for 'gov') into the remoteGovs map.
-    case 'remote': {
-      const who = { who: ev.who, device: ev.device, dev: ev.dev, rid: ev.rid, br: ev.br };
-      const inner = ev.ev;
-      if (!inner) return null;
-      if (inner.type === 'gov') {
-        if (inner.present === false) remoteGovs.delete(inner.id);
-        else remoteGovs.set(inner.id, { id: inner.id, terr: inner.terr, who: who.who, device: who.device, dev: who.dev, state: inner.state, at: Date.now() });
-        return null;
-      }
-      return applyRemote(inner, who);
-    }
-    // city-join: the whole picture of other members, replacing it the same way a local 'snapshot' replaces mine.
-    case 'remote_snapshot': {
-      meInfo = ev.me || null;
-      const seen = new Set((ev.people || []).map(p => p.id));
-      for (const old of citizens.slice()) {
-        if (!old.remote || seen.has(old.id)) continue;
-        old.leaveFlag = true;
-        if (old.state === 'resting' || !old.doneFlag) forceLeave(old);
-      }
-      for (const p of ev.people || []) {
-        const existing = byId(p.id);
-        if (existing) { existing.remoteAt = Date.now(); continue; }
-        if (remoteCount() >= MAX_REMOTE) continue;
-        const nc = placeAgent(p);
-        nc.remote = { who: p.who, device: p.device, dev: p.dev, rid: p.rid, br: p.br };
-        nc.remoteAt = Date.now();
-      }
-      const seenGov = new Set((ev.govs || []).map(g => g.id));
-      for (const id of [...remoteGovs.keys()]) if (!seenGov.has(id)) remoteGovs.delete(id);
-      for (const g of ev.govs || []) remoteGovs.set(g.id, { id: g.id, terr: g.terr, who: g.who, device: g.device, dev: g.dev, state: g.state, at: Date.now() });
-      relays = ev.teams || [];
-      return null;
-    }
-    // city-join: one team's relay state (联城断开 while "off"); at most once a second while off, per requirements/city.md.
-    case 'team': {
-      const i = relays.findIndex(r => r.host === ev.host);
-      const entry = { host: ev.host, state: ev.state, queued: ev.queued || 0 };
-      if (i >= 0) relays[i] = entry; else relays.push(entry);
-      return null;
-    }
     // Talking (requirements/city.md): one new line of a conversation, or a state change (queued ->
     // delivered/undelivered) of the same entry id -- into `chats`, never a rebuild of the open card
     // (that lives in renderDetail's own per-call refresh, so #say-text is never wiped). An owner
@@ -4132,9 +3868,8 @@ function apply(ev){
     // city-add-agent A4: the server's word on a new session in a repo -- opening (the button reads
     // "opening"), done (its first message came: a button again), late (60 s, nothing came: an error
     // line). done / late only end an opening state; this page's own cap / err / cmd box stays.
-    // cloud-city-3: on the cloud page the button's state is the feed's orders' (cloudFollowOrders), not this event's
     case 'adding': {
-      if (!ev.terr || CLOUD) return null;
+      if (!ev.terr) return null;
       const st = addState.get(ev.terr);
       if (ev.state === 'opening') addState.set(ev.terr, { s: 'opening', name: ev.name || '' });
       else if (st && st.s === 'opening') {
@@ -4147,105 +3882,6 @@ function apply(ev){
   return null;
 }
 const emit = ev => apply(ev);
-/* citizens that are mine (never counts a remote person against MAX_CITIZENS) */
-function localCount(){ let n = 0; for (const c of citizens) if (!c.remote) n++; return n; }
-/* other members' citizens now shown (capped at MAX_REMOTE, requirements/city.md Joining) */
-function remoteCount(){ let n = 0; for (const c of citizens) if (c.remote) n++; return n; }
-/* applyRemote(inner, who): plays one of another member's own page events (spawn, tool, stuck,
-   answer, relay, relay_end, waiting, resume, done, leave -- 'gov' is handled by the 'remote' case
-   itself) onto a citizen flagged `remote`. Never the "去吧" dispatch, never a build, never MY
-   governor -- city-join, Joining. */
-function applyRemote(inner, who){
-  if (inner.type === 'spawn') {
-    if (byId(inner.id)) return null;
-    if (remoteCount() >= MAX_REMOTE) {
-      const old = citizens.find(x => x.remote && x.state === 'resting');
-      if (old) old.gone = true; else return null; // never pushes out one of my own -- and never past its own cap
-    }
-    const role = roleOrOther(inner.role || 'worker');
-    const n = newCitizen(inner.id, role, inner.task, inner.terr);
-    n.lead = inner.lead || '';   // city-rail-tree P1: both as sent (already remote ids)
-    n.up = typeof inner.up === 'string' ? inner.up : '';
-    assignHome(n);
-    placeAtHall(n); // city-talk T2: never on the governor or on another new one
-    n.label = inner.label || role;
-    n.remote = who;
-    n.remoteAt = Date.now();
-    citizens.push(n);
-    actLog(n, i18n('hist.started', { task: inner.task })); // U10: remote people get spawn/done/leave the same way
-    log(i18n('log.remoteSpawn', { who: memberName(who.who, who.device), device: who.device, label: n.label, task: inner.task }));
-    return n;
-  }
-  const rc = inner.id ? byId(inner.id) : null;
-  if (!rc || !rc.remote) return null;
-  rc.remoteAt = Date.now();
-  // idea-city C16: the chain of command, played back the way apply() does for local people -- a
-  // remote lead never has an office (its own applyRemote 'spawn' sets none), so 'lead' walks beside
-  // the lead person itself instead, falling back to the territory hall when it cannot be found.
-  if (inner.type === 'relay') {
-    rc.relay = inner.to;
-    if (inner.to === 'lead') {
-      const leadC = inner.lead ? byId(inner.lead) : null;
-      if (leadC) {
-        const taken = citizens.filter(o => o !== rc && o.slot && byId(o.lead) === leadC
-          && (o.state === 'to_lead' || o.state === 'at_lead')).map(o => o.slot);
-        const s = waitStand({ x: leadC.x, y: leadC.y }, taken);
-        rc.slot = s;
-        goTo(rc, s, 'to_lead');
-      } else goHall(rc);
-    } else if (inner.to === 'governor') goHall(rc);
-    return rc;
-  }
-  if (inner.type === 'relay_end') {
-    rc.relay = ''; rc.stuck = false;
-    goTo(rc, rc.home, 'back');
-    return rc;
-  }
-  switch (inner.type) {
-    case 'tool':
-      rc.tools[inner.tool] = (rc.tools[inner.tool] || 0) + 1;
-      rc.work += WEIGHT[inner.tool] || .3;
-      rc.step = stepText(inner); // city-work-anim: the same plain words as my own people's
-      noteWork(rc, inner.tool); // city-work-anim
-      return rc;
-    case 'stuck':
-      rc.stuck = true; rc.question = stuckText(inner); rc.answered = false; rc.answer = '';
-      if (['building','working','to_plot','back'].includes(rc.state)) goHall(rc);
-      return rc;
-    case 'answer':
-      rc.stuck = false;
-      return rc;
-    // idea-city C5: idle_prompt is not a question -- another member's citizen merely waiting for
-    // input stays exactly where it is, same as the local 'waiting'/'resume' cases
-    // (city-status: and the same 'background'/'idle' ones).
-    case 'waiting':
-      rc.waiting = true; rc.bgrun = false; rc.idle = false;
-      return rc;
-    case 'background':
-      rc.waiting = false; rc.bgrun = true; rc.idle = false;
-      return rc;
-    case 'idle':
-      rc.waiting = false; rc.bgrun = false; rc.idle = true;
-      return rc;
-    case 'resume':
-      rc.waiting = false; rc.bgrun = false; rc.idle = false;
-      return rc;
-    case 'done':
-      if (rc.doneFlag) return null;
-      rc.doneFlag = true;
-      actLog(rc, i18n('hist.done')); // U10
-      if (rc.state === 'building' || (rc.state === 'working' && !rc.path.length)) finish(rc);
-      log(i18n('log.remoteDone', { who: memberName(who.who, who.device), device: who.device, task: rc.task }));
-      return rc;
-    case 'leave':
-      rc.leaveFlag = true;
-      actLog(rc, i18n('hist.left')); // U10
-      if (rc.state === 'resting' || !rc.doneFlag) forceLeave(rc);
-      log(i18n('log.remoteLeft', { who: memberName(who.who, who.device), device: who.device, task: rc.task }));
-      return rc;
-  }
-  return null;
-}
 /* V1 (sim): REPO_COLORS -- one accent colour per territory (the rail's dots, the repo tags, the name plates,
    --rc), cycling by the territory's own number. terrColor(terr) -> that colour. city-layout L2b: the number
    is t.n, the territory's place in the machine's saved order that the server's view carries (hidden repos
@@ -4304,7 +3940,7 @@ function refreshHeadPill(el, sel){
 function rosterGroups(){
   const groups = [];
   for (const t of map.territories || []) {
-    const here = citizens.filter(c => c.terr === t.id && !c.gone && !c.remote);
+    const here = citizens.filter(c => c.terr === t.id && !c.gone);
     const rows = [{ id: 'gov:' + t.id, depth: 0 }];
     const leads = here.filter(c => c.office).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
     const leadIds = new Set(leads.map(c => c.id));
@@ -4323,12 +3959,11 @@ function rosterGroups(){
 /* V1 (sim): railGroups() -> [{terr, name, color, add, rows}], one per territory, in map order --
    city-add-agent A1: also a territory with nobody online (rows: []), its group then shows one quiet line;
    add: true when the territory's view says here === true (its folder is on this machine: the group ends with
-   the "add agent" button; the demo has no `here`). cloud-city-3: on the cloud page the button is there only
-   while the machine shown takes start orders too (cloudStartOn(cloudLive.feed)).
+   the "add agent" button; the demo has no `here`).
    city-rail-tree P2: rows is the TREE of the group, flat in pre-order (a parent, its whole subtree, then its
    next sibling), then the resting rows: [{id, depth, rest, up, kids, lost}]. The members, in this order: the
    governor's row 'gov:<terr>' (only while that territory has a governor figure, governorFigures()), my own
-   citizens of it, then other members' citizens of it (c.remote), each in citizens order, none gone. A
+   citizens of it, each in citizens order, none gone. A
    person's parent is c.up || c.lead: the governor row for 'gov:<terr>' (when it is there), or another member
    of this group, else none (the repo). A loop (a -> b -> a, a person naming itself) is broken at its first
    member in members order: nobody shows twice, nothing hangs. Resting people (citizenStatus(c)[0] === 'rest')
@@ -4342,8 +3977,8 @@ function railGroups(){
   for (const t of map.territories || []) {
     const mem = [];
     if (figs.has(t.id)) mem.push({ id: 'gov:' + t.id, rest: false, role: '', want: '', par: null });
-    for (const remote of [false, true]) for (const c of citizens) {
-      if (c.terr !== t.id || c.gone || !!c.remote !== remote) continue;
+    for (const c of citizens) {
+      if (c.terr !== t.id || c.gone) continue;
       mem.push({ id: c.id, rest: citizenStatus(c)[0] === 'rest', role: c.role, want: c.up || c.lead || '', par: null });
     }
     const by = new Map(mem.map(m => [m.id, m]));
@@ -4371,7 +4006,7 @@ function railGroups(){
     for (const m of kids.get('') || []) walk(m, 0, '');
     for (const m of mem) if (m.rest) rows.push({ id: m.id, depth: 0, rest: true, up: '', kids: 0, lost: false });
     const terrRec = terrOf(t.id);
-    out.push({ terr: t.id, name: t.name, color: terrColor(t.id), add: !!(terrRec && terrRec.here === true && (!CLOUD || cloudStartOn(cloudLive.feed))), rows });
+    out.push({ terr: t.id, name: t.name, color: terrColor(t.id), add: !!(terrRec && terrRec.here === true), rows });
   }
   return out;
 }
@@ -4418,7 +4053,7 @@ function hiddenHtml(list){
     '</span><u>' + i18n('arr.manage') + '</u>';
 }
 /* V1 (sim): selKey(sel) -> the rail row id a selection corresponds to: {t:'c', id} -> id; {t:'gov',
-   terr} -> 'gov:' + (terr || govTerr); anything else (a building, a remote governor, null) -> null. */
+   terr} -> 'gov:' + (terr || govTerr); anything else (a building, null) -> null. */
 function selKey(sel){
   if (!sel) return null;
   if (sel.t === 'c') return sel.id;
@@ -4531,25 +4166,20 @@ function addIconHtml(group, st){
    cancel). err: the reason, a retry button only when st.retry, and "ok". cmd: no Orca here -- the command to run
    by hand, a copy button, close. Everything that came from the server (name, why, cmd) goes through esc()
    before it is HTML.
-   cloud-city-3: the cloud page draws the same (the words add.cloud.* say "that computer"); two states are its
-   own: sent (the order is stored, the machine has not taken it: one row, "on its way") and done (opened: a
-   green line until the order is old enough to go). */
+   */
 function addHtml(group, st){
   const t = esc(group.terr), s = st && st.s;
   if (!s) return '';
-  if (s === 'sent') {
-    return '<p class="add-line" role="status" title="' + esc(i18n('add.cloud.sentTip')) + '">' + esc(i18n('add.cloud.sent')) + '</p>';
-  }
   if (s === 'opening') {
     const who = shortLabel(st.name, group.name);
-    const words = CLOUD ? ['add.cloud.opening', 'add.cloud.openingBare'] : ['add.opening', 'add.openingBare'];
+    const words = ['add.opening', 'add.openingBare'];
     return '<p class="add-line" role="status">' + esc(who ? i18n(words[0], { name: who }) : i18n(words[1])) + '</p>';
   }
   if (s === 'done') {
-    return '<div class="addbox ok" role="status">' + esc(i18n('add.cloud.done', { name: shortLabel(st.name, group.name) || group.name })) + '</div>';
+    return '<div class="addbox ok" role="status">' + esc(i18n('add.done', { name: shortLabel(st.name, group.name) || group.name })) + '</div>';
   }
   if (s === 'cap') {
-    return '<div class="addbox cap" role="alert"><b>' + esc(i18n(CLOUD ? 'add.cloud.cap' : 'add.cap')) + '</b><span class="nums">' +
+    return '<div class="addbox cap" role="alert"><b>' + esc(i18n('add.cap')) + '</b><span class="nums">' +
       esc(i18n('add.capNums', { ram: st.ram, cpu: st.cpu, max: st.max })) + '</span>' + esc(i18n('add.capAsk')) +
       '<div class="acts"><button type="button" class="mini main" data-add-go="' + t + '">' + esc(i18n('add.go')) + '</button>' +
       '<button type="button" class="mini" data-add-no="' + t + '">' + esc(i18n('add.cancel')) + '</button></div></div>';
@@ -4660,30 +4290,10 @@ function spawner(){
   if (simT < nextSpawn) return;
   nextSpawn = simT + rnd(7, 13);
   if (!(map.territories || []).length) return;
-  const active = citizens.filter(c => !c.remote && STATE[c.state][0] !== 'rest' && c.state !== 'leaving').length;
+  const active = citizens.filter(c => STATE[c.state][0] !== 'rest' && c.state !== 'leaving').length;
   if (active >= 6) return;
   const r = rand();
   spawnDemo(r < .5 ? 'worker' : r < .65 ? 'task-manager' : r < .85 ? 'fast-lane-deputy' : 'merge-deputy');
-}
-
-/* city-work-anim, #demo: another member's working person sends one relayed tool line about every
-   DEMO_REMOTE_TOOL_SEC (names cycling Read, Edit, Bash, Grep; never a file), through the same apply() a real
-   relay drives, so it acts out its work like a real member's would. None for a stuck or finished person,
-   and none while a team relay is off (frozen). */
-const DEMO_REMOTE_TOOL_SEC = 1.6;
-const DEMO_REMOTE_TOOLS = [['Read', 'Read'], ['Edit', 'Edit'], ['Bash', 'Bash'], ['Read', 'Grep']];
-function demoRemoteTick(dt){
-  if (anyRelayOff()) return;
-  for (const c of citizens.slice()) {
-    if (!c.remote) continue;
-    if (c.stuck || c.doneFlag || (c.state !== 'working' && c.state !== 'building')) { c.demoToolT = 0; continue; }
-    c.demoToolT = (c.demoToolT || 0) + dt;
-    if (c.demoToolT < DEMO_REMOTE_TOOL_SEC) continue;
-    c.demoToolT = 0;
-    const n = c.demoToolN || 0, [tool, name] = DEMO_REMOTE_TOOLS[n % DEMO_REMOTE_TOOLS.length], r = c.remote;
-    c.demoToolN = n + 1;
-    apply({ type: 'remote', who: r.who, device: r.device, dev: r.dev, rid: r.rid, br: r.br, ev: { type: 'tool', id: c.id, tool, name } });
-  }
 }
 
 /* city-talk, #demo (fake data, same look): about every DEMO_TALK_SEC seconds two demo people at work in one
@@ -4698,7 +4308,7 @@ function demoTalkTick(dt){
   demoTalkAt = simT + 1.5; // nobody free to talk: look again soon
   const by = new Map();
   for (const c of citizens) {
-    if (c.gone || c.remote || c.stuck || c.doneFlag || (c.state !== 'working' && c.state !== 'building') || c.path.length || talkBusy(c.id)) continue;
+    if (c.gone || c.stuck || c.doneFlag || (c.state !== 'working' && c.state !== 'building') || c.path.length || talkBusy(c.id)) continue;
     const l = by.get(c.terr);
     if (l) l.push(c); else by.set(c.terr, [c]);
   }
@@ -4720,8 +4330,6 @@ function demoGovTurn(dt){
 function update(dt){
   simT += dt;
   pruneTalks();
-  if (DEMO) demoRelayTick(dt);
-  if (DEMO) demoRemoteTick(dt);
   if (DEMO) demoTalkTick(dt);
   for (const c of citizens) {
     c.stateT += dt;
@@ -4736,9 +4344,8 @@ function update(dt){
     else c.yaw = turnToward(c.yaw, faceWant(c), dt); // city-polish P1: a person who stands turns to its work / governor / seat
     switch (c.state) {
       case 'asking':
-        // city-join: never mine to answer -- a remote citizen's grey "?" just waits (requirements/city.md, Joining)
         if (c.answered && simT - c.askT > .9) giveAnswer(c);
-        else if (DEMO && !c.remote && !c.answered && simT - c.askT > 1.9) emit({ type:'answer', id:c.id, answer: c.pendingAnswer || pick(QA)[1] });
+        else if (DEMO && !c.answered && simT - c.askT > 1.9) emit({ type:'answer', id:c.id, answer: c.pendingAnswer || pick(QA)[1] });
         break;
       case 'heard':
         if (c.stateT > 1.5) { releaseSlot(c); say(c, i18n('say.understood'), 1.1); goTo(c, c.stand, 'back'); }
@@ -5279,14 +4886,13 @@ function freeCentre(w, h, rail, win){
   return [(x0 + x1) / 2, (y0 + y1) / 2];
 }
 /* U6 (sim): tagPick(el, t, id) tags a name tag/bubble element with what a tap on it should select.
-   pickOfTag(t, id) turns that back into a selection ({t:'c', id} | {t:'rg', id} | {t:'gov', terr: id} |
+   pickOfTag(t, id) turns that back into a selection ({t:'c', id} | {t:'gov', terr: id} |
    {t:'gov'} for an empty id: the home governor | null for anything else). PICK_PX, nearestPick(px, py,
    cands, maxPx) -> the .pick of the cands entry ({pick, x, y}, screen px) nearest to (px, py) within
    maxPx, else null -- pickAt()'s fallback when the ray hits no person/governor. */
 function tagPick(el, t, id){ el.dataset.pickT = t; el.dataset.pickId = id || ''; }
 function pickOfTag(t, id){
   if (t === 'c') return { t:'c', id };
-  if (t === 'rg') return { t:'rg', id };
   if (t === 'gov') return id ? { t:'gov', terr: id } : { t:'gov' };
   return null;
 }
@@ -5834,8 +5440,7 @@ function meshFromGeometry(geo, opt){
   return mesh;
 }
 /* U1: the repo row (approved mock v3, mock/city-ux-mock.html) -- an "All" tag then one tag per
-   territory (repoTags), always visible on the stage, over the map (cloud-polish Q1: in #stage-top, under the
-   machine row on the cloud page). buildLand() refills it on every world event. */
+   territory (repoTags), always visible on the stage, over the map (cloud-polish Q1: in #stage-top). buildLand() refills it on every world event. */
 function renderRepos(){
   const el = $('#repos');
   if (!el) return;
@@ -6395,24 +6000,8 @@ function makePerson(c){
   const sel = new THREE.Mesh(ringGeo, ringMat('#FF7593')); sel.rotation.x = -Math.PI / 2; sel.position.y = .04; sel.scale.setScalar(1.45); g.add(sel);
   g.userData.pick = { t:'c', id:c.id };
   pickables.push(g);
-  // city-join: `ring` kept on c.v (not just added to `g`) so its material can change colour later --
-  // ringColorFor()/applyRing() below only touch it when the colour actually changes.
   c.v = { g, key, mixer, hammer, book, bookFlip: book ? book.userData.flip : null, lap, lapLid: lap.userData.lid, lapOn: lap.userData.on, lapOff: lap.userData.off,
           planks, sel, ring, ringColor: c.color, yaw: 0, cur: null, action: null, ts: 1, flipT: 0, hitPhase: 0 };
-}
-/* city-join: the colour a person's ring should show right now -- mine (me, no c.remote) uses
-   MEMBER_COLORS[0] via memberColorMap.me while joined; a remote person uses their own dev's colour;
-   not joined -> everyone's ring keeps its role colour (ringColor() itself). */
-function ringColorFor(c){
-  const memberKey = c.remote ? c.remote.dev : 'me';
-  return ringColor(joined, c.color, memberColorMap[memberKey] || c.color);
-}
-/* applyRing(v, color): only ever touches the mesh's material when the colour actually changed --
-   Cheap: no per-frame material creation (ringMat caches by colour) or reassignment. */
-function applyRing(v, color){
-  if (v.ringColor === color) return;
-  v.ringColor = color;
-  v.ring.material = ringMat(color);
 }
 /* city-work-anim: an optional rate (the time scale of the clip); none -> the walk/sprint scale, else 1, as
    before. The same clip with a new rate only sets the time scale. */
@@ -6682,9 +6271,6 @@ function ensureOv(c){
   c.o = { bub: ovEl('bub', '<span></span>'), qm: ovBtn('qm', '<span>?</span>'), wait: ovEl('gwait'), zz: ovEl('zz', '<span>z</span><span>z</span><span>Z</span>'), tag: ovEl('tagl tag'), doing: ovEl('doing'), talkb: ovEl('talkb') };
   c.o.tag.style.setProperty('--c', c.color);
   tagPick(c.o.bub, 'c', c.id); tagPick(c.o.tag, 'c', c.id); tagPick(c.o.talkb, 'c', c.id); // U6: clickable head tags (city-talk: and the talk bubble)
-  // city-join: another member's citizen also gets a grey, panel-less "?" and a "最后更新" chip for
-  // while their team's relay is off (requirements/city.md, Joining) -- never the pink one above.
-  if (c.remote) { c.o.rqm = ovBtn('qm grey', '<span>?</span>'); c.o.stale = ovEl('stale'); c.o.rdev = ovEl('rdev'); tagPick(c.o.rdev, 'c', c.id); }
 }
 function dropOv(c){ if (!c.o) return; for (const k in c.o) c.o[k].remove(); c.o = null; }
 
@@ -6745,9 +6331,6 @@ function updatePerson(c, t, dt){
   stepWorkProps(c, v, wp, pr, dt);
   const isSel = !!(selected && selected.t === 'c' && selected.id === c.id);
   v.sel.visible = isSel;
-  // city-join: the ring is the member's colour while joined (mine included), else its role colour
-  // as always -- applyRing() only touches the material when that colour actually changed.
-  applyRing(v, ringColorFor(c));
   const isHover = !!(hovered && hovered.t === 'c' && hovered.id === c.id);
 
   ensureOv(c);
@@ -6758,7 +6341,7 @@ function updatePerson(c, t, dt){
   if (ask) c.o.qm.setAttribute('data-open', ask.id); else c.o.qm.removeAttribute('data-open');
   c.o.qm.setAttribute('aria-label', i18n(ask && ask.kind === 'permission' ? 'aria.needsApproval' : 'aria.needsAnswer', { task: c.task }));
   // above the bubble, never over it: a bubble reserves the spot at (sx, sy).
-  const showQm = !!(ask && ask.phase === 'owner') || (DEMO && !c.remote && c.state === 'to_hall' && grow > .5);
+  const showQm = !!(ask && ask.phase === 'owner') || (DEMO && c.state === 'to_hall' && grow > .5);
   const showWait = !!(ask && ask.phase === 'governor');
   pin(c.o.qm, sx, showBub ? sy - 32 : sy, showQm);
   if (showWait) {
@@ -6780,34 +6363,8 @@ function updatePerson(c, t, dt){
   // city-talk T3: the talk bubble sits above whatever else stands at the head (bubble, "?" or countdown, doing line)
   pinTalk(c.o.talkb, tv, sx, sy, (showBub ? 1 : 0) + (showQm || showWait ? 1 : 0) + (doing !== '' ? 1 : 0));
   const [tx, ty] = toScreen(c.x, 0, c.y);
-  if (c.remote) {
-    // city-join: two separate tags, never one combined "who · device" tag -- the name tag (c.o.tag,
-    // memberName() so a blank who shows the device instead) and, pinned right beside it, a small
-    // grey device chip (c.o.rdev). Owner decision 2026-09-25: both OFF by default, shown only on
-    // hover or while selected (tagVisible()) -- other people no longer float a tag all the time.
-    // Cheap: offsetWidth forces a layout recalc, so it's only read the frame the text actually
-    // changes (who/device never change for a given citizen after spawn); every other frame reuses
-    // the width cached on the element (el._w) from that one read.
-    const name = memberName(c.remote.who, c.remote.device);
-    const show = tagVisible(isHover, isSel, follow === c.id);
-    const tagChanged = c.o.tag._t !== name;
-    setText(c.o.tag, name);
-    pin(c.o.tag, tx, ty + 34, show);
-    if (tagChanged || c.o.tag._w === undefined) c.o.tag._w = c.o.tag.offsetWidth;
-    const devChanged = c.o.rdev._t !== c.remote.device;
-    setText(c.o.rdev, c.remote.device);
-    pin(c.o.rdev, tx + c.o.tag._w / 2 + 4 + (c.o.rdev._w || 0) / 2, ty + 34, show);
-    if (devChanged || c.o.rdev._w === undefined) c.o.rdev._w = c.o.rdev.offsetWidth;
-    const frozen = anyRelayOff();
-    setFaded(v, frozen);
-    pin(c.o.stale, sx, sy - 46, frozen);
-    if (frozen) setText(c.o.stale, staleText((Date.now() - (c.remoteAt || Date.now())) / 1000));
-    c.o.rqm.setAttribute('aria-label', i18n('aria.stuckOnlyThem', { name }));
-    pin(c.o.rqm, sx, showBub ? sy - 32 : sy, !frozen && !!c.stuck);
-  } else {
-    setText(c.o.tag, nameOf(c));
-    pin(c.o.tag, tx, ty + 34, tagVisible(isHover, isSel, follow === c.id) && c.state !== 'asking');
-  }
+  setText(c.o.tag, nameOf(c));
+  pin(c.o.tag, tx, ty + 34, tagVisible(isHover, isSel, follow === c.id) && c.state !== 'asking');
 }
 /* Interaction: one governor figure per present governor (city-people, B1 drew only the home
    territory's). govV/govBub/govQm/govTag stay the PRIMARY figure, at the home territory (govTerr) --
@@ -6823,10 +6380,6 @@ function updateGovernor(){
   const px = here ? here.x : gov.x, py = here ? here.y : gov.y;
   govV.g.position.set(px, govV.g.position.y, py);
   govV.g.rotation.y = (here && here.yaw) || 0; // city-polish P1: he faces where he strolls
-  // city-join: my own governor's ring is my member colour while joined, else its usual role colour.
-  // typeof guard: some harnesses (test_agent_city_land, TestEmptyWorld) stub updateGovernor's globals
-  // without the city-join ring helpers -- same pattern governorFigures() below already relies on.
-  if (typeof applyRing === 'function') applyRing(govV, ringColor(joined, '#FFD36E', memberColorMap.me));
   // idea-city C13: govTalk(terr) is the single source of the home territory's own bubble text --
   // 等你回话… while HE waits, else his own govSay text while it lasts, never another territory's.
   const text = govTalk(govTerr), talking = !!text;
@@ -6870,8 +6423,6 @@ function ensureGovFigure(terr){
   const bub = ovEl('bub gov', '<span></span>'), tag = ovEl('tagl tag'), qm = ovBtn('qm', '<span>?</span>'), talkb = ovEl('talkb');
   tag.style.setProperty('--c', '#FF6F8B'); setText(tag, i18n('gov.tagLabel'));
   tagPick(bub, 'gov', terr); tagPick(tag, 'gov', terr); tagPick(talkb, 'gov', terr); // U6: a pool governor's own bubble + tag (+ talk bubble)
-  // city-join: `ring` kept on v (like govV's own) so applyRing() can recolour it -- these are still
-  // MY governors (other territories), so the same member-colour rule applies.
   v = { g, key:'character-male-b', mixer, sel, ring, ringColor: '#FFD36E', cur:null, action:null, bub, tag, qm, talkb };
   anim(v, 'idle');
   govVByTerr.set(terr, v);
@@ -6886,8 +6437,6 @@ function updateGovPool(list){
     v.g.visible = true;
     v.g.position.set(fig.x, v.g.position.y, fig.y);
     v.g.rotation.y = fig.yaw; // city-polish P1
-    // city-join: my own governor's ring is my member colour while joined, else its usual role colour.
-    applyRing(v,ringColor(joined, '#FFD36E', memberColorMap.me));
     const gTalk = govTalkOf(fig.terr); // city-talk T3
     const gAnim = typeof govAnim === 'function' ? govAnim(fig.terr, simT) : 'idle';
     anim(v, talkGesture(gTalk, gAnim));
@@ -6913,84 +6462,6 @@ function updateGovPool(list){
     v.g.visible = false;
     pin(v.bub, 0, 0, false); pin(v.qm, 0, 0, false); pin(v.tag, 0, 0, false); pin(v.talkb, 0, 0, false);
   }
-}
-
-/* city-join: fades one figure (a citizen or a remote governor view, anything with a `.g` THREE
-   group) in place -- only ever called for a `remote` figure, so a local citizen's or my own
-   governor's material is never touched, let alone the shared material other citizens of the same
-   model still use (each mesh node's own faded clone lives in its own userData, per node). */
-function setFaded(v, on){
-  if (v.fadedOn === on) return;
-  v.fadedOn = on;
-  v.g.traverse(n => {
-    if (!n.isMesh) return;
-    if (!n.userData.ownBase) n.userData.ownBase = n.material;
-    if (on) {
-      if (!n.userData.faded) {
-        const m = n.userData.ownBase.clone();
-        m.transparent = true; m.opacity = FADE_OPACITY; m.depthWrite = false;
-        n.userData.faded = m;
-      }
-      n.material = n.userData.faded;
-    } else {
-      n.material = n.userData.ownBase;
-    }
-  });
-}
-/* city-join: extra small governor figures at another team's territory hall, one per remoteGovs
-   entry, each with a govSign() name sign; several side by side when a territory has more than one
-   (requirements/city.md, Joining: "several main managers in one repo = several governors at the
-   one town hall, each with a name sign"). Kept in a Map by id, same key as remoteGovs. */
-const remoteGovViews = new Map();
-function ensureRemoteGovView(id){
-  let v = remoteGovViews.get(id);
-  if (v) return v;
-  const g = place('character-male-b', 0, 0, { s: CHAR_SCALE * .92, keepY: true });
-  const mixer = new THREE.AnimationMixer(g.children[0]); mixers.push(mixer);
-  const ring = new THREE.Mesh(ringGeo, ringMat('#B9BEDD')); ring.rotation.x = -Math.PI / 2; ring.position.y = .035; ring.scale.setScalar(.9); g.add(ring);
-  const sel = new THREE.Mesh(ringGeo, ringMat('#FF7593')); sel.rotation.x = -Math.PI / 2; sel.position.y = .04; sel.scale.setScalar(1.3); g.add(sel);
-  g.userData.pick = { t:'rg', id };
-  pickables.push(g);
-  const tag = ovEl('tagl'); tag.style.setProperty('--c', '#B9BEDD');
-  tagPick(tag, 'rg', id); // U6: a remote governor's own tag
-  v = { g, key:'character-male-b', mixer, sel, ring, ringColor: '#B9BEDD', tag, cur:null, action:null, fadedOn:false };
-  anim(v, 'idle');
-  remoteGovViews.set(id, v);
-  return v;
-}
-function dropRemoteGovView(id){
-  const v = remoteGovViews.get(id); if (!v) return;
-  world.remove(v.g);
-  const pi = pickables.indexOf(v.g); if (pi >= 0) pickables.splice(pi, 1);
-  const mi = mixers.indexOf(v.mixer); if (mi >= 0) mixers.splice(mi, 1);
-  v.tag.remove();
-  remoteGovViews.delete(id);
-}
-function updateRemoteGovs(){
-  const seen = new Set();
-  const perTerr = new Map();
-  for (const g of remoteGovs.values()) {
-    seen.add(g.id);
-    const t = terrOf(g.terr);
-    if (!t) continue;
-    const n = (perTerr.get(g.terr) || 0) + 1; perTerr.set(g.terr, n);
-    const v = ensureRemoteGovView(g.id);
-    const stand = hallStand(t);
-    const gx = stand.x + n * .55, gy = stand.y - n * .12;
-    v.g.visible = landReady();
-    v.g.position.set(gx, v.g.position.y, gy);
-    anim(v, 'idle');
-    const isSel = !!(selected && selected.t === 'rg' && selected.id === g.id);
-    v.sel.visible = isSel;
-    applyRing(v, ringColor(joined, '#B9BEDD', memberColorMap[g.dev] || '#B9BEDD'));
-    const frozen = anyRelayOff();
-    setFaded(v, frozen);
-    const [tx, ty] = toScreen(gx, 0, gy);
-    setText(v.tag, frozen ? govSign(g) + ' · ' + staleText((Date.now() - (g.at || Date.now())) / 1000) : govSign(g));
-    const isHover = !!(hovered && hovered.t === 'rg' && hovered.id === g.id);
-    pin(v.tag, tx, ty + 30, tagVisible(isHover, isSel));
-  }
-  for (const id of [...remoteGovViews.keys()]) if (!seen.has(id)) dropRemoteGovView(id);
 }
 
 const glowTex = (() => {
@@ -7389,12 +6860,10 @@ function sync(t, dt){
     const pk = pickables[i].userData.pick;
     if ((pk.t === 'b' && !ids.has(pk.id)) || (pk.t === 'c' && !byId(pk.id))) { world.remove(pickables[i]); pickables.splice(i, 1); }
   }
-  refreshMembers(); // city-join: cheap signature check -- rings are only recoloured when this actually changes
   for (const c of citizens) { if (!c.v) makePerson(c); updatePerson(c, t, dt); }
   for (const c of goneOv) { if (c.v) { const i = mixers.indexOf(c.v.mixer); if (i >= 0) mixers.splice(i, 1); } dropOv(c); }
   goneOv.length = 0;
   updateGovernor();
-  updateRemoteGovs();
   if (!RM) updatePets(dt);
   for (const m of mixers) m.update(dt);
   updateSiteFrames(dt); // Worktrees: the merge lane's own growth, the stalled smoke -- transforms/opacity only
@@ -7408,29 +6877,18 @@ const dirty = { log:true };
 const clock = t => new Date(BASE + t * 1000).toTimeString().slice(0, 8);
 const pct = c => c.bld ? Math.round((c.bld.done ? 1 : c.bld.shown) * 100) : 0;
 const ORDER = { ask:0, build:1, walk:2, rest:3 };
-/* city-join: the [{who, device, dev}] this machine currently shows, for remoteChip() and
-   memberLegend() -- people/govs never feed into 干活/找总督/休息 above: those counts are my own
-   city's, never another member's. */
-function remotePeopleList(){ const out = []; for (const c of citizens) if (c.remote) out.push({ who: c.remote.who, device: c.remote.device, dev: c.remote.dev }); return out; }
-function remoteGovList(){ return [...remoteGovs.values()].map(g => ({ who: g.who, device: g.device, dev: g.dev })); }
 function renderStats(){
   const waiting = openAskCount();
   // Worktrees: topCounts()'s own colours -- 干活/找总督/休息/建成 as before, plus 卡住的工地's, only ever
   // appended when there is one (topCounts() itself decides whether it shows at all; renderStats only
-  // ever draws whatever it hands back). topCounts() itself skips remote people (city-join): those counts
-  // are this machine's own city, never another member's.
+  // ever draws whatever it hands back).
   // idea-city C1: topCounts()'s own labels come from TEXT (top.*), through i18n() -- topCounts() always
   // hands back work/ask/rest/done (in that order), then stalled only when there is one, so COLOR is keyed
   // by that fixed position, never by the resolved (zh or en) label text (part 1's own bug: en lost every
   // chip's colour, since COLOR was keyed by the zh label i18n() only ever gives back in zh).
   const COLOR = ['#5AA9F0', '#FF6F8B', '#43C58B', '#FFC23D', '#E8833A'];
-  const chip = remoteChip(relays, meInfo, remotePeopleList(), remoteGovList());
-  // city-join: while joined, the chip is followed by the members from memberLegend(), each its own colour dot + name.
-  const legend = chip ? memberLegend(meInfo, remotePeopleList(), remoteGovList(), memberColorMap) : [];
   const html = topCounts().map(([l, n], i) => `<span class="stat"><i style="background:${COLOR[i] || '#8D91B3'}"></i>${l} <b>${n}</b></span>`).join('')
-    + `<button class="stat wait" type="button" id="next" ${waiting ? '' : 'disabled'} aria-label="${i18n('top.pendingAria', { n: waiting })}">${i18n('top.pending')} <b>${waiting}</b></button>`
-    + (chip ? `<span class="stat ${chip.cls}">${esc(chip.text)}</span>` : '')
-    + legend.map(e => `<span class="stat member"><i style="background:${e.color}"></i>${esc(e.name)}</span>`).join('');
+    + `<button class="stat wait" type="button" id="next" ${waiting ? '' : 'disabled'} aria-label="${i18n('top.pendingAria', { n: waiting })}">${i18n('top.pending')} <b>${waiting}</b></button>`;
   if ($('#stats').innerHTML !== html) $('#stats').innerHTML = html;
 }
 let lastRoster = '';
@@ -7469,24 +6927,21 @@ function chainLine(c){
    in its prelude (constants_prelude()). */
 function chatHtml(entries, name, busy){
   if (!entries || !entries.length) return `<li class="msg-empty">${i18n('chat.empty')}</li>`;
-  /* cloud-city-2: an owner's message says who typed it (cid = the cloud page), its state ('sent' and 'taken' both
-     read "on its way"), why it did not arrive (only a reason the page knows), and offers "send again" for a
-     cloud message that did not arrive. On the cloud page (CLOUD) a message with no cid was typed on the computer's own
-     page and says so (chat.you.local). historyHtml() below says the same; each stays alone (esc, i18n, mdLite, CLOUD). */
+  /* an owner's message says its state ('sent' and 'taken' both read "on its way") and why it did not arrive
+     (only a reason the page knows). historyHtml() below says the same; each stays alone (esc, i18n, mdLite). */
   const CHAT_STATES = ['queued', 'delivered', 'undelivered', 'sent', 'taken'];
   const WHY = { 'not-listening': 'notListening', off: 'off', ended: 'ended', 'talk-off': 'talkOff', refused: 'refused', flood: 'flood' };
   const who = e => {
     if (e.kind === 'owner') {
       const known = e.state && CHAT_STATES.includes(e.state);
       const why = e.state === 'undelivered' && typeof e.why === 'string' && Object.prototype.hasOwnProperty.call(WHY, e.why) ? ' · ' + i18n('chat.why.' + WHY[e.why]) : '';
-      return `${i18n(e.cid ? 'chat.you.cloud' : CLOUD ? 'chat.you.local' : 'chat.you.page')}${known ? i18n('chat.stateSuffix', { state: i18n('chat.state.' + (e.state === 'taken' ? 'sent' : e.state)) }) : ''}${why}`;
+      return `${i18n('chat.you.page')}${known ? i18n('chat.stateSuffix', { state: i18n('chat.state.' + (e.state === 'taken' ? 'sent' : e.state)) }) : ''}${why}`;
     }
     if (e.kind === 'prompt') return i18n('chat.you.terminal');
     return esc(name);
   };
-  const again = e => e.kind === 'owner' && e.state === 'undelivered' && e.cid ? `<button type="button" class="resend" data-resend="${esc(e.cid)}">${i18n('chat.resend')}</button>` : '';
   // U9: the text goes through mdLite (its own escaping; simple markdown, never raw HTML) inside a "md" element.
-  let html = entries.map(e => `<li class="msg" data-kind="${esc(e.kind)}" data-id="${esc(e.id)}"${e.main === false ? ' data-main="0"' : ''}><b>${who(e)}</b><div class="md">${mdLite(e.text)}</div>${again(e)}</li>`).join('');
+  let html = entries.map(e => `<li class="msg" data-kind="${esc(e.kind)}" data-id="${esc(e.id)}"${e.main === false ? ' data-main="0"' : ''}><b>${who(e)}</b><div class="md">${mdLite(e.text)}</div></li>`).join('');
   const last = entries[entries.length - 1];
   if (busy && last && last.kind === 'owner' && last.state === 'queued') html += `<li class="msg-wait">${i18n('chat.wait')}</li>`;
   return html;
@@ -7511,14 +6966,13 @@ function chatDisplayName(to){
 }
 /* curChatTo() -> the chat id of whatever is selected right now: 'gov:'+terr for the governor,
    's:'+id for a session citizen (a task manager, c.office), the bare id for a subagent (c.lead,
-   read only); null for anything else (remote people, buildings, sites, nothing selected). The cloud page
-   gives the same ids for the machine shown: its own people only, a guest (pc.remote) still has none. */
+   read only); null for anything else (buildings, sites, nothing selected). */
 function curChatTo(){
   if (!selected) return null;
   if (selected.t === 'gov') return chatTarget({ t: 'gov', terr: selected.terr || govTerr });
   if (selected.t === 'c') {
     const pc = byId(selected.id);
-    if (!pc || pc.remote) return null;
+    if (!pc) return null;
     return chatTarget({ t: 'c', id: pc.id });
   }
   return null;
@@ -7547,7 +7001,6 @@ function demoSendChat(to, text){
 /* loadChat(to): fetches the conversation once per id (chats already has it -- no-op); a failure is
    shown in the window, never swallowed. Demo never fetches. */
 function loadChat(to){
-  if (CLOUD) return cloudLoad(to); // cloud-city: no request here, the feed brings the conversation
   if (chats.has(to)) return;
   if (DEMO) { chats.set(to, demoChatFor(to)); return; }
   chats.set(to, { entries: [], busy: false, canSend: true, loaded: false });
@@ -7561,51 +7014,9 @@ function loadChat(to){
    (live) or the demo timer above. A failure is shown in the window, never swallowed. Resolves true
    when the server took the message (a 2xx with a JSON body), false otherwise (network error or a
    non-ok status); demo always resolves true.
-   cloud-city-2: on the cloud page the message goes to the City Worker, {dev: the machine shown, to, text, cid},
-   with this page's own header (no token here); the entry shows at once (mine, state 'sent', id = cid) and the
-   feed takes it over (cloudChatMerge). A request that gets no answer (the network failed, or a 5xx) is sent
-   again with the SAME cid, CLOUD_SEND_TRIES requests in all, a little later each time: the Worker may have
-   stored the first one, and it keeps one message per cid, so a retry never delivers twice. An answer that
-   refuses (429, any 4xx) is not retried. Too many sends (429) is one line under the box (box.fast); any other
-   failure is the send error above it; either way the entry goes and the text stays in the box (false). */
+   */
 function sendChat(to, text){
   if (DEMO) { demoSendChat(to, text); return Promise.resolve(true); }
-  if (CLOUD) {
-    const dev = cloudLive.feed && cloudLive.feed.dev, cid = cloudCid();
-    if (!dev) return Promise.resolve(false);
-    const start = chats.get(to) || { entries: [], busy: false, canSend: true, loaded: true };
-    start.error = ''; start.fast = '';
-    start.entries = start.entries.concat([{ id: cid, cid, kind: 'owner', text, at: Date.now() / 1000, state: 'sent', mine: true }]);
-    chats.set(to, start);
-    renderPanel();
-    const fail = (key, line) => {
-      const box = chats.get(to) || start;
-      box.entries = box.entries.filter(x => x.id !== cid);
-      box[key] = line;
-      chats.set(to, box);
-      renderPanel();
-      return false;
-    };
-    // try n of CLOUD_SEND_TRIES: no answer (null) waits a little and sends the same cid again
-    const attempt = n => fetch('/api/chat/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-City-Page': '1' }, body: JSON.stringify({ dev, to, text, cid }) })
-      .then(r => (r.status >= 500 ? null : r.json().catch(() => ({})).then(body => ({ r, body }))), () => null)
-      .then(got => {
-        if (!got) {
-          if (n >= CLOUD_SEND_TRIES) return fail('error', i18n('chat.sendError'));
-          return new Promise(done => setTimeout(done, CLOUD_RETRY_MS * n)).then(() => attempt(n + 1));
-        }
-        const { r, body } = got;
-        if (r.status === 429) return fail('fast', i18n(body.error === 'too many today' ? 'cloud.tooMany' : 'cloud.tooFast'));
-        if (!r.ok) return fail('error', i18n('chat.sendError'));
-        // the Worker's word: 'sent', or 'undelivered' with its reason at once (that computer is off, or takes no cloud messages)
-        const box = chats.get(to) || start;
-        box.entries = box.entries.map(x => x.id === cid ? Object.assign({}, x, { state: body.state || 'sent', why: body.why || '' }) : x);
-        chats.set(to, box);
-        renderPanel();
-        return true;
-      });
-    return attempt(1).catch(() => fail('error', i18n('chat.sendError')));
-  }
   return fetch('/api/chat/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-City-Token': TOKEN }, body: JSON.stringify({ to, text }) })
     .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
     .then(body => {
@@ -7631,16 +7042,6 @@ document.addEventListener('submit', e => {
   const text = ta.value;
   if (!text.trim()) return;
   Promise.resolve(sendChat(to, text)).then(ok => { if (ok && $('#say-text') === ta) ta.value = ''; });
-});
-/* cloud-city-2: "send again" under a message that did not arrive: that entry's text goes out once more as a NEW
-   message (a new cid on the cloud page, a new entry on the local one); the old entry stays as the record. */
-document.addEventListener('click', e => {
-  const btn = e.target && e.target.closest ? e.target.closest('[data-resend]') : null;
-  if (!btn) return;
-  const to = curChatTo(), box = to ? chats.get(to) : null;
-  const old = box ? box.entries.find(x => x.cid && String(x.cid) === btn.dataset.resend) : null;
-  if (!old || box.canSend === false || (CLOUD && cloudBoxNote(to))) return;
-  sendChat(to, old.text);
 });
 /* chat-enter: the chat box keys. sayKeyAction(e, coarse) -> 'send' | 'newline' | '' (leave the key alone).
    Enter sends; Shift/Cmd/Ctrl+Enter is a new line; never while an input method is composing (the Enter
@@ -7681,7 +7082,7 @@ function renderDetail(){
   if (selected && selected.t === 'c') {
     c = byId(selected.id);
     if (!c) selected = null;
-    else key = c.remote ? `rc${c.id}|${c.state}|${c.stuck}|${c.task}` : `c${c.id}|${c.state}|${c.doneFlag}|${c.stuck}|${c.qa.length}|${c.askKind}|${c.askPhase}|${c.relay}|${governorCount}`;
+    else key = `c${c.id}|${c.state}|${c.doneFlag}|${c.stuck}|${c.qa.length}|${c.askKind}|${c.askPhase}|${c.relay}|${governorCount}`;
   }
   if (selected && selected.t === 'b') {
     b = buildings.find(x => x.id === selected.id);
@@ -7690,13 +7091,9 @@ function renderDetail(){
     if (!b) selected = null; else key = `b${b.id}|${b.done}|${b.q}|${b.home}|${b.lv}|${b.files.length}|${b.hist.length}`;
   }
   if (selected && selected.t === 'gov') key = `gov|${selected.terr || govTerr}|${gov.answered}|${gov.dispatched}|${governorCount}`;
-  if (selected && selected.t === 'rg') { if (!remoteGovs.has(selected.id)) selected = null; else key = `rg${selected.id}|${remoteGovs.get(selected.id).state}`; }
   const chatTo = curChatTo();
   const chatName = chatTo ? (selected && selected.t === 'gov' ? i18n('who.governor') : (c ? nameOf(c) : '')) : '';
   if (chatTo) loadChat(chatTo);
-  // cloud-city-2: why the box is off for the machine shown ('' = the box is there); a change rebuilds the card
-  const talkNote = CLOUD && chatTo ? cloudBoxNote(chatTo) : '';
-  if (CLOUD && chatTo) key += '|' + talkNote;
   // U8: capture the OLD #chat's scroll place and newmsg-chip state before a rebuild below (if any)
   // replaces it -- a rebuild of the SAME chat target reuses this; a different target (or none before)
   // starts fresh at the bottom, chip hidden.
@@ -7726,9 +7123,7 @@ function renderDetail(){
       return html + `<p class="hint">${i18n('hint.readOnlySub')}</p>` + leadBtn;
     }
     if (box.canSend === false) return html;
-    if (talkNote) return html + cloudNoteHtml(talkNote); // cloud-city-2: a note instead of the box
-    return html + `<form class="say" id="say"><textarea id="say-text" maxlength="4000" placeholder="${i18n('placeholder.saySomething')}"></textarea><button class="btn say-send" type="submit" aria-label="${i18n('btn.send')}" title="${i18n('btn.send')}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button></form>`
-      + (CLOUD ? `<p class="cloud-fast" id="cloud-fast" hidden></p>` : '');
+    return html + `<form class="say" id="say"><textarea id="say-text" maxlength="4000" placeholder="${i18n('placeholder.saySomething')}"></textarea><button class="btn say-send" type="submit" aria-label="${i18n('btn.send')}" title="${i18n('btn.send')}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button></form>`;
   }
   /* city-polish C2: the one small toggle in the history's title line (#hist-all); the refresh at the end
      of this function sets its text, its hidden state and aria-pressed on every call. */
@@ -7740,22 +7135,7 @@ function renderDetail(){
   if (key !== lastDetailKey) {
     lastDetailKey = key;
     rebuilt = true;
-    if (c && c.remote) {
-      // city-join: view only -- who, device, repo, branch, what it is doing, its own history
-      // (spawn/done/leave -- U10), remoteNote(); never an answer, allow or deny button, never a
-      // reply box (requirements/city.md, Joining).
-      const name = memberLabel(c.remote.who, c.remote.device);
-      const [rg, rzh] = citizenStatus(c, governorCount);
-      el.innerHTML = `
-        <div class="p-head">
-          <span class="rdot" style="--c:${c.color}"></span>
-          <div class="p-main"><div class="p-name">${esc(name)}</div><div class="p-facts"><code>${esc(c.remote.rid)}</code> · <code>${esc(c.remote.br)}</code> · ${esc(c.task)}</div></div>
-          <span class="pill ${rg}">${rzh}</span>
-        </div>
-        <p class="hint hist-h">${i18n('hist.title')}</p>
-        <ol class="chat">${historyHtml(personHistory(c, []), name, false)}</ol>
-        <p class="why">${esc(remoteNote(name))}</p>`;
-    } else if (c) {
+    if (c) {
       const [g, zh] = citizenStatus(c, governorCount);
       const facts = esc(factsLine(c)); // city-polish P3: the repo once, the task only when the name does not hold it
       const canStuck = !c.doneFlag && !c.stuck && ['building','to_plot','back'].includes(c.state);
@@ -7769,7 +7149,6 @@ function renderDetail(){
         </div>
         <div id="askslot"></div>
         ${chain ? `<p class="hint chain">${chain}</p>` : ''}
-        ${CLOUD && c.stuck ? `<p class="cloud-why" id="cloud-ask">${esc(i18n('cloud.later.ask'))}</p>` : ''}
         ${DEMO ? `
         <div class="d-actions">
           <button class="btn" type="button" data-act="stuck" ${canStuck ? '' : 'disabled'}>${i18n('act.makeStuck')}</button>
@@ -7778,11 +7157,6 @@ function renderDetail(){
         </div>
         <p class="d-note">${i18n('act.demoNote')}</p>` : ''}
         ${chatTo ? `<p class="hint hist-h">${i18n('hist.title')}${histBtnHtml()}</p>${chatSectionHtml(chatTo)}` : ''}`;
-    } else if (selected && selected.t === 'rg') {
-      const rg = remoteGovs.get(selected.id);
-      el.innerHTML = `
-        <div class="d-head"><span class="rdot gov"></span><div><div class="d-name">${esc(govSign(rg))}</div><div class="d-role">${i18n('gov.rgRole')}</div></div><span class="pill gov">${i18n('pill.hall')}</span></div>
-        <div class="why">${esc(remoteNote(memberName(rg.who, rg.device)))}</div>`;
     } else if (b) {
       // U13: the building card's head only -- buildingName(b) and one line with the type word and its
       // district (the 3D look of a building does not change; no quality pill, no level, no files list,
@@ -7829,7 +7203,7 @@ function renderDetail(){
   // refreshed on every call (text and class, only when changed) -- never by rebuilding the card.
   // cloud-polish: the governor's head follows its state the same way (the card key holds no governor state).
   refreshHeadPill(el, selected);
-  if (c && !c.remote && selected && selected.t === 'c') {
+  if (c && selected && selected.t === 'c') {
     const bar = el.querySelector('.p-bar i'); if (bar) bar.style.width = pct(c) + '%';
   }
   if (chatTo) {
@@ -7870,9 +7244,6 @@ function renderDetail(){
     }
     const fail = el.querySelector('#chat-fail');
     if (fail) { const failText = chatFailText(chatTo, box); fail.hidden = !failText; if (fail.textContent !== failText) fail.textContent = failText; }
-    // cloud-city-2: the line under the box when the page sent too much (429)
-    const fast = el.querySelector('#cloud-fast');
-    if (fast) { const line = box.fast ? String(box.fast) : ''; fast.hidden = !line; if (fast.textContent !== line) fast.textContent = line; }
   }
 }
 function renderLog(){
@@ -7931,10 +7302,10 @@ function renderRail(){
   stage.classList.toggle('rail-folded', has && railFolded);
   stage.classList.toggle('rail-none', !has);
   // city-layout L2: the quiet line at the rail's foot -- how many repos are hidden, red when somebody there waits;
-  // only the live local page has it (the demo and the cloud page know no hidden repo); the DOM is touched on change only
+  // only the live local page has it (the demo knows no hidden repo); the DOM is touched on change only
   const hidHtml = hiddenHtml(hiddenLands);
   if (hidHtml !== lastHid) { lastHid = hidHtml; $('#rail-hid').innerHTML = hidHtml; }
-  $('#rail-hid').hidden = !hiddenLands.length || DEMO || CLOUD;
+  $('#rail-hid').hidden = !hiddenLands.length || DEMO;
   $('#rail-hid').classList.toggle('you', hiddenLands.some(h => h.wait > 0));
 }
 /* city-add-agent A2/A4: addAgent(terr, force) -- the "add agent" button of one repo group. Nothing while
@@ -7943,10 +7314,8 @@ function renderRail(){
    addAnswer() turns the answer into the button's next state. A failed request (no answer at all) shows
    an error line too, a broken or empty body counts as {}; the rail is redrawn after every answer. The
    server's 'adding' events (opening / done / late) move the same state on from there.
-   cloud-city-3: on the cloud page the click is an order to the City Worker, not a request to a local server:
-   cloudAdd() (the cloud script) does it, with the same two arguments. */
+   */
 function addAgent(terr, force){
-  if (CLOUD) return cloudAdd(terr, force);
   const was = addState.get(terr);
   if (was && was.s === 'opening') return;
   addState.set(terr, { s: 'opening', name: '' });
@@ -7972,8 +7341,7 @@ $('#rail-list').addEventListener('click', e => {
   if (goBtn) { addAgent(goBtn.dataset.addGo, true); return; }
   const noBtn = e.target.closest('[data-add-no]');
   if (noBtn) {
-    if (CLOUD) cloudAddHide(noBtn.dataset.addNo); // cloud-city-3: that order is hidden for good, not only this box
-    else addState.delete(noBtn.dataset.addNo);
+    addState.delete(noBtn.dataset.addNo);
     renderRail();
     return;
   }
@@ -8050,17 +7418,16 @@ function openLog(){ winLog = true; selected = null; renderPanel(); }
 function closeWin(){ winLog = false; selected = null; renderPanel(); }
 /* winTitle() -> a short label for the open window, whatever renderDetail() is showing right now -- V1
    (city-ux2 v2): the panel is one person's own, so its title IS that person -- nameOf(c) for a local
-   citizen, its member label for a remote one, i18n('who.governor') for the governor (city-polish P3:
+   citizen, i18n('who.governor') for the governor (city-polish P3:
    its repo shows in the subtitle) -- never a team title any more. A building/site/log stay as they were. */
 function winTitle(){
   if (!selected) return i18n('detail.title');
   if (selected.t === 'c') {
     const c = byId(selected.id); if (!c) return i18n('detail.title');
-    return c.remote ? memberLabel(c.remote.who, c.remote.device) : nameOf(c);
+    return nameOf(c);
   }
   if (selected.t === 'b') { const b = buildings.find(x => x.id === selected.id); if (!b) return i18n('detail.title'); const info = buildingInfo(b); return info.name || i18n('type.' + b.type) || b.type; }
   if (selected.t === 'gov') return i18n('who.governor'); // city-polish P3: the repo is in the subtitle, never twice
-  if (selected.t === 'rg') { const rg = remoteGovs.get(selected.id); return rg ? govSign(rg) : i18n('who.governor'); }
   return i18n('detail.title');
 }
 /* V1 (city-ux2 v2): the panel folds to a thin tab on its own right edge, exactly like the rail
@@ -8087,7 +7454,7 @@ function winEntryCount(){
     const c = byId(selected.id); if (!c) return 0;
     const to = curChatTo(), box = to ? chats.get(to) : null;
     const items = personHistory(c, box ? box.entries : []);
-    return (histAll || c.remote ? items : mainOnly(items)).length;
+    return (histAll ? items : mainOnly(items)).length;
   }
   if (selected.t === 'gov') {
     const to = curChatTo(); if (!to) return 0;
@@ -8113,7 +7480,7 @@ function renderWin(){
   const state = winState();
   const shown = !!state && !winFolded, tabShown = !!state && winFolded;
   $('#win').hidden = !shown;
-  $('#win').classList.toggle('short', state === 'detail' && !!(selected && (selected.t === 'b' || selected.t === 'rg')));
+  $('#win').classList.toggle('short', state === 'detail' && !!(selected && (selected.t === 'b')));
   $('#detail').hidden = state !== 'detail';
   $('#log').hidden = state !== 'log';
   const title = state === 'log' ? i18n('btn.log') : winTitle();
@@ -8329,11 +7696,11 @@ function fitAskSlot(slot){
    slot.dataset.key), so a picked option or a typed reason survives the next frames, and a rebuilt panel
    (a fresh slot) gets its card again. An open card is wired with wireAskControls(slot, view). A card that
    stops showing takes its closed view out of `asks` (unless the small dialog still shows it). No slot (the
-   panel is closed, a building's card) -> no card; the cloud page has none (view only). With a slot the last
+   panel is closed, a building's card) -> no card. With a slot the last
    step is always fitAskSlot(slot) (K17). */
 function renderAskCard(){
   const was = cardAskId;
-  const slot = CLOUD ? null : $('#askslot');
+  const slot = $('#askslot');
   const view = slot ? panelAsk(selected) : null;
   cardAskId = view ? view.id : null;
   if (was && was !== cardAskId) {
@@ -8385,7 +7752,6 @@ function setAskControlsDisabled(on, id){
   root.querySelectorAll('#send,[data-verb],input').forEach(el => { el.disabled = on; });
 }
 async function decide(id, body){
-  if (CLOUD) return; // cloud-city: view only, no answer, no allow, no deny
   setAskControlsDisabled(true, id);
   let res;
   try {
@@ -8469,7 +7835,6 @@ function afterPick(){
 function selectFrom(val){
   if (val && val.slice(0, 4) === 'gov:') selected = { t:'gov', terr: val.slice(4) };
   else if (val === 'gov') selected = { t:'gov', terr: govTerr };
-  else if (val && val.startsWith('rg:')) selected = { t:'rg', id: val.slice(3) };
   else if (val) selected = { t:'c', id:val };
   winLog = false;
   afterPick();
@@ -8497,7 +7862,6 @@ $('#detail').addEventListener('click', e => {
 });
 if (DEMO) {
   $('#spawn').addEventListener('click', () => { const c = spawnDemo($('#role').value); if (c) { selected = { t:'c', id:c.id }; lastDetailKey = ''; renderPanel(); } });
-  $('#spawn-group').addEventListener('click', e => { const b = e.target.closest('[data-remote]'); if (b) demoRemote(b.dataset.remote); });
 } else {
   $('.toolbar').remove();
   $('.stage-col').classList.add('no-bar');
@@ -8517,566 +7881,6 @@ function connectLive(){
     needFrame = true;
   };
 }
-/* cloud-city: pure */
-/* The feed helpers of the cloud page: plain functions, they use only their arguments, the constants above and
-   i18n(), so a test can run them alone (the same way as the city-join pure block). */
-/* cloudPick(devs, wanted) -> the dev id to show: WANTED when DEVS has it, else the first one (the feed lists the
-   newest first), else ''. */
-function cloudPick(devs, wanted) {
-  const list = Array.isArray(devs) ? devs : [];
-  if (wanted && list.some(d => d && d.dev === wanted)) return wanted;
-  return list.length && list[0] && typeof list[0].dev === 'string' ? list[0].dev : '';
-}
-/* cloudFeedUrl(cur) -> '/api/feed' plus ?dev=&gen=&after= from cur {dev, gen, after}; no dev -> '/api/feed'.
-   A cur with a window (chat: the open window's id, cc: its cursor) adds &chat=&cc= (cc 0 when missing). */
-function cloudFeedUrl(cur) {
-  if (!cur || !cur.dev) return '/api/feed';
-  const n = v => Math.max(0, Math.floor(Number(v) || 0));
-  const url = '/api/feed?dev=' + encodeURIComponent(cur.dev) + '&gen=' + n(cur.gen) + '&after=' + n(cur.after);
-  return typeof cur.chat === 'string' && cur.chat ? url + '&chat=' + encodeURIComponent(cur.chat) + '&cc=' + n(cur.cc) : url;
-}
-/* cloudChatMerge(box, chat) -> the open window's next box {entries, cc, busy, canSend, loaded: true}, from the
-   box now (undefined or null for a window just opened) and the feed's "chat" {to, cc, rows, msgs}; neither
-   argument is changed. A row is the machine's entry {id: k, kind, text, at, state, why, cid}; one whose k is
-   there already replaces that entry (a change of state). A msg is a message on its way or one that never reached
-   the machine: the entry {id: cid, cid, kind: 'owner', ...} (msg: true), unless a row has its cid (it shows
-   once); it goes when the feed names it no more. An entry the page made itself on send (mine: true) stays until
-   the feed knows its cid, then the feed's entry takes its place. Every entry sits by its time (at, seconds; the
-   machine's clock for a row, the cloud's for a msg; equal: the order they came in). */
-function cloudChatMerge(box, chat) {
-  const c = chat || {};
-  const rows = Array.isArray(c.rows) ? c.rows : [];
-  const msgs = Array.isArray(c.msgs) ? c.msgs : [];
-  const known = new Set();
-  for (const r of rows) if (r && r.cid) known.add(r.cid);
-  for (const m of msgs) if (m && m.cid) known.add(m.cid);
-  const byId = new Map();
-  for (const e of box && Array.isArray(box.entries) ? box.entries : []) {
-    if (e.msg || (e.mine && known.has(e.cid))) continue;
-    byId.set(e.id, e);
-  }
-  for (const r of rows) {
-    if (!r) continue;
-    byId.set(r.k, { id: r.k, kind: r.kind, text: r.text, at: r.at, state: r.state, why: r.why, cid: r.cid });
-  }
-  for (const m of msgs) {
-    if (!m || byId.has(m.cid)) continue;
-    byId.set(m.cid, { id: m.cid, cid: m.cid, kind: 'owner', text: m.text, at: m.at, state: m.state, why: m.why, msg: true });
-  }
-  const entries = [...byId.values()].sort((x, y) => (Number(x.at) || 0) - (Number(y.at) || 0));
-  return {
-    entries,
-    cc: typeof c.cc === 'number' ? c.cc : (box && box.cc) || 0,
-    busy: !!(box && box.busy),
-    canSend: !(box && box.canSend === false),
-    loaded: true,
-  };
-}
-/* cloudStep(cur, feed, known) -> { cur, apply }: the next cursor (from the feed) and the messages to hand to
-   apply(), in order: the feed's snap, then catch-up events, then the feed's events. A snap with no
-   remote_snapshot message gets one empty one right after its snapshot message, so the guests of the machine
-   shown before never stay. The page's own snapshot case only places people it does not have yet, and a
-   machine's new picture carries a change with no event; so for every agent of the snapshot that KNOWN (the
-   people the page shows now: [{id, status, done, stuck, label}]) already holds and that differs, the events
-   the page's own handlers know follow the snap, per person: label, stuck / answer, status, done. KNOWN missing
-   or empty -> nothing to catch up. */
-function cloudStep(cur, feed, known) {
-  const c = cur || {}, f = feed || {};
-  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
-  const next = { dev: typeof f.dev === 'string' ? f.dev : (c.dev || ''), gen: num(f.gen, c.gen || 0), after: num(f.after, c.after || 0) };
-  const out = [];
-  const snap = Array.isArray(f.snap) ? f.snap : [];
-  if (snap.length) {
-    const guests = snap.some(m => m && m.type === 'remote_snapshot');
-    const none = () => ({ type: 'remote_snapshot', me: {}, people: [], govs: [], teams: [] });
-    let put = guests;
-    for (const m of snap) {
-      out.push(m);
-      if (!put && m && m.type === 'snapshot') { out.push(none()); put = true; }
-    }
-    if (!put) out.push(none());
-    const have = new Map();
-    for (const k of Array.isArray(known) ? known : []) if (k && k.id !== undefined) have.set(k.id, k);
-    if (have.size) for (const m of snap) {
-      if (!m || m.type !== 'snapshot') continue;
-      for (const a of Array.isArray(m.agents) ? m.agents : []) {
-        const k = a && have.get(a.id);
-        if (!k) continue;
-        if (a.label && a.label !== k.label) out.push({ type: 'label', id: a.id, label: a.label, terr: a.terr });
-        if (a.stuck && !k.stuck) out.push({ type: 'stuck', id: a.id, question: '', tool: '' });
-        else if (!a.stuck && k.stuck) out.push({ type: 'answer', id: a.id, ok: true });
-        const raw = typeof a.status === 'string' ? a.status : (a.waiting ? 'waiting' : '');
-        const st = raw === 'waiting' || raw === 'background' || raw === 'idle' ? raw : '';
-        if (st !== (k.status || '')) out.push(st ? { type: st, id: a.id } : { type: 'resume', id: a.id });
-        if (a.done && !k.done) out.push({ type: 'done', id: a.id });
-      }
-    }
-  }
-  for (const e of Array.isArray(f.events) ? f.events : []) out.push(e);
-  return { cur: next, apply: out };
-}
-/* cloudAge(ms) -> a short text: under 10 s just now; then N s, N min, N h, N d ago (the texts are cloud.age*). */
-function cloudAge(ms) {
-  const t = Number(ms) || 0;
-  if (t < 10000) return i18n('cloud.justNow');
-  const s = Math.floor(t / 1000);
-  if (s < 60) return i18n('cloud.ageSec', { n: s });
-  const m = Math.floor(s / 60);
-  if (m < 60) return i18n('cloud.ageMin', { n: m });
-  const h = Math.floor(m / 60);
-  if (h < 24) return i18n('cloud.ageHour', { n: h });
-  return i18n('cloud.ageDay', { n: Math.floor(h / 24) });
-}
-/* cloudStale(dev, now) -> true when the machine sent nothing for CLOUD_STALE_MS (now = the server's clock). */
-function cloudStale(dev, now) {
-  if (!dev || typeof dev.ts !== 'number') return true;
-  return now - dev.ts > CLOUD_STALE_MS;
-}
-/* cloudNotice(feed, now, sessions) -> the text key of the notice the city shows, or '':
-   cloud.noMachine (the user has no machine yet), cloud.offline (every machine is stale, the last picture
-   stays), cloud.noSessions (the machine shown has no session at all: its counts say people 0 AND sessions,
-   what the page itself draws for it -- its own people and its present governors -- is 0; sessions left out or
-   not a number: the counts alone decide, so a machine on the old upload with only a governor shows no false
-   notice), '' otherwise. */
-function cloudNotice(feed, now, sessions) {
-  const devs = feed && Array.isArray(feed.devs) ? feed.devs : [];
-  if (!devs.length) return 'cloud.noMachine';
-  if (devs.every(d => cloudStale(d, now))) return 'cloud.offline';
-  const shown = devs.find(d => d && d.dev === feed.dev);
-  const drawn = typeof sessions === 'number' && sessions > 0;
-  if (shown && shown.counts && shown.counts.people === 0 && !drawn) return 'cloud.noSessions';
-  return '';
-}
-/* cloudTalkNote(dev, now) -> why the message box is off for the machine shown (dev = its row of the feed), a text
-   key or '': cloud.box.talkOff when it does not take messages (dev.talk is not true), else cloud.box.offline when
-   it is stale (cloudStale); no machine -> cloud.box.offline. */
-function cloudTalkNote(dev, now) {
-  if (!dev) return 'cloud.box.offline';
-  if (dev.talk !== true) return 'cloud.box.talkOff';
-  return cloudStale(dev, now) ? 'cloud.box.offline' : '';
-}
-/* cloudCid() -> a new random id for one message (24 characters of A-Z a-z 0-9 _ -): the City Worker keeps
-   a message once per id, so a second send of the same id never makes a second message. */
-function cloudCid() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
-  const bytes = new Uint8Array(24);
-  crypto.getRandomValues(bytes);
-  let id = '';
-  for (const b of bytes) id += chars[b & 63];
-  return id;
-}
-/* cloud-city-3 (start an agent from the cloud page): the machine's row of the feed that is shown, or null. */
-function cloudShownDev(feed) {
-  const devs = feed && Array.isArray(feed.devs) ? feed.devs : [];
-  return devs.find(d => d && d.dev === feed.dev) || null;
-}
-/* cloudStartOn(feed) -> true when the machine shown takes start orders: its row has start === true and it is not
-   stale (cloudStale, by the feed's clock). No feed, no such machine -> false. */
-function cloudStartOn(feed) {
-  const d = cloudShownDev(feed);
-  return !!d && d.start === true && !cloudStale(d, feed.now);
-}
-/* cloudStartNote(feed) -> why there is no add-agent button for the machine shown, a text key or '':
-   cloud.start.needTalk when its talk is not true (start needs talk), else cloud.start.off when its start is not
-   true, else ''. No feed, no machine or a stale one -> '' (the offline notice says it). */
-function cloudStartNote(feed) {
-  const d = cloudShownDev(feed);
-  if (!d || cloudStale(d, feed.now)) return '';
-  if (d.talk !== true) return 'cloud.start.needTalk';
-  return d.start === true ? '' : 'cloud.start.off';
-}
-/* cloudOrderWhy(order) -> the reason a failed order did not open, in plain words (text, not HTML): the key
-   add.cloud.why.<x> for the order's why; the orca one carries Orca's own words (info.detail); a why this page does
-   not know reads add.cloud.why.other. */
-function cloudOrderWhy(order) {
-  const keys = { off: 'off', 'start-off': 'startOff', 'no-orca': 'noOrca', gone: 'gone', orca: 'orca', late: 'late',
-    busy: 'busy', flood: 'flood', silent: 'silent', restart: 'restart', refused: 'refused' };
-  const o = order && typeof order === 'object' ? order : {};
-  const info = o.info && typeof o.info === 'object' ? o.info : {};
-  const key = Object.prototype.hasOwnProperty.call(keys, o.why) ? keys[o.why] : 'other';
-  return i18n('add.cloud.why.' + key, { detail: typeof info.detail === 'string' ? info.detail : '' });
-}
-/* cloudOrderState(order, young) -> the state of the button for ONE order of the feed ({oid, state, why, info}), or
-   null when the order says nothing to show: sent / taken -> sent; opening -> opening (the name Orca gave, or '');
-   opened -> done while YOUNG (else null: the button is back); cap -> cap (RAM, CPU, limit from info); failed ->
-   err with its reason, no retry button (a new click is a new order). Anything else -> null. */
-function cloudOrderState(order, young) {
-  const info = order.info && typeof order.info === 'object' ? order.info : {};
-  const name = typeof info.name === 'string' ? info.name : '';
-  const oid = order.oid;
-  if (order.state === 'sent' || order.state === 'taken') return { s: 'sent', oid };
-  if (order.state === 'opening') return { s: 'opening', oid, name };
-  if (order.state === 'opened') return young ? { s: 'done', oid, name } : null;
-  if (order.state === 'cap') return { s: 'cap', oid, ram: Number(info.ram) || 0, cpu: Number(info.cpu) || 0, max: Number(info.max) || 0 };
-  if (order.state === 'failed') return { s: 'err', oid, why: cloudOrderWhy(order), retry: false };
-  return null;
-}
-/* cloudOrderView(orders, now, hidden) -> a Map terr -> the state of that repo's button, from the feed's "orders"
-   [{oid, terr, force, at, ts, state, why, info}]: for each repo its NEWEST order (the largest at) decides, and
-   nothing else (an older one never comes back). An opened order shows "done" for CLOUD_ADD_DONE_MS after its ts
-   (now = the server's clock). An order whose oid is in HIDDEN (a Set: the owner pressed 知道了 or 取消) shows
-   nothing. Anything in ORDERS that is not an order is skipped; no orders -> an empty Map. */
-function cloudOrderView(orders, now, hidden) {
-  const newest = new Map();
-  for (const o of Array.isArray(orders) ? orders : []) {
-    if (!o || typeof o !== 'object' || typeof o.oid !== 'string' || typeof o.terr !== 'string' || !o.terr) continue;
-    const was = newest.get(o.terr);
-    if (!was || (Number(o.at) || 0) > (Number(was.at) || 0)) newest.set(o.terr, o);
-  }
-  const view = new Map();
-  for (const [terr, o] of newest) {
-    if (hidden && hidden.has(o.oid)) continue;
-    const st = cloudOrderState(o, now - o.ts < CLOUD_ADD_DONE_MS);
-    if (st) view.set(terr, st);
-  }
-  return view;
-}
-/* cloudAddAnswer(code, body) -> the state to show for the answer of POST /api/agent/add (code 0 = no answer at
-   all): 200 -> what cloudOrderView shows for that one order (an opened one reads done); 409 busy -> sent, with the
-   oid of the order already on its way; 429 too many this hour -> an error with the minutes to wait (whole
-   minutes, rounded up, at least 1); 429 too many today; 403 -> the login is gone (cloud.login); anything else
-   -> add.cloud.noAnswer. An error has retry: false (a new click is a new order). */
-function cloudAddAnswer(code, body) {
-  const b = body && typeof body === 'object' ? body : {};
-  const err = why => ({ s: 'err', why, retry: false });
-  if (code === 200) {
-    const st = cloudOrderState(b, true);
-    if (st) return st;
-  }
-  if (code === 409 && b.error === 'busy') return { s: 'sent', oid: b.oid };
-  if (code === 429 && b.error === 'too many this hour') return err(i18n('add.cloud.tooMany', { min: Math.max(1, Math.ceil((Number(b.wait) || 0) / 60)) }));
-  if (code === 429 && b.error === 'too many today') return err(i18n('add.cloud.tooManyDay'));
-  if (code === 403) return err(i18n('cloud.login'));
-  return err(i18n('add.cloud.noAnswer'));
-}
-/* end cloud-city: pure */
-/* cloud-city: script -- the page as the cloud page (requirements/city.md, Cloud page): fed by polling the
-   Worker's /api/feed, with a machine row, and talk: a session's window carries its conversation from the feed
-   and a box to send from. Everything here runs only when CLOUD is true. */
-function cloudSetup() {
-  const app = $('.app'), bar = $('header.bar');
-  app.classList.add('cloud-page');
-  const sub = $('.sign-sub');
-  if (sub) sub.textContent = i18n('cloud.sign');
-  const ro = document.createElement('span');
-  ro.className = 'ro'; ro.id = 'cloud-ro'; ro.textContent = i18n('cloud.readOnly');
-  bar.insertBefore(ro, $('#stats'));
-  const acct = document.createElement('span');
-  acct.className = 'acct'; acct.id = 'cloud-acct'; acct.hidden = true;
-  bar.appendChild(acct);
-  const note = document.createElement('div');
-  note.id = 'cloud-notice'; note.hidden = true;
-  note.addEventListener('click', e => { if (e.target.closest('.cloud-reload')) location.reload(); });
-  stage.appendChild(note);
-  // the note at the foot of every window (the text comes from TEXT); cloudRenderTalk() takes it off for a machine that talks
-  $('#win').setAttribute('data-cloud-note', i18n('cloud.viewNote'));
-  // a "?" and the next button open nothing here: the click never reaches the page's own handlers
-  document.addEventListener('click', e => {
-    if (e.target.closest && e.target.closest('[data-open],#next')) { e.stopPropagation(); e.preventDefault(); }
-  }, true);
-  cloudHiddenLoad();
-  // the rail's foot: one quiet note about starting an agent (the Worker's feed says which; cloudRenderStartNote fills it)
-  const start = document.createElement('p');
-  start.className = 'cloud-why'; start.id = 'cloud-start-note'; start.hidden = true;
-  $('#rail').appendChild(start);
-  // the phone's keyboard: the window sheet (css: .cloud-page .win) follows the visible part of the screen; a
-  // conversation that was at the bottom when the room changed stays at the bottom
-  if (window.visualViewport) {
-    const fit = () => {
-      const ol = $('#chat');
-      const atBottom = !!ol && ol.scrollHeight - ol.scrollTop - ol.clientHeight <= CHAT_STICK_PX;
-      app.style.setProperty('--vvh', window.visualViewport.height + 'px');
-      app.style.setProperty('--vvt', window.visualViewport.offsetTop + 'px');
-      if (atBottom) ol.scrollTop = ol.scrollHeight;
-    };
-    window.visualViewport.addEventListener('resize', fit);
-    window.visualViewport.addEventListener('scroll', fit);
-    fit();
-  }
-}
-/* loadChat() on the cloud page: nothing is fetched, the feed brings the conversation. A window just opened is empty
-   until then; the feed is asked at once for a window it does not carry yet (only a session's or the governor's). */
-function cloudLoad(to) {
-  if (!chats.has(to)) chats.set(to, { entries: [], busy: false, canSend: true, loaded: false });
-  if (cloudWindow(to) && cloudLive.poke && cloudLive.open !== to) cloudLive.poke();
-}
-/* cloudWindow(to) -> TO when it is a window the feed can open (a session 's:...' or the governor 'gov:...'), else '' */
-function cloudWindow(to) {
-  return typeof to === 'string' && (to.slice(0, 2) === 's:' || to.slice(0, 4) === 'gov:') ? to : '';
-}
-/* cloudBoxNote(to) -> why the message box of window TO is off, a text key, or '' when the box is there: the answer
-   of cloudTalkNote() for the machine shown. A subagent's window has no box here (it keeps its read-only line). */
-function cloudBoxNote(to) {
-  const feed = cloudLive.feed;
-  if (!feed || !cloudWindow(to)) return '';
-  const devs = Array.isArray(feed.devs) ? feed.devs : [];
-  return cloudTalkNote(devs.find(d => d && d.dev === feed.dev) || null, feed.now);
-}
-/* the note that takes the box's place; the command it names shows as code */
-function cloudNoteHtml(key) {
-  const cmd = 'agent-city cloud-talk on';
-  return `<p class="cloud-why">${esc(i18n(key)).replace(cmd, `<code>${cmd}</code>`)}</p>`;
-}
-/* cloud-city-3: the orders the owner closed (知道了 / 取消 on a box): their oids. They are kept in sessionStorage, so
-   a reload does not bring the box back; a browser that will not store (private mode) forgets them at a reload. */
-const CLOUD_HIDDEN_KEY = 'city-cloud-add-hidden';
-const CLOUD_HIDDEN_KEEP = 50;
-const cloudHidden = new Set();
-function cloudHiddenLoad() {
-  try {
-    const list = JSON.parse(sessionStorage.getItem(CLOUD_HIDDEN_KEY) || '[]');
-    for (const oid of Array.isArray(list) ? list : []) if (typeof oid === 'string') cloudHidden.add(oid);
-  } catch (err) { /* nothing stored, or no storage: nothing was closed before */ }
-}
-function cloudHiddenSave() {
-  try { sessionStorage.setItem(CLOUD_HIDDEN_KEY, JSON.stringify([...cloudHidden].slice(-CLOUD_HIDDEN_KEEP))); } catch (err) { /* private mode */ }
-}
-/* cloudAddHide(terr): the owner closed the box of that repo: its order is hidden for good (it never shows again,
-   not even after a reload) and the button is back. */
-function cloudAddHide(terr) {
-  const st = addState.get(terr);
-  if (st && st.oid) { cloudHidden.add(st.oid); cloudHiddenSave(); }
-  addState.delete(terr);
-}
-/* cloudAdd(terr, force): the add-agent click on the cloud page, ONE order to the City Worker. Nothing while that
-   repo already reads sent or opening (one order at a time per repo). Else the button reads sent at once (the
-   entry is the page's own: mine, with this click's oid) and ONE request goes out: POST /api/agent/add
-   {dev: the machine shown, terr, oid} with this page's own header and no token; force: true too only from the
-   over-the-limit confirm. The Worker keeps one order per oid, so a request that gets no answer (the network
-   failed, or a 5xx) is sent again with the SAME oid, CLOUD_SEND_TRIES requests in all, a little later each time;
-   then the error line. The answer goes through cloudAddAnswer() into the button's state, but only while the
-   button still reads this click's sent (the feed may have moved it on, or the owner went to another machine). A
-   stored order (200, or 409 for one already on its way) asks the feed at once (cloudLive.poke); 403 means the
-   login is gone, the same lock as the feed's own 403. */
-function cloudAdd(terr, force) {
-  const was = addState.get(terr);
-  if (was && (was.s === 'sent' || was.s === 'opening')) return;
-  const dev = cloudLive.feed && cloudLive.feed.dev;
-  if (!dev) return;
-  const oid = cloudCid(), at = Date.now();
-  const body = JSON.stringify(force ? { dev, terr, oid, force: true } : { dev, terr, oid });
-  const mine = () => { const st = addState.get(terr); return !!st && st.s === 'sent' && st.oid === oid; };
-  const show = st => {
-    if (!mine()) return;
-    const next = Object.assign({ mine: true, at }, st);
-    if (!next.oid) next.oid = oid;
-    addState.set(terr, next);
-    renderRail();
-  };
-  addState.set(terr, { s: 'sent', oid, mine: true, at });
-  renderRail();
-  // try n of CLOUD_SEND_TRIES: no answer (null) waits a little and sends the same oid again
-  const attempt = n => fetch('/api/agent/add', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-City-Page': '1' }, body })
-    .then(r => (r.status >= 500 ? null : r.json().catch(() => ({})).then(answer => ({ code: r.status, answer }))), () => null)
-    .then(got => {
-      if (!mine()) return null;
-      if (!got) {
-        if (n >= CLOUD_SEND_TRIES) return show(cloudAddAnswer(0, null));
-        return new Promise(done => setTimeout(done, CLOUD_RETRY_MS * n)).then(() => (mine() ? attempt(n + 1) : null));
-      }
-      show(cloudAddAnswer(got.code, got.answer));
-      if (got.code === 403) cloudLocked();
-      else if (cloudLive.poke && (got.code === 200 || got.code === 409)) cloudLive.poke();
-      return null;
-    });
-  attempt(1).catch(() => show(cloudAddAnswer(0, null)));
-}
-/* cloudFollowOrders(feed): after every feed the buttons follow the feed's orders (cloudOrderView, minus the ones
-   the owner closed). An entry the page made itself on a click (mine) stays until the feed names its oid, then the
-   feed's word takes its place, or the button is back when the feed has none (the opened line is old enough, the
-   order is hidden); a sent one the feed never named for CLOUD_STALE_MS goes too, so no button is stuck for ever.
-   Every other entry is the last feed's own and is drawn again from this one. */
-function cloudFollowOrders(feed) {
-  const orders = Array.isArray(feed.orders) ? feed.orders : [];
-  const named = new Set();
-  for (const o of orders) if (o && typeof o.oid === 'string') named.add(o.oid);
-  const now = Date.now();
-  for (const [terr, st] of [...addState]) {
-    if (!st.mine || named.has(st.oid) || (st.s === 'sent' && now - st.at > CLOUD_STALE_MS)) addState.delete(terr);
-  }
-  for (const [terr, st] of cloudOrderView(orders, feed.now, cloudHidden)) if (!addState.has(terr)) addState.set(terr, st);
-}
-/* the note at the rail's foot: the words of the key cloudStartNote() gave, every command shown as code on a line of
-   its own (a new line in the text starts a new line here) */
-function cloudStartNoteHtml(key) {
-  return esc(i18n(key)).replace(/agent-city cloud-(?:talk|start) on/g, '<code>$&</code>').replace(/\n/g, '<br>');
-}
-function cloudRenderStartNote(feed) {
-  const el = $('#cloud-start-note');
-  const key = cloudStartNote(feed);
-  const html = key ? cloudStartNoteHtml(key) : '';
-  el.hidden = !key;
-  if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
-}
-/* cloudKnown() -> the people this page draws now (its own, never the guests), for cloudStep()'s catch-up:
-   [{id, status, done, stuck, label}], status = 'waiting' | 'background' | 'idle' | '' as the page holds it */
-function cloudKnown() {
-  return citizens.filter(c => !c.remote).map(c => ({
-    id: c.id,
-    status: c.waiting ? 'waiting' : c.bgrun ? 'background' : c.idle ? 'idle' : '',
-    done: !!c.doneFlag,
-    stuck: !!c.stuck,
-    label: c.label,
-  }));
-}
-function cloudRenderRow(feed) {
-  const nav = $('#machines'), app = $('.app');
-  const devs = Array.isArray(feed.devs) ? feed.devs : [];
-  const shown = cloudPick(devs, feed.dev);
-  const html = !devs.length ? '' : `<span class="lead">${esc(i18n('cloud.machines'))}</span>` + devs.map(d => {
-    const n = d.counts || {};
-    return `<button type="button" class="mc${cloudStale(d, feed.now) ? ' off' : ''}" data-dev="${esc(d.dev)}" aria-pressed="${d.dev === shown}"><i></i><b>${esc(d.label || d.dev)}</b>`
-      + `<span>${esc(i18n('cloud.busy', { n: n.busy || 0 }))}</span>`
-      + (n.wait > 0 ? `<span class="w">${esc(i18n('cloud.wait', { n: n.wait }))}</span>` : '')
-      + `<span class="tk${d.talk === true ? '' : ' no'}">${esc(i18n(d.talk === true ? 'cloud.talk.on' : 'cloud.talk.off'))}</span>`
-      + (d.start === true ? `<span class="tk sk">${esc(i18n('cloud.start.on'))}</span>` : '')
-      + `<span class="t">${esc(cloudAge(feed.now - d.ts))}</span></button>`;
-  }).join('');
-  nav.hidden = !devs.length;
-  app.classList.toggle('cloud-row', !!devs.length);
-  if (nav.dataset.h === html) return;
-  // the ages change every poll: keep the keyboard focus on the same machine across the redraw
-  const had = document.activeElement && document.activeElement.closest ? document.activeElement.closest('.mc') : null;
-  const hadDev = had && nav.contains(had) ? had.dataset.dev : null;
-  nav.innerHTML = html; nav.dataset.h = html;
-  if (hadDev !== null) for (const b of nav.querySelectorAll('.mc')) if (b.dataset.dev === hadDev) b.focus();
-}
-/* the 只能看 pill in the header and the "view only" note under a window show only while the machine shown does
-   not talk (its row of the feed has talk: true when its owner turned cloud talk on) */
-function cloudRenderTalk(feed) {
-  const devs = Array.isArray(feed.devs) ? feed.devs : [];
-  const shown = devs.find(d => d && d.dev === feed.dev);
-  const talks = !!shown && shown.talk === true;
-  $('#cloud-ro').hidden = talks;
-  if (talks) $('#win').removeAttribute('data-cloud-note'); else $('#win').setAttribute('data-cloud-note', i18n('cloud.viewNote'));
-}
-function cloudRenderAcct(feed) {
-  const el = $('#cloud-acct');
-  const html = `<span class="who"><i></i><span>${esc(feed.user || '')}</span></span><a href="/cdn-cgi/access/logout">${esc(i18n('cloud.logout'))}</a>`;
-  if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
-  el.hidden = !feed.user;
-}
-/* the notice of cloudNotice(): a card in the middle of the stage, or a banner at its top. The sessions it is
-   told about are the ones the page draws: my machine's people (not remote, not gone) and its present governors. */
-function cloudRenderNotice(feed) {
-  const el = $('#cloud-notice');
-  const key = cloudNotice(feed, feed.now, citizens.filter(c => !c.remote && !c.gone).length + governorFigures().length);
-  let cls = '', html = '';
-  if (key === 'cloud.noMachine' || key === 'cloud.noSessions') {
-    cls = 'cloud-empty';
-    html = `<b>${esc(i18n(key))}</b><span>${esc(i18n(key + 'Hint'))}</span>`;
-  } else if (key === 'cloud.offline') {
-    const devs = Array.isArray(feed.devs) ? feed.devs : [];
-    const d = devs.find(x => x && x.dev === feed.dev) || devs[0] || {};
-    cls = 'cloud-banner';
-    html = `${esc(i18n(key, { age: cloudAge(feed.now - d.ts), label: d.label || d.dev || '' }))}<small>${esc(i18n('cloud.offlineHint'))}</small>`;
-  }
-  el.hidden = !key;
-  if (el.className !== cls) el.className = cls;
-  if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
-}
-/* the login is gone (403): nothing of the city stays in view, one notice with a way to sign in again */
-function cloudLocked() {
-  try { apply({ type: 'snapshot', agents: [] }); apply({ type: 'remote_snapshot', me: {}, people: [], govs: [], teams: [] }); } catch (err) { /* the page hides itself below anyway */ }
-  $('.app').classList.add('cloud-locked');
-  $('.app').classList.remove('cloud-row');
-  $('#machines').hidden = true;
-  $('#cloud-acct').hidden = true;
-  const el = $('#cloud-notice');
-  el.className = 'cloud-empty cloud-login';
-  el.innerHTML = `<b>${esc(i18n('cloud.login'))}</b><button type="button" class="cloud-reload">${esc(i18n('cloud.reload'))}</button>`;
-  el.dataset.h = '';
-  el.hidden = false;
-  needFrame = true;
-}
-function connectCloud() {
-  const chip = $('#proto');
-  let wanted = '';
-  try { wanted = localStorage.getItem('city-cloud-dev') || ''; } catch (err) { wanted = ''; }
-  // chat = the open window's id and cc = its cursor go with every request (cloudFeedUrl); the picture's own cursor
-  // (gen, after) is cloudStep's
-  let cur = { dev: wanted, gen: 0, after: 0, chat: '', cc: 0 };
-  let busy = false, again = false, stopped = false, epoch = 0, timer = 0;
-  chip.hidden = true;
-  function later() { clearTimeout(timer); timer = setTimeout(poll, CLOUD_POLL_MS); }
-  function poll() {
-    if (stopped || document.hidden) return;
-    if (busy) { again = true; return; }
-    busy = true;
-    clearTimeout(timer);
-    const mine = epoch;
-    // the window open now rides with the request; a window opened just now starts from the beginning (cc 0)
-    const open = cloudWindow(curChatTo());
-    if (open !== cur.chat) cur = Object.assign({}, cur, { chat: open, cc: 0 });
-    cloudLive.open = cur.chat;
-    fetch(cloudFeedUrl(cur), { credentials: 'same-origin', cache: 'no-store' })
-      .then(r => {
-        if (r.status === 403) { stopped = true; cloudLocked(); return null; }
-        if (!r.ok) throw new Error(String(r.status));
-        return r.json();
-      })
-      .then(feed => {
-        if (!feed || mine !== epoch) return;
-        if (feed.ok === false) throw new Error('feed');
-        const step = cloudStep(cur, feed, cloudKnown());
-        for (const ev of step.apply) { try { apply(ev); } catch (err) { console.error(err); } }
-        // the feed shows another machine than the one asked for (that one is gone): the old windows go with it,
-        // and the open window starts again from cc 0 on the next poll
-        const moved = !!cur.dev && step.cur.dev !== cur.dev;
-        cur = Object.assign(step.cur, moved ? { chat: '', cc: 0 } : { chat: cur.chat, cc: cur.cc });
-        if (moved) { chats.clear(); addState.clear(); }
-        cloudLive.open = cur.chat;
-        const ch = !moved && feed.chat && typeof feed.chat.to === 'string' ? feed.chat : null;
-        if (ch) {
-          const was = chats.get(ch.to), next = cloudChatMerge(was, ch);
-          if (was && was.error) next.error = was.error;
-          if (was && was.fast) next.fast = was.fast;
-          chats.set(ch.to, next);
-          if (ch.to === cur.chat) cur.cc = next.cc;
-        }
-        cloudLive.feed = feed;
-        cloudFollowOrders(feed);
-        // "wait for it to finish this step": the open window is busy while its person is at work (not waiting, idle or done)
-        const box = cur.chat ? chats.get(cur.chat) : null, who = box ? byId(cur.chat) : null;
-        if (box) box.busy = !!who && !who.remote && !who.waiting && !who.idle && !who.doneFlag;
-        needFrame = true;
-        chip.hidden = true;
-        cloudRenderRow(feed);
-        cloudRenderAcct(feed);
-        cloudRenderNotice(feed);
-        cloudRenderTalk(feed);
-        cloudRenderStartNote(feed);
-        renderPanel();
-      })
-      .catch(() => { if (stopped) return; chip.textContent = i18n('cloud.notConnected'); chip.hidden = false; })
-      .then(() => {
-        busy = false;
-        if (stopped) return;
-        if (again) { again = false; poll(); } else later();
-      });
-  }
-  // a tap on a machine: remember it, ask the feed at once for that machine's whole picture
-  $('#machines').addEventListener('click', e => {
-    const b = e.target.closest('.mc');
-    if (!b || stopped) return;
-    const dev = b.dataset.dev || '';
-    if (dev === cur.dev) return;
-    try { localStorage.setItem('city-cloud-dev', dev); } catch (err) { /* private mode: it just is not remembered */ }
-    for (const x of $('#machines').querySelectorAll('.mc')) x.setAttribute('aria-pressed', String(x === b));
-    epoch++;
-    chats.clear(); // the windows of the machine before are gone; the open one starts again from cc 0
-    addState.clear(); // and so are its buttons' states: the next feed brings the other machine's orders
-    cur = { dev, gen: 0, after: 0, chat: '', cc: 0 };
-    if (busy) again = true; else poll();
-  });
-  // no request while the tab is hidden; one at once when it shows again
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && !busy) poll(); });
-  // a window opened now (loadChat) or a message sent: ask the feed at once instead of at the next beat
-  cloudLive.poke = () => { if (stopped) return; if (busy) again = true; else poll(); };
-  poll();
-}
-if (CLOUD) cloudSetup();
-/* end cloud-city: script */
 let lastTouch = -Infinity;
 const camChanged = () => { needFrame = true; lastTouch = performance.now(); };
 /* U1: the zoom-out hint (approved mock v3) -- shown ~1.6s whenever a zoom-out was stopped by the
@@ -9169,8 +7973,8 @@ function panBy(dx, dy){
   cam.tx = clamp(cam.tx + dtx, cx - land.hx, cx + land.hx);
   cam.tz = clamp(cam.tz + dtz, cz - land.hz, cz + land.hz);
 }
-/* city-join: hover -- pointermove with no button down picks the person under the pointer (pickAt)
-   into the top-level `hovered`, so tagVisible() can show that one person's name tag + device chip.
+/* hover -- pointermove with no button down picks the person under the pointer (pickAt)
+   into the top-level `hovered`, so tagVisible() can show that one person's name tag.
    Cheap: the raycast itself only runs at most every HOVER_MS, never on every mousemove. */
 const HOVER_MS = 80;
 let lastHoverAt = -Infinity;
@@ -9284,7 +8088,7 @@ stage.addEventListener('gesturechange', e => {
    script, the server's fresh snapshot redraws it (apply() -> buildLand() -> arrAfterLand() redraws the plates
    and the marks). Done only leaves the mode; Cancel posts what arrBack() says and leaves. The rule (landMove,
    landFree), the rows (arrEntry, arrBack) and the words (arrWhy) are the sim section's. */
-$('#arr-btn').hidden = DEMO || CLOUD;
+$('#arr-btn').hidden = DEMO;
 const ARR_EL = 64 * Math.PI / 180; // the tilt the mode looks from: almost straight down
 const ARR_PLATE_Z = 8.5; // a plate stands this far north of its cell's middle (on the land's north part)
 const ARR_DRIFT_PX = 8; // a press that moves less than this is a tap
@@ -9410,7 +8214,7 @@ function layoutPost(lands){
     .then(() => { arr.pick = null; if (arr.on) arrDraw(); });
 }
 function arrEnter(){
-  if (arr.on || DEMO || CLOUD) return;
+  if (arr.on || DEMO) return;
   arr.on = true; arr.pick = null; arr.err = '';
   arrUi.target = null; arrUi.down = null; arrUi.tap = null; arrUi.back = null;
   arr.entry = arrEntry(landsOf(map), hiddenLands);
@@ -9555,70 +8359,6 @@ function seed(){
   for (const role of ['worker', 'task-manager', 'fast-lane-deputy', 'worker']) spawnDemo(role);
   seedSites(); // Worktrees: DEMO_SITES, so #demo shows a construction site (one stalled) with no real worktree
   seedQualityDemo(); // city-quality, city-levelups: a poor building and a level-up, so #demo shows both
-  seedDemoRemote();
-}
-
-/* city-join demo (#demo, data-remote buttons in #spawn-group): fake other members, so the look
-   can be checked without a relay (requirements/city.md, Joining). Every step goes through the same
-   apply() a real relay would drive, using the exact event shapes tests/test_agent_city_relay_serve.py
-   describes ("remote", "remote_snapshot", "team"). My own device here is mac-mini. */
-const DEMO_RELAY_HOST = 'demo-team';
-let demoQueued = 0, demoTickAcc = 0;
-function seedDemoRemote(){
-  const terr = govTerr;
-  if (!terr) return;
-  meInfo = { who: 'Maverick', device: 'mac-mini' };
-  apply({ type: 'team', host: DEMO_RELAY_HOST, state: 'ok', queued: 0 });
-  // city-join: pc2's who is blank on purpose (like a machine with no git user.name) so the demo
-  // shows memberName()'s device fallback -- everything else here is a normal member.
-  apply({ type: 'remote', who: '', device: 'pc2', dev: 'dev-pc2', rid: 'acme/shop', br: 'main',
-    ev: { type: 'gov', id: 'r:dev-pc2:gov', state: 'busy', terr, present: true } });
-  apply({ type: 'remote', who: '', device: 'pc2', dev: 'dev-pc2', rid: 'acme/shop', br: 'test/checkout',
-    ev: { type: 'spawn', id: 'r:dev-pc2:s:1', role: 'worker', label: 'worker', task: i18n('demo.task.checkoutTest'), terr } });
-  apply({ type: 'remote', who: 'Ann', device: 'ann-laptop', dev: 'dev-ann', rid: 'acme/shop', br: 'main',
-    ev: { type: 'gov', id: 'r:dev-ann:gov', state: 'busy', terr, present: true } });
-  apply({ type: 'remote', who: 'Ann', device: 'ann-laptop', dev: 'dev-ann', rid: 'acme/shop', br: 'feat/payment-retry',
-    ev: { type: 'spawn', id: 'r:dev-ann:s:1', role: 'worker', label: 'worker', task: i18n('demo.task.paymentRetry'), terr } });
-  apply({ type: 'remote', who: 'Ann', device: 'ann-laptop', dev: 'dev-ann', rid: 'acme/shop', br: 'feat/payment-retry',
-    ev: { type: 'stuck', id: 'r:dev-ann:s:1', tool: 'AskUserQuestion', question: i18n('demo.q.paymentRetry') } });
-  apply({ type: 'remote', who: 'Bo', device: i18n('demo.device.cloud'), dev: 'dev-bo', rid: 'acme/shop', br: 'chore/deps-scan',
-    ev: { type: 'spawn', id: 'r:dev-bo:s:1', role: 'worker', label: 'worker', task: i18n('demo.task.depsScan'), terr } });
-}
-/* the three demo-only #spawn-group buttons: 中继断开 / 恢复 / 退出联城 */
-function demoRemote(kind){
-  if (kind === 'off') {
-    apply({ type: 'team', host: DEMO_RELAY_HOST, state: 'off', queued: demoQueued });
-    log(i18n('log.relayOff'));
-  } else if (kind === 'on') {
-    demoQueued = 0; demoTickAcc = 0;
-    apply({ type: 'team', host: DEMO_RELAY_HOST, state: 'ok', queued: 0 });
-    log(i18n('log.relayOn'));
-  } else if (kind === 'leave') {
-    // city-join: the server sends 'leave'/present:false for every person and gov of a dropped
-    // team, then the 'team' state -- the demo plays back the same shape (requirements/city.md).
-    for (const rc of citizens.slice()) if (rc.remote) {
-      apply({ type: 'remote', who: rc.remote.who, device: rc.remote.device, dev: rc.remote.dev, rid: rc.remote.rid, br: rc.remote.br,
-        ev: { type: 'leave', id: rc.id } });
-    }
-    for (const g of [...remoteGovs.values()]) {
-      apply({ type: 'remote', who: g.who, device: g.device, dev: g.dev, rid: '', br: '',
-        ev: { type: 'gov', id: g.id, terr: g.terr, state: g.state, present: false } });
-    }
-    apply({ type: 'team', host: DEMO_RELAY_HOST, state: 'left', queued: 0 });
-    meInfo = null;
-    log(i18n('log.relayLeave'));
-  }
-  lastDetailKey = ''; lastRoster = ''; renderPanel(); needFrame = true;
-}
-/* while the demo relay is off, 待发 grows about once a second, like a real queued sender would */
-function demoRelayTick(dt){
-  if (!anyRelayOff()) return;
-  demoTickAcc += dt;
-  if (demoTickAcc < 1) return;
-  demoTickAcc = 0;
-  demoQueued = Math.min(99, demoQueued + 1);
-  const i = relays.findIndex(r => r.host === DEMO_RELAY_HOST);
-  if (i >= 0) relays[i] = Object.assign({}, relays[i], { queued: demoQueued });
 }
 
 /* ---------- boot: load the ready-made models, then run at a capped frame rate ---------- */
@@ -9662,7 +8402,7 @@ Promise.all([
   tex.forEach(t => { if (t) variations.push(t); });
   if (DEMO) buildLand(DEMO_WORLD);
   makeGovernor(); buildLife();
-  if (DEMO) seed(); else if (CLOUD) connectCloud(); else connectLive();
+  if (DEMO) seed(); else connectLive();
   $('#loading').hidden = true;
   new ResizeObserver(() => resize()).observe(stage);
   // cloud-polish Q1: --top-h = the height of the strip of rows on the stage (the banner, the follow chip and the

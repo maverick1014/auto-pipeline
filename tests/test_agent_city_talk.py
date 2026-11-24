@@ -103,7 +103,6 @@ Hook (bin/agent-city-hook.sh)
   A PostToolUse SendMessage line carries "to": tool_input.to, at most 80 characters, JSON-safe; never
   the message. "" for a question (ask == "q": the recipient is not needed), for every other tool and
   event. The key sits right before "ask" (the last five keys stay ask wt file tp pid).
-  The relay never gets it (to_wire keeps its own field list).
 
 Run: python3 -m unittest tests.test_agent_city_talk </dev/null
 """
@@ -123,7 +122,6 @@ from test_agent_city_people import REQUIRED, ac, function_source, page, run_sim 
 from test_agent_city_page import page_fns, run_node  # noqa: E402
 from test_agent_city_walk import plan_view  # noqa: E402
 from cityhelp import Mains  # noqa: E402
-import agent_city_relay as relay  # noqa: E402
 
 MIN_GAP, WALK_GAP, TALK_NEAR, HANDOVER_SEC, TALK_SEC, TRIP = .45, .3, 1.2, 2.6, 2.0, 4.0
 EPS = 1e-6
@@ -1358,16 +1356,6 @@ class TestSendMessageBecomesATalkT3(ServerCase):
         self.send("h1", "city-talk Task Manager")
         raw = self.st.add_client().queue.get_nowait()
         self.assertNotIn(b'"talk"', raw)
-
-
-class TestRelayNeverGetsTheRecipient(unittest.TestCase):
-
-    def test_to_wire_drops_it(self):
-        line = {"ev": "PostToolUse", "sid": "s1", "aid": "", "at": "", "tool": "SendMessage", "nt": "", "role": "",
-                "desc": "", "sub": "", "klen": "", "to": "city-talk Task Manager", "ask": ""}
-        wire = relay.to_wire(line, {"rid": "acme/app", "br": "main", "who": "Ann", "dev": "d1"})
-        self.assertNotIn("to", wire)
-        self.assertNotIn("city-talk Task Manager", json.dumps(wire))
 
 
 # ---------------------------------------------------------------------------

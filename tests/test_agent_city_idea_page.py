@@ -584,12 +584,8 @@ class TestIdleOnThePage(unittest.TestCase):
         self.assertIn("waiting = true", block)
         self.assertIn("waiting = false", tp.case_block("resume") or "")
 
-    def test_snapshot_and_remote(self):
+    def test_snapshot(self):
         self.assertIn("a.waiting", tp.function_source("placeAgent") or "")
-        remote = tp.function_source("applyRemote") or ""
-        for kind in ("waiting", "resume", "relay", "relay_end"):
-            with self.subTest(kind=kind):
-                self.assertIn("'%s'" % kind, remote)
 
 
 # -------------------------------------------------------------------- C10

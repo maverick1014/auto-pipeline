@@ -100,7 +100,6 @@ WORK_REQUIRED = REQUIRED + ("workAction", "workKindOf", "WORK_HOLD_SEC")
 #   solo  -- a task manager with no building: settles, then gets Read/Bash tool events
 #   build -- a worker walks to its plot, builds, then Edit/Write/Read events at the building
 #   stuck -- a working person that gets stuck walks to ask and acts nothing on the way
-#   remote -- a joined member's person gets tool lines
 #   stroll -- a standalone person with no tool event for 31 s still takes its calm walk
 WORK_DRIVER = r"""
 const V = __payload.view, T = V.territories[0], tid = T.id;
@@ -179,20 +178,6 @@ apply({ type: 'tool', id: 'w1', tool: 'Edit' });
 apply({ type: 'stuck', id: 'w1', question: 'Which port?' });
 tick(.5);
 out.stuck = { action: workAction(w1), state: w1.state };
-
-// remote member
-apply({ type: 'remote', who: 'Ann', device: 'ann-laptop', dev: 'dev-ann', rid: 'acme/app', br: 'main',
-        ev: { type: 'spawn', id: 'r:dev-ann:s:1', role: 'worker', label: 'worker', task: 'far', terr: tid } });
-tick(20);
-const r = byId('r:dev-ann:s:1');
-const rw0 = trace['r:dev-ann:s:1'] || 0;
-const rstate = r ? r.state : '';
-for (let i = 0; i < 4; i++) {
-  apply({ type: 'remote', who: 'Ann', device: 'ann-laptop', dev: 'dev-ann', rid: 'acme/app', br: 'main',
-          ev: { type: 'tool', id: 'r:dev-ann:s:1', tool: i % 2 ? 'Bash' : 'Read' } });
-  tick(1.5);
-}
-out.remote = r ? { found: true, state: rstate, kind: r.workKind, action: workAction(r), walked: (trace['r:dev-ann:s:1'] || 0) - rw0 } : { found: false };
 
 // stroll: a standalone working person with no tool event for 31 s still strolls
 apply({ type: 'spawn', id: 's:st', role: 'fast-lane-deputy', label: 'fast-lane-deputy', task: 'stroll', terr: tid });
@@ -328,14 +313,6 @@ class TestWorkingPeopleSim(unittest.TestCase):
     def test_stuck_person_acts_nothing(self):
         self.assertEqual(self.r["stuck"]["action"], "")
         self.assertNotIn(self.r["stuck"]["state"], ("working", "building"))
-
-    def test_remote_member_acts_without_walking(self):
-        r = self.r["remote"]
-        self.assertTrue(r["found"], "the remote person was spawned")
-        self.assertIn(r["state"], ("working", "building"))
-        self.assertEqual(r["kind"], "bash")
-        self.assertEqual(r["action"], "bash")
-        self.assertLess(r["walked"], 0.05)
 
     def test_calm_stroll_still_after_thirty_quiet_seconds(self):
         s = self.r["stroll"]

@@ -15,8 +15,6 @@ CONTRACT
               characters. The key is left out otherwise. Never a folder, never a full path.
       "desc": for Agent and Task only, when the line has a "desc": at most 60 characters. Left out
               otherwise.
-    A joined member's line (RemoteCity) never gives a "file", even if one came over the relay: other
-    members' file names never show (requirements/city.md, Joining).
 
   Page, simulation section (runs in node, see test_agent_city_people):
     stepText(ev) -> what one tool event is doing, in plain words (i18n, zh and en):
@@ -33,29 +31,21 @@ CONTRACT
         TodoWrite                                   -> step.plan    排计划         Planning
         SendMessage                                 -> step.message 发消息         Sending a message
         anything else                               -> step.other   忙着           Busy
-      With no "name" (an older server, a remote line from an older member): from the kind -- Edit ->
+      With no "name" (an older server): from the kind -- Edit ->
       改代码, Write -> 写代码, Read -> 看文件, Bash -> 跑命令, Other -> 忙着.
       Only the file's last path part is ever shown; a file name longer than 24 characters is cut to 23
       plus "…", a desc longer than 20 to 19 plus "…".
-    Every tool event (live, and a joined member's relayed one) sets c.step = stepText(ev).
+    Every tool event sets c.step = stepText(ev).
     doingText(c) -> the one line over the head: '' unless workAction(c) is not '' (so nothing in the
       short pause, nothing while walking); else "<task> · <step>", where task is c.task cut to 13
       characters plus "…" when longer than 14; just "<step>" when c.task is empty or equal to c.label.
     No tool name ever floats over a head (no floater on a tool event; test_agent_city_polish).
     actTool(c, step) (the history line): plain-words steps, never tool names or counts -- see U10 in
       test_agent_city_ux_page.
-    Demo (#demo): demoRemoteTick(dt) (in the simulation section) gives every demo member person (c.remote) that is not stuck, not
-      done and in 'working' or 'building' one relayed tool line about every DEMO_REMOTE_TOOL_SEC = 1.6 s,
-      through apply({ type: 'remote', who, device, dev, rid, br, ev: { type: 'tool', id, tool, name } })
-      with names cycling Read, Edit, Bash, Grep (no file: other members never send one); nothing while
-      a team relay is off (a `relays` entry with state 'off' -- the test anyRelayOff() makes; move
-      anyRelayOff into the simulation section, or test `relays` there directly). update(dt) calls it
-      when DEMO.
-
   3D view:
     updatePerson(c) pins a small ".doing" line over the head with doingText(c) (not while a bubble or
     a "?" is up there); the CSS has a .doing rule.
-    renderDetail(): the open person's status pill (.p-head .pill, mine and other members') follows
+    renderDetail(): the open person's status pill (.p-head .pill) follows
     citizenStatus(c) on every call, not only when the card is rebuilt -- the word changes with every
     step now (the rail already did; the panel kept the old word).
 
@@ -72,7 +62,6 @@ sys.path.insert(0, HERE)
 
 from test_agent_city_people import REQUIRED, ac, function_source, page, plan_views, run_sim  # noqa: E402
 from test_agent_city_reducer import Case, R  # noqa: E402
-from test_agent_city_idea_server import RemoteCase  # noqa: E402
 from test_agent_city_ux_page import text_keys  # noqa: E402
 
 
@@ -133,16 +122,6 @@ class TestToolEventNamesTheStep(Case):
         out = self.feed(RF("PostToolUse", sid="w9", role="worker", tool="Write", file="docs/guide.md"))
         tool = [e for e in out if e.get("type") == "tool"][0]
         self.assertEqual((tool["tool"], tool["name"], tool["file"]), ("Write", "Write", "guide.md"))
-
-
-class TestOtherMembersNeverShowAFile(RemoteCase):
-    def test_remote_tool_event_has_a_name_but_no_file(self):
-        self.send(ev="SessionStart", sid="w1", role="worker")
-        events = self.send(ev="PostToolUse", sid="w1", role="worker", tool="Edit", file="src/secret/plan.py")
-        tools = self.inner(events, "tool")
-        self.assertEqual(len(tools), 1, events)
-        self.assertEqual(tools[0]["name"], "Edit")
-        self.assertNotIn("file", tools[0], "another member's file name never shows")
 
 
 STEP_KEYS = {
@@ -229,37 +208,10 @@ for (const ev of [{ tool: 'Edit', name: 'Edit', file: 'a.py' }, { tool: 'Edit', 
   apply(Object.assign({ type: 'tool', id: 'w3' }, ev));
 out.hist = h.acts.map(a => a.text);
 
-// a joined member's person: the same plain words, from its relayed line
-apply({ type: 'remote', who: 'Cy', device: 'cy-laptop', dev: 'dev-cy', rid: 'acme/app', br: 'main',
-        ev: { type: 'spawn', id: 'r:dev-cy:s:7', role: 'worker', label: 'worker', task: '改支付重试', terr: tid } });
-tick(20);
-apply({ type: 'remote', who: 'Cy', device: 'cy-laptop', dev: 'dev-cy', rid: 'acme/app', br: 'main',
-        ev: { type: 'tool', id: 'r:dev-cy:s:7', tool: 'Read', name: 'Grep' } });
-const ra = byId('r:dev-cy:s:7');
-out.remote = { step: ra.step, doing: doingText(ra), action: workAction(ra) };
-
-// the demo's member people (made the way seedDemoRemote makes them) get tool lines too; none while a relay is off
-const R1 = { who: '', device: 'pc2', dev: 'dev-pc2', rid: 'acme/shop', br: 'test/checkout' };
-const R2 = { who: 'Ann', device: 'ann-laptop', dev: 'dev-ann', rid: 'acme/shop', br: 'feat/payment-retry' };
-apply({ type: 'team', host: 'demo-team', state: 'ok', queued: 0 });
-apply(Object.assign({ type: 'remote', ev: { type: 'spawn', id: 'r:dev-pc2:s:1', role: 'worker', label: 'worker', task: '写结账测试', terr: tid } }, R1));
-apply(Object.assign({ type: 'remote', ev: { type: 'spawn', id: 'r:dev-ann:s:1', role: 'worker', label: 'worker', task: '改支付超时重试', terr: tid } }, R2));
-apply(Object.assign({ type: 'remote', ev: { type: 'stuck', id: 'r:dev-ann:s:1', tool: 'AskUserQuestion', question: '要不要自动重试？' } }, R2));
-tick(20);
-const pc2 = byId('r:dev-pc2:s:1'), ann = byId('r:dev-ann:s:1');
-out.demoBefore = { kind: pc2 ? pc2.workKind : 'none' };
-demoRemoteTick(DEMO_REMOTE_TOOL_SEC + .1);
-out.demo = { found: !!pc2, kind: pc2 ? pc2.workKind : '', action: pc2 ? workAction(pc2) : '', step: pc2 ? pc2.step : '',
-             annKind: ann ? ann.workKind : 'none', sec: DEMO_REMOTE_TOOL_SEC };
-const at0 = pc2 ? pc2.workAt : 0;
-apply({ type: 'team', host: 'demo-team', state: 'off', queued: 0 });
-tick(1);
-demoRemoteTick(5);
-out.demoOff = pc2 ? pc2.workAt === at0 : false;
 __out = out;
 """
 
-STEPS_REQUIRED = REQUIRED + ("stepText", "doingText", "demoRemoteTick", "DEMO_REMOTE_TOOL_SEC", "workAction", "TEXT")
+STEPS_REQUIRED = REQUIRED + ("stepText", "doingText", "workAction", "TEXT")
 
 
 class TestPlainWordsOnThePage(unittest.TestCase):
@@ -300,24 +252,6 @@ class TestPlainWordsOnThePage(unittest.TestCase):
             with self.subTest(line=line):
                 self.assertNotRegex(line, r"×|\bx\d|Edit|Read|Bash|Write|Grep")
 
-    def test_other_members_show_plain_words_too(self):
-        r = self.r["remote"]
-        self.assertEqual(r["step"], "找代码")
-        self.assertEqual(r["action"], "read")
-        self.assertEqual(r["doing"], "改支付重试 · 找代码")
-
-    def test_demo_member_people_act_too(self):
-        d = self.r["demo"]
-        self.assertTrue(d["found"], "the pc2 member person")
-        self.assertEqual(self.r["demoBefore"]["kind"], "", "no tool line before the tick")
-        self.assertIn(d["kind"], ("read", "build", "bash"))
-        self.assertNotEqual(d["action"], "", "it acts out its work")
-        self.assertNotEqual(d["step"], "")
-        self.assertEqual(d["annKind"], "", "a stuck member person gets no tool line")
-        self.assertAlmostEqual(d["sec"], 1.6)
-        self.assertTrue(self.r["demoOff"], "no tool line while the relay is off")
-
-
 class TestHeadLine3D(unittest.TestCase):
     def test_update_person_pins_the_doing_line(self):
         up = function_source("updatePerson") or ""
@@ -331,10 +265,6 @@ class TestHeadLine3D(unittest.TestCase):
         self.assertIn("refreshHeadPill(", tail, "after the rebuild part, every call refreshes the pill")
         self.assertIn(".p-head .pill", function_source("refreshHeadPill") or "")
         self.assertIn("citizenStatus(", function_source("headPill") or "")
-
-    def test_update_calls_the_demo_tick(self):
-        self.assertRegex(function_source("update") or "", r"DEMO[^\n]*demoRemoteTick\(")
-
 
 if __name__ == "__main__":
     unittest.main()

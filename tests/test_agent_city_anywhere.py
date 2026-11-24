@@ -118,20 +118,22 @@ for p in (HERE, BIN):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from relayhelp import FAKE_KEY, FakeRelay, add_worktree, hook_line, make_repo, wait_for  # noqa: E402
-from relayhelp import join as join_by_hand  # noqa: E402
 from scripthelp import ScriptCase  # noqa: E402
 
-try:
-    import agent_city_relay as rl  # noqa: E402
-except ImportError:
-    rl = None
+
+def wait_for(check, timeout=8.0, step=0.05):
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        value = check()
+        if value:
+            return value
+        time.sleep(step)
+    return check()
+
 
 SHIM = os.path.join(BIN, "agent-city-shim")
 MARKER = "# auto-pipeline agent-city shim"
 CACHE_PARTS = (".claude", "plugins", "cache", "auto-pipeline", "auto-pipeline")
-LIST_NAME = "joined-repos.txt"
-RID = "github.com/acme/shop"
 
 
 def free_port():
@@ -186,18 +188,6 @@ def write_text(path, text):
         os.makedirs(folder, exist_ok=True)
     with open(path, "w") as fh:
         fh.write(text)
-
-
-def team_lines(text):
-    return [l.strip() for l in text.splitlines() if l.strip().startswith("TEAM:")]
-
-
-def list_paths(path):
-    """The non-comment, non-blank lines of a joined-repos.txt."""
-    if not os.path.exists(path):
-        return []
-    return [l.strip() for l in read_text(path).splitlines()
-            if l.strip() and not l.strip().startswith("#")]
 
 
 STUB = """#!/usr/bin/env bash
@@ -435,16 +425,12 @@ class OutsideCase(ScriptCase):
 
     def setUp(self):
         super().setUp()
-        self.fake = FakeRelay()
-        self.addCleanup(self.fake.stop)
         self.city = os.path.join(self.repo.base, "city")
         self.cityhome = os.path.join(self.repo.base, "cityhome")
-        self.list_path = os.path.join(self.cityhome, LIST_NAME)
         self.plain = os.path.join(self.repo.base, "plain")
         os.makedirs(self.plain)
         self.port = free_port()
         self.set_default("city_port", str(self.port))
-        self.set_default("city_relay_sec", "1")
         self.addCleanup(stop_server, self.city)
 
     def set_default(self, key, value):
@@ -464,16 +450,6 @@ class OutsideCase(ScriptCase):
         return self.repo.run("agent-city.sh", *args, env=self.city_env(extra),
                              cwd=cwd or self.plain, stdin=stdin, timeout=30)
 
-    def write_list(self, paths):
-        write_text(self.list_path, "".join("%s\n" % p for p in paths))
-
-    def joined_repo(self, name, origin=None, relay=None):
-        origin = origin or "git@github.com:Acme/%s.git" % name.capitalize()
-        path = make_repo(self.repo.base, name, origin=origin)
-        join_by_hand(path, (relay or self.fake).url)
-        return path
-
-
 class TestStartOutsideARepo(OutsideCase):
     def test_plugin_defaults_and_zh(self):
         result = self.city_run("start")
@@ -481,7 +457,6 @@ class TestStartOutsideARepo(OutsideCase):
         self.assertIn("CITY: http://127.0.0.1:%d" % self.port, result.stdout)
         args = server_args(self.city)
         self.assertIn("--port %d" % self.port, args)
-        self.assertIn("--relay-sec 1", args)
         self.assertIn("--lang zh", args)
 
     def test_an_agent_conf_in_a_plain_folder_is_never_read(self):
@@ -506,11 +481,6 @@ class TestStartOutsideARepo(OutsideCase):
         self.assertIn("CITY: http://127.0.0.1:%d/#demo" % self.port, result.stdout)
         args = server_args(self.city)
         self.assertIn("--lang zh", args)
-        self.assertIn("--joined-list " + self.list_path, args)
-
-    def test_passes_the_joined_list(self):
-        self.assertOk(self.city_run("start"))
-        self.assertIn("--joined-list " + self.list_path, server_args(self.city))
 
     def test_inside_a_repo_is_as_today(self):
         self.repo.set_conf("city_port", str(self.port))
@@ -518,26 +488,6 @@ class TestStartOutsideARepo(OutsideCase):
         self.assertOk(self.city_run("start", cwd=self.repo.dir, extra={"AGENT_CITY_LANG": "zh"}))
         args = server_args(self.city)
         self.assertIn("--lang en", args)
-        self.assertNotIn("--joined-list", args)
-
-    def test_syncs_every_joined_repo_with_no_local_line(self):
-        shop = self.joined_repo("shop")
-        self.write_list([shop])
-        self.assertOk(self.city_run("start"))
-        self.assertTrue(wait_for(self.fake.sync_bodies, timeout=10),
-                        "a city started outside a repo never synced the joined repo's relay")
-        self.assertEqual(self.fake.requests[0]["auth"], "Bearer " + FAKE_KEY)
-
-    def test_gone_repos_are_skipped_quietly(self):
-        gone = os.path.join(self.repo.base, "gone")
-        unjoined = make_repo(self.repo.base, "unjoined")
-        self.write_list([gone, unjoined, "relative/path"])
-        self.assertOk(self.city_run("start"))
-        time.sleep(2.5)
-        self.assertEqual(self.fake.requests, [])
-        self.assertIsNotNone(server_pid(self.city))
-        self.assertTrue(_alive(server_pid(self.city)), "the city stopped over a gone repo")
-
 
 class TestPort(OutsideCase):
     def test_agent_city_port_outside_a_repo(self):
@@ -590,59 +540,16 @@ class TestPort(OutsideCase):
 
 
 class TestStatusOutsideARepo(OutsideCase):
-    def test_not_joined(self):
+    def test_not_running(self):
         result = self.city_run("status")
         self.assertOk(result)
         self.assertIn("CITY: not running", result.stdout)
-        self.assertEqual(team_lines(result.stdout), ["TEAM: not joined"])
-
-    def test_every_joined_repo_of_the_list(self):
-        other = FakeRelay()
-        self.addCleanup(other.stop)
-        shop = self.joined_repo("shop")
-        docs = self.joined_repo("docs", relay=other)
-        unjoined = make_repo(self.repo.base, "unjoined")
-        gone = os.path.join(self.repo.base, "gone")
-        write_text(self.list_path, "# my note\n%s\nrelative/path\n%s\n%s\n%s\n"
-                   % (shop, gone, unjoined, docs))
-        result = self.city_run("status")
-        self.assertOk(result)
-        self.assertEqual(team_lines(result.stdout),
-                         ["TEAM: joined %s (%s)" % (self.fake.host, shop),
-                          "TEAM: joined %s (%s)" % (other.host, docs)])
-        self.assertNotIn(FAKE_KEY, result.stdout + result.stderr)
-
-    def test_only_gone_repos_is_not_joined(self):
-        self.write_list([os.path.join(self.repo.base, "gone")])
-        result = self.city_run("status")
-        self.assertOk(result)
-        self.assertEqual(team_lines(result.stdout), ["TEAM: not joined"])
+        self.assertEqual(result.stdout.strip().splitlines(), ["CITY: not running"])
 
     def test_running_city(self):
         self.assertOk(self.city_run("start"))
         result = self.city_run("status")
         self.assertIn("CITY: running http://127.0.0.1:%d" % self.port, result.stdout)
-
-
-REMOTE = {"CLAUDE_CODE_REMOTE": "true"}
-
-
-class TestJoinLeaveOutsideARepo(OutsideCase):
-    """A cloud session only (city-device-join): on a computer they work from any folder."""
-
-    def test_join_refuses(self):
-        result = self.city_run("join", stdin="%s\n%s\n" % (self.fake.url, FAKE_KEY), extra=REMOTE)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("repo", (result.stdout + result.stderr).lower())
-        self.assertNotIn(FAKE_KEY, result.stdout + result.stderr)
-        self.assertEqual(self.fake.requests, [])
-        self.assertFalse(os.path.exists(self.list_path))
-        self.assertFalse(os.path.exists(os.path.join(self.plain, ".secrets")))
-
-    def test_leave_refuses(self):
-        result = self.city_run("leave", extra=REMOTE)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("repo", (result.stdout + result.stderr).lower())
 
 
 class TestShimRunsTheRealCity(OutsideCase):
@@ -664,7 +571,6 @@ class TestShimRunsTheRealCity(OutsideCase):
         self.assertOk(status)
         self.assertNotIn("VERSION=", status.stdout)
         self.assertIn("CITY: not running", status.stdout)
-        self.assertEqual(team_lines(status.stdout), ["TEAM: not joined"])
         start = shim("start")
         self.assertOk(start)
         self.assertIn("CITY: http://127.0.0.1:%d" % self.port, start.stdout)
@@ -674,292 +580,7 @@ class TestShimRunsTheRealCity(OutsideCase):
         self.assertIn("CITY: not running", shim("status").stdout)
 
 
-# --------------------------------------------------- join / leave keep a list
-
-class JoinListCase(OutsideCase):
-    def setUp(self):
-        super().setUp()
-        subprocess.run(["git", "-C", self.repo.dir, "remote", "add", "origin",
-                        "git@github.com:Acme/Shop.git"], check=True, capture_output=True)
-        write_text(self.repo.path(".gitignore"), ".secrets/\n")
-        self.root = os.path.realpath(self.repo.dir)
-
-    def join(self, key=FAKE_KEY, cwd=None, extra=None):
-        return self.city_run("join", cwd=cwd or self.repo.dir,
-                             stdin="%s\n%s\n" % (self.fake.url, key), extra=extra)
-
-    def leave(self, extra=None):
-        return self.city_run("leave", cwd=self.repo.dir, extra=extra)
-
-
-class TestJoinLeaveKeepTheList(JoinListCase):
-    def test_join_adds_this_repo(self):
-        self.assertOk(self.join())
-        self.assertEqual(list_paths(self.list_path), [self.root])
-        self.assertNotIn(FAKE_KEY, read_text(self.list_path))
-        self.assertNotIn("key", read_text(self.list_path))
-
-    def test_join_twice_is_one_line(self):
-        self.assertOk(self.join())
-        self.assertOk(self.join())
-        self.assertEqual(list_paths(self.list_path), [self.root])
-
-    def test_join_from_a_worktree_adds_the_main_repo(self):
-        wt = self.repo.detach_scripts_to_worktree()
-        self.assertOk(self.join(cwd=wt))
-        self.assertEqual(list_paths(self.list_path), [self.root])
-
-    def test_refused_join_adds_nothing(self):
-        self.assertNotEqual(self.join(key="not-the-team-key").returncode, 0)
-        self.assertEqual(list_paths(self.list_path), [])
-
-    def test_leave_removes_only_this_repo(self):
-        """A cloud session: per repo (on a computer leave empties the list)."""
-        write_text(self.list_path, "# mine\n/some/other/repo\n")
-        self.assertOk(self.join(extra=REMOTE))
-        self.assertEqual(list_paths(self.list_path), ["/some/other/repo", self.root])
-        self.assertOk(self.leave(extra=REMOTE))
-        text = read_text(self.list_path)
-        self.assertIn("# mine", text)
-        self.assertEqual(list_paths(self.list_path), ["/some/other/repo"])
-
-    def test_leave_when_the_join_file_is_gone_still_clears_the_line(self):
-        self.write_list([self.root])
-        self.assertOk(self.leave())
-        self.assertEqual(list_paths(self.list_path), [])
-
-    def test_status_inside_a_repo_is_as_today(self):
-        """Old per-repo joins (a cloud session's join writes the same file)."""
-        other = FakeRelay()
-        self.addCleanup(other.stop)
-        docs = self.joined_repo("docs", relay=other)
-        self.write_list([docs])
-        self.assertOk(self.join(extra=REMOTE))
-        result = self.city_run("status", cwd=self.repo.dir)
-        self.assertOk(result)
-        self.assertEqual(team_lines(result.stdout), ["TEAM: joined " + self.fake.host])
-
-
-# ------------------------------------------------ agent_city_relay.py: list
-
-class ListCase(unittest.TestCase):
-    def setUp(self):
-        self.assertIsNotNone(rl, "bin/agent_city_relay.py does not import")
-        for name in ("read_joined_list", "add_joined", "remove_joined"):
-            self.assertTrue(hasattr(rl, name), "agent_city_relay.%s is missing" % name)
-        self.base = os.path.realpath(tempfile.mkdtemp(prefix="city_list_"))
-        self.addCleanup(shutil.rmtree, self.base, True)
-        self.folder = os.path.join(self.base, "cityhome")
-        self.path = os.path.join(self.folder, LIST_NAME)
-
-    def repo_dir(self, name):
-        path = os.path.join(self.base, name)
-        os.makedirs(path)
-        return path
-
-
-class TestJoinedList(ListCase):
-    def test_missing_file_is_empty(self):
-        self.assertEqual(rl.read_joined_list(self.path), [])
-
-    def test_add_makes_the_folder_and_reads_back(self):
-        shop = self.repo_dir("shop")
-        rl.add_joined(self.path, shop)
-        self.assertEqual(rl.read_joined_list(self.path), [shop])
-        self.assertEqual(os.listdir(self.folder), [LIST_NAME], "no temp file left")
-
-    def test_same_repo_by_another_spelling_is_one_line(self):
-        shop = self.repo_dir("shop")
-        link = os.path.join(self.base, "shop-link")
-        os.symlink(shop, link)
-        rl.add_joined(self.path, shop)
-        rl.add_joined(self.path, shop + "/")
-        rl.add_joined(self.path, link)
-        self.assertEqual(rl.read_joined_list(self.path), [shop])
-        self.assertEqual(list_paths(self.path), [shop])
-
-    def test_add_keeps_comments_and_other_lines(self):
-        write_text(self.path, "# hand note\n/x/y\n")
-        shop = self.repo_dir("shop")
-        rl.add_joined(self.path, shop)
-        self.assertIn("# hand note", read_text(self.path))
-        self.assertEqual(rl.read_joined_list(self.path), ["/x/y", shop])
-
-    def test_read_skips_blank_comment_and_relative_lines(self):
-        write_text(self.path, "\n  # c\nrel/path\n  /abs/one  \n/abs/one\n")
-        self.assertEqual(rl.read_joined_list(self.path), ["/abs/one"])
-
-    def test_remove_only_that_repo(self):
-        shop, docs = self.repo_dir("shop"), self.repo_dir("docs")
-        write_text(self.path, "# note\n")
-        rl.add_joined(self.path, shop)
-        rl.add_joined(self.path, docs)
-        rl.remove_joined(self.path, shop + "/")
-        self.assertEqual(rl.read_joined_list(self.path), [docs])
-        self.assertIn("# note", read_text(self.path))
-
-    def test_remove_a_gone_folder(self):
-        shop = self.repo_dir("shop")
-        rl.add_joined(self.path, shop)
-        os.rmdir(shop)
-        rl.remove_joined(self.path, shop)
-        self.assertEqual(rl.read_joined_list(self.path), [])
-
-    def test_remove_with_no_file_is_fine(self):
-        rl.remove_joined(self.path, "/x/y")
-
-
-# ------------------------------------------ agent_city_relay.py: hub + list
-
-class HubListCase(ListCase):
-    def setUp(self):
-        super().setUp()
-        self.fake = FakeRelay()
-        self.addCleanup(self.fake.stop)
-        self.shop = make_repo(self.base, "shop")
-        self.join_file = join_by_hand(self.shop, self.fake.url)
-
-    def hub(self, **kw):
-        opts = dict(relay_sec=0, dev_id="dev-me", label="mac-1", join_ttl=0, timeout=3.0,
-                    joined_list=self.path)
-        opts.update(kw)
-        return rl.RelayHub(**opts)
-
-    def write_list(self, paths):
-        write_text(self.path, "".join("%s\n" % p for p in paths))
-
-
-class TestHubList(HubListCase):
-    def test_a_listed_repo_syncs_with_no_local_line(self):
-        self.write_list([self.shop])
-        hub = self.hub()
-        self.assertEqual(hub.tick(), [])
-        bodies = self.fake.sync_bodies()
-        self.assertEqual(len(bodies), 1)
-        self.assertEqual(bodies[0]["lines"], [])
-        self.assertEqual(self.fake.requests[0]["auth"], "Bearer " + FAKE_KEY)
-        status = hub.status()
-        self.assertTrue(status["joined"])
-        self.assertEqual([(t["host"], t["rids"]) for t in status["teams"]],
-                         [(self.fake.host, [RID])])
-        self.assertNotIn(FAKE_KEY, repr(status))
-
-    def test_other_members_lines_come_back(self):
-        self.write_list([self.shop])
-        self.fake.push("dev-other", {"ev": "Stop", "who": "Bo"})
-        self.assertEqual(self.hub().tick(),
-                         [{"dev": "dev-other", "line": {"ev": "Stop", "who": "Bo"}}])
-
-    def test_without_a_list_nothing_is_seeded(self):
-        self.write_list([self.shop])
-        hub = self.hub(joined_list=None)
-        hub.tick()
-        self.assertEqual(self.fake.requests, [])
-        self.assertFalse(hub.joined())
-
-    def test_gone_unjoined_and_local_repos_are_skipped_quietly(self):
-        unjoined = make_repo(self.base, "unjoined")
-        local = make_repo(self.base, "local", origin=None)
-        join_by_hand(local, self.fake.url)
-        self.write_list([os.path.join(self.base, "gone"), unjoined, local, "rel/path"])
-        hub = self.hub()
-        self.assertEqual(hub.tick(), [])
-        self.assertEqual(self.fake.requests, [])
-        self.assertEqual(hub.status(), {"joined": False, "teams": []})
-
-    def test_missing_list_file_is_fine(self):
-        hub = self.hub()
-        self.assertEqual(hub.tick(), [])
-        self.assertEqual(self.fake.requests, [])
-
-    def test_two_repos_one_relay_one_sync_per_tick(self):
-        docs = make_repo(self.base, "docs", origin="git@github.com:Acme/Docs.git")
-        join_by_hand(docs, self.fake.url)
-        self.write_list([self.shop, docs, self.shop])
-        hub = self.hub()
-        hub.tick()
-        self.assertEqual(len(self.fake.sync_bodies()), 1)
-        teams = hub.status()["teams"]
-        self.assertEqual(len(teams), 1)
-        self.assertEqual(teams[0]["rids"], ["github.com/acme/docs", RID])
-
-    def test_a_repo_listed_later_is_picked_up(self):
-        hub = self.hub()
-        hub.tick()
-        self.assertEqual(self.fake.requests, [])
-        self.write_list([self.shop])
-        hub.tick()
-        self.assertEqual(len(self.fake.sync_bodies()), 1)
-
-    def test_a_local_line_of_a_listed_repo_joins_the_same_team(self):
-        self.write_list([self.shop])
-        hub = self.hub()
-        hub.tick()
-        self.assertTrue(hub.offer(hook_line(self.shop)))
-        hub.tick()
-        self.assertEqual(len(hub.status()["teams"]), 1)
-        self.assertEqual(len(self.fake.sent_lines()), 1)
-
-    def test_a_worktree_line_of_a_listed_repo_joins_the_same_team(self):
-        wt = add_worktree(self.shop, "feature/any")
-        self.write_list([self.shop])
-        hub = self.hub()
-        hub.tick()
-        hub.offer(hook_line(self.shop, proj=wt))
-        hub.tick()
-        self.assertEqual(len(hub.status()["teams"]), 1)
-        self.assertEqual(self.fake.sent_lines()[0]["br"], "feature/any")
-
-    def test_repo_for_a_listed_repo(self):
-        self.write_list([self.shop])
-        hub = self.hub()
-        hub.tick()
-        self.assertEqual(hub.repo_for(RID), os.path.realpath(os.path.join(self.shop, ".git")))
-
-    def test_git_runs_at_most_once_per_join_ttl(self):
-        # The server calls tick() every 0.1 s (agent_city.py RELAY_POLL_SEC),
-        # under the hub's lock: no git process per listed repo per tick.
-        docs = make_repo(self.base, "docs", origin="git@github.com:Acme/Docs.git")
-        join_by_hand(docs, self.fake.url)
-        self.write_list([self.shop, docs])
-        calls = []
-        real_git = rl._git
-
-        def counting(args, cwd):
-            calls.append(list(args))
-            return real_git(args, cwd)
-
-        rl._git = counting
-        self.addCleanup(setattr, rl, "_git", real_git)
-        hub = self.hub(relay_sec=5, join_ttl=30)
-        for _ in range(20):
-            hub.tick()
-        first = len(calls)
-        self.assertLessEqual(first, 2 * 3, "more than 3 git calls per listed repo: %r" % calls)
-        for _ in range(20):
-            hub.tick()
-        self.assertEqual(len(calls), first, "git ran again inside join_ttl: %r" % calls[first:])
-
-    def test_join_file_removed_drops_the_team(self):
-        self.write_list([self.shop])
-        hub = self.hub()
-        hub.tick()
-        os.remove(self.join_file)
-        hub.tick()
-        hub.tick()
-        self.assertEqual(len(self.fake.sync_bodies()), 1)
-        self.assertEqual(hub.status(), {"joined": False, "teams": []})
-
-
 # ------------------------------------------------------------- serve + docs
-
-class TestServeArg(unittest.TestCase):
-    def test_serve_takes_joined_list(self):
-        result = subprocess.run([sys.executable, os.path.join(BIN, "agent_city.py"), "serve", "-h"],
-                                capture_output=True, text=True, timeout=30)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("--joined-list", result.stdout)
-
 
 class TestDocs(unittest.TestCase):
     def text(self, *parts):
@@ -970,7 +591,7 @@ class TestDocs(unittest.TestCase):
         self.assertIn("## Anywhere", text)
         section = text[text.index("## Anywhere"):]
         section = section[:section.index("\n## ", 1)] if "\n## " in section[1:] else section
-        for word in ("~/.local/bin/agent-city", "install-shim", "joined-repos.txt",
+        for word in ("~/.local/bin/agent-city", "install-shim",
                      "AGENT_CITY_LANG", "AGENT_CITY_PLUGIN_ROOT"):
             self.assertIn(word, section)
 
