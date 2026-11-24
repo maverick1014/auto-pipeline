@@ -87,6 +87,9 @@ REAL_KEYS = [
     "board_guard",
     # one-watcher (owner 2026-11-24): the board's quiet limit, tests/test_watch_board.py
     "watch_quiet_min",
+    # clean-up (owner 2026-11-24): old state copies and quiet todo lines, a repo's own docs, tests/test_agent_cleanfiles.py
+    "cleanup_days",
+    "docs_keep",
 ]
 # the keys this repo's own agent.conf had before progress-bar
 OLD_KEYS = REAL_KEYS[:REAL_KEYS.index("cloud_permission_mode") + 1]
@@ -142,6 +145,8 @@ GOOD_CONF_TEXT = (
     "board_guard=on\n"
     # one-watcher (owner 2026-11-24): appended last, like the template
     "watch_quiet_min=15\n"
+    "cleanup_days=14\n"
+    "docs_keep=\n"
 )
 
 
@@ -482,6 +487,8 @@ class TestGroups(unittest.TestCase):
                            "compact_clear_at", "compact_clear_check_sec"]),
                 # one-watcher (owner 2026-11-24)
                 ("watch", ["watch_quiet_min"]),
+                # clean-up (owner 2026-11-24)
+                ("cleanup", ["cleanup_days", "docs_keep"]),
             ],
         )
 

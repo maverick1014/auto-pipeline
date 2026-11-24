@@ -25,6 +25,7 @@ R3. Docs
 - Entry files allowed: `CLAUDE.md`, `AGENTS.md` (one line, point to `bin/agent-start.sh`)
 - `README.md` allowed: the picture of the tree and the flow, for people new to the repo
 - Config, not docs, allowed: `.claude-plugin/`, `agents/`, `skills/`, `hooks/`, `bin/`
+- Rubbish: `/auto-pipeline:clean-up` (main manager) lists other docs, old state copies, mocks of finished tasks and outdated agent_* lines; removes only the rows the human says yes to. A product repo keeps its real docs with `docs_keep` (agent.conf)
 
 R4. No changelog
 - Git history is the record

@@ -44,10 +44,14 @@ CLEAN_LINE = re.compile(r"^HOUSEKEEP \d{4}-\d\d-\d\d \d\d:\d\d: clean$")
 
 def read_lines(path):
     try:
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            return fh.read().splitlines()
+        with open(path, encoding="utf-8", errors="replace",
+                  newline="") as fh:
+            parts = fh.read().split("\n")
     except OSError:
         return []
+    if parts and parts[-1] == "":
+        parts.pop()
+    return parts
 
 
 def atomic_write(path, text):
@@ -75,12 +79,14 @@ def whole_word(name, text):
 
 
 def idea_text(line):
+    line = line[:-1] if line.endswith("\r") else line
     line = KEPT.sub("", line)
     m = TAIL.search(line)
     return (line[:m.start()] if m else line).strip()
 
 
 def idea_day(line):
+    line = line[:-1] if line.endswith("\r") else line
     m = TAIL.search(KEPT.sub("", line))
     return m.group(0)[3:13] if m else None
 
@@ -117,6 +123,11 @@ class Housekeep(object):
         self.notes = []
         self.cleanup = []
         self.wt_lines = []   # (literal path, module, status)
+        self.wt_raw = []     # the whole line of each wt_lines entry
+        self.rows_wt = []    # structured worktree rows (file_rows)
+        self.rows_todo = []  # structured todo rows, file order (file_rows)
+        self.rows_idea = {}  # idea line no -> {"line", "reasons"}
+        self.merged_info = None
 
     # ---- small helpers
 
@@ -156,6 +167,7 @@ class Housekeep(object):
 
     def read_worktree_file(self):
         out = []
+        raw = []
         for line in read_lines(self.path("agent_worktree.txt")):
             if not line.strip():
                 continue
@@ -166,7 +178,9 @@ class Housekeep(object):
             module = parts[1] if len(parts) > 1 else ""
             status = parts[2].strip() if len(parts) > 2 else ""
             out.append((parts[0], module, status))
+            raw.append(line)
         self.wt_lines = out
+        self.wt_raw = raw
 
     def worktree_lines(self):
         sw = self.sweep
@@ -183,7 +197,7 @@ class Housekeep(object):
                     if os.path.isdir(r["path"]))
         uncertain = orca and (bool(sw.unreachable) or not sw.env_list_ok)
         done = set()
-        for literal, module, status in self.wt_lines:
+        for idx, (literal, module, status) in enumerate(self.wt_lines):
             path = literal.strip()
             rp = agent_cleanup.real(path)
             norm = os.path.normpath(path)
@@ -196,6 +210,15 @@ class Housekeep(object):
             if not present:
                 if pane:
                     continue
+                if not uncertain and not os.path.isdir(path):
+                    why = "folder gone, no live pane"
+                    if human:
+                        why += " (line says human-direct)"
+                    elif status in ("working", "final"):
+                        why += " (line says %s)" % status
+                    self.rows_wt.append({"path": path,
+                                         "line": self.wt_raw[idx],
+                                         "status": status, "why": why})
                 if keep_status:
                     if not uncertain:
                         says = "human-direct" if human else status
@@ -228,15 +251,18 @@ class Housekeep(object):
             return 120
         return val if val > 0 else 120
 
-    def todo_rows(self):
+    def todo_pairs(self):
         rows = []
         for line in read_lines(self.path("agent_todo.txt")):
             if not line.strip():
                 continue
             parts = [p.strip() for p in line.split(" | ")]
             if parts[0]:
-                rows.append(parts)
+                rows.append((line, parts))
         return rows
+
+    def todo_rows(self):
+        return [parts for _line, parts in self.todo_pairs()]
 
     @staticmethod
     def field(parts, key):
@@ -278,6 +304,7 @@ class Housekeep(object):
 
     def merged_flag(self, name, wt_paths):
         sw = self.sweep
+        self.merged_info = None
         fp = sw.first_parent_set()
         cands = []
         for p in wt_paths:
@@ -293,29 +320,43 @@ class Housekeep(object):
                                       ("refs/remotes/origin/", sw.origin_refs)):
                     tip = refs.get(b)
                     if tip and (refname + b) in sw.merged and tip not in fp:
+                        self.merged_info = (
+                            "merged into origin/main (branch %s)" % b, None)
                         return ("flag: todo %s: merged into origin/main "
                                 "(branch %s)" % (name, b))
-        res = sw.git("log", "--first-parent", "--format=%h %s",
+        res = sw.git("log", "--first-parent", "--format=%h %H %s",
                      "refs/remotes/origin/main", long=True)
         if res.ok:
             for line in res.out.splitlines():
-                sha, _, subject = line.partition(" ")
+                sha, _, rest = line.partition(" ")
+                full, _, subject = rest.partition(" ")
                 if subject == "Merge " + name or subject.startswith(
                         "Merge " + name + " "):
+                    self.merged_info = (
+                        "merged into origin/main (commit %s %s)"
+                        % (full[:7], subject), full[:7])
                     return ("flag: todo %s: merged into origin/main "
                             "(commit %s %s)" % (name, sha, subject))
         return None
 
-    def todos(self):
-        rows = self.todo_rows()
-        limit = self.interval()
-        for parts in rows:
+    def todos(self, limit=None):
+        pairs = self.todo_pairs()
+        if limit is None:
+            limit = self.interval()
+        for line, parts in pairs:
             name = parts[0]
+            got = False
             wt_paths = self.worktree_for(name, parts)
             if self.sweep.base_ok:
                 flag = self.merged_flag(name, wt_paths)
                 if flag:
                     self.flags_merged.append(flag)
+                    if self.merged_info:
+                        why, sha = self.merged_info
+                        self.rows_todo.append({
+                            "name": name, "line": line, "kind": "merged",
+                            "why": why, "sha": sha, "days": None})
+                        got = True
             waiting = any(p.startswith("waiting") for p in parts[1:])
             if wt_paths or waiting:
                 continue
@@ -335,6 +376,12 @@ class Housekeep(object):
                 self.flags_stale.append(
                     "flag: todo %s: stale, no worktree line and no open "
                     "wait for %dm" % (name, age))
+                if not got:
+                    self.rows_todo.append({
+                        "name": name, "line": line, "kind": "stale",
+                        "why": "stale: no worktree line and no open wait "
+                               "for %dd" % (age // 1440),
+                        "sha": None, "days": age // 1440})
 
     # ---- c. ideas
 
@@ -361,6 +408,10 @@ class Housekeep(object):
                     continue
             removed_ns.add(n)
         for n, m, text in sorted(dups):
+            if not KEPT.search(lines[n - 1]):
+                self.rows_idea.setdefault(
+                    n, {"line": lines[n - 1], "reasons": []})[
+                    "reasons"].append("a duplicate of idea %d" % m)
             if n in removed_ns or not self.apply:
                 self.removed.append("%s: idea %d, a duplicate of idea %d: %s"
                                     % (self.verb, n, m, text[:80]))
@@ -391,6 +442,9 @@ class Housekeep(object):
             for word in self.missing_files(text):
                 reasons.append("names %s, no such file" % word)
             if reasons:
+                ent = self.rows_idea.setdefault(
+                    n, {"line": line, "reasons": []})
+                ent["reasons"].extend(reasons)
                 self.suspects.append("suspect: idea %d: %s | %s"
                                      % (n, text[:80], "; ".join(reasons)))
 
@@ -416,6 +470,8 @@ class Housekeep(object):
                         os.path.join(self.root, word.split("/")[0])):
                     continue
                 found = os.path.exists(os.path.join(self.root, word))
+            elif word in ("agent_state.txt", "agent_monitor.txt"):
+                continue
             elif fnmatch.fnmatch(word, "agent_*.txt") or word.endswith(".md"):
                 found = os.path.exists(os.path.join(self.root, word)) \
                     or word in self.tracked_names()
@@ -503,7 +559,7 @@ class Housekeep(object):
             if line.startswith("CLEANUP: "):
                 self.cleanup.append("cleanup: " + line[len("CLEANUP: "):])
 
-    # ---- the block
+    # ---- the block (and the read only rows)
 
     def stage(self, fn):
         try:
@@ -594,6 +650,21 @@ class Housekeep(object):
             except Exception as exc:
                 sys.stdout.write("  note: internal error (%s)\n"
                                  % type(exc).__name__)
+
+
+def file_rows(root, plugin, gitdir, kind, stale_minutes):
+    """Read only line rows of the pass (ideas, todos, worktrees, notes)."""
+    args = argparse.Namespace(root=root, plugin=plugin, gitdir=gitdir,
+                              kind=kind, apply=False)
+    hk = Housekeep(args)
+    hk.stage(hk.gather)
+    hk.stage(hk.worktree_lines)
+    hk.stage(lambda: hk.todos(stale_minutes))
+    hk.stage(hk.ideas)
+    ideas = [{"n": n, "line": e["line"], "why": "; ".join(e["reasons"])}
+             for n, e in sorted(hk.rows_idea.items())]
+    return {"ideas": ideas, "todos": list(hk.rows_todo),
+            "worktrees": list(hk.rows_wt), "notes": list(hk.notes)}
 
 
 def main(argv):

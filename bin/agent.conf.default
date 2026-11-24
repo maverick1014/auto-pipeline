@@ -45,3 +45,5 @@ compact_clear_at=2
 compact_clear_check_sec=30
 board_guard=record
 watch_quiet_min=15
+cleanup_days=14
+docs_keep=
