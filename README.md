@@ -5,14 +5,14 @@ A main manager agent talks to you, and workers do the coding in the background.
 
 ## Install
 
-Claude Code on your own computer, in the repo folder, from your shell:
+Claude Code on your own computer, from your shell (installs for all your repos):
 
 ```
-claude plugin marketplace add maverick1014/auto-pipeline --scope project
-claude plugin install auto-pipeline@auto-pipeline -s project
+claude plugin marketplace add maverick1014/auto-pipeline
+claude plugin install auto-pipeline@auto-pipeline
 ```
 
-Or inside Claude Code: `/plugin marketplace add maverick1014/auto-pipeline`, then `/plugin install auto-pipeline`.
+Or inside Claude Code: `/plugin marketplace add maverick1014/auto-pipeline`, then `/plugin install auto-pipeline`. That one lets you pick the scope: all your repos, or only this project.
 
 Answer the three questions (runtime `auto`, your language, max agents). Open Claude Code in that
 repo. Run `/auto-pipeline:init` once, then paste the permissions block it prints into
@@ -26,8 +26,6 @@ Bash(git worktree prune)
 Bash(orca worktree rm *)
 Bash(orca terminal close *)
 ```
-
-Want it on every repo you open? Drop `--scope project` / `-s project`.
 
 Cloud sessions (claude.ai/code): the agent handles them with cloud-pack. Nothing to do here.
 
@@ -43,7 +41,17 @@ Cloud sessions (claude.ai/code): the agent handles them with cloud-pack. Nothing
 | `/auto-pipeline:clean-up` | List rubbish docs and outdated lines, remove only what you say yes to. |
 | `/auto-pipeline:city` | Start the agent city visualiser and print its URL. |
 
-You can also just type a keyword (e.g. "show todo", "看任务"). The list is in `bin/agent-keyword.sh`.
+You can also just type a keyword instead of the command (case does not matter):
+
+| Command | Keywords |
+|---|---|
+| `/auto-pipeline:init` | setup pipeline, 设置插件 |
+| `/auto-pipeline:settings` | show settings, 看设置, 改设置 |
+| `/auto-pipeline:todo` | show todo, 看任务, 进度 |
+| `/auto-pipeline:question` | show question, 有什么问题, 要我决定什么 |
+| `/auto-pipeline:close-case` | close case, 收尾 |
+| `/auto-pipeline:clean-up` | clean up files, 清理文件 |
+| `/auto-pipeline:city` | open city, 看 agent |
 
 ## Change settings
 
