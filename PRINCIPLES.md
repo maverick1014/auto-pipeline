@@ -429,6 +429,9 @@ E3. Concise
 - Full detail on request
 - Never trade correctness for brevity
 
+E4. Keyword hooks
+- A keyword hook (bin/agent-keyword.sh) only points to a skill; the logic lives in the skill
+
 ## Notice
 
 Section E is adapted from i-have-adhd (https://github.com/ayghri/i-have-adhd) under the MIT License.
