@@ -646,6 +646,8 @@ class Engine:
                 status = (term or {}).get("status")
                 bad = (not r.ok and r.code in GONE_CODES) or (r.ok and status is not None and status != "running")
                 if not bad:
+                    if not r.ok:
+                        return None, r.err
                     return self.shell_send_read(t, cmd, r)
             if attempt == 0:
                 t.gone.add(t.shell)
@@ -814,10 +816,11 @@ class Engine:
         t.idle = t.idle + 1 if (idle_prompt and file_same) else 0
         t.prev_ok, t.prev_screen, t.prev_fp = True, screen, fp
         waiting = o.w > 0
-        held = False
+        held_reason = ""
         if t.stall_reason:
-            held = stall_held(t, screen, fp)
-            if not held:
+            if stall_held(t, screen, fp):
+                held_reason = t.stall_reason
+            else:
                 t.stall_reason = ""
         # wake lines (B5, R12, R13)
         fired, note = [], ""
@@ -853,7 +856,7 @@ class Engine:
                     reason = "idle prompt"
                 elif t.same >= 3:
                     reason = "no change"
-            if reason and not held:
+            if reason and reason != held_reason:
                 t.stall_reason, t.stall_screen, t.stall_fp = reason, screen, fp
                 events.append(("WATCH STALL %s: %s" % (t.name, reason), o.lines[-15:]))
         if waiting:
@@ -891,7 +894,8 @@ class Engine:
         r = orca(["terminal", "list", "--json"])
         if not r.ok:
             return
-        terms = [t for t in (r.result().get("terminals") or []) if isinstance(t, dict)]
+        terms = [t for t in (r.result().get("terminals") or []) if isinstance(t, dict)
+                 and t.get("connected") is not False and t.get("orphaned") is not True]
         if not self.repo_id:
             for t in terms:
                 wid = str(t.get("worktreeId") or "")
@@ -963,10 +967,19 @@ class Engine:
     def on_term(self, signum, frame):
         """R9: a newer --all replaced this one (it wrote its pid into the status file first)."""
         pid = self.load_status().get("pid")
-        if isinstance(pid, int) and pid != os.getpid():
+        if isinstance(pid, int) and pid != os.getpid() and pid_alive(pid) and is_all_watch(pid):
             out("WATCH REPLACED all: a newer watch runs (pid %d); do not restart" % pid)
             os._exit(0)
         os._exit(143)
+
+
+def is_all_watch(pid):
+    try:
+        args = subprocess.run(["ps", "-o", "args=", "-p", str(pid)], capture_output=True, text=True,
+                              timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return ("agent-watch" in args or "agent_watch" in args) and "--all" in args
 
 
 def stall_held(t, screen, fp):
@@ -977,10 +990,16 @@ def stall_held(t, screen, fp):
 
 
 def login_expired(lines):
-    """R22: on a screen that is not busy, in its last 10 lines."""
+    """R22, R22b: on a screen that is not busy, in the 10 lines above the input prompt line (the last line
+    starting with a prompt, box chars ignored), else in the last 10 lines."""
     if any("esc to interrupt" in l for l in lines):
         return False
-    return any(w in l for l in lines[-10:] for w in LOGIN_TEXTS)
+    region = lines[-10:]
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].lstrip(BOX_CHARS).startswith("\u276f"):
+            region = lines[max(0, i - 10):i]
+            break
+    return any(w in l for l in region for w in LOGIN_TEXTS)
 
 
 def fmt_num(x):
@@ -995,16 +1014,22 @@ def is_idle_prompt(lines):
 
 
 def resolve_tm_cached(ctx, t, env):
-    """The TM pane of a task: a LAUNCH record first, else the listed one (kept until it is gone)."""
+    """The TM pane of a task: a LAUNCH record first, else the listed one (kept until it is gone). R3b: a pane
+    reported LOST counts as gone; it is the answer only when nothing else is found."""
+    skip = t.gone | t.lost
     recs = [r for r in launch_records(ctx, t.name)
-            if r["kind"] == "tm-pane" and r["env"] == (env or "") and r["pane"] and r["pane"] not in t.gone
+            if r["kind"] == "tm-pane" and r["env"] == (env or "") and r["pane"] and r["pane"] not in skip
             and r["pid"] and pid_alive(r["pid"])]
     if recs:
         return recs[-1]["pane"]
-    if t.listed_pane and t.listed_pane not in t.gone:
+    if t.listed_pane and t.listed_pane not in skip:
         return t.listed_pane
-    t.listed_pane = resolve_tm(ctx, t, env, t.gone) or ""
-    return t.listed_pane
+    t.listed_pane = resolve_tm(ctx, t, env, skip) or ""
+    if t.listed_pane:
+        return t.listed_pane
+    if t.lost:
+        return resolve_tm(ctx, t, env, t.gone) or ""
+    return ""
 
 
 def resolve_shell_cached(ctx, t, env, tm_handle):
@@ -1081,6 +1106,10 @@ def tell_resolve(ctx, task):
         pane, shell = resolve_tm(ctx, target, env), ""
         if not pane:
             return None, "", "", "", "no task manager pane"
+    if env and shell and pane_gone(env, shell):         # R15b: the same for the shell pane
+        shell = resolve_shell(ctx, target, env, pane, skip=(shell,)) or ""
+        if not shell:
+            return None, "", "", "", no_shell_why(env, target)
     if env and not shell:
         shell = resolve_shell(ctx, target, env, pane) or ""
         if not shell:
