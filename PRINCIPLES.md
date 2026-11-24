@@ -36,6 +36,7 @@ R5. Task files
 - No other task tracking
 - The housekeep pass never closes a todo line: it flags one whose branch is merged into origin/main, or one that is stale (no worktree line, no open wait, quiet longer than housekeep_interval_min)
 - All four `agent_*.txt` files are written only through `./agent-file.sh`. No agent for that, it costs tokens
+- `agent_completed.txt` is never deleted, trimmed or cleaned (clean-up and housekeep skip it); only on an explicit owner order
 
 R6. Ideas file
 - `agent_ideas.txt` = ideas outside the current task
