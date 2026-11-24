@@ -32,7 +32,11 @@ todos, ideas with apply off), never copies them:
     Read only: no file written, no agent-file.sh call, no cleanup sweep, no
     agent_state.txt, no stamp. "Now" is AGENT_FAKE_NOW when set. The
     housekeep block of agent-housekeep.sh stays byte for byte
-    (tests/test_agent_housekeep.py).
+    (tests/test_agent_housekeep.py), with one change on purpose (bounce 1):
+    an idea naming agent_state.txt or agent_monitor.txt is never a "no such
+    file" suspect (both are per machine and git-ignored). Lines are split on
+    "\n" only (as agent-file.sh sed counts); a CRLF line keeps its "\r" in
+    "line" but is parsed without it.
 """
 
 import os
@@ -261,6 +265,35 @@ class TestFileRowsBounce1(RowsCase):
         ideas = self.rows()["ideas"]
         self.assertEqual([(i["n"], i["why"]) for i in ideas],
                          [(3, "names agent_gone.txt, no such file")])
+
+class TestCrlfBounce2(RowsCase):
+    """Reviewer re-check N1: a CRLF ideas file reads as before bounce 1."""
+
+    CRLF = ("add dark mode | 2026-11-01 10:00 | by main\r\n"
+            "add dark mode | 2026-11-02 11:00 | by main\r\n"
+            "city-ux: wider rail | 2026-11-01 10:00 | by main\r\n")
+
+    def plant(self):
+        with open(os.path.join(self.repo.dir, "agent_ideas.txt"), "w", newline="") as fh:
+            fh.write(self.CRLF)
+        self.set_file("agent_completed.txt", [
+            "2026-11-10 | city-ux | rail | est 30m actual 40m"])
+
+    def test_rows_of_a_crlf_file_keep_the_raw_line(self):
+        self.plant()
+        ideas = self.rows()["ideas"]
+        self.assertEqual([(i["n"], i["why"]) for i in ideas],
+                         [(2, "a duplicate of idea 1"),
+                          (3, "names task city-ux, done 2026-11-10")])
+        self.assertEqual(ideas[0]["line"], "add dark mode | 2026-11-02 11:00 | by main\r")
+
+    def test_the_housekeep_block_of_a_crlf_file(self):
+        self.plant()
+        res = self.repo.run("agent-housekeep.sh", env={"AGENT_FAKE_NOW": NOW,
+                                                       "AGENT_RUNTIME": "plain"})
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("would remove: idea 2, a duplicate of idea 1", res.stdout)
+        self.assertIn("suspect: idea 3:", res.stdout)
 
 if __name__ == "__main__":
     unittest.main()

@@ -1085,7 +1085,7 @@ class TestBounce1(FilesCase):
                  "%s | gone-b | idle | since 2026-11-21 10:00" % gone]
         self.set_file("agent_worktree.txt", lines)
         self.dry()
-        self.assertOk(self.yes("W1"))
+        self.assertOk(self.yes("W1,W2"))
         self.assertEqual(self.read("agent_worktree.txt").strip(), "")
         backups = glob.glob(os.path.join(self.gitdir, "agent-cleanup", "*.txt"))
         with open(backups[0]) as fh:
@@ -1158,6 +1158,45 @@ class TestBounce1(FilesCase):
             "grep the worktree agent_state.txt for DONE | 2026-11-20 10:00 | by main",
             "agent_monitor.txt keeps old lines | 2026-11-20 10:00 | by main"])
         self.assertEqual([i for i in self.rows(self.dry()) if i.startswith("I")], [])
+
+
+class TestBounce2(FilesCase):
+    """Reviewer re-check N2, N3 (2026-11-24)."""
+
+    def test_n2_rows_sharing_a_path_are_picked_together_or_refused(self):
+        gone = os.path.join(self.repo.base, "gone-d")
+        lines = ["%s | gone-d | idle | since 2026-11-20 10:00" % gone,
+                 "%s | d2 | working | since 2026-11-21 10:00" % gone]
+        self.set_file("agent_worktree.txt", lines)
+        self.dry()
+        before = self.snapshot()
+        res = self.yes("W1")
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("REFUSED", res.stdout + res.stderr)
+        self.assertIn("W2", res.stdout + res.stderr)
+        self.assertEqual(self.snapshot(), before)
+        self.assertFalse(glob.glob(os.path.join(self.gitdir, "agent-cleanup", "*.txt")))
+        self.assertOk(self.yes("W1,W2"))
+        self.assertEqual(self.read("agent_worktree.txt").strip(), "")
+
+    def test_n2_todo_rows_sharing_a_name_too(self):
+        self.set_file("agent_todo.txt", [
+            "quiet | big | x | est 30m | opened 2026-11-01 08:00 | by main",
+            "quiet | big | y | est 30m | opened 2026-11-02 08:00 | by main"])
+        self.dry()
+        res = self.yes("T1")
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("REFUSED", res.stdout + res.stderr)
+        self.assertEqual(len(self.read("agent_todo.txt").strip().splitlines()), 2)
+
+    def test_n3_no_control_character_in_a_printed_row(self):
+        with open(self.p("agent_ideas.txt"), "w", newline="") as fh:
+            fh.write("progress 10%\r100%\tdone | 2026-11-01 10:00 | by main\n"
+                     "progress 10%\r100%\tdone | 2026-11-02 10:00 | by main\n")
+        out = self.dry()
+        for line in out.split("\n"):
+            self.assertFalse(re.search(r"[\x00-\x08\x0b-\x1f\x7f]", line), repr(line))
+        self.assertEqual(self.rows(out)["I1"][0], "idea: progress 10% 100% done")
 
 
 # ---------------------------------------------------------------- conf, skill

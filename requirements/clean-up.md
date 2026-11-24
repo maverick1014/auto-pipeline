@@ -120,6 +120,9 @@ Nothing found: `=== clean-up files ===` then `nothing to clean`. Ids: kind lette
 | E13 | `--yes` names a row the human did not see because the table changed | C2 refuses all |
 | E14 | the saved table names `agent_completed.txt` (hand edited) | C2: not a row now → refused |
 | E15 | the idea at line 80 moved to line 79 (an idea rm ran in between) | C2: the row key is the line text, so I-id still matches; the rm uses the new line number |
+| E16 | an idea naming `agent_state.txt` or `agent_monitor.txt` on a machine without that file (both git-ignored, one per machine) | never a suspect, in the housekeep block too (E2E on pc2: 8 valid ideas were offered for removal) |
+| E17 | two W lines with one path, or two T lines with one name (only after a hand edit) | their rows go together: `--yes` with one of them is refused, naming the others |
+| E18 | a CRLF `agent_ideas.txt` | parsed without the `\r`, removed by its raw line |
 
 ## F. Skill `skills/clean-up/SKILL.md` (`/auto-pipeline:clean-up`)
 
