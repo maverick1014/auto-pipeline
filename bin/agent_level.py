@@ -598,7 +598,188 @@ def lex_conf(text):
     return segs.done()
 
 
+SLASH_JS = (".js", ".mjs", ".cjs", ".jsx", ".ts", ".mts", ".cts", ".tsx")
+SLASH_EXT = SLASH_JS + (".dart", ".java", ".kt", ".kts", ".swift", ".go", ".c", ".h", ".cc", ".cpp",
+                        ".cxx", ".hpp", ".hh")
+GO_IMPORT_C = re.compile(r'^[ \t]*import[ \t]*"C"', re.M)
+GO_GROUP = re.compile(r"^[ \t]*import[ \t]*\(", re.M)
+GO_GROUP_C = re.compile(r'^[ \t]*(?:[\w.]+[ \t]+)?"C"', re.M)
+
+
+class Unsure(Exception):
+    pass
+
+
+def go_imports_c(text):
+    if GO_IMPORT_C.search(text):
+        return True
+    for m in GO_GROUP.finditer(text):
+        end = re.compile(r"\n[ \t]*\)").search(text, m.end())
+        if GO_GROUP_C.search(text[m.end():end.start() if end else len(text)]):
+            return True
+    return False
+
+
+def slash_triple_end(text, k, quote, esc):
+    """Index of the closing triple quote from k on, or -1."""
+    if not esc:
+        return text.find(quote * 3, k)
+    n = len(text)
+    while k < n:
+        if text[k] == "\\":
+            k += 2
+        elif text.startswith(quote * 3, k):
+            return k
+        else:
+            k += 1
+    return -1
+
+
+def lex_slash(text, ext):
+    if ext == ".go" and go_imports_c(text):
+        return None
+    n, segs = len(text), Segs(text)
+    js, go = ext in SLASH_JS, ext == ".go"
+    triple_dq = ext in (".java", ".swift", ".dart", ".kt", ".kts")
+    triple_sq = ext == ".dart"
+    esc3 = ext not in (".kt", ".kts")
+
+    def scan(i, expr):
+        depth = 0
+        while i < n:
+            c = text[i]
+            if c == "/":
+                if text.startswith("/*", i):
+                    e = text.find("*/", i + 2)
+                    if e < 0:
+                        raise Unsure()
+                    segs.add("comment", i, e + 2)
+                    i = e + 2
+                elif text.startswith("//", i) and (i == 0 or text[i - 1] in " \t\n"):
+                    e = text.find("\n", i)
+                    e = n if e < 0 else e
+                    segs.add("comment", i, e)
+                    i = e
+                else:
+                    i += 1
+            elif c in "\"'":
+                if text.startswith(c * 3, i) and (triple_dq if c == '"' else triple_sq):
+                    e = slash_triple_end(text, i + 3, c, esc3)
+                    if e < 0:
+                        raise Unsure()
+                    segs.add("str", i, e + 3)
+                    i = e + 3
+                else:
+                    j = i + 1
+                    while True:
+                        if j >= n or text[j] == "\n":
+                            raise Unsure()
+                        if text[j] == "\\":
+                            j += 2
+                        elif text[j] == c:
+                            break
+                        else:
+                            j += 1
+                    segs.add("str", i, j + 1)
+                    i = j + 1
+            elif c == "`" and js:
+                s, k = i, i + 1
+                while True:
+                    if k >= n:
+                        raise Unsure()
+                    if text[k] == "\\":
+                        k += 2
+                    elif text[k] == "`":
+                        segs.add("str", s, k + 1)
+                        i = k + 1
+                        break
+                    elif text.startswith("${", k):
+                        segs.add("str", s, k + 2)
+                        s = scan(k + 2, True)
+                        k = s + 1
+                    else:
+                        k += 1
+            elif c == "`" and go:
+                e = text.find("`", i + 1)
+                if e < 0:
+                    raise Unsure()
+                segs.add("str", i, e + 1)
+                i = e + 1
+            elif expr and c == "{":
+                depth += 1
+                i += 1
+            elif expr and c == "}":
+                if depth == 0:
+                    return i
+                depth -= 1
+                i += 1
+            else:
+                i += 1
+        if expr:
+            raise Unsure()
+        return n
+
+    try:
+        scan(0, False)
+    except Unsure:
+        return None
+    return segs.done()
+
+
+MARKUP_RAW = re.compile(r"<(script|style)(?![\w:.\-])", re.I)
+
+
+def lex_markup(text):
+    n, segs, i = len(text), Segs(text), 0
+    while i < n:
+        i = text.find("<", i)
+        if i < 0:
+            break
+        if text.startswith("<!--", i):
+            e = text.find("-->", i + 4)
+            if e < 0:
+                return None
+            segs.add("comment", i, e + 3)
+            i = e + 3
+        elif text.startswith("<![CDATA[", i):
+            e = text.find("]]>", i + 9)
+            if e < 0:
+                return None
+            segs.add("str", i, e + 3)
+            i = e + 3
+        elif i + 1 < n and (text[i + 1].isalpha() or text[i + 1] in "/!?"):
+            j = i + 1
+            while True:
+                if j >= n:
+                    return None
+                c = text[j]
+                if c in "\"'":
+                    e = text.find(c, j + 1)
+                    if e < 0:
+                        return None
+                    segs.add("str", j, e + 1)
+                    j = e + 1
+                elif c == ">":
+                    break
+                else:
+                    j += 1
+            raw = MARKUP_RAW.match(text, i)
+            i = j + 1
+            if raw:
+                e = text.lower().find("</" + raw.group(1).lower(), i)
+                if e < 0:
+                    return None
+                i = e
+        else:
+            i += 1
+    return segs.done()
+
+
 COMMENT_FAMILIES = {}
+for _ext in SLASH_EXT:
+    COMMENT_FAMILIES[_ext] = ((lambda t, e=_ext: lex_slash(t, e)), "/*")
+for _ext in (".html", ".htm", ".xml"):
+    COMMENT_FAMILIES[_ext] = (lex_markup, "-")
 for _ext in (".py", ".sh", ".bash", ".zsh", ".yaml", ".yml", ".conf"):
     COMMENT_FAMILIES[_ext] = ({".py": lex_py, ".yaml": lex_yaml, ".yml": lex_yaml,
                                ".conf": lex_conf}.get(_ext, lex_sh), "#")
