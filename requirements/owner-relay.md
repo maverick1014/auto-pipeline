@@ -176,6 +176,19 @@ Also seen: scheduled wake (`promptSource: "system"`, `turnOrigin: "scheduled"`, 
 | L8 | `line` model and effort: the session pid is `$CLAUDE_PID`, else the first claude ancestor (agent-roots.sh `agent_pid`) |
 | L9 | A user line that is the owner's prompt and also holds the words in a peer line: the owner prompt wins (verified) |
 
+Review bounce 1 (Opus reviewer 2026-11-24, all tighten toward "not verified"):
+
+| # | Rule | Example |
+|---|---|---|
+| L10 | After the pasted cut, any `<pasted_content` or `</pasted_content>` text still left → the line is `pasted` (a paste that holds the tag itself, or a nested paste) | `<pasted_content id="p1">doc says </pasted_content> keep it, … ya more</pasted_content> ok` → `only in a pasted line` |
+| L11 | Agent-typed also when the first non-empty line starts with `OWNER ORDER ` (a relayed header typed into a pane, `[unknown unknown]` has no model word) | `OWNER ORDER [unknown unknown] repo /x · …` → agent-typed |
+| L12 | verify: `--repo` empty, or not absolute after `~` expansion → usage error, exit 2. line: `--repo` is made absolute from the cwd before it is used and printed | `verify --repo .` → exit 2; `line --repo .` in /Users/m/x → `repo /Users/m/x` |
+| L13 | Timestamp: ISO 8601 with `Z` or `±HH:MM`, fraction optional. No zone, unparseable or missing → the line is skipped. Later than now + 60 s → skipped | `2026-11-24T11:49:21.018+08:00` = `03:49:21Z` |
+| L14 | Word edges: when the quote's first character is an ASCII letter or digit, the character before the match must not be one; the same for the last character and the one after. Other characters (CJK, punctuation) have no edge | quote `delete all the old branches now` in `undelete all the old branches now` → not found; `(keep it, … ya)` → found; CJK inside a sentence → found |
+| L15 | `isMeta`, `isCompactSummary`, `isSidechain` count as set for any value except missing, `null` or `false` | `"isMeta": 1`, `"isMeta": "true"` → meta |
+| L16 | A line the JSON reader cannot take (any error, also nesting too deep) is skipped. Output never crashes on bytes that are not UTF-8 (printed escaped) | 200000 `[` on one line → skipped |
+| L17 | W12 receiving line: verified → read its `match:` line, then act | |
+
 ## Owner choices (defaults taken unless the owner changes them)
 
 | # | Choice | Default |

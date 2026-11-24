@@ -64,6 +64,7 @@ class TestPrinciplesW12(unittest.TestCase):
         self.assertIn("not verified", line.lower())
         self.assertIn("peer message", line.lower())
         self.assertIn("reply", line.lower())
+        self.assertIn("match line", line.lower())   # L17 (review bounce 1)
 
     def test_g1_still_ask_line(self):
         line = self.one("even verified")
