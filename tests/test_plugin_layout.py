@@ -3,7 +3,8 @@
 CONTRACT. The repo root IS the plugin. After the move it looks like this:
 
     .claude-plugin/plugin.json        name auto-pipeline, description, version
-    .claude-plugin/marketplace.json   this repo as its own marketplace, source "./"
+    .claude-plugin/marketplace.json   this repo as its own marketplace; since plugin-slim
+                                      the entry installs branch release (the ship set)
     hooks/hooks.json                  SessionStart -> ${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh
     agents/<name>.md                  was .claude/agents/<name>.md
     skills/<name>/SKILL.md            was .claude/skills/<name>/SKILL.md, adds init
@@ -51,6 +52,7 @@ SHELL_SCRIPTS = [
     "agent-housekeep.sh",    # housekeep-2h: the pass the monitor loop runs
     "agent-version.sh",      # stale-plugin-guard: running vs installed, UserPromptSubmit hook
     "agent-level.sh",        # test-levels: the risk level a diff needs
+    "agent-release.sh",      # plugin-slim: builds the release branch users install
 ]
 # Sourced only, never run. agent-runtime.sh is in the list above instead,
 # because it is both: sourced by its callers and run by a skill.
@@ -65,7 +67,8 @@ BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py", "agent.conf.default
                                             "agent_estimate.py",
                                             "agent_cleanup.py",
                                             "agent_housekeep.py",
-                                            "agent_level.py"]
+                                            "agent_level.py",
+                                            "agent_release.py"]
 
 AGENT_FILES = ["fast-lane-deputy.md", "merge-deputy.md", "worker.md"]
 SKILL_DIRS = ["dispatch", "merge", "init", "cloud-pack", "city", "close-case"]
@@ -184,7 +187,15 @@ class TestMarketplaceManifest(unittest.TestCase):
         data = load_json(".claude-plugin", "marketplace.json")
         entry = [p for p in data["plugins"] if p.get("name") == "auto-pipeline"]
         self.assertEqual(len(entry), 1, "auto-pipeline is not listed once")
-        self.assertEqual(entry[0]["source"], "./")
+        # plugin-slim (requirements/plugin-slim.md rule 13): users install the
+        # release branch (the ship set only), never the whole repo ("./")
+        self.assertEqual(entry[0]["source"], {
+            "source": "url",
+            "url": "https://github.com/maverick1014/auto-pipeline.git",
+            "ref": "release",
+        })
+        self.assertEqual(entry[0]["description"],
+                         "Agent pipeline rules, scripts, agents, skills and a startup quiz gate for any repo")
 
 
 class TestHooksJson(unittest.TestCase):
