@@ -1189,8 +1189,16 @@ def tell_write_remote_locked(env, shell, path, block, sha):
     return False, "hash differs" if seen_other else "no answer from the shell pane"
 
 
+def pointer_seen(env, pane, sha, cursor=None):
+    r = term_read(env, pane, cursor or None)
+    return r.ok and any(("TELL " + sha) in l for l in tail_of(terminal_of(r) or {}))
+
+
 def tell_pointer(env, pane, sha, sig, cursor, echo_s):
-    """D7, D8: tui-idle wait (a failure still goes on), one send, then look for TELL <sha8>."""
+    """D7, D8, R23: the pointer already on the full screen (a first send) -> no second send. tui-idle wait
+    (a failure still goes on), one send, then look for TELL <sha8> in the --cursor read and the full screen."""
+    if cursor and pointer_seen(env, pane, sha):
+        return True
     orca(["terminal", "wait"] + env_args(env) + ["--terminal", pane, "--for", "tui-idle", "--timeout-ms",
                                                  "120000", "--json"], timeout=150)
     text = "%s TELL %s: read the TELL %s block at the end of agent_state.txt and act on it" % (sig, sha, sha)
@@ -1198,8 +1206,7 @@ def tell_pointer(env, pane, sha, sig, cursor, echo_s):
         return False
     deadline = time.time() + echo_s
     while True:
-        r = term_read(env, pane, cursor or None)
-        if r.ok and any(("TELL " + sha) in l for l in tail_of(terminal_of(r) or {})):
+        if (cursor and pointer_seen(env, pane, sha, cursor)) or pointer_seen(env, pane, sha):
             return True
         if time.time() >= deadline:
             return False

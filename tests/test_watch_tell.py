@@ -371,7 +371,7 @@ class TestTuiPane(TellCase):
         self.assertOk(r)
         self.assertEqual(r.stdout.strip().splitlines()[-1], "TELL OK alpha %s" % s)
         self.assertEqual(len(self.sends_to("term_alpha")), 1)
-        self.assertEqual(self.echo_buf("term_alpha").count("TELL %s" % s), 1)
+        self.assertEqual(self.echo_buf("term_alpha").count(pointer(s)), 1)   # the pointer line, once
 
     def test_r23_a_lost_first_pointer_on_a_tui_pane_is_sent_once_more(self):
         self.echo_pane("term_alpha", tui=True, drop=1)
