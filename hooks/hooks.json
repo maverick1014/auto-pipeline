@@ -1,0 +1,282 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/agent-start.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/agent-name.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "H=\"${AGENT_CITY_HOME:-$HOME/.claude/agent-city}\"; { [ -f \"$H/cloud\" ] || [ -s \"$H/joined-repos.txt\" ] || [ -f \"$H/team-relay\" ]; } && \"${CLAUDE_PLUGIN_ROOT}\"/bin/agent-city.sh autostart >/dev/null 2>&1; exit 0",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent|Task|AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && \"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh\"; exit 0",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Task|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/agent-guard.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && \"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh\"; exit 0",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Task|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/agent-guard.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && \"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh\"; exit 0",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && python3 \"${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py\" ask; exit 0",
+            "timeout": 3660
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && \"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh\"; exit 0",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && \"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh\"; exit 0",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/agent-guard.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && \"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh\"; exit 0",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && python3 \"${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py\" say; exit 0",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/agent-guard.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && \"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh\"; exit 0",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && \"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh\"; exit 0",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && python3 \"${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py\" say; exit 0",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/agent-name.sh --prompt",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/agent-close-case.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/agent-show-todo.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/agent-show-question.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/agent-version.sh hook",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && \"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh\"; exit 0",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && python3 \"${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py\" say; exit 0",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"${AGENT_ROLE:-}\" ] && [ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && exec python3 \"${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py\" gov-watch; exit 0",
+            "async": true,
+            "asyncRewake": true
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"${AGENT_ROLE:-}\" ] && [ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && exec python3 \"${CLAUDE_PLUGIN_ROOT}/bin/agent_city.py\" chat-watch; exit 0",
+            "async": true,
+            "asyncRewake": true
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on\" ] && \"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh\"; exit 0",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

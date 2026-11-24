@@ -1,0 +1,50 @@
+#!/bin/sh
+# auto-pipeline agent-city shim
+# Copied to $HOME/.local/bin/agent-city by `agent-city.sh install-shim`, so
+# `agent-city ...` works in a plain terminal, from any folder, even outside
+# a repo (requirements/city.md, "Anywhere"). Only Claude sessions get the
+# plugin's bin/ on PATH; this file is the fix.
+#
+# AGENT_CITY_PLUGIN_ROOT set -> use that plugin folder (a checkout, before
+# release). Unset -> the highest installed plugin version under
+# ~/.claude/plugins/cache/auto-pipeline/auto-pipeline/, picked by sorting
+# the version-shaped folder names numerically, never by name and never a
+# hard-coded version (0.10.0 must beat 0.9.0).
+
+set -eu
+
+if [ -n "${AGENT_CITY_PLUGIN_ROOT:-}" ]; then
+  root="$AGENT_CITY_PLUGIN_ROOT"
+  if [ ! -f "$root/bin/agent-city.sh" ]; then
+    echo "agent-city: no bin/agent-city.sh in $root" >&2
+    exit 1
+  fi
+else
+  cache="$HOME/.claude/plugins/cache/auto-pipeline/auto-pipeline"
+  versions=""
+  if [ -d "$cache" ]; then
+    for entry in "$cache"/*/; do
+      [ -d "$entry" ] || continue
+      name=$(basename "$entry")
+      # plain version names only: digits and dots, nothing else
+      case "$name" in
+        *[!0-9.]*) continue ;;
+      esac
+      [ -f "$cache/$name/bin/agent-city.sh" ] || continue
+      versions="$versions$name
+"
+    done
+  fi
+
+  # numeric sort per dot-field (never by name), highest last
+  best=$(printf '%s' "$versions" | sed '/^$/d' \
+         | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1)
+
+  if [ -z "$best" ]; then
+    echo "agent-city: the auto-pipeline plugin is not installed (nothing in $cache)" >&2
+    exit 1
+  fi
+  root="$cache/$best"
+fi
+
+exec bash "$root/bin/agent-city.sh" "$@"

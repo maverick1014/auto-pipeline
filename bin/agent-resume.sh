@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+# agent-resume.sh — resume the pipeline after a restart (rule S2).
+#
+#   ./agent-resume.sh              resume the pipeline
+#   ./agent-resume.sh --dry-run    print the plan, launch nothing
+#   ./agent-resume.sh -h           this help
+#
+# Relaunches a task manager for every worktree line that needs one, then
+# starts the health monitor if it is not already running.
+#
+# Orca is not the only runtime (bin/agent-runtime.sh). In plain and cloud mode
+# there are no terminals to relaunch into and nothing to sweep: the table
+# still lists every worktree, in file order, but a row that would have been
+# relaunched under Orca reads "no, plain mode" or "no, cloud mode" instead,
+# and one line per such row prints after the table, naming what still needs
+# to be started by hand with the Agent tool. "orca is not answering" is an
+# Orca-mode fault message only: it is never printed in plain or cloud, where
+# having no orca is the normal case.
+
+set -eu
+. "$(dirname "$0")/agent-roots.sh"
+roots_read
+conf_read
+
+usage() {
+  cat <<'EOF'
+agent-resume.sh — resume the pipeline after a restart.
+
+  ./agent-resume.sh              resume the pipeline
+  ./agent-resume.sh --dry-run    print the plan, launch nothing
+  ./agent-resume.sh -h           this help
+EOF
+}
+
+DRY_RUN=0
+case "${1:-}" in
+  -h|--help) usage; exit 0;;
+  --dry-run) DRY_RUN=1;;
+  "") ;;
+  *) usage; exit 2;;
+esac
+
+# agent.conf lives in PROJECT_ROOT; the sibling scripts live in PLUGIN_ROOT/bin.
+# The four agent_*.txt data files live in the main repo (ROOT), which can be a
+# different place when this script runs from inside a worktree.
+: "${max_usage_percent:=80}"
+: "${task_manager:=opus-5.5:xhigh}"
+: "${permission_mode:=auto}"
+: "${max_agents:=4}"
+
+. "$PLUGIN_ROOT/bin/agent-resources.sh"
+. "$PLUGIN_ROOT/bin/agent-runtime.sh"
+
+ROOT="$PROJECT_ROOT"
+WT="$ROOT/agent_worktree.txt"
+TODO="$ROOT/agent_todo.txt"
+IDEAS="$ROOT/agent_ideas.txt"
+
+KIND=$(runtime_kind)
+# Pay for the probe (if any) once, then let every later runtime_ps /
+# runtime_launch below reuse it instead of asking again per worktree. Unset
+# again before handing off to agent-monitor.sh (below): its background loop
+# lives for hours and must re-derive the kind on its own, sweep by sweep.
+export AGENT_RUNTIME="$KIND"
+
+# ---- cleanup sweep: main manager or takeover only, before agent_worktree.txt
+# and the live panes are read, so a worktree the sweep removes is not a row
+# below. The start hook already swept and says so with AGENT_CLEANUP_DONE=1.
+# --dry-run lists, removes nothing. Its lines print last. A failing sweep never
+# breaks the resume. ----
+CLEAN_OUT=""
+role_read
+if { [ "$role" = main ] || [ "$role" = takeover ]; } && [ "${AGENT_CLEANUP_DONE:-}" != 1 ]; then
+  if [ "$DRY_RUN" -eq 1 ]; then
+    CLEAN_OUT=$("$PLUGIN_ROOT/bin/agent-cleanup.sh" --short 2>/dev/null </dev/null) || true
+  else
+    CLEAN_OUT=$("$PLUGIN_ROOT/bin/agent-cleanup.sh" --apply --short 2>/dev/null </dev/null) || true
+  fi
+fi
+
+# ---- resources line, one reading reused everywhere ----
+resources_read
+resources_line "$max_usage_percent"
+echo
+
+over_cap=0
+if [ "$RAM_USED" -ge "$max_usage_percent" ] || [ "$CPU_USED" -ge "$max_usage_percent" ]; then over_cap=1; fi
+
+# ---- model name: the one the claude CLI takes, cut down from opus-5.5:xhigh style ----
+# The rule (family word for opus*, sonnet*, haiku*, fable*; anything else
+# unchanged) lives in one place, bin/agent_conf.py cli-model, so the city page
+# and this script cannot drift apart. If python3 cannot answer, fall back to
+# the spec without its ":effort" part, so a relaunch still gets a --model word.
+# The word may end in "[1m]" and the relaunch cmd is a line a zsh pane runs
+# (opus[1m] is a glob there), so the word is quoted with printf %q: a plain
+# name stays bare, a suffixed one reaches claude exactly as opus[1m].
+model_name() {
+  if ! name=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" cli-model "$1" 2>/dev/null); then
+    spec=$1
+    name="${spec%%:*}"
+  fi
+  printf '%q\n' "$name"
+}
+
+# ---- orca-only setup: live pane lookup, one runtime call. orca may be down. ----
+orca_down=0
+ps_tsv=""
+total_live_panes=0
+if [ "$KIND" = "orca" ]; then
+  MODEL=$(model_name "$task_manager")
+  EFFORT=${task_manager#*:}
+
+  ps_out=$(runtime_ps 2>/dev/null) || orca_down=1
+  if [ "$orca_down" -eq 0 ]; then
+    ps_tsv=$(printf '%s' "$ps_out" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+for w in data.get("result", {}).get("worktrees", []):
+    path = w.get("path", "")
+    agents = w.get("agents") or []
+    is_main = 1 if w.get("isMainWorktree") else 0
+    busy = 0
+    for a in agents:
+        state = a.get("state") if isinstance(a, dict) else a
+        if state in ("working", "permission"):
+            busy += 1
+    print("%s\t%d\t%d\t%d" % (path, len(agents), is_main, busy))
+')
+  fi
+
+  # The cap counts spawned agents in state working or permission, not main
+  # managers and not done or idle panes (rule S6). Column 2 (any agent at the
+  # path) is a live pane for live_pane(): a done pane or a main manager pane
+  # still blocks a relaunch. Column 4 (busy agents) is what fills a cap slot.
+  if [ "$orca_down" -eq 0 ] && [ -n "$ps_tsv" ]; then
+    total_live_panes=$(printf '%s\n' "$ps_tsv" | awk -F'\t' '$3!=1{sum+=$4} END{print sum+0}')
+  fi
+fi
+relaunch_count=0
+cap_lines=""
+need_by_hand=""
+
+live_pane() {
+  path=$1
+  match=$(printf '%s\n' "$ps_tsv" | awk -F'\t' -v p="$path" '$1==p{print; exit}')
+  [ -n "$match" ] || return 1
+  n=$(printf '%s' "$match" | cut -f2)
+  [ "${n:-0}" -gt 0 ]
+}
+
+if [ "$KIND" = "orca" ] && [ "$orca_down" -eq 1 ]; then
+  echo "orca is not answering"
+  echo
+fi
+
+echo "=== resume ==="
+echo "worktree | status | relaunched"
+if [ ! -s "$WT" ]; then
+  echo "(no live worktrees)"
+else
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -z "$line" ] && continue
+    path=$(printf '%s' "$line" | awk -F' \\| ' '{print $1}')
+    module=$(printf '%s' "$line" | awk -F' \\| ' '{print $2}')
+    status=$(printf '%s' "$line" | awk -F' \\| ' '{print $3}')
+
+    if [ "$KIND" = "orca" ]; then
+      relaunched="no, status is idle"
+      if [ ! -d "$path" ]; then
+        relaunched="no, path is gone"
+      elif [ "$status" != "working" ] && [ "$status" != "final" ]; then
+        relaunched="no, status is idle"
+      elif [ "$orca_down" -eq 1 ]; then
+        relaunched="no, orca is down"
+      elif live_pane "$path"; then
+        relaunched="no, pane is live"
+      elif [ "$over_cap" -eq 1 ]; then
+        relaunched="no, over cap"
+      elif [ "$((total_live_panes + relaunch_count))" -ge "$max_agents" ]; then
+        relaunched="no, cap reached"
+        cap_lines="${cap_lines}cap reached ($((total_live_panes + relaunch_count))/$max_agents), not relaunching $path
+"
+      else
+        mode_eff=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" effective permission_mode "$PROJECT_ROOT/agent.conf" 2>/dev/null | cut -f1) || mode_eff=""
+        [ -n "$mode_eff" ] || mode_eff=auto
+        cmd="AGENT_ROLE=task-manager claude --model $MODEL --effort $EFFORT --permission-mode $mode_eff"
+        if [ "$DRY_RUN" -eq 1 ]; then
+          relaunched="would"
+        else
+          runtime_launch "$path" "TM $module" "$cmd" >/dev/null </dev/null
+          relaunched="yes"
+        fi
+        relaunch_count=$((relaunch_count + 1))
+      fi
+    else
+      # plain, cloud: no terminals. Same "is this worth relaunching" checks,
+      # minus everything that needs a live orca (pane lookup, the cap).
+      relaunched="no, status is idle"
+      if [ ! -d "$path" ]; then
+        relaunched="no, path is gone"
+      elif [ "$status" != "working" ] && [ "$status" != "final" ]; then
+        relaunched="no, status is idle"
+      else
+        relaunched="no, $KIND mode"
+        need_by_hand="${need_by_hand}start by hand with the Agent tool: $path ($module)
+"
+      fi
+    fi
+    echo "$path | $status | $relaunched"
+  done < "$WT"
+fi
+printf '%s' "$cap_lines"
+printf '%s' "$need_by_hand"
+echo
+
+# The one-shot work above is done. Never let a child process (agent-monitor.sh
+# below, whose background loop outlives this run by hours) inherit a kind
+# pinned to this one moment.
+unset AGENT_RUNTIME
+
+# ---- monitor handover ----
+if [ "$KIND" = "orca" ]; then
+  MON_PID_FILE="$PROJECT_GITDIR/agent_monitor.pid"
+  monitor_running=0
+  if [ -f "$MON_PID_FILE" ]; then
+    mpid=$(awk '{print $1}' "$MON_PID_FILE" 2>/dev/null || true)
+    [ -n "$mpid" ] && kill -0 "$mpid" 2>/dev/null && monitor_running=1
+  fi
+  if [ "$monitor_running" -eq 1 ]; then
+    echo "monitor: already running (pid $mpid)"
+  elif [ "$DRY_RUN" -eq 1 ]; then
+    echo "monitor: would start"
+  else
+    out=$("$PLUGIN_ROOT/bin/agent-monitor.sh" start)
+    echo "$out" | grep -E "^monitor:" || true
+  fi
+else
+  echo "monitor: not used in $KIND mode"
+fi
+echo
+
+# ---- watch line (F1, F2): orca only; agent-start.sh prints it itself when it runs this script ----
+if [ "$KIND" = "orca" ] && [ -z "${AGENT_WATCH_LINE_DONE:-}" ]; then
+  watch_line=$(python3 "$PLUGIN_ROOT/bin/agent_watchfile.py" start-line "$ROOT" "$PLUGIN_ROOT" 2>/dev/null </dev/null) || watch_line=""
+  if [ -n "$watch_line" ]; then
+    echo "$watch_line"
+    echo
+  fi
+fi
+
+# ---- counts ----
+todo_n=0
+[ -s "$TODO" ] && todo_n=$(grep -c . "$TODO" || true)
+ideas_n=0
+[ -s "$IDEAS" ] && ideas_n=$(grep -c . "$IDEAS" || true)
+echo "todo: ${todo_n:-0} open"
+echo "ideas: ${ideas_n:-0} waiting"
+[ -z "$CLEAN_OUT" ] || printf '%s\n' "$CLEAN_OUT"

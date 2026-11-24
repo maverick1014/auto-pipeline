@@ -1,0 +1,305 @@
+#!/usr/bin/env bash
+# agent-watch.sh — watch one task manager (TM) on two signals: its Orca pane AND
+# its worktree's agent_state.txt. The main manager starts it in the background
+# (run_in_background) and is woken when it exits.
+#
+#   bin/agent-watch.sh --terminal <TM handle> --worktree <path>
+#                      [--environment <env> --shell <shell handle>]
+#                      [--interval-min 5] [--max 36] [--name <task>]
+#
+# --environment: the TM runs on another machine; agent_state.txt is then read
+# through the --shell pane (one short command, answer read back with --cursor).
+# Only file lines fire. The screen feeds the stall and the sweep line, nothing else.
+# The TM pane is only ever read, never sent to.
+# Stage carry: each read (the first and every sweep) also takes the last line
+# "STAGE <name>: <stage>[ <i>/<m>] | since ..." of that file (local: the file;
+# another machine: the same one shell command). A value that differs from the last
+# one carried runs this machine's bin/agent-file.sh todo stage <name> <stage> [<i>/<m>]
+# and prints "<HH:MM> stage <name>: <value>"; a refused carry prints one line and
+# the watch goes on. A STAGE line is never a signal.
+#
+# Exits (all code 0, the WATCH line first, then the evidence):
+#   WATCH SIGNAL <name>: <line>   a new file line: DONE PASS/FAIL, CLOSE CASE,
+#                                 QUESTION: or MOCK READY (then the last 15
+#                                 screen lines)
+#   WATCH STALL <name>            3 sweeps, same screen, file unchanged
+#   WATCH LOST <name>             3 failed reads in a row
+#   WATCH MAX <name>              --max sweeps done
+# plain or cloud runtime (AGENT_RUNTIME, agent.conf runtime, CLAUDE_CODE_REMOTE): prints
+# "watch: not used in <kind> mode", exit 0. A probe that alone says plain is tried 3 times
+# (AGENT_WATCH_RETRY_S seconds apart, default 2); plain all 3: exit 1, never 0.
+# WATCH LOST <name>: pane exited (<cause>, exit <code>)  a TM read whose status is not "running"
+#                                 (cause from orca terminal wait --for exit); at once, never a STALL
+#   bin/agent-watch.sh --all [--interval-min 5] [--max n]   one watch for every task: bin/agent_watch.py
+# Missing --terminal/--worktree, or --environment without --shell: usage, exit 2.
+#
+# Env: AGENT_WATCH_INTERVAL_S  seconds between sweeps; wins over --interval-min.
+
+export PYTHONIOENCODING=utf-8
+
+usage() {
+  echo "usage: agent-watch.sh --terminal <TM handle> --worktree <path> [--environment <env> --shell <shell handle>] [--interval-min 5] [--max 36] [--name <task>]"
+  [ -n "$1" ] && echo "agent-watch.sh: $1"
+  exit 2
+}
+
+T=""; W=""; ENVNAME=""; SH=""; MIN=5; MAX=36; NAME=""; ALL=""; MAXGIVEN=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --terminal) T=$2; shift 2 || usage "--terminal needs a value" ;;
+    --worktree) W=$2; shift 2 || usage "--worktree needs a value" ;;
+    --environment) ENVNAME=$2; shift 2 || usage "--environment needs a value" ;;
+    --shell) SH=$2; shift 2 || usage "--shell needs a value" ;;
+    --interval-min) MIN=$2; shift 2 || usage "--interval-min needs a value" ;;
+    --max) MAX=$2; MAXGIVEN=1; shift 2 || usage "--max needs a value" ;;
+    --all) ALL=1; shift ;;
+    --name) NAME=$2; shift 2 || usage "--name needs a value" ;;
+    -h|--help) usage "" ;;
+    *) usage "unknown argument: $1" ;;
+  esac
+done
+
+# runtime (C1, C2): explicit plain/cloud -> not used, exit 0. A probe that alone says
+# plain is tried 3 times; plain all 3 -> exit 1.
+. "$(dirname "$0")/agent-runtime.sh"
+EXPLICIT=""
+case "${AGENT_RUNTIME:-}" in orca|plain|cloud) EXPLICIT=1 ;; esac
+case "$(_runtime_conf_value 2>/dev/null)" in orca|plain|cloud) EXPLICIT=1 ;; esac
+[ "${CLAUDE_CODE_REMOTE:-}" = "true" ] && EXPLICIT=1
+KIND=$(runtime_kind 2>/dev/null)
+if [ "$KIND" = plain ] && [ -z "$EXPLICIT" ]; then
+  TRIES=1
+  while [ "$TRIES" -lt 3 ] && [ "$KIND" = plain ]; do
+    sleep "${AGENT_WATCH_RETRY_S:-2}"
+    KIND=$(runtime_kind 2>/dev/null)
+    TRIES=$((TRIES+1))
+  done
+  if [ "$KIND" = plain ]; then
+    echo "watch: orca did not answer 3 times; a watch needs orca; not watching"
+    exit 1
+  fi
+fi
+case "$KIND" in
+  plain|cloud) echo "watch: not used in $KIND mode"; exit 0 ;;
+esac
+
+awk -v m="$MIN" 'BEGIN{exit !(m ~ /^[0-9]+([.][0-9]+)?$/ && m+0 > 0)}' || usage "--interval-min must be a number above 0"
+
+if [ -n "$ALL" ]; then
+  case "$MAX" in ''|*[!0-9]*) usage "--max must be a number" ;; esac
+  exec python3 "$(dirname "$0")/agent_watch.py" --all --interval-min "$MIN" ${MAXGIVEN:+--max "$MAX"}
+fi
+
+[ -n "$T" ] || usage "missing --terminal"
+[ -n "$W" ] || usage "missing --worktree"
+if [ -n "$ENVNAME" ] && [ -z "$SH" ]; then usage "--environment needs --shell <shell handle>"; fi
+case "$MAX" in ''|*[!0-9]*) usage "--max must be a number" ;; esac
+[ -n "$NAME" ] || NAME=$(basename "$W")
+
+if [ -n "${AGENT_WATCH_INTERVAL_S:-}" ]; then
+  IV=$AGENT_WATCH_INTERVAL_S
+else
+  IV=$(awk -v m="$MIN" 'BEGIN{print m*60}')
+fi
+
+E=()
+[ -n "$ENVNAME" ] && E=(--environment "$ENVNAME")
+ERRF=$(mktemp "${TMPDIR:-/tmp}/agent-watch.XXXXXX")
+trap 'rm -f "$ERRF"' EXIT
+
+RE='^([[][^]]*[]] )?(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)'
+LASTERR=""
+LASTSTAGE=""; FSTAGE=""
+
+# JSON from orca on stdin -> the tail lines (or the cursor with "cursor"); fails
+# when there is no result.terminal.
+json_part() {
+  python3 -c '
+import json, sys
+t = json.load(sys.stdin)["result"]["terminal"]
+if sys.argv[1] == "cursor":
+    sys.stdout.write(str(t.get("latestCursor") or ""))
+elif sys.argv[1] == "status":
+    sys.stdout.write(str(t.get("status") or "running"))
+else:
+    sys.stdout.write("\n".join(str(x) for x in (t.get("tail") or [])))
+' "$1" 2>/dev/null
+}
+
+# LASTERR from a failed orca call: error.code/message from the JSON on stdout
+# ($1), else stderr, else "<what> exit <rc>"
+orca_error() {
+  local msg
+  msg=$(printf '%s' "$1" | python3 -c '
+import json, sys
+e = json.load(sys.stdin).get("error") or {}
+sys.stdout.write(str(e.get("code") or e.get("message") or ""))' 2>/dev/null)
+  [ -n "$msg" ] || msg=$(head -c 300 "$ERRF" | tr '\n' ' ')
+  [ -n "$msg" ] || msg="$2 exit $3"
+  LASTERR=$msg
+}
+
+# orca terminal read <handle> [cursor] -> RAW; sets LASTERR on failure
+orca_read() {
+  local rc
+  if [ -n "$2" ]; then
+    RAW=$(orca terminal read "${E[@]}" --terminal "$1" --cursor "$2" --json 2>"$ERRF"); rc=$?
+  else
+    RAW=$(orca terminal read "${E[@]}" --terminal "$1" --json 2>"$ERRF"); rc=$?
+  fi
+  if [ $rc -ne 0 ]; then
+    orca_error "$RAW" "orca terminal read" "$rc"
+    return 1
+  fi
+  return 0
+}
+
+tm_read() {
+  EXITED=0
+  orca_read "$T" "" || return 1
+  [ "$(printf '%s' "$RAW" | json_part status)" = "running" ] || EXITED=1
+  SCREEN=$(printf '%s' "$RAW" | json_part tail) || { LASTERR="no result.terminal in the TM pane read"; return 1; }
+  return 0
+}
+
+# the last "STAGE <name>: " value of the file $1 (text up to " | since"), local
+stage_of() {
+  awk -v p="STAGE $NAME: " 'index($0,p)==1{v=substr($0,length(p)+1)}END{sub(/ \| since.*/,"",v);print v}' "$1" 2>/dev/null
+}
+
+# sets FN (signal count), FL (line count), FLAST (last signal line), FSTAGE (stage value)
+file_read() {
+  local f q qn cmd cur body rest k mark rc
+  if [ -z "$ENVNAME" ]; then
+    f="$W/agent_state.txt"
+    [ -r "$f" ] || { LASTERR="cannot read $f"; return 1; }
+    FN=$(grep -cE "$RE" "$f")
+    FL=$(wc -l <"$f" | tr -d ' ')
+    FLAST=$(grep -E "$RE" "$f" | tail -1)
+    FSTAGE=$(stage_of "$f")
+    return 0
+  fi
+  orca_read "$SH" "" || return 1
+  cur=$(printf '%s' "$RAW" | json_part cursor)
+  [ -n "$cur" ] || { LASTERR="no latestCursor in the shell pane read"; return 1; }
+  q=$(printf '%s' "$W/agent_state.txt" | sed "s/'/'\\\\''/g")
+  qn=$(printf '%s' "STAGE $NAME: " | sed "s/'/'\\\\''/g")
+  cmd="awk -v R='$RE' -v p='$qn' '\$0~R{n++;l=\$0}index(\$0,p)==1{v=substr(\$0,length(p)+1)}END{sub(/ \\| since.*/,\"\",v);print \"FSIG\",n+0,NR,v \"|\" substr(l,1,100),\"FEND\"}' '$q'"
+  RAW=$(orca terminal send "${E[@]}" --terminal "$SH" --text "$cmd" --enter --json 2>"$ERRF"); rc=$?
+  if [ $rc -ne 0 ]; then
+    orca_error "$RAW" "orca terminal send" "$rc"
+    return 1
+  fi
+  mark=""
+  for k in $(seq 1 20); do
+    if orca_read "$SH" "$cur"; then
+      mark=$(printf '%s' "$RAW" | json_part tail | tr -d '\r' | grep -E '^FSIG [0-9]+ [0-9]+ .*FEND$' | tail -1)
+      [ -n "$mark" ] && break
+    else
+      return 1
+    fi
+    sleep 0.5
+  done
+  [ -n "$mark" ] || { LASTERR="no FSIG marker line in the shell pane"; return 1; }
+  body=${mark#FSIG }; body=${body% FEND}
+  FN=${body%% *}; rest=${body#* }
+  FL=${rest%% *}; rest=${rest#* }
+  FSTAGE=${rest%%|*}; FLAST=${rest#*|}
+  [ "$rest" = "$FLAST" ] && FLAST=""
+  return 0
+}
+
+# a new stage value in FSTAGE -> agent-file.sh todo stage; one line, never stops the watch
+carry_stage() {
+  local st i out
+  [ -n "$FSTAGE" ] && [ "$FSTAGE" != "$LASTSTAGE" ] || return 0
+  LASTSTAGE=$FSTAGE
+  read -r st i <<<"$FSTAGE"
+  if out=$("$(dirname "$0")/agent-file.sh" todo stage "$NAME" "$st" ${i:+"$i"} 2>&1); then
+    echo "$(date '+%H:%M') stage $NAME: $FSTAGE"
+  else
+    echo "$(date '+%H:%M') stage $NAME: not carried ($(printf '%s' "$out" | head -1 | cut -c1-150))"
+  fi
+}
+
+# B11: the TM pane is gone. The cause from orca terminal wait --for exit.
+lost_exited() {
+  local w cause
+  w=$(orca terminal wait "${E[@]}" --terminal "$T" --for exit --timeout-ms 2000 --json 2>/dev/null)
+  cause=$(printf '%s' "$w" | python3 -c '
+import json, sys
+w = json.load(sys.stdin)["result"]["wait"]
+k = w["exitCause"]["kind"]
+c = w.get("exitCode")
+sys.stdout.write("%s, exit %s" % (k, "?" if c is None else c))' 2>/dev/null)
+  [ -n "$cause" ] || cause="cause unknown"
+  echo "WATCH LOST $NAME: pane exited ($cause)"
+  exit 0
+}
+
+last15() { printf '%s\n' "$SCREEN" | tail -15; }
+
+# ---- baselines ----
+BASE_N=""
+PREV_OK=0; PREV_SCREEN=""; PREV_N=""; PREV_L=""
+if file_read; then BASE_N=$FN; PREV_N=$FN; PREV_L=$FL; fi
+set -f
+carry_stage
+if tm_read; then PREV_OK=1; PREV_SCREEN=$SCREEN; fi
+echo "$(date '+%H:%M') watch $NAME: start, file signals already there: ${BASE_N:-unknown}"
+[ "${EXITED:-0}" = 1 ] && lost_exited
+
+same=0; fails=0
+i=1
+while [ "$i" -le "$MAX" ]; do
+  i=$((i+1))
+  sleep "$IV"
+  now=$(date '+%H:%M')
+  tm_read; TMRC=$?
+  if [ "$TMRC" -eq 0 ] && [ "$EXITED" = 1 ]; then lost_exited; fi
+  if ! { [ "$TMRC" -eq 0 ] && file_read; }; then
+    fails=$((fails+1))
+    echo "$now read failed ($fails of 3): $LASTERR"
+    if [ "$fails" -ge 3 ]; then
+      echo "WATCH LOST $NAME"
+      echo "$LASTERR"
+      exit 0
+    fi
+    continue
+  fi
+  fails=0
+
+  carry_stage
+
+  # baselines that could not be read at the start: this read is the baseline
+  if [ -z "$BASE_N" ]; then BASE_N=$FN; fi
+  # a state trim can move old signal lines out: a lower count is the new baseline
+  if [ "$FN" -lt "$BASE_N" ] 2>/dev/null; then BASE_N=$FN; fi
+
+  if [ "$FN" -gt "$BASE_N" ] 2>/dev/null; then
+    echo "WATCH SIGNAL $NAME: $FLAST"
+    last15
+    exit 0
+  fi
+
+  if [ "$PREV_OK" -eq 1 ] && [ "$SCREEN" = "$PREV_SCREEN" ] && [ "$FN" = "$PREV_N" ] && [ "$FL" = "$PREV_L" ]; then
+    same=$((same+1))
+  else
+    same=0
+  fi
+  case "$SCREEN" in *"shell still running"*|*"shells still running"*) same=0 ;; esac
+  PREV_OK=1; PREV_SCREEN=$SCREEN; PREV_N=$FN; PREV_L=$FL
+
+  tail1=$(printf '%s\n' "$SCREEN" | grep -E '⏺|✻' | tail -1 | python3 -c '
+import sys
+sys.stdout.write(sys.stdin.read().rstrip("\n")[:110])' 2>/dev/null)
+  echo "$now same=$same file=$FN | $tail1"
+  if [ "$same" -ge 3 ]; then
+    echo "WATCH STALL $NAME"
+    last15
+    exit 0
+  fi
+done
+
+echo "WATCH MAX $NAME"
+exit 0

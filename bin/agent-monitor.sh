@@ -1,0 +1,300 @@
+#!/usr/bin/env bash
+# agent-monitor.sh — background health sweep of live worktrees (rule S1).
+#
+#   ./agent-monitor.sh start    start the background loop
+#   ./agent-monitor.sh stop     stop it
+#   ./agent-monitor.sh status   pid and the time of the last sweep
+#   ./agent-monitor.sh once     one sweep, then print the file
+#   ./agent-monitor.sh -h       this help
+#
+# The loop also runs `agent-housekeep.sh --apply` every housekeep_interval_min
+# minutes (agent.conf, 0 = off), after a sweep, and only when the session that
+# started the loop is the main manager and the main-manager lock names a live
+# pid. Plain and cloud have no loop, so there you run agent-housekeep.sh --apply
+# by hand.
+#
+# One sweep reads agent_worktree.txt (main repo) and writes agent_monitor.txt
+# (main repo), one line per worktree line, written atomically (tmp + mv).
+#
+# Orca is not the only runtime (bin/agent-runtime.sh). Plain and cloud have no
+# other terminals to sweep, and a cloud session kills a background process
+# anyway, so start/once/status just say the loop is not used there, no pid
+# file, no sweep, orca never called. `stop` is unchanged in every mode, so a
+# loop left over from an Orca session can still be killed after switching.
+#
+# The loop's wait is a child `sleep`; its TERM trap kills that sleep too, so
+# a plain TERM from anyone (relief included), not just `stop`, leaves nothing
+# behind. `stop` also reads the loop's children before killing it and kills
+# them after, in case an older copy's loop left its sleep running on its own.
+
+set -eu
+. "$(dirname "$0")/agent-roots.sh"
+roots_read
+conf_read
+
+usage() {
+  cat <<'EOF'
+agent-monitor.sh — background health sweep of live worktrees.
+
+  ./agent-monitor.sh start    start the background loop
+  ./agent-monitor.sh stop     stop it
+  ./agent-monitor.sh status   pid and the time of the last sweep
+  ./agent-monitor.sh once     one sweep, then print the file
+  ./agent-monitor.sh -h       this help
+
+The loop runs agent-housekeep.sh --apply every housekeep_interval_min minutes
+(agent.conf, 0 = off), main manager only.
+In plain and cloud there is no loop: run agent-housekeep.sh --apply by hand.
+EOF
+}
+
+GITDIR="$PROJECT_GITDIR"
+ROOT="$PROJECT_ROOT"
+mkdir -p "$GITDIR" 2>/dev/null || true
+: "${stall_min:=10}"
+: "${monitor_interval_min:=5}"
+
+. "$PLUGIN_ROOT/bin/agent-runtime.sh"
+KIND=$(runtime_kind)
+# Reused for the one-shot work below (the initial sweep in `start`, or the
+# single sweep in `once`). The background loop `start` forks unsets it again
+# before it begins looping: that loop lives for hours and must re-derive the
+# kind on its own, sweep by sweep, never pinned to this one moment.
+export AGENT_RUNTIME="$KIND"
+
+PIDFILE="$GITDIR/agent_monitor.pid"
+LASTSWEEP="$GITDIR/agent_monitor.lastsweep"
+WT="$ROOT/agent_worktree.txt"
+MON="$ROOT/agent_monitor.txt"
+
+not_used_line() {
+  echo "monitor: not used in $KIND mode"
+}
+
+running() {
+  [ -f "$PIDFILE" ] || return 1
+  pid=$(awk '{print $1}' "$PIDFILE" 2>/dev/null || true)
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+sweep() {
+  # Called straight by the forked loop in `start`, which unsets AGENT_RUNTIME
+  # first and then runs for hours: the kind must be re-derived here, fresh,
+  # every call, never assumed from the moment `start` began.
+  kind=$(runtime_kind)
+  [ "$kind" = "orca" ] || return 0
+  ts=$(date '+%Y-%m-%d %H:%M')
+  tmp="$ROOT/agent_monitor.txt.tmp.$$"
+  : > "$tmp"
+  if [ -s "$WT" ]; then
+    ps_tsv=""
+    if ps_out=$(runtime_ps 2>/dev/null); then
+      # Empty output is orca answering with nothing to say, not a JSON
+      # failure -- feeding it to json.load would raise and, under set -eu,
+      # take the whole loop down with it.
+      if [ -n "$ps_out" ]; then
+        ps_tsv=$(printf '%s' "$ps_out" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+for w in data.get("result", {}).get("worktrees", []):
+    path = w.get("path", "")
+    agents = w.get("agents") or []
+    state = agents[0].get("state") if agents else None
+    lo = w.get("lastActivityAt")
+    print("%s\t%s\t%s" % (path, state if state else "none", lo if lo is not None else ""))
+')
+      fi
+    else
+      echo "orca is not answering"
+    fi
+    now_ms=$(python3 -c 'import time; print(int(time.time()*1000))')
+    now_epoch=$(date +%s)
+    while IFS= read -r line || [ -n "$line" ]; do
+      [ -z "$line" ] && continue
+      path=$(printf '%s' "$line" | awk -F' \\| ' '{print $1}')
+      module=$(printf '%s' "$line" | awk -F' \\| ' '{print $2}')
+
+      match=$(printf '%s\n' "$ps_tsv" | awk -F'\t' -v p="$path" '$1==p{print; exit}')
+      if [ -n "$match" ]; then
+        pane=$(printf '%s' "$match" | cut -f2)
+        lo=$(printf '%s' "$match" | cut -f3)
+      else
+        pane="none"; lo=""
+      fi
+
+      if [ -n "$lo" ]; then
+        out_min=$(( (now_ms - lo) / 60000 ))
+        out_disp="${out_min}m ago"
+      else
+        out_disp="none"
+      fi
+
+      ct=""
+      if [ -d "$path" ]; then
+        toplevel=$(git -C "$path" rev-parse --show-toplevel 2>/dev/null) || toplevel=""
+        real_path=$(cd "$path" && pwd -P)
+        if [ -n "$toplevel" ] && [ "$toplevel" = "$real_path" ]; then
+          ct=$(git -C "$path" log -1 --format=%ct 2>/dev/null) || ct=""
+        fi
+      fi
+      if [ -n "$ct" ]; then
+        commit_min=$(( (now_epoch - ct) / 60 ))
+        commit_disp="${commit_min}m ago"
+      else
+        commit_disp="none"
+      fi
+
+      verdict="STALL"
+      [ "$pane" = "working" ] && verdict="OK"
+      if [ "$verdict" = "STALL" ] && [ -n "$ct" ] && [ "$commit_min" -lt "$stall_min" ]; then verdict="OK"; fi
+      if [ "$verdict" = "STALL" ] && [ -n "$lo" ] && [ "$out_min" -lt "$stall_min" ]; then verdict="OK"; fi
+
+      printf '%s | %s | pane %s | commit %s | activity %s | %s | %s\n' \
+        "$path" "$module" "$pane" "$commit_disp" "$out_disp" "$verdict" "$ts" >> "$tmp"
+    done < "$WT"
+  fi
+  mv "$tmp" "$MON"
+  echo "$ts" > "$LASTSWEEP"
+}
+
+# Housekeep pass, run by the forked loop after a sweep. Every read is fresh.
+# Never ends the loop: every command is guarded.
+hk_interval() {
+  local v=""
+  v=$(sed -n 's/^housekeep_interval_min=//p' "$ROOT/agent.conf" 2>/dev/null | tail -n 1) || v=""
+  v=$(printf '%s' "$v" | tr -d '[:space:]"'"'"'') || v=""
+  case "$v" in
+    ""|*[!0-9]*) v=120;;
+  esac
+  printf '%s\n' "$((10#$v))"
+}
+
+housekeep_round() {
+  local n lp="" last="" now due=1
+  n=$(hk_interval) || return 0
+  [ "$n" -gt 0 ] 2>/dev/null || return 0
+  [ -f "$GITDIR/agent_main.lock" ] || return 0
+  lp=$(awk 'NR==1{print $1; exit}' "$GITDIR/agent_main.lock" 2>/dev/null) || lp=""
+  case "$lp" in ""|*[!0-9]*) return 0;; esac
+  kill -0 "$lp" 2>/dev/null || return 0
+  if [ -f "$GITDIR/agent_housekeep.last" ]; then
+    last=$(awk 'NR==1{print $1; exit}' "$GITDIR/agent_housekeep.last" 2>/dev/null) || last=""
+    case "$last" in
+      ""|*[!0-9]*) due=1;;
+      *)
+        now=$(date +%s) || return 0
+        if [ "$((now - 10#$last))" -ge "$((n * 60))" ]; then due=1; else due=0; fi;;
+    esac
+  fi
+  [ "$due" -eq 1 ] || return 0
+  [ -x "$PLUGIN_ROOT/bin/agent-housekeep.sh" ] || return 0
+  env -u AGENT_ROLE CLAUDE_PID="$lp" "$PLUGIN_ROOT/bin/agent-housekeep.sh" --apply \
+    </dev/null >/dev/null 2>&1 &
+  hk_pid=$!
+  wait "$hk_pid" 2>/dev/null || true
+  hk_pid=""
+  return 0
+}
+
+do_once() {
+  if [ "$KIND" != "orca" ]; then
+    not_used_line
+    return 0
+  fi
+  sweep
+  if [ -s "$MON" ]; then
+    cat "$MON"
+  else
+    echo "(no live worktrees)"
+  fi
+}
+
+do_start() {
+  if [ "$KIND" != "orca" ]; then
+    not_used_line
+    return 0
+  fi
+  if running; then
+    pid=$(awk '{print $1}' "$PIDFILE")
+    echo "monitor: already running (pid $pid)"
+    return 0
+  fi
+  sweep
+  hk_allowed=0
+  role_read || true
+  [ "${role:-}" = "main" ] && hk_allowed=1
+  (
+    unset AGENT_RUNTIME
+    sleep_pid=""
+    hk_pid=""
+    trap '[ -n "$sleep_pid" ] && kill "$sleep_pid" 2>/dev/null || true; [ -n "$hk_pid" ] && kill "$hk_pid" 2>/dev/null || true; rm -f "$PIDFILE"; exit 0' TERM
+    while true; do
+      sleep "$((monitor_interval_min * 60))" &
+      sleep_pid=$!
+      wait "$sleep_pid" 2>/dev/null || true
+      sweep
+      if [ "$hk_allowed" -eq 1 ]; then housekeep_round || true; fi
+    done
+  ) >/dev/null 2>&1 </dev/null &
+  pid=$!
+  disown "$pid" 2>/dev/null || true
+  echo "$pid" > "$PIDFILE"
+  echo "monitor: started (pid $pid)"
+  echo "sweeping every $monitor_interval_min minutes"
+}
+
+# Unchanged in every mode: a loop started in a previous Orca session must
+# still be stoppable after the owner switches to plain or cloud.
+do_stop() {
+  if running; then
+    pid=$(awk '{print $1}' "$PIDFILE")
+    children=$(pgrep -P "$pid" 2>/dev/null || true)
+    kill -TERM "$pid" 2>/dev/null || true
+    for child in $children; do
+      kill "$child" 2>/dev/null || true
+    done
+    rm -f "$PIDFILE"
+    echo "monitor: stopped"
+  else
+    rm -f "$PIDFILE" 2>/dev/null || true
+    echo "monitor: not running"
+  fi
+}
+
+do_status() {
+  if [ "$KIND" != "orca" ]; then
+    not_used_line
+    return 0
+  fi
+  if running; then
+    pid=$(awk '{print $1}' "$PIDFILE")
+    echo "monitor: running (pid $pid)"
+  else
+    echo "monitor: not running"
+  fi
+  if [ -f "$LASTSWEEP" ]; then
+    echo "last sweep: $(cat "$LASTSWEEP")"
+  else
+    echo "last sweep: (none)"
+  fi
+  n=$(hk_interval)
+  if [ "$n" = "0" ]; then
+    echo "housekeep: off"
+  else
+    hk_last=""
+    if [ -f "$GITDIR/agent_housekeep.last" ]; then
+      hk_last=$(awk 'NR==1{$1=""; sub(/^ +/,""); print; exit}' "$GITDIR/agent_housekeep.last" 2>/dev/null) || hk_last=""
+    fi
+    echo "housekeep: every $n minutes, last ${hk_last:-(none)}"
+  fi
+}
+
+[ $# -eq 0 ] && { usage; exit 2; }
+case "$1" in
+  -h|--help) usage; exit 0;;
+  once) do_once;;
+  start) do_start;;
+  stop) do_stop;;
+  status) do_status;;
+  *) usage; exit 2;;
+esac
