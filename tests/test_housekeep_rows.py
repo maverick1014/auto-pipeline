@@ -228,5 +228,39 @@ class TestFileRows(RowsCase):
         self.assertTrue(git(self.repo.dir, "branch", "--list", "feat/old"))
 
 
+class TestFileRowsBounce1(RowsCase):
+    """Reviewer findings 2, 3, 6 and the E2E finding (2026-11-24)."""
+
+    def test_line_numbers_count_newlines_only(self):
+        with open(os.path.join(self.repo.dir, "agent_ideas.txt"), "w", newline="") as fh:
+            fh.write("progress 10%\r100% done | 2026-11-01 10:00 | by main\n"
+                     "add dark mode | 2026-11-01 10:00 | by main\n"
+                     "add dark mode | 2026-11-02 11:00 | by main\n")
+        ideas = self.rows()["ideas"]
+        self.assertEqual([(i["n"], i["why"]) for i in ideas], [(3, "a duplicate of idea 2")])
+
+    def test_a_kept_duplicate_is_no_row(self):
+        self.set_file("agent_ideas.txt", [
+            "add dark mode | 2026-11-01 10:00 | by main",
+            "add dark mode | 2026-11-02 11:00 | by main | kept 2026-11-05"])
+        self.assertEqual(self.rows()["ideas"], [])
+
+    def test_an_existing_folder_is_no_worktree_row(self):
+        folder = os.path.join(self.repo.base, "not-a-worktree")
+        os.mkdir(folder)
+        self.set_file("agent_worktree.txt", [
+            "%s | live-task | working | since 2026-11-20 10:00" % folder])
+        self.assertEqual(self.rows()["worktrees"], [])
+
+    def test_per_machine_agent_files_are_never_gone(self):
+        self.assertFalse(os.path.exists(os.path.join(self.repo.dir, "agent_state.txt")))
+        self.set_file("agent_ideas.txt", [
+            "grep the worktree agent_state.txt for DONE | 2026-11-20 10:00 | by main",
+            "agent_monitor.txt keeps old lines | 2026-11-20 10:00 | by main",
+            "see agent_gone.txt for it | 2026-11-20 10:00 | by main"])
+        ideas = self.rows()["ideas"]
+        self.assertEqual([(i["n"], i["why"]) for i in ideas],
+                         [(3, "names agent_gone.txt, no such file")])
+
 if __name__ == "__main__":
     unittest.main()

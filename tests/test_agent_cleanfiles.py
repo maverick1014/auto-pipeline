@@ -1015,6 +1015,151 @@ class TestEdges(FilesCase):
                       self.lines(out))
 
 
+# ---------------------------------------------------------------- bounce 1
+# reviewer (Opus xhigh) findings 1-9, 11 and the E2E finding, 2026-11-24
+
+
+class TestBounce1(FilesCase):
+
+    def test_r1_a_name_with_pathspec_magic_removes_only_itself(self):
+        self.write(":x.md")
+        self.write("x.md")
+        self.commit_all()
+        out = self.dry()
+        self.assertOk(self.yes(self.id_of(out, ":x.md")))
+        self.assertFalse(os.path.exists(self.p(":x.md")))
+        self.assertTrue(os.path.exists(self.p("x.md")))
+        self.assertEqual(git(self.repo.dir, "ls-files", "x.md"), "x.md")
+
+    def test_r2_line_numbers_count_newlines_only(self):
+        ideas = ["progress 10%\r100% done | 2026-11-01 10:00 | by main",
+                 "add dark mode | 2026-11-01 10:00 | by main",
+                 "add dark mode | 2026-11-02 11:00 | by main",
+                 "KEEP ME | 2026-11-03 10:00 | by main"]
+        with open(self.p("agent_ideas.txt"), "w", newline="") as fh:
+            fh.write("".join(l + "\n" for l in ideas))
+        out = self.dry()
+        rows = [v for i, v in self.rows(out).items() if i.startswith("I")]
+        self.assertEqual([v[1] for v in rows], ["agent_ideas.txt line 3"])
+        self.assertOk(self.yes("I1"))
+        with open(self.p("agent_ideas.txt"), newline="") as fh:
+            left = fh.read().split("\n")[:-1]
+        self.assertEqual(left, [ideas[0], ideas[1], ideas[3]])
+
+    def test_r3_a_kept_duplicate_is_never_listed(self):
+        self.set_file("agent_ideas.txt", [
+            "add dark mode | 2026-11-01 10:00 | by main",
+            "add dark mode | 2026-11-02 11:00 | by main | kept 2026-11-05"])
+        self.assertEqual([i for i in self.rows(self.dry()) if i.startswith("I")], [])
+
+    def test_r4_a_failing_commit_puts_the_files_back(self):
+        self.write("a.md")
+        self.write("b.md")
+        self.commit_all()
+        hook = os.path.join(self.gitdir, "hooks", "pre-commit")
+        os.makedirs(os.path.dirname(hook), exist_ok=True)
+        with open(hook, "w") as fh:
+            fh.write("#!/bin/sh\necho lint failed >&2\nexit 1\n")
+        os.chmod(hook, 0o755)
+        self.dry()
+        head = self.head()
+        res = self.yes("all")
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("FAILED at D1", res.stdout + res.stderr)
+        self.assertTrue(os.path.exists(self.p("a.md")))
+        self.assertTrue(os.path.exists(self.p("b.md")))
+        self.assertEqual(self.head(), head)
+        self.assertEqual(self.status(), "")
+
+    def test_r5_a_padded_worktree_path_line_goes(self):
+        gone = os.path.join(self.repo.base, "gone-a")
+        self.set_file("agent_worktree.txt", ["%s  | gone-a | idle | since 2026-11-20 10:00" % gone])
+        out = self.dry()
+        wid = [i for i in self.rows(out) if i.startswith("W")][0]
+        self.assertOk(self.yes(wid))
+        self.assertEqual(self.read("agent_worktree.txt").strip(), "")
+
+    def test_r5_every_line_that_goes_is_backed_up(self):
+        gone = os.path.join(self.repo.base, "gone-b")
+        lines = ["%s | gone-b | idle | since 2026-11-20 10:00" % gone,
+                 "%s | gone-b | idle | since 2026-11-21 10:00" % gone]
+        self.set_file("agent_worktree.txt", lines)
+        self.dry()
+        self.assertOk(self.yes("W1"))
+        self.assertEqual(self.read("agent_worktree.txt").strip(), "")
+        backups = glob.glob(os.path.join(self.gitdir, "agent-cleanup", "*.txt"))
+        with open(backups[0]) as fh:
+            text = fh.read().splitlines()
+        for line in lines:
+            self.assertIn("agent_worktree.txt | " + line, text)
+
+    def test_r5_two_rows_of_one_path_both_picked(self):
+        gone = os.path.join(self.repo.base, "gone-c")
+        self.set_file("agent_worktree.txt", [
+            "%s | gone-c | idle | since 2026-11-20 10:00" % gone,
+            "%s | gone-c | idle | since 2026-11-21 10:00" % gone])
+        self.dry()
+        out = self.assertOk(self.yes("all"))
+        self.assertEqual(self.read("agent_worktree.txt").strip(), "")
+        self.assertEqual(self.lines(out)[-1], "clean-up: removed 2 of 2 picked")
+
+    def test_r6_an_existing_folder_is_never_a_worktree_row(self):
+        folder = os.path.join(self.repo.base, "not-a-worktree")
+        os.mkdir(folder)
+        self.set_file("agent_worktree.txt", ["%s | live-task | working | since 2026-11-20 10:00" % folder])
+        self.assertEqual([i for i in self.rows(self.dry()) if i.startswith("W")], [])
+
+    def test_r7_in_use_with_many_candidates(self):
+        for n in range(30):
+            self.write("old/n%02d.md" % n)
+        self.write("bin/tool.sh", 'cat "old/n07.md"\ncat "n21.md"\n')
+        self.commit_all()
+        out = self.dry()
+        kept = self.kept(out)
+        self.assertEqual(kept.get("old/n07.md"), "in use: bin/tool.sh")
+        self.assertEqual(kept.get("old/n21.md"), "in use: bin/tool.sh")
+        self.assertEqual(len([i for i in self.rows(out) if i.startswith("D")]), 28)
+
+    def test_r8_removing_the_last_todo_line_runs_no_sweep(self):
+        r = self.repo
+        git(r.dir, "checkout", "-q", "-b", "feat/old")
+        self.write("old.txt")
+        self.commit_all("old", push=False)
+        git(r.dir, "push", "-q", "origin", "feat/old")
+        git(r.dir, "checkout", "-q", "main")
+        git(r.dir, "merge", "-q", "--no-ff", "-m", "Merge old", "feat/old")
+        git(r.dir, "push", "-q", "origin", "main")
+        self.set_file("agent_todo.txt", [
+            "old | big | x | est 30m | opened 2026-11-20 08:00 | by main"])
+        out = self.dry()
+        self.assertOk(self.yes(self.id_of(out, "todo old")))
+        self.assertEqual(self.read("agent_todo.txt").strip(), "")
+        self.assertTrue(git(r.dir, "branch", "--list", "feat/old"))
+        self.assertTrue(git(self.origin, "branch", "--list", "feat/old"))
+
+    def test_r9_an_invalid_docs_keep_says_so(self):
+        self.write("notes.md")
+        self.commit_all()
+        self.repo.set_conf("docs_keep", "my docs/")
+        lines = self.lines(self.dry())
+        self.assertFalse(any(l.startswith("note: docs_keep not set") for l in lines))
+        self.assertTrue(any(l.startswith("note: docs_keep not valid") for l in lines), lines)
+
+    def test_r11_the_idea_what_keeps_the_whole_text(self):
+        self.set_file("agent_ideas.txt", [
+            "use a | b pipe | 2026-11-01 10:00 | by main",
+            "use a | b pipe | 2026-11-02 10:00 | by main"])
+        rows = self.rows(self.dry())
+        self.assertEqual(rows["I1"][0], "idea: use a / b pipe")
+
+    def test_e2e_per_machine_agent_files_are_never_gone(self):
+        self.assertFalse(os.path.exists(self.p("agent_state.txt")))
+        self.set_file("agent_ideas.txt", [
+            "grep the worktree agent_state.txt for DONE | 2026-11-20 10:00 | by main",
+            "agent_monitor.txt keeps old lines | 2026-11-20 10:00 | by main"])
+        self.assertEqual([i for i in self.rows(self.dry()) if i.startswith("I")], [])
+
+
 # ---------------------------------------------------------------- conf, skill
 
 
