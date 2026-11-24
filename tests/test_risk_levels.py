@@ -155,8 +155,8 @@ import agent_conf  # noqa: E402
 NOW = "2026-11-20 10:00"
 FILE_LINE = re.compile(r"^(\S+): L([0-4]) (.+)$")
 
-ANSWERS = ("1A 2D 3C 4B 5D 6D 7A 8C 9A 10D 11A 12C 13D 14C 15B 16C 17C "
-           "18D 19B 20A 21D 22C 23B 24D 25A 26D 27A 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39D")
+ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
+           "18D 19C 20A 21D 22C 23B 24D 25C 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39D")
 
 # Q38 and Q39 as the quiz prints them (the worker writes them into bin/agent-start.sh as is).
 QUIZ_Q38 = """Q38. A task changes one colour value in one component: #1e88e5 becomes #43a047. Its risk level:

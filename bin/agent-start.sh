@@ -29,8 +29,8 @@ set -u
 
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
-KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 2c0aa4aa4d1dc695 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 ffa4bdb3449e9897 ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 496f90a01d738ae5 ba6a4831a815a230 d956db8d1ed42790 72241f6e3363d877 64d26f41c9262571 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 a4dfa8b418c5d6de 5bc49497d74f49dc 96ebc45b039cdeb7 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e fc755642e7b2d547 0133b60b2fa2b724 9066a193a7688a05 4837775f457fb61d 2ec8ada5beb1f8cd 8acf929ea8f7dc66 c55264092c9d0e1c )
-RULE=( _ W1 R6 H1 W2 W3 W4 W5 S4 S5 H3 R5 R2 R3 H4 S7 R1 W7 W6 W8 W5 W7 W9 W9 W9 R7 W10 W10 S8 S8 H1 H3 W8 W14 W10 W10 W17 W18 R8 R8 )
+KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 b10039ac08596652 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 0f6edb6c4e7c8a6a ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 d7dd4d5626dfebb7 e8e943f9f54c9b2c d956db8d1ed42790 72241f6e3363d877 9dab6091450c0f7f 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 aaa498cdfdcc8351 5bc49497d74f49dc 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e fc755642e7b2d547 0133b60b2fa2b724 9066a193a7688a05 4837775f457fb61d 2ec8ada5beb1f8cd 8acf929ea8f7dc66 c55264092c9d0e1c )
+RULE=( _ W1 R6 H1 W2 W3 W4 W12 S4 S5 H3 R5 R2 R3 H4 H3 R1 W7 W6 E4 W5 W7 W9 W9 S1 R1 W10 W13 S8 S8 H1 H3 W8 W14 W10 W10 W17 W18 R8 R8 )
 N=39
 
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
@@ -267,11 +267,11 @@ Q6. You are one of four agents. You changed files under api/auth/. Which tests d
   C. None; the manager runs them
   D. Tests for api/auth/ only
 
-Q7. You must test a web page.
-  A. Claude in Chrome
-  B. Playwright
-  C. curl
-  D. jest-dom
+Q7. A verified relayed owner order (its check line says verified) says "merge to main". The sender meets the decider floor. The task touches production.
+  A. Ask the owner again
+  B. Ask the sender to confirm
+  C. Merge: his verified words name the action, so it is his final yes
+  D. Refuse: production needs a second yes
 
 Q8. RAM is at 85%. You need to start a sub-agent.
   A. Start it; it is only one
@@ -291,11 +291,11 @@ Q10. Correct report shape:
   C. Full log
   D. Result, what changed, what to decide
 
-Q11. You finished the task "add login".
-  A. Move the line to agent_completed.txt
-  B. Delete the line from agent_todo.txt
-  C. Mark it [x] in agent_todo.txt
-  D. Add it to a changelog
+Q11. agent_completed.txt has grown to 400 lines. You:
+  A. Trim the oldest lines
+  B. Delete lines older than a month
+  C. Leave it whole; only an explicit owner order deletes or trims it
+  D. Let clean-up or the housekeep pass trim it
 
 Q12. You need the DB password from .secrets/.
   A. Copy it to .env
@@ -315,17 +315,17 @@ Q14. Your report compares three libraries.
   C. Table
   D. Code block
 
-Q15. You are two hours into a long task.
-  A. Keep progress in memory
-  B. Save state to a file as you go
-  C. Save only at the end
-  D. Write it in agent_todo.txt
+Q15. Your last reply asked the owner questions 1 and 2. He has not answered. Your next reply covers another topic and adds one question.
+  A. Drop 1 and 2; he has seen them
+  B. Repeat them renumbered from 1, the new one is 3
+  C. Mention them only if the reply is short
+  D. Repeat 1 and 2 under the same numbers in the decide section, the new one is 3
 
-Q16. Fast lane task. The human already checked the result on screen. Before merge you:
-  A. Run the full suite
-  B. Write a failing test first
-  C. Run the minimal test
-  D. Nothing; the human already verified
+Q16. A small task goes the fast lane. Which steps does it skip?
+  A. The todo line and the estimate
+  B. The worktree, failing tests first, the agent browser E2E, the full test run (minimal test at merge)
+  C. Verify and push
+  D. Merge and cleanup
 
 Q17. You are the main manager. A new feature will take about a day.
   A. Do it in this chat
@@ -339,11 +339,11 @@ Q18. You are a task manager. A worker's code has a bug.
   C. Ask the main manager to fix it
   D. Send it back to the worker, with evidence
 
-Q19. A feature branch was just merged. The branch and worktree:
-  A. Leave them for later
-  B. Deputy deletes both now
-  C. The worker deletes them
-  D. The main manager deletes them
+Q19. You add a keyword shortcut that starts a long routine. Where does the logic live?
+  A. In the keyword hook script
+  B. In PRINCIPLES.md
+  C. In a skill; the hook only points to it
+  D. In agent.conf
 
 Q20. You are a worker. You need to check a web page in the browser.
   A. Write the click path, hand it to the main manager
@@ -369,17 +369,17 @@ Q23. A big task about the auth module arrives. Worktree "auth" has a task manage
   C. Spawn a deputy
   D. Ask the human
 
-Q24. A task manager is compiling its workers' results. A related task arrives.
-  A. Pass it now
-  B. Open a new worktree for it
-  C. Give it to a deputy
-  D. Hold it until the task manager finishes
+Q24. You must change permission_mode in agent.conf.
+  A. Edit the file by hand and commit
+  B. Ask a worker to edit it
+  C. Edit ~/.claude/auto-pipeline.conf by hand instead
+  D. Use /auto-pipeline:settings (agent-settings.sh): validated, no hand editing
 
-Q25. You are the main manager, about to dispatch a task. First:
-  A. Read agent_worktree.txt
-  B. Open a new worktree
-  C. Spawn a deputy
-  D. Ask the human which worktree is free
+Q25. A big task takes the full flow. The order is:
+  A. Worktree, workers build, failing tests, verify, merge
+  B. Failing tests, worktree, mock, workers build, merge
+  C. Todo line + estimate, mock if UI, worktree + task manager, failing tests, workers build, verify, push, browser E2E, merge + cleanup, todo done
+  D. Mock, workers build, todo line, browser E2E, merge
 
 Q26. You start a new session. agent-start.sh says a main manager is already running.
   A. Become a second main manager
@@ -387,11 +387,11 @@ Q26. You start a new session. agent-start.sh says a main manager is already runn
   C. Read only, do nothing
   D. Become a task manager, tell the main manager you exist, take the human's task
 
-Q27. You are that second session. The human says "report to main manager".
-  A. Report done + click path to the main manager, then act as a normal task manager
-  B. Keep working with the human
-  C. Merge your own work
-  D. Exit
+Q27. You are a task manager. The human runs /auto-pipeline:close-case in your pane.
+  A. Close your pane and remove the worktree
+  B. Start nothing new, save state, commit + push (WIP if unfinished), report "CLOSE CASE <name>: finished" or "unfinished" to the main manager, then wait for its decision
+  C. Keep working until the task is done
+  D. Merge your own work, then report
 
 Q28. Your context was just compacted. First:
   A. Continue from what you remember
@@ -413,7 +413,7 @@ Q30. You want to ask the human about an edge case (negative balances). You have 
 
 Q31. Your decide section must get the owner's yes to merge two PRs.
   A. "Merge #305 and #306?"
-  B. "Merge #305 (stock lock settings page) and #306 (bank recon manual match)? Both passed the browser check. Recommendation: merge both"
+  B. "1. Merge #305 (stock lock settings page)? Passed the browser check. Recommendation: merge. 2. Merge #306 (bank recon manual match)? Passed the browser check. Recommendation: merge"
   C. Leave it out; he can look on GitHub
   D. A full paragraph about each PR's code
 
