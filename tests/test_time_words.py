@@ -42,8 +42,8 @@ skills/close-case/SKILL.md
 agents/merge-deputy.md
     the brief value "todo done arguments"; step 7 adds `--merge <merge hash>`.
 
-bin/agent-close-case.sh
-    the hook's report line says `wait <n>m`, never `human <n>m`.
+skills/close-case/SKILL.md
+    part C: the report line says `wait <n>m`, never `human <n>m`.
 
 README.md
     the command list shows `agent-file.sh time`, `data`, `eta`.
@@ -290,7 +290,7 @@ class TestMergeDeputy(unittest.TestCase):
 class TestCloseCaseHook(unittest.TestCase):
 
     def test_the_hook_asks_for_wait_not_human_minutes(self):
-        text = read("bin", "agent-close-case.sh")
+        text = read("skills", "close-case", "SKILL.md")
         self.assertIn("TIME: est <n>m, actual <n>m, wait <n>m", text)
         self.assertNotIn("human <n>m", text)
 

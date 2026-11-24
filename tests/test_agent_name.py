@@ -447,27 +447,24 @@ class TestCloseCaseNamesTheManager(ScriptCase):
 
     script = "agent-close-case.sh"
 
-    def close_case(self, env):
+    def skill(self):
+        with open(os.path.join(ROOT, "skills", "close-case", "SKILL.md")) as fh:
+            return fh.read()
+
+    def test_task_manager(self):
+        part_c = self.skill().split("## C.", 1)[1].split("## B.", 1)[0]
+        self.assertIn("`<repo> Manager`", part_c)
+        self.assertIn("`<repo>-<xx>`", part_c)
+
+    def test_the_hook_prints_nothing_for_the_words(self):
         with open(self.repo.path(".git", "agent_main.lock"), "w") as fh:
             fh.write("%s 2026-09-30 10:00\n" % os.getpid())
         stdin = json.dumps({"session_id": "s", "transcript_path": "/tmp/n.jsonl",
                             "cwd": self.repo.cwd, "permission_mode": "auto",
-                            "hook_event_name": "UserPromptSubmit",
-                            "prompt": "close case"})
-        result = self.repo.run("agent-close-case.sh", env=dict({"CLAUDE_PID": NOBODY}, **env),
-                               stdin=stdin)
+                            "hook_event_name": "UserPromptSubmit", "prompt": "close case"})
+        result = self.repo.run("agent-close-case.sh", env={"CLAUDE_PID": NOBODY}, stdin=stdin)
         self.assertOk(result)
-        return result.stdout
-
-    def test_task_manager(self):
-        out = self.close_case({"AGENT_ROLE": "task-manager"})
-        self.assertIn('"project Manager"', out)
-        self.assertIn('"project-<xx>"', out)
-
-    def test_human_direct(self):
-        out = self.close_case({})
-        self.assertIn('"project Manager"', out)
-        self.assertIn('"project-<xx>"', out)
+        self.assertEqual(result.stdout, "")
 
 
 # ---------------------------------------------------------------------------

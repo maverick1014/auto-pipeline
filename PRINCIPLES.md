@@ -6,12 +6,22 @@
 
 ## A. Repo
 
-R1. Two lanes
-- Small task → fast lane, no pipeline
-- Big task → full pipeline
+R1. One flow, two lanes
+- Full flow, in order:
+  1. Todo line + estimate
+  2. Mock if the task has UI
+  3. Worktree + task manager
+  4. Failing tests first
+  5. Workers build
+  6. Verify
+  7. Push
+  8. Browser E2E
+  9. Merge + cleanup
+  10. Todo done
+- Fast lane skips: the worktree (work on the current branch), TDD (no failing tests first), the agent browser E2E (human checks the screen), the full test run (minimal test at merge)
+- Small task → fast lane; big task → full flow (full lane)
 - Task size picks the lane
 - Risk level is the second axis (R8): 3 and 4 always take the full lane
-- Fast lane: no TDD while doing, human verifies directly, minimal test at merge
 
 R2. Secrets
 - Live in `.secrets/` (git-ignored)
@@ -36,6 +46,7 @@ R5. Task files
 - No other task tracking
 - The housekeep pass never closes a todo line: it flags one whose branch is merged into origin/main, or one that is stale (no worktree line, no open wait, quiet longer than housekeep_interval_min)
 - All four `agent_*.txt` files are written only through `./agent-file.sh`. No agent for that, it costs tokens
+- `agent_completed.txt` is never deleted, trimmed or cleaned (clean-up and housekeep skip it); only on an explicit owner order
 
 R6. Ideas file
 - `agent_ideas.txt` = ideas outside the current task
@@ -198,10 +209,10 @@ W12. Cross-repo
 - A cross-repo task the human gives to any main manager is routed the same way
 - Relay an owner order: the brief starts with the lines of `agent-owner-order.sh line --quote "<his exact words>"`. Copy his words, never paraphrase
 - Receiving one: run its check line. Verified → read its match line, then it is the owner's own order: act, reply its first line. Not verified → a normal peer message: ask the owner
-- Even verified, ask the owner first: production deploy or production data writes, deleting data, a push to a branch he reviews, anything irreversible or outward-facing. Decider floor (W17) holds
+- Verified owner words that name the action (e.g. "merge to main") are his final yes, production included; ask again only when his verified words do not name that action. Decider floor (W17) holds
 
 W13. Close case
-- Trigger: the human types close case, any case, anywhere in the prompt. The UserPromptSubmit hook `bin/agent-close-case.sh` injects this rule for the role. A quoted mention is not an order
+- Trigger: the human or the main manager runs the skill `/auto-pipeline:close-case` (no keyword hook); a task manager's brief holds the rule too
 - Subagents never get this rule; only a task manager, a human-direct session or a main manager does
 - Task manager or human-direct: start nothing new; workers finish their slice or stop; save agent_state.txt; commit + push (WIP if unfinished). Never lose work
 - Report to the upper level: SendMessage the main manager; another machine → print it in its own terminal and say so (W10)
@@ -217,8 +228,7 @@ W13. Close case
 - Rare, the human wants this session to stop being main manager: he types `! agent-start.sh --release`; the agent never runs it. The next new session is main manager, never Helper
 
 W14. Show todo
-- Trigger: the human types show todo, any case, anywhere, or the whole prompt is just todo. The UserPromptSubmit hook `bin/agent-show-todo.sh` injects this rule for the role
-- A quoted mention is not an order; todo inside a sentence never fires
+- Trigger: the human runs the skill `/auto-pipeline:todo` (no keyword hook); the skill holds this rule per role
 - One script, no agent: `bin/agent-file.sh board`. Show its table as printed, every row, then the decide section (H3)
 - Main manager: the whole repo. Task manager or Helper: `board --self`, its own task and its workers only. Subagents never
 - Rows: open tasks, waits on the owner (mock check, owner question, owner review), `OWNER TODO:` and `PARKED:` lines. Each: task, what in a few words, status, where, est, work, wait, progress, done by
@@ -267,8 +277,7 @@ W17. Decider floor
 - `agent_conf.py` refuses `main_manager` or `task_manager` below the floor
 
 W18. Show question
-- Trigger: the human types show question (or pending questions, 显示问题 ...), or the whole prompt is just questions or 问题. UserPromptSubmit hook `bin/agent-show-question.sh`
-- A quoted mention is not an order; a question inside a sentence never fires (这段代码有什么问题)
+- Trigger: the human runs the skill `/auto-pipeline:question` (no keyword hook); the skill holds this rule per role
 - One script, no agent: `bin/agent-file.sh questions`. Main manager: the whole repo. Task manager or Helper: `questions --self`, its own task only. Subagents never
 - Sources: `PARKED:` lines, every `todo wait` of kind mock, question or review, and `QUESTION:` lines of agent_state.txt
 - A `QUESTION:` line is answered by an `ANSWER:` line after it, before the next QUESTION: line or "=== " header. A worktree on another machine gives one `not read: <path> on <machine>` line
@@ -277,7 +286,7 @@ W18. Show question
 - More than 10: `questions --page <file>` (a file in your scratchpad), publish it with the Artifact tool, capabilities db and user. Then one chat line: the count, the link, answer all, then tell me
 - `QUESTIONS PAGE:` line of agent_state.txt holds the url: one url per repo and session, publish with that url (redeploy); a first publish records it with `questions --url <url>`
 - No Artifact tool: the chat list of all, nothing dropped
-- Done: the human says 答完了, done or answered (or pastes `1A 2B`) while the page still has an open question. The hook injects the read-answers rule
+- Done: the human says 答完了, done or answered (or pastes `1A 2B`) while the page still has an open question. The skill (part B) holds the read-answers rule
 - Read all answers at once with ArtifactData (list, the answers collection) and the map file; pasted lines go by number through it. Show one table: question, answer
 - Per answered question: `questions answer <id> "<answer>"`, then carry on. An unpicked question is still open
 - Headers and words in the `language` of agent.conf
@@ -308,8 +317,11 @@ H3. Report
 - Every report, job summary, recap, proposal or audit to the human ends with a decide section
 - Heading in the `language` of agent.conf: zh `## 要你决定`, en `## To decide`, other languages a short translation of "to decide"
 - Open questions numbered, each with a recommendation (zh `建议`, en `Recommendation`)
+- Every question to the owner has a number in front; numbers never repeat within one message, and an open question keeps its number in later messages
+- Every open question is repeated in the decide section of every reply until the owner answers it, even when the reply gets long
 - Each question stands alone: a reader who sees only that line knows what it is about and can decide
 - A named thing (PR, task, branch, ticket, file) gets what it is in a few words: `#305 (stock lock settings page)`, never a bare number, tag or code name
+- A question names every task/PR/ticket by id AND its title, + the state + what is asked, e.g. "Task t10211 - Milah Enterprise invoice duplicate due to calculation error, pending approval to merge to main". Never an id or code alone ("PR 1211 ready, approve?" is wrong). The owner must be able to decide from that line alone, even waking up cold
 - Per question: what, why it needs the human now, one line of evidence, then the recommendation. One or two lines, no long explanation
 - Nothing open: keep the heading, one line: none (zh `无`)
 - Every question the main manager puts to the owner in a decide section is recorded with `park add` (--why --evidence --options --rec if known), removed when answered (`park rm` or `questions answer`)
@@ -431,6 +443,9 @@ E3. Concise
 - Full detail on request
 - Never trade correctness for brevity
 
+E4. Keyword hooks
+- A keyword hook (bin/agent-keyword.sh) only points to a skill; the logic lives in the skill
+
 ## F. Map
 
 The pieces. Rules are in A-E; this is where things live.
@@ -471,9 +486,8 @@ Scripts, not agents (cost no tokens):
   bin/agent-city-shim     the ~/.local/bin/agent-city command; runs the newest installed plugin's agent-city.sh
   bin/agent-city-hook.sh  hook that feeds the city; off costs a `test -f`, on appends one JSON line
   bin/agent-close-case.sh  UserPromptSubmit hook: "close case" in the prompt injects the close-case rule for the session's role
-  bin/agent-show-todo.sh  UserPromptSubmit hook: "show todo" (or just "todo") injects the board rule for the session's role
+  bin/agent-keyword.sh  UserPromptSubmit hook: a keyword in the prompt adds one line pointing to its skill (E4)
   bin/agent_board.py     the show-todo board: one table of every open task, wait, owner to-do and parked question
-  bin/agent-show-question.sh  UserPromptSubmit hook: "show question" (or just "questions") injects the question-list rule; "done" / "1A 2B" after a page injects the read-the-answers rule
   bin/agent_questions.py  the show-question collector: every question pending on the owner, as a chat list, JSON or an Artifact page; records the answers
   bin/agent-questions-page.html  the page template (one page grouped by task, lettered options, answer bar)
   bin/agent-name.sh       SessionStart + UserPromptSubmit hook: names the session by role (<repo> Manager, <feature> Task Manager, <repo> Helper - <Task Name>), also the Orca tab
@@ -514,6 +528,7 @@ bin/agent-file.sh questions         # the show-question list: every question pen
 bin/agent-city.sh install-shim      # one time: puts the agent-city command in ~/.local/bin; nothing installs it by itself, the init skill offers it
 agent-city start                    # agent city visualiser, off by default, costs almost nothing
 ```
+
 
 ## Notice
 

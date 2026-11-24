@@ -433,16 +433,14 @@ class TestTheTexts(SeatCase):
     def test_whole_repo_close_case_ends_with_the_release(self):
         text = read("skills", "close-case", "SKILL.md")
         part_b = text[text.index("## B."):]
-        self.assertIn("agent-start.sh --release", part_b)
+        self.assertIn("agent-close-case.sh --release-line", part_b)
         self.assertGreater(part_b.index("--release"), part_b.index("final table"),
                            "release is named after the final table, as the other choice")
 
-    def test_the_main_close_case_hook_says_release(self):
-        self.set_lock("%d 2026-09-30 10:00 sid-me -\n" % os.getpid())
-        out = self.prompt("close case", pid=os.getpid())
-        self.assertIn("whole repo", out)
-        self.assertIn("--release", out)
-        self.assertLessEqual(len(out.encode()), 1200)
+    def test_the_close_case_script_gives_the_release_line(self):
+        result = self.repo.run("agent-close-case.sh", "--release-line", env={"CLAUDE_PID": NOBODY})
+        self.assertOk(result)
+        self.assertIn("--release", result.stdout)
 
     def test_principles_say_it(self):
         text = read("PRINCIPLES.md")
@@ -487,10 +485,11 @@ class TestTheHumanTypesIt(SeatCase):
 
     def test_the_whole_repo_close_case_gives_the_release_line(self):
         self.set_lock("%d 2026-09-30 10:00 sid-me -\n" % os.getpid())
-        out = self.prompt("close case", pid=os.getpid())
-        self.assertIn(self.release_line(), out)
-        self.assertIn("never run it yourself", out)
-        self.assertLessEqual(len(out.encode()), 1200)
+        result = self.repo.run("agent-close-case.sh", "--release-line", env={"CLAUDE_PID": str(os.getpid())})
+        self.assertOk(result)
+        self.assertEqual(result.stdout.splitlines(), [self.release_line()])
+        text = read("skills", "close-case", "SKILL.md")
+        self.assertIn("never run it yourself", text)
 
     def test_the_skill_never_runs_it(self):
         part_b = read("skills", "close-case", "SKILL.md").split("## B.", 1)[1]
