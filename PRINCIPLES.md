@@ -201,7 +201,7 @@ W12. Cross-repo
 - Even verified, ask the owner first: production deploy or production data writes, deleting data, a push to a branch he reviews, anything irreversible or outward-facing. Decider floor (W17) holds
 
 W13. Close case
-- Trigger: the human types close case, any case, anywhere in the prompt. The UserPromptSubmit hook `bin/agent-close-case.sh` injects this rule for the role. A quoted mention is not an order
+- Trigger: the human or the main manager runs the skill `/auto-pipeline:close-case` (no keyword hook); a task manager's brief holds the rule too
 - Subagents never get this rule; only a task manager, a human-direct session or a main manager does
 - Task manager or human-direct: start nothing new; workers finish their slice or stop; save agent_state.txt; commit + push (WIP if unfinished). Never lose work
 - Report to the upper level: SendMessage the main manager; another machine → print it in its own terminal and say so (W10)
@@ -217,8 +217,7 @@ W13. Close case
 - Rare, the human wants this session to stop being main manager: he types `! agent-start.sh --release`; the agent never runs it. The next new session is main manager, never Helper
 
 W14. Show todo
-- Trigger: the human types show todo, any case, anywhere, or the whole prompt is just todo. The UserPromptSubmit hook `bin/agent-show-todo.sh` injects this rule for the role
-- A quoted mention is not an order; todo inside a sentence never fires
+- Trigger: the human runs the skill `/auto-pipeline:todo` (no keyword hook); the skill holds this rule per role
 - One script, no agent: `bin/agent-file.sh board`. Show its table as printed, every row, then the decide section (H3)
 - Main manager: the whole repo. Task manager or Helper: `board --self`, its own task and its workers only. Subagents never
 - Rows: open tasks, waits on the owner (mock check, owner question, owner review), `OWNER TODO:` and `PARKED:` lines. Each: task, what in a few words, status, where, est, work, wait, progress, done by
@@ -267,8 +266,7 @@ W17. Decider floor
 - `agent_conf.py` refuses `main_manager` or `task_manager` below the floor
 
 W18. Show question
-- Trigger: the human types show question (or pending questions, 显示问题 ...), or the whole prompt is just questions or 问题. UserPromptSubmit hook `bin/agent-show-question.sh`
-- A quoted mention is not an order; a question inside a sentence never fires (这段代码有什么问题)
+- Trigger: the human runs the skill `/auto-pipeline:question` (no keyword hook); the skill holds this rule per role
 - One script, no agent: `bin/agent-file.sh questions`. Main manager: the whole repo. Task manager or Helper: `questions --self`, its own task only. Subagents never
 - Sources: `PARKED:` lines, every `todo wait` of kind mock, question or review, and `QUESTION:` lines of agent_state.txt
 - A `QUESTION:` line is answered by an `ANSWER:` line after it, before the next QUESTION: line or "=== " header. A worktree on another machine gives one `not read: <path> on <machine>` line
@@ -277,7 +275,7 @@ W18. Show question
 - More than 10: `questions --page <file>` (a file in your scratchpad), publish it with the Artifact tool, capabilities db and user. Then one chat line: the count, the link, answer all, then tell me
 - `QUESTIONS PAGE:` line of agent_state.txt holds the url: one url per repo and session, publish with that url (redeploy); a first publish records it with `questions --url <url>`
 - No Artifact tool: the chat list of all, nothing dropped
-- Done: the human says 答完了, done or answered (or pastes `1A 2B`) while the page still has an open question. The hook injects the read-answers rule
+- Done: the human says 答完了, done or answered (or pastes `1A 2B`) while the page still has an open question. The skill (part B) holds the read-answers rule
 - Read all answers at once with ArtifactData (list, the answers collection) and the map file; pasted lines go by number through it. Show one table: question, answer
 - Per answered question: `questions answer <id> "<answer>"`, then carry on. An unpicked question is still open
 - Headers and words in the `language` of agent.conf

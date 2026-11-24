@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """agent_questions.py - the work behind `agent-file.sh questions`, `park add` and `park rm --id`
-("show question"). Python 3.9, standard library only, no imports of sibling modules.
+(/auto-pipeline:question). Python 3.9, standard library only, no imports of sibling modules.
 
     agent_questions.py <root> <state-dir> <cwd> <now> <lang> <command> [args...]
 

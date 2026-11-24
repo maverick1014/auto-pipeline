@@ -535,34 +535,30 @@ class TestAfterTheClear(CleanCase):
 # -- K1, K4, K5: the whole-repo hook text ------------------------------------------------------
 
 class TestTheHookText(CleanCase):
-    def whole_repo(self):
-        self.set_lock("%d 2026-10-01 09:00 sid-me -\n" % os.getpid())
-        return self.prompt("close case", pid=os.getpid())
+    """The whole-repo rule is the skill now (close-case part B); the hook is silent."""
+
+    def part_b(self):
+        return read("skills", "close-case", "SKILL.md").split("## B.", 1)[1]
 
     def test_it_asks_after_the_final_table(self):
-        out = self.whole_repo()
+        out = self.part_b()
         for phrase in ("whole repo", "/auto-pipeline:close-case", "agent_worktree.txt",
-                       "final table", "only a mention", "yes or no", "language",
+                       "final table", "yes or no", "language",
                        "nothing changes", "--clean", "/clear", "stay the main manager"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase.lower(), out.lower())
         self.assertLess(out.index("final table"), out.index("yes or no"))
-        self.assertLessEqual(len(out.encode()), MAX_BYTES)
 
     def test_release_is_the_other_choice_not_the_last_step(self):
-        out = self.whole_repo()
-        self.assertEqual(out.count("--release"), 1, out)
+        out = self.part_b()
         self.assertLess(out.index("yes or no"), out.index("--release"))
         self.assertLess(out.index("--clean"), out.index("--release"))
-        self.assertIn("! %s/bin/agent-start.sh --release" % self.repo.plugin, out.splitlines())
         self.assertIn("never run it yourself", out)
-        self.assertNotIn("end the final table with this line", out)
-        self.assertNotIn("Last step: end", out)
 
     def test_a_report_text_does_not_ask(self):
         self.set_lock("%d 2026-10-01 09:00 sid-me -\n" % os.getpid())
         out = self.prompt("CLOSE CASE alpha: unfinished\nDone: x.", pid=os.getpid())
-        self.assertIn("alpha", out)
+        self.assertEqual(out, "")
         self.assertNotIn("--clean", out)
         self.assertNotIn("--release", out)
 
@@ -592,11 +588,8 @@ class TestTheReleasePathIsThePluginInstalledNow(CleanCase):
 
     def release_lines(self, plugin_root):
         self.set_lock("%d 2026-10-01 09:00 sid-me -\n" % os.getpid())
-        stdin = json.dumps({"session_id": "s", "transcript_path": "/tmp/x.jsonl",
-                            "cwd": self.repo.cwd, "permission_mode": "auto",
-                            "hook_event_name": "UserPromptSubmit", "prompt": "close case"})
-        result = subprocess.run([os.path.join(plugin_root, "bin", "agent-close-case.sh")],
-                                input=stdin, env=self.repo._env({"CLAUDE_PID": str(os.getpid())}),
+        result = subprocess.run([os.path.join(plugin_root, "bin", "agent-close-case.sh"), "--release-line"],
+                                input="", env=self.repo._env({"CLAUDE_PID": str(os.getpid())}),
                                 cwd=self.repo.cwd, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stderr, "")

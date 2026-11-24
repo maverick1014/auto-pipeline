@@ -34,11 +34,9 @@ Scripts, not agents (cost no tokens):
   bin/agent-city.sh       starts/stops the agent city visualiser, a local server
   bin/agent-city-shim     the ~/.local/bin/agent-city command; runs the newest installed plugin's agent-city.sh
   bin/agent-city-hook.sh  hook that feeds the city; off costs a `test -f`, on appends one JSON line
-  bin/agent-close-case.sh  UserPromptSubmit hook: "close case" in the prompt injects the close-case rule for the session's role
-  bin/agent-show-todo.sh  UserPromptSubmit hook: "show todo" (or just "todo") injects the board rule for the session's role
-  bin/agent_board.py     the show-todo board: one table of every open task, wait, owner to-do and parked question
-  bin/agent-show-question.sh  UserPromptSubmit hook: "show question" (or just "questions") injects the question-list rule; "done" / "1A 2B" after a page injects the read-the-answers rule
-  bin/agent_questions.py  the show-question collector: every question pending on the owner, as a chat list, JSON or an Artifact page; records the answers
+  bin/agent-close-case.sh  UserPromptSubmit hook: tells a session once that it is no longer the main manager (the close-case rule is the skill /auto-pipeline:close-case)
+  bin/agent_board.py     the /auto-pipeline:todo board: one table of every open task, wait, owner to-do and parked question
+  bin/agent_questions.py  the /auto-pipeline:question collector: every question pending on the owner, as a chat list, JSON or an Artifact page; records the answers
   bin/agent-questions-page.html  the page template (one page grouped by task, lettered options, answer bar)
   bin/agent-name.sh       SessionStart + UserPromptSubmit hook: names the session by role (<repo> Manager, <feature> Task Manager, <repo> Helper - <Task Name>), also the Orca tab
   bin/agent-guard.sh     hook: records every Agent launch and orca pane on the board, refuses a manager's launch that names no open todo task only with board_guard=on; default record; board_guard=on|record|off
@@ -169,7 +167,9 @@ and the packed skills/agents, and never touches `agent.conf`, `agent_*.txt`, `CL
 ./bin/agent-resume.sh            # runs by itself at startup (auto_resume=yes); run by hand only if you turned that off
 /auto-pipeline:dispatch          # main manager: route one task
 /auto-pipeline:merge             # main manager: E2E, then merge deputy
-/auto-pipeline:close-case        # main manager: settle one CLOSE CASE report, or wrap up the whole repo
+/auto-pipeline:close-case        # settle down and report (task manager), settle one CLOSE CASE report or wrap up the whole repo (main manager)
+/auto-pipeline:todo              # the board: open tasks, waits on the owner, owner to-dos, parked questions
+/auto-pipeline:question          # every question that waits on the owner, and read his answers after the page
 /auto-pipeline:clean-up          # main manager: list rubbish docs and outdated agent_* lines, remove only the rows the human says yes to
 /auto-pipeline:init              # one-time project setup, prints the permissions block
 /auto-pipeline:settings          # show the settings, change one ("language en", "max_agents 3")
@@ -182,7 +182,7 @@ bin/agent-file.sh eta <name>        # work left as minutes and a clock time, and
 bin/agent-file.sh estimate ... [--guess <m>]   # work minutes of a new task, with a range and the 3 nearest past tasks; --guess blends in your own minutes
 bin/agent-file.sh backtest          # estimator, blend and rubric on the finished tasks, who wins
 bin/agent-file.sh retrain           # learn the estimate again from the finished tasks, keep it only if better
-bin/agent-file.sh board             # the show-todo table: open tasks, waits on the owner, owner to-dos, parked questions
+bin/agent-file.sh board             # the /auto-pipeline:todo table: open tasks, waits on the owner, owner to-dos, parked questions
 bin/agent-file.sh questions         # the show-question list: every question pending on the owner (--self, --json, --page <file>, --url <url>, answer <id> "<answer>")
 bin/agent-city.sh install-shim      # one time: puts the agent-city command in ~/.local/bin; nothing installs it by itself, the init skill offers it
 agent-city start                    # agent city visualiser, off by default, costs almost nothing

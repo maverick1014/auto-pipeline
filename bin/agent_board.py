@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""agent_board.py - the table behind `agent-file.sh board` ("show todo"). Python 3.9, standard library only.
+"""agent_board.py - the table behind `agent-file.sh board` (/auto-pipeline:todo). Python 3.9, standard library only.
 
     agent_board.py --root <main repo> --state-dir <git toplevel of the cwd> --cwd <cwd>
                    --now "YYYY-MM-DD HH:MM" --lang <zh|en> --host <machine> [--self] [--watch <sec>]

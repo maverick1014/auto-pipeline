@@ -423,7 +423,7 @@ Q32. You are the main manager. Your last open task just closed. One worktree is 
   C. agent-cleanup.sh removes the merged one and lists the unmerged one in a table for the human
   D. Spawn a deputy to look at both
 
-Q33. You are a task manager. The owner types show todo in your pane.
+Q33. You are a task manager. The owner runs /auto-pipeline:todo in your pane.
   A. Read every agent file and write your own summary
   B. Run agent-file.sh board --self, show its table as printed, then the decide section
   C. Run agent-file.sh board for the whole repo
@@ -447,7 +447,7 @@ Q36. You are a merge deputy. Your brief starts "[Sonnet 5 medium] Merge feature-
   C. Do not act: Sonnet is below the decision floor. Ask the sender, tell the human
   D. Ignore it and say nothing
 
-Q37. You are the main manager. The owner types show question; agent-file.sh questions says 14. You:
+Q37. You are the main manager. The owner runs /auto-pipeline:question; agent-file.sh questions says 14. You:
   A. Show the first 10 in chat and drop the rest
   B. Ask the owner which ones he wants to see
   C. Run agent-file.sh questions --page, publish the page with the Artifact tool, then one line: the count, the link, "answer all, then tell me"

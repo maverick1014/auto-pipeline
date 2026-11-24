@@ -572,9 +572,7 @@ class TestCityHooks(PackCase):
 
 class TestCloseCaseAndNameHooks(PackCase):
     WANTED = (("SessionStart", "agent-name.sh"),
-              ("UserPromptSubmit", "agent-close-case.sh"),
-              ("UserPromptSubmit", "agent-show-todo.sh"),
-              ("UserPromptSubmit", "agent-show-question.sh"))
+              ("UserPromptSubmit", "agent-close-case.sh"))
 
     def count(self, event, script):
         marker = ".claude/auto-pipeline/bin/" + script
@@ -590,18 +588,9 @@ class TestCloseCaseAndNameHooks(PackCase):
                 self.assertTrue(os.path.exists(self.t(".claude", "auto-pipeline", "bin", script)))
         self.assertIn('bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-close-case.sh',
                       json.dumps(self.settings()).replace("\\\"", '"'))
-        show = [h for e in self.settings()["hooks"]["UserPromptSubmit"] for h in e["hooks"]
-                if "agent-show-todo.sh" in h.get("command", "")]
-        self.assertEqual(show, [{"type": "command", "timeout": 10, "command":
-                                 'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-show-todo.sh'}])
-        ask = [h for e in self.settings()["hooks"]["UserPromptSubmit"] for h in e["hooks"]
-               if "agent-show-question.sh" in h.get("command", "")]
-        self.assertEqual(ask, [{"type": "command", "timeout": 10, "command":
-                                'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-show-question.sh'}])
-        commands = [h.get("command", "") for e in self.settings()["hooks"]["UserPromptSubmit"]
-                    for h in e["hooks"]]
-        at = [i for i, c in enumerate(commands) if "agent-show-todo.sh" in c]
-        self.assertTrue(at and "agent-show-question.sh" in commands[at[0] + 1], commands)
+        packed = json.dumps(self.settings()["hooks"])
+        for gone in ("agent-show-todo.sh", "agent-show-question.sh"):
+            self.assertNotIn(gone, packed)
         for name in ("agent_questions.py", "agent-questions-page.html"):
             with self.subTest(name=name):
                 self.assertTrue(os.path.exists(self.t(".claude", "auto-pipeline", "bin", name)))
@@ -620,9 +609,7 @@ class TestCloseCaseAndNameHooks(PackCase):
         for event, _ in self.WANTED:
             data["hooks"][event] = [e for e in data["hooks"].get(event, [])
                                     if not any("agent-name.sh" in h.get("command", "") or
-                                               "agent-close-case.sh" in h.get("command", "") or
-                                               "agent-show-todo.sh" in h.get("command", "") or
-                                               "agent-show-question.sh" in h.get("command", "")
+                                               "agent-close-case.sh" in h.get("command", "")
                                                for h in e.get("hooks", []))]
         write_text(self.t(".claude", "settings.json"), json.dumps(data, indent=2) + "\n")
         self.assertEqual(self.count("UserPromptSubmit", "agent-close-case.sh"), 0)

@@ -35,13 +35,13 @@
 #   agent-file.sh park list                                   -> the PARKED lines, numbered
 #   agent-file.sh park rm <n>                                 -> remove the n-th PARKED line
 #   agent-file.sh park rm --id <id>                           -> remove the PARKED line with that id (the id `questions` gives)
-#   agent-file.sh questions [--self] [--json]                 -> every question that waits on the owner ("show question")
+#   agent-file.sh questions [--self] [--json]                 -> every question that waits on the owner (/auto-pipeline:question)
 #   agent-file.sh questions [--self] --page <file>            -> write the answer page, its map, and the "QUESTIONS PAGE:" line
 #   agent-file.sh questions --url <url>                       -> set the published url on the "QUESTIONS PAGE:" line
 #   agent-file.sh questions answer <id> "<answer>"            -> close one question (parked: line goes; todo: wait closes; QUESTION: gets "ANSWER:")
 #   agent-file.sh worker on <n> "<slice>"                     -> agent_state.txt: WORKER <n>: <slice> | since <date> (replaces worker n)
 #   agent-file.sh worker off <n>                              -> remove WORKER <n>
-#   agent-file.sh board [--self]                              -> the table of everything open ("show todo"); --self: this session's task only
+#   agent-file.sh board [--self]                              -> the table of everything open (/auto-pipeline:todo); --self: this session's task only
 #   agent-file.sh state add "<line>"                          -> agent_state.txt of this folder gets "<line> | <date time>" (one line, " | " inside is fine)
 #   agent-file.sh tell "<task>" "[<model> <effort>] <msg>"    -> the block "TELL <sha8> ..." at the end of that task's agent_state.txt, then one pointer line into its TM pane (rules D1-D8, requirements/one-watcher.md); prints "TELL OK <task> <sha8>"
 #   agent-file.sh state trim [--dry-run]                      -> old lines of agent_state.txt move to agent_state.trim-<date>.txt (rules: requirements/state-trim.md); --dry-run only counts
