@@ -354,6 +354,7 @@ S1. Settings
 - Holds every config value in this file
 - Also writes the agent-monitor config
 - Setup: init offers to merge the permission rules into `.claude/settings.json` (`agent-init.sh --add-permissions`); agents never hand-edit JSON. Manager default `opus-5.5:high`; `xhigh` is an install choice
+- Setup: init asks all vs selected repos; `agent-init.sh --scope` writes the files; agents never hand-edit JSON
 - `~/.claude/auto-pipeline.conf` = this machine's own file, never in a repo: `permission_mode`, `cloud_permission_mode`, wins over `agent.conf`. Write it with `agent-settings.sh --user <key> <value>`
 
 S2. Resume script
