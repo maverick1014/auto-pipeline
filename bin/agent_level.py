@@ -468,7 +468,7 @@ def sh_dq_end(text, k, quote):
         if c == "$" and text[k + 1:k + 2] == "(":
             j = sh_skip(text, k + 2, ")")
         elif c == "$" and text[k + 1:k + 2] == "{":
-            j = sh_skip(text, k + 2, "}")
+            j = sh_skip(text, k + 2, "}", quote == '"')
         elif c == "`" and quote == '"':
             j = sh_dq_end(text, k + 1, "`")
         elif quote == "`" and c == "'":
@@ -483,8 +483,10 @@ def sh_dq_end(text, k, quote):
     return -1
 
 
-def sh_skip(text, k, closer):
-    """Index of the closer that ends a $(...) or ${...} body started before k, or -1."""
+def sh_skip(text, k, closer, in_dq=False):
+    """Index of the closer that ends a $(...) or ${...} body started before k, or -1.
+
+    in_dq: a ${...} inside "...": a quote ' there is read differently by sh and bash, so -1."""
     n, depth = len(text), 1
     while k < n:
         c = text[k]
@@ -492,6 +494,8 @@ def sh_skip(text, k, closer):
         if c == "\\":
             k += 2
             continue
+        if in_dq and closer == "}" and (c == "'" or (c == "$" and text[k + 1:k + 2] == "'")):
+            return -1
         if c == "'":
             j = text.find("'", k + 1)
         elif c == '"' or c == "`":
@@ -501,7 +505,7 @@ def sh_skip(text, k, closer):
         elif c == "$" and text[k + 1:k + 2] == "(":
             j = sh_skip(text, k + 2, ")")
         elif c == "$" and text[k + 1:k + 2] == "{":
-            j = sh_skip(text, k + 2, "}")
+            j = sh_skip(text, k + 2, "}", in_dq and closer == "}")
         elif closer == ")" and c == "(":
             depth += 1
         elif c == closer:
@@ -618,8 +622,11 @@ def yaml_value_start(text, pos, base, ls):
         r = k
         while r >= base and text[r] not in " \t":
             r -= 1
-        if ws and text[r + 1] in "!&":
-            k, ws = r, False
+        t = r + 1
+        while t <= k and text[t] in "[{,":
+            t += 1
+        if ws and t <= k and text[t] in "!&":
+            k, ws = (t - 1 if t > r + 1 else r), False
             continue
         break
     ch = text[k]
@@ -947,7 +954,7 @@ C3_WORDS = ("noqa", "nolint", "pragma", "type: ignore", "eslint-", "@ts-", "-*-"
             "prettier-ignore", "fallthrough", "fall through", "falls through", "fallthru")
 C4_AT = re.compile(r"(?:^|[\s*])@[^\W\d_]")
 C5_WORDS = ("licen", "copyright", "©", "spdx")
-TEMPLATE_MARKS = ("{{", "{%", "{#", "<%", "${")
+TEMPLATE_MARKS = ("{{", "{%", "{#", "<%", "${", "<?")
 HEAD_STRIP = "#/*-" + " \t\r\n\f\v"
 
 
