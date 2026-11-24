@@ -809,9 +809,11 @@ class TestReviewSlash(ShapeCase):
     def test_f10_jsx_text_with_comment_markers(self):
         before = ("export const Help = () => (\n  <div>\n    <p>Block comments start with /* and</p>\n"
                   "    <button onClick={save}>Go</button>\n    <p>end with */ in JS.</p>\n  </div>\n);\n")
-        self.each(CODE, [
+        self.each(CODE, [("src/Help.js", before, before.replace("save", "wipeAll"))])
+        self.fresh()
+        # .jsx/.tsx are markup files: today's level for a changed {handler} is the old prop rule (L1)
+        self.each((1, "new prop value"), [
             ("src/Help.jsx", before, before.replace("save", "wipeAll")),
-            ("src/Help.js", before, before.replace("save", "wipeAll")),
             ("src/Help.tsx", "const A = () => <p>a // b</p>;<Btn onClick={save} />\n",
              "const A = () => <p>a // b</p>;<Btn onClick={wipeAll} />\n"),
         ])

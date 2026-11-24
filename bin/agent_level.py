@@ -712,6 +712,12 @@ GO_GROUP = re.compile(r"^[ \t]*import[ \t]*\(", re.M)
 GO_GROUP_C = re.compile(r'^[ \t]*(?:[\w.]+[ \t]+)?"C"', re.M)
 
 
+JAVA_UNICODE = re.compile(r"\\u+[0-9a-fA-F]{4}")
+SWIFT_RAW = re.compile(r'#"')
+CPP_RAW = re.compile(r'(?<![A-Za-z0-9_$])(?:u8|u|U|L)?R"')
+GO_OUTPUT = re.compile(r"//[ \t]*(?:unordered[ \t]+)?output:", re.I)
+
+
 class Unsure(Exception):
     pass
 
@@ -744,6 +750,14 @@ def slash_triple_end(text, k, quote, esc):
 def lex_slash(text, ext):
     if ext == ".go" and go_imports_c(text):
         return None
+    if ext == ".java" and JAVA_UNICODE.search(text):
+        return None
+    if ext == ".swift" and SWIFT_RAW.search(text):
+        return None
+    if ext in (".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh") and CPP_RAW.search(text):
+        return None
+    if ext == ".go" and GO_OUTPUT.search(text):
+        return None
     n, segs = len(text), Segs(text)
     js, go = ext in SLASH_JS, ext == ".go"
     triple_dq = ext in (".java", ".swift", ".dart", ".kt", ".kts")
@@ -759,15 +773,34 @@ def lex_slash(text, ext):
                     e = text.find("*/", i + 2)
                     if e < 0:
                         raise Unsure()
+                    if js and ("</" in text[i:e + 2] or "/>" in text[i:e + 2]):
+                        raise Unsure()
                     segs.add("comment", i, e + 2)
                     i = e + 2
                 elif text.startswith("//", i) and (i == 0 or text[i - 1] in " \t\n"):
                     e = text.find("\n", i)
                     e = n if e < 0 else e
+                    if js and ("</" in text[i:e] or "/>" in text[i:e]):
+                        raise Unsure()
                     segs.add("comment", i, e)
                     i = e
                 else:
                     i += 1
+            elif (c == "r" and ext == ".dart" and text[i + 1:i + 2] in ("'", '"') and
+                  (i == 0 or not (text[i - 1].isalnum() or text[i - 1] in "_$"))):
+                q = text[i + 1]
+                if text.startswith(q * 3, i + 1):
+                    e = text.find(q * 3, i + 4)
+                else:
+                    e = text.find(q, i + 2)
+                    nl = text.find("\n", i + 2)
+                    if 0 <= nl < e:
+                        e = -1
+                if e < 0:
+                    raise Unsure()
+                e += 3 if text.startswith(q * 3, i + 1) else 1
+                segs.add("str", i, e)
+                i = e
             elif c in "\"'":
                 if text.startswith(c * 3, i) and (triple_dq if c == '"' else triple_sq):
                     e = slash_triple_end(text, i + 3, c, esc3)
@@ -832,7 +865,7 @@ def lex_slash(text, ext):
     return segs.done()
 
 
-MARKUP_RAW = re.compile(r"<(script|style)(?![\w:.\-])", re.I)
+MARKUP_RAW = re.compile(r"<(script|style|textarea|title|noscript|xmp|iframe|noembed|noframes|plaintext)(?![\w:.\-])", re.I)
 
 
 def lex_markup(text):
@@ -842,11 +875,18 @@ def lex_markup(text):
         if i < 0:
             break
         if text.startswith("<!--", i):
-            e = text.find("-->", i + 4)
-            if e < 0:
-                return None
-            segs.add("comment", i, e + 3)
-            i = e + 3
+            if text.startswith("<!-->", i):
+                e = i + 5
+            elif text.startswith("<!--->", i):
+                e = i + 6
+            else:
+                ends = [x for x in (text.find("-->", i + 4), text.find("--!>", i + 4)) if x >= 0]
+                if not ends:
+                    return None
+                m = min(ends)
+                e = m + (3 if text.startswith("-->", m) else 4)
+            segs.add("comment", i, e)
+            i = e
         elif text.startswith("<![CDATA[", i):
             e = text.find("]]>", i + 9)
             if e < 0:
@@ -871,6 +911,8 @@ def lex_markup(text):
                     j += 1
             raw = MARKUP_RAW.match(text, i)
             i = j + 1
+            if raw and raw.group(1).lower() == "plaintext":
+                break
             if raw:
                 e = text.lower().find("</" + raw.group(1).lower(), i)
                 if e < 0:
