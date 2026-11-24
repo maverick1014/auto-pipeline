@@ -158,13 +158,18 @@ def content_parts(msg):
     return "\n".join(texts), "\n".join(results), has_result
 
 
+def flag(obj, key):
+    value = obj.get(key)
+    return value is not None and value is not False
+
+
 def base_kind(obj, has_result):
     """L2 kinds before agent-typed / pasted; None for an owner-prompt candidate."""
     if obj.get("type") == "assistant":
         return "assistant"
     if "toolUseResult" in obj or has_result:
         return "tool_result"
-    if obj.get("isCompactSummary") is True:
+    if flag(obj, "isCompactSummary"):
         return "compact summary"
     origin = obj.get("origin")
     okind = origin.get("kind") if isinstance(origin, dict) else None
@@ -172,12 +177,12 @@ def base_kind(obj, has_result):
         return "peer"
     if okind == "task-notification":
         return "task notification"
-    if obj.get("isMeta") is True:
+    if flag(obj, "isMeta"):
         return "meta"
     source = obj.get("promptSource")
     if source in ("system", "sdk"):
         return "system"
-    if (not isinstance(origin, dict) or okind != "human" or obj.get("isSidechain") is True
+    if (not isinstance(origin, dict) or okind != "human" or flag(obj, "isSidechain")
             or source not in ("typed", "queued")):
         return "other"
     return None
@@ -186,14 +191,25 @@ def base_kind(obj, has_result):
 def agent_typed(cut_raw):
     for line in cut_raw.split("\n"):
         if line.strip():
-            return bool(AGENT_HEADER.search(line))
+            return bool(AGENT_HEADER.search(line)) or line.strip().startswith("OWNER ORDER ")
     return False
+
+
+TS = re.compile(r"(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d+)?(Z|[+-]\d\d:\d\d)")
 
 
 def parse_ts(value):
     try:
-        dt = datetime.datetime.strptime(value[:19], "%Y-%m-%dT%H:%M:%S")
-        return calendar.timegm(dt.timetuple())
+        m = TS.fullmatch(value)
+        if not m:
+            return None
+        y, mo, d, h, mi, sec = (int(m.group(i)) for i in range(1, 7))
+        epoch = calendar.timegm(datetime.datetime(y, mo, d, h, mi, sec).timetuple())
+        zone = m.group(7)
+        if zone != "Z":
+            off = int(zone[1:3]) * 3600 + int(zone[4:6]) * 60
+            epoch -= off if zone[0] == "+" else -off
+        return epoch
     except Exception:
         return None
 
@@ -202,8 +218,28 @@ def minute_of(epoch):
     return time.strftime("%Y-%m-%d %H:%M", time.localtime(epoch))
 
 
+def is_alnum(c):
+    return c.isascii() and c.isalnum()
+
+
+def find_quote(text, quote):
+    """Index of the first occurrence with good word edges, else -1 (L14)."""
+    start = 0
+    while True:
+        idx = text.find(quote, start)
+        if idx < 0:
+            return -1
+        end = idx + len(quote)
+        ok = not (is_alnum(quote[0]) and idx > 0 and is_alnum(text[idx - 1]))
+        if ok and is_alnum(quote[-1]) and end < len(text) and is_alnum(text[end]):
+            ok = False
+        if ok:
+            return idx
+        start = idx + 1
+
+
 def snippet(text, quote):
-    idx = text.find(quote)
+    idx = find_quote(text, quote)
     start = max(0, idx - 20)
     piece = text[start:start + 80]
     return ("…" if start > 0 else "") + piece + ("…" if start + 80 < len(text) else "")
@@ -233,16 +269,16 @@ def search(repo, quote, hours):
             for raw in fh:
                 try:
                     obj = json.loads(raw)
-                except ValueError:
+                except Exception:
                     continue
                 if not isinstance(obj, dict) or obj.get("type") not in ("user", "assistant"):
                     continue
                 epoch = parse_ts(obj.get("timestamp") or "")
-                if epoch is None:
+                if epoch is None or epoch > now + 60:
                     continue
                 text, results, has_result = content_parts(obj.get("message"))
                 full = normalise(text + "\n" + results)
-                if quote not in full:
+                if find_quote(full, quote) < 0:
                     continue
                 kind = base_kind(obj, has_result)
                 snip_text = full
@@ -252,7 +288,8 @@ def search(repo, quote, hours):
                         kind = "agent-typed"
                     else:
                         cut_norm = normalise(cut)
-                        if quote in cut_norm:
+                        if ("<pasted_content" not in cut and "</pasted_content>" not in cut
+                                and find_quote(cut_norm, quote) >= 0):
                             kind, snip_text = "owner", cut_norm
                         else:
                             kind = "pasted"
@@ -346,6 +383,8 @@ def verify(conf, argv):
     opts = parse_args(argv, ("--repo", "--quote", "--time", "--machine"))
     if "--repo" not in opts:
         raise Usage("missing --repo")
+    if not os.path.expanduser(opts["--repo"]).startswith("/"):
+        raise Usage("--repo must be an absolute folder")
     quote = get_quote(opts)
     when = parse_time(opts["--time"]) if "--time" in opts else None
     pre = "OWNER ORDER not verified: "
@@ -399,7 +438,8 @@ def model_effort(conf_path, pid):
 def line_cmd(conf, conf_path, cwd, pid, argv):
     opts = parse_args(argv, ("--quote", "--repo"))
     quote = get_quote(opts)
-    repo = clean_repo(opts["--repo"]) if "--repo" in opts else git_toplevel(cwd)
+    repo = (clean_repo(os.path.abspath(os.path.expanduser(opts["--repo"])))
+            if "--repo" in opts else git_toplevel(cwd))
     inside, why = run_common(conf, repo, quote)
     if inside is None:
         print("OWNER ORDER not found: " + why)
@@ -415,6 +455,11 @@ def line_cmd(conf, conf_path, cwd, pid, argv):
 
 
 def main(argv):
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="backslashreplace")
+        except Exception:
+            pass
     if len(argv) < 5:
         sys.stderr.write("usage: agent-owner-order.sh verify|line [options]\n")
         return 2
