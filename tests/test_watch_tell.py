@@ -355,5 +355,39 @@ class TestReviewFixes(TellCase):
         self.assertGreaterEqual(time.time() - start, 3.0, "the watch sent to the shell pane while its lock was held")
 
 
+
+# ---------------------------------------------------------------- R23: bounce 4 (laptop E2E on a real Claude pane)
+
+
+class TestTuiPane(TellCase):
+    """A real Claude TUI pane: the cursor read after the send has no "TELL <sha8>" line (the TUI repaints), the
+    full screen has it. tell must say TELL OK and never send the pointer a second time while the first is on
+    the screen (2026-11-24: the TM got it twice, tell said TELL FAIL)."""
+
+    def test_r23_a_pointer_seen_only_on_the_full_screen_is_ok_and_sent_once(self):
+        self.echo_pane("term_alpha", tui=True)
+        s = sha8(SIG + " hello")
+        r = self.tell("alpha", SIG + " hello")
+        self.assertOk(r)
+        self.assertEqual(r.stdout.strip().splitlines()[-1], "TELL OK alpha %s" % s)
+        self.assertEqual(len(self.sends_to("term_alpha")), 1)
+        self.assertEqual(self.echo_buf("term_alpha").count("TELL %s" % s), 1)
+
+    def test_r23_a_lost_first_pointer_on_a_tui_pane_is_sent_once_more(self):
+        self.echo_pane("term_alpha", tui=True, drop=1)
+        s = sha8(SIG + " hello")
+        r = self.tell("alpha", SIG + " hello")
+        self.assertOk(r)
+        self.assertIn("TELL OK alpha %s" % s, r.stdout)
+        self.assertEqual(len(self.sends_to("term_alpha")), 2)
+
+    def test_r23_lost_twice_on_a_tui_pane_still_fails(self):
+        self.echo_pane("term_alpha", tui=True, drop=2)
+        s = sha8(SIG + " hello")
+        r = self.tell("alpha", SIG + " hello")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("TELL FAIL alpha %s: pointer not seen (block is in the file)" % s, r.stdout + r.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

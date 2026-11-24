@@ -27,7 +27,9 @@ The fake orca (ALL_STUB) keeps its state under $ORCA_STUB_DIR:
     shell/<h>/fail           every read of that shell pane fails (stderr "orca: terminal read failed", exit 1)
     slow                     seconds every `terminal read` sleeps first (cadence tests)
     echo/<h>/buf             a TM pane that shows what is sent to it ("❯ <text>");
-                             echo/<h>/drop holds a count of sends that are lost
+                             echo/<h>/drop holds a count of sends that are lost;
+                             echo/<h>/tui: like a real Claude TUI (bounce 4, laptop E2E 2026-11-24): a read
+                             with --cursor gives no lines (the TUI repaints), a full read shows the screen
     env/<env>/down           that machine is unreachable: every call with it fails
     env/<env>/map            lines "<from>\\t<to>": a shell command on that machine has
                              <from> replaced by <to> (the other machine's folders live
@@ -175,6 +177,9 @@ if verb == "terminal read" and os.path.isdir(shell):
         sys.exit(1)
     buf_read(shell)
 if verb == "terminal read" and os.path.isdir(echo):
+    if opt("--cursor") and os.path.exists(os.path.join(echo, "tui")):
+        lines = (rd(os.path.join(echo, "buf"), "") or "").splitlines()
+        out(term_json([], len(lines)))
     buf_read(echo)
 if verb == "terminal send" and os.path.isdir(shell):
     sent = opt("--text") or ""
@@ -332,11 +337,13 @@ class AllCase(ScriptCase):
         self.write(os.path.join(self.folder("shell", handle), "buf"), "Last login: Mon Nov 23 16:00:00\n$ \n")
         self.pane_env(handle, env)
 
-    def echo_pane(self, handle, env=None, drop=0):
+    def echo_pane(self, handle, env=None, drop=0, tui=False):
         folder = self.folder("echo", handle)
         self.write(os.path.join(folder, "buf"), "⏺ Working on step 4.\n\n❯ \n")
         if drop:
             self.write(os.path.join(folder, "drop"), str(drop))
+        if tui:
+            self.write(os.path.join(folder, "tui"), "")
         self.pane_env(handle, env)
 
     def echo_buf(self, handle):
