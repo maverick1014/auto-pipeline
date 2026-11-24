@@ -127,3 +127,10 @@ The Opus reviewer proved 14 kinds of false L0. Each fix only moves files back to
 | g3 | js family and swift: a comment that starts on a line whose code before it holds a lone `/` (not part of `//`, `/*`, `*/`) → unsure (a regex literal may hold a quote); a division before a trailing comment falls back too | `x.split(/"/).join(" // "); run(1);` → `run(2);` | today's level |
 | g4 | yaml: a `!tag` or `&anchor` right after `[`, `{` or `,` | `k: [!!str "a # b", 1]` → `2]` | today's level |
 | g5 | `<?` in a comment is template code (C3 list of f4) | `<!-- <?php echo 1; ?> -->` | today's level |
+
+### Bounce 3 (final check)
+
+| # | Rule added | Example: old → new | Result |
+|---|---|---|---|
+| h1 | yaml: a quote opened after `[`, `{` or `,` (tag or not) that does not close on its own line → unsure | `msg: see [!x "a # note` ⏎ `k: ["b # c", 1]` → `2]` | today's level |
+| h2 | js family and swift: a lone `/` followed on the same line by a string or template that runs past that line → unsure (a regex may hold a quote or backtick) | ``s.split(/`/);`` ⏎ ``const t = `a // b`; run(1);`` → `run(2)` | today's level |

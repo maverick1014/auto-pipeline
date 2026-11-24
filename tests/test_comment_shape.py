@@ -897,5 +897,32 @@ class TestReview2Slash(ShapeCase):
                             ("src/a.js", "// a / b\nrun();\n", "// a / c\nrun();\n")])
 
 
+# ================================================================ final check (bounce 3)
+# requirements/comment-shape.md section G rows h1-h2. Worker 1: test_h1. Worker 2: test_h2.
+
+
+class TestReview3(ShapeCase):
+
+    def test_h1_a_yaml_quote_after_a_flow_char_open_at_the_line_end(self):
+        self.each(CODE, [
+            ("ci/a.yml", 'msg: see [!x "a # note\nk: ["b # c", 1]\n', 'msg: see [!x "a # note\nk: ["b # c", 2]\n'),
+            ("ci/a.yml", 'msg: see, "a # note\nk: ["b # c", 1]\n', 'msg: see, "a # note\nk: ["b # c", 2]\n'),
+        ])
+
+    def test_h1_a_closed_flow_quote_still_works(self):
+        self.each((0, CO), [("ci/a.yml", 'k: ["b # c", 1] # x\n', 'k: ["b # c", 1] # y\n')])
+
+    def test_h2_a_lone_slash_then_a_string_that_runs_past_the_line(self):
+        self.each(CODE, [
+            ("src/a.js", "const parts = s.split(/`/);\nconst t = `a // b`; run(1);\n",
+             "const parts = s.split(/`/);\nconst t = `a // b`; run(2);\n"),
+            ("src/a.ts", "const parts = s.split(/`/);\nconst t = `a // b`; run(1);\n",
+             "const parts = s.split(/`/);\nconst t = `a // b`; run(2);\n"),
+        ])
+
+    def test_h2_a_template_after_a_division_on_another_line_is_fine(self):
+        self.each((0, CO), [("src/a.js", "const h = w / 2;\nconst t = `a\nb`; // x\n", "const h = w / 2;\nconst t = `a\nb`; // y\n")])
+
+
 if __name__ == "__main__":
     unittest.main()
