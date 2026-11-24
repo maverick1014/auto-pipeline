@@ -92,6 +92,8 @@ NEVER: Claude in Chrome (W5). Product code. Full suite twice (W4). Files outside
 
 ## Cross-repo brief (W12, fill the <>)
 
+Relaying an owner order (W12): the three lines of `${CLAUDE_PLUGIN_ROOT}/bin/agent-owner-order.sh line --quote "<his exact words>"` go first, above this block; the receiver runs its `check:` line.
+
 ```
 [<model> <effort>] CROSS-REPO TASK <name> from <repo>
 WHAT: <requirement, 5 lines max. What the peer repo must build or change.>

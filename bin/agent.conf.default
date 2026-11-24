@@ -47,3 +47,5 @@ board_guard=record
 watch_quiet_min=15
 cleanup_days=14
 docs_keep=
+owner_order_hours=24
+owner_order_min_chars=20

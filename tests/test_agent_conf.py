@@ -90,6 +90,9 @@ REAL_KEYS = [
     # clean-up (owner 2026-11-24): old state copies and quiet todo lines, a repo's own docs, tests/test_agent_cleanfiles.py
     "cleanup_days",
     "docs_keep",
+    # owner-relay (owner 2026-11-24): the relayed owner order check, tests/test_agent_owner_order.py
+    "owner_order_hours",
+    "owner_order_min_chars",
 ]
 # the keys this repo's own agent.conf had before progress-bar
 OLD_KEYS = REAL_KEYS[:REAL_KEYS.index("cloud_permission_mode") + 1]
@@ -147,6 +150,9 @@ GOOD_CONF_TEXT = (
     "watch_quiet_min=15\n"
     "cleanup_days=14\n"
     "docs_keep=\n"
+    # owner-relay (owner 2026-11-24): appended last, like the template
+    "owner_order_hours=24\n"
+    "owner_order_min_chars=20\n"
 )
 
 
@@ -489,6 +495,8 @@ class TestGroups(unittest.TestCase):
                 ("watch", ["watch_quiet_min"]),
                 # clean-up (owner 2026-11-24)
                 ("cleanup", ["cleanup_days", "docs_keep"]),
+                # owner-relay (owner 2026-11-24)
+                ("relay", ["owner_order_hours", "owner_order_min_chars"]),
             ],
         )
 

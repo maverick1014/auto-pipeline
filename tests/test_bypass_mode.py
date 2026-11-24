@@ -150,7 +150,8 @@ PROGRESS_KEYS = ["stage_brief", "stage_register", "stage_mock", "stage_tests", "
                  "compact_clear_at", "compact_clear_check_sec",   # state-trim (2026-11-20)
                  "board_guard",   # board-trust (2026-11-23)
                  "watch_quiet_min",   # one-watcher (2026-11-24)
-                 "cleanup_days", "docs_keep"]   # clean-up (2026-11-24), appended last
+                 "cleanup_days", "docs_keep",   # clean-up (2026-11-24)
+                 "owner_order_hours", "owner_order_min_chars"]   # owner-relay (2026-11-24), appended last
 
 class TestConfKeys(unittest.TestCase):
     def test_bypass_is_a_mode_for_both_keys(self):

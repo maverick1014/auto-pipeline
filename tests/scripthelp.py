@@ -96,6 +96,8 @@ COPY_BIN = [
     "agent-autoclear.sh",    # state-trim: the auto /clear waiter
     "agent-guard.sh",        # board-trust: the launch hook (bash prefilter)
     "agent_guard.py",        # board-trust: its logic
+    "agent-owner-order.sh",  # owner-relay: verify / line of a relayed owner order
+    "agent_owner_order.py",  # owner-relay: its logic (requirements/owner-relay.md)
 ]
 
 # Copied into the temp plugin's root.

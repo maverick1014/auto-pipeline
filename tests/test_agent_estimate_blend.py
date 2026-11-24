@@ -757,8 +757,10 @@ class TestEstimateConf(unittest.TestCase):
                                          "board_guard",
                                          # one-watcher (2026-11-24) appended watch_quiet_min last
                                          "watch_quiet_min",
-                                         # clean-up (2026-11-24) appended cleanup_days, docs_keep last
-                                         "cleanup_days", "docs_keep"])
+                                         # clean-up (2026-11-24) appended cleanup_days, docs_keep
+                                         "cleanup_days", "docs_keep",
+                                         # owner-relay (2026-11-24) appended its 2 keys last
+                                         "owner_order_hours", "owner_order_min_chars"])
 
 
 # ---------------------------------------------------------------- wired in

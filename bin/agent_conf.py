@@ -41,6 +41,8 @@ NUMBER_BOUNDS = {
     "compact_clear_check_sec": (1, 600),
     "watch_quiet_min": (1, 240),
     "cleanup_days": (1, 3650),
+    "owner_order_hours": (1, 720),
+    "owner_order_min_chars": (8, 200),
 }
 
 ROLE_KEYS = [
@@ -109,6 +111,8 @@ HINTS = {
     "watch_quiet_min": "Minutes a running task's state file may stay unchanged before the board adds not confirmed to its row. Whole number, 1 to 240.",
     "cleanup_days": "Days after which a state copy, the monitor file or a quiet todo line counts as old for the clean-up skill. Whole number, 1 to 3650.",
     "docs_keep": "Extra docs a repo keeps in the clean-up skill. Comma-separated, a folder ends in /, other entries are globs from the repo top, e.g. docs/,CHANGELOG.md,*/README.md. Empty = none.",
+    "owner_order_hours": "Hours old an owner prompt may be for a relayed owner order to verify. Whole number, 1 to 720.",
+    "owner_order_min_chars": "Shortest quote a relayed owner order may carry; a wide character counts 2. Whole number, 8 to 200.",
     "board_watch_sec": "Seconds between refreshes of the live board (agent-file.sh board --watch). Whole number, 1 to 3600.",
 }
 
@@ -128,6 +132,7 @@ GROUPS = [
                "compact_clear_at", "compact_clear_check_sec"]),
     ("watch", ["watch_quiet_min"]),
     ("cleanup", ["cleanup_days", "docs_keep"]),
+    ("relay", ["owner_order_hours", "owner_order_min_chars"]),
 ]
 
 _GROUP_OF = {}
