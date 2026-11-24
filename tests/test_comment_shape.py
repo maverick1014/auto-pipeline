@@ -404,6 +404,15 @@ class TestScope(ShapeCase):
         os.symlink("t2.sh", self.repo.path("bin/link.sh"))
         self.assertEqual(self.files(self.ok())["bin/link.sh"], CODE)
 
+    def test_r24_a_symlink_that_became_a_file(self):
+        self.base({"bin/t1.sh": "run\n"})
+        os.symlink("t1.sh", self.repo.path("bin/link.sh"))
+        self.commit("link")
+        self.git("tag", "-f", "base")
+        os.remove(self.repo.path("bin/link.sh"))
+        self.put({"bin/link.sh": "t1.sh  # x\n"})
+        self.assertEqual(self.files(self.ok())["bin/link.sh"], CODE)
+
 
 class TestTheRuleLine(unittest.TestCase):
 
