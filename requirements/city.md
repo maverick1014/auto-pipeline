@@ -9,6 +9,64 @@
 - Live mode `/` = real hook events only. Demo mode `/#demo` = fake data, same look, demo-only controls.
 - Page text Chinese for now.
 
+## Office
+
+- Owner, 2026-11-24 (city-office; prototype https://claude.ai/artifact/BhrUSCTgwVkVpVYiYnibmY, kept as `mock/city-office-mock.html`; his words: "instead of building the whole city, a position in their office is better ... different repo is different department"). The city becomes ONE office building, "Agent 办公楼". It replaces the island: in Look the island, camera, repo tags and tag strip; Arrange; Worktrees; Growth; Balance; Quality. Those sections stay below until the build removes them, then they go.
+- Kept as they are: Data path, Interaction, Status, Face to face (on one floor), Talking, Add agent, Persistence, Limits, Anywhere. The governor is called 区经理 (area manager) on the page; the rule of who it is does not change.
+
+### Building
+- One floor per repo the owner picks. Every floor is the same square, 14 x 14 tiles ("the office is too big" at 20 x 20).
+- Floor picker (选楼层, a button in the header): every repo this machine knows (the same list as Add agent). Tick = in the building, ↑ / ↓ moves a floor, at least one floor stays. A newly ticked repo goes on top. 1F is the bottom floor; G is the lobby. Saved per machine in world.json (replaces Arrange's slots and hidden flags).
+- A repo not ticked is not shown anywhere: no floor, no people, no rail group, no counts, no waits (owner: "dont care, because this thing is the user choose").
+
+### Who is shown
+- Sessions only (owner: "only spawn those that is create and not CLI"): main manager = 区经理 (one per floor, in its glass room), task manager = 经理 (a desk in the open office), Helper and a plain session with no role = 助理, the area manager's assistant (desks outside its door). The interior designer = 设计师 (see Renovation).
+- Subagents (workers, deputies, reviewers) are never drawn. Whoever runs them shows "worker ×n" or "deputy ×n" on its label and its rail row.
+- The owner is the director of the building: not drawn. The 等你 button and the red bubbles are his inbox.
+- Outfits by role, drawn in code (boxes, no new model files): 区经理 dark suit and red tie, 经理 light shirt, tie and lanyard, 助理 cardigan and clipboard, 设计师 dark top, beret and tablet.
+
+### Views
+- Outside (G): every page open starts here (owner: every time). The building from the street: a lobby with a door, one band per floor in that floor's accent colour, windows lit while someone on it works, a tag per floor (nF, repo, design name, people, the red count of who waits), the roof sign. A click on the door: the camera goes in through it (about 1 s), then the floor last looked at (first time: the top floor). A click on a floor's band or tag: that floor.
+- Inside: one floor at a time. The lift panel at the right lists the floors, top first, then G. A click switches at once, no transition (owner: "no need transition animation, it will cause the thing become slower"). The floor sign at the top of the map: nF, repo, design name, people, and the 装修 button.
+- Fixed zones on every floor: the lift (north middle), the area manager's glass room (north-east), the assistant desks outside its door, the open office of manager desks (one more desk than managers, at most 9), the pantry (north-west; idle people go there), the meeting corner (south-east). The outer wall on the camera's side drops to a low sill, so the floor is always seen inside.
+- Rail, person panel, talking, question cards and Add agent work as before. The rail groups are floors (nF + repo, top first); the tree is 区经理 > 设计师, 助理, 经理.
+- Selecting someone on another floor: the view goes to that floor first. From outside: in through the door to that floor.
+
+### Between floors
+- Owner: "if manager v4 want to find manager v3 ... he pressing the lift and wait then sit the lift to that floor and talk with the manager". A face-to-face talk (Face to face) with someone on another floor: the sender walks to the lift, presses the button, waits for the door, rides, walks out on the other floor, talks, and rides back the same way.
+- The view goes with them only while that person is selected (followed). Otherwise the floor in view just shows them leave or arrive.
+
+### Floor design
+- Owner: "the office design according to the repo"; "the rules of setting is must be very clear, so that player can use AI to adjust it also"; "able to let them design their own office too, as long as wont break the base code". A design changes the look only, never the layout or who is shown.
+
+| field | rule |
+|---|---|
+| `v` | 1 (format version) |
+| `name` | 1-20 characters, on the floor sign and the outside tag |
+| `why` | 0-60 characters, why it fits the repo; on hover |
+| `colors.accent` | #RRGGBB; outside band, window frames, decor accents |
+| `colors.carpet`, `colors.office_floor`, `colors.pantry_floor` | #RRGGBB, HSL lightness 55-95% (people and labels stay readable) |
+| `colors.desk`, `colors.desk_leg`, `colors.chair`, `colors.meeting_rug`, `colors.manager_rug` | #RRGGBB |
+| `decor` | exactly 3 entries, one per slot (1 south-west corner, 2 south middle, 3 east wall): a catalogue id or `none` |
+
+- Catalogue (15 pieces, each fits 1.6 x 0.9 tiles, drawn in code): robot, conveyor, gears, chart, plants, safe, cabinets, printer, bookshelf, clock, cashier, goods, menu, scanner, lightbox.
+- Never settable: the floor size; the places of the lift, the area manager's room, the assistant desks, the manager desks, the pantry and the meeting corner; the number of desks; people, labels, states.
+- Where: `~/.claude/agent-city/floors/<repo id>.json`, per machine, next to world.json, never in a repo, written atomically (tmp + mv). The last 5 versions are kept (`<repo id>.history.jsonl`) for undo (撤销上一步).
+- `agent-city floor rules` prints these rules and the catalogue as plain text, so any AI or person can read them; `agent-city floor show <repo>` prints the current file.
+- Checking: every write, whoever made it, is checked against the table. Unknown key, bad value, wrong count: the whole file is refused, the floor keeps its last good design, and the page log names each bad field and why (e.g. "茶水间地板的亮度是 20%，要在 55%–95% 之间"). Never silent. The design is data only: the page never runs code or loads files from it.
+- A wish that is not settable (move the lift, a bigger floor) is not an error: the designer changes what it may and says in one line what it left alone.
+- No design yet: the base look (plain carpet, no decor), floor sign "还没装修".
+
+### Renovation
+- Owner: "when adding a new repo which means add in a new company then we need to have renovation ... ask whether you want to renovate your office, or hire interior designer ... the interior designer is actually the agent in the user computer ... the role and also the knowledge is get from our plugin".
+- A repo ticked into the building for the first time asks once: 请室内设计师 (recommended) / 自己装修 / 先不装修. The same choice is behind 装修 on the floor sign and 重新装修 in the floor picker.
+- Interior designer: one agent session on this computer, opened by the city the way Add agent opens one (same guard, same cap check), in that repo's folder. Its role and design knowledge come from the plugin: `agents/interior-designer.md` plus these rules. Model from agent.conf (new key `interior_designer`, default Sonnet: it executes, it decides nothing for other agents). It reads only the repo's README or CLAUDE.md (first 60 lines) and the top-level folder names.
+- On the page it arrives by the lift on that floor as 设计师, its panel opens, and it asks what the owner wants (等你). The owner answers in the panel (example chips: 温馨一点，多点植物 / 冷色，简单干净 / 加个收银台 / 按你的想法来). It answers with a plan, renovates (cones and tape on the 3 slots, it walks between them; floor sign 装修中…), writes the file, then waits in the meeting corner. Another wish: it renovates again. "好了，你可以走了": it rides the lift away and its session ends.
+- It is shown, though opened by the city: a person the owner hires, not a subagent. It is never a Helper and never takes the area manager's seat.
+- 自己装修 (DIY, this round, owner chose "A first"): a form in the 装修 box: name, the 9 colours, one catalogue piece (or none) per slot; checked before saving, same rules.
+- The designer fails or stops answering (60 s per step): the floor keeps its last good design, one log line says why, 重新装修 starts again.
+- Next round (owner prefers it: "do A first, then when free do B"): free placement of furniture and decor anywhere on the floor grid, checked so every seat stays reachable from the lift and nothing overlaps.
+
 ## Data path
 - `hooks/hooks.json` → `bin/agent-city-hook.sh` → `<city dir>/events.jsonl` → `bin/agent_city.py` → SSE `/events` → page.
 - Hook when off: one `test -f`, nothing else. On: one JSON line per event. Bash builtins only.
@@ -27,6 +85,7 @@
 - A session shows up only if it started with the city hook installed (plugin 0.6.0+).
 
 ## Look
+- The island, camera, repo tags and tag strip below are replaced by Office (owner, 2026-11-24); rail, panel, header and bubble rules stay.
 - No credits, intro text, legend, or drag hint on the page. Kenney assets are CC0; `License.txt` files stay in `bin/agent-city-assets/`.
 - No speed buttons, no pause. The view runs at real time.
 - People walk at 1/3 of the 0.5.0 speed. Walk animation slowed to match.
@@ -130,6 +189,7 @@
 - Safety: POST only, behind the same guard as the chat endpoints (token, same origin), the local page only (127.0.0.1). The request names a territory id and nothing else; the server takes the folder from its own world.json and runs a fixed command: no path, name or other text of the request ever reaches a shell line. One open at a time per repo: a double click opens one session.
 
 ## Arrange
+- Replaced by Office (owner, 2026-11-24): kept until the city-office build removes it.
 
 - Owner, 2026-10-01 and 2026-10-02 (city-layout; approved mock mock/city-layout-mock.html: "let them arrange their city"): the owner places his repos' lands his own way and hides the repos he does not want to see. The island style stays the only style.
 - The control: one small chip 整理 (Arrange) at the right end of the repo row on the stage, always in view (the tags scroll, it does not). The live local page only: the demo has none.
@@ -149,6 +209,7 @@
 - Safety: one request, POST /api/layout, behind the guard of chat and add agent (127.0.0.1, token, own Origin). It carries territory ids, slot numbers and the hidden flag, nothing else: any other key is refused (400), an arrangement against the rule is refused whole (409) and nothing changes. No path, name or text of the request is used.
 
 ## Worktrees
+- Replaced by Office (owner, 2026-11-24): kept until the city-office build removes it.
 - Owner decision 2026-09-25. Mock first, owner sees it, then build.
 - One worktree = one construction site inside its repo's territory. The pipeline gives each worktree one task manager: the site office is that task manager's office (see Interaction).
 - The site has a fence and a sign on the site office with the branch name. Its workers build inside it.
@@ -163,6 +224,7 @@
 - v1 limits (main manager, 2026-09-25): the site is the office, a low construction fence around it (people may step over it), the branch sign, a site light, and scaffolding while working. Buildings its workers make still go up on the town's plots, as today. The 卡住的工地 count shows only when at least one site is stalled. Merged: a lane is laid from the site to the town hall over a few seconds, the fence goes, then the site office packs up (the worktree is gone after a merge). A site's office uses one of the plan's office spots; a lead working in that worktree stands at the site office instead of getting its own.
 
 ## Growth
+- Replaced by Office (owner, 2026-11-24): kept until the city-office build removes it.
 - One territory per repo. All territories on one land, not islands on a sea. The owner may place them himself; a land he hides can leave a gap (see Arrange).
 - Territories are split by a natural gap: river, ravine, mountain pass or forest. A bridge or road joins neighbours, so people could cross.
 - Tight spacing (owner, 2026-09-28, city-ux): territories sit 22 tiles apart (was 26); the town plans are unchanged, their roads stop at the town's content box, and the outer edge and coast stay organic.
@@ -198,6 +260,7 @@
 - Tiers (city-tier, merged 2026-10-05) were undone 2026-10-06 at the owner's ask: he prefers the previous city. Do not bring them back without him.
 
 ## Balance
+- Replaced by Office (owner, 2026-11-24): kept until the city-office build removes it.
 - 5 kinds of code, each one city system. Reward only, never a to-do list (owner, 2026-09-27: the kinds are an unspoken standard, not a goal; code a person checked by hand without a test can be fine and safe):
 
 | kind | in the repo | in the city | measured by |
@@ -220,6 +283,7 @@
 - The city server never runs the repo's tests. Test pass counts: maybe later, only if cheap.
 
 ## Quality
+- Replaced by Office (owner, 2026-11-24): kept until the city-office build removes it.
 - Code quality shapes how orderly the city is. Measured from the files only, no tools run: very large files, long functions and deep nesting, duplicated blocks, hot spots (large files changed very often in git).
 - Good quality: straight streets, buildings aligned to their district. Poor quality: buildings crooked, crammed together, some built in the wrong district (a tower in the houses). Messy, never broken.
 - When a file's quality improves, builders move its building to the right plot, aligned.
