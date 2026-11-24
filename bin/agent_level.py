@@ -612,7 +612,7 @@ YAML_BLOCK = re.compile(r"(?:^[ \t]*|[:\-?][ \t]+)(?:[!&][^ \t]*[ \t]+)*[|>][1-9
 
 
 def yaml_value_start(text, pos, base, ls):
-    """Does a value start at pos? (base: where the scan of this line began)"""
+    """Does a value start at pos? 2 after a flow char [ { , (that string must close on its line)."""
     k, ws = pos - 1, False
     while True:
         while k >= base and text[k] in " \t":
@@ -631,7 +631,7 @@ def yaml_value_start(text, pos, base, ls):
         break
     ch = text[k]
     if ch in "[{,":
-        return True
+        return 2
     if ch == ":":
         return ws
     if ch in "-?":
@@ -668,9 +668,10 @@ def lex_yaml(text):
                 segs.add("comment", pos, le)
                 code_end = pos
                 break
-            if c in "'\"" and yaml_value_start(text, pos, base, ls):
+            start = yaml_value_start(text, pos, base, ls) if c in "'\"" else False
+            if start:
                 end = yaml_string_end(text, pos)
-                if end < 0:
+                if end < 0 or (start == 2 and "\n" in text[pos:end]):
                     return None
                 segs.add("str", pos, end)
                 pos = base = end
