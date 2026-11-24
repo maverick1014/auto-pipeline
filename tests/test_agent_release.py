@@ -431,7 +431,6 @@ class TestPush(Fixture):
         # main on origin is untouched: release goes first, main is pushed by the caller
         self.assertEqual(self.git("rev-parse", "refs/heads/main", cwd=self.origin),
                          self.git("rev-parse", "origin/main"))
-        self.assertNotIn("--force", r.stdout + r.stderr)
 
     def test_push_fetches_origin_first(self):
         # another machine released 0.40.0 already
@@ -568,6 +567,157 @@ class TestReadsCheck(Fixture):
         self.commit("now committed")
         r = self.run_release("--dry-run")
         self.assertExit(r, 1)
+
+
+# ---------------------------------------------------------------- review bounce 1
+
+def refuse_pushes(bare):
+    """origin refuses every push (no credentials, protected branch, network)."""
+    write(os.path.join(bare, "hooks", "pre-receive"), "#!/bin/sh\necho refused by test >&2\nexit 1\n", 0o755)
+
+
+class TestPushFailures(Fixture):
+    def test_a_failed_push_of_a_new_release_fails(self):
+        refuse_pushes(self.origin)
+        r = self.run_release("--push")
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertEqual(self.git("rev-parse", "--verify", "-q", "refs/heads/release",
+                                  cwd=self.origin, check=False), "")
+
+    def test_a_failed_push_of_an_up_to_date_release_fails(self):
+        # reviewer item 1: a local build, then --push while origin refuses
+        self.build()
+        refuse_pushes(self.origin)
+        r = self.run_release("--push")
+        self.assertNotEqual(r.returncode, 0,
+                            "--push said success while origin has no release:\n" + r.stdout)
+
+    def test_a_fetch_error_other_than_a_missing_branch_fails(self):
+        self.git("remote", "set-url", "origin", os.path.join(self.base, "no-such-origin.git"))
+        r = self.run_release("--push")
+        self.assertExit(r, 1)
+        self.assertIn("agent-release.sh: git fetch origin release failed", r.stderr)
+
+    def test_a_stale_tracking_ref_is_dropped_when_origin_lost_the_branch(self):
+        # reviewer item 2: origin's release deleted (rollback step 4), same tree again
+        self.build("--push")
+        subprocess.run(["git", "-C", self.origin, "update-ref", "-d", "refs/heads/release"],
+                       check=True, capture_output=True, env=self.env())
+        r = self.build("--push")
+        self.assertEqual(self.git("rev-parse", "refs/heads/release", cwd=self.origin),
+                         self.git("rev-parse", "release"), r.stdout)
+
+    def test_the_fetch_does_not_depend_on_the_locale(self):
+        with open(LOGIC) as fh:
+            self.assertIn("LC_ALL", fh.read(), "git runs with LC_ALL=C (its messages are matched)")
+
+    def test_push_is_never_forced(self):
+        with open(LOGIC) as fh:
+            for n, line in enumerate(fh, 1):
+                if "push" in line and ("--force" in line or '"-f"' in line or "'-f'" in line
+                                       or '"+release' in line or "+refs/heads/release:refs/heads" in line):
+                    self.fail("bin/agent_release.py:%d forces a push: %s" % (n, line.strip()))
+
+
+class TestTipAndFrom(Fixture):
+    def test_origins_release_wins_over_a_different_local_one(self):
+        self.build("--push")
+        pushed = self.git("rev-parse", "release")
+        self.set_version("0.40.1")
+        self.commit("0.40.1")
+        self.build()                                  # local only, never pushed
+        self.assertNotEqual(self.git("rev-parse", "release"), pushed)
+        self.set_version("0.40.2")
+        self.commit("0.40.2")
+        self.build()
+        self.assertEqual(self.git("log", "-1", "--format=%P", "release"), pushed)
+
+    def test_dry_run_with_push_fetches_nothing_and_writes_nothing(self):
+        other = os.path.join(self.base, "other")
+        subprocess.run(["git", "clone", "-q", "-b", "main", self.origin, other], check=True,
+                       capture_output=True, env=self.env())
+        for k, v in (("user.email", "o@o.o"), ("user.name", "o"), ("commit.gpgsign", "false")):
+            self.git("config", k, v, cwd=other)
+        subprocess.run([os.path.join(other, "bin", "agent-release.sh"), "--push"], cwd=self.base,
+                       check=True, capture_output=True, env=self.env(), timeout=120)
+        before = self.refs()
+        r = self.run_release("--dry-run", "--push")
+        self.assertExit(r, 0)
+        self.assertEqual(self.refs(), before)
+        self.assertIn("release tip: none", r.stdout.splitlines())
+
+    def test_dry_run_writes_no_object(self):
+        def loose():
+            return [l for l in self.git("count-objects", "-v").splitlines()
+                    if l.startswith(("count:", "size:"))]
+        self.git("gc", "-q")
+        before = loose()
+        self.assertExit(self.run_release("--dry-run"), 0)
+        self.assertEqual(loose(), before, "--dry-run wrote objects (git mktree?)")
+
+    def test_build_and_push_refuse_a_commit_that_is_not_on_main(self):
+        # reviewer item 4: --push from a feature branch would publish unmerged code
+        self.git("checkout", "-q", "-b", "feature")
+        write(self.p("PRINCIPLES.md"), "# unmerged\n")
+        self.set_version("0.41.0")
+        sha = self.commit("unmerged")
+        for args in ((), ("--push",)):
+            with self.subTest(args=args):
+                before = self.refs(), self.refs(cwd=self.origin)
+                r = self.run_release(*args)
+                self.assertExit(r, 1)
+                self.assertIn("agent-release.sh: %s is not on main: release only from main"
+                              % self.short(sha), r.stderr)
+                self.assertEqual((self.refs(), self.refs(cwd=self.origin)), before)
+
+    def test_dry_run_only_warns_for_a_commit_that_is_not_on_main(self):
+        self.git("checkout", "-q", "-b", "feature")
+        self.set_version("0.41.0")
+        sha = self.commit("unmerged")
+        r = self.run_release("--dry-run")
+        self.assertExit(r, 0)
+        self.assertIn("warning: %s is not on main (build and --push refuse it)" % self.short(sha),
+                      r.stdout.splitlines())
+
+    def test_a_commit_on_main_behind_its_tip_is_fine(self):
+        old = self.git("rev-parse", "HEAD")
+        self.set_version("0.41.0")
+        self.commit("newer")
+        self.build("--from", old)
+
+
+class TestReadsCheckMore(Fixture):
+    def test_a_partial_name_then_a_variable_is_skipped(self):
+        base = skipped_count(self.run_release("--dry-run").stdout)
+        write(self.p("bin", "part.sh"), 'cat "$PLUGIN_ROOT/bin/agent-$x.sh"\n', 0o755)
+        self.commit("partial variable")
+        r = self.run_release("--dry-run")
+        self.assertExit(r, 0)
+        self.assertEqual(skipped_count(r.stdout), (base[0], base[1] + 1))
+
+    def test_own_folder_prefixes_resolve_against_the_files_own_folder(self):
+        # reviewer item 6: bin/sub/x.sh, $(dirname "$0") is bin/sub
+        write(self.p("bin", "sub", "x.sh"),
+              '#!/bin/sh\n. "$(dirname "$0")/../agent-roots.sh"\ncat "$(dirname "$0")/nope.sh"\n', 0o755)
+        write(self.p("bin", "sub", "y.py"),
+              'import os\nHERE = os.path.dirname(os.path.abspath(__file__))\n'
+              'p = os.path.join(HERE, "..", "agent.conf.default")\n'
+              'q = os.path.join(HERE, "gone.txt")\n')
+        self.commit("sub folder")
+        r = self.run_release("--dry-run")
+        self.assertExit(r, 1)
+        bad = [l for l in r.stderr.splitlines() if "which is not shipped" in l]
+        self.assertEqual(bad, [
+            "agent-release.sh: bin/sub/x.sh:3 reads bin/sub/nope.sh, which is not shipped",
+            "agent-release.sh: bin/sub/y.py:4 reads bin/sub/gone.txt, which is not shipped",
+        ])
+
+    def test_not_a_checkout_when_the_folder_sits_inside_another_repo(self):
+        nested = self.p("cache", "0.39.0")
+        self.install_script(nested)
+        r = self.run_release("--dry-run", root=nested)
+        self.assertExit(r, 2)
+        self.assertIn("agent-release.sh: not a git checkout: %s" % nested, r.stderr)
 
 
 # ---------------------------------------------------------------- the real repo
