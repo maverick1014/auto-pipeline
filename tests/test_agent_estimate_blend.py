@@ -753,8 +753,10 @@ class TestEstimateConf(unittest.TestCase):
                                          # state-trim (2026-11-20) appended its 6 keys last
                                          "state_keep_hours", "state_warn_lines", "state_header_lines",
                                          "state_trim_auto", "compact_clear_at", "compact_clear_check_sec",
-                                         # board-trust (2026-11-23) appended board_guard last
-                                         "board_guard"])
+                                         # board-trust (2026-11-23) appended board_guard
+                                         "board_guard",
+                                         # one-watcher (2026-11-24) appended watch_quiet_min last
+                                         "watch_quiet_min"])
 
 
 # ---------------------------------------------------------------- wired in
