@@ -82,6 +82,7 @@ COPY_BIN = [
     "agent_estimate.py",
     "agent-cleanup.sh",
     "agent_cleanup.py",
+    "agent_cleanfiles.py",   # clean-up: --files, rubbish docs and outdated agent_* lines
     "agent-watch.sh",
     "agent_watch.py",        # one-watcher: the --all engine and tell (requirements/one-watcher.md)
     "agent_watchfile.py",    # one-watcher: the status file and the targets, read only (board, start, resume)
