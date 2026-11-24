@@ -32,3 +32,4 @@ description: Main manager only. After a task manager reports DONE PASS, run the 
 6. On `MERGE FAIL`: report the first line to the human with the deputy's evidence. Do not retry on your own.
 7. Merged a fix early, while its branch is still running? → `SendMessage` that task manager at once: merge main back into your branch. Never cherry-pick slices; merge the branch (or its prefix).
 8. Every release bumps `version` in `.claude-plugin/plugin.json`; users get nothing without it (no update notice, no auto update).
+   Only in the auto-pipeline repo (the one with `bin/agent-release.sh`): after the version bump is committed on main, run `bin/agent-release.sh --push` before main is pushed, because users install the `release` branch (the ship set only), not main, and a main pushed first points users at a release that does not exist yet.

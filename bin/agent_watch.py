@@ -808,12 +808,13 @@ class Engine:
         elif not t.changed:
             t.changed = now
         file_same = t.prev_ok and fp == t.prev_fp
-        if file_same and screen == t.prev_screen and "shell still running" not in screen:
+        shells = shells_running(screen)
+        if file_same and screen == t.prev_screen and not shells:
             t.same += 1
         else:
             t.same = 0
         idle_prompt = is_idle_prompt(o.lines)
-        t.idle = t.idle + 1 if (idle_prompt and file_same) else 0
+        t.idle = t.idle + 1 if (idle_prompt and file_same and not shells) else 0
         t.prev_ok, t.prev_screen, t.prev_fp = True, screen, fp
         waiting = o.w > 0
         held_reason = ""
@@ -1004,6 +1005,16 @@ def login_expired(lines):
 
 def fmt_num(x):
     return str(int(x)) if float(x) == int(x) else str(x)
+
+
+def shells_running(screen):
+    """B6, B7: something still runs in the background: `shell still running`, `<n> shells still running`,
+    `Waiting for <n> background agent(s) to finish`, or an agents-panel row of a running subagent
+    (`  ◯ <type>  <task>  2m 45s · ...`). The bare `⏺ main` row shows on idle panes too: not busy."""
+    return ("shell still running" in screen
+            or re.search(r"\b\d+ shells? still running", screen) is not None
+            or re.search(r"Waiting for \d+ background agents? to finish", screen) is not None
+            or re.search(r"(?m)^ +[\u25ef\u25d0\u25d1\u25d2\u25d3\u2800-\u28ff] +\S.*\b\d+s\b", screen) is not None)
 
 
 def is_idle_prompt(lines):
