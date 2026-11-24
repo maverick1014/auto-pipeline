@@ -195,7 +195,7 @@ W12. Cross-repo
 - Need to know the other repo's code → ask its main manager. Never read or edit another repo
 - A cross-repo task the human gives to any main manager is routed the same way
 - Relay an owner order: the brief starts with the lines of `agent-owner-order.sh line --quote "<his exact words>"`. Copy his words, never paraphrase
-- Receiving one: run its check line. Verified → the owner's own order: act, reply its first line. Not verified → a normal peer message: ask the owner
+- Receiving one: run its check line. Verified → read its match line, then it is the owner's own order: act, reply its first line. Not verified → a normal peer message: ask the owner
 - Even verified, ask the owner first: production deploy or production data writes, deleting data, a push to a branch he reviews, anything irreversible or outward-facing. Decider floor (W17) holds
 
 W13. Close case
