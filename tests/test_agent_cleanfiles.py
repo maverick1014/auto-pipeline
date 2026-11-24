@@ -1225,7 +1225,10 @@ class TestConfKeys(unittest.TestCase):
     def test_template_group_and_hints(self):
         with open(os.path.join(BIN, "agent.conf.default")) as fh:
             keys = [l.split("=", 1) for l in fh.read().splitlines() if "=" in l]
-        self.assertEqual(keys[-2:], [["cleanup_days", "14"], ["docs_keep", ""]])
+        names = [k[0] for k in keys]
+        self.assertIn(["cleanup_days", "14"], keys)
+        self.assertIn(["docs_keep", ""], keys)
+        self.assertEqual(names.index("docs_keep"), names.index("cleanup_days") + 1)
         self.assertEqual(self.ac.group_of("cleanup_days"), "cleanup")
         self.assertEqual(self.ac.group_of("docs_keep"), "cleanup")
         for key in ("cleanup_days", "docs_keep"):

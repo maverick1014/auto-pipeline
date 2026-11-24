@@ -736,8 +736,9 @@ class TestConfKeys(unittest.TestCase):
                 self.assertEqual(agent_conf.group_of(key), "levels")
         # state-trim (2026-11-20) appended its "state" group after it: levels is no longer the last group
         self.assertIn(("levels", ["level3_paths", "level4_paths"]), agent_conf.GROUPS)
-        # one-watcher (2026-11-24) appended its "watch" group after "state"
-        self.assertEqual([g[0] for g in agent_conf.GROUPS][-2:], ["state", "watch"])
+        # later groups (watch, cleanup, relay...) are appended after it: check order, not the tail
+        names = [g[0] for g in agent_conf.GROUPS]
+        self.assertLess(names.index("state"), names.index("watch"))
 
 
 class TestSettings(ScriptCase):
