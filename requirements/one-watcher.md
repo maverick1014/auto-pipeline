@@ -120,6 +120,31 @@ Changes board-waiting rule 9.4 (fold) and the W14 status line text. Rows 9.1-9.3
 
 Estimate: +15m (owner).
 
+## R. Review fixes — Opus reviewer 2026-11-24, task manager decisions (in the report under "What to decide")
+
+Gaps the first tests did not catch. Each closes a way the watch could miss a wake or wake for nothing; none widens the task.
+
+| # | Fix | Rows |
+|---|---|---|
+| R1 | The remote read command is built short enough for real sizes (30-char name under a v4-plus path); a command that would still be 400 chars or more is never sent: not watched, why `read command too long (<n> chars)` | B1 |
+| R2 | A task not baselined in a run (not watched, or the run ended before its first good read) keeps its saved wake-line count in the status file (or null = seen for the first time); it never falls to 0 | B5 |
+| R3 | An exited pane: the state file is still read, its new wake lines fire first, then `WATCH LOST <name>: pane exited (…)`. LOST is reported once per pane handle (kept in the status file; sweep state `lost`); a new pane for the task is watched again | B11, B13 |
+| R4 | Idle-prompt and login stalls are held by (reason, state file) only, not by the screen (a status line clock moves): reported once until the file changes | B7, B8, B10 |
+| R5 | A takeover start (the old main manager is dead) never says "running": `WATCH: running (pid <p>) for the previous main manager; its wakes reach no one. Start it now with Bash run_in_background, timeout 7200000: <plugin>/bin/agent-watch.sh --all` (the new watch replaces it, B15) | F1 |
+| R6 | No `orca` on PATH (a PATH lookup, not an orca call) counts as plain for the board and the status line: no warning | F3, F6 |
+| R8 | Sweeps keep their cadence: the sleep is the interval minus the time the sweep took, so `--max` sweeps end near max x interval | B14 |
+| R9 | A replaced watch prints `WATCH REPLACED all: a newer watch runs (pid <p>); do not restart` and exits 0 (SIGTERM handler), so two main managers never keep replacing each other | B15 |
+| R10 | The orca-list fallback skips terminals with `connected: false` or `orphaned: true`; a shell pane titled `<name> shell` wins, then a title holding `shell`, then any non-agent terminal; a shell pane whose read is not `running` is resolved once more (as A6) before the read counts as failed | A4, A5, A6 |
+| R11 | A TELL block after the task's last wake line ends "waiting by design" (new work was told after DONE FAIL, or an answer without `ANSWER:`) | B9 |
+| R12 | Several new wake lines of one task in one sweep: local → one WATCH SIGNAL per line; remote → the last line, then the evidence line `+<k> earlier new wake line(s): read agent_state.txt` | B2, B4 |
+| R13 | The status file also keeps the task's last wake line; the same count with another last line (a trim and a new line in one interval) fires | B5 |
+| R15 | tell: a status-file pane that is gone or exited is resolved once more through A3-A5 before tell gives up | D2 |
+| R16 | One fcntl lock per shell pane, `<git common dir of the main repo>/agent_shell_<handle>.lock`, held by the watch's remote read and by tell's remote sends; tell checks the read-back line that carries its own hash | B1, D5, D6 |
+| R19 | `--interval-min` must be a number above 0, else usage, exit 2 | B14 |
+| R22 | Login expired counts only on a screen that is not busy (no `esc to interrupt`) and in its last 10 lines (test output holding the words is no stall) | B8 |
+
+Not fixed, accepted (in the report): R7 a remote task's `changed` is the sweep that saw the change (up to one interval late), so the 15 min quiet warning can show briefly around a 15 min heartbeat; R14 tell's echo check sees the pointer typed in the input box, not that the turn started (dispatch waits for the idle prompt first); R17 a LOST line names the orca error code only; R18 `CLAUDE_PROJECT_DIR` can win over the root tell is given; R21 the FSIG/TSIG marker lines assume orca does not wrap a shell pane's rows (checked in E2E when a remote machine is there).
+
 ## H. Not in this task
 
 No plugin version bump (`.claude-plugin/` is a level 4 path): the main manager bumps at release. The questions tool still reads only unsigned `QUESTION:` lines (an idea). Remote tell has no lock on the other machine: a TM rewrite in the same millisecond could drop the block; the read-back and the pointer echo catch most, the TM sees the pointer either way.

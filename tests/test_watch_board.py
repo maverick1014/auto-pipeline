@@ -171,6 +171,11 @@ class TestBoardRow(WatchBoardCase):
                    orphans=[{"path": "/x/ghost", "title": "◑ ghost", "handle": "term_g"}])
         self.assertNotIn("/x/ghost", self.board())
 
+    def test_r6_no_orca_on_this_machine_has_no_warning(self):
+        # review fix R6: runtime auto in the Claude app (no orca at all): no watch can run, so no warning
+        self.repo.no_orca()
+        self.assertEqual(self.status_of(), self.st("running"))
+
     def test_f7_the_board_never_calls_orca_for_the_watch(self):
         self.watch(changed="2026-11-02 14:40", orphans=[{"path": "/x/ghost", "title": "g", "handle": "term_g"}])
         self.repo.clear_calls()
@@ -241,6 +246,10 @@ class TestStatusLine(StatusLineCase):
 
     def test_scope_add_1_plain_runtime_has_no_warning_line(self):
         self.repo.set_conf("runtime", "plain")
+        self.assertFalse(self.first().startswith(ZH_WARN), self.first())
+
+    def test_r6_no_orca_on_this_machine_has_no_warning_line(self):
+        self.repo.no_orca()
         self.assertFalse(self.first().startswith(ZH_WARN), self.first())
 
     def test_f7_the_status_line_never_calls_orca(self):
@@ -426,6 +435,21 @@ class TestStartLine(StartResumeCase):
     def test_a_spawned_task_manager_gets_no_line(self):
         self.targets()
         self.assertEqual(self.watch_lines(self.start(AGENT_ROLE="task-manager")), [])
+
+    def test_r5_a_takeover_always_gets_the_start_command(self):
+        # review fix R5: a watch left by the dead main manager wakes no one; the new one replaces it (B15)
+        self.targets()
+        write_watch(self.repo, sweep=now_text(1), tasks={"alpha": {}, "beta": {}})
+        with open(self.repo.path(".git", "agent_main.lock"), "w") as fh:
+            fh.write("%d 2026-11-24 08:00 - -\n" % dead_pid())
+        out = self.start()
+        self.assertIn("ROLE: main manager. Previous main manager", out)
+        lines = self.watch_lines(out)
+        self.assertEqual(len(lines), 1, out)
+        self.assertTrue(lines[0].startswith("WATCH: running (pid %d) for the previous main manager" % os.getpid()),
+                        lines[0])
+        self.assertTrue(lines[0].endswith("Start it now with Bash run_in_background, timeout 7200000: "
+                                          "%s/bin/agent-watch.sh --all" % self.repo.plugin), lines[0])
 
     def test_with_auto_resume_still_one_line(self):
         self.repo.set_conf("auto_resume", "yes")

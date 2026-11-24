@@ -293,5 +293,52 @@ class TestPointer(TellCase):
         self.assertEqual(self.state_text("alpha").count("END TELL %s" % s), 1)
 
 
+
+# ---------------------------------------------------------------- R: review fixes (Opus review 2026-11-24)
+
+
+def hold_lock(path, seconds):
+    """A process that holds an fcntl lock on path for seconds; returns once it holds it."""
+    holder = subprocess.Popen(
+        [sys.executable, "-c", "import fcntl, sys, time\nf = open(sys.argv[1], 'a')\n"
+         "fcntl.flock(f, fcntl.LOCK_EX)\nprint('locked', flush=True)\ntime.sleep(float(sys.argv[2]))\n",
+         path, str(seconds)], stdout=subprocess.PIPE, text=True)
+    assert holder.stdout.readline().strip() == "locked"
+    return holder
+
+
+class TestReviewFixes(TellCase):
+    def test_r15_a_stale_pane_in_the_status_file_is_resolved_again(self):
+        self.write_status({"pid": 1, "started": now_text(5), "sweep": now_text(0), "interval_min": 5, "orphans": [],
+                           "tasks": {"alpha": {"path": self.t["path"], "env": "", "pane": "term_gone", "shell": "",
+                                               "watched": True, "why": "", "signals": 0, "confirmed": now_text(0),
+                                               "changed": now_text(0), "stall": ""}}})
+        s = sha8(SIG + " hello")
+        r = self.tell("alpha", SIG + " hello")
+        self.assertOk(r)
+        self.assertIn("TELL OK alpha %s" % s, r.stdout)
+        self.assertEqual([self.opt(c, "--text") for c in self.sends_to("term_alpha")], [pointer(s)])
+
+    def test_r16_a_remote_tell_waits_for_the_shell_pane_lock(self):
+        r_t = self.task("rem", env=ENV, echo=True)
+        lock = self.repo.path(".git", "agent_shell_%s.lock" % r_t["shell"])
+        holder = hold_lock(lock, 4)
+        self.addCleanup(holder.wait)
+        start = time.time()
+        r = self.tell("rem", SIG + " hello")
+        self.assertOk(r)
+        self.assertGreaterEqual(time.time() - start, 3.0, "the shell pane was used while its lock was held")
+
+    def test_r16_the_watch_remote_read_waits_for_the_shell_pane_lock(self):
+        r_t = self.task("rem", env=ENV)
+        lock = self.repo.path(".git", "agent_shell_%s.lock" % r_t["shell"])
+        holder = hold_lock(lock, 4)
+        self.addCleanup(holder.wait)
+        start = time.time()
+        self.repo.clear_calls()
+        self.run_all(max_sweeps="1")
+        self.assertGreaterEqual(time.time() - start, 3.0, "the watch sent to the shell pane while its lock was held")
+
+
 if __name__ == "__main__":
     unittest.main()

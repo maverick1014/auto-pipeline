@@ -428,10 +428,11 @@ class TestSweepAndWake(AllCase):
         self.assertEqual(self.one_watch(self.text(self.run_all(max_sweeps="6"))), "WATCH MAX all")
 
     def test_b8_login_expired_is_a_stall_on_the_first_sweep_that_sees_it(self):
+        # review fix R22: the words count on a screen that is not busy, in its last 10 lines
         for words in LOGIN_TEXTS:
             with self.subTest(words=words):
                 self.setUp()
-                self.task("alpha", frames=[frame(1), frame(2, ["  ⎿  " + words])] + moving()[2:])
+                self.task("alpha", frames=[frame(1), ["⏺ API call failed", "  ⎿  " + words] + idle(0)] + moving()[2:])
                 text = self.text(self.run_all(max_sweeps="8"))
                 self.assertEqual(self.one_watch(text), "WATCH STALL alpha: login expired")
                 self.assertEqual(len(self.sweeps(text)), 1, text)
@@ -459,7 +460,7 @@ class TestSweepAndWake(AllCase):
                 self.assertEqual(self.one_watch(text), "WATCH STALL alpha: no change")
 
     def test_b9_login_expired_still_fires_while_waiting(self):
-        self.task("alpha", frames=[frame(1), frame(2, ["API Error: 401 · Please run /login"])])
+        self.task("alpha", frames=[frame(1), ["API Error: 401 · Please run /login"] + idle(0)])
         self.append_state("alpha", "QUESTION: port?")
         text = self.text(self.run_all(max_sweeps="6"))
         self.assertEqual(self.one_watch(text), "WATCH STALL alpha: login expired")
@@ -626,6 +627,188 @@ class TestSweepAndWake(AllCase):
                          (self.tasks["alpha"]["path"], "term_alpha", True, 0))
         self.assertRegex(a["confirmed"], r"^\d{4}-\d\d-\d\d \d\d:\d\d")
         self.assertFalse(st["tasks"]["ghost"]["watched"])
+
+
+# ---------------------------------------------------------------- R: review fixes (Opus review 2026-11-24)
+
+
+class TestReviewFixes(AllCase):
+    """requirements/one-watcher.md section R: what the Opus review found that the first tests did not catch."""
+
+    LONG_NAME = "v4plus-ledger-rollout-final-ab"     # 30 chars, a real-size name
+
+    def test_r1_the_remote_read_command_stays_under_400_for_real_sizes(self):
+        self.task(self.LONG_NAME, env=ENV, sub="orca/workspaces/v4-plus")
+        self.on_task_read(self.LONG_NAME, {3: "[Opus 5.5 xhigh] DONE PASS %s" % self.LONG_NAME})
+        text = self.text(self.run_all(max_sweeps="6"))
+        self.assertEqual(self.one_watch(text), "WATCH SIGNAL %s: [Opus 5.5 xhigh] DONE PASS %s"
+                         % (self.LONG_NAME, self.LONG_NAME))
+        for call in self.terminal_calls("send"):
+            self.assertLess(len(self.opt(call, "--text") or ""), 400, call)
+
+    def test_r1_a_command_that_would_be_400_or_more_is_never_sent(self):
+        self.task("alpha", env=ENV, sub="x" * 120 + "/" + "y" * 120)
+        text = self.text(self.run_all(max_sweeps="2"))
+        st = self.status()["tasks"]["alpha"]
+        self.assertFalse(st["watched"])
+        self.assertTrue(st["why"].startswith("read command too long"), st["why"])
+        self.assertIn("watch: alpha not watched: read command too long", text)
+        for call in self.terminal_calls("send"):
+            self.assertLess(len(self.opt(call, "--text") or ""), 400, call)
+
+    def test_r2_a_task_not_baselined_in_a_run_keeps_its_saved_count(self):
+        self.task("alpha")
+        self.append_state("alpha", "[Opus 5.5 xhigh] DONE PASS alpha")
+        self.run_all(max_sweeps="1")
+        self.assertEqual(self.status()["tasks"]["alpha"]["signals"], 1)
+        records = self.main_state_text()
+        self.main_state("")                                  # run 2: no pane known, not watched
+        self.run_all(max_sweeps="1")
+        self.assertFalse(self.status()["tasks"]["alpha"]["watched"])
+        self.assertIn(self.status()["tasks"]["alpha"]["signals"], (1, None))
+        self.main_state(records)                             # run 3: watched again
+        text = self.text(self.run_all(max_sweeps="3"))
+        self.assertEqual(self.one_watch(text), "WATCH MAX all")
+
+    def test_r3_a_wake_line_written_just_before_the_pane_exits_still_fires(self):
+        self.task("alpha")
+        self.on_task_read("alpha", {2: "DONE PASS alpha"})
+        self.exited("term_alpha", from_read=2)
+        text = self.text(self.run_all())
+        self.assertEqual(self.watch_lines(text), ["WATCH SIGNAL alpha: DONE PASS alpha",
+                                                  "WATCH LOST alpha: pane exited (operator_close, exit 0)"])
+
+    def test_r3_lost_is_reported_once_per_pane(self):
+        self.task("alpha")
+        self.exited("term_alpha", from_read=2)
+        self.assertEqual(self.one_watch(self.text(self.run_all())),
+                         "WATCH LOST alpha: pane exited (operator_close, exit 0)")
+        text = self.text(self.run_all(max_sweeps="3"))
+        self.assertEqual(self.one_watch(text), "WATCH MAX all")
+        self.assertIn("alpha lost", self.sweeps(text)[-1])
+        self.screens("term_alpha2", moving())                # a relaunched TM: a new pane
+        self.launch("tm-pane", "alpha", "term_alpha2", since="2026-11-24 09:00")
+        self.on_read("term_alpha2", self.tasks["alpha"]["state"], {2: "QUESTION: back?"})
+        self.assertEqual(self.one_watch(self.text(self.run_all())), "WATCH SIGNAL alpha: QUESTION: back?")
+
+    def test_r4_an_idle_stall_is_reported_once_while_the_file_stays_the_same(self):
+        self.task("alpha", frames=[idle(i) for i in range(1, 60)])
+        self.assertEqual(self.one_watch(self.text(self.run_all(max_sweeps="6"))), "WATCH STALL alpha: idle prompt")
+        self.assertEqual(self.one_watch(self.text(self.run_all(max_sweeps="4"))), "WATCH MAX all")
+        self.append_state("alpha", "HEARTBEAT alpha: step 4 of 7, work 50m, waiting on worker 2")
+        self.assertEqual(self.one_watch(self.text(self.run_all(max_sweeps="6"))), "WATCH STALL alpha: idle prompt")
+
+    def test_r4_a_login_stall_is_reported_once_while_the_file_stays_the_same(self):
+        self.task("alpha", frames=[["API Error: 401 · Please run /login"] + idle(i) for i in range(1, 60)])
+        self.assertEqual(self.one_watch(self.text(self.run_all(max_sweeps="6"))), "WATCH STALL alpha: login expired")
+        self.assertEqual(self.one_watch(self.text(self.run_all(max_sweeps="4"))), "WATCH MAX all")
+
+    def test_r22_login_words_in_tool_output_on_a_busy_screen_are_no_stall(self):
+        self.task("alpha", frames=[frame(i, ["  ⎿  AssertionError: 'API Error: 401 · Please run /login' != ''"])
+                                   for i in range(1, 30)])
+        self.assertEqual(self.one_watch(self.text(self.run_all(max_sweeps="5"))), "WATCH MAX all")
+
+    def test_r8_the_sweeps_keep_their_cadence(self):
+        self.task("alpha")
+        self.write(os.path.join(self.d, "slow"), "1.5")
+        start = time.time()
+        text = self.text(self.run_all(env={"AGENT_WATCH_INTERVAL_S": "3"}, max_sweeps="3"))
+        took = time.time() - start
+        self.assertEqual(self.one_watch(text), "WATCH MAX all")
+        self.assertLess(took, 14, "sleeping the whole interval after every sweep drifts (%.1f s)" % took)
+
+    def test_r9_a_replaced_watch_says_so_and_exits_0(self):
+        self.task("alpha")
+        old = self.repo.popen("agent-watch.sh", "--all", "--max", "200",
+                              env={"AGENT_RUNTIME": "orca", "AGENT_WATCH_INTERVAL_S": "1"}, cwd=self.repo.dir)
+        self.addCleanup(lambda: old.poll() is None and old.kill())
+        for _ in range(100):
+            if os.path.exists(self.status_path) and self.status().get("pid") == old.pid:
+                break
+            time.sleep(0.1)
+        self.assertEqual(self.status().get("pid"), old.pid, "the first watch never wrote its status file")
+        new = self.text(self.run_all(max_sweeps="1"))
+        self.assertIn("watch --all: replaced pid %d" % old.pid, new)
+        out, err = old.communicate(timeout=15)
+        self.assertEqual(old.returncode, 0, out + err)
+        self.assertTrue([l for l in out.splitlines()
+                         if re.match(r"^WATCH REPLACED all: a newer watch runs \(pid \d+\); do not restart$", l)], out)
+
+    def test_r10_a_disconnected_or_orphaned_terminal_is_skipped(self):
+        t = self.task("alpha", pane="term_new", launch=False)
+        self.screens("term_old", moving())
+        self.screens("term_orph", moving())
+        self.terminals([{"handle": "term_old", "title": "◑ alpha Task Manager", "worktreePath": t["path"],
+                         "agentIdentity": "claude", "connected": False},
+                        {"handle": "term_orph", "title": "◑ alpha Task Manager", "worktreePath": t["path"],
+                         "agentIdentity": "claude", "orphaned": True},
+                        {"handle": "term_new", "title": "◑ alpha Task Manager", "worktreePath": t["path"],
+                         "agentIdentity": "claude", "connected": True}])
+        self.on_read("term_new", t["state"], {2: "DONE PASS alpha"})
+        self.assertEqual(self.one_watch(self.text(self.run_all())), "WATCH SIGNAL alpha: DONE PASS alpha")
+        self.assertEqual(self.status()["tasks"]["alpha"]["pane"], "term_new")
+
+    def test_r10_the_shell_titled_for_the_task_wins(self):
+        t = self.task("alpha", env=ENV, launch=False, shell="sh_alpha2")
+        self.launch("tm-pane", "alpha", t["pane"], env=ENV)
+        self.shell_pane("sh_dev", env=ENV)
+        self.terminals([{"handle": "sh_dev", "title": "npm run dev", "worktreePath": t["path"]},
+                        {"handle": "sh_alpha2", "title": "alpha shell", "worktreePath": t["path"]}], env=ENV)
+        self.on_task_read("alpha", {2: "QUESTION: shell?"})
+        self.assertEqual(self.one_watch(self.text(self.run_all())), "WATCH SIGNAL alpha: QUESTION: shell?")
+        self.assertEqual({self.opt(c, "--terminal") for c in self.terminal_calls("send")}, {"sh_alpha2"})
+
+    def test_r10_an_exited_shell_pane_is_resolved_again(self):
+        t = self.task("alpha", env=ENV, launch=False, shell="sh_live")
+        self.launch("tm-pane", "alpha", t["pane"], env=ENV)
+        self.shell_pane("sh_dead", env=ENV)
+        self.write(os.path.join(self.d, "shell", "sh_dead", "exited"), "")
+        self.launch("shell-pane", "alpha", "sh_dead", env=ENV)
+        self.terminals([{"handle": "sh_live", "title": "alpha shell", "worktreePath": t["path"]}], env=ENV)
+        self.on_task_read("alpha", {3: "DONE PASS alpha"})
+        text = self.text(self.run_all())
+        self.assertEqual(self.one_watch(text), "WATCH SIGNAL alpha: DONE PASS alpha")
+        self.assertEqual({self.opt(c, "--terminal") for c in self.terminal_calls("send")}, {"sh_live"})
+
+    def test_r11_a_tell_after_the_last_wake_line_ends_waiting(self):
+        self.task("alpha", frames=[STILL])
+        self.append_state("alpha", "DONE FAIL alpha: 2 red", "TELL 1234abcd [Opus 5.5 xhigh] | 2026-11-24 09:10",
+                          "  fix the 2 red tests, then report again", "END TELL 1234abcd", "")
+        self.assertEqual(self.one_watch(self.text(self.run_all(max_sweeps="8"))), "WATCH STALL alpha: no change")
+
+    def test_r12_two_new_wake_lines_of_a_local_task_both_fire(self):
+        self.task("alpha")
+        t = self.tasks["alpha"]
+        self.hook(t["pane"], '[ "$1" = "2" ] && printf "%%s\\n%%s\\n" "QUESTION: first?" "DONE FAIL alpha: second" >> %s\n'
+                  % sh_quote(t["state"]))
+        self.assertEqual(self.watch_lines(self.text(self.run_all())),
+                         ["WATCH SIGNAL alpha: QUESTION: first?", "WATCH SIGNAL alpha: DONE FAIL alpha: second"])
+
+    def test_r12_a_remote_task_says_how_many_came_before(self):
+        self.task("alpha", env=ENV)
+        t = self.tasks["alpha"]
+        self.hook(t["pane"], '[ "$1" = "2" ] && printf "%%s\\n%%s\\n" "QUESTION: first?" "DONE FAIL alpha: second" >> %s\n'
+                  % sh_quote(t["state"]))
+        text = self.text(self.run_all())
+        watch = self.one_watch(text)
+        self.assertEqual(watch, "WATCH SIGNAL alpha: DONE FAIL alpha: second")
+        self.assertEqual(self.after(text, watch)[0], "+1 earlier new wake line: read agent_state.txt")
+
+    def test_r13_a_trim_and_a_new_line_in_one_interval_still_fires(self):
+        t = self.task("alpha")
+        self.append_state("alpha", "QUESTION: old? | 2026-11-10 09:00", "ANSWER: yes",
+                          "QUESTION: older? | 2026-11-10 09:00", "ANSWER: no")
+        after = "QUESTION: older? | 2026-11-10 09:00\nANSWER: no\nDONE PASS alpha\n"
+        self.hook(t["pane"], '[ "$1" = "2" ] && printf "%%s" %s > %s\n' % (sh_quote(after), sh_quote(t["state"])))
+        self.assertEqual(self.one_watch(self.text(self.run_all())), "WATCH SIGNAL alpha: DONE PASS alpha")
+
+    def test_r19_interval_min_must_be_above_0(self):
+        for value in ("0", "-1", "x"):
+            with self.subTest(value=value):
+                r = self.repo.run("agent-watch.sh", "--all", "--interval-min", value, "--max", "1",
+                                  env={"AGENT_RUNTIME": "orca"}, cwd=self.repo.dir, timeout=30)
+                self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+                self.assertIn("usage", (r.stdout + r.stderr).lower())
 
 
 # ---------------------------------------------------------------- B16. orphans, this repo only

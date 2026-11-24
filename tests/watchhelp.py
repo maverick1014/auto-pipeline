@@ -23,6 +23,8 @@ The fake orca (ALL_STUB) keeps its state under $ORCA_STUB_DIR:
     shell/<h>/buf            a shell pane: a send runs the text with bash (env map
                              applied) and appends "$ <text>" and its output; a read
                              returns the lines after --cursor, latestCursor = line count
+    shell/<h>/exited         that shell pane has exited: a read gives status "exited"
+    slow                     seconds every `terminal read` sleeps first (cadence tests)
     echo/<h>/buf             a TM pane that shows what is sent to it ("❯ <text>");
                              echo/<h>/drop holds a count of sends that are lost
     env/<env>/down           that machine is unreachable: every call with it fails
@@ -144,6 +146,9 @@ if verb == "terminal wait":
         err("timeout")
     out({"ok": True, "result": {"wait": {"condition": cond, "satisfied": True}}})
 
+if verb == "terminal read" and os.path.exists(os.path.join(D, "slow")):
+    import time
+    time.sleep(float(rd(os.path.join(D, "slow"), "0") or 0))
 if verb == "terminal read" and os.path.isdir(screens):
     cf = os.path.join(screens, "count")
     n = int((rd(cf, "0") or "0").strip() or 0) + 1
@@ -162,6 +167,8 @@ if verb == "terminal read" and os.path.isdir(screens):
         sys.exit(1)
     out(term_json(frame.splitlines(), n))
 if verb == "terminal read" and os.path.isdir(shell):
+    if os.path.exists(os.path.join(shell, "exited")):
+        out(term_json([], 0, "exited"))
     buf_read(shell)
 if verb == "terminal read" and os.path.isdir(echo):
     buf_read(echo)
@@ -345,6 +352,14 @@ class AllCase(ScriptCase):
         self.write(os.path.join(self.folder("env", env), "map"), "/remote/%s\t%s\n" % (env, real))
         return real
 
+    def main_state(self, text):
+        """Replace the main repo's agent_state.txt (where the LAUNCH records are)."""
+        with open(self.repo.path("agent_state.txt"), "w") as fh:
+            fh.write(text)
+
+    def main_state_text(self):
+        return self.repo.read("agent_state.txt") or ""
+
     def ps_fail(self, n):
         self.write(os.path.join(self.d, "ps_fail"), str(n))
 
@@ -364,15 +379,15 @@ class AllCase(ScriptCase):
             fh.write(line + "\n")
 
     def task(self, name, status="working", env=None, pane=None, shell=None, launch=True,
-             frames=None, git=False, row=True, echo=False):
+             frames=None, git=False, row=True, echo=False, sub=""):
         """A task worktree with its agent_state.txt, its agent_worktree.txt row, its TM pane
         (a screens pane, or an echo pane with echo=True) and its LAUNCH record.
-        env: the TM runs on that machine; its folder is /remote/<env>/wt_<name> there."""
+        env: the TM runs on that machine; its folder is /remote/<env>[/<sub>]/wt_<name> there."""
         pane = pane or "term_" + name
         if env:
             real_root = self.map_env(env)
-            path = "/remote/%s/wt_%s" % (env, name)
-            real = os.path.join(real_root, "wt_" + name)
+            path = "/remote/%s/%swt_%s" % (env, sub + "/" if sub else "", name)
+            real = os.path.join(real_root, sub, "wt_" + name)
             shell = shell or "sh_" + name
         else:
             path = real = os.path.join(self.repo.base, "wt_" + name)
