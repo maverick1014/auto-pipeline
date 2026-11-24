@@ -18,7 +18,7 @@ Main manager   (Opus 5.5, xhigh · the main chat · only one with the browser)
 
 Scripts, not agents (cost no tokens):
   bin/agent-start.sh   RAM/CPU guard, prints the rules, 39-question quiz gate, main-manager lock
-  bin/agent-level.sh   the risk level a diff needs (0-4): built-in and agent.conf paths, L0 shapes; RAISE when the declared level is lower
+  bin/agent-level.sh   the risk type (A-D) of each file and task part of a diff: built-in and agent.conf paths, A shapes; RAISE when a C or D file is above the declared type
   bin/agent-owner-order.sh  relayed owner orders between repo managers: `line` prints the OWNER ORDER header (sender), `verify` checks the words are a typed owner prompt in the sender's transcript (receiver)
   bin/agent-file.sh    the only writer of agent_*.txt
   bin/agent_estimate.py  the time estimator: learns work minutes from the finished tasks, backtests against the rubric
@@ -64,7 +64,7 @@ Checked in this order, first match wins.
 4. Idle or done worktrees → merge deputy cleans them first.
 5. RAM and CPU under 80%, agents under cap → open a worktree with a task manager. Else wait.
 
-Every task gets a risk level 0-4 at dispatch (R8); level 3 and 4 take the full lane; bin/agent-level.sh check raises it before merge, never lowers it.
+Every task gets a risk type A-D at dispatch (R8); D takes the full lane; a mixed task is checked part by part; bin/agent-level.sh check raises a part before merge, never lowers it.
 
 ## One real day
 

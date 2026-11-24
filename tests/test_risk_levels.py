@@ -29,7 +29,7 @@ CONTRACT
        REQUIRED LEVEL <n>                    always the first line
        <path>: L<k> <reason>                 one line per changed file, sorted by path
        no changes                            when nothing changed
-       no agent.conf: built-in L4 paths only when the project has no agent.conf
+       no agent.conf: built-in D paths only when the project has no agent.conf
        RAISE: declared <d>, needs <m>        last line, only when d < m (see below)
    exit 0; RAISE -> exit 1. Usage or setup error (no --base, a ref git does not know,
    --declared not one of 0 1 2 3 4, another verb, an invalid level3_paths or
@@ -122,7 +122,7 @@ CONTRACT
    board: one more column, zh 级别 / en Level, right after 位置 / Where: "L<n>" from
        the task's todo line, "-" when it has none and for every other row.
 
-4. Rules: PRINCIPLES.md "R8. Risk levels" after R7, before "## B. Work", one terse
+4. Rules: PRINCIPLES.md "R8. Risk types" after R7, before "## B. Work", one terse
    "- " line per rule (<= 200 chars). R1, W2, W4, W5 name R8. skills/dispatch picks
    the level (todo add --level, a LEVEL: line in the task manager brief, the level
    in the deputy brief; level 3 or 4 never takes the fast lane). skills/merge,
@@ -153,23 +153,23 @@ sys.path.insert(0, BIN)
 import agent_conf  # noqa: E402
 
 NOW = "2026-11-20 10:00"
-FILE_LINE = re.compile(r"^(\S+): L([0-4]) (.+)$")
+FILE_LINE = re.compile(r"^(\S+): ([A-D]) (.+)$")
 
 ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
-           "18D 19C 20A 21D 22C 23B 24D 25C 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39D")
+           "18D 19C 20A 21D 22C 23B 24D 25C 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38A 39C")
 
 # Q38 and Q39 as the quiz prints them (the worker writes them into bin/agent-start.sh as is).
-QUIZ_Q38 = """Q38. A task changes one colour value in one component: #1e88e5 becomes #43a047. Its risk level:
-  A. 2: simple logic, failing test first
-  B. 0: wording or tiny visual, the main manager reads the diff
-  C. 1: UI only, screenshots at desktop and phone width
-  D. 4: danger, the owner signs before merge"""
+QUIZ_Q38 = """Q38. A task changes one colour value in one component: #1e88e5 becomes #43a047. Its risk type:
+  A. A: text, style or simple move, the main manager reads the diff
+  B. B: UI, Chrome compare with the approved mock
+  C. C: logic, failing tests first
+  D. D: danger, the owner signs before merge"""
 
-QUIZ_Q39 = """Q39. The todo line says level 1 (UI only). Before merge, agent-level.sh check --declared 1 prints REQUIRED LEVEL 2 and RAISE: the diff touches api/. You:
-  A. Merge: the dispatch said UI only
-  B. Undo the api/ change yourself, then merge
-  C. Run the check again without --declared
-  D. Raise the todo line to level 2, bounce it back, run the level 2 gate before merge"""
+QUIZ_Q39 = """Q39. The todo line says type B (UI). Before merge, agent-level.sh check --declared B prints REQUIRED TYPE B+C and RAISE: api/total.py is a C file. You:
+  A. Merge: the dispatch said UI
+  B. Raise the whole task to D and run the full suite
+  C. Raise the todo line to C, bounce it back, check the api/total.py part by type C (failing tests first, touched feature) and the UI part by type B
+  D. Run the check again without --declared"""
 
 
 def read(*parts):
@@ -225,19 +225,26 @@ class LevelCase(ScriptCase):
         self.assertEqual(r.returncode, 0, "exit %d\n%s\n%s" % (r.returncode, r.stdout, r.stderr))
         return r
 
+    def tearDown_repo(self):
+        # a fresh project for the next subTest
+        self.repo.cleanup()
+        from scripthelp import ScriptRepo
+        self.repo = ScriptRepo()
+        self.addCleanup(self.repo.cleanup)
+
     def required(self, r):
         first = r.stdout.splitlines()[0] if r.stdout else ""
-        m = re.match(r"^REQUIRED LEVEL ([0-4])$", first)
+        m = re.match(r"^REQUIRED TYPE ([A-D](?:\+[A-D])*)$", first)
         self.assertTrue(m, r.stdout + r.stderr)
-        return int(m.group(1))
+        return m.group(1)
 
     def files(self, r):
-        """path -> (level, reason) of the file lines."""
+        """path -> (type, reason) of the file lines."""
         out = {}
         for line in r.stdout.splitlines()[1:]:
             m = FILE_LINE.match(line)
             if m:
-                out[m.group(1)] = (int(m.group(2)), m.group(3))
+                out[m.group(1)] = (m.group(2), m.group(3))
         return out
 
     def one(self, files_before, files_after, path, conf=None, extra=()):
@@ -259,16 +266,16 @@ class TestTheScript(LevelCase):
     def test_no_changes(self):
         self.base({"src/app.js": 'const a = "x";\n'})
         r = self.ok()
-        self.assertEqual(r.stdout.splitlines()[0], "REQUIRED LEVEL 0")
+        self.assertEqual(r.stdout.splitlines()[0], "REQUIRED TYPE A")
         self.assertIn("no changes", r.stdout.splitlines())
         self.assertEqual(self.files(r), {})
 
-    def test_one_line_per_file_sorted_after_the_level(self):
+    def test_one_line_per_file_sorted_after_the_type(self):
         self.base({"b/two.js": 'x("a");\n', "a/one.md": "hello\n", "c/s.css": "a{}\n"})
         self.put({"b/two.js": 'x("b");\n', "a/one.md": "hello you\n", "c/s.css": "b{}\n"})
         r = self.ok()
         lines = r.stdout.splitlines()
-        self.assertEqual(lines[0], "REQUIRED LEVEL 1")
+        self.assertEqual(lines[0], "REQUIRED TYPE A+B")
         paths = [FILE_LINE.match(l).group(1) for l in lines[1:] if FILE_LINE.match(l)]
         self.assertEqual(paths, ["a/one.md", "b/two.js", "c/s.css"])
 
@@ -276,6 +283,7 @@ class TestTheScript(LevelCase):
         self.base({"src/app.js": "x\n"})
         for args in (["check"], ["check", "--base"], ["check", "--base", "no-such-ref"],
                      ["check", "--base", "base", "--declared", "5"],
+                     ["check", "--base", "base", "--declared", "E"],
                      ["check", "--base", "base", "--declared", "x"],
                      ["check", "--base", "base", "--declared", ""],
                      ["check", "--base", "base", "--declared"],
@@ -292,61 +300,61 @@ class TestLevelZero(LevelCase):
     def test_a_string_literal(self):
         need, lvl, why = self.one({"src/app.js": 'const title = "Hello";\n'},
                                   {"src/app.js": 'const title = "Hello there";\n'}, "src/app.js")
-        self.assertEqual((need, lvl), (0, 0))
+        self.assertEqual((need, lvl), ("A", "A"))
         self.assertIn("text change", why)
 
     def test_a_single_quoted_string_in_python(self):
         need, lvl, why = self.one({"app/views.py": "def f():\n    flash('Saved')\n"},
                                   {"app/views.py": "def f():\n    flash('Stored, thanks')\n"},
                                   "app/views.py")
-        self.assertEqual((need, lvl), (0, 0))
+        self.assertEqual((need, lvl), ("A", "A"))
         self.assertIn("text change", why)
 
     def test_markup_text_between_tags(self):
         need, lvl, why = self.one({"src/Home.jsx": "export const Home = () => (\n  <h1>Welcome</h1>\n);\n"},
                                   {"src/Home.jsx": "export const Home = () => (\n  <h1>Welcome back</h1>\n);\n"},
                                   "src/Home.jsx")
-        self.assertEqual((need, lvl), (0, 0))
+        self.assertEqual((need, lvl), ("A", "A"))
         self.assertIn("text change", why)
 
     def test_a_text_attribute(self):
         need, lvl, why = self.one({"src/Logo.jsx": '<img src={logo} alt="Logo" />\n'},
                                   {"src/Logo.jsx": '<img src={logo} alt="Company logo" />\n'},
                                   "src/Logo.jsx")
-        self.assertEqual((need, lvl), (0, 0))
+        self.assertEqual((need, lvl), ("A", "A"))
         self.assertIn("text change", why)
 
     def test_a_hex_colour_in_a_string(self):
         need, lvl, why = self.one({"src/Badge.jsx": 'const tint = "#1e88e5";\n'},
                                   {"src/Badge.jsx": 'const tint = "#43a047";\n'}, "src/Badge.jsx")
-        self.assertEqual((need, lvl), (0, 0))
+        self.assertEqual((need, lvl), ("A", "A"))
         self.assertIn("colour change", why)
 
     def test_a_colour_attribute_is_a_colour_not_a_prop(self):
         need, lvl, why = self.one({"src/Badge.jsx": '<Badge color="#1e88e5" />\n'},
                                   {"src/Badge.jsx": '<Badge color="#43a047" />\n'}, "src/Badge.jsx")
-        self.assertEqual((need, lvl), (0, 0))
+        self.assertEqual((need, lvl), ("A", "A"))
         self.assertIn("colour change", why)
 
     def test_a_dart_colour(self):
         need, lvl, why = self.one({"lib/badge.dart": "final c = Container(color: Color(0xFF1E88E5));\n"},
                                   {"lib/badge.dart": "final c = Container(color: Color(0xFF43A047));\n"},
                                   "lib/badge.dart")
-        self.assertEqual((need, lvl), (0, 0))
+        self.assertEqual((need, lvl), ("A", "A"))
         self.assertIn("colour change", why)
 
     def test_a_flutter_named_colour(self):
         need, lvl, why = self.one({"lib/badge.dart": "final c = Container(color: Colors.blue);\n"},
                                   {"lib/badge.dart": "final c = Container(color: Colors.green[700]);\n"},
                                   "lib/badge.dart")
-        self.assertEqual((need, lvl), (0, 0))
+        self.assertEqual((need, lvl), ("A", "A"))
         self.assertIn("colour change", why)
 
     def test_rgb_and_rgba(self):
         need, lvl, why = self.one({"src/chart.js": "ctx.fillStyle = 'rgb(30, 136, 229)';\n"},
                                   {"src/chart.js": "ctx.fillStyle = 'rgba(67, 160, 71, 0.8)';\n"},
                                   "src/chart.js")
-        self.assertEqual((need, lvl), (0, 0))
+        self.assertEqual((need, lvl), ("A", "A"))
         self.assertIn("colour change", why)
 
     def test_a_prop_value_already_used_in_the_repo(self):
@@ -354,20 +362,20 @@ class TestLevelZero(LevelCase):
             {"src/Save.jsx": '<Button variant="primary">Save</Button>\n',
              "src/Cancel.jsx": '<Button variant="secondary">Cancel</Button>\n'},
             {"src/Save.jsx": '<Button variant="secondary">Save</Button>\n'}, "src/Save.jsx")
-        self.assertEqual((need, lvl), (0, 0))
+        self.assertEqual((need, lvl), ("A", "A"))
         self.assertIn("existing prop value", why)
 
     def test_a_prop_value_in_braces_already_used(self):
         need, lvl, why = self.one({"src/A.jsx": "<Gap size={3} />\n", "src/B.jsx": "<Gap size={2} />\n"},
                                   {"src/B.jsx": "<Gap size={3} />\n"}, "src/B.jsx")
-        self.assertEqual((need, lvl), (0, 0))
+        self.assertEqual((need, lvl), ("A", "A"))
         self.assertIn("existing prop value", why)
 
     def test_a_line_move_in_markup_asks_for_responsive(self):
         before = "<nav>\n  <Home />\n  <About />\n  <Contact />\n</nav>\n"
         after = "<nav>\n  <About />\n  <Contact />\n  <Home />\n</nav>\n"
         need, lvl, why = self.one({"src/Nav.jsx": before}, {"src/Nav.jsx": after}, "src/Nav.jsx")
-        self.assertEqual((need, lvl), (0, 0))
+        self.assertEqual((need, lvl), ("A", "A"))
         self.assertIn("line move", why)
         self.assertIn("manager: check responsive", why)
 
@@ -375,7 +383,7 @@ class TestLevelZero(LevelCase):
         before = "Column(children: [\n  title,\n  body,\n]);\n"
         after = "Column(children: [\n  body,\n  title,\n]);\n"
         need, lvl, why = self.one({"lib/page.dart": before}, {"lib/page.dart": after}, "lib/page.dart")
-        self.assertEqual((need, lvl), (0, 0))
+        self.assertEqual((need, lvl), ("A", "A"))
         self.assertIn("manager: check responsive", why)
 
     def test_several_shapes_in_one_file(self):
@@ -384,7 +392,7 @@ class TestLevelZero(LevelCase):
         after = ('<h1>Welcome back</h1>\n' + "".join("<p>line %d</p>\n" % i for i in range(12))
                  + '<Badge color="#43a047" />\n')
         need, lvl, why = self.one({"src/Home.jsx": before}, {"src/Home.jsx": after}, "src/Home.jsx")
-        self.assertEqual((need, lvl), (0, 0))
+        self.assertEqual((need, lvl), ("A", "A"))
         self.assertIn("text change", why)
         self.assertIn("colour change", why)
 
@@ -392,12 +400,12 @@ class TestLevelZero(LevelCase):
         need, lvl, why = self.one({"docs/guide.md": "# Guide\n\nRun it.\n"},
                                   {"docs/guide.md": "# Guide\n\nRun it twice.\n\nMore text.\n"},
                                   "docs/guide.md")
-        self.assertEqual((need, lvl), (0, 0))
+        self.assertEqual((need, lvl), ("A", "A"))
         self.assertIn("text file", why)
 
     def test_a_new_text_file(self):
         need, lvl, why = self.one({"docs/guide.md": "x\n"}, {"docs/faq.txt": "Q and A\n"}, "docs/faq.txt")
-        self.assertEqual((need, lvl), (0, 0))
+        self.assertEqual((need, lvl), ("A", "A"))
 
 
 class TestLevelOne(LevelCase):
@@ -405,26 +413,26 @@ class TestLevelOne(LevelCase):
     def test_a_css_change(self):
         need, lvl, why = self.one({"src/card.css": ".card { padding: 4px; }\n"},
                                   {"src/card.css": ".card { padding: 8px; }\n"}, "src/card.css")
-        self.assertEqual((need, lvl), (1, 1))
+        self.assertEqual((need, lvl), ("B", "B"))
         self.assertIn("style file", why)
 
     def test_a_colour_in_a_css_file_is_still_a_style_file(self):
         need, lvl, why = self.one({"src/card.css": ".card { color: #ffffff; }\n"},
                                   {"src/card.css": ".card { color: #000000; }\n"}, "src/card.css")
-        self.assertEqual((need, lvl), (1, 1))
+        self.assertEqual((need, lvl), ("B", "B"))
         self.assertIn("style file", why)
 
     def test_a_new_scss_file(self):
         need, lvl, why = self.one({"src/app.js": "x\n"}, {"src/theme.scss": "$primary: #fff;\n"},
                                   "src/theme.scss")
-        self.assertEqual((need, lvl), (1, 1))
+        self.assertEqual((need, lvl), ("B", "B"))
         self.assertIn("style file", why)
 
     def test_an_asset(self):
         need, lvl, why = self.one({"assets/logo.png": b"\x89PNG\r\n\x1a\n\x00\x01"},
                                   {"assets/logo.png": b"\x89PNG\r\n\x1a\n\x00\x02\x03"},
                                   "assets/logo.png")
-        self.assertEqual((need, lvl), (1, 1))
+        self.assertEqual((need, lvl), ("B", "B"))
         self.assertIn("asset file", why)
 
     def test_a_prop_value_not_used_anywhere(self):
@@ -432,7 +440,7 @@ class TestLevelOne(LevelCase):
             {"src/Save.jsx": '<Button variant="primary">Save</Button>\n',
              "src/Cancel.jsx": '<Button variant="secondary">Cancel</Button>\n'},
             {"src/Save.jsx": '<Button variant="ghost">Save</Button>\n'}, "src/Save.jsx")
-        self.assertEqual((need, lvl), (1, 1))
+        self.assertEqual((need, lvl), ("B", "B"))
         self.assertIn("new prop value", why)
 
 
@@ -440,7 +448,7 @@ class TestLevelTwo(LevelCase):
 
     def code(self, before, after, path="src/app.js"):
         need, lvl, why = self.one({path: before}, {path: after}, path)
-        self.assertEqual((need, lvl), (2, 2), why)
+        self.assertEqual((need, lvl), ("C", "C"), why)
         return why
 
     def test_a_logic_change(self):
@@ -474,19 +482,19 @@ class TestLevelTwo(LevelCase):
         self.code("a = load()\nb = save()\nc = done()\n", "b = save()\na = load()\nc = done()\n",
                   path="app/run.py")
 
-    def test_a_comparison_in_markup_is_not_text(self):
-        self.code("const ok = a > b && c < d;\n", "const ok = a > b && c < e;\n", path="src/X.jsx")
+    def test_a_comparison_in_a_python_file_is_code(self):
+        self.code("ok = a > b and c < d\n", "ok = a > b and c < e\n", path="app/x.py")
 
     def test_a_new_code_file(self):
         need, lvl, why = self.one({"src/app.js": "x\n"}, {"src/util.js": "export const u = 1;\n"},
                                   "src/util.js")
-        self.assertEqual((need, lvl), (2, 2))
+        self.assertEqual((need, lvl), ("C", "C"))
         self.assertIn("new file", why)
 
     def test_a_deleted_code_file(self):
         need, lvl, why = self.one({"src/app.js": "x\n", "src/old.js": "y\n"}, {"src/old.js": None},
                                   "src/old.js")
-        self.assertEqual((need, lvl), (2, 2))
+        self.assertEqual((need, lvl), ("C", "C"))
         self.assertIn("deleted file", why)
 
     def test_package_json_scripts_only(self):
@@ -494,7 +502,7 @@ class TestLevelTwo(LevelCase):
         after = json.dumps({"name": "a", "scripts": {"t": "jest -i"}, "dependencies": {"x": "1.0.0"}}, indent=2)
         need, lvl, _ = self.one({"package.json": before + "\n"}, {"package.json": after + "\n"},
                                 "package.json")
-        self.assertEqual((need, lvl), (2, 2))
+        self.assertEqual((need, lvl), ("C", "C"))
 
 
 class TestBuiltInLevelFour(LevelCase):
@@ -502,8 +510,8 @@ class TestBuiltInLevelFour(LevelCase):
     def danger(self, path, before, after, kind):
         need, lvl, why = self.one({path: before} if before is not None else {"seed2.txt": "x\n"},
                                   {path: after}, path)
-        self.assertEqual((need, lvl), (4, 4), why)
-        self.assertIn("built-in L4: %s" % kind, why)
+        self.assertEqual((need, lvl), ("D", "D"), why)
+        self.assertIn("built-in D: %s" % kind, why)
 
     def test_lockfiles(self):
         for path in ("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "app/pubspec.lock",
@@ -511,13 +519,6 @@ class TestBuiltInLevelFour(LevelCase):
             with self.subTest(path=path):
                 self.danger(path, "a\n", "b\n", "lockfile")
                 self.tearDown_repo()
-
-    def tearDown_repo(self):
-        # a fresh project for the next subTest
-        self.repo.cleanup()
-        from scripthelp import ScriptRepo
-        self.repo = ScriptRepo()
-        self.addCleanup(self.repo.cleanup)
 
     def test_package_json_dependencies(self):
         for key in ("dependencies", "devDependencies", "peerDependencies", "overrides"):
@@ -560,44 +561,48 @@ class TestRepoPaths(LevelCase):
         need, lvl, why = self.one({"src/money/total.js": 'const t = "Total";\n'},
                                   {"src/money/total.js": 'const t = "Sum";\n'}, "src/money/total.js",
                                   conf={"level3_paths": "src/money/,lib/ledger/"})
-        self.assertEqual((need, lvl), (3, 3))
+        self.assertEqual((need, lvl), ("C", "C"))
         self.assertIn("level3_paths src/money/", why)
 
     def test_a_level3_css_file_is_3(self):
         need, lvl, _ = self.one({"src/money/m.css": "a{}\n"}, {"src/money/m.css": "b{}\n"},
                                 "src/money/m.css", conf={"level3_paths": "src/money/"})
-        self.assertEqual((need, lvl), (3, 3))
+        self.assertEqual((need, lvl), ("C", "C"))
 
     def test_level4_globs(self):
         need, lvl, why = self.one({"firestore.rules": "allow read;\n", "db/seed.js": "x\n"},
                                   {"firestore.rules": "allow write;\n"}, "firestore.rules",
                                   conf={"level4_paths": "*.rules, db/"})
-        self.assertEqual((need, lvl), (4, 4))
+        self.assertEqual((need, lvl), ("D", "D"))
         self.assertIn("level4_paths *.rules", why)
 
     def test_level4_beats_level3(self):
         need, lvl, why = self.one({"src/money/pay.js": "x()\n"}, {"src/money/pay.js": "y()\n"},
                                   "src/money/pay.js",
                                   conf={"level3_paths": "src/money/", "level4_paths": "src/money/pay.js"})
-        self.assertEqual((need, lvl), (4, 4))
+        self.assertEqual((need, lvl), ("D", "D"))
 
     def test_anchored_globs(self):
         conf = {"level3_paths": "api/,src/*/ledger"}
         self.base({"api/v1/h.py": "a = 1\n", "src/api/h.py": "a = 1\n", "src/a/ledger/x.ts": "a\n"}, conf)
         self.put({"api/v1/h.py": "a = 2\n", "src/api/h.py": "a = 2\n", "src/a/ledger/x.ts": "b\n"})
         got = self.files(self.ok())
-        self.assertEqual(got["api/v1/h.py"][0], 3)
-        self.assertEqual(got["src/a/ledger/x.ts"][0], 3)
-        self.assertEqual(got["src/api/h.py"][0], 2)
+        self.assertIn("level3_paths", got["api/v1/h.py"][1])
+        self.assertNotIn("level3_paths", got["src/api/h.py"][1])
+        self.assertEqual(got["api/v1/h.py"][0], "C")
+        self.assertEqual(got["src/a/ledger/x.ts"][0], "C")
+        self.assertEqual(got["src/api/h.py"][0], "C")
 
     def test_a_glob_with_no_slash_matches_any_folder_or_name(self):
         conf = {"level3_paths": "core,*.money.ts"}
         self.base({"lib/core/x.py": "a = 1\n", "src/deep/a.money.ts": "a\n", "src/corex/y.py": "a = 1\n"}, conf)
         self.put({"lib/core/x.py": "a = 2\n", "src/deep/a.money.ts": "b\n", "src/corex/y.py": "a = 2\n"})
         got = self.files(self.ok())
-        self.assertEqual(got["lib/core/x.py"][0], 3)
-        self.assertEqual(got["src/deep/a.money.ts"][0], 3)
-        self.assertEqual(got["src/corex/y.py"][0], 2)
+        self.assertEqual(got["lib/core/x.py"][0], "C")
+        self.assertEqual(got["src/deep/a.money.ts"][0], "C")
+        self.assertEqual(got["src/corex/y.py"][0], "C")
+        self.assertIn("level3_paths", got["lib/core/x.py"][1])
+        self.assertNotIn("level3_paths", got["src/corex/y.py"][1])
 
     def test_an_invalid_conf_value_stops_the_check(self):
         self.base({"src/a.js": "x\n"}, {"level3_paths": "/etc/,src/"})
@@ -612,8 +617,8 @@ class TestRepoPaths(LevelCase):
         os.remove(self.repo.path("agent.conf"))
         self.put({"yarn.lock": "b\n"})
         r = self.ok()
-        self.assertEqual(self.required(r), 4)
-        self.assertIn("no agent.conf: built-in L4 paths only", r.stdout.splitlines())
+        self.assertIn("D", self.required(r).split("+"))   # agent.conf itself is deleted: a C part too
+        self.assertIn("no agent.conf: built-in D paths only", r.stdout.splitlines())
 
     def test_a_worktree_reads_the_main_repos_agent_conf(self):
         self.base({"src/money/total.js": "a = 1\n"})
@@ -622,7 +627,7 @@ class TestRepoPaths(LevelCase):
         self.repo.set_conf("level3_paths", "src/money/")     # the main copy only, not committed
         self.put({"src/money/total.js": "a = 2\n"}, cwd=wt)
         r = self.ok(cwd=wt)
-        self.assertEqual(self.required(r), 3)
+        self.assertEqual(self.required(r), "C")
 
 
 class TestDiffScope(LevelCase):
@@ -631,7 +636,7 @@ class TestDiffScope(LevelCase):
         self.base({"src/a.js": "a = 1\n"})
         self.put({"src/a.js": "a = 2\n"})
         self.commit()
-        self.assertEqual(self.required(self.ok()), 2)
+        self.assertEqual(self.required(self.ok()), "C")
 
     def test_changes_that_came_in_on_the_base_do_not_count(self):
         self.base({"src/a.md": "hi\n", "yarn.lock": "a\n"})
@@ -644,20 +649,20 @@ class TestDiffScope(LevelCase):
         self.commit("main moves on")
         self.git("checkout", "-q", "feat")
         r = self.ok(base=main)
-        self.assertEqual(self.required(r), 0, r.stdout)
+        self.assertEqual(self.required(r), "A", r.stdout)
         self.assertEqual(list(self.files(r)), ["src/a.md"])
 
     def test_an_untracked_file_counts(self):
         self.base({"src/a.js": "x\n"})
         self.put({"src/new.js": "export const n = 1;\n"})
         got = self.files(self.ok())
-        self.assertEqual(got["src/new.js"][0], 2)
+        self.assertEqual(got["src/new.js"][0], "C")
 
     def test_an_ignored_file_does_not_count(self):
         self.base({".gitignore": "build/\n", "src/a.js": "x\n"})
         self.put({"build/out.js": "y\n"})
         r = self.ok()
-        self.assertEqual(self.required(r), 0)
+        self.assertEqual(self.required(r), "A")
         self.assertEqual(self.files(r), {})
 
 
@@ -667,40 +672,133 @@ class TestDeclared(LevelCase):
         self.base({"api/handler.py": "def h():\n    return 1\n", "src/card.css": "a{}\n"})
         self.put({"api/handler.py": "def h():\n    return 2\n", "src/card.css": "b{}\n"})
 
-    def test_declared_lower_raises_and_bounces(self):
+    def test_a_c_file_above_the_declared_type_raises(self):
         self.ui_touching_api()
-        r = self.check("--declared", "1")
+        r = self.check("--declared", "B")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         lines = r.stdout.splitlines()
-        self.assertEqual(lines[0], "REQUIRED LEVEL 2")
-        self.assertEqual(lines[-1], "RAISE: declared 1, needs 2")
+        self.assertEqual(lines[0], "REQUIRED TYPE B+C")
+        self.assertEqual(lines[-1], "RAISE: declared B, needs C (api/handler.py)")
+
+    def test_old_numbers_are_read_as_types(self):
+        self.ui_touching_api()
+        self.assertEqual(self.check("--declared", "1").returncode, 1)      # 1 = B
+        for old in ("2", "3", "C", "D", "4"):
+            with self.subTest(declared=old):
+                self.ok("--declared", old)
+        r = self.check("--declared", "1")
+        self.assertEqual(r.stdout.splitlines()[-1], "RAISE: declared B, needs C (api/handler.py)")
 
     def test_declared_equal_passes(self):
         self.ui_touching_api()
-        r = self.ok("--declared", "2")
-        self.assertEqual(self.required(r), 2)
+        r = self.ok("--declared", "C")
+        self.assertEqual(self.required(r), "B+C")
         self.assertNotIn("RAISE", r.stdout)
 
-    def test_a_level_never_goes_down(self):
+    def test_a_declared_type_does_not_change_the_required_parts(self):
         self.base({"docs/a.md": "x\n"})
         self.put({"docs/a.md": "y\n"})
-        r = self.ok("--declared", "3")
-        self.assertEqual(self.required(r), 3)
+        r = self.ok("--declared", "D")
+        self.assertEqual(self.required(r), "A")
+        self.assertNotIn("RAISE", r.stdout)
+
+    def test_a_and_b_files_never_raise(self):
+        self.base({"docs/a.md": "x\n", "src/card.css": "a{}\n"})
+        self.put({"docs/a.md": "y\n", "src/card.css": "b{}\n"})
+        r = self.ok("--declared", "A")
+        self.assertEqual(self.required(r), "A+B")
         self.assertNotIn("RAISE", r.stdout)
 
     def test_no_declared_never_raises(self):
         self.base({"yarn.lock": "a\n"})
         self.put({"yarn.lock": "b\n"})
         r = self.ok()
-        self.assertEqual(self.required(r), 4)
+        self.assertEqual(self.required(r), "D")
         self.assertNotIn("RAISE", r.stdout)
 
-    def test_declared_zero_with_a_lockfile(self):
+    def test_declared_a_with_a_lockfile(self):
         self.base({"yarn.lock": "a\n"})
         self.put({"yarn.lock": "b\n"})
         r = self.check("--declared", "0")
         self.assertEqual(r.returncode, 1)
-        self.assertEqual(r.stdout.splitlines()[-1], "RAISE: declared 0, needs 4")
+        self.assertEqual(r.stdout.splitlines()[-1], "RAISE: declared A, needs D (yarn.lock)")
+
+
+class TestTypesPerPart(LevelCase):
+    """R8 (2026-11-24): a type per file and per task part, never one maximum; a component file is B at most."""
+
+    def test_a_component_file_is_b(self):
+        for path, before, after in (
+                ("src/Banner.tsx", "export const A = () => <b>hi</b>;\n",
+                 "export const A = () => { const n = items.length; return <div>{n}</div>; };\n"),
+                ("src/Card.vue", "<template><p>a</p></template>\n", "<template><p v-if=\"ok\">b</p></template>\n"),
+                ("src/Nav.jsx", "const a = 1;\n", "const a = compute(1);\n")):
+            with self.subTest(path=path):
+                need, typ, why = self.one({path: before}, {path: after}, path)
+                self.assertEqual((need, typ), ("B", "B"), why)
+                self.assertIn("component file", why)
+                self.tearDown_repo()
+
+    def test_a_new_and_a_deleted_component_file_are_b(self):
+        need, typ, why = self.one({"src/A.tsx": "x\n", "src/Old.tsx": "y\n"},
+                                  {"src/New.tsx": "export const N = 1;\n", "src/Old.tsx": None}, "src/New.tsx")
+        self.assertEqual((need, typ), ("B", "B"))
+        self.assertIn("new component file", why)
+
+    def test_a_component_file_in_a_level3_or_level4_path_still_raises(self):
+        for key, want in (("level3_paths", "C"), ("level4_paths", "D")):
+            with self.subTest(key=key):
+                need, typ, why = self.one({"src/money/Total.tsx": "const a = 1;\n"},
+                                          {"src/money/Total.tsx": "const a = 2;\n"}, "src/money/Total.tsx",
+                                          conf={key: "src/money/"})
+                self.assertEqual((need, typ), (want, want), why)
+                self.tearDown_repo()
+
+    def test_a_mixed_diff_is_per_part(self):
+        self.base({"src/Banner.tsx": "export const A = () => <b>hi</b>;\n", "src/calc.py": "def f(a):\n    return a + 1\n",
+                   "docs/a.md": "x\n", "yarn.lock": "a\n"})
+        self.put({"src/Banner.tsx": "export const A = () => <div>{n}</div>;\n", "src/calc.py": "def f(a):\n    return a * 2\n",
+                  "docs/a.md": "y\n", "yarn.lock": "b\n"})
+        r = self.ok()
+        self.assertEqual(self.required(r), "A+B+C+D")
+        got = self.files(r)
+        self.assertEqual({k: v[0] for k, v in got.items()},
+                         {"docs/a.md": "A", "src/Banner.tsx": "B", "src/calc.py": "C", "yarn.lock": "D"})
+        lines = r.stdout.splitlines()
+        self.assertIn("PART A: docs/a.md", lines)
+        self.assertIn("PART B: src/Banner.tsx", lines)
+        self.assertIn("PART C: src/calc.py", lines)
+        self.assertIn("PART D: yarn.lock", lines)
+
+    def test_a_component_file_and_a_calc_file_exit_zero_when_declared_c_and_raise_when_declared_b(self):
+        self.base({"src/Banner.tsx": "export const A = () => <b>hi</b>;\n", "src/calc.py": "def f(a):\n    return a + 1\n"})
+        self.put({"src/Banner.tsx": "export const A = () => <div>{n}</div>;\n", "src/calc.py": "def f(a):\n    return a * 2\n"})
+        self.assertEqual(self.ok("--declared", "C").stdout.splitlines()[0], "REQUIRED TYPE B+C")
+        r = self.check("--declared", "B")
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(r.stdout.splitlines()[-1], "RAISE: declared B, needs C (src/calc.py)")
+
+    def test_the_component_file_alone_never_raises_a_declared_a(self):
+        self.base({"src/Banner.tsx": "export const A = () => <b>hi</b>;\n"})
+        self.put({"src/Banner.tsx": "export const A = () => <div>{n}</div>;\n"})
+        r = self.ok("--declared", "A")
+        self.assertEqual(self.required(r), "B")
+        self.assertNotIn("RAISE", r.stdout)
+
+    def test_a_level4_path_is_d_for_that_file_only(self):
+        self.base({"db/seed.js": "x()\n", "docs/a.md": "x\n"}, {"level4_paths": "db/"})
+        self.put({"db/seed.js": "y()\n", "docs/a.md": "y\n"})
+        r = self.ok()
+        self.assertEqual(self.required(r), "A+D")
+        got = self.files(r)
+        self.assertEqual(got["db/seed.js"][0], "D")
+        self.assertIn("level4_paths db/", got["db/seed.js"][1])
+        self.assertEqual(got["docs/a.md"][0], "A")
+
+    def test_a_level3_path_is_c(self):
+        need, typ, why = self.one({"src/money/total.js": "a()\n"}, {"src/money/total.js": "b()\n"},
+                                  "src/money/total.js", conf={"level3_paths": "src/money/"})
+        self.assertEqual((need, typ), ("C", "C"))
 
 
 # ---------------------------------------------------------------- 2. agent.conf keys
@@ -808,69 +906,89 @@ class TodoCase(ScriptCase):
 class TestTodoAddLevel(TodoCase):
 
     def test_after_the_guess(self):
-        self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70", "--guess", "35", "--level", "2"))
-        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | guess 35m | level 2 | opened %s | by main\n" % NOW)
+        self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70", "--guess", "35", "--level", "C"))
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | guess 35m | level C | opened %s | by main\n" % NOW)
 
     def test_it_may_stand_anywhere(self):
-        self.assertOk(self.af("todo", "add", "--level", "3", "t1", "big", "build it", "70"))
-        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | level 3 | opened %s | by main\n" % NOW)
+        self.assertOk(self.af("todo", "add", "--level", "D", "t1", "big", "build it", "70"))
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | level D | opened %s | by main\n" % NOW)
 
     def test_no_est(self):
-        self.assertOk(self.af("todo", "add", "t1", "small", "fix it", "--level", "0"))
-        self.assertEqual(self.todo(), "t1 | small | fix it | level 0 | opened %s | by main\n" % NOW)
+        self.assertOk(self.af("todo", "add", "t1", "small", "fix it", "--level", "A"))
+        self.assertEqual(self.todo(), "t1 | small | fix it | level A | opened %s | by main\n" % NOW)
 
     def test_no_level_is_as_before(self):
         self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70"))
         self.assertEqual(self.todo(), "t1 | big | build it | est 70m | opened %s | by main\n" % NOW)
 
+    def test_an_old_number_is_stored_as_its_type(self):
+        for old, typ in (("0", "A"), ("1", "B"), ("2", "C"), ("3", "C"), ("4", "D")):
+            with self.subTest(old=old):
+                self.write_todo()
+                self.assertOk(self.af("todo", "add", "t1", "small", "fix it", "--level", old))
+                self.assertEqual(self.todo(), "t1 | small | fix it | level %s | opened %s | by main\n" % (typ, NOW))
+
     def test_a_bad_level_is_refused(self):
-        for bad in (["--level", "5"], ["--level", "-1"], ["--level", "x"], ["--level", ""], ["--level"]):
+        for bad in (["--level", "5"], ["--level", "E"], ["--level", "-1"], ["--level", "x"], ["--level", ""], ["--level"]):
             with self.subTest(bad=bad):
                 r = self.refused("todo", "add", "t1", "big", "build it", "70", *bad)
                 self.assertIn("--level", r.stderr)
 
 
 class TestTodoLevel(TodoCase):
-    LINE = "t1 | big | build it | est 70m | guess 35m | level 1 | opened 2026-11-20 09:00 | by main | stage tests since 2026-11-20 09:10"
+    LINE = "t1 | big | build it | est 70m | guess 35m | level B | opened 2026-11-20 09:00 | by main | stage tests since 2026-11-20 09:10"
 
     def test_a_raise_replaces_in_place(self):
         self.write_todo(self.LINE, "t2 | small | other | est 5m | opened 2026-11-20 09:00 | by main")
-        r = self.af("todo", "level", "t1", "3")
+        r = self.af("todo", "level", "t1", "C")
         self.assertOk(r)
-        self.assertIn("todo level: t1 1 -> 3", r.stdout)
-        self.assertEqual(self.todo().splitlines(), [self.LINE.replace("level 1", "level 3"),
+        self.assertIn("todo level: t1 B -> C", r.stdout)
+        self.assertEqual(self.todo().splitlines(), [self.LINE.replace("level B", "level C"),
                                                     "t2 | small | other | est 5m | opened 2026-11-20 09:00 | by main"])
 
     def test_a_missing_level_goes_where_todo_add_puts_it(self):
         self.write_todo("t1 | big | build it | est 70m | opened 2026-11-20 09:00 | by main | stage tests since 2026-11-20 09:10")
-        r = self.af("todo", "level", "t1", "2")
+        r = self.af("todo", "level", "t1", "C")
         self.assertOk(r)
-        self.assertIn("todo level: t1 - -> 2", r.stdout)
-        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | level 2 | opened 2026-11-20 09:00 | by main | stage tests since 2026-11-20 09:10\n")
+        self.assertIn("todo level: t1 - -> C", r.stdout)
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | level C | opened 2026-11-20 09:00 | by main | stage tests since 2026-11-20 09:10\n")
 
     def test_after_the_guess_when_there_is_one(self):
         self.write_todo("t1 | big | build it | est 70m | guess 35m | opened 2026-11-20 09:00 | by main")
-        self.assertOk(self.af("todo", "level", "t1", "4"))
-        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | guess 35m | level 4 | opened 2026-11-20 09:00 | by main\n")
+        self.assertOk(self.af("todo", "level", "t1", "D"))
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | guess 35m | level D | opened 2026-11-20 09:00 | by main\n")
 
     def test_the_same_level_writes_nothing(self):
         self.write_todo(self.LINE)
         before = os.stat(self.repo.path("agent_todo.txt")).st_mtime_ns
-        r = self.af("todo", "level", "t1", "1")
+        r = self.af("todo", "level", "t1", "B")
         self.assertOk(r)
-        self.assertIn("todo level: t1 already level 1", r.stdout)
+        self.assertIn("todo level: t1 already type B", r.stdout)
         self.assertEqual(self.todo(), self.LINE + "\n")
         self.assertEqual(os.stat(self.repo.path("agent_todo.txt")).st_mtime_ns, before)
 
     def test_lower_is_refused(self):
-        self.write_todo(self.LINE.replace("level 1", "level 3"))
-        r = self.refused("todo", "level", "t1", "2")
+        self.write_todo(self.LINE.replace("level B", "level D"))
+        r = self.refused("todo", "level", "t1", "C")
         self.assertIn("only goes up", r.stderr)
+
+    def test_an_old_number_line_stays_readable(self):
+        self.write_todo(self.LINE.replace("level B", "level 3"))
+        r = self.refused("todo", "level", "t1", "B")                 # old 3 = C: B is lower
+        self.assertIn("only goes up", r.stderr)
+        self.assertIn("already type C", self.af("todo", "level", "t1", "2").stdout)    # old 3 and 2 are both C
+        self.assertOk(self.af("todo", "level", "t1", "D"))
+        self.assertEqual(self.todo().splitlines(), [self.LINE.replace("level B", "level D")])
+
+    def test_old_numbers_are_accepted_as_input(self):
+        self.write_todo(self.LINE)
+        self.assertOk(self.af("todo", "level", "t1", "4"))
+        self.assertEqual(self.todo().splitlines(), [self.LINE.replace("level B", "level D")])
 
     def test_bad_input_is_refused(self):
         self.write_todo(self.LINE)
         for args in (["todo", "level", "nope", "2"], ["todo", "level", "t1", "5"],
-                     ["todo", "level", "t1", "x"], ["todo", "level", "t1"]):
+                     ["todo", "level", "t1", "E"], ["todo", "level", "t1", "x"], ["todo", "level", "t1"]):
             with self.subTest(args=args):
                 self.refused(*args)
 
@@ -883,9 +1001,14 @@ class TestTodoDoneLevel(TodoCase):
         return rows[0]
 
     def test_the_level_is_the_last_key(self):
+        self.write_todo("t1 | big | build it | est 70m | guess 35m | level C | opened 2026-11-20 09:00 | by main")
+        self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
+        self.assertTrue(self.done_line().endswith(" adds=- guess=35 level=C"), self.done_line())
+
+    def test_an_old_number_is_copied_as_it_is(self):
         self.write_todo("t1 | big | build it | est 70m | guess 35m | level 2 | opened 2026-11-20 09:00 | by main")
         self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
-        self.assertTrue(self.done_line().endswith(" adds=- guess=35 level=2"), self.done_line())
+        self.assertTrue(self.done_line().endswith(" level=2"), self.done_line())
         self.assertIn(" | t1 | build it | data repo=", self.done_line())
 
     def test_no_level_is_a_dash(self):
@@ -918,15 +1041,26 @@ class TestBoardLevel(tb.BoardCase):
         self.assertEqual(tb.HEAD["en"][4:7], ["Where", "Level", "Est"])
 
     def test_the_cells(self):
-        self.af("todo", "add", "lv", "big", "with a level", "60", "--level", "3", now="2026-11-02 14:00")
+        self.af("todo", "add", "lv", "big", "with a level", "60", "--level", "C", now="2026-11-02 14:00")
         self.add("nolv", "an old line", est=30)
         self.state("PARKED: a question | lv | since 2026-11-02 14:10")
         rows = self.rows()
-        self.assertEqual(self.row(rows, task="lv")["Level"], "L3")
+        self.assertEqual(self.row(rows, task="lv")["Level"], "C")
         self.assertEqual(self.row(rows, task="nolv")["Level"], "-")
         for r in rows:
             if r["Task"] not in ("lv", "nolv"):
                 self.assertEqual(r["Level"], "-", r)
+
+    def test_an_old_number_line_shows_its_type(self):
+        for old, typ in (("0", "A"), ("1", "B"), ("3", "C"), ("4", "D")):
+            with self.subTest(old=old):
+                self.af("todo", "add", "o" + old, "big", "an old line", "60", now="2026-11-02 14:00")
+                path = self.repo.path("agent_todo.txt")
+                with open(path) as fh:
+                    text = fh.read()
+                with open(path, "w") as fh:
+                    fh.write(text.replace("est 60m |", "est 60m | level %s |" % old))
+                self.assertEqual(self.row(self.rows(), task="o" + old)["Level"], typ)
 
     def test_zh_header(self):
         self.repo.set_conf("language", "zh")
@@ -944,11 +1078,11 @@ class TestTheRule(unittest.TestCase):
         return read("PRINCIPLES.md")
 
     def rule(self):
-        return section(self.text(), "R8. Risk levels", "## B. Work")
+        return section(self.text(), "R8. Risk types", "## B. Work")
 
     def test_it_sits_after_r7_and_nothing_is_renumbered(self):
         text = self.text()
-        order = [text.index(h) for h in ("R7. Worktree file", "R8. Risk levels", "## B. Work", "W1. ")]
+        order = [text.index(h) for h in ("R7. Worktree file", "R8. Risk types", "## B. Work", "W1. ")]
         self.assertEqual(order, sorted(order))
         self.assertEqual(text.count("R8. "), 1)
 
@@ -964,13 +1098,15 @@ class TestTheRule(unittest.TestCase):
 
     def test_it_says_what_the_owner_decided(self):
         rule = self.rule().lower()
-        for phrase in ("0 wording", "1 ui only", "2 simple logic", "3 heavy logic", "4 danger",
+        for phrase in ("a = text, style, simple move", "b = ui", "c = logic", "d = danger",
                        "dispatch", "--level", "agent-level.sh check", "raise", "only goes up",
                        "level3_paths", "level4_paths", "full lane", "reads the diff", "e2e",
-                       "screenshots", "phone", "console clean", "owner not seen",
-                       "failing test first", "table", "owner yes", "opus", "full suite once",
-                       "real-data count", "dry-run", "rollback plan", "owner signs",
-                       "check responsive", "lockfile", "todo level"):
+                       "mock", "phone", "console clean", "owner not seen",
+                       "failing tests first", "touched features", "full suite only when really needed",
+                       "dry-run", "rollback plan", "owner signs",
+                       "check responsive", "lockfile", "todo level",
+                       "mixed task", "own type", "component or style file is b at most", "never auto-raised",
+                       "acceptance criterion", "0=a 1=b 2,3=c 4=d"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, rule)
 
@@ -980,11 +1116,22 @@ class TestTheRule(unittest.TestCase):
             with self.subTest(rule=start):
                 self.assertIn("R8", section(text, start, end))
 
-    def test_r1_keeps_size_and_adds_the_full_lane_for_3_and_4(self):
+    def test_no_old_level_words_are_left(self):
+        text = self.text()
+        self.assertNotRegex(text, r"(?i)\blevel [0-4]\b")
+        self.assertNotIn("Risk levels", text)
+
+    def test_w4_runs_tests_by_touched_feature(self):
+        w4 = section(self.text(), "W4. ", "W5. ")
+        self.assertIn("module → feature", w4)
+        self.assertIn("touched feature", w4)
+        self.assertIn("Full suite only when really needed", w4)
+
+    def test_r1_keeps_size_and_adds_the_full_lane_for_d(self):
         r1 = section(self.text(), "R1. ", "R2. ")
         self.assertIn("Task size picks the lane", r1)
         self.assertIn("full lane", r1)
-        self.assertRegex(r1, r"3 (and|or) 4")
+        self.assertIn("D always takes the full lane", r1)
 
 
 class TestDispatchSkill(unittest.TestCase):
@@ -994,16 +1141,16 @@ class TestDispatchSkill(unittest.TestCase):
 
     def test_the_todo_add_line_carries_the_level(self):
         line = [l for l in self.text().splitlines() if "agent-file.sh todo add" in l][0]
-        self.assertIn("--level <n>", line)
+        self.assertIn("--level <A-D>", line)
 
     def test_the_task_manager_brief_has_a_level_line(self):
         brief = section(self.text(), "## Task manager brief", "## Cross-repo brief")
         self.assertTrue([l for l in brief.splitlines() if l.startswith("LEVEL:")], brief)
 
-    def test_the_deputy_brief_carries_the_level_and_3_or_4_is_never_fast(self):
+    def test_the_deputy_brief_carries_the_type_and_d_is_never_fast(self):
         step2 = section(self.text(), "\n2. ", "\n3. ")
-        self.assertIn("level", step2.lower())
-        self.assertIn("3 or 4", step2)
+        self.assertIn("level: <A-D>", step2)
+        self.assertIn("Type D never takes the fast lane", step2)
 
     def test_it_names_the_rule(self):
         self.assertIn("R8", self.text())
@@ -1021,14 +1168,15 @@ class TestMergeSkill(unittest.TestCase):
 
     def test_it_says_declared_raise_and_level_0(self):
         text = self.text()
-        for words in ("--declared", "RAISE", "todo level", "gate"):
+        for words in ("--declared", "RAISE", "todo level", "own type"):
             with self.subTest(words=words):
                 self.assertIn(words, text)
-        self.assertRegex(text, r"(?i)level 0[^\n]*skip[^\n]*E2E")
+        self.assertRegex(text, r"(?i)type A[^\n]*skip[^\n]*E2E")
+        self.assertIn("by its own type", text)
 
     def test_the_deputy_brief_gives_the_level(self):
         block = section(self.text(), "name: <name>", "todo done arguments:")
-        self.assertIn("level: <n>", block)
+        self.assertIn("level: <A-D>", block)
 
 
 class TestDeputies(unittest.TestCase):
@@ -1047,7 +1195,7 @@ class TestDeputies(unittest.TestCase):
 
     def test_the_fast_lane_deputy_checks_its_diff(self):
         text = read("agents", "fast-lane-deputy.md")
-        for words in ("agent-level.sh check", "--declared", "RAISE", "REQUIRED LEVEL"):
+        for words in ("agent-level.sh check", "--declared", "RAISE", "REQUIRED TYPE"):
             with self.subTest(words=words):
                 self.assertIn(words, text)
 
@@ -1077,7 +1225,7 @@ class TestTheQuiz(ScriptCase):
         self.assertIn("QUIZ RESULT: 39/39 PASS", out)
 
     def test_another_letter_fails_and_names_r8(self):
-        for good, wrongs in (("38B", ("38A", "38C", "38D")), ("39D", ("39A", "39B", "39C"))):
+        for good, wrongs in (("38A", ("38B", "38C", "38D")), ("39C", ("39A", "39B", "39D"))):
             for wrong in wrongs:
                 with self.subTest(wrong=wrong):
                     r = self.repo.run("agent-start.sh", "--answer", ANSWERS.replace(good, wrong))
@@ -1085,7 +1233,7 @@ class TestTheQuiz(ScriptCase):
                     self.assertIn("Q%s(R8)" % good[:2], r.stdout)
 
     def test_the_old_37_answers_no_longer_pass(self):
-        r = self.repo.run("agent-start.sh", "--answer", ANSWERS.replace(" 38B 39D", ""))
+        r = self.repo.run("agent-start.sh", "--answer", ANSWERS.replace(" 38A 39C", ""))
         self.assertEqual(r.returncode, 1)
 
     def test_the_usage_says_39(self):
@@ -1102,7 +1250,7 @@ class TestReadmeAndRelease(unittest.TestCase):
 
     def test_the_routing_section_names_the_level(self):
         part = section(read("README.md"), "## How a task is routed", "## One real day")
-        self.assertIn("level", part.lower())
+        self.assertIn("type", part.lower())
         self.assertIn("agent-level.sh", part)
 
     def test_the_quiz_count(self):

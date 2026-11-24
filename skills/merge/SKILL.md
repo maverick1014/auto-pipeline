@@ -7,8 +7,8 @@ description: Main manager only. After a task manager reports DONE PASS, run the 
 0. A CLOSE CASE report instead of DONE PASS? → run `/close-case` first. Finished → it sends you back here to continue. Unfinished → it decides finish first or close now.
 
 1. Read the task manager's done report. No click path → bounce it: "no E2E script, not done". No TIME line with work and wait apart, or no FACTS line → bounce it: "no TIME, not done".
-   Then, in the task's worktree, before any E2E: `${CLAUDE_PLUGIN_ROOT}/bin/agent-level.sh check --base origin/main --declared <level of the todo line>` (R8). It prints REQUIRED LEVEL. RAISE (exit 1) → `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo level "<name>" <n>`, bounce to the task manager, follow the gate of the higher level. A level only goes up.
-   Follow the gate list of the level (R8). Level 0: skip the E2E (steps 2 and 3), read the diff and approve, then go on at step 4. Level 1: screenshots at desktop and phone width, console clean, owner OK.
+   Then, in the task's worktree, before any E2E: `${CLAUDE_PLUGIN_ROOT}/bin/agent-level.sh check --base origin/main --declared <type of the todo line>` (R8). It prints REQUIRED TYPE per file and per part. RAISE (exit 1, a C or D file above the declared type) → `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo level "<name>" <A-D>`, bounce to the task manager, check that part by the higher type. A type only goes up.
+   Check each part by its own type (R8), never the whole task by the highest. Type A: skip the E2E (steps 2 and 3), read the diff and approve, then go on at step 4. Type B: Chrome compare with the approved mock at desktop and phone width, console clean, owner OK. Type C: one browser flow. Type D: owner signs before merge.
 2. First run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" e2e`. Ask `${CLAUDE_PLUGIN_ROOT}/bin/agent-runtime.sh browser`: chrome, headless or none.
    - **chrome** — run the click path yourself in Claude in Chrome (W5). Every step must match. A miss → send the evidence back to the task manager, stop here.
    - **headless** — cloud only, the extension can never reach a VM. Run the same click path with Playwright against the dev server, and save one screenshot per step as evidence. Same rule: a miss → send the evidence back to the task manager, stop here.
@@ -18,7 +18,7 @@ description: Main manager only. After a task manager reports DONE PASS, run the 
    ```
    [<model> <effort>]   (yours, from the YOU: line of your start text)
    name: <name>
-   level: <n>
+   level: <A-D>
    branch: <branch>
    worktree path: <path>
    terminal handle: <term_...>   (orca only, leave empty in plain and cloud)

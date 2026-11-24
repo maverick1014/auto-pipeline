@@ -22,7 +22,7 @@ R1. One flow, two lanes
 - Small task → fast lane; big task → full flow (full lane)
 - A pure UI change skips failing tests and suites in either lane: mock comparison only (W5)
 - Task size picks the lane
-- Risk level is the second axis (R8): 3 and 4 always take the full lane
+- Risk type is the second axis (R8): D always takes the full lane
 
 R2. Secrets
 - Live in `.secrets/` (git-ignored)
@@ -61,25 +61,22 @@ R7. Worktree file
 - Main manager reads it before every dispatch (W9)
 - The housekeep pass removes a line whose worktree folder is gone and has no live pane; a working, final or human-direct line is only flagged
 
-R8. Risk levels
-- Second axis next to size: a risk level per task, picked at dispatch, on the todo line (`todo add ... --level <n>`, raise with `todo level <name> <n>`)
-- Size still picks fast or full lane; 3 and 4 always take the full lane
-- 0 wording: text values, one colour value, a switch to an existing style or variant, a move inside the same container with no responsive effect, a comment-only change
-- 0 gate: the main manager reads the diff and approves. No test, no staging, no E2E, no mock
-- 1 UI only: a component's own CSS, a new style, a shared colour token or theme variable, a move with responsive effect. No API, data or calculation
-- 1 gate: lint + type-check of touched files; a non-builder compares the real page with the approved mock (W5) at desktop and phone width, console clean; owner OK. No test suite
-- Owner away at level 1: the main manager decides and logs "owner not seen". Mock only for a new page or whole-page re-layout (W2), else compare with before screenshots. No unit tests, no full suite
-- 2 simple logic: one module, no money, schema, auth or permission. Gate: failing test first (TDD), touched-module tests + lint/type-check, E2E happy path + one error path
-- 3 heavy logic: accounting core, money, cross-module, business rules, state flows, principles
-- 3 gate: rules first as a table with examples in the requirement doc, owner yes before code; tests cover the table's edge cases
-- 3 gate: a separate reviewer at the decider floor (Opus) reviews the logic; touched module + core integration group; full suite once
-- 3 gate: E2E several paths incl. a failure path; real-data count first (H1)
-- 4 danger: schema, migration, dependency, security, release. Gate: all of 3 + migration dry-run on a data copy + written rollback plan + owner signs before merge
-- `bin/agent-level.sh check --base <ref> --declared <n>` before E2E and merge prints REQUIRED LEVEL; declared lower → RAISE, exit 1
-- On RAISE: raise the todo line, bounce, follow the higher gate. A level only goes up, never down
-- Built-in level 4 paths: lockfile, package.json deps, pubspec, dependency lists, migrations, schema files
-- Each repo lists its core and danger folders in agent.conf: level3_paths, level4_paths (`agent-settings.sh`)
-- The script cannot see a responsive effect: a level 0 move prints "manager: check responsive"; unsure → 1
+R8. Risk types
+- Second axis next to size: a type A-D per task, picked at dispatch by the acceptance criterion that exists; on the todo line (`todo add ... --level <A-D>`, raise with `todo level <name> <A-D>`)
+- Size still picks fast or full lane; D always takes the full lane
+- A = text, style, simple move: text values, colours, a simple UI move a senior dev can judge from the code (banner → toast), comments. Check: the main manager reads the diff. No tests, E2E or mock
+- B = UI: layout, components, page shell. Check: lint/type-check of touched files + Chrome compare with the approved mock (W2, W5) at desktop and phone width, console clean. No test suite
+- Owner away at B: the main manager decides and logs "owner not seen". Mock only for a new page or whole-page re-layout (W2), else compare with before screenshots
+- C = logic: calculation, API, data. Check: failing tests first, run only the tests of the touched features (W4) + one browser flow
+- D = danger: money/accounting core, schema, migration, security, dependencies. Check: C + full suite only when really needed + owner signs before merge
+- D = migration: also a dry-run on a data copy and a written rollback plan
+- A mixed task: each part is checked by its own type, never the whole task at the highest type
+- `bin/agent-level.sh check --base <ref> --declared <A-D>` before E2E and merge prints REQUIRED TYPE per file and per part; old 0-4 read as 0=A 1=B 2,3=C 4=D
+- RAISE (exit 1) only when a C or D file has a lower declared type. A UI component or style file is B at most, never auto-raised; only logic or danger paths raise
+- On RAISE: raise the todo line, bounce, check that part by the higher type. A type only goes up, never down
+- Built-in D paths: lockfile, package.json deps, pubspec, dependency lists, migrations, schema files
+- Each repo lists its paths in agent.conf: level4_paths always D, level3_paths always C (`agent-settings.sh`), for those files
+- The script cannot see a responsive effect: an A move prints "manager: check responsive"; unsure → B
 
 ## B. Work
 
@@ -96,7 +93,7 @@ W2. UI
 - Human says yes
 - The approved mock is the acceptance criterion of the task
 - Then real code
-- Level 0: no mock. Level 1: a mock only for a new page or a whole-page re-layout (R8)
+- Type A: no mock. Type B: a mock only for a new page or a whole-page re-layout (R8)
 - A pure UI change has no tests to write (W3): its criterion is the mock (W5)
 
 W3. TDD
@@ -106,11 +103,11 @@ W3. TDD
 - Full lane only; fast lane → R1
 
 W4. Multi-agent tests
-- Run tests for your changed files only
-- Full suite: manager, once, at the end. Never twice
+- Tests are organised module → feature; run the tests of the touched feature only, never of a module the change cannot affect
+- Full suite only when really needed (D, release train, dependency change): manager, once. Never twice
 - The full gate runs CI's steps in CI's order, at handoff and before merge (still once each)
 - After a bounce: re-run only the tests that failed, not the suite
-- Which tests run follows the level gate (R8). A pure UI change runs no suite (W5)
+- Which tests run follows the type (R8). A pure UI change runs no suite (W5)
 
 W5. Web UI testing
 - Claude in Chrome, not Playwright, on orca and plain
@@ -118,7 +115,7 @@ W5. Web UI testing
 - Unit tests are not proof, the UI E2E is
 - Builders never verify their own work: they ship an E2E click path, a verifier drives the UI, the main manager has the last word before merge
 - What a browser cannot prove goes on a standing "needs a real device" list, never counted as verified
-- Level 0 skips the E2E, the main manager reads the diff (R8)
+- Type A skips the E2E, the main manager reads the diff (R8)
 - After the build: open the real page in Claude in Chrome, compare it with the approved mock item by item (layout, content, states, behaviour). List every difference
 - A layout, content or behaviour difference = not done, back to the builder
 - A difference from the real UI theme (colours, fonts, spacing tokens) is fine: the agent judges, keeps the real theme, lists it as "theme difference" in the report

@@ -8,10 +8,10 @@ You are the merge deputy (PRINCIPLES.md W8). You never change product code.
 
 - First: the brief must state the sender's model and effort, both at the floor (Opus 5.5 or above, or any Fable; effort medium or above). Else do not act: report `MERGE FAIL <name>:` no valid model and effort from the sender, and say the human must be told.
 
-Your brief gives: `<name>`, `<branch>`, `<worktree path>`, `<terminal handle>`, `<suite command>`, `<level>`, `<todo done arguments>`.
+Your brief gives: `<name>`, `<branch>`, `<worktree path>`, `<terminal handle>`, `<suite command>`, `<level>` (the type A-D), `<todo done arguments>`.
 
 Steps, in order. Stop at the first failure.
-1. `cd` to the main repo. `git status --short` may list agent_*.txt only. Anything else → FAIL. Then run `${CLAUDE_PLUGIN_ROOT}/bin/agent-level.sh check --base origin/main --declared <level>` in `<worktree path>` (R8). Exit 1 (RAISE) → stop, report `MERGE FAIL <name>:` with the RAISE line (the main manager raises the level and bounces). Exit 2 → FAIL too.
+1. `cd` to the main repo. `git status --short` may list agent_*.txt only. Anything else → FAIL. Then run `${CLAUDE_PLUGIN_ROOT}/bin/agent-level.sh check --base origin/main --declared <level>` in `<worktree path>` (R8). Exit 1 (RAISE) → stop, report `MERGE FAIL <name>:` with the RAISE line (the main manager raises the type and bounces). Exit 2 → FAIL too.
 2. `git fetch origin` then `git merge --no-ff origin/<branch> -m "Merge <name> (W8)"`. Conflict → `git merge --abort`, FAIL with the file list.
 3. Run `<suite command>` once. Not OK → `git reset --hard ORIG_HEAD`, FAIL with the output.
 4. `git push origin main`.

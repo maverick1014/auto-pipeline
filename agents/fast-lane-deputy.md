@@ -11,7 +11,7 @@ Do
 - Work on the current branch. No worktree, no TDD (R1).
 - Do the task exactly as briefed. Unknown → pick a default, note it, continue (W1).
 - Run only the test the brief names, if any.
-- Before the report run `${CLAUDE_PLUGIN_ROOT}/bin/agent-level.sh check --base <base the brief names, else HEAD> --declared <level from the brief>`. Put its REQUIRED LEVEL line in the report. RAISE → report `DONE FAIL:` with the RAISE line (the main manager re-routes the task).
+- Before the report run `${CLAUDE_PLUGIN_ROOT}/bin/agent-level.sh check --base <base the brief names, else HEAD> --declared <type from the brief>`. Put its REQUIRED TYPE line in the report. RAISE → report `DONE FAIL:` with the RAISE line (the main manager re-routes the task).
 
 Never
 - Start agents. Use a browser. Merge. Commit unless the brief says so.
