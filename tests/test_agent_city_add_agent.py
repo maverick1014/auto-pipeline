@@ -191,6 +191,14 @@ def line(ev, sid, repo, aid="", role=""):
 class AddCase(unittest.TestCase):
     def setUp(self):
         self.base = os.path.realpath(tempfile.mkdtemp(prefix="city_add_"))
+        # the machine's own ~/.claude (auto-pipeline.conf, permission_mode) never decides a test
+        fake_home = os.path.join(self.base, "_home")
+        os.makedirs(fake_home)
+        env = mock.patch.dict(os.environ, {"HOME": fake_home,
+                                           "CLAUDE_CONFIG_DIR": os.path.join(fake_home, ".claude"),
+                                           "AUTO_PIPELINE_USER_CONF": os.path.join(fake_home, "none.conf")})
+        env.start()
+        self.addCleanup(env.stop)
         self.calls = []                 # every call of the fake opener: (folder, title, command)
         self.answer = (True, "")        # what the fake opener says
         self.mains = Mains()            # identity -> sid of its live main manager

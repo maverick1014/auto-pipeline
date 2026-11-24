@@ -71,7 +71,7 @@ except Exception: conf = {}
 v, src = a.effective(k, conf)
 if v is not None:
     print(f"{v} (from {src})")
-elif k in ("permission_mode", "cloud_permission_mode"):
+elif k == "permission_mode":
     print("auto (default)")
 elif k == "auto_update":
     print("on (default)")

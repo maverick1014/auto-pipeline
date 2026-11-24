@@ -48,7 +48,7 @@ R5. Task files
 - No other task tracking
 - The housekeep pass never closes a todo line: it flags one whose branch is merged into origin/main, or one that is stale (no worktree line, no open wait, quiet longer than housekeep_interval_min)
 - All four `agent_*.txt` files are written only through `./agent-file.sh`. No agent for that, it costs tokens
-- `agent_completed.txt` is never deleted, trimmed or cleaned (clean-up and housekeep skip it); only on an explicit owner order
+- `agent_completed.txt` is never deleted, trimmed or cleaned (every clean-up skips it); only on an explicit owner order
 
 R6. Ideas file
 - `agent_ideas.txt` = ideas outside the current task
@@ -194,7 +194,7 @@ W10. Second session in the same repo
 - Lock owner dead → take over as main manager, run recovery (S7)
 - Talk between sessions: `ListAgents` → find the peer by its name (W6), not listed → the row named after its folder (`<folder>-<xx>`) → `SendMessage` to that name. Two share a name → add the `[ref]` ListAgents prints. Reply to the `from` name. First line of every message = one clear sentence
 - Open a second session with the same permission mode and effort as the main manager (`<mode>` from `agent-settings.sh get permission_mode`, effort from `main_manager` in `agent.conf`, form model:effort): `orca terminal create --worktree path:<repo> --command "claude --name '<repo> Helper' --permission-mode <mode> --effort <effort>" --json`, then `orca terminal wait --for tui-idle`
-- New terminals (dispatch, resume, a Helper, a city click) use `permission_mode`; a session started from the Agent City cloud page uses `cloud_permission_mode` (missing or refused: auto, never bypass); this machine's own `~/.claude/auto-pipeline.conf` wins over `agent.conf` for both
+- New terminals (dispatch, resume, a Helper, a city click) use `permission_mode`; this machine's own `~/.claude/auto-pipeline.conf` wins over `agent.conf`
 - Task name: every new or switched task, a plain question too, gets its name first, even before the quiz PASS -> run the full-path `<plugin>/bin/agent-file.sh helper-task "<Task Name>"` from the start text, alone, from the project folder (never cd, never chain it); 2-4 English words, Title Case, the work, not the role; `<repo> Helper - <Task Name>` shows from the human's next prompt
 
 W11. Time
@@ -354,7 +354,8 @@ S1. Settings
 - Holds every config value in this file
 - Also writes the agent-monitor config
 - Setup: init offers to merge the permission rules into `.claude/settings.json` (`agent-init.sh --add-permissions`); agents never hand-edit JSON. Manager default `opus-5.5:high`; `xhigh` is an install choice
-- `~/.claude/auto-pipeline.conf` = this machine's own file, never in a repo: `permission_mode`, `cloud_permission_mode`, wins over `agent.conf`. Write it with `agent-settings.sh --user <key> <value>`
+- Setup: init asks all vs selected repos; `agent-init.sh --scope` writes the files; agents never hand-edit JSON
+- `~/.claude/auto-pipeline.conf` = this machine's own file, never in a repo: `permission_mode`, wins over `agent.conf`. Write it with `agent-settings.sh --user <key> <value>`
 
 S2. Resume script
 - One command

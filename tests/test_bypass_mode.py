@@ -138,8 +138,8 @@ PROGRESS_KEYS = ["stage_brief", "stage_register", "stage_mock", "stage_tests", "
                  "owner_order_hours", "owner_order_min_chars"]   # owner-relay (2026-11-24), appended last
 
 class TestConfKeys(unittest.TestCase):
-    def test_bypass_is_a_mode_for_both_keys(self):
-        for key in ("permission_mode", "cloud_permission_mode"):
+    def test_bypass_is_a_mode(self):
+        for key in ("permission_mode",):
             with self.subTest(key=key):
                 self.assertIsNone(agent_conf.validate_value(key, "bypassPermissions"))
                 self.assertTrue(agent_conf.validate_value(key, "yolo"))
@@ -152,15 +152,12 @@ class TestConfKeys(unittest.TestCase):
         for mode in FIVE:
             with self.subTest(mode=mode):
                 self.assertIn(mode, hint)
-        cloud = agent_conf.HINTS.get("cloud_permission_mode", "")
-        self.assertIn("cloud page", cloud)
-        self.assertIn("auto", cloud)
-        self.assertIn("bypassPermissions", cloud)
+        self.assertNotIn("cloud_permission_mode", agent_conf.HINTS)
 
     def test_group(self):
-        self.assertEqual(agent_conf.group_of("cloud_permission_mode"), "permission")
+        self.assertEqual(agent_conf.group_of("permission_mode"), "permission")
         self.assertEqual(dict(agent_conf.GROUPS)["permission"],
-                         ["permission_mode", "cloud_permission_mode", "auto_resume", "language",
+                         ["permission_mode", "auto_resume", "language",
                           "board_guard"])   # board-trust (2026-11-23)
 
 
@@ -172,16 +169,16 @@ class TestTemplate(unittest.TestCase):
     def test_bypass_is_the_default_for_new_terminals(self):
         self.assertEqual(self.conf["permission_mode"], "bypassPermissions")
 
-    def test_auto_is_the_default_for_the_cloud(self):
-        self.assertEqual(self.conf["cloud_permission_mode"], "auto")
+    def test_the_cloud_keys_are_gone(self):
+        self.assertNotIn("cloud_permission_mode", self.conf)
+        self.assertNotIn("city_relay_sec", self.conf)
 
-    def test_the_cloud_key_is_the_last_line(self):
-        # progress-bar (2026-11-11): newer keys are appended after it, never before it,
+    def test_the_progress_keys_follow_the_city_keys(self):
+        # progress-bar (2026-11-11): newer keys are appended after, never before,
         # so an old agent.conf still syncs into the template order
         keys = [l.split("=", 1)[0] for l in self.lines]
-        after = keys[keys.index("cloud_permission_mode") + 1:]
+        after = keys[keys.index("city_governor_wait_sec") + 1:]
         self.assertEqual(after, PROGRESS_KEYS)
-        self.assertEqual(sum(1 for l in self.lines if l.startswith("cloud_permission_mode=")), 1)
 
     def test_permission_mode_keeps_its_place(self):
         keys = [l.split("=", 1)[0] for l in self.lines]
@@ -200,38 +197,38 @@ class TestSync(ScriptCase):
     def conf(self):
         return open(self.repo.path("agent.conf")).read()
 
-    def test_sync_adds_the_cloud_key_and_keeps_every_line(self):
+    def test_sync_adds_missing_keys_and_keeps_every_line(self):
         with open(self.repo.path("agent.conf"), "w") as fh:
             fh.write("max_agents=4\npermission_mode=acceptEdits\nlanguage=zh\n")
         before = self.conf()
         out = self.assertOk(self.repo.run("agent-settings.sh", "sync"))
-        self.assertIn("added cloud_permission_mode=auto", out)
+        self.assertIn("added city_port=4777", out)
         after = self.conf()
         self.assertTrue(after.startswith(before), "the lines already there stay byte for byte")
         conf = agent_conf.load(self.repo.path("agent.conf"))
-        self.assertEqual(conf["cloud_permission_mode"], "auto")
+        self.assertEqual(conf["city_port"], "4777")
         self.assertEqual(conf["permission_mode"], "acceptEdits", "sync never changes a value already there")
 
     def test_a_synced_conf_has_the_fresh_key_order(self):
         template = agent_conf.load(self.repo.plugin_path("bin", "agent.conf.default"))
-        # a conf written before bypass-mode: every key before cloud_permission_mode
+        # a conf written before bypass-mode: every key before city_governor_wait_sec
         # (the keys after it are newer still, tests/test_agent_progress.py)
         keys = list(template)
-        old = {k: template[k] for k in keys[:keys.index("cloud_permission_mode")]}
+        old = {k: template[k] for k in keys[:keys.index("city_governor_wait_sec")]}
         with open(self.repo.path("agent.conf"), "w") as fh:
             fh.write(agent_conf.dumps(old))
         self.assertOk(self.repo.run("agent-settings.sh", "sync"))
         self.assertEqual(list(agent_conf.load(self.repo.path("agent.conf"))), list(template))
 
     def test_the_setting_is_validated(self):
-        result = self.repo.run("agent-settings.sh", "cloud_permission_mode", "bypassPermissions")
+        result = self.repo.run("agent-settings.sh", "permission_mode", "bypassPermissions")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("saved: cloud_permission_mode=bypassPermissions", result.stdout)
+        self.assertIn("saved: permission_mode=bypassPermissions", result.stdout)
         for bad in ("yolo", "bypass", "auto;id"):
             with self.subTest(value=bad):
-                result = self.repo.run("agent-settings.sh", "cloud_permission_mode", bad)
+                result = self.repo.run("agent-settings.sh", "permission_mode", bad)
                 self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(agent_conf.load(self.repo.path("agent.conf"))["cloud_permission_mode"],
+        self.assertEqual(agent_conf.load(self.repo.path("agent.conf"))["permission_mode"],
                          "bypassPermissions")
 
 
@@ -253,7 +250,7 @@ class TestLaunchLine(LineCase):
         self.assertEqual(list(params), ["name", "folder", "city_dir"])
 
     def test_local_uses_permission_mode(self):
-        conf = conf_text(permission_mode="bypassPermissions", cloud_permission_mode="auto")
+        conf = conf_text(permission_mode="bypassPermissions")
         self.assertEqual(self.words("loc", conf),
                          ["claude", "--name", "x Manager"] + MODEL + ["--permission-mode", "bypassPermissions", PROMPT])
 
@@ -261,7 +258,7 @@ class TestLaunchLine(LineCase):
         folder = self.folder("bare", None)
         self.assertEqual(shlex.split(ac.agent_command("x Manager", folder)), ["claude", "--name", "x Manager", PROMPT])
 
-    def test_the_cloud_key_never_decides_a_local_line(self):
+    def test_the_old_cloud_key_decides_nothing(self):
         conf = conf_text(cloud_permission_mode="bypassPermissions")
         self.assertEqual(self.words("only-cloud", conf), ["claude", "--name", "x Manager"] + MODEL + [PROMPT])
 
@@ -287,7 +284,7 @@ class TestLaunchLine(LineCase):
 
 
 class TestAddAgent(LineCase):
-    CONF = conf_text(permission_mode="bypassPermissions", cloud_permission_mode="acceptEdits")
+    CONF = conf_text(permission_mode="bypassPermissions")
 
     def setUp(self):
         super().setUp()
@@ -354,7 +351,10 @@ class InitCase(ScriptCase):
             os.close(slave)
             slave = None
             if answer is not None:
-                os.write(master, answer.encode())
+                # Questions in order: permission mode, auto update, add permissions.
+                # ANSWER is the first; Enter (the default) is typed for the later ones
+                # so a terminal run never waits on a prompt this test does not script.
+                os.write(master, (answer + "\n\n\n").encode())
             out, err = proc.communicate(timeout=60)
         finally:
             if slave is not None:
@@ -383,7 +383,7 @@ class TestInitMode(InitCase):
             if key != "permission_mode":
                 with self.subTest(key=key):
                     self.assertEqual(conf[key], value)
-        self.assertEqual(conf["cloud_permission_mode"], "auto")
+        self.assertNotIn("cloud_permission_mode", conf)
 
     def test_a_directory_argument(self):
         other = os.path.join(self.repo.base, "other")
@@ -587,10 +587,10 @@ class TestRuleText(unittest.TestCase):
         self.assertNotIn("--permission-mode auto", w10)
 
     def test_w10_says_which_key_for_which_terminal(self):
-        lines = [l for l in self.w10().splitlines() if "cloud_permission_mode" in l]
-        self.assertEqual(len(lines), 1, lines)
-        self.assertIn("`permission_mode`", lines[0])
-        self.assertIn("cloud page", lines[0])
+        w10 = self.w10()
+        self.assertIn("`permission_mode`", w10)
+        self.assertNotIn("cloud_permission_mode", w10)
+        self.assertNotIn("cloud page", w10)
 
     def test_no_literal_auto_launch_anywhere_in_the_rules(self):
         self.assertNotIn("--permission-mode auto", read("PRINCIPLES.md"))
@@ -623,8 +623,7 @@ class TestQuiz34(ScriptCase):
         options = [l.strip() for l in q.splitlines()[1:5]]
         self.assertEqual([o[:2] for o in options], ["A.", "B.", "C.", "D."])
         self.assertIn("permission_mode from agent.conf", options[1])
-        self.assertIn("cloud_permission_mode", options[1])
-        self.assertIn("cloud page", options[1])
+        self.assertNotIn("cloud", options[1])
 
     def test_34_questions(self):
         out = self.quiz()
@@ -648,8 +647,8 @@ class TestQuiz34(ScriptCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("Q34(W10)", result.stdout)
 
-    def test_the_readme_says_34(self):
-        text = read("README.md")
+    def test_the_principles_say_34(self):
+        text = read("PRINCIPLES.md")
         self.assertIn("39-question quiz", text)
         self.assertNotIn("33-question quiz", text)
 

@@ -195,7 +195,7 @@ the task that wrote the idea, the rest bare names of files outside the repo).
                                 repo, a repo with a space, " | " or a line break
    repos                        read only, no file touched: one real path per
                                 line, this repo first, then world.json
-                                territories, then joined-repos.txt, each once;
+                                territories, each once;
                                 a missing folder is not printed
 
 5. DOCS + RELEASE: PRINCIPLES.md R5 R6 R7 W8 W12 (+ S8 or W8 for the block),
@@ -1232,7 +1232,8 @@ class RelatedCase(HousekeepCase):
         self.join(self.peer)
 
     def join(self, *paths):
-        write(os.path.join(self.city, "joined-repos.txt"), "".join(p + "\n" for p in paths))
+        write(os.path.join(self.city, "world.json"),
+              json.dumps({"territories": {p + "/.git": {} for p in paths}}))
 
     def peer_file(self, name, lines):
         write(os.path.join(self.peer, name), "".join(l + "\n" for l in lines))
@@ -1296,7 +1297,7 @@ class TestRelated(RelatedCase):
         self.apply()
         self.assertEqual(self.related(), ["related: nowhere: not found on this machine, skipped"])
 
-    def test_a_joined_folder_that_is_gone_is_not_found(self):
+    def test_a_territory_folder_that_is_gone_is_not_found(self):
         shutil.rmtree(self.peer)
         self.set_file("agent_todo.txt", [self.todo("shared", extra=" | cross peer")])
         self.apply()
@@ -1370,15 +1371,13 @@ class TestFileVerbs(RelatedCase):
         out = self.assertOk(self.af("board"))
         self.assertIn("shared", out)
 
-    def test_repos_lists_this_repo_first_then_the_joined_ones(self):
+    def test_repos_lists_this_repo_first_then_the_territories(self):
         out = self.assertOk(self.af("repos"))
         self.assertEqual(out.splitlines(), [os.path.realpath(self.repo.dir), self.peer])
 
-    def test_repos_world_json_before_joined_each_once(self):
+    def test_repos_each_once(self):
         other = os.path.realpath(self.repo.make_project("worldpeer"))
-        write(os.path.join(self.city, "world.json"),
-              json.dumps({"territories": {other + "/.git": {}, self.peer + "/.git": {}}}))
-        self.join(self.peer, other, self.repo.dir)
+        self.join(other, self.peer, self.repo.dir)
         out = self.assertOk(self.af("repos"))
         self.assertEqual(out.splitlines(), [os.path.realpath(self.repo.dir), other, self.peer])
 

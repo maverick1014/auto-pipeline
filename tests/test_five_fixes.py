@@ -10,21 +10,21 @@ S1. bin/agent_conf.py: the permission modes are the ones `claude --help`
     PERMISSION_MODES = ["acceptEdits", "auto", "bypassPermissions",
                         "manual", "dontAsk", "plan"]      (that order)
   "default" is no claude mode any more.
-  validate_value("permission_mode" | "cloud_permission_mode", v): None for
+  validate_value("permission_mode", v): None for
     those six exactly (case and spaces count); anything else, "default"
     too, a message that names all six. "default" is refused, never mapped
     to another mode.
-  HINTS["permission_mode"] and HINTS["cloud_permission_mode"] name the six
+  HINTS["permission_mode"] names the six
     and never the word "default".
   Every launcher reads the mode through agent_conf.effective() (it only
   returns a value validate_value accepts), so a refused value never reaches
   a --permission-mode flag:
     agent_city.agent_command: permission_mode=default -> no flag on a local
-      line; cloud_permission_mode=default -> "--permission-mode auto".
+      line.
     bin/agent-resume.sh: permission_mode=default -> "--permission-mode auto".
     bin/agent-settings.sh get permission_mode (dispatch, a Helper): default
       -> "auto (default)".
-    bin/agent-start.sh: "PERMISSION: auto (default), ..." for default.
+    bin/agent-start.sh: "PERMISSION: auto (default)" for default.
   bin/agent-settings.sh permission_mode default, and --user permission_mode
     default: exit 1, "not saved", the six named, nothing written.
   A user-file permission_mode=default is ignored (read_user_conf lists it).
@@ -80,7 +80,7 @@ import agent_city as ac  # noqa: E402
 from scripthelp import ScriptCase  # noqa: E402
 
 MODES = ["acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan"]
-MODE_KEYS = ("permission_mode", "cloud_permission_mode")
+MODE_KEYS = ("permission_mode",)
 ENV = "AUTO_PIPELINE_USER_CONF"
 
 
@@ -187,45 +187,39 @@ class TestEffectiveRefusesDefault(TmpCase):
                 self.assertEqual(agent_conf.effective(key, {key: "default"}), (None, None))
 
     def test_user_file_default_is_ignored(self):
-        self.write_user("permission_mode=default\ncloud_permission_mode=default\n")
+        self.write_user("permission_mode=default\n")
         values, ignored = agent_conf.read_user_conf()
         self.assertEqual(values, {})
-        self.assertEqual(ignored, ["permission_mode=default", "cloud_permission_mode=default"])
+        self.assertEqual(ignored, ["permission_mode=default"])
         self.assertEqual(agent_conf.effective("permission_mode", {"permission_mode": "plan"}),
                          ("plan", "agent.conf"), "a refused user value falls back to agent.conf")
 
     def test_the_new_modes_are_effective(self):
         self.write_user("permission_mode=manual\n")
         self.assertEqual(agent_conf.effective("permission_mode", {})[0], "manual")
-        self.assertEqual(agent_conf.effective("cloud_permission_mode", {"cloud_permission_mode": "dontAsk"}),
-                         ("dontAsk", "agent.conf"))
+        self.assertEqual(agent_conf.effective("permission_mode", {"permission_mode": "dontAsk"})[0], "manual",
+                         "the user file wins over agent.conf")
 
 
 class TestCityLine(TmpCase):
     CONF = "main_manager=opus-5.5:high\n"
 
-    def words(self, conf, cloud=False):
+    def words(self, conf):
         folder = self.folder("f%d" % len(os.listdir(self.base)), self.CONF + conf)
-        return shlex.split(ac.agent_command("x Manager", folder, cloud=cloud))
+        return shlex.split(ac.agent_command("x Manager", folder))
 
     def test_default_never_reaches_a_local_line(self):
         words = self.words("permission_mode=default\n")
         self.assertNotIn("--permission-mode", words)
         self.assertNotIn("default", words)
 
-    def test_default_on_the_cloud_is_auto(self):
-        words = self.words("permission_mode=bypassPermissions\ncloud_permission_mode=default\n", cloud=True)
-        self.assertEqual(flag(words, "--permission-mode"), "auto")
-
     def test_a_user_file_default_never_reaches_a_line(self):
-        self.write_user("permission_mode=default\ncloud_permission_mode=default\n")
+        self.write_user("permission_mode=default\n")
         self.assertEqual(flag(self.words("permission_mode=plan\n"), "--permission-mode"), "plan")
-        self.assertEqual(flag(self.words("permission_mode=plan\n", cloud=True), "--permission-mode"), "auto")
 
     def test_manual_and_dont_ask_reach_the_line(self):
         self.assertEqual(flag(self.words("permission_mode=manual\n"), "--permission-mode"), "manual")
-        self.assertEqual(flag(self.words("cloud_permission_mode=dontAsk\n", cloud=True), "--permission-mode"),
-                         "dontAsk")
+        self.assertEqual(flag(self.words("permission_mode=dontAsk\n"), "--permission-mode"), "dontAsk")
 
 
 class TestScriptsRefuseDefault(ScriptCase):
@@ -255,16 +249,14 @@ class TestScriptsRefuseDefault(ScriptCase):
 
     def test_the_new_modes_are_saved(self):
         self.assertOk(self.settings("permission_mode", "manual"))
-        self.assertOk(self.settings("cloud_permission_mode", "dontAsk"))
+        self.assertOk(self.settings("permission_mode", "dontAsk"))
         conf = agent_conf.load(self.repo.path("agent.conf"))
-        self.assertEqual((conf["permission_mode"], conf["cloud_permission_mode"]), ("manual", "dontAsk"))
+        self.assertEqual(conf["permission_mode"], "dontAsk")
 
     def test_get_never_prints_default(self):
         """dispatch and a Helper read the mode with `agent-settings.sh get`."""
         self.repo.set_conf("permission_mode", "default")
-        self.repo.set_conf("cloud_permission_mode", "default")
         self.assertEqual(self.assertOk(self.settings("get", "permission_mode")), "auto (default)\n")
-        self.assertEqual(self.assertOk(self.settings("get", "cloud_permission_mode")), "auto (default)\n")
         self.repo.set_conf("permission_mode", "manual")
         self.assertEqual(self.assertOk(self.settings("get", "permission_mode")), "manual (from agent.conf)\n")
 
@@ -297,10 +289,9 @@ class TestStartLineRefusesDefault(ScriptCase):
 
     def test_default_shows_as_auto(self):
         self.repo.set_conf("permission_mode", "default")
-        self.repo.set_conf("cloud_permission_mode", "default")
         out = self.assertOk(self.repo.run("agent-start.sh", env={"AGENT_ROLE": "task-manager"}))
         lines = [l for l in out.splitlines() if l.startswith("PERMISSION:")]
-        self.assertEqual(lines, ["PERMISSION: auto (default), cloud page auto (default)"])
+        self.assertEqual(lines, ["PERMISSION: auto (default)"])
 
 
 # ===================================================================== S2
