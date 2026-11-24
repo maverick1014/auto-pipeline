@@ -416,6 +416,18 @@ class TestSweepAndWake(AllCase):
         self.task("alpha", frames=[frame(0, ["✻ Waiting… (shell still running)"])])
         self.assertEqual(self.one_watch(self.text(self.run_all(max_sweeps="6"))), "WATCH MAX all")
 
+    def test_b6_plural_shells_still_running_is_not_a_stall(self):
+        self.task("alpha", frames=[frame(0, ["✻ Baked for 11s · done 11:40 AM · 2 shells still running"])])
+        self.assertEqual(self.one_watch(self.text(self.run_all(max_sweeps="6"))), "WATCH MAX all")
+
+    def test_b7_idle_prompt_with_plural_shells_still_running_is_not_a_stall(self):
+        self.task("alpha", frames=[idle(0) + ["✻ Baked for 11s · done 11:40 AM · 2 shells still running"]])
+        self.assertEqual(self.one_watch(self.text(self.run_all(max_sweeps="6"))), "WATCH MAX all")
+
+    def test_b7_idle_prompt_without_shell_line_is_still_a_stall(self):
+        self.task("alpha", frames=[idle(0) + ["✻ Baked for 11s · done 11:40 AM"]])
+        self.assertEqual(self.one_watch(self.text(self.run_all(max_sweeps="6"))), "WATCH STALL alpha: idle prompt")
+
     def test_b7_two_sweeps_at_an_idle_prompt_is_a_stall(self):
         self.task("alpha", frames=[idle(i) for i in range(1, 12)])
         text = self.text(self.run_all(max_sweeps="10"))

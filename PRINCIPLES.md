@@ -51,7 +51,7 @@ R7. Worktree file
 R8. Risk levels
 - Second axis next to size: a risk level per task, picked at dispatch, on the todo line (`todo add ... --level <n>`, raise with `todo level <name> <n>`)
 - Size still picks fast or full lane; 3 and 4 always take the full lane
-- 0 wording: text values, one colour value, a switch to an existing style or variant, a move inside the same container with no responsive effect
+- 0 wording: text values, one colour value, a switch to an existing style or variant, a move inside the same container with no responsive effect, a comment-only change
 - 0 gate: the main manager reads the diff and approves. No test, no staging, no E2E, no mock
 - 1 UI only: a component's own CSS, a new style, a shared colour token or theme variable, a move with responsive effect. No API, data or calculation
 - 1 gate: lint + type-check; a non-builder takes before/after screenshots at desktop and phone width, console clean; owner OK
