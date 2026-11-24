@@ -1,6 +1,6 @@
 # plugin-slim — requirements (level 4 rules gate)
 
-Status: rules draft 2026-11-24, waits for owner "rules yes". Base e90db3b (release 0.39.0).
+Status: rules yes 2026-11-24 11:01 (owner: "ok this one no problem, and i accept the limitation"): design A, entry type url, the big clone accepted for now. Base e90db3b (release 0.39.0).
 Source: owner 2026-11-24: "those no need thing is no needed to give to end user". Todo line: ship only hooks/, bin/, PRINCIPLES.md, skills/, agents/, .claude-plugin/; plugin update and cloud-pack keep working; rollback plan (owner 2B).
 Examples: real numbers of e90db3b and a probe run on pc2 at 2026-11-24 10:24 (Claude Code 2.1.331, temp HOME and CLAUDE_CONFIG_DIR, never the real ~/.claude).
 
@@ -119,6 +119,29 @@ Does the big clone matter? It is one shallow copy, fetched once, then only delta
 | 16 | 0.39.0 users (user and project scope, autoUpdate on): the next marketplace update reads the new entry, the plugin update installs the slim cache; the old folder gets `.orphaned_at`, removed after 14 days | probe P2 | the running session keeps its old folder until restart |
 | 17 | This repo's dev loop: its sessions run the installed plugin from the cache too, so they get the release branch like every user; tests keep running from the worktree (tests/ next to bin/) | `python3 -m unittest discover -s tests` in a worktree | unchanged |
 | 18 | `release` is never merged into main and never gets other commits; only the release script writes it | | |
+
+## 5b. Exact contract (tests/test_agent_release.py)
+
+Files: `bin/agent-release.sh` (bash entry, 100755) runs `bin/agent_release.py` (Python 3.9, stdlib only). The repo is the folder above the script's bin/, never the cwd; it must be the toplevel of a git work tree.
+
+| Case | stdout / stderr | Exit |
+|---|---|---|
+| `--list` | the six paths, one per line | 0 |
+| unknown option `--bogus` | stderr `… unknown option --bogus` | 2 |
+| folder above bin/ is not a git toplevel | stderr `agent-release.sh: not a git checkout: <dir>` | 2 |
+| `--from <ref>` git does not know | stderr `agent-release.sh: unknown ref <ref>` | 1 |
+| ship path missing in the commit | stderr `agent-release.sh: <path> is missing in <short sha>` | 1 |
+| version missing or not digits and dots | stderr `agent-release.sh: no valid version in .claude-plugin/plugin.json of <short sha>` | 1 |
+| plan lines (dry-run and build) | `from <short> version <v>`, `release tip: none` or `release tip: <short> version <v>`, `ship: <n> files, <bytes> bytes` (blobs of the ship set), `left out: <sorted top-level names>` or `left out: none`, `reads check: <k> ok, <s> skipped (variable)` | |
+| bad reads | one stderr line each, sorted by file then line: `agent-release.sh: <file>:<line> reads <path>, which is not shipped`; no ref written | 1 |
+| same ship tree as the tip | `release up to date: <v> (<short tip>)` | 0 |
+| tree differs, version not higher (numbers: 0.40.10 > 0.40.9) | stderr `agent-release.sh: version <v> is not higher than release <tip v>: bump .claude-plugin/plugin.json first` | 1 |
+| `--dry-run`, will commit | `would commit release <v>`; no ref, index or work tree change | 0 |
+| build | `release <v>: <short new> (from <short from>)`, then a line with `git push origin release`; local `release` = the result (new commit, or the tip when up to date); HEAD, index, work tree untouched | 0 |
+| `--push` | `git fetch` of origin's release first (missing branch fine), then build, then push `release` without force when it differs from origin's | git's |
+| `--push`, no remote origin | stderr `agent-release.sh: no remote origin` | 1 |
+
+Tip = `refs/remotes/origin/release` when it exists, else `refs/heads/release`, else none (first release = root commit). Reads check: text files only (no NUL byte, UTF-8), line by line, on the commit's bytes. Prefixes: plugin root = `$PLUGIN_ROOT`, `${PLUGIN_ROOT}`, `$CLAUDE_PLUGIN_ROOT`, `${CLAUDE_PLUGIN_ROOT}`, each optionally closed by `"` or `\"` before the `/`; own folder of the file = `$(dirname "$0")`, `$(dirname "${BASH_SOURCE[0]}")`, `$SELF_DIR`, `${SELF_DIR}`; python own folder = `os.path.join(X, "<a>", "<b>"…)` with X one of `HERE`, `bin_dir`, `script_dir`, `os.path.dirname(os.path.abspath(__file__))`, and `_bin_path("<a>")`. Path = the run of `[A-Za-z0-9._/-]` after the prefix (python: the string literals), trailing `.` and `/` dropped, `..` resolved; empty = no read; `$` right after the prefix (python: a first non-literal arg) = skipped (variable); resolves to the root = ok; leaves the root = `../<x>`, not shipped.
 
 ## 6. Dry-run (level 4 migration dry-run, step 5)
 
