@@ -550,7 +550,7 @@ def lex_sh(text, zsh=False):
                 return None
             segs.add("str", i, j + 1)
             i = j + 1
-        elif c == "#" and (i == 0 or (text[i - 1] in " \t" and i - 1 != esc) or text[i - 1] in "\n" + starters):
+        elif c == "#" and (i == 0 or text[i - 1] == "\n" or (text[i - 1] in " \t" + starters and i - 1 != esc)):
             e = text.find("\n", i)
             e = n if e < 0 else e
             segs.add("comment", i, e)
