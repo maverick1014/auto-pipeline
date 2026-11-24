@@ -771,6 +771,16 @@ def lex_slash(text, ext):
     triple_sq = ext == ".dart"
     esc3 = ext not in (".kt", ".kts")
 
+    lone = [-1]
+    guard = js or ext == ".swift"
+
+    def unsure_comment(i, e):
+        body = text[i:e]
+        if js and ("</" in body or "/>" in body or "{" in body or "}" in body):
+            raise Unsure()
+        if guard and lone[0] >= text.rfind("\n", 0, i) + 1 and lone[0] >= 0:
+            raise Unsure()
+
     def scan(i, expr):
         depth = 0
         while i < n:
@@ -780,18 +790,18 @@ def lex_slash(text, ext):
                     e = text.find("*/", i + 2)
                     if e < 0:
                         raise Unsure()
-                    if js and ("</" in text[i:e + 2] or "/>" in text[i:e + 2]):
-                        raise Unsure()
+                    unsure_comment(i, e + 2)
                     segs.add("comment", i, e + 2)
                     i = e + 2
                 elif text.startswith("//", i) and (i == 0 or text[i - 1] in " \t\n"):
                     e = text.find("\n", i)
                     e = n if e < 0 else e
-                    if js and ("</" in text[i:e] or "/>" in text[i:e]):
-                        raise Unsure()
+                    unsure_comment(i, e)
                     segs.add("comment", i, e)
                     i = e
                 else:
+                    if text[i + 1:i + 2] not in ("/", "*") and text[i - 1:i] not in ("/", "*"):
+                        lone[0] = i
                     i += 1
             elif (c == "r" and ext == ".dart" and text[i + 1:i + 2] in ("'", '"') and
                   (i == 0 or not (text[i - 1].isalnum() or text[i - 1] in "_$"))):
