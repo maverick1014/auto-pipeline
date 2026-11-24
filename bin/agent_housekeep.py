@@ -79,12 +79,14 @@ def whole_word(name, text):
 
 
 def idea_text(line):
+    line = line[:-1] if line.endswith("\r") else line
     line = KEPT.sub("", line)
     m = TAIL.search(line)
     return (line[:m.start()] if m else line).strip()
 
 
 def idea_day(line):
+    line = line[:-1] if line.endswith("\r") else line
     m = TAIL.search(KEPT.sub("", line))
     return m.group(0)[3:13] if m else None
 

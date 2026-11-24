@@ -92,7 +92,7 @@ def today():
 
 def clean(text):
     """A table field never holds " | "."""
-    text = str(text).replace("\n", " ")
+    text = re.sub(r"[\x00-\x1f\x7f]", " ", str(text))
     while " | " in text:
         text = text.replace(" | ", " / ")
     return text
@@ -671,6 +671,15 @@ def do_yes(ctx, value):
     if not picked:
         sys.stdout.write("nothing removed\n")
         return 0
+    for row in picked:
+        if row["kind"] not in "WT":
+            continue
+        group = (row["kind"], removal_key(row))
+        missing = [r["id"] for i, r in enumerate(rows)
+                   if i not in used and (r["kind"], removal_key(r)) == group]
+        if missing:
+            return refuse("%s shares its line key with %s: pick them together. "
+                          "Nothing changed." % (row["id"], ", ".join(missing)))
     out = []
     removed = []
 
