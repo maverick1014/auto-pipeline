@@ -1,111 +1,11 @@
 # auto-pipeline
 
-A way to run coding agents so a human can read the result, trust it, and not get interrupted.
-Rules live in [PRINCIPLES.md](PRINCIPLES.md). This page is the picture.
-
-## The tree
-
-```
-Human
-  │  task ↓   report ↑
-Main manager   (Opus 5.5, xhigh · the main chat · only one with the browser)
-  ├── Fast-lane deputy   (Sonnet 5, medium)  one small task, no worktree, then gone
-  ├── Merge deputy       (Sonnet 5, medium)  merge → push → delete branch → remove worktree
-  └── Worktree, one per big feature
-        └── Task manager (Opus 5.5, xhigh)     writes the tests, briefs workers, verifies, never codes
-              ├── Worker (Sonnet 5, medium)  code until the tests pass, slice 1
-              └── Worker (Sonnet 5, medium)  code until the tests pass, slice 2
-
-Scripts, not agents (cost no tokens):
-  bin/agent-start.sh   RAM/CPU guard, prints the rules, 39-question quiz gate, main-manager lock
-  bin/agent-level.sh   the risk level a diff needs (0-4): built-in and agent.conf paths, L0 shapes; RAISE when the declared level is lower
-  bin/agent-owner-order.sh  relayed owner orders between repo managers: `line` prints the OWNER ORDER header (sender), `verify` checks the words are a typed owner prompt in the sender's transcript (receiver)
-  bin/agent-file.sh    the only writer of agent_*.txt
-  bin/agent_estimate.py  the time estimator: learns work minutes from the finished tasks, backtests against the rubric
-  bin/agent-settings.sh  show or change agent.conf, validated
-  bin/agent-resume.sh    one command to bring the pipeline back after a restart
-  bin/agent-cleanup.sh   the main manager's sweep: removes merged, clean, idle worktrees and branches; lists the rest in one table
-  bin/agent-housekeep.sh the main manager's pass every housekeep_interval_min from the monitor loop: worktree, todo and ideas files, related repos read only, then the cleanup sweep; writes one HOUSEKEEP block
-  bin/agent-monitor.sh   watches every worktree, writes agent_monitor.txt
-  bin/agent-watch.sh     `agent-watch.sh --all`: one background watch for every task manager, local or remote (pane + agent_state.txt); exits on a report, question, stall or lost machine
-  bin/agent-file.sh tell `agent-file.sh tell <task> "<msg>"`: long text to a task manager, a block in its agent_state.txt + one pointer line
-  bin/agent-init.sh      sets a project up: agent.conf, the four task files, .secrets/, .gitignore lines, AGENTS.md, and it prints the permissions block
-  bin/agent-cloud-pack.sh  lays this pipeline into a repo as plain files, for cloud sessions
-  bin/agent-city.sh       starts/stops the agent city visualiser, a local server
-  bin/agent-city-shim     the ~/.local/bin/agent-city command; runs the newest installed plugin's agent-city.sh
-  bin/agent-city-hook.sh  hook that feeds the city; off costs a `test -f`, on appends one JSON line
-  bin/agent-close-case.sh  UserPromptSubmit hook: "close case" in the prompt injects the close-case rule for the session's role
-  bin/agent-show-todo.sh  UserPromptSubmit hook: "show todo" (or just "todo") injects the board rule for the session's role
-  bin/agent_board.py     the show-todo board: one table of every open task, wait, owner to-do and parked question
-  bin/agent-show-question.sh  UserPromptSubmit hook: "show question" (or just "questions") injects the question-list rule; "done" / "1A 2B" after a page injects the read-the-answers rule
-  bin/agent_questions.py  the show-question collector: every question pending on the owner, as a chat list, JSON or an Artifact page; records the answers
-  bin/agent-questions-page.html  the page template (one page grouped by task, lettered options, answer bar)
-  bin/agent-name.sh       SessionStart + UserPromptSubmit hook: names the session by role (<repo> Manager, <feature> Task Manager, <repo> Helper - <Task Name>), also the Orca tab
-  bin/agent-guard.sh     hook: records every Agent launch and orca pane on the board, refuses a manager's launch that names no open todo task only with board_guard=on; default record; board_guard=on|record|off
-  bin/agent-version.sh   UserPromptSubmit hook + check: a session running an older plugin than installed gets one STALE PLUGIN line; the start text names old scopes; an old version never retrains
-```
-
-## Who does what
-
-| Agent | Does | Never does |
-|---|---|---|
-| Main manager | Talks to the human. Routes every task. Reports in 3 parts. Runs the browser E2E. | Code, tests, merges |
-| Fast-lane deputy | One small task on the current branch. Human checks the screen. | Worktrees, browser |
-| Merge deputy | Merge, suite once, push, delete branch, close terminal, remove worktree, update agent files. | Product code |
-| Task manager | Splits the feature. Writes the failing tests. Briefs workers. Verifies every result. Bounces defects with evidence. | Product code, browser, talking to the human |
-| Worker | Writes code until the task manager's tests pass. Runs only its own tests. | Tests, full suite, browser |
-
-## How a task is routed (W9)
-
-Checked in this order, first match wins.
-
-0. Touches another repo → W12: split, send the peer main manager its part, called side first.
-1. Small task → fast-lane deputy. No worktree.
-2. Touches a live worktree's module → that task manager. In final stage → hold.
-3. Big, and a task manager has capacity → that task manager.
-4. Idle or done worktrees → merge deputy cleans them first.
-5. RAM and CPU under 80%, agents under cap → open a worktree with a task manager. Else wait.
-
-Every task gets a risk level 0-4 at dispatch (R8); level 3 and 4 take the full lane; bin/agent-level.sh check raises it before merge, never lowers it.
-
-## One real day
-
-| Task | Path | Result |
-|---|---|---|
-| Fix a typo | Fast-lane deputy → human checks screen → merge deputy | 5 minutes |
-| Build the settings page | Worktree → mock, human says yes → task manager writes tests → 2 workers → verify → browser E2E → merge | About 40 minutes |
-| Add dark mode to settings | Same module, task manager has capacity → passed to it | Folded in |
-| Font size option, arrives during final stage | Held. After merge, small → fast-lane deputy | Next |
-
-## The files
-
-| File | Who writes it | Who reads it |
-|---|---|---|
-| `agent_todo.txt` | `agent-file.sh todo add` / `todo done` | Every agent at start |
-| `agent_completed.txt` | `agent-file.sh todo done`, one data line per task | Human, `agent-file.sh time` |
-| `agent_estimate.txt` | `agent-file.sh retrain`, also `todo done` once a week | `agent-file.sh estimate` |
-| `agent_ideas.txt` | `agent-file.sh idea add` | Human, on his own time |
-| `agent_worktree.txt` | `agent-file.sh worktree set` / `rm` | Main manager before every dispatch |
-| `agent.conf` | `./bin/agent-settings.sh` | `agent-start.sh` |
-| `agent_monitor.txt` | `./bin/agent-monitor.sh` | Every agent at start |
-| `agent_state.txt` | Each session: `agent-file.sh state add`; `state trim` moves old lines to `agent_state.trim-<date>.txt` (todo done, housekeep) | The same session, after a start, compaction or clear |
-| `.secrets/` | Human only | Any agent, read only, never printed |
+A way to run coding agents so you can read the result, trust it, and not get interrupted.
+A main manager agent talks to you, and workers do the coding in the background.
 
 ## Install
 
-Two ways. Pick by where you run Claude.
-
-| You | Path |
-|---|---|
-| Claude Code on your own computer, with or without Orca | **A. Plugin** |
-| Claude cloud sessions (claude.ai/code, the Claude app in cloud mode) | **B. Pack** |
-| A team repo where everyone should get it without installing anything | **B. Pack** |
-| You want updates for free (`claude plugin update`) | **A. Plugin** |
-| Both on the same computer | Fine. The hook runs once per session |
-
-### A. Plugin (your computer)
-
-In the repo folder, from your shell:
+Claude Code on your own computer, in the repo folder, from your shell:
 
 ```
 claude plugin marketplace add maverick1014/auto-pipeline --scope project
@@ -114,10 +14,9 @@ claude plugin install auto-pipeline@auto-pipeline -s project
 
 Or inside Claude Code: `/plugin marketplace add maverick1014/auto-pipeline`, then `/plugin install auto-pipeline`.
 
-Answer the three questions (runtime `auto`, your language, max agents). Then open Claude Code in
-that repo. The first session sets the repo up by itself and prints two lines. Run
-`/auto-pipeline:init` once and paste the permissions block it prints into
-`.claude/settings.json` — a plugin cannot add permission rules for you:
+Answer the three questions (runtime `auto`, your language, max agents). Open Claude Code in that
+repo. Run `/auto-pipeline:init` once, then paste the permissions block it prints into
+`.claude/settings.json` (a plugin cannot add permission rules for you):
 
 ```
 Bash(git push origin --delete *)
@@ -128,65 +27,24 @@ Bash(orca worktree rm *)
 Bash(orca terminal close *)
 ```
 
-Want it on every repo you open? Drop `--scope project` / `-s project`. Repos you have not set up
-only get a one-line hint, nothing is written there.
+Want it on every repo you open? Drop `--scope project` / `-s project`.
 
-### B. Pack (cloud, or no plugin)
+Cloud sessions (claude.ai/code): the agent handles them with cloud-pack. Nothing to do here.
 
-A cloud session never installs a plugin. It reads only what is committed in the repo. The pack
-puts the same pipeline into the repo as plain files.
+## Commands
 
-1. Open a cloud session on the repo. Paste this, as is:
-   ```
-   git clone https://github.com/maverick1014/auto-pipeline /tmp/ap && /tmp/ap/bin/agent-cloud-pack.sh . --language zh
-   ```
-   (`--language zh` is optional; drop it for English.)
-2. Tell it to commit and push. The Claude GitHub App must be installed on the repo, or the cloud
-   clone has no remote to push to.
-3. Open a **new** session on the repo. It starts with `ROLE:` … `QUIZ:` by itself. The session
-   that installed the pack does not — hooks run at session start, and the files were not there yet.
+| Command | What it does |
+|---|---|
+| `/auto-pipeline:init` | One-time project setup. Prints the permissions block. |
+| `/auto-pipeline:settings` | Show the settings, or change one ("language en", "max_agents 3"). |
+| `/auto-pipeline:todo` | Show every open task, wait, to-do and parked question in one table. |
+| `/auto-pipeline:question` | List the questions waiting for you and take your answers. |
+| `/auto-pipeline:close-case` | Settle one finished case, or wrap up the whole repo. |
+| `/auto-pipeline:clean-up` | List rubbish docs and outdated lines, remove only what you say yes to. |
+| `/auto-pipeline:city` | Start the agent city visualiser and print its URL. |
 
-Already have the plugin on your computer? `/auto-pipeline:cloud-pack` does the same for the
-current repo. Commit and push after.
+You can also just type a keyword (e.g. "show todo", "看任务"). The list is in `bin/agent-keyword.sh`.
 
-What lands in the repo:
+## Change settings
 
-- `.claude/auto-pipeline/` — `bin/` (every script), `PRINCIPLES.md`, `VERSION`
-- `.claude/skills/<name>/SKILL.md`, `.claude/agents/<name>.md` — every skill and agent, except
-  `init` (the pack already did its job) and `cloud-pack` (runs only from the plugin or a clone)
-- `.claude/settings.json` — the SessionStart hook and the permission rules, merged into yours
-- `CLAUDE.md` — one pointer line, appended once
-- `agent.conf`, the four `agent_*.txt` files, `.secrets/`, `AGENTS.md`, `.gitignore` lines
-
-Update later: same command with `--update` added. It refreshes `bin/`, `PRINCIPLES.md`, `VERSION`
-and the packed skills/agents, and never touches `agent.conf`, `agent_*.txt`, `CLAUDE.md`,
-`AGENTS.md`, `.gitignore`, or your own settings, skills and agents.
-
-## Start
-
-```
-./bin/agent-start.sh             # rules, resources, quiz. No work until PASS
-./bin/agent-resume.sh            # runs by itself at startup (auto_resume=yes); run by hand only if you turned that off
-/auto-pipeline:dispatch          # main manager: route one task
-/auto-pipeline:merge             # main manager: E2E, then merge deputy
-/auto-pipeline:close-case        # main manager: settle one CLOSE CASE report, or wrap up the whole repo
-/auto-pipeline:clean-up          # main manager: list rubbish docs and outdated agent_* lines, remove only the rows the human says yes to
-/auto-pipeline:init              # one-time project setup, prints the permissions block
-/auto-pipeline:settings          # show the settings, change one ("language en", "max_agents 3")
-./bin/agent-settings.sh          # show or change agent.conf, no agent
-bin/agent-settings.sh language zh   # talk to the human in Chinese
-bin/agent-settings.sh sync          # add any key missing from agent.conf, template value
-bin/agent-file.sh time              # est, work, wait, clock of every finished task
-bin/agent-file.sh data              # the same data of every repo on this machine, one table
-bin/agent-file.sh eta <name>        # work left as minutes and a clock time, and when the human is needed next
-bin/agent-file.sh estimate ... [--guess <m>]   # work minutes of a new task, with a range and the 3 nearest past tasks; --guess blends in your own minutes
-bin/agent-file.sh backtest          # estimator, blend and rubric on the finished tasks, who wins
-bin/agent-file.sh retrain           # learn the estimate again from the finished tasks, keep it only if better
-bin/agent-file.sh board             # the show-todo table: open tasks, waits on the owner, owner to-dos, parked questions
-bin/agent-file.sh questions         # the show-question list: every question pending on the owner (--self, --json, --page <file>, --url <url>, answer <id> "<answer>")
-bin/agent-city.sh install-shim      # one time: puts the agent-city command in ~/.local/bin; nothing installs it by itself, the init skill offers it
-agent-city start                    # agent city visualiser, off by default, costs almost nothing
-/auto-pipeline:city              # start the agent city, prints the URL
-```
-
-A second Claude session in this repo becomes a task manager under the main manager, by itself.
+`/auto-pipeline:settings`, or `bin/agent-settings.sh <key> <value>` (for example `bin/agent-settings.sh language zh`).

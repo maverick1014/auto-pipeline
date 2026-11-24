@@ -449,7 +449,7 @@ class TestTheSkills(unittest.TestCase):
         self.assertIn("CLOSE CASE <name>: unfinished", brief)
 
     def test_the_readme_names_the_hook_and_the_skill(self):
-        text = read("README.md")
+        text = read("PRINCIPLES.md")
         self.assertIn("agent-close-case.sh", text)
         self.assertIn("close-case", text)
 

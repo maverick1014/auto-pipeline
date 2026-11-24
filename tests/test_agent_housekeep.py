@@ -1801,7 +1801,7 @@ class TestDocs(unittest.TestCase):
         self.assertGreaterEqual(tuple(int(x) for x in ver.split(".")), (0, 34, 1))
 
     def test_readme_lists_the_script(self):
-        self.assertIn("bin/agent-housekeep.sh", read_root("README.md"))
+        self.assertIn("bin/agent-housekeep.sh", read_root("PRINCIPLES.md"))
 
     def test_release(self):
         # estimate-blend (2026-11-13) released 0.34.0 on top: at least 0.33.0, like the other release tests

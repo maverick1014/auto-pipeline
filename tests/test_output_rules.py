@@ -257,7 +257,7 @@ class TestF6Lessons(PrinciplesCase):
 
 class TestF8ShortCityCommand(unittest.TestCase):
     def setUp(self):
-        self.readme = read("README.md")
+        self.readme = read("PRINCIPLES.md")
 
     def test_readme_uses_the_short_command(self):
         self.assertIsNone(re.search(r"\./bin/agent-city\.sh [a-z]", self.readme))

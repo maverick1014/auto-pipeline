@@ -791,7 +791,7 @@ class TestWiredInBlend(unittest.TestCase):
         self.assertIn("--guess", w11)
 
     def test_the_readme_and_the_usage_name_the_guess(self):
-        self.assertIn("--guess", read("README.md"))
+        self.assertIn("--guess", read("PRINCIPLES.md"))
         head = read("bin", "agent-file.sh").split("\nset -eu")[0]
         for word in ("--guess", "guess=", "warning"):
             with self.subTest(word=word):

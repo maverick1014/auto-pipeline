@@ -445,7 +445,7 @@ class TestQuiz36(ScriptCase):
         src = read("bin", "agent-start.sh")
         self.assertIn("print the 39 quiz questions", src)
         self.assertIn('--answer "1A 2D ... 39D"', src)
-        self.assertIn("39-question quiz", read("README.md"))
+        self.assertIn("39-question quiz", read("PRINCIPLES.md"))
 
 
 # -------------------------------------------------------------- 5: text

@@ -815,7 +815,7 @@ class TestWiredIn(unittest.TestCase):
         self.assertNotIn("pick a rubric row", w11)
 
     def test_the_readme_lists_it(self):
-        text = read("README.md")
+        text = read("PRINCIPLES.md")
         for word in ("bin/agent-file.sh estimate", "bin/agent-file.sh backtest",
                      "bin/agent-file.sh retrain", "bin/agent_estimate.py", "`agent_estimate.txt`"):
             with self.subTest(word=word):

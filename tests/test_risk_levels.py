@@ -1097,15 +1097,10 @@ class TestTheQuiz(ScriptCase):
 class TestReadmeAndRelease(unittest.TestCase):
 
     def test_the_tree_lists_the_script(self):
-        self.assertIn("bin/agent-level.sh", read("README.md"))
-
-    def test_the_routing_section_names_the_level(self):
-        part = section(read("README.md"), "## How a task is routed", "## One real day")
-        self.assertIn("level", part.lower())
-        self.assertIn("agent-level.sh", part)
+        self.assertIn("bin/agent-level.sh", read("PRINCIPLES.md"))
 
     def test_the_quiz_count(self):
-        self.assertIn("39-question quiz", read("README.md"))
+        self.assertIn("39-question quiz", read("PRINCIPLES.md"))
 
     def test_release(self):
         ver = json.loads(read(".claude-plugin", "plugin.json"))["version"]

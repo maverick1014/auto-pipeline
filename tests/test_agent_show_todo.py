@@ -472,7 +472,7 @@ class TestTheQuiz(ScriptCase):
 
 class TestTheDocs(unittest.TestCase):
     def test_the_readme_names_the_hook_and_the_board(self):
-        text = read("README.md")
+        text = read("PRINCIPLES.md")
         for phrase in ("bin/agent-show-todo.sh", "bin/agent_board.py",
                        "bin/agent-file.sh board", "39-question quiz"):
             with self.subTest(phrase=phrase):

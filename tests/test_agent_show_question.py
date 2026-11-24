@@ -646,7 +646,7 @@ class TestTheQuiz(ScriptCase):
 
 class TestTheDocs(unittest.TestCase):
     def test_the_readme_names_the_new_files(self):
-        text = read("README.md")
+        text = read("PRINCIPLES.md")
         for phrase in ("bin/agent-show-question.sh", "bin/agent_questions.py",
                        "bin/agent-questions-page.html", "bin/agent-file.sh questions",
                        "39-question quiz"):
