@@ -24,6 +24,7 @@ The fake orca (ALL_STUB) keeps its state under $ORCA_STUB_DIR:
                              applied) and appends "$ <text>" and its output; a read
                              returns the lines after --cursor, latestCursor = line count
     shell/<h>/exited         that shell pane has exited: a read gives status "exited"
+    shell/<h>/fail           every read of that shell pane fails (stderr "orca: terminal read failed", exit 1)
     slow                     seconds every `terminal read` sleeps first (cadence tests)
     echo/<h>/buf             a TM pane that shows what is sent to it ("❯ <text>");
                              echo/<h>/drop holds a count of sends that are lost
@@ -169,6 +170,9 @@ if verb == "terminal read" and os.path.isdir(screens):
 if verb == "terminal read" and os.path.isdir(shell):
     if os.path.exists(os.path.join(shell, "exited")):
         out(term_json([], 0, "exited"))
+    if os.path.exists(os.path.join(shell, "fail")):
+        sys.stderr.write("orca: terminal read failed\n")
+        sys.exit(1)
     buf_read(shell)
 if verb == "terminal read" and os.path.isdir(echo):
     buf_read(echo)

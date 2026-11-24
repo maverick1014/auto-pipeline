@@ -143,7 +143,15 @@ Gaps the first tests did not catch. Each closes a way the watch could miss a wak
 | R19 | `--interval-min` must be a number above 0, else usage, exit 2 | B14 |
 | R22 | Login expired counts only on a screen that is not busy (no `esc to interrupt`) and in its last 10 lines (test output holding the words is no stall) | B8 |
 
-Not fixed, accepted (in the report): R7 a remote task's `changed` is the sweep that saw the change (up to one interval late), so the 15 min quiet warning can show briefly around a 15 min heartbeat; R14 tell's echo check sees the pointer typed in the input box, not that the turn started (dispatch waits for the idle prompt first); R17 a LOST line names the orca error code only; R18 `CLAUDE_PROJECT_DIR` can win over the root tell is given; R21 the FSIG/TSIG marker lines assume orca does not wrap a shell pane's rows (checked in E2E when a remote machine is there).
+| R4b | (bounce 2) A held stall holds only its own reason: a held idle-prompt stall never hides a later login-expired or no-change stall | B7, B8, B10 |
+| R22b | (bounce 2) The login words are looked for in the 10 lines above the input prompt line (the last line starting with `❯`, box chars ignored), else in the last 10 lines | B8 |
+| R3b | (bounce 2) A handle reported LOST is treated like a gone handle when the TM pane is resolved (LAUNCH records, list cache); while the task's pane is a LOST one it is resolved again every sweep | A4, A6, B11 |
+| R9b | (bounce 2) `WATCH REPLACED` only when the status file names a live pid whose command line holds `--all` and that is not this watch; any other SIGTERM exits 143 with no line | B15 |
+| R12b | (bounce 2) A failed shell read keeps the orca error for the LOST line (B12) | B12 |
+| R15b | (bounce 2) tell checks the status file's shell pane too and resolves it again when it is gone or exited | D2, D5 |
+| R10b | (bounce 2) The orphan scan skips terminals with `connected: false` or `orphaned: true` | B16 |
+
+Not fixed, accepted (in the report): R7 a remote task's `changed` is the sweep that saw the change (up to one interval late), so the 15 min quiet warning can show briefly around a 15 min heartbeat; R14 tell's echo check sees the pointer typed in the input box, not that the turn started (dispatch waits for the idle prompt first); R17 a LOST line names the orca error code only; R18 `CLAUDE_PROJECT_DIR` can win over the root tell is given; R21 the FSIG/TSIG marker lines assume orca does not wrap a shell pane's rows (checked in E2E when a remote machine is there); bounce 2 review: the Claude app with Orca installed but closed still shows the board warning (true: nothing watches those panes), an immediate first sweep can push the second one to two intervals, remote STAGE takes the last STAGE line of any name and any `TELL ` line ends waiting remotely (local: the task's own STAGE, `TELL <8 hex> `), `agent_shell_<handle>.lock` files stay in .git.
 
 ## H. Not in this task
 

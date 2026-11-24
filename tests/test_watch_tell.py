@@ -319,6 +319,21 @@ class TestReviewFixes(TellCase):
         self.assertIn("TELL OK alpha %s" % s, r.stdout)
         self.assertEqual([self.opt(c, "--text") for c in self.sends_to("term_alpha")], [pointer(s)])
 
+    def test_r15b_a_closed_shell_pane_in_the_status_file_is_resolved_again(self):
+        r_t = self.task("rem", env=ENV, echo=True)
+        self.shell_pane("sh_dead", env=ENV)
+        self.write(os.path.join(self.d, "shell", "sh_dead", "exited"), "")
+        self.write_status({"pid": 1, "started": now_text(5), "sweep": now_text(0), "interval_min": 5, "orphans": [],
+                           "tasks": {"rem": {"path": r_t["path"], "env": ENV, "pane": r_t["pane"], "shell": "sh_dead",
+                                             "watched": True, "why": "", "signals": 0, "confirmed": now_text(0),
+                                             "changed": now_text(0), "stall": ""}}})
+        s = sha8(SIG + " hello")
+        r = self.tell("rem", SIG + " hello")
+        self.assertOk(r)
+        self.assertIn("TELL OK rem %s" % s, r.stdout)
+        self.assertEqual(self.sends_to("sh_dead"), [])
+        self.assertTrue(self.sends_to(r_t["shell"]))
+
     def test_r16_a_remote_tell_waits_for_the_shell_pane_lock(self):
         r_t = self.task("rem", env=ENV, echo=True)
         lock = self.repo.path(".git", "agent_shell_%s.lock" % r_t["shell"])

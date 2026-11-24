@@ -802,6 +802,57 @@ class TestReviewFixes(AllCase):
         self.hook(t["pane"], '[ "$1" = "2" ] && printf "%%s" %s > %s\n' % (sh_quote(after), sh_quote(t["state"])))
         self.assertEqual(self.one_watch(self.text(self.run_all())), "WATCH SIGNAL alpha: DONE PASS alpha")
 
+    # ---- bounce 2 (the reviewer's second look)
+
+    def test_r4b_a_held_idle_stall_does_not_hide_a_login_stall(self):
+        t = self.task("alpha", frames=[idle(i) for i in range(1, 60)])
+        self.assertEqual(self.one_watch(self.text(self.run_all(max_sweeps="6"))), "WATCH STALL alpha: idle prompt")
+        self.screens(t["pane"], [["⏺ Worker 2 is done.", "  ⎿  API Error: 401 · Please run /login"] + idle(i)
+                                 for i in range(1, 60)])
+        self.assertEqual(self.one_watch(self.text(self.run_all(max_sweeps="6"))), "WATCH STALL alpha: login expired")
+
+    def test_r22b_login_words_above_a_tall_input_area_count(self):
+        screen = (["⏺ Bash(git push)", "  ⎿  API Error: 401 · Please run /login", ""] + idle(0)[2:5] +
+                  [""] + ["row %d of the status line" % i for i in range(1, 6)] +
+                  ["  ⏵⏵ bypass permissions on (shift+tab to cycle)"])
+        self.task("alpha", frames=[frame(1), screen])
+        text = self.text(self.run_all(max_sweeps="4"))
+        self.assertEqual(self.one_watch(text), "WATCH STALL alpha: login expired")
+
+    def test_r3b_after_a_lost_a_listed_new_pane_is_watched(self):
+        t = self.task("alpha")
+        self.exited("term_alpha", from_read=2)
+        self.assertEqual(self.one_watch(self.text(self.run_all())),
+                         "WATCH LOST alpha: pane exited (operator_close, exit 0)")
+        self.screens("term_new", moving())                   # relaunched from the Orca UI: no new LAUNCH record
+        self.terminals([{"handle": "term_alpha", "title": "◑ alpha Task Manager", "worktreePath": t["path"],
+                         "agentIdentity": "claude"},
+                        {"handle": "term_new", "title": "◑ alpha Task Manager", "worktreePath": t["path"],
+                         "agentIdentity": "claude"}])
+        self.on_read("term_new", t["state"], {2: "QUESTION: back from the UI?"})
+        self.assertEqual(self.one_watch(self.text(self.run_all())), "WATCH SIGNAL alpha: QUESTION: back from the UI?")
+        self.assertEqual(self.status()["tasks"]["alpha"]["pane"], "term_new")
+
+    def test_r9b_a_plain_sigterm_before_the_first_status_write_is_not_a_replace(self):
+        self.task("alpha")
+        self.write_status({"pid": dead_pid(), "started": now_text(30), "sweep": now_text(0), "interval_min": 5,
+                           "tasks": {}, "orphans": []})
+        self.write(os.path.join(self.d, "slow"), "3")
+        proc = self.repo.popen("agent-watch.sh", "--all", "--max", "5",
+                               env={"AGENT_RUNTIME": "orca", "AGENT_WATCH_INTERVAL_S": "1"}, cwd=self.repo.dir)
+        self.addCleanup(lambda: proc.poll() is None and proc.kill())
+        time.sleep(1.5)
+        proc.terminate()
+        out, err = proc.communicate(timeout=20)
+        self.assertNotIn("WATCH REPLACED", out + err)
+        self.assertNotEqual(proc.returncode, 0)
+
+    def test_r6b_a_failing_shell_read_names_the_orca_error(self):
+        t = self.task("alpha", env=ENV)
+        self.write(os.path.join(self.d, "shell", t["shell"], "fail"), "")
+        text = self.text(self.run_all(max_sweeps="8"))
+        self.assertEqual(self.one_watch(text), "WATCH LOST alpha: orca: terminal read failed")
+
     def test_r19_interval_min_must_be_above_0(self):
         for value in ("0", "-1", "x"):
             with self.subTest(value=value):
@@ -887,6 +938,17 @@ class TestOrphans(AllCase):
         ])
         self.assertEqual(sorted(o["path"] for o in self.status()["orphans"]), sorted([wt, sub]))
         self.assertEqual(len(self.orphan_lines(text)), 2, text)
+
+    def test_r10b_a_disconnected_or_orphaned_claude_pane_is_no_orphan(self):
+        text = self.run_orphans([
+            {"handle": "term_m0", "title": "Terminal 1", "worktreePath": self.main, "worktreeId": "R1::" + self.main},
+            {"handle": "term_d", "title": "◑ old Task Manager", "worktreePath": "/x/old", "worktreeId": "R1::/x/old",
+             "agentIdentity": "claude", "connected": False},
+            {"handle": "term_o", "title": "◑ older Task Manager", "worktreePath": "/x/older",
+             "worktreeId": "R1::/x/older", "agentIdentity": "claude", "orphaned": True},
+        ])
+        self.assertEqual(self.orphan_lines(text), [])
+        self.assertEqual(self.status()["orphans"], [])
 
     def test_b16_printed_once_never_a_wake(self):
         text = self.run_orphans([
