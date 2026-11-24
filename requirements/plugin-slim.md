@@ -43,7 +43,7 @@ Probe (pc2, scratch bare repo served by `git http-backend`, `url` source):
 |---|---|---|---|
 | `.claude-plugin/` | 2 files | yes | plugin.json: name, version, userConfig. marketplace.json rides along (harmless in the cache) |
 | `hooks/` | 1 file | yes | hooks.json: every hook |
-| `bin/` | 9.4 MB | yes | every script; `bin/agent-city-assets/` (7.5 MB) is read by the city page (agent_city.py `agent-city-assets`, agent-city.sh cloud upload) |
+| `bin/` | 9.4 MB | yes | every script; `bin/agent-city-assets/` (7.5 MB) is read by the city page (agent_city.py `agent-city-assets`) |
 | `skills/` | 6 skills | yes | the slash commands |
 | `agents/` | 3 files | yes | worker, deputies |
 | `PRINCIPLES.md` | 35 KB | yes | start text prints it, cloud-pack copies it, holds the MIT notice of section E |
@@ -70,7 +70,7 @@ Patterns searched: `$PLUGIN_ROOT/…`, `${CLAUDE_PLUGIN_ROOT}/…`, `$(dirname "
 | bin/agent-start.sh | `PRINCIPLES.md`, `bin/agent.conf.default`, `bin/*` | yes |
 | bin/agent-cloud-pack.sh | `bin/`, `skills/`, `agents/`, `PRINCIPLES.md`, `.claude-plugin/plugin.json`, `hooks/hooks.json` | yes |
 | bin/agent-init.sh, agent-settings.sh, agent-autoclear.sh, agent_board.py, agent_state.py, agent-city.sh | `bin/agent.conf.default` | yes |
-| bin/agent-city.sh, agent_city.py | `bin/agent-city.html`, `bin/agent-city-assets/`, `bin/agent-city-shim`, `bin/agent-city-cloud.js`, `bin/agent-city-relay-dev.mjs`, `bin/agent-city-plans.json`, `.claude-plugin/plugin.json`, `hooks/hooks.json` | yes |
+| bin/agent-city.sh, agent_city.py | `bin/agent-city.html`, `bin/agent-city-assets/`, `bin/agent-city-shim`, `bin/agent-city-plans.json`, `.claude-plugin/plugin.json`, `hooks/hooks.json` | yes |
 | bin/agent_questions.py | `bin/agent-questions-page.html` | yes |
 | bin/agent_update.py | own `.claude-plugin/plugin.json`; the clone's `.claude-plugin/plugin.json` (main, not the cache) | yes |
 | bin/agent-version.sh, agent-close-case.sh | `<cache>/<version>/bin/agent-start.sh` | yes |

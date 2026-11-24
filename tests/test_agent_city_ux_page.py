@@ -562,7 +562,7 @@ class TestTagPicks(unittest.TestCase):
         self.assertEqual(self.r["el2"], {"pickT": "gov", "pickId": ""})
 
     def test_pick_of_tag(self):
-        self.assertEqual(self.r["picks"], [{"t": "c", "id": "x1"}, {"t": "rg", "id": "r1"}, {"t": "gov", "terr": "T"},
+        self.assertEqual(self.r["picks"], [{"t": "c", "id": "x1"}, None, {"t": "gov", "terr": "T"},
                                            {"t": "gov"}, None, None])
 
     def test_nearest_pick(self):
@@ -573,20 +573,19 @@ class TestTagPicks(unittest.TestCase):
 class TestTagWiring(unittest.TestCase):
 
     def test_every_tag_and_bubble_is_tagged(self):
-        for name in ("ensureOv", "ensureGovFigure", "ensureRemoteGovView"):
+        for name in ("ensureOv", "ensureGovFigure"):
             self.assertIn("tagPick(", function_source(name) or "", name)
         src = function_source("ensureOv")
-        for bit in ("c.o.bub", "c.o.tag", "c.o.rdev"):
+        for bit in ("c.o.bub", "c.o.tag"):
             self.assertRegex(src, r"tagPick\(\s*%s\b" % re.escape(bit), bit)
         text = page()
         self.assertRegex(text, r"tagPick\(\s*govBub\b")
         self.assertRegex(text, r"tagPick\(\s*govTag\b")
         for bit in ("bub", "tag"):
             self.assertRegex(function_source("ensureGovFigure"), r"tagPick\(\s*%s\b" % bit)
-        self.assertRegex(function_source("ensureRemoteGovView"), r"tagPick\(\s*tag\b")
 
     def test_tags_take_clicks(self):
-        for sel in (".bub", ".tagl", ".rdev"):
+        for sel in (".bub", ".tagl"):
             r = rule(sel)
             self.assertIn("pointer-events:auto", r.replace(" ", ""), sel)
             self.assertIn("cursor:pointer", r.replace(" ", ""), sel)
@@ -837,8 +836,8 @@ class TestPersonHistory(unittest.TestCase):
 
 def citizen_branch():
     src = function_source("renderDetail") or ""
-    i = src.find("} else if (c) {")
-    j = src.find("} else if (selected && selected.t === 'rg')", i)
+    i = src.find("if (c) {")
+    j = src.find("} else if (selected && selected.t === 'gov') {", i)
     return src[i:j] if i >= 0 and j > i else ""
 
 
@@ -855,7 +854,7 @@ class TestPersonWindow(unittest.TestCase):
         src = function_source("renderDetail") or ""
         self.assertIn("personHistory(", src)
         self.assertIn("historyHtml(", src)
-        self.assertNotIn("teamListHtml(", src, "no team list anywhere in the panel (remote people too)")
+        self.assertNotIn("teamListHtml(", src, "no team list anywhere in the panel")
 
     def test_history_list_is_refreshed(self):
         src = function_source("renderDetail") or ""

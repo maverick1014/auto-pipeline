@@ -1,8 +1,7 @@
 """Agent City: a tiny localhost playground that shows spawned agents as people
 in a city while a pipeline runs.
 
-Three parts, in one file so the server never imports anything but the stdlib
-and its sibling agent_city_relay.py:
+Three parts, in one file so the server never imports anything but the stdlib:
 
   Reducer  Pure. Turns hook lines (one JSON object per line, written by
            bin/agent-city-hook.sh into <dir>/events.jsonl) into city events
@@ -10,7 +9,7 @@ and its sibling agent_city_relay.py:
 
   Server   python3 agent_city.py serve --dir DIR --port PORT
                    [--idle-min N | --idle-sec S] [--max-log-kb K] [--page PATH]
-                   [--assets DIR] [--gov-wait-sec N] [--relay-sec S] [--slow-sec S]
+                   [--assets DIR] [--gov-wait-sec N]
                    [--decisions PATH]
            Tails <dir>/events.jsonl, feeds each line to a Reducer, and streams
            the resulting events to a browser over Server-Sent Events at
@@ -22,18 +21,10 @@ and its sibling agent_city_relay.py:
            permission. See tests/test_agent_city_interact.py for the full
            contract. Keeps <dir>/roster.json, the live sessions it knows a pid
            for, so a restart shows them again at once (tests/
-           test_agent_city_roster.py). Also offers every line to one RelayHub
-           (bin/agent_city_relay.py, "Joining"), which syncs a joined repo's
-           lines with its team relay on its own thread; other members' lines
-           come back as "remote" SSE events. See
-           tests/test_agent_city_relay_serve.py for the full contract.
+           test_agent_city_roster.py).
            POST /api/agent/add opens one new claude session in a territory's
            folder (the page's add-agent button; requirements/city.md, "Add
            agent"); see tests/test_agent_city_add_agent.py for the contract.
-           A start order from the cloud page (only for a relay in the start
-           file, cloud-start) opens one session the same way: CityState.
-           cloud_order calls add_agent and nothing else; see
-           tests/test_agent_city_cloud_start_machine.py.
 
   Hooks   python3 agent_city.py ask [--max-wait-sec N]        (PermissionRequest)
            python3 agent_city.py gov-watch [--max-wait-sec N]  (Stop, governor only)
@@ -47,8 +38,7 @@ and its sibling agent_city_relay.py:
            tests/test_agent_city_world.py for the full contract.
            python3 agent_city.py demo-world prints the demo view (JSON).
 
-Python standard library only, plus bin/agent_city_relay.py (this file's own
-folder) for the team relay. Runs on Python 3.8+.
+Python standard library only. Runs on Python 3.8+.
 """
 
 import argparse
@@ -908,7 +898,6 @@ TAIL_INTERVAL = 0.25
 # that opened it before the rename may still append to the moved file.
 TAIL_ROTATED_GRACE = 5.0
 RECOUNT_POLL_SEC = 2.0
-RELAY_POLL_SEC = 0.1
 
 FALLBACK_PAGE = (
     b"<!doctype html><html><head><meta charset=\"utf-8\">"
@@ -956,7 +945,7 @@ class _Client:
 # --------------------------------------------------------------------------
 # Talking: the owner reads a session's conversation and talks to it from the
 # city page (requirements/city.md, "Talking"). Chat text never leaves the
-# computer: bin/agent_city_relay.py never sees it. See
+# computer. See
 # tests/test_agent_city_chat.py for the full contract.
 # --------------------------------------------------------------------------
 
@@ -1002,9 +991,6 @@ def load_chat(path):
         if not isinstance(at, (int, float)):
             at = 0.0
         row = {"sid": sid, "aid": aid, "kind": kind, "text": text, "at": at}
-        cid = obj.get("cid")
-        if kind == "owner" and isinstance(cid, str) and CLOUD_CID_RE.match(cid):
-            row["cid"] = cid     # cloud-city-2: a delivered cloud message keeps its id over a restart
         valid.append(row)
 
     counts = {}
@@ -1143,7 +1129,7 @@ def pass_city_dir(directory):
     return os.path.abspath(directory)
 
 
-def agent_command(name, folder, city_dir=None, cloud=False):
+def agent_command(name, folder, city_dir=None):
     """The one fixed line a new terminal runs: `claude --name <name>`, then
     `--model <m> --effort <e>` and `--permission-mode <p>` from FOLDER's
     agent.conf (main_manager, permission_mode: a second session opens with
@@ -1153,11 +1139,7 @@ def agent_command(name, folder, city_dir=None, cloud=False):
     missing file or value, or one agent_conf refuses, leaves that part out.
     CITY_DIR given: the line starts with `AGENT_CITY_DIR=<city_dir> `, so the
     session reports to this city; None: it starts with `claude `. Never the
-    folder, never AGENT_ROLE. CLOUD False (a local click): the mode is
-    permission_mode. CLOUD True (a cloud start): the mode is cloud_permission_mode
-    only, and a missing or refused value, no agent.conf or a failed load gives
-    `--permission-mode auto`: never bypass by default, and a cloud line always
-    has an explicit --permission-mode. Never raises."""
+    folder, never AGENT_ROLE. Never raises."""
     import shlex
     words = ["claude", "--name", shlex.quote(name)]
     if city_dir:
@@ -1172,14 +1154,11 @@ def agent_command(name, folder, city_dir=None, cloud=False):
         if model is not None:
             model_name, effort = model.rsplit(":", 1)
             words += ["--model", shlex.quote(conf_mod.cli_model(model_name)), "--effort", shlex.quote(effort)]
-        mode, _src = conf_mod.effective("cloud_permission_mode" if cloud else "permission_mode", conf)
+        mode, _src = conf_mod.effective("permission_mode", conf)
         if mode is not None:
             words += ["--permission-mode", shlex.quote(mode)]
-        elif cloud:
-            words += ["--permission-mode", "auto"]
     except Exception:
-        if cloud and "--permission-mode" not in words:
-            words += ["--permission-mode", "auto"]
+        pass
     words.append(shlex.quote(FIRST_PROMPT))
     return " ".join(words)
 
@@ -1286,1458 +1265,6 @@ def machine_resources(folder, script=None):
         pass
     cap = _usage_cap(folder)
     return {"ram": ram, "cpu": cpu, "max": cap, "ok": cap < 0 or (ram <= cap and cpu <= cap)}
-
-
-# --------------------------------------------------------------------------
-# cloud-city: the Agent City on Cloudflare, view only (requirements/city.md,
-# "Cloud page"). Everything of the upload is in this block: what may go up
-# (CLOUD_KEEP / CLOUD_DROP / cloud_clean), CityState's side of it (_CloudTaps)
-# and the uploader itself (CloudUploader), the RelayHub's view_source.
-#
-# One reducer: the uploader is ONE MORE PAGE CLIENT inside this server. It
-# gets the snapshot CityState.add_client() builds for a browser and then the
-# same events (a "tap": a queue like a browser's, but not in self.clients, so
-# it is not counted in /health, takes no MAX_CLIENTS slot, does not start an
-# era show and never keeps the idle clock from running out). What it gets is
-# cut down to the repos joined to one relay, cleaned, and rides on the sync
-# the hub already makes (no extra request). See
-# tests/test_agent_city_cloud_upload.py for the full contract.
-# --------------------------------------------------------------------------
-
-# Every page message type (the cases of apply() in bin/agent-city.html) is on
-# exactly one of these two lists; a type on neither is never uploaded, and
-# tests/test_agent_city_cloud_upload.py fails until a new page type is put on
-# one of them.
-CLOUD_DROP = frozenset(("ask", "ask_phase", "ask_closed", "chat", "adding", "hidden", "hist"))   # question, command and chat text; the state of the local add-agent button; the list of what this page hides (the cloud never learns that a hidden repo exists); a person's history lines (task and question text, file names)
-CLOUD_KEEP = frozenset((
-    "answer", "background", "build", "demolish", "done", "era", "gov", "governors", "idle", "label",
-    "leave", "levelup", "move", "noplot", "quality", "relay", "relay_end", "remote", "remote_snapshot",
-    "resume", "site", "site_end", "snapshot", "spawn", "stuck", "talk", "team", "tool", "touch",
-    "waiting", "world",
-))
-
-CLOUD_SNAP_SEC = 60.0          # serve --cloud-snap-sec: a new picture at most this often
-CLOUD_SIGN_SEC = 60.0          # nothing new: one sign of life this often
-CLOUD_EVENT_CAP = 400          # more events than this in one view: a new picture instead (the relay allows 500)
-CLOUD_VIEW_MAX_BYTES = 120 * 1024   # the relay's body limit is 256 KB, and the sync's own lines share it
-CLOUD_LABEL_MAX = 64           # the relay's limit for a machine's name
-CLOUD_RETRY_SEC = 30.0         # a picture that could not be made or was too big: try again after this
-CLOUD_FORGET_SEC = 180.0       # a relay the hub no longer asks about: its tap is closed after this
-
-# cloud-city-2: talk from the cloud page (requirements/city.md, "Cloud page",
-# "Talk"; tests/test_agent_city_cloud_talk_machine.py is the contract).
-CLOUD_TALK_ROWS = 20           # chat rows in one sync (the relay reads 20)
-CLOUD_TALK_TEXT = 8000         # characters kept of a chat row's text (the relay cuts there too)
-CLOUD_TALK_BYTES = 80 * 1024   # what one sync's talk may weigh as JSON: the relay's body limit is 256 KB and the view and the lines share it
-CLOUD_TALK_ACKS = 50           # answers in one sync (the relay reads 50)
-CLOUD_TALK_TAKE = 10           # messages taken from one reply
-CLOUD_ACKS_KEEP = 200          # cloud messages per relay that wait for an answer to go up
-CLOUD_MSG_AGE_MS = 600000      # a message that is older than this (10 min) is not taken
-CLOUD_FLOOD_MAX = 60           # cloud messages taken in CLOUD_FLOOD_SEC, no more
-CLOUD_FLOOD_SEC = 600.0
-CLOUD_SEEN_MAX = 4000          # the seen file is cut down at start when it holds more cids than this ...
-CLOUD_SEEN_KEEP = 2000         # ... to the newest of them
-CLOUD_SAID_KEEP = 500          # answers kept in memory for messages that have no entry (refused, ended, ...)
-CLOUD_CID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")   # the relay's own rule for a key
-
-# cloud-city-3: a start order from the cloud page (requirements/city.md, "Cloud
-# page", "Start"; tests/test_agent_city_cloud_start_machine.py is the contract).
-CLOUD_ORDER_AGE_MS = 90000     # an order that is older than this (90 s) is not opened
-CLOUD_ORDER_MAX = 10           # orders let in during CLOUD_ORDER_SEC, no more, whatever the cloud says
-CLOUD_ORDER_SEC = 3600.0
-CLOUD_ORDER_TAKE = 3           # orders taken from one reply
-CLOUD_ORDER_ACKS = 20          # order answers in one sync (the relay reads 20)
-CLOUD_ORDER_STATES = ("opening", "opened", "cap", "failed")
-CLOUD_OID_RE = re.compile(r"[A-Za-z0-9_-]{16,64}")      # used with fullmatch
-
-
-def _cloud_relay():
-    """The sibling agent_city_relay module, imported only when the cloud code
-    first needs it (the hooks must not pay for urllib and friends)."""
-    bin_dir = os.path.dirname(os.path.abspath(__file__))
-    if bin_dir not in sys.path:
-        sys.path.insert(0, bin_dir)
-    import agent_city_relay
-    return agent_city_relay
-
-
-def _cloud_shorten(text):
-    # The relay's own rule for the lines it sends: a word that starts with "/"
-    # or "~/" is cut to its last part, so no full path leaves the machine.
-    if "/" not in text:
-        return text
-    return _cloud_relay()._shorten_paths(text)
-
-
-def _cloud_copy(obj):
-    """A deep copy of a JSON value with every path-like word in its strings cut."""
-    if isinstance(obj, str):
-        return _cloud_shorten(obj)
-    if isinstance(obj, dict):
-        return {k: _cloud_copy(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_cloud_copy(v) for v in obj]
-    return obj
-
-
-def _cloud_world_clean(world):
-    """Cleans a world view IN PLACE (the caller passes its own copy)."""
-    if not isinstance(world, dict):
-        return
-    for terr in world.get("territories") or []:
-        if not isinstance(terr, dict):
-            continue
-        terr.pop("balance", None)
-        terr.pop("rules_note", None)
-        for b in terr.get("buildings") or []:
-            if isinstance(b, dict):
-                b["files"] = []
-                b["hist"] = []
-                b["name"] = ""
-
-
-def cloud_clean(msg):
-    """A cleaned COPY of one page message for the cloud, or None (dropped).
-    Default deny: a type on neither CLOUD_KEEP nor CLOUD_DROP is dropped too.
-    No file name, no question text, no ask, no notice, no building files or
-    history or name, no person history ("hist": the snapshot's key, the
-    event), no full path in any text. The input is never changed: the local
-    page still gets everything."""
-    if not isinstance(msg, dict):
-        return None
-    kind = msg.get("type")
-    if not isinstance(kind, str) or kind in CLOUD_DROP or kind not in CLOUD_KEEP:
-        return None
-    if kind == "snapshot" and "hist" in msg:   # city-data: the history stays local; not even copied
-        msg = {k: v for k, v in msg.items() if k != "hist"}
-    out = _cloud_copy(msg)
-    if kind == "tool":
-        out.pop("file", None)
-    elif kind == "stuck":
-        out["question"] = ""
-    elif kind == "snapshot":
-        out["asks"] = []
-        out.pop("notice", None)
-        out.pop("adding", None)
-        out.pop("hidden", None)
-        _cloud_world_clean(out.get("world"))
-    elif kind == "world":
-        out.pop("notice", None)
-        _cloud_world_clean(out.get("world"))
-    elif kind == "build":
-        out["files"] = []
-        out["name"] = ""
-        if "hist" in out:
-            out["hist"] = []
-    elif kind == "remote":
-        inner = out.get("ev")
-        if isinstance(inner, dict):
-            inner = cloud_clean(inner)
-            if inner is None:
-                return None
-            out["ev"] = inner
-    return out
-
-
-def cloud_home_path():
-    """The marker of the relays that have the cloud on: $AGENT_CITY_HOME/cloud,
-    else ~/.claude/agent-city/cloud (the home world.json and decisions.jsonl use)."""
-    home = os.environ.get("AGENT_CITY_HOME")
-    if home:
-        return os.path.join(home, "cloud")
-    return os.path.expanduser("~/.claude/agent-city/cloud")
-
-
-def cloud_talk_path():
-    """cloud-city-2: the talk file (relay host + talk key, mode 0600), next to
-    the marker of cloud_home_path(): $AGENT_CITY_HOME/cloud-talk."""
-    return os.path.join(os.path.dirname(cloud_home_path()), "cloud-talk")
-
-
-def cloud_start_path():
-    """cloud-city-3: the start file (the relay hosts this machine takes start
-    orders from, hosts only, mode 0600), next to the talk file:
-    $AGENT_CITY_HOME/cloud-start."""
-    return os.path.join(os.path.dirname(cloud_home_path()), "cloud-start")
-
-
-def _cloud_seen_read(path):
-    """cloud-city-2: (the cids of the seen file PATH, oldest first, the set of
-    those delivered). A missing or broken file gives nothing; a bad line is skipped."""
-    order = []
-    known = set()
-    done = set()
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            for raw in fh:
-                try:
-                    row = json.loads(raw)
-                except ValueError:
-                    continue
-                cid = row.get("cid") if isinstance(row, dict) else None
-                if not isinstance(cid, str) or not cid:
-                    continue
-                if cid not in known:
-                    known.add(cid)
-                    order.append(cid)
-                if row.get("done") == 1:
-                    done.add(cid)
-    except (OSError, ValueError):
-        pass
-    return order, done
-
-
-def _cloud_seen_write(path, rows):
-    """cloud-city-2: append ROWS (dicts) to the seen file, one JSON line each,
-    mode 0600, on disk before it returns. False when it could not be written:
-    the caller then queues nothing. Ids only, never a text."""
-    try:
-        folder = os.path.dirname(path)
-        if folder:
-            os.makedirs(folder, exist_ok=True)
-        data = "".join(json.dumps(row) + "\n" for row in rows).encode("utf-8")
-        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-        try:
-            try:
-                os.fchmod(fd, 0o600)
-            except OSError:
-                pass
-            os.write(fd, data)
-            os.fsync(fd)
-        finally:
-            os.close(fd)
-        return True
-    except OSError:
-        return False
-
-
-def _cloud_seen_cut(path, order, done):
-    """cloud-city-2: a seen file with more than CLOUD_SEEN_MAX cids is written
-    again with the newest CLOUD_SEEN_KEEP (a message is handed down for 10
-    minutes at most, so an old cid is never asked about again). Returns the
-    cids kept; on a failure the file stays as it is."""
-    if len(order) <= CLOUD_SEEN_MAX:
-        return order
-    keep = order[-CLOUD_SEEN_KEEP:]
-    rows = []
-    for cid in keep:
-        rows.append({"cid": cid})
-        if cid in done:
-            rows.append({"cid": cid, "done": 1})
-    tmp = path + ".new"
-    try:
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        try:
-            os.write(fd, "".join(json.dumps(row) + "\n" for row in rows).encode("utf-8"))
-        finally:
-            os.close(fd)
-        os.replace(tmp, path)
-    except OSError:
-        return order
-    return keep
-
-
-def _cloud_orders_read(path):
-    """cloud-city-3: {oid: (state, why) of its last answer line, or None when
-    it has none}, oldest oid first, from the orders file PATH. A missing or
-    broken file gives {}; a bad line is skipped."""
-    last = {}
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            for raw in fh:
-                try:
-                    row = json.loads(raw)
-                except ValueError:
-                    continue
-                oid = row.get("oid") if isinstance(row, dict) else None
-                if not isinstance(oid, str) or CLOUD_OID_RE.fullmatch(oid) is None:
-                    continue
-                last.setdefault(oid, None)
-                state, why = row.get("state"), row.get("why")
-                if isinstance(state, str) and state in CLOUD_ORDER_STATES:
-                    last[oid] = (state, why if isinstance(why, str) else "")
-    except (OSError, ValueError):
-        pass
-    return last
-
-
-def _cloud_orders_cut(path, last):
-    """cloud-city-3: an orders file with more than CLOUD_SEEN_MAX oids is
-    written again with the newest CLOUD_SEEN_KEEP, each with its last answer
-    line. Returns what was kept; on a failure the file stays as it is."""
-    if len(last) <= CLOUD_SEEN_MAX:
-        return last
-    keep = dict(list(last.items())[-CLOUD_SEEN_KEEP:])
-    rows = []
-    for oid, got in keep.items():
-        rows.append({"oid": oid})
-        if got is not None:
-            row = {"oid": oid, "state": got[0]}
-            if got[1]:
-                row["why"] = got[1]
-            rows.append(row)
-    tmp = path + ".new"
-    try:
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        try:
-            os.write(fd, "".join(json.dumps(row) + "\n" for row in rows).encode("utf-8"))
-        finally:
-            os.close(fd)
-        os.replace(tmp, path)
-    except OSError:
-        return last
-    return keep
-
-
-def _cloud_order_copy(answer):
-    """cloud-city-3: a copy of an order's answer (its info is a dict of its own)."""
-    out = dict(answer)
-    if isinstance(out.get("info"), dict):
-        out["info"] = dict(out["info"])
-    return out
-
-
-def _cloud_sig_of(entry):
-    """cloud-city-2: (state, why) of a chat entry as the cloud is told it: ""
-    for a prompt or a reply; an owner message that became not delivered with
-    no reason (its session ended while it waited) says "ended"."""
-    state = entry.get("state") or ""
-    why = entry.get("why") or ("ended" if state == "undelivered" else "")
-    return state, why
-
-
-class _CloudTaps:
-    """CityState's side of the uploader (a mixin). A tap is a _Client that is
-    NOT in self.clients: _broadcast() feeds it like a browser, nothing counts
-    it. self.cloud_taps is replaced, never changed in place (copy on write)."""
-
-    cloud_taps = ()
-
-    def cloud_open(self):
-        """A new tap: its queue starts with the snapshot (and the remote one)
-        a browser would get, built under the lock, then every event."""
-        return self.add_client(cloud=True)
-
-    def cloud_close(self, tap):
-        with self.lock:
-            self.cloud_taps = tuple(t for t in self.cloud_taps if t is not tap)
-
-    def _cloud_push(self, data):
-        """Caller holds self.lock (from _broadcast). A tap whose queue is full
-        is dropped and told so with _DROP: the uploader makes a new picture."""
-        if not self.cloud_taps:
-            return
-        dead = []
-        for tap in self.cloud_taps:
-            try:
-                tap.queue.put_nowait(data)
-            except queue.Full:
-                dead.append(tap)
-        for tap in dead:
-            self.cloud_taps = tuple(t for t in self.cloud_taps if t is not tap)
-            try:
-                while True:
-                    tap.queue.get_nowait()
-            except queue.Empty:
-                pass
-            try:
-                tap.queue.put_nowait(_DROP)
-            except queue.Full:
-                pass
-
-    def cloud_identities(self):
-        """Every shown territory's identity (its repo), now: a repo hidden on
-        this machine is not a cloud repo (city-layout)."""
-        with self.lock:
-            return [i for i, t in self.world["territories"].items() if not t.get("hidden")]
-
-    def cloud_counts(self, terrs):
-        """{"people", "wait", "busy"} of the people in the territories TERRS,
-        from the Reducers' own snapshot (the one reducer): wait = waiting or
-        stuck; busy = not done, not waiting, not stuck, status "". A governor
-        is a session too: the seated one (gov_sid is not None) of each of those
-        territories counts as a person, as waiting when its state is "waiting"
-        and as busy when "busy" ("idle" and "background": a person only). One
-        seen in a past run and not seated now ("unknown") is not counted."""
-        people = wait = busy = 0
-        with self.lock:
-            for identity, reducer in self.reducers.items():
-                if self._terr_for(identity) not in terrs:
-                    continue
-                if reducer.gov_sid is not None:
-                    people += 1
-                    if reducer.gov_state == "waiting":
-                        wait += 1
-                    elif reducer.gov_state == "busy":
-                        busy += 1
-                for a in reducer.snapshot()["agents"]:
-                    people += 1
-                    waiting = bool(a["waiting"] or a["stuck"])
-                    if waiting:
-                        wait += 1
-                    elif not a["done"] and a["status"] == "":
-                        busy += 1
-        return {"people": people, "wait": wait, "busy": busy}
-
-    def cloud_world(self, identities):
-        """The world view (layout) of the territories IDENTITIES ALONE: layout()
-        of a world cut to them. layout() places by slot, so every place stays
-        where the local page has it, but the land, roads and tracks of a repo
-        that is not in IDENTITIES are not there (not its shape either). Built
-        under the lock (a private copy: layout() shares the live building
-        lists) and cached until the world changes; the result is shared, so
-        the caller copies it (cloud_clean does) and never changes it. Every
-        territory says whether its folder is on this machine ("here", as the
-        local view does: asked again each time, it is never in the cache)."""
-        keep = frozenset(identities)
-        with self.lock:
-            full = self._view()    # the cached full view: that object is the world's version
-            cache = getattr(self, "_cloud_world_cache", None)
-            if cache is None or cache[0] is not full:
-                cache = self._cloud_world_cache = (full, {})
-            view = cache[1].get(keep)
-            if view is None:
-                cut = dict(self.world)
-                cut["territories"] = {i: t for i, t in self.world["territories"].items() if i in keep}
-                cut["order"] = list(self.world["order"])   # the full order: the numbers (colours) stay the machine's, layout() skips what is cut
-                view = cache[1][keep] = json.loads(json.dumps(layout(cut, self.plans)))
-            idents = {territory_id(i): i for i in self.world["territories"]}
-            terrs = []
-            for t in view["territories"]:
-                ident = idents.get(t["id"])
-                terrs.append(dict(t, here=ident is not None and os.path.isdir(repo_folder(ident))))
-            return dict(view, territories=terrs)
-
-    def cloud_governors(self, identities):
-        """The fresh governors (the snapshot's "governors" count) of the repos IDENTITIES only."""
-        with self.lock:
-            now = time.monotonic()
-            return sum(1 for repo, g in self.governors.items()
-                       if repo in identities and now - g["last_seen"] <= GOV_FRESH_SEC)
-
-    # -- cloud-city-2: the owner's messages from the cloud page ------------
-
-    def cloud_message(self, cid, to, text, age_ms, terrs, now):
-        """One message the owner typed on the cloud page, for the window TO.
-        TERRS: the territory ids of the repos joined to the relay it came
-        from. It is text for a session's normal chat queue and nothing else:
-        the one thing it hands anything to is chat_send; no part of it
-        reaches a shell, a path, a flag or the server's options. Returns
-        {"cid", "state"[, "why"]}: state queued | delivered | undelivered,
-        why refused | ended | off | flood | not-listening (the page's words
-        for it are the page's business). A cid seen before is never queued
-        again (see _cloud_answer_locked). Every cid is on disk in the seen
-        file BEFORE anything is queued, and never the text with it."""
-        if not isinstance(cid, str) or not CLOUD_CID_RE.match(cid):
-            return {"cid": cid, "state": "undelivered", "why": "refused"}
-        with self.lock:
-            said = self._cloud_answer_locked(cid)
-            if said is not None:
-                return said
-            why = self._cloud_refuse_locked(to, text, age_ms, terrs) or self._cloud_flood_locked(now)
-            if not self._cloud_seen_add_locked(cid):
-                why = why or "off"      # not on disk: no promise of "once", so nothing is queued
-            if why is not None:
-                return self._cloud_said_locked(cid, why)
-        code, reply = self.chat_send(to, text, now, cid=cid)
-        if code == 200:
-            answer = {"cid": cid, "state": reply["state"]}
-            if "why" in reply:
-                answer["why"] = reply["why"]
-            return answer
-        with self.lock:
-            return self._cloud_said_locked(cid, "ended" if code == 404 else "refused")
-
-    def _cloud_refuse_locked(self, to, text, age_ms, terrs):
-        """Caller holds self.lock. Why this message is not let in, or None:
-        refused (not text, or not to a session or a governor of a joined
-        repo), off (too old), ended (no such session now)."""
-        if not isinstance(text, str) or not text or len(text) > CHAT_TEXT_MAX:
-            return "refused"
-        if not isinstance(to, str) or not (to.startswith("s:") or to.startswith("gov:")):
-            return "refused"        # a path, a subagent, a guest, anything else
-        if not isinstance(age_ms, (int, float)) or isinstance(age_ms, bool) or not math.isfinite(age_ms):
-            return "refused"
-        if age_ms > CLOUD_MSG_AGE_MS:
-            return "off"
-        if to.startswith("s:"):
-            if self._chat_page_of_sid.get(to[2:]) != to or to in self._chat_ended_pages:
-                return "ended"
-            terr = self._chat_page_terr.get(to)
-        else:
-            terr = to[len("gov:"):]
-        try:
-            joined = terr in terrs
-        except TypeError:
-            joined = False
-        return None if joined else "refused"
-
-    def _cloud_flood_locked(self, now):
-        """Caller holds self.lock. "flood" when CLOUD_FLOOD_MAX messages were let
-        in during the last CLOUD_FLOOD_SEC; else this one is counted."""
-        stamps = self._cloud_stamps
-        while stamps and now - stamps[0] >= CLOUD_FLOOD_SEC:
-            stamps.popleft()
-        if len(stamps) >= CLOUD_FLOOD_MAX:
-            return "flood"
-        stamps.append(now)
-        return None
-
-    def _cloud_seen_add_locked(self, cid):
-        """Caller holds self.lock. The cid goes into the seen file (and into
-        memory); False when it could not be written."""
-        if self.cloud_seen_path and not _cloud_seen_write(self.cloud_seen_path, [{"cid": cid}]):
-            return False
-        self._cloud_seen.add(cid)
-        return True
-
-    def _cloud_done_locked(self, cid):
-        """Caller holds self.lock. The message was delivered: one more line, {"cid", "done": 1}."""
-        if cid in self._cloud_done:
-            return
-        self._cloud_done.add(cid)
-        if self.cloud_seen_path:
-            _cloud_seen_write(self.cloud_seen_path, [{"cid": cid, "done": 1}])
-
-    def _cloud_said_locked(self, cid, why):
-        """Caller holds self.lock. The answer for a message that has no entry
-        (it was not let in): undelivered and why; kept, so the cid keeps the same answer."""
-        answer = {"cid": cid, "state": "undelivered", "why": why}
-        self._cloud_said[cid] = answer
-        while len(self._cloud_said) > CLOUD_SAID_KEEP:
-            del self._cloud_said[next(iter(self._cloud_said))]
-        return dict(answer)
-
-    def _cloud_note_page_locked(self, cid, to):
-        """Caller holds self.lock. The window of a cloud message's entry
-        (bounded: the oldest are forgotten)."""
-        self._cloud_page.pop(cid, None)
-        self._cloud_page[cid] = to
-        while len(self._cloud_page) > CLOUD_ACKS_KEEP * 4:
-            del self._cloud_page[next(iter(self._cloud_page))]
-
-    def _cloud_entry_locked(self, cid):
-        """Caller holds self.lock. (the window, the entry) of a cloud message
-        that is still in its window, else (None, None)."""
-        to = self._cloud_page.get(cid)
-        if to is not None:
-            for entry in self.chat.get(to, ()):
-                if entry.get("cid") == cid:
-                    return to, entry
-        return None, None
-
-    def _cloud_answer_locked(self, cid):
-        """Caller holds self.lock. The answer for a cid seen before, or None
-        (a new one): its entry's state while the entry is in a window; else
-        what was said for it; else delivered when the seen file says so; else
-        it was queued and lost in a restart: undelivered, why off."""
-        _, entry = self._cloud_entry_locked(cid)
-        if entry is not None:
-            state, why = _cloud_sig_of(entry)
-            answer = {"cid": cid, "state": state}
-            if why:
-                answer["why"] = why
-            return answer
-        said = self._cloud_said.get(cid)
-        if said is not None:
-            return dict(said)
-        if cid in self._cloud_done:
-            return {"cid": cid, "state": "delivered"}
-        if cid in self._cloud_seen:
-            return {"cid": cid, "state": "undelivered", "why": "off"}
-        return None
-
-    # -- cloud-city-3: the owner's start orders from the cloud page --------
-
-    def cloud_order(self, oid, terr, force, age_ms, terrs, now):
-        """One click on the cloud page's add-agent button, for territory TERR.
-        TERRS: the territory ids of the repos joined to the relay it came
-        from. NOW: monotonic seconds, what add_agent takes. The ONE thing it
-        ever does with an order is add_agent(terr, now, force, cloud=True), the function
-        of the local button: the folder, the name, the role and the command
-        are this server's own, so no part of the order reaches a shell, a
-        path, a flag, the opener's arguments or the server's options. Returns
-        {"oid", "state"[, "why"][, "info"]}: state opening | opened | cap |
-        failed, why refused | off | flood | no-orca | gone | busy | orca |
-        restart | late (the page's words for it are the page's business). An
-        oid seen before is never opened again: its answer of now. Every oid
-        is on disk in the orders file BEFORE add_agent runs, and never a
-        path, a name or a command with it; every answer is one line more."""
-        if not isinstance(oid, str) or CLOUD_OID_RE.fullmatch(oid) is None:
-            return {"oid": oid if isinstance(oid, str) else "", "state": "failed", "why": "refused"}
-        with self.lock:
-            said = self._cloud_order_answer_locked(oid)
-            if said is not None:
-                return said
-            why, identity = self._cloud_order_refuse_locked(terr, force, age_ms, terrs)
-            if why is None:
-                why = self._cloud_order_flood_locked(now)
-            if why is None and not self._cloud_orders_write_locked([{"oid": oid}]):
-                why = "off"     # not on disk: no promise of "once", so nothing is opened
-            if why is not None:
-                return self._cloud_order_said_locked(oid, force, why)
-            self._cloud_order_stamps.append(now)
-            repo = repo_name(identity)
-            self._cloud_orders[oid] = None      # taken: add_agent has not answered yet
-            self._cloud_order_log_locked(oid, repo, force, "taken")
-            if terr not in self._cloud_open:
-                self._cloud_open[terr] = {"oid": oid, "repo": repo, "force": force}
-        try:
-            code, body = self.add_agent(terr, now, force, cloud=True)
-        except Exception:
-            code, body = 0, {}
-        answer = self._cloud_order_words(oid, code, body)
-        with self.lock:
-            parked = self._cloud_after.pop(oid, None)   # "opened" or "late" came before add_agent answered
-            held = self._cloud_open.get(terr)
-            if answer["state"] != "opening":
-                parked = None
-                if held is not None and held["oid"] == oid:
-                    del self._cloud_open[terr]          # nothing is opening for it
-            elif parked is None and held is None:
-                self._cloud_open[terr] = {"oid": oid, "repo": repo, "force": force}
-            self._cloud_order_note_locked(oid, repo, force, answer)
-            if parked is not None:
-                answer = parked
-                self._cloud_order_note_locked(oid, repo, force, answer)
-            return _cloud_order_copy(answer)
-
-    def cloud_order_answers(self, oids):
-        """{oid: answer} for the oids of OIDS this server knows (an unknown
-        oid, and an order add_agent has not answered yet, are left out).
-        No side effect."""
-        out = {}
-        with self.lock:
-            for oid in oids:
-                got = self._cloud_orders[oid] if oid in self._cloud_orders else self._cloud_order_said.get(oid)
-                if got is not None:
-                    out[oid] = _cloud_order_copy(got)
-        return out
-
-    @staticmethod
-    def _cloud_order_words(oid, code, body):
-        """add_agent's (code, body) as the order's answer: the machine's own
-        words, never the folder's path or the command line."""
-        answer = {"oid": oid, "state": "failed"}
-        kind = body.get("state") if code == 200 else body.get("error")
-        if (code, kind) == (200, "opening"):
-            answer.update(state="opening", info={"name": body.get("name"), "role": body.get("role")})
-        elif (code, kind) == (200, "cap"):
-            answer.update(state="cap", info={"ram": body.get("ram"), "cpu": body.get("cpu"), "max": body.get("max")})
-        elif (code, kind) == (502, "failed"):
-            answer.update(why="orca", info={"detail": _cloud_shorten(str(body.get("detail") or ""))[:200]})
-        else:
-            answer["why"] = {(200, "plain"): "no-orca", (409, "gone"): "gone", (409, "busy"): "busy",
-                             (400, "bad"): "refused", (404, "unknown"): "refused"}.get((code, kind), "off")
-        return answer
-
-    def _cloud_order_answer_locked(self, oid):
-        """Caller holds self.lock. The answer for an oid seen before, or None
-        (a new one): what was last said for it. An order the orders file lists
-        with no final answer was cut off by a restart: "failed", why "restart"
-        (decided when the file was read); the first time it is said it is an
-        outcome like any other: one line in the orders file, so the file
-        itself holds the final answer from then on, and one decisions row
-        (the order's force is not known any more: false). One add_agent has
-        not answered yet is "busy"."""
-        if oid in self._cloud_orders:
-            got = self._cloud_orders[oid]
-            if oid in self._cloud_restart:
-                self._cloud_restart.discard(oid)
-                self._cloud_order_note_locked(oid, "", False, got)
-        else:
-            got = self._cloud_order_said.get(oid)
-            if got is None:
-                return None
-        if got is None:
-            return {"oid": oid, "state": "failed", "why": "busy"}
-        return _cloud_order_copy(got)
-
-    def _cloud_order_refuse_locked(self, terr, force, age_ms, terrs):
-        """Caller holds self.lock. (why, identity): why this order is not let
-        in, or None and the identity of its territory. refused: terr, force or
-        age is not what it must be, or the repo is not joined to that relay,
-        or this world has no such territory. off: too old."""
-        if (not isinstance(terr, str) or re.fullmatch(r"[0-9a-f]{8}", terr) is None
-                or not isinstance(force, bool)
-                or not isinstance(age_ms, (int, float)) or isinstance(age_ms, bool)):
-            return "refused", None
-        try:
-            finite = math.isfinite(age_ms)
-        except OverflowError:
-            finite = False
-        if not finite:
-            return "refused", None
-        if age_ms > CLOUD_ORDER_AGE_MS:
-            return "off", None
-        try:
-            joined = terr in terrs
-        except TypeError:
-            joined = False
-        identity = next((i for i in self.world["territories"] if territory_id(i) == terr), None) if joined else None
-        if identity is None:
-            return "refused", None
-        return None, identity
-
-    def _cloud_order_flood_locked(self, now):
-        """Caller holds self.lock. "flood" when CLOUD_ORDER_MAX orders were let
-        in during the last CLOUD_ORDER_SEC seconds (this machine's own count)."""
-        stamps = self._cloud_order_stamps
-        while stamps and now - stamps[0] >= CLOUD_ORDER_SEC:
-            stamps.popleft()
-        return "flood" if len(stamps) >= CLOUD_ORDER_MAX else None
-
-    def _cloud_orders_write_locked(self, rows):
-        """Caller holds self.lock. ROWS go into the orders file; False when
-        they could not be written."""
-        return not self.cloud_orders_path or _cloud_seen_write(self.cloud_orders_path, rows)
-
-    def _cloud_order_said_locked(self, oid, force, why):
-        """Caller holds self.lock. The answer for an order that was not let in
-        (failed and why; one decisions row, no repo); kept, so the oid keeps
-        the same answer and logs nothing more."""
-        answer = {"oid": oid, "state": "failed", "why": why}
-        self._cloud_order_said[oid] = answer
-        while len(self._cloud_order_said) > CLOUD_SAID_KEEP:
-            del self._cloud_order_said[next(iter(self._cloud_order_said))]
-        self._cloud_order_log_locked(oid, "", force, "failed", why)
-        return dict(answer)
-
-    def _cloud_order_note_locked(self, oid, repo, force, answer):
-        """Caller holds self.lock. ANSWER is what is said for the oid from now
-        on: kept, one line in the orders file (ids and states only) and one
-        decisions row."""
-        self._cloud_orders[oid] = _cloud_order_copy(answer)
-        while len(self._cloud_orders) > CLOUD_SEEN_MAX:
-            del self._cloud_orders[next(iter(self._cloud_orders))]
-        row = {"oid": oid, "state": answer["state"]}
-        if "why" in answer:
-            row["why"] = answer["why"]
-        self._cloud_orders_write_locked([row])
-        self._cloud_order_log_locked(oid, repo, force, answer["state"], answer.get("why"))
-
-    def _cloud_order_log_locked(self, oid, repo, force, outcome, why=None):
-        """Caller holds self.lock. One decisions row of an order (the owner's
-        click on the cloud page): the repo's name, never a path."""
-        row = {"t": _iso_now(), "by": "owner", "verb": "add-agent", "via": "cloud", "oid": oid,
-               "repo": repo, "force": force is True, "outcome": outcome}
-        if why:
-            row["why"] = why
-        self._append_jsonl_locked(self.decisions_path, row)
-
-    def _cloud_adding_end_locked(self, entry, state):
-        """Caller holds self.lock. An open of add_agent ended: STATE "done"
-        (its new session showed up) or "late" (it did not). When it was a
-        cloud order's, that order is "opened", or "failed" with why "late"."""
-        held = self._cloud_open.pop(entry["terr"], None)
-        if held is None:
-            return
-        oid = held["oid"]
-        if state == "done":
-            answer = {"oid": oid, "state": "opened", "info": {"name": entry["name"], "role": entry["role"]}}
-        else:
-            answer = {"oid": oid, "state": "failed", "why": "late"}
-        if oid in self._cloud_orders and self._cloud_orders[oid] is None:
-            self._cloud_after[oid] = answer     # add_agent has not answered yet: said right after "opening"
-        else:
-            self._cloud_order_note_locked(oid, held["repo"], held["force"], answer)
-
-    def cloud_talk(self, terrs, held, rev_seen, cids):
-        """The uploader's one read of the conversations, under one lock hold
-        (so an answer and its entry are the same moment). Returns
-        (rev, answers, rows, live):
-          answers {cid: (answer, window, a copy of its entry or None)} for
-            every cid of CIDS; None for a cid whose entry is in a window of a
-            repo that is not in TERRS (it never goes up);
-          rows: [(window, entry copy)] of the entries of the sessions' and
-            governors' windows of TERRS that are new or in another state than
-            HELD ({(window, entry id): (state, why)}) says; live: the keys of
-            every entry of those windows. Both None when HELD is None or REV_SEEN
-            is the rev now (no chat event since: nothing to read)."""
-        with self.lock:
-            answers = {}
-            for cid in cids:
-                to, entry = self._cloud_entry_locked(cid)
-                if entry is not None and self._chat_terr_locked(to) not in terrs:
-                    answers[cid] = None
-                    continue
-                state, why = _cloud_sig_of(entry) if entry is not None else ("", "")
-                if entry is not None:
-                    answer = {"cid": cid, "state": state}
-                    if why:
-                        answer["why"] = why
-                    answers[cid] = (answer, to, dict(entry))
-                else:
-                    answer = self._cloud_answer_locked(cid) or {"cid": cid, "state": "undelivered", "why": "off"}
-                    answers[cid] = (answer, None, None)
-            rows = live = None
-            if held is not None and rev_seen != self._chat_rev:
-                rows = []
-                live = set()
-                for to, bucket in self.chat.items():
-                    if not (to.startswith("s:") or to.startswith("gov:")):
-                        continue    # a subagent's window stays on this computer
-                    if self._chat_terr_locked(to) not in terrs:
-                        continue
-                    for entry in bucket:
-                        key = (to, entry["id"])
-                        live.add(key)
-                        if held.get(key) != _cloud_sig_of(entry):
-                            rows.append((to, dict(entry)))
-            return self._chat_rev, answers, rows, live
-
-    def _chat_terr_locked(self, to):
-        """Caller holds self.lock. The territory id of a session's or a
-        governor's window (None: not known, so never joined)."""
-        if to.startswith("gov:"):
-            return to[len("gov:"):]
-        return self._chat_page_terr.get(to)
-
-
-def _cloud_sig(world):
-    return hashlib.sha1(json.dumps(world, sort_keys=True).encode("utf-8")).hexdigest()
-
-
-class CloudUploader:
-    """The RelayHub's view_source (bin/agent_city_relay.py): one picture of
-    this city per joined relay, only with the repos joined to that relay.
-
-    take(host, rids, now) is asked once before every sync of a team and gives
-    the view to send with it, or None; sent(host, data, now) hears what the
-    relay answered (data: the ok data with "city" and "gen", or None when it
-    was down or refused). Both run on the hub's thread, never under the
-    hub's lock; the state lock is only taken for short reads, never while a
-    network call runs.
-
-    Per relay: a tap (see _CloudTaps) and
-      - no view at all until the relay said "city": true (or the marker file,
-        kept by the hub, says it did last time), and none while it says false;
-      - a new picture (snap) when there is none yet, the last view was lost,
-        the relay's gen is not ours, the set of joined territories changed, a
-        tap overflowed, or snap_sec passed since the last picture and
-        something happened since;
-      - else the events since the last view, else one sign of life a minute."""
-
-    def __init__(self, city, snap_sec=CLOUD_SNAP_SEC, cloud_file=None, sign_sec=CLOUD_SIGN_SEC):
-        self.city = city
-        self.snap_sec = snap_sec
-        self.sign_sec = sign_sec
-        self.cloud_file = cloud_file
-        self.hub = None
-        self._lock = threading.Lock()
-        self._hosts = {}
-        self._real = {}       # territory identity -> its realpath
-        self._talks = {}      # cloud-city-2: relay host -> its talk bookkeeping (see _talk_take)
-
-    def bind(self, hub):
-        self.hub = hub
-
-    def cloud_on(self, now=None):
-        # cloud-city-2: True while a relay the hub still asks about said the
-        # cloud page is on (the marker file counts until it answers, as in
-        # _host). A relay not asked for CLOUD_FORGET_SEC (its repos were
-        # unjoined) does not count. Short read of this lock, no network.
-        now = time.monotonic() if now is None else now
-        with self._lock:
-            return any(st["on"] and now - st["seen"] <= CLOUD_FORGET_SEC for st in self._hosts.values())
-
-    def cloud_start_on(self, now=None):
-        # cloud-city-3: cloud_on() for a relay this machine takes start orders
-        # from: its host is in the start file and has a talk key. The server
-        # stays up for it with nobody there (the first agent can be started
-        # from the phone), and asks it only every slow-sec. Short reads of this
-        # lock and of the two small files, no network.
-        now = time.monotonic() if now is None else now
-        with self._lock:
-            hosts = [h for h, st in self._hosts.items() if st["on"] and now - st["seen"] <= CLOUD_FORGET_SEC]
-        if not hosts:
-            return False
-        talk_path = getattr(self.hub, "talk_file", None)
-        try:
-            keys = _cloud_relay().read_talk(talk_path) if talk_path else {}
-        except Exception:
-            keys = {}
-        return any(h in keys and self._start_on(h) for h in hosts)
-
-    def _start_on(self, host):
-        # cloud-city-3: True while HOST is in the start file, read now (the
-        # switch on THIS machine decides, with the very next sync, never the relay).
-        path = getattr(self.hub, "start_file", None)
-        if not path:
-            return False
-        try:
-            return host in _cloud_relay().read_start(path)
-        except Exception:
-            return False
-
-    # -- the hub's side --------------------------------------------------
-
-    def take(self, host, rids, now):
-        with self._lock:
-            self._forget_stale(host, now)
-            st = self._host(host, now)
-            st["seen"] = now
-            if not st["on"] or now < st["retry_at"]:
-                return None
-            try:
-                return self._take(host, st, rids, now)
-            except Exception as exc:
-                # Never break the relay thread: no view this time, a new picture next.
-                st["need_snap"] = True
-                st["retry_at"] = now + CLOUD_RETRY_SEC
-                print("agent_city: cloud view failed: %s" % exc, file=sys.stderr)
-                return None
-
-    def sent(self, host, data, now):
-        with self._lock:
-            st = self._host(host, now)
-            inflight, st["inflight"] = st["inflight"], False
-            if data is None:
-                # down or refused: what the lost view carried is gone, so a new picture
-                if inflight:
-                    st["need_snap"] = True
-                st["view_at"] = None
-                return
-            if not data.get("city"):
-                if st["on"]:
-                    self._close(st)
-                st["on"] = False
-                st["need_snap"] = True
-                return
-            if not st["on"]:
-                st["on"] = True
-                st["need_snap"] = True
-            if st["gen"] and data.get("gen") != st["gen"]:
-                st["need_snap"] = True     # the relay lost our picture (or holds another one)
-
-    # -- per relay -------------------------------------------------------
-
-    def _host(self, host, now):
-        st = self._hosts.get(host)
-        if st is None:
-            on = False
-            if self.cloud_file:
-                try:
-                    on = host in _cloud_relay().read_cloud(self.cloud_file)
-                except Exception:
-                    on = False
-            st = {"on": on, "tap": None, "need_snap": True, "gen": 0, "snap_at": 0.0, "view_at": None,
-                  "happened": False, "key": None, "inflight": False, "retry_at": 0.0, "seen": now,
-                  "ids": {}, "remote_ids": set(), "world_sig": None, "gov_count": None}
-            self._hosts[host] = st
-        return st
-
-    def _close(self, st):
-        tap, st["tap"] = st["tap"], None
-        if tap is not None:
-            self.city.cloud_close(tap)
-
-    def _forget_stale(self, current, now):
-        for host in [h for h, s in self._hosts.items()
-                     if h != current and now - s["seen"] > CLOUD_FORGET_SEC]:
-            self._close(self._hosts.pop(host))
-
-    def _label(self):
-        label = getattr(self.hub, "label", "") or ""
-        return label[:CLOUD_LABEL_MAX] or "computer"
-
-    def _allowed(self, host, rids):
-        """(the territory ids, the identities) of the repos joined to this relay."""
-        paths = set()
-        if self.hub is not None:
-            paths.update(self.hub.repos_for(host))
-            for rid in rids:
-                path = self.hub.repo_for(rid)
-                if path:
-                    paths.add(path)
-        idents = []
-        for ident in self.city.cloud_identities():
-            real = self._real.get(ident)
-            if real is None:
-                real = self._real[ident] = os.path.realpath(ident)
-            if real in paths:
-                idents.append(ident)
-        return {territory_id(i) for i in idents}, idents
-
-    def _take(self, host, st, rids, now):
-        terrs, idents = self._allowed(host, rids)
-        key = frozenset(terrs)
-        kept = []
-        lost = False
-        if st["tap"] is not None:
-            raw, lost = self._drain(st["tap"])
-            kept = self._admit_all(st, terrs, rids, host, idents, raw)
-        fresh = (st["tap"] is None or lost or st["need_snap"] or key != st["key"]
-                 or len(kept) > CLOUD_EVENT_CAP)
-        if not fresh and kept:
-            st["happened"] = True
-        if not fresh and st["happened"] and now - st["snap_at"] >= self.snap_sec:
-            fresh = True
-        view = {"label": self._label(), "gen": st["gen"]}
-        if fresh:
-            st["need_snap"] = False     # before the picture: a new snapshot that waits in the tap sets it again
-            snap, kept = self._picture(st, terrs, rids, host, idents)
-            st["gen"] += 1
-            view["gen"] = st["gen"]
-            view["snap"] = snap
-            st["snap_at"] = now
-            st["happened"] = bool(kept)
-            st["key"] = key
-        elif not kept and st["view_at"] is not None and now - st["view_at"] < self.sign_sec:
-            return None     # nothing new, and a sign of life is not due
-        if kept:
-            view["events"] = kept
-        view["counts"] = self.city.cloud_counts(terrs)
-        try:
-            size = len(json.dumps(view))
-        except (TypeError, ValueError):
-            size = CLOUD_VIEW_MAX_BYTES + 1
-        if size > CLOUD_VIEW_MAX_BYTES:
-            # too big for one sync (a poison view would hold back the team's lines too): none, later again
-            st["need_snap"] = True
-            st["retry_at"] = now + CLOUD_RETRY_SEC
-            return None
-        st["view_at"] = now
-        st["inflight"] = "snap" in view or "events" in view
-        return view
-
-    @staticmethod
-    def _drain(tap):
-        """(the messages waiting in the tap, whether it overflowed and was dropped)."""
-        out = []
-        lost = False
-        while True:
-            try:
-                item = tap.queue.get_nowait()
-            except queue.Empty:
-                break
-            if item is _DROP:
-                lost = True
-                continue
-            try:
-                msg = json.loads(item[6:-2].decode("utf-8"))   # "data: <json>\n\n"
-            except ValueError:
-                continue
-            if isinstance(msg, dict):
-                out.append(msg)
-        return out, lost
-
-    def _picture(self, st, terrs, rids, host, idents):
-        """A new tap (its snapshot is built under the state lock, atomic with
-        the tap joining the broadcast): ([snapshot, remote snapshot?] cleaned
-        and cut down to TERRS, the events that came in since)."""
-        self._close(st)
-        tap = self.city.cloud_open()
-        st["tap"] = tap
-        raw, _ = self._drain(tap)
-        snap = []
-        st["ids"] = {}
-        st["remote_ids"] = set()
-        st["world_sig"] = None
-        st["gov_count"] = None
-        rest = []
-        for msg in raw:
-            kind = msg.get("type")
-            if not rest and kind == "snapshot":
-                one = self._cut_snapshot(st, msg, terrs, idents)
-            elif not rest and kind == "remote_snapshot":
-                one = self._cut_remote_snapshot(st, msg, terrs, rids, host)
-            else:
-                rest.append(msg)
-                continue
-            one = cloud_clean(one)
-            if one is not None:
-                snap.append(one)
-                if kind == "snapshot" and isinstance(one.get("world"), dict):
-                    st["world_sig"] = _cloud_sig(one["world"])
-        return snap, self._admit_all(st, terrs, rids, host, idents, rest)
-
-    def _cut_snapshot(self, st, snap, terrs, idents):
-        out = dict(snap)
-        agents = [a for a in snap.get("agents") or [] if isinstance(a, dict) and a.get("terr") in terrs]
-        govs = [g for g in snap.get("govs") or [] if isinstance(g, dict) and g.get("terr") in terrs]
-        out["agents"] = agents
-        out["govs"] = govs
-        out["shows"] = [s for s in snap.get("shows") or [] if isinstance(s, dict) and s.get("terr") in terrs]
-        world = snap.get("world")
-        if isinstance(world, dict):
-            world = self.city.cloud_world(idents)   # the land of the joined territories alone
-            out["world"] = world
-        gov = snap.get("gov") if isinstance(snap.get("gov"), dict) else {}
-        home = gov.get("terr")
-        state = gov.get("state", "idle")
-        if home not in terrs:
-            # the camera home of the machine is a repo that is not joined here: a joined one instead
-            first = (world.get("territories") or [{}])[0].get("id", "") if isinstance(world, dict) else ""
-            home = govs[0]["terr"] if govs else first
-            state = next((g.get("state", "idle") for g in govs if g["terr"] == home), "idle")
-        out["gov"] = {"state": state, "terr": home}
-        out["governors"] = self.city.cloud_governors(set(idents))
-        st["gov_count"] = out["governors"]
-        st["ids"] = {a["id"]: a["terr"] for a in agents if isinstance(a.get("id"), str)}
-        return out
-
-    def _cut_remote_snapshot(self, st, snap, terrs, rids, host):
-        out = dict(snap)
-        out["people"] = [p for p in snap.get("people") or [] if isinstance(p, dict) and p.get("rid") in rids]
-        out["govs"] = [g for g in snap.get("govs") or [] if isinstance(g, dict) and g.get("terr") in terrs]
-        out["teams"] = [t for t in snap.get("teams") or [] if isinstance(t, dict) and t.get("host") == host]
-        st["remote_ids"] = {x["id"] for x in out["people"] + out["govs"] if isinstance(x.get("id"), str)}
-        return out
-
-    # -- the events: only this relay's repos, then cleaned ------------------
-
-    def _admit_all(self, st, terrs, rids, host, idents, raw):
-        out = []
-        gov_changed = False
-        for ev in raw:
-            ev = self._admit(st, terrs, rids, host, idents, ev)
-            if ev is None:
-                continue
-            if ev.get("type") == "governors":
-                gov_changed = True     # a count over every repo: told again below, for these repos only
-                continue
-            ev = cloud_clean(ev)
-            if ev is None:
-                continue
-            if ev["type"] == "world":
-                sig = _cloud_sig(ev["world"])
-                if sig == st["world_sig"]:
-                    continue           # a change of a repo that is not joined here: nothing to tell
-                st["world_sig"] = sig
-            out.append(ev)
-        if gov_changed:
-            count = self.city.cloud_governors(set(idents))
-            if count != st["gov_count"]:
-                st["gov_count"] = count
-                out.append({"type": "governors", "count": count})
-        return out
-
-    def _admit(self, st, terrs, rids, host, idents, ev):
-        """The event if it belongs to this relay's repos, else None. An event
-        of a territory that is not joined, or of a person this picture does
-        not know, never goes up (default deny)."""
-        kind = ev.get("type")
-        if kind == "world":
-            if not isinstance(ev.get("world"), dict):
-                return None
-            return dict(ev, world=self.city.cloud_world(idents))   # the joined territories' land alone
-        if kind == "governors":
-            return ev
-        if kind == "team":
-            return ev if ev.get("host") == host else None
-        if kind == "remote":
-            inner = ev.get("ev") if isinstance(ev.get("ev"), dict) else {}
-            who = inner.get("id") if isinstance(inner.get("id"), str) else None
-            if ev.get("rid") not in rids and who not in st["remote_ids"]:
-                return None
-            if who is not None:
-                if inner.get("type") == "leave" or inner.get("present") is False:
-                    st["remote_ids"].discard(who)
-                else:
-                    st["remote_ids"].add(who)
-            return ev
-        if kind in ("snapshot", "remote_snapshot"):
-            st["need_snap"] = True  # the city made a new picture (the arrangement changed): ours is old
-            return None            # a picture is made by _picture, never as an event
-        terr = ev.get("terr")
-        who = ev.get("id")
-        if isinstance(terr, str) and terr:
-            if terr not in terrs:
-                return None
-        elif not isinstance(who, str) or who not in st["ids"]:
-            return None
-        if isinstance(who, str):
-            if kind == "spawn":
-                st["ids"][who] = terr
-            elif kind == "leave":
-                st["ids"].pop(who, None)
-        return ev
-
-    # -- talk (cloud-city-2): the conversations up, the owner's messages down ----
-    #
-    # Asked by the hub for a relay whose host has a talk key (the talk file):
-    # talk_take before the sync, talk_sent after it, talk_soon to know whether
-    # the next sync should come early. Independent of the picture (no tap, no
-    # view needed): what goes up is what CityState.cloud_talk reads from the
-    # windows, compared with what this relay was already sent (a row goes up
-    # once; a new state of it sends it again, same key). A sync that did not
-    # arrive (relay down, talk not "on") is undone: what it carried goes again.
-
-    def talk_take(self, host, rids, now):
-        """{"chat": [...], "acks": [...]} for this sync (a key is left out when
-        its list is empty), or None when there is nothing to send.
-        cloud-city-3: for a relay whose host is in the start file now the talk
-        also carries "start", always ({"acks": [...]} or {}: it tells the
-        relay this machine takes start orders), so it is never None then."""
-        with self._lock:
-            try:
-                out = self._talk_take(host, rids)
-                if self._start_on(host):
-                    out = dict(out or {}, start=self._start_take(self._talks[host]))
-                return out
-            except Exception as exc:
-                tk = self._talks.get(host)
-                if tk is not None:
-                    self._talk_undo(tk)
-                print("agent_city: cloud talk failed: %s" % exc, file=sys.stderr)
-                return None
-
-    def talk_sent(self, host, talk, now):
-        """What the relay answered: its talk, or None (down or refused). Not
-        "on": the last sync is undone. "on": its "msgs" go to
-        city.cloud_message (CLOUD_TALK_TAKE at most; only cid, to, text and
-        age of each are read); every cid gets an answer to go up.
-        cloud-city-3: its "start" {"state": "on", "orders": [...]} goes to
-        city.cloud_order, only for a host that is in the start file now."""
-        with self._lock:
-            tk = self._talks.get(host)
-            if tk is None:
-                return
-            if not isinstance(talk, dict) or talk.get("state") != "on":
-                self._talk_undo(tk)
-                return
-            tk["inflight"] = None
-            tk["o_inflight"] = None
-            self._start_given(tk, host, talk.get("start"))
-            msgs = talk.get("msgs")
-            if not isinstance(msgs, list):
-                return
-            for msg in msgs[:CLOUD_TALK_TAKE]:
-                cid = msg.get("cid") if isinstance(msg, dict) else None
-                if not isinstance(cid, str) or not CLOUD_CID_RE.match(cid):
-                    continue
-                try:
-                    self.city.cloud_message(cid, msg.get("to"), msg.get("text"), msg.get("age"),
-                                            tk["terrs"], time.time())
-                except Exception as exc:
-                    print("agent_city: cloud message failed: %s" % exc, file=sys.stderr)
-                tk["acks"].pop(cid, None)
-                tk["acks"][cid] = {"sig": None}     # answered again, also a cid handed down again
-            while len(tk["acks"]) > CLOUD_ACKS_KEEP:
-                del tk["acks"][next(iter(tk["acks"]))]
-
-    def talk_soon(self, host):
-        """True while an answer waits to go up (the next sync should come
-        early); cloud-city-3: also the answer of a start order, for a host
-        that is in the start file now."""
-        with self._lock:
-            tk = self._talks.get(host)
-            if tk is not None and tk["orders"] and self._start_on(host):
-                try:
-                    answers = self.city.cloud_order_answers(list(tk["orders"]))
-                except Exception:
-                    return False
-                if any(got is not None and self._talk_sig(got) != tk["orders"][oid]["sig"]
-                       for oid, got in answers.items()):
-                    return True
-            if tk is None or not tk["acks"]:
-                return False
-            try:
-                answers = self.city.cloud_talk(tk["terrs"], None, 0, list(tk["acks"]))[1]
-            except Exception:
-                return False
-            for cid, ack in tk["acks"].items():
-                got = answers.get(cid)
-                if got is not None and self._talk_sig(got[0]) != ack["sig"]:
-                    return True
-            return False
-
-    @staticmethod
-    def _talk_sig(answer):
-        return answer["state"], answer.get("why", "")
-
-    def _talk_undo(self, tk):
-        """What the last take carried did not arrive (or nobody said): it goes again."""
-        lost, tk["o_inflight"] = tk["o_inflight"], None
-        for oid in lost or ():
-            if oid in tk["orders"]:
-                tk["orders"][oid]["sig"] = None     # the answer of an order goes again too
-        sent, tk["inflight"] = tk["inflight"], None
-        if sent is None:
-            return
-        for key in sent["keys"]:
-            tk["held"].pop(key, None)
-        for cid in sent["acks"]:
-            if cid in tk["acks"]:
-                tk["acks"][cid]["sig"] = None
-        tk["rev"] = -1
-
-    def _start_given(self, tk, host, start):
-        """cloud-city-3: the reply's talk["start"], {"state": "on", "orders":
-        [...]}: each order (CLOUD_ORDER_TAKE at most; only oid, terr, force
-        and age are read, anything else in it is never looked at) goes to
-        city.cloud_order, and its answer goes up (also when the order is
-        handed down again). Nothing when HOST is not in the start file now:
-        the switch on THIS machine decides, never the relay."""
-        if not isinstance(start, dict) or start.get("state") != "on" or not self._start_on(host):
-            return
-        orders = start.get("orders")
-        if not isinstance(orders, list):
-            return
-        for order in orders[:CLOUD_ORDER_TAKE]:
-            oid = order.get("oid") if isinstance(order, dict) else None
-            if not isinstance(oid, str) or CLOUD_OID_RE.fullmatch(oid) is None:
-                continue
-            try:
-                self.city.cloud_order(oid, order.get("terr"), order.get("force"), order.get("age"),
-                                      tk["terrs"], time.monotonic())
-            except Exception as exc:
-                print("agent_city: cloud order failed: %s" % exc, file=sys.stderr)
-            tk["orders"].pop(oid, None)
-            tk["orders"][oid] = {"sig": None}
-        while len(tk["orders"]) > CLOUD_ACKS_KEEP:
-            del tk["orders"][next(iter(tk["orders"]))]
-
-    def _start_take(self, tk):
-        """cloud-city-3: the "start" of this sync's talk: {"acks": [...]} (at
-        most CLOUD_ORDER_ACKS) of the orders whose answer is new, else {}. An
-        answer rides until a sync the relay answered has carried it; one that
-        will not change again is then forgotten."""
-        oids = list(tk["orders"])
-        answers = self.city.cloud_order_answers(oids) if oids else {}
-        acks = []
-        said = []
-        drop = []
-        for oid in oids:
-            answer = answers.get(oid)
-            if answer is None:
-                drop.append(oid)         # this server knows nothing of it
-                continue
-            sig = self._talk_sig(answer)
-            if sig == tk["orders"][oid]["sig"]:
-                if sig[0] != "opening":
-                    drop.append(oid)     # carried, and nothing more is to come
-                continue
-            if len(acks) < CLOUD_ORDER_ACKS:
-                acks.append(answer)
-                said.append((oid, sig))
-        for oid in drop:
-            del tk["orders"][oid]
-        for oid, sig in said:
-            tk["orders"][oid]["sig"] = sig
-        tk["o_inflight"] = [oid for oid, _ in said]
-        return {"acks": acks} if acks else {}
-
-    def _talk_stamp(self):
-        """The talk file's mark (changes when `cloud-talk on` writes it again), or None."""
-        try:
-            info = os.stat(getattr(self.hub, "talk_file", None))
-        except (OSError, TypeError, ValueError):
-            return None
-        return info.st_mtime_ns, info.st_ino, info.st_size
-
-    @staticmethod
-    def _talk_row(to, entry):
-        """One chat row (the relay's shape) of an entry: k is its cid, else a
-        hash of window, kind, time and text, so the same entry has the same key
-        after a restart too."""
-        state, why = _cloud_sig_of(entry)
-        text = entry.get("text") or ""
-        cid = entry.get("cid") or ""
-        key = cid or hashlib.sha1(("%s\n%s\n%s\n%s" % (to, entry["kind"], entry["at"], text)).encode(
-            "utf-8", "replace")).hexdigest()
-        return {"k": key, "to": to, "kind": entry["kind"], "text": text[:CLOUD_TALK_TEXT], "at": entry["at"],
-                "state": state, "why": why, "cid": cid}
-
-    def _talk_take(self, host, rids):
-        tk = self._talks.get(host)
-        if tk is None:
-            tk = self._talks[host] = {"held": {}, "acks": {}, "inflight": None, "stamp": False,
-                                      "rev": -1, "terrs": frozenset(),
-                                      "orders": {}, "o_inflight": None}    # cloud-city-3: start orders and their answers
-        self._talk_undo(tk)      # a take with no talk_sent after it: nobody knows, so it goes again
-        stamp = self._talk_stamp()
-        if stamp != tk["stamp"]:
-            # the first talk sync of a run, or talk was turned on again: the windows as they are now
-            tk["stamp"] = stamp
-            tk["held"] = {}
-            tk["rev"] = -1
-        terrs = frozenset(self._allowed(host, rids)[0])
-        if terrs != tk["terrs"]:
-            tk["rev"] = -1       # other repos are joined now: read the windows again
-        tk["terrs"] = terrs
-        cids = list(tk["acks"])
-        if not cids and not tk["held"] and not terrs:
-            return None
-        rev, answers, found, live = self.city.cloud_talk(terrs, tk["held"], tk["rev"], cids)
-
-        # The answers first: an answer for a message that has an entry rides
-        # in the same sync as that entry's row (same state, k = the cid).
-        rows = []
-        marks = []               # (window, entry id, sig) of the rows that go
-        acks = []
-        said = []                # (cid, sig) of the answers that go
-        drop = []
-        used = set()
-        size = 0
-        waiting = False
-        for cid in cids:
-            got = answers.get(cid)
-            if got is None:      # its window is of a repo that is not joined (any more): the relay times it out
-                drop.append(cid)
-                continue
-            answer, to, entry = got
-            sig = self._talk_sig(answer)
-            if sig == tk["acks"][cid]["sig"]:
-                if sig[0] != "queued":
-                    drop.append(cid)
-                continue
-            if len(acks) >= CLOUD_TALK_ACKS:
-                waiting = True
-                continue
-            if entry is not None:
-                row = self._talk_row(to, entry)
-                cost = len(json.dumps(row))
-                if len(rows) >= CLOUD_TALK_ROWS or (rows and size + cost > CLOUD_TALK_BYTES):
-                    waiting = True   # no room in this sync: the answer waits for its row
-                    continue
-                size += cost
-                rows.append(row)
-                marks.append((to, entry["id"], _cloud_sig_of(entry)))
-                used.add((to, entry["id"]))
-            acks.append(answer)
-            said.append((cid, sig))
-
-        # Then the rows of the windows, the newest first when there is no room for all.
-        more = waiting
-        fresh = sorted((c for c in (found or []) if (c[0], c[1]["id"]) not in used),
-                       key=lambda c: (c[1]["at"], c[1]["id"]))
-        extra = []
-        while fresh and len(rows) + len(extra) < CLOUD_TALK_ROWS:
-            to, entry = fresh[-1]
-            row = self._talk_row(to, entry)
-            cost = len(json.dumps(row))
-            if (rows or extra) and size + cost > CLOUD_TALK_BYTES:
-                break
-            size += cost
-            extra.append(row)
-            marks.append((to, entry["id"], _cloud_sig_of(entry)))
-            fresh.pop()
-        extra.reverse()
-        rows.extend(extra)
-        more = more or bool(fresh)
-
-        held = tk["held"]
-        if live is not None:
-            held = {key: sig for key, sig in held.items() if key in live}   # an entry that left its window is forgotten
-        for to, entry_id, sig in marks:
-            held[(to, entry_id)] = sig
-        tk["held"] = held
-        for cid in drop:
-            tk["acks"].pop(cid, None)
-        for cid, sig in said:
-            tk["acks"][cid]["sig"] = sig
-        tk["rev"] = -1 if more else rev
-        out = {}
-        if rows:
-            out["chat"] = rows
-        if acks:
-            out["acks"] = acks
-        if not out:
-            return None
-        tk["inflight"] = {"keys": [(to, entry_id) for to, entry_id, _ in marks], "acks": [cid for cid, _ in said]}
-        return out
 
 
 # --------------------------------------------------------------------------
@@ -2946,7 +1473,7 @@ class History:
 def _session_page_id(reducer, sid, terr):
     """SID's page id in REDUCER's territory TERR: "gov:<terr>" when it is
     that territory's governor, "s:<sid>" when that session citizen is live,
-    else "". CityState and RemoteCity both use it (city-talk, city-rail-tree)."""
+    else "". CityState uses it (city-talk, city-rail-tree)."""
     if sid == "":
         return ""
     if reducer.gov_sid == sid:
@@ -2972,7 +1499,7 @@ def _spawn_up(reducer, terr, obj):
     return ""
 
 
-class CityState(_CloudTaps):
+class CityState:
     """Thread-safe home for the Reducer, asks, health counters and SSE clients."""
 
     def __init__(self, max_agents=40, done_ttl=600, gov_wait_sec=60.0,
@@ -2980,7 +1507,7 @@ class CityState(_CloudTaps):
                  balance_fn=None, start_repo=None, chat_path=None, lang="zh", titles=None,
                  main_fn=None, listen_grace_sec=15.0, roster_path=None,
                  open_fn=None, kind_fn=None, resources_fn=None, city_dir=None,
-                 cloud_seen_path=None, cloud_orders_path=None, history_path=None):
+                 history_path=None):
         self.lock = threading.Lock()
         self.titles = titles if titles is not None else TitleReader()  # a session's real name
         self.lang = norm_lang(lang)
@@ -2994,7 +1521,6 @@ class CityState(_CloudTaps):
         self.lines = 0
         self.clients = []
         self.idle_since = time.monotonic()
-        self.remote = None        # set by cmd_serve to a RemoteCity, when joined
 
         self.gov_wait_sec = gov_wait_sec
         self.decisions_path = decisions_path or decisions_home_path()
@@ -3113,38 +1639,7 @@ class CityState(_CloudTaps):
         self._chat_polled_at = {}     # page id -> monotonic time a watcher last polled it
         self._chat_stop_at = {}       # page id -> monotonic time its session last sent Stop
 
-        # cloud-city-2: messages from the cloud page (see cloud_message) and what the uploader reads
-        self.cloud_seen_path = cloud_seen_path   # None: the cids are kept in memory only
-        self._cloud_seen = set()      # every cid let in or answered: this run and the seen file
-        self._cloud_done = set()      # the cids of cloud messages that were delivered
-        self._cloud_page = {}         # cid -> the window of its entry (bounded, CHAT_KEEP entries a window)
-        self._cloud_said = {}         # cid -> the answer for a message with no entry (bounded)
-        self._cloud_stamps = deque()  # "now" of each cloud message let in, for the flood rule
         self._chat_page_terr = {}     # "s:sid" page id -> territory id of its session's last line
-        self._chat_rev = 0            # counts every "chat" event: the uploader reads the windows only when it moved
-        if cloud_seen_path:
-            order, done = _cloud_seen_read(cloud_seen_path)
-            self._cloud_seen = set(_cloud_seen_cut(cloud_seen_path, order, done))
-            self._cloud_done = done & self._cloud_seen
-
-        # cloud-city-3: start orders from the cloud page (see cloud_order)
-        self.cloud_orders_path = cloud_orders_path   # None: the oids are kept in memory only
-        self._cloud_orders = {}       # oid -> its answer; None while add_agent has not answered (bounded)
-        self._cloud_order_said = {}   # oid -> the answer for an order that was not let in (bounded)
-        self._cloud_order_stamps = deque()   # "now" of each order let in, for the flood rule
-        self._cloud_open = {}         # territory id -> {"oid", "repo", "force"} of the cloud order whose session is opening
-        self._cloud_after = {}        # oid -> its "opened" / "late" answer that came before add_agent answered
-        self._cloud_restart = set()   # oids whose "restart" answer (decided at start) was not said yet
-        if cloud_orders_path:
-            for oid, got in _cloud_orders_cut(cloud_orders_path, _cloud_orders_read(cloud_orders_path)).items():
-                answer = {"oid": oid, "state": "failed", "why": "restart"}   # no final answer: cut off by a restart
-                if got is not None and got[0] != "opening":
-                    answer = {"oid": oid, "state": got[0]}
-                    if got[1]:
-                        answer["why"] = got[1]
-                else:
-                    self._cloud_restart.add(oid)
-                self._cloud_orders[oid] = answer
 
         # The sessions of the last run that still live are here again before
         # any line is read (see _restore_roster_locked); the chat comes after,
@@ -3159,20 +1654,13 @@ class CityState(_CloudTaps):
 
     # -- SSE clients ----------------------------------------------------
 
-    def add_client(self, cloud=False):
+    def add_client(self):
         with self.lock:
-            if not cloud and len(self.clients) >= MAX_CLIENTS:
+            if len(self.clients) >= MAX_CLIENTS:
                 return None
             client = _Client()
-            if not cloud:   # cloud-city: the uploader is no page, it starts no era show
-                self._start_waiting_shows_locked()
+            self._start_waiting_shows_locked()
             client.queue.put_nowait(_encode_event(self._snapshot_locked()))
-            remote_snap = self._remote_snapshot_locked()
-            if remote_snap is not None:
-                client.queue.put_nowait(_encode_event(remote_snap))
-            if cloud:       # cloud-city: a tap (see _CloudTaps), not in self.clients
-                self.cloud_taps = self.cloud_taps + (client,)
-                return client
             self.clients.append(client)
             return client
 
@@ -3227,26 +1715,9 @@ class CityState(_CloudTaps):
                 "adding": [x for x in self._adding_view_locked() if x["terr"] not in hidden],
                 "world": self._view(),
                 "hidden": self._hidden_view_locked(),
-                "hist": {a["id"]: self.history.lines(a["id"]) for a in agents}}   # city-data: local only (CLOUD_DROP, cloud_clean)
+                "hist": {a["id"]: self.history.lines(a["id"]) for a in agents}}
         if self.notice is not None:
             snap["notice"] = self.notice
-        return snap
-
-    def _remote_snapshot_locked(self):
-        """Caller holds self.lock. The remote snapshot (other team members'
-        people and governors) a page gets after the snapshot, or None: no team.
-        The people and governors of a territory hidden here are cut out; the
-        remote city's own lists are never changed."""
-        if self.remote is None:
-            return None
-        snap = self.remote.snapshot_event()
-        if snap is None:
-            return None
-        hidden = self._hidden_terrs_locked()
-        if hidden:
-            snap = dict(snap)
-            for key in ("people", "govs"):
-                snap[key] = [x for x in snap.get(key) or [] if not (isinstance(x, dict) and x.get("terr") in hidden)]
         return snap
 
     # -- city-layout: the owner's arrangement and the hidden repos ------------
@@ -3319,8 +1790,7 @@ class CityState(_CloudTaps):
         """Caller holds self.lock. True when EV tells of a territory in HIDDEN
         (the set of hidden territory ids): its "terr" is hidden, or its "id" is
         an agent of such a territory, or it is an ask, ask_phase or ask_closed
-        of an ask of one, or a chat line of a page of one, or a "remote" event
-        whose inner event has it as "terr". The one place this is decided.
+        of an ask of one, or a chat line of a page of one. The one place this is decided.
         Default: not hidden (sent)."""
         kind = ev.get("type")
         terr = ev.get("terr")
@@ -3330,9 +1800,6 @@ class CityState(_CloudTaps):
         if kind in ("ask_phase", "ask_closed"):
             ask = self.open.get(who) or self.closed.get(who)
             return ask is not None and bool(ask.repo) and territory_id(ask.repo) in hidden
-        if kind == "remote":
-            inner = ev.get("ev")
-            return isinstance(inner, dict) and isinstance(inner.get("terr"), str) and inner["terr"] in hidden
         if kind == "chat":
             return self._page_terr_locked(ev.get("to")) in hidden
         return isinstance(who, str) and self.agent_terr.get(who) in hidden
@@ -3446,9 +1913,6 @@ class CityState(_CloudTaps):
             self._save_world_locked()   # at once, even when nothing moved: the file is the truth
             if changed:
                 self._broadcast(self._snapshot_locked())
-                remote_snap = self._remote_snapshot_locked()
-                if remote_snap is not None:
-                    self._broadcast(remote_snap)
                 self._hidden_last = self._hidden_view_locked()
             return 200, {"lands": [{"id": territory_id(i), "slot": list(self.world["territories"][i]["slot"]),
                                     "hidden": bool(self.world["territories"][i].get("hidden"))}
@@ -3491,35 +1955,12 @@ class CityState(_CloudTaps):
         with self.lock:
             return len(self.clients)
 
-    # -- team relay (bin/agent_city_relay.py) ----------------------------
-
-    def push_relay_event(self, ev):
-        """Push one relay-sourced SSE event ("remote" or "relay") to every
-        client. Called from the relay thread, never the tail thread."""
-        with self.lock:
-            self._broadcast(ev)
-
-    def touch_idle(self):
-        """Restart the idle clock: a joined city with new local lines must
-        keep running while its agents work, even with no browser open."""
-        with self.lock:
-            self._touch_idle_locked()
-
     def _touch_idle_locked(self):
         """Caller holds self.lock (or self.cond, the same lock)."""
         self.idle_since = time.monotonic()
 
-    device_join = None  # city-device-join: this computer's join file (serve --device-join), or None
-
     def health(self):
-        """The server's /health. "not_joined": the names (as the world view
-        names the territory), sorted, each once, of every territory with a live
-        session now (its Reducer has a session: a seated governor or a session
-        citizen) whose repo folder has no join file the relay accepts
-        (<folder>/.secrets/agent-city-relay). Names only, never a path; the
-        join files are read after the lock is let go, and never raise.
-        A computer whose device join file the relay module accepts has every
-        repo in: "not_joined" is []."""
+        """The server's /health."""
         with self.lock:
             out = {
                 "ok": True,
@@ -3530,43 +1971,7 @@ class CityState(_CloudTaps):
                 "gov_wait_sec": self.gov_wait_sec,
                 "governors": self._fresh_governor_count(),
             }
-            live = []
-            for identity, reducer in self.reducers.items():
-                if isinstance(identity, str) and reducer.sessions:
-                    territory = self.world["territories"].get(identity)
-                    name = territory.get("name") if isinstance(territory, dict) else None
-                    live.append((identity, name if isinstance(name, str) and name else repo_name(identity)))
-        out["not_joined"] = [] if self._device_joined() else self._not_joined(live)
         return out
-
-    def _device_joined(self):
-        """True when device_join names a file read_join accepts. Never raises."""
-        path = getattr(self, "device_join", None)
-        if not path:
-            return False
-        try:
-            return _cloud_relay().read_join(path) is not None
-        except Exception:
-            return False
-
-    @staticmethod
-    def _not_joined(live):
-        """LIVE: (identity, name) of the territories with a live session. The
-        sorted names, each once, of those whose repo folder has no join file
-        read_join() accepts. Any trouble with one repo leaves that repo out."""
-        names = set()
-        try:
-            relay = _cloud_relay()
-        except Exception:
-            return []
-        for identity, name in live:
-            try:
-                path = os.path.join(repo_folder(identity), relay._JOIN_FOLDER, relay._JOIN_NAME)
-                if relay.read_join(path) is None:
-                    names.add(name)
-            except Exception:
-                pass
-        return sorted(names)
 
     def _fresh_governor_count(self):
         """Caller holds self.lock. Repos with a governor seen in the last
@@ -3678,7 +2083,7 @@ class CityState(_CloudTaps):
 
     # -- add agent: the page's button opens one new session -------------------
 
-    def add_agent(self, terr, now, force=False, cloud=False):
+    def add_agent(self, terr, now, force=False):
         """Open ONE new claude session in the folder of territory TERR (the
         page's add-agent button) -> (code, body); NOW is monotonic seconds. The
         folder, name and role are the server's own: the request names only a
@@ -3698,11 +2103,8 @@ class CityState(_CloudTaps):
         resources_fn and open_fn run free, then the mark is finished or undone.
         The line (the opener's and the "plain" one alike) is agent_command with
         self.city_dir: a city with its own dir hands it to the new session, and
-        the line ends with FIRST_PROMPT. CLOUD (only cloud_order sets it): a local
-        click keeps permission_mode; a cloud start uses cloud_permission_mode,
-        missing or refused -> auto, never bypass by default. See tests/test_agent_city_add_agent.py."""
-        if not isinstance(terr, str) or re.fullmatch(r"[0-9a-f]{8}", terr) is None or not isinstance(force, bool) \
-                or not isinstance(cloud, bool):
+        the line ends with FIRST_PROMPT. See tests/test_agent_city_add_agent.py."""
+        if not isinstance(terr, str) or re.fullmatch(r"[0-9a-f]{8}", terr) is None or not isinstance(force, bool):
             return 400, {"error": "bad"}
         with self.lock:
             identity = next((i for i in self.world["territories"] if territory_id(i) == terr), None)
@@ -3724,7 +2126,7 @@ class CityState(_CloudTaps):
         held = False
         try:
             import shlex
-            command = agent_command(name, folder, self.city_dir, cloud=cloud)
+            command = agent_command(name, folder, self.city_dir)
             try:
                 kind = self.kind_fn(folder)
             except Exception:
@@ -3757,7 +2159,6 @@ class CityState(_CloudTaps):
                         # the new session was here before the opener answered
                         del self._adding[identity]
                         self._broadcast({"type": "adding", "terr": terr, "state": "done"})
-                        self._cloud_adding_end_locked(entry, "done")
                 held = True
             return 200, {"state": "opening", "name": name, "role": role}
         finally:
@@ -3798,7 +2199,6 @@ class CityState(_CloudTaps):
             if not entry["pending"] and now - entry["at"] >= ADD_WAIT_SEC:
                 del self._adding[identity]
                 self._broadcast({"type": "adding", "terr": entry["terr"], "state": "late"})
-                self._cloud_adding_end_locked(entry, "late")
 
     def _sids_in_locked(self, identity):
         """Caller holds self.lock. Every session that has had a line in
@@ -3832,7 +2232,6 @@ class CityState(_CloudTaps):
             return
         del self._adding[identity]
         self._broadcast({"type": "adding", "terr": entry["terr"], "state": "done"})
-        self._cloud_adding_end_locked(entry, "done")
 
     def _adding_view_locked(self):
         """Caller holds self.lock. The snapshot's "adding": every repo whose
@@ -4091,16 +2490,6 @@ class CityState(_CloudTaps):
                 "label": "" if governor else info["label"], "task": "" if governor else info["task"]})
         entries.sort(key=lambda e: e["sid"])
         return entries
-
-    def live_session_repos(self):
-        """cloud-city-2: the repos (the roster's "repo": the git common dir,
-        "" for a session with none) of the sessions the roster holds whose
-        process is alive now, the check _restore_roster_locked makes; sorted,
-        each once, [] when no session lives. A short read under the lock;
-        the pid checks run after it is let go."""
-        with self.lock:
-            rows = [(e["pid"], e["repo"]) for e in self._roster_entries_locked()]
-        return sorted({repo for pid, repo in rows if _pid_state(pid) is True})
 
     def _save_roster_locked(self):
         """Caller holds self.lock. Writes roster.json only when what it lists
@@ -5174,15 +3563,13 @@ class CityState(_CloudTaps):
     def _broadcast(self, ev):
         """Push one event to every connected client. Caller holds self.lock.
         An event of a hidden territory (city-layout) is not sent to anybody,
-        page or cloud tap: that is decided here and nowhere else (the state
+        page: that is decided here and nowhere else (the state
         it belongs to went on all the same). city-data: after EV went out,
         the history keeps what it adds to that person's lines (hidden or
         not), and the same pages get it as {"type": "hist", "id", "line",
         "fold"}: sent by _send_locked, never by _broadcast again, so a "hist"
         makes no history. The sessions the roster brings back at start are no
         new start: a person who already has lines gets none for them."""
-        if ev.get("type") == "chat":
-            self._chat_rev += 1   # cloud-city-2: the uploader reads the windows when this moved
         self._send_locked(ev)
         if self._restoring and self.history.lines(ev.get("id")):
             return
@@ -5191,7 +3578,7 @@ class CityState(_CloudTaps):
             self._send_locked({"type": "hist", "id": got["id"], "line": got["line"], "fold": got["fold"]})
 
     def _send_locked(self, ev):
-        """Caller holds self.lock. EV to every page and cloud tap, unless it
+        """Caller holds self.lock. EV to every page, unless it
         tells of a hidden territory (see _broadcast)."""
         hidden = self._hidden_terrs_locked()
         if hidden and self._event_hidden_locked(ev, hidden):
@@ -5205,7 +3592,6 @@ class CityState(_CloudTaps):
                 dead.append(client)
         for client in dead:
             self._drop(client)
-        self._cloud_push(data)   # cloud-city
 
     def _drop(self, client):
         """A slow client fell behind its queue; disconnect it."""
@@ -5633,19 +4019,17 @@ class CityState(_CloudTaps):
             self._chat_stop_at[to] = time.monotonic()
             self.cond.notify_all()
         elif ev_name == "RosterRestore":
-            # cloud-city-2: a session brought back at start. Its watcher, if it
+            # a session brought back at start. Its watcher, if it
             # has one, finds the new server within a few seconds (_watch_poll),
             # so a message that comes first is held for the listen grace, as
             # after a Stop, and not refused as "not-listening".
             self._chat_stop_at[to] = time.monotonic()
 
     def _chat_note_terr_locked(self, to, terr):
-        """cloud-city-2. Caller holds self.lock. A session's page and the
-        territory its last line was in: the cloud sends a window only when
-        that territory is joined to the relay. Unknown = never sent."""
+        """Caller holds self.lock. A session's page and the
+        territory its last line was in."""
         if to.startswith("s:") and self._chat_page_terr.get(to) != terr:
             self._chat_page_terr[to] = terr
-            self._chat_rev += 1
 
     def _chat_expire_queue_locked(self, to):
         bucket = self.chat.get(to)
@@ -5750,11 +4134,6 @@ class CityState(_CloudTaps):
             entry = {"id": self._chat_seq, "kind": kind, "text": text, "at": at}
             if kind == "owner":
                 entry["state"] = "delivered"  # only ever-delivered owner lines are persisted
-                cid = obj.get("cid")
-                if isinstance(cid, str) and CLOUD_CID_RE.match(cid):
-                    # cloud-city-2: a delivered cloud message, read back: same id, so the same key up
-                    entry["cid"] = cid
-                    self._cloud_note_page_locked(cid, to)
             bucket = self.chat.get(to)
             if bucket is None:
                 bucket = deque(maxlen=CHAT_KEEP)
@@ -5783,8 +4162,7 @@ class CityState(_CloudTaps):
             entries = [dict(e) for e in self.chat.get(to, [])]
             return 200, {"to": to, "can_send": can_send, "busy": busy, "entries": entries}
 
-    def chat_send(self, to, text, now, cid=None):
-        # cid (cloud-city-2): only cloud_message passes one; the entry then carries it
+    def chat_send(self, to, text, now):
         with self.lock:
             if not isinstance(text, str) or not text or len(text) > CHAT_TEXT_MAX:
                 return 400, {"error": "text"}
@@ -5809,9 +4187,6 @@ class CityState(_CloudTaps):
             if self._page_unreached_locked(to):
                 entry["state"] = "undelivered"
                 entry["why"] = "not-listening"
-            if cid is not None:     # cloud-city-2: a message from the cloud page
-                entry["cid"] = cid
-                self._cloud_note_page_locked(cid, to)
             bucket = self.chat.get(to)
             if bucket is None:
                 bucket = deque(maxlen=CHAT_KEEP)
@@ -5834,13 +4209,8 @@ class CityState(_CloudTaps):
         entry["state"] = "delivered"
         self._broadcast({"type": "chat", "to": to, "entry": dict(entry)})
         row = {"by": "owner", "verb": "message", "sid": sid, "text": entry["text"], "at": entry["at"]}
-        if entry.get("cid") is not None:    # cloud-city-2: it came from the cloud page
-            row["via"] = "cloud"
-            self._cloud_done_locked(entry["cid"])
         self._append_jsonl_locked(self.decisions_path, row)
         line = {"sid": sid, "aid": "", "kind": "owner", "text": entry["text"], "at": entry["at"]}
-        if entry.get("cid") is not None:
-            line["cid"] = entry["cid"]      # cloud-city-2: read back after a restart, it keeps its id
         self._append_chat_path_locked(line)
         return {"state": "message", "id": entry["id"], "text": entry["text"]}
 
@@ -5988,8 +4358,6 @@ class CityHandler(BaseHTTPRequestHandler):
             return self._send_page()
         if path == "/health":
             return self._send_health()
-        if path == "/relay":
-            return self._send_relay()
         if path == "/events":
             return self._send_events()
         if path.startswith(ASSET_PREFIX):
@@ -6184,14 +4552,6 @@ class CityHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_relay(self):
-        body = json.dumps(self.server.hub.status()).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
     def _send_asset(self, raw_rel, query=""):
         assets_root = self.server.assets_dir
         rel = unquote(raw_rel)
@@ -6330,24 +4690,16 @@ def _split_lines(data):
     return parts[:-1], parts[-1]
 
 
-def _consume_line(raw_line, city, hub=None):
+def _consume_line(raw_line, city):
     text = raw_line.decode("utf-8", errors="replace")
     try:
         obj = json.loads(text)
     except ValueError:
         return
     city.feed_line(obj, time.monotonic())
-    if hub is not None:
-        # offer() only queues in memory and reads the small join file (at
-        # most every join_ttl seconds); never the network -- safe on this
-        # thread. A joined city keeps its idle clock restarted by every new
-        # line, not only by a lull in it (requirements/city.md, "Joining").
-        hub.offer(obj)
-        if hub.joined():
-            city.touch_idle()
 
 
-def _read_available(fh, offset, buf, city, hub=None):
+def _read_available(fh, offset, buf, city):
     fh.seek(0, os.SEEK_END)
     end = fh.tell()
     if end <= offset:
@@ -6356,18 +4708,16 @@ def _read_available(fh, offset, buf, city, hub=None):
     chunk = fh.read(end - offset)
     lines, buf = _split_lines(buf + chunk)
     for raw_line in lines:
-        _consume_line(raw_line, city, hub)
+        _consume_line(raw_line, city)
     return fh.tell(), buf
 
 
 def tail_loop(directory, city, max_log_bytes, stop_event, request_shutdown,
-              idle_seconds, initial_skip, hub=None, keep_up=None):
+              idle_seconds, initial_skip):
     """Watch DIR/events.jsonl, feed new lines to the city, rotate when big.
     A rotated-away file is still read for TAIL_ROTATED_GRACE seconds (a writer
     that opened it before the rename may still append); a second rotation
-    finishes the earlier moved file first. Every handle is closed on exit.
-    KEEP_UP (cloud-city-2): a function that says true while the idle stop must
-    not happen (the cloud page is on and a live session is in the roster)."""
+    finishes the earlier moved file first. Every handle is closed on exit."""
     log_path = os.path.join(directory, "events.jsonl")
     rotated_path = log_path + ".1"
     fh = None
@@ -6378,7 +4728,7 @@ def tail_loop(directory, city, max_log_bytes, stop_event, request_shutdown,
 
     def drop(item):
         try:
-            _read_available(item[0], item[1], item[2], city, hub)
+            _read_available(item[0], item[1], item[2], city)
         except (OSError, ValueError):
             pass
         item[0].close()
@@ -6387,16 +4737,15 @@ def tail_loop(directory, city, max_log_bytes, stop_event, request_shutdown,
     try:
         while not stop_event.is_set():
             if city.client_count() == 0 and time.monotonic() - city.idle_since >= idle_seconds:
-                if keep_up is None or not keep_up():  # cloud-city-2
-                    request_shutdown()
-                    return
+                request_shutdown()
+                return
 
             for item in list(old):
                 if time.monotonic() >= item[3]:
                     drop(item)
                 else:
                     item[1], item[2] = _read_available(
-                        item[0], item[1], item[2], city, hub)
+                        item[0], item[1], item[2], city)
 
             if fh is None:
                 try:
@@ -6409,7 +4758,7 @@ def tail_loop(directory, city, max_log_bytes, stop_event, request_shutdown,
                 skip = 0
                 buf = b""
 
-            offset, buf = _read_available(fh, offset, buf, city, hub)
+            offset, buf = _read_available(fh, offset, buf, city)
 
             try:
                 on_disk = os.path.getsize(log_path)
@@ -6422,7 +4771,7 @@ def tail_loop(directory, city, max_log_bytes, stop_event, request_shutdown,
                 except OSError:
                     pass
                 else:
-                    offset, buf = _read_available(fh, offset, buf, city, hub)
+                    offset, buf = _read_available(fh, offset, buf, city)
                     while old:
                         drop(old[0])
                     old.append([fh, offset, buf,
@@ -6458,8 +4807,8 @@ def _consume_chat_line(raw_line, city):
 
 def chat_tail_loop(chat_path, city, stop_event, initial_skip=0):
     """Watch <city dir>/chat.jsonl, feed new lines to city.feed_chat: a
-    separate tail from events.jsonl (the relay hub must never see chat
-    lines -- chat_path is never offered to it). INITIAL_SKIP is the file's
+    separate tail from events.jsonl (the hooks never see chat
+    lines). INITIAL_SKIP is the file's
     size at the moment CityState already loaded its history (load_chat), so
     a line written between then and this thread's first open is never lost.
     Lines this same process already wrote and fed itself (a delivered owner
@@ -6528,326 +4877,6 @@ def recount_loop(city, stop_event):
         except Exception as exc:
             print("agent_city: sweep_history failed: %s" % exc, file=sys.stderr)
         stop_event.wait(RECOUNT_POLL_SEC)
-
-
-RELAY_QUEUED_MIN_SEC = 1.0   # "off" queued updates go to the page at most this often
-
-
-class RemoteCity:
-    """Turns other members' relay lines into "remote" page events, using the
-    same rules as local lines: one Reducer per sender device (the "dev" of
-    the sync item -- see bin/agent_city_relay.py RelayHub.tick()). Also
-    tracks each team's relay state for the page, and forgets a sender
-    device silent for remote_ttl_sec. Pure logic plus a lock: never touches
-    world.json, self.reducer or self.lines of any CityState. See
-    tests/test_agent_city_relay_serve.py, "Other members on the page".
-
-    Thread-safe: poll() runs on the relay thread, snapshot_event() on an
-    HTTP handler thread (CityState.add_client)."""
-
-    def __init__(self, hub, remote_ttl_sec=600.0):
-        self.hub = hub
-        self.remote_ttl_sec = remote_ttl_sec
-        self._lock = threading.Lock()
-        self._reducers = {}      # (sender dev id, rid) -> Reducer -- idea-city C3: one per repo
-        self._rid_terr = {}      # (sender dev id, rid) -> that repo's local territory id
-        self._chains = {}        # (sender dev id, rid) -> {"leads", "lead_of", "open"} (idea-city C16)
-        self._last_seen = {}     # sender dev id -> monotonic time of its last line (any of its repos)
-        self._meta = {}          # "r:<dev>:<id>" -> {"who","device","rid","br","terr","dev"}
-        self._up = {}            # "r:<dev>:<id>" -> that person's "up", already remapped (city-rail-tree)
-        self._team_state = {}    # host -> {"state", "queued", "at"} last sent to the page
-        self._team_rids = {}     # host -> set(rid), last known (to forget on "left")
-
-    def poll(self, now):
-        """One relay-thread tick: sync with every due team (hub.tick()),
-        age out silent devices, and notice a team that left. -> a list of
-        "remote"/"team" SSE events."""
-        items = self.hub.tick()
-        with self._lock:
-            events = []
-            for item in items:
-                events.extend(self._one_line(item.get("dev"), item.get("line"), now))
-            events.extend(self._sweep_ttl(now))
-            events.extend(self._sweep_teams(now))
-            return events
-
-    def snapshot_event(self):
-        """{"type": "remote_snapshot", "me", "people", "govs", "teams"} for a
-        new page, only while the hub has a team; else None."""
-        if not self.hub.joined():
-            return None
-        with self._lock:
-            people = []
-            govs = []
-            for (dev_id, rid), reducer in self._reducers.items():
-                for agent in reducer.snapshot()["agents"]:
-                    people.append(self._person(dev_id, agent))
-                if reducer.gov_sid is not None:
-                    terr = self._rid_terr.get((dev_id, rid), "")
-                    govs.append(self._gov(dev_id, terr, reducer.gov_state))
-        teams = [{"host": t["host"], "state": t["state"], "queued": t["queued"]}
-                for t in self.hub.status()["teams"]]
-        return {"type": "remote_snapshot", "me": self.hub.identity(),
-                "people": people, "govs": govs, "teams": teams}
-
-    # -- lines from the relay -- caller holds self._lock ------------------
-
-    def _one_line(self, dev_id, line, now):
-        if not dev_id or not isinstance(line, dict):
-            return []
-        rid = line.get("rid") or ""
-        repo = self.hub.repo_for(rid) if rid else None
-        if repo is None:
-            return []   # no local territory for this rid: the line is dropped
-        self._last_seen[dev_id] = now
-        terr = territory_id(repo)
-        device = line.get("dev") or ""
-        who, br = line.get("who") or device, line.get("br") or ""
-        fed = dict(line)
-        fed["proj"] = rid.rsplit("/", 1)[-1]
-        fed.pop("file", None)   # city-work-anim: another member's file names never show
-        # idea-city C3: one Reducer per (device, rid) -- a member's role-less
-        # main session in a second repo is that repo's own governor.
-        key = (dev_id, rid)
-        reducer = self._reducers.get(key)
-        if reducer is None:
-            reducer = Reducer()
-            self._reducers[key] = reducer
-        self._rid_terr[key] = terr
-        chain = self._chains.setdefault(key, {"leads": set(), "lead_of": {}, "open": {}})
-
-        ev_name = line.get("ev")
-        ask = line.get("ask") if isinstance(line.get("ask"), str) else ""
-        tool = line.get("tool") if isinstance(line.get("tool"), str) else ""
-        aid = line.get("aid") if isinstance(line.get("aid"), str) else ""
-        sid = line.get("sid") if isinstance(line.get("sid"), str) else ""
-
-        # idea-city C16: replay CityState._process_chain's ordering -- a
-        # worker's question relays to its lead (or governor) *before* the
-        # "done" the same line also carries, everything else relays after
-        # the reducer's own events for that line.
-        local_events = []
-        chain_early = ev_name == "SubagentStop" and ask == "q" and bool(aid)
-        if chain_early:
-            local_events.extend(self._chain_relay(chain, reducer.gov_sid, ev_name, ask, tool, aid, sid, now))
-
-        for ev in reducer.feed(fed, now):
-            etype = ev.get("type")
-            if etype == "spawn":
-                ev["terr"] = terr
-                ev["up"] = _spawn_up(reducer, terr, line)   # city-rail-tree: remapped below, like "lead"
-                self._chain_spawn(chain, ev, aid, sid)
-            elif etype == "gov":
-                ev["id"] = "gov:" + terr
-                ev["terr"] = terr
-                ev["present"] = ev_name != "SessionEnd"
-            elif etype == "leave":
-                local_events.extend(self._on_leave_chain(chain, ev["id"]))
-            local_events.append(ev)
-
-        if not chain_early:
-            local_events.extend(self._chain_relay(chain, reducer.gov_sid, ev_name, ask, tool, aid, sid, now))
-
-        out = []
-        for ev in local_events:
-            if "id" in ev:
-                remote_id = "r:%s:%s" % (dev_id, ev["id"])
-                ev["id"] = remote_id
-                if ev.get("lead"):
-                    ev["lead"] = "r:%s:%s" % (dev_id, ev["lead"])
-                if ev.get("up"):
-                    ev["up"] = "r:%s:%s" % (dev_id, ev["up"])
-                if ev.get("type") == "spawn":
-                    self._up[remote_id] = ev.get("up", "")
-                if ev.get("type") == "leave" or ev.get("present") is False:
-                    self._meta.pop(remote_id, None)
-                    self._up.pop(remote_id, None)
-                else:
-                    self._meta[remote_id] = {"who": who, "device": device, "rid": rid,
-                                             "br": br, "terr": terr, "dev": dev_id}
-            out.append({"type": "remote", "dev": dev_id, "who": who, "device": device,
-                        "rid": rid, "br": br, "ev": ev})
-        return out
-
-    # -- idea-city C16: chain of command for a remote (device, rid) --------
-    # caller holds self._lock. Local ids only (no "r:<dev>:" prefix yet);
-    # _one_line remaps ids (and "lead") to remote ids afterwards. No offices:
-    # a remote lead has no office to hold or free. Mirrors the rules of
-    # CityState._process_chain / _decorate_spawn / _close_relay / _on_leave.
-
-    def _chain_spawn(self, chain, ev, aid_field, sid_field):
-        if not aid_field:
-            if ev.get("role") == "task-manager":
-                chain["leads"].add(ev["id"])
-        else:
-            owner_cid = "s:" + sid_field
-            chain["lead_of"][ev["id"]] = owner_cid if owner_cid in chain["leads"] else ""
-
-    def _on_leave_chain(self, chain, cid):
-        chain["lead_of"].pop(cid, None)
-        chain["leads"].discard(cid)
-        return self._close_chain_relay(chain, cid, "leave")
-
-    def _close_chain_relay(self, chain, cid, by):
-        entry = chain["open"].pop(cid, None)
-        if entry is None:
-            return []
-        events = [{"type": "relay_end", "id": cid, "by": by}]
-        if entry["kind"] == "lead":
-            for wcid in [c for c, e in chain["open"].items()
-                         if e["kind"] == "worker" and e["lead"] == cid]:
-                chain["open"].pop(wcid, None)
-                events.append({"type": "relay_end", "id": wcid, "by": by})
-        return events
-
-    def _chain_relay(self, chain, gov_sid, ev_name, ask, tool, aid, sid, now):
-        events = []
-        for cid in [c for c, e in chain["open"].items() if now - e["opened_at"] >= RELAY_TIMEOUT_SEC]:
-            events.extend(self._close_chain_relay(chain, cid, "timeout"))
-
-        if ev_name == "SubagentStop" and ask == "q" and aid:
-            owner_cid = "s:" + sid
-            if owner_cid in chain["leads"]:
-                chain["open"][aid] = {"kind": "worker", "to": "lead", "lead": owner_cid, "opened_at": now}
-                events.append({"type": "relay", "id": aid, "to": "lead", "lead": owner_cid})
-            elif sid != "" and gov_sid == sid:
-                chain["open"][aid] = {"kind": "helper", "to": "governor", "lead": "", "opened_at": now}
-                events.append({"type": "relay", "id": aid, "to": "governor", "lead": ""})
-            return events
-
-        if ev_name == "PostToolUse" and not aid and tool == "SendMessage":
-            cid = "s:" + sid
-            if sid != "" and gov_sid == sid:
-                lead_id = next((c for c, e in chain["open"].items() if e["kind"] == "lead"), None)
-                if lead_id is not None:
-                    events.extend(self._close_chain_relay(chain, lead_id, "governor"))
-                for c in [c for c, e in chain["open"].items() if e["kind"] == "helper"]:
-                    events.extend(self._close_chain_relay(chain, c, "governor"))
-            elif cid in chain["leads"]:
-                if ask == "q":
-                    chain["open"][cid] = {"kind": "lead", "to": "governor", "lead": "", "opened_at": now}
-                    events.append({"type": "relay", "id": cid, "to": "governor", "lead": ""})
-                elif cid not in chain["open"]:
-                    for c in [c for c, e in chain["open"].items()
-                              if e["kind"] == "worker" and e["lead"] == cid]:
-                        events.extend(self._close_chain_relay(chain, c, "lead"))
-            return events
-
-        if ev_name == "PreToolUse" and not aid and tool in ("Agent", "Task"):
-            cid = "s:" + sid
-            if cid in chain["leads"] and cid not in chain["open"]:
-                for c in [c for c, e in chain["open"].items()
-                          if e["kind"] == "worker" and e["lead"] == cid]:
-                    events.extend(self._close_chain_relay(chain, c, "lead"))
-        return events
-
-    def _sweep_ttl(self, now):
-        stale = [d for d, seen in self._last_seen.items() if now - seen >= self.remote_ttl_sec]
-        events = []
-        for dev_id in stale:
-            events.extend(self._forget_device(dev_id))
-        return events
-
-    def _sweep_teams(self, now):
-        events = []
-        status_teams = {t["host"]: t for t in self.hub.status()["teams"]}
-        for host in list(self._team_rids.keys()):
-            if host in status_teams:
-                continue
-            rids = self._team_rids.pop(host)
-            self._team_state.pop(host, None)
-            for dev_id in self._devices_of(rids):
-                events.extend(self._forget_device(dev_id))
-            events.append({"type": "team", "host": host, "state": "left", "queued": 0})
-        for host, team in status_teams.items():
-            self._team_rids[host] = set(team["rids"])
-            events.extend(self._maybe_relay_event(host, team, now))
-        return events
-
-    def _maybe_relay_event(self, host, team, now):
-        state, queued = team["state"], team["queued"]
-        prev = self._team_state.get(host)
-        changed = prev is None or prev["state"] != state
-        queued_due = (not changed and state == "off" and queued != prev["queued"]
-                     and (now - prev["at"]) >= RELAY_QUEUED_MIN_SEC)
-        if not (changed or queued_due):
-            return []
-        self._team_state[host] = {"state": state, "queued": queued, "at": now}
-        return [{"type": "team", "host": host, "state": state, "queued": queued}]
-
-    def _devices_of(self, rids):
-        devs = set()
-        for meta in self._meta.values():
-            if meta.get("rid") in rids:
-                devs.add(meta.get("dev"))
-        return devs
-
-    def _forget_device(self, dev_id):
-        """idea-city C3: forgetting a device forgets all of its repos."""
-        self._last_seen.pop(dev_id, None)
-        keys = [k for k in self._reducers if k[0] == dev_id]
-        events = []
-        for key in keys:
-            events.extend(self._forget_repo(key))
-        return events
-
-    def _forget_repo(self, key):
-        dev_id, rid = key
-        reducer = self._reducers.pop(key, None)
-        terr = self._rid_terr.pop(key, "")
-        self._chains.pop(key, None)
-        if reducer is None:
-            return []
-        events = []
-        for aid in list(reducer.agents.keys()):
-            remote_id = "r:%s:%s" % (dev_id, aid)
-            meta = self._meta.pop(remote_id, None)
-            self._up.pop(remote_id, None)
-            events.append(self._wrap(dev_id, meta, {"type": "leave", "id": remote_id}))
-        if reducer.gov_sid is not None:
-            remote_id = "r:%s:gov:%s" % (dev_id, terr)
-            meta = self._meta.pop(remote_id, None)
-            terr = meta["terr"] if meta else terr
-            events.append(self._wrap(dev_id, meta, {"type": "gov", "id": remote_id,
-                                                     "state": reducer.gov_state,
-                                                     "terr": terr, "present": False}))
-        return events
-
-    def _wrap(self, dev_id, meta, ev):
-        meta = meta or {}
-        return {"type": "remote", "dev": dev_id, "who": meta.get("who", ""),
-                "device": meta.get("device", ""), "rid": meta.get("rid", ""),
-                "br": meta.get("br", ""), "ev": ev}
-
-    def _person(self, dev_id, agent):
-        remote_id = "r:%s:%s" % (dev_id, agent["id"])
-        meta = self._meta.get(remote_id, {})
-        person = dict(agent, id=remote_id, terr=meta.get("terr", ""), who=meta.get("who", ""),
-                     device=meta.get("device", ""), rid=meta.get("rid", ""),
-                     br=meta.get("br", ""), dev=dev_id, up=self._up.get(remote_id, ""))
-        return person
-
-    def _gov(self, dev_id, terr, state):
-        remote_id = "r:%s:gov:%s" % (dev_id, terr)
-        meta = self._meta.get(remote_id, {})
-        return {"id": remote_id, "state": state, "terr": meta.get("terr", terr),
-                "who": meta.get("who", ""), "device": meta.get("device", ""), "dev": dev_id}
-
-
-def relay_loop(city, hub, remote, stop_event):
-    """Sync every joined team with its relay, on its own thread: a slow or
-    dead relay never holds up the tail thread or the HTTP server.
-
-    Polls remote.poll() (RelayHub.tick() under the hood) often (RELAY_POLL_SEC);
-    the hub itself decides which team is actually due, every hub.relay_sec.
-    Remote lines come back only as "remote" SSE events -- never fed to the
-    local Reducer, never saved to world.json. A team's "relay" state is sent
-    only when it changes (or, while "off", its queued count -- at most once
-    a second). Stops with the server (stop_event)."""
-    while not stop_event.is_set():
-        for ev in remote.poll(time.monotonic()):
-            city.push_relay_event(ev)
-        stop_event.wait(RELAY_POLL_SEC)
 
 
 # --------------------------------------------------------------------------
@@ -6923,17 +4952,6 @@ def _repo_id(cwd):
 # --------------------------------------------------------------------------
 
 def cmd_serve(args):
-    # agent_city_relay.py sits next to this file; make sure its own folder is
-    # on sys.path so "import agent_city_relay" works no matter how this
-    # script was started. Imported only here (not at module top): serve is
-    # the only command that needs it, and importing it pulls in urllib,
-    # ssl, platform and getpass, which the PermissionRequest and Stop hooks
-    # (ask, gov-watch) -- run on every tool call -- must not pay for.
-    bin_dir = os.path.dirname(os.path.abspath(__file__))
-    if bin_dir not in sys.path:
-        sys.path.insert(0, bin_dir)
-    import agent_city_relay as relay
-
     directory = os.path.abspath(args.dir)
     os.makedirs(directory, exist_ok=True)
     on_path = os.path.join(directory, "on")
@@ -6981,51 +4999,10 @@ def cmd_serve(args):
                       world_path=world_path_arg, start_repo=start_repo, chat_path=chat_path, lang=lang,
                       roster_path=os.path.join(directory, "roster.json"),
                       city_dir=pass_city_dir(directory),
-                      cloud_seen_path=os.path.join(directory, "cloud-seen"),  # cloud-city-2
-                      cloud_orders_path=os.path.join(directory, "cloud-orders"),  # cloud-city-3
                       history_path=os.path.join(directory, "history.jsonl"))  # city-data
-    uploader = CloudUploader(city, snap_sec=args.cloud_snap_sec, cloud_file=cloud_home_path())  # cloud-city
-
-    def slow():  # cloud-city-3: nobody at the page, no session, only a start order to wait for: sync slowly
-        try:
-            return (city.client_count() == 0 and city.health()["agents"] == 0
-                    and uploader.cloud_start_on() and not city.live_session_repos())
-        except Exception:
-            return False
-
-    hub = relay.RelayHub(relay_sec=args.relay_sec, join_ttl=args.join_ttl_sec,
-                        joined_list=args.joined_list,
-                        cloud_file=uploader.cloud_file, view_source=uploader,
-                        talk_file=cloud_talk_path(),  # cloud-city, cloud-city-2
-                        start_file=cloud_start_path(), slow_fn=slow,
-                        slow_sec=args.slow_sec if args.slow_sec is not None else relay.SLOW_SEC,
-                        join_dir=args.join_dir,  # cloud-city-3 (join_dir: tests only)
-                        device_join=args.device_join)  # city-device-join
-    city.device_join = args.device_join  # city-device-join: health() counts a joined computer
-    uploader.bind(hub)  # cloud-city
-    # cloud-city-2: the sessions the roster brought back are known to the hub
-    # at once, with no line sent, so its first syncs carry the picture and talk
-    # (a roster with no live session seeds nothing, a repo not joined is skipped).
-    try:
-        for repo in city.live_session_repos():
-            if repo:
-                hub.seed(os.path.dirname(repo))
-    except Exception as exc:
-        print("agent_city: could not seed the hub from the roster: %s" % exc, file=sys.stderr)
-
-    def stay_up():  # cloud-city-2: no idle stop while the cloud page is on and a session lives
-        # cloud-city-3: or a relay this machine takes start orders from says it is on
-        try:
-            return uploader.cloud_start_on() or (uploader.cloud_on() and bool(city.live_session_repos()))
-        except Exception:
-            return False
-
-    remote = RemoteCity(hub, remote_ttl_sec=args.remote_ttl_sec)
-    city.remote = remote
     server = ThreadingHTTPServer(("127.0.0.1", args.port), CityHandler)
     server.daemon_threads = True
     server.city = city
-    server.hub = hub
     server.page_bytes = page_bytes
     server.assets_dir = assets_dir
 
@@ -7051,7 +5028,7 @@ def cmd_serve(args):
     tail = threading.Thread(
         target=tail_loop,
         args=(directory, city, max_log_bytes, stop_event, request_shutdown,
-              idle_seconds, initial_skip, hub, stay_up),  # cloud-city-2: stay_up
+              idle_seconds, initial_skip),
         daemon=True,
     )
     tail.start()
@@ -7065,11 +5042,6 @@ def cmd_serve(args):
         target=recount_loop, args=(city, stop_event), daemon=True,
     )
     recount_thread.start()
-
-    relay_thread = threading.Thread(
-        target=relay_loop, args=(city, hub, remote, stop_event), daemon=True,
-    )
-    relay_thread.start()
 
     try:
         server.serve_forever(poll_interval=0.2)
@@ -7375,12 +5347,12 @@ def _print_governor_question(ask):
     sys.stderr.flush()
 
 
-WATCH_RETRY_SEC = 2.0   # cloud-city-2: a watcher whose server is gone looks again this often
-WATCH_STEP_SEC = 0.25   # cloud-city-2: ... sleeping in steps this short, so a gone parent is noticed
+WATCH_RETRY_SEC = 2.0   # a watcher whose server is gone looks again this often
+WATCH_STEP_SEC = 0.25   # ... sleeping in steps this short, so a gone parent is noticed
 
 
 def _watch_poll(directory, endpoint, path_for, deadline, start_ppid):
-    """cloud-city-2: one poll of chat-watch and gov-watch, kept in one place.
+    """one poll of chat-watch and gov-watch, kept in one place.
     ENDPOINT is [port, token], changed in place when the server came back with
     a new port and token. PATH_FOR(chunk) is the request path for a poll of
     CHUNK seconds. -> (200, the answer) of a server, or None when the watcher
@@ -7434,7 +5406,7 @@ def _cmd_gov_watch_impl(args):
     endpoint = _city_endpoint(directory)
     if endpoint is None:
         return 0
-    endpoint = list(endpoint)   # cloud-city-2: [port, token], read again by _watch_poll when the server goes
+    endpoint = list(endpoint)   # [port, token], read again by _watch_poll when the server goes
 
     cwd = payload.get("cwd") or os.getcwd()
     repo = _repo_id(cwd)
@@ -7458,7 +5430,7 @@ def _cmd_gov_watch_impl(args):
             quote(sid, safe=""), quote(repo, safe=""), watcher, chunk, quote(pid, safe=""))
 
     while True:
-        result = _watch_poll(directory, endpoint, path_for, deadline, start_ppid)  # cloud-city-2
+        result = _watch_poll(directory, endpoint, path_for, deadline, start_ppid) 
         if result is None:
             return 0
         status, out = result
@@ -7519,7 +5491,7 @@ def _cmd_chat_watch_impl(args):
     endpoint = _city_endpoint(directory)
     if endpoint is None:
         return 0
-    endpoint = list(endpoint)   # cloud-city-2: [port, token], read again by _watch_poll when the server goes
+    endpoint = list(endpoint)   # [port, token], read again by _watch_poll when the server goes
 
     sid = payload.get("session_id") or ""
     watcher = uuid.uuid4().hex
@@ -7531,7 +5503,7 @@ def _cmd_chat_watch_impl(args):
         return "/api/chat/next?sid=%s&watcher=%s&timeout=%s" % (quote(sid, safe=""), watcher, chunk)
 
     while True:
-        result = _watch_poll(directory, endpoint, path_for, deadline, start_ppid)  # cloud-city-2
+        result = _watch_poll(directory, endpoint, path_for, deadline, start_ppid) 
         if result is None:
             return 0
         status, out = result
@@ -9471,14 +7443,6 @@ def _build_parser():
     serve.add_argument("--page", default=None)
     serve.add_argument("--assets", default=None)
     serve.add_argument("--gov-wait-sec", type=float, default=60.0)
-    serve.add_argument("--relay-sec", type=float, default=5.0)
-    serve.add_argument("--join-ttl-sec", type=float, default=30.0)
-    serve.add_argument("--joined-list", default=None)
-    serve.add_argument("--device-join", default=None)  # city-device-join: this computer's join file
-    serve.add_argument("--remote-ttl-sec", type=float, default=600.0)
-    serve.add_argument("--cloud-snap-sec", type=float, default=CLOUD_SNAP_SEC)  # cloud-city
-    serve.add_argument("--slow-sec", type=float, default=None)  # cloud-city-3: None = the relay module's SLOW_SEC
-    serve.add_argument("--join-dir", default=None)  # cloud-city-3: tests only, never set by agent-city.sh
     serve.add_argument("--decisions", default=None)
     serve.add_argument("--world", default=None)
     serve.add_argument("--start-dir", default=None)

@@ -515,11 +515,6 @@ class TestHookPid(unittest.TestCase):
             with self.subTest(env=env):
                 self.assertEqual(dict(self.row(env))["pid"], "")
 
-    def test_the_relay_never_sends_it(self):
-        import agent_city_relay as relay
-        wire = relay.to_wire({"ev": "PostToolUse", "sid": "s1", "pid": "4242"}, {"dev": "d1"})
-        self.assertNotIn("pid", json.dumps(wire))
-
 
 # -- gov-watch: the holder is the governor, a helper hears its own messages --
 

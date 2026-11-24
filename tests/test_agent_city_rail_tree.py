@@ -17,23 +17,16 @@ S  Server (bin/agent_city.py)
   S2 Every agent record of the snapshot carries "up": the value its spawn had, kept as long as the person lives.
   S3 A session brought back from the roster after a server restart carries "up" by the same rule (a task
      manager -> "gov:<terr>", a role-less session -> "").
-  S4 cloud_clean keeps "up" (spawn event and snapshot agents): it goes up to the cloud page in the picture.
-  S5 Other members (RemoteCity): their spawn events carry "up" by the same rules on the sender's own reducer,
-     remapped like "lead": "r:<dev>:<up>" when not "" (so "r:<dev>:gov:<terr>" for a task manager or a
-     governor's subagent, "r:<dev>:s:<sid>" for a worker); and every person of snapshot_event()["people"]
-     carries the same remapped "up".
 
 P  Page (bin/agent-city.html). "sim section" as in tests/test_agent_city_people.py (run_sim).
-  P1 (sim) Every citizen has up: newCitizen() sets up: ''. placeAgent(a) (snapshot, remote snapshot) keeps
-     a.up when it is a string, else ''. apply 'spawn' keeps ev.up (else ''). applyRemote 'spawn' keeps
-     inner.lead AND inner.up (else ''), as sent (already remote ids). spawnDemo's spawn carries up, the same
+  P1 (sim) Every citizen has up: newCitizen() sets up: ''. placeAgent(a) (snapshot) keeps
+     a.up when it is a string, else ''. apply 'spawn' keeps ev.up (else ''). spawnDemo's spawn carries up, the same
      value as its from.
   P2 (sim) railGroups() -> [{terr, name, color, add, rows}] as before (map order, a group per territory, also an
      empty one). rows is the tree, flat in pre-order (a parent, then its whole subtree, then its next sibling),
      then the resting rows. Each row {id, depth, rest, up, kids, lost}:
        members = the governor row 'gov:<terr>' (only while governorFigures() has that territory, as before),
-         then this machine's citizens of the territory (not gone, not remote) in citizens order, then other
-         members' citizens of it (remote, not gone) in citizens order.
+         then this machine's citizens of the territory (not gone) in citizens order.
        parent of a citizen c: p = c.up || c.lead. p === 'gov:<terr>' and the governor row is there -> the
          governor; p is the id of another member of this group -> that member; else none (the repo).
          A loop (a -> b -> a) or a person that names itself never hangs: each person shows exactly once.
@@ -86,7 +79,6 @@ from test_agent_city_people import ac, function_source, page, run_sim  # noqa: E
 from test_agent_city_chain import TA as PA, TB as PB, two_territory_view  # noqa: E402
 from test_agent_city_ux_page import css, listener_block, media_960, rule, text_keys  # noqa: E402
 from test_agent_city_talk import A_REPO, B_REPO, TA, TB, ServerCase  # noqa: E402
-from test_agent_city_idea_server import RemoteCase  # noqa: E402
 from test_agent_city_roster import RosterCase  # noqa: E402
 
 
@@ -196,49 +188,6 @@ class TestUpAfterRestartS3(RosterCase):
         self.assertEqual(self.agents()["s:sid-h"].get("up"), "")
 
 
-class TestUpGoesToTheCloudS4(unittest.TestCase):
-
-    def test_spawn_keeps_up(self):
-        out = ac.cloud_clean({"type": "spawn", "id": "s:x", "role": "task-manager", "label": "x", "task": "x",
-                              "terr": "t1", "from": "", "up": "gov:t1", "lead": "", "office": None})
-        self.assertEqual(out["up"], "gov:t1")
-
-    def test_snapshot_agents_keep_up(self):
-        out = ac.cloud_clean({"type": "snapshot", "agents": [{"id": "w1", "up": "s:tm1", "lead": "s:tm1"}],
-                              "asks": [], "world": {"territories": []}})
-        self.assertEqual(out["agents"][0]["up"], "s:tm1")
-
-
-class TestUpForOtherMembersS5(RemoteCase):
-
-    def setUp(self):
-        super().setUp()
-        self.shop = self.terr("github.com/acme/shop")
-        self.out = []
-        self.out += self.send(ev="UserPromptSubmit", sid="gov")                          # the governor
-        self.out += self.send(ev="PostToolUse", sid="tm", role="task-manager", tool="Read")   # a task manager
-        self.out += self.send(ev="SubagentStart", sid="tm", aid="w1", at="worker")       # its worker
-        self.out += self.send(ev="SubagentStart", sid="gov", aid="d1", at="fast-lane-deputy")  # the governor's
-        self.out += self.send(ev="PostToolUse", sid="h1", tool="Read")                    # a role-less session
-
-    def spawns(self):
-        return {e["id"]: e for e in self.inner(self.out, "spawn")}
-
-    def test_live_spawns_carry_remapped_up(self):
-        s = self.spawns()
-        self.assertEqual(s["r:dev-bo:s:tm"]["up"], "r:dev-bo:gov:" + self.shop)
-        self.assertEqual(s["r:dev-bo:w1"]["up"], "r:dev-bo:s:tm")
-        self.assertEqual(s["r:dev-bo:d1"]["up"], "r:dev-bo:gov:" + self.shop)
-        self.assertEqual(s["r:dev-bo:s:h1"]["up"], "")
-
-    def test_remote_snapshot_people_carry_it(self):
-        people = {p["id"]: p for p in self.rc.snapshot_event()["people"]}
-        self.assertEqual(people["r:dev-bo:s:tm"].get("up"), "r:dev-bo:gov:" + self.shop)
-        self.assertEqual(people["r:dev-bo:w1"].get("up"), "r:dev-bo:s:tm")
-        self.assertEqual(people["r:dev-bo:d1"].get("up"), "r:dev-bo:gov:" + self.shop)
-        self.assertEqual(people["r:dev-bo:s:h1"].get("up"), "")
-
-
 # ---------------------------------------------------------------------------
 # P1 + P2 + P3: the page builds the tree
 # ---------------------------------------------------------------------------
@@ -267,11 +216,6 @@ const AGENTS = [
 apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: A.id }, governors: 1, asks: [], shows: [],
   govs: [{ terr: A.id, state: 'busy' }], agents: AGENTS });
 byId('r1').state = 'resting';
-const WHO = { dev: 'dev-ann', who: 'Ann', device: 'lap', rid: 'acme/shop', br: 'b' };
-apply(Object.assign({ type: 'remote', ev: { type: 'spawn', id: 'r:dev-ann:s:9', role: 'task-manager', label: 'Ann TM',
-  task: 'ann', terr: A.id, up: 'r:dev-ann:gov:' + A.id, lead: '' } }, WHO));
-apply(Object.assign({ type: 'remote', ev: { type: 'spawn', id: 'r:dev-ann:w9', role: 'worker', label: 'Ann W',
-  task: 'annw', terr: A.id, up: 'r:dev-ann:s:9', lead: 'r:dev-ann:s:9' } }, WHO));
 apply({ type: 'spawn', id: 'n1', role: 'worker', label: 'n1', task: 'n1', terr: B.id, up: 's:T3', lead: 's:T3', from: 's:T3' });
 const rowsOf = g => g.rows.map(r => [r.id, r.depth, !!r.rest, r.up, r.kids, !!r.lost]);
 /* the nesting of the drawn tree: for every data-focus, how many <ul class="kids"> it sits in */
@@ -306,7 +250,7 @@ const fresh = newCitizen('zz', 'worker', 't', A.id);
 __out = { a: A.id, b: B.id, terrs: map.territories.map(t => t.id),
   groups: G.map(g => ({ terr: g.terr, rows: rowsOf(g) })),
   ups: { T1: byId('s:T1').up, w12: byId('w12').up, w22: byId('w22').up, n1: byId('n1').up,
-         rw9: byId('r:dev-ann:w9').up, rw9lead: byId('r:dev-ann:w9').lead, rs9: byId('r:dev-ann:s:9').up, fresh: fresh.up },
+         fresh: fresh.up },
   h0, h0b, h1, h2, h3, ids0: ids(h0), ids1: ids(h1), ids2: ids(h2), ids3: ids(h3), nest0: nest(h0), nest3: nest(h3),
   rowT1shut: rowOf(h1, 's:T1'), rowGovShut: rowOf(h2, 'gov:' + A.id), rowT1open: rowOf(h0, 's:T1'),
   rowX1: rowOf(h0, 'x1'), rowX2: rowOf(h0, 'x2'), rowH: rowOf(h0, 's:H'), rowW11: rowOf(h0, 'w11'), rowD1: rowOf(h0, 'd1'),
@@ -340,15 +284,12 @@ class TestPageKeepsUpP1(unittest.TestCase):
     def setUpClass(cls):
         cls.r = run_sim(TREE_DRIVER, payload(), REQ)
 
-    def test_snapshot_spawn_and_remote_keep_up(self):
+    def test_snapshot_and_spawn_keep_up(self):
         u = self.r["ups"]
         self.assertEqual(u["T1"], "gov:" + self.r["a"], "placeAgent keeps a.up")
         self.assertEqual(u["w12"], "s:T1")
         self.assertEqual(u["w22"], "", "no up from the server: ''")
         self.assertEqual(u["n1"], "s:T3", "a live spawn keeps ev.up")
-        self.assertEqual(u["rw9"], "r:dev-ann:s:9", "applyRemote keeps inner.up")
-        self.assertEqual(u["rw9lead"], "r:dev-ann:s:9", "applyRemote keeps inner.lead too")
-        self.assertEqual(u["rs9"], "r:dev-ann:gov:" + self.r["a"])
         self.assertEqual(u["fresh"], "", "newCitizen starts with up ''")
 
     def test_demo_spawn_carries_up(self):
@@ -378,8 +319,6 @@ class TestTreeRowsP2(unittest.TestCase):
             ["s:H", 0, False, "", 0, False],
             ["x1", 0, False, "", 0, True],
             ["x2", 0, False, "", 0, True],
-            ["r:dev-ann:s:9", 0, False, "", 1, False],
-            ["r:dev-ann:w9", 1, False, "r:dev-ann:s:9", 0, False],
             ["r1", 0, True, "", 0, False],
         ])
 
@@ -394,7 +333,7 @@ class TestTreeRowsP2(unittest.TestCase):
         self.assertEqual([x["terr"] for x in self.r["groups"]], [t for t in self.r["terrs"] if t in self.g])
 
     def test_counts_unchanged(self):
-        self.assertEqual(self.r["cnt"], {"active": 16, "you": 1}, "13 active in A, 3 in B; w12 waits")
+        self.assertEqual(self.r["cnt"], {"active": 14, "you": 1}, "11 active in A, 3 in B; w12 waits")
 
 
 class TestTreeWithoutGovernorP2(unittest.TestCase):
@@ -431,7 +370,7 @@ class TestTreeHtmlP3(unittest.TestCase):
     def test_rows_in_tree_order_and_nested(self):
         a = self.r["a"]
         want = ["gov:" + a, "s:T1", "w11", "w12", "s:T2", "w21", "w22", "d1", "s:H", "x1", "x2",
-                "r:dev-ann:s:9", "r:dev-ann:w9", "s:T3", "y1", "n1"]
+                "s:T3", "y1", "n1"]
         self.assertEqual(self.r["ids0"], want, "the resting row stays folded")
         depth = {r[0]: r[1] for g in self.r["groups"] for r in g["rows"] if not r[2]}
         self.assertEqual(self.r["nest0"], depth, "every row sits in as many <ul class=\"kids\"> as its depth")
@@ -440,12 +379,12 @@ class TestTreeHtmlP3(unittest.TestCase):
 
     def test_arrows_on_parents_only(self):
         h = self.r["h0"]
-        parents = ["gov:" + self.r["a"], "s:T1", "s:T2", "r:dev-ann:s:9", "s:T3"]
+        parents = ["gov:" + self.r["a"], "s:T1", "s:T2", "s:T3"]
         self.assertEqual(sorted(re.findall(r'data-tw="([^"]*)"', h)), sorted(parents))
         for p in parents:
             self.assertRegex(h, r'<button type="button" class="tw" data-tw="%s" aria-expanded="true" aria-label="%s"'
                              % (re.escape(p), re.escape(self.r["fold"])), p)
-        self.assertEqual(h.count('<span class="tw leaf"></span>'), 11, "every leaf keeps the arrow's place")
+        self.assertEqual(h.count('<span class="tw leaf"></span>'), 10, "every leaf keeps the arrow's place")
         self.assertRegex(h, r'<li><div class="rl"><span class="tw leaf"></span><button type="button" class="rrow[^"]*" data-focus="w11"')
         self.assertRegex(h, r'<li><div class="rl"><button type="button" class="tw" data-tw="s:T1"[^>]*>[^<]*</button>'
                             r'<button type="button" class="rrow[^"]*" data-focus="s:T1"')
@@ -482,7 +421,7 @@ class TestTreeHtmlP3(unittest.TestCase):
         self.assertIn('<span class="more">+7</span>', row)
         self.assertIn('<span class="you">1</span>', row)
         self.assertIn("s:H", self.r["ids2"])
-        self.assertRegex(self.r["h2"], r'data-grp="%s"[^>]*>[\s\S]*?<span class="n">\s*14\s*</span>' % re.escape(a),
+        self.assertRegex(self.r["h2"], r'data-grp="%s"[^>]*>[\s\S]*?<span class="n">\s*12\s*</span>' % re.escape(a),
                          "the repo head still counts everyone")
 
     def test_resting_rows_are_flat(self):

@@ -10,9 +10,9 @@ CONTRACT (bin/agent-city.html)
 
   History (the server writes the lines, the page words them). Sim part, next to actLog / actTool:
   D2  const HIST_KEEP = 200.   let serverHist = false.
-      ownHist(c) -> true when the page writes c's lines itself: !serverHist || !!c.remote.
+      ownHist(c) -> true when the page writes c's lines itself: !serverHist.
       actLog(c, text), actTool(c, step) and giveAnswer(c)'s c.qa.push add nothing when !ownHist(c).
-      (No server history: the demo, the cloud page, an older server, other members' people -> as before.)
+      (No server history: the demo, an older server -> as before.)
   D3  histLine(c, line, fold): one server line into c's own stores, worded by the page:
         started  c.acts += { at, text: i18n('hist.started', { task: line.task }) }
         steps    c.acts += { at, steps: [stepText(s) of every step, a text already there left out],
@@ -24,12 +24,12 @@ CONTRACT (bin/agent-city.html)
                            i18n('answer.default'), at }
       at = line.at. Any other k (or no line) adds nothing. c.acts and c.qa never hold more than
       HIST_KEEP: the oldest go.
-  D4  apply 'snapshot': serverHist = !CLOUD && ev.hist is an object. Then, for every person of this
-      machine on the page (not c.remote), after the agents are placed: c.acts = [], c.qa = [] and every
+  D4  apply 'snapshot': serverHist = ev.hist is an object. Then, for every person of this
+      machine on the page, after the agents are placed: c.acts = [], c.qa = [] and every
       line of ev.hist[c.id] through histLine(c, line, false). A snapshot with no hist: serverHist = false,
       nobody's lines are touched.
       apply { type: 'hist', id, line, fold } -> histLine(byId(id), line, fold), returns that person; nobody
-      with that id (or another member's person) -> null, nothing changes.
+      with that id -> null, nothing changes.
 
   Labels (a bubble never covers a name label). Sim part (pure, boxes are { l, r, t, b } in screen px):
   D5  const LABEL_GAP = 6. Two boxes TOUCH when they are closer than LABEL_GAP in both directions:
@@ -154,7 +154,7 @@ HIST_DRIVER = HIST_HEAD + r"""
 const out = { keep: HIST_KEEP, before: serverHist };
 apply(snap({ w1: L, w2: [] }));
 const c = byId('w1'), d = byId('w2');
-out.on = serverHist; out.own = [ownHist(c), ownHist({ remote: { who: 'x', device: 'd' } })];
+out.on = serverHist; out.own = [ownHist(c)];
 out.acts = texts(c); out.ats = c.acts.map(a => a.at);
 out.want = [i18n('hist.started', { task: '登录 API' }),
   [stepText({ tool: 'Edit', name: 'Edit', file: 'login.py' }), stepText({ tool: 'Read', name: 'Read' }), stepText({ tool: 'Read', name: 'Grep' })].join(' · '),
@@ -221,14 +221,6 @@ out.off = serverHist; out.kept = texts(byId('w1')).length;
 __out = out;
 """
 
-REMOTE_DRIVER = HIST_HEAD + r"""
-apply(snap({ w1: [], w2: [] }));
-const r = { id: 'r:dev:x1', remote: { who: 'x', device: 'dev' }, acts: [], qa: [] };
-actLog(r, 'theirs'); actTool(r, 'step');
-const me = byId('w1'); actLog(me, 'mine');
-__out = { on: serverHist, remote: r.acts.map(a => a.text), mine: me.acts.length };
-"""
-
 HIST_NEEDS = ("apply", "byId", "landState", "i18n", "actLog", "actTool", "giveAnswer", "personHistory", "stepText",
               "stuckText", "histLine", "ownHist", "HIST_KEEP", "serverHist")
 
@@ -244,7 +236,7 @@ class TestServerHistory(unittest.TestCase):
         self.assertEqual(r["keep"], 200)
         self.assertFalse(r["before"], "off until a snapshot says the server keeps the history")
         self.assertTrue(r["on"])
-        self.assertEqual(r["own"], [False, True], "the page writes only other members' people itself")
+        self.assertEqual(r["own"], [False], "the page writes nothing itself once the server keeps the history")
 
     def test_the_snapshot_fills_the_history(self):
         r = self.r
@@ -294,19 +286,6 @@ class TestNoServerHistory(unittest.TestCase):
         self.assertEqual(len(r["later"]), 1, "the server's lines replace the page's own")
         self.assertFalse(r["off"])
         self.assertEqual(r["kept"], 1)
-
-    def test_other_members_people_keep_the_pages_own_lines(self):
-        r = run_sim(REMOTE_DRIVER, {"view": named_view(), "lines": LINES}, HIST_NEEDS)
-        self.assertTrue(r["on"])
-        self.assertEqual(r["remote"], ["theirs", "step"])
-        self.assertEqual(r["mine"], 0)
-
-    def test_the_cloud_page_never_switches_it_on(self):
-        src = inline_script()
-        m = re.search(r"serverHist\s*=\s*([^;]+);", src[src.index("case 'snapshot': {"):])   # the case itself, not a comment
-        self.assertIsNotNone(m, "the snapshot case sets serverHist")
-        self.assertIn("!CLOUD", m.group(1), "the cloud picture carries no hist; the cloud page keeps its own lines")
-
 
 # ---------------------------------------------------------------------------
 # D5 where a label goes (pure)

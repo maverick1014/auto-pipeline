@@ -403,17 +403,6 @@ class TestCityNames(CityCase):
         self.assertEqual([b["name"] for b in self.disk_buildings()], want, "the next start changes nothing")
         self.assertEqual(sorted(b["name"] for b in self.view_buildings(st3)), sorted(want))
 
-    def test_the_cloud_picture_carries_no_name(self):
-        self.edit("w1", "web/checkout/page.tsx")
-        snap, _ = snapshot(self.st)
-        clean = ac.cloud_clean(snap)
-        names = [b["name"] for t in clean["world"]["territories"] for b in t["buildings"]]
-        self.assertEqual(names, [""], "file and folder names never go up")
-        self.assertEqual(ac.cloud_clean({"type": "build", "id": "w1", "terr": self.terr, "plot": 0, "btype": "shop",
-                                         "x": 0, "z": 0, "by": "w", "q": "good", "home": True, "files": ["a/b.tsx"],
-                                         "name": "b 页面", "lv": 0})["name"], "")
-
-
 # ---------------------------------------------------------------------------
 # H2 the history keeper
 # ---------------------------------------------------------------------------
@@ -758,15 +747,9 @@ class TestCityHistory(CityCase):
         self.assertTrue(self.st.history_view("w1"), "w1 is done, not gone")
 
     def test_local_only(self):
-        self.assertIn("hist", ac.CLOUD_DROP)
-        self.assertNotIn("hist", ac.CLOUD_KEEP)
-        self.assertIsNone(ac.cloud_clean({"type": "hist", "id": "w1", "line": {"k": "done", "at": 1.0}, "fold": False}))
         self.work()
         snap, _ = snapshot(self.st)
-        self.assertIn("hist", snap)
-        clean = ac.cloud_clean(snap)
-        self.assertNotIn("hist", clean, "the cloud picture stays as it is")
-        self.assertIn("hist", snap, "the local page still gets everything")
+        self.assertIn("hist", snap, "the local page gets the history")
 
     def test_wired_into_the_server(self):
         serve = inspect.getsource(ac.cmd_serve)

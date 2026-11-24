@@ -542,11 +542,11 @@ class TestThePage(unittest.TestCase):
         self.assertTrue(rule('.arr-btn[aria-pressed="true"]'), "it looks pressed while the mode is on")
 
     def test_only_the_live_local_page_has_it(self):
-        self.assertRegex(self.script, r"\$\('#arr-btn'\)\.hidden\s*=\s*DEMO\s*\|\|\s*CLOUD",
-                         "the demo and the cloud page have no arrange control")
+        self.assertRegex(self.script, r"\$\('#arr-btn'\)\.hidden\s*=\s*DEMO",
+                         "the demo has no arrange control")
         enter = function_source("arrEnter") or ""
-        self.assertRegex(enter[:enter.find("arr.on = true")], r"if \([^)]*DEMO \|\| CLOUD[^)]*\)\s*return",
-                         "and no mode: the cloud page never sends /api/layout (its Worker has no such route)")
+        self.assertRegex(enter[:enter.find("arr.on = true")], r"if \([^)]*DEMO[^)]*\)\s*return",
+                         "and no mode")
 
     def test_the_bar_and_the_plates(self):
         stage = self.html[self.html.index('<div class="stage" id="stage">'):self.html.index("</main>")]
@@ -577,7 +577,7 @@ class TestThePage(unittest.TestCase):
         self.assertTrue(rule(".rail-hid.you"), "it turns red when somebody there waits")
         src = function_source("renderRail") or ""
         self.assertIn("hiddenHtml(hiddenLands)", src)
-        self.assertRegex(src, r"DEMO\s*\|\|\s*CLOUD", "the line is the live local page's")
+        self.assertRegex(src, r"\|\|\s*DEMO", "the line is the live local page's")
         block = listener_block(r"\$\('#rail-hid'\)", "click")
         self.assertIsNotNone(block, "a click on the line must do something")
         self.assertIn("arrEnter(", block)

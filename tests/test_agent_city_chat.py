@@ -86,8 +86,6 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
     serve: CityState gets chat_path=<dir>/chat.jsonl and a new line
       appended to that file reaches feed_chat (tailed like events.jsonl).
 
-  Chat never leaves the computer: bin/agent_city_relay.py never mentions
-    chat; the relay keeps its line whitelist (no "text", "prompt").
 
 CONTRACT, hooks (hooks/hooks.json)
   UserPromptSubmit, Stop and SubagentStop each run `agent_city.py" say`
@@ -149,7 +147,6 @@ ROOT = os.path.dirname(HERE)
 BIN = os.path.join(ROOT, "bin")
 SERVER = os.path.join(BIN, "agent_city.py")
 HOOKS = os.path.join(ROOT, "hooks", "hooks.json")
-RELAY = os.path.join(BIN, "agent_city_relay.py")
 for p in (HERE, BIN):
     if p not in sys.path:
         sys.path.insert(0, p)
@@ -634,20 +631,6 @@ class TestChatWatch(ChatServerCase):
 # Chat never leaves the computer
 # ---------------------------------------------------------------------------
 
-class TestStaysHome(unittest.TestCase):
-    def test_relay_never_touches_chat(self):
-        # cloud-city-2 (owner, 2026-10-01): chat text may go to the owner's own Cloudflare, but only
-        # from a machine with talk on, and only in the sync's "talk" part (its own tests:
-        # tests/test_agent_city_cloud_talk_machine.py: no talk file -> no chat text in any request).
-        # A LINE, which every team member gets, still never carries text.
-        import agent_city_relay as rl
-        for key in ("text", "prompt", "last_assistant_message", "chat", "talk"):
-            self.assertNotIn(key, rl._KEPT_LINE_FIELDS)
-        wire = rl.to_wire({"ev": "Stop", "sid": "s1", "text": "secret", "prompt": "secret", "chat": "secret",
-                           "last_assistant_message": "secret"}, {"rid": "r", "br": "b", "who": "w", "dev": "d"})
-        self.assertNotIn("secret", repr(wire))
-
-
 # ---------------------------------------------------------------------------
 # Page
 # ---------------------------------------------------------------------------
@@ -711,17 +694,16 @@ process.stdout.write(JSON.stringify([{ t: 'gov', terr: 't1' }, { t: 'c', id: 's:
         js = r"""
 const fs = require('fs'), vm = require('vm');
 const { fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-const people = { 's:tm1': { id: 's:tm1', lead: true }, 's:tm2': { id: 's:tm2' }, 'a9': { id: 'a9' },
-  'r:dev:s:1': { id: 'r:dev:s:1', remote: { who: 'Ann' } } };
+const people = { 's:tm1': { id: 's:tm1', lead: true }, 's:tm2': { id: 's:tm2' }, 'a9': { id: 'a9' } };
 const box = { selected: null, govTerr: 't0', byId: id => people[id] };
 vm.createContext(box); vm.runInContext(fns, box);
 const out = [];
-for (const sel of [{ t: 'c', id: 's:tm1' }, { t: 'c', id: 's:tm2' }, { t: 'c', id: 'a9' }, { t: 'c', id: 'r:dev:s:1' },
+for (const sel of [{ t: 'c', id: 's:tm1' }, { t: 'c', id: 's:tm2' }, { t: 'c', id: 'a9' },
                    { t: 'gov', terr: 't1' }, { t: 'gov' }, null]) { box.selected = sel; out.push(box.curChatTo()); }
 process.stdout.write(JSON.stringify(out));
 """
         out = run_node(js, {"fns": page_fns("curChatTo", "chatTarget")})
-        self.assertEqual(out, ["s:tm1", "s:tm2", "a9", None, "gov:t1", "gov:t0", None])
+        self.assertEqual(out, ["s:tm1", "s:tm2", "a9", "gov:t1", "gov:t0", None])
 
     def test_the_log_names_the_person(self):
         js = r"""

@@ -1,4 +1,4 @@
-"""Failing tests for idea-city, server side (bin/agent_city.py, bin/agent_city_relay.py,
+"""Failing tests for idea-city, server side (bin/agent_city.py,
 bin/agent-city-hook.sh, bin/agent-city.sh). The page side is in
 tests/test_agent_city_idea_page.py.
 
@@ -14,17 +14,6 @@ CONTRACT
       CityState(..., lang="en"): a governor's building has by "governor" (zh: 总督);
       the world notices (dropped "dir:" territories, unreadable world.json) are
       English (load_world(path, lang="en")) -- no CJK character in them.
-      agent_city_relay._default_label(lang) in a cloud session: "cloud" for en,
-      "云端" for zh (default zh).
-
-  C3 one governor per repo, for other members too
-    RemoteCity keeps one Reducer per (sender device, rid), not one per device: a
-    member's role-less session in a second repo is that repo's governor, not a
-    citizen. A remote gov id is "r:<dev>:gov:<terr>" (terr = the local territory of
-    that rid), so two repos of one device never share an id; the same holds in
-    remote_snapshot "govs" and in the "present": false sent when a device is
-    forgotten. Person ids stay "r:<dev>:<id>".
-
   C4 one set of file-kind rules: the server's
     The hook no longer classifies paths: its line has no "kind" key (16 keys,
     "file" still last). The server decides the building from "file" with
@@ -33,7 +22,7 @@ CONTRACT
       build -> house; None (vendor, lock, binary, not code) -> no building.
     A line with a "file" ignores any "kind" it carries. A line with no "file" but
     an old hook kind (test ui script doc other) still builds by the old map (old
-    events.jsonl lines). The relay wire line carries no "kind" (nobody reads it).
+    events.jsonl lines).
 
   C5 idle_prompt is not a question (changed by city-status, 2026-10-01:
      tests/test_agent_city_status.py)
@@ -45,21 +34,6 @@ CONTRACT
     "stuck". Reducer.snapshot() agents carry "waiting": bool. A waiting citizen never
     starts a chain relay and never becomes an ask.
 
-  C16 the chain for other members' people
-    The relay wire line keeps "ask" (the flag only, "q" or ""). RemoteCity replays
-    the chain rules of the local city (CityState._process_chain) per (device, rid),
-    ids wrapped "r:<dev>:<id>" and each event wrapped like any remote event:
-      a subagent SubagentStop with ask "q" whose session is a task-manager citizen
-        (a lead) -> {"type": "relay", "id": <worker>, "to": "lead", "lead": <lead>},
-        before its "done";
-      ... whose session is that repo's governor -> relay to "governor", lead "";
-      a lead's PostToolUse SendMessage with ask "q" -> relay lead -> "governor";
-      the governor's SendMessage -> relay_end (by "governor") for open lead and
-        helper relays;
-      a lead's SendMessage without ask, or its Agent/Task PreToolUse -> relay_end
-        (by "lead") for its waiting workers;
-      a person that leaves -> relay_end by "leave"; RELAY_TIMEOUT_SEC -> "timeout".
-    The relay/relay_end events are wrapped {"type": "remote", ..., "ev": {...}}.
 """
 
 import os
@@ -78,7 +52,6 @@ for p in (HERE, BIN):
         sys.path.insert(0, p)
 
 import agent_city as ac  # noqa: E402
-import agent_city_relay as acr  # noqa: E402
 import test_agent_city_quality as tq  # noqa: E402
 from test_agent_city_server import ServerCase  # noqa: E402
 
@@ -165,13 +138,6 @@ class TestNoticesFollowLang(unittest.TestCase):
         _world, notice = ac.load_world(path)
         self.assertIsNotNone(CJK.search(notice), notice)
 
-    def test_cloud_label(self):
-        with mock.patch.dict(os.environ, {"CLAUDE_CODE_REMOTE": "1"}):
-            self.assertEqual(acr._default_label("en"), "cloud")
-            self.assertEqual(acr._default_label("zh"), "云端")
-            self.assertEqual(acr._default_label(), "云端")
-
-
 # --------------------------------------------------------------------- C4
 
 class TestServerDecidesTheBuilding(tq.BuildCase):
@@ -206,16 +172,6 @@ class TestServerDecidesTheBuilding(tq.BuildCase):
         self.st.feed_line(self.line("tm", aid="w1", kind="ui", file=""), 1000.0)
         ev = [e for e in tq.drain(self.client) if e["type"] == "build"]
         self.assertEqual([e["btype"] for e in ev], ["shop"])
-
-
-class TestWireHasNoKind(unittest.TestCase):
-    def test_kind_dropped_ask_kept(self):
-        self.assertNotIn("kind", acr._KEPT_LINE_FIELDS)
-        self.assertIn("ask", acr._KEPT_LINE_FIELDS)
-        wire = acr.to_wire(dict(R("SubagentStop", aid="a1", at="worker", ask="q"), kind="test"),
-                           {"rid": "r", "br": "b", "who": "w", "dev": "d"})
-        self.assertNotIn("kind", wire)
-        self.assertEqual(wire["ask"], "q")
 
 
 class TestHookHasNoPathRules(unittest.TestCase):
@@ -291,136 +247,6 @@ class TestIdleInTheCity(tq.BuildCase):
         self.assertIn("waiting", types)
         for bad in ("stuck", "relay", "ask"):
             self.assertNotIn(bad, types)
-
-
-# ----------------------------------------------------------------- C3, C16
-
-class StubHub:
-    def __init__(self, repos):
-        self.repos = repos
-        self.items = []
-
-    def push(self, dev, line):
-        self.items.append({"dev": dev, "line": line})
-
-    def tick(self):
-        out, self.items = self.items, []
-        return out
-
-    def repo_for(self, rid):
-        return self.repos.get(rid)
-
-    def joined(self):
-        return True
-
-    def status(self):
-        return {"joined": True, "teams": [{"host": "relay.example", "state": "ok", "queued": 0,
-                                            "rids": list(self.repos)}]}
-
-    def identity(self):
-        return {"who": "me", "device": "mac"}
-
-
-class RemoteCase(unittest.TestCase):
-    RIDS = {"github.com/acme/shop": "/code/shop/.git", "github.com/acme/pay": "/code/pay/.git"}
-
-    def setUp(self):
-        self.hub = StubHub(self.RIDS)
-        self.rc = ac.RemoteCity(self.hub, remote_ttl_sec=600.0)
-        self.now = 100.0
-
-    def terr(self, rid):
-        return ac.territory_id(self.RIDS[rid])
-
-    def send(self, dev="dev-bo", rid="github.com/acme/shop", **line):
-        wire = {"ev": "", "sid": "", "aid": "", "at": "", "tool": "", "nt": "", "role": "", "desc": "",
-                "sub": "", "klen": "", "ask": "", "rid": rid, "br": "main", "who": "Bo", "dev": "bo-mac"}
-        wire.update(line)
-        self.hub.push(dev, wire)
-        self.now += 1
-        return [e for e in self.rc.poll(self.now) if e["type"] == "remote"]
-
-    def inner(self, events, etype):
-        return [e["ev"] for e in events if e["ev"].get("type") == etype]
-
-
-class TestRemoteGovernorPerRepo(RemoteCase):
-    def test_two_repos_two_governors(self):
-        a = self.inner(self.send(ev="UserPromptSubmit", sid="m1"), "gov")
-        b = self.send(rid="github.com/acme/pay", ev="UserPromptSubmit", sid="m2")
-        self.assertEqual(self.inner(b, "spawn"), [], "the second repo's main session is not a citizen")
-        b = self.inner(b, "gov")
-        shop, pay = self.terr("github.com/acme/shop"), self.terr("github.com/acme/pay")
-        self.assertEqual([(g["id"], g["terr"]) for g in a], [("r:dev-bo:gov:" + shop, shop)])
-        self.assertEqual([(g["id"], g["terr"]) for g in b], [("r:dev-bo:gov:" + pay, pay)])
-        snap = self.rc.snapshot_event()
-        self.assertEqual(sorted(g["id"] for g in snap["govs"]),
-                         sorted(["r:dev-bo:gov:" + shop, "r:dev-bo:gov:" + pay]))
-
-    def test_second_session_in_the_same_repo_is_a_citizen(self):
-        self.send(ev="UserPromptSubmit", sid="m1")
-        spawn = self.inner(self.send(ev="UserPromptSubmit", sid="m3"), "spawn")
-        self.assertEqual([s["id"] for s in spawn], ["r:dev-bo:s:m3"])
-
-    def test_forgotten_device_ends_both_governors(self):
-        self.send(ev="UserPromptSubmit", sid="m1")
-        self.send(rid="github.com/acme/pay", ev="UserPromptSubmit", sid="m2")
-        gone = [e for e in self.rc.poll(self.now + 601) if e["type"] == "remote"]
-        ended = sorted(g["id"] for g in self.inner(gone, "gov") if g.get("present") is False)
-        self.assertEqual(len(ended), 2)
-        self.assertEqual(self.rc.snapshot_event()["govs"], [])
-
-
-class TestRemoteChain(RemoteCase):
-    def setUp(self):
-        super().setUp()
-        self.send(ev="UserPromptSubmit", sid="gov")                       # the governor
-        self.send(ev="PostToolUse", sid="tm", role="task-manager", tool="Read")  # a lead
-        self.send(ev="SubagentStart", sid="tm", aid="w1", at="worker")    # its worker
-
-    def test_worker_question_goes_to_its_lead_before_done(self):
-        out = self.send(ev="SubagentStop", sid="tm", aid="w1", at="worker", ask="q")
-        types = [e["ev"]["type"] for e in out]
-        self.assertIn("relay", types)
-        self.assertLess(types.index("relay"), types.index("done"))
-        self.assertEqual(self.inner(out, "relay"), [{"type": "relay", "id": "r:dev-bo:w1", "to": "lead",
-                                                     "lead": "r:dev-bo:s:tm"}])
-
-    def test_lead_asks_the_governor_then_the_governor_answers(self):
-        out = self.send(ev="PostToolUse", sid="tm", role="task-manager", tool="SendMessage", ask="q")
-        self.assertEqual(self.inner(out, "relay"), [{"type": "relay", "id": "r:dev-bo:s:tm", "to": "governor",
-                                                     "lead": ""}])
-        out = self.send(ev="PostToolUse", sid="gov", tool="SendMessage")
-        self.assertEqual(self.inner(out, "relay_end"), [{"type": "relay_end", "id": "r:dev-bo:s:tm",
-                                                         "by": "governor"}])
-
-    def test_governor_helper_question(self):
-        self.send(ev="SubagentStart", sid="gov", aid="h1", at="Explore")
-        out = self.send(ev="SubagentStop", sid="gov", aid="h1", at="Explore", ask="q")
-        self.assertEqual(self.inner(out, "relay"), [{"type": "relay", "id": "r:dev-bo:h1", "to": "governor",
-                                                     "lead": ""}])
-
-    def test_lead_answers_its_worker(self):
-        self.send(ev="SubagentStop", sid="tm", aid="w1", at="worker", ask="q")
-        out = self.send(ev="PostToolUse", sid="tm", role="task-manager", tool="SendMessage")
-        self.assertEqual(self.inner(out, "relay_end"), [{"type": "relay_end", "id": "r:dev-bo:w1", "by": "lead"}])
-
-    def test_lead_leaving_closes_its_relay(self):
-        self.send(ev="PostToolUse", sid="tm", role="task-manager", tool="SendMessage", ask="q")
-        out = self.send(ev="SessionEnd", sid="tm", role="task-manager")
-        self.assertIn({"type": "relay_end", "id": "r:dev-bo:s:tm", "by": "leave"}, self.inner(out, "relay_end"))
-
-    def test_timeout(self):
-        self.send(ev="PostToolUse", sid="tm", role="task-manager", tool="SendMessage", ask="q")
-        self.now += ac.RELAY_TIMEOUT_SEC + 1
-        out = self.send(ev="PostToolUse", sid="tm", role="task-manager", tool="Read")
-        self.assertIn({"type": "relay_end", "id": "r:dev-bo:s:tm", "by": "timeout"}, self.inner(out, "relay_end"))
-
-    def test_events_are_wrapped(self):
-        out = self.send(ev="SubagentStop", sid="tm", aid="w1", at="worker", ask="q")
-        relay = [e for e in out if e["ev"]["type"] == "relay"][0]
-        self.assertEqual({k: relay[k] for k in ("type", "dev", "who", "rid")},
-                         {"type": "remote", "dev": "dev-bo", "who": "Bo", "rid": "github.com/acme/shop"})
 
 
 if __name__ == "__main__":

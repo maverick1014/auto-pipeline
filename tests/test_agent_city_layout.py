@@ -2,7 +2,7 @@
 2026-10-01 and 2026-10-02: "let them arrange their city"; approved mock
 mock/city-layout-mock.html): the owner places his repos' lands his own way
 and hides the repos he does not want to see. This file: the server side (Y3
-the saved arrangement and its one guarded endpoint, Y4 the cloud picture).
+the saved arrangement and its one guarded endpoint).
 The page: tests/test_agent_city_layout_page.py.
 
 No test here touches the owner's world.json: every CityState gets a file in
@@ -11,7 +11,7 @@ a temp folder, every server process its own AGENT_CITY_HOME.
 CONTRACT, server (bin/agent_city.py, Python standard library only)
 
   THE FILE (world.json, one per machine: every machine keeps its own
-  arrangement, nothing of it goes through the team relay)
+  arrangement)
     A territory's record may carry "hidden": true. Missing or false = shown.
     "v" stays 1; a file without the key loads as before. A slot is the cell
     [i, j] the file holds today, -4..4 each.
@@ -29,9 +29,6 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
     this view). The page picks a repo's colour by it, so a repo keeps its
     colour when others are hidden, shown or added (bounce 1 of the main
     manager's E2E, 2026-10-02: hiding blog turned dock pink and wood green).
-    cloud_world() keeps the machine's own numbers (the cut keeps the full
-    order), and cloud_clean() lets "n" through: the cloud page shows the
-    same colours as the local page.
 
   add_territory(world, plans, identity, name, lines=0)
     A known identity is never moved (hidden or not), as today. A new one
@@ -66,10 +63,10 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
     replace). No folder, name or other text is read from LANDS; nothing of
     it reaches a path or a shell.
 
-  WHAT A PAGE GETS (every /events client; the cloud tap is one of them)
+  WHAT A PAGE GETS (every /events client)
     After a 200 that changed something, every client gets a fresh
     {"type": "snapshot", ...}: the one add_client builds for a new page
-    (then the remote snapshot, when there is one). People follow their land
+    People follow their land
     through it: every place in it (the land, the buildings, an agent's
     "office") is the new one.
     A hidden territory is cut out of everything a page hears:
@@ -78,11 +75,9 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
         "gov" (the camera home) never names a hidden territory: then it is
         the first shown territory that has a governor, else the first shown
         territory, with that territory's governor state ("idle" without one);
-      the remote snapshot: none of its "people" and "govs";
       events: an event of a hidden territory is not sent: its "terr" is
         hidden, or its "id" is an agent of that territory, or it is an
-        "ask" / "ask_phase" / "ask_closed" of an ask of that territory, or a
-        "remote" event whose inner event has it as "terr";
+        "ask" / "ask_phase" / "ask_closed" of an ask of that territory;
       "world" events: the shown territories' layout, as the snapshot's.
     The local page learns what is hidden from one list:
       snapshot["hidden"] = [{"id", "name", "people", "wait"}, ...]   one per
@@ -101,15 +96,6 @@ CONTRACT, server (bin/agent_city.py, Python standard library only)
     header that is this server's own, the X-City-Token header; else 403. A
     body that is not one JSON object, or that carries any key besides
     "lands" -> 400. GET never changes anything.
-
-  THE CLOUD PICTURE (Y4)
-    "hidden" is in CLOUD_DROP, and cloud_clean() of a snapshot has no
-    "hidden" key: the cloud never learns that a hidden repo exists.
-    cloud_identities() leaves hidden territories out, so the uploader's
-    joined set (its key), its counts and its world are the shown repos
-    alone; cloud_world() never draws a hidden one.
-    After a change the uploader's next sync carries a new picture ("snap").
-    From then on no view names the hidden repo, its people or its land.
 """
 
 import copy
@@ -133,8 +119,6 @@ for p in (HERE, BIN):
 
 import agent_city as ac  # noqa: E402
 from cityhelp import Mains  # noqa: E402
-from relayhelp import join, make_repo  # noqa: E402
-from test_agent_city_cloud_upload import UploadCase  # noqa: E402
 from test_agent_city_server import wait_for  # noqa: E402
 
 PLANS = ac.load_plans()
@@ -588,7 +572,6 @@ class TestPagesFollow(PageCase):
         self.hide()
         self.feed(line("UserPromptSubmit", "b2", self.ident["blog"]))
         self.assertEqual(self.state.health()["agents"], before + 1, "hidden is a matter of the picture, the sessions run")
-        self.assertEqual(self.state.cloud_counts({self.blog})["people"], 3, "g1 (a governor is a session), b1 and b2")
 
     def test_the_hidden_line_knows_who_waits(self):
         self.hide()
@@ -644,35 +627,6 @@ class TestPagesFollow(PageCase):
         self.assertTrue(worlds, "a new repo is a world event, as today")
         for w in worlds:
             self.assertNotIn("blog", [t["name"] for t in w["territories"]])
-
-    def test_guests_of_a_hidden_repo_are_not_sent(self):
-        self.hide()
-        page = self.client()
-
-        def remote(terr, rid, ev):
-            self.state.push_relay_event({"type": "remote", "who": "Ann", "device": "ann-laptop", "dev": "dev-ann",
-                                         "rid": rid, "br": "main", "ev": dict(ev, terr=terr)})
-        remote(self.blog, "acme/blog", {"type": "spawn", "id": "r:dev-ann:s:1", "role": "worker", "label": "worker", "task": "t"})
-        remote(self.blog, "acme/blog", {"type": "gov", "id": "r:dev-ann:gov", "state": "busy", "present": True})
-        remote(self.shop, "acme/shop", {"type": "spawn", "id": "r:dev-ann:s:2", "role": "worker", "label": "worker", "task": "t"})
-        got = [m["ev"]["id"] for m in self.drain(page) if m.get("type") == "remote"]
-        self.assertEqual(got, ["r:dev-ann:s:2"], "another member's people in a repo hidden HERE are not drawn here")
-
-    def test_the_remote_picture_is_cut_too(self):
-        blog, shop = self.blog, self.shop
-
-        class Remote:
-            def snapshot_event(self):
-                return {"type": "remote_snapshot", "teams": [],
-                        "people": [{"id": "r:d:s:1", "terr": blog, "rid": "acme/blog"}, {"id": "r:d:s:2", "terr": shop, "rid": "acme/shop"}],
-                        "govs": [{"id": "r:d:gov:" + blog, "terr": blog, "state": "busy"}, {"id": "r:d:gov:" + shop, "terr": shop, "state": "busy"}]}
-        self.state.remote = Remote()
-        self.hide()
-        c = self.state.add_client()
-        snap = [m for m in self.drain(c) if m.get("type") == "remote_snapshot"][0]
-        self.assertEqual([p["id"] for p in snap["people"]], ["r:d:s:2"])
-        self.assertEqual([g["terr"] for g in snap["govs"]], [shop])
-
 
 # ---------------------------------------------------------------------------
 # POST /api/layout: the gate of chat and add agent
@@ -759,129 +713,6 @@ class TestHttp(Case):
         self.assertEqual(self.call(raw=b"not json")[0], 400)
         self.assertEqual(self.call(raw=json.dumps(lands).encode())[0], 400)
         self.assertEqual(self.rec("wood")["slot"], [0, 1])
-
-
-# ---------------------------------------------------------------------------
-# Y4: the cloud picture is this machine's arrangement, a hidden repo is not in it
-# ---------------------------------------------------------------------------
-
-class TestCloudCut(PageCase):
-    def test_the_cloud_never_hears_the_word(self):
-        self.assertIn("hidden", ac.CLOUD_DROP)
-        self.assertNotIn("hidden", ac.CLOUD_KEEP)
-        self.hide()
-        clean = ac.cloud_clean(self.first_picture())
-        self.assertNotIn("hidden", clean)
-        self.assertNotIn("blog", json.dumps(clean))
-        self.assertNotIn(self.blog, json.dumps(clean))
-
-    def test_a_hidden_repo_is_no_cloud_repo(self):
-        self.assertIn(self.ident["blog"], self.state.cloud_identities())
-        self.hide()
-        self.assertNotIn(self.ident["blog"], self.state.cloud_identities())
-        world = self.state.cloud_world([self.ident[n] for n, _, _ in LANDS])
-        self.assertEqual([t["name"] for t in world["territories"]], ["shop", "dock", "wood"])
-
-    def test_the_cloud_world_is_this_machines_arrangement(self):
-        self.ok({"id": self.tid("wood"), "slot": [1, 1]})
-        world = self.state.cloud_world([self.ident["shop"], self.ident["wood"]])
-        self.assertEqual({t["name"]: t["slot"] for t in world["territories"]}, {"shop": [0, 0], "wood": [1, 1]})
-
-    def test_the_cloud_shows_the_machines_colours(self):
-        numbers = lambda world: {t["name"]: t.get("n") for t in world["territories"]}
-        self.assertEqual(numbers(self.state.cloud_world([self.ident["shop"], self.ident["wood"]])), {"shop": 0, "wood": 3},
-                         "a repo that is not joined does not renumber the joined ones")
-        self.hide()
-        self.assertEqual(numbers(self.state.cloud_world([self.ident[n] for n, _, _ in LANDS])), {"shop": 0, "dock": 2, "wood": 3})
-        local = self.first_picture()
-        self.assertEqual(numbers(local["world"]), {"shop": 0, "dock": 2, "wood": 3})
-        self.assertEqual(numbers(ac.cloud_clean(local)["world"]), {"shop": 0, "dock": 2, "wood": 3}, "the number goes up with the picture")
-        self.ok({"id": self.blog, "hidden": False})
-        self.assertEqual(numbers(self.first_picture()["world"]), {"shop": 0, "blog": 1, "dock": 2, "wood": 3})
-
-    def test_a_tap_gets_a_fresh_picture_too(self):
-        tap = self.state.cloud_open()
-        self.drain(tap)
-        self.hide()
-        snaps = [m for m in self.drain(tap) if m.get("type") == "snapshot"]
-        self.assertEqual(len(snaps), 1)
-        self.assertEqual([a["id"] for a in snaps[0]["agents"]], ["s:s1"])
-        self.feed(line("PostToolUse", "b1", self.ident["blog"], tool="Edit"))
-        self.assertEqual(self.of_blog(self.drain(tap)), [])
-
-
-class TestCloudPicture(UploadCase):
-    """A real server process, a fake relay: two joined repos, one gets hidden on this machine."""
-
-    def setUp(self):
-        super().setUp()
-        self.blog = make_repo(self.base, name="blog", origin="git@github.com:Acme/Blog.git")
-        join(self.blog, self.fake.url)
-
-    def token(self):
-        with open(os.path.join(self.dir, "token")) as fh:
-            return fh.read().strip()
-
-    def layout(self, *lands):
-        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=15)
-        conn.request("POST", "/api/layout", body=json.dumps({"lands": list(lands)}).encode(),
-                     headers={"X-City-Token": self.token(), "Origin": "http://127.0.0.1:%d" % self.port,
-                              "Content-Type": "application/json"})
-        resp = conn.getresponse()
-        body = resp.read()
-        conn.close()
-        try:
-            return resp.status, json.loads(body or b"null")
-        except ValueError:
-            return resp.status, None
-
-    def names(self, snap):
-        return sorted(t["name"] for t in snap["world"]["territories"])
-
-    def test_a_repo_hidden_here_is_not_in_the_cloud_picture(self):
-        self.up(snap_sec="0.5")
-        self.add(sid="s1")
-        self.add(self.blog, sid="b1")
-        self.assertTrue(wait_for(lambda: self.health()["agents"] == 2))
-        self.assertTrue(wait_for(lambda: self.last_snap() and self.names(self.last_snap()) == ["blog", "shop"], timeout=10),
-                        "both joined repos go up, as today")
-        blog_id = ac.territory_id(os.path.join(self.blog, ".git"))
-        person = [a["id"] for a in self.last_snap()["agents"] if a["terr"] == blog_id]
-        self.assertEqual(len(person), 1)
-        code, body = self.layout({"id": blog_id, "hidden": True})
-        self.assertEqual(code, 200, body)
-        self.assertTrue(wait_for(lambda: self.names(self.last_snap()) == ["shop"], timeout=10),
-                        "the next picture must leave the hidden repo out")
-        mark = len(self.fake.view_log)
-        snap = self.last_snap()
-        self.assertEqual([a["terr"] for a in snap["agents"]], [t["id"] for t in snap["world"]["territories"]])
-        self.assertTrue(wait_for(lambda: (self.fake.view_of() or {}).get("counts", {}).get("people") == 1, timeout=10))
-        self.add(self.blog, sid="b1", tool="Read")
-        self.add(sid="s1", tool="Read")
-        self.assertTrue(wait_for(lambda: [m for _, v in list(self.fake.view_log)[mark:] for m in v.get("events") or []
-                                          if m.get("type") == "tool"], timeout=10), "shop's event never went up")
-        time.sleep(0.6)
-        later = json.dumps([v for _, v in list(self.fake.view_log)[mark:]])
-        self.assertNotIn("blog", later, "no land, no people, no name")
-        self.assertNotIn(blog_id, later)
-        self.assertNotIn(person[0], later)
-        self.assertNotIn("hidden", later)
-        local = self.local_snapshot()
-        self.assertEqual([h["name"] for h in local["hidden"]], ["blog"], "the local page knows what it hides")
-
-    def test_the_cloud_picture_is_this_machines_arrangement(self):
-        self.up(snap_sec="60")
-        self.add(sid="s1")
-        self.assertTrue(wait_for(lambda: self.last_snap() and self.names(self.last_snap()) == ["shop"], timeout=10))
-        shop_id = self.last_snap()["world"]["territories"][0]["id"]
-        self.assertEqual(self.last_snap()["world"]["territories"][0]["slot"], [0, 0])
-        code, body = self.layout({"id": shop_id, "slot": [2, 1]})
-        self.assertEqual(code, 200, body)
-        self.assertTrue(wait_for(lambda: self.last_snap()["world"]["territories"][0]["slot"] == [2, 1], timeout=10),
-                        "a new picture with the new place must go up with the next sync, not a minute later")
-        with open(os.path.join(self.base, "cityhome", "world.json"), encoding="utf-8") as fh:
-            saved = json.load(fh)
-        self.assertEqual([t["slot"] for t in saved["territories"].values()], [[2, 1]])
 
 
 if __name__ == "__main__":

@@ -216,15 +216,13 @@ __out = [onlyClosed, idOf(panelAsk({ t: 'c', id: 'w1' }))];
         self.assertEqual(out[0], "done", "a closed ask still in `asks` shows its result")
         self.assertEqual(out[1], "early", "an open ask wins over a closed one, the oldest open first")
 
-    def test_nobody_and_view_only_people_get_none(self):
+    def test_nobody_gets_none(self):
         out = self.ask(r"""
-put({ id: 'a1', agent: 'r1', phase: 'owner', at: 5 });
 put({ id: 'a2', agent: 'ghost', phase: 'owner', at: 5 });
-__out = [idOf(panelAsk(null)), idOf(panelAsk({ t: 'b', id: 'w1' })), idOf(panelAsk({ t: 'rg', id: 'w1' })),
-         idOf(panelAsk({ t: 'c', id: 'r1' })), idOf(panelAsk({ t: 'c', id: 'ghost' }))];
+__out = [idOf(panelAsk(null)), idOf(panelAsk({ t: 'b', id: 'w1' })), idOf(panelAsk({ t: 'c', id: 'ghost' }))];
 """)
-        self.assertEqual(out, [None, None, None, None, None],
-                         "no selection, a building, a remote governor, another member's person, nobody on the page")
+        self.assertEqual(out, [None, None, None],
+                         "no selection, a building, nobody on the page")
 
 
 class TestAskPickK2(unittest.TestCase):
@@ -232,8 +230,7 @@ class TestAskPickK2(unittest.TestCase):
     def test_who_owns_an_ask(self):
         out = run_vm(TestPanelAskK3.PRELUDE + page_fns("askPick"), r"""
 __out = [askPick({ agent: 'gov', terr: 'tB' }), askPick({ agent: 'gov', terr: '' }), askPick({ agent: 'gov' }),
-         askPick({ agent: 'w1', terr: 'tA' }), askPick({ agent: 's:tm1' }), askPick({ agent: 'ghost' }),
-         askPick({ agent: 'r1' })];
+         askPick({ agent: 'w1', terr: 'tA' }), askPick({ agent: 's:tm1' }), askPick({ agent: 'ghost' })];
 """)
         self.assertEqual(out[0], {"t": "gov", "terr": "tB"})
         self.assertEqual(out[1], {"t": "gov"})
@@ -241,7 +238,6 @@ __out = [askPick({ agent: 'gov', terr: 'tB' }), askPick({ agent: 'gov', terr: ''
         self.assertEqual(out[3], {"t": "c", "id": "w1"})
         self.assertEqual(out[4], {"t": "c", "id": "s:tm1"})
         self.assertIsNone(out[5], "nobody on the page for it")
-        self.assertIsNone(out[6], "another member's person is view only")
 
 
 class TestAskCardHtmlK6(unittest.TestCase):
@@ -437,14 +433,6 @@ __out = { card: cardAskId, kept: asks.has('p1') };
 """)
         self.assertEqual(r, {"card": None, "kept": True})
 
-    def test_the_cloud_page_never_shows_a_card(self):
-        r = run_vm(self.PRELUDE + page_fns("renderAskCard").replace("var CLOUD = false;", "var CLOUD = true;"), r"""
-current = { id: 'p1', agent: 'w1', phase: 'owner' }; asks.set('p1', current);
-renderAskCard();
-__out = { html: slot.innerHTML, card: cardAskId };
-""")
-        self.assertEqual(r, {"html": "", "card": None})
-
 
 class TestAskRootK10(unittest.TestCase):
 
@@ -538,11 +526,9 @@ class TestPanelWiringK7K9K12(unittest.TestCase):
         body = function_source("renderDetail") or ""
         self.assertEqual(body.count('<div id="askslot"></div>'), 2, "the local person's card and the governor's card")
         self.assertIn("renderAskCard(", body, "the card follows on every call")
-        remote = body[body.index("c.remote) {"):body.index("} else if (c) {")]
-        self.assertNotIn("askslot", remote, "another member's person is view only")
-        person = body.index("} else if (c) {")
+        person = body.index("if (c) {")
         gov = body.index("} else if (selected && selected.t === 'gov') {")
-        for card in (body[person:body.index("selected.t === 'rg'", person)], body[gov:body.index("hint.noAgents", gov)]):
+        for card in (body[person:gov], body[gov:body.index("hint.noAgents", gov)]):
             self.assertLess(card.index("p-head"), card.index("askslot"))
             self.assertLess(card.index("askslot"), card.index("hist.title"), "between the head and the history")
 

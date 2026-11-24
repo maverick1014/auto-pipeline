@@ -24,25 +24,11 @@ CONTRACT
    as a fresh one. sync needs no change: it adds every missing template key.
 
 3. bin/agent_city.py
-   agent_command(name, folder, city_dir=None, cloud=False) -> str.
-     cloud False (local city click, the plain line): as before, the mode is
-     permission_mode; missing, refused or no agent.conf -> no
-     --permission-mode at all.
-     cloud True (a start order from the cloud page): the mode is
-     cloud_permission_mode. Missing, refused, empty, or no agent.conf at all
-     -> "--permission-mode auto": always an explicit flag (no flag would let
-     the user's own defaultMode decide, which may be bypass), never
-     bypassPermissions unless cloud_permission_mode says exactly that.
-     permission_mode never decides a cloud line. Everything else of the line
-     (AGENT_CITY_DIR, --name, --model, --effort, FIRST_PROMPT, the order of
-     the words, shlex.quote) is the local line's.
-   CityState.add_agent(terr, now, force=False, cloud=False): cloud must be a
-     bool, else (400, {"error": "bad"}) and nothing opens. The opener's line
-     and the "plain" answer's command are agent_command(..., cloud=cloud).
-   CityState.cloud_order(...) (signature unchanged) calls
-     add_agent(terr, now, force, cloud=True), once.
-   POST /api/agent/add stays "terr" and "force" only: a body with "cloud" is
-     400 (only the cloud order path is a cloud start).
+   agent_command(name, folder, city_dir=None) -> str: the local city click's
+     line. The mode is permission_mode; missing, refused or no agent.conf -> no
+     --permission-mode at all. cloud_permission_mode never decides it (the
+     city is local only; the Agent City cloud page is gone).
+   POST /api/agent/add stays "terr" and "force" only.
    Local city click, dispatch (skills/dispatch), resume (bin/agent-resume.sh)
    and a Helper (PRINCIPLES.md W10) keep permission_mode.
 
@@ -86,8 +72,7 @@ CONTRACT
    "--permission-mode <mode>" (from permission_mode), never a literal
    "--permission-mode auto"; one line: new terminals use permission_mode,
    a session started from the cloud page uses cloud_permission_mode.
-   requirements/city.md: the cloud start lines ("From the cloud page too",
-   "A stolen login can open") say cloud_permission_mode. skills/dispatch keeps
+   skills/dispatch keeps
    "--permission-mode <mode>" from permission_mode.
    Quiz: Q34 (rule W10), answer B (see TestQuiz34). The quiz has 36 since
    personal-mode and decider-floor.
@@ -115,7 +100,6 @@ import agent_conf  # noqa: E402
 import agent_city as ac  # noqa: E402
 from scripthelp import ScriptCase, ScriptRepo  # noqa: E402
 from test_agent_city_add_agent import AddCase, PROMPT  # noqa: E402
-from test_agent_city_cloud_start_machine import OrderCase, oid  # noqa: E402
 
 # five-fixes S1: the modes `claude --help` lists; "default" is not one
 FIVE = ("acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")
@@ -266,96 +250,40 @@ class TestLaunchLine(LineCase):
     def test_the_signature(self):
         import inspect
         params = inspect.signature(ac.agent_command).parameters
-        self.assertEqual(list(params), ["name", "folder", "city_dir", "cloud"])
-        self.assertIs(params["cloud"].default, False)
+        self.assertEqual(list(params), ["name", "folder", "city_dir"])
 
     def test_local_uses_permission_mode(self):
         conf = conf_text(permission_mode="bypassPermissions", cloud_permission_mode="auto")
         self.assertEqual(self.words("loc", conf),
                          ["claude", "--name", "x Manager"] + MODEL + ["--permission-mode", "bypassPermissions", PROMPT])
 
-    def test_cloud_uses_cloud_permission_mode(self):
-        conf = conf_text(permission_mode="bypassPermissions", cloud_permission_mode="auto")
-        self.assertEqual(self.words("cl", conf, cloud=True),
-                         ["claude", "--name", "x Manager"] + MODEL + ["--permission-mode", "auto", PROMPT])
-
-    def test_cloud_may_be_set_to_any_mode(self):
-        for mode in FIVE:
-            with self.subTest(mode=mode):
-                conf = conf_text(permission_mode="plan", cloud_permission_mode=mode)
-                words = self.words("cm-" + mode, conf, cloud=True)
-                self.assertEqual(words[words.index("--permission-mode") + 1], mode)
-
-    def test_cloud_key_missing_is_auto_never_bypass(self):
-        conf = conf_text(permission_mode="bypassPermissions")
-        self.assertEqual(self.words("miss", conf, cloud=True),
-                         ["claude", "--name", "x Manager"] + MODEL + ["--permission-mode", "auto", PROMPT])
-
-    def test_cloud_key_refused_is_auto(self):
-        for i, bad in enumerate(("yolo", "Bypass", "bypass", "", "bypassPermissions!", "default")):
-            with self.subTest(value=bad):
-                conf = conf_text(permission_mode="bypassPermissions", cloud_permission_mode=bad)
-                words = self.words("bad%d" % i, conf, cloud=True)
-                self.assertEqual(words, ["claude", "--name", "x Manager"] + MODEL + ["--permission-mode", "auto", PROMPT])
-
     def test_no_agent_conf_at_all(self):
         folder = self.folder("bare", None)
-        self.assertEqual(shlex.split(ac.agent_command("x Manager", folder, cloud=True)),
-                         ["claude", "--name", "x Manager", "--permission-mode", "auto", PROMPT],
-                         "no conf on a cloud start: still an explicit auto")
-        self.assertEqual(shlex.split(ac.agent_command("x Manager", folder)), ["claude", "--name", "x Manager", PROMPT],
-                         "the local line is unchanged")
-
-    def test_an_unreadable_conf_is_auto_on_the_cloud(self):
-        folder = self.folder("dir", None)
-        os.makedirs(os.path.join(folder, "agent.conf"))      # a directory: load() raises
-        self.assertEqual(shlex.split(ac.agent_command("x Manager", folder, cloud=True)),
-                         ["claude", "--name", "x Manager", "--permission-mode", "auto", PROMPT])
+        self.assertEqual(shlex.split(ac.agent_command("x Manager", folder)), ["claude", "--name", "x Manager", PROMPT])
 
     def test_the_cloud_key_never_decides_a_local_line(self):
         conf = conf_text(cloud_permission_mode="bypassPermissions")
         self.assertEqual(self.words("only-cloud", conf), ["claude", "--name", "x Manager"] + MODEL + [PROMPT])
 
-    def test_the_city_dir_is_kept_on_the_cloud_line(self):
+    def test_the_city_dir_is_kept(self):
         own = os.path.join(self.base, "my city")
         folder = self.folder("cd", conf_text(permission_mode="bypassPermissions"))
-        words = shlex.split(ac.agent_command("x Manager", folder, own, cloud=True))
+        words = shlex.split(ac.agent_command("x Manager", folder, own))
         self.assertEqual(words, ["AGENT_CITY_DIR=" + own, "claude", "--name", "x Manager"] + MODEL
-                         + ["--permission-mode", "auto", PROMPT])
-
-    def test_the_cloud_key_cannot_break_the_line(self):
-        cases = {
-            "subshell": "auto$(touch pwned)",
-            "and": "bypassPermissions && touch pwned",
-            "semi": "auto; touch pwned",
-            "tick": "`touch pwned`",
-            "pipe": "bypassPermissions|touch pwned",
-            "nl": "bypassPermissions\\ntouch pwned",
-        }
-        for name, value in cases.items():
-            with self.subTest(case=name):
-                conf = conf_text(permission_mode="bypassPermissions") + "cloud_permission_mode=%s\n" % value
-                command = ac.agent_command("x Manager", self.folder("inj-" + name, conf), cloud=True)
-                self.assertEqual(shlex.split(command),
-                                 ["claude", "--name", "x Manager"] + MODEL + ["--permission-mode", "auto", PROMPT])
-                self.assertNotIn("pwned", command)
+                         + ["--permission-mode", "bypassPermissions", PROMPT])
 
     def test_both_keys_broken(self):
         conf = ("main_manager=opus-5.5:high; touch pwned\npermission_mode=bypassPermissions$(touch pwned)\n"
                 "cloud_permission_mode=auto`touch pwned`\n")
         folder = self.folder("both", conf)
-        self.assertEqual(shlex.split(ac.agent_command("x Manager", folder, cloud=True)),
-                         ["claude", "--name", "x Manager", "--permission-mode", "auto", PROMPT])
-        self.assertEqual(shlex.split(ac.agent_command("x Manager", folder)), ["claude", "--name", "x Manager", PROMPT])
+        command = ac.agent_command("x Manager", folder)
+        self.assertEqual(shlex.split(command), ["claude", "--name", "x Manager", PROMPT])
+        self.assertNotIn("pwned", command)
 
     def test_the_shipped_template(self):
         folder = self.folder("shipped", read("bin", "agent.conf.default"))
         local = shlex.split(ac.agent_command("x Manager", folder))
-        cloud = shlex.split(ac.agent_command("x Manager", folder, cloud=True))
         self.assertEqual(local[local.index("--permission-mode") + 1], "bypassPermissions")
-        self.assertEqual(cloud[cloud.index("--permission-mode") + 1], "auto")
-        self.assertEqual([w for w in local if w != "bypassPermissions"], [w for w in cloud if w != "auto"],
-                         "only the mode differs")
 
 
 class TestAddAgent(LineCase):
@@ -376,63 +304,6 @@ class TestAddAgent(LineCase):
         self.assertEqual(code, 200, body)
         self.assertEqual(self.mode(self.calls[0][2]), "bypassPermissions")
 
-    def test_a_cloud_start_is_cloud_permission_mode(self):
-        code, body = self.add(self.shop, cloud=True)
-        self.assertEqual(code, 200, body)
-        self.assertEqual(self.calls[0][2], ac.agent_command("shop Manager", os.path.join(self.base, "shop"), None,
-                                                            cloud=True))
-        self.assertEqual(self.mode(self.calls[0][2]), "acceptEdits")
-
-    def test_cloud_is_a_bool(self):
-        tid = ac.territory_id(self.shop)
-        for bad in ("yes", 1, 0, None, "true", [True]):
-            with self.subTest(cloud=bad):
-                self.assertEqual(self.state.add_agent(tid, self.now, cloud=bad), (400, {"error": "bad"}))
-        self.assertEqual(self.calls, [])
-
-    def test_plain_gives_the_cloud_line_too(self):
-        self.kind = "plain"
-        code, body = self.add(self.shop, cloud=True)
-        self.assertEqual((code, body.get("state")), (200, "plain"))
-        self.assertEqual(self.mode(body["command"]), "acceptEdits")
-        self.assertEqual(self.calls, [])
-
-
-class TestCloudOrder(OrderCase):
-    def setUp(self):
-        super().setUp()
-        self.folder = os.path.dirname(self.shop)
-        self.write("main_manager=opus-5.5:high\npermission_mode=bypassPermissions\n")
-
-    def write(self, text):
-        with open(os.path.join(self.folder, "agent.conf"), "w") as fh:
-            fh.write(text)
-
-    def mode(self):
-        words = shlex.split(self.calls[-1][2])
-        return words[words.index("--permission-mode") + 1]
-
-    def test_no_cloud_key_opens_in_auto(self):
-        self.assertEqual(self.order(oid(1))["state"], "opening")
-        self.assertEqual(self.mode(), "auto", "the cloud page never opens a bypass session by default")
-
-    def test_the_owner_may_set_bypass_for_the_cloud(self):
-        self.write("main_manager=opus-5.5:high\npermission_mode=auto\ncloud_permission_mode=bypassPermissions\n")
-        self.assertEqual(self.order(oid(1))["state"], "opening")
-        self.assertEqual(self.mode(), "bypassPermissions")
-
-    def test_a_refused_cloud_key_is_auto(self):
-        self.write("permission_mode=bypassPermissions\ncloud_permission_mode=bypassPermissions;id\n")
-        self.order(oid(1))
-        self.assertEqual(self.mode(), "auto")
-        self.assertNotIn(";id", self.calls[-1][2])
-
-    def test_the_local_button_on_the_same_repo_keeps_permission_mode(self):
-        self.order(oid(1))
-        self.state.add_agent(self.terr, self.now + ac.ADD_WAIT_SEC + 5)
-        self.assertEqual(len(self.calls), 2, self.calls)
-        modes = [shlex.split(c[2])[shlex.split(c[2]).index("--permission-mode") + 1] for c in self.calls]
-        self.assertEqual(modes, ["auto", "bypassPermissions"])
 
 
 class TestHttpNeverACloudStart(unittest.TestCase):
@@ -729,15 +600,6 @@ class TestRuleText(unittest.TestCase):
         self.assertIn("`<mode>` from `permission_mode`", text)
         self.assertIn("--permission-mode <mode>", text)
         self.assertNotIn("--permission-mode auto", text)
-
-    def test_city_requirements_cloud_start_lines(self):
-        text = read("requirements", "city.md")
-        for start in ("- From the cloud page too", "- A stolen login can open"):
-            with self.subTest(line=start):
-                line = next(l for l in text.splitlines() if l.startswith(start))
-                self.assertIn("cloud_permission_mode", line)
-        stolen = next(l for l in text.splitlines() if l.startswith("- A stolen login can open"))
-        self.assertNotIn("own `permission_mode`", stolen)
 
     def test_the_local_click_line_keeps_permission_mode(self):
         text = read("requirements", "city.md")

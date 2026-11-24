@@ -640,7 +640,7 @@ class TestHitArea(unittest.TestCase):
 
     def test_after_boxes(self):
         c = css()
-        for sel in (".bub::after", ".tagl::after", ".qm::after", ".rdev::after"):
+        for sel in (".bub::after", ".tagl::after", ".qm::after"):
             body = rule(sel, c).replace(" ", "")
             self.assertIn("content:", body, sel)
             self.assertIn("position:absolute", body, sel)

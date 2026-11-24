@@ -63,7 +63,6 @@ SOURCED_ONLY = [
 BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py", "agent.conf.default",
                                             "agent_city.py", "agent-city.html",
                                             "agent-city-plans.json",
-                                            "agent_city_relay.py", "agent-city-relay.js",
                                             "agent_estimate.py",
                                             "agent_cleanup.py",
                                             "agent_housekeep.py",
@@ -201,11 +200,9 @@ class TestMarketplaceManifest(unittest.TestCase):
 class TestHooksJson(unittest.TestCase):
     def command(self):
         data = load_json("hooks", "hooks.json")
-        # the naming hook (tests/test_agent_name.py) is the second entry, the city's
-        # auto-start (tests/test_agent_city_cloud_autostart.py, cloud-city-1) the third
+        # the naming hook (tests/test_agent_name.py) is the second entry
         entries = [e for e in data["hooks"]["SessionStart"]
-                   if "agent-name.sh" not in json.dumps(e)
-                   and "agent-city.sh autostart" not in json.dumps(e)]
+                   if "agent-name.sh" not in json.dumps(e)]
         self.assertEqual(len(entries), 1, entries)
         hooks = entries[0]["hooks"]
         self.assertEqual(len(hooks), 1, hooks)
@@ -320,15 +317,13 @@ class TestCityHooks(unittest.TestCase):
             with self.subTest(event=event):
                 self.assertNotIn("matcher", hooks[event][0])
 
-    def test_session_start_is_still_only_agent_start(self):
-        # The city's event hook (agent-city-hook.sh) is never a SessionStart hook. Since
-        # cloud-city-1 (owner, 2026-10-01) one city entry is there: the auto-start, behind
-        # two file tests (tests/test_agent_city_cloud_autostart.py). Nothing else.
+    def test_session_start_has_no_city_hook(self):
+        # The city is local and starts by /auto-pipeline:city; no SessionStart hook
+        # touches it (no autostart probe, no event hook).
         entries = self.hooks()["SessionStart"]
-        self.assertEqual(len(entries), 2)
-        self.assertNotIn("agent-city", json.dumps(entries[0]))
-        self.assertNotIn("agent-city-hook.sh", json.dumps(entries))
-        self.assertIn("agent-city.sh autostart", json.dumps(entries[1]))
+        self.assertEqual(len(entries), 1, "agent-start only (hooks() leaves the naming hook out)")
+        self.assertIn("agent-start.sh", json.dumps(entries[0]))
+        self.assertNotIn("agent-city", json.dumps(entries))
 
     def test_nothing_else_is_hooked(self):
         self.assertEqual(sorted(self.hooks()), sorted(["SessionStart"] + self.EVENTS))
