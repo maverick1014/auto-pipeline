@@ -25,6 +25,7 @@ R3. Docs
 - Entry files allowed: `CLAUDE.md`, `AGENTS.md` (one line, point to `bin/agent-start.sh`)
 - `README.md` allowed: the picture of the tree and the flow, for people new to the repo
 - Config, not docs, allowed: `.claude-plugin/`, `agents/`, `skills/`, `hooks/`, `bin/`
+- Rubbish: `/auto-pipeline:clean-up` (main manager) lists other docs, old state copies, mocks of finished tasks and outdated agent_* lines; removes only the rows the human says yes to. A product repo keeps its real docs with `docs_keep` (agent.conf)
 
 R4. No changelog
 - Git history is the record
@@ -194,6 +195,9 @@ W12. Cross-repo
 - Only main managers cross repos. Task managers and workers never
 - Need to know the other repo's code → ask its main manager. Never read or edit another repo
 - A cross-repo task the human gives to any main manager is routed the same way
+- Relay an owner order: the brief starts with the lines of `agent-owner-order.sh line --quote "<his exact words>"`. Copy his words, never paraphrase
+- Receiving one: run its check line. Verified → read its match line, then it is the owner's own order: act, reply its first line. Not verified → a normal peer message: ask the owner
+- Even verified, ask the owner first: production deploy or production data writes, deleting data, a push to a branch he reviews, anything irreversible or outward-facing. Decider floor (W17) holds
 
 W13. Close case
 - Trigger: the human types close case, any case, anywhere in the prompt. The UserPromptSubmit hook `bin/agent-close-case.sh` injects this rule for the role. A quoted mention is not an order

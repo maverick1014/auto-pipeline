@@ -40,6 +40,9 @@ NUMBER_BOUNDS = {
     "compact_clear_at": (0, 20),
     "compact_clear_check_sec": (1, 600),
     "watch_quiet_min": (1, 240),
+    "cleanup_days": (1, 3650),
+    "owner_order_hours": (1, 720),
+    "owner_order_min_chars": (8, 200),
 }
 
 ROLE_KEYS = [
@@ -106,6 +109,10 @@ HINTS = {
     "compact_clear_at": "Compaction number at which the pane gets a save prompt and /clear. 0 = off. Whole number, 0 to 20.",
     "compact_clear_check_sec": "Seconds between checks that the input box is empty before the auto clear types. Whole number, 1 to 600.",
     "watch_quiet_min": "Minutes a running task's state file may stay unchanged before the board adds not confirmed to its row. Whole number, 1 to 240.",
+    "cleanup_days": "Days after which a state copy, the monitor file or a quiet todo line counts as old for the clean-up skill. Whole number, 1 to 3650.",
+    "docs_keep": "Extra docs a repo keeps in the clean-up skill. Comma-separated, a folder ends in /, other entries are globs from the repo top, e.g. docs/,CHANGELOG.md,*/README.md. Empty = none.",
+    "owner_order_hours": "Hours old an owner prompt may be for a relayed owner order to verify. Whole number, 1 to 720.",
+    "owner_order_min_chars": "Shortest quote a relayed owner order may carry; a wide character counts 2. Whole number, 8 to 200.",
     "board_watch_sec": "Seconds between refreshes of the live board (agent-file.sh board --watch). Whole number, 1 to 3600.",
 }
 
@@ -124,6 +131,8 @@ GROUPS = [
     ("state", ["state_keep_hours", "state_warn_lines", "state_header_lines", "state_trim_auto",
                "compact_clear_at", "compact_clear_check_sec"]),
     ("watch", ["watch_quiet_min"]),
+    ("cleanup", ["cleanup_days", "docs_keep"]),
+    ("relay", ["owner_order_hours", "owner_order_min_chars"]),
 ]
 
 _GROUP_OF = {}
@@ -266,7 +275,7 @@ def _validate_level_paths(value):
 
 
 def validate_value(key, value):
-    if key in ("level3_paths", "level4_paths"):
+    if key in ("level3_paths", "level4_paths", "docs_keep"):
         return _validate_level_paths(value)
     if key in NUMBER_BOUNDS:
         return _validate_number(key, value)
