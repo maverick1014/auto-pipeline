@@ -40,6 +40,7 @@ if HERE not in sys.path:
 
 import test_agent_board as tb  # noqa: E402  (the module only)
 import test_agent_statusline as ts  # noqa: E402  (the module only)
+import test_board_waiting as bw  # noqa: E402  (the module only)
 from scripthelp import ROOT, ScriptCase  # noqa: E402
 from watchhelp import dead_pid, now_text  # noqa: E402
 
@@ -261,6 +262,102 @@ class TestStatusLineEnglish(StatusLineCase):
         self.assertEqual(self.first(), EN_WARN + "a pane has no task line")
 
 
+# ---------------------------------------------------------------- K: status line rows (owner SCOPE ADD 2026-11-24)
+
+
+def q(name, after=None, since="2026-11-20 11:00"):
+    return "%s | big | w | est 30m | opened %s | by main | waiting queue since %s%s" % (
+        name, since, since, " | after " + after if after else "")
+
+
+def h(name, since="2026-11-20 12:01", note="later"):
+    return "%s | big | w | est 30m | opened 2026-11-20 10:00 | by main | waiting hold since %s: %s" % (name, since, note)
+
+
+def ns(name, opened="2026-11-20 11:35"):
+    return "%s | big | w | est 30m | opened %s | by main" % (name, opened)
+
+
+def run(name, minute):
+    return ("%s | big | w | est 120m | opened 2026-11-20 12:%02d | by main | started 2026-11-20 12:%02d | "
+            "stage tests since 2026-11-20 12:%02d" % (name, minute, minute, minute))
+
+
+name_col = bw.name_col
+
+
+class TestStatusLineRows(bw.Case):
+    """bw.Case: NOW 2026-11-20 12:31, runtime plain (no watch warning) unless a test says orca."""
+
+    def test_k1_k2_a_queued_task_gets_its_own_row(self):
+        self.put(q("plugin-slim", "one-watcher"))
+        self.assertEqual(self.line(), name_col("plugin-slim") + "排队 · 在 one-watcher 之后")
+
+    def test_k2_a_queue_with_no_task(self):
+        self.put(q("plugin-slim"))
+        self.assertEqual(self.line(), name_col("plugin-slim") + "排队")
+
+    def test_k2_a_hold_drops_the_what(self):
+        self.put(h("held", note="after the release"))
+        self.assertEqual(self.line(), name_col("held") + "暂缓 · 已等 30分钟")
+
+    def test_k2_a_hold_with_no_real_time(self):
+        self.put(h("held", since="2026-13-40 99:99"))
+        self.assertEqual(self.line(), name_col("held") + "暂缓")
+
+    def test_k2_not_started(self):
+        self.put(ns("fresh"))
+        self.assertEqual(self.line(), name_col("fresh") + "未开始")
+
+    def test_k3_board_order(self):
+        self.put(h("held"), ns("fresh"), q("queued", "x"), run("busy", 10))
+        self.assertEqual([l.split()[0] for l in self.line().split("\n")], ["busy", "queued", "fresh", "held"])
+
+    def test_k4_rows_that_do_not_fit_fold(self):
+        self.put(run("r1", 1), run("r2", 2), *[q("q%d" % i, "r1", since="2026-11-20 11:%02d" % i) for i in range(1, 6)])
+        lines = self.line().split("\n")
+        self.assertEqual(len(lines), 5, lines)
+        self.assertEqual([l.split()[0] for l in lines[:4]], ["r1", "r2", "q1", "q2"])
+        self.assertEqual(lines[4], "+3 排队/暂缓")
+
+    def test_k4_five_rows_fit_no_fold_line(self):
+        self.put(run("r1", 1), q("q1", "r1"), q("q2", "r1", since="2026-11-20 11:01"), ns("n1"), h("h1"))
+        lines = self.line().split("\n")
+        self.assertEqual([l.split()[0] for l in lines], ["r1", "q1", "q2", "n1", "h1"])
+
+    def test_k4_the_watch_warning_line_counts(self):
+        self.repo.set_conf("runtime", "orca")
+        self.repo.set_worktree_lines([("/nowhere/r1", "r1", "working")])
+        self.put(run("r1", 1), q("q1", "r1"), q("q2", "r1", since="2026-11-20 11:01"), ns("n1"), h("h1"))
+        lines = self.line().split("\n")
+        self.assertEqual(lines[0], "看板可能不准：看守未运行")
+        self.assertEqual([l.split()[0] for l in lines[1:4]], ["r1", "q1", "q2"])
+        self.assertEqual(lines[4], "+2 排队/暂缓")
+        self.put(run("r1", 1), q("q1", "r1"), ns("n1"), h("h1"))
+        lines = self.line().split("\n")
+        self.assertEqual(len(lines), 5, lines)
+        self.assertEqual([l.split()[0] for l in lines[1:]], ["r1", "q1", "n1", "h1"])
+
+    def test_k5_a_running_row_with_no_stage_is_not_counted(self):
+        self.put("r | big | w | est 30m | opened 2026-11-20 10:00 | by main | started 2026-11-20 10:00", q("q1", "r"))
+        self.assertEqual(self.line(), name_col("q1") + "排队 · 在 r 之后")
+
+    def test_k6_a_worktree_shows_its_own_queued_row(self):
+        alpha = self.task_worktree("alpha")
+        self.put(q("alpha", "state-trim"), q("other", "alpha"))
+        self.assertEqual(self.line(alpha), name_col("alpha") + "排队 · 在 state-trim 之后")
+
+
+class TestStatusLineRowsEnglish(bw.Case):
+    lang = "en"
+
+    def test_k2_english_words(self):
+        self.put(q("plugin-slim", "one-watcher"), h("held"), ns("fresh"))
+        self.assertEqual(self.line(), "\n".join([name_col("plugin-slim") + "queue · after one-watcher",
+                                                 name_col("fresh") + "not started",
+                                                 name_col("held") + "hold · waited 30m"]))
+
+
 # ---------------------------------------------------------------- F1, F2: start and resume
 
 
@@ -422,6 +519,12 @@ class TestRuleText(unittest.TestCase):
         self.line_with(lines, "agent-file.sh tell")
         self.line_with(lines, "resume", "agent-watch.sh --all")
         self.line_with(lines, "not confirmed")
+
+    def test_k_w14_status_line_rows(self):
+        w14 = section(read("PRINCIPLES.md"), "W14. Show todo", "W15.").splitlines()
+        line = self.line_with(w14, "statusline", "5 lines")
+        for word in ("own row", "+N queued/held", "warning"):
+            self.assertIn(word, line)
 
     def test_g_dispatch_starts_or_restarts_one_all_watch(self):
         text = read("skills", "dispatch", "SKILL.md")

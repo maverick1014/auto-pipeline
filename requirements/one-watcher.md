@@ -105,6 +105,21 @@ LAUNCH kinds are spelled as agent_guard.py writes them: `tm-pane`, `shell-pane` 
 
 PRINCIPLES W15: one line each — one `agent-watch.sh --all` for every task manager (pane + state file, local and remote, restart after each wake); heartbeats and ACKs to the state file only, the six wakes; `agent-file.sh tell` for long text; start/resume print the watch command; board `not confirmed`. Dispatch skill: start or restart `--all` instead of one watch per task; tell instead of pane sends; brief template E4. Merge skill: one line (the merged task leaves the watch by itself). README one line. agent.conf.default + agent_conf.py: `watch_quiet_min=15` (1-240).
 
+## K. Status line rows — owner SCOPE ADD 2026-11-24 08:47 (no new gate: the owner asked for it)
+
+Changes board-waiting rule 9.4 (fold) and the W14 status line text. Rows 9.1-9.3, 9.5-9.8 stay.
+
+| # | Rule | Example |
+|---|---|---|
+| K1 | Queued, held (no who) and not started tasks get their own status line row while there is room: name padded to 24 columns, 2 spaces, a short status | |
+| K2 | Short status: queue = the board's queue text (`排队 · 在 <task> 之后` / `queue · after <task>`, no task: `排队` / `queue`); hold = `暂缓 · 已等 <n>` / `hold · waited <n>` (the what dropped, as 9.3; no time known: `暂缓` / `hold`); not started = `未开始` / `not started` | `plugin-slim               排队 · 在 one-watcher 之后` |
+| K3 | Same order as the board: waiting on the owner, running, waiting on others, queued and not started, held; oldest first in a group | |
+| K4 | At most 5 lines in all; the F6 warning line and the fold line count. More rows than room → the first rows by order, then one last line `+N 排队/暂缓` / `+N queued/held`, N = every row left out (run rows too, as 9.5). Everything fits → no fold line | warning + 6 rows → warning, 3 rows, `+3 排队/暂缓` |
+| K5 | Not on the line, not counted (as 9.7): a running row with no stage, Helpers, workers, OWNER TODO, parked | |
+| K6 | `--self` (a worktree): its own row by the same rules | a queued own task → `alpha                     排队 · 在 state-trim 之后` |
+
+Estimate: +15m (owner).
+
 ## H. Not in this task
 
 No plugin version bump (`.claude-plugin/` is a level 4 path): the main manager bumps at release. The questions tool still reads only unsigned `QUESTION:` lines (an idea). Remote tell has no lock on the other machine: a TM rewrite in the same millisecond could drop the block; the read-back and the pointer echo catch most, the TM sees the pointer either way.
