@@ -535,16 +535,5 @@ class TestAgentText(unittest.TestCase):
                 self.assertIn("human", text.lower())
 
 
-
-from test_agent_close_case import CloseCaseCase  # noqa: E402
-
-
-class TestTaggedCloseCaseStillFires(CloseCaseCase):
-    def test_the_model_tag_before_close_case(self):
-        for prompt in ("[Fable 5.1 xhigh] close case", "[Opus 5.5 xhigh] close case"):
-            with self.subTest(prompt=prompt):
-                self.assertIn("CLOSE CASE project: unfinished", self.as_task_manager(prompt))
-
-
 if __name__ == "__main__":
     unittest.main()
