@@ -1,6 +1,6 @@
 # comment-shape — requirements (level 3 rules gate)
 
-Status: rules ready 2026-11-24, waiting for owner yes. Base e90db3b.
+Status: rules yes 2026-11-24 (owner: all 6 families of table B, D1-D7 defaults, est 100m). Base e90db3b.
 Source: owner 4A 2026-11-20 (idea 145): a diff that only changes comments lands at L2 today; make "comment-only change" a fifth L0 shape next to text values, one colour value, style switch, move in the same container.
 Files: bin/agent_level.py (the check), PRINCIPLES.md R8 level 0 line, tests/test_comment_shape.py (new).
 

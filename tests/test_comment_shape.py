@@ -1,0 +1,643 @@
+"""Failing tests for comment-shape: a comment-only change is a fifth L0 shape (R8).
+
+Written by the task manager before any code. The rules: requirements/comment-shape.md
+(owner rules yes 2026-11-24: all 6 families of table B, decisions D1-D7). "rN" in a test
+name is row N of its table A, C1-C5 its table C (directives).
+
+CONTRACT (bin/agent_level.py; PRINCIPLES.md R8 level 0 line)
+
+  Applies to a modified file (not new, deleted, binary or a symlink) whose extension is in
+  table B, after the path rules (built-in L4, level4_paths, level3_paths) and the style,
+  asset and text file rules. Lex old (merge base) and new (working tree):
+      same code view, plain comments differ    -> "<path>: L0 comment only"
+      same code view, only blank lines or trailing white space differ -> "<path>: L0 whitespace only"
+      else, or the lexer is unsure              -> today's level (the rules before this task)
+  Code view: plain comments removed (an inline block comment becomes one space), trailing
+  white space dropped, blank lines dropped; a line that starts inside a multi-line string,
+  heredoc or block scalar stays as it is; directive comments (C1-C5) stay in it.
+  Guards, today's level: a comment or blank line right after a code line ending in "\"
+  (old or new); a comment ending in "\"; a .go file with import "C".
+  PRINCIPLES.md R8 "- 0 wording:" line names "comment-only change", <= 200 chars.
+
+Worker 1 (core, py sh yaml conf, R8):
+    TestHashShape TestHashStrings TestHashDirectives TestHashGuards TestScope TestTheRuleLine
+Worker 2 (slash, markup):
+    TestSlashShape TestSlashStrings TestSlashDirectives TestMarkup
+Both keep tests/test_risk_levels.py green.
+"""
+
+import os
+import subprocess
+import sys
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from scripthelp import ScriptRepo  # noqa: E402
+import test_risk_levels as trl  # noqa: E402
+
+CO = "comment only"
+WS = "whitespace only"
+CODE = (2, "code change")
+
+
+class ShapeCase(trl.LevelCase):
+
+    def fresh(self):
+        """A new project for the next subTest."""
+        self.repo.cleanup()
+        self.repo = ScriptRepo()
+        self.addCleanup(self.repo.cleanup)
+
+    def got(self, path, before, after, conf=None, others=None):
+        """(level, reason) of path after base -> change."""
+        files = dict(others or {})
+        files[path] = before
+        self.base(files, conf)
+        self.put({path: after})
+        r = self.ok()
+        lines = self.files(r)
+        self.assertIn(path, lines, r.stdout)
+        return lines[path]
+
+    def each(self, want, cases):
+        """want: (level, reason); cases: (path, before, after) each in a fresh project."""
+        for i, (path, before, after) in enumerate(cases):
+            with self.subTest(path=path, before=before[:60], after=after[:60]):
+                if i:
+                    self.fresh()
+                self.assertEqual(self.got(path, before, after), want)
+
+    def swap(self, want, path, plain, directives, head="", tail=""):
+        """Each directive in place of the plain comment: head + plain + tail -> head + d + tail."""
+        self.each(want, [(path, head + plain + "\n" + tail, head + d + "\n" + tail) for d in directives])
+
+
+# ================================================================ worker 1: # families
+
+
+class TestHashShape(ShapeCase):
+
+    def test_r1_a_whole_line_comment_in_each_hash_family(self):
+        self.each((0, CO), [
+            ("bin/run.sh", "#!/bin/bash\n# retry twice\nrun\n", "#!/bin/bash\n# retry three times\nrun\n"),
+            ("bin/run.bash", "# retry twice\nrun\n", "# retry three times\nrun\n"),
+            ("bin/run.zsh", "# retry twice\nrun\n", "# retry three times\nrun\n"),
+            ("app/run.py", "# retry twice\nrun()\n", "# retry three times\nrun()\n"),
+            ("ci/build.yml", "steps:\n  # build it\n  - make\n", "steps:\n  # build it twice\n  - make\n"),
+            ("ci/build.yaml", "steps:\n  # build it\n  - make\n", "steps:\n  # build it twice\n  - make\n"),
+            ("etc/app.conf", "# port of the app\nport=80\n", "# the port of the app\nport=80\n"),
+        ])
+
+    def test_r2_a_comment_line_added_or_a_block_removed(self):
+        self.each((0, CO), [
+            ("app/run.py", "def f():\n    run()\n", "def f():\n    # keep the order: R5\n    run()\n"),
+            ("app/run.py", "# one\n# two\n# three\nrun()\n", "run()\n"),
+            ("bin/run.sh", "run\n", "run\n# done\n"),
+            ("ci/a.yml", "a: 1\nb: 2\n", "a: 1\n# the b part\nb: 2\n"),
+        ])
+
+    def test_r3_a_trailing_comment_with_the_same_code(self):
+        self.each((0, CO), [
+            ("app/run.py", "n = 3  # tries\n", "n = 3  # max tries\n"),
+            ("app/run.py", "n = 3  # tries\n", "n = 3 # max tries\n"),
+            ("app/run.py", "n = 3  # don't\n", "n = 3  # do not\n"),
+            ("bin/run.sh", "run --fast  # quick\n", "run --fast  # quickest\n"),
+            ("bin/run.sh", "run  # don't\n", "run  # do not\n"),
+            ("ci/a.yml", "port: 80 # http\n", "port: 80 # plain http\n"),
+            ("app/run.py", "f(\n    a,  # first\n    b,\n)\n", "f(\n    a,  # the first\n    b,\n)\n"),
+        ])
+
+    def test_r4_blank_lines_only(self):
+        self.each((0, WS), [
+            ("app/run.py", "def a():\n    pass\ndef b():\n    pass\n",
+             "def a():\n    pass\n\n\ndef b():\n    pass\n"),
+            ("bin/run.sh", "a\nb\n", "a\n\nb\n"),
+            ("ci/a.yml", "a: 1\nb: 2\n", "a: 1\n\nb: 2\n"),
+            ("etc/app.conf", "a=1\nb=2\n", "a=1\n\nb=2\n"),
+        ])
+
+    def test_a_comment_and_a_blank_line_say_comment_only(self):
+        self.each((0, CO), [("app/run.py", "# a\nrun()\n", "# b\n\nrun()\n")])
+
+    def test_r9_comment_and_code_on_one_line(self):
+        self.each(CODE, [
+            ("app/run.py", "n = 3  # tries\n", "n = 4  # max tries\n"),
+            ("bin/run.sh", "run 1  # a\n", "run 2  # b\n"),
+        ])
+
+    def test_r10_code_commented_out_or_back(self):
+        self.each(CODE, [
+            ("app/run.py", "run()\nstop()\n", "# run()\nstop()\n"),
+            ("app/run.py", "# run()\nstop()\n", "run()\nstop()\n"),
+            ("bin/run.sh", "run\nstop\n", "# run\nstop\n"),
+        ])
+
+    def test_r11_no_mixing_with_another_shape_in_v1(self):
+        self.each(CODE, [("app/views.py", '# say hi\nflash("Hi")\n', '# greet\nflash("Hello")\n')])
+
+    def test_r25_code_spacing_changes_too(self):
+        self.each(CODE, [("app/run.py", "x=1  # a\n", "x = 1  # b\n")])
+
+    def test_r26_trailing_white_space_only(self):
+        self.each((0, WS), [("app/run.py", "run()  \n", "run()\n")])
+
+    def test_conf_a_hash_after_code_is_code(self):
+        self.each(CODE, [("etc/app.conf", "port=80 # http\n", "port=80 # https\n")])
+
+    def test_conf_an_indented_comment_line(self):
+        self.each((0, CO), [("etc/app.conf", "[a]\n  # note\n  x=1\n", "[a]\n  # note 2\n  x=1\n")])
+
+    def test_sh_a_hash_inside_a_word_is_code(self):
+        self.each(CODE, [
+            ("bin/run.sh", "echo ${#a} b\n", "echo ${#a} c\n"),
+            ("bin/run.sh", "echo a#b\n", "echo a#c\n"),
+            ("bin/run.sh", "test $# -gt 1\n", "test $# -gt 2\n"),
+        ])
+
+    def test_yaml_a_hash_without_a_space_before_is_code(self):
+        self.each(CODE, [("ci/a.yml", "url: http://x/#frag\n", "url: http://x/#top\n")])
+
+
+class TestHashStrings(ShapeCase):
+
+    def test_r12_py_a_hash_line_inside_a_multi_line_string(self):
+        self.each(CODE, [
+            ("app/help.py", 'HELP = """\nUsage:\n# step 1\n"""\n', 'HELP = """\nUsage:\n# step 2\n"""\n'),
+            ("app/help.py", "HELP = '''\n# step 1\n'''\n", "HELP = '''\n# step 2\n'''\n"),
+        ])
+
+    def test_py_a_blank_line_inside_a_multi_line_string(self):
+        self.each(CODE, [("app/help.py", 'X = """a\n\nb"""\n', 'X = """a\nb"""\n')])
+
+    def test_r13_a_hash_inside_a_one_line_string(self):
+        self.each((0, "text change"), [
+            ("app/a.py", 's = "# a"\n', 's = "# b"\n'),
+            ("bin/a.sh", 'echo "# a"\n', 'echo "# b"\n'),
+        ])
+
+    def test_r13_a_hash_inside_an_f_string(self):
+        self.each(CODE, [("app/a.py", 't = f"{n} # a"\n', 't = f"{n} # b"\n')])
+
+    def test_r14_docstrings_are_strings(self):
+        self.each((0, "text change"), [("app/a.py", 'def f():\n    """Old."""\n', 'def f():\n    """New."""\n')])
+        self.fresh()
+        self.each(CODE, [("app/a.py", 'def f():\n    """Old.\n\n    More.\n    """\n',
+                          'def f():\n    """Old.\n\n    Much more.\n    """\n')])
+
+    def test_r12_sh_heredoc_bodies_are_strings(self):
+        self.each(CODE, [
+            ("bin/a.sh", "cat <<EOF\n# step 1\nEOF\n", "cat <<EOF\n# step 2\nEOF\n"),
+            ("bin/a.sh", "cat <<-EOF\n\t# step 1\n\tEOF\n", "cat <<-EOF\n\t# step 2\n\tEOF\n"),
+            ("bin/a.sh", "cat <<'EOF'\n# step 1\nEOF\n", "cat <<'EOF'\n# step 2\nEOF\n"),
+            ("bin/a.sh", 'cat <<"EOF"\n# step 1\nEOF\n', 'cat <<"EOF"\n# step 2\nEOF\n'),
+            ("bin/a.sh", "cat <<\\EOF\n# step 1\nEOF\n", "cat <<\\EOF\n# step 2\nEOF\n"),
+            ("bin/a.sh", "cat << EOF\n# step 1\nEOF\n", "cat << EOF\n# step 2\nEOF\n"),
+            ("bin/a.sh", "python3 - <<'PY'\nx = 1  # step 1\nPY\n", "python3 - <<'PY'\nx = 1  # step 2\nPY\n"),
+            ("bin/a.sh", "cat <<EOF\na\n\nb\nEOF\n", "cat <<EOF\na\nb\nEOF\n"),
+        ])
+
+    def test_sh_a_comment_after_the_heredoc_end(self):
+        self.each((0, CO), [
+            ("bin/a.sh", "cat <<EOF\nhi\nEOF\n# after\n", "cat <<EOF\nhi\nEOF\n# later\n"),
+            ("bin/a.sh", "cat <<-EOF\n\thi\n\tEOF\n# after\n", "cat <<-EOF\n\thi\n\tEOF\n# later\n"),
+        ])
+
+    def test_sh_a_here_string_is_no_heredoc(self):
+        self.each((0, CO), [("bin/a.sh", 'cat <<< "x"\n# note\n', 'cat <<< "x"\n# note 2\n')])
+
+    def test_sh_quotes(self):
+        # an escaped " inside "..." does not end it: the # is in the string (today: text change)
+        self.each((0, "text change"), [("bin/a.sh", 'echo "a \\" # b"\n', 'echo "a \\" # c"\n')])
+        self.fresh()
+        self.each((0, CO), [
+            # no escapes in '...': the string is a\ and the comment follows
+            ("bin/a.sh", "echo 'a\\' # note\n", "echo 'a\\' # note 2\n"),
+            # $'...' has escapes: the string is a'b
+            ("bin/a.sh", "echo $'a\\'b' # note\n", "echo $'a\\'b' # note 2\n"),
+            ("bin/a.sh", "x=`date` # now\n", "x=`date` # today\n"),
+        ])
+        self.fresh()
+        self.each(CODE, [("bin/a.sh", 'echo "a\n# not a comment\nb"\n', 'echo "a\n# not one\nb"\n')])
+
+    def test_r12_yaml_block_scalar_bodies_are_strings(self):
+        self.each(CODE, [
+            ("ci/a.yml", "run: |\n  echo hi\n  # step 1\nname: x\n", "run: |\n  echo hi\n  # step 2\nname: x\n"),
+            ("ci/a.yml", "steps:\n  - >-\n    echo a\n    # step 1\n", "steps:\n  - >-\n    echo a\n    # step 2\n"),
+            ("ci/a.yml", "run: |+\n  # step 1\n", "run: |+\n  # step 2\n"),
+            ("ci/a.yml", "run: |\n  a\n\n  b\nx: 1\n", "run: |\n  a\n  b\nx: 1\n"),
+        ])
+
+    def test_yaml_after_the_block_a_comment_is_a_comment(self):
+        self.each((0, CO), [
+            ("ci/a.yml", "run: |\n  echo hi\n# after\nname: x\n", "run: |\n  echo hi\n# later\nname: x\n"),
+            ("ci/a.yml", "run: | # the script\n  echo a\n", "run: | # script\n  echo a\n"),
+        ])
+
+    def test_yaml_quoted_values(self):
+        self.each(CODE, [("ci/a.yml", 'msg: "a\n  # b\n  c"\n', 'msg: "a\n  # d\n  c"\n')])
+        self.fresh()
+        self.each((0, "text change"), [
+            ("ci/a.yml", 'a: ["x # y", 1]\n', 'a: ["x # z", 1]\n'),
+            ("ci/a.yml", "b: 'x # y'\n", "b: 'x # z'\n"),
+            # the apostrophe in a plain value opens no string, so the next quote still does
+            ("ci/a.yml", "a: it's here\nb: 'x # y'\n", "a: it's here\nb: 'x # z'\n"),
+        ])
+
+    def test_yaml_an_apostrophe_inside_a_plain_value(self):
+        self.each((0, CO), [("ci/a.yml", "a: it's here\n# note\nb: 1\n", "a: it's here\n# note 2\nb: 1\n")])
+
+
+C2_WORDS = [
+    "type:", "noqa", "nolint", "pylint:", "pyright:", "mypy:", "pragma", "isort:", "fmt:", "ruff:",
+    "flake8:", "nosec", "cython:", "coding:", "coding=", "vim:", "vi:", "ex:", "shellcheck",
+    "yamllint", "yaml-language-server", "renovate:", "eslint", "global ", "globals ", "exported ",
+    "prettier-ignore", "istanbul", "c8 ", "v8 ", "biome-ignore", "deno-", "tslint:", "jshint",
+    "jscs:", "swiftlint:", "ignore:", "ignore_for_file:", "go:", "+build", "<reference", "<amd-",
+    "clang-format", "noinspection", "checkstyle:", "$", "webpack", "ko ", "/ko", "build:",
+    "endbuild", "inject:", "endinject", "htmlmin:", "[if", "[endif", "<![endif",
+]
+C3_WORDS = ["noqa", "nolint", "pragma", "type: ignore", "eslint-", "@ts-", "-*-", "coding:", "coding=",
+            "prettier-ignore", "fallthrough", "fall through", "falls through", "fallthru"]
+
+
+class TestHashDirectives(ShapeCase):
+
+    def test_r15_c1_tight_comments(self):
+        self.each(CODE, [
+            ("bin/a.sh", "#!/bin/sh\nrun\n", "#!/bin/bash\nrun\n"),
+            ("bin/a.sh", "run\n# plain note\n", "run\n#SBATCH --time=1\n"),
+            ("bin/a.zsh", "run\n# plain note\n", "run\n#compdef git\n"),
+            ("ci/a.yml", "a: 1\n# plain note\n", "a: 1\n#cloud-config\n"),
+            ("app/a.py", "run()\n# plain note\n", "run()\n#print(x)\n"),
+            ("etc/a.conf", "x=1\n# plain note\n", "x=1\n#x=2\n"),
+        ])
+
+    def test_r15_a_directive_added_edited_or_moved(self):
+        self.each(CODE, [
+            ("app/a.py", "x = f()\n", "x = f()  # noqa: E501\n"),
+            ("app/a.py", "x = f()  # noqa: E501\n", "x = f()  # noqa: E302\n"),
+            ("app/a.py", "a = 1  # type: int\nb = 2\n", "a = 1\nb = 2  # type: int\n"),
+            ("app/a.py", "x = f()  # noqa: E501\n", "x = f()\n"),
+        ])
+
+    def test_c1_not_tight_comments_are_plain(self):
+        self.each((0, CO), [
+            ("app/a.py", "## Part 2\nrun()\n", "## Part 3\nrun()\n"),
+            ("bin/a.sh", "#----\nrun\n", "#====\nrun\n"),
+            ("bin/a.sh", "#~~~\nrun\n", "#~~~~~\nrun\n"),
+            ("app/a.py", "#\nrun()\n", "# note\nrun()\n"),
+        ])
+
+    def test_c2_tool_words_at_the_head(self):
+        self.swap(CODE, "app/a.py", "# plain note", ["# %s x" % w for w in C2_WORDS], head="run()\n")
+
+    def test_c2_any_case(self):
+        self.swap(CODE, "app/a.py", "# plain note",
+                  ["# NOQA", "# Pylint: disable=x", "# SHELLCHECK disable=SC1", "# Type: ignore"], head="run()\n")
+
+    def test_c3_words_anywhere(self):
+        self.swap(CODE, "app/a.py", "n = f()  # long", ["n = f()  # long, %s x" % w for w in C3_WORDS])
+
+    def test_c4_an_at_word(self):
+        self.swap(CODE, "app/a.py", "# note", ["# see @alice", "# @package _global_"], tail="run()\n")
+        self.fresh()
+        self.each((0, CO), [("app/a.py", "# mail a@b.io\nrun()\n", "# mail c@d.io\nrun()\n")])
+
+    def test_r16_c5_license(self):
+        self.each(CODE, [
+            ("app/a.py", "# Copyright 2025 Acme\nrun()\n", "# Copyright 2026 Acme\nrun()\n"),
+            ("bin/a.sh", "# SPDX-License-Identifier: MIT\nrun\n", "# SPDX-License-Identifier: Apache-2.0\nrun\n"),
+            ("app/a.py", "# Licensed under MIT\nrun()\n", "# Licenced under MIT\nrun()\n"),
+            ("app/a.py", "# \u00a9 2025 Acme\nrun()\n", "# \u00a9 2026 Acme\nrun()\n"),
+            ("app/a.py", "# note\nrun()\n", "# copyright Acme\nrun()\n"),
+        ])
+
+
+class TestHashGuards(ShapeCase):
+
+    def test_r17_a_comment_or_blank_line_after_a_continued_line(self):
+        self.each(CODE, [
+            ("bin/a.sh", "docker run \\\n  img\n", "docker run \\\n  # -v a:b\n  img\n"),
+            ("bin/a.sh", "a \\\n  b\n", "a \\\n\n  b\n"),
+            ("bin/a.sh", "a \\\n# note\n  b\n", "a \\\n  b\n"),
+            ("app/a.py", "x = 1 + \\\n    2\n", "x = 1 + \\\n# c\n    2\n"),
+        ])
+
+    def test_r18_a_comment_ending_in_a_backslash(self):
+        self.each(CODE, [
+            ("bin/a.sh", "# see C:\\\nrun\n", "# see D:\\\nrun\n"),
+            ("app/a.py", "# a\nrun()\n", "# a \\\nrun()\n"),
+        ])
+
+    def test_r19_the_lexer_is_unsure(self):
+        self.each(CODE, [
+            ("bin/a.sh", "echo 'a\n# note\n", "echo 'a\n# note 2\n"),
+            ("bin/a.sh", "cat <<EOF\n# note\n", "cat <<EOF\n# note 2\n"),
+            ("app/a.py", 'x = """a\n# note\n', 'x = """a\n# note 2\n'),
+            ("ci/a.yml", 'a: "x\n# note\n', 'a: "x\n# note 2\n'),
+        ])
+
+
+class TestScope(ShapeCase):
+
+    def test_the_file_line_and_the_level(self):
+        self.base({"app/run.py": "# a\nrun()\n"})
+        self.put({"app/run.py": "# b\nrun()\n"})
+        r = self.ok("--declared", "0")
+        self.assertEqual(r.stdout.splitlines(), ["REQUIRED LEVEL 0", "app/run.py: L0 comment only"])
+
+    def test_a_comment_only_file_next_to_a_style_file(self):
+        self.base({"app/run.py": "# a\nrun()\n", "web/a.css": "a{}\n"})
+        self.put({"app/run.py": "# b\nrun()\n", "web/a.css": "b{}\n"})
+        r = self.ok()
+        self.assertEqual(self.required(r), 1)
+        self.assertEqual(self.files(r), {"app/run.py": (0, CO), "web/a.css": (1, "style file")})
+
+    def test_r21_path_levels_stay(self):
+        self.assertEqual(self.got("requirements.txt", "# pinned\nflask==2.0\n", "# pinned for py3.9\nflask==2.0\n"),
+                         (4, "built-in L4: dependency list"))
+        self.fresh()
+        self.assertEqual(self.got("db/seed.sql", "-- a\nselect 1;\n", "-- b\nselect 1;\n"), (4, "built-in L4: schema"))
+        self.fresh()
+        self.assertEqual(self.got("src/money/calc.py", "# a\nrun()\n", "# b\nrun()\n",
+                                  conf={"level3_paths": "src/money/"}), (3, "level3_paths src/money/"))
+        self.fresh()
+        self.assertEqual(self.got("db/load.py", "# a\nrun()\n", "# b\nrun()\n", conf={"level4_paths": "db/"}),
+                         (4, "level4_paths db/"))
+
+    def test_r22_new_deleted_and_binary_files(self):
+        self.base({"app/a.py": "x\n"})
+        self.put({"bin/new.sh": "# only a comment\n"})
+        self.assertEqual(self.files(self.ok())["bin/new.sh"], (2, "new file"))
+        self.fresh()
+        self.base({"app/a.py": "x\n", "bin/old.sh": "# only a comment\n"})
+        self.put({"bin/old.sh": None})
+        self.assertEqual(self.files(self.ok())["bin/old.sh"], (2, "deleted file"))
+        self.fresh()
+        self.assertEqual(self.got("app/b.py", b"\x00# a\n", b"\x00# b\n"), (2, "binary file"))
+
+    def test_r23_style_and_text_files_as_now(self):
+        self.assertEqual(self.got("web/a.css", "/* a */\n.a{}\n", "/* b */\n.a{}\n"), (1, "style file"))
+        self.fresh()
+        self.assertEqual(self.got("docs/a.md", "<!-- a -->\nHi\n", "<!-- b -->\nHi\n"), (0, "text file"))
+
+    def test_r24_extensions_not_in_v1(self):
+        paths = ["lib/a.rb", "web/a.php", "conf/a.toml", "conf/a.ini", "conf/a.cfg", "app/a.pyi",
+                 "Makefile", "Dockerfile", "bin/foo"]
+        self.each(CODE, [(p, "# a\nrun\n", "# b\nrun\n") for p in paths] + [
+            ("src/App.vue", "<!-- a -->\n<p>x</p>\n", "<!-- b -->\n<p>x</p>\n"),
+            ("src/App.svelte", "<!-- a -->\n<p>x</p>\n", "<!-- b -->\n<p>x</p>\n"),
+            ("src/a.rs", "// a\nrun();\n", "// b\nrun();\n"),
+        ])
+
+    def test_r24_a_symlink(self):
+        self.base({"bin/t1.sh": "run\n"})
+        os.symlink("t1.sh", self.repo.path("bin/link.sh"))
+        self.commit("link")
+        self.git("tag", "-f", "base")
+        self.put({"bin/t2.sh": "t1.sh  # x\n"})
+        os.remove(self.repo.path("bin/link.sh"))
+        os.symlink("t2.sh", self.repo.path("bin/link.sh"))
+        self.assertEqual(self.files(self.ok())["bin/link.sh"], CODE)
+
+
+class TestTheRuleLine(unittest.TestCase):
+
+    def test_the_level_0_line_names_it(self):
+        rule = trl.section(trl.read("PRINCIPLES.md"), "R8. Risk levels", "## B. Work")
+        line = [l for l in rule.splitlines() if l.startswith("- 0 wording:")]
+        self.assertEqual(len(line), 1, rule)
+        line = line[0]
+        self.assertIn("comment-only change", line)
+        self.assertLessEqual(len(line), 200)
+        for phrase in ("text values", "one colour value", "existing style or variant", "same container"):
+            self.assertIn(phrase, line)
+
+
+# ================================================================ worker 2: slash and markup families
+
+
+SLASH_EXT = [".js", ".mjs", ".cjs", ".jsx", ".ts", ".mts", ".cts", ".tsx", ".dart", ".java", ".kt",
+             ".kts", ".swift", ".go", ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh"]
+
+
+class TestSlashShape(ShapeCase):
+
+    def test_r1_a_whole_line_comment_in_each_extension(self):
+        self.each((0, CO), [("src/a" + e, "// retry twice\nrun();\n", "// retry three times\nrun();\n")
+                            for e in SLASH_EXT])
+
+    def test_r3_a_trailing_comment(self):
+        self.each((0, CO), [
+            ("src/a.js", "run(); // fast\n", "run(); // faster\n"),
+            ("src/a.js", "run();\t// fast\n", "run();\t// faster\n"),
+        ])
+
+    def test_slash_slash_right_after_code_is_code(self):
+        self.each(CODE, [("src/a.js", "run();// fast\n", "run();// faster\n")])
+
+    def test_r5_a_block_comment_over_lines(self):
+        self.each((0, CO), [
+            ("src/a.js", "/* a\n * b\n */\nrun();\n", "/* a\n * c\n */\nrun();\n"),
+            ("src/a.c", "int a; /* a\n b */\n", "int a; /* a\n c */\n"),
+        ])
+
+    def test_an_inline_block_comment(self):
+        self.each((0, CO), [("src/a.js", "f(1/* a */);\n", "f(1/* bb */);\n")])
+
+    def test_an_inline_block_comment_counts_as_one_space(self):
+        self.each(CODE, [("src/a.js", "x = a/**/b;\n", "x = ab;\n")])
+
+    def test_r6_a_jsx_comment(self):
+        before = "export const A = () => (\n  <div>\n    {/* old */}\n    <p>Hi</p>\n  </div>\n);\n"
+        self.each((0, CO), [("src/A.tsx", before, before.replace("old", "new")),
+                            ("src/A.jsx", before, before.replace("old", "new"))])
+
+    def test_r4_blank_lines_only(self):
+        self.each((0, WS), [("src/a.js", "a();\nb();\n", "a();\n\nb();\n")])
+
+    def test_moved_comment_lines_are_comment_only_not_a_line_move(self):
+        self.each((0, CO), [("lib/a.dart", "// a\n// b\nrun();\n", "// b\n// a\nrun();\n")])
+
+    def test_r9_r10_code(self):
+        self.each(CODE, [
+            ("src/a.js", "run(1); // a\n", "run(2); // b\n"),
+            ("src/a.js", "run();\n", "// run();\n"),
+            ("src/a.go", "// run()\nstop()\n", "run()\nstop()\n"),
+        ])
+
+    def test_a_hash_line_is_code_in_slash_files(self):
+        self.each((0, CO), [
+            ("src/a.c", "#define N 1 // n\n", "#define N 1 // count\n"),
+            ("src/a.js", "#!/usr/bin/env node\n// a\nrun();\n", "#!/usr/bin/env node\n// b\nrun();\n"),
+        ])
+
+    def test_block_comments_do_not_nest(self):
+        self.each(CODE, [("src/a.swift", "/* a /* b */ c */\nrun()\n", "/* a /* b */ d */\nrun()\n")])
+
+
+class TestSlashStrings(ShapeCase):
+
+    def test_r12_a_template_literal_line(self):
+        self.each(CODE, [
+            ("src/a.js", "const t = `\n// step 1\n`;\n", "const t = `\n// step 2\n`;\n"),
+            ("src/a.ts", "const t = `\n/* step 1 */\n`;\n", "const t = `\n/* step 2 */\n`;\n"),
+            ("src/a.js", "const t = `a ${f(`b`)} c\n// x\n`;\n", "const t = `a ${f(`b`)} c\n// y\n`;\n"),
+            ("src/a.js", "const t = `a\n\nb`;\n", "const t = `a\nb`;\n"),
+        ])
+
+    def test_after_a_template_a_comment_is_a_comment(self):
+        self.each((0, CO), [
+            ("src/a.js", "const t = `a ${b} c`; // note\n", "const t = `a ${b} c`; // note 2\n"),
+            ("src/a.js", 'const t = `a ${"`"} b`; // note\n', 'const t = `a ${"`"} b`; // note 2\n'),
+        ])
+
+    def test_go_raw_strings(self):
+        self.each(CODE, [("src/a.go", "var s = `\n// x\n`\n", "var s = `\n// y\n`\n")])
+        self.fresh()
+        self.each((0, CO), [("src/a.go", "var s = `a\\` // note\n", "var s = `a\\` // note 2\n")])
+
+    def test_triple_quoted_strings(self):
+        self.each(CODE, [
+            ("src/A.java", 'String s = """\n  // x\n  """;\n', 'String s = """\n  // y\n  """;\n'),
+            ("src/a.kt", 'val s = """\n// x\n"""\n', 'val s = """\n// y\n"""\n'),
+            ("src/a.kts", 'val s = """\n// x\n"""\n', 'val s = """\n// y\n"""\n'),
+            ("src/a.swift", 'let s = """\n// x\n"""\n', 'let s = """\n// y\n"""\n'),
+            ("lib/a.dart", "var s = '''\n// x\n''';\n", "var s = '''\n// y\n''';\n"),
+            ("lib/a.dart", 'var s = """\n// x\n""";\n', 'var s = """\n// y\n""";\n'),
+        ])
+
+    def test_kotlin_triple_quotes_have_no_escapes(self):
+        self.each((0, CO), [("src/a.kt", 'val s = """a\\""" // note\n', 'val s = """a\\""" // note 2\n')])
+
+    def test_one_line_strings_hide_comment_markers(self):
+        self.each((0, "text change"), [("src/a.js", 'const u = "a // b";\n', 'const u = "a // c";\n')])
+        self.fresh()
+        self.each(CODE, [
+            ("src/a.js", "const u = 'a /* b';\nrun(1);\nconst v = '*/';\n",
+             "const u = 'a /* b';\nrun(2);\nconst v = '*/';\n"),
+            ("src/a.js", 'const s = "a \\" // b"; run();\n', 'const s = "a \\" // b"; go();\n'),
+        ])
+
+    def test_a_char_literal(self):
+        self.each((0, CO), [("src/a.c", "char q = '\"'; // note\n", "char q = '\"'; // note 2\n")])
+
+    def test_slash_slash_after_a_colon_is_code(self):
+        self.each(CODE, [("src/A.jsx", "<p>See https://a.io/{p}</p>\n", "<p>See https://a.io/{q}</p>\n")])
+
+    def test_r17_a_comment_line_inside_a_continued_macro(self):
+        self.each(CODE, [("src/a.c", "#define X \\\n  a\n", "#define X \\\n  // c\n  a\n")])
+
+    def test_r18_a_comment_ending_in_a_backslash(self):
+        self.each(CODE, [
+            ("src/a.c", "// see C:\\\nrun();\n", "// see D:\\\nrun();\n"),
+            ("src/a.c", "// note\nrun();\n", "// note \\\nrun();\n"),
+        ])
+
+    def test_r19_the_lexer_is_unsure(self):
+        self.each(CODE, [
+            ("src/A.jsx", "export const A = () => <p>Don't stop</p>; // note\n",
+             "export const A = () => <p>Don't stop</p>; // note 2\n"),
+            ("src/a.js", "/* a\nrun();\n", "/* b\nrun();\n"),
+            ("src/a.js", "const t = `a\n// x\n", "const t = `a\n// y\n"),
+        ])
+
+    def test_r20_cgo(self):
+        self.each(CODE, [("src/a.go", 'package main\n\n// #include <stdio.h>\nimport "C"\n',
+                          'package main\n\n// #include <stdlib.h>\nimport "C"\n')])
+        self.fresh()
+        self.each((0, CO), [("src/a.go", 'package main\n\n// a note\nimport "fmt"\n',
+                             'package main\n\n// a longer note\nimport "fmt"\n')])
+
+
+SLASH_DIRECTIVES = [
+    ("src/a.ts", "// @ts-ignore"), ("src/a.ts", "// @ts-expect-error"),
+    ("src/a.js", "// eslint-disable-next-line no-x"), ("src/a.js", "/* eslint-env node */"),
+    ("src/a.js", "/* global x */"), ("src/a.js", "// prettier-ignore"),
+    ("src/a.js", "/* istanbul ignore next */"), ("src/a.go", "//go:build linux"),
+    ("src/a.go", "//nolint"), ("src/a.go", "// +build linux"), ("src/a.js", "/*#__PURE__*/"),
+    ("src/a.js", "//# sourceMappingURL=a.map"), ("src/a.ts", '/// <reference types="node" />'),
+    ("lib/a.dart", "// ignore: unused"), ("lib/a.dart", "// ignore_for_file: x"),
+    ("lib/a.dart", "// @dart=2.9"), ("src/a.cpp", "// NOLINT"), ("src/a.cpp", "// clang-format off"),
+    ("src/a.c", "/* falls through */"), ("src/A.java", "// noinspection X"),
+    ("src/A.java", "// CHECKSTYLE:OFF"), ("src/A.java", "// $NON-NLS-1$"),
+    ("src/a.js", "/** @type {Foo} */"), ("src/a.js", "/**\n * Sum.\n * @param x\n */"),
+    ("src/a.swift", "// swiftlint:disable x"), ("src/a.js", "// Copyright 2026 Acme"),
+    ("src/a.js", "/*! keep */"), ("src/a.js", '/* webpackChunkName: "x" */'),
+    ("src/a.js", "// @flow"), ("src/a.jsx", "/** @jsx h */"),
+]
+
+
+class TestSlashDirectives(ShapeCase):
+
+    def test_c1_to_c5_in_slash_files(self):
+        self.each(CODE, [(p, "run();\n// plain note\n", "run();\n%s\n" % d) for p, d in SLASH_DIRECTIVES])
+
+    def test_a_directive_edited(self):
+        self.each(CODE, [("src/a.js", "// eslint-disable-next-line a\nrun();\n",
+                          "// eslint-disable-next-line b\nrun();\n")])
+
+    def test_plain_slash_comments(self):
+        self.each((0, CO), [
+            ("lib/a.dart", "/// doc\nrun();\n", "/// docs\nrun();\n"),
+            ("src/a.js", "/** doc */\nrun();\n", "/** docs */\nrun();\n"),
+            ("src/a.js", "//----\nrun();\n", "//====\nrun();\n"),
+            ("src/a.js", "////\nrun();\n", "//////\nrun();\n"),
+            ("src/a.js", "// mail a@b.io\nrun();\n", "// mail c@d.io\nrun();\n"),
+        ])
+
+
+MARKUP_DIRECTIVES = [
+    "<!--[if IE]><p>x</p><![endif]-->", '<!--#include file="a"-->', "<!--more-->",
+    "<!-- ko if: x -->", "<!-- /ko -->", "<!-- build:js a.js -->", "<!-- endbuild -->",
+    "<!-- inject:js -->", "<!-- endinject -->", "<!-- htmlmin:ignore -->",
+    "<!-- prettier-ignore -->", "<!-- Copyright 2026 Acme -->",
+]
+
+
+class TestMarkup(ShapeCase):
+
+    def test_r7_html_and_xml_comments(self):
+        self.each((0, CO), [
+            ("web/a.html", "<!-- old -->\n<p>Hi</p>\n", "<!-- new -->\n<p>Hi</p>\n"),
+            ("web/a.htm", "<!-- old -->\n<p>Hi</p>\n", "<!-- new -->\n<p>Hi</p>\n"),
+            ("res/a.xml", "<a>\n  <!-- x -->\n  <b/>\n</a>\n", "<a>\n  <!-- y -->\n  <b/>\n</a>\n"),
+            ("web/a.html", "<!--\n a\n-->\n<p>Hi</p>\n", "<!--\n b\n-->\n<p>Hi</p>\n"),
+            ("web/a.html", "<p>a<!-- x -->b</p>\n", "<p>a<!-- y -->b</p>\n"),
+            ("web/a.html", "<p>1 > 0</p>\n<!-- a -->\n", "<p>1 > 0</p>\n<!-- b -->\n"),
+            ("web/a.html", "<p>Don't</p>\n<!-- a -->\n", "<p>Don't</p>\n<!-- b -->\n"),
+            ("web/a.html", "<script>run();</script>\n<!-- a -->\n", "<script>run();</script>\n<!-- b -->\n"),
+        ])
+
+    def test_r4_blank_lines_only(self):
+        self.each((0, WS), [("web/a.html", "<p>a</p>\n<p>b</p>\n", "<p>a</p>\n\n<p>b</p>\n")])
+
+    def test_an_attribute_value_is_no_comment(self):
+        # a text attribute: today's level is a text change, never "comment only"
+        self.each((0, "text change"), [("web/a.html", '<a title="<!-- x -->">t</a>\n', '<a title="<!-- y -->">t</a>\n')])
+
+    def test_script_style_and_cdata_bodies_are_code(self):
+        self.each(CODE, [
+            ("web/a.html", "<script>\n// a\nrun();\n</script>\n", "<script>\n// b\nrun();\n</script>\n"),
+            ("web/a.html", "<script>\n<!-- a -->\nrun();\n</script>\n", "<script>\n<!-- b -->\nrun();\n</script>\n"),
+            ("web/a.html", '<script type="module">\n<!-- a -->\n</script>\n',
+             '<script type="module">\n<!-- b -->\n</script>\n'),
+            ("web/a.html", "<SCRIPT>\n<!-- a -->\n</SCRIPT>\n", "<SCRIPT>\n<!-- b -->\n</SCRIPT>\n"),
+            ("web/a.html", "<style>\n<!-- a -->\n</style>\n", "<style>\n<!-- b -->\n</style>\n"),
+            ("res/a.xml", "<a><![CDATA[\n<!-- x -->\n]]></a>\n", "<a><![CDATA[\n<!-- y -->\n]]></a>\n"),
+        ])
+
+    def test_markup_directives(self):
+        self.each(CODE, [("web/a.html", "<p>x</p>\n<!-- plain note -->\n", "<p>x</p>\n%s\n" % d)
+                         for d in MARKUP_DIRECTIVES])
+
+    def test_a_comment_open_at_the_end(self):
+        self.each(CODE, [("web/a.html", "<!-- a\n<p>x</p>\n", "<!-- b\n<p>x</p>\n")])
+
+
+if __name__ == "__main__":
+    unittest.main()
