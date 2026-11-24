@@ -429,7 +429,7 @@ class TestUserConfigSeeding(InitCase):
         conf = self.conf(env=dict(self.ENV))
         template = self.template()
         for key, value in template.items():
-            if key in ("runtime", "language", "max_agents"):
+            if key in ("runtime", "language", "max_agents", "main_manager", "task_manager"):
                 continue
             with self.subTest(key=key):
                 self.assertEqual(conf[key], value)
@@ -465,3 +465,98 @@ class TestRuntimeKeyInTheTemplate(InitCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestManagerDefaultsAndSeed(InitCase):
+    def conf(self, env=None):
+        self.assertOk(self.init(env=env) if env else self.init())
+        out = {}
+        for line in self.read("agent.conf").splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                out[k.strip()] = v.strip()
+        return out
+
+    def test_managers_default_to_high(self):
+        conf = self.conf()
+        self.assertEqual(conf["main_manager"], "opus-5.5:high")
+        self.assertEqual(conf["task_manager"], "opus-5.5:high")
+
+    def test_manager_model_answer_sets_both(self):
+        conf = self.conf({"CLAUDE_PLUGIN_OPTION_MANAGER_MODEL": "opus-5.5:xhigh"})
+        self.assertEqual(conf["main_manager"], "opus-5.5:xhigh")
+        self.assertEqual(conf["task_manager"], "opus-5.5:xhigh")
+
+    def test_bad_manager_model_is_ignored(self):
+        conf = self.conf({"CLAUDE_PLUGIN_OPTION_MANAGER_MODEL": "sonnet-5:medium"})
+        self.assertEqual(conf["main_manager"], "opus-5.5:high")
+
+
+class TestEndLines(InitCase):
+    def test_it_ends_with_how_to_change_and_the_main_commands(self):
+        out = self.assertOk(self.init())
+        tail = out.strip().splitlines()[-2:]
+        self.assertIn("/auto-pipeline:settings language en", tail[0])
+        self.assertIn("/auto-pipeline:todo", tail[1])
+        self.assertIn("/auto-pipeline:question", tail[1])
+
+    def test_it_points_at_add_permissions(self):
+        self.assertIn("--add-permissions", self.assertOk(self.init()))
+
+
+class TestAddPermissions(InitCase):
+    def path(self):
+        return os.path.join(self.project, ".claude", "settings.json")
+
+    def put(self, text):
+        os.makedirs(os.path.dirname(self.path()), exist_ok=True)
+        with open(self.path(), "w") as fh:
+            fh.write(text)
+
+    def load(self):
+        with open(self.path()) as fh:
+            return json.load(fh)
+
+    def test_it_creates_the_file_when_missing(self):
+        self.assertOk(self.init("--add-permissions"))
+        self.assertEqual(self.load()["permissions"]["allow"], ALLOW_RULES)
+
+    def test_it_merges_without_losing_keys_or_entries(self):
+        self.put(json.dumps({"model": "opus", "env": {"A": "1"},
+                             "permissions": {"allow": ["Bash(ls)"], "deny": ["Bash(rm *)"]}}))
+        self.assertOk(self.init("--add-permissions"))
+        data = self.load()
+        self.assertEqual(data["model"], "opus")
+        self.assertEqual(data["env"], {"A": "1"})
+        self.assertEqual(data["permissions"]["deny"], ["Bash(rm *)"])
+        self.assertEqual(data["permissions"]["allow"], ["Bash(ls)"] + ALLOW_RULES)
+        self.assertNotIn("allow", data)
+
+    def test_it_is_idempotent(self):
+        self.put(json.dumps({"x": 1}))
+        self.assertOk(self.init("--add-permissions"))
+        with open(self.path()) as fh:
+            first = fh.read()
+        self.assertOk(self.init("--add-permissions"))
+        with open(self.path()) as fh:
+            self.assertEqual(fh.read(), first)
+        self.assertEqual(self.load()["permissions"]["allow"], ALLOW_RULES)
+
+    def test_it_refuses_invalid_json_and_writes_nothing(self):
+        self.put("{ not json")
+        result = self.init("--add-permissions")
+        self.assertNotEqual(result.returncode, 0)
+        with open(self.path()) as fh:
+            self.assertEqual(fh.read(), "{ not json")
+
+    def test_it_refuses_a_wrong_shape(self):
+        self.put(json.dumps({"permissions": {"allow": "oops"}}))
+        with open(self.path()) as fh:
+            before = fh.read()
+        self.assertNotEqual(self.init("--add-permissions").returncode, 0)
+        with open(self.path()) as fh:
+            self.assertEqual(fh.read(), before)
+
+    def test_it_creates_no_other_project_file(self):
+        self.assertOk(self.init("--add-permissions"))
+        self.assertFalse(os.path.exists(os.path.join(self.project, "agent.conf")))

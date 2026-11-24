@@ -16,6 +16,13 @@
       "description": "Language to talk to you in. Code, file names and rule text stay English.",
       "default": "en"
     },
+    "manager_model": {
+      "type": "string",
+      "title": "Manager model",
+      "description": "Model and effort for the managers. opus-5.5:high is recommended; opus-5.5:xhigh thinks harder and costs more.",
+      "options": ["opus-5.5:high", "opus-5.5:xhigh"],
+      "default": "opus-5.5:high"
+    },
     "max_agents": {
       "type": "number",
       "title": "Max agents",

@@ -12,6 +12,13 @@
 #                                  save auto_update in the user file and apply
 #                                  it (agent-settings.sh --user auto_update);
 #                                  any other value exits 2, nothing created
+#   bin/agent-init.sh --add-permissions [<dir>]
+#                                  merge the permission block into the project's
+#                                  .claude/settings.json (top-level
+#                                  permissions.allow; other keys and entries
+#                                  kept; no duplicates; file created when
+#                                  missing). Invalid JSON or a wrong shape:
+#                                  exit 1, file untouched. Nothing else is done.
 #   bin/agent-init.sh -h           print this block, create nothing, exit 0
 #
 # Creates, only when missing, in the project root: agent.conf (a copy of
@@ -24,7 +31,8 @@
 # overwrites a file already there.
 #
 # A fresh agent.conf is seeded from bin/agent.conf.default, then any of
-# CLAUDE_PLUGIN_OPTION_RUNTIME, CLAUDE_PLUGIN_OPTION_LANGUAGE and
+# CLAUDE_PLUGIN_OPTION_RUNTIME, CLAUDE_PLUGIN_OPTION_LANGUAGE,
+# CLAUDE_PLUGIN_OPTION_MANAGER_MODEL (sets main_manager and task_manager) and
 # CLAUDE_PLUGIN_OPTION_MAX_AGENTS that Claude Code collected at enable time
 # are written over it, key by key, when set and not empty.
 #
@@ -56,11 +64,12 @@ set -eu
 . "$(dirname "$0")/agent-roots.sh"
 
 case "${1:-}" in
-  -h|--help) sed -n '2,55p' "$0"; exit 0;;
+  -h|--help) sed -n '2,62p' "$0"; exit 0;;
 esac
 
 MODE=""
 MODE_GIVEN=0
+ADD_PERMS=0
 AUTO_UPDATE=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -86,6 +95,7 @@ while [ $# -gt 0 ]; do
         *) echo "agent-init.sh: --auto-update must be on or off, got: $2" >&2; exit 2;;
       esac
       shift 2;;
+    --add-permissions) ADD_PERMS=1; shift;;
     *) break;;
   esac
 done
@@ -98,6 +108,68 @@ fi
 
 roots_read "$TARGET"
 ROOT="$PROJECT_ROOT"
+
+# Merge the permission block into <root>/.claude/settings.json. Python does the
+# JSON, so it is never edited by hand. Exit 0 = merged or already there,
+# 1 = file not valid JSON or wrong shape (nothing written).
+add_permissions() {
+  python3 - "$ROOT/.claude/settings.json" <<'PY'
+import json, os, sys
+
+RULES = [
+    "Bash(git push origin --delete *)",
+    "Bash(git branch -d *)",
+    "Bash(git worktree remove *)",
+    "Bash(git worktree prune)",
+    "Bash(orca worktree rm *)",
+    "Bash(orca terminal close *)",
+]
+path = sys.argv[1]
+data = {}
+if os.path.exists(path):
+    try:
+        with open(path) as fh:
+            text = fh.read()
+        data = json.loads(text) if text.strip() else {}
+    except ValueError as exc:
+        sys.stderr.write("agent-init.sh: %s is not valid JSON (%s). Nothing written. Fix it, or paste the block yourself.\n" % (path, exc))
+        sys.exit(1)
+if not isinstance(data, dict):
+    sys.stderr.write("agent-init.sh: %s is not a JSON object. Nothing written.\n" % path)
+    sys.exit(1)
+perms = data.setdefault("permissions", {})
+if not isinstance(perms, dict):
+    sys.stderr.write("agent-init.sh: permissions in %s is not an object. Nothing written.\n" % path)
+    sys.exit(1)
+allow = perms.setdefault("allow", [])
+if not isinstance(allow, list):
+    sys.stderr.write("agent-init.sh: permissions.allow in %s is not a list. Nothing written.\n" % path)
+    sys.exit(1)
+added = [r for r in RULES if r not in allow]
+if not added and os.path.exists(path):
+    print("kept: .claude/settings.json (permissions already there)")
+    sys.exit(0)
+allow.extend(added)
+os.makedirs(os.path.dirname(path), exist_ok=True)
+tmp = path + ".tmp"
+with open(tmp, "w") as fh:
+    json.dump(data, fh, indent=2)
+    fh.write("\n")
+os.replace(tmp, path)
+print("updated: .claude/settings.json (%d permission rules added)" % len(added))
+PY
+}
+
+ask_add_permissions() {
+  [ -t 0 ] || return 0
+  printf 'Add these permissions to .claude/settings.json for you? (yes/no) [no]: ' >&2
+  ans=""
+  read -r ans || ans=""
+  ans=$(printf '%s' "$ans" | tr '[:upper:]' '[:lower:]')
+  case "$ans" in
+    y|yes) add_permissions || true;;
+  esac
+}
 
 file_empty() {
   name="$1"
@@ -204,6 +276,7 @@ conf = agent_conf.load(path)
 mapping = {
     "CLAUDE_PLUGIN_OPTION_RUNTIME": "runtime",
     "CLAUDE_PLUGIN_OPTION_LANGUAGE": "language",
+    "CLAUDE_PLUGIN_OPTION_MANAGER_MODEL": "main_manager",
     "CLAUDE_PLUGIN_OPTION_MAX_AGENTS": "max_agents",
 }
 changed = False
@@ -219,6 +292,8 @@ for env_key, conf_key in mapping.items():
         )
         continue
     conf[conf_key] = value
+    if conf_key == "main_manager":
+        conf["task_manager"] = value
     changed = True
 if changed:
     agent_conf.save(conf, path)
@@ -269,6 +344,11 @@ file_gitignore() {
   echo "$status: .gitignore"
 }
 
+if [ "$ADD_PERMS" = 1 ]; then
+  add_permissions
+  exit $?
+fi
+
 CONF_FRESH=0
 file_conf
 file_empty agent_todo.txt
@@ -306,10 +386,14 @@ cat <<'BLOCK'
 }
 BLOCK
 
-echo "Paste that permission block into .claude/settings.json in this project."
-echo "A plugin cannot add permission rules by itself, so a human must paste it."
+echo "Those permission rules go into .claude/settings.json in this project."
+echo "A plugin cannot add permission rules by itself: either paste the block, or run $PLUGIN_ROOT/bin/agent-init.sh --add-permissions and it merges them for you."
+ask_add_permissions
 echo "Optional: if the auto-mode classifier denies the merge push to your integration branch, also allow \"Bash(git push origin main)\" (use your integration branch name)."
 
 echo "For cloud sessions (claude.ai/code): the default cloud image already ships Playwright and Chromium. Paste this into the cloud environment's Setup script only if $PLUGIN_ROOT/bin/agent-runtime.sh browser prints none there, it is not a repo file, a plugin cannot set it:"
 echo "npx playwright install --with-deps chromium || true"
 echo "Skip this if you never run this repo in a cloud session."
+
+echo "Setup done. To change a setting later: /auto-pipeline:settings, for example /auto-pipeline:settings language en"
+echo "Main commands: /auto-pipeline:todo (add a task), /auto-pipeline:question (ask the agents or answer their questions)."
