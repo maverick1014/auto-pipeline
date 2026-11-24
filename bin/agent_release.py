@@ -35,7 +35,7 @@ def err(message):
 class Git(object):
     def __init__(self, repo):
         self.repo = repo
-        self.env = dict(os.environ)
+        self.env = dict(os.environ, LC_ALL="C")
         for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
             self.env.pop(key, None)
 
@@ -155,10 +155,12 @@ def resolve(base, path):
     return "/".join(parts)
 
 
-def scan_line(line):
-    """Yield (base, path or None): None means a variable path (skipped)."""
+def scan_line(line, own):
+    """Yield (base, path or None): None means a variable path (skipped).
+
+    own is the folder of the scanned file."""
     for m in BASH_RE.finditer(line):
-        base = "" if m.group("root") else "bin"
+        base = "" if m.group("root") else own
         if m.end() < len(line) and line[m.end()] == "$":
             yield (base, None)
             continue
@@ -179,9 +181,9 @@ def scan_line(line):
             pos = a.end()
         if not lits:
             if PY_ANY_RE.match(line, pos):
-                yield ("bin", None)
+                yield (own, None)
             continue
-        yield ("bin", "/".join(lits))
+        yield (own, "/".join(lits))
     for m in PY_BIN_RE.finditer(line):
         a = PY_LIT_RE.match(line, m.end())
         if a:
@@ -214,7 +216,7 @@ def reads_check(git, rows):
         for lineno, line in enumerate(text.split("\n"), 1):
             if "$" not in line and "_bin_path" not in line and "os.path.join" not in line:
                 continue
-            for base, rel in scan_line(line):
+            for base, rel in scan_line(line, os.path.dirname(path)):
                 if rel is None:
                     skipped += 1
                     continue
@@ -265,7 +267,7 @@ def find_repo():
     here = os.path.dirname(os.path.realpath(__file__))
     repo = os.path.dirname(here)
     r = subprocess.run(["git", "-C", repo, "rev-parse", "--show-toplevel"],
-                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                       env=dict(os.environ, LC_ALL="C"), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     top = r.stdout.decode("utf-8", "replace").strip() if r.returncode == 0 else ""
     if not top or os.path.realpath(top) != repo:
         raise Fail("not a git checkout: %s" % repo, 2)
@@ -276,6 +278,18 @@ def release(opts):
     repo = find_repo()
     git = Git(repo)
 
+    ref = opts["from"]
+    frm = git.verify(ref + "^{commit}")
+    if not frm:
+        raise Fail("unknown ref %s" % ref)
+    short_from = git.short(frm)
+
+    on_main = False
+    if git.verify("refs/heads/main"):
+        on_main = git.run("merge-base", "--is-ancestor", frm, "refs/heads/main").returncode == 0
+    if not on_main and not opts["dry"]:
+        raise Fail("%s is not on main: release only from main" % short_from)
+
     if opts["push"] and not opts["dry"]:
         if git.run("remote", "get-url", "origin").returncode != 0:
             raise Fail("no remote origin")
@@ -284,12 +298,7 @@ def release(opts):
             msg = r.stderr.decode("utf-8", "replace")
             if "couldn't find remote ref" not in msg:
                 raise Fail("git fetch origin release failed: %s" % msg.strip())
-
-    ref = opts["from"]
-    frm = git.verify(ref + "^{commit}")
-    if not frm:
-        raise Fail("unknown ref %s" % ref)
-    short_from = git.short(frm)
+            git.run("update-ref", "-d", "refs/remotes/origin/release")
 
     for path in SHIP:
         if not git.text("ls-tree", frm, "--", path):
@@ -310,6 +319,8 @@ def release(opts):
     left = sorted(n for n in top if n not in SHIP)
 
     print("from %s version %s" % (short_from, version))
+    if not on_main:
+        print("warning: %s is not on main (build and --push refuse it)" % short_from)
     if tip:
         print("release tip: %s version %s" % (git.short(tip), tip_version))
     else:
@@ -326,14 +337,13 @@ def release(opts):
         return 1
 
     listing = git.out("ls-tree", "-z", frm, "--", *SHIP)
-    tree = git.text("mktree", "-z", input=listing)
 
-    if tip and git.text("rev-parse", tip + "^{tree}") == tree:
+    if tip and git.out("ls-tree", "-z", tip) == listing:
         print("release up to date: %s (%s)" % (tip_version, git.short(tip)))
         if not opts["dry"]:
             git.out("update-ref", "refs/heads/release", tip)
             if opts["push"]:
-                push_release(git)
+                return push_release(git)
         return 0
 
     if tip and parse_version(version) <= parse_version(tip_version):
@@ -344,6 +354,7 @@ def release(opts):
         print("would commit release %s" % version)
         return 0
 
+    tree = git.text("mktree", "-z", input=listing)
     message = "release %s from %s" % (version, short_from)
     args = ["commit-tree", tree, "-m", message]
     if tip:
