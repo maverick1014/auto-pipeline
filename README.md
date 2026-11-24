@@ -19,6 +19,7 @@ Main manager   (Opus 5.5, xhigh · the main chat · only one with the browser)
 Scripts, not agents (cost no tokens):
   bin/agent-start.sh   RAM/CPU guard, prints the rules, 39-question quiz gate, main-manager lock
   bin/agent-level.sh   the risk level a diff needs (0-4): built-in and agent.conf paths, L0 shapes; RAISE when the declared level is lower
+  bin/agent-owner-order.sh  relayed owner orders between repo managers: `line` prints the OWNER ORDER header (sender), `verify` checks the words are a typed owner prompt in the sender's transcript (receiver)
   bin/agent-file.sh    the only writer of agent_*.txt
   bin/agent_estimate.py  the time estimator: learns work minutes from the finished tasks, backtests against the rubric
   bin/agent-settings.sh  show or change agent.conf, validated
