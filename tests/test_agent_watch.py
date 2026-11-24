@@ -472,6 +472,11 @@ class TestStallLostMax(WatchCase):
         text = self.out(self.watch(max_sweeps="6"))
         self.assertEqual(self.watch_line(text), "WATCH MAX feat")
 
+    def test_waiting_for_background_agent_is_not_a_stall(self):
+        self.screens([frame(0, ["✻ Waiting for 1 background agent to finish"])])
+        text = self.out(self.watch(max_sweeps="6"))
+        self.assertEqual(self.watch_line(text), "WATCH MAX feat")
+
     def test_a_file_change_is_not_a_stall(self):
         self.screens([STILL])
         self.hook('echo "HEARTBEAT feat: step 4 of 7, work $1m" >> %s\n'
