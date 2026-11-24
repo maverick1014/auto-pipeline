@@ -10,6 +10,8 @@ Every order you send another agent (brief, task, decision) starts with `[<model>
 
 1. `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show`, `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh time`, and the RESOURCES line. Pick the risk type A-D (R8) by the acceptance criterion that exists; a mixed task gets its parts checked each by its own type; unsure between two, take the higher. Estimate the task in minutes of agent work only; the waits (mock gate, owner question or review, hold, suite slot) are not in it. First write your own guess in minutes, before you run the estimator. Then run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh estimate --type <t> --lane fast|full --mock yes|no "<one line what>" --guess <your minutes>` (only facts known before dispatch). Its minutes go on the todo line as est. A blend version shows a `blend:` line; any other version says `guess: <g>m, not used` until a retrain picks the blend. Its range and its `like` lines (the 3 nearest past tasks) are the reason you give. It says `rubric`: the rubric won its backtest (or no version is trained yet), so its numbers are the rubric row.
 
+Parallel features? → first find the code they share (models, components, APIs). The shared part is its own task, merged first; the features that need it get `todo wait "<name>" on queue --after <shared task>` (W9).
+
 Touches another repo? → W12: keep your part, send the peer main manager the cross-repo brief below, called side first, hold your todo line until its DONE PASS.
 
 2. Small task (fast lane, R1)? → first `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<task>" small "<one line what>" <est_minutes> --guess <your_guess> --level <A-D>` (the guard refuses a deputy for a task with no todo line), then `Agent` with `subagent_type: fast-lane-deputy`, description `<task> Deputy`. Type D never takes the fast lane (R8): it goes to step 4 or 7. The deputy brief carries the type: `[<model> <effort>]` first, then `level: <A-D>`, the task, the file(s), the one test if any. Done. After its DONE PASS: `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo done "<name>" --lane fast --work <m> --type <t>`.
@@ -44,7 +46,9 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
 
    **plain or cloud** — no terminal can be opened here, so no worktree either. The main manager does the task itself, from the session it is already in, with `Agent` subagents (`subagent_type: worker`, description `<name> Worker <n>: <slice>`), up to `max_agents` at a time. Use the task manager brief below as its own task list and run the steps in order.
 
-8. Early merge: a fix from a still-running branch merged into main → at once `SendMessage` that task manager: merge main back into your branch now. Never cherry-pick slices; merge the branch (or its prefix) — cherry-picks cost a conflict round at the final merge.
+8. Task manager done and verified, waiting for the owner's yes → close its pane, remove its worktree, keep the pushed branch, start the next task (W8). Owner yes → `/merge`. Owner no → a new task manager from that branch. Fix orders to a task manager always have: where, what is seen, what is expected, evidence (screenshot) (W6). Never re-run tests the task manager passed (W4).
+
+9. Early merge: a fix from a still-running branch merged into main → at once `SendMessage` that task manager: merge main back into your branch now. Never cherry-pick slices; merge the branch (or its prefix) — cherry-picks cost a conflict round at the final merge.
 
 ## Board records
 
@@ -75,6 +79,7 @@ GOAL: task manager <name>: done when DONE PASS or DONE FAIL is written under ===
 FEATURE: <requirement, 5 to 10 lines. Files to produce. What the user sees. Validation rules.>
 STEPS (at the start of each step run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" <stage>`; on another machine it writes a STAGE line into agent_state.txt and the main manager's watch carries it):
  0 brief: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" brief, then save this whole brief into agent_state.txt in your worktree, first action (S8), then one blank line
+ 0b kick-off: read the brief, then send the main manager your questions as QUESTION: lines (agent-file.sh state add) and wait for the answers before step 1; the main manager answers what it can and asks the owner only the rest (W1). After that, default + log (W1)
  1 register: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" register, then ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" working
  2 mock: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" mock; first if UI (W2): commit mock/<name>-mock.html, send me the path, STOP until "mock yes"; on another machine also append one line "MOCK READY <name>: <mock path>" to agent_state.txt in your worktree
  3 tests: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" tests; write the failing tests yourself (W3), commit

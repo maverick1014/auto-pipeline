@@ -29,6 +29,11 @@ Bash(orca terminal close *)
 
 Cloud sessions (claude.ai/code): the agent handles them with cloud-pack. Nothing to do here.
 
+## With or without Orca
+
+- With Orca: the main manager opens task managers in their own terminals and worktrees, and runs several in parallel.
+- Without Orca (plain Claude Code): the main manager does the work itself with subagents, one task at a time, no extra terminals.
+
 ## Commands
 
 | Command | What it does |
