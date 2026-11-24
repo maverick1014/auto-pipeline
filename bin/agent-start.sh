@@ -665,7 +665,13 @@ announce_human_direct() {
 
 print_role_and_project() {
   case $role in
-    spawned)  echo "ROLE: $AGENT_ROLE (spawned by an agent, not human-direct). Main manager: \"$REPO Manager\" (not listed by that name: the \"$REPO-<xx>\" row; pid $(cut -d' ' -f1 "$LOCK" 2>/dev/null || echo ?)). Report to it with SendMessage.";;
+    spawned)
+      if [ "${AGENT_ROLE:-}" = task-manager ]; then
+        report_how="Report into agent_state.txt in your worktree; the main manager's watch reads it."
+      else
+        report_how="Report to it with SendMessage."
+      fi
+      echo "ROLE: $AGENT_ROLE (spawned by an agent, not human-direct). Main manager: \"$REPO Manager\" (not listed by that name: the \"$REPO-<xx>\" row; pid $(cut -d' ' -f1 "$LOCK" 2>/dev/null || echo ?)). $report_how";;
     main)     lock_write "$NOW"; echo "ROLE: main manager (lock: pid $ME). Address: /rename $REPO Manager or claude --name";;
     takeover) lock_write "$NOW"; echo "ROLE: main manager. Previous main manager (pid $lpid, since $lsince) is dead. Run recovery (S7). Address: /rename $REPO Manager or claude --name";;
     closed)   closed_lines "ROLE: closed.";;
@@ -959,6 +965,17 @@ fi
 NORMAL_TEXT=$(print_normal_lines; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
 WARN_TEXT=$(state_warn_text; printf 'X'); WARN_TEXT=${WARN_TEXT%X}
 MON_TEXT=$(print_monitor_block; printf 'X'); MON_TEXT=${MON_TEXT%X}
+# F1/F2: one WATCH line for the main manager or a takeover, orca only. The line comes from the files (no orca call);
+# the runtime probe is made only when there is a line to print.
+WATCH_TEXT=""
+if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }; then
+  watch_line=$(python3 "$PLUGIN_ROOT/bin/agent_watchfile.py" start-line "$PROJECT_ROOT" "$PLUGIN_ROOT" 2>/dev/null </dev/null) || watch_line=""
+  if [ -n "$watch_line" ]; then
+    watch_kind=$(. "$PLUGIN_ROOT/bin/agent-runtime.sh" && runtime_kind 2>/dev/null </dev/null) || watch_kind=""
+    [ "$watch_kind" = orca ] && WATCH_TEXT="$watch_line
+"
+  fi
+fi
 RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
 QUIZ_SID="${SID:-${CLAUDE_CODE_SESSION_ID:-}}"
 if [ -n "$QUIZ_SID" ] && [ -f "$PROJECT_GITDIR/agent_quiz_$QUIZ_SID" ]; then
@@ -973,9 +990,9 @@ fi
 RESUME_TEXT=""
 if [ "$SRC" = startup ] && { [ "$role" = main ] || [ "$role" = takeover ]; } \
    && [ "$auto_resume" = yes ]; then
-  resume_out=$(AGENT_CLEANUP_DONE=1 "$PLUGIN_ROOT/bin/agent-resume.sh" 2>&1) || true
+  resume_out=$(AGENT_CLEANUP_DONE=1 AGENT_WATCH_LINE_DONE=1 "$PLUGIN_ROOT/bin/agent-resume.sh" 2>&1) || true
   header="=== auto resume ==="
-  other_fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
+  other_fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") + $(text_bytes "$WATCH_TEXT") \
                  + $(text_bytes "$CLEAN_TEXT") + $(text_bytes "$WARN_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
   candidate_bytes=$(( $(line_bytes "$header") + $(text_bytes "$resume_out") + 1 ))
   if [ $(( other_fixed + candidate_bytes )) -gt "$CAP" ]; then
@@ -989,7 +1006,7 @@ $resume_out
 fi
 
 calc_fixed() {
-  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") \
+  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") + $(text_bytes "$WATCH_TEXT") \
           + $(text_bytes "$CLEAN_TEXT") + $(text_bytes "$WARN_TEXT") + $(text_bytes "$RESUME_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
 }
 calc_fixed
@@ -1055,6 +1072,7 @@ budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
 printf '%s' "$ROLE_TEXT"
 printf '%s' "$NORMAL_TEXT"
 printf '%s' "$MON_TEXT"
+printf '%s' "$WATCH_TEXT"
 printf '%s' "$CLEAN_TEXT"
 printf '%s' "$WARN_TEXT"
 print_state_block "$budget"

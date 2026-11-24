@@ -239,6 +239,15 @@ else
 fi
 echo
 
+# ---- watch line (F1, F2): orca only; agent-start.sh prints it itself when it runs this script ----
+if [ "$KIND" = "orca" ] && [ -z "${AGENT_WATCH_LINE_DONE:-}" ]; then
+  watch_line=$(python3 "$PLUGIN_ROOT/bin/agent_watchfile.py" start-line "$ROOT" "$PLUGIN_ROOT" 2>/dev/null </dev/null) || watch_line=""
+  if [ -n "$watch_line" ]; then
+    echo "$watch_line"
+    echo
+  fi
+fi
+
 # ---- counts ----
 todo_n=0
 [ -s "$TODO" ] && todo_n=$(grep -c . "$TODO" || true)
