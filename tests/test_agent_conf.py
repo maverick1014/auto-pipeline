@@ -35,8 +35,6 @@ REAL_KEYS = [
     "max_usage_percent",
     "heavy_test_slots",
     "max_agents",
-    "monitor_interval_min",
-    "stall_min",
     "main_manager",
     "fast_lane_deputy",
     "merge_deputy",
@@ -98,8 +96,6 @@ GOOD_CONF_TEXT = (
     "max_usage_percent=80\n"
     "heavy_test_slots=1\n"
     "max_agents=4\n"
-    "monitor_interval_min=5\n"
-    "stall_min=10\n"
     "main_manager=fable-5.1:xhigh\n"
     "fast_lane_deputy=sonnet-5:medium\n"
     "merge_deputy=sonnet-5:medium\n"
@@ -408,9 +404,15 @@ class TestHints(unittest.TestCase):
 
 
 class TestMonitorBounds(unittest.TestCase):
-    """The two keys the monitor and the resume script read (S1, S2)."""
+    """Number keys of the limits group (S1). The monitor keys are gone with the monitor (2026-11-24)."""
 
-    BOUNDS = {"monitor_interval_min": (1, 60), "stall_min": (1, 120)}
+    BOUNDS = {"heavy_test_slots": (1, 8), "max_agents": (1, 16)}
+
+    def test_the_monitor_keys_are_gone(self):
+        for key in ("monitor_interval_min", "stall_min"):
+            with self.subTest(key=key):
+                self.assertNotIn(key, agent_conf.NUMBER_BOUNDS)
+                self.assertNotIn(key, agent_conf.HINTS)
 
     def test_both_keys_are_numbers_with_bounds(self):
         for key, bounds in self.BOUNDS.items():
@@ -457,8 +459,6 @@ class TestGroups(unittest.TestCase):
                         "max_usage_percent",
                         "heavy_test_slots",
                         "max_agents",
-                        "monitor_interval_min",
-                        "stall_min",
                         "housekeep_interval_min",
                     ],
                 ),

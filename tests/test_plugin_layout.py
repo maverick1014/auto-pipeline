@@ -39,7 +39,6 @@ SHELL_SCRIPTS = [
     "agent-file.sh",
     "agent-settings.sh",
     "agent-resume.sh",
-    "agent-monitor.sh",
     "agent-init.sh",
     "agent-runtime.sh",
     "agent-cloud-pack.sh",
@@ -49,7 +48,7 @@ SHELL_SCRIPTS = [
     "agent-cleanup.sh",
     "agent-watch.sh",
     "agent-statusline.sh",   # progress-bar: the Claude Code status line
-    "agent-housekeep.sh",    # housekeep-2h: the pass the monitor loop runs
+    "agent-housekeep.sh",    # housekeep-2h: the pass the watch loop runs
     "agent-version.sh",      # stale-plugin-guard: running vs installed, UserPromptSubmit hook
     "agent-level.sh",        # test-levels: the risk level a diff needs
     "agent-release.sh",      # plugin-slim: builds the release branch users install

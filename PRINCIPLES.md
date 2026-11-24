@@ -158,7 +158,7 @@ W8. Merge and cleanup
 - Clean up only after the merge is verified
 - Deputy runs `./agent-file.sh worktree rm <path>` and `./agent-file.sh todo done <name>` with the facts from the main manager and `--merge <commit>`
 - Sweep: `bin/agent-cleanup.sh --apply` at session start and when the last open task closes (todo empty, no live worktree). The scripts run it, no loop
-- Housekeep: every housekeep_interval_min minutes (default 120, 0 = off) the monitor loop runs `bin/agent-housekeep.sh --apply`, which ends with this sweep. Plain and cloud: no loop, run it by hand
+- Housekeep: every housekeep_interval_min minutes (default 120, 0 = off) `agent-watch.sh --all` runs `bin/agent-housekeep.sh --apply`, then this sweep. Plain and cloud: no watch, run it by hand
 - The housekeep pass runs `agent-file.sh state trim` on the main repo's agent_state.txt before it writes its block (S8)
 - The main manager reads the HOUSEKEEP block in agent_state.txt at its next activity. Per suspect: `idea rm <n>` if done or voided by a recorded owner decision, else `idea keep <n>` (still wanted)
 - It then acts on the other flags of the block
@@ -234,7 +234,7 @@ W13. Close case
 - Main manager gets a CLOSE CASE report: finished → merge skill. Unfinished → review, then finish first (DONE, then merge) or close now (branch pushed, todo line open, pane closed, worktree removed)
 - Log every decision in its agent_state.txt. Human away → decide by the requirement doc, mark it "owner not seen"
 - Main manager gets close case from the human = the whole repo: close case to every live task manager and human-direct session in agent_worktree.txt
-- Collect every report, decide each, merge what passes, close all panes and worktrees, stop its own crons and monitors, update the agent files
+- Collect every report, decide each, merge what passes, close all panes and worktrees, stop its own crons, update the agent files
 - Then one final table to the human: task, result, what changed, what is left, decisions taken for the human. Nothing dropped (the H3 five-row cap does not apply)
 - After the table the main manager asks the human, in his language: clean this session for the next round, yes or no? No, or no answer: nothing changes
 - Yes: `agent-start.sh --clean` (archives agent_state.txt, writes a short fresh one, says what still runs), then `/clear`. Same main manager, same lock, same name
@@ -255,7 +255,7 @@ W14. Show todo
 - `agent-guard.sh` records launches by task; default `board_guard=record`. Only `board_guard=on` refuses a main manager launch naming no open todo task: `todo add` first. `worker on`: no hooks only.
 
 W15. Watch
-- Monitor sweep on three signals: process, terminal output, git movement
+- Stall detection is the watch: each sweep reads the pane screen and the `agent_state.txt` file; 3 sweeps with neither changed = STALL. The same watch runs the housekeep timer (W8)
 - Verify every launch within 2 min
 - One `agent-watch.sh --all` in the background (Bash run_in_background) watches every task manager, local and on another machine: its pane and its worktree `agent_state.txt` (a report goes under `=== REPORT ===`); restart it after each wake
 - A task manager's HEARTBEAT, ACK, report and question go into `agent_state.txt` only, never SendMessage; only DONE PASS, DONE FAIL, QUESTION:, MOCK READY, CLOSE CASE and the watch's STALL and LOST wake the main manager
@@ -352,14 +352,14 @@ H4. Tables
 S1. Settings
 - `./agent-settings.sh` shows and writes `agent.conf`, validated. No hand editing, no agent
 - Holds every config value in this file
-- Also writes the agent-monitor config
+- Also writes the watch and housekeep config (`housekeep_interval_min`)
 - Setup: init offers to merge the permission rules into `.claude/settings.json` (`agent-init.sh --add-permissions`); agents never hand-edit JSON. Manager default `opus-5.5:high`; `xhigh` is an install choice
 - Setup: init asks all vs selected repos; `agent-init.sh --scope` writes the files; agents never hand-edit JSON
 - `~/.claude/auto-pipeline.conf` = this machine's own file, never in a repo: `permission_mode`, wins over `agent.conf`. Write it with `agent-settings.sh --user <key> <value>`
 
 S2. Resume script
 - One command
-- Loads context, memory, agents, monitor, saved sessions (S7)
+- Loads context, memory, agents, saved sessions (S7), and prints the watch command when no watch runs
 
 S3. Resource guard
 - Before new agent or heavy process: check free RAM and CPU
@@ -369,8 +369,8 @@ S4. Usage cap
 - RAM and CPU each ≤ 80%
 - Over → no new job to any agent until it drops back
 - Over → run `bin/agent-resources.sh relief` first, then wait
-- relief stops only what the pipeline owns: monitor loops left by tests, monitors of repos with no live main manager
-- The sweep (W8) runs `agent-resources.sh stop-leftovers`: this repo's orphan monitor and finished test loops only, no table
+- relief stops only what the pipeline owns: `agent-watch.sh --all` processes left by tests, watches of repos with no live main manager
+- The sweep (W8) runs `agent-resources.sh stop-leftovers`: this repo's orphan watch and finished test watches only, no table
 - Finished or idle worktrees → merge deputy cleans them (W8). A task manager over cap parks: commit, write state, set idle; the main manager closes its pane; resume brings it back
 - The human's apps, other repos' sessions, Gradle or node runners: never killed by an agent. One table to the human: process · MB · CPU · what · suggestion
 - Config `max_usage_percent`=80
@@ -494,8 +494,7 @@ Scripts, not agents (cost no tokens):
   bin/agent-settings.sh  show or change agent.conf, validated
   bin/agent-resume.sh    one command to bring the pipeline back after a restart
   bin/agent-cleanup.sh   the main manager's sweep: removes merged, clean, idle worktrees and branches; lists the rest in one table
-  bin/agent-housekeep.sh the main manager's pass every housekeep_interval_min from the monitor loop: worktree, todo and ideas files, related repos read only, then the cleanup sweep; writes one HOUSEKEEP block
-  bin/agent-monitor.sh   watches every worktree, writes agent_monitor.txt
+  bin/agent-housekeep.sh the main manager's pass every housekeep_interval_min from the `agent-watch.sh --all` loop: worktree, todo and ideas files, related repos read only, then the cleanup sweep; writes one HOUSEKEEP block
   bin/agent-watch.sh     `agent-watch.sh --all`: one background watch for every task manager, local or remote (pane + agent_state.txt); exits on a report, question, stall or lost machine
   bin/agent-file.sh tell `agent-file.sh tell <task> "<msg>"`: long text to a task manager, a block in its agent_state.txt + one pointer line
   bin/agent-init.sh      sets a project up: agent.conf, the four task files, .secrets/, .gitignore lines, AGENTS.md, and it prints the permissions block
@@ -523,7 +522,7 @@ Scripts, not agents (cost no tokens):
 | `agent_ideas.txt` | `agent-file.sh idea add` | Human, on his own time |
 | `agent_worktree.txt` | `agent-file.sh worktree set` / `rm` | Main manager before every dispatch |
 | `agent.conf` | `./bin/agent-settings.sh` | `agent-start.sh` |
-| `agent_monitor.txt` | `./bin/agent-monitor.sh` | Every agent at start |
+| `agent_watch.json` (git dir, git-ignored by being there) | `agent-watch.sh --all` | `agent-watch.sh`, the board, the city (stall) |
 | `agent_state.txt` | Each session: `agent-file.sh state add`; `state trim` moves old lines to `agent_state.trim-<date>.txt` (todo done, housekeep) | The same session, after a start, compaction or clear |
 | `.secrets/` | Human only | Any agent, read only, never printed |
 

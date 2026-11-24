@@ -20,8 +20,9 @@ CONTRACT
         else -> "working". A human-direct line (bin/agent-start.sh) is
         "<path> | task manager, human-direct | task: ... | since <time>":
         human true, status "working", module = the path's last part.
-        stalled: <root>/agent_monitor.txt has a line for the same path whose
-        6th field (" | " separated) is "STALL". Missing files -> [] / false.
+        stalled: <root>/.git/agent_watch.json (the watch status of
+        bin/agent_watch.py) has a task with the same path and a non-empty
+        "stall". Missing files -> [] / false.
         Blank lines skipped.
     site_id(path) -> "wt:" + sha1(realpath(path) as utf-8).hexdigest()[:10]
     site_branch(path) -> the worktree's branch ("feat-a") read from files
@@ -249,12 +250,13 @@ class TestReadSites(unittest.TestCase):
         self.assertEqual([s["human"] for s in got], [False, False, False, False, True])
         self.assertEqual([s["stalled"] for s in got], [False] * 5)
 
-    def test_stalled_from_the_monitor(self):
+    def test_stalled_from_the_watch(self):
         write(os.path.join(self.root, "agent_worktree.txt"),
               "/w/a | city-a | working | since x\n/w/b | city-b | working | since x\n")
-        write(os.path.join(self.root, "agent_monitor.txt"),
-              "/w/a | city-a | pane none | commit 40m ago | activity none | STALL | 2026-09-25 11:00\n"
-              "/w/b | city-b | pane working | commit 1m ago | activity 1m ago | OK | 2026-09-25 11:00\n")
+        os.makedirs(os.path.join(self.root, ".git"), exist_ok=True)
+        write(os.path.join(self.root, ".git", "agent_watch.json"), json.dumps({"tasks": {
+            "a": {"path": "/w/a", "stall": "no change\nscreen"},
+            "b": {"path": "/w/b", "stall": ""}}}))
         got = {s["path"]: s["stalled"] for s in ac.read_sites(self.root)}
         self.assertEqual(got, {"/w/a": True, "/w/b": False})
 
@@ -331,7 +333,7 @@ class SiteCase(unittest.TestCase):
                                balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}},
                                start_repo=self.ident)
         self.wtf = os.path.join(self.root, "agent_worktree.txt")
-        self.mon = os.path.join(self.root, "agent_monitor.txt")
+        self.mon = os.path.join(self.root, ".git", "agent_watch.json")
         self.snap, self.client = snapshot(self.st)
 
     def tearDown(self):
@@ -392,10 +394,10 @@ class TestSitesLifecycle(SiteCase):
         self.assertEqual([m["type"] for m in msgs], ["site"])
         self.assertEqual(msgs[0]["status"], "final")
 
-    def test_stalled_from_monitor(self):
+    def test_stalled_from_the_watch(self):
         self.register()
         self.scan()
-        write(self.mon, "%s | city-a | pane none | commit 40m ago | activity none | STALL | t\n" % self.wt)
+        write(self.mon, json.dumps({"tasks": {"a": {"path": self.wt, "stall": "no change\nscreen"}}}))
         msgs = self.scan()
         self.assertEqual([m["type"] for m in msgs], ["site"])
         self.assertTrue(msgs[0]["stalled"])

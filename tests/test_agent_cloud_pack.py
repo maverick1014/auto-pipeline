@@ -107,7 +107,7 @@ PACKED_SKILLS = ["dispatch", "merge"]
 NOT_PACKED_SKILLS = ["init", "cloud-pack"]
 AGENT_FILES = ["fast-lane-deputy.md", "merge-deputy.md", "worker.md"]
 SHELL_SCRIPTS = ["agent-start.sh", "agent-file.sh", "agent-settings.sh",
-                 "agent-resume.sh", "agent-monitor.sh", "agent-init.sh",
+                 "agent-resume.sh", "agent-init.sh",
                  "agent-runtime.sh", "agent-cloud-pack.sh"]
 TASK_FILES = ["agent_todo.txt", "agent_completed.txt", "agent_ideas.txt",
               "agent_worktree.txt"]

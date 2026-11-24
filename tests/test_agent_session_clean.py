@@ -20,8 +20,7 @@ K2 agent-start.sh --clean ["<carry line>" ...]   the main manager runs it itself
    written. It never writes the lock, the closed list, a tracked file, or calls orca terminal send.
 
    Gate, checked not guessed, before any file work:
-       a live pid in <git common dir>/agent_monitor.pid (a dead pid there is not running)
-           LEFT RUNNING: monitor pid <pid> -> <plugin>/bin/agent-monitor.sh stop
+       (the monitor pid line is gone with bin/agent-monitor.sh, 2026-11-24)
        every line of agent_worktree.txt
            LEFT RUNNING: worktree <the line> -> close its pane, remove the worktree, <plugin>/bin/agent-file.sh worktree rm "<path>"
        then "REFUSED: stop these first, then run --clean again. Nothing changed.", exit 1.
@@ -207,13 +206,6 @@ class TestLeftRunning(CleanCase):
         with open(self.state_path) as fh:
             self.assertEqual(fh.read(), self.OLD)
 
-    def monitor_pid_file(self, pid):
-        full = self.repo.path(".git", "agent_monitor.pid")
-        with open(full, "w") as fh:
-            fh.write("%d\n" % pid)
-        self.addCleanup(lambda: os.path.exists(full) and os.remove(full))
-        return full
-
     def test_a_live_worktree_line_stops_it(self):
         me = self.main()
         self.write_state()
@@ -226,38 +218,15 @@ class TestLeftRunning(CleanCase):
         self.assertIn("alpha", left[0])
         self.assertIn("agent-file.sh worktree rm", left[0])
 
-    def test_a_live_monitor_stops_it(self):
-        me = self.main()
-        self.write_state()
-        mon = self.live()
-        self.monitor_pid_file(mon)
-        result = self.clean(pid=me)
-        self.assertStopped(result)
-        left = [l for l in result.stdout.splitlines() if l.startswith("LEFT RUNNING:")]
-        self.assertEqual(len(left), 1, result.stdout)
-        self.assertIn("monitor pid %d" % mon, left[0])
-        self.assertIn("%s/bin/agent-monitor.sh stop" % self.repo.plugin, left[0])
-
     def test_every_left_thing_gets_its_own_line(self):
         me = self.main()
         self.write_state()
-        self.monitor_pid_file(self.live())
         self.repo.set_worktree_lines([("/tmp/wt/alpha", "alpha", "working"),
                                       ("/tmp/wt/beta", "beta", "idle")])
         result = self.clean(pid=me)
         self.assertStopped(result)
         left = [l for l in result.stdout.splitlines() if l.startswith("LEFT RUNNING:")]
-        self.assertEqual(len(left), 3, result.stdout)
-
-    def test_a_dead_monitor_pid_is_not_running(self):
-        me = self.main()
-        self.write_state()
-        gone = subprocess.Popen(["true"])
-        gone.wait()
-        self.monitor_pid_file(gone.pid)
-        out = self.assertOk(self.clean(pid=me))
-        self.assertNotIn("LEFT RUNNING", out)
-        self.assertEqual(len(self.archives()), 1)
+        self.assertEqual(len(left), 2, result.stdout)
 
     def test_after_the_stop_the_same_command_goes_through(self):
         me = self.main()

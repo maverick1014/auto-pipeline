@@ -1,14 +1,10 @@
-"""Failing tests for the two new agent.conf keys, through ./agent-settings.sh.
+"""Tests for numeric agent.conf keys (heavy_test_slots, max_agents), through ./agent-settings.sh.
 
 CONTRACT:
 
-  agent.conf gains two keys, in the "limits" group, right after max_agents:
-
-      monitor_interval_min=5      how often the monitor sweeps. 1 to 60
-      stall_min=10                how long all three signals may stay quiet. 1 to 120
-
-  agent_conf.py gets both in NUMBER_BOUNDS, HINTS and GROUPS["limits"], so
+  agent_conf.py holds both in NUMBER_BOUNDS, HINTS and GROUPS["limits"], so
   ./agent-settings.sh accepts a good value and refuses a bad one without saving.
+  (The monitor keys monitor_interval_min and stall_min are gone with the monitor, 2026-11-24.)
 
 CONTRACT (run from a git worktree):
 
@@ -31,7 +27,7 @@ if HERE not in sys.path:
 
 from scripthelp import ScriptCase
 
-NEW_KEYS = {"monitor_interval_min": (1, 60), "stall_min": (1, 120)}
+NEW_KEYS = {"heavy_test_slots": (1, 8), "max_agents": (1, 16)}
 
 
 class SettingsCase(ScriptCase):
@@ -55,8 +51,8 @@ class TestNewKeysExist(SettingsCase):
                                      "%s is missing from agent.conf" % key)
 
     def test_defaults(self):
-        self.assertEqual(self.conf_value("monitor_interval_min"), "5")
-        self.assertEqual(self.conf_value("stall_min"), "10")
+        self.assertEqual(self.conf_value("heavy_test_slots"), "1")
+        self.assertEqual(self.conf_value("max_agents"), "4")
 
     def test_show_lists_both_keys(self):
         out = self.assertOk(self.settings())
@@ -99,10 +95,10 @@ class TestRejectsBadValues(SettingsCase):
                 self.assertNotEqual(self.settings(key, "soon").returncode, 0)
 
     def test_the_message_names_the_range(self):
-        result = self.settings("stall_min", "0")
+        result = self.settings("max_agents", "0")
         message = result.stdout + result.stderr
         self.assertIn("1", message)
-        self.assertIn("120", message)
+        self.assertIn("16", message)
 
 
 class TestKeyOrder(SettingsCase):
@@ -110,15 +106,14 @@ class TestKeyOrder(SettingsCase):
         keys = [line.split("=", 1)[0].strip()
                 for line in open(self.repo.path("agent.conf")) if "=" in line]
         self.assertEqual(
-            keys[:5],
-            ["max_usage_percent", "heavy_test_slots", "max_agents",
-             "monitor_interval_min", "stall_min"],
+            keys[:3],
+            ["max_usage_percent", "heavy_test_slots", "max_agents"],
         )
 
     def test_saving_keeps_the_order(self):
         before = [line.split("=", 1)[0].strip()
                   for line in open(self.repo.path("agent.conf")) if "=" in line]
-        self.assertOk(self.settings("stall_min", "20"))
+        self.assertOk(self.settings("max_agents", "5"))
         after = [line.split("=", 1)[0].strip()
                  for line in open(self.repo.path("agent.conf")) if "=" in line]
         self.assertEqual(before, after)
@@ -126,22 +121,22 @@ class TestKeyOrder(SettingsCase):
 
 class TestSync(SettingsCase):
     def test_sync_adds_only_the_missing_keys_with_the_template_value(self):
-        before_max_agents = self.conf_value("max_agents")
-        self.repo.unset_conf("monitor_interval_min")
-        self.repo.unset_conf("stall_min")
+        before_slots = self.conf_value("heavy_test_slots")
+        self.repo.unset_conf("max_agents")
+        self.repo.unset_conf("housekeep_interval_min")
         before = open(self.repo.path("agent.conf")).read()
         out = self.assertOk(self.settings("sync"))
-        self.assertIn("added monitor_interval_min=5", out)
-        self.assertIn("added stall_min=10", out)
-        self.assertEqual(self.conf_value("monitor_interval_min"), "5")
-        self.assertEqual(self.conf_value("stall_min"), "10")
+        self.assertIn("added max_agents=4", out)
+        self.assertIn("added housekeep_interval_min=120", out)
+        self.assertEqual(self.conf_value("max_agents"), "4")
+        self.assertEqual(self.conf_value("housekeep_interval_min"), "120")
         # every line that was already there stays byte-identical, in place
         after = open(self.repo.path("agent.conf")).read()
         self.assertTrue(after.startswith(before))
-        self.assertEqual(self.conf_value("max_agents"), before_max_agents)
+        self.assertEqual(self.conf_value("heavy_test_slots"), before_slots)
 
     def test_sync_twice_is_idempotent(self):
-        self.repo.unset_conf("stall_min")
+        self.repo.unset_conf("max_agents")
         self.assertOk(self.settings("sync"))
         after_first = open(self.repo.path("agent.conf")).read()
         out = self.assertOk(self.settings("sync"))
@@ -160,17 +155,17 @@ class TestSync(SettingsCase):
 
 class TestSetvOnMissingKey(SettingsCase):
     def test_setv_appends_a_missing_known_key(self):
-        self.repo.unset_conf("stall_min")
-        result = self.settings("stall_min", "20")
+        self.repo.unset_conf("max_agents")
+        result = self.settings("max_agents", "5")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("saved: stall_min=20", result.stdout)
-        self.assertEqual(self.conf_value("stall_min"), "20")
+        self.assertIn("saved: max_agents=5", result.stdout)
+        self.assertEqual(self.conf_value("max_agents"), "5")
 
     def test_setv_on_a_missing_known_key_still_validates(self):
-        self.repo.unset_conf("stall_min")
-        result = self.settings("stall_min", "0")
+        self.repo.unset_conf("max_agents")
+        result = self.settings("max_agents", "0")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIsNone(self.conf_value("stall_min"))
+        self.assertIsNone(self.conf_value("max_agents"))
 
     def test_setv_on_an_unknown_key_still_refuses(self):
         result = self.settings("no_such_key", "x")

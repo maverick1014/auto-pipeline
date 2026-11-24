@@ -5,7 +5,7 @@ Two roots, always separate in a test, because that is how the plugin is used:
     PLUGIN root   the folder above bin/. Holds PRINCIPLES.md, bin/, the quiz,
                   agent_conf.py, the agent.conf template. Read only.
     PROJECT root  the repo being worked on. Holds agent.conf, the four
-                  agent_*.txt, agent_monitor.txt, .secrets/ and the lock.
+                  agent_*.txt, .secrets/ and the lock.
 
 `ScriptRepo.plugin` is the first, `ScriptRepo.dir` the second. A script is
 always started by its absolute path inside the plugin, with the working
@@ -53,7 +53,6 @@ COPY_BIN = [
     "agent-file.sh",
     "agent-settings.sh",
     "agent-resume.sh",
-    "agent-monitor.sh",
     "agent-resources.sh",
     "agent-init.sh",
     "agent-roots.sh",
@@ -613,74 +612,7 @@ class ScriptRepo:
 
     # ---- teardown ----
 
-    def kill_monitor(self):
-        """Stop every monitor loop this repo's tests may have started.
-
-        A test is not limited to `self.dir`: `make_worktree`, `make_project`
-        and a bare `cwd=` on `run()` all let it start a monitor loop rooted
-        somewhere else under `self.base` (see e.g. TestPlainDirectory in
-        test_two_roots.py, whose "plain" folder is not even a git repo, so
-        its pid file lives in "<plain>/.auto-pipeline/", not "<plain>/.git/"
-        -- agent-roots.sh's fallback for a directory with no git at all).
-        So: find every "agent_monitor.pid" anywhere under this repo's own
-        temp tree, not just the one project's.
-
-        For each, ask first, the graceful way: the plugin copy's own
-        `agent-monitor.sh stop`, run with cwd set to the project root that
-        pid file belongs to (same PATH/env a test would use). Safe to call
-        when no monitor ever ran -- `stop` on an already-stopped monitor just
-        says so and exits 0. Then, belt and braces: kill whatever pid is
-        still on file, in case `stop` could not reach it (KIND resolved
-        differently outside a test's own cwd, script missing, etc).
-
-        The loop's children too (its `sleep`): read before `stop`, killed
-        after it. A sleep left alive holds no pipe here (the loop writes to
-        /dev/null) but still runs for minutes after the test is gone.
-        """
-        monitor_sh = os.path.join(self.plugin_bin, "agent-monitor.sh")
-        # os.walk, not glob: glob's "**" does not descend into a dot
-        # directory (".git", ".auto-pipeline") by default, which is exactly
-        # where this pid file lives.
-        pid_files = []
-        for dirpath, _dirnames, filenames in os.walk(self.base):
-            if "agent_monitor.pid" in filenames:
-                pid_files.append(os.path.join(dirpath, "agent_monitor.pid"))
-
-        for pid_file in pid_files:
-            gitdir = os.path.dirname(pid_file)
-            project_dir = os.path.dirname(gitdir)  # parent of .git or .auto-pipeline
-
-            pid = None
-            try:
-                with open(pid_file) as fh:
-                    pid = int(fh.read().split()[0])
-            except (ValueError, IndexError, OSError):
-                pass
-            # ours only: the loop runs this repo's plugin copy. A stale pid
-            # file can name any process by now.
-            if pid and self.base not in args_of(pid):
-                pid = None
-            kids = children_of(pid) if pid else []
-
-            if os.path.exists(monitor_sh) and os.path.isdir(project_dir):
-                try:
-                    self.run("agent-monitor.sh", "stop", cwd=project_dir,
-                             timeout=30)
-                except Exception:
-                    pass
-
-            for victim in ([pid] if pid else []) + kids:
-                try:
-                    os.kill(victim, signal.SIGTERM)
-                except OSError:
-                    pass
-            try:
-                os.remove(pid_file)
-            except OSError:
-                pass
-
     def cleanup(self):
-        self.kill_monitor()
         shutil.rmtree(self.base, ignore_errors=True)
 
 

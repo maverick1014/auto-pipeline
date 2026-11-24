@@ -153,7 +153,7 @@
 - One worktree = one construction site inside its repo's territory. The pipeline gives each worktree one task manager: the site office is that task manager's office (see Interaction).
 - The site has a fence and a sign on the site office with the branch name. Its workers build inside it.
 - Status from `agent_worktree.txt`: working = lights on, work going on; final = workers gone, the task manager checks, scaffolding comes down; idle = quiet, lights off.
-- Stalled (from `agent_monitor.txt`) = smoke and a warning sign on the site, and a 卡住的工地 count next to the top counts.
+- Stalled (from the watch status `<git dir>/agent_watch.json`, a task with a stall) = smoke and a warning sign on the site, and a 卡住的工地 count next to the top counts.
 - Merged = the merge deputy lays a road or bridge from the site to the town hall, the fence goes, the new buildings join the town.
 - Worktree removed = the site office packs up and goes.
 - A human-direct session (second session opened by hand) = a small 亲自带 flag on its site.

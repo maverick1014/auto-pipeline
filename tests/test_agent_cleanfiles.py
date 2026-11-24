@@ -519,7 +519,7 @@ class TestStateCopies(FilesCase):
            "/x/city-tier | city-tier | pane working | commit 1m ago | "
            "activity 73m ago | OK | 2026-10-05 15:35"]
 
-    def test_b3_old_monitor_file_with_no_monitor_running(self):
+    def test_b3_a_monitor_file_is_a_leftover(self):
         self.set_file("agent_monitor.txt", self.MON)
         found = self.by_what(self.dry())
         self.assertIn("agent_monitor.txt", found)
@@ -528,38 +528,11 @@ class TestStateCopies(FilesCase):
         self.assertIn("monitor", v[2])
         self.assertTrue(v[3].startswith("rm"))
 
-    def test_b3_monitor_file_without_any_date(self):
-        self.set_file("agent_monitor.txt", ["/x/a | a | pane done"])
-        self.assertIn("agent_monitor.txt", self.by_what(self.dry()))
-
-    def test_e9_a_running_monitor_keeps_it(self):
-        self.set_file("agent_monitor.txt", self.MON)
-        live = subprocess.Popen(["sleep", "120"])
-        pidfile = os.path.join(self.gitdir, "agent_monitor.pid")
-
-        def stop():   # before the fixture's own monitor stop reads the file
-            if os.path.exists(pidfile):
-                os.remove(pidfile)
-            live.kill()
-            live.wait()
-        self.addCleanup(stop)
-        with open(pidfile, "w") as fh:
-            fh.write("%d\n" % live.pid)
-        self.assertNotIn("agent_monitor.txt", self.by_what(self.dry()))
-
-    def test_b3_a_dead_monitor_pid_does_not_keep_it(self):
-        self.set_file("agent_monitor.txt", self.MON)
-        dead = subprocess.Popen(["true"])
-        dead.wait()
-        with open(os.path.join(self.gitdir, "agent_monitor.pid"), "w") as fh:
-            fh.write("%d\n" % dead.pid)
-        self.assertIn("agent_monitor.txt", self.by_what(self.dry()))
-
-    def test_b3_a_young_monitor_file_stays(self):
+    def test_b3_a_young_monitor_file_is_listed_too(self):
+        # nothing writes it since bin/agent-monitor.sh went (2026-11-24): any age
         self.set_file("agent_monitor.txt", [
             "/x/a | a | pane done | commit 1m ago | activity 1m ago | OK | 2026-11-20 10:00"])
-        self.assertNotIn("agent_monitor.txt", self.by_what(self.dry()))
-
+        self.assertIn("agent_monitor.txt", self.by_what(self.dry()))
 
 # ---------------------------------------------------------------- B4. mocks
 

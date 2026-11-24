@@ -17,8 +17,7 @@ Normal start, in this order:
     agent_state.txt: <n> lines            only when the file has something
       <its first 30 lines, two spaces in front>
       (truncated, read the file)          only when it is longer than 30
-    agent_monitor.txt: <n> lines          only when the file has something
-      <every line, two spaces in front>
+    (agent_monitor.txt is no longer printed: bin/agent-monitor.sh is gone, 2026-11-24)
     RULES: read <plugin>/PRINCIPLES.md now (S8).
     QUIZ: run <plugin>/bin/agent-start.sh --quiz, then --answer. No work until PASS.
 
@@ -81,9 +80,6 @@ if HERE not in sys.path:
 
 from scripthelp import ScriptCase, ScriptRepo
 from test_output_hook import pointer_part
-
-MONITOR_LINE = ("/tmp/wt | alpha | pane working | commit 2m ago | "
-                "activity 0m ago | OK | 2026-09-21 18:00")
 
 RULES_LINE = "RULES: read %s/PRINCIPLES.md now (S8)."
 QUIZ_LINE = ("QUIZ: run %s/bin/agent-start.sh --quiz, then --answer. "
@@ -155,11 +151,6 @@ class TestItFitsThePreviewOnARealProject(StartCase):
             for i in range(4):
                 fh.write("/very/long/path/to/worktree/number_%d | module_%d | "
                          "working | since 2026-09-22 10:00\n" % (i, i))
-        with open(self.repo.path("agent_monitor.txt"), "w") as fh:
-            for i in range(4):
-                fh.write("/very/long/path/to/worktree/number_%d | module_%d | "
-                         "pane working | commit 2m ago | activity 1m ago | OK "
-                         "| 2026-09-22 10:00\n" % (i, i))
         with open(self.repo.path("agent_state.txt"), "w") as fh:
             for i in range(60):
                 fh.write("%02d %s\n" % (i, long_line))
@@ -305,19 +296,6 @@ class TestTheStateFile(StartCase):
     def test_nothing_when_there_is_no_state_file(self):
         out = self.assertOk(self.start())
         self.assertNotIn("agent_state.txt:", out)
-
-
-class TestTheMonitorFile(StartCase):
-    def test_it_is_printed_when_it_has_something(self):
-        with open(self.repo.path("agent_monitor.txt"), "w") as fh:
-            fh.write(MONITOR_LINE + "\n")
-        out = self.assertOk(self.start())
-        self.assertIn("agent_monitor.txt: 1 lines", out)
-        self.assertIn("  " + MONITOR_LINE, out)
-
-    def test_nothing_when_it_is_missing(self):
-        out = self.assertOk(self.start())
-        self.assertNotIn("agent_monitor.txt:", out)
 
 
 class TestQuizFlag(StartCase):

@@ -6,9 +6,9 @@ relief only runs when the file is executed directly with the one argument
 defining functions and running nothing, exactly as before.
 
 relief stops only two kinds of process:
-  a. every "auto_pipeline_*/plugin/bin/agent-monitor.sh" process -- a monitor
-     loop a test run left behind
-  b. any other "agent-monitor.sh start" process whose repo has no live main
+  a. every "auto_pipeline_*/plugin/bin/agent-watch.sh" process -- a watch
+     a test run left behind
+  b. any other "agent-watch.sh --all" process whose repo has no live main
      manager (agent_main.lock missing, or its pid is dead)
 
 Everything else just gets listed, never killed, in one table for the human.
@@ -17,10 +17,7 @@ Every kill path ends the loop's children too. The real loop is
 `trap ... TERM; while true; do sleep N & wait $!; ...; done`: a TERM to the
 loop pid alone leaves its `sleep 300` running for minutes. So:
   - the test-monitor pass kills the loop and its children
-  - the no-live-lock pass: a repo with its own bin/agent-monitor.sh gets
-    `agent-monitor.sh stop` first (an old copy may not stop the sleep, or
-    its pid file may be gone), then the loop, if still alive, and its
-    children are killed; a repo without the script: loop and children killed
+  - the no-live-lock pass: the loop and its children are killed
   - the folder-gone pass already does this (3d3b0ee)
 
 AGENT_RELIEF_ONLY_UNDER=<folder>: relief stops only processes whose command
@@ -55,7 +52,7 @@ from scripthelp import ScriptCase, ROOT, children_of
 
 REAL_SCRIPT = os.path.join(ROOT, "bin", "agent-resources.sh")
 
-# The shape of the real monitor loop (agent-monitor.sh do_start): a TERM trap
+# The shape of the real monitor loop (the old agent-monitor.sh do_start): a TERM trap
 # and a background sleep. Killing only this pid leaves the sleep behind.
 LOOP = """#!/usr/bin/env bash
 case "${1:-}" in stop) exit 0;; esac
@@ -96,14 +93,14 @@ def write_exe(path, body):
 
 
 def spawn(case, script, cwd=None):
-    """Start `bash <script> start` the leak-free way and clean it up after.
+    """Start `bash <script> --all` the leak-free way and clean it up after.
 
     /dev/null for all three streams: a loop, or its sleep, that holds the
     test's stdout keeps a piped run open. Own process group: cleanup kills
     the loop and every child with one killpg, even after relief killed only
     part of it.
     """
-    proc = subprocess.Popen(["bash", script, "start"], cwd=cwd,
+    proc = subprocess.Popen(["bash", script, "--all"], cwd=cwd,
                             stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
@@ -196,12 +193,12 @@ class TestReliefTable(ScriptCase):
         self.assertIn("PROCESS | MB | CPU% | WHAT | SUGGEST", result.stdout)
         self.assertIn("RESOURCES: RAM 10% CPU 10% (cap 80%) -> OK",
                       result.stdout)
-        self.assertIn("stopped 0 test monitors", result.stdout)
+        self.assertIn("stopped 0 test watches", result.stdout)
 
 
 class TestReliefKillsTestMonitors(unittest.TestCase):
     """Uses the real installed script, not the copied plugin, so the fake
-    process can sit at a literal auto_pipeline_*/plugin/bin/agent-monitor.sh
+    process can sit at a literal auto_pipeline_*/plugin/bin/agent-watch.sh
     path of our own choosing.
     """
 
@@ -212,12 +209,12 @@ class TestReliefKillsTestMonitors(unittest.TestCase):
     def test_relief_kills_a_fake_test_monitor_loop(self):
         fake_monitor = write_exe(os.path.join(
             self.base, "auto_pipeline_t3st", "plugin", "bin",
-            "agent-monitor.sh"), SLEEPER)
+            "agent-watch.sh"), SLEEPER)
         self.proc = spawn(self, fake_monitor)
 
         result = relief(self.base)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("stopped 1 test monitors", result.stdout)
+        self.assertIn("stopped 1 test watches", result.stdout)
         # poll(), not os.kill: a killed child is a zombie (still answers
         # os.kill(pid, 0)) until this process reaps it with wait()/poll().
         self.assertTrue(wait_until(lambda: self.proc.poll() is not None),
@@ -237,7 +234,7 @@ class TestReliefLeavesALiveMainManagerAlone(unittest.TestCase):
             fh.write("%d 2026-09-24 00:00\n" % os.getpid())
 
         self.fake_monitor = write_exe(
-            os.path.join(self.repo_root, "bin", "agent-monitor.sh"), SLEEPER)
+            os.path.join(self.repo_root, "bin", "agent-watch.sh"), SLEEPER)
         self.proc = spawn(self, self.fake_monitor, cwd=self.repo_root)
 
     def test_relief_does_not_kill_a_monitor_with_a_live_lock_owner(self):
@@ -252,7 +249,7 @@ class TestReliefLeavesALiveMainManagerAlone(unittest.TestCase):
 class TestReliefStopsMonitorWhoseFolderIsGone(unittest.TestCase):
     """A monitor loop whose cwd folder was deleted (a removed E2E temp repo,
     a deleted scratchpad clone) can never be stopped with
-    "agent-monitor.sh stop" -- that folder no longer exists to cd into.
+    nothing can run from a folder that no longer exists.
     relief must kill the loop (and any child it left running) instead of
     skipping it forever.
     """
@@ -262,7 +259,7 @@ class TestReliefStopsMonitorWhoseFolderIsGone(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.base, ignore_errors=True)
         self.repo_root = os.path.join(self.base, "somerepo")
         fake_monitor = write_exe(
-            os.path.join(self.repo_root, "agent-monitor.sh"), SLEEPER)
+            os.path.join(self.repo_root, "agent-watch.sh"), SLEEPER)
         self.proc = spawn(self, fake_monitor, cwd=self.repo_root)
         # let bash actually get past forking its "sleep" child before we
         # pull the folder out from under it: cwd-dependent work (job
@@ -308,28 +305,16 @@ class TestReliefStopsTheLoopsChildren(ReliefLoopCase):
     def test_the_test_monitor_pass_kills_the_sleep_too(self):
         script = write_exe(os.path.join(
             self.base, "auto_pipeline_k1ds", "plugin", "bin",
-            "agent-monitor.sh"), LOOP)
+            "agent-watch.sh"), LOOP)
         proc, child = self.loop_with_child(script)
         result = relief(self.base)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("stopped 1 test monitors", result.stdout)
+        self.assertIn("stopped 1 test watches", result.stdout)
         self.assertAllGone(proc, child)
 
     def test_no_lock_and_no_script_kills_the_sleep_too(self):
         repo = git_repo(os.path.join(self.base, "nolock"))
-        script = write_exe(os.path.join(repo, "agent-monitor.sh"), LOOP)
-        proc, child = self.loop_with_child(script, cwd=repo)
-        result = relief(self.base)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("no live main manager", result.stdout)
-        self.assertAllGone(proc, child)
-
-    def test_no_lock_and_a_stop_that_stops_nothing_still_ends_both(self):
-        # the repo's own bin/agent-monitor.sh answers `stop` without
-        # stopping anything: an old copy, or its pid file is gone
-        repo = git_repo(os.path.join(self.base, "oldcopy"))
-        script = write_exe(os.path.join(repo, "bin", "agent-monitor.sh"),
-                           LOOP)
+        script = write_exe(os.path.join(repo, "agent-watch.sh"), LOOP)
         proc, child = self.loop_with_child(script, cwd=repo)
         result = relief(self.base)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -342,7 +327,7 @@ class TestReliefStopsTheLoopsChildren(ReliefLoopCase):
         gone.wait()
         with open(os.path.join(repo, ".git", "agent_main.lock"), "w") as fh:
             fh.write("%d 2026-09-28 00:00\n" % gone.pid)
-        script = write_exe(os.path.join(repo, "agent-monitor.sh"), LOOP)
+        script = write_exe(os.path.join(repo, "agent-watch.sh"), LOOP)
         proc, child = self.loop_with_child(script, cwd=repo)
         result = relief(self.base)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -361,18 +346,18 @@ class TestReliefStaysInsideItsScope(ReliefLoopCase):
     def test_a_test_monitor_outside_the_scope_lives(self):
         script = write_exe(os.path.join(
             self.base, "auto_pipeline_0ut", "plugin", "bin",
-            "agent-monitor.sh"), LOOP)
+            "agent-watch.sh"), LOOP)
         proc, child = self.loop_with_child(script)
         result = relief(self.elsewhere)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("stopped 0 test monitors", result.stdout)
+        self.assertIn("stopped 0 test watches", result.stdout)
         time.sleep(1)
         self.assertIsNone(proc.poll(), "relief stopped a loop outside its scope")
         self.assertTrue(alive(child))
 
     def test_a_no_lock_monitor_outside_the_scope_lives(self):
         repo = git_repo(os.path.join(self.base, "nolock"))
-        script = write_exe(os.path.join(repo, "agent-monitor.sh"), LOOP)
+        script = write_exe(os.path.join(repo, "agent-watch.sh"), LOOP)
         proc, child = self.loop_with_child(script, cwd=repo)
         result = relief(self.elsewhere)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -388,14 +373,14 @@ class TestReliefStaysInsideItsScope(ReliefLoopCase):
         os.makedirs(scope)
         script = write_exe(os.path.join(
             self.base, "scope_abc", "auto_pipeline_pre", "plugin", "bin",
-            "agent-monitor.sh"), LOOP)
+            "agent-watch.sh"), LOOP)
         proc, child = self.loop_with_child(script)
         repo = git_repo(os.path.join(self.base, "scope_abc", "nolock"))
         orphan, orphan_child = self.loop_with_child(
-            write_exe(os.path.join(repo, "agent-monitor.sh"), LOOP), cwd=repo)
+            write_exe(os.path.join(repo, "agent-watch.sh"), LOOP), cwd=repo)
         result = relief(scope)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("stopped 0 test monitors", result.stdout)
+        self.assertIn("stopped 0 test watches", result.stdout)
         self.assertNotIn("nolock", result.stdout)
         time.sleep(1)
         for p, kid in ((proc, child), (orphan, orphan_child)):
@@ -405,10 +390,10 @@ class TestReliefStaysInsideItsScope(ReliefLoopCase):
     def test_a_scope_holding_it_still_stops_it(self):
         script = write_exe(os.path.join(
             self.base, "auto_pipeline_1n", "plugin", "bin",
-            "agent-monitor.sh"), LOOP)
+            "agent-watch.sh"), LOOP)
         proc, child = self.loop_with_child(script)
         result = relief(self.base)
-        self.assertIn("stopped 1 test monitors", result.stdout)
+        self.assertIn("stopped 1 test watches", result.stdout)
         self.assertAllGone(proc, child)
 
 
