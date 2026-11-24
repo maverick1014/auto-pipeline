@@ -49,8 +49,6 @@ REAL_KEYS = [
     "city_port",
     "city_idle_min",
     "city_governor_wait_sec",
-    "city_relay_sec",
-    "cloud_permission_mode",
     # progress-bar (owner 2026-11-11): stage weights and the board watch, tests/test_agent_progress.py
     "stage_brief",
     "stage_register",
@@ -94,7 +92,7 @@ REAL_KEYS = [
     "owner_order_min_chars",
 ]
 # the keys this repo's own agent.conf had before progress-bar
-OLD_KEYS = REAL_KEYS[:REAL_KEYS.index("cloud_permission_mode") + 1]
+OLD_KEYS = REAL_KEYS[:REAL_KEYS.index("city_governor_wait_sec") + 1]
 
 GOOD_CONF_TEXT = (
     "max_usage_percent=80\n"
@@ -114,8 +112,6 @@ GOOD_CONF_TEXT = (
     "city_port=4777\n"
     "city_idle_min=30\n"
     "city_governor_wait_sec=60\n"
-    "city_relay_sec=5\n"
-    "cloud_permission_mode=auto\n"
     "stage_brief=1\n"
     "stage_register=1\n"
     "stage_mock=4\n"
@@ -319,18 +315,18 @@ class TestValidateRoles(unittest.TestCase):
 
 class TestValidatePermissionMode(unittest.TestCase):
     # five-fixes S1 (2026-11-05): the modes `claude --help` (2.1.318) lists for
-    # --permission-mode, for permission_mode and cloud_permission_mode alike.
+    # --permission-mode, for permission_mode.
     # "default" is no claude mode any more: refused, never mapped.
     MODES = ("acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")
 
     def test_the_six_modes_are_accepted(self):
-        for key in ("permission_mode", "cloud_permission_mode"):
+        for key in ("permission_mode",):
             for mode in self.MODES:
                 with self.subTest(key=key, mode=mode):
                     self.assertIsNone(agent_conf.validate_value(key, mode))
 
     def test_anything_else_is_rejected(self):
-        for key in ("permission_mode", "cloud_permission_mode"):
+        for key in ("permission_mode",):
             for mode in ("", "Auto", "accept_edits", "yolo", "default plan", "bypass",
                          "bypasspermissions", "BypassPermissions", "bypassPermissions ",
                          "default", "Default", "dontask", "Manual",
@@ -339,7 +335,7 @@ class TestValidatePermissionMode(unittest.TestCase):
                     self.assertTrue(agent_conf.validate_value(key, mode))
 
     def test_error_message_names_the_six_modes(self):
-        for key in ("permission_mode", "cloud_permission_mode"):
+        for key in ("permission_mode",):
             message = agent_conf.validate_value(key, "yolo")
             self.assertTrue(message)
             for mode in self.MODES:
@@ -392,7 +388,7 @@ class TestValidateWholeConf(TempConfCase):
         self.assertEqual(agent_conf.validate(conf), {})
         # bypass-mode: this repo's own agent.conf is the main manager's to
         # change (agent-settings.sh sync appends the new keys at the end), so it
-        # may still lack cloud_permission_mode and the progress-bar keys
+        # may still lack the progress-bar keys
         keys = list(conf.keys())
         self.assertEqual(keys, REAL_KEYS[:len(keys)])
         self.assertGreaterEqual(len(keys), len(OLD_KEYS) - 1)
@@ -476,11 +472,10 @@ class TestGroups(unittest.TestCase):
                         "worker",
                     ],
                 ),
-                ("permission", ["permission_mode", "cloud_permission_mode", "auto_resume",
+                ("permission", ["permission_mode", "auto_resume",
                                 "language", "board_guard"]),
                 ("runtime", ["runtime"]),
-                ("city", ["city_port", "city_idle_min", "city_governor_wait_sec",
-                          "city_relay_sec"]),
+                ("city", ["city_port", "city_idle_min", "city_governor_wait_sec"]),
                 ("progress", ["stage_brief", "stage_register", "stage_mock", "stage_tests",
                               "stage_workers", "stage_verify", "stage_push", "stage_report",
                               "stage_e2e", "stage_merge", "board_watch_sec",
@@ -544,7 +539,7 @@ class TestCityKeys(unittest.TestCase):
     governor has to answer an agent's question before the owner gets it."""
 
     BOUNDS = {"city_port": (1024, 65535), "city_idle_min": (1, 240),
-              "city_governor_wait_sec": (5, 3600), "city_relay_sec": (2, 60)}
+              "city_governor_wait_sec": (5, 3600)}
 
     def test_bounds(self):
         for key, bounds in self.BOUNDS.items():
@@ -570,7 +565,6 @@ class TestCityKeys(unittest.TestCase):
         self.assertEqual(conf.get("city_port"), "4777")
         self.assertEqual(conf.get("city_idle_min"), "30")
         self.assertEqual(conf.get("city_governor_wait_sec"), "60")
-        self.assertEqual(conf.get("city_relay_sec"), "5")
 
     def test_no_switch_for_the_governor_approving(self):
         # Owner decision 2026-09-24: permission requests are the owner's only.

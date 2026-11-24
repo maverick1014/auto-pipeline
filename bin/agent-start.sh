@@ -431,7 +431,7 @@ Q33. You are a task manager. The owner runs /auto-pipeline:todo in your pane.
 
 Q34. You open a new terminal for an agent (dispatch, resume, a Helper, a city click). Its --permission-mode:
   A. auto, always
-  B. permission_mode from agent.conf; a session started from the cloud page uses cloud_permission_mode
+  B. permission_mode from agent.conf (this machine's ~/.claude/auto-pipeline.conf wins over it)
   C. bypassPermissions, always
   D. Whatever the session that opens it runs with
 
@@ -762,15 +762,12 @@ print_compact_lines() {
 # PERMISSION, USER CONF, YOU, then (main manager / human-direct only) AUTO UPDATE
 # and UPDATE. Every python call may fail: the start never breaks.
 print_mode_lines() {
-  local conf="$PROJECT_ROOT/agent.conf" pyp="$PLUGIN_ROOT/bin" m c rk ign upd
+  local conf="$PROJECT_ROOT/agent.conf" pyp="$PLUGIN_ROOT/bin" m rk ign upd
   local v src
   m=$(python3 "$pyp/agent_conf.py" effective permission_mode "$conf" 2>/dev/null </dev/null) || m=""
-  c=$(python3 "$pyp/agent_conf.py" effective cloud_permission_mode "$conf" 2>/dev/null </dev/null) || c=""
   IFS=$'\t' read -r v src <<<"$m"
   if [ -n "$v" ]; then m="$v (from $src)"; else m="auto (default)"; fi
-  IFS=$'\t' read -r v src <<<"$c"
-  if [ -n "$v" ]; then c="$v (from $src)"; else c="auto (default)"; fi
-  echo "PERMISSION: $m, cloud page $c"
+  echo "PERMISSION: $m"
   ign=$(PYTHONPATH="$pyp" python3 -c 'import agent_conf as a
 v,i=a.read_user_conf()
 if i: print("USER CONF: ignored in %s: %s" % (a.display_path(a.user_conf_path()), ", ".join(i)))' 2>/dev/null </dev/null) || ign=""

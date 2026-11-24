@@ -93,9 +93,7 @@ CONTRACT (E5: data, all repos on this machine, read-only)
         2. the keys of "territories" in world.json under the city home
            ($AGENT_CITY_HOME, default $HOME/.claude/agent-city); a key
            "<repo>/.git" names <repo>
-        3. the lines of joined-repos.txt under the city home (absolute
-           paths, "#" comments)
-        4. the paths given as arguments
+        3. the paths given as arguments
     It reads <repo>/agent_completed.txt and no other file of another repo,
     and writes nothing there. A repo without that file is skipped, one line
     on stderr naming its path. Read-only for this repo too: `data` never
@@ -805,8 +803,7 @@ class TestDataAllRepos(DataCase):
         self.empty = self.repo.make_project("no-pipeline")
         self.city = os.path.join(self.repo.base, "cityhome")
         os.mkdir(self.city)
-        self.world({self.shop + "/.git": {"name": "shop"}})
-        self.joined(self.api)
+        self.world({self.shop + "/.git": {"name": "shop"}, self.api + "/.git": {"name": "api"}})
 
     def other(self, name, *lines):
         path = self.repo.make_project(name)
@@ -824,11 +821,6 @@ class TestDataAllRepos(DataCase):
             json.dump({"v": 1, "territories": territories,
                        "order": list(territories)}, fh)
 
-    def joined(self, *paths):
-        with open(os.path.join(self.city, "joined-repos.txt"), "w") as fh:
-            fh.write("# joined repos, one path per line\n\n")
-            fh.write("".join(p + "\n" for p in paths))
-
     def data(self, *args, **kwargs):
         env = {"AGENT_CITY_HOME": self.city}
         env.update(kwargs.pop("env", None) or {})
@@ -841,7 +833,7 @@ class TestDataAllRepos(DataCase):
     def test_the_header_has_the_repo_column_first(self):
         self.assertEqual(self.rows()[0], HEADER)
 
-    def test_this_repo_the_city_world_and_the_joined_list_are_read(self):
+    def test_this_repo_and_the_city_world_are_read(self):
         rows = self.rows()
         self.assertEqual(rows[1:], [HERE_ROW, SHOP_ROW, API_ROW])
 
@@ -853,7 +845,6 @@ class TestDataAllRepos(DataCase):
         self.world({self.shop + "/.git": {"name": "shop"},
                     self.repo.dir + "/.git": {"name": "project"},
                     self.api + "/.git": {"name": "api"}})
-        self.joined(self.api, self.shop)
         rows = self.rows(self.shop, self.api + "/", self.repo.dir)
         self.assertEqual(rows[1:], [HERE_ROW, SHOP_ROW, API_ROW])
 
@@ -881,19 +872,20 @@ class TestDataAllRepos(DataCase):
     def test_a_broken_world_file_is_not_an_error(self):
         with open(os.path.join(self.city, "world.json"), "w") as fh:
             fh.write("{ not json")
-        self.assertEqual(self.rows()[1:], [HERE_ROW, API_ROW])
+        self.assertEqual(self.rows()[1:], [HERE_ROW])
 
     def test_a_territory_key_that_is_not_a_repo_folder_is_no_error(self):
         self.world({"dir:loose": {"name": "loose"},
-                    self.shop + "/.git": {"name": "shop"}})
+                    self.shop + "/.git": {"name": "shop"},
+                    self.api + "/.git": {"name": "api"}})
         self.assertEqual(self.rows()[1:], [HERE_ROW, SHOP_ROW, API_ROW])
 
     def test_the_default_city_home_is_under_home(self):
         home = self.repo.fake_home()
         default = os.path.join(home, ".claude", "agent-city")
         os.makedirs(default)
-        with open(os.path.join(default, "joined-repos.txt"), "w") as fh:
-            fh.write(self.extra + "\n")
+        with open(os.path.join(default, "world.json"), "w") as fh:
+            json.dump({"v": 1, "territories": {self.extra + "/.git": {"name": "extra"}}}, fh)
         rows = self.rows(env={"AGENT_CITY_HOME": ""})
         self.assertEqual(rows[1:], [HERE_ROW, EXTRA_ROW])
 
@@ -1156,7 +1148,7 @@ class TestUsage(DataCase):
 
     def test_usage_says_how_the_repos_are_found(self):
         text = self.usage()
-        for phrase in ("world.json", "joined-repos.txt", "AGENT_CITY_HOME"):
+        for phrase in ("world.json", "AGENT_CITY_HOME"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
 
