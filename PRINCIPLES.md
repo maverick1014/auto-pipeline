@@ -20,6 +20,7 @@ R1. One flow, two lanes
   10. Todo done
 - Fast lane skips: the worktree (work on the current branch), TDD (no failing tests first), the agent browser E2E (human checks the screen), the full test run (minimal test at merge)
 - Small task → fast lane; big task → full flow (full lane)
+- A pure UI change skips failing tests and suites in either lane: mock comparison only (W5)
 - Task size picks the lane
 - Risk level is the second axis (R8): 3 and 4 always take the full lane
 
@@ -66,8 +67,8 @@ R8. Risk levels
 - 0 wording: text values, one colour value, a switch to an existing style or variant, a move inside the same container with no responsive effect, a comment-only change
 - 0 gate: the main manager reads the diff and approves. No test, no staging, no E2E, no mock
 - 1 UI only: a component's own CSS, a new style, a shared colour token or theme variable, a move with responsive effect. No API, data or calculation
-- 1 gate: lint + type-check; a non-builder takes before/after screenshots at desktop and phone width, console clean; owner OK
-- Owner away at level 1: the main manager decides and logs "owner not seen". Mock only for a new page or whole-page re-layout (W2). No unit tests, no full suite
+- 1 gate: lint + type-check of touched files; a non-builder compares the real page with the approved mock (W5) at desktop and phone width, console clean; owner OK. No test suite
+- Owner away at level 1: the main manager decides and logs "owner not seen". Mock only for a new page or whole-page re-layout (W2), else compare with before screenshots. No unit tests, no full suite
 - 2 simple logic: one module, no money, schema, auth or permission. Gate: failing test first (TDD), touched-module tests + lint/type-check, E2E happy path + one error path
 - 3 heavy logic: accounting core, money, cross-module, business rules, state flows, principles
 - 3 gate: rules first as a table with examples in the requirement doc, owner yes before code; tests cover the table's edge cases
@@ -91,9 +92,12 @@ W1. Finish in one run
 
 W2. UI
 - Clickable mock first (prototype artifact)
+- Start from a screenshot of the existing real page (Claude in Chrome); change only what the task changes. Never imagine a page from scratch when one exists. Same layout, components, theme
 - Human says yes
+- The approved mock is the acceptance criterion of the task
 - Then real code
 - Level 0: no mock. Level 1: a mock only for a new page or a whole-page re-layout (R8)
+- A pure UI change has no tests to write (W3): its criterion is the mock (W5)
 
 W3. TDD
 - Task manager writes the failing tests → worker writes code → tests pass
@@ -106,7 +110,7 @@ W4. Multi-agent tests
 - Full suite: manager, once, at the end. Never twice
 - The full gate runs CI's steps in CI's order, at handoff and before merge (still once each)
 - After a bounce: re-run only the tests that failed, not the suite
-- Which tests run follows the level gate (R8)
+- Which tests run follows the level gate (R8). A pure UI change runs no suite (W5)
 
 W5. Web UI testing
 - Claude in Chrome, not Playwright, on orca and plain
@@ -115,6 +119,11 @@ W5. Web UI testing
 - Builders never verify their own work: they ship an E2E click path, a verifier drives the UI, the main manager has the last word before merge
 - What a browser cannot prove goes on a standing "needs a real device" list, never counted as verified
 - Level 0 skips the E2E, the main manager reads the diff (R8)
+- After the build: open the real page in Claude in Chrome, compare it with the approved mock item by item (layout, content, states, behaviour). List every difference
+- A layout, content or behaviour difference = not done, back to the builder
+- A difference from the real UI theme (colours, fonts, spacing tokens) is fine: the agent judges, keeps the real theme, lists it as "theme difference" in the report
+- A pure UI change runs no test suite: lint/type-check of touched files + the mock comparison. Test suites are for logic (calculation, data, API)
+- The owner says pass = pass; agents follow his final decision. Only a critical problem (crash, wrong data, security) is raised to him
 - Ask `agent-runtime.sh browser` first: chrome, headless or none
 - cloud → headless Chromium via Playwright, the extension can never reach a VM
 - none → print the click path under NEEDS HUMAN E2E and stop, wait for the human. Never silent, never forever
@@ -318,6 +327,7 @@ H3. Report
 - Heading in the `language` of agent.conf: zh `## 要你决定`, en `## To decide`, other languages a short translation of "to decide"
 - Open questions numbered, each with a recommendation (zh `建议`, en `Recommendation`)
 - Every question to the owner has a number in front; numbers never repeat within one message, and an open question keeps its number in later messages
+- When every question is answered, the next new set starts again at 1. While any is open, open ones keep their numbers and new ones continue after the highest open number, never renumber
 - Every open question is repeated in the decide section of every reply until the owner answers it, even when the reply gets long
 - Each question stands alone: a reader who sees only that line knows what it is about and can decide
 - A named thing (PR, task, branch, ticket, file) gets what it is in a few words: `#305 (stock lock settings page)`, never a bare number, tag or code name
