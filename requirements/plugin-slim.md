@@ -141,6 +141,8 @@ Files: `bin/agent-release.sh` (bash entry, 100755) runs `bin/agent_release.py` (
 | `--push` | `git fetch` of origin's release first (missing branch fine), then build, then push `release` without force when it differs from origin's | git's |
 | `--push`, no remote origin | stderr `agent-release.sh: no remote origin` | 1 |
 
+Defaults taken at build (task manager, 2026-11-24): the plain build's push line is `to publish: git push origin release` (not printed with `--push`); `--push` skips `git push` when local release already equals origin's; the fetch tolerates only git's "couldn't find remote ref", any other fetch error exits 1; a path where `$` follows a partial name (`$PLUGIN_ROOT/bin/agent-$x.sh`) is skipped (variable), like `$` right after the prefix.
+
 Tip = `refs/remotes/origin/release` when it exists, else `refs/heads/release`, else none (first release = root commit). Reads check: text files only (no NUL byte, UTF-8), line by line, on the commit's bytes. Prefixes: plugin root = `$PLUGIN_ROOT`, `${PLUGIN_ROOT}`, `$CLAUDE_PLUGIN_ROOT`, `${CLAUDE_PLUGIN_ROOT}`, each optionally closed by `"` or `\"` before the `/`; own folder of the file = `$(dirname "$0")`, `$(dirname "${BASH_SOURCE[0]}")`, `$SELF_DIR`, `${SELF_DIR}`; python own folder = `os.path.join(X, "<a>", "<b>"…)` with X one of `HERE`, `bin_dir`, `script_dir`, `os.path.dirname(os.path.abspath(__file__))`, and `_bin_path("<a>")`. Path = the run of `[A-Za-z0-9._/-]` after the prefix (python: the string literals), trailing `.` and `/` dropped, `..` resolved; empty = no read; `$` right after the prefix (python: a first non-literal arg) = skipped (variable); resolves to the root = ok; leaves the root = `../<x>`, not shipped.
 
 ## 6. Dry-run (level 4 migration dry-run, step 5)
