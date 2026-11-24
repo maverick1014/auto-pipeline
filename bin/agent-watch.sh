@@ -287,7 +287,7 @@ while [ "$i" -le "$MAX" ]; do
   else
     same=0
   fi
-  case "$SCREEN" in *"shell still running"*) same=0 ;; esac
+  case "$SCREEN" in *"shell still running"*|*"shells still running"*) same=0 ;; esac
   PREV_OK=1; PREV_SCREEN=$SCREEN; PREV_N=$FN; PREV_L=$FL
 
   tail1=$(printf '%s\n' "$SCREEN" | grep -E '⏺|✻' | tail -1 | python3 -c '

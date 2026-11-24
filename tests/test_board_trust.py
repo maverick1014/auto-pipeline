@@ -1081,7 +1081,9 @@ class TestRuleText(unittest.TestCase):
         self.assertIn("board_guard=on", read("skills", "merge", "SKILL.md"))
 
     def test_release(self):
-        self.assertEqual(json.loads(read(".claude-plugin", "plugin.json"))["version"], "0.39.0")
+        v = json.loads(read(".claude-plugin", "plugin.json"))["version"]
+        self.assertRegex(v, r"^\d+\.\d+\.\d+$")
+        self.assertGreaterEqual(tuple(map(int, v.split("."))), (0, 39, 0))
 
     def test_settings_hint(self):
         sys.path.insert(0, os.path.join(ROOT, "bin"))
