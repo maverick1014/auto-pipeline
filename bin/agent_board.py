@@ -4,7 +4,8 @@
     agent_board.py --root <main repo> --state-dir <git toplevel of the cwd> --cwd <cwd>
                    --now "YYYY-MM-DD HH:MM" --lang <zh|en> --host <machine> [--self] [--watch <sec>]
 
-Read only: it writes nothing. One file, no imports of sibling modules, so no __pycache__ is written.
+Read only: it writes nothing. One file; the only sibling it imports is agent_watchfile.py (the watch status file, read only),
+with bytecode writing off, so no __pycache__ is written.
 Prints one GitHub markdown table (or one line "无" / "none"), then note lines.
 
 Rows (whole repo): every line of agent_todo.txt; every human-direct line of agent_worktree.txt ("<repo> Helper");
@@ -34,6 +35,27 @@ import sys
 import time
 import unicodedata
 from fractions import Fraction
+
+WATCH_WARN = {"zh": " · 未确认 %dm", "en": " · not confirmed %dm"}
+WATCH_WARN_NO_N = {"zh": " · 未确认", "en": " · not confirmed"}
+ORPHAN_NOTE = {"zh": "看板可能不准：%s 有活动窗格但没有任务行", "en": "board may be wrong: %s has a live pane but no task line"}
+WATCH_QUIET_DEFAULT = 15
+
+
+def load_watchfile():
+    """The sibling module agent_watchfile (read only), None when it cannot be loaded. No bytecode is written."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    old = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import agent_watchfile
+        return agent_watchfile
+    except Exception:
+        return None
+    finally:
+        sys.dont_write_bytecode = old
 
 DATE = r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}"
 FMT = "%Y-%m-%d %H:%M"
@@ -444,6 +466,63 @@ class Board:
         self.seq = 0
         self.records = []       # (folder, record) of every LAUNCH line read
         self.hand_workers = {}  # label -> row of a hand WORKER line
+        self.unconfirmed = 0    # target rows that got the "not confirmed" warning
+        self.watch_setup()
+
+    # -- the watch (F3-F7): the status file is only read, orca is never called
+
+    def watch_setup(self):
+        self.w_on = False        # warnings apply (a watch can run here)
+        self.w_live = False
+        self.w_names = set()     # names of the targets (A1)
+        self.w_tasks = {}
+        self.w_orphans = []
+        self.w_quiet = WATCH_QUIET_DEFAULT
+        self.w_target_count = 0
+        wf = load_watchfile()
+        if wf is None:
+            return
+        try:
+            if wf.no_watch_runtime(self.root):
+                return
+            found = wf.targets(self.root)
+            status = wf.read_status(self.root)
+            self.w_live = wf.live(status, self.now)
+            self.w_tasks = wf.tasks_of(status)
+            self.w_names = set(t["name"] for t in found)
+            self.w_target_count = len(found)
+            if self.w_live:
+                orphans = status.get("orphans")
+                for o in orphans if isinstance(orphans, list) else []:
+                    if isinstance(o, dict) and isinstance(o.get("path"), str) and o["path"]:
+                        self.w_orphans.append(o["path"])
+            v = conf_numbers(os.path.join(self.root, "agent.conf")).get("watch_quiet_min", "")
+            if re.match(r"^\d{1,3}$", v) and 1 <= int(v) <= 240:
+                self.w_quiet = int(v)
+            self.w_on = True
+        except Exception:
+            self.w_on = False
+
+    def watch_warn(self, t, group):
+        """The F3 warning for a todo row ("" for none)."""
+        if not self.w_on or t["name"] not in self.w_names:
+            return ""
+        entry = self.w_tasks.get(t["name"])
+        entry = entry if isinstance(entry, dict) else {}
+        since = None
+        for src in (entry.get("changed"), entry.get("confirmed"), t["started"], t["opened"]):
+            since = parse_time(src) if isinstance(src, str) else None
+            if since is not None:
+                break
+        n = minutes(since, self.now)
+        if not self.w_live or entry.get("watched") is False:
+            warn = True
+        else:
+            warn = group == G_RUNNING and n is not None and n >= self.w_quiet
+        if not warn:
+            return ""
+        self.unconfirmed += 1
+        return (WATCH_WARN[self.lang] % n) if n is not None else WATCH_WARN_NO_N[self.lang]
 
     # -- words
 
@@ -596,7 +675,7 @@ class Board:
         if kind == "queue":
             group, when, dash = G_QUEUE, t["wsince"], True
             status = self.queue_text(t)
-            info = {"type": "fold"}
+            info = {"type": "short", "name": t["name"], "text": status}
         elif kind:
             group = G_OWNER_WAIT if owner else (G_OTHER_WAIT if who else G_HOLD)
             when, dash = t["wsince"], True
@@ -606,12 +685,12 @@ class Board:
             elif group == G_OTHER_WAIT:
                 info = {"type": "wait", "name": t["name"], "text": self.wait_text(t, kind, owner, None)}
             else:
-                info = {"type": "fold"}
+                info = {"type": "short", "name": t["name"], "text": self.wait_text(t, kind, owner, None)}
         elif t["since"] is None and started is None:
             group, when = G_QUEUE, t["opened"]
             status = self.word("notstarted")
             wait = None
-            info = {"type": "fold"}
+            info = {"type": "short", "name": t["name"], "text": status}
         else:
             group, when = G_RUNNING, t["opened"]
             status = self.word("running")
@@ -632,6 +711,7 @@ class Board:
             progress = "-" if p is None else bar_text(p)
             if p is not None:
                 info = {"type": "run", "name": t["name"], "stage": t["stage"], "bar": progress, "done": done}
+        status += self.watch_warn(t, group)
         if t["machine"]:
             where = t["machine"] + (", " + short_path(t["path"], self.home) if t["path"] else "")
         else:
@@ -757,6 +837,9 @@ class Board:
                 continue
             seen.add(real)
             self.state_rows(norm)
+        if self.w_on and self.w_live:
+            for path in self.w_orphans:
+                self.notes.append(ORPHAN_NOTE[self.lang] % path)
 
     def own_view(self):
         folder = self.state_dir
@@ -898,6 +981,25 @@ def git_out(folder, *cmd):
     return out.stdout if out.returncode == 0 else ""
 
 
+WATCH_LINE = {
+    "zh": {"off": "看板可能不准：看守未运行", "count": "看板可能不准：%d 个未确认", "orphan": "看板可能不准：有窗格无任务行"},
+    "en": {"off": "board may be wrong: watch not running", "count": "board may be wrong: %d not confirmed",
+           "orphan": "board may be wrong: a pane has no task line"},
+}
+
+
+def watch_status_line(board):
+    """F6: the warning first line of the status line, "" for none."""
+    if not board.w_on:
+        return ""
+    words = WATCH_LINE[board.lang]
+    if not board.w_live:
+        return words["off"] if board.w_target_count else ""
+    if board.unconfirmed:
+        return words["count"] % board.unconfirmed
+    return words["orphan"] if board.w_orphans else ""
+
+
 ZH_STAGE = {"brief": "简报", "register": "登记", "mock": "样稿", "tests": "写测试", "workers": "写代码",
             "verify": "验证", "push": "推送", "report": "报告", "e2e": "浏览器验收", "merge": "合并"}
 NAME_COLS = 24
@@ -947,22 +1049,18 @@ def statusline_text(stdin_text):
     for _, cells, info in sorted(board.rows, key=lambda r: r[0]):
         if info is None:
             continue
-        if info["type"] == "fold":
-            lines.append(None)
-        elif info["type"] == "wait":
-            lines.append(("wait", info["name"], info["text"]))
+        if info["type"] in ("wait", "short"):
+            lines.append((info["type"], info["name"], info["text"]))
         else:
             stage, i, m = info["stage"]
             word = ZH_STAGE[stage] if zh else stage
             if i is not None:
                 word += " %d/%d" % (i, m)
             lines.append(("run", info["name"], word, info["bar"], info["done"]))
-    folded = sum(1 for l in lines if l is None)
-    cands = [l for l in lines if l is not None]
-    if folded or len(cands) > STATUS_LINES:
-        shown = cands[:STATUS_LINES - 1]
-    else:
-        shown = cands
+    warn = "" if own else watch_status_line(board)
+    room = STATUS_LINES - (1 if warn else 0)
+    cands = lines
+    shown = cands if len(cands) <= room else cands[:room - 1]
     counts = {}
     if not guard_off(main):
         now = parse_time(args.now)
@@ -987,9 +1085,11 @@ def statusline_text(stdin_text):
         else:
             row = fit(l[1], NAME_COLS) + "  " + l[2]
         out.append(row.rstrip() + tail(l[1]))
-    rest = folded + len(cands) - len(shown)
+    rest = len(cands) - len(shown)
     if rest:
         out.append(STATUS[lang]["fold"] % rest)
+    if warn:
+        out.insert(0, warn)
     return "\n".join(out)
 
 

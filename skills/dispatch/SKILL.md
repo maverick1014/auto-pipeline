@@ -32,13 +32,13 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
    orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 90000 --json
    ```
    A new pane stops at a menu (trust prompt)? `orca terminal send` has no key flag: send the raw key as text, then Enter, e.g. Down: `orca terminal send --terminal <handle> --text $'\x1b[B' --enter`.
-   Then start the watch with Bash `run_in_background`:
+   Then start, or restart, the ONE watch with Bash `run_in_background`:
    ```
-   ${CLAUDE_PLUGIN_ROOT}/bin/agent-watch.sh --terminal <handle> --worktree "<worktree path>" --name <name>
+   ${CLAUDE_PLUGIN_ROOT}/bin/agent-watch.sh --all
    ```
-   Task manager on another machine: add `--environment <env> --shell <shell handle>` (a plain shell pane on that machine; the script sends only a short read command into it, never anything into the task manager's pane).
-   It exits on WATCH SIGNAL (a DONE PASS, DONE FAIL, CLOSE CASE, QUESTION: or MOCK READY line in agent_state.txt), WATCH STALL, WATCH LOST or WATCH MAX. Handle it, then start it again, until the task is merged.
-   Then `ListAgents`, find `<name> Task Manager`, `SendMessage` it the brief below. Keep the terminal handle for `/merge`.
+   It finds every task from agent_worktree.txt and the LAUNCH records, so no per-task flags. A task manager on another machine needs a plain shell pane there; the watch says how to open one.
+   It exits on WATCH SIGNAL (a DONE PASS, DONE FAIL, CLOSE CASE, QUESTION: or MOCK READY line in agent_state.txt), WATCH STALL, WATCH LOST or WATCH MAX. Handle it, then start it again.
+   Then send it the brief below with `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh tell <name> "[<model> <effort>] <brief>"` (no ListAgents + SendMessage, no pane send); later text goes the same way. Keep the terminal handle for `/merge`.
    Then /goal: once the task manager has the brief (its `STAGE <name>: brief` line or its first reply), `orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 600000 --json`, read the pane (`orca terminal read --terminal <handle> --json`: nothing after the ❯ of the input box), then `orca terminal send --terminal <handle> --text "/goal <the GOAL: text of the brief>" --enter`; read back, not shown → send once more.
    Re-type /goal the same way after you send an answer to a QUESTION: line and after a mock or rules answer (mock yes, rules yes, or changes). The auto clear types it again by itself. Never on plain or cloud, never for a Helper.
 
@@ -82,10 +82,10 @@ STEPS (at the start of each step run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh to
  5 verify: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" verify; every worker result yourself. Full suite once. Defect → back to the worker with evidence. Set status final: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" final
  6 push: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" push; commit, git push -u origin <branch>
  7 report: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" report; done, set status done, stay idle
-REPORT: SendMessage to "<my session name>"; on another machine also append the same report to agent_state.txt in your worktree under "=== REPORT ===". First line "DONE PASS <name>" or "DONE FAIL <name>: <why>". Then Result (test count), What changed (files), What to decide. Then the E2E click path: start command, URL, exact clicks, expected result, how to restore. Then one line: TIME: est <n>m, actual <n>m, wait <n>m (actual = agent work only; wait = mock gate, owner question or review, hold, suite slot). Then one line: FACTS: type <page|server|script|docs|cloud|app|data|mixed>, lane full, mock <yes|no>, bounces <n>, workers <n>, tests <n added>, scope adds <n>.
-ASK: first line "QUESTION:". Wait max 10 min, then default + log + continue (W1). Mock gate always waits. A question for later: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh park add "<question>"
-HEARTBEAT: every 15 min, one line "HEARTBEAT <name>: step <n> of 7, work <m>m, <what runs now>".
-CLOSE: on "close case" from me or the human: start nothing new, commit + push (WIP if unfinished), report first line "CLOSE CASE <name>: finished" or "CLOSE CASE <name>: unfinished", then done, left + next steps, tests, click path, ideas, TIME. Wait for my decision; never close yourself.
+REPORT: append it to agent_state.txt in your worktree (`agent-file.sh state add`) under "=== REPORT ===", nothing else. First line "DONE PASS <name>" or "DONE FAIL <name>: <why>". Then Result (test count), What changed (files), What to decide. Then the E2E click path: start command, URL, exact clicks, expected result, how to restore. Then one line: TIME: est <n>m, actual <n>m, wait <n>m (actual = agent work only; wait = mock gate, owner question or review, hold, suite slot). Then one line: FACTS: type <page|server|script|docs|cloud|app|data|mixed>, lane full, mock <yes|no>, bounces <n>, workers <n>, tests <n added>, scope adds <n>.
+ASK: append a line starting "QUESTION:" to agent_state.txt (`agent-file.sh state add`). Wait max 10 min, then default + log + continue (W1). Mock gate always waits. A question for later: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh park add "<question>"
+HEARTBEAT: every 15 min, one line "HEARTBEAT <name>: step <n> of 7, work <m>m, <what runs now>" appended to agent_state.txt (`agent-file.sh state add`).
+CLOSE: on "close case" from me or the human: start nothing new, commit + push (WIP if unfinished), report into agent_state.txt (`agent-file.sh state add`), first line "CLOSE CASE <name>: finished" or "CLOSE CASE <name>: unfinished", then done, left + next steps, tests, click path, ideas, TIME. Wait for my decision; never close yourself.
 STATE: write agent_state.txt after every step (S7, S8): one line = `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh state add "<line>"`, never echo >>.
 NEVER: Claude in Chrome (W5). Product code. Full suite twice (W4). Files outside the worktree except via ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh.
 ```

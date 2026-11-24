@@ -39,6 +39,7 @@ NUMBER_BOUNDS = {
     "state_header_lines": (0, 500),
     "compact_clear_at": (0, 20),
     "compact_clear_check_sec": (1, 600),
+    "watch_quiet_min": (1, 240),
 }
 
 ROLE_KEYS = [
@@ -104,6 +105,7 @@ HINTS = {
     "state_trim_auto": "Trim agent_state.txt by itself in todo done and housekeep --apply. on or off.",
     "compact_clear_at": "Compaction number at which the pane gets a save prompt and /clear. 0 = off. Whole number, 0 to 20.",
     "compact_clear_check_sec": "Seconds between checks that the input box is empty before the auto clear types. Whole number, 1 to 600.",
+    "watch_quiet_min": "Minutes a running task's state file may stay unchanged before the board adds not confirmed to its row. Whole number, 1 to 240.",
     "board_watch_sec": "Seconds between refreshes of the live board (agent-file.sh board --watch). Whole number, 1 to 3600.",
 }
 
@@ -121,6 +123,7 @@ GROUPS = [
     ("levels", ["level3_paths", "level4_paths"]),
     ("state", ["state_keep_hours", "state_warn_lines", "state_header_lines", "state_trim_auto",
                "compact_clear_at", "compact_clear_check_sec"]),
+    ("watch", ["watch_quiet_min"]),
 ]
 
 _GROUP_OF = {}
