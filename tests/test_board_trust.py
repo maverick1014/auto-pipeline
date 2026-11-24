@@ -1066,11 +1066,11 @@ class TestRuleText(unittest.TestCase):
         self.assertIn("agent-guard.sh", s)
 
     def test_readme(self):
-        self.assertIn("bin/agent-guard.sh", read("README.md"))
+        self.assertIn("bin/agent-guard.sh", read("PRINCIPLES.md"))
 
     def test_the_texts_say_the_default_records_only(self):
         # bounce 3 (owner 3A 2026-11-20): record is the default, only board_guard=on refuses
-        line = [l for l in read("README.md").splitlines() if "bin/agent-guard.sh" in l][0]
+        line = [l for l in read("PRINCIPLES.md").splitlines() if "bin/agent-guard.sh" in l][0]
         self.assertIn("board_guard=on", line)
         self.assertRegex(line, r"default.{0,30}record|record.{0,30}default")
         w14 = section(read("PRINCIPLES.md"), "W14. Show todo")

@@ -985,7 +985,7 @@ class TestDocs(unittest.TestCase):
         self.assertIn("`agent-city start`", text)
 
     def test_readme_lists_the_shim(self):
-        self.assertIn("bin/agent-city-shim", self.text("README.md"))
+        self.assertIn("bin/agent-city-shim", self.text("PRINCIPLES.md"))
 
 
 if __name__ == "__main__":

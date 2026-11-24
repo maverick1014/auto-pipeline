@@ -453,6 +453,90 @@ E3. Concise
 E4. Keyword hooks
 - A keyword hook (bin/agent-keyword.sh) only points to a skill; the logic lives in the skill
 
+## F. Map
+
+The pieces. Rules are in A-E; this is where things live.
+
+Roles and routing: W9. Risk types: R8; installing into a cloud repo: the cloud-pack skill (`/auto-pipeline:cloud-pack`, `bin/agent-cloud-pack.sh`; `--update` refreshes only bin, PRINCIPLES.md, VERSION and packed skills/agents). A cloud session reads only what is committed: `git clone https://github.com/maverick1014/auto-pipeline /tmp/ap && /tmp/ap/bin/agent-cloud-pack.sh . --language zh`, then commit and push (the Claude GitHub App must be on the repo), then open a new session. The pack lands in `.claude/auto-pipeline/` (bin, PRINCIPLES.md, VERSION), `.claude/skills`, `.claude/agents`, `.claude/settings.json`, one pointer line in `CLAUDE.md`, `agent.conf`, the four `agent_*.txt`, `.secrets/`, `AGENTS.md`.
+
+Agent skills: `/auto-pipeline:dispatch` (route one task), `/auto-pipeline:merge` (E2E, then merge deputy), `/auto-pipeline:cloud-pack`. A second session in a repo becomes a task manager by itself (W10).
+
+### Tree
+
+```
+Human
+  │  task ↓   report ↑
+Main manager   (Opus 5.5, xhigh · the main chat · only one with the browser)
+  ├── Fast-lane deputy   (Sonnet 5, medium)  one small task, no worktree, then gone
+  ├── Merge deputy       (Sonnet 5, medium)  merge → push → delete branch → remove worktree
+  └── Worktree, one per big feature
+        └── Task manager (Opus 5.5, xhigh)     writes the tests, briefs workers, verifies, never codes
+              ├── Worker (Sonnet 5, medium)  code until the tests pass, slice 1
+              └── Worker (Sonnet 5, medium)  code until the tests pass, slice 2
+
+Scripts, not agents (cost no tokens):
+  bin/agent-start.sh   RAM/CPU guard, prints the rules, 39-question quiz gate, main-manager lock
+  bin/agent-level.sh   the risk type (A-D) a diff needs: built-in and agent.conf paths; RAISE when the declared type is lower
+  bin/agent-owner-order.sh  relayed owner orders between repo managers: `line` prints the OWNER ORDER header (sender), `verify` checks the words are a typed owner prompt in the sender's transcript (receiver)
+  bin/agent-file.sh    the only writer of agent_*.txt
+  bin/agent_estimate.py  the time estimator: learns work minutes from the finished tasks, backtests against the rubric
+  bin/agent-settings.sh  show or change agent.conf, validated
+  bin/agent-resume.sh    one command to bring the pipeline back after a restart
+  bin/agent-cleanup.sh   the main manager's sweep: removes merged, clean, idle worktrees and branches; lists the rest in one table
+  bin/agent-housekeep.sh the main manager's pass every housekeep_interval_min from the monitor loop: worktree, todo and ideas files, related repos read only, then the cleanup sweep; writes one HOUSEKEEP block
+  bin/agent-monitor.sh   watches every worktree, writes agent_monitor.txt
+  bin/agent-watch.sh     `agent-watch.sh --all`: one background watch for every task manager, local or remote (pane + agent_state.txt); exits on a report, question, stall or lost machine
+  bin/agent-file.sh tell `agent-file.sh tell <task> "<msg>"`: long text to a task manager, a block in its agent_state.txt + one pointer line
+  bin/agent-init.sh      sets a project up: agent.conf, the four task files, .secrets/, .gitignore lines, AGENTS.md, and it prints the permissions block
+  bin/agent-cloud-pack.sh  lays this pipeline into a repo as plain files, for cloud sessions
+  bin/agent-city.sh       starts/stops the agent city visualiser, a local server
+  bin/agent-city-shim     the ~/.local/bin/agent-city command; runs the newest installed plugin's agent-city.sh
+  bin/agent-city-hook.sh  hook that feeds the city; off costs a `test -f`, on appends one JSON line
+  bin/agent-close-case.sh  UserPromptSubmit hook: "close case" in the prompt injects the close-case rule for the session's role
+  bin/agent-keyword.sh  UserPromptSubmit hook: a keyword in the prompt adds one line pointing to its skill (E4)
+  bin/agent_board.py     the show-todo board: one table of every open task, wait, owner to-do and parked question
+  bin/agent_questions.py  the show-question collector: every question pending on the owner, as a chat list, JSON or an Artifact page; records the answers
+  bin/agent-questions-page.html  the page template (one page grouped by task, lettered options, answer bar)
+  bin/agent-name.sh       SessionStart + UserPromptSubmit hook: names the session by role (<repo> Manager, <feature> Task Manager, <repo> Helper - <Task Name>), also the Orca tab
+  bin/agent-guard.sh     hook: records every Agent launch and orca pane on the board, refuses a manager's launch that names no open todo task only with board_guard=on; default record; board_guard=on|record|off
+  bin/agent-version.sh   UserPromptSubmit hook + check: a session running an older plugin than installed gets one STALE PLUGIN line; the start text names old scopes; an old version never retrains
+```
+
+### Files
+
+| File | Who writes it | Who reads it |
+|---|---|---|
+| `agent_todo.txt` | `agent-file.sh todo add` / `todo done` | Every agent at start |
+| `agent_completed.txt` | `agent-file.sh todo done`, one data line per task | Human, `agent-file.sh time` |
+| `agent_estimate.txt` | `agent-file.sh retrain`, also `todo done` once a week | `agent-file.sh estimate` |
+| `agent_ideas.txt` | `agent-file.sh idea add` | Human, on his own time |
+| `agent_worktree.txt` | `agent-file.sh worktree set` / `rm` | Main manager before every dispatch |
+| `agent.conf` | `./bin/agent-settings.sh` | `agent-start.sh` |
+| `agent_monitor.txt` | `./bin/agent-monitor.sh` | Every agent at start |
+| `agent_state.txt` | Each session: `agent-file.sh state add`; `state trim` moves old lines to `agent_state.trim-<date>.txt` (todo done, housekeep) | The same session, after a start, compaction or clear |
+| `.secrets/` | Human only | Any agent, read only, never printed |
+
+### Commands
+
+```
+./bin/agent-start.sh             # rules, resources, quiz. No work until PASS
+./bin/agent-resume.sh            # runs by itself at startup (auto_resume=yes); run by hand only if you turned that off
+./bin/agent-settings.sh          # show or change agent.conf, no agent
+bin/agent-settings.sh language zh   # talk to the human in Chinese
+bin/agent-settings.sh sync          # add any key missing from agent.conf, template value
+bin/agent-file.sh time              # est, work, wait, clock of every finished task
+bin/agent-file.sh data              # the same data of every repo on this machine, one table
+bin/agent-file.sh eta <name>        # work left as minutes and a clock time, and when the human is needed next
+bin/agent-file.sh estimate ... [--guess <m>]   # work minutes of a new task, with a range and the 3 nearest past tasks; --guess blends in your own minutes
+bin/agent-file.sh backtest          # estimator, blend and rubric on the finished tasks, who wins
+bin/agent-file.sh retrain           # learn the estimate again from the finished tasks, keep it only if better
+bin/agent-file.sh board             # the show-todo table: open tasks, waits on the owner, owner to-dos, parked questions
+bin/agent-file.sh questions         # the show-question list: every question pending on the owner (--self, --json, --page <file>, --url <url>, answer <id> "<answer>")
+bin/agent-city.sh install-shim      # one time: puts the agent-city command in ~/.local/bin; nothing installs it by itself, the init skill offers it
+agent-city start                    # agent city visualiser, off by default, costs almost nothing
+```
+
+
 ## Notice
 
 Section E is adapted from i-have-adhd (https://github.com/ayghri/i-have-adhd) under the MIT License.

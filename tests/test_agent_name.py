@@ -381,7 +381,7 @@ class TestHooksJson(unittest.TestCase):
         self.assertTrue(os.access(path, os.X_OK), "bin/agent-name.sh has no execute bit")
 
     def test_readme_names_the_script(self):
-        self.assertIn("bin/agent-name.sh", read("README.md"))
+        self.assertIn("bin/agent-name.sh", read("PRINCIPLES.md"))
 
 
 class TestRoleLogicOnce(unittest.TestCase):
@@ -823,7 +823,7 @@ class TestPromptHookJson(unittest.TestCase):
                     self.assertNotIn("--prompt", json.dumps(entries))
 
     def test_readme_says_it_names_the_helper_task(self):
-        line = next(l for l in read("README.md").splitlines() if "bin/agent-name.sh" in l)
+        line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("  bin/agent-name.sh"))
         self.assertIn("UserPromptSubmit", line)
         self.assertIn("<repo> Helper - <Task Name>", line)
 

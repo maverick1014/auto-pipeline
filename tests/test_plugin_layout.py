@@ -334,7 +334,7 @@ class TestCityHooks(unittest.TestCase):
         self.assertEqual(sorted(self.hooks()), sorted(["SessionStart"] + self.EVENTS))
 
     def test_readme_names_the_city_script(self):
-        self.assertIn("bin/agent-city.sh", read("README.md"))
+        self.assertIn("bin/agent-city.sh", read("PRINCIPLES.md"))
 
 
 class TestRepoSettings(unittest.TestCase):
@@ -531,7 +531,7 @@ class TestReadmeInstall(unittest.TestCase):
         self.assertIn(ALLOW_RULES[0], text)
 
     def test_the_tree_shows_the_new_paths(self):
-        text = read("README.md")
+        text = read("PRINCIPLES.md")
         self.assertIn("bin/agent-start.sh", text)
 
 
@@ -558,18 +558,18 @@ class TestCloudPackSkill(unittest.TestCase):
 
 class TestReadmeShowsThePack(unittest.TestCase):
     def test_it_names_the_script(self):
-        self.assertIn("bin/agent-cloud-pack.sh", read("README.md"))
+        self.assertIn("bin/agent-cloud-pack.sh", read("PRINCIPLES.md"))
 
     def test_it_shows_where_the_pack_lands(self):
-        self.assertIn(".claude/auto-pipeline/", read("README.md"))
+        self.assertIn(".claude/auto-pipeline/", read("PRINCIPLES.md"))
 
     def test_it_gives_the_one_sentence_install(self):
         self.assertIn(
             "git clone https://github.com/maverick1014/auto-pipeline /tmp/ap"
-            " && /tmp/ap/bin/agent-cloud-pack.sh .", read("README.md"))
+            " && /tmp/ap/bin/agent-cloud-pack.sh .", read("PRINCIPLES.md"))
 
     def test_it_names_the_github_app(self):
-        self.assertIn("Claude GitHub App", read("README.md"))
+        self.assertIn("Claude GitHub App", read("PRINCIPLES.md"))
 
 
 class TestUserConfig(unittest.TestCase):
@@ -790,11 +790,8 @@ class TestPrinciplesW12CrossRepo(unittest.TestCase):
         self.assertIn("Cross-repo brief", text)
         self.assertIn("CROSS-REPO TASK <name> from <repo>", text)
 
-    def test_readme_names_w12_in_routing(self):
-        text = read("README.md")
-        start = text.index("How a task is routed")
-        end = text.index("## One real day")
-        self.assertIn("W12", text[start:end])
+    def test_principles_names_w12(self):
+        self.assertIn("W12. Cross-repo", read("PRINCIPLES.md"))
 
 
 class TestPrinciplesS4NamesRelief(unittest.TestCase):

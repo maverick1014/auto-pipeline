@@ -298,17 +298,17 @@ class TestCloseCaseHook(unittest.TestCase):
 class TestReadme(unittest.TestCase):
 
     def test_the_command_list_shows_the_time_commands(self):
-        text = read("README.md")
+        text = read("PRINCIPLES.md")
         for command in ("bin/agent-file.sh time", "bin/agent-file.sh data",
                         "bin/agent-file.sh eta"):
             with self.subTest(command=command):
                 self.assertIn(command, text)
 
     def test_the_time_line_no_longer_says_estimate_vs_actual(self):
-        self.assertNotIn("estimate vs actual", read("README.md"))
+        self.assertNotIn("estimate vs actual", read("PRINCIPLES.md"))
 
     def test_the_files_table_says_the_completed_file_is_data_too(self):
-        row = [l for l in read("README.md").splitlines()
+        row = [l for l in read("PRINCIPLES.md").splitlines()
                if l.startswith("| `agent_completed.txt`")][0]
         self.assertRegex(row.lower(), r"data")
 

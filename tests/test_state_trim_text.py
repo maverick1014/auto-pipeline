@@ -104,7 +104,7 @@ class TestDispatchSkill(unittest.TestCase):
 
 class TestReadmeAndRelease(unittest.TestCase):
     def test_readme_names_state_trim(self):
-        self.assertIn("state trim", read("README.md"))
+        self.assertIn("state trim", read("PRINCIPLES.md"))
 
     def test_release_0_37_0(self):
         data = json.loads(read(".claude-plugin", "plugin.json"))
