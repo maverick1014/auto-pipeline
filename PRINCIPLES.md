@@ -7,6 +7,7 @@
 ## A. Repo
 
 R1. One flow, two lanes
+- Before the flow: the main manager writes the requirement doc, the owner approves it
 - Full flow, in order:
   1. Todo line + estimate
   2. Mock if the task has UI
@@ -82,6 +83,7 @@ R8. Risk types
 
 W1. Finish in one run
 - Never wait for the human
+- Exception, kick-off round only: a task manager reads its brief and asks the main manager its questions before starting; the main manager answers what it can and asks the owner only the rest. During the work this rule holds again: default, log, continue
 - Unknown → pick default, log it, continue
 - Only owner-level or irreversible calls stop the line. Everything else: default, log, continue
 - A rule and reality collide → report the collision, never route around it
@@ -90,6 +92,7 @@ W1. Finish in one run
 W2. UI
 - Clickable mock first (prototype artifact)
 - Start from a screenshot of the existing real page (Claude in Chrome); change only what the task changes. Never imagine a page from scratch when one exists. Same layout, components, theme
+- No existing page to screenshot → the mock follows the project's current style (theme, components); the agent proceeds without asking
 - Human says yes
 - The approved mock is the acceptance criterion of the task
 - Then real code
@@ -105,6 +108,7 @@ W3. TDD
 W4. Multi-agent tests
 - Tests are organised module → feature; run the tests of the touched feature only, never of a module the change cannot affect
 - Full suite only when really needed (D, release train, dependency change): manager, once. Never twice
+- The main manager and the merge deputy never re-run tests the task manager already passed. Only on a merge conflict: test the conflicted part. The main manager's job at handoff = review the final outcome (visual / mock compare, W5)
 - The full gate runs CI's steps in CI's order, at handoff and before merge (still once each)
 - After a bounce: re-run only the tests that failed, not the suite
 - Which tests run follows the type (R8). A pure UI change runs no suite (W5)
@@ -132,6 +136,7 @@ W6. Roles
 - Task manager (Opus 5.5, xhigh) = one agent per big feature, in its own worktree (exception: human-direct, W10). Writes the tests, briefs workers, judges, verifies every worker result before reporting done to the main manager. Never writes product code
 - Worker (Sonnet 5, medium) = `.claude/agents/worker.md`, subagent of a task manager. Writes code until the task manager's tests pass
 - Managers never write product code. A defect goes back to the worker that wrote it, with evidence
+- A main manager fix order to a task manager has a fixed shape: where, what is seen, what is expected, evidence (screenshot). The task manager reassigns a subagent
 - Names: `bin/agent-name.sh` (SessionStart hook) shows `<repo> Manager`, `<feature> Task Manager`, `<repo> Helper - <Task Name>` (human-direct); it is the SendMessage address after `claude --name`, `/rename` or a resume. `Agent` descriptions: `<feature> Worker <n>: <slice>`, `<task> Deputy`, `<feature> Merge`
 
 W7. Big feature (> 2 hours)
@@ -149,6 +154,7 @@ W8. Merge and cleanup
 - Deputy merges into the integration branch
 - Deputy deletes the branch (local + remote) and the worktree right after merge
 - Never skip cleanup
+- Main manager verified + waiting for the owner's yes → close the task manager pane, remove its worktree, keep the pushed branch, start the next task. Owner yes → merge deputy merges the branch. Owner no → a new task manager from that branch. Goal: work all night, RAM stays free
 - Clean up only after the merge is verified
 - Deputy runs `./agent-file.sh worktree rm <path>` and `./agent-file.sh todo done <name>` with the facts from the main manager and `--merge <commit>`
 - Sweep: `bin/agent-cleanup.sh --apply` at session start and when the last open task closes (todo empty, no live worktree). The scripts run it, no loop
@@ -170,6 +176,7 @@ W9. Task routing (main manager, before every dispatch)
 - Big task, and a live task manager has capacity → that task manager
 - Task manager in final stage (compiling worker results) → do not disturb. Hold the task until it finishes
 - Otherwise → new worktree (W7). Never spawn a worktree for a small task
+- Shared first: before parallel features, find the code they share (models, components, APIs); the shared part is its own task, merged first; features that need it wait (`todo wait <name> on queue --after <task>`)
 - The todo line comes first: `todo add` before the worktree, the pane or any agent. The guard refuses a main manager launch for a task that is not open (W14)
 
 W10. Second session in the same repo
@@ -346,6 +353,7 @@ S1. Settings
 - `./agent-settings.sh` shows and writes `agent.conf`, validated. No hand editing, no agent
 - Holds every config value in this file
 - Also writes the agent-monitor config
+- Setup: init offers to merge the permission rules into `.claude/settings.json` (`agent-init.sh --add-permissions`); agents never hand-edit JSON. Manager default `opus-5.5:high`; `xhigh` is an install choice
 - `~/.claude/auto-pipeline.conf` = this machine's own file, never in a repo: `permission_mode`, `cloud_permission_mode`, wins over `agent.conf`. Write it with `agent-settings.sh --user <key> <value>`
 
 S2. Resume script
@@ -370,6 +378,8 @@ S5. Heavy tests
 - One at a time across all agents
 - Others queue
 - Every test run caps its own parallelism, e.g. `jest --maxWorkers=2`, `flutter test -j 2`
+- Start one; once it runs and has settled, start another only if RAM is still more than 50% free; never two at the same moment. `heavy_test_slots` is the ceiling, RAM decides below it
+- Every test run that can run in the background runs in the background by default (Bash `run_in_background`)
 - Config `heavy_test_slots`=1
 
 S6. Agent cap
