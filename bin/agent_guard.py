@@ -288,11 +288,30 @@ OPS = {("terminal", "create"): "create", ("terminal", "close"): "close",
        ("worktree", "create"): "wt_create", ("worktree", "rm"): "wt_rm"}
 
 
+RE_VAR = re.compile(r"\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\})")
+
+
+def expand_vars(v, env):
+    """v with $NAME / ${NAME} replaced from env (plain literal values only). A name not in env stays as it is."""
+    return RE_VAR.sub(lambda m: env.get(m.group(1) or m.group(2), m.group(0)), v)
+
+
 def bash_launches(command):
     """[(op, opts)] of every orca launch command in a Bash text, in order.
-    op: create | close | wt_create | wt_rm."""
+    op: create | close | wt_create | wt_rm. A worktree value with $NAME is expanded from an earlier
+    NAME=value / export NAME=value of the same text; if it cannot be, it keeps its `$`."""
     found = []
+    env = {}
     for words in split_commands(command):
+        aw = words[1:] if words[0] == "export" else words
+        if all(RE_ASSIGN.match(x) for x in aw):
+            for x in aw:
+                name, _, val = x.partition("=")
+                if val and not re.search(r"[$`]", val):
+                    env[name] = val
+                else:
+                    env.pop(name, None)
+            continue
         k = 0
         while k < len(words) and (RE_ASSIGN.match(words[k]) or words[k] in SKIP_WORDS):
             k += 1
@@ -301,8 +320,10 @@ def bash_launches(command):
             continue
         pair = (w[1], w[2])
         if pair in OPS:
-            found.append((OPS[pair], opt_values(w[3:], ("title", "command", "environment", "worktree", "terminal",
-                                                         "name"))))
+            opts = opt_values(w[3:], ("title", "command", "environment", "worktree", "terminal", "name"))
+            if "worktree" in opts and "$" in opts["worktree"]:
+                opts["worktree"] = expand_vars(opts["worktree"], env)
+            found.append((OPS[pair], opts))
     return found
 
 
@@ -798,7 +819,7 @@ def handle(payload):
                     extra = {}
                     if opts.get("environment"):
                         extra["env"] = opts["environment"]
-                    if opts.get("worktree"):
+                    if opts.get("worktree") and "$" not in opts["worktree"]:
                         extra["worktree"] = path_value(opts["worktree"])
                     items.append((d, (key_of(tid, n), extra)))
             return finish(ctx, items, quiet)
@@ -842,19 +863,26 @@ def handle(payload):
         text = resp.get("stdout") if isinstance(resp, dict) else resp
         text = text if isinstance(text, str) else json.dumps(text)
         handles = re.findall(r'"handle"\s*:\s*"([^"]+)"', text) or re.findall(r"term_[\w-]+", text)
+        paths = [m.rsplit("::", 1)[-1] for m in re.findall(r'"worktreeId"\s*:\s*"([^"]+)"', text)] or \
+            re.findall(r'"path"\s*:\s*"([^"]+)"', text)
         n = 0
         for op, opts in ops:
             if op == "create":
                 n += 1
+                f = {}
                 if n <= len(handles):
-                    run_edit(ctx, mut_set(lambda d, k=key_of(tid, n): d["key"] == k, pane=handles[n - 1]))
+                    f["pane"] = handles[n - 1]
+                if "$" in opts.get("worktree", "") and n <= len(paths) and paths[n - 1] and "$" not in paths[n - 1]:
+                    f["worktree"] = path_value(paths[n - 1])
+                if f:
+                    run_edit(ctx, mut_set(lambda d, k=key_of(tid, n): d["key"] == k, **f))
             elif op == "close":
                 h = opts.get("terminal", "")
                 if h:
                     run_edit(ctx, mut_remove(lambda d, h=h: d.get("pane") == h))
             elif op == "wt_rm":
                 w = path_value(opts.get("worktree", ""))
-                if w:
+                if w and "$" not in w:
                     run_edit(ctx, mut_remove(lambda d, w=w: d.get("worktree") == w))
         return OK
 
