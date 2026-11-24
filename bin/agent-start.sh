@@ -22,15 +22,15 @@
 # see the once-per-session dedupe below (AGENT_START_DEDUPE_SEC, default 60s).
 #
 # The hook also prints PRINCIPLES.md section "## E. Output" (how to shape what a
-# human reads) before the RULES line, unless agent.conf says adhd=off.
+# human reads) before the RULES line.
 
 set -u
 . "$(dirname "$0")/agent-roots.sh"
 
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
-KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 2c0aa4aa4d1dc695 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 ffa4bdb3449e9897 ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 496f90a01d738ae5 ba6a4831a815a230 d956db8d1ed42790 72241f6e3363d877 64d26f41c9262571 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 a4dfa8b418c5d6de 5bc49497d74f49dc 96ebc45b039cdeb7 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e fc755642e7b2d547 0133b60b2fa2b724 9066a193a7688a05 4837775f457fb61d 2ec8ada5beb1f8cd 8acf929ea8f7dc66 c55264092c9d0e1c )
-RULE=( _ W1 R6 H1 W2 W3 W4 W5 S4 S5 H3 R5 R2 R3 H4 S7 R1 W7 W6 W8 W5 W7 W9 W9 W9 R7 W10 W10 S8 S8 H1 H3 W8 W14 W10 W10 W17 W18 R8 R8 )
+KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 b10039ac08596652 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 0f6edb6c4e7c8a6a ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 d7dd4d5626dfebb7 e8e943f9f54c9b2c d956db8d1ed42790 72241f6e3363d877 9dab6091450c0f7f 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 aaa498cdfdcc8351 5bc49497d74f49dc 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e fc755642e7b2d547 0133b60b2fa2b724 9066a193a7688a05 4837775f457fb61d 2ec8ada5beb1f8cd f79484733aea291b 73cfa63d05267f97 )
+RULE=( _ W1 R6 H1 W2 W3 W4 W12 S4 S5 H3 R5 R2 R3 H4 H3 R1 W7 W6 E4 W5 W7 W9 W9 S1 R1 W10 W13 S8 S8 H1 H3 W8 W14 W10 W10 W17 W18 R8 R8 )
 N=39
 
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
@@ -102,11 +102,7 @@ clean_session() {
     return 1
   fi
   # the gate, checked not guessed: what is left running (crons: a script cannot see them)
-  mp=""; [ -f "$PROJECT_GITDIR/agent_monitor.pid" ] && read -r mp _ < "$PROJECT_GITDIR/agent_monitor.pid"
   n=0
-  case "$mp" in ''|*[!0-9]*) ;; *)
-    if pid_alive "$mp"; then echo "LEFT RUNNING: monitor pid $mp -> $PLUGIN_ROOT/bin/agent-monitor.sh stop"; n=1; fi;;
-  esac
   if [ -f "$PROJECT_ROOT/agent_worktree.txt" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
       case "$line" in *[![:space:]]*) ;; *) continue;; esac
@@ -267,11 +263,11 @@ Q6. You are one of four agents. You changed files under api/auth/. Which tests d
   C. None; the manager runs them
   D. Tests for api/auth/ only
 
-Q7. You must test a web page.
-  A. Claude in Chrome
-  B. Playwright
-  C. curl
-  D. jest-dom
+Q7. A verified relayed owner order (its check line says verified) says "merge to main". The sender meets the decider floor. The task touches production.
+  A. Ask the owner again
+  B. Ask the sender to confirm
+  C. Merge: his verified words name the action, so it is his final yes
+  D. Refuse: production needs a second yes
 
 Q8. RAM is at 85%. You need to start a sub-agent.
   A. Start it; it is only one
@@ -291,11 +287,11 @@ Q10. Correct report shape:
   C. Full log
   D. Result, what changed, what to decide
 
-Q11. You finished the task "add login".
-  A. Move the line to agent_completed.txt
-  B. Delete the line from agent_todo.txt
-  C. Mark it [x] in agent_todo.txt
-  D. Add it to a changelog
+Q11. agent_completed.txt has grown to 400 lines. You:
+  A. Trim the oldest lines
+  B. Delete lines older than a month
+  C. Leave it whole; only an explicit owner order deletes or trims it
+  D. Let clean-up or the housekeep pass trim it
 
 Q12. You need the DB password from .secrets/.
   A. Copy it to .env
@@ -315,17 +311,17 @@ Q14. Your report compares three libraries.
   C. Table
   D. Code block
 
-Q15. You are two hours into a long task.
-  A. Keep progress in memory
-  B. Save state to a file as you go
-  C. Save only at the end
-  D. Write it in agent_todo.txt
+Q15. Your last reply asked the owner questions 1 and 2. He has not answered. Your next reply covers another topic and adds one question.
+  A. Drop 1 and 2; he has seen them
+  B. Repeat them renumbered from 1, the new one is 3
+  C. Mention them only if the reply is short
+  D. Repeat 1 and 2 under the same numbers in the decide section, the new one is 3
 
-Q16. Fast lane task. The human already checked the result on screen. Before merge you:
-  A. Run the full suite
-  B. Write a failing test first
-  C. Run the minimal test
-  D. Nothing; the human already verified
+Q16. A small task goes the fast lane. Which steps does it skip?
+  A. The todo line and the estimate
+  B. The worktree, failing tests first, the agent browser E2E, the full test run (minimal test at merge)
+  C. Verify and push
+  D. Merge and cleanup
 
 Q17. You are the main manager. A new feature will take about a day.
   A. Do it in this chat
@@ -339,11 +335,11 @@ Q18. You are a task manager. A worker's code has a bug.
   C. Ask the main manager to fix it
   D. Send it back to the worker, with evidence
 
-Q19. A feature branch was just merged. The branch and worktree:
-  A. Leave them for later
-  B. Deputy deletes both now
-  C. The worker deletes them
-  D. The main manager deletes them
+Q19. You add a keyword shortcut that starts a long routine. Where does the logic live?
+  A. In the keyword hook script
+  B. In PRINCIPLES.md
+  C. In a skill; the hook only points to it
+  D. In agent.conf
 
 Q20. You are a worker. You need to check a web page in the browser.
   A. Write the click path, hand it to the main manager
@@ -369,17 +365,17 @@ Q23. A big task about the auth module arrives. Worktree "auth" has a task manage
   C. Spawn a deputy
   D. Ask the human
 
-Q24. A task manager is compiling its workers' results. A related task arrives.
-  A. Pass it now
-  B. Open a new worktree for it
-  C. Give it to a deputy
-  D. Hold it until the task manager finishes
+Q24. You must change permission_mode in agent.conf.
+  A. Edit the file by hand and commit
+  B. Ask a worker to edit it
+  C. Edit ~/.claude/auto-pipeline.conf by hand instead
+  D. Use /auto-pipeline:settings (agent-settings.sh): validated, no hand editing
 
-Q25. You are the main manager, about to dispatch a task. First:
-  A. Read agent_worktree.txt
-  B. Open a new worktree
-  C. Spawn a deputy
-  D. Ask the human which worktree is free
+Q25. A big task takes the full flow. The order is:
+  A. Worktree, workers build, failing tests, verify, merge
+  B. Failing tests, worktree, mock, workers build, merge
+  C. Todo line + estimate, mock if UI, worktree + task manager, failing tests, workers build, verify, push, browser E2E, merge + cleanup, todo done
+  D. Mock, workers build, todo line, browser E2E, merge
 
 Q26. You start a new session. agent-start.sh says a main manager is already running.
   A. Become a second main manager
@@ -387,11 +383,11 @@ Q26. You start a new session. agent-start.sh says a main manager is already runn
   C. Read only, do nothing
   D. Become a task manager, tell the main manager you exist, take the human's task
 
-Q27. You are that second session. The human says "report to main manager".
-  A. Report done + click path to the main manager, then act as a normal task manager
-  B. Keep working with the human
-  C. Merge your own work
-  D. Exit
+Q27. You are a task manager. The human runs /auto-pipeline:close-case in your pane.
+  A. Close your pane and remove the worktree
+  B. Start nothing new, save state, commit + push (WIP if unfinished), report "CLOSE CASE <name>: finished" or "unfinished" to the main manager, then wait for its decision
+  C. Keep working until the task is done
+  D. Merge your own work, then report
 
 Q28. Your context was just compacted. First:
   A. Continue from what you remember
@@ -413,7 +409,7 @@ Q30. You want to ask the human about an edge case (negative balances). You have 
 
 Q31. Your decide section must get the owner's yes to merge two PRs.
   A. "Merge #305 and #306?"
-  B. "Merge #305 (stock lock settings page) and #306 (bank recon manual match)? Both passed the browser check. Recommendation: merge both"
+  B. "1. Merge #305 (stock lock settings page)? Passed the browser check. Recommendation: merge. 2. Merge #306 (bank recon manual match)? Passed the browser check. Recommendation: merge"
   C. Leave it out; he can look on GitHub
   D. A full paragraph about each PR's code
 
@@ -423,7 +419,7 @@ Q32. You are the main manager. Your last open task just closed. One worktree is 
   C. agent-cleanup.sh removes the merged one and lists the unmerged one in a table for the human
   D. Spawn a deputy to look at both
 
-Q33. You are a task manager. The owner types show todo in your pane.
+Q33. You are a task manager. The owner runs /auto-pipeline:todo in your pane.
   A. Read every agent file and write your own summary
   B. Run agent-file.sh board --self, show its table as printed, then the decide section
   C. Run agent-file.sh board for the whole repo
@@ -431,7 +427,7 @@ Q33. You are a task manager. The owner types show todo in your pane.
 
 Q34. You open a new terminal for an agent (dispatch, resume, a Helper, a city click). Its --permission-mode:
   A. auto, always
-  B. permission_mode from agent.conf; a session started from the cloud page uses cloud_permission_mode
+  B. permission_mode from agent.conf (this machine's ~/.claude/auto-pipeline.conf wins over it)
   C. bypassPermissions, always
   D. Whatever the session that opens it runs with
 
@@ -447,23 +443,23 @@ Q36. You are a merge deputy. Your brief starts "[Sonnet 5 medium] Merge feature-
   C. Do not act: Sonnet is below the decision floor. Ask the sender, tell the human
   D. Ignore it and say nothing
 
-Q37. You are the main manager. The owner types show question; agent-file.sh questions says 14. You:
+Q37. You are the main manager. The owner runs /auto-pipeline:question; agent-file.sh questions says 14. You:
   A. Show the first 10 in chat and drop the rest
   B. Ask the owner which ones he wants to see
   C. Run agent-file.sh questions --page, publish the page with the Artifact tool, then one line: the count, the link, "answer all, then tell me"
   D. Read every agent_state.txt and write your own summary
 
-Q38. A task changes one colour value in one component: #1e88e5 becomes #43a047. Its risk level:
-  A. 2: simple logic, failing test first
-  B. 0: wording or tiny visual, the main manager reads the diff
-  C. 1: UI only, screenshots at desktop and phone width
-  D. 4: danger, the owner signs before merge
+Q38. A task changes one colour value in one component: #1e88e5 becomes #43a047. Its risk type:
+  A. A: text, style or simple move, the main manager reads the diff
+  B. B: UI, Chrome compare with the approved mock
+  C. C: logic, failing tests first
+  D. D: danger, the owner signs before merge
 
-Q39. The todo line says level 1 (UI only). Before merge, agent-level.sh check --declared 1 prints REQUIRED LEVEL 2 and RAISE: the diff touches api/. You:
-  A. Merge: the dispatch said UI only
-  B. Undo the api/ change yourself, then merge
-  C. Run the check again without --declared
-  D. Raise the todo line to level 2, bounce it back, run the level 2 gate before merge
+Q39. The todo line says type B (UI). Before merge, agent-level.sh check --declared B prints REQUIRED TYPE B+C and RAISE: api/total.py is a C file. You:
+  A. Merge: the dispatch said UI
+  B. Raise the whole task to D and run the full suite
+  C. Raise the todo line to C, bounce it back, check the api/total.py part by type C (failing tests first, touched feature) and the UI part by type B
+  D. Run the check again without --declared
 QUIZ
   exit 0
 fi
@@ -506,10 +502,9 @@ fi
 
 # print_output_section: PRINCIPLES.md from the line "## E. Output" up to, not
 # including, the next "## " line (or the end), blank lines at its end dropped.
-# Nothing when adhd=off, or no PRINCIPLES.md, or no such section. Never fails.
+# Nothing when no PRINCIPLES.md, or no such section. Never fails.
 # Outside the CAP byte budget: it is not part of any `fixed` sum.
 print_output_section() {
-  [ "${adhd:-on}" = off ] && return 0
   [ -f "$PLUGIN_ROOT/PRINCIPLES.md" ] || return 0
   awk '
     !p && index($0, "## E. Output") == 1 { p = 1; print; next }
@@ -529,7 +524,7 @@ conf_read
 # plugin on. An agent.conf already there means the repo was set up by hand
 # or by us before: nothing new happens, whatever the scope is. No agent.conf
 # and no self-enable: this repo is untouched, print one line and stop, no
-# lock, no monitor, no files, no directories. ----
+# lock, no files, no directories. ----
 SETUP_TEXT=""
 if [ ! -f "$PROJECT_ROOT/agent.conf" ]; then
   self_enabled=no
@@ -763,15 +758,12 @@ print_compact_lines() {
 # PERMISSION, USER CONF, YOU, then (main manager / human-direct only) AUTO UPDATE
 # and UPDATE. Every python call may fail: the start never breaks.
 print_mode_lines() {
-  local conf="$PROJECT_ROOT/agent.conf" pyp="$PLUGIN_ROOT/bin" m c rk ign upd
+  local conf="$PROJECT_ROOT/agent.conf" pyp="$PLUGIN_ROOT/bin" m rk ign upd
   local v src
   m=$(python3 "$pyp/agent_conf.py" effective permission_mode "$conf" 2>/dev/null </dev/null) || m=""
-  c=$(python3 "$pyp/agent_conf.py" effective cloud_permission_mode "$conf" 2>/dev/null </dev/null) || c=""
   IFS=$'\t' read -r v src <<<"$m"
   if [ -n "$v" ]; then m="$v (from $src)"; else m="auto (default)"; fi
-  IFS=$'\t' read -r v src <<<"$c"
-  if [ -n "$v" ]; then c="$v (from $src)"; else c="auto (default)"; fi
-  echo "PERMISSION: $m, cloud page $c"
+  echo "PERMISSION: $m"
   ign=$(PYTHONPATH="$pyp" python3 -c 'import agent_conf as a
 v,i=a.read_user_conf()
 if i: print("USER CONF: ignored in %s: %s" % (a.display_path(a.user_conf_path()), ", ".join(i)))' 2>/dev/null </dev/null) || ign=""
@@ -810,19 +802,6 @@ print_normal_lines() {
       sed 's/^/  /' "$PROJECT_ROOT/$name"
     fi
   done
-  return 0
-}
-
-print_monitor_block() {
-  local f cn
-  f="$PROJECT_ROOT/agent_monitor.txt"
-  if [ -f "$f" ]; then
-    cn=$(count_lines "$f")
-    if [ "$cn" -gt 0 ]; then
-      echo "agent_monitor.txt: $cn lines"
-      sed 's/^/  /' "$f"
-    fi
-  fi
   return 0
 }
 
@@ -955,7 +934,7 @@ fi
 
 # ---- cleanup sweep: main manager or takeover only, before the counts and the
 # worktree lines are built, so they show the cleaned state. Its --short lines
-# (empty when there is nothing to report) print after the monitor block. Never
+# (empty when there is nothing to report) print after the WATCH line. Never
 # fails the hook: stderr dropped, any exit code ignored. ----
 CLEAN_TEXT=""
 if [ "$role" = main ] || [ "$role" = takeover ]; then
@@ -964,7 +943,6 @@ fi
 
 NORMAL_TEXT=$(print_normal_lines; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
 WARN_TEXT=$(state_warn_text; printf 'X'); WARN_TEXT=${WARN_TEXT%X}
-MON_TEXT=$(print_monitor_block; printf 'X'); MON_TEXT=${MON_TEXT%X}
 # F1/F2: one WATCH line for the main manager or a takeover, orca only. The line comes from the files (no orca call);
 # the runtime probe is made only when there is a line to print.
 WATCH_TEXT=""
@@ -992,7 +970,7 @@ if [ "$SRC" = startup ] && { [ "$role" = main ] || [ "$role" = takeover ]; } \
    && [ "$auto_resume" = yes ]; then
   resume_out=$(AGENT_CLEANUP_DONE=1 AGENT_WATCH_LINE_DONE=1 "$PLUGIN_ROOT/bin/agent-resume.sh" 2>&1) || true
   header="=== auto resume ==="
-  other_fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") + $(text_bytes "$WATCH_TEXT") \
+  other_fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$WATCH_TEXT") \
                  + $(text_bytes "$CLEAN_TEXT") + $(text_bytes "$WARN_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
   candidate_bytes=$(( $(line_bytes "$header") + $(text_bytes "$resume_out") + 1 ))
   if [ $(( other_fixed + candidate_bytes )) -gt "$CAP" ]; then
@@ -1006,13 +984,13 @@ $resume_out
 fi
 
 calc_fixed() {
-  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") + $(text_bytes "$WATCH_TEXT") \
+  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$WATCH_TEXT") \
           + $(text_bytes "$CLEAN_TEXT") + $(text_bytes "$WARN_TEXT") + $(text_bytes "$RESUME_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
 }
 calc_fixed
 
 # The state block must keep at least its pointer line. Cuts, in order, while
-# fixed + pointer is over the CAP: 1 auto resume body, 2 monitor rows,
+# fixed + pointer is over the CAP: 1 auto resume body, 2 the WATCH line,
 # 3 the AUTO UPDATE line's long form, 4 worktree rows (last, W9).
 ptr_bytes=0
 if [ -f "$STATE_DIR/agent_state.txt" ]; then
@@ -1026,23 +1004,6 @@ if [ -n "$RESUME_TEXT" ] && [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
 (cut to fit, run agent-resume.sh)
 "
   calc_fixed
-fi
-
-# 2. monitor rows: cut from the end (the header keeps the real count) until
-# the state header and its "truncated" marker fit.
-if [ -n "$MON_TEXT" ] && [ $(( fixed + 70 )) -gt "$CAP" ]; then
-  mon_total=$(printf '%s' "$MON_TEXT" | awk 'END{print NR}')
-  mon_keep=$mon_total; mon_orig=$MON_TEXT; mon_fixed=$fixed
-  while [ "$mon_keep" -gt 1 ]; do
-    mon_keep=$(( mon_keep - 1 ))
-    new_mon=$(printf '%s' "$mon_orig" | head -n "$mon_keep"; printf 'X'); new_mon=${new_mon%X}
-    mon_more="  ($(( mon_total - mon_keep )) more: $PROJECT_ROOT/agent_monitor.txt)"
-    new_mon="$new_mon$mon_more
-"
-    fixed=$(( mon_fixed - $(text_bytes "$mon_orig") + $(text_bytes "$new_mon") ))
-    MON_TEXT=$new_mon
-    [ $(( fixed + 70 )) -le "$CAP" ] && break
-  done
 fi
 
 # 2b. WATCH line: short forms, the command part is never cut: first without the "(<names>)" list.
@@ -1092,7 +1053,6 @@ budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
 
 printf '%s' "$ROLE_TEXT"
 printf '%s' "$NORMAL_TEXT"
-printf '%s' "$MON_TEXT"
 printf '%s' "$WATCH_TEXT"
 printf '%s' "$CLEAN_TEXT"
 printf '%s' "$WARN_TEXT"

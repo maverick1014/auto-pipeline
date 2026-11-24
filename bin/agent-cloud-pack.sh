@@ -384,25 +384,14 @@ python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$PERM_FILE" >/dev/nu
   || die "permission block parse"
 
 # ---- merge .claude/settings.json: keep every existing key and hook ----
-python3 - "$SETTINGS_JSON" "$PERM_FILE" "$PLUGIN_ROOT/hooks/hooks.json" <<'PY' || die "settings.json"
+python3 - "$SETTINGS_JSON" "$PERM_FILE" <<'PY' || die "settings.json"
 import json
 import os
 import sys
 
-settings_path, perm_path, src_hooks_path = sys.argv[1], sys.argv[2], sys.argv[3]
+settings_path, perm_path = sys.argv[1], sys.argv[2]
 HOOK_MARKER = ".claude/auto-pipeline/bin/agent-start.sh"
 HOOK_CMD = 'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-start.sh'
-
-# Agent City in the cloud (requirements/city.md, "Joining"): every source
-# hooks.json entry that runs agent-city-hook.sh, same event and matcher, as
-# CITY_HOOK_CMD (off, it costs one test -f); plus one more SessionStart hook,
-# SEND_CMD, that starts the cloud sender only when the environment secret
-# AGENT_CITY_RELAY is set. Never the page-side hooks (agent_city.py ask /
-# gov-watch): a cloud session has no city page and no owner at it.
-CITY_HOOK_CMD = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
-                 'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-city-hook.sh; exit 0')
-SEND_CMD = ('[ -n "${AGENT_CITY_RELAY:-}" ] && '
-            'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-city.sh send; exit 0')
 
 with open(perm_path) as fh:
     perm_block = json.load(fh)
@@ -426,13 +415,11 @@ if not has_hook:
     changed = True
 
 # The plugin's other hooks: the session name line, the Helper task title (the
-# name script's --prompt mode), the close case rule, the show todo rule and the show question rule. Same packed path, same
+# name script's --prompt mode), the closed-session notice (agent-close-case.sh). Same packed path, same
 # marker test per event, so a rerun or an older pack adds each once.
 for event, script, args, timeout in (("SessionStart", "agent-name.sh", "", 5),
                                      ("UserPromptSubmit", "agent-name.sh", " --prompt", 5),
-                                     ("UserPromptSubmit", "agent-close-case.sh", "", 10),
-                                     ("UserPromptSubmit", "agent-show-todo.sh", "", 10),
-                                     ("UserPromptSubmit", "agent-show-question.sh", "", 10)):
+                                     ("UserPromptSubmit", "agent-close-case.sh", "", 10)):
     marker = ".claude/auto-pipeline/bin/" + script
     event_list = hooks.setdefault(event, [])
     if not any(marker in hook.get("command", "")
@@ -441,33 +428,6 @@ for event, script, args, timeout in (("SessionStart", "agent-name.sh", "", 5),
                                       "command": 'bash "$CLAUDE_PROJECT_DIR"/' + marker + args,
                                       "timeout": timeout}]})
         changed = True
-
-has_send = any(hook.get("command", "") == SEND_CMD
-               for entry in session_start for hook in entry.get("hooks", []))
-if not has_send:
-    session_start.append({"hooks": [{"type": "command", "command": SEND_CMD}]})
-    changed = True
-
-if os.path.exists(src_hooks_path):
-    with open(src_hooks_path) as fh:
-        src_hooks = json.load(fh).get("hooks", {})
-    for event, entries in src_hooks.items():
-        for entry in entries:
-            if not any("agent-city-hook.sh" in h.get("command", "")
-                       for h in entry.get("hooks", [])):
-                continue
-            matcher = entry.get("matcher")
-            event_list = hooks.setdefault(event, [])
-            has_city = any(
-                e.get("matcher") == matcher and
-                any(h.get("command", "") == CITY_HOOK_CMD for h in e.get("hooks", []))
-                for e in event_list)
-            if not has_city:
-                new_entry = {"hooks": [{"type": "command", "command": CITY_HOOK_CMD}]}
-                if matcher is not None:
-                    new_entry["matcher"] = matcher
-                event_list.append(new_entry)
-                changed = True
 
 permissions = data.setdefault("permissions", {})
 allow = permissions.setdefault("allow", [])
@@ -525,6 +485,3 @@ echo "The Claude GitHub App must be installed on this repo, or the cloud clone h
 echo
 echo "To set up any other repo the same way, paste this into a fresh cloud session of it, then commit and push:"
 echo "git clone $REPO_URL /tmp/ap && /tmp/ap/bin/agent-cloud-pack.sh . --language $LANG_IN_USE"
-echo
-echo "For a cloud session opened on several repos at once (its cwd starts above them, so it loads none of their hooks): paste this into that environment's Setup script instead:"
-echo "git clone --depth 1 $REPO_URL /tmp/ap-city && bash /tmp/ap-city/bin/agent-city.sh cloud-hooks"

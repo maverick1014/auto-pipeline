@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""agent_board.py - the table behind `agent-file.sh board` ("show todo"). Python 3.9, standard library only.
+"""agent_board.py - the table behind `agent-file.sh board` (/auto-pipeline:todo). Python 3.9, standard library only.
 
     agent_board.py --root <main repo> --state-dir <git toplevel of the cwd> --cwd <cwd>
                    --now "YYYY-MM-DD HH:MM" --lang <zh|en> --host <machine> [--self] [--watch <sec>]
@@ -598,9 +598,11 @@ class Board:
             if m and t["started"] is None and parse_time(m.group(1)):
                 t["started"], t["swaited"] = m.group(1), int(m.group(2) or 0)
                 continue
-            m = re.match(r"level (\d+)$", x)
+            m = re.match(r"level (\d+|[A-D])$", x)
             if m and t["level"] is None:
-                t["level"] = int(m.group(1))
+                # a type letter; an old number reads as 0=A 1=B 2,3=C 4=D (R8)
+                v = m.group(1)
+                t["level"] = v if v.isalpha() else ("ABCCD" + "D" * 20)[int(v)]
                 continue
             m = re.match(r"waited in stage (\d+)m$", x)
             if m:
@@ -720,7 +722,7 @@ class Board:
                 where = self.where_here(own_dir) if own_dir else "-"
         self.add(group, when, t["name"], t["what"] or "-", status, where,
                  est=est, work=work, wait=wait_cell, done=done, progress=progress,
-                 level="-" if t["level"] is None else "L%d" % t["level"], info=info)
+                 level="-" if t["level"] is None else t["level"], info=info)
 
     def helper_row(self, f):
         what = "-"

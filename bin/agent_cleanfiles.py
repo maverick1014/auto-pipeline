@@ -8,7 +8,7 @@ Run by the bash entry, never by hand:
                         [--yes <ids>|all|none]
 
 No --yes: the dry run. It lists rubbish docs (D), old state copies and the
-old monitor file (S), mocks of no open task (M), and the idea (I), todo (T)
+leftover monitor file (S), mocks of no open task (M), and the idea (I), todo (T)
 and worktree (W) lines the housekeep pass calls outdated. It changes nothing
 and saves the table to <git dir>/agent-cleanup-files.last.
 
@@ -58,7 +58,6 @@ LICENSE_PREFIXES = ("license", "licence", "copying", "notice")
 STATE_STAMP = re.compile(r"^agent_state\.(\d{4}-\d\d-\d\d)-\d{6}\.txt$")
 STATE_TRIM = re.compile(r"^agent_state\.trim-(\d{4}-\d\d-\d\d)\.txt$")
 MOCK = re.compile(r"^mock/([^/]+)-mock\.html$")
-STAMP = re.compile(r"\d{4}-\d\d-\d\d \d\d:\d\d")
 
 DEFAULT_DAYS = 14
 DOCS_KEEP_NOTE = ("docs_keep not set: a product repo keeps its real docs with "
@@ -305,20 +304,6 @@ def doc_rows(seen, tracked, docs_keep):
             if is_doc(rel) and not keep_doc(rel, docs_keep)]
 
 
-def monitor_running(ctx):
-    try:
-        pid = int(read_text(os.path.join(ctx.gitdir, "agent_monitor.pid")).split()[0])
-    except (IndexError, ValueError):
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except OSError:
-        return True
-    return True
-
-
 def state_rows(ctx, tracked, days):
     rows = []
     now = today()
@@ -338,20 +323,9 @@ def state_rows(ctx, tracked, days):
             rows.append(file_row("S", name, tracked,
                                  "state copy %d days old (over %d)" % (age, days)))
     name = "agent_monitor.txt"
-    if os.path.isfile(ctx.path(name)) and not monitor_running(ctx):
-        stamps = STAMP.findall(read_text(ctx.path(name)))
-        if not stamps:
-            rows.append(file_row("S", name, tracked,
-                                 "monitor file, no monitor running, no date in it"))
-        else:
-            newest = max(stamps)
-            day = parse_day(newest)
-            age = (now - day).days if day else None
-            if age is None or age > days:
-                rows.append(file_row(
-                    "S", name, tracked,
-                    "monitor file, no monitor running, newest entry %s (%s days old, over %d)"
-                    % (newest[:10], "?" if age is None else age, days)))
+    if os.path.isfile(ctx.path(name)):
+        rows.append(file_row("S", name, tracked,
+                             "leftover monitor file, nothing writes it any more"))
     for row in rows:
         if row["tracked"]:
             row["how"] = "git rm, one commit"

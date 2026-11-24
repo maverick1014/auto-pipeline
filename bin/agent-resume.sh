@@ -6,7 +6,7 @@
 #   ./agent-resume.sh -h           this help
 #
 # Relaunches a task manager for every worktree line that needs one, then
-# starts the health monitor if it is not already running.
+# prints the watch line (agent-watch.sh --all) when no watch runs.
 #
 # Orca is not the only runtime (bin/agent-runtime.sh). In plain and cloud mode
 # there are no terminals to relaunch into and nothing to sweep: the table
@@ -44,7 +44,7 @@ esac
 # The four agent_*.txt data files live in the main repo (ROOT), which can be a
 # different place when this script runs from inside a worktree.
 : "${max_usage_percent:=80}"
-: "${task_manager:=opus-5.5:xhigh}"
+: "${task_manager:=opus-5.5:high}"
 : "${permission_mode:=auto}"
 : "${max_agents:=4}"
 
@@ -59,8 +59,7 @@ IDEAS="$ROOT/agent_ideas.txt"
 KIND=$(runtime_kind)
 # Pay for the probe (if any) once, then let every later runtime_ps /
 # runtime_launch below reuse it instead of asking again per worktree. Unset
-# again before handing off to agent-monitor.sh (below): its background loop
-# lives for hours and must re-derive the kind on its own, sweep by sweep.
+# again after the one-shot work (below).
 export AGENT_RUNTIME="$KIND"
 
 # ---- cleanup sweep: main manager or takeover only, before agent_worktree.txt
@@ -213,31 +212,9 @@ printf '%s' "$cap_lines"
 printf '%s' "$need_by_hand"
 echo
 
-# The one-shot work above is done. Never let a child process (agent-monitor.sh
-# below, whose background loop outlives this run by hours) inherit a kind
+# The one-shot work above is done. Never let a child process inherit a kind
 # pinned to this one moment.
 unset AGENT_RUNTIME
-
-# ---- monitor handover ----
-if [ "$KIND" = "orca" ]; then
-  MON_PID_FILE="$PROJECT_GITDIR/agent_monitor.pid"
-  monitor_running=0
-  if [ -f "$MON_PID_FILE" ]; then
-    mpid=$(awk '{print $1}' "$MON_PID_FILE" 2>/dev/null || true)
-    [ -n "$mpid" ] && kill -0 "$mpid" 2>/dev/null && monitor_running=1
-  fi
-  if [ "$monitor_running" -eq 1 ]; then
-    echo "monitor: already running (pid $mpid)"
-  elif [ "$DRY_RUN" -eq 1 ]; then
-    echo "monitor: would start"
-  else
-    out=$("$PLUGIN_ROOT/bin/agent-monitor.sh" start)
-    echo "$out" | grep -E "^monitor:" || true
-  fi
-else
-  echo "monitor: not used in $KIND mode"
-fi
-echo
 
 # ---- watch line (F1, F2): orca only; agent-start.sh prints it itself when it runs this script ----
 if [ "$KIND" = "orca" ] && [ -z "${AGENT_WATCH_LINE_DONE:-}" ]; then

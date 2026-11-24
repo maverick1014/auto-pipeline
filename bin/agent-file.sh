@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # agent-file.sh — the only way to write agent_*.txt. No agent, no tokens, one format.
 #
-#   agent-file.sh todo add  "<name>" "<size>" "<what>" [est_minutes] [by] [--guess <m>] [--level <n>]  -> agent_todo.txt (by defaults to "main")
+#   agent-file.sh todo add  "<name>" "<size>" "<what>" [est_minutes] [by] [--guess <m>] [--level <A-D>]  -> agent_todo.txt (by defaults to "main")
 #   agent-file.sh todo done "<name>" ["<result>"] [--work <m>] [--wait <m>] [--bounces <n>] [--workers <n>]
 #                 [--mock yes|no] [--lane fast|full] [--type <t>] [--tests <n>] [--adds <n>]
 #                 [--merge <commit> | --range <a>..<b>]       -> line moves to agent_completed.txt as one data line
-#   agent-file.sh todo level "<name>" <n>                     -> the todo line says its risk level, " | level <n>" (n 0-4; replaced in place, only goes up)
+#   agent-file.sh todo level "<name>" <A-D>                   -> the todo line says its risk type, " | level <A-D>" (old 0-4 read: 0=A 1=B 2,3=C 4=D; replaced in place, only goes up)
 #   agent-file.sh todo drop "<name>" "<reason>"               -> line moves to agent_completed.txt as: date | name | what | est <n>m actual - | dropped: <reason>
 #   agent-file.sh idea add  "<text>"                          -> agent_ideas.txt
 #   agent-file.sh idea list                                   -> print agent_ideas.txt, numbered (cat -n)
@@ -19,7 +19,7 @@
 #   agent-file.sh backfill [--dry-run]                        -> old lines: take work and wait from the text of each line
 #   agent-file.sh backfill <name> [--dry-run] [--force] <todo done options>   -> set the data of one finished line
 #   agent-file.sh data [--what] [<repo path>...]              -> table: one row per finished task, every repo on this machine
-#   agent-file.sh repos                                       -> read only: real paths one per line: this repo, then world.json territories, then joined-repos.txt; each once, a missing folder is skipped
+#   agent-file.sh repos                                       -> read only: real paths one per line: this repo, then world.json territories; each once, a missing folder is skipped
 #   agent-file.sh todo cross "<name>" <repo>                  -> the todo line says the other repo of a two-repo task: " | cross <repo>" (replaced in place, else appended)
 #   agent-file.sh estimate --lane fast|full --mock yes|no --type <t> [--name <name>] [--guess <m>] "<what>"   -> work minutes, range, like tasks
 #   agent-file.sh backtest [--tasks]                          -> the estimator against the rubric and the todo est, rolling
@@ -35,13 +35,13 @@
 #   agent-file.sh park list                                   -> the PARKED lines, numbered
 #   agent-file.sh park rm <n>                                 -> remove the n-th PARKED line
 #   agent-file.sh park rm --id <id>                           -> remove the PARKED line with that id (the id `questions` gives)
-#   agent-file.sh questions [--self] [--json]                 -> every question that waits on the owner ("show question")
+#   agent-file.sh questions [--self] [--json]                 -> every question that waits on the owner (/auto-pipeline:question)
 #   agent-file.sh questions [--self] --page <file>            -> write the answer page, its map, and the "QUESTIONS PAGE:" line
 #   agent-file.sh questions --url <url>                       -> set the published url on the "QUESTIONS PAGE:" line
 #   agent-file.sh questions answer <id> "<answer>"            -> close one question (parked: line goes; todo: wait closes; QUESTION: gets "ANSWER:")
 #   agent-file.sh worker on <n> "<slice>"                     -> agent_state.txt: WORKER <n>: <slice> | since <date> (replaces worker n)
 #   agent-file.sh worker off <n>                              -> remove WORKER <n>
-#   agent-file.sh board [--self]                              -> the table of everything open ("show todo"); --self: this session's task only
+#   agent-file.sh board [--self]                              -> the table of everything open (/auto-pipeline:todo); --self: this session's task only
 #   agent-file.sh state add "<line>"                          -> agent_state.txt of this folder gets "<line> | <date time>" (one line, " | " inside is fine)
 #   agent-file.sh tell "<task>" "[<model> <effort>] <msg>"    -> the block "TELL <sha8> ..." at the end of that task's agent_state.txt, then one pointer line into its TM pane (rules D1-D8, requirements/one-watcher.md); prints "TELL OK <task> <sha8>"
 #   agent-file.sh state trim [--dry-run]                      -> old lines of agent_state.txt move to agent_state.trim-<date>.txt (rules: requirements/state-trim.md); --dry-run only counts
@@ -58,14 +58,14 @@
 #   It prints "todo done: <name>" and "TIME DATA: <n> of 30" (finished tasks that have a work number).
 #   No --type or no --lane: one warning line on stderr ("todo done: warning: no --type --lane given (...)"), exit 0.
 #   --guess <m> (whole number, 1 or more; anywhere after "todo add") adds the field " | guess <m>m" after est; done copies it to guess=<m>.
-#   --level <n> (one of 0 1 2 3 4; anywhere after "todo add") adds " | level <n>" right after guess (else after est, else after the what); done copies it to level=<n>.
-#   todo level "<name>" <n>: sets it in place, every other field stays; prints "todo level: <name> <old> -> <n>" ("-" for none) or "todo level: <name> already level <n>" (writes nothing).
-#     A lower level, no such line, a bad or missing n: refused (one line on stderr, exit 1, nothing written).
+#   --level <A-D> (old 0-4 accepted, stored as a letter; anywhere after "todo add") adds " | level <A-D>" right after guess (else after est, else after the what); done copies it to level=<A-D>.
+#   todo level "<name>" <A-D>: sets it in place, every other field stays; prints "todo level: <name> <old> -> <new>" ("-" for none) or "todo level: <name> already type <new>" (writes nothing).
+#     A lower type, no such line, a bad or missing type: refused (one line on stderr, exit 1, nothing written).
 #   Then the retrain, only when due: one line "estimate retrain: ...", never the table. A failure never stops todo done.
 #
 # The line in agent_completed.txt (keys in this order, "-" when not known):
 #   <date> | <name> | <what> | data repo=<r> type=<t> lane=<l> mock=<yes|no> est=<m> work=<m> wait=<m> clock=<m> bounces=<n> workers=<n> files=<n> lines=<n> tests=<n> adds=<n> guess=<m> level=<n>
-#   level = the risk level from the todo line's "level <n>" field, "-" when none. An older block has no level key (read as "-").
+#   level = the risk type from the todo line's "level <A-D>" field (an old line may hold 0-4), "-" when none. An older block has no level key (read as "-").
 #   An old line ("est <n>m actual <n>m") has no data block.
 #
 # time: ratio = work / est, one decimal; "-" when work or est is missing. An old line is est + clock, never work.
@@ -89,8 +89,7 @@
 #     1. this repo
 #     2. the keys of "territories" in world.json in the city home ($AGENT_CITY_HOME, default ~/.claude/agent-city);
 #        a key "<repo>/.git" names <repo>, any other key is passed over; no python3 or a bad file: passed over
-#     3. the lines of joined-repos.txt in the city home (absolute paths; blank lines and "#" comments are passed over)
-#     4. the paths given as arguments
+#     3. the paths given as arguments
 #   It reads only <repo>/agent_completed.txt of another repo and writes nothing there.
 #   No such file or folder: one line "skipped ..." on stderr, exit stays 0.
 #   guess = the manager's own minutes from the todo line, "-" when none. --what adds one last column, what: the text between the name and the data block ("-" when empty).
@@ -448,21 +447,11 @@ $rp
     fi
   done < "$rp/agent_completed.txt"
 }
-# repos_list: the real paths of this repo, the world.json territories, then joined-repos.txt; each once, a missing folder skipped
+# repos_list: the real paths of this repo, the world.json territories; each once, a missing folder skipped
 repos_list() {
-  local city="${AGENT_CITY_HOME:-${HOME:-}/.claude/agent-city}" p rp all joined= seen="
+  local city="${AGENT_CITY_HOME:-${HOME:-}/.claude/agent-city}" p rp all seen="
 "
   all=$(printf '%s\n' "$ROOT"; world_repos "$city/world.json")
-  if [ -f "$city/joined-repos.txt" ]; then
-    while read -r p || [ -n "$p" ]; do
-      case "$p" in
-        /*) joined="$joined$p
-";;
-      esac
-    done < "$city/joined-repos.txt"
-    all="$all
-$joined"
-  fi
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     rp=$(cd "$p" 2>/dev/null && pwd -P) || { echo "skipped: no such folder: $p" >&2; continue; }
@@ -1004,33 +993,40 @@ board_run() {
     --now "$NOW" --lang "$lang" --host "$host" ${self:+--self}
 }
 
-# the risk level of a todo line: fields 4+ only ("level <n>"); nothing when none
+# the risk type of a todo line: fields 4+ only ("level <A-D>", or an old "level <0-4>"); nothing when none
 todo_line_level() {
-  printf '%s\n' "$1" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^level [0-9]+$/) {v = $i; sub(/^level /, "", v); print v; exit}}'
+  printf '%s\n' "$1" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^level ([0-9]+|[A-D])$/) {v = $i; sub(/^level /, "", v); print v; exit}}'
 }
-# todo level "<name>" <n>: the line's level field, set in place (only goes up)
+# a type or an old level -> the type letter (0=A 1=B 2,3=C 4=D); empty when it is neither
+risk_type() {
+  case "$1" in
+    A|a|0) echo A;; B|b|1) echo B;; C|c|2|3) echo C;; D|d|4) echo D;; *) echo "";;
+  esac
+}
+risk_rank() { case "$1" in A) echo 0;; B) echo 1;; C) echo 2;; D) echo 3;; esac; }
+# todo level "<name>" <A-D>: the line's type field, set in place (only goes up); 0-4 still accepted, stored as a letter
 todo_level() {
-  local name="${1:-}" n="${2:-}" line old
-  [ $# -eq 2 ] || refuse "todo level: usage: todo level \"<name>\" <n>  (n one of 0 1 2 3 4)"
-  case "$n" in [0-4]) ;; *) refuse "todo level: the level wants one of 0 1 2 3 4 (got: $n)";; esac
+  local name="${1:-}" n="${2:-}" line old oldt
+  [ $# -eq 2 ] || refuse "todo level: usage: todo level \"<name>\" <A-D>  (old 0-4 still read)"
+  n=$(risk_type "$n"); [ -n "$n" ] || refuse "todo level: the type wants one of A B C D (got: ${2:-nothing})"
   line=""; [ ! -f "$TODO" ] || line=$(first "$TODO" "$name")
   [ -n "$line" ] || refuse "no todo line named: $name"
   old=$(todo_line_level "$line")
   if [ -n "$old" ]; then
-    old=$((10#$old))
-    [ "$n" -ge "$old" ] || refuse "todo level: $name: level only goes up ($old -> $n)"
-    if [ "$n" -eq "$old" ]; then echo "todo level: $name already level $n"; return 0; fi
+    oldt=$(risk_type "$old"); [ -n "$oldt" ] || oldt=A
+    [ "$(risk_rank "$n")" -ge "$(risk_rank "$oldt")" ] || refuse "todo level: $name: type only goes up ($old -> $n)"
+    if [ "$n" = "$oldt" ]; then echo "todo level: $name already type $n"; return 0; fi
   fi
   NAME="$name" LV="$n" awk -F' \\| ' '
     !done && $1 == ENVIRON["NAME"] {
       done = 1; lv = "level " ENVIRON["LV"]; out = ""; hasl = 0
-      for (i = 4; i <= NF; i++) if ($i ~ /^level [0-9]+$/) hasl = 1
+      for (i = 4; i <= NF; i++) if ($i ~ /^level ([0-9]+|[A-D])$/) hasl = 1
       gi = 0; ei = 0
       for (i = 4; i <= NF; i++) { if (!gi && $i ~ /^guess [0-9]+m$/) gi = i; if (!ei && $i ~ /^est [0-9]+m$/) ei = i }
       at = gi ? gi : (ei ? ei : 3)
       for (i = 1; i <= NF; i++) {
         f = $i
-        if (i >= 4 && f ~ /^level [0-9]+$/) f = lv
+        if (i >= 4 && f ~ /^level ([0-9]+|[A-D])$/) f = lv
         out = out (i > 1 ? " | " : "") f
         if (!hasl && i == at) out = out " | " lv
       }
@@ -1051,8 +1047,8 @@ case "${1:-}:${2:-}" in
         [ $# -ge 2 ] && is_num "$2" && [ "${#2}" -le 9 ] && [ $((10#$2)) -ge 1 ] || refuse "todo add: --guess wants a whole number, 1 or more (got: ${2:-nothing})"
         guess=$((10#$2)); shift 2
       elif [ "$1" = "--level" ]; then
-        case "${2:-}" in [0-4]) ;; *) refuse "todo add: --level wants one of 0 1 2 3 4 (got: ${2:-nothing})";; esac
-        level=$2; shift 2
+        level=$(risk_type "${2:-}"); [ -n "$level" ] || refuse "todo add: --level wants one of A B C D (got: ${2:-nothing})"
+        shift 2
       else rest+=("$1"); shift; fi
     done
     set -- todo add ${rest[@]+"${rest[@]}"}

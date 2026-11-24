@@ -6,12 +6,22 @@
 
 ## A. Repo
 
-R1. Two lanes
-- Small task → fast lane, no pipeline
-- Big task → full pipeline
-- Task size picks the lane
-- Risk level is the second axis (R8): 3 and 4 always take the full lane
-- Fast lane: no TDD while doing, human verifies directly, minimal test at merge
+R1. One flow, two lanes
+- Before the flow: the main manager writes the requirement doc, the owner approves it
+- Full flow, in order:
+  1. Todo line + estimate
+  2. Mock if the task has UI
+  3. Worktree + task manager
+  4. Failing tests first
+  5. Workers build
+  6. Verify
+  7. Push
+  8. Browser E2E
+  9. Merge + cleanup
+  10. Todo done
+- Fast lane skips: the worktree (work on the current branch), TDD (no failing tests first), the agent browser E2E (human checks the screen), the full test run (minimal test at merge)
+- Task size picks the lane: small → fast lane, big → full flow (full lane)
+- Risk type is the second axis (R8): D always takes the full lane
 
 R2. Secrets
 - Live in `.secrets/` (git-ignored)
@@ -25,7 +35,7 @@ R3. Docs
 - Entry files allowed: `CLAUDE.md`, `AGENTS.md` (one line, point to `bin/agent-start.sh`)
 - `README.md` allowed: the picture of the tree and the flow, for people new to the repo
 - Config, not docs, allowed: `.claude-plugin/`, `agents/`, `skills/`, `hooks/`, `bin/`
-- Rubbish: `/auto-pipeline:clean-up` (main manager) lists other docs, old state copies, mocks of finished tasks and outdated agent_* lines; removes only the rows the human says yes to. A product repo keeps its real docs with `docs_keep` (agent.conf)
+- Rubbish: `/auto-pipeline:clean-up` (main manager) lists other docs, old state copies, finished mocks and stale agent_* lines; removes only rows the human says yes to. `docs_keep` (agent.conf) keeps a product repo's real docs
 
 R4. No changelog
 - Git history is the record
@@ -36,6 +46,7 @@ R5. Task files
 - No other task tracking
 - The housekeep pass never closes a todo line: it flags one whose branch is merged into origin/main, or one that is stale (no worktree line, no open wait, quiet longer than housekeep_interval_min)
 - All four `agent_*.txt` files are written only through `./agent-file.sh`. No agent for that, it costs tokens
+- `agent_completed.txt` is never deleted, trimmed or cleaned (every clean-up skips it); only on an explicit owner order
 
 R6. Ideas file
 - `agent_ideas.txt` = ideas outside the current task
@@ -49,40 +60,40 @@ R7. Worktree file
 - Main manager reads it before every dispatch (W9)
 - The housekeep pass removes a line whose worktree folder is gone and has no live pane; a working, final or human-direct line is only flagged
 
-R8. Risk levels
-- Second axis next to size: a risk level per task, picked at dispatch, on the todo line (`todo add ... --level <n>`, raise with `todo level <name> <n>`)
-- Size still picks fast or full lane; 3 and 4 always take the full lane
-- 0 wording: text values, one colour value, a switch to an existing style or variant, a move inside the same container with no responsive effect, a comment-only change
-- 0 gate: the main manager reads the diff and approves. No test, no staging, no E2E, no mock
-- 1 UI only: a component's own CSS, a new style, a shared colour token or theme variable, a move with responsive effect. No API, data or calculation
-- 1 gate: lint + type-check; a non-builder takes before/after screenshots at desktop and phone width, console clean; owner OK
-- Owner away at level 1: the main manager decides and logs "owner not seen". Mock only for a new page or whole-page re-layout (W2). No unit tests, no full suite
-- 2 simple logic: one module, no money, schema, auth or permission. Gate: failing test first (TDD), touched-module tests + lint/type-check, E2E happy path + one error path
-- 3 heavy logic: accounting core, money, cross-module, business rules, state flows, principles
-- 3 gate: rules first as a table with examples in the requirement doc, owner yes before code; tests cover the table's edge cases
-- 3 gate: a separate reviewer at the decider floor (Opus) reviews the logic; touched module + core integration group; full suite once
-- 3 gate: E2E several paths incl. a failure path; real-data count first (H1)
-- 4 danger: schema, migration, dependency, security, release. Gate: all of 3 + migration dry-run on a data copy + written rollback plan + owner signs before merge
-- `bin/agent-level.sh check --base <ref> --declared <n>` before E2E and merge prints REQUIRED LEVEL; declared lower → RAISE, exit 1
-- On RAISE: raise the todo line, bounce, follow the higher gate. A level only goes up, never down
-- Built-in level 4 paths: lockfile, package.json deps, pubspec, dependency lists, migrations, schema files
-- Each repo lists its core and danger folders in agent.conf: level3_paths, level4_paths (`agent-settings.sh`)
-- The script cannot see a responsive effect: a level 0 move prints "manager: check responsive"; unsure → 1
+R8. Risk types
+- Second axis next to size: a type A-D per task, picked at dispatch by the acceptance criterion that exists; on the todo line (`todo add ... --level <A-D>`, raise with `todo level <name> <A-D>`)
+- A = text, style, simple move: text values, colours, a simple UI move a senior dev can judge from the code (banner → toast), comments. Check: the main manager reads the diff. No tests, E2E or mock
+- B = UI: layout, components, page shell. Check: lint/type-check of touched files + Chrome compare with the approved mock (W2, W5) at desktop and phone width, console clean. No test suite
+- Owner away at B: the main manager decides and logs "owner not seen". Mock only for a new page or whole-page re-layout (W2), else compare with before screenshots
+- C = logic: calculation, API, data. Check: failing tests first, run only the tests of the touched features (W4) + one browser flow
+- D = danger: money/accounting core, schema, migration, security, dependencies. Check: C + full suite only when really needed + owner signs before merge
+- D = migration: also a dry-run on a data copy and a written rollback plan
+- A mixed task: each part is checked by its own type, never the whole task at the highest type
+- `bin/agent-level.sh check --base <ref> --declared <A-D>` before E2E and merge prints REQUIRED TYPE per file and per part; old 0-4 read as 0=A 1=B 2,3=C 4=D
+- RAISE (exit 1) only when a C or D file has a lower declared type. A UI component or style file is B at most, never auto-raised; only logic or danger paths raise
+- On RAISE: raise the todo line, bounce, check that part by the higher type. A type only goes up, never down
+- Built-in D paths: lockfile, package.json deps, pubspec, dependency lists, migrations, schema files
+- Each repo lists its paths in agent.conf: level4_paths always D, level3_paths always C (`agent-settings.sh`), for those files
+- The script cannot see a responsive effect: an A move prints "manager: check responsive"; unsure → B
 
 ## B. Work
 
 W1. Finish in one run
 - Never wait for the human
+- Exception, kick-off round only: a task manager reads its brief and asks the main manager its questions before starting; the main manager answers what it can and asks the owner only the rest. During the work this rule holds again: default, log, continue
 - Unknown → pick default, log it, continue
-- Only owner-level or irreversible calls stop the line. Everything else: default, log, continue
+- Only owner-level or irreversible calls stop the line
 - A rule and reality collide → report the collision, never route around it
 - New ideas → `agent_ideas.txt` (R6), never in the work or the report, except the CLOSE CASE report (W13), which lists them too
 
 W2. UI
 - Clickable mock first (prototype artifact)
+- Start from a screenshot of the existing real page (Claude in Chrome); change only what the task changes. Never imagine a page from scratch when one exists. Same layout, components, theme
+- No existing page to screenshot → the mock follows the project's current style (theme, components); the agent proceeds without asking
 - Human says yes
+- Which risk type needs a mock: R8
+- The approved mock is the acceptance criterion of the task
 - Then real code
-- Level 0: no mock. Level 1: a mock only for a new page or a whole-page re-layout (R8)
 
 W3. TDD
 - Task manager writes the failing tests → worker writes code → tests pass
@@ -91,19 +102,23 @@ W3. TDD
 - Full lane only; fast lane → R1
 
 W4. Multi-agent tests
-- Run tests for your changed files only
-- Full suite: manager, once, at the end. Never twice
+- Tests are organised module → feature; run the tests of the touched feature only, never of a module the change cannot affect
+- Full suite only when really needed (D, release train, dependency change): manager, once, never twice. Which tests run follows the type (R8)
+- The main manager and the merge deputy never re-run tests the task manager already passed. Only on a merge conflict: test the conflicted part. The main manager's job at handoff = review the final outcome (visual / mock compare, W5)
 - The full gate runs CI's steps in CI's order, at handoff and before merge (still once each)
 - After a bounce: re-run only the tests that failed, not the suite
-- Which tests run follows the level gate (R8)
 
 W5. Web UI testing
 - Claude in Chrome, not Playwright, on orca and plain
 - Main manager only, saves RAM. Others write the click path and hand it to the main manager
-- Unit tests are not proof, the UI E2E is
+- Unit tests are not proof, the UI E2E is (which type needs it: R8)
 - Builders never verify their own work: they ship an E2E click path, a verifier drives the UI, the main manager has the last word before merge
 - What a browser cannot prove goes on a standing "needs a real device" list, never counted as verified
-- Level 0 skips the E2E, the main manager reads the diff (R8)
+- After the build: open the real page in Claude in Chrome, compare it with the approved mock item by item (layout, content, states, behaviour). List every difference
+- A layout, content or behaviour difference = not done, back to the builder
+- A difference from the real UI theme (colours, fonts, spacing tokens) is fine: the agent judges, keeps the real theme, lists it as "theme difference" in the report
+- A pure UI change runs no test suite in either lane: lint/type-check of touched files + the mock comparison. Suites are for logic (calculation, data, API)
+- The owner says pass = pass; agents follow his final decision. Only a critical problem (crash, wrong data, security) is raised to him
 - Ask `agent-runtime.sh browser` first: chrome, headless or none
 - cloud → headless Chromium via Playwright, the extension can never reach a VM
 - none → print the click path under NEEDS HUMAN E2E and stop, wait for the human. Never silent, never forever
@@ -115,11 +130,13 @@ W6. Roles
 - Task manager (Opus 5.5, xhigh) = one agent per big feature, in its own worktree (exception: human-direct, W10). Writes the tests, briefs workers, judges, verifies every worker result before reporting done to the main manager. Never writes product code
 - Worker (Sonnet 5, medium) = `.claude/agents/worker.md`, subagent of a task manager. Writes code until the task manager's tests pass
 - Managers never write product code. A defect goes back to the worker that wrote it, with evidence
+- A main manager fix order to a task manager has a fixed shape: where, what is seen, what is expected, evidence (screenshot). The task manager reassigns a subagent
 - Names: `bin/agent-name.sh` (SessionStart hook) shows `<repo> Manager`, `<feature> Task Manager`, `<repo> Helper - <Task Name>` (human-direct); it is the SendMessage address after `claude --name`, `/rename` or a resume. `Agent` descriptions: `<feature> Worker <n>: <slice>`, `<task> Deputy`, `<feature> Merge`
 
 W7. Big feature (> 2 hours)
 - Before opening a worktree: idle or done worktrees > 0 → deputy cleans them all first (W8)
 - A worktree needs Orca. `agent-runtime.sh kind` picks the shape
+- On Orca: read Orca's own guide first, `orca skills get --topic orca-cli --full --json`. Flags change: `orca agent-context --json` is the current schema
 - Then new worktree
 - One task manager inside it
 - Task manager spawns workers as needed
@@ -131,18 +148,20 @@ W8. Merge and cleanup
 - Deputy merges into the integration branch
 - Deputy deletes the branch (local + remote) and the worktree right after merge
 - Never skip cleanup
+- Main manager verified + waiting for the owner's yes → close the task manager pane, remove its worktree, keep the pushed branch, start the next task
+- Owner yes → merge deputy merges the branch. Owner no → a new task manager from that branch. Goal: work all night, RAM stays free
 - Clean up only after the merge is verified
 - Deputy runs `./agent-file.sh worktree rm <path>` and `./agent-file.sh todo done <name>` with the facts from the main manager and `--merge <commit>`
 - Sweep: `bin/agent-cleanup.sh --apply` at session start and when the last open task closes (todo empty, no live worktree). The scripts run it, no loop
-- Housekeep: every housekeep_interval_min minutes (default 120, 0 = off) the monitor loop runs `bin/agent-housekeep.sh --apply`, which ends with this sweep. Plain and cloud: no loop, run it by hand
+- Housekeep: every housekeep_interval_min minutes (default 120, 0 = off) `agent-watch.sh --all` runs `bin/agent-housekeep.sh --apply`, then this sweep. Plain and cloud: no watch, run it by hand
 - The housekeep pass runs `agent-file.sh state trim` on the main repo's agent_state.txt before it writes its block (S8)
 - The main manager reads the HOUSEKEEP block in agent_state.txt at its next activity. Per suspect: `idea rm <n>` if done or voided by a recorded owner decision, else `idea keep <n>` (still wanted)
 - It then acts on the other flags of the block
 - Main manager only. Task managers, Helpers and workers never run it
 - Own repo only: this machine and every paired Orca machine
 - Removes only safe items: merged into origin/main, no live agent, no uncommitted or unpushed work, no working/final/human-direct line
-- A done pane (finished, idle) in a kept worktree: closed when its task is done or dropped, or its line is gone and its branch merged; else one kept row
 - Everything else is never deleted: one table to the human (what, where, why kept, suggestion)
+- A done pane (finished, idle) in a kept worktree: closed when its task is done or dropped, or its line is gone and its branch merged; else one kept row
 - A paired machine unreachable → one line, skipped. Never hangs the start
 
 W9. Task routing (main manager, before every dispatch)
@@ -152,6 +171,7 @@ W9. Task routing (main manager, before every dispatch)
 - Big task, and a live task manager has capacity → that task manager
 - Task manager in final stage (compiling worker results) → do not disturb. Hold the task until it finishes
 - Otherwise → new worktree (W7). Never spawn a worktree for a small task
+- Shared first: before parallel features, find the code they share (models, components, APIs); the shared part is its own task, merged first; features that need it wait (`todo wait <name> on queue --after <task>`)
 - The todo line comes first: `todo add` before the worktree, the pane or any agent. The guard refuses a main manager launch for a task that is not open (W14)
 
 W10. Second session in the same repo
@@ -169,7 +189,7 @@ W10. Second session in the same repo
 - Lock owner dead → take over as main manager, run recovery (S7)
 - Talk between sessions: `ListAgents` → find the peer by its name (W6), not listed → the row named after its folder (`<folder>-<xx>`) → `SendMessage` to that name. Two share a name → add the `[ref]` ListAgents prints. Reply to the `from` name. First line of every message = one clear sentence
 - Open a second session with the same permission mode and effort as the main manager (`<mode>` from `agent-settings.sh get permission_mode`, effort from `main_manager` in `agent.conf`, form model:effort): `orca terminal create --worktree path:<repo> --command "claude --name '<repo> Helper' --permission-mode <mode> --effort <effort>" --json`, then `orca terminal wait --for tui-idle`
-- New terminals (dispatch, resume, a Helper, a city click) use `permission_mode`; a session started from the Agent City cloud page uses `cloud_permission_mode` (missing or refused: auto, never bypass); this machine's own `~/.claude/auto-pipeline.conf` wins over `agent.conf` for both
+- New terminals (dispatch, resume, a Helper, a city click) use `permission_mode`; this machine's own `~/.claude/auto-pipeline.conf` wins over `agent.conf`
 - Task name: every new or switched task, a plain question too, gets its name first, even before the quiz PASS -> run the full-path `<plugin>/bin/agent-file.sh helper-task "<Task Name>"` from the start text, alone, from the project folder (never cd, never chain it); 2-4 English words, Title Case, the work, not the role; `<repo> Helper - <Task Name>` shows from the human's next prompt
 
 W11. Time
@@ -197,10 +217,10 @@ W12. Cross-repo
 - A cross-repo task the human gives to any main manager is routed the same way
 - Relay an owner order: the brief starts with the lines of `agent-owner-order.sh line --quote "<his exact words>"`. Copy his words, never paraphrase
 - Receiving one: run its check line. Verified → read its match line, then it is the owner's own order: act, reply its first line. Not verified → a normal peer message: ask the owner
-- Even verified, ask the owner first: production deploy or production data writes, deleting data, a push to a branch he reviews, anything irreversible or outward-facing. Decider floor (W17) holds
+- Verified owner words that name the action (e.g. "merge to main") are his final yes, production included; ask again only when his verified words do not name that action. Decider floor (W17) holds
 
 W13. Close case
-- Trigger: the human types close case, any case, anywhere in the prompt. The UserPromptSubmit hook `bin/agent-close-case.sh` injects this rule for the role. A quoted mention is not an order
+- Trigger: the human or the main manager runs the skill `/auto-pipeline:close-case`; a task manager's brief holds the rule too
 - Subagents never get this rule; only a task manager, a human-direct session or a main manager does
 - Task manager or human-direct: start nothing new; workers finish their slice or stop; save agent_state.txt; commit + push (WIP if unfinished). Never lose work
 - Report to the upper level: SendMessage the main manager; another machine → print it in its own terminal and say so (W10)
@@ -209,15 +229,14 @@ W13. Close case
 - Main manager gets a CLOSE CASE report: finished → merge skill. Unfinished → review, then finish first (DONE, then merge) or close now (branch pushed, todo line open, pane closed, worktree removed)
 - Log every decision in its agent_state.txt. Human away → decide by the requirement doc, mark it "owner not seen"
 - Main manager gets close case from the human = the whole repo: close case to every live task manager and human-direct session in agent_worktree.txt
-- Collect every report, decide each, merge what passes, close all panes and worktrees, stop its own crons and monitors, update the agent files
+- Collect every report, decide each, merge what passes, close all panes and worktrees, stop its own crons, update the agent files
 - Then one final table to the human: task, result, what changed, what is left, decisions taken for the human. Nothing dropped (the H3 five-row cap does not apply)
 - After the table the main manager asks the human, in his language: clean this session for the next round, yes or no? No, or no answer: nothing changes
 - Yes: `agent-start.sh --clean` (archives agent_state.txt, writes a short fresh one, says what still runs), then `/clear`. Same main manager, same lock, same name
 - Rare, the human wants this session to stop being main manager: he types `! agent-start.sh --release`; the agent never runs it. The next new session is main manager, never Helper
 
-W14. Show todo
-- Trigger: the human types show todo, any case, anywhere, or the whole prompt is just todo. The UserPromptSubmit hook `bin/agent-show-todo.sh` injects this rule for the role
-- A quoted mention is not an order; todo inside a sentence never fires
+W14. Todo board
+- Trigger: the human runs the skill `/auto-pipeline:todo`; the skill holds this rule per role
 - One script, no agent: `bin/agent-file.sh board`. Show its table as printed, every row, then the decide section (H3)
 - Main manager: the whole repo. Task manager or Helper: `board --self`, its own task and its workers only. Subagents never
 - Rows: open tasks, waits on the owner (mock check, owner question, owner review), `OWNER TODO:` and `PARKED:` lines. Each: task, what in a few words, status, where, est, work, wait, progress, done by
@@ -231,7 +250,7 @@ W14. Show todo
 - `agent-guard.sh` records launches by task; default `board_guard=record`. Only `board_guard=on` refuses a main manager launch naming no open todo task: `todo add` first. `worker on`: no hooks only.
 
 W15. Watch
-- Monitor sweep on three signals: process, terminal output, git movement
+- Stall detection is the watch: each sweep reads the pane screen and the `agent_state.txt` file; 3 sweeps with neither changed = STALL. The same watch runs the housekeep timer (W8)
 - Verify every launch within 2 min
 - One `agent-watch.sh --all` in the background (Bash run_in_background) watches every task manager, local and on another machine: its pane and its worktree `agent_state.txt` (a report goes under `=== REPORT ===`); restart it after each wake
 - A task manager's HEARTBEAT, ACK, report and question go into `agent_state.txt` only, never SendMessage; only DONE PASS, DONE FAIL, QUESTION:, MOCK READY, CLOSE CASE and the watch's STALL and LOST wake the main manager
@@ -245,7 +264,9 @@ W16. Known traps
 - A push to the integration branch denied by the auto-mode classifier → never retry or work around. Hand the owner one `! git push ...` line, or ask for an allow rule (init prints `Bash(git push origin main)` as optional)
 - A cross-session message held because permission modes differ → say so, ask the owner to click Deliver, never type it into the pane
 - Remote Orca pane: a long `terminal send` (~4 KB) arrives cut → write the brief into the worktree's `agent_state.txt` in chunks, send a one-line pointer
+- Find another agent's pane with `orca worktree ps --json`, never by its title (titles are often from an old task)
 - `terminal read` shows only the visible screen → use `--cursor`
+- Linux outside Orca: bare `orca` is the screen reader → use `orca-ide`
 - A send while the target is mid-turn can be lost → re-read and resend
 - Screen locked → the Chrome extension tab is hidden → use headless Chrome and tell the owner
 - STALE PLUGIN line → call the newest bin path, in every brief too, and restart at a quiet point; an older version never retrains agent_estimate.txt
@@ -263,9 +284,8 @@ W17. Decider floor
 - Same check for every agent: task manager, Helper, worker, deputy
 - `agent_conf.py` refuses `main_manager` or `task_manager` below the floor
 
-W18. Show question
-- Trigger: the human types show question (or pending questions, 显示问题 ...), or the whole prompt is just questions or 问题. UserPromptSubmit hook `bin/agent-show-question.sh`
-- A quoted mention is not an order; a question inside a sentence never fires (这段代码有什么问题)
+W18. Question list
+- Trigger: the human runs the skill `/auto-pipeline:question`; the skill holds this rule per role
 - One script, no agent: `bin/agent-file.sh questions`. Main manager: the whole repo. Task manager or Helper: `questions --self`, its own task only. Subagents never
 - Sources: `PARKED:` lines, every `todo wait` of kind mock, question or review, and `QUESTION:` lines of agent_state.txt
 - A `QUESTION:` line is answered by an `ANSWER:` line after it, before the next QUESTION: line or "=== " header. A worktree on another machine gives one `not read: <path> on <machine>` line
@@ -274,7 +294,7 @@ W18. Show question
 - More than 10: `questions --page <file>` (a file in your scratchpad), publish it with the Artifact tool, capabilities db and user. Then one chat line: the count, the link, answer all, then tell me
 - `QUESTIONS PAGE:` line of agent_state.txt holds the url: one url per repo and session, publish with that url (redeploy); a first publish records it with `questions --url <url>`
 - No Artifact tool: the chat list of all, nothing dropped
-- Done: the human says 答完了, done or answered (or pastes `1A 2B`) while the page still has an open question. The hook injects the read-answers rule
+- Done: the human says 答完了, done or answered (or pastes `1A 2B`) while the page still has an open question. The skill (part B) holds the read-answers rule
 - Read all answers at once with ArtifactData (list, the answers collection) and the map file; pasted lines go by number through it. Show one table: question, answer
 - Per answered question: `questions answer <id> "<answer>"`, then carry on. An unpicked question is still open
 - Headers and words in the `language` of agent.conf
@@ -305,12 +325,15 @@ H3. Report
 - Every report, job summary, recap, proposal or audit to the human ends with a decide section
 - Heading in the `language` of agent.conf: zh `## 要你决定`, en `## To decide`, other languages a short translation of "to decide"
 - Open questions numbered, each with a recommendation (zh `建议`, en `Recommendation`)
+- Every question to the owner has a number in front; numbers never repeat within one message, and an open question keeps its number in later messages
+- When every question is answered, the next new set starts again at 1. While any is open, open ones keep their numbers and new ones continue after the highest open number, never renumber
+- Every open question is repeated in the decide section of every reply until the owner answers it, even when the reply gets long
 - Each question stands alone: a reader who sees only that line knows what it is about and can decide
 - A named thing (PR, task, branch, ticket, file) gets what it is in a few words: `#305 (stock lock settings page)`, never a bare number, tag or code name
+- A question names every task/PR/ticket by id AND its title, + the state + what is asked, e.g. "Task t10211 - Milah Enterprise invoice duplicate due to calculation error, pending approval to merge to main". Never an id or code alone ("PR 1211 ready, approve?" is wrong). The owner must be able to decide from that line alone, even waking up cold
 - Per question: what, why it needs the human now, one line of evidence, then the recommendation. One or two lines, no long explanation
 - Nothing open: keep the heading, one line: none (zh `无`)
 - Every question the main manager puts to the owner in a decide section is recorded with `park add` (--why --evidence --options --rec if known), removed when answered (`park rm` or `questions answer`)
-- Never drop the decide section as a closer. Never cut it for brevity
 - Few numbers. One table at most, five rows or fewer, unless the human asks for the full list
 - Nothing else, except the decide section
 
@@ -323,12 +346,14 @@ H4. Tables
 S1. Settings
 - `./agent-settings.sh` shows and writes `agent.conf`, validated. No hand editing, no agent
 - Holds every config value in this file
-- Also writes the agent-monitor config
-- `~/.claude/auto-pipeline.conf` = this machine's own file, never in a repo: `permission_mode`, `cloud_permission_mode`, wins over `agent.conf`. Write it with `agent-settings.sh --user <key> <value>`
+- Also writes the watch and housekeep config (`housekeep_interval_min`)
+- Setup: init offers to merge the permission rules into `.claude/settings.json` (`agent-init.sh --add-permissions`); agents never hand-edit JSON. Manager default `opus-5.5:high`; `xhigh` is an install choice
+- Setup: init asks all vs selected repos; `agent-init.sh --scope` writes the files; agents never hand-edit JSON
+- `~/.claude/auto-pipeline.conf` = this machine's own file, never in a repo: `permission_mode`, wins over `agent.conf`. Write it with `agent-settings.sh --user <key> <value>`
 
 S2. Resume script
 - One command
-- Loads context, memory, agents, monitor, saved sessions (S7)
+- Loads context, memory, agents, saved sessions (S7), and prints the watch command when no watch runs
 
 S3. Resource guard
 - Before new agent or heavy process: check free RAM and CPU
@@ -338,9 +363,9 @@ S4. Usage cap
 - RAM and CPU each ≤ 80%
 - Over → no new job to any agent until it drops back
 - Over → run `bin/agent-resources.sh relief` first, then wait
-- relief stops only what the pipeline owns: monitor loops left by tests, monitors of repos with no live main manager
-- The sweep (W8) runs `agent-resources.sh stop-leftovers`: this repo's orphan monitor and finished test loops only, no table
-- Finished or idle worktrees → merge deputy cleans them (W8). A task manager over cap parks: commit, write state, set idle; the main manager closes its pane; resume brings it back
+- relief stops only what the pipeline owns: `agent-watch.sh --all` processes left by tests, watches of repos with no live main manager
+- The sweep (W8) runs `agent-resources.sh stop-leftovers`: this repo's orphan watch and finished test watches only, no table
+- A task manager over cap parks: commit, write state, set idle; the main manager closes its pane; resume brings it back
 - The human's apps, other repos' sessions, Gradle or node runners: never killed by an agent. One table to the human: process · MB · CPU · what · suggestion
 - Config `max_usage_percent`=80
 
@@ -348,6 +373,8 @@ S5. Heavy tests
 - One at a time across all agents
 - Others queue
 - Every test run caps its own parallelism, e.g. `jest --maxWorkers=2`, `flutter test -j 2`
+- Start one; once it runs and has settled, start another only if RAM is still more than 50% free; never two at the same moment. `heavy_test_slots` is the ceiling, RAM decides below it
+- Every test run that can run in the background runs in the background by default (Bash `run_in_background`)
 - Config `heavy_test_slots`=1
 
 S6. Agent cap
@@ -381,19 +408,13 @@ S9. Token guard (cost)
 - Cheapest model that can do the job (`agent.conf`). Managers judge, they do not read whole repos
 - Model by kind of thinking: deciding roles get the strongest model, executing roles a cheaper one (`agent.conf`)
 - A worker gets only the files it needs, named in its brief. No repo-wide reads
-- Passing tests are not re-run. Full suite once, at the end (W4)
 - Quiz once per session start. Not after compaction, not for subagents
-- Briefs, reports, heartbeats: short (H2, H3). One line per heartbeat
 - Mechanical work (settings, file lines, cleanup) → a script, never an agent
 
 ## E. Output
 
 E1. Shape
 - For every reply a human reads
-- Adapted from i-have-adhd v0.4.1 by Ayoub Ghriss (github.com/ayghri/i-have-adhd), MIT, notice at the end of this file
-- On for the rest of the session
-- Off: `adhd=off` in agent.conf (`bin/agent-settings.sh adhd off`), or the human says "stop adhd mode" or "normal mode"
-- Then: confirm in one line, default style for the rest of that session. A reprint of this section after a compaction does not turn it back on
 - Lead with the next action. A command, path or snippet goes first
 - Number multi-step work, fewest steps
 - End with one concrete next action
@@ -420,7 +441,6 @@ E2. Owner overrides
 - Tables and ledgers are not lists: the 5-item cap never cuts a record whose value is completeness
 - "verified", "works", "fixed" only with the real evidence named. A green suite is not a real device check
 - The decide section (H3) is never deleted by "one next action" or "no closers"
-- Every decide question stands alone (H3): what each named thing is, why now, the evidence
 - Language stays H2 (`language` in agent.conf)
 
 E3. Concise
@@ -430,6 +450,92 @@ E3. Concise
 - State plainly
 - Full detail on request
 - Never trade correctness for brevity
+
+E4. Keyword hooks
+- A keyword hook (bin/agent-keyword.sh) only points to a skill; the logic lives in the skill
+
+## F. Map
+
+The pieces. Rules are in A-E; this is where things live.
+
+Roles and routing: W9. Risk types: R8; installing into a cloud repo: the cloud-pack skill (`/auto-pipeline:cloud-pack`, `bin/agent-cloud-pack.sh`; `--update` refreshes only bin, PRINCIPLES.md, VERSION and packed skills/agents). A cloud session reads only what is committed: `git clone https://github.com/maverick1014/auto-pipeline /tmp/ap && /tmp/ap/bin/agent-cloud-pack.sh . --language zh`, then commit and push (the Claude GitHub App must be on the repo), then open a new session. The pack lands in `.claude/auto-pipeline/` (bin, PRINCIPLES.md, VERSION), `.claude/skills`, `.claude/agents`, `.claude/settings.json`, one pointer line in `CLAUDE.md`, `agent.conf`, the four `agent_*.txt`, `.secrets/`, `AGENTS.md`.
+
+Agent skills: `/auto-pipeline:dispatch` (route one task), `/auto-pipeline:merge` (E2E, then merge deputy), `/auto-pipeline:cloud-pack`. A second session in a repo becomes a task manager by itself (W10).
+
+### Tree
+
+```
+Human
+  │  task ↓   report ↑
+Main manager   (Opus 5.5, xhigh · the main chat · only one with the browser)
+  ├── Fast-lane deputy   (Sonnet 5, medium)  one small task, no worktree, then gone
+  ├── Merge deputy       (Sonnet 5, medium)  merge → push → delete branch → remove worktree
+  └── Worktree, one per big feature
+        └── Task manager (Opus 5.5, xhigh)     writes the tests, briefs workers, verifies, never codes
+              ├── Worker (Sonnet 5, medium)  code until the tests pass, slice 1
+              └── Worker (Sonnet 5, medium)  code until the tests pass, slice 2
+
+Scripts, not agents (cost no tokens):
+  bin/agent-start.sh   RAM/CPU guard, prints the rules, 39-question quiz gate, main-manager lock
+  bin/agent-level.sh   the risk type (A-D) a diff needs: built-in and agent.conf paths; RAISE when the declared type is lower
+  bin/agent-owner-order.sh  relayed owner orders between repo managers: `line` prints the OWNER ORDER header (sender), `verify` checks the words are a typed owner prompt in the sender's transcript (receiver)
+  bin/agent-file.sh    the only writer of agent_*.txt
+  bin/agent_estimate.py  the time estimator: learns work minutes from the finished tasks, backtests against the rubric
+  bin/agent-settings.sh  show or change agent.conf, validated
+  bin/agent-resume.sh    one command to bring the pipeline back after a restart
+  bin/agent-cleanup.sh   the main manager's sweep: removes merged, clean, idle worktrees and branches; lists the rest in one table
+  bin/agent-housekeep.sh the main manager's pass every housekeep_interval_min from the `agent-watch.sh --all` loop: worktree, todo and ideas files, related repos read only, then the cleanup sweep; writes one HOUSEKEEP block
+  bin/agent-watch.sh     `agent-watch.sh --all`: one background watch for every task manager, local or remote (pane + agent_state.txt); exits on a report, question, stall or lost machine
+  bin/agent-file.sh tell `agent-file.sh tell <task> "<msg>"`: long text to a task manager, a block in its agent_state.txt + one pointer line
+  bin/agent-init.sh      sets a project up: agent.conf, the four task files, .secrets/, .gitignore lines, AGENTS.md, and it prints the permissions block
+  bin/agent-cloud-pack.sh  lays this pipeline into a repo as plain files, for cloud sessions
+  bin/agent-city.sh       starts/stops the agent city visualiser, a local server
+  bin/agent-city-shim     the ~/.local/bin/agent-city command; runs the newest installed plugin's agent-city.sh
+  bin/agent-city-hook.sh  hook that feeds the city; off costs a `test -f`, on appends one JSON line
+  bin/agent-close-case.sh  UserPromptSubmit hook: tells a released or replaced main manager once
+  bin/agent-keyword.sh  UserPromptSubmit hook: a keyword in the prompt adds one line pointing to its skill (E4)
+  bin/agent_board.py     the todo board: one table of every open task, wait, owner to-do and parked question
+  bin/agent_questions.py  the question list: every question pending on the owner, as a chat list, JSON or an Artifact page; records the answers
+  bin/agent-questions-page.html  the page template (one page grouped by task, lettered options, answer bar)
+  bin/agent-name.sh       SessionStart + UserPromptSubmit hook: names the session by role (W6; a human-direct one is `<repo> Helper - <Task Name>`), also the Orca tab
+  bin/agent-guard.sh     hook: records every Agent launch and orca pane on the board, refuses a manager's launch that names no open todo task only with board_guard=on; default record; board_guard=on|record|off
+  bin/agent-version.sh   UserPromptSubmit hook + check: a session running an older plugin than installed gets one STALE PLUGIN line; the start text names old scopes; an old version never retrains
+```
+
+### Files
+
+| File | Who writes it | Who reads it |
+|---|---|---|
+| `agent_todo.txt` | `agent-file.sh todo add` / `todo done` | Every agent at start |
+| `agent_completed.txt` | `agent-file.sh todo done`, one data line per task | Human, `agent-file.sh time` |
+| `agent_estimate.txt` | `agent-file.sh retrain`, also `todo done` once a week | `agent-file.sh estimate` |
+| `agent_ideas.txt` | `agent-file.sh idea add` | Human, on his own time |
+| `agent_worktree.txt` | `agent-file.sh worktree set` / `rm` | Main manager before every dispatch |
+| `agent.conf` | `./bin/agent-settings.sh` | `agent-start.sh` |
+| `agent_watch.json` (git dir, git-ignored by being there) | `agent-watch.sh --all` | `agent-watch.sh`, the board, the city (stall) |
+| `agent_state.txt` | Each session: `agent-file.sh state add`; `state trim` moves old lines to `agent_state.trim-<date>.txt` (todo done, housekeep) | The same session, after a start, compaction or clear |
+| `.secrets/` | Human only | Any agent, read only, never printed |
+
+### Commands
+
+```
+./bin/agent-start.sh             # rules, resources, quiz. No work until PASS
+./bin/agent-resume.sh            # runs by itself at startup (auto_resume=yes); run by hand only if you turned that off
+./bin/agent-settings.sh          # show or change agent.conf, no agent
+bin/agent-settings.sh language zh   # talk to the human in Chinese
+bin/agent-settings.sh sync          # add any key missing from agent.conf, template value
+bin/agent-file.sh time              # est, work, wait, clock of every finished task
+bin/agent-file.sh data              # the same data of every repo on this machine, one table
+bin/agent-file.sh eta <name>        # work left as minutes and a clock time, and when the human is needed next
+bin/agent-file.sh estimate ... [--guess <m>]   # work minutes of a new task, with a range and the 3 nearest past tasks; --guess blends in your own minutes
+bin/agent-file.sh backtest          # estimator, blend and rubric on the finished tasks, who wins
+bin/agent-file.sh retrain           # learn the estimate again from the finished tasks, keep it only if better
+bin/agent-file.sh board             # the todo board: open tasks, waits on the owner, owner to-dos, parked questions
+bin/agent-file.sh questions         # the question list: every question pending on the owner (--self, --json, --page <file>, --url <url>, answer <id> "<answer>")
+bin/agent-city.sh install-shim      # one time: puts the agent-city command in ~/.local/bin; nothing installs it by itself, the init skill offers it
+agent-city start                    # agent city visualiser, off by default, costs almost nothing
+```
+
 
 ## Notice
 
