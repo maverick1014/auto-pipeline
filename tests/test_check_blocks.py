@@ -22,9 +22,10 @@ sys.path.insert(0, HERE)
 from scripthelp import ROOT, BIN, ScriptCase  # noqa: E402
 
 # owner 1A 2026-11-25 (requirement section 15): FULL SUITE is gone, MODULE TESTS is the largest per-task check
-TOOL = ["DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "DB CHECK", "DATA CHECK",
-        "CORE REVIEW"]
-BRIEF = ["DIFF READ", "EXAMPLES TEST", "FLOW CHECK", "UI CHECK", "REAL DATA COUNT"]
+# owner principle 2026-11-25 (section 19): OUTCOME CHECK heads the table; DIFF READ and FLOW CHECK fold into it
+TOOL = ["OUTCOME CHECK", "DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "DB CHECK",
+        "DATA CHECK", "CORE REVIEW"]
+BRIEF = ["EXAMPLES TEST", "UI CHECK", "REAL DATA COUNT"]
 FILE_LINE = re.compile(r"^FILE (\S+): (\S+) \((.*)\)$")
 
 
@@ -67,12 +68,20 @@ class TestTheTable(unittest.TestCase):
         self.assertEqual(sign["MODULE TESTS"], "a dependency, lockfile, CI or test-config change")
         self.assertIn("changes or removes data or columns", sign["DB CHECK"])
         self.assertIn("permission", sign["CORE REVIEW"])
-        for name in ("DIFF SCAN", "BUILD", "RELATED TESTS", "GUARD TESTS") + tuple(BRIEF):
+        for name in ("OUTCOME CHECK", "DIFF SCAN", "BUILD", "RELATED TESTS", "GUARD TESTS") + tuple(BRIEF):
             self.assertEqual(sign[name], "no", name)
 
     def test_triggers_say_what_the_requirement_says(self):
         trig = {b["name"]: b["trigger"] for b in self.mod.BLOCKS}
         self.assertEqual(trig["DIFF SCAN"], "every task")
+        self.assertEqual(trig["OUTCOME CHECK"], "every task")
+        runs = {b["name"]: b["runs"] for b in self.mod.BLOCKS}
+        for phrase in ("did not build it", "outcome", "owner approved", "reads the diff", "runs the real thing once",
+                       "15-minute time box", "ideas file"):
+            self.assertIn(phrase, runs["OUTCOME CHECK"])
+        self.assertIn("LIGHT", runs["RELATED TESTS"])
+        self.assertIn("release run or the nightly", runs["RELATED TESTS"])
+        self.assertIn("release run or the nightly", runs["MODULE TESTS"])
         self.assertEqual(trig["BUILD"], "code changed")
         self.assertEqual(trig["RELATED TESTS"], "code, text or rule files changed")
         self.assertEqual(trig["GUARD TESTS"], "code or text changed")
@@ -109,7 +118,7 @@ class TestTheTable(unittest.TestCase):
         lines = r.stdout.splitlines()
         self.assertEqual(lines[0], "| Block | Picked | Trigger | What runs | Owner signs |")
         self.assertRegex(lines[1], r"^\|(-+\|){5}$")
-        self.assertEqual(len(lines), 2 + 13)
+        self.assertEqual(len(lines), 2 + 12)
         for b, line in zip(self.mod.BLOCKS, lines[2:]):
             self.assertEqual(line, "| %s | %s | %s | %s | %s |"
                              % (b["name"], b["picked"], b["trigger"], b["runs"], b["sign"]))
@@ -199,7 +208,7 @@ class TestOutputShape(BlocksCase):
     def test_no_changes(self):
         self.base({"src/a.js": "x()\n"})
         r = self.check()
-        self.assertEqual(r.stdout.splitlines()[0], "BLOCKS: DIFF SCAN")
+        self.assertEqual(r.stdout.splitlines()[0], "BLOCKS: OUTCOME CHECK, DIFF SCAN")
         self.assertIn("no changes", r.stdout.splitlines())
 
     def test_line_order(self):
@@ -210,8 +219,8 @@ class TestOutputShape(BlocksCase):
         self.assertTrue(lines[1].startswith("FILE "), r.stdout)
         tags = [l.split(":")[0] for l in lines]
         self.assertLess(tags.index("DIFF SCAN"), tags.index("NOT TRIGGERED"))
-        self.assertEqual(lines[-1], "BRIEF PICKS: DIFF READ, EXAMPLES TEST, FLOW CHECK, UI CHECK, "
-                                    "REAL DATA COUNT (dispatch picks them from the brief)")
+        self.assertEqual(lines[-1], "BRIEF PICKS: EXAMPLES TEST, UI CHECK, REAL DATA COUNT "
+                                    "(dispatch picks them from the brief)")
 
     def test_blocks_are_in_table_order_and_brief_blocks_never_in_it(self):
         r = self.run_case({"src/a.js": "x()\n", "tests/a.test.js": "require('../src/a')\n",
@@ -419,7 +428,7 @@ class TestTriggers(BlocksCase):
 
     def test_an_asset_alone_runs_only_the_diff_scan(self):
         r = self.run_case({"img/a.png": b"\x89PNG1"}, {"img/a.png": b"\x89PNG2"}, conf=CONF_JS)
-        self.assertEqual(self.blocks(r), ["DIFF SCAN"])
+        self.assertEqual(self.blocks(r), ["OUTCOME CHECK", "DIFF SCAN"])
 
     def test_ci_config_is_every_module_and_owner_sign(self):
         r = self.run_case({".github/workflows/ci.yml": "a: 1\n"}, {".github/workflows/ci.yml": "a: 2\n"}, conf=CONF_JS)
@@ -481,6 +490,50 @@ class TestBudget(BlocksCase):
     def test_json_names_the_net(self):
         r = self.run_case(*self.FILES, conf=CONF_JS + "build_seconds=95\n", extra=("--json",))
         self.assertEqual(json.loads(r.stdout)["net"], ["BUILD"])
+
+
+class TestLightOnly(BlocksCase):
+    """Owner principle (section 19): a task runs only LIGHT related and module tests (measured); a heavy one
+    goes to the release run or the nightly and never blocks a merge. Unmeasured: runs per task."""
+
+    def weights(self, data):
+        gd = subprocess.run(["git", "-C", self.repo.dir, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                            capture_output=True, text=True, check=True).stdout.strip()
+        with open(os.path.join(gd, "agent_test_weights.json"), "w") as fh:
+            json.dump(data, fh)
+
+    def test_the_outcome_check_line(self):
+        r = self.run_case({"src/a.js": "x()\n"}, {"src/a.js": "y()\n"})
+        self.assertEqual(self.blocks(r)[0], "OUTCOME CHECK")
+        self.assertEqual(self.detail(r, "OUTCOME CHECK"),
+                         "an agent that did not build it: read the diff, run the real thing once (15 min box)")
+
+    def test_heavy_related_tests_go_to_the_net(self):
+        self.weights({"related": "300 s 2048 MB"})
+        r = self.run_case({"src/a.js": "x()\n", "tests/a.test.js": "require('../src/a')\n"},
+                          {"src/a.js": "y()\n"}, conf=CONF_JS)
+        self.assertNotIn("RELATED TESTS", self.blocks(r))
+        self.assertIn("NET: RELATED TESTS (heavy, 300 s, 2048 MB): the release run or the nightly",
+                      r.stdout.splitlines())
+
+    def test_light_related_tests_run_per_task(self):
+        self.weights({"related": "20 s 300 MB"})
+        r = self.run_case({"src/a.js": "x()\n", "tests/a.test.js": "require('../src/a')\n"},
+                          {"src/a.js": "y()\n"}, conf=CONF_JS)
+        self.assertIn("RELATED TESTS", self.blocks(r))
+
+    def test_a_heavy_module_group_goes_to_the_net_and_the_sign_stays(self):
+        self.weights({"full": "900 s 3000 MB"})
+        r = self.run_case({"yarn.lock": "a\n"}, {"yarn.lock": "b\n"}, conf=CONF_JS)
+        self.assertNotIn("MODULE TESTS", self.blocks(r))
+        self.assertIn("OWNER SIGN", self.blocks(r))
+        self.assertIn("NET: MODULE TESTS (heavy, 900 s, 3000 MB): the release run or the nightly",
+                      r.stdout.splitlines())
+
+    def test_the_verify_box_is_a_constant(self):
+        sys.path.insert(0, BIN)
+        import agent_conf
+        self.assertEqual(agent_conf.CONSTANTS["verify_box_min"], 15)
 
 
 class TestRelated(BlocksCase):

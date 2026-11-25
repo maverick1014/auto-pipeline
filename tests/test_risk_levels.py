@@ -281,7 +281,7 @@ class TestTheScript(LevelCase):
     def test_no_changes(self):
         self.base({"src/app.js": 'const a = "x";\n'})
         r = self.ok()
-        self.assertEqual(r.stdout.splitlines()[0], "BLOCKS: DIFF SCAN")
+        self.assertEqual(r.stdout.splitlines()[0], "BLOCKS: OUTCOME CHECK, DIFF SCAN")
         self.assertIn("no changes", r.stdout.splitlines())
         self.assertEqual(self.files(r), {})
 
@@ -921,13 +921,13 @@ class TestBoardLevel(tb.BoardCase):
 
     def test_the_cells(self):
         self.af("todo", "add", "lv", "big", "with a level", "60", "--level", "C", now="2026-11-02 14:00")
-        self.af("todo", "add", "ck", "big", "with checks", "60", "--checks", "UI CHECK,DIFF READ",
+        self.af("todo", "add", "ck", "big", "with checks", "60", "--checks", "UI CHECK,OUTCOME CHECK",
                 now="2026-11-02 14:00")
         self.add("nolv", "an old line", est=30)
         self.state("PARKED: a question | lv | since 2026-11-02 14:10")
         rows = self.rows()
         self.assertEqual(self.row(rows, task="lv")["Checks"], "level C")
-        self.assertEqual(self.row(rows, task="ck")["Checks"], "DIFF READ, UI CHECK")
+        self.assertEqual(self.row(rows, task="ck")["Checks"], "OUTCOME CHECK, UI CHECK")
         self.assertEqual(self.row(rows, task="nolv")["Checks"], "-")
         for r in rows:
             if r["Task"] not in ("lv", "ck", "nolv"):

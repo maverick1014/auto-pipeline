@@ -106,7 +106,7 @@ import agent_conf  # noqa: E402
 from scripthelp import ScriptCase  # noqa: E402
 
 ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
-           "18D 19C 20A 21D 22C 23B 24D 25C 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39C")   # check-blocks: Q38 is a blocks question now
+           "18D 19C 20A 21D 22C 23B 24D 25C 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B")   # check-blocks: Q38 is a blocks question now
 
 
 def read(*parts):

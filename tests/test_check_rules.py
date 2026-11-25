@@ -21,10 +21,10 @@ sys.path.insert(0, HERE)
 from scripthelp import BIN, ScriptCase  # noqa: E402
 
 NAMES = ["DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "DB CHECK", "DATA CHECK",
-         "CORE REVIEW", "DIFF READ", "EXAMPLES TEST", "FLOW CHECK", "UI CHECK",
+         "CORE REVIEW", "OUTCOME CHECK", "EXAMPLES TEST", "UI CHECK",
          "REAL DATA COUNT"]
 ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
-           "18D 19C 20A 21D 22C 23B 24D 25C 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39C")
+           "18D 19C 20A 21D 22C 23B 24D 25C 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B")
 
 QUIZ_Q6 = """Q6. You are one of four agents. You changed files under api/auth/. Which tests do you run?
   A. The full suite
@@ -56,17 +56,17 @@ QUIZ_Q35 = """Q35. Before a release the full suite runs once on the working bran
   C. Release now and fix the tests later
   D. Mark the two tests skipped and release"""
 
-QUIZ_Q38 = """Q38. A diff only changes one locale value. agent-level.sh check prints BLOCKS: DIFF SCAN, RELATED TESTS, GUARD TESTS; dispatch planned DIFF READ. What runs?
+QUIZ_Q38 = """Q38. A diff only changes one locale value. agent-level.sh check prints BLOCKS: OUTCOME CHECK, DIFF SCAN, RELATED TESTS, GUARD TESTS. What runs?
   A. The full suite once
-  B. Those three blocks and a DIFF READ by someone who did not write it, nothing else
-  C. Lint, type-check, UI CHECK and FLOW CHECK as well
+  B. Those blocks: an agent that did not build it checks the outcome, the light tests run, nothing else
+  C. Lint, type-check, a UI CHECK and the heavy tests as well
   D. Nothing: it is only text"""
 
-QUIZ_Q39 = """Q39. The merge gate prints "GATE REFUSED t: DIFF READ missing". The owner is asleep. You:
-  A. Take DIFF READ off the todo line and merge
-  B. Merge: it is only a diff read
-  C. Have someone who did not build it read the diff and write its pass line (agent-file.sh check), then run the gate again; a block goes only on a verified owner order
-  D. Write the pass line yourself as the builder"""
+QUIZ_Q39 = """Q39. Production is broken and the smallest fix is ready. You:
+  A. Run the whole test flow first, then release
+  B. One agent that did not build it checks the outcome, the light related tests run, then merge and release at once; the heavy tests run afterwards and a failure there goes to a new fixer agent
+  C. Release with no check at all
+  D. Wait for the nightly run"""
 
 
 def read(*parts):
@@ -188,7 +188,7 @@ class TestPrinciplesOtherRules(unittest.TestCase):
 
     def test_w5_the_check_deputy_drives_the_browser(self):
         w5 = self.rule("W5. ", "W6. ")
-        for phrase in ("check deputy", "one at a time", "FLOW CHECK", "UI CHECK", "never verify their own work"):
+        for phrase in ("check deputy", "one at a time", "OUTCOME CHECK", "UI CHECK", "never verify their own work"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, w5)
         self.assertNotIn("Main manager only", w5)
@@ -242,7 +242,7 @@ class TestDispatchSkill(unittest.TestCase):
 
     def test_it_picks_the_brief_blocks(self):
         text = self.text()
-        for name in ("DIFF READ", "EXAMPLES TEST", "FLOW CHECK", "UI CHECK", "REAL DATA COUNT", "CORE REVIEW"):
+        for name in ("OUTCOME CHECK", "EXAMPLES TEST", "UI CHECK", "REAL DATA COUNT", "CORE REVIEW"):
             self.assertIn(name, text)
         adds = [l for l in text.splitlines() if "agent-file.sh todo add" in l]
         self.assertTrue(adds)
@@ -288,7 +288,7 @@ class TestMergeSkill(unittest.TestCase):
 
     def test_gate_and_check_deputy(self):
         text = self.text()
-        for phrase in ("checks gate", "check-deputy", "GATE REFUSED", "FLOW CHECK", "UI CHECK", "DIFF READ"):
+        for phrase in ("checks gate", "check-deputy", "GATE REFUSED", "OUTCOME CHECK", "UI CHECK"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
         self.assertLess(text.index("checks gate"), text.index("merge-deputy"))
@@ -313,7 +313,7 @@ class TestAgents(unittest.TestCase):
         self.assertNotIn("Edit", tools)
         self.assertNotIn("Write", tools)
         body = text.split("---", 2)[2]
-        for phrase in ("DIFF READ", "FLOW CHECK", "UI CHECK", "RELEASE SMOKE", "one at a time",
+        for phrase in ("OUTCOME CHECK", "UI CHECK", "RELEASE SMOKE", "one at a time", "15-minute", "agent-file.sh idea add",
                        "agent-file.sh check", "CHECK PASS", "CHECK FAIL", "never edit", "floor"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, body)
@@ -374,7 +374,7 @@ class TestQuiz(ScriptCase):
     def test_a_wrong_block_answer_names_r8(self):
         for wrong in ("38A", "38C", "39A", "39D"):
             with self.subTest(wrong=wrong):
-                good = "38B" if wrong.startswith("38") else "39C"
+                good = "38B" if wrong.startswith("38") else "39B"
                 r = self.repo.run("agent-start.sh", "--answer", ANSWERS.replace(good, wrong))
                 self.assertEqual(r.returncode, 1)
                 self.assertIn("Q%s(R8)" % wrong[:2], r.stdout)
@@ -540,3 +540,52 @@ class TestWorkingBranchRules(unittest.TestCase):
         conf = dict(l.split("=", 1) for l in read("agent_repo.conf").splitlines()
                     if l and not l.startswith("#") and "=" in l and not l.startswith("edge="))
         self.assertEqual(conf.get("working_branch"), "main")
+
+
+class TestOutcomeIsTheProof(unittest.TestCase):
+    """Owner principle 2026-11-25 (TELL bd0506cc, section 19), for every repo on the plugin."""
+
+    def r8(self):
+        return section(read("PRINCIPLES.md"), "R8. Check blocks", "## B. Work")
+
+    def test_r8_starts_with_the_principle(self):
+        r8 = self.r8()
+        head = r8[:r8.index("| Block |")]
+        for phrase in ("let other agents verify the outcome of the code instead of letting test cases do it",
+                       "The proof that a change is right", "did not build it", "runs the real thing once",
+                       "the main check of every task", "Tests are a cheap guard only", "LIGHT",
+                       "a heavy test never blocks a merge", "The full suite never runs in a task",
+                       "URGENT FIX", "merge and release at once", "new fixer agent", "15-minute time box",
+                       "ideas file"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, head)
+
+    def test_the_old_urgent_line_is_gone(self):
+        self.assertNotIn("a verified owner order may move a block to right after the release", self.r8())
+
+    def test_dispatch_plans_the_outcome_check_and_the_urgent_path(self):
+        text = read("skills", "dispatch", "SKILL.md")
+        for phrase in ("OUTCOME CHECK", "every task", "URGENT FIX", "release at once"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+
+    def test_merge_skill_urgent_release(self):
+        text = read("skills", "merge", "SKILL.md")
+        for phrase in ("URGENT FIX", "release at once", "agent-nightly.sh --start", "new fixer agent"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+
+    def test_check_deputy_box(self):
+        text = read("agents", "check-deputy.md")
+        for phrase in ("OUTCOME CHECK", "real thing once", "15-minute", "only what the owner approved",
+                       "agent-file.sh idea add"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+
+    def test_no_old_block_names_left(self):
+        for path in (("PRINCIPLES.md",), ("skills", "dispatch", "SKILL.md"), ("skills", "merge", "SKILL.md"),
+                     ("agents", "check-deputy.md"), ("agents", "fast-lane-deputy.md"), ("agents", "merge-deputy.md")):
+            with self.subTest(path=path):
+                text = read(*path)
+                self.assertNotIn("DIFF READ", text)
+                self.assertNotIn("FLOW CHECK", text)
