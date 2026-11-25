@@ -730,7 +730,7 @@ autoclear_queue() {
   case "$pid" in ''|*[!0-9]*) ;; *) if kill -0 "$pid" 2>/dev/null; then return 0; fi;; esac
   { [ -s "$sf" ] && [ -n "$(tail -c1 "$sf")" ] && echo
     printf 'AUTO CLEAR queued: compacted %s times | %s\n' "$2" "$NOW"; } >> "$sf" 2>/dev/null
-  ( cd "$STATE_DIR" 2>/dev/null && nohup "$PLUGIN_ROOT/bin/agent-autoclear.sh" "$1" "$SID" </dev/null >/dev/null 2>&1 & ) </dev/null >/dev/null 2>&1
+  ( cd "$STATE_DIR" 2>/dev/null && nohup "$PLUGIN_ROOT/bin/agent-autoclear.sh" "$1" "$SID" ${AGENT_ROLE:+--spawned} </dev/null >/dev/null 2>&1 & ) </dev/null >/dev/null 2>&1
   return 0
 }
 
@@ -906,7 +906,20 @@ ROLE_TEXT=$(print_role_and_project; printf 'X'); ROLE_TEXT=${ROLE_TEXT%X}
 if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; } && [ -x "$PLUGIN_ROOT/bin/agent-nightly.sh" ]; then
   if ! python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agent_watchfile as w; sys.exit(0 if w.live(w.read_status(sys.argv[2])) else 1)' "$PLUGIN_ROOT/bin" "$PROJECT_ROOT" 2>/dev/null </dev/null; then
     if ( cd "$PROJECT_ROOT" 2>/dev/null && "$PLUGIN_ROOT/bin/agent-nightly.sh" --due ) >/dev/null 2>&1 </dev/null; then
-      ( cd "$PROJECT_ROOT" && nohup "$PLUGIN_ROOT/bin/agent-nightly.sh" --start >/dev/null 2>&1 </dev/null & ) >/dev/null 2>&1 || true
+      # C3 (section 43): only with room for the nightly's weight; else one line and nothing starts
+      nl_mb=$(cd "$PROJECT_ROOT" 2>/dev/null && python3 -c '
+import os, sys
+sys.path.insert(0, sys.argv[1])
+import agent_nightly as n
+w, _ = n.weight_of(n.common_dir(os.getcwd()), os.path.join(n.main_root(os.getcwd()), "agent_repo.conf"), "nightly")
+print(w[1] if w else 0)' "$PLUGIN_ROOT/bin" 2>/dev/null </dev/null) || nl_mb=0
+      case "$nl_mb" in ''|*[!0-9]*) nl_mb=0;; esac
+      if ( cd "$PROJECT_ROOT" 2>/dev/null && "$PLUGIN_ROOT/bin/agent-room.sh" check "$nl_mb" ) >/dev/null 2>&1 </dev/null; then
+        ( cd "$PROJECT_ROOT" && nohup "$PLUGIN_ROOT/bin/agent-nightly.sh" --start >/dev/null 2>&1 </dev/null & ) >/dev/null 2>&1 || true
+      else
+        nl_host=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
+        NIGHTLY_LINE="NIGHTLY: due, no room on $nl_host: start it where there is room (W7): agent-nightly.sh --start"
+      fi
     fi
   fi
 fi
@@ -996,6 +1009,8 @@ if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }
 "
   fi
 fi
+if [ -n "${NIGHTLY_LINE:-}" ]; then WATCH_TEXT="${WATCH_TEXT}${NIGHTLY_LINE}
+"; fi
 # C44: the working branch: made (and pushed) here, the checkout is never switched here. Main manager or takeover only.
 if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }; then
   wb_name=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" working-branch "$PROJECT_ROOT" 2>/dev/null </dev/null) || wb_name=""

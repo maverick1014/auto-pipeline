@@ -2,7 +2,7 @@
 # agent-autoclear.sh — the waiter behind the auto /clear (state-trim A5). Started detached by
 # agent-start.sh at the compaction named by compact_clear_at; runs in the foreground itself.
 #
-#   agent-autoclear.sh <terminal handle> <session id>
+#   agent-autoclear.sh <terminal handle> <session id> [--spawned]
 #
 # Writes its pid to <git dir>/agent_autoclear_<session id> and removes it when it ends.
 # Before each typed text: `orca terminal wait --for tui-idle` (an error whose code holds
@@ -16,8 +16,14 @@
 # AGENT_FAKE_NOW="YYYY-MM-DD HH:MM" replaces the clock (tests). Missing arguments: usage, exit 2.
 
 set -u
+SPAWNED=0
+ARGS=()
+for a in "$@"; do
+  if [ "$a" = "--spawned" ]; then SPAWNED=1; else ARGS+=("$a"); fi
+done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
 if [ $# -lt 2 ] || [ -z "$1" ] || [ -z "$2" ]; then
-  echo "usage: agent-autoclear.sh <terminal handle> <session id>" >&2; exit 2
+  echo "usage: agent-autoclear.sh <terminal handle> <session id> [--spawned]" >&2; exit 2
 fi
 . "$(dirname "$0")/agent-roots.sh"
 H=$1; SID=$2
@@ -141,30 +147,39 @@ quiet_min=$(setting clear_quiet_min 2>/dev/null) || quiet_min=""
 quiet_min=$(printf '%s' "${quiet_min%% (from *}" | tr -d '[:space:]')
 case "$quiet_min" in ''|*[!0-9]*) quiet_min=30;; esac
 
-# gate <step>: after ready <step>; waits (idle prompt, empty box, check again) until no human has typed for
-# clear_quiet_min minutes; one "AUTO CLEAR waiting" line per wait. rc 0 = quiet at once, 1 = it had to wait.
+# gate: runs BEFORE ready; waits until no human has typed for clear_quiet_min minutes (agent-owner-order.sh
+# human-quiet). rc 0 = quiet at once, 1 = it had to wait. clear_quiet_min 0: no gate. Exit 2 (unknown): a pane a
+# human talks to waits (one line); a --spawned task manager is cleared as today.
 gate() {
-  local res rc=0 told=0 at
+  local res rc told=0 waited=0 told_unknown=0 at
+  [ "$quiet_min" -gt 0 ] || return 0
   while :; do
-    res=$(python3 -B "$(dirname "$0")/agent_owner_order.py" "$PWD" "" human-quiet --session "$SID" \
-          --minutes "$quiet_min" --repo "$PWD" 2>/dev/null </dev/null) && return $rc
-    rc=1
-    if [ "$told" = 0 ]; then
-      at=${res##* }
-      add "AUTO CLEAR waiting: a human typed at $at; the clear waits for $quiet_min quiet minutes"
-      told=1
-    fi
+    res=$("$(dirname "$0")/agent-owner-order.sh" human-quiet --session "$SID" --minutes "$quiet_min" \
+          --repo "$PWD" 2>/dev/null </dev/null); rc=$?
+    case $rc in
+      0) return $waited;;
+      1) if [ "$told" = 0 ]; then
+           at=${res##* }
+           add "AUTO CLEAR waiting: a human typed at $at; the clear waits for $quiet_min quiet minutes"
+           told=1
+         fi;;
+      *) [ "$SPAWNED" = 1 ] && return $waited
+         if [ "$told_unknown" = 0 ]; then
+           add "AUTO CLEAR waiting: the transcript of this session cannot be read"
+           told_unknown=1
+         fi;;
+    esac
+    waited=1
     bg sleep "$check_sec"
-    ready "$1"
   done
 }
 
 while :; do
+  gate
   ready 1
-  gate 1
   type_text 2 "AUTO CLEAR: save agent_state.txt now (S8), nothing else. /clear comes next."
-  ready 3
-  gate 3 && break
+  gate && { ready 3; break; }
+  # a human typed during the save prompt: once quiet, back to step 1
 done
 type_text 4 "/clear"
 ready 5

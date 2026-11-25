@@ -194,7 +194,31 @@ else
         if [ "$DRY_RUN" -eq 1 ]; then
           relaunched="would"
         else
-          runtime_launch "$path" "TM $module" "$cmd" >/dev/null </dev/null
+          launch_out=$(runtime_launch "$path" "TM $module" "$cmd" </dev/null) || launch_out=""
+          # C7: the new pane is reserved until it measures itself (agent-room.sh measure-pane drops it)
+          pane_handle=$(printf '%s' "$launch_out" | python3 -c '
+import json, sys
+def find(o):
+    if isinstance(o, dict):
+        if isinstance(o.get("handle"), str):
+            return o["handle"]
+        for v in o.values():
+            h = find(v)
+            if h:
+                return h
+    elif isinstance(o, list):
+        for v in o:
+            h = find(v)
+            if h:
+                return h
+    return ""
+try:
+    print(find(json.load(sys.stdin)))
+except Exception:
+    print("")' 2>/dev/null) || pane_handle=""
+          if [ -n "$pane_handle" ]; then
+            (cd "$PROJECT_ROOT" && "$PLUGIN_ROOT/bin/agent-room.sh" reserve-pane "$pane_handle" "$room_pane") >/dev/null 2>&1 </dev/null || true
+          fi
           relaunched="yes"
         fi
         relaunch_count=$((relaunch_count + 1))
