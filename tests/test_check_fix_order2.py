@@ -312,8 +312,8 @@ class TestC8GateBeforeReady(ac.ClearCase):
         self.write_state(["ROLE: x", ""])
         self.assertOk(self.waiter())
         seq = [c[1] if c[0] == "terminal" else c[0] for c in self.calls()]
-        self.assertEqual(seq, ["human-quiet", "wait", "read", "send", "human-quiet", "wait", "read", "send",
-                               "wait", "read", "send"])
+        # section 46 C13: the gate also runs before /goal; the order per typed text is gate, ready, type
+        self.assertEqual(seq, ["human-quiet", "wait", "read", "send"] * 3)
 
 
 @only_own
