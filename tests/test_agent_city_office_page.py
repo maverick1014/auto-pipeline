@@ -89,6 +89,12 @@ F5 the 3D part (source)
   The page calls /api/floors, /api/design, /api/designer and /api/designer/leave, never /api/layout. A design
     is data: no eval, no new Function; the design name goes through esc().
   No island code: no buildLand, landState, landsOf, startShow, syncSites, newBuildingRecord, buildingName.
+
+F6 the demo (/#demo; 3D part)
+  const DEMO_WORLD = <the JSON printed by `python3 bin/agent_city.py demo-world`>, exactly (one line, the office
+    view: tests/test_agent_city_office_cleanup.py TestDemoWorld). The demo fills its floors with demo people of
+    every role (区经理, 经理, 助理; a 设计师 on a floor without a design), so the building can be looked at with no
+    real session.
 """
 
 import json
@@ -416,6 +422,19 @@ class TestScene(unittest.TestCase):
     def test_no_island_code(self):
         for name in ("buildLand", "landState", "landsOf", "startShow", "syncSites", "newBuildingRecord", "buildingName"):
             self.assertIsNone(function_source(name), name + " is island code")
+
+
+class TestDemo(unittest.TestCase):
+    def test_demo_world_is_the_servers(self):
+        import subprocess
+        from test_agent_city_page import const_object
+        literal = const_object("DEMO_WORLD")
+        self.assertIsNotNone(literal, "const DEMO_WORLD = {...}; not found")
+        out = subprocess.run([sys.executable, os.path.join(BIN, "agent_city.py"), "demo-world"],
+                             capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(json.loads(literal), json.loads(out.stdout))
+        self.assertEqual(json.loads(literal)["v"], 2)
 
 
 if __name__ == "__main__":
