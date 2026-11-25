@@ -293,7 +293,8 @@ class Sweep(object):
                 pass
             self._wb = (wb, prefix)
         wb, prefix = self._wb
-        return branch == wb or bool(prefix and branch.startswith(prefix))
+        # the default prefix is kept whatever this clone's setting is: another person's ap-main-<name> stays
+        return branch == wb or branch.startswith("ap-main-") or bool(prefix and branch.startswith(prefix))
 
     def production(self):
         """The production branch (G1): production_branch in agent_repo.conf, else origin/HEAD's target, else main."""
