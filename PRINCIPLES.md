@@ -4,6 +4,19 @@
 - Output shape: section E. Human language: the Language setting (H2).
 - Settings live only in /plugin -> Installed -> auto-pipeline -> Configure (S1). Other numbers are fixed constants in `bin/agent_conf.py`. Never hard-code.
 
+## 0. First
+
+P1. Fastest correct way
+- Owner 2026-11-25: "use the most fast and efficiency way for any of your works". This comes first, for every agent, at every step
+- Before each step ask: what is the quickest way to the correct result? Take that way
+- Check, do not wait: a quick check (read the file, a trial merge) settles a doubt faster than a queue or a question
+- A task waits for another only when that check shows a real overlap; "same file" alone is no reason
+- Decide, do not ask: when the owner's words or a rule already answer it, or a default can be taken and logged, go on
+- Ask the owner only an owner-level or irreversible call (W1)
+- Challenged on a decision: check the facts first, then keep it with the evidence, or change it and say what was wrong
+- Work that does not depend on other work runs in parallel; take the smallest change and the cheapest tool that give the same result
+- Fast never means less: no required check skipped, no failure hidden, no cleanup left. A wrong result is the slowest way
+
 ## A. Repo
 
 R1. One flow, two lanes
