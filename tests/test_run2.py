@@ -92,6 +92,76 @@ class TestSplitKeepsInheritedClasses(unittest.TestCase):
         self.assertEqual(classes.get("TestInherited"), 2, listing)
 
 
+# a file the loader cannot list exactly (load_tests: only the whole file is right)
+UNLISTED = '''import unittest
+
+
+def load_tests(loader, tests, pattern):
+    return tests
+
+
+class TestUnlisted(unittest.TestCase):
+    def test_one(self):
+        pass
+'''
+
+# a listable file whose run has one test more than the listing: the listing runs
+# under `python -c`, the run under `python -m unittest`
+MOVING = '''import sys
+import unittest
+
+
+class TestMoving(unittest.TestCase):
+    def test_one(self):
+        pass
+
+    if sys.argv[0] != "-c":
+        def test_only_in_the_run(self):
+            pass
+'''
+
+
+class TestCountCheckPerFile(unittest.TestCase):
+    """One file that cannot be listed skips the count check for that file only;
+    the other files are still checked, one by one."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="run2_test_")
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.tests = os.path.join(self.root, "tests")
+        os.makedirs(self.tests)
+        self.write("test_small.py", SMALL)
+        self.write("test_unlisted.py", UNLISTED)
+
+    def write(self, name, text):
+        with open(os.path.join(self.tests, name), "w") as fh:
+            fh.write(text)
+
+    def run_runner(self, *extra):
+        return subprocess.run([sys.executable, RUN2, "--root", self.root] + list(extra),
+                              capture_output=True, text=True, timeout=120)
+
+    def test_the_unlisted_file_is_named_and_the_run_passes(self):
+        out = self.run_runner("-j", "1")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        skipped = [l for l in out.stdout.splitlines() if "count check skipped" in l]
+        self.assertEqual(len(skipped), 1, out.stdout)
+        self.assertIn("test_unlisted", skipped[0])
+        self.assertNotIn("test_small", skipped[0])
+        self.assertNotIn("COUNT MISMATCH", out.stdout)
+
+    def test_a_listed_file_is_still_checked(self):
+        self.write("test_moving.py", MOVING)
+        for jobs in ("1", "2"):
+            with self.subTest(j=jobs):
+                out = self.run_runner("-j", jobs)
+                self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+                bad = [l for l in out.stdout.splitlines() if "COUNT MISMATCH" in l]
+                self.assertTrue(bad, out.stdout)
+                self.assertTrue(any("test_moving" in l for l in bad), out.stdout)
+                self.assertFalse(any("test_small" in l or "test_unlisted" in l for l in bad), out.stdout)
+
+
 class TestCountCheck(unittest.TestCase):
     def test_a_difference_prints_the_line(self):
         run2 = load_run2()

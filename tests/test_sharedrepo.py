@@ -75,5 +75,48 @@ class TestGuardCatchesAWriteBeforeANewCall(unittest.TestCase):
         self.assertEqual(self.result.errors, [])
 
 
+class TestAMissingScriptFails(unittest.TestCase):
+    """SharedScriptCase with a script that is not in bin/ fails, as ScriptCase does
+    ("bin/<script> does not exist"); it is never skipped."""
+
+    @classmethod
+    def setUpClass(cls):
+        from sharedrepo import SharedScriptCase
+
+        class Missing(SharedScriptCase):
+            script = "agent-no-such-script.sh"
+
+            def test_reads(self):
+                pass
+
+        cls.result, cls.text = run_case(Missing)
+
+    def test_not_skipped(self):
+        self.assertEqual(self.result.skipped, [], self.text)
+
+    def test_it_fails_and_names_the_script(self):
+        bad = self.result.failures + self.result.errors
+        self.assertTrue(bad, self.text)
+        self.assertIn("bin/agent-no-such-script.sh does not exist", "".join(msg for _t, msg in bad))
+        self.assertFalse(self.result.wasSuccessful())
+
+
+class TestASubclassIsRefused(unittest.TestCase):
+    """A subclass of a @shared_fixture class would reuse its parent's fixture:
+    defining one is refused at once, with a message that names shared_fixture."""
+
+    def test_subclassing_raises(self):
+        base = build_case()
+        with self.assertRaises(TypeError) as caught:
+            class Child(base):   # noqa: F841
+                def test_more(self):
+                    pass
+        self.assertIn("shared_fixture", str(caught.exception))
+
+    def test_the_decorated_class_itself_still_runs(self):
+        result, text = run_case(build_case())
+        self.assertEqual(result.testsRun, 3, text)
+
+
 if __name__ == "__main__":
     unittest.main()
