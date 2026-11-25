@@ -116,4 +116,71 @@ printf 'x | small | x | est 5m\n' >> "$R/agent_todo.txt"
 git -C "$R" status --short agent_todo.txt
 "$P/bin/agent-promote.sh" --sync; echo "exit $?"
 
+# ---- the two walks of FIX ORDER 4: only the commands the skills and agent files give, in scratch repos
+launch() {   # launch <task> <subagent type> <description>: the main manager's Agent call as the guard hook sees it
+  printf '%s 2026-11-25 19:00 s-main term_main\n' "$$" > "$(git -C "$M" rev-parse --path-format=absolute --git-common-dir)/agent_main.lock"
+  printf '{"hook_event_name": "PreToolUse", "tool_name": "Agent", "session_id": "s-main", "cwd": "%s", "tool_use_id": "toolu_%s", "tool_input": {"description": "%s", "prompt": "brief", "subagent_type": "%s"}}' \
+    "$M" "$1$RANDOM" "$3" "$2" | (cd "$M" && env -u AGENT_ROLE CLAUDE_PID=$$ "$P/bin/agent-guard.sh" >/dev/null 2>&1)   # the main manager's session has no AGENT_ROLE
+}
+flowrepo() {   # flowrepo <name>: a main checkout on its working branch, an origin, production main
+  M="$T/$1"; O="$T/$1-origin.git"; git init -q --bare "$O"; mkdir -p "$M"; git init -q "$M"
+  git -C "$M" config user.email d@d.d; git -C "$M" config user.name demo
+  : > "$M/agent_todo.txt"; : > "$M/agent_completed.txt"; : > "$M/agent_ideas.txt"; : > "$M/agent_worktree.txt"
+  printf 'x = 1\n' > "$M/app.py"; printf 'version=1\nrelated_cmd=python3 -m unittest {modules}\n' > "$M/agent_repo.conf"
+  git -C "$M" add -A; git -C "$M" commit -q -m base; git -C "$M" branch -M main
+  git -C "$M" remote add origin "$O"; git -C "$M" push -q -u origin main
+  git -C "$M" config auto-pipeline.workingbranch ap-main-demo
+  git -C "$M" switch -q -c ap-main-demo; git -C "$M" push -q -u origin ap-main-demo
+}
+
+say "walk 1: a small task from dispatch to todo done on the working branch"
+flowrepo walk1; cd "$M"
+echo "-- dispatch step 2: the todo line, then the fast-lane deputy's brief names target, base, working and production branch"
+"$P/bin/agent-file.sh" todo add w1 small "rename the total" 10 --checks "PR REVIEW" --builder "w1 Deputy"
+W="$T/walk1-w1"; git -C "$M" fetch -q origin; git -C "$M" worktree add -q -b w1 "$W" origin/ap-main-demo   # base: origin/<working branch>
+"$P/bin/agent-file.sh" worktree set "$W" w1 working
+printf 'total = 1\n' > "$W/app.py"; git -C "$W" commit -qam "rename the total"; git -C "$W" push -q -u origin w1
+echo "-- the deputy runs the blocks it can, in its worktree"
+(cd "$W" && "$P/bin/agent-level.sh" check --base origin/ap-main-demo | grep -E "^BLOCKS")
+for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do (cd "$W" && "$P/bin/agent-file.sh" check w1 "$b" pass --by "w1 Deputy" --evidence demo); done
+echo "-- /merge: the main manager launches the reviewer (the guard records it); the reviewer writes from the main checkout with --commit <head>"
+launch w1 auto-pipeline:reviewer "w1 Review"
+HEAD1=$(git -C "$W" rev-parse HEAD)
+"$P/bin/agent-file.sh" check w1 "PR REVIEW" pass --by "w1 Review" --commit "$HEAD1" --evidence "read the diff against the requirement"
+echo "-- the merge deputy: the gate, then the merge into the working branch in the main checkout"
+if "$P/bin/agent-file.sh" checks gate w1 --dir "$W" --branch w1; then
+  git -C "$M" merge -q --no-ff origin/w1 -m "Merge w1 (W8)"; git -C "$M" push -q origin ap-main-demo
+  MH=$(git -C "$M" rev-parse --short HEAD)
+  git -C "$M" push -q origin --delete w1; git -C "$M" worktree remove --force "$W"; git -C "$M" branch -q -d w1
+  "$P/bin/agent-file.sh" worktree rm "$W"
+  "$P/bin/agent-file.sh" todo done w1 --merge "$MH" --work 5 --type script --lane fast | grep -E "todo done|released|batch"
+else echo "-- GATE REFUSED: the merge deputy stops here"; fi
+echo "working branch now: $(git -C "$M" log --oneline -1 ap-main-demo)"
+
+say "walk 2: a task with target production"
+flowrepo walk2; cd "$M"
+P2="$T/plugin-copy"; mkdir -p "$P2"; cp -R "$P/bin" "$P/agents" "$P/skills" "$P/PRINCIPLES.md" "$P2/" 2>/dev/null
+printf '#!/usr/bin/env bash\necho verified\nexit 0\n' > "$P2/bin/agent-owner-order.sh"   # a scratch repo has no owner transcript: the words are taken as verified here
+echo "-- dispatch: the owner's words that name the publish, verified and stored at todo add"
+"$P2/bin/agent-file.sh" todo add p1 small "fix the total and publish it" 10 --checks "PR REVIEW" --builder "p1 Deputy" --target production --owner-quote "fix the total and publish it"
+W="$T/walk2-p1"; git -C "$M" fetch -q origin; git -C "$M" worktree add -q -b p1 "$W" origin/main   # base: origin/<production branch>
+"$P2/bin/agent-file.sh" worktree set "$W" p1 working
+printf 'x = 2\n' > "$W/app.py"; git -C "$W" commit -qam "fix the total"; git -C "$W" push -q -u origin p1
+for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do (cd "$W" && "$P2/bin/agent-file.sh" check p1 "$b" pass --by "p1 Deputy" --evidence demo); done
+P=$P2 launch p1 auto-pipeline:reviewer "p1 Review"
+HEAD2=$(git -C "$W" rev-parse HEAD)
+"$P2/bin/agent-file.sh" check p1 "PR REVIEW" pass --by "p1 Review" --commit "$HEAD2" --evidence "read the diff against the requirement"
+echo "-- /merge: the gate, then promote --task (no quote: the stored words); production merged back at once"
+if "$P2/bin/agent-file.sh" checks gate p1 --dir "$W" --branch p1 --base origin/main; then
+  "$P2/bin/agent-promote.sh" --task p1 --branch p1; echo "promote exit $?"
+  MH=$(git -C "$M" rev-parse --short origin/main)
+  echo "-- the merge deputy with merged: $MH: the branch, the cleanup, todo done"
+  git -C "$M" push -q origin --delete p1; git -C "$M" worktree remove --force "$W"; git -C "$M" branch -q -D p1
+  "$P2/bin/agent-file.sh" worktree rm "$W"
+  "$P2/bin/agent-file.sh" todo done p1 --merge "$MH" --work 5 --type script --lane fast | grep -E "todo done|released|batch"
+else echo "-- GATE REFUSED: no promote"; fi
+echo "production now: $(git -C "$M" log --oneline -1 origin/main)"
+echo "working branch has production: $(git -C "$M" merge-base --is-ancestor origin/main ap-main-demo && echo yes || echo no)"
+cd "$T"
+
 say "done: everything above ran in $T (delete it when read)"
