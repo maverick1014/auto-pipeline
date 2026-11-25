@@ -315,6 +315,9 @@ def bash_launches(command):
         while k < len(words) and (RE_ASSIGN.match(words[k]) or words[k] in SKIP_WORDS):
             k += 1
         w = words[k:]
+        if len(w) >= 3 and os.path.basename(w[0]) == "agent-runtime.sh" and w[1] == "close":
+            found.append(("close", {"terminal": w[2]}))   # the runtime script's close is a pane close
+            continue
         if len(w) < 3 or os.path.basename(w[0]) != "orca":
             continue
         pair = (w[1], w[2])

@@ -37,7 +37,11 @@ Nothing is removed without --yes.
 Main manager only. A worktree is removed only when it is merged into origin/main,
 pushed, clean, on a branch, with no live agent and no working, final or
 human-direct line in agent_worktree.txt. Never --force. A paired machine's
-worktree is listed, never removed.
+worktree is listed, never removed. Main and the release branch are never listed.
+The list also names what --apply would do to LAUNCH records (a dead pid or a gone
+pane: "would prune LAUNCH <key> (pid dead|pane gone)") and to panes that never got
+a prompt and are idle over unused_pane_min ("would close pane <h> (<title>) in <path>:
+never got a prompt, idle <n>m"). A worktree with a live LAUNCH record is "live agent".
 EOF
 }
 

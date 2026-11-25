@@ -15,7 +15,7 @@
 IFS= read -r -d '' p
 
 re_bash='"tool_name"[[:space:]]*:[[:space:]]*"Bash"'
-re_orca='orca([[:space:]]|\\\\|\\n|\\t)+(terminal|worktree)'
+re_orca='orca([[:space:]]|\\\\|\\n|\\t)+(terminal|worktree)|agent-runtime\.sh[^[:alnum:]]{1,6}close'
 if [[ $p =~ $re_bash ]] && ! [[ $p =~ $re_orca ]]; then
   exit 0
 fi

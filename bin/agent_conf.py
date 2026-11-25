@@ -92,7 +92,7 @@ CONSTANTS = {
     "state_warn_lines": 300, "state_header_lines": 40, "state_trim_auto": "on",
     "compact_clear_at": 2, "compact_clear_check_sec": 30, "cleanup_days": 14,
     "docs_keep": "", "owner_order_hours": 24, "owner_order_min_chars": 20,
-    "check_budget_s": 60,
+    "check_budget_s": 60, "unused_pane_min": 30,
 }
 
 BY_KEY = {s["key"]: s for s in SETTINGS}

@@ -22,6 +22,21 @@ import subprocess
 import sys
 
 BUSY = ("working", "permission")
+PROTECTED = ("main", "release")      # never a row of the table, never removed
+UNUSED_PANE_MIN = 30
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+try:
+    import agent_guard as G          # the LAUNCH record parse, the lock and the rewrite of the guard
+except Exception:                    # a sweep never fails for it
+    G = None
+try:
+    import agent_conf
+    UNUSED_PANE_MIN = agent_conf.CONSTANTS.get("unused_pane_min", UNUSED_PANE_MIN)
+except Exception:
+    pass
 
 
 # ---------------------------------------------------------------- calls
@@ -195,6 +210,8 @@ class Sweep(object):
         self.terminals = []
         self.term_ok = False
         self.env_list_ok = True
+        self.launch_recs = []    # (folder, gitdir, record dict) of every LAUNCH record
+        self.launch_ok = False
         self.machines = []       # reachable paired machines
         self.unreachable = []
 
@@ -453,6 +470,8 @@ class Sweep(object):
                 reasons.append("live agent")
         reasons.extend(self.registered(path)[0])
         reasons.extend(self.git_reasons(row.get("head"), branch, path))
+        if "live agent" not in reasons and self.launch_live(path):
+            reasons.insert(0, "live agent")
         return reasons
 
     # ---- origin branches wait for the paired machines
@@ -483,6 +502,8 @@ class Sweep(object):
             return
         for row in self.wts[1:]:
             path = row["path"]
+            if row.get("branch") in PROTECTED:
+                continue
             if not os.path.isdir(path):
                 self.keep("worktree " + path, "this machine", "folder missing",
                           suggestion(["folder missing"], path))
@@ -562,6 +583,8 @@ class Sweep(object):
                 if not path:
                     continue
                 branch = strip_heads(row.get("branch"))
+                if branch in PROTECTED:
+                    continue
                 reasons = []
                 if not branch:
                     reasons.append("no branch")
@@ -583,7 +606,7 @@ class Sweep(object):
             return
         checked = set(w["branch"] for w in self.wts if w.get("branch"))
         names = (set(self.local_refs) | set(self.origin_refs)) - checked
-        names.discard("main")
+        names -= set(PROTECTED)
         for name in sorted(names):
             copies = []
             if name in self.local_refs:
@@ -794,6 +817,195 @@ class Sweep(object):
                 if why:
                     self.close_pane(str(handle), path, why, name)
 
+    # ---- LAUNCH records: read, live, prune
+
+    def listed_panes(self, env=None):
+        """The pane handles orca lists (this machine, or the paired machine ENV), or None when unknown."""
+        if self.kind != "orca":
+            return None
+        if env:
+            for m in self.machines:
+                if m["name"] == env:
+                    return set(str(t.get("handle")) for t in m["terminals"] if t.get("handle"))
+            return None
+        if not self.term_ok:
+            return None
+        return set(str(t.get("handle")) for t in self.terminals if t.get("handle"))
+
+    def gitdir_of(self, folder):
+        res = self.git("-C", folder, "rev-parse", "--path-format=absolute", "--git-dir")
+        out = res.out.strip().split("\n")[0] if res.ok else ""
+        return out or None
+
+    def read_launches(self):
+        if G is None:
+            return
+        folders = [self.root]
+        for w in self.wts[1:]:
+            if os.path.isdir(w["path"]) and w["path"] not in folders:
+                folders.append(w["path"])
+        for folder in folders:
+            path = os.path.join(folder, "agent_state.txt")
+            if not os.path.isfile(path):
+                continue
+            gd = self.gitdir_of(folder)
+            try:
+                lines = G.read_lines(path)
+            except (OSError, UnicodeDecodeError):
+                continue
+            for line in lines:
+                d = G.parse_launch(line)
+                if d is not None:
+                    self.launch_recs.append((folder, gd, d))
+        self.launch_ok = True
+
+    def launch_why(self, d):
+        """"pid dead", "pane gone" or None for a record that stays."""
+        pid = d.get("pid", "")
+        dead = pid.isdigit() and not G.alive(int(pid))
+        pane = d.get("pane", "")
+        if d.get("kind") in G.PANE_KINDS or pane:
+            if pane:
+                listed = self.listed_panes(d.get("env"))
+                if listed is not None and pane not in listed:
+                    return "pane gone"
+                if d.get("kind") in G.PANE_KINDS:
+                    return None            # a pane outlives its session: stays while listed
+            elif d.get("kind") in G.PANE_KINDS:
+                return None
+        if dead:
+            return "pid dead"
+        return None
+
+    def launch_live(self, path):
+        want = real(path)
+        for folder, _gd, d in self.launch_recs:
+            mine = real(folder) == want
+            named = d.get("worktree") and real(d["worktree"]) == want
+            if not (mine or named):
+                continue
+            pid = d.get("pid", "")
+            if pid.isdigit() and G.alive(int(pid)) and self.launch_why(d) is None:
+                return True
+        return False
+
+    def do_launch_prune(self):
+        if G is None or not self.launch_ok:
+            return
+        plan = {}      # folder -> (gitdir, {key: why})
+        for folder, gd, d in self.launch_recs:
+            why = self.launch_why(d)
+            if why:
+                plan.setdefault(folder, (gd, {}))[1][d["key"]] = why
+        for folder, (gd, keys) in plan.items():
+            if self.apply:
+                done = self.prune_in(folder, gd, keys)
+            else:
+                done = dict(keys)
+            for key, why in done.items():
+                self.lines.append("%s LAUNCH %s (%s)" % ("pruned" if self.apply else "would prune", key, why))
+                self.n += 1
+
+    def prune_in(self, folder, gitdir, keys):
+        """Remove the records KEYS from the folder's agent_state.txt under the guard's lock; the other lines stay
+        byte for byte. Returns the keys it removed."""
+        path = os.path.join(folder, "agent_state.txt")
+        removed = {}
+
+        def compute(lines):
+            out, removed_now = [], {}
+            for line in lines:
+                d = G.parse_launch(line)
+                if d is not None and d["key"] in keys and d["key"] not in removed_now:
+                    removed_now[d["key"]] = keys[d["key"]]
+                    continue
+                out.append(line)
+            removed.clear()
+            removed.update(removed_now)
+            return out if removed_now else None
+
+        try:
+            with G.StateLock(gitdir or os.path.join(folder, ".git")):
+                G.rewrite({"gitdir": gitdir or folder}, path, compute)
+        except G.Busy:
+            self.note("state file of %s busy: LAUNCH records not pruned there" % folder)
+            return {}
+        except Exception:
+            self.note("state file of %s changed: LAUNCH records not pruned there" % folder)
+            return {}
+        return removed
+
+    # ---- unused panes: never got a prompt, idle over unused_pane_min
+
+    def main_pane_handles(self):
+        out = set()
+        for d in (os.path.join(self.root, ".git"), self.gitdir_of(self.root) or ""):
+            try:
+                with open(os.path.join(d, "agent_main.lock"), encoding="utf-8", errors="replace") as fh:
+                    out.update(fh.read().split())
+            except OSError:
+                pass
+        return out
+
+    @staticmethod
+    def only_prompts(preview):
+        for line in str(preview or "").splitlines():
+            t = line.strip()
+            if not t:
+                continue
+            if t.endswith(("%", "$", "#")) or t.startswith("Last login:"):
+                continue
+            return False
+        return True
+
+    def do_unused_panes(self):
+        if (self.kind != "orca" or not self.term_ok or not self.repo_id or not self.wts_ok):
+            return
+        import time
+        root = real(self.root)
+        prefix = self.repo_id + "::"
+        wt_paths = set(real(w["path"]) for w in self.wts[1:] if os.path.isdir(w["path"]))
+        launched = set(d.get("pane") for _f, _g, d in self.launch_recs if d.get("pane"))
+        mains = self.main_pane_handles()
+        now_ms = time.time() * 1000
+        for term in self.terminals:
+            wid = str(term.get("worktreeId") or "")
+            handle = term.get("handle")
+            if not handle or not wid.startswith(prefix):
+                continue
+            handle = str(handle)
+            path = term.get("worktreePath") or wid[len(prefix):]
+            key = real(path)
+            if key == root or key in self.removed_paths or key not in wt_paths:
+                continue
+            if ("", handle) in self.close_tried or handle in mains:
+                continue
+            title = str(term.get("title") or "")
+            if "Helper" in title:
+                continue
+            last = term.get("lastOutputAt")
+            if not isinstance(last, (int, float)) or isinstance(last, bool):
+                continue
+            idle = int((now_ms - last) // 60000)
+            if idle <= UNUSED_PANE_MIN:
+                continue
+            if term.get("agentIdentity"):
+                if handle in launched:
+                    continue
+            elif not self.only_prompts(term.get("preview")):
+                continue
+            self.close_tried.add(("", handle))
+            tail = "%s (%s) in %s: never got a prompt, idle %dm" % (handle, title, path, idle)
+            if not self.apply:
+                self.lines.append("would close pane " + tail)
+                self.n += 1
+            elif self.orca_act(["terminal", "close", "--terminal", handle, "--json"]):
+                self.lines.append("closed pane " + tail)
+                self.n += 1
+            else:
+                self.keep("pane " + handle, "this machine", "close failed",
+                          "orca terminal close --terminal " + handle)
+
     # ---- processes
 
     def do_processes(self):
@@ -823,12 +1035,15 @@ class Sweep(object):
         self.gather_git()
         self.base()
         self.gather_orca()
+        self.read_launches()
         self.do_worktrees()
         self.do_remote_worktrees()
         self.do_branches()
         self.do_panes()
         self.do_done_panes()
         self.do_remote_panes()
+        self.do_unused_panes()
+        self.do_launch_prune()
         self.do_processes()
 
     # ---- output
