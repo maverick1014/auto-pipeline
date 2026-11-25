@@ -10,7 +10,7 @@ Short:
     queue row     `排队 · 在 <task> 之后` (en `queue · after <task>`), no waited time
     not started   no stage, no started, no wait: `未开始` (en `not started`)
     these rows    进度 已工作 已等待 预计完成 are "-"; 估时 is "-" too, except a not started row;
-                  位置 and 级别 as today
+                  位置 and 检查 as today (check-blocks: an old level line shows "level <X>")
     sort          owner waits, running, waits on others, queue + not started, hold, OWNER TODO, parked
     status line   at most 5 lines in all; queue, hold and not started rows fold into `+N 排队/暂缓`
                   (en `+N queued/held`)
@@ -140,7 +140,7 @@ class TestWaitingRow(Case):
         r = self.one("waiting mock since 2026-11-20 12:21")
         self.assertEqual(r["Status"], "等待 你 · 确认样稿或规则表 · 已等 10分钟")
         self.assertDash(r)
-        self.assertEqual((r["Where"], r["Level"]), ("-", "C"))
+        self.assertEqual((r["Where"], r["Checks"]), ("-", "level C"))
 
     def test_1_2_question_default_what(self):
         self.assertEqual(self.status("waiting question since 2026-11-20 10:21"),
@@ -151,7 +151,7 @@ class TestWaitingRow(Case):
         r = self.row(self.rows(now=NOW), task="state-trim")
         self.assertEqual(r["Status"], "等待 你 · 合并前签字 · 已等 5分钟")
         self.assertDash(r)
-        self.assertEqual((r["Where"], r["Level"]), (WHERE_ST, "D"))
+        self.assertEqual((r["Where"], r["Checks"]), (WHERE_ST, "level D"))
 
     def test_1_4_a_note_wins_over_the_default(self):
         self.assertEqual(self.status("waiting mock since 2026-11-20 12:21: 看规则表 v2"),
@@ -194,7 +194,7 @@ class TestHoldRow(Case):
         r = self.one("waiting hold since 2026-11-16 17:31: 你说合并监控之后再做")
         self.assertEqual(r["Status"], "暂缓 · 你说合并监控之后再做 · 已等 3天19小时")
         self.assertDash(r)
-        self.assertEqual(r["Level"], "C")
+        self.assertEqual(r["Checks"], "level C")
 
     def test_2_2_hold_no_note(self):
         self.assertEqual(self.status("waiting hold since 2026-11-20 12:01"), "暂缓 · 已等 30分钟")
@@ -213,7 +213,7 @@ class TestQueueRow(Case):
         r = self.one("waiting queue since 2026-11-20 11:35 | after state-trim")
         self.assertEqual(r["Status"], "排队 · 在 state-trim 之后")
         self.assertDash(r)
-        self.assertEqual((r["Where"], r["Level"]), ("-", "C"))
+        self.assertEqual((r["Where"], r["Checks"]), ("-", "level C"))
 
     def test_3_2_old_note_after_task(self):
         self.assertEqual(self.status("waiting queue since 2026-11-20 11:35: after one-watcher"),
@@ -299,7 +299,7 @@ class TestWork(Case):
         r = self.row(self.rows(now=NOW), task="owner-relay")
         self.assertEqual(r["Status"], "未开始")
         self.assertDash(r, est="42m")
-        self.assertEqual((r["Where"], r["Level"]), ("-", "C"))
+        self.assertEqual((r["Where"], r["Checks"]), ("-", "level C"))
 
     def test_6_3_not_started_is_never_over_its_estimate(self):
         r = self.one("", base="x | big | w | est 30m | opened 2026-11-20 08:00 | by main")
@@ -383,7 +383,7 @@ class TestSimulation(Case):
         self.assertEqual((got["owner-relay"]["Est"], got["comment-shape"]["Est"]), ("42m", "28m"))
         for name in ("v4plus-followups", "pc2-plugin-update", "board-waiting", "usage-track", "one-watcher"):
             self.assertDash(got[name])
-        self.assertEqual(got["board-waiting"]["Level"], "C")
+        self.assertEqual(got["board-waiting"]["Checks"], "level C")
         self.assertEqual(got["state-trim"]["Done by"], "13:12")
 
     def test_the_status_line(self):
