@@ -485,10 +485,12 @@ class TestTestRun(RoomCase):
         ram = self.ram_file("40")
         newer = []
         def add_newer():
-            p = subprocess.Popen(["sleep", "30"])
+            # section 46 C16: only a runner's run can be the pick, so the newer job is a runner's run
+            # when its monitor stops it (it is the pick), its memory is freed: the fake RAM drops back
+            p = self.repo.popen("agent-test-run.sh", "--key", "newer", "--", "sh", "-c",
+                                "trap 'echo 40 > %s; exit 143' TERM; sleep 30 & wait" % ram,
+                                env=self.env(AGENT_FAKE_RAM_FILE=ram))
             newer.append(p)
-            self.repo.run("agent-room.sh", "reserve", str(p.pid), "100", "newer", "--kind", "test",
-                          "--unmeasured", env=self.env())
         import threading
         threading.Timer(0.5, add_newer).start()
         self.later(1.0, ram, "95")

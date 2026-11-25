@@ -187,8 +187,10 @@ PANE_HOLD_S = 15 * 60       # a pane reserved at launch is dropped after 15 minu
 def proc_start(pid):
     """The process start time (`ps -o lstart=`), "" when the pid is gone."""
     try:
+        env = dict(os.environ, LC_ALL="C", LANG="C", TZ="UTC")
         return subprocess.run(["ps", "-o", "lstart=", "-p", str(int(pid))], stdout=subprocess.PIPE,
-                              stderr=subprocess.DEVNULL, universal_newlines=True, timeout=10).stdout.strip()
+                              stderr=subprocess.DEVNULL, universal_newlines=True, timeout=10,
+                              env=env).stdout.strip()
     except (OSError, ValueError, subprocess.SubprocessError):
         return ""
 
@@ -216,7 +218,10 @@ def still_live(j):
     if not pid_alive(j.get("pid")):
         return False
     stored = j.get("start")
-    return not stored or proc_start(j["pid"]) == stored
+    if not stored:
+        return True
+    now_start = proc_start(j["pid"])
+    return not now_start or now_start == stored          # unknown ("") is never pruned
 
 
 def load_jobs():
@@ -288,7 +293,19 @@ def machine():
 
 
 def repo_name():
-    return os.path.basename(git(os.getcwd(), "rev-parse", "--show-toplevel") or os.getcwd())
+    """The repo's identity in a reservation: the main root path (the parent of the git common dir), so a run
+    started in a task worktree is this repo's and another repo with the same folder name is not (C15)."""
+    cwd = os.getcwd()
+    gitdir = git(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    root = os.path.dirname(gitdir.rstrip("/")) if gitdir else (git(cwd, "rev-parse", "--show-toplevel") or cwd)
+    return os.path.realpath(root)
+
+
+def same_repo(stored):
+    try:
+        return os.path.realpath(str(stored)) == repo_name()
+    except (OSError, ValueError):
+        return False
 
 
 def entry(pid, mb, what, kind, measured, by="runner"):
@@ -313,8 +330,10 @@ def room(need, reserve_as=None):
     so two agents never count the same free memory. Fails closed when RAM or the total cannot be read."""
     with locked():
         jobs, _ = load_jobs()
-        me = reserve_as["pid"] if reserve_as else None
-        others = [j for j in jobs if me is None or j.get("pid") != me]
+        me = reserve_as.get("pid") if reserve_as else None
+        handle = reserve_as.get("handle") if reserve_as else None
+        others = [j for j in jobs if not ((me is not None and j.get("pid") == me)
+                                          or (handle and j.get("handle") == handle))]
         total, used, limit = machine()
         if used < 0:
             return False, "ROOM: no: RAM unknown"
@@ -377,7 +396,7 @@ def drop_reservation(pid, blocking=True):
 
 def pick_of(jobs):
     """The job the monitor stops first: the newest unmeasured live test or build run, else the newest."""
-    cands = [j for j in jobs if j.get("kind", "test") in ("test", "build")]
+    cands = [j for j in jobs if j.get("kind", "test") in ("test", "build") and j.get("by") == "runner"]
     if not cands:
         return None
     unmeasured = [j for j in cands if not j.get("measured", True)]
@@ -442,9 +461,10 @@ def room_main(argv, cwd):
         new = {"handle": argv[1], "mb": mb, "what": "pane " + argv[1], "repo": repo_name(),
                "since": now().strftime(FMT), "started": time.time(), "kind": "pane", "measured": False,
                "by": "launch"}
-        with locked():
-            jobs, _ = load_jobs()
-            save_jobs([j for j in jobs if j.get("handle") != argv[1]] + [new])
+        ok, line = room(mb, new)               # the check and the reservation in one locked step
+        if not ok:
+            print(line)
+            return 1
         return 0
     if cmd == "release" and len(argv) == 2:
         try:
@@ -456,7 +476,7 @@ def room_main(argv, cwd):
         for j in sorted(live_jobs(), key=lambda j: j.get("started", 0)):
             print("%s | %s MB | %s%s | %s | %s | %s" % (j.get("pid") or j.get("handle"), j.get("mb"), j.get("kind", "test"),
                                                        "" if j.get("measured", True) else " (unmeasured)",
-                                                       j.get("what", ""), j.get("repo", ""), j.get("since", "")))
+                                                       j.get("what", ""), os.path.basename(str(j.get("repo", ""))), j.get("since", "")))
         return 0
     if cmd == "numbers":
         total, used, limit = machine()
@@ -484,9 +504,9 @@ def relief():
         print("ROOM: ok" if used >= 0 else "ROOM: no: RAM unknown")
         return 0
     over = used - limit
-    me_repo = repo_name()
     cands = [j for j in live_jobs() if j.get("kind", "test") in ("test", "build") and j.get("by") == "runner"
-             and j.get("repo") == me_repo and j.get("pid")]
+             and j.get("repo") and same_repo(j.get("repo")) and j.get("pid") and j.get("start")
+             and proc_start(j["pid"]) == j["start"]]
     cands.sort(key=lambda j: (bool(j.get("measured", True)), -j.get("started", 0)))
     stopped, freed = [], 0
     for j in cands:
@@ -825,6 +845,8 @@ def due(cwd):
     st = read_status(gitdir)
     if running(st):
         return False
+    if st and st.get("result") == "stopped":
+        st = None                                       # a stopped run is not done (C20)
     t, last = now(), last_stamp(st)
     hour_at = t.replace(hour=number("nightly_hour", 22), minute=0, second=0, microsecond=0)
     if t >= hour_at and (last is None or last < hour_at):
@@ -890,6 +912,7 @@ def related_cmd(root):
 
 
 MAX_RERUN_MERGES = 20
+SCRATCH_TREES = []          # (root, scratch tree) of a --failures rerun going on: a stop signal removes them (C19)
 
 
 def first_failing_merge(root, gitdir, rel, merges):
@@ -910,6 +933,7 @@ def first_failing_merge(root, gitdir, rel, merges):
         return None
     wt = os.path.join(gitdir, SCRATCH + "_failures" + "_%d" % os.getpid())
     found = None
+    SCRATCH_TREES.append((root, wt))
     try:
         drop_scratch(root, wt)
         added = subprocess.run(["git", "-C", root, "worktree", "add", "--detach", wt, merges[0][0]],
@@ -937,6 +961,7 @@ def first_failing_merge(root, gitdir, rel, merges):
     finally:
         drop_scratch(root, wt)
         drop_reservation(me)
+        SCRATCH_TREES[:] = [t for t in SCRATCH_TREES if t[1] != wt]
     return found
 
 
@@ -1252,6 +1277,20 @@ def failures(cwd):
     if not st or st.get("result") != "red":
         print("NIGHTLY: no red run, no failures")
         return 0
+
+    def on_stop(signum, frame):
+        for proc in ACTIVE:
+            kill_group(proc)
+        for tree_root, tree in list(SCRATCH_TREES):
+            try:
+                drop_scratch(tree_root, tree)
+            except Exception:
+                pass
+        drop_reservation(os.getpid(), blocking=False)
+        os._exit(128 + signum)
+
+    for sig in STOP_SIGNALS:
+        signal.signal(sig, on_stop)
     green, head = st.get("last_green", ""), st.get("commit", "")
     for test in st.get("failed", []):
         merge, task, req = "-", "-", "-"

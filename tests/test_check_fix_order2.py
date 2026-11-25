@@ -38,7 +38,10 @@ def read(*parts):
 
 
 def lstart(pid):
-    return subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+    # section 46 C14: the start time does not depend on locale or TZ
+    env = dict(os.environ, LC_ALL="C", LANG="C", TZ="UTC")
+    return subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True,
+                          env=env).stdout.strip()
 
 
 def gone(marker, seconds=6):
