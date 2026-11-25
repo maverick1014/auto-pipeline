@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Run the test files in N processes (default 4), stdlib only.
+"""Run the test files in N processes, stdlib only.
 
-    python3 tests/run2.py                      every test file, 4 processes (2 when RAM use
-                                               is over 80%)
+    python3 tests/run2.py                      every test file; processes = CPU cores x 80%
+                                               (6 on 8 cores), fewer when memory is short
     python3 tests/run2.py -j 1                 one process (same as unittest discover)
     python3 tests/run2.py test_agent_file ...  only these files (name, with or without .py)
     python3 tests/run2.py --time [-j N]        each file in its own process, N at a time;
@@ -12,8 +12,13 @@
     --out FILE                                 --time writes here instead of tests/timings.txt
 
 Split: the files are dealt to the processes by the seconds in tests/timings.txt,
-slowest first, each to the process with the least time so far, so both end at
-about the same moment. A file not in timings.txt counts as the median.
+slowest first, each to the process with the least time so far, so all end at
+about the same moment. A file not in timings.txt counts as the median; a file
+bigger than a third of one process's share is dealt out class by class.
+
+Load (owner 2026-11-25): CPU stays under 80% (the default -j), and a process is
+started only while memory in use + about 30 MB for it stays under 80%; else it
+waits for a running one to end. No slot or lock: long light runs just go.
 
 Plain `python3 -m unittest discover -s tests` still runs everything in one process.
 Exit code: 0 when every process passed, else 1.
@@ -33,7 +38,42 @@ RAN = re.compile(r"^Ran (\d+) tests? in ([\d.]+)s", re.M)
 RESULT = re.compile(r"^(OK|FAILED)\b(.*)$", re.M)
 
 
-RAM_CAP = 80   # percent; the pipeline's usage cap (max_usage_percent default)
+RAM_CAP = 80        # percent: memory in use + PER_PROCESS_MB must stay under it
+CPU_CAP = 80        # percent of the cores: the default number of processes
+PER_PROCESS_MB = 30  # one test process (measured: about 28 MB)
+
+
+def default_jobs():
+    return max(1, int((os.cpu_count() or 2) * CPU_CAP / 100))
+
+
+def total_ram_mb():
+    try:
+        if sys.platform == "darwin":
+            out = subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, timeout=5).stdout
+            return int(out.strip()) / 1048576
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemTotal:"):
+                    return int(line.split()[1]) / 1024
+    except Exception:
+        return None
+    return None
+
+
+def room_for_one_more():
+    """True when memory in use + one more test process stays under RAM_CAP."""
+    used, total = ram_used_percent(), total_ram_mb()
+    if used is None or not total:
+        return True
+    return used + 100.0 * PER_PROCESS_MB / total < RAM_CAP
+
+
+def wait_for_room(limit_s=600):
+    waited = 0
+    while not room_for_one_more() and waited < limit_s:
+        time.sleep(2)
+        waited += 2
 
 
 def ram_used_percent():
@@ -152,15 +192,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("files", nargs="*")
     ap.add_argument("-j", type=int, default=None,
-                    help="processes; default 4 when RAM use is under the cap (80%%), else 2")
+                    help="processes; default CPU cores x 80%% (memory permitting)")
     ap.add_argument("--time", action="store_true")
     ap.add_argument("--root")
     ap.add_argument("--out")
     args = ap.parse_args()
 
     if args.j is None:
-        used = ram_used_percent()
-        args.j = 4 if used is None or used < RAM_CAP else 2
+        args.j = default_jobs()
     tests_dir = os.path.join(os.path.abspath(args.root), "tests") if args.root else HERE
     names = test_files(tests_dir, args.files)
     logs = tempfile.mkdtemp(prefix="run2_")
@@ -168,6 +207,7 @@ def main():
 
     if args.time:
         def one(name):
+            wait_for_room()
             code, secs, text = run_unittest(tests_dir, [name], os.path.join(logs, name + ".log"))
             tests, verdict = summary(text)
             return name, code, secs, tests, verdict
@@ -195,6 +235,8 @@ def main():
 
     def go(i_group):
         i, (mods, est) = i_group
+        time.sleep(0.2 * i)   # start one by one, so each start sees the memory of the last
+        wait_for_room()
         return i, mods, est, run_unittest(tests_dir, mods, os.path.join(logs, "group%d.log" % (i + 1)))
 
     with ThreadPoolExecutor(max_workers=len(groups)) as pool:
@@ -209,7 +251,7 @@ def main():
             print("  log: %s" % os.path.join(logs, "group%d.log" % (i + 1)))
             for block in re.findall(r"^(?:FAIL|ERROR): .*$", text, re.M):
                 print("  " + block)
-    print("wall %.0f s, %d processes" % (time.time() - start, len(groups)))
+    print("wall %.0f s, %d processes (-j %d)" % (time.time() - start, len(groups), args.j))
     return 1 if failed else 0
 
 
