@@ -83,10 +83,21 @@ Rules and examples:
 - init asks no setting and writes no settings file (no agent.conf, no user file)
 - Cloud (no plugin): the defaults. `cloud-pack` still packs and runs
 
-## 7. Risk types
+## 7. Risk types (owner 2A, 2026-11-25, replaces the path rule)
 
-- One danger list: Configure `danger_paths` + the built-in danger paths (lockfiles, dependency lists, migrations, schema)
-- A file on that list is type D. The old level3 list (always C) is gone: C comes from logic detection only
+- The type is judged from the brief: what changes and how much other code depends on it, never from file paths alone
+- Doc or text only (.md, comments, rule text, PRINCIPLES.md wording) = A, even in PRINCIPLES.md
+- A new feature is normally C; D only for core code many other things depend on
+- `danger_paths` ("Risk: Danger paths (D)") is a hint: `agent-level.sh` prints `touches core path <file>: judge from the brief whether it is D`; it never raises, never raises a doc-only diff
+- The built-in D kinds stay D: lockfile, dependency lists, migrations, schema
+- A second agent (read-only, given the brief and the code, not the manager's answer) reviews the picked type; a disagreement goes to the owner
+
+| Diff | Type | Line |
+|---|---|---|
+| PRINCIPLES.md wording | A | touches core path PRINCIPLES.md: ... |
+| logic in bin/agent_conf.py | C (from the code) | touches core path bin/agent_conf.py: ... |
+| yarn.lock | D (built-in) | - |
+| skills/x/SKILL.md text | A | touches core path skills/x/SKILL.md: ... |
 
 ## 8. plugin-scope-sync (owner answer Q2, 3A 2026-11-25)
 
