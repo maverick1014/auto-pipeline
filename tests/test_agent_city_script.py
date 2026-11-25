@@ -18,6 +18,7 @@ import time  # noqa: E402
 import unittest  # noqa: E402
 from scripthelp import ScriptCase  # noqa: E402
 import re  # noqa: E402
+from scripthelp import ScriptRepo  # noqa: E402
 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -429,3 +430,50 @@ class TestCityScriptWorld(unittest.TestCase):
             text = fh.read()
         self.assertTrue(re.search(r'--world "\$CITY_HOME/world\.json"', text),
                         'agent-city.sh start must pass --world "$CITY_HOME/world.json"')
+
+
+def read(*parts):
+    with open(os.path.join(ROOT, *parts)) as fh:
+        return fh.read()
+
+
+class TestF8ShortCityCommand(unittest.TestCase):
+    def setUp(self):
+        self.readme = read("PRINCIPLES.md")
+
+    def test_readme_uses_the_short_command(self):
+        self.assertIsNone(re.search(r"\./bin/agent-city\.sh [a-z]", self.readme))
+        self.assertIsNone(re.search(r"(?m)^\s*\./agent-city\.sh [a-z]", self.readme))
+        self.assertRegex(self.readme, r"(?m)^agent-city start\b")
+
+    def test_readme_says_once_how_to_get_it(self):
+        lines = [l for l in self.readme.splitlines() if "agent-city.sh install-shim" in l]
+        self.assertEqual(len(lines), 1, lines)
+        self.assertRegex(lines[0], r"(?i)once|one time")
+
+    def test_readme_keeps_the_bin_list(self):
+        for row in ("  bin/agent-city.sh       starts/stops the agent city visualiser",
+                    "  bin/agent-city-shim     the ~/.local/bin/agent-city command",
+                    "  bin/agent-city-hook.sh  hook that feeds the city"):
+            with self.subTest(row=row):
+                self.assertIn(row, self.readme)
+
+    def help(self):
+        repo = ScriptRepo()
+        self.addCleanup(repo.cleanup)
+        result = repo.run("agent-city.sh", "-h")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout
+
+    def test_help_uses_the_short_command(self):
+        out = self.help()
+        self.assertIsNone(re.search(r"(?m)^\s*\./agent-city\.sh ", out), out)
+        for verb in ("start", "stop", "status", "demo"):
+            with self.subTest(verb=verb):
+                self.assertRegex(out, r"(?m)^\s*agent-city %s\b" % re.escape(verb))
+
+    def test_help_says_once_how_to_get_it(self):
+        out = self.help()
+        lines = [l for l in out.splitlines() if "agent-city.sh install-shim" in l]
+        self.assertTrue(lines, out)
+        self.assertRegex(" ".join(lines), r"(?i)once|one time|first")

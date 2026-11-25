@@ -21,6 +21,8 @@ import subprocess
 
 
 from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
+import time  # noqa: E402
+import test_agent_room as trm  # noqa: E402
 
 
 class ResumeCase(ScriptCase):
@@ -743,6 +745,100 @@ class TestResumePermission(ScriptCase):
 
     def test_nothing_set_is_bypass(self):
         self.assertTrue(self.command().endswith("--permission-mode bypassPermissions"))
+
+
+ROOT = os.path.dirname(HERE)
+
+
+def only_own(cls):
+    """A subclass of a test class with tests: keep only the tests written in the subclass itself."""
+    own = set(vars(cls))
+    for name in dir(cls):
+        if name.startswith("test") and name not in own:
+            setattr(cls, name, None)
+    return cls
+
+
+def read(*parts):
+    with open(os.path.join(ROOT, *parts)) as fh:
+        return fh.read()
+
+
+class TestC7PaneReservation(trm.Room):
+    def test_reserve_pane_until_measured(self):
+        self.assertEqual(self.room("reserve-pane", "term_x", "550").returncode, 0)
+        self.assertIn("term_x", self.room("list").stdout)
+        self.assertEqual(self.room("check", "3500").returncode, 1)       # 4000 + 550 + 3500 > 8000
+        p = self.sleeper()
+        self.room("measure-pane", str(p.pid), ORCA_TERMINAL_HANDLE="term_x")
+        self.assertNotIn("term_x", self.room("list").stdout)
+
+    def test_an_old_pane_reservation_expires(self):
+        self.write_jobs([{"handle": "term_old", "mb": 3000, "kind": "pane", "by": "launch",
+                          "started": time.time() - 16 * 60, "since": "x"}])
+        self.assertEqual(self.room("check", "3500").returncode, 0)
+
+    def test_resume_and_dispatch_reserve_their_panes(self):
+        self.assertIn("reserve-pane", read("bin", "agent-resume.sh"))
+        self.assertIn("agent-room.sh reserve-pane", read("skills", "dispatch", "SKILL.md"))
+
+
+@only_own
+class TestC12MemoryUnknown(TestRoomForPanes):
+    def test_memory_unknown_relaunches_nothing(self):
+        paths = self.setup_room(dead=1)
+        out = self.assertOk(self.resume(env=self.env(ram="-1")))
+        self.assertEqual(self.relaunched_for(out, paths[0]), "no, no room")
+        self.assertIn("no room (memory unknown), not relaunching %s" % paths[0], out)
+        self.assertEqual(self.repo.create_calls(), [])
+
+
+@only_own
+class TestC17ResumeReserves(TestRoomForPanes):
+    def test_a_relaunched_pane_is_reserved_by_its_handle(self):
+        paths = self.setup_room(dead=1)
+        out = self.assertOk(self.resume(env=self.env()))
+        self.assertEqual(self.relaunched_for(out, paths[0]), "yes")
+        path = self.env()["AGENT_RESERVE_FILE"]
+        jobs = json.load(open(path)).get("jobs", []) if os.path.exists(path) else []
+        # section 48 C24: reserved before the create; named by its handle when the create answer gives one
+        # (this stub's answer has none, so it keeps its pending key)
+        self.assertTrue([j for j in jobs if j.get("kind") == "pane" and (j.get("handle") or j.get("key"))], jobs)
+
+
+class TestC24ReserveBeforeCreate(trm.Room):
+    def test_pending_then_named(self):
+        self.assertEqual(self.room("reserve-pane", "--pending", "k1", "550").returncode, 0)
+        self.assertIn("k1", self.room("list").stdout)
+        self.assertEqual(self.room("reserve-pane", "--name", "k1", "term_a").returncode, 0)
+        out = self.room("list").stdout
+        self.assertIn("term_a", out)
+        self.assertNotIn("k1", out)
+
+    def test_no_room_before_the_create(self):
+        r = self.room("reserve-pane", "--pending", "k2", "550", ram="95")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("k2", self.room("list").stdout)
+
+    def test_a_failed_create_releases_it(self):
+        self.room("reserve-pane", "--pending", "k3", "550")
+        self.assertEqual(self.room("release-pane", "k3").returncode, 0)
+        self.assertNotIn("k3", self.room("list").stdout)
+
+    def test_resume_and_dispatch_reserve_before_the_create(self):
+        resume = read("bin", "agent-resume.sh")
+        self.assertLess(resume.index("reserve-pane --pending"), resume.index("terminal create"))
+        self.assertIn("reserve-pane --name", resume)
+        d = read("skills", "dispatch", "SKILL.md")
+        self.assertLess(d.index("reserve-pane --pending"), d.index("orca terminal create"))
+
+
+class TestC25RemotePanes(unittest.TestCase):
+    def test_texts(self):
+        self.assertIn("a pane on another machine is not reserved in the local list", read("skills", "dispatch", "SKILL.md"))
+        resume = read("bin", "agent-resume.sh")
+        i = resume.index("reserve-pane --pending")
+        self.assertRegex(resume[max(0, i - 400):i], r"(env|machine)")
 
 
 if __name__ == "__main__":

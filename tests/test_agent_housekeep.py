@@ -1598,5 +1598,32 @@ class TestCrlfBounce2(RowsCase):
         self.assertIn("suspect: idea 3:", res.stdout)
 
 
+def only_own(cls):
+    """A subclass of a test class with tests: keep only the tests written in the subclass itself."""
+    own = set(vars(cls))
+    for name in dir(cls):
+        if name.startswith("test") and name not in own:
+            setattr(cls, name, None)
+    return cls
+
+
+@only_own
+class TestLeftoversHousekeep(HousekeepCase):
+    def test_a_branch_merged_into_the_working_branch_is_flagged(self):
+        d = self.repo.dir
+        tc.git(d, "switch", "-q", "-c", "ap-main-t", "main")
+        tc.git(d, "push", "-q", "origin", "ap-main-t")
+        tc.git(d, "config", "--local", "auto-pipeline.workingbranch", "ap-main-t")
+        tc.git(d, "switch", "-q", "-c", "feat/alpha")
+        self.commit_in(d, "alpha.txt")
+        tc.git(d, "push", "-q", "origin", "feat/alpha")
+        tc.git(d, "switch", "-q", "ap-main-t")
+        tc.git(d, "merge", "-q", "--no-ff", "-m", "Merge feat/alpha (W8)", "feat/alpha")
+        tc.git(d, "push", "-q", "origin", "ap-main-t")
+        self.set_file("agent_todo.txt", [self.todo("alpha")])
+        self.apply()
+        self.assertIn("flag: todo alpha: merged into origin/ap-main-t (branch feat/alpha)", self.body())
+
+
 if __name__ == "__main__":
     unittest.main()

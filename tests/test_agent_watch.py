@@ -21,6 +21,8 @@ import time
 from watchhelp import (ENV, EXITED, LOGIN_TEXTS, STILL, AllCase, dead_pid, frame, idle,  # noqa: E402
                        moving, now_text, sh_quote)
 from watchhelp import ENV, AllCase, now_text, sha8  # noqa: E402
+import tempfile  # noqa: E402
+from scripthelp import BIN  # noqa: E402
 
 WATCH_STUB = r'''#!/usr/bin/env python3
 """Fake orca for agent-watch tests. Never talks to the real app."""
@@ -2230,6 +2232,163 @@ class TestHousekeepTimerDoesNotRun(HkCase):
         self.lock(os.getpid())
         self.watch(AGENT_ROLE="task-manager")
         self.assertEqual(self.hk_calls(), [])
+
+
+class TestNewestValidLine(unittest.TestCase):
+    """C50: a malformed newest heartbeat must not hide the valid STAGE line before it."""
+
+    def run_remote(self, lines):
+        sys.path.insert(0, BIN)
+        import agent_watch
+        d = tempfile.mkdtemp(prefix="cb_remote_")
+        self.addCleanup(subprocess.run, ["rm", "-rf", d])
+        with open(os.path.join(d, "agent_state.txt"), "w") as fh:
+            fh.write("".join(l + "\n" for l in lines))
+        out = subprocess.run(["bash", "-c", agent_watch.remote_command(d)], capture_output=True, text=True).stdout
+        m = re.search(r"FSIG \S* \S+ \S* [01] (.*)\|", out)
+        self.assertTrue(m, out)
+        return m.group(1)
+
+    def test_a_malformed_heartbeat_is_skipped(self):
+        got = self.run_remote(["STAGE test-slim: workers | since 2026-11-25 12:00",
+                               "HEARTBEAT step 4. building the slim pack"])
+        self.assertTrue(got.startswith("STAGE test-slim: workers"), got)
+
+    def test_a_valid_heartbeat_wins_when_newest(self):
+        got = self.run_remote(["STAGE test-slim: tests | since 2026-11-25 12:00",
+                               "HEARTBEAT test-slim: step 4 of 7, work 40m, workers 1 of 2 | 2026-11-25 13:00"])
+        self.assertTrue(got.startswith("HEARTBEAT test-slim: step 4 of 7"), got)
+
+
+class TestTellReminder(TellCase):
+    """C53: the tell text reminds the main manager to add minutes when the message adds work."""
+
+    def test_the_line_before_tell_ok(self):
+        msg = SIG + " one more section for you"
+        r = self.tell("alpha", msg)
+        self.assertOk(r)
+        lines = r.stdout.strip().splitlines()
+        self.assertEqual(lines[-1], "TELL OK alpha %s" % sha8(msg))
+        self.assertEqual(lines[-2], 'if this message adds work: agent-file.sh todo est "alpha" +<minutes>')
+
+
+class TestHelperPaneConfirms(AllCase):
+    """(4): city-office-2 showed "not confirmed" because its Helper works from the main folder."""
+
+    def test_a_helper_task_is_watched_through_the_helpers_own_pane(self):
+        t = self.task("city-office-2", pane="term_gone", launch=False)
+        self.rows.append((self.repo.dir, "task manager, human-direct", "task: City Office 2"))
+        self.write_rows()
+        self.screens("term_h", moving())
+        self.terminals([{"handle": "term_m", "title": "✳ project Manager", "worktreePath": self.repo.dir,
+                         "agentIdentity": "claude"},
+                        {"handle": "term_h", "title": "◑ project Helper - City Office 2",
+                         "worktreePath": self.repo.dir, "agentIdentity": "claude"}])
+        self.run_all(max_sweeps="2")
+        st = self.status()["tasks"]["city-office-2"]
+        self.assertEqual((st["watched"], st["pane"]), (True, "term_h"), st)
+        self.assertNotEqual(t["path"], self.repo.dir)
+
+    def test_a_helper_of_another_task_does_not_count(self):
+        self.task("city-office-2", pane="term_gone", launch=False)
+        self.rows.append((self.repo.dir, "task manager, human-direct", "task: Bank Recon"))
+        self.write_rows()
+        self.screens("term_h", moving())
+        self.terminals([{"handle": "term_h", "title": "◑ project Helper - Bank Recon",
+                         "worktreePath": self.repo.dir, "agentIdentity": "claude"}])
+        self.run_all(max_sweeps="2")
+        self.assertFalse(self.status()["tasks"]["city-office-2"]["watched"])
+
+
+class TestWatchSlot(AllCase):
+    """Section 2: the watch wakes the main manager when a slot is free and a task is queued.
+    Only a line with an open queue wait whose after-task is closed (or that has none) counts;
+    each name is said once (the status file keeps "slots": [names said])."""
+
+    def queued(self, name, after=None):
+        self.todo(name)
+        args = ["todo", "wait", name, "on", "queue"] + (["--after", after] if after else [])
+        self.assertOk(self.repo.run("agent-file.sh", *args))
+
+    def test_a_queued_task_that_can_start_wakes_the_manager(self):
+        self.task("alpha")
+        self.queued("q")
+        text = self.text(self.run_all(max_sweeps="3"))
+        self.assertEqual(self.one_watch(text), "WATCH ROOM q: can start (run agent-file.sh next)")
+        self.assertEqual(self.status()["slots"], ["q"])
+
+    def test_said_once(self):
+        self.task("alpha")
+        self.queued("q")
+        self.run_all(max_sweeps="3")
+        text = self.text(self.run_all(max_sweeps="2"))
+        self.assertEqual(self.one_watch(text), "WATCH MAX all")
+
+    def test_after_an_open_task_no_wake(self):
+        self.task("alpha")
+        self.todo("alpha-line")
+        self.assertOk(self.repo.run("agent-file.sh", "todo", "stage", "alpha-line", "tests"))
+        self.queued("q", after="alpha-line")
+        text = self.text(self.run_all(max_sweeps="2"))
+        self.assertEqual(self.one_watch(text), "WATCH MAX all")
+
+    def test_a_line_that_never_queued_never_wakes(self):
+        self.task("alpha")
+        self.todo("plain")
+        text = self.text(self.run_all(max_sweeps="2"))
+        self.assertEqual(self.one_watch(text), "WATCH MAX all")
+
+
+class TestHeartbeatBeat(CarryCase):
+    def test_work_minutes_and_text_are_carried(self):
+        for env in (None, ENV):
+            with self.subTest(env=env):
+                self.setUp()
+                self.carry(env, [HB])
+                self.assertIn(" | beat 160m full suite running", self.todo_line("alpha"))
+
+    def test_a_newer_heartbeat_replaces_the_beat_in_place(self):
+        self.carry(None, [HB], on_read={2: "HEARTBEAT alpha: step 5 of 7, work 175m, suite done | 2026-11-25 12:15"})
+        line = self.todo_line("alpha")
+        self.assertEqual(line.count(" | beat "), 1, line)
+        self.assertIn(" | beat 175m suite done", line)
+
+    def test_the_board_shows_the_beat_after_the_bar(self):
+        self.carry(None, [HB])
+        board = self.repo.run("agent-file.sh", "board")
+        self.assertIn("160m full suite running", board.stdout, board.stdout + board.stderr)
+
+    def test_the_remote_command_is_one_call_per_sweep_under_500(self):
+        t, _ = self.carry(ENV, [HB])
+        sends = [c for c in self.terminal_calls("send") if self.opt(c, "--terminal") == t["shell"]]
+        self.assertTrue(sends)
+        for call in sends:
+            self.assertLess(len(self.opt(call, "--text") or ""), 500, call)
+        reads = [c for c in self.terminal_calls("read")
+                 if self.opt(c, "--terminal") == t["shell"] and "--cursor" in c]
+        self.assertLessEqual(len(reads), len(sends) * 20)
+        tm_reads = [c for c in self.terminal_calls("read") if self.opt(c, "--terminal") == t["pane"]]
+        self.assertLessEqual(len(sends), len(tm_reads))
+
+    def test_the_remote_command_fits_paths_of_80_110_and_140_chars(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
+        import agent_watch
+        for n in (80, 110, 140):
+            with self.subTest(path=n):
+                path = ("/home/maverick/orca/workspaces/" + "x" * 200)[:n - len("/agent_state.txt")]
+                cmd = agent_watch.remote_command(path)
+                self.assertEqual(len(path + "/agent_state.txt"), n)
+                self.assertLess(len(cmd), agent_watch.REMOTE_CMD_MAX)
+                print("path %d: command %d chars, headroom %d" % (n, len(cmd), agent_watch.REMOTE_CMD_MAX - 1 - len(cmd)))
+
+    def test_a_long_path_is_watched_remotely(self):
+        self.todo("alpha")
+        t = self.task("alpha", env=ENV, sub="a" * 60)
+        self.assertGreaterEqual(len(t["path"]), 80)
+        self.append_state("alpha", HB)
+        text = self.text(self.run_all(max_sweeps="3"))
+        self.assertTrue(self.status()["tasks"]["alpha"]["watched"], text)
+        self.assertIn(" | stage verify since ", self.todo_line("alpha"))
 
 
 if __name__ == "__main__":

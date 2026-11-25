@@ -1,7 +1,6 @@
 """Shared fixture for the one-watcher tests (requirements/one-watcher.md).
 
-Used by tests/test_watch_all.py (the all mode, probe, single mode additions),
-tests/test_watch_tell.py (agent-file.sh tell) and tests/test_watch_board.py.
+Used by tests/test_agent_watch.py (the all mode, probe, single mode additions, agent-file.sh tell, the board).
 
 The fake orca (ALL_STUB) keeps its state under $ORCA_STUB_DIR:
 

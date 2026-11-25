@@ -145,7 +145,7 @@ Same machine (pc2, 8 cores, 8 GB), same runner, back to back on 2026-11-25: befo
 | | Before | After | Change |
 |---|---|---|---|
 | Test files | 104 | 58 | -46 |
-| Tests (unittest ids) | 4191 | 4168 | -45 removed with twins, +22 new tests of the two bin tools |
+| Tests (unittest ids) | 4191 | 4169 | -45 removed with twins, +23 new tests of the two bin tools |
 | Lines in tests/*.py | 59,116 | 53,145 | -5,971 (-10%) |
 | Seconds, all files added up (each file alone, 6 at a time) | 3201 | 2612 | -18% |
 | Wall, each file alone, 6 at a time | 580 | 531 | |
@@ -170,3 +170,50 @@ Slowest 10, each file alone, 6 at a time (seconds):
 | test_agent_city_interact | 90 | test_agent_file (4 files) | 80 |
 
 Left for the follow-up task (check-blocks still changes them): test_agent_board, test_agent_cleanup, test_agent_init, test_agent_release, test_agent_start, test_board_trust, test_board_waiting, test_bypass_mode, test_comment_shape, test_decider_floor, test_output_rules, test_plugin_layout, test_risk_levels, test_settings_configure (in this branch, untouched), plus test_check_blocks, test_check_cleanup, test_check_init, test_check_net, test_check_results, test_check_rules, test_check_warnings (only on the check-blocks branch). Waiting on their module files: test_five_fixes, test_guard_var_path, test_output_hook, test_owner_relay_text, test_permission_setting, test_settings_readers, test_statusline_refresh, test_statusline_vertical, test_statusline_wide, test_watch_board, test_watch_report, test_agent_progress, test_agent_city_add_agent. The plan for them: the "Speed levers" table above (comment_shape batching: 211.6 s -> 94.3 s on a copy) and the target layout.
+
+## Follow-up: test-slim-2 (done)
+
+Base main b4392c7 (check-blocks merged, 81 test files). Folded: the 21 test_check_*.py files, the 14 files check-blocks kept editing, the 13 task-named files that waited for them, and test_agent_main_seat + test_agent_session_clean (target table: test_agent_start). Every row of the target layout above is done: 42 test files, one per script or module, rule-text pins in test_rules_text.py.
+
+New module files: test_agent_level.py (agent-level.sh, agent_level.py, agent_blocks.py), test_agent_checks.py (agent_checks.py: todo checks, check lines, gate, next, edge add), test_agent_promote.py, test_agent_room.py (agent-room.sh, agent-test-run.sh), test_agent_nightly.py, test_agent_guard.py.
+
+Speed levers applied:
+
+| Lever | Where | Gain (seconds of the file alone) |
+|---|---|---|
+| Batching the cases of one test in one project, one commit, one check; a case whose kind a c<i>/ prefix could change runs alone (AGENT_TEST_SHAPE_ONE_BY_ONE=1 = the old way) | test_agent_level ShapeCase | comment_shape + risk_levels + check_blocks 258.8 -> test_agent_level 105.2 (with the next row) |
+| In-process agent_level.run(); the first check of each class still starts the real agent-level.sh (AGENT_TEST_LEVEL_REAL=1 = every check real) | test_agent_level | about 17 s of the above |
+| One BoardCase helper for the board and the status line, agent_board.py in-process; the wrapper tests keep real starts, two tests compare the wrapper output with the in-process output | test_agent_board, test_agent_statusline | 119 -> 68 and 96 -> 66 (measured under load) |
+| @only_own on Nightly: its subclasses ran the 17 tests of TestNightly again | test_agent_nightly | 34 test runs less |
+
+Helper fixes: SharedScriptCase fails on a missing script (no SkipTest); a subclass of a @shared_fixture class is refused (TypeError); run2.py checks the count per file (a file the loader cannot list skips only its own check); TestRailCss.test_phone asserts the exact top value (as strict as the removed TestPanelCss.test_phone_sheet_stays). agent_repo.conf guard_tests follows the plugin layout pins to tests/test_rules_text.py.
+
+Trap: the move tool prunes a class that has no test method of its own (it only runs inherited tests, e.g. TestStartWiringLongPath); the ids audit cannot see that. Check the loader too: classes and test counts the loader runs, before and after (4800 -> 4769 here = -34 @only_own, -5 removed, +8 new).
+
+### Removed checks (test-slim-2)
+
+| Old file::test | Why it is a duplicate | Twin file::test that still checks it |
+|---|---|---|
+| test_board_waiting.py::TestRuleTexts.test_release_0_38_0 | plugin version floor 0.38.0 is weaker than the floor 0.44.0 | test_rules_text.py::TestSettingsTexts.test_plugin_version_is_bumped |
+| test_rules_text.py::TestRuleAndReleaseVersion.test_release | plugin version floor 0.35.0 is weaker than the floor 0.44.0 | test_rules_text.py::TestSettingsTexts.test_plugin_version_is_bumped |
+| test_rules_text.py::TestReadmeAndReleaseTrim.test_release_0_37_0 | plugin version floor 0.37.0 is weaker than the floor 0.44.0 | test_rules_text.py::TestSettingsTexts.test_plugin_version_is_bumped |
+| test_rules_text.py::TestWiredInBlend.test_the_release | plugin version floor 0.34.0 is weaker than the floor 0.44.0 | test_rules_text.py::TestSettingsTexts.test_plugin_version_is_bumped |
+| test_board_trust.py::TestRuleText.test_release | plugin version floor 0.39.0 is weaker than the floor 0.44.0 (the x.y.z shape is pinned by TestPluginManifest.test_required_and_chosen_fields) | test_rules_text.py::TestSettingsTexts.test_plugin_version_is_bumped |
+
+### Before and after (test-slim-2)
+
+Same machine (pc2, 8 cores, 8 GB), same runner (tests/run2.py --time -j 6, each file alone), back to back on 2026-11-25: before = the changed files at main b4392c7, after = this branch.
+
+| | Before | After | Change |
+|---|---|---|---|
+| Test files, whole tests/ | 81 | 42 | -39 |
+| Test files this task changed | 67 | 28 | -39 |
+| Tests (ids) in those files | 4066 | 4069 | -5 removed with twins, +8 new (helper fixes 6, board wrapper 2) |
+| Tests run (unittest) in those files | 4112 | 4081 | -34 duplicate inherited runs (@only_own), -5, +8 |
+| Lines in those files | 49,064 | 47,009 | -2,055 (-4%) |
+| Seconds, files added up | 2310 | 1972 | -338 (-15%) |
+| Wall, each file alone, 6 at a time | 446 | 475 | the longest single file bounds it (test_agent_start 260 s); a normal run2.py run deals a big file out class by class |
+
+Slowest after: test_agent_start 260, test_agent_watch 232, test_agent_city_server 164, test_agent_cleanup 155, test_agent_checks 127, test_agent_housekeep 122, test_agent_autoclear 108, test_agent_level 105.
+
+Audit: `bin/agent_test_audit.py --before <ids of main b4392c7> --after <ids of this branch> --table <the "Removed checks (test-slim-2)" table>`: before 4754, kept 3052, moved 1697, removed with twin 5, AUDIT PASS. (The earlier table above names tests that were already gone at b4392c7; give the audit this section only.)

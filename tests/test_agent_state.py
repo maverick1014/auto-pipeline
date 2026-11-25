@@ -814,41 +814,6 @@ class TestHousekeepTrims(HousekeepCase):
 
 # =============================================================== --clean (T9, A8)
 
-from test_agent_session_clean import CleanCase  # noqa: E402
-
-
-class TestCleanKeepsFivePerKind(CleanCase):
-    def test_five_copies_and_five_day_files_stay(self):
-        me = self.main()
-        self.write_state()
-        copies = ["agent_state.2026-09-0%d-100000.txt" % d for d in range(1, 7)]
-        days = ["agent_state.trim-2026-09-0%d.txt" % d for d in range(1, 8)]
-        for name in copies + days:
-            write(self.repo.path(name), name + "\n")
-        self.assertOk(self.clean(pid=me))
-        left_days = sorted(os.path.basename(p) for p in glob.glob(self.repo.path("agent_state.trim-*.txt")))
-        self.assertEqual(left_days, days[2:])
-        left_copies = [n for n in self.archives() if not n.startswith("agent_state.trim-")]
-        self.assertEqual(len(left_copies), 5, left_copies)
-        self.assertEqual(left_copies[:4], copies[2:])
-
-    def test_day_files_alone_are_not_pruned_by_copies(self):
-        me = self.main()
-        self.write_state()
-        days = ["agent_state.trim-2026-09-0%d.txt" % d for d in range(1, 4)]
-        for name in days:
-            write(self.repo.path(name), name + "\n")
-        self.assertOk(self.clean(pid=me))
-        left_days = sorted(os.path.basename(p) for p in glob.glob(self.repo.path("agent_state.trim-*.txt")))
-        self.assertEqual(left_days, days)
-
-    def test_the_fresh_header_ends_with_a_blank_line(self):
-        me = self.main()
-        self.write_state()
-        self.assertOk(self.clean(pid=me))
-        with open(self.state_path) as fh:
-            self.assertTrue(fh.read().endswith("CARRY: none\n\n"))
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -25,6 +25,9 @@ import agent_city as ac  # noqa: E402
 from scripthelp import ScriptCase  # noqa: E402
 import stat
 import test_agent_board as tb  # noqa: E402  (the module only: its tests stay in their own module)
+from scripthelp import ScriptRepo  # noqa: E402
+from scripthelp import ROOT as ROOT_wb  # noqa: E402
+from scripthelp import BIN as BIN_rf  # noqa: E402
 
 
 class TestValidateNumbers(unittest.TestCase):
@@ -722,6 +725,881 @@ class TestSettingsWritesWeights(tb.BoardCase):
         r = self.repo.run("agent-settings.sh", "stage_workers", "50")
         self.assertEqual(r.returncode, 1)
         self.assertFalse(os.path.exists(self.repo.path("agent.conf")))
+
+
+class TestRepoConfKeys(unittest.TestCase):
+    """level3_paths / level4_paths in agent_repo.conf: comma-separated globs (owner 1A 2026-11-25)."""
+
+    def test_good_values(self):
+        for value in ("", "src/core/", "src/core/,lib/money/**", "*.sql", " api/ , db/ ",
+                      "core", "src/*/ledger"):
+            for key in ("level3_paths", "level4_paths"):
+                with self.subTest(key=key, value=value):
+                    self.assertIsNone(agent_conf.validate_value(key, value))
+
+    def test_bad_values(self):
+        for value in ("/etc/", "src/../x", "a b", "api/,,db/", ",", "api/, /db"):
+            for key in ("level3_paths", "level4_paths"):
+                with self.subTest(key=key, value=value):
+                    self.assertTrue(agent_conf.validate_value(key, value))
+
+    def test_they_are_no_settings(self):
+        for key in ("level3_paths", "level4_paths", "danger_paths"):
+            with self.assertRaises(KeyError):
+                agent_conf.get(key, {})
+
+
+class TestNoAdhdKey(ScriptCase):
+    script = "agent-settings.sh"
+
+    def test_no_adhd_key_anywhere(self):
+        import agent_conf
+        self.assertNotIn("adhd", [x["key"] for x in agent_conf.SETTINGS])
+        self.assertNotIn("adhd", agent_conf.CONSTANTS)
+
+    def test_settings_does_not_know_it(self):
+        result = self.repo.run("agent-settings.sh", "adhd", "off")
+        self.assertNotEqual(result.returncode, 0)
+
+
+class TestWorkingBranchName(unittest.TestCase):
+    """Section 34 (owner 2026-11-25): per person, worked out once per clone and stored."""
+
+    def setUp(self):
+        self.repo = ScriptRepo()
+        self.addCleanup(self.repo.cleanup)
+        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
+        import agent_conf
+        self.ac = agent_conf
+
+    def git(self, *args):
+        return subprocess.run(["git", "-C", self.repo.dir] + list(args), capture_output=True, text=True).stdout.strip()
+
+    def resolve(self):
+        env = self.repo._env(None)
+        r = subprocess.run([sys.executable, os.path.join(self.repo.plugin, "bin", "agent_conf.py"), "working-branch",
+                            self.repo.dir], capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.strip()
+
+    def test_the_default_form(self):
+        self.assertEqual(self.ac.WORKING_BRANCH_DEFAULT, "ap-main-<name>")
+
+    def test_the_git_user_name_cleaned(self):
+        self.git("config", "user.name", "Maverick O'Neil  Jr.")
+        self.assertEqual(self.resolve(), "ap-main-maverick-o-neil-jr")
+
+    def test_stored_once_per_clone(self):
+        self.git("config", "user.name", "Maverick")
+        self.assertEqual(self.resolve(), "ap-main-maverick")
+        self.assertEqual(self.git("config", "--local", "--get", "auto-pipeline.workingbranch"), "ap-main-maverick")
+        self.git("config", "user.name", "Somebody Else")
+        self.assertEqual(self.resolve(), "ap-main-maverick", "never derived again")
+
+    def test_a_fixed_team_name(self):
+        self.repo.set_conf("working_branch", "team-main")
+        self.assertEqual(self.resolve(), "team-main")
+
+
+class TestQuietKey(unittest.TestCase):
+    """settings-configure: "Stuck: Consider stuck after (min)" in Configure (watch_quiet_min)."""
+
+    def test_g_the_setting_is_15_in_1_to_240(self):
+        sys.path.insert(0, os.path.join(ROOT_wb, "bin"))
+        import agent_conf
+        by = {x["key"]: x for x in agent_conf.SETTINGS}
+        field = by["watch_quiet_min"]
+        self.assertEqual((field["default"], field["min"], field["max"]), (15, 1, 240))
+        self.assertEqual(field["title"], "Stuck: Consider stuck after (min)")
+
+
+class TestQuietKeySettings(ScriptCase):
+    script = "agent-settings.sh"
+
+    def test_g_the_board_reads_the_setting_and_the_script_never_writes_it(self):
+        self.repo.set_conf("watch_quiet_min", 30)
+        self.assertEqual(self.assertOk(self.repo.run("agent-settings.sh", "get", "watch_quiet_min")),
+                         "30 (from Configure)\n")
+        self.assertEqual(self.repo.run("agent-settings.sh", "watch_quiet_min", "30").returncode, 1)
+
+
+def read(*parts):
+    with open(os.path.join(ROOT, *parts)) as fh:
+        return fh.read()
+
+
+class TestF4ProductionIsNeverTheWorkingBranch(unittest.TestCase):
+    def test_main_as_the_setting_falls_back(self):
+        repo = ScriptRepo()
+        self.addCleanup(repo.cleanup)
+        subprocess.run(["git", "-C", repo.dir, "branch", "-M", "main"], check=True, capture_output=True)
+        repo.set_conf("working_branch", "main")
+        r = subprocess.run([sys.executable, os.path.join(repo.plugin, "bin", "agent_conf.py"), "working-branch", repo.dir],
+                           capture_output=True, text=True, env=repo._env(None))
+        self.assertEqual(r.stdout.strip(), "ap-main-t")
+        self.assertIn('working branch: "main" is the production branch; using ap-main-t', r.stderr)
+
+
+class TestG4AStoredProductionNameIsNeverUsed(unittest.TestCase):
+    def test_stored_main(self):
+        repo = ScriptRepo()
+        self.addCleanup(repo.cleanup)
+        subprocess.run(["git", "-C", repo.dir, "branch", "-M", "main"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", repo.dir, "config", "--local", "auto-pipeline.workingbranch", "main"], check=True)
+        old = dict(os.environ)
+        self.addCleanup(lambda: (os.environ.clear(), os.environ.update(old)))
+        os.environ.update(repo._env(None))
+        sys.path.insert(0, BIN_rf)
+        import agent_conf
+        self.assertIsNone(agent_conf.working_branch(repo.dir))
+        self.assertEqual(agent_conf.working_branch(repo.dir, derive=True), "ap-main-t")
+
+
+class TestF11(unittest.TestCase):
+    def test_docstring(self):
+        head = read("bin", "agent_conf.py").split('"""')[1]
+        self.assertNotIn("16 settings", head)
+
+
+class TestFloor(unittest.TestCase):
+    OK_MODELS = ("fable-5.1", "fable", "fable-6", "claude-fable-5-1", "opus", "opus-5.5", "opus-5.6",
+                 "opus-6", "opus-6.0", "opus-5.10", "claude-opus-5-5", "claude-opus-6",
+                 "claude-opus-5-5-20261101")
+    LOW_MODELS = ("opus-5", "opus-5.4", "opus-4.7", "claude-opus-4-1", "claude-opus-5-20260101",
+                  "sonnet-5", "sonnet-5.5", "sonnet", "haiku-4.5", "claude-sonnet-5-5", "mystery-7", "gpt-5")
+
+    def test_deciding_roles_at_or_above(self):
+        for key in ("main_manager", "task_manager"):
+            for model in self.OK_MODELS:
+                for effort in ("medium", "high", "xhigh", "max"):
+                    with self.subTest(key=key, value=model + ":" + effort):
+                        self.assertIsNone(agent_conf.validate_value(key, model + ":" + effort))
+
+    def test_deciding_roles_below_the_model_floor(self):
+        for key in ("main_manager", "task_manager"):
+            for model in self.LOW_MODELS:
+                with self.subTest(key=key, model=model):
+                    msg = agent_conf.validate_value(key, model + ":xhigh")
+                    self.assertTrue(msg)
+                    for word in ("Opus 5.5", "Fable", "medium"):
+                        self.assertIn(word, msg)
+
+    def test_deciding_roles_below_the_effort_floor(self):
+        for key in ("main_manager", "task_manager"):
+            for model in ("opus-5.5", "fable-5.1"):
+                with self.subTest(key=key, model=model):
+                    self.assertTrue(agent_conf.validate_value(key, model + ":low"))
+
+    def test_bad_shapes_still_refused(self):
+        for value in ("opus-5.5", "fable-5.1:ultra", ":high", ""):
+            with self.subTest(value=value):
+                self.assertTrue(agent_conf.validate_value("task_manager", value))
+
+    def test_executing_roles_unchanged(self):
+        for key in ("worker", "fast_lane_deputy", "merge_deputy"):
+            for value in ("sonnet-5:low", "haiku-4.5:low", "mystery-7:medium", "opus-5.5:xhigh"):
+                with self.subTest(key=key, value=value):
+                    self.assertIsNone(agent_conf.validate_value(key, value))
+
+    def test_descriptions_name_the_floor(self):
+        by = {x["key"]: x for x in agent_conf.SETTINGS}
+        for key in ("main_manager", "task_manager"):
+            with self.subTest(key=key):
+                for word in ("Opus 5.5", "Fable", "medium"):
+                    self.assertIn(word, by[key]["description"])
+
+    def test_the_shipped_defaults_and_pickers_pass(self):
+        for s_ in agent_conf.SETTINGS:
+            with self.subTest(key=s_["key"]):
+                self.assertIsNone(agent_conf.validate_value(s_["key"], s_["default"]))
+                for pick in s_.get("options", []):
+                    self.assertIsNone(agent_conf.validate_value(s_["key"], pick))
+
+
+# five-fixes S1: the modes `claude --help` lists; "default" is not one
+FIVE = ("acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")
+
+
+class TestConfKeys(unittest.TestCase):
+    def test_bypass_is_a_mode(self):
+        for key in ("permission_mode",):
+            with self.subTest(key=key):
+                self.assertIsNone(agent_conf.validate_value(key, "bypassPermissions"))
+                self.assertTrue(agent_conf.validate_value(key, "yolo"))
+
+    def test_the_list(self):
+        self.assertEqual(list(agent_conf.PERMISSION_MODES), list(FIVE))
+
+    def test_the_picker(self):
+        by = {x["key"]: x for x in agent_conf.SETTINGS}
+        self.assertEqual(by["permission_mode"]["options"], list(FIVE))
+        self.assertNotIn("cloud_permission_mode", by)
+
+
+ORDER = [
+    ("language", "Basic: Language", "string", "en"),
+    ("runtime", "Basic: Runtime", "string", "auto"),
+    ("auto_update", "Basic: Auto update", "boolean", True),
+    ("main_manager", "Models: Main manager model", "string", "opus-5.5:high"),
+    ("task_manager", "Models: Task manager model", "string", "opus-5.5:high"),
+    ("reviewer_model", "Models: Reviewer model", "string", "opus-5.5:high"),   # owner 2A 2026-11-25: new
+    ("helper_model", "Models: Helper model", "string", "sonnet-5:medium"),
+    # max_agents: gone (owner 2026-11-25, TELL bd4e87ee): no count caps, the memory rule admits a pane
+    ("max_usage_percent", "Load: Max memory %", "number", 80),
+    # heavy_test_slots: gone (owner 2026-11-25, TELL 076c1faf): no slots, a memory gate (tests/test_agent_room.py)
+    ("permission_mode", "Permissions: Permission mode", "string", "bypassPermissions"),   # owner order 2026-11-25
+    ("auto_resume", "Permissions: Auto resume", "boolean", True),
+    ("todo_before_agent", "Rules: Todo before agent", "boolean", True),
+    # owner 2026-11-25 (TELL 76bfcc8f): new; the name is not final: one constant (TELL 84fbcf51)
+    ("working_branch", "Flow: Working branch", "string", agent_conf.WORKING_BRANCH_DEFAULT),
+    ("watch_quiet_min", "Stuck: Consider stuck after (min)", "number", 15),
+    ("housekeep_interval_min", "Stuck: Tidy every (min)", "number", 120),
+    # owner order 2026-11-25 (TELL 9bb87b13): the auto clear waits until no human typed for this long
+    ("clear_quiet_min", "Context: Auto clear after quiet (min)", "number", 30),
+    ("city_port", "City: City port", "number", 4777),
+    ("city_idle_min", "City: City auto close (min)", "number", 30),
+]
+
+
+CONSTANTS = {
+    "stage_brief": 1, "stage_register": 1, "stage_mock": 4, "stage_tests": 20,
+    "stage_workers": 40, "stage_verify": 15, "stage_push": 2, "stage_report": 2,
+    "stage_e2e": 10, "stage_merge": 5, "board_watch_sec": 60, "progress_eta_min_pct": 20,
+    "statusline_refresh_sec": 60, "city_governor_wait_sec": 60, "estimate_target_pct": 50,
+    "estimate_bias_min": 5, "estimate_big_min": 120, "state_keep_hours": 24,
+    "state_warn_lines": 300, "state_header_lines": 40, "state_trim_auto": "on",
+    "compact_clear_at": 2, "compact_clear_check_sec": 30, "cleanup_days": 14,
+    "docs_keep": "", "owner_order_hours": 24, "owner_order_min_chars": 20,
+    "check_budget_s": 60,   # check-blocks: BUILD and GUARD TESTS per task only under it
+    "unused_pane_min": 30,  # check-blocks slice 8: the sweep closes a pane that never got a prompt, idle over it
+    "nightly_hour": 22, "light_test_s": 120, "light_test_mb": 1024,   # check-blocks section 15 (owner 1A)
+    "verify_box_min": 15,   # check-blocks section 19/21: the run or browser check time box
+}
+
+
+CHANGE_LINE = "change: /plugin -> Installed -> auto-pipeline -> Configure"
+
+
+CORE_LINE = "core paths of this repo: agent_repo.conf"   # owner 1A 2026-11-25
+
+
+MOVED_BOTH = "moved level3_paths, level4_paths to agent_repo.conf (repo file, commit it)"
+
+
+# A fake `claude` on PATH. Every call appends {"args", "cwd", "stdin"} to calls.jsonl.
+# mode file "ok": `plugin configure <id> --values-stdin` merges the JSON into
+# settings.json pluginConfigs[<id>].options (like the real one); `plugin update` exits 0.
+# mode file "fail": prints "boom" on stderr, exit 1.
+CLAUDE_STUB = r'''#!%(py)s
+import json, os, sys
+here = os.path.dirname(os.path.abspath(__file__))
+data = sys.stdin.read() if "--values-stdin" in sys.argv else ""
+with open(os.path.join(here, "calls.jsonl"), "a") as fh:
+    fh.write(json.dumps({"args": sys.argv[1:], "cwd": os.getcwd(), "stdin": data}) + "\n")
+mode = open(os.path.join(here, "mode")).read().strip()
+if mode != "ok":
+    sys.stderr.write("boom\n"); sys.exit(1)
+if sys.argv[1:3] == ["plugin", "configure"] and "--values-stdin" in sys.argv:
+    cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.environ["HOME"], ".claude")
+    path = os.path.join(cfg, "settings.json")
+    try:
+        settings = json.load(open(path))
+    except Exception:
+        settings = {}
+    opts = settings.setdefault("pluginConfigs", {}).setdefault(sys.argv[3], {}).setdefault("options", {})
+    opts.update(json.loads(data))
+    json.dump(settings, open(path, "w"))
+    print("Configuration saved. Restart Claude Code to apply it.")
+'''
+
+
+class Home:
+    """A throwaway HOME with its own .claude dir; env() is what a script sees."""
+
+    def __init__(self):
+        self.base = tempfile.mkdtemp(prefix="settings_configure_")
+        self.home = os.path.join(self.base, "home")
+        self.cfg = os.path.join(self.home, ".claude")
+        os.makedirs(os.path.join(self.cfg, "plugins"))
+        self.repo = os.path.join(self.base, "repo")
+        os.makedirs(self.repo)
+        self.stub = os.path.join(self.base, "stubbin")
+        os.makedirs(self.stub)
+        path = os.path.join(self.stub, "claude")
+        with open(path, "w") as fh:
+            fh.write(CLAUDE_STUB % {"py": sys.executable})
+        os.chmod(path, 0o755)
+        self.claude_mode("ok")
+
+    def close(self):
+        shutil.rmtree(self.base, True)
+
+    def claude_mode(self, mode):
+        with open(os.path.join(self.stub, "mode"), "w") as fh:
+            fh.write(mode)
+
+    def calls(self):
+        path = os.path.join(self.stub, "calls.jsonl")
+        if not os.path.exists(path):
+            return []
+        with open(path) as fh:
+            return [json.loads(line) for line in fh if line.strip()]
+
+    def env(self, **extra):
+        env = {k: v for k, v in os.environ.items()
+               if not k.startswith("CLAUDE_PLUGIN_OPTION_")
+               and k not in ("CLAUDE_CONFIG_DIR", "AUTO_PIPELINE_USER_CONF")}
+        env["HOME"] = self.home
+        env["PATH"] = self.stub + os.pathsep + env.get("PATH", "/usr/bin:/bin")
+        env.update(extra)
+        return env
+
+    def options(self):
+        try:
+            with open(os.path.join(self.cfg, "settings.json")) as fh:
+                return json.load(fh)["pluginConfigs"]["auto-pipeline@auto-pipeline"]["options"]
+        except Exception:
+            return {}
+
+    def configure(self, options, plugin_id="auto-pipeline@auto-pipeline", other=None):
+        data = {"theme": "dark", "pluginConfigs": {plugin_id: {"options": options}}}
+        if other:
+            data["pluginConfigs"].update(other)
+        with open(os.path.join(self.cfg, "settings.json"), "w") as fh:
+            json.dump(data, fh)
+
+    def write(self, rel, text):
+        path = os.path.join(self.base, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as fh:
+            fh.write(text)
+        return path
+
+    def installed(self, entries):
+        with open(os.path.join(self.cfg, "plugins", "installed_plugins.json"), "w") as fh:
+            json.dump({"version": 2, "plugins": {
+                "auto-pipeline@auto-pipeline": entries,
+                "other@other": [{"scope": "project", "projectPath": self.repo, "version": "0.1.0"}],
+            }}, fh)
+
+
+def run_cli(args, env, script="agent_conf.py"):
+    return subprocess.run([sys.executable, os.path.join(BIN, script)] + args,
+                          capture_output=True, text=True, env=env, timeout=30)
+
+
+class TestSchema(unittest.TestCase):
+    def test_plugin_id(self):
+        self.assertEqual(agent_conf.PLUGIN_ID, "auto-pipeline@auto-pipeline")
+
+    def test_sixteen_settings_in_the_brief_order(self):
+        got = [(s["key"], s["title"], s["type"], s["default"]) for s in agent_conf.SETTINGS]
+        self.assertEqual(got, ORDER)
+
+    def test_every_setting_has_a_plain_description(self):
+        for s in agent_conf.SETTINGS:
+            self.assertTrue(s["description"].strip(), s["key"])
+            self.assertLessEqual(len(s["description"]), 200, s["key"])
+
+    def test_pickers(self):
+        by = {s["key"]: s for s in agent_conf.SETTINGS}
+        self.assertEqual(by["runtime"]["options"], ["auto", "orca", "plain", "cloud"])
+        self.assertIn("auto", by["permission_mode"]["options"])
+        self.assertIn("bypassPermissions", by["permission_mode"]["options"])
+        for key in ("main_manager", "task_manager"):
+            opts = by[key]["options"]
+            self.assertEqual(opts[0], "opus-5.5:high", key)
+            self.assertIn("opus-5.5:xhigh", opts, key)
+            for spec in opts:
+                self.assertIsNone(agent_conf.validate_value("main_manager", spec), spec)
+        self.assertEqual(by["helper_model"]["options"][0], "sonnet-5:medium")
+
+    def test_number_bounds(self):
+        by = {s["key"]: s for s in agent_conf.SETTINGS}
+        self.assertEqual((by["max_usage_percent"]["min"], by["max_usage_percent"]["max"]), (1, 100))
+        self.assertEqual((by["housekeep_interval_min"]["min"], by["housekeep_interval_min"]["max"]), (0, 1440))
+        self.assertEqual((by["city_port"]["min"], by["city_port"]["max"]), (1024, 65535))
+        self.assertEqual((by["clear_quiet_min"]["min"], by["clear_quiet_min"]["max"]), (0, 1440))
+
+    def test_plugin_json_user_config_is_built_from_settings(self):
+        with open(os.path.join(ROOT, ".claude-plugin", "plugin.json")) as fh:
+            manifest = json.load(fh)
+        self.assertEqual(manifest["userConfig"], agent_conf.user_config())
+        self.assertEqual(list(manifest["userConfig"]), [k for k, _, _, _ in ORDER])
+
+    def test_user_config_uses_only_fields_claude_code_knows(self):
+        known = {"type", "title", "description", "default", "options", "min", "max"}
+        for key, field in agent_conf.user_config().items():
+            self.assertLessEqual(set(field), known, key)
+            if "options" in field:
+                self.assertEqual(field["type"], "string", key)
+                self.assertIn(field["default"], field["options"], key)
+            if "min" in field:
+                self.assertEqual(field["type"], "number", key)
+
+    def test_constants(self):
+        self.assertEqual(agent_conf.CONSTANTS, CONSTANTS)
+
+    def test_no_constant_is_a_setting(self):
+        keys = {s["key"] for s in agent_conf.SETTINGS}
+        self.assertFalse(keys & set(agent_conf.CONSTANTS))
+
+    def test_template_file_is_gone(self):
+        self.assertFalse(os.path.exists(os.path.join(BIN, "agent.conf.default")))
+
+    def test_repo_has_no_agent_conf(self):
+        out = subprocess.run(["git", "-C", ROOT, "ls-files", "agent.conf"],
+                             capture_output=True, text=True).stdout
+        self.assertEqual(out.strip(), "")
+
+
+class TestGet(unittest.TestCase):
+    def setUp(self):
+        self.h = Home()
+
+    def tearDown(self):
+        self.h.close()
+
+    def test_nothing_set_gives_every_default(self):
+        env = self.h.env()
+        for key, _, _, default in ORDER:
+            self.assertEqual(agent_conf.get(key, env), default, key)
+            self.assertEqual(agent_conf.source(key, env), "default", key)
+
+    def test_configure_value_wins(self):
+        self.h.configure({"language": "zh", "max_usage_percent": 60, "auto_resume": False})
+        env = self.h.env()
+        self.assertEqual(agent_conf.get("language", env), "zh")
+        self.assertEqual(agent_conf.get("max_usage_percent", env), 60)
+        self.assertIs(agent_conf.get("auto_resume", env), False)
+        self.assertEqual(agent_conf.source("language", env), "Configure")
+
+    def test_numbers_and_booleans_stored_as_text(self):
+        self.h.configure({"max_usage_percent": "60", "auto_update": "false", "todo_before_agent": "true"})
+        env = self.h.env()
+        self.assertEqual(agent_conf.get("max_usage_percent", env), 60)
+        self.assertIs(agent_conf.get("auto_update", env), False)
+        self.assertIs(agent_conf.get("todo_before_agent", env), True)
+
+    def test_claude_config_dir_is_used(self):
+        other = os.path.join(self.h.base, "cfg2")
+        os.makedirs(other)
+        with open(os.path.join(other, "settings.json"), "w") as fh:
+            json.dump({"pluginConfigs": {"auto-pipeline@auto-pipeline": {"options": {"city_port": 5000}}}}, fh)
+        self.h.configure({"city_port": 6000})
+        self.assertEqual(agent_conf.get("city_port", self.h.env(CLAUDE_CONFIG_DIR=other)), 5000)
+
+    def test_env_option_when_configure_has_none(self):
+        env = self.h.env(CLAUDE_PLUGIN_OPTION_LANGUAGE="ms", CLAUDE_PLUGIN_OPTION_MAX_USAGE_PERCENT="30")
+        self.assertEqual(agent_conf.get("language", env), "ms")
+        self.assertEqual(agent_conf.get("max_usage_percent", env), 30)
+        self.assertEqual(agent_conf.source("language", env), "env")
+
+    def test_file_beats_env(self):
+        self.h.configure({"max_usage_percent": 60})
+        env = self.h.env(CLAUDE_PLUGIN_OPTION_MAX_USAGE_PERCENT="40")
+        self.assertEqual(agent_conf.get("max_usage_percent", env), 60)
+
+    def test_other_plugins_options_are_not_read(self):
+        self.h.configure({}, other={"x@y": {"options": {"language": "zh"}}})
+        self.assertEqual(agent_conf.get("language", self.h.env()), "en")
+
+    def test_bad_settings_json_gives_defaults_and_a_warning(self):
+        with open(os.path.join(self.h.cfg, "settings.json"), "w") as fh:
+            fh.write("{not json")
+        env = self.h.env()
+        self.assertEqual(agent_conf.get("max_usage_percent", env), 80)
+        self.assertTrue(any("settings.json" in w for w in agent_conf.warnings(env)))
+
+    def test_out_of_range_gives_default_and_warning(self):
+        self.h.configure({"max_usage_percent": 400})
+        env = self.h.env()
+        self.assertEqual(agent_conf.get("max_usage_percent", env), 80)
+        self.assertEqual(agent_conf.source("max_usage_percent", env), "default")
+        lines = agent_conf.warnings(env)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("max_usage_percent=400", lines[0])
+        self.assertIn("1-100", lines[0])
+        self.assertIn("default 80", lines[0])
+
+    def test_bad_picker_value_gives_default(self):
+        self.h.configure({"runtime": "docker", "permission_mode": "yolo"})
+        env = self.h.env()
+        self.assertEqual(agent_conf.get("runtime", env), "auto")
+        self.assertEqual(agent_conf.get("permission_mode", env), "bypassPermissions")
+        self.assertEqual(len(agent_conf.warnings(env)), 2)
+
+    def test_manager_below_the_decider_floor_is_refused(self):
+        self.h.configure({"main_manager": "sonnet-5:high", "task_manager": "opus-5.5:low"})
+        env = self.h.env()
+        self.assertEqual(agent_conf.get("main_manager", env), "opus-5.5:high")
+        self.assertEqual(agent_conf.get("task_manager", env), "opus-5.5:high")
+        self.assertEqual(len(agent_conf.warnings(env)), 2)
+
+    def test_manager_value_outside_the_picker_but_above_the_floor_is_kept(self):
+        self.h.configure({"main_manager": "fable-5.2:max"})
+        self.assertEqual(agent_conf.get("main_manager", self.h.env()), "fable-5.2:max")
+
+    def test_helper_model_drives_the_three_helper_roles(self):
+        self.h.configure({"helper_model": "sonnet-5:high"})
+        env = self.h.env()
+        for role in ("fast_lane_deputy", "merge_deputy", "worker"):
+            self.assertEqual(agent_conf.get(role, env), "sonnet-5:high", role)
+        self.assertEqual(agent_conf.get("main_manager", env), "opus-5.5:high")
+
+    def test_bad_language_and_bad_paths(self):
+        self.h.configure({"language": "Chinese"})
+        self.assertEqual(agent_conf.get("language", self.h.env()), "en")
+
+    def test_danger_paths_is_no_setting_any_more(self):
+        # owner 1A 2026-11-25: core paths are facts of one repo (agent_repo.conf), not a user setting
+        self.h.configure({"danger_paths": "src/"})
+        with self.assertRaises(KeyError):
+            agent_conf.get("danger_paths", self.h.env())
+        self.assertNotIn("danger_paths", agent_conf.user_config())
+
+    def test_constant_keys(self):
+        env = self.h.env(CLAUDE_PLUGIN_OPTION_STAGE_TESTS="99")
+        for key, value in CONSTANTS.items():
+            self.assertEqual(agent_conf.get(key, env), value, key)
+            self.assertEqual(agent_conf.source(key, env), "constant", key)
+
+    def test_unknown_key(self):
+        with self.assertRaises(KeyError):
+            agent_conf.get("level3_paths", self.h.env())
+
+    def test_old_files_are_never_read_for_a_value(self):
+        with open(os.path.join(self.h.repo, "agent.conf"), "w") as fh:
+            fh.write("language=zh\nmax_usage_percent=90\n")
+        user = self.h.write("home/.claude/auto-pipeline.conf", "permission_mode=bypassPermissions\n")
+        old_cwd = os.getcwd()
+        os.chdir(self.h.repo)
+        try:
+            env = self.h.env(AUTO_PIPELINE_USER_CONF=user)
+            self.assertEqual(agent_conf.get("language", env), "en")
+            self.assertEqual(agent_conf.get("max_usage_percent", env), 80)
+            self.assertEqual(agent_conf.get("permission_mode", env), "bypassPermissions")   # the default, not the old file's
+        finally:
+            os.chdir(old_cwd)
+
+    def test_text(self):
+        self.assertEqual(agent_conf.text(True), "on")
+        self.assertEqual(agent_conf.text(False), "off")
+        self.assertEqual(agent_conf.text(4), "4")
+        self.assertEqual(agent_conf.text("zh"), "zh")
+
+
+class TestCli(unittest.TestCase):
+    def setUp(self):
+        self.h = Home()
+
+    def tearDown(self):
+        self.h.close()
+
+    def test_get_prints_the_text_value(self):
+        self.h.configure({"language": "zh", "auto_resume": False})
+        env = self.h.env()
+        self.assertEqual(run_cli(["get", "language"], env).stdout, "zh\n")
+        self.assertEqual(run_cli(["get", "auto_resume"], env).stdout, "off\n")
+        self.assertEqual(run_cli(["get", "max_usage_percent"], env).stdout, "80\n")
+        self.assertEqual(run_cli(["get", "worker"], env).stdout, "sonnet-5:medium\n")
+        self.assertEqual(run_cli(["get", "stage_tests"], env).stdout, "20\n")
+
+    def test_get_unknown_key_exits_2(self):
+        res = run_cli(["get", "nope"], self.h.env())
+        self.assertEqual(res.returncode, 2)
+        self.assertEqual(res.stdout, "")
+        self.assertIn("nope", res.stderr)
+
+    def test_show_is_a_table_by_group_with_the_change_line_last(self):
+        self.h.configure({"language": "zh"})
+        res = run_cli(["show"], self.h.env())
+        self.assertEqual(res.returncode, 0, res.stderr)
+        lines = res.stdout.rstrip("\n").splitlines()
+        self.assertEqual(lines[-2:], [CHANGE_LINE, CORE_LINE])
+        body = res.stdout
+        self.assertNotIn("Danger paths", body)
+        for group in ("Basic", "Models", "Load", "Permissions", "Rules", "Stuck", "City"):
+            self.assertIn(group, body)
+        last = -1
+        for _, title, _, _ in ORDER:
+            name = title.split(": ", 1)[1]
+            pos = body.find(name)
+            self.assertGreater(pos, last, name)
+            last = pos
+        zh_line = [l for l in lines if "Language" in l][0]
+        self.assertIn("zh", zh_line)
+        self.assertIn("*", zh_line)  # not the default
+        port_line = [l for l in lines if "City port" in l][0]
+        self.assertNotIn("*", port_line)
+        self.assertNotIn("stage_tests", body)
+
+    def test_show_names_a_bad_stored_value(self):
+        self.h.configure({"max_usage_percent": 999})
+        res = run_cli(["show"], self.h.env())
+        self.assertIn("max_usage_percent=999", res.stdout)
+
+    def test_show_never_writes(self):
+        self.h.configure({"language": "zh"})
+        path = os.path.join(self.h.cfg, "settings.json")
+        before = open(path).read()
+        run_cli(["show"], self.h.env())
+        self.assertEqual(open(path).read(), before)
+        self.assertEqual(sorted(os.listdir(self.h.cfg)), ["plugins", "settings.json"])
+
+
+class TestRepoPathsFile(unittest.TestCase):
+    """owner 1A 2026-11-25: agent_repo.conf at the main repo root holds level3_paths and level4_paths."""
+
+    def setUp(self):
+        self.h = Home()
+
+    def tearDown(self):
+        self.h.close()
+
+    def write(self, text):
+        with open(os.path.join(self.h.repo, "agent_repo.conf"), "w") as fh:
+            fh.write(text)
+
+    def test_no_file_is_built_ins_only(self):
+        self.assertEqual(agent_conf.repo_paths(self.h.repo), ({}, []))
+
+    def test_both_keys(self):
+        self.write("# core paths of this repo\nlevel3_paths=PRINCIPLES.md,skills/\nlevel4_paths=.claude-plugin/,hooks/\n")
+        self.assertEqual(agent_conf.repo_paths(self.h.repo),
+                         ({"level3_paths": "PRINCIPLES.md,skills/", "level4_paths": ".claude-plugin/,hooks/"}, []))
+
+    def test_an_empty_value_and_other_keys(self):
+        self.write("level3_paths=\nlanguage=zh\n")
+        values, warnings = agent_conf.repo_paths(self.h.repo)
+        self.assertEqual(values.get("level3_paths", ""), "")
+        self.assertNotIn("language", values)
+
+    def test_a_bad_glob_list_is_left_out_and_said(self):
+        self.write("level3_paths=/etc/,src/\nlevel4_paths=db/\n")
+        values, warnings = agent_conf.repo_paths(self.h.repo)
+        self.assertEqual(values, {"level4_paths": "db/"})
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertTrue(warnings[0].startswith("SETTINGS: level3_paths=/etc/,src/ in agent_repo.conf"), warnings)
+
+    def test_never_raises(self):
+        os.mkdir(os.path.join(self.h.repo, "agent_repo.conf"))
+        values, warnings = agent_conf.repo_paths(self.h.repo)
+        self.assertEqual(values, {})
+
+
+class TestMigration(unittest.TestCase):
+    def setUp(self):
+        self.h = Home()
+        self.user = os.path.join(self.h.cfg, "auto-pipeline.conf")
+        self.conf = os.path.join(os.path.realpath(self.h.repo), "agent.conf")
+
+    def tearDown(self):
+        self.h.close()
+
+    def migrate(self, **extra):
+        return agent_conf.migrate(self.h.repo, self.h.env(**extra))
+
+    def old_conf(self, text):
+        with open(os.path.join(self.h.repo, "agent.conf"), "w") as fh:
+            fh.write(text)
+
+    def configure_calls(self):
+        return [c for c in self.h.calls() if c["args"][:2] == ["plugin", "configure"]]
+
+    def test_no_old_files_no_lines_no_call(self):
+        self.assertEqual(self.migrate(), [])
+        self.assertEqual(self.h.calls(), [])
+
+    def test_differing_values_are_moved_with_the_official_command(self):
+        self.old_conf("language=zh\nmax_usage_percent=60\nauto_resume=no\nboard_guard=record\n"
+                      "worker=sonnet-5:high\nfast_lane_deputy=sonnet-5:high\nmerge_deputy=sonnet-5:high\n")
+        out = self.migrate()
+        calls = self.configure_calls()
+        self.assertEqual(len(calls), 1, self.h.calls())
+        self.assertEqual(calls[0]["args"], ["plugin", "configure", "auto-pipeline@auto-pipeline", "--values-stdin"])
+        self.assertEqual(json.loads(calls[0]["stdin"]), {
+            "language": "zh", "max_usage_percent": "60", "auto_resume": "false",
+            "todo_before_agent": "false", "helper_model": "sonnet-5:high"})
+        self.assertEqual(self.h.options()["language"], "zh")
+        self.assertIn("moved language=zh from %s to Configure" % self.conf, out)
+        self.assertIn("moved max_usage_percent=60 from %s to Configure" % self.conf, out)
+        self.assertIn("moved auto_resume=false from %s to Configure" % self.conf, out)
+        self.assertTrue(out[0].startswith("SETTINGS MOVED: %s" % self.conf), out)
+        self.assertIn("not read any more", out[0])
+
+    def test_values_equal_to_the_default_are_not_moved(self):
+        self.old_conf("language=en\nmax_usage_percent=80\nboard_guard=on\nauto_resume=yes\n")
+        out = self.migrate()
+        self.assertEqual(self.configure_calls(), [])
+        self.assertEqual(len(out), 1, out)
+        self.assertTrue(out[0].startswith("SETTINGS MOVED:"))
+
+    def test_a_value_the_human_set_is_never_overwritten(self):
+        self.old_conf("language=zh\nmax_usage_percent=60\ncity_port=4777\n")
+        self.h.configure({"language": "ms", "city_port": 5000})
+        out = self.migrate()
+        self.assertEqual(json.loads(self.configure_calls()[0]["stdin"]), {"max_usage_percent": "60"})
+        self.assertEqual(self.h.options()["language"], "ms")
+        self.assertIn("kept language=ms in Configure, skipped language=zh from %s" % self.conf, out)
+        self.assertFalse([l for l in out if "city_port" in l], out)  # old value = default, nothing to say
+
+    def test_same_value_already_in_configure_says_nothing(self):
+        self.old_conf("language=zh\n")
+        self.h.configure({"language": "zh"})
+        out = self.migrate()
+        self.assertEqual(self.configure_calls(), [])
+        self.assertFalse([l for l in out if "language" in l], out)
+
+    # owner 1A 2026-11-25: the old level paths go into the repo's own agent_repo.conf, never Configure
+    def repo_conf(self):
+        path = os.path.join(self.h.repo, "agent_repo.conf")
+        return open(path).read() if os.path.exists(path) else None
+
+    def test_level_paths_move_into_agent_repo_conf(self):
+        self.old_conf("level3_paths=src/money/\nlevel4_paths=db/,hooks/\nlanguage=zh\n")
+        out = self.migrate()
+        self.assertEqual(self.repo_conf(), "level3_paths=src/money/\nlevel4_paths=db/,hooks/\n")
+        self.assertIn(MOVED_BOTH, out)
+        payload = json.loads(self.configure_calls()[0]["stdin"])
+        self.assertEqual(payload, {"language": "zh"})
+        for key in ("level3_paths", "level4_paths", "danger_paths"):
+            self.assertNotIn(key, self.h.options())
+
+    def test_only_the_keys_there_are_moved(self):
+        self.old_conf("level4_paths=db/\n")
+        out = self.migrate()
+        self.assertEqual(self.repo_conf(), "level4_paths=db/\n")
+        self.assertIn("moved level4_paths to agent_repo.conf (repo file, commit it)", out)
+        self.assertEqual(self.configure_calls(), [])
+
+    def test_empty_level_paths_are_not_moved(self):
+        self.old_conf("level3_paths=\nlevel4_paths=\n")
+        out = self.migrate()
+        self.assertIsNone(self.repo_conf())
+        self.assertFalse([l for l in out if "agent_repo.conf" in l], out)
+
+    def test_a_key_already_in_agent_repo_conf_is_never_overwritten(self):
+        with open(os.path.join(self.h.repo, "agent_repo.conf"), "w") as fh:
+            fh.write("# core paths\nlevel4_paths=infra/\n")
+        self.old_conf("level3_paths=src/money/\nlevel4_paths=db/\n")
+        out = self.migrate()
+        text = self.repo_conf()
+        self.assertIn("level4_paths=infra/\n", text)
+        self.assertNotIn("db/", text)
+        self.assertIn("level3_paths=src/money/\n", text)
+        self.assertTrue(text.startswith("# core paths\n"), text)
+        self.assertIn("moved level3_paths to agent_repo.conf (repo file, commit it)", out)
+        self.assertTrue([l for l in out if l.startswith("kept level4_paths=infra/ in agent_repo.conf")], out)
+
+    def test_the_level_move_happens_once(self):
+        self.old_conf("level3_paths=src/money/\n")
+        self.migrate()
+        os.remove(os.path.join(self.h.repo, "agent_repo.conf"))
+        self.assertEqual(self.migrate(), [])
+        self.assertIsNone(self.repo_conf())
+
+    def test_once_the_same_file_is_quiet(self):
+        self.old_conf("language=zh\n")
+        self.assertTrue(self.migrate())
+        self.assertEqual(self.migrate(), [])
+        self.assertEqual(len(self.configure_calls()), 1)
+        marker = os.path.join(self.h.cfg, "auto-pipeline-migrated.json")
+        with open(marker) as fh:
+            self.assertIn(self.conf, json.load(fh))
+
+    def test_a_changed_old_file_is_read_again(self):
+        self.old_conf("language=zh\n")
+        self.migrate()
+        self.old_conf("language=zh\nmax_usage_percent=70\n")
+        out = self.migrate()
+        self.assertIn("moved max_usage_percent=70 from %s to Configure" % self.conf, out)
+
+    def test_a_failed_write_prints_the_exact_command_and_tries_again(self):
+        self.old_conf("language=zh\n")
+        self.h.claude_mode("fail")
+        out = "\n".join(self.migrate())
+        self.assertIn("SETTINGS MOVE FAILED:", out)
+        self.assertIn("boom", out)
+        self.assertIn("claude plugin configure auto-pipeline@auto-pipeline --values-stdin <<< '{\"language\": \"zh\"}'", out)
+        self.assertNotIn("moved language", out)
+        self.assertFalse(os.path.exists(os.path.join(self.h.cfg, "auto-pipeline-migrated.json")))
+        self.h.claude_mode("ok")
+        self.assertIn("moved language=zh from %s to Configure" % self.conf, self.migrate())
+
+    def test_no_claude_on_path_is_said(self):
+        self.old_conf("language=zh\n")
+        out = "\n".join(self.migrate(PATH="/nonexistent"))
+        self.assertIn("SETTINGS MOVE FAILED:", out)
+        self.assertIn("--values-stdin", out)
+
+    def test_a_changed_constant_is_named_as_fixed(self):
+        self.old_conf("stage_tests=33\nstate_keep_hours=24\n")
+        out = self.migrate()
+        self.assertIn("fixed: stage_tests=33 in %s is now fixed at 20" % self.conf, out)
+        self.assertFalse([l for l in out if "state_keep_hours" in l], out)
+        self.assertEqual(self.configure_calls(), [])
+
+    def test_an_unknown_key_is_named_as_dropped(self):
+        self.old_conf("adhd=off\n")
+        out = self.migrate()
+        self.assertIn("dropped: adhd=off in %s is not a setting any more" % self.conf, out)
+
+    def test_the_user_file_moves_too_and_wins_for_its_keys(self):
+        self.old_conf("permission_mode=acceptEdits\n")
+        with open(self.user, "w") as fh:
+            fh.write("permission_mode=plan\nauto_update=off\n")   # plan: not the default (bypassPermissions)
+        out = "\n".join(self.migrate())
+        payload = {}
+        for call in self.configure_calls():
+            payload.update(json.loads(call["stdin"]))
+        self.assertEqual(payload, {"permission_mode": "plan", "auto_update": "false"})
+        self.assertIn("auto-pipeline.conf", out)
+
+    def test_the_user_file_path_can_come_from_the_env(self):
+        other = self.h.write("elsewhere/u.conf", "permission_mode=plan\n")
+        self.migrate(AUTO_PIPELINE_USER_CONF=other)
+        self.assertEqual(self.h.options().get("permission_mode"), "plan")
+
+    def test_a_user_file_bypass_is_the_default_and_not_moved(self):
+        # owner order 2026-11-25: bypassPermissions is the default, so nothing to write
+        with open(self.user, "w") as fh:
+            fh.write("permission_mode=bypassPermissions\n")
+        self.migrate()
+        self.assertEqual(self.configure_calls(), [])
+
+    def test_retired_settings_are_ignored_not_moved(self):
+        # check-blocks (owner 2026-11-25): Max agents and Heavy test slot/time are gone; an old value is
+        # ignored, never moved, never an error (pc2 printed "plugin has no options heavy_test_slots")
+        self.old_conf("max_agents=6\nheavy_test_slots=3\nlanguage=zh\n")
+        out = "\n".join(self.migrate())
+        self.assertEqual(json.loads(self.configure_calls()[0]["stdin"]), {"language": "zh"})
+        self.assertNotIn("max_agents", out)
+        self.assertNotIn("heavy_test_slots", out)
+        self.assertNotIn("FAILED", out)
+
+    def test_a_bad_old_value_is_not_moved(self):
+        self.old_conf("max_usage_percent=999\nlanguage=zh\n")
+        out = "\n".join(self.migrate())
+        self.assertEqual(json.loads(self.configure_calls()[0]["stdin"]), {"language": "zh"})
+        self.assertIn("max_usage_percent=999", out)
+
+    def test_unreadable_old_file_is_said(self):
+        os.mkdir(os.path.join(self.h.repo, "agent.conf"))
+        out = "\n".join(self.migrate())
+        self.assertIn("SETTINGS MOVED:", out)
+        self.assertIn("cannot read", out)
+
+    def test_the_old_file_is_never_changed(self):
+        self.old_conf("language=zh\n")
+        self.migrate()
+        self.assertEqual(open(os.path.join(self.h.repo, "agent.conf")).read(), "language=zh\n")
+
+    def test_cli(self):
+        self.old_conf("language=zh\n")
+        res = run_cli(["migrate", self.h.repo], self.h.env())
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("moved language=zh", res.stdout)
 
 
 if __name__ == "__main__":

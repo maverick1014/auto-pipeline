@@ -17,7 +17,9 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from scripthelp import ScriptCase, children_of  # noqa: E402
-from test_output_hook import pointer_part  # noqa: E402
+from scripthelp import pointer_part  # noqa: E402
+import datetime  # noqa: E402
+import test_agent_owner_order as oo  # noqa: E402
 
 NOW = "2026-11-20 12:00"
 HANDLE = "term_t1"
@@ -456,6 +458,342 @@ class TestWaiter(ClearCase):
         r = self.repo.run("agent-autoclear.sh", HANDLE)
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
         self.assertEqual(self.calls(), [])
+
+
+T0 = datetime.datetime(2026, 11, 20, 12, 0)
+
+
+def ago(minutes):
+    return T0 - datetime.timedelta(minutes=minutes)
+
+
+def tell_pointer(dt):
+    """A tell pointer typed into the pane by the main manager: signed, so agent-typed."""
+    return oo.owner("[Fable 5.2 xhigh] TELL 1a2b3c4d: read the TELL 1a2b3c4d block at the end of agent_state.txt "
+                    "and act on it", dt)
+
+
+class Transcript:
+    """<CLAUDE_CONFIG_DIR>/projects/<folder name of the repo>/<session>.jsonl"""
+
+    def __init__(self, case, repo_dir):
+        # the same config home the settings live in (scripthelp's default CLAUDE_CONFIG_DIR), so set_conf is read
+        self.cfg = os.path.join(case.repo.base, "no-claude-config")
+        self.dir = os.path.join(self.cfg, "projects", oo.folder_name(repo_dir))
+        os.makedirs(self.dir, exist_ok=True)
+
+    def write(self, lines, session="s1"):
+        with open(os.path.join(self.dir, session + ".jsonl"), "w") as fh:
+            fh.write("".join(json.dumps(l) + "\n" for l in lines))
+
+    def append(self, line, session="s1"):
+        with open(os.path.join(self.dir, session + ".jsonl"), "a") as fh:
+            fh.write(json.dumps(line) + "\n")
+
+
+class TestHumanQuiet(ScriptCase):
+    script = "agent-owner-order.sh"
+
+    def setUp(self):
+        super().setUp()
+        self.t = Transcript(self, self.repo.dir)
+
+    def quiet(self, minutes="30", session="s1"):
+        return self.repo.run("agent-owner-order.sh", "human-quiet", "--session", session, "--minutes", minutes,
+                             "--repo", self.repo.dir,
+                             env={"CLAUDE_CONFIG_DIR": self.t.cfg, "TZ": "UTC", "AGENT_FAKE_NOW": NOW},
+                             cwd=self.repo.dir)
+
+    def test_a_human_10_minutes_ago(self):
+        self.t.write([oo.owner("wait, one more thing about the board", ago(10))])
+        r = self.quiet()
+        self.assertEqual((r.returncode, r.stdout.strip()), (1, "typed 2026-11-20 11:50"), r.stderr)
+
+    def test_40_minutes_ago_is_quiet(self):
+        self.t.write([oo.owner("ok go", ago(40))])
+        r = self.quiet()
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, "quiet"), r.stderr)
+
+    def test_exactly_n_minutes_is_quiet(self):
+        self.t.write([oo.owner("ok go", ago(30))])
+        self.assertEqual(self.quiet().returncode, 0)
+
+    def test_no_transcript_is_unknown(self):
+        # section 43 C9: unreadable is not quiet
+        r = self.quiet()
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertTrue(r.stdout.strip().startswith("unknown: "), r.stdout)
+
+    def test_only_a_typed_human_prompt_counts(self):
+        self.t.write([
+            oo.owner("ok go", ago(40)),
+            oo.notification("worker done", ago(9)),
+            oo.peer("Worker B: PASS", ago(8)),
+            tell_pointer(ago(7)),
+            oo.owner(SAVE, ago(6)),
+            oo.owner("/clear", ago(5)),
+            oo.owner("/goal " + GOAL, ago(4)),
+            oo.owner(CONT, ago(4)),
+            oo.meta("a hook said something", ago(3)),
+            oo.tool_result("Ran 3 tests", ago(2)),
+            oo.assistant("done", ago(1)),
+        ])
+        r = self.quiet()
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, "quiet"), r.stdout)
+
+    def test_a_queued_prompt_is_a_human_too(self):
+        self.t.write([oo.owner("and the board?", ago(2), source="queued")])
+        self.assertEqual(self.quiet().returncode, 1)
+
+    def test_zero_minutes_is_always_quiet(self):
+        self.t.write([oo.owner("still here", ago(0))])
+        self.assertEqual(self.quiet("0").returncode, 0)
+
+    def test_another_session_does_not_count(self):
+        self.t.write([oo.owner("ok go", ago(40))])                # s1 has its own transcript (C9: none = unknown)
+        self.t.write([oo.owner("I talk to the other pane", ago(1))], session="s2")
+        self.assertEqual(self.quiet().returncode, 0)
+
+
+def only_own(cls):
+    """A subclass of a test class with tests: keep only the tests written in the subclass itself."""
+    own = set(vars(cls))
+    for name in dir(cls):
+        if name.startswith("test") and name not in own:
+            setattr(cls, name, None)
+    return cls
+
+
+@only_own
+class TestF9ASessionStartedInASubfolder(TestHumanQuiet):
+    def test_the_session_file_is_found_in_another_project_folder(self):
+        other = os.path.join(self.t.cfg, "projects", oo.folder_name(os.path.join(self.repo.dir, "sub")))
+        os.makedirs(other, exist_ok=True)
+        with open(os.path.join(other, "s1.jsonl"), "w") as fh:
+            fh.write(json.dumps(oo.owner("wait, one more thing", ago(5))) + "\n")
+        r = self.quiet()
+        self.assertEqual((r.returncode, r.stdout.strip()), (1, "typed 2026-11-20 11:55"), r.stderr)
+
+
+class TestWaiterWaitsForTheHuman(ClearCase):
+    script = "agent-autoclear.sh"
+
+    def setUp(self):
+        super().setUp()
+        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep 1\nexec /bin/sleep "$@"\n')
+        self.t = Transcript(self, self.repo.dir)
+        self.write_state(["ROLE: main manager", ""])
+
+    def env(self):
+        return {"AGENT_FAKE_NOW": NOW, "CLAUDE_CONFIG_DIR": self.t.cfg, "TZ": "UTC"}
+
+    def waiting_line(self):
+        return [l for l in self.state_lines() if l.startswith("AUTO CLEAR waiting: a human typed at ")]
+
+    def start(self):
+        proc = self.repo.popen("agent-autoclear.sh", HANDLE, "s1", env=self.env())
+        self.addCleanup(lambda: proc.poll() is None and proc.kill())
+        return proc
+
+    def test_a_human_10_minutes_ago_holds_it(self):
+        self.t.write([oo.owner("let us talk about the flow", ago(10))])
+        self.start()
+        self.assertTrue(self.wait_for(lambda: self.waiting_line(), 15), self.state_lines())
+        self.assertEqual(self.waiting_line(), [
+            "AUTO CLEAR waiting: a human typed at 11:50; the clear waits for 30 quiet minutes | %s" % NOW])
+        time.sleep(3)
+        self.assertEqual(self.sends(), [], "nothing is typed while the human is talking")
+        self.assertEqual(len(self.waiting_line()), 1, "one line per wait")
+
+    def test_a_human_40_minutes_ago_clears_as_today(self):
+        self.t.write([oo.owner("ok go", ago(40))])
+        self.assertOk(self.waiter(env=self.env()))
+        self.assertEqual(self.sends(), [SAVE, "/clear", CONT])
+
+    def test_agents_and_notifications_do_not_hold_it(self):
+        # a task manager nobody types into is cleared as today
+        self.t.write([oo.notification("worker done", ago(3)), tell_pointer(ago(2)), oo.peer("PASS", ago(1))])
+        self.assertOk(self.waiter(env=self.env()))
+        self.assertEqual(self.sends(), [SAVE, "/clear", CONT])
+
+    def test_zero_clears_without_waiting(self):
+        self.repo.set_conf("clear_quiet_min", "0")
+        self.t.write([oo.owner("still here", ago(1))])
+        self.assertOk(self.waiter(env=self.env()))
+        self.assertEqual(self.sends(), [SAVE, "/clear", CONT])
+
+    def test_a_human_after_the_save_prompt_starts_it_again(self):
+        self.t.write([oo.owner("ok go", ago(40))])
+        human_now = json.dumps(oo.owner("no wait, I am not done", T0))
+        marker = os.path.join(self.repo.base, "typed_once")
+        self.stub_file("send_hook.sh",
+                       '[ "$1" = %s ] && [ ! -f %s ] && { printf "%%s\\n" %s >> %s; touch %s; }\nexit 0\n'
+                       % (json.dumps(SAVE), marker, "'" + human_now + "'",
+                          os.path.join(self.t.dir, "s1.jsonl"), marker))
+        proc = self.start()
+        self.assertTrue(self.wait_for(lambda: self.waiting_line(), 20), (self.sends(), self.state_lines()))
+        self.assertEqual(self.sends(), [SAVE], "no /clear while the human talks")
+        # the talk ends: 40 minutes later the newest human prompt is old (the fake clock stands still)
+        self.t.write([oo.owner("no wait, I am not done", ago(40))])
+        self.assertTrue(self.wait_for(lambda: proc.poll() is not None, 30), self.sends())
+        self.assertEqual(self.sends(), [SAVE, SAVE, "/clear", CONT], "back to the save prompt first")
+        self.assertEqual(self.state_lines()[-1], "AUTO CLEAR done | %s" % NOW)
+
+
+class TestLimitLine(ClearCase):
+    def setUp(self):
+        super().setUp()
+        self.stub_file("wait_sleep", "30")
+
+    def test_the_line_names_the_wait(self):
+        self.write_state(["ROLE: x", ""])
+        self.assertOk(self.hook("compact"))
+        out = self.assertOk(self.hook("compact"))
+        self.assertIn(LIMIT_PANE % 2, out.splitlines())
+
+    def test_zero_keeps_the_old_line(self):
+        self.repo.set_conf("clear_quiet_min", "0")
+        self.write_state(["ROLE: x", ""])
+        self.assertOk(self.hook("compact"))
+        out = self.assertOk(self.hook("compact"))
+        self.assertIn(LIMIT_PANE_NO_WAIT % 2, out.splitlines())
+
+
+ROOT = os.path.dirname(HERE)
+
+
+def read(*parts):
+    with open(os.path.join(ROOT, *parts)) as fh:
+        return fh.read()
+
+
+def wait_until(check, seconds=10):
+    end = time.time() + seconds
+    while time.time() < end:
+        if check():
+            return True
+        time.sleep(0.2)
+    return check()
+
+
+class TestC8GateBeforeReady(ClearCase):
+    script = "agent-autoclear.sh"
+
+    def test_the_gate_comes_before_each_ready(self):
+        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep 1\nexec /bin/sleep "$@"\n')
+        self.repo.write_bin_script("agent-owner-order.sh",
+                                   "#!/usr/bin/env bash\nprintf 'CALL\\thuman-quiet\\n' >> \"$ORCA_STUB_LOG\"\n"
+                                   "echo quiet\nexit 0\n")
+        self.write_state(["ROLE: x", ""])
+        self.assertOk(self.waiter())
+        seq = [c[1] if c[0] == "terminal" else c[0] for c in self.calls()]
+        # section 46 C13: the gate also runs before /goal; the order per typed text is gate, ready, type
+        self.assertEqual(seq, ["human-quiet", "wait", "read", "send"] * 3)
+
+
+@only_own
+class TestC9UnknownIsNotQuiet(TestHumanQuiet):
+    def test_no_transcript_is_unknown(self):
+        r = self.quiet()
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertTrue(r.stdout.strip().startswith("unknown: "), r.stdout)
+
+
+@only_own
+class TestC9TheWaiter(TestWaiterWaitsForTheHuman):
+    def test_a_human_session_waits_on_unknown(self):
+        proc = self.start()                                               # no --spawned, no transcript
+        line = "AUTO CLEAR waiting: the transcript of this session cannot be read"
+        self.assertTrue(wait_until(lambda: any(l.startswith(line) for l in self.state_lines()), 15),
+                        self.state_lines())
+        time.sleep(2)
+        self.assertEqual(self.sends(), [])
+
+    def test_a_spawned_task_manager_is_cleared_as_today(self):
+        r = self.repo.run("agent-autoclear.sh", HANDLE, "s1", "--spawned", env=self.env(), timeout=60)
+        self.assertOk(r)
+        self.assertEqual(self.sends(), [SAVE, "/clear", CONT])
+
+    def test_the_start_passes_spawned_for_a_task_manager(self):
+        self.assertIn("--spawned", read("bin", "agent-start.sh"))
+
+
+def waiter_stub_with_wait_hook():
+    """The waiter's orca stub, plus $ORCA_STUB_DIR/wait_hook.sh run with the number of each wait call."""
+    a = '''  "terminal wait")\n'''
+    assert WAITER_STUB.count(a) == 1
+    return WAITER_STUB.replace(a, a + '''    wn=$(cat "$d/wait_n" 2>/dev/null || echo 0); wn=$((wn+1)); echo "$wn" > "$d/wait_n"
+    [ -f "$d/wait_hook.sh" ] && bash "$d/wait_hook.sh" "$wn"
+''')
+
+
+@only_own
+class TestC13GateAgainAfterAWait(TestWaiterWaitsForTheHuman):
+    def setUp(self):
+        super().setUp()
+        with open(self.stub, "w") as fh:
+            fh.write(waiter_stub_with_wait_hook())
+
+    def test_a_human_prompt_during_the_save_turn_stops_the_clear(self):
+        self.t.write([oo.owner("ok go", ago(40))])
+        human_now = json.dumps(oo.owner("wait, one more thing", T0))
+        # the 2nd wait is the save turn: the human types during it, and it takes 3 s (ready waited)
+        self.stub_file("wait_hook.sh", '[ "$1" = 2 ] && { printf "%%s\\n" %s >> %s; /bin/sleep 3; }\nexit 0\n'
+                       % ("'" + human_now + "'", os.path.join(self.t.dir, "s1.jsonl")))
+        self.start()
+        self.assertTrue(wait_until(lambda: self.waiting_line(), 20), (self.sends(), self.state_lines()))
+        time.sleep(2)
+        self.assertEqual(self.sends(), [SAVE], "no /clear after a human prompt in the save turn")
+
+    def test_a_humans_pane_is_cleared_when_quiet(self):
+        # C21: the whole waiter on a human's pane (no --spawned)
+        self.t.write([oo.owner("ok go", ago(40))])
+        r = self.repo.run("agent-autoclear.sh", HANDLE, "s1", env=self.env(), timeout=60)
+        self.assertOk(r)
+        self.assertEqual(self.sends(), [SAVE, "/clear", CONT])
+
+
+class TestC13PinnedOrder(ClearCase):
+    script = "agent-autoclear.sh"
+
+    def test_gate_and_ready_before_every_typed_text(self):
+        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep 1\nexec /bin/sleep "$@"\n')
+        self.repo.write_bin_script("agent-owner-order.sh",
+                                   "#!/usr/bin/env bash\nprintf 'CALL\\thuman-quiet\\n' >> \"$ORCA_STUB_LOG\"\n"
+                                   "echo quiet\nexit 0\n")
+        self.write_state(["ROLE: x", ""])
+        self.assertOk(self.waiter())
+        seq = [c[1] if c[0] == "terminal" else c[0] for c in self.calls()]
+        self.assertEqual(seq, ["human-quiet", "wait", "read", "send"] * 3)
+
+
+@only_own
+class TestC22EveryPane(TestC13GateAgainAfterAWait):
+    def test_a_task_manager_pane_is_not_cleared_after_a_human_prompt(self):
+        self.t.write([oo.owner("ok go", ago(40))])
+        human_now = json.dumps(oo.owner("wait, keep going on the report", T0))
+        self.stub_file("wait_hook.sh", '[ "$1" = 2 ] && { printf "%%s\\n" %s >> %s; /bin/sleep 3; }\nexit 0\n'
+                       % ("'" + human_now + "'", os.path.join(self.t.dir, "s1.jsonl")))
+        proc = self.repo.popen("agent-autoclear.sh", HANDLE, "s1", "--spawned", env=self.env())
+        self.addCleanup(lambda: proc.poll() is None and proc.kill())
+        self.assertTrue(wait_until(lambda: self.waiting_line(), 20), (self.sends(), self.state_lines()))
+        time.sleep(2)
+        self.assertEqual(self.sends(), [SAVE], "no /clear after the owner's prompt in a task manager pane")
+
+
+class TestH6Cap(ClearCase):
+    script = "agent-autoclear.sh"
+
+    def test_a_pane_that_never_settles_gets_a_line(self):
+        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep 1\nexec /bin/sleep "$@"\n')
+        self.write_state(["ROLE: x", ""])
+        self.stub_file("wait_sleep", "3")                     # every turn takes 3 s: the pane never settles
+        proc = self.repo.popen("agent-autoclear.sh", HANDLE, "s1", "--spawned", env={"AGENT_FAKE_NOW": NOW})
+        self.addCleanup(lambda: proc.poll() is None and proc.kill())
+        line = "AUTO CLEAR waiting: the pane did not settle in 3 rounds; trying again later"
+        self.assertTrue(wait_until(lambda: any(l.startswith(line) for l in self.state_lines()), 40),
+                        self.state_lines())
+        proc.terminate()
 
 
 if __name__ == "__main__":

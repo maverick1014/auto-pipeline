@@ -5590,8 +5590,9 @@ class TestRailCss(unittest.TestCase):
         m = media_960()
         for bit in (".rail", ".win", ".drawer-open"):
             self.assertIn(bit, m, bit)
-        w = rule(".win", m).replace(" ", "")
-        self.assertIn("top:auto", w, "a bottom sheet")
+        # the exact value of top, as strict as the removed TestPanelCss.test_phone_sheet_stays
+        # (a substring "top:auto" would also match margin-top:auto)
+        self.assertEqual(decl(rule(".win", m), "top"), "auto", "still a bottom sheet")
         self.assertIn(".ask-panel", m[m.index(".drawer-open"):] if ".drawer-open" in m else "")
 
 

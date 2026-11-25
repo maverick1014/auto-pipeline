@@ -71,10 +71,17 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from scripthelp import ScriptCase, ScriptRepo
+import subprocess  # noqa: E402
+import tempfile  # noqa: E402
+import getpass  # noqa: E402
+import re  # noqa: E402
+from scripthelp import BIN  # noqa: E402
+import test_agent_checks as tcr  # noqa: E402
+import pty  # noqa: E402
 
 MADE_FILES = ["agent_todo.txt", "agent_completed.txt",
               "agent_ideas.txt", "agent_worktree.txt", "AGENTS.md",
-              "agent_repo.conf"]   # check-blocks: the repo facts, tests/test_check_init.py
+              "agent_repo.conf"]   # check-blocks: the repo facts, tests/test_agent_init.py
 
 GITIGNORE_LINES = [".secrets/", "agent_state.txt", "agent_monitor.txt",
                    "agent_monitor.txt.tmp.*", ".auto-pipeline/"]
@@ -524,3 +531,697 @@ class TestScope(InitCase):
 
     def test_bad_scope_value(self):
         self.assertEqual(self.scope("nope").returncode, 2)
+
+
+class TestInitNamesThePushRule(ScriptCase):
+    script = "agent-init.sh"
+
+    def setUp(self):
+        self.repo = ScriptRepo(init_project=False)
+        self.addCleanup(self.repo.cleanup)
+        self.repo.git_init(self.repo.dir)
+
+    def test_optional_line_after_the_block(self):
+        out = self.assertOk(self.repo.run("agent-init.sh"))
+        start, end = out.index("{"), out.rindex("}")
+        block = json.loads(out[start:end + 1])
+        self.assertNotIn("Bash(git push origin main)", block["permissions"]["allow"])
+        after = out[end + 1:]
+        # check-blocks section 37 F3: the merge push goes to the person's working branch, never to main
+        self.assertNotIn("git push origin main", after)
+        line = [l for l in after.splitlines() if "Bash(git push origin ap-main-t)" in l]
+        self.assertTrue(line, after)
+        self.assertIn("optional", line[0].lower())
+
+
+HEADER = ("# agent_repo.conf: this repo's own facts (check-blocks). Written by agent-init.sh, "
+          "kept up to date by agents; a human may edit it, never has to.")
+
+
+GENERIC = ["empty value", "more than one page", "deleted rows", "invalid input",
+           "day boundary in local time", "double submit", "large size"]
+
+
+class WorkingInitCase(ScriptCase):
+    script = "agent-init.sh"
+
+    def setUp(self):
+        super().setUp()
+        self.p = self.repo.dir
+
+    def put(self, files):
+        for rel, body in files.items():
+            full = os.path.join(self.p, rel)
+            os.makedirs(os.path.dirname(full) or ".", exist_ok=True)
+            with open(full, "w") as fh:
+                fh.write(body)
+
+    def git(self, *args, env=None):
+        e = dict(os.environ, **(env or {}))
+        return subprocess.run(["git", "-C", self.p] + list(args), check=True, capture_output=True,
+                              text=True, env=e).stdout
+
+    def commit(self, msg):
+        self.git("add", "-A")
+        self.git("commit", "-q", "--allow-empty", "-m", msg)
+
+    def init(self, *args, env=None):
+        r = self.repo.run("agent-init.sh", *args, env=env)
+        self.assertEqual(r.returncode, 0, "exit %d\n%s\n%s" % (r.returncode, r.stdout, r.stderr))
+        return r
+
+    def conf_text(self):
+        with open(os.path.join(self.p, "agent_repo.conf")) as fh:
+            return fh.read()
+
+    def conf(self):
+        """key -> value (last wins), plus 'edge' -> list and 'fix' -> list of # fix: subjects."""
+        out = {"edge": [], "fix": [], "comments": []}
+        for line in self.conf_text().splitlines():
+            if line.startswith("# fix: "):
+                out["fix"].append(line[len("# fix: "):])
+            elif line.startswith("#"):
+                out["comments"].append(line)
+            elif "=" in line:
+                k, v = line.split("=", 1)
+                if k == "edge":
+                    out["edge"].append(v)
+                else:
+                    out[k] = v
+        return out
+
+
+class TestFresh(WorkingInitCase):
+
+    def test_an_empty_project_gets_version_1(self):
+        r = self.init("--no-measure")
+        text = self.conf_text()
+        self.assertEqual(text.splitlines()[0], HEADER)
+        c = self.conf()
+        self.assertEqual(c["version"], "1")
+        for key in ("core_paths", "guard_tests", "build_cmd", "related_cmd", "full_cmd", "test_config",
+                    "data_scripts"):
+            self.assertEqual(c[key], "", key)
+        self.assertEqual(c["real_data"], "none")
+        self.assertEqual(c["edge"], ["empty value", "invalid input"])
+        self.assertIn("agent_repo.conf: written (version 1)", r.stdout.splitlines())
+
+    def test_key_order(self):
+        self.init("--no-measure")
+        keys = [l.split("=", 1)[0] for l in self.conf_text().splitlines() if "=" in l and not l.startswith("#")]
+        order = ["version", "core_paths", "guard_tests", "build_cmd", "related_cmd", "full_cmd", "test_config",
+                 "data_scripts", "real_data"]
+        self.assertEqual([k for k in keys if k in order], order)
+        self.assertGreater(keys.index("edge"), keys.index("real_data"))
+        self.assertNotIn("working_branch", keys)   # a setting now (owner 2026-11-25, section 28)
+
+    def test_it_is_meant_to_be_committed(self):
+        self.init("--no-measure")
+        self.assertNotIn("agent_repo.conf", self.repo.read(".gitignore") or "")
+
+    def test_a_second_run_changes_nothing(self):
+        self.init("--no-measure")
+        before = self.conf_text()
+        r = self.init("--no-measure")
+        self.assertEqual(self.conf_text(), before)
+        self.assertIn("agent_repo.conf: kept", r.stdout.splitlines())
+
+
+class TestDetect(WorkingInitCase):
+
+    def test_python_unittest(self):
+        self.put({"bin/tool.py": "x = 1\n", "tests/test_tool.py": "import unittest\nclass T(unittest.TestCase):\n    pass\n"})
+        self.commit("py")
+        self.init("--no-measure")
+        c = self.conf()
+        self.assertEqual(c["build_cmd"], "python3 -m compileall -q bin tests")
+        self.assertEqual(c["related_cmd"], "python3 -m unittest {modules}")
+        self.assertEqual(c["full_cmd"], "python3 -m unittest discover -s tests -t .")
+
+    def test_pytest(self):
+        self.put({"app/a.py": "x = 1\n", "tests/test_a.py": "import pytest\n\ndef test_a():\n    pass\n",
+                  "pytest.ini": "[pytest]\n"})
+        self.commit("pytest")
+        self.init("--no-measure")
+        c = self.conf()
+        self.assertEqual(c["related_cmd"], "python3 -m pytest {tests}")
+        self.assertEqual(c["full_cmd"], "python3 -m pytest")
+
+    def test_jest_with_lint_and_typecheck_scripts(self):
+        pkg = {"scripts": {"test": "jest", "lint": "eslint .", "typecheck": "tsc --noEmit"},
+               "devDependencies": {"jest": "29"}}
+        self.put({"package.json": json.dumps(pkg), "src/a.test.js": "it('a', () => {})\n"})
+        self.commit("jest")
+        self.init("--no-measure")
+        c = self.conf()
+        self.assertEqual(c["build_cmd"], "npm run lint && npm run typecheck")
+        self.assertEqual(c["related_cmd"], "npx jest --maxWorkers=2 {tests}")
+        self.assertEqual(c["full_cmd"], "npx jest --maxWorkers=2")
+
+    def test_tsconfig_without_a_typecheck_script(self):
+        pkg = {"scripts": {"lint": "eslint ."}, "devDependencies": {"vitest": "1"}}
+        self.put({"package.json": json.dumps(pkg), "tsconfig.json": "{}\n"})
+        self.commit("vitest")
+        self.init("--no-measure")
+        c = self.conf()
+        self.assertEqual(c["build_cmd"], "npm run lint && npx tsc --noEmit")
+        self.assertEqual(c["related_cmd"], "npx vitest run {tests}")
+        self.assertEqual(c["full_cmd"], "npx vitest run")
+
+    def test_flutter(self):
+        self.put({"pubspec.yaml": "name: app\ndependencies:\n  flutter:\n    sdk: flutter\n",
+                  "test/a_test.dart": "void main() {}\n"})
+        self.commit("flutter")
+        self.init("--no-measure")
+        c = self.conf()
+        self.assertEqual(c["build_cmd"], "flutter analyze")
+        self.assertEqual(c["related_cmd"], "flutter test -j 2 {tests}")
+        self.assertEqual(c["full_cmd"], "flutter test -j 2")
+
+    def test_go(self):
+        self.put({"go.mod": "module x\n", "a.go": "package x\n"})
+        self.commit("go")
+        self.init("--no-measure")
+        self.assertEqual(self.conf()["build_cmd"], "go vet ./...")
+
+    def test_guard_tests_are_the_tests_that_read_the_tree(self):
+        self.put({"tests/test_layout.py": "import os\nfor d, _, f in os.walk(ROOT):\n    pass\n",
+                  "tests/test_files.py": "out = subprocess.run(['git', 'ls-files'])\n",
+                  "tests/test_glob.py": "import glob\nglob.glob('**/*.md', recursive=True)\n",
+                  "tests/test_plain.py": "def test_a():\n    assert 1\n",
+                  "bin/walker.py": "import os\nos.walk('.')\n"})
+        self.commit("tests")
+        self.init("--no-measure")
+        self.assertEqual(self.conf()["guard_tests"],
+                         "tests/test_files.py,tests/test_glob.py,tests/test_layout.py")
+
+    def test_core_paths_are_proposed(self):
+        self.put({"src/auth/login.js": "x\n", "src/billing/pay.js": "x\n", "app/permissions.py": "x\n",
+                  "db/migrations/0001.sql": "x\n", "src/ui/button.js": "x\n", "lib/ledger/post.rb": "x\n"})
+        self.commit("tree")
+        self.init("--no-measure")
+        core = self.conf()["core_paths"].split(",")
+        for glob in ("src/auth/", "src/billing/", "app/permissions.py", "db/migrations/", "lib/ledger/"):
+            self.assertIn(glob, core)
+        self.assertFalse([g for g in core if "ui" in g], core)
+
+    def test_generic_edges_that_fit(self):
+        self.put({"src/list.js": "const rows = paginate(q, { limit: 50, offset })\n",
+                  "src/model.py": "deleted_at = Column(DateTime)\n",
+                  "src/form.jsx": "<form onSubmit={save}>\n",
+                  "src/export.py": "def export_csv(rows):\n    pass\n",
+                  "src/day.js": "const d = new Date(); tz = 'Asia/Kuala_Lumpur'\n"})
+        self.commit("code")
+        self.init("--no-measure")
+        self.assertEqual(self.conf()["edge"], GENERIC)
+
+    def test_the_last_fix_commits_are_listed(self):
+        for msg in ("feat: a page", "fix: refund larger than the invoice", "Bug: empty list crashes",
+                    "hotfix: day boundary in KL time", "chore: tidy"):
+            self.commit(msg)
+        self.init("--no-measure")
+        self.assertEqual(self.conf()["fix"], ["hotfix: day boundary in KL time", "Bug: empty list crashes",
+                                              "fix: refund larger than the invoice"])
+
+    def test_only_20_fix_commits(self):
+        for i in range(25):
+            self.commit("fix: bug %d" % i)
+        self.init("--no-measure")
+        fixes = self.conf()["fix"]
+        self.assertEqual(len(fixes), 20)
+        self.assertEqual(fixes[0], "fix: bug 24")
+
+    def test_real_data_names_a_read_only_secret(self):
+        os.makedirs(os.path.join(self.p, ".secrets"), exist_ok=True)
+        self.put({".secrets/db_readonly.env": "URL=x\n", ".secrets/admin.env": "URL=y\n"})
+        r = self.init("--no-measure")
+        self.assertEqual(self.conf()["real_data"], ".secrets/db_readonly.env")
+        self.assertNotIn("URL=", r.stdout + self.conf_text())
+
+
+class TestExisting(WorkingInitCase):
+
+    def test_only_missing_keys_are_added_and_set_values_stay(self):
+        self.put({"agent_repo.conf": "level3_paths=src/money/\nbuild_cmd=make check\nedge=a refund\n",
+                  "bin/a.py": "x = 1\n", "tests/test_a.py": "import unittest\n"})
+        self.commit("old file")
+        r = self.init("--no-measure")
+        c = self.conf()
+        self.assertEqual(c["level3_paths"], "src/money/")
+        self.assertEqual(c["build_cmd"], "make check")
+        self.assertEqual(c["related_cmd"], "python3 -m unittest {modules}")
+        self.assertEqual(c["edge"], ["a refund"])
+        lines = r.stdout.splitlines()
+        self.assertIn("agent_repo.conf: added related_cmd", lines)
+        self.assertNotIn("agent_repo.conf: added build_cmd", lines)
+        self.assertNotIn("agent_repo.conf: added edge", lines)
+        self.assertTrue(self.conf_text().startswith("level3_paths=src/money/\nbuild_cmd=make check\nedge=a refund\n"))
+
+
+class TestMeasure(WorkingInitCase):
+
+    def py_project(self, guard_sleep=0):
+        files = {"bin/a.py": "x = 1\n", "tests/__init__.py": "",
+                 "tests/test_tree.py": "import os, time, unittest\n\nclass T(unittest.TestCase):\n"
+                                       "    def test_walk(self):\n        time.sleep(%d)\n"
+                                       "        list(os.walk('.'))\n" % guard_sleep}
+        self.put(files)
+        self.commit("py")
+
+    def test_build_and_guard_are_timed(self):
+        self.py_project()
+        r = self.init()
+        c = self.conf()
+        self.assertRegex(c["build_seconds"], r"^\d+$")
+        self.assertLessEqual(int(c["build_seconds"]), 30)
+        self.assertRegex(c["build_mb"], r"^\d+$")
+        self.assertRegex(c["guard_seconds"], r"^\d+$")
+        self.assertTrue(any(l.startswith("agent_repo.conf: measured build ") for l in r.stdout.splitlines()),
+                        r.stdout)
+
+    def test_no_measure_writes_no_numbers(self):
+        self.py_project()
+        self.init("--no-measure")
+        c = self.conf()
+        for key in ("build_seconds", "build_mb", "guard_seconds"):
+            self.assertNotIn(key, c)
+
+    def test_over_the_cap_is_not_measured(self):
+        self.py_project()
+        r = self.init(env={"AGENT_FAKE_RAM": "95"})
+        self.assertNotIn("build_seconds", self.conf())
+        self.assertIn("agent_repo.conf: not measured: RAM 95% over the 80% cap", r.stdout.splitlines())
+
+    def test_a_run_that_hits_the_cap_is_heavy_and_not_retried(self):
+        self.py_project(guard_sleep=4)
+        r = self.init(env={"AGENT_INIT_MEASURE_CAP_S": "1"})
+        lines = self.conf_text().splitlines()
+        i = lines.index("guard_seconds=1")
+        self.assertEqual(lines[i - 1], "# heavy: hit the 1 s cap")
+        self.assertEqual(r.stdout.count("measured guard"), 1)
+        r = self.init(env={"AGENT_INIT_MEASURE_CAP_S": "1"})
+        self.assertNotIn("measured guard", r.stdout)
+
+
+class TestReviewInit(WorkingInitCase):
+    """Core review defect 11: init never proposes a core path with a space (it would be refused)."""
+
+    def test_no_core_path_with_a_space(self):
+        self.put({"Payment Service/pay.js": "x\n", "src/auth/login.js": "x\n"})
+        self.commit("tree")
+        self.init("--no-measure")
+        core = self.conf()["core_paths"].split(",")
+        self.assertIn("src/auth/", core)
+        self.assertFalse([c for c in core if " " in c], core)
+
+
+class TestWorkingBranch(WorkingInitCase):
+    """Owner 2026-11-25 (sections 28, 29): every repo keeps the working branch (setting "Flow: Working
+    branch"); init creates it from the production branch and switches the main checkout to it. No worktree."""
+
+    def setUp(self):
+        super().setUp()
+        # section 44 F4: a repo that never used the plugin has no agent file at HEAD (the fixture commits them)
+        tracked = [f for f in self.git("ls-files").split() if f.startswith("agent_")]
+        if tracked:
+            self.git("rm", "-q", "--cached", *tracked)
+            self.git("commit", "-q", "-m", "not yet a plugin repo")
+
+    def branch(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
+        import agent_conf
+        return "ap-main-t"   # section 34: per person; the fixture's git user.name is t
+
+    def head(self):
+        return self.git("rev-parse", "--abbrev-ref", "HEAD").strip()
+
+    def test_init_creates_the_branch_and_switches_the_checkout(self):
+        prod = self.head()
+        b = self.branch()
+        r = self.init("--no-measure")
+        lines = r.stdout.splitlines()
+        self.assertIn("working branch: created %s from %s" % (b, prod), lines)
+        self.assertIn("checkout: switched to %s" % b, lines)
+        self.assertEqual(self.head(), b)
+        self.assertEqual(self.git("rev-parse", b).strip(), self.git("rev-parse", prod).strip())
+        self.assertEqual(self.git("worktree", "list").strip().count("\n"), 0, "no extra worktree")
+
+    def test_a_second_run_keeps_it(self):
+        self.init("--no-measure")
+        r = self.init("--no-measure")
+        self.assertIn("working branch: kept %s" % self.branch(), r.stdout.splitlines())
+        self.assertIn("checkout: on %s" % self.branch(), r.stdout.splitlines())
+
+    def test_local_changes_are_carried(self):
+        self.put({"notes.txt": "mine\n"})
+        self.init("--no-measure")
+        self.assertEqual(self.head(), self.branch())
+        with open(os.path.join(self.p, "notes.txt")) as fh:
+            self.assertEqual(fh.read(), "mine\n")
+
+    def test_the_setting_names_the_branch(self):
+        self.repo.set_conf("working_branch", "trunk")
+        r = self.init("--no-measure")
+        self.assertIn("checkout: switched to trunk", r.stdout.splitlines())
+
+
+class TestWorkingBranchPushed(WorkingInitCase):
+    """Section 34: the branch is pushed to origin (other machines need it)."""
+
+    def test_init_pushes_it(self):
+        origin = os.path.join(self.repo.base, "origin.git")
+        subprocess.run(["git", "init", "-q", "--bare", origin], check=True, capture_output=True)
+        self.git("remote", "add", "origin", origin)
+        self.init("--no-measure")
+        out = subprocess.run(["git", "-C", origin, "branch", "--list", "ap-main-t"], capture_output=True,
+                             text=True).stdout
+        self.assertIn("ap-main-t", out)
+
+
+CHANGE = "/plugin -> Installed -> auto-pipeline -> Configure"
+
+
+class TestInit(ScriptCase):
+    script = "agent-init.sh"
+
+    def init(self, *args):
+        return self.repo.run("agent-init.sh", self.repo.dir, *args, stdin="")
+
+    def test_init_writes_no_settings_file_and_asks_nothing(self):
+        for name in ("agent_todo.txt", "agent_completed.txt", "agent_ideas.txt", "agent_worktree.txt"):
+            path = self.repo.path(name)
+            if os.path.exists(path):
+                os.remove(path)
+        r = self.init()
+        self.assertOk(r)
+        self.assertFalse(os.path.exists(self.repo.path("agent.conf")))
+        self.assertFalse(os.path.exists(self.repo.user_conf))
+        self.assertFalse(os.path.exists(os.path.join(self.repo.claude_dir(), "settings.json")))
+        for name in ("agent_todo.txt", "agent_completed.txt", "agent_ideas.txt", "agent_worktree.txt"):
+            self.assertTrue(os.path.exists(self.repo.path(name)), name)
+        self.assertNotIn("?", "\n".join(l for l in r.stdout.splitlines() if "auto_update" in l or "language" in l.lower()))
+        self.assertIn("settings: " + CHANGE, r.stdout)
+
+    def test_init_moves_an_old_agent_conf(self):
+        self.repo.set_old_conf("language=zh\n")
+        r = self.init()
+        self.assertOk(r)
+        self.assertIn("moved language=zh from", r.stdout)
+
+
+class TestF4AlreadyUsesThePlugin(WorkingInitCase):
+    def head(self):
+        return self.git("rev-parse", "--abbrev-ref", "HEAD").strip()
+
+    def test_a_clone_of_a_plugin_repo_is_not_switched(self):
+        self.assertIn("agent_todo.txt", self.git("ls-files"))              # committed: the repo uses the plugin
+        r = self.init("--no-measure")
+        self.assertNotEqual(self.head(), "ap-main-t")
+        self.assertTrue([l for l in r.stdout.splitlines() if l.startswith("WORKING BRANCH: ")], r.stdout)
+
+    def test_a_new_repo_with_a_local_state_file_is_switched(self):
+        tracked = [f for f in self.git("ls-files").split() if f.startswith("agent_")]
+        self.git("rm", "-q", "--cached", *tracked)
+        self.git("commit", "-q", "-m", "not yet a plugin repo")
+        self.put({"agent_state.txt": "ROLE: main manager\n"})              # a local file decides nothing
+        self.init("--no-measure")
+        self.assertEqual(self.head(), "ap-main-t")
+
+
+class TestF6RemoteWorkingBranch(WorkingInitCase):
+    def origin_with(self, extra_commit):
+        origin = os.path.join(self.repo.base, "origin6.git")
+        subprocess.run(["git", "init", "-q", "--bare", origin], check=True, capture_output=True)
+        self.git("remote", "add", "origin", origin)
+        other = tempfile.mkdtemp(prefix="f6_")
+        self.addCleanup(subprocess.run, ["rm", "-rf", other])
+        self.git("push", "-q", "origin", "HEAD:refs/heads/ap-main-t")
+        subprocess.run(["git", "clone", "-q", origin, other], check=True, capture_output=True)
+        if extra_commit:
+            subprocess.run(["git", "-C", other, "switch", "-q", "ap-main-t"], check=True, capture_output=True)
+            with open(os.path.join(other, "theirs.txt"), "w") as fh:
+                fh.write("unreleased work\n")
+            subprocess.run(["git", "-C", other, "add", "-A"], check=True, capture_output=True)
+            subprocess.run(["git", "-C", other, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                            "-m", "unreleased"], check=True, capture_output=True)
+            subprocess.run(["git", "-C", other, "push", "-q", "origin", "ap-main-t"], check=True, capture_output=True)
+        return origin
+
+    def test_tracks_the_remote_branch(self):
+        self.origin_with(extra_commit=True)
+        self.git("fetch", "-q", "origin")
+        r = self.init("--no-measure")
+        self.assertIn("working branch: tracking origin/ap-main-t", r.stdout.splitlines())
+        self.assertEqual(self.git("rev-parse", "ap-main-t").strip(), self.git("rev-parse", "origin/ap-main-t").strip())
+
+    def test_a_rejected_push_says_why(self):
+        self.origin_with(extra_commit=True)
+        self.git("branch", "ap-main-t")                                    # a local branch without their commit
+        self.git("switch", "-q", "ap-main-t")
+        self.put({"mine.txt": "mine\n"})
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "mine")
+        r = self.init("--no-measure")
+        self.assertIn("working branch: not pushed: the remote has commits this clone does not have "
+                      "(fetch and merge origin/ap-main-t first)", r.stdout.splitlines())
+
+
+ROOT = os.path.dirname(HERE)
+
+
+def read(*parts):
+    with open(os.path.join(ROOT, *parts)) as fh:
+        return fh.read()
+
+
+def rule(start, end):
+    text = read("PRINCIPLES.md")
+    return text[text.index(start):text.index(end)]
+
+
+class TestF3NoStandingPushToProduction(WorkingInitCase):
+    def test_init_names_the_working_branch_never_main(self):
+        out = self.init("--no-measure").stdout
+        self.assertNotIn("git push origin main", out)
+        self.assertNotIn("integration branch", out)
+        self.assertIn('allow "Bash(git push origin ap-main-t)"', out)
+
+    def test_w16_and_clean_up(self):
+        w16 = rule("W16. ", "W17. ")
+        self.assertNotIn("integration branch", w16)
+        self.assertIn("working branch", w16)
+        cu = read("skills", "clean-up", "SKILL.md")
+        self.assertNotIn("git push origin main", cu)
+        self.assertIn("push the branch the main checkout is on", cu)
+
+
+class TestF10DerivedOnlyByInitAndTheStart(unittest.TestCase):
+    def setUp(self):
+        self.repo = ScriptRepo()
+        self.addCleanup(self.repo.cleanup)
+        sys.path.insert(0, BIN)
+        import agent_conf
+        self.ac = agent_conf
+
+    def stored(self):
+        return subprocess.run(["git", "-C", self.repo.dir, "config", "--local", "--get", "auto-pipeline.workingbranch"],
+                              capture_output=True, text=True).stdout.strip()
+
+    def test_a_reader_stores_nothing(self):
+        old = dict(os.environ)
+        self.addCleanup(lambda: (os.environ.clear(), os.environ.update(old)))
+        os.environ.update(self.repo._env(None))
+        self.assertIsNone(self.ac.working_branch(self.repo.dir))
+        self.assertEqual(self.stored(), "")
+        self.assertEqual(self.ac.working_branch(self.repo.dir, derive=True), "ap-main-t")
+        self.assertEqual(self.stored(), "ap-main-t")
+        self.assertEqual(self.ac.working_branch(self.repo.dir), "ap-main-t")
+
+    def test_an_empty_user_name_takes_the_login_name(self):
+        old = dict(os.environ)
+        self.addCleanup(lambda: (os.environ.clear(), os.environ.update(old)))
+        os.environ.update(self.repo._env(None))
+        os.environ.update({"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"})
+        subprocess.run(["git", "-C", self.repo.dir, "config", "--local", "--unset", "user.name"], capture_output=True)
+        want = re.sub(r"[^a-z0-9-]+", "-", getpass.getuser().lower()).strip("-") or "user"
+        self.assertEqual(self.ac.working_branch(self.repo.dir, derive=True), "ap-main-" + want)
+
+    def test_the_gate_with_nothing_stored_says_so(self):
+        c = tcr.TestGate("test_the_check_deputy_is_no_builder")
+        c.setUp()
+        self.addCleanup(c.tearDown)
+        c.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+        c.ok("check", "t", "PR REVIEW", "pass", "--by", "t Reviewer", "--evidence", "read it")
+        subprocess.run(["git", "-C", c.repo.dir, "config", "--local", "--unset", "auto-pipeline.workingbranch"],
+                       capture_output=True)
+        r = c.af("checks", "gate", "t", "--dir", c.repo.dir)       # no --base: the default base is worked out
+        self.assertIn("note: no working branch stored in this clone: give --base origin/<working branch> "
+                      "(the brief names it)", r.stdout.splitlines())
+        r = c.gate()                                                    # --base given (the brief named it): no note
+        self.assertNotIn("no working branch stored", r.stdout)
+
+    def test_promote_with_nothing_stored_is_refused(self):
+        r = self.repo.run("agent-promote.sh", "--sync")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("no working branch stored in this clone: run agent-init.sh or start the main manager here",
+                      r.stdout + r.stderr)
+
+
+class TestP4P5P8Init(WorkingInitCase):
+    def head(self):
+        return self.git("rev-parse", "--abbrev-ref", "HEAD").strip()
+
+    def test_p4_a_repo_that_uses_the_plugin_is_not_switched(self):
+        self.put({"agent_state.txt": "ROLE: main manager\n"})
+        r = self.init("--no-measure")
+        self.assertNotEqual(self.head(), "ap-main-t")
+        self.assertTrue([l for l in r.stdout.splitlines() if l.startswith("WORKING BRANCH: ")
+                         and "at a quiet point" in l], r.stdout)
+
+    def test_p5_no_branch_step(self):
+        r = self.init("--no-measure", "--no-branch")
+        self.assertFalse([l for l in r.stdout.splitlines() if l.startswith(("working branch:", "checkout:"))])
+        self.assertEqual(self.git("branch", "--list", "ap-main-t").strip(), "")
+
+    def test_p5_the_start_and_cloud_pack_pass_it(self):
+        self.assertIn('agent-init.sh" --no-measure --no-branch', read("bin", "agent-start.sh"))
+        self.assertIn("--no-branch", read("bin", "agent-cloud-pack.sh"))
+
+    def test_p8_a_failed_push_says_so(self):
+        self.git("remote", "add", "origin", os.path.join(self.repo.base, "nowhere.git"))
+        r = self.init("--no-measure")
+        self.assertTrue([l for l in r.stdout.splitlines() if l.startswith("working branch: not pushed: ")], r.stdout)
+
+
+class TestG2NoBranchStoresNothing(WorkingInitCase):
+    def test_init_no_branch(self):
+        r = self.init("--no-measure", "--no-branch")
+        stored = subprocess.run(["git", "-C", self.p, "config", "--local", "--get", "auto-pipeline.workingbranch"],
+                                capture_output=True, text=True).stdout.strip()
+        self.assertEqual(stored, "", "--no-branch stores no name")
+        self.assertIn('allow "Bash(git push origin <your working branch>)"', r.stdout)
+
+    def test_the_read_only_cli(self):
+        cli = [sys.executable, os.path.join(self.repo.plugin, "bin", "agent_conf.py"), "stored-working-branch", self.p]
+        r = subprocess.run(cli, capture_output=True, text=True, env=self.repo._env(None))
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, ""))
+        subprocess.run(["git", "-C", self.p, "config", "--local", "auto-pipeline.workingbranch", "ap-main-x"], check=True)
+        r = subprocess.run(cli, capture_output=True, text=True, env=self.repo._env(None))
+        self.assertEqual(r.stdout.strip(), "ap-main-x")
+
+
+SKIP_KEY = '"skipDangerousModePermissionPrompt": true'
+
+
+WARN = "new panes stop on the bypass warning screen"
+
+
+class SkipWarningCase(ScriptCase):
+    def setUp(self):
+        self.repo = ScriptRepo(init_project=False)
+        self.addCleanup(self.repo.cleanup)
+        self.project = self.repo.dir
+        self.repo.git_init(self.project)
+        self.home = self.repo.fake_home()
+
+    def init(self, *args, **kw):
+        return self.repo.run("agent-init.sh", *args, **kw)
+
+    def settings(self, data=None, raw=None):
+        os.makedirs(os.path.join(self.home, ".claude"), exist_ok=True)
+        path = os.path.join(self.home, ".claude", "settings.json")
+        with open(path, "w") as fh:
+            fh.write(raw if raw is not None else json.dumps(data, indent=2) + "\n")
+        return path
+
+    def warn_lines(self, out):
+        return [l for l in out.splitlines() if WARN in l]
+
+    def tty(self, answer, *args):
+        """Run agent-init.sh with stdin a terminal; ANSWER is typed into it."""
+        master, slave = pty.openpty()
+        try:
+            proc = subprocess.Popen([self.repo.script_path("agent-init.sh")] + list(args), cwd=self.project,
+                                    env=self.repo._env(None), stdin=slave, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, text=True)
+            os.close(slave)
+            slave = None
+            if answer is not None:
+                # Questions in order: permission mode, auto update, add permissions.
+                # ANSWER is the first; Enter (the default) is typed for the later ones
+                # so a terminal run never waits on a prompt this test does not script.
+                os.write(master, (answer + "\n\n\n").encode())
+            out, err = proc.communicate(timeout=60)
+        finally:
+            if slave is not None:
+                os.close(slave)
+            os.close(master)
+        return proc.returncode, out, err
+
+
+class TestSkipWarning(SkipWarningCase):
+    def assertOneWarning(self, out):
+        lines = self.warn_lines(out)
+        self.assertEqual(len(lines), 1, out)
+        self.assertTrue(lines[0].rstrip().endswith(SKIP_KEY), lines[0])
+        self.assertIn("~/.claude/settings.json", lines[0])
+        self.assertNotIn("{", lines[0])
+        self.assertNotIn("}", lines[0])
+
+    def assertBlockStillParses(self, out):
+        block = json.loads(out[out.index("{"):out.rindex("}") + 1])
+        self.assertIn("permissions", block)
+
+    def bypass(self):
+        self.repo.set_conf("permission_mode", "bypassPermissions")
+
+    def test_no_settings_file(self):
+        self.bypass()
+        out = self.assertOk(self.init())
+        self.assertOneWarning(out)
+        self.assertBlockStillParses(out)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "settings.json.bak-auto-pipeline")))
+
+    def test_the_default_bypass_warns_too(self):
+        # owner order 2026-11-25: the default is bypassPermissions, so init warns about the skip key
+        self.assertOneWarning(self.assertOk(self.init()))
+
+    def test_the_key_set_is_quiet(self):
+        path = self.settings({"skipDangerousModePermissionPrompt": True, "theme": "dark"})
+        self.bypass()
+        before = open(path, "rb").read()
+        out = self.assertOk(self.init())
+        self.assertEqual(self.warn_lines(out), [])
+        self.assertEqual(open(path, "rb").read(), before)
+
+    def test_the_key_false_or_missing_warns_and_the_file_stays(self):
+        for i, data in enumerate(({"skipDangerousModePermissionPrompt": False},
+                                  {"skipDangerousModePermissionPrompt": "true"},
+                                  {"permissions": {"allow": []}})):
+            with self.subTest(data=data):
+                path = self.settings(data)
+                self.bypass()
+                before = open(path, "rb").read()
+                out = self.assertOk(self.init())
+                self.assertOneWarning(out)
+                self.assertEqual(open(path, "rb").read(), before, "never writes the user's settings file")
+
+    def test_broken_json_warns(self):
+        # a broken settings.json: the setting reads as its default (bypassPermissions), so it warns
+        path = self.settings(raw="{not json")
+        out = self.assertOk(self.init())
+        self.assertOneWarning(out)
+        self.assertEqual(open(path).read(), "{not json")
+
+    def test_auto_is_quiet(self):
+        self.repo.set_conf("permission_mode", "auto")
+        out = self.assertOk(self.init())
+        self.assertEqual(self.warn_lines(out), [])
+        self.assertNotIn("skipDangerousModePermissionPrompt", out)
+
+    def test_the_script_never_writes_home_settings(self):
+        src = read("bin", "agent-init.sh")
+        for bad in ("> \"$HOME/.claude", ">> \"$HOME/.claude", ">\"$HOME/.claude", "~/.claude/settings.json\" <<"):
+            self.assertNotIn(bad, src)
+
+

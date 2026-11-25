@@ -1,28 +1,22 @@
-"""Failing tests for check-blocks section 15 (owner 1A, 2026-11-25): no task runs the full suite.
-Written by the task manager before any code. Contract: requirements/check-blocks.md section 15, C6 and C7.
+"""Tests of agent-room, one class per feature."""
 
-    bin/agent-nightly.sh (bin/agent_nightly.py)   the nightly run: gates nothing, records selection misses,
-                                                  says whether a release may go (--release-ok)
-    bin/agent-test-run.sh                         a test run is light or heavy by measured weight
-
-Status file: <git common dir>/agent_nightly.json. Misses: <git common dir>/agent_selection_misses.txt.
-Heavy slots: <git common dir>/agent_heavy_slots/<pid> (one file per running heavy run, holding its key).
-Test hooks: --wait runs the nightly in the foreground; AGENT_TEST_RUN_WAIT_S caps a wait (default 3600),
-after which agent-test-run.sh exits 3 with the reason.
-
-Run: python3 -m unittest tests.test_check_net
-"""
-
-import json
 import os
-import re
-import subprocess
 import sys
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-from scripthelp import BIN, ROOT, ScriptCase  # noqa: E402
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+import json  # noqa: E402
+import os  # noqa: E402
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+from scripthelp import BIN  # noqa: E402
+from scripthelp import ScriptCase  # noqa: E402
+import glob  # noqa: E402
+import signal  # noqa: E402
+import time  # noqa: E402
+
 
 PASSING = "import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ok(self):\n        self.assertTrue(True)\n"
 
@@ -72,232 +66,6 @@ class NetCase(ScriptCase):
         self.git("checkout", "-q", "main")
         self.git("merge", "-q", "--no-ff", "-m", subject, branch)
         self.git("push", "-q", "origin", "main")
-
-
-# ---------------------------------------------------------------- C6 the nightly run
-
-
-class TestNightly(NetCase):
-    script = "agent-nightly.sh"
-
-    def setUp(self):
-        super().setUp()
-        # section 37 F10: init or the start stores the name once per clone; the nightly only reads it
-        self.git("config", "--local", "auto-pipeline.workingbranch", "ap-main-t")
-
-    def nightly(self, *args, env=None):
-        return self.repo.run("agent-nightly.sh", *args, env=env, timeout=120)
-
-    def status_file(self):
-        with open(os.path.join(self.gitdir(), "agent_nightly.json")) as fh:
-            return json.load(fh)
-
-    def misses_file(self):
-        path = os.path.join(self.gitdir(), "agent_selection_misses.txt")
-        if not os.path.exists(path):
-            return []
-        with open(path) as fh:
-            return fh.read().splitlines()
-
-    def test_none_yet(self):
-        r = self.nightly("--status")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(r.stdout.strip(), "NIGHTLY: none")
-
-    def test_a_green_run(self):
-        r = self.nightly("--start", "--wait")
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        st = self.status_file()
-        self.assertEqual(st["result"], "green")
-        self.assertEqual(st["commit"], self.git("rev-parse", "HEAD"))
-        self.assertEqual(st["failed"], [])
-        out = self.nightly("--status").stdout.strip()
-        self.assertRegex(out, r"^NIGHTLY: green [0-9a-f]{7,} \d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
-
-    def test_a_red_run_gates_nothing_and_says_which_test(self):
-        self.put({"src/x.txt": "broken\n"})
-        self.git("commit", "-qam", "break")
-        r = self.nightly("--start", "--wait")
-        self.assertEqual(r.returncode, 0, "the nightly gates nothing: %s" % r.stderr)
-        st = self.status_file()
-        self.assertEqual(st["result"], "red")
-        self.assertEqual(len(st["failed"]), 1)
-        self.assertIn("test_x_txt", st["failed"][0])
-
-    def test_a_red_after_a_green_is_a_selection_miss_of_the_merge(self):
-        self.nightly("--start", "--wait")
-        self.merge("feat-doc", {"docs/a.md": "x\n"}, "Merge feat-doc (W8)")
-        self.merge("feat-x", {"src/x.txt": "broken\n"}, "Merge feat-x (W8)")
-        self.merge("feat-y", {"docs/b.md": "y\n"}, "Merge feat-y (W8)")
-        self.nightly("--start", "--wait")
-        lines = self.misses_file()
-        self.assertEqual(len(lines), 1, lines)
-        date, test, merge = lines[0].split(" | ")
-        self.assertRegex(date, r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
-        self.assertIn("test_x_txt", test)
-        self.assertRegex(merge, r"^[0-9a-f]{7,} Merge feat-x \(W8\)$")
-        out = self.nightly("--misses").stdout.splitlines()
-        self.assertEqual(out[-1], "misses: 1 since %s" % date)
-
-    def test_a_nightly_started_after_the_bump_lets_the_release_go(self):
-        # final review defect D: merge skill step 8 bumps first, then --release-ok says no, then --start
-        self.put({".claude-plugin/plugin.json": '{"name": "p", "version": "0.2.0"}\n'})
-        self.git("add", "-A")
-        self.git("commit", "-q", "-m", "bump 0.2.0")
-        self.assertEqual(self.nightly("--release-ok").returncode, 1)
-        self.nightly("--start", "--wait")
-        r = self.nightly("--release-ok")
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-
-    def test_the_nightly_tests_the_working_branch(self):
-        # owner 1A (section 17): dev is the working branch; main (checked out here) moved on and is red
-        self.git("branch", "dev")
-        dev = self.git("rev-parse", "dev")
-        self.put({"src/x.txt": "broken\n"})
-        self.git("commit", "-qam", "main moves")
-        self.git("config", "--local", "auto-pipeline.workingbranch", "dev")   # stored by init (section 37 F10)
-        self.nightly("--start", "--wait")
-        st = self.status_file()
-        self.assertEqual((st["commit"], st["result"]), (dev, "green"), st)
-        self.assertEqual(self.nightly("--release-ok").returncode, 0)
-
-    def test_the_nightly_tests_the_commit_not_the_shared_checkout(self):
-        # re-check defect G: merge deputies work in the main checkout at night
-        self.put({"src/x.txt": "half merged\n"})                    # uncommitted, in the main checkout
-        self.nightly("--start", "--wait")
-        st = self.status_file()
-        self.assertEqual(st["result"], "green", st)
-        self.assertEqual(st["commit"], self.git("rev-parse", "HEAD"))
-        self.assertEqual(len(self.git("worktree", "list").splitlines()), 1, "the scratch tree is gone")
-
-    def test_the_scratch_tree_sees_the_installed_dependency_folders(self):
-        # a clean scratch checkout has no node_modules or venv: the nightly links the main checkout's
-        # ignored dependency folders (node_modules, .venv, venv, vendor, .dart_tool, Pods), top level and
-        # one level down, into the scratch tree, read only by use; else every JS or Python repo is red
-        self.put({".gitignore": "node_modules/\npackages/*/node_modules/\n",
-                  "tests/test_dep.py": "import os, unittest\n\n\nclass D(unittest.TestCase):\n"
-                                       "    def test_dep(self):\n"
-                                       "        self.assertTrue(os.path.exists('node_modules/dep/index.js'))\n"
-                                       "        self.assertTrue(os.path.exists('packages/a/node_modules/x.js'))\n"})
-        self.git("add", "-A")
-        self.git("commit", "-q", "-m", "needs deps")
-        self.put({"node_modules/dep/index.js": "x\n", "packages/a/node_modules/x.js": "y\n"})
-        self.nightly("--start", "--wait")
-        self.assertEqual(self.status_file()["result"], "green", self.status_file())
-        self.assertTrue(os.path.exists(os.path.join(self.repo.dir, "node_modules", "dep", "index.js")),
-                        "the main checkout's folder stays")
-
-    def test_failures_names_the_merge_by_running_the_test(self):
-        # section 21 (4): the broken file is not named in the test's text, so only running finds the merge
-        self.put({"tests/test_cfg.py": "import os, unittest\n\n\nclass C(unittest.TestCase):\n"
-                                       "    def test_cfg(self):\n        name = 'co' + 'nf.txt'\n"
-                                       "        with open(os.path.join('src', name)) as fh:\n"
-                                       "            self.assertEqual(fh.read().strip(), 'on')\n",
-                  "src/conf.txt": "on\n", "requirements/feat-c.md": "# feat-c\n"})
-        self.git("add", "-A")
-        self.git("commit", "-q", "-m", "cfg")
-        self.nightly("--start", "--wait")
-        self.merge("feat-a", {"docs/a.md": "a\n"}, "Merge feat-a (W8)")
-        self.merge("feat-c", {"src/conf.txt": "off\n"}, "Merge feat-c (W8)")
-        self.merge("feat-y", {"docs/b.md": "y\n"}, "Merge feat-y (W8)")
-        self.nightly("--start", "--wait")
-        r = self.nightly("--failures")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        rows = [l for l in r.stdout.splitlines() if "test_cfg" in l]
-        self.assertEqual(len(rows), 1, r.stdout)
-        test, merge, task, req = rows[0].split(" | ")
-        self.assertRegex(merge, r"^[0-9a-f]{7,} Merge feat-c \(W8\)$")
-        self.assertEqual((task, req), ("feat-c", "requirements/feat-c.md"))
-        misses = [l for l in self.misses_file() if "test_cfg" in l]
-        self.assertTrue(misses and misses[-1].split(" | ")[2].endswith("Merge feat-c (W8)"), misses)
-
-    def test_failures_with_no_green_run_before(self):
-        self.put({"src/x.txt": "broken\n"})
-        self.git("commit", "-qam", "break")
-        self.nightly("--start", "--wait")
-        rows = [l for l in self.nightly("--failures").stdout.splitlines() if "test_x_txt" in l]
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0].split(" | ")[1], "-")
-
-    def test_a_red_first_run_is_no_miss(self):
-        self.put({"src/x.txt": "broken\n"})
-        self.git("commit", "-qam", "break")
-        self.nightly("--start", "--wait")
-        self.assertEqual(self.misses_file(), [])
-
-    def test_release_ok_needs_a_green_run_on_the_commit_released(self):
-        # re-check defect D: the release is built from local HEAD before main is pushed (merge skill step 8);
-        # a commit that only bumps .claude-plugin/plugin.json counts as its parent
-        r = self.nightly("--release-ok")
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("agent-nightly.sh --start", r.stdout)
-        self.nightly("--start", "--wait")
-        self.assertEqual(self.nightly("--release-ok").returncode, 0)
-        self.put({".claude-plugin/plugin.json": '{"name": "p", "version": "0.2.0"}\n'})
-        self.git("add", "-A")
-        self.git("commit", "-q", "-m", "bump 0.2.0")                 # local, not pushed
-        self.assertEqual(self.nightly("--release-ok").returncode, 0, "a version bump alone is its parent")
-        self.put({"src/x.txt": "ok\n", "docs/a.md": "x\n"})
-        self.git("add", "-A")
-        self.git("commit", "-q", "-m", "more code")
-        self.assertEqual(self.nightly("--release-ok").returncode, 1, "HEAD moved after the nightly")
-
-    def test_due(self):
-        late = {"AGENT_FAKE_NOW": "2026-11-25 23:00"}
-        self.assertEqual(self.nightly("--due", env=late).returncode, 0)
-        self.nightly("--start", "--wait", env={"AGENT_FAKE_NOW": "2026-11-25 22:30"})
-        self.assertEqual(self.nightly("--due", env=late).returncode, 1, "one run a day")
-        self.assertEqual(self.nightly("--due", env={"AGENT_FAKE_NOW": "2026-11-26 10:00"}).returncode, 1,
-                         "under 24 hours old, before the hour")
-        self.assertEqual(self.nightly("--due", env={"AGENT_FAKE_NOW": "2026-11-26 23:30"}).returncode, 0)
-
-    def test_the_nightly_waits_for_room(self):
-        # section 24: no slots; the nightly passes the same memory gate as any run
-        env = {"AGENT_FAKE_RAM": "79", "AGENT_FAKE_RAM_TOTAL_MB": "10000", "AGENT_TEST_RUN_WAIT_S": "1",
-               "AGENT_RESERVE_FILE": os.path.join(self.repo.base, "reserve.json")}
-        holder = subprocess.Popen(["sleep", "30"])
-        self.addCleanup(holder.kill)
-        with open(env["AGENT_RESERVE_FILE"], "w") as fh:
-            json.dump({"jobs": [{"pid": holder.pid, "mb": 500, "what": "x", "repo": "y",
-                                 "since": "2026-11-25 15:00"}]}, fh)
-        r = self.nightly("--start", "--wait", env=env)
-        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
-        self.assertIn("ROOM: no:", r.stdout + r.stderr)
-
-    def test_the_nightly_hour_is_a_constant(self):
-        sys.path.insert(0, BIN)
-        import agent_conf
-        self.assertEqual(agent_conf.CONSTANTS["nightly_hour"], 22)
-
-    def test_a_normal_session_start_starts_a_due_nightly(self):
-        # re-check defect E: the block sat inside the compaction branch
-        import time
-        r = self.repo.run("agent-start.sh", stdin='{"cwd": "%s", "source": "startup"}' % self.repo.dir,
-                          env={"AGENT_FAKE_NOW": "2026-11-25 23:00", "CLAUDE_PID": str(os.getpid())})
-        self.assertEqual(r.returncode, 0, r.stderr)
-        path = os.path.join(self.gitdir(), "agent_nightly.json")
-        for _ in range(100):
-            if os.path.exists(path):
-                break
-            time.sleep(0.1)
-        self.assertTrue(os.path.exists(path), "no nightly was started at a normal session start")
-        for _ in range(300):                                      # let the background run end before cleanup
-            with open(path) as fh:
-                if json.load(fh).get("finished"):
-                    break
-            time.sleep(0.1)
-
-    def test_who_starts_it(self):
-        with open(os.path.join(BIN, "agent_housekeep.py")) as fh:
-            hk = fh.read()
-        self.assertIn("agent-nightly.sh", hk)
-        self.assertIn("--due", hk)
-        with open(os.path.join(BIN, "agent-start.sh")) as fh:
-            start = fh.read()
-        self.assertIn("agent-nightly.sh", start)
-
-
-# ---------------------------------------------------------------- C7 light or heavy by measured weight
 
 
 class RoomCase(NetCase):
@@ -566,5 +334,274 @@ class TestTestRun(RoomCase):
         self.assertNotIn("heavy_test_slots", [x["key"] for x in agent_conf.SETTINGS])
 
 
-if __name__ == "__main__":
-    unittest.main()
+def lstart(pid):
+    # section 46 C14: the start time does not depend on locale or TZ
+    env = dict(os.environ, LC_ALL="C", LANG="C", TZ="UTC")
+    return subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True,
+                          env=env).stdout.strip()
+
+
+def gone(marker, seconds=6):
+    end = time.time() + seconds
+    while time.time() < end:
+        if subprocess.run(["pgrep", "-f", marker], capture_output=True).returncode != 0:
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def wait_until(check, seconds=10):
+    end = time.time() + seconds
+    while time.time() < end:
+        if check():
+            return True
+        time.sleep(0.2)
+    return check()
+
+
+class Room(RoomCase):
+    def room(self, *args, ram="40", **env):
+        return self.repo.run("agent-room.sh", *args, env=self.env(ram=ram, **env))
+
+    def name(self):
+        return os.path.basename(self.git("rev-parse", "--show-toplevel"))
+
+    def write_jobs(self, jobs):
+        with open(self.reserve, "w") as fh:
+            json.dump({"jobs": jobs}, fh)
+
+    def sleeper(self, secs="30"):
+        p = subprocess.Popen(["sleep", secs])
+        self.addCleanup(p.kill)
+        return p
+
+    def runner(self, marker):
+        p = self.repo.popen("agent-test-run.sh", "--key", "c-" + marker.replace(".", "-"), "--", "sleep", marker,
+                            env=self.env())
+        self.addCleanup(lambda: p.poll() is None and p.kill())
+        self.assertTrue(wait_until(lambda: any(j.get("pid") == p.pid for j in self.jobs())), self.jobs())
+        return p
+
+
+class TestC1Relief(Room):
+    def test_a_hand_reserved_process_is_never_signalled(self):
+        p = self.hold(1500, "related", "--kind", "test", "--unmeasured")
+        self.room("relief", ram="90")
+        time.sleep(1)
+        self.assertIsNone(p.poll(), "relief signalled a process the runner did not start")
+
+    def test_a_reused_pid_is_pruned_never_signalled(self):
+        p = self.sleeper()
+        self.write_jobs([{"pid": p.pid, "mb": 1500, "what": "related", "repo": self.name(), "since": "x",
+                          "started": time.time(), "kind": "test", "measured": False, "by": "runner",
+                          "start": "Thu Jan  1 00:00:00 2015"}])
+        self.room("relief", ram="90")
+        time.sleep(1)
+        self.assertIsNone(p.poll(), "relief signalled a pid that now belongs to another process")
+        self.assertEqual(self.jobs(), [], "the stale entry is pruned")
+
+    def test_another_repos_run_is_never_signalled(self):
+        p = self.sleeper()
+        self.write_jobs([{"pid": p.pid, "mb": 1500, "what": "related", "repo": "some-other-repo", "since": "x",
+                          "started": time.time(), "kind": "test", "measured": False, "by": "runner",
+                          "start": lstart(p.pid)}])
+        self.room("relief", ram="90")
+        time.sleep(1)
+        self.assertIsNone(p.poll())
+
+    def test_this_repos_runner_is_stopped(self):
+        p = self.runner("33.1")
+        entry = [j for j in self.jobs() if j.get("pid") == p.pid][0]
+        self.assertEqual(entry.get("by"), "runner")
+        self.assertEqual(entry.get("start"), lstart(p.pid))
+        r = self.room("relief", ram="90", AGENT_FAKE_HOST="pc2")
+        self.assertIn("stopped 1 test runs (%d)" % p.pid, r.stdout)
+        self.assertTrue(wait_until(lambda: p.poll() is not None, 6))
+        self.assertTrue(gone("sleep 33.1"), "the runner's child was left running")
+
+
+class TestC4TestRunSignals(Room):
+    def test_sigint_and_sighup_stop_the_child_group(self):
+        for sig, marker in ((signal.SIGINT, "34.2"), (signal.SIGHUP, "34.4")):
+            with self.subTest(sig=sig):
+                p = self.runner(marker)
+                os.kill(p.pid, sig)
+                self.assertTrue(wait_until(lambda: p.poll() is not None, 6))
+                self.assertTrue(gone("sleep " + marker), "the child kept running")
+                self.assertFalse([j for j in self.jobs() if j.get("pid") == p.pid])
+
+
+class TestC6CountedOnce(Room):
+    def test_a_reserved_running_job_is_not_counted_twice(self):
+        p = subprocess.Popen([sys.executable, "-c", "import os, time; b = os.urandom(300 * 1024 * 1024); "
+                                                    "time.sleep(30)"])
+        self.addCleanup(p.kill)
+        time.sleep(2)
+        self.room("reserve", str(p.pid), "300", "a build", "--kind", "build")
+        r = self.room("check", "3900")                                   # 4000 - ~300 + 300 + 3900 <= 8000
+        self.assertEqual(r.returncode, 0, r.stdout)
+        used = int(self.room("numbers").stdout.split()[0])
+        self.assertLessEqual(used, 3750)
+
+
+class TestC10CorruptList(Room):
+    def test_it_is_moved_aside_not_erased(self):
+        with open(self.reserve, "w") as fh:
+            fh.write("not json {")
+        p = self.sleeper()
+        r = self.room("reserve", str(p.pid), "100", "x")
+        self.assertIn("RESERVATIONS: %s could not be read; moved to " % self.reserve, r.stdout + r.stderr)
+        aside = glob.glob(self.reserve + ".corrupt-*")
+        self.assertEqual(len(aside), 1)
+        with open(aside[0]) as fh:
+            self.assertEqual(fh.read(), "not json {")
+        self.assertEqual([j.get("pid") for j in self.jobs()], [p.pid])
+
+
+ROOT = os.path.dirname(HERE)
+
+
+class TestC14C15C16(Room):
+    def nightly(self):
+        sys.path.insert(0, BIN)
+        import agent_nightly
+        return agent_nightly
+
+    def test_c14_the_start_time_does_not_depend_on_locale_or_tz(self):
+        an = self.nightly()
+        p = self.sleeper()
+        old = dict(os.environ)
+        self.addCleanup(lambda: (os.environ.clear(), os.environ.update(old)))
+        os.environ.update({"LANG": "C", "LC_ALL": "C", "TZ": "UTC"})
+        a = an.proc_start(p.pid)
+        os.environ.update({"LANG": "fr_FR.UTF-8", "LC_ALL": "fr_FR.UTF-8", "TZ": "Asia/Tokyo"})
+        b = an.proc_start(p.pid)
+        self.assertTrue(a)
+        self.assertEqual(a, b)
+
+    def test_c14_unknown_is_never_pruned_nor_signalled(self):
+        p = self.sleeper()
+        root = self.git("rev-parse", "--show-toplevel")
+        self.write_jobs([{"pid": p.pid, "mb": 1500, "what": "related", "repo": root, "since": "x",
+                          "started": time.time(), "kind": "test", "measured": False, "by": "runner", "start": ""}])
+        self.room("relief", ram="90")
+        time.sleep(1)
+        self.assertIsNone(p.poll())
+        self.assertEqual([j.get("pid") for j in self.jobs()], [p.pid])
+
+    def test_c15_a_run_in_a_task_worktree_is_this_repos(self):
+        wt = os.path.join(self.repo.base, "task_wt")
+        self.git("worktree", "add", "-q", "--detach", wt, "HEAD")
+        p = self.repo.popen("agent-test-run.sh", "--key", "wt-run", "--", "sleep", "36.6", env=self.env(), cwd=wt)
+        self.addCleanup(lambda: p.poll() is None and p.kill())
+        self.assertTrue(wait_until(lambda: any(j.get("pid") == p.pid for j in self.jobs())), self.jobs())
+        self.room("relief", ram="90")
+        self.assertTrue(wait_until(lambda: p.poll() is not None, 6), "the main manager's relief left it running")
+        self.assertTrue(gone("sleep 36.6"))
+
+    def test_c15_another_repo_with_the_same_folder_name_is_not(self):
+        an = self.nightly()
+        p = self.sleeper()
+        name = os.path.basename(self.git("rev-parse", "--show-toplevel"))
+        self.write_jobs([{"pid": p.pid, "mb": 1500, "what": "related", "repo": "/somewhere/else/" + name,
+                          "since": "x", "started": time.time(), "kind": "test", "measured": False, "by": "runner",
+                          "start": an.proc_start(p.pid)}])
+        self.room("relief", ram="90")
+        time.sleep(1)
+        self.assertIsNone(p.poll())
+
+    def test_c16_the_pick_is_a_run_that_can_be_stopped(self):
+        an = self.nightly()
+        jobs = [{"pid": 1, "kind": "test", "measured": False, "started": 2, "by": "hand"},
+                {"pid": 2, "kind": "test", "measured": False, "started": 1, "by": "runner"}]
+        self.assertEqual(an.pick_of(jobs)["pid"], 2)
+
+
+class TestC17PaneReservation(Room):
+    def test_no_room_reserves_nothing(self):
+        r = self.room("reserve-pane", "term_y", "550", ram="95")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("ROOM: no", r.stdout)
+        self.assertNotIn("term_y", self.room("list").stdout)
+
+    def test_a_task_managers_start_measures_and_drops_it(self):
+        self.room("reserve-pane", "term_z", "550")
+        self.assertIn("term_z", self.room("list").stdout)
+        e = self.env()
+        e.update({"AGENT_ROLE": "task-manager", "ORCA_TERMINAL_HANDLE": "term_z", "CLAUDE_PID": str(os.getpid()),
+                  "AGENT_RUNTIME": "orca"})
+        self.repo.run("agent-start.sh", stdin='{"cwd": "%s", "source": "startup"}' % self.repo.dir, env=e)
+        self.assertTrue(wait_until(lambda: "term_z" not in self.room("list").stdout, 10))
+
+
+class TestC26PaneWeight(Room):
+    def weights_path(self):
+        return os.path.join(self.gitdir(), "agent_test_weights.json")
+
+    def test_the_weight_follows_recent_measurements(self):
+        with open(self.weights_path(), "w") as fh:
+            json.dump({"pane": "0 s 2000 MB", "pane_recent": [2000, 600, 600, 600, 600]}, fh)
+        p = self.sleeper()
+        self.room("measure-pane", str(p.pid))
+        with open(self.weights_path()) as fh:
+            w = json.load(fh)
+        self.assertEqual(w["pane"], "0 s 600 MB")
+        self.assertEqual(len(w["pane_recent"]), 5)
+
+    def test_a_compaction_start_measures_nothing(self):
+        with open(self.weights_path(), "w") as fh:
+            json.dump({"pane": "0 s 2000 MB", "pane_recent": [2000]}, fh)
+        e = self.env()
+        e.update({"ORCA_TERMINAL_HANDLE": "term_c", "CLAUDE_PID": str(os.getpid()), "AGENT_RUNTIME": "orca"})
+        self.repo.run("agent-start.sh", stdin='{"cwd": "%s", "source": "compact", "session_id": "s9"}'
+                      % self.repo.dir, env=e)
+        time.sleep(1)
+        with open(self.weights_path()) as fh:
+            self.assertEqual(json.load(fh)["pane_recent"], [2000])
+
+
+class TestC27Expiry(Room):
+    def test_an_unverifiable_entry_expires_after_6_hours(self):
+        old, young = self.sleeper(), self.sleeper()
+        root = self.git("rev-parse", "--show-toplevel")
+        base = {"mb": 500, "what": "x", "repo": root, "since": "x", "kind": "test", "measured": True,
+                "by": "runner", "start": ""}
+        self.write_jobs([dict(base, pid=old.pid, started=time.time() - 7 * 3600),
+                         dict(base, pid=young.pid, started=time.time() - 3600)])
+        out = self.room("list").stdout
+        self.assertNotIn(str(old.pid), out)
+        self.assertIn(str(young.pid), out)
+        self.assertIsNone(old.poll(), "expired, never signalled")
+
+
+def read(*parts):
+    with open(os.path.join(ROOT, *parts)) as fh:
+        return fh.read()
+
+
+class TestH7ToH9(Room):
+    def test_h7_never_below_550(self):
+        with open(os.path.join(self.gitdir(), "agent_test_weights.json"), "w") as fh:
+            json.dump({"pane_recent": [1, 1, 1, 1]}, fh)
+        p = self.sleeper()
+        self.room("measure-pane", str(p.pid))
+        with open(os.path.join(self.gitdir(), "agent_test_weights.json")) as fh:
+            self.assertEqual(json.load(fh)["pane"], "0 s 550 MB")
+
+    def test_h8_a_pending_key_that_exists_is_refused(self):
+        self.assertEqual(self.room("reserve-pane", "--pending", "task-a", "550").returncode, 0)
+        r = self.room("reserve-pane", "--pending", "task-a", "550")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertEqual(self.room("list").stdout.count("task-a"), 1)
+        self.assertIn("reserve-pane --pending <task name>", read("skills", "dispatch", "SKILL.md"))
+
+    def test_h9_the_usage(self):
+        head = read("bin", "agent-room.sh").split("\nexec ")[0]          # the usage comment of the script
+        for phrase in ("reserve-pane --pending", "reserve-pane --name", "release-pane"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, head)
+        r = self.repo.run("agent-room.sh", "frobnicate", env=self.env())   # a wrong command prints this script's usage
+        out = r.stdout + r.stderr
+        self.assertIn("agent-room.sh", out)
+        self.assertNotIn("agent-nightly.sh --start", out)
+        self.assertIn("reserve-pane --pending", out)

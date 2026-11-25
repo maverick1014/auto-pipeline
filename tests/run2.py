@@ -22,8 +22,11 @@ started only while memory in use + about 30 MB for it stays under 80%; else it
 waits for a running one to end. No slot or lock: long light runs just go.
 
 Plain `python3 -m unittest discover -s tests` still runs everything in one process.
-Exit code: 0 when every process passed and the tests run equal the tests the loader
-discovers (else the line COUNT MISMATCH: discovered x, ran y), else 1.
+Exit code: 0 when every process passed and, for each file, the tests run equal the tests
+the loader discovers in it (else the line COUNT MISMATCH: discovered x, ran y in <file>),
+else 1. A file the loader cannot list is named in one "count check skipped" line; the
+other files are still checked. The run counts per file come from a small runner that
+does what `python -m unittest` does and records each test under the file it was named for.
 """
 
 import argparse
@@ -211,18 +214,59 @@ def split(names, timings, n, listing=None):
     return [(g, t) for g, t in zip(groups, totals) if g]
 
 
+RUNNER = r"""
+import json, os, sys, unittest
+
+def walk(suite):
+    if not isinstance(suite, unittest.TestSuite):
+        yield suite
+        return
+    for t in suite:
+        yield from walk(t)
+
+sys.path.insert(0, os.getcwd())   # as `python -m unittest` has it
+suite, owner, counts = unittest.TestSuite(), {}, {}
+for name in sys.argv[1:]:
+    part = unittest.defaultTestLoader.loadTestsFromName(name)
+    for t in walk(part):
+        owner[id(t)] = name
+    suite.addTest(part)
+
+class Result(unittest.TextTestResult):
+    def startTest(self, test):
+        name = owner.get(id(test), "?")
+        counts[name] = counts.get(name, 0) + 1
+        super().startTest(test)
+
+res = unittest.TextTestRunner(resultclass=Result).run(suite)
+with open(os.environ["RUN2_COUNTS"], "w") as fh:
+    json.dump(counts, fh)
+sys.exit(0 if res.wasSuccessful() else 1)
+"""
+
+
 def run_unittest(tests_dir, modules, log_path):
+    """(exit code, seconds, output, {module or module.Class: tests run})."""
     start = time.time()
+    runner, counts_path = log_path + ".runner.py", log_path + ".counts"
+    with open(runner, "w") as fh:
+        fh.write(RUNNER)
     with open(log_path, "w") as log:
         # cwd = the repo root, tests/ on the path: both `import scripthelp` and
         # `from tests.scripthelp import ...` work, as under `unittest discover -s tests`
         env = unittest_env(tests_dir)
-        code = subprocess.call([sys.executable, "-m", "unittest"] + modules,
+        env["RUN2_COUNTS"] = counts_path
+        code = subprocess.call([sys.executable, runner] + modules,
                                cwd=os.path.dirname(tests_dir), env=env,
                                stdout=log, stderr=subprocess.STDOUT)
     with open(log_path) as fh:
         text = fh.read()
-    return code, time.time() - start, text
+    try:
+        with open(counts_path) as fh:
+            counts = json.load(fh)
+    except (OSError, ValueError):
+        counts = {}
+    return code, time.time() - start, text, counts
 
 
 def summary(text):
@@ -253,7 +297,7 @@ def main():
     if args.time:
         def one(name):
             wait_for_room()
-            code, secs, text = run_unittest(tests_dir, [name], os.path.join(logs, name + ".log"))
+            code, secs, text, _counts = run_unittest(tests_dir, [name], os.path.join(logs, name + ".log"))
             tests, verdict = summary(text)
             return name, code, secs, tests, verdict
 
@@ -288,10 +332,11 @@ def main():
     with ThreadPoolExecutor(max_workers=len(groups)) as pool:
         results = list(pool.map(go, enumerate(groups)))
     failed = False
-    ran_total = 0
-    for i, mods, est, (code, secs, text) in results:
+    ran_by_file = {}
+    for i, mods, est, (code, secs, text, counts) in results:
         tests, verdict = summary(text)
-        ran_total += tests
+        for item, n in counts.items():
+            ran_by_file[item.split(".")[0]] = ran_by_file.get(item.split(".")[0], 0) + n
         print("process %d: %d files or classes, %d tests, %.0f s (planned %.0f s): %s"
               % (i + 1, len(mods), tests, secs, est, verdict))
         if code != 0:
@@ -303,11 +348,12 @@ def main():
     unlisted = [n for n in names if listing.get(n) is None]
     if unlisted:
         print("count check skipped: the loader could not list %s" % ", ".join(unlisted))
-    else:
-        line = count_mismatch(sum(c for n in names for _, c in listing[n]), ran_total)
-        if line:
-            print(line)
-            failed = True
+    for n in names:
+        if listing.get(n) is not None:
+            line = count_mismatch(sum(c for _, c in listing[n]), ran_by_file.get(n, 0))
+            if line:
+                print("%s in %s" % (line, n))
+                failed = True
     return 1 if failed else 0
 
 

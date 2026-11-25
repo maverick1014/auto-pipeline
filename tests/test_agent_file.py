@@ -1485,5 +1485,359 @@ class TestStageConfKeys(unittest.TestCase):
                 self.assertEqual(str(agent_conf.CONSTANTS[key]), value)
 
 
+NOW_NOV20_1000 = "2026-11-20 10:00"
+
+
+class TodoCase(ScriptCase):
+    script = "agent-file.sh"
+
+    def af(self, *args, now=NOW_NOV20_1000):
+        return self.repo.run("agent-file.sh", *args, env={"AGENT_FAKE_NOW": now, "AGENT_FAKE_HOST": "pc2"})
+
+    def todo(self):
+        return self.repo.read("agent_todo.txt") or ""
+
+    def write_todo(self, *lines):
+        with open(self.repo.path("agent_todo.txt"), "w") as fh:
+            fh.write("".join(l + "\n" for l in lines))
+
+    def refused(self, *args):
+        before = self.todo()
+        r = self.af(*args)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertEqual(len(r.stderr.strip().splitlines()), 1, r.stderr)
+        self.assertEqual(self.todo(), before)
+        return r
+
+
+class TestTodoAddLevel(TodoCase):
+
+    def test_after_the_guess(self):
+        self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70", "--guess", "35", "--level", "C"))
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | guess 35m | level C | opened %s | by main\n" % NOW_NOV20_1000)
+
+    def test_it_may_stand_anywhere(self):
+        self.assertOk(self.af("todo", "add", "--level", "D", "t1", "big", "build it", "70"))
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | level D | opened %s | by main\n" % NOW_NOV20_1000)
+
+    def test_no_est(self):
+        self.assertOk(self.af("todo", "add", "t1", "small", "fix it", "--level", "A"))
+        self.assertEqual(self.todo(), "t1 | small | fix it | level A | opened %s | by main\n" % NOW_NOV20_1000)
+
+    def test_no_level_is_as_before(self):
+        self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70"))
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | opened %s | by main\n" % NOW_NOV20_1000)
+
+    def test_an_old_number_is_stored_as_its_type(self):
+        for old, typ in (("0", "A"), ("1", "B"), ("2", "C"), ("3", "C"), ("4", "D")):
+            with self.subTest(old=old):
+                self.write_todo()
+                self.assertOk(self.af("todo", "add", "t1", "small", "fix it", "--level", old))
+                self.assertEqual(self.todo(), "t1 | small | fix it | level %s | opened %s | by main\n" % (typ, NOW_NOV20_1000))
+
+    def test_a_bad_level_is_refused(self):
+        for bad in (["--level", "5"], ["--level", "E"], ["--level", "-1"], ["--level", "x"], ["--level", ""], ["--level"]):
+            with self.subTest(bad=bad):
+                r = self.refused("todo", "add", "t1", "big", "build it", "70", *bad)
+                self.assertIn("--level", r.stderr)
+
+
+class TestTodoLevel(TodoCase):
+    LINE = "t1 | big | build it | est 70m | guess 35m | level B | opened 2026-11-20 09:00 | by main | stage tests since 2026-11-20 09:10"
+
+    def test_a_raise_replaces_in_place(self):
+        self.write_todo(self.LINE, "t2 | small | other | est 5m | opened 2026-11-20 09:00 | by main")
+        r = self.af("todo", "level", "t1", "C")
+        self.assertOk(r)
+        self.assertIn("todo level: t1 B -> C", r.stdout)
+        self.assertEqual(self.todo().splitlines(), [self.LINE.replace("level B", "level C"),
+                                                    "t2 | small | other | est 5m | opened 2026-11-20 09:00 | by main"])
+
+    def test_a_missing_level_goes_where_todo_add_puts_it(self):
+        self.write_todo("t1 | big | build it | est 70m | opened 2026-11-20 09:00 | by main | stage tests since 2026-11-20 09:10")
+        r = self.af("todo", "level", "t1", "C")
+        self.assertOk(r)
+        self.assertIn("todo level: t1 - -> C", r.stdout)
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | level C | opened 2026-11-20 09:00 | by main | stage tests since 2026-11-20 09:10\n")
+
+    def test_after_the_guess_when_there_is_one(self):
+        self.write_todo("t1 | big | build it | est 70m | guess 35m | opened 2026-11-20 09:00 | by main")
+        self.assertOk(self.af("todo", "level", "t1", "D"))
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | guess 35m | level D | opened 2026-11-20 09:00 | by main\n")
+
+    def test_the_same_level_writes_nothing(self):
+        self.write_todo(self.LINE)
+        before = os.stat(self.repo.path("agent_todo.txt")).st_mtime_ns
+        r = self.af("todo", "level", "t1", "B")
+        self.assertOk(r)
+        self.assertIn("todo level: t1 already type B", r.stdout)
+        self.assertEqual(self.todo(), self.LINE + "\n")
+        self.assertEqual(os.stat(self.repo.path("agent_todo.txt")).st_mtime_ns, before)
+
+    def test_lower_is_refused(self):
+        self.write_todo(self.LINE.replace("level B", "level D"))
+        r = self.refused("todo", "level", "t1", "C")
+        self.assertIn("only goes up", r.stderr)
+
+    def test_an_old_number_line_stays_readable(self):
+        self.write_todo(self.LINE.replace("level B", "level 3"))
+        r = self.refused("todo", "level", "t1", "B")                 # old 3 = C: B is lower
+        self.assertIn("only goes up", r.stderr)
+        self.assertIn("already type C", self.af("todo", "level", "t1", "2").stdout)    # old 3 and 2 are both C
+        self.assertOk(self.af("todo", "level", "t1", "D"))
+        self.assertEqual(self.todo().splitlines(), [self.LINE.replace("level B", "level D")])
+
+    def test_old_numbers_are_accepted_as_input(self):
+        self.write_todo(self.LINE)
+        self.assertOk(self.af("todo", "level", "t1", "4"))
+        self.assertEqual(self.todo().splitlines(), [self.LINE.replace("level B", "level D")])
+
+    def test_bad_input_is_refused(self):
+        self.write_todo(self.LINE)
+        for args in (["todo", "level", "nope", "2"], ["todo", "level", "t1", "5"],
+                     ["todo", "level", "t1", "E"], ["todo", "level", "t1", "x"], ["todo", "level", "t1"]):
+            with self.subTest(args=args):
+                self.refused(*args)
+
+
+class TestTodoDoneLevel(TodoCase):
+
+    def done_line(self):
+        rows = [l for l in (self.repo.read("agent_completed.txt") or "").splitlines() if l.strip()]
+        self.assertEqual(len(rows), 1, rows)
+        return rows[0]
+
+    def test_the_level_is_the_last_key(self):
+        self.write_todo("t1 | big | build it | est 70m | guess 35m | level C | opened 2026-11-20 09:00 | by main")
+        self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
+        self.assertTrue(self.done_line().endswith(" adds=- guess=35 level=C"), self.done_line())
+
+    def test_an_old_number_is_copied_as_it_is(self):
+        self.write_todo("t1 | big | build it | est 70m | guess 35m | level 2 | opened 2026-11-20 09:00 | by main")
+        self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
+        self.assertTrue(self.done_line().endswith(" level=2"), self.done_line())
+        self.assertIn(" | t1 | build it | data repo=", self.done_line())
+
+    def test_no_level_is_a_dash(self):
+        self.write_todo("t1 | big | build it | est 70m | opened 2026-11-20 09:00 | by main")
+        self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
+        self.assertTrue(self.done_line().endswith(" guess=- level=-"), self.done_line())
+
+    def test_a_level_word_in_the_what_is_not_the_level(self):
+        self.write_todo("t1 | big | level 9 is a word here | est 70m | opened 2026-11-20 09:00 | by main")
+        self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
+        self.assertTrue(self.done_line().endswith(" level=-"), self.done_line())
+
+    def test_the_data_table_keeps_its_columns(self):
+        with open(self.repo.path("agent_completed.txt"), "w") as fh:
+            fh.write("2026-11-19 | old | an old line | data repo=project type=script lane=full mock=no "
+                     "est=10 work=5 wait=0 clock=5 bounces=0 workers=0 files=- lines=- tests=- adds=- guess=-\n")
+            fh.write("2026-11-20 | new | a new line | data repo=project type=script lane=full mock=no "
+                     "est=10 work=5 wait=0 clock=5 bounces=0 workers=0 files=- lines=- tests=- adds=- guess=8 level=3\n")
+        rows = [r.split() for r in self.assertOk(self.af("data")).splitlines()]
+        self.assertEqual(rows[0][-2:], ["adds", "guess"])
+        self.assertEqual([r[1] for r in rows[1:]], ["old", "new"])
+        self.assertEqual(rows[2][-1], "8")
+
+
+NOW_NOV20_1231 = "2026-11-20 12:31"
+
+
+class TestTodoWaitCli(tb.WaitCase):
+    def setUp(self):
+        super().setUp()
+        self.add("x", "the task", 60, opened="2026-11-20 11:00", started=False)
+
+    def test_4_1_mock_writes_no_who(self):
+        self.wait("x", "on", "mock", now=NOW_NOV20_1231)
+        line = self.todo_line("x")
+        self.assertTrue(line.endswith(" | waiting mock since 2026-11-20 12:31"), line)
+        self.assertNotIn(" | who ", line)
+
+    def test_4_2_who(self):
+        self.wait("x", "on", "review", "--who", "v4-Manager", now=NOW_NOV20_1231)
+        self.assertTrue(self.todo_line("x").endswith(" | waiting review since 2026-11-20 12:31 | who v4-Manager"),
+                        self.todo_line("x"))
+
+    def test_4_3_the_note_before_or_after_the_options(self):
+        want = " | waiting hold since 2026-11-20 12:31: 回复插件更新和同步脚本 | who v4-Manager"
+        self.wait("x", "on", "hold", "回复插件更新和同步脚本", "--who", "v4-Manager", now=NOW_NOV20_1231)
+        self.assertTrue(self.todo_line("x").endswith(want), self.todo_line("x"))
+        self.wait("x", "off", now=NOW_NOV20_1231)
+        self.wait("x", "on", "hold", "--who", "v4-Manager", "回复插件更新和同步脚本", now=NOW_NOV20_1231)
+        self.assertTrue(self.todo_line("x").endswith(want), self.todo_line("x"))
+
+    def test_a_who_with_a_space(self):
+        self.wait("x", "on", "hold", "--who", "v4-plus Manager", now=NOW_NOV20_1231)
+        self.assertTrue(self.todo_line("x").endswith(" | who v4-plus Manager"), self.todo_line("x"))
+
+    def test_4_4_after(self):
+        self.wait("x", "on", "queue", "--after", "state-trim", now=NOW_NOV20_1231)
+        self.assertTrue(self.todo_line("x").endswith(" | waiting queue since 2026-11-20 12:31 | after state-trim"),
+                        self.todo_line("x"))
+        self.wait("x", "on", "queue", "slot", "--after", "state-trim", now="2026-11-20 12:40")
+        self.assertIn(" | waiting queue since 2026-11-20 12:40: slot | after state-trim", self.todo_line("x"))
+        self.assertEqual(self.todo_line("x").count(" | after "), 1, self.todo_line("x"))
+
+    def test_4_5_a_wait_over_an_open_wait(self):
+        self.wait("x", "on", "review", "--who", "A", now="2026-11-20 12:00")
+        self.wait("x", "on", "hold", "n", now=NOW_NOV20_1231)
+        line = self.todo_line("x")
+        self.assertIn(" | waiting hold since 2026-11-20 12:31: n | wait run since 2026-11-20 12:00", line)
+        self.assertNotIn(" | who ", line)
+        self.assertIn(" | waited 31m", line)
+        self.wait("x", "on", "hold", "--who", "B", now="2026-11-20 12:40")
+        line = self.todo_line("x")
+        self.assertIn(" | waiting hold since 2026-11-20 12:40 | who B | wait run since 2026-11-20 12:00", line)
+        self.assertEqual(line.count("wait run since"), 1, line)
+        self.assertIn(" | waited 40m", line)
+        r = self.row(self.rows(now="2026-11-20 12:50"), task="x")
+        self.assertEqual(r["Status"], "等待 B · 已等 50分钟")
+
+    def test_4_5c_a_wait_over_a_wait_with_a_note(self):
+        # reviewer finding 1: the date of a waiting field with a note was read with the note's colon
+        self.wait("x", "on", "mock", "看规则表", now="2026-11-20 12:00")
+        self.wait("x", "on", "mock", "看规则表 v2", now="2026-11-20 12:21")
+        line = self.todo_line("x")
+        self.assertIn(" | waiting mock since 2026-11-20 12:21: 看规则表 v2 | wait run since 2026-11-20 12:00 | "
+                      "waited 21m", line)
+        self.assertNotIn("12:00:", line)
+        r = self.row(self.rows(now=NOW_NOV20_1231), task="x")
+        self.assertEqual(r["Status"], "等待 你 · 看规则表 v2 · 已等 31分钟")
+        self.wait("x", "on", "hold", "下一个: 等 v4", "--who", "v4-Manager", now="2026-11-20 12:25")
+        self.assertIn(" | who v4-Manager | wait run since 2026-11-20 12:00 | waited 25m", self.todo_line("x"))
+        self.wait("x", "off", now=NOW_NOV20_1231)
+        self.assertIn(" | waited 31m", self.todo_line("x"))
+
+    def test_4_5b_the_field_order(self):
+        self.wait("x", "on", "queue", "--after", "a", now="2026-11-20 12:00")
+        self.wait("x", "on", "queue", "--after", "b", now=NOW_NOV20_1231)
+        line = self.todo_line("x")
+        self.assertIn(" | waiting queue since 2026-11-20 12:31 | after b | wait run since 2026-11-20 12:00", line)
+        self.assertNotIn("after a", line)
+
+    def test_4_6_off_takes_the_fields_away(self):
+        self.wait("x", "on", "review", "--who", "A", now="2026-11-20 12:00")
+        self.wait("x", "on", "queue", "--after", "b", now="2026-11-20 12:10")
+        self.wait("x", "off", now=NOW_NOV20_1231)
+        line = self.todo_line("x")
+        for gone in ("waiting ", " | who ", " | after ", "wait run since"):
+            self.assertNotIn(gone, line)
+        self.assertIn(" | waited 31m", line)
+        self.wait("x", "on", "hold", now="2026-11-20 12:40")
+        self.assertNotIn("wait run since", self.todo_line("x"))
+
+    def test_4_7_refusals(self):
+        for args in (("on", "queue", "--who", "a"),
+                     ("on", "mock", "--after", "a"),
+                     ("on", "hold", "--after", "a"),
+                     ("on", "hold", "--who"),
+                     ("on", "hold", "--who", ""),
+                     ("on", "hold", "--who", "a | b"),
+                     ("on", "hold", "--who", " "),
+                     ("on", "hold", "--who", "--after"),
+                     ("on", "queue", "--after", "--who"),
+                     ("on", "queue", "--after", "  "),
+                     ("on", "review", "--who", "a\nb"),
+                     ("on", "hold", "--who", "a", "--who", "b"),
+                     ("on", "queue", "--after"),
+                     ("on", "queue", "--after", ""),
+                     ("on", "queue", "--after", "a\nb"),
+                     ("on", "queue", "--after", "a", "--after", "b"),
+                     ("on", "hold", "--x", "a"),
+                     ("on", "hold", "a", "b"),
+                     ("off", "--who", "a")):
+            with self.subTest(args=args):
+                self.refused("todo", "wait", "x", *args, now=NOW_NOV20_1231)
+
+
+class TestTodoStageCli(tb.WaitCase):
+    def stage(self, name, *args, now=NOW_NOV20_1231):
+        self.af("todo", "stage", name, *args, now=now)
+
+    def test_6_5_the_first_stage(self):
+        self.add("x", "the task", 60, opened="2026-11-20 12:00", started=False)
+        self.stage("x", "brief", now="2026-11-20 12:21")
+        line = self.todo_line("x")
+        self.assertIn(" | started 2026-11-20 12:21 | stage brief since 2026-11-20 12:21", line)
+        self.assertNotIn(" after ", line)
+
+    def test_6_6_after_closed_waits(self):
+        self.add("x", "the task", 60, opened="2026-11-20 11:00", started=False)
+        self.wait("x", "on", "queue", now="2026-11-20 11:35")
+        self.wait("x", "off", now="2026-11-20 12:21")
+        self.stage("x", "brief", now="2026-11-20 12:21")
+        self.assertIn(" | started 2026-11-20 12:21 after 46m waited | stage brief since 2026-11-20 12:21",
+                      self.todo_line("x"))
+
+    def test_6_7_a_wait_still_open_at_the_start(self):
+        self.add("x", "the task", 60, opened="2026-11-20 11:00", started=False)
+        self.wait("x", "on", "queue", now="2026-11-20 11:41")
+        self.wait("x", "off", now="2026-11-20 11:51")
+        self.wait("x", "on", "hold", now="2026-11-20 11:51")
+        self.stage("x", "brief", now="2026-11-20 12:21")
+        self.assertIn(" | started 2026-11-20 12:21 after 40m waited", self.todo_line("x"))
+        self.wait("x", "off", now="2026-11-20 12:41")
+        r = self.row(self.rows(now="2026-11-20 12:51"), task="x")
+        self.assertEqual((r["Status"], r["Work"], r["Wait"], r["Done by"]), ("进行中", "10m", "1h", "13:41"))
+
+    def test_6_7b_an_open_wait_with_a_note_at_the_start(self):
+        # reviewer finding 2: the open wait's since, read with the note's colon
+        self.add("x", "the task", 60, opened="2026-11-20 11:00", started=False)
+        self.wait("x", "on", "hold", "等: 槽位", now="2026-11-20 11:51")
+        self.stage("x", "brief", now="2026-11-20 12:21")
+        self.assertIn(" | started 2026-11-20 12:21 after 30m waited", self.todo_line("x"))
+
+    def test_6_8_later_stages_never_change_it(self):
+        self.add("x", "the task", 60, opened="2026-11-20 12:00", started=False)
+        self.stage("x", "brief", now="2026-11-20 12:21")
+        self.stage("x", "tests", now="2026-11-20 12:40")
+        self.stage("x", "workers", "1/2", now="2026-11-20 12:45")
+        line = self.todo_line("x")
+        self.assertEqual(line.count(" | started "), 1, line)
+        self.assertIn(" | started 2026-11-20 12:21 | ", line)
+
+    def test_6_9_an_old_line_with_a_stage_gets_no_started(self):
+        self.put("old | big | w | est 60m | opened 2026-11-20 10:31 | by main | stage tests since 2026-11-20 12:00")
+        self.stage("old", "verify", now=NOW_NOV20_1231)
+        self.assertNotIn("started", self.todo_line("old"))
+
+    def test_6_10_a_worktree_with_no_todo_line(self):
+        alpha = self.task_worktree("alpha")
+        self.af("todo", "stage", "alpha", "brief", now=NOW_NOV20_1231, cwd=alpha)
+        self.assertIn("STAGE alpha: brief | since 2026-11-20 12:31\n", self.state_text(alpha))
+        self.assertNotIn("started", self.state_text(alpha))
+
+
+class TestHeartbeatCommand(ScriptCase):
+    """C51: the task manager writes its heartbeat with one command, so the form cannot be typed wrong."""
+    script = "agent-file.sh"
+
+    def state(self):
+        p = os.path.join(self.repo.dir, "agent_state.txt")
+        return open(p).read() if os.path.exists(p) else ""
+
+    def test_the_line(self):
+        r = self.repo.run("agent-file.sh", "heartbeat", "test-slim", "4", "35", "workers 2 of 3 running")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        last = self.state().strip().splitlines()[-1]
+        self.assertRegex(last, r"^HEARTBEAT test-slim: step 4 of 7, work 35m, workers 2 of 3 running \| "
+                               r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
+
+    def test_refusals(self):
+        for args in (("t", "8", "35", "x"), ("t", "4", "ten", "x"), ("t", "4", "35", ""), ("t", "4")):
+            with self.subTest(args=args):
+                before = self.state()
+                r = self.repo.run("agent-file.sh", "heartbeat", *args)
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertEqual(self.state(), before)
+
+    def test_the_brief_names_it(self):
+        with open(os.path.join(os.path.dirname(HERE), "skills", "dispatch", "SKILL.md")) as fh:
+            brief = fh.read()
+        line = [l for l in brief.splitlines() if l.startswith("HEARTBEAT:")][0]
+        self.assertIn("agent-file.sh heartbeat", line)
+
+
 if __name__ == "__main__":
     unittest.main()

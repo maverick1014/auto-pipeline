@@ -2232,11 +2232,6 @@ class TestAgentFile(unittest.TestCase):
 BIN = os.path.join(ROOT, "bin")
 
 
-def line_office_cleanup(ev, sid, repo):
-    return {"ev": ev, "sid": sid, "aid": "", "at": "", "tool": "Read", "nt": "", "proj": "shop", "role": "",
-            "desc": "", "sub": "", "q": "", "klen": "", "repo": repo, "kind": ""}
-
-
 class Case(unittest.TestCase):
     def setUp(self):
         self.base = os.path.realpath(tempfile.mkdtemp(prefix="city_clean_"))
@@ -2284,8 +2279,8 @@ class TestIslandIsGone(unittest.TestCase):
 class TestWorldFile(Case):
     def test_only_office_keys_are_saved(self):
         st = self.make()
-        st.feed_line(line_office_cleanup("UserPromptSubmit", "a", self.shop), 1.0)
-        st.feed_line(line_office_cleanup("UserPromptSubmit", "b", self.blog), 1.0)
+        st.feed_line(line_office("UserPromptSubmit", "a", self.shop), 1.0)
+        st.feed_line(line_office("UserPromptSubmit", "b", self.blog), 1.0)
         st.skip_design(ac.territory_id(self.shop))
         w = self.saved()
         self.assertTrue(set(w) <= {"v", "territories", "order", "floors", "names", "gov_seen"}, set(w))

@@ -1,48 +1,35 @@
-"""Failing tests for board-trust (level 4). Written by the task manager first.
+"""Tests of agent-guard, one class per feature."""
 
-The rules, with every example used here: requirements/board-trust.md (rules table A, parse B, fail open C).
-
-CONTRACT
-    bin/agent-guard.sh     the hook entry (PreToolUse and PostToolUse matcher Agent|Task|Bash, SubagentStart,
-                           SubagentStop). Reads the hook JSON on stdin. A Bash call whose command has no "orca"
-                           exits 0 with bash builtins only (bin/agent_guard.py is never started). Anything else runs
-                           python3 bin/agent_guard.py. Exit 2 = blocked (one stderr line); every other outcome is 0.
-    bin/agent_guard.py     the logic. Never raises: any error = exit 0 + one stderr line "board guard: ...; allowed".
-    env                    CLAUDE_PID (the session's claude pid; else the first claude process up the parent chain),
-                           AGENT_ROLE, AGENT_FAKE_NOW ("YYYY-MM-DD HH:MM").
-    repo                   main repo = the first `git worktree list` entry of the payload cwd; a pipeline repo has
-                           agent.conf there; the record folder = git toplevel of the payload cwd.
-    role                   main: <git common dir>/agent_main.lock names a live pid equal to the session pid.
-                           tm: AGENT_ROLE=task-manager. free: everything else, and any payload with an agent_id.
-    record                 LAUNCH <key>: <kind> | task <task> | <title> | since <date> | pid <pid> | by <role>
-                           [ | type <subagent_type>][ | agent <agent_id>][ | pane <handle>][ | env <env>]
-                           [ | worktree <path>]   (key = tool_use_id; kind: "worker <n>", deputy, merge, reviewer,
-                           explore, plan, guide, agent, tm-pane, shell-pane, pane, helper-pane)
-    board                  a record shows right under its task's row: "<task> <kind word>[ <n>]"; dead or stale
-                           records are not shown; the status line adds " · <n> 代理" (en " · <n> agent(s)").
-    switch                 Configure "Rules: Todo before agent" (todo_before_agent, settings-configure
-                           2026-11-25): true (default) = refuse a main manager launch naming no open
-                           todo task; false = record only (the old board_guard=record). No off any more.
-"""
-
-import json
 import os
-import shutil
-import subprocess
 import sys
-import tempfile
-import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
+import json  # noqa: E402
+import os  # noqa: E402
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+import tempfile  # noqa: E402
+import time  # noqa: E402
+import unittest  # noqa: E402
+import test_agent_board as tb  # noqa: E402
+
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
 ROOT = os.path.dirname(HERE)
 
-import test_agent_board as tb  # noqa: E402  (the module only)
 
 NOW = "2026-11-20 16:50"
+
+
 LIVE = os.getpid()
+
+
 SHELL_TITLE = "[auto-pipeline] board-waiting pc2 shell · LIVE - do not close"
 
 
@@ -185,7 +172,12 @@ class BoardOnly(GuardCase):
     script = "agent-file.sh"
 
 
-# ---------------------------------------------------------------- A. rules table, main manager
+def read(*parts):
+    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
+        return fh.read()
+
+
+GUARD = '"${CLAUDE_PLUGIN_ROOT}"/bin/agent-guard.sh'
 
 
 class TestMainManager(GuardCase):
@@ -392,9 +384,6 @@ class TestMainManager(GuardCase):
         self.assertEqual(len(self.launches()), 1)
 
 
-# ---------------------------------------------------------------- B. the parse
-
-
 class TestParse(GuardCase):
     def setUp(self):
         super().setUp()
@@ -446,9 +435,6 @@ class TestParse(GuardCase):
 
     def test_a_pane_with_no_title_and_no_name_is_blocked_for_main(self):
         self.assertBlocked(self.pre_bash("orca terminal create --worktree path:/w --json"), "todo add")
-
-
-# ---------------------------------------------------------------- A. rules table, task manager
 
 
 class TestTaskManager(GuardCase):
@@ -544,9 +530,6 @@ class TestTaskManager(GuardCase):
             self.assertEqual((r.returncode, r.stderr), (0, ""))
 
 
-# ---------------------------------------------------------------- A13. free roles never block
-
-
 class TestFreeRoles(GuardCase):
     def setUp(self):
         super().setUp()
@@ -576,9 +559,6 @@ class TestFreeRoles(GuardCase):
         r = self.hook({"hook_event_name": "PreToolUse", "tool_name": "Agent", "tool_input": inp,
                        "tool_use_id": "toolu_s", "agent_id": "a038d8ee18e4ea335", "agent_type": "general-purpose"})
         self.assertAllowed(r)
-
-
-# ---------------------------------------------------------------- C. fail open, switch, speed
 
 
 class TestFailOpen(GuardCase):
@@ -734,9 +714,6 @@ class TestSwitch(GuardCase):
         self.assertEqual(r.returncode, 1)
 
 
-# ---------------------------------------------------------------- reviewer findings (step 5, 2026-11-23)
-
-
 class TestReviewFixes(GuardCase):
     def setUp(self):
         super().setUp()
@@ -880,9 +857,6 @@ class TestReviewFixes(GuardCase):
         self.assertEqual([n for n in os.listdir(self.repo.dir) if "agent_state" in n], ["agent_state.txt"])
 
 
-# ---------------------------------------------------------------- board and status line
-
-
 class TestStatusLine(BoardOnly):
     def line(self, folder=None):
         folder = folder or self.repo.dir
@@ -989,9 +963,6 @@ class TestBoardEnglish(BoardOnly):
         self.assertNotIn("Traceback", r.stderr)
 
 
-# ---------------------------------------------------------------- state trim keeps records
-
-
 class TestTrimKeeps(BoardOnly):
     def test_launch_lines_survive_a_trim(self):
         line = ("LAUNCH toolu_1: worker 1 | task t | x | since 2026-11-01 10:00 | pid %d | by main | agent a1" % LIVE)
@@ -1004,17 +975,6 @@ class TestTrimKeeps(BoardOnly):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn(line, self.state_text())
         self.assertNotIn("later old note", self.state_text())
-
-
-# ---------------------------------------------------------------- hooks.json, rules text, release
-
-
-def read(*parts):
-    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
-        return fh.read()
-
-
-GUARD = '"${CLAUDE_PLUGIN_ROOT}"/bin/agent-guard.sh'
 
 
 class TestHooks(unittest.TestCase):
@@ -1042,69 +1002,131 @@ class TestHooks(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(ROOT, "bin", "agent_guard.py")))
 
 
-def section(text, head):
-    start = text.index("\n" + head + "\n")
-    end = text.find("\n\n", start + len(head) + 2)
-    return text[start:end if end > 0 else len(text)]
+TITLE = "one-watcher Task Manager"
 
 
-class TestRuleText(unittest.TestCase):
-    def test_w14_launches_record_themselves(self):
-        w14 = section(read("PRINCIPLES.md"), "W14. Todo board")
-        self.assertIn("agent-guard.sh", w14)
-        self.assertIn("no open todo task", w14)
-        self.assertIn("Todo before agent", w14)
-        self.assertNotIn("`worker on <n>` / `worker off <n>` for each worker;", w14)
-
-    def test_dispatch_skill(self):
-        s = read("skills", "dispatch", "SKILL.md")
-        board = s[s.index("## Board records"):s.index("## Time question")]
-        self.assertIn("agent-guard.sh", board)
-        self.assertIn("todo add", board)
-        self.assertNotIn("Record each worker: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worker on", s)
-
-    def test_fast_lane_adds_the_todo_line_first(self):
-        # review 16: the guard refuses "<task> Deputy" for a task with no todo line
-        s = read("skills", "dispatch", "SKILL.md")
-        step2 = [l for l in s.splitlines() if l.startswith("2. Small task")][0]
-        self.assertIn("todo add", step2)
-
-    def test_merge_skill_keeps_the_line_open_for_the_launch(self):
-        s = read("skills", "merge", "SKILL.md")
-        self.assertIn("agent-guard.sh", s)
-
-    def test_readme(self):
-        self.assertIn("bin/agent-guard.sh", read("PRINCIPLES.md"))
-
-    def test_the_texts_name_the_setting(self):
-        # settings-configure (owner 1A 2026-11-25): "Rules: Todo before agent", on by default,
-        # replaces board_guard (old default record, owner 3A 2026-11-20)
-        line = [l for l in read("PRINCIPLES.md").splitlines() if "bin/agent-guard.sh" in l][0]
-        self.assertIn("Todo before agent", line)
-        self.assertIn("off records only", line)
-        w14 = section(read("PRINCIPLES.md"), "W14. Todo board")
-        self.assertRegex(w14, r"on \(default\)")
-        s = read("skills", "dispatch", "SKILL.md")
-        board = s[s.index("## Board records"):s.index("## Time question")]
-        self.assertIn("Todo before agent", board)
-        self.assertIn("Todo before agent", read("skills", "merge", "SKILL.md"))
-
-    def test_release(self):
-        v = json.loads(read(".claude-plugin", "plugin.json"))["version"]
-        self.assertRegex(v, r"^\d+\.\d+\.\d+$")
-        self.assertGreaterEqual(tuple(map(int, v.split("."))), (0, 39, 0))
-
-    def test_settings_hint(self):
-        sys.path.insert(0, os.path.join(ROOT, "bin"))
-        try:
-            import agent_conf
-        finally:
-            sys.path.pop(0)
-        by = {x["key"]: x for x in agent_conf.SETTINGS}
-        self.assertEqual(by["todo_before_agent"]["title"], "Rules: Todo before agent")
-        self.assertIsNone(agent_conf.validate_value("todo_before_agent", True))
-        self.assertIsNotNone(agent_conf.validate_value("todo_before_agent", "maybe"))
+PANE = "term_bc68aaf3-5722-4519-b334-5b19d9d2661e"
 
 
-if __name__ == "__main__":
-    unittest.main()
+W = "/Users/maverick/orca/workspaces/auto-pipeline/one-watcher"
+
+
+def create(opt="path:$W"):
+    return 'orca terminal create --environment pc2 --worktree %s --title "%s" --command "zsh" --json' % (opt, TITLE)
+
+
+class VarPath(GuardCase):
+    def setUp(self):
+        super().setUp()
+        self.put_todo("one-watcher")
+
+    def launch(self, cmd, stdout=None):
+        r = self.pre_bash(cmd)
+        self.assertAllowed(r)
+        if stdout is not None:
+            self.assertAllowed(self.post_bash(cmd, r.tid, stdout))
+        rows = self.launches()
+        self.assertEqual(len(rows), 1, rows)
+        self.assertNotIn("$", rows[0])
+        return rows[0]
+
+    def test_a_assignment_earlier(self):
+        row = self.launch("W=%s\n%s" % (W, create()))
+        self.assertEqual(self.fields(row)["worktree"], W)
+
+    def test_a_export_and_quotes(self):
+        row = self.launch("export W='%s'; %s" % (W, create()))
+        self.assertEqual(self.fields(row)["worktree"], W)
+        self.assertEqual(self.fields(row)["env"], "pc2")
+
+    def test_b_braces(self):
+        row = self.launch('W="%s"\n%s' % (W, create("path:${W}")))
+        self.assertEqual(self.fields(row)["worktree"], W)
+
+    def test_c_from_response_worktree_id(self):
+        out = json.dumps({"result": {"terminal": {"handle": PANE, "worktreeId": "repo-1::" + W}}})
+        row = self.launch(create(), out)
+        f = self.fields(row)
+        self.assertEqual((f["worktree"], f["pane"]), (W, PANE))
+
+    def test_c_from_response_path(self):
+        out = json.dumps({"result": {"handle": PANE, "worktree": {"path": W}}})
+        row = self.launch(create(), out)
+        self.assertEqual(self.fields(row)["worktree"], W)
+
+    def test_d_no_path_anywhere(self):
+        out = '"handle": "%s"' % PANE
+        row = self.launch(create() + " 2>&1 | grep -o '\"handle\": \"[^\"]*\"'", out)
+        f = self.fields(row)
+        self.assertNotIn("worktree", f)
+        self.assertEqual(f["pane"], PANE)
+
+    def test_e_command_substitution_not_expanded(self):
+        row = self.launch("W=$(pwd)\n" + create())
+        self.assertNotIn("worktree", self.fields(row))
+
+    def test_e_quoted_substitution_not_expanded(self):
+        row = self.launch('W="$(pwd)"\n' + create())
+        self.assertNotIn("worktree", self.fields(row))
+
+    def test_f_rm_with_assignment_removes(self):
+        self.put_launch("LAUNCH toolu_x: tm-pane | task one-watcher | %s | since 2026-11-20 16:40 | pid %d | by main "
+                        "| pane term_a | worktree %s" % (TITLE, LIVE, W))
+        rm = "W=%s\norca worktree rm --worktree path:$W --json" % W
+        r = self.pre_bash(rm)
+        self.assertAllowed(r)
+        self.assertAllowed(self.post_bash(rm, r.tid, '{"ok":true}'))
+        self.assertEqual(self.launches(), [])
+
+    def test_f_rm_without_assignment_removes_nothing(self):
+        self.put_launch("LAUNCH toolu_x: tm-pane | task one-watcher | %s | since 2026-11-20 16:40 | pid %d | by main "
+                        "| pane term_a | worktree %s" % (TITLE, LIVE, W))
+        rm = "orca worktree rm --worktree path:$W --json"
+        r = self.pre_bash(rm)
+        self.assertAllowed(r)
+        self.assertAllowed(self.post_bash(rm, r.tid, '{"ok":true}'))
+        self.assertEqual(len(self.launches()), 1)
+
+
+class TestF2TheGuardWritesTheRecord(GuardCase):
+    def records(self):
+        gd = subprocess.run(["git", "-C", self.repo.dir, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                            capture_output=True, text=True, check=True).stdout.strip()
+        path = os.path.join(gd, "agent_launches.jsonl")
+        if not os.path.exists(path):
+            return []
+        with open(path) as fh:
+            return [json.loads(l) for l in fh if l.strip()]
+
+    def test_a_reviewer_launched_by_the_main_manager(self):
+        self.make_main()
+        self.put_todo("t")
+        self.pre_agent("t Review", stype="auto-pipeline:reviewer")
+        recs = [r for r in self.records() if r.get("task") == "t"]
+        self.assertEqual([(r["type"], r["by"]) for r in recs], [("reviewer", "main")])
+
+    def test_a_check_deputy_launched_by_a_task_manager_is_not_the_main_managers(self):
+        self.put_todo("t")
+        self.pre_agent("t Check", stype="auto-pipeline:check-deputy", role="task-manager")
+        recs = [r for r in self.records() if r.get("task") == "t"]
+        self.assertTrue(recs)
+        self.assertNotEqual(recs[-1]["by"], "main")
+
+
+class TestGuardDropsAClosedPane(GuardCase):
+
+    def test_agent_runtime_close_drops_the_record(self):
+        self.put_todo("board-waiting")
+        self.put_launch("LAUNCH toolu_x: tm-pane | task board-waiting | board-waiting Task Manager | since "
+                        "2026-11-20 16:40 | pid %d | by main | pane term_a | worktree /w/board-waiting" % LIVE)
+        self.put_launch("LAUNCH toolu_y: tm-pane | task other | other Task Manager | since "
+                        "2026-11-20 16:40 | pid %d | by main | pane term_b | worktree /w/other" % LIVE)
+        for cmd in ('"/p/bin/agent-runtime.sh" close term_a', "/p/bin/agent-runtime.sh close term_a"):
+            with self.subTest(cmd=cmd):
+                r = self.pre_bash(cmd)
+                self.assertAllowed(r)
+                self.assertAllowed(self.post_bash(cmd, r.tid, ""))
+                self.assertEqual([l.split(":")[0] for l in self.launches()], ["LAUNCH toolu_y"])
+                self.put_launch("LAUNCH toolu_x: tm-pane | task board-waiting | board-waiting Task Manager | "
+                                "since 2026-11-20 16:40 | pid %d | by main | pane term_a | worktree "
+                                "/w/board-waiting" % LIVE)
