@@ -150,6 +150,43 @@ class TestA9NoSecondYes(unittest.TestCase):
         self.assertIn("his verified words at dispatch that name the publish are his final yes", rule("R8. ", "W1. "))
 
 
+import test_check_promote as tp  # noqa: E402
+
+
+class TestW1PromoteSeesTheTasksLines(tp.PromoteCase):
+    """Found by the walk: the deputy's and reviewer's lines live in the task's worktree, not in the main repo."""
+
+    def test_lines_in_the_task_worktree_pass_the_direct_gate(self):
+        import time as _t
+        self.git("fetch", "-q", "origin")
+        wt = os.path.join(self.repo.base, "wt_p1")
+        self.git("worktree", "add", "-q", "-b", "p1", wt, "origin/main")
+        with open(os.path.join(wt, "fix.txt"), "w") as fh:
+            fh.write("fix\n")
+        subprocess.run(["git", "-C", wt, "add", "-A"], check=True)
+        subprocess.run(["git", "-C", wt, "commit", "-q", "-m", "urgent fix"], check=True)
+        subprocess.run(["git", "-C", wt, "push", "-q", "-u", "origin", "p1"], check=True, capture_output=True)
+        r = self.repo.run("agent-file.sh", "todo", "add", "p1", "small", "publish p1", "10", "--target", "production",
+                          "--owner-quote", "fix it and publish it")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(self.repo.dir, "agent_worktree.txt"), "a") as fh:
+            fh.write("%s | p1 | final | since %s\n" % (wt, _t.strftime("%Y-%m-%d %H:%M")))
+        tcr.main_launched(self.repo.dir, "p1", at=_t.strftime("%Y-%m-%d %H:%M", _t.localtime(_t.time() - 120)))
+        head = subprocess.run(["git", "-C", wt, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        for block in ("PR REVIEW", "DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "CORE REVIEW",
+                      "EXAMPLES TEST"):
+            r = self.repo.run("agent-file.sh", "check", "p1", block, "pass", "--by", "p1 Review", "--evidence", "ok",
+                              "--commit", head, cwd=wt)                     # written in the task's worktree
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        r = self.repo.run("agent-promote.sh", "--task", "p1", "--branch", "p1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_results_file_for_a_remote_task(self):
+        self.assertIn("--results <file>", read("bin", "agent-promote.sh").split("\nset ")[0])
+        prod = [l for l in read("skills", "merge", "SKILL.md").splitlines() if "agent-promote.sh --task" in l][0]
+        self.assertIn("--results", prod)
+
+
 class TestWalks(unittest.TestCase):
     def test_the_demo_walks_both_flows(self):
         demo = read("tests", "check_blocks_demo.sh")
