@@ -86,8 +86,8 @@ FMT = "%Y-%m-%d %H:%M"
 HELPER_ROLE = "task manager, human-direct"
 
 HEAD = {
-    "zh": ["任务", "内容", "状态", "进度", "位置", "级别", "估时", "已工作", "已等待", "预计完成"],
-    "en": ["Task", "What", "Status", "Progress", "Where", "Level", "Est", "Work", "Wait", "Done by"],
+    "zh": ["任务", "内容", "状态", "进度", "位置", "检查", "估时", "已工作", "已等待", "预计完成"],
+    "en": ["Task", "What", "Status", "Progress", "Where", "Checks", "Est", "Work", "Wait", "Done by"],
 }
 STATUS = {
     "zh": {"running": "进行中", "owner": "你的待办", "parked": "搁置的问题", "waiting": "等待", "hold": "暂缓",
@@ -117,6 +117,13 @@ QUOTES = "\"'`“”‘’«»「」『』"
 
 
 # ---------------------------------------------------------------- small helpers
+
+
+def checks_cell(t):
+    """The Checks cell of a todo line: its checks field, else an old "level <x>" line, else "-"."""
+    if t["checks"]:
+        return t["checks"]
+    return "level " + t["level"] if t["level"] else "-"
 
 
 def parse_time(text):
@@ -470,6 +477,7 @@ class Board:
         self.records = []       # (folder, record) of every LAUNCH line read
         self.hand_workers = {}  # label -> row of a hand WORKER line
         self.unconfirmed = 0    # target rows that got the "not confirmed" warning
+        self.warned = {}        # task name -> minutes (None: unknown) of each "not confirmed" row
         self.watch_setup()
 
     # -- the watch (F3-F7): the status file is only read, orca is never called
@@ -525,6 +533,7 @@ class Board:
         if not warn:
             return ""
         self.unconfirmed += 1
+        self.warned.setdefault(t["name"], n)
         return (WATCH_WARN[self.lang] % n) if n is not None else WATCH_WARN_NO_N[self.lang]
 
     # -- words
@@ -563,7 +572,7 @@ class Board:
         f = line.split(" | ")
         t = {"name": f[0].strip(), "what": f[2] if len(f) > 2 else "", "est": None,
              "opened": None, "wkind": None, "wsince": None, "wnote": "", "waited": 0,
-             "machine": None, "path": None, "stage": None, "since": None, "wis": 0, "level": None,
+             "machine": None, "path": None, "stage": None, "since": None, "wis": 0, "level": None, "checks": None,
              "who": None, "after": None, "wrun": None, "started": None, "swaited": 0}
         for x in f[3:]:
             m = re.match(r"est (\d+)m$", x)
@@ -606,6 +615,10 @@ class Board:
                 # a type letter; an old number reads as 0=A 1=B 2,3=C 4=D (R8)
                 v = m.group(1)
                 t["level"] = v if v.isalpha() else ("ABCCD" + "D" * 20)[int(v)]
+                continue
+            m = re.match(r"checks (.+)$", x)
+            if m and t["checks"] is None:
+                t["checks"] = ", ".join(c.strip() for c in m.group(1).split(",") if c.strip()) or None
                 continue
             m = re.match(r"waited in stage (\d+)m$", x)
             if m:
@@ -725,7 +738,7 @@ class Board:
                 where = self.where_here(own_dir) if own_dir else "-"
         self.add(group, when, t["name"], t["what"] or "-", status, where,
                  est=est, work=work, wait=wait_cell, done=done, progress=progress,
-                 level="-" if t["level"] is None else t["level"], info=info)
+                 level=checks_cell(t), info=info)
 
     def helper_row(self, f):
         what = "-"
@@ -990,6 +1003,32 @@ WATCH_LINE = {
     "en": {"off": "board may be wrong: watch not running", "count": "board may be wrong: %d not confirmed",
            "orphan": "board may be wrong: a pane has no task line"},
 }
+
+
+def board_warnings(root, plugin, now):
+    """The board's warnings as the WARN lines of `agent-file.sh next` and the warn hook: watch not running
+    (alone: every target is then unconfirmed), else each not confirmed task in board order, then each pane
+    without a task line. No orca call. [] for none (no watch runs here, no targets)."""
+    args = argparse.Namespace(root=root, state_dir=root, cwd=root, now=now, lang="en", host="-", self_mode=False)
+    board = build(args, records=False)
+    if not board.w_on:
+        return []
+    if not board.w_live:
+        if not board.w_target_count:
+            return []
+        return ["WARN watch not running -> start it now: %s/bin/agent-watch.sh --all (Bash run_in_background)"
+                % plugin]
+    out, said = [], set()
+    for _, cells, _info in sorted(board.rows, key=lambda r: r[0]):
+        name = cells[0]
+        if name in board.warned and name not in said:
+            said.add(name)
+            n = board.warned[name]
+            out.append("WARN not confirmed %s%s -> read its pane or its newest state line, then fix the record or "
+                       "the agent" % (name, "" if n is None else " (%dm)" % n))
+    for path in board.w_orphans:
+        out.append("WARN pane without a task line %s -> add the todo line or close the pane" % path)
+    return out
 
 
 def watch_status_line(board):

@@ -475,7 +475,23 @@ def clash_with(scope, other):
     return None
 
 
+def next_warns(ctx):
+    """One WARN line per board warning (the board's own rules, agent_board.board_warnings)."""
+    try:
+        import agent_board
+        plugin = os.path.dirname(HERE)
+        for line in agent_board.board_warnings(ctx["root"], plugin, ctx["now"]):
+            print(line)
+    except Exception:
+        pass
+
+
 def cmd_next(ctx, a):
+    next_lines(ctx, a)
+    next_warns(ctx)
+
+
+def next_lines(ctx, a):
     if len(a) != 3:
         raise Refuse("next: internal: <max agents> <ram> <cap>", 2)
     mx, ram, cap = int(a[0]), int(a[1]), int(a[2])

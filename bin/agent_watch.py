@@ -366,7 +366,34 @@ def resolve_tm(ctx, target, env, skip=()):
         if "Task Manager" in str(t.get("title") or ""):
             return t["handle"]
     claude = [t for t in terms if t.get("agentIdentity") == "claude"]
-    return claude[0]["handle"] if len(claude) == 1 else None
+    if len(claude) == 1:
+        return claude[0]["handle"]
+    return helper_pane(ctx, target, env, skip)
+
+
+def task_slug(text):
+    """A Helper's task name as a todo name: lower case, runs of other characters -> "-"."""
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def helper_pane(ctx, target, env, skip=()):
+    """A task with no task manager pane, named by a human-direct Helper's "task: <Task Name>" line: the live pane
+    of that Helper (its title holds "Helper - <Task Name>") among the terminals of the Helper's own folder."""
+    if env:
+        return None
+    for line in read_lines(ctx.file("agent_worktree.txt")):
+        parts = [p.strip() for p in line.split(" | ")]
+        if len(parts) < 3 or not parts[0] or not parts[1].startswith("task manager, human-direct"):
+            continue
+        if not parts[2].startswith("task:"):
+            continue
+        task = parts[2][5:].strip()
+        if not task or task_slug(task) != target.name:
+            continue
+        for t in list_terminals("", parts[0]):
+            if t["handle"] not in skip and "Helper - %s" % task in str(t.get("title") or ""):
+                return t["handle"]
+    return None
 
 
 def resolve_shell(ctx, target, env, tm_handle="", skip=()):
@@ -482,6 +509,7 @@ class Engine:
         self.orphans = []
         self.orphans_printed = set()
         self.repo_id = ""
+        self.slots = []
 
     # ---- status file
 
@@ -513,7 +541,8 @@ class Engine:
                 "lost": sorted(t.lost),
             }
         data = {"pid": os.getpid(), "started": self.started, "sweep": self.sweep_time,
-                "interval_min": self.interval_min, "tasks": tasks, "orphans": self.orphans}
+                "interval_min": self.interval_min, "tasks": tasks, "orphans": self.orphans,
+                "slots": list(self.slots)}
         self.dump_status(data)
 
     def dump_status(self, data):
@@ -882,6 +911,7 @@ class Engine:
             else:
                 states.append((t.name, self.evaluate(t, self.observe(t), events)))
         self.scan_orphans()
+        self.check_slots(events)
         self.sweep_time = now_text()
         out("%s sweep: %s" % (hhmm(), ", ".join("%s %s" % s for s in states) or "no targets"))
         self.write_status()
@@ -890,6 +920,38 @@ class Engine:
             for l in evidence or []:
                 out(l)
         return events
+
+    # ---- the slot wake: a queued task that `agent-file.sh next` would start, said once
+
+    def queued_names(self):
+        """The names of the open todo lines with an open queue wait."""
+        names = []
+        for line in read_lines(self.ctx.file("agent_todo.txt")):
+            parts = line.split(" | ")
+            if parts[0].strip() and any(f.startswith("waiting queue ") or f == "waiting queue" for f in parts[3:]):
+                names.append(parts[0].strip())
+        return names
+
+    def check_slots(self, events):
+        try:
+            queued = self.queued_names()
+            self.slots = [n for n in self.slots if n in queued]
+            if not queued:
+                return
+            script = os.path.join(HERE, "agent-file.sh")
+            r = subprocess.run([script, "next"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, universal_newlines=True, cwd=self.ctx.main, timeout=60)
+            if r.returncode != 0:
+                return
+            for line in r.stdout.splitlines():
+                if not line.startswith("START "):
+                    continue
+                name = line[6:].split(" | ")[0].strip()
+                if name in queued and name not in self.slots:
+                    self.slots.append(name)
+                    events.append(("WATCH SLOT %s: can start (run agent-file.sh next)" % name, None))
+        except Exception:
+            return
 
     # ---- B16
 
@@ -948,7 +1010,10 @@ class Engine:
 
     def run(self):
         self.replace_older()
-        self.saved = {k: v for k, v in (self.load_status().get("tasks") or {}).items() if isinstance(v, dict)}
+        status = self.load_status()
+        self.saved = {k: v for k, v in (status.get("tasks") or {}).items() if isinstance(v, dict)}
+        if isinstance(status.get("slots"), list):
+            self.slots = [n for n in status["slots"] if isinstance(n, str)]
         signal.signal(signal.SIGTERM, self.on_term)
         out("%s watch --all: start (pid %d), every %s min" % (hhmm(), os.getpid(), fmt_num(self.interval_min)))
         self.prepare(True)
