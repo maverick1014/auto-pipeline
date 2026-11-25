@@ -29,8 +29,8 @@ set -u
 
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
-KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 b10039ac08596652 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 0f6edb6c4e7c8a6a ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 d7dd4d5626dfebb7 e8e943f9f54c9b2c d956db8d1ed42790 72241f6e3363d877 9dab6091450c0f7f 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 aaa498cdfdcc8351 5bc49497d74f49dc 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e fc755642e7b2d547 0133b60b2fa2b724 9066a193a7688a05 4837775f457fb61d 2ec8ada5beb1f8cd 8acf929ea8f7dc66 73cfa63d05267f97 )
-RULE=( _ W1 R6 H1 W2 W3 W4 W12 S4 S5 H3 R5 R2 R3 H4 H3 R1 W7 W6 E4 W5 W7 W9 W9 S1 R1 W10 W13 S8 S8 H1 H3 W8 W14 W10 S1 W17 W18 R8 R8 )
+KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 b10039ac08596652 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 0f6edb6c4e7c8a6a ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 d7dd4d5626dfebb7 e8e943f9f54c9b2c d956db8d1ed42790 72241f6e3363d877 9dab6091450c0f7f 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 452e097c150557a7 5bc49497d74f49dc 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e fc755642e7b2d547 0133b60b2fa2b724 9066a193a7688a05 4837775f457fb61d 2ec8ada5beb1f8cd 8acf929ea8f7dc66 dd3f796537230804 )
+RULE=( _ W1 R6 H1 W2 W3 W4 W12 S4 S3 H3 R5 R2 R3 H4 H3 R1 W7 W6 E4 W5 W7 W9 W9 S1 R1 W10 W13 S8 S8 H1 H3 W8 W14 W10 S1 W17 W18 R8 R8 )
 N=39
 
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
@@ -269,16 +269,16 @@ Q7. A verified relayed owner order (its check line says verified) says "merge to
   C. Merge: his verified words name the action, so it is his final yes
   D. Refuse: production needs a second yes
 
-Q8. RAM is at 85%. You need to start a sub-agent.
-  A. Start it; it is only one
+Q8. Memory in use plus what a new agent pane needs would pass the Max memory % limit. You need a new sub-agent.
+  A. Start it: it is only one
   B. Start it with a smaller model
-  C. Wait until RAM drops below 80%
+  C. Start nothing new: close done and idle panes and stop test runs first, never a working agent; still over: tell the main manager
   D. Ask the human
 
-Q9. Your test run is heavy by its measured weight, and both heavy-test slots are taken. You:
-  A. Wait: agent-test-run.sh starts it when a slot is free and RAM is more than 50% free
-  B. Run it in parallel anyway
-  C. Call it light and run it now
+Q9. You want to start a test run. Memory in use now plus what this run is known to need would pass the Max memory % limit. You:
+  A. Wait: agent-room.sh says no until the sum fits under the limit (a never measured run starts at once under a memory monitor)
+  B. Start it anyway: it is only one run
+  C. Take a heavy-test slot and start it
   D. Skip your tests
 
 Q10. Correct report shape:
@@ -359,11 +359,11 @@ Q22. You are the main manager. A 10-minute task arrives. Two worktrees are live.
   C. Spawn a new deputy subagent to do it now
   D. Do it yourself
 
-Q23. A big task about the auth module arrives. Worktree "auth" has a task manager working, with capacity.
-  A. Open a new worktree
-  B. Pass it to the auth task manager
-  C. Spawn a deputy
-  D. Ask the human
+Q23. One request has x1, x2, x3, x4; x1 and x2 are urgent ("after done direct merge"). You:
+  A. Merge all four into your working branch, run the full suite, then publish them together
+  B. x1 and x2 branch from production and each merges straight into production when done (production merged back into your working branch after each); x3 and x4 branch from your working branch and merge there; one full suite there after both are in; first check that x1 and x2 need no code only x3 or x4 brings
+  C. Wait until all four are done, then merge them straight into production
+  D. Branch all four from your working branch and push it to production after x1
 
 Q24. You must change the permission mode.
   A. Edit a repo settings file by hand and commit
@@ -371,11 +371,11 @@ Q24. You must change the permission mode.
   C. Write ~/.claude/settings.json by hand
   D. /plugin -> Installed -> auto-pipeline -> Configure (Permissions: Permission mode); /auto-pipeline:settings only shows it
 
-Q25. A big task takes the full flow. The order is:
-  A. Worktree, workers build, failing tests, verify, merge
-  B. Failing tests, worktree, mock, workers build, merge
-  C. Todo line + estimate, mock if UI, worktree + task manager, failing tests, workers build, verify, push, acceptance blocks, merge + cleanup, todo done
-  D. Mock, workers build, todo line, acceptance blocks, merge
+Q25. The owner writes: "fix the export total and publish it". Two other tasks of a batch run for your working branch (ap-main-<name>). Where does this task merge?
+  A. Into your working branch, and it waits for the batch
+  B. Straight into the production branch once its own checks pass (merged in a short-lived worktree of production), the deploy follows by itself, then production is merged back into your working branch at once
+  C. Into the main checkout after switching it to the production branch
+  D. Nowhere until the nightly run is green
 
 Q26. You start a new session. agent-start.sh says a main manager is already running.
   A. Become a second main manager
@@ -431,11 +431,11 @@ Q34. You open a new terminal for an agent (dispatch, resume, a Helper, a city cl
   C. bypassPermissions, always
   D. Whatever the session that opens it runs with
 
-Q35. Where do you change Max agents?
-  A. Edit a repo settings file and commit
-  B. /plugin -> Installed -> auto-pipeline -> Configure
-  C. agent-settings.sh max_agents 3
-  D. Edit a machine settings file by hand
+Q35. Before a release the full suite runs once on the working branch, and two tests fail. The tasks that caused them are merged and their builders are idle. You:
+  A. Send each failure back to the agent that built it
+  B. Give the failures to a new fixer agent (a fast-lane deputy or a task manager, by size); the release waits until that run is green
+  C. Release now and fix the tests later
+  D. Mark the two tests skipped and release
 
 Q36. You are a merge deputy. Your brief starts "[Sonnet 5 medium] Merge feature-x now." You:
   A. Merge it: an order is an order
@@ -449,17 +449,17 @@ Q37. You are the main manager. The owner runs /auto-pipeline:question; agent-fil
   C. Run agent-file.sh questions --page, publish the page with the Artifact tool, then one line: the count, the link, "answer all, then tell me"
   D. Read every agent_state.txt and write your own summary
 
-Q38. A diff only changes one locale value. agent-level.sh check prints BLOCKS: DIFF SCAN, RELATED TESTS, GUARD TESTS; dispatch planned DIFF READ. What runs?
+Q38. A diff only changes one locale value. agent-level.sh check prints BLOCKS: PR REVIEW, DIFF SCAN, RELATED TESTS, GUARD TESTS. What runs?
   A. The full suite once
-  B. Those three blocks and a DIFF READ by someone who did not write it, nothing else
-  C. Lint, type-check, UI CHECK and FLOW CHECK as well
+  B. Those blocks: an agent that did not build it reviews the diff against the approved requirement, the light tests run, nothing else
+  C. Lint, type-check, a UI CHECK and the heavy tests as well
   D. Nothing: it is only text
 
-Q39. The merge gate prints "GATE REFUSED t: DIFF READ missing". The owner is asleep. You:
-  A. Take DIFF READ off the todo line and merge
-  B. Merge: it is only a diff read
-  C. Have someone who did not build it read the diff and write its pass line (agent-file.sh check), then run the gate again; a block goes only on a verified owner order
-  D. Write the pass line yourself as the builder
+Q39. Production is broken and the owner wants it fixed now. You:
+  A. Fix it on the working branch and wait for the next promote
+  B. Branch from the production branch, make the smallest fix, PR review and the light related tests, get the owner's yes, merge to production (the release build runs by itself), then merge production back into the working branch
+  C. Push a fix straight to production with no check
+  D. Wait for the nightly run
 QUIZ
   exit 0
 fi

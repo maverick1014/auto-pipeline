@@ -17,13 +17,17 @@ R1. One flow, two lanes
   6. Verify
   7. Push
   8. Acceptance blocks (R8)
-  9. Merge + cleanup
+  9. Merge into the target branch + cleanup
   10. Todo done
 - Task size picks who does the work: small task = one subagent in its own git worktree (fast lane); it writes its example tests and runs its blocks
 - Big task (over 2 hours, several slices) = a task manager (full lane)
 - Which checks run follows the triggers only (R8), never the lane
 - A small logic task never opens a task manager just because it needs a test
 - A small task that grows (past 2x its estimate, or it needs a second slice): the subagent stops and reports; the main manager opens a task manager that goes on from its branch
+- One fixed sequence after the build: builder reports done -> reviewer reads the diff against the approved requirement (PR REVIEW, on the Reviewer model) -> check deputy only when what the user sees or does changed (15 min box) -> merge deputy
+- A fail at review or check goes back to the builder as a fix order
+- The target: the user's request decides. It says publish or merge to main -> the task, once its own checks pass (its blocks; no full suite), goes straight into the production branch, and the deploy follows by itself (here: the release build; a repo like v4: its own sync)
+- No such words, or unclear -> the working branch (ap-main-<name>, setting "Flow: Working branch"); nothing goes to production by itself
 
 R2. Secrets
 - Live in `.secrets/` (git-ignored)
@@ -63,24 +67,32 @@ R7. Worktree file
 - The housekeep pass removes a line whose worktree folder is gone and has no live pane; a working, final or human-direct line is only flagged
 
 R8. Check blocks
+- Owner 2026-11-25: "let other agents verify the outcome of the code instead of letting test cases do it"; tests only show old things still work and cost memory and time; an urgent fix must not wait for a test flow
+- PR REVIEW, the main check of every task: an agent that did not build it reads the diff against the approved requirement
+- It asks: does it do what was asked, nothing else; are the edge list lines covered; is no check deleted; no secret; its cost follows the diff size, one more reason for small tasks
+- A run or browser check (FLOW CHECK, UI CHECK) comes on top only when what the user sees or does changed: only the approved items, a 15-minute time box (`verify_box_min`), extra finds go to the ideas file
+- Tests stay as a cheap guard: light related tests in every task; a bug that a review or check finds gets a small test with its fix (W3)
+- The full suite is the safety net only: the release run on the working branch and the nightly, never in a task; a heavy test never blocks a merge
+- URGENT FIX: branch from the production branch, the smallest fix, PR REVIEW and the light related tests, the owner's yes
+- Then merge to production (`agent-promote.sh --task`; the deploy follows) and merge production back into the working branch
 - Owner 2026-11-25: "only do the necessary thing when needed, dont do extra thing. and dont do less thing"
 - No levels: each check is a block with a trigger; a task runs the blocks whose trigger fires, nothing else
 - The one table, source `bin/agent_blocks.py`; this table, the skills and the quiz are tested against it:
 
 | Block | Picked | Trigger | What runs | Owner signs |
 |---|---|---|---|---|
+| PR REVIEW | tool | every task | an agent that did not build it reads the diff against the approved requirement: does it do what was asked and nothing else, are the edge list lines covered, is no check deleted, no secret; its cost follows the diff size | no |
 | DIFF SCAN | tool | every task | the tool scans the diff: files outside the task's scope, deleted or skipped tests, secrets, debug leftovers | no |
 | BUILD | tool | code changed | lint + type-check or syntax check of the app that was touched | no |
-| RELATED TESTS | tool | code, text or rule files changed | only the tests that import or name the changed files. Style-only change of a shared component: the component's own tests. Rule text: the tests that name the changed section | no |
-| MODULE TESTS | tool | code used by other modules changed, or dependencies, lockfile, CI or test config changed | the tests of every module that uses the changed code; a dependency, lockfile, CI or test-config change: the tests of every module | a dependency, lockfile, CI or test-config change |
+| RELATED TESTS | tool | code, text or rule files changed | only the LIGHT tests (measured) that import or name the changed files. Style-only change of a shared component: the component's own tests. Rule text: the tests that name the changed section. A heavy one goes to the release run or the nightly | no |
+| MODULE TESTS | tool | code used by other modules changed, or dependencies, lockfile, CI or test config changed | the tests of every module that uses the changed code, light module groups only; a dependency, lockfile, CI or test-config change: the tests of every module. A heavy group goes to the release run or the nightly | a dependency, lockfile, CI or test-config change |
 | GUARD TESTS | tool | code or text changed | the repo's tree-scanning tests (listed in the repo file) | no |
 | DB CHECK | tool | a migration or schema file is in the diff | dry run on a data copy, counts before and after, rollback plan | only when the migration changes or removes data or columns |
 | DATA CHECK | tool | a script that changes live data | preview of the rows (the count must match the expected one), backup | yes |
 | CORE REVIEW | tool | a core path of the repo is touched (money, permission), or the brief says who can see or do what changes, or a posting rule changes | an independent read-only agent reads the logic against the rules the owner approved | a permission change |
-| DIFF READ | brief | text, style, a simple move (banner -> toast) | someone who did not write it reads the diff. That is the acceptance. A 5-minute task stays a 5-minute task | no |
 | EXAMPLES TEST | brief | behaviour or logic changes | failing tests first, written from the examples in the requirement doc; they cover the fitting lines of the repo's edge list. Money and permission rules: the owner approves the examples before code | no |
-| FLOW CHECK | brief | a behaviour a user can reach changes | someone who did not build it runs 1 normal path + 1 error path | no |
-| UI CHECK | brief | new page, re-layout, size or responsive change | compare with the approved mock or the before screenshot, desktop and phone width. Style change of a shared component: look at a few different usages only | no |
+| FLOW CHECK | brief | what a user does changes | someone who did not build it runs 1 normal path + 1 error path: only the approved items, a 15-minute time box, extra finds go to the ideas file | no |
+| UI CHECK | brief | what a user sees changes: new page, re-layout, size or responsive change | compare with the approved mock or the before screenshot, desktop and phone width. Style change of a shared component: look at a few different usages only. A 15-minute time box, extra finds go to the ideas file | no |
 | REAL DATA COUNT | brief | a rule, limit or validation is added or tightened, or a list, print or export changes | one read-only count on real data: how many existing records would be refused, and the largest real size. No read access: skipped with one printed line, never silently | no |
 
 - Picked tool: `agent-level.sh check --base <ref>` decides them from the real diff, no judgment
@@ -89,22 +101,37 @@ R8. Check blocks
 - Blocks are only added; removing one needs a verified owner order: `todo checks <task> --remove <BLOCK> --owner-quote "<his words>"`
 - One result line per block: `agent-file.sh check <task> "<BLOCK>" pass|fail --by <who> --evidence "<text>"`
 - The merge gate `agent-file.sh checks gate <task>` refuses while a planned block has no pass line
-- DIFF READ, FLOW CHECK and UI CHECK pass only by someone who did not build the task: not the builder (the todo line's builder or its LAUNCH records)
+- PR REVIEW, FLOW CHECK and UI CHECK pass only by someone who did not build the task: not the builder (the todo line's builder or its LAUNCH records)
 - No task runs the full suite (owner 1A 2026-11-25): MODULE TESTS is the largest per-task check
-- OWNER SIGN is planned when a sign fires: MODULE TESTS on a dependency, lockfile, CI or test-config change, DATA CHECK, DB CHECK on a data change
+- OWNER SIGN is planned when a sign fires: MODULE TESTS on a dependency, lockfile, CI or test-config change, DATA CHECK, DB CHECK on a data change, CORE REVIEW on a permission change
 - Dispatch plans OWNER SIGN with CORE REVIEW when the brief changes who can see or do what
 - BUILD and GUARD TESTS run per task only when their measured time in agent_repo.conf is under `check_budget_s` (60 s)
-- Slower = heavy: it runs in the net; a heavy BUILD takes the heavy-test slot (S5)
+- Slower = heavy: it runs in the net, not in the task
 - REAL DATA COUNT with no read access: skipped with one printed line, never silently
-- Outside tasks, the net: NIGHTLY RUN, all tests once every night in the background on the heavy-test machine (`agent-nightly.sh`); it gates nothing
+- Outside tasks, the net: NIGHTLY RUN, all tests once every night in the background (`agent-nightly.sh`); it gates nothing
 - A failure the nightly finds that the causing task's own RELATED or MODULE run did not find is a selection miss: one line, the test and the merge (`agent-nightly.sh --misses`)
 - After two weeks the owner reads the selection miss count and decides whether the nightly goes too
 - The watch's housekeep pass starts it once a day after 22:00 (`nightly_hour`) when no heavy test runs; no watch alive: the next session start, when the last run is older than 24 hours
-- A release needs the last nightly on that main to be green, or one background run (`agent-nightly.sh --release-ok`); no other pre-release run
+- A release needs a green full run on the working branch: the last nightly on that commit, or one background run (`agent-nightly.sh --release-ok`); no other pre-release run
+- The working branch (setting "Flow: Working branch", default `ap-main-<name>`) is only a branch
+- Everything merged or pushed lands there first and never on the production branch by accident: the main checkout is switched to the working branch by init
+- The working branch is per person (<name> = the git user name in lower case, only letters, digits and "-"): worked out once per clone and stored, pushed to origin
+- A task manager or deputy on another machine never derives it again (git user names differ between machines); every brief names the branch
+- It belongs to that person: the sweep never deletes it, nobody else merges into it
+- Other people publish to the production branch meanwhile: it is merged into the working branch at the start of a batch and again before a publish (`agent-promote.sh --sync`), and the full suite runs on that result
+- Batches: tasks given together merge into the working branch; when the last one of the batch is merged, ONE full suite runs on the working branch (`agent-nightly.sh --start`)
+- A red batch run goes to a new fixer agent, never back to the builder
+- Production from the working branch: only on the owner's approval (verified words) and only from a green commit: `agent-promote.sh --owner-quote "<his words>"`
+- A repo with a release build runs it right after, so merged to production = published
+- RELEASE RUN: the full suite runs once on the working branch before such a publish (the batch run on that commit counts)
+- Release run failures: `agent-nightly.sh --failures` names, for each failing test, the merge that introduced it (it runs that test across the merges since the last green run)
+- The new fixer agent gets the test, the merge and that task's requirement, and labels each failure
+- "test out of date": update it, cite the requirement line or commit that changed the behaviour on purpose; "real break": fix the code
+- No check is deleted without a twin; the fixer's report is a table of these labels: test | merge | task | label | cite or fix
 - RELEASE SMOKE after every release: a fresh session uses the released version for real (start, one subagent launch and finish, the user-facing flows that changed)
 - Four kinds of request, one line each:
   - Refactor (no behaviour change): BUILD + RELATED TESTS; no new examples, the existing tests are the acceptance
-  - Urgent fix (production is broken): the smallest fix, the same triggers; a verified owner order may move a block to right after the release, never drop it
+  - Urgent fix (production is broken): the URGENT FIX path above
   - Rollback: back to the last green commit; BUILD + RELATED TESTS of the reverted files; a database change follows its written rollback plan
   - Research only (no diff): no blocks; the report is the deliverable
 - Repo facts live in the committed `agent_repo.conf`, written by init and kept by agents, never by the user: core paths, guard tests, test commands, the edge list, real-data access
@@ -139,8 +166,9 @@ W3. TDD
 
 W4. Multi-agent tests
 - Tests are organised module → feature
-- No task runs the full suite (owner 1A 2026-11-25). Which tests run follows the blocks (R8): RELATED TESTS and GUARD TESTS per task; MODULE TESTS only when its trigger fires
-- Every test run goes through `agent-test-run.sh`: light or heavy by measured weight (S5)
+- No task runs the full suite (owner 1A 2026-11-25)
+- Which tests run follows the blocks (R8): the light RELATED TESTS and GUARD TESTS per task; MODULE TESTS only when its trigger fires, light ones only; a heavy one goes to the release run or the nightly
+- Every test run goes through `agent-test-run.sh` (S5)
 - The main manager and the merge deputy never re-run tests the task manager already passed. Only on a merge conflict: test the conflicted part
 - After a bounce: re-run only the tests that failed, not the suite
 
@@ -163,7 +191,8 @@ W6. Roles
 - Main manager (Opus 5.5, xhigh) = the main chat. Assigns tasks, talks to the human, reports, accepts decisions, brainstorms. Nothing else
 - Fast-lane deputy (Sonnet 5, medium) = `agents/fast-lane-deputy.md`, new one per small task: works in its own git worktree, writes the example tests of a small logic task, runs its blocks, pushes a branch
 - Merge deputy (Sonnet 5, medium) = `.claude/agents/merge-deputy.md`. Merges, then deletes branch and worktree
-- Check deputy (Sonnet 5, medium) = `agents/check-deputy.md`, read and browser tools only: DIFF READ, FLOW CHECK, UI CHECK, re-checks after a bounce, RELEASE SMOKE; a verdict with evidence, the main manager decides
+- Reviewer (Reviewer model, default opus-5.5:high) = `agents/reviewer.md`: PR REVIEW of every task and CORE REVIEW; read only; a fail is a fix order to the builder
+- Check deputy (Sonnet 5, medium) = `agents/check-deputy.md`, read and browser tools only: FLOW CHECK, UI CHECK, re-checks after a bounce, RELEASE SMOKE; a verdict with evidence, the main manager decides
 - The main manager stays free for the human: it runs no long check itself; it sends the check deputy and gets a short verdict with evidence
 - Task manager (Opus 5.5, xhigh) = one agent per big feature, in its own worktree (exception: human-direct, W10). Writes the tests, briefs workers, judges, verifies every worker result before reporting done to the main manager. Never writes product code
 - Worker (Sonnet 5, medium) = `.claude/agents/worker.md`, subagent of a task manager. Writes code until the task manager's tests pass
@@ -178,12 +207,14 @@ W7. Big feature (> 2 hours)
 - Then new worktree
 - One task manager inside it
 - Task manager spawns workers as needed
-- plain or cloud → no worktree, no second terminal. Main manager runs the task itself with `Agent` subagents, up to the Max agents setting
-- Every spawned agent counts toward the Max agents setting (S6). The main manager does not
+- plain or cloud → no worktree, no second terminal. Main manager runs the task itself with `Agent` subagents, each admitted by the memory rule (S3)
+- Placement: every job goes to a connected machine first (the one with the most room by S3); the local machine only when no connected machine has room or the job needs it; no machine is special; local stays clean and fast for the human
 - One agent = one worktree = one branch = one terminal. Push at every stage
 
 W8. Merge and cleanup
-- Deputy merges into the integration branch
+- The merge deputy merges into the working branch (ap-main-<name>) in the main checkout
+- A task with target production goes straight in through `agent-promote.sh --task`: a short-lived worktree of the production branch, removed right after; the main checkout never switches
+- After any direct merge into production, production is merged back into the working branch at once, so they never drift
 - The merge deputy runs `agent-file.sh checks gate <task>` first: GATE REFUSED → no merge, the task goes back
 - Deputy deletes the branch (local + remote) and the worktree right after merge
 - A failed run after the merge is undone with `git reset --merge ORIG_HEAD`, never --hard (that wipes the uncommitted agent_*.txt of the main checkout)
@@ -192,6 +223,8 @@ W8. Merge and cleanup
 - human-direct protects only the human's own session pane; the sweep never closes a Claude pane, only a shell pane that never got a prompt and is idle over 30 minutes (`unused_pane_min`)
 - The sweep prunes a LAUNCH record whose pid is dead or whose pane is gone; its table never lists main or the release branch; a worktree with a live LAUNCH record is "live agent"
 - The plain list shows what --apply would remove; --apply is main manager only
+- Whatever is sent to another machine is cleaned up there when it is done: pane, worktree, branches, scratch clones, temp test folders, its reservation
+- The sweep covers every connected machine and its list names what is left there
 - Never skip cleanup
 - Main manager verified + waiting for the owner's yes → agent-file.sh checks gather first, close the task manager pane, remove its worktree, keep the pushed branch, start the next task
 - Owner yes → merge deputy merges the branch. Owner no → a new task manager from that branch. Goal: work all night, RAM stays free
@@ -220,6 +253,11 @@ W9. Task routing (main manager, before every dispatch)
 - `todo done <X>` releases every task queued after X
 - The main manager runs `agent-file.sh next` at every wake (a report, a watch signal, a human message) and dispatches what can start: a free slot under the machine caps, RAM under the cap, no open task on the same files
 - A task the owner already approved needs no new question
+- A new worktree or pane goes to the connected machine first that has room (W7, S3)
+- Target and base (R1): a task that goes straight to production branches from the production branch; a task for the working branch branches from the working branch (it sees the batch's earlier merges): `todo add ... --target production|working --batch <name>`
+- The target is per task, not per request: an urgent task branches from the production branch and merges straight into production when it is done, production merged back into the working branch after each; the others branch from the working branch and merge there; the batch's one full suite runs after the last of them
+- Before dispatch: does an urgent task need code that only a non-urgent one brings? Yes -> it cannot ship alone: tell the owner at once (ship them together, or move that part into the urgent task), never guess
+- A new request may also wait until the working branch is tested and published; the main manager picks what is faster and says which
 - Shared first: before parallel features, find the code they share (models, components, APIs); the shared part is its own task, merged first; features that need it wait (`todo wait <name> on queue --after <task>`)
 - The todo line comes first: `todo add` before the worktree, the pane or any agent. The guard refuses a main manager launch for a task that is not open (W14)
 
@@ -229,6 +267,8 @@ W10. Second session in the same repo
 - Its start text names the main manager: pid, `<repo> Manager`, terminal
 - Human wants this session as main manager → the human types `! agent-start.sh --take-over` (full path in the start text); the agent never runs it. The old one is told once, never main again by itself
 - Human-direct = only a session the human opened by hand. Agent-spawned agents are never human-direct. They run fully by agent, no human in the loop
+- A human-direct session keeps its protection only while the human alone drives it. Once it takes a task from the main manager or reports DONE to it, it runs `agent-file.sh helper-join "<task>"` and is a normal agent
+- The merge of its last open task closes its pane and removes its line, like a task manager; the close message names `claude --resume <session id>`
 - At start: the script adds a line to `agent_worktree.txt` (status human-direct). Also send the main manager a direct message if a channel exists (Orca)
 - Will change files → open its own worktree first (W7). Only looking → no worktree
 - Human talks to it directly for now. All task manager rules still apply
@@ -417,35 +457,33 @@ S2. Resume script
 - Loads context, memory, agents, saved sessions (S7), and prints the watch command when no watch runs
 
 S3. Resource guard
-- Before new agent or heavy process: check free RAM and CPU
-- Low → wait or run smaller
+- A run (a test command, a build, a new agent pane) starts when memory in use now + the memory this run is known to need <= the "Load: Max memory %" limit (default 80): `agent-room.sh check`
+- Known to need = the measured peak MB; a Claude pane counts too (about 300-550 MB; 550 MB while never measured)
+- A run that was never measured is not held back: it starts at once with a monitor on its memory; the monitor runs for every test or build run, measured or not
+- Over the limit the monitor stops the newest, unmeasured one first, records its peak MB, and the run is tried again when there is room. Only test and build runs are stopped
+- CPU: a parallel test runner uses as many processes as keep CPU under the same limit (`{workers}`); memory is the hard gate, CPU the soft one. Long but light runs just go
 
 S4. Usage cap
-- RAM and CPU each ≤ 80%
-- Over → no new job to any agent until it drops back
-- Over → run `bin/agent-resources.sh relief` first, then wait
+- Over the limit: start nothing new; close done and idle panes first; stop test runs before anything else (`agent-room.sh relief`)
+- A working agent is left alone: never stop a working agent, tell the main manager instead, one line: which machine, how much over, what it did
 - relief stops only what the pipeline owns: `agent-watch.sh --all` processes left by tests, watches of repos with no live main manager
 - The sweep (W8) runs `agent-resources.sh stop-leftovers`: this repo's orphan watch and finished test watches only, no table
 - A task manager over cap parks: commit, write state, set idle; the main manager closes its pane; resume brings it back
 - The human's apps, other repos' sessions, Gradle or node runners: never killed by an agent. One table to the human: process · MB · CPU · what · suggestion
 - Setting "Load: Max memory %" = 80
 
-S5. Heavy tests
-- A test run is light or heavy by measured weight, never by its name: `agent_repo.conf` keeps seconds and peak MB per test command or module group (`weight.<key>`); init measures, each real run through `agent-test-run.sh` updates them
-- Light (under 120 s and under 1 GB): no slot, on the agent's own machine, several at once, under the normal RAM guard (S4)
-- Heavy: the heavy-test slot on the heavy-test machine. Unknown weight counts as heavy the first time
-- Start one; once it runs and has settled, start another only if RAM is still more than 50% free; never two at the same moment. The Heavy test slot/time setting is the ceiling, RAM decides below it
+S5. Test runs
+- Every test run goes through `agent-test-run.sh`: it reserves its measured peak MB while it runs, and the monitor watches it
+- One small shared reservation list per machine (every running job: pid, reserved MB; a dead pid frees its entry): two agents, also of different repos, never count the same free memory
+- Measured weights live per machine (`agent_test_weights.json` in the git common dir); `agent_repo.conf` `weight.<key>` lines are seeds only
 - Every test run caps its own parallelism, e.g. `jest --maxWorkers=2`, `flutter test -j 2`
 - Every test run that can run in the background runs in the background by default (Bash `run_in_background`)
-- Setting "Load: Heavy test slot/time" = 2
 
-S6. Agent cap
-- Per device
-- Setting "Load: Max agents": per machine
-- Counts spawned agents in state working or permission only. A done or idle pane and the main manager are not counted
+S6. No count caps
+- No count caps: no fixed count of agents, task managers or subagents per machine; a new agent pane is admitted by the same rule as any job (S3)
+- A pane in state working or permission is a busy agent; a done or idle pane and the main manager are not counted when the memory rule (S3) adds up panes
 - A finished idle pane (state done): its own repo's main manager closes it once its task is merged, dropped or closed
 - Never one still waiting on a merge, a question or a decision (W8 closes it after the merge). Never another repo's panes
-- Reviewers count toward the cap too
 
 S7. Session recovery
 - Each agent saves state to `agent_state.txt` in its own worktree while working: task, progress, decisions, next step
@@ -531,7 +569,8 @@ Human
   │  task ↓   report ↑
 Main manager   (Opus 5.5, xhigh · the main chat · free for the human)
   ├── Fast-lane deputy   (Sonnet 5, medium)  one small task in its own git worktree, then gone
-  ├── Check deputy       (Sonnet 5, medium)  diff read, flow and UI checks, release smoke; one at a time on the browser
+  ├── Reviewer           (Opus 5.5, high)    PR review of every task, core review; read only
+  ├── Check deputy       (Sonnet 5, medium)  flow and UI checks, release smoke; one at a time on the browser
   ├── Merge deputy       (Sonnet 5, medium)  merge → push → delete branch → remove worktree
   └── Worktree, one per big feature
         └── Task manager (Opus 5.5, xhigh)     writes the tests, briefs workers, verifies, never codes
@@ -541,7 +580,8 @@ Main manager   (Opus 5.5, xhigh · the main chat · free for the human)
 Scripts, not agents (cost no tokens):
   bin/agent-start.sh   RAM/CPU guard, prints the rules, 39-question quiz gate, main-manager lock
   bin/agent-nightly.sh  the nightly run of all tests: gates nothing, records selection misses, --release-ok
-  bin/agent-test-run.sh  every test run: light or heavy by measured weight, the heavy-test slot
+  bin/agent-test-run.sh  every test run: reserves its measured memory, a monitor watches it (S3, S5)
+  bin/agent-room.sh  the memory gate: check, reserve, release, list, relief, measure-pane
   bin/agent-level.sh   the blocks a diff triggers (R8): agent-level.sh check --base <ref>
   bin/agent_blocks.py  the one table of blocks and triggers (R8)
   bin/agent-owner-order.sh  relayed owner orders between repo managers: `line` prints the OWNER ORDER header (sender), `verify` checks the words are a typed owner prompt in the sender's transcript (receiver)
