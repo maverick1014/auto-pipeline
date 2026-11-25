@@ -177,14 +177,25 @@ gate() {
 # prep <step>: the gate, then ready; when ready took 2 seconds or more (it waited) both run again, until ready
 # returns at once (clear_quiet_min 0: once; --spawned only changes the unreadable-transcript branch), so no text is typed a moment after anything but a passing gate and an empty box (C13).
 # rc 1 = the gate had to wait on the way.
+told_unsettled=0
 prep() {
-  local w=0 t0
+  local w=0 t0 rounds=0
   while :; do
     gate || w=1
     t0=$SECONDS
     ready "$1"
     # every pane repeats (the owner types into task manager panes too); a run with no gate does not
     [ "$quiet_min" -le 0 ] || [ $(( SECONDS - t0 )) -lt 2 ] && break
+    # H6: at most 3 rounds; then one line (once), the normal interval, and a fresh start
+    rounds=$(( rounds + 1 ))
+    if [ "$rounds" -ge 3 ]; then
+      if [ "$told_unsettled" = 0 ]; then
+        add "AUTO CLEAR waiting: the pane did not settle in 3 rounds; trying again later"
+        told_unsettled=1
+      fi
+      bg sleep "$check_sec"
+      rounds=0
+    fi
   done
   return $w
 }
