@@ -503,3 +503,51 @@ Contract (task manager; replaces the "starts alone" parts of C24/C25):
 - R1 states one fixed sequence: builder reports done -> reviewer reads the diff against the approved requirement -> check deputy only when what the user sees or does changed (15 min box) -> merge deputy. A fail at review or check goes back to the builder as a fix order.
 - `agents/reviewer.md` (new): model opus, read-only tools (Read, Grep, Glob, Bash); runs PR REVIEW and CORE REVIEW; writes its line with `agent-file.sh check <task> "PR REVIEW" pass|fail --by "<task> Review"`; a fail is a fix order to the builder. The merge skill sends it (`subagent_type: reviewer`, model from `reviewer_model`) before the check deputy. The check deputy keeps FLOW CHECK, UI CHECK, RELEASE SMOKE.
 - Changed defaults to list in the report: Reviewer model opus-5.5:high (new); Max agents and Heavy test slot/time removed.
+
+## 27. Rule text for sections 23-26 (task manager draft; the rules worker puts it in as written, with sections 18 and 22)
+
+R1, after the flow list (step 9 "Merge into the working branch + cleanup"):
+```
+- One fixed sequence after the build: builder reports done -> reviewer reads the diff against the approved requirement (PR REVIEW, on the Reviewer model) -> check deputy only when what the user sees or does changed (15 min box) -> merge deputy
+- A fail at review or check goes back to the builder as a fix order
+```
+S3 (replaces the rule):
+```
+S3. Resource guard
+- A run (a test command, a build, a new agent pane) starts when memory in use now + the memory this run is known to need <= the "Load: Max memory %" limit (default 80): `agent-room.sh check`
+- Known to need = the measured peak MB; a Claude pane counts too (about 300-550 MB; 550 MB while never measured)
+- A run that was never measured is not held back: it starts at once with a monitor on its memory; the monitor runs for every test or build run, measured or not
+- Over the limit the monitor stops the newest, unmeasured one first, records its peak MB, and the run is tried again when there is room. Only test and build runs are stopped
+- CPU: a parallel test runner uses as many processes as keep CPU under the same limit (`{workers}`); memory is the hard gate, CPU the soft one. Long but light runs just go
+```
+S4 (first lines; keep the existing relief, stop-leftovers and "the human's apps" lines):
+```
+- Over the limit: start nothing new; close done and idle panes first; stop test runs before anything else (`agent-room.sh relief`)
+- Never stop a working agent: tell the main manager instead, one line: which machine, how much over, what it did
+```
+S5 (replaces the rule):
+```
+S5. Test runs
+- Every test run goes through `agent-test-run.sh`: it reserves its measured peak MB while it runs, and the monitor watches it
+- One small shared reservation list per machine (every running job: pid, reserved MB; a dead pid frees its entry): two agents, also of different repos, never count the same free memory
+- Measured weights live per machine (`agent_test_weights.json` in the git common dir); `agent_repo.conf` `weight.<key>` lines are seeds only
+- Every test run caps its own parallelism, e.g. `jest --maxWorkers=2`, `flutter test -j 2`
+- Every test run that can run in the background runs in the background by default (Bash `run_in_background`)
+```
+S6 (replaces the first two lines; keep the "finished idle pane" lines):
+```
+S6. No count caps
+- No count caps: no fixed count of agents, task managers or subagents per machine; a new agent pane is admitted by the same rule as any job (S3)
+```
+W7: "Main manager runs the task itself with `Agent` subagents, up to the Max agents setting" becomes "... with `Agent` subagents, each admitted by the memory rule (S3)"; drop "Every spawned agent counts toward the Max agents setting (S6). The main manager does not"; add "- Placement: every job goes to a connected machine first (the one with the most room by S3); the local machine only when no connected machine has room or the job needs it; no machine is special; local stays clean and fast for the human".
+W8, add: "- Whatever is sent to another machine is cleaned up there when it is done: pane, worktree, branches, scratch clones, temp test folders, its reservation; the sweep covers every connected machine and its list names what is left there".
+W9, add: "- A new worktree or pane goes to the connected machine first that has room (W7, S3)".
+W10, add: "- A human-direct session keeps its protection only while the human alone drives it. Once it takes a task from the main manager or reports DONE to it, it runs `agent-file.sh helper-join "<task>"` and is a normal agent: the merge of its last open task closes its pane and removes its line, like a task manager; the close message names `claude --resume <session id>`".
+W6: add "- Reviewer (Reviewer model, default opus-5.5:high) = `agents/reviewer.md`: PR REVIEW of every task and CORE REVIEW; read only; a fail is a fix order to the builder"; the check deputy line keeps FLOW CHECK, UI CHECK, re-checks after a bounce, RELEASE SMOKE.
+W17: the reviewer decides (floor).
+F map: the tree gets "├── Reviewer (Opus 5.5, high) PR review of every task, core review; read only"; scripts "bin/agent-room.sh  the memory gate: check, reserve, release, list, relief, measure-pane"; no "Max agents", no "slot".
+skills/dispatch: step 6 "6. A new pane or job: `agent-room.sh check <pane MB>` on the connected machine first; no room anywhere → close done and idle panes first, then wait and tell the human" (no max_agents); a task given to a live Helper: its TELL starts with "run `agent-file.sh helper-join "<task>"` first".
+skills/merge: after DONE PASS: `Agent` with `subagent_type: reviewer`, model from `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get reviewer_model`, description `<name> Review` → PR REVIEW (and CORE REVIEW when planned); a fail → a fix order to the builder; then the check deputy only when what the user sees or does changed; the deputy brief's `session: helper` only while the human alone drives it (a Helper that ran helper-join is `task manager`, its pane handle from its line).
+agents/merge-deputy.md: a Helper that ran helper-join (its line has `pane` and `session`): close its pane like a task manager and remove its line; the report names `claude --resume <session id>`; on another machine also its scratch clones, temp test folders and its reservation.
+agents/reviewer.md (new): frontmatter name reviewer, description, model: opus, tools: Read, Grep, Glob, Bash; body: the floor check of the sender; "Model and effort: the Reviewer model setting"; PR REVIEW = read the diff against the approved requirement: does it do what was asked, nothing else, are the edge list lines covered, no check deleted, no secret; CORE REVIEW when planned: the logic against the rules the owner approved; one line `agent-file.sh check "<task>" "PR REVIEW" pass|fail --by "<task> Review" --evidence "<text>"`; a fail is a fix order to the builder (where, what is seen, what is expected, evidence); never edits files.
+Quiz: Q8, Q9, Q25, Q35, Q38, Q39 exactly as tests/test_check_rules.py QUIZ_Q8 .. QUIZ_Q39 (answers 8C 9A 25C 35B 38B 39B; RULE Q35 R8).
