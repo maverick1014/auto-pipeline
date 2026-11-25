@@ -699,6 +699,55 @@ class TestReviewDbSign(BlocksCase):
                 self.assertFalse(self.sign_of(path, body))
 
 
+class TestReviewDbSignAdds(TestReviewDbSign):
+    """Re-check defect H: the owner signs only when a migration changes or removes data or columns.
+    Comments are skipped first, down()/downgrade()/Down() bodies are ignored, common add forms are adds."""
+
+    def test_generated_add_migrations_do_not_sign(self):
+        for path, body in (
+                ("prisma/migrations/20261125_add_email/migration.sql",
+                 '-- AlterTable\nALTER TABLE "User" ADD COLUMN "email" TEXT;\n'),
+                ("src/migrations/1700000000000-AddEmail.ts",
+                 "export class AddEmail1700000000000 implements MigrationInterface {\n"
+                 "    public async up(queryRunner: QueryRunner): Promise<void> {\n"
+                 '        await queryRunner.query(`ALTER TABLE "user" ADD "email" character varying`);\n'
+                 "    }\n"
+                 "    public async down(queryRunner: QueryRunner): Promise<void> {\n"
+                 '        await queryRunner.query(`ALTER TABLE "user" DROP COLUMN "email"`);\n'
+                 "    }\n}\n"),
+                ("app/migrations/0003_email.py",
+                 "from django.db import migrations, models\n\n\nclass Migration(migrations.Migration):\n\n"
+                 "    dependencies = [\n        ('app', '0002'),\n    ]\n\n    operations = [\n"
+                 "        migrations.AddField(\n            model_name='user',\n            name='email',\n"
+                 "            field=models.EmailField(blank=True, max_length=254),\n        ),\n    ]\n"),
+                ("db/migrations/20261125_email.js",
+                 "exports.up = function(knex) {\n  return knex.schema.alterTable('users', function(table) {\n"
+                 "    table.string('email');\n  });\n};\n\nexports.down = function(knex) {\n"
+                 "  return knex.schema.alterTable('users', function(table) {\n    table.dropColumn('email');\n"
+                 "  });\n};\n"),
+                ("Migrations/20261125_AddEmail.cs",
+                 "public partial class AddEmail : Migration\n{\n    protected override void Up(MigrationBuilder migrationBuilder)\n"
+                 "    {\n        migrationBuilder.AddColumn<string>(\n            name: \"Email\",\n"
+                 "            table: \"Users\",\n            nullable: true);\n    }\n\n"
+                 "    protected override void Down(MigrationBuilder migrationBuilder)\n    {\n"
+                 "        migrationBuilder.DropColumn(\n            name: \"Email\",\n            table: \"Users\");\n"
+                 "    }\n}\n")):
+            with self.subTest(path=path):
+                self.assertFalse(self.sign_of(path, body))
+
+    def test_a_prisma_schema_field_add_does_not_sign(self):
+        TestKinds.tearDown_repo(self)
+        r = self.run_case({"prisma/schema.prisma": "model User {\n  id Int @id\n}\n"},
+                          {"prisma/schema.prisma": "model User {\n  id Int @id\n  email String?\n}\n"})
+        self.assertIn("DB CHECK", self.blocks(r))
+        self.assertNotIn("OWNER SIGN", self.blocks(r))
+
+    def test_a_drop_in_up_still_signs(self):
+        body = ("exports.up = function(knex) {\n  return knex.schema.alterTable('users', function(table) {\n"
+                "    table.dropColumn('email');\n  });\n};\n")
+        self.assertTrue(self.sign_of("db/migrations/20261125_drop.js", body))
+
+
 class TestReviewDodges(BlocksCase):
     """Defects 9 and 10: dependency lists, a capitalised Migrations folder, data scripts."""
 

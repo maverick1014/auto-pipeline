@@ -466,3 +466,29 @@ class TestHeavySlots(unittest.TestCase):
         import json
         with open(os.path.join(ROOT, ".claude-plugin", "plugin.json")) as fh:
             self.assertEqual(json.load(fh)["userConfig"]["heavy_test_slots"]["default"], 2)
+
+
+class TestKeepTheResultLines(unittest.TestCase):
+    """Core review re-check defect A (b, c): a verified task's worktree is removed before the owner's yes
+    (W8): its CHECK lines go to the main repo first; the REPORT carries them; the gate then runs on a
+    scratch copy of the pushed branch."""
+
+    def test_dispatch_step_8_gathers_first(self):
+        text = read("skills", "dispatch", "SKILL.md")
+        step8 = section(text, "\n8. ", "\n9. ")
+        self.assertIn("agent-file.sh checks gather", step8)
+        self.assertLess(step8.index("checks gather"), step8.index("remove its worktree"))
+
+    def test_the_report_carries_the_check_lines(self):
+        brief = section(read("skills", "dispatch", "SKILL.md"), "## Task manager brief", "## Cross-repo brief")
+        report = [l for l in brief.splitlines() if l.startswith("REPORT:")][0]
+        self.assertIn("CHECK lines", report)
+
+    def test_merge_runs_the_gate_on_a_scratch_copy_when_the_worktree_is_gone(self):
+        text = read("skills", "merge", "SKILL.md")
+        self.assertIn("scratch", text)
+        self.assertIn("checks gather", text)
+
+    def test_w8_says_so(self):
+        w8 = section(read("PRINCIPLES.md"), "W8. ", "W9. ")
+        self.assertIn("checks gather", w8)

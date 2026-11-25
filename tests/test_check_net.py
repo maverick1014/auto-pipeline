@@ -53,6 +53,7 @@ class NetCase(ScriptCase):
         super().setUp()
         self.git("branch", "-M", "main")
         self.put({"agent_repo.conf": "version=1\nfull_cmd=python3 -m unittest discover -s tests -t .\n",
+                  ".claude-plugin/plugin.json": '{"name": "p", "version": "0.1.0"}\n',
                   "tests/__init__.py": "", "tests/test_a.py": PASSING, "tests/test_x.py": x_test("ok"),
                   "src/x.txt": "ok\n"})
         self.git("add", "-A")
@@ -132,21 +133,37 @@ class TestNightly(NetCase):
         out = self.nightly("--misses").stdout.splitlines()
         self.assertEqual(out[-1], "misses: 1 since %s" % date)
 
+    def test_the_nightly_tests_the_commit_not_the_shared_checkout(self):
+        # re-check defect G: merge deputies work in the main checkout at night
+        self.put({"src/x.txt": "half merged\n"})                    # uncommitted, in the main checkout
+        self.nightly("--start", "--wait")
+        st = self.status_file()
+        self.assertEqual(st["result"], "green", st)
+        self.assertEqual(st["commit"], self.git("rev-parse", "HEAD"))
+        self.assertEqual(len(self.git("worktree", "list").splitlines()), 1, "the scratch tree is gone")
+
     def test_a_red_first_run_is_no_miss(self):
         self.put({"src/x.txt": "broken\n"})
         self.git("commit", "-qam", "break")
         self.nightly("--start", "--wait")
         self.assertEqual(self.misses_file(), [])
 
-    def test_release_ok_needs_a_green_run_on_origin_main(self):
+    def test_release_ok_needs_a_green_run_on_the_commit_released(self):
+        # re-check defect D: the release is built from local HEAD before main is pushed (merge skill step 8);
+        # a commit that only bumps .claude-plugin/plugin.json counts as its parent
         r = self.nightly("--release-ok")
         self.assertEqual(r.returncode, 1)
         self.assertIn("agent-nightly.sh --start", r.stdout)
         self.nightly("--start", "--wait")
         self.assertEqual(self.nightly("--release-ok").returncode, 0)
-        self.merge("feat-doc", {"docs/a.md": "x\n"}, "Merge feat-doc (W8)")
-        r = self.nightly("--release-ok")
-        self.assertEqual(r.returncode, 1, "main moved after the nightly")
+        self.put({".claude-plugin/plugin.json": '{"name": "p", "version": "0.2.0"}\n'})
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "bump 0.2.0")                 # local, not pushed
+        self.assertEqual(self.nightly("--release-ok").returncode, 0, "a version bump alone is its parent")
+        self.put({"src/x.txt": "ok\n", "docs/a.md": "x\n"})
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "more code")
+        self.assertEqual(self.nightly("--release-ok").returncode, 1, "HEAD moved after the nightly")
 
     def test_due(self):
         late = {"AGENT_FAKE_NOW": "2026-11-25 23:00"}
@@ -168,6 +185,24 @@ class TestNightly(NetCase):
         sys.path.insert(0, BIN)
         import agent_conf
         self.assertEqual(agent_conf.CONSTANTS["nightly_hour"], 22)
+
+    def test_a_normal_session_start_starts_a_due_nightly(self):
+        # re-check defect E: the block sat inside the compaction branch
+        import time
+        r = self.repo.run("agent-start.sh", stdin='{"cwd": "%s", "source": "startup"}' % self.repo.dir,
+                          env={"AGENT_FAKE_NOW": "2026-11-25 23:00", "CLAUDE_PID": str(os.getpid())})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        path = os.path.join(self.gitdir(), "agent_nightly.json")
+        for _ in range(100):
+            if os.path.exists(path):
+                break
+            time.sleep(0.1)
+        self.assertTrue(os.path.exists(path), "no nightly was started at a normal session start")
+        for _ in range(300):                                      # let the background run end before cleanup
+            with open(path) as fh:
+                if json.load(fh).get("finished"):
+                    break
+            time.sleep(0.1)
 
     def test_who_starts_it(self):
         with open(os.path.join(BIN, "agent_housekeep.py")) as fh:
@@ -191,18 +226,43 @@ class TestTestRun(NetCase):
         return self.repo.run("agent-test-run.sh", "--key", key, "--", *cmd, env=e, timeout=60)
 
     def weight(self, key):
+        """Core review re-check defect C: measured weights live per machine in
+        <git common dir>/agent_test_weights.json ({key: "<s> s <mb> MB"}), never in the tracked repo file."""
+        path = os.path.join(self.gitdir(), "agent_test_weights.json")
+        if not os.path.exists(path):
+            return None
+        with open(path) as fh:
+            return json.load(fh).get(key)
+
+    def test_a_run_never_writes_the_tracked_repo_file(self):
         with open(os.path.join(self.repo.dir, "agent_repo.conf")) as fh:
-            for line in fh.read().splitlines():
-                if line.startswith("weight.%s=" % key):
-                    return line.split("=", 1)[1]
-        return None
+            before = fh.read()
+        self.run_test("related", "true")
+        self.run_test("related", "true")
+        with open(os.path.join(self.repo.dir, "agent_repo.conf")) as fh:
+            self.assertEqual(fh.read(), before)
+        self.assertEqual(self.git("status", "--porcelain", "--", "agent_repo.conf"), "")
+
+    def test_peak_mb_is_the_whole_process_tree(self):
+        # re-check defect F: ru_maxrss is one process; 3 children of ~60 MB each are ~180 MB together
+        child = "b = bytearray(60 * 1024 * 1024); import time; time.sleep(3)"
+        cmd = ("import subprocess, sys; ps = [subprocess.Popen([sys.executable, '-c', %r]) for _ in range(3)]; "
+               "[p.wait() for p in ps]" % child)
+        self.assertEqual(self.run_test("tree", "python3", "-c", cmd).returncode, 0)
+        mb = int(self.weight("tree").split()[2])
+        self.assertGreaterEqual(mb, 150, self.weight("tree"))
+
+    def test_unknown_ram_fails_closed(self):
+        r = self.run_test("related", "true", env={"AGENT_FAKE_RAM": "-1"})
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertIn("RAM unknown", r.stdout + r.stderr)
 
     def test_unknown_weight_is_heavy_the_first_time_then_measured(self):
         r = self.run_test("related", "python3", "-c", "print('hi')")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.splitlines()[0], "TEST RUN related: heavy (unknown weight)")
         self.assertIn("hi", r.stdout)
-        self.assertRegex(self.weight("related"), r"^\d+ s \d+ MB$")
+        self.assertRegex(self.weight("related") or "", r"^\d+ s \d+ MB$")
         r = self.run_test("related", "python3", "-c", "print('hi')")
         self.assertRegex(r.stdout.splitlines()[0], r"^TEST RUN related: light \(\d+ s, \d+ MB\)$")
 

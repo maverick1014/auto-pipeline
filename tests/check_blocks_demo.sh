@@ -52,6 +52,7 @@ printf 'UPDATE orders SET note = %s WHERE note IS NULL;\n' "''" > "$R/db/migrati
 say "5 a merge refused for a missing result line"
 repo gate
 printf 'x()\n' > "$R/app.js"; base; printf 'y()\n' > "$R/app.js"
+g add app.js; g commit -q -m "banner to toast"     # the gate plans what merges: committed work only
 cd "$R"
 "$P/bin/agent-file.sh" todo add t small "banner to toast" 10 --checks "DIFF READ" --builder "t Deputy"
 for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do "$P/bin/agent-file.sh" check t "$b" pass --by "t Deputy" --evidence demo; done

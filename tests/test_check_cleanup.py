@@ -306,3 +306,13 @@ class TestCleanupRules(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRemoteListsToo(unittest.TestCase):
+    """Re-check defect I: a paired machine's terminal list is checked for truncation like the local one."""
+
+    def test_gather_machine_checks_the_list(self):
+        src = read("bin", "agent_cleanup.py")
+        body = src[src.index("    def gather_machine("):]
+        body = body[:body.index("\n    def ", 10)]
+        self.assertIn("list_complete(", body)
