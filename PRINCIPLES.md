@@ -115,7 +115,8 @@ R8. Check blocks
 - Picked brief: dispatch picks them from what the owner approved: `todo add ... --checks "<BLOCK>,<BLOCK>"`
 - Two passes: the brief blocks at dispatch; before merge the tool recomputes the tool blocks from the real diff
 - Blocks are only added; removing one needs a verified owner order: `todo checks <task> --remove <BLOCK> --owner-quote "<his words>"`
-- PR REVIEW and OWNER SIGN are never removed; another block only when the owner's verified words name it and leaving it out
+- PR REVIEW and OWNER SIGN are never removed; another block is left out only when the owner types exactly `yes, skip <BLOCK> for <task>`
+- A production task is added with the one sentence he types, `--owner-quote "yes, publish <task> to production"`; no second yes later
 - One result line per block: `agent-file.sh check <task> "<BLOCK>" pass|fail --by <who> --evidence "<text>"`
 - The reviewer and the check deputy always pass --commit <the head they looked at>
 - A check line records the commit it saw; PR REVIEW, FLOW CHECK and UI CHECK count only at the head being merged (or a commit after which every commit is a merge of the base)
@@ -145,6 +146,7 @@ R8. Check blocks
 - Other people publish to the production branch meanwhile: it is merged into the working branch at the start of a batch and again before a publish (`agent-promote.sh --sync`), and the full suite runs on that result
 - Batches: tasks given together merge into the working branch; when the last one of the batch is merged, ONE full suite runs on the working branch (`agent-nightly.sh --start`)
 - A red batch run goes to a new fixer agent, never back to the builder
+- The fixer is a normal task: todo add first, a brief with target, base and both branches, its own PR REVIEW and gate; then `agent-nightly.sh --start` again
 - Production from the working branch: only on the owner's approval (verified words) and only from a green commit: `agent-promote.sh --owner-quote "<his words>"`
 - A repo with a release build runs it right after, so merged to production = published
 - RELEASE RUN: the full suite runs once on the working branch before such a publish (the batch run on that commit counts)
