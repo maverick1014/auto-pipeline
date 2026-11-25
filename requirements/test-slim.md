@@ -145,7 +145,7 @@ Same machine (pc2, 8 cores, 8 GB), same runner, back to back on 2026-11-25: befo
 | | Before | After | Change |
 |---|---|---|---|
 | Test files | 104 | 58 | -46 |
-| Tests (unittest ids) | 4191 | 4168 | -45 removed with twins, +22 new tests of the two bin tools |
+| Tests (unittest ids) | 4191 | 4169 | -45 removed with twins, +23 new tests of the two bin tools |
 | Lines in tests/*.py | 59,116 | 53,145 | -5,971 (-10%) |
 | Seconds, all files added up (each file alone, 6 at a time) | 3201 | 2612 | -18% |
 | Wall, each file alone, 6 at a time | 580 | 531 | |

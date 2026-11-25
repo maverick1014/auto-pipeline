@@ -803,3 +803,17 @@ class ScriptCase(unittest.TestCase):
 
     def lines(self, text):
         return [line.rstrip() for line in text.splitlines()]
+
+
+def pointer_part(out):
+    """The startup hook output without the output section: drop the lines from
+    "## E. Output" up to the RULES line (or the end)."""
+    keep, skip = [], False
+    for line in out.splitlines(keepends=True):
+        if line.startswith("## E. Output"):
+            skip = True
+        elif skip and line.startswith("RULES: read "):
+            skip = False
+        if not skip:
+            keep.append(line)
+    return "".join(keep)

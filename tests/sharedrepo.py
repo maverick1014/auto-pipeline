@@ -26,7 +26,6 @@ and run each script once instead of once per test:
 import hashlib
 import json
 import os
-import unittest
 
 from scripthelp import BIN, ScriptCase, ScriptRepo
 
@@ -89,7 +88,7 @@ class SharedScriptCase(ScriptCase):
     def setUpClass(cls):
         super().setUpClass()
         if cls.script and not os.path.exists(os.path.join(BIN, cls.script)):
-            raise unittest.SkipTest("bin/%s does not exist" % cls.script)
+            raise AssertionError("bin/%s does not exist yet. Write it." % cls.script)
         cls.repo = remember_runs(ScriptRepo())
         cls.addClassCleanup(cls.repo.cleanup)
         cls._shared_state = None
@@ -233,6 +232,13 @@ def shared_fixture(guard=None, remember=(), remember_repo=False):
             setattr(cls, name, make(real, name))
         cls.setUp = setUp
         cls.tearDown = tearDown
+
+        def refuse(sub, **kwargs):
+            raise TypeError("%s: a subclass of a @shared_fixture class (%s) would reuse its "
+                            "parent's fixture; give it its own shared_fixture or a plain setUp"
+                            % (sub.__name__, cls.__name__))
+
+        cls.__init_subclass__ = classmethod(refuse)
         return cls
 
     return deco

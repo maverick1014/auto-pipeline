@@ -787,20 +787,6 @@ class TestBetweenReleaseAndBump(Fixture):
 
 # ---------------------------------------------------------------- rule 15
 
-class TestMergeSkillLine(unittest.TestCase):
-    """Written now, passes only after "main merged" (skills/merge belongs to
-    one-watcher until then)."""
-
-    def test_the_merge_skill_names_the_release_step(self):
-        with open(os.path.join(ROOT, "skills", "merge", "SKILL.md")) as fh:
-            lines = fh.read().splitlines()
-        hits = [l for l in lines if "bin/agent-release.sh --push" in l]
-        self.assertEqual(len(hits), 1, "one line with bin/agent-release.sh --push")
-        # check-blocks section 28 (owner 2026-11-25): the publish is agent-promote.sh, the release build right after
-        self.assertIn("agent-promote.sh --owner-quote", hits[0])
-        self.assertIn("right after", hits[0])
-        self.assertIn("auto-pipeline", hits[0])
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -177,7 +177,8 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from scripthelp import ROOT, ScriptCase
-from test_output_hook import pointer_part
+from scripthelp import pointer_part
+from scripthelp import BIN  # noqa: E402
 
 HEADER = "what | where | why kept | suggestion"
 REPO_ID = "repo-1"
@@ -1463,121 +1464,308 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------- the rules
 
 
-def section(code, nxt):
-    """PRINCIPLES.md from the line "<code>. ..." up to the line "<nxt>. ..."."""
-    with open(os.path.join(ROOT, "PRINCIPLES.md")) as fh:
-        text = fh.read()
-    start = text.index("\n%s. " % code)
-    end = text.index("\n%s. " % nxt, start)
-    return text[start:end]
-
-
-class TestTheRules(unittest.TestCase):
-    """One terse English line per rule, where they fit: W8 and S4."""
-
-    def test_w8_names_the_sweep_and_when_it_runs(self):
-        w8 = section("W8", "W9")
-        for words in ("agent-cleanup.sh --apply", "session start",
-                      "last open task closes", "no loop"):
-            self.assertIn(words, w8)
-
-    def test_w8_says_who_never_runs_it(self):
-        w8 = section("W8", "W9")
-        self.assertIn("Main manager only", w8)
-        self.assertIn("never run it", w8)
-
-    def test_w8_says_what_is_safe_and_what_is_never_deleted(self):
-        w8 = section("W8", "W9")
-        for words in ("origin/main", "live agent", "uncommitted",
-                      "unpushed", "never deleted", "one table",
-                      "why kept"):
-            self.assertIn(words, w8)
-
-    def test_w8_says_own_repo_and_every_paired_machine(self):
-        w8 = section("W8", "W9")
-        self.assertIn("own repo only", w8.lower())
-        self.assertIn("paired", w8)
-        self.assertIn("unreachable", w8)
-
-    def test_s4_names_stop_leftovers(self):
-        self.assertIn("stop-leftovers", section("S4", "S5"))
-
-    def test_s6_counts_busy_agents_only(self):
-        s6 = section("S6", "S7")
-        for words in ("working or permission", "done", "not counted", "main manager"):
-            self.assertIn(words, s6)
-        self.assertNotIn("Counts spawned agents only", s6)
-
-    def test_s6_says_who_closes_a_finished_pane_and_when_never(self):
-        s6 = section("S6", "S7")
-        for words in ("closes it", "merged, dropped or closed",
-                      "waiting on a merge, a question or a decision",
-                      "another repo"):
-            self.assertIn(words, s6)
-
-    def test_w8_names_the_done_pane(self):
-        w8 = section("W8", "W9")
-        self.assertIn("done pane", w8)
-        self.assertIn("kept row", w8)
-
-    def test_dispatch_step_6_counts_the_same_way(self):
-        with open(os.path.join(ROOT, "skills", "dispatch", "SKILL.md")) as fh:
-            step6 = next(l for l in fh.read().splitlines() if l.startswith("6. "))
-        # check-blocks section 25 (owner 2026-11-25): no count cap; a new pane passes the memory rule
-        self.assertIn("agent-room.sh check", step6)
-        self.assertIn("done", step6)
-        self.assertNotIn("max_agents", step6)
-
-    def test_w14_names_the_owner_todo_marker(self):
-        self.assertIn("`OWNER TODO:`", section("W14", "W15"))
-
-    def test_one_line_per_rule(self):
-        for code, nxt in (("W8", "W9"), ("S4", "S5"), ("S6", "S7"), ("W14", "W15")):
-            for line in section(code, nxt).splitlines():
-                if line.startswith("- "):
-                    self.assertLessEqual(len(line), 200, line)
-
-    def test_the_map_names_the_script(self):
-        with open(os.path.join(ROOT, "PRINCIPLES.md")) as fh:
-            self.assertIn("bin/agent-cleanup.sh", fh.read())
-
-
 # ---------------------------------------------------------------- the quiz
 
 
-class TestTheQuiz(ScriptCase):
-    """W8 changed, and the quiz covers W8: question 32, answer C."""
+class TestP7MergedIntoTheWorkingBranch(CleanupCase):
+    def test_a_branch_merged_into_the_working_branch_is_swept(self):
+        d = self.repo.dir
+        git(d, "switch", "-q", "-c", "ap-main-t", "main")
+        git(d, "push", "-q", "origin", "ap-main-t")
+        git(d, "config", "--local", "auto-pipeline.workingbranch", "ap-main-t")
+        git(d, "switch", "-q", "-c", "feat/x")
+        self.commit_in(d, "x.txt")
+        git(d, "push", "-q", "origin", "feat/x")
+        git(d, "switch", "-q", "ap-main-t")
+        git(d, "merge", "-q", "--no-ff", "-m", "Merge feat/x (W8)", "feat/x")
+        git(d, "push", "-q", "origin", "ap-main-t")
+        out = self.ok("--apply")
+        self.assertIn("removed: branch feat/x (local, origin)", self.lines(out), out)
+        self.assertNotIn("merge it into main", out)
 
-    script = "agent-start.sh"
-    ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
-               "18D 19C 20A 21D 22C 23B 24D 25B 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B")   # check-blocks: Q38 is a blocks question now
 
-    def quiz(self):
-        return self.assertOk(self.repo.run("agent-start.sh", "--quiz"))
+class TestG1TheSweepKeepsProduction(CleanupCase):
+    """Section 41 G1: a production branch named otherwise is merged back into the working branch: never swept."""
 
-    def test_question_32_is_the_sweep(self):
-        out = self.quiz()
-        q = out[out.index("Q32. "):]
-        self.assertIn("last open task", q)
-        options = [l.strip() for l in q.splitlines()[1:5]]
-        self.assertEqual([o[:2] for o in options], ["A.", "B.", "C.", "D."])
-        self.assertIn("agent-cleanup.sh", options[2])
-        self.assertIn("table", options[2])
+    def test_production_named_production_stays(self):
+        d = self.repo.dir
+        git(d, "switch", "-q", "-c", "production", "main")
+        git(d, "push", "-q", "origin", "production")
+        with open(os.path.join(d, "agent_repo.conf"), "a") as fh:
+            fh.write("production_branch=production\n")
+        git(d, "switch", "-q", "-c", "ap-main-t", "main")
+        git(d, "push", "-q", "origin", "ap-main-t")
+        git(d, "config", "--local", "auto-pipeline.workingbranch", "ap-main-t")
+        out = self.ok("--apply")
+        self.assertFalse([row for row in self.rows(out) if row[0].endswith(" production")], out)
+        self.assertTrue(self.has_local("production"))
+        self.assertTrue(self.has_origin("production"))
 
-    def test_the_quiz_says_34(self):
-        out = self.quiz()
-        self.assertIn("=== QUIZ — answer all 39 before any work ===", out)
-        self.assertIn('--answer "1A 2B 3C ... 39D"', out)
 
-    def test_c_passes(self):
-        out = self.assertOk(self.repo.run("agent-start.sh", "--answer",
-                                          self.ANSWERS))
-        self.assertIn("QUIZ RESULT: 39/39 PASS", out)
+class TestG7AFreshWorktreeIsNotSwept(CleanupCase):
+    def test_a_worktree_just_branched_from_the_working_branch_stays(self):
+        d = self.repo.dir
+        git(d, "switch", "-q", "-c", "ap-main-t", "main")
+        self.commit_in(d, "wb.txt")
+        git(d, "push", "-q", "origin", "ap-main-t")
+        git(d, "config", "--local", "auto-pipeline.workingbranch", "ap-main-t")
+        fresh = os.path.join(self.repo.base, "fresh")
+        git(d, "worktree", "add", "-q", "-b", "feat/fresh", fresh, "ap-main-t")
+        self.ok("--apply")
+        self.assertTrue(os.path.isdir(fresh), "a worktree with no own commits is not a merged one")
 
-    def test_another_letter_fails_and_names_w8(self):
-        for wrong in ("32A", "32B", "32D"):
-            with self.subTest(wrong=wrong):
-                result = self.repo.run("agent-start.sh", "--answer",
-                                       self.ANSWERS.replace("32C", wrong))
-                self.assertEqual(result.returncode, 1)
-                self.assertIn("Q32(W8)", result.stdout)
+
+class TestG11TheDefaultPrefixIsAlwaysKept(CleanupCase):
+    def test_a_fixed_team_name_still_keeps_ap_main_branches(self):
+        d = self.repo.dir
+        self.repo.set_conf("working_branch", "team-main")
+        git(d, "config", "--local", "auto-pipeline.workingbranch", "team-main")
+        git(d, "branch", "ap-main-bob")                    # merged: its tip is in main
+        git(d, "push", "-q", "origin", "ap-main-bob")
+        out = self.ok("--apply")
+        self.assertTrue(self.has_local("ap-main-bob"), out)
+        self.assertTrue(self.has_origin("ap-main-bob"), out)
+
+
+LIVE = os.getpid()
+
+
+def dead_pid():
+    p = subprocess.Popen(["true"])
+    p.wait()
+    return p.pid
+
+
+def read(*parts):
+    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
+        return fh.read()
+
+
+def ago_ms(minutes):
+    return int(time.time() * 1000) - minutes * 60000
+
+
+class SweepCase(CleanupCase):
+
+    def state(self, folder, *lines):
+        with open(os.path.join(folder, "agent_state.txt"), "a") as fh:
+            fh.write("".join(l + "\n" for l in lines))
+
+    def state_lines(self, folder):
+        path = os.path.join(folder, "agent_state.txt")
+        if not os.path.exists(path):
+            return []
+        with open(path) as fh:
+            return fh.read().splitlines()
+
+    def launch(self, key, kind="tm-pane", task="t", pid=LIVE, pane=None, agent=None, worktree=None):
+        line = "LAUNCH %s: %s | task %s | %s | since 2026-11-25 10:00 | pid %d | by main" % (
+            key, kind, task, "%s Task Manager" % task if kind == "tm-pane" else "%s Worker 1: x" % task, pid)
+        if agent:
+            line += " | agent " + agent
+        if pane:
+            line += " | pane " + pane
+        if worktree:
+            line += " | worktree " + worktree
+        return line
+
+
+class TestLaunchPrune(SweepCase):
+
+    def setUp(self):
+        super().setUp()
+        self.dead = dead_pid()
+        self.state(self.repo.dir, "NOTE keep me",
+                   self.launch("k_dead", kind="worker 1", pid=self.dead, agent="a1"),
+                   self.launch("k_gone", pane="term_gone"),
+                   self.launch("k_live", task="u", pane="term_live"),
+                   self.launch("k_paneold", task="v", pid=self.dead, pane="term_v"))
+        self.terminals = [self.term("term_live", self.repo.dir), self.term("term_v", self.repo.dir)]
+        self.save_orca()
+
+    def keys(self):
+        return [l.split(":")[0][len("LAUNCH "):] for l in self.state_lines(self.repo.dir) if l.startswith("LAUNCH ")]
+
+    def test_the_list_says_what_would_go_and_changes_nothing(self):
+        before = self.state_lines(self.repo.dir)
+        out = self.ok()
+        lines = self.lines(out)
+        self.assertIn("would prune LAUNCH k_dead (pid dead)", lines)
+        self.assertIn("would prune LAUNCH k_gone (pane gone)", lines)
+        self.assertFalse([l for l in lines if "k_live" in l or "k_paneold" in l], out)
+        self.assertEqual(self.state_lines(self.repo.dir), before)
+
+    def test_apply_prunes(self):
+        out = self.ok("--apply")
+        lines = self.lines(out)
+        self.assertIn("pruned LAUNCH k_dead (pid dead)", lines)
+        self.assertIn("pruned LAUNCH k_gone (pane gone)", lines)
+        self.assertEqual(self.keys(), ["k_live", "k_paneold"])
+        self.assertIn("NOTE keep me", self.state_lines(self.repo.dir))
+
+    def test_a_worktrees_own_records_too(self):
+        path, _ = self.worktree("wip")
+        self.state(path, self.launch("k_wdead", kind="worker 1", pid=dead_pid(), agent="a2"))
+        self.ok("--apply")
+        self.assertEqual([l for l in self.state_lines(path) if l.startswith("LAUNCH ")], [])
+
+    def test_plain_mode_never_says_pane_gone(self):
+        self.repo.set_conf("runtime", "plain")
+        out = self.ok("--apply")
+        self.assertIn("pruned LAUNCH k_dead (pid dead)", self.lines(out))
+        self.assertNotIn("k_gone", out)
+
+
+class TestNeverMainOrRelease(SweepCase):
+
+    def test_release_and_main_are_never_rows(self):
+        r = self.repo.dir
+        git(r, "checkout", "-q", "--orphan", "release")
+        git(r, "rm", "-rq", "--cached", ".")
+        with open(os.path.join(r, "ship.txt"), "w") as fh:
+            fh.write("ship\n")
+        git(r, "add", "ship.txt")
+        git(r, "commit", "-q", "-m", "release 0.1.0")
+        git(r, "push", "-q", "origin", "release")
+        git(r, "checkout", "-q", "-f", "main")
+        out = self.ok("--apply")
+        for row in self.rows(out):
+            self.assertNotIn("release", row[0], row)
+            self.assertNotIn("branch main", row[0], row)
+        self.assertTrue(self.has_local("release"))
+        self.assertTrue(self.has_origin("release"))
+
+
+class TestLiveLaunchIsLiveAgent(KeptCase, SweepCase):
+
+    def test_a_live_record_in_the_worktree(self):
+        path, branch = self.merged_worktree(dirty=True)
+        self.state(path, self.launch("k_w", kind="worker 1", task="done", agent="a1"))
+        out = self.assertKept(path, branch, "live agent")
+        row = self.row_for(out, "worktree " + path)
+        self.assertTrue(row[2].startswith("live agent"), row)
+        self.assertEqual(row[3], "wait for the agent to stop, then run the sweep again")
+
+    def test_a_live_record_in_the_main_state_naming_the_worktree(self):
+        path, branch = self.merged_worktree(dirty=True)
+        self.state(self.repo.dir, self.launch("k_m", task="done", pane="term_x", worktree=path))
+        self.terminals = [self.term("term_x", path)]
+        self.save_orca()
+        row = self.row_for(self.assertKept(path, branch, "live agent"), "worktree " + path)
+        self.assertTrue(row[2].startswith("live agent"), row)
+
+    def test_a_dead_record_is_no_live_agent(self):
+        path, branch = self.merged_worktree(dirty=True)
+        self.state(path, self.launch("k_w", kind="worker 1", task="done", pid=dead_pid(), agent="a1"))
+        row = self.row_for(self.assertKept(path, branch, "uncommitted changes"), "worktree " + path)
+        self.assertNotIn("live agent", row[2])
+
+
+class TestUnusedPanes(SweepCase):
+
+    def setUp(self):
+        super().setUp()
+        self.wip, _ = self.worktree("wip")          # unmerged: the folder stays, its panes are judged
+
+    def pane(self, handle, path, minutes, preview="maverick@host wip %", agent=None, title=None):
+        row = self.term(handle, path, agent=agent)
+        row.update({"title": title or ("Terminal 1" if not agent else "✳ wip Task Manager"),
+                    "lastOutputAt": ago_ms(minutes), "preview": preview})
+        return row
+
+    def run_with(self, terminals, *args, env=None):
+        self.terminals = terminals
+        self.save_orca()
+        self.repo.clear_calls()
+        return self.ok(*args, env=env)
+
+    def closed(self):
+        return [c[c.index("--terminal") + 1] for c in self.orca_calls(["terminal", "close"]) if "--terminal" in c]
+
+    def test_an_unused_shell_idle_40m_is_closed_and_named(self):
+        out = self.run_with([self.pane("t_sh", self.wip, 40)], "--apply")
+        self.assertEqual(self.closed(), ["t_sh"])
+        self.assertIn("closed pane t_sh (Terminal 1) in %s: never got a prompt, idle 40m" % self.wip,
+                      self.lines(out))
+
+    def test_the_list_only_says_it(self):
+        out = self.run_with([self.pane("t_sh", self.wip, 40)])
+        self.assertEqual(self.closed(), [])
+        self.assertIn("would close pane t_sh (Terminal 1) in %s: never got a prompt, idle 40m" % self.wip,
+                      self.lines(out))
+
+    def test_an_idle_claude_pane_with_no_record_is_listed_not_closed(self):
+        # core review defect 12: no record is no proof it never got a prompt (a default task manager pane,
+        # a human's own session): the sweep never closes a Claude pane, it lists it
+        out = self.run_with([self.pane("t_c", self.wip, 45, preview="", agent="claude")], "--apply")
+        self.assertEqual(self.closed(), [])
+        row = self.row_for(out, "pane t_c")
+        self.assertEqual(row[1], self.wip)
+        self.assertEqual(row[2], "idle agent pane, no task record, idle 45m")
+        self.assertEqual(row[3], "close it by hand if nobody uses it")
+
+    def test_a_truncated_terminal_list_closes_and_prunes_nothing(self):
+        # core review defect 13: a truncated list is no proof a pane is gone or unused
+        self.state(self.repo.dir, self.launch("k_gone", pane="term_gone"))
+        self.terminals = [self.pane("t_sh", self.wip, 40)]
+        self.repo.set_orca_answer("terminals.json", {"ok": True, "result": {
+            "terminals": self.terminals, "truncated": True, "totalCount": 9}})
+        self.repo.clear_calls()
+        out = self.ok("--apply")
+        self.assertEqual(self.closed(), [])
+        self.assertNotIn("k_gone", out)
+        self.assertIn("k_gone", "\n".join(self.state_lines(self.repo.dir)))
+
+    def test_panes_that_stay(self):
+        self.state(self.repo.dir, self.launch("k_l", task="wip", pane="t_launched"))
+        with open(self.repo.path(".git", "agent_main.lock"), "w") as fh:
+            fh.write("%d 2026-11-25 10:00 s-main t_main\n" % LIVE)
+        terms = [self.pane("t_used", self.wip, 40, preview="$ ls\nfile.txt\nmaverick@host wip %"),
+                 self.pane("t_launched", self.wip, 40, preview="", agent="claude"),
+                 self.pane("t_helper", self.wip, 40, preview="", agent="claude",
+                           title="◑ project Helper - Wip"),
+                 self.pane("t_recent", self.wip, 10),
+                 self.pane("t_mainfolder", self.repo.dir, 90),
+                 self.pane("t_main", self.wip, 90, preview="", agent="claude")]
+        self.run_with(terms, "--apply", env={"CLAUDE_PID": str(LIVE)})     # this session holds the lock
+        self.assertEqual(self.closed(), [])
+
+    def test_the_constant(self):
+        sys.path.insert(0, BIN)
+        import agent_conf
+        self.assertEqual(agent_conf.CONSTANTS["unused_pane_min"], 30)
+
+
+class TestWorkingBranchStays(SweepCase):
+    """Section 28 (2): the sweep never removes, and never lists, the working branch (setting Flow: Working
+    branch), local or on origin, even when it holds no commit of its own."""
+
+    def test_the_working_branch_is_never_a_row_and_never_removed(self):
+        sys.path.insert(0, BIN)
+        import agent_conf
+        wb = "ap-main-t"   # section 34: per person; the fixture's git user.name is t
+        git(self.repo.dir, "branch", wb)
+        git(self.repo.dir, "push", "-q", "origin", wb)
+        out = self.ok("--apply")
+        self.assertFalse([row for row in self.rows(out) if wb in row[0]], out)
+        self.assertTrue(self.has_local(wb))
+        self.assertTrue(self.has_origin(wb))
+
+    def test_another_persons_working_branch_is_never_touched(self):
+        # section 34: it belongs to that person; merged and stale or not, the sweep leaves it and never lists it
+        git(self.repo.dir, "branch", "ap-main-bob")
+        git(self.repo.dir, "push", "-q", "origin", "ap-main-bob")
+        out = self.ok("--apply")
+        self.assertFalse([row for row in self.rows(out) if "ap-main-bob" in row[0]], out)
+        self.assertTrue(self.has_local("ap-main-bob"))
+        self.assertTrue(self.has_origin("ap-main-bob"))
+
+
+class TestRemoteListsToo(unittest.TestCase):
+    """Re-check defect I: a paired machine's terminal list is checked for truncation like the local one."""
+
+    def test_gather_machine_checks_the_list(self):
+        src = read("bin", "agent_cleanup.py")
+        body = src[src.index("    def gather_machine("):]
+        body = body[:body.index("\n    def ", 10)]
+        self.assertIn("list_complete(", body)

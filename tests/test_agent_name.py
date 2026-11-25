@@ -681,5 +681,39 @@ class TestStartTellsTheHelper(ScriptCase):
         self.assertNotIn("helper-task", self.start({"AGENT_ROLE": "task-manager"}))
 
 
+class TestHelperJoin(HelperCase):
+    """Owner 2026-11-25: a human-direct session keeps its protection only while the human alone drives it."""
+
+    def join(self, task, env=None, sid=SID_A):
+        base = {"CLAUDE_PID": NOBODY, "ORCA_TERMINAL_HANDLE": "term_helper"}
+        if sid is not None:
+            base["CLAUDE_CODE_SESSION_ID"] = sid
+        base.update(env or {})
+        return self.repo.run("agent-file.sh", "helper-join", task, env=base)
+
+    def rows(self):
+        return [l for l in self.repo.read("agent_worktree.txt").splitlines() if l.strip()]
+
+    def test_the_protected_line_becomes_a_normal_task_line(self):
+        self.set_task("City Office 2")
+        r = self.join("city-office-2")
+        self.assertOk(r)
+        mine = [l for l in self.rows() if l.startswith(self.repo.dir + " | ")]
+        self.assertEqual(len(mine), 1, self.rows())
+        self.assertRegex(mine[0], r"^%s \| city-office-2 \| working \| since \d{4}-\d{2}-\d{2} \d{2}:\d{2} \| "
+                                  r"pane term_helper \| session %s$" % (re.escape(self.repo.dir), re.escape(SID_A)))
+        self.assertNotIn("human-direct", mine[0])
+        self.assertIn("helper-join: city-office-2 (pane term_helper, session %s)" % SID_A, r.stdout)
+
+    def test_only_a_helper_may_join(self):
+        before = self.repo.read("agent_worktree.txt")
+        r = self.repo.run("agent-file.sh", "helper-join", "x", env={"CLAUDE_PID": str(os.getpid())})
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        r = self.repo.run("agent-file.sh", "helper-join", "x", env={"AGENT_ROLE": "task-manager",
+                                                                    "CLAUDE_PID": NOBODY})
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertEqual(self.repo.read("agent_worktree.txt"), before)
+
+
 if __name__ == "__main__":
     unittest.main()

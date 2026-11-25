@@ -23,6 +23,7 @@ for p in (HERE, BIN):
 
 import agent_conf  # noqa: E402
 from scripthelp import ScriptCase  # noqa: E402
+import agent_update  # noqa: E402
 
 TAIL = (". Auto update on: installs by itself within 10 min, then /reload-plugins. "
         "Off: claude plugin update auto-pipeline@auto-pipeline")
@@ -532,6 +533,140 @@ class TestFirstBackupIsKept(TmpCase):
         lines = self.u.apply_auto_update(False, self.cdir)
         self.assertEqual(self.read(self.s + BAK), raw)
         self.assertTrue(any("autoUpdate set to false" in l and self.s + BAK in l for l in lines), lines)
+
+
+from test_agent_settings import Home, run_cli  # noqa: E402
+
+
+class TestScopes(unittest.TestCase):
+    def setUp(self):
+        self.h = Home()
+        self.repo = os.path.realpath(self.h.repo)
+        self.wt = os.path.join(self.h.base, "wt")
+        os.makedirs(self.wt)
+        self.wt = os.path.realpath(self.wt)
+
+    def tearDown(self):
+        self.h.close()
+
+    def sync(self, folders, **extra):
+        return agent_update.sync_scopes(folders, self.h.env(**extra))
+
+    def updates(self):
+        return [c for c in self.h.calls() if c["args"][:2] == ["plugin", "update"]]
+
+    def test_all_on_the_newest_no_lines_no_call(self):
+        self.h.installed([{"scope": "user", "version": "0.44.0"},
+                          {"scope": "project", "projectPath": self.repo, "version": "0.44.0"}])
+        self.assertEqual(self.sync([self.repo]), [])
+        self.assertEqual(self.h.calls(), [])
+
+    def test_stale_project_scope_of_this_folder_is_updated_in_that_folder(self):
+        self.h.installed([{"scope": "user", "version": "0.44.0"},
+                          {"scope": "project", "projectPath": self.wt, "version": "0.43.0"}])
+        out = self.sync([self.wt, self.repo])
+        calls = self.updates()
+        self.assertEqual(len(calls), 1, self.h.calls())
+        self.assertEqual(calls[0]["args"], ["plugin", "update", "auto-pipeline@auto-pipeline", "--scope", "project"])
+        self.assertEqual(os.path.realpath(calls[0]["cwd"]), self.wt)
+        self.assertEqual(out, ["updated project %s: 0.43.0 -> 0.44.0, restart to apply" % self.wt])
+
+    def test_stale_user_scope(self):
+        self.h.installed([{"scope": "user", "version": "0.43.0"},
+                          {"scope": "project", "projectPath": self.repo, "version": "0.44.0"}])
+        out = self.sync([self.repo])
+        self.assertEqual(self.updates()[0]["args"][-2:], ["--scope", "user"])
+        self.assertEqual(out, ["updated user: 0.43.0 -> 0.44.0, restart to apply"])
+
+    def test_versions_compare_as_numbers(self):
+        self.h.installed([{"scope": "user", "version": "0.9.0"},
+                          {"scope": "project", "projectPath": self.repo, "version": "0.10.0"}])
+        self.sync([self.repo])
+        self.assertEqual([c["args"][-1] for c in self.updates()], ["user"])
+
+    def test_other_folders_and_other_plugins_are_never_touched(self):
+        gone = os.path.join(self.h.base, "gone")
+        self.h.installed([{"scope": "user", "version": "0.44.0"},
+                          {"scope": "project", "projectPath": gone, "version": "0.26.0"},
+                          {"scope": "project", "projectPath": "/somewhere/else", "version": "0.30.0"}])
+        self.assertEqual(self.sync([self.repo, self.wt]), [])
+        self.assertEqual(self.h.calls(), [])
+
+    def test_local_scope(self):
+        self.h.installed([{"scope": "user", "version": "0.44.0"},
+                          {"scope": "local", "projectPath": self.repo, "version": "0.40.0"}])
+        self.sync([self.repo])
+        self.assertEqual(self.updates()[0]["args"][-2:], ["--scope", "local"])
+
+    def test_a_failed_update_prints_the_exact_command(self):
+        self.h.installed([{"scope": "user", "version": "0.44.0"},
+                          {"scope": "project", "projectPath": self.wt, "version": "0.43.0"}])
+        self.h.claude_mode("fail")
+        out = self.sync([self.wt])
+        self.assertEqual(len(out), 1, out)
+        self.assertTrue(out[0].startswith("STALE SCOPE: project %s runs 0.43.0, newest 0.44.0" % self.wt), out)
+        self.assertIn("boom", out[0])
+        self.assertIn("cd %s && claude plugin update auto-pipeline@auto-pipeline --scope project" % self.wt, out[0])
+
+    def test_auto_update_off_prints_the_command_and_runs_nothing(self):
+        self.h.installed([{"scope": "user", "version": "0.43.0"},
+                          {"scope": "project", "projectPath": "/somewhere/else", "version": "0.44.0"}])
+        self.h.configure({"auto_update": False})
+        out = self.sync([self.repo])
+        self.assertEqual(self.h.calls(), [])
+        self.assertEqual(len(out), 1, out)
+        self.assertIn("STALE SCOPE: user", out[0])
+        self.assertIn("claude plugin update auto-pipeline@auto-pipeline --scope user", out[0])
+
+    def test_a_fresh_lock_means_another_start_is_updating(self):
+        self.h.installed([{"scope": "user", "version": "0.43.0"},
+                          {"scope": "project", "projectPath": "/somewhere/else", "version": "0.44.0"}])
+        os.mkdir(os.path.join(self.h.cfg, "plugins", ".auto-pipeline-update.lock"))
+        out = self.sync([self.repo])
+        self.assertEqual(self.h.calls(), [])
+        self.assertIn("STALE SCOPE: user", out[0])
+
+    def test_an_old_lock_is_taken_over_and_removed_after(self):
+        self.h.installed([{"scope": "user", "version": "0.43.0"},
+                          {"scope": "project", "projectPath": "/somewhere/else", "version": "0.44.0"}])
+        lock = os.path.join(self.h.cfg, "plugins", ".auto-pipeline-update.lock")
+        os.mkdir(lock)
+        old = time.time() - 3600
+        os.utime(lock, (old, old))
+        self.sync([self.repo])
+        self.assertEqual(len(self.updates()), 1)
+        self.assertFalse(os.path.exists(lock))
+
+    def test_no_file_or_bad_file_no_lines_no_raise(self):
+        self.assertEqual(self.sync([self.repo]), [])
+        with open(os.path.join(self.h.cfg, "plugins", "installed_plugins.json"), "w") as fh:
+            fh.write("[[")
+        self.assertEqual(self.sync([self.repo]), [])
+        self.assertEqual(self.h.calls(), [])
+
+    def test_installed_plugins_json_is_never_written_here(self):
+        self.h.installed([{"scope": "user", "version": "0.43.0"},
+                          {"scope": "project", "projectPath": self.repo, "version": "0.44.0"}])
+        path = os.path.join(self.h.cfg, "plugins", "installed_plugins.json")
+        before = open(path).read()
+        self.sync([self.repo])
+        self.assertEqual(open(path).read(), before)
+
+    def test_cli(self):
+        self.h.installed([{"scope": "user", "version": "0.43.0"},
+                          {"scope": "project", "projectPath": self.repo, "version": "0.44.0"}])
+        res = run_cli(["sync", self.repo], self.h.env(), script="agent_update.py")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("updated user", res.stdout)
+
+    def test_a_newer_cache_folder_counts_as_newest(self):
+        self.h.installed([{"scope": "user", "version": "0.44.0"}])
+        folder = os.path.join(self.h.cfg, "plugins", "cache", "auto-pipeline", "auto-pipeline", "0.45.0")
+        os.makedirs(os.path.join(folder, ".claude-plugin"))
+        open(os.path.join(folder, ".claude-plugin", "plugin.json"), "w").write("{}")
+        os.makedirs(os.path.join(self.h.cfg, "plugins", "cache", "auto-pipeline", "auto-pipeline", "0.99.0"))
+        out = self.sync([self.repo])
+        self.assertEqual(out, ["updated user: 0.44.0 -> 0.45.0, restart to apply"])
 
 
 if __name__ == "__main__":
