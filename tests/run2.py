@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Run the test files in N processes (default 2), stdlib only.
+"""Run the test files in N processes (default 4), stdlib only.
 
-    python3 tests/run2.py                      every test file, 2 processes
+    python3 tests/run2.py                      every test file, 4 processes (2 when RAM use
+                                               is over 80%)
     python3 tests/run2.py -j 1                 one process (same as unittest discover)
     python3 tests/run2.py test_agent_file ...  only these files (name, with or without .py)
     python3 tests/run2.py --time [-j N]        each file in its own process, N at a time;
@@ -30,6 +31,25 @@ from concurrent.futures import ThreadPoolExecutor
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAN = re.compile(r"^Ran (\d+) tests? in ([\d.]+)s", re.M)
 RESULT = re.compile(r"^(OK|FAILED)\b(.*)$", re.M)
+
+
+RAM_CAP = 80   # percent; the pipeline's usage cap (max_usage_percent default)
+
+
+def ram_used_percent():
+    """RAM in use, percent, or None when it cannot be read (then -j 4)."""
+    try:
+        if sys.platform == "darwin":
+            out = subprocess.run(["memory_pressure"], capture_output=True, text=True, timeout=5).stdout
+            m = re.search(r"free percentage:\s*(\d+)%", out)
+            return 100 - int(m.group(1)) if m else None
+        with open("/proc/meminfo") as fh:
+            info = dict(line.split(":", 1) for line in fh)
+        total = int(info["MemTotal"].split()[0])
+        avail = int(info["MemAvailable"].split()[0])
+        return round(100 * (total - avail) / total)
+    except Exception:
+        return None
 
 
 def test_files(tests_dir, only):
@@ -131,12 +151,16 @@ def summary(text):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("files", nargs="*")
-    ap.add_argument("-j", type=int, default=2)
+    ap.add_argument("-j", type=int, default=None,
+                    help="processes; default 4 when RAM use is under the cap (80%%), else 2")
     ap.add_argument("--time", action="store_true")
     ap.add_argument("--root")
     ap.add_argument("--out")
     args = ap.parse_args()
 
+    if args.j is None:
+        used = ram_used_percent()
+        args.j = 4 if used is None or used < RAM_CAP else 2
     tests_dir = os.path.join(os.path.abspath(args.root), "tests") if args.root else HERE
     names = test_files(tests_dir, args.files)
     logs = tempfile.mkdtemp(prefix="run2_")
