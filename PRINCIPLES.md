@@ -51,7 +51,8 @@ R5. Task files
 - Done → agent_completed.txt: date, name, what, then one `data` block written by `agent-file.sh`: repo, type, lane, mock, est, guess, work, wait, clock, level, bounces, workers, files, lines, tests, adds
 - No test results in it, that is report material
 - No other task tracking
-- The housekeep pass never closes a todo line: it flags one whose branch is merged into the working branch or the production branch, or one that is stale (no worktree line, no open wait, quiet longer than housekeep_interval_min)
+- The housekeep pass never closes a todo line: it flags one whose branch is merged into the working branch or the production branch
+- A stale todo line is flagged too: no worktree line, no open wait, quiet longer than the interval of W8
 - All four `agent_*.txt` files are written only through `bin/agent-file.sh`. No agent for that, it costs tokens
 - `agent_completed.txt` is never deleted, trimmed or cleaned (every clean-up skips it); only on an explicit owner order
 
