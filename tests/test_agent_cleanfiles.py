@@ -1098,7 +1098,10 @@ class TestSkillAndDocs(unittest.TestCase):
         self.assertIn("every row", body)
         self.assertIn("all", body)
         self.assertIn("none", body)
-        self.assertIn("git push origin main", body)
+        # 8a7e007: push the branch the main checkout is on, not always main
+        self.assertIn("git branch --show-current", body)
+        self.assertIn("git push origin <that branch>", body)
+        self.assertNotIn("git push origin main", body)
         self.assertRegex(body, r"[Nn]ever .*--yes")
 
     def test_readme_lists_the_skill(self):
