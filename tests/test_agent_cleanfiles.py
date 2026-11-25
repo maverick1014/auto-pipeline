@@ -1179,11 +1179,12 @@ class TestSkillAndDocs(unittest.TestCase):
     def test_readme_lists_the_skill(self):
         self.assertIn("clean-up", read_root("README.md"))
 
-    def test_principles_r3_names_clean_up_and_docs_keep(self):
+    def test_principles_r3_names_clean_up_and_the_no(self):
+        # settings-configure: docs_keep is a fixed constant; a product repo keeps its docs by a no
         text = read_root("PRINCIPLES.md")
         r3 = text[text.index("R3. Docs"):text.index("R4. ")]
         self.assertIn("clean-up", r3)
-        self.assertIn("docs_keep", r3)
+        self.assertIn("real docs stay by a no", r3)
 
 
 if __name__ == "__main__":

@@ -313,9 +313,9 @@ class TestHook(Versions, ScriptCase):
                 out = self.hook(stdin)
                 self.assertIn(out, ("", self.line(cache, None)))
 
-    def test_no_agent_conf_is_silent(self):
+    def test_a_repo_not_set_up_is_silent(self):
         self.stale_setup()
-        os.remove(self.repo.path("agent.conf"))
+        os.remove(self.repo.path("agent_todo.txt"))   # settings-configure: the set-up mark
         self.assertEqual(self.hook(self.payload()), "")
 
     def test_current_is_silent_and_cheap(self):

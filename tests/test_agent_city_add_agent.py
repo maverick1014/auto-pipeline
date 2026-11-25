@@ -352,12 +352,14 @@ class TestOpen(AddCase):
                          ["claude", "--name", "bar Manager", "--model", "fable", "--effort", "medium",
                           "--permission-mode", "acceptEdits", PROMPT])
 
-    def test_no_agent_conf_leaves_the_flags_out(self):
+    def test_nothing_set_gives_the_default_flags(self):
+        # settings-configure: the settings always have a value (Configure, else the default)
+        os.remove(os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "settings.json"))
         bare = self.repo("bare", conf=None)
         self.known(bare)
         code, body = self.add(bare)
         self.assertEqual(code, 200, body)
-        self.assertEqual(shlex.split(self.calls[0][2]), ["claude", "--name", "bare Manager", PROMPT])
+        self.assertEqual(shlex.split(self.calls[0][2]), ["claude", "--name", "bare Manager"] + ["--model", "opus", "--effort", "high", "--permission-mode", "auto"] + [PROMPT])
 
     def test_unknown_territory(self):
         self.known(self.shop)
@@ -506,11 +508,13 @@ class TestCommand(AddCase):
 
     def test_agent_conf_text_cannot_break_the_line(self):
         cases = {
-            "both": ("main_manager=opus-5.5:high; touch pwned\npermission_mode=auto$(touch pwned)\n", []),
-            "mode": ("main_manager=opus-5.5:high\npermission_mode=auto && touch pwned\n",
-                     ["--model", "opus", "--effort", "high"]),
-            "model": ("main_manager=`touch pwned`:high\npermission_mode=plan\n", ["--permission-mode", "plan"]),
-            "effort": ("main_manager=opus-5.5:huge\npermission_mode=auto\n", ["--permission-mode", "auto"]),
+            # settings-configure: a refused value reads as the setting default
+            "both": ("main_manager=opus-5.5:high; touch pwned\npermission_mode=auto$(touch pwned)\n", ["--model", "opus", "--effort", "high", "--permission-mode", "auto"]),
+            "mode": ("main_manager=opus-5.5:xhigh\npermission_mode=auto && touch pwned\n",
+                     ["--model", "opus", "--effort", "xhigh", "--permission-mode", "auto"]),
+            "model": ("main_manager=`touch pwned`:high\npermission_mode=plan\n",
+                      ["--model", "opus", "--effort", "high", "--permission-mode", "plan"]),
+            "effort": ("main_manager=opus-5.5:huge\npermission_mode=auto\n", ["--model", "opus", "--effort", "high", "--permission-mode", "auto"]),
         }
         for name, (conf, flags) in cases.items():
             with self.subTest(case=name):
@@ -560,19 +564,19 @@ class TestCommand(AddCase):
         for value, flags in (("fable-5.1:xhigh", ["--model", "fable", "--effort", "xhigh"]),
                              ("opus-5.5:high", ["--model", "opus", "--effort", "high"]),
                              # decider-floor: a main manager below Opus 5.5 / Fable /
-                             # effort medium is refused, so no model flags at all
-                             ("sonnet-5:medium", []),
-                             ("haiku-4.5:low", []),
+                             # effort medium is refused: the setting default opus-5.5:high
+                             ("sonnet-5:medium", ["--model", "opus", "--effort", "high"]),
+                             ("haiku-4.5:low", ["--model", "opus", "--effort", "high"]),
                              ("claude-fable-5-1:max", ["--model", "claude-fable-5-1", "--effort", "max"]),
-                             ("mystery-7:high", [])):
+                             ("mystery-7:high", ["--model", "opus", "--effort", "high"])):
             with self.subTest(main_manager=value):
                 name = "m-" + value.split(":")[0].replace(".", "-")
                 self.repo(name, "main_manager=%s\n" % value)
                 command = ac.agent_command("x Manager", os.path.join(self.base, name))
-                self.assertEqual(shlex.split(command), ["claude", "--name", "x Manager"] + flags + [PROMPT])
-        with open(os.path.join(BIN, "agent.conf.default")) as fh:
-            default = fh.read()
-        self.repo("as-shipped", default)
+                words = shlex.split(command)
+                self.assertEqual(words[:3 + len(flags)], ["claude", "--name", "x Manager"] + flags)
+        os.remove(os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "settings.json"))
+        self.repo("as-shipped", None)
         words = shlex.split(ac.agent_command("x Manager", os.path.join(self.base, "as-shipped")))
         self.assertIn(words[words.index("--model") + 1], ("fable", "opus", "sonnet", "haiku"),
                       "the conf this plugin ships must open a session that can run")
@@ -735,10 +739,13 @@ class TestRuntimeKind(unittest.TestCase):
             with self.subTest(kind=kind), mock.patch.dict(os.environ, {"AGENT_RUNTIME": kind}):
                 self.assertEqual(ac.runtime_kind(self.base), kind)
 
-    def test_that_repos_agent_conf_counts(self):
-        with open(os.path.join(self.base, "agent.conf"), "w") as fh:
-            fh.write("runtime=plain\n")
+    def test_the_runtime_setting_counts(self):
+        cfg = os.path.join(self.base, "cfg")
+        os.makedirs(cfg)
+        with open(os.path.join(cfg, "settings.json"), "w") as fh:
+            json.dump({"pluginConfigs": {"auto-pipeline@auto-pipeline": {"options": {"runtime": "plain"}}}}, fh)
         env = {k: v for k, v in os.environ.items() if k not in ("AGENT_RUNTIME", "CLAUDE_PROJECT_DIR", "CLAUDE_CODE_REMOTE")}
+        env["CLAUDE_CONFIG_DIR"] = cfg
         env["CLAUDE_PROJECT_DIR"] = ROOT      # where the server itself was started: must not win
         with mock.patch.dict(os.environ, env, clear=True):
             self.assertEqual(ac.runtime_kind(self.base), "plain")
@@ -806,13 +813,16 @@ class TestCap(AddCase):
 class TestMachineResources(unittest.TestCase):
     def setUp(self):
         self.base = os.path.realpath(tempfile.mkdtemp(prefix="city_res_"))
+        env = mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": os.path.join(self.base, "cfg")})
+        env.start()
+        self.addCleanup(env.stop)
 
     def tearDown(self):
         shutil.rmtree(self.base, ignore_errors=True)
 
     def conf(self, text):
-        with open(os.path.join(self.base, "agent.conf"), "w") as fh:
-            fh.write(text)
+        """settings-configure: the Max memory % setting (Configure, user level)."""
+        configure_text(text)
 
     def test_the_numbers_and_that_repos_cap(self):
         with mock.patch.dict(os.environ, {"AGENT_FAKE_RAM": "91", "AGENT_FAKE_CPU": "12"}):
@@ -826,9 +836,8 @@ class TestMachineResources(unittest.TestCase):
             self.conf("max_usage_percent=81\n")
             self.assertTrue(ac.machine_resources(self.base)["ok"], "at the cap is not over it")
 
-    def test_no_agent_conf_takes_the_default_files_cap(self):
-        import agent_conf
-        default = int(agent_conf.load(os.path.join(BIN, "agent.conf.default"))["max_usage_percent"])
+    def test_nothing_set_takes_the_default_cap(self):
+        default = 80   # the Max memory % default
         with mock.patch.dict(os.environ, {"AGENT_FAKE_RAM": "5", "AGENT_FAKE_CPU": "5"}):
             self.assertEqual(ac.machine_resources(self.base), {"ram": 5, "cpu": 5, "max": default, "ok": True})
             self.conf("max_usage_percent=lots\n")
