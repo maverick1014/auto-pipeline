@@ -16,6 +16,7 @@ import argparse
 import fnmatch
 import os
 import re
+import subprocess
 import sys
 import time
 
@@ -122,6 +123,7 @@ class Housekeep(object):
         self.related = []
         self.notes = []
         self.cleanup = []
+        self.nightly = []
         self.wt_lines = []   # (literal path, module, status)
         self.wt_raw = []     # the whole line of each wt_lines entry
         self.rows_wt = []    # structured worktree rows (file_rows)
@@ -558,6 +560,21 @@ class Housekeep(object):
             if line.startswith("CLEANUP: "):
                 self.cleanup.append("cleanup: " + line[len("CLEANUP: "):])
 
+    # ---- f. the nightly run (check-blocks section 15): started in the background when it is due
+
+    def run_nightly(self):
+        script = os.path.join(self.plugin, "bin", "agent-nightly.sh")
+        if not self.apply or not os.path.isfile(script):
+            return
+        env = dict(os.environ)
+        if subprocess.call([script, "--due"], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60) != 0:
+            return
+        res = subprocess.run([script, "--start"], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True, timeout=60)
+        if res.returncode == 0:
+            self.nightly.append("nightly: started in the background (agent-nightly.sh --status)")
+
     # ---- the block (and the read only rows)
 
     def stage(self, fn):
@@ -570,7 +587,7 @@ class Housekeep(object):
         return (self.removed + self.flags_gone + self.flags_pane
                 + self.flags_merged + self.flags_stale + self.suspects
                 + self.related + ["note: " + n for n in self.notes]
-                + self.cleanup)
+                + self.cleanup + self.nightly)
 
     def block(self):
         body = self.body()
@@ -640,6 +657,7 @@ class Housekeep(object):
         self.stage(self.ideas)
         self.stage(self.related_repos)
         self.stage(self.run_cleanup)
+        self.stage(self.run_nightly)
         block = self.block()
         sys.stdout.write("".join(l + "\n" for l in block))
         sys.stdout.flush()
