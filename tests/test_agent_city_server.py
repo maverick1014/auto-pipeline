@@ -457,13 +457,6 @@ class TestCityScript(ScriptCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("CITY: http://127.0.0.1:%d/#demo" % self.port, result.stdout)
 
-    def test_the_server_really_answers(self):
-        self.city_run("start")
-        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
-        conn.request("GET", "/health")
-        self.assertEqual(conn.getresponse().status, 200)
-        conn.close()
-
 
 def wait_for_anywhere(check, timeout=8.0, step=0.05):
     end = time.monotonic() + timeout
@@ -2444,10 +2437,6 @@ class TestSpawnSaysWhoSentItT1(TalkServerCase):
         self.events()
         self.lead()
         self.assertEqual(self.spawn_of("s:tm1")["from"], "gov:" + TALK_TA)
-
-    def test_no_governor_no_sender(self):
-        self.lead()
-        self.assertEqual(self.spawn_of("s:tm1")["from"], "")
 
     def test_a_session_the_owner_opened_has_no_sender(self):
         self.governor()

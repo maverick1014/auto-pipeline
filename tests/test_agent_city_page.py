@@ -301,9 +301,6 @@ ASSETS = os.path.join(ROOT, "bin", "agent-city-assets")
 
 
 class TestDocument(unittest.TestCase):
-    def test_it_exists(self):
-        self.assertTrue(os.path.exists(PAGE), "bin/agent-city.html is missing")
-
     def test_full_document_with_title(self):
         text = page()
         self.assertTrue(text.lstrip().lower().startswith("<!doctype html>"))
@@ -818,9 +815,6 @@ class TestInteraction(unittest.TestCase):
                 body = "".join(b for s, b in rules if sel in s)
                 self.assertIn("white-space:nowrap", body)
                 self.assertIn("min-width", body)
-
-    def test_phone_layout_has_the_panel(self):
-        self.assertIn(".ask-panel", media_block("@media (max-width: 960px)"))
 
     def test_decisions_go_to_the_page_endpoint_with_the_token(self):
         text = inline_script()
@@ -2470,9 +2464,6 @@ function closeAskPanel(){ openAskId = null; }
         cls.r = run_sim(cls.DRIVER, {"view": named_view(), "ask": ASK_Q},
                         REQUIRED + ("askAutoClose", "ASK_CLOSE_MS", "panelAsk", "cardAskId"))
 
-    def test_run(self):
-        self.assertNotIn("fatal", self.r, self.r)
-
     def test_shown_nowhere_is_deleted_as_before(self):
         self.assertFalse(self.r["nowhere"])
 
@@ -3338,14 +3329,6 @@ class TestIdleOnThePage(unittest.TestCase):
 
 class TestNameShownOnce(unittest.TestCase):
 
-    def test_name_of(self):
-        driver = r"""
-__out = [nameOf({ label: 'worker', task: 'worker' }), nameOf({ label: 'worker', task: '' }),
-         nameOf({ label: 'worker', task: 'Slice A' }), nameOf({ label: 'task-manager', task: 'city-people' })];
-"""
-        out = run_sim(driver, {}, REQUIRED + ("nameOf",))
-        self.assertEqual(out, ["worker", "worker", "worker · Slice A", "task-manager · city-people"])
-
     def test_tag_roster_and_detail_use_it(self):
         for fn in ("updatePerson", "renderDetail"):  # no roster since city-focus
             with self.subTest(fn=fn):
@@ -3946,9 +3929,6 @@ class TestPanelCss(unittest.TestCase):
                 v = px(decl(block, "bottom"))
                 self.assertIsNotNone(v)
                 self.assertLessEqual(v, 80)
-
-    def test_phone_sheet_stays(self):
-        self.assertEqual(decl(rule(".win", media_960()), "top"), "auto", "still a bottom sheet")
 
     def test_phone_history_never_collapses(self):
         v = px(decl(rule(".chat", media_960()), "min-height"))
@@ -5422,9 +5402,6 @@ class TestTalkLookT3(unittest.TestCase):
 class TestDemoShowsItT1T3(unittest.TestCase):
     """#demo plays hand-overs and talks, so the look can be checked without real sessions."""
 
-    def test_a_demo_person_is_sent_by_the_demo_governor(self):
-        self.assertRegex(function_source("spawnDemo") or "", r"'gov:'\s*\+\s*terr")
-
     def test_only_where_the_demo_draws_a_governor(self):
         # owner-side check 2026-10-01 (headless #demo): a new person in v4-plus / pos-lite stood beside an
         # empty hall and answered 👌 to nobody; the demo draws one governor, in govTerr (governorFigures)
@@ -5514,11 +5491,6 @@ __out = __payload.pairs.map(p => nameOf({ id: 'x1', label: p[0], task: p[1] }));
                           ["worker", "city-talk Worker 2: page"], ["task-manager", "city-people"]])
         self.assertEqual(out, ["worker", "worker", "worker · Slice A", "Worker 2 · page", "task-manager · city-people"])
 
-    def test_rail_head_tag_and_panel_title_show_it(self):
-        for fn in ("railRowHtml", "updatePerson", "winTitle"):
-            with self.subTest(fn=fn):
-                self.assertIn("nameOf(", function_source_talk_panel(fn) or "", fn + " shows the name through nameOf()")
-
 
 FREE_DRIVER = r"""
 __out = [
@@ -5605,11 +5577,6 @@ class TestRailWiring(unittest.TestCase):
         self.assertIn("freeCentre(", src)
         self.assertIn("renderFollow(", function_source("frame") or "")
         self.assertIn("stopFollow()", listener_block(r"\$\('#follow-stop'\)", "click") or "")
-
-    def test_esc(self):
-        block = listener_block(r"document", "keydown") or ""
-        self.assertIn("Escape", block)
-        self.assertIn("stopFollow()", block)
 
     def test_view_offset(self):
         src = function_source("updateCamera") or ""

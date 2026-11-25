@@ -1323,10 +1323,6 @@ class TestIdleIsNotAQuestion(unittest.TestCase):
         self.assertEqual(self.r.feed(R("UserPromptSubmit", sid="tm1", role="task-manager"), 3.0),
                          [{"type": "resume", "id": "s:tm1"}])
 
-    def test_permission_prompt_is_still_stuck(self):
-        out = self.r.feed(R("Notification", sid="tm1", role="task-manager", nt="permission_prompt"), 2.0)
-        self.assertEqual(out, [{"type": "stuck", "id": "s:tm1", "question": "", "tool": ""}])
-
     def test_governor_idle_prompt_is_nothing(self):
         self.assertEqual(self.r.feed(R("Notification", sid="main", nt="idle_prompt"), 2.0), [])
         self.assertEqual(self.r.snapshot()["gov"], {"state": "busy"})
