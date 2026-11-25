@@ -284,17 +284,47 @@ def stored_words(root, task):
     return e if isinstance(e, dict) and e.get("quote") and e.get("verified") is not False else None
 
 
-def gate(root, task, branch, prod):
+def task_worktrees(root, task):
+    """The paths in the main repo's agent_worktree.txt for the task (line: path | task | ...)."""
+    paths = []
+    try:
+        with open(os.path.join(root, "agent_worktree.txt"), encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                f = [x.strip() for x in line.rstrip("\n").split(" | ")]
+                if len(f) >= 2 and f[1] == task and f[0] and f[0] not in paths:
+                    paths.append(f[0])
+    except OSError:
+        pass
+    return paths
+
+
+def gather(root, task):
+    """W-1: the task's CHECK lines from its worktree(s) into the main repo, before the gate. A path that is gone or
+    on another machine is skipped."""
+    for path in task_worktrees(root, task):
+        if not os.path.isdir(path):
+            continue
+        try:
+            subprocess.run([os.path.join(HERE, "agent-file.sh"), "checks", "gather", task, "--dir", path], cwd=root,
+                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+
+def gate(root, task, branch, prod, results=None):
     """F1: the gate on a detached scratch worktree of origin/<branch>. True when it passes."""
     wt = own_worktree(root)
     rc, _, se = run(root, "worktree", "add", "-q", "--detach", wt, "origin/" + branch)
     if rc != 0:
         out("refused: could not make the scratch worktree for the gate: %s" % last_line(se))
         return False
+    cmd = [os.path.join(HERE, "agent-file.sh"), "checks", "gate", task, "--dir", wt,
+           "--base", "origin/" + prod, "--branch", branch]
+    if results:
+        cmd += ["--results", results]
     try:
         try:
-            r = subprocess.run([os.path.join(HERE, "agent-file.sh"), "checks", "gate", task, "--dir", wt,
-                                "--base", "origin/" + prod, "--branch", branch], cwd=root, stdin=subprocess.DEVNULL,
+            r = subprocess.run(cmd, cwd=root, stdin=subprocess.DEVNULL,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=1800)
         except (OSError, subprocess.SubprocessError) as exc:
             out("refused: the gate could not run: %s" % exc)
@@ -308,7 +338,7 @@ def gate(root, task, branch, prod):
         remove_worktree(root, wt)
 
 
-def direct(root, wb, prod, task, branch):
+def direct(root, wb, prod, task, branch, results=None):
     fields = todo_fields(root, task)
     if fields is None or "target production" not in fields:
         out("refused: %s is not a production task (todo add --target production)" % task)
@@ -326,7 +356,8 @@ def direct(root, wb, prod, task, branch):
     if shared:
         out("%s carries commits of %s that are not in %s: branch it from %s" % (branch, wb, prod, prod))
         return 1
-    if not gate(root, task, branch, prod):
+    gather(root, task)
+    if not gate(root, task, branch, prod, results):
         return 1
     wt = own_worktree(root)
     rc, _, se = run(root, "worktree", "add", "-q", "--detach", wt, "origin/" + prod)
@@ -367,12 +398,13 @@ def direct(root, wb, prod, task, branch):
 # ------------------------------------------------------------------ main
 
 USAGE = ("usage: agent-promote.sh --owner-quote \"<words>\" [--time <t>] | --task \"<task>\" --branch <branch> "
-         "| --sync\n")
+         "[--results <file>] | --sync\n")
 
 
 def parse(argv):
     opts, i = {}, 0
-    names = {"--owner-quote": "quote", "--time": "time", "--task": "task", "--branch": "branch"}
+    names = {"--owner-quote": "quote", "--time": "time", "--task": "task", "--branch": "branch",
+             "--results": "results"}
     while i < len(argv):
         a = argv[i]
         if a == "--sync":
@@ -406,7 +438,8 @@ def main(argv):
     if opts.get("sync"):
         return sync(root, wb, prod)[0]
     if "task" in opts:
-        return direct(root, wb, prod, opts["task"], opts["branch"])
+        return direct(root, wb, prod, opts["task"], opts["branch"],
+                      os.path.abspath(opts["results"]) if opts.get("results") else None)
     return publish(root, wb, prod, opts["quote"], opts.get("time"))
 
 
