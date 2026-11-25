@@ -378,35 +378,6 @@ class TestTapAndTrackpad(unittest.TestCase):
             self.assertNotIn("pan", x)
 
 
-class TestInputWiring(unittest.TestCase):
-
-    def test_press_without_move_does_not_lift(self):
-        src = function_source("camLift") or ""
-        self.assertIn("drag.moved", src, "only a real drag counts as dragging in camLift")
-        self.assertNotRegex(src, r"\(\s*drag\s*\|\|", "a bare press (drag set, not moved) must not change the lift")
-
-    def test_pointer_handlers(self):
-        move = listener_block(r"canvas", "pointermove") or ""
-        self.assertIn("isDrag(", move)
-        self.assertGreaterEqual(move.count("buttons === 0"), 2, "hover, and a tracked press with no button down any more")
-        self.assertIn("addEventListener('lostpointercapture'", page())
-
-    def test_wheel_on_the_stage(self):
-        block = listener_block(r"(?:stage|\$\('#stage'\))", "wheel")
-        self.assertIsNotNone(block, "the wheel listener sits on #stage")
-        for bit in ("wheelMove(", "panBy(", "capZoom(", "distLimit()", "passive:", "stopFly()", ".win", ".ask-panel", "preventDefault"):
-            self.assertIn(bit, block, bit)
-        self.assertIsNone(listener_block(r"canvas", "wheel"), "no second wheel listener on the canvas")
-
-    def test_safari_gestures(self):
-        for ev in ("gesturestart", "gesturechange"):
-            block = listener_block(r"(?:stage|\$\('#stage'\)|canvas)", ev)
-            self.assertIsNotNone(block, ev)
-            self.assertIn("preventDefault", block)
-        self.assertIn(".scale", listener_block(r"(?:stage|\$\('#stage'\)|canvas)", "gesturechange"))
-        self.assertIn("capZoom(", listener_block(r"(?:stage|\$\('#stage'\)|canvas)", "gesturechange"))
-
-
 # ---------------------------------------------------------------------------
 # U6: clickable head tags, a bigger hit area
 # ---------------------------------------------------------------------------

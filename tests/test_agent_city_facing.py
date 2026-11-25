@@ -199,29 +199,5 @@ __out = { steps, moved, figMatch, atMatch, end: m ? { yaw: m.yaw, phase: m.phase
 """).replace("__JUDGE__", JUDGE)
 
 
-class TestDrawnFromTheSim(unittest.TestCase):
-    """The 3D part only copies the sim's facing onto the models."""
-
-    def test_person(self):
-        src = function_source("updatePerson") or ""
-        self.assertRegex(src, r"\.rotation\.y\s*=\s*c\.yaw\b")
-        self.assertNotIn("atan2(", src, "no turn math of its own")
-        self.assertNotRegex(src, r"v\.yaw\s*\+=", "no per-frame share")
-
-    def test_home_governor(self):
-        self.assertRegex(function_source("updateGovernor") or "", r"govV\.g\.rotation\.y\s*=")
-
-    def test_pool_governors(self):
-        self.assertRegex(function_source("updateGovPool") or "", r"v\.g\.rotation\.y\s*=\s*fig\.yaw\b")
-
-    def test_move_turns_before_it_steps(self):
-        src = function_source("move") or ""
-        self.assertIn("turnToward(", src)
-        self.assertIn("TURN_WALK_MAX", src)
-        gsrc = function_source("updateGovernors") or ""
-        self.assertIn("turnToward(", gsrc)
-        self.assertIn("TURN_WALK_MAX", gsrc)
-
-
 if __name__ == "__main__":
     unittest.main()

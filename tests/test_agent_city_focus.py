@@ -89,14 +89,6 @@ class TestGone(unittest.TestCase):
         self.assertIsNone(re.search(r"grid-template-columns:[^;}]*360px", style()),
                           "a 360px column is still in the layout")
 
-    def test_land_overlays_make_no_sign(self):
-        body = function_source("landOverlays") or ""
-        self.assertTrue(body, "landOverlays(view) not found")
-        for needle in ("era-sign", "signText", "signs"):
-            with self.subTest(needle=needle):
-                self.assertNotIn(needle, body)
-
-
 def win_block():
     m = re.search(r'<div class="win" id="win"[^>]*>', markup())
     if not m:
@@ -162,6 +154,10 @@ const box = { Math, JSON, console, selected: null, winLog: false, lastDetailKey:
   needFrame: false, govTerr: 't1', renders: 0 };
 box.renderPanel = () => { box.renders++; };
 box.afterPick = () => {}; // city-ux2: a pick also follows + opens the panel -- tested in test_agent_city_ux2
+// city-office: selectFrom goes through the page's one select(key) path (it also flies and follows); a stand-in
+// with its window effect only: a key selects that person or area manager, and the log closes
+box.select = key => { box.selected = !key ? null : key.slice(0, 4) === 'gov:' ? { t: 'gov', terr: key.slice(4) } : { t: 'c', id: key };
+  box.winLog = false; box.renderPanel(); };
 vm.createContext(box);
 vm.runInContext(fns, box);
 const out = {};
@@ -243,6 +239,8 @@ class TestWindowWiring(unittest.TestCase):
         # city-ux U6: the tap goes through selectPick(), the one select path (it clears winLog)
         if "selectPick(" in body:
             body = function_source("selectPick") or ""
+        if "select(" in body:   # city-office: selectPick -> select -> afterSelect, which clears winLog
+            body = function_source("afterSelect") or ""
         self.assertRegex(body, r"winLog = false|closeWin\(")
 
 

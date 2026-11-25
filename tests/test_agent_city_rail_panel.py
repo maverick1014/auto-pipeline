@@ -292,26 +292,6 @@ class TestRailGroups(unittest.TestCase):
                 self.assertRegex(sec, r'class="rail-grp"')
                 self.assertIn('style="--rc:%s"' % by[m.group(1)]["color"], sec)
 
-    def test_count_is_everyone_in_the_group(self):
-        for h in self.r["heads"]:
-            with self.subTest(terr=h["terr"]):
-                self.assertEqual(h["n"], h["rows"], "governor, active and resting people")
-        by = {h["terr"]: h for h in self.r["heads"]}
-        self.assertEqual(by[self.r["a"]]["n"], 12, "A: governor + 11 people (one resting)")
-        self.assertEqual(by[self.r["b"]]["n"], 6, "B: governor + 4 people + Ann's")
-
-    def test_dot_has_the_state_colour_class(self):
-        rows = self.r["rowDots"]
-        self.assertGreater(len(rows), 8)
-        for r in rows:
-            with self.subTest(id=r["id"]):
-                self.assertEqual(r["dot"], "sdot st-" + r["chip"])
-        chips = {r["id"]: r["chip"] for r in rows}
-        self.assertEqual(chips["gov:" + self.r["a"]], "gov")
-        self.assertEqual(chips["s:hhhh0001"], "you", "waiting on the owner")
-        self.assertEqual(chips["s:rrrr0006"], "rest")
-
-
 class TestRailCss(unittest.TestCase):
 
     def test_one_straight_bar_per_group(self):

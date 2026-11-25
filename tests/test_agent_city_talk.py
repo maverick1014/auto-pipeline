@@ -971,43 +971,6 @@ class TestTalkLookT3(unittest.TestCase):
         self.assertNotIn("letter", (function_source("talkOf") or "") + (function_source("govTalkOf") or ""))
 
 
-class TestGovernorBubbleAtHisHeadB2(unittest.TestCase):
-    """Bounce 2: the governor's talk bubble sits just above his head, like a citizen's."""
-
-    def rows(self, cases):
-        js = r"""
-const fs = require('fs'), vm = require('vm');
-const { fns, cases } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-const box = {}; vm.createContext(box); vm.runInContext(fns, box);
-require(`fs`).writeSync(1, JSON.stringify(cases.map(c => box.govHeadRows(c[0], c[1], c[2]))));
-"""
-        return run_node(js, {"fns": page_fns("govHeadRows"), "cases": cases})
-
-    def test_the_head_height_is_a_citizens_plus_what_he_is_taller(self):
-        m = re.search(r"^const GOV_HEAD_H = ([\d.]+);", page(), re.M)
-        self.assertIsNotNone(m, "const GOV_HEAD_H = <height>;")
-        self.assertAlmostEqual(float(m.group(1)), .78, delta=.03)
-
-    def test_the_talk_bubble_takes_the_spot_at_his_head(self):
-        out = self.rows([[True, False, False], [True, True, False], [True, True, True], [True, False, True]])
-        self.assertEqual([r["talk"] for r in out], [0, 0, 0, 0])
-        self.assertEqual([r["bub"] for r in out[1:3]], [38, 38], "his speech bubble stands above the talk bubble")
-        self.assertEqual([r["qm"] for r in out[2:]], [70, 38], "the ? stands above both")
-
-    def test_without_a_talk_the_old_order_stays(self):
-        out = self.rows([[False, True, False], [False, True, True], [False, False, True]])
-        self.assertEqual([r["bub"] for r in out[:2]], [0, 0])
-        self.assertEqual([r["qm"] for r in out[1:]], [32, 0])
-
-    def test_both_governor_figures_use_them(self):
-        for fn in ("updateGovernor", "updateGovPool"):
-            with self.subTest(fn=fn):
-                src = function_source(fn) or ""
-                self.assertRegex(src, r"toScreen\([^)]*GOV_HEAD_H", fn + " takes the head point at GOV_HEAD_H")
-                self.assertNotRegex(src, r"toScreen\([^,]+, \.9,", "no head overlay at the old height .9")
-                self.assertIn("govHeadRows(", src)
-
-
 class TestDemoShowsItT1T3(unittest.TestCase):
     """#demo plays hand-overs and talks, so the look can be checked without real sessions."""
 

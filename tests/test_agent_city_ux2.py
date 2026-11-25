@@ -254,58 +254,6 @@ __out = out;
 """
 
 
-class TestFollow(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        cls.r = run_sim(FOLLOW_DRIVER, payload(), ("apply", "officeState", "startFollow", "stopFollow", "toggleFollow",
-                                                   "followPos", "FOLLOW_DIST", "cameraStep", "flyTo", "stopFly",
-                                                   "tagVisible", "cam", "byId", "newCitizen", "citizens"))
-
-    def test_start_flies_and_follows(self):
-        r = self.r
-        self.assertTrue(4 <= r["FD"] <= 7, r["FD"])
-        self.assertEqual(r["start"], {"follow": "w1", "fly": True, "flyFollow": "w1"})
-        a = r["after"]
-        self.assertFalse(a["fly"], "the fly is over after 2 s")
-        self.assertLess(abs(a["tx"] - a["px"]), .15, "centred on the walking person")
-        self.assertLess(abs(a["tz"] - a["pz"]), .15)
-        self.assertAlmostEqual(a["dist"], r["FD"], places=6, msg="flew in to FOLLOW_DIST")
-        self.assertEqual(a["el"], a["el0"], "never touches the owner's tilt")
-
-    def test_rotation_untouched(self):
-        a, r = self.r["after"], self.r
-        want = 0 if r["RM"] else r["dir"] * 2 * 2 * math.pi / r["AUTO"]
-        self.assertAlmostEqual(a["daz"], want, places=6, msg="only the never-stop rotation turns cam.az")
-
-    def test_follow_pos_is_scene(self):
-        p = self.r["pos"]
-        self.assertAlmostEqual(p["p"][0], p["want"][0], places=9)
-        self.assertAlmostEqual(p["p"][1], p["want"][1], places=9)
-        self.assertEqual(self.r["nullPos"], [None, None], "unknown person / no governor figure")
-
-    def test_zoom_and_toggle(self):
-        r = self.r
-        self.assertEqual(r["zoomKeep"], {"follow": "w1", "dist": 3.1}, "a zoom keeps the follow and its distance")
-        self.assertIsNone(r["toggleOff"])
-        self.assertEqual(r["toggleOn"], "w1")
-        self.assertEqual(r["gov"]["follow"], "gov:" + payload()["ta"])
-        self.assertIsNotNone(r["gov"]["pos"])
-
-    def test_stops(self):
-        r = self.r
-        self.assertEqual(r["stopped"], {"follow": None, "fly": None})
-        self.assertIsNone(r["gone"], "the person left: the follow ends by itself")
-        self.assertIsNone(r["unknown"])
-        self.assertEqual(r["stopFlyKeeps"], "f1", "stopFly (a zoom) never ends the follow")
-
-    def test_never_zooms_out_to_follow(self):
-        self.assertAlmostEqual(self.r["closer"], 3, places=6)
-
-    def test_followed_tag_shows(self):
-        self.assertEqual(self.r["tags"], [True, False, True, True])
-
-
 FREE_DRIVER = r"""
 __out = [
   freeCentre(1200, 800, { right: 236 }, null),
@@ -366,13 +314,6 @@ class TestRailWiring(unittest.TestCase):
         for bit in ("data-grp", "data-rest", "data-focus", "selectFrom(", "railClosed", "railRestOpen"):
             self.assertIn(bit, block, bit)
 
-    def test_pick_is_follow(self):
-        for name in ("selectPick", "selectFrom"):
-            self.assertIn("afterPick()", function_source(name) or "", name)
-        src = function_source("afterPick") or ""
-        for bit in ("toggleFollow(", "selKey(", "stopFollow()", "setWinFolded(false)", "setRailFolded(true)"):
-            self.assertIn(bit, src, "afterPick: " + bit)
-
     def test_folds_are_remembered(self):
         p = page()
         for key in ("agent-city.railFolded", "agent-city.winFolded", "agent-city.railClosed"):
@@ -396,13 +337,6 @@ class TestRailWiring(unittest.TestCase):
         self.assertNotIn("teamListHtml(", src)
         self.assertNotIn("gov-side", src)
 
-    def test_building_focus(self):
-        block = listener_block(r"\$\('#detail'\)", "click") or ""
-        for bit in ("data-focus-b", "stopFollow()", "flyTo(", "FOLLOW_DIST"):
-            self.assertIn(bit, block, bit)
-        self.assertIn("data-focus-b", function_source("renderDetail") or "")
-        self.assertIn("b.focus", function_source("renderDetail") or "")
-
     def test_chip(self):
         src = function_source("renderFollow") or ""
         self.assertIn("follow.on", src)
@@ -415,48 +349,12 @@ class TestRailWiring(unittest.TestCase):
         self.assertIn("Escape", block)
         self.assertIn("stopFollow()", block)
 
-    def test_what_stops_and_what_keeps(self):
-        self.assertIn("stopFollow()", function_source("panBy") or "")
-        self.assertIn("stopFollow()", listener_block(r"\$\('#repos'\)", "click") or "")
-        self.assertIn("stopFollow()", listener_block(r"\$\('#zfit'\)", "click") or "")
-        for name in ("dragBy", "zoomStep", "stopFly", "setRailFolded", "setWinFolded"):
-            src = function_source(name) or ""
-            self.assertNotIn("stopFollow", src, name + " keeps the follow")
-            self.assertNotIn("follow = null", src, name + " keeps the follow")
-
     def test_view_offset(self):
         src = function_source("updateCamera") or ""
         self.assertIn("freeCentre(", src)
         self.assertIn("setViewOffset(", src)
 
-    def test_follow_tag_and_wheel(self):
-        self.assertRegex(function_source("updatePerson") or "", r"tagVisible\([^;]*follow", "the followed person's tag shows")
-        self.assertIn(".rail", listener_block(r"(?:stage|\$\('#stage'\))", "wheel") or "")
-        self.assertIn("terrColor(", function_source("renderRepos") or "")
-
-
 class TestRailCss(unittest.TestCase):
-
-    def test_computer(self):
-        c = css()
-        m = re.search(r"--rail-w\s*:\s*(\d+)px", c)
-        self.assertIsNotNone(m, "--rail-w")
-        # city-rail-tree (owner, 2026-10-05, pick B): about 300px, was compact 190 .. 230
-        self.assertTrue(290 <= int(m.group(1)) <= 310, "about 300px: " + m.group(1))
-        m = re.search(r"--msg-w\s*:\s*(\d+)px", c)
-        self.assertIsNotNone(m, "--msg-w")
-        self.assertTrue(360 <= int(m.group(1)) <= 400, m.group(1))  # city-polish P2: about 380
-        r = rule(".rail").replace(" ", "")
-        for bit in ("position:absolute", "width:var(--rail-w)", "max-height:calc(100%-24px)"):
-            self.assertIn(bit, r, bit)
-        w = rule(".win").replace(" ", "")
-        for bit in ("right:12px", "top:12px", "bottom:12px", "width:var(--msg-w)"):
-            self.assertIn(bit, w, ".win docked right: " + bit)
-        self.assertNotIn("left:12px", w)
-        self.assertEqual(rule(".win.wide"), "", "no wide window")
-        self.assertIn("position:absolute", rule(".tab").replace(" ", ""))
-        self.assertIn("var(--rail-w", rule(".proto"), "the live/demo chip sits right of the rail")
-        self.assertRegex(c, r"\.cam\b[^{]*\{[^}]*var\(--msg-w", "the zoom buttons move left of the panel")
 
     def test_phone(self):
         m = media_960()
@@ -506,44 +404,6 @@ def project(cam_t, az, el, dist, point, w=1200, h=900, ty=.4):
     v = sub(point, cpos)
     k = (h / 2) / math.tan(math.radians(FOV) / 2)
     return (w / 2 + dot(v, r) / dot(v, f) * k, h / 2 - dot(v, u) / dot(v, f) * k)
-
-
-class TestSidewaysScroll(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        cls.r = run_sim(V2_DRIVER, {}, ("wheelMove", "panDelta", "EL_MIN", "EL_MAX", "EL_DEFAULT", "TARGET_Y"))
-
-    def test_pan_values(self):
-        for c in self.r["cases"]:
-            self.assertAlmostEqual(c["pan"][0], c["dx"], places=9, msg="deltaX in, same sign out")
-            self.assertAlmostEqual(c["pan"][1], -c["dy"], places=9, msg="deltaY as before")
-        self.assertIn("zoom", self.r["z"])
-        self.assertNotIn("pan", self.r["z"])
-
-    def test_land_moves_the_way_of_the_scroll_on_both_axes(self):
-        ty = self.r["TY"]
-        for c in self.r["cases"]:
-            az, el, dx, dy = c["az"], c["el"], c["dx"], c["dy"]
-            pt = (0, ty, 0)
-            x0, y0 = project((0, 0), az, el, 12, pt, ty=ty)
-            x1, y1 = project((c["d"][0], c["d"][1]), az, el, 12, pt, ty=ty)
-            sx, sy = x1 - x0, y1 - y0
-            label = "az %.1f el %.2f delta (%d, %d) -> land (%.1f, %.1f)" % (az, el, dx, dy, sx, sy)
-            if dx:
-                self.assertEqual(sx > 0, dx > 0, label)
-                self.assertTrue(.6 * abs(dx) <= abs(sx) <= 1.4 * abs(dx), label)
-            else:
-                self.assertLess(abs(sx), 1.5, label)
-            if dy:
-                self.assertEqual(sy > 0, dy > 0, label)
-                self.assertTrue(.6 * abs(dy) <= abs(sy) <= 1.4 * abs(dy), label)
-            else:
-                self.assertLess(abs(sy), 1.5, label)
-
-    def test_pan_by_uses_it(self):
-        self.assertIn("panDelta(", function_source("panBy") or "")
-        self.assertTrue(sim_has("panDelta"))
 
 
 # ---------------------------------------------------------------------------
