@@ -1340,6 +1340,26 @@ def test_names(lines):
     return names
 
 
+def code_lines(repo, path):
+    """{line no: the line with strings and comments blanked} of the file, or None without a lexer."""
+    family = COMMENT_FAMILIES.get(ext_of(path))
+    if family is None:
+        return None
+    body = repo.content(path)
+    if not body:
+        return None
+    try:
+        segs = family[0](body)
+    except Exception:
+        return None
+    if segs is None:
+        return None
+    text = "".join(t if k == "code" else re.sub(r"[^\n]", " ", t) for k, t in segs)
+    if len(text) != len(body):
+        return None
+    return dict((n + 1, t) for n, t in enumerate(text.split("\n")))
+
+
 def diff_scan(repo, changed, kinds, scope):
     out = []
     for path in sorted(changed):
@@ -1354,7 +1374,9 @@ def diff_scan(repo, changed, kinds, scope):
                 gone = test_names(removed) - test_names(added)
                 for name in sorted(gone):
                     out.append("removed test: %s: %s" % (path, name))
+            masked = code_lines(repo, path) if status != "D" else None
             for no, text in added:
+                text = (masked or {}).get(no, text)
                 if any(m in text for m in SKIP_MARKS) or SKIP_TRUE.search(text):
                     out.append("skipped test: %s:%d" % (path, no))
         if status != "D" and secret_file(path):
@@ -1366,7 +1388,9 @@ def diff_scan(repo, changed, kinds, scope):
                         out.append("secret: %s:%d %s" % (path, no, kind))
                         break
         if status != "D" and not in_test_place(path) and "code" in kinds[path][0].split("+"):
+            masked = code_lines(repo, path)
             for no, text in added:
+                text = (masked or {}).get(no, text)
                 for mark, rx in DEBUG_MARKS:
                     if rx.search(text):
                         out.append("debug leftover: %s:%d %s" % (path, no, mark))
