@@ -144,7 +144,24 @@ def need_line(todo, name):
 def cmd_norm(a):
     if len(a) != 1:
         raise Refuse("norm: one list", 2)
-    print(", ".join(parse_list(a[0])))
+    print(", ".join(parse_list(a[0], True)))
+
+
+def verify_owner(ctx, quote, when, prefix):
+    """Run agent-owner-order.sh verify with the main repo's absolute path; refuse unless it exits 0."""
+    cmd = [os.path.join(HERE, "agent-owner-order.sh"), "verify", "--repo",
+           os.path.abspath(ctx["root"]), "--quote", quote]
+    if when:
+        cmd += ["--time", when]
+    try:
+        p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           universal_newlines=True, stdin=subprocess.DEVNULL)
+        code, out = p.returncode, p.stdout
+    except OSError as e:
+        code, out = 127, str(e)
+    if code != 0:
+        why = " ".join(out.split()) or "exit %d" % code
+        raise Refuse("%s%s" % (prefix, why[:300]))
 
 
 def cmd_todo_checks(ctx, a):
@@ -165,7 +182,7 @@ def cmd_todo_checks(ctx, a):
                 i += 2
             else:
                 raise Refuse("todo checks: unknown or incomplete option: %s" % rest[i])
-        block = parse_list(opts["--remove"])
+        block = parse_list(opts["--remove"], True)
         if len(block) != 1:
             raise Refuse("todo checks: --remove takes one block")
         block = block[0]
@@ -174,19 +191,7 @@ def cmd_todo_checks(ctx, a):
             raise Refuse("todo checks: --remove needs --owner-quote with the owner's words")
         if block not in old:
             raise Refuse("todo checks: %s is not in the checks of %s" % (block, name))
-        cmd = [os.path.join(HERE, "agent-owner-order.sh"), "verify", "--repo",
-               os.path.basename(ctx["root"].rstrip("/")), "--quote", quote]
-        if "--time" in opts:
-            cmd += ["--time", opts["--time"]]
-        try:
-            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               universal_newlines=True, stdin=subprocess.DEVNULL)
-            code, out = p.returncode, p.stdout
-        except OSError as e:
-            code, out = 127, str(e)
-        if code != 0:
-            why = " ".join(out.split()) or "exit %d" % code
-            raise Refuse("todo checks: owner order not verified, nothing changed: %s" % why[:300])
+        verify_owner(ctx, quote, opts.get("--time"), "todo checks: owner order not verified, nothing changed: ")
         new = [b for b in old if b != block]
         at = field_index(f, "checks")
         removed = "removed %s %s" % (block, ctx["now"])
@@ -197,7 +202,7 @@ def cmd_todo_checks(ctx, a):
         return
     if len(rest) != 1:
         raise Refuse("todo checks: usage: todo checks \"<name>\" <BLOCK>[,<BLOCK>] | --remove <BLOCK> --owner-quote \"<words>\"")
-    add = parse_list(rest[0])
+    add = parse_list(rest[0], True)
     new = sorted(set(old) | set(add), key=order_key)
     field = "checks " + ", ".join(new)
     at = field_index(f, "checks")
@@ -281,11 +286,21 @@ def cmd_check(ctx, a):
         raise Refuse("check: the result is pass or fail (got: %s)" % verdict)
     opts, i = {}, 0
     while i < len(rest):
-        if rest[i] in ("--by", "--evidence") and i + 1 < len(rest):
+        if rest[i] in ("--by", "--evidence", "--owner-quote") and i + 1 < len(rest):
             opts[rest[i]] = rest[i + 1]
             i += 2
         else:
             raise Refuse("check: unknown or incomplete option: %s" % rest[i])
+    sign_pass = block == SIGN and verdict == "pass"
+    if sign_pass:
+        q = opts.get("--owner-quote", "")
+        if not q.strip():
+            raise Refuse("check: an OWNER SIGN pass needs --owner-quote \"<the owner's words>\"")
+        if "\n" in q or "\r" in q:
+            raise Refuse("check: --owner-quote must not hold a line break")
+        opts["--evidence"] = "owner order verified: " + q.strip()
+    elif "--owner-quote" in opts:
+        raise Refuse("check: --owner-quote belongs to an OWNER SIGN pass only")
     for k in ("--by", "--evidence"):
         v = opts.get(k, "")
         if not v.strip():
@@ -294,6 +309,8 @@ def cmd_check(ctx, a):
             raise Refuse("check: %s must not hold a line break" % k)
     if " | " in opts["--by"]:
         raise Refuse("check: --by must not hold \" | \"")
+    if sign_pass:
+        verify_owner(ctx, opts["--owner-quote"].strip(), None, "check: owner order not verified, nothing written: ")
     import agent_state
     text = "CHECK %s %s: %s | by %s | %s" % (task, block, verdict, opts["--by"].strip(), opts["--evidence"].strip())
     saved = sys.stdout
@@ -310,9 +327,15 @@ def cmd_check(ctx, a):
 
 # -- gate
 
-def read_results(path, task):
-    """block -> (verdict, who): the last CHECK line of the task wins."""
+def read_results(paths, task):
+    """block -> (verdict, who): the last CHECK line of the task wins, across the files in order."""
     res = {}
+    for path in paths:
+        read_results_file(path, task, res)
+    return res
+
+
+def read_results_file(path, task, res):
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
             lines = fh.read().split("\n")
@@ -355,7 +378,9 @@ def tool_blocks(dirpath, base):
     """(blocks, sign) of `agent-level.sh check --base <base> --json` run in dirpath."""
     script = os.path.join(HERE, "agent-level.sh")
     try:
-        p = subprocess.run([script, "check", "--base", base, "--json"], cwd=dirpath, stdout=subprocess.PIPE,
+        env = dict(os.environ)
+        env.pop("CLAUDE_PROJECT_DIR", None)   # --dir decides, not a hook's or the watch's folder
+        p = subprocess.run([script, "check", "--base", base, "--json"], cwd=dirpath, env=env, stdout=subprocess.PIPE,
                            stderr=subprocess.PIPE, universal_newlines=True, stdin=subprocess.DEVNULL)
     except OSError as e:
         raise Refuse("checks gate: cannot run agent-level.sh: %s" % e, 2)
@@ -374,6 +399,47 @@ def tool_blocks(dirpath, base):
             blocks = [b.strip() for b in l[8:].split(",") if b.strip()]
             return blocks, SIGN in blocks
     raise Refuse("checks gate: agent-level.sh printed no BLOCKS", 2)
+
+
+def git_out(d, *args):
+    p = subprocess.run(["git", "-C", d] + list(args), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                       universal_newlines=True, stdin=subprocess.DEVNULL)
+    return p.returncode, p.stdout
+
+
+def tree_refusal(d):
+    """A refusal text when d holds changes (tracked, or untracked and not ignored) other than agent_*.txt files."""
+    code, out = git_out(d, "status", "--porcelain", "-z", "-uall")
+    if code != 0:
+        raise Refuse("checks gate: git status failed in %s" % d, 2)
+    parts = out.split("\0")
+    i = 0
+    while i < len(parts):
+        e = parts[i]
+        i += 1
+        if len(e) < 4:
+            continue
+        paths = [e[3:]]
+        if e[0] in "RC" and i < len(parts):   # a rename lists the old path next
+            paths.append(parts[i])
+            i += 1
+        for pth in paths:
+            base = os.path.basename(pth)
+            if not (base.startswith("agent_") and base.endswith(".txt")):
+                return "uncommitted changes in %s (commit and push them, or drop them)" % d
+    return None
+
+
+def upstream_of(d):
+    """(upstream name, upstream sha, HEAD sha), or None when the branch has no upstream."""
+    code, name = git_out(d, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+    if code != 0:
+        return None
+    c1, up = git_out(d, "rev-parse", "@{u}")
+    c2, head = git_out(d, "rev-parse", "HEAD")
+    if c1 != 0 or c2 != 0:
+        return None
+    return name.strip(), up.strip(), head.strip()
 
 
 def cmd_gate(ctx, a):
@@ -406,17 +472,35 @@ def cmd_gate(ctx, a):
     elif "--checks" not in opts:
         raise Refuse("checks gate: no todo line named %s here and no --checks" % task, 2)
     if "--checks" in opts:
-        planned |= set(parse_list(opts["--checks"]))
+        planned |= set(parse_list(opts["--checks"], True))
+    why = tree_refusal(d)
+    if why:
+        print("GATE REFUSED %s: %s" % (task, why))
+        sys.exit(1)
+    up = upstream_of(d)
+    if up is None:
+        print("note: no upstream: the gate plans this local HEAD")
+    elif up[1] != up[2]:
+        print("GATE REFUSED %s: HEAD is not its pushed branch %s" % (task, up[0]))
+        sys.exit(1)
     tools, sign = tool_blocks(d, base)
     planned |= set(t for t in tools if t != SIGN)
     if sign or SIGN in tools:
         planned.add(SIGN)
     plan = sorted(planned, key=order_key)
-    results_path = opts.get("--results") or os.path.join(d, "agent_state.txt")
-    res = read_results(results_path, task)
+    paths = [os.path.join(d, "agent_state.txt"), os.path.join(ctx["root"], "agent_state.txt")]
+    if opts.get("--results"):
+        paths.append(opts["--results"])
+    res = read_results(paths, task)
     for p in (os.path.join(d, "agent_state.txt"), os.path.join(ctx["root"], "agent_state.txt")):
         builders += launch_builders(p, task)
     lowb = set(b.lower() for b in builders)
+
+    def is_builder(who):
+        w = who.lower()
+        t = task.lower()
+        return w in lowb or w.startswith(t + " task manager") or w.startswith(t + " deputy") \
+            or w.startswith(t + " worker")
     lines, refused, notes = [], [], []
     for b in plan:
         r = res.get(b)
@@ -426,7 +510,7 @@ def cmd_gate(ctx, a):
         elif r[0] == "fail":
             lines.append("%s: fail (by %s)" % (b, r[1]))
             refused.append("%s fail" % b)
-        elif b in BUILDER_BLOCKS and r[1].lower() in lowb:
+        elif b in BUILDER_BLOCKS and is_builder(r[1]):
             lines.append("%s: pass by the builder (%s), not accepted" % (b, r[1]))
             refused.append("%s by the builder" % b)
         else:

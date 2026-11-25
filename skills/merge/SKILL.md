@@ -13,7 +13,7 @@ description: Main manager only. After a task manager reports DONE PASS, run the 
    - **headless** — cloud only, the extension can never reach a VM. Run the same click path with Playwright against the dev server, and save one screenshot per step as evidence. Same rule: a miss → send the evidence back to the task manager, stop here.
    - **none** — no browser at all. Print the click path under the heading NEEDS HUMAN E2E and stop. Do not merge, do not pass, and never call a path "verified" when nobody drove it. Wait for the human to sign it off.
 3. Stop the app server, close whatever ran the click path: the tab, the headless Playwright browser, or nothing if the answer was none. A block that needs the owner's sign (OWNER SIGN of R8) waits for his yes.
-4. Run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" merge`, then the gate: `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh checks gate "<name>" --dir <worktree path>`. `GATE REFUSED` → no merge: bounce the task with the missing blocks. `GATE PASS` → `Agent` with `subagent_type: merge-deputy`, description `<name> Merge`. Brief, all values:
+4. Run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" merge`, then the gate: `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh checks gate "<name>" --dir <worktree path>`. `GATE REFUSED` → no merge: bounce the task with the missing blocks. A remote task (machine not empty): first save the CHECK lines of its REPORT to a file and give the gate `--results <file>`. `GATE PASS` → `Agent` with `subagent_type: merge-deputy`, description `<name> Merge`. Brief, all values:
    ```
    [<model> <effort>]   (yours, from the YOU: line of your start text)
    name: <name>
@@ -21,6 +21,7 @@ description: Main manager only. After a task manager reports DONE PASS, run the 
    machine: <the Orca environment name, empty when the worktree is on this machine>
    branch: <branch>
    worktree path: <path>
+   results file: <path>   (remote task only: the CHECK lines of its REPORT, for the gate's `--results`; else leave empty)
    terminal handle: <term_...>   (orca only, leave empty in plain and cloud)
    suite command: <exact command>
    todo done arguments: --work <actual> --wait <wait> --bounces <n> --workers <n> --mock <yes|no> --lane full --type <t> --tests <n> --adds <n>

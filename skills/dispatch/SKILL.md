@@ -31,8 +31,9 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
 6. RESOURCES over cap, or agents in state working or permission at `max_agents` (done or idle panes do not count)? → wait, tell the human.
 7. Otherwise, ask `${CLAUDE_PLUGIN_ROOT}/bin/agent-runtime.sh kind` first: orca, plain or cloud.
    ```
-   ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<name>" big "<one line what>" <est_minutes> --guess <your_guess> --checks "<BLOCK>,<BLOCK>"
+   ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<name>" big "<one line what>" <est_minutes> --guess <your_guess> --checks "<BLOCK>,<BLOCK>" --builder "<name> Task Manager"
    ```
+   A brief that changes who can see or do what plans `--checks "CORE REVIEW,OWNER SIGN"` (OWNER SIGN passes only with the owner's verified words: `agent-file.sh check ... --owner-quote "<his words>"`).
    Once the worktree path is known (the board reads it), record where it runs:
    ```
    ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo where "<name>" <machine> "<worktree path>"
