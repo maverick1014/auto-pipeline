@@ -238,7 +238,19 @@ class TestDryRun(ResumeCase):
         self.assertEqual(self.relaunched_for(out, idle), "no, status is idle")
 
 
-class TestTable(ResumeCase):
+class _TestTableFixture:
+    def fixture(self):
+        pass
+
+
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo, each resume call once
+class TestTable(_TestTableFixture, ResumeCase):
+    """One fixture for the class: these tests only read (tests/sharedrepo.py)."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
+
     def test_table_header(self):
         out = self.assertOk(self.resume("--dry-run"))
         self.assertIn("=== resume ===", out)
@@ -248,6 +260,19 @@ class TestTable(ResumeCase):
         out = self.assertOk(self.resume("--dry-run"))
         self.assertIn("(no live worktrees)", out)
         self.assertEqual(self.rows(out), [])
+
+    def test_counts_are_zero_when_the_files_are_empty(self):
+        out = self.assertOk(self.resume("--dry-run"))
+        self.assertIn("todo: 0 open", out)
+        self.assertIn("ideas: 0 waiting", out)
+
+
+class TestTableWrites(_TestTableFixture, ResumeCase):
+    """The tests of TestTable that write: one repo each."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
 
     def test_rows_keep_file_order(self):
         first = self.repo.make_worktree("one")
@@ -272,11 +297,6 @@ class TestTable(ResumeCase):
         out = self.assertOk(self.resume("--dry-run"))
         self.assertIn("todo: 2 open", out)
         self.assertIn("ideas: 3 waiting", out)
-
-    def test_counts_are_zero_when_the_files_are_empty(self):
-        out = self.assertOk(self.resume("--dry-run"))
-        self.assertIn("todo: 0 open", out)
-        self.assertIn("ideas: 0 waiting", out)
 
 
 class TestAgentCap(ResumeCase):
@@ -656,19 +676,26 @@ class TestAutoStillPicksOrca(ResumeCase):
                          "no, plain mode")
 
 
-class TestAConfWrittenBeforeRuntimeExisted(ResumeCase):
+class _TestAConfWrittenBeforeRuntimeExistedFixture:
     """An agent.conf from an older release has no `runtime` line at all.
 
     Unset must read as auto, everywhere. These scripts run under `set -u`, so
     a bare $runtime would kill the whole run instead of defaulting.
     """
-
-    def setUp(self):
-        super(TestAConfWrittenBeforeRuntimeExisted, self).setUp()
+    def fixture(self):
         self.repo.unset_conf("runtime")
         self.path = self.repo.make_worktree("alpha")
         self.repo.set_worktree_lines([(self.path, "alpha", "working")])
         self.repo.set_panes([])
+
+
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo, each resume call once
+class TestAConfWrittenBeforeRuntimeExisted(_TestAConfWrittenBeforeRuntimeExistedFixture, ResumeCase):
+    """One fixture for the class: these tests only read (tests/sharedrepo.py)."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
 
     def test_it_says_nothing_about_an_unbound_variable(self):
         result = self.resume()
@@ -677,6 +704,14 @@ class TestAConfWrittenBeforeRuntimeExisted(ResumeCase):
     def test_it_still_relaunches_through_orca(self):
         self.assertEqual(
             self.relaunched_for(self.assertOk(self.resume()), self.path), "yes")
+
+
+class TestAConfWrittenBeforeRuntimeExistedWrites(_TestAConfWrittenBeforeRuntimeExistedFixture, ResumeCase):
+    """The tests of TestAConfWrittenBeforeRuntimeExisted that write: one repo each."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
 
     def test_it_falls_back_to_plain_with_no_orca(self):
         self.repo.no_orca()

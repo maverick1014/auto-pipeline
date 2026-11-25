@@ -26,6 +26,9 @@ exit "${NPX_STUB_EXIT:-0}"
 """
 
 
+from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
+
+
 class RuntimeCase(ScriptCase):
     script = "agent-runtime.sh"
 
@@ -361,11 +364,6 @@ class TestLaunchWithOrca(RuntimeCase):
               "--command", "claude --model opus",
               "--json"]])
 
-    def test_a_title_with_spaces_stays_one_argument(self):
-        self.assertOk(self.launch())
-        call = self.repo.calls()[0]
-        self.assertIn("TM alpha", call)
-
 
 class TestLaunchWithoutTerminals(RuntimeCase):
     """plain and cloud cannot open a terminal, and must say so."""
@@ -608,6 +606,7 @@ usage
         self.assertEqual(out.strip(), "the caller's own usage")
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # help and refusals: one repo, each call once
 class TestUsage(RuntimeCase):
     def test_it_is_executable(self):
         full = os.path.join(os.path.dirname(HERE), "bin", "agent-runtime.sh")

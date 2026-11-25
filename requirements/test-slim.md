@@ -69,6 +69,7 @@ The split deals files slowest first to the process with the least seconds so far
 
 | Old file::test | Why it is a duplicate | Twin file::test that still checks it |
 |---|---|---|
+| test_agent_runtime.py::TestLaunchWithOrca.test_a_title_with_spaces_stays_one_argument | same launch: "TM alpha" is one argument; the twin asserts the exact argument list, which holds "TM alpha" as one element | test_agent_runtime.py::TestLaunchWithOrca.test_the_exact_argument_list |
 | test_agent_name.py::TestRoles.test_main_manager_with_no_lock | default start with no lock: "project Manager"; the twin's "startup" case is the same input, then resume and fork | test_agent_name.py::TestSources.test_startup_resume_and_fork_get_the_name |
 | test_agent_name.py::TestHelperTaskCommand.test_sets_the_name_of_this_session | helper-task "SST Calculation" gives "project Helper - SST Calculation"; the twin's first case is exactly that, then 17 more | test_agent_name.py::TestHelperTaskCommand.test_the_name_is_cleaned |
 | test_agent_session_clean.py::TestTheHookText.test_a_report_text_does_not_ask | close-case hook, lock held by this pid, a CLOSE CASE report prompt: prints nothing; the twin asserts "" for the same env and lock with 3 prompts | test_agent_close_case.py::TestNoKeywordHook.test_close_case_in_a_prompt_prints_nothing |
