@@ -58,6 +58,15 @@ cd "$R"
 for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do "$P/bin/agent-file.sh" check t "$b" pass --by "t Deputy" --evidence demo; done
 "$P/bin/agent-file.sh" checks gate t --dir "$R" --base base; echo "exit $?"
 "$P/bin/agent-file.sh" check t "PR REVIEW" pass --by "t Check" --evidence "read the diff"
+echo "-- F2: a PR REVIEW counts only when the main manager launched the reviewer (no record yet):"
+"$P/bin/agent-file.sh" checks gate t --dir "$R" --base base; echo "exit $?"
+echo "-- the guard's record of the main manager's reviewer launch (written by the guard hook in a real session):"
+printf '{"task": "t", "type": "reviewer", "by": "main", "at": "%s"}\n' "$(date -v-1M '+%Y-%m-%d %H:%M' 2>/dev/null || date -d '-1 min' '+%Y-%m-%d %H:%M')" \
+  >> "$(git -C "$R" rev-parse --path-format=absolute --git-common-dir)/agent_launches.jsonl"
+"$P/bin/agent-file.sh" check t "PR REVIEW" pass --by "t Review" --evidence "read the diff"
+"$P/bin/agent-file.sh" checks gate t --dir "$R" --base base; echo "exit $?"
+echo "-- F3: a commit after the review: the pass is on an older commit"
+printf 'z()\n' > "$R/app.js"; g add app.js; g commit -q -m "one more change"
 "$P/bin/agent-file.sh" checks gate t --dir "$R" --base base; echo "exit $?"
 
 say "6 next lists a queued task that can start"
@@ -77,8 +86,34 @@ mkdir -p "$R/bin" "$R/tests"
 printf 'x = 1\n' > "$R/bin/tool.py"
 printf 'import os, unittest\nclass T(unittest.TestCase):\n    def test_walk(self):\n        list(os.walk("."))\n' > "$R/tests/test_tree.py"
 : > "$R/tests/__init__.py"
-g add -A; g commit -q -m "fix: empty list crashes the report"
+g add bin tests; g commit -q -m "fix: empty list crashes the report"   # no agent file committed: a new repo
 "$P/bin/agent-init.sh" "$R" | grep -E "agent_repo.conf|working branch|checkout:"; echo "HEAD now: $(git -C "$R" rev-parse --abbrev-ref HEAD)"
 cat "$R/agent_repo.conf"
+
+say "7b F4: init in a repo that already uses the plugin (agent_todo.txt committed) switches nothing"
+repo used
+printf 'x\n' > "$R/seed.txt"; g add -A; g commit -q -m "uses the plugin"
+"$P/bin/agent-init.sh" "$R" | grep -E "working branch|checkout:|WORKING BRANCH"; echo "HEAD now: $(git -C "$R" rev-parse --abbrev-ref HEAD)"
+
+say "8 F1: the direct path to production is bound to the task"
+repo direct
+O="$T/direct-origin.git"; git init -q --bare "$O"
+printf 'x\n' > "$R/seed.txt"; g add -A; g commit -q -m base; g branch -M main; g remote add origin "$O"; g push -q -u origin main
+g config auto-pipeline.workingbranch ap-main-demo; g switch -q -c ap-main-demo; g push -q -u origin ap-main-demo
+g switch -q -c urgent main; printf 'fix\n' > "$R/fix.txt"; g add -A; g commit -q -m urgent; g push -q -u origin urgent; g switch -q ap-main-demo
+cd "$R"
+echo "-- a quote at promote time is refused:"
+"$P/bin/agent-promote.sh" --task urgent --branch urgent --owner-quote "please fix the footer typo on the site"; echo "exit $?"
+echo "-- not a production task:"
+"$P/bin/agent-file.sh" todo add urgent small "urgent fix" 10 >/dev/null
+"$P/bin/agent-promote.sh" --task urgent --branch urgent; echo "exit $?"
+echo "-- target production needs the owner's words:"
+"$P/bin/agent-file.sh" todo add urgent2 small "urgent fix" 10 --target production; echo "exit $?"
+
+say "9 F7: a modified agent_todo.txt never blocks sync"
+g switch -q main; printf 'theirs\n' > "$R/theirs.txt"; g add theirs.txt; g commit -q -m "another person's publish"; g push -q origin main; g switch -q ap-main-demo
+printf 'x | small | x | est 5m\n' >> "$R/agent_todo.txt"
+git -C "$R" status --short agent_todo.txt
+"$P/bin/agent-promote.sh" --sync; echo "exit $?"
 
 say "done: everything above ran in $T (delete it when read)"
