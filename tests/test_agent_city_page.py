@@ -4319,11 +4319,12 @@ def sim_results():
 
 
 def gov_results():
-    if "gov" not in _CACHE:
-        _CACHE["gov"] = tp.run_node(GOV_JS_status, {
+    # test-slim: its own key; "gov" is the governor-bubbles result of another class
+    if "gov_status" not in _CACHE:
+        _CACHE["gov_status"] = tp.run_node(GOV_JS_status, {
             "prelude": tp.constants_prelude(),
             "fns": need("govRowStatus", "govRowText", "govSay", "govTalk", "railRowHtml")})
-    return _CACHE["gov"]
+    return _CACHE["gov_status"]
 
 
 class TestPageGovernor(unittest.TestCase):
