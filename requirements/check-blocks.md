@@ -624,3 +624,9 @@ skills/merge: target working → the merge deputy (in the main checkout, on ap-m
 agents/merge-deputy.md: `<working branch>` in "Your brief gives"; it works in the main checkout, which is on the working branch: `git merge --no-ff origin/<branch>` there and `git push origin <working branch>` (never `git push origin main`); a task with target production is not its job (agent-promote.sh --task).
 skills/init: init creates the working branch from the production branch and switches the main checkout to it (one line each).
 Quiz: Q25 and Q39 as tests/test_check_rules.py.
+
+## 32. Owner example (TELL 893f2fe6): the target is per task, not per request
+
+- One request with x1, x2, x3, x4 where x1 and x2 are urgent ("after done direct merge"): x1 and x2 branch from the production branch, pass their own checks, merge straight into production each when it is done (not waiting for the other), and production is merged back into ap-main after each; x3 and x4 branch from ap-main and merge there; the one full suite runs on ap-main after x3 and x4 are both in.
+- Before dispatch the main manager checks one thing: does an urgent task need code that only a non-urgent one brings? Yes -> it cannot ship alone: tell the owner at once (ship them together, or move that part into the urgent task), never guess.
+- Rule text, W9: "- The target is per task, not per request: an urgent task branches from the production branch and merges straight into production when it is done, production merged back into ap-main after each; the others branch from ap-main and merge there; the batch's one full suite runs after the last of them" and "- Before dispatch: does an urgent task need code that only a non-urgent one brings? Yes -> it cannot ship alone: tell the owner at once (ship them together, or move that part into the urgent task), never guess". Quiz Q23 (RULE W9, answer B) per tests/test_check_rules.py QUIZ_Q23.

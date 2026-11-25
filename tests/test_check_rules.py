@@ -50,6 +50,12 @@ QUIZ_Q16 = """Q16. A small logic task (one function, about 30 minutes) needs a n
   C. The main manager itself
   D. Nobody: skip the test, it is small"""
 
+QUIZ_Q23 = """Q23. One request has x1, x2, x3, x4; x1 and x2 are urgent ("after done direct merge"). You:
+  A. Merge all four into ap-main, run the full suite, then publish them together
+  B. x1 and x2 branch from production and each merges straight into production when done (production merged back into ap-main after each); x3 and x4 branch from ap-main and merge there; one full suite on ap-main after both are in; first check that x1 and x2 need no code only x3 or x4 brings
+  C. Wait until all four are done, then merge them straight into production
+  D. Branch all four from ap-main and push ap-main to production after x1"""
+
 QUIZ_Q25 = """Q25. The owner writes: "fix the export total and publish it". Two other tasks of a batch run for ap-main. Where does this task merge?
   A. Into ap-main, and it waits for the batch
   B. Straight into the production branch once its own checks pass (merged in a short-lived worktree of production), the deploy follows by itself, then production is merged back into ap-main at once
@@ -365,7 +371,7 @@ class TestQuiz(ScriptCase):
 
     def test_the_changed_questions(self):
         out = self.quiz()
-        for n, text in ((6, QUIZ_Q6), (8, QUIZ_Q8), (9, QUIZ_Q9), (16, QUIZ_Q16), (25, QUIZ_Q25), (35, QUIZ_Q35), (38, QUIZ_Q38), (39, QUIZ_Q39)):
+        for n, text in ((6, QUIZ_Q6), (8, QUIZ_Q8), (9, QUIZ_Q9), (16, QUIZ_Q16), (23, QUIZ_Q23), (25, QUIZ_Q25), (35, QUIZ_Q35), (38, QUIZ_Q38), (39, QUIZ_Q39)):
             with self.subTest(q=n):
                 self.assertEqual(self.question(out, n), text)
 
@@ -575,7 +581,10 @@ class TestWorkingBranchRules(unittest.TestCase):
                 self.assertIn(phrase, w8)
         w9 = section(read("PRINCIPLES.md"), "W9. ", "W10. ")
         for phrase in ("branches from the production branch", "branches from ap-main", "--batch",
-                       "may also wait until ap-main is tested and published"):
+                       "may also wait until ap-main is tested and published",
+                       "The target is per task, not per request",
+                       "does an urgent task need code that only a non-urgent one brings",
+                       "tell the owner at once", "never guess"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, w9)
 
