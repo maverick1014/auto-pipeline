@@ -396,3 +396,23 @@ Contract (task manager):
 - C14 agent-level.sh: OUTCOME CHECK is in every BLOCKS line (first); `OUTCOME CHECK: an agent that did not build it: read the diff, run the real thing once (15 min box)`. RELATED TESTS and MODULE TESTS whose measured weight is heavy (key `related`, `group.<folder>`, `full` for every module; agent_test_weights.json or the repo file seed; heavy = light_test_s / light_test_mb or more) leave BLOCKS for one line each: `NET: RELATED TESTS (heavy, <s> s, <mb> MB): the release run or the nightly` / `NET: MODULE TESTS (heavy, ...): the release run or the nightly`; OWNER SIGN for a dependency, lockfile, CI or test-config change stays planned. Unmeasured: runs per task.
 - C15 The gate's builder rule covers OUTCOME CHECK and UI CHECK. Constant `verify_box_min` = 15 (bin/agent_conf.py).
 - C16 Rule text: R8 starts with the principle (owner words, the five points); W4, W5 (the check deputy runs OUTCOME CHECK); the urgent fix path in R8 replaces the old "Urgent fix" kind line; dispatch (every task plans its OUTCOME CHECK; urgent path); merge skill (urgent: release at once, then `agent-nightly.sh --start`, a failure to a new fixer agent); check deputy (OUTCOME CHECK, 15-minute box, extra finds to `agent-file.sh idea add`); quiz Q38 (OUTCOME CHECK), Q39 (the urgent fix, answer B).
+
+## 20. Rule text for section 19 (task manager draft; the rules worker puts it in as written)
+
+R8 head (right after the heading, before the owner's "only do the necessary thing" line):
+```
+- Owner 2026-11-25: "let other agents verify the outcome of the code instead of letting test cases do it"; tests only show old things still work and cost memory and time; an urgent fix must not wait for a test flow
+- The proof that a change is right: an agent that did not build it checks the outcome against what the owner approved
+- It reads the diff and runs the real thing once (the feature path, the page, the command): OUTCOME CHECK, the main check of every task
+- Tests are a cheap guard only: a task runs only its LIGHT related and module tests (measured, S5); a heavy test never blocks a merge, it goes to the release run on the working branch or the nightly
+- The full suite never runs in a task
+- URGENT FIX: the smallest fix, one OUTCOME CHECK, the light related tests, then merge and release at once; everything heavy runs afterwards, and a failure there goes to a new fixer agent
+- Verifier checks are short: only what the owner approved, a 15-minute time box (`verify_box_min`), extra finds go to the ideas file
+```
+R8 body: "DIFF READ, FLOW CHECK and UI CHECK pass only by ..." becomes "OUTCOME CHECK and UI CHECK pass only by someone who did not build the task: not the builder (...)"; the four-kinds line "Urgent fix (production is broken): ..." becomes "  - Urgent fix (production is broken): the URGENT FIX path above". The table from `python3 bin/agent_blocks.py table`.
+W4: "Which tests run follows the blocks (R8): the LIGHT RELATED TESTS and GUARD TESTS per task; MODULE TESTS only when its trigger fires, light ones only; a heavy one goes to the release run or the nightly".
+W5 and W6: the check deputy runs OUTCOME CHECK, UI CHECK, re-checks after a bounce and RELEASE SMOKE (no DIFF READ, no FLOW CHECK anywhere).
+skills/dispatch: every task gets its OUTCOME CHECK (the tool plans it; the brief says what the owner approved, which is what the check deputy checks); the brief blocks are EXAMPLES TEST, UI CHECK, REAL DATA COUNT, and CORE REVIEW,OWNER SIGN for who-can-see-or-do; an "URGENT FIX" paragraph: smallest fix by one fast-lane deputy, one OUTCOME CHECK by a check deputy, light related tests, merge and release at once, then `agent-nightly.sh --start` in the background; a failure there goes to a new fixer agent.
+skills/merge: the OUTCOME CHECK and UI CHECK go to a check-deputy; an URGENT FIX releases at once (no release-run wait), then `agent-nightly.sh --start`; a failure goes to a new fixer agent, never back to the builder.
+agents/check-deputy.md: OUTCOME CHECK = read the diff, run the real thing once (the feature path, the page, the command), only what the owner approved, a 15-minute time box, extra finds go to `agent-file.sh idea add`; UI CHECK as before.
+agents/fast-lane-deputy.md and agents/merge-deputy.md: OUTCOME CHECK in place of DIFF READ and FLOW CHECK.
