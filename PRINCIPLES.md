@@ -443,7 +443,7 @@ H4. Tables
 S1. Settings
 - Settings live only in /plugin -> Installed -> auto-pipeline -> Configure, user level (Claude Code keeps them in `~/.claude/settings.json` `pluginConfigs`)
 - Why: the plugin is a developer workflow, one setup for every repo
-- Configure holds the 16 settings
+- Configure holds the 17 settings
 - Repo facts (core paths, guard tests, test commands, edges, real-data access) live in the committed `agent_repo.conf` at the main repo root, not in Configure (R8)
 - `/auto-pipeline:settings` shows them as a table and never changes them
 - No settings file in a repo, none on a machine: start and init move an old repo or machine settings file into Configure once (keys still unset there only, a value the human set is never overwritten) and say each move
@@ -499,6 +499,8 @@ S8. Context guard (forgetting)
 - Over 300 lines (fixed) the start text says STATE LONG: trim it
 - After a compaction the startup hook re-prints PRINCIPLES.md and `agent_state.txt`. No quiz then. Continue from the file, not from memory
 - Compacted 2 times (fixed) → save state. Orca: `agent-autoclear.sh` types a save prompt, `/clear`, then `/goal` into the own pane, only at an idle prompt with an empty input box
+- The auto clear fires only when no human has typed a prompt in that pane for the last N minutes (setting "Context: Auto clear after quiet (min)", default 30); until then it waits and tries again
+- Not a human prompt: a task notification, a tell pointer, a cross-session message, the watch or the auto clear's own prompts. A task manager nobody types into is cleared as today
 - A task manager runs under `/goal` from the GOAL: line of its brief: typed after the brief and after each answer; the auto clear types it again
 - After a close case the main manager clears itself the same way: it types `/clear` into its own pane (its handle is in the lock line). Plain or cloud → the human types it
 - No pane to type into (plain, cloud) or the send is refused → tell the human to type `/clear`; else end the session, restart from the file (S2)
