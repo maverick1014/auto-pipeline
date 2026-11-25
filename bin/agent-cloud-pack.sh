@@ -278,7 +278,7 @@ PY
 
 # ---- run the packed agent-init.sh, not the source one, so AGENTS.md gets
 # the relative path. ----
-INIT_OUT=$("$PACK/bin/agent-init.sh" "$TARGET") || die "agent-init.sh"
+INIT_OUT=$("$PACK/bin/agent-init.sh" --no-branch "$TARGET") || die "agent-init.sh"
 
 # ---- show agent-init.sh's file lines and its cloud Setup-script hint, but
 # not the permission JSON block or the two lines asking the human to paste

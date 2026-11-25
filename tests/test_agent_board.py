@@ -49,9 +49,9 @@ of the line (after spaces or a "-" / "*" bullet) is its date.
 Read only: writes nothing, touches nothing. Prints one GitHub markdown table
 (or one line "无" / "none" when there is no row), then note lines.
 Columns, in the agent.conf language (zh, else en):
-    zh  任务 | 内容 | 状态 | 进度 | 位置 | 级别 | 估时 | 已工作 | 已等待 | 预计完成
-    en  Task | What | Status | Progress | Where | Level | Est | Work | Wait | Done by
-    (级别 / Level: test-levels, tests/test_risk_levels.py)
+    zh  任务 | 内容 | 状态 | 进度 | 位置 | 检查 | 估时 | 已工作 | 已等待 | 预计完成
+    en  Task | What | Status | Progress | Where | Checks | Est | Work | Wait | Done by
+    (检查 / Checks: check-blocks, the checks field; an old line "level <X>"; tests/test_check_rules.py)
     (进度 / Progress: progress-bar, tests/test_agent_progress.py)
 
 Rows, whole repo:
@@ -126,9 +126,9 @@ from scripthelp import ScriptCase
 
 NOW = "2026-11-02 15:00"
 HOST = "pc2"
-# 级别 / Level: test-levels (2026-11-20), tests/test_risk_levels.py
-HEAD = {"zh": ["任务", "内容", "状态", "进度", "位置", "级别", "估时", "已工作", "已等待", "预计完成"],
-        "en": ["Task", "What", "Status", "Progress", "Where", "Level", "Est", "Work", "Wait", "Done by"]}
+# 检查 / Checks: check-blocks (2026-11-25; was 级别 / Level), tests/test_check_rules.py
+HEAD = {"zh": ["任务", "内容", "状态", "进度", "位置", "检查", "估时", "已工作", "已等待", "预计完成"],
+        "en": ["Task", "What", "Status", "Progress", "Where", "Checks", "Est", "Work", "Wait", "Done by"]}
 # board-waiting (2026-11-20): a wait's status is built from parts (tests/test_board_waiting.py)
 STATUS = {
     "zh": {"running": "进行中", "hold": "暂缓", "queue": "排队", "owner": "你的待办",
@@ -687,7 +687,7 @@ class TestSelf(BoardCase):
     def test_nothing_at_all_is_one_bare_row(self):
         rows = self.rows("--self", cwd=self.alpha)
         self.assertEqual(rows, [{"Task": "alpha", "What": "-", "Status": self.st("running"),
-                                 "Progress": "-", "Where": "pc2, " + self.alpha, "Level": "-", "Est": "-", "Work": "-",
+                                 "Progress": "-", "Where": "pc2, " + self.alpha, "Checks": "-", "Est": "-", "Work": "-",
                                  "Wait": "-", "Done by": "-"}])
 
     def test_a_helper_in_the_main_repo_never_shows_the_main_state(self):

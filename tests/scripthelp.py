@@ -88,6 +88,15 @@ COPY_BIN = [
     "agent-version.sh",      # stale-plugin-guard: running vs installed version, the hook
     "agent-level.sh",        # test-levels: the risk level a diff needs
     "agent_level.py",
+    "agent_blocks.py",       # check-blocks: the one table of blocks and triggers
+    "agent_checks.py",       # check-blocks: gate and next (agent-file.sh)
+    "agent_repo_init.py",    # check-blocks: init writes agent_repo.conf v1 (agent-init.sh)
+    "agent-board-warn.sh",   # check-blocks: board warnings into the main manager's context (hook)
+    "agent-nightly.sh",      # check-blocks section 15: the nightly run, selection misses, release-ok
+    "agent_nightly.py",
+    "agent-test-run.sh",     # check-blocks section 15: light or heavy by measured weight
+    "agent-room.sh",         # check-blocks section 24: the memory gate and the reservation list
+    "agent-promote.sh", "agent_promote.py",      # check-blocks section 28: production only on the owner's yes, from green
     "agent_state.py",        # state-trim: state add / state trim
     "agent-autoclear.sh",    # state-trim: the auto /clear waiter
     "agent-guard.sh",        # board-trust: the launch hook (bash prefilter)
@@ -375,9 +384,9 @@ class ScriptRepo:
     CONF_KEY = {"fast_lane_deputy": "helper_model", "merge_deputy": "helper_model",
                 "worker": "helper_model", "board_guard": "todo_before_agent"}
     # owner 1A 2026-11-25: core paths are repo facts, in <project>/agent_repo.conf
-    REPO_KEYS = ("level3_paths", "level4_paths")
+    REPO_KEYS = ("level3_paths", "level4_paths", "core_paths")   # check-blocks: core_paths too
     BOOL_KEYS = ("auto_update", "auto_resume", "todo_before_agent")
-    NUMBER_KEYS = ("max_agents", "max_usage_percent", "heavy_test_slots", "watch_quiet_min",
+    NUMBER_KEYS = ("max_usage_percent", "watch_quiet_min",
                    "housekeep_interval_min", "city_port", "city_idle_min")
 
     def claude_dir(self):
@@ -686,8 +695,12 @@ class ScriptRepo:
             # a run with the real $HOME gets its own city home, so a test
             # never touches the owner's real one
             env["AGENT_CITY_HOME"] = os.path.join(self.base, "cityhome-default")
+        # check-blocks section 24: a test never reads or writes the machine's real reservation list
+        env.setdefault("AGENT_RESERVE_FILE", os.path.join(self.base, "reservations.json"))
         env.setdefault("AGENT_FAKE_RAM", "10")
         env.setdefault("AGENT_FAKE_CPU", "10")
+        # check-blocks section 44 F2: the scripts honour AGENT_FAKE_NOW only under this switch
+        env.setdefault("AGENT_TESTING", "1")
         # relief run by a test stops only what lies under this test's own
         # temp tree, never another session's monitors or test runs
         env["AGENT_RELIEF_ONLY_UNDER"] = self.base

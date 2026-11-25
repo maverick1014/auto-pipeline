@@ -1,12 +1,26 @@
 #!/usr/bin/env bash
 # agent-file.sh — the only way to write agent_*.txt. No agent, no tokens, one format.
 #
-#   agent-file.sh todo add  "<name>" "<size>" "<what>" [est_minutes] [by] [--guess <m>] [--level <A-D>]  -> agent_todo.txt (by defaults to "main")
+#   agent-file.sh todo add  "<name>" "<size>" "<what>" [est_minutes] [by] [--guess <m>] [--level <A-D>, old callers only]  -> agent_todo.txt (by defaults to "main")
 #   agent-file.sh todo done "<name>" ["<result>"] [--work <m>] [--wait <m>] [--bounces <n>] [--workers <n>]
 #                 [--mock yes|no] [--lane fast|full] [--type <t>] [--tests <n>] [--adds <n>]
 #                 [--merge <commit> | --range <a>..<b>]       -> line moves to agent_completed.txt as one data line
-#   agent-file.sh todo level "<name>" <A-D>                   -> the todo line says its risk type, " | level <A-D>" (old 0-4 read: 0=A 1=B 2,3=C 4=D; replaced in place, only goes up)
+#   agent-file.sh todo level "<name>" <A-D>                   -> old callers only (levels are gone, use todo checks): the todo line says " | level <A-D>" (old 0-4 read: 0=A 1=B 2,3=C 4=D; replaced in place, only goes up)
 #   agent-file.sh todo drop "<name>" "<reason>"               -> line moves to agent_completed.txt as: date | name | what | est <n>m actual - | dropped: <reason>
+#   agent-file.sh todo add ... [--checks "<BLOCK>,<BLOCK>"] [--scope "<glob>,<glob>"] [--builder "<name>"]
+#                                                             -> fields " | checks A, B" (table order) right after guess (else est, else what), " | scope <globs>", " | builder <name>"; an unknown block is refused
+#   agent-file.sh todo checks "<name>" <BLOCK>[,<BLOCK>]      -> union into the checks field, table order; prints "todo checks: <name> <old or -> -> <new>"
+#   agent-file.sh todo checks "<name>" --remove <BLOCK> --owner-quote "<words>" [--time <t>]
+#                                                             -> only on a verified owner order (agent-owner-order.sh verify): the block leaves the field, the line gets " | removed <BLOCK> <date time>"
+#   agent-file.sh todo builder "<name>" <who>                 -> field " | builder <who>" (replaced in place; a comma list is fine)
+#   agent-file.sh todo est "<name>" <minutes> [--guess <m>]   -> est (and guess) replaced in place; prints "todo est: <name> <old>m -> <new>m"
+#   agent-file.sh check "<task>" "<BLOCK>" pass|fail --by <who> --evidence "<text>"
+#                                                             -> agent_state.txt of this folder: "CHECK <task> <BLOCK>: pass | by <who> | at <sha12> | <evidence> | <date time>" (OWNER SIGN allowed; [--commit <sha>], default HEAD of this folder)
+#   agent-file.sh checks gather "<task>" --dir <path>         -> appends the task's CHECK lines of <path>/agent_state.txt to the main repo's agent_state.txt (lines already there skipped); prints "checks gather: <task> <n> lines"
+#   agent-file.sh checks gate "<task>" --dir <path> [--base <ref>] [--branch <b>] [--results <file>] [--checks "<list>"]
+#                                                             -> the merge guard: per planned block "<BLOCK>: pass (by <who>)|fail (by <who>)|missing", then "GATE PASS <task>" (exit 0) or "GATE REFUSED <task>: <BLOCK> missing, ..." (exit 1); no todo line and no --checks: exit 2
+#   agent-file.sh next                                        -> "NEXT: <n> can start (room <mb> MB under the <p>% limit)", then START / WAIT lines for the queued tasks
+#   agent-file.sh edge add "<text>"                           -> one "edge=<text>" line in agent_repo.conf of this folder's git toplevel; "edge add: already listed" when present
 #   agent-file.sh idea add  "<text>"                          -> agent_ideas.txt
 #   agent-file.sh idea list                                   -> print agent_ideas.txt, numbered (cat -n)
 #   agent-file.sh idea rm   <n>                                -> remove line n from agent_ideas.txt
@@ -45,10 +59,14 @@
 #   agent-file.sh board [--self]                              -> the table of everything open (/auto-pipeline:todo); --self: this session's task only
 #   agent-file.sh state add "<line>"                          -> agent_state.txt of this folder gets "<line> | <date time>" (one line, " | " inside is fine)
 #   agent-file.sh tell "<task>" "[<model> <effort>] <msg>"    -> the block "TELL <sha8> ..." at the end of that task's agent_state.txt, then one pointer line into its TM pane (rules D1-D8, requirements/one-watcher.md); prints "TELL OK <task> <sha8>"
+#   agent-file.sh heartbeat "<task>" <step 0-7> <work min> "<what runs now>"  -> agent_state.txt: "HEARTBEAT <task>: step <n> of 7, work <m>m, <text> | <date time>" (bad step, minutes or empty text: refused)
+#   agent-file.sh helper-join "<task>"                        -> a human-direct Helper becomes a normal agent: its worktree line becomes "<path> | <task> | working | since .. | pane .. | session .."
+#   agent-file.sh todo est "<name>" +<minutes>                -> adds minutes to the estimate (guess stays); todo add also takes --target production|working (production needs --owner-quote "<words>" [--time <t>], verified at once) and --batch <name>
 #   agent-file.sh state trim [--dry-run]                      -> old lines of agent_state.txt move to agent_state.trim-<date>.txt (rules: requirements/state-trim.md); --dry-run only counts
 #
+# todo done also closes the queue wait of every open line whose " | after <name>" field is that task, drops the after field, and prints "released: <line name>" per line.
 # todo done: every option is optional; a number is a whole number, 0 or more. "<result>" is not stored.
-#   work = agent minutes. wait = minutes spent waiting (mock gate, owner, suite slot). Never mixed.
+#   work = agent minutes. wait = minutes spent waiting (mock gate, owner, suite run). Never mixed.
 #   <t> is one of: page server script docs cloud app data mixed.
 #   est comes from the todo line. clock = minutes from "opened" to now. repo = folder name of the main repo.
 #   files and lines (lines = added + deleted) are counted only when asked, in the main repo:
@@ -59,8 +77,8 @@
 #   It prints "todo done: <name>" and "TIME DATA: <n> of 30" (finished tasks that have a work number).
 #   No --type or no --lane: one warning line on stderr ("todo done: warning: no --type --lane given (...)"), exit 0.
 #   --guess <m> (whole number, 1 or more; anywhere after "todo add") adds the field " | guess <m>m" after est; done copies it to guess=<m>.
-#   --level <A-D> (old 0-4 accepted, stored as a letter; anywhere after "todo add") adds " | level <A-D>" right after guess (else after est, else after the what); done copies it to level=<A-D>.
-#   todo level "<name>" <A-D>: sets it in place, every other field stays; prints "todo level: <name> <old> -> <new>" ("-" for none) or "todo level: <name> already type <new>" (writes nothing).
+#   --level <A-D>: old callers only (levels are gone, use --checks) (old 0-4 accepted, stored as a letter; anywhere after "todo add") adds " | level <A-D>" right after guess (else after est, else after the what); done copies it to level=<A-D>.
+#   todo level "<name>" <A-D>: old callers only; sets it in place, every other field stays; prints "todo level: <name> <old> -> <new>" ("-" for none) or "todo level: <name> already type <new>" (writes nothing).
 #     A lower type, no such line, a bad or missing type: refused (one line on stderr, exit 1, nothing written).
 #   Then the retrain, only when due: one line "estimate retrain: ...", never the table. A failure never stops todo done.
 #
@@ -204,8 +222,15 @@ OPT_CMD="todo done"   # the prefix of a refusal from done_opts; backfill sets it
 roots_read
 ROOT="$PROJECT_ROOT"
 TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agent_ideas.txt"; WT="$ROOT/agent_worktree.txt"
-NOW=${AGENT_FAKE_NOW:-$(date '+%Y-%m-%d %H:%M')}; WHO=${AGENT_ROLE:-main}
-case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|todo:level) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+# the fake clock only with AGENT_TESTING=1 and a repo root under the system temp folder (section 47 G6)
+fake_clock_ok() {
+  [ "${AGENT_TESTING:-}" = 1 ] && [ -n "${AGENT_FAKE_NOW:-}" ] && command -v python3 >/dev/null 2>&1 || return 1
+  python3 -c 'import os, sys, tempfile
+t = os.path.realpath(tempfile.gettempdir()); r = os.path.realpath(sys.argv[1])
+sys.exit(0 if r == t or r.startswith(t.rstrip("/") + "/") else 1)' "$ROOT" 2>/dev/null
+}
+if fake_clock_ok; then NOW=$AGENT_FAKE_NOW; else NOW=$(date '+%Y-%m-%d %H:%M'); fi; WHO=${AGENT_ROLE:-main}
+case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the whole header comment block, whatever its length
 usage() { awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 2; }
@@ -638,6 +663,25 @@ helper_task() {
   echo "helper task: $task -> \"$repo Helper - $task\" from the human's next prompt"
 }
 
+# helper-join "<task>": a human-direct Helper takes a task from the main manager (or reports DONE to it): its
+# folder's human-direct line becomes a normal task line (check-blocks C20)
+helper_join() {
+  local task="${1:-}" pane="${ORCA_TERMINAL_HANDLE:-}" sid="${CLAUDE_CODE_SESSION_ID:-}"
+  role_read
+  [ "$role" = second ] || refuse "helper-join: only a human-direct Helper (a second session) can join; this session is: $role${AGENT_ROLE:+ ($AGENT_ROLE)}"
+  [ -n "$task" ] || refuse "helper-join: needs the task name"
+  if bad_text "$task"; then refuse "helper-join: the task must not hold \" | \" or a line break"; fi
+  [ -n "$pane" ] || pane=-
+  case "$sid" in ''|*[!A-Za-z0-9_-]*) sid=-;; esac
+  case "$pane" in *[!A-Za-z0-9_.:-]*) pane=-;; esac
+  touch "$WT"
+  awk -F' \\| ' -v p="$PROJECT_CWD" -v t="$task" -v now="$NOW" -v pane="$pane" -v sid="$sid" 'BEGIN { OFS = " | " }
+    $1 == p && $2 == "task manager, human-direct" { print p, t, "working", "since " now, "pane " pane, "session " sid; seen = 1; next }
+    { print }
+    END { if (!seen) print p, t, "working", "since " now, "pane " pane, "session " sid }' "$WT" > "$WT.tmp" && mv "$WT.tmp" "$WT"
+  echo "helper-join: $task (pane $pane, session $sid): a normal agent now; the merge of its last task closes this pane"
+}
+
 # --- todo wait, todo where
 # bad_text "<text>": true when it holds " | " or a line break (it would break the line it goes into)
 bad_text() {
@@ -1058,12 +1102,51 @@ todo_level() {
   echo "todo level: $name ${old:--} -> $n"
 }
 
+# --- check blocks (agent_checks.py does the work)
+checks_py() {
+  command -v python3 >/dev/null 2>&1 || refuse "${1:-checks}: python3 is needed and was not found"
+  python3 "$(dirname "$0")/agent_checks.py" "$PROJECT_ROOT" "$STATE_DIR" "$NOW" "$@"
+}
+# next: the memory rule (section 25) reads the numbers from agent-room.sh; the rest is agent_checks.py
+next_run() {
+  local cap nums
+  [ $# -eq 0 ] || refuse "next: takes nothing after it"
+  cap=$(conf_num max_usage_percent 1 100) || cap=80
+  if nums=$(cd "$PROJECT_ROOT" && "$(dirname "$0")/agent-room.sh" numbers 2>/dev/null </dev/null) && [ "$(printf '%s\n' "$nums" | wc -w | tr -d ' ')" -eq 4 ]; then
+    checks_py next $nums "$cap"
+  else
+    checks_py next unknown
+  fi
+}
+# batch_done <line> <name>: the last open line of a batch is done -> say what comes next (check-blocks C48)
+batch_done() {
+  local b left
+  b=$(printf '%s\n' "$1" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^batch /) {v = $i; sub(/^batch /, "", v); print v; exit}}')
+  [ -n "$b" ] || return 0
+  left=$(awk -F' \\| ' -v b="$b" '{for (i = 4; i <= NF; i++) if ($i == "batch " b) {n++; break}} END {print n + 0}' "$TODO")
+  [ "$left" -eq 0 ] || return 0
+  echo "batch $b: all merged: agent-promote.sh --sync, then the full suite: agent-nightly.sh --start"
+}
+# released_after <name>: close the queue wait of every open line queued after <name>
+released_after() {
+  local n list
+  list=$(checks_py after-list "$1" 2>/dev/null) || return 0
+  while IFS= read -r n; do
+    [ -n "$n" ] || continue
+    todo_wait "$n" off >/dev/null
+    echo "released: $n"
+  done <<< "$list"
+}
+
 case "${1:-}:${2:-}" in
   helper-task:*)
     [ $# -ge 2 ] || usage
     helper_task "$2";;
+  helper-join:*)
+    [ $# -ge 2 ] || usage
+    helper_join "$2";;
   todo:add)
-    shift 2; guess=""; level=""; rest=()
+    shift 2; guess=""; level=""; rest=(); checks=""; scope=""; builder=""; target=""; batch=""; oquote=""; otime=""
     while [ $# -gt 0 ]; do   # --guess <m> may stand anywhere after "todo add"; the other args keep their order
       if [ "$1" = "--guess" ]; then
         [ $# -ge 2 ] && is_num "$2" && [ "${#2}" -le 9 ] && [ $((10#$2)) -ge 1 ] || refuse "todo add: --guess wants a whole number, 1 or more (got: ${2:-nothing})"
@@ -1071,14 +1154,45 @@ case "${1:-}:${2:-}" in
       elif [ "$1" = "--level" ]; then
         level=$(risk_type "${2:-}"); [ -n "$level" ] || refuse "todo add: --level wants one of A B C D (got: ${2:-nothing})"
         shift 2
+      elif [ "$1" = "--checks" ]; then
+        [ $# -ge 2 ] || refuse "todo add: --checks needs a list of blocks"
+        checks=$(checks_py norm "$2") || exit 1
+        shift 2
+      elif [ "$1" = "--scope" ] || [ "$1" = "--builder" ]; then
+        [ $# -ge 2 ] && [ -n "$2" ] || refuse "todo add: $1 needs a value"
+        if bad_text "$2"; then refuse "todo add: the $1 value must not hold \" | \" or a line break"; fi
+        if [ "$1" = "--scope" ]; then scope=$2; else builder=$2; fi
+        shift 2
+      elif [ "$1" = "--target" ]; then
+        case "${2:-}" in production|working) target=$2;; *) refuse "todo add: --target wants production or working (got: ${2:-nothing})";; esac
+        shift 2
+      elif [ "$1" = "--owner-quote" ] || [ "$1" = "--time" ]; then
+        [ $# -ge 2 ] && [ -n "$2" ] || refuse "todo add: $1 needs a value"
+        if [ "$1" = "--owner-quote" ]; then oquote=$2; else otime=$2; fi
+        shift 2
+      elif [ "$1" = "--batch" ]; then
+        [ $# -ge 2 ] && [ -n "$2" ] || refuse "todo add: --batch needs a name"
+        if bad_text "$2"; then refuse "todo add: the --batch value must not hold \" | \" or a line break"; fi
+        batch=$2; shift 2
       else rest+=("$1"); shift; fi
     done
     set -- todo add ${rest[@]+"${rest[@]}"}
-    need 5 "$@"; drop "$TODO" "$3"
+    need 5 "$@"
+    if [ "$target" = production ]; then   # the direct path is bound to the owner's words, verified at once (F1)
+      checks_py owner-words "$3" "$oquote" "$otime" || exit 1
+    elif [ -n "$oquote$otime" ]; then refuse "todo add: --owner-quote and --time belong to --target production"
+    fi
+    checks=$(checks_py plan-add "$3" "$checks") || exit 1   # the blocks this name ever had are planned again (F11)
+    drop "$TODO" "$3"
     what="$5"
     [ -n "${6:-}" ] && what="$5 | est ${6}m"
     [ -z "$guess" ] || what="$what | guess ${guess}m"
     [ -z "$level" ] || what="$what | level $level"
+    [ -z "$checks" ] || what="$what | checks $checks"
+    [ -z "$scope" ] || what="$what | scope $scope"
+    [ -z "$builder" ] || what="$what | builder $builder"
+    [ -z "$target" ] || what="$what | target $target"
+    [ -z "$batch" ] || what="$what | batch $batch"
     by="${7:-$WHO}"
     append "$TODO" "$3 | $4 | $what | opened $NOW | by $by"
     echo "todo added: $3";;
@@ -1102,7 +1216,10 @@ case "${1:-}:${2:-}" in
     d_level=$(todo_line_level "$line"); d_level=${d_level:--}
     date="${NOW%% *}"
     drop "$TODO" "$name"; append "$DONE" "$date | $name | $what | $(dblock)"
+    checks_py task-end done "$name" || true     # its removals, stored owner words and planned blocks end (G2, G4)
     echo "todo done: $name"
+    released_after "$name"
+    batch_done "$line" "$name"
     [ -n "$counted" ] || echo "files and lines: not counted (no --merge or --range)"
     echo "TIME DATA: $(time_data) of $TIME_DATA_GOAL"
     # the finished task no longer counts as open: trim the state file (silent unless lines moved; a refusal is a warning)
@@ -1117,6 +1234,22 @@ case "${1:-}:${2:-}" in
     shift 2; todo_cross "$@";;
   todo:level)
     shift 2; todo_level "$@";;
+  todo:checks)
+    shift 2; checks_py todo-checks "$@";;
+  todo:builder)
+    shift 2; checks_py todo-builder "$@";;
+  todo:est)
+    shift 2; checks_py todo-est "$@";;
+  check:*)
+    shift; checks_py check "$@";;
+  checks:gate)
+    shift 2; checks_py gate "$@";;
+  checks:gather)
+    shift 2; checks_py gather "$@";;
+  next:*)
+    shift; next_run "$@";;
+  edge:add)
+    shift 2; checks_py edge-add "$@";;
   todo:stage)
     shift 2; todo_stage "$@";;
   todo:beat)
@@ -1140,6 +1273,7 @@ case "${1:-}:${2:-}" in
     [ "$est" = "-" ] && est_disp="-" || est_disp="${est}m"
     date="${NOW%% *}"
     drop "$TODO" "$3"; append "$DONE" "$date | $3 | $what | est $est_disp actual - | dropped: $4"
+    checks_py task-end drop "$3" || true        # its removals and stored owner words end (G2, G4)
     echo "todo dropped: $3";;
   idea:add)
     need 3 "$@"; append "$IDEAS" "$3 | $NOW | by $WHO"
@@ -1190,10 +1324,27 @@ case "${1:-}:${2:-}" in
       fi
       printf '%-30s %8s %8s %8s %8s %8s\n' "$name" "$est" "$work" "$wt" "$clock" "$ratio"
     done < "$DONE";;
+  heartbeat:*)
+    # heartbeat "<task>" <step 0-7> <work minutes> "<what runs now>": the one right form (C51)
+    [ $# -eq 5 ] || refuse "heartbeat: usage: heartbeat \"<task>\" <step 0-7> <work minutes> \"<what runs now>\""
+    case "$2" in ''|*[[:space:]:]*) refuse "heartbeat: the task name must be one word without a colon";; esac
+    case "$3" in [0-7]) ;; *) refuse "heartbeat: the step is a whole number from 0 to 7 (got: $3)";; esac
+    is_num "$4" && [ "${#4}" -le 9 ] || refuse "heartbeat: the work minutes are a whole number (got: $4)"
+    hb_text=$(printf '%s' "$5" | tr '\r\n' '  ' | sed 's/^ *//; s/ *$//')
+    [ -n "$hb_text" ] || refuse "heartbeat: say what runs now (the text is empty)"
+    mkdir -p "$STATE_DIR" 2>/dev/null
+    if [ -s "$STATE_FILE" ] && [ -n "$(tail -c 1 "$STATE_FILE")" ]; then printf '\n' >> "$STATE_FILE"; fi
+    append "$STATE_FILE" "HEARTBEAT $2: step $3 of 7, work $((10#$4))m, $hb_text | $NOW"
+    echo "heartbeat: $2 step $3 of 7";;
   tell:*)
     need 3 "$@"; [ $# -eq 3 ] || usage
     command -v python3 >/dev/null 2>&1 || refuse "tell: python3 is needed and was not found"
-    exec python3 "$(dirname "$0")/agent_watch.py" tell "$PROJECT_ROOT" "$NOW" "$2" "$3";;
+    # C53: the line before "TELL OK ..." reminds the main manager to add minutes when the message adds work
+    tell_rc=0
+    tell_out=$(python3 "$(dirname "$0")/agent_watch.py" tell "$PROJECT_ROOT" "$NOW" "$2" "$3") || tell_rc=$?
+    tell_hint="if this message adds work: agent-file.sh todo est \"$2\" +<minutes>"
+    printf '%s\n' "$tell_out" | awk -v h="$tell_hint" '{ if ($0 ~ /^TELL OK / && prev != h) print h; print; prev = $0 }'
+    exit "$tell_rc";;
   backfill:*)
     shift
     case "${1:-}" in ''|--*) backfill_text "$@";; *) backfill_name "$@";; esac;;

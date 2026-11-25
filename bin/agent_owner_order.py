@@ -440,6 +440,71 @@ def line_cmd(cwd, pid, argv):
     return 0
 
 
+CLEAR_TEXTS = ("AUTO CLEAR:", "/clear", "/goal ", "CLEARED:")
+
+
+def human_quiet(cwd, argv):
+    """human-quiet --session <id> --minutes <n> [--repo <folder>]: exit 0 'quiet' or 1 'typed <time>'. Read only."""
+    opts = parse_args(argv, ("--session", "--minutes", "--repo"))
+    if "--session" not in opts or "--minutes" not in opts:
+        raise Usage("human-quiet needs --session and --minutes")
+    try:
+        minutes = int(opts["--minutes"])
+    except ValueError:
+        raise Usage("--minutes is a whole number")
+    repo = (clean_repo(os.path.abspath(os.path.expanduser(opts["--repo"])))
+            if "--repo" in opts else git_toplevel(cwd))
+    fake = os.environ.get("AGENT_FAKE_NOW")
+    now = time.time()
+    if fake:
+        try:
+            now = time.mktime(time.strptime(fake, "%Y-%m-%d %H:%M"))
+        except ValueError:
+            pass
+    newest = None
+    wanted = opts["--session"] + ".jsonl"
+    folders = project_folders(repo)
+    if not any(os.path.isfile(os.path.join(d, wanted)) for d in folders):
+        # a session started in a subfolder lives in another project folder: look in every one (F9)
+        for home in config_homes():
+            folders += [os.path.dirname(x) for x in
+                        glob.glob(os.path.join(glob.escape(home), "projects", "*", glob.escape(wanted)))]
+    readable = 0
+    for d in folders:
+        path = os.path.join(d, opts["--session"] + ".jsonl")
+        try:
+            fh = open(path, "r", encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        readable += 1
+        with fh:
+            for raw in fh:
+                try:
+                    obj = json.loads(raw)
+                except Exception:
+                    continue
+                if not isinstance(obj, dict) or obj.get("type") != "user":
+                    continue
+                epoch = parse_ts(obj.get("timestamp") or "")
+                if epoch is None or epoch > now + 60:
+                    continue
+                text, _, has_result = content_parts(obj.get("message"))
+                if base_kind(obj, has_result) is not None or agent_typed(cut_pasted(text)):
+                    continue
+                if normalise(text).startswith(CLEAR_TEXTS):
+                    continue
+                if newest is None or epoch > newest:
+                    newest = epoch
+    if not readable:
+        print("unknown: no transcript for session %s" % opts["--session"])
+        return 2
+    if newest is None or minutes <= 0 or now - newest >= minutes * 60:
+        print("quiet")
+        return 0
+    print("typed " + minute_of(newest))
+    return 1
+
+
 def main(argv):
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -453,6 +518,8 @@ def main(argv):
     try:
         if command == "verify":
             return verify(rest)
+        if command == "human-quiet":
+            return human_quiet(cwd, rest)
         if command == "line":
             return line_cmd(cwd, pid or str(os.getppid()), rest)
         raise Usage("unknown command: %s" % command)

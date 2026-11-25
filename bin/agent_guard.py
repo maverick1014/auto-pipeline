@@ -315,6 +315,9 @@ def bash_launches(command):
         while k < len(words) and (RE_ASSIGN.match(words[k]) or words[k] in SKIP_WORDS):
             k += 1
         w = words[k:]
+        if len(w) >= 3 and os.path.basename(w[0]) == "agent-runtime.sh" and w[1] == "close":
+            found.append(("close", {"terminal": w[2]}))   # the runtime script's close is a pane close
+            continue
         if len(w) < 3 or os.path.basename(w[0]) != "orca":
             continue
         pair = (w[1], w[2])
@@ -952,6 +955,19 @@ def other_folders(ctx):
     return out
 
 
+def write_launch_record(ctx, task, stype):
+    """F2: a durable line per reviewer / check-deputy launch in <git common dir>/agent_launches.jsonl."""
+    base = base_type(stype)
+    if base not in ("reviewer", "check-deputy"):
+        return
+    rec = {"task": task, "type": base, "by": ctx["role"], "at": ctx["now"]}
+    try:
+        with open(os.path.join(ctx["common"], "agent_launches.jsonl"), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec) + "\n")
+    except OSError:
+        pass
+
+
 def finish(ctx, items, quiet):
     """items: [(Decision, (key, extra) or None)]. Block (whole call) or record, then the protocol line."""
     if ctx["mode"] == "on":
@@ -966,6 +982,7 @@ def finish(ctx, items, quiet):
         fields = {"key": key, "kind": d.kind, "task": d.task, "title": clean_title(d.title), "since": ctx["now"],
                   "pid": str(ctx["pid"]), "by": ctx["role"]}
         fields.update(extra)
+        write_launch_record(ctx, d.task, fields.get("type", ""))
         try:
             add_record(ctx, build_launch(fields))
         except Busy:

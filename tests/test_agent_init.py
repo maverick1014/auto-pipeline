@@ -73,7 +73,8 @@ if HERE not in sys.path:
 from scripthelp import ScriptCase, ScriptRepo
 
 MADE_FILES = ["agent_todo.txt", "agent_completed.txt",
-              "agent_ideas.txt", "agent_worktree.txt", "AGENTS.md"]
+              "agent_ideas.txt", "agent_worktree.txt", "AGENTS.md",
+              "agent_repo.conf"]   # check-blocks: the repo facts, tests/test_check_init.py
 
 GITIGNORE_LINES = [".secrets/", "agent_state.txt", "agent_monitor.txt",
                    "agent_monitor.txt.tmp.*", ".auto-pipeline/"]

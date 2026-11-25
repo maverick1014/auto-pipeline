@@ -1523,9 +1523,10 @@ class TestTheRules(unittest.TestCase):
     def test_dispatch_step_6_counts_the_same_way(self):
         with open(os.path.join(ROOT, "skills", "dispatch", "SKILL.md")) as fh:
             step6 = next(l for l in fh.read().splitlines() if l.startswith("6. "))
-        self.assertIn("working or permission", step6)
+        # check-blocks section 25 (owner 2026-11-25): no count cap; a new pane passes the memory rule
+        self.assertIn("agent-room.sh check", step6)
         self.assertIn("done", step6)
-        self.assertIn("max_agents", step6)
+        self.assertNotIn("max_agents", step6)
 
     def test_w14_names_the_owner_todo_marker(self):
         self.assertIn("`OWNER TODO:`", section("W14", "W15"))
@@ -1549,7 +1550,7 @@ class TestTheQuiz(ScriptCase):
 
     script = "agent-start.sh"
     ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
-               "18D 19C 20A 21D 22C 23B 24D 25C 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38A 39C")
+               "18D 19C 20A 21D 22C 23B 24D 25B 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B")   # check-blocks: Q38 is a blocks question now
 
     def quiz(self):
         return self.assertOk(self.repo.run("agent-start.sh", "--quiz"))

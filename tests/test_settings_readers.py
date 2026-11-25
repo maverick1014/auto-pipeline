@@ -1,4 +1,4 @@
-"""settings-configure: every script reads the 16 settings from Configure, nothing reads agent.conf.
+"""settings-configure: every script reads the 17 settings from Configure, nothing reads agent.conf.
 
 Written by the task manager before any code (requirements/settings-configure.md).
 Core contract: tests/test_settings_configure.py. This file: the readers and the texts.
@@ -91,12 +91,12 @@ class TestStart(StartCase):
         self.assertNotIn("agent.conf", out)
 
     def test_a_bad_stored_value_is_said(self):
-        self.repo.set_conf("max_agents", 99)
+        self.repo.set_conf("max_usage_percent", 999)
         out = self.assertOk(self.start())
-        self.assertTrue([l for l in self.lines(out) if l.startswith("SETTINGS:") and "max_agents=99" in l], out)
+        self.assertTrue([l for l in self.lines(out) if l.startswith("SETTINGS:") and "max_usage_percent=999" in l], out)
 
     def test_an_old_agent_conf_is_moved_once(self):
-        self.repo.set_old_conf("language=zh\nmax_agents=6\n")
+        self.repo.set_old_conf("language=zh\nmax_usage_percent=60\n")
         out = self.assertOk(self.start())
         self.assertIn("moved language=zh from", out)
         calls = [c for c in self.repo.claude_calls() if c["args"][:2] == ["plugin", "configure"]]

@@ -1,4 +1,11 @@
-"""Failing tests for test-levels (risk level per task). Written by the task manager, before any code.
+"""check-blocks (2026-11-25, requirements/check-blocks.md): levels are gone. This file keeps
+the lexer and diff tests of test-levels: agent-level.sh check now prints one line per file,
+"FILE <path>: <kind> (<reason>)". old_letter() below reads a kind and its reason back as the
+old letter (text/rule A, style shape A, style file/asset/component B, code C, deps/ci/migration/
+schema/data-script D) so these shape tests keep pinning the lexers. The rule, quiz, RAISE, PART
+and hint tests moved to tests/test_check_blocks.py and tests/test_check_rules.py.
+
+Old header (test-levels, kept for the history of the shapes):
 
 WHY (owner 2026-11-20, decisions 1A 2A 3A, final): today the lane is picked by
 task size only (R1). A second axis: a risk level per task, picked at dispatch,
@@ -153,24 +160,31 @@ sys.path.insert(0, BIN)
 import agent_conf  # noqa: E402
 
 NOW = "2026-11-20 10:00"
-FILE_LINE = re.compile(r"^(\S+): ([A-D]) (.+)$")
+FILE_LINE = re.compile(r"^FILE (\S+): (\S+) \((.*)\)$")
 
-ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
-           "18D 19C 20A 21D 22C 23B 24D 25C 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38A 39C")
 
-# Q38 and Q39 as the quiz prints them (the worker writes them into bin/agent-start.sh as is).
-# owner 2A (2026-11-25, TELL 0d544056): the type comes from the brief; Danger paths is a hint
-QUIZ_Q38 = """Q38. A diff only rewords two lines in PRINCIPLES.md, a core path in agent_repo.conf. Its risk type:
-  A. A: doc or text only, even in PRINCIPLES.md; the main manager reads the diff
-  B. B: UI, Chrome compare with the approved mock
-  C. C: logic, failing tests first
-  D. D: it is a core path, the owner signs before merge"""
+def old_letter(kinds, why):
+    """A kind (and its reason) read as the old letter, for the shape tests only."""
+    k = set(kinds.split("+")) - {"core"}
+    if k & {"deps", "migration", "schema", "ci", "data-script"}:
+        return "D"
+    if "code" in k:
+        return "B" if "component file" in why else "C"
+    if "style" in k:
+        return "B" if why == "style file" or "new prop value" in why else "A"
+    if "asset" in k:
+        return "B"
+    return "A"
 
-QUIZ_Q39 = """Q39. agent-level.sh prints "touches core path bin/agent_conf.py: judge from the brief whether it is D". The brief adds one new setting. You:
-  A. Raise the task to D: it is a core path
-  B. Ignore the line: it is only a hint
-  C. Judge from the brief: a new feature is normally C, D only when core code many things depend on changes; a second read-only agent checks the type, a disagreement goes to the owner
-  D. Ask the owner before every task that touches a core path"""
+
+def core_paths_of(stdout):
+    """The files the tool marks as core (kind ends with +core)."""
+    out = set()
+    for line in stdout.splitlines():
+        m = FILE_LINE.match(line)
+        if m and "core" in m.group(2).split("+"):
+            out.add(m.group(1))
+    return out
 
 
 def read(*parts):
@@ -234,18 +248,18 @@ class LevelCase(ScriptCase):
         self.addCleanup(self.repo.cleanup)
 
     def required(self, r):
+        """The old letters of all files, joined like the old REQUIRED TYPE (A when none)."""
         first = r.stdout.splitlines()[0] if r.stdout else ""
-        m = re.match(r"^REQUIRED TYPE ([A-D](?:\+[A-D])*)$", first)
-        self.assertTrue(m, r.stdout + r.stderr)
-        return m.group(1)
+        self.assertTrue(first.startswith("BLOCKS: "), r.stdout + r.stderr)
+        return "+".join(sorted({v[0] for v in self.files(r).values()}) or ["A"])
 
     def files(self, r):
-        """path -> (type, reason) of the file lines."""
+        """path -> (old letter, reason) of the FILE lines."""
         out = {}
         for line in r.stdout.splitlines()[1:]:
             m = FILE_LINE.match(line)
             if m:
-                out[m.group(1)] = (m.group(2), m.group(3))
+                out[m.group(1)] = (old_letter(m.group(2), m.group(3)), m.group(3))
         return out
 
     def one(self, files_before, files_after, path, conf=None, extra=()):
@@ -267,7 +281,7 @@ class TestTheScript(LevelCase):
     def test_no_changes(self):
         self.base({"src/app.js": 'const a = "x";\n'})
         r = self.ok()
-        self.assertEqual(r.stdout.splitlines()[0], "REQUIRED TYPE A")
+        self.assertEqual(r.stdout.splitlines()[0], "BLOCKS: PR REVIEW, DIFF SCAN")
         self.assertIn("no changes", r.stdout.splitlines())
         self.assertEqual(self.files(r), {})
 
@@ -276,17 +290,13 @@ class TestTheScript(LevelCase):
         self.put({"b/two.js": 'x("b");\n', "a/one.md": "hello you\n", "c/s.css": "b{}\n"})
         r = self.ok()
         lines = r.stdout.splitlines()
-        self.assertEqual(lines[0], "REQUIRED TYPE A+B")
+        self.assertEqual(self.required(r), "A+B+C")      # section 44 F10: x("a") -> x("b") in a .js file is code
         paths = [FILE_LINE.match(l).group(1) for l in lines[1:] if FILE_LINE.match(l)]
         self.assertEqual(paths, ["a/one.md", "b/two.js", "c/s.css"])
 
     def test_usage_errors_exit_2_with_one_stderr_line(self):
         self.base({"src/app.js": "x\n"})
         for args in (["check"], ["check", "--base"], ["check", "--base", "no-such-ref"],
-                     ["check", "--base", "base", "--declared", "5"],
-                     ["check", "--base", "base", "--declared", "E"],
-                     ["check", "--base", "base", "--declared", "x"],
-                     ["check", "--base", "base", "--declared", ""],
                      ["check", "--base", "base", "--declared"],
                      ["lower", "--base", "base"], []):
             with self.subTest(args=args):
@@ -301,15 +311,13 @@ class TestLevelZero(LevelCase):
     def test_a_string_literal(self):
         need, lvl, why = self.one({"src/app.js": 'const title = "Hello";\n'},
                                   {"src/app.js": 'const title = "Hello there";\n'}, "src/app.js")
-        self.assertEqual((need, lvl), ("A", "A"))
-        self.assertIn("text change", why)
+        self.assertEqual((need, lvl), ("C", "C"))   # check-blocks section 44 F10: a string literal in a code file is code
 
     def test_a_single_quoted_string_in_python(self):
         need, lvl, why = self.one({"app/views.py": "def f():\n    flash('Saved')\n"},
                                   {"app/views.py": "def f():\n    flash('Stored, thanks')\n"},
                                   "app/views.py")
-        self.assertEqual((need, lvl), ("A", "A"))
-        self.assertIn("text change", why)
+        self.assertEqual((need, lvl), ("C", "C"))   # check-blocks section 44 F10: a string literal in a code file is code
 
     def test_markup_text_between_tags(self):
         need, lvl, why = self.one({"src/Home.jsx": "export const Home = () => (\n  <h1>Welcome</h1>\n);\n"},
@@ -512,7 +520,7 @@ class TestBuiltInLevelFour(LevelCase):
         need, lvl, why = self.one({path: before} if before is not None else {"seed2.txt": "x\n"},
                                   {path: after}, path)
         self.assertEqual((need, lvl), ("D", "D"), why)
-        self.assertIn("built-in D: %s" % kind, why)
+        self.assertIn("built-in: %s" % kind, why)
 
     def test_lockfiles(self):
         for path in ("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "app/pubspec.lock",
@@ -556,19 +564,13 @@ class TestBuiltInLevelFour(LevelCase):
                 self.tearDown_repo()
 
 
-HINT = "touches core path %s: judge from the brief whether it is D"
-
-
 class TestRepoPaths(LevelCase):
-    """Owner 2A (2026-11-25): the risk type is judged from the BRIEF, never from file paths alone.
-    Owner 1A (2026-11-25): core paths are facts of one repo: level3_paths and level4_paths in the
-    committed agent_repo.conf at the main repo root (read from a worktree too). A file on either
-    list keeps the type its content gives; the check prints one line per such file,
-    "touches core path <file>: judge from the brief whether it is D". It never raises, and a
-    doc/text-only diff is A even in PRINCIPLES.md. No file or no key: the built-in D kinds only."""
+    """check-blocks: a core path (core_paths, old level3_paths and level4_paths of the committed
+    agent_repo.conf at the main repo root, read from a worktree too) marks the file "+core" and
+    triggers CORE REVIEW; the kind stays what the content gives. No file or no key: no core marks."""
 
-    def test_a_core_path_is_a_hint_not_a_type(self):
-        for key in ("level3_paths", "level4_paths"):
+    def test_a_core_path_keeps_the_kind_of_its_content(self):
+        for key in ("level3_paths", "level4_paths", "core_paths"):
             with self.subTest(key=key):
                 need, typ, why = self.one({"src/money/total.js": "a()\n"}, {"src/money/total.js": "b()\n"},
                                           "src/money/total.js", conf={key: "src/money/,lib/ledger/"})
@@ -576,62 +578,42 @@ class TestRepoPaths(LevelCase):
                 self.assertNotIn("paths", why)
                 self.tearDown_repo()
 
-    def test_the_hint_line_names_the_file(self):
+    def test_the_core_mark_names_the_file_only(self):
         self.base({"src/money/total.js": "a()\n", "src/other.js": "a()\n"}, {"level4_paths": "src/money/"})
         self.put({"src/money/total.js": "b()\n", "src/other.js": "b()\n"})
-        lines = self.ok().stdout.splitlines()
-        self.assertIn(HINT % "src/money/total.js", lines)
-        self.assertNotIn(HINT % "src/other.js", lines)
+        r = self.ok()
+        self.assertEqual(core_paths_of(r.stdout), {"src/money/total.js"})
+        self.assertIn("CORE REVIEW: src/money/total.js", r.stdout.splitlines())
 
-    def test_principles_wording_is_a_even_as_a_core_path(self):
+    def test_principles_wording_stays_rule_text_on_the_list(self):
         self.base({"PRINCIPLES.md": "- old rule\n"}, {"level3_paths": "PRINCIPLES.md,skills/"})
         self.put({"PRINCIPLES.md": "- new rule words\n"})
-        r = self.ok("--declared", "A")
-        self.assertEqual(self.required(r), "A")
+        r = self.ok()
         self.assertEqual(self.files(r)["PRINCIPLES.md"][0], "A")
-        self.assertIn(HINT % "PRINCIPLES.md", r.stdout.splitlines())
-        self.assertNotIn("RAISE", r.stdout)
+        self.assertEqual(core_paths_of(r.stdout), {"PRINCIPLES.md"})
 
-    def test_a_doc_only_diff_on_the_list_never_raises(self):
-        self.base({"skills/a/SKILL.md": "x\n", "agents/w.md": "x\n"}, {"level4_paths": "skills/,agents/"})
-        self.put({"skills/a/SKILL.md": "y\n", "agents/w.md": "y\n"})
-        r = self.ok("--declared", "A")
-        self.assertEqual(self.required(r), "A")
-        self.assertNotIn("RAISE", r.stdout)
-
-    def test_logic_on_the_list_is_c_and_raises_only_as_c(self):
-        self.base({"bin/agent_conf.py": "def f(a):\n    return a + 1\n"}, {"level3_paths": "bin/agent_conf.py"})
-        self.put({"bin/agent_conf.py": "def f(a):\n    return a * 2\n"})
-        r = self.check("--declared", "B")
-        self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertEqual(r.stdout.splitlines()[-1], "RAISE: declared B, needs C (bin/agent_conf.py)")
-        self.assertEqual(self.ok("--declared", "C").stdout.splitlines()[0], "REQUIRED TYPE C")
-
-    def test_no_repo_file_is_built_ins_only(self):
+    def test_no_repo_file_no_core_marks(self):
         self.base({"yarn.lock": "a\n", "skills/a/SKILL.md": "x\n"})
         self.put({"yarn.lock": "b\n", "skills/a/SKILL.md": "y\n"})
         r = self.ok()
         got = self.files(r)
         self.assertEqual(got["yarn.lock"][0], "D")
         self.assertEqual(got["skills/a/SKILL.md"][0], "A")
-        self.assertFalse([l for l in r.stdout.splitlines() if l.startswith("touches core path")], r.stdout)
+        self.assertEqual(core_paths_of(r.stdout), set())
 
-    def test_globs_still_match_for_the_hint(self):
+    def test_globs_match(self):
         conf = {"level3_paths": "api/,src/*/ledger", "level4_paths": "*.money.ts"}
         self.base({"api/v1/h.py": "a = 1\n", "src/api/h.py": "a = 1\n", "src/a/ledger/x.ts": "a\n",
                    "deep/b.money.ts": "a\n"}, conf)
         self.put({"api/v1/h.py": "a = 2\n", "src/api/h.py": "a = 2\n", "src/a/ledger/x.ts": "b\n",
                   "deep/b.money.ts": "b\n"})
-        lines = self.ok().stdout.splitlines()
-        for hit in ("api/v1/h.py", "src/a/ledger/x.ts", "deep/b.money.ts"):
-            self.assertIn(HINT % hit, lines)
-        self.assertNotIn(HINT % "src/api/h.py", lines)
+        self.assertEqual(core_paths_of(self.ok().stdout), {"api/v1/h.py", "src/a/ledger/x.ts", "deep/b.money.ts"})
 
     def test_a_bad_value_is_left_out_and_said(self):
         self.base({"skills/a/SKILL.md": "x\n"}, {"level3_paths": "/etc/,src/", "level4_paths": "skills/"})
         self.put({"skills/a/SKILL.md": "y\n"})
         r = self.ok()
-        self.assertIn(HINT % "skills/a/SKILL.md", r.stdout.splitlines())
+        self.assertEqual(core_paths_of(r.stdout), {"skills/a/SKILL.md"})
         self.assertIn("level3_paths", r.stderr)
         self.assertIn("agent_repo.conf", r.stderr)
 
@@ -641,7 +623,7 @@ class TestRepoPaths(LevelCase):
         self.put({"src/money/total.js": "a = 2\n"})
         r = self.ok()
         self.assertEqual(self.files(r)["src/money/total.js"][0], "C")
-        self.assertNotIn(HINT % "src/money/total.js", r.stdout.splitlines())
+        self.assertEqual(core_paths_of(r.stdout), set())
 
     def test_a_worktree_reads_the_main_repos_file(self):
         self.base({"src/money/total.js": "a = 1\n"})
@@ -649,14 +631,13 @@ class TestRepoPaths(LevelCase):
         self.git("worktree", "add", "-q", "-b", "feat", wt, "base")
         self.repo.set_conf("level4_paths", "src/money/")     # the main copy only, not committed
         self.put({"src/money/total.js": "a = 2\n"}, cwd=wt)
-        r = self.ok(cwd=wt)
-        self.assertIn(HINT % "src/money/total.js", r.stdout.splitlines())
+        self.assertEqual(core_paths_of(self.ok(cwd=wt).stdout), {"src/money/total.js"})
 
     def test_danger_paths_in_configure_is_ignored(self):
         self.base({"src/money/total.js": "a = 1\n"})
         self.repo._settings(lambda o: o.__setitem__("danger_paths", "src/money/"))
         self.put({"src/money/total.js": "a = 2\n"})
-        self.assertNotIn(HINT % "src/money/total.js", self.ok().stdout.splitlines())
+        self.assertEqual(core_paths_of(self.ok().stdout), set())
 
 
 class TestDiffScope(LevelCase):
@@ -695,66 +676,8 @@ class TestDiffScope(LevelCase):
         self.assertEqual(self.files(r), {})
 
 
-class TestDeclared(LevelCase):
-
-    def ui_touching_api(self):
-        self.base({"api/handler.py": "def h():\n    return 1\n", "src/card.css": "a{}\n"})
-        self.put({"api/handler.py": "def h():\n    return 2\n", "src/card.css": "b{}\n"})
-
-    def test_a_c_file_above_the_declared_type_raises(self):
-        self.ui_touching_api()
-        r = self.check("--declared", "B")
-        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        lines = r.stdout.splitlines()
-        self.assertEqual(lines[0], "REQUIRED TYPE B+C")
-        self.assertEqual(lines[-1], "RAISE: declared B, needs C (api/handler.py)")
-
-    def test_old_numbers_are_read_as_types(self):
-        self.ui_touching_api()
-        self.assertEqual(self.check("--declared", "1").returncode, 1)      # 1 = B
-        for old in ("2", "3", "C", "D", "4"):
-            with self.subTest(declared=old):
-                self.ok("--declared", old)
-        r = self.check("--declared", "1")
-        self.assertEqual(r.stdout.splitlines()[-1], "RAISE: declared B, needs C (api/handler.py)")
-
-    def test_declared_equal_passes(self):
-        self.ui_touching_api()
-        r = self.ok("--declared", "C")
-        self.assertEqual(self.required(r), "B+C")
-        self.assertNotIn("RAISE", r.stdout)
-
-    def test_a_declared_type_does_not_change_the_required_parts(self):
-        self.base({"docs/a.md": "x\n"})
-        self.put({"docs/a.md": "y\n"})
-        r = self.ok("--declared", "D")
-        self.assertEqual(self.required(r), "A")
-        self.assertNotIn("RAISE", r.stdout)
-
-    def test_a_and_b_files_never_raise(self):
-        self.base({"docs/a.md": "x\n", "src/card.css": "a{}\n"})
-        self.put({"docs/a.md": "y\n", "src/card.css": "b{}\n"})
-        r = self.ok("--declared", "A")
-        self.assertEqual(self.required(r), "A+B")
-        self.assertNotIn("RAISE", r.stdout)
-
-    def test_no_declared_never_raises(self):
-        self.base({"yarn.lock": "a\n"})
-        self.put({"yarn.lock": "b\n"})
-        r = self.ok()
-        self.assertEqual(self.required(r), "D")
-        self.assertNotIn("RAISE", r.stdout)
-
-    def test_declared_a_with_a_lockfile(self):
-        self.base({"yarn.lock": "a\n"})
-        self.put({"yarn.lock": "b\n"})
-        r = self.check("--declared", "0")
-        self.assertEqual(r.returncode, 1)
-        self.assertEqual(r.stdout.splitlines()[-1], "RAISE: declared A, needs D (yarn.lock)")
-
-
 class TestTypesPerPart(LevelCase):
-    """R8 (2026-11-24): a type per file and per task part, never one maximum; a component file is B at most."""
+    """A kind per file; a component file change is code, its reason "component file" (old letter B)."""
 
     def test_a_component_file_is_b(self):
         for path, before, after in (
@@ -791,35 +714,13 @@ class TestTypesPerPart(LevelCase):
         got = self.files(r)
         self.assertEqual({k: v[0] for k, v in got.items()},
                          {"docs/a.md": "A", "src/Banner.tsx": "B", "src/calc.py": "C", "yarn.lock": "D"})
-        lines = r.stdout.splitlines()
-        self.assertIn("PART A: docs/a.md", lines)
-        self.assertIn("PART B: src/Banner.tsx", lines)
-        self.assertIn("PART C: src/calc.py", lines)
-        self.assertIn("PART D: yarn.lock", lines)
 
-    def test_a_component_file_and_a_calc_file_exit_zero_when_declared_c_and_raise_when_declared_b(self):
-        self.base({"src/Banner.tsx": "export const A = () => <b>hi</b>;\n", "src/calc.py": "def f(a):\n    return a + 1\n"})
-        self.put({"src/Banner.tsx": "export const A = () => <div>{n}</div>;\n", "src/calc.py": "def f(a):\n    return a * 2\n"})
-        self.assertEqual(self.ok("--declared", "C").stdout.splitlines()[0], "REQUIRED TYPE B+C")
-        r = self.check("--declared", "B")
-        self.assertEqual(r.returncode, 1)
-        self.assertEqual(r.stdout.splitlines()[-1], "RAISE: declared B, needs C (src/calc.py)")
-
-    def test_the_component_file_alone_never_raises_a_declared_a(self):
-        self.base({"src/Banner.tsx": "export const A = () => <b>hi</b>;\n"})
-        self.put({"src/Banner.tsx": "export const A = () => <div>{n}</div>;\n"})
-        r = self.ok("--declared", "A")
-        self.assertEqual(self.required(r), "B")
-        self.assertNotIn("RAISE", r.stdout)
-
-    def test_a_danger_path_adds_a_hint_for_that_file_only(self):
+    def test_a_core_path_marks_that_file_only(self):
         self.base({"db/seed.js": "x()\n", "docs/a.md": "x\n"}, {"level4_paths": "db/"})
         self.put({"db/seed.js": "y()\n", "docs/a.md": "y\n"})
         r = self.ok()
         self.assertEqual(self.required(r), "A+C")
-        lines = r.stdout.splitlines()
-        self.assertIn(HINT % "db/seed.js", lines)
-        self.assertNotIn(HINT % "docs/a.md", lines)
+        self.assertEqual(core_paths_of(r.stdout), {"db/seed.js"})
 
     def test_logic_outside_a_danger_path_is_c(self):
         need, typ, why = self.one({"src/money/total.js": "a()\n"}, {"src/money/total.js": "b()\n"},
@@ -851,16 +752,9 @@ class TestRepoConfKeys(unittest.TestCase):
             with self.assertRaises(KeyError):
                 agent_conf.get(key, {})
 
-    def test_this_repo_has_its_file(self):
-        text = read("agent_repo.conf")
-        rows = [l for l in text.splitlines() if l and not l.startswith("#")]
-        self.assertEqual(rows, ["level3_paths=PRINCIPLES.md,skills/,agents/,bin/agent_conf.py",
-                                "level4_paths=.claude-plugin/,hooks/"])
-        out = subprocess.run(["git", "-C", ROOT, "ls-files", "agent_repo.conf"], capture_output=True, text=True).stdout
-        self.assertEqual(out.strip(), "agent_repo.conf")
-
 
 # ---------------------------------------------------------------- 3. the todo line, done, board
+# check-blocks: --level and todo level still work for old callers; no doc names them.
 
 
 class TodoCase(ScriptCase):
@@ -1016,22 +910,26 @@ class TestTodoDoneLevel(TodoCase):
 
 
 class TestBoardLevel(tb.BoardCase):
+    """check-blocks: the column is Checks (zh 检查); an old level line shows "level <X>"."""
     lang = "en"
 
     def test_the_column_sits_after_where(self):
-        self.assertEqual(tb.HEAD["zh"][4:7], ["位置", "级别", "估时"])
-        self.assertEqual(tb.HEAD["en"][4:7], ["Where", "Level", "Est"])
+        self.assertEqual(tb.HEAD["zh"][4:7], ["位置", "检查", "估时"])
+        self.assertEqual(tb.HEAD["en"][4:7], ["Where", "Checks", "Est"])
 
     def test_the_cells(self):
         self.af("todo", "add", "lv", "big", "with a level", "60", "--level", "C", now="2026-11-02 14:00")
+        self.af("todo", "add", "ck", "big", "with checks", "60", "--checks", "UI CHECK,PR REVIEW",
+                now="2026-11-02 14:00")
         self.add("nolv", "an old line", est=30)
         self.state("PARKED: a question | lv | since 2026-11-02 14:10")
         rows = self.rows()
-        self.assertEqual(self.row(rows, task="lv")["Level"], "C")
-        self.assertEqual(self.row(rows, task="nolv")["Level"], "-")
+        self.assertEqual(self.row(rows, task="lv")["Checks"], "level C")
+        self.assertEqual(self.row(rows, task="ck")["Checks"], "PR REVIEW, UI CHECK")
+        self.assertEqual(self.row(rows, task="nolv")["Checks"], "-")
         for r in rows:
-            if r["Task"] not in ("lv", "nolv"):
-                self.assertEqual(r["Level"], "-", r)
+            if r["Task"] not in ("lv", "ck", "nolv"):
+                self.assertEqual(r["Checks"], "-", r)
 
     def test_an_old_number_line_shows_its_type(self):
         for old, typ in (("0", "A"), ("1", "B"), ("3", "C"), ("4", "D")):
@@ -1042,214 +940,13 @@ class TestBoardLevel(tb.BoardCase):
                     text = fh.read()
                 with open(path, "w") as fh:
                     fh.write(text.replace("est 60m |", "est 60m | level %s |" % old))
-                self.assertEqual(self.row(self.rows(), task="o" + old)["Level"], typ)
+                self.assertEqual(self.row(self.rows(), task="o" + old)["Checks"], "level " + typ)
 
     def test_zh_header(self):
         self.repo.set_conf("language", "zh")
         self.add("nolv", "an old line", est=30)
         head = [l for l in self.board().splitlines() if l.startswith("|")][0]
         self.assertEqual(tb.cells(head), tb.HEAD["zh"])
-
-
-# ---------------------------------------------------------------- 4. rules, skills, agents
-
-
-class TestTheRule(unittest.TestCase):
-
-    def text(self):
-        return read("PRINCIPLES.md")
-
-    def rule(self):
-        return section(self.text(), "R8. Risk types", "## B. Work")
-
-    def test_it_sits_after_r7_and_nothing_is_renumbered(self):
-        text = self.text()
-        order = [text.index(h) for h in ("R7. Worktree file", "R8. Risk types", "## B. Work", "W1. ")]
-        self.assertEqual(order, sorted(order))
-        self.assertEqual(text.count("R8. "), 1)
-
-    def test_one_short_line_per_rule(self):
-        lines = self.rule().rstrip().splitlines()
-        bullets = [l for l in lines if l.startswith("- ")]
-        self.assertGreaterEqual(len(bullets), 8)
-        self.assertLessEqual(len(bullets), 20)
-        for line in lines[1:]:
-            with self.subTest(line=line[:40]):
-                self.assertTrue(line.startswith("- ") or not line.strip(), line)
-                self.assertLessEqual(len(line), 200)
-
-    def test_it_says_what_the_owner_decided(self):
-        rule = self.rule().lower()
-        for phrase in ("a = text, style, simple move", "b = ui", "c = logic", "d = danger",
-                       "dispatch", "--level", "agent-level.sh check", "raise", "only goes up",
-                       "danger paths (d)", "reads the diff", "e2e",
-                       # owner 2A 2026-11-25, R8 text from main 85b99de
-                       "judge the type from the brief, never from file paths alone", "docs only",
-                       "a new feature = normally c", "core code that many other things depend on",
-                       "second opinion", "read-only agent", "not the manager's answer", "the owner decides",
-                       "a hint, not a verdict", "lowering a type needs the owner",
-                       "mock", "phone", "console clean", "owner not seen",
-                       "failing tests first", "touched features", "full suite only when really needed",
-                       "dry-run", "rollback plan", "owner signs",
-                       "check responsive", "lockfile", "todo level",
-                       "mixed task", "own type", "component or style file is b at most", "never auto-raised",
-                       "acceptance criterion", "0=a 1=b 2,3=c 4=d"):
-            with self.subTest(phrase=phrase):
-                self.assertIn(phrase, rule)
-
-    def test_the_other_rules_point_at_it(self):
-        text = self.text()
-        for start, end in (("R1. ", "R2. "), ("W2. ", "W3. "), ("W4. ", "W5. "), ("W5. ", "W6. ")):
-            with self.subTest(rule=start):
-                self.assertIn("R8", section(text, start, end))
-
-    def test_no_old_level_words_are_left(self):
-        text = self.text()
-        self.assertNotRegex(text, r"(?i)\blevel [0-4]\b")
-        self.assertNotIn("Risk levels", text)
-
-    def test_w4_runs_tests_by_touched_feature(self):
-        w4 = section(self.text(), "W4. ", "W5. ")
-        self.assertIn("module → feature", w4)
-        self.assertIn("touched feature", w4)
-        self.assertIn("Full suite only when really needed", w4)
-
-    def test_r1_keeps_size_and_adds_the_full_lane_for_d(self):
-        r1 = section(self.text(), "R1. ", "R2. ")
-        self.assertIn("Task size picks the lane", r1)
-        self.assertIn("full lane", r1)
-        self.assertIn("D always takes the full lane", r1)
-
-
-class TestDispatchSkill(unittest.TestCase):
-
-    def text(self):
-        return read("skills", "dispatch", "SKILL.md")
-
-    def test_the_todo_add_line_carries_the_level(self):
-        line = [l for l in self.text().splitlines() if "agent-file.sh todo add" in l][0]
-        self.assertIn("--level <A-D>", line)
-
-    def test_the_task_manager_brief_has_a_level_line(self):
-        brief = section(self.text(), "## Task manager brief", "## Cross-repo brief")
-        self.assertTrue([l for l in brief.splitlines() if l.startswith("LEVEL:")], brief)
-
-    def test_the_deputy_brief_carries_the_type_and_d_is_never_fast(self):
-        step2 = section(self.text(), "\n2. ", "\n3. ")
-        self.assertIn("level: <A-D>", step2)
-        self.assertIn("Type D never takes the fast lane", step2)
-
-    def test_it_names_the_rule(self):
-        self.assertIn("R8", self.text())
-
-    def test_the_type_is_picked_from_the_brief_and_a_second_agent_checks_it(self):
-        # owner 2A 2026-11-25: a read-only second agent, given the brief and the code but not the
-        # manager's answer, reviews the type; a disagreement goes to the owner
-        text = self.text().lower()
-        for phrase in ("from the brief", "second agent", "read-only", "not the", "disagree", "owner",
-                       "touches core path"):
-            with self.subTest(phrase=phrase):
-                self.assertIn(phrase, text)
-
-
-class TestMergeSkill(unittest.TestCase):
-
-    def text(self):
-        return read("skills", "merge", "SKILL.md")
-
-    def test_the_check_runs_before_the_e2e(self):
-        text = self.text()
-        self.assertIn("agent-level.sh check", text)
-        self.assertLess(text.index("agent-level.sh check"), text.index("agent-runtime.sh browser"))
-
-    def test_it_says_declared_raise_and_level_0(self):
-        text = self.text()
-        for words in ("--declared", "RAISE", "todo level", "own type"):
-            with self.subTest(words=words):
-                self.assertIn(words, text)
-        self.assertRegex(text, r"(?i)type A[^\n]*skip[^\n]*E2E")
-        self.assertIn("by its own type", text)
-
-    def test_the_deputy_brief_gives_the_level(self):
-        block = section(self.text(), "name: <name>", "todo done arguments:")
-        self.assertIn("level: <A-D>", block)
-
-
-class TestDeputies(unittest.TestCase):
-
-    def test_the_merge_deputy_checks_before_it_merges(self):
-        text = read("agents", "merge-deputy.md")
-        given = [l for l in text.splitlines() if l.startswith("Your brief gives")][0]
-        self.assertIn("<level>", given)
-        self.assertIn("agent-level.sh check", text)
-        self.assertLess(text.index("agent-level.sh check"), text.index("git merge --no-ff"))
-        for words in ("--declared", "RAISE", "MERGE FAIL"):
-            with self.subTest(words=words):
-                self.assertIn(words, text)
-        step7 = [l for l in text.splitlines() if l.startswith("7. ")][0]
-        self.assertIn('agent-file.sh todo done "<name>"', step7)
-
-    def test_the_fast_lane_deputy_checks_its_diff(self):
-        text = read("agents", "fast-lane-deputy.md")
-        for words in ("agent-level.sh check", "--declared", "RAISE", "REQUIRED TYPE"):
-            with self.subTest(words=words):
-                self.assertIn(words, text)
-
-
-# ---------------------------------------------------------------- 5. quiz, README, release
-
-
-class TestTheQuiz(ScriptCase):
-    script = "agent-start.sh"
-
-    def quiz(self):
-        return self.assertOk(self.repo.run("agent-start.sh", "--quiz"))
-
-    def test_q38_and_q39(self):
-        out = self.quiz()
-        self.assertEqual("\n".join(out[out.index("Q38. "):].splitlines()[:5]), QUIZ_Q38)
-        self.assertEqual("\n".join(out[out.index("Q39. "):].splitlines()[:5]), QUIZ_Q39)
-
-    def test_the_quiz_says_39(self):
-        out = self.quiz()
-        self.assertIn("=== QUIZ — answer all 39 before any work ===", out)
-        self.assertIn('--answer "1A 2B 3C ... 39D"', out)
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 39)
-
-    def test_b_and_d_pass(self):
-        out = self.assertOk(self.repo.run("agent-start.sh", "--answer", ANSWERS))
-        self.assertIn("QUIZ RESULT: 39/39 PASS", out)
-
-    def test_another_letter_fails_and_names_r8(self):
-        for good, wrongs in (("38A", ("38B", "38C", "38D")), ("39C", ("39A", "39B", "39D"))):
-            for wrong in wrongs:
-                with self.subTest(wrong=wrong):
-                    r = self.repo.run("agent-start.sh", "--answer", ANSWERS.replace(good, wrong))
-                    self.assertEqual(r.returncode, 1)
-                    self.assertIn("Q%s(R8)" % good[:2], r.stdout)
-
-    def test_the_old_37_answers_no_longer_pass(self):
-        r = self.repo.run("agent-start.sh", "--answer", ANSWERS.replace(" 38A 39C", ""))
-        self.assertEqual(r.returncode, 1)
-
-    def test_the_usage_says_39(self):
-        src = read("bin", "agent-start.sh")
-        self.assertIn("print the 39 quiz questions", src)
-        self.assertEqual(src.count('--answer "1A 2D ... 39D"'), 2, "the header and the usage line")
-        self.assertNotIn("... 37C", src)
-
-
-class TestReadmeAndRelease(unittest.TestCase):
-
-    def test_the_tree_lists_the_script(self):
-        self.assertIn("bin/agent-level.sh", read("PRINCIPLES.md"))
-
-    def test_the_quiz_count(self):
-        self.assertIn("39-question quiz", read("PRINCIPLES.md"))
-
-    def test_release(self):
-        ver = json.loads(read(".claude-plugin", "plugin.json"))["version"]
-        self.assertGreaterEqual(tuple(int(x) for x in ver.split(".")), (0, 36, 0))
 
 
 if __name__ == "__main__":

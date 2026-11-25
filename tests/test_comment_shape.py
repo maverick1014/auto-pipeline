@@ -1,5 +1,9 @@
 """Failing tests for comment-shape: a comment-only change is a fifth A shape (R8).
 
+check-blocks (2026-11-25): the shapes stay; a comment-only file is now kind "text" (no BUILD),
+read back as the old letter A by tests/test_risk_levels.py old_letter(). The R8 line test moved
+to tests/test_check_rules.py.
+
 Written by the task manager before any code. The rules: requirements/comment-shape.md
 (owner rules yes 2026-11-24: all 6 families of table B, decisions D1-D7). "rN" in a test
 name is row N of its table A, C1-C5 its table C (directives).
@@ -176,7 +180,7 @@ class TestHashStrings(ShapeCase):
         self.each(CODE, [("app/help.py", 'X = """a\n\nb"""\n', 'X = """a\nb"""\n')])
 
     def test_r13_a_hash_inside_a_one_line_string(self):
-        self.each(("A", "text change"), [
+        self.each(CODE, [   # check-blocks section 44 F10: a string literal in a code file is code
             ("app/a.py", 's = "# a"\n', 's = "# b"\n'),
             ("bin/a.sh", 'echo "# a"\n', 'echo "# b"\n'),
         ])
@@ -213,7 +217,7 @@ class TestHashStrings(ShapeCase):
 
     def test_sh_quotes(self):
         # an escaped " inside "..." does not end it: the # is in the string (today: text change)
-        self.each(("A", "text change"), [("bin/a.sh", 'echo "a \\" # b"\n', 'echo "a \\" # c"\n')])
+        self.each(CODE, [("bin/a.sh", 'echo "a \\" # b"\n', 'echo "a \\" # c"\n')])   # check-blocks section 44 F10: a string literal in a code file is code
         self.fresh()
         self.each(("A", CO), [
             # no escapes in '...': the string is a\ and the comment follows
@@ -242,7 +246,7 @@ class TestHashStrings(ShapeCase):
     def test_yaml_quoted_values(self):
         self.each(CODE, [("ci/a.yml", 'msg: "a\n  # b\n  c"\n', 'msg: "a\n  # d\n  c"\n')])
         self.fresh()
-        self.each(("A", "text change"), [
+        self.each(CODE, [   # check-blocks section 47 G7: a changed value in a config file is code
             ("ci/a.yml", 'a: ["x # y", 1]\n', 'a: ["x # z", 1]\n'),
             ("ci/a.yml", "b: 'x # y'\n", "b: 'x # z'\n"),
             # the apostrophe in a plain value opens no string, so the next quote still does
@@ -349,8 +353,12 @@ class TestScope(ShapeCase):
     def test_the_file_line_and_the_level(self):
         self.base({"app/run.py": "# a\nrun()\n"})
         self.put({"app/run.py": "# b\nrun()\n"})
-        r = self.ok("--declared", "0")
-        self.assertEqual(r.stdout.splitlines(), ["REQUIRED TYPE A", "app/run.py: A comment only", "PART A: app/run.py"])
+        r = self.ok()
+        lines = r.stdout.splitlines()
+        # check-blocks: a comment-only change is text: no BUILD, the related tests still run
+        self.assertIn("FILE app/run.py: text (comment only)", lines)
+        self.assertNotIn("BUILD", lines[0])
+        self.assertIn("RELATED TESTS", lines[0])
 
     def test_a_comment_only_file_next_to_a_style_file(self):
         self.base({"app/run.py": "# a\nrun()\n", "web/a.css": "a{}\n"})
@@ -361,9 +369,9 @@ class TestScope(ShapeCase):
 
     def test_r21_path_levels_stay(self):
         self.assertEqual(self.got("requirements.txt", "# pinned\nflask==2.0\n", "# pinned for py3.9\nflask==2.0\n"),
-                         ("D", "built-in D: dependency list"))
+                         ("D", "built-in: dependency list"))
         self.fresh()
-        self.assertEqual(self.got("db/seed.sql", "-- a\nselect 1;\n", "-- b\nselect 1;\n"), ("D", "built-in D: schema"))
+        self.assertEqual(self.got("db/seed.sql", "-- a\nselect 1;\n", "-- b\nselect 1;\n"), ("D", "built-in: schema"))
         self.fresh()
         # owner 2A 2026-11-25: Danger paths is a hint, a comment-only change stays A there
         self.assertEqual(self.got("src/money/calc.py", "# a\nrun()\n", "# b\nrun()\n",
@@ -412,19 +420,6 @@ class TestScope(ShapeCase):
         os.remove(self.repo.path("bin/link.sh"))
         self.put({"bin/link.sh": "t1.sh  # x\n"})
         self.assertEqual(self.files(self.ok())["bin/link.sh"], CODE)
-
-
-class TestTheRuleLine(unittest.TestCase):
-
-    def test_the_type_a_line_names_it(self):
-        rule = trl.section(trl.read("PRINCIPLES.md"), "R8. Risk types", "## B. Work")
-        line = [l for l in rule.splitlines() if l.startswith("- A = text, style, simple move:")]
-        self.assertEqual(len(line), 1, rule)
-        line = line[0]
-        self.assertIn("comments", line)
-        self.assertLessEqual(len(line), 200)
-        for phrase in ("text values", "colours", "simple UI move"):
-            self.assertIn(phrase, line)
 
 
 # ================================================================ worker 2: slash and markup families
@@ -524,7 +519,7 @@ class TestSlashStrings(ShapeCase):
         self.each(("A", CO), [("src/a.kt", 'val s = """a\\""" // note\n', 'val s = """a\\""" // note 2\n')])
 
     def test_one_line_strings_hide_comment_markers(self):
-        self.each(("A", "text change"), [("src/a.js", 'const u = "a // b";\n', 'const u = "a // c";\n')])
+        self.each(CODE, [("src/a.js", 'const u = "a // b";\n', 'const u = "a // c";\n')])   # check-blocks section 44 F10: a string literal in a code file is code
         self.fresh()
         self.each(CODE, [
             ("src/a.js", "const u = 'a /* b';\nrun(1);\nconst v = '*/';\n",
@@ -666,8 +661,8 @@ class TestReviewCore(ShapeCase):
             ("bin/a.sh", "echo a\\|# b\nls\n", "echo a\\|# c\nls\n"),
         ])
         self.fresh()
-        # the hidden part is string text: today's level is a text change, never "comment only"
-        self.each(("A", "text change"), [
+        # the hidden part is string text in a code file: code (section 44 F10), never "comment only"
+        self.each(CODE, [
             ("bin/a.sh", "x=1;# don't\necho 'a' # c\necho \"it's # here\"\n",
              "x=1;# don't\necho 'a' # c\necho \"it's # there\"\n"),
         ])
@@ -701,7 +696,7 @@ class TestReviewCore(ShapeCase):
         ])
 
     def test_f3_yaml_tags_and_anchors_before_a_quote(self):
-        self.each(("A", "text change"), [
+        self.each(CODE, [   # check-blocks section 47 G7: a changed value in a config file is code
             ("ci/a.yml", 'msg: !!str "a # b"\n', 'msg: !!str "a # c"\n'),
             ("ci/a.yml", 'msg: &m "a # b"\n', 'msg: &m "a # c"\n'),
         ])

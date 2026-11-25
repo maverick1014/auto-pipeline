@@ -295,7 +295,9 @@ class TestInitNamesThePushRule(ScriptCase):
         block = json.loads(out[start:end + 1])
         self.assertNotIn("Bash(git push origin main)", block["permissions"]["allow"])
         after = out[end + 1:]
-        line = [l for l in after.splitlines() if "Bash(git push origin main)" in l]
+        # check-blocks section 37 F3: the merge push goes to the person's working branch, never to main
+        self.assertNotIn("git push origin main", after)
+        line = [l for l in after.splitlines() if "Bash(git push origin ap-main-t)" in l]
         self.assertTrue(line, after)
         self.assertIn("optional", line[0].lower())
 

@@ -422,17 +422,10 @@ class TestSettingsTexts(unittest.TestCase):
         self.assertRegex(text, r"(?i)settings live only in")
         # owner 1A 2026-11-25: core paths are repo facts in agent_repo.conf, not a setting
         self.assertIn("agent_repo.conf", text)
-        self.assertRegex(text, r"(?i)16 settings|sixteen settings")
+        self.assertRegex(text, r"(?i)17 settings|seventeen settings")   # + Auto clear after quiet (TELL 9bb87b13)
 
-    def test_r8_is_main_s_text(self):
-        # owner 3A 2026-11-25: the level rules are frozen; R8 stays exactly as on main (85b99de)
-        main = subprocess.run(["git", "-C", ROOT, "show", "85b99de:PRINCIPLES.md"],
-                              capture_output=True, text=True).stdout
-        if not main:
-            self.skipTest("85b99de not in this clone")
-        def r8(text):
-            return text[text.index("R8. Risk types"):text.index("## B. Work")]
-        self.assertEqual(r8(read("PRINCIPLES.md")), r8(main))
+    # test_r8_is_main_s_text (R8 frozen as on main 85b99de) is gone: the owner approved check-blocks on
+    # 2026-11-25, R8 is "Check blocks" now (tests/test_check_rules.py pins it)
 
     def test_readme_has_one_line_where_to_change_settings(self):
         lines = [l for l in read("README.md").splitlines() if CHANGE in l]
@@ -671,7 +664,7 @@ class TestPrinciplesW11Time(unittest.TestCase):
 
     def test_w11_names_the_waits(self):
         text = self.w11().lower()
-        for wait in ("mock gate", "owner question", "review", "hold", "suite slot"):
+        for wait in ("mock gate", "owner question", "review", "hold", "suite run"):   # check-blocks section 39 (a): no slots
             with self.subTest(wait=wait):
                 self.assertIn(wait, text)
 
@@ -738,10 +731,13 @@ class TestDispatchSkillTime(unittest.TestCase):
         self.assertIn("agent-file.sh time", step1)
 
     def test_a_fast_lane_task_is_closed_with_its_work_minutes(self):
+        # check-blocks section 42 B5: closed once, by the merge deputy, with the task's real lane and work minutes
         step2 = text_between(self.text(), "\n2. ", "\n3. ")
-        self.assertIn("todo done", step2)
-        self.assertIn("--lane fast", step2)
-        self.assertIn("--work", step2)
+        self.assertNotIn("todo done", step2)
+        with open(os.path.join(ROOT, "skills", "merge", "SKILL.md")) as fh:
+            merge = fh.read()
+        self.assertIn("--lane <full|fast>", merge)
+        self.assertIn("--work", merge)
 
     def test_the_brief_report_has_the_new_time_line(self):
         self.assertIn(TIME_LINE, self.brief())
@@ -751,7 +747,7 @@ class TestDispatchSkillTime(unittest.TestCase):
 
     def test_the_brief_says_what_counts_as_wait(self):
         report = [l for l in self.brief().splitlines() if l.startswith("REPORT:")][0]
-        for phrase in ("agent work only", "mock gate", "suite slot"):
+        for phrase in ("agent work only", "mock gate", "suite run"):   # check-blocks section 39 (a): no slots
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, report.lower())
 

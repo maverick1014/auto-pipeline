@@ -246,7 +246,9 @@ class TestCityHooks(unittest.TestCase):
                         # stale-plugin-guard: UserPromptSubmit, tests/test_stale_plugin_guard.py
                         and "agent-version.sh" not in json.dumps(e)
                         # board-trust: the launch guard, tests/test_board_trust.py
-                        and "agent-guard.sh" not in json.dumps(e)]
+                        and "agent-guard.sh" not in json.dumps(e)
+                        # check-blocks: the board warning hook, tests/test_check_warnings.py
+                        and "agent-board-warn.sh" not in json.dumps(e)]
                 for event, entries in hooks.items()}
 
     # Interaction (tests/test_agent_city_interact.py): PermissionRequest also
@@ -570,15 +572,16 @@ class TestUserConfig(unittest.TestCase):
     Values reach a hook as CLAUDE_PLUGIN_OPTION_<KEY uppercased>.
     """
 
-    # settings-configure (owner 1A 2026-11-25): the 16 settings, the only settings source
+    # settings-configure (owner 1A 2026-11-25): the settings, the only settings source; check-blocks
+    # (owner 2026-11-25): Max agents and Heavy test slot/time are gone, 14 settings
     KEYS = {"language": "string", "runtime": "string", "auto_update": "boolean",
-            "main_manager": "string", "task_manager": "string", "helper_model": "string",
-            "max_agents": "number", "max_usage_percent": "number", "heavy_test_slots": "number",
-            "permission_mode": "string", "auto_resume": "boolean", "todo_before_agent": "boolean",
-            "watch_quiet_min": "number", "housekeep_interval_min": "number",
+            "main_manager": "string", "task_manager": "string", "reviewer_model": "string", "helper_model": "string",
+            "max_usage_percent": "number",
+            "permission_mode": "string", "auto_resume": "boolean", "todo_before_agent": "boolean", "working_branch": "string",
+            "watch_quiet_min": "number", "housekeep_interval_min": "number", "clear_quiet_min": "number",
             "city_port": "number", "city_idle_min": "number"}   # owner 1A: no Danger paths
     DEFAULTS = {"runtime": "auto", "language": "en",
-                "main_manager": "opus-5.5:high", "max_agents": 4}
+                "main_manager": "opus-5.5:high", "max_usage_percent": 80}
 
     def config(self):
         return load_json(".claude-plugin", "plugin.json")["userConfig"]
@@ -618,9 +621,9 @@ class TestUserConfig(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertFalse(entry.get("sensitive", False))
 
-    def test_max_agents_keeps_the_same_bounds_as_agent_conf(self):
-        entry = self.config()["max_agents"]
-        self.assertEqual((entry["min"], entry["max"]), (1, 16))
+    def test_no_count_cap_setting(self):
+        self.assertNotIn("max_agents", self.config())
+        self.assertNotIn("heavy_test_slots", self.config())
 
 
 class TestRuntimeReachesEveryCaller(unittest.TestCase):

@@ -30,8 +30,6 @@ import test_agent_board as tb  # noqa: E402  (the module only: its tests stay in
 class TestValidateNumbers(unittest.TestCase):
     CASES = [
         ("max_usage_percent", 1, 100),
-        ("heavy_test_slots", 1, 8),
-        ("max_agents", 1, 16),
     ]
 
     def test_bounds_are_good(self):
@@ -57,7 +55,7 @@ class TestValidateNumbers(unittest.TestCase):
     def test_not_a_whole_number_is_bad(self):
         for value in ("", "abc", "4.5", "four", "4 agents", " "):
             with self.subTest(value=value):
-                self.assertTrue(agent_conf.validate_value("max_agents", value))
+                self.assertTrue(agent_conf.validate_value("max_usage_percent", value))
 
 
 class TestValidateRoles(unittest.TestCase):
@@ -531,7 +529,7 @@ class TestSettingsScript(SettingsCase):
     def test_every_change_path_is_refused_and_writes_nothing(self):
         self.repo.set_conf("language", "zh")
         before = self.stored()
-        for args in (("language", "en"), ("max_agents", "3"), ("--user", "permission_mode", "auto"),
+        for args in (("language", "en"), ("max_usage_percent", "30"), ("--user", "permission_mode", "auto"),
                      ("menu",), ("sync",), ("set", "language", "en")):
             with self.subTest(args=args):
                 r = self.settings(*args)

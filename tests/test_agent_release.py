@@ -720,6 +720,24 @@ class TestReadsCheckMore(Fixture):
         self.assertIn("agent-release.sh: not a git checkout: %s" % nested, r.stderr)
 
 
+def dry_run_verdict(case, r):
+    """check-blocks: the dry run of main is green, also between a release and the next version
+    bump. Then it prints the whole plan and ends with the "bump first" refusal (rule 8, exit 1)."""
+    # check-blocks: main between a release and the next version bump is a normal state;
+    # the dry run then says "bump first" (rule 8, exit 1) after the whole plan. Not red.
+    bump = re.search(r"(?m)^agent-release\.sh: version (\S+) is not higher than release (\S+): "
+                     r"bump \.claude-plugin/plugin\.json first$", r.stderr)
+    if bump:
+        case.assertEqual(r.returncode, 1, r.stderr)
+        case.assertEqual(bump.group(1), bump.group(2), "a version lower than the release is red")
+    else:
+        case.assertEqual(r.returncode, 0, "stdout:\n%s\nstderr:\n%s" % (r.stdout, r.stderr))
+        case.assertRegex(r.stdout, r"(?m)^(would commit release \d+(\.\d+)*|release up to date: .*)$")
+    case.assertNotIn("which is not shipped", r.stderr)
+    case.assertRegex(r.stdout, r"(?m)^ship: \d+ files, \d+ bytes$")
+    case.assertRegex(r.stdout, r"(?m)^reads check: \d+ ok, \d+ skipped \(variable\)$")
+
+
 # ---------------------------------------------------------------- the real repo
 
 class TestRealRepo(unittest.TestCase):
@@ -735,10 +753,7 @@ class TestRealRepo(unittest.TestCase):
         env = dict(os.environ, HOME=home, GIT_CONFIG_NOSYSTEM="1")
         r = subprocess.run([SCRIPT, "--dry-run"], cwd=HERE, capture_output=True, text=True,
                            env=env, timeout=180)
-        self.assertEqual(r.returncode, 0, "stdout:\n%s\nstderr:\n%s" % (r.stdout, r.stderr))
-        self.assertNotIn("which is not shipped", r.stderr)
-        self.assertRegex(r.stdout, r"(?m)^ship: \d+ files, \d+ bytes$")
-        self.assertRegex(r.stdout, r"(?m)^(would commit release \d+(\.\d+)*|release up to date: .*)$")
+        dry_run_verdict(self, r)
         left = re.search(r"(?m)^left out: (.*)$", r.stdout)
         self.assertIsNotNone(left, r.stdout)
         names = left.group(1).split()
@@ -749,6 +764,25 @@ class TestRealRepo(unittest.TestCase):
         for name in SHIP:
             self.assertNotIn(name, names)
         self.assertEqual(refs(), before, "--dry-run wrote a ref in this repo")
+
+
+class TestBetweenReleaseAndBump(Fixture):
+    """check-blocks: the state the real-repo dry run met on main after a release."""
+
+    def test_the_real_repo_check_is_green_between_a_release_and_a_bump(self):
+        self.build()
+        write(self.p("bin", "agent.conf.default"), "x=3\n")
+        self.commit("change after the release, no bump yet")
+        r = self.run_release("--dry-run")
+        dry_run_verdict(self, r)
+
+    def test_a_lower_version_stays_red(self):
+        self.build()
+        self.set_version("0.39.9")
+        self.commit("lower")
+        r = self.run_release("--dry-run")
+        with self.assertRaises(AssertionError):
+            dry_run_verdict(self, r)
 
 
 # ---------------------------------------------------------------- rule 15
@@ -762,8 +796,9 @@ class TestMergeSkillLine(unittest.TestCase):
             lines = fh.read().splitlines()
         hits = [l for l in lines if "bin/agent-release.sh --push" in l]
         self.assertEqual(len(hits), 1, "one line with bin/agent-release.sh --push")
-        self.assertIn("before", hits[0])
-        self.assertIn("main", hits[0])
+        # check-blocks section 28 (owner 2026-11-25): the publish is agent-promote.sh, the release build right after
+        self.assertIn("agent-promote.sh --owner-quote", hits[0])
+        self.assertIn("right after", hits[0])
         self.assertIn("auto-pipeline", hits[0])
 
 

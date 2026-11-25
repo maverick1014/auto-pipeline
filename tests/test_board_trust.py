@@ -207,7 +207,7 @@ class TestMainManager(GuardCase):
         child = self.index(rows, "state-trim 合并")
         self.assertEqual(child, self.index(rows, "state-trim") + 1)
         c = rows[child]
-        self.assertEqual((c["What"], c["Status"], c["Work"], c["Level"], c["Est"]),
+        self.assertEqual((c["What"], c["Status"], c["Work"], c["Checks"], c["Est"]),
                          ("state-trim Merge", "进行中", "3m", "-", "-"))
         self.assertAllowed(self.sub("SubagentStop", "a038d8ee18e4ea335", "auto-pipeline:merge-deputy"))
         self.assertEqual(self.launches(), [])

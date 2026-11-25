@@ -2,20 +2,28 @@
 # agent-autoclear.sh — the waiter behind the auto /clear (state-trim A5). Started detached by
 # agent-start.sh at the compaction named by compact_clear_at; runs in the foreground itself.
 #
-#   agent-autoclear.sh <terminal handle> <session id>
+#   agent-autoclear.sh <terminal handle> <session id> [--spawned]
 #
 # Writes its pid to <git dir>/agent_autoclear_<session id> and removes it when it ends.
 # Before each typed text: `orca terminal wait --for tui-idle` (an error whose code holds
 # "timeout": wait again; any other error: failed), then `orca terminal read --json`: the last
 # tail line starting with the prompt mark must be empty after the mark; else wait
 # compact_clear_check_sec and check again (one "AUTO CLEAR waiting" line in agent_state.txt).
+# Steps 1 and 3 also wait until no human typed for clear_quiet_min minutes (agent-owner-order.sh human-quiet);
+# a human at step 3 -> once quiet, back to step 1.
 # Types: 2 the save prompt, 4 /clear, 6 "/goal <last GOAL: line>" or the continue prompt.
 # Appends "AUTO CLEAR done | <date>" or "AUTO CLEAR failed at step <n>: <code> | <date>".
 # AGENT_FAKE_NOW="YYYY-MM-DD HH:MM" replaces the clock (tests). Missing arguments: usage, exit 2.
 
 set -u
+SPAWNED=0
+ARGS=()
+for a in "$@"; do
+  if [ "$a" = "--spawned" ]; then SPAWNED=1; else ARGS+=("$a"); fi
+done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
 if [ $# -lt 2 ] || [ -z "$1" ] || [ -z "$2" ]; then
-  echo "usage: agent-autoclear.sh <terminal handle> <session id>" >&2; exit 2
+  echo "usage: agent-autoclear.sh <terminal handle> <session id> [--spawned]" >&2; exit 2
 fi
 . "$(dirname "$0")/agent-roots.sh"
 H=$1; SID=$2
@@ -135,11 +143,71 @@ read_goal() {
   fi
 }
 
-ready 1
-type_text 2 "AUTO CLEAR: save agent_state.txt now (S8), nothing else. /clear comes next."
-ready 3
+quiet_min=$(setting clear_quiet_min 2>/dev/null) || quiet_min=""
+quiet_min=$(printf '%s' "${quiet_min%% (from *}" | tr -d '[:space:]')
+case "$quiet_min" in ''|*[!0-9]*) quiet_min=30;; esac
+
+# gate: runs BEFORE ready; waits until no human has typed for clear_quiet_min minutes (agent-owner-order.sh
+# human-quiet). rc 0 = quiet at once, 1 = it had to wait. clear_quiet_min 0: no gate. Exit 2 (unknown): a pane a
+# human talks to waits (one line); a --spawned task manager is cleared as today.
+gate() {
+  local res rc told=0 waited=0 told_unknown=0 at
+  [ "$quiet_min" -gt 0 ] || return 0
+  while :; do
+    res=$("$(dirname "$0")/agent-owner-order.sh" human-quiet --session "$SID" --minutes "$quiet_min" \
+          --repo "$PWD" 2>/dev/null </dev/null); rc=$?
+    case $rc in
+      0) return $waited;;
+      1) if [ "$told" = 0 ]; then
+           at=${res##* }
+           add "AUTO CLEAR waiting: a human typed at $at; the clear waits for $quiet_min quiet minutes"
+           told=1
+         fi;;
+      *) [ "$SPAWNED" = 1 ] && return $waited
+         if [ "$told_unknown" = 0 ]; then
+           add "AUTO CLEAR waiting: the transcript of this session cannot be read"
+           told_unknown=1
+         fi;;
+    esac
+    waited=1
+    bg sleep "$check_sec"
+  done
+}
+
+# prep <step>: the gate, then ready; when ready took 2 seconds or more (it waited) both run again, until ready
+# returns at once (clear_quiet_min 0: once; --spawned only changes the unreadable-transcript branch), so no text is typed a moment after anything but a passing gate and an empty box (C13).
+# rc 1 = the gate had to wait on the way.
+told_unsettled=0
+prep() {
+  local w=0 t0 rounds=0
+  while :; do
+    gate || w=1
+    t0=$SECONDS
+    ready "$1"
+    # every pane repeats (the owner types into task manager panes too); a run with no gate does not
+    [ "$quiet_min" -le 0 ] || [ $(( SECONDS - t0 )) -lt 2 ] && break
+    # H6: at most 3 rounds; then one line (once), the normal interval, and a fresh start
+    rounds=$(( rounds + 1 ))
+    if [ "$rounds" -ge 3 ]; then
+      if [ "$told_unsettled" = 0 ]; then
+        add "AUTO CLEAR waiting: the pane did not settle in 3 rounds; trying again later"
+        told_unsettled=1
+      fi
+      bg sleep "$check_sec"
+      rounds=0
+    fi
+  done
+  return $w
+}
+
+while :; do
+  prep 1
+  type_text 2 "AUTO CLEAR: save agent_state.txt now (S8), nothing else. /clear comes next."
+  prep 3 && break
+  # a human typed during the save turn: once quiet, back to step 1
+done
 type_text 4 "/clear"
-ready 5
+prep 5
 read_goal
 if [ -n "$goal" ]; then type_text 6 "/goal $goal"; else type_text 6 "CLEARED: continue from agent_state.txt (S8)."; fi
 add "AUTO CLEAR done"

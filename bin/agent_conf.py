@@ -1,4 +1,4 @@
-"""The one reader of the 16 auto-pipeline settings.
+"""The one reader of the 17 auto-pipeline settings.
 
 The settings live only in Claude Code: /plugin -> Installed -> auto-pipeline -> Configure.
 They are stored in <claude config dir>/settings.json under
@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 
 PLUGIN_ID = "auto-pipeline@auto-pipeline"
 CHANGE_LINE = "change: /plugin -> Installed -> auto-pipeline -> Configure"
@@ -26,6 +27,7 @@ REPO_FILE = "agent_repo.conf"
 REPO_KEYS = ("level3_paths", "level4_paths")
 CORE_LINE = "core paths of this repo: agent_repo.conf"
 PERMISSION_MODES = ["acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan"]
+WORKING_BRANCH_DEFAULT = "ap-main-<name>"
 RUNTIME_VALUES = ["auto", "orca", "plain", "cloud"]
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
 MANAGER_PICKS = ["opus-5.5:high", "opus-5.5:xhigh"]
@@ -53,15 +55,14 @@ SETTINGS = [
     _s("task_manager", "Models: Task manager model", "string", "opus-5.5:high",
        "Model and effort of a task manager. Floor: Opus 5.5 or above, or any Fable, effort medium or above.",
        options=MANAGER_PICKS),
+    _s("reviewer_model", "Models: Reviewer model", "string", "opus-5.5:high",
+       "Model and effort of the reviewer of every diff. Floor: Opus 5.5 or above, or any Fable, effort medium or above.",
+       options=MANAGER_PICKS),
     _s("helper_model", "Models: Helper model", "string", "sonnet-5:medium",
-       "Model and effort of the fast-lane deputy, the merge deputy and every worker. Form: model-name:effort.",
+       "Model and effort of the fast-lane deputy, the merge deputy, the check deputy and every worker. Form: model-name:effort.",
        options=HELPER_PICKS),
-    _s("max_agents", "Load: Max agents", "number", 4,
-       "How many agents may run at once on this machine. Whole number, 1 to 16.", min=1, max=16),
     _s("max_usage_percent", "Load: Max memory %", "number", 80,
        "How much RAM or CPU may be used before agents wait. Whole number, 1 to 100.", min=1, max=100),
-    _s("heavy_test_slots", "Load: Heavy test slot/time", "number", 1,
-       "How many heavy test runs may run at once. Whole number, 1 to 8.", min=1, max=8),
     _s("permission_mode", "Permissions: Permission mode", "string", "bypassPermissions",
        "How much an agent may do without asking. bypassPermissions asks nothing; auto lets the model judge.",
        options=PERMISSION_MODES),
@@ -69,11 +70,16 @@ SETTINGS = [
        "Resume the agents that were running by themselves when a main manager starts."),
     _s("todo_before_agent", "Rules: Todo before agent", "boolean", True,
        "On: a launch naming no open todo task is refused. Off: launches are only recorded on the board."),
+    _s("working_branch", "Flow: Working branch", "string", WORKING_BRANCH_DEFAULT,
+       "Branch that tasks merge into; init creates it and switches the main checkout to it. <name> becomes your git user name. The production branch (users) stays apart."),
     _s("watch_quiet_min", "Stuck: Consider stuck after (min)", "number", 15,
        "Minutes a running task's state file may stay unchanged before the board marks it not confirmed. 1 to 240.",
        min=1, max=240),
     _s("housekeep_interval_min", "Stuck: Tidy every (min)", "number", 120,
        "Minutes between housekeep passes that tidy leftovers. 0 = off. Whole number, 0 to 1440.",
+       min=0, max=1440),
+    _s("clear_quiet_min", "Context: Auto clear after quiet (min)", "number", 30,
+       "The auto clear waits until no human has typed in that pane for this many minutes. 0 = no wait. Whole number, 0 to 1440.",
        min=0, max=1440),
     _s("city_port", "City: City port", "number", 4777,
        "Port the agent city listens on, on 127.0.0.1 only. Whole number, 1024 to 65535.",
@@ -92,11 +98,14 @@ CONSTANTS = {
     "state_warn_lines": 300, "state_header_lines": 40, "state_trim_auto": "on",
     "compact_clear_at": 2, "compact_clear_check_sec": 30, "cleanup_days": 14,
     "docs_keep": "", "owner_order_hours": 24, "owner_order_min_chars": 20,
+    "check_budget_s": 60, "unused_pane_min": 30,
+    "nightly_hour": 22, "light_test_s": 120, "light_test_mb": 1024, "verify_box_min": 15,
 }
 
 BY_KEY = {s["key"]: s for s in SETTINGS}
 HELPER_ROLES = ("fast_lane_deputy", "merge_deputy", "worker", "interior_designer")   # city-office: the designer is a helper
-DECIDER_KEYS = ("main_manager", "task_manager")
+DECIDER_KEYS = ("main_manager", "task_manager", "reviewer_model")
+RETIRED_KEYS = ("max_agents", "heavy_test_slots")   # gone settings: an old value is ignored, never moved, never said
 ROLE_KEYS = ["main_manager", "fast_lane_deputy", "merge_deputy", "task_manager", "worker", "interior_designer"]
 
 ROLE_VALUE_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9.\-]*)(?:\[1m\])?:(low|medium|high|xhigh|max)$")
@@ -216,6 +225,19 @@ def _validate_globs(value):
         if ".." in item.split("/"):
             return "A glob must not hold a .. part: %s" % item
     return None
+
+
+def _split_globs(value):
+    """(good items, [(bad item, why)]) of a comma-separated glob list: one bad item leaves only itself out."""
+    good, bad = [], []
+    for item in value.split(","):
+        item = item.strip()
+        why = _validate_globs(item) if item else "Empty item."
+        if why:
+            bad.append((item, why))
+        else:
+            good.append(item)
+    return good, bad
 
 
 def _to_number(value):
@@ -384,6 +406,63 @@ def repo_paths(project_root):
     return found, notes
 
 
+REPO_V1_SINGLE = ("version", "production_branch", "core_paths", "guard_tests", "build_cmd", "related_cmd", "full_cmd",
+                  "test_config", "data_scripts", "real_data", "build_seconds", "guard_seconds", "build_mb")
+REPO_V1_GLOBS = ("core_paths", "test_config", "data_scripts")
+
+
+def repo_conf(project_root):
+    """(dict, warnings) from <project root>/agent_repo.conf v1. Single keys: core_paths, guard_tests,
+    build_cmd, related_cmd, full_cmd, test_config, data_scripts, real_data, build_seconds, guard_seconds, production_branch (optional; missing = the repo default branch)
+    (the last value of a repeated key wins). "groups": [(module, command)] from group.<module>=, in file
+    order. Old level3_paths and level4_paths are read as core paths (joined into core_paths). A bad glob
+    list is left out with one warning. Never raises."""
+    found, notes, groups, old = {}, [], [], []
+    try:
+        with open(os.path.join(project_root, REPO_FILE), "r", encoding="utf-8") as fh:
+            body = fh.read()
+    except Exception:
+        return {"groups": groups, "weights": {}}, notes
+    values = {}
+    weights = {}
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key, value = key.strip(), value.strip()
+        if key.startswith("group.") and len(key) > 6:
+            groups.append((key[6:], value))
+        elif key.startswith("weight.") and len(key) > 7:
+            weights[key[7:]] = value
+        else:
+            values[key] = value
+    for key in REPO_V1_SINGLE + REPO_KEYS:
+        if key not in values:
+            continue
+        if key == "core_paths" or key in REPO_KEYS:
+            good, bad = _split_globs(values[key])
+            for item, why in bad:
+                notes.append("SETTINGS: %s item '%s' in %s is not valid (%s), left out"
+                             % (key, item, REPO_FILE, why))
+            values[key] = ",".join(good)
+        elif key in REPO_V1_GLOBS:
+            why = _validate_globs(values[key])
+            if why:
+                notes.append("SETTINGS: %s=%s in %s is not valid (%s), left out" % (key, values[key], REPO_FILE, why))
+                continue
+        if key in REPO_KEYS:
+            old.append(values[key])
+        else:
+            found[key] = values[key]
+    core = [i.strip() for v in ([found.get("core_paths", "")] + old) for i in v.split(",") if i.strip()]
+    if core:
+        found["core_paths"] = ",".join(core)
+    found["groups"] = groups
+    found["weights"] = weights
+    return found, notes
+
+
 # ------------------------------------------------------------------ show
 
 def show_lines(env=None):
@@ -444,6 +523,8 @@ def _candidates(values, path, claimed):
     moves, notes = [], []
     for old, value in values.items():
         key, mapped = old, value
+        if old in RETIRED_KEYS:
+            continue
         if old in CONSTANTS:
             if str(CONSTANTS[old]) != value:
                 notes.append("fixed: %s=%s in %s is now fixed at %s" % (old, value, path, CONSTANTS[old]))
@@ -786,10 +867,110 @@ def cli_model(spec):
     return base + suffix
 
 
+# ------------------------------------------------------------------ owner sentences (check-blocks section 51 H2)
+# An approval is one exact sentence the tool names, typed by the owner and verified as his typed prompt.
+
+def approval_key(text):
+    """Lower-cased, punctuation dropped, extra spaces dropped: how two sentences are compared."""
+    return re.sub(r"[^\w]+", " ", (text or "").lower().replace("_", " ")).strip()
+
+
+def publish_sentence(task):
+    return "yes, publish %s to production" % task
+
+
+def skip_sentence(block, task):
+    return "yes, skip %s for %s" % (block, task)
+
+
+def says(text, sentence):
+    return approval_key(text) == approval_key(sentence)
+
+
+# ------------------------------------------------------------------ working branch
+
+
+def production_branch(repo):
+    """The production branch of a repo (one function for everyone): production_branch in agent_repo.conf, else
+    the target of origin/HEAD, else main when refs/heads/main or origin/main exists, else master when it
+    exists, else the current branch (else main)."""
+    def git(*a):
+        try:
+            r = subprocess.run(["git", "-C", repo] + list(a), stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, timeout=30)
+            return r.stdout.decode(errors="replace").strip() if r.returncode == 0 else ""
+        except (OSError, subprocess.SubprocessError):
+            return ""
+    try:
+        with open(os.path.join(repo, REPO_FILE), encoding="utf-8", errors="replace") as fh:
+            for line in fh.read().splitlines():
+                m = re.match(r"^\s*production_branch\s*=\s*(\S+)\s*$", line)
+                if m:
+                    return m.group(1)
+    except OSError:
+        pass
+    head = git("symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD")
+    if head.startswith("origin/"):
+        return head[len("origin/"):]
+    for name in ("main", "master"):
+        if git("rev-parse", "--verify", "-q", "refs/heads/" + name) or \
+                git("rev-parse", "--verify", "-q", "refs/remotes/origin/" + name):
+            return name
+    return git("symbolic-ref", "--short", "-q", "HEAD") or "main"
+
+
+def working_branch(repo, derive=False):
+    """The working branch of this clone. Without derive: the stored git config auto-pipeline.workingbranch, or
+    None when nothing is stored (nothing is stored by a read). With derive=True (init and the start only): the
+    setting with <name> = git user.name cleaned (empty: the login name, else "user"), stored at once. A setting
+    equal to the production branch is never used: the default form is used instead, with one stderr line."""
+    def cfg(*a):
+        try:
+            r = subprocess.run(["git", "-C", repo] + list(a), stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, timeout=30)
+            return r.stdout.decode(errors="replace").strip()
+        except (OSError, subprocess.SubprocessError):
+            return ""
+    def named(form):
+        if "<name>" not in form:
+            return form
+        who = re.sub(r"[^a-z0-9]+", "-", cfg("config", "user.name").lower()).strip("-")
+        if not who:
+            try:
+                import getpass
+                login = getpass.getuser()
+            except Exception:
+                login = ""
+            who = re.sub(r"[^a-z0-9-]+", "-", login.lower()).strip("-") or "user"
+        return form.replace("<name>", who)
+    stored = cfg("config", "--local", "--get", "auto-pipeline.workingbranch")
+    if stored:
+        if stored != production_branch(repo):
+            return stored
+        sys.stderr.write('working branch: "%s" is the production branch; using %s\n'
+                         % (stored, named(WORKING_BRANCH_DEFAULT)))
+        if not derive:
+            return None
+    elif not derive:
+        return None
+
+    try:
+        value = str(get("working_branch")).strip() or WORKING_BRANCH_DEFAULT
+    except Exception:
+        value = WORKING_BRANCH_DEFAULT
+    value = named(value)
+    if value == production_branch(repo):
+        default = named(WORKING_BRANCH_DEFAULT)
+        sys.stderr.write('working branch: "%s" is the production branch; using %s\n' % (value, default))
+        value = default
+    cfg("config", "--local", "auto-pipeline.workingbranch", value)
+    return value
+
+
 # ------------------------------------------------------------------ CLI
 
 USAGE = ("usage: agent_conf.py get <key> | show | migrate <project root> "
-         "| cli-model <model[:effort]> | you <role_key> <pid>\n")
+         "| cli-model <model[:effort]> | you <role_key> <pid> | working-branch <repo> | stored-working-branch <repo>\n")
 
 
 def _cmd_get(key):
@@ -830,6 +1011,12 @@ def main(argv):
         return 0
     if len(argv) == 2 and argv[0] == "get":
         return _cmd_get(argv[1])
+    if len(argv) == 2 and argv[0] == "stored-working-branch":
+        sys.stdout.write((working_branch(argv[1]) or "") + "\n")
+        return 0
+    if len(argv) == 2 and argv[0] == "working-branch":
+        sys.stdout.write(working_branch(argv[1], derive=True) + "\n")
+        return 0
     if argv == ["show"]:
         return _cmd_lines(show_lines)
     if len(argv) == 2 and argv[0] == "migrate":

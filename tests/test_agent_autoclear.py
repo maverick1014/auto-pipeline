@@ -26,8 +26,11 @@ CONT = "CLEARED: continue from agent_state.txt (S8)."
 GOAL = ("task manager goal-x: done when DONE PASS or DONE FAIL is written under === REPORT === in "
         "agent_state.txt and the branch is pushed, or a QUESTION:, MOCK READY or CLOSE CASE line waits "
         "for an answer, or you saved agent_state.txt after an AUTO CLEAR notice")
-LIMIT_PANE = ("LIMIT: compacted %d times. Save agent_state.txt now, then stop. This pane gets a save prompt "
-              "and /clear at its next idle prompt (S8).")
+# check-blocks section 36 (owner 2026-11-25): the clear waits until no human typed for clear_quiet_min (30)
+LIMIT_PANE = ("LIMIT: compacted %d times. Save agent_state.txt now. This pane gets a save prompt "
+              "and /clear at its next idle prompt once no human has typed for 30 minutes (S8).")
+LIMIT_PANE_NO_WAIT = ("LIMIT: compacted %d times. Save agent_state.txt now, then stop. This pane gets a save prompt "
+                      "and /clear at its next idle prompt (S8).")
 LIMIT_NO_PANE = ("LIMIT: compacted %d times. No pane to type into: save agent_state.txt, then tell the "
                  "human to type /clear.")
 LIMIT_OLD = "LIMIT: compacted %d times. Write agent_state.txt, end this session, restart from the file (S8, S2)."
@@ -149,7 +152,8 @@ class ClearCase(ScriptCase):
     def waiter(self, sid="s1", env=None):
         full = {"AGENT_FAKE_NOW": NOW}
         full.update(env or {})
-        return self.repo.run("agent-autoclear.sh", HANDLE, sid, env=full, timeout=60)
+        # section 43 C9: these runs stand for a spawned task manager's pane (cleared without a transcript)
+        return self.repo.run("agent-autoclear.sh", HANDLE, sid, "--spawned", env=full, timeout=60)
 
     def hook(self, source, sid="s1", env=None, runtime="orca", handle=HANDLE):
         full = {"AGENT_ROLE": "task-manager", "AGENT_START_DEDUPE_SEC": "0"}
@@ -398,13 +402,15 @@ class TestWaiter(ClearCase):
     def test_it_writes_its_pid_file_while_it_runs(self):
         self.write_state(["ROLE: x", ""])
         self.stub_file("wait_sleep", "3")
-        proc = self.repo.popen("agent-autoclear.sh", HANDLE, "s1", env={"AGENT_FAKE_NOW": NOW})
+        proc = self.repo.popen("agent-autoclear.sh", HANDLE, "s1", "--spawned", env={"AGENT_FAKE_NOW": NOW})
         try:
             self.assertTrue(self.wait_for(lambda: os.path.exists(self.pid_file()), 5))
             with open(self.pid_file()) as fh:
                 self.assertEqual(int(fh.read().split()[0]), proc.pid)
         finally:
-            proc.wait(timeout=60)
+            # section 48 C22: a pane whose every turn waits is never typed into; end the waiter instead
+            proc.terminate()
+            proc.wait(timeout=20)
         self.assertFalse(os.path.exists(self.pid_file()))
 
     # ---- reviewer findings (verify, 2026-11-20)
@@ -436,7 +442,7 @@ class TestWaiter(ClearCase):
     def test_a_term_signal_leaves_a_line_at_once(self):
         self.write_state(["ROLE: x", ""])
         self.stub_file("wait_sleep", "40")
-        proc = self.repo.popen("agent-autoclear.sh", HANDLE, "s1", env={"AGENT_FAKE_NOW": NOW})
+        proc = self.repo.popen("agent-autoclear.sh", HANDLE, "s1", "--spawned", env={"AGENT_FAKE_NOW": NOW})
         self.assertTrue(self.wait_for(lambda: "wait" in self.verbs(), 10))
         time.sleep(0.5)
         t0 = time.time()

@@ -212,8 +212,9 @@ class TestF5ManagerLaws(PrinciplesCase):
     def test_test_parallelism_is_capped(self):
         self.has("maxWorkers=2", "-j 2", where=rule(self.text, "S5.", "S6."))
 
-    def test_reviewers_count_toward_the_cap(self):
-        self.has("reviewer", where=rule(self.text, "S6.", "S7."))
+    def test_no_count_caps(self):
+        # was test_reviewers_count_toward_the_cap: the caps are gone (check-blocks section 25, owner 2026-11-25)
+        self.has("No count caps", where=rule(self.text, "S6.", "S7."))
 
     def test_push_at_every_stage_and_clean_after_a_verified_merge(self):
         self.has("push at every stage", where=self.text)
@@ -229,8 +230,10 @@ class TestF5ManagerLaws(PrinciplesCase):
     def test_model_by_kind_of_thinking(self):
         self.has("strongest", where=rule(self.text, "S9.", "## E. Output"))
 
-    def test_full_gate_in_ci_order(self):
-        self.has("CI's order", where=rule(self.text, "W4.", "W5."))
+    def test_tests_follow_the_blocks(self):
+        # check-blocks 2026-11-25: the full gate per task is gone (no block backs it); FULL SUITE
+        # (owner 1A: no task runs the full suite; MODULE TESTS only when its trigger fires)
+        self.has("MODULE TESTS only when its trigger fires", where=rule(self.text, "W4.", "W5."))
 
     def test_e2e_is_the_proof(self):
         block = rule(self.text, "W5.", "W6.")
