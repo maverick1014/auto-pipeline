@@ -331,6 +331,11 @@ class TestGate(Case):
         self.ok("todo", "add", "t", "small", "task", "10", "--checks", "PR REVIEW")
         main_launched(self.repo.dir, "t")                           # section 44 F2
 
+    def at_now(self):
+        """(head sha12, the todo line's opened minute): a hand line that belongs to this task instance (G9)."""
+        line = [l for l in open(os.path.join(self.repo.dir, "agent_todo.txt")) if l.startswith("t | ")][0]
+        return self.git("rev-parse", "HEAD").strip()[:12], line.split("opened ")[1][:16]
+
     def gate(self, *extra, env=None, dirpath=None):
         return self.af("checks", "gate", "t", "--dir", dirpath or self.repo.dir, "--base", "base", *extra, env=env)
 
@@ -453,11 +458,12 @@ class TestGate(Case):
         self.git("worktree", "add", "-q", "-b", "feat-a", wt, "feat")
         self.git("push", "-q", "-u", "origin", "feat-a", cwd=wt)
         with open(os.path.join(wt, "agent_state.txt"), "a") as fh:
+            # G9: within the task instance and at the branch's commit; the fail and the pass of one minute: fail wins
             for b in ("DIFF SCAN", "BUILD", "RELATED TESTS"):
-                fh.write("CHECK t %s: pass | by tm | ok | 2026-11-25 09:00\n" % b)
-            fh.write("CHECK t PR REVIEW: fail | by t Check | a typo | 2026-11-25 12:00\n")
+                fh.write("CHECK t %s: pass | by tm | at %s | ok | %s\n" % ((b,) + self.at_now()))
+            fh.write("CHECK t PR REVIEW: fail | by t Check | at %s | a typo | %s\n" % self.at_now())
         with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
-            fh.write("CHECK t PR REVIEW: pass | by t Check | ok | 2026-11-25 10:00\n")
+            fh.write("CHECK t PR REVIEW: pass | by t Check | at %s | ok | %s\n" % self.at_now())
         r = self.gate(dirpath=wt)
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("PR REVIEW: fail (by t Check)", r.stdout.splitlines())
@@ -486,7 +492,7 @@ class TestGate(Case):
         self.ok("todo", "checks", "t", "OWNER SIGN")
         self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
-            fh.write("CHECK t OWNER SIGN: pass | by owner | ok | 2026-11-25 13:00\n")
+            fh.write("CHECK t OWNER SIGN: pass | by owner | at %s | ok | %s\n" % self.at_now())   # G9
         r = self.gate()
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("OWNER SIGN: pass not verified, not accepted", r.stdout.splitlines())
@@ -495,7 +501,8 @@ class TestGate(Case):
         self.ok("todo", "checks", "t", "OWNER SIGN")
         self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
-            fh.write("CHECK t OWNER SIGN: pass | by owner | owner order verified: yes merge it | 2026-11-25 13:00\n")
+            fh.write("CHECK t OWNER SIGN: pass | by owner | at %s | owner order verified: yes merge it | %s\n"
+                     % self.at_now())                                                          # G9
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
         self.assertEqual(self.gate().returncode, 0, self.gate().stdout)
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho 'not found'\nexit 1\n")

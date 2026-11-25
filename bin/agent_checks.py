@@ -235,6 +235,9 @@ def cmd_owner_words(ctx, a):
     import agent_conf
     if not agent_conf.has_word(quote, agent_conf.PUBLISH_WORDS):
         raise Refuse("todo add: the owner's words do not name the publish")
+    if agent_conf.has_word(quote, agent_conf.NEGATION_WORDS):
+        raise Refuse("todo add: the owner's words do not clearly say publish now: ask him one plain question "
+                     "and quote his answer")
     verify_owner(ctx, quote, when or None, "todo add: owner words not verified, nothing written: ")
     gd = common_dir(ctx["root"])
     if gd:
@@ -304,9 +307,9 @@ def cmd_todo_checks(ctx, a):
         if block in (SIGN, "PR REVIEW"):
             raise Refuse("todo checks: %s is never removed" % block)
         import agent_conf
-        if not (agent_conf.has_word(quote, agent_conf.BLOCK_WORDS.get(block, []))
-                and agent_conf.has_word(quote, agent_conf.SKIP_WORDS)):
-            raise Refuse("todo checks: the owner's words do not name %s and leaving it out" % block)
+        if not agent_conf.skip_before_name(quote, block):
+            raise Refuse("todo checks: the owner's words do not name %s and leaving it out: ask him one plain "
+                         "question and quote his answer" % block)
         new = [b for b in old if b != block]
         at = field_index(f, "checks")
         removed = "removed %s %s" % (block, ctx["now"])
@@ -500,7 +503,7 @@ def read_results_file(path, task, best, n=0, since="", until=""):
                 ev, date = " | ".join(parts[1:-1]), parts[-1].strip()
             else:
                 ev, date = " | ".join(parts[1:]), ""
-            if since and date and date[:10] < since[:10]:
+            if since and date and date < since:     # G9: before this task instance opened (to the minute)
                 continue
             if until and date > until:      # G6: a line dated in the future is ignored
                 continue
@@ -730,38 +733,50 @@ def clean_merge(d, shas):
     return r.returncode == 0 and bool(lines[0]) and lines[0].strip() == git_line(d, "rev-parse", shas[0] + "^{tree}")
 
 
+def on_branch(d, at, head, own):
+    """G9: the commit of a pass is the head being merged or one of the branch's own commits (base..head)."""
+    full = git_line(d, "rev-parse", "--verify", "-q", "%s^{commit}" % at)
+    return bool(full) and (full == head or full in own)
+
+
+def own_commits(d, head, base):
+    """G9: the full shas of base..head (this branch's own commits)."""
+    return set(git_line(d, "rev-list", "%s..%s" % (base, head)).split())
+
+
 def at_head(d, at, head, base):
     """F3: the commit a pass saw is the head being merged, or every commit after it is a merge whose other
-    parents are in the base."""
+    parents are in the base and which is clean (G3). -> None when fine, else (reason, commit)."""
     full = git_line(d, "rev-parse", "--verify", "-q", "%s^{commit}" % at)
     if not full or not head:
-        return False
+        return ("stale", "")
     if full == head:
-        return True
+        return None
+    stale = ("stale", "")
     try:
         if subprocess.run(["git", "-C", d, "merge-base", "--is-ancestor", full, head],
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30).returncode != 0:
-            return False
+            return stale
     except (OSError, subprocess.SubprocessError):
-        return False
+        return stale
     if not git_line(d, "rev-parse", "--verify", "-q", "%s^{commit}" % base):
-        return False
+        return stale
     rows = git_line(d, "rev-list", "--parents", "%s..%s" % (full, head), "--not", base).splitlines()
     for row in rows:
         shas = row.split()
         if len(shas) < 3:
-            return False
-        if not clean_merge(d, shas):
-            return False
+            return stale
         for p in shas[2:]:
             try:
                 if subprocess.run(["git", "-C", d, "merge-base", "--is-ancestor", p, base],
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                   timeout=30).returncode != 0:
-                    return False
+                    return stale
             except (OSError, subprocess.SubprocessError):
-                return False
-    return True
+                return stale
+        if not clean_merge(d, shas):
+            return ("changed", shas[0][:12])
+    return None
 
 
 def soon(now):
@@ -839,6 +854,7 @@ def cmd_gate(ctx, a):
     gd = common_dir(d) or common_dir(ctx["root"])
     launches = [x for x in read_launches(gd, task) if not opened or x[2] >= opened]
     head = git_line(d, "rev-parse", "HEAD")
+    own = own_commits(d, head, base)
     for p in (os.path.join(d, "agent_state.txt"), os.path.join(ctx["root"], "agent_state.txt")):
         builders += launch_builders(p, task)
     lowb = set(b.lower() for b in builders)
@@ -866,12 +882,23 @@ def cmd_gate(ctx, a):
         elif b in LAUNCH_KIND and not launched(launches, LAUNCH_KIND[b][0], r[4]):
             lines.append("%s: no %s launched by the main manager for %s, not accepted" % (b, LAUNCH_KIND[b][1], task))
             refused.append("%s not launched by the main manager" % b)
-        elif b in LAUNCH_KIND and not r[3]:
+        elif not r[3]:
             lines.append("%s: pass with no commit, not accepted" % b)
             refused.append("%s no commit" % b)
-        elif b in LAUNCH_KIND and not at_head(d, r[3], head, base):
-            lines.append("%s: pass at %s, not at the head %s, not accepted" % (b, r[3], head[:12]))
-            refused.append("%s not at the head" % b)
+        elif not on_branch(d, r[3], head, own):
+            if b in LAUNCH_KIND:
+                lines.append("%s: pass at %s, not a commit of this branch (head %s), not accepted" % (b, r[3], head[:12]))
+            else:
+                lines.append("%s: the pass was at %s, not a commit of this branch, not accepted" % (b, r[3]))
+            refused.append("%s not on this branch" % b)
+        elif b in LAUNCH_KIND and at_head(d, r[3], head, base) is not None:
+            why = at_head(d, r[3], head, base)
+            if why[0] == "changed":
+                lines.append("%s: the merge after the review changed code (%s): review the new head" % (b, why[1]))
+                refused.append("%s merge changed code" % b)
+            else:
+                lines.append("%s: pass at %s, not at the head %s, not accepted" % (b, r[3], head[:12]))
+                refused.append("%s not at the head" % b)
         else:
             lines.append("%s: pass (by %s)" % (b, r[1]))
             if b in BUILDER_BLOCKS and not lowb:
