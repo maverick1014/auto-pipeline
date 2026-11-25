@@ -9,6 +9,8 @@
 # "timeout": wait again; any other error: failed), then `orca terminal read --json`: the last
 # tail line starting with the prompt mark must be empty after the mark; else wait
 # compact_clear_check_sec and check again (one "AUTO CLEAR waiting" line in agent_state.txt).
+# Steps 1 and 3 also wait until no human typed for clear_quiet_min minutes (agent-owner-order.sh human-quiet);
+# a human at step 3 -> once quiet, back to step 1.
 # Types: 2 the save prompt, 4 /clear, 6 "/goal <last GOAL: line>" or the continue prompt.
 # Appends "AUTO CLEAR done | <date>" or "AUTO CLEAR failed at step <n>: <code> | <date>".
 # AGENT_FAKE_NOW="YYYY-MM-DD HH:MM" replaces the clock (tests). Missing arguments: usage, exit 2.
@@ -135,9 +137,35 @@ read_goal() {
   fi
 }
 
-ready 1
-type_text 2 "AUTO CLEAR: save agent_state.txt now (S8), nothing else. /clear comes next."
-ready 3
+quiet_min=$(setting clear_quiet_min 2>/dev/null) || quiet_min=""
+quiet_min=$(printf '%s' "${quiet_min%% (from *}" | tr -d '[:space:]')
+case "$quiet_min" in ''|*[!0-9]*) quiet_min=30;; esac
+
+# gate <step>: after ready <step>; waits (idle prompt, empty box, check again) until no human has typed for
+# clear_quiet_min minutes; one "AUTO CLEAR waiting" line per wait. rc 0 = quiet at once, 1 = it had to wait.
+gate() {
+  local res rc=0 told=0 at
+  while :; do
+    res=$(python3 -B "$(dirname "$0")/agent_owner_order.py" "$PWD" "" human-quiet --session "$SID" \
+          --minutes "$quiet_min" --repo "$PWD" 2>/dev/null </dev/null) && return $rc
+    rc=1
+    if [ "$told" = 0 ]; then
+      at=${res##* }
+      add "AUTO CLEAR waiting: a human typed at $at; the clear waits for $quiet_min quiet minutes"
+      told=1
+    fi
+    bg sleep "$check_sec"
+    ready "$1"
+  done
+}
+
+while :; do
+  ready 1
+  gate 1
+  type_text 2 "AUTO CLEAR: save agent_state.txt now (S8), nothing else. /clear comes next."
+  ready 3
+  gate 3 && break
+done
 type_text 4 "/clear"
 ready 5
 read_goal

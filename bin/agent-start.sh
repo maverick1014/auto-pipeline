@@ -30,7 +30,7 @@ set -u
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
 KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 b10039ac08596652 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 0f6edb6c4e7c8a6a ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 d7dd4d5626dfebb7 e8e943f9f54c9b2c d956db8d1ed42790 72241f6e3363d877 9dab6091450c0f7f 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 452e097c150557a7 5bc49497d74f49dc 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e fc755642e7b2d547 0133b60b2fa2b724 9066a193a7688a05 4837775f457fb61d 2ec8ada5beb1f8cd 8acf929ea8f7dc66 dd3f796537230804 )
-RULE=( _ W1 R6 H1 W2 W3 W4 W12 S4 S3 H3 R5 R2 R3 H4 H3 R1 W7 W6 E4 W5 W7 W9 W9 S1 R1 W10 W13 S8 S8 H1 H3 W8 W14 W10 S1 W17 W18 R8 R8 )
+RULE=( _ W1 R6 H1 W2 W3 W4 W12 S4 S3 H3 R5 R2 R3 H4 H3 R1 W7 W6 E4 W5 W7 W9 W9 S1 R1 W10 W13 S8 S8 H1 H3 W8 W14 W10 R8 W17 W18 R8 R8 )
 N=39
 
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
@@ -735,7 +735,7 @@ autoclear_queue() {
 }
 
 print_compact_lines() {
-  local CF cn at kind
+  local CF cn at kind qm
   CF="$PROJECT_GITDIR/agent_compact_$SID"
   cn=$(( $(cat "$CF" 2>/dev/null || echo 0) + 1 ))
   echo "$cn" > "$CF"
@@ -746,7 +746,12 @@ print_compact_lines() {
   elif [ "$cn" -ge "$at" ]; then
     kind=$(. "$PLUGIN_ROOT/bin/agent-runtime.sh" && runtime_kind 2>/dev/null </dev/null) || kind=""
     if [ "$kind" = orca ] && [ -n "${ORCA_TERMINAL_HANDLE:-}" ] && command -v orca >/dev/null 2>&1; then
-      echo "LIMIT: compacted $cn times. Save agent_state.txt now, then stop. This pane gets a save prompt and /clear at its next idle prompt (S8)."
+      qm=$(conf_int clear_quiet_min 30)
+      if [ "$qm" -gt 0 ]; then
+        echo "LIMIT: compacted $cn times. Save agent_state.txt now. This pane gets a save prompt and /clear at its next idle prompt once no human has typed for $qm minutes (S8)."
+      else
+        echo "LIMIT: compacted $cn times. Save agent_state.txt now, then stop. This pane gets a save prompt and /clear at its next idle prompt (S8)."
+      fi
       autoclear_queue "${ORCA_TERMINAL_HANDLE//[[:space:]]/_}" "$cn"
     else
       echo "LIMIT: compacted $cn times. No pane to type into: save agent_state.txt, then tell the human to type /clear."

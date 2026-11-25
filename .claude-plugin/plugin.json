@@ -125,6 +125,14 @@
       "max": 1440,
       "default": 120
     },
+    "clear_quiet_min": {
+      "type": "number",
+      "title": "Context: Auto clear after quiet (min)",
+      "description": "The auto clear waits until no human has typed in that pane for this many minutes. 0 = no wait. Whole number, 0 to 1440.",
+      "min": 0,
+      "max": 1440,
+      "default": 30
+    },
     "city_port": {
       "type": "number",
       "title": "City: City port",

@@ -39,7 +39,8 @@ class Transcript:
     """<CLAUDE_CONFIG_DIR>/projects/<folder name of the repo>/<session>.jsonl"""
 
     def __init__(self, case, repo_dir):
-        self.cfg = os.path.join(case.repo.base, "cfg")
+        # the same config home the settings live in (scripthelp's default CLAUDE_CONFIG_DIR), so set_conf is read
+        self.cfg = os.path.join(case.repo.base, "no-claude-config")
         self.dir = os.path.join(self.cfg, "projects", oo.folder_name(repo_dir))
         os.makedirs(self.dir, exist_ok=True)
 
