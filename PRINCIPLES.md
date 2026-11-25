@@ -48,10 +48,11 @@ R4. No changelog
 
 R5. Task files
 - `agent_todo.txt` = open tasks only, always current
-- Done → agent_completed.txt: date, name, what, then one `data` block written by `agent-file.sh`: repo, type, lane, mock, est, work, wait, clock, bounces, workers, files, lines, tests, adds. No test results, that is report material
+- Done → agent_completed.txt: date, name, what, then one `data` block written by `agent-file.sh`: repo, type, lane, mock, est, guess, work, wait, clock, level, bounces, workers, files, lines, tests, adds
+- No test results in it, that is report material
 - No other task tracking
 - The housekeep pass never closes a todo line: it flags one whose branch is merged into the working branch or the production branch, or one that is stale (no worktree line, no open wait, quiet longer than housekeep_interval_min)
-- All four `agent_*.txt` files are written only through `./agent-file.sh`. No agent for that, it costs tokens
+- All four `agent_*.txt` files are written only through `bin/agent-file.sh`. No agent for that, it costs tokens
 - `agent_completed.txt` is never deleted, trimmed or cleaned (every clean-up skips it); only on an explicit owner order
 
 R6. Ideas file
@@ -112,7 +113,8 @@ R8. Check blocks
 - A failure the nightly finds that the causing task's own RELATED or MODULE run did not find is a selection miss: one line, the test and the merge (`agent-nightly.sh --misses`)
 - After two weeks the owner reads the selection miss count and decides whether the nightly goes too
 - The watch's housekeep pass starts it once a day after 22:00 (`nightly_hour`) when no heavy test runs; no watch alive: the next session start, when the last run is older than 24 hours
-- A release needs a green full run on the working branch: the last nightly on that commit, or one background run (`agent-nightly.sh --release-ok`); no other pre-release run
+- A release needs a green full run on the working branch: the last nightly on that commit, or one background run; no other pre-release run
+- `agent-nightly.sh --start` runs the full suite in the background; `agent-nightly.sh --release-ok` only checks that a green run covers the commit
 - The working branch (setting "Flow: Working branch", default `ap-main-<name>`) is only a branch
 - Everything merged or pushed lands there first and never on the production branch by accident: the main checkout is switched to the working branch by init
 - The working branch is per person (<name> = the git user name in lower case, only letters, digits and "-"): worked out once per clone and stored, pushed to origin
@@ -188,13 +190,14 @@ W5. Web UI testing
 - none → print the click path under NEEDS HUMAN E2E and stop, wait for the human. Never silent, never forever
 
 W6. Roles
-- Main manager (Opus 5.5, xhigh) = the main chat. Assigns tasks, talks to the human, reports, accepts decisions, brainstorms. Nothing else
+- Main manager (the "Main manager model" setting) = the main chat. Assigns tasks, talks to the human, reports, accepts decisions, brainstorms. Nothing else
 - Fast-lane deputy (Sonnet 5, medium) = `agents/fast-lane-deputy.md`, new one per small task: works in its own git worktree, writes the example tests of a small logic task, runs its blocks, pushes a branch
 - Merge deputy (Sonnet 5, medium) = `agents/merge-deputy.md`. Merges, then deletes branch and worktree
 - Reviewer (Reviewer model, default opus-5.5:high) = `agents/reviewer.md`: PR REVIEW of every task and CORE REVIEW; read only; a fail is a fix order to the builder
 - Check deputy (Sonnet 5, medium) = `agents/check-deputy.md`, read and browser tools only: FLOW CHECK, UI CHECK, re-checks after a bounce, RELEASE SMOKE; a verdict with evidence, the main manager decides
 - The main manager stays free for the human: it runs no long check itself; it sends the check deputy and gets a short verdict with evidence
-- Task manager (Opus 5.5, xhigh) = one agent per big feature, in its own worktree (exception: human-direct, W10). Writes the tests, briefs workers, judges, verifies every worker result before reporting done to the main manager. Never writes product code
+- Task manager (the "Task manager model" setting) = one agent per big feature, in its own worktree (exception: human-direct, W10)
+- It writes the tests, briefs workers, judges, verifies every worker result before reporting done to the main manager. Never writes product code
 - Worker (Sonnet 5, medium) = `agents/worker.md`, subagent of a task manager. Writes code until the task manager's tests pass
 - Managers never write product code. A defect goes back to the worker that wrote it, with evidence
 - A main manager fix order to a task manager has a fixed shape: where, what is seen, what is expected, evidence (screenshot). The task manager reassigns a subagent
@@ -229,7 +232,7 @@ W8. Merge and cleanup
 - Main manager verified + waiting for the owner's yes → agent-file.sh checks gather first, close the task manager pane, remove its worktree, keep the pushed branch, start the next task
 - Owner yes → merge deputy merges the branch. Owner no → a new task manager from that branch. Goal: work all night, RAM stays free
 - Clean up only after the merge is verified
-- Deputy runs `./agent-file.sh worktree rm <path>` and `./agent-file.sh todo done <name>` with the facts from the main manager and `--merge <commit>`
+- Deputy runs `bin/agent-file.sh worktree rm <path>` and `bin/agent-file.sh todo done <name>` with the facts from the main manager and `--merge <commit>`
 - Sweep: `bin/agent-cleanup.sh --apply` after every merge, at session start and when the last open task closes (todo empty, no live worktree). The scripts run it, no loop
 - Housekeep: every housekeep_interval_min minutes (default 120, 0 = off) `agent-watch.sh --all` runs `bin/agent-housekeep.sh --apply`, then this sweep. Plain and cloud: no watch, run it by hand
 - The housekeep pass runs `agent-file.sh state trim` on the main repo's agent_state.txt before it writes its block (S8)
@@ -273,7 +276,7 @@ W10. Second session in the same repo
 - Will change files → open its own worktree first (W7). Only looking → no worktree
 - Human talks to it directly for now. All task manager rules still apply
 - Human says "finish" or "report to main manager" → report done + click path to the main manager, then act as a normal task manager. Merge deputy cleans up
-- Finished with nothing to merge → main manager runs `./agent-file.sh worktree rm <path>`
+- Finished with nothing to merge → main manager runs `bin/agent-file.sh worktree rm <path>`
 - The main manager closes every human-direct session after the human says finish: `orca terminal close --terminal <handle> --json`. Nothing stays parked
 - Lock owner dead → take over as main manager, run recovery (S7)
 - Talk between sessions: `ListAgents` → find the peer by its name (W6), not listed → the row named after its folder (`<folder>-<xx>`) → `SendMessage` to that name. Two share a name → add the `[ref]` ListAgents prints. Reply to the `from` name. First line of every message = one clear sentence
@@ -574,13 +577,13 @@ Agent skills: `/auto-pipeline:dispatch` (route one task), `/auto-pipeline:merge`
 ```
 Human
   │  task ↓   report ↑
-Main manager   (Opus 5.5, xhigh · the main chat · free for the human)
+Main manager   (Main manager model · the main chat · free for the human)
   ├── Fast-lane deputy   (Sonnet 5, medium)  one small task in its own git worktree, then gone
   ├── Reviewer           (Opus 5.5, high)    PR review of every task, core review; read only
   ├── Check deputy       (Sonnet 5, medium)  flow and UI checks, release smoke; one at a time on the browser
   ├── Merge deputy       (Sonnet 5, medium)  merge → push → delete branch → remove worktree
   └── Worktree, one per big feature
-        └── Task manager (Opus 5.5, xhigh)     writes the tests, briefs workers, verifies, never codes
+        └── Task manager (Task manager model)     writes the tests, briefs workers, verifies, never codes
               ├── Worker (Sonnet 5, medium)  code until the tests pass, slice 1
               └── Worker (Sonnet 5, medium)  code until the tests pass, slice 2
 
@@ -613,6 +616,13 @@ Scripts, not agents (cost no tokens):
   bin/agent-questions-page.html  the page template (one page grouped by task, lettered options, answer bar)
   bin/agent-name.sh       SessionStart + UserPromptSubmit hook: names the session by role (W6; a human-direct one is `<repo> Helper - <Task Name>`), also the Orca tab
   bin/agent-guard.sh     hook: records every Agent launch and orca pane on the board, refuses a manager's launch that names no open todo task when the Todo before agent setting is on; off records only
+  bin/agent-promote.sh   the working branch to production, only on the owner's verified words (--owner-quote), `--task` for a direct merge, `--sync` for production into the working branch
+  bin/agent-runtime.sh   which runtime this agent is in (orca, plain, cloud) and the browser; the one place that knows
+  bin/agent-resources.sh  RAM and CPU readers, sourced by other scripts
+  bin/agent-autoclear.sh  the waiter behind the auto /clear: save prompt, /clear, /goal, only after the human has been quiet (S8)
+  bin/agent-release.sh   builds, checks and pushes the `release` branch, one commit per version
+  bin/agent-statusline.sh  the Claude Code status line: one line per running task
+  bin/agent-roots.sh     the two roots every script needs (project and plugin), sourced
   bin/agent-version.sh   UserPromptSubmit hook + check: a session running an older plugin than installed gets one STALE PLUGIN line; the start text names old scopes; an old version never retrains
 ```
 
