@@ -42,16 +42,18 @@
 
 | field | rule |
 |---|---|
-| `v` | 1 (format version) |
+| `v` | 1 (3 decor slots) or 2 (a layout) |
 | `name` | 1-20 characters, on the floor sign and the outside tag |
 | `why` | 0-60 characters, why it fits the repo; on hover |
 | `colors.accent` | #RRGGBB; outside band, window frames, decor accents |
 | `colors.carpet` (open office), `colors.manager_floor` (the area manager's glass room), `colors.pantry_floor` | #RRGGBB, HSL lightness 55-95% (people and labels stay readable) |
 | `colors.desk`, `colors.desk_leg`, `colors.chair`, `colors.meeting_rug`, `colors.manager_rug` | #RRGGBB |
-| `decor` | exactly 3 entries, one per slot (1 south-west corner, 2 south middle, 3 east wall): a catalogue id or `none` |
+| `decor` | v 1 only: exactly 3 entries, one per slot (1 south-west corner, 2 south middle, 3 east wall): a catalogue id or `none` |
+| `materials` | optional, v 2: `{"carpet", "manager_floor", "pantry_floor"}`, each one of plain, wood, herringbone, tile, bigtile, marble, concrete, checker; missing = the base look (plain, wood, tile) |
+| `layout.items` | v 2 only: the pieces, each `{"k": "tm"\|"helper"\|"meet"\|"plant"\|"decor", "x", "z", "yaw"}`, plus `"id"` (a catalogue id) for decor and `"s"` (0.6-1.2) for a plant; x and z in tiles from the floor's middle, at most 2 decimals (the editor snaps to 0.2), within ±6.95; yaw 0, 90, 180 or 270; the counts and checks of Room editor |
 
 - Catalogue (15 pieces, each fits 1.6 x 0.9 tiles, drawn in code): robot, conveyor, gears, chart, plants, safe, cabinets, printer, bookshelf, clock, cashier, goods, menu, scanner, lightbox.
-- Never settable: the floor size; the places of the lift, the area manager's room, the assistant desks, the manager desks, the pantry and the meeting corner; the number of desks; people, labels, states.
+- Never settable: the floor size; the walls, the lift, the area manager's glass room and its door, the pantry, the whiteboard; people, labels, states. A v 1 design keeps the fixed plan of desks; a v 2 design places them (Room editor). A v 1 file still loads: its 3 slots become decor pieces of the default plan.
 - Where: `~/.claude/agent-city/floors/<repo id>.json`, per machine, next to world.json, never in a repo, written atomically (tmp + mv). The last 5 versions are kept (`<repo id>.history.jsonl`) for undo (撤销上一步).
 - `agent-city floor rules` prints these rules and the catalogue as plain text, so any AI or person can read them; `agent-city floor show <repo>` prints the current file.
 - Checking: every write, whoever made it, is checked against the table. Unknown key, bad value, wrong count: the whole file is refused, the floor keeps its last good design, and the page log names each bad field and why (e.g. "茶水间地板的亮度是 20%，要在 55%–95% 之间"). Never silent. The design is data only: the page never runs code or loads files from it.
@@ -64,9 +66,40 @@
 - Interior designer: one agent session on this computer, opened by the city the way Add agent opens one (same guard, same cap check), in that repo's folder. Its role and design knowledge come from the plugin: `agents/interior-designer.md` plus these rules. Model from agent.conf (new key `interior_designer`, default Sonnet: it executes, it decides nothing for other agents). It reads only the repo's README or CLAUDE.md (first 60 lines) and the top-level folder names.
 - On the page it arrives by the lift on that floor as 设计师, its panel opens, and it asks what the owner wants (等你). The owner answers in the panel (example chips: 温馨一点，多点植物 / 冷色，简单干净 / 加个收银台 / 按你的想法来). It answers with a plan, renovates (cones and tape on the 3 slots, it walks between them; floor sign 装修中…), writes the file, then waits in the meeting corner. Another wish: it renovates again. "好了，你可以走了": it rides the lift away and its session ends.
 - It is shown, though opened by the city: a person the owner hires, not a subagent. It is never a Helper and never takes the area manager's seat.
-- 自己装修 (DIY, this round, owner chose "A first"): a form in the 装修 box: name, the 9 colours, one catalogue piece (or none) per slot; checked before saving, same rules.
+- 自己装修 opens the room editor (see Room editor; replaces the DIY form of the first round).
 - The designer fails or stops answering (60 s per step): the floor keeps its last good design, one log line says why, 重新装修 starts again.
-- Next round (owner prefers it: "do A first, then when free do B"): free placement of furniture and decor anywhere on the floor grid, checked so every seat stays reachable from the lift and nothing overlaps.
+- The designer may also move furniture and decor (a layout, see Room editor); its files pass the same checks (owner, 2026-11-25, mock v1 question 3).
+
+### Room editor
+- Owner, 2026-11-24 and 2026-11-25 (city-office-2): DIY B, "free placement of furniture and decor anywhere on the floor grid", and "the form is not very good ... refer to those renovation app like coohome". Mock: https://claude.ai/artifact/FUoJq6kKWSj2C58h9oofAR, kept as `mock/city-office-2-mock.html`; owner yes on version 2 (2026-11-25: "ok this one i ok arleady") plus floor materials (version 3).
+- Opens from 装修 → 自己装修 and from the first-entry question. While it is open: people, the rail, the lift panel, the floor sign and the status pill are hidden; the floor in view stays.
+- Screen:
+  - top bar: 退出, 方案名 (1-20 characters), 2D 俯视 / 3D, 撤销, 重做, 恢复基本款, the counts, 保存;
+  - left catalogue, tabs 风格 / 家具 / 摆设 / 地面·颜色, every piece with a small 3D picture drawn in code (no image files);
+  - right inspector for the selected piece or floor area;
+  - one message line (green when fine, red with the reason when not).
+- Pieces: manager desk (1-9), assistant desk (1-3), meeting table (exactly 1: it moves but cannot be deleted, overflow people and the designer wait there), plant (0-8), decor (0-8, any of the 15 catalogue pieces, a piece may repeat).
+- Fixed, never moved, hatched with a lock label: the walls, the lift with the space in front of it, the area manager's glass room with its door, the pantry, the whiteboard.
+- Moving:
+  - drag a piece; it snaps to 0.2 tile;
+  - turn 90° (R, or ⟲ / ⟳);
+  - copy, delete (Delete);
+  - add from the catalogue: drag it onto the floor, or click it and the editor puts it on the first free spot near the middle.
+- Colours:
+  - click a floor area (open office carpet, glass room floor, pantry floor, the area manager's rug, the meeting rug) or a piece (desk top, desk legs, chairs; accent for decor);
+  - pick a swatch or a custom colour;
+  - the three floors keep lightness 55-95%: a darker or whiter pick is refused with the number;
+  - floor materials (owner, 2026-11-25: "the floor also want to able to change, because the floor affects a lot on the looking"): each of the three floor areas (open office, glass room, pantry) has a material and a colour; materials, drawn in code: 素色地毯 plain, 木地板 wood, 人字拼 herringbone, 小方砖 tile, 大地砖 big tile, 大理石 marble, 水泥 concrete, 格子砖 checker; the colour rule (lightness 55-95%) stays;
+  - 风格: 6 presets set the 9 colours and the 3 floor materials (and the plan name when it is empty), never the layout.
+- Checks, live while dragging, again on 保存, and by the server on every write whoever made it (Floor design):
+  - every piece inside the floor;
+  - none on a fixed area;
+  - no two pieces overlap (a desk's area includes its chair);
+  - on the walk grid (0.4 tile), from the lift: every desk seat, the meeting table, the glass room's door and the pantry can be reached.
+  A move or a turn that breaks a rule snaps back, and the message names the piece and the reason, e.g. 「经理桌 1」的座位被挡住了，从电梯走不过去.
+- Undo / redo inside the editor (60 steps). 退出 with unsaved changes asks once more, in the message line; no browser dialog. 保存 writes one design file: the history of 5 and 撤销上一步 work as before.
+- Seats: managers take the manager desks in the order the desks are listed, assistants the assistant desks. People beyond the desks stand in the meeting corner.
+- Phone: the catalogue is a sheet at the bottom and the inspector floats above it. Usable, computer first (owner, 2026-11-25: ok).
 
 ## Data path
 - `hooks/hooks.json` → `bin/agent-city-hook.sh` → `<city dir>/events.jsonl` → `bin/agent_city.py` → SSE `/events` → page.
