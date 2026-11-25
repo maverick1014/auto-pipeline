@@ -1170,7 +1170,7 @@ def fmt_num(x):
 
 
 def quiet_limit():
-    """watch_quiet_min (agent.conf, default 15; the board's "not confirmed" uses it too)."""
+    """watch_quiet_min (a setting, default 15; the board's "not confirmed" uses it too)."""
     try:
         here = os.path.dirname(os.path.abspath(__file__))
         if here not in sys.path:
