@@ -192,3 +192,103 @@ The owner sees "board may be wrong: the watch is not running / N not confirmed /
 - (3) Rule: after a watch wake the first action is to start the watch again, then handle the signal (evidence: the watch exited about 20 times on 2026-11-25 and stayed down for minutes each time, once about 40 minutes).
 - (4) A human-direct Helper's task counts as confirmed by the Helper's own live pane, wherever its worktree is (city-office-2 showed "not confirmed" because the Helper works from the main folder).
 - Tests first.
+
+## 13. Rule text (task manager draft; the rules worker puts it into PRINCIPLES.md as written, the table rows from `python3 bin/agent_blocks.py table`)
+
+R1 (replaces the whole rule):
+```
+R1. One flow, two lanes
+- Before the flow: the main manager writes the requirement doc, the owner approves it
+- Full flow, in order:
+  1. Todo line + estimate
+  2. Mock if the task has UI
+  3. Worktree + task manager
+  4. Failing tests first
+  5. Workers build
+  6. Verify
+  7. Push
+  8. Acceptance blocks (R8)
+  9. Merge + cleanup
+  10. Todo done
+- Task size picks who does the work: small task = one subagent in its own git worktree (fast lane); it writes its example tests and runs its blocks
+- Big task (over 2 hours, several slices) = a task manager (full lane)
+- Which checks run follows the triggers only (R8), never the lane
+- A small logic task never opens a task manager just because it needs a test
+- A small task that grows (past 2x its estimate, or it needs a second slice): the subagent stops and reports; the main manager opens a task manager that goes on from its branch
+```
+
+R8 (replaces "R8. Risk types"):
+```
+R8. Check blocks
+- Owner 2026-11-25: "only do the necessary thing when needed, dont do extra thing. and dont do less thing"
+- No levels: each check is a block with a trigger; a task runs the blocks whose trigger fires, nothing else
+- The one table, source `bin/agent_blocks.py`; this table, the skills and the quiz are tested against it:
+
+<the 15 lines of `python3 bin/agent_blocks.py table`>
+
+- Picked tool: `agent-level.sh check --base <ref>` decides them from the real diff, no judgment
+- Picked brief: dispatch picks them from what the owner approved: `todo add ... --checks "<BLOCK>,<BLOCK>"`
+- Two passes: the brief blocks at dispatch; before merge the tool recomputes the tool blocks from the real diff
+- Blocks are only added; removing one needs a verified owner order: `todo checks <task> --remove <BLOCK> --owner-quote "<his words>"`
+- One result line per block: `agent-file.sh check <task> "<BLOCK>" pass|fail --by <who> --evidence "<text>"`
+- The merge gate `agent-file.sh checks gate <task>` refuses while a planned block has no pass line
+- DIFF READ, FLOW CHECK and UI CHECK pass only by someone who did not build the task: not the builder (the todo line's builder or its LAUNCH records)
+- OWNER SIGN is planned when a sign fires: FULL SUITE, DATA CHECK, DB CHECK on a data change, CORE REVIEW on a permission change
+- BUILD and GUARD TESTS run per task only when their measured time in agent_repo.conf is under `check_budget_s` (60 s)
+- Slower = heavy: it runs in the net; a heavy BUILD is queued like a heavy test (S5)
+- REAL DATA COUNT with no read access: skipped with one printed line, never silently
+- Outside tasks, the net: NIGHTLY SUITE (the full suite every night or before a release, in the background on the heavy-test machine; nobody waits; red = the first task next morning)
+- RELEASE SMOKE after every release: a fresh session uses the released version for real (start, one subagent launch and finish, the user-facing flows that changed)
+- Four kinds of request, one line each:
+  - Refactor (no behaviour change): BUILD + RELATED TESTS; no new examples, the existing tests are the acceptance
+  - Urgent fix (production is broken): the smallest fix, the same triggers; a verified owner order may move a block to right after the release, never drop it
+  - Rollback: back to the last green commit; BUILD + RELATED TESTS of the reverted files; a database change follows its written rollback plan
+  - Research only (no diff): no blocks; the report is the deliverable
+- Repo facts live in the committed `agent_repo.conf`, written by init and kept by agents, never by the user: core paths, guard tests, test commands, the edge list, real-data access
+- After each bug fix the fixing agent asks "which example would have shown it" and adds one line with `agent-file.sh edge add "<text>"` when the list lacks it
+- A second agent's opinion only for CORE REVIEW, or when someone wants a tool-triggered block removed
+- A requirement table copies its defaults from the released template and lists every changed default for the owner
+```
+
+W2: "- Which risk type needs a mock: R8" becomes "- A mock only for a new page or a whole-page re-layout; the approved mock is what UI CHECK compares with (R8)".
+
+W4 (replaces the whole rule):
+```
+W4. Multi-agent tests
+- Tests are organised module → feature
+- Which tests run follows the blocks (R8): RELATED TESTS (the tests that import or name the changed files) and GUARD TESTS per task
+- FULL SUITE only when its trigger fires: once, never twice
+- The main manager and the merge deputy never re-run tests the task manager already passed. Only on a merge conflict: test the conflicted part
+- After a bounce: re-run only the tests that failed, not the suite
+```
+
+W5 (replaces the whole rule):
+```
+W5. Web UI testing
+- Claude in Chrome, not Playwright, on orca and plain
+- The check deputy (`agents/check-deputy.md`) drives the browser for FLOW CHECK, UI CHECK and RELEASE SMOKE, one at a time
+- Others write the click path and hand it to the main manager, who sends the check deputy
+- Unit tests are not proof of a flow a user can reach: FLOW CHECK is (R8)
+- Builders never verify their own work: they ship a click path, someone who did not build it drives the UI
+- What a browser cannot prove goes on a standing "needs a real device" list, never counted as verified
+- UI CHECK: the real page against the approved mock or the before screenshot, item by item (layout, content, states, behaviour), desktop and phone width; list every difference
+- A layout, content or behaviour difference = not done, back to the builder
+- A difference from the real UI theme (colours, fonts, spacing tokens) is fine: keep the real theme, list it as "theme difference" in the report
+- The owner says pass = pass; agents follow his final decision. Only a critical problem (crash, wrong data, security) goes to him
+- Ask `agent-runtime.sh browser` first: chrome, headless or none
+- cloud → headless Chromium via Playwright, the extension can never reach a VM
+- none → print the click path under NEEDS HUMAN E2E and stop, wait for the human. Never silent, never forever
+```
+
+W6: the fast-lane deputy line becomes "- Fast-lane deputy (Sonnet 5, medium) = `agents/fast-lane-deputy.md`, new one per small task: works in its own git worktree, writes the example tests of a small logic task, runs its blocks, pushes a branch"; add after the merge deputy line "- Check deputy (Sonnet 5, medium) = `agents/check-deputy.md`, read and browser tools only: DIFF READ, FLOW CHECK, UI CHECK, re-checks after a bounce, RELEASE SMOKE; a verdict with evidence, the main manager decides" and "- The main manager stays free for the human: it runs no long check itself; it sends the check deputy and gets a short verdict with evidence".
+
+W8: add "- The merge deputy runs `agent-file.sh checks gate <task>` first: GATE REFUSED → no merge, the task goes back", "- A failed run after the merge is undone with `git reset --merge ORIG_HEAD`, never --hard (that wipes the uncommitted agent_*.txt of the main checkout)", "- Every merge ends with cleanup, in every case: a task manager pane, a subagent's git worktree, a human-direct Helper (its own pane stays), a worktree on another machine (agents/merge-deputy.md)", "- The worktree line of a merged task is always removed or rewritten at merge, also when the folder stays", "- human-direct protects only the human's own session pane, not every pane in that worktree; the sweep closes a pane that never got a prompt and is idle over 30 minutes (`unused_pane_min`), and names it", "- The sweep prunes a LAUNCH record whose pid is dead or whose pane is gone; its table never lists main or the release branch; a worktree with a live LAUNCH record is \"live agent\"", "- The plain list shows what --apply would remove; --apply is main manager only"; the Sweep line becomes "- Sweep: `bin/agent-cleanup.sh --apply` after every merge, at session start and when the last open task closes (todo empty, no live worktree). The scripts run it, no loop".
+
+W9: "- Small task (fast lane) → spawn a new deputy subagent, it does the task. No worktree" becomes "- Small task (fast lane) → a new deputy subagent in its own git worktree (Agent isolation worktree); it pushes a branch, a merge deputy merges it" + "- Several small tasks run side by side and never share a checkout (owner 1A 2026-11-25; 21 tasks done this way, median 22 minutes)"; "- Otherwise → new worktree (W7). Never spawn a worktree for a small task" becomes "- Otherwise → new worktree (W7). Never an Orca worktree and a task manager for a small task"; add "- `todo done <X>` releases every task queued after X", "- At every wake (a report, a watch signal, a human message) the main manager first runs `agent-file.sh next` and dispatches what can start: a free slot under the machine caps, RAM under the cap, no open task on the same files", "- A task the owner already approved needs no new question".
+
+W15: add "- After a watch wake the first action is to start the watch again, then handle the signal", "- The watch also wakes the main manager when a slot is free and a task is queued (WATCH SLOT)", "- A board warning (watch not running, not confirmed, a pane without a task line) reaches the main manager through `agent-file.sh next` and the board warning hook; it reacts in the same turn".
+
+S1: "- Core paths of a repo (`level3_paths`, `level4_paths`) live in its committed `agent_repo.conf` at the main repo root, not in Configure" becomes "- Repo facts (core paths, guard tests, test commands, edges, real-data access) live in the committed `agent_repo.conf` at the main repo root, not in Configure (R8)".
+
+F. Map: "Risk types: R8" becomes "Check blocks: R8"; the tree gets "  ├── Check deputy       (Sonnet 5, medium)  diff read, flow and UI checks, release smoke; one at a time on the browser" and the main manager line "(Opus 5.5, xhigh · the main chat · free for the human)"; scripts: "bin/agent-level.sh   the blocks a diff triggers (R8): agent-level.sh check --base <ref>", "bin/agent_blocks.py  the one table of blocks and triggers (R8)", "bin/agent-board-warn.sh  hook: a new or changed board warning into the main manager's context"; commands: "bin/agent-file.sh next  the queued tasks that can start now, then the board warnings", "bin/agent-file.sh checks gate <task> --dir <path>  the merge gate"; Files table: a row for `agent_repo.conf` (init, agents via `edge add` / who reads: agent-level.sh, the gate, init).
+Every other "type", "level" or "R8 check" word in PRINCIPLES.md, skills and agents goes (tests/test_check_rules.py LEVEL_WORDS).
