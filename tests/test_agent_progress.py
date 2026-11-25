@@ -115,11 +115,6 @@ BOUNDS = {"board_watch_sec": (1, 3600), "statusline_refresh_sec": (1, 3600)}   #
 CLEAR = "\x1b[H\x1b[2J"
 
 
-def read(*parts):
-    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
-        return fh.read()
-
-
 class StageCase(tb.BoardCase):
     lang = "zh"
 
@@ -385,45 +380,7 @@ class TestWatchEnglish(TestWatch):
 # ---------------------------------------------------------------- config
 
 
-class TestSettingsWritesWeights(tb.BoardCase):
-    script = "agent-settings.sh"
-
-    def test_set_is_refused(self):
-        r = self.repo.run("agent-settings.sh", "stage_workers", "50")
-        self.assertEqual(r.returncode, 1)
-        self.assertFalse(os.path.exists(self.repo.path("agent.conf")))
-
-
 # ---------------------------------------------------------------- skills
-
-
-def brief_block(text):
-    start = text.index("## Task manager brief")
-    end = text.index("## Cross-repo brief")
-    return text[start:end]
-
-
-class TestSkills(unittest.TestCase):
-    CMD = '${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" '
-
-    def test_the_brief_names_every_task_manager_stage(self):
-        block = brief_block(read("skills", "dispatch", "SKILL.md"))
-        for word in STAGES[:8]:
-            with self.subTest(stage=word):
-                self.assertIn(self.CMD + word, block)
-        self.assertIn(self.CMD + "workers <i>/<m>", block)
-
-    def test_the_merge_skill_names_e2e_and_merge(self):
-        text = read("skills", "merge", "SKILL.md")
-        self.assertIn(self.CMD + "e2e", text)
-        self.assertIn(self.CMD + "merge", text)
-        self.assertLess(text.index(self.CMD + "e2e"), text.index(self.CMD + "merge"))
-
-    def test_principles_show_todo_names_the_stage_record(self):
-        text = read("PRINCIPLES.md")
-        w14 = text[text.index("W14. Todo board"):text.index("W15. Watch")]
-        self.assertIn("todo stage", w14)
-        self.assertIn("progress", w14.lower())
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ import subprocess
 import shutil
 import stat
 import tempfile
+from scripthelp import BIN  # noqa: E402
 
 
 def read(*parts):
@@ -625,3 +626,442 @@ class TestRuleAndReleaseVersion(unittest.TestCase):
         ver = json.loads(read(".claude-plugin", "plugin.json"))["version"]
         # test-levels (2026-11-20) released 0.36.0 on top: at least 0.35.0, like the other release tests
         self.assertGreaterEqual(tuple(int(x) for x in ver.split(".")), (0, 35, 0))
+
+
+TIME_LINE = "TIME: est <n>m, actual <n>m, wait <n>m"
+
+
+DATA_KEYS = ["repo", "type", "lane", "mock", "est", "work", "wait", "clock",
+             "bounces", "workers", "files", "lines", "tests", "adds"]
+
+
+DONE_FACTS = ["--work", "--wait", "--bounces", "--workers", "--mock", "--lane",
+              "--type", "--tests", "--adds"]
+
+
+def text_between(text, start, end):
+    """The text from the line that starts with `start` up to `end`."""
+    a = text.index(start)
+    return text[a:text.index(end, a)]
+
+
+class TestPrinciplesW11Time(unittest.TestCase):
+
+    def w11(self):
+        return text_between(read("PRINCIPLES.md"), "W11. Time", "W12.")
+
+    def test_every_w11_rule_is_one_dash_line(self):
+        lines = [l for l in self.w11().splitlines()[1:] if l.strip()]
+        self.assertGreaterEqual(len(lines), 6)
+        for line in lines:
+            with self.subTest(line=line):
+                self.assertTrue(line.startswith("- "), line)
+
+    def test_w11_no_rule_line_is_long(self):
+        for line in self.w11().splitlines():
+            with self.subTest(line=line):
+                self.assertLessEqual(len(line), 170, line)
+
+    def test_w11_the_estimate_is_agent_work_only(self):
+        self.assertRegex(self.w11().lower(), r"estimate = agent work")
+
+    def test_w11_names_the_waits(self):
+        text = self.w11().lower()
+        for wait in ("mock gate", "owner question", "review", "hold", "suite slot"):
+            with self.subTest(wait=wait):
+                self.assertIn(wait, text)
+
+    def test_w11_has_the_new_time_line(self):
+        self.assertIn(TIME_LINE, self.w11())
+
+    def test_w11_says_actual_is_agent_work(self):
+        self.assertRegex(self.w11().lower(), r"actual = agent work")
+
+    def test_the_old_human_minutes_are_gone(self):
+        self.assertNotIn("human <n>m", read("PRINCIPLES.md"))
+
+    def test_w11_the_main_manager_passes_the_numbers_to_todo_done(self):
+        text = self.w11()
+        self.assertIn("todo done", text)
+        self.assertIn("main manager", text.lower())
+
+    def test_w11_keeps_the_two_times_rule_on_work(self):
+        self.assertRegex(self.w11(), r"(?i)work over 2× estimate")
+
+    def test_w11_a_time_question_gets_a_duration_and_a_clock_time(self):
+        text = self.w11().lower()
+        for phrase in ("time question", "duration", "clock time", "needed next",
+                       "agent-file.sh eta"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+
+    def test_w11_still_points_at_the_time_table(self):
+        self.assertIn("bin/agent-file.sh time", self.w11())
+
+    def test_r5_names_the_data_block_and_its_keys(self):
+        r5 = text_between(read("PRINCIPLES.md"), "R5. Task files", "R6.")
+        self.assertIn("`data`", r5)
+        for key in DATA_KEYS:
+            with self.subTest(key=key):
+                self.assertRegex(r5, r"\b%s\b" % key)
+
+    def test_r5_no_longer_says_est_slash_actual(self):
+        r5 = text_between(read("PRINCIPLES.md"), "R5. Task files", "R6.")
+        self.assertNotIn("est/actual", r5)
+
+    def test_w8_the_deputy_passes_the_facts_and_the_merge_commit(self):
+        w8 = text_between(read("PRINCIPLES.md"), "W8. Merge and cleanup", "W9.")
+        self.assertIn("todo done", w8)
+        self.assertIn("--merge", w8)
+        self.assertIn("facts", w8.lower())
+
+
+class TestDispatchSkillTime(unittest.TestCase):
+
+    def text(self):
+        return read("skills", "dispatch", "SKILL.md")
+
+    def brief(self):
+        return text_between(self.text(), "## Task manager brief", "## Cross-repo brief")
+
+    def test_step_1_the_estimate_is_agent_work_only(self):
+        step1 = text_between(self.text(), "\n1. ", "\n2. ")
+        self.assertIn("agent work only", step1.lower())
+        self.assertIn("wait", step1.lower())
+
+    def test_step_1_still_reads_the_time_table(self):
+        step1 = text_between(self.text(), "\n1. ", "\n2. ")
+        self.assertIn("agent-file.sh time", step1)
+
+    def test_a_fast_lane_task_is_closed_with_its_work_minutes(self):
+        step2 = text_between(self.text(), "\n2. ", "\n3. ")
+        self.assertIn("todo done", step2)
+        self.assertIn("--lane fast", step2)
+        self.assertIn("--work", step2)
+
+    def test_the_brief_report_has_the_new_time_line(self):
+        self.assertIn(TIME_LINE, self.brief())
+
+    def test_the_old_human_minutes_are_gone(self):
+        self.assertNotIn("human <n>m", self.text())
+
+    def test_the_brief_says_what_counts_as_wait(self):
+        report = [l for l in self.brief().splitlines() if l.startswith("REPORT:")][0]
+        for phrase in ("agent work only", "mock gate", "suite slot"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, report.lower())
+
+    def test_the_brief_report_has_a_facts_line(self):
+        brief = self.brief()
+        self.assertIn("FACTS:", brief)
+        facts = brief[brief.index("FACTS:"):].splitlines()[0]
+        for word in ("type", "lane", "mock", "bounces", "workers", "tests",
+                     "scope adds"):
+            with self.subTest(word=word):
+                self.assertIn(word, facts)
+
+    def test_the_brief_names_the_types(self):
+        brief = self.brief()
+        for kind in ("page", "server", "script", "docs", "cloud", "app", "data",
+                     "mixed"):
+            with self.subTest(type=kind):
+                self.assertRegex(brief, r"\b%s\b" % kind)
+
+    def test_the_heartbeat_carries_the_work_minutes(self):
+        beat = [l for l in self.brief().splitlines() if l.startswith("HEARTBEAT:")][0]
+        self.assertIn("step <n> of 7", beat)
+        self.assertIn("work <m>m", beat)
+
+    def test_the_heartbeat_still_starts_the_old_way(self):
+        # the city reads "HEARTBEAT <name>: step <n>"
+        self.assertIn('"HEARTBEAT <name>: step <n> of 7, ', self.brief())
+
+    def test_a_time_question_is_answered_with_the_eta_line(self):
+        text = self.text()
+        self.assertIn("agent-file.sh eta", text)
+        low = text.lower()
+        for phrase in ("time question", "clock time", "needed next",
+                       "--step", "--work-so-far"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, low)
+
+    def test_the_eta_call_uses_the_plugin_root(self):
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh eta", self.text())
+
+
+class TestMergeSkillTime(unittest.TestCase):
+
+    def text(self):
+        return read("skills", "merge", "SKILL.md")
+
+    def test_a_report_with_no_time_line_bounces(self):
+        step1 = text_between(self.text(), "\n1. ", "\n2. ")
+        self.assertIn("TIME", step1)
+        self.assertIn("wait", step1.lower())
+
+    def test_the_deputy_brief_carries_the_todo_done_arguments(self):
+        text = self.text()
+        self.assertIn("todo done arguments:", text)
+        line = text[text.index("todo done arguments:"):].splitlines()[0]
+        for fact in DONE_FACTS:
+            with self.subTest(fact=fact):
+                self.assertIn(fact, line)
+
+    def test_the_brief_no_longer_says_five_values(self):
+        self.assertNotIn("all five values", self.text())
+
+    def test_it_says_where_the_numbers_come_from(self):
+        text = self.text()
+        self.assertIn("FACTS", text)
+        self.assertRegex(text, r"(?i)actual = agent work|agent work only")
+
+
+class TestCloseCaseSkillTime(unittest.TestCase):
+
+    def text(self):
+        return read("skills", "close-case", "SKILL.md")
+
+    def test_the_report_keeps_work_and_wait_apart(self):
+        text = self.text()
+        self.assertIn("TIME", text)
+        self.assertRegex(text.lower(), r"work and wait apart")
+
+    def test_close_now_keeps_the_work_so_far_on_the_todo_line(self):
+        part = text_between(self.text(), "**close now**", "\n3. ")
+        self.assertIn("work so far", part.lower())
+        self.assertIn("wait", part.lower())
+
+    def test_close_now_still_keeps_the_todo_line_open(self):
+        part = text_between(self.text(), "**close now**", "\n3. ")
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add", part)
+
+    def test_no_old_human_minutes(self):
+        self.assertNotIn("human <n>m", self.text())
+
+
+class TestMergeDeputyTime(unittest.TestCase):
+
+    def text(self):
+        return read("agents", "merge-deputy.md")
+
+    def test_the_brief_gives_the_todo_done_arguments(self):
+        line = [l for l in self.text().splitlines() if l.startswith("Your brief gives")][0]
+        self.assertIn("<todo done arguments>", line)
+
+    def test_step_7_passes_them_and_the_merge_commit(self):
+        step7 = [l for l in self.text().splitlines() if l.startswith("7. ")][0]
+        self.assertIn('agent-file.sh todo done "<name>"', step7)
+        self.assertIn("<todo done arguments>", step7)
+        self.assertIn("--merge", step7)
+
+    def test_step_7_still_removes_the_worktree_line(self):
+        step7 = [l for l in self.text().splitlines() if l.startswith("7. ")][0]
+        self.assertIn('agent-file.sh worktree rm "<worktree path>"', step7)
+
+
+class TestCloseCaseHookTime(unittest.TestCase):
+
+    def test_the_hook_asks_for_wait_not_human_minutes(self):
+        text = read("skills", "close-case", "SKILL.md")
+        self.assertIn("TIME: est <n>m, actual <n>m, wait <n>m", text)
+        self.assertNotIn("human <n>m", text)
+
+
+class TestReadmeTime(unittest.TestCase):
+
+    def test_the_command_list_shows_the_time_commands(self):
+        text = read("PRINCIPLES.md")
+        for command in ("bin/agent-file.sh time", "bin/agent-file.sh data",
+                        "bin/agent-file.sh eta"):
+            with self.subTest(command=command):
+                self.assertIn(command, text)
+
+    def test_the_time_line_no_longer_says_estimate_vs_actual(self):
+        self.assertNotIn("estimate vs actual", read("PRINCIPLES.md"))
+
+    def test_the_files_table_says_the_completed_file_is_data_too(self):
+        row = [l for l in read("PRINCIPLES.md").splitlines()
+               if l.startswith("| `agent_completed.txt`")][0]
+        self.assertRegex(row.lower(), r"data")
+
+
+def section_lines(text, start, end):
+    """Lines from the line starting with `start` up to (not incl.) the line starting with `end`."""
+    out, inside = [], False
+    for line in text.splitlines():
+        if line.startswith(start):
+            inside = True
+        elif inside and line.startswith(end):
+            break
+        if inside:
+            out.append(line)
+    return out
+
+
+class TestPrinciplesS8Trim(unittest.TestCase):
+    def setUp(self):
+        self.text = read("PRINCIPLES.md")
+        self.s8 = [l for l in section_lines(self.text, "S8.", "S9.") if l.startswith("- ")]
+
+    def has(self, lines, *words):
+        hits = [l for l in lines if all(w in l for w in words)]
+        self.assertTrue(hits, "no line with %r in:\n%s" % (words, "\n".join(lines)))
+
+    def test_s8_lines_are_terse(self):
+        for line in self.s8:
+            with self.subTest(line=line[:60]):
+                self.assertLessEqual(len(line), 200, line)
+
+    def test_s8_state_add(self):
+        self.has(self.s8, "agent-file.sh state add")
+
+    def test_s8_state_trim_and_the_day_archive(self):
+        self.has(self.s8, "state trim", "agent_state.trim-")
+
+    def test_s8_the_start_warning(self):
+        self.has(self.s8, "Over 300 lines (fixed)", "STATE LONG")   # settings-configure: a constant
+
+    def test_s8_the_auto_clear(self):
+        self.has(self.s8, "Compacted 2 times (fixed)", "empty")
+
+    def test_s8_goal(self):
+        self.has(self.s8, "/goal", "GOAL:")
+
+    def test_the_old_hand_clear_line_is_gone(self):
+        self.assertNotIn("the main manager types it into the pane", self.text)
+
+    def test_w8_housekeep_trims(self):
+        self.has(section_lines(self.text, "W8.", "W9."), "housekeep", "state trim")
+
+    def test_w14_state_add(self):
+        self.has(section_lines(self.text, "W14.", "W15."), "state add")
+
+
+class TestDispatchSkillTrim(unittest.TestCase):
+    def setUp(self):
+        self.text = read("skills", "dispatch", "SKILL.md")
+        self.lines = self.text.splitlines()
+
+    def test_the_brief_has_a_goal_line(self):
+        goal = [l for l in self.lines if l.startswith("GOAL: task manager <name>: done when")]
+        self.assertEqual(len(goal), 1, "one GOAL: line in the brief template")
+        for word in ("DONE PASS", "DONE FAIL", "pushed", "QUESTION:", "MOCK READY", "CLOSE CASE", "AUTO CLEAR"):
+            self.assertIn(word, goal[0])
+
+    def test_the_brief_state_line_says_state_add(self):
+        state = [l for l in self.lines if l.startswith("STATE:")]
+        self.assertTrue(state)
+        self.assertIn("agent-file.sh state add", state[0])
+
+    def test_the_main_manager_types_goal_at_an_idle_prompt(self):
+        hits = [l for l in self.lines if "/goal" in l and "tui-idle" in l]
+        self.assertTrue(hits, "a step that waits for tui-idle and types /goal")
+
+    def test_goal_again_after_an_answer(self):
+        hits = [l for l in self.lines if "/goal" in l and "QUESTION" in l and ("mock yes" in l or "rules yes" in l)]
+        self.assertTrue(hits, "a line: re-type /goal after a QUESTION answer and a mock or rules answer")
+
+
+class TestReadmeAndReleaseTrim(unittest.TestCase):
+    def test_readme_names_state_trim(self):
+        self.assertIn("state trim", read("PRINCIPLES.md"))
+
+    def test_release_0_37_0(self):
+        data = json.loads(read(".claude-plugin", "plugin.json"))
+        # board-waiting ships 0.38.0 (2026-11-20): 0.37.0 or later
+        self.assertGreaterEqual(tuple(int(n) for n in data["version"].split(".")), (0, 37, 0))
+
+
+class TestWiredInEstimate(unittest.TestCase):
+
+    def test_the_dispatch_estimate_step_runs_the_estimator(self):
+        step1 = text_between(read("skills", "dispatch", "SKILL.md"), "\n1. ", "\n2. ")
+        for word in ("${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh estimate", "--lane", "--mock",
+                     "--type", "agent-file.sh time", "range", "like"):
+            with self.subTest(word=word):
+                self.assertIn(word, step1)
+
+    def test_the_rubric_numbers_left_the_skill(self):
+        step1 = text_between(read("skills", "dispatch", "SKILL.md"), "\n1. ", "\n2. ")
+        for old in ("45 to 60", "60 to 90", "90 to 120", "5 to 15"):
+            with self.subTest(old=old):
+                self.assertNotIn(old, step1)
+
+    def test_the_time_rules_name_the_estimator(self):
+        w11 = text_between(read("PRINCIPLES.md"), "W11. Time", "W12.")
+        self.assertIn("bin/agent-file.sh estimate", w11)
+        self.assertIn("bin/agent-file.sh time", w11)
+        self.assertNotIn("pick a rubric row", w11)
+
+    def test_the_readme_lists_it(self):
+        text = read("PRINCIPLES.md")
+        for word in ("bin/agent-file.sh estimate", "bin/agent-file.sh backtest",
+                     "bin/agent-file.sh retrain", "bin/agent_estimate.py", "`agent_estimate.txt`"):
+            with self.subTest(word=word):
+                self.assertIn(word, text)
+
+    def test_the_usage_of_agent_file_names_the_new_commands(self):
+        head = read("bin", "agent-file.sh").split("\nset -eu")[0]
+        for word in ("agent-file.sh estimate", "agent-file.sh backtest",
+                     "agent-file.sh retrain", "data [--what]"):
+            with self.subTest(word=word):
+                self.assertTrue(word in head, "the usage block does not name: " + word)
+
+
+class TestWiredInBlend(unittest.TestCase):
+
+    def test_the_dispatch_step_writes_the_guess_first(self):
+        skill = read("skills", "dispatch", "SKILL.md")
+        step1 = text_between(skill, "\n1. ", "\n2. ")
+        self.assertIn("--guess", step1)
+        self.assertLess(step1.index("guess"), step1.index("agent-file.sh estimate"), step1)
+        add = [l for l in skill.splitlines() if "agent-file.sh todo add" in l]
+        self.assertTrue(add, "the skill shows the todo add line")
+        self.assertTrue(all("--guess" in l for l in add), add)
+
+    def test_the_time_rules_name_the_guess(self):
+        w11 = text_between(read("PRINCIPLES.md"), "W11. Time", "W12.")
+        self.assertIn("--guess", w11)
+
+    def test_the_readme_and_the_usage_name_the_guess(self):
+        self.assertIn("--guess", read("PRINCIPLES.md"))
+        head = read("bin", "agent-file.sh").split("\nset -eu")[0]
+        for word in ("--guess", "guess=", "warning"):
+            with self.subTest(word=word):
+                self.assertIn(word, head)
+
+    def test_the_release(self):
+        ver = json.loads(read(".claude-plugin", "plugin.json"))["version"]
+        self.assertGreaterEqual(tuple(int(x) for x in ver.split(".")), (0, 34, 0))
+
+
+STAGES = ["brief", "register", "mock", "tests", "workers", "verify", "push", "report", "e2e", "merge"]
+
+
+def brief_block(text):
+    start = text.index("## Task manager brief")
+    end = text.index("## Cross-repo brief")
+    return text[start:end]
+
+
+class TestSkillsProgress(unittest.TestCase):
+    CMD = '${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" '
+
+    def test_the_brief_names_every_task_manager_stage(self):
+        block = brief_block(read("skills", "dispatch", "SKILL.md"))
+        for word in STAGES[:8]:
+            with self.subTest(stage=word):
+                self.assertIn(self.CMD + word, block)
+        self.assertIn(self.CMD + "workers <i>/<m>", block)
+
+    def test_the_merge_skill_names_e2e_and_merge(self):
+        text = read("skills", "merge", "SKILL.md")
+        self.assertIn(self.CMD + "e2e", text)
+        self.assertIn(self.CMD + "merge", text)
+        self.assertLess(text.index(self.CMD + "e2e"), text.index(self.CMD + "merge"))
+
+    def test_principles_show_todo_names_the_stage_record(self):
+        text = read("PRINCIPLES.md")
+        w14 = text[text.index("W14. Todo board"):text.index("W15. Watch")]
+        self.assertIn("todo stage", w14)
+        self.assertIn("progress", w14.lower())

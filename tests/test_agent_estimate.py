@@ -752,51 +752,6 @@ class TestSpeed(EstimateCase):
 
 # ---------------------------------------------------------------- wired in
 
-def read(*parts):
-    with open(os.path.join(ROOT, *parts)) as fh:
-        return fh.read()
-
-
-def section(text, start, end):
-    a = text.index(start)
-    return text[a:text.index(end, a)]
-
-
-class TestWiredIn(unittest.TestCase):
-
-    def test_the_dispatch_estimate_step_runs_the_estimator(self):
-        step1 = section(read("skills", "dispatch", "SKILL.md"), "\n1. ", "\n2. ")
-        for word in ("${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh estimate", "--lane", "--mock",
-                     "--type", "agent-file.sh time", "range", "like"):
-            with self.subTest(word=word):
-                self.assertIn(word, step1)
-
-    def test_the_rubric_numbers_left_the_skill(self):
-        step1 = section(read("skills", "dispatch", "SKILL.md"), "\n1. ", "\n2. ")
-        for old in ("45 to 60", "60 to 90", "90 to 120", "5 to 15"):
-            with self.subTest(old=old):
-                self.assertNotIn(old, step1)
-
-    def test_the_time_rules_name_the_estimator(self):
-        w11 = section(read("PRINCIPLES.md"), "W11. Time", "W12.")
-        self.assertIn("bin/agent-file.sh estimate", w11)
-        self.assertIn("bin/agent-file.sh time", w11)
-        self.assertNotIn("pick a rubric row", w11)
-
-    def test_the_readme_lists_it(self):
-        text = read("PRINCIPLES.md")
-        for word in ("bin/agent-file.sh estimate", "bin/agent-file.sh backtest",
-                     "bin/agent-file.sh retrain", "bin/agent_estimate.py", "`agent_estimate.txt`"):
-            with self.subTest(word=word):
-                self.assertIn(word, text)
-
-    def test_the_usage_of_agent_file_names_the_new_commands(self):
-        head = read("bin", "agent-file.sh").split("\nset -eu")[0]
-        for word in ("agent-file.sh estimate", "agent-file.sh backtest",
-                     "agent-file.sh retrain", "data [--what]"):
-            with self.subTest(word=word):
-                self.assertTrue(word in head, "the usage block does not name: " + word)
-
 
 KEYS3 = KEYS + ["guess"]
 

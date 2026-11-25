@@ -26,6 +26,7 @@ from unittest import mock
 import agent_city as ac  # noqa: E402
 from scripthelp import ScriptCase  # noqa: E402
 import stat
+import test_agent_board as tb  # noqa: E402  (the module only: its tests stay in their own module)
 
 
 class TestValidateNumbers(unittest.TestCase):
@@ -716,6 +717,15 @@ class TestYouCliWithTheSuffix(ScriptCase):
                             str(proc.pid)],
                            capture_output=True, text=True, env=self.repo._env(None), timeout=30)
         self.assertEqual((r.returncode, r.stdout), (0, "YOU: opus[1m] xhigh (model: flag, effort: flag)\n"))
+
+
+class TestSettingsWritesWeights(tb.BoardCase):
+    script = "agent-settings.sh"
+
+    def test_set_is_refused(self):
+        r = self.repo.run("agent-settings.sh", "stage_workers", "50")
+        self.assertEqual(r.returncode, 1)
+        self.assertFalse(os.path.exists(self.repo.path("agent.conf")))
 
 
 if __name__ == "__main__":
