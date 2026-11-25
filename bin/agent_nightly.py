@@ -1004,10 +1004,7 @@ NOT_STORED = "no working branch stored in this clone: run agent-init.sh or start
 
 def working_branch(root):
     """The working branch stored in this clone (section 34, F10): None when nothing is stored; never derived here."""
-    try:
-        return agent_conf.working_branch(root, derive=False)
-    except TypeError:
-        return agent_conf.working_branch(root)
+    return agent_conf.working_branch(root)
 
 
 def need_stored(root):

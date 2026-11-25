@@ -321,23 +321,33 @@ class Housekeep(object):
                                       ("refs/remotes/origin/", sw.origin_refs)):
                     tip = refs.get(b)
                     if tip and (refname + b) in sw.merged and tip not in fp:
+                        into = "origin/main"
+                        if not sw.git("merge-base", "--is-ancestor", tip,
+                                      "refs/remotes/origin/main").ok:
+                            wbr = sw.wb_ref()
+                            into = wbr[len("refs/remotes/"):] if wbr else into
                         self.merged_info = (
-                            "merged into origin/main (branch %s)" % b, None)
-                        return ("flag: todo %s: merged into origin/main "
-                                "(branch %s)" % (name, b))
-        res = sw.git("log", "--first-parent", "--format=%h %H %s",
-                     "refs/remotes/origin/main", long=True)
-        if res.ok:
+                            "merged into %s (branch %s)" % (into, b), None)
+                        return ("flag: todo %s: merged into %s "
+                                "(branch %s)" % (name, into, b))
+        wbr = sw.wb_ref()
+        bases = [("origin/main", "refs/remotes/origin/main")]
+        if wbr:
+            bases.append((wbr[len("refs/remotes/"):], wbr))
+        for label, ref in bases:
+            res = sw.git("log", "--first-parent", "--format=%h %H %s", ref, long=True)
+            if not res.ok:
+                continue
             for line in res.out.splitlines():
                 sha, _, rest = line.partition(" ")
                 full, _, subject = rest.partition(" ")
                 if subject == "Merge " + name or subject.startswith(
                         "Merge " + name + " "):
                     self.merged_info = (
-                        "merged into origin/main (commit %s %s)"
-                        % (full[:7], subject), full[:7])
-                    return ("flag: todo %s: merged into origin/main "
-                            "(commit %s %s)" % (name, sha, subject))
+                        "merged into %s (commit %s %s)"
+                        % (label, full[:7], subject), full[:7])
+                    return ("flag: todo %s: merged into %s "
+                            "(commit %s %s)" % (name, label, sha, subject))
         return None
 
     def todos(self, limit=None):

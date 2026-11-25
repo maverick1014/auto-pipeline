@@ -34,7 +34,7 @@ agent-cleanup.sh — remove what is finished: merged worktrees and branches, dea
 --files never goes with --apply or --short. --yes needs a value and --files; all and none are not mixed with ids.
 Nothing is removed without --yes.
 
-Main manager only. A worktree is removed only when it is merged into origin/main,
+Main manager only. A worktree is removed only when it is merged into the working branch or the production branch,
 pushed, clean, on a branch, with no live agent and no working, final or
 human-direct line in agent_worktree.txt. Never --force. A paired machine's
 worktree is listed, never removed. Main and the release branch are never listed.

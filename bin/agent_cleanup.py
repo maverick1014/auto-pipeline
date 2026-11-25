@@ -282,10 +282,7 @@ class Sweep(object):
         if self._wb is None:
             wb, prefix = "", "ap-main-"
             try:
-                try:
-                    wb = agent_conf.working_branch(self.root, derive=False) or ""
-                except TypeError:
-                    wb = agent_conf.working_branch(self.root) or ""
+                wb = agent_conf.working_branch(self.root) or ""
                 setting = str(agent_conf.get("working_branch")).strip()
                 if "<name>" in setting:
                     prefix = setting.split("<name>")[0]
