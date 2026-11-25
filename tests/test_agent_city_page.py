@@ -862,9 +862,15 @@ class TestRemoved(unittest.TestCase):
         for event in ("keyup", "keypress"):
             with self.subTest(event=event):
                 self.assertNotIn(event, text)
-        self.assertEqual(text.count("keydown"), 2, "two keydown listeners: Esc stops following, the message box")
-        self.assertEqual(len(re.findall(r"document\.addEventListener\('keydown',", text)), 2,
+        # city-office-2: a third listener serves the room editor only (R, Delete, Ctrl/Cmd+Z): it leaves at once
+        # unless the editor is open and the key was not typed into a field
+        self.assertEqual(text.count("keydown"), 3, "three keydown listeners: Esc, the message box, the room editor")
+        self.assertEqual(len(re.findall(r"document\.addEventListener\('keydown',", text)), 3,
                          "every keydown listener sits on document")
+        bodies_all = re.findall(r"document\.addEventListener\('keydown', e => \{\n(.*?)\n\}\);", text, re.S)
+        ed = [b for b in bodies_all if b.strip().startswith("if (!ED ")]
+        self.assertEqual(len(ed), 1, "the editor's listener leaves first thing when the editor is closed")
+        self.assertIn("INPUT|SELECT|TEXTAREA", ed[0])
 
         # 1. the page-wide one: Esc only
         # city-office: Esc first closes an open sheet (picker, renovation, design box), else stops following
@@ -875,9 +881,9 @@ class TestRemoved(unittest.TestCase):
         self.assertEqual(re.findall(r"e\.key\s*[!=]==\s*'([^']+)'", esc[0]), ["Escape"], "Esc only")
 
         # 2. the message box's own: nothing happens for a key typed anywhere else
-        m = re.search(r"document\.addEventListener\('keydown', e => \{\n(.*?)\n\}\);", text, re.S)
-        self.assertIsNotNone(m, "the message box's keydown listener")
-        lines = [ln.strip() for ln in m.group(1).splitlines() if ln.strip()]
+        box = [b for b in re.findall(r"document\.addEventListener\('keydown', e => \{\n(.*?)\n\}\);", text, re.S) if "say-text" in b]
+        self.assertEqual(len(box), 1, "the message box's keydown listener")
+        lines = [ln.strip() for ln in box[0].splitlines() if ln.strip()]
         self.assertEqual(lines[:2], ["const ta = e.target;", "if (!ta || ta.id !== 'say-text') return;"],
                          "it leaves first thing unless the key was typed in the message box")
         body = "\n".join(lines[2:])
@@ -888,7 +894,9 @@ class TestRemoved(unittest.TestCase):
         self.assertEqual(re.findall(r"e\.key\s*[!=]==\s*'([^']+)'", fn.group(1)), ["Enter"], "Enter only")
 
         # and no other code looks at a pressed key
-        self.assertEqual(len(re.findall(r"\be\.key\s*[!=]==", text)), 2, "a key is read in those two places only")
+        # city-office-2: plus the room editor's own four (r, R, Delete, Backspace), only while it is open
+        self.assertEqual(len(re.findall(r"\be\.key\s*[!=]==", text)), 6, "a key is read in those three places only")
+        self.assertEqual(sorted(re.findall(r"e\.key\s*===\s*'([^']+)'", ed[0])), ["Backspace", "Delete", "R", "r"])
 
 
 class TestKept(unittest.TestCase):

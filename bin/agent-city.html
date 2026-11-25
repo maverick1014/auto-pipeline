@@ -456,14 +456,52 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .dp-msg.err{background:var(--ask-bg);color:var(--ask-ink)}
 .dp-rules summary{cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink-2)}
 .dp-rules ul{margin:6px 0 0;padding-left:18px;display:grid;gap:5px;font-size:12px;color:var(--ink-2)}
-.dy-in{box-sizing:border-box;width:100%;border:1.5px solid var(--line);border-radius:10px;background:var(--panel-2);color:var(--ink);font:13px/1.4 var(--round);padding:7px 10px}
-.dy-cols{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
-.dyc{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2);min-width:0}
-.dyc input{width:30px;height:26px;padding:0;border:1.5px solid var(--line);border-radius:6px;background:none;flex:none}
-.dy-slots{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
-.dy-slots label{display:grid;gap:3px;font-size:12px}
-.dy-slots small{color:var(--ink-3)}
-.dy-slots select{font:13px var(--round);padding:5px;border:1.5px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--ink);min-width:0}
+.stage.editing .rail,.stage.editing .rail-tab,.stage.editing .lift,.stage.editing .floorsign,.stage.editing .proto,.stage.editing .win,.stage.editing .win-tab,.stage.editing .ask-panel,.stage.editing .follow,.stage.editing .dpop,.stage.editing .ov,.stage.editing .tags{display:none!important}
+.stage.editing .cam{right:auto;left:12px;bottom:12px}
+.dp-sw{display:flex;flex-wrap:wrap;gap:6px}.dp-sw .sw{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ink-2)}.dp-sw .sw i{width:14px;height:14px;border-radius:4px;border:1px solid rgba(0,0,0,.15);display:inline-block}
+.floorsign .frs{cursor:pointer}
+.edui{position:absolute;inset:0;z-index:9;pointer-events:none;font:13px/1.35 var(--round);color:var(--ink)}
+.edui>*{pointer-events:auto}
+.edui .btn{font:600 13px/1 var(--round)}.edui .btn.ic{min-width:34px;font-size:17px}.edui .btn.danger{color:#B3262B;border-color:#F1B7B9}
+.ed-top{position:absolute;top:10px;left:10px;right:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--panel);border:2px solid var(--ink);border-radius:14px;padding:7px 9px;box-shadow:0 3px 0 rgba(42,43,69,.18)}
+.ed-top .sp{flex:1}.ed-cnt{font-size:12px;color:var(--ink-3);white-space:nowrap}
+.ed-name{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-3)}.ed-name input{width:11em;border:1.5px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);font:600 13px/1 var(--round);padding:7px 9px}
+.seg{display:inline-flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden}.seg button{all:unset;cursor:pointer;padding:7px 11px;font:600 12px/1 var(--round);color:var(--ink-3)}.seg button.on{background:var(--ink);color:var(--paper)}
+.ed-left{position:absolute;top:var(--ed-top,70px);left:10px;bottom:56px;width:262px;display:flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:14px;box-shadow:0 3px 0 rgba(42,43,69,.18);overflow:hidden}
+.ed-tabs{display:flex;border-bottom:1.5px solid var(--line)}.ed-tabs button{all:unset;cursor:pointer;flex:1;text-align:center;padding:9px 2px;font:700 13px/1 var(--display);color:var(--ink-3)}.ed-tabs button.on{color:var(--ink);box-shadow:inset 0 -3px 0 var(--ink)}
+.ed-grid{touch-action:pan-y;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px;overflow:auto}
+.ed-card{all:unset;cursor:grab;display:grid;justify-items:center;gap:3px;border:1.5px solid var(--line);border-radius:12px;padding:6px 4px 8px;background:var(--panel-2);touch-action:pan-y;user-select:none}
+.ed-card:hover{border-color:var(--ink)}.ed-card img{width:84px;height:84px;display:block}.ed-card .ph{width:84px;height:84px;background:var(--line);border-radius:8px}.ed-card b{font:700 12px/1.1 var(--display)}.ed-card small{font-size:11px;color:var(--ink-3)}
+.ed-note{margin:0 10px 10px;font-size:12px;color:var(--ink-3)}
+.ed-styles{display:grid;gap:8px;padding:10px;overflow:auto}.ed-style{all:unset;cursor:pointer;display:grid;gap:5px;border:1.5px solid var(--line);border-radius:12px;padding:8px 10px;background:var(--panel-2)}.ed-style:hover{border-color:var(--ink)}
+.ed-style .pal{display:flex;gap:3px}.ed-style .pal i{flex:1;height:22px;border-radius:5px;border:1px solid rgba(0,0,0,.08)}.ed-style b{font:700 13px/1 var(--display)}
+.ed-surfs{display:grid;gap:6px;padding:10px;overflow:auto}.ed-surf{all:unset;cursor:pointer;display:flex;align-items:center;gap:9px;border:1.5px solid var(--line);border-radius:10px;padding:7px 9px;background:var(--panel-2);font-size:13px}
+.ed-surf.on,.ed-surf:hover{border-color:var(--ink)}.ed-surf i{width:26px;height:26px;border-radius:7px;border:1px solid rgba(0,0,0,.12);flex:none}
+.ed-right{position:absolute;top:var(--ed-top,70px);right:10px;width:236px;max-height:calc(100% - var(--ed-top,70px) - 58px);overflow:auto;display:grid;gap:9px;align-content:start;background:var(--panel);border:2px solid var(--ink);border-radius:14px;padding:10px;box-shadow:0 3px 0 rgba(42,43,69,.18);box-sizing:border-box}
+.ed-ins-h{display:grid;grid-template-columns:auto 1fr;column-gap:9px;align-items:center}.ed-ins-h img{width:54px;height:54px;grid-row:span 2}.ed-ins-h i.big{width:42px;height:42px;border-radius:10px;grid-row:span 2;border:1px solid rgba(0,0,0,.12)}
+.ed-right{position:absolute}.ed-x{all:unset;cursor:pointer;position:absolute;top:6px;right:8px;width:26px;height:26px;display:grid;place-items:center;font:700 18px/1 var(--round);color:var(--ink-3);border-radius:8px;z-index:1}.ed-x:hover{background:var(--panel-2);color:var(--ink)}
+.ed-ins-h b{font:700 15px/1.15 var(--display)}.ed-ins-h small{font-size:11px;color:var(--ink-3)}
+.ed-acts{display:grid;grid-template-columns:1fr 1fr;gap:6px}.ed-l{font:700 12px/1 var(--display);color:var(--ink-2);margin-top:2px}
+.ed-sw{display:flex;flex-wrap:wrap;gap:6px}.ed-sw .sw{all:unset;cursor:pointer;width:24px;height:24px;border-radius:7px;border:1px solid rgba(0,0,0,.15);box-sizing:border-box}
+.ed-sw .sw.on{outline:3px solid var(--ink);outline-offset:1px}.ed-sw .cust{width:auto;display:inline-flex;align-items:center;gap:4px;padding:0 6px;font-size:11px;color:var(--ink-3);background:var(--panel-2)}.ed-sw .cust input{width:20px;height:20px;border:0;padding:0;background:none}
+.ed-tips{margin:0;padding-left:18px;display:grid;gap:5px;font-size:12px;color:var(--ink-2)}
+.ed-msg{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);max-width:min(620px,calc(100% - 560px));min-width:280px;font-size:13px;padding:8px 12px;border-radius:11px;background:#EAF7EF;color:#1E6B45;border:1.5px solid #BFE6CF;box-sizing:border-box}
+.ed-msg{pointer-events:none!important}
+.ed-msg.err{background:#FDECEC;color:#B3262B;border-color:#F1B7B9}
+.ed-ghost{position:fixed;z-index:50;pointer-events:none;transform:translate(-50%,-60%);width:70px;height:70px;display:grid;place-items:center;border-radius:14px;background:rgba(255,255,255,.85);border:2px dashed var(--ink);font-size:28px}.ed-ghost img{width:64px;height:64px}
+.optb.new{border-color:#FFB800;background:#FFF8E1}.newtag{font-style:normal;font-size:11px;background:#FF7593;color:#fff;border-radius:6px;padding:1px 5px;margin-left:4px}
+@media (max-width:1100px){.ed-cnt{display:none}}
+.ed-top .btn,.ed-top .seg{flex:none}
+@media (max-width:760px){
+  .stage.editing .cam{display:none}
+  .ed-left{top:auto;bottom:10px;left:10px;right:10px;width:auto;height:38%}.ed-grid{grid-template-columns:repeat(4,1fr)}.ed-card img,.ed-card .ph{width:58px;height:58px}
+  .ed-right{top:auto;bottom:calc(38% + 64px);right:10px;left:10px;width:auto;max-height:26%}.ed-right.tips{display:none}
+  .ed-msg{bottom:calc(38% + 16px);max-width:calc(100% - 20px);min-width:0;width:calc(100% - 20px)}.ed-name input{width:8em}.ed-cnt{display:none}
+  .ed-top{gap:6px;padding:6px 7px}.ed-top .btn{padding:6px 9px}.ed-name span{display:none}
+}
+.ed-mats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.ed-mat{all:unset;cursor:pointer;display:grid;justify-items:center;gap:2px;border:1.5px solid var(--line);border-radius:9px;padding:4px 2px;background:var(--panel-2);font-size:11px;color:var(--ink-2)}
+.ed-mat img{width:40px;height:40px;border-radius:6px;display:block}.ed-mat.on{border-color:var(--ink);box-shadow:0 0 0 2px var(--ink) inset}
+.ed-surf span{display:grid}.ed-surf small{font-size:11px;color:var(--ink-3)}.ed-surf i{background-size:cover}.ed-ins-h i.big{background-size:cover}.ed-style .pal i.mt{background-size:cover}
 
 /* the designer's panel: example wishes */
 .dp-ex{display:flex;flex-wrap:wrap;gap:6px}
@@ -596,6 +634,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
           </button>
         </div>
         <section class="dpop" id="dPop" hidden data-t-aria="office.designAria"></section>
+        <section class="edui" id="edUI" hidden data-t-aria="ed.aria"></section>
         <div class="sheet-bg" id="renoBg" hidden><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="renoTitle" id="renoSheet"></div></div>
         <div class="sheet-bg" id="pickBg" hidden><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pickTitle" id="pickSheet"></div></div>
         <div class="ask-panel" id="ask" role="dialog" aria-labelledby="ask-title" hidden></div>
@@ -635,7 +674,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
    (data-t / data-t-aria / data-t-title / data-t-placeholder) is filled once, at start, by applyText(). */
 const LANG = '__CITY_LANG__';
 document.documentElement.lang = LANG === 'en' ? 'en' : 'zh-CN';
-const TEXT = { zh: { 'office.liftAria': '电梯', 'office.designAria': '这一层的设计', 'office.sep': '；', 'office.demoName': '名字要 1 到 20 个字', 'office.ex0': '温馨一点，多点植物', 'office.ex1': '冷色，简单干净', 'office.ex2': '加个收银台', 'office.ex3': '按你的想法来', 'slot.0': '左下角', 'slot.1': '下面中间', 'slot.2': '右边墙', 'color.accent': '主色', 'color.carpet': '地毯', 'color.manager_floor': '区经理室地板', 'color.pantry_floor': '茶水间地板', 'color.desk': '桌面', 'color.desk_leg': '桌脚', 'color.chair': '椅子', 'color.meeting_rug': '会议地毯', 'color.manager_rug': '区经理地毯', 'decor.robot': '机械臂', 'decor.conveyor': '传送带', 'decor.gears': '齿轮墙', 'decor.chart': '业绩柱状图', 'decor.plants': '植物角', 'decor.safe': '保险箱', 'decor.cabinets': '文件柜', 'decor.printer': '打印机', 'decor.bookshelf': '书柜', 'decor.clock': '老座钟', 'decor.cashier': '收银台', 'decor.goods': '货架', 'decor.menu': '菜单板', 'decor.scanner': '扫描仪', 'decor.lightbox': '看单灯箱', 'office.title': 'Agent 办公楼', 'office.signSub': '{n} 层 · 本机', 'office.zone.pantry': '茶水间', 'office.zone.room': '室', 'office.zone.meet': '会议角', 'office.lobby': '大堂', 'office.clickDoor': '点门进去', 'office.people': '人', 'office.renovating': '装修中…', 'office.lift': '电梯', 'office.floors': '层', 'office.outside': '楼外面', 'office.renovate': '装修', 'office.designBy': '设计：', 'office.pick': '选楼层', 'office.pickSub': '勾几个 repo，楼就有几层。一个 repo 一层，新勾的放在最上面。新 repo 进楼就像新公司搬进来：会问你自己装修，还是请室内设计师。', 'office.online': '{n} 个 session 在线', 'office.afterDone': '点完成后会问你要不要装修', 'office.notIn': '不在楼里', 'office.notHere': '不在这台电脑', 'office.designed': '装修：{name}', 'office.redo': '重新装修', 'office.up': '上移一层', 'office.down': '下移一层', 'office.atLeastOne': '至少留一层', 'office.done': '完成', 'office.pickUnknown': '没保存：有个 repo 服务器不认识。', 'office.pickBad': '没保存：楼层的选法不对（至少留一层）。', 'office.pickFail': '没保存：服务器没有回答，再试一次。', 'office.renoNew': '新公司搬进来了：{name}（{floor}）', 'office.renoAgain': '重新装修 {name}（{floor}）', 'office.renoAskNew': '要装修这一层吗？', 'office.renoAskAgain': '换个样子？', 'office.hire': '请室内设计师', 'office.recommended': '建议', 'office.hireNote': '你电脑上的一个 agent，角色和装修知识来自插件。你跟他说要求，他按办公楼的装修规则来做。', 'office.diy': '自己装修', 'office.diyNote': '自己填名字、挑颜色和摆设，保存前按规则检查。', 'office.skip': '先不装修', 'office.skipNote': '先用基本款，以后随时点楼层牌上的「装修」。', 'office.never': '算了', 'office.neverNote': '保持现在的样子。', 'office.hired': '请了室内设计师来装修 {floor}', 'office.skipped': '{floor} 先用基本款，没装修', 'office.skipFail': '{floor} 没能记下「先不装修」，服务器没有回答', 'office.diyTitle': '自己装修 {floor}', 'office.diyChecked': '每一项都按规则检查', 'office.diyName': '这层叫什么（最多 20 字）', 'office.diyNameHint': '例如：温馨小厨房', 'office.diyColors': '颜色', 'office.diyDecor': '摆设（每个位置挑一件，可以空着）', 'office.diyNone': '空着', 'office.save': '保存', 'office.undo': '撤销上一步', 'office.rules': '装修规则：谁能改、能改什么', 'office.rule1': '能改：名字、9 个颜色、3 个摆设位置。摆设从 15 件里挑，也可以空着。', 'office.rule2': '不能改：楼层大小；电梯、区经理室、助理桌、经理桌、茶水间、会议角的位置；人和桌子的数量。', 'office.rule3': '三种地板要够浅（亮度 55%–95%）；改坏了整份不收，这层保持上一版，错在哪一项会写出来。', 'office.saved': '保存好了', 'office.notSaved': '没保存：', 'office.saveFail': '没保存：服务器没有回答，再试一次。', 'office.diyLog': '你自己装修了 {floor}：{name}', 'office.undone': '撤销了上一步', 'office.undoneLog': '{floor} 撤销了上一步装修', 'office.undoEmpty': '没有上一步可以撤销', 'office.bye': '好了，你可以走了', 'office.byeLog': '{floor} 的室内设计师走了', 'office.byeFail': '{floor} 的室内设计师没能送走，服务器没有回答', 'office.noDesigner': '你电脑上的一个 agent，角色和装修规则来自插件', 'opt.helper': 'helper · 助理', 'opt.designer': 'designer · 设计师', 'office.noDesign': '还没装修', 'office.role.governor': '区经理', 'office.role.task-manager': '经理', 'office.role.helper': '助理', 'office.role.designer': '设计师', 'log.designChanged': '{floor} 的装修换成「{name}」', 'log.designBad': '{floor} 的装修没通过检查：{why}', 'btn.log': '动态', 'aria.city': '城市', 'aria.canvas': '3D 办公楼：每个小人是一个 agent', 'proto.banner': '原型 · 模拟数据', 'btn.zoomIn': '放大', 'btn.zoomOut': '缩小', 'btn.rotate': '转一下', 'btn.resetView': '回到默认视角', 'repo.all': '全部', 'aria.repos': '仓库：点一个飞过去', 'repo.goAria': '飞到 {name}', 'cap.hint': '已经是最远了 · 点「全部」看所有仓库','btn.close': '关闭', 'aria.toolbar': '控制', 'label.spawn': '派一个', 'opt.worker': 'worker · 不画出来', 'opt.taskManager': 'task manager · 经理', 'opt.fastLaneDeputy': 'fast-lane deputy · 不画出来', 'opt.mergeDeputy': 'merge deputy · 不画出来', 'btn.spawn': '派出', 'type.house': '住宅', 'type.shop': '商店', 'type.tower': '测试塔', 'type.workshop': '工坊', 'type.library': '图书馆', 'district.house': '住宅区', 'district.shop': '商业街', 'district.tower': '测试区', 'district.workshop': '工坊区', 'district.library': '图书馆区', 'chat.state.queued': '排队中', 'chat.state.delivered': '已送达', 'chat.state.undelivered': '没送到', 'chat.why.notListening': '它没在听，收不到', 'chat.state.sent': '在路上', 'chat.why.off': '那台电脑没开', 'chat.why.ended': '这个会话已经结束', 'chat.why.talkOff': '那台电脑不接收云端消息', 'chat.why.refused': '那台电脑没收这条消息', 'chat.why.flood': '发得太快，那台电脑没收', 'chat.new': '有新消息 ↓', 'hist.title': '历史（新的在下面）', 'hist.empty': '还没有记录', 'hist.all': '显示过程 {n}', 'hist.hide': '隐藏过程', 'hist.onlyMech': '只有过程记录，点「显示过程」看', 'hist.started': '出门：{task}', 'hist.stuck': '卡住了：{text}', 'hist.toLead': '去问经理', 'hist.toGov': '去问区经理', 'hist.waiting': '等你回话', 'hist.done': '完工，去休息', 'hist.left': '下班了', 'chat.task': '任务（派它时的话）', 'role.task-manager': '任务经理', 'role.worker': '工人', 'role.fast-lane-deputy': '快车道副手', 'role.merge-deputy': '合并副手', 'role.other': '帮手', 'era.village': '村', 'era.town': '镇', 'era.city': '城', 'quality.good': '整齐', 'quality.fair': '还行', 'quality.poor': '有点乱', 'who.governor': '区经理', 'who.owner': '你', 'who.terminal': '终端', 'state.spawn': '出门', 'state.to_plot': '去座位', 'state.building': '施工中', 'state.working': '干活', 'state.to_hall': '去问区经理', 'state.asking': '在问区经理', 'state.heard': '拿到答案', 'state.to_lead': '去问经理', 'state.at_lead': '问经理', 'state.back': '回座位', 'state.finishing': '完工了', 'state.to_rest': '去休息', 'state.resting': '休息中', 'state.leaving': '下班回家', 'status.need_approval': '等你批', 'status.asking_gov': '在问区经理', 'status.waiting_answer': '等你回答', 'status.waiting_reply': '等你回话', 'status.waiting': '等你', 'status.background': '后台在跑', 'status.idle': '空闲', 'stuck.permission': '要权限：{tool}', 'stuck.default': '需要你看一下', 'gov.away': '不在', 'gov.busy': '忙着', 'gov.home': '坐镇市政厅', 'top.work': '干活', 'top.ask': '找区经理', 'top.rest': '休息', 'top.done': '建成', 'top.stalled': '卡住的工地', 'top.pending': '等你', 'top.pendingAria': '等你决定 {n} 个，点开最早的一个', 'empty.noLand': '还没有领地 · 在一个 git 仓库里启动，或等代理开工', 'loading.text': '正在搬来素材…', 'loading.progress': '正在搬来素材 {n}/{total}', 'loading.error': '素材没加载成功：{err}', 'site.human': '亲自带', 'log.eraUpgrade': '{name} 开始升级成{era}', 'say.done': '完工啦！', 'log.leftWork': '{task} 下班了', 'gov.dispatch': '去吧：{task}', 'log.govDispatch': '区经理派出 {label}：{task}', 'log.siteMerged': '{branch} 合并进主线，工地收工', 'log.siteRemoved': '{branch} 的工地撤了', 'log.levelUp': '{label} 升到 {lv} 级', 'log.movedBack': '{label} 搬回{kind}区', 'log.demolished': '{label} 的文件都没了，拆掉', 'log.stuckDemo': '{task} 卡住了：“{text}” → 去问区经理', 'answer.default': '已回答', 'log.govAnswer': '区经理回答 {task}：“{text}”', 'log.doneRestPlain': '{task} 完工，去休息', 'log.doneRestBuilt': '{task} 完工：{kind}封顶，去休息', 'log.noplot': '{name} 没有空地了，先等等', 'gov.unknown': '未知', 'gov.busyRow': '在忙', 'gov.idleRow': '空闲', 'gov.title': '{name} 区经理', 'chain.lead': '经理', 'chain.leadTask': '经理 {task}', 'chat.empty': '还没有对话', 'chat.you.page': '你（页面）', 'chat.you.terminal': '你（终端）', 'chat.wait': '等它做完这一步', 'chat.loadError': '对话没加载出来，等会儿再打开看看。', 'kv.repo': '仓库', 'kv.branch': '分支', 'kv.doing': '在做', 'qa.ask': '问：“{q}”', 'qa.answer': '答：“{a}”', 'qa.waiting': '问：“{q}” 等回答…', 'act.makeStuck': '让它卡住', 'act.makeDone': '让它完工', 'act.makeLeave': '让它下班', 'act.demoNote': '这三个按钮只在原型里有，用来试流程。', 'gov.ownTag': 'main manager · 主对话', 'gov.tagLabel': '区经理 · main manager', 'pill.hall': '市政厅', 'gov.awayNote': '区经理不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等区经理。', 'hint.team': '团队', 'hint.noAgents': '还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。', 'hint.pickSomething': '点城里的小人、房子，或下面名单里的一行。', 'building.misplaced': ' · 放错区了', 'building.level': ' · 等级 {level}', 'building.district': '{kind}区', 'building.module': '{name} 模块', 'hint.files': '盖它的文件', 'hint.history': '改过它的人（新的在前）', 'detail.title': '详情', 'opt.other': '其他', 'opt.customAnswer': '自己写回答', 'btn.sendAnswer': '发送回答', 'kv.tool': '工具', 'kv.file': '文件', 'kv.url': '网址', 'said': '它说：{text}', 'kv.dir': '目录', 'field.denyReason': '拒绝理由（可以不填；填了会原样告诉它）', 'field.denyPlaceholder': '比如：先别删 dist/，里面有发布包', 'btn.allow': '批准', 'btn.deny': '拒绝', 'ask.asking': '在问', 'card.permission': '要权限', 'card.question': '在问你', 'ask.needsPermission': '要权限', 'pill.closed': '已关闭', 'aria.collapse': '收起（不回答）', 'foot.terminalAnswers': '终端里也能答，先答的算。', 'err.decideNetwork': '没发出去（连不上城市服务器）。终端里还能答。', 'err.decideStatus': '没发出去（{status}）。终端里还能答，可以再试一次。', 'proto.live': '实时 · 等服务器', 'proto.connected': '实时 · 已连接', 'proto.reconnecting': '实时 · 重连中…', 'demo.task.worker.0': '设置页表单', 'demo.task.worker.1': '登录 API', 'demo.task.worker.2': '导出 CSV', 'demo.task.worker.3': '深色模式', 'demo.task.worker.4': '小票打印', 'demo.task.worker.5': '搜索框', 'demo.task.worker.6': '分页', 'demo.task.worker.7': '价格计算', 'demo.task.worker.8': '库存提醒', 'demo.task.worker.9': '客户列表', 'demo.task.taskManager.0': '设置页', 'demo.task.taskManager.1': '登录', 'demo.task.taskManager.2': '报表', 'demo.task.taskManager.3': '打印', 'demo.task.taskManager.4': '库存', 'demo.task.fastLaneDeputy.0': '错别字', 'demo.task.fastLaneDeputy.1': '按钮颜色', 'demo.task.fastLaneDeputy.2': '图标大小', 'demo.task.fastLaneDeputy.3': '标题换行', 'demo.task.fastLaneDeputy.4': '空状态文案', 'demo.task.mergeDeputy.0': '合并 settings', 'demo.task.mergeDeputy.1': '合并 login', 'demo.task.mergeDeputy.2': '合并 report', 'demo.task.mergeDeputy.3': '合并 print', 'demo.qa.0.q': '测试名不清楚，用哪个？', 'demo.qa.0.a': '按默认，记进日志', 'demo.qa.1.q': 'API 路径用哪个？', 'demo.qa.1.a': '用 /api/settings', 'demo.qa.2.q': '要不要加分页？', 'demo.qa.2.a': '先不加，写进 ideas', 'demo.qa.3.q': '默认语言是？', 'demo.qa.3.a': 'zh，跟设置', 'demo.qa.4.q': '旧数据要迁移吗？', 'demo.qa.4.a': '要，先写测试', 'demo.qa.5.q': '这个文件能改吗？', 'demo.qa.5.a': '能，只改你那份', 'demo.qa.6.q': '可以跑这条命令吗？', 'demo.qa.6.a': '批了，继续', 'aria.needsApproval': '{task} 等你批，点开看', 'aria.needsAnswer': '{task} 等你回答，点开看', 'aria.govNeedsApproval': '区经理 等你批，点开看', 'aria.govNeedsAnswer': '区经理 等你回答，点开看', 'gov.waitCountdown': '区经理 {s}s', 'chat.sendError': '没发出去（连不上城市服务器）。', 'btn.findLead': '找组长：{name}', 'hint.readOnlySub': '它是子任务，这份对话只能看；有事去找组长。', 'placeholder.saySomething': '跟它说…', 'btn.send': '发送', 'label.ask': '问：', 'label.answer': '答：', 'label.awaitingAnswer': '等回答…', 'ask.permission': '{name} 要权限：{what} → 等你批', 'ask.toOwner': '{name} 问你：“{what}”', 'ask.toGov': '{name} 问区经理：“{what}”', 'ask.toGovNoGov': '{name} 问区经理：“{what}”，没有区经理在 → 等你回答', 'askphase.pass': '区经理：这个我定不了 → 等你回答 {name}', 'askphase.timeout': '区经理 {wait} 秒没回答 {name} → 等你', 'closed.routed': '{name} 的请求转到{who}处理：{what}', 'closed.answered': '{who}回答 {name}：“{text}”', 'closed.answeredDefault': '{who}已回答 {name}', 'closed.allowed': '{who}批准 {name}：{what}', 'closed.denied': '{who}拒绝 {name}：{what}', 'closed.deniedReason': '，理由：“{reason}”', 'closed.ended': '{who}结束了 {name}：{what}', 'why.permission': '权限只由你来批，区经理不批。', 'why.gov': '区经理定不了，交给你。', 'why.timeout': '区经理 {wait} 秒没回答，交给你。', 'why.pass': '区经理说：这个我定不了，交给你。', 'why.noGov': '没有区经理在，直接交给你。', 'closed.late': '晚了一步：<b>{who}</b>在 {time} 已经处理了。这里不用再点了。', 'closed.pending': '在 {time} 已经处理了，结果还没传回来。已记下。', 'closed.answeredText': '回答了：“{text}”', 'closed.allowedText': '批准了', 'closed.deniedText': '拒绝了', 'closed.lateFull': '晚了一步：<b>{who}</b>在 {time} 先{text}。这里不用再点了。', 'closed.doneByYou': '<b>{who}</b>在 {time} {text}。已记下。', 'log.chatSent': '你 → {to}：{text}', 'say.understood': '明白！', 'log.eraBecame': '{name} 变成{era}了', 'demo.seed.prompt': '先把这页做完，别的先不要动', 'demo.seed.reply': '好，先做这页，其它先不碰', 'chat.stateSuffix': '（{state}）', 'punct.answerJoin': '；', 'rail.title': '在线', 'rail.count': '{n}', 'rail.rest': '休息 {n}', 'rail.tab': '在线 {n}', 'rail.none': '没人在线', 'rail.lost': '上级不明', 'rail.fold': '收起', 'rail.unfold': '展开', 'add.tip': '加 agent', 'add.plus': '＋', 'add.opening': '正在打开 {name}…', 'add.openingBare': '正在打开…', 'add.cap': '电脑有点忙', 'add.capNums': 'RAM {ram}% · CPU {cpu}%（上限 {max}%）', 'add.capAsk': '还要打开吗？', 'add.go': '还是打开', 'add.cancel': '取消', 'add.err': '没打开：', 'add.retry': '再试', 'add.ok': '知道了', 'add.errGone': '找不到仓库文件夹 {folder}（被移走或删掉了）。', 'add.errFailed': 'Orca 没能开出终端：{detail}', 'add.errLate': '终端开了，但 60 秒还没见到它上线。去 Orca 看那个终端。', 'add.errOther': '服务器没有给出原因（可能没连上）。', 'add.plain': '这台电脑没有 Orca，页面开不了终端。在终端里跑这一行：', 'add.copy': '复制', 'add.copied': '已复制', 'add.close': '关掉', 'fold.rail': '折起名单', 'fold.msg': '折起消息', 'msg.tab': '消息 · {name}', 'b.focus': '看看它', 'follow.on': '跟随 {name}', 'follow.stop': '停止', 'work.edit': '改代码', 'work.read': '看文件', 'work.bash': '跑命令', 'work.other': '忙着', 'work.pause': '停一下', 'step.edit': '改 {file}', 'step.write': '写 {file}', 'step.editAny': '改代码', 'step.writeAny': '写代码', 'step.read': '看文件', 'step.search': '找代码', 'step.web': '查资料', 'step.bash': '跑命令', 'step.send': '派出：{desc}', 'step.sendAny': '派出帮手', 'step.plan': '排计划', 'step.message': '发消息', 'step.other': '忙着', /* cloud-city: texts */ 'add.done': '已打开 {name} · 小人马上出现', 'arr.btn': '整理', 'arr.on': '整理中', 'arr.tip': '拖一块地到虚线格子；拖到另一块地上 = 交换。也可以先点地，再点格子。', 'arr.tipPick': '选中了 {name}：点一个虚线格子搬过去，或点另一块地交换。', 'arr.hide': '隐藏', 'arr.show': '显示', 'arr.cancel': '取消', 'arr.done': '完成', 'arr.tray': '已隐藏', 'arr.waits': '{n} 人在等你', 'arr.last': '至少留一块地', 'arr.hidden': '已隐藏 {n} 个', 'arr.hiddenWait': ' · 其中 {n} 个在等你', 'arr.manage': '管理', 'arr.errTaken': '那个格子已经有地了', 'arr.errSea': '海边那块地的南边要留给海', 'arr.errEmpty': '至少留一块地', 'arr.errOther': '没存上，再试一次' }, en: { 'office.liftAria': 'Lift', 'office.designAria': 'Design of this floor', 'office.sep': '; ', 'office.demoName': 'The name must be 1 to 20 characters', 'office.ex0': 'Cosier, more plants', 'office.ex1': 'Cool colours, simple and clean', 'office.ex2': 'Add a cashier desk', 'office.ex3': 'Your call', 'slot.0': 'bottom left', 'slot.1': 'bottom middle', 'slot.2': 'right wall', 'color.accent': 'Accent', 'color.carpet': 'Carpet', 'color.manager_floor': 'Manager room floor', 'color.pantry_floor': 'Pantry floor', 'color.desk': 'Desk', 'color.desk_leg': 'Desk legs', 'color.chair': 'Chair', 'color.meeting_rug': 'Meeting rug', 'color.manager_rug': 'Manager rug', 'decor.robot': 'Robot arm', 'decor.conveyor': 'Conveyor', 'decor.gears': 'Gear wall', 'decor.chart': 'Bar chart', 'decor.plants': 'Plant corner', 'decor.safe': 'Safe', 'decor.cabinets': 'File cabinets', 'decor.printer': 'Printer', 'decor.bookshelf': 'Bookshelf', 'decor.clock': 'Grandfather clock', 'decor.cashier': 'Cashier desk', 'decor.goods': 'Goods shelf', 'decor.menu': 'Menu board', 'decor.scanner': 'Scanner', 'decor.lightbox': 'Light box', 'office.title': 'Agent Office', 'office.signSub': '{n} floors · this machine', 'office.zone.pantry': 'Pantry', 'office.zone.room': ' room', 'office.zone.meet': 'Meeting', 'office.lobby': 'Lobby', 'office.clickDoor': 'click the door', 'office.people': 'people', 'office.renovating': 'renovating…', 'office.lift': 'Lift', 'office.floors': 'floors', 'office.outside': 'Outside', 'office.renovate': 'Renovate', 'office.designBy': 'Design: ', 'office.pick': 'Floors', 'office.pickSub': 'Tick the repos: one repo, one floor, a newly ticked one goes on top. A new repo moving in is asked: decorate it yourself, or hire the interior designer.', 'office.online': '{n} sessions online', 'office.afterDone': 'asked about decorating after Done', 'office.notIn': 'not in the building', 'office.notHere': 'not on this computer', 'office.designed': 'Design: {name}', 'office.redo': 'Renovate again', 'office.up': 'Move up a floor', 'office.down': 'Move down a floor', 'office.atLeastOne': 'at least one floor stays', 'office.done': 'Done', 'office.pickUnknown': 'Not saved: the server does not know one of the repos.', 'office.pickBad': 'Not saved: the floors are not valid (at least one stays).', 'office.pickFail': 'Not saved: the server did not answer. Try again.', 'office.renoNew': 'A new company moved in: {name} ({floor})', 'office.renoAgain': 'Renovate {name} ({floor})', 'office.renoAskNew': 'Decorate this floor?', 'office.renoAskAgain': 'A new look?', 'office.hire': 'Hire the interior designer', 'office.recommended': 'recommended', 'office.hireNote': 'An agent on your computer; its role and design rules come from the plugin. You tell it what you want.', 'office.diy': 'Decorate it myself', 'office.diyNote': 'Fill in a name, pick colours and decor; checked against the rules before it is saved.', 'office.skip': 'Not now', 'office.skipNote': 'Use the plain look; the Renovate button on the floor sign is always there.', 'office.never': 'Never mind', 'office.neverNote': 'Keep it as it is.', 'office.hired': 'The interior designer was asked to come to {floor}', 'office.skipped': '{floor} stays plain', 'office.skipFail': '{floor}: the server did not answer, "not now" was not saved', 'office.diyTitle': 'Decorate {floor}', 'office.diyChecked': 'every field is checked', 'office.diyName': 'Name of the floor (20 characters at most)', 'office.diyNameHint': 'e.g. Cosy kitchen', 'office.diyColors': 'Colours', 'office.diyDecor': 'Decor (one piece per place, or none)', 'office.diyNone': 'none', 'office.save': 'Save', 'office.undo': 'Undo last', 'office.rules': 'Rules: who can change what', 'office.rule1': 'Can change: the name, 9 colours, 3 decor places (15 pieces, or none).', 'office.rule2': 'Cannot change: the floor size; where the lift, the area manager room, the desks, the pantry and the meeting corner are; how many people and desks.', 'office.rule3': 'The three floors must be light (lightness 55%-95%). A bad file is refused whole; the floor keeps its last design and the page says which field.', 'office.saved': 'Saved', 'office.notSaved': 'Not saved: ', 'office.saveFail': 'Not saved: the server did not answer. Try again.', 'office.diyLog': 'You decorated {floor}: {name}', 'office.undone': 'Undone', 'office.undoneLog': '{floor}: the last renovation was undone', 'office.undoEmpty': 'Nothing to undo', 'office.bye': 'Thanks, you can go', 'office.byeLog': 'The interior designer of {floor} left', 'office.byeFail': '{floor}: the server did not answer, the designer is still here', 'office.noDesigner': 'An agent on your computer; its role and design rules come from the plugin', 'opt.helper': 'helper', 'opt.designer': 'designer', 'office.noDesign': 'not decorated yet', 'office.role.governor': 'area manager', 'office.role.task-manager': 'manager', 'office.role.helper': 'helper', 'office.role.designer': 'designer', 'log.designChanged': '{floor} was redecorated: {name}', 'log.designBad': '{floor} design refused: {why}', 'btn.log': 'Activity', 'aria.city': 'City', 'aria.canvas': '3D office building: each little person is one agent', 'proto.banner': 'Prototype - demo data', 'btn.zoomIn': 'Zoom in', 'btn.zoomOut': 'Zoom out', 'btn.rotate': 'Rotate', 'btn.resetView': 'Reset the view', 'repo.all': 'All', 'aria.repos': 'Repos: click one to fly there', 'repo.goAria': 'Fly to {name}', 'cap.hint': 'That is as far as it goes - click "All" to see every repo','btn.close': 'Close', 'aria.toolbar': 'Controls', 'label.spawn': 'Send a', 'opt.worker': 'worker - not drawn', 'opt.taskManager': 'task manager', 'opt.fastLaneDeputy': 'fast-lane deputy - not drawn', 'opt.mergeDeputy': 'merge deputy - not drawn', 'btn.spawn': 'Send', 'type.house': 'House', 'type.shop': 'Shop', 'type.tower': 'Tower', 'type.workshop': 'Workshop', 'type.library': 'Library', 'district.house': 'Homes', 'district.shop': 'Shops', 'district.tower': 'Tests', 'district.workshop': 'Workshops', 'district.library': 'Library', 'chat.state.queued': 'Queued', 'chat.state.delivered': 'Delivered', 'chat.state.undelivered': 'Undelivered', 'chat.why.notListening': 'it is not listening, it did not get this', 'chat.state.sent': 'On its way', 'chat.why.off': 'that computer is off', 'chat.why.ended': 'this session has ended', 'chat.why.talkOff': 'that computer does not take cloud messages', 'chat.why.refused': 'that computer did not accept it', 'chat.why.flood': 'too many messages too fast, that computer did not accept it', 'chat.new': 'New messages ↓', 'hist.title': 'History (newest at the bottom)', 'hist.empty': 'Nothing yet', 'hist.all': 'Show steps {n}', 'hist.hide': 'Hide steps', 'hist.onlyMech': 'Only steps so far - tap "Show steps"', 'hist.started': 'Headed out: {task}', 'hist.stuck': 'Stuck: {text}', 'hist.toLead': 'To the manager', 'hist.toGov': 'To the area manager', 'hist.waiting': 'Waiting on you', 'hist.done': 'Finished, heading to rest', 'hist.left': 'Clocked out', 'chat.task': 'Task (what it was sent with)', 'role.task-manager': 'Task manager', 'role.worker': 'Worker', 'role.fast-lane-deputy': 'Fast-lane deputy', 'role.merge-deputy': 'Merge deputy', 'role.other': 'Helper', 'era.village': 'Village', 'era.town': 'Town', 'era.city': 'City', 'quality.good': 'Tidy', 'quality.fair': 'OK', 'quality.poor': 'Messy', 'who.governor': 'Area manager', 'who.owner': 'You', 'who.terminal': 'Terminal', 'state.spawn': 'Heading out', 'state.to_plot': 'To the desk', 'state.building': 'Building', 'state.working': 'Working', 'state.to_hall': 'To the area manager', 'state.asking': 'Asking the area manager', 'state.heard': 'Got the answer', 'state.to_lead': 'To the manager', 'state.at_lead': 'Asking the manager', 'state.back': 'Back to the desk', 'state.finishing': 'Done', 'state.to_rest': 'Heading to rest', 'state.resting': 'Resting', 'state.leaving': 'Heading home', 'status.need_approval': 'Needs your OK', 'status.asking_gov': 'Asking the area manager', 'status.waiting_answer': 'Waiting on your answer', 'status.waiting_reply': 'Waiting on you', 'status.waiting': 'Waiting on you', 'status.background': 'Working in background', 'status.idle': 'Idle', 'stuck.permission': 'Needs permission: {tool}', 'stuck.default': 'Needs your eyes', 'gov.away': 'Away', 'gov.busy': 'Busy', 'gov.home': 'At the town hall', 'top.work': 'Working', 'top.ask': 'Need area manager', 'top.rest': 'Resting', 'top.done': 'Built', 'top.stalled': 'Stalled site', 'top.pending': 'Waiting', 'top.pendingAria': '{n} waiting on your call - click to open the earliest', 'empty.noLand': 'No territory yet - start inside a git repo, or wait for an agent', 'loading.text': 'Loading assets…', 'loading.progress': 'Loading assets {n}/{total}', 'loading.error': 'Assets failed to load: {err}', 'site.human': 'Hands-on', 'log.eraUpgrade': '{name} is upgrading to {era}', 'say.done': 'Done!', 'log.leftWork': '{task} clocked out', 'gov.dispatch': 'Go: {task}', 'log.govDispatch': 'The area manager sent {label}: {task}', 'log.siteMerged': '{branch} merged into main, the site wrapped up', 'log.siteRemoved': 'The {branch} site was pulled down', 'log.levelUp': '{label} leveled up to {lv}', 'log.movedBack': '{label} moved back to the {kind} district', 'log.demolished': 'Every file behind {label} is gone, demolished', 'log.stuckDemo': '{task} got stuck: "{text}" -> asking the area manager', 'answer.default': 'Answered', 'log.govAnswer': 'The area manager answered {task}: "{text}"', 'log.doneRestPlain': '{task} finished, heading to rest', 'log.doneRestBuilt': '{task} finished: {kind} topped out, heading to rest', 'log.noplot': '{name} found no empty plot, waiting a bit', 'gov.unknown': 'Unknown', 'gov.busyRow': 'Busy', 'gov.idleRow': 'Idle', 'gov.title': '{name} area manager', 'chain.lead': 'Manager', 'chain.leadTask': 'Manager {task}', 'chat.empty': 'No conversation yet', 'chat.you.page': 'You (page)', 'chat.you.terminal': 'You (terminal)', 'chat.wait': 'Waiting for it to finish this step', 'chat.loadError': 'Could not load the conversation - try opening it again in a moment.', 'kv.repo': 'Repo', 'kv.branch': 'Branch', 'kv.doing': 'Doing', 'qa.ask': 'Q: “{q}”', 'qa.answer': 'A: “{a}”', 'qa.waiting': 'Q: “{q}” - waiting for an answer…', 'act.makeStuck': 'Make it stuck', 'act.makeDone': 'Make it finish', 'act.makeLeave': 'Make it clock out', 'act.demoNote': 'These three buttons exist only in the prototype, to try the flow.', 'gov.ownTag': 'main manager · main conversation', 'gov.tagLabel': 'Area manager · main manager', 'pill.hall': 'Town hall', 'gov.awayNote': 'The area manager is away: this repo has no main manager session right now. Agent questions go straight to you, without waiting for the area manager first.', 'hint.team': 'Team', 'hint.noAgents': 'No agents at work yet. Open a Claude Code session and send an agent - it will walk out of the town hall.', 'hint.pickSomething': 'Click a person or building in the city, or a row in the list below.', 'building.misplaced': ' - in the wrong district', 'building.level': ' - level {level}', 'building.district': '{kind} district', 'building.module': '{name} module', 'hint.files': 'The files that built it', 'hint.history': 'Who has touched it (newest first)', 'detail.title': 'Details', 'opt.other': 'Other', 'opt.customAnswer': 'Write your own answer', 'btn.sendAnswer': 'Send answer', 'kv.tool': 'Tool', 'kv.file': 'File', 'kv.url': 'URL', 'said': 'It said: {text}', 'kv.dir': 'Directory', 'field.denyReason': 'Reason for denying (optional; if filled in, it is told to it as-is)', 'field.denyPlaceholder': 'e.g. do not delete dist/ yet, it has the release package', 'btn.allow': 'Allow', 'btn.deny': 'Deny', 'ask.asking': 'is asking', 'card.permission': 'Needs permission', 'card.question': 'Asks you', 'ask.needsPermission': 'needs permission', 'pill.closed': 'Closed', 'aria.collapse': 'Collapse (without answering)', 'foot.terminalAnswers': 'The terminal can answer too - whichever answers first wins.', 'err.decideNetwork': 'Could not send (cannot reach the city server). The terminal can still answer.', 'err.decideStatus': 'Could not send ({status}). The terminal can still answer, or try again.', 'proto.live': 'Live - waiting for the server', 'proto.connected': 'Live - connected', 'proto.reconnecting': 'Live - reconnecting…', 'demo.task.worker.0': 'Settings page form', 'demo.task.worker.1': 'Login API', 'demo.task.worker.2': 'Export CSV', 'demo.task.worker.3': 'Dark mode', 'demo.task.worker.4': 'Receipt printing', 'demo.task.worker.5': 'Search box', 'demo.task.worker.6': 'Pagination', 'demo.task.worker.7': 'Price calculation', 'demo.task.worker.8': 'Inventory alerts', 'demo.task.worker.9': 'Customer list', 'demo.task.taskManager.0': 'Settings page', 'demo.task.taskManager.1': 'Login', 'demo.task.taskManager.2': 'Reports', 'demo.task.taskManager.3': 'Printing', 'demo.task.taskManager.4': 'Inventory', 'demo.task.fastLaneDeputy.0': 'Typos', 'demo.task.fastLaneDeputy.1': 'Button colour', 'demo.task.fastLaneDeputy.2': 'Icon size', 'demo.task.fastLaneDeputy.3': 'Title wrapping', 'demo.task.fastLaneDeputy.4': 'Empty-state copy', 'demo.task.mergeDeputy.0': 'Merge settings', 'demo.task.mergeDeputy.1': 'Merge login', 'demo.task.mergeDeputy.2': 'Merge report', 'demo.task.mergeDeputy.3': 'Merge print', 'demo.qa.0.q': 'Which test name is unclear - which one?', 'demo.qa.0.a': 'Go with the default, log it', 'demo.qa.1.q': 'Which API path should I use?', 'demo.qa.1.a': 'Use /api/settings', 'demo.qa.2.q': 'Should I add pagination?', 'demo.qa.2.a': 'Not yet, write it into ideas', 'demo.qa.3.q': 'What is the default language?', 'demo.qa.3.a': 'zh, matching the settings', 'demo.qa.4.q': 'Does the old data need migrating?', 'demo.qa.4.a': 'Yes, write a test first', 'demo.qa.5.q': 'Can I change this file?', 'demo.qa.5.a': 'Yes, only your own copy', 'demo.qa.6.q': 'Can I run this command?', 'demo.qa.6.a': 'Approved, go ahead', 'aria.needsApproval': '{task} needs your approval, click to open', 'aria.needsAnswer': '{task} needs your answer, click to open', 'aria.govNeedsApproval': 'The area manager needs your approval, click to open', 'aria.govNeedsAnswer': 'The area manager needs your answer, click to open', 'gov.waitCountdown': 'Area manager {s}s', 'chat.sendError': 'Could not send (cannot reach the city server).', 'btn.findLead': 'Find the lead: {name}', 'hint.readOnlySub': 'This is a subtask; the conversation is view only - go to its lead for anything else.', 'placeholder.saySomething': 'Say something to it…', 'btn.send': 'Send', 'label.ask': 'Q: ', 'label.answer': 'A: ', 'label.awaitingAnswer': 'awaiting an answer…', 'ask.permission': '{name} needs permission: {what} -> waiting on you', 'ask.toOwner': '{name} asks you: “{what}”', 'ask.toGov': '{name} asks the area manager: “{what}”', 'ask.toGovNoGov': '{name} asks the area manager: “{what}”, no area manager around -> waiting on your answer', 'askphase.pass': 'The area manager: not mine to decide -> waiting on your answer for {name}', 'askphase.timeout': 'The area manager did not answer {name} in {wait}s -> waiting on you', 'closed.routed': 'The request from {name} was routed to {who}: {what}', 'closed.answered': '{who} answered {name}: “{text}”', 'closed.answeredDefault': '{who} already answered {name}', 'closed.allowed': '{who} allowed {name}: {what}', 'closed.denied': '{who} denied {name}: {what}', 'closed.deniedReason': ', reason: “{reason}”', 'closed.ended': '{who} closed {name}: {what}', 'why.permission': 'Only you can approve permissions - the area manager does not.', 'why.gov': 'The area manager cannot decide this - it is yours.', 'why.timeout': 'The area manager did not answer in {wait}s - it is yours.', 'why.pass': 'The area manager said: not mine to decide - it is yours.', 'why.noGov': 'No area manager around - it goes straight to you.', 'closed.late': 'Too late: <b>{who}</b> already handled it at {time}. No need to click here.', 'closed.pending': 'Handled at {time}; the result has not come back yet. Noted.', 'closed.answeredText': 'Answered: “{text}”', 'closed.allowedText': 'Allowed', 'closed.deniedText': 'Denied', 'closed.lateFull': 'Too late: <b>{who}</b> already {text} at {time}. No need to click here.', 'closed.doneByYou': '<b>{who}</b> {text} at {time}. Noted.', 'log.chatSent': 'You -> {to}: {text}', 'say.understood': 'Got it!', 'log.eraBecame': '{name} became a {era}', 'demo.seed.prompt': 'Finish this page first, do not touch anything else yet', 'demo.seed.reply': 'OK, doing this page first, leaving the rest alone', 'chat.stateSuffix': ' ({state})', 'punct.answerJoin': '; ', 'rail.title': 'Now', 'rail.count': '{n}', 'rail.rest': 'Resting {n}', 'rail.tab': 'Now {n}', 'rail.none': 'Nobody online', 'rail.lost': 'Parent unknown', 'rail.fold': 'Fold', 'rail.unfold': 'Unfold', 'add.tip': 'Add agent', 'add.plus': '+', 'add.opening': 'Opening {name}…', 'add.openingBare': 'Opening…', 'add.cap': 'The computer is busy', 'add.capNums': 'RAM {ram}% · CPU {cpu}% (limit {max}%)', 'add.capAsk': 'Open it anyway?', 'add.go': 'Open anyway', 'add.cancel': 'Cancel', 'add.err': 'Not opened: ', 'add.retry': 'Try again', 'add.ok': 'Got it', 'add.errGone': 'Cannot find the repo folder {folder} (moved or deleted).', 'add.errFailed': 'Orca could not open a terminal: {detail}', 'add.errLate': 'The terminal opened, but nothing showed up in 60 seconds. Look at that terminal in Orca.', 'add.errOther': 'The server gave no reason (it may be out of reach).', 'add.plain': 'This computer has no Orca, so the page cannot open a terminal. Run this line in a terminal:', 'add.copy': 'Copy', 'add.copied': 'Copied', 'add.close': 'Close', 'fold.rail': 'Fold the list', 'fold.msg': 'Fold the messages', 'msg.tab': 'Messages · {name}', 'b.focus': 'Show it', 'follow.on': 'Following {name}', 'follow.stop': 'Stop', 'work.edit': 'Editing', 'work.read': 'Reading', 'work.bash': 'Running', 'work.other': 'Busy', 'work.pause': 'Pausing', 'step.edit': 'Editing {file}', 'step.write': 'Writing {file}', 'step.editAny': 'Editing code', 'step.writeAny': 'Writing code', 'step.read': 'Reading files', 'step.search': 'Searching code', 'step.web': 'Looking things up', 'step.bash': 'Running a command', 'step.send': 'Sending out: {desc}', 'step.sendAny': 'Sending a helper', 'step.plan': 'Planning', 'step.message': 'Sending a message', 'step.other': 'Busy', /* cloud-city: texts */ 'add.done': 'Opened {name} · the person shows up in a moment', 'arr.btn': 'Arrange', 'arr.on': 'Arranging', 'arr.tip': 'Drag a land to a dashed slot; drop it on another land to swap. Or tap a land, then a slot.', 'arr.tipPick': '{name} is picked: tap a dashed slot to move it, or another land to swap.', 'arr.hide': 'Hide', 'arr.show': 'Show', 'arr.cancel': 'Cancel', 'arr.done': 'Done', 'arr.tray': 'Hidden', 'arr.waits': '{n} waiting for you', 'arr.last': 'Keep at least one land', 'arr.hidden': '{n} hidden', 'arr.hiddenWait': ' · {n} waiting for you', 'arr.manage': 'Manage', 'arr.errTaken': 'That slot is taken', 'arr.errSea': 'The cell south of a coast land is its sea', 'arr.errEmpty': 'Keep at least one land', 'arr.errOther': 'Not saved, try again.' } };
+const TEXT = { zh: { 'ed.startPhone': '拖家具到楼层上，或点一下加入。', 'ed.lightTipHigh': '{name}的亮度是 {n}%，要在 55%–95% 之间（太浅，会刺眼、看不出地板）', 'ed.diyBoxNote': '像装修软件一样：拖家具、点地面换颜色、2D/3D、一键风格', 'ed.boxTitle': '{floor} 的装修', 'ed.badLayout': '摆放不合格', 'ed.why': '你自己装修的', 'ed.savedLog': '你自己装修了 {floor}：{name}（{tm} 张经理桌、{h} 张助理桌、{d} 件摆设）', 'ed.saved': '保存好了', 'ed.notSaved': '没保存：{why}', 'ed.nameEmpty': '给这层起个名字（最多 20 字）', 'ed.quitAsk': '改动还没保存。再点一次「退出」就不要这些改动了。', 'ed.cantDrop': '这里不行：{why}', 'ed.canDrop': '这里可以放', 'ed.dropOnFloor': '放到楼层上才算', 'ed.piecePicked': '选中了「{name}」：可以拖、转向（R）、删除（Delete），右边还能换颜色', 'ed.surfPicked': '选中了{name}：右边挑颜色', 'ed.styleSet': '套用了「{name}」的配色和地板，家具位置不变', 'ed.matSet': '{name}换成了{mat}', 'ed.colorSet': '{name}换成了 {c}', 'ed.lightTip': '{name}的亮度是 {n}%，要在 55%–95% 之间（太深，人和名字会看不清）', 'ed.light': '{name}的亮度是 {n}%，要在 55%–95% 之间', 'ed.meetStay': '会议桌要留着（多出来的人和设计师在那里等），可以挪到别处', 'ed.meetOne': '会议桌只能有 1 张', 'ed.resetDone': '恢复成基本款了（还没保存）', 'ed.redid': '重做了一步', 'ed.undid': '撤销了一步', 'ed.removed': '删掉了「{name}」', 'ed.turned': '「{name}」转了个方向', 'ed.noFit': '放不下：{why}', 'ed.noSpace': '没有空位放{name}了', 'ed.cantPlace': '这里放不下{name}：{why}', 'ed.placedAuto': '放了{name}，拖到想要的位置', 'ed.placed': '放好了{name}', 'ed.start': '从左边把东西拖到楼层上，或者点一下加进来。点家具可以转向、删除、换颜色；点地面可以换地板颜色。', 'ed.locked': '🔒 {zone} · 固定', 'ed.tip5': '每个座位都要能从电梯走到；放不下会弹回去并说原因', 'ed.tip4': '斜线是固定的地方（电梯、区经理室、茶水间、白板）', 'ed.tip3': '点地面：换地板材质（木地板、人字拼、瓷砖、大理石、水泥…）和颜色', 'ed.tip2': '点家具：拖动、转向（R）、复制、删除（Delete），换桌椅颜色', 'ed.tip1': '从左边拖家具、摆设到楼层上，或点一下自动找空位', 'ed.tipsTitle': '怎么用', 'ed.lightNote': '地板要够浅（亮度 55%–95%），人和名字才看得清。', 'ed.customTip': '自己调', 'ed.custom': '自定', 'ed.colour': '颜色', 'ed.material': '材质', 'ed.decorAccent': '主色（摆设的点缀色）', 'ed.allDesks': '桌面（全部桌子）', 'ed.del': '删除', 'ed.copy': '复制', 'ed.rotr': '⟳ 右转', 'ed.rotl': '⟲ 左转', 'ed.m.checker': '格子砖', 'ed.m.concrete': '水泥', 'ed.m.marble': '大理石', 'ed.m.bigtile': '大地砖', 'ed.m.tile': '小方砖', 'ed.m.herringbone': '人字拼', 'ed.m.wood': '木地板', 'ed.m.plain': '素色地毯', 'ed.carpetName': '地毯（办公区）', 'ed.accentName': '主色（招牌、窗框、摆设点缀）', 'ed.s.5': '活力粉', 'ed.s.4': '书香', 'ed.s.3': '工厂风', 'ed.s.2': '清新绿植', 'ed.s.1': '冷色简约', 'ed.s.0': '温馨木色', 'ed.styleNote': '换配色和地板材质，家具位置不变。', 'ed.decorCnt': '摆设 {n}/8 件', 'ed.cardTip': '拖到楼层上，或点一下', 'ed.tab.color': '地面·颜色', 'ed.tab.decor': '摆设', 'ed.tab.furniture': '家具', 'ed.tab.style': '风格', 'ed.cnt': '经理桌 {tm}/9 · 助理桌 {h}/3 · 摆设 {d}/8 · 植物 {p}/8', 'ed.saving': '保存中…', 'ed.save': '保存', 'ed.reset': '恢复基本款', 'ed.redo': '↷ 重做', 'ed.undo': '↶ 撤销', 'ed.v3d': '3D', 'ed.v2d': '2D 俯视', 'ed.nameHint': '例如：温馨小厨房', 'ed.name': '方案名', 'ed.quit': '← 退出', 'ed.aria': '自己装修', 'ed.cntMax': '{name}最多 {n} 个', 'ed.cntMin': '至少要有 {n} 个{name}', 'ed.noPantry': '去茶水间的路被挡住了', 'ed.noRoom': '去区经理室的路被挡住了', 'ed.meetBoxed': '会议桌被围住了，从电梯走不过去', 'ed.seat': '「{name}」的座位被挡住了，从电梯走不过去', 'ed.overlap': '「{a}」跟「{b}」叠在一起了', 'ed.onFixed': '「{name}」压到{zone}了，那里是固定的', 'ed.out': '「{name}」出了楼层', 'ed.z.board': '白板', 'ed.z.pantry': '茶水间', 'ed.z.door': '区经理室的门口', 'ed.z.room': '区经理室', 'ed.z.lift': '电梯', 'ed.k.plant': '植物', 'ed.k.decor': '摆设', 'ed.k.meet': '会议桌', 'ed.k.helper': '助理桌', 'ed.k.tm': '经理桌', 'office.liftAria': '电梯', 'office.designAria': '这一层的设计', 'office.sep': '；', 'office.demoName': '名字要 1 到 20 个字', 'office.ex0': '温馨一点，多点植物', 'office.ex1': '冷色，简单干净', 'office.ex2': '加个收银台', 'office.ex3': '按你的想法来', 'slot.0': '左下角', 'slot.1': '下面中间', 'slot.2': '右边墙', 'color.accent': '主色', 'color.carpet': '地毯', 'color.manager_floor': '区经理室地板', 'color.pantry_floor': '茶水间地板', 'color.desk': '桌面', 'color.desk_leg': '桌脚', 'color.chair': '椅子', 'color.meeting_rug': '会议地毯', 'color.manager_rug': '区经理地毯', 'decor.robot': '机械臂', 'decor.conveyor': '传送带', 'decor.gears': '齿轮墙', 'decor.chart': '业绩柱状图', 'decor.plants': '植物角', 'decor.safe': '保险箱', 'decor.cabinets': '文件柜', 'decor.printer': '打印机', 'decor.bookshelf': '书柜', 'decor.clock': '老座钟', 'decor.cashier': '收银台', 'decor.goods': '货架', 'decor.menu': '菜单板', 'decor.scanner': '扫描仪', 'decor.lightbox': '看单灯箱', 'office.title': 'Agent 办公楼', 'office.signSub': '{n} 层 · 本机', 'office.zone.pantry': '茶水间', 'office.zone.room': '室', 'office.zone.meet': '会议角', 'office.lobby': '大堂', 'office.clickDoor': '点门进去', 'office.people': '人', 'office.renovating': '装修中…', 'office.lift': '电梯', 'office.floors': '层', 'office.outside': '楼外面', 'office.renovate': '装修', 'office.designBy': '设计：', 'office.pick': '选楼层', 'office.pickSub': '勾几个 repo，楼就有几层。一个 repo 一层，新勾的放在最上面。新 repo 进楼就像新公司搬进来：会问你自己装修，还是请室内设计师。', 'office.online': '{n} 个 session 在线', 'office.afterDone': '点完成后会问你要不要装修', 'office.notIn': '不在楼里', 'office.notHere': '不在这台电脑', 'office.designed': '装修：{name}', 'office.redo': '重新装修', 'office.up': '上移一层', 'office.down': '下移一层', 'office.atLeastOne': '至少留一层', 'office.done': '完成', 'office.pickUnknown': '没保存：有个 repo 服务器不认识。', 'office.pickBad': '没保存：楼层的选法不对（至少留一层）。', 'office.pickFail': '没保存：服务器没有回答，再试一次。', 'office.renoNew': '新公司搬进来了：{name}（{floor}）', 'office.renoAgain': '重新装修 {name}（{floor}）', 'office.renoAskNew': '要装修这一层吗？', 'office.renoAskAgain': '换个样子？', 'office.hire': '请室内设计师', 'office.recommended': '建议', 'office.hireNote': '你电脑上的一个 agent，角色和装修知识来自插件。你跟他说要求，他按办公楼的装修规则来做。', 'office.diy': '自己装修', 'office.diyNote': '像装修软件一样：拖家具、点地面换颜色、2D/3D、一键风格', 'office.skip': '先不装修', 'office.skipNote': '先用基本款，以后随时点楼层牌上的「装修」。', 'office.never': '算了', 'office.neverNote': '保持现在的样子。', 'office.hired': '请了室内设计师来装修 {floor}', 'office.skipped': '{floor} 先用基本款，没装修', 'office.skipFail': '{floor} 没能记下「先不装修」，服务器没有回答', 'office.diyTitle': '自己装修 {floor}', 'office.diyChecked': '每一项都按规则检查', 'office.diyName': '这层叫什么（最多 20 字）', 'office.diyNameHint': '例如：温馨小厨房', 'office.diyColors': '颜色', 'office.diyDecor': '摆设（每个位置挑一件，可以空着）', 'office.diyNone': '空着', 'office.save': '保存', 'office.undo': '撤销上一步', 'office.rules': '装修规则：谁能改、能改什么', 'office.rule1': '能改：名字、9 个颜色、3 块地板的材质；家具和摆设摆在哪、朝哪边：经理桌 1–9 张、助理桌 1–3 张、会议桌 1 张、植物最多 8 盆、摆设最多 8 件（15 件里挑）。', 'office.rule2': '不能改：楼层大小；墙、电梯、区经理室（连门口）、茶水间、白板的位置；人的数量。东西不能叠在一起、不能压到固定的地方、不能出楼层；每个座位、会议桌、区经理室门口和茶水间都要能从电梯走到。', 'office.rule3': '三种地板要够浅（亮度 55%–95%）；改坏了整份不收，这层保持上一版，错在哪一项会写出来。', 'office.saved': '保存好了', 'office.notSaved': '没保存：', 'office.saveFail': '没保存：服务器没有回答，再试一次。', 'office.diyLog': '你自己装修了 {floor}：{name}', 'office.undone': '撤销了上一步', 'office.undoneLog': '{floor} 撤销了上一步装修', 'office.undoEmpty': '没有上一步可以撤销', 'office.bye': '好了，你可以走了', 'office.byeLog': '{floor} 的室内设计师走了', 'office.byeFail': '{floor} 的室内设计师没能送走，服务器没有回答', 'office.noDesigner': '你电脑上的一个 agent，角色和装修规则来自插件', 'opt.helper': 'helper · 助理', 'opt.designer': 'designer · 设计师', 'office.noDesign': '还没装修', 'office.role.governor': '区经理', 'office.role.task-manager': '经理', 'office.role.helper': '助理', 'office.role.designer': '设计师', 'log.designChanged': '{floor} 的装修换成「{name}」', 'log.designBad': '{floor} 的装修没通过检查：{why}', 'btn.log': '动态', 'aria.city': '城市', 'aria.canvas': '3D 办公楼：每个小人是一个 agent', 'proto.banner': '原型 · 模拟数据', 'btn.zoomIn': '放大', 'btn.zoomOut': '缩小', 'btn.rotate': '转一下', 'btn.resetView': '回到默认视角', 'repo.all': '全部', 'aria.repos': '仓库：点一个飞过去', 'repo.goAria': '飞到 {name}', 'cap.hint': '已经是最远了 · 点「全部」看所有仓库','btn.close': '关闭', 'aria.toolbar': '控制', 'label.spawn': '派一个', 'opt.worker': 'worker · 不画出来', 'opt.taskManager': 'task manager · 经理', 'opt.fastLaneDeputy': 'fast-lane deputy · 不画出来', 'opt.mergeDeputy': 'merge deputy · 不画出来', 'btn.spawn': '派出', 'type.house': '住宅', 'type.shop': '商店', 'type.tower': '测试塔', 'type.workshop': '工坊', 'type.library': '图书馆', 'district.house': '住宅区', 'district.shop': '商业街', 'district.tower': '测试区', 'district.workshop': '工坊区', 'district.library': '图书馆区', 'chat.state.queued': '排队中', 'chat.state.delivered': '已送达', 'chat.state.undelivered': '没送到', 'chat.why.notListening': '它没在听，收不到', 'chat.state.sent': '在路上', 'chat.why.off': '那台电脑没开', 'chat.why.ended': '这个会话已经结束', 'chat.why.talkOff': '那台电脑不接收云端消息', 'chat.why.refused': '那台电脑没收这条消息', 'chat.why.flood': '发得太快，那台电脑没收', 'chat.new': '有新消息 ↓', 'hist.title': '历史（新的在下面）', 'hist.empty': '还没有记录', 'hist.all': '显示过程 {n}', 'hist.hide': '隐藏过程', 'hist.onlyMech': '只有过程记录，点「显示过程」看', 'hist.started': '出门：{task}', 'hist.stuck': '卡住了：{text}', 'hist.toLead': '去问经理', 'hist.toGov': '去问区经理', 'hist.waiting': '等你回话', 'hist.done': '完工，去休息', 'hist.left': '下班了', 'chat.task': '任务（派它时的话）', 'role.task-manager': '任务经理', 'role.worker': '工人', 'role.fast-lane-deputy': '快车道副手', 'role.merge-deputy': '合并副手', 'role.other': '帮手', 'era.village': '村', 'era.town': '镇', 'era.city': '城', 'quality.good': '整齐', 'quality.fair': '还行', 'quality.poor': '有点乱', 'who.governor': '区经理', 'who.owner': '你', 'who.terminal': '终端', 'state.spawn': '出门', 'state.to_plot': '去座位', 'state.building': '施工中', 'state.working': '干活', 'state.to_hall': '去问区经理', 'state.asking': '在问区经理', 'state.heard': '拿到答案', 'state.to_lead': '去问经理', 'state.at_lead': '问经理', 'state.back': '回座位', 'state.finishing': '完工了', 'state.to_rest': '去休息', 'state.resting': '休息中', 'state.leaving': '下班回家', 'status.need_approval': '等你批', 'status.asking_gov': '在问区经理', 'status.waiting_answer': '等你回答', 'status.waiting_reply': '等你回话', 'status.waiting': '等你', 'status.background': '后台在跑', 'status.idle': '空闲', 'stuck.permission': '要权限：{tool}', 'stuck.default': '需要你看一下', 'gov.away': '不在', 'gov.busy': '忙着', 'gov.home': '坐镇市政厅', 'top.work': '干活', 'top.ask': '找区经理', 'top.rest': '休息', 'top.done': '建成', 'top.stalled': '卡住的工地', 'top.pending': '等你', 'top.pendingAria': '等你决定 {n} 个，点开最早的一个', 'empty.noLand': '还没有领地 · 在一个 git 仓库里启动，或等代理开工', 'loading.text': '正在搬来素材…', 'loading.progress': '正在搬来素材 {n}/{total}', 'loading.error': '素材没加载成功：{err}', 'site.human': '亲自带', 'log.eraUpgrade': '{name} 开始升级成{era}', 'say.done': '完工啦！', 'log.leftWork': '{task} 下班了', 'gov.dispatch': '去吧：{task}', 'log.govDispatch': '区经理派出 {label}：{task}', 'log.siteMerged': '{branch} 合并进主线，工地收工', 'log.siteRemoved': '{branch} 的工地撤了', 'log.levelUp': '{label} 升到 {lv} 级', 'log.movedBack': '{label} 搬回{kind}区', 'log.demolished': '{label} 的文件都没了，拆掉', 'log.stuckDemo': '{task} 卡住了：“{text}” → 去问区经理', 'answer.default': '已回答', 'log.govAnswer': '区经理回答 {task}：“{text}”', 'log.doneRestPlain': '{task} 完工，去休息', 'log.doneRestBuilt': '{task} 完工：{kind}封顶，去休息', 'log.noplot': '{name} 没有空地了，先等等', 'gov.unknown': '未知', 'gov.busyRow': '在忙', 'gov.idleRow': '空闲', 'gov.title': '{name} 区经理', 'chain.lead': '经理', 'chain.leadTask': '经理 {task}', 'chat.empty': '还没有对话', 'chat.you.page': '你（页面）', 'chat.you.terminal': '你（终端）', 'chat.wait': '等它做完这一步', 'chat.loadError': '对话没加载出来，等会儿再打开看看。', 'kv.repo': '仓库', 'kv.branch': '分支', 'kv.doing': '在做', 'qa.ask': '问：“{q}”', 'qa.answer': '答：“{a}”', 'qa.waiting': '问：“{q}” 等回答…', 'act.makeStuck': '让它卡住', 'act.makeDone': '让它完工', 'act.makeLeave': '让它下班', 'act.demoNote': '这三个按钮只在原型里有，用来试流程。', 'gov.ownTag': 'main manager · 主对话', 'gov.tagLabel': '区经理 · main manager', 'pill.hall': '市政厅', 'gov.awayNote': '区经理不在：这个 repo 现在没有 main manager session。agent 的问题直接交给你，不会先等区经理。', 'hint.team': '团队', 'hint.noAgents': '还没有 agent 在干活。开一个 Claude Code 会话、派一个 agent，它就会从市政厅走出来。', 'hint.pickSomething': '点城里的小人、房子，或下面名单里的一行。', 'building.misplaced': ' · 放错区了', 'building.level': ' · 等级 {level}', 'building.district': '{kind}区', 'building.module': '{name} 模块', 'hint.files': '盖它的文件', 'hint.history': '改过它的人（新的在前）', 'detail.title': '详情', 'opt.other': '其他', 'opt.customAnswer': '自己写回答', 'btn.sendAnswer': '发送回答', 'kv.tool': '工具', 'kv.file': '文件', 'kv.url': '网址', 'said': '它说：{text}', 'kv.dir': '目录', 'field.denyReason': '拒绝理由（可以不填；填了会原样告诉它）', 'field.denyPlaceholder': '比如：先别删 dist/，里面有发布包', 'btn.allow': '批准', 'btn.deny': '拒绝', 'ask.asking': '在问', 'card.permission': '要权限', 'card.question': '在问你', 'ask.needsPermission': '要权限', 'pill.closed': '已关闭', 'aria.collapse': '收起（不回答）', 'foot.terminalAnswers': '终端里也能答，先答的算。', 'err.decideNetwork': '没发出去（连不上城市服务器）。终端里还能答。', 'err.decideStatus': '没发出去（{status}）。终端里还能答，可以再试一次。', 'proto.live': '实时 · 等服务器', 'proto.connected': '实时 · 已连接', 'proto.reconnecting': '实时 · 重连中…', 'demo.task.worker.0': '设置页表单', 'demo.task.worker.1': '登录 API', 'demo.task.worker.2': '导出 CSV', 'demo.task.worker.3': '深色模式', 'demo.task.worker.4': '小票打印', 'demo.task.worker.5': '搜索框', 'demo.task.worker.6': '分页', 'demo.task.worker.7': '价格计算', 'demo.task.worker.8': '库存提醒', 'demo.task.worker.9': '客户列表', 'demo.task.taskManager.0': '设置页', 'demo.task.taskManager.1': '登录', 'demo.task.taskManager.2': '报表', 'demo.task.taskManager.3': '打印', 'demo.task.taskManager.4': '库存', 'demo.task.fastLaneDeputy.0': '错别字', 'demo.task.fastLaneDeputy.1': '按钮颜色', 'demo.task.fastLaneDeputy.2': '图标大小', 'demo.task.fastLaneDeputy.3': '标题换行', 'demo.task.fastLaneDeputy.4': '空状态文案', 'demo.task.mergeDeputy.0': '合并 settings', 'demo.task.mergeDeputy.1': '合并 login', 'demo.task.mergeDeputy.2': '合并 report', 'demo.task.mergeDeputy.3': '合并 print', 'demo.qa.0.q': '测试名不清楚，用哪个？', 'demo.qa.0.a': '按默认，记进日志', 'demo.qa.1.q': 'API 路径用哪个？', 'demo.qa.1.a': '用 /api/settings', 'demo.qa.2.q': '要不要加分页？', 'demo.qa.2.a': '先不加，写进 ideas', 'demo.qa.3.q': '默认语言是？', 'demo.qa.3.a': 'zh，跟设置', 'demo.qa.4.q': '旧数据要迁移吗？', 'demo.qa.4.a': '要，先写测试', 'demo.qa.5.q': '这个文件能改吗？', 'demo.qa.5.a': '能，只改你那份', 'demo.qa.6.q': '可以跑这条命令吗？', 'demo.qa.6.a': '批了，继续', 'aria.needsApproval': '{task} 等你批，点开看', 'aria.needsAnswer': '{task} 等你回答，点开看', 'aria.govNeedsApproval': '区经理 等你批，点开看', 'aria.govNeedsAnswer': '区经理 等你回答，点开看', 'gov.waitCountdown': '区经理 {s}s', 'chat.sendError': '没发出去（连不上城市服务器）。', 'btn.findLead': '找组长：{name}', 'hint.readOnlySub': '它是子任务，这份对话只能看；有事去找组长。', 'placeholder.saySomething': '跟它说…', 'btn.send': '发送', 'label.ask': '问：', 'label.answer': '答：', 'label.awaitingAnswer': '等回答…', 'ask.permission': '{name} 要权限：{what} → 等你批', 'ask.toOwner': '{name} 问你：“{what}”', 'ask.toGov': '{name} 问区经理：“{what}”', 'ask.toGovNoGov': '{name} 问区经理：“{what}”，没有区经理在 → 等你回答', 'askphase.pass': '区经理：这个我定不了 → 等你回答 {name}', 'askphase.timeout': '区经理 {wait} 秒没回答 {name} → 等你', 'closed.routed': '{name} 的请求转到{who}处理：{what}', 'closed.answered': '{who}回答 {name}：“{text}”', 'closed.answeredDefault': '{who}已回答 {name}', 'closed.allowed': '{who}批准 {name}：{what}', 'closed.denied': '{who}拒绝 {name}：{what}', 'closed.deniedReason': '，理由：“{reason}”', 'closed.ended': '{who}结束了 {name}：{what}', 'why.permission': '权限只由你来批，区经理不批。', 'why.gov': '区经理定不了，交给你。', 'why.timeout': '区经理 {wait} 秒没回答，交给你。', 'why.pass': '区经理说：这个我定不了，交给你。', 'why.noGov': '没有区经理在，直接交给你。', 'closed.late': '晚了一步：<b>{who}</b>在 {time} 已经处理了。这里不用再点了。', 'closed.pending': '在 {time} 已经处理了，结果还没传回来。已记下。', 'closed.answeredText': '回答了：“{text}”', 'closed.allowedText': '批准了', 'closed.deniedText': '拒绝了', 'closed.lateFull': '晚了一步：<b>{who}</b>在 {time} 先{text}。这里不用再点了。', 'closed.doneByYou': '<b>{who}</b>在 {time} {text}。已记下。', 'log.chatSent': '你 → {to}：{text}', 'say.understood': '明白！', 'log.eraBecame': '{name} 变成{era}了', 'demo.seed.prompt': '先把这页做完，别的先不要动', 'demo.seed.reply': '好，先做这页，其它先不碰', 'chat.stateSuffix': '（{state}）', 'punct.answerJoin': '；', 'rail.title': '在线', 'rail.count': '{n}', 'rail.rest': '休息 {n}', 'rail.tab': '在线 {n}', 'rail.none': '没人在线', 'rail.lost': '上级不明', 'rail.fold': '收起', 'rail.unfold': '展开', 'add.tip': '加 agent', 'add.plus': '＋', 'add.opening': '正在打开 {name}…', 'add.openingBare': '正在打开…', 'add.cap': '电脑有点忙', 'add.capNums': 'RAM {ram}% · CPU {cpu}%（上限 {max}%）', 'add.capAsk': '还要打开吗？', 'add.go': '还是打开', 'add.cancel': '取消', 'add.err': '没打开：', 'add.retry': '再试', 'add.ok': '知道了', 'add.errGone': '找不到仓库文件夹 {folder}（被移走或删掉了）。', 'add.errFailed': 'Orca 没能开出终端：{detail}', 'add.errLate': '终端开了，但 60 秒还没见到它上线。去 Orca 看那个终端。', 'add.errOther': '服务器没有给出原因（可能没连上）。', 'add.plain': '这台电脑没有 Orca，页面开不了终端。在终端里跑这一行：', 'add.copy': '复制', 'add.copied': '已复制', 'add.close': '关掉', 'fold.rail': '折起名单', 'fold.msg': '折起消息', 'msg.tab': '消息 · {name}', 'b.focus': '看看它', 'follow.on': '跟随 {name}', 'follow.stop': '停止', 'work.edit': '改代码', 'work.read': '看文件', 'work.bash': '跑命令', 'work.other': '忙着', 'work.pause': '停一下', 'step.edit': '改 {file}', 'step.write': '写 {file}', 'step.editAny': '改代码', 'step.writeAny': '写代码', 'step.read': '看文件', 'step.search': '找代码', 'step.web': '查资料', 'step.bash': '跑命令', 'step.send': '派出：{desc}', 'step.sendAny': '派出帮手', 'step.plan': '排计划', 'step.message': '发消息', 'step.other': '忙着', /* cloud-city: texts */ 'add.done': '已打开 {name} · 小人马上出现', 'arr.btn': '整理', 'arr.on': '整理中', 'arr.tip': '拖一块地到虚线格子；拖到另一块地上 = 交换。也可以先点地，再点格子。', 'arr.tipPick': '选中了 {name}：点一个虚线格子搬过去，或点另一块地交换。', 'arr.hide': '隐藏', 'arr.show': '显示', 'arr.cancel': '取消', 'arr.done': '完成', 'arr.tray': '已隐藏', 'arr.waits': '{n} 人在等你', 'arr.last': '至少留一块地', 'arr.hidden': '已隐藏 {n} 个', 'arr.hiddenWait': ' · 其中 {n} 个在等你', 'arr.manage': '管理', 'arr.errTaken': '那个格子已经有地了', 'arr.errSea': '海边那块地的南边要留给海', 'arr.errEmpty': '至少留一块地', 'arr.errOther': '没存上，再试一次' }, en: { 'ed.startPhone': 'Drag furniture onto the floor, or tap to add.', 'ed.lightTipHigh': '{name} has lightness {n}%; it must be between 55% and 95% (too light: the floor washes out)', 'ed.diyBoxNote': 'Like a decoration app: drag furniture, click the floor to recolour, 2D/3D, one-click styles', 'ed.boxTitle': 'Decoration of {floor}', 'ed.badLayout': 'The layout is not valid', 'ed.why': 'Decorated by the owner', 'ed.savedLog': 'You decorated {floor}: {name} ({tm} manager desks, {h} assistant desks, {d} decor)', 'ed.saved': 'Saved', 'ed.notSaved': 'Not saved: {why}', 'ed.nameEmpty': 'Give the floor a name (20 characters at most)', 'ed.quitAsk': 'Changes are not saved. Click Exit once more to drop them.', 'ed.cantDrop': 'Not here: {why}', 'ed.canDrop': 'It fits here', 'ed.dropOnFloor': 'Drop it on the floor', 'ed.piecePicked': '{name} selected: drag it, turn it (R), delete it (Delete); colours are on the right', 'ed.surfPicked': '{name} selected: pick a colour on the right', 'ed.styleSet': 'Applied the colours and floors of {name}; the furniture stays', 'ed.matSet': '{name} is now {mat}', 'ed.colorSet': '{name} is now {c}', 'ed.lightTip': '{name} has lightness {n}%; it must be between 55% and 95% (too dark: people and names are hard to read)', 'ed.light': '{name} has lightness {n}%; it must be between 55% and 95%', 'ed.meetStay': 'The meeting table stays (extra people and the designer wait there); you can move it', 'ed.meetOne': 'There can be only 1 meeting table', 'ed.resetDone': 'Back to the basic look (not saved yet)', 'ed.redid': 'Redid one step', 'ed.undid': 'Undid one step', 'ed.removed': '{name} deleted', 'ed.turned': '{name} turned', 'ed.noFit': 'Does not fit: {why}', 'ed.noSpace': 'There is no free spot for {name}', 'ed.cantPlace': '{name} does not fit here: {why}', 'ed.placedAuto': '{name} added; drag it where you want it', 'ed.placed': '{name} placed', 'ed.start': 'Drag things from the left onto the floor, or click to add them. Click a piece to turn, delete or recolour it; click the floor to change it.', 'ed.locked': '🔒 {zone} · fixed', 'ed.tip5': 'Every seat must be reachable from the lift; a piece that does not fit snaps back and says why', 'ed.tip4': 'Hatched areas are fixed (the lift, the area manager\'s room, the pantry, the whiteboard)', 'ed.tip3': 'Click the floor: change the floor material (wood, herringbone, tiles, marble, concrete...) and colour', 'ed.tip2': 'Click a piece: drag it, turn it (R), copy it, delete it (Delete), change desk and chair colours', 'ed.tip1': 'Drag furniture and decor from the left onto the floor, or click to put it on a free spot', 'ed.tipsTitle': 'How it works', 'ed.lightNote': 'Floors must be light (lightness 55%-95%) so people and names stay readable.', 'ed.customTip': 'Pick any colour', 'ed.custom': 'Custom', 'ed.colour': 'Colour', 'ed.material': 'Material', 'ed.decorAccent': 'Accent (decor trim)', 'ed.allDesks': 'Desk top (all desks)', 'ed.del': 'Delete', 'ed.copy': 'Copy', 'ed.rotr': '⟳ Turn right', 'ed.rotl': '⟲ Turn left', 'ed.m.checker': 'Checker', 'ed.m.concrete': 'Concrete', 'ed.m.marble': 'Marble', 'ed.m.bigtile': 'Big tiles', 'ed.m.tile': 'Small tiles', 'ed.m.herringbone': 'Herringbone', 'ed.m.wood': 'Wood', 'ed.m.plain': 'Plain carpet', 'ed.carpetName': 'Open office carpet', 'ed.accentName': 'Accent (sign, window frames, decor)', 'ed.s.5': 'Lively pink', 'ed.s.4': 'Bookish', 'ed.s.3': 'Factory', 'ed.s.2': 'Fresh green', 'ed.s.1': 'Cool and simple', 'ed.s.0': 'Warm wood', 'ed.styleNote': 'Changes the colours and floor materials; the furniture stays where it is.', 'ed.decorCnt': 'Decor {n}/8', 'ed.cardTip': 'Drag onto the floor, or click', 'ed.tab.color': 'Floor · colours', 'ed.tab.decor': 'Decor', 'ed.tab.furniture': 'Furniture', 'ed.tab.style': 'Styles', 'ed.cnt': 'Manager desks {tm}/9 · Assistant desks {h}/3 · Decor {d}/8 · Plants {p}/8', 'ed.saving': 'Saving…', 'ed.save': 'Save', 'ed.reset': 'Reset to basic', 'ed.redo': '↷ Redo', 'ed.undo': '↶ Undo', 'ed.v3d': '3D', 'ed.v2d': '2D top', 'ed.nameHint': 'e.g. Cosy kitchen', 'ed.name': 'Name', 'ed.quit': '← Exit', 'ed.aria': 'Decorate it myself', 'ed.cntMax': 'At most {n} of {name} are allowed', 'ed.cntMin': 'At least {n} of {name} are needed', 'ed.noPantry': 'The way to the pantry is blocked', 'ed.noRoom': 'The way to the area manager\'s room is blocked', 'ed.meetBoxed': 'The meeting table is boxed in; it cannot be reached from the lift', 'ed.seat': 'The seat of {name} cannot be reached from the lift', 'ed.overlap': '{a} and {b} overlap', 'ed.onFixed': '{name} is on a fixed area ({zone})', 'ed.out': '{name} is outside the floor', 'ed.z.board': 'the whiteboard', 'ed.z.pantry': 'the pantry', 'ed.z.door': 'the area manager\'s door', 'ed.z.room': 'the area manager\'s room', 'ed.z.lift': 'the lift', 'ed.k.plant': 'Plant', 'ed.k.decor': 'Decor', 'ed.k.meet': 'Meeting table', 'ed.k.helper': 'Assistant desk', 'ed.k.tm': 'Manager desk', 'office.liftAria': 'Lift', 'office.designAria': 'Design of this floor', 'office.sep': '; ', 'office.demoName': 'The name must be 1 to 20 characters', 'office.ex0': 'Cosier, more plants', 'office.ex1': 'Cool colours, simple and clean', 'office.ex2': 'Add a cashier desk', 'office.ex3': 'Your call', 'slot.0': 'bottom left', 'slot.1': 'bottom middle', 'slot.2': 'right wall', 'color.accent': 'Accent', 'color.carpet': 'Carpet', 'color.manager_floor': 'Manager room floor', 'color.pantry_floor': 'Pantry floor', 'color.desk': 'Desk', 'color.desk_leg': 'Desk legs', 'color.chair': 'Chair', 'color.meeting_rug': 'Meeting rug', 'color.manager_rug': 'Manager rug', 'decor.robot': 'Robot arm', 'decor.conveyor': 'Conveyor', 'decor.gears': 'Gear wall', 'decor.chart': 'Bar chart', 'decor.plants': 'Plant corner', 'decor.safe': 'Safe', 'decor.cabinets': 'File cabinets', 'decor.printer': 'Printer', 'decor.bookshelf': 'Bookshelf', 'decor.clock': 'Grandfather clock', 'decor.cashier': 'Cashier desk', 'decor.goods': 'Goods shelf', 'decor.menu': 'Menu board', 'decor.scanner': 'Scanner', 'decor.lightbox': 'Light box', 'office.title': 'Agent Office', 'office.signSub': '{n} floors · this machine', 'office.zone.pantry': 'Pantry', 'office.zone.room': ' room', 'office.zone.meet': 'Meeting', 'office.lobby': 'Lobby', 'office.clickDoor': 'click the door', 'office.people': 'people', 'office.renovating': 'renovating…', 'office.lift': 'Lift', 'office.floors': 'floors', 'office.outside': 'Outside', 'office.renovate': 'Renovate', 'office.designBy': 'Design: ', 'office.pick': 'Floors', 'office.pickSub': 'Tick the repos: one repo, one floor, a newly ticked one goes on top. A new repo moving in is asked: decorate it yourself, or hire the interior designer.', 'office.online': '{n} sessions online', 'office.afterDone': 'asked about decorating after Done', 'office.notIn': 'not in the building', 'office.notHere': 'not on this computer', 'office.designed': 'Design: {name}', 'office.redo': 'Renovate again', 'office.up': 'Move up a floor', 'office.down': 'Move down a floor', 'office.atLeastOne': 'at least one floor stays', 'office.done': 'Done', 'office.pickUnknown': 'Not saved: the server does not know one of the repos.', 'office.pickBad': 'Not saved: the floors are not valid (at least one stays).', 'office.pickFail': 'Not saved: the server did not answer. Try again.', 'office.renoNew': 'A new company moved in: {name} ({floor})', 'office.renoAgain': 'Renovate {name} ({floor})', 'office.renoAskNew': 'Decorate this floor?', 'office.renoAskAgain': 'A new look?', 'office.hire': 'Hire the interior designer', 'office.recommended': 'recommended', 'office.hireNote': 'An agent on your computer; its role and design rules come from the plugin. You tell it what you want.', 'office.diy': 'Decorate it myself', 'office.diyNote': 'Like a decoration app: drag furniture, click the floor to recolour, 2D/3D, one-click styles', 'office.skip': 'Not now', 'office.skipNote': 'Use the plain look; the Renovate button on the floor sign is always there.', 'office.never': 'Never mind', 'office.neverNote': 'Keep it as it is.', 'office.hired': 'The interior designer was asked to come to {floor}', 'office.skipped': '{floor} stays plain', 'office.skipFail': '{floor}: the server did not answer, "not now" was not saved', 'office.diyTitle': 'Decorate {floor}', 'office.diyChecked': 'every field is checked', 'office.diyName': 'Name of the floor (20 characters at most)', 'office.diyNameHint': 'e.g. Cosy kitchen', 'office.diyColors': 'Colours', 'office.diyDecor': 'Decor (one piece per place, or none)', 'office.diyNone': 'none', 'office.save': 'Save', 'office.undo': 'Undo last', 'office.rules': 'Rules: who can change what', 'office.rule1': 'Can change: the name, 9 colours, the material of 3 floors; where furniture and decor stand and which way they face: manager desks 1-9, assistant desks 1-3, one meeting table, up to 8 plants, up to 8 decor pieces (from 15).', 'office.rule2': 'Cannot change: the floor size; the walls, the lift, the area manager\'s room (and its door), the pantry, the whiteboard; how many people. Pieces must not overlap, touch a fixed area or leave the floor; every seat, the meeting table, the area manager\'s door and the pantry must be reachable from the lift.', 'office.rule3': 'The three floors must be light (lightness 55%-95%). A bad file is refused whole; the floor keeps its last design and the page says which field.', 'office.saved': 'Saved', 'office.notSaved': 'Not saved: ', 'office.saveFail': 'Not saved: the server did not answer. Try again.', 'office.diyLog': 'You decorated {floor}: {name}', 'office.undone': 'Undone', 'office.undoneLog': '{floor}: the last renovation was undone', 'office.undoEmpty': 'Nothing to undo', 'office.bye': 'Thanks, you can go', 'office.byeLog': 'The interior designer of {floor} left', 'office.byeFail': '{floor}: the server did not answer, the designer is still here', 'office.noDesigner': 'An agent on your computer; its role and design rules come from the plugin', 'opt.helper': 'helper', 'opt.designer': 'designer', 'office.noDesign': 'not decorated yet', 'office.role.governor': 'area manager', 'office.role.task-manager': 'manager', 'office.role.helper': 'helper', 'office.role.designer': 'designer', 'log.designChanged': '{floor} was redecorated: {name}', 'log.designBad': '{floor} design refused: {why}', 'btn.log': 'Activity', 'aria.city': 'City', 'aria.canvas': '3D office building: each little person is one agent', 'proto.banner': 'Prototype - demo data', 'btn.zoomIn': 'Zoom in', 'btn.zoomOut': 'Zoom out', 'btn.rotate': 'Rotate', 'btn.resetView': 'Reset the view', 'repo.all': 'All', 'aria.repos': 'Repos: click one to fly there', 'repo.goAria': 'Fly to {name}', 'cap.hint': 'That is as far as it goes - click "All" to see every repo','btn.close': 'Close', 'aria.toolbar': 'Controls', 'label.spawn': 'Send a', 'opt.worker': 'worker - not drawn', 'opt.taskManager': 'task manager', 'opt.fastLaneDeputy': 'fast-lane deputy - not drawn', 'opt.mergeDeputy': 'merge deputy - not drawn', 'btn.spawn': 'Send', 'type.house': 'House', 'type.shop': 'Shop', 'type.tower': 'Tower', 'type.workshop': 'Workshop', 'type.library': 'Library', 'district.house': 'Homes', 'district.shop': 'Shops', 'district.tower': 'Tests', 'district.workshop': 'Workshops', 'district.library': 'Library', 'chat.state.queued': 'Queued', 'chat.state.delivered': 'Delivered', 'chat.state.undelivered': 'Undelivered', 'chat.why.notListening': 'it is not listening, it did not get this', 'chat.state.sent': 'On its way', 'chat.why.off': 'that computer is off', 'chat.why.ended': 'this session has ended', 'chat.why.talkOff': 'that computer does not take cloud messages', 'chat.why.refused': 'that computer did not accept it', 'chat.why.flood': 'too many messages too fast, that computer did not accept it', 'chat.new': 'New messages ↓', 'hist.title': 'History (newest at the bottom)', 'hist.empty': 'Nothing yet', 'hist.all': 'Show steps {n}', 'hist.hide': 'Hide steps', 'hist.onlyMech': 'Only steps so far - tap "Show steps"', 'hist.started': 'Headed out: {task}', 'hist.stuck': 'Stuck: {text}', 'hist.toLead': 'To the manager', 'hist.toGov': 'To the area manager', 'hist.waiting': 'Waiting on you', 'hist.done': 'Finished, heading to rest', 'hist.left': 'Clocked out', 'chat.task': 'Task (what it was sent with)', 'role.task-manager': 'Task manager', 'role.worker': 'Worker', 'role.fast-lane-deputy': 'Fast-lane deputy', 'role.merge-deputy': 'Merge deputy', 'role.other': 'Helper', 'era.village': 'Village', 'era.town': 'Town', 'era.city': 'City', 'quality.good': 'Tidy', 'quality.fair': 'OK', 'quality.poor': 'Messy', 'who.governor': 'Area manager', 'who.owner': 'You', 'who.terminal': 'Terminal', 'state.spawn': 'Heading out', 'state.to_plot': 'To the desk', 'state.building': 'Building', 'state.working': 'Working', 'state.to_hall': 'To the area manager', 'state.asking': 'Asking the area manager', 'state.heard': 'Got the answer', 'state.to_lead': 'To the manager', 'state.at_lead': 'Asking the manager', 'state.back': 'Back to the desk', 'state.finishing': 'Done', 'state.to_rest': 'Heading to rest', 'state.resting': 'Resting', 'state.leaving': 'Heading home', 'status.need_approval': 'Needs your OK', 'status.asking_gov': 'Asking the area manager', 'status.waiting_answer': 'Waiting on your answer', 'status.waiting_reply': 'Waiting on you', 'status.waiting': 'Waiting on you', 'status.background': 'Working in background', 'status.idle': 'Idle', 'stuck.permission': 'Needs permission: {tool}', 'stuck.default': 'Needs your eyes', 'gov.away': 'Away', 'gov.busy': 'Busy', 'gov.home': 'At the town hall', 'top.work': 'Working', 'top.ask': 'Need area manager', 'top.rest': 'Resting', 'top.done': 'Built', 'top.stalled': 'Stalled site', 'top.pending': 'Waiting', 'top.pendingAria': '{n} waiting on your call - click to open the earliest', 'empty.noLand': 'No territory yet - start inside a git repo, or wait for an agent', 'loading.text': 'Loading assets…', 'loading.progress': 'Loading assets {n}/{total}', 'loading.error': 'Assets failed to load: {err}', 'site.human': 'Hands-on', 'log.eraUpgrade': '{name} is upgrading to {era}', 'say.done': 'Done!', 'log.leftWork': '{task} clocked out', 'gov.dispatch': 'Go: {task}', 'log.govDispatch': 'The area manager sent {label}: {task}', 'log.siteMerged': '{branch} merged into main, the site wrapped up', 'log.siteRemoved': 'The {branch} site was pulled down', 'log.levelUp': '{label} leveled up to {lv}', 'log.movedBack': '{label} moved back to the {kind} district', 'log.demolished': 'Every file behind {label} is gone, demolished', 'log.stuckDemo': '{task} got stuck: "{text}" -> asking the area manager', 'answer.default': 'Answered', 'log.govAnswer': 'The area manager answered {task}: "{text}"', 'log.doneRestPlain': '{task} finished, heading to rest', 'log.doneRestBuilt': '{task} finished: {kind} topped out, heading to rest', 'log.noplot': '{name} found no empty plot, waiting a bit', 'gov.unknown': 'Unknown', 'gov.busyRow': 'Busy', 'gov.idleRow': 'Idle', 'gov.title': '{name} area manager', 'chain.lead': 'Manager', 'chain.leadTask': 'Manager {task}', 'chat.empty': 'No conversation yet', 'chat.you.page': 'You (page)', 'chat.you.terminal': 'You (terminal)', 'chat.wait': 'Waiting for it to finish this step', 'chat.loadError': 'Could not load the conversation - try opening it again in a moment.', 'kv.repo': 'Repo', 'kv.branch': 'Branch', 'kv.doing': 'Doing', 'qa.ask': 'Q: “{q}”', 'qa.answer': 'A: “{a}”', 'qa.waiting': 'Q: “{q}” - waiting for an answer…', 'act.makeStuck': 'Make it stuck', 'act.makeDone': 'Make it finish', 'act.makeLeave': 'Make it clock out', 'act.demoNote': 'These three buttons exist only in the prototype, to try the flow.', 'gov.ownTag': 'main manager · main conversation', 'gov.tagLabel': 'Area manager · main manager', 'pill.hall': 'Town hall', 'gov.awayNote': 'The area manager is away: this repo has no main manager session right now. Agent questions go straight to you, without waiting for the area manager first.', 'hint.team': 'Team', 'hint.noAgents': 'No agents at work yet. Open a Claude Code session and send an agent - it will walk out of the town hall.', 'hint.pickSomething': 'Click a person or building in the city, or a row in the list below.', 'building.misplaced': ' - in the wrong district', 'building.level': ' - level {level}', 'building.district': '{kind} district', 'building.module': '{name} module', 'hint.files': 'The files that built it', 'hint.history': 'Who has touched it (newest first)', 'detail.title': 'Details', 'opt.other': 'Other', 'opt.customAnswer': 'Write your own answer', 'btn.sendAnswer': 'Send answer', 'kv.tool': 'Tool', 'kv.file': 'File', 'kv.url': 'URL', 'said': 'It said: {text}', 'kv.dir': 'Directory', 'field.denyReason': 'Reason for denying (optional; if filled in, it is told to it as-is)', 'field.denyPlaceholder': 'e.g. do not delete dist/ yet, it has the release package', 'btn.allow': 'Allow', 'btn.deny': 'Deny', 'ask.asking': 'is asking', 'card.permission': 'Needs permission', 'card.question': 'Asks you', 'ask.needsPermission': 'needs permission', 'pill.closed': 'Closed', 'aria.collapse': 'Collapse (without answering)', 'foot.terminalAnswers': 'The terminal can answer too - whichever answers first wins.', 'err.decideNetwork': 'Could not send (cannot reach the city server). The terminal can still answer.', 'err.decideStatus': 'Could not send ({status}). The terminal can still answer, or try again.', 'proto.live': 'Live - waiting for the server', 'proto.connected': 'Live - connected', 'proto.reconnecting': 'Live - reconnecting…', 'demo.task.worker.0': 'Settings page form', 'demo.task.worker.1': 'Login API', 'demo.task.worker.2': 'Export CSV', 'demo.task.worker.3': 'Dark mode', 'demo.task.worker.4': 'Receipt printing', 'demo.task.worker.5': 'Search box', 'demo.task.worker.6': 'Pagination', 'demo.task.worker.7': 'Price calculation', 'demo.task.worker.8': 'Inventory alerts', 'demo.task.worker.9': 'Customer list', 'demo.task.taskManager.0': 'Settings page', 'demo.task.taskManager.1': 'Login', 'demo.task.taskManager.2': 'Reports', 'demo.task.taskManager.3': 'Printing', 'demo.task.taskManager.4': 'Inventory', 'demo.task.fastLaneDeputy.0': 'Typos', 'demo.task.fastLaneDeputy.1': 'Button colour', 'demo.task.fastLaneDeputy.2': 'Icon size', 'demo.task.fastLaneDeputy.3': 'Title wrapping', 'demo.task.fastLaneDeputy.4': 'Empty-state copy', 'demo.task.mergeDeputy.0': 'Merge settings', 'demo.task.mergeDeputy.1': 'Merge login', 'demo.task.mergeDeputy.2': 'Merge report', 'demo.task.mergeDeputy.3': 'Merge print', 'demo.qa.0.q': 'Which test name is unclear - which one?', 'demo.qa.0.a': 'Go with the default, log it', 'demo.qa.1.q': 'Which API path should I use?', 'demo.qa.1.a': 'Use /api/settings', 'demo.qa.2.q': 'Should I add pagination?', 'demo.qa.2.a': 'Not yet, write it into ideas', 'demo.qa.3.q': 'What is the default language?', 'demo.qa.3.a': 'zh, matching the settings', 'demo.qa.4.q': 'Does the old data need migrating?', 'demo.qa.4.a': 'Yes, write a test first', 'demo.qa.5.q': 'Can I change this file?', 'demo.qa.5.a': 'Yes, only your own copy', 'demo.qa.6.q': 'Can I run this command?', 'demo.qa.6.a': 'Approved, go ahead', 'aria.needsApproval': '{task} needs your approval, click to open', 'aria.needsAnswer': '{task} needs your answer, click to open', 'aria.govNeedsApproval': 'The area manager needs your approval, click to open', 'aria.govNeedsAnswer': 'The area manager needs your answer, click to open', 'gov.waitCountdown': 'Area manager {s}s', 'chat.sendError': 'Could not send (cannot reach the city server).', 'btn.findLead': 'Find the lead: {name}', 'hint.readOnlySub': 'This is a subtask; the conversation is view only - go to its lead for anything else.', 'placeholder.saySomething': 'Say something to it…', 'btn.send': 'Send', 'label.ask': 'Q: ', 'label.answer': 'A: ', 'label.awaitingAnswer': 'awaiting an answer…', 'ask.permission': '{name} needs permission: {what} -> waiting on you', 'ask.toOwner': '{name} asks you: “{what}”', 'ask.toGov': '{name} asks the area manager: “{what}”', 'ask.toGovNoGov': '{name} asks the area manager: “{what}”, no area manager around -> waiting on your answer', 'askphase.pass': 'The area manager: not mine to decide -> waiting on your answer for {name}', 'askphase.timeout': 'The area manager did not answer {name} in {wait}s -> waiting on you', 'closed.routed': 'The request from {name} was routed to {who}: {what}', 'closed.answered': '{who} answered {name}: “{text}”', 'closed.answeredDefault': '{who} already answered {name}', 'closed.allowed': '{who} allowed {name}: {what}', 'closed.denied': '{who} denied {name}: {what}', 'closed.deniedReason': ', reason: “{reason}”', 'closed.ended': '{who} closed {name}: {what}', 'why.permission': 'Only you can approve permissions - the area manager does not.', 'why.gov': 'The area manager cannot decide this - it is yours.', 'why.timeout': 'The area manager did not answer in {wait}s - it is yours.', 'why.pass': 'The area manager said: not mine to decide - it is yours.', 'why.noGov': 'No area manager around - it goes straight to you.', 'closed.late': 'Too late: <b>{who}</b> already handled it at {time}. No need to click here.', 'closed.pending': 'Handled at {time}; the result has not come back yet. Noted.', 'closed.answeredText': 'Answered: “{text}”', 'closed.allowedText': 'Allowed', 'closed.deniedText': 'Denied', 'closed.lateFull': 'Too late: <b>{who}</b> already {text} at {time}. No need to click here.', 'closed.doneByYou': '<b>{who}</b> {text} at {time}. Noted.', 'log.chatSent': 'You -> {to}: {text}', 'say.understood': 'Got it!', 'log.eraBecame': '{name} became a {era}', 'demo.seed.prompt': 'Finish this page first, do not touch anything else yet', 'demo.seed.reply': 'OK, doing this page first, leaving the rest alone', 'chat.stateSuffix': ' ({state})', 'punct.answerJoin': '; ', 'rail.title': 'Now', 'rail.count': '{n}', 'rail.rest': 'Resting {n}', 'rail.tab': 'Now {n}', 'rail.none': 'Nobody online', 'rail.lost': 'Parent unknown', 'rail.fold': 'Fold', 'rail.unfold': 'Unfold', 'add.tip': 'Add agent', 'add.plus': '+', 'add.opening': 'Opening {name}…', 'add.openingBare': 'Opening…', 'add.cap': 'The computer is busy', 'add.capNums': 'RAM {ram}% · CPU {cpu}% (limit {max}%)', 'add.capAsk': 'Open it anyway?', 'add.go': 'Open anyway', 'add.cancel': 'Cancel', 'add.err': 'Not opened: ', 'add.retry': 'Try again', 'add.ok': 'Got it', 'add.errGone': 'Cannot find the repo folder {folder} (moved or deleted).', 'add.errFailed': 'Orca could not open a terminal: {detail}', 'add.errLate': 'The terminal opened, but nothing showed up in 60 seconds. Look at that terminal in Orca.', 'add.errOther': 'The server gave no reason (it may be out of reach).', 'add.plain': 'This computer has no Orca, so the page cannot open a terminal. Run this line in a terminal:', 'add.copy': 'Copy', 'add.copied': 'Copied', 'add.close': 'Close', 'fold.rail': 'Fold the list', 'fold.msg': 'Fold the messages', 'msg.tab': 'Messages · {name}', 'b.focus': 'Show it', 'follow.on': 'Following {name}', 'follow.stop': 'Stop', 'work.edit': 'Editing', 'work.read': 'Reading', 'work.bash': 'Running', 'work.other': 'Busy', 'work.pause': 'Pausing', 'step.edit': 'Editing {file}', 'step.write': 'Writing {file}', 'step.editAny': 'Editing code', 'step.writeAny': 'Writing code', 'step.read': 'Reading files', 'step.search': 'Searching code', 'step.web': 'Looking things up', 'step.bash': 'Running a command', 'step.send': 'Sending out: {desc}', 'step.sendAny': 'Sending a helper', 'step.plan': 'Planning', 'step.message': 'Sending a message', 'step.other': 'Busy', /* cloud-city: texts */ 'add.done': 'Opened {name} · the person shows up in a moment', 'arr.btn': 'Arrange', 'arr.on': 'Arranging', 'arr.tip': 'Drag a land to a dashed slot; drop it on another land to swap. Or tap a land, then a slot.', 'arr.tipPick': '{name} is picked: tap a dashed slot to move it, or another land to swap.', 'arr.hide': 'Hide', 'arr.show': 'Show', 'arr.cancel': 'Cancel', 'arr.done': 'Done', 'arr.tray': 'Hidden', 'arr.waits': '{n} waiting for you', 'arr.last': 'Keep at least one land', 'arr.hidden': '{n} hidden', 'arr.hiddenWait': ' · {n} waiting for you', 'arr.manage': 'Manage', 'arr.errTaken': 'That slot is taken', 'arr.errSea': 'The cell south of a coast land is its sea', 'arr.errEmpty': 'Keep at least one land', 'arr.errOther': 'Not saved, try again.' } };
 /* idea-city C1: i18n(key, vars) -> TEXT[en or zh][key], every "{name}" replaced by vars[name]; an
    unknown key gives the key itself back. A plain top-level function declaration -- every caller in
    this file reaches it by that name (never `T`: several test drivers use a local `T` for "the
@@ -988,7 +1027,7 @@ function officeState(view){
   for (const terr of Array.from(govsByTerr.keys())) if (!keep.has(terr)) govsByTerr.delete(terr);
   for (const terr of Array.from(govMove.keys())) if (!keep.has(terr)) govMove.delete(terr);
   if (govTerr !== null && !keep.has(govTerr)) govTerr = ids.length ? ids[ids.length - 1] : null;
-  gridMemo.clear();
+  clearPlans();
   return map;
 }
 /* floorOf(terr) -> its floor number (1 = bottom), 0 when it is not a floor; floorName(n) -> "G" for 0, else "nF" */
@@ -999,9 +1038,9 @@ function floorOf(terr){
 }
 function floorName(n){ return n === 0 ? 'G' : n + 'F'; }
 const HEX6 = /^#[0-9A-Fa-f]{6}$/;
-/* themeOf(terr) -> { name, why, colors, decor, designed }: the floor's design read as DATA only (never run, never
+/* themeOf(terr) -> { name, why, colors, decor, materials, designed }: the floor's design read as DATA only (never run, never
    loaded): colors has the 9 keys, each the design's value when it is "#RRGGBB", else the base look's; decor is 3
-   entries, each a FLOOR_DECOR id or "none"; name is the design's name, or "还没装修" when there is none. */
+   entries, each a FLOOR_DECOR id or "none"; materials is { carpet, manager_floor, pantry_floor }, each a FLOOR_MATERIALS id (a missing or unknown one is the base look's); name is the design's name, or "还没装修" when there is none. */
 function themeOf(terr){
   const id = terr && typeof terr === 'object' ? terr.id : terr;
   const d = map.designs && map.designs[id], designed = !!d && typeof d === 'object';
@@ -1010,8 +1049,11 @@ function themeOf(terr){
   for (const k of LOOK_KEYS) colors[k] = typeof dc[k] === 'string' && HEX6.test(dc[k]) ? dc[k] : BASE_LOOK[k];
   const dd = designed && Array.isArray(d.decor) ? d.decor : [];
   const decor = [0, 1, 2].map(i => FLOOR_DECOR.includes(dd[i]) ? dd[i] : 'none');
+  const dm = designed && d.materials && typeof d.materials === 'object' ? d.materials : {};
+  const materials = {};
+  for (const k of Object.keys(BASE_MATERIALS)) materials[k] = FLOOR_MATERIALS.includes(dm[k]) ? dm[k] : BASE_MATERIALS[k];
   return { name: designed && typeof d.name === 'string' && d.name ? d.name : i18n('office.noDesign'),
-    why: designed && typeof d.why === 'string' ? d.why : '', colors, decor, designed };
+    why: designed && typeof d.why === 'string' ? d.why : '', colors, decor, materials, designed };
 }
 /* needsAsk(terr) -> true when the live page (not #demo) shows a floor with no design that the server's asked list
    does not have, and no designer is on it. (The 3D part then asks once: 请室内设计师 / 自己装修 / 先不装修.) */
@@ -1227,68 +1269,231 @@ const MGR_IDLE = { x:6.1, z:-5.4, yaw:Math.PI / 2 }; // where the 3D part may sh
 const LIFT_OUT = [{ x:-1.85, z:-5.7, yaw:0 }, { x:-.25, z:-5.7, yaw:0 }];   // where a person steps out of a lift
 const LIFT_IN = [{ x:-1.85, z:-6.55, yaw:0 }, { x:-.25, z:-6.55, yaw:0 }];  // inside the lift car
 const LIFT_CALL = { x:-1.05, z:-5.5, yaw:Math.PI };                          // the call button
-const ASSIST_DESKS = [0, 1, 2].map(k => ({ x: 2.9 + k * 1.5, z: -1.6 }));   // the helpers' desks outside the glass room
-const TM_DESKS = [];                                                          // the open office, row by row
-for (let k = 0; k < 9; k++) TM_DESKS.push({ x: [-5.7, -3.2, -.7][k % 3], z: [-1.3, 1.6, 4.5][Math.floor(k / 3)] });
 const SEAT_CHAIR = { helper: .74, 'task-manager': .78 };                     // a desk's chair is this far south of it
-const MEET_TABLE = { x:4.6, z:4.0 };
-const MEET = [];                                                              // the meeting corner (south-east)
-for (let k = 0; k < 4; k++) { const a = k / 4 * Math.PI * 2 + Math.PI / 4; MEET.push({ x: MEET_TABLE.x + Math.sin(a) * 1.35, z: MEET_TABLE.z + Math.cos(a) * 1.35 }); }
-MEET.push({ x:6.1, z:3.2 }, { x:6.1, z:4.8 });
-for (const m of MEET) m.yaw = Math.atan2(MEET_TABLE.x - m.x, MEET_TABLE.z - m.z);
 const DECOR_SPOTS = [{ x:-5.2, z:6.35, yaw:Math.PI }, { x:-1.6, z:6.35, yaw:Math.PI }, { x:6.45, z:.75, yaw:-Math.PI / 2 }];
 const toSim = (t, p) => ({ x: t.cx + p.x, y: t.cz + p.z });
-/* what a floor's grid depends on: the helper desks drawn, the manager desks drawn (deskCount), which decor slots hold a piece */
-function layoutOf(terr){
-  let h = 0, tm = 0;
-  for (const c of citizens) if (!c.gone && c.terr === terr) { if (c.role === 'helper') h++; else if (c.role === 'task-manager') tm++; }
-  const t = terr && map.territories.some(q => q.id === terr) ? themeOf(terr) : null;
-  return { nH: Math.min(3, Math.max(1, h)), nT: Math.min(9, tm + 1), decor: t ? t.decor : ['none', 'none', 'none'] };
+/* ---------- the plan of a floor (city-office-2, requirements/city.md "Room editor") ----------
+   A plan is { items: [{ k, x, z, yaw (degrees: 0, 90, 180, 270), id (decor), s (plant) }] }. These constants and the
+   rules below are the server's (bin/agent_city.py LAYOUT_KINDS, FIXED_ZONES, FIXED_BLOCKS, check_design): the editor
+   says it does not fit while the owner drags, and the server says the same when it saves. Rectangles are local
+   (x1, x2, z1, z2), the front toward +z. */
+const PIECES = {
+  tm:     { zh:i18n('ed.k.tm'),     walk:[-.75, .75, -.4, .4],    foot:[-.75, .75, -.4, 1.1],  seat:[0, .78], min:1, max:9 },
+  helper: { zh:i18n('ed.k.helper'), walk:[-.6, .6, -.38, .38],    foot:[-.6, .6, -.38, 1.05],  seat:[0, .74], min:1, max:3 },
+  meet:   { zh:i18n('ed.k.meet'),   walk:[-.95, .95, -.95, .95],  foot:[-1.6, 1.6, -1.6, 1.6], seat:null,    min:1, max:1 },
+  decor:  { zh:i18n('ed.k.decor'),  walk:[-.8, .8, -.45, .45],    foot:[-.8, .8, -.45, .45],   seat:null,    min:0, max:8 },
+  plant:  { zh:i18n('ed.k.plant'),  walk:[-.3, .3, -.3, .3],      foot:[-.32, .32, -.32, .32], seat:null,    min:0, max:8 },
+};
+const FIXED_ZONES = [[i18n('ed.z.lift'), [-2.85, .75, -7, -5]], [i18n('ed.z.room'), [1.5, 7, -7, -2.85]],
+  [i18n('ed.z.door'), [1.9, 3.3, -2.95, -2.15]], [i18n('ed.z.pantry'), [-7, -3.3, -7, -3.3]], [i18n('ed.z.board'), [6.6, 7, 2.3, 5.7]]];
+const FIXED_BLOCKS = [[-2.75, -7, .65, -6.3, .1], [-6.9, -7, -3.5, -6.35, .1], [-6.95, -5.6, -6.25, -4.8, .12], [-5.02, -5.02, -4.18, -4.18, .1],
+  [1.54, -7, 1.66, -2.95, .12], [1.54, -3.06, 2, -2.94, .12], [3.2, -3.06, 7, -2.94, .12], [3.7, -5.85, 5.5, -4.95, .18],
+  [6.55, -6.2, 6.95, -4.2, .1], [6.8, 2.4, 7, 5.6, .1], [6.25, -3.75, 6.75, -3.25, .15], [1.75, -6.85, 2.25, -6.35, .15]];
+const FLOOR_MATERIALS = ['plain', 'wood', 'herringbone', 'tile', 'bigtile', 'marble', 'concrete', 'checker'];
+const BASE_MATERIALS = { carpet:'plain', manager_floor:'wood', pantry_floor:'tile' };
+const PLAN_MAX_ITEMS = 40;
+const TURN = { 0:[1, 0], 90:[0, 1], 180:[-1, 0], 270:[0, -1] };      // (cos, sin) of a yaw in degrees: exact, no float noise
+const SNAP_GRID = .2;                                                   // the editor's grid
+const snap2 = v => +(Math.round(v / SNAP_GRID) * SNAP_GRID).toFixed(1);
+const round2 = v => Math.round(v * 100) / 100;
+const planYaw = it => it.yaw * Math.PI / 180;
+/* the point (lx, lz) of a piece, in the piece's own frame, on the floor */
+function planPt(it, lx, lz){ const cs = TURN[it.yaw] || TURN[0]; return { x:it.x + lx * cs[0] + lz * cs[1], z:it.z - lx * cs[1] + lz * cs[0] }; }
+function planRect(it, r){
+  const sc = it.k === 'plant' ? (it.s || 1) : 1;
+  const ps = [[r[0], r[2]], [r[1], r[2]], [r[0], r[3]], [r[1], r[3]]].map(q => planPt(it, q[0] * sc, q[1] * sc));
+  return [Math.min(...ps.map(q => q.x)), Math.max(...ps.map(q => q.x)), Math.min(...ps.map(q => q.z)), Math.max(...ps.map(q => q.z))];
 }
-function buildGrid(L){
+const rectsMeet = (a, b) => a[0] < b[1] - .02 && b[0] < a[1] - .02 && a[2] < b[3] - .02 && b[2] < a[3] - .02;
+/* Manager desk 2, Assistant desk 1, Meeting table, Plant, or the decor's own name */
+function pieceName(items, i){
+  const it = items[i];
+  if (it.k === 'decor') return i18n('decor.' + it.id);
+  const n = items.slice(0, i + 1).filter(o => o.k === it.k).length;
+  return PIECES[it.k].zh + (PIECES[it.k].max > 1 && it.k !== 'plant' ? ' ' + n : '');
+}
+/* the 4 chairs of the meeting table, 1.35 from its middle, and the way they face */
+function meetChairs(it){
+  return [0, 1, 2, 3].map(k => { const a = k / 4 * Math.PI * 2 + Math.PI / 4, x = it.x + Math.sin(a) * 1.35, z = it.z + Math.cos(a) * 1.35;
+    return { x, z, yaw:Math.atan2(it.x - x, it.z - z) }; });
+}
+const PLAN_COLS = [-5.7, -3.2, -.7], PLAN_ROWS = [-1.3, 1.6, 4.5];
+const PLAN_SLOTS = [[-5.2, 6.35, 180], [-1.6, 6.35, 180], [6.45, .75, 270]];
+/* defaultPlan(nTm, nHelper, decor3) -> { items }: the old fixed floor (the server's default_layout) */
+function defaultPlan(nTm, nHelper, decor3){
+  const items = [];
+  nTm = Math.max(0, Math.min(9, nTm | 0));
+  for (let k = 0; k < nTm; k++) items.push({ k:'tm', x:PLAN_COLS[k % 3], z:PLAN_ROWS[Math.floor(k / 3)], yaw:0 });
+  for (let k = 0; k < nHelper; k++) items.push({ k:'helper', x:round2(2.9 + 1.5 * k), z:-1.6, yaw:0 });
+  items.push({ k:'meet', x:4.6, z:4, yaw:0 });
+  if (nTm < 7) items.push({ k:'plant', x:-3.2, z:5, yaw:0, s:1 });
+  items.push({ k:'plant', x:1.3, z:6.5, yaw:0, s:.7 });
+  (decor3 || []).forEach((id, i) => { if (i < 3 && id && id !== 'none') items.push({ k:'decor', id, x:PLAN_SLOTS[i][0], z:PLAN_SLOTS[i][1], yaw:PLAN_SLOTS[i][2] }); });
+  return { items };
+}
+/* the walk grid (0.4 cells) of a plan: the floor's edge, the fixed things, then every piece's walk rectangle */
+function gridOfPlan(items){
   const g = new Uint8Array(GRID_N * GRID_N);
   for (let i = 0; i < GRID_N; i++) for (let j = 0; j < GRID_N; j++) {
-    const cx = GRID_ORG + (i + .5) * CELL, cz = GRID_ORG + (j + .5) * CELL;
-    if (Math.abs(cx) > 6.55 || Math.abs(cz) > 6.55) g[j * GRID_N + i] = 1;
+    if (Math.abs(GRID_ORG + (i + .5) * CELL) > 6.55 || Math.abs(GRID_ORG + (j + .5) * CELL) > 6.55) g[j * GRID_N + i] = 1;
   }
   const rect = (x1, z1, x2, z2, pad) => {
-    pad = pad == null ? .18 : pad;
     for (let i = 0; i < GRID_N; i++) for (let j = 0; j < GRID_N; j++) {
       const cx = GRID_ORG + (i + .5) * CELL, cz = GRID_ORG + (j + .5) * CELL;
       if (cx >= x1 - pad && cx <= x2 + pad && cz >= z1 - pad && cz <= z2 + pad) g[j * GRID_N + i] = 1;
     }
   };
-  const plant = (x, z, s) => rect(x - .25 * s, z - .25 * s, x + .25 * s, z + .25 * s, .15);
-  rect(-2.75, -7, .65, -6.3, .1);                                   // the lift core
-  rect(-6.9, -7, -3.5, -6.35, .1);                                  // the pantry counter
-  rect(-6.95, -5.6, -6.25, -4.8, .12);                              // the fridge
-  rect(-5.02, -5.02, -4.18, -4.18, .1);                             // the pantry table
-  rect(1.54, -7, 1.66, -2.95, .12);                                 // the glass room: its west wall
-  rect(1.54, -3.06, 2, -2.94, .12); rect(3.2, -3.06, 7, -2.94, .12); // its south wall, the door between
-  rect(3.7, -5.85, 5.5, -4.95);                                     // the area manager's desk
-  rect(6.55, -6.2, 6.95, -4.2, .1);                                 // his shelf
-  plant(6.5, -3.5, .8); plant(2, -6.6, .7);
-  for (let k = 0; k < L.nH; k++) { const d = ASSIST_DESKS[k]; rect(d.x - .6, d.z - .38, d.x + .6, d.z + .38); }
-  for (let k = 0; k < L.nT; k++) { const d = TM_DESKS[k]; rect(d.x - .75, d.z - .4, d.x + .75, d.z + .4); }
-  if (L.nT < 7) plant(-3.2, 5, 1);
-  plant(1.3, 6.5, .7);
-  L.decor.forEach((id, i) => {
-    if (id === 'none') return;
-    const s = DECOR_SPOTS[i];
-    if (Math.abs(s.yaw) > 3) rect(s.x - .8, s.z - .45, s.x + .8, s.z + .45, .12); else rect(s.x - .45, s.z - .8, s.x + .45, s.z + .8, .12);
-  });
-  rect(3.7, 3.1, 5.5, 4.9, .15);                                    // the meeting table
-  rect(6.8, 2.4, 7, 5.6, .1);                                       // the whiteboard
+  for (const b of FIXED_BLOCKS) rect(b[0], b[1], b[2], b[3], b[4]);
+  for (const it of items) { const r = planRect(it, PIECES[it.k].walk); rect(r[0], r[2], r[1], r[3], it.k === 'meet' ? .1 : .12); }
   return g;
 }
-const gridCache = new Map(), gridMemo = new Map();
-/* the grid of floor `terr` ('' = a floor with nothing on it): cached by what it depends on, re-read once per tick */
+/* checkPlan(plan) -> { ok:true } or { ok:false, i (the piece, 0-based, or null), why }: the same verdict as the server's
+   check_design: the counts, then per piece in order (inside the floor, off the fixed areas, not on an earlier piece), then
+   from the lift every seat, the meeting table, the area manager's door and the pantry must be reachable. */
+function checkPlan(plan){
+  const items = plan.items;
+  for (const k of Object.keys(PIECES)) {
+    const n = items.filter(it => it.k === k).length, P = PIECES[k];
+    if (n < P.min) return { ok:false, i:null, why:i18n('ed.cntMin', { n:P.min, name:P.zh }) };
+    if (n > P.max) return { ok:false, i:null, why:i18n('ed.cntMax', { n:P.max, name:P.zh }) };
+  }
+  const foots = items.map(it => planRect(it, PIECES[it.k].foot));
+  for (let i = 0; i < foots.length; i++) {
+    const f = foots[i], name = pieceName(items, i);
+    if (f[0] < -6.95 || f[1] > 6.95 || f[2] < -6.95 || f[3] > 6.95) return { ok:false, i, why:i18n('ed.out', { name }) };
+    for (const z of FIXED_ZONES) if (rectsMeet(f, z[1])) return { ok:false, i, why:i18n('ed.onFixed', { name, zone:z[0] }) };
+    for (let j = 0; j < i; j++) if (rectsMeet(f, foots[j])) return { ok:false, i, why:i18n('ed.overlap', { a:name, b:pieceName(items, j) }) };
+  }
+  const g = gridOfPlan(items);
+  const seen = new Uint8Array(GRID_N * GRID_N), s0 = nearestFreeCell(g, cellIx(LIFT_OUT[0].x), cellIx(LIFT_OUT[0].z)), q = [s0];
+  seen[s0[1] * GRID_N + s0[0]] = 1;
+  for (let h = 0; h < q.length; h++) {
+    const i = q[h][0], j = q[h][1];
+    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+      if (!di && !dj) continue;
+      const ni = i + di, nj = j + dj;
+      if (isBlocked(g, ni, nj) || seen[nj * GRID_N + ni]) continue;
+      if (di && dj && (isBlocked(g, i + di, j) || isBlocked(g, i, j + dj))) continue;
+      seen[nj * GRID_N + ni] = 1; q.push([ni, nj]);
+    }
+  }
+  const reach = (x, z) => {
+    const i = cellIx(x), j = cellIx(z);
+    if (!isBlocked(g, i, j)) return !!seen[j * GRID_N + i];
+    const b = nearestFreeCell(g, i, j);
+    return Math.hypot(b[0] - i, b[1] - j) <= 1.5 && !!seen[b[1] * GRID_N + b[0]];
+  };
+  for (let i = 0; i < items.length; i++) {
+    const st = PIECES[items[i].k].seat;
+    if (!st) continue;
+    const p = planPt(items[i], st[0], st[1]);
+    if (!reach(p.x, p.z)) return { ok:false, i, why:i18n('ed.seat', { name:pieceName(items, i) }) };
+  }
+  const mi = items.findIndex(it => it.k === 'meet');
+  if (mi >= 0 && !meetChairs(items[mi]).some(c => reach(c.x, c.z))) return { ok:false, i:mi, why:i18n('ed.meetBoxed') };
+  if (!reach(MGR_VISIT.x, MGR_VISIT.z)) return { ok:false, i:null, why:i18n('ed.noRoom') };
+  if (!reach(PANTRY[0].x, PANTRY[0].z)) return { ok:false, i:null, why:i18n('ed.noPantry') };
+  return { ok:true };
+}
+/* a design's layout read as DATA (never run): the well-formed pieces, or null when the counts are wrong */
+function cleanPlan(L){
+  if (!L || typeof L !== 'object' || !Array.isArray(L.items)) return null;
+  const items = [];
+  for (const it of L.items.slice(0, PLAN_MAX_ITEMS)) {
+    if (!it || typeof it !== 'object' || !Object.prototype.hasOwnProperty.call(PIECES, it.k)) continue;
+    if (typeof it.x !== 'number' || typeof it.z !== 'number' || !isFinite(it.x) || !isFinite(it.z) || typeof it.yaw !== 'number' || !TURN[it.yaw]) continue;
+    const o = { k:it.k, x:it.x, z:it.z, yaw:it.yaw };
+    if (it.k === 'decor') { if (!FLOOR_DECOR.includes(it.id)) continue; o.id = it.id; }
+    if (it.k === 'plant') o.s = typeof it.s === 'number' && it.s >= .6 && it.s <= 1.2 ? it.s : 1;
+    items.push(o);
+  }
+  for (const k of Object.keys(PIECES)) { const n = items.filter(it => it.k === k).length; if (n < PIECES[k].min || n > PIECES[k].max) return null; }
+  return { items };
+}
+const planMemo = new Map(), gridCache = new Map(), gridMemo = new Map();
+/* the walk grid and the plans are read again once per tick, and when a person comes or goes */
+function clearPlans(){ gridMemo.clear(); planMemo.clear(); }
+/* planOf(terr) -> the floor's plan: its v 2 design's layout, else the default plan (one manager desk more than there are
+   managers, the assistant desks drawn, the v 1 decor) */
+function planOf(terr){
+  let p = planMemo.get(terr);
+  if (p) return p;
+  const d = map.designs && map.designs[terr];
+  if (d && typeof d === 'object' && d.v === 2) p = cleanPlan(d.layout);
+  if (!p) {
+    let h = 0;
+    for (const c of citizens) if (!c.gone && c.terr === terr && c.role === 'helper') h++;
+    p = defaultPlan(deskCount(terr), Math.min(3, Math.max(1, h)), terr && map.territories.some(q => q.id === terr) ? themeOf(terr).decor : []);
+  }
+  planMemo.set(terr, p);
+  return p;
+}
+/* the walk grid of a list of pieces, cached by the pieces */
+function gridOfItems(items){
+  const key = JSON.stringify(items);
+  let g = gridCache.get(key);
+  if (!g) { if (gridCache.size > 40) gridCache.clear(); g = gridOfPlan(items); gridCache.set(key, g); }
+  return g;
+}
+/* the point itself when its cell is free on grid g, else the middle of the nearest free cell */
+function freePt(g, x, z){
+  const i = cellIx(x), j = cellIx(z);
+  if (!isBlocked(g, i, j)) return { x, z };
+  const c = nearestFreeCell(g, i, j);
+  return isBlocked(g, c[0], c[1]) ? { x, z } : { x:cellMid(c[0]), z:cellMid(c[1]) };
+}
+/* what the sim reads of a plan, cached by the plan:
+   tm, helper: the desks in item order, with the point and the way a person sits there;
+   meet: the meeting places: the 4 chairs, then 2 standing spots about 2.1 from the table on two sides that are free on this
+     plan (the nearest free cell otherwise), turned with the table, facing it;
+   stops: up to 3 places, free on this plan, where a designer at work stands (yaw: the way it looks) and puts its cones
+     (cx, cz, cyaw): 1.1 in front of each decor piece, then the default decor places when the plan has fewer than 3 pieces. */
+const planInfoMemo = new WeakMap();
+function planInfo(plan){
+  let n = planInfoMemo.get(plan);
+  if (n) return n;
+  n = { tm:[], helper:[], meet:[], stops:[] };
+  const g = gridOfItems(plan.items);
+  for (const it of plan.items) {
+    const st = PIECES[it.k].seat;
+    if (st) { const s = planPt(it, st[0], st[1]); n[it.k].push({ x:it.x, z:it.z, sx:s.x, sz:s.z, yaw:Math.PI + planYaw(it) }); }
+    else if (it.k === 'meet' && !n.meet.length) {
+      n.meet = meetChairs(it);
+      const used = new Set();
+      const stand = [[2.1, 0], [-2.1, 0], [0, 2.1], [0, -2.1]].map(q => planPt(it, q[0], q[1]));
+      const add = q => {
+        const key = cellIx(q.x) + ':' + cellIx(q.z);
+        if (used.has(key)) return false;
+        used.add(key); n.meet.push({ x:q.x, z:q.z, yaw:Math.atan2(it.x - q.x, it.z - q.z) }); return true;
+      };
+      for (const q of stand) { if (n.meet.length >= 6) break; if (!isBlocked(g, cellIx(q.x), cellIx(q.z))) add(q); }
+      for (const q of stand) { if (n.meet.length >= 6) break; add(freePt(g, q.x, q.z)); }
+    }
+  }
+  const spots = plan.items.filter(it => it.k === 'decor').slice(0, 3).map(it => ({ x:it.x, z:it.z, yaw:planYaw(it) }));
+  for (const d of DECOR_SPOTS) {
+    if (spots.length >= 3) break;
+    const q = freePt(g, d.x, d.z);
+    spots.push({ x:q.x, z:q.z, yaw:d.yaw });
+  }
+  for (const d of spots) {
+    const f = { x:Math.sin(d.yaw), z:Math.cos(d.yaw) }, q = freePt(g, d.x + f.x * 1.1, d.z + f.z * 1.1);
+    n.stops.push({ x:q.x, z:q.z, yaw:d.yaw + Math.PI, cx:q.x, cz:q.z, cyaw:d.yaw });
+  }
+  planInfoMemo.set(plan, n);
+  return n;
+}
+/* the base look's places, for reference: the desks and the meeting corner of the default plan */
+const BASE_PLAN = defaultPlan(9, 3, ['none', 'none', 'none']);
+const ASSIST_DESKS = BASE_PLAN.items.filter(it => it.k === 'helper');
+const TM_DESKS = BASE_PLAN.items.filter(it => it.k === 'tm');
+const MEET_TABLE = BASE_PLAN.items.find(it => it.k === 'meet');
+const MEET = meetChairs(MEET_TABLE);
+/* the walk grid of floor `terr` ('' = a floor with nothing on it): cached by its plan, re-read once per tick */
 function gridFor(terr){
   let g = gridMemo.get(terr);
   if (g) return g;
-  const L = layoutOf(terr), key = L.nH + ':' + L.nT + ':' + L.decor.map(d => d === 'none' ? 0 : 1).join('');
-  g = gridCache.get(key);
-  if (!g) { g = buildGrid(L); gridCache.set(key, g); }
+  g = gridOfItems(planOf(terr).items);
   gridMemo.set(terr, g);
   return g;
 }
@@ -1430,10 +1635,11 @@ function deskCount(terr){
   for (const c of citizens) if (!c.gone && c.terr === terr && c.role === 'task-manager') n++;
   return Math.min(9, n + 1);
 }
-/* where c sits: { x, y } the desk (a pantry / meeting spot is its own spot), sx/sy the point c stands or sits at (a
-   desk's chair is south of it), yaw how it looks there. A helper -> ASSIST_DESKS[k], a task manager -> TM_DESKS[k]
-   (k = its place among its kind on that floor, citizens order), the 4th+ helper, the 10th+ manager and the designer
-   -> a MEET spot; an idle or resting session -> a PANTRY spot; a subagent (never drawn) -> the lift. */
+/* where c sits: { x, y } and { sx, sy } the point c sits or stands at (a pantry / meeting spot is its own spot), yaw how
+   it looks there. A helper takes the assistant desks of the floor's plan, a task manager its manager desks (k = its
+   place among its kind on that floor, citizens order; a desk turned by the owner seats from its own side); the 4th+ helper,
+   the 10th+ manager and the designer -> a meeting chair; an idle or resting session -> a PANTRY spot; a subagent (never
+   drawn) -> the lift. */
 function seatPlan(c){
   const t = terrOf(c.terr);
   if (!t) return { x: c.x, y: c.y, sx: c.x, sy: c.y, yaw: c.yaw || 0 };
@@ -1443,18 +1649,18 @@ function seatPlan(c){
   if (!list.includes(c)) list.push(c);
   const rests = o => o.idle || ((STATE[o.state] || [])[0] === 'rest');
   if (rests(c)) return spot(PANTRY[list.filter(rests).indexOf(c) % PANTRY.length]);
+  const info = planInfo(planOf(c.terr));
   const kind = (o) => list.filter(q => q.role === o.role).indexOf(o);
-  const desk = (d, off) => { const s = toSim(t, d); return { x: s.x, y: s.y, sx: s.x, sy: s.y + off, yaw: Math.PI }; };
-  if (c.role === 'designer' && designerTours(c)) {   // at work: it walks the three decor slots, a few seconds at each
-    const d = DECOR_SPOTS[Math.floor(simT / DESIGNER_STOP_SEC) % DECOR_SPOTS.length], f = { x: Math.sin(d.yaw), z: Math.cos(d.yaw) };
-    const sp = spot({ x: d.x + f.x * 1.1, z: d.z + f.z * 1.1, yaw: d.yaw + Math.PI });
-    return sp;
+  const desk = d => spot({ x: d.sx, z: d.sz, yaw: d.yaw });
+  if (c.role === 'designer' && designerTours(c)) {   // at work: it walks the floor's decor places (free on its plan), a few seconds at each
+    const d = info.stops[Math.floor(simT / DESIGNER_STOP_SEC) % info.stops.length];
+    return spot({ x: d.x, z: d.z, yaw: d.yaw });
   }
-  if (c.role === 'helper' && kind(c) < ASSIST_DESKS.length) return desk(ASSIST_DESKS[kind(c)], SEAT_CHAIR.helper);
-  if (c.role === 'task-manager' && kind(c) < TM_DESKS.length) return desk(TM_DESKS[kind(c)], SEAT_CHAIR['task-manager']);
-  const over = list.filter(o => !rests(o) && ((o.role === 'designer' && !designerTours(o)) || (o.role === 'helper' && kind(o) >= ASSIST_DESKS.length) ||
-    (o.role === 'task-manager' && kind(o) >= TM_DESKS.length)));
-  return spot(MEET[Math.max(0, over.indexOf(c)) % MEET.length]);
+  if (c.role === 'helper' && kind(c) < info.helper.length) return desk(info.helper[kind(c)]);
+  if (c.role === 'task-manager' && kind(c) < info.tm.length) return desk(info.tm[kind(c)]);
+  const over = list.filter(o => !rests(o) && ((o.role === 'designer' && !designerTours(o)) || (o.role === 'helper' && kind(o) >= info.helper.length) ||
+    (o.role === 'task-manager' && kind(o) >= info.tm.length)));
+  return spot(info.meet[Math.max(0, over.indexOf(c)) % info.meet.length]);
 }
 /* a designer is at work while it has had a tool event lately and is not waiting on the owner or at rest */
 const DESIGNER_STOP_SEC = 6, DESIGNER_WORK_SEC = 20;
@@ -1623,7 +1829,7 @@ function newCitizen(id, role, task, terr){
   const R = ROLES[role];
   const t = terrOf(terr);
   const stand = t ? toSim(t, LIFT_OUT[0]) : { x:0, y:0 };
-  gridMemo.clear(); // the floor has one more person: its desks and its walk grid are read again
+  clearPlans(); // the floor has one more person: its desks and its walk grid are read again
   return { id, role, label:role, task, terr, at:terr, inLift:null, trip:null, color:R.color, skin:pick(SKIN), x:stand.x, y:stand.y, path:[], state:'spawn', stateT:0,
     alpha:0, tools:{Edit:0,Write:0,Bash:0,Read:0,Other:0}, work:0, bld:null, stand, home:null, slot:null, rest:null,
     question:'', answer:'', answered:false, pendingAnswer:'', askT:0, stuck:false, doneFlag:false, leaveFlag:false,
@@ -3463,7 +3669,7 @@ function demoGovTurn(dt){
 
 function update(dt){
   simT += dt;
-  gridMemo.clear(); // the walk grids are read again once per tick (who sits where may have changed)
+  clearPlans(); // the plans and walk grids are read again once per tick (who sits where may have changed)
   pruneTalks();
   if (DEMO) demoTalkTick(dt);
   reseat(); // somebody whose seat changed (a manager left, a helper went idle) walks to the new one
@@ -3787,13 +3993,86 @@ function placeDecor(G, th){
     const g = new THREE.Group(); g.position.set(s.x, 0, s.z); g.rotation.y = s.yaw; G.add(g); DECOR[k](g, th);
   });
 }
-/* while a designer of the floor is at work: cones and tape on the 3 slots */
-function placeCones(G){
-  SLOTS.forEach(s => {
-    const g = new THREE.Group(); g.position.set(s.x, 0, s.z); g.rotation.y = s.yaw; G.add(g);
+/* while a designer of the floor is at work: cones and tape at its stops (in front of the decor places, free on the floor's plan) */
+function placeCones(G, stops){
+  stops.forEach(s => {
+    const g = new THREE.Group(); g.position.set(s.cx, 0, s.cz); g.rotation.y = s.cyaw; G.add(g);
     [-.7, .7].forEach(x => { mesh(CONEG, mat('#FF8A3D'), .17, .46, .17, x, .23, .3, g); box(.2, .05, .2, '#FF8A3D', x, .025, .3, g); });
     box(1.4, .05, .02, '#FFD36E', 0, .38, .3, g); box(.9, .55, .45, '#C99A6B', 0, .275, -.1, g);
   });
+}
+
+/* ---------- floor materials (owner, 2026-11-25: "the floor affects a lot on the looking"): each of the three floor areas
+   has a material, a pattern drawn in code, and a colour that tints it ---------- */
+const MAT_TILE = { plain:4, wood:3, herringbone:2, tile:2.6, bigtile:3.4, marble:4.5, concrete:4, checker:2.4 };   // tiles per texture
+const TEXC = {};
+function tone(hex, dl){ const c = new THREE.Color(hex); c.offsetHSL(0, 0, dl); return '#' + c.getHexString(); }
+/* matCanvas(kind, col) -> a 256 x 256 canvas of the material `kind` in colour `col` */
+function matCanvas(kind, col){
+  const cv2 = document.createElement('canvas'); cv2.width = cv2.height = 256; const g = cv2.getContext('2d');
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  g.fillStyle = col; g.fillRect(0, 0, 256, 256);
+  const line = (c, w) => { g.strokeStyle = c; g.lineWidth = w; };
+  if (kind === 'plain') { for (let i = 0; i < 900; i++) { g.fillStyle = 'rgba(0,0,0,' + (.07 + rnd() * .06) + ')'; g.fillRect(rnd() * 256, rnd() * 256, 2, 2); } }
+  else if (kind === 'wood') {
+    for (let r = 0; r < 8; r++) {
+      const off = (r % 2) * 64 + (r % 3) * 21;
+      for (let x = -128; x < 256; x += 128) {
+        g.fillStyle = tone(col, -.04 - rnd() * .1); g.fillRect(x + off, r * 32, 128, 32);
+        line(tone(col, -.3), 2.5); g.strokeRect(x + off + 1, r * 32 + 1, 126, 30);
+        g.strokeStyle = 'rgba(0,0,0,0.12)'; g.lineWidth = 1;
+        for (let k = 0; k < 3; k++) { g.beginPath(); const yy = r * 32 + 6 + rnd() * 20; g.moveTo(x + off + 4, yy); g.bezierCurveTo(x + off + 40, yy + 3, x + off + 80, yy - 3, x + off + 124, yy + 1); g.stroke(); }
+      }
+    }
+  }
+  else if (kind === 'herringbone') {
+    for (let r = -1; r < 9; r++) for (let c = -1; c < 9; c++) {
+      const x = c * 32, y = r * 32, left = (c % 2 === 0);
+      g.fillStyle = tone(col, -.04 - rnd() * .12); g.beginPath();
+      if (left) { g.moveTo(x, y); g.lineTo(x + 32, y + 32); g.lineTo(x + 32, y + 48); g.lineTo(x, y + 16); }
+      else { g.moveTo(x, y + 32); g.lineTo(x + 32, y); g.lineTo(x + 32, y + 16); g.lineTo(x, y + 48); }
+      g.closePath(); g.fill(); line(tone(col, -.32), 2); g.stroke();
+    }
+  }
+  else if (kind === 'tile' || kind === 'bigtile' || kind === 'checker') {
+    const n = kind === 'bigtile' ? 2 : 4, sz = 256 / n;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { g.fillStyle = kind === 'checker' ? ((i + j) % 2 ? tone(col, -.24) : col) : tone(col, -rnd() * .06); g.fillRect(i * sz, j * sz, sz, sz); }
+    line(kind === 'checker' ? tone(col, -.34) : tone(col, -.3), kind === 'bigtile' ? 4 : 3);
+    for (let k = 0; k <= n; k++) { g.beginPath(); g.moveTo(k * sz, 0); g.lineTo(k * sz, 256); g.stroke(); g.beginPath(); g.moveTo(0, k * sz); g.lineTo(256, k * sz); g.stroke(); }
+  }
+  else if (kind === 'marble') {
+    for (let v = 0; v < 7; v++) {
+      g.strokeStyle = 'rgba(90,90,105,' + (.3 + rnd() * .3) + ')'; g.lineWidth = 1.2 + rnd() * 2; g.beginPath();
+      let x = rnd() * 256, y = 0; g.moveTo(x, y);
+      while (y < 256) { const nx = x + (rnd() - .5) * 60, ny = y + 20 + rnd() * 30; g.quadraticCurveTo(x + (rnd() - .5) * 40, y + 10, nx, ny); x = nx; y = ny; }
+      g.stroke();
+    }
+  }
+  else if (kind === 'concrete') {
+    for (let i = 0; i < 3500; i++) { const d = rnd(); g.fillStyle = d < .5 ? 'rgba(0,0,0,' + (.1 + rnd() * .14) + ')' : 'rgba(255,255,255,' + (.06 + rnd() * .12) + ')'; g.fillRect(rnd() * 256, rnd() * 256, 1 + rnd() * 2.5, 1 + rnd() * 2.5); }
+    for (let i = 0; i < 14; i++) { g.fillStyle = 'rgba(0,0,0,' + (.07 + rnd() * .08) + ')'; g.beginPath(); g.arc(rnd() * 256, rnd() * 256, 8 + rnd() * 26, 0, Math.PI * 2); g.fill(); }
+    line('rgba(0,0,0,0.2)', 3); g.beginPath(); g.moveTo(128, 0); g.lineTo(128, 256); g.moveTo(0, 128); g.lineTo(256, 128); g.stroke();
+  }
+  return cv2;
+}
+function matTex(kind, col){
+  const key = kind + col;
+  if (!TEXC[key]) { const tx = new THREE.CanvasTexture(matCanvas(kind, col)); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.anisotropy = 4; TEXC[key] = tx; }
+  return TEXC[key];
+}
+const MAT_THUMB = {};
+/* matThumb(kind, col) -> a small data URL of the material (the editor's swatches) */
+function matThumb(kind, col){
+  const k = kind + col;
+  if (!MAT_THUMB[k]) { const c = matCanvas(kind, col), tc = document.createElement('canvas'); tc.width = tc.height = 56; tc.getContext('2d').drawImage(c, 0, 0, 128, 128, 0, 0, 56, 56); MAT_THUMB[k] = tc.toDataURL(); }
+  return MAT_THUMB[k];
+}
+/* one floor area: a thin slab with the material's texture, w x d tiles of the floor, its middle at (x, y, z) */
+function floorMesh(kind, col, w, d, x, y, z, G){
+  const tex = matTex(kind || 'plain', col).clone(); tex.needsUpdate = true;
+  const ts = MAT_TILE[kind] || 4; tex.repeat.set(w / ts, d / ts);
+  const o = new THREE.Mesh(BOXG, new THREE.MeshLambertMaterial({ map:tex }));
+  o.scale.set(w, .02, d); o.position.set(x, y, z); o.userData.own = true; G.add(o); return o;
 }
 
 /* ---------- one floor ---------- */
@@ -3805,16 +4084,45 @@ function chair(x, z, yaw, p, c){
   cyl(.04, .38, C.metal, 0, .2, 0, g);
   box(.52, .04, .08, C.metal, 0, .03, 0, g); box(.08, .04, .52, C.metal, 0, .03, 0, g);
 }
-function deskTM(x, z, p){
-  box(1.5, .07, .8, C.desk, x, .74, z, p);
-  box(.06, .7, .76, C.deskLeg, x - .71, .36, z, p); box(.06, .7, .76, C.deskLeg, x + .71, .36, z, p);
-  box(1.4, .42, .04, C.deskLeg, x, .5, z - .37, p);
-  box(.74, .46, .05, C.monitor, x, 1.1, z - .2, p);
-  box(.66, .38, .01, C.screen, x, 1.1, z - .172, p, 'b');
-  box(.07, .22, .07, C.monitor, x, .87, z - .23, p); box(.28, .02, .18, C.monitor, x, .785, z - .23, p);
-  box(.46, .02, .15, C.kbd, x, .79, z + .12, p);
-  cyl(.05, .1, '#FFFFFF', x + .52, .83, z + .05, p);
-  chair(x, z + SEAT_CHAIR['task-manager'], Math.PI, p);
+/* one piece of the plan, drawn at its place and turned (the editor's catalogue draws the same pieces) */
+function drawItem(it, G, th, reno, idx){
+  const g = new THREE.Group(); g.position.set(it.x, 0, it.z); g.rotation.y = planYaw(it); G.add(g);
+  if (it.k === 'tm') {
+    box(1.5, .07, .8, C.desk, 0, .74, 0, g);
+    box(.06, .7, .76, C.deskLeg, -.71, .36, 0, g); box(.06, .7, .76, C.deskLeg, .71, .36, 0, g);
+    box(1.4, .42, .04, C.deskLeg, 0, .5, -.37, g);
+    box(.74, .46, .05, C.monitor, 0, 1.1, -.2, g);
+    box(.66, .38, .01, C.screen, 0, 1.1, -.172, g, 'b');
+    box(.07, .22, .07, C.monitor, 0, .87, -.23, g); box(.28, .02, .18, C.monitor, 0, .785, -.23, g);
+    box(.46, .02, .15, C.kbd, 0, .79, .12, g);
+    cyl(.05, .1, '#FFFFFF', .52, .83, .05, g);
+    chair(0, SEAT_CHAIR['task-manager'], Math.PI, g);
+  } else if (it.k === 'helper') {
+    box(1.2, .07, .76, C.desk, 0, .74, 0, g);
+    box(.06, .7, .72, C.deskLeg, -.56, .36, 0, g); box(.06, .7, .72, C.deskLeg, .56, .36, 0, g);
+    box(.5, .03, .34, '#C9CEDD', 0, .8, -.05, g); box(.5, .3, .03, '#2F3348', 0, .95, -.22, g);
+    box(.2, .02, .28, '#FFFFFF', .38, .79, .1, g);
+    chair(0, SEAT_CHAIR.helper, Math.PI, g, '#35A39A');
+  } else if (it.k === 'meet') {
+    mesh(CIRG, mat(C.rugMeet), 2, 2, 2, 0, .03, 0, g).rotation.x = -Math.PI / 2;
+    cyl(.9, .07, C.desk, 0, .74, 0, g); cyl(.08, .72, C.metal, 0, .36, 0, g);
+    for (let k = 0; k < 4; k++) { const a = k / 4 * Math.PI * 2 + Math.PI / 4; chair(Math.sin(a) * 1.35, Math.cos(a) * 1.35, a + Math.PI, g, '#5B7BD5'); }
+    const s = textSprite(i18n('office.zone.meet'), { fs:40, bg:'#FFFFFF', fg:'#2A2B45', h:.36 }); s.position.set(0, 2.1, 0); g.add(s);
+  } else if (it.k === 'decor') {
+    if (!reno && DECOR[it.id]) DECOR[it.id](g, th);
+  } else if (it.k === 'plant') plantM(0, 0, g, it.s || 1);
+  if (ED && idx >= 0 && ED.terr === cur) {   // the editor: a box to grab the piece by, and a frame round the piece picked
+    ED.groups[idx] = g;
+    const f = PIECES[it.k].foot, sc = it.k === 'plant' ? (it.s || 1) : 1;
+    const fr = (f[1] - f[0]) * sc, fd = (f[3] - f[2]) * sc, cx = (f[0] + f[1]) / 2 * sc, cz = (f[2] + f[3]) / 2 * sc;
+    const hit = mesh(BOXG, hitMat, fr, 1.3, fd, cx, .65, cz, g); hit.userData.item = idx; ED.hits.push(hit);
+    if (ED.sel === idx) {
+      const col = ED.err && ED.badI === idx ? '#E5484D' : '#FFB800';
+      [[fr, .05, .07, cx, .06, cz + fd / 2], [fr, .05, .07, cx, .06, cz - fd / 2], [.07, .05, fd, cx + fr / 2, .06, cz], [.07, .05, fd, cx - fr / 2, .06, cz]]
+        .forEach(q => box(q[0], q[1], q[2], col, q[3], q[4], q[5], g, 'b'));
+    }
+  }
+  return g;
 }
 function makeWall(def, p){
   const g = new THREE.Group(); p.add(g);
@@ -3836,11 +4144,13 @@ function makeWall(def, p){
 function renovating(terr){
   return citizens.some(c => !c.gone && c.role === 'designer' && c.terr === terr && citizenStatus(c, governorCount)[0] === 'build');
 }
-/* what the floor drawn depends on: its design, the desks the sim's walk grid blocks, the cones */
+let ED = null;   // the room editor's state while it is open (openEditor), else null
+/* what the floor drawn depends on: its design, its plan (the desks the sim's walk grid blocks), the cones */
 function floorSig(){
   if (!cur || !terrOf(cur)) return '';
-  const th = themeOf(cur), L = layoutOf(cur);
-  return JSON.stringify([cur, terrOf(cur).floor, th.colors, th.decor, L.nH, L.nT, renovating(cur)]);
+  if (ED && ED.terr === cur) return JSON.stringify([cur, 'editor', ED.rev]);
+  const th = themeOf(cur);
+  return JSON.stringify([cur, terrOf(cur).floor, th.colors, th.materials, planOf(cur).items, renovating(cur)]);
 }
 function disposeFloor(){
   if (floorG) { scene.remove(floorG); disposeOwn(floorG); floorG = null; }
@@ -3853,18 +4163,18 @@ function buildFloor(){
   const t = cur ? terrOf(cur) : null;
   floorSigNow = floorSig();
   if (!t) { renderFloorSign(); return; }
-  const G = floorG, th = themeOf(cur), L = layoutOf(cur), reno = renovating(cur), co = th.colors;
-  Object.assign(C, { carpet:co.carpet, wood:co.manager_floor, tile:co.pantry_floor, desk:co.desk, deskLeg:co.desk_leg,
-    chair:co.chair, rugMeet:co.meeting_rug, rugMgr:co.manager_rug });
+  const ed = ED && ED.terr === cur ? ED : null;
+  if (ed) { ed.hits = []; ed.groups = []; }
+  const G = floorG, th = themeOf(cur), plan = ed ? ed.plan : planOf(cur), reno = !ed && renovating(cur), co = ed ? ed.colors : th.colors;
+  setLook(co);
   const look = Object.assign({ decor:th.decor }, co);
 
   /* slab + zones (14 x 14) */
   box(14.4, .4, 14.4, C.slab, 0, -.2, 0, G);
-  box(14, .02, 14, C.carpet, 0, .01, 0, G);
-  box(5.4, .02, 4, C.wood, 4.3, .022, -5, G);
-  box(3.8, .02, 3.8, C.tile, -5.1, .022, -5.1, G);
-  for (let i = 0; i <= 4; i++) { box(.02, .021, 3.8, '#DCD6C8', -7 + i * .95, .024, -5.1, G); box(3.8, .021, .02, '#DCD6C8', -5.1, .024, -7 + i * .95, G); }
-  mesh(CIRG, mat(C.rugMeet), 2, 2, 2, MEET_TABLE.x, .03, MEET_TABLE.z, G).rotation.x = -Math.PI / 2;
+  const mt = ed ? ed.mats : th.materials;
+  floorMesh(mt.carpet, C.carpet, 14, 14, 0, .01, 0, G);
+  floorMesh(mt.manager_floor, C.wood, 5.4, 4, 4.3, .022, -5, G);
+  floorMesh(mt.pantry_floor, C.tile, 3.8, 3.8, -5.1, .022, -5.1, G);
   box(2.6, .02, 1.8, C.rugMgr, 4.6, .035, -5.3, G);
 
   /* the floors below: the building */
@@ -3915,28 +4225,13 @@ function buildFloor(){
   ['#FF7593', '#4D7CFE', '#FFD36E', '#6FD4A8', '#9B7BFF', '#E8A33A'].forEach((c, k) => box(.06, .42, .28, c, 6.53, .5 + Math.floor(k / 3) * .7, -5.9 + (k % 3) * .65, G));
   plantM(6.5, -3.5, G, .8); plantM(2, -6.6, G, .7);
 
-  /* the assistants: desks right outside the manager's door */
-  for (let k = 0; k < L.nH; k++) {
-    const x = ASSIST_DESKS[k].x, z = ASSIST_DESKS[k].z;
-    box(1.2, .07, .76, C.desk, x, .74, z, G);
-    box(.06, .7, .72, C.deskLeg, x - .56, .36, z, G); box(.06, .7, .72, C.deskLeg, x + .56, .36, z, G);
-    box(.5, .03, .34, '#C9CEDD', x, .8, z - .05, G); box(.5, .3, .03, '#2F3348', x, .95, z - .22, G);
-    box(.2, .02, .28, '#FFFFFF', x + .38, .79, z + .1, G);
-    chair(x, z + SEAT_CHAIR.helper, Math.PI, G, '#35A39A');
-  }
-
-  /* the managers: the open office, one desk more than there are managers */
-  for (let k = 0; k < L.nT; k++) deskTM(TM_DESKS[k].x, TM_DESKS[k].z, G);
-  if (L.nT < 7) plantM(-3.2, 5, G, 1);
-  plantM(1.3, 6.5, G, .7);
-  if (reno) placeCones(G); else placeDecor(G, look);
-
-  /* the meeting corner */
-  cyl(.9, .07, C.desk, MEET_TABLE.x, .74, MEET_TABLE.z, G); cyl(.08, .72, C.metal, MEET_TABLE.x, .36, MEET_TABLE.z, G);
-  for (let k = 0; k < 4; k++) chair(MEET[k].x, MEET[k].z, MEET[k].yaw, G, '#5B7BD5');
+  /* the plan: desks, the meeting table, plants and decor, each where the floor's plan puts it (while a designer of
+     the floor is at work its decor slots stand under cones instead) */
+  plan.items.forEach((it, i) => drawItem(it, G, look, reno, i));
+  if (reno) placeCones(G, planInfo(plan).stops);
+  if (ed) drawFixedHatch(G);
   box(.06, 1.1, 3, C.whiteboard, 6.88, 1.45, 4, G); box(.08, 1.22, 3.1, C.frame, 6.93, 1.45, 4, G);
   ['#FFD36E', '#FF7593', '#6FD4A8', '#8DB8FF', '#FFD36E'].forEach((c, k) => box(.02, .22, .22, c, 6.84, 1.7 - (k % 2) * .4, 2.9 + k * .5, G, 'b'));
-  const sMt = textSprite(i18n('office.zone.meet'), { fs:40, bg:'#FFFFFF', fg:'#2A2B45', h:.36 }); sMt.position.set(6.6, 2.45, 4); G.add(sMt);
   renderFloorSign();
 }
 function updateWalls(dt){
@@ -4031,9 +4326,9 @@ function clearFigs(){
 function sitsAt(x, z){
   const near = (p, dz) => Math.hypot(p.x - x, p.z + dz - z) < .2;
   if (near(MGR_SEAT, 0)) return true;
-  for (const d of ASSIST_DESKS) if (near(d, SEAT_CHAIR.helper)) return true;
-  for (const d of TM_DESKS) if (near(d, SEAT_CHAIR['task-manager'])) return true;
-  for (let k = 0; k < 4; k++) if (near(MEET[k], 0)) return true;
+  const info = planInfo(planOf(cur));
+  for (const d of info.helper.concat(info.tm)) if (Math.hypot(d.sx - x, d.sz - z) < .2) return true;
+  for (const m of info.meet) if (near(m, 0)) return true;
   return false;
 }
 /* the pose of one figure from what the sim says about it */
@@ -4156,7 +4451,7 @@ function syncFigs(dt){
     pinOv(f, st);
   }
 }
-const DEMO_WORLD = {"v": 2, "repos": [{"id": "4d5d7e95", "name": "auto-pipeline", "here": true, "n": 0}, {"id": "8329562e", "name": "v4-plus", "here": true, "n": 1}, {"id": "7b94683e", "name": "v4-office", "here": true, "n": 2}, {"id": "0a8b5440", "name": "v3", "here": true, "n": 3}], "floors": ["4d5d7e95", "8329562e", "7b94683e"], "designs": {"8329562e": {"v": 1, "name": "\u6536\u94f6\u53f0\u98ce\u683c", "why": "POS \u6536\u94f6\u7684 repo", "colors": {"accent": "#2E7D6B", "carpet": "#E4DCCB", "manager_floor": "#D9C2A0", "pantry_floor": "#EEEAE0", "desk": "#EFDAB5", "desk_leg": "#BBA27C", "chair": "#3E4560", "meeting_rug": "#A9BCE0", "manager_rug": "#C97B66"}, "decor": ["cashier", "none", "goods"]}, "7b94683e": {"v": 1, "name": "\u6e05\u723d\u84dd\u767d", "why": "\u540e\u53f0\u529e\u516c\uff0c\u5e72\u51c0\u660e\u4eae", "colors": {"accent": "#3B82C4", "carpet": "#E6EEF7", "manager_floor": "#CFDDEE", "pantry_floor": "#EAF0F6", "desk": "#F4F7FB", "desk_leg": "#9FB3C8", "chair": "#2F5D8A", "meeting_rug": "#BBD3EC", "manager_rug": "#6F9BC9"}, "decor": ["bookshelf", "plants", "clock"]}}, "asked": ["8329562e", "7b94683e"]};
+const DEMO_WORLD = {"v": 2, "repos": [{"id": "4d5d7e95", "name": "auto-pipeline", "here": true, "n": 0}, {"id": "8329562e", "name": "v4-plus", "here": true, "n": 1}, {"id": "7b94683e", "name": "v4-office", "here": true, "n": 2}, {"id": "0a8b5440", "name": "v3", "here": true, "n": 3}], "floors": ["4d5d7e95", "8329562e", "7b94683e"], "designs": {"8329562e": {"v": 1, "name": "\u6536\u94f6\u53f0\u98ce\u683c", "why": "POS \u6536\u94f6\u7684 repo", "colors": {"accent": "#2E7D6B", "carpet": "#E4DCCB", "manager_floor": "#D9C2A0", "pantry_floor": "#EEEAE0", "desk": "#EFDAB5", "desk_leg": "#BBA27C", "chair": "#3E4560", "meeting_rug": "#A9BCE0", "manager_rug": "#C97B66"}, "decor": ["cashier", "none", "goods"]}, "7b94683e": {"v": 2, "name": "\u6e05\u723d\u84dd\u767d", "why": "\u540e\u53f0\u529e\u516c\uff0c\u5e72\u51c0\u660e\u4eae", "colors": {"accent": "#3B82C4", "carpet": "#DDD6C7", "manager_floor": "#C9B79A", "pantry_floor": "#E3DED2", "desk": "#F4F7FB", "desk_leg": "#9FB3C8", "chair": "#2F5D8A", "meeting_rug": "#BBD3EC", "manager_rug": "#6F9BC9"}, "materials": {"carpet": "wood", "manager_floor": "herringbone", "pantry_floor": "checker"}, "layout": {"items": [{"k": "tm", "x": -5.4, "z": -1.2, "yaw": 0}, {"k": "tm", "x": -3.0, "z": -1.2, "yaw": 0}, {"k": "tm", "x": -5.4, "z": 2.0, "yaw": 0}, {"k": "tm", "x": -3.0, "z": 2.0, "yaw": 0}, {"k": "tm", "x": -0.6, "z": 0.2, "yaw": 90}, {"k": "helper", "x": 3.4, "z": -1.2, "yaw": 0}, {"k": "helper", "x": 5.4, "z": -1.2, "yaw": 0}, {"k": "meet", "x": 3.8, "z": 3.6, "yaw": 0}, {"k": "plant", "x": -1.2, "z": -3.8, "yaw": 0, "s": 1}, {"k": "plant", "x": -0.8, "z": 5.4, "yaw": 0, "s": 0.8}, {"k": "decor", "id": "bookshelf", "x": -5.2, "z": 6.35, "yaw": 180}, {"k": "decor", "id": "plants", "x": -1.6, "z": 6.35, "yaw": 180}, {"k": "decor", "id": "clock", "x": 6.45, "z": 0.8, "yaw": 270}]}}}, "asked": ["8329562e", "7b94683e"]};
 
 /* ---------- the camera: the sim's cam {az, el, dist, tx, tz} (az turns round, el tilts, (tx, ty, tz) is the look point)
    plus ty and wantDist, the zoom it eases to. No auto-rotate. ---------- */
@@ -4452,6 +4747,7 @@ function worldWatch(){
 /* the floor drawn no longer matches who is on it (a desk more, a designer at work): draw it again, the people stay */
 function floorWatch(){
   if (view !== 'inside' || !cur) return;
+  if (ED && (view !== 'inside' || cur !== ED.terr || !terrOf(ED.terr))) endEditor();
   const sig = floorSig();
   if (sig && sig !== floorSigNow) buildFloor();
 }
@@ -4607,7 +4903,7 @@ $('#renoBg').addEventListener('click', e => {
   const go = e.target.closest('[data-go]');
   if (go) {
     if (go.dataset.go === 'hire') hireDesigner(id, false);
-    else if (go.dataset.go === 'diy') { $('#renoBg').hidden = true; goFloor(id, () => openDesign()); }
+    else if (go.dataset.go === 'diy') { $('#renoBg').hidden = true; goFloor(id, () => openEditor(id)); }
     else { $('#renoBg').hidden = true; skipRenovation(id); }
     return;
   }
@@ -4621,49 +4917,495 @@ $('#renoBg').addEventListener('click', e => {
   }
 });
 $('#floorSign').addEventListener('click', e => {
-  if (!e.target.closest('#fEdit') || !cur) return;
-  askRenovate(cur);
+  if (!cur) return;
+  if (e.target.closest('#fEdit')) askRenovate(cur);
+  else if (e.target.closest('.frs')) { if ($('#dPop').hidden) openDesign(); else $('#dPop').hidden = true; }
 });
 
-/* ---------- 自己装修: name, nine colours, three decor slots (the server checks every rule; its refusal is shown whole) ---------- */
-const decorName = k => i18n('decor.' + k);
-const slotName = i => i18n('slot.' + i);
+/* ---------- 自己装修: the room editor (city-office-2; requirements/city.md "Room editor"; mock/city-office-2-mock.html v2 + v3) ----------
+   A catalogue on the left (drag a piece onto the floor, or click to add it), click a piece or a floor area to pick it,
+   the inspector on the right (turn, copy, delete, colours, floor materials), 2D / 3D, undo / redo, style presets. The
+   plan is checked live by checkPlan (the sim's, the server's rules); 保存 posts one v 2 design to /api/design, and the
+   server checks it again. While it is open ED holds everything the editor changes; the floor drawn is ED's. */
 const COLOR_KEYS = ['accent', 'carpet', 'manager_floor', 'pantry_floor', 'desk', 'desk_leg', 'chair', 'meeting_rug', 'manager_rug'];
+const ED_KINDS = ['tm', 'helper', 'meet', 'plant'];
+const ED_SURFACES = ['carpet', 'manager_floor', 'pantry_floor', 'manager_rug', 'meeting_rug', 'desk', 'desk_leg', 'chair', 'accent'];
+const surfName = k => k === 'carpet' ? i18n('ed.carpetName') : k === 'accent' ? i18n('ed.accentName') : i18n('color.' + k);
+const matName = m => i18n('ed.m.' + m);
+const LIGHT_SW = ['#F4EFE6', '#E8DFCF', '#DDD6C7', '#D9C2A0', '#E4DCCB', '#D5E5DA', '#D2E6EA', '#CCD5E5', '#E3E8F2', '#F1ECE2', '#EAD9C6', '#E9DFCB'];
+const ANY_SW = ['#2A2B45', '#2E3A66', '#4D7CFE', '#21A7BD', '#2FB57A', '#6FD4A8', '#FFD36E', '#E8A33A', '#FF7593', '#D9506E', '#9B7BFF', '#8A5A3C', '#C99A6B', '#EFDAB5', '#F4F6FA', '#5A3A26'];
+/* the 6 style presets: the 9 colours (c) and the 3 floor materials (m); never the layout */
+const STYLES = [
+  { name:i18n('ed.s.0'), m:{ carpet:'wood', manager_floor:'herringbone', pantry_floor:'tile' }, c:{ accent:'#E8A33A', carpet:'#E8DFCF', manager_floor:'#D9C2A0', pantry_floor:'#F1ECE2', desk:'#C99A6B', desk_leg:'#8A5A3C', chair:'#5A3A26', meeting_rug:'#E9C9A0', manager_rug:'#B5653A' } },
+  { name:i18n('ed.s.1'), m:{ carpet:'plain', manager_floor:'bigtile', pantry_floor:'tile' }, c:{ accent:'#4D7CFE', carpet:'#E3E8F2', manager_floor:'#CCD5E5', pantry_floor:'#F4F6FA', desk:'#F4F6FA', desk_leg:'#8E98B3', chair:'#2E3A66', meeting_rug:'#BFD0F7', manager_rug:'#4D7CFE' } },
+  { name:i18n('ed.s.2'), m:{ carpet:'plain', manager_floor:'wood', pantry_floor:'checker' }, c:{ accent:'#2FB57A', carpet:'#D5E5DA', manager_floor:'#C6DFCD', pantry_floor:'#EEF5EF', desk:'#EEF3EF', desk_leg:'#8DB59A', chair:'#2F7A57', meeting_rug:'#9FD8BC', manager_rug:'#2FB57A' } },
+  { name:i18n('ed.s.3'), m:{ carpet:'concrete', manager_floor:'concrete', pantry_floor:'checker' }, c:{ accent:'#FFB800', carpet:'#D7D9DE', manager_floor:'#C3C7CF', pantry_floor:'#E6E8EC', desk:'#9AA1AE', desk_leg:'#3A3F55', chair:'#2A2B45', meeting_rug:'#FFD36E', manager_rug:'#E8A33A' } },
+  { name:i18n('ed.s.4'), m:{ carpet:'wood', manager_floor:'herringbone', pantry_floor:'bigtile' }, c:{ accent:'#8F3B2E', carpet:'#E9DFCB', manager_floor:'#D3C3A6', pantry_floor:'#F1ECE2', desk:'#C9A57A', desk_leg:'#7A4E31', chair:'#5A3A26', meeting_rug:'#B98F6A', manager_rug:'#8F3B2E' } },
+  { name:i18n('ed.s.5'), m:{ carpet:'plain', manager_floor:'marble', pantry_floor:'checker' }, c:{ accent:'#FF7593', carpet:'#F3E4E8', manager_floor:'#EBCFD6', pantry_floor:'#F8EEF1', desk:'#F4E1E6', desk_leg:'#C08C9A', chair:'#D9506E', meeting_rug:'#F3B6C4', manager_rug:'#FF7593' } },
+];
+/* the colours a floor is drawn with: the design's nine keys into the 3D part's own names */
+function setLook(co){
+  Object.assign(C, { carpet:co.carpet, wood:co.manager_floor, tile:co.pantry_floor, desk:co.desk, deskLeg:co.desk_leg,
+    chair:co.chair, rugMeet:co.meeting_rug, rugMgr:co.manager_rug });
+}
+/* lightness the server's way: (max + min) / 2 of the three bytes; ok from 55 to 95 percent */
+function lightOf(hex){
+  const c = h2r(hex), twice = Math.max(c[0], c[1], c[2]) + Math.min(c[0], c[1], c[2]), exact = twice * 100 / 510;
+  let pct = Math.floor(exact + .5);
+  if (pct >= 55 && pct <= 95) pct = (exact < 55 ? Math.floor(exact * 10) : Math.ceil(exact * 10)) / 10;   // rounding would land inside the range: one decimal
+  return { pct, low:exact < 55, ok:twice * 100 >= 55 * 510 && twice * 100 <= 95 * 510 };
+}
+/* the small 3D pictures of the catalogue, drawn in code (no image files) */
+const THUMB = {};
+function makeThumbs(){
+  if (THUMB.tm) return;
+  try {
+    const rr = new THREE.WebGLRenderer({ antialias:true, alpha:true, preserveDrawingBuffer:true }); rr.setSize(96, 96); rr.setPixelRatio(1);
+    const sc = new THREE.Scene(); sc.add(new THREE.AmbientLight(0xffffff, .75));
+    const dl = new THREE.DirectionalLight(0xffffff, .6); dl.position.set(3, 6, 4); sc.add(dl);
+    const cm = new THREE.PerspectiveCamera(30, 1, .1, 50);
+    const saved = Object.assign({}, C), th = Object.assign({ decor:[] }, BASE_LOOK);
+    setLook(BASE_LOOK);
+    const shot = (key, it, d) => {
+      const g = new THREE.Group(); sc.add(g);
+      const piece = drawItem(Object.assign({ x:0, z:0, yaw:0 }, it), g, th, false);
+      piece.position.set(0, 0, 0);
+      cm.position.set(d * .85, d * .95, d * 1.05); cm.lookAt(0, .45, .15); rr.render(sc, cm); THUMB[key] = rr.domElement.toDataURL();
+      sc.remove(g);
+    };
+    shot('tm', { k:'tm' }, 3); shot('helper', { k:'helper' }, 2.6); shot('meet', { k:'meet' }, 4.6); shot('plant', { k:'plant', s:1 }, 2);
+    FLOOR_DECOR.forEach(id => shot('decor:' + id, { k:'decor', id }, 3));
+    Object.assign(C, saved); rr.dispose();
+  } catch (err) { /* the pictures are a nicety: the cards show a grey square instead */ }
+}
+const clonePlan = p => JSON.parse(JSON.stringify(p));
+const edCount = k => ED.plan.items.filter(it => it.k === k).length;
+const edName = i => pieceName(ED.plan.items, i);
+function edState(){ return { plan:clonePlan(ED.plan), colors:Object.assign({}, ED.colors), mats:Object.assign({}, ED.mats), name:ED.name }; }
+function edSet(s){ ED.plan = clonePlan(s.plan); ED.colors = Object.assign({}, s.colors); ED.mats = Object.assign({}, s.mats); ED.name = s.name; }
+/* draw the floor again from ED, and the editor's panels */
+function edRedraw(){ ED.rev++; buildFloor(); renderEditor(); needFrame = true; }
+function edSay(msg, err){ ED.msg = msg; ED.err = !!err; }
+/* on a phone the sheet covers the bottom: set the camera so the whole floor fits in the band above it */
+function edFitBand(){
+  const top = $('#edUI').querySelector('.ed-top'), tb = top ? top.getBoundingClientRect().bottom - canvas.getBoundingClientRect().top + 8 : 100;
+  const bot = H * .62 - 60, midX = W / 2, midY = (tb + bot) / 2, bw = W - 16, bh = bot - tb;
+  if (bh < 60) return;
+  const tmp = new THREE.PerspectiveCamera(camera.fov, W / H, camera.near, camera.far);
+  const corners = [[-7, -7], [7, -7], [-7, 7], [7, 7]].map(q => new THREE.Vector3(q[0], 0, q[1]));
+  const shot = (dist, tx, tz) => {
+    const cp = Math.cos(cam.el);
+    tmp.position.set(tx + Math.sin(cam.az) * cp * dist, Math.sin(cam.el) * dist, tz + Math.cos(cam.az) * cp * dist);
+    tmp.lookAt(tx, 0, tz); tmp.updateMatrixWorld(); tmp.updateProjectionMatrix();
+    const ps = corners.map(c => { const v = c.clone().project(tmp); return [(v.x + 1) / 2 * W, (1 - v.y) / 2 * H]; });
+    const xs = ps.map(q => q[0]), ys = ps.map(q => q[1]);
+    return { w:Math.max(...xs) - Math.min(...xs), h:Math.max(...ys) - Math.min(...ys), cx:(Math.max(...xs) + Math.min(...xs)) / 2, cy:(Math.max(...ys) + Math.min(...ys)) / 2 };
+  };
+  let dist = cam.wantDist || cam.dist, tx = 0, tz = 0;
+  for (let k = 0; k < 4; k++) {
+    let s = shot(dist, tx, tz);
+    dist = clamp(dist * Math.max(s.w / bw, s.h / bh), 8, 70);
+    s = shot(dist, tx, tz);
+    const a = shot(dist, tx + 1, tz), b = shot(dist, tx, tz + 1);
+    const j11 = a.cx - s.cx, j21 = a.cy - s.cy, j12 = b.cx - s.cx, j22 = b.cy - s.cy, det = j11 * j22 - j12 * j21;
+    if (Math.abs(det) < 1e-6) break;
+    const ex = midX - s.cx, ey = midY - s.cy;
+    tx += (ex * j22 - j12 * ey) / det; tz += (j11 * ey - j21 * ex) / det;
+  }
+  cam.wantDist = dist; cam.tx = tx; cam.tz = tz;
+}
+function setEdView(two){
+  ED.two = two;
+  if (two) { cam.az = 0; cam.el = 1.5; } else { cam.az = -.45; cam.el = 1; }
+  cam.wantDist = fitDist() * (two ? .95 : .98) * (W < 700 ? 1.12 : 1); cam.tx = W > 900 ? -.4 : 0; cam.ty = 0; cam.tz = two ? -.7 : .3;
+  if (W < 700) edFitBand();
+  needFrame = true;
+}
+/* openEditor(terr): the editor of the floor in view (the floor's plan, colours, materials and name are the start) */
+function openEditor(terr){
+  terr = terr || cur;
+  if (ED || view !== 'inside' || !terr || terr !== cur || !terrOf(terr)) return;
+  makeThumbs();
+  const th = themeOf(terr);
+  ED = { terr, plan:clonePlan(planOf(terr)), colors:Object.assign({}, th.colors), mats:Object.assign({}, th.materials), name:th.designed ? th.name : '',
+    sel:null, surf:null, hist:[], redo:[], hits:[], groups:[], tab:'furniture', two:false, dirty:false, quit:false, busy:false,
+    msg:i18n(W < 700 ? 'ed.startPhone' : 'ed.start'), err:false, badI:null, rev:0, down:null, dragI:null };
+  $('#dPop').hidden = true; $('#renoBg').hidden = true; stopFollow();
+  stage.classList.add('editing'); figG.visible = false;
+  renderEditor(); setEdView(false); buildFloor(); needFrame = true;
+}
+function endEditor(){
+  if (!ED) return;
+  ED = null; stage.classList.remove('editing'); $('#edUI').hidden = true; figG.visible = true;
+  buildFloor(); resetView(); needFrame = true;
+}
+/* closeEditor(save): save = true -> check, then POST the v 2 design; save = false -> leave (the first time with unsaved
+   changes only asks again, in the message line) */
+function closeEditor(save){
+  if (!ED || ED.busy) return;
+  if (!save) {
+    if (ED.dirty && !ED.quit) { ED.quit = true; edSay(i18n('ed.quitAsk'), true); renderEditor(); return; }
+    endEditor(); return;
+  }
+  const c = checkPlan(ED.plan), bad = [];
+  if (!c.ok) { edSay(i18n('ed.notSaved', { why:c.why }), true); ED.badI = c.i; renderEditor(); return; }
+  for (const k of LIGHT_SURF) { const l = lightOf(ED.colors[k]); if (!l.ok) bad.push(i18n('ed.light', { name:surfName(k), n:l.pct })); }
+  const name = ED.name.trim();
+  if (!name || name.length > 20) bad.push(i18n('ed.nameEmpty'));
+  if (bad.length) { edSay(i18n('ed.notSaved', { why:bad.join(i18n('office.sep')) }), true); renderEditor(); return; }
+  const terr = ED.terr, colors = {}, materials = {};
+  for (const k of COLOR_KEYS) colors[k] = ED.colors[k].toUpperCase();
+  for (const k of LIGHT_SURF) materials[k] = ED.mats[k];
+  const design = { v:2, name, why:i18n('ed.why'), colors, materials, layout:{ items:clonePlan(ED.plan).items } };
+  const sum = { floor:floorLabel(terr), name, tm:edCount('tm'), h:edCount('helper'), d:edCount('decor') };
+  ED.busy = true; edSay(i18n('ed.saving'), false); renderEditor();
+  postJson('/api/design', { terr, design }).then(({ code, body }) => {
+    if (!ED) return;
+    ED.busy = false;
+    if (code === 200) { log(i18n('ed.savedLog', sum)); endEditor(); return; }
+    if (code === 422 && body && Array.isArray(body.problems) && body.problems.length) {
+      const zh = body.problems.map(p => p && typeof p === 'object' ? String(p[LANG === 'en' ? 'en' : 'zh'] || p.zh || p.en || p.field || '') : String(p)).filter(Boolean);
+      edSay(i18n('ed.notSaved', { why:zh.join(i18n('office.sep')) }), true);
+    } else edSay(i18n('office.saveFail'), true);
+    renderEditor();
+  });
+}
+function edPush(prev){ ED.hist.push(prev); if (ED.hist.length > 60) ED.hist.shift(); ED.redo = []; ED.dirty = true; ED.quit = false; }
+/* after a move or a turn: keep it when the plan passes, else snap back to PREV and say why */
+function edCommit(prev, msgOk){
+  const c = checkPlan(ED.plan);
+  if (c.ok) { edPush(prev); edSay(msgOk, false); ED.badI = null; }
+  else { edSet(prev); edSay(i18n('ed.noFit', { why:c.why }), true); ED.badI = c.i; }
+  edRedraw();
+}
+/* edPlace(kind, id, x, z): a new piece; with x and z where the owner let go, else on the first free spot near the middle */
+function edPlace(kind, id, x, z){
+  const prev = edState(), P = PIECES[kind];
+  if (edCount(kind) >= P.max) { edSay(i18n('ed.cntMax', { name:P.zh, n:P.max }), true); renderEditor(); return; }
+  const it = { k:kind, x:0, z:0, yaw:0 };
+  if (id) it.id = id;
+  if (kind === 'plant') it.s = .9;
+  ED.plan.items.push(it);
+  const nm = id ? i18n('decor.' + id) : P.zh;
+  if (x != null) {
+    it.x = snap2(x); it.z = snap2(z);
+    const c = checkPlan(ED.plan);
+    if (c.ok) { ED.sel = ED.plan.items.length - 1; ED.surf = null; edPush(prev); edSay(i18n('ed.placed', { name:nm }), false); edRedraw(); return; }
+    edSet(prev); edSay(i18n('ed.cantPlace', { name:nm, why:c.why }), true); renderEditor(); return;
+  }
+  for (let r = 0; r < 40; r++) for (let a = 0; a < 16; a++) {
+    it.x = snap2(.4 + Math.cos(a / 16 * Math.PI * 2) * r * .4); it.z = snap2(1.5 + Math.sin(a / 16 * Math.PI * 2) * r * .4);
+    if (checkPlan(ED.plan).ok) { ED.sel = ED.plan.items.length - 1; ED.surf = null; edPush(prev); edSay(i18n('ed.placedAuto', { name:nm }), false); edRedraw(); return; }
+  }
+  edSet(prev); edSay(i18n('ed.noSpace', { name:nm }), true); renderEditor();
+}
+function edRotate(dir){
+  if (!ED || ED.sel == null) return;
+  const prev = edState(), it = ED.plan.items[ED.sel];
+  it.yaw = (((it.yaw + (dir < 0 ? -90 : 90)) % 360) + 360) % 360;
+  edCommit(prev, i18n('ed.turned', { name:edName(ED.sel) }));
+}
+function edCopy(){
+  if (!ED || ED.sel == null) return;
+  const it = ED.plan.items[ED.sel];
+  if (it.k === 'meet') { edSay(i18n('ed.meetOne'), true); renderEditor(); return; }
+  edPlace(it.k, it.id, it.x + 1.8, it.z);
+  if (ED.err) edPlace(it.k, it.id);
+}
+function edRemove(){
+  if (!ED || ED.sel == null) return;
+  const it = ED.plan.items[ED.sel];
+  if (it.k === 'meet') { edSay(i18n('ed.meetStay'), true); renderEditor(); return; }
+  const prev = edState(), nm = edName(ED.sel);
+  ED.plan.items.splice(ED.sel, 1); ED.sel = null; edCommit(prev, i18n('ed.removed', { name:nm }));
+}
+function edUndo(){
+  if (!ED) return;
+  const p = ED.hist.pop(); if (!p) return;
+  ED.redo.push(edState()); edSet(p); ED.sel = null; edSay(i18n('ed.undid'), false); ED.dirty = true; edRedraw();
+}
+function edRedo(){
+  if (!ED) return;
+  const p = ED.redo.pop(); if (!p) return;
+  ED.hist.push(edState()); edSet(p); ED.sel = null; edSay(i18n('ed.redid'), false); ED.dirty = true; edRedraw();
+}
+/* the basic look: the default plan for the people on the floor, the base colours and floors, no decor */
+function edReset(){
+  if (!ED) return;
+  const prev = edState();
+  let h = 0;
+  for (const c of citizens) if (!c.gone && c.terr === ED.terr && c.role === 'helper') h++;
+  ED.plan = defaultPlan(deskCount(ED.terr), Math.min(3, Math.max(1, h)), []);
+  ED.colors = Object.assign({}, BASE_LOOK); ED.mats = Object.assign({}, BASE_MATERIALS);
+  ED.sel = null; ED.surf = null; edPush(prev); edSay(i18n('ed.resetDone'), false); edRedraw();
+}
+function edColor(key, val){
+  if (!ED || !HEX6.test(val)) return;
+  const prev = edState(); ED.colors[key] = val.toUpperCase();
+  if (LIGHT_SURF.includes(key)) {
+    const l = lightOf(val);
+    if (!l.ok) { edSet(prev); edSay(i18n(l.low ? 'ed.lightTip' : 'ed.lightTipHigh', { name:surfName(key), n:l.pct }), true); renderEditor(); return; }
+  }
+  edPush(prev); edSay(i18n('ed.colorSet', { name:surfName(key), c:val.toUpperCase() }), false); edRedraw();
+}
+function edMaterial(key, m){
+  if (!ED || !FLOOR_MATERIALS.includes(m) || !LIGHT_SURF.includes(key)) return;
+  const prev = edState(); ED.mats[key] = m; edPush(prev);
+  edSay(i18n('ed.matSet', { name:surfName(key), mat:matName(m) }), false); edRedraw();
+}
+function edStyle(i){
+  const s = STYLES[i]; if (!ED || !s) return;
+  const prev = edState();
+  Object.assign(ED.colors, s.c); Object.assign(ED.mats, s.m);
+  if (!ED.name.trim() || STYLES.some(x => x.name === ED.name)) ED.name = s.name;
+  edPush(prev); edSay(i18n('ed.styleSet', { name:s.name }), false); edRedraw();
+}
+let edDownEl = null;   // where the last pointer went down: a button acts only when its own pointerdown started on it
+document.addEventListener('pointerdown', e => { edDownEl = e.target; }, true);
+const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hitPt = new THREE.Vector3();
+function edRay(e){
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+}
+/* a tap on the floor (no piece under it): which floor area is it? */
+function pickSurface(e){
+  edRay(e);
+  if (!ray.ray.intersectPlane(floorPlane, hitPt)) return;
+  const x = hitPt.x, z = hitPt.z, m = ED.plan.items.find(it => it.k === 'meet');
+  let k = 'carpet';
+  if (x > 3.3 && x < 5.9 && z > -6.2 && z < -4.4) k = 'manager_rug';
+  else if (x > 1.6 && z < -3) k = 'manager_floor';
+  else if (x < -3.2 && z < -3.2) k = 'pantry_floor';
+  else if (m && Math.hypot(x - m.x, z - m.z) < 1) k = 'meeting_rug';
+  if (Math.abs(x) > 7 || Math.abs(z) > 7) return;
+  ED.sel = null; ED.surf = k; edSay(i18n('ed.surfPicked', { name:surfName(k) }), false); edRedraw();
+}
+/* the fixed places, hatched with a lock label; the floor area picked has a yellow frame */
+function drawFixedHatch(G){
+  if (ED && ED.surf) {
+    const R = { carpet:[-7, 7, -7, 7], manager_floor:[1.6, 7, -7, -3], pantry_floor:[-7, -3.2, -7, -3.2], manager_rug:[3.3, 5.9, -6.2, -4.4] }[ED.surf];
+    if (R) {
+      [R[2], R[3]].forEach(z => box(R[1] - R[0], .06, .08, '#FFB800', (R[0] + R[1]) / 2, .07, z, G, 'b'));
+      [R[0], R[1]].forEach(x => box(.08, .06, R[3] - R[2], '#FFB800', x, .07, (R[2] + R[3]) / 2, G, 'b'));
+    }
+  }
+  FIXED_ZONES.forEach((zn, n) => {
+    if (n === 2) return;   // the door's space is part of the glass room's
+    const r = zn[1], x1 = Math.max(r[0], -6.95), x2 = Math.min(r[1], 6.95), z1 = Math.max(r[2], -6.95), z2 = Math.min(r[3], 6.95);
+    const m = new THREE.MeshBasicMaterial({ color:0x2A2B45, transparent:true, opacity:.2, depthWrite:false });
+    const o = new THREE.Mesh(BOXG, m); o.scale.set(x2 - x1, .02, z2 - z1); o.position.set((x1 + x2) / 2, .05, (z1 + z2) / 2); o.userData.own = true; G.add(o);
+    const s = textSprite(i18n('ed.locked', { zone:zn[0] }), { fs:40, bg:'#2A2B45', fg:'#FFFFFF', h:.5 }); s.position.set(o.position.x, 1, o.position.z); G.add(s);
+  });
+}
+function swatches(key, list){
+  const cur0 = String(ED.colors[key]);
+  return '<div class="ed-sw">' + list.map(c => '<button type="button" class="sw' + (c.toUpperCase() === cur0.toUpperCase() ? ' on' : '') + '" data-col="' + key + '|' + c + '" style="background:' + c + '" title="' + c + '" aria-label="' + c + '"></button>').join('') +
+    '<label class="sw cust" title="' + esc(i18n('ed.customTip')) + '"><input type="color" data-colin="' + key + '" value="' + cur0 + '"><span>' + esc(i18n('ed.custom')) + '</span></label></div>';
+}
+const thumbImg = key => THUMB[key] ? '<img src="' + THUMB[key] + '" alt="">' : '<i class="ph"></i>';
+function renderEditor(){
+  const el = $('#edUI');
+  if (!ED) { el.hidden = true; return; }
+  el.hidden = false;
+  const card = (key, label, cnt, max) => '<button type="button" class="ed-card" data-add="' + key + '" title="' + esc(i18n('ed.cardTip')) + '">' + thumbImg(key) + '<b>' + esc(label) + '</b>' + (max ? '<small>' + cnt + '/' + max + '</small>' : '') + '</button>';
+  let left;
+  if (ED.tab === 'style') left = '<div class="ed-styles">' + STYLES.map((s, i) => '<button type="button" class="ed-style" data-style="' + i + '"><span class="pal"><i class="mt" style="background-image:url(' + matThumb(s.m.carpet, s.c.carpet) + ')"></i><i class="mt" style="background-image:url(' + matThumb(s.m.manager_floor, s.c.manager_floor) + ')"></i>' + ['desk', 'chair', 'accent'].map(k => '<i style="background:' + s.c[k] + '"></i>').join('') + '</span><b>' + esc(s.name) + '</b></button>').join('') + '</div><p class="ed-note">' + esc(i18n('ed.styleNote')) + '</p>';
+  else if (ED.tab === 'furniture') left = '<div class="ed-grid">' + ED_KINDS.map(k => card(k, PIECES[k].zh, edCount(k), PIECES[k].max)).join('') + '</div>';
+  else if (ED.tab === 'decor') left = '<div class="ed-grid">' + FLOOR_DECOR.map(id => card('decor:' + id, i18n('decor.' + id), '', 0)).join('') + '</div><p class="ed-note">' + esc(i18n('ed.decorCnt', { n:edCount('decor') })) + '</p>';
+  else left = '<div class="ed-surfs">' + ED_SURFACES.map(k => '<button type="button" class="ed-surf' + (ED.surf === k ? ' on' : '') + '" data-surf="' + k + '"><i style="' + (ED.mats[k] ? 'background-image:url(' + matThumb(ED.mats[k], ED.colors[k]) + ')' : 'background:' + ED.colors[k]) + '"></i><span>' + esc(surfName(k)) + (ED.mats[k] ? '<small>' + esc(matName(ED.mats[k])) + '</small>' : '') + '</span></button>').join('') + '</div>';
+  let right;
+  if (ED.sel != null && ED.plan.items[ED.sel]) {
+    const it = ED.plan.items[ED.sel], nm = edName(ED.sel), deskish = it.k === 'tm' || it.k === 'helper', tk = it.k === 'decor' ? 'decor:' + it.id : it.k;
+    right = '<button type="button" class="ed-x" data-act="close" aria-label="' + esc(i18n('btn.close')) + '">×</button><div class="ed-ins-h">' + (THUMB[tk] ? thumbImg(tk) : '') + '<b>' + esc(nm) + '</b><small>x ' + it.x.toFixed(1) + ' · z ' + it.z.toFixed(1) + ' · ' + it.yaw + '°</small></div>' +
+      '<div class="ed-acts"><button type="button" class="btn" data-act="rotl">' + esc(i18n('ed.rotl')) + '</button><button type="button" class="btn" data-act="rotr">' + esc(i18n('ed.rotr')) + '</button><button type="button" class="btn" data-act="copy">' + esc(i18n('ed.copy')) + '</button><button type="button" class="btn danger" data-act="del">' + esc(i18n('ed.del')) + '</button></div>' +
+      (deskish ? '<div class="ed-l">' + esc(i18n('ed.allDesks')) + '</div>' + swatches('desk', ANY_SW) + '<div class="ed-l">' + esc(i18n('color.desk_leg')) + '</div>' + swatches('desk_leg', ANY_SW) + '<div class="ed-l">' + esc(i18n('color.chair')) + '</div>' + swatches('chair', ANY_SW) : '') +
+      (it.k === 'meet' ? '<div class="ed-l">' + esc(i18n('color.meeting_rug')) + '</div>' + swatches('meeting_rug', ANY_SW) : '') +
+      (it.k === 'decor' ? '<div class="ed-l">' + esc(i18n('ed.decorAccent')) + '</div>' + swatches('accent', ANY_SW) : '');
+  } else if (ED.surf) {
+    const k = ED.surf, light = LIGHT_SURF.includes(k);
+    right = '<button type="button" class="ed-x" data-act="close" aria-label="' + esc(i18n('btn.close')) + '">×</button><div class="ed-ins-h"><i class="big" style="' + (light ? 'background-image:url(' + matThumb(ED.mats[k], ED.colors[k]) + ')' : 'background:' + ED.colors[k]) + '"></i><b>' + esc(surfName(k)) + '</b><small>' + (light ? esc(matName(ED.mats[k])) + ' · ' : '') + ED.colors[k] + '</small></div>' +
+      (light ? '<div class="ed-l">' + esc(i18n('ed.material')) + '</div><div class="ed-mats">' + FLOOR_MATERIALS.map(m => '<button type="button" class="ed-mat' + (ED.mats[k] === m ? ' on' : '') + '" data-mat="' + k + '|' + m + '"><img src="' + matThumb(m, ED.colors[k]) + '" alt=""><span>' + esc(matName(m)) + '</span></button>').join('') + '</div><div class="ed-l">' + esc(i18n('ed.colour')) + '</div>' : '') +
+      swatches(k, light ? LIGHT_SW : ANY_SW) + (light ? '<p class="ed-note">' + esc(i18n('ed.lightNote')) + '</p>' : '');
+  } else {
+    right = '<div class="ed-ins-h"><b>' + esc(i18n('ed.tipsTitle')) + '</b></div><ul class="ed-tips">' + [1, 2, 3, 4, 5].map(n => '<li>' + esc(i18n('ed.tip' + n)) + '</li>').join('') + '</ul>';
+  }
+  el.hidden = false;
+  el.innerHTML =
+    '<div class="ed-top">' +
+      '<button type="button" class="btn" id="edQuit">' + esc(i18n('ed.quit')) + '</button>' +
+      '<label class="ed-name"><span>' + esc(i18n('ed.name')) + '</span><input id="edName" maxlength="20" placeholder="' + esc(i18n('ed.nameHint')) + '" value="' + esc(ED.name) + '"></label>' +
+      '<span class="seg"><button type="button" class="' + (ED.two ? 'on' : '') + '" id="ed2d">' + esc(i18n('ed.v2d')) + '</button><button type="button" class="' + (ED.two ? '' : 'on') + '" id="ed3d">' + esc(i18n('ed.v3d')) + '</button></span>' +
+      '<button type="button" class="btn" id="edUndo" title="Ctrl+Z"' + (ED.hist.length ? '' : ' disabled') + '>' + esc(i18n('ed.undo')) + '</button>' +
+      '<button type="button" class="btn" id="edRedo" title="Ctrl+Shift+Z"' + (ED.redo.length ? '' : ' disabled') + '>' + esc(i18n('ed.redo')) + '</button>' +
+      '<button type="button" class="btn" id="edReset">' + esc(i18n('ed.reset')) + '</button>' +
+      '<span class="sp"></span><span class="ed-cnt">' + esc(i18n('ed.cnt', { tm:edCount('tm'), h:edCount('helper'), d:edCount('decor'), p:edCount('plant') })) + '</span>' +
+      '<button type="button" class="btn primary" id="edSave"' + (ED.busy ? ' disabled' : '') + '>' + esc(i18n('ed.save')) + '</button>' +
+    '</div>' +
+    '<aside class="ed-left"><div class="ed-tabs">' + ['style', 'furniture', 'decor', 'color'].map(k => '<button type="button" class="' + (ED.tab === k ? 'on' : '') + '" data-tab="' + k + '">' + esc(i18n('ed.tab.' + k)) + '</button>').join('') + '</div>' + left + '</aside>' +
+    '<aside class="ed-right' + (ED.sel == null && !ED.surf ? ' tips' : '') + '">' + right + '</aside>' +
+    '<div class="ed-msg' + (ED.err ? ' err' : '') + '" id="edMsg" role="status">' + esc(ED.msg) + '</div>';
+  edLayout();
+}
+/* the panels start below the top bar, whatever height it wraps to */
+function edLayout(){
+  const el = $('#edUI'), top = el.querySelector('.ed-top');
+  if (top) el.style.setProperty('--ed-top', (top.offsetHeight + 18) + 'px');
+}
+window.addEventListener('resize', () => { if (ED) edLayout(); });
+/* the editor's buttons (one listener; the panels are drawn again at every change) */
+$('#edUI').addEventListener('click', e => {
+  if (!ED) return;
+  // the click that follows a tap on the floor lands on whatever is under the finger: a button acts only when the press started on it
+  const hit = e.target.closest('button'), began = edDownEl && edDownEl.closest ? edDownEl.closest('button') : null;
+  if (hit && hit !== began && e.detail > 0) return;   // (a click from the keyboard has no press: detail 0)
+  const id = e.target.closest('button') && e.target.closest('button').id;
+  if (id === 'edQuit') return closeEditor(false);
+  if (id === 'edSave') return closeEditor(true);
+  if (id === 'edUndo') return edUndo();
+  if (id === 'edRedo') return edRedo();
+  if (id === 'edReset') return edReset();
+  if (id === 'ed2d') { setEdView(true); renderEditor(); return; }
+  if (id === 'ed3d') { setEdView(false); renderEditor(); return; }
+  const b = e.target.closest('[data-tab],[data-style],[data-surf],[data-col],[data-mat],[data-act]');
+  if (!b) return;
+  if (b.dataset.tab) { ED.tab = b.dataset.tab; renderEditor(); }
+  else if (b.dataset.style) edStyle(+b.dataset.style);
+  else if (b.dataset.surf) { ED.surf = b.dataset.surf; ED.sel = null; edRedraw(); }
+  else if (b.dataset.col) { const p = b.dataset.col.split('|'); edColor(p[0], p[1]); }
+  else if (b.dataset.mat) { const p = b.dataset.mat.split('|'); edMaterial(p[0], p[1]); }
+  else if (b.dataset.act === 'close') { ED.sel = null; ED.surf = null; ED.badI = null; edRedraw(); }
+  else if (b.dataset.act === 'rotl') edRotate(-1);
+  else if (b.dataset.act === 'rotr') edRotate(1);
+  else if (b.dataset.act === 'copy') edCopy();
+  else if (b.dataset.act === 'del') edRemove();
+});
+$('#edUI').addEventListener('change', e => { const inp = e.target.closest('[data-colin]'); if (ED && inp) edColor(inp.dataset.colin, inp.value); });
+$('#edUI').addEventListener('input', e => { if (ED && e.target.id === 'edName') { ED.name = e.target.value; ED.dirty = true; } });
+/* drag from the catalogue: a chip follows the pointer; let go over the floor = placed there; a plain click = auto place.
+   By touch a vertical swipe scrolls the list (touch-action: pan-y); a drag starts when the move is mainly sideways, or
+   after a hold of about 300 ms */
+let cardDrag = null;
+$('#edUI').addEventListener('pointerdown', e => {
+  const card = e.target.closest('[data-add]');
+  if (!ED || !card || e.button > 0) return;
+  const touch = e.pointerType !== 'mouse';
+  if (!touch) e.preventDefault();
+  const key = card.dataset.add, me = { key, sx:e.clientX, sy:e.clientY, lx:e.clientX, ly:e.clientY, moved:false, ghost:null, timer:0 };
+  cardDrag = me;
+  const start = () => {
+    if (cardDrag !== me || me.moved) return;
+    me.moved = true;
+    const g = document.createElement('div'); g.className = 'ed-ghost'; g.innerHTML = THUMB[key] ? '<img src="' + THUMB[key] + '" alt="">' : '+';
+    document.body.appendChild(g); me.ghost = g; g.style.left = me.lx + 'px'; g.style.top = me.ly + 'px';
+  };
+  const stop = () => {
+    clearTimeout(me.timer);
+    window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel);
+    document.removeEventListener('touchmove', tm, { passive:false });
+    if (me.ghost) me.ghost.remove();
+    if (cardDrag === me) cardDrag = null;
+  };
+  const mv = ev => {
+    if (cardDrag !== me) return;
+    me.lx = ev.clientX; me.ly = ev.clientY;
+    const dx = ev.clientX - me.sx, dy = ev.clientY - me.sy, d = Math.hypot(dx, dy);
+    if (!me.moved) {
+      if (!touch && d > 6) start();
+      else if (touch && d > 8) { if (Math.abs(dx) > Math.abs(dy)) start(); else stop(); }   // sideways: a drag; mainly vertical: the list scrolls
+    }
+    if (me.ghost) { me.ghost.style.left = ev.clientX + 'px'; me.ghost.style.top = ev.clientY + 'px'; }
+  };
+  const tm = ev => { if (me.moved && ev.cancelable) ev.preventDefault(); };   // a drag started: the page must not scroll under it
+  const cancel = () => stop();
+  const up = ev => {
+    const d = cardDrag === me ? me : null, moved = d && d.moved;
+    stop();
+    if (!d || !ED) return;
+    const kind = d.key.indexOf(':') >= 0 ? 'decor' : d.key, id = d.key.indexOf(':') >= 0 ? d.key.split(':')[1] : null;
+    if (!moved) { edPlace(kind, id); return; }
+    const r = canvas.getBoundingClientRect(), over = document.elementFromPoint(ev.clientX, ev.clientY);
+    if ((over && over.closest && over.closest('.ed-left, .ed-right, .ed-top')) || ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) { edSay(i18n('ed.dropOnFloor'), false); renderEditor(); return; }
+    edRay(ev);
+    if (!ray.ray.intersectPlane(floorPlane, hitPt)) return;
+    edPlace(kind, id, hitPt.x, hitPt.z);
+  };
+  if (touch) me.timer = setTimeout(start, 300);
+  window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancel);
+  document.addEventListener('touchmove', tm, { passive:false });
+});
+/* the pointer on the floor while editing: a press on a piece drags it (snapped to 0.2, the pointer is captured), a tap
+   picks it; a tap on the floor picks the floor area; anything else turns the camera as before */
+canvas.addEventListener('pointerdown', e => {
+  if (!ED || view !== 'inside' || pointers.size > 0) return;
+  edRay(e);
+  const h = ray.intersectObjects(ED.hits, false)[0];
+  if (!h) { ED.down = { x:e.clientX, y:e.clientY, id:e.pointerId }; return; }
+  const i = h.object.userData.item, it = ED.plan.items[i];
+  ray.ray.intersectPlane(floorPlane, hitPt);
+  ED.dragI = { i, prev:clonePlan(ED.plan), dx:it.x - hitPt.x, dz:it.z - hitPt.z, moved:false, sx:e.clientX, sy:e.clientY, id:e.pointerId };
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* a synthetic pointer */ }
+  e.stopImmediatePropagation();
+}, true);
+canvas.addEventListener('pointermove', e => {
+  if (!ED || !ED.dragI || ED.dragI.id !== e.pointerId) return;
+  const d = ED.dragI;
+  e.stopImmediatePropagation();
+  if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 6) return;
+  d.moved = true; edRay(e);
+  if (!ray.ray.intersectPlane(floorPlane, hitPt)) return;
+  const it = ED.plan.items[d.i]; it.x = snap2(hitPt.x + d.dx); it.z = snap2(hitPt.z + d.dz);
+  if (ED.groups[d.i]) ED.groups[d.i].position.set(it.x, 0, it.z);
+  const c = checkPlan(ED.plan);
+  ED.sel = d.i; ED.surf = null; ED.err = !c.ok; ED.badI = c.ok ? null : d.i;
+  ED.msg = c.ok ? i18n('ed.canDrop') : i18n('ed.cantDrop', { why:c.why });
+  renderEditor(); needFrame = true;
+}, true);
+canvas.addEventListener('pointerup', e => {
+  if (!ED) return;
+  const d = ED.dragI;
+  if (d && d.id === e.pointerId) {
+    ED.dragI = null; e.stopImmediatePropagation();
+    if (!d.moved) { ED.sel = d.i; ED.surf = null; edSay(i18n('ed.piecePicked', { name:edName(d.i) }), false); edRedraw(); return; }
+    const now = ED.plan; ED.plan = d.prev; const prev = edState(); ED.plan = now;
+    edCommit(prev, i18n('ed.placed', { name:edName(d.i) }));
+    return;
+  }
+  const dn = ED.down;
+  if (dn && dn.id === e.pointerId) { ED.down = null; if (Math.hypot(e.clientX - dn.x, e.clientY - dn.y) < 6) pickSurface(e); }
+}, true);
+canvas.addEventListener('pointercancel', e => {
+  if (!ED) return;
+  if (ED.dragI && ED.dragI.id === e.pointerId) { ED.plan = ED.dragI.prev; ED.dragI = null; edRedraw(); }
+  ED.down = null;
+}, true);
+/* keys: R turns, Delete removes, Ctrl/Cmd+Z undoes, with Shift redoes */
+document.addEventListener('keydown', e => {
+  if (!ED || /INPUT|SELECT|TEXTAREA/.test(document.activeElement && document.activeElement.tagName)) return;
+  const mod = e.metaKey || e.ctrlKey;
+  if (!mod && (e.key === 'r' || e.key === 'R')) edRotate(1);
+  else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); edRemove(); }
+  else if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) edRedo(); else edUndo(); }
+});
+
+/* ---------- the design box: what the floor looks like now, and the ways to change it ---------- */
+const LIGHT_SURF = ['carpet', 'manager_floor', 'pantry_floor'];
 let dpLines = [], dpErr = false;
 function openDesign(){ dpLines = []; dpErr = false; $('#dPop').hidden = false; renderDesignPop(); }
 function dpMsgHtml(){
   return dpLines.length ? '<div class="dp-msg' + (dpErr ? ' err' : '') + '" id="dpMsg" role="status">' + dpLines.map(l => '<div>' + esc(l) + '</div>').join('') + '</div>' : '<div id="dpMsg"></div>';
 }
-function setDpMsg(lines, err){ dpLines = lines; dpErr = err; const m = $('#dpMsg'); if (m) m.outerHTML = dpMsgHtml(); }
 function renderDesignPop(){
   const el = $('#dPop'); if (el.hidden || !cur || !terrOf(cur)) return;
   const t = terrOf(cur), th = themeOf(cur);
-  el.innerHTML = '<div class="dp-h"><b>' + esc(i18n('office.diyTitle', { floor:floorName(t.floor) })) + '</b><span>' + esc(i18n('office.diyChecked')) + '</span><button class="x" id="dpClose" type="button" aria-label="' + esc(i18n('btn.close')) + '">×</button></div>' +
-    '<label class="dp-l" for="dyName">' + esc(i18n('office.diyName')) + '</label><input id="dyName" class="dy-in" maxlength="20" value="' + esc(th.designed ? th.name : '') + '" placeholder="' + esc(i18n('office.diyNameHint')) + '">' +
-    '<div class="dp-l">' + esc(i18n('office.diyColors')) + '</div>' +
-    '<div class="dy-cols">' + COLOR_KEYS.map(k => '<label class="dyc"><input type="color" id="dy-' + k + '" value="' + th.colors[k] + '"><span>' + esc(i18n('color.' + k)) + '</span></label>').join('') + '</div>' +
-    '<div class="dp-l">' + esc(i18n('office.diyDecor')) + '</div>' +
-    '<div class="dy-slots">' + [0, 1, 2].map(i => '<label><small>' + esc(slotName(i)) + '</small><select id="dy-s' + i + '">' +
-      ['none'].concat(FLOOR_DECOR).map(k => '<option value="' + k + '"' + (th.decor[i] === k ? ' selected' : '') + '>' + esc(k === 'none' ? i18n('office.diyNone') : decorName(k)) + '</option>').join('') + '</select></label>').join('') + '</div>' +
-    '<div class="dp-act"><button class="btn primary" id="dySave" type="button">' + esc(i18n('office.save')) + '</button><button class="btn" id="dyUndo" type="button">' + esc(i18n('office.undo')) + '</button></div>' +
+  el.innerHTML = '<div class="dp-h"><b>' + esc(i18n('ed.boxTitle', { floor:floorName(t.floor) })) + '</b><span>' + esc(th.name + (th.why ? ' · ' + th.why : '')) + '</span><button class="x" id="dpClose" type="button" aria-label="' + esc(i18n('btn.close')) + '">×</button></div>' +
+    '<div class="dp-sw">' + COLOR_KEYS.map(k => '<span class="sw" title="' + esc(i18n('color.' + k)) + ' ' + th.colors[k] + '"><i style="background:' + th.colors[k] + '"></i>' + esc(i18n('color.' + k)) + '</span>').join('') + '</div>' +
+    '<div class="dp-two"><button class="optb" id="dpHire" type="button"><b>' + esc(i18n('office.hire')) + '</b><small>' + esc(i18n('office.hireNote')) + '</small></button>' +
+    '<button class="optb new" id="dpDiy" type="button"><b>' + esc(i18n('office.diy')) + '</b><small>' + esc(i18n('ed.diyBoxNote')) + '</small></button></div>' +
+    '<div class="dp-act"><button class="btn" id="dyUndo" type="button">' + esc(i18n('office.undo')) + '</button></div>' +
     dpMsgHtml() +
     '<details class="dp-rules"><summary>' + esc(i18n('office.rules')) + '</summary><ul>' +
     '<li>' + esc(i18n('office.rule1')) + '</li><li>' + esc(i18n('office.rule2')) + '</li><li>' + esc(i18n('office.rule3')) + '</li></ul></details>';
-}
-function saveDiy(){
-  if (!cur) return;
-  const terr = cur, colors = {};
-  for (const k of COLOR_KEYS) colors[k] = $('#dy-' + k).value.toUpperCase();
-  const design = { v:1, name:$('#dyName').value.trim(), why:'', colors, decor:[0, 1, 2].map(i => $('#dy-s' + i).value) };
-  $('#dySave').disabled = true;
-  postJson('/api/design', { terr, design }).then(({ code, body }) => {
-    const b = $('#dySave'); if (b) b.disabled = false;
-    if (code === 200) { dpLines = [i18n('office.saved')]; dpErr = false; log(i18n('office.diyLog', { floor:floorLabel(terr), name:design.name })); }
-    else if (code === 422 && body && Array.isArray(body.problems) && body.problems.length) {
-      dpLines = [i18n('office.notSaved')].concat(body.problems.map(p => p && typeof p === 'object' ? String(p[LANG === 'en' ? 'en' : 'zh'] || p.zh || p.en || p.field || '') : String(p)).filter(Boolean)); dpErr = true;
-    } else { dpLines = [i18n('office.saveFail')]; dpErr = true; }
-    if (!$('#dPop').hidden) { if (code === 200) renderDesignPop(); else setDpMsg(dpLines, dpErr); }
-  });
 }
 function undoDesign(){
   if (!cur) return;
@@ -4676,7 +5418,8 @@ function undoDesign(){
 }
 $('#dPop').addEventListener('click', e => {
   if (e.target.closest('#dpClose')) { $('#dPop').hidden = true; return; }
-  if (e.target.closest('#dySave')) saveDiy();
+  if (e.target.closest('#dpHire')) { $('#dPop').hidden = true; if (cur) hireDesigner(cur, false); }
+  else if (e.target.closest('#dpDiy')) { $('#dPop').hidden = true; openEditor(cur); }
   else if (e.target.closest('#dyUndo')) undoDesign();
 });
 
@@ -4729,6 +5472,10 @@ function demoPost(path, body){
     }
     const d = body.design, problems = [];
     if (!d || typeof d.name !== 'string' || !d.name.trim() || d.name.length > 20) problems.push({ field:'name', zh:i18n('office.demoName'), en:i18n('office.demoName') });
+    if (d && d.v === 2) {   // the editor's v 2 design: the plan is checked the way the server checks it
+      const pl = cleanPlan(d.layout), c = pl ? checkPlan(pl) : { ok:false, why:i18n('ed.badLayout') };
+      if (!c.ok) problems.push({ field:'layout', zh:c.why, en:c.why });
+    }
     if (problems.length) return done(422, { error:'bad', problems });
     const st = demoUndo.get(terr) || []; st.push(map.designs[terr] || null); demoUndo.set(terr, st);
     map.designs = Object.assign({}, map.designs, { [terr]:d }); demoWorld({ kind:'design', terr, by:'owner' });
@@ -5785,14 +6532,14 @@ function endPointer(e){
   if (wasTap && e.type === 'pointerup') {
     const r = canvas.getBoundingClientRect(), hit = pickAt(e.clientX - r.left, e.clientY - r.top);
     if (view === 'outside') { if (hit && hit.door) enter(); else if (hit && hit.floor) enter(hit.floor); }
-    else selectPick(hit);
+    else if (!ED) selectPick(hit);
   }
   if (!pointers.size) { drag = null; canvas.classList.remove('grabbing'); }
 }
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
 stage.addEventListener('wheel', e => {
-  if (e.target.closest('.win') || e.target.closest('.ask-panel') || e.target.closest('.rail') || e.target.closest('.lift') || e.target.closest('.sheet-bg') || e.target.closest('.dpop')) return;
+  if (e.target.closest('.win') || e.target.closest('.ask-panel') || e.target.closest('.rail') || e.target.closest('.lift') || e.target.closest('.sheet-bg') || e.target.closest('.dpop') || e.target.closest('.ed-left') || e.target.closest('.ed-right') || e.target.closest('.ed-top')) return;
   e.preventDefault();
   camMove = null;
   const m = wheelMove(e, H);

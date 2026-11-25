@@ -401,7 +401,7 @@ class TestCheckDesign(unittest.TestCase):
         self.assertEqual(ac.check_design(good(c_desk="#000000", c_chair="#FFFFFF")), [], "only the 3 floors")
 
     def test_every_problem_is_listed(self):
-        bad = good(v=2, name="", why="x" * 61, decor=["robot", "sofa"], c_carpet="red")
+        bad = good(v=3, name="", why="x" * 61, decor=["robot", "sofa"], c_carpet="red")
         bad["colors"].pop("chair")
         bad["colors"]["wall"] = "#FFFFFF"
         bad["lift"] = "south"
