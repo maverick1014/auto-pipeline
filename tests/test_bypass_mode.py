@@ -1,4 +1,9 @@
-"""Failing tests for bypass-mode (owner, 2026-11-04): every new terminal the
+"""UPDATE settings-configure (2026-11-25): the permission mode is the Configure setting
+"Permissions: Permission mode" (default auto, user level). Init asks nothing and has no
+--mode; its skip warning follows the setting. agent.conf, its template and sync are gone.
+Items about them below are history.
+
+Failing tests for bypass-mode (owner, 2026-11-04): every new terminal the
 pipeline opens runs in bypass mode; first-time setup asks the user: all agents
 bypass, or all auto. Ships to every repo. Written by the task manager, before
 any code.
@@ -147,89 +152,17 @@ class TestConfKeys(unittest.TestCase):
     def test_the_list(self):
         self.assertEqual(list(agent_conf.PERMISSION_MODES), list(FIVE))
 
-    def test_hints(self):
-        hint = agent_conf.HINTS.get("permission_mode", "")
-        for mode in FIVE:
-            with self.subTest(mode=mode):
-                self.assertIn(mode, hint)
-        self.assertNotIn("cloud_permission_mode", agent_conf.HINTS)
-
-
-class TestTemplate(unittest.TestCase):
-    def setUp(self):
-        self.lines = read("bin", "agent.conf.default").splitlines()
-        self.conf = agent_conf.load(os.path.join(BIN, "agent.conf.default"))
-
-    def test_bypass_is_the_default_for_new_terminals(self):
-        self.assertEqual(self.conf["permission_mode"], "bypassPermissions")
-
-    def test_the_cloud_keys_are_gone(self):
-        self.assertNotIn("cloud_permission_mode", self.conf)
-        self.assertNotIn("city_relay_sec", self.conf)
-
-    def test_the_progress_keys_follow_the_city_keys(self):
-        # progress-bar (2026-11-11): newer keys are appended after, never before,
-        # so an old agent.conf still syncs into the template order
-        keys = [l.split("=", 1)[0] for l in self.lines]
-        after = keys[keys.index("city_governor_wait_sec") + 1:]
-        self.assertEqual(after, PROGRESS_KEYS)
-
-    def test_permission_mode_keeps_its_place(self):
-        keys = [l.split("=", 1)[0] for l in self.lines]
-        self.assertEqual(keys[keys.index("permission_mode") - 1], "worker")
-        self.assertEqual(keys[keys.index("permission_mode") + 1], "auto_resume")
-
-    def test_valid(self):
-        self.assertEqual(agent_conf.validate(self.conf), {})
-
-
-class TestSync(ScriptCase):
-    """4: the existing sync path adds the new key to an existing agent.conf."""
-
-    script = "agent-settings.sh"
-
-    def conf(self):
-        return open(self.repo.path("agent.conf")).read()
-
-    def test_sync_adds_missing_keys_and_keeps_every_line(self):
-        with open(self.repo.path("agent.conf"), "w") as fh:
-            fh.write("max_agents=4\npermission_mode=acceptEdits\nlanguage=zh\n")
-        before = self.conf()
-        out = self.assertOk(self.repo.run("agent-settings.sh", "sync"))
-        self.assertIn("added city_port=4777", out)
-        after = self.conf()
-        self.assertTrue(after.startswith(before), "the lines already there stay byte for byte")
-        conf = agent_conf.load(self.repo.path("agent.conf"))
-        self.assertEqual(conf["city_port"], "4777")
-        self.assertEqual(conf["permission_mode"], "acceptEdits", "sync never changes a value already there")
-
-    def test_a_synced_conf_has_the_fresh_key_order(self):
-        template = agent_conf.load(self.repo.plugin_path("bin", "agent.conf.default"))
-        # a conf written before bypass-mode: every key before city_governor_wait_sec
-        # (the keys after it are newer still, tests/test_agent_progress.py)
-        keys = list(template)
-        old = {k: template[k] for k in keys[:keys.index("city_governor_wait_sec")]}
-        with open(self.repo.path("agent.conf"), "w") as fh:
-            fh.write(agent_conf.dumps(old))
-        self.assertOk(self.repo.run("agent-settings.sh", "sync"))
-        self.assertEqual(list(agent_conf.load(self.repo.path("agent.conf"))), list(template))
-
-    def test_the_setting_is_validated(self):
-        result = self.repo.run("agent-settings.sh", "permission_mode", "bypassPermissions")
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("saved: permission_mode=bypassPermissions", result.stdout)
-        for bad in ("yolo", "bypass", "auto;id"):
-            with self.subTest(value=bad):
-                result = self.repo.run("agent-settings.sh", "permission_mode", bad)
-                self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(agent_conf.load(self.repo.path("agent.conf"))["permission_mode"],
-                         "bypassPermissions")
+    def test_the_picker(self):
+        by = {x["key"]: x for x in agent_conf.SETTINGS}
+        self.assertEqual(by["permission_mode"]["options"], list(FIVE))
+        self.assertNotIn("cloud_permission_mode", by)
 
 
 # --------------------------------------------------------------- 3: the launch line
 
 class LineCase(AddCase):
     def folder(self, name, conf):
+        """conf: old key=value text, written into Configure (settings-configure)."""
         self.repo(name, conf)
         return os.path.join(self.base, name)
 
@@ -248,13 +181,15 @@ class TestLaunchLine(LineCase):
         self.assertEqual(self.words("loc", conf),
                          ["claude", "--name", "x Manager"] + MODEL + ["--permission-mode", "bypassPermissions", PROMPT])
 
-    def test_no_agent_conf_at_all(self):
+    def test_nothing_set_is_the_defaults(self):
         folder = self.folder("bare", None)
-        self.assertEqual(shlex.split(ac.agent_command("x Manager", folder)), ["claude", "--name", "x Manager", PROMPT])
+        self.assertEqual(shlex.split(ac.agent_command("x Manager", folder)),
+                         ["claude", "--name", "x Manager"] + MODEL + ["--permission-mode", "auto", PROMPT])
 
     def test_the_old_cloud_key_decides_nothing(self):
         conf = conf_text(cloud_permission_mode="bypassPermissions")
-        self.assertEqual(self.words("only-cloud", conf), ["claude", "--name", "x Manager"] + MODEL + [PROMPT])
+        self.assertEqual(self.words("only-cloud", conf),
+                         ["claude", "--name", "x Manager"] + MODEL + ["--permission-mode", "auto", PROMPT])
 
     def test_the_city_dir_is_kept(self):
         own = os.path.join(self.base, "my city")
@@ -268,13 +203,14 @@ class TestLaunchLine(LineCase):
                 "cloud_permission_mode=auto`touch pwned`\n")
         folder = self.folder("both", conf)
         command = ac.agent_command("x Manager", folder)
-        self.assertEqual(shlex.split(command), ["claude", "--name", "x Manager", PROMPT])
+        self.assertEqual(shlex.split(command),
+                         ["claude", "--name", "x Manager"] + MODEL + ["--permission-mode", "auto", PROMPT])
         self.assertNotIn("pwned", command)
 
-    def test_the_shipped_template(self):
-        folder = self.folder("shipped", read("bin", "agent.conf.default"))
+    def test_the_shipped_default_is_auto(self):
+        folder = self.folder("shipped", None)
         local = shlex.split(ac.agent_command("x Manager", folder))
-        self.assertEqual(local[local.index("--permission-mode") + 1], "bypassPermissions")
+        self.assertEqual(local[local.index("--permission-mode") + 1], "auto")
 
 
 class TestAddAgent(LineCase):
@@ -282,8 +218,8 @@ class TestAddAgent(LineCase):
 
     def setUp(self):
         super().setUp()
-        with open(os.path.join(self.base, "shop", "agent.conf"), "w") as fh:
-            fh.write(self.CONF)
+        from test_agent_city_add_agent import configure_text
+        configure_text(self.CONF)
         self.known(self.shop)
 
     def mode(self, command):
@@ -315,15 +251,9 @@ class InitCase(ScriptCase):
         self.project = self.repo.dir
         self.repo.git_init(self.project)
         self.home = self.repo.fake_home()
-        # auto-update: the user has chosen already, so init asks only the
-        # permission question these tests drive
-        self.repo.set_user_conf("auto_update=on\n")
 
     def init(self, *args, **kw):
         return self.repo.run("agent-init.sh", *args, **kw)
-
-    def conf(self, root=None):
-        return agent_conf.load(os.path.join(root or self.project, "agent.conf"))
 
     def settings(self, data=None, raw=None):
         os.makedirs(os.path.join(self.home, ".claude"), exist_ok=True)
@@ -357,126 +287,6 @@ class InitCase(ScriptCase):
         return proc.returncode, out, err
 
 
-class TestInitMode(InitCase):
-    def test_bypass(self):
-        out = self.assertOk(self.init("--mode", "bypass"))
-        self.assertEqual(self.conf()["permission_mode"], "bypassPermissions")
-        self.assertIn("saved: permission_mode=bypassPermissions", out, "written through agent-settings.sh")
-
-    def test_auto(self):
-        out = self.assertOk(self.init("--mode", "auto"))
-        self.assertEqual(self.conf()["permission_mode"], "auto")
-        self.assertIn("saved: permission_mode=auto", out)
-
-    def test_only_permission_mode_changes(self):
-        self.assertOk(self.init("--mode", "auto"))
-        template = agent_conf.load(self.repo.plugin_path("bin", "agent.conf.default"))
-        conf = self.conf()
-        self.assertEqual(list(conf), list(template))
-        for key, value in template.items():
-            if key != "permission_mode":
-                with self.subTest(key=key):
-                    self.assertEqual(conf[key], value)
-        self.assertNotIn("cloud_permission_mode", conf)
-
-    def test_a_directory_argument(self):
-        other = os.path.join(self.repo.base, "other")
-        os.makedirs(other)
-        self.repo.git_init(other)
-        self.assertOk(self.init("--mode", "auto", other))
-        self.assertEqual(self.conf(other)["permission_mode"], "auto")
-        self.assertFalse(os.path.exists(os.path.join(self.project, "agent.conf")))
-
-    def test_the_project_dir_of_the_session_is_not_the_target(self):
-        """A session started in another repo sets CLAUDE_PROJECT_DIR; the setting goes to the repo being set up."""
-        elsewhere = os.path.join(self.repo.base, "elsewhere")
-        os.makedirs(elsewhere)
-        self.repo.git_init(elsewhere)
-        with open(os.path.join(elsewhere, "agent.conf"), "w") as fh:
-            fh.write("permission_mode=plan\n")
-        target = os.path.join(self.repo.base, "target")
-        os.makedirs(target)
-        self.repo.git_init(target)
-        self.assertOk(self.init("--mode", "auto", target, env={"CLAUDE_PROJECT_DIR": elsewhere}))
-        self.assertEqual(self.conf(target)["permission_mode"], "auto")
-        self.assertEqual(open(os.path.join(elsewhere, "agent.conf")).read(), "permission_mode=plan\n")
-
-    def test_no_mode_and_no_terminal_is_the_template_default(self):
-        result = self.init()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.conf()["permission_mode"], "bypassPermissions")
-        self.assertNotIn("Permission mode for every agent:", result.stdout + result.stderr, "no question without a terminal")
-
-    def test_a_bad_mode_makes_nothing(self):
-        for args in (("--mode", "yolo"), ("--mode", "bypassPermissions!"), ("--mode",), ("--mode", "")):
-            with self.subTest(args=args):
-                result = self.init(*args)
-                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-                self.assertTrue(result.stderr.strip())
-                self.assertFalse(os.path.exists(os.path.join(self.project, "agent.conf")))
-                self.assertFalse(os.path.exists(os.path.join(self.project, "AGENTS.md")))
-
-    def test_a_kept_conf_is_never_changed(self):
-        path = os.path.join(self.project, "agent.conf")
-        with open(path, "w") as fh:
-            fh.write("# mine\nmax_agents=9\npermission_mode=plan\n")
-        out = self.assertOk(self.init("--mode", "bypass"))
-        self.assertEqual(open(path).read(), "# mine\nmax_agents=9\npermission_mode=plan\n")
-        lines = [l for l in out.splitlines() if "permission_mode" in l and "kept" in l]
-        self.assertEqual(len(lines), 1, out)
-        self.assertIn("plan", lines[0])
-        self.assertIn("agent-settings.sh permission_mode", lines[0])
-        self.assertNotIn("saved:", out)
-
-    def test_twice_changes_nothing(self):
-        self.assertOk(self.init("--mode", "auto"))
-        first = open(os.path.join(self.project, "agent.conf")).read()
-        self.assertOk(self.init("--mode", "bypass"))
-        self.assertEqual(open(os.path.join(self.project, "agent.conf")).read(), first)
-
-    def test_help_names_the_option(self):
-        out = self.assertOk(self.init("-h"))
-        self.assertIn("--mode bypass", out)
-        self.assertIn("auto", out)
-
-
-class TestInitQuestion(InitCase):
-    def test_the_question_on_a_terminal(self):
-        code, out, err = self.tty("auto\n")
-        self.assertEqual(code, 0, out + err)
-        q = [l for l in (err + out).splitlines() if "Permission mode for every agent:" in l]
-        self.assertEqual(len(q), 1, err + out)
-        self.assertLess(q[0].index("bypass"), q[0].index("auto"), "bypass first")
-        self.assertIn("recommended", q[0].lower())
-        self.assertEqual(self.conf()["permission_mode"], "auto")
-
-    def test_the_answers(self):
-        for answer, mode in (("bypass\n", "bypassPermissions"), ("b\n", "bypassPermissions"),
-                             ("AUTO\n", "auto"), ("a\n", "auto"), ("\n", "bypassPermissions"),
-                             ("maybe\n", "bypassPermissions"), ("\x04", "bypassPermissions")):
-            with self.subTest(answer=answer):
-                path = os.path.join(self.project, "agent.conf")
-                if os.path.exists(path):
-                    os.remove(path)
-                code, out, err = self.tty(answer)
-                self.assertEqual(code, 0, out + err)
-                self.assertEqual(self.conf()["permission_mode"], mode)
-
-    def test_no_question_when_the_conf_is_kept(self):
-        with open(os.path.join(self.project, "agent.conf"), "w") as fh:
-            fh.write("permission_mode=plan\n")
-        code, out, err = self.tty("auto\n")
-        self.assertEqual(code, 0, out + err)
-        self.assertNotIn("Permission mode for every agent:", out + err)
-        self.assertEqual(open(os.path.join(self.project, "agent.conf")).read(), "permission_mode=plan\n")
-
-    def test_no_question_when_the_mode_is_given(self):
-        code, out, err = self.tty("bypass\n", "--mode", "auto")
-        self.assertEqual(code, 0, out + err)
-        self.assertNotIn("Permission mode for every agent:", out + err)
-        self.assertEqual(self.conf()["permission_mode"], "auto")
-
-
 class TestSkipWarning(InitCase):
     def assertOneWarning(self, out):
         lines = self.warn_lines(out)
@@ -490,19 +300,24 @@ class TestSkipWarning(InitCase):
         block = json.loads(out[out.index("{"):out.rindex("}") + 1])
         self.assertIn("permissions", block)
 
+    def bypass(self):
+        self.repo.set_conf("permission_mode", "bypassPermissions")
+
     def test_no_settings_file(self):
-        out = self.assertOk(self.init("--mode", "bypass"))
+        self.bypass()
+        out = self.assertOk(self.init())
         self.assertOneWarning(out)
         self.assertBlockStillParses(out)
-        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude")), "never creates the user's settings")
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "settings.json.bak-auto-pipeline")))
 
-    def test_the_template_default_warns_too(self):
-        self.assertOneWarning(self.assertOk(self.init()))
+    def test_the_default_auto_is_quiet(self):
+        self.assertEqual(self.warn_lines(self.assertOk(self.init())), [])
 
     def test_the_key_set_is_quiet(self):
         path = self.settings({"skipDangerousModePermissionPrompt": True, "theme": "dark"})
+        self.bypass()
         before = open(path, "rb").read()
-        out = self.assertOk(self.init("--mode", "bypass"))
+        out = self.assertOk(self.init())
         self.assertEqual(self.warn_lines(out), [])
         self.assertEqual(open(path, "rb").read(), before)
 
@@ -512,32 +327,24 @@ class TestSkipWarning(InitCase):
                                   {"permissions": {"allow": []}})):
             with self.subTest(data=data):
                 path = self.settings(data)
+                self.bypass()
                 before = open(path, "rb").read()
-                os.remove(os.path.join(self.project, "agent.conf")) if i else None
-                out = self.assertOk(self.init("--mode", "bypass"))
+                out = self.assertOk(self.init())
                 self.assertOneWarning(out)
                 self.assertEqual(open(path, "rb").read(), before, "never writes the user's settings file")
 
     def test_broken_json_warns(self):
+        # a broken settings.json: the setting reads as the default (auto), so no warning
         path = self.settings(raw="{not json")
-        out = self.assertOk(self.init("--mode", "bypass"))
-        self.assertOneWarning(out)
+        out = self.assertOk(self.init())
+        self.assertEqual(self.warn_lines(out), [])
         self.assertEqual(open(path).read(), "{not json")
 
     def test_auto_is_quiet(self):
-        out = self.assertOk(self.init("--mode", "auto"))
+        self.repo.set_conf("permission_mode", "auto")
+        out = self.assertOk(self.init())
         self.assertEqual(self.warn_lines(out), [])
         self.assertNotIn("skipDangerousModePermissionPrompt", out)
-
-    def test_a_kept_bypass_conf_warns(self):
-        with open(os.path.join(self.project, "agent.conf"), "w") as fh:
-            fh.write("permission_mode=bypassPermissions\n")
-        self.assertOneWarning(self.assertOk(self.init()))
-
-    def test_a_kept_auto_conf_is_quiet(self):
-        with open(os.path.join(self.project, "agent.conf"), "w") as fh:
-            fh.write("permission_mode=auto\n")
-        self.assertEqual(self.warn_lines(self.assertOk(self.init())), [])
 
     def test_the_script_never_writes_home_settings(self):
         src = read("bin", "agent-init.sh")
@@ -546,29 +353,6 @@ class TestSkipWarning(InitCase):
 
 
 # --------------------------------------------------------------- 5, 6: text
-
-class TestInitSkill(unittest.TestCase):
-    def setUp(self):
-        self.text = read("skills", "init", "SKILL.md")
-
-    def test_one_question_bypass_first(self):
-        self.assertIn("bypass (Recommended)", self.text)
-        self.assertLess(self.text.index("bypass (Recommended)"), self.text.index("--mode bypass"))
-        self.assertIn("--mode auto", self.text)
-        self.assertIn("without --mode", self.text)
-        self.assertIn("agent.conf", self.text)
-
-    def test_the_question_comes_before_the_run(self):
-        first_run = self.text.index("agent-init.sh")
-        self.assertLess(self.text.index("bypass (Recommended)"), self.text.index("--mode bypass"))
-        self.assertLess(self.text.index("bypass (Recommended)"), self.text.index("agent-init.sh --mode"))
-        self.assertGreaterEqual(first_run, 0)
-
-    def test_the_skip_warning(self):
-        self.assertIn("skipDangerousModePermissionPrompt", self.text)
-        self.assertIn("~/.claude/settings.json", self.text)
-        self.assertRegex(self.text, r"[Nn]ever write")
-
 
 class TestRuleText(unittest.TestCase):
     def w10(self):
@@ -582,18 +366,12 @@ class TestRuleText(unittest.TestCase):
 
     def test_w10_says_which_key_for_which_terminal(self):
         w10 = self.w10()
-        self.assertIn("`permission_mode`", w10)
+        self.assertIn("Permission mode", w10)
         self.assertNotIn("cloud_permission_mode", w10)
         self.assertNotIn("cloud page", w10)
 
     def test_no_literal_auto_launch_anywhere_in_the_rules(self):
         self.assertNotIn("--permission-mode auto", read("PRINCIPLES.md"))
-
-    def test_dispatch_reads_the_mode(self):
-        text = read("skills", "dispatch", "SKILL.md")
-        self.assertIn("`<mode>` from `permission_mode`", text)
-        self.assertIn("--permission-mode <mode>", text)
-        self.assertNotIn("--permission-mode auto", text)
 
     def test_the_local_click_line_keeps_permission_mode(self):
         text = read("requirements", "city.md")
@@ -616,7 +394,7 @@ class TestQuiz34(ScriptCase):
         self.assertIn("--permission-mode", head)
         options = [l.strip() for l in q.splitlines()[1:5]]
         self.assertEqual([o[:2] for o in options], ["A.", "B.", "C.", "D."])
-        self.assertIn("permission_mode from agent.conf", options[1])
+        self.assertIn("Permission mode setting", options[1])
         self.assertNotIn("cloud", options[1])
 
     def test_34_questions(self):

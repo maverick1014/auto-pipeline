@@ -188,6 +188,28 @@ def line(ev, sid, repo, aid="", role=""):
             "desc": "", "sub": "", "q": "", "klen": "", "repo": repo, "kind": ""}
 
 
+def configure_text(conf):
+    """Write old key=value lines as Configure options into $CLAUDE_CONFIG_DIR/settings.json."""
+    cfg = os.environ["CLAUDE_CONFIG_DIR"]
+    os.makedirs(cfg, exist_ok=True)
+    path = os.path.join(cfg, "settings.json")
+    try:
+        with open(path) as fh:
+            data = json.load(fh)
+    except Exception:
+        data = {}
+    options = data.setdefault("pluginConfigs", {}).setdefault("auto-pipeline@auto-pipeline", {}).setdefault("options", {})
+    for line in conf.splitlines():
+        if "=" not in line or line.strip().startswith("#"):
+            continue
+        key, value = (x.strip() for x in line.split("=", 1))
+        if key in ("worker", "fast_lane_deputy", "merge_deputy"):
+            key = "helper_model"
+        options[key] = value
+    with open(path, "w") as fh:
+        json.dump(data, fh)
+
+
 class AddCase(unittest.TestCase):
     def setUp(self):
         self.base = os.path.realpath(tempfile.mkdtemp(prefix="city_add_"))
@@ -212,12 +234,14 @@ class AddCase(unittest.TestCase):
         shutil.rmtree(self.base, ignore_errors=True)
 
     def repo(self, name, conf=CONF):
-        """A repo folder <base>/<name> with a .git dir (and an agent.conf) -> its identity."""
+        """A repo folder <base>/<name> with a .git dir -> its identity. CONF (old key=value
+        text): settings-configure 2026-11-25, the values go into Configure (user level, the
+        fake CLAUDE_CONFIG_DIR, last write wins) and the folder gets its task file."""
         folder = os.path.join(self.base, name)
         os.makedirs(os.path.join(folder, ".git"))
         if conf is not None:
-            with open(os.path.join(folder, "agent.conf"), "w") as fh:
-                fh.write(conf)
+            open(os.path.join(folder, "agent_todo.txt"), "a").close()
+            configure_text(conf)
         return os.path.join(folder, ".git")
 
     def opener(self, folder, title, command):

@@ -273,9 +273,8 @@ class TestNoAdhdKey(ScriptCase):
 
     def test_no_adhd_key_anywhere(self):
         import agent_conf
-        self.assertNotIn("adhd", agent_conf.load(os.path.join(BIN, "agent.conf.default")))
-        self.assertNotIn("adhd", agent_conf.load(os.path.join(ROOT, "agent.conf")))
-        self.assertNotIn("adhd", agent_conf.HINTS)
+        self.assertNotIn("adhd", [x["key"] for x in agent_conf.SETTINGS])
+        self.assertNotIn("adhd", agent_conf.CONSTANTS)
 
     def test_settings_does_not_know_it(self):
         result = self.repo.run("agent-settings.sh", "adhd", "off")
