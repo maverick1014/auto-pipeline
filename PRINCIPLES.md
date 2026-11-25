@@ -88,7 +88,8 @@ R8. Check blocks
 - A run or browser check (FLOW CHECK, UI CHECK) comes on top only when what the user sees or does changed: only the approved items, a 15-minute time box (`verify_box_min`), extra finds go to the ideas file
 - Tests stay as a cheap guard: light related tests in every task; a bug that a review or check finds gets a small test with its fix (W3)
 - The full suite is the safety net only: the release run on the working branch and the nightly, never in a task; a heavy test never blocks a merge
-- URGENT FIX: branch from the production branch, the smallest fix, PR REVIEW and the light related tests, the owner's yes
+- URGENT FIX: branch from the production branch, the smallest fix, PR REVIEW and the light related tests
+- Here his verified words at dispatch that name the publish are his final yes (W12); no second yes after the fix
 - Then merge to production (`agent-promote.sh --task`; the deploy follows) and merge production back into the working branch
 - Owner 2026-11-25: "only do the necessary thing when needed, dont do extra thing. and dont do less thing"
 - No levels: each check is a block with a trigger; a task runs the blocks whose trigger fires, nothing else
@@ -115,6 +116,7 @@ R8. Check blocks
 - Two passes: the brief blocks at dispatch; before merge the tool recomputes the tool blocks from the real diff
 - Blocks are only added; removing one needs a verified owner order: `todo checks <task> --remove <BLOCK> --owner-quote "<his words>"`
 - One result line per block: `agent-file.sh check <task> "<BLOCK>" pass|fail --by <who> --evidence "<text>"`
+- The reviewer and the check deputy always pass --commit <the head they looked at>
 - A check line records the commit it saw; PR REVIEW, FLOW CHECK and UI CHECK count only at the head being merged (or a commit after which every commit is a merge of the base)
 - The merge gate `agent-file.sh checks gate <task>` refuses while a planned block has no pass line
 - PR REVIEW, CORE REVIEW, FLOW CHECK and UI CHECK pass only by someone who did not build the task: not the builder (the todo line's builder or its LAUNCH records)
@@ -599,7 +601,7 @@ Human
   │  task ↓   report ↑
 Main manager   (Main manager model · the main chat · free for the human)
   ├── Fast-lane deputy   (Helper model)  one small task in its own git worktree, then gone
-  ├── Reviewer           (Opus 5.5, high)    PR review of every task, core review; read only
+  ├── Reviewer           (Reviewer model setting)  PR review of every task, core review; read only
   ├── Check deputy       (Helper model)  flow and UI checks, release smoke; one at a time on the browser
   ├── Merge deputy       (Helper model)  merge → push → delete branch → remove worktree
   └── Worktree, one per big feature

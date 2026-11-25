@@ -635,7 +635,7 @@ class TestReviewIsTheMainCheck(unittest.TestCase):
                        "only when what the user sees or does changed", "15-minute time box", "ideas file",
                        "light related tests", "a bug that a review or check finds gets a small test with its fix",
                        "The full suite is the safety net only", "URGENT FIX", "branch from the production branch",
-                       "the owner's yes", "merge production back into the working branch"):
+                       "merge production back into the working branch"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, head)
         self.assertNotIn("runs the real thing once", r8)
