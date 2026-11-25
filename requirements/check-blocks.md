@@ -878,3 +878,21 @@ Decided by the main manager (listed for the owner):
 - G14 agents/merge-deputy.md: before any `worktree remove --force` or `branch -D` of a subagent's git worktree the deputy checks it is clean (agent_*.txt aside) and its commits are in the merged target (`git -C <wt> log --oneline origin/<target>..HEAD` empty); else it stops and reports.
 - G15 A merge after the review that is not clean is refused with `<BLOCK>: the merge after the review changed code (<commit>): review the new head`; promote's gather prints one line for each worktree it skipped (`gather: skipped <path>: missing` or `: on another machine`).
 - For the owner tomorrow, not built now: approvals bound to a numbered question he answered ("1A") instead of word lists.
+
+## 51. FIX ORDER 10 from the main manager (TELL 11cc1b2b, bounce 4, meant as the last): two reviews pass; the flow-code review fails on two points
+
+- H1 (blocker) OWNER SIGN, DB CHECK and DATA CHECK need the head being merged (or a clean base merge after it), like PR REVIEW. The documented OWNER SIGN command (skills/dispatch) passes `--commit <head>`, and /merge gives that head.
+- H2 (blocker; the main manager's design error) The word lists go: PUBLISH_WORDS, NEGATION_WORDS, BLOCK_WORDS, SKIP_WORDS and skip_before_name are removed. INTERIM RULE (the main manager's decision; the owner picks the final design tomorrow): an approval is one exact sentence the tool itself names, typed by the owner and verified as his typed prompt: for a production task `yes, publish <task> to production`; for leaving out a block `yes, skip <BLOCK> for <task>` (PR REVIEW and OWNER SIGN stay never removable). Compared after lower-casing and dropping punctuation and extra spaces. Anything else is refused with one line that prints the exact sentence to ask him for: `todo add: ask the owner to type exactly: yes, publish <task> to production` / `todo checks: ask the owner to type exactly: yes, skip <BLOCK> for <task>`. skills/dispatch: his request says publish -> the main manager shows him that one sentence to type and stores it with the task (`todo add --target production --owner-quote "yes, publish <task> to production"`); no second yes later (A9 stays). Quiz Q23 and Q39 agree.
+- H3 skills/merge and R8: the fixer of a red batch run is a normal task: todo add first (the guard needs it), a brief with target, base and both branches, its own PR REVIEW and gate; then the main manager starts the run again (`agent-nightly.sh --start`).
+- H4 skills/merge: the check deputy's brief carries `where the app runs:`.
+- H5 agents/merge-deputy.md: before `git branch -D` of a production task the LOCAL branch is checked: `git merge-base --is-ancestor <branch> origin/<production branch>`.
+- H6 agent-autoclear.sh: the repeat (gate, ready) has a cap of 3 rounds; then one line `AUTO CLEAR waiting: the pane did not settle in 3 rounds; trying again later` and it waits its normal interval before it tries again.
+- H7 measure-pane: the stored pane weight is never below 550 MB.
+- H8 `reserve-pane --pending <key>` refuses a key that exists (exit 1, one line); skills/dispatch names the key: the task name.
+- H9 agent-room.sh's usage names reserve-pane --pending, --name and release-pane.
+
+## 52. Approval design, open for the owner (he picks tomorrow)
+
+- A: an answer bound to a numbered question the main manager asked ("1A").
+- B: one exact sentence the tool names, typed by the owner and verified (the interim rule of section 51 H2, built now).
+- C: the main manager reads his verified words and decides (no word lists).
