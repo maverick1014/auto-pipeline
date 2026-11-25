@@ -1,69 +1,7 @@
-"""Failing tests for bin/agent-watch.sh. Written by the task manager first.
+"""Tests of bin/agent-watch.sh and agent_watch.py: the single and --all watch, wake words,
+stalls, remote panes, tell, the housekeep timer.
 
-Owner, 2026-11-04 ("do it also"): a task manager's DONE PASS sat 19 minutes
-unseen. The main manager's watch read only the pane; the report was in the
-worktree's agent_state.txt. The watch becomes a plugin script, so every repo's
-main manager catches both.
-
-CONTRACT.
-
-    bin/agent-watch.sh --terminal <TM handle> --worktree <path>
-                       [--environment <env>] [--shell <shell handle>]
-                       [--interval-min 5] [--max 36] [--name <task>]
-
-    Foreground. The main manager starts it with Bash run_in_background and is
-    woken when it exits. Every WATCH exit is exit code 0.
-    Missing --terminal or --worktree, or --environment without --shell:
-    a usage line, exit code not 0, no sweep.
-
-    runtime    bin/agent-runtime.sh kind. plain or cloud: exactly one line
-               "watch: not used in <kind> mode", exit 0, no orca terminal call.
-
-    interval   --interval-min minutes between sweeps (default 5).
-               AGENT_WATCH_INTERVAL_S (seconds) wins when set; tests use 0.
-
-    signals    each sweep reads two things:
-               (a) the TM pane: orca terminal read --terminal <TM> --json
-               (b) agent_state.txt in the worktree: the lines that START with
-                   "DONE PASS", "DONE FAIL", "CLOSE CASE", "QUESTION:" or
-                   "MOCK READY".
-                   Local (no --environment): read the file directly, no shell
-                   pane, no orca terminal send at all.
-                   Another machine: through the --shell pane. Read it first
-                   for latestCursor, send ONE command shorter than 400 chars
-                   that prints one marker line (count + last such line), read
-                   the answer with --cursor. Every orca call carries
-                   --environment <env>.
-               The file count at start is the baseline: only new lines fire.
-               The screen never fires a SIGNAL (SCOPE ADD 1, main manager
-               17:41: a TM's plan line "⏺ ... then write DONE PASS ..." fired
-               it). The screen is read for the stall and the sweep line only.
-
-    exits      the WATCH line first, then the evidence:
-               "WATCH SIGNAL <name>: <line>"  a new file line (the line itself)
-               "WATCH STALL <name>"  3 sweeps, same screen, no file change
-                   (file = signal count and line count), unless the screen
-                   says "shell still running"; then the last 15 screen lines
-               "WATCH LOST <name>"   3 failed reads in a row
-               "WATCH MAX <name>"    --max sweeps done
-               <name> = --name, else the worktree folder's name.
-
-    sweep      each sweep prints one line: the time from `date` (HH:MM),
-               same=<n>, file=<n>, then " | " and the last ⏺ or ✻ screen line
-               cut to 110 characters.
-
-    never      sends anything to the TM pane. The shell pane gets only the
-               read command.
-
-The fake orca below keeps state under $ORCA_STUB_DIR:
-    screens/<handle>/1..n   the k-th read of a pane returns frame min(k, n);
-                            a frame whose first line is FAIL makes the read fail
-    screens/<handle>/hook.sh  run with k after the k-th read (appends lines to
-                            agent_state.txt, the way a task manager does)
-    shell/<handle>/buf      a shell pane: a send runs the text with bash and
-                            appends "$ <text>" and its output; a read returns
-                            the lines after --cursor, latestCursor = line count
-    env/<env>/down          that machine is unreachable: every call fails
+requirements/one-watcher.md. One class per feature. Older task contracts: git log -p of this file.
 """
 
 import os

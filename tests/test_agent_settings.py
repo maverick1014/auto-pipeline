@@ -1,9 +1,7 @@
-"""agent_conf.py value checks (settings-configure, 2026-11-25).
+"""Tests of bin/agent-settings.sh and agent_conf.py: validation, permission modes, model words,
+the YOU line, launch lines, the settings script.
 
-The settings live in Configure now (tests/test_settings_configure.py holds that contract).
-What stays here: validate_value(key, value) -> None when good, else a message naming the
-allowed values. Used for every stored Configure value and for an old value before it is
-moved. load/dumps/save/GROUPS/HINTS of agent.conf are gone with agent.conf.
+requirements/settings-configure.md. One class per feature. Older task contracts: git log -p of this file.
 """
 
 import os

@@ -1,4 +1,8 @@
-"""Tests of rules-text, one class per feature."""
+"""Tests of Rule text pins: PRINCIPLES.md, skills, agents, hooks.json, README. Each class pins one
+rule or skill for one feature; a pin lives in one place only.
+
+One class per feature. Older task contracts: git log -p of this file.
+"""
 
 import json
 import os

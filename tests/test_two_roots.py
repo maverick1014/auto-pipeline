@@ -1,32 +1,6 @@
-"""UPDATE settings-configure (2026-11-25): no settings file in either root; settings are
-user level (Configure), agent_todo.txt marks a set-up project. agent.conf lines below
-are history.
+"""Tests of The two-root rule for every script: plugin root vs project root, worktrees, plain folders.
 
-Failing tests for the two roots. Written by the task manager, before any code.
-
-CONTRACT. Every script in bin/ is started by its absolute path, from any
-directory, and must tell two roots apart:
-
-  PLUGIN root   = the folder above the script, $(dirname "$0")/..
-                  PRINCIPLES.md, the quiz, agent_conf.py, bin/agent.conf.default.
-                  Read only. A script never writes here.
-
-  PROJECT       = the repo being worked on. Found in this order:
-                    1. "cwd" from the hook's stdin JSON (SessionStart)
-                    2. $CLAUDE_PROJECT_DIR
-                    3. the current directory
-                  PROJECT ROOT is the main worktree of `git worktree list` run
-                  from there, so a script started inside a git worktree still
-                  writes the shared files into the project's main repo.
-
-  Per-project files, in the PROJECT ROOT:
-      agent.conf, agent_todo.txt, agent_completed.txt, agent_ideas.txt,
-      agent_worktree.txt, .secrets/
-  In the project's shared git dir: the main-manager lock, the watch status.
-  agent_state.txt is per working directory: the git toplevel of the directory
-  the agent is in, so a worktree keeps its own state file.
-
-The same plugin serves any number of projects and never mixes them up.
+One class per feature. Older task contracts: git log -p of this file.
 """
 
 import json

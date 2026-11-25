@@ -1,15 +1,6 @@
-"""Failing tests for owner-relay: bin/agent-owner-order.sh + bin/agent_owner_order.py.
+"""Tests of bin/agent-owner-order.sh and agent_owner_order.py: relayed owner orders, line and verify.
 
-Written by the task manager before any code. Rules: requirements/owner-relay.md
-(owner: rules yes 2026-11-24, every default). Row ids (A1, D5, H14, L4 ...) are
-the rows of that file.
-
-Every transcript here is made up. No real transcript text.
-A fake $HOME holds the config homes: ~/.claude, an Orca profile home, and
-$CLAUDE_CONFIG_DIR when a test sets it. TZ is Asia/Kuala_Lumpur (+08:00, no DST),
-AGENT_FAKE_HOST is "test-host" unless a test says otherwise.
-
-Run: python3 -m unittest tests.test_agent_owner_order
+requirements/owner-relay.md. One class per feature. Older task contracts: git log -p of this file.
 """
 
 import datetime

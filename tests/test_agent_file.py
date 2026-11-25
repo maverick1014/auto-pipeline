@@ -1,26 +1,6 @@
-"""Tests for bin/agent-file.sh `todo add`'s optional 5th argument (by).
+"""Tests of bin/agent-file.sh: todo add/done/drop, data, time, backfill, eta, idea keep, stage.
 
-CONTRACT (W12, PRINCIPLES.md):
-    agent-file.sh todo add "<name>" "<size>" "<what>" [est_minutes] [by]
-
-    - No 5th arg -> line ends "| by main" (AGENT_ROLE defaults to "main").
-    - A 5th arg (e.g. a peer repo name) -> line ends "| by <that arg>".
-    - `todo done` still finds and moves the line either way.
-
-CONTRACT (todo drop):
-    agent-file.sh todo drop "<name>" "<reason>"
-
-    A todo that is no longer needed. The line leaves agent_todo.txt and is
-    appended to agent_completed.txt as
-
-        <date> | <name> | <what> | est <n>m actual - | dropped: <reason>
-
-    (est "-" when the todo had none). Never the opened->now minutes: a drop
-    is not work, and those minutes would skew `time`.
-    `time` skips dropped lines.
-    Unknown name -> exit 1, "no todo line named: <name>" on stderr.
-    No reason -> usage, exit 2, nothing moves.
-    The usage text lists `todo drop`.
+One class per feature. Older task contracts: git log -p of this file.
 """
 
 import os

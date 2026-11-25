@@ -1,11 +1,6 @@
-"""Tests for 'close case'. The keyword hook is gone (owner 2026-11-24: human features
-are skills only); the rule lives in skills/close-case/SKILL.md and PRINCIPLES.md W13.
+"""Tests of bin/agent-close-case.sh: the prompt hook stays quiet; hooks.json and the skills name it.
 
-CONTRACT. bin/agent-close-case.sh stays a UserPromptSubmit hook (hooks.json) for ONE
-job: a session that was released or replaced as main manager is told once (see
-tests/test_agent_main_seat.py, tests/test_agent_session_clean.py). A prompt that
-contains the words "close case" prints nothing; the skill /auto-pipeline:close-case
-carries the rules of every role (task manager, human-direct, main manager).
+One class per feature. Older task contracts: git log -p of this file.
 """
 
 import json

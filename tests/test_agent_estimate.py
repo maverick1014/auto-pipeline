@@ -1,65 +1,6 @@
-"""Tests for the time estimator (task estimate-skill). Read requirements/estimate.md.
+"""Tests of bin/agent_estimate.py: estimate, the blend with a guess, backtest, retrain.
 
-WHY (owner, 2026-09-30). With 30 finished tasks of time data, learn the
-estimate from the data, backtest it against today's rubric, ship the better
-one; every 10 new tasks learn again and keep the new version only if its
-backtest error is lower. An estimate = agent WORK minutes only. No hand-made
-formula: learn from the data.
-
-CONTRACT (all through bin/agent-file.sh; the work is done by bin/agent_estimate.py,
-python 3.9 standard library only)
-
-    data --what
-        The data table with one more last column, `what`: the text between
-        the name and the data block. Without --what: the table as before.
-
-    estimate --lane fast|full --mock yes|no --type <t> [--name <name>] "<what>"
-        Read only. A fact known only after a task (--work --wait --clock --est
-        --bounces --workers --files --lines --tests --adds) is refused: one
-        line on stderr naming it, exit 1. A missing or bad --lane, --mock,
-        --type, or no what: refused the same way.
-        estimate: <m>m work, range <lo>-<hi>m (<estimator|rubric> v<n>, <N> past tasks)
-        like <name>: <m>m work (<type>, <lane>, mock <yes|no>, <date>)     up to 3, most alike first
-
-    backtest [--tasks]
-        backtest: <N> tasks, <T> tested, each from the tasks before it
-        method     tasks  error  within 30%  in range
-        estimator  <T>    <e>m   <p>%        <p>%
-        rubric     <T>    <e>m   <p>%        <p>%
-        todo est   <T>    <e>m   <p>%        -
-        winner: estimator|rubric
-        (error = median absolute error, one decimal; columns split by spaces)
-        --tasks: one row per tested task, before the table:
-        task <name> work <w> guess <g|-> estimator <e> (<lo>-<hi>) blend .. rubric <r>
-        (estimate-blend, 2026-11-13: the blend rows, the big rows and the
-         target as a within 30% share: tests/test_agent_estimate_blend.py)
-        Fewer than 11 tasks: backtest: <N> tasks, needs at least 11
-
-    retrain [--force]
-        estimate retrain: not yet (<N> of 30 tasks)
-        estimate retrain: not due (<N> tasks, next check on <YYYY-MM-DD>)
-        (due once a week: 7+ days since checked_date AND 1+ new task; a file
-         with no checked_date is due after 10 new tasks, once, and says
-         "next check at <M>" until then)
-        estimate retrain: v1 made from <N> tasks: estimator|rubric (...)
-        estimate retrain: kept v<n> (on the <k> new tasks: ...)
-        The first train and a check also print the backtest table before it.
-
-    agent_estimate.txt (project root, JSON)
-        {"current": 1, "checked_tasks": 30, "checked_date": "YYYY-MM-DD",
-         "versions": [{"version": 1, "date": "YYYY-MM-DD", "tasks": 30,
-                       "method": "estimator", "k": 3, "text": 1, "type": 0.5,
-                       "backtest": {"tasks": 20,
-                                    "estimator": {"error": 23.0, "within30": 40, "inrange": 60},
-                                    "rubric": {"error": 26.5, "within30": 30, "inrange": 30}}}],
-         "checks": [{"date": "YYYY-MM-DD", "tasks": 40, "new": 10, "current": 1,
-                     "current_error": 36.5, "new_error": 0.0, "kept": 2}]}
-        versions = the kept versions only. checks = every check after v1.
-
-    todo done
-        After its line is written: the retrain when due, one verdict line
-        ("estimate retrain: ..."), never the table. Not due: no line. A
-        failure never stops todo done.
+requirements/estimate.md. One class per feature. Older task contracts: git log -p of this file.
 """
 
 import datetime
