@@ -407,6 +407,7 @@ class Sweep(object):
             "mains": set(os.path.normpath(r.get("path") or "") for r in rows
                          if r.get("isMainWorktree")),
             "ps": self.states(ps, False),
+            "term_ok": list_complete(terms),
             "terminals": items(terms, "terminals"),
             "branches": set(strip_heads(r.get("branch")) for r in rows
                             if r.get("branch")),
@@ -816,6 +817,8 @@ class Sweep(object):
     def do_remote_panes(self):
         for machine in self.machines:
             name = machine["name"]
+            if not machine.get("term_ok"):
+                continue
             for term in machine["terminals"]:
                 wid = str(term.get("worktreeId") or "")
                 handle = term.get("handle")
@@ -840,6 +843,8 @@ class Sweep(object):
         if env:
             for m in self.machines:
                 if m["name"] == env:
+                    if not m.get("term_ok"):
+                        return None
                     return set(str(t.get("handle")) for t in m["terminals"] if t.get("handle"))
             return None
         if not self.term_ok:

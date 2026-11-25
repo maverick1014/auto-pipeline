@@ -1561,12 +1561,61 @@ DB_ADD = re.compile(
 DB_CREATE = re.compile(r"\bCREATE\s+TABLE\b|\b(?:create_table|createTable|CreateTable|CreateModel)\b", re.I)
 DB_BOILER = re.compile(
     r"^(?:--.*|#.*|//.*|/\*.*|\*.*|\*/|<\?php|['\"]use strict['\"];?|[\]\[(){},;]+|\}\)?;?|end|"
-    r"(?:abstract\s+|public\s+|partial\s+)*class\b.*|(?:public\s+|protected\s+|override\s+)*"
+    r"(?:export\s+|abstract\s+|public\s+|partial\s+)*class\b.*|(?:public\s+|protected\s+|override\s+)*"
     r"(?:async\s+)?(?:def|function|void)\s+\w*\(?.*|(?:import|from|require|use|using|package|namespace)\b.*|"
     r"(?:const\s+|let\s+|var\s+)?\w*(?:dependencies|operations|initial)\s*=\s*[\[(]?.*|"
     r"(?:module\.)?exports\.\w+\s*=.*|module\.exports\s*=.*|(?:async\s+)?(?:up|down)\s*\(.*|"
-    r"(?:public\s+)?(?:override\s+)?void\s+Up\(.*|"
+    r"(?:public\s+)?(?:override\s+)?void\s+Up\(.*|(?:public\s+|protected\s+|async\s+)*(?:up|down)\s*\(.*|"
     r"migrationBuilder\.\w*(?:Create|Add)\w*\(.*|\(?['\"][\w.-]+['\"],?\s*['\"]?[\w.-]*['\"]?\)?,?)$", re.I)
+
+
+DB_DOWN = re.compile(r"\b(?:down|Down)\s*\(|\bdef\s+(?:downgrade|down)\b|\bexports\.down\b")
+DB_ALTER_ADD = re.compile(r"\bALTER\s+TABLE\b.*\bADD\b(?!\s+(?:CONSTRAINT|PRIMARY|FOREIGN|UNIQUE|CHECK)\b)", re.I)
+DB_KNEX_ADD = re.compile(r"\b(?:alterTable|createTable)\s*\(|^table\.\w+\(")
+DB_PRISMA_LINE = re.compile(r"^(?:(?:model|enum|type|view)\s+\w+\s*\{|\w+\s+[\w.]+(?:\[\]|\?)?(?:\s+@.*)?|@@?\w+.*|\w+|\w+\s*=.*)$")
+
+
+def db_code_lines(added):
+    """The added lines (raw) without comment lines, block comments and down/downgrade bodies."""
+    out = []
+    in_block = False
+    skip = None   # ("indent", n) or ("brace", depth, opened)
+    for _, raw in added:
+        line = raw.rstrip()
+        if in_block:
+            if "*/" not in line:
+                continue
+            line = line.split("*/", 1)[1]
+            in_block = False
+        stripped = line.strip()
+        if stripped.startswith("/*"):
+            if "*/" not in stripped:
+                in_block = True
+                continue
+            stripped = stripped.split("*/", 1)[1].strip()
+            line = stripped
+        if not stripped or stripped.startswith(("--", "#", "//")):
+            continue
+        if skip is not None:
+            if skip[0] == "indent":
+                if len(line) - len(line.lstrip()) > skip[1]:
+                    continue
+                skip = None
+            else:
+                depth, opened = skip[1] + line.count("{") - line.count("}"), skip[2] or "{" in line
+                skip = ("brace", depth, opened) if not (opened and depth <= 0) else None
+                continue
+        if DB_DOWN.search(stripped):
+            if re.match(r"def\s", stripped):
+                skip = ("indent", len(line) - len(line.lstrip()))
+            else:
+                depth = stripped.count("{") - stripped.count("}")
+                opened = "{" in stripped
+                if not (opened and depth <= 0):
+                    skip = ("brace", depth, opened)
+            continue
+        out.append(stripped)
+    return out
 
 
 def db_sign(repo, path, status):
@@ -1574,23 +1623,31 @@ def db_sign(repo, path, status):
     removed, added = repo.changes(path, status)
     if any(t.strip() for _, t in removed):
         return "removed line in %s" % path
+    prisma = path.lower().endswith(".prisma")
     in_create = False
-    for _, text in added:
-        line = text.strip()
-        if not line:
-            continue
-        m = DB_DANGER.search(line)
+    pdepth = 0
+    for line in db_code_lines(added):
+        m = DB_DANGER.search(re.sub(r"\balterTable\b", "alter_table_ok", line)) or re.search(r"\.alter\(", line)
         if m:
-            return "%s in %s" % (m.group(0).upper() if m.group(0).isalpha() else m.group(0), path)
+            w = m.group(0)
+            return "%s in %s" % (w.upper() if w.isalpha() else w, path)
+        if pdepth > 0:
+            pdepth += line.count("(") - line.count(")")
+            continue
         if in_create:
             if re.match(r"^(?:\)|end\b|\}|\]).*", line) and not line.startswith("),"):
                 in_create = False
             continue
-        if DB_ADD.search(line):
-            if DB_CREATE.search(line) and not re.search(r"\)\s*;?\s*$", line) or re.search(r"\bdo\s*\|\w+\|\s*$", line):
+        if DB_ADD.search(line) or DB_ALTER_ADD.search(line) or DB_KNEX_ADD.search(line):
+            depth = line.count("(") - line.count(")")
+            if depth > 0 and not re.search(r"\bdo\s*\|\w+\|\s*$", line):
+                pdepth = depth
+            elif DB_CREATE.search(line) and not re.search(r"\)\s*;?\s*$", line) or re.search(r"\bdo\s*\|\w+\|\s*$", line):
                 in_create = True
             continue
         if DB_BOILER.match(line):
+            continue
+        if prisma and DB_PRISMA_LINE.match(line):
             continue
         return "unrecognised line in %s (not an add: the owner decides)" % path
     return None
