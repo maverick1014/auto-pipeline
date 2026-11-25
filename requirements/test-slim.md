@@ -44,7 +44,7 @@ One file per script or module, one class per feature. Text pins of PRINCIPLES.md
 | test_agent_level.py | agent-level.sh, check blocks | risk_levels, comment_shape, check_* | after check-blocks |
 | test_agent_release.py | agent-release.sh | as is | after check-blocks |
 | test_rules_text.py | rule text pins | output_rules, decider_floor, plugin_layout, every *Text/*Principles/*Skill class | now (free classes), rest after check-blocks |
-| test_agent_city_*.py (about 5 files) | server, page, hook, script, office | 41 files | after city-office-2 |
+| test_agent_city_page.py, _data.py, _server.py, _hook.py, _script.py | the page (node), agent_city.py state, the HTTP server and API, agent-city-hook.sh, agent-city.sh and the shim | 43 city files; test_agent_city_add_agent.py stays until check-blocks (test_bypass_mode imports it) | done |
 
 ## How a slice is done
 
@@ -55,15 +55,38 @@ One file per script or module, one class per feature. Text pins of PRINCIPLES.md
 5. Every new repo copies a per-process seeded template instead of five git starts (tests/scripthelp.py, after check-blocks).
 6. Before a slice: the test list of the touched files. After it: the audit (moved + removed-with-twin = before) and the slice's tests pass.
 
-## Two processes
+## Parallel runs
 
 ```
-python3 tests/run2.py            # every test file, 2 processes, split by tests/timings.txt
-python3 tests/run2.py --time     # each file alone, prints file, tests, seconds; rewrites tests/timings.txt
+python3 tests/run2.py            # every test file; processes = CPU cores x 80% (6 on 8 cores)
+python3 tests/run2.py -j 2 FILE  # chosen files, 2 processes
+python3 tests/run2.py --time     # each file alone; file, tests, seconds; rewrites tests/timings.txt
 python3 -m unittest discover -s tests   # still works, one process
 ```
 
-The split deals files slowest first to the process with the least seconds so far.
+- Load rule (owner 2026-11-25): CPU under 80% (the default -j); a process starts only while memory in use + 30 MB stays under 80%. No slot or lock.
+- The split deals files slowest first (tests/timings.txt) to the process with the least seconds so far; a file bigger than a third of one process's share is dealt out class by class.
+- Every merged file must also pass alone in one process (`--time` runs it so): two classes from different old files can share a module-level object.
+
+## Speed levers, measured on pc2
+
+| Lever | Where | Gain |
+|---|---|---|
+| Seeded repo template, copied per test (tests/scripthelp.py) | every ScriptCase test | 0.11 s -> 0.03 s per repo |
+| One fixture and one run per call for read-only classes (tests/sharedrepo.py) | file, resume, name, questions, housekeep, owner_order, close_case, two_roots, cloud_pack | cloud_pack 86 s -> 48 s |
+| Shorter fake pause in the auto-clear waiter (the pause test keeps 1 s) | autoclear | 72 s -> 48 s |
+| Batching the cases of one test in one repo, one commit, one check | comment_shape (after check-blocks) | 211.6 s -> 94.3 s on a copy |
+| In-process call of the Python module (ScriptRepo.run_py) | housekeep | about 0.08 s per call; the rest is real git work inside |
+
+In-process, start costs measured: bash 7 ms, python 27 ms, plus imports; a script call costs statusline 0.16 s, agent-file.sh verbs about 0.20 s, agent-level.sh 0.33 s, housekeep 0.3-0.6 s.
+Files that could call the Python module in-process (not rewritten in this task unless listed above):
+
+| File | Module | Expected gain |
+|---|---|---|
+| test_comment_shape, test_risk_levels, test_check_blocks | agent_level.py (agent-level.sh is roots + exec) | 0.1-0.15 s per check, about 20-30 s after batching |
+| test_agent_statusline, the board tests | agent_board.py --statusline | about 0.08 s per line call |
+| test_agent_file, test_agent_state, test_agent_estimate | agent_state.py, agent_estimate.py, agent_board.py behind agent-file.sh | about 0.1 s per call; the bash dispatcher's argument work must keep real starts |
+| not worth it | agent_watch.py (loop, signals), cleanup, resume, start, cloud-pack | their time is git, servers or bash, not the start |
 
 ## Removed checks
 
