@@ -474,7 +474,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 @media (max-width:720px){
   .stage{--lift-w:64px}
   .lift{top:12px;max-height:calc(100% - 96px)}
-  .floorsign,.dpop,.follow{left:42px!important;transform:none;max-width:calc(100% - 118px)}
+  .floorsign,.dpop,.follow{left:42px!important;transform:none;max-width:calc(100% - 128px)}
   .lift .ln,.lift-h span:first-child{display:none}
   .lb{grid-template-columns:1fr;justify-items:center;gap:3px;padding:6px 4px}
   .lb .lc{font-size:10px}
@@ -538,7 +538,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
   .acct~#logbtn,#logbtn~.acct{margin-left:0}
   .add-i{width:28px;height:28px;font-size:17px}
   .rail{left:0;top:0;bottom:0;max-height:none;width:min(300px,84%);border-left:0;border-radius:0 16px 16px 0}
-  .stage.drawer-open .win,.stage.drawer-open .ask-panel,.stage.drawer-open .follow,.stage.drawer-open .lift{visibility:hidden}
+  .stage.drawer-open .win,.stage.drawer-open .ask-panel,.stage.drawer-open .follow,.stage.drawer-open .lift,.stage.drawer-open .floorsign{visibility:hidden}
   .ask-panel{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:72%}
   /* V1 (city-ux2 v2): the message panel is a bottom sheet on a phone; its folded tab sits centred at
      the bottom edge, horizontal (the rail's own tab stays vertical, on the left edge). */
@@ -3623,7 +3623,7 @@ function cssVar(n){ return getComputedStyle(document.documentElement).getPropert
 function applyTheme(){
   const bg = new THREE.Color(cssVar('--sky') || '#CFE6FF');
   scene.background = bg;
-  scene.fog = view === 'outside' ? new THREE.Fog(bg, 70, 170) : new THREE.Fog(bg, 26, 60);
+  scene.fog = view === 'outside' ? new THREE.Fog(bg, 70, 170) : new THREE.Fog(bg, Math.max(26, fitDist() * 1.25), Math.max(60, fitDist() * 1.25 + 34));
   needFrame = true;
 }
 applyTheme();
