@@ -349,7 +349,7 @@ class TestAgents(unittest.TestCase):
         self.assertEqual(LEVEL_WORDS.findall(text), [])
         self.assertIn("checks gate", text)
         self.assertLess(text.index("checks gate"), text.index("git merge --no-ff"))
-        self.assertIn("git reset --merge ORIG_HEAD", text)
+        self.assertNotIn("ORIG_HEAD", text)             # section 42 B2: no test run at the merge, nothing to undo
         self.assertNotIn("reset --hard", text)
         given = [l for l in text.splitlines() if l.startswith("Your brief gives")][0]
         self.assertNotIn("<level>", given)

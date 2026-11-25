@@ -802,3 +802,4 @@ Decided by the main manager (listed for the owner):
 - F13 One function `agent_conf.production_branch(repo)`: production_branch in agent_repo.conf, else origin/HEAD's target, else main when refs/heads/main or origin/main exists, else master when it exists, else the current branch; promote, the gate, init, the start, the sweep and the nightly use it.
 - F14 Every promote first removes leftover `<git common dir>/agent_promote_wt_<pid>` worktrees whose pid is dead.
 - tests/check_blocks_demo.sh shows F1-F4 and F7.
+- B2 (also): W8 drops the undo line of a failed run after the merge (no run there); it keeps: "Never `git reset --hard` in the main checkout: it wipes the uncommitted agent_*.txt".

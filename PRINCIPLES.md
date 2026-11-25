@@ -161,7 +161,6 @@ R8. Check blocks
 
 W1. Finish in one run
 - Never wait for the human, except: the kick-off round, a mock yes, an OWNER SIGN, NEEDS HUMAN E2E
-- Exception, kick-off round only: a task manager reads its brief and asks the main manager its questions before starting; the main manager answers what it can and asks the owner only the rest. During the work this rule holds again: default, log, continue
 - Unknown → pick default, log it, continue
 - Only owner-level or irreversible calls stop the line
 - A rule and reality collide → report the collision, never route around it

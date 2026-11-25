@@ -44,6 +44,10 @@ class TestB2NoSuiteAtTheMerge(unittest.TestCase):
         dep = read(*DEPUTY)
         self.assertNotIn("<suite command>", dep)
         self.assertIn("No test run at the merge (W4: never re-run what passed; R8: no task runs the full suite)", dep)
+        self.assertNotIn("ORIG_HEAD", dep)              # no test run, nothing to undo
+        w8 = rule("W8. ", "W9. ")
+        self.assertNotIn("ORIG_HEAD", w8)
+        self.assertIn("Never `git reset --hard` in the main checkout", w8)
 
 
 class TestB3StepOneChecksTheBuildersBlocks(unittest.TestCase):
@@ -190,8 +194,10 @@ class TestD3ResultFirst(unittest.TestCase):
 
 class TestD4WaitExceptions(unittest.TestCase):
     def test_w1(self):
+        w1 = rule("W1. ", "W2. ")
         self.assertIn("Never wait for the human, except: the kick-off round, a mock yes, an OWNER SIGN, NEEDS HUMAN E2E",
-                      rule("W1. ", "W2. "))
+                      w1)
+        self.assertNotIn("kick-off round only", w1)
 
 
 if __name__ == "__main__":
