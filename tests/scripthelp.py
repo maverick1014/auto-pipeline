@@ -705,6 +705,43 @@ class ScriptRepo:
             timeout=kwargs.pop("timeout", 90),
         )
 
+    def run_py(self, module, *args, **kwargs):
+        """test-slim: run bin/<module>.py's main(argv) in this process (no bash,
+        no new python), with the environment and working folder a script start
+        gets. For the Python logic only: the .sh wrapper (roots, role, runtime
+        kind) keeps its own real starts in the tests. Returns a CompletedProcess."""
+        import contextlib
+        import importlib.util
+        import io
+        from unittest import mock
+        path = os.path.join(self.plugin_bin, module + ".py")
+        mods = self.__dict__.setdefault("_py_modules", {})
+        mod = mods.get(path)
+        if mod is None:
+            spec = importlib.util.spec_from_file_location("%s__inproc_%x" % (module, id(self)), path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            mods[path] = mod
+        env = self._env(kwargs.pop("env", None))
+        stdin = kwargs.pop("stdin", None)
+        cwd = kwargs.pop("cwd", None) or self.cwd
+        if kwargs:
+            raise TypeError("run_py: unknown arguments %s" % sorted(kwargs))
+        out, err = io.StringIO(), io.StringIO()
+        here = os.getcwd()
+        code = 0
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch.object(sys, "stdin", io.StringIO(stdin or "")), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            os.chdir(cwd)
+            try:
+                code = mod.main(list(args)) or 0
+            except SystemExit as exc:
+                code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+            finally:
+                os.chdir(here)
+        return subprocess.CompletedProcess([path] + list(args), code, out.getvalue(), err.getvalue())
+
     def popen(self, script, *args, **kwargs):
         env = self._env(kwargs.pop("env", None))
         return subprocess.Popen(

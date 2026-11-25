@@ -109,9 +109,21 @@ class HousekeepCase(tc.CleanupCase):
 
     # ---- running
 
+    # test-slim: the Python pass runs in this process (repo.run_py). The wrapper's own work
+    # (usage, roles, roots from a worktree) keeps real starts: TestUsage, TestMainManagerOnly*,
+    # TestBlockInStateFile, and every call with a folder or a role. The runtime kind is still
+    # asked of the real agent-runtime.sh each time.
+    IN_PROCESS = True
+
     def hk(self, *args, **kwargs):
         env = {"AGENT_FAKE_NOW": NOW}
         env.update(kwargs.pop("env", None) or {})
+        if (self.IN_PROCESS and not kwargs and set(args) <= {"--apply"}
+                and "AGENT_ROLE" not in env and "CLAUDE_PID" not in env):
+            kind = self.repo.run("agent-runtime.sh", "kind", env=env).stdout.strip()
+            argv = ["--root", self.repo.dir, "--plugin", self.repo.plugin,
+                    "--gitdir", os.path.join(self.repo.dir, ".git"), "--kind", kind] + list(args)
+            return self.repo.run_py("agent_housekeep", *argv, env=env)
         return self.repo.run("agent-housekeep.sh", *args, env=env, **kwargs)
 
     def apply(self, **kwargs):
@@ -180,6 +192,7 @@ from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
 
 @shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo per class, each run once; the tests only read
 class TestUsage(HousekeepCase):
+    IN_PROCESS = False   # test-slim: real starts through agent-housekeep.sh
     def test_help(self):
         out = self.assertOk(self.hk("-h"))
         for word in ("--apply", "main manager only", "housekeep_interval_min",
@@ -221,6 +234,7 @@ class _TestMainManagerOnlyFixture:
 
 @shared_fixture(guard=REPO_BASE, remember_repo=True)
 class TestMainManagerOnly(_TestMainManagerOnlyFixture, HousekeepCase):
+    IN_PROCESS = False   # test-slim: real starts through agent-housekeep.sh
     """One fixture for the class: these tests only read (tests/sharedrepo.py)."""
 
     def setUp(self):
@@ -239,6 +253,7 @@ class TestMainManagerOnly(_TestMainManagerOnlyFixture, HousekeepCase):
 
 
 class TestMainManagerOnlyWrites(_TestMainManagerOnlyFixture, HousekeepCase):
+    IN_PROCESS = False   # test-slim: real starts through agent-housekeep.sh
     """The tests of TestMainManagerOnly that write: one repo each."""
 
     def setUp(self):
@@ -286,6 +301,7 @@ class TestClean(HousekeepCase):
 
 
 class TestBlockInStateFile(HousekeepCase):
+    IN_PROCESS = False   # test-slim: real starts through agent-housekeep.sh
     def setUp(self):
         super().setUp()
         self.repo.set_worktree_lines([(self.gone, "gone-one", "idle")])
