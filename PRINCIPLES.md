@@ -115,6 +115,7 @@ R8. Check blocks
 - Two passes: the brief blocks at dispatch; before merge the tool recomputes the tool blocks from the real diff
 - Blocks are only added; removing one needs a verified owner order: `todo checks <task> --remove <BLOCK> --owner-quote "<his words>"`
 - One result line per block: `agent-file.sh check <task> "<BLOCK>" pass|fail --by <who> --evidence "<text>"`
+- A check line records the commit it saw; PR REVIEW, FLOW CHECK and UI CHECK count only at the head being merged (or a commit after which every commit is a merge of the base)
 - The merge gate `agent-file.sh checks gate <task>` refuses while a planned block has no pass line
 - PR REVIEW, CORE REVIEW, FLOW CHECK and UI CHECK pass only by someone who did not build the task: not the builder (the todo line's builder or its LAUNCH records)
 - No task runs the full suite (owner 1A 2026-11-25): MODULE TESTS is the largest per-task check
