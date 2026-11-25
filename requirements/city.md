@@ -50,7 +50,7 @@
 | `colors.desk`, `colors.desk_leg`, `colors.chair`, `colors.meeting_rug`, `colors.manager_rug` | #RRGGBB |
 | `decor` | v 1 only: exactly 3 entries, one per slot (1 south-west corner, 2 south middle, 3 east wall): a catalogue id or `none` |
 | `materials` | optional, v 2: `{"carpet", "manager_floor", "pantry_floor"}`, each one of plain, wood, herringbone, tile, bigtile, marble, concrete, checker; missing = the base look (plain, wood, tile) |
-| `layout.items` | v 2 only: the pieces, each `{"k": "tm"\|"helper"\|"meet"\|"plant"\|"decor", "x", "z", "yaw"}`, plus `"id"` (a catalogue id) for decor and `"s"` (0.6-1.2) for a plant; x and z in tiles from the floor's middle, on the 0.2 grid, within ±6.95; yaw 0, 90, 180 or 270; the counts and checks of Room editor |
+| `layout.items` | v 2 only: the pieces, each `{"k": "tm"\|"helper"\|"meet"\|"plant"\|"decor", "x", "z", "yaw"}`, plus `"id"` (a catalogue id) for decor and `"s"` (0.6-1.2) for a plant; x and z in tiles from the floor's middle, at most 2 decimals (the editor snaps to 0.2), within ±6.95; yaw 0, 90, 180 or 270; the counts and checks of Room editor |
 
 - Catalogue (15 pieces, each fits 1.6 x 0.9 tiles, drawn in code): robot, conveyor, gears, chart, plants, safe, cabinets, printer, bookshelf, clock, cashier, goods, menu, scanner, lightbox.
 - Never settable: the floor size; the walls, the lift, the area manager's glass room and its door, the pantry, the whiteboard; people, labels, states. A v 1 design keeps the fixed plan of desks; a v 2 design places them (Room editor). A v 1 file still loads: its 3 slots become decor pieces of the default plan.
@@ -99,7 +99,7 @@
   A move or a turn that breaks a rule snaps back, and the message names the piece and the reason, e.g. 「经理桌 1」的座位被挡住了，从电梯走不过去.
 - Undo / redo inside the editor (60 steps). 退出 with unsaved changes asks once more, in the message line; no browser dialog. 保存 writes one design file: the history of 5 and 撤销上一步 work as before.
 - Seats: managers take the manager desks in the order the desks are listed, assistants the assistant desks. People beyond the desks stand in the meeting corner.
-- Phone: the catalogue is a sheet at the bottom and the inspector floats above it. Usable, computer first (owner question 2 not answered yet; this is the recommended default).
+- Phone: the catalogue is a sheet at the bottom and the inspector floats above it. Usable, computer first (owner, 2026-11-25: ok).
 
 ## Data path
 - `hooks/hooks.json` → `bin/agent-city-hook.sh` → `<city dir>/events.jsonl` → `bin/agent_city.py` → SSE `/events` → page.
