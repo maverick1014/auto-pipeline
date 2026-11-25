@@ -227,6 +227,7 @@ W7. Big feature (> 2 hours)
 - Task manager spawns workers as needed
 - plain or cloud → no worktree, no second terminal. Main manager runs the task itself with `Agent` subagents, each admitted by the memory rule (S3)
 - Placement: every job goes to a connected machine first (the one with the most room by S3); the local machine only when no connected machine has room or the job needs it; no machine is special; local stays clean and fast for the human
+- The automatic nightly starts only where there is room, else it says so; the main manager places a nightly by hand like any heavy job: a connected machine with the most room first
 - One agent = one worktree = one branch = one terminal. Push at every stage
 
 W8. Merge and cleanup

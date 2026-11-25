@@ -43,6 +43,7 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
    ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo where "<name>" <machine> "<worktree path>"
    ```
    **orca** — open a worktree. Read the "Models: Task manager model" setting with `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get task_manager` (form model:effort): `<model>` is what `python3 ${CLAUDE_PLUGIN_ROOT}/bin/agent_conf.py cli-model '<task_manager value>'` prints (the CLI refuses opus-5.5, takes opus), `<effort>` is the part after the colon. Read `<mode>` from the "Permissions: Permission mode" setting, read with `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get permission_mode` (its first word):
+   Before `orca terminal create` of a new pane, reserve it: `${CLAUDE_PLUGIN_ROOT}/bin/agent-room.sh reserve-pane <handle> <pane MB>` (the pane need; it is dropped when the pane measures itself).
    ```
    orca worktree create --name <name> --repo path:<main repo> --base-branch <base branch> --no-parent --json
    orca terminal create --worktree path:<worktree path> --title "<name> Task Manager" --command "AGENT_ROLE=task-manager claude --name '<name> Task Manager' --model '<model>' --effort <effort> --permission-mode <mode>" --json
