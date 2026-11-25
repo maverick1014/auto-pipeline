@@ -46,10 +46,7 @@ add() {
     printf '%s | %s\n' "$1" "$(now)"; } >> "$SF"
 }
 
-check_sec=$(awk -F= '$1 == "compact_clear_check_sec" { v = $2 } END { print v }' "$PROJECT_ROOT/agent.conf" 2>/dev/null | tr -d '[:space:]')
-case "$check_sec" in ''|*[!0-9]*)
-  check_sec=$(awk -F= '$1 == "compact_clear_check_sec" { v = $2 } END { print v }' "$PLUGIN_ROOT/bin/agent.conf.default" 2>/dev/null | tr -d '[:space:]');;
-esac
+check_sec=$(setting compact_clear_check_sec 2>/dev/null | tr -d '[:space:]') || check_sec=""
 case "$check_sec" in ''|*[!0-9]*) check_sec=30;; esac
 
 # error code of an orca JSON answer on stdin: result.. error.code, else the text

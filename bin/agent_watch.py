@@ -8,7 +8,7 @@ agent_todo.txt) every sweep, reads each TM pane and its agent_state.txt (local: 
 machine: one short command through the task's shell pane), prints one sweep line, then one WATCH line
 per event and exits 0. The TM pane is only read, never sent to.
 After each sweep, for the main manager only (no AGENT_ROLE, a live main-manager lock), it runs
-bin/agent-housekeep.sh --apply when housekeep_interval_min minutes (agent.conf, 0 = off, default 120)
+bin/agent-housekeep.sh --apply when housekeep_interval_min minutes (the setting, 0 = off, default 120)
 have passed since <git dir>/agent_housekeep.last.
 
 The functions that find a task's targets and panes (read_targets, locate, resolve_tm, resolve_shell,
@@ -973,12 +973,14 @@ class Engine:
     # ---- housekeep timer (W8): the main manager's pass every housekeep_interval_min minutes
 
     def hk_interval(self):
-        v = ""
-        for line in read_lines(self.ctx.file("agent.conf")):
-            if line.startswith("housekeep_interval_min="):
-                v = line.split("=", 1)[1]
-        v = re.sub(r"[\s\"']", "", v)
-        return int(v) if v.isdigit() else 120
+        try:
+            here = os.path.dirname(os.path.abspath(__file__))
+            if here not in sys.path:
+                sys.path.insert(0, here)
+            import agent_conf
+            return int(agent_conf.get("housekeep_interval_min"))
+        except Exception:
+            return 120
 
     def housekeep_round(self):
         """Runs agent-housekeep.sh --apply when it is due. Never raises, never ends the watch. Main manager only:

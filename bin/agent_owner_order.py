@@ -2,7 +2,7 @@
 
 Read only. Rules: requirements/owner-relay.md. Python 3.9 stdlib only.
 Usage (through agent-owner-order.sh):
-  agent_owner_order.py <agent.conf> <cwd> <session pid> verify|line [options]
+  agent_owner_order.py <cwd> <session pid> verify|line [options]
 """
 
 import calendar
@@ -54,28 +54,14 @@ def shown(path):
 
 # ------------------------------------------------------------------ config
 
-def conf_number(conf, key, default):
-    value = conf.get(key)
-    if value is None or not re.fullmatch(r"[0-9]+", value.strip()):
+def conf_number(key, default):
+    """The fixed constant KEY (agent_conf.CONSTANTS) as a whole number >= 1; DEFAULT when it cannot be read."""
+    try:
+        import agent_conf
+        number = int(agent_conf.get(key))
+    except Exception:
         return default
-    number = int(value.strip())
-    try:
-        import agent_conf
-        bounds = agent_conf.NUMBER_BOUNDS.get(key)
-    except Exception:
-        bounds = None
-    if bounds is None:
-        return number if number >= 1 else default
-    low, high = bounds
-    return number if low <= number <= high else default
-
-
-def load_conf(path):
-    try:
-        import agent_conf
-        return agent_conf.load(path)
-    except Exception:
-        return {}
+    return number if number >= 1 else default
 
 
 # ------------------------------------------------------------------ where
@@ -367,9 +353,9 @@ def get_quote(opts):
     return quote
 
 
-def run_common(conf, repo, quote):
-    hours = conf_number(conf, "owner_order_hours", DEFAULT_HOURS)
-    min_chars = conf_number(conf, "owner_order_min_chars", DEFAULT_MIN_CHARS)
+def run_common(repo, quote):
+    hours = conf_number("owner_order_hours", DEFAULT_HOURS)
+    min_chars = conf_number("owner_order_min_chars", DEFAULT_MIN_CHARS)
     w = width(quote)
     if w < min_chars:
         return None, "quote too short (%d < %d)" % (w, min_chars)
@@ -379,7 +365,7 @@ def run_common(conf, repo, quote):
     return None, reason(None, old, others, folders, repo, hours)
 
 
-def verify(conf, argv):
+def verify(argv):
     opts = parse_args(argv, ("--repo", "--quote", "--time", "--machine"))
     if "--repo" not in opts:
         raise Usage("missing --repo")
@@ -392,7 +378,7 @@ def verify(conf, argv):
         print("%ssender on another machine (%s, this is %s)" % (pre, opts["--machine"], machine_name()))
         return 1
     repo = clean_repo(opts["--repo"])
-    inside, why = run_common(conf, repo, quote)
+    inside, why = run_common(repo, quote)
     if inside is None:
         print(pre + why)
         return 1
@@ -423,10 +409,10 @@ def git_toplevel(folder):
         return folder
 
 
-def model_effort(conf_path, pid):
+def model_effort(pid):
     try:
         import agent_conf
-        line = agent_conf._you_cli("main_manager", conf_path, pid)
+        line = agent_conf._you_cli("main_manager", pid)
         m = re.match(r"YOU: (\S+) (\S+) ", line)
         if m:
             return m.group(1), m.group(2)
@@ -435,18 +421,18 @@ def model_effort(conf_path, pid):
     return "unknown", "unknown"
 
 
-def line_cmd(conf, conf_path, cwd, pid, argv):
+def line_cmd(cwd, pid, argv):
     opts = parse_args(argv, ("--quote", "--repo"))
     quote = get_quote(opts)
     repo = (clean_repo(os.path.abspath(os.path.expanduser(opts["--repo"])))
             if "--repo" in opts else git_toplevel(cwd))
-    inside, why = run_common(conf, repo, quote)
+    inside, why = run_common(repo, quote)
     if inside is None:
         print("OWNER ORDER not found: " + why)
         return 1
     minute = minute_of(inside[0][0])
     machine = machine_name()
-    model, effort = model_effort(conf_path, pid)
+    model, effort = model_effort(pid)
     print("OWNER ORDER [%s %s] repo %s · machine %s · typed %s" % (model, effort, repo, machine, minute))
     print('"%s"' % quote)
     print("check: agent-owner-order.sh verify --repo %s --machine %s --time %s --quote %s" % (
@@ -460,16 +446,15 @@ def main(argv):
             stream.reconfigure(errors="backslashreplace")
         except Exception:
             pass
-    if len(argv) < 5:
+    if len(argv) < 3:
         sys.stderr.write("usage: agent-owner-order.sh verify|line [options]\n")
         return 2
-    conf_path, cwd, pid, command, rest = argv[0], argv[1], argv[2], argv[3], argv[4:]
-    conf = load_conf(conf_path)
+    cwd, pid, command, rest = argv[0], argv[1], argv[2], argv[3:]
     try:
         if command == "verify":
-            return verify(conf, rest)
+            return verify(rest)
         if command == "line":
-            return line_cmd(conf, conf_path, cwd, pid or str(os.getppid()), rest)
+            return line_cmd(cwd, pid or str(os.getppid()), rest)
         raise Usage("unknown command: %s" % command)
     except Usage as e:
         sys.stderr.write("agent-owner-order.sh: %s\n" % e)

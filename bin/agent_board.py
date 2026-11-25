@@ -4,7 +4,7 @@
     agent_board.py --root <main repo> --state-dir <git toplevel of the cwd> --cwd <cwd>
                    --now "YYYY-MM-DD HH:MM" --lang <zh|en> --host <machine> [--self] [--watch <sec>]
 
-Read only: it writes nothing. One file; the only sibling it imports is agent_watchfile.py (the watch status file, read only),
+Read only: it writes nothing. One file; the only siblings it imports are agent_watchfile.py (the watch status file, read only) and agent_conf.py (settings),
 with bytecode writing off, so no __pycache__ is written.
 Prints one GitHub markdown table (or one line "无" / "none"), then note lines.
 
@@ -12,8 +12,7 @@ Rows (whole repo): every line of agent_todo.txt; every human-direct line of agen
 the state lines (OWNER TODO, PARKED, WORKER) of the main repo's agent_state.txt and of every agent_worktree.txt
 folder that is on this machine (a folder that is not here: a note line after the table).
 Progress column: the "stage <stage>[ <i>/<m>] since <date>" field of a todo line (--self: else the "STAGE <name>:"
-line of its own agent_state.txt) gives a bar by the stage weights of agent.conf (template agent.conf.default next to
-this script for a missing or bad key). The parse, progress and done-by functions are plain module functions (a status
+line of its own agent_state.txt) gives a bar by the fixed stage weights (agent_conf.CONSTANTS). The parse, progress and done-by functions are plain module functions (a status
 line can call them). --watch <sec>: redraw every <sec> seconds until Ctrl-C.
     agent_board.py --statusline    (stdin: Claude Code's session JSON) one line per todo task that runs with a stage
                                    (name, bar, stage, done by) or waits on the owner or on others; queue, hold and
@@ -56,6 +55,31 @@ def load_watchfile():
         return None
     finally:
         sys.dont_write_bytecode = old
+
+def load_conf():
+    """The sibling module agent_conf (the settings reader), None when it cannot be loaded. No bytecode is written."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    old = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import agent_conf
+        return agent_conf
+    except Exception:
+        return None
+    finally:
+        sys.dont_write_bytecode = old
+
+
+def conf_get(key, default):
+    """One setting or constant from agent_conf; DEFAULT when agent_conf cannot be loaded or read."""
+    try:
+        mod = load_conf()
+        return mod.get(key) if mod else default
+    except Exception:
+        return default
+
 
 DATE = r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}"
 FMT = "%Y-%m-%d %H:%M"
@@ -198,43 +222,19 @@ def read_lines(path):
 # ---------------------------------------------------------------- stages, progress, done by (plain functions)
 
 
-def conf_numbers(path):
-    """key -> value text of a key=value file (the last line of a key wins); {} when unreadable."""
-    out = {}
-    for line in read_lines(path):
-        if "=" in line and not line.lstrip().startswith("#"):
-            key, value = line.split("=", 1)
-            out[key.strip()] = value.strip()
-    return out
-
-
-def read_weights(root):
-    """{stage: whole number 0-100}: <root>/agent.conf, a missing or bad key from the template next to this script;
-    a key missing or bad in both: weight 0."""
-    mine = conf_numbers(os.path.join(root, "agent.conf"))
-    template = conf_numbers(os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent.conf.default"))
+def read_weights(root=None):
+    """{stage: whole number 0-100} from the fixed stage_* constants; a missing or bad one: weight 0."""
     weights = {}
     for stage in STAGES:
-        key = "stage_" + stage
-        for source in (mine, template):
-            v = source.get(key, "")
-            if re.match(r"^\d+$", v) and len(v) <= 9 and int(v) <= 100:
-                weights[stage] = int(v)
-                break
-        else:
-            weights[stage] = 0
+        v = conf_get("stage_" + stage, 0)
+        weights[stage] = v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100 else 0
     return weights
 
 
-def read_eta_min_pct(root):
-    """progress_eta_min_pct (whole number 0-100): <root>/agent.conf, else the template; missing or bad in both: 0."""
-    mine = conf_numbers(os.path.join(root, "agent.conf"))
-    template = conf_numbers(os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent.conf.default"))
-    for source in (mine, template):
-        v = source.get("progress_eta_min_pct", "")
-        if re.match(r"^\d+$", v) and len(v) <= 9 and int(v) <= 100:
-            return int(v)
-    return 0
+def read_eta_min_pct(root=None):
+    """progress_eta_min_pct (whole number 0-100) from the fixed constants; bad: 0."""
+    v = conf_get("progress_eta_min_pct", 0)
+    return v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100 else 0
 
 
 def parse_stage(text):
@@ -386,16 +386,6 @@ def pid_alive(pid):
     return True
 
 
-def guard_off(root):
-    """board_guard=off in the main repo's agent.conf (the last such line; any other value is on)."""
-    value = "on"
-    for line in read_lines(os.path.join(root, "agent.conf")):
-        k, sep, v = line.partition("=")
-        if sep and k.strip() == "board_guard":
-            value = v.split("#")[0].strip()
-    return value == "off"
-
-
 def launch_records(folder):
     return [r for r in (parse_launch(l) for l in read_lines(os.path.join(folder, "agent_state.txt"))) if r]
 
@@ -496,9 +486,9 @@ class Board:
                 for o in orphans if isinstance(orphans, list) else []:
                     if isinstance(o, dict) and isinstance(o.get("path"), str) and o["path"]:
                         self.w_orphans.append(o["path"])
-            v = conf_numbers(os.path.join(self.root, "agent.conf")).get("watch_quiet_min", "")
-            if re.match(r"^\d{1,3}$", v) and 1 <= int(v) <= 240:
-                self.w_quiet = int(v)
+            v = conf_get("watch_quiet_min", WATCH_QUIET_DEFAULT)
+            if isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 240:
+                self.w_quiet = v
             self.w_on = True
         except Exception:
             self.w_on = False
@@ -884,8 +874,6 @@ class Board:
 
     def add_launches(self):
         """One row per visible record, right under its task's row; a hand WORKER row of the same label goes."""
-        if guard_off(self.root):
-            return
         now = self.now
         cache = {}
 
@@ -1039,9 +1027,9 @@ def statusline_text(stdin_text):
     top = git_out(folder, "rev-parse", "--show-toplevel").strip()
     main = next((l[9:] for l in git_out(folder, "worktree", "list", "--porcelain").splitlines()
                  if l.startswith("worktree ")), "")
-    if not top or not main or not os.path.isfile(os.path.join(main, "agent.conf")):
+    if not top or not main or not os.path.isfile(os.path.join(main, "agent_todo.txt")):
         return ""
-    lang = "zh" if conf_numbers(os.path.join(main, "agent.conf")).get("language") == "zh" else "en"
+    lang = "zh" if conf_get("language", "en") == "zh" else "en"
     own = os.path.realpath(top) != os.path.realpath(main)
     args = argparse.Namespace(root=main, state_dir=top, cwd=folder, now=clock_now(), lang=lang, host="-",
                               self_mode=own)
@@ -1064,11 +1052,10 @@ def statusline_text(stdin_text):
     cands = lines
     shown = cands if len(cands) <= room else cands[:room - 1]
     counts = {}
-    if not guard_off(main):
-        now = parse_time(args.now)
-        for r in launch_records(top):
-            if not r["is_pane"] and agent_visible(r, now):
-                counts[r["task"]] = counts.get(r["task"], 0) + 1
+    now = parse_time(args.now)
+    for r in launch_records(top):
+        if not r["is_pane"] and agent_visible(r, now):
+            counts[r["task"]] = counts.get(r["task"], 0) + 1
 
     def tail(name):
         n = counts.get(name, 0)

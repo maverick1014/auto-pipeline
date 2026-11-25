@@ -101,7 +101,7 @@
 #     --bounces --workers --files --lines --tests --adds), a missing or bad --lane --mock --type, or no what:
 #     refused, one line on stderr that names it, exit 1, nothing on stdout.
 #   estimate --guess <m>: the manager's own minutes, blended in only when the version is a blend.
-#   estimate and backtest read estimate_target_pct, estimate_bias_min, estimate_big_min from agent.conf.
+#   estimate and backtest read estimate_target_pct, estimate_bias_min, estimate_big_min as constants (agent_conf.py).
 #   backtest: read only. Each task with 10 tasks before it is estimated from those only. Rows: estimator, blend, blend+repo,
 #     rubric, todo est (median error, within 30%, in range), then "work >= <big>m: <n> tasks" and the same rows for big tasks.
 #     winner = a blend only when its within 30% beats the base winner (estimator or rubric). Last line:
@@ -183,9 +183,9 @@
 #   a flag with no value, a bad --fact, an empty or ninth option, a --rec that is no option, an id that is not listed.
 #
 # board: read only. One markdown table of everything open (or one line "无" / "none"), then note lines; the work is done by
-#   agent_board.py (python3). The columns and words follow `language` in agent.conf (zh, else en). --self: the session's own
+#   agent_board.py (python3). The columns and words follow the `language` setting (zh, else en). --self: the session's own
 #   task only. --watch [<sec>]: clear the screen and draw it again every <sec> seconds (whole number from 1; default
-#   board_watch_sec in agent.conf, else the template bin/agent.conf.default) until Ctrl-C. Any other option: refused.
+#   the board_watch_sec constant) until Ctrl-C. Any other option: refused.
 #
 # AGENT_FAKE_NOW="YYYY-MM-DD HH:MM" replaces the machine clock (tests). Unset or empty: the machine clock.
 # AGENT_FAKE_HOST replaces the machine name that board prints (tests). Unset: the short host name.
@@ -871,7 +871,7 @@ state_append() {
 questions_py() {
   local lang
   command -v python3 >/dev/null 2>&1 || refuse "questions: python3 is needed and was not found"
-  lang=$(unset language; conf_read; printf '%s' "${language:-en}") || lang=en
+  lang=$(setting language 2>/dev/null) || lang=en
   case "$lang" in zh) ;; *) lang=en;; esac
   python3 "$(dirname "$0")/agent_questions.py" "$PROJECT_ROOT" "$STATE_DIR" "$PROJECT_CWD" "$NOW" "$lang" "$@"
 }
@@ -954,14 +954,11 @@ worker_run() {
 
 # --- board
 # board [--self] [--watch [<sec>]]: agent_board.py draws it (python3 only); nothing is written
-# conf_num <key> <low> <high>: the whole number of <key> in agent.conf, else the one in the template bin/agent.conf.default
+# conf_num <key> <low> <high>: the whole number of <key> (a setting or a constant, read by `setting`), if in range
 conf_num() {
-  local f v
-  for f in "$PROJECT_ROOT/agent.conf" "$(dirname "$0")/agent.conf.default"; do
-    [ -f "$f" ] || continue
-    v=$(awk -F= -v k="$1" '$1 == k { v = $2 } END { print v }' "$f" | tr -d '[:space:]')
-    if is_num "$v" && [ "${#v}" -le 9 ] && [ $((10#$v)) -ge "$2" ] && [ $((10#$v)) -le "$3" ]; then echo $((10#$v)); return 0; fi
-  done
+  local v
+  v=$(setting "$1" 2>/dev/null | tr -d '[:space:]') || return 1
+  if is_num "$v" && [ "${#v}" -le 9 ] && [ $((10#$v)) -ge "$2" ] && [ $((10#$v)) -le "$3" ]; then echo $((10#$v)); return 0; fi
   return 1
 }
 board_run() {
@@ -977,12 +974,12 @@ board_run() {
     shift
   done
   if [ -n "$watch" ]; then
-    if [ -z "$sec" ]; then sec=$(conf_num board_watch_sec 1 3600) || refuse "board: --watch needs <sec>: board_watch_sec is not set in agent.conf or bin/agent.conf.default"; fi
+    if [ -z "$sec" ]; then sec=$(conf_num board_watch_sec 1 3600) || refuse "board: --watch needs <sec>: board_watch_sec cannot be read"; fi
     is_num "$sec" && [ "${#sec}" -le 9 ] && [ $((10#$sec)) -ge 1 ] || refuse "board: --watch takes a whole number of seconds from 1 (got: $sec)"
     sec=$((10#$sec))
   fi
   command -v python3 >/dev/null 2>&1 || refuse "board: python3 is needed and was not found"
-  lang=$(unset language; conf_read; printf '%s' "${language:-en}") || lang=en
+  lang=$(setting language 2>/dev/null) || lang=en
   case "$lang" in zh) ;; *) lang=en;; esac
   host=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
   if [ -n "$watch" ]; then

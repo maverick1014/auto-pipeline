@@ -25,7 +25,7 @@
 #   WATCH STALL <name>            3 sweeps, same screen, file unchanged
 #   WATCH LOST <name>             3 failed reads in a row
 #   WATCH MAX <name>              --max sweeps done
-# plain or cloud runtime (AGENT_RUNTIME, agent.conf runtime, CLAUDE_CODE_REMOTE): prints
+# plain or cloud runtime (AGENT_RUNTIME, the runtime setting, CLAUDE_CODE_REMOTE): prints
 # "watch: not used in <kind> mode", exit 0. A probe that alone says plain is tried 3 times
 # (AGENT_WATCH_RETRY_S seconds apart, default 2); plain all 3: exit 1, never 0.
 # WATCH LOST <name>: pane exited (<cause>, exit <code>)  a TM read whose status is not "running"

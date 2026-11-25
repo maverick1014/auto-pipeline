@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """agent_level.py - the risk type of each file and task part of a diff (R8). Python 3.9, stdlib only.
 
-Started by agent-level.sh:  agent_level.py <agent.conf path> <cwd> check --base <ref> [--declared <A-D>]
+Started by agent-level.sh:  agent_level.py <cwd> check --base <ref> [--declared <A-D>]
 """
 
 import fnmatch
@@ -1118,14 +1118,14 @@ def component_level(path, status, chk):
     return 1, "component file"
 
 
-TYPES = "ABCCD"   # old level 0 1 2 3 4 -> type; level 3 (level3_paths) is C too
+TYPES = "ABCCD"   # old level 0 1 2 3 4 -> type; level 3 is no longer made by a path (C comes from the logic check only)
 
 
 def type_of(level):
     return TYPES[level]
 
 
-def level_of(path, status, chk, l3, l4):
+def level_of(path, status, chk, danger):
     name = os.path.basename(path)
     if name == "package.json":
         if package_deps_changed(chk.top, chk.mb, path, status):
@@ -1134,12 +1134,9 @@ def level_of(path, status, chk, l3, l4):
         kind = builtin_l4(path)
         if kind:
             return 4, "built-in D: %s" % kind
-    glob = first_glob(l4, path)
+    glob = first_glob(danger, path)
     if glob is not None:
-        return 4, "level4_paths %s" % glob
-    glob = first_glob(l3, path)
-    if glob is not None:
-        return 3, "level3_paths %s" % glob
+        return 4, "danger_paths %s" % glob
     ext = ext_of(path)
     if ext in STYLE_EXT:
         return 1, "style file"
@@ -1195,22 +1192,19 @@ def parse(argv):
 
 
 def run(argv):
-    if len(argv) < 2:
-        raise Stop("usage: agent_level.py <agent.conf> <cwd> check --base <ref> [--declared <A-D>]")
-    conf_path, cwd = argv[0], argv[1]
-    base, declared = parse(argv[2:])
+    if len(argv) < 1:
+        raise Stop("usage: agent_level.py <cwd> check --base <ref> [--declared <A-D>]")
+    cwd = argv[0]
+    base, declared = parse(argv[1:])
 
-    l3, l4, notes = [], [], []
-    if os.path.isfile(conf_path):
-        conf = agent_conf.load(conf_path)
-        for key in ("level3_paths", "level4_paths"):
-            msg = agent_conf.validate_value(key, conf.get(key, ""))
-            if msg:
-                raise Stop("agent.conf %s is invalid: %s" % (key, msg))
-        l3 = split_globs(conf.get("level3_paths", ""))
-        l4 = split_globs(conf.get("level4_paths", ""))
-    else:
-        notes.append("no agent.conf: built-in D paths only")
+    notes = []
+    try:
+        danger = split_globs(str(agent_conf.get("danger_paths")))
+        for line in agent_conf.warnings():
+            if "danger_paths" in line:
+                sys.stderr.write(line + "\n")
+    except Exception:
+        danger = split_globs(agent_conf.DEFAULT_DANGER)
 
     proc = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"],
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -1237,7 +1231,7 @@ def run(argv):
     chk = Checker(top, mb)
     lines, parts = [], {}
     for path in sorted(changed):
-        lvl, why = level_of(path, changed[path], chk, l3, l4)
+        lvl, why = level_of(path, changed[path], chk, danger)
         typ = type_of(lvl)
         parts.setdefault(typ, []).append(path)
         lines.append("%s: %s %s" % (path, typ, why))
