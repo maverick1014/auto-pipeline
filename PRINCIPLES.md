@@ -73,7 +73,8 @@ R8. Risk types
 - RAISE (exit 1) only when a C or D file has a lower declared type. A UI component or style file is B at most, never auto-raised; only logic or danger paths raise
 - On RAISE: raise the todo line, bounce, check that part by the higher type. A type only goes up, never down
 - Built-in D paths: lockfile, package.json deps, pubspec, dependency lists, migrations, schema files
-- The "Risk: Danger paths (D)" setting: one list for every repo, comma-separated globs; a file on it is always D (default `.claude-plugin/,hooks/,PRINCIPLES.md,skills/,agents/,bin/agent_conf.py`). C comes from the logic check only
+- The "Risk: Danger paths (D)" setting: one list for every repo, comma-separated globs; a file on it is always D
+- Its default: `.claude-plugin/,hooks/,PRINCIPLES.md,skills/,agents/,bin/agent_conf.py`. C comes from the logic check only
 - The script cannot see a responsive effect: an A move prints "manager: check responsive"; unsure → B
 
 ## B. Work

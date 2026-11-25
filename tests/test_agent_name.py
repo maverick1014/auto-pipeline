@@ -293,8 +293,8 @@ class TestSources(NameCase):
 
 class TestQuietAndHarmless(NameCase):
 
-    def test_no_agent_conf_prints_nothing(self):
-        os.remove(self.repo.path("agent.conf"))
+    def test_a_repo_not_set_up_prints_nothing(self):
+        os.remove(self.repo.path("agent_todo.txt"))   # settings-configure: the set-up mark
         self.assertEqual(self.hook(env={"ORCA_TERMINAL_HANDLE": HANDLE}), "")
         self.assertEqual(self.repo.calls(), [])
 
@@ -744,9 +744,9 @@ class TestPromptHook(HelperCase):
         os.remove(self.repo.path(".git", "agent_main.lock"))
         self.assertEqual(self.prompt(), "")
 
-    def test_no_agent_conf_prints_nothing(self):
+    def test_a_repo_not_set_up_prints_nothing(self):
         self.set_task("SST Calculation")
-        os.remove(self.repo.path("agent.conf"))
+        os.remove(self.repo.path("agent_todo.txt"))
         self.assertEqual(self.prompt(env={"ORCA_TERMINAL_HANDLE": HANDLE}), "")
         self.assertEqual(self.repo.calls(), [])
 

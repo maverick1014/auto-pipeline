@@ -1,4 +1,8 @@
-"""Failing tests for five-fixes (main manager brief, 2026-11-05): five bug
+"""UPDATE settings-configure (2026-11-25): permission_mode and the models are Configure
+settings; agent.conf, the user file and agent-settings.sh set are gone. A stored value
+that fails its check reads as the setting default.
+
+Failing tests for five-fixes (main manager brief, 2026-11-05): five bug
 fixes from agent_ideas.txt. S1, S2, S3 are here. S4 (a flaky wait) is a
 test-only change in tests/test_agent_city_server.py; S5 (the city walk) is in
 tests/test_agent_city_walk.py. Written by the task manager, before any code.
@@ -91,15 +95,17 @@ class TmpCase(unittest.TestCase):
         self.base = os.path.realpath(tempfile.mkdtemp(prefix="five_fixes_"))
         self.addCleanup(shutil.rmtree, self.base, True)
         self.user = os.path.join(self.base, "u", "auto-pipeline.conf")
-        patcher = mock.patch.dict(os.environ, {ENV: self.user})
+        self.cfg = os.path.join(self.base, "cfg")
+        patcher = mock.patch.dict(os.environ, {ENV: self.user, "CLAUDE_CONFIG_DIR": self.cfg})
         patcher.start()
         self.addCleanup(patcher.stop)
 
     def folder(self, name, conf):
+        """settings-configure: CONF (old key=value text) goes into Configure (user level)."""
+        from test_agent_city_add_agent import configure_text
         path = os.path.join(self.base, name)
         os.makedirs(path)
-        with open(os.path.join(path, "agent.conf"), "w") as fh:
-            fh.write(conf)
+        configure_text(conf)
         return path
 
     def write_user(self, text):
@@ -166,39 +172,35 @@ class TestModeList(unittest.TestCase):
                 with self.subTest(key=key, value=bad):
                     self.assertTrue(agent_conf.validate_value(key, bad))
 
-    def test_hints(self):
-        for key in MODE_KEYS:
-            hint = agent_conf.HINTS[key]
-            with self.subTest(key=key):
-                self.assertNotIn("default", hint)
-                for mode in MODES:
-                    self.assertIn(mode, hint)
-
-    def test_the_shipped_confs_pass(self):
-        for path in (os.path.join(ROOT, "agent.conf"), os.path.join(BIN, "agent.conf.default")):
-            with self.subTest(path=path):
-                self.assertEqual(agent_conf.validate(agent_conf.load(path)), {})
+    def test_the_picker(self):
+        by = {x["key"]: x for x in agent_conf.SETTINGS}
+        self.assertEqual(by["permission_mode"]["options"], list(MODES))
+        self.assertNotIn("default", by["permission_mode"]["options"])
 
 
 class TestEffectiveRefusesDefault(TmpCase):
-    def test_agent_conf_default_is_not_set(self):
-        for key in MODE_KEYS:
-            with self.subTest(key=key):
-                self.assertEqual(agent_conf.effective(key, {key: "default"}), (None, None))
+    """settings-configure: a stored "default" is refused, the setting default (auto) is used."""
 
-    def test_user_file_default_is_ignored(self):
-        self.write_user("permission_mode=default\n")
-        values, ignored = agent_conf.read_user_conf()
-        self.assertEqual(values, {})
-        self.assertEqual(ignored, ["permission_mode=default"])
-        self.assertEqual(agent_conf.effective("permission_mode", {"permission_mode": "plan"}),
-                         ("plan", "agent.conf"), "a refused user value falls back to agent.conf")
+    def configure(self, **options):
+        os.makedirs(self.cfg, exist_ok=True)
+        with open(os.path.join(self.cfg, "settings.json"), "w") as fh:
+            json.dump({"pluginConfigs": {"auto-pipeline@auto-pipeline": {"options": options}}}, fh)
+
+    def test_a_stored_default_is_not_set(self):
+        self.configure(permission_mode="default")
+        self.assertEqual(agent_conf.get("permission_mode"), "auto")
+        self.assertEqual(agent_conf.source("permission_mode"), "default")
+
+    def test_an_old_user_file_is_ignored(self):
+        self.write_user("permission_mode=manual\n")
+        self.configure(permission_mode="plan")
+        self.assertEqual(agent_conf.get("permission_mode"), "plan")
 
     def test_the_new_modes_are_effective(self):
-        self.write_user("permission_mode=manual\n")
-        self.assertEqual(agent_conf.effective("permission_mode", {})[0], "manual")
-        self.assertEqual(agent_conf.effective("permission_mode", {"permission_mode": "dontAsk"})[0], "manual",
-                         "the user file wins over agent.conf")
+        for mode in ("manual", "dontAsk"):
+            with self.subTest(mode=mode):
+                self.configure(permission_mode=mode)
+                self.assertEqual(agent_conf.get("permission_mode"), mode)
 
 
 class TestCityLine(TmpCase):
@@ -210,10 +212,10 @@ class TestCityLine(TmpCase):
 
     def test_default_never_reaches_a_local_line(self):
         words = self.words("permission_mode=default\n")
-        self.assertNotIn("--permission-mode", words)
+        self.assertEqual(flag(words, "--permission-mode"), "auto")
         self.assertNotIn("default", words)
 
-    def test_a_user_file_default_never_reaches_a_line(self):
+    def test_a_user_file_never_reaches_a_line(self):
         self.write_user("permission_mode=default\n")
         self.assertEqual(flag(self.words("permission_mode=plan\n"), "--permission-mode"), "plan")
 
@@ -228,37 +230,19 @@ class TestScriptsRefuseDefault(ScriptCase):
     def settings(self, *args):
         return self.repo.run("agent-settings.sh", *args)
 
-    def test_saving_default_is_refused(self):
-        for key in MODE_KEYS:
-            with self.subTest(key=key):
-                before = text(self.repo.path("agent.conf"))
-                r = self.settings(key, "default")
-                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-                self.assertIn("not saved", r.stdout + r.stderr)
-                for mode in MODES:
-                    self.assertIn(mode, r.stdout + r.stderr)
-                self.assertEqual(text(self.repo.path("agent.conf")), before)
-
-    def test_saving_default_in_the_user_file_is_refused(self):
-        self.repo.set_user_conf("permission_mode=auto\n")
-        r = self.settings("--user", "permission_mode", "default")
-        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("not saved", r.stdout + r.stderr)
-        with open(self.repo.user_conf) as fh:
-            self.assertEqual(fh.read(), "permission_mode=auto\n")
-
-    def test_the_new_modes_are_saved(self):
-        self.assertOk(self.settings("permission_mode", "manual"))
-        self.assertOk(self.settings("permission_mode", "dontAsk"))
-        conf = agent_conf.load(self.repo.path("agent.conf"))
-        self.assertEqual(conf["permission_mode"], "dontAsk")
+    def test_the_script_never_saves(self):
+        for args in (("permission_mode", "default"), ("permission_mode", "manual"),
+                     ("--user", "permission_mode", "default")):
+            with self.subTest(args=args):
+                self.assertEqual(self.settings(*args).returncode, 1)
+        self.assertFalse(os.path.exists(self.repo.path("agent.conf")))
 
     def test_get_never_prints_default(self):
         """dispatch and a Helper read the mode with `agent-settings.sh get`."""
         self.repo.set_conf("permission_mode", "default")
-        self.assertEqual(self.assertOk(self.settings("get", "permission_mode")), "auto (default)\n")
+        self.assertEqual(self.assertOk(self.settings("get", "permission_mode")), "auto (from default)\n")
         self.repo.set_conf("permission_mode", "manual")
-        self.assertEqual(self.assertOk(self.settings("get", "permission_mode")), "manual (from agent.conf)\n")
+        self.assertEqual(self.assertOk(self.settings("get", "permission_mode")), "manual (from Configure)\n")
 
 
 class TestResumeRefusesDefault(ScriptCase):
@@ -291,7 +275,7 @@ class TestStartLineRefusesDefault(ScriptCase):
         self.repo.set_conf("permission_mode", "default")
         out = self.assertOk(self.repo.run("agent-start.sh", env={"AGENT_ROLE": "task-manager"}))
         lines = [l for l in out.splitlines() if l.startswith("PERMISSION:")]
-        self.assertEqual(lines, ["PERMISSION: auto (default)"])
+        self.assertEqual(lines, ["PERMISSION: auto (from default)"])
 
 
 # ===================================================================== S2
@@ -376,17 +360,14 @@ class TestCityLineWithTheSuffix(TmpCase):
 class TestSettingsWithTheSuffix(ScriptCase):
     script = "agent-settings.sh"
 
-    def test_saved_and_refused(self):
-        self.assertOk(self.repo.run("agent-settings.sh", "task_manager", "opus-5.5[1m]:xhigh"))
-        self.assertOk(self.repo.run("agent-settings.sh", "main_manager", "claude-opus-5-5[1m]:high"))
-        before = text(self.repo.path("agent.conf"))
-        r = self.repo.run("agent-settings.sh", "task_manager", "sonnet-5[1m]:high")
-        self.assertNotEqual(r.returncode, 0)
-        self.assertIn("Opus 5.5", r.stdout + r.stderr)
-        self.assertEqual(text(self.repo.path("agent.conf")), before)
-        conf = agent_conf.load(self.repo.path("agent.conf"))
-        self.assertEqual((conf["task_manager"], conf["main_manager"]),
-                         ("opus-5.5[1m]:xhigh", "claude-opus-5-5[1m]:high"))
+    def test_kept_and_refused(self):
+        self.repo.set_conf("task_manager", "opus-5.5[1m]:xhigh")
+        self.repo.set_conf("main_manager", "claude-opus-5-5[1m]:high")
+        get = lambda key: self.assertOk(self.repo.run("agent-settings.sh", "get", key))
+        self.assertEqual(get("task_manager"), "opus-5.5[1m]:xhigh (from Configure)\n")
+        self.assertEqual(get("main_manager"), "claude-opus-5-5[1m]:high (from Configure)\n")
+        self.repo.set_conf("task_manager", "sonnet-5[1m]:high")
+        self.assertEqual(get("task_manager"), "opus-5.5:high (from default)\n")
 
 
 # ===================================================================== S3

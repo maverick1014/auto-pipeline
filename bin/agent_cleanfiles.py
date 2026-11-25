@@ -60,8 +60,6 @@ STATE_TRIM = re.compile(r"^agent_state\.trim-(\d{4}-\d\d-\d\d)\.txt$")
 MOCK = re.compile(r"^mock/([^/]+)-mock\.html$")
 
 DEFAULT_DAYS = 14
-DOCS_KEEP_NOTE = ("docs_keep not set: a product repo keeps its real docs with "
-                  "agent-settings.sh docs_keep <list>")
 FOOTER = ("To remove: agent-cleanup.sh --files --yes <ids>|all|none. "
           "Nothing is removed without --yes.")
 
@@ -428,10 +426,6 @@ def compute(ctx):
             continue
         rows.append(row)
     notes = []
-    if keep_problem:
-        notes.append("docs_keep not valid: " + keep_problem)
-    elif not keep_set and any(r["kind"] == "D" for r in rows):
-        notes.append(DOCS_KEEP_NOTE)
     lines, line_notes = line_rows(ctx, days)
     rows += lines
     notes += [n for n in line_notes if n not in notes]

@@ -411,33 +411,17 @@ class TestDocs(FilesCase):
         self.assertEqual([rows[i][0] for i in ("D1", "D2", "D3")],
                          ["a.md", "b.md", "c/z.md"])
 
-    def test_e1_e2_docs_keep_folders_files_and_globs(self):
-        self.plant()
-        self.repo.set_conf("docs_keep", "docs/,CHANGELOG.md,*/README.md")
-        found = self.by_what(self.dry())
-        for rel in ("docs/api/auth.md", "docs/setup.md", "CHANGELOG.md",
-                    "packages/web/README.md"):
-            with self.subTest(kept=rel):
-                self.assertNotIn(rel, found)
-        for rel in ("design-old.md", "CONTRIBUTING.md", "TODO.md"):
-            with self.subTest(listed=rel):
-                self.assertIn(rel, found)
-
-    def test_docs_keep_note_only_when_empty_and_a_doc_is_listed(self):
-        note = "note: docs_keep not set"
-        self.write("notes.md")
-        self.commit_all()
-        out = self.dry()
-        self.assertTrue(any(l.startswith(note) for l in self.lines(out)), out)
-        self.repo.set_conf("docs_keep", "docs/")
-        out = self.dry()
-        self.assertFalse(any(l.startswith(note) for l in self.lines(out)), out)
-
     def test_no_note_when_no_doc_is_listed(self):
         self.write("mock/old-mock.html")
         self.commit_all()
         out = self.dry()
         self.assertFalse(any("docs_keep" in l for l in self.lines(out)), out)
+
+    def test_no_docs_keep_note_ever(self):
+        # settings-configure: docs_keep is a fixed constant (empty); no note asks to set it
+        self.write("notes.md")
+        self.commit_all()
+        self.assertFalse(any("docs_keep" in l for l in self.lines(self.dry())))
 
     def test_n5_a_doc_in_use_is_kept_not_listed(self):
         self.write("used.md")
@@ -497,13 +481,6 @@ class TestStateCopies(FilesCase):
         self.assertIn("15 days old", v[2])
         self.assertIn("over 14", v[2])
         self.assertTrue(v[3].startswith("rm"))
-
-    def test_b2_cleanup_days_from_agent_conf(self):
-        self.plant()
-        self.repo.set_conf("cleanup_days", "20")
-        found = self.by_what(self.dry())
-        self.assertIn("agent_state.2026-11-01-101500.txt", found)
-        self.assertNotIn("agent_state.trim-2026-11-09.txt", found)
 
     def test_b2_remove_a_state_copy(self):
         self.plant()
@@ -795,7 +772,8 @@ class TestRemove(FilesCase):
         self.write("b.md")
         self.commit_all()
         self.dry()
-        self.repo.set_conf("docs_keep", "a.md")   # D1 is no row any more
+        os.remove(os.path.join(self.repo.dir, "a.md"))   # D1 is no row any more
+        self.commit_all()
         before, head = self.snapshot(), self.head()
         res = self.yes("D1,D2")
         self.assertEqual(res.returncode, 1)
@@ -1110,14 +1088,6 @@ class TestBounce1(FilesCase):
         self.assertTrue(git(r.dir, "branch", "--list", "feat/old"))
         self.assertTrue(git(self.origin, "branch", "--list", "feat/old"))
 
-    def test_r9_an_invalid_docs_keep_says_so(self):
-        self.write("notes.md")
-        self.commit_all()
-        self.repo.set_conf("docs_keep", "my docs/")
-        lines = self.lines(self.dry())
-        self.assertFalse(any(l.startswith("note: docs_keep not set") for l in lines))
-        self.assertTrue(any(l.startswith("note: docs_keep not valid") for l in lines), lines)
-
     def test_r11_the_idea_what_keeps_the_whole_text(self):
         self.set_file("agent_ideas.txt", [
             "use a | b pipe | 2026-11-01 10:00 | by main",
@@ -1176,32 +1146,13 @@ class TestBounce2(FilesCase):
 
 
 class TestConfKeys(unittest.TestCase):
+    """settings-configure: cleanup_days and docs_keep are fixed constants."""
 
-    def setUp(self):
+    def test_the_constants(self):
         sys.path.insert(0, BIN)
         import agent_conf
-        self.ac = agent_conf
-
-    def test_cleanup_days_bounds_and_default(self):
-        self.assertEqual(self.ac.NUMBER_BOUNDS["cleanup_days"], (1, 3650))
-        self.assertIsNone(self.ac.validate_value("cleanup_days", "14"))
-        self.assertTrue(self.ac.validate_value("cleanup_days", "0"))
-        self.assertTrue(self.ac.validate_value("cleanup_days", "3651"))
-
-    def test_docs_keep_is_a_glob_list(self):
-        self.assertIsNone(self.ac.validate_value("docs_keep", ""))
-        self.assertIsNone(self.ac.validate_value("docs_keep", "docs/,CHANGELOG.md,*/README.md"))
-        self.assertTrue(self.ac.validate_value("docs_keep", "/abs/docs"))
-        self.assertTrue(self.ac.validate_value("docs_keep", "my docs/"))
-        self.assertTrue(self.ac.validate_value("docs_keep", "../x"))
-
-    def test_template_order(self):
-        with open(os.path.join(BIN, "agent.conf.default")) as fh:
-            keys = [l.split("=", 1) for l in fh.read().splitlines() if "=" in l]
-        names = [k[0] for k in keys]
-        self.assertIn(["cleanup_days", "14"], keys)
-        self.assertIn(["docs_keep", ""], keys)
-        self.assertEqual(names.index("docs_keep"), names.index("cleanup_days") + 1)
+        self.assertEqual(agent_conf.CONSTANTS["cleanup_days"], 14)
+        self.assertEqual(agent_conf.CONSTANTS["docs_keep"], "")
 
 
 def read_root(*parts):

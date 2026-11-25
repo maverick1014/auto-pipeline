@@ -754,14 +754,11 @@ class TestTypesPerPart(LevelCase):
         self.assertEqual((need, typ), ("B", "B"))
         self.assertIn("new component file", why)
 
-    def test_a_component_file_in_a_level3_or_level4_path_still_raises(self):
-        for key, want in (("level3_paths", "C"), ("level4_paths", "D")):
-            with self.subTest(key=key):
-                need, typ, why = self.one({"src/money/Total.tsx": "const a = 1;\n"},
-                                          {"src/money/Total.tsx": "const a = 2;\n"}, "src/money/Total.tsx",
-                                          conf={key: "src/money/"})
-                self.assertEqual((need, typ), (want, want), why)
-                self.tearDown_repo()
+    def test_a_component_file_in_a_danger_path_still_raises(self):
+        need, typ, why = self.one({"src/money/Total.tsx": "const a = 1;\n"},
+                                  {"src/money/Total.tsx": "const a = 2;\n"}, "src/money/Total.tsx",
+                                  conf={"danger_paths": "src/money/"})
+        self.assertEqual((need, typ), ("D", "D"), why)
 
     def test_a_mixed_diff_is_per_part(self):
         self.base({"src/Banner.tsx": "export const A = () => <b>hi</b>;\n", "src/calc.py": "def f(a):\n    return a + 1\n",
@@ -794,19 +791,19 @@ class TestTypesPerPart(LevelCase):
         self.assertEqual(self.required(r), "B")
         self.assertNotIn("RAISE", r.stdout)
 
-    def test_a_level4_path_is_d_for_that_file_only(self):
-        self.base({"db/seed.js": "x()\n", "docs/a.md": "x\n"}, {"level4_paths": "db/"})
+    def test_a_danger_path_is_d_for_that_file_only(self):
+        self.base({"db/seed.js": "x()\n", "docs/a.md": "x\n"}, {"danger_paths": "db/"})
         self.put({"db/seed.js": "y()\n", "docs/a.md": "y\n"})
         r = self.ok()
         self.assertEqual(self.required(r), "A+D")
         got = self.files(r)
         self.assertEqual(got["db/seed.js"][0], "D")
-        self.assertIn("level4_paths db/", got["db/seed.js"][1])
+        self.assertIn("danger_paths db/", got["db/seed.js"][1])
         self.assertEqual(got["docs/a.md"][0], "A")
 
-    def test_a_level3_path_is_c(self):
+    def test_logic_outside_a_danger_path_is_c(self):
         need, typ, why = self.one({"src/money/total.js": "a()\n"}, {"src/money/total.js": "b()\n"},
-                                  "src/money/total.js", conf={"level3_paths": "src/money/"})
+                                  "src/money/total.js", conf={"danger_paths": ""})
         self.assertEqual((need, typ), ("C", "C"))
 
 
@@ -1055,7 +1052,7 @@ class TestTheRule(unittest.TestCase):
         rule = self.rule().lower()
         for phrase in ("a = text, style, simple move", "b = ui", "c = logic", "d = danger",
                        "dispatch", "--level", "agent-level.sh check", "raise", "only goes up",
-                       "level3_paths", "level4_paths", "reads the diff", "e2e",
+                       "danger paths (d)", "reads the diff", "e2e",
                        "mock", "phone", "console clean", "owner not seen",
                        "failing tests first", "touched features", "full suite only when really needed",
                        "dry-run", "rollback plan", "owner signs",

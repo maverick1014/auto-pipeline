@@ -9,7 +9,6 @@ CONTRACT. The repo root IS the plugin. After the move it looks like this:
     agents/<name>.md                  was .claude/agents/<name>.md
     skills/<name>/SKILL.md            was .claude/skills/<name>/SKILL.md, adds init
     bin/agent-*.sh, bin/agent_conf.py was ./agent-*.sh, ./agent_conf.py
-    bin/agent.conf.default            the template agent-init.sh copies into a project
     PRINCIPLES.md, README.md          stay at the root
 
   - Nothing named agent-*.sh is left at the root, and .claude/agents and
@@ -59,7 +58,7 @@ SOURCED_ONLY = [
     "agent-roots.sh",
     "agent-resources.sh",
 ]
-BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py", "agent.conf.default",
+BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py",
                                             "agent_city.py", "agent-city.html",
                                             "agent-city-plans.json",
                                             "agent_estimate.py",
@@ -499,8 +498,8 @@ class TestEffortIsAlwaysPassed(unittest.TestCase):
     def test_the_w10_second_session_line_passes_effort(self):
         self.assertIn("--effort", self.w10())
 
-    def test_the_w10_effort_comes_from_the_main_manager_key(self):
-        self.assertIn("main_manager", self.w10())
+    def test_the_w10_effort_comes_from_the_main_manager_setting(self):
+        self.assertIn("Main manager model", self.w10())
 
     def test_no_launch_line_hard_codes_a_model_and_effort_pair(self):
         """opus-5:xhigh belongs in agent.conf, never in a launch line."""
@@ -572,16 +571,21 @@ class TestUserConfig(unittest.TestCase):
     Values reach a hook as CLAUDE_PLUGIN_OPTION_<KEY uppercased>.
     """
 
-    KEYS = {"runtime": "string", "language": "string",
-            "manager_model": "string", "max_agents": "number"}
+    # settings-configure (owner 1A 2026-11-25): the 17 settings, the only settings source
+    KEYS = {"language": "string", "runtime": "string", "auto_update": "boolean",
+            "main_manager": "string", "task_manager": "string", "helper_model": "string",
+            "max_agents": "number", "max_usage_percent": "number", "heavy_test_slots": "number",
+            "permission_mode": "string", "auto_resume": "boolean", "todo_before_agent": "boolean",
+            "watch_quiet_min": "number", "housekeep_interval_min": "number",
+            "city_port": "number", "city_idle_min": "number", "danger_paths": "string"}
     DEFAULTS = {"runtime": "auto", "language": "en",
-                "manager_model": "opus-5.5:high", "max_agents": 4}
+                "main_manager": "opus-5.5:high", "max_agents": 4}
 
     def config(self):
         return load_json(".claude-plugin", "plugin.json")["userConfig"]
 
-    def test_the_four_keys_are_there(self):
-        self.assertEqual(sorted(self.config()), sorted(self.KEYS))
+    def test_the_seventeen_keys_are_there_in_order(self):
+        self.assertEqual(list(self.config()), list(self.KEYS))
 
     def test_each_key_has_its_type(self):
         config = self.config()
@@ -606,9 +610,9 @@ class TestUserConfig(unittest.TestCase):
         self.assertEqual(self.config()["runtime"]["options"],
                          ["auto", "orca", "plain", "cloud"])
 
-    def test_manager_model_offers_high_and_xhigh(self):
-        self.assertEqual(self.config()["manager_model"]["options"],
-                         ["opus-5.5:high", "opus-5.5:xhigh"])
+    def test_manager_models_offer_high_and_xhigh(self):
+        for key in ("main_manager", "task_manager"):
+            self.assertEqual(self.config()[key]["options"][:2], ["opus-5.5:high", "opus-5.5:xhigh"])
 
     def test_nothing_here_is_a_secret(self):
         for key, entry in self.config().items():
