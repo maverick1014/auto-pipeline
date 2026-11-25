@@ -38,6 +38,7 @@ GONE_CODES = ("terminal_handle_stale", "terminal_not_found")
 BOX_CHARS = " \t\u2502\u2503\u256d\u256e\u2570\u256f\u2500\u250c\u2510\u2514\u2518\u251c\u2524\u2551\u2550\u2554\u2557\u255a\u255d"
 DEFAULT_MAX = 20
 LAST_CUT = 100
+REMOTE_CMD_MAX = 500        # the one remote read command: shorter than this or the task is not watched (R1)
 
 
 # ---------------------------------------------------------------- small helpers
@@ -453,7 +454,8 @@ def stage_of(text, name):
 
 def remote_command(path):
     """The one short command: FSIG <n> <lines> <waiting> <1 when the newest such line says "started"> <newest
-    STAGE|HEARTBEAT|STEP line>|<last wake line> FEND (R1: no task name in it; Python picks the task's own stage). Under 400 chars or the task is not watched."""
+    STAGE|HEARTBEAT|STEP line>|<last wake line> FEND (R1: no task name in it; Python picks the task's own stage). Under 500 chars or the task is not watched
+    (R1: a send is cut only near 4 KB (W16), the tell chunks are 300; a path of 140 chars must fit)."""
     return ("awk -F' [|] ' '/^([[][^]]*[]] )?(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)/"
             "{n++;l=$0;w=/^([[][^]]*[]] )?[QM]/?1:2}/^TELL |^ *([[][^]]*[]] +)?ANSWER:/{if(w==1||/^T/)w=0}"
             "/^(STAGE|HEARTBEAT|STEP) /{v=substr($1,1,99);t=/tarted/}"
@@ -595,7 +597,7 @@ class Engine:
         t.env = env
         if env:
             n = len(remote_command(t.path))
-            if n >= 400:
+            if n >= REMOTE_CMD_MAX:
                 self.mark(t, env, "", "", False, "read command too long (%d chars)" % n)
                 return
         pane = resolve_tm_cached(ctx, t, env)

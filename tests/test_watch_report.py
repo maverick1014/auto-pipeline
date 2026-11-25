@@ -6,7 +6,7 @@ A. The newest (last in the file) of {STAGE <name>: line, HEARTBEAT <name>: step 
    line (todo stage). Step 0..7 = brief register mock tests workers verify push report. The heartbeat's
    "<m>m <text>" goes to the todo line too (todo beat: field " | beat <m>m <text>"), and the board shows it after the bar.
    A local task and a task on another machine are read the same way; the other machine's command stays one call
-   per sweep, under 400 chars.
+   per sweep, under 500 chars.
 B. No STALL while the pane status line counts shells or monitors ("1 shell, 1 monitor"), or the newest state line says a
    run "started" and watch_quiet_min (agent.conf, default 15) has not passed since the file last changed. A real idle
    prompt (nothing running, no new line) still stalls.
@@ -104,23 +104,37 @@ class TestHeartbeatBeat(CarryCase):
         board = self.repo.run("agent-file.sh", "board")
         self.assertIn("160m full suite running", board.stdout, board.stdout + board.stderr)
 
-    def test_the_remote_command_is_one_call_per_sweep_under_400(self):
+    def test_the_remote_command_is_one_call_per_sweep_under_500(self):
         t, _ = self.carry(ENV, [HB])
         sends = [c for c in self.terminal_calls("send") if self.opt(c, "--terminal") == t["shell"]]
         self.assertTrue(sends)
         for call in sends:
-            self.assertLess(len(self.opt(call, "--text") or ""), 400, call)
+            self.assertLess(len(self.opt(call, "--text") or ""), 500, call)
         reads = [c for c in self.terminal_calls("read")
                  if self.opt(c, "--terminal") == t["shell"] and "--cursor" in c]
         self.assertLessEqual(len(reads), len(sends) * 20)
         tm_reads = [c for c in self.terminal_calls("read") if self.opt(c, "--terminal") == t["pane"]]
         self.assertLessEqual(len(sends), len(tm_reads))
 
-    def test_the_remote_command_stays_short_for_a_long_path(self):
+    def test_the_remote_command_fits_paths_of_80_110_and_140_chars(self):
         sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
         import agent_watch
-        path = "/home/maverick/projects/v4-plus/.claude/worktrees/" + "x" * 30
-        self.assertLess(len(agent_watch.remote_command(path)), 400)
+        for n in (80, 110, 140):
+            with self.subTest(path=n):
+                path = ("/home/maverick/orca/workspaces/" + "x" * 200)[:n - len("/agent_state.txt")]
+                cmd = agent_watch.remote_command(path)
+                self.assertEqual(len(path + "/agent_state.txt"), n)
+                self.assertLess(len(cmd), agent_watch.REMOTE_CMD_MAX)
+                print("path %d: command %d chars, headroom %d" % (n, len(cmd), agent_watch.REMOTE_CMD_MAX - 1 - len(cmd)))
+
+    def test_a_long_path_is_watched_remotely(self):
+        self.todo("alpha")
+        t = self.task("alpha", env=ENV, sub="a" * 60)
+        self.assertGreaterEqual(len(t["path"]), 80)
+        self.append_state("alpha", HB)
+        text = self.text(self.run_all(max_sweeps="3"))
+        self.assertTrue(self.status()["tasks"]["alpha"]["watched"], text)
+        self.assertIn(" | stage verify since ", self.todo_line("alpha"))
 
 
 class TestRunningWorkIsNotAStall(AllCase):
