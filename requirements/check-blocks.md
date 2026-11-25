@@ -728,3 +728,11 @@ and "17 settings" where PRINCIPLES.md counts them.
 - (3) `bin/agent-file.sh`, never `./agent-file.sh` (R5, W8).
 - (4) R5's todo field list names guess and level too (agent-file.sh writes them).
 - (5) The F Map's script list names agent-promote, agent-runtime, agent-resources, agent-autoclear, agent-release, agent-statusline, agent-roots.
+
+## 41. CORE REVIEW, second pass (17:5x): F1-F11 confirmed, five more findings, all accepted
+
+- G1 The sweep never removes or lists the production branch (production_branch in agent_repo.conf, else origin/HEAD's target, else main), "release", nor any working branch (bin/agent_cleanup.py PROTECTED becomes these, worked out per repo). Since production is merged back into the working branch at once, it would otherwise count as merged (section 37 P7).
+- G2 `agent-init.sh --no-branch` stores nothing: its optional allow line reads the stored name only (`python3 bin/agent_conf.py stored-working-branch <repo>`: prints the stored name or nothing, stores nothing); nothing stored -> `<your working branch>`.
+- G3 The merge deputy's brief gives `<production branch>` (the merge skill fills it from agent_repo.conf, else origin/HEAD's target, else main); step 2 compares `git branch --show-current` with `<working branch>` and `<production branch>` exactly; any other branch (release, master ...): FAIL, nothing merged.
+- G4 A stored name equal to the production branch is never returned: `working_branch(repo)` gives None with the F4 stderr line; `derive=True` works out the default form again and stores it.
+- G5 skills/dispatch step 9: "a fix from a still-running branch merged into its target branch", no "merged into main".

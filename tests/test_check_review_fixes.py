@@ -414,6 +414,71 @@ class TestSlimPassFacts(unittest.TestCase):
                 self.assertIn(name, f)
 
 
+class TestG1TheSweepKeepsProduction(tc.CleanupCase):
+    """Section 41 G1: a production branch named otherwise is merged back into the working branch: never swept."""
+
+    def test_production_named_production_stays(self):
+        d = self.repo.dir
+        tc.git(d, "switch", "-q", "-c", "production", "main")
+        tc.git(d, "push", "-q", "origin", "production")
+        with open(os.path.join(d, "agent_repo.conf"), "a") as fh:
+            fh.write("production_branch=production\n")
+        tc.git(d, "switch", "-q", "-c", "ap-main-t", "main")
+        tc.git(d, "push", "-q", "origin", "ap-main-t")
+        tc.git(d, "config", "--local", "auto-pipeline.workingbranch", "ap-main-t")
+        out = self.ok("--apply")
+        self.assertFalse([row for row in self.rows(out) if row[0].endswith(" production")], out)
+        self.assertTrue(self.has_local("production"))
+        self.assertTrue(self.has_origin("production"))
+
+
+class TestG2NoBranchStoresNothing(InitCase):
+    def test_init_no_branch(self):
+        r = self.init("--no-measure", "--no-branch")
+        stored = subprocess.run(["git", "-C", self.p, "config", "--local", "--get", "auto-pipeline.workingbranch"],
+                                capture_output=True, text=True).stdout.strip()
+        self.assertEqual(stored, "", "--no-branch stores no name")
+        self.assertIn('allow "Bash(git push origin <your working branch>)"', r.stdout)
+
+    def test_the_read_only_cli(self):
+        cli = [sys.executable, os.path.join(self.repo.plugin, "bin", "agent_conf.py"), "stored-working-branch", self.p]
+        r = subprocess.run(cli, capture_output=True, text=True, env=self.repo._env(None))
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, ""))
+        subprocess.run(["git", "-C", self.p, "config", "--local", "auto-pipeline.workingbranch", "ap-main-x"], check=True)
+        r = subprocess.run(cli, capture_output=True, text=True, env=self.repo._env(None))
+        self.assertEqual(r.stdout.strip(), "ap-main-x")
+
+
+class TestG3TheDeputyKnowsProduction(unittest.TestCase):
+    def test_the_brief_names_it(self):
+        dep = read("agents", "merge-deputy.md")
+        self.assertIn("`<production branch>`", dep.split("Steps, in order")[0])
+        self.assertIn("any other branch (release, master ...): FAIL", dep)
+        self.assertIn("production branch:", read("skills", "merge", "SKILL.md"))
+
+
+class TestG4AStoredProductionNameIsNeverUsed(unittest.TestCase):
+    def test_stored_main(self):
+        repo = ScriptRepo()
+        self.addCleanup(repo.cleanup)
+        subprocess.run(["git", "-C", repo.dir, "branch", "-M", "main"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", repo.dir, "config", "--local", "auto-pipeline.workingbranch", "main"], check=True)
+        old = dict(os.environ)
+        self.addCleanup(lambda: (os.environ.clear(), os.environ.update(old)))
+        os.environ.update(repo._env(None))
+        sys.path.insert(0, BIN)
+        import agent_conf
+        self.assertIsNone(agent_conf.working_branch(repo.dir))
+        self.assertEqual(agent_conf.working_branch(repo.dir, derive=True), "ap-main-t")
+
+
+class TestG5DispatchCondition(unittest.TestCase):
+    def test_step_9(self):
+        line = [l for l in read("skills", "dispatch", "SKILL.md").splitlines() if l.startswith("9. Early merge")][0]
+        self.assertNotIn("merged into main", line)
+        self.assertIn("merged into its target branch", line)
+
+
 class TestF11(unittest.TestCase):
     def test_docstring(self):
         head = read("bin", "agent_conf.py").split('"""')[1]
