@@ -62,6 +62,11 @@ R7. Worktree file
 
 R8. Risk types
 - Second axis next to size: a type A-D per task, picked at dispatch by the acceptance criterion that exists; on the todo line (`todo add ... --level <A-D>`, raise with `todo level <name> <A-D>`)
+- Judge the type from the brief, never from file paths alone: what changes, and how much other code depends on it
+- Docs only (any .md, comments, rule text, PRINCIPLES.md wording) = A. A new feature = normally C. D only when core code that many other things depend on changes
+- Read the code before you pick: who calls it, who reads its output. A new path next to the old one is C; changing a shared model or format is D
+- Second opinion: after the main manager picks a type, one read-only agent reviews it, given the brief and the code, not the manager's answer. They disagree → the owner decides
+- Lowering a type needs the owner's yes (the line is dropped and filed again, `todo drop` + `todo add`)
 - A = text, style, simple move: text values, colours, a simple UI move a senior dev can judge from the code (banner → toast), comments. Check: the main manager reads the diff. No tests, E2E or mock
 - B = UI: layout, components, page shell. Check: lint/type-check of touched files + Chrome compare with the approved mock (W2, W5) at desktop and phone width, console clean. No test suite
 - Owner away at B: the main manager decides and logs "owner not seen". Mock only for a new page or whole-page re-layout (W2), else compare with before screenshots
@@ -70,11 +75,10 @@ R8. Risk types
 - D = migration: also a dry-run on a data copy and a written rollback plan
 - A mixed task: each part is checked by its own type, never the whole task at the highest type
 - `bin/agent-level.sh check --base <ref> --declared <A-D>` before E2E and merge prints REQUIRED TYPE per file and per part; old 0-4 read as 0=A 1=B 2,3=C 4=D
-- RAISE (exit 1) only when a C or D file has a lower declared type. A UI component or style file is B at most, never auto-raised; only logic or danger paths raise
+- RAISE (exit 1) only when a C or D file has a lower declared type. A UI component or style file is B at most, never auto-raised; a docs-only diff is never raised
 - On RAISE: raise the todo line, bounce, check that part by the higher type. A type only goes up, never down
 - Built-in D paths: lockfile, package.json deps, pubspec, dependency lists, migrations, schema files
-- The "Risk: Danger paths (D)" setting: one list for every repo, comma-separated globs; a file on it is always D
-- Its default: `.claude-plugin/,hooks/,PRINCIPLES.md,skills/,agents/,bin/agent_conf.py`. C comes from the logic check only
+- Core paths (the "Risk: Danger paths (D)" setting) are a hint, not a verdict: the check prints them, the brief decides
 - The script cannot see a responsive effect: an A move prints "manager: check responsive"; unsure → B
 
 ## B. Work

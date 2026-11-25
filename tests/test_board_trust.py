@@ -804,6 +804,34 @@ class TestReviewFixes(GuardCase):
         self.assertAllowed(self.post_agent(a.tid, "agA", status="completed"))
         self.assertEqual([self.fields(l)["key"] for l in self.launches()], [b.tid])
 
+    def test_stale_a_worktree_subagent_stop_removes_the_record_of_the_launching_folder(self):
+        r = self.pre_agent("state-trim Worker 1: slice a")
+        self.assertAllowed(self.post_agent(r.tid, "agWT"))
+        wt = os.path.join(self.cfg, "wt")
+        subprocess.run(["git", "-C", self.repo.dir, "worktree", "add", "-q", "-b", "wt-b", wt], check=True)
+        self.assertAllowed(self.sub("SubagentStart", "agWT", cwd=wt))
+        self.assertEqual(self.one_launch()["agent"], "agWT")
+        self.assertAllowed(self.sub("SubagentStop", "agWT", cwd=wt))
+        self.assertEqual(self.launches(), [])
+
+    def test_stale_a_worktree_subagent_start_links_the_record_of_the_launching_folder(self):
+        r = self.pre_agent("state-trim Worker 1: slice a", bg=False)
+        wt = os.path.join(self.cfg, "wt")
+        subprocess.run(["git", "-C", self.repo.dir, "worktree", "add", "-q", "-b", "wt-b", wt], check=True)
+        self.assertAllowed(self.sub("SubagentStart", "agWT", cwd=wt))
+        self.assertEqual(self.one_launch()["agent"], "agWT")
+
+    def test_stale_a_record_of_a_finished_task_is_not_shown(self):
+        self.put_launch("LAUNCH toolu_old: deputy | task old-one | old | since 2026-11-20 16:00 | pid %d | by main | "
+                        "type auto-pipeline:fast-lane-deputy | agent agOLD" % LIVE)
+        self.put_launch("LAUNCH toolu_new: deputy | task state-trim | new | since 2026-11-20 16:00 | pid %d | by main | "
+                        "type auto-pipeline:fast-lane-deputy | agent agNEW" % LIVE)
+        with open(self.repo.path("agent_completed.txt"), "a") as fh:
+            fh.write("2026-11-20 | old-one | x | est 10m actual 10m\n2026-11-19 | state-trim | x | est 10m actual 10m\n")
+        tasks = [x["Task"] for x in self.rows(now=NOW)]
+        self.assertNotIn("old-one 副手", tasks)
+        self.assertIn("state-trim 副手", tasks)  # a reopened name (open in agent_todo.txt) stays shown
+
     def test_r11_an_unknown_launch_status_keeps_the_record(self):
         r = self.pre_agent("state-trim Worker 1: x")
         self.assertAllowed(self.post_agent(r.tid, "ar1", status="remote_launched"))

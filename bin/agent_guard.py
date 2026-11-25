@@ -516,12 +516,13 @@ def edit_records(ctx, mutate):
     """mutate(list of lines) -> new list or None (no change). Edits and removals only."""
     path = os.path.join(ctx["folder"], "agent_state.txt")
     if mutate(read_lines(path)) is None:
-        return
+        return False
     with StateLock(ctx["gitdir"]):
         def compute(lines):
             new = mutate(lines)
             return None if new is None else prune(new, ctx)
         rewrite(ctx, path, compute)
+    return True
 
 
 def mut_set(match, **fields):
@@ -902,13 +903,20 @@ def handle(payload):
                 out[idx] = build_launch(d)
                 return out
             return None
-        run_edit(ctx, mutate)
+        if not run_edit(ctx, mutate):
+            for c in other_folders(ctx):
+                if run_edit(c, mutate):
+                    break
         return OK
 
     if ev == "SubagentStop":
         aid = str(payload.get("agent_id") or "")
         if aid:
-            run_edit(ctx, mut_remove(lambda d: d.get("agent") == aid))
+            gone = mut_remove(lambda d: d.get("agent") == aid)
+            if not run_edit(ctx, gone):
+                for c in other_folders(ctx):
+                    if run_edit(c, gone):
+                        break
         return OK
     return OK
 
@@ -916,10 +924,32 @@ def handle(payload):
 def run_edit(ctx, mutate):
     """Post-side edits: failures here never block; a busy lock is a WARN (silent for the free role)."""
     try:
-        edit_records(ctx, mutate)
+        return edit_records(ctx, mutate)
     except Busy:
         if ctx["role"] != "free":
             raise Warn("board guard: state file busy; allowed")
+    return False
+
+
+def other_folders(ctx):
+    """Contexts of every other worktree of the repo. A subagent started with isolation worktree runs with its cwd in
+    a fresh worktree, but its LAUNCH record sits in the launching session's folder (rule 1, 3): look there too."""
+    out = []
+    rc, text = git(ctx["folder"], "worktree", "list", "--porcelain")
+    if rc != 0:
+        return out
+    for line in text.split("\n"):
+        if not line.startswith("worktree "):
+            continue
+        folder = line[9:]
+        if folder == ctx["folder"] or not os.path.isfile(os.path.join(folder, "agent_state.txt")):
+            continue
+        rc, gd = git(folder, "rev-parse", "--path-format=absolute", "--git-dir")
+        if rc == 0 and gd:
+            c = dict(ctx)
+            c["folder"], c["gitdir"] = folder, gd.split("\n")[0]
+            out.append(c)
+    return out
 
 
 def finish(ctx, items, quiet):
