@@ -94,6 +94,17 @@ def fetch(root):
     return run(root, "fetch", "-q", "origin", timeout=120)[0] == 0
 
 
+def checked_out(root, prod):
+    """The path of the worktree that has the local production branch checked out, else ''."""
+    path = ""
+    for line in run(root, "worktree", "list", "--porcelain")[1].splitlines():
+        if line.startswith("worktree "):
+            path = line[len("worktree "):]
+        elif line == "branch refs/heads/" + prod:
+            return path
+    return ""
+
+
 def follow_local(root, prod, sha):
     """The local production ref follows the pushed commit: fast-forward only, never backward (P3); a ref checked out
     in a worktree is left alone."""
@@ -242,7 +253,13 @@ def direct(root, wb, prod, task, branch, quote, when):
             return 1
         out("promote: %s -> %s (%s)" % (task, prod, sha[:7]))
         follow_local(root, prod, sha)
-        code = release(wt)
+        where = checked_out(root, prod)
+        if where:
+            out("release: not run: local %s is checked out in %s; switch that checkout to the working branch "
+                "(section 33), then run bin/agent-release.sh --push" % (prod, where))
+            code = 1
+        else:
+            code = release(wt)
     finally:
         remove_worktree(root, wt)
     # production merged back into the working branch, in the main checkout

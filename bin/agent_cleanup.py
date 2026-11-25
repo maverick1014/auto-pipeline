@@ -188,6 +188,7 @@ class Sweep(object):
     def __init__(self, root, plugin, kind, apply_, short):
         self.root = root
         self._wb = None
+        self._prod = None
         self.plugin = plugin
         self.kind = kind
         self.apply = apply_
@@ -277,7 +278,7 @@ class Sweep(object):
         branch that starts with the setting's prefix before <name> (default ap-main-), local or origin."""
         if not branch:
             return False
-        if branch in PROTECTED:
+        if branch in PROTECTED or branch == self.production():
             return True
         if self._wb is None:
             wb, prefix = "", "ap-main-"
@@ -293,6 +294,25 @@ class Sweep(object):
             self._wb = (wb, prefix)
         wb, prefix = self._wb
         return branch == wb or bool(prefix and branch.startswith(prefix))
+
+    def production(self):
+        """The production branch (G1): production_branch in agent_repo.conf, else origin/HEAD's target, else main."""
+        if self._prod is None:
+            prod = ""
+            try:
+                with open(os.path.join(self.root, "agent_repo.conf")) as fh:
+                    for line in fh:
+                        m = re.match(r"^\s*production_branch\s*=\s*(\S+)\s*$", line)
+                        if m:
+                            prod = m.group(1)
+            except OSError:
+                pass
+            if not prod:
+                ref = self.git("symbolic-ref", "-q", "refs/remotes/origin/HEAD")
+                if ref.ok and ref.out.strip().startswith("refs/remotes/origin/"):
+                    prod = ref.out.strip()[len("refs/remotes/origin/"):]
+            self._prod = prod or "main"
+        return self._prod
 
     def wb_ref(self):
         """refs/remotes/origin/<stored working branch> when it exists, else ''."""
@@ -364,6 +384,11 @@ class Sweep(object):
             res = self.git("rev-list", "--first-parent",
                            "refs/remotes/origin/main", long=True)
             self.first_parent = set(res.out.split()) if res.ok else False
+            wbr = self.wb_ref()
+            if wbr and self.first_parent is not False:
+                more = self.git("rev-list", "--first-parent", wbr, long=True)
+                if more.ok:
+                    self.first_parent |= set(more.out.split())
         return self.first_parent
 
     # ---- gathering
@@ -504,11 +529,7 @@ class Sweep(object):
         if not count.ok or not count.out.strip().isdigit() \
                 or int(count.out.strip()) > 0:
             reasons.append("unpushed")
-        anc = self.git("merge-base", "--is-ancestor", head,
-                       "refs/remotes/origin/main")
-        if anc.rc != 0 and self.in_base(head):
-            pass
-        elif anc.rc != 0:
+        if not self.in_base(head):
             reasons.append("unmerged")
         else:
             fp = self.first_parent_set()

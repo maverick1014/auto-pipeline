@@ -794,7 +794,7 @@ def first_failing_merge(root, gitdir, rel, merges):
     if not base or not rel or not merges:
         return None
     cmd = fill(base, [rel])
-    wt = os.path.join(gitdir, SCRATCH + "_failures")
+    wt = os.path.join(gitdir, SCRATCH + "_failures" + "_%d" % os.getpid())
     found = None
     try:
         drop_scratch(root, wt)
