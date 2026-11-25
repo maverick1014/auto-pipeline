@@ -161,7 +161,9 @@ CONFIG_EXT = (".yml", ".yaml", ".json", ".toml")
 
 TEXT_ATTR_VALUE = re.compile(r"(?<![\w:.\-@$])(" + "|".join(TEXT_ATTRS) + r")=(?:\"[^\"]*\"|'[^']*')")
 LOCALE_PARTS = ("locales", "locale", "i18n", "translations", "lang")
-LOCALE_NAME = re.compile(r"^(?:[a-z]{2}(?:[-_][A-Za-z]{2,4})?|[a-z]{3}[-_][A-Za-z]{2,4})$")
+LANGS = ("en", "de", "fr", "es", "it", "pt", "nl", "sv", "da", "no", "fi", "pl", "cs", "ru", "uk", "tr", "ar",
+         "he", "hi", "th", "vi", "id", "ms", "ja", "ko", "zh")
+LOCALE_NAME = re.compile(r"^(?:%s)(?:[-_][A-Za-z]{2,4})?$" % "|".join(LANGS))
 
 
 def is_locale_file(path):
