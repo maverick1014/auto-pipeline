@@ -3,6 +3,7 @@
 writing lock files: CityState(..., main_fn=Mains({identity: sid})).
 """
 
+import atexit
 import os
 import http.client
 import json
@@ -400,6 +401,12 @@ SHOP_BASE = os.path.realpath(tempfile.mkdtemp(prefix="city_shop_"))
 
 
 SHOP = os.path.join(SHOP_BASE, "r", "shop", ".git")
+# the shop repo's main manager lock names this test process: its governor is "gs"
+# (was module-level code of test_agent_city_interact.py; it runs once per process)
+os.makedirs(SHOP, exist_ok=True)
+with open(os.path.join(SHOP, "agent_main.lock"), "w") as _fh:
+    _fh.write("%d 2026-09-30 10:00 gs -\n" % os.getpid())
+atexit.register(shutil.rmtree, SHOP_BASE, True)
 
 
 def q_body(sid="s2", aid="", questions=None, repo=SHOP, role="worker"):

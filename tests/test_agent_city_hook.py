@@ -89,6 +89,7 @@ CITY_COMMAND = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
 
 
 from cityhelp import payload  # noqa: E402,F401  (test-slim: shared helpers)
+from cityhelp import make_repo  # noqa: E402
 
 
 class TestOff(HookCase):
@@ -536,6 +537,351 @@ class TestCost(HookCase):
                                 capture_output=True, timeout=20)
         self.assert_silent(result)
         self.assertTrue(os.path.exists(os.path.join(city, "events.jsonl")))
+
+
+class TestHookAskFlag(unittest.TestCase):
+    """The hook writes ask=q for a question passed up the chain, never its text."""
+
+    def setUp(self):
+        import cityhelp as th  # noqa: E402
+        self.th = th
+        self.case = th.HookCase("run_hook")
+        self.case.setUp()
+        self.case.switch_on()
+
+    def tearDown(self):
+        self.case.tearDown()
+
+    def row(self, stdin):
+        result = self.case.run_hook(stdin)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = self.case.lines()
+        self.assertTrue(rows, "no line written")
+        raw = open(self.case.events, "rb").read()
+        return rows[-1], raw
+
+    def stop(self, text):
+        return self.th.payload("SubagentStop", agent=("w-1", "worker"), stop_hook_active=False,
+                               agent_transcript_path="/home/u/t.jsonl", last_assistant_message=text,
+                               background_tasks=[])
+
+    def send(self, message, event="PostToolUse"):
+        return self.th.payload(event, tool_name="SendMessage",
+                               tool_input={"to": "auto-pipeline-88", "summary": "ask", "message": message},
+                               tool_response={"success": True, "message": "queued"})
+
+    def test_ask_key_is_last_and_a_string(self):
+        # city-worktrees added "wt" after it, city-quality "file" after that,
+        # session-names "tp" after that, city-roles "pid" last (tests/test_agent_city_worktrees.py,
+        # tests/test_agent_city_quality.py, tests/test_agent_city_session_names.py,
+        # tests/test_agent_city_roles.py)
+        row, _ = self.row(self.stop("PASS\nall green"))
+        self.assertEqual(list(row)[-5:], ["ask", "wt", "file", "tp", "pid"])
+        self.assertEqual(row["ask"], "")
+
+    def test_worker_question_sets_the_flag_not_the_text(self):
+        row, raw = self.row(self.stop("QUESTION: which port, 4791 or 4777?\nWhat changed: nothing"))
+        self.assertEqual(row["ask"], "q")
+        self.assertNotIn(b"4791", raw)
+        self.assertNotIn(b"which port", raw)
+
+    def test_only_a_first_line_question_counts(self):
+        for text in ("FAIL: tests\nQUESTION: x", "question: lower case", "PASS"):
+            with self.subTest(text=text):
+                row, _ = self.row(self.stop(text))
+                self.assertEqual(row["ask"], "")
+
+    def test_lead_question_to_the_governor(self):
+        row, raw = self.row(self.send("QUESTION: port 4791 or 4777?\nDefault 4791 after 10 min."))
+        self.assertEqual(row["ask"], "q")
+        self.assertEqual(row["tool"], "SendMessage")
+        self.assertNotIn(b"4791", raw)
+        self.assertNotIn(b"auto-pipeline-88", raw)
+
+    def test_other_messages_are_no_question(self):
+        for msg in ("DONE PASS city-people", "HEARTBEAT city-people: step 4", "MOCK READY"):
+            with self.subTest(msg=msg):
+                row, _ = self.row(self.send(msg))
+                self.assertEqual(row["ask"], "")
+
+    def test_only_post_tool_use_counts(self):
+        row, _ = self.row(self.send("QUESTION: x", event="PreToolUse"))
+        self.assertEqual(row["ask"], "")
+
+    def test_a_session_stop_is_never_a_chain_question(self):
+        row, _ = self.row(self.th.payload("Stop", stop_hook_active=False, last_assistant_message="QUESTION: x"))
+        self.assertEqual(row["ask"], "")
+
+    def test_long_message_still_flagged(self):
+        row, _ = self.row(self.send("QUESTION: " + "x" * 20000))
+        self.assertEqual(row["ask"], "q")
+
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+BIN = os.path.join(ROOT, "bin")
+
+
+class TestHookHasNoPathRules(unittest.TestCase):
+    def test_no_classify_path(self):
+        with open(os.path.join(BIN, "agent-city-hook.sh"), encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertNotIn("classify_path", text)
+        self.assertNotIn('"kind":', text)
+
+
+HOOK_quality = os.path.join(ROOT, "bin", "agent-city-hook.sh")
+
+
+BASH_quality = shutil.which("bash") or "/bin/bash"
+
+
+class TestHookFile(unittest.TestCase):
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp(prefix="city_q_hook_")
+        self.city = os.path.join(self.base, "city")
+        os.mkdir(self.city)
+        with open(os.path.join(self.city, "on"), "w") as fh:
+            fh.write("%s 4777\n" % os.getpid())
+        self.empty = os.path.join(self.base, "emptybin")
+        os.mkdir(self.empty)
+        self.root, self.wt = make_repo(self.base)
+
+    def tearDown(self):
+        shutil.rmtree(self.base, ignore_errors=True)
+
+    def row(self, cwd, tool="Edit", path=None, event="PostToolUse", key="file_path"):
+        data = {"session_id": "s1", "cwd": cwd, "hook_event_name": event, "tool_name": tool}
+        if path is not None:
+            data["tool_input"] = {key: path, "old_string": "a", "new_string": "b"}
+        env = {"AGENT_CITY_DIR": self.city, "PATH": self.empty, "HOME": self.base}
+        res = subprocess.run([BASH_quality, HOOK_quality], input=json.dumps(data).encode(), env=env,
+                             capture_output=True, timeout=20)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        with open(os.path.join(self.city, "events.jsonl"), encoding="utf-8") as fh:
+            lines = [json.loads(x) for x in fh if x.strip()]
+        os.remove(os.path.join(self.city, "events.jsonl"))
+        return lines[-1]
+
+    def test_edit_in_the_main_checkout(self):
+        row = self.row(self.root, path=os.path.join(self.root, "src", "app.py"))
+        self.assertEqual(row["file"], "src/app.py")
+        self.assertNotIn("kind", row)  # idea-city C4: the server picks the building
+
+    def test_edit_in_a_worktree_is_relative_to_the_worktree(self):
+        row = self.row(self.wt, tool="Write", path=os.path.join(self.wt, "tests", "test_a.py"))
+        self.assertEqual(row["file"], "tests/test_a.py")
+
+    def test_notebook(self):
+        row = self.row(self.root, tool="NotebookEdit", path=os.path.join(self.root, "nb", "a.ipynb"),
+                       key="notebook_path")
+        self.assertEqual(row["file"], "nb/a.ipynb")
+
+    def test_outside_the_repo_is_empty(self):
+        self.assertEqual(self.row(self.root, path="/etc/hosts")["file"], "")
+
+    def test_pre_tool_use_and_other_tools_are_empty(self):
+        self.assertEqual(self.row(self.root, event="PreToolUse",
+                                  path=os.path.join(self.root, "a.py"))["file"], "")
+        self.assertEqual(self.row(self.root, tool="Read", path=os.path.join(self.root, "a.py"))["file"], "")
+
+    def test_a_long_path_is_empty(self):
+        long = os.path.join(self.root, "d" * 320 + ".py")
+        self.assertEqual(self.row(self.root, path=long)["file"], "")
+
+    def test_quotes_stay_valid_json(self):
+        row = self.row(self.root, path=os.path.join(self.root, 'we"ird.py'))
+        self.assertEqual(row["file"], 'we"ird.py')
+
+    def test_file_is_the_third_last_key(self):
+        # idea-city C4: the hook line has no "kind" any more; session-names
+        # added "tp" after "file" (tests/test_agent_city_session_names.py),
+        # city-roles "pid" after "tp" (tests/test_agent_city_roles.py),
+        # city-talk "to" right before "ask" (tests/test_agent_city_talk.py)
+        row = self.row(self.root, path=os.path.join(self.root, "a.py"))
+        self.assertEqual(len(row), 19)
+        self.assertEqual(list(row)[-5:], ["ask", "wt", "file", "tp", "pid"])
+
+
+HOOK_roles = os.path.join(ROOT, "bin", "agent-city-hook.sh")
+
+
+BASH_roles = shutil.which("bash") or "/bin/bash"   # PATH is empty inside the hook, as in a real hook run
+
+
+class TestHookPid(unittest.TestCase):
+    def setUp(self):
+        self.base = tempfile.mkdtemp(prefix="city_roles_hook_")
+        self.city = os.path.join(self.base, "city")
+        os.mkdir(self.city)
+        self.empty = os.path.join(self.base, "emptybin")
+        os.mkdir(self.empty)
+        with open(os.path.join(self.city, "on"), "w") as fh:
+            fh.write("%d 4777\n" % os.getpid())
+
+    def tearDown(self):
+        shutil.rmtree(self.base, ignore_errors=True)
+
+    def row(self, env):
+        full = {"AGENT_CITY_DIR": self.city, "PATH": self.empty, "HOME": self.base}
+        full.update(env)
+        stdin = json.dumps({"session_id": "s1", "transcript_path": "/t.jsonl", "cwd": self.base,
+                            "hook_event_name": "PostToolUse", "tool_name": "Read",
+                            "tool_input": {"file_path": "/x"}}).encode("utf-8")
+        subprocess.run([BASH_roles, HOOK_roles], input=stdin, env=full, capture_output=True, timeout=10)
+        with open(os.path.join(self.city, "events.jsonl")) as fh:
+            rows = [json.loads(l, object_pairs_hook=lambda kv: kv) for l in fh if l.strip()]
+        os.remove(os.path.join(self.city, "events.jsonl"))
+        self.assertEqual(len(rows), 1)
+        return rows[0]
+
+    def test_pid_is_the_last_key(self):
+        row = self.row({"CLAUDE_PID": "4242"})
+        self.assertEqual(row[-1], ("pid", "4242"))
+        self.assertEqual([k for k, _ in row][-5:], ["ask", "wt", "file", "tp", "pid"])
+
+    def test_no_or_bad_pid_is_empty(self):
+        for env in ({}, {"CLAUDE_PID": ""}, {"CLAUDE_PID": "12a"}, {"CLAUDE_PID": "1 2"},
+                    {"CLAUDE_PID": '1"}'}):
+            with self.subTest(env=env):
+                self.assertEqual(dict(self.row(env))["pid"], "")
+
+
+class TestHookSendsTheRecipientT3(unittest.TestCase):
+
+    def setUp(self):
+        import cityhelp as th  # noqa: E402
+        self.th = th
+        self.case = th.HookCase("run_hook")
+        self.case.setUp()
+        self.addCleanup(self.case.tearDown)
+        self.case.switch_on()
+
+    def row(self, stdin):
+        result = self.case.run_hook(stdin)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = self.case.lines()
+        self.assertTrue(rows, "no line written")
+        with open(self.case.events, "rb") as fh:
+            return rows[-1], fh.read()
+
+    def send(self, to, message="DONE PASS city-talk\nResult: 12 tests", event="PostToolUse"):
+        return self.th.payload(event, tool_name="SendMessage",
+                               tool_input={"to": to, "summary": "report", "message": message},
+                               tool_response={"success": True, "message": "queued"})
+
+    def test_the_recipient_is_on_the_line(self):
+        row, raw = self.row(self.send("city-talk Task Manager"))
+        self.assertEqual(row["to"], "city-talk Task Manager")
+        self.assertEqual(row["tool"], "SendMessage")
+        self.assertNotIn(b"DONE PASS", raw, "never the message")
+        self.assertNotIn(b"12 tests", raw)
+        self.assertNotIn(b"report", raw, "never the summary")
+
+    def test_the_key_sits_right_before_ask(self):
+        row, _ = self.row(self.send("app Manager"))
+        self.assertEqual(list(row)[-6:], ["to", "ask", "wt", "file", "tp", "pid"])
+        for value in row.values():
+            self.assertIsInstance(value, str)
+
+    def test_a_question_carries_no_recipient(self):
+        row, raw = self.row(self.send("auto-pipeline-88", "QUESTION: port 4791 or 4777?"))
+        self.assertEqual((row["ask"], row["to"]), ("q", ""))
+        self.assertNotIn(b"auto-pipeline-88", raw)
+
+    def test_a_long_name_is_cut_to_80(self):
+        row, _ = self.row(self.send("n" * 300))
+        self.assertEqual(row["to"], "n" * 80)
+
+    def test_a_name_with_quotes_stays_valid_json(self):
+        row, _ = self.row(self.send('say "hi" \\ now'))
+        self.assertEqual(row["to"], 'say "hi" \\ now')
+
+    def test_a_chinese_name(self):
+        row, _ = self.row(self.send("城市 任务经理"))
+        self.assertEqual(row["to"], "城市 任务经理")
+
+    def test_only_post_tool_use_send_message(self):
+        row, _ = self.row(self.send("city-talk Task Manager", event="PreToolUse"))
+        self.assertEqual(row["to"], "")
+        row, _ = self.row(self.th.payload("PostToolUse", tool_name="Bash", tool_input={"command": "ls", "to": "x"},
+                                          tool_response={"stdout": ""}))
+        self.assertEqual(row["to"], "")
+
+    def test_a_message_that_names_a_recipient_inside_its_text_is_not_read(self):
+        row, _ = self.row(self.th.payload("PostToolUse", tool_name="SendMessage",
+                                          tool_input={"message": 'see "to": "evil"', "summary": "x", "to": "app Helper"},
+                                          tool_response={"success": True}))
+        self.assertEqual(row["to"], "app Helper")
+
+
+HOOK_worktrees = os.path.join(ROOT, "bin", "agent-city-hook.sh")
+
+
+BASH_worktrees = shutil.which("bash") or "/bin/bash"
+
+
+class TestHookWt(unittest.TestCase):
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp(prefix="city_wt_hook_")
+        self.city = os.path.join(self.base, "city")
+        os.mkdir(self.city)
+        with open(os.path.join(self.city, "on"), "w") as fh:
+            fh.write("%s 4777\n" % os.getpid())
+        self.empty = os.path.join(self.base, "emptybin")
+        os.mkdir(self.empty)
+        self.root, self.wt = make_repo(self.base)
+
+    def tearDown(self):
+        shutil.rmtree(self.base, ignore_errors=True)
+
+    def row(self, cwd):
+        data = json.dumps({"session_id": "s1", "cwd": cwd, "hook_event_name": "PostToolUse",
+                           "tool_name": "Read", "tool_input": {"file_path": "/x"}}).encode()
+        env = {"AGENT_CITY_DIR": self.city, "PATH": self.empty, "HOME": self.base}
+        res = subprocess.run([BASH_worktrees, HOOK_worktrees], input=data, env=env, capture_output=True, timeout=20)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        with open(os.path.join(self.city, "events.jsonl"), encoding="utf-8") as fh:
+            lines = [json.loads(x, object_pairs_hook=lambda p: dict(p)) for x in fh if x.strip()]
+        os.remove(os.path.join(self.city, "events.jsonl"))
+        return lines[-1]
+
+    def test_linked_worktree_gives_its_physical_folder(self):
+        row = self.row(self.wt)
+        self.assertEqual(row["wt"], self.wt)
+        self.assertEqual(row["repo"], os.path.join(self.root, ".git"))
+
+    def test_a_subfolder_of_the_worktree_gives_the_same(self):
+        sub = os.path.join(self.wt, "deep", "er")
+        os.makedirs(sub)
+        self.assertEqual(self.row(sub)["wt"], self.wt)
+
+    def test_a_symlinked_path_is_made_physical(self):
+        link = os.path.join(self.base, "link-to-wt")
+        os.symlink(self.wt, link)
+        self.assertEqual(self.row(link)["wt"], self.wt)
+
+    def test_main_checkout_gives_empty(self):
+        self.assertEqual(self.row(self.root)["wt"], "")
+
+    def test_outside_git_gives_empty(self):
+        plain = os.path.join(self.base, "plain")
+        os.mkdir(plain)
+        self.assertEqual(self.row(plain)["wt"], "")
+
+    def test_missing_cwd_gives_empty(self):
+        self.assertEqual(self.row(os.path.join(self.base, "nope"))["wt"], "")
+
+    def test_wt_is_the_key_right_after_ask(self):
+        # city-quality appends "file" after it (tests/test_agent_city_quality.py); idea-city C4 dropped
+        # "kind", so wt moved up one; city-talk put "to" before "ask", so both moved down one
+        row = self.row(self.wt)
+        keys = list(row)
+        self.assertEqual(keys.index("wt"), 15)
+        self.assertEqual(keys[13:16], ["to", "ask", "wt"])
 
 
 if __name__ == "__main__":
