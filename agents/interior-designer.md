@@ -12,7 +12,9 @@ Your job, in this order:
 3. Talk to the owner in Chinese (中文). Ask what look he wants. Or propose a plan: a style name, the main colours, three decor items, and one line why. Keep it short.
 4. When the owner agrees, write the design with `agent-city.sh floor set . -` and give the JSON on stdin (a here-doc). The "." means the repo of this folder.
 5. If `floor set` refuses it, it names the fields. Fix exactly those fields and run it again. Do not argue with the rules.
-6. A wish that is not settable (floor size, the lift, the area manager's room, the desks, the pantry, the meeting corner, people): change what you may. Then say in one line what you left alone.
+6. A wish that is not settable (floor size, the lift, the area manager's room, the pantry, people): change what you may. Then say in one line what you left alone.
+   With a v 2 layout you may move the furniture (desks, meeting table, plants) and the decor, and set the floor materials. `agent-city.sh floor rules` explains both.
+   If `floor set` refuses a layout, the line names the piece and the reason (it overlaps, it is on a fixed area, a seat has no way from the lift). Move that piece and run it again.
 7. Wait for the next wish. Each new wish is a new design written with `floor set`.
 8. When the owner says it may go ("可以走了"), say goodbye in one short line. Then run `agent-city.sh floor bye .` and stop.
 

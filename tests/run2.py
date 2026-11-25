@@ -1,0 +1,315 @@
+#!/usr/bin/env python3
+"""Run the test files in N processes, stdlib only.
+
+    python3 tests/run2.py                      every test file; processes = CPU cores x 80%
+                                               (6 on 8 cores), fewer when memory is short
+    python3 tests/run2.py -j 1                 one process (same as unittest discover)
+    python3 tests/run2.py test_agent_file ...  only these files (name, with or without .py)
+    python3 tests/run2.py --time [-j N]        each file in its own process, N at a time;
+                                               prints file, tests, seconds (slowest first)
+                                               and rewrites tests/timings.txt
+    --root DIR                                 the repo whose tests/ to run (default: this one)
+    --out FILE                                 --time writes here instead of tests/timings.txt
+
+Split: the files are dealt to the processes by the seconds in tests/timings.txt,
+slowest first, each to the process with the least time so far, so all end at
+about the same moment. A file not in timings.txt counts as the median; a file
+bigger than a third of one process's share is dealt out class by class (classes and counts from the real unittest
+loader, one short subprocess; a file the loader cannot list runs whole).
+
+Load (owner 2026-11-25): CPU stays under 80% (the default -j), and a process is
+started only while memory in use + about 30 MB for it stays under 80%; else it
+waits for a running one to end. No slot or lock: long light runs just go.
+
+Plain `python3 -m unittest discover -s tests` still runs everything in one process.
+Exit code: 0 when every process passed and the tests run equal the tests the loader
+discovers (else the line COUNT MISMATCH: discovered x, ran y), else 1.
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+RAN = re.compile(r"^Ran (\d+) tests? in ([\d.]+)s", re.M)
+RESULT = re.compile(r"^(OK|FAILED)\b(.*)$", re.M)
+
+
+RAM_CAP = 80        # percent: memory in use + PER_PROCESS_MB must stay under it
+CPU_CAP = 80        # percent of the cores: the default number of processes
+PER_PROCESS_MB = 30  # one test process (measured: about 28 MB)
+
+
+def default_jobs():
+    return max(1, int((os.cpu_count() or 2) * CPU_CAP / 100))
+
+
+def total_ram_mb():
+    try:
+        if sys.platform == "darwin":
+            out = subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, timeout=5).stdout
+            return int(out.strip()) / 1048576
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemTotal:"):
+                    return int(line.split()[1]) / 1024
+    except Exception:
+        return None
+    return None
+
+
+def room_for_one_more():
+    """True when memory in use + one more test process stays under RAM_CAP."""
+    used, total = ram_used_percent(), total_ram_mb()
+    if used is None or not total:
+        return True
+    return used + 100.0 * PER_PROCESS_MB / total < RAM_CAP
+
+
+def wait_for_room(limit_s=600):
+    waited = 0
+    while not room_for_one_more() and waited < limit_s:
+        time.sleep(2)
+        waited += 2
+
+
+def ram_used_percent():
+    """RAM in use, percent, or None when it cannot be read (then -j 4)."""
+    try:
+        if sys.platform == "darwin":
+            out = subprocess.run(["memory_pressure"], capture_output=True, text=True, timeout=5).stdout
+            m = re.search(r"free percentage:\s*(\d+)%", out)
+            return 100 - int(m.group(1)) if m else None
+        with open("/proc/meminfo") as fh:
+            info = dict(line.split(":", 1) for line in fh)
+        total = int(info["MemTotal"].split()[0])
+        avail = int(info["MemAvailable"].split()[0])
+        return round(100 * (total - avail) / total)
+    except Exception:
+        return None
+
+
+def test_files(tests_dir, only):
+    names = sorted(n[:-3] for n in os.listdir(tests_dir)
+                   if n.startswith("test_") and n.endswith(".py"))
+    if not only:
+        return names
+    want = [o[:-3] if o.endswith(".py") else o for o in only]
+    want = [os.path.basename(w) for w in want]
+    missing = [w for w in want if w not in names]
+    if missing:
+        sys.exit("no such test file: %s" % ", ".join(missing))
+    return want
+
+
+def read_timings(path):
+    out = {}
+    if not os.path.exists(path):
+        return out
+    with open(path) as fh:
+        for line in fh:
+            if not line.strip() or line.startswith("#"):
+                continue
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) >= 3:
+                try:
+                    out[parts[2]] = float(parts[0])
+                except ValueError:
+                    pass
+    return out
+
+
+LISTER = r"""
+import json, sys, unittest
+
+def walk(suite):
+    for t in suite:
+        if isinstance(t, unittest.TestSuite):
+            yield from walk(t)
+        else:
+            yield t
+
+out = {}
+for name in sys.argv[1:]:
+    try:
+        suite = unittest.defaultTestLoader.loadTestsFromName(name)
+        mod = sys.modules[name]
+        counts = {}
+        ok = not hasattr(mod, "load_tests")   # load_tests: only the whole file is right
+        for t in walk(suite):
+            cls = type(t)
+            if cls.__name__ == "_FailedTest" or getattr(mod, cls.__name__, None) is not cls:
+                ok = False
+                break
+            counts[cls.__name__] = counts.get(cls.__name__, 0) + 1
+        out[name] = {"classes": sorted(counts.items()), "total": sum(counts.values())} if ok else None
+    except BaseException:
+        out[name] = None
+print(json.dumps(out))
+"""
+
+
+def unittest_env(tests_dir):
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join([tests_dir] + [p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p])
+    return env
+
+
+def loader_listing(tests_dir, modules):
+    """{module: [(class name, tests)] or None}: what the real unittest loader finds,
+    from one short subprocess with the cwd and PYTHONPATH of run_unittest. None for
+    a module that cannot be listed exactly (then it runs whole, never split)."""
+    out = {m: None for m in modules}
+    try:
+        done = subprocess.run([sys.executable, "-c", LISTER] + list(modules),
+                              cwd=os.path.dirname(tests_dir), env=unittest_env(tests_dir),
+                              capture_output=True, text=True, timeout=300)
+        data = json.loads(done.stdout.strip().splitlines()[-1])
+    except Exception:
+        return out
+    for m in modules:
+        item = data.get(m)
+        if item:
+            out[m] = [(c, n) for c, n in item["classes"]]
+    return out
+
+
+def count_mismatch(discovered, ran):
+    if discovered == ran:
+        return None
+    return "COUNT MISMATCH: discovered %d, ran %d" % (discovered, ran)
+
+
+def split(names, timings, n, listing=None):
+    known = sorted(timings[k] for k in names if k in timings)
+    default = known[len(known) // 2] if known else 1.0
+    cost = {k: timings.get(k, default) for k in names}
+    # a file bigger than a third of one process's share is dealt out class by class
+    share = sum(cost.values()) / max(1, n)
+    if listing and n > 1:
+        for name in list(names):
+            if cost[name] > share / 3:
+                classes = listing.get(name) or []
+                total = sum(c for _, c in classes)
+                if len(classes) > 1 and total:
+                    for cname, c in classes:
+                        cost["%s.%s" % (name, cname)] = cost[name] * c / total
+                    del cost[name]
+    names = list(cost)
+    groups = [[] for _ in range(n)]
+    totals = [0.0] * n
+    for name in sorted(names, key=lambda k: -cost[k]):
+        i = totals.index(min(totals))
+        groups[i].append(name)
+        totals[i] += cost[name]
+    return [(g, t) for g, t in zip(groups, totals) if g]
+
+
+def run_unittest(tests_dir, modules, log_path):
+    start = time.time()
+    with open(log_path, "w") as log:
+        # cwd = the repo root, tests/ on the path: both `import scripthelp` and
+        # `from tests.scripthelp import ...` work, as under `unittest discover -s tests`
+        env = unittest_env(tests_dir)
+        code = subprocess.call([sys.executable, "-m", "unittest"] + modules,
+                               cwd=os.path.dirname(tests_dir), env=env,
+                               stdout=log, stderr=subprocess.STDOUT)
+    with open(log_path) as fh:
+        text = fh.read()
+    return code, time.time() - start, text
+
+
+def summary(text):
+    ran = RAN.findall(text)
+    res = RESULT.findall(text)
+    tests = int(ran[-1][0]) if ran else 0
+    verdict = (res[-1][0] + res[-1][1]).strip() if res else "NO RESULT"
+    return tests, verdict
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("files", nargs="*")
+    ap.add_argument("-j", type=int, default=None,
+                    help="processes; default CPU cores x 80%% (memory permitting)")
+    ap.add_argument("--time", action="store_true")
+    ap.add_argument("--root")
+    ap.add_argument("--out")
+    args = ap.parse_args()
+
+    if args.j is None:
+        args.j = default_jobs()
+    tests_dir = os.path.join(os.path.abspath(args.root), "tests") if args.root else HERE
+    names = test_files(tests_dir, args.files)
+    logs = tempfile.mkdtemp(prefix="run2_")
+    start = time.time()
+
+    if args.time:
+        def one(name):
+            wait_for_room()
+            code, secs, text = run_unittest(tests_dir, [name], os.path.join(logs, name + ".log"))
+            tests, verdict = summary(text)
+            return name, code, secs, tests, verdict
+
+        with ThreadPoolExecutor(max_workers=max(1, args.j)) as pool:
+            rows = list(pool.map(one, names))
+        rows.sort(key=lambda r: -r[2])
+        out = args.out or os.path.join(tests_dir, "timings.txt")
+        with open(out, "w") as fh:
+            fh.write("# seconds\ttests\tfile (python3 tests/run2.py --time -j %d, %s)\n"
+                     % (args.j, time.strftime("%Y-%m-%d %H:%M")))
+            for name, code, secs, tests, verdict in rows:
+                fh.write("%.1f\t%d\t%s\n" % (secs, tests, name))
+        bad = [r for r in rows if r[1] != 0]
+        for name, code, secs, tests, verdict in rows:
+            print("%7.1f  %5d  %s%s" % (secs, tests, name, "" if code == 0 else "  " + verdict))
+        print("files %d  tests %d  sum of file seconds %.0f  wall %.0f s  (-j %d)  -> %s"
+              % (len(rows), sum(r[3] for r in rows), sum(r[2] for r in rows),
+                 time.time() - start, args.j, out))
+        for name, code, secs, tests, verdict in bad:
+            print("FAILED %s: see %s" % (name, os.path.join(logs, name + ".log")))
+        return 1 if bad else 0
+
+    listing = loader_listing(tests_dir, names)
+    groups = split(names, read_timings(os.path.join(tests_dir, "timings.txt")), max(1, args.j), listing)
+
+    def go(i_group):
+        i, (mods, est) = i_group
+        time.sleep(0.2 * i)   # start one by one, so each start sees the memory of the last
+        wait_for_room()
+        return i, mods, est, run_unittest(tests_dir, mods, os.path.join(logs, "group%d.log" % (i + 1)))
+
+    with ThreadPoolExecutor(max_workers=len(groups)) as pool:
+        results = list(pool.map(go, enumerate(groups)))
+    failed = False
+    ran_total = 0
+    for i, mods, est, (code, secs, text) in results:
+        tests, verdict = summary(text)
+        ran_total += tests
+        print("process %d: %d files or classes, %d tests, %.0f s (planned %.0f s): %s"
+              % (i + 1, len(mods), tests, secs, est, verdict))
+        if code != 0:
+            failed = True
+            print("  log: %s" % os.path.join(logs, "group%d.log" % (i + 1)))
+            for block in re.findall(r"^(?:FAIL|ERROR): .*$", text, re.M):
+                print("  " + block)
+    print("wall %.0f s, %d processes (-j %d)" % (time.time() - start, len(groups), args.j))
+    unlisted = [n for n in names if listing.get(n) is None]
+    if unlisted:
+        print("count check skipped: the loader could not list %s" % ", ".join(unlisted))
+    else:
+        line = count_mismatch(sum(c for n in names for _, c in listing[n]), ran_total)
+        if line:
+            print(line)
+            failed = True
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

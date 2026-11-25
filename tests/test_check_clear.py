@@ -19,7 +19,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 from scripthelp import ScriptCase  # noqa: E402
 import test_agent_owner_order as oo  # noqa: E402
-import test_auto_clear as ac  # noqa: E402
+import test_agent_autoclear as ac  # noqa: E402  (test-slim: was test_auto_clear)
 
 NOW = ac.NOW                      # "2026-11-20 12:00", local = UTC here (TZ=UTC)
 T0 = datetime.datetime(2026, 11, 20, 12, 0)

@@ -1,214 +1,7 @@
-"""Failing tests for housekeep-2h. Written by the task manager, before any code.
+"""Tests of bin/agent-housekeep.sh and agent_housekeep.py: the housekeep pass, its HOUSEKEEP block,
+worktree, todo and idea rows, related repos, file rows.
 
-OWNER ASK (2026-11-13): "every 2 hour check update the worktree and todo and
-ideas doc. then clean up those unused resource. to keep the environment clean."
-D1 ideas: the script finds suspects at no token cost; the main manager judges
-them at its next activity and removes only the ones done or voided.
-D2 scope: own repo only; a repo named by an open cross-repo todo line of this
-repo is read too (read only).
-
-CONTRACT the workers implement.
-
-1. CONFIG
-   bin/agent.conf.default   housekeep_interval_min=120, the LAST line (newer
-                            keys are appended, never inserted)
-   bin/agent_conf.py        NUMBER_BOUNDS (0, 1440); a hint that says 0 = off;
-                            group "limits", after max_agents (stall_min is gone, 2026-11-24)
-   bin/agent-settings.sh    sets and syncs it like every other key (generic)
-
-2. WATCH LOOP (was bin/agent-monitor.sh, now `agent-watch.sh --all`; its tests: tests/test_watch_housekeep.py)
-   The forked loop, after each of ITS sweeps (never the first sweep that
-   `start` runs itself, never `once`), runs
-       <plugin>/bin/agent-housekeep.sh --apply
-   once, when all of these hold:
-     a. role_read at `start` said main (the session that started the loop is
-        the main manager). spawned, second, closed, takeover at start: the
-        loop never runs it, for its whole life
-     b. housekeep_interval_min from agent.conf, read again every round
-        (missing: 120; 0: never)
-     c. "<git dir>/agent_main.lock" names a pid that is alive, read again every
-        round (a new main manager after a restart is picked up)
-     d. "<git dir>/agent_housekeep.last" is missing, does not read, or its first
-        field (epoch seconds) is interval*60 seconds ago or more
-   The call: CLAUDE_PID=<that lock pid>, AGENT_ROLE unset, stdin /dev/null,
-   output not shown. It is a child the loop waits on: `stop` and a plain TERM
-   to the loop end it too, nothing left behind.
-   The loop never writes the stamp; agent-housekeep.sh --apply does.
-   status: one more line
-       "housekeep: every <n> minutes, last <date time of the stamp>"
-       "housekeep: every <n> minutes, last (none)"      no stamp
-       "housekeep: off"                                 interval 0
-   -h names housekeep_interval_min and agent-housekeep.sh, and says plain and
-   cloud have no loop (run agent-housekeep.sh --apply by hand there).
-
-3. bin/agent-housekeep.sh (bash entry, executable) + bin/agent_housekeep.py
-   (the logic, python3 stdlib; may import agent_cleanup.py and agent_conf.py)
-       agent-housekeep.sh           list mode: print the block, change nothing,
-                                    no stamp, nothing written to agent_state.txt
-       agent-housekeep.sh --apply   do it, write the block, print it
-       agent-housekeep.sh -h        help, exit 0
-       anything else                usage on stderr, exit 2
-   Main manager only, same as agent-cleanup.sh: role spawned, second or closed
-   -> one stderr line with "REFUSED" and "main manager only", exit 1, before
-   any orca or git call, nothing written.
-   --apply first writes "<git dir>/agent_housekeep.last":
-       "<epoch seconds> <YYYY-MM-DD HH:MM>"
-   AGENT_FAKE_NOW="YYYY-MM-DD HH:MM" replaces the clock (stamp, header, ages).
-   Exit 0 after the role check, always (an internal error is a note line).
-
-   THE BLOCK (main repo agent_state.txt, PROJECT_ROOT):
-       === HOUSEKEEP <YYYY-MM-DD HH:MM> ===
-         <body line>            every body line starts with two spaces
-   Body lines, in this order:
-       removed: worktree line <path> (folder gone, no live pane)
-       removed: idea <n>, a duplicate of idea <m>: <first 80 chars of its text>
-       flag: worktree line <path>: folder gone, line says <working|final|human-direct>
-       flag: worktree line <path>: <working|final>, no live agent pane
-       flag: todo <name>: merged into origin/main (branch <b>)
-       flag: todo <name>: merged into origin/main (commit <sha> <subject>)
-       flag: todo <name>: stale, no worktree line and no open wait for <n>m
-       suspect: idea <n>: <first 80 chars of its text> | <reason>[; <reason>]
-       related: <repo> (<path>): task <name> not open there (done <date>)
-       related: <repo> (<path>): task <name> not open there (dropped <date>)
-       related: <repo> (<path>): task <name> not open there
-       related: <repo> (<path>): task <name> open there, no worktree line there
-       related: <repo>: not found on this machine, skipped
-       note: <text>
-       cleanup: <a --short line of agent-cleanup.sh, "CLEANUP: " cut off>
-   List mode says "would remove:" where --apply says "removed:".
-   Nothing at all -> the one line "HOUSEKEEP <YYYY-MM-DD HH:MM>: clean".
-   Written atomically (tmp next to it + mv). The old block (its header and the
-   two-space lines right after it) or the old clean line is replaced in place;
-   none -> appended at the end (file made when missing). Every other line is
-   kept byte for byte. One block in the file, ever.
-
-   a. agent_worktree.txt ("<path> | <module> | <status> | since <date>")
-      present    local: a `git worktree list` path whose folder exists;
-                 orca: also a row path of a reachable paired machine (same
-                 projectId as the main checkout's local row)
-      live pane  orca: any agent (any state) at that path in `orca worktree ps`
-                 (local, or that machine's)
-      not present, no live pane, status not working/final, module not
-          human-direct  -> agent-file.sh worktree rm <path>; "removed: ..."
-      not present, status working/final, or a human-direct line -> flag
-          "folder gone, line says <status|human-direct>", never removed
-      present, status working/final, no live pane (orca only) -> flag
-      orca: local `orca worktree ps` fails -> no line removed or flagged,
-          note "orca not answering: worktree lines not checked"
-      a paired machine unreachable (or `environment list` fails) -> a line
-          that is not present locally is not removed; note
-          "<name> unreachable, not checked"; never hangs (AGENT_CLEANUP_TIMEOUT)
-      plain/cloud: local git only, no orca call, no "no live agent pane" flag
-   b. agent_todo.txt: never changed (todo done needs work and wait facts)
-      merged: after `git fetch --prune origin`; a branch (local or origin) that
-          is the branch of the task's worktree, or is named <name>, or ends in
-          "/<name>", whose tip is an ancestor of origin/main and not on its
-          first-parent line -> "(branch <b>)"; else a first-parent commit of
-          origin/main whose subject is "Merge <name>" or starts "Merge <name> "
-          -> "(commit <short sha> <subject>)". No origin/main: not checked
-      stale: no worktree line for the task (module == name, or the folder name
-          == name, or the path of its "on <machine> <path>" field), no
-          "waiting ..." field, and more than T minutes from the later of
-          "opened <dt>" and "stage <s> since <dt>" to now.
-          T = housekeep_interval_min (0 or missing: 120)
-   c. agent_ideas.txt ("<text> | <YYYY-MM-DD HH:MM> | by <who>")
-      text = the line without that tail (no tail: the whole line, trimmed)
-      duplicates: a line whose text equals an earlier line's text -> removed
-          with agent-file.sh idea rm <n>, highest n first; the first stays
-      suspects, never removed, one line per idea, numbers as the file is after
-          this run's removals:
-          "names task <t>, done <date>" / "names task <t>, dropped <date>":
-              a line "<date> | <t> | ..." of agent_completed.txt, date AFTER
-              the idea's day (housekeep-suspects: the same day no longer
-              counts), <t> as a whole word (case does not matter; a word char
-              is a letter, digit, "_" or "-") in the text OUTSIDE its
-              provenance note (see HOUSEKEEP-SUSPECTS below)
-          "names <word>, no such file": a word (letters, digits, _ . / ~ -;
-              trailing . , : ; ) cut, a leading "./" cut) ending in .sh .py
-              .md .txt .json .js .mjs .html .conf .default, URLs
-              (scheme://...) skipped; checked ONLY when it is (housekeep-
-              suspects) a repo path with a slash under a listed top folder
-              that exists, or a bare agent_*.txt / *.md name (see below)
-          a kept line (" | kept <date>" at its end) is never a suspect
-
-HOUSEKEEP-SUSPECTS (2026-11-13, failing tests by the task manager, real data:
-75 of 117 ideas were suspects, about 70 only because the provenance note named
-the task that wrote the idea, the rest bare names of files outside the repo).
-
-   P. provenance note: the parts of an idea's text that say who found it. Task
-      names in them are never evidence. Cut, in this order:
-        P1 every "(...)" (no nested parentheses) whose inside has, as a whole
-           word, case not mattering: TM, TMs, task manager, task managers,
-           bounce, worker or S<digits>
-              "(idea-city TM 2026-09-28)", "(mode-and-floor bounce 1)",
-              "(five-fixes S5 worker note, pc2)", "(pc2 task manager, 2026-11-04)"
-        P2 the last "(...)" of the text when it ends the text (only spaces
-           and "." after it)
-              "... or skip (seen merging idea-pipeline, 2026-09-28)"
-        P3 a sentence that starts with "From " or "Seen " (capital F / S; at
-           the start of the text or right after ". "), up to the next ". "
-           or the end of the text
-              "... polling. From pc2 city-relay task manager 2026-09-25 14:26"
-              "... reason. Seen merging idea-pipeline 2026-09-28."
-      Everything else counts: a lowercase "from" inside a sentence, a "(...)"
-      in the middle without one of the words ("(city-polish P1)"), the sentence
-      after a Seen sentence.
-   D. day: the agent_completed.txt date must be a later day than the idea's
-      day. (A task is finished on or after the day it was opened, so "opened or
-      finished on a later day" is the finish date.) No date tail: no task check.
-   F. file: a word is checked only when it is
-        F1 a path with a "/" whose first folder is one of bin tests skills
-           agents hooks requirements mock AND that folder exists under
-           PROJECT_ROOT: a suspect when the path does not exist there
-        F2 a bare name (no "/") that looks like agent_*.txt or *.md: a suspect
-           when it is not at PROJECT_ROOT and `git ls-files` has no file of
-           that name
-      Every other word is never a suspect: bare world.json, cdp.mjs,
-      nothere.py; docs/x.md (folder not listed); mock/x.html with no mock/;
-      /abs/x.json; ~/x.conf.
-   K. agent-file.sh idea keep <n> (tests/test_agent_file_idea_keep.py) puts
-      " | kept <YYYY-MM-DD>" at the end of line n. The housekeep pass cuts it
-      before it reads the date tail: a kept line is never a suspect (no task
-      reason, no file reason); duplicate detection compares the text without
-      it (the first line still stays); the shown text never has it.
-   DOCS: one W8 line: the main manager judges each suspect with
-      `idea rm <n>` (done, or voided by a recorded owner decision) or
-      `idea keep <n>` (still wanted); <= 200 chars. Release 0.34.1.
-   d. related repos (read only, never written)
-      an open todo line names another repo by its "by <x>" field (written by
-      todo add) or its "cross <x>" field (new: agent-file.sh todo cross)
-      known repos = agent-file.sh repos (new verb, the lookup data uses)
-      x matches a known repo by folder name; this repo itself is skipped;
-      "by <x>" with no match is ignored (by is mostly main or a role);
-      "cross <x>" with no match -> "related: <x>: not found on this machine, skipped"
-      a match R: R/agent_todo.txt has a line named <name>? then
-      R/agent_worktree.txt has a line for it (module or folder name)? else the
-      R/agent_completed.txt line of that name gives done/dropped <date>
-   e. <plugin>/bin/agent-cleanup.sh --apply --short (list mode: --short), same
-      environment; it runs agent-resources.sh stop-leftovers itself (--apply)
-
-4. bin/agent-file.sh, two new verbs
-   todo cross "<name>" <repo>   field " | cross <repo>" (replaced in place,
-                                once, else at the end), atomic. Prints
-                                "todo cross: <name> -> <repo>". Refused (stderr,
-                                exit 1, nothing written): no such todo line, no
-                                repo, a repo with a space, " | " or a line break
-   repos                        read only, no file touched: one real path per
-                                line, this repo first, then world.json
-                                territories, each once;
-                                a missing folder is not printed
-
-5. DOCS + RELEASE: PRINCIPLES.md R5 R6 R7 W8 W12 (+ S8 or W8 for the block),
-   README tree, .claude-plugin/plugin.json 0.33.0.
-
-DEFAULTS TAKEN BY THE TASK MANAGER (logged in agent_state.txt):
-   - working/final/human-direct lines are never removed, even with the folder
-     gone: flagged (same safe rule as the cleanup sweep)
-   - stale threshold T = housekeep_interval_min (owner said 2 h; default 120)
-   - housekeep runs agent-cleanup.sh --apply only: that already runs
-     agent-resources.sh stop-leftovers (agent_cleanup.py do_processes)
-   - the loop impersonates the live lock owner through CLAUDE_PID, the
-     mechanism role_read already has; no new bypass for any other caller
+requirements/clean-up.md. One class per feature. Older task contracts: git log -p of this file.
 """
 
 import json
@@ -316,9 +109,21 @@ class HousekeepCase(tc.CleanupCase):
 
     # ---- running
 
+    # test-slim: the Python pass runs in this process (repo.run_py). The wrapper's own work
+    # (usage, roles, roots from a worktree) keeps real starts: TestUsage, TestMainManagerOnly*,
+    # TestBlockInStateFile, and every call with a folder or a role. The runtime kind is still
+    # asked of the real agent-runtime.sh each time.
+    IN_PROCESS = True
+
     def hk(self, *args, **kwargs):
         env = {"AGENT_FAKE_NOW": NOW}
         env.update(kwargs.pop("env", None) or {})
+        if (self.IN_PROCESS and not kwargs and set(args) <= {"--apply"}
+                and "AGENT_ROLE" not in env and "CLAUDE_PID" not in env):
+            kind = self.repo.run("agent-runtime.sh", "kind", env=env).stdout.strip()
+            argv = ["--root", self.repo.dir, "--plugin", self.repo.plugin,
+                    "--gitdir", os.path.join(self.repo.dir, ".git"), "--kind", kind] + list(args)
+            return self.repo.run_py("agent_housekeep", *argv, env=env)
         return self.repo.run("agent-housekeep.sh", *args, env=env, **kwargs)
 
     def apply(self, **kwargs):
@@ -382,7 +187,12 @@ class HousekeepCase(tc.CleanupCase):
 # ---------------------------------------------------------------- usage, role
 
 
+from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
+
+
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo per class, each run once; the tests only read
 class TestUsage(HousekeepCase):
+    IN_PROCESS = False   # test-slim: real starts through agent-housekeep.sh
     def test_help(self):
         out = self.assertOk(self.hk("-h"))
         for word in ("--apply", "main manager only", "housekeep_interval_min",
@@ -402,9 +212,8 @@ class TestUsage(HousekeepCase):
         self.assertTrue(os.path.exists(os.path.join(ROOT, "bin", "agent_housekeep.py")))
 
 
-class TestMainManagerOnly(HousekeepCase):
-    def setUp(self):
-        super().setUp()
+class _TestMainManagerOnlyFixture:
+    def fixture(self):
         self.repo.set_worktree_lines([(self.gone, "gone-one", "idle")])
         self.set_file("agent_ideas.txt", ["same | 2026-11-10 10:00 | by main",
                                           "same | 2026-11-11 10:00 | by main"])
@@ -422,15 +231,30 @@ class TestMainManagerOnly(HousekeepCase):
         self.assertEqual(self.repo.calls(), [])
         self.assertEqual(self.cleanup_calls(), [])
 
+
+@shared_fixture(guard=REPO_BASE, remember_repo=True)
+class TestMainManagerOnly(_TestMainManagerOnlyFixture, HousekeepCase):
+    IN_PROCESS = False   # test-slim: real starts through agent-housekeep.sh
+    """One fixture for the class: these tests only read (tests/sharedrepo.py)."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
+
     def test_a_task_manager_is_refused(self):
         self.assertRefused(self.hk("--apply", env={"AGENT_ROLE": "task-manager"}))
 
     def test_a_worker_is_refused_even_in_list_mode(self):
         self.assertRefused(self.hk(env={"AGENT_ROLE": "worker"}))
 
-    def test_a_human_direct_helper_is_refused(self):
-        self.lock_me()
-        self.assertRefused(self.hk("--apply", env={"CLAUDE_PID": "999999"}))
+
+class TestMainManagerOnlyWrites(_TestMainManagerOnlyFixture, HousekeepCase):
+    IN_PROCESS = False   # test-slim: real starts through agent-housekeep.sh
+    """The tests of TestMainManagerOnly that write: one repo each."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
 
     def test_the_main_manager_runs(self):
         env = self.lock_me()
@@ -440,6 +264,10 @@ class TestMainManagerOnly(HousekeepCase):
     def test_no_lock_at_all_runs(self):
         self.apply()
         self.assertEqual(self.file_lines("agent_worktree.txt"), [])
+
+    def test_a_human_direct_helper_is_refused(self):
+        self.lock_me()   # writes the lock: one repo of its own, not the shared one
+        self.assertRefused(self.hk("--apply", env={"CLAUDE_PID": "999999"}))
 
 
 # ---------------------------------------------------------------- stamp, block, file
@@ -473,6 +301,7 @@ class TestClean(HousekeepCase):
 
 
 class TestBlockInStateFile(HousekeepCase):
+    IN_PROCESS = False   # test-slim: real starts through agent-housekeep.sh
     def setUp(self):
         super().setUp()
         self.repo.set_worktree_lines([(self.gone, "gone-one", "idle")])
@@ -1494,11 +1323,6 @@ class TestDocs(unittest.TestCase):
     def test_w8_runs_it_from_the_watch_loop(self):
         self.assertSectionHas("W8", "housekeep_interval_min", "agent-housekeep.sh", "agent-watch.sh --all")
 
-    def test_the_main_manager_reads_the_block(self):
-        lines = [l for code in ("W8", "S8") for l in principles_section(code)
-                 if "HOUSEKEEP" in l and "idea rm" in l]
-        self.assertTrue(lines, "W8 or S8: the main manager reads the HOUSEKEEP block, judges suspects (idea rm)")
-
     def test_w12_names_todo_cross(self):
         self.assertSectionHas("W12", "todo cross")
 
@@ -1526,10 +1350,252 @@ class TestDocs(unittest.TestCase):
     def test_readme_lists_the_script(self):
         self.assertIn("bin/agent-housekeep.sh", read_root("PRINCIPLES.md"))
 
-    def test_release(self):
-        # estimate-blend (2026-11-13) released 0.34.0 on top: at least 0.33.0, like the other release tests
-        ver = json.loads(read_root(".claude-plugin", "plugin.json"))["version"]
-        self.assertGreaterEqual(tuple(int(x) for x in ver.split(".")), (0, 33, 0))
+
+ROWS_NOW = "2026-11-24 12:00"
+
+
+DAYS14 = 14 * 1440
+
+
+IDEAS = [
+    "city-ux: make the rail wider | 2026-11-01 10:00 | by main",
+    "add dark mode | 2026-11-01 10:00 | by main",
+    "city-ux: fix colors | 2026-11-01 10:00 | by main | kept 2026-11-05",
+    "add dark mode | 2026-11-02 11:00 | by main",
+    "see bin/gone-tool.sh for it | 2026-11-20 10:00 | by main",
+]
+
+
+def run_git(path, *args):
+    res = subprocess.run(["git", "-C", path] + list(args),
+                         capture_output=True, text=True)
+    if res.returncode != 0:
+        raise AssertionError("git %s: %s" % (" ".join(args), res.stderr))
+    return res.stdout.strip()
+
+
+class RowsCase(ScriptCase):
+
+    def setUp(self):
+        super().setUp()
+        r = self.repo
+        self.origin = os.path.join(r.base, "origin.git")
+        subprocess.run(["git", "init", "-q", "--bare", self.origin],
+                       check=True, capture_output=True)
+        os.makedirs(os.path.join(r.dir, "bin"), exist_ok=True)
+        with open(os.path.join(r.dir, "bin", "tool.sh"), "w") as fh:
+            fh.write("true\n")
+        run_git(r.dir, "add", "-A")
+        run_git(r.dir, "commit", "-q", "-m", "bin")
+        run_git(r.dir, "branch", "-M", "main")
+        run_git(r.dir, "remote", "add", "origin", self.origin)
+        run_git(r.dir, "push", "-q", "-u", "origin", "main")
+        old = os.environ.get("AGENT_FAKE_NOW")
+        os.environ["AGENT_FAKE_NOW"] = ROWS_NOW
+        self.addCleanup(self.restore_now, old)
+        import agent_housekeep
+        self.hk = agent_housekeep
+
+    @staticmethod
+    def restore_now(old):
+        if old is None:
+            os.environ.pop("AGENT_FAKE_NOW", None)
+        else:
+            os.environ["AGENT_FAKE_NOW"] = old
+
+    def set_file(self, name, lines):
+        with open(os.path.join(self.repo.dir, name), "w") as fh:
+            fh.write("".join(l + "\n" for l in lines))
+
+    def rows(self, kind="plain", stale=DAYS14):
+        r = self.repo
+        return self.hk.file_rows(r.dir, r.plugin, os.path.join(r.dir, ".git"),
+                                 kind, stale)
+
+    def merged_task(self, name, keep_branch):
+        d = self.repo.dir
+        branch = "feat/" + name
+        run_git(d, "checkout", "-q", "-b", branch)
+        with open(os.path.join(d, name + ".txt"), "w") as fh:
+            fh.write(name + "\n")
+        run_git(d, "add", "-A")
+        run_git(d, "commit", "-q", "-m", name)
+        run_git(d, "push", "-q", "origin", branch)
+        run_git(d, "checkout", "-q", "main")
+        run_git(d, "merge", "-q", "--no-ff", "-m", "Merge " + name, branch)
+        run_git(d, "push", "-q", "origin", "main")
+        sha = run_git(d, "rev-parse", "--short=7", "HEAD")
+        if not keep_branch:
+            run_git(d, "branch", "-q", "-D", branch)
+            run_git(d, "push", "-q", "origin", "--delete", branch)
+        return sha
+
+
+class TestFileRows(RowsCase):
+
+    def test_ideas(self):
+        self.set_file("agent_ideas.txt", IDEAS)
+        self.set_file("agent_completed.txt", [
+            "2026-11-10 | city-ux | rail | est 30m actual 40m"])
+        ideas = self.rows()["ideas"]
+        self.assertEqual([i["n"] for i in ideas], [1, 4, 5])
+        self.assertEqual(ideas[0]["line"], IDEAS[0])
+        self.assertEqual(ideas[0]["why"], "names task city-ux, done 2026-11-10")
+        self.assertEqual(ideas[1]["line"], IDEAS[3])
+        self.assertEqual(ideas[1]["why"], "a duplicate of idea 2")
+        self.assertEqual(ideas[2]["why"], "names bin/gone-tool.sh, no such file")
+
+    def test_todos_merged_and_stale(self):
+        self.merged_task("old", keep_branch=True)
+        sha = self.merged_task("older", keep_branch=False)
+        lines = [
+            "old | big | x | est 30m | opened 2026-11-20 08:00 | by main",
+            "older | big | x | est 30m | opened 2026-11-01 08:00 | by main",
+            "quiet | big | x | est 30m | opened 2026-11-01 08:00 | by main",
+            "young | big | x | est 30m | opened 2026-11-20 08:00 | by main",
+            "waits | big | x | est 30m | opened 2026-11-01 08:00 | by main | "
+            "waiting question since 2026-11-01 09:00",
+        ]
+        self.set_file("agent_todo.txt", lines)
+        todos = self.rows()["todos"]
+        self.assertEqual([t["name"] for t in todos], ["old", "older", "quiet"])
+        old, older, quiet = todos
+        self.assertEqual(old["kind"], "merged")
+        self.assertEqual(old["why"], "merged into origin/main (branch feat/old)")
+        self.assertIsNone(old["sha"])
+        self.assertEqual(old["line"], lines[0])
+        self.assertEqual(older["kind"], "merged")   # merged wins over stale
+        self.assertEqual(older["sha"], sha)
+        self.assertEqual(older["why"],
+                         "merged into origin/main (commit %s Merge older)" % sha)
+        self.assertEqual(quiet["kind"], "stale")
+        self.assertEqual(quiet["days"], 23)
+        self.assertEqual(quiet["why"],
+                         "stale: no worktree line and no open wait for 23d")
+        self.assertEqual(quiet["line"], lines[2])
+
+    def test_stale_limit_is_the_argument(self):
+        self.set_file("agent_todo.txt", [
+            "quiet | big | x | est 30m | opened 2026-11-01 08:00 | by main"])
+        self.assertEqual(self.rows(stale=30 * 1440)["todos"], [])
+        self.assertEqual(len(self.rows(stale=DAYS14)["todos"]), 1)
+
+    def test_worktree_lines(self):
+        live = os.path.join(self.repo.base, "wt-live")
+        run_git(self.repo.dir, "worktree", "add", "-q", "-b", "feat/live", live, "main")
+        g1 = os.path.join(self.repo.base, "gone-a")
+        g2 = os.path.join(self.repo.base, "gone-b")
+        g3 = os.path.join(self.repo.base, "gone-c")
+        lines = ["%s | gone-a | working | since 2026-11-20 10:00" % g1,
+                 "%s | gone-b | idle | since 2026-11-20 10:00" % g2,
+                 "%s | live | working | since 2026-11-20 10:00" % live,
+                 "%s | gone-c (human-direct) | human-direct | since 2026-11-20 10:00" % g3]
+        self.set_file("agent_worktree.txt", lines)
+        wts = self.rows()["worktrees"]
+        self.assertEqual([w["path"] for w in wts], [g1, g2, g3])
+        self.assertEqual(wts[0]["why"], "folder gone, no live pane (line says working)")
+        self.assertEqual(wts[1]["why"], "folder gone, no live pane")
+        self.assertEqual(wts[2]["why"], "folder gone, no live pane (line says human-direct)")
+        self.assertEqual(wts[0]["line"], lines[0])
+        self.assertEqual(wts[1]["status"], "idle")
+
+    def test_orca_not_answering_note_and_no_worktree_rows(self):
+        self.repo.stub_orca_down()
+        g = os.path.join(self.repo.base, "gone")
+        self.set_file("agent_worktree.txt", ["%s | gone | idle | since 2026-11-20 10:00" % g])
+        old_path = os.environ.get("PATH", "")
+        os.environ["PATH"] = self.repo._path()
+        self.addCleanup(os.environ.__setitem__, "PATH", old_path)
+        rows = self.rows(kind="orca")
+        self.assertEqual(rows["worktrees"], [])
+        self.assertIn("orca not answering: worktree lines not checked", rows["notes"])
+
+    def test_read_only(self):
+        self.merged_task("old", keep_branch=True)
+        self.set_file("agent_ideas.txt", IDEAS)
+        self.set_file("agent_todo.txt", [
+            "old | big | x | est 30m | opened 2026-11-20 08:00 | by main"])
+        g = os.path.join(self.repo.base, "gone")
+        self.set_file("agent_worktree.txt", ["%s | gone | idle | since 2026-11-20 10:00" % g])
+        names = ("agent_ideas.txt", "agent_todo.txt", "agent_worktree.txt",
+                 "agent_completed.txt")
+        before = {}
+        for n in names:
+            with open(os.path.join(self.repo.dir, n)) as fh:
+                before[n] = fh.read()
+        self.rows()
+        for n in names:
+            with open(os.path.join(self.repo.dir, n)) as fh:
+                self.assertEqual(fh.read(), before[n], n)
+        self.assertFalse(os.path.exists(os.path.join(self.repo.dir, "agent_state.txt")))
+        self.assertFalse(os.path.exists(os.path.join(self.repo.dir, ".git",
+                                                     "agent_housekeep.last")))
+        self.assertTrue(run_git(self.repo.dir, "branch", "--list", "feat/old"))
+
+
+class TestFileRowsBounce1(RowsCase):
+    """Reviewer findings 2, 3, 6 and the E2E finding (2026-11-24)."""
+
+    def test_line_numbers_count_newlines_only(self):
+        with open(os.path.join(self.repo.dir, "agent_ideas.txt"), "w", newline="") as fh:
+            fh.write("progress 10%\r100% done | 2026-11-01 10:00 | by main\n"
+                     "add dark mode | 2026-11-01 10:00 | by main\n"
+                     "add dark mode | 2026-11-02 11:00 | by main\n")
+        ideas = self.rows()["ideas"]
+        self.assertEqual([(i["n"], i["why"]) for i in ideas], [(3, "a duplicate of idea 2")])
+
+    def test_a_kept_duplicate_is_no_row(self):
+        self.set_file("agent_ideas.txt", [
+            "add dark mode | 2026-11-01 10:00 | by main",
+            "add dark mode | 2026-11-02 11:00 | by main | kept 2026-11-05"])
+        self.assertEqual(self.rows()["ideas"], [])
+
+    def test_an_existing_folder_is_no_worktree_row(self):
+        folder = os.path.join(self.repo.base, "not-a-worktree")
+        os.mkdir(folder)
+        self.set_file("agent_worktree.txt", [
+            "%s | live-task | working | since 2026-11-20 10:00" % folder])
+        self.assertEqual(self.rows()["worktrees"], [])
+
+    def test_per_machine_agent_files_are_never_gone(self):
+        self.assertFalse(os.path.exists(os.path.join(self.repo.dir, "agent_state.txt")))
+        self.set_file("agent_ideas.txt", [
+            "grep the worktree agent_state.txt for DONE | 2026-11-20 10:00 | by main",
+            "agent_monitor.txt keeps old lines | 2026-11-20 10:00 | by main",
+            "see agent_gone.txt for it | 2026-11-20 10:00 | by main"])
+        ideas = self.rows()["ideas"]
+        self.assertEqual([(i["n"], i["why"]) for i in ideas],
+                         [(3, "names agent_gone.txt, no such file")])
+
+
+class TestCrlfBounce2(RowsCase):
+    """Reviewer re-check N1: a CRLF ideas file reads as before bounce 1."""
+
+    CRLF = ("add dark mode | 2026-11-01 10:00 | by main\r\n"
+            "add dark mode | 2026-11-02 11:00 | by main\r\n"
+            "city-ux: wider rail | 2026-11-01 10:00 | by main\r\n")
+
+    def plant(self):
+        with open(os.path.join(self.repo.dir, "agent_ideas.txt"), "w", newline="") as fh:
+            fh.write(self.CRLF)
+        self.set_file("agent_completed.txt", [
+            "2026-11-10 | city-ux | rail | est 30m actual 40m"])
+
+    def test_rows_of_a_crlf_file_keep_the_raw_line(self):
+        self.plant()
+        ideas = self.rows()["ideas"]
+        self.assertEqual([(i["n"], i["why"]) for i in ideas],
+                         [(2, "a duplicate of idea 1"),
+                          (3, "names task city-ux, done 2026-11-10")])
+        self.assertEqual(ideas[0]["line"], "add dark mode | 2026-11-02 11:00 | by main\r")
+
+    def test_the_housekeep_block_of_a_crlf_file(self):
+        self.plant()
+        res = self.repo.run("agent-housekeep.sh", env={"AGENT_FAKE_NOW": ROWS_NOW,
+                                                       "AGENT_RUNTIME": "plain"})
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("would remove: idea 2, a duplicate of idea 1", res.stdout)
+        self.assertIn("suspect: idea 3:", res.stdout)
 
 
 if __name__ == "__main__":

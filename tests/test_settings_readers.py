@@ -1,4 +1,4 @@
-"""settings-configure: every script reads the 16 settings from Configure, nothing reads agent.conf.
+"""settings-configure: every script reads the 17 settings from Configure, nothing reads agent.conf.
 
 Written by the task manager before any code (requirements/settings-configure.md).
 Core contract: tests/test_settings_configure.py. This file: the readers and the texts.
@@ -48,102 +48,6 @@ from scripthelp import ROOT, ScriptCase  # noqa: E402
 CHANGE = "/plugin -> Installed -> auto-pipeline -> Configure"
 OLD_WORDS = ("agent.conf", "auto-pipeline.conf", "AUTO_PIPELINE_USER_CONF",
              "board_guard", "agent_conf.py effective", "danger_paths")
-
-
-def read(*parts):
-    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
-        return fh.read()
-
-
-class TestNothingReadsTheOldFiles(unittest.TestCase):
-    def files(self):
-        for top in ("bin", "hooks", "skills", "agents"):
-            for folder, _, names in os.walk(os.path.join(ROOT, top)):
-                if "node_modules" in folder or "/vendor" in folder:
-                    continue
-                for name in names:
-                    if name.endswith((".png", ".jpg", ".glb", ".gltf", ".bin", ".woff", ".woff2")):
-                        continue
-                    if name in ("GLTFLoader.js", "three.module.js", "three.min.js"):
-                        continue
-                    yield os.path.join(folder, name)
-
-    def test_no_reader_names_an_old_settings_word(self):
-        hits = []
-        for path in self.files():
-            rel = os.path.relpath(path, ROOT)
-            if rel == os.path.join("bin", "agent_conf.py"):
-                continue
-            try:
-                text = open(path, encoding="utf-8").read()
-            except Exception:
-                continue
-            for word in OLD_WORDS:
-                if word in text:
-                    hits.append("%s: %s" % (rel, word))
-        self.assertEqual(hits, [])
-
-    def test_the_template_is_gone(self):
-        self.assertFalse(os.path.exists(os.path.join(ROOT, "bin", "agent.conf.default")))
-
-
-class SettingsCase(ScriptCase):
-    script = "agent-settings.sh"
-
-    def settings(self, *args):
-        return self.repo.run("agent-settings.sh", *args)
-
-    def stored(self):
-        path = os.path.join(self.repo.claude_dir(), "settings.json")
-        if not os.path.exists(path):
-            return None
-        return open(path).read()
-
-
-class TestSettingsScript(SettingsCase):
-    def test_no_args_is_the_table(self):
-        self.repo.set_conf("language", "zh")
-        out = self.assertOk(self.settings())
-        lines = out.rstrip("\n").splitlines()
-        self.assertIn("Language", out)
-        self.assertIn("zh", out)
-        self.assertEqual(lines[-2:], ["change: " + CHANGE, "core paths of this repo: agent_repo.conf"])
-        self.assertNotIn("Danger paths", out)
-
-    def test_show_is_the_same_table(self):
-        self.assertEqual(self.settings("show").stdout, self.settings().stdout)
-
-    def test_get(self):
-        self.assertEqual(self.assertOk(self.settings("get", "language")), "en (from default)\n")
-        self.repo.set_conf("language", "zh")
-        self.assertEqual(self.assertOk(self.settings("get", "language")), "zh (from Configure)\n")
-        self.assertEqual(self.assertOk(self.settings("get", "permission_mode")), "bypassPermissions (from default)\n")
-        self.assertEqual(self.assertOk(self.settings("get", "stage_tests")), "20 (from constant)\n")
-
-    def test_get_an_unknown_key_fails(self):
-        r = self.settings("get", "level3_paths")
-        self.assertNotEqual(r.returncode, 0)
-        self.assertEqual(r.stdout, "")
-
-    def test_every_change_path_is_refused_and_writes_nothing(self):
-        self.repo.set_conf("language", "zh")
-        before = self.stored()
-        for args in (("language", "en"), ("max_usage_percent", "30"), ("--user", "permission_mode", "auto"),
-                     ("menu",), ("sync",), ("set", "language", "en")):
-            with self.subTest(args=args):
-                r = self.settings(*args)
-                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-                self.assertIn(CHANGE, r.stdout + r.stderr)
-                self.assertEqual(self.stored(), before)
-        self.assertFalse(os.path.exists(self.repo.path("agent.conf")))
-        self.assertFalse(os.path.exists(self.repo.user_conf))
-
-    def test_help_names_only_show_get_statusline(self):
-        out = self.settings("--help").stdout
-        self.assertIn("get <key>", out)
-        self.assertIn("statusline", out)
-        self.assertNotIn("--user", out)
-        self.assertNotIn("sync", out)
 
 
 class StartCase(ScriptCase):
@@ -262,54 +166,6 @@ class TestInit(ScriptCase):
         r = self.init()
         self.assertOk(r)
         self.assertIn("moved language=zh from", r.stdout)
-
-
-class TestCloudPack(ScriptCase):
-    script = "agent-cloud-pack.sh"
-
-    def test_the_pack_holds_no_settings_file(self):
-        text = read("bin", "agent-cloud-pack.sh")
-        self.assertNotIn("agent.conf", text)
-        self.assertNotIn("CLAUDE_PLUGIN_OPTION_", text)
-
-
-class TestTexts(unittest.TestCase):
-    def test_principles(self):
-        text = read("PRINCIPLES.md")
-        self.assertNotIn("agent.conf", text)
-        self.assertNotIn("auto-pipeline.conf", text)
-        self.assertIn(CHANGE, text)
-        self.assertRegex(text, r"(?i)settings live only in")
-        # owner 1A 2026-11-25: core paths are repo facts in agent_repo.conf, not a setting
-        self.assertIn("agent_repo.conf", text)
-        self.assertRegex(text, r"(?i)17 settings|seventeen settings")   # + Auto clear after quiet (TELL 9bb87b13)
-        # was 16:   # owner 2026-11-25: slots, Max agents gone; Reviewer model, Working branch new
-
-    # test_r8_is_main_s_text (R8 frozen as on main 85b99de) is gone: the owner approved check-blocks on
-    # 2026-11-25, R8 is "Check blocks" now (tests/test_check_rules.py pins it)
-
-    def test_readme_has_one_line_where_to_change_settings(self):
-        lines = [l for l in read("README.md").splitlines() if CHANGE in l]
-        self.assertEqual(len(lines), 1)
-        self.assertNotIn("agent.conf", read("README.md"))
-
-    def test_settings_skill(self):
-        text = read("skills", "settings", "SKILL.md")
-        self.assertIn(CHANGE, text)
-        self.assertRegex(text, r"(?i)never changes")
-        self.assertNotRegex(text, r"agent-settings\.sh <key> <value>")
-
-    def test_init_skill_asks_no_setting(self):
-        text = read("skills", "init", "SKILL.md")
-        self.assertNotRegex(text, r"(?i)bypass or all auto|auto update on or off")
-        self.assertNotIn("--mode", text)
-        self.assertNotIn("--auto-update", text)
-        self.assertIn(CHANGE, text)
-
-    def test_plugin_version_is_bumped(self):
-        with open(os.path.join(ROOT, ".claude-plugin", "plugin.json")) as fh:
-            version = json.load(fh)["version"]
-        self.assertGreater(tuple(int(x) for x in version.split(".")), (0, 44, 0))
 
 
 if __name__ == "__main__":

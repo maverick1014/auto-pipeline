@@ -1,133 +1,6 @@
-"""Failing tests for 'show question', the collector, park and page part. Written by the task manager first.
+"""Tests of bin/agent_questions.py: the question list, park, the answer page and its node checks.
 
-CONTRACT. `agent-file.sh questions` lists every question that waits on the
-owner. Read only, except --page, --url and answer, which write what they say.
-The work is done by bin/agent_questions.py (python3, standard library only, no
-sibling imports, like bin/agent_board.py); the page comes from the template
-bin/agent-questions-page.html (the approved mock/show-question-mock.html without
-its MOCK bar and fake db).
-
-    agent-file.sh questions [--self] [--json]
-    agent-file.sh questions [--self] --page <file>
-    agent-file.sh questions --url <url>
-    agent-file.sh questions answer <id> "<answer>"
-    agent-file.sh park add "<question>" ["<task>"] [--sub "<line>"] [--why "<text>"]
-        [--evidence "<text>"] [--fact "<key>: <value>"]... [--options "A text|B text"]
-        [--rec <letter or option text>]
-    agent-file.sh park rm <n> | park rm --id <id>
-
-SOURCES, in this collection order:
-  (b) agent_todo.txt lines with an open wait ("waiting <kind> since <date>[: <note>]")
-      whose kind is mock, question or review (hold and queue are not questions)
-  (c) "QUESTION: <text>" lines (the line starts with it) of agent_state.txt with no
-      answer: an answer is a line starting with "ANSWER:" after it, before the next
-      "QUESTION:" line and before the next "=== " header line
-  (a) "PARKED:" lines of agent_state.txt
-  The agent_state.txt files: the main repo's, then every agent_worktree.txt folder
-  on this machine (in that file's order, once per real path). A folder that is not
-  on this machine: one line "not read: <path> on <machine>", <machine> from the
-  "on <machine>" field of the todo line named like the worktree's module, else
-  "another machine".
-  --self (task manager, Helper): its own todo line (named like the folder of the
-  git toplevel of the cwd, the board's rule) and its own agent_state.txt only; in
-  the main repo folder itself no state lines (a Helper never shows the main state).
-
-ORDER: grouped by task, the groups in the order their task first comes in the
-collection order, inside a group the collection order; numbered 1..N after that.
-Task: (b) the todo name, (c) the module of the worktree line (the main repo, or a
-folder not in agent_worktree.txt (--self): its folder name), (a) the PARKED task field.
-
-IDS (stable, a valid db document id, letters digits _ . ~ : @ + - only):
-  parked    "p-" + sha1(task + "\\n" + question + "\\n" + since)[:10]
-  todo      "t-" + name (any other character -> "-") + "-" + kind + "-" + since digits (YYYYMMDDHHMM)
-  worktree  "w-" + sha1(module + "\\n" + question text)[:10]
-  the same id twice: the later ones get "-2", "-3", ...
-
-FIELDS of a question: n, id, source (parked | todo | worktree), kind (mock |
-question | review for todo, else ""), task, title, sub, facts ([[key, value]...]),
-options ([{letter, text, rec}...]), since ("YYYY-MM-DD HH:MM" or ""), file (the
-absolute path of the file it lives in).
-  parked: title = the question; sub, facts, options and rec from the new fields;
-     an old line has sub "", facts [], options [].
-  todo: title = the note, else zh "看一下 <task> 的 mock" / "<task> 有一个问题等你回答" /
-     "验收 <task>", en "Check the <task> mock" / "<task> has a question for you" /
-     "Review <task>"; sub ""; facts [["内容" | "What", <what>]] plus
-     [["位置" | "Where", "<machine>[ <path>]"]] when the line has an "on" field;
-     options mock: zh 可以，继续 | 要改（写在备注里）, en Yes, go on | Change it (say
-     how in the note); review: zh 验收通过 | 有问题（写在备注里）, en Passed |
-     Something is wrong (say what in the note); question: none. No rec.
-  worktree: title = the text; sub ""; facts [["来自" | "From",
-     "<module> 任务经理" | "the <module> task manager"]]; options none; since "".
-  Language: `language` of agent.conf, zh (or zh-*) else en.
-
-TEXT (--json not given):
-    QUESTIONS: <N>
-    <blank>
-    <n>. [<id>] <task> · <parked | todo <kind> | task manager question>[ · since <since>]
-       <title>
-       — <sub>                       (only when there is one)
-       <key>: <value>                (one per fact)
-       <letter>. <text>[ (建议)]      (one per option; en: " (recommended)")
-    <blank between questions>
-    not read: <path> on <machine>    (after one blank line, one per folder)
-JSON: {"count": N, "questions": [...], "not_read": [{"path", "machine"}],
-       "intros": {<task>: <the what field of its todo line>}} (only tasks of the list
-       that have a todo line)
-
-PARK ADD, new form: stored as one line, every field " | "-separated, in this order:
-    PARKED: <question> | <task> | since <now> | sub <line> | fact <key>: <value> ...
-        | option A: <text> | option B: <text> ... | rec <letter>
-  --why = fact 为什么现在 (en Why now), --evidence = fact 依据 (en Evidence), --fact
-  "<key>: <value>" as given; the facts keep the order of the command line.
-  --options "A text|B text": lettered A, B, C ... (at most 8). --rec: a letter or the
-  exact text of an option (any case) -> "rec <letter>"; --rec with no --options ->
-  fact 建议: <text> (en Recommendation). The task may be left out (the folder name).
-  Prints "parked: <question>" then "id: <id>". Refused (one stderr line, exit 1,
-  nothing written): an empty value, " | " or a line break in any value, an unknown
-  option, a flag with no value, --fact without ": " or with an empty key, an empty
-  option, more than 8 options, a --rec that is no option.
-PARK RM --id <id>: removes that PARKED line (the id as `questions` gives it, own
-  agent_state.txt); every other line stays byte for byte. No such id: refused.
-
-QUESTIONS --page <file>: writes the page to <file> (a relative path is taken from
-  the cwd), the map to the same path with ".json" instead of ".html" (no ".html":
-  "<file>.json"), and the line "QUESTIONS PAGE: <url> | <page> | <map> | since <now>"
-  in the session's own agent_state.txt (url kept from the line before, else "-";
-  one such line only). Prints "page: <abs page>", "map: <abs map>", "questions:
-  <N>", "url: <url or ->". The page = the template with "__SQ_DATA__" replaced by
-  JSON {"lang", "repo", "generated", "intros", "questions"} where "<", ">", "&",
-  U+2028 and U+2029 are written as \\u003c \\u003e \\u0026 \\u2028 \\u2029 (any other
-  character as is, Chinese too); a page question has every field but "file" (no
-  local path goes into a published page). The map: {"page", "generated", "questions":
-  [{"n", "id", "task", "title", "options": [<letters>]}]}.
-QUESTIONS --url <url>: https://claude.ai/artifact/<id> or
-  https://claude.ai/code/artifact/<id> (<id> letters, digits, "-", "_") sets the url
-  of that line (a missing line: "QUESTIONS PAGE: <url> | - | - | since <now>").
-  Anything else refused.
-QUESTIONS ANSWER <id> "<answer>": parked -> the PARKED line goes (in whichever
-  local agent_state.txt holds it); todo -> that wait closes (as `todo wait <name>
-  off`); worktree -> "ANSWER: <answer>" is written right after its QUESTION line.
-  Prints one line "answered <id>: ...". Refused: an id `questions` (whole repo)
-  does not list, an empty answer, a line break in it.
-
-THE PAGE (template contract, checked on the written page):
-  <!doctype html>, a viewport meta, a <title> of 1-4 words, colour tokens on
-  :root, dark mode under @media (prefers-color-scheme: dark) guarded by
-  :root:not([data-theme="light"]) and again :root[data-theme="dark"], a body
-  rule with a background, no <script src>, stylesheets only from
-  fonts.googleapis.com, claude.use("db"), claude.use("user"),
-  collection("answers"), no localStorage, no MOCK bar, no fake db; elements with
-  the ids count, all-rec, clear, copy, copyrow, copybox, h1, intro, b-nodb, b-ro,
-  groups, toast; the labels block id="sq-labels" with the same keys for zh and en.
-  It runs in tests/questions_page_harness.js (node, stub DOM, its header lists
-  what the stub has): cards <section id="q<n>" class="q[ done]">, option buttons
-  class "opt" (first child = the letter, aria-checked), a <textarea> per card;
-  answers/<id> = {pick, option, note, answeredAt}; never a write on load; saved
-  picks come back; 全部按建议 fills only unpicked questions that have a
-  recommended option; 清空 takes two clicks and deletes the docs; a note on a
-  question with no options is its answer; 复制我的答案 -> #copybox lines
-  "<n><letter>[ — <note>]" / "<n> — <note>"; db null -> #b-nodb shown and nothing
-  written; user.can("data.write") false -> the options disabled, #b-ro shown.
+One class per feature. Older task contracts: git log -p of this file.
 """
 
 import hashlib
@@ -363,6 +236,9 @@ class TestParkRmId(QCase):
 # ---------------------------------------------------------------- the collector
 
 
+from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
+
+
 class SourcesCase(QCase):
     """Three todo waits, two open worktree questions, three parked questions,
     two folders that are not here."""
@@ -408,7 +284,19 @@ class SourcesCase(QCase):
                 ("project", "which DB for reports?")]
 
 
-class TestSources(SourcesCase):
+class _TestSourcesFixture:
+    def fixture(self):
+        pass
+
+
+@shared_fixture(guard=REPO_BASE, remember_repo=True)
+class TestSources(_TestSourcesFixture, SourcesCase):
+    """One fixture for the class: these tests only read (tests/sharedrepo.py)."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
+
     def test_every_source_in_task_groups(self):
         data = self.qjson()
         self.assertEqual(data["count"], 8)
@@ -477,12 +365,6 @@ class TestSources(SourcesCase):
                                       "not read: /nowhere/zeta on another machine"])
         self.assertEqual(lines[-3], "")
 
-    def test_a_sub_line(self):
-        self.af("park", "add", "with a sub?", "omega", "--sub", "2 repos")
-        out = self.qtext()
-        at = out.splitlines().index("   with a sub?")
-        self.assertEqual(out.splitlines()[at + 1], "   — 2 repos")
-
     def test_it_writes_nothing(self):
         def snap():
             rows = []
@@ -497,6 +379,20 @@ class TestSources(SourcesCase):
         self.qjson()
         self.qjson("--self", role="task-manager", cwd=self.wt)
         self.assertEqual(snap(), before)
+
+
+class TestSourcesWrites(_TestSourcesFixture, SourcesCase):
+    """The tests of TestSources that write: one repo each."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
+
+    def test_a_sub_line(self):
+        self.af("park", "add", "with a sub?", "omega", "--sub", "2 repos")
+        out = self.qtext()
+        at = out.splitlines().index("   with a sub?")
+        self.assertEqual(out.splitlines()[at + 1], "   — 2 repos")
 
 
 class TestSourcesEnglish(SourcesCase):
@@ -814,6 +710,7 @@ class TestTheTemplate(PageCase):
 
 
 @unittest.skipUnless(shutil.which("node"), "node is not installed")
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo per class, each run once; the tests only read
 class TestPageInNode(PageCase):
     """The page's script, run by tests/questions_page_harness.js on a stub DOM."""
 

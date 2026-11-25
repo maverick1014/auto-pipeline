@@ -1,0 +1,538 @@
+"""Tests of bin/agent_update.py: auto update, plugin versions, the settings backup.
+
+requirements/settings-configure.md. One class per feature. Older task contracts: git log -p of this file.
+"""
+
+import json
+import os
+import pty
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from unittest import mock
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+BIN = os.path.join(ROOT, "bin")
+for p in (HERE, BIN):
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
+import agent_conf  # noqa: E402
+from scripthelp import ScriptCase  # noqa: E402
+
+TAIL = (". Auto update on: installs by itself within 10 min, then /reload-plugins. "
+        "Off: claude plugin update auto-pipeline@auto-pipeline")
+
+
+def update_mod():
+    import agent_update
+    return agent_update
+
+
+def read(*parts):
+    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
+        return fh.read()
+
+
+def write_json(path, data, raw=None):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as fh:
+        fh.write(raw if raw is not None else json.dumps(data, indent=2))
+    return path
+
+
+def git(cwd, *args):
+    subprocess.run(["git", "-C", cwd] + list(args), check=True, capture_output=True,
+                   env=dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+                            GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t"))
+
+
+SETTINGS = {
+    "model": "opus",
+    "extraKnownMarketplaces": {
+        "other": {"source": {"source": "github", "repo": "x/other"}},
+        "auto-pipeline": {"source": {"source": "github", "repo": "maverick1014/auto-pipeline"}},
+    },
+    "enabledPlugins": {"auto-pipeline@auto-pipeline": True},
+}
+KNOWN = {
+    "claude-plugins-official": {"source": {"source": "github", "repo": "anthropics/claude-plugins-official"},
+                                "installLocation": "/x/official", "lastUpdated": "2026-11-04T07:04:39.737Z"},
+    "auto-pipeline": {"source": {"source": "github", "repo": "maverick1014/auto-pipeline"},
+                      "installLocation": "/x/auto-pipeline", "lastUpdated": "2026-11-04T01:32:15.992Z"},
+}
+
+
+class Tmp(unittest.TestCase):
+    def setUp(self):
+        self.base = os.path.realpath(tempfile.mkdtemp(prefix="auto_update_"))
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.cdir = os.path.join(self.base, "home", ".claude")
+        os.makedirs(self.cdir)
+        self.user = os.path.join(self.base, "u", "auto-pipeline.conf")
+        p = mock.patch.dict(os.environ, {"AUTO_PIPELINE_USER_CONF": self.user,
+                                         "HOME": os.path.join(self.base, "home")})
+        p.start()
+        self.addCleanup(p.stop)
+        os.environ.pop("CLAUDE_CONFIG_DIR", None)
+        os.environ.pop("AUTO_PIPELINE_VERSION_URL", None)
+
+    def settings_path(self):
+        return os.path.join(self.cdir, "settings.json")
+
+    def known_path(self):
+        return os.path.join(self.cdir, "plugins", "known_marketplaces.json")
+
+    def load(self, path):
+        with open(path) as fh:
+            return json.load(fh)
+
+
+# ------------------------------------------------------------- 1: the key
+
+class TestKey(Tmp):
+    # settings-configure 2026-11-25: Auto update is a Configure boolean, default on
+    def test_a_configure_setting_default_on(self):
+        by = {x["key"]: x for x in agent_conf.SETTINGS}
+        self.assertEqual((by["auto_update"]["type"], by["auto_update"]["default"]), ("boolean", True))
+        self.assertIs(agent_conf.get("auto_update", {"HOME": os.path.join(self.base, "home")}), True)
+
+
+# ------------------------------------------------------- 2: apply (native)
+
+class TestApply(Tmp):
+    def test_claude_dir(self):
+        u = update_mod()
+        self.assertEqual(u.MARKETPLACE, "auto-pipeline")
+        self.assertEqual(u.claude_dir(), self.cdir)
+        self.assertEqual(u.claude_dir({"CLAUDE_CONFIG_DIR": "/cfg", "HOME": "/h"}), "/cfg")
+        self.assertEqual(u.claude_dir({"CLAUDE_CONFIG_DIR": "", "HOME": "/h"}), "/h/.claude")
+
+    def test_both_files_get_it_and_nothing_else_changes(self):
+        u = update_mod()
+        s = write_json(self.settings_path(), SETTINGS)
+        k = write_json(self.known_path(), KNOWN)
+        s_before, k_before = open(s).read(), open(k).read()
+        lines = u.apply_auto_update(False, self.cdir)
+        self.assertIsInstance(lines, list)
+        self.assertEqual(open(s + ".bak-auto-pipeline").read(), s_before)
+        self.assertEqual(open(k + ".bak-auto-pipeline").read(), k_before)
+        want_s = json.loads(json.dumps(SETTINGS))
+        want_s["extraKnownMarketplaces"]["auto-pipeline"]["autoUpdate"] = False
+        want_k = json.loads(json.dumps(KNOWN))
+        want_k["auto-pipeline"]["autoUpdate"] = False
+        self.assertEqual(self.load(s), want_s)
+        self.assertEqual(self.load(k), want_k)
+        self.assertEqual(list(self.load(s)), list(SETTINGS), "key order kept")
+        self.assertEqual(list(self.load(k)), list(KNOWN))
+        u.apply_auto_update(True, self.cdir)
+        self.assertIs(self.load(s)["extraKnownMarketplaces"]["auto-pipeline"]["autoUpdate"], True)
+        self.assertIs(self.load(k)["auto-pipeline"]["autoUpdate"], True)
+        self.assertNotIn("autoUpdate", self.load(s)["extraKnownMarketplaces"]["other"])
+        self.assertNotIn("autoUpdate", self.load(k)["claude-plugins-official"])
+
+    def test_already_set_writes_nothing(self):
+        u = update_mod()
+        data = json.loads(json.dumps(KNOWN))
+        data["auto-pipeline"]["autoUpdate"] = True
+        k = write_json(self.known_path(), data, raw=json.dumps(data))
+        before = os.stat(k).st_mtime_ns, open(k).read()
+        time.sleep(0.01)
+        u.apply_auto_update(True, self.cdir)
+        self.assertEqual((os.stat(k).st_mtime_ns, open(k).read()), before)
+        self.assertFalse(os.path.exists(k + ".bak-auto-pipeline"))
+
+    def test_no_entry_or_broken_or_missing_is_untouched(self):
+        u = update_mod()
+        s = write_json(self.settings_path(), {"model": "opus"})
+        k = write_json(self.known_path(), None, raw="{broken")
+        u.apply_auto_update(False, self.cdir)
+        self.assertEqual(self.load(s), {"model": "opus"})
+        self.assertEqual(open(k).read(), "{broken")
+        self.assertFalse(os.path.exists(s + ".bak-auto-pipeline"))
+        self.assertFalse(os.path.exists(k + ".bak-auto-pipeline"))
+        empty = os.path.join(self.base, "empty", ".claude")
+        self.assertIsInstance(u.apply_auto_update(True, empty), list)
+        self.assertFalse(os.path.exists(empty), "never creates a file or folder")
+
+    def test_cli(self):
+        write_json(self.known_path(), KNOWN)
+        repo_settings = write_json(os.path.join(self.base, "repo", ".claude", "settings.json"), SETTINGS)
+        before = open(repo_settings).read()
+        r = subprocess.run([sys.executable, os.path.join(BIN, "agent_update.py"), "apply", "off"],
+                           capture_output=True, text=True, env=dict(os.environ), timeout=30,
+                           cwd=os.path.join(self.base, "repo"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIs(self.load(self.known_path())["auto-pipeline"]["autoUpdate"], False)
+        self.assertEqual(open(repo_settings).read(), before, "a repo's .claude/settings.json is never touched")
+        for bad in ([], ["maybe"], ["on", "off"]):
+            with self.subTest(args=bad):
+                r = subprocess.run([sys.executable, os.path.join(BIN, "agent_update.py"), "apply"] + bad,
+                                   capture_output=True, text=True, env=dict(os.environ), timeout=30)
+                self.assertEqual(r.returncode, 2)
+                self.assertNotIn("Traceback", r.stderr)
+
+
+# ---------------------------------------------------- 2: versions, notice
+
+class TestVersions(Tmp):
+    def plugin(self, version):
+        root = os.path.join(self.base, "plugin")
+        write_json(os.path.join(root, ".claude-plugin", "plugin.json"), {"name": "auto-pipeline", "version": version})
+        return root
+
+    def clone(self, version, subject="release %s: something new"):
+        root = os.path.join(self.cdir, "plugins", "marketplaces", "auto-pipeline")
+        os.makedirs(root, exist_ok=True)
+        if not os.path.isdir(os.path.join(root, ".git")):
+            git(root, "init", "-q")
+        write_json(os.path.join(root, ".claude-plugin", "plugin.json"), {"name": "auto-pipeline", "version": version})
+        git(root, "add", "-A")
+        git(root, "commit", "-q", "-m", subject % version if "%s" in subject else subject)
+        with open(os.path.join(root, "other.txt"), "a") as fh:
+            fh.write("x\n")
+        git(root, "add", "-A")
+        git(root, "commit", "-q", "-m", "a later commit that is not the release")
+        return root
+
+    def cache(self, version, checked=None):
+        u = update_mod()
+        write_json(u.cache_path(), {"checked": checked if checked is not None else time.time(), "version": version})
+        return u.cache_path()
+
+    def test_parse_version(self):
+        u = update_mod()
+        self.assertEqual(u.parse_version("0.29.0"), (0, 29, 0))
+        self.assertEqual(u.parse_version("1.2"), (1, 2))
+        self.assertGreater(u.parse_version("0.10.0"), u.parse_version("0.9.0"))
+        for bad in (None, "", "v1.2", "1.x", "abc"):
+            with self.subTest(bad=bad):
+                self.assertIsNone(u.parse_version(bad))
+
+    def test_installed_and_clone(self):
+        u = update_mod()
+        self.assertEqual(u.installed_version(self.plugin("0.29.0")), "0.29.0")
+        self.assertIsNone(u.installed_version(os.path.join(self.base, "nowhere")))
+        self.assertEqual(u.clone_version(self.cdir), (None, None))
+        self.clone("0.30.0")
+        self.assertEqual(u.clone_version(self.cdir), ("0.30.0", "release 0.30.0: something new"))
+
+    def test_cache_path_sits_next_to_the_user_file(self):
+        self.assertEqual(update_mod().cache_path(), self.user + ".latest.json")
+
+    def test_version_url(self):
+        u = update_mod()
+        self.assertIsNone(u.version_url(self.cdir, {}))
+        write_json(self.known_path(), KNOWN)
+        self.assertEqual(u.version_url(self.cdir, {}),
+                         "https://raw.githubusercontent.com/maverick1014/auto-pipeline/HEAD/.claude-plugin/plugin.json")
+        self.assertEqual(u.version_url(self.cdir, {"AUTO_PIPELINE_VERSION_URL": "file:///x"}), "file:///x")
+        write_json(self.known_path(), {"auto-pipeline": {"source": {"source": "directory", "path": "/p"}}})
+        self.assertIsNone(u.version_url(self.cdir, {}))
+
+    def test_refresh_and_stale(self):
+        u = update_mod()
+        remote = write_json(os.path.join(self.base, "remote", "plugin.json"), {"version": "0.31.0"})
+        cache = os.path.join(self.base, "c.json")
+        self.assertTrue(u.stale(cache))
+        u.refresh("file://" + remote, cache, now=1000)
+        self.assertEqual(self.load(cache), {"checked": 1000, "version": "0.31.0"})
+        self.assertFalse(u.stale(cache, now=1000 + 86399))
+        self.assertTrue(u.stale(cache, now=1000 + 86400))
+        u.refresh("file://" + os.path.join(self.base, "nope.json"), cache, now=2000)
+        self.assertEqual(self.load(cache), {"checked": 2000, "version": None})
+        u.refresh("http://127.0.0.1:9/plugin.json", cache, timeout=1, now=3000)
+        self.assertEqual(self.load(cache), {"checked": 3000, "version": None})
+        with open(cache, "w") as fh:
+            fh.write("junk")
+        self.assertTrue(u.stale(cache))
+
+    def test_notice_from_the_clone(self):
+        u = update_mod()
+        self.clone("0.30.0")
+        line = u.notice_line(self.plugin("0.29.0"), self.cdir, u.cache_path())
+        self.assertEqual(line, "UPDATE: auto-pipeline 0.30.0 available (you run 0.29.0): "
+                               "release 0.30.0: something new" + TAIL)
+
+    def test_notice_from_the_cache_has_no_subject(self):
+        u = update_mod()
+        self.clone("0.30.0")
+        self.cache("0.31.0")
+        line = u.notice_line(self.plugin("0.29.0"), self.cdir, u.cache_path())
+        self.assertEqual(line, "UPDATE: auto-pipeline 0.31.0 available (you run 0.29.0)" + TAIL)
+
+    def test_numeric_compare(self):
+        u = update_mod()
+        self.cache("0.10.0")
+        self.assertIsNotNone(u.notice_line(self.plugin("0.9.0"), self.cdir, u.cache_path()))
+        self.assertIsNone(u.notice_line(self.plugin("0.10.0"), self.cdir, u.cache_path()))
+        self.assertIsNone(u.notice_line(self.plugin("0.11.0"), self.cdir, u.cache_path()))
+
+    def test_the_subject_is_cut(self):
+        u = update_mod()
+        self.clone("0.30.0", subject="release 0.30.0: " + "x" * 200)
+        line = u.notice_line(self.plugin("0.29.0"), self.cdir, u.cache_path())
+        subject = line.split("(you run 0.29.0): ", 1)[1][:-len(TAIL)]
+        self.assertEqual(len(subject), 80)
+        self.assertTrue(subject.endswith("..."))
+
+    def test_nothing_known(self):
+        u = update_mod()
+        self.assertIsNone(u.notice_line(self.plugin("0.29.0"), self.cdir, u.cache_path()))
+        self.cache(None)
+        self.assertIsNone(u.notice_line(self.plugin("0.29.0"), self.cdir, u.cache_path()))
+        self.assertIsNone(u.notice_line(os.path.join(self.base, "nowhere"), self.cdir, u.cache_path()))
+
+    def cli(self, *args, env=None):
+        e = dict(os.environ)
+        e.update(env or {})
+        t = time.time()
+        r = subprocess.run([sys.executable, os.path.join(BIN, "agent_update.py")] + list(args),
+                           capture_output=True, text=True, env=e, timeout=30)
+        return r, time.time() - t
+
+    def test_notice_cli_starts_a_refresh_and_never_waits(self):
+        u = update_mod()
+        remote = write_json(os.path.join(self.base, "remote", "plugin.json"), {"version": "0.32.0"})
+        r, took = self.cli("notice", self.plugin("0.29.0"), env={"AUTO_PIPELINE_VERSION_URL": "file://" + remote})
+        self.assertEqual((r.returncode, r.stdout), (0, ""), r.stderr)
+        self.assertLess(took, 2.0)
+        for _ in range(100):
+            if os.path.exists(u.cache_path()) and self.load(u.cache_path()).get("version"):
+                break
+            time.sleep(0.05)
+        self.assertEqual(self.load(u.cache_path())["version"], "0.32.0", "the detached refresh wrote the cache")
+        r, _ = self.cli("notice", self.plugin("0.29.0"), env={"AUTO_PIPELINE_VERSION_URL": "file://" + remote})
+        self.assertEqual(r.stdout, "UPDATE: auto-pipeline 0.32.0 available (you run 0.29.0)" + TAIL + "\n")
+
+    def test_notice_cli_with_a_hanging_network(self):
+        import socket
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        self.addCleanup(srv.close)
+        url = "http://127.0.0.1:%d/plugin.json" % srv.getsockname()[1]
+        r, took = self.cli("notice", self.plugin("0.29.0"), env={"AUTO_PIPELINE_VERSION_URL": url})
+        self.assertEqual(r.returncode, 0)
+        self.assertLess(took, 2.0, "the start never waits on the network")
+        self.assertNotIn("Traceback", r.stderr)
+
+    def test_fresh_cache_no_refresh(self):
+        u = update_mod()
+        self.cache("0.29.0", checked=time.time())
+        remote = write_json(os.path.join(self.base, "remote", "plugin.json"), {"version": "0.40.0"})
+        self.cli("notice", self.plugin("0.29.0"), env={"AUTO_PIPELINE_VERSION_URL": "file://" + remote})
+        time.sleep(0.5)
+        self.assertEqual(self.load(u.cache_path())["version"], "0.29.0", "checked less than a day ago")
+
+    def test_refresh_cli(self):
+        u = update_mod()
+        remote = write_json(os.path.join(self.base, "remote", "plugin.json"), {"version": "0.33.0"})
+        r, _ = self.cli("refresh", env={"AUTO_PIPELINE_VERSION_URL": "file://" + remote})
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(self.load(u.cache_path())["version"], "0.33.0")
+
+
+# ------------------------------------- 3: the start applies the setting
+
+class TestStartApplies(ScriptCase):
+    """settings-configure: the main manager's start writes the Auto update setting onto the
+    marketplace entries (agent_update.py apply), quietly; was agent-settings.sh --user."""
+    script = "agent-start.sh"
+
+    def test_off_then_on(self):
+        home = self.repo.fake_home()
+        s_ = write_json(os.path.join(home, ".claude", "settings.json"), SETTINGS)
+        k = write_json(os.path.join(home, ".claude", "plugins", "known_marketplaces.json"), KNOWN)
+        self.repo.set_conf("auto_update", False)
+        out = self.assertOk(self.repo.run("agent-start.sh"))
+        self.assertIs(json.load(open(s_))["extraKnownMarketplaces"]["auto-pipeline"]["autoUpdate"], False)
+        self.assertIs(json.load(open(k))["auto-pipeline"]["autoUpdate"], False)
+        self.assertNotIn("autoUpdate set", out)
+        self.repo.set_conf("auto_update", True)
+        self.assertOk(self.repo.run("agent-start.sh"))
+        self.assertIs(json.load(open(k))["auto-pipeline"]["autoUpdate"], True)
+        self.assertEqual(self.assertOk(self.repo.run("agent-settings.sh", "get", "auto_update")),
+                         "on (from Configure)\n")
+
+    def test_the_settings_script_never_writes_it(self):
+        r = self.repo.run("agent-settings.sh", "--user", "auto_update", "off")
+        self.assertEqual(r.returncode, 1)
+        self.assertFalse(os.path.exists(self.repo.user_conf))
+
+
+# ----------------------------------------------------------- 4: init
+
+class TestInit(ScriptCase):
+    """settings-configure: init asks nothing about auto update and has no --auto-update."""
+    script = "agent-init.sh"
+
+    def test_the_flag_is_gone(self):
+        r = self.repo.run("agent-init.sh", "--auto-update", "off")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("/plugin -> Installed -> auto-pipeline -> Configure", r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(self.repo.user_conf))
+
+    def test_no_question_and_no_user_file(self):
+        r = self.repo.run("agent-init.sh")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Auto update:", r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(self.repo.user_conf))
+
+    def test_the_init_skill_asks_nothing(self):
+        text = read("skills", "init", "SKILL.md")
+        self.assertNotIn("--auto-update", text)
+
+
+# ------------------------------------------------------- 5: start text
+
+class TestStart(ScriptCase):
+    script = "agent-start.sh"
+
+    def start(self, env=None):
+        return self.assertOk(self.repo.run("agent-start.sh", env=env))
+
+    def lines(self, out, prefix):
+        return [l for l in out.splitlines() if l.startswith(prefix)]
+
+    def test_no_auto_update_question_line_any_more(self):
+        # settings-configure: the setting has a default (on), nothing to ask
+        self.assertEqual(self.lines(self.start(), "AUTO UPDATE:"), [])
+        self.assertEqual(self.lines(self.start({"AGENT_ROLE": "task-manager"}), "AUTO UPDATE:"), [])
+
+    def plugin_version(self, version):
+        write_json(os.path.join(self.repo.plugin, ".claude-plugin", "plugin.json"),
+                   {"name": "auto-pipeline", "version": version})
+
+    def test_update_line(self):
+        home = self.repo.fake_home()
+        self.plugin_version("0.29.0")
+        write_json(self.repo.user_conf + ".latest.json", {"checked": time.time(), "version": "0.30.0"})
+        out = self.start()
+        self.assertEqual(self.lines(out, "UPDATE:"),
+                         ["UPDATE: auto-pipeline 0.30.0 available (you run 0.29.0)" + TAIL])
+        self.assertTrue(home)
+
+    def test_no_update_line_when_current(self):
+        self.repo.fake_home()
+        self.plugin_version("0.30.0")
+        write_json(self.repo.user_conf + ".latest.json", {"checked": time.time(), "version": "0.30.0"})
+        self.assertEqual(self.lines(self.start(), "UPDATE:"), [])
+
+    def test_never_waits_on_the_network(self):
+        import socket
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        self.addCleanup(srv.close)
+        self.repo.fake_home()
+        self.plugin_version("0.29.0")
+        t = time.time()
+        self.start({"AUTO_PIPELINE_VERSION_URL": "http://127.0.0.1:%d/p.json" % srv.getsockname()[1],
+                    "AGENT_ROLE": "task-manager"})
+        self.start({"AUTO_PIPELINE_VERSION_URL": "http://127.0.0.1:%d/p.json" % srv.getsockname()[1]})
+        self.assertLess(time.time() - t, 20)
+
+
+ENV = "AUTO_PIPELINE_USER_CONF"
+
+
+class TmpCase(unittest.TestCase):
+    """A temp folder, and a user file that is never the real ~/.claude one."""
+
+    def setUp(self):
+        self.base = os.path.realpath(tempfile.mkdtemp(prefix="five_fixes_"))
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.user = os.path.join(self.base, "u", "auto-pipeline.conf")
+        self.cfg = os.path.join(self.base, "cfg")
+        patcher = mock.patch.dict(os.environ, {ENV: self.user, "CLAUDE_CONFIG_DIR": self.cfg})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def folder(self, name, conf):
+        """settings-configure: CONF (old key=value text) goes into Configure (user level)."""
+        from cityhelp import configure_text  # noqa: E402
+        path = os.path.join(self.base, name)
+        os.makedirs(path)
+        configure_text(conf)
+        return path
+
+    def write_user(self, text):
+        os.makedirs(os.path.dirname(self.user), exist_ok=True)
+        with open(self.user, "w") as fh:
+            fh.write(text)
+
+
+def text(path):
+    with open(path) as fh:
+        return fh.read()
+
+
+SETTINGS_five = {
+    "model": "opus",
+    "extraKnownMarketplaces": {
+        "auto-pipeline": {"source": {"source": "github", "repo": "maverick1014/auto-pipeline"}},
+    },
+}
+
+
+KNOWN_five = {"auto-pipeline": {"source": {"source": "github", "repo": "maverick1014/auto-pipeline"},
+                           "installLocation": "/x/auto-pipeline"}}
+
+
+BAK = ".bak-auto-pipeline"
+
+
+class TestFirstBackupIsKept(TmpCase):
+    def setUp(self):
+        super().setUp()
+        import agent_update
+        self.u = agent_update
+        self.cdir = os.path.join(self.base, "home", ".claude")
+        self.s = self.write(os.path.join(self.cdir, "settings.json"), SETTINGS_five)
+        self.k = self.write(os.path.join(self.cdir, "plugins", "known_marketplaces.json"), KNOWN_five)
+
+    def write(self, path, data):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as fh:
+            fh.write(json.dumps(data, indent=4) + "\n")   # the user's own style, not ours
+        return path
+
+    def read(self, path):
+        with open(path, "rb") as fh:
+            return fh.read()
+
+    def test_many_flips_keep_the_original(self):
+        originals = {p: self.read(p) for p in (self.s, self.k)}
+        for on in (False, True, False, True, False):
+            self.u.apply_auto_update(on, self.cdir)
+            for path, raw in originals.items():
+                with self.subTest(flip=on, path=path):
+                    self.assertEqual(self.read(path + BAK), raw, "the backup is the file before the first flip")
+        self.assertIs(json.loads(self.read(self.s))["extraKnownMarketplaces"]["auto-pipeline"]["autoUpdate"], False)
+        self.assertIs(json.loads(self.read(self.k))["auto-pipeline"]["autoUpdate"], False)
+
+    def test_an_old_backup_is_never_overwritten(self):
+        for path in (self.s, self.k):
+            with open(path + BAK, "wb") as fh:
+                fh.write(b"older backup\n")
+        lines = self.u.apply_auto_update(False, self.cdir)
+        for path in (self.s, self.k):
+            with self.subTest(path=path):
+                self.assertEqual(self.read(path + BAK), b"older backup\n")
+        self.assertIs(json.loads(self.read(self.s))["extraKnownMarketplaces"]["auto-pipeline"]["autoUpdate"], False)
+        self.assertTrue(any(self.s + BAK in line for line in lines), lines)
+
+    def test_the_first_flip_still_writes_the_backup(self):
+        raw = self.read(self.s)
+        lines = self.u.apply_auto_update(False, self.cdir)
+        self.assertEqual(self.read(self.s + BAK), raw)
+        self.assertTrue(any("autoUpdate set to false" in l and self.s + BAK in l for l in lines), lines)
+
+
+if __name__ == "__main__":
+    unittest.main()

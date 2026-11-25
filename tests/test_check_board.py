@@ -16,7 +16,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 from scripthelp import BIN, ScriptCase  # noqa: E402
 import test_agent_board as tb  # noqa: E402
-import test_watch_tell as tw  # noqa: E402
+import test_agent_watch as tw  # noqa: E402  (test-slim: was test_watch_tell)
 from watchhelp import sha8  # noqa: E402
 
 

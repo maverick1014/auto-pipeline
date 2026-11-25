@@ -1,67 +1,6 @@
-"""Failing tests: one clear main manager per repo (city-roles R3, R4; owner 2026-09-30).
+"""Tests of agent-start.sh main-manager seat: the lock line, second sessions, take-over, release.
 
-Bug (E3, v4-pospro): the old main manager got "close case", finished, and stayed alive holding
-agent_main.lock. The owner opened a new session; agent-start.sh said "second"; it became
-"v4-pospro Helper". The owner believed there was no main manager.
-
-CONTRACT (bin/agent-roots.sh role_read, bin/agent-start.sh, bin/agent-close-case.sh,
-skills/close-case/SKILL.md). "this session" = $CLAUDE_PID, else the first claude ancestor.
-
-  Lock <git common dir>/agent_main.lock, one line written by agent-start.sh (role main, takeover,
-  --take-over):  "<pid> <YYYY-MM-DD> <HH:MM> <sid> <terminal>"
-      sid       the hook's stdin session_id, else $CLAUDE_CODE_SESSION_ID, else "-"
-      terminal  $ORCA_TERMINAL_HANDLE, else "-"
-  An old lock "<pid> <date> <time>" is still read; "since" stays "<date> <time>".
-
-  R4 second session (a live main manager holds the lock, not this session): the ROLE line names it
-      ROLE: task manager, human-direct (W10). Main manager already running: pid <pid>
-      ("<repo> Manager", terminal <terminal>), since <date> <time>.
-  (", terminal <terminal>" only when the lock has one, never "-"), and a line on how to take over,
-  only when the human asks:  <plugin>/bin/agent-start.sh --take-over
-
-  agent-start.sh --take-over   refused (exit 1, lock untouched) for a spawned agent (AGENT_ROLE).
-      The lock is already this session's -> says so, exit 0, lock untouched. Except (city-rediscover,
-      2026-10-01: an old lock "<pid> <date> <time>" hid a live main manager from the city, and
-      "Nothing changed" left it so): when this session knows its sid and the lock has none or
-      another one, or knows its terminal and the lock has none, the line is rewritten: same pid,
-      same "<date> <time>", this session's sid, this session's terminal (else the lock's own, else
-      "-"). It then says "Already the main manager (lock: pid <pid>). Lock line updated: ..." and
-      never "Nothing changed". The holder never changes, the closed list is not touched.
-      Else: the lock becomes this session's (line above); the old holder, when there was one,
-      becomes "closed" (below); this session's own human-direct line in agent_worktree.txt goes;
-      prints "ROLE: main manager" and the rename hint "/rename <repo> Manager". Exit 0.
-  agent-start.sh --release     only the lock holder (exit 1 and the holder's pid otherwise,
-      lock untouched). The lock goes, this session becomes "closed", prints "RELEASED". Exit 0.
-      No longer the last step of every whole-repo close case (session-clean, 2026-10-02): the
-      main manager asks to clean its session and stays (agent-start.sh --clean,
-      tests/test_agent_session_clean.py); --release is the other choice, named once.
-
-  closed session = a session released by --release or replaced by --take-over, while it does
-  not hold the lock (a later --take-over by it makes it main again). role_read: role "closed".
-      agent-start.sh (any source: startup, compact, clear, by hand) never writes the lock for it
-      and never says "ROLE: main manager"; it says it is no longer the main manager.
-      A new session in the repo is main again at once (no lock -> main), never "Helper".
-      agent-close-case.sh (UserPromptSubmit), on its first prompt after that, any prompt: tells it
-      once "no longer the main manager", who is main now (pid) when someone is, and
-      --take-over only if the human asks, and that its name may still say Manager: ask the human
-      once for /rename <repo> Helper (E2E 2026-09-30: the closed one still showed as "<repo> Manager"
-      in the city). Every later prompt: nothing (the "close case" words
-      keep their own text). Other sessions: nothing. This told-once mark is the only file the
-      hook ever writes.
-
-  BOUNCE 1 (main manager, laptop E2E): an agent running --take-over is denied by auto mode (right),
-  and an agent's --release can be denied too. So both seat moves are typed by the HUMAN, in that
-  session, never run by an agent. Every text that offers one gives the exact line and says the agent
-  never runs it itself ("never run it yourself"):
-      ! <plugin>/bin/agent-start.sh --take-over      second-session start text, closed notice and
-                                                     closed ROLE text, RELEASED output, PRINCIPLES W10
-      ! <plugin>/bin/agent-start.sh --release        whole-repo close-case hook text (main manager,
-                                                     the path of the plugin installed now), PRINCIPLES
-                                                     W13; skills/close-case part B names it in one
-                                                     line and points at the hook's line (no path)
-  The "!" prefix runs it in the session's own shell ($CLAUDE_PID, $CLAUDE_CODE_SESSION_ID set).
-
-Run: python3 -m unittest tests.test_agent_main_seat </dev/null
+One class per feature. Older task contracts: git log -p of this file.
 """
 
 import json
@@ -441,13 +380,6 @@ class TestTheTexts(SeatCase):
         result = self.repo.run("agent-close-case.sh", "--release-line", env={"CLAUDE_PID": NOBODY})
         self.assertOk(result)
         self.assertIn("--release", result.stdout)
-
-    def test_principles_say_it(self):
-        text = read("PRINCIPLES.md")
-        w10 = text[text.index("W10."):text.index("W11.")]
-        w13 = text[text.index("W13."):text.index("## C.")]
-        self.assertIn("--take-over", w10)
-        self.assertIn("--release", w13)
 
     def test_city_requirement_says_it(self):
         text = read("requirements", "city.md")

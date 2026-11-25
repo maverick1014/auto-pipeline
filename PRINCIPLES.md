@@ -4,6 +4,19 @@
 - Output shape: section E. Human language: the Language setting (H2).
 - Settings live only in /plugin -> Installed -> auto-pipeline -> Configure (S1). Other numbers are fixed constants in `bin/agent_conf.py`. Never hard-code.
 
+## 0. First
+
+P1. Fastest correct way
+- Owner 2026-11-25: "use the most fast and efficiency way for any of your works". This comes first, for every agent, at every step
+- Before each step ask: what is the quickest way to the correct result? Take that way
+- Check, do not wait: a quick check (read the file, a trial merge) settles a doubt faster than a queue or a question
+- A task waits for another only when that check shows a real overlap; "same file" alone is no reason
+- Decide, do not ask: when the owner's words or a rule already answer it, or a default can be taken and logged, go on
+- Ask the owner only an owner-level or irreversible call (W1)
+- Challenged on a decision: check the facts first, then keep it with the evidence, or change it and say what was wrong
+- Work that does not depend on other work runs in parallel; take the smallest change and the cheapest tool that give the same result
+- Fast never means less: no required check skipped, no failure hidden, no cleanup left. A wrong result is the slowest way
+
 ## A. Repo
 
 R1. One flow, two lanes
@@ -571,7 +584,7 @@ The pieces. Rules are in A-E; this is where things live.
 
 Roles and routing: W9. Check blocks: R8; installing into a cloud repo: the cloud-pack skill (`/auto-pipeline:cloud-pack`, `bin/agent-cloud-pack.sh`; `--update` refreshes only bin, PRINCIPLES.md, VERSION and packed skills/agents). A cloud session reads only what is committed: `git clone https://github.com/maverick1014/auto-pipeline /tmp/ap && /tmp/ap/bin/agent-cloud-pack.sh . --language zh`, then commit and push (the Claude GitHub App must be on the repo), then open a new session. The pack lands in `.claude/auto-pipeline/` (bin, PRINCIPLES.md, VERSION), `.claude/skills`, `.claude/agents`, `.claude/settings.json`, one pointer line in `CLAUDE.md`, the four `agent_*.txt`, `.secrets/`, `AGENTS.md`.
 
-Agent skills: `/auto-pipeline:dispatch` (route one task), `/auto-pipeline:merge` (the reviewer and the check deputy, then the merge deputy), `/auto-pipeline:cloud-pack`. A second session in a repo becomes a task manager by itself (W10).
+Agent skills: `/auto-pipeline:dispatch` (route one task), `/auto-pipeline:merge` (the reviewer and the check deputy, then the merge deputy), `/auto-pipeline:cloud-pack`, `/auto-pipeline:test-slim` (slim a repo's tests). A second session in a repo becomes a task manager by itself (W10).
 
 ### Tree
 

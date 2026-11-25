@@ -1,0 +1,431 @@
+"""Tests of bin/agent-version.sh: the stale plugin check, its hook, the retrain guard.
+
+One class per feature. Older task contracts: git log -p of this file.
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from scripthelp import ScriptCase  # noqa: E402
+from test_agent_estimate import EstimateCase, steady, NOW, version  # noqa: E402
+
+CACHE_REL = (".claude", "plugins", "cache", "auto-pipeline", "auto-pipeline")
+KEY = "auto-pipeline@auto-pipeline"
+HOOK_COMMAND = '"${CLAUDE_PLUGIN_ROOT}"/bin/agent-version.sh hook'
+
+
+class Versions:
+    """Put the test's plugin copy into a version folder, with neighbours."""
+
+    def cache_dir(self, config_dir=None):
+        if config_dir:
+            return os.path.join(config_dir, *CACHE_REL[1:])
+        return os.path.join(self.repo.fake_home(), *CACHE_REL)
+
+    def add_version(self, cache, name, with_start=True):
+        folder = os.path.join(cache, name)
+        os.makedirs(os.path.join(folder, "bin"), exist_ok=True)
+        if with_start:
+            with open(os.path.join(folder, "bin", "agent-start.sh"), "w") as fh:
+                fh.write("#!/usr/bin/env bash\nexit 0\n")
+            os.chmod(os.path.join(folder, "bin", "agent-start.sh"), 0o755)
+        return folder
+
+    def run_from(self, folder):
+        """The plugin copy moves to `folder` (its name is the running version)."""
+        os.makedirs(os.path.dirname(folder), exist_ok=True)
+        shutil.move(self.repo.plugin, folder)
+        self.repo.plugin = folder
+        self.repo.plugin_bin = os.path.join(folder, "bin")
+        return folder
+
+    def stale_setup(self, running="0.34.1", newest="0.35.0", config_dir=None):
+        cache = self.cache_dir(config_dir)
+        os.makedirs(cache, exist_ok=True)
+        self.run_from(os.path.join(cache, running))
+        if newest and newest != running:
+            self.add_version(cache, newest)
+        return cache
+
+    def ver(self, *args, env=None, stdin=None, cwd=None):
+        return self.repo.run("agent-version.sh", *args, env=env or {},
+                             stdin=stdin, cwd=cwd)
+
+
+# ------------------------------------------------------------ 1: the check
+
+class TestCheck(Versions, ScriptCase):
+    script = "agent-version.sh"
+
+    def test_older_than_installed_is_stale(self):
+        cache = self.stale_setup("0.34.1", "0.35.0")
+        r = self.ver("check")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, "0.34.1\t0.35.0\t%s/0.35.0\n" % cache)
+
+    def test_running_and_newest(self):
+        cache = self.stale_setup("0.34.1", "0.35.0")
+        self.assertEqual(self.assertOk(self.ver("running")), "0.34.1\n")
+        self.assertEqual(self.assertOk(self.ver("newest")), "0.35.0\t%s/0.35.0\n" % cache)
+
+    def test_the_newest_is_current(self):
+        cache = self.stale_setup("0.35.0", None)
+        self.add_version(cache, "0.34.1")
+        self.add_version(cache, "0.26.1")
+        r = self.ver("check")
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (1, "", ""))
+
+    def test_numeric_compare(self):
+        cache = self.stale_setup("0.34.9", "0.34.10")
+        r = self.ver("check")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, "0.34.9\t0.34.10\t%s/0.34.10\n" % cache)
+
+    def test_a_sha_folder_and_a_half_folder_never_count(self):
+        cache = self.stale_setup("0.34.1", None)
+        self.add_version(cache, "6a95022a8f9b")
+        self.add_version(cache, "0.99.0", with_start=False)
+        self.add_version(cache, "0.34.0")
+        r = self.ver("check")
+        self.assertEqual((r.returncode, r.stdout), (1, ""))
+        self.assertEqual(self.assertOk(self.ver("newest")), "0.34.1\t%s/0.34.1\n" % cache)
+
+    def test_a_running_copy_outside_the_cache(self):
+        cache = self.cache_dir()
+        self.add_version(cache, "0.35.0")
+        self.run_from(os.path.join(self.repo.base, "e2e", "0.34.9"))
+        r = self.ver("check")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, "0.34.9\t0.35.0\t%s/0.35.0\n" % cache)
+
+    def test_a_running_copy_newer_than_the_cache(self):
+        cache = self.cache_dir()
+        self.add_version(cache, "0.35.0")
+        self.run_from(os.path.join(self.repo.base, "e2e", "0.36.0"))
+        r = self.ver("check")
+        self.assertEqual((r.returncode, r.stdout), (1, ""))
+
+    def test_a_repo_copy_is_never_stale(self):
+        # the plugin folder of the fixture is named "plugin", like a repo bin/ copy
+        self.add_version(self.cache_dir(), "0.35.0")
+        r = self.ver("check")
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (1, "", ""))
+        self.assertEqual(self.assertOk(self.ver("running")), "")
+
+    def test_a_cloud_pack_is_never_stale(self):
+        self.add_version(self.cache_dir(), "0.35.0")
+        self.run_from(os.path.join(self.repo.dir, ".claude", "auto-pipeline"))
+        r = self.ver("check")
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (1, "", ""))
+
+    def test_no_cache_folder_is_silent(self):
+        self.run_from(os.path.join(self.repo.base, "e2e", "0.34.1"))
+        r = self.ver("check")   # no fake home: CLAUDE_CONFIG_DIR points nowhere
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (1, "", ""))
+        self.assertEqual(self.assertOk(self.ver("newest")), "")
+
+    def test_claude_config_dir_wins(self):
+        conf = os.path.join(self.repo.base, "conf")
+        cache = self.stale_setup("0.34.1", "0.35.0", config_dir=conf)
+        r = self.ver("check", env={"CLAUDE_CONFIG_DIR": conf})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, "0.34.1\t0.35.0\t%s/0.35.0\n" % cache)
+
+    def test_a_bad_argument(self):
+        for args in ((), ("nope",)):
+            with self.subTest(args=args):
+                r = self.ver(*args)
+                self.assertEqual(r.returncode, 2)
+                self.assertIn("usage", r.stderr.lower())
+                self.assertEqual(r.stdout, "")
+
+
+# ------------------------------------------------------------ 2: the hook
+
+class TestHook(Versions, ScriptCase):
+    script = "agent-version.sh"
+
+    def payload(self, sid="s-1", cwd=None, prompt="hello"):
+        data = {"transcript_path": "/tmp/none.jsonl", "cwd": cwd or self.repo.cwd,
+                "permission_mode": "auto", "hook_event_name": "UserPromptSubmit",
+                "prompt": prompt}
+        if sid is not None:
+            data["session_id"] = sid
+        return json.dumps(data)
+
+    def hook(self, stdin, env=None, cwd=None):
+        r = self.ver("hook", stdin=stdin, env=env, cwd=cwd)
+        self.assertOk(r)
+        self.assertEqual(r.stderr, "", r.stderr)
+        return r.stdout
+
+    def line(self, cache, sid="s-1", running="0.34.1", newest="0.35.0"):
+        tail = "(claude --resume %s)." % sid if sid else "(claude --resume)."
+        return ("STALE PLUGIN: this session runs %s, %s is installed. Call %s/%s/bin/... for "
+                "every script and in every subagent brief. Restart this session at the next "
+                "quiet point %s\n" % (running, newest, cache, newest, tail))
+
+    def test_stale_prints_one_line(self):
+        cache = self.stale_setup()
+        self.assertEqual(self.hook(self.payload()), self.line(cache))
+
+    def test_once_per_session(self):
+        cache = self.stale_setup()
+        self.assertEqual(self.hook(self.payload()), self.line(cache))
+        self.assertEqual(self.hook(self.payload(prompt="again")), "")
+        self.assertEqual(self.hook(self.payload(prompt="and again")), "")
+
+    def test_another_session_is_told(self):
+        cache = self.stale_setup()
+        self.hook(self.payload("s-1"))
+        self.assertEqual(self.hook(self.payload("s-2")), self.line(cache, "s-2"))
+
+    def test_a_newer_install_is_told_again(self):
+        cache = self.stale_setup()
+        self.hook(self.payload())
+        self.add_version(cache, "0.36.0")
+        self.assertEqual(self.hook(self.payload()), self.line(cache, newest="0.36.0"))
+        self.assertEqual(self.hook(self.payload()), "")
+
+    def test_the_marker_lives_in_the_git_dir(self):
+        self.stale_setup()
+        before = subprocess.run(["git", "-C", self.repo.dir, "status", "--porcelain"],
+                                capture_output=True, text=True).stdout
+        self.hook(self.payload())
+        marker = self.repo.path(".git", "agent_stale_s-1")
+        self.assertTrue(os.path.isfile(marker), "no marker at %s" % marker)
+        with open(marker) as fh:
+            self.assertEqual(fh.read().strip(), "0.35.0")
+        after = subprocess.run(["git", "-C", self.repo.dir, "status", "--porcelain"],
+                               capture_output=True, text=True).stdout
+        self.assertEqual(after, before)
+
+    def test_a_worktree_finds_the_project(self):
+        cache = self.stale_setup()
+        wt = self.repo.detach_scripts_to_worktree()
+        self.assertEqual(self.hook(self.payload(cwd=wt), cwd=wt), self.line(cache))
+
+    def test_session_id_from_the_environment(self):
+        cache = self.stale_setup()
+        out = self.hook(self.payload(sid=None), env={"CLAUDE_CODE_SESSION_ID": "s-env"})
+        self.assertEqual(out, self.line(cache, "s-env"))
+        self.assertEqual(self.hook(self.payload(sid=None), env={"CLAUDE_CODE_SESSION_ID": "s-env"}), "")
+
+    def test_no_session_id_at_all(self):
+        cache = self.stale_setup()
+        self.assertEqual(self.hook(self.payload(sid=None)), self.line(cache, None))
+        leftovers = [n for n in os.listdir(self.repo.path(".git")) if n.startswith("agent_stale_")]
+        self.assertEqual(leftovers, [])
+
+    def test_bad_stdin_never_breaks(self):
+        cache = self.stale_setup()
+        for stdin in ("", "not json", "{"):
+            with self.subTest(stdin=stdin):
+                out = self.hook(stdin)
+                self.assertIn(out, ("", self.line(cache, None)))
+
+    def test_a_repo_not_set_up_is_silent(self):
+        self.stale_setup()
+        os.remove(self.repo.path("agent_todo.txt"))   # settings-configure: the set-up mark
+        self.assertEqual(self.hook(self.payload()), "")
+
+    def test_current_is_silent_and_cheap(self):
+        cache = self.stale_setup("0.35.0", None)
+        self.add_version(cache, "0.34.1")
+        log = os.path.join(self.repo.base, "python.log")
+        self.repo.stub_tool("python3", "#!/usr/bin/env bash\necho called >> %s\nexit 1\n" % log)
+        t = time.time()
+        out = self.hook(self.payload())
+        self.assertLess(time.time() - t, 2.0)
+        self.assertEqual(out, "")
+        self.assertFalse(os.path.exists(log), "python3 was started on the not-stale path")
+        leftovers = [n for n in os.listdir(self.repo.path(".git")) if n.startswith("agent_stale_")]
+        self.assertEqual(leftovers, [])
+
+    def test_a_repo_copy_is_silent(self):
+        self.add_version(self.cache_dir(), "0.35.0")
+        self.assertEqual(self.hook(self.payload()), "")
+
+
+# ------------------------------------------------------------ 3: start text
+
+class TestStartText(Versions, ScriptCase):
+    script = "agent-start.sh"
+
+    def installed(self, entries, raw=None):
+        folder = os.path.join(self.repo.fake_home(), ".claude", "plugins")
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, "installed_plugins.json"), "w") as fh:
+            if raw is not None:
+                fh.write(raw)
+            else:
+                json.dump({"version": 2, "plugins": {KEY: entries}}, fh, indent=2)
+
+    def entry(self, scope, ver, path=None):
+        e = {"scope": scope, "version": ver,
+             "installPath": "/x/cache/auto-pipeline/auto-pipeline/%s" % ver}
+        if path:
+            e["projectPath"] = path
+        return e
+
+    def start(self, env=None, cwd=None):
+        return self.assertOk(self.repo.run("agent-start.sh", env=env or {}, cwd=cwd))
+
+    # settings-configure / plugin-scope-sync (owner 3A 2026-11-25): the start now runs
+    # `claude plugin update` for a stale scope of this folder (agent_update.py sync), every
+    # role; the claude stub of the test fixture logs the call. Was: an OLD PLUGIN line.
+    def sync_lines(self, out):
+        return [l for l in out.splitlines() if l.startswith(("updated ", "STALE SCOPE:", "OLD PLUGIN:"))]
+
+    def updates(self):
+        return [c for c in self.repo.claude_calls() if c["args"][:2] == ["plugin", "update"]]
+
+    def setUp(self):
+        super().setUp()
+        # the running plugin is the newest installed: a cache folder with its plugin.json
+        self.cache = self.stale_setup("0.35.0", None)
+        os.makedirs(os.path.join(self.repo.plugin, ".claude-plugin"), exist_ok=True)
+        with open(os.path.join(self.repo.plugin, ".claude-plugin", "plugin.json"), "w") as fh:
+            json.dump({"name": "auto-pipeline", "version": "0.35.0"}, fh)
+
+    def test_an_old_project_scope(self):
+        self.installed([self.entry("project", "0.32.0", self.repo.dir),
+                        self.entry("user", "0.35.0")])
+        self.assertEqual(self.sync_lines(self.start()),
+                         ["updated project %s: 0.32.0 -> 0.35.0, restart to apply" % self.repo.dir])
+        self.assertEqual([c["args"][-1] for c in self.updates()], ["project"])
+
+    def test_an_old_user_scope(self):
+        self.installed([self.entry("user", "0.34.1")])
+        self.assertEqual(self.sync_lines(self.start()), ["updated user: 0.34.1 -> 0.35.0, restart to apply"])
+
+    def test_both_old(self):
+        self.installed([self.entry("user", "0.34.1"),
+                        self.entry("project", "0.32.0", self.repo.dir)])
+        self.assertEqual(sorted(self.sync_lines(self.start())),
+                         sorted(["updated user: 0.34.1 -> 0.35.0, restart to apply",
+                                 "updated project %s: 0.32.0 -> 0.35.0, restart to apply" % self.repo.dir]))
+
+    def test_a_local_scope(self):
+        self.installed([self.entry("local", "0.31.0", self.repo.dir)])
+        self.assertEqual(self.sync_lines(self.start()),
+                         ["updated local %s: 0.31.0 -> 0.35.0, restart to apply" % self.repo.dir])
+
+    def test_a_worktree_entry_counts_from_inside_it(self):
+        wt = self.repo.detach_scripts_to_worktree()
+        self.installed([self.entry("project", "0.29.0", wt)])
+        self.assertEqual(self.sync_lines(self.start(cwd=wt)),
+                         ["updated project %s: 0.29.0 -> 0.35.0, restart to apply" % os.path.realpath(wt)])
+
+    def test_other_repos_and_current_entries_say_nothing(self):
+        other = self.repo.make_project("other")
+        self.installed([self.entry("project", "0.32.0", other),
+                        self.entry("project", "0.35.0", self.repo.dir),
+                        self.entry("user", "0.35.0")])
+        self.assertEqual(self.sync_lines(self.start()), [])
+        self.assertEqual(self.updates(), [])
+
+    def test_a_broken_or_missing_file_says_nothing(self):
+        self.assertEqual(self.sync_lines(self.start()), [])
+        self.installed(None, raw="{not json")
+        self.assertEqual(self.sync_lines(self.start()), [])
+
+    def test_a_spawned_agent_syncs_its_own_folder_too(self):
+        self.installed([self.entry("project", "0.32.0", self.repo.dir)])
+        out = self.start({"AGENT_ROLE": "task-manager"})
+        self.assertEqual(self.sync_lines(out),
+                         ["updated project %s: 0.32.0 -> 0.35.0, restart to apply" % self.repo.dir])
+
+    def test_the_scopes_cli_is_gone(self):
+        r = self.ver("scopes", self.repo.dir)
+        self.assertNotEqual(r.returncode, 0)
+
+
+# ------------------------------------------------------------ 4: old-writer guard
+
+class TestRetrainGuard(Versions, EstimateCase):
+    script = "agent-file.sh"
+
+    SKIP = "retrain skipped: 0.34.1 is older than installed 0.35.0"
+
+    def setUp(self):
+        super().setUp()
+        if not os.path.exists(os.path.join(ROOT, "bin", "agent-version.sh")):
+            self.fail("bin/agent-version.sh does not exist yet. Write it.")
+
+    def todo(self, name="t-new"):
+        self.write("agent_todo.txt", "%s | big | one shell script | est 50m | opened 2026-10-05 15:00 | by main\n" % name)
+
+    def done(self, name="t-new"):
+        return self.assertOk(self.af("todo", "done", name, "--work", "25", "--wait", "0",
+                                     "--lane", "full", "--mock", "no", "--type", "script"))
+
+    def test_retrain_is_skipped_when_stale(self):
+        self.stale_setup()
+        self.completed(steady(30))
+        for args in ((), ("--force",)):
+            with self.subTest(args=args):
+                out = self.assertOk(self.af("retrain", *args))
+                self.assertEqual(self.lines(out), [self.SKIP])
+                self.assertIsNone(self.model_text())
+
+    def test_an_existing_model_is_untouched(self):
+        self.stale_setup()
+        self.completed(steady(40))
+        self.model(versions=[version()])
+        before = self.model_text()
+        out = self.assertOk(self.af("retrain", "--force"))
+        self.assertEqual(self.lines(out), [self.SKIP])
+        self.assertEqual(self.model_text(), before)
+
+    def test_todo_done_still_works_and_skips_the_retrain(self):
+        self.stale_setup()
+        self.completed(steady(29))
+        self.todo()
+        out = self.done()
+        self.assertIn("todo done: t-new", out)
+        self.assertIn(self.SKIP, self.lines(out))
+        self.assertEqual(self.verdicts(out), [])
+        self.assertIsNone(self.model_text())
+        self.assertIn(" | t-new | ", self.repo.read("agent_completed.txt"))
+        self.assertEqual(self.repo.read("agent_todo.txt").strip(), "")
+
+    def test_the_newest_still_retrains(self):
+        self.stale_setup("0.35.0", None)
+        self.add_version(self.cache_dir(), "0.34.1")
+        self.completed(steady(30))
+        out = self.assertOk(self.af("retrain"))
+        self.assertNotIn("retrain skipped", out)
+        self.assertEqual(self.model_json()["current"], 1)
+
+    def test_a_repo_copy_still_retrains(self):
+        self.add_version(self.cache_dir(), "0.35.0")
+        self.completed(steady(30))
+        out = self.assertOk(self.af("retrain"))
+        self.assertNotIn("retrain skipped", out)
+        self.assertEqual(self.model_json()["current"], 1)
+
+    def test_no_version_script_still_retrains(self):
+        self.stale_setup()
+        os.remove(os.path.join(self.repo.plugin_bin, "agent-version.sh"))
+        self.completed(steady(30))
+        out = self.assertOk(self.af("retrain"))
+        self.assertNotIn("retrain skipped", out)
+        self.assertEqual(self.model_json()["current"], 1)
+
+
+# ------------------------------------------------------------ 5: rule, docs, release
+
+
+if __name__ == "__main__":
+    unittest.main()
