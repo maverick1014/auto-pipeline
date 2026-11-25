@@ -401,3 +401,31 @@ class TestThisRepo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAgentFileHeader(unittest.TestCase):
+    """Kick-off answer 4: --level and todo level still work for old callers; no doc names them as
+    the way to work. The usage header of agent-file.sh says so on every line that names them."""
+
+    def header(self):
+        lines = []
+        for line in read("bin", "agent-file.sh").splitlines():
+            if not line.startswith("#"):
+                break
+            lines.append(line)
+        return lines
+
+    def test_level_lines_say_old_callers_only(self):
+        hits = [l for l in self.header() if "--level" in l or "todo level" in l]
+        self.assertTrue(hits)
+        for l in hits:
+            with self.subTest(line=l[:60]):
+                self.assertIn("old callers", l)
+                self.assertNotIn("risk type", l)
+
+    def test_the_header_names_the_blocks_commands(self):
+        text = "\n".join(self.header())
+        for cmd in ("--checks", "todo checks", "todo est", "checks gate", "agent-file.sh next", "edge add",
+                    "agent-file.sh check "):
+            with self.subTest(cmd=cmd):
+                self.assertIn(cmd, text)
