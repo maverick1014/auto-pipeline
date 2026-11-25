@@ -66,8 +66,7 @@ class NamesCase(unittest.TestCase):
 
     def state(self, done_ttl=600):
         st = ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=self.world,
-                          plans=ac.load_plans(), count_fn=lambda i: 0,
-                          balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}}, done_ttl=done_ttl)
+                          done_ttl=done_ttl)
         self.client = st.add_client()
         self.client.queue.get_nowait()
         return st
@@ -140,7 +139,7 @@ class TestNamesSurviveRestart(NamesCase):
 
     def test_old_world_without_names_loads(self):
         w = ac.new_world()
-        ac.add_territory(w, ac.load_plans(), REPO, "app", 0)
+        ac.add_territory(w, REPO, "app")
         ac.save_world(self.world, w)
         st = self.state()
         self.line(st, "PostToolUse", aid="w3", at=TYPE, tool="Read")

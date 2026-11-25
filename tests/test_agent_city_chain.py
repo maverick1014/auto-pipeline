@@ -128,8 +128,7 @@ class CityCase(unittest.TestCase):
 
     def new_state(self):
         return ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=self.world_path,
-                            plans=ac.load_plans(), count_fn=lambda i: self.lines_count,
-                            balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}}, main_fn=self.mains)
+                            main_fn=self.mains)
 
     def tearDown(self):
         shutil.rmtree(self.base, ignore_errors=True)
@@ -304,88 +303,8 @@ class TestGovernorPerTerritory(CityCase):
         self.assertEqual(self.st.asks_view()[0]["terr"], TB)
 
 
-class TestLeadsAndOffices(CityCase):
-
-    def test_every_plan_has_office_spots(self):
-        for plan in ac.load_plans():
-            with self.subTest(plan=plan["id"]):
-                spots = [tuple(s) for s in plan.get("offices", [])]
-                self.assertGreaterEqual(len(spots), 4)
-                roads = ac._road_set(plan)
-                plots = {(x, z) for x, z, _ in plan["plots"]}
-                rest = plan.get("rest")
-                rest_tiles = {(rest[0] + i, rest[1] + j) for i in (0, 1) for j in (0, 1)} if rest else set()
-                for x, z in spots:
-                    self.assertNotIn((x, z), roads)
-                    self.assertNotIn((x, z), plots)
-                    self.assertNotIn((x, z), rest_tiles)
-                    self.assertFalse(-2 <= x <= 1 and -2 <= z <= 1, "office on the hall or plaza")
-                for i, a in enumerate(spots):
-                    for b in spots[i + 1:]:
-                        self.assertGreaterEqual(max(abs(a[0] - b[0]), abs(a[1] - b[1])), 2)
-
-    def test_a_lead_gets_an_office_on_land(self):
-        self.governor()
-        self.lead("tm1")
-        spawn = [e for e in self.drain() if e.get("type") == "spawn" and e["id"] == "s:tm1"][0]
-        self.assertEqual(spawn["lead"], "")
-        office = spawn["office"]
-        self.assertIsInstance(office["x"], int)
-        snap = self.snap()
-        self.assertEqual(self.agent(snap, "s:tm1")["office"], office)
-        view = snap["world"]
-        t = self.terr_view(snap, TA)
-        self.assertIn({"lead": "s:tm1", "site": "", "x": office["x"], "z": office["z"]}, t["offices"])  # "site": city-worktrees
-        self.assertEqual(tile(view, office["x"], office["z"]), "g")
-        plots = {(p["x"], p["z"]) for p in t["plots"]}
-        self.assertNotIn((office["x"], office["z"]), plots)
-
-    def test_two_leads_two_offices(self):
-        self.lead("tm1")
-        self.lead("tm2")
-        t = self.terr_view(self.snap(), TA)
-        spots = [(o["x"], o["z"]) for o in t["offices"]]
-        self.assertEqual(len(spots), 2)
-        self.assertGreaterEqual(max(abs(spots[0][0] - spots[1][0]), abs(spots[0][1] - spots[1][1])), 2)
-
-    def test_workers_know_their_lead(self):
-        self.lead("tm1")
-        self.worker("w1", "tm1")
-        spawn = [e for e in self.drain() if e.get("type") == "spawn" and e["id"] == "w1"][0]
-        self.assertEqual(spawn["lead"], "s:tm1")
-        self.assertIsNone(spawn.get("office"))
-        self.assertEqual(self.agent(self.snap(), "w1")["lead"], "s:tm1")
-
-    def test_a_governors_helper_has_no_lead(self):
-        self.governor("g1")
-        self.worker("d1", "g1", role="")
-        spawn = [e for e in self.drain() if e.get("type") == "spawn" and e["id"] == "d1"][0]
-        self.assertEqual(spawn["lead"], "")
-
-    def test_a_lead_leaving_frees_its_office(self):
-        self.lead("tm1")
-        self.line("SessionEnd", "tm1", role="task-manager")
-        self.assertEqual(self.terr_view(self.snap(), TA)["offices"], [])
-        self.lead("tm2")
-        self.assertEqual(len(self.terr_view(self.snap(), TA)["offices"]), 1)
-
-
 class TestServerE2EFindings(CityCase):
     """Task manager's headless run (real server, synthetic hook lines)."""
-
-    def test_offices_do_not_outlive_a_restart(self):
-        # a lead that ended while the server was down never sends SessionEnd: its cabin must not stay forever
-        self.lead("tm1")
-        self.assertEqual(len(self.terr_view(self.snap(), TA)["offices"]), 1)
-        again = self.new_state()
-        snap = decode(again.add_client().queue.get_nowait())
-        self.assertEqual(self.terr_view(snap, TA)["offices"], [], "no office until a live lead shows up again")
-        self.now += 1
-        again.feed_line({"ev": "PostToolUse", "sid": "tm1", "aid": "", "at": "", "tool": "Bash", "nt": "", "proj": "app",
-                         "role": "task-manager", "desc": "", "sub": "", "q": "", "klen": "", "repo": A_REPO,
-                         "kind": "", "ask": ""}, self.now)
-        snap = decode(again.add_client().queue.get_nowait())
-        self.assertEqual(len(self.terr_view(snap, TA)["offices"]), 1, "a live lead gets its office back")
 
     def test_a_governors_own_ask_is_the_governors(self):
         # no gov-watch has polled yet (first turn): the session is still the governor of its territory
@@ -407,8 +326,7 @@ class TestNoRepoIsTheStartTerritory(CityCase):
 
     def new_state(self):
         return ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=self.world_path,
-                            plans=ac.load_plans(), count_fn=lambda i: self.lines_count,
-                            balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}}, start_repo=A_REPO,
+                            start_repo=A_REPO,
                             main_fn=self.mains)
 
     def test_one_governor_for_the_start_territory(self):
@@ -434,13 +352,6 @@ class TestNoRepoIsTheStartTerritory(CityCase):
         self.governor("g2", B_REPO)
         self.line("PostToolUse", "g2", B_REPO, tool="Read")
         self.assertEqual(self.snap()["gov"]["terr"], TA)
-
-    def test_a_lead_without_repo_gets_an_office_there(self):
-        self.lead("tm-old", repo="")
-        spawn = [e for e in self.drain() if e.get("type") == "spawn" and e["id"] == "s:tm-old"][0]
-        self.assertIsNotNone(spawn.get("office"))
-        self.assertEqual(spawn["terr"], TA)
-
 
 class TestChain(CityCase):
 
@@ -533,54 +444,6 @@ class TestChain(CityCase):
         self.assertIn(("relay_end", "d1", "governor"), self.relays(self.drain()))
 
 
-class TestRestPlace(CityCase):
-
-    def test_every_plan_has_a_rest_place_spot(self):
-        for plan in ac.load_plans():
-            with self.subTest(plan=plan["id"]):
-                x, z = plan["rest"]
-                roads = ac._road_set(plan)
-                plots = {(px, pz) for px, pz, _ in plan["plots"]}
-                for tx in (x, x + 1):
-                    for tz in (z, z + 1):
-                        self.assertNotIn((tx, tz), roads)
-                        self.assertNotIn((tx, tz), plots)
-                        self.assertFalse(-2 <= tx <= 1 and -2 <= tz <= 1, "rest place on the hall or plaza")
-
-    def test_day_zero_has_none(self):
-        self.governor()
-        self.assertIsNone(self.terr_view(self.snap(), TA)["rest"])
-
-    def test_the_first_done_opens_it_for_good(self):
-        self.governor()
-        self.lead("tm1")
-        self.worker("w1", "tm1")
-        self.line("SubagentStop", "tm1", role="task-manager", aid="w1", at="worker")
-        snap = self.snap()
-        rest = self.terr_view(snap, TA)["rest"]
-        self.assertIsNotNone(rest)
-        for dx in (0, 1):
-            for dz in (0, 1):
-                self.assertEqual(tile(snap["world"], rest["x"] + dx, rest["z"] + dz), "g")
-        with open(self.world_path, encoding="utf-8") as fh:
-            saved = json.load(fh)
-        self.assertTrue(saved["territories"][A_REPO]["rest"])
-        again = self.new_state()
-        client = again.add_client()
-        snap2 = decode(client.queue.get_nowait())
-        self.assertEqual(self.terr_view(snap2, TA)["rest"], rest)
-
-    def test_a_world_without_the_key_loads(self):
-        w = ac.new_world()
-        ac.add_territory(w, ac.load_plans(), A_REPO, "app", 100)
-        w["territories"][A_REPO].pop("rest", None)
-        ac.save_world(self.world_path, w)
-        st = self.new_state()
-        snap = decode(st.add_client().queue.get_nowait())
-        self.assertIsNone(self.terr_view(snap, TA)["rest"])
-        self.assertEqual([n for n in os.listdir(self.base) if ".bad-" in n], [])
-
-
 class TestWorkerQuestionForm(unittest.TestCase):
 
     def test_worker_md_has_the_question_form(self):
@@ -595,48 +458,15 @@ class TestWorkerQuestionForm(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 def two_territory_view():
-    """A (village, a lead's office and a rest place) and B (town, no rest place yet)."""
-    plans = ac.load_plans()
-    w = ac.new_world()
-    for ident in (A_REPO, B_REPO):
-        t = ac.add_territory(w, plans, ident, "app", 6000)
-        t["lines"] = t["peak"] = 6000
-    w["territories"][B_REPO]["era"] = "town"
-    view = ac.layout(w, plans)
-    ta = next(t for t in view["territories"] if t["id"] == TA)
-    tb = next(t for t in view["territories"] if t["id"] == TB)
-    plots = {(p["x"], p["z"]) for t in view["territories"] for p in t["plots"]}
-
-    def free(x, z):
-        return tile(view, x, z) == "g" and (x, z) not in plots and not (
-            -2 <= x - ta["cx"] <= 1 and -2 <= z - ta["cz"] <= 1)
-
-    rest = office = None
-    for r in range(3, 9):
-        for dz in range(-r, r + 1):
-            for dx in range(-r, r + 1):
-                x, z = ta["cx"] + dx, ta["cz"] + dz
-                if rest is None and all(free(x + i, z + j) for i in (0, 1) for j in (0, 1)):
-                    rest = (x, z)
-    for r in range(3, 9):
-        for dz in range(-r, r + 1):
-            for dx in range(-r, r + 1):
-                x, z = ta["cx"] + dx, ta["cz"] + dz
-                if office is None and free(x, z) and max(abs(x - rest[0]), abs(z - rest[1])) >= 3 \
-                        and any(tile(view, x + a, z + b) in ".grtBb" for a, b in ((1, 0), (-1, 0), (0, 1), (0, -1))):
-                    office = (x, z)
-    ta["rest"] = {"x": rest[0], "z": rest[1]}
-    ta["offices"] = [{"lead": "s:L", "x": office[0], "z": office[1]}]
-    ta["era"] = "village"
-    tb["rest"] = None
-    tb["offices"] = []
-    return view
-
+    """city-office: A and B as two floors (A 1F, B 2F) of the office view."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from cityoffice import office_view_of
+    return office_view_of((A_REPO, "app"), (B_REPO, "app"))
 
 FEATURE_DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
 const OF = A.offices[0], OC = { x: OF.x + .5, y: OF.z + .5 }, RC = { x: A.rest.x + 1, y: A.rest.z + 1 };
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 function tick(sec){ for (let i = 0; i < Math.round(sec * 10); i++) update(.1); }
 const pos = id => { const c = byId(id); return c ? { x: c.x, y: c.y, state: c.state } : null; };
 const who = () => citizens.filter(c => !c.gone && c.state !== 'leaving' && !(c.path && c.path.length)).map(c => ({ id: c.id, x: c.x, y: c.y })); // standing people (strollers may pass)
@@ -679,97 +509,15 @@ def dist(a, b):
     return math.hypot(a["x"] - b["x"], a["y"] - b["y"])
 
 
-class TestPeoplePage(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        cls.r = run_sim(FEATURE_DRIVER, {"view": two_territory_view(), "ta": TA, "tb": TB}, FEATURE_REQUIRED)
-
-    def test_each_territory_has_its_own_governor_at_its_hall(self):
-        r = self.r
-        self.assertIsNotNone(r["gA"])
-        self.assertIsNotNone(r["gB"])
-        self.assertLessEqual(dist(r["gA"], r["hallA"]), 2.5)
-        self.assertLessEqual(dist(r["gB"], r["hallB"]), 2.5)
-
-    def test_lead_at_its_office_workers_around_it(self):
-        s, oc = self.r["settle"], self.r["OC"]
-        self.assertLessEqual(dist(s["L"], oc), 1.3, "the lead stands at its office")
-        for w in ("w1", "w2"):
-            self.assertLessEqual(dist(s[w], oc), 2.6, "%s lives around its lead's office" % w)
-
-    def test_resting_people_hang_out_at_the_rest_place(self):
-        s, r = self.r["settle"], self.r
-        self.assertEqual(s["r1"]["state"], "resting")
-        self.assertLessEqual(dist(s["r1"], r["RC"]), 1.8, "not on the bare ground by the hall")
-        for spot in r["restA"]:
-            self.assertLessEqual(dist(spot, r["RC"]), 1.8)
-        self.assertTrue(r["restB"], "no rest place yet: rest by the hall as before")
-
-    def test_nobody_shares_a_spot(self):
-        r = self.r
-        for label in ("settle", "c3"):
-            people = r[label]["all"] + [dict(r["gA"], id="gA"), dict(r["gB"], id="gB")]
-            for i, a in enumerate(people):
-                for b in people[i + 1:]:
-                    with self.subTest(when=label, a=a["id"], b=b["id"]):
-                        self.assertGreaterEqual(dist(a, b), 0.45)
-
-    def test_roster_groups_people_by_territory(self):
-        g = self.r["groups"]
-        self.assertEqual([x["terr"] for x in g], [TA, TB])
-        rows_a = g[0]["rows"]
-        self.assertEqual(rows_a[0], ["gov:" + TA, 0])
-        ia = [row[0] for row in rows_a]
-        self.assertEqual(rows_a[ia.index("s:L") + 1][1], 1)
-        self.assertEqual({row[0] for row in rows_a if row[1] == 1}, {"w1", "w2"})
-        self.assertIn(["r1", 0], rows_a)
-        self.assertEqual(g[1]["rows"][0], ["gov:" + TB, 0])
-        self.assertIn(["r2", 0], g[1]["rows"])
-
-    def test_worker_question_walks_to_the_office(self):
-        c1 = self.r["c1"]
-        self.assertLessEqual(dist(c1["w1"], self.r["OC"]), 1.3)
-        self.assertGreaterEqual(dist(c1["w1"], c1["L"]), 0.45, "beside its lead, not on it")
-        self.assertNotIn("完工", c1["bubble"], "a worker with a question does not cheer 完工啦")
-        self.assertNotEqual(c1["w1"]["state"], "resting", "a worker waiting for its lead does not rest yet")
-        self.assertEqual(c1["status"][1], "问经理")
-
-    def test_lead_walks_to_the_governor_worker_waits(self):
-        c2 = self.r["c2"]
-        self.assertLessEqual(dist(c2["L"], self.r["gA"]), 1.6)
-        self.assertGreaterEqual(dist(c2["L"], self.r["gA"]), 0.45, "beside the governor, not on him (headless E2E)")
-        self.assertEqual(c2["noWatch"][1], "在问总督", "a present governor answers relays even before its gov-watch runs")
-        self.assertLessEqual(dist(c2["w1"], self.r["OC"]), 1.6)
-        self.assertEqual(c2["status"][1], "在问总督")
-
-    def test_answer_sends_the_lead_home_and_the_worker_to_rest(self):
-        c3 = self.r["c3"]
-        self.assertLessEqual(dist(c3["L"], self.r["OC"]), 1.3)
-        self.assertEqual(c3["w1"]["state"], "resting")
-        self.assertLessEqual(dist(c3["w1"], self.r["RC"]), 1.8)
-
-    def test_permission_of_a_worker_goes_to_its_lead_of_a_lead_to_the_governor(self):
-        self.assertLessEqual(dist(self.r["p1"], self.r["OC"]), 1.3)
-        self.assertLessEqual(dist(self.r["p2"], self.r["gA"]), 1.6)
-
-    def test_governor_window_uses_the_groups(self):
-        # city-ux U11: renderDetail draws the list through teamListHtml(), which reads rosterGroups()
-        src = function_source("renderDetail") or ""
-        if "teamListHtml(" in src:
-            src = function_source("teamListHtml") or ""
-        self.assertIn("rosterGroups(", src)
-
-
 GOVFIG_DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: A.id }, governors: 1, asks: [], shows: [], agents: [],
   govs: [{ terr: A.id, state: 'busy' }, { terr: B.id, state: 'idle' }] });
 const two = governorFigures().map(g => ({ terr: g.terr, x: g.x, y: g.y }));
 apply({ type: 'gov', terr: B.id, state: 'idle', present: false });
 const one = governorFigures().map(g => g.terr);
-__out = { two, one, hallA: { x: A.cx, y: A.cz }, hallB: { x: B.cx, y: B.cz } };
+__out = { two, one, hallA: { x: A.cx + MGR_SEAT.x, y: A.cz + MGR_SEAT.z }, hallB: { x: B.cx + MGR_SEAT.x, y: B.cz + MGR_SEAT.z } };
 """
 
 
@@ -791,7 +539,7 @@ class TestGovernorFigures(unittest.TestCase):
 
 HOME_DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: A.id }, governors: 1, asks: [], shows: [], agents: [],
   govs: [{ terr: A.id, state: 'busy' }] });
 const h0 = { x: home.x, z: home.z };
@@ -804,16 +552,6 @@ __out = { h0, h1, h2 };
 """
 
 
-class TestCameraHomeStays(unittest.TestCase):
-    """E2E (task manager, headless): with two governors the default view jumped to whichever governor
-    sent the last gov event. Home is the start territory (snapshot gov.terr) and stays there."""
-
-    def test_other_governors_do_not_move_home(self):
-        r = run_sim(HOME_DRIVER, {"view": two_territory_view(), "ta": TA, "tb": TB}, FEATURE_REQUIRED + ("home",))
-        self.assertEqual(r["h1"], r["h0"])
-        self.assertEqual(r["h2"], r["h0"])
-
-
 def decor_run(cases):
     import test_agent_city_page as tp
     js = r"""
@@ -824,7 +562,7 @@ vm.createContext(box);
 vm.runInContext(prelude + '\n' + fns, box);
 const out = {};
 for (const [name, t] of Object.entries(cases)) out[name] = { rest: box.restDecor(t), office: box.officeDecor(t) };
-process.stdout.write(JSON.stringify(out));
+require(`fs`).writeSync(1, JSON.stringify(out));
 """
     fns = tp.page_fns("restDecor", "officeDecor",
                       optional=("eraShown", "showOf", "eraLook", "sr", "terrOf", "tileAt", "walkable", "frontOf"))
@@ -832,113 +570,8 @@ process.stdout.write(JSON.stringify(out));
     return tp.run_node(js, {"prelude": prelude, "fns": fns, "cases": cases})
 
 
-class TestRestAndOfficeLook(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        base = {"id": "t", "cx": 0, "cz": 0, "open": 6, "size": .5, "rest": {"x": 3, "z": 2},
-                "offices": [{"lead": "s:L", "x": -4, "z": 2}]}
-        cls.r = decor_run({
-            "village": dict(base, era="village"), "town": dict(base, era="town"), "city": dict(base, era="city"),
-            "none": dict(base, era="village", rest=None, offices=[])})
-
-    def keys(self, era):
-        return [d["key"] for d in self.r[era]["rest"]]
-
-    def near_rest(self, era):
-        for d in self.r[era]["rest"]:
-            with self.subTest(era=era, key=d["key"]):
-                self.assertLessEqual(math.hypot(d["x"] - 4, d["z"] - 3), 2.2, "inside the rest place")
-
-    def test_village_tavern_and_benches(self):
-        k = self.keys("village")
-        self.assertIn("kaykit-medieval/building_tavern_red", k)
-        self.assertGreaterEqual(k.count("kaykit-city/bench"), 2)
-        self.near_rest("village")
-
-    def test_town_cafe_tables_chairs_parasols(self):
-        k = self.keys("town")
-        self.assertGreaterEqual(k.count("kaykit-restaurant/table_round_A"), 2)
-        self.assertGreaterEqual(k.count("kaykit-restaurant/chair_A"), 4)
-        self.assertGreaterEqual(sum(k.count(p) for p in ("commercial/detail-parasol-a", "commercial/detail-parasol-b")), 2)
-        self.assertNotIn("kaykit-medieval/building_tavern_red", k)
-        self.near_rest("town")
-
-    def test_city_park_benches(self):
-        k = self.keys("city")
-        self.assertIn("fantasy/fountain-round", k)
-        self.assertGreaterEqual(k.count("kaykit-city/bench"), 3)
-        self.near_rest("city")
-
-    def test_day_zero_is_bare(self):
-        self.assertEqual(self.r["none"]["rest"], [])
-        self.assertEqual(self.r["none"]["office"], [])
-
-    def test_office_is_a_kaykit_cabin_with_a_flag(self):
-        items = self.r["village"]["office"]
-        cabin = [d for d in items if d["key"] == "kaykit-medieval/building_home_A_blue"]
-        self.assertEqual(len(cabin), 1)
-        self.assertEqual((math.floor(cabin[0]["x"]), math.floor(cabin[0]["z"])), (-4, 2))
-        self.assertIn("forest/flag", [d["key"] for d in items])
-
-    def test_every_key_is_a_loaded_model(self):
-        import test_agent_city_page as tp
-        wanted = set(tp.models())
-        for era in ("village", "town", "city"):
-            for d in self.r[era]["rest"] + self.r[era]["office"]:
-                with self.subTest(era=era, key=d["key"]):
-                    self.assertIn(d["key"], wanted)
-
-
 KAYKIT = ("kaykit-medieval/building_tavern_red", "kaykit-medieval/building_barracks_blue",
           "kaykit-medieval/building_church_green", "kaykit-medieval/building_windmill_yellow",
           "kaykit-medieval/building_home_A_blue", "kaykit-city/car_police", "kaykit-city/bench",
           "kaykit-restaurant/table_round_A", "kaykit-restaurant/chair_A")
 
-
-class TestKayKit(unittest.TestCase):
-
-    def test_models_listed(self):
-        import test_agent_city_page as tp
-        have = set(tp.models())
-        for key in KAYKIT:
-            with self.subTest(key=key):
-                self.assertIn(key, have)
-
-    def test_packs_have_their_cc0_licence(self):
-        for pack in ("kaykit-medieval", "kaykit-city", "kaykit-restaurant"):
-            with self.subTest(pack=pack):
-                with open(os.path.join(ROOT, "bin", "agent-city-assets", pack, "License.txt"), encoding="utf-8") as fh:
-                    text = fh.read()
-                self.assertIn("CC0", text)
-                self.assertIn("Kay Lousberg", text)
-
-    def systems(self, era):
-        import test_agent_city_page as tp
-        bal = {k: {"state": "healthy", "value": 1, "n": 1, "text": ""} for k in tp.KINDS}
-        t = {"id": "t", "name": "shop", "cx": 0, "cz": 0, "open": 8, "size": .6, "lines": 9000, "era": era,
-             "terrain": "grassland", "balance": bal, "next": [], "buildings": []}
-        fns = tp.page_fns("systemsDecor", "hallDecor",
-                          optional=("tileAt", "walkable", "eraShown", "showOf", "eraLook", "frontOf", "sr", "terrOf"))
-        prelude = tp.constants_prelude() + "\n" + tp.consts("ERA_LOOK")
-        js = tp.SYS_JS.replace("out[name] = items.map(d => ({", "out[name] = items.map(d => ({ x: Math.floor(d.x), z: Math.floor(d.z),")
-        return tp.run_node(js, {"prelude": prelude, "fns": fns, "cases": {"t": t}})["t"]
-
-    def test_village_uses_kaykit_for_police_library_power(self):
-        keys = {d["key"] for d in self.systems("village")}
-        self.assertIn("kaykit-medieval/building_barracks_blue", keys)
-        self.assertIn("kaykit-medieval/building_church_green", keys)
-        self.assertIn("kaykit-medieval/building_windmill_yellow", keys)
-        for old in ("industrial/building-h", "industrial/building-k", "industrial/chimney-large"):
-            self.assertNotIn(old, keys)
-
-    def test_town_and_city_police_have_a_car_beside(self):
-        for era in ("town", "city"):
-            with self.subTest(era=era):
-                items = self.systems(era)
-                police = [d for d in items if d["key"] == "industrial/building-h"]
-                cars = [d for d in items if d["key"] == "kaykit-city/car_police"]
-                self.assertEqual(len(police), 1)
-                self.assertEqual(len(cars), 1)
-                self.assertLessEqual(max(abs(police[0]["x"] - cars[0]["x"]), abs(police[0]["z"] - cars[0]["z"])), 1)
-                self.assertEqual(cars[0]["ch"], "g")

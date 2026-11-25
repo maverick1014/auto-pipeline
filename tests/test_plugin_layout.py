@@ -60,14 +60,13 @@ SOURCED_ONLY = [
 ]
 BIN_FILES = SHELL_SCRIPTS + SOURCED_ONLY + ["agent_conf.py",
                                             "agent_city.py", "agent-city.html",
-                                            "agent-city-plans.json",
                                             "agent_estimate.py",
                                             "agent_cleanup.py",
                                             "agent_housekeep.py",
                                             "agent_level.py",
                                             "agent_release.py"]
 
-AGENT_FILES = ["fast-lane-deputy.md", "merge-deputy.md", "worker.md"]
+AGENT_FILES = ["fast-lane-deputy.md", "interior-designer.md", "merge-deputy.md", "worker.md"]
 SKILL_DIRS = ["dispatch", "merge", "init", "cloud-pack", "city", "close-case", "clean-up"]
 
 ALLOW_RULES = [

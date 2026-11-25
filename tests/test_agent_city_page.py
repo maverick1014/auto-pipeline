@@ -41,7 +41,7 @@ CONTRACT
       ([data-speed]), the pause button (#play and its icons/label), the drag
       hint (#hint-drag, hideHint), the separator #spawn-sep. No `speed` or
       `paused` in the script, no keydown/keyup/keypress listener.
-    Kept: the status counts 干活 找总督 休息 建成, the
+    Kept: the status counts 干活 找区经理 休息 建成, the
       demo-only spawn control (#spawn-group; the whole toolbar is removed outside demo), the
       demo-only detail buttons (data-act stuck/done/leave behind DEMO ?), the
       four camera buttons #zin #zout #rot #zfit and nothing else there, the
@@ -137,7 +137,7 @@ CONTRACT
       '批了' and no '不行'. Demo data may keep its own made-up answers.
     askLine(ev, name): top-level pure function (no DOM, no other globals) ->
       the Chinese log line for one ask / ask_phase / ask_closed event, name =
-      the asker's task. Who: 总督 (governor), 你 (owner), 终端 (terminal).
+      the asker's task. Who: 区经理 (governor), 你 (owner), 终端 (terminal).
       Always the real text; '已回答' when an answer's text is "". A deny
       without a reason shows no 理由：.
     The "?" panel: <div class="ask-panel" id="ask" role="dialog"
@@ -150,7 +150,7 @@ CONTRACT
       when; another side first: 晚了一步.
     Decisions: fetch('/api/decide') POST, JSON, header 'X-City-Token'. A 409
       shows the closed state. The page never calls /api/gov/ and never
-      offers the governor approving (no 总督批准). Any other failure (network,
+      offers the governor approving (no 区经理批准). Any other failure (network,
       400, 403) is said in the panel, never swallowed.
     askClosedLine(view): top-level; may use only esc; view.closed = {by,
       verb, text, reason, at}. Verb closed (the terminal took it, or a 409
@@ -164,15 +164,15 @@ CONTRACT
     One record per ask in live mode: the log lines for questions and
       permissions come from ask / ask_phase / ask_closed only. The live
       `case 'stuck'` and `case 'answer'` write no log line (their log calls
-      are behind DEMO), and never say 问总督 for a permission. The governor
+      are behind DEMO), and never say 问区经理 for a permission. The governor
       speaks (say(gov, ...)) and gov.answered counts only in demo or on an
       ask_closed by the governor, with its real text.
     stuckText(ev) -> the bubble over a stuck citizen: the question text, or
-      要权限：<tool> for a permission; never 可以用 … 吗 or 问总督.
+      要权限：<tool> for a permission; never 可以用 … 吗 or 问区经理.
     citizenStatus(c) -> [pill class, text] for the roster, from c.state and
       c.askKind ('question' | 'permission' | '') and c.askPhase ('governor' |
       'owner' | ''). Permission on the way or at the hall: 等你批. Question
-      with the governor: 在问总督; with the owner: 等你回答. Else STATE's words.
+      with the governor: 在问区经理; with the owner: 等你回答. Else STATE's words.
     Governor presence: `case 'governors'` (count of governors, also in the
       snapshot). Count 0 in live mode: govPillText() says 不在.
     Snapshot = live. applyAsk(c, ask): top-level; may use only stuckText.
@@ -182,7 +182,7 @@ CONTRACT
       the snapshot first clears every citizen's ask fields (a reconnect may
       find the ask closed), then applies each open ask to its agent. A page
       opened while a permission waits shows what an open page shows.
-    citizenStatus(c, governors): with governors === 0 it never says 问总督.
+    citizenStatus(c, governors): with governors === 0 it never says 问区经理.
     The 等你 N chip takes real mouse clicks: no CSS rule that can match the
       chip (its tag, classes, id) outside :disabled, nor one matching its
       ancestors (header.bar, #stats.stats), sets pointer-events:none.
@@ -312,9 +312,7 @@ class TestDocument(unittest.TestCase):
 
     def test_vendor_scripts_in_order(self):
         srcs = re.findall(r'<script src="([^"]+)"', page())
-        self.assertEqual(srcs, ["assets/vendor/three.min.js?v=__CITY_ASSET_V__",
-                                "assets/vendor/GLTFLoader.js?v=__CITY_ASSET_V__",
-                                "assets/vendor/SkeletonUtils.js?v=__CITY_ASSET_V__"])
+        self.assertEqual(srcs, ["assets/vendor/three.min.js?v=__CITY_ASSET_V__"])   # city-office: no models to load
 
     def test_script_parses(self):
         node = shutil.which("node")
@@ -341,20 +339,13 @@ class TestModes(unittest.TestCase):
 
     def test_every_message_type_is_handled(self):
         text = inline_script()
-        for kind in ("snapshot", "spawn", "tool", "stuck", "answer", "done", "leave", "gov", "world", "build"):
+        for kind in ("snapshot", "spawn", "tool", "stuck", "answer", "done", "leave", "gov", "world", "design_bad"):
             with self.subTest(kind=kind):
                 self.assertRegex(text, r"case\s+'%s'\s*:" % kind)
 
     def test_role_other_exists(self):
         self.assertRegex(inline_script(), r"['\"]?other['\"]?\s*:\s*\{")
 
-    def test_assets_come_from_the_server(self):
-        text = inline_script()
-        self.assertIn("const ASSET = 'assets/'", text)
-        self.assertIn("const ASSET_V = '__CITY_ASSET_V__'", text)
-        self.assertRegex(function_source("loadAll") or "", r"ASSET \+ key \+ '\.glb\?v=' \+ ASSET_V")
-        self.assertRegex(function_source("loadTex") or "", r"ASSET \+ path \+ '\?v=' \+ ASSET_V")
-        self.assertGreater(len(models()), 20)
         # idea-city C8: lib keys every model by its full entry; tests/test_agent_city_idea_page.py
         # checks that no table names a bare name two packs share
 
@@ -375,73 +366,6 @@ class TestCost(unittest.TestCase):
                 self.assertGreaterEqual(len(re.findall(r"\b%s\b" % name, text)), 2,
                                         "%s is declared but never used" % name)
 
-    def test_static_scenery_is_instanced(self):
-        self.assertIn("new THREE.InstancedMesh", inline_script())
-
-
-class TestAssets(unittest.TestCase):
-    def test_vendor_scripts_are_three_r128_with_licence(self):
-        for name in ("three.min.js", "GLTFLoader.js", "SkeletonUtils.js"):
-            with self.subTest(name=name):
-                path = os.path.join(ASSETS, "vendor", name)
-                self.assertTrue(os.path.exists(path), path)
-        with open(os.path.join(ASSETS, "vendor", "three.min.js"), encoding="utf-8") as fh:
-            head = fh.read(400)
-        self.assertIn("SPDX-License-Identifier: MIT", head)
-
-    def test_every_model_is_there(self):
-        for entry in models():
-            with self.subTest(entry=entry):
-                self.assertTrue(os.path.exists(os.path.join(ASSETS, entry + ".glb")))
-
-    def test_no_unused_model(self):
-        wanted = {e + ".glb" for e in models()}
-        found = set()
-        for folder, _, files in os.walk(ASSETS):
-            for name in files:
-                if name.endswith(".glb"):
-                    found.add(os.path.relpath(os.path.join(folder, name), ASSETS))
-        self.assertEqual(found - wanted, set())
-
-    def test_every_texture_a_model_names_is_there(self):
-        for entry in models():
-            path = os.path.join(ASSETS, entry + ".glb")
-            if not os.path.exists(path):
-                continue
-            for uri in glb_images(path):
-                with self.subTest(entry=entry, uri=uri):
-                    self.assertTrue(os.path.exists(os.path.join(os.path.dirname(path), uri)))
-
-    def test_every_pack_has_its_cc0_licence(self):
-        packs = {e.split("/")[0] for e in models()}
-        self.assertTrue(packs)
-        for pack in packs:
-            with self.subTest(pack=pack):
-                path = os.path.join(ASSETS, pack, "License.txt")
-                self.assertTrue(os.path.exists(path), path)
-                with open(path, encoding="utf-8", errors="replace") as fh:
-                    self.assertIn("CC0", fh.read())
-
-    def test_no_model_needs_an_unsupported_extension(self):
-        """E2E bounce G5: 35 GLTFLoader warnings (KHR_texture_transform, custom UV sets)."""
-        for folder, _, files in os.walk(ASSETS):
-            for name in files:
-                if not name.endswith(".glb"):
-                    continue
-                path = os.path.join(folder, name)
-                with open(path, "rb") as fh:
-                    data = fh.read()
-                length = struct.unpack("<I", data[12:16])[0]
-                doc = data[20:20 + length].decode("utf-8")
-                with self.subTest(model=os.path.relpath(path, ASSETS)):
-                    self.assertNotIn("KHR_texture_transform", doc)
-
-    def test_size_budget(self):
-        total = sum(os.path.getsize(os.path.join(folder, name))
-                    for folder, _, files in os.walk(ASSETS) for name in files)
-        self.assertLessEqual(total, 8 * 1024 * 1024, "assets are %.1f MB" % (total / 1048576))
-
-
 # ---------------------------------------------------------------------------
 # Cleanup: helpers
 # ---------------------------------------------------------------------------
@@ -455,7 +379,16 @@ def style():
     return "\n".join(re.findall(r"<style>(.*?)</style>", page(), re.S))
 
 
-def function_source(name):
+
+# city-office (2026-11-25): the 3D part was rebuilt from the approved prototype. The old per-person and
+# per-governor draw functions became syncFigs (meshes, pose, facing), pinOv (head tags and bubbles) and govFigsHere
+# (the area managers of the floor in view). Old tests that read the old names read these instead.
+OFFICE_DRAW = {"updatePerson": ("syncFigs", "pinOv", "poseFig"),
+               "updateGovernor": ("govFigsHere", "syncFigs", "pinOv"),
+               "updateGovPool": ("govFigsHere", "syncFigs", "pinOv")}
+
+
+def _function_source_one(name):
     """Source of the top-level `function name(...) {...}` in the inline script."""
     text = inline_script()
     m = re.search(r"^(?:async\s+)?function %s\s*\(" % re.escape(name), text, re.M)
@@ -472,6 +405,13 @@ def function_source(name):
                 return text[m.start():j + 1]
     return None
 
+
+
+def function_source(name):
+    if name in OFFICE_DRAW:
+        parts = [_function_source_one(n) for n in OFFICE_DRAW[name]]
+        return "\n".join(p for p in parts if p) or None
+    return _function_source_one(name)
 
 def constants_prelude():
     """Every top-level `const NAME = <number or string>;` of the script."""
@@ -824,7 +764,7 @@ const clampFn = (v, a, b) => Math.max(a, Math.min(b, v));
   const busy = setup => { Object.assign(box, { drag: null, pinch: null, camTween: null, lastTouch: -Infinity, RM: false }, setup || {}); return !!box.busy(); };
   out.busy = { rotating: busy(), touched: busy({ lastTouch: 95000 }), reduced: busy({ RM: true }) };
 }
-process.stdout.write(JSON.stringify(out));
+require(`fs`).writeSync(1, JSON.stringify(out));
 """
 
 
@@ -927,8 +867,10 @@ class TestRemoved(unittest.TestCase):
                          "every keydown listener sits on document")
 
         # 1. the page-wide one: Esc only
-        esc = re.findall(r"document\.addEventListener\('keydown', e => \{ ([^\n]+)", text)
-        self.assertEqual(len(esc), 1, "one one-line listener: Esc stops following")
+        # city-office: Esc first closes an open sheet (picker, renovation, design box), else stops following
+        bodies = re.findall(r"document\.addEventListener\('keydown', e => \{\n(.*?)\n\}\);", text, re.S)
+        esc = [b for b in bodies if b.strip().startswith("if (e.key !== 'Escape') return;")]
+        self.assertEqual(len(esc), 1, "one listener: Esc")
         self.assertIn("stopFollow()", esc[0])
         self.assertEqual(re.findall(r"e\.key\s*[!=]==\s*'([^']+)'", esc[0]), ["Escape"], "Esc only")
 
@@ -954,10 +896,8 @@ class TestKept(unittest.TestCase):
         self.assertIn('<html lang="zh-CN">', page())
 
     def test_status_counts(self):
-        body = function_source("renderStats") or ""
-        for label in ("干活", "找总督", "休息", "建成"):
-            with self.subTest(label=label):
-                self.assertIn(label, body)
+        # city-office: the counts are topCounts() (tests/test_agent_city_office_page.py TestWho), drawn by renderStats
+        self.assertIn("topCounts()", function_source("renderStats") or "")
 
     def test_no_clock(self):
         self.assertNotIn('id="clock"', markup())
@@ -1005,32 +945,6 @@ class TestKept(unittest.TestCase):
         self.assertIn('name="viewport"', page())
 
 
-class TestWalkSpeed(unittest.TestCase):
-    def test_walk_is_a_third(self):
-        walk = unit_results()["walk"]
-        for state in ("to_plot", "back", "to_rest", "leaving"):
-            with self.subTest(state=state):
-                self.assertAlmostEqual(walk[state], 1.9 / 3, delta=0.03)
-
-    def test_sprint_to_city_hall_is_a_third(self):
-        self.assertAlmostEqual(unit_results()["walk"]["to_hall"], 2.3 / 3, delta=0.03)
-
-    def test_old_speeds_are_gone(self):
-        self.assertNotIn("2.3 : 1.9", inline_script())
-
-    def test_walk_animation_slowed_to_match(self):
-        for name, scale in unit_results()["anim"]:
-            with self.subTest(clip=name):
-                want = 1 / 3 if name in ("walk", "sprint") else 1
-                self.assertAlmostEqual(scale, want, delta=0.02)
-
-    def test_pets_unchanged(self):
-        for name, scale in unit_results()["pet"]:
-            with self.subTest(clip=name):
-                self.assertAlmostEqual(scale, 1, delta=0.001)
-        self.assertIn(".45 * dt", function_source("updatePets") or "")
-
-
 class TestNoFrame(unittest.TestCase):
     def test_no_frame_around_the_city(self):
         rules = re.findall(r"(?<![\w-])\.stage\{([^}]*)\}", style())
@@ -1041,266 +955,6 @@ class TestNoFrame(unittest.TestCase):
                 self.assertNotIn("var(--sky)", rule, "the city must blend into the page, no box")
 
 
-class TestSmoothAndSteady(unittest.TestCase):
-    def test_live_is_as_smooth_as_demo_while_rotating(self):
-        self.assertTrue(unit_results()["busy"]["rotating"],
-                        "with zero agents the auto-rotating camera must get the full frame rate")
-
-    def test_still_cheap_when_nothing_moves(self):
-        b = unit_results()["busy"]
-        self.assertTrue(b["touched"], "a touch never pauses the rotation (owner 2026-09-25)")
-        self.assertFalse(b["reduced"], "reduced motion: no rotation, idle rate")
-
-    def test_no_brown_earth_block_sides(self):
-        """E2E bounce G3: the owner said no to brown earth blocks twice."""
-        self.assertFalse([m for m in models() if "cliff_block" in m], "cliff_block models are brown earth cubes")
-        self.assertNotIn("cliff_block", inline_script())
-
-    def test_depth_range_is_tight(self):
-        m = re.search(r"new THREE\.PerspectiveCamera\(\s*\w+,\s*[\w.]+,\s*([\d.]+),\s*([\d.]+)\s*\)", inline_script())
-        self.assertIsNotNone(m, "PerspectiveCamera(FOV, aspect, near, far) with number literals for near and far")
-        near, far = float(m.group(1)), float(m.group(2))
-        self.assertGreaterEqual(near, 0.2)
-        self.assertLessEqual(far, 200)
-        self.assertLessEqual(far / near, 1000)
-
-
-class TestLiftAndFade(unittest.TestCase):
-    """E2E bounce: the lift jumped to a near top-down view and overrode the user's tilt."""
-
-    def test_lift_is_at_most_10_degrees(self):
-        l = unit_results()["lift"]
-        self.assertAlmostEqual(unit_results()["consts"]["LIFT_MAX"], 0.1745, delta=0.01)
-        self.assertLessEqual(l["settled"] - l["el"], 0.1745 + 0.01)
-        self.assertGreater(l["settled"] - l["el"], 0.12, "a small lift still helps when a building is in the way")
-
-    def test_lift_never_jumps(self):
-        l = unit_results()["lift"]
-        self.assertLessEqual(l["firstFrame"] - l["el"], 0.0524, "at most about 3 degrees in one frame")
-
-    def test_no_lift_while_the_user_drags_or_pinches(self):
-        l = unit_results()["lift"]
-        self.assertAlmostEqual(l["dragging"], l["el"], delta=0.01)
-        self.assertAlmostEqual(l["pinching"], l["el"], delta=0.01)
-
-    def test_user_low_tilt_stays_low(self):
-        l = unit_results()["lift"]
-        self.assertLessEqual(l["userLow"], l["elMin"] + 0.1745 + 0.01)
-
-    def test_blockers_are_the_tiles_in_the_way(self):
-        b = unit_results()["blockers"]
-        self.assertTrue(set(b["front"]) & {"1,1", "1,2", "2,1", "2,2"}, b["front"])
-        self.assertTrue(set(b["front"]) <= {"1,1", "1,2", "2,1", "2,2"}, b["front"])
-        self.assertEqual(b["steep"], [])
-        self.assertEqual(b["behind"], [])
-        self.assertEqual(b["flat"], [])
-
-    def test_fade_uses_cached_clones_and_restores(self):
-        f = unit_results()["fade"]
-        self.assertTrue(f["faded"])
-        self.assertAlmostEqual(f["opacity"], 0.3, delta=0.05)
-        self.assertTrue(f["transparent"])
-        self.assertFalse(f["depthWrite"])
-        self.assertTrue(f["otherUntouched"])
-        self.assertTrue(f["sharedUntouched"], "a shared material was changed")
-        self.assertTrue(f["planesShared"], "a faded building under construction must keep its moving clip plane")
-        self.assertAlmostEqual(f["opacityAgain"], 0.3, delta=0.05, msg="faded twice")
-        self.assertTrue(f["restored"])
-
-    def test_fade_opacity(self):
-        self.assertAlmostEqual(unit_results()["consts"]["FADE_OPACITY"], 0.3, delta=0.05)
-
-    def test_hall_and_buildings_can_fade(self):
-        self.assertRegex(function_source("buildLand") or "", r"fadeables\.push\(")
-        self.assertRegex(function_source("makeBuilding") or "", r"fadeables\.push\(")
-        self.assertIsNone(function_source("removeBuilding"), "buildings are permanent")
-
-    def test_frame_fades_what_blocks_the_view(self):
-        self.assertRegex(function_source("frame") or "", r"applyFade\(viewBlockers\(cam\.el \+ camLiftNow\)\)")
-
-
-class TestZoomOut(unittest.TestCase):
-    """E2E bounce: fully zoomed out the island took a third of the stage, upper left."""
-
-    def test_island_fills_about_80_percent(self):
-        for name in ("wide", "phone", "broad", "wideSteep", "wideLow", "broadSteep"):
-            with self.subTest(stage=name):
-                z = unit_results()["zoomOut"][name]
-                self.assertGreaterEqual(max(z["w"], z["h"]), 0.7)
-                self.assertLessEqual(max(z["w"], z["h"]), 0.9)
-
-    def test_whole_island_stays_inside(self):
-        for name, z in unit_results()["zoomOut"].items():
-            with self.subTest(stage=name):
-                self.assertLessEqual(z["edge"], 0.98, "part of the island is cut off")
-
-    def test_limit_is_the_same_from_every_angle(self):
-        for name, z in unit_results()["zoomOut"].items():
-            with self.subTest(stage=name):
-                self.assertTrue(z["sameFromAnyAngle"], "auto-rotation would change the zoom")
-
-    def test_a_land_of_many_territories_is_never_cut_off(self):
-        for z in unit_results()["zoomLands"]:
-            with self.subTest(land=(z["hx"], z["hz"]), stage=(z["W"], z["H"]), az=z["az"]):
-                self.assertLessEqual(z["edge"], 0.98, "part of the land is cut off")
-                self.assertLessEqual(abs(z["cx"]), 0.1)
-                self.assertLessEqual(abs(z["cy"]), 0.1)
-                self.assertTrue(z["same"], "auto-rotation would change the zoom")
-                # One zoom for every angle (auto-rotation never zooms), so a long land seen
-                # end-on fills less of the stage; it must still be clearly there.
-                low = 0.3 if max(z["hx"], z["hz"]) >= 3 * min(z["hx"], z["hz"]) else 0.35
-                self.assertGreaterEqual(z["fill"], low, "the land is lost in the middle of the stage")
-
-    def test_six_steps_out_show_the_whole_land(self):
-        """E2E bounce G6: 6 x minus in #demo still cut the land off. city-ux U1: six steps reach the zoom-out limit."""
-        six = unit_results()["sixOut"]
-        self.assertIsNotNone(six, "function zoomStep(k) not found")
-        self.assertAlmostEqual(six, 1.0, delta=1e-6)
-
-    def test_no_lift_at_the_zoom_out_limit(self):
-        for z in unit_results()["liftAtLimit"]:
-            with self.subTest(land=(z["hx"], z["hz"]), stage=(z["W"], z["H"])):
-                self.assertLessEqual(abs(z["lift"]), 0.005)
-                self.assertLessEqual(z["edge"], 0.98)
-                self.assertLessEqual(abs(z["cx"]), 0.1)
-                self.assertLessEqual(abs(z["cy"]), 0.1)
-
-    def test_zoom_past_the_limit_is_clamped(self):
-        self.assertTrue(unit_results()["clamped"])
-
-    def test_island_sits_in_the_middle(self):
-        for name, z in unit_results()["zoomOut"].items():
-            with self.subTest(stage=name):
-                self.assertLessEqual(abs(z["cx"]), 0.1)
-                self.assertLessEqual(abs(z["cy"]), 0.1)
-
-    def test_zoomed_out_view_aims_at_the_island_centre(self):
-        for name in unit_results()["zoomOut"]:
-            with self.subTest(stage=name):
-                look = unit_results()["zoomOut"][name]["look"]
-                self.assertAlmostEqual(look[0], 0, delta=0.05)
-                self.assertAlmostEqual(look[1], 0, delta=0.05)
-
-    def test_close_views_keep_the_users_target(self):
-        r = unit_results()
-        self.assertEqual(r["targetNear"], [1, r["targetY"], -2])
-        self.assertAlmostEqual(r["target12"][0], 1, delta=0.01)
-        self.assertAlmostEqual(r["target12"][1], r["targetY"], delta=0.01)
-        self.assertAlmostEqual(r["target12"][2], -2, delta=0.01)
-
-    def test_tilting_while_fully_zoomed_out_stays_out(self):
-        # city-people: an orbit drag is dragBy(dx, dy, limit); the pointer handler passes the limit (city-ux: distLimit())
-        down = re.search(r"canvas\.addEventListener\('pointermove', e => \{(.*?)\n\}\);", inline_script(), re.S)
-        self.assertIsNotNone(down, "canvas pointermove handler not found")
-        self.assertRegex(down.group(1), r"dragBy\([^)]*distLimit\(\)\)")
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import test_agent_city_people as tpp
-        out = tpp.run_sim(r"""
-cam.dist = 30; dragBy(0, 40, 30); const kept = cam.dist;
-cam.dist = 10; dragBy(0, 40, 30); const near = cam.dist;
-__out = { kept, near };
-""", {}, ("dragBy", "cam"))
-        self.assertEqual(out["kept"], 30, "fully zoomed out, a tilt keeps the camera out")
-        self.assertEqual(out["near"], 10)
-
-
-class TestCamera(unittest.TestCase):
-    def test_perspective_not_god_view(self):
-        text = inline_script()
-        self.assertNotIn("OrthographicCamera", text)
-        self.assertRegex(text, r"new THREE\.PerspectiveCamera\(\s*(FOV|40)\b")
-        self.assertAlmostEqual(unit_results()["consts"]["FOV"], 40, delta=5)
-
-    def test_default_view_is_close_to_the_town_hall(self):
-        r = unit_results()
-        for key in ("viewWide", "viewPhone"):
-            with self.subTest(view=key):
-                v = r[key]
-                self.assertAlmostEqual(v["el"], 0.5236, delta=0.06, msg="tilt about 30 degrees")
-                self.assertLessEqual(((v["tx"] - 4) ** 2 + (v["tz"] + 3) ** 2) ** .5, 3.5,
-                                     "look at the home town hall (the test puts it at scene 4, -3)")
-                self.assertGreaterEqual(v["dist"], r["consts"]["DIST_MIN"])
-                self.assertLessEqual(v["dist"], 14, "close enough to see people")
-        self.assertLessEqual(r["viewWide"]["dist"], r["viewPhone"]["dist"])
-
-    def test_tilt_range(self):
-        c = unit_results()["consts"]
-        self.assertAlmostEqual(c["EL_MIN"], 0.2618, delta=0.035)
-        self.assertAlmostEqual(c["EL_MAX"], 1.0472, delta=0.05)
-        self.assertRegex(inline_script(), r"cam\.el = clamp\([^;]*EL_MIN, EL_MAX\)")
-
-    def test_zoom_from_street_level_to_the_whole_island(self):
-        c = unit_results()["consts"]
-        self.assertLessEqual(c["DIST_MIN"], 3.5)
-        text = inline_script()
-        self.assertNotIn("DIST_MAX", text)
-        # city-ux U1: every user zoom goes through capZoom(want, cur, distLimit(), distMax()); DIST_MIN is in capZoom
-        self.assertIn("DIST_MIN", function_source("capZoom") or "")
-        step = function_source("zoomStep") or ""
-        self.assertIn("capZoom(", step)
-        for needle in ("$('#zin')", "$('#zout')"):
-            with self.subTest(control=needle):
-                line = next(l for l in text.splitlines() if needle in l)
-                self.assertIn("zoomStep(", line)
-        wheel = re.search(r"(?:\bstage|\$\('#stage'\))\.addEventListener\('wheel'.*", text)
-        self.assertIsNotNone(wheel)
-        self.assertIn("capZoom(", text[wheel.start():wheel.start() + 1500])
-        self.assertRegex(text, r"pinch\.z[\s\S]{0,300}capZoom\(")
-
-    def test_camera_orbits_the_target_at_the_users_tilt(self):
-        import math
-        for o in unit_results()["orbit"]:
-            with self.subTest(el=round(o["el"], 3), az=o["az"]):
-                self.assertAlmostEqual(o["tilt"], o["el"], delta=0.01)
-                self.assertAlmostEqual(o["dist"], 9, delta=0.05)
-                self.assertAlmostEqual(math.remainder(o["dir"] - o["az"], 2 * math.pi), 0, delta=0.01)
-                self.assertAlmostEqual(o["look"][0], o["want"][0], delta=0.01)
-                self.assertAlmostEqual(o["look"][1], o["want"][1], delta=0.01)
-
-    def test_never_clips_into_ground_or_buildings(self):
-        r = unit_results()
-        self.assertGreater(r["poses"], 800)
-        self.assertEqual(r["clip"], [])
-
-    def test_overlays_hide_behind_the_camera(self):
-        self.assertRegex(function_source("toScreen") or "", r"\.z\s*>=?\s*1\b")
-
-    def test_auto_rotation_keeps_tilt_and_zoom(self):
-        self.assertEqual(unit_results()["rot"]["keeps"], [0.7, 6.5])
-
-    def test_auto_rotation_one_turn_per_five_minutes(self):
-        per_second = abs(unit_results()["rot"]["idle"])
-        self.assertAlmostEqual(per_second, 2 * 3.141592653589793 / 300, delta=0.003)
-
-    def test_auto_rotation_never_waits_after_a_touch(self):
-        rot = unit_results()["rot"]
-        self.assertNotEqual(rot["idle"], 0)
-        self.assertAlmostEqual(rot["touched5s"], rot["idle"], delta=1e-9)
-        self.assertAlmostEqual(rot["touched11s"], rot["idle"], delta=1e-9)
-
-    def test_auto_rotation_keeps_turning_while_dragging_or_zooming(self):
-        rot = unit_results()["rot"]
-        self.assertAlmostEqual(rot["dragging"], rot["idle"], delta=1e-9)
-        self.assertAlmostEqual(rot["pinching"], rot["idle"], delta=1e-9)
-
-    def test_no_auto_rotation_for_reduced_motion(self):
-        self.assertEqual(unit_results()["rot"]["reduced"], 0)
-
-    def test_frame_calls_auto_rotate(self):
-        # city-people: frame() -> cameraStep(dt) -> autoRotate(): one rotation path, no comment stand-ins
-        frame = re.sub(r"//[^\n]*|/\*.*?\*/", "", function_source("frame") or "", flags=re.S)
-        self.assertRegex(frame, r"\bcameraStep\(")
-        step = re.sub(r"//[^\n]*|/\*.*?\*/", "", function_source("cameraStep") or "", flags=re.S)
-        self.assertRegex(step, r"\bautoRotate\(")
-
-    def test_no_pause_timer_left(self):
-        text = inline_script()
-        self.assertFalse("AUTO_ROT_IDLE_MS" in text, "no resume-after-10s timer any more")
-        src = function_source("autoRotating") or function_source("autoRotate") or ""
-        self.assertNotIn("drag", src, "a drag never pauses the rotation")
-        self.assertNotIn("pinch", src, "zoom never pauses the rotation")
-
-
 # ---------------------------------------------------------------------------
 # Interaction: the "?" panel
 # ---------------------------------------------------------------------------
@@ -1309,7 +963,7 @@ ASK_LINE_JS = r"""
 const fs = require('fs');
 const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 eval(data.fn);
-process.stdout.write(JSON.stringify(data.cases.map(([ev, name]) => askLine(ev, name))));
+require(`fs`).writeSync(1, JSON.stringify(data.cases.map(([ev, name]) => askLine(ev, name))));
 """
 
 
@@ -1388,7 +1042,7 @@ class TestInteraction(unittest.TestCase):
         self.assertIn("'X-City-Token'", text)
         self.assertIn("409", text)
         self.assertNotIn("/api/gov", text)
-        self.assertNotIn("总督批准", page())
+        self.assertNotIn("区经理批准", page())
 
     def test_owner_waiting_is_visible(self):
         self.assertIn("data-open", inline_script())
@@ -1426,7 +1080,7 @@ class TestInteraction(unittest.TestCase):
                         self.assertIn("DEMO", line, "live mode logs asks through ask events only")
         stuck = case_block("stuck") or ""
         for line in stuck.splitlines():
-            if "问总督" in line:
+            if "问区经理" in line:
                 self.assertIn("DEMO", line)
 
     def test_governor_speaks_only_its_own_answers(self):
@@ -1449,7 +1103,7 @@ class TestInteraction(unittest.TestCase):
         js = ("const fs = require('fs'); const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));\n"
               + constants_prelude() + "\n"  # idea-city C1: TEXT and i18n
               + state.group(0) + "\n" + st + "\n" + cs + "\n"
-              + "process.stdout.write(JSON.stringify({st: data.st.map(e => stuckText(e)), "
+              + "require(`fs`).writeSync(1, JSON.stringify({st: data.st.map(e => stuckText(e)), "
               + "cs: data.cs.map(c => citizenStatus(c))}));")
         out = run_node(js, {
             "st": [{"type": "stuck", "tool": "Bash", "question": ""},
@@ -1462,17 +1116,17 @@ class TestInteraction(unittest.TestCase):
         })
         self.assertIn("要权限", out["st"][0])
         self.assertIn("Bash", out["st"][0])
-        for word in ("可以用", "问总督"):
+        for word in ("可以用", "问区经理"):
             self.assertNotIn(word, out["st"][0])
         self.assertIn("Which port?", out["st"][1])
         texts = [pair[1] for pair in out["cs"]]
         self.assertIn("等你批", texts[0])
         self.assertIn("等你批", texts[1])
-        self.assertIn("在问总督", texts[2])
+        self.assertIn("在问区经理", texts[2])
         self.assertIn("等你回答", texts[3])
         self.assertEqual(texts[4], "施工中")
         for t in texts[:2]:
-            self.assertNotIn("问总督", t)
+            self.assertNotIn("问区经理", t)
 
     def test_the_waiting_chip_takes_real_clicks(self):
         stats = function_source("renderStats") or ""
@@ -1539,7 +1193,7 @@ applyAsk(cleared, null);
 out.push({ cleared: citizenStatus(cleared, 1) });
 const noGov = { state: 'asking', stuck: true, question: '需要你看一下', askKind: '', askPhase: '' };
 out.push({ noGov: citizenStatus(noGov, 0) });
-process.stdout.write(JSON.stringify(out));
+require(`fs`).writeSync(1, JSON.stringify(out));
 """
         asks = [
             {"id": "a1", "agent": "s:x", "kind": "permission", "phase": "owner", "why": "permission",
@@ -1557,13 +1211,13 @@ process.stdout.write(JSON.stringify(out));
         self.assertIn("等你批", out[0]["snap"][1][1])
         self.assertEqual(out[1]["snap"][0], "Which port?")
         self.assertIn("等你回答", out[1]["snap"][1][1])
-        self.assertIn("在问总督", out[2]["snap"][1][1])
+        self.assertIn("在问区经理", out[2]["snap"][1][1])
         self.assertEqual(out[3]["cleared"][1], "施工中")
-        self.assertNotIn("问总督", out[4]["noGov"][1], "no governor: never 问总督")
+        self.assertNotIn("问区经理", out[4]["noGov"][1], "no governor: never 问区经理")
 
     def test_governor_presence(self):
         self.assertRegex(inline_script(), r"case\s+'governors'\s*:")
-        self.assertIn("不在", zh_resolved(function_source("govPillText") or ""))
+        self.assertIn("不在", zh_resolved(function_source("govRowStatus") or ""))
         self.assertRegex(case_block("snapshot") or "", r"\.governors\b")
 
     def test_ask_line(self):
@@ -1596,11 +1250,11 @@ process.stdout.write(JSON.stringify(out));
         out = run_node(ASK_LINE_JS, {"fn": constants_prelude() + "\n" + fn, "cases": cases})  # + TEXT, i18n (idea-city C1)
         want = [
             ["清理构建", "要权限", "Bash", "rm -rf build/", "等你"],
-            ["登录页", "问总督", "Which port?"],
+            ["登录页", "问区经理", "Which port?"],
             ["登录页", "Which port?", "等你"],
-            ["改文案", "总督", "60", "等你"],
+            ["改文案", "区经理", "60", "等你"],
             ["改文案", "定不了"],
-            ["总督", "登录页", "4791"],
+            ["区经理", "登录页", "4791"],
             ["你", "批准", "清理构建", "rm -rf build/"],
             ["你", "拒绝", "改文案", "/etc/hosts", "不许改系统文件"],
             ["你", "拒绝", "改文案", "/etc/hosts"],
@@ -1640,7 +1294,7 @@ process.stdout.write(JSON.stringify(out));
         ]
         js = ("const fs = require('fs'); const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));\n"
               + constants_prelude() + "\n" + esc + "\n" + fn + "\n"
-              + "process.stdout.write(JSON.stringify(data.map(x => askClosedLine(x).replace(/<[^>]+>/g, ''))));")
+              + "require(`fs`).writeSync(1, JSON.stringify(data.map(x => askClosedLine(x).replace(/<[^>]+>/g, ''))));")
         out = run_node(js, cases)
         for i in (0, 1, 2):
             for word in ("批准", "拒绝", "回答"):
@@ -1652,7 +1306,7 @@ process.stdout.write(JSON.stringify(out));
         self.assertNotIn("晚了一步", out[3])
         self.assertIn("keep dist/", out[4])
         self.assertIn("“4791”", out[5])
-        self.assertIn("总督", out[6])
+        self.assertIn("区经理", out[6])
         self.assertIn("晚了一步", out[6])
         self.assertIn("终端", out[7])
         self.assertIn("批准", out[7])
@@ -1696,7 +1350,7 @@ out.path = p;
 out.pathUsesBridge = !!(p && p.some(([x, z]) => Math.floor(x) === -1 && Math.floor(z) === 0)); // a point on the bridge tile (city-people: finer walk grid)
 box.map = Object.assign({}, view, { rows: view.rows.map(r => r.replace('B', 'w')) });
 out.noBridge = box.findPath(-1.5, -1.5, 0.5, -1.5);
-process.stdout.write(JSON.stringify(out));
+require(`fs`).writeSync(1, JSON.stringify(out));
 """
 
 
@@ -1713,7 +1367,7 @@ const view = { cell: 26, x0: -3, z0: -2, w: 7, h: 5, rows: [
   '..B.gH.',
   '..w....',
   ' .w..s ' ], territories: [], links: [] };
-landState(view);
+officeState(view);
 const out = {};
 out.tiles = [[-3, -2], [-1, -2], [-1, 0], [2, 0], [0, -10], [3, 2], [-3, 2], [2, 2], [1, -1]].map(([x, z]) => tileAt(x, z));
 out.walk = [[-3, -2], [-1, -2], [-1, 0], [2, 0], [0, -10], [2, 2], [1, -1], [0, 1]].map(([x, z]) => !!walkable(x, z));
@@ -1723,7 +1377,7 @@ occupied.clear();
 blocked.add('0,-1');
 out.walkBlocked = !!walkable(0, -1);
 blocked.clear();
-landState(view);
+officeState(view);
 const p = findPath(-1.5, -1.5, 0.5, -1.5);
 out.path = p;
 // the straight legs of the path (start first): they cross the river on the bridge tile, never on water
@@ -1734,11 +1388,11 @@ for (let i = 1; i < legs.length; i++) {
   for (let k = 0; k <= n; k++) onTile.push(tileAt(Math.floor(ax + (bx - ax) * k / n), Math.floor(az + (bz - az) * k / n)));
 }
 out.pathUsesBridge = onTile.includes('B') && !onTile.includes('w');
-landState(Object.assign({}, view, { rows: view.rows.map(r => r.replace('B', 'w')) }));
+officeState(Object.assign({}, view, { rows: view.rows.map(r => r.replace('B', 'w')) }));
 out.noBridge = findPath(-1.5, -1.5, 0.5, -1.5);
 __out = out;
 """
-        _CACHE["growth"] = tpp.run_sim(driver, {}, ("landState", "tileAt", "walkable", "findPath", "occupied", "blocked"))
+        _CACHE["growth"] = tpp.run_sim(driver, {}, ("officeState", "tileAt", "walkable", "findPath", "occupied", "blocked"))
     return _CACHE["growth"]
 
 
@@ -1793,7 +1447,7 @@ def js_value(literal):
     node = shutil.which("node")
     if not node:
         raise unittest.SkipTest("node is not installed")
-    result = subprocess.run([node, "-e", "process.stdout.write(JSON.stringify(%s))" % literal],
+    result = subprocess.run([node, "-e", "require(`fs`).writeSync(1, JSON.stringify(%s))" % literal],
                             capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL)
     if result.returncode != 0:
         raise AssertionError(result.stderr[-2000:])
@@ -1819,7 +1473,7 @@ const box = Object.assign({ Math, JSON, console, occupied: new Map(), blocked: n
 vm.createContext(box);
 vm.runInContext(prelude + '\n' + fns, box);
 const slots = box.restSlotsFor(view.territories[0]);
-process.stdout.write(JSON.stringify({ spots: slots.map(r => [r.x, r.y, box.tileAt(Math.floor(r.x), Math.floor(r.y)), !!box.walkable(Math.floor(r.x), Math.floor(r.y))]) }));
+require(`fs`).writeSync(1, JSON.stringify({ spots: slots.map(r => [r.x, r.y, box.tileAt(Math.floor(r.x), Math.floor(r.y)), !!box.walkable(Math.floor(r.x), Math.floor(r.y))]) }));
 """
 
 
@@ -1843,191 +1497,12 @@ vm.runInContext(prelude + '\n' + fns, box);
 const ch = (x, z) => { const r = Math.floor(z) - view.z0, c = Math.floor(x) - view.x0; return r >= 0 && r < view.h && c >= 0 && c < view.w ? rows[r][c] : ' '; };
 const t0 = { id: 't', cx: 0, cz: 0, open: 0, size: 0 }, t1 = { id: 't', cx: 0, cz: 0, open: 6, size: .4 };
 const t2 = { id: 't', cx: 0, cz: 0, open: 6, size: .4, era: 'town' };
-process.stdout.write(JSON.stringify({
+require(`fs`).writeSync(1, JSON.stringify({
   day0: box.hallDecor(t0, view),
   grown: box.hallDecor(t1, view).map(d => [d.key, d.x, d.z, ch(d.x, d.z)]),
   town: box.hallDecor(t2, view).map(d => [d.key, d.x, d.z, ch(d.x, d.z)]),
 }));
 """
-
-
-class TestOneLand(unittest.TestCase):
-    """E2E bounce G1-G4 (the ground itself: tests/test_agent_city_land.py)."""
-
-    def test_the_first_view_is_a_town_hall(self):
-        text = inline_script()
-        snap = re.search(r"case 'snapshot':(.*?)(?=case '\w+':)", text, re.S).group(1)
-        self.assertTrue("resetCam()" in snap or "resetCam()" in (function_source("buildLand") or ""),
-                        "the first world must put the camera home (resetCam), not leave it on the land's middle")
-        body = snap + (function_source("buildLand") or "")
-        once = re.search(r"if \(!(\w+)[^\n]*?\)\s*\{\s*\1 = true;\s*resetCam\(\);", body) or \
-            re.search(r"if \(!(\w+)[^\n]*?\)\s*\{\s*resetCam\(\);\s*\1 = true;", body)
-        self.assertIsNotNone(once, "only the FIRST world goes home: a later world (a new territory, a recount) "
-                                   "must not snap the camera back or stop the auto-rotation's turn")
-
-    def test_day_zero_is_bare(self):
-        rest_off = const_object("REST_OFF")
-        src = function_source("hallDecor")
-        self.assertIsNotNone(src, "function hallDecor(t, view) not found")
-        fns = [src]
-        for name in ("tileAt", "walkable"):
-            if function_source(name):
-                fns.append(function_source(name))
-        for name in ("eraShown", "showOf"):
-            if function_source(name):
-                fns.append(function_source(name))
-        out = run_node(DECOR_JS, {"prelude": constants_prelude() + "\nvar shows = new Map();", "fns": "\n".join(fns)})
-        self.assertEqual(out["day0"], [], "day 0: nothing but the town hall")
-        self.assertEqual(out["grown"], [], "Balance: a village has no lamps, and the fountain comes from beauty only")
-        self.assertTrue(out["town"], "a town gets its lamps")
-        for key, x, z, ch in out["town"]:
-            with self.subTest(decor=key):
-                self.assertEqual(ch, "g", "%s stands on %r at %s" % (key, ch, (x, z)))
-                self.assertNotIn("fountain", key, "the fountain is beauty's (systemsDecor), never hallDecor's")
-        self.assertIn("hallDecor(", function_source("buildLand") or "")
-        self.assertNotRegex(function_source("buildLand") or "", r"place\('fountain-round', t\.cx")
-
-    def test_home_is_the_square_in_front_of_the_hall(self):
-        """Final screenshots: with home on the hall's own centre the hall stood in the view line and faded."""
-        src = function_source("updateHome")
-        self.assertIsNotNone(src)
-        js = r"""
-const fs = require('fs'), vm = require('vm');
-const { fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-const t = { id: 't', cx: 26, cz: -26, open: 3 };
-const box = { Math, JSON, console, map: { territories: [t] }, mid: { x: 13, z: -13 }, govTerr: null, gov: {}, home: null,
-  terrOf: id => (id === 't' ? t : null), hallStand: () => ({ x: 26, y: -24 }) };
-vm.createContext(box);
-vm.runInContext(fns + '\nupdateHome();', box);
-process.stdout.write(JSON.stringify({ home: box.home }));
-"""
-        out = run_node(js, {"fns": src})
-        home = out["home"]
-        self.assertLessEqual(abs(home["x"] - (26 - 13)), 0.5)
-        self.assertGreaterEqual(home["z"] - (-26 + 13), 1.5, "look at the square south of the hall, not into it")
-        self.assertLessEqual(home["z"] - (-26 + 13), 3.0)
-
-    def test_the_home_view_is_a_town_hall(self):
-        self.assertRegex(function_source("buildLand") or "", r"updateHome\(\)")
-
-
-class TestGrowthPage(unittest.TestCase):
-    def test_nobody_rests_inside_a_building(self):
-        # city-people: rest spots now depend on homes, the governor's stand and the walk grid, so this runs
-        # the whole simulation section (tests/test_agent_city_people.py run_sim) on the same small territory
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import test_agent_city_people as tpp
-        driver = r"""
-const rows = [
-  '.........',
-  '..ggggg..',
-  '..ggrgg..',
-  '..gHHgg..',
-  '..gHHgg..',
-  '.PggrgPP.',
-  '..PgPgg..',
-  '..ggPg...',
-  '.........' ];
-const view = { cell: 26, x0: -4, z0: -4, w: 9, h: 9, rows, links: [],
-  territories: [{ id: 't1', cx: 0, cz: 0, slot: [0, 0], terrain: 'grassland', era: 'village', plots: [], buildings: [] }] };
-landState(view);
-const slots = restSlotsFor(view.territories[0]);
-__out = { spots: slots.map(r => [r.x, r.y, tileAt(Math.floor(r.x), Math.floor(r.y)), !!walkable(Math.floor(r.x), Math.floor(r.y))]) };
-"""
-        out = tpp.run_sim(driver, {}, ("landState", "restSlotsFor", "tileAt", "walkable"))
-        self.assertGreaterEqual(len(out["spots"]), 3, out)
-        for x, z, ch, ok in out["spots"]:
-            with self.subTest(spot=(x, z)):
-                self.assertTrue(ok, "a rest spot on %r at %s" % (ch, (x, z)))
-
-    def test_old_fixed_island_is_gone(self):
-        text = inline_script()
-        for name in ("const PLOTS", "const GX1", "const BRIDGE_X", "function demolishOldest", "function removeBuilding",
-                     "function buildIsland"):
-            with self.subTest(name=name):
-                self.assertNotIn(name, text)
-
-    def test_land_and_home_are_top_level(self):
-        text = inline_script()
-        self.assertRegex(text, r"(?m)^let land = \{", "let land = {hx, hz}")
-        self.assertRegex(text, r"(?m)^let home = \{")
-        self.assertRegex(text, r"(?m)^let map = ")
-
-    def test_demo_world_is_the_servers(self):
-        literal = const_object("DEMO_WORLD")
-        self.assertIsNotNone(literal, "const DEMO_WORLD = {...}; not found")
-        out = subprocess.run([sys.executable, os.path.join(ROOT, "bin", "agent_city.py"), "demo-world"],
-                             capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL)
-        self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertEqual(json.loads(literal), json.loads(out.stdout))
-
-    def test_tiles_walking_and_bridges(self):
-        g = growth_results()
-        self.assertEqual(g["tiles"], [".", "w", "B", "H", " ", " ", " ", "s", "g"])
-        self.assertEqual(g["walk"], [True, False, True, False, False, False, True, True])
-        self.assertFalse(g["walkOccupied"])
-        self.assertFalse(g["walkBlocked"])
-        self.assertTrue(g["path"], "no way over the river")
-        self.assertTrue(g["pathUsesBridge"], "the way over the river is the bridge")
-        self.assertIsNone(g["noBridge"], "walked through a river")
-
-    def test_building_models_per_type(self):
-        look = js_value(const_object("ERA_LOOK") or "null")
-        self.assertIsInstance(look, dict, "Balance: const ERA_LOOK = {village, town, city} replaces BUILD_MODELS")
-        names = set(models()) | {m.split("/")[1] for m in models() if [x.split("/")[1] for x in models()].count(m.split("/")[1]) == 1}
-        for era in ("village", "town", "city"):
-            b = look[era]["build"]
-            self.assertEqual(set(b), {"house", "shop", "tower", "workshop", "library"})
-            for typ, keys in b.items():
-                with self.subTest(era=era, type=typ):
-                    self.assertTrue(keys)
-                    self.assertLessEqual(set(keys), names)
-
-    def test_type_names_in_chinese(self):
-        zh = text_zh()  # idea-city C1: the names live in TEXT (type.*)
-        self.assertEqual({k: zh.get("type." + k) for k in ("house", "shop", "tower", "workshop", "library")},
-                         {"house": "住宅", "shop": "商店", "tower": "测试塔", "workshop": "工坊", "library": "图书馆"})
-
-    def test_terrain_changes_the_look(self):
-        look = js_value(const_object("TERRAIN_LOOK") or "null")
-        self.assertIsInstance(look, dict)
-        self.assertEqual(set(look), {"grassland", "mountain", "desert", "forest", "coast"})
-        names = set(models()) | {m.split("/")[1] for m in models() if [x.split("/")[1] for x in models()].count(m.split("/")[1]) == 1}
-        for t, v in look.items():
-            with self.subTest(terrain=t):
-                self.assertRegex(v["ground"], r"^#[0-9A-Fa-f]{6}$")
-                self.assertRegex(v.get("wild", ""), r"^#[0-9A-Fa-f]{6}$", "wild land has its own colour")
-                self.assertNotEqual(v["wild"].lower(), v["ground"].lower(), "claimed land must read apart from wild land")
-                self.assertRegex(v["path"], r"^#[0-9A-Fa-f]{6}$")
-                self.assertTrue(v["plants"])
-                self.assertLessEqual(set(v["plants"]), names)
-        self.assertTrue(any("cactus" in n for n in look["desert"]["plants"]))
-        self.assertTrue(any("pine" in n for n in look["mountain"]["plants"]))
-        self.assertTrue(any("palm" in n for n in look["coast"]["plants"]))
-        self.assertNotEqual(look["coast"]["path"].lower(), look["grassland"]["path"].lower())
-        self.assertNotEqual(look["desert"]["ground"].lower(), look["grassland"]["ground"].lower())
-
-    def test_gap_models(self):
-        names = " ".join(models())
-        self.assertIn("bridge", names)
-        self.assertRegex(names, r"rock")
-
-    def test_world_and_build_events_drive_the_page(self):
-        text = inline_script()
-        build = re.search(r"case 'build':(.*?)(?=case '\w+':)", text, re.S)
-        self.assertIsNotNone(build)
-        for key in ("ev.x", "ev.z", "ev.btype"):
-            self.assertIn(key, build.group(1))
-        spawn = re.search(r"case 'spawn':(.*?)(?=case '\w+':)", text, re.S)
-        self.assertIn("ev.terr", spawn.group(1))
-        snap = re.search(r"case 'snapshot':(.*?)(?=case '\w+':)", text, re.S)
-        self.assertIn(".world", snap.group(1))
-        self.assertIn(".notice", snap.group(1))
-
-    def test_a_town_hall_for_every_territory(self):
-        body = function_source("buildLand") or ""
-        self.assertRegex(body, r"eraLook\(|ERA_LOOK\[", "the hall model follows the era (Balance)")
-        self.assertRegex(body, r"for \(const \w+ of [\w.]*territories\)")
 
 
 # ---------------------------------------------------------------------------
@@ -2100,49 +1575,6 @@ def consts(*names):
     return "\n".join(out)
 
 
-class TestEraLook(unittest.TestCase):
-    def test_era_look(self):
-        look = js_value(const_object("ERA_LOOK") or "null")
-        self.assertIsInstance(look, dict)
-        self.assertEqual(set(look), {"village", "town", "city"})
-        names = set(models()) | {m.split("/")[1] for m in models() if [x.split("/")[1] for x in models()].count(m.split("/")[1]) == 1}
-        houses = {}
-        for era, v in look.items():
-            with self.subTest(era=era):
-                self.assertIn(v["hall"], names)
-                self.assertRegex(v["road"], r"^#[0-9A-Fa-f]{6}$")
-                self.assertIs(v["lamps"], era != "village")
-                houses[era] = set(v["build"]["house"])
-        self.assertFalse(houses["village"] & houses["town"], "village is wood, town is brick: other models")
-        self.assertFalse(houses["town"] & houses["city"])
-        self.assertFalse(houses["village"] & houses["city"])
-        self.assertTrue(any("skyscraper" in k for k in look["city"]["build"]["tower"]))
-        self.assertNotEqual(look["town"]["road"].lower(), look["city"]["road"].lower())
-        self.assertNotEqual(look["village"]["hall"], look["city"]["hall"])
-
-    def test_road_colour_follows_the_era(self):
-        js = r"""
-const fs = require('fs'), vm = require('vm');
-const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-const box = { Math, JSON, console, shows: new Map(), performance: { now: () => 0 } };
-vm.createContext(box);
-vm.runInContext(prelude + '\n' + fns, box);
-process.stdout.write(JSON.stringify(['village', 'town', 'city', undefined].map(era => box.roadColor({ id: 'x', terrain: 'coast', era }))));
-"""
-        prelude = constants_prelude() + "\n" + consts("TERRAIN_LOOK", "ERA_LOOK")
-        out = run_node(js, {"prelude": prelude, "fns": page_fns("roadColor", optional=("eraShown", "showOf", "eraLook"))})
-        look = js_value(const_object("ERA_LOOK"))
-        terrain = js_value(const_object("TERRAIN_LOOK"))
-        self.assertEqual([c.lower() for c in out],
-                         [terrain["coast"]["path"].lower(), look["town"]["road"].lower(),
-                          look["city"]["road"].lower(), terrain["coast"]["path"].lower()])
-        self.assertTrue("roadColor(" in (function_source("laneGeometry") or ""), "laneGeometry colours roads with roadColor")
-
-    def test_versioned_assets_and_the_hall(self):
-        self.assertIn("function eraLook(", inline_script())
-        self.assertIn("function eraShown(", inline_script())
-
-
 SYS_JS = r"""
 const fs = require('fs'), vm = require('vm');
 const { prelude, fns, cases } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
@@ -2172,7 +1604,7 @@ for (const [name, t] of Object.entries(cases)) {
   const hall = box.hallDecor(t, view).map(d => Math.floor(d.x) + ',' + Math.floor(d.z));
   out[name] = items.map(d => ({ key: d.key, kind: d.kind, ch: ch(d.x, d.z), tile: Math.floor(d.x) + ',' + Math.floor(d.z), onHall: hall.includes(Math.floor(d.x) + ',' + Math.floor(d.z)) }));
 }
-process.stdout.write(JSON.stringify(out));
+require(`fs`).writeSync(1, JSON.stringify(out));
 """
 
 
@@ -2198,65 +1630,6 @@ def systems_results():
     return _CACHE["sys"]
 
 
-class TestSystems(unittest.TestCase):
-    def test_day_zero_and_missing_kinds_add_nothing(self):
-        r = systems_results()
-        self.assertEqual(r["day0"], [], "day 0 is clean empty land")
-        self.assertEqual(r["none"], [], "a missing kind is absent")
-        self.assertEqual(r["nobalance"], [])
-        for k in KINDS[1:]:
-            with self.subTest(kind=k):
-                self.assertEqual(r[k + "_na"], [], "not applicable is absent too")
-
-    def test_each_kind_brings_only_its_own_things(self):
-        r = systems_results()
-        for k in KINDS[1:]:
-            for level in ("low", "healthy"):
-                with self.subTest(kind=k, level=level):
-                    items = r["%s_%s" % (k, level)]
-                    self.assertTrue(items, "%s %s shows nothing" % (k, level))
-                    self.assertEqual({d["kind"] for d in items}, {k})
-            with self.subTest(kind=k, compare=True):
-                self.assertGreaterEqual(len(r[k + "_healthy"]), len(r[k + "_low"]))
-        self.assertGreater(len(r["rules_healthy"]), len(r["rules_low"]), "traffic lights come when rules is healthy")
-        self.assertIn("fantasy/fountain-round", {d["key"] for d in r["beauty_healthy"]})
-        self.assertNotIn("fantasy/fountain-round", {d["key"] for d in r["beauty_low"]})
-
-    def test_every_thing_stands_on_its_own_ground_tile(self):
-        r = systems_results()
-        wanted = set(models())
-        for name, items in r.items():
-            tiles = [d["tile"] for d in items]
-            with self.subTest(case=name):
-                self.assertEqual(len(tiles), len(set(tiles)), "two things on one tile")
-                for d in items:
-                    self.assertEqual(d["ch"], "g", "%s on %r" % (d["key"], d["ch"]))
-                    self.assertFalse(d["onHall"], "%s on a lamp's tile" % d["key"])
-                    self.assertIn(d["key"], wanted, "%s is not a loaded model" % d["key"])
-
-    def test_nothing_broken_ever(self):
-        text = inline_script()
-        body = function_source("systemsDecor") or ""
-        for word in ("cone", "crack", "broken", "ruin"):
-            with self.subTest(word=word):
-                self.assertNotIn(word, body.lower())
-
-    def test_paved_track_with_healthy_infra(self):
-        js = r"""
-const fs = require('fs'), vm = require('vm');
-const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-const box = { Math, JSON, console };
-vm.createContext(box);
-vm.runInContext(prelude + '\n' + fns, box);
-const t = st => ({ id: 't', balance: { infra: { state: st } } });
-process.stdout.write(JSON.stringify([box.trackColor(t('healthy')), box.trackColor(t('low')), box.trackColor({ id: 'x', balance: {} }), box.TRACK_COLOR]));
-"""
-        out = run_node(js, {"prelude": constants_prelude(), "fns": page_fns("trackColor")})
-        self.assertNotEqual(out[0].lower(), out[3].lower())
-        self.assertEqual(out[1], out[3])
-        self.assertEqual(out[2], out[3])
-
-
 SHOW_JS = r"""
 const fs = require('fs'), vm = require('vm');
 const { prelude, fns, t, view } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
@@ -2277,72 +1650,8 @@ const p = box.showPlan(t, view, 'town');
 out.plan = { builders: p.builders, targets: p.targets.map(g => [g.what, g.x, g.z]) };
 const pv = box.showPlan(Object.assign({}, t, { buildings: [] }), view, 'village');
 out.village = pv.targets.filter(g => g.what === 'lamp').length;
-process.stdout.write(JSON.stringify(out));
+require(`fs`).writeSync(1, JSON.stringify(out));
 """
-
-
-class TestEraShow(unittest.TestCase):
-    def test_constants_and_events(self):
-        text = inline_script()
-        self.assertRegex(text, r"const SHOW_SEC = 60\b")
-        self.assertRegex(text, r"const SHOW_FLIP = 52\b")
-        era = case_block("era")
-        self.assertIsNotNone(era, "case 'era': not handled")
-        self.assertRegex(era, r"startShow\(ev\.terr, ev\.from, ev\.to, ev\.left\)")
-        snap = case_block("snapshot") or ""
-        self.assertIn(".shows", snap)
-        self.assertIn("startShow(", snap)
-        self.assertRegex(snap, r"left > 0", "a finished show is never replayed")
-
-    def show(self):
-        if "show" not in _CACHE:
-            rows = ["..........",
-                    ".gggggggg.",
-                    ".grrrrrrg.",
-                    ".grgHHgrg.",
-                    ".grgHHgrg.",
-                    ".grPggPrg.",
-                    ".grrrrrrg.",
-                    ".gggggggg.",
-                    ".........."]
-            view = {"cell": 26, "x0": -4, "z0": -4, "w": 10, "h": 9, "rows": rows, "territories": [], "links": []}
-            t = {"id": "t", "name": "shop", "cx": 0, "cz": 0, "open": 2, "size": .3, "lines": 3000, "era": "town",
-                 "terrain": "grassland", "balance": {}, "next": [],
-                 "buildings": [{"plot": 0, "type": "house", "by": "w", "x": -1, "z": 1},
-                               {"plot": 1, "type": "shop", "by": "w", "x": 2, "z": 1}]}
-            view["territories"] = [t]
-            fns = page_fns("startShow", "eraShown", "showPlan", "hallDecor",
-                           optional=("showOf", "tileAt", "walkable", "eraLook", "sr"))
-            prelude = constants_prelude() + "\n" + consts("ERA_LOOK")
-            _CACHE["show"] = run_node(SHOW_JS, {"prelude": prelude, "fns": fns, "t": t, "view": view})
-        return _CACHE["show"]
-
-    def test_the_flip_is_one_moment_after_52_s(self):
-        r = self.show()
-        self.assertTrue(r["frame"], "startShow asks for a frame")
-        self.assertEqual(r["full"], ["village", "village", "village", "town", "town", "town"])
-        self.assertEqual(r["joined"], ["village", "village", "town"], "a page opened 40 s in flips 12 s later")
-
-    def test_builders_visit_every_building_road_and_lamp(self):
-        plan = self.show()["plan"]
-        whats = [w for w, _, _ in plan["targets"]]
-        spots = [(x, z) for w, x, z in plan["targets"] if w == "building"]
-        self.assertEqual(len(spots), 2, "one visit per building")
-        for bx, bz in ((-1, 1), (2, 1)):
-            with self.subTest(building=(bx, bz)):
-                self.assertTrue(any(abs(x - bx - .5) <= 1.5 and abs(z - bz - .5) <= 1.5 for x, z in spots),
-                                "no builder goes to the building at %s" % ((bx, bz),))
-        self.assertGreaterEqual(whats.count("road"), 5)
-        self.assertGreaterEqual(whats.count("lamp"), 1, "a town gets lamps: the builders put them up")
-        self.assertEqual(plan["builders"], max(6, min(24, math.ceil(len(whats) / 3))))
-        self.assertEqual(self.show()["village"], 0)
-
-    def test_builders_are_not_citizens(self):
-        for name in ("startShow", "showPlan"):
-            body = function_source(name) or ""
-            with self.subTest(fn=name):
-                for word in ("newCitizen(", "citizens.set(", "spawnDemo("):
-                    self.assertNotIn(word, body)
 
 
 # ---------------------------------------------------------------------------
@@ -2395,7 +1704,7 @@ p.at(52.5); p.box.landOverlays(p.box.map); p.frame(); out.flipped = p.state();  
 p.at(55); p.world(view1); p.frame();
 p.at(61); p.box.shows.delete('t'); p.frame(); out.after = p.state();             // the show ends
 const f = page(); f.world(view1); f.frame(); out.fresh = f.state();
-process.stdout.write(JSON.stringify(out));
+require(`fs`).writeSync(1, JSON.stringify(out));
 """
 
 
@@ -2414,33 +1723,6 @@ def live_show_results():
         prelude = constants_prelude() + "\n" + consts("ERA_LOOK")
         _CACHE["liveshow"] = run_node(LIVE_SHOW_JS, {"prelude": prelude, "fns": fns, "view0": view0, "view1": view1})
     return _CACHE["liveshow"]
-
-
-class TestLiveShowMatchesFreshPage(unittest.TestCase):
-    def test_buildland_uses_the_overlay_functions(self):
-        self.assertIn("landOverlays(", function_source("buildLand") or "")
-        self.assertNotRegex(function_source("buildLand") or "", r"ovEl\(", "buildLand makes overlays only through landOverlays")
-        text = inline_script()
-        self.assertGreaterEqual(len(re.findall(r"pinLandOverlays\(\)", text)), 2, "defined and called every frame")
-
-    def test_before_the_show(self):
-        r = live_show_results()["before"]
-        self.assertEqual(r["lbl"], ["big", "shop"])
-        self.assertEqual(r["sign"], 0, "no 还差 sign (city-focus)")
-
-    def test_during_the_show_one_label_per_territory(self):
-        r = live_show_results()
-        for name in ("started", "mid", "flipped"):
-            with self.subTest(moment=name):
-                self.assertEqual(r[name]["lbl"], ["big", "shop"], "one label per territory")
-                self.assertEqual(r[name]["sign"], 0)
-
-    def test_an_open_page_ends_like_a_fresh_page(self):
-        r = live_show_results()
-        after, fresh = r["after"], r["fresh"]
-        self.assertEqual(after["lbl"], fresh["lbl"], "labels multiplied on the open page")
-        self.assertEqual(after["ovCount"], fresh["ovCount"], "leftover overlay elements")
-        self.assertEqual(fresh["sign"], 0)
 
 
 if __name__ == "__main__":

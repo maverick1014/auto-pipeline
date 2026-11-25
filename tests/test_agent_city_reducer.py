@@ -309,10 +309,11 @@ class TestSessions(Case):
             {"type": "spawn", "id": "s:tm1", "role": "task-manager", "label": "task-manager", "task": "shop-wt"},
             {"type": "tool", "id": "s:tm1", "tool": "Write", "name": "Write"}])
 
-    def test_second_plain_session_is_a_task_manager_citizen(self):
+    def test_second_plain_session_is_a_helper_citizen(self):
+        # city-office O2 (2026-11-24): a session with no AGENT_ROLE is 助理 (role "helper"), was "task-manager"
         self.govern("main")
         out = self.feed(R("UserPromptSubmit", sid="other", proj=""))
-        self.assertEqual(out, [{"type": "spawn", "id": "s:other", "role": "task-manager",
+        self.assertEqual(out, [{"type": "spawn", "id": "s:other", "role": "helper",
                                 "label": "session", "task": "session"}])
 
     def test_citizen_session_gets_stuck_and_answered(self):

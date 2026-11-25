@@ -69,7 +69,6 @@ COPY_BIN = [
     "agent-city-hook.sh",
     "agent_city.py",
     "agent-city.html",
-    "agent-city-plans.json",
     "agent-close-case.sh",
     "agent_board.py",
     "agent_questions.py",

@@ -15,6 +15,7 @@
 #                            $HOME/.local/bin/agent-city, so `agent-city` works
 #                            from any folder (requirements/city.md, "Anywhere")
 #   ./agent-city.sh remove-shim    remove that copy, if it is ours
+#   ./agent-city.sh floor rules|show|set|bye   the floor designs (the interior designer uses these)
 #   ./agent-city.sh -h       this help
 #
 # City dir: $AGENT_CITY_DIR, default $HOME/.cache/agent-city (the same dir the
@@ -312,5 +313,6 @@ case "$1" in
   pending) do_pending;;
   install-shim) do_install_shim;;
   remove-shim) do_remove_shim;;
+  floor) shift; exec python3 "$PLUGIN_ROOT/bin/agent_city.py" floor "$@";;
   *) usage; exit 2;;
 esac

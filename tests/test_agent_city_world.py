@@ -150,16 +150,12 @@ WALK = set(".grtBb")
 TERR_CHARS = set("grPH")
 
 
-def plans():
-    return ac.load_plans()
-
-
 def world_of(*repos):
-    """repos: (identity, lines) in arrival order."""
-    ps = plans()
+    """repos: (identity, lines) in arrival order (city-office: lines are no longer kept)."""
     w = ac.new_world()
-    for ident, lines in repos:
-        ac.add_territory(w, ps, ident, ac.repo_name(ident), lines)
+    for ident, _lines in repos:
+        ac.add_territory(w, ident, ac.repo_name(ident))
+    w["floors"] = [ident for ident, _ in repos]
     return w
 
 
@@ -212,384 +208,21 @@ def straight_run(view):
 # Plans: the five hand-made town plans from the approved mock
 # ---------------------------------------------------------------------------
 
-class TestPlans(unittest.TestCase):
-    def test_plans_file_is_the_approved_mock_data(self):
-        with open(MOCK, encoding="utf-8") as fh:
-            m = re.search(r'<script type="application/json" id="city-plans">(.*?)</script>', fh.read(), re.S)
-        self.assertIsNotNone(m)
-        with open(PLANS_FILE, encoding="utf-8") as fh:
-            data = json.load(fh)
-        # city-people adds each plan's "offices" and "rest" spots (tests/test_agent_city_chain.py)
-        for plan in data["plans"]:
-            plan.pop("offices", None)
-            plan.pop("rest", None)
-        self.assertEqual(data, json.loads(m.group(1)))
-
-    def test_five_plans_one_per_terrain(self):
-        ps = plans()
-        self.assertEqual(len(ps), 5)
-        self.assertEqual({p["terrain"] for p in ps}, TERRAINS)
-        self.assertEqual(len({p["id"] for p in ps}), 5)
-
-    def test_every_plan_is_complete(self):
-        for p in plans():
-            with self.subTest(plan=p["id"]):
-                self.assertEqual(len(p["edge"]), 12)
-                self.assertTrue(all(0.8 <= e <= 1.2 for e in p["edge"]))
-                roads = set()
-                for x0, z0, x1, z1 in p["roads"]:
-                    self.assertTrue(x0 == x1 or z0 == z1, "roads are straight")
-                    for x in range(min(x0, x1), max(x0, x1) + 1):
-                        for z in range(min(z0, z1), max(z0, z1) + 1):
-                            self.assertTrue(-13 <= x < 13 and -13 <= z < 13)
-                            roads.add((x, z))
-                for d, ex in p["exits"].items():
-                    if ex is None:
-                        self.assertEqual((p["terrain"], d), ("coast", "S"), "only the coast has no south exit")
-                    else:
-                        self.assertIn(tuple(ex), roads, "exit %s is on a road" % d)
-                self.assertEqual(p["sea"], "S" if p["terrain"] == "coast" else None)
-                self.assertGreaterEqual(len(p["plots"]), 30)
-                spots = [(x, z) for x, z, _ in p["plots"]]
-                self.assertEqual(len(spots), len(set(spots)), "two plots on one tile")
-                for x, z, d in p["plots"]:
-                    self.assertIn(d, TYPES)
-                    self.assertNotIn((x, z), roads)
-                    self.assertFalse(-2 <= x <= 1 and -2 <= z <= 1, "no plot on the hall or its plaza")
-                    self.assertTrue({(x, z + 1), (x + 1, z), (x - 1, z), (x, z - 1)} & roads, "a plot fronts a road")
-                for d in TYPES:
-                    self.assertGreaterEqual(sum(1 for q in p["plots"] if q[2] == d), 4, "district %s" % d)
-
-    def test_every_plot_opens_by_the_cap(self):
-        for p in plans():
-            with self.subTest(plan=p["id"]):
-                self.assertEqual(ac.territory_tiles(p, "/x/.git", ac.LCAP)["open"], len(p["plots"]))
-
-
 # ---------------------------------------------------------------------------
 # Size from code lines
 # ---------------------------------------------------------------------------
-
-class TestSize(unittest.TestCase):
-    def test_constants(self):
-        self.assertEqual((ac.CELL, ac.HALF), (22, 11))
-        self.assertEqual((ac.R0, ac.RMAX, ac.L0, ac.LCAP), (1.9, 8.6, 50, 1000000))
-        self.assertEqual(ac.KIND_TYPE, {"test": "tower", "ui": "shop", "script": "workshop",
-                                        "doc": "library", "other": "house"})
-        self.assertEqual(ac.RECOUNT_SEC, 300)
-
-    def test_log_scale_and_capped(self):
-        self.assertEqual(ac.growth(0), 0)
-        self.assertEqual(ac.growth(-5), 0)
-        self.assertAlmostEqual(ac.growth(500), math.log1p(10) / math.log1p(20000), places=9)
-        self.assertEqual(ac.growth(1000000), 1)
-        self.assertEqual(ac.growth(5000000), 1)
-        self.assertAlmostEqual(ac.radius(0), 1.9)
-        self.assertAlmostEqual(ac.radius(10 ** 7), 8.6)
-        seq = [ac.growth(n) for n in (0, 10, 100, 1000, 10000, 100000, 250000, 1000000)]
-        self.assertEqual(seq, sorted(seq))
-        self.assertEqual(len(set(seq)), len(seq), "smooth: every step grows")
-
-    def test_big_repos_still_differ(self):
-        """Mock review: 250k and 1M lines must not look the same."""
-        p = plans()[0]
-        a = ac.territory_tiles(p, "/x/.git", 250000)["land"]
-        b = ac.territory_tiles(p, "/x/.git", 1000000)["land"]
-        self.assertGreater(len(b), len(a) * 1.1)
-
-    def test_day_zero_is_a_tiny_town_hall_and_one_plot_per_district(self):
-        # city-people (requirements 3bec3dd + main manager): the minimum land opens the first plot of every
-        # district so any first edit can build; no building on day 0 (tests/test_agent_city_minland.py)
-        for i, p in enumerate(plans()):
-            with self.subTest(plan=p["id"]):
-                districts = len({d for _, _, d in p["plots"]})
-                t = ac.territory_tiles(p, "/day0/%d/.git" % i, 0)
-                self.assertEqual(t["open"], districts)
-                self.assertTrue({(-1, -1), (0, -1), (-1, 0), (0, 0)} <= t["land"])
-                w = world_of(("/day0/%d/.git" % i, 0))
-                v = ac.layout(w, plans())
-                chars = [tile(v, x, z) for x in range(-13, 13) for z in range(-13, 13)]
-                self.assertEqual(chars.count("P"), districts, "one open plot per district")
-                self.assertEqual(v["territories"][0]["buildings"], [], "no building on day 0")
-
-    def test_growth_adds_land_at_the_edge_and_keeps_the_old_land(self):
-        p = plans()[1]
-        prev = None
-        for n in (0, 50, 500, 5000, 50000, 250000, 1000000):
-            land = ac.territory_tiles(p, "/grow/.git", n)["land"]
-            if prev is not None:
-                self.assertTrue(prev <= land, "land never shrinks or moves")
-                self.assertGreater(len(land), len(prev))
-            prev = land
-
 
 # ---------------------------------------------------------------------------
 # Shape: organic, uneven, the same every time for the same repo
 # ---------------------------------------------------------------------------
 
-class TestShape(unittest.TestCase):
-    def test_never_a_square(self):
-        for i, p in enumerate(plans()):
-            for n in (5000, 1000000):
-                with self.subTest(plan=p["id"], lines=n):
-                    land = ac.territory_tiles(p, "/shape/%d/.git" % i, n)["land"]
-                    xs = [x for x, _ in land]
-                    zs = [z for _, z in land]
-                    box = (max(xs) - min(xs) + 1) * (max(zs) - min(zs) + 1)
-                    self.assertLess(len(land) / box, 0.88, "fills its bounding box like a rectangle")
-                    widths = {sum(1 for x, z in land if z == row) for row in set(zs)}
-                    self.assertGreaterEqual(len(widths), 4, "row widths all alike")
-
-    def test_same_repo_same_shape(self):
-        p = plans()[2]
-        self.assertEqual(ac.territory_tiles(p, "/a/.git", 20000)["land"],
-                         ac.territory_tiles(p, "/a/.git", 20000)["land"])
-        v1 = ac.layout(world_of(("/a/.git", 20000), ("/b/.git", 300)), plans())
-        v2 = ac.layout(world_of(("/a/.git", 20000), ("/b/.git", 300)), plans())
-        self.assertEqual(v1, v2)
-
-    def test_other_repo_other_shape(self):
-        p = plans()[2]
-        shapes = {frozenset(ac.territory_tiles(p, i, 20000)["land"]) for i in ids(4, "s")}
-        self.assertEqual(len(shapes), 4)
-
-    def test_ids_and_names(self):
-        self.assertEqual(ac.fnv1a(""), 0x811c9dc5)
-        self.assertEqual(ac.fnv1a("a"), 0xe40c292c)
-        self.assertEqual(ac.territory_id("a"), "e40c292c")
-        self.assertEqual(ac.repo_name("/home/u/code/shop/.git"), "shop")
-        self.assertEqual(ac.repo_name("/srv/git/shop.git"), "shop")
-        self.assertEqual(ac.repo_name("/srv/git/shop"), "shop")
-        self.assertEqual(ac.repo_name("dir:notes"), "notes")
-
-
 # ---------------------------------------------------------------------------
 # Territories on one land: slots, plans, neighbours, gaps, sea
 # ---------------------------------------------------------------------------
 
-class TestLand(unittest.TestCase):
-    def test_first_repo_in_the_middle_next_ones_beside_it(self):
-        w = world_of(*[(i, 1000) for i in ids(6)])
-        slots = [tuple(w["territories"][i]["slot"]) for i in w["order"]]
-        self.assertEqual(slots[0], (0, 0))
-        self.assertEqual(len(set(slots)), 6)
-        for k, s in enumerate(slots[1:], 1):
-            self.assertTrue(any(abs(s[0] - o[0]) + abs(s[1] - o[1]) == 1 for o in slots[:k]),
-                            "slot %s touches no earlier territory" % (s,))
-
-    def test_plan_from_the_identity_and_all_five_before_a_repeat(self):
-        ps = plans()
-        for n in range(20):
-            ident = "/pick/%d/.git" % n
-            w = world_of((ident, 0))
-            want = ps[ac.fnv1a(ident) % 5]["id"]
-            self.assertEqual(w["territories"][ident]["plan"], want)
-        w = world_of(*[(i, 0) for i in ids(5, "p")])
-        self.assertEqual(len({t["plan"] for t in w["territories"].values()}), 5)
-
-    def test_known_repo_is_not_moved_or_replanned(self):
-        ps = plans()
-        w = world_of(*[(i, 0) for i in ids(3)])
-        before = json.loads(json.dumps(w))
-        again = ac.add_territory(w, ps, ids(3)[1], "other name", 99999)
-        self.assertEqual(again["slot"], before["territories"][ids(3)[1]]["slot"])
-        self.assertEqual(again["plan"], before["territories"][ids(3)[1]]["plan"])
-        self.assertEqual(w["order"], before["order"])
-
-    def test_record_leaves_room_for_balance(self):
-        w = world_of(("/x/.git", 10))
-        t = w["territories"]["/x/.git"]
-        self.assertLessEqual({"name", "plan", "slot", "lines", "peak", "buildings", "era"}, set(t))
-        self.assertEqual((t["lines"], t["peak"]), (10, 10))
-        self.assertEqual(t["era"], "village")
-        self.assertEqual(w["v"], 1)
-
-    def test_map_shape_and_alphabet(self):
-        v = ac.layout(world_of(*[(i, 3000 * (k + 1)) for k, i in enumerate(ids(4))]), plans())
-        self.assertEqual(v["cell"], 22)
-        self.assertEqual(len(v["rows"]), v["h"])
-        for row in v["rows"]:
-            self.assertEqual(len(row), v["w"])
-            self.assertLessEqual(set(row), MAP_CHARS)
-
-    def test_halls_where_the_slots_say(self):
-        w = world_of(*[(i, 2000) for i in ids(4)])
-        v = ac.layout(w, plans())
-        self.assertEqual(len(v["territories"]), 4)
-        for t in v["territories"]:
-            self.assertEqual((t["cx"], t["cz"]), (22 * t["slot"][0], 22 * t["slot"][1]))
-            for x in (t["cx"] - 1, t["cx"]):
-                for z in (t["cz"] - 1, t["cz"]):
-                    self.assertEqual(tile(v, x, z), "H")
-
-    def test_one_land_every_hall_reachable_on_foot(self):
-        for n in (2, 3, 6):
-            with self.subTest(repos=n):
-                v = ac.layout(world_of(*[(i, 1500 * (k + 1)) for k, i in enumerate(ids(n, "walk%d" % n))]), plans())
-                halls = [(t["cx"], t["cz"]) for t in v["territories"]]
-                start = (halls[0][0], halls[0][1] + 1)
-                seen, todo = {start}, [start]
-                while todo:
-                    x, z = todo.pop()
-                    for nx, nz in ((x + 1, z), (x - 1, z), (x, z + 1), (x, z - 1)):
-                        if (nx, nz) not in seen and tile(v, nx, nz) in WALK:
-                            seen.add((nx, nz))
-                            todo.append((nx, nz))
-                for hx, hz in halls[1:]:
-                    near = {(hx + a, hz + b) for a in (-2, -1, 0, 1) for b in (-2, -1, 0, 1)}
-                    self.assertTrue(near & seen, "hall %s cannot be reached on foot" % ((hx, hz),))
-
-    def test_neighbours_split_by_a_gap_and_joined_by_a_bridge_or_road(self):
-        GAP = {"river": "w", "ravine": "k", "pass": "m", "forest": "f"}
-        seen = set()
-        for tag in range(6):
-            v = ac.layout(world_of(*[(i, 800) for i in ids(6, "gap%d" % tag)]), plans())
-            by = {t["id"]: t for t in v["territories"]}
-            pairs = {frozenset((a["id"], b["id"])) for a in v["territories"] for b in v["territories"]
-                     if abs(a["slot"][0] - b["slot"][0]) + abs(a["slot"][1] - b["slot"][1]) == 1}
-            self.assertEqual({frozenset((l["a"], l["b"])) for l in v["links"]}, pairs)
-            for l in v["links"]:
-                terr = sorted((by[l["a"]]["terrain"], by[l["b"]]["terrain"]))
-                self.assertEqual(l["gap"], ac.gap_of(*terr))
-                self.assertEqual(l["kind"], "bridge" if l["gap"] in ("river", "ravine") else "road")
-                self.assertTrue(l["cross"], "the link road never crosses the gap")
-                want = "B" if l["kind"] == "bridge" else "t"
-                for x, z in l["cross"]:
-                    self.assertEqual(tile(v, x, z), want)
-                chars = "".join(v["rows"])
-                self.assertIn(GAP[l["gap"]], chars)
-                seen.add(l["gap"])
-        self.assertEqual(ac.gap_of("grassland", "grassland"), "river")
-        self.assertEqual(ac.gap_of("mountain", "grassland"), ac.gap_of("grassland", "mountain"))
-        self.assertTrue({"river", "ravine", "pass", "forest"} & seen)
-
-    def test_gap_belts_bend(self):
-        GAP = {"river": "w", "ravine": "k", "pass": "m", "forest": "f"}
-        v = ac.layout(world_of(*[(i, 800) for i in ids(3, "bend")]), plans())
-        by = {t["id"]: t for t in v["territories"]}
-        for l in v["links"]:
-            a, b = by[l["a"]], by[l["b"]]
-            ch = GAP[l["gap"]]
-            across = a["slot"][1] == b["slot"][1]
-            spots = set()
-            for along in range(-9, 10):
-                if across:
-                    line, at = 11 + 22 * min(a["slot"][0], b["slot"][0]), a["cz"] + along
-                    hits = [d for d in range(-4, 4) if tile(v, line + d, at) == ch]
-                else:
-                    line, at = 11 + 22 * min(a["slot"][1], b["slot"][1]), a["cx"] + along
-                    hits = [d for d in range(-4, 4) if tile(v, at, line + d) == ch]
-                if hits:
-                    spots.add(min(hits))
-            with self.subTest(link=l["gap"]):
-                self.assertGreaterEqual(len(spots), 2, "the gap belt is one straight line")
-
-    def test_outer_edge_is_never_a_long_straight_line(self):
-        for n in (1, 3, 6):
-            for tag in range(8):
-                with self.subTest(repos=n, ids=tag):
-                    v = ac.layout(world_of(*[(i, 1000 * (k + 1)) for k, i in enumerate(ids(n, "edge%d" % tag))]), plans())
-                    self.assertLessEqual(straight_run(v), 6)
-
-    def test_sea_only_by_the_coast(self):
-        ps = plans()
-        coast = next(p for p in ps if p["terrain"] == "coast")
-        found = False
-        for tag in range(12):
-            w = world_of(*[(i, 500) for i in ids(6, "sea%d" % tag)])
-            v = ac.layout(w, ps)
-            coasts = [t for t in v["territories"] if t["plan"] == coast["id"]]
-            slots = {tuple(t["slot"]) for t in v["territories"]}
-            for t in coasts:
-                self.assertNotIn((t["slot"][0], t["slot"][1] + 1), slots, "somebody lives in the sea")
-            for r, row in enumerate(v["rows"]):
-                for c, ch in enumerate(row):
-                    if ch == "s":
-                        found = True
-                        x, z = v["x0"] + c, v["z0"] + r
-                        self.assertTrue(any(abs(x - t["cx"]) <= 13 and t["cz"] - 13 <= z <= t["cz"] + 13 + 9
-                                            for t in coasts), "sea away from any coast at %s" % ((x, z),))
-        self.assertTrue(found, "no coast in 12 lands of 6 repos")
-        no_coast = [i for i in ("/nc/%d/.git" % n for n in range(40)) if ps[ac.fnv1a(i) % 5]["terrain"] != "coast"][:1]
-        v = ac.layout(world_of((no_coast[0], 1000)), ps)
-        self.assertNotIn("s", "".join(v["rows"]))
-
-    def test_nothing_off_plan(self):
-        ps = {p["id"]: p for p in plans()}
-        w = world_of(*[(i, 20000) for i in ids(3, "plan")])
-        for ident in w["order"]:
-            for k in ("ui", "test", "other", "doc", "script"):
-                ac.build(w, list(ps.values()), ident, k, "o-" + k, "worker", 1.0)
-        v = ac.layout(w, list(ps.values()))
-        for t in v["territories"]:
-            plan = ps[t["plan"]]
-            # city-people: open plots are the view's "plots" (not always a plan-order prefix)
-            spots = {(p["x"], p["z"]) for p in t["plots"]}
-            self.assertEqual(len(spots), t["open"])
-            ps_tiles = {(x, z) for x in range(t["cx"] - 13, t["cx"] + 13) for z in range(t["cz"] - 13, t["cz"] + 13)
-                        if tile(v, x, z) == "P"}
-            self.assertEqual(ps_tiles, spots)
-            self.assertEqual({(p["x"], p["z"]) for p in t["plots"]}, spots)
-            for b in t["buildings"]:
-                self.assertIn((b["x"], b["z"]), spots)
-                self.assertEqual(plan["plots"][b["plot"]][2], b["type"])
-
-
 # ---------------------------------------------------------------------------
 # Buildings: type from the kind of work, in its district, permanent
 # ---------------------------------------------------------------------------
-
-class TestBuild(unittest.TestCase):
-    def setUp(self):
-        self.ps = plans()
-        self.id = "/b/.git"
-        self.w = world_of((self.id, 1000000))
-        self.plan = next(p for p in self.ps if p["id"] == self.w["territories"][self.id]["plan"])
-
-    def test_kind_picks_the_type_and_its_district(self):
-        for kind, typ in ac.KIND_TYPE.items():
-            with self.subTest(kind=kind):
-                b = ac.build(self.w, self.ps, self.id, kind, "own-" + kind, "worker", 5.0)
-                self.assertEqual(b["type"], typ)
-                self.assertEqual(self.plan["plots"][b["plot"]][2], typ)
-                first = next(k for k, q in enumerate(self.plan["plots"]) if q[2] == typ)
-                self.assertEqual(b["plot"], first, "the first plot of the district in plan order")
-                self.assertEqual((b["owner"], b["by"], b["at"]), ("own-" + kind, "worker", 5.0))
-
-    def test_one_building_per_agent(self):
-        self.assertIsNotNone(ac.build(self.w, self.ps, self.id, "ui", "a1", "worker", 1.0))
-        self.assertIsNone(ac.build(self.w, self.ps, self.id, "test", "a1", "worker", 2.0))
-        self.assertEqual(len(self.w["territories"][self.id]["buildings"]), 1)
-
-    def test_next_agent_takes_the_next_free_plot(self):
-        a = ac.build(self.w, self.ps, self.id, "other", "a1", "w", 1.0)
-        b = ac.build(self.w, self.ps, self.id, "other", "a2", "w", 1.0)
-        self.assertNotEqual(a["plot"], b["plot"])
-        self.assertLess(a["plot"], b["plot"])
-
-    def test_full_district_builds_nothing(self):
-        n = sum(1 for q in self.plan["plots"] if q[2] == "library")
-        for i in range(n):
-            self.assertIsNotNone(ac.build(self.w, self.ps, self.id, "doc", "d%d" % i, "w", 1.0))
-        self.assertIsNone(ac.build(self.w, self.ps, self.id, "doc", "late", "w", 1.0))
-
-    def test_day_zero_has_one_plot_per_district(self):
-        # city-people (requirements 3bec3dd + main manager): any first edit builds, a second of the same
-        # district waits for growth (tests/test_agent_city_minland.py)
-        w = world_of(("/new/.git", 0))
-        plan = next(p for p in self.ps if p["id"] == w["territories"]["/new/.git"]["plan"])
-        districts = {d for _, _, d in plan["plots"]}
-        for kind, district in ac.KIND_TYPE.items():
-            if district not in districts:
-                continue
-            self.assertIsNotNone(ac.build(w, self.ps, "/new/.git", kind, "x-" + kind, "w", 1.0))
-            self.assertIsNone(ac.build(w, self.ps, "/new/.git", kind, "y-" + kind, "w", 1.0))
-
-    def test_no_kind_no_building(self):
-        self.assertIsNone(ac.build(self.w, self.ps, self.id, "", "a1", "w", 1.0))
-        self.assertIsNone(ac.build(self.w, self.ps, self.id, "bogus", "a1", "w", 1.0))
-        self.assertIsNone(ac.build(self.w, self.ps, "/unknown/.git", "ui", "a1", "w", 1.0))
-
 
 # ---------------------------------------------------------------------------
 # Persistence: world.json
@@ -618,11 +251,10 @@ class TestWorldFile(unittest.TestCase):
 
     def test_save_then_load_is_the_same_world(self):
         w = world_of(("/a/.git", 12000), ("/b/.git", 40))
-        ac.build(w, plans(), "/a/.git", "ui", "a1", "worker", 3.0)
-        w["territories"]["/a/.git"]["future_field"] = {"kept": True}
+        w["territories"]["/a/.git"]["reno_asked"] = True
         ac.save_world(self.path, w)
         self.assertEqual(os.listdir(os.path.dirname(self.path)), ["world.json"], "temp file left behind")
-        loaded, notice = ac.load_world(self.path, plans())
+        loaded, notice = ac.load_world(self.path)
         self.assertIsNone(notice)
         self.assertEqual(loaded, json.loads(json.dumps(w)))
         with open(self.path) as fh:
@@ -634,20 +266,15 @@ class TestWorldFile(unittest.TestCase):
         self.assertRegex(src, r"tmp|temp|mkstemp")
 
     def test_missing_file_is_a_fresh_world(self):
-        w, notice = ac.load_world(self.path, plans())
+        w, notice = ac.load_world(self.path)
         self.assertEqual(w, ac.new_world())
         self.assertIsNone(notice)
         self.assertFalse(os.path.exists(os.path.dirname(self.path)) and os.listdir(os.path.dirname(self.path)))
 
     def test_broken_or_unknown_file_is_moved_aside(self):
         good = world_of(("/a/.git", 10))
-        bad_slot = json.loads(json.dumps(good))
-        bad_slot["territories"]["/a/.git"]["slot"] = "x"
-        bad_plan = json.loads(json.dumps(good))
-        bad_plan["territories"]["/a/.git"]["plan"] = "atlantis"
         cases = {"not json": b"{not json", "a list": b"[1, 2]", "future version": json.dumps(dict(good, v=2)).encode(),
                  "no version": json.dumps({"territories": {}, "order": []}).encode(),
-                 "bad slot": json.dumps(bad_slot).encode(), "unknown plan": json.dumps(bad_plan).encode(),
                  "binary": b"\xff\xfe\x00junk"}
         for name, data in cases.items():
             with self.subTest(case=name):
@@ -656,7 +283,7 @@ class TestWorldFile(unittest.TestCase):
                 os.makedirs(folder)
                 with open(self.path, "wb") as fh:
                     fh.write(data)
-                w, notice = ac.load_world(self.path, plans())
+                w, notice = ac.load_world(self.path)
                 self.assertEqual(w, ac.new_world())
                 aside = [f for f in os.listdir(folder) if f.startswith("world.json.bad-")]
                 self.assertEqual(len(aside), 1)
@@ -698,165 +325,6 @@ def make_repo(base, files):
     return os.path.realpath(os.path.join(base, ".git"))
 
 
-class TestLines(unittest.TestCase):
-    def setUp(self):
-        self.base = tempfile.mkdtemp(prefix="city_lines_")
-
-    def tearDown(self):
-        shutil.rmtree(self.base, ignore_errors=True)
-
-    def test_what_counts(self):
-        yes = ["src/app.py", "lib/x.ts", "README.md", "bin/run.sh", "tests/test_a.py", "ui/page.html",
-               "Makefile", "db/schema.sql", "config.yml"]
-        no = ["img/logo.png", "a.jpg", "b.gif", "icon.ico", "photo.webp", "art.svg", "m/model.glb", "m/scene.gltf",
-              "m/x.obj", "m/y.fbx", "f/font.woff2", "f/font.ttf", "s/a.mp3", "v/a.mp4", "d/doc.pdf", "a.zip",
-              "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "Cargo.lock", "poetry.lock", "Gemfile.lock",
-              "go.sum", "composer.lock", "js/app.min.js", "css/site.min.css", "vendor/lib/a.py",
-              "node_modules/x/index.js", "dist/bundle.js", "build/out.c", "third_party/z.c", "a/b/vendor/c.go",
-              "gen/a.pb.go", "x_pb2.py", "a.generated.ts"]
-        for path in yes:
-            with self.subTest(path=path):
-                self.assertTrue(ac.counts_as_code(path))
-        for path in no:
-            with self.subTest(path=path):
-                self.assertFalse(ac.counts_as_code(path))
-
-    def test_counts_committed_code_lines_only(self):
-        ident = make_repo(os.path.join(self.base, "shop"), {
-            "src/a.py": "a\nb\nc\n", "src/b.js": "x\n" * 10, "README.md": "# hi\n\ntext\n",
-            "logo.png": b"\x89PNG\r\n\x1a\n" + bytes(range(256)) * 4, "package-lock.json": "{\n}\n" * 50,
-            "vendor/v.py": "v\n" * 99, "blob.bin": b"\x00\x01\x02" * 100})
-        self.assertEqual(ac.count_lines(ident), 16)
-        with open(os.path.join(self.base, "shop", "src", "c.py"), "w") as fh:
-            fh.write("not committed\n" * 7)
-        self.assertEqual(ac.count_lines(ident), 16, "only what HEAD holds")
-
-    def test_worktree_counts_the_main_repo(self):
-        ident = make_repo(os.path.join(self.base, "main"), {"a.py": "1\n2\n"})
-        wt = os.path.join(self.base, "wt")
-        git(os.path.join(self.base, "main"), "worktree", "add", "-q", "-b", "side", wt)
-        with open(os.path.join(wt, "b.py"), "w") as fh:
-            fh.write("x\n" * 5)
-        git(wt, "add", "b.py")
-        git(wt, "commit", "-q", "-m", "side work")
-        self.assertEqual(ac.count_lines(ident), 2, "the territory is the main repo's HEAD")
-
-    def test_not_git_or_empty_is_zero(self):
-        self.assertEqual(ac.count_lines(os.path.join(self.base, "nothing", ".git")), 0)
-        self.assertEqual(ac.count_lines("dir:notes"), 0)
-        empty = os.path.join(self.base, "empty")
-        os.makedirs(empty)
-        git(empty, "init", "-q")
-        self.assertEqual(ac.count_lines(os.path.realpath(os.path.join(empty, ".git"))), 0)
-
-    def test_runs_git_only(self):
-        ident = make_repo(os.path.join(self.base, "r"), {"a.py": "1\n"})
-        calls = []
-        real = subprocess.run
-
-        def spy(args, *a, **kw):
-            calls.append(list(args))
-            return real(args, *a, **kw)
-
-        ac.subprocess.run = spy
-        try:
-            ac.count_lines(ident)
-        finally:
-            ac.subprocess.run = real
-        self.assertTrue(calls)
-        for c in calls:
-            self.assertEqual(os.path.basename(c[0]), "git", c)
-            self.assertNotIn("test", " ".join(c[1:]).replace(ident, ""), c)
-
-
-class TestRecount(unittest.TestCase):
-    def setUp(self):
-        self.base = tempfile.mkdtemp(prefix="city_recount_")
-        self.path = os.path.join(self.base, "world.json")
-        self.calls = []
-        self.slow = 0.0
-
-        def count(identity):
-            self.calls.append(identity)
-            time.sleep(self.slow)
-            return {"/a/.git": 12000, "/b/.git": 300}.get(identity, 0)
-
-        self.state = ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"),
-                                  world_path=self.path, plans=plans(), count_fn=count)
-
-    def tearDown(self):
-        shutil.rmtree(self.base, ignore_errors=True)
-
-    def feed(self, repo, now, ev="PostToolUse", sid="s1"):
-        self.state.feed_line({"ev": ev, "sid": sid, "aid": "", "at": "", "tool": "Read", "nt": "",
-                              "proj": "p", "role": "worker", "desc": "", "sub": "", "q": "", "klen": "",
-                              "repo": repo, "kind": ""}, now)
-
-    def test_feed_never_counts(self):
-        self.slow = 2.0
-        t0 = time.monotonic()
-        for i in range(5):
-            self.feed("/a/.git", 1000.0 + i)
-        self.assertLess(time.monotonic() - t0, 0.5)
-        self.assertEqual(self.calls, [])
-
-    def test_counts_active_repos_at_most_every_300_s(self):
-        self.feed("/a/.git", 1000.0)
-        self.feed("/b/.git", 1000.0)
-        self.assertEqual(self.state.recount(1001.0), 2)
-        self.assertEqual(sorted(self.calls), ["/a/.git", "/b/.git"])
-        self.assertEqual(self.state.world["territories"]["/a/.git"]["lines"], 12000)
-        self.feed("/a/.git", 1010.0)
-        self.assertEqual(self.state.recount(1100.0), 0, "counted less than 300 s ago")
-        self.assertEqual(self.state.recount(1302.0), 1, "active again and 300 s passed")
-        self.assertEqual(self.calls[-1], "/a/.git")
-        self.assertEqual(self.state.recount(1700.0), 0, "no activity since the last count")
-
-    def test_a_restart_counts_nothing_until_there_is_activity(self):
-        ac.save_world(self.path, world_of(("/a/.git", 500), ("/b/.git", 40)))
-        st = ac.CityState(decisions_path=os.path.join(self.base, "d3.jsonl"), world_path=self.path,
-                          plans=plans(), count_fn=lambda i: self.calls.append(i) or 7)
-        self.assertEqual(st.recount(5000.0), 0, "loaded from world.json, no line yet: nothing to count")
-        self.assertEqual(self.calls, [])
-        st.feed_line({"ev": "UserPromptSubmit", "sid": "x", "repo": "/b/.git", "proj": "b"}, 5001.0)
-        self.assertEqual(st.recount(5002.0), 1)
-        self.assertEqual(self.calls, ["/b/.git"])
-
-    def test_a_line_during_a_count_keeps_the_repo_due(self):
-        during = []
-
-        def count(identity):
-            self.calls.append(identity)
-            if not during:
-                during.append(1)
-                self.feed(identity, 1001.5)
-            return 12000
-
-        self.state.count_fn = count
-        self.feed("/a/.git", 1000.0)
-        self.assertEqual(self.state.recount(1001.0), 1)
-        self.assertEqual(self.state.recount(1302.0), 1, "the line that came in while counting was lost")
-
-    def test_deleting_code_never_shrinks_the_territory(self):
-        self.feed("/a/.git", 1000.0)
-        self.state.recount(1001.0)
-        t = self.state.world["territories"]["/a/.git"]
-        self.assertEqual((t["lines"], t["peak"]), (12000, 12000))
-        self.state.world["territories"]["/a/.git"]["peak"] = 50000
-        self.feed("/a/.git", 1400.0)
-        self.state.recount(1400.0)
-        self.assertEqual((t["lines"], t["peak"]), (12000, 50000))
-        view = ac.layout(self.state.world, plans())
-        self.assertAlmostEqual(view["territories"][0]["size"], ac.growth(50000))
-        self.assertEqual(view["territories"][0]["lines"], 12000)
-
-    def test_memory_only_without_a_path(self):
-        st = ac.CityState(decisions_path=os.path.join(self.base, "d2.jsonl"), plans=plans())
-        st.feed_line({"ev": "UserPromptSubmit", "sid": "x", "repo": "/m/.git", "proj": "m"}, 5.0)
-        self.assertIn("/m/.git", st.world["territories"])
-        self.assertEqual(sorted(os.listdir(self.base)), [])
-
-
 # ---------------------------------------------------------------------------
 # Server: the world in the stream, in the file, across restarts
 # ---------------------------------------------------------------------------
@@ -865,192 +333,6 @@ def gline(ev, sid="s1", aid="", at="", tool="", role="", repo="", kind="", proj=
     return json.dumps({"ev": ev, "sid": sid, "aid": aid, "at": at, "tool": tool, "nt": "", "proj": proj,
                        "role": role, "desc": "", "sub": "", "q": "", "klen": "", "repo": repo,
                        "kind": kind}) + "\n"
-
-
-class WorldServerCase(ServerCase):
-    def setUp(self):
-        super().setUp()
-        self.home = os.path.join(self.base, "cityhome")
-        self.world = os.path.join(self.home, "world.json")
-        self.repo_a = make_repo(os.path.join(self.base, "big"), {"src/%d.py" % i: "x\n" * 400 for i in range(25)})
-        self.repo_b = make_repo(os.path.join(self.base, "small"), {"a.py": "x\n" * 30})
-        # city-roles: g1 holds repo A's main manager lock (this test process is its live pid)
-        with open(os.path.join(self.repo_a, "agent_main.lock"), "w") as fh:
-            fh.write("%d 2026-09-30 10:00 g1 -\n" % os.getpid())
-
-    def start(self, *extra, wait=True):
-        return super().start(*(list(extra) or ["--idle-sec", "60", "--world", self.world]), wait=wait)
-
-    def world_file(self):
-        with open(self.world) as fh:
-            return json.load(fh)
-
-    def snap(self):
-        client = self.sse()
-        return client, client.messages[0]
-
-
-class TestServerWorld(WorldServerCase):
-    def test_snapshot_carries_the_world(self):
-        self.start()
-        client, snap = self.snap()
-        self.assertEqual(snap["type"], "snapshot")
-        self.assertIn("world", snap)
-        self.assertEqual(snap["world"]["territories"], [])
-        self.assertNotIn("notice", snap)
-
-    def test_a_new_repo_makes_its_territory(self):
-        self.start()
-        client, _ = self.snap()
-        self.append(gline("UserPromptSubmit", sid="g1", repo=self.repo_a))
-        ev = wait_for(lambda: client.events("world"))
-        self.assertTrue(ev)
-        terr = ev[-1]["world"]["territories"]
-        self.assertEqual([t["name"] for t in terr], ["big"])
-        self.assertEqual(terr[0]["id"], ac.territory_id(self.repo_a))
-        self.assertTrue(wait_for(lambda: os.path.exists(self.world)))
-        self.assertIn(self.repo_a, self.world_file()["territories"])
-
-    def test_code_lines_size_the_territory(self):
-        self.start()
-        client, _ = self.snap()
-        self.append(gline("UserPromptSubmit", sid="g1", repo=self.repo_a))
-        self.append(gline("UserPromptSubmit", sid="c1", role="worker", repo=self.repo_b))
-        got = wait_for(lambda: [e for e in client.events("world")
-                                if {t["lines"] for t in e["world"]["territories"]} == {10000, 30}], timeout=20)
-        self.assertTrue(got, "lines were never counted")
-        terr = {t["name"]: t for t in got[-1]["world"]["territories"]}
-        self.assertGreater(terr["big"]["size"], terr["small"]["size"])
-        self.assertEqual(len(got[-1]["world"]["links"]), 1)
-
-    def test_spawn_and_snapshot_agents_carry_their_territory(self):
-        self.start()
-        client, _ = self.snap()
-        self.append(gline("UserPromptSubmit", sid="g1", repo=self.repo_a))
-        self.append(gline("SubagentStart", sid="g1", aid="a1", at="worker", repo=self.repo_b))
-        spawn = wait_for(lambda: client.events("spawn"))
-        self.assertEqual(spawn[0]["terr"], ac.territory_id(self.repo_b))
-        gov = wait_for(lambda: client.events("gov"))
-        self.assertEqual(gov[0]["terr"], ac.territory_id(self.repo_a))
-        _, snap = self.snap()
-        self.assertEqual(snap["agents"][0]["terr"], ac.territory_id(self.repo_b))
-        self.assertEqual(snap["gov"]["terr"], ac.territory_id(self.repo_a))
-
-    def test_a_line_without_repo_makes_no_territory(self):
-        """Owner 2026-09-25: old data is dropped; no "dir:" + proj fallback any more."""
-        self.start()
-        client, _ = self.snap()
-        self.append(gline("UserPromptSubmit", sid="g1", repo="", proj="notes"))
-        # city-roles: no repo, no start territory -> no lock, so g1 is a citizen, never a governor
-        self.assertTrue(wait_for(lambda: client.events("spawn")), "the line was read")
-        time.sleep(0.5)
-        self.assertEqual(client.events("world"), [])
-        _, snap = self.snap()
-        self.assertEqual(snap["world"]["territories"], [])
-
-    def test_an_edit_builds_in_its_district_and_stays(self):
-        seed = world_of((self.repo_a, 1000000))
-        ac.save_world(self.world, seed)
-        self.start()
-        client, _ = self.snap()
-        self.append(gline("SubagentStart", sid="g1", aid="a1", at="worker", repo=self.repo_a))
-        self.append(gline("PostToolUse", sid="g1", aid="a1", at="worker", tool="Edit", repo=self.repo_a, kind="ui"))
-        b = wait_for(lambda: client.events("build"))
-        self.assertTrue(b, "no build event")
-        b = b[0]
-        self.assertEqual((b["id"], b["terr"], b["btype"], b["by"]), ("a1", ac.territory_id(self.repo_a), "shop", "worker"))
-        plan = next(p for p in plans() if p["id"] == seed["territories"][self.repo_a]["plan"])
-        self.assertEqual(plan["plots"][b["plot"]][2], "shop")
-        self.assertEqual((b["x"], b["z"]), (plan["plots"][b["plot"]][0], plan["plots"][b["plot"]][1]))
-        self.append(gline("PostToolUse", sid="g1", aid="a1", at="worker", tool="Write", repo=self.repo_a, kind="test"))
-        self.append(gline("SubagentStop", sid="g1", aid="a1", at="worker", repo=self.repo_a))
-        self.append(gline("SessionEnd", sid="g1", repo=self.repo_a))
-        self.assertTrue(wait_for(lambda: client.events("leave")))
-        time.sleep(0.5)
-        self.assertEqual(len(client.events("build")), 1, "one building per agent")
-        saved = self.world_file()["territories"][self.repo_a]["buildings"]
-        self.assertEqual([(x["plot"], x["type"], x["owner"]) for x in saved], [(b["plot"], "shop", "a1")])
-        _, snap = self.snap()
-        built = snap["world"]["territories"][0]["buildings"]
-        self.assertEqual([(x["plot"], x["type"]) for x in built], [(b["plot"], "shop")], "the agent left, its building stays")
-
-    def test_governor_edits_build_too(self):
-        ac.save_world(self.world, world_of((self.repo_a, 1000000)))
-        self.start()
-        client, _ = self.snap()
-        self.append(gline("UserPromptSubmit", sid="g1", repo=self.repo_a))
-        self.append(gline("PostToolUse", sid="g1", tool="Edit", repo=self.repo_a, kind="doc"))
-        b = wait_for(lambda: client.events("build"))
-        self.assertTrue(b)
-        self.assertEqual((b[0]["id"], b[0]["btype"]), ("gov", "library"))
-
-    def test_restart_is_the_same_city(self):
-        self.start()
-        client, _ = self.snap()
-        self.append(gline("UserPromptSubmit", sid="g1", repo=self.repo_a))
-        self.append(gline("UserPromptSubmit", sid="c1", role="worker", repo=self.repo_b))
-        self.assertTrue(wait_for(lambda: [e for e in client.events("world")
-                                          if {t["lines"] for t in e["world"]["territories"]} == {10000, 30}], timeout=20))
-        _, before = self.snap()
-        plans_before = {k: v["plan"] for k, v in self.world_file()["territories"].items()}
-        for p in self.procs:
-            p.terminate()
-            p.wait(5)
-        for c in self.clients:
-            c.close()
-        self.clients = []
-        self.start()
-        _, after = self.snap()
-        self.assertEqual(after["world"]["rows"], before["world"]["rows"])
-        self.assertEqual([(t["id"], t["plan"], t["slot"]) for t in after["world"]["territories"]],
-                         [(t["id"], t["plan"], t["slot"]) for t in before["world"]["territories"]])
-        self.assertEqual({k: v["plan"] for k, v in self.world_file()["territories"].items()}, plans_before,
-                         "a restart never re-picks a plan")
-
-    def test_broken_world_file_is_moved_aside_and_said(self):
-        os.makedirs(self.home)
-        with open(self.world, "w") as fh:
-            fh.write("{broken")
-        self.start()
-        _, snap = self.snap()
-        aside = [f for f in os.listdir(self.home) if f.startswith("world.json.bad-")]
-        self.assertEqual(len(aside), 1)
-        self.assertIn(aside[0], snap.get("notice", ""))
-        self.assertEqual(snap["world"]["territories"], [])
-
-    def test_default_world_path_is_under_agent_city_home(self):
-        proc = subprocess.Popen([sys.executable, os.path.join(BIN, "agent_city.py"), "serve", "--dir", self.dir,
-                                 "--port", "0", "--idle-sec", "60"],
-                                env=dict(os.environ, AGENT_CITY_HOME=self.home, HOME=self.base),
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        self.procs.append(proc)
-        self.assertTrue(wait_for(lambda: (self.on() or (0,))[0] == proc.pid))
-        self.append(gline("UserPromptSubmit", sid="g1", repo=self.repo_a))
-        self.assertTrue(wait_for(lambda: os.path.exists(self.world)), "world.json not under AGENT_CITY_HOME")
-
-
-class TestDemoWorld(unittest.TestCase):
-    def test_demo_world_command(self):
-        home = tempfile.mkdtemp(prefix="city_demo_")
-        try:
-            # PYTHONDONTWRITEBYTECODE: Apple's Command Line Tools Python keeps
-            # its byte-code cache under $HOME/Library/Caches, so any run with a
-            # fresh HOME makes that folder before agent_city.py even starts.
-            out = subprocess.run([sys.executable, os.path.join(BIN, "agent_city.py"), "demo-world"],
-                                 capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL,
-                                 env=dict(os.environ, AGENT_CITY_HOME=home, HOME=home,
-                                          PYTHONDONTWRITEBYTECODE="1"))
-            self.assertEqual(os.listdir(home), [], "demo-world reads and writes no file")
-        finally:
-            shutil.rmtree(home, ignore_errors=True)
-        self.assertEqual(out.returncode, 0, out.stderr)
-        view = json.loads(out.stdout)
-        self.assertGreaterEqual(len(view["territories"]), 3)
-        self.assertTrue(any(l["kind"] == "bridge" for l in view["links"]))
-        self.assertTrue(any(t["buildings"] for t in view["territories"]))
-        sizes = sorted(t["size"] for t in view["territories"])
-        self.assertLess(sizes[0], 0.3)
-        self.assertGreater(sizes[-1], 0.7)
 
 
 class TestCityScriptWorld(unittest.TestCase):

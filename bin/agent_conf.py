@@ -95,9 +95,9 @@ CONSTANTS = {
 }
 
 BY_KEY = {s["key"]: s for s in SETTINGS}
-HELPER_ROLES = ("fast_lane_deputy", "merge_deputy", "worker")
+HELPER_ROLES = ("fast_lane_deputy", "merge_deputy", "worker", "interior_designer")   # city-office: the designer is a helper
 DECIDER_KEYS = ("main_manager", "task_manager")
-ROLE_KEYS = ["main_manager", "fast_lane_deputy", "merge_deputy", "task_manager", "worker"]
+ROLE_KEYS = ["main_manager", "fast_lane_deputy", "merge_deputy", "task_manager", "worker", "interior_designer"]
 
 ROLE_VALUE_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9.\-]*)(?:\[1m\])?:(low|medium|high|xhigh|max)$")
 LANGUAGE_RE = re.compile(r"^[a-z]{2}(-[a-z]{2})?$")
@@ -454,7 +454,7 @@ def _candidates(values, path, claimed):
                 notes.append("skipped %s=%s from %s: not a value it knew" % (old, value, path))
                 continue
             mapped = _wire(table[value])
-        elif old in ("worker", "fast_lane_deputy", "merge_deputy", "level3_paths", "level4_paths"):
+        elif old in HELPER_ROLES + REPO_KEYS:
             continue
         elif old not in BY_KEY:
             notes.append("dropped: %s=%s in %s is not a setting any more" % (old, value, path))

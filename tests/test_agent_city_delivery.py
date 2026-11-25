@@ -78,7 +78,6 @@ class DeliveryCase(unittest.TestCase):
         self.mains = Mains({REPO: "g1"})
         self.st = ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=None,
                                chat_path=os.path.join(self.base, "chat.jsonl"),
-                               count_fn=lambda i: 0, balance_fn=lambda i, r: {"kinds": {}, "files": {}, "bad": []},
                                main_fn=self.mains, listen_grace_sec=GRACE)
         self.gov_page = "gov:" + ac.territory_id(REPO)
 
@@ -235,12 +234,10 @@ class TestDecisionsHome(unittest.TestCase):
         old = os.environ.get("AGENT_CITY_HOME")
         try:
             os.environ["AGENT_CITY_HOME"] = base
-            st = ac.CityState(world_path=None, count_fn=lambda i: 0,
-                              balance_fn=lambda i, r: {"kinds": {}, "files": {}, "bad": []})
+            st = ac.CityState(world_path=None)
             self.assertEqual(st.decisions_path, os.path.join(base, "decisions.jsonl"))
             del os.environ["AGENT_CITY_HOME"]
-            st = ac.CityState(world_path=None, count_fn=lambda i: 0,
-                              balance_fn=lambda i, r: {"kinds": {}, "files": {}, "bad": []})
+            st = ac.CityState(world_path=None)
             self.assertEqual(st.decisions_path, os.path.expanduser("~/.claude/agent-city/decisions.jsonl"))
         finally:
             if old is None:

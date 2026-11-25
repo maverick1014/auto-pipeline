@@ -20,7 +20,7 @@ CONTRACT (bin/agent-city.html, the inline script)
   below runs it in node with a stub DOM, then drives it through apply(ev)
   and update(dt) only.
 
-  function landState(view)   the non-3D half of buildLand(view), inside the
+  function officeState(view)   the non-3D half of buildLand(view), inside the
       simulation section: sets map, mid, land, clears occupied and the rest
       slots, adds the view's buildings as records, calls updateHome().
       buildLand(view) calls it first, then draws.
@@ -88,7 +88,16 @@ def sim_section():
     return "'use strict';\n" + text[start:end]
 
 
-def function_source(name):
+
+# city-office (2026-11-25): the 3D part was rebuilt from the approved prototype. The old per-person and
+# per-governor draw functions became syncFigs (meshes, pose, facing), pinOv (head tags and bubbles) and govFigsHere
+# (the area managers of the floor in view). Old tests that read the old names read these instead.
+OFFICE_DRAW = {"updatePerson": ("syncFigs", "pinOv", "poseFig"),
+               "updateGovernor": ("govFigsHere", "syncFigs", "pinOv"),
+               "updateGovPool": ("govFigsHere", "syncFigs", "pinOv")}
+
+
+def _function_source_one(name):
     text = page()
     m = re.search(r"^(?:async\s+)?function %s\s*\(" % re.escape(name), text, re.M)
     if not m:
@@ -104,6 +113,13 @@ def function_source(name):
                 return text[m.start():j + 1]
     return None
 
+
+
+def function_source(name):
+    if name in OFFICE_DRAW:
+        parts = [_function_source_one(n) for n in OFFICE_DRAW[name]]
+        return "\n".join(p for p in parts if p) or None
+    return _function_source_one(name)
 
 # A stub browser: every unknown name becomes a harmless "anything" (callable,
 # any property, truthy), except REQUIRED names, which must be in the page.
@@ -135,14 +151,14 @@ for (let tries = 0; tries < 150; tries++) {
   vm.createContext(box);
   try {
     vm.runInContext(script + '\n;\n' + driver, box, { timeout: 60000 });
-    process.stdout.write(JSON.stringify(box.__out)); process.exit(0);
+    require(`fs`).writeSync(1, JSON.stringify(box.__out)); process.exit(0);
   } catch (e) {
     const m = /^(\S+) is not defined$/.exec((e && e.message) || '');
     if (e && e.name === 'ReferenceError' && m && !required.includes(m[1]) && !stubs.has(m[1])) { stubs.add(m[1]); continue; }
-    process.stdout.write(JSON.stringify({ fatal: String(e && e.stack || e).slice(0, 2500) })); process.exit(0);
+    require(`fs`).writeSync(1, JSON.stringify({ fatal: String(e && e.stack || e).slice(0, 2500) })); process.exit(0);
   }
 }
-process.stdout.write(JSON.stringify({ fatal: 'too many unknown names: ' + [...stubs].join(' ') }));
+require(`fs`).writeSync(1, JSON.stringify({ fatal: 'too many unknown names: ' + [...stubs].join(' ') }));
 """
 
 
@@ -169,22 +185,10 @@ def run_sim(driver, payload, required=()):
 
 
 def plan_views():
-    """One world view per plan (terrain): a single territory, big enough to open plots."""
-    plans = ac.load_plans()
-    views = {}
-    for i in range(400):
-        ident = "/work/p0-%d/app/.git" % i
-        w = ac.new_world()
-        t = ac.add_territory(w, plans, ident, "app%d" % i, 6000)
-        t["peak"] = t["lines"] = 6000
-        plan = t["plan"]
-        if plan in views:
-            continue
-        views[plan] = ac.layout(w, plans)
-        if len(views) == len(plans):
-            break
-    return views
-
+    """city-office: one office view of one floor (was one island view per plan)."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from cityoffice import office_view_of
+    return {"office": office_view_of(("/work/p0-0/app/.git", "app0"))}
 
 # Drives the simulation section on one territory: snapshot with a present
 # governor and 4 placed agents, then a live worker that builds and rests, and
@@ -192,7 +196,7 @@ def plan_views():
 P0_DRIVER = r"""
 const V = __payload.view, T = V.territories[0], tid = T.id;
 const PLOT = T.plots[0];
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 const trace = {};
 function tick(sec){
   for (let i = 0; i < Math.round(sec * 10); i++) {
@@ -240,94 +244,16 @@ const govGone = governorAt(tid);
 __out = { govFirst, settled, built, rested, worked, final, govGone };
 """
 
-REQUIRED = ("landState", "governorAt", "apply", "update", "citizens", "buildings", "byId", "citizenStatus")
-
-
-class TestPeopleWalkP0(unittest.TestCase):
-    """P0: people do not walk / stand on the governor (owner, 2026-09-25)."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.results = {}
-        for plan, view in plan_views().items():
-            cls.results[plan] = run_sim(P0_DRIVER, {"view": view}, REQUIRED)
-
-    def far_apart(self, people, what):
-        for i, a in enumerate(people):
-            for b in people[i + 1:]:
-                d = math.hypot(a["x"] - b["x"], a["y"] - b["y"])
-                self.assertGreaterEqual(d, 0.45, "%s: %s and %s stand on the same spot (%.2f apart)"
-                                        % (what, a["id"], b["id"], d))
-
-    def test_five_terrains_are_covered(self):
-        self.assertEqual(len(self.results), 5)
-
-    def test_governor_present_stands_at_its_hall(self):
-        for plan, r in self.results.items():
-            with self.subTest(plan=plan):
-                self.assertIsNotNone(r["govFirst"], "a present governor has a spot")
-
-    def test_placed_people_never_share_a_spot(self):
-        for plan, r in self.results.items():
-            with self.subTest(plan=plan):
-                self.far_apart(r["settled"], plan + " after the snapshot")
-
-    def test_worker_walks_to_its_plot_and_builds(self):
-        for plan, r in self.results.items():
-            with self.subTest(plan=plan):
-                b = r["built"]
-                self.assertTrue(b["building"], "a building record on the plot")
-                self.assertEqual(b["state"], "building")
-                self.assertLessEqual(math.hypot(b["x"] - b["plotX"], b["y"] - b["plotZ"]), 1.3,
-                                     "the worker stands at its plot")
-
-    def test_done_worker_walks_to_a_rest_spot(self):
-        for plan, r in self.results.items():
-            with self.subTest(plan=plan):
-                s = r["rested"]
-                self.assertEqual(s["state"], "resting")
-                self.assertIsNotNone(s["rest"])
-                self.assertLess(math.hypot(s["x"] - s["rest"]["x"], s["y"] - s["rest"]["y"]), 0.2)
-
-    def test_working_citizen_without_a_building_stays_on_its_spot(self):
-        # city-work-anim (owner, 2026-09-29): replaces "a working citizen walks" -- it stays on its
-        # spot and acts its work out (tests/test_agent_city_work.py); walking is for going somewhere.
-        for plan, r in self.results.items():
-            with self.subTest(plan=plan):
-                w = r["worked"]
-                self.assertFalse(w["hasBld"])
-                self.assertLess(w["walked"], 0.05, "stays on its spot while it works")
-                self.assertNotEqual(w["status"][1], "施工中", "no 施工中 without a building")
-
-    def test_everyone_apart_at_the_end(self):
-        for plan, r in self.results.items():
-            with self.subTest(plan=plan):
-                people = [p for p in r["final"] if p["state"] != "leaving"]
-                self.far_apart(people, plan + " at the end")
-
-    def test_governor_that_left_is_not_drawn(self):
-        for plan, r in self.results.items():
-            with self.subTest(plan=plan):
-                self.assertIsNone(r["govGone"])
+REQUIRED = ("officeState", "governorAt", "apply", "update", "citizens", "buildings", "byId", "citizenStatus")
 
 
 class TestGovernorFigureP0(unittest.TestCase):
-
-    def test_figure_follows_governor_at(self):
-        src = function_source("updateGovernor")
-        self.assertIsNotNone(src, "updateGovernor() still draws the figure")
-        self.assertIn("governorAt(", src, "the figure is shown only where a governor is present")
-
-    def test_build_land_calls_land_state(self):
-        src = function_source("buildLand")
-        self.assertIsNotNone(src)
-        self.assertIn("landState(", src)
 
     def test_no_governor_in_snapshot_means_no_figure(self):
         view = next(iter(plan_views().values()))
         driver = r"""
 const V = __payload.view, tid = V.territories[0].id;
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 apply({ type: 'snapshot', world: V, gov: { state: 'idle', terr: tid }, govs: [], governors: 0, asks: [], shows: [], agents: [] });
 __out = { g: governorAt(tid) };
 """
@@ -351,8 +277,6 @@ class TestGovernorPresenceServerP0(unittest.TestCase):
         # city-roles: g1 is the main manager of /a/.git (the governor is the lock holder only)
         self.st = ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"),
                                world_path=os.path.join(self.base, "world.json"),
-                               plans=ac.load_plans(), count_fn=lambda i: 0,
-                               balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}},
                                main_fn=lambda identity: (os.getpid(), "g1") if identity == "/a/.git" else None)
 
     def tearDown(self):

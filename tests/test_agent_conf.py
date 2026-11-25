@@ -56,6 +56,7 @@ class TestValidateRoles(unittest.TestCase):
         "main_manager",
         "task_manager",
         "helper_model",
+        "interior_designer",   # city-office: a helper role, it reads the Helper model setting
     ]
 
     def test_every_model_setting_accepts_a_good_value(self):

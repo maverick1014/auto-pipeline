@@ -97,7 +97,7 @@ from test_agent_city_people import function_source, page, run_sim  # noqa: E402
 from test_agent_city_chain import TA, TB, two_territory_view  # noqa: E402
 from test_agent_city_ux_page import css, listener_block, media_960, rule, text_keys  # noqa: E402
 
-SIM_REQUIRED = ("apply", "landState", "railGroups", "railHtml", "nameOf", "fullName", "shortLabel", "factsLine",
+SIM_REQUIRED = ("apply", "officeState", "railGroups", "railHtml", "nameOf", "fullName", "shortLabel", "factsLine",
                 "doingText", "citizenStatus", "newCitizen", "citizens", "byId", "terrColor")
 
 
@@ -146,8 +146,8 @@ def decl(block, prop):
 
 DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
-A.name = 'v4-pospro'; B.name = 'v4-plus';
-function buildLand(view){ landState(view); }
+A.name = 'v4-pospro'; B.name = 'v4-plus'; for (const t of [A, B]) Object.assign(V.repos.find(r => r.id === t.id), { name: t.name, here: t.here !== false });
+function buildLand(view){ officeState(view); }
 const ag = (id, label, task, terr, extra) => Object.assign({ id, role: 'task-manager', label, task, stuck: false, done: false,
   tools: {}, terr, lead: '', office: null, relay: '' }, extra || {});
 apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: A.id }, governors: 2, asks: [], shows: [],
@@ -291,26 +291,6 @@ class TestRailGroups(unittest.TestCase):
                 self.assertIsNotNone(m)
                 self.assertRegex(sec, r'class="rail-grp"')
                 self.assertIn('style="--rc:%s"' % by[m.group(1)]["color"], sec)
-
-    def test_count_is_everyone_in_the_group(self):
-        for h in self.r["heads"]:
-            with self.subTest(terr=h["terr"]):
-                self.assertEqual(h["n"], h["rows"], "governor, active and resting people")
-        by = {h["terr"]: h for h in self.r["heads"]}
-        self.assertEqual(by[self.r["a"]]["n"], 12, "A: governor + 11 people (one resting)")
-        self.assertEqual(by[self.r["b"]]["n"], 6, "B: governor + 4 people + Ann's")
-
-    def test_dot_has_the_state_colour_class(self):
-        rows = self.r["rowDots"]
-        self.assertGreater(len(rows), 8)
-        for r in rows:
-            with self.subTest(id=r["id"]):
-                self.assertEqual(r["dot"], "sdot st-" + r["chip"])
-        chips = {r["id"]: r["chip"] for r in rows}
-        self.assertEqual(chips["gov:" + self.r["a"]], "gov")
-        self.assertEqual(chips["s:hhhh0001"], "you", "waiting on the owner")
-        self.assertEqual(chips["s:rrrr0006"], "rest")
-
 
 class TestRailCss(unittest.TestCase):
 

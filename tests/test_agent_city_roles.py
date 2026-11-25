@@ -97,8 +97,6 @@ class RolesCase(unittest.TestCase):
 
     def make_state(self, **kw):
         return ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=self.world,
-                            plans=ac.load_plans(), count_fn=lambda i: 0,
-                            balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}},
                             start_repo=self.repo if self.start_repo else None, **kw)
 
     def tearDown(self):
