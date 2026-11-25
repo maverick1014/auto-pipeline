@@ -32,6 +32,12 @@ QUIZ_Q6 = """Q6. You are one of four agents. You changed files under api/auth/. 
   C. None; the manager runs them
   D. The tests agent-level.sh lists under RELATED TESTS (they import or name the changed files)"""
 
+QUIZ_Q9 = """Q9. Your test run is heavy by its measured weight, and both heavy-test slots are taken. You:
+  A. Wait: agent-test-run.sh starts it when a slot is free and RAM is more than 50% free
+  B. Run it in parallel anyway
+  C. Call it light and run it now
+  D. Skip your tests"""
+
 QUIZ_Q16 = """Q16. A small logic task (one function, about 30 minutes) needs a new test. Who does it?
   A. A task manager in a new worktree, because it needs a test
   B. One subagent in its own worktree: it writes the example tests, runs its blocks, pushes a branch
@@ -346,7 +352,7 @@ class TestQuiz(ScriptCase):
 
     def test_the_changed_questions(self):
         out = self.quiz()
-        for n, text in ((6, QUIZ_Q6), (16, QUIZ_Q16), (25, QUIZ_Q25), (38, QUIZ_Q38), (39, QUIZ_Q39)):
+        for n, text in ((6, QUIZ_Q6), (9, QUIZ_Q9), (16, QUIZ_Q16), (25, QUIZ_Q25), (38, QUIZ_Q38), (39, QUIZ_Q39)):
             with self.subTest(q=n):
                 self.assertEqual(self.question(out, n), text)
 
