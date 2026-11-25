@@ -93,7 +93,8 @@ def cells(line):
         line = line[1:]
     if line.endswith("|"):
         line = line[:-1]
-    return [c.strip() for c in line.split("|")]
+    line = line.replace("\\|", "\0")
+    return [c.replace("\0", "|").strip() for c in line.split("|")]
 
 
 def read_table(path):

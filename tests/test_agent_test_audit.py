@@ -111,6 +111,16 @@ class TestRemoved(AuditCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("test_ghost", r.stdout)
 
+    def test_an_escaped_pipe_inside_a_cell_is_text(self):
+        b = self.ids("b.txt", "test_a.py::TestX.test_one", "test_a.py::TestX.test_two")
+        a = self.ids("a.txt", "test_a.py::TestX.test_one")
+        t = self.write("removed.md", HEAD +
+                       "| test_a.py::TestX.test_two | asserts \"\\| by main\"; the twin asserts the whole line | "
+                       "test_a.py::TestX.test_one |\n")
+        r = self.audit(b, a, t)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("removed with twin 1", r.stdout)
+
     def test_other_tables_in_the_document_are_ignored(self):
         b = self.ids("b.txt", "test_a.py::TestX.test_one")
         t = self.write("plan.md", "| Target file | Module |\n|---|---|\n| test_a.py | a.sh |\n\n" + HEAD)
