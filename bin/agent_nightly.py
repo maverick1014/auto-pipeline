@@ -1187,6 +1187,11 @@ def working_branch(root):
     return agent_conf.working_branch(root)
 
 
+def production_branch(root):
+    """The production branch of this repo (F13): the one function agent_conf.production_branch."""
+    return agent_conf.production_branch(root)
+
+
 def need_stored(root):
     """The stored working branch, or print the one refusal line and return None."""
     wb = working_branch(root)

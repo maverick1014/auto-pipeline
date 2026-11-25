@@ -297,22 +297,12 @@ class Sweep(object):
         return branch == wb or branch.startswith("ap-main-") or bool(prefix and branch.startswith(prefix))
 
     def production(self):
-        """The production branch (G1): production_branch in agent_repo.conf, else origin/HEAD's target, else main."""
+        """The production branch (G1, F13): the one function agent_conf.production_branch."""
         if self._prod is None:
-            prod = ""
             try:
-                with open(os.path.join(self.root, "agent_repo.conf")) as fh:
-                    for line in fh:
-                        m = re.match(r"^\s*production_branch\s*=\s*(\S+)\s*$", line)
-                        if m:
-                            prod = m.group(1)
-            except OSError:
-                pass
-            if not prod:
-                ref = self.git("symbolic-ref", "-q", "refs/remotes/origin/HEAD")
-                if ref.ok and ref.out.strip().startswith("refs/remotes/origin/"):
-                    prod = ref.out.strip()[len("refs/remotes/origin/"):]
-            self._prod = prod or "main"
+                self._prod = agent_conf.production_branch(self.root) or "main"
+            except Exception:
+                self._prod = "main"
         return self._prod
 
     def wb_ref(self):
