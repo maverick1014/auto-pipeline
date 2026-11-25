@@ -89,6 +89,7 @@ COPY_BIN = [
     "agent_level.py",
     "agent_blocks.py",       # check-blocks: the one table of blocks and triggers
     "agent_checks.py",       # check-blocks: gate and next (agent-file.sh)
+    "agent_repo_init.py",    # check-blocks: init writes agent_repo.conf v1 (agent-init.sh)
     "agent_state.py",        # state-trim: state add / state trim
     "agent-autoclear.sh",    # state-trim: the auto /clear waiter
     "agent-guard.sh",        # board-trust: the launch hook (bash prefilter)
