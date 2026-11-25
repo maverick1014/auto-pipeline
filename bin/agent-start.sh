@@ -1016,29 +1016,38 @@ if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }
   wb_name=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" working-branch "$PROJECT_ROOT" 2>/dev/null </dev/null) || wb_name=""
   if [ -n "$wb_name" ]; then
     wb_made=""
+    wb_push() {
+      local err why
+      err=$(git -C "$PROJECT_ROOT" push -q -u origin "$wb_name" 2>&1 >/dev/null </dev/null) && return 0
+      case "$err" in
+        *rejected*|*non-fast-forward*|*"fetch first"*)
+          why="the remote has commits this clone does not have (fetch and merge origin/$wb_name first)";;
+        *) why=$(printf '%s\n' "$err" | grep -m1 -E '^(error|fatal):'); [ -n "$why" ] || why=$(printf '%s' "$err" | head -n 1);;
+      esac
+      WATCH_TEXT="${WATCH_TEXT}working branch: not pushed: $why
+"
+    }
     if ! git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_name" >/dev/null 2>&1; then
-      wb_prod=$(sed -n 's/^production_branch=//p' "$PROJECT_ROOT/agent_repo.conf" 2>/dev/null | tail -n 1 | tr -d '[:space:]')
-      if [ -z "$wb_prod" ]; then
-        wb_prod=$(git -C "$PROJECT_ROOT" symbolic-ref --short -q refs/remotes/origin/HEAD 2>/dev/null) || wb_prod=""
-        wb_prod=${wb_prod#origin/}
-      fi
-      if [ -z "$wb_prod" ]; then
-        if git -C "$PROJECT_ROOT" rev-parse --verify -q refs/heads/main >/dev/null 2>&1; then wb_prod=main
-        else wb_prod=$(git -C "$PROJECT_ROOT" symbolic-ref --short -q HEAD 2>/dev/null) || wb_prod=""; fi
-      fi
-      wb_base=$wb_prod
-      git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_base" >/dev/null 2>&1 || wb_base="origin/$wb_prod"
-      wb_err=$(git -C "$PROJECT_ROOT" branch "$wb_name" "$wb_base" 2>&1 >/dev/null </dev/null) && wb_rc=0 || wb_rc=$?
-      if [ -n "$wb_prod" ] && [ "$wb_rc" -eq 0 ]; then
-        wb_made=$wb_prod
-        if git -C "$PROJECT_ROOT" remote get-url origin >/dev/null 2>&1; then
-          wb_err=$(git -C "$PROJECT_ROOT" push -q -u origin "$wb_name" 2>&1 >/dev/null </dev/null) || \
-            WATCH_TEXT="${WATCH_TEXT}working branch: not pushed: $(printf '%s' "$wb_err" | head -n 1)
+      if git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/remotes/origin/$wb_name" >/dev/null 2>&1; then
+        # F6: the remote has it: track it, never make it from production
+        wb_err=$(git -C "$PROJECT_ROOT" branch --track "$wb_name" "origin/$wb_name" 2>&1 >/dev/null </dev/null) \
+          && WATCH_TEXT="${WATCH_TEXT}working branch: tracking origin/$wb_name
+" \
+          || WATCH_TEXT="${WATCH_TEXT}working branch: not created: $(printf '%s' "$wb_err" | head -n 1)
+"
+      else
+        wb_prod=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agent_conf; print(agent_conf.production_branch(sys.argv[2]))' \
+                  "$PLUGIN_ROOT/bin" "$PROJECT_ROOT" 2>/dev/null </dev/null) || wb_prod=""
+        wb_base=$wb_prod
+        git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_base" >/dev/null 2>&1 || wb_base="origin/$wb_prod"
+        wb_err=$(git -C "$PROJECT_ROOT" branch "$wb_name" "$wb_base" 2>&1 >/dev/null </dev/null) && wb_rc=0 || wb_rc=$?
+        if [ -n "$wb_prod" ] && [ "$wb_rc" -eq 0 ]; then
+          wb_made=$wb_prod
+          if git -C "$PROJECT_ROOT" remote get-url origin >/dev/null 2>&1; then wb_push; fi
+        else
+          WATCH_TEXT="${WATCH_TEXT}working branch: not created: $(printf '%s' "${wb_err:-no production branch found}" | head -n 1)
 "
         fi
-      else
-        WATCH_TEXT="${WATCH_TEXT}working branch: not created: $(printf '%s' "${wb_err:-no production branch found}" | head -n 1)
-"
       fi
     fi
     if git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_name" >/dev/null 2>&1 \

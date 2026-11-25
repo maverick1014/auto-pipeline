@@ -205,38 +205,44 @@ def git_ok(root, *args):
     return run(["git", "-C", root] + list(args), root)
 
 
-def production_branch(root, conf_text):
-    """production_branch= in agent_repo.conf, else origin/HEAD's target, else main (else the current branch)."""
-    for line in conf_text.splitlines():
-        if line.startswith("production_branch=") and line.split("=", 1)[1].strip():
-            return line.split("=", 1)[1].strip()
-    head = git_ok(root, "symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD").strip()
-    if head.startswith("origin/"):
-        return head[len("origin/"):]
-    if git_ok(root, "rev-parse", "--verify", "-q", "refs/heads/main").strip():
-        return "main"
-    return git_ok(root, "symbolic-ref", "--short", "-q", "HEAD").strip() or "main"
-
-
 def first_line(raw):
     lines = raw.decode(errors="replace").strip().splitlines() if isinstance(raw, bytes) else str(raw).strip().splitlines()
     return lines[0].strip() if lines else "unknown"
 
 
+def push_reason(raw, name):
+    """Why a push was refused, in words: a rejected push, else git's error:/fatal: line, else its first line."""
+    text = raw.decode(errors="replace") if isinstance(raw, bytes) else str(raw)
+    low = text.lower()
+    if "rejected" in low or "non-fast-forward" in low or "fetch first" in low:
+        return ("the remote has commits this clone does not have (fetch and merge origin/%s first)" % name)
+    for line in text.splitlines():
+        if line.strip().startswith(("error:", "fatal:")):
+            return line.strip()
+    return first_line(text)
+
+
 def ensure_working_branch(root, conf_text, out):
     """Create, when missing, the working branch (per person, agent_conf.working_branch) from the production
-    branch and push it when origin exists. A new repo (no agent_state.txt in its root) is switched to it; a repo
+    branch and push it when origin exists. A new repo (agent_repo.conf and agent_todo.txt not tracked) is switched to it; a repo
     that already uses the plugin gets the start's WORKING BRANCH line instead. No worktree."""
     try:
         import agent_conf
         name = agent_conf.working_branch(root, derive=True)
     except Exception:
         return
-    prod = production_branch(root, conf_text)
+    prod = agent_conf.production_branch(root)
     ref = "refs/heads/" + name
     created = False
     if git_ok(root, "rev-parse", "--verify", "-q", ref).strip():
         out.append("working branch: kept %s" % name)
+    elif git_ok(root, "rev-parse", "--verify", "-q", "refs/remotes/origin/" + name).strip():
+        r = subprocess.run(["git", "-C", root, "branch", "--track", name, "origin/" + name],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        if r.returncode != 0 and not git_ok(root, "rev-parse", "--verify", "-q", ref).strip():
+            out.append("working branch: not created: %s" % first_line(r.stderr))
+            return
+        out.append("working branch: tracking origin/%s" % name)
     else:
         base = prod if git_ok(root, "rev-parse", "--verify", "-q", "refs/heads/" + prod).strip() else \
             ("origin/" + prod if git_ok(root, "rev-parse", "--verify", "-q", "refs/remotes/origin/" + prod).strip() else "")
@@ -250,7 +256,8 @@ def ensure_working_branch(root, conf_text, out):
         created = True
         out.append("working branch: created %s from %s" % (name, prod))
     cur = git_ok(root, "symbolic-ref", "--short", "-q", "HEAD").strip()
-    new_repo = not os.path.exists(os.path.join(root, "agent_state.txt"))
+    # F4: a repo that already uses the plugin has agent_repo.conf or agent_todo.txt tracked (never a local file)
+    new_repo = not git_ok(root, "ls-files", "--", "agent_repo.conf", "agent_todo.txt").strip()
     if cur == name:
         out.append("checkout: on %s" % name)
     elif new_repo:
@@ -268,7 +275,7 @@ def ensure_working_branch(root, conf_text, out):
         p = subprocess.run(["git", "-C", root, "push", "-q", "-u", "origin", name],
                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         if p.returncode != 0:
-            out.append("working branch: not pushed: %s" % first_line(p.stderr))
+            out.append("working branch: not pushed: %s" % push_reason(p.stderr, name))
 
 
 def fix_subjects(root):
