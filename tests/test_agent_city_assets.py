@@ -21,7 +21,7 @@ for p in (HERE, BIN):
         sys.path.insert(0, p)
 
 import agent_city as ac  # noqa: E402
-from test_agent_city_server import ServerCase, wait_for  # noqa: E402
+from cityhelp import ServerCase, wait_for  # noqa: E402
 
 
 

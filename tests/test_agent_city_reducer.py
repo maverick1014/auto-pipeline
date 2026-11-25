@@ -83,54 +83,7 @@ if BIN not in sys.path:
 
 import agent_city  # noqa: E402
 
-EVENT_KEYS = {
-    "spawn": {"type", "id", "role", "label", "task"},
-    "tool": {"type", "id", "tool", "name"},  # city-work-anim bounce 1: + "file" / "desc" when known
-    "stuck": {"type", "id", "question", "tool"},
-    "answer": {"type", "id", "ok"},
-    "done": {"type", "id"},
-    "leave": {"type", "id"},
-    "gov": {"type", "state"},
-    # city-status (tests/test_agent_city_status.py): a session citizen's status events
-    "waiting": {"type", "id"},
-    "background": {"type", "id"},
-    "idle": {"type", "id"},
-    "resume": {"type", "id"},
-}
-# keys an event may carry only sometimes (tests/test_agent_city_steps.py)
-OPTIONAL_KEYS = {"tool": {"file", "desc"}}
-
-
-def R(ev, sid="s1", aid="", at="", tool="", nt="", proj="shop", role="", desc="", sub="", q=""):
-    return {"ev": ev, "sid": sid, "aid": aid, "at": at, "tool": tool, "nt": nt,
-            "proj": proj, "role": role, "desc": desc, "sub": sub, "q": q}
-
-
-class Case(unittest.TestCase):
-    def setUp(self):
-        self.r = agent_city.Reducer()
-        self.t = 1000.0
-        self.all = []
-
-    def feed(self, raw, dt=1.0):
-        self.t += dt
-        out = self.r.feed(raw, self.t)
-        self.assertIsInstance(out, list)
-        for event in out:
-            self.assertIn(event.get("type"), EVENT_KEYS, event)
-            self.assertEqual(set(event) - OPTIONAL_KEYS.get(event["type"], set()), EVENT_KEYS[event["type"]], event)
-        self.all.extend(out)
-        return out
-
-    def types(self, events):
-        return [e["type"] for e in events]
-
-    def govern(self, sid="s1"):
-        """Make sid the governor session."""
-        self.feed(R("UserPromptSubmit", sid=sid))
-
-    def spawn(self, aid="a1", at="worker", sid="s1"):
-        return self.feed(R("SubagentStart", sid=sid, aid=aid, at=at))
+from cityhelp import EVENT_KEYS, OPTIONAL_KEYS, R, Case  # noqa: E402,F401  (test-slim: shared helpers)
 
 
 class TestSpawn(Case):

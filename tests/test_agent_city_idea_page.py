@@ -99,7 +99,7 @@ for p in (HERE, BIN):
         sys.path.insert(0, p)
 
 import agent_city as ac  # noqa: E402
-import test_agent_city_page as tp  # noqa: E402
+import citypage as tp  # noqa: E402
 import test_agent_city_land as tl  # noqa: E402
 
 CJK = re.compile(r"[㐀-鿿＀-￯　-〿]")
@@ -107,7 +107,7 @@ CJK = re.compile(r"[㐀-鿿＀-￯　-〿]")
 
 def need(*names):
     for n in names:
-        if tp.function_source(n) is None:
+        if tp.script_function_source(n) is None:
             raise AssertionError("function %s(...) not found in the page script" % n)
     return tp.page_fns(*names)
 
@@ -269,7 +269,7 @@ def camera_results():
     if "cam" not in _CACHE:
         fns = need("updateCamera", "camLift", "camTarget", "distMax", "viewBlockers", "landSpread", "centreHeight", "aroundH")
         fns += "\n" + tp.page_fns(optional=("pullShare", "distLimit", "zoomCapDist", "spanDist"))  # city-ux
-        extra = tp.function_source("landBox")
+        extra = tp.script_function_source("landBox")
         fns += "\n" + (extra or "")
         boxes = [{"hx": 13, "hz": 13, "cx": 0, "cz": 0}, {"hx": 26, "hz": 13, "cx": 5, "cz": -3},
                  {"hx": 13, "hz": 26, "cx": -4, "cz": 7}, {"hx": 26, "hz": 26, "cx": -13, "cz": 0},
@@ -396,10 +396,10 @@ class TestGovernorBubbles(unittest.TestCase):
 
     def test_wiring(self):
         self.assertIn("setGovState(ev.state, ev.terr)", tp.case_block("gov") or "")
-        pool = tp.function_source("updateGovPool") or ""
+        pool = tp.script_function_source("updateGovPool") or ""
         self.assertNotRegex(pool, r"pin\(v\.bub, sx, sy, false\)")
         self.assertIn("govTalk(", pool)
-        self.assertIn("govTalk(", tp.function_source("updateGovernor") or "")
+        self.assertIn("govTalk(", tp.script_function_source("updateGovernor") or "")
         self.assertNotRegex(tp.inline_script(), r"\bsay\(gov\s*,")
 
 
@@ -429,7 +429,7 @@ class TestNoEmptyBubble(unittest.TestCase):
                              "none": "", "over": ""})
 
     def test_update_person_uses_it(self):
-        self.assertIn("personBubble(c)", tp.function_source("updatePerson") or "")
+        self.assertIn("personBubble(c)", tp.script_function_source("updatePerson") or "")
 
 
 # --------------------------------------------------------------- C5, C16
@@ -465,7 +465,7 @@ class TestIdleOnThePage(unittest.TestCase):
         self.assertIn("waiting = false", tp.case_block("resume") or "")
 
     def test_snapshot(self):
-        self.assertIn("a.waiting", tp.function_source("placeAgent") or "")
+        self.assertIn("a.waiting", tp.script_function_source("placeAgent") or "")
 
 
 # -------------------------------------------------------------------- C10

@@ -37,7 +37,8 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from test_agent_city_people import REQUIRED, ac, function_source, run_sim  # noqa: E402
+from citypage import REQUIRED, function_source, run_sim  # noqa: E402
+from citypage import ac  # noqa: E402
 
 REPO = "/work/names/app/.git"
 TYPE = "auto-pipeline:worker"

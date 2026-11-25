@@ -111,7 +111,7 @@ ASSETS = os.path.join(BIN, "agent-city-assets")
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-from test_agent_city_people import run_sim, sim_section, function_source  # noqa: E402
+from citypage import run_sim, sim_section, function_source  # noqa: E402
 
 T1, T2, T3 = "aaaa0001", "bbbb0002", "cccc0003"
 GOOD = {"v": 1, "name": "收银台风格", "why": "POS",
@@ -428,7 +428,7 @@ class TestScene(unittest.TestCase):
 class TestDemo(unittest.TestCase):
     def test_demo_world_is_the_servers(self):
         import subprocess
-        from test_agent_city_page import const_object
+        from citypage import const_object  # noqa: E402
         literal = const_object("DEMO_WORLD")
         self.assertIsNotNone(literal, "const DEMO_WORLD = {...}; not found")
         out = subprocess.run([sys.executable, os.path.join(BIN, "agent_city.py"), "demo-world"],

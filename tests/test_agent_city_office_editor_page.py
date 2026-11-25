@@ -42,7 +42,7 @@ for p in (HERE, BIN):
         sys.path.insert(0, p)
 
 import agent_city as ac  # noqa: E402
-from test_agent_city_people import run_sim, function_source  # noqa: E402
+from citypage import run_sim, function_source  # noqa: E402
 
 T1, T2 = "aaaa0001", "bbbb0002"
 COLORS = {"accent": "#2E7D6B", "carpet": "#E4DCCB", "manager_floor": "#D9C2A0", "pantry_floor": "#EEEAE0",

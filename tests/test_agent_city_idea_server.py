@@ -52,8 +52,8 @@ for p in (HERE, BIN):
         sys.path.insert(0, p)
 
 import agent_city as ac  # noqa: E402
-import test_agent_city_quality as tq  # noqa: E402
-from test_agent_city_server import ServerCase  # noqa: E402
+import cityhelp as tq  # noqa: E402
+from cityhelp import ServerCase  # noqa: E402
 
 CJK = re.compile(r"[㐀-鿿＀-￯　-〿]")
 

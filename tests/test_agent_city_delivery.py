@@ -59,8 +59,8 @@ for p in (HERE, os.path.join(ROOT, "bin")):
 
 import agent_city as ac  # noqa: E402
 from cityhelp import Mains  # noqa: E402
-from test_agent_city_page import text_zh  # noqa: E402
-from test_agent_city_server import SERVER, ServerCase, wait_for  # noqa: E402
+from citypage import text_zh  # noqa: E402
+from cityhelp import SERVER, ServerCase, wait_for  # noqa: E402
 
 REPO = "/r/shop/.git"
 GRACE = 0.3

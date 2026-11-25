@@ -107,8 +107,8 @@ sys.path.insert(0, os.path.join(ROOT, "bin"))
 sys.path.insert(0, HERE)
 
 import agent_city as ac  # noqa: E402
-from test_agent_city_people import page, run_sim, plan_views  # noqa: E402
-from test_agent_city_worktrees import git, make_repo, write, drain, snapshot  # noqa: E402
+from citypage import page, run_sim, plan_views  # noqa: E402
+from cityhelp import git, make_repo, write, drain, snapshot  # noqa: E402
 from cityhelp import Mains  # noqa: E402
 
 
@@ -289,30 +289,7 @@ def q_view():
     raise AssertionError("no plan view with 4 open plots")
 
 
-
-class BuildCase(unittest.TestCase):
-    """A CityState with one repo whose main manager is "tm" (kept for tests/test_agent_city_idea_server.py)."""
-
-    def setUp(self):
-        self.base = tempfile.mkdtemp(prefix="city_q_state_")
-        self.root, self.wt = make_repo(self.base)
-        self.ident = os.path.join(self.root, ".git")
-        self.terr = ac.territory_id(self.ident)
-        self.st = ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"),
-                               world_path=os.path.join(self.base, "world.json"),
-                               start_repo=self.ident,
-                               main_fn=Mains({self.ident: "tm"}))   # city-roles: "tm" is the main manager
-        self.snap, self.client = snapshot(self.st)
-        self.st.feed_line(self.line("tm", tool="Read"), 1000.0)
-        drain(self.client)
-
-    def tearDown(self):
-        shutil.rmtree(self.base, ignore_errors=True)
-
-    def line(self, sid, aid="", kind="", file="", tool="Edit", wt=""):
-        return {"ev": "PostToolUse", "sid": sid, "aid": aid, "at": "worker" if aid else "", "tool": tool,
-                "nt": "", "proj": "app", "role": "", "desc": "", "sub": "", "q": "", "klen": "",
-                "repo": self.ident, "kind": kind, "ask": "", "wt": wt, "file": file}
+from cityhelp import BuildCase  # noqa: E402,F401  (test-slim: shared helpers)
 
 if __name__ == "__main__":
     unittest.main()

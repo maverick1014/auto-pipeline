@@ -103,11 +103,11 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from test_agent_city_people import (ROOT, REQUIRED, ac, function_source, run_sim)  # noqa: E402
+from citypage import ROOT, REQUIRED, function_source, run_sim  # noqa: E402
+from citypage import ac  # noqa: E402
 from cityhelp import Mains  # noqa: E402
 
-A_REPO, B_REPO = "/work/fa/app/.git", "/work/fb/app/.git"
-TA, TB = ac.territory_id(A_REPO), ac.territory_id(B_REPO)
+from citypage import A_REPO, B_REPO, TA, TB, two_territory_view  # noqa: E402,F401  (test-slim: shared helpers)
 
 
 def decode(raw):
@@ -181,7 +181,7 @@ class TestHookAskFlag(unittest.TestCase):
     """The hook writes ask=q for a question passed up the chain, never its text."""
 
     def setUp(self):
-        import test_agent_city_hook as th
+        import cityhelp as th  # noqa: E402
         self.th = th
         self.case = th.HookCase("run_hook")
         self.case.setUp()
@@ -457,11 +457,6 @@ class TestWorkerQuestionForm(unittest.TestCase):
 # Page: governors per territory, offices, the chain walk, the rest place
 # ---------------------------------------------------------------------------
 
-def two_territory_view():
-    """city-office: A and B as two floors (A 1F, B 2F) of the office view."""
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from cityoffice import office_view_of
-    return office_view_of((A_REPO, "app"), (B_REPO, "app"))
 
 FEATURE_DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
@@ -553,7 +548,7 @@ __out = { h0, h1, h2 };
 
 
 def decor_run(cases):
-    import test_agent_city_page as tp
+    import citypage as tp  # noqa: E402
     js = r"""
 const fs = require('fs'), vm = require('vm');
 const { prelude, fns, cases } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));

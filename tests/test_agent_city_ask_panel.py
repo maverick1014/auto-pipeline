@@ -129,10 +129,9 @@ from html.parser import HTMLParser
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from test_agent_city_page import (constants_prelude, function_source, inline_script, page_fns,  # noqa: E402
-                                  run_node, style)
-from test_agent_city_people import REQUIRED, run_sim, sim_section  # noqa: E402
-from test_agent_city_polish import ASK_Q, named_view  # noqa: E402
+from citypage import constants_prelude, script_function_source as function_source, inline_script, page_fns, run_node, style  # noqa: E402
+from citypage import REQUIRED, run_sim, sim_section  # noqa: E402
+from citypage import ASK_Q, named_view  # noqa: E402
 
 VM_JS = r"""
 const fs = require('fs'), vm = require('vm');
@@ -805,7 +804,7 @@ __out = { closed: closed.style.minHeight, none: none.style.minHeight, w: none.da
         self.assertEqual(r, {"closed": "96px", "none": "", "w": ""}, "a result card is never cut; no card, no floor")
 
     def test_the_sheet_grows_on_a_phone(self):
-        from test_agent_city_page import media_block
+        from citypage import media_block  # noqa: E402
         block = media_block("@media (max-width: 960px)").replace(" ", "")
         m = re.search(r"\.win:has\(\.askcard\)\{([^}]*)\}", block)
         self.assertIsNotNone(m, "bounce 3 K18: .win:has(.askcard) in the first phone block")

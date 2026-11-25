@@ -73,9 +73,9 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from test_agent_city_page import constants_prelude, function_source, inline_script, page_fns, run_node  # noqa: E402
-from test_agent_city_people import run_sim  # noqa: E402
-from test_agent_city_polish import named_view  # noqa: E402
+from citypage import constants_prelude, script_function_source as function_source, inline_script, page_fns, run_node  # noqa: E402
+from citypage import run_sim  # noqa: E402
+from citypage import named_view  # noqa: E402
 
 VM_JS = r"""
 const fs = require('fs'), vm = require('vm');

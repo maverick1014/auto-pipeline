@@ -35,8 +35,8 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from test_agent_city_page import constants_prelude, function_source, page_fns, run_node  # noqa: E402
-from test_agent_city_people import REQUIRED, run_sim  # noqa: E402
+from citypage import constants_prelude, script_function_source as function_source, page_fns, run_node  # noqa: E402
+from citypage import REQUIRED, run_sim  # noqa: E402
 
 ERR = "对话没加载出来，等会儿再打开看看。"
 

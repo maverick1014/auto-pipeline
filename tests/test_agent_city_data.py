@@ -91,7 +91,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
 
 import agent_city as ac  # noqa: E402
-from test_agent_city_worktrees import make_repo, drain, snapshot  # noqa: E402
+from cityhelp import make_repo, drain, snapshot  # noqa: E402
 from cityhelp import Mains  # noqa: E402
 
 KIND_ZH = {"tower": "测试", "shop": "页面", "workshop": "脚本", "library": "文档", "house": "模块"}

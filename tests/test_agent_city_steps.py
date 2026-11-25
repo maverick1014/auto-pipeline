@@ -60,9 +60,10 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from test_agent_city_people import REQUIRED, ac, function_source, page, plan_views, run_sim  # noqa: E402
-from test_agent_city_reducer import Case, R  # noqa: E402
-from test_agent_city_ux_page import text_keys  # noqa: E402
+from citypage import REQUIRED, function_source, page, plan_views, run_sim  # noqa: E402
+from citypage import ac  # noqa: E402
+from cityhelp import Case, R  # noqa: E402
+from citypage import text_keys  # noqa: E402
 
 
 def RF(ev, file=None, **kw):

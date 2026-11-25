@@ -141,7 +141,7 @@ for p in (HERE, BIN):
         sys.path.insert(0, p)
 
 import agent_city as ac  # noqa: E402
-from test_agent_city_server import ServerCase, wait_for  # noqa: E402
+from cityhelp import ServerCase, wait_for  # noqa: E402
 
 TERRAINS = {"grassland", "mountain", "desert", "forest", "coast"}
 TYPES = {"house", "shop", "tower", "workshop", "library"}
@@ -305,34 +305,14 @@ def function_src(fn):
 # Code lines: what counts, cheap, cached
 # ---------------------------------------------------------------------------
 
-def git(cwd, *args):
-    env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t",
-               GIT_COMMITTER_EMAIL="t@t", GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull)
-    return subprocess.run(["git", "-C", cwd] + list(args), check=True, capture_output=True, text=True,
-                          env=env, stdin=subprocess.DEVNULL).stdout.strip()
-
-
-def make_repo(base, files):
-    os.makedirs(base, exist_ok=True)
-    git(base, "init", "-q", "-b", "main")
-    for rel, content in files.items():
-        path = os.path.join(base, rel)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as fh:
-            fh.write(content if isinstance(content, bytes) else content.encode())
-    git(base, "add", "-A")
-    git(base, "commit", "-q", "-m", "init")
-    return os.path.realpath(os.path.join(base, ".git"))
+from cityhelp import world_git, world_make_repo  # noqa: E402,F401  (test-slim: shared helpers)
 
 
 # ---------------------------------------------------------------------------
 # Server: the world in the stream, in the file, across restarts
 # ---------------------------------------------------------------------------
 
-def gline(ev, sid="s1", aid="", at="", tool="", role="", repo="", kind="", proj="shop"):
-    return json.dumps({"ev": ev, "sid": sid, "aid": aid, "at": at, "tool": tool, "nt": "", "proj": proj,
-                       "role": role, "desc": "", "sub": "", "q": "", "klen": "", "repo": repo,
-                       "kind": kind}) + "\n"
+from cityhelp import gline  # noqa: E402,F401  (test-slim: shared helpers)
 
 
 class TestCityScriptWorld(unittest.TestCase):

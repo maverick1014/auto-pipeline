@@ -106,8 +106,8 @@ sys.path.insert(0, os.path.join(ROOT, "bin"))
 sys.path.insert(0, HERE)
 
 import agent_city as ac  # noqa: E402
-import test_agent_city_page as tp  # noqa: E402
-from test_agent_city_people import run_sim  # noqa: E402
+import citypage as tp  # noqa: E402
+from citypage import run_sim  # noqa: E402
 from cityhelp import Mains  # noqa: E402
 
 SERVER = os.path.join(ROOT, "bin", "agent_city.py")
@@ -635,7 +635,7 @@ class TestStatusInTheCity(unittest.TestCase):
 
 def need(*names):
     for n in names:
-        if tp.function_source(n) is None:
+        if tp.script_function_source(n) is None:
             raise AssertionError("function %s(...) not found in the page script" % n)
     return tp.page_fns(*names)
 

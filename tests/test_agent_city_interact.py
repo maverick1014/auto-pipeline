@@ -177,24 +177,15 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from scripthelp import ScriptCase  # noqa: E402
-from test_agent_city_server import (  # noqa: E402
-    ROOT, SERVER, SSE, ServerCase, free_port, pid_alive, wait_for)
+from cityhelp import ROOT, SERVER, SSE, ServerCase, free_port, pid_alive, wait_for  # noqa: E402
 
 CITY_SH = os.path.join(ROOT, "bin", "agent-city.sh")
 
-QS = [{"question": "Which port?", "header": "Port",
-       "options": [{"label": "4791", "description": "temp city"},
-                   {"label": "4792", "description": "other"}],
-       "multiSelect": False}]
+from cityhelp import QS, SHOP_BASE, SHOP, q_body, InteractCase, AskHookCase, stop_payload  # noqa: E402,F401  (test-slim: shared helpers)
 QS2 = QS + [{"question": "Which scope?", "header": "Scope",
              "options": [{"label": "Questions", "description": "first"},
                          {"label": "Both", "description": "all"}],
              "multiSelect": False}]
-# city-roles: the governor is the live holder of the repo's main manager lock, so the shop repo of
-# these tests is a real folder whose lock names "gs" (the gov_next() default) with this test
-# process as its live pid.
-SHOP_BASE = os.path.realpath(tempfile.mkdtemp(prefix="city_shop_"))
-SHOP = os.path.join(SHOP_BASE, "r", "shop", ".git")
 os.makedirs(SHOP)
 with open(os.path.join(SHOP, "agent_main.lock"), "w") as _fh:
     _fh.write("%d 2026-09-30 10:00 gs -\n" % os.getpid())
@@ -207,82 +198,6 @@ def perm_body(sid="s1", aid="", tool="Bash", command="rm -rf build/", repo=SHOP,
     inp = {"command": command, "description": "clean the build"} if tool == "Bash" else extra.pop("input")
     return {"sid": sid, "aid": aid, "at": "worker" if aid else "", "role": role,
             "cwd": "/r/shop", "repo": repo, "tool": tool, "input": inp}
-
-
-def q_body(sid="s2", aid="", questions=None, repo=SHOP, role="worker"):
-    return {"sid": sid, "aid": aid, "at": "worker" if aid else "", "role": role,
-            "cwd": "/r/shop", "repo": repo, "tool": "AskUserQuestion",
-            "input": {"questions": questions or QS}}
-
-
-class InteractCase(ServerCase):
-    GOV_WAIT = "60"
-
-    def setUp(self):
-        super().setUp()
-        self.decisions = os.path.join(self.base, "home", "agent-city", "decisions.jsonl")
-
-    def start(self, *extra, wait=True):
-        args = list(extra) or ["--idle-sec", "60", "--gov-wait-sec", self.GOV_WAIT,
-                               "--decisions", self.decisions]
-        return super().start(*args, wait=wait)
-
-    def token(self):
-        with open(os.path.join(self.dir, "token")) as fh:
-            return fh.read().strip()
-
-    @property
-    def origin(self):
-        return "http://127.0.0.1:%d" % self.port
-
-    def api(self, method, path, body=None, token=True, origin=None, host=None, raw=None,
-            ctype="application/json", timeout=40):
-        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=timeout)
-        headers = {}
-        if token is True:
-            headers["X-City-Token"] = self.token()
-        elif token:
-            headers["X-City-Token"] = token
-        if origin:
-            headers["Origin"] = origin
-        if host:
-            headers["Host"] = host
-        data = raw if raw is not None else (json.dumps(body).encode("utf-8") if body is not None else None)
-        if data is not None:
-            headers["Content-Type"] = ctype
-        conn.request(method, path, body=data, headers=headers)
-        resp = conn.getresponse()
-        text = resp.read()
-        conn.close()
-        try:
-            parsed = json.loads(text)
-        except ValueError:
-            parsed = text
-        return resp.status, {k.lower(): v for k, v in resp.getheaders()}, parsed
-
-    def ask(self, body):
-        status, _, out = self.api("POST", "/api/ask", body)
-        self.assertEqual(status, 200, out)
-        return out["id"]
-
-    def asks(self):
-        return self.api("GET", "/api/asks")[2]["asks"]
-
-    def view(self, ask_id):
-        return next((a for a in self.asks() if a["id"] == ask_id), None)
-
-    def decide(self, body, origin=True):
-        return self.api("POST", "/api/decide", body, origin=self.origin if origin is True else origin)
-
-    def gov_next(self, sid="gs", repo=SHOP, watcher="w1", timeout=0):
-        path = "/api/gov/next?sid=%s&repo=%s&watcher=%s&timeout=%s" % (sid, repo, watcher, timeout)
-        return self.api("GET", path, timeout=timeout + 20)[2]
-
-    def decisions_lines(self):
-        if not os.path.exists(self.decisions):
-            return []
-        with open(self.decisions) as fh:
-            return [json.loads(l) for l in fh if l.strip()]
 
 
 # ---------------------------------------------------------------------------
@@ -778,47 +693,6 @@ def hook_payload(cwd, tool="Bash", tool_input=None, sid="sess-9", aid=None):
     return json.dumps(data).encode("utf-8")
 
 
-class AskHookCase(InteractCase):
-    def setUp(self):
-        super().setUp()
-        self.work = os.path.join(self.base, "work")
-        os.makedirs(self.work)
-        # city-roles: "gov-1" (stop_payload's default sid) holds the main manager lock of this
-        # folder, so its gov-watch is the governor (tests/test_agent_city_roles.py)
-        with open(os.path.join(self.work, "agent_main.lock"), "w") as fh:
-            fh.write("%d 2026-09-30 10:00 gov-1 -\n" % os.getpid())
-        self.hooks = []
-
-    def tearDown(self):
-        for p in self.hooks:
-            if p.poll() is None:
-                p.kill()
-        super().tearDown()
-
-    def hook(self, stdin, *args, env=None):
-        full = dict(os.environ, AGENT_CITY_DIR=self.dir, AGENT_ROLE="worker")
-        full.pop("CLAUDE_CODE_REMOTE", None)
-        full.update(env or {})
-        proc = subprocess.Popen([sys.executable, SERVER, "ask"] + (list(args) or ["--max-wait-sec", "30"]),
-                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                env=full)
-        proc.stdin.write(stdin)
-        proc.stdin.close()
-        self.hooks.append(proc)
-        return proc
-
-    def first_ask(self):
-        found = wait_for(lambda: self.asks(), timeout=8)
-        self.assertTrue(found, "the hook never filed its ask")
-        return found[0]
-
-    def finish(self, proc, timeout=15):
-        out = proc.stdout.read()
-        err = proc.stderr.read()
-        proc.wait(timeout)
-        return proc.returncode, out, err
-
-
 class TestAskHookOff(AskHookCase):
     def test_no_city_no_output_at_once(self):
         start = time.monotonic()
@@ -978,11 +852,6 @@ class TestAskHookOn(AskHookCase):
 # ---------------------------------------------------------------------------
 # The governor watcher
 # ---------------------------------------------------------------------------
-
-def stop_payload(cwd, sid="gov-1"):
-    return json.dumps({"session_id": sid, "transcript_path": "/x/t.jsonl", "cwd": cwd,
-                       "permission_mode": "auto", "hook_event_name": "Stop",
-                       "stop_hook_active": False}).encode("utf-8")
 
 
 class TestGovWatch(AskHookCase):

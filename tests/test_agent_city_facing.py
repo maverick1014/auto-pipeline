@@ -44,7 +44,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from test_agent_city_people import REQUIRED, function_source, plan_views, run_sim  # noqa: E402
+from citypage import REQUIRED, function_source, plan_views, run_sim  # noqa: E402
 
 FACE_REQUIRED = REQUIRED + ("turnToward", "angleDiff", "faceWant", "TURN_RATE", "TURN_WALK_MAX", "goTo",
                             "freeAt", "findPath", "governorFigures", "govMove")

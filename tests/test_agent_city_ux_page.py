@@ -198,8 +198,8 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from test_agent_city_people import function_source, page, run_sim, sim_section  # noqa: E402
-from test_agent_city_chain import two_territory_view  # noqa: E402
+from citypage import function_source, page, run_sim, sim_section  # noqa: E402
+from citypage import two_territory_view  # noqa: E402
 
 FOV = 40
 DIST_MIN = 2.5
@@ -211,50 +211,7 @@ def sim_has(name):
                      sim_section()) is not None
 
 
-def listener_block(target_regex, event):
-    """Every `<target>.addEventListener('<event>', ...)` call in the page, each up to its matching ')',
-    joined (None when there is none)."""
-    text, out = page(), []
-    for m in re.finditer(r"(?<![\w$])%s\.addEventListener\(\s*'%s'" % (target_regex, re.escape(event)), text):
-        depth = 0
-        for j in range(m.start() + m.group(0).index("addEventListener(") + len("addEventListener"), len(text)):
-            if text[j] == "(":
-                depth += 1
-            elif text[j] == ")":
-                depth -= 1
-                if depth == 0:
-                    out.append(text[m.start():j + 1])
-                    break
-    return "\n".join(out) if out else None
-
-
-def css():
-    text = page()
-    return re.sub(r"/\*.*?\*/", "", text[text.index("<style>"):text.index("</style>")], flags=re.S)
-
-
-def media_960():
-    c = css()
-    i = c.index("@media (max-width: 960px)")
-    depth = 0
-    for j in range(c.index("{", i), len(c)):
-        if c[j] == "{":
-            depth += 1
-        elif c[j] == "}":
-            depth -= 1
-            if depth == 0:
-                return c[i:j + 1]
-    return ""
-
-
-def rule(sel, text=None):
-    """Every declaration block whose selector list names exactly this selector, joined."""
-    text = css() if text is None else text
-    out = []
-    for m in re.finditer(r"([^{}]*)\{([^{}]*)\}", text):
-        if sel in [x.strip() for x in m.group(1).split(",")]:
-            out.append(m.group(2))
-    return ";".join(out)
+from citypage import listener_block, css, media_960, rule, text_keys  # noqa: E402,F401  (test-slim: shared helpers)
 
 
 def tracks(value):
@@ -277,10 +234,6 @@ def tracks(value):
 def columns(block):
     m = re.search(r"grid-template-columns:([^;]*)", block)
     return tracks(m.group(1)) if m else 0
-
-
-def text_keys(key):
-    return len(re.findall(r"'%s'\s*:" % re.escape(key), page()))
 
 
 # ---------------------------------------------------------------------------

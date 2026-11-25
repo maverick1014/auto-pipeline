@@ -146,9 +146,9 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from test_agent_city_people import function_source, page, run_sim, sim_section  # noqa: E402
-from test_agent_city_chain import TA, TB, two_territory_view  # noqa: E402
-from test_agent_city_ux_page import css, listener_block, media_960, rule, text_keys  # noqa: E402
+from citypage import function_source, page, run_sim, sim_section  # noqa: E402
+from citypage import TA, TB, two_territory_view  # noqa: E402
+from citypage import css, listener_block, media_960, rule, text_keys  # noqa: E402
 
 FOV = 40
 

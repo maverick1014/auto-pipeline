@@ -75,11 +75,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-from test_agent_city_people import ac, function_source, page, run_sim  # noqa: E402
-from test_agent_city_chain import TA as PA, TB as PB, two_territory_view  # noqa: E402
-from test_agent_city_ux_page import css, listener_block, media_960, rule, text_keys  # noqa: E402
-from test_agent_city_talk import A_REPO, B_REPO, TA, TB, ServerCase  # noqa: E402
-from test_agent_city_roster import RosterCase  # noqa: E402
+from citypage import function_source, page, run_sim  # noqa: E402
+from citypage import ac  # noqa: E402
+from citypage import TA as PA, TB as PB, two_territory_view  # noqa: E402
+from citypage import css, listener_block, media_960, rule, text_keys  # noqa: E402
+from cityhelp import A_REPO, B_REPO, TalkServerCase as ServerCase  # noqa: E402
+from cityhelp import TALK_TA as TA, TALK_TB as TB  # noqa: E402
+from cityhelp import RosterCase  # noqa: E402
 
 
 def decl(block):

@@ -61,134 +61,11 @@ import sys
 import tempfile
 import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
-PAGE = os.path.join(ROOT, "bin", "agent-city.html")
+from citypage import HERE, ROOT, PAGE, page, sim_section, OFFICE_DRAW, _function_source_one, function_source, SIM_JS, run_sim, plan_views, REQUIRED  # noqa: E402,F401  (test-slim: shared helpers)
 sys.path.insert(0, os.path.join(ROOT, "bin"))
 
 import agent_city as ac  # noqa: E402
 
-
-def page():
-    with open(PAGE, encoding="utf-8") as fh:
-        return fh.read()
-
-
-def sim_section():
-    """The page script from 'use strict' up to the 3D view comment."""
-    text = page()
-    m = re.search(r"<script>\s*\(\(\) => \{\s*'use strict';", text)
-    if not m:
-        raise AssertionError("inline script with 'use strict' not found")
-    start = m.end()
-    end = text.find("3D view.", start)
-    if end < 0:
-        raise AssertionError("the '3D view.' comment not found")
-    end = text.rfind("/*", start, end)
-    return "'use strict';\n" + text[start:end]
-
-
-
-# city-office (2026-11-25): the 3D part was rebuilt from the approved prototype. The old per-person and
-# per-governor draw functions became syncFigs (meshes, pose, facing), pinOv (head tags and bubbles) and govFigsHere
-# (the area managers of the floor in view). Old tests that read the old names read these instead.
-OFFICE_DRAW = {"updatePerson": ("syncFigs", "pinOv", "poseFig"),
-               "updateGovernor": ("govFigsHere", "syncFigs", "pinOv"),
-               "updateGovPool": ("govFigsHere", "syncFigs", "pinOv")}
-
-
-def _function_source_one(name):
-    text = page()
-    m = re.search(r"^(?:async\s+)?function %s\s*\(" % re.escape(name), text, re.M)
-    if not m:
-        return None
-    i = text.index("{", m.end())
-    depth = 0
-    for j in range(i, len(text)):
-        if text[j] == "{":
-            depth += 1
-        elif text[j] == "}":
-            depth -= 1
-            if depth == 0:
-                return text[m.start():j + 1]
-    return None
-
-
-
-def function_source(name):
-    if name in OFFICE_DRAW:
-        parts = [_function_source_one(n) for n in OFFICE_DRAW[name]]
-        return "\n".join(p for p in parts if p) or None
-    return _function_source_one(name)
-
-# A stub browser: every unknown name becomes a harmless "anything" (callable,
-# any property, truthy), except REQUIRED names, which must be in the page.
-SIM_JS = r"""
-const fs = require('fs'), vm = require('vm');
-const { script, driver, payload, required } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-function anything(){
-  const f = function(){ return P; };
-  const P = new Proxy(f, {
-    get(t, k){ if (k === Symbol.toPrimitive) return () => ''; if (k === 'then') return undefined;
-      if (k === 'length') return 0; if (k === Symbol.iterator) return function*(){}; return P; },
-    set(){ return true; }, apply(){ return P; }, construct(){ return P; }, has(){ return true; } });
-  return P;
-}
-const base = () => ({ console, Math, JSON, Date, Map, Set, WeakMap, Array, Object, Number, String, Boolean,
-  Promise, Symbol, Error, RegExp, parseInt, parseFloat, isFinite, isNaN, Infinity, NaN, undefined,
-  setTimeout: () => 0, clearTimeout(){}, setInterval: () => 0, clearInterval(){}, requestAnimationFrame(){},
-  cancelAnimationFrame(){}, performance: { now: () => 0 }, document: anything(), window: anything(),
-  navigator: anything(), localStorage: { getItem(){ return null; }, setItem(){}, removeItem(){} },
-  location: { hash: '', protocol: 'http:', search: '', href: 'http://127.0.0.1/' },
-  matchMedia: () => ({ matches: false, addEventListener(){}, addListener(){} }), addEventListener(){},
-  THREE: anything(), EventSource: function(){ return anything(); }, fetch: () => new Promise(() => {}),
-  devicePixelRatio: 1, innerWidth: 1200, innerHeight: 800 });
-const stubs = new Set();
-for (let tries = 0; tries < 150; tries++) {
-  const box = base();
-  for (const s of stubs) box[s] = anything();
-  box.__payload = payload; box.__out = null;
-  vm.createContext(box);
-  try {
-    vm.runInContext(script + '\n;\n' + driver, box, { timeout: 60000 });
-    require(`fs`).writeSync(1, JSON.stringify(box.__out)); process.exit(0);
-  } catch (e) {
-    const m = /^(\S+) is not defined$/.exec((e && e.message) || '');
-    if (e && e.name === 'ReferenceError' && m && !required.includes(m[1]) && !stubs.has(m[1])) { stubs.add(m[1]); continue; }
-    require(`fs`).writeSync(1, JSON.stringify({ fatal: String(e && e.stack || e).slice(0, 2500) })); process.exit(0);
-  }
-}
-require(`fs`).writeSync(1, JSON.stringify({ fatal: 'too many unknown names: ' + [...stubs].join(' ') }));
-"""
-
-
-def run_sim(driver, payload, required=()):
-    node = shutil.which("node")
-    if not node:
-        raise unittest.SkipTest("node is not installed")
-    with tempfile.TemporaryDirectory() as tmp:
-        script = os.path.join(tmp, "sim.js")
-        data = os.path.join(tmp, "data.json")
-        with open(script, "w", encoding="utf-8") as fh:
-            fh.write(SIM_JS)
-        with open(data, "w", encoding="utf-8") as fh:
-            json.dump({"script": sim_section(), "driver": driver, "payload": payload,
-                       "required": list(required)}, fh)
-        result = subprocess.run([node, script, data], capture_output=True, text=True,
-                                timeout=120, stdin=subprocess.DEVNULL)
-    if result.returncode != 0 or not result.stdout.strip():
-        raise AssertionError("sim harness failed:\n" + result.stderr[-3000:])
-    out = json.loads(result.stdout)
-    if isinstance(out, dict) and "fatal" in out:
-        raise AssertionError("sim harness crashed: " + out["fatal"])
-    return out
-
-
-def plan_views():
-    """city-office: one office view of one floor (was one island view per plan)."""
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from cityoffice import office_view_of
-    return {"office": office_view_of(("/work/p0-0/app/.git", "app0"))}
 
 # Drives the simulation section on one territory: snapshot with a present
 # governor and 4 placed agents, then a live worker that builds and rests, and
@@ -243,8 +120,6 @@ apply({ type: 'gov', terr: tid, state: 'idle', present: false });
 const govGone = governorAt(tid);
 __out = { govFirst, settled, built, rested, worked, final, govGone };
 """
-
-REQUIRED = ("officeState", "governorAt", "apply", "update", "citizens", "buildings", "byId", "citizenStatus")
 
 
 class TestGovernorFigureP0(unittest.TestCase):

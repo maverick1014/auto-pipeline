@@ -152,9 +152,8 @@ for p in (HERE, BIN):
         sys.path.insert(0, p)
 
 import agent_city as ac  # noqa: E402
-from test_agent_city_page import (case_block, const_object, function_source, inline_script,  # noqa: E402
-                                  js_value, page_fns, run_node, zh_resolved, constants_prelude, text_zh)
-from test_agent_city_server import ServerCase, wait_for  # noqa: E402
+from citypage import case_block, const_object, script_function_source as function_source, inline_script, js_value, page_fns, run_node, zh_resolved, constants_prelude, text_zh  # noqa: E402
+from cityhelp import ServerCase, wait_for  # noqa: E402
 from cityhelp import Mains  # noqa: E402
 
 REPO = "/r/shop/.git"

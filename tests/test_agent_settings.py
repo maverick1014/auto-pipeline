@@ -197,7 +197,7 @@ class TmpCase(unittest.TestCase):
 
     def folder(self, name, conf):
         """settings-configure: CONF (old key=value text) goes into Configure (user level)."""
-        from test_agent_city_add_agent import configure_text
+        from cityhelp import configure_text  # noqa: E402
         path = os.path.join(self.base, name)
         os.makedirs(path)
         configure_text(conf)
@@ -658,7 +658,7 @@ class TestCityLineRunsInZsh(unittest.TestCase):
 
     def line(self, spec):
         # settings-configure: the Main manager model setting (Configure), user level
-        from test_agent_city_add_agent import configure_text
+        from cityhelp import configure_text  # noqa: E402
         folder = os.path.join(self.base, "f%d" % len(os.listdir(self.base)))
         os.makedirs(folder)
         configure_text("main_manager=%s\npermission_mode=auto\n" % spec)

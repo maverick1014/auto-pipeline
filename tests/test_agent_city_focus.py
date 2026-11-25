@@ -59,8 +59,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from test_agent_city_page import (function_source, inline_script, markup, media_block,  # noqa: E402
-                                  page, page_fns, run_node, style, zh_resolved)
+from citypage import script_function_source as function_source, inline_script, markup, media_block, page, page_fns, run_node, style, zh_resolved  # noqa: E402
 
 
 GONE_FUNCTIONS = ("renderRoster", "renderBalance", "balanceHtml", "kindBar", "openBalanceKind", "signText")

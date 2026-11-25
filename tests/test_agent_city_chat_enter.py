@@ -17,7 +17,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from test_agent_city_people import function_source, page  # noqa: E402
+from citypage import function_source, page  # noqa: E402
 
 
 def action(**ev):

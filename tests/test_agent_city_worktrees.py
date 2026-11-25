@@ -114,42 +114,10 @@ sys.path.insert(0, os.path.join(ROOT, "bin"))
 sys.path.insert(0, HERE)
 
 import agent_city as ac  # noqa: E402
-from test_agent_city_people import page, run_sim, plan_views  # noqa: E402
+from citypage import page, run_sim, plan_views  # noqa: E402
 
 
-def git(cwd, *args):
-    env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t",
-               GIT_COMMITTER_EMAIL="t@t", GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull)
-    return subprocess.run(["git", "-C", cwd] + list(args), check=True, capture_output=True, env=env,
-                          stdin=subprocess.DEVNULL, text=True).stdout.strip()
-
-
-def make_repo(base):
-    """A main checkout <base>/app on branch main with one commit, and a linked
-    worktree <base>/wt-a on branch feat-a with one more commit."""
-    root = os.path.join(base, "app")
-    os.mkdir(root)
-    git(root, "init", "-q", "-b", "main")
-    with open(os.path.join(root, "a.txt"), "w") as fh:
-        fh.write("a\n")
-    git(root, "add", "a.txt")
-    git(root, "commit", "-q", "-m", "one")
-    wt = os.path.join(base, "wt-a")
-    git(root, "worktree", "add", "-q", "-b", "feat-a", wt)
-    with open(os.path.join(wt, "b.txt"), "w") as fh:
-        fh.write("b\n")
-    git(wt, "add", "b.txt")
-    git(wt, "commit", "-q", "-m", "two")
-    return os.path.realpath(root), os.path.realpath(wt)
-
-
-def write(path, text):
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(text)
-    # a later write in the same second must still look changed (size or mtime)
-    st = os.stat(path)
-    os.utime(path, (st.st_atime, st.st_mtime + write.bump))
-    write.bump += 1
+from cityhelp import git, make_repo, write, drain, snapshot  # noqa: E402,F401  (test-slim: shared helpers)
 
 
 write.bump = 1
@@ -227,17 +195,6 @@ class TestHookWt(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Server: CityState
 # ---------------------------------------------------------------------------
-
-def drain(client):
-    out = []
-    while not client.queue.empty():
-        out.append(json.loads(client.queue.get_nowait().decode("utf-8").split("data:", 1)[1]))
-    return out
-
-
-def snapshot(st):
-    client = st.add_client()
-    return json.loads(client.queue.get_nowait().decode("utf-8").split("data:", 1)[1]), client
 
 
 def feed(st, ev, sid, repo, role="", wt=""):

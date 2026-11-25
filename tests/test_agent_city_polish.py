@@ -37,23 +37,12 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from test_agent_city_people import REQUIRED, ac, function_source, page, run_sim  # noqa: E402
-import test_agent_city_page as tp  # noqa: E402
+from citypage import REQUIRED, function_source, page, run_sim  # noqa: E402
+from citypage import ac  # noqa: E402
+import citypage as tp  # noqa: E402
 
-A_REPO, B_REPO = "/work/repoA/.git", "/work/repoB/.git"
-TA, TB = ac.territory_id(A_REPO), ac.territory_id(B_REPO)
+from citypage import POLISH_A_REPO, POLISH_B_REPO, POLISH_TA, POLISH_TB, named_view, ASK_Q  # noqa: E402,F401  (test-slim: shared helpers)
 
-
-def named_view():
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from cityoffice import office_view_of
-    return office_view_of((A_REPO, "repoA"), (B_REPO, "repoB"))
-
-ASK_Q = {"id": "q1", "agent": "gov", "terr": TA, "label": "", "task": "", "repo": A_REPO, "kind": "question",
-         "phase": "owner", "why": "no-governor", "wait": 60, "left": 0, "tool": "AskUserQuestion",
-         "what": "red or blue?", "at": 1000,
-         "questions": [{"question": "red or blue?", "header": "c", "multiSelect": False,
-                        "options": [{"label": "red", "description": ""}, {"label": "blue", "description": ""}]}]}
 
 WORDS_DRIVER = r"""
 const V = __payload.view, ask = __payload.ask;
@@ -131,9 +120,9 @@ class TestUnknownGovernorAfterRestart(unittest.TestCase):
     def state(self):
         # city-roles: g1 holds A_REPO's main manager lock (alive), so it governs and is "unknown" after a restart
         return ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=self.world,
-                            main_fn=lambda identity: (os.getpid(), "g1") if identity == A_REPO else None)
+                            main_fn=lambda identity: (os.getpid(), "g1") if identity == POLISH_A_REPO else None)
 
-    def line(self, st, ev, sid, repo=A_REPO):
+    def line(self, st, ev, sid, repo=POLISH_A_REPO):
         self.now += 1
         st.feed_line({"ev": ev, "sid": sid, "aid": "", "at": "", "tool": "Read", "nt": "", "proj": "p", "role": "",
                       "desc": "", "sub": "", "q": "", "klen": "", "repo": repo, "kind": "", "ask": ""}, self.now)
@@ -145,16 +134,16 @@ class TestUnknownGovernorAfterRestart(unittest.TestCase):
         st = self.state()
         self.line(st, "UserPromptSubmit", "g1")
         again = self.state()
-        self.assertEqual(self.govs(again), [{"terr": TA, "state": "unknown"}])
+        self.assertEqual(self.govs(again), [{"terr": POLISH_TA, "state": "unknown"}])
         self.line(again, "PostToolUse", "g1")
-        self.assertEqual([(g["terr"], g["state"]) for g in self.govs(again)], [(TA, "busy")])
+        self.assertEqual([(g["terr"], g["state"]) for g in self.govs(again)], [(POLISH_TA, "busy")])
 
     def test_a_governor_that_ended_is_forgotten(self):
         st = self.state()
         self.line(st, "UserPromptSubmit", "g1")
         self.line(st, "SessionEnd", "g1")
         with open(self.world, encoding="utf-8") as fh:
-            self.assertNotIn(A_REPO, json.load(fh).get("gov_seen", {}))
+            self.assertNotIn(POLISH_A_REPO, json.load(fh).get("gov_seen", {}))
         self.assertEqual(self.govs(self.state()), [])
 
     def test_page_says_unknown_and_draws_no_figure(self):
@@ -165,7 +154,7 @@ apply({ type: 'snapshot', world: V, gov: { state: 'idle', terr: __payload.ta }, 
   govs: [{ terr: __payload.ta, state: 'unknown' }] });
 __out = { row: govRowText(__payload.ta), at: governorAt(__payload.ta) };
 """
-        r = run_sim(driver, {"view": named_view(), "ta": TA}, REQUIRED + ("govRowText",))
+        r = run_sim(driver, {"view": named_view(), "ta": POLISH_TA}, REQUIRED + ("govRowText",))
         self.assertEqual(r["row"], "未知")
         self.assertIsNone(r["at"])
 

@@ -124,9 +124,9 @@ for p in (HERE, BIN):
         sys.path.insert(0, p)
 
 import agent_city as ac  # noqa: E402
-import test_agent_city_page as tp  # noqa: E402
-from test_agent_city_server import ServerCase, wait_for  # noqa: E402
-from test_agent_city_world import make_repo, gline  # noqa: E402
+import citypage as tp  # noqa: E402
+from cityhelp import ServerCase, wait_for  # noqa: E402
+from cityhelp import world_make_repo as make_repo, gline  # noqa: E402
 from scripthelp import ScriptCase  # noqa: E402
 
 
@@ -357,7 +357,7 @@ def land_prelude(section):
     for name in OUTSIDE_HELPERS:
         if name in declared:
             continue
-        src = tp.function_source(name)
+        src = tp.script_function_source(name)
         if src:
             lines.append(src)
         elif name == "clamp":
@@ -598,7 +598,7 @@ def land_results():
         # city-people: wildDecor (and its hash2) moved to the simulation section so footprints() can
         # block walking around plants (tests/test_agent_city_walk.py); take it from there when needed
         if not re.search(r"^function wildDecor\s*\(", section, re.M):
-            src = tp.function_source("wildDecor")
+            src = tp.script_function_source("wildDecor")
             if src is None:
                 raise AssertionError("function wildDecor(view) not found in the page script")
             m = re.search(r"^const hash2 = [^\n]+", tp.inline_script(), re.M)

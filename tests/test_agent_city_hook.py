@@ -80,9 +80,7 @@ import tempfile
 import time
 import unittest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HOOK = os.path.join(ROOT, "bin", "agent-city-hook.sh")
-BASH = shutil.which("bash")
+from cityhelp import ROOT, HOOK, BASH, HookCase  # noqa: E402,F401  (test-slim: shared helpers)
 KEYS = {"ev", "sid", "aid", "at", "tool", "nt", "proj", "role", "desc", "sub", "q", "klen", "repo", "to", "ask", "wt",
         "file", "tp", "pid"}   # city-talk: "to", the recipient of a SendMessage (tests/test_agent_city_talk.py)
 
@@ -90,67 +88,7 @@ CITY_COMMAND = ('[ -f "${AGENT_CITY_DIR:-$HOME/.cache/agent-city}/on" ] && '
                 '"${CLAUDE_PLUGIN_ROOT}/bin/agent-city-hook.sh"; exit 0')
 
 
-def payload(event, agent=None, ascii_only=False, **rest):
-    """Build a hook payload in the key order Claude Code uses.
-
-    Common fields first (agent_id and agent_type only inside a subagent), then
-    hook_event_name, then the event's own fields in the order given.
-    """
-    data = {
-        "session_id": "sess-1",
-        "transcript_path": "/home/u/.claude/projects/shop/sess-1.jsonl",
-        "cwd": "/work/shop-app",
-        "permission_mode": "auto",
-    }
-    if agent:
-        data["agent_id"] = agent[0]
-        data["agent_type"] = agent[1]
-    data["hook_event_name"] = event
-    data.update(rest)
-    return json.dumps(data, ensure_ascii=ascii_only).encode("utf-8")
-
-
-class HookCase(unittest.TestCase):
-    def setUp(self):
-        self.base = tempfile.mkdtemp(prefix="city_hook_")
-        self.city = os.path.join(self.base, "city")
-        os.mkdir(self.city)
-        self.empty = os.path.join(self.base, "emptybin")
-        os.mkdir(self.empty)
-        self.events = os.path.join(self.city, "events.jsonl")
-
-    def tearDown(self):
-        shutil.rmtree(self.base, ignore_errors=True)
-
-    def switch_on(self, pid=None):
-        with open(os.path.join(self.city, "on"), "w") as fh:
-            fh.write("%s 4777\n" % (os.getpid() if pid is None else pid))
-
-    def run_hook(self, stdin, env=None):
-        full = {"AGENT_CITY_DIR": self.city, "PATH": self.empty, "HOME": self.base}
-        full.update(env or {})
-        return subprocess.run([BASH, HOOK], input=stdin, env=full,
-                              capture_output=True, timeout=20)
-
-    def lines(self):
-        if not os.path.exists(self.events):
-            return []
-        with open(self.events, "rb") as fh:
-            raw = fh.read()
-        return [json.loads(l.decode("utf-8", "replace"))
-                for l in raw.split(b"\n") if l.strip()]
-
-    def one(self, stdin, env=None):
-        result = self.run_hook(stdin, env)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        rows = self.lines()
-        self.assertEqual(len(rows), 1, rows)
-        return rows[0]
-
-    def assert_silent(self, result):
-        self.assertEqual(result.returncode, 0)
-        self.assertEqual(result.stdout, b"")
-        self.assertEqual(result.stderr, b"")
+from cityhelp import payload  # noqa: E402,F401  (test-slim: shared helpers)
 
 
 class TestOff(HookCase):
@@ -458,8 +396,6 @@ def git(cwd, *args):
                GIT_COMMITTER_EMAIL="t@t", GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull)
     subprocess.run(["git", "-C", cwd] + list(args), check=True, capture_output=True, env=env,
                    stdin=subprocess.DEVNULL)
-
-
 
 
 class TestRepoAndKind(HookCase):

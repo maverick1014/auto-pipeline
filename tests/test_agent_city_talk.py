@@ -118,8 +118,9 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from test_agent_city_people import REQUIRED, ac, function_source, page, run_sim  # noqa: E402
-from test_agent_city_page import page_fns, run_node  # noqa: E402
+from citypage import REQUIRED, function_source, page, run_sim  # noqa: E402
+from citypage import ac  # noqa: E402
+from citypage import page_fns, run_node  # noqa: E402
 from cityoffice import office_view  # noqa: E402
 from cityhelp import Mains  # noqa: E402
 
@@ -997,79 +998,14 @@ class TestDemoShowsItT1T3(unittest.TestCase):
 # Server: who sent a new agent, and who talks to whom
 # ---------------------------------------------------------------------------
 
-A_REPO, B_REPO = "/work/ta/app/.git", "/work/tb/shop/.git"
-TA, TB = ac.territory_id(A_REPO), ac.territory_id(B_REPO)
+from cityhelp import A_REPO, B_REPO  # noqa: E402,F401  (test-slim: shared helpers)
+from cityhelp import TALK_TA, TALK_TB  # noqa: E402,F401  (test-slim: shared helpers)
 
 
-def title_line(value, sid):
-    return json.dumps({"type": "custom-title", "customTitle": value, "sessionId": sid}) + "\n"
+from cityhelp import title_line, TalkServerCase  # noqa: E402,F401  (test-slim: shared helpers)
 
 
-class ServerCase(unittest.TestCase):
-
-    def setUp(self):
-        self.base = os.path.realpath(tempfile.mkdtemp(prefix="city_talk_"))
-        self.addCleanup(shutil.rmtree, self.base, True)
-        self.root = os.path.join(self.base, "projects")
-        os.makedirs(os.path.join(self.root, "-work-app"))
-        self.mains = Mains()
-        self.st = ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"),
-                               world_path=os.path.join(self.base, "world.json"), main_fn=self.mains, titles=ac.TitleReader(root=self.root))
-        self.client = self.st.add_client()
-        self.client.queue.get_nowait()
-        self.now = 1000.0
-
-    def named(self, sid, name):
-        """A transcript that names session SID."""
-        path = os.path.join(self.root, "-work-app", sid + ".jsonl")
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(title_line(name, sid))
-        return path
-
-    def line(self, ev, sid, repo=A_REPO, role="", aid="", at="", tool="", ask="", sub="", desc="", tp="", **more):
-        self.now += 1.0
-        obj = {"ev": ev, "sid": sid, "aid": aid, "at": at, "tool": tool, "nt": "", "role": role, "desc": desc,
-               "sub": sub, "q": "", "klen": "", "repo": repo, "ask": ask, "wt": "", "file": "", "tp": tp,
-               "proj": "shop" if repo == B_REPO else "app"}
-        obj.update(more)
-        self.st.feed_line(obj, self.now)
-
-    def events(self):
-        out = []
-        while not self.client.queue.empty():
-            raw = self.client.queue.get_nowait()
-            if isinstance(raw, bytes) and b"data:" in raw:
-                out.append(json.loads(raw.decode("utf-8").split("data:", 1)[1]))
-        return out
-
-    def spawn_of(self, cid):
-        found = [e for e in self.events() if e.get("type") == "spawn" and e.get("id") == cid]
-        self.assertEqual(len(found), 1, "one spawn event for " + cid)
-        return found[0]
-
-    def talks(self):
-        return [e for e in self.events() if e.get("type") == "talk"]
-
-    def governor(self, sid="g1", repo=A_REPO):
-        self.mains.setdefault(repo, sid)
-        self.line("UserPromptSubmit", sid, repo)
-
-    def lead(self, sid="tm1", name="city-talk Task Manager", repo=A_REPO):
-        self.line("PostToolUse", sid, repo, role="task-manager", tool="Bash", tp=self.named(sid, name))
-
-    def helper(self, sid="h1", name="app Helper", repo=A_REPO):
-        self.line("PostToolUse", sid, repo, tool="Bash", tp=self.named(sid, name))
-
-    def sub(self, aid, sid, role="", kind="worker", repo=A_REPO):
-        self.line("PreToolUse", sid, repo, role=role, tool="Agent", sub=kind, desc="slice")
-        self.line("SubagentStart", sid, repo, role=role, aid=aid, at=kind)
-
-    def send(self, sid, to, repo=A_REPO, role="", aid="", ask="", ev="PostToolUse", **more):
-        self.line(ev, sid, repo, role=role, aid=aid, at="worker" if aid else "", tool="SendMessage", ask=ask, to=to,
-                  **more)
-
-
-class TestSpawnSaysWhoSentItT1(ServerCase):
+class TestSpawnSaysWhoSentItT1(TalkServerCase):
 
     def test_a_workers_sender_is_its_lead(self):
         self.governor()
@@ -1082,7 +1018,7 @@ class TestSpawnSaysWhoSentItT1(ServerCase):
         self.governor()
         self.events()
         self.sub("d1", "g1", kind="fast-lane-deputy")
-        self.assertEqual(self.spawn_of("d1")["from"], "gov:" + TA)
+        self.assertEqual(self.spawn_of("d1")["from"], "gov:" + TALK_TA)
 
     def test_a_helpers_subagent_comes_from_the_helper(self):
         self.governor()
@@ -1095,7 +1031,7 @@ class TestSpawnSaysWhoSentItT1(ServerCase):
         self.governor()
         self.events()
         self.lead()
-        self.assertEqual(self.spawn_of("s:tm1")["from"], "gov:" + TA)
+        self.assertEqual(self.spawn_of("s:tm1")["from"], "gov:" + TALK_TA)
 
     def test_no_governor_no_sender(self):
         self.lead()
@@ -1114,7 +1050,7 @@ class TestSpawnSaysWhoSentItT1(ServerCase):
         self.assertEqual(self.spawn_of("s:tm9")["from"], "")
 
 
-class TestSendMessageBecomesATalkT3(ServerCase):
+class TestSendMessageBecomesATalkT3(TalkServerCase):
 
     def setUp(self):
         super().setUp()
@@ -1132,7 +1068,7 @@ class TestSendMessageBecomesATalkT3(ServerCase):
 
     def test_session_to_session_by_its_name(self):
         self.send("h1", "city-talk Task Manager")
-        self.assertEqual(self.one(), {"type": "talk", "from": "s:h1", "to": "s:tm1", "terr": TA})
+        self.assertEqual(self.one(), {"type": "talk", "from": "s:h1", "to": "s:tm1", "terr": TALK_TA})
 
     def test_the_name_matches_in_any_case(self):
         self.send("tm1", "  CITY-RAIL task manager ", role="task-manager")
@@ -1142,7 +1078,7 @@ class TestSendMessageBecomesATalkT3(ServerCase):
         for name in ("app Manager", "app-7f", "app"):
             with self.subTest(to=name):
                 self.send("tm2", name, role="task-manager")
-                self.assertEqual(self.one(), {"type": "talk", "from": "s:tm2", "to": "gov:" + TA, "terr": TA})
+                self.assertEqual(self.one(), {"type": "talk", "from": "s:tm2", "to": "gov:" + TALK_TA, "terr": TALK_TA})
 
     def test_a_session_name_wins_over_the_repo_name(self):
         self.send("tm1", "app Helper", role="task-manager")
@@ -1154,7 +1090,7 @@ class TestSendMessageBecomesATalkT3(ServerCase):
 
     def test_from_the_governor(self):
         self.send("g1", "city-rail Task Manager")
-        self.assertEqual(self.one(), {"type": "talk", "from": "gov:" + TA, "to": "s:tm2", "terr": TA})
+        self.assertEqual(self.one(), {"type": "talk", "from": "gov:" + TALK_TA, "to": "s:tm2", "terr": TALK_TA})
 
     def test_the_governor_never_talks_to_himself(self):
         self.send("g1", "app Manager")
@@ -1162,7 +1098,7 @@ class TestSendMessageBecomesATalkT3(ServerCase):
 
     def test_to_a_subagent_by_its_id(self):
         self.send("tm1", "w1", role="task-manager")
-        self.assertEqual(self.one(), {"type": "talk", "from": "s:tm1", "to": "w1", "terr": TA})
+        self.assertEqual(self.one(), {"type": "talk", "from": "s:tm1", "to": "w1", "terr": TALK_TA})
 
     def test_from_a_subagent(self):
         self.send("tm1", "app Helper", role="task-manager", aid="w1")
@@ -1170,13 +1106,13 @@ class TestSendMessageBecomesATalkT3(ServerCase):
 
     def test_not_recognised_is_an_empty_recipient(self):
         self.send("h1", "somebody else")
-        self.assertEqual(self.one(), {"type": "talk", "from": "s:h1", "to": "", "terr": TA})
+        self.assertEqual(self.one(), {"type": "talk", "from": "s:h1", "to": "", "terr": TALK_TA})
 
     def test_another_repos_governor(self):
         self.governor("g2", B_REPO)
         self.events()
         self.send("h1", "shop Manager")
-        self.assertEqual(self.one(), {"type": "talk", "from": "s:h1", "to": "gov:" + TB, "terr": TA})
+        self.assertEqual(self.one(), {"type": "talk", "from": "s:h1", "to": "gov:" + TALK_TB, "terr": TALK_TA})
 
     # bounce 1 (real sessions on pc2, 2026-10-01): the manager's REPLY went out with
     # to = "uds:/tmp/cc-socks/41216.sock" (41216 = the helper's pid), so the answer had no walk-over
@@ -1185,7 +1121,7 @@ class TestSendMessageBecomesATalkT3(ServerCase):
         self.line("PostToolUse", "h1", tool="Bash", pid="41216")
         self.events()
         self.send("g1", "uds:/tmp/cc-socks/41216.sock")
-        self.assertEqual(self.one(), {"type": "talk", "from": "gov:" + TA, "to": "s:h1", "terr": TA})
+        self.assertEqual(self.one(), {"type": "talk", "from": "gov:" + TALK_TA, "to": "s:h1", "terr": TALK_TA})
 
     def test_any_socket_folder(self):
         self.line("PostToolUse", "tm2", role="task-manager", tool="Bash", pid="5150")
@@ -1197,7 +1133,7 @@ class TestSendMessageBecomesATalkT3(ServerCase):
         self.line("UserPromptSubmit", "g1", pid=str(os.getpid()))
         self.events()
         self.send("h1", "uds:/tmp/cc-socks/%d.sock" % os.getpid())
-        self.assertEqual(self.one(), {"type": "talk", "from": "s:h1", "to": "gov:" + TA, "terr": TA})
+        self.assertEqual(self.one(), {"type": "talk", "from": "s:h1", "to": "gov:" + TALK_TA, "terr": TALK_TA})
 
     def test_a_socket_address_nobody_has(self):
         self.line("PostToolUse", "h1", tool="Bash", pid="41216")
@@ -1225,13 +1161,13 @@ class TestSendMessageBecomesATalkT3(ServerCase):
 
     def test_a_session_id_means_that_session(self):
         self.send("g1", "h1")
-        self.assertEqual(self.one(), {"type": "talk", "from": "gov:" + TA, "to": "s:h1", "terr": TA})
+        self.assertEqual(self.one(), {"type": "talk", "from": "gov:" + TALK_TA, "to": "s:h1", "terr": TALK_TA})
         self.send("tm1", "TM2", role="task-manager")
         self.assertEqual(self.one()["to"], "s:tm2")
 
     def test_the_governors_session_id_means_the_governor(self):
         self.send("h1", "g1")
-        self.assertEqual(self.one(), {"type": "talk", "from": "s:h1", "to": "gov:" + TA, "terr": TA})
+        self.assertEqual(self.one(), {"type": "talk", "from": "s:h1", "to": "gov:" + TALK_TA, "terr": TALK_TA})
 
     def test_its_own_session_id_is_nobody(self):
         self.send("h1", "h1")
@@ -1288,7 +1224,7 @@ class TestSendMessageBecomesATalkT3(ServerCase):
 class TestHookSendsTheRecipientT3(unittest.TestCase):
 
     def setUp(self):
-        import test_agent_city_hook as th
+        import cityhelp as th  # noqa: E402
         self.th = th
         self.case = th.HookCase("run_hook")
         self.case.setUp()

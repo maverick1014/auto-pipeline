@@ -516,7 +516,7 @@ class TestHookPid(unittest.TestCase):
 
 # -- gov-watch: the holder is the governor, a helper hears its own messages --
 
-import test_agent_city_interact as interact  # noqa: E402
+import cityhelp as interact  # noqa: E402
 
 
 class TestGovWatchRoles(interact.AskHookCase):
