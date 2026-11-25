@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="city-token" content="__CITY_TOKEN__">
-<title>Agent City</title>
+<title>Agent 办公楼</title>
 <link rel="icon" href="data:,">
 <style>
 :root{
@@ -4325,7 +4325,7 @@ let camMove = null;     // the 1 s flight in through the door
 const panLimit = () => view === 'outside' ? 25 : 7;
 const distLimitNow = () => view === 'outside' ? 120 : 40;
 /* the floor view distance: 21 on a computer, 31 on a narrow phone, a little more on a short stage */
-function fitDist(){ const a = W / Math.max(1, H); return (a < .9 ? Math.max(31, 24 / a) : 21) * Math.min(1.25, Math.max(1, 640 / Math.max(1, H))); }
+function fitDist(){ const a = W / Math.max(1, H); return (a < .9 ? Math.max(31, 24 / a) : 21) * Math.min(1.3, Math.max(1, 760 / Math.max(1, H))); }
 function resetView(){ cam.az = -.62; cam.el = .86; cam.wantDist = fitDist(); cam.tx = 0; cam.ty = 0; cam.tz = .3; stopFollow(); }
 function camGo(to, ms, cb){
   if (RM || !ms) { cam.az = to.az; cam.el = to.el; cam.dist = to.dist; cam.tx = to.x; cam.ty = to.y; cam.tz = to.z; cam.wantDist = null; if (cb) cb(); return; }
@@ -4376,6 +4376,7 @@ function updateCamera(dt){
   const cp = Math.cos(cam.el);
   camera.position.set(cam.tx + Math.sin(cam.az) * cp * cam.dist, cam.ty + Math.sin(cam.el) * cam.dist, cam.tz + Math.cos(cam.az) * cp * cam.dist);
   camera.lookAt(cam.tx, cam.ty, cam.tz);
+  camera.updateMatrixWorld();
   camera.aspect = W / H;
   // the view offset eases toward the middle of the map that is free between the rail and the message panel
   refreshPanelBoxes(performance.now());
