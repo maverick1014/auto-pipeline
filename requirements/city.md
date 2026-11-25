@@ -46,7 +46,7 @@
 | `name` | 1-20 characters, on the floor sign and the outside tag |
 | `why` | 0-60 characters, why it fits the repo; on hover |
 | `colors.accent` | #RRGGBB; outside band, window frames, decor accents |
-| `colors.carpet`, `colors.office_floor`, `colors.pantry_floor` | #RRGGBB, HSL lightness 55-95% (people and labels stay readable) |
+| `colors.carpet` (open office), `colors.manager_floor` (the area manager's glass room), `colors.pantry_floor` | #RRGGBB, HSL lightness 55-95% (people and labels stay readable) |
 | `colors.desk`, `colors.desk_leg`, `colors.chair`, `colors.meeting_rug`, `colors.manager_rug` | #RRGGBB |
 | `decor` | exactly 3 entries, one per slot (1 south-west corner, 2 south middle, 3 east wall): a catalogue id or `none` |
 
