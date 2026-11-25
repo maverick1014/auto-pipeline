@@ -181,6 +181,7 @@ class locked:
         return False
 
 
+PANE_FLOOR_MB = 550            # the stored pane weight is never below what a pane needs while unmeasured (H7)
 UNVERIFIED_HOLD_S = 6 * 3600   # an entry whose start time is unknown or empty expires after 6 hours (C27)
 PANE_HOLD_S = 15 * 60       # a pane reserved at launch is dropped after 15 minutes when it never measured itself (C7)
 
@@ -336,6 +337,8 @@ def room(need, reserve_as=None):
         me = reserve_as.get("pid") if reserve_as else None
         handle = reserve_as.get("handle") if reserve_as else None
         key = reserve_as.get("key") if reserve_as else None
+        if key and any(j.get("key") == key for j in jobs):      # H8: a pending key that exists is refused
+            return False, "reserve-pane: the key %s already exists; nothing replaced" % key
         others = [j for j in jobs if not ((me is not None and j.get("pid") == me)
                                           or (handle and j.get("handle") == handle)
                                           or (key and j.get("key") == key))]
@@ -594,7 +597,7 @@ def measure_pane(pid, cwd):
         data = read_weights(gitdir)
         recent = [int(x) for x in (data.get("pane_recent") or []) if isinstance(x, (int, float))][-4:] + [mb]
         data["pane_recent"] = recent
-        data["pane"] = "0 s %d MB" % max(recent)      # the highest of the last 5 measurements, not of all time
+        data["pane"] = "0 s %d MB" % max(max(recent), PANE_FLOOR_MB)      # the highest of the last 5 measurements, not of all time
         try:
             atomic_write(weights_path(gitdir), json.dumps(data, sort_keys=True) + "\n")
         except OSError:
@@ -1398,6 +1401,8 @@ def misses(cwd):
 
 def main(argv):
     cwd = os.getcwd()
+    if os.environ.get("AGENT_ROOM_CLI") and argv and argv[0] not in ("testrun",):
+        return room_main(argv, cwd)
     if argv and argv[0] == "testrun":
         return testrun(argv[1:])
     if argv and argv[0] in ("check", "reserve", "reserve-pane", "release-pane", "release", "list", "numbers", "relief", "measure-pane"):
