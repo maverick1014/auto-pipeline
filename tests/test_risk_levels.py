@@ -556,78 +556,87 @@ class TestBuiltInLevelFour(LevelCase):
 
 
 class TestRepoPaths(LevelCase):
+    """settings-configure (owner 2026-11-25): one list, Configure "Risk: Danger paths (D)"
+    (danger_paths, user level). A file on it is type D, reason "danger_paths <glob>". The old
+    level3_paths (always C) is gone: C comes from logic detection only."""
 
-    def test_a_level3_folder_beats_an_l0_shape(self):
+    def test_a_danger_folder_beats_an_a_shape(self):
         need, lvl, why = self.one({"src/money/total.js": 'const t = "Total";\n'},
                                   {"src/money/total.js": 'const t = "Sum";\n'}, "src/money/total.js",
-                                  conf={"level3_paths": "src/money/,lib/ledger/"})
-        self.assertEqual((need, lvl), ("C", "C"))
-        self.assertIn("level3_paths src/money/", why)
+                                  conf={"danger_paths": "src/money/,lib/ledger/"})
+        self.assertEqual((need, lvl), ("D", "D"))
+        self.assertIn("danger_paths src/money/", why)
 
-    def test_a_level3_css_file_is_3(self):
+    def test_a_danger_css_file_is_d(self):
         need, lvl, _ = self.one({"src/money/m.css": "a{}\n"}, {"src/money/m.css": "b{}\n"},
-                                "src/money/m.css", conf={"level3_paths": "src/money/"})
-        self.assertEqual((need, lvl), ("C", "C"))
+                                "src/money/m.css", conf={"danger_paths": "src/money/"})
+        self.assertEqual((need, lvl), ("D", "D"))
 
-    def test_level4_globs(self):
+    def test_globs_with_spaces_around_commas(self):
         need, lvl, why = self.one({"firestore.rules": "allow read;\n", "db/seed.js": "x\n"},
                                   {"firestore.rules": "allow write;\n"}, "firestore.rules",
-                                  conf={"level4_paths": "*.rules, db/"})
+                                  conf={"danger_paths": "*.rules, db/"})
         self.assertEqual((need, lvl), ("D", "D"))
-        self.assertIn("level4_paths *.rules", why)
+        self.assertIn("danger_paths *.rules", why)
 
-    def test_level4_beats_level3(self):
-        need, lvl, why = self.one({"src/money/pay.js": "x()\n"}, {"src/money/pay.js": "y()\n"},
-                                  "src/money/pay.js",
-                                  conf={"level3_paths": "src/money/", "level4_paths": "src/money/pay.js"})
-        self.assertEqual((need, lvl), ("D", "D"))
+    def test_the_default_list_holds_the_plugin_paths(self):
+        self.base({"skills/a/SKILL.md": "x\n", "src/a.md": "x\n"})
+        self.put({"skills/a/SKILL.md": "y\n", "src/a.md": "y\n"})
+        got = self.files(self.ok())
+        self.assertEqual(got["skills/a/SKILL.md"][0], "D")
+        self.assertIn("danger_paths skills/", got["skills/a/SKILL.md"][1])
+        self.assertEqual(got["src/a.md"][0], "A")
+
+    def test_an_empty_list_leaves_the_built_ins(self):
+        self.base({"yarn.lock": "a\n", "skills/a/SKILL.md": "x\n"}, {"danger_paths": ""})
+        self.put({"yarn.lock": "b\n", "skills/a/SKILL.md": "y\n"})
+        got = self.files(self.ok())
+        self.assertEqual(got["yarn.lock"][0], "D")
+        self.assertNotIn("danger_paths", got["skills/a/SKILL.md"][1])
 
     def test_anchored_globs(self):
-        conf = {"level3_paths": "api/,src/*/ledger"}
+        conf = {"danger_paths": "api/,src/*/ledger"}
         self.base({"api/v1/h.py": "a = 1\n", "src/api/h.py": "a = 1\n", "src/a/ledger/x.ts": "a\n"}, conf)
         self.put({"api/v1/h.py": "a = 2\n", "src/api/h.py": "a = 2\n", "src/a/ledger/x.ts": "b\n"})
         got = self.files(self.ok())
-        self.assertIn("level3_paths", got["api/v1/h.py"][1])
-        self.assertNotIn("level3_paths", got["src/api/h.py"][1])
-        self.assertEqual(got["api/v1/h.py"][0], "C")
-        self.assertEqual(got["src/a/ledger/x.ts"][0], "C")
+        self.assertEqual(got["api/v1/h.py"][0], "D")
+        self.assertIn("danger_paths", got["api/v1/h.py"][1])
+        self.assertEqual(got["src/a/ledger/x.ts"][0], "D")
         self.assertEqual(got["src/api/h.py"][0], "C")
+        self.assertNotIn("danger_paths", got["src/api/h.py"][1])
 
     def test_a_glob_with_no_slash_matches_any_folder_or_name(self):
-        conf = {"level3_paths": "core,*.money.ts"}
+        conf = {"danger_paths": "core,*.money.ts"}
         self.base({"lib/core/x.py": "a = 1\n", "src/deep/a.money.ts": "a\n", "src/corex/y.py": "a = 1\n"}, conf)
         self.put({"lib/core/x.py": "a = 2\n", "src/deep/a.money.ts": "b\n", "src/corex/y.py": "a = 2\n"})
         got = self.files(self.ok())
-        self.assertEqual(got["lib/core/x.py"][0], "C")
-        self.assertEqual(got["src/deep/a.money.ts"][0], "C")
+        self.assertEqual(got["lib/core/x.py"][0], "D")
+        self.assertEqual(got["src/deep/a.money.ts"][0], "D")
         self.assertEqual(got["src/corex/y.py"][0], "C")
-        self.assertIn("level3_paths", got["lib/core/x.py"][1])
-        self.assertNotIn("level3_paths", got["src/corex/y.py"][1])
 
-    def test_an_invalid_conf_value_stops_the_check(self):
-        self.base({"src/a.js": "x\n"}, {"level3_paths": "/etc/,src/"})
-        self.put({"src/a.js": "y\n"})
-        r = self.check()
-        self.assertEqual(r.returncode, 2)
-        self.assertEqual(r.stdout, "")
-        self.assertIn("level3_paths", r.stderr)
-
-    def test_no_agent_conf_uses_the_built_ins_only(self):
-        self.base({"yarn.lock": "a\n", "src/a.js": "x\n"})
-        os.remove(self.repo.path("agent.conf"))
-        self.put({"yarn.lock": "b\n"})
+    def test_a_bad_stored_value_uses_the_default_and_says_so(self):
+        self.base({"skills/a/SKILL.md": "x\n"}, {"danger_paths": "/etc/,src/"})
+        self.put({"skills/a/SKILL.md": "y\n"})
         r = self.ok()
-        self.assertIn("D", self.required(r).split("+"))   # agent.conf itself is deleted: a C part too
-        self.assertIn("no agent.conf: built-in D paths only", r.stdout.splitlines())
+        self.assertEqual(self.files(r)["skills/a/SKILL.md"][0], "D")
+        self.assertIn("danger_paths", r.stderr)
 
-    def test_a_worktree_reads_the_main_repos_agent_conf(self):
+    def test_an_old_agent_conf_is_not_read(self):
+        self.base({"src/money/total.js": "a = 1\n"})
+        self.repo.set_old_conf("level3_paths=src/money/\nlevel4_paths=src/money/\n")
+        self.put({"src/money/total.js": "a = 2\n"})
+        got = self.files(self.ok())
+        self.assertEqual(got["src/money/total.js"][0], "C")
+        self.assertNotIn("paths", got["src/money/total.js"][1])
+
+    def test_a_worktree_uses_the_same_list(self):
         self.base({"src/money/total.js": "a = 1\n"})
         wt = os.path.join(self.repo.base, "wt_levels")
         self.git("worktree", "add", "-q", "-b", "feat", wt, "base")
-        self.repo.set_conf("level3_paths", "src/money/")     # the main copy only, not committed
+        self.repo.set_conf("danger_paths", "src/money/")
         self.put({"src/money/total.js": "a = 2\n"}, cwd=wt)
         r = self.ok(cwd=wt)
-        self.assertEqual(self.required(r), "C")
+        self.assertEqual(self.required(r), "D")
 
 
 class TestDiffScope(LevelCase):
@@ -804,67 +813,24 @@ class TestTypesPerPart(LevelCase):
 # ---------------------------------------------------------------- 2. agent.conf keys
 
 
-class TestConfKeys(unittest.TestCase):
-    KEYS = ("level3_paths", "level4_paths")
-
-    def test_the_template_has_both_empty(self):
-        conf = agent_conf.load(os.path.join(ROOT, "bin", "agent.conf.default"))
-        for key in self.KEYS:
-            with self.subTest(key=key):
-                self.assertIn(key, conf)
-                self.assertEqual(conf[key], "")
+class TestDangerPathsSetting(unittest.TestCase):
+    """danger_paths: comma-separated globs, checked like the old level paths."""
 
     def test_good_values(self):
         for value in ("", "src/core/", "src/core/,lib/money/**", "*.sql", " api/ , db/ ",
                       "core", "src/*/ledger"):
-            for key in self.KEYS:
-                with self.subTest(key=key, value=value):
-                    self.assertIsNone(agent_conf.validate_value(key, value))
+            with self.subTest(value=value):
+                self.assertIsNone(agent_conf.validate_value("danger_paths", value))
 
     def test_bad_values(self):
         for value in ("/etc/", "src/../x", "a b", "api/,,db/", ",", "api/, /db"):
-            for key in self.KEYS:
-                with self.subTest(key=key, value=value):
-                    self.assertTrue(agent_conf.validate_value(key, value))
+            with self.subTest(value=value):
+                self.assertTrue(agent_conf.validate_value("danger_paths", value))
 
-
-class TestSettings(ScriptCase):
-    script = "agent-settings.sh"
-
-    def value(self, key):
-        for line in open(self.repo.path("agent.conf")):
-            if line.split("=", 1)[0].strip() == key:
-                return line.split("=", 1)[1].rstrip("\n")
-        return None
-
-    def test_a_good_value_is_saved(self):
-        self.assertOk(self.repo.run("agent-settings.sh", "level3_paths", "src/money/,lib/ledger/"))
-        self.assertEqual(self.value("level3_paths"), "src/money/,lib/ledger/")
-
-    def test_an_empty_value_is_saved(self):
-        self.repo.set_conf("level4_paths", "db/")
-        self.assertOk(self.repo.run("agent-settings.sh", "level4_paths", ""))
-        self.assertEqual(self.value("level4_paths"), "")
-
-    def test_a_bad_value_is_refused_and_not_saved(self):
-        before = self.repo.read("agent.conf")
-        r = self.repo.run("agent-settings.sh", "level4_paths", "/etc/")
-        self.assertNotEqual(r.returncode, 0)
-        self.assertEqual(self.repo.read("agent.conf"), before)
-
-    def test_sync_adds_both_keys_empty(self):
-        # own fixture: the temp conf is seeded from the live repo agent.conf, which sets level3_paths on
-        # purpose; drop both keys so sync has to add them back from the template
-        path = self.repo.path("agent.conf")
-        with open(path) as fh:
-            rows = [l for l in fh if l.split("=", 1)[0].strip() not in ("level3_paths", "level4_paths")]
-        with open(path, "w") as fh:
-            fh.writelines(rows)
-        self.assertIsNone(self.value("level3_paths"))
-        self.assertIsNone(self.value("level4_paths"))
-        self.assertOk(self.repo.run("agent-settings.sh", "sync"))
-        self.assertEqual(self.value("level3_paths"), "")
-        self.assertEqual(self.value("level4_paths"), "")
+    def test_the_old_keys_are_gone(self):
+        for key in ("level3_paths", "level4_paths"):
+            with self.assertRaises(KeyError):
+                agent_conf.get(key, {})
 
 
 # ---------------------------------------------------------------- 3. the todo line, done, board

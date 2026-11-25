@@ -20,7 +20,9 @@ CONTRACT
                            explore, plan, guide, agent, tm-pane, shell-pane, pane, helper-pane)
     board                  a record shows right under its task's row: "<task> <kind word>[ <n>]"; dead or stale
                            records are not shown; the status line adds " · <n> 代理" (en " · <n> agent(s)").
-    switch                 agent.conf board_guard = on (default) | record | off, via agent-settings.sh.
+    switch                 Configure "Rules: Todo before agent" (todo_before_agent, settings-configure
+                           2026-11-25): true (default) = refuse a main manager launch naming no open
+                           todo task; false = record only (the old board_guard=record). No off any more.
 """
 
 import json
@@ -679,22 +681,6 @@ class TestSwitch(GuardCase):
         self.make_main()
         self.put_todo("board-trust")
 
-    # owner 3A 2026-11-20 (bounce 3): every repo records only by default; only auto-pipeline blocks (its agent.conf)
-    def test_default_is_record(self):
-        with open(os.path.join(ROOT, "bin", "agent.conf.default")) as fh:
-            self.assertIn("\nboard_guard=record\n", "\n" + fh.read())
-
-    def test_this_repo_is_on(self):
-        with open(os.path.join(ROOT, "agent.conf")) as fh:
-            self.assertIn("\nboard_guard=on\n", "\n" + fh.read())
-
-    def drop_key(self):
-        path = self.repo.path("agent.conf")
-        with open(path) as fh:
-            lines = [l for l in fh.read().splitlines(True) if not l.startswith("board_guard")]
-        with open(path, "w") as fh:
-            fh.write("".join(lines))
-
     def assertRecordsOnly(self):
         for desc, stype in (("old-task Merge", "auto-pipeline:merge-deputy"),
                             ("Find hook payload fields", "general-purpose")):
@@ -702,48 +688,39 @@ class TestSwitch(GuardCase):
             self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual([self.fields(l)["task"] for l in self.launches()], ["old-task", "project Manager"])
 
-    def test_a_repo_without_the_key_records_and_never_blocks(self):
-        self.drop_key()
-        self.assertRecordsOnly()
+    # settings-configure (owner 2026-11-25): "Todo before agent (on = old board_guard)", user level
+    def test_the_default_is_on(self):
+        sys.path.insert(0, os.path.join(ROOT, "bin"))
+        import agent_conf
+        self.assertIs(agent_conf.get("todo_before_agent", {"HOME": self.repo.base}), True)
 
-    def test_an_empty_value_records_and_never_blocks(self):
-        self.repo.set_conf("board_guard", "")
-        self.assertRecordsOnly()
+    def test_nothing_set_refuses_a_launch_naming_no_open_task(self):
+        self.assertBlocked(self.pre_agent("old-task Merge", "auto-pipeline:merge-deputy"))
 
-    def test_an_unreadable_conf_records_and_never_blocks(self):
-        path = self.repo.path("agent.conf")
-        os.chmod(path, 0)
-        self.addCleanup(os.chmod, path, 0o644)
-        self.assertRecordsOnly()
-
-    def test_off_records_nothing_blocks_nothing(self):
-        self.repo.set_conf("board_guard", "off")
-        r = self.pre_agent("old-task Merge", "auto-pipeline:merge-deputy")
-        self.assertEqual((r.returncode, r.stderr), (0, ""))
+    def test_on_refuses(self):
+        self.repo.set_conf("todo_before_agent", True)
+        self.assertBlocked(self.pre_agent("old-task Merge", "auto-pipeline:merge-deputy"))
         self.assertAllowed(self.pre_agent("board-trust Worker 1: x"))
-        self.assertEqual(self.launches(), [])
 
-    def test_record_records_and_never_blocks(self):
-        self.repo.set_conf("board_guard", "record")
-        r = self.pre_agent("old-task Merge", "auto-pipeline:merge-deputy")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(self.one_launch()["task"], "old-task")
-
-    def test_a_bad_value_records_and_never_blocks(self):
-        # bounce 3: only an explicit on blocks
-        self.repo.set_conf("board_guard", "maybe")
+    def test_off_records_and_never_blocks(self):
+        self.repo.set_conf("todo_before_agent", False)
         self.assertRecordsOnly()
 
-    def test_settings_write_and_refuse(self):
-        r = self.repo.run("agent-settings.sh", "board_guard", "off")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("board_guard=off", self.repo.read("agent.conf"))
-        for v in ("record", "on"):
-            self.assertEqual(self.repo.run("agent-settings.sh", "board_guard", v).returncode, 0)
-        before = self.repo.read("agent.conf")
-        r = self.repo.run("agent-settings.sh", "board_guard", "maybe")
-        self.assertNotEqual(r.returncode, 0)
-        self.assertEqual(self.repo.read("agent.conf"), before)
+    def test_off_stored_as_text_records_and_never_blocks(self):
+        self.repo.set_conf("todo_before_agent", "false")
+        self.assertRecordsOnly()
+
+    def test_a_bad_value_falls_back_to_the_default_on(self):
+        self.repo.set_conf("todo_before_agent", "maybe")
+        self.assertBlocked(self.pre_agent("old-task Merge", "auto-pipeline:merge-deputy"))
+
+    def test_an_old_agent_conf_board_guard_is_not_read(self):
+        self.repo.set_old_conf("board_guard=record\n")
+        self.assertBlocked(self.pre_agent("old-task Merge", "auto-pipeline:merge-deputy"))
+
+    def test_settings_script_never_changes_it(self):
+        r = self.repo.run("agent-settings.sh", "todo_before_agent", "false")
+        self.assertEqual(r.returncode, 1)
 
 
 # ---------------------------------------------------------------- reviewer findings (step 5, 2026-11-23)

@@ -3,9 +3,11 @@
 Two roots, always separate in a test, because that is how the plugin is used:
 
     PLUGIN root   the folder above bin/. Holds PRINCIPLES.md, bin/, the quiz,
-                  agent_conf.py, the agent.conf template. Read only.
-    PROJECT root  the repo being worked on. Holds agent.conf, the four
-                  agent_*.txt, .secrets/ and the lock.
+                  agent_conf.py. Read only.
+    PROJECT root  the repo being worked on. Holds the four agent_*.txt,
+                  .secrets/ and the lock. No settings file (settings-configure:
+                  the settings live in Configure, i.e. the Claude config dir's
+                  settings.json pluginConfigs; set_conf writes there).
 
 `ScriptRepo.plugin` is the first, `ScriptRepo.dir` the second. A script is
 always started by its absolute path inside the plugin, with the working
@@ -39,12 +41,15 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BIN = os.path.join(ROOT, "bin")
+if BIN not in sys.path:
+    sys.path.insert(0, BIN)
 
 # Copied into the temp plugin's bin/ when they exist. A script still being
 # written by another worker is simply skipped, so unrelated tests keep running.
@@ -59,7 +64,6 @@ COPY_BIN = [
     "agent-runtime.sh",
     "agent_conf.py",
     "agent_update.py",
-    "agent.conf.default",
     "agent-city.sh",
     "agent-city-shim",
     "agent-city-hook.sh",
@@ -97,14 +101,19 @@ COPY_PLUGIN = [
     "PRINCIPLES.md",
 ]
 
-# Per-project files. agent.conf is seeded from the repo's own one so a test
-# starts from the real defaults.
+# Per-project files. No agent.conf: a test starts from the Configure defaults.
 PROJECT_TXT = [
     "agent_todo.txt",
     "agent_completed.txt",
     "agent_ideas.txt",
     "agent_worktree.txt",
 ]
+
+CLAUDE_STUB = r"""#!%(py)s
+import json, os, sys
+with open(%(log)r, "a") as fh:
+    fh.write(json.dumps({"args": sys.argv[1:], "cwd": os.getcwd()}) + "\n")
+"""
 
 ORCA_STUB = r"""#!/usr/bin/env bash
 # Test stub for orca. Never talks to the real app.
@@ -232,6 +241,14 @@ class ScriptRepo:
         with open(stub, "w") as fh:
             fh.write(ORCA_STUB)
         os.chmod(stub, 0o755)
+        # settings-configure: the migration and the plugin-scope sync call
+        # `claude plugin configure|update`; a test never runs the real one.
+        # Every call is logged to claude_calls.log (one JSON line: args, cwd).
+        self.claude_log = os.path.join(self.base, "claude_calls.log")
+        stub = os.path.join(self.bin, "claude")
+        with open(stub, "w") as fh:
+            fh.write(CLAUDE_STUB % {"py": sys.executable, "log": self.claude_log})
+        os.chmod(stub, 0o755)
 
         for name in COPY_BIN:
             src = os.path.join(BIN, name)
@@ -249,9 +266,6 @@ class ScriptRepo:
 
     def seed_project(self):
         """Give the project the per-project files a running pipeline has."""
-        src = os.path.join(ROOT, "agent.conf")
-        if os.path.exists(src):
-            shutil.copy2(src, os.path.join(self.dir, "agent.conf"))
         for name in PROJECT_TXT:
             open(os.path.join(self.dir, name), "w").close()
         open(self.orca_log, "w").close()
@@ -320,21 +334,71 @@ class ScriptRepo:
         os.makedirs(folder, exist_ok=True)
         open(os.path.join(folder, state), "w").close()
 
-    def set_conf(self, key, value, path=None):
-        """Write one key straight into the project's agent.conf."""
-        path = path or os.path.join(self.dir, "agent.conf")
-        rows, found = [], False
-        with open(path) as fh:
-            for line in fh:
-                if line.split("=", 1)[0].strip() == key:
-                    rows.append("%s=%s\n" % (key, value))
-                    found = True
-                else:
-                    rows.append(line)
-        if not found:
-            rows.append("%s=%s\n" % (key, value))
+    # settings-configure: old agent.conf key -> Configure key (and value)
+    CONF_KEY = {"fast_lane_deputy": "helper_model", "merge_deputy": "helper_model",
+                "worker": "helper_model", "board_guard": "todo_before_agent",
+                "level3_paths": "danger_paths", "level4_paths": "danger_paths"}
+    BOOL_KEYS = ("auto_update", "auto_resume", "todo_before_agent")
+    NUMBER_KEYS = ("max_agents", "max_usage_percent", "heavy_test_slots", "watch_quiet_min",
+                   "housekeep_interval_min", "city_port", "city_idle_min")
+
+    def claude_dir(self):
+        """The Claude config dir a run sees: <fake home>/.claude, else the
+        throwaway no-claude-config dir."""
+        if self.home is not None:
+            return os.path.join(self.home, ".claude")
+        return os.path.join(self.base, "no-claude-config")
+
+    def _settings(self, change):
+        folder = self.claude_dir()
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, "settings.json")
+        try:
+            with open(path) as fh:
+                data = json.load(fh)
+        except Exception:
+            data = {}
+        options = data.setdefault("pluginConfigs", {}).setdefault(
+            "auto-pipeline@auto-pipeline", {}).setdefault("options", {})
+        change(options)
         with open(path, "w") as fh:
-            fh.writelines(rows)
+            json.dump(data, fh, indent=2)
+        return path
+
+    def set_conf(self, key, value, path=None):
+        """Set one setting the way Configure stores it (settings.json
+        pluginConfigs["auto-pipeline@auto-pipeline"].options). An old
+        agent.conf key is mapped to its Configure key; a key that is a fixed
+        constant now fails the test (rewrite it to the constant)."""
+        import agent_conf  # noqa: E402  (bin/ is on sys.path for the tests)
+        if path is not None:
+            raise AssertionError("set_conf(path=...): there is no agent.conf any more")
+        new = self.CONF_KEY.get(key, key)
+        if key in agent_conf.CONSTANTS:
+            raise AssertionError("%s is a fixed constant now (%r)" % (key, agent_conf.CONSTANTS[key]))
+        if new not in [s["key"] for s in agent_conf.SETTINGS]:
+            raise AssertionError("%s is not a setting" % key)
+        if key == "board_guard":
+            value = value == "on"
+        elif new in self.BOOL_KEYS and isinstance(value, str):
+            value = value in ("on", "yes", "true")
+        elif new in self.NUMBER_KEYS and isinstance(value, str) and value.strip().lstrip("-").isdigit():
+            value = int(value)
+        return self._settings(lambda options: options.__setitem__(new, value))
+
+    def set_old_conf(self, text, name="agent.conf"):
+        """Write an old-style agent.conf into the project (the migration reads it)."""
+        full = os.path.join(self.dir, name)
+        with open(full, "w") as fh:
+            fh.write(text)
+        return full
+
+    def claude_calls(self):
+        """The `claude` stub calls of this test, oldest first."""
+        if not os.path.exists(self.claude_log):
+            return []
+        with open(self.claude_log) as fh:
+            return [json.loads(line) for line in fh if line.strip()]
 
     # ---- what the machine looks like from inside a test ----
 
@@ -426,12 +490,9 @@ class ScriptRepo:
         return self.user_conf
 
     def unset_conf(self, key, path=None):
-        """Drop a key, the way a conf written before that key existed looks."""
-        path = path or os.path.join(self.dir, "agent.conf")
-        with open(path) as fh:
-            rows = [l for l in fh if l.split("=", 1)[0].strip() != key]
-        with open(path, "w") as fh:
-            fh.writelines(rows)
+        """Drop a setting from Configure (it falls back to its default)."""
+        new = self.CONF_KEY.get(key, key)
+        return self._settings(lambda options: options.pop(new, None))
 
     def write_bin_script(self, name, body):
         """Drop a throwaway script next to the plugin's own scripts."""
