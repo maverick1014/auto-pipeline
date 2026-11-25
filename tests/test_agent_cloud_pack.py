@@ -1,4 +1,8 @@
-"""Failing tests for bin/agent-cloud-pack.sh. Written by the task manager first.
+"""UPDATE settings-configure (2026-11-25): the pack writes no agent.conf and takes no
+--language (exit 2): a cloud session has no plugin and runs the Configure defaults.
+Lines below about agent.conf and --language are history.
+
+Failing tests for bin/agent-cloud-pack.sh. Written by the task manager first.
 
 WHY. A cloud session (claude.ai/code) never installs a plugin. It only reads
 what is committed in the clone: CLAUDE.md, .claude/settings.json (hooks and
@@ -101,7 +105,7 @@ AGENTS_LINE = ("Run .claude/auto-pipeline/bin/agent-start.sh first. "
                "No work until the quiz says PASS.")
 PYCACHE_LINE = ".claude/auto-pipeline/bin/__pycache__/"
 ONE_SENTENCE = ("git clone https://github.com/maverick1014/auto-pipeline /tmp/ap"
-                " && /tmp/ap/bin/agent-cloud-pack.sh . --language %s")
+                " && /tmp/ap/bin/agent-cloud-pack.sh .")   # settings-configure: no --language
 
 PACKED_SKILLS = ["dispatch", "merge"]
 NOT_PACKED_SKILLS = ["init", "cloud-pack"]
@@ -311,7 +315,7 @@ class TestEveryFileLands(PackCase):
     def setUp(self):
         super().setUp()
         self.src_before = snapshot(self.src)
-        self.out = self.assertOk(self.pack("--language", "zh"))
+        self.out = self.assertOk(self.pack())
 
     def src_bin_files(self):
         return sorted(n for n in os.listdir(self.s("bin"))
@@ -394,7 +398,8 @@ class TestEveryFileLands(PackCase):
         self.assertEqual(snapshot(self.src), self.src_before)
 
     def test_the_task_files_are_made(self):
-        for name in TASK_FILES + ["agent.conf", "AGENTS.md"]:
+        self.assertFalse(os.path.exists(self.t("agent.conf")))
+        for name in TASK_FILES + ["AGENTS.md"]:
             with self.subTest(name=name):
                 self.assertTrue(os.path.isfile(self.t(name)))
         self.assertTrue(os.path.isdir(self.t(".secrets")))
@@ -471,7 +476,7 @@ class TestSettingsMerge(PackCase):
     def test_broken_settings_stop_the_pack_and_nothing_is_written(self):
         write_text(self.t(".claude", "settings.json"), "{not json")
         before = snapshot(self.target)
-        result = self.pack("--language", "zh")
+        result = self.pack()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("settings.json", result.stdout + result.stderr)
         self.assertEqual(snapshot(self.target), before)
@@ -607,58 +612,22 @@ class TestClaudeMd(PackCase):
         self.assertEqual(read_text(self.t("CLAUDE.md")), text)
 
 
-class TestLanguage(PackCase):
-    def default_conf(self):
-        return conf_dict(self.s("bin", "agent.conf.default"))
-
-    def test_language_is_set(self):
-        self.assertOk(self.pack("--language", "zh"))
-        self.assertEqual(conf_dict(self.t("agent.conf"))["language"], "zh")
-
-    def test_every_other_key_is_the_template(self):
-        self.assertOk(self.pack("--language", "zh"))
-        conf = conf_dict(self.t("agent.conf"))
-        want = self.default_conf()
-        want["language"] = "zh"
-        self.assertEqual(conf, want)
-
-    def test_no_flag_keeps_the_template_language(self):
-        self.assertOk(self.pack())
-        self.assertEqual(conf_dict(self.t("agent.conf"))["language"],
-                         self.default_conf()["language"])
-
-    def test_an_existing_conf_gets_the_language_and_keeps_the_rest(self):
-        text = read_text(self.s("bin", "agent.conf.default"))
-        text = re.sub(r"(?m)^max_agents=.*$", "max_agents=2", text)
-        write_text(self.t("agent.conf"), text)
-        self.assertOk(self.pack("--language", "zh"))
-        conf = conf_dict(self.t("agent.conf"))
-        self.assertEqual(conf["language"], "zh")
-        self.assertEqual(conf["max_agents"], "2")
-
-    def test_a_bad_language_is_refused_and_nothing_is_written(self):
-        before = snapshot(self.target)
-        result = self.pack("--language", "Chinese!")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("language", (result.stdout + result.stderr).lower())
-        self.assertEqual(snapshot(self.target), before)
-
 
 class TestIdempotent(PackCase):
     def test_a_second_run_changes_not_one_byte(self):
-        self.assertOk(self.pack("--language", "zh"))
+        self.assertOk(self.pack())
         before = snapshot(self.target)
-        self.assertOk(self.pack("--language", "zh"))
+        self.assertOk(self.pack())
         self.assertEqual(snapshot(self.target), before)
 
     def test_a_second_run_without_the_flag_changes_nothing_either(self):
-        self.assertOk(self.pack("--language", "zh"))
+        self.assertOk(self.pack())
         before = snapshot(self.target)
         self.assertOk(self.pack())
         self.assertEqual(snapshot(self.target), before)
 
     def test_an_older_pack_is_left_alone_without_update(self):
-        self.assertOk(self.pack("--language", "zh"))
+        self.assertOk(self.pack())
         before = snapshot(self.target)
         self.set_source_version("9.9.9")
         with open(self.s("bin", "agent-start.sh"), "a") as fh:
@@ -674,12 +643,9 @@ class TestUpdate(PackCase):
         # a script that the next source version drops
         write_text(self.s("bin", "agent-old.sh"), "#!/usr/bin/env bash\n")
         os.chmod(self.s("bin", "agent-old.sh"), 0o755)
-        self.assertOk(self.pack("--language", "zh"))
+        self.assertOk(self.pack())
 
         # the human keeps working in the repo
-        text =re.sub(r"(?m)^max_agents=.*$", "max_agents=2",
-                      read_text(self.t("agent.conf")))
-        write_text(self.t("agent.conf"), text)
         write_text(self.t("agent_todo.txt"), "a task\n")
         with open(self.t("CLAUDE.md"), "a") as fh:
             fh.write("More.\n")
@@ -691,7 +657,7 @@ class TestUpdate(PackCase):
                    "---\nname: mine\ndescription: mine\n---\nmine\n")
         write_text(self.t(".claude", "agents", "mine.md"), "mine\n")
         self.user_files = {name: read_bytes(self.t(name)) for name in (
-            "agent.conf", "agent_todo.txt", "CLAUDE.md", "AGENTS.md",
+            "agent_todo.txt", "CLAUDE.md", "AGENTS.md",
             ".gitignore", os.path.join(".claude", "settings.json"),
             os.path.join(".claude", "skills", "mine", "SKILL.md"),
             os.path.join(".claude", "agents", "mine.md"))}
@@ -748,7 +714,7 @@ class TestUpdate(PackCase):
 class TestRunsFromThePack(PackCase):
     def setUp(self):
         super().setUp()
-        self.assertOk(self.pack("--language", "zh"))
+        self.assertOk(self.pack())
         self.pack_root = os.path.join(self.target, PACK)
 
     def test_agent_start_prints_role_roots_rules_and_quiz(self):
@@ -763,7 +729,7 @@ class TestRunsFromThePack(PackCase):
                       % self.pack_root, out)
         self.assertIn("QUIZ: run %s/bin/agent-start.sh --quiz, then --answer."
                       % self.pack_root, out)
-        self.assertIn("LANGUAGE: zh", out)
+        self.assertIn("LANGUAGE: en", out)   # settings-configure: the default in a cloud pack
         self.assertNotIn("not set up", out)
 
     def test_the_settings_hook_runs_as_written(self):
@@ -785,8 +751,10 @@ class TestRunsFromThePack(PackCase):
         self.assertIn("Q32.", out)
 
     def test_the_settings_script_runs_from_the_pack(self):
-        self.assertOk(self.packed("agent-settings.sh", "language", "en"))
-        self.assertEqual(conf_dict(self.t("agent.conf"))["language"], "en")
+        # settings-configure: it only shows; a cloud session has no plugin, so the defaults
+        out = self.assertOk(self.packed("agent-settings.sh"))
+        self.assertIn("Language", out)
+        self.assertIn("change: /plugin -> Installed -> auto-pipeline -> Configure", out)
 
     def test_the_file_script_runs_from_the_pack(self):
         self.assertOk(self.packed("agent-file.sh", "idea", "add", "packed"))
@@ -798,7 +766,7 @@ class TestRunsFromThePack(PackCase):
         self.assertEqual(out.strip(), "plain")
 
     def test_pycache_never_shows_in_git_status(self):
-        self.assertOk(self.packed("agent-settings.sh", "language", "en"))
+        self.assertOk(self.packed("agent-settings.sh", "get", "language"))
         status = git(self.target, "status", "--porcelain",
                      "--untracked-files=all")
         self.assertNotIn("__pycache__", status)
@@ -806,35 +774,43 @@ class TestRunsFromThePack(PackCase):
 
 class TestTheOutput(PackCase):
     def test_it_prints_the_one_sentence_cloud_install(self):
-        out = self.assertOk(self.pack("--language", "zh"))
-        self.assertIn(ONE_SENTENCE % "zh", out)
+        out = self.assertOk(self.pack())
+        self.assertIn(ONE_SENTENCE, out)
 
-    def test_the_sentence_carries_the_language_in_use(self):
-        out = self.assertOk(self.pack("--language", "ms"))
-        self.assertIn(ONE_SENTENCE % "ms", out)
+    def test_the_sentence_has_no_settings(self):
+        out = self.assertOk(self.pack())
+        self.assertIn(ONE_SENTENCE, out)
+        self.assertNotIn("--language", out)
+
+    def test_language_is_gone(self):
+        # settings-configure 2026-11-25: a cloud session runs the defaults
+        result = self.pack("--language", "zh")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("/plugin -> Installed -> auto-pipeline -> Configure", result.stdout + result.stderr)
+        self.assertFalse(os.path.exists(self.t("agent.conf")))
 
     def test_it_reminds_about_the_github_app(self):
-        out = self.assertOk(self.pack("--language", "zh"))
+        out = self.assertOk(self.pack())
         self.assertIn("Claude GitHub App", out)
 
     def test_it_never_asks_the_human_to_paste_what_it_already_merged(self):
-        out = self.assertOk(self.pack("--language", "zh"))
+        out = self.assertOk(self.pack())
         self.assertNotIn("Paste that permission block", out)
         self.assertNotIn("a human must paste it", out)
 
     def test_it_still_passes_on_the_cloud_browser_hint(self):
-        out = self.assertOk(self.pack("--language", "zh"))
+        out = self.assertOk(self.pack())
         self.assertIn("agent-runtime.sh browser prints none", out)
 
     def test_each_file_line_names_the_real_repo_path(self):
-        out = self.assertOk(self.pack("--language", "zh"))
+        out = self.assertOk(self.pack())
         self.assertIn("created: .claude/auto-pipeline/bin/agent-start.sh", out)
         self.assertIn("created: .claude/auto-pipeline/PRINCIPLES.md", out)
         self.assertIn("created: .claude/skills/dispatch/SKILL.md", out)
         self.assertIn("created: .claude/agents/worker.md", out)
 
     def test_it_says_to_commit_and_push(self):
-        lowered = self.assertOk(self.pack("--language", "zh")).lower()
+        lowered = self.assertOk(self.pack()).lower()
         self.assertIn("commit", lowered)
         self.assertIn("push", lowered)
 
@@ -879,16 +855,16 @@ class TestFailsLoudly(PackCase):
 
     def test_a_failing_init_step_stops_the_pack(self):
         os.makedirs(self.t("AGENTS.md"))   # agent-init.sh cannot write its line
-        result = self.pack("--language", "zh")
+        result = self.pack()
         self.assertNotEqual(result.returncode, 0)
-        self.assertNotIn(ONE_SENTENCE % "zh", result.stdout)
+        self.assertNotIn(ONE_SENTENCE, result.stdout)
         self.assertIn("agent-init.sh", result.stdout + result.stderr)
 
     def test_a_failing_settings_merge_stops_the_pack(self):
         write_text(self.t(".claude", "settings.json"), '{"hooks": ["x"]}\n')
-        result = self.pack("--language", "zh")
+        result = self.pack()
         self.assertNotEqual(result.returncode, 0)
-        self.assertNotIn(ONE_SENTENCE % "zh", result.stdout)
+        self.assertNotIn(ONE_SENTENCE, result.stdout)
         self.assertIn("settings.json", result.stdout + result.stderr)
 
 
@@ -916,7 +892,7 @@ class TestOneSentenceInstall(PackCase):
         git(self.stage, "add", "-A")
         git(self.stage, "commit", "-q", "-m", "stage")
         ap = os.path.join(self.base, "ap")
-        line = "git clone -q %s %s && %s/bin/agent-cloud-pack.sh . --language zh" % (
+        line = "git clone -q %s %s && %s/bin/agent-cloud-pack.sh ." % (
             self.stage, ap, ap)
         self.result = subprocess.run(["bash", "-c", line], cwd=self.target,
                                      env=self.env(), capture_output=True,
@@ -929,7 +905,7 @@ class TestOneSentenceInstall(PackCase):
         self.assertTrue(os.path.isfile(
             self.t(".claude", "skills", "dispatch", "SKILL.md")))
         self.assertTrue(os.path.isfile(self.t(".claude", "agents", "worker.md")))
-        self.assertEqual(conf_dict(self.t("agent.conf"))["language"], "zh")
+        self.assertFalse(os.path.exists(self.t("agent.conf")))
         self.assertIn(POINTER, read_text(self.t("CLAUDE.md")))
         cmds = session_start_commands(self.settings())
         self.assertEqual([c for c in cmds if "agent-start.sh" in c], [HOOK_CMD])
@@ -945,33 +921,6 @@ class TestOneSentenceInstall(PackCase):
         self.assertIn("PLUGIN: %s" % os.path.join(self.target, PACK), out)
         self.assertIn("QUIZ:", out)
 
-
-class TestConfSync(PackCase):
-    """agent.conf written before a template key existed gains it via --update
-    (conf-sync), and only via --update."""
-
-    def setUp(self):
-        super().setUp()
-        self.assertOk(self.pack("--language", "zh"))
-        # a repo whose agent.conf predates a template key that later arrives
-        text = "\n".join(line for line in
-                          read_text(self.t("agent.conf")).splitlines()
-                          if not line.startswith("stall_min="))
-        write_text(self.t("agent.conf"), text + "\n")
-        self.set_source_version("9.9.9")
-        with open(self.s("bin", "agent.conf.default"), "a") as fh:
-            fh.write("stall_min=10\n")
-
-    def test_update_adds_the_missing_template_key(self):
-        out = self.assertOk(self.pack("--update"))
-        self.assertIn("added stall_min=10", out)
-        self.assertEqual(conf_dict(self.t("agent.conf"))["stall_min"], "10")
-
-    def test_plain_run_does_not_add_it(self):
-        # without --update the pack is left alone anyway (older VERSION), but
-        # prove sync itself never runs by checking the key stays missing
-        self.pack()
-        self.assertNotIn("stall_min", conf_dict(self.t("agent.conf")))
 
 
 if __name__ == "__main__":
