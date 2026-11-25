@@ -580,6 +580,21 @@ class Housekeep(object):
         if subprocess.call([script, "--due"], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60) != 0:
             return
+        room = os.path.join(self.plugin, "bin", "agent-room.sh")
+        if os.path.isfile(room):
+            try:
+                import agent_nightly
+                weight, _ = agent_nightly.weight_of(agent_nightly.common_dir(self.root),
+                                                    os.path.join(self.root, "agent_repo.conf"), "nightly")
+            except Exception:
+                weight = None
+            need = str(weight[1] if weight else 0)
+            if subprocess.call([room, "check", need], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60) != 0:
+                host = os.environ.get("AGENT_FAKE_HOST") or os.uname()[1].split(".")[0]
+                self.nightly.append("NIGHTLY: due, no room on %s: start it where there is room (W7): "
+                                    "agent-nightly.sh --start" % host)
+                return
         res = subprocess.run([script, "--start"], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True, timeout=60)
         if res.returncode == 0:

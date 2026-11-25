@@ -143,14 +143,30 @@ def reserve_path():
 
 
 class locked:
-    """Exclusive lock on a file next to the reservation list, for every read-modify-write."""
+    """Exclusive lock on a file next to the reservation list, for every read-modify-write.
+    blocking=False (a signal handler, C10): a few non-blocking tries; .ok is False when the lock was not got."""
+
+    def __init__(self, blocking=True):
+        self.blocking, self.ok, self.fh = blocking, True, None
 
     def __enter__(self):
         path = reserve_path() + ".lock"
         try:
             os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
             self.fh = open(path, "a")
-            fcntl.flock(self.fh, fcntl.LOCK_EX)
+            if self.blocking:
+                fcntl.flock(self.fh, fcntl.LOCK_EX)
+            else:
+                for _ in range(20):
+                    try:
+                        fcntl.flock(self.fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except OSError:
+                        time.sleep(0.05)
+                else:
+                    self.ok = False
+                    self.fh.close()
+                    self.fh = None
         except (OSError, ImportError):
             self.fh = None
         return self
@@ -165,15 +181,58 @@ class locked:
         return False
 
 
-def load_jobs():
-    """Live entries only (a dead pid is dropped); the caller holds the lock when it writes back."""
+PANE_HOLD_S = 15 * 60       # a pane reserved at launch is dropped after 15 minutes when it never measured itself (C7)
+
+
+def proc_start(pid):
+    """The process start time (`ps -o lstart=`), "" when the pid is gone."""
     try:
-        with open(reserve_path(), encoding="utf-8") as fh:
+        return subprocess.run(["ps", "-o", "lstart=", "-p", str(int(pid))], stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, universal_newlines=True, timeout=10).stdout.strip()
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return ""
+
+
+def move_aside(path):
+    """A reservation file that is not valid JSON is moved aside, never overwritten silently (C10)."""
+    target = "%s.corrupt-%s" % (path, time.strftime("%Y%m%d-%H%M%S"))
+    n = 1
+    while os.path.exists(target):
+        n += 1
+        target = "%s.corrupt-%s-%d" % (path, time.strftime("%Y%m%d-%H%M%S"), n)
+    try:
+        os.replace(path, target)
+    except OSError:
+        return
+    sys.stderr.write("RESERVATIONS: %s could not be read; moved to %s\n" % (path, target))
+    sys.stderr.flush()
+
+
+def still_live(j):
+    """A reservation is live while its pid runs with the start time stored with it (a reused pid is not it);
+    a handle entry (a pane reserved at launch, no pid yet) lives 15 minutes."""
+    if not j.get("pid") and j.get("handle"):
+        return time.time() - float(j.get("started", 0) or 0) < PANE_HOLD_S
+    if not pid_alive(j.get("pid")):
+        return False
+    stored = j.get("start")
+    return not stored or proc_start(j["pid"]) == stored
+
+
+def load_jobs():
+    """Live entries only (a dead pid, a reused pid or an old handle is dropped); the caller holds the lock when it
+    writes back."""
+    path = reserve_path()
+    try:
+        with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
         jobs = data.get("jobs", []) if isinstance(data, dict) else []
-    except (OSError, ValueError):
+    except ValueError:
+        move_aside(path)
         return [], False
-    live = [j for j in jobs if isinstance(j, dict) and pid_alive(j.get("pid"))]
+    except OSError:
+        return [], False
+    live = [j for j in jobs if isinstance(j, dict) and still_live(j)]
     return live, len(live) != len(jobs)
 
 
@@ -232,9 +291,21 @@ def repo_name():
     return os.path.basename(git(os.getcwd(), "rev-parse", "--show-toplevel") or os.getcwd())
 
 
-def entry(pid, mb, what, kind, measured):
+def entry(pid, mb, what, kind, measured, by="runner"):
+    """One reservation. by: "runner" (agent-test-run.sh, the nightly: relief may stop it) or "hand" (never stopped);
+    start: the process start time, so a reused pid is never taken for it (C1)."""
     return {"pid": int(pid), "mb": int(mb), "what": what, "repo": repo_name(), "since": now().strftime(FMT),
-            "started": time.time(), "kind": kind, "measured": bool(measured)}
+            "started": time.time(), "kind": kind, "measured": bool(measured), "by": by,
+            "start": proc_start(pid)}
+
+
+def trees_mb(jobs):
+    """The memory (MB) the reserved jobs' process trees hold now: counted by their reservation instead (C6)."""
+    kb = 0
+    for j in jobs:
+        if j.get("pid"):
+            kb += tree_kb(j["pid"])
+    return kb // 1024
 
 
 def room(need, reserve_as=None):
@@ -243,11 +314,12 @@ def room(need, reserve_as=None):
     with locked():
         jobs, _ = load_jobs()
         me = reserve_as["pid"] if reserve_as else None
-        others = [j for j in jobs if j.get("pid") != me]
+        others = [j for j in jobs if me is None or j.get("pid") != me]
         total, used, limit = machine()
         if used < 0:
             return False, "ROOM: no: RAM unknown"
         reserved = sum(int(j.get("mb", 0) or 0) for j in others)
+        used = max(0, used - trees_mb(others))
         if used + reserved + need > limit:
             return False, "ROOM: no: %d MB in use + %d MB reserved + %d MB > %d MB" % (used, reserved, need, limit)
         if reserve_as:
@@ -290,8 +362,12 @@ def update_reservation(pid, **fields):
             pass
 
 
-def drop_reservation(pid):
-    with locked():
+def drop_reservation(pid, blocking=True):
+    """Drop a reservation. A signal handler passes blocking=False: no second blocking lock there (C10); when the
+    lock is busy the stale entry is pruned later (its pid is gone)."""
+    with locked(blocking) as lk:
+        if not lk.ok:
+            return
         jobs, _ = load_jobs()
         try:
             save_jobs([j for j in jobs if j.get("pid") != pid])
@@ -349,13 +425,26 @@ def room_main(argv, cwd):
             sys.stderr.write('agent-room.sh reserve <pid> <mb> "<what>" [--kind test|build|pane] [--unmeasured]\n')
             return 2
         try:
-            new = entry(pos[0], pos[1], pos[2], kind, measured)
+            new = entry(pos[0], pos[1], pos[2], kind, measured, by="hand")
         except ValueError:
             sys.stderr.write("agent-room.sh reserve: pid and mb are numbers\n")
             return 2
         with locked():
             jobs, _ = load_jobs()
             save_jobs([j for j in jobs if j.get("pid") != new["pid"]] + [new])
+        return 0
+    if cmd == "reserve-pane" and len(argv) == 3:
+        try:
+            mb = int(float(argv[2]))
+        except ValueError:
+            sys.stderr.write("agent-room.sh reserve-pane <handle> <mb>\n")
+            return 2
+        new = {"handle": argv[1], "mb": mb, "what": "pane " + argv[1], "repo": repo_name(),
+               "since": now().strftime(FMT), "started": time.time(), "kind": "pane", "measured": False,
+               "by": "launch"}
+        with locked():
+            jobs, _ = load_jobs()
+            save_jobs([j for j in jobs if j.get("handle") != argv[1]] + [new])
         return 0
     if cmd == "release" and len(argv) == 2:
         try:
@@ -365,7 +454,7 @@ def room_main(argv, cwd):
         return 0
     if cmd == "list":
         for j in sorted(live_jobs(), key=lambda j: j.get("started", 0)):
-            print("%s | %s MB | %s%s | %s | %s | %s" % (j.get("pid"), j.get("mb"), j.get("kind", "test"),
+            print("%s | %s MB | %s%s | %s | %s | %s" % (j.get("pid") or j.get("handle"), j.get("mb"), j.get("kind", "test"),
                                                        "" if j.get("measured", True) else " (unmeasured)",
                                                        j.get("what", ""), j.get("repo", ""), j.get("since", "")))
         return 0
@@ -374,15 +463,16 @@ def room_main(argv, cwd):
         if used < 0:
             print("ROOM: no: RAM unknown")
             return 1
-        reserved = sum(int(j.get("mb", 0) or 0) for j in live_jobs())
-        print("%d %d %d %d" % (used, reserved, limit, pane_need(common_dir(cwd))))
+        jobs = live_jobs()
+        reserved = sum(int(j.get("mb", 0) or 0) for j in jobs)
+        print("%d %d %d %d" % (max(0, used - trees_mb(jobs)), reserved, limit, pane_need(common_dir(cwd))))
         return 0
     if cmd == "relief":
         return relief()
     if cmd == "measure-pane" and len(argv) == 2:
         return measure_pane(argv[1], cwd)
     sys.stderr.write("usage: agent-room.sh check <mb>|unknown | reserve <pid> <mb> \"<what>\" [--kind test|build|pane] "
-                     "[--unmeasured] | release <pid> | list | relief | measure-pane <pid>\n")
+                     "[--unmeasured] | reserve-pane <handle> <mb> | release <pid> | list | relief | measure-pane <pid>\n")
     return 2
 
 
@@ -394,7 +484,9 @@ def relief():
         print("ROOM: ok" if used >= 0 else "ROOM: no: RAM unknown")
         return 0
     over = used - limit
-    cands = [j for j in live_jobs() if j.get("kind", "test") in ("test", "build")]
+    me_repo = repo_name()
+    cands = [j for j in live_jobs() if j.get("kind", "test") in ("test", "build") and j.get("by") == "runner"
+             and j.get("repo") == me_repo and j.get("pid")]
     cands.sort(key=lambda j: (bool(j.get("measured", True)), -j.get("started", 0)))
     stopped, freed = [], 0
     for j in cands:
@@ -451,6 +543,13 @@ def measure_pane(pid, cwd):
         if not old or mb > old[1]:
             try:
                 write_weight(gitdir, "pane", 0, mb)
+            except OSError:
+                pass
+        handle = os.environ.get("ORCA_TERMINAL_HANDLE", "")
+        if handle:
+            jobs, _ = load_jobs()
+            try:
+                save_jobs([j for j in jobs if j.get("handle") != handle])
             except OSError:
                 pass
     return 0
@@ -541,12 +640,14 @@ def kill_group(proc):
 
 
 ACTIVE = []
+STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
 
 
-def run_monitored(cmd, reserved_mb):
+def run_monitored(cmd, reserved_mb, **popen):
     """(exit code, peak MB of the whole process tree, stop) with stop None or (used MB, limit MB).
-    Every 0.5 s: the tree's memory and the machine's; over the limit and this runner is the pick: stop the group."""
-    proc = subprocess.Popen(cmd, start_new_session=True)
+    Every 0.5 s: the tree's memory and the machine's; over the limit and this runner is the pick: stop the group.
+    popen: shell, cwd, stdout ... for the nightly's suite."""
+    proc = subprocess.Popen(cmd, start_new_session=True, **popen)
     ACTIVE[:] = [proc]
     me, peak, stop = os.getpid(), 0, None
     while True:
@@ -630,10 +731,11 @@ def testrun(argv):
     def on_term(signum, frame):
         for proc in ACTIVE:
             kill_group(proc)
-        drop_reservation(me)
+        drop_reservation(me, blocking=False)
         os._exit(128 + signum)
 
-    signal.signal(signal.SIGTERM, on_term)
+    for sig in STOP_SIGNALS:
+        signal.signal(sig, on_term)
     announce = lambda t: (print("TEST RUN %s: %s" % (key, t)), sys.stdout.flush())
     what = ("%s: %s" % (key, " ".join(cmd)))[:120]
     try:
@@ -787,13 +889,25 @@ def related_cmd(root):
         return ""
 
 
+MAX_RERUN_MERGES = 20
+
+
 def first_failing_merge(root, gitdir, rel, merges):
     """The first merge (oldest first) at which the test file fails: the file is run in a scratch worktree
-    (related_cmd with {tests} and {modules}). None when the command is missing or no merge fails."""
+    (related_cmd with {tests} and {modules}). A merge where the file does not exist yet is "not there": skipped.
+    Each rerun waits for room with the related weight and holds a reservation; at most 20 merges are rerun.
+    None when the command is missing, no merge fails, or there is no room."""
     base = related_cmd(root)
     if not base or not rel or not merges:
         return None
+    merges = merges[:MAX_RERUN_MERGES]
     cmd = fill(base, [rel])
+    weight, measured = weight_of(gitdir, os.path.join(root, "agent_repo.conf"), "related")
+    need = weight[1] if weight else 0
+    me = os.getpid()
+    ok, _ = wait_room(need, entry(me, need, "the failures rerun", "test", measured))
+    if not ok:
+        return None
     wt = os.path.join(gitdir, SCRATCH + "_failures" + "_%d" % os.getpid())
     found = None
     try:
@@ -806,23 +920,30 @@ def first_failing_merge(root, gitdir, rel, merges):
         for sha, subject in merges:
             moved = subprocess.run(["git", "-C", wt, "checkout", "-q", "--detach", sha],
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            if moved.returncode != 0:
+            if moved.returncode != 0 or not os.path.isfile(os.path.join(wt, rel)):
+                continue                                    # not there yet at this merge: never a failure
+            try:
+                code, mb, stop = run_monitored(cmd, need, shell=True, cwd=wt, stdin=subprocess.DEVNULL,
+                                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except OSError:
                 continue
-            res = subprocess.run(cmd, shell=True, cwd=wt, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL)
-            if res.returncode != 0:
+            if stop is not None:
+                return None                                 # stopped over the limit: no answer, never a guess
+            if code != 0:
                 found = (sha, subject)
                 break
     except OSError:
         found = None
     finally:
         drop_scratch(root, wt)
+        drop_reservation(me)
     return found
 
 
 def find_merge(root, test_id, green, head, gitdir=None):
     """(short, subject) of the merge that caused the miss: found by running the test file at each first-parent
-    merge since the last green commit; else by the files the test names; else the last merge."""
+    merge since the last green commit (at most 20); else by the files the test names; else "unknown" (never the
+    newest merge as a guess)."""
     merges = []
     if green:
         out = git(root, "log", "--first-parent", "--merges", "--reverse", "--format=%H\t%s", "%s..%s" % (green, head))
@@ -843,7 +964,7 @@ def find_merge(root, test_id, green, head, gitdir=None):
                 pick = (sha, subject)
                 break
     if pick is None and merges:
-        pick = merges[-1]
+        return "unknown", ""
     if pick is None:
         out = git(root, "log", "-1", "--format=%H\t%s", head)
         pick = tuple(out.split("\t", 1)) if "\t" in out else (head, "")
@@ -920,52 +1041,111 @@ def drop_scratch(root, wt):
     git(root, "worktree", "prune")
 
 
+class RunLock:
+    """One non-blocking lock around a full run (C11): <git common dir>/agent_nightly.lock."""
+
+    def __init__(self, gitdir):
+        self.path, self.fh = os.path.join(gitdir, "agent_nightly.lock"), None
+
+    def take(self):
+        try:
+            self.fh = open(self.path, "a")
+            fcntl.flock(self.fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except (OSError, ImportError):
+            if self.fh:
+                self.fh.close()
+                self.fh = None
+            return False
+
+
 def do_run(cwd):
-    """The foreground run: gate, command, status, misses. Exit 0 whatever the result."""
+    """The foreground run: lock, gate, command (monitored), status, misses. Exit 0 whatever the result."""
     root, gitdir = main_root(cwd), common_dir(cwd)
     cmd = full_cmd(root)
-    st = read_status(gitdir) or {}
-    prev = st.get("prev") if st.get("result") == "running" else st
-    commit = tip_of(root)
     if not cmd:
         sys.stdout.write("NIGHTLY: no full_cmd in agent_repo.conf of %s, nothing to run\n" % root)
         return 0
+    lock = RunLock(gitdir)
+    if not lock.take():
+        print("NIGHTLY: already running")
+        return 0
+    st = read_status(gitdir) or {}
+    prev = st.get("prev") if st.get("result") == "running" else st
+    commit = tip_of(root)
     base = {"started": now().strftime(FMT), "commit": commit, "finished": "", "result": "running", "failed": [],
             "last_green": (prev or {}).get("last_green", ""), "pid": os.getpid(), "prev": prev}
     atomic_write(status_path(gitdir), json.dumps(base))
     weight, measured = weight_of(gitdir, os.path.join(root, "agent_repo.conf"), "nightly")
     me = os.getpid()
-    ok, why = wait_room(weight[1] if weight else 0,
-                        entry(me, weight[1] if weight else 0, "the nightly", "test", measured))
-    if not ok:
-        if prev:
-            atomic_write(status_path(gitdir), json.dumps(prev))
-        else:
-            try:
-                os.remove(status_path(gitdir))
-            except OSError:
-                pass
-        sys.stdout.write("%s\n" % why)
-        return 3
     wt = os.path.join(gitdir, SCRATCH)
+    log = os.path.join(gitdir, "agent_nightly.log")
+
+    def on_stop(signum, frame):
+        for proc in ACTIVE:
+            kill_group(proc)
+        try:
+            drop_scratch(root, wt)
+        except Exception:
+            pass
+        drop_reservation(me, blocking=False)
+        atomic_write(status_path(gitdir), json.dumps({"started": base["started"], "commit": commit,
+                                                      "finished": now().strftime(FMT), "result": "stopped",
+                                                      "failed": [], "last_green": base["last_green"]}))
+        os._exit(128 + signum)
+
+    for sig in STOP_SIGNALS:
+        signal.signal(sig, on_stop)
+    need = weight[1] if weight else 0
+    code, output = 0, ""
     try:
-        drop_scratch(root, wt)
-        added = subprocess.run(["git", "-C", root, "worktree", "add", "--detach", wt, commit],
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-        if added.returncode != 0:
-            output, code = "cannot make the scratch worktree: " + added.stdout, 128
-        else:
-            link_deps(root, wt)
-            res = subprocess.run(cmd, shell=True, cwd=wt, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                 universal_newlines=True, errors="replace")
-            output, code = res.stdout, res.returncode
-    except OSError as exc:
-        output, code = str(exc), 127
+        while True:
+            ok, why = wait_room(need, entry(me, need, "the nightly", "test", measured))
+            if not ok:
+                if prev:
+                    atomic_write(status_path(gitdir), json.dumps(prev))
+                else:
+                    try:
+                        os.remove(status_path(gitdir))
+                    except OSError:
+                        pass
+                sys.stdout.write("%s\n" % why)
+                return 3
+            stop = None
+            try:
+                drop_scratch(root, wt)
+                added = subprocess.run(["git", "-C", root, "worktree", "add", "--detach", wt, commit],
+                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+                if added.returncode != 0:
+                    output, code = "cannot make the scratch worktree: " + added.stdout, 128
+                else:
+                    link_deps(root, wt)
+                    began = time.time()
+                    with open(log, "wb") as out_fh:
+                        code, mb, stop = run_monitored(cmd, need, shell=True, cwd=wt, stdin=subprocess.DEVNULL,
+                                                       stdout=out_fh, stderr=subprocess.STDOUT)
+                    try:
+                        with locked():
+                            write_weight(gitdir, "nightly", int(round(time.time() - began)), mb)
+                    except OSError:
+                        pass
+                    with open(log, encoding="utf-8", errors="replace") as fh:
+                        output = fh.read()
+                    if code is not None and code < 0:
+                        code = exit_code(code)
+            except OSError as exc:
+                output, code = str(exc), 127
+            finally:
+                drop_scratch(root, wt)
+                drop_reservation(me)
+            if stop is None:
+                break
+            need, measured = mb, True           # stopped over the limit: peak recorded, wait for room, run again
     finally:
         drop_scratch(root, wt)
         drop_reservation(me)
     try:
-        with open(os.path.join(gitdir, "agent_nightly.log"), "w", encoding="utf-8") as fh:
+        with open(log, "w", encoding="utf-8") as fh:
             fh.write(output[-200000:])
     except OSError:
         pass
@@ -1100,7 +1280,7 @@ def main(argv):
     cwd = os.getcwd()
     if argv and argv[0] == "testrun":
         return testrun(argv[1:])
-    if argv and argv[0] in ("check", "reserve", "release", "list", "numbers", "relief", "measure-pane"):
+    if argv and argv[0] in ("check", "reserve", "reserve-pane", "release", "list", "numbers", "relief", "measure-pane"):
         return room_main(argv, cwd)
     if argv and argv[0] in ("run", "--start", "--release-ok", "--failures") and not need_stored(main_root(cwd)):
         return 1
