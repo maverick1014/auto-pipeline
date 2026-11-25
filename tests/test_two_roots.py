@@ -39,6 +39,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from scripthelp import ScriptCase
+from scripthelp import ROOT
 
 PRINCIPLES_MARK = "PLUGIN-PRINCIPLES-MARKER"
 
@@ -414,6 +415,56 @@ class TestResumeFromAnywhere(RootsCase):
         self.repo.set_worktree_lines([(path, "alpha", "working")])
         out = self.assertOk(self.repo.run("agent-resume.sh", "--dry-run"))
         self.assertIn(path, out)
+
+
+def read(*parts):
+    with open(os.path.join(ROOT, *parts)) as fh:
+        return fh.read()
+
+
+class TestClosedHint(unittest.TestCase):
+
+    def test_the_rename_hint_gives_the_task_form(self):
+        line = next(l for l in read("bin", "agent-roots.sh").splitlines()
+                    if "ask the human once to type /rename" in l)
+        self.assertIn("Helper - <Task Name>", line)
+
+
+class TestRoleLogicOnce(unittest.TestCase):
+    """One copy of the role logic: role_read in agent-roots.sh."""
+
+    def test_roots_defines_role_read(self):
+        self.assertRegex(read("bin", "agent-roots.sh"), r"(?m)^role_read\(\)")
+
+    def test_every_hook_uses_it(self):
+        for name in ("agent-start.sh", "agent-close-case.sh", "agent-name.sh"):
+            with self.subTest(script=name):
+                self.assertIn("role_read", read("bin", name))
+
+    def test_no_second_copy_of_the_lock_check(self):
+        for name in ("agent-start.sh", "agent-close-case.sh", "agent-name.sh"):
+            with self.subTest(script=name):
+                self.assertNotIn('kill -0 "$lpid"', read("bin", name))
+        self.assertNotIn("agent_main.lock", read("bin", "agent-name.sh"))
+
+
+class TestOnePidHelper(unittest.TestCase):
+    """agent-start.sh and the hook find "this session" the same way."""
+
+    def test_agent_pid_lives_in_the_roots_helper(self):
+        self.assertRegex(read("bin", "agent-roots.sh"), r"(?m)^agent_pid\(\)")
+
+    def test_agent_start_no_longer_has_its_own_copy(self):
+        self.assertNotRegex(read("bin", "agent-start.sh"), r"(?m)^agent_pid\(\)")
+
+    def test_the_hook_uses_it(self):
+        # through role_read (agent-roots.sh), which calls agent_pid: one copy
+        # of the role logic, tests/test_agent_name.py
+        text = read("bin", "agent-close-case.sh")
+        self.assertIn("agent-roots.sh", text)
+        self.assertIn("role_read", text)
+        self.assertRegex(read("bin", "agent-roots.sh"),
+                         r"(?ms)^role_read\(\).*?\$\(agent_pid\)")
 
 
 if __name__ == "__main__":

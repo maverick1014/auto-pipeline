@@ -27,6 +27,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scripthelp import ScriptCase  # noqa: E402
+import agent_conf  # noqa: E402
 
 SCRIPT = "agent-owner-order.sh"
 TZ = "Asia/Kuala_Lumpur"
@@ -946,6 +947,31 @@ class TestReviewBounce1(OwnerOrderCase):
     def test_c1_a_quote_over_two_owner_lines_is_not_found(self):
         self.write([owner("keep it, this features", ago(31)), owner("is needed ya", ago(30))])
         self.assertRefused(self.verify(), NOT_FOUND)
+
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+BIN = os.path.join(ROOT, "bin")
+
+
+class TestBinPair(unittest.TestCase):
+
+    def test_the_shell_entry_is_executable(self):
+        path = os.path.join(BIN, "agent-owner-order.sh")
+        self.assertTrue(os.path.isfile(path))
+        self.assertTrue(os.access(path, os.X_OK))
+
+    def test_the_logic_file_is_there(self):
+        self.assertTrue(os.path.isfile(os.path.join(BIN, "agent_owner_order.py")))
+
+
+class TestConfKeys(unittest.TestCase):
+    """settings-configure: owner_order_hours and owner_order_min_chars are fixed constants."""
+
+    def test_g4_the_constants(self):
+        self.assertEqual(agent_conf.CONSTANTS["owner_order_hours"], 24)
+        self.assertEqual(agent_conf.CONSTANTS["owner_order_min_chars"], 20)
 
 
 if __name__ == "__main__":

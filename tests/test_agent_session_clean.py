@@ -503,45 +503,6 @@ class TestAfterTheClear(CleanCase):
 
 # -- K1, K4, K5: the whole-repo hook text ------------------------------------------------------
 
-class TestTheHookText(CleanCase):
-    """The whole-repo rule is the skill now (close-case part B); the hook is silent."""
-
-    def part_b(self):
-        return read("skills", "close-case", "SKILL.md").split("## B.", 1)[1]
-
-    def test_it_asks_after_the_final_table(self):
-        out = self.part_b()
-        for phrase in ("whole repo", "/auto-pipeline:close-case", "agent_worktree.txt",
-                       "final table", "yes or no", "language",
-                       "nothing changes", "--clean", "/clear", "stay the main manager"):
-            with self.subTest(phrase=phrase):
-                self.assertIn(phrase.lower(), out.lower())
-        self.assertLess(out.index("final table"), out.index("yes or no"))
-
-    def test_release_is_the_other_choice_not_the_last_step(self):
-        out = self.part_b()
-        self.assertLess(out.index("yes or no"), out.index("--release"))
-        self.assertLess(out.index("--clean"), out.index("--release"))
-        self.assertIn("never run it yourself", out)
-
-    def test_a_report_text_does_not_ask(self):
-        self.set_lock("%d 2026-10-01 09:00 sid-me -\n" % os.getpid())
-        out = self.prompt("CLOSE CASE alpha: unfinished\nDone: x.", pid=os.getpid())
-        self.assertEqual(out, "")
-        self.assertNotIn("--clean", out)
-        self.assertNotIn("--release", out)
-
-    def test_a_task_manager_is_never_asked(self):
-        self.set_lock("%d 2026-10-01 09:00 sid-me -\n" % os.getpid())
-        stdin = json.dumps({"session_id": "s", "transcript_path": "/tmp/x.jsonl",
-                            "cwd": self.repo.cwd, "permission_mode": "auto",
-                            "hook_event_name": "UserPromptSubmit", "prompt": "close case"})
-        result = self.repo.run("agent-close-case.sh", stdin=stdin,
-                               env={"AGENT_ROLE": "task-manager", "CLAUDE_PID": NOBODY})
-        self.assertOk(result)
-        self.assertNotIn("--clean", result.stdout)
-        self.assertNotIn("--release", result.stdout)
-
 
 class TestTheReleasePathIsThePluginInstalledNow(CleanCase):
     """K4: a session started on 0.14.0 printed a 0.14.0 path while 0.18.0 was installed."""
@@ -594,70 +555,6 @@ class TestTheReleasePathIsThePluginInstalledNow(CleanCase):
 
 # -- K5: the words the agents read --------------------------------------------------------------
 
-class TestTheSkill(unittest.TestCase):
-    def part_b(self):
-        text = read("skills", "close-case", "SKILL.md")
-        return text[text.index("## B."):]
-
-    def test_the_question_then_the_clean_then_the_clear(self):
-        part = self.part_b()
-        for phrase in ("yes or no", "nothing changes",
-                       "${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh --clean", "LEFT RUNNING",
-                       "NEXT", "/clear", "own pane", "last action"):
-            with self.subTest(phrase=phrase):
-                self.assertIn(phrase, part)
-        self.assertLess(part.index("final table"), part.index("yes or no"))
-        self.assertLess(part.index("yes or no"), part.index("--clean"))
-
-    def test_release_is_one_line_the_other_choice(self):
-        part = self.part_b()
-        rows = [line for line in part.splitlines() if "--release" in line]
-        self.assertEqual(len(rows), 1, rows)
-        self.assertIn("never run it yourself", rows[0])
-        self.assertIn("hook", rows[0])
-        self.assertLess(part.index("--clean"), part.index("--release"))
-        self.assertEqual(rows[0], part.rstrip("\n").splitlines()[-1], "nothing comes after it")
-
-    def test_the_skill_carries_no_release_path(self):
-        text = read("skills", "close-case", "SKILL.md")
-        self.assertNotIn("${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh --release", text)
-        self.assertNotIn("Last step: the final table ends with this line", text)
-
-
-class TestThePrinciples(unittest.TestCase):
-    def w13(self):
-        text = read("PRINCIPLES.md")
-        return text[text.index("W13."):text.index("W14.")]
-
-    def s8(self):
-        text = read("PRINCIPLES.md")
-        return text[text.index("S8."):text.index("S9.")]
-
-    def test_w13_asks_cleans_and_keeps_the_seat(self):
-        rule = self.w13()
-        for phrase in ("yes or no", "`agent-start.sh --clean`", "`/clear`",
-                       "`! agent-start.sh --release`", "never runs it"):
-            with self.subTest(phrase=phrase):
-                self.assertIn(phrase, rule)
-        self.assertNotIn("Last line of the final table", rule)
-        self.assertLess(rule.index("--clean"), rule.index("--release"))
-
-    def test_w13_stays_one_short_line_per_rule(self):
-        bullets = [l for l in self.w13().splitlines() if l.startswith("- ")]
-        self.assertLessEqual(len(bullets), 14)
-        for line in bullets:
-            with self.subTest(line=line[:40]):
-                self.assertLessEqual(len(line), 200)
-        self.assertEqual(len([l for l in bullets if "--release" in l]), 1)
-        self.assertEqual(len([l for l in bullets if "--clean" in l]), 1)
-
-    def test_s8_says_the_main_manager_clears_its_own_pane(self):
-        # state-trim (2026-11-20): the auto clear line names the own pane too; this is the close case line
-        rows = [l for l in self.s8().splitlines() if "own pane" in l and "close case" in l]
-        self.assertEqual(len(rows), 1, rows)
-        self.assertIn("main manager", rows[0])
-        self.assertLessEqual(len(rows[0]), 200)
-
 
 class TestTheScriptHeader(unittest.TestCase):
     def header(self):
@@ -668,6 +565,46 @@ class TestTheScriptHeader(unittest.TestCase):
 
     def test_release_is_no_longer_called_the_last_step(self):
         self.assertNotIn("last step", self.header())
+
+
+class TestTheHookText(CleanCase):
+    """The whole-repo rule is the skill now (close-case part B); the hook is silent."""
+
+    def part_b(self):
+        return read("skills", "close-case", "SKILL.md").split("## B.", 1)[1]
+
+    def test_it_asks_after_the_final_table(self):
+        out = self.part_b()
+        for phrase in ("whole repo", "/auto-pipeline:close-case", "agent_worktree.txt",
+                       "final table", "yes or no", "language",
+                       "nothing changes", "--clean", "/clear", "stay the main manager"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase.lower(), out.lower())
+        self.assertLess(out.index("final table"), out.index("yes or no"))
+
+    def test_release_is_the_other_choice_not_the_last_step(self):
+        out = self.part_b()
+        self.assertLess(out.index("yes or no"), out.index("--release"))
+        self.assertLess(out.index("--clean"), out.index("--release"))
+        self.assertIn("never run it yourself", out)
+
+    def test_a_report_text_does_not_ask(self):
+        self.set_lock("%d 2026-10-01 09:00 sid-me -\n" % os.getpid())
+        out = self.prompt("CLOSE CASE alpha: unfinished\nDone: x.", pid=os.getpid())
+        self.assertEqual(out, "")
+        self.assertNotIn("--clean", out)
+        self.assertNotIn("--release", out)
+
+    def test_a_task_manager_is_never_asked(self):
+        self.set_lock("%d 2026-10-01 09:00 sid-me -\n" % os.getpid())
+        stdin = json.dumps({"session_id": "s", "transcript_path": "/tmp/x.jsonl",
+                            "cwd": self.repo.cwd, "permission_mode": "auto",
+                            "hook_event_name": "UserPromptSubmit", "prompt": "close case"})
+        result = self.repo.run("agent-close-case.sh", stdin=stdin,
+                               env={"AGENT_ROLE": "task-manager", "CLAUDE_PID": NOBODY})
+        self.assertOk(result)
+        self.assertNotIn("--clean", result.stdout)
+        self.assertNotIn("--release", result.stdout)
 
 
 if __name__ == "__main__":

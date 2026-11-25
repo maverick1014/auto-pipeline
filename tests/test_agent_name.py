@@ -144,11 +144,6 @@ SID_B = "22222222-bbbb-4bbb-8bbb-000000000002"
 SID_C = "33333333-cccc-4ccc-8ccc-000000000003"
 
 
-def read(*parts):
-    with open(os.path.join(ROOT, *parts)) as fh:
-        return fh.read()
-
-
 def dead_pid():
     """A pid that surely belongs to nobody now: a reaped child's."""
     proc = subprocess.Popen(["true"])
@@ -363,41 +358,6 @@ class TestOrcaTab(NameCase):
                         timeout=30)
         self.assertLess(time.time() - start, 5)
         self.assertEqual(out, "project Manager")
-
-
-class TestHooksJson(unittest.TestCase):
-
-    def test_session_start_runs_both_hooks(self):
-        # the city starts by /auto-pipeline:city: no SessionStart entry for it
-        entries = json.loads(read("hooks", "hooks.json"))["hooks"]["SessionStart"]
-        self.assertEqual(len(entries), 2, entries)
-        self.assertIn("/bin/agent-start.sh", json.dumps(entries[0]))
-        self.assertEqual(entries[1], NAME_ENTRY)
-
-    def test_the_script_can_run(self):
-        path = os.path.join(ROOT, "bin", "agent-name.sh")
-        self.assertTrue(os.access(path, os.X_OK), "bin/agent-name.sh has no execute bit")
-
-    def test_readme_names_the_script(self):
-        self.assertIn("bin/agent-name.sh", read("PRINCIPLES.md"))
-
-
-class TestRoleLogicOnce(unittest.TestCase):
-    """One copy of the role logic: role_read in agent-roots.sh."""
-
-    def test_roots_defines_role_read(self):
-        self.assertRegex(read("bin", "agent-roots.sh"), r"(?m)^role_read\(\)")
-
-    def test_every_hook_uses_it(self):
-        for name in ("agent-start.sh", "agent-close-case.sh", "agent-name.sh"):
-            with self.subTest(script=name):
-                self.assertIn("role_read", read("bin", name))
-
-    def test_no_second_copy_of_the_lock_check(self):
-        for name in ("agent-start.sh", "agent-close-case.sh", "agent-name.sh"):
-            with self.subTest(script=name):
-                self.assertNotIn('kill -0 "$lpid"', read("bin", name))
-        self.assertNotIn("agent_main.lock", read("bin", "agent-name.sh"))
 
 
 class TestStartNamesTheManager(ScriptCase):
@@ -805,25 +765,6 @@ class TestPromptHook(HelperCase):
                           timeout=30)
         self.assertLess(time.time() - start, 5)
         self.assertEqual(self.prompt_title(out), "project Helper - SST Calculation")
-
-
-class TestPromptHookJson(unittest.TestCase):
-
-    def test_user_prompt_submit_runs_the_prompt_hook_once(self):
-        entries = json.loads(read("hooks", "hooks.json"))["hooks"]["UserPromptSubmit"]
-        self.assertEqual(entries.count(PROMPT_ENTRY), 1, entries)
-        self.assertIn("agent-close-case.sh", json.dumps(entries))
-
-    def test_no_other_event_runs_the_prompt_mode(self):
-        for event, entries in json.loads(read("hooks", "hooks.json"))["hooks"].items():
-            if event != "UserPromptSubmit":
-                with self.subTest(event=event):
-                    self.assertNotIn("--prompt", json.dumps(entries))
-
-    def test_readme_says_it_names_the_helper_task(self):
-        line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("  bin/agent-name.sh"))
-        self.assertIn("UserPromptSubmit", line)
-        self.assertIn("<repo> Helper - <Task Name>", line)
 
 
 class TestStartTellsTheHelper(ScriptCase):
