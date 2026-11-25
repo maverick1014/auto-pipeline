@@ -32,10 +32,10 @@ QUIZ_Q6 = """Q6. You are one of four agents. You changed files under api/auth/. 
   C. None; the manager runs them
   D. The tests agent-level.sh lists under RELATED TESTS (they import or name the changed files)"""
 
-QUIZ_Q9 = """Q9. Your test run is heavy by its measured weight, and both heavy-test slots are taken. You:
-  A. Wait: agent-test-run.sh starts it when a slot is free and RAM is more than 50% free
-  B. Run it in parallel anyway
-  C. Call it light and run it now
+QUIZ_Q9 = """Q9. You want to start a test run. Memory in use now plus what this run is known to need would pass the Max memory % limit. You:
+  A. Wait: agent-room.sh says no until the sum fits under the limit (a run of unknown weight starts only alone)
+  B. Start it anyway: it is only one run
+  C. Take a heavy-test slot and start it
   D. Skip your tests"""
 
 QUIZ_Q16 = """Q16. A small logic task (one function, about 30 minutes) needs a new test. Who does it?
@@ -449,31 +449,49 @@ class TestAgentFileHeader(unittest.TestCase):
                 self.assertIn(cmd, text)
 
 
-class TestHeavySlots(unittest.TestCase):
-    """Owner 2026-11-25 (TELL de03b3fb, "1. A will do"): the Heavy test slot/time default is 2; RAM stays the
-    real limit. Owner 1A (section 15): light or heavy by measured weight."""
+class TestMemoryGate(unittest.TestCase):
+    """Owner 2026-11-25 (TELL 076c1faf, section 24): no slots; a memory gate with a per-machine reservation
+    list; CPU soft; jobs go to a connected machine first; what is sent away is cleaned up there."""
 
-    def s5(self):
-        return section(read("PRINCIPLES.md"), "S5. ", "S6. ")
+    def text(self):
+        return read("PRINCIPLES.md")
 
-    def test_s5_states_the_default_and_the_ram_rule(self):
-        s5 = self.s5()
-        self.assertIn('Setting "Load: Heavy test slot/time" = 2', s5)
-        self.assertIn("only if RAM is still more than 50% free", s5)
-
-    def test_s5_light_or_heavy_by_measured_weight(self):
-        s5 = self.s5()
-        for phrase in ("measured weight", "never by its name", "Light", "under 120 s and under 1 GB",
-                       "no slot", "Heavy", "heavy-test slot", "Unknown weight counts as heavy",
-                       "agent-test-run.sh"):
+    def test_s3_to_s6(self):
+        s = section(self.text(), "S3. ", "S7. ")
+        for phrase in ("memory in use now + the memory this run is known to need", "Load: Max memory %",
+                       "measured peak MB", "not measured yet", "starts alone once", "a Claude pane counts too",
+                       "reservation list", "a dead pid frees its entry", "CPU", "the soft one", "the hard gate",
+                       "Long but light runs just go", "agent-room.sh"):
             with self.subTest(phrase=phrase):
-                self.assertIn(phrase, s5)
+                self.assertIn(phrase, s)
 
-    def test_plugin_json_default(self):
+    def test_no_slots_and_no_special_machine_anywhere(self):
+        for path in (("PRINCIPLES.md",), ("skills", "dispatch", "SKILL.md"), ("skills", "merge", "SKILL.md"),
+                     ("agents", "merge-deputy.md"), ("agents", "fast-lane-deputy.md"), ("agents", "worker.md")):
+            with self.subTest(path=path):
+                text = read(*path).lower()
+                for word in ("heavy-test slot", "heavy test slot", "heavy-test machine", "heavy_test_slots"):
+                    self.assertNotIn(word, text)
+
+    def test_placement(self):
+        for start, end in (("W7. ", "W8. "), ("W9. ", "W10. ")):
+            with self.subTest(rule=start):
+                self.assertIn("connected machine first", section(self.text(), start, end))
+        disp = read("skills", "dispatch", "SKILL.md")
+        self.assertIn("connected machine first", disp)
+        self.assertIn("agent-room.sh check", disp)
+
+    def test_remote_cleanup(self):
+        w8 = section(self.text(), "W8. ", "W9. ")
+        for phrase in ("cleaned up there", "scratch clones", "temp test folders", "its reservation"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, w8)
+        self.assertIn("scratch clones", read("agents", "merge-deputy.md"))
+
+    def test_plugin_json_has_no_slot_setting(self):
         import json
         with open(os.path.join(ROOT, ".claude-plugin", "plugin.json")) as fh:
-            self.assertEqual(json.load(fh)["userConfig"]["heavy_test_slots"]["default"], 2)
-
+            self.assertNotIn("heavy_test_slots", json.load(fh)["userConfig"])
 
 class TestKeepTheResultLines(unittest.TestCase):
     """Core review re-check defect A (b, c): a verified task's worktree is removed before the owner's yes

@@ -247,12 +247,18 @@ class TestNightly(NetCase):
                          "under 24 hours old, before the hour")
         self.assertEqual(self.nightly("--due", env={"AGENT_FAKE_NOW": "2026-11-26 23:30"}).returncode, 0)
 
-    def test_not_due_while_a_heavy_run_holds_a_slot(self):
-        slots = os.path.join(self.gitdir(), "agent_heavy_slots")
-        os.makedirs(slots, exist_ok=True)
-        with open(os.path.join(slots, str(os.getpid())), "w") as fh:
-            fh.write("group.src\n")
-        self.assertEqual(self.nightly("--due", env={"AGENT_FAKE_NOW": "2026-11-25 23:00"}).returncode, 1)
+    def test_the_nightly_waits_for_room(self):
+        # section 24: no slots; the nightly passes the same memory gate as any run
+        env = {"AGENT_FAKE_RAM": "79", "AGENT_FAKE_RAM_TOTAL_MB": "10000", "AGENT_TEST_RUN_WAIT_S": "1",
+               "AGENT_RESERVE_FILE": os.path.join(self.repo.base, "reserve.json")}
+        holder = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(holder.kill)
+        with open(env["AGENT_RESERVE_FILE"], "w") as fh:
+            json.dump({"jobs": [{"pid": holder.pid, "mb": 500, "what": "x", "repo": "y",
+                                 "since": "2026-11-25 15:00"}]}, fh)
+        r = self.nightly("--start", "--wait", env=env)
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertIn("ROOM: no:", r.stdout + r.stderr)
 
     def test_the_nightly_hour_is_a_constant(self):
         sys.path.insert(0, BIN)
@@ -290,22 +296,143 @@ class TestNightly(NetCase):
 # ---------------------------------------------------------------- C7 light or heavy by measured weight
 
 
-class TestTestRun(NetCase):
+class RoomCase(NetCase):
+    """Section 24 (owner 2026-11-25): a run starts when memory in use + its known need fits under the
+    Max memory % limit; one reservation list per machine; unknown weight starts alone."""
+
+    def setUp(self):
+        super().setUp()
+        self.reserve = os.path.join(self.repo.base, "reserve.json")
+
+    def env(self, ram="40", total="10000", **extra):
+        e = {"AGENT_FAKE_RAM": ram, "AGENT_FAKE_RAM_TOTAL_MB": total, "AGENT_RESERVE_FILE": self.reserve,
+             "AGENT_TEST_RUN_WAIT_S": "1"}
+        e.update(extra)
+        return e
+
+    def hold(self, mb, what="other run"):
+        p = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(p.kill)
+        r = self.repo.run("agent-room.sh", "reserve", str(p.pid), str(mb), what, env=self.env())
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return p
+
+    def jobs(self):
+        if not os.path.exists(self.reserve):
+            return []
+        with open(self.reserve) as fh:
+            return json.load(fh).get("jobs", [])
+
+
+class TestRoom(RoomCase):
+    script = "agent-room.sh"
+
+    def room(self, *args, **env):
+        return self.repo.run("agent-room.sh", *args, env=self.env(**env))
+
+    def test_room_for_a_known_need(self):
+        self.assertEqual(self.room("check", "3000").returncode, 0)       # 4000 + 0 + 3000 <= 8000
+
+    def test_no_room(self):
+        r = self.room("check", "5000")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("ROOM: no: 4000 MB in use + 0 MB reserved + 5000 MB > 8000 MB", r.stdout)
+
+    def test_reservations_count(self):
+        self.hold(2000)
+        r = self.room("check", "3000")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("ROOM: no: 4000 MB in use + 2000 MB reserved + 3000 MB > 8000 MB", r.stdout)
+
+    def test_a_dead_pid_frees_its_entry(self):
+        dead = subprocess.Popen(["true"])
+        dead.wait()
+        self.room("reserve", str(dead.pid), "2000", "gone")
+        self.assertEqual(self.room("check", "3000").returncode, 0)
+        self.assertEqual(self.room("list").stdout.strip(), "")
+
+    def test_unknown_starts_only_alone(self):
+        self.assertEqual(self.room("check", "unknown").returncode, 0)
+        self.hold(100)
+        r = self.room("check", "unknown")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("ROOM: no: unknown weight starts alone (1 jobs running)", r.stdout)
+
+    def test_release_and_list(self):
+        p = self.hold(700, "the nightly")
+        out = self.room("list").stdout
+        self.assertIn(str(p.pid), out)
+        self.assertIn("700 MB", out)
+        self.room("release", str(p.pid))
+        self.assertEqual(self.jobs(), [])
+
+    def test_two_repos_share_the_list(self):
+        self.hold(2000)
+        other = self.repo.make_worktree("other_repo")
+        r = self.repo.run("agent-room.sh", "check", "3000", env=self.env(), cwd=other)
+        self.assertEqual(r.returncode, 1, "another repo must see the same reservations")
+
+
+class TestTestRun(RoomCase):
     script = "agent-test-run.sh"
 
     def run_test(self, key, *cmd, env=None):
-        e = {"AGENT_TEST_RUN_WAIT_S": "1"}
-        e.update(env or {})
-        return self.repo.run("agent-test-run.sh", "--key", key, "--", *cmd, env=e, timeout=60)
+        return self.repo.run("agent-test-run.sh", "--key", key, "--", *cmd, env=env or self.env(), timeout=60)
 
     def weight(self, key):
-        """Core review re-check defect C: measured weights live per machine in
-        <git common dir>/agent_test_weights.json ({key: "<s> s <mb> MB"}), never in the tracked repo file."""
         path = os.path.join(self.gitdir(), "agent_test_weights.json")
         if not os.path.exists(path):
             return None
         with open(path) as fh:
             return json.load(fh).get(key)
+
+    def test_unknown_weight_starts_alone_then_is_known(self):
+        r = self.run_test("related", "python3", "-c", "print('hi')")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.splitlines()[0], "TEST RUN related: unknown weight, starts alone")
+        self.assertIn("hi", r.stdout)
+        self.assertRegex(self.weight("related") or "", r"^\d+ s \d+ MB$")
+        r = self.run_test("related", "python3", "-c", "print('hi')")
+        self.assertRegex(r.stdout.splitlines()[0], r"^TEST RUN related: \d+ MB known \(\d+ s\)$")
+
+    def test_unknown_waits_while_another_job_runs(self):
+        self.hold(100)
+        r = self.run_test("new", "true")
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertIn("ROOM: no: unknown weight starts alone (1 jobs running)", r.stdout + r.stderr)
+
+    def test_a_known_run_reserves_while_it_runs_and_releases(self):
+        with open(os.path.join(self.repo.dir, "agent_repo.conf"), "a") as fh:
+            fh.write("weight.related=3 s 1500 MB\n")
+        show = "import json, os; print('JOBS', json.load(open(os.environ['AGENT_RESERVE_FILE']))['jobs'])"
+        r = self.run_test("related", "python3", "-c", show)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("'mb': 1500", r.stdout)
+        self.assertEqual(self.jobs(), [])
+
+    def test_no_room_waits_then_exit_3(self):
+        with open(os.path.join(self.repo.dir, "agent_repo.conf"), "a") as fh:
+            fh.write("weight.full=600 s 5000 MB\n")
+        r = self.run_test("full", "true")
+        self.assertEqual(r.returncode, 3)
+        self.assertIn("ROOM: no: 4000 MB in use + 0 MB reserved + 5000 MB > 8000 MB", r.stdout + r.stderr)
+
+    def test_long_but_light_just_goes(self):
+        with open(os.path.join(self.repo.dir, "agent_repo.conf"), "a") as fh:
+            fh.write("weight.full=3000 s 200 MB\n")
+        self.hold(1000)
+        self.assertEqual(self.run_test("full", "true").returncode, 0)
+
+    def test_workers_keep_cpu_under_the_limit(self):
+        with open(os.path.join(self.repo.dir, "agent_repo.conf"), "a") as fh:
+            fh.write("weight.related=3 s 100 MB\n")
+        r = self.run_test("related", "python3", "-c", "import sys; print('W=' + sys.argv[1])", "{workers}",
+                          env=self.env(AGENT_FAKE_CPU="20", AGENT_FAKE_CORES="8"))
+        self.assertIn("W=4", r.stdout)                                   # 8 x (80 - 20) / 100 = 4.8 -> 4
+
+    def test_no_slot_files_any_more(self):
+        self.run_test("related", "true")
+        self.assertFalse(os.path.exists(os.path.join(self.gitdir(), "agent_heavy_slots")))
 
     def test_a_run_never_writes_the_tracked_repo_file(self):
         with open(os.path.join(self.repo.dir, "agent_repo.conf")) as fh:
@@ -314,99 +441,27 @@ class TestTestRun(NetCase):
         self.run_test("related", "true")
         with open(os.path.join(self.repo.dir, "agent_repo.conf")) as fh:
             self.assertEqual(fh.read(), before)
-        self.assertEqual(self.git("status", "--porcelain", "--", "agent_repo.conf"), "")
 
     def test_peak_mb_is_the_whole_process_tree(self):
-        # re-check defect F: ru_maxrss is one process; 3 children of ~60 MB each are ~180 MB together
         child = "b = bytearray(60 * 1024 * 1024); import time; time.sleep(3)"
         cmd = ("import subprocess, sys; ps = [subprocess.Popen([sys.executable, '-c', %r]) for _ in range(3)]; "
                "[p.wait() for p in ps]" % child)
         self.assertEqual(self.run_test("tree", "python3", "-c", cmd).returncode, 0)
-        mb = int(self.weight("tree").split()[2])
-        self.assertGreaterEqual(mb, 150, self.weight("tree"))
+        self.assertGreaterEqual(int(self.weight("tree").split()[2]), 150, self.weight("tree"))
 
     def test_unknown_ram_fails_closed(self):
-        r = self.run_test("related", "true", env={"AGENT_FAKE_RAM": "-1"})
+        r = self.run_test("related", "true", env=self.env(ram="-1"))
         self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
         self.assertIn("RAM unknown", r.stdout + r.stderr)
 
-    def test_unknown_weight_is_heavy_the_first_time_then_measured(self):
-        r = self.run_test("related", "python3", "-c", "print('hi')")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(r.stdout.splitlines()[0], "TEST RUN related: heavy (unknown weight)")
-        self.assertIn("hi", r.stdout)
-        self.assertRegex(self.weight("related") or "", r"^\d+ s \d+ MB$")
-        r = self.run_test("related", "python3", "-c", "print('hi')")
-        self.assertRegex(r.stdout.splitlines()[0], r"^TEST RUN related: light \(\d+ s, \d+ MB\)$")
-
-    def test_measured_heavy(self):
-        with open(os.path.join(self.repo.dir, "agent_repo.conf"), "a") as fh:
-            fh.write("weight.group.src=300 s 2048 MB\n")
-        r = self.run_test("group.src", "true")
-        self.assertEqual(r.stdout.splitlines()[0], "TEST RUN group.src: heavy (300 s, 2048 MB)")
-
     def test_the_exit_code_is_the_commands(self):
-        r = self.run_test("related", "python3", "-c", "import sys; sys.exit(5)")
-        self.assertEqual(r.returncode, 5)
-
-    def test_heavy_waits_for_a_free_slot(self):
-        slots = os.path.join(self.gitdir(), "agent_heavy_slots")
-        os.makedirs(slots, exist_ok=True)
-        holders = [subprocess.Popen(["sleep", "30"]) for _ in range(2)]
-        for p in holders:
-            self.addCleanup(p.kill)
-            with open(os.path.join(slots, str(p.pid)), "w") as fh:
-                fh.write("full\n")
-        r = self.run_test("new", "true")
-        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
-        self.assertIn("no heavy slot free (2 of 2 held)", r.stdout + r.stderr)
-
-    def test_a_dead_holder_frees_its_slot(self):
-        slots = os.path.join(self.gitdir(), "agent_heavy_slots")
-        os.makedirs(slots, exist_ok=True)
-        dead = subprocess.Popen(["true"])
-        dead.wait()
-        for pid in (dead.pid, dead.pid + 100000):
-            with open(os.path.join(slots, str(pid)), "w") as fh:
-                fh.write("full\n")
-        self.assertEqual(self.run_test("new", "true").returncode, 0)
-
-    def test_the_second_heavy_run_needs_half_the_ram_free(self):
-        slots = os.path.join(self.gitdir(), "agent_heavy_slots")
-        os.makedirs(slots, exist_ok=True)
-        holder = subprocess.Popen(["sleep", "30"])
-        self.addCleanup(holder.kill)
-        with open(os.path.join(slots, str(holder.pid)), "w") as fh:
-            fh.write("full\n")
-        r = self.run_test("new", "true", env={"AGENT_FAKE_RAM": "60"})
-        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
-        self.assertIn("RAM 60% used", r.stdout + r.stderr)
-        self.assertEqual(self.run_test("new", "true", env={"AGENT_FAKE_RAM": "40"}).returncode, 0)
-
-    def test_light_runs_need_no_slot_but_the_ram_guard(self):
-        with open(os.path.join(self.repo.dir, "agent_repo.conf"), "a") as fh:
-            fh.write("weight.related=3 s 100 MB\n")
-        slots = os.path.join(self.gitdir(), "agent_heavy_slots")
-        os.makedirs(slots, exist_ok=True)
-        holders = [subprocess.Popen(["sleep", "30"]) for _ in range(2)]
-        for p in holders:
-            self.addCleanup(p.kill)
-            with open(os.path.join(slots, str(p.pid)), "w") as fh:
-                fh.write("full\n")
-        self.assertEqual(self.run_test("related", "true").returncode, 0)
-        r = self.run_test("related", "true", env={"AGENT_FAKE_RAM": "95"})
-        self.assertEqual(r.returncode, 3)
-        self.assertIn("RAM 95% over the 80% cap", r.stdout + r.stderr)
-
-    def test_the_slot_file_goes_after_the_run(self):
-        self.run_test("new", "true")
-        slots = os.path.join(self.gitdir(), "agent_heavy_slots")
-        self.assertEqual(os.listdir(slots) if os.path.isdir(slots) else [], [])
+        self.assertEqual(self.run_test("related", "python3", "-c", "import sys; sys.exit(5)").returncode, 5)
 
     def test_constants(self):
         sys.path.insert(0, BIN)
         import agent_conf
         self.assertEqual((agent_conf.CONSTANTS["light_test_s"], agent_conf.CONSTANTS["light_test_mb"]), (120, 1024))
+        self.assertNotIn("heavy_test_slots", [x["key"] for x in agent_conf.SETTINGS])
 
 
 if __name__ == "__main__":

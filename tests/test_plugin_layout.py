@@ -575,7 +575,7 @@ class TestUserConfig(unittest.TestCase):
     # settings-configure (owner 1A 2026-11-25): the 16 settings, the only settings source
     KEYS = {"language": "string", "runtime": "string", "auto_update": "boolean",
             "main_manager": "string", "task_manager": "string", "helper_model": "string",
-            "max_agents": "number", "max_usage_percent": "number", "heavy_test_slots": "number",
+            "max_agents": "number", "max_usage_percent": "number",
             "permission_mode": "string", "auto_resume": "boolean", "todo_before_agent": "boolean",
             "watch_quiet_min": "number", "housekeep_interval_min": "number",
             "city_port": "number", "city_idle_min": "number"}   # owner 1A: no Danger paths

@@ -108,7 +108,7 @@ ORDER = [
     ("helper_model", "Models: Helper model", "string", "sonnet-5:medium"),
     ("max_agents", "Load: Max agents", "number", 4),
     ("max_usage_percent", "Load: Max memory %", "number", 80),
-    ("heavy_test_slots", "Load: Heavy test slot/time", "number", 2),   # owner 2026-11-25 (TELL de03b3fb): 1 -> 2
+    # heavy_test_slots: gone (owner 2026-11-25, TELL 076c1faf): no slots, a memory gate (tests/test_check_net.py)
     ("permission_mode", "Permissions: Permission mode", "string", "bypassPermissions"),   # owner order 2026-11-25
     ("auto_resume", "Permissions: Auto resume", "boolean", True),
     ("todo_before_agent", "Rules: Todo before agent", "boolean", True),
@@ -268,7 +268,6 @@ class TestSchema(unittest.TestCase):
         by = {s["key"]: s for s in agent_conf.SETTINGS}
         self.assertEqual((by["max_agents"]["min"], by["max_agents"]["max"]), (1, 16))
         self.assertEqual((by["max_usage_percent"]["min"], by["max_usage_percent"]["max"]), (1, 100))
-        self.assertEqual((by["heavy_test_slots"]["min"], by["heavy_test_slots"]["max"]), (1, 8))
         self.assertEqual((by["housekeep_interval_min"]["min"], by["housekeep_interval_min"]["max"]), (0, 1440))
         self.assertEqual((by["city_port"]["min"], by["city_port"]["max"]), (1024, 65535))
 

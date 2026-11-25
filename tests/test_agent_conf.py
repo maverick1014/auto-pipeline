@@ -21,7 +21,6 @@ import agent_conf
 class TestValidateNumbers(unittest.TestCase):
     CASES = [
         ("max_usage_percent", 1, 100),
-        ("heavy_test_slots", 1, 8),
         ("max_agents", 1, 16),
     ]
 

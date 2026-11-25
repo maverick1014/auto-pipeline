@@ -282,17 +282,10 @@ class TestTexts(unittest.TestCase):
         self.assertRegex(text, r"(?i)settings live only in")
         # owner 1A 2026-11-25: core paths are repo facts in agent_repo.conf, not a setting
         self.assertIn("agent_repo.conf", text)
-        self.assertRegex(text, r"(?i)16 settings|sixteen settings")
+        self.assertRegex(text, r"(?i)15 settings|fifteen settings")   # owner 2026-11-25: the slot setting is gone
 
-    def test_r8_is_main_s_text(self):
-        # owner 3A 2026-11-25: the level rules are frozen; R8 stays exactly as on main (85b99de)
-        main = subprocess.run(["git", "-C", ROOT, "show", "85b99de:PRINCIPLES.md"],
-                              capture_output=True, text=True).stdout
-        if not main:
-            self.skipTest("85b99de not in this clone")
-        def r8(text):
-            return text[text.index("R8. Risk types"):text.index("## B. Work")]
-        self.assertEqual(r8(read("PRINCIPLES.md")), r8(main))
+    # test_r8_is_main_s_text (R8 frozen as on main 85b99de) is gone: the owner approved check-blocks on
+    # 2026-11-25, R8 is "Check blocks" now (tests/test_check_rules.py pins it)
 
     def test_readme_has_one_line_where_to_change_settings(self):
         lines = [l for l in read("README.md").splitlines() if CHANGE in l]

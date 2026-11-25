@@ -94,6 +94,7 @@ COPY_BIN = [
     "agent-nightly.sh",      # check-blocks section 15: the nightly run, selection misses, release-ok
     "agent_nightly.py",
     "agent-test-run.sh",     # check-blocks section 15: light or heavy by measured weight
+    "agent-room.sh",         # check-blocks section 24: the memory gate and the reservation list
     "agent_state.py",        # state-trim: state add / state trim
     "agent-autoclear.sh",    # state-trim: the auto /clear waiter
     "agent-guard.sh",        # board-trust: the launch hook (bash prefilter)
@@ -346,7 +347,7 @@ class ScriptRepo:
     # owner 1A 2026-11-25: core paths are repo facts, in <project>/agent_repo.conf
     REPO_KEYS = ("level3_paths", "level4_paths", "core_paths")   # check-blocks: core_paths too
     BOOL_KEYS = ("auto_update", "auto_resume", "todo_before_agent")
-    NUMBER_KEYS = ("max_agents", "max_usage_percent", "heavy_test_slots", "watch_quiet_min",
+    NUMBER_KEYS = ("max_agents", "max_usage_percent", "watch_quiet_min",
                    "housekeep_interval_min", "city_port", "city_idle_min")
 
     def claude_dir(self):
