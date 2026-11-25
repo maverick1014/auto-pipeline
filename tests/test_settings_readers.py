@@ -1,4 +1,4 @@
-"""settings-configure: every script reads the 17 settings from Configure, nothing reads agent.conf.
+"""settings-configure: every script reads the 16 settings from Configure, nothing reads agent.conf.
 
 Written by the task manager before any code (requirements/settings-configure.md).
 Core contract: tests/test_settings_configure.py. This file: the readers and the texts.
@@ -6,7 +6,8 @@ Core contract: tests/test_settings_configure.py. This file: the readers and the 
 CONTRACT
   1. No file under bin/ (except bin/agent_conf.py, which reads the old files only to
      move them), hooks/, skills/, agents/ names agent.conf, auto-pipeline.conf,
-     agent.conf.default, AUTO_PIPELINE_USER_CONF, level3_paths, level4_paths or
+     agent.conf.default, AUTO_PIPELINE_USER_CONF (level3_paths / level4_paths are allowed again:
+     owner 1A 2026-11-25, they live in the repo's agent_repo.conf) or
      board_guard, or calls `agent_conf.py effective`. bin/agent.conf.default is gone.
   2. agent-settings.sh:  (no args) or show -> the agent_conf.py show table, exit 0
                          get <key>          -> "<value> (from Configure|env|default|constant)"
@@ -46,7 +47,7 @@ from scripthelp import ROOT, ScriptCase  # noqa: E402
 
 CHANGE = "/plugin -> Installed -> auto-pipeline -> Configure"
 OLD_WORDS = ("agent.conf", "auto-pipeline.conf", "AUTO_PIPELINE_USER_CONF",
-             "level3_paths", "level4_paths", "board_guard", "agent_conf.py effective")
+             "board_guard", "agent_conf.py effective", "danger_paths")
 
 
 def read(*parts):
@@ -104,10 +105,10 @@ class TestSettingsScript(SettingsCase):
         self.repo.set_conf("language", "zh")
         out = self.assertOk(self.settings())
         lines = out.rstrip("\n").splitlines()
-        self.assertEqual(lines[-1], "change: " + CHANGE)
         self.assertIn("Language", out)
         self.assertIn("zh", out)
-        self.assertIn("Danger paths (D)", out)
+        self.assertEqual(lines[-2:], ["change: " + CHANGE, "core paths of this repo: agent_repo.conf"])
+        self.assertNotIn("Danger paths", out)
 
     def test_show_is_the_same_table(self):
         self.assertEqual(self.settings("show").stdout, self.settings().stdout)
@@ -277,11 +278,21 @@ class TestTexts(unittest.TestCase):
         text = read("PRINCIPLES.md")
         self.assertNotIn("agent.conf", text)
         self.assertNotIn("auto-pipeline.conf", text)
-        self.assertNotIn("level3_paths", text)
-        self.assertNotIn("level4_paths", text)
         self.assertIn(CHANGE, text)
         self.assertRegex(text, r"(?i)settings live only in")
-        self.assertIn("Danger paths", text)
+        # owner 1A 2026-11-25: core paths are repo facts in agent_repo.conf, not a setting
+        self.assertIn("agent_repo.conf", text)
+        self.assertRegex(text, r"(?i)16 settings|sixteen settings")
+
+    def test_r8_is_main_s_text(self):
+        # owner 3A 2026-11-25: the level rules are frozen; R8 stays exactly as on main (85b99de)
+        main = subprocess.run(["git", "-C", ROOT, "show", "85b99de:PRINCIPLES.md"],
+                              capture_output=True, text=True).stdout
+        if not main:
+            self.skipTest("85b99de not in this clone")
+        def r8(text):
+            return text[text.index("R8. Risk types"):text.index("## B. Work")]
+        self.assertEqual(r8(read("PRINCIPLES.md")), r8(main))
 
     def test_readme_has_one_line_where_to_change_settings(self):
         lines = [l for l in read("README.md").splitlines() if CHANGE in l]

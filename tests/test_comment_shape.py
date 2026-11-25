@@ -367,7 +367,7 @@ class TestScope(ShapeCase):
         self.fresh()
         # owner 2A 2026-11-25: Danger paths is a hint, a comment-only change stays A there
         self.assertEqual(self.got("src/money/calc.py", "# a\nrun()\n", "# b\nrun()\n",
-                                  conf={"danger_paths": "src/money/"}), ("A", "comment only"))
+                                  conf={"level3_paths": "src/money/"}), ("A", "comment only"))
 
     def test_r22_new_deleted_and_binary_files(self):
         self.base({"app/a.py": "x\n"})

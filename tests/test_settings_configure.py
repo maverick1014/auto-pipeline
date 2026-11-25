@@ -5,7 +5,8 @@ Written by the task manager before any code (requirements/settings-configure.md)
 CONTRACT for bin/agent_conf.py:
 
     PLUGIN_ID                 "auto-pipeline@auto-pipeline"
-    SETTINGS                  list of 17 dicts, in display order. Each: key, title, type
+    SETTINGS                  list of 16 dicts, in display order (owner 1A 2026-11-25: Danger
+                              paths left Configure; core paths are agent_repo.conf, a repo file). Each: key, title, type
                               ("string" | "number" | "boolean"), description, default;
                               optional options (list of str), min, max (numbers)
     user_config()             the plugin.json "userConfig" object built from SETTINGS
@@ -35,6 +36,12 @@ CONTRACT for bin/agent_conf.py:
                                 dropped: <key>=<value> in <file> is not a setting any more
                                 SETTINGS MOVE FAILED: <why>. Run: claude plugin configure
                                   auto-pipeline@auto-pipeline --values-stdin <<< '<json>'
+                              Old level3_paths / level4_paths (not empty) go into
+                              <project root>/agent_repo.conf (key=value, created when missing,
+                              a key already there is never overwritten: "kept <key>=<now> in
+                              agent_repo.conf, skipped <key>=<old> from <file>"; same value:
+                              nothing), one line "moved <keys, comma+space> to agent_repo.conf
+                              (repo file, commit it)"; never into Configure.
                               Once = marker <config dir>/auto-pipeline-migrated.json (real
                               path of the old file -> sha256 of its text); a failed write
                               leaves no marker, so the next start tries again.
@@ -68,6 +75,11 @@ CONTRACT for bin/agent_update.py (plugin-scope-sync; replaces agent-version.sh s
     looked up on env PATH; stdin closed, timeout 120 s.
 
 CLI: python3 bin/agent_conf.py get <key> | show | migrate <project root>
+     show ends with "change: /plugin -> Installed -> auto-pipeline -> Configure" and then
+     "core paths of this repo: agent_repo.conf".
+     repo_paths(project_root) -> (dict of level3_paths/level4_paths text, [warning lines]):
+     the main repo's agent_repo.conf; missing file or key -> not in the dict; a bad glob list
+     -> left out + one "SETTINGS: <key>=<v> in agent_repo.conf ..." warning.
 """
 
 import json
@@ -104,8 +116,6 @@ ORDER = [
     ("housekeep_interval_min", "Stuck: Tidy every (min)", "number", 120),
     ("city_port", "City: City port", "number", 4777),
     ("city_idle_min", "City: City auto close (min)", "number", 30),
-    ("danger_paths", "Risk: Danger paths (D)", "string",
-     ".claude-plugin/,hooks/,PRINCIPLES.md,skills/,agents/,bin/agent_conf.py"),
 ]
 
 CONSTANTS = {
@@ -120,6 +130,8 @@ CONSTANTS = {
 }
 
 CHANGE_LINE = "change: /plugin -> Installed -> auto-pipeline -> Configure"
+CORE_LINE = "core paths of this repo: agent_repo.conf"   # owner 1A 2026-11-25
+MOVED_BOTH = "moved level3_paths, level4_paths to agent_repo.conf (repo file, commit it)"
 
 # A fake `claude` on PATH. Every call appends {"args", "cwd", "stdin"} to calls.jsonl.
 # mode file "ok": `plugin configure <id> --values-stdin` merges the JSON into
@@ -227,7 +239,7 @@ class TestSchema(unittest.TestCase):
     def test_plugin_id(self):
         self.assertEqual(agent_conf.PLUGIN_ID, "auto-pipeline@auto-pipeline")
 
-    def test_seventeen_settings_in_the_brief_order(self):
+    def test_sixteen_settings_in_the_brief_order(self):
         got = [(s["key"], s["title"], s["type"], s["default"]) for s in agent_conf.SETTINGS]
         self.assertEqual(got, ORDER)
 
@@ -384,14 +396,15 @@ class TestGet(unittest.TestCase):
         self.assertEqual(agent_conf.get("main_manager", env), "opus-5.5:high")
 
     def test_bad_language_and_bad_paths(self):
-        self.h.configure({"language": "Chinese", "danger_paths": "/etc,../x"})
-        env = self.h.env()
-        self.assertEqual(agent_conf.get("language", env), "en")
-        self.assertEqual(agent_conf.get("danger_paths", env), ORDER[-1][3])
+        self.h.configure({"language": "Chinese"})
+        self.assertEqual(agent_conf.get("language", self.h.env()), "en")
 
-    def test_empty_danger_paths_is_allowed(self):
-        self.h.configure({"danger_paths": ""})
-        self.assertEqual(agent_conf.get("danger_paths", self.h.env()), "")
+    def test_danger_paths_is_no_setting_any_more(self):
+        # owner 1A 2026-11-25: core paths are facts of one repo (agent_repo.conf), not a user setting
+        self.h.configure({"danger_paths": "src/"})
+        with self.assertRaises(KeyError):
+            agent_conf.get("danger_paths", self.h.env())
+        self.assertNotIn("danger_paths", agent_conf.user_config())
 
     def test_constant_keys(self):
         env = self.h.env(CLAUDE_PLUGIN_OPTION_STAGE_TESTS="99")
@@ -451,9 +464,10 @@ class TestCli(unittest.TestCase):
         res = run_cli(["show"], self.h.env())
         self.assertEqual(res.returncode, 0, res.stderr)
         lines = res.stdout.rstrip("\n").splitlines()
-        self.assertEqual(lines[-1], CHANGE_LINE)
+        self.assertEqual(lines[-2:], [CHANGE_LINE, CORE_LINE])
         body = res.stdout
-        for group in ("Basic", "Models", "Load", "Permissions", "Rules", "Stuck", "City", "Risk"):
+        self.assertNotIn("Danger paths", body)
+        for group in ("Basic", "Models", "Load", "Permissions", "Rules", "Stuck", "City"):
             self.assertIn(group, body)
         last = -1
         for _, title, _, _ in ORDER:
@@ -480,6 +494,46 @@ class TestCli(unittest.TestCase):
         run_cli(["show"], self.h.env())
         self.assertEqual(open(path).read(), before)
         self.assertEqual(sorted(os.listdir(self.h.cfg)), ["plugins", "settings.json"])
+
+
+class TestRepoPathsFile(unittest.TestCase):
+    """owner 1A 2026-11-25: agent_repo.conf at the main repo root holds level3_paths and level4_paths."""
+
+    def setUp(self):
+        self.h = Home()
+
+    def tearDown(self):
+        self.h.close()
+
+    def write(self, text):
+        with open(os.path.join(self.h.repo, "agent_repo.conf"), "w") as fh:
+            fh.write(text)
+
+    def test_no_file_is_built_ins_only(self):
+        self.assertEqual(agent_conf.repo_paths(self.h.repo), ({}, []))
+
+    def test_both_keys(self):
+        self.write("# core paths of this repo\nlevel3_paths=PRINCIPLES.md,skills/\nlevel4_paths=.claude-plugin/,hooks/\n")
+        self.assertEqual(agent_conf.repo_paths(self.h.repo),
+                         ({"level3_paths": "PRINCIPLES.md,skills/", "level4_paths": ".claude-plugin/,hooks/"}, []))
+
+    def test_an_empty_value_and_other_keys(self):
+        self.write("level3_paths=\nlanguage=zh\n")
+        values, warnings = agent_conf.repo_paths(self.h.repo)
+        self.assertEqual(values.get("level3_paths", ""), "")
+        self.assertNotIn("language", values)
+
+    def test_a_bad_glob_list_is_left_out_and_said(self):
+        self.write("level3_paths=/etc/,src/\nlevel4_paths=db/\n")
+        values, warnings = agent_conf.repo_paths(self.h.repo)
+        self.assertEqual(values, {"level4_paths": "db/"})
+        self.assertEqual(len(warnings), 1, warnings)
+        self.assertTrue(warnings[0].startswith("SETTINGS: level3_paths=/etc/,src/ in agent_repo.conf"), warnings)
+
+    def test_never_raises(self):
+        os.mkdir(os.path.join(self.h.repo, "agent_repo.conf"))
+        values, warnings = agent_conf.repo_paths(self.h.repo)
+        self.assertEqual(values, {})
 
 
 class TestMigration(unittest.TestCase):
@@ -523,9 +577,7 @@ class TestMigration(unittest.TestCase):
         self.assertIn("not read any more", out[0])
 
     def test_values_equal_to_the_default_are_not_moved(self):
-        self.old_conf("language=en\nmax_agents=4\nboard_guard=on\nauto_resume=yes\n"
-                      "level3_paths=PRINCIPLES.md,skills/,agents/,bin/agent_conf.py\n"
-                      "level4_paths=.claude-plugin/,hooks/\n")
+        self.old_conf("language=en\nmax_agents=4\nboard_guard=on\nauto_resume=yes\n")
         out = self.migrate()
         self.assertEqual(self.configure_calls(), [])
         self.assertEqual(len(out), 1, out)
@@ -547,14 +599,53 @@ class TestMigration(unittest.TestCase):
         self.assertEqual(self.configure_calls(), [])
         self.assertFalse([l for l in out if "language" in l], out)
 
-    def test_danger_paths_join_the_old_two_lists_and_keep_the_default(self):
-        self.old_conf("level3_paths=src/money/\nlevel4_paths=db/,hooks/\n")
+    # owner 1A 2026-11-25: the old level paths go into the repo's own agent_repo.conf, never Configure
+    def repo_conf(self):
+        path = os.path.join(self.h.repo, "agent_repo.conf")
+        return open(path).read() if os.path.exists(path) else None
+
+    def test_level_paths_move_into_agent_repo_conf(self):
+        self.old_conf("level3_paths=src/money/\nlevel4_paths=db/,hooks/\nlanguage=zh\n")
+        out = self.migrate()
+        self.assertEqual(self.repo_conf(), "level3_paths=src/money/\nlevel4_paths=db/,hooks/\n")
+        self.assertIn(MOVED_BOTH, out)
+        payload = json.loads(self.configure_calls()[0]["stdin"])
+        self.assertEqual(payload, {"language": "zh"})
+        for key in ("level3_paths", "level4_paths", "danger_paths"):
+            self.assertNotIn(key, self.h.options())
+
+    def test_only_the_keys_there_are_moved(self):
+        self.old_conf("level4_paths=db/\n")
+        out = self.migrate()
+        self.assertEqual(self.repo_conf(), "level4_paths=db/\n")
+        self.assertIn("moved level4_paths to agent_repo.conf (repo file, commit it)", out)
+        self.assertEqual(self.configure_calls(), [])
+
+    def test_empty_level_paths_are_not_moved(self):
+        self.old_conf("level3_paths=\nlevel4_paths=\n")
+        out = self.migrate()
+        self.assertIsNone(self.repo_conf())
+        self.assertFalse([l for l in out if "agent_repo.conf" in l], out)
+
+    def test_a_key_already_in_agent_repo_conf_is_never_overwritten(self):
+        with open(os.path.join(self.h.repo, "agent_repo.conf"), "w") as fh:
+            fh.write("# core paths\nlevel4_paths=infra/\n")
+        self.old_conf("level3_paths=src/money/\nlevel4_paths=db/\n")
+        out = self.migrate()
+        text = self.repo_conf()
+        self.assertIn("level4_paths=infra/\n", text)
+        self.assertNotIn("db/", text)
+        self.assertIn("level3_paths=src/money/\n", text)
+        self.assertTrue(text.startswith("# core paths\n"), text)
+        self.assertIn("moved level3_paths to agent_repo.conf (repo file, commit it)", out)
+        self.assertTrue([l for l in out if l.startswith("kept level4_paths=infra/ in agent_repo.conf")], out)
+
+    def test_the_level_move_happens_once(self):
+        self.old_conf("level3_paths=src/money/\n")
         self.migrate()
-        moved = json.loads(self.configure_calls()[0]["stdin"])["danger_paths"].split(",")
-        for item in (".claude-plugin/", "hooks/", "PRINCIPLES.md", "skills/", "agents/",
-                     "bin/agent_conf.py", "src/money/", "db/"):
-            self.assertIn(item, moved)
-        self.assertEqual(len(moved), len(set(moved)))
+        os.remove(os.path.join(self.h.repo, "agent_repo.conf"))
+        self.assertEqual(self.migrate(), [])
+        self.assertIsNone(self.repo_conf())
 
     def test_once_the_same_file_is_quiet(self):
         self.old_conf("language=zh\n")

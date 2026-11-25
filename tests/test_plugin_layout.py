@@ -571,20 +571,20 @@ class TestUserConfig(unittest.TestCase):
     Values reach a hook as CLAUDE_PLUGIN_OPTION_<KEY uppercased>.
     """
 
-    # settings-configure (owner 1A 2026-11-25): the 17 settings, the only settings source
+    # settings-configure (owner 1A 2026-11-25): the 16 settings, the only settings source
     KEYS = {"language": "string", "runtime": "string", "auto_update": "boolean",
             "main_manager": "string", "task_manager": "string", "helper_model": "string",
             "max_agents": "number", "max_usage_percent": "number", "heavy_test_slots": "number",
             "permission_mode": "string", "auto_resume": "boolean", "todo_before_agent": "boolean",
             "watch_quiet_min": "number", "housekeep_interval_min": "number",
-            "city_port": "number", "city_idle_min": "number", "danger_paths": "string"}
+            "city_port": "number", "city_idle_min": "number"}   # owner 1A: no Danger paths
     DEFAULTS = {"runtime": "auto", "language": "en",
                 "main_manager": "opus-5.5:high", "max_agents": 4}
 
     def config(self):
         return load_json(".claude-plugin", "plugin.json")["userConfig"]
 
-    def test_the_seventeen_keys_are_there_in_order(self):
+    def test_the_sixteen_keys_are_there_in_order(self):
         self.assertEqual(list(self.config()), list(self.KEYS))
 
     def test_each_key_has_its_type(self):

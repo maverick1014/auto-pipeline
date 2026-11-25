@@ -336,8 +336,9 @@ class ScriptRepo:
 
     # settings-configure: old agent.conf key -> Configure key (and value)
     CONF_KEY = {"fast_lane_deputy": "helper_model", "merge_deputy": "helper_model",
-                "worker": "helper_model", "board_guard": "todo_before_agent",
-                "level3_paths": "danger_paths", "level4_paths": "danger_paths"}
+                "worker": "helper_model", "board_guard": "todo_before_agent"}
+    # owner 1A 2026-11-25: core paths are repo facts, in <project>/agent_repo.conf
+    REPO_KEYS = ("level3_paths", "level4_paths")
     BOOL_KEYS = ("auto_update", "auto_resume", "todo_before_agent")
     NUMBER_KEYS = ("max_agents", "max_usage_percent", "heavy_test_slots", "watch_quiet_min",
                    "housekeep_interval_min", "city_port", "city_idle_min")
@@ -373,6 +374,8 @@ class ScriptRepo:
         import agent_conf  # noqa: E402  (bin/ is on sys.path for the tests)
         if path is not None:
             raise AssertionError("set_conf(path=...): there is no agent.conf any more")
+        if key in self.REPO_KEYS:
+            return self.set_repo_conf(key, value)
         new = self.CONF_KEY.get(key, key)
         if key in agent_conf.CONSTANTS:
             raise AssertionError("%s is a fixed constant now (%r)" % (key, agent_conf.CONSTANTS[key]))
@@ -385,6 +388,18 @@ class ScriptRepo:
         elif new in self.NUMBER_KEYS and isinstance(value, str) and value.strip().lstrip("-").isdigit():
             value = int(value)
         return self._settings(lambda options: options.__setitem__(new, value))
+
+    def set_repo_conf(self, key, value):
+        """Set level3_paths / level4_paths in the project's committed agent_repo.conf."""
+        full = os.path.join(self.dir, "agent_repo.conf")
+        rows = []
+        if os.path.exists(full):
+            with open(full) as fh:
+                rows = [l for l in fh.read().splitlines() if l.split("=", 1)[0].strip() != key]
+        rows.append("%s=%s" % (key, value))
+        with open(full, "w") as fh:
+            fh.write("\n".join(rows) + "\n")
+        return full
 
     def set_old_conf(self, text, name="agent.conf"):
         """Write an old-style agent.conf into the project (the migration reads it)."""
