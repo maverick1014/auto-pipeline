@@ -28,7 +28,7 @@ if HERE not in sys.path:
 FALLBACK = ["DIFF SCAN", "BUILD", "RELATED TESTS", "GUARD TESTS", "DB CHECK", "DATA CHECK", "FULL SUITE",
             "CORE REVIEW", "DIFF READ", "EXAMPLES TEST", "FLOW CHECK", "UI CHECK", "REAL DATA COUNT"]
 SIGN = "OWNER SIGN"
-BUILDER_BLOCKS = ("DIFF READ", "FLOW CHECK", "UI CHECK")
+BUILDER_BLOCKS = ("PR REVIEW", "DIFF READ", "FLOW CHECK", "UI CHECK")
 DATE_RE = r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}"
 
 
@@ -254,10 +254,15 @@ def cmd_todo_est(ctx, a):
             raise Refuse("todo est: --guess wants a whole number, 1 or more (got: %s)" % guess)
     todo = Todo(ctx["root"])
     f = need_line(todo, name)
-    if not (mins.isdigit() and len(mins) <= 9 and int(mins) >= 1):
+    add = mins.startswith("+")
+    body = mins[1:] if add else mins
+    if not (body.isdigit() and len(body) <= 9 and int(body) >= 1):
         raise Refuse("todo est: the minutes are a whole number, 1 or more (got: %s)" % mins)
-    mins = str(int(mins))
+    mins = str(int(body))
     old = field_of(f, "est")
+    if add:     # added work: +<minutes> on top of the estimate now (guess stays)
+        m = re.match(r"(\d+)m$", old or "")
+        mins = str((int(m.group(1)) if m else 0) + int(mins))
     at = field_index(f, "est")
     if at >= 0:
         f[at] = "est %sm" % mins
@@ -347,6 +352,7 @@ def read_results_file(path, task, best, n=0):
     head = "CHECK %s " % task
     names = block_names() + [SIGN]
     for i, l in enumerate(lines):
+        l = l.lstrip()                      # a REPORT carries its CHECK lines indented
         if not l.startswith(head):
             continue
         rest = l[len(head):]
@@ -503,6 +509,47 @@ def sign_believed(ctx, evidence):
     return True
 
 
+def git_line(d, *args):
+    try:
+        r = subprocess.run(["git", "-C", d] + list(args), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                           timeout=30)
+        return r.stdout.decode(errors="replace").strip() if r.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def production_branch(root):
+    """production_branch in agent_repo.conf, else origin/HEAD's target, else main."""
+    try:
+        with open(os.path.join(root, "agent_repo.conf"), encoding="utf-8", errors="replace") as fh:
+            for l in fh.read().split("\n"):
+                m = re.match(r"^\s*production_branch\s*=\s*(\S+)\s*$", l)
+                if m:
+                    return m.group(1)
+    except IOError:
+        pass
+    head = git_line(root, "symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD")
+    if head.startswith("origin/"):
+        return head[len("origin/"):]
+    return "main"
+
+
+def default_base(root, d, f):
+    """origin/<production> for a todo line with `target production`, else origin/<working branch>; when
+    that does not exist, origin/<production>."""
+    prod = "origin/" + production_branch(root)
+    if f is not None and "target production" in [x.strip() for x in f]:
+        return prod
+    try:
+        import agent_conf
+        wb = agent_conf.working_branch(d)
+    except Exception:
+        wb = ""
+    if wb and git_line(d, "rev-parse", "--verify", "-q", "refs/remotes/origin/%s^{commit}" % wb):
+        return "origin/" + wb
+    return prod
+
+
 def cmd_gate(ctx, a):
     if not a:
         raise Refuse("checks gate: usage: checks gate \"<task>\" --dir <path> [--base <ref>] [--results <file>] [--checks \"<list>\"]", 2)
@@ -519,8 +566,8 @@ def cmd_gate(ctx, a):
     d = opts["--dir"]
     if not os.path.isdir(d):
         raise Refuse("checks gate: no such folder: %s" % d, 2)
-    base = opts.get("--base", "origin/main")
     f = Todo(ctx["root"]).fields(task)
+    base = opts.get("--base") or default_base(ctx["root"], d, f)
     planned = set()
     builders = []
     if f is not None:
@@ -640,9 +687,12 @@ def cmd_next(ctx, a):
 
 
 def next_lines(ctx, a):
-    if len(a) != 3:
-        raise Refuse("next: internal: <max agents> <ram> <cap>", 2)
-    mx, ram, cap = int(a[0]), int(a[1]), int(a[2])
+    if len(a) == 1 and a[0] == "unknown":
+        print("NEXT: 0 can start: RAM unknown")
+        return
+    if len(a) != 5:
+        raise Refuse("next: internal: <used MB> <reserved MB> <limit MB> <pane MB> <limit %>", 2)
+    used, reserved, limit, pane, pct = [int(x) for x in a]
     todo = Todo(ctx["root"])
     rows = [f for f in todo.open_lines() if len(f) >= 3]
     names_open = set(f[0] for f in rows)
@@ -661,12 +711,12 @@ def next_lines(ctx, a):
             if not waiting.startswith("queue "):
                 continue
         cands.append(f)
-    free = max(0, mx - len(running))
+    # the memory rule (section 25): in use + reserved + the panes planned here + one pane <= the limit
+    room = limit - used - reserved
+    free = max(0, room) // pane if pane > 0 else 0
     if free == 0:
-        print("NEXT: 0 can start: no free slot (slots 0 of %d)" % mx)
-        return
-    if ram >= cap:
-        print("NEXT: 0 can start: RAM %d%% is not under the cap %d%%" % (ram, cap))
+        print("NEXT: 0 can start: no room: %d MB in use + %d MB reserved + %d MB for a pane > %d MB"
+              % (used, reserved, pane, limit))
         return
     starts, waits = [], []
     taken = [(f[0], scope_of(f)) for f in staged]
@@ -688,7 +738,7 @@ def next_lines(ctx, a):
             waits.append("WAIT %s: clashes with %s on %s" % (name, hit[0], hit[1]))
             continue
         if len(starts) >= free:
-            waits.append("WAIT %s: no free slot" % name)
+            waits.append("WAIT %s: no room for another pane" % name)
             continue
         est = field_of(f, "est")
         line = "START %s | est %s | %s" % (name, est or "-", f[2])
@@ -696,7 +746,7 @@ def next_lines(ctx, a):
             line += " | scope unknown: judge"
         starts.append(line)
         taken.append((name, sc))
-    print("NEXT: %d can start (slots %d of %d, RAM %d%% under %d%%)" % (len(starts), free, mx, ram, cap))
+    print("NEXT: %d can start (room %d MB under the %d%% limit)" % (len(starts), room, pct))
     for l in starts + waits:
         print(l)
 

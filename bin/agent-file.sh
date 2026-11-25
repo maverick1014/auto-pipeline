@@ -59,6 +59,9 @@
 #   agent-file.sh board [--self]                              -> the table of everything open (/auto-pipeline:todo); --self: this session's task only
 #   agent-file.sh state add "<line>"                          -> agent_state.txt of this folder gets "<line> | <date time>" (one line, " | " inside is fine)
 #   agent-file.sh tell "<task>" "[<model> <effort>] <msg>"    -> the block "TELL <sha8> ..." at the end of that task's agent_state.txt, then one pointer line into its TM pane (rules D1-D8, requirements/one-watcher.md); prints "TELL OK <task> <sha8>"
+#   agent-file.sh heartbeat "<task>" <step 0-7> <work min> "<what runs now>"  -> agent_state.txt: "HEARTBEAT <task>: step <n> of 7, work <m>m, <text> | <date time>" (bad step, minutes or empty text: refused)
+#   agent-file.sh helper-join "<task>"                        -> a human-direct Helper becomes a normal agent: its worktree line becomes "<path> | <task> | working | since .. | pane .. | session .."
+#   agent-file.sh todo est "<name>" +<minutes>                -> adds minutes to the estimate (guess stays); todo add also takes --target production|working and --batch <name>
 #   agent-file.sh state trim [--dry-run]                      -> old lines of agent_state.txt move to agent_state.trim-<date>.txt (rules: requirements/state-trim.md); --dry-run only counts
 #
 # todo done also closes the queue wait of every open line whose " | after <name>" field is that task, drops the after field, and prints "released: <line name>" per line.
@@ -220,7 +223,7 @@ roots_read
 ROOT="$PROJECT_ROOT"
 TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agent_ideas.txt"; WT="$ROOT/agent_worktree.txt"
 NOW=${AGENT_FAKE_NOW:-$(date '+%Y-%m-%d %H:%M')}; WHO=${AGENT_ROLE:-main}
-case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the whole header comment block, whatever its length
 usage() { awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 2; }
@@ -653,6 +656,25 @@ helper_task() {
   echo "helper task: $task -> \"$repo Helper - $task\" from the human's next prompt"
 }
 
+# helper-join "<task>": a human-direct Helper takes a task from the main manager (or reports DONE to it): its
+# folder's human-direct line becomes a normal task line (check-blocks C20)
+helper_join() {
+  local task="${1:-}" pane="${ORCA_TERMINAL_HANDLE:-}" sid="${CLAUDE_CODE_SESSION_ID:-}"
+  role_read
+  [ "$role" = second ] || refuse "helper-join: only a human-direct Helper (a second session) can join; this session is: $role${AGENT_ROLE:+ ($AGENT_ROLE)}"
+  [ -n "$task" ] || refuse "helper-join: needs the task name"
+  if bad_text "$task"; then refuse "helper-join: the task must not hold \" | \" or a line break"; fi
+  [ -n "$pane" ] || pane=-
+  case "$sid" in ''|*[!A-Za-z0-9_-]*) sid=-;; esac
+  case "$pane" in *[!A-Za-z0-9_.:-]*) pane=-;; esac
+  touch "$WT"
+  awk -F' \\| ' -v p="$PROJECT_CWD" -v t="$task" -v now="$NOW" -v pane="$pane" -v sid="$sid" 'BEGIN { OFS = " | " }
+    $1 == p && $2 == "task manager, human-direct" { print p, t, "working", "since " now, "pane " pane, "session " sid; seen = 1; next }
+    { print }
+    END { if (!seen) print p, t, "working", "since " now, "pane " pane, "session " sid }' "$WT" > "$WT.tmp" && mv "$WT.tmp" "$WT"
+  echo "helper-join: $task (pane $pane, session $sid): a normal agent now; the merge of its last task closes this pane"
+}
+
 # --- todo wait, todo where
 # bad_text "<text>": true when it holds " | " or a line break (it would break the line it goes into)
 bad_text() {
@@ -1078,15 +1100,25 @@ checks_py() {
   command -v python3 >/dev/null 2>&1 || refuse "${1:-checks}: python3 is needed and was not found"
   python3 "$(dirname "$0")/agent_checks.py" "$PROJECT_ROOT" "$STATE_DIR" "$NOW" "$@"
 }
-# next: the free slots and the RAM cap are read here, the rest is agent_checks.py
+# next: the memory rule (section 25) reads the numbers from agent-room.sh; the rest is agent_checks.py
 next_run() {
-  local mx cap ram
+  local cap nums
   [ $# -eq 0 ] || refuse "next: takes nothing after it"
-  . "$(dirname "$0")/agent-resources.sh"
-  mx=$(conf_num max_agents 1 1000) || mx=4
   cap=$(conf_num max_usage_percent 1 100) || cap=80
-  ram=$(ram_used); is_num "$ram" || ram=0
-  checks_py next "$mx" "$ram" "$cap"
+  if nums=$(cd "$PROJECT_ROOT" && "$(dirname "$0")/agent-room.sh" numbers 2>/dev/null </dev/null) && [ "$(printf '%s\n' "$nums" | wc -w | tr -d ' ')" -eq 4 ]; then
+    checks_py next $nums "$cap"
+  else
+    checks_py next unknown
+  fi
+}
+# batch_done <line> <name>: the last open line of a batch is done -> say what comes next (check-blocks C48)
+batch_done() {
+  local b left
+  b=$(printf '%s\n' "$1" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^batch /) {v = $i; sub(/^batch /, "", v); print v; exit}}')
+  [ -n "$b" ] || return 0
+  left=$(awk -F' \\| ' -v b="$b" '{for (i = 4; i <= NF; i++) if ($i == "batch " b) {n++; break}} END {print n + 0}' "$TODO")
+  [ "$left" -eq 0 ] || return 0
+  echo "batch $b: all merged: agent-promote.sh --sync, then the full suite: agent-nightly.sh --start"
 }
 # released_after <name>: close the queue wait of every open line queued after <name>
 released_after() {
@@ -1103,8 +1135,11 @@ case "${1:-}:${2:-}" in
   helper-task:*)
     [ $# -ge 2 ] || usage
     helper_task "$2";;
+  helper-join:*)
+    [ $# -ge 2 ] || usage
+    helper_join "$2";;
   todo:add)
-    shift 2; guess=""; level=""; rest=(); checks=""; scope=""; builder=""
+    shift 2; guess=""; level=""; rest=(); checks=""; scope=""; builder=""; target=""; batch=""
     while [ $# -gt 0 ]; do   # --guess <m> may stand anywhere after "todo add"; the other args keep their order
       if [ "$1" = "--guess" ]; then
         [ $# -ge 2 ] && is_num "$2" && [ "${#2}" -le 9 ] && [ $((10#$2)) -ge 1 ] || refuse "todo add: --guess wants a whole number, 1 or more (got: ${2:-nothing})"
@@ -1121,6 +1156,13 @@ case "${1:-}:${2:-}" in
         if bad_text "$2"; then refuse "todo add: the $1 value must not hold \" | \" or a line break"; fi
         if [ "$1" = "--scope" ]; then scope=$2; else builder=$2; fi
         shift 2
+      elif [ "$1" = "--target" ]; then
+        case "${2:-}" in production|working) target=$2;; *) refuse "todo add: --target wants production or working (got: ${2:-nothing})";; esac
+        shift 2
+      elif [ "$1" = "--batch" ]; then
+        [ $# -ge 2 ] && [ -n "$2" ] || refuse "todo add: --batch needs a name"
+        if bad_text "$2"; then refuse "todo add: the --batch value must not hold \" | \" or a line break"; fi
+        batch=$2; shift 2
       else rest+=("$1"); shift; fi
     done
     set -- todo add ${rest[@]+"${rest[@]}"}
@@ -1132,6 +1174,8 @@ case "${1:-}:${2:-}" in
     [ -z "$checks" ] || what="$what | checks $checks"
     [ -z "$scope" ] || what="$what | scope $scope"
     [ -z "$builder" ] || what="$what | builder $builder"
+    [ -z "$target" ] || what="$what | target $target"
+    [ -z "$batch" ] || what="$what | batch $batch"
     by="${7:-$WHO}"
     append "$TODO" "$3 | $4 | $what | opened $NOW | by $by"
     echo "todo added: $3";;
@@ -1157,6 +1201,7 @@ case "${1:-}:${2:-}" in
     drop "$TODO" "$name"; append "$DONE" "$date | $name | $what | $(dblock)"
     echo "todo done: $name"
     released_after "$name"
+    batch_done "$line" "$name"
     [ -n "$counted" ] || echo "files and lines: not counted (no --merge or --range)"
     echo "TIME DATA: $(time_data) of $TIME_DATA_GOAL"
     # the finished task no longer counts as open: trim the state file (silent unless lines moved; a refusal is a warning)
@@ -1260,10 +1305,27 @@ case "${1:-}:${2:-}" in
       fi
       printf '%-30s %8s %8s %8s %8s %8s\n' "$name" "$est" "$work" "$wt" "$clock" "$ratio"
     done < "$DONE";;
+  heartbeat:*)
+    # heartbeat "<task>" <step 0-7> <work minutes> "<what runs now>": the one right form (C51)
+    [ $# -eq 5 ] || refuse "heartbeat: usage: heartbeat \"<task>\" <step 0-7> <work minutes> \"<what runs now>\""
+    case "$2" in ''|*[[:space:]:]*) refuse "heartbeat: the task name must be one word without a colon";; esac
+    case "$3" in [0-7]) ;; *) refuse "heartbeat: the step is a whole number from 0 to 7 (got: $3)";; esac
+    is_num "$4" && [ "${#4}" -le 9 ] || refuse "heartbeat: the work minutes are a whole number (got: $4)"
+    hb_text=$(printf '%s' "$5" | tr '\r\n' '  ' | sed 's/^ *//; s/ *$//')
+    [ -n "$hb_text" ] || refuse "heartbeat: say what runs now (the text is empty)"
+    mkdir -p "$STATE_DIR" 2>/dev/null
+    if [ -s "$STATE_FILE" ] && [ -n "$(tail -c 1 "$STATE_FILE")" ]; then printf '\n' >> "$STATE_FILE"; fi
+    append "$STATE_FILE" "HEARTBEAT $2: step $3 of 7, work $((10#$4))m, $hb_text | $NOW"
+    echo "heartbeat: $2 step $3 of 7";;
   tell:*)
     need 3 "$@"; [ $# -eq 3 ] || usage
     command -v python3 >/dev/null 2>&1 || refuse "tell: python3 is needed and was not found"
-    exec python3 "$(dirname "$0")/agent_watch.py" tell "$PROJECT_ROOT" "$NOW" "$2" "$3";;
+    # C53: the line before "TELL OK ..." reminds the main manager to add minutes when the message adds work
+    tell_rc=0
+    tell_out=$(python3 "$(dirname "$0")/agent_watch.py" tell "$PROJECT_ROOT" "$NOW" "$2" "$3") || tell_rc=$?
+    tell_hint="if this message adds work: agent-file.sh todo est \"$2\" +<minutes>"
+    printf '%s\n' "$tell_out" | awk -v h="$tell_hint" '{ if ($0 ~ /^TELL OK / && prev != h) print h; print; prev = $0 }'
+    exit "$tell_rc";;
   backfill:*)
     shift
     case "${1:-}" in ''|--*) backfill_text "$@";; *) backfill_name "$@";; esac;;
