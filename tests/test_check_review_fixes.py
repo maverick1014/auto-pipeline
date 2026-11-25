@@ -383,6 +383,37 @@ class TestLeftoversHousekeep(th.HousekeepCase):
         self.assertIn("flag: todo alpha: merged into origin/ap-main-t (branch feat/alpha)", self.body())
 
 
+class TestSlimPassFacts(unittest.TestCase):
+    """Section 40 (TELL e2fd5575): rule text that the code contradicts."""
+
+    def test_1_models_by_setting(self):
+        w6 = rule("W6. ", "W7. ")
+        for role in ("Main manager", "Task manager"):
+            line = [l for l in w6.splitlines() if l.startswith("- %s (" % role)][0]
+            self.assertNotIn("xhigh", line, line)
+            self.assertIn("%s model" % role, line)
+
+    def test_2_start_runs_release_ok_checks(self):
+        r8 = rule("R8. ", "W1. ")
+        self.assertIn("`agent-nightly.sh --release-ok` only checks", r8)
+        self.assertIn("`agent-nightly.sh --start` runs the full suite in the background", r8)
+
+    def test_3_the_real_path(self):
+        self.assertNotIn("./agent-file.sh", read("PRINCIPLES.md"))
+
+    def test_4_r5_fields(self):
+        r5 = rule("R5. ", "R6. ")
+        for field in ("guess", "level"):
+            self.assertIn(field, r5)
+
+    def test_5_the_map_names_every_script(self):
+        f = read("PRINCIPLES.md").split("## F. Map")[1]
+        for name in ("agent-promote", "agent-runtime", "agent-resources", "agent-autoclear", "agent-release",
+                     "agent-statusline", "agent-roots"):
+            with self.subTest(name=name):
+                self.assertIn(name, f)
+
+
 class TestF11(unittest.TestCase):
     def test_docstring(self):
         head = read("bin", "agent_conf.py").split('"""')[1]

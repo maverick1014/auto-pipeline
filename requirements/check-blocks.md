@@ -720,3 +720,11 @@ and "17 settings" where PRINCIPLES.md counts them.
 - (b) R5 (the housekeep flag) and W8 (the sweep's safe items) say "merged into the working branch or the production branch", not "merged into origin/main"; the code does the same: agent_housekeep.py flags a todo line whose branch is merged into origin/<stored working branch> too (`flag: todo <name>: merged into origin/<working branch> (branch <b>)`, the production form unchanged); agent-cleanup.sh's help text says the same as the sweep (section 37 P7).
 - (c) Old names: the F Map's merge skill line "(the reviewer and the check deputy, then the merge deputy)", no "E2E"; W14's main manager stages "e2e (the review and the checks), merge" (the stage word e2e stays in the code as the name of that stage); W16 as section 37 F3.
 - (d) W6: every agent file is named by its plugin path `agents/<name>.md` (merge deputy and worker said `.claude/agents/`).
+
+## 40. Facts from a slim-pass trial on PRINCIPLES.md (TELL e2fd5575), each checked against the code
+
+- (1) W6 and the F tree name the main manager's and task manager's model by the setting ("Main manager model", "Task manager model"; default opus-5.5:high), not "(Opus 5.5, xhigh)".
+- (2) R8: `agent-nightly.sh --start` runs the full suite in the background; `agent-nightly.sh --release-ok` only checks that a green run covers the commit.
+- (3) `bin/agent-file.sh`, never `./agent-file.sh` (R5, W8).
+- (4) R5's todo field list names guess and level too (agent-file.sh writes them).
+- (5) The F Map's script list names agent-promote, agent-runtime, agent-resources, agent-autoclear, agent-release, agent-statusline, agent-roots.
