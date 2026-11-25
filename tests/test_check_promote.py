@@ -131,5 +131,73 @@ class TestPromote(PromoteCase):
         self.assertEqual(self.git("rev-parse", "origin/prod"), self.tip)
 
 
+class TestDirectToProduction(PromoteCase):
+    """Section 30 (a, c, e): a request that says publish or merge to main: the task branch goes straight into
+    production through a short-lived worktree; the main checkout stays on the working branch; production is
+    merged back into the working branch at once."""
+
+    def task_branch(self, files, name="feat-p"):
+        self.git("switch", "-q", "-c", name, "main")
+        for rel, body in files.items():
+            self.put(rel, body)
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "work on " + name)
+        self.git("push", "-q", "-u", "origin", name)
+        self.git("switch", "-q", self.wb)
+        return name
+
+    def direct(self, branch, *extra):
+        return self.repo.run("agent-promote.sh", "--task", "feat-p", "--branch", branch,
+                             "--owner-quote", "fix the total and publish it", *extra)
+
+    def test_straight_into_production_then_merged_back(self):
+        b = self.task_branch({"src/total.py": "t = 1\n"})
+        before_wt = self.git("worktree", "list")
+        r = self.direct(b)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.git("fetch", "-q", "origin")
+        self.assertIn("Merge feat-p (W8)", self.git("log", "-1", "--format=%s", "origin/main"))
+        self.assertEqual(self.git("rev-parse", "--abbrev-ref", "HEAD"), self.wb, "the checkout never switched")
+        self.assertEqual(self.git("worktree", "list"), before_wt, "the short-lived worktree is gone")
+        self.assertEqual(subprocess.run(["git", "-C", self.repo.dir, "merge-base", "--is-ancestor", "origin/main",
+                                         self.wb]).returncode, 0, "production merged back into the working branch")
+        lines = r.stdout.splitlines()
+        self.assertTrue(any(l.startswith("promote: feat-p -> main (") for l in lines), lines)
+        self.assertIn("merged back: main -> %s" % self.wb, lines)
+
+    def test_the_release_build_runs_after_a_direct_merge(self):
+        log = self.release_stub()
+        self.git("push", "-q", "origin", "%s:main" % self.wb)        # production has the build too
+        b = self.task_branch({"src/total.py": "t = 1\n"})
+        r = self.direct(b)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(log) as fh:
+            self.assertEqual(fh.read().split(), ["--push"])
+
+    def test_not_verified_is_refused_and_nothing_moves(self):
+        self.verified(False)
+        b = self.task_branch({"src/total.py": "t = 1\n"})
+        before = self.git("rev-parse", "origin/main")
+        self.assertEqual(self.direct(b).returncode, 1)
+        self.assertEqual(self.git("rev-parse", "origin/main"), before)
+
+    def test_a_conflict_is_refused_and_cleaned_up(self):
+        self.git("switch", "-q", "-c", "c1", "main")
+        self.put("src/a.py", "conflict one\n")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "c1")
+        self.git("push", "-q", "origin", "c1:main")
+        self.git("switch", "-q", self.wb)
+        b = self.task_branch({"src/a.py": "conflict two\n"}, name="feat-c")
+        b = "feat-c"
+        before = self.git("rev-parse", "origin/main")
+        before_wt = self.git("worktree", "list")
+        r = self.repo.run("agent-promote.sh", "--task", "feat-c", "--branch", b, "--owner-quote", "publish it")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.git("fetch", "-q", "origin")
+        self.assertEqual(self.git("rev-parse", "origin/main"), before)
+        self.assertEqual(self.git("worktree", "list"), before_wt)
+
+
 if __name__ == "__main__":
     unittest.main()

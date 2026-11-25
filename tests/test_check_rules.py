@@ -24,7 +24,7 @@ NAMES = ["DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "
          "CORE REVIEW", "PR REVIEW", "EXAMPLES TEST", "FLOW CHECK", "UI CHECK",
          "REAL DATA COUNT"]
 ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
-           "18D 19C 20A 21D 22C 23B 24D 25C 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B")
+           "18D 19C 20A 21D 22C 23B 24D 25B 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B")
 
 QUIZ_Q6 = """Q6. You are one of four agents. You changed files under api/auth/. Which tests do you run?
   A. The full suite
@@ -50,11 +50,11 @@ QUIZ_Q16 = """Q16. A small logic task (one function, about 30 minutes) needs a n
   C. The main manager itself
   D. Nobody: skip the test, it is small"""
 
-QUIZ_Q25 = """Q25. A big task takes the full flow. The order is:
-  A. Worktree, workers build, failing tests, verify, merge
-  B. Failing tests, worktree, mock, workers build, merge
-  C. Todo line + estimate, mock if UI, worktree + task manager, failing tests, workers build, verify, push, acceptance blocks, merge into the working branch + cleanup, todo done
-  D. Mock, workers build, todo line, acceptance blocks, merge"""
+QUIZ_Q25 = """Q25. The owner writes: "fix the export total and publish it". Two other tasks of a batch run for ap-main. Where does this task merge?
+  A. Into ap-main, and it waits for the batch
+  B. Straight into the production branch once its own checks pass (merged in a short-lived worktree of production), the deploy follows by itself, then production is merged back into ap-main at once
+  C. Into the main checkout after switching it to the production branch
+  D. Nowhere until the nightly run is green"""
 
 QUIZ_Q35 = """Q35. Before a release the full suite runs once on the working branch, and two tests fail. The tasks that caused them are merged and their builders are idle. You:
   A. Send each failure back to the agent that built it
@@ -548,22 +548,36 @@ class TestKeepTheResultLines(unittest.TestCase):
 class TestWorkingBranchRules(unittest.TestCase):
     """Owner 2026-11-25 (sections 28-29): one working-branch model for every repo."""
 
-    def test_r1_merges_into_the_working_branch(self):
-        self.assertIn("Merge into the working branch + cleanup", section(read("PRINCIPLES.md"), "R1. ", "R2. "))
+    def test_r1_target_from_the_request(self):
+        r1 = section(read("PRINCIPLES.md"), "R1. ", "R2. ")
+        for phrase in ("Merge into the target branch + cleanup", "the user's request decides",
+                       "publish or merge to main", "straight into the production branch", "the deploy follows by itself",
+                       "ap-main", "nothing goes to production by itself"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, r1)
 
     def test_r8_the_model(self):
         r8 = section(read("PRINCIPLES.md"), "R8. Check blocks", "## B. Work")
         for phrase in ("Flow: Working branch", "the main checkout is switched to the working branch",
                        "never on the production branch by accident",
-                       "the full suite runs in the background on the working branch after merges",
-                       "a docs-only merge starts none", "only on the owner's approval", "only from a green commit",
+                       "when the last one of the batch is merged, ONE full suite runs on ap-main",
+                       "only on the owner's approval", "only from a green commit",
                        "agent-promote.sh", "merged to production = published", "new fixer agent",
                        "never back to the builder"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r8)
 
-    def test_w8_merges_into_the_working_branch(self):
-        self.assertIn("working branch", section(read("PRINCIPLES.md"), "W8. ", "W9. "))
+    def test_w8_and_w9(self):
+        w8 = section(read("PRINCIPLES.md"), "W8. ", "W9. ")
+        for phrase in ("working branch", "agent-promote.sh --task", "a short-lived worktree of the production branch",
+                       "production is merged back into ap-main at once"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, w8)
+        w9 = section(read("PRINCIPLES.md"), "W9. ", "W10. ")
+        for phrase in ("branches from the production branch", "branches from ap-main", "--batch",
+                       "may also wait until ap-main is tested and published"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, w9)
 
     def test_merge_deputy_merges_into_the_working_branch(self):
         text = read("agents", "merge-deputy.md")
@@ -571,7 +585,8 @@ class TestWorkingBranchRules(unittest.TestCase):
         self.assertIn("<working branch>", given)
         self.assertIn("git push origin <working branch>", text)
         self.assertNotIn("git push origin main", text)
-        self.assertIn("agent-nightly.sh --after-merge", text)
+        self.assertIn("agent-promote.sh --task", text)
+        self.assertNotIn("--after-merge", text)
 
     def test_merge_skill(self):
         text = read("skills", "merge", "SKILL.md")
@@ -581,7 +596,10 @@ class TestWorkingBranchRules(unittest.TestCase):
         self.assertIn("working branch:", section(text, "name: <name>", "todo done arguments:"))
 
     def test_dispatch_and_init_skills(self):
-        self.assertIn("--base-branch <working branch>", read("skills", "dispatch", "SKILL.md"))
+        disp = read("skills", "dispatch", "SKILL.md")
+        for phrase in ("--target production", "--batch", "--base-branch <base branch>", "publish or merge to main"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, disp)
         self.assertIn("working branch", read("skills", "init", "SKILL.md"))
 
 class TestReviewIsTheMainCheck(unittest.TestCase):

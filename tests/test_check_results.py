@@ -110,6 +110,30 @@ class TestTodoAddChecks(Case):
         self.assertIn("level B", self.fields("old"))
 
 
+class TestTargetAndBatch(Case):
+    """Owner 2026-11-25 (section 30): the request decides the target; a batch gets one full run at its end."""
+
+    def test_target_and_batch_fields(self):
+        self.ok("todo", "add", "x1", "big", "x one", "60", "--target", "production", "--batch", "b1")
+        f = self.fields("x1")
+        self.assertIn("target production", f)
+        self.assertIn("batch b1", f)
+        self.ok("todo", "add", "x2", "big", "x two", "60", "--batch", "b1")
+        self.assertFalse([x for x in self.fields("x2") if x.startswith("target ")])
+
+    def test_a_bad_target_is_refused(self):
+        self.refused("todo", "add", "x", "small", "x", "5", "--target", "staging")
+
+    def test_the_last_merge_of_a_batch_says_run_the_full_suite(self):
+        for n in ("x1", "x2"):
+            self.ok("todo", "add", n, "big", "what", "60", "--batch", "b1")
+        r = self.ok("todo", "done", "x1")
+        self.assertNotIn("batch b1", r.stdout)
+        r = self.ok("todo", "done", "x2")
+        self.assertIn("batch b1: all merged: run the full suite on ap-main: agent-nightly.sh --start",
+                      r.stdout.splitlines())
+
+
 class TestTodoChecks(Case):
 
     def setUp(self):
@@ -511,6 +535,14 @@ class TestGate(Case):
         self.repo.set_conf("working_branch", "trunk")             # a setting (owner 2026-11-25, section 28)
         self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         r = self.af("checks", "gate", "t", "--dir", self.repo.dir)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_the_base_follows_a_production_target(self):
+        self.git("push", "-q", "origin", "base:refs/heads/main")
+        self.ok("todo", "add", "p", "small", "publish it", "10", "--target", "production")
+        for b in ("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW"):
+            self.ok("check", "p", b, "pass", "--by", "tm", "--evidence", "ok")
+        r = self.af("checks", "gate", "p", "--dir", self.repo.dir)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_no_todo_line_needs_checks(self):
