@@ -156,6 +156,9 @@ F_PREFIX = re.compile(r"(?<![\w])[rRbBuU]?[fF][rRbBuU]?$")
 TOK = "\x00"
 
 
+CONFIG_EXT = (".yml", ".yaml", ".json", ".toml")
+
+
 def is_import(line):
     return bool(IMPORT_LINE.match(line)) or "require(" in line or "import(" in line
 
@@ -275,14 +278,21 @@ class Checker(object):
                 return True
         return False
 
-    def pair(self, old, new, markup, found):
+    def pair(self, old, new, markup, found, strict=False):
         """Compare one removed/added pair; add reasons to found. False when it is code."""
         a, b = analyse(old, markup), analyse(new, markup)
         if a is None or b is None or a[0] != b[0]:
             return False
         if a[1] != b[1]:
             found.add("colour change")
-        if a[2] != b[2] or a[4] != b[4]:
+        if a[2] != b[2]:
+            found.add("text change")
+        if a[4] != b[4]:
+            # F10: in a code file a changed quoted string is code; text only on a comment line or in a docstring
+            comment = old.lstrip().startswith(("#", "//"))and new.lstrip().startswith(("#", "//"))
+            doc = any(t in l for l in (old, new) for t in ('"""', "\'\'\'"))
+            if strict and not comment and not doc:
+                return False
             found.add("text change")
         for x, y in zip(a[3], b[3]):
             if x != y:
@@ -308,7 +318,7 @@ class Checker(object):
             if not rem or not add or len(rem) != len(add):
                 return "code", "code change"
             for old, new in zip(rem, add):
-                if not self.pair(old, new, markup, found):
+                if not self.pair(old, new, markup, found, not markup and ext not in CONFIG_EXT):
                     return "code", "code change"
         order = ["text change", "colour change", "existing prop value", "new prop value"]
         reasons = [r for r in order if r in found]

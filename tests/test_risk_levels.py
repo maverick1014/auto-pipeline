@@ -290,7 +290,7 @@ class TestTheScript(LevelCase):
         self.put({"b/two.js": 'x("b");\n', "a/one.md": "hello you\n", "c/s.css": "b{}\n"})
         r = self.ok()
         lines = r.stdout.splitlines()
-        self.assertEqual(self.required(r), "A+B")
+        self.assertEqual(self.required(r), "A+B+C")      # section 44 F10: x("a") -> x("b") in a .js file is code
         paths = [FILE_LINE.match(l).group(1) for l in lines[1:] if FILE_LINE.match(l)]
         self.assertEqual(paths, ["a/one.md", "b/two.js", "c/s.css"])
 

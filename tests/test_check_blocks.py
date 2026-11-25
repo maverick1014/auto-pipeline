@@ -405,7 +405,8 @@ class TestTriggers(BlocksCase):
         for files, build in ((({"src/a.js": "x()\n"}, {"src/a.js": "y()\n"}), True),
                              (({"src/a.css": "a{}\n"}, {"src/a.css": "b{}\n"}), True),
                              (({"docs/a.md": "x\n"}, {"docs/a.md": "y\n"}), False),
-                             (({"src/a.js": 'f("Hello")\n'}, {"src/a.js": 'f("Hello you")\n'}), False),
+                             # section 44 F10: a string literal in a code file is code, so it is built
+                             (({"src/a.js": 'f("Hello")\n'}, {"src/a.js": 'f("Hello you")\n'}), True),
                              (({"img/a.png": b"\x89PNG1"}, {"img/a.png": b"\x89PNG2"}), False)):
             with self.subTest(files=files[1]):
                 TestKinds.tearDown_repo(self)
