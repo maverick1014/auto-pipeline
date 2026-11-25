@@ -222,7 +222,14 @@ OPT_CMD="todo done"   # the prefix of a refusal from done_opts; backfill sets it
 roots_read
 ROOT="$PROJECT_ROOT"
 TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agent_ideas.txt"; WT="$ROOT/agent_worktree.txt"
-if [ "${AGENT_TESTING:-}" = 1 ]; then NOW=${AGENT_FAKE_NOW:-$(date '+%Y-%m-%d %H:%M')}; else NOW=$(date '+%Y-%m-%d %H:%M'); fi; WHO=${AGENT_ROLE:-main}
+# the fake clock only with AGENT_TESTING=1 and a repo root under the system temp folder (section 47 G6)
+fake_clock_ok() {
+  [ "${AGENT_TESTING:-}" = 1 ] && [ -n "${AGENT_FAKE_NOW:-}" ] && command -v python3 >/dev/null 2>&1 || return 1
+  python3 -c 'import os, sys, tempfile
+t = os.path.realpath(tempfile.gettempdir()); r = os.path.realpath(sys.argv[1])
+sys.exit(0 if r == t or r.startswith(t.rstrip("/") + "/") else 1)' "$ROOT" 2>/dev/null
+}
+if fake_clock_ok; then NOW=$AGENT_FAKE_NOW; else NOW=$(date '+%Y-%m-%d %H:%M'); fi; WHO=${AGENT_ROLE:-main}
 case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the whole header comment block, whatever its length
@@ -1209,6 +1216,7 @@ case "${1:-}:${2:-}" in
     d_level=$(todo_line_level "$line"); d_level=${d_level:--}
     date="${NOW%% *}"
     drop "$TODO" "$name"; append "$DONE" "$date | $name | $what | $(dblock)"
+    checks_py task-end done "$name" || true     # its removals, stored owner words and planned blocks end (G2, G4)
     echo "todo done: $name"
     released_after "$name"
     batch_done "$line" "$name"
@@ -1265,6 +1273,7 @@ case "${1:-}:${2:-}" in
     [ "$est" = "-" ] && est_disp="-" || est_disp="${est}m"
     date="${NOW%% *}"
     drop "$TODO" "$3"; append "$DONE" "$date | $3 | $what | est $est_disp actual - | dropped: $4"
+    checks_py task-end drop "$3" || true        # its removals and stored owner words end (G2, G4)
     echo "todo dropped: $3";;
   idea:add)
     need 3 "$@"; append "$IDEAS" "$3 | $NOW | by $WHO"

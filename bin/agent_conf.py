@@ -867,6 +867,44 @@ def cli_model(spec):
     return base + suffix
 
 
+# ------------------------------------------------------------------ owner words (check-blocks section 47)
+# Words in the owner's quote: a block is removable only when the words name it and name leaving it out (G1);
+# a production target needs a word of the publish (G4). Matched case-insensitive; an ASCII word must stand
+# alone (so "ui" is not found in "build"); a CJK word is a plain substring.
+
+BLOCK_WORDS = {
+    "PR REVIEW": ["review", "pr review", "diff read", "评审", "审查"],
+    "DIFF SCAN": ["scan", "diff scan", "扫描"],
+    "BUILD": ["build", "compile", "构建", "编译"],
+    "RELATED TESTS": ["related", "test", "tests", "testing", "测试"],
+    "MODULE TESTS": ["module", "test", "tests", "testing", "测试"],
+    "GUARD TESTS": ["guard", "test", "tests", "testing", "测试"],
+    "DB CHECK": ["db", "database", "migration", "数据库", "迁移"],
+    "DATA CHECK": ["data", "数据"],
+    "CORE REVIEW": ["core", "review", "核心"],
+    "EXAMPLES TEST": ["example", "examples", "test", "tests", "示例", "测试"],
+    "FLOW CHECK": ["flow", "click path", "流程"],
+    "UI CHECK": ["ui", "screen", "browser", "visual", "界面"],
+    "REAL DATA COUNT": ["count", "real data", "数据"],
+}
+SKIP_WORDS = ["skip", "without", "no need", "remove", "drop", "leave out", "leave it out", "left out", "not needed",
+              "don't need", "do not need", "omit", "不用", "跳过", "不需要", "不要", "去掉", "省略"]
+PUBLISH_WORDS = ["publish", "production", "merge to main", "merge into main", "release", "deploy", "live",
+                 "go live", "ship", "上线", "发布"]
+
+
+def has_word(text, words):
+    """True when the text holds one of the words (case-insensitive; an ASCII word stands alone)."""
+    low = (text or "").lower().replace("\u2019", "'")
+    for w in words:
+        if re.match(r"^[a-z0-9' ]+$", w):
+            if re.search(r"(?<![a-z0-9])%s(?![a-z0-9])" % re.escape(w), low):
+                return True
+        elif w in low:
+            return True
+    return False
+
+
 # ------------------------------------------------------------------ working branch
 
 

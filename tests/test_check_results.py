@@ -177,15 +177,17 @@ class TestTodoChecks(Case):
         log = os.path.join(self.repo.base, "order.log")
         self.repo.write_bin_script("agent-owner-order.sh",
                                    "#!/usr/bin/env bash\nprintf '%%s\\n' \"$@\" > %s\necho 'verified'\nexit 0\n" % log)
-        self.ok("todo", "checks", "t", "--remove", "PR REVIEW", "--owner-quote", "drop the diff read")
+        # section 47 G1: PR REVIEW is never removed; another block when the words name it and leaving it out
+        self.ok("todo", "checks", "t", "UI CHECK")
+        self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "skip the ui check for this one")
         f = self.fields("t")
-        self.assertFalse(any(x.startswith("checks ") and "PR REVIEW" in x for x in f), f)
-        self.assertTrue(any(re.fullmatch(r"removed PR REVIEW \d{4}-\d{2}-\d{2} \d{2}:\d{2}", x) for x in f), f)
+        self.assertFalse(any(x.startswith("checks ") and "UI CHECK" in x for x in f), f)
+        self.assertTrue(any(re.fullmatch(r"removed UI CHECK \d{4}-\d{2}-\d{2} \d{2}:\d{2}", x) for x in f), f)
         with open(log) as fh:
             args = fh.read().split("\n")
         self.assertEqual(args[0], "verify")
         self.assertIn("--quote", args)
-        self.assertIn("drop the diff read", args)
+        self.assertIn("skip the ui check for this one", args)
         self.assertIn("--repo", args)
         # core review defect 1: agent-owner-order.sh verify wants an absolute folder
         repo_arg = args[args.index("--repo") + 1]

@@ -20,6 +20,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
@@ -231,6 +232,9 @@ def cmd_owner_words(ctx, a):
     task, quote, when = a[0], a[1].strip(), (a[2] if len(a) > 2 else "")
     if "\n" in quote or "\r" in quote:
         raise Refuse("todo add: --owner-quote must not hold a line break")
+    import agent_conf
+    if not agent_conf.has_word(quote, agent_conf.PUBLISH_WORDS):
+        raise Refuse("todo add: the owner's words do not name the publish")
     verify_owner(ctx, quote, when or None, "todo add: owner words not verified, nothing written: ")
     gd = common_dir(ctx["root"])
     if gd:
@@ -238,6 +242,28 @@ def cmd_owner_words(ctx, a):
         data = load_json(path)
         data[task] = {"quote": quote, "time": when or ctx["now"], "verified": True}
         save_json(path, data)
+
+
+def cmd_task_end(ctx, a):
+    """task-end done|drop <task> (G2, G4): the removals and the stored owner words end with the task instance;
+    the brief blocks ever planned end at done only (a drop and a new add keep them, F11)."""
+    kind, task = a[0], a[1]
+    path = block_record(ctx["root"])
+    if path:
+        data = load_json(path)
+        if task in data:
+            if kind == "done":
+                del data[task]
+            elif isinstance(data[task], dict):
+                data[task]["removed"] = []
+            save_json(path, data)
+    gd = common_dir(ctx["root"])
+    if gd:
+        wpath = os.path.join(gd, "agent_owner_words.json")
+        words = load_json(wpath)
+        if task in words:
+            del words[task]
+            save_json(wpath, words)
 
 
 def cmd_plan_add(ctx, a):
@@ -275,6 +301,12 @@ def cmd_todo_checks(ctx, a):
         if not quote.strip():
             raise Refuse("todo checks: --remove needs --owner-quote with the owner's words")
         verify_owner(ctx, quote, opts.get("--time"), "todo checks: owner order not verified, nothing changed: ")
+        if block in (SIGN, "PR REVIEW"):
+            raise Refuse("todo checks: %s is never removed" % block)
+        import agent_conf
+        if not (agent_conf.has_word(quote, agent_conf.BLOCK_WORDS.get(block, []))
+                and agent_conf.has_word(quote, agent_conf.SKIP_WORDS)):
+            raise Refuse("todo checks: the owner's words do not name %s and leaving it out" % block)
         new = [b for b in old if b != block]
         at = field_index(f, "checks")
         removed = "removed %s %s" % (block, ctx["now"])
@@ -371,11 +403,8 @@ def commit_of(folder, given=None):
     out = git_line(folder, "rev-parse", "--verify", "-q", "%s^{commit}" % (given or "HEAD"))
     if not out:
         if given:
-            if not re.match(r"^[0-9a-f]{7,40}$", given):
-                raise Refuse("check: --commit is not a commit: %s" % given)
-            out = given
-        else:
-            return ""
+            raise Refuse("check: %s is not a commit of this repo" % given)
+        return ""
     return out[:12]
 
 
@@ -436,17 +465,17 @@ def cmd_check(ctx, a):
 
 # -- gate
 
-def read_results(paths, task, since=""):
+def read_results(paths, task, since="", until=""):
     """block -> (verdict, who, evidence, at, date): the newest CHECK line of the task wins (the date at the end
     of the line; same minute: a fail wins; then the later file in paths, then the later line). A line dated
     before the day `since` (the todo line's opened date) is ignored."""
     best = {}
     for n, path in enumerate(paths):
-        read_results_file(path, task, best, n, since)
+        read_results_file(path, task, best, n, since, until)
     return dict((b, v[4:]) for b, v in best.items())
 
 
-def read_results_file(path, task, best, n=0, since=""):
+def read_results_file(path, task, best, n=0, since="", until=""):
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
             lines = fh.read().split("\n")
@@ -472,6 +501,8 @@ def read_results_file(path, task, best, n=0, since=""):
             else:
                 ev, date = " | ".join(parts[1:]), ""
             if since and date and date[:10] < since[:10]:
+                continue
+            if until and date > until:      # G6: a line dated in the future is ignored
                 continue
             key = (date, m.group(2) == "fail", n, i)
             old = best.get(m.group(1))
@@ -681,6 +712,19 @@ def launched(launches, kind, date):
     return bool(ats) and bool(date) and date >= max(ats)
 
 
+def clean_merge(d, shas):
+    """G3: a two-parent merge is clean when its tree equals `git merge-tree --write-tree <p1> <p2>`."""
+    if len(shas) != 3:
+        return False
+    try:
+        r = subprocess.run(["git", "-C", d, "merge-tree", "--write-tree", shas[1], shas[2]],
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    lines = r.stdout.decode(errors="replace").split("\n")
+    return r.returncode == 0 and bool(lines[0]) and lines[0].strip() == git_line(d, "rev-parse", shas[0] + "^{tree}")
+
+
 def at_head(d, at, head, base):
     """F3: the commit a pass saw is the head being merged, or every commit after it is a merge whose other
     parents are in the base."""
@@ -702,6 +746,8 @@ def at_head(d, at, head, base):
         shas = row.split()
         if len(shas) < 3:
             return False
+        if not clean_merge(d, shas):
+            return False
         for p in shas[2:]:
             try:
                 if subprocess.run(["git", "-C", d, "merge-base", "--is-ancestor", p, base],
@@ -711,6 +757,16 @@ def at_head(d, at, head, base):
             except (OSError, subprocess.SubprocessError):
                 return False
     return True
+
+
+def soon(now):
+    """The latest line date the gate believes: one minute after now."""
+    try:
+        import calendar
+        t = calendar.timegm(time.strptime(now, "%Y-%m-%d %H:%M")) + 60
+        return time.strftime("%Y-%m-%d %H:%M", time.gmtime(t))
+    except ValueError:
+        return ""
 
 
 def cmd_gate(ctx, a):
@@ -772,9 +828,9 @@ def cmd_gate(ctx, a):
     if opts.get("--results"):
         paths.append(opts["--results"])
     opened = (field_of(f, "opened") or "") if f is not None else ""
-    res = read_results(paths, task, opened)
+    res = read_results(paths, task, opened, soon(ctx["now"]))
     gd = common_dir(d) or common_dir(ctx["root"])
-    launches = read_launches(gd, task)
+    launches = [x for x in read_launches(gd, task) if not opened or x[2] >= opened]
     head = git_line(d, "rev-parse", "HEAD")
     for p in (os.path.join(d, "agent_state.txt"), os.path.join(ctx["root"], "agent_state.txt")):
         builders += launch_builders(p, task)
@@ -982,6 +1038,8 @@ def main(argv):
             cmd_todo_checks(ctx, a)
         elif cmd == "owner-words":
             cmd_owner_words(ctx, a)
+        elif cmd == "task-end":
+            cmd_task_end(ctx, a)
         elif cmd == "plan-add":
             cmd_plan_add(ctx, a)
         elif cmd == "todo-builder":
