@@ -183,6 +183,52 @@ class TestBoardRow(WatchBoardCase):
         self.assertEqual(self.repo.calls(), [])
 
 
+class TestBoardBeat(WatchBoardCase):
+    """report-to-main-pc2: the todo line's "beat <m>m <text>" (todo beat, from the last heartbeat) follows the bar in
+    the Progress cell; a new stage drops it; the same text again writes nothing; a bad text is refused."""
+
+    def stage(self, name, *args):
+        return self.assertOk(self.repo.run("agent-file.sh", "todo", "stage", name, *args))
+
+    def beat(self, *text):
+        return self.repo.run("agent-file.sh", "todo", "beat", "alpha", *text)
+
+    def progress(self):
+        return self.row(self.rows(), task="alpha")["Progress"]
+
+    def test_the_beat_follows_the_bar(self):
+        self.stage("alpha", "verify")
+        before = self.progress()
+        self.assertOk(self.beat("160m full suite running"))
+        self.assertEqual(self.progress(), before + " 160m full suite running")
+
+    def test_a_new_beat_replaces_the_old_in_place(self):
+        self.stage("alpha", "verify")
+        self.assertOk(self.beat("160m a"))
+        self.assertOk(self.beat("175m b"))
+        line = [l for l in self.repo.read("agent_todo.txt").splitlines() if l.startswith("alpha | ")][0]
+        self.assertEqual(line.count(" | beat "), 1, line)
+        self.assertTrue(line.endswith(" | beat 175m b"), line)
+
+    def test_a_new_stage_drops_the_beat(self):
+        self.stage("alpha", "verify")
+        self.assertOk(self.beat("160m full suite running"))
+        self.stage("alpha", "push")
+        self.assertNotIn("beat", self.repo.read("agent_todo.txt"))
+
+    def test_the_same_stage_keeps_the_beat(self):
+        self.stage("alpha", "verify")
+        self.assertOk(self.beat("160m full suite running"))
+        self.stage("alpha", "verify")
+        self.assertIn(" | beat 160m full suite running", self.repo.read("agent_todo.txt"))
+
+    def test_refused(self):
+        self.assertNotEqual(self.repo.run("agent-file.sh", "todo", "beat", "nobody", "5m x").returncode, 0)
+        self.assertNotEqual(self.beat("").returncode, 0)
+        self.assertNotEqual(self.beat("5m a | b").returncode, 0)
+        self.assertNotIn("beat", self.repo.read("agent_todo.txt"))
+
+
 class TestBoardRowEnglish(WatchBoardCase):
     lang = "en"
 

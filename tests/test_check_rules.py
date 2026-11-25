@@ -133,7 +133,8 @@ class TestPrinciplesR8(unittest.TestCase):
                  "DONE PASS", "DONE FAIL", "CLOSE CASE", "NEEDS HUMAN", "MOCK READY", "STALE PLUGIN",
                  "STATE LONG", "OWNER TODO", "QUESTIONS PAGE", "OWNER ORDER", "REPO TASK",   # report words
                  "GATE PASS", "GATE REFUSED", "CHECK PASS", "CHECK FAIL", "MERGE PASS", "MERGE FAIL",
-                 "WATCH SIGNAL", "WATCH STALL", "WATCH LOST", "WATCH SLOT", "AUTO CLEAR"}
+                 "WATCH SIGNAL", "WATCH STALL", "WATCH LOST", "WATCH SLOT", "AUTO CLEAR",
+                 "MODE MISMATCH"}                                               # mode-match, W16
         unknown = sorted(n for n in found if n not in NAMES and n not in extra)
         self.assertEqual(unknown, [], "names in PRINCIPLES.md that are no block: %s" % unknown)
 

@@ -12,12 +12,14 @@ Rows (whole repo): every line of agent_todo.txt; every human-direct line of agen
 the state lines (OWNER TODO, PARKED, WORKER) of the main repo's agent_state.txt and of every agent_worktree.txt
 folder that is on this machine (a folder that is not here: a note line after the table).
 Progress column: the "stage <stage>[ <i>/<m>] since <date>" field of a todo line (--self: else the "STAGE <name>:"
-line of its own agent_state.txt) gives a bar by the fixed stage weights (agent_conf.CONSTANTS). The parse, progress and done-by functions are plain module functions (a status
+line of its own agent_state.txt) gives a bar by the fixed stage weights (agent_conf.CONSTANTS); the "beat <m>m <text>" field (todo beat, written by the watch from a
+heartbeat) follows the bar. The parse, progress and done-by functions are plain module functions (a status
 line can call them). --watch <sec>: redraw every <sec> seconds until Ctrl-C.
     agent_board.py --statusline    (stdin: Claude Code's session JSON) one line per todo task that runs with a stage
                                    (name, bar, stage, done by) or waits on the owner or on others; queue, hold and
                                    not started rows fold into "+N queued/held"; at most 5 lines in all, or nothing;
-                                   always exit 0 (bin/agent-statusline.sh runs it)
+                                   always exit 0 (bin/agent-statusline.sh runs it). Width known (terminal_width): a count
+                                   line, then every open task in up to 3 columns (statusline-wide)
 Rows (--self): the session's own task (its todo line, else its "TODO LINE:" in its own agent_state.txt, else the
 human-direct line of its folder, else one bare row) plus the state lines of its own agent_state.txt only.
 """
@@ -92,10 +94,11 @@ HEAD = {
 STATUS = {
     "zh": {"running": "进行中", "owner": "你的待办", "parked": "搁置的问题", "waiting": "等待", "hold": "暂缓",
            "queue": "排队", "notstarted": "未开始", "after": "在 %s 之后", "waited": "已等 %s", "you": "你",
-           "fold": "+%d 排队/暂缓"},
+           "fold": "+%d 排队/暂缓", "count": "看板 %d 个任务", "count_owner": " · %d 个等你"},
     "en": {"running": "running", "owner": "your to-do", "parked": "parked question", "waiting": "waiting",
            "hold": "hold", "queue": "queue", "notstarted": "not started", "after": "after %s",
-           "waited": "waited %s", "you": "you", "fold": "+%d queued/held"},
+           "waited": "waited %s", "you": "you", "fold": "+%d queued/held", "count": "board %d tasks",
+           "count_one": "board 1 task", "count_owner": " · %d waiting on you"},
 }
 DEFAULT_WHAT = {
     "zh": {"mock": "确认样稿或规则表", "question": "回答问题", "review": "合并前签字"},
@@ -478,6 +481,7 @@ class Board:
         self.hand_workers = {}  # label -> row of a hand WORKER line
         self.unconfirmed = 0    # target rows that got the "not confirmed" warning
         self.warned = {}        # task name -> minutes (None: unknown) of each "not confirmed" row
+        self.unconfirmed_names = []  # and their task names
         self.watch_setup()
 
     # -- the watch (F3-F7): the status file is only read, orca is never called
@@ -534,6 +538,7 @@ class Board:
             return ""
         self.unconfirmed += 1
         self.warned.setdefault(t["name"], n)
+        self.unconfirmed_names.append(t["name"])
         return (WATCH_WARN[self.lang] % n) if n is not None else WATCH_WARN_NO_N[self.lang]
 
     # -- words
@@ -573,7 +578,7 @@ class Board:
         t = {"name": f[0].strip(), "what": f[2] if len(f) > 2 else "", "est": None,
              "opened": None, "wkind": None, "wsince": None, "wnote": "", "waited": 0,
              "machine": None, "path": None, "stage": None, "since": None, "wis": 0, "level": None, "checks": None,
-             "who": None, "after": None, "wrun": None, "started": None, "swaited": 0}
+             "who": None, "after": None, "wrun": None, "started": None, "swaited": 0, "beat": ""}
         for x in f[3:]:
             m = re.match(r"est (\d+)m$", x)
             if m and t["est"] is None:
@@ -619,6 +624,10 @@ class Board:
             m = re.match(r"checks (.+)$", x)
             if m and t["checks"] is None:
                 t["checks"] = ", ".join(c.strip() for c in m.group(1).split(",") if c.strip()) or None
+                continue
+            m = re.match(r"beat (.+)$", x)
+            if m and not t["beat"]:
+                t["beat"] = m.group(1).strip()
                 continue
             m = re.match(r"waited in stage (\d+)m$", x)
             if m:
@@ -712,6 +721,7 @@ class Board:
         else:
             group, when = G_RUNNING, t["opened"]
             status = self.word("running")
+            info = {"type": "plain", "name": t["name"], "text": status}
         if dash or wait is None:
             wait_cell = "-"
             if dash:
@@ -729,6 +739,10 @@ class Board:
             progress = "-" if p is None else bar_text(p)
             if p is not None:
                 info = {"type": "run", "name": t["name"], "stage": t["stage"], "bar": progress, "done": done}
+            if p is not None and t["beat"]:
+                progress += " " + collapse(t["beat"])      # the last heartbeat: "<m>m <what runs now>"
+        if info is not None:
+            info["group"], info["notstarted"] = group, bool(t["since"] is None and started is None and not kind)
         status += self.watch_warn(t, group)
         if t["machine"]:
             where = t["machine"] + (", " + short_path(t["path"], self.home) if t["path"] else "")
@@ -749,7 +763,9 @@ class Board:
             m = re.match(r"since (%s)" % DATE, f[3])
             since = m.group(1) if m else None
         task = "%s Helper" % os.path.basename(self.root)
-        self.add(G_RUNNING, since, task, what, self.word("running"), self.where_path(f[0]))
+        self.add(G_RUNNING, since, task, what, self.word("running"), self.where_path(f[0]),
+                 info={"type": "helper", "name": task, "text": self.word("running") + ("" if what == "-" else " · " + what),
+                       "group": G_RUNNING, "notstarted": False})
 
     # -- the state lines
 
@@ -1061,10 +1077,161 @@ def fit(text, cols):
     return kept + "…" + " " * (cols - 1 - used)
 
 
-def statusline_text(stdin_text):
+MIN_CELL = 44       # display columns of the narrowest cell of the wide status line
+SEP = " │ "
+MAX_NAME = 24
+WARN_NAMES = {"zh": "看板可能不准：未确认 %s", "en": "board may be wrong: not confirmed %s"}
+
+
+def terminal_width(environ=None):
+    """The terminal width in columns, or None when nothing can say. First hit wins: AGENT_STATUSLINE_WIDTH (0 or junk:
+    unknown, no further guess), COLUMNS, the window size of /dev/tty, then of stdin, stdout and stderr. Claude Code's
+    session JSON has no width field and runs the command with its output piped, so /dev/tty is the one that answers."""
+    environ = os.environ if environ is None else environ
+    if "AGENT_STATUSLINE_WIDTH" in environ:
+        raw = environ["AGENT_STATUSLINE_WIDTH"]
+        return int(raw) if raw.strip().isdigit() and int(raw) > 0 else None
+    raw = environ.get("COLUMNS", "")
+    if raw.strip().isdigit() and int(raw) > 0:
+        return int(raw)
+    fds, opened = [], None
+    try:
+        opened = os.open("/dev/tty", os.O_RDONLY | os.O_NOCTTY)
+        fds.append(opened)
+    except OSError:
+        pass
+    fds += [0, 1, 2]
+    try:
+        for fd in fds:
+            try:
+                cols = os.get_terminal_size(fd).columns
+            except (OSError, ValueError):
+                continue
+            if cols > 0:
+                return cols
+    finally:
+        if opened is not None:
+            os.close(opened)
+    return None
+
+
+def status_rank(info):
+    """Order of the wide status line: owner waits, running, waits on others, queued or held, not started."""
+    if info["notstarted"]:
+        return 4
+    return {G_OWNER_WAIT: 0, G_RUNNING: 1, G_OTHER_WAIT: 2}.get(info["group"], 3)
+
+
+def column_plan(width):
+    """(columns, cell width) for a terminal width: 3 when three cells hold, else 2, else 1."""
+    usable = max(width - 2, 1)
+    for n in (3, 2):
+        if usable >= n * MIN_CELL + (n - 1) * len(SEP):
+            return n, (usable - (n - 1) * len(SEP)) // n
+    return 1, usable
+
+
+def pane_keepers(main, top, wt_folders, now):
+    """Task names that have a live pane LAUNCH record (the pane of a human-direct session kept open under that task)."""
+    names = set()
+    for folder in [main, top] + list(wt_folders):
+        if folder and os.path.isdir(folder):
+            for r in launch_records(folder):
+                if r["is_pane"] and pid_alive(r["pid"]):
+                    names.add(r["task"])
+    return names
+
+
+def wide_layout(entries, head, room, width):
+    """The lines of the wide status line. entries: [(name, body)] in order; head: lines before the cells;
+    room: lines left for cells and the fold; width: terminal columns."""
+    cols, cell_w = column_plan(width)
+    n = len(entries)
+    rows = -(-n // cols) if n else 0
+    fold = 0
+    if rows > room:
+        rows = room - 1
+        fold = n - rows * cols
+        entries = entries[:rows * cols]
+        n = len(entries)
+    cols = max(1, -(-n // rows)) if rows else 1
+    cell_w = (max(width - 2, 1) - (cols - 1) * len(SEP)) // cols
+    name_w = max(4, min(MAX_NAME, max([display_width(e[0]) for e in entries] or [0]), cell_w // 2))
+    grid = [entries[c * rows:(c + 1) * rows] for c in range(cols)]
+    out = []
+    for r in range(rows):
+        cells = []
+        for c in range(cols):
+            if r < len(grid[c]):
+                name, body = grid[c][r]
+                text = fit(name, name_w) + "  " + body
+                cells.append(fit(text, cell_w))
+            else:
+                cells.append(" " * cell_w)
+        out.append(SEP.join(cells).rstrip())
+    return out, fold
+
+
+def wide_status(board, args, main, top, own, width):
+    """The wide status line: count line, a warning line, then every open task as a cell in up to 3 columns."""
+    lang, zh = args.lang, args.lang == "zh"
+    infos = [info for _, _, info in sorted(board.rows, key=lambda r: r[0]) if info is not None]
+    infos = [i for _, i in sorted(enumerate(infos), key=lambda x: (status_rank(x[1]), x[0]))]
+    wt = [l.split(" | ") for l in read_lines(os.path.join(main, "agent_worktree.txt")) if l.strip()]
+    if not own and any(i["type"] == "helper" for i in infos):
+        keep = pane_keepers(main, top, [f[0] for f in wt if f and f[0]], board.now)
+        infos = [i for i in infos if not (i["type"] in ("plain", "short") and i["name"] in keep
+                                          and (i["type"] == "plain" or i["notstarted"]))]
+    counts = {}
+    finished = finished_tasks(main)
+    for r in launch_records(top):
+        if not r["is_pane"] and agent_visible(r, board.now) and r["task"] not in finished:
+            counts[r["task"]] = counts.get(r["task"], 0) + 1
+    entries = []
+    for i in infos:
+        if i["type"] == "run":
+            stage, k, m = i["stage"]
+            word = ZH_STAGE[stage] if zh else stage
+            if k is not None:
+                word += " %d/%d" % (k, m)
+            body = i["bar"][:BAR_CELLS] + " " + word + ("" if i["done"] == "-" else " · " + i["done"])
+        else:
+            body = i["text"]
+        n = counts.get(i["name"], 0)
+        if n:
+            body += " · " + ("%d 代理" % n if zh else "%d agent%s" % (n, "" if n == 1 else "s"))
+        entries.append((i["name"], body))
+    words = STATUS[lang]
+    head = []
+    if not own:
+        mine = sum(1 for i in infos if i["group"] == G_OWNER_WAIT)
+        head.append((words["count_one"] if len(infos) == 1 and not zh else words["count"] % len(infos))
+                    + (words["count_owner"] % mine if mine else ""))
+        if board.w_on and board.unconfirmed_names and board.w_live:
+            head.append(fit_cut(WARN_NAMES[lang] % ", ".join(board.unconfirmed_names), width))
+        else:
+            warn = watch_status_line(board)
+            if warn:
+                head.append(warn)
+    if not entries and not own:
+        return ""
+    cells, fold = wide_layout(entries, head, STATUS_LINES - len(head), width)
+    out = head + cells
+    if fold:
+        out.append(words["fold"] % fold)
+    return "\n".join(out)
+
+
+def fit_cut(text, cols):
+    """text cut to at most cols display columns, "…" at the cut."""
+    return text if display_width(text) <= cols else fit(text, cols).rstrip()
+
+
+def statusline_text(stdin_text, width=None):
     """The status line: todo rows only, the board's order: a run with a stage (name, bar, stage, done by), a wait on
     the owner or on others; queue, hold and not started rows fold into "+N queued/held"; at most 5 lines in all;
-    "" for none."""
+    "" for none. width (columns, None or 0 = unknown): the wide layout of statusline-wide, up to 3 columns, every
+    open task, a count line first."""
     folder = None
     try:
         data = json.loads(stdin_text)
@@ -1087,10 +1254,12 @@ def statusline_text(stdin_text):
     args = argparse.Namespace(root=main, state_dir=top, cwd=folder, now=clock_now(), lang=lang, host="-",
                               self_mode=own)
     board = build(args, records=False)
+    if width:
+        return wide_status(board, args, main, top, own, width)
     zh = lang == "zh"
     lines = []
     for _, cells, info in sorted(board.rows, key=lambda r: r[0]):
-        if info is None:
+        if info is None or info["type"] in ("plain", "helper"):
             continue
         if info["type"] in ("wait", "short"):
             lines.append((info["type"], info["name"], info["text"]))
@@ -1142,7 +1311,7 @@ def statusline():
             text = "" if sys.stdin.isatty() else sys.stdin.read()
         except (OSError, ValueError):
             text = ""
-        line = statusline_text(text)
+        line = statusline_text(text, terminal_width())
         if line:
             sys.stdout.write(line + "\n")
     except Exception:

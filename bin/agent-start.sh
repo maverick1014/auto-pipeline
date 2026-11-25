@@ -489,15 +489,16 @@ fi
 . "$PLUGIN_ROOT/bin/agent-resources.sh"
 
 # ---- hook input (Claude Code SessionStart passes JSON on stdin) ----
-SRC=startup; SID=""; CWD=""
+SRC=startup; SID=""; CWD=""; SESSION_MODE=""
 if [ ! -t 0 ]; then
   IN=""; line=""
   while IFS= read -t 1 -r line || [ -n "$line" ]; do IN="$IN$line"; done   # read -t: never block on an open pipe; || keeps a final line with no trailing newline
   [ -n "$IN" ] && eval "$(printf '%s' "$IN" | python3 -c 'import json,sys,shlex
 try:
     d=json.load(sys.stdin)
-    print("SRC=%s; SID=%s; CWD=%s" % (shlex.quote(d.get("source","startup")), shlex.quote(d.get("session_id","")), shlex.quote(d.get("cwd",""))))
-except Exception: print("SRC=startup; SID=; CWD=")' 2>/dev/null)"
+    pm=d.get("permission_mode","")
+    print("SRC=%s; SID=%s; CWD=%s; SESSION_MODE=%s" % (shlex.quote(d.get("source","startup")), shlex.quote(d.get("session_id","")), shlex.quote(d.get("cwd","")), shlex.quote(pm if isinstance(pm,str) else "")))
+except Exception: print("SRC=startup; SID=; CWD=; SESSION_MODE=")' 2>/dev/null)"
 fi
 
 # print_output_section: PRINCIPLES.md from the line "## E. Output" up to, not
@@ -754,6 +755,24 @@ print_compact_lines() {
   return 0
 }
 
+# mode_match_line: ONE line when this session's own mode (hook stdin "permission_mode")
+# differs from the Permission mode setting. Claude Code holds a cross-session message
+# for the human's approval when the modes differ; this tells the human early. Nothing
+# when the modes match, the session's mode is missing, or the setting is unreadable.
+mode_match_line() {
+  local want lang
+  [ -n "${SESSION_MODE:-}" ] || return 0
+  want=$("$PLUGIN_ROOT/bin/agent-settings.sh" get permission_mode 2>/dev/null </dev/null) || return 0
+  want=${want%% (from *}
+  [ -n "$want" ] && [ "$want" != "$SESSION_MODE" ] || return 0
+  lang=$(setting_value language en)
+  case $lang in
+    zh*) echo "MODE MISMATCH: 本会话模式 ${SESSION_MODE}，设置 Permission mode 是 ${want}。不同模式的会话互发消息，要在接收端等人批准。对齐：用 claude --permission-mode ${want} 重启，或在 /plugin -> auto-pipeline -> Configure 改 Permission mode。";;
+    *) echo "MODE MISMATCH: this session runs in $SESSION_MODE, the Permission mode setting is $want. Messages between sessions in different modes wait for the human's approval at the receiver. To match: restart with claude --permission-mode $want, or change Permission mode in /plugin -> auto-pipeline -> Configure.";;
+  esac
+  return 0
+}
+
 # PERMISSION, YOU, SETTINGS warnings, the migrate and sync lines (every role), then
 # (main manager / human-direct only) UPDATE, auto update apply and the statusline
 # refresh. Every call may fail: the start never breaks, never hangs.
@@ -762,6 +781,7 @@ print_mode_lines() {
   m=$("$PLUGIN_ROOT/bin/agent-settings.sh" get permission_mode 2>/dev/null </dev/null) || m=""
   [ -n "$m" ] || m="bypassPermissions (from default)"
   echo "PERMISSION: $m"
+  mode_match_line
   case $role in
     main|takeover) rk=main_manager;;
     spawned) rk=$(printf '%s' "${AGENT_ROLE:-}" | tr - _)
