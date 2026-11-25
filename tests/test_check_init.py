@@ -371,3 +371,55 @@ class TestWorkingBranch(InitCase):
         self.repo.set_conf("working_branch", "trunk")
         r = self.init("--no-measure")
         self.assertIn("checkout: switched to trunk", r.stdout.splitlines())
+
+
+class TestStartMovesNothing(unittest.TestCase):
+    """Section 33 (owner 2026-11-25): a repo that already uses the plugin: the start creates the working
+    branch and never switches the checkout; the line repeats until the main manager has switched."""
+
+    def setUp(self):
+        self.repo = ScriptRepo()
+        self.addCleanup(self.repo.cleanup)
+        subprocess.run(["git", "-C", self.repo.dir, "branch", "-M", "main"], check=True, capture_output=True)
+        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
+        import agent_conf
+        self.wb = agent_conf.WORKING_BRANCH_DEFAULT
+
+    def start(self, **env):
+        e = {"CLAUDE_PID": str(os.getpid())}
+        e.update(env)
+        return self.repo.run("agent-start.sh", stdin='{"cwd": "%s", "source": "startup"}' % self.repo.dir, env=e)
+
+    def head(self):
+        return subprocess.run(["git", "-C", self.repo.dir, "rev-parse", "--abbrev-ref", "HEAD"],
+                              capture_output=True, text=True).stdout.strip()
+
+    def has_branch(self, b):
+        return bool(subprocess.run(["git", "-C", self.repo.dir, "branch", "--list", b],
+                                   capture_output=True, text=True).stdout.strip())
+
+    def line(self, out):
+        return [l for l in out.splitlines() if l.startswith("WORKING BRANCH:")]
+
+    def test_creates_does_not_switch(self):
+        r = self.start()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(self.has_branch(self.wb))
+        self.assertEqual(self.head(), "main", "the start never switches the checkout")
+        self.assertEqual(self.line(r.stdout), [
+            "WORKING BRANCH: created %s from main; switch the main checkout to %s at a quiet point "
+            "(no uncommitted work, no merge running): git switch %s" % (self.wb, self.wb, self.wb)])
+
+    def test_the_line_repeats_until_switched(self):
+        self.start()
+        r = self.start()
+        self.assertEqual(self.line(r.stdout), [
+            "WORKING BRANCH: switch the main checkout to %s at a quiet point (no uncommitted work, no merge "
+            "running): git switch %s" % (self.wb, self.wb)])
+        subprocess.run(["git", "-C", self.repo.dir, "switch", "-q", self.wb], check=True, capture_output=True)
+        self.assertEqual(self.line(self.start().stdout), [])
+
+    def test_a_spawned_agent_creates_nothing(self):
+        r = self.start(AGENT_ROLE="task-manager")
+        self.assertFalse(self.has_branch(self.wb))
+        self.assertEqual(self.line(r.stdout), [])
