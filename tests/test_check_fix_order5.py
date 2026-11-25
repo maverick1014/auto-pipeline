@@ -177,8 +177,13 @@ class TestC17ResumeReserves(tr.TestRoomForPanes):
 @only_own
 class TestC18ConnectedMachineFirst(fo2.Nightly):
     def test_with_a_connected_machine_nothing_runs_locally(self):
+        # section 48 C23: the real answer's shape, and pc1 answers a terminal list
+        import test_check_fix_order7 as fo7
         with open(os.path.join(self.repo.orca_dir, "envs.json"), "w") as fh:
-            json.dump({"environments": [{"name": "pc1"}]}, fh)
+            json.dump(fo7.REAL_SHAPE, fh)
+        os.makedirs(os.path.join(self.repo.orca_dir, "env", "pc1"), exist_ok=True)
+        with open(os.path.join(self.repo.orca_dir, "env", "pc1", "terminals.json"), "w") as fh:
+            json.dump({"id": "req-2", "ok": True, "result": {"terminals": []}, "_meta": {}}, fh)
         e = {"AGENT_FAKE_NOW": "2026-11-25 23:00", "CLAUDE_PID": str(os.getpid()), "AGENT_FAKE_HOST": "pc2"}
         e.update(self.env())
         r = self.repo.run("agent-start.sh", stdin='{"cwd": "%s", "source": "startup"}' % self.repo.dir, env=e)

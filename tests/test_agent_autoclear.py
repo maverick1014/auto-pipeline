@@ -408,7 +408,9 @@ class TestWaiter(ClearCase):
             with open(self.pid_file()) as fh:
                 self.assertEqual(int(fh.read().split()[0]), proc.pid)
         finally:
-            proc.wait(timeout=60)
+            # section 48 C22: a pane whose every turn waits is never typed into; end the waiter instead
+            proc.terminate()
+            proc.wait(timeout=20)
         self.assertFalse(os.path.exists(self.pid_file()))
 
     # ---- reviewer findings (verify, 2026-11-20)
