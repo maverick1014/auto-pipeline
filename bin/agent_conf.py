@@ -60,7 +60,7 @@ SETTINGS = [
        "How many agents may run at once on this machine. Whole number, 1 to 16.", min=1, max=16),
     _s("max_usage_percent", "Load: Max memory %", "number", 80,
        "How much RAM or CPU may be used before agents wait. Whole number, 1 to 100.", min=1, max=100),
-    _s("heavy_test_slots", "Load: Heavy test slot/time", "number", 1,
+    _s("heavy_test_slots", "Load: Heavy test slot/time", "number", 2,
        "How many heavy test runs may run at once. Whole number, 1 to 8.", min=1, max=8),
     _s("permission_mode", "Permissions: Permission mode", "string", "bypassPermissions",
        "How much an agent may do without asking. bypassPermissions asks nothing; auto lets the model judge.",
@@ -93,6 +93,7 @@ CONSTANTS = {
     "compact_clear_at": 2, "compact_clear_check_sec": 30, "cleanup_days": 14,
     "docs_keep": "", "owner_order_hours": 24, "owner_order_min_chars": 20,
     "check_budget_s": 60, "unused_pane_min": 30,
+    "nightly_hour": 22, "light_test_s": 120, "light_test_mb": 1024,
 }
 
 BY_KEY = {s["key"]: s for s in SETTINGS}
@@ -217,6 +218,19 @@ def _validate_globs(value):
         if ".." in item.split("/"):
             return "A glob must not hold a .. part: %s" % item
     return None
+
+
+def _split_globs(value):
+    """(good items, [(bad item, why)]) of a comma-separated glob list: one bad item leaves only itself out."""
+    good, bad = [], []
+    for item in value.split(","):
+        item = item.strip()
+        why = _validate_globs(item) if item else "Empty item."
+        if why:
+            bad.append((item, why))
+        else:
+            good.append(item)
+    return good, bad
 
 
 def _to_number(value):
@@ -416,7 +430,13 @@ def repo_conf(project_root):
     for key in REPO_V1_SINGLE + REPO_KEYS:
         if key not in values:
             continue
-        if key in REPO_V1_GLOBS or key in REPO_KEYS:
+        if key == "core_paths" or key in REPO_KEYS:
+            good, bad = _split_globs(values[key])
+            for item, why in bad:
+                notes.append("SETTINGS: %s item '%s' in %s is not valid (%s), left out"
+                             % (key, item, REPO_FILE, why))
+            values[key] = ",".join(good)
+        elif key in REPO_V1_GLOBS:
             why = _validate_globs(values[key])
             if why:
                 notes.append("SETTINGS: %s=%s in %s is not valid (%s), left out" % (key, values[key], REPO_FILE, why))

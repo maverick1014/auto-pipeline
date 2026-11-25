@@ -5,6 +5,7 @@
 # stdout, in this order: BLOCKS: <triggered tool blocks, table order>[, OWNER SIGN]; one "FILE <path>: <kind>[+<kind>] (<reason>)"
 #   per file (kinds: code style text rule asset deps ci migration schema data-script, +core); one detail line per
 #   block (DIFF SCAN findings indented); notes; NOT TRIGGERED; NET (heavy over the check_budget_s); BRIEF PICKS last.
+#   MODULE TESTS: the groups of the modules that use a changed file; deps, lockfile, CI or test config: every module (owner signs).
 #   --json: one object {blocks, sign, files, findings, related, guard, net}. --declared is accepted and ignored.
 # Exit 0 ok, 2 usage or setup error (one stderr line, nothing on stdout).
 # The table of blocks: bin/agent_blocks.py. Core paths and the commands come from the main repo's agent_repo.conf.

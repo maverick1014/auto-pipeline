@@ -162,6 +162,8 @@ def detect_core(files):
             stem = os.path.splitext(part)[0] if last else part
             if stem.lower() in CORE_NAMES:
                 glob = f if last else "/".join(parts[:i + 1]) + "/"
+                if re.search(r"\s", glob):
+                    break
                 if not any(glob.startswith(g) for g in out if g.endswith("/")):
                     out = [g for g in out if not (g.startswith(glob) and glob.endswith("/"))]
                     if glob not in out:

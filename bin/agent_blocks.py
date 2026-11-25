@@ -25,9 +25,13 @@ BLOCKS = [
     _b("BUILD", "tool", "code changed",
        "lint + type-check or syntax check of the app that was touched"),
     _b("RELATED TESTS", "tool", "code, text or rule files changed",
-       "only the tests that import or name the changed files. API change: also the integration groups "
-       "of every module that imports the changed file. Style-only change of a shared component: the "
-       "component's own tests. Rule text: the tests that name the changed section"),
+       "only the tests that import or name the changed files. Style-only change of a shared component: "
+       "the component's own tests. Rule text: the tests that name the changed section"),
+    _b("MODULE TESTS", "tool",
+       "code used by other modules changed, or dependencies, lockfile, CI or test config changed",
+       "the tests of every module that uses the changed code; a dependency, lockfile, CI or test-config "
+       "change: the tests of every module",
+       "a dependency, lockfile, CI or test-config change"),
     _b("GUARD TESTS", "tool", "code or text changed",
        "the repo's tree-scanning tests (listed in the repo file)"),
     _b("DB CHECK", "tool", "a migration or schema file is in the diff",
@@ -35,8 +39,6 @@ BLOCKS = [
        "only when the migration changes or removes data or columns"),
     _b("DATA CHECK", "tool", "a script that changes live data",
        "preview of the rows (the count must match the expected one), backup", "yes"),
-    _b("FULL SUITE", "tool", "dependencies, lockfile, CI or test config changed",
-       "the full suite, once", "yes"),
     _b("CORE REVIEW", "tool",
        "a core path of the repo is touched (money, permission), or the brief says who can see or do "
        "what changes, or a posting rule changes",
@@ -61,9 +63,10 @@ BLOCKS = [
 ]
 
 NET = [
-    {"name": "NIGHTLY SUITE",
-     "runs": "the full suite runs every night or before a release, in the background on the heavy-test "
-             "machine. Nobody waits for it. Red = the first task next morning"},
+    {"name": "NIGHTLY RUN",
+     "runs": "all tests run once every night in the background on the heavy-test machine. It gates "
+             "nothing. A failure the causing task's own RELATED or MODULE run did not find is recorded "
+             "as a selection miss"},
     {"name": "RELEASE SMOKE",
      "runs": "after every release a fresh session uses the released version for real: start, one "
              "subagent launch and finish, the user-facing flows that changed"},

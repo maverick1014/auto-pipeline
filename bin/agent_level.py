@@ -43,7 +43,9 @@ def text_of(raw):
 LOCK_NAMES = ("package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "bun.lockb", "go.sum")
 PUBSPEC_NAMES = ("pubspec.yaml", "pubspec.yml")
 DEP_NAMES = ("go.mod", "Gemfile", "Podfile", "Pipfile", "Cargo.toml", "pyproject.toml",
-             "build.gradle", "build.gradle.kts", "pom.xml")
+             "build.gradle", "build.gradle.kts", "pom.xml", "composer.json", "setup.py", "setup.cfg",
+             "mix.exs", "build.sbt", "packages.config", "Directory.Packages.props")
+DEP_GLOBS = ("*.gemspec", "*.csproj")
 MIGRATION_DIRS = ("migrations", "migration", "migrate", "alembic")
 DEP_KEYS = ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies",
             "bundleDependencies", "bundledDependencies", "overrides", "resolutions")
@@ -67,9 +69,13 @@ def builtin_kind(path):
         return "deps", "lockfile"
     if name in PUBSPEC_NAMES:
         return "deps", "pubspec"
-    if (name.startswith("requirements") and name.endswith(".txt")) or name in DEP_NAMES:
+    dirs = path.split("/")[:-1]
+    if ((name.startswith("requirements") and name.endswith(".txt")) or name in DEP_NAMES
+            or any(fnmatch.fnmatchcase(name, g) for g in DEP_GLOBS)
+            or (name.endswith(".txt") and any(d.lower() == "requirements" for d in dirs))
+            or path == "gradle/libs.versions.toml" or path.endswith("/gradle/libs.versions.toml")):
         return "deps", "dependency list"
-    if any(part in MIGRATION_DIRS for part in path.split("/")[:-1]):
+    if any(part.lower() in MIGRATION_DIRS for part in dirs):
         return "migration", "migration"
     if is_schema_name(name):
         return "schema", "schema"
@@ -1123,8 +1129,18 @@ CI_NAMES = (".gitlab-ci.yml", ".travis.yml", "Jenkinsfile", "azure-pipelines.yml
             "pytest.ini", "tox.ini", "conftest.py", "dart_test.yaml")
 CI_GLOBS = ("jest.config.*", "vitest.config.*", "karma.conf.*", "playwright.config.*", "cypress.config.*",
             ".mocharc*", "phpunit.xml*")
-SCRIPT_DIRS = ("scripts", "script", "oneoff", "datafix", "data-fix", "backfill")
-DATA_WRITE = re.compile(r"\bUPDATE\b.*\bSET\b|\bDELETE\s+FROM\b|\bINSERT\s+INTO\b|\bTRUNCATE\b", re.I)
+SCRIPT_DIRS = ("scripts", "script", "oneoff", "datafix", "data-fix", "backfill", "tools")
+SCRIPT_PATHS = ("management/commands/", "lib/tasks/", "db/scripts/")
+DATA_WRITE = re.compile(r"\bUPDATE\b[^;]{0,200}?\bSET\b|\bDELETE\s+FROM\b|\bINSERT\s+INTO\b|\bTRUNCATE\b", re.I)
+ORM_WRITE = re.compile(r"\b(?:update_all|delete_all|destroy_all|bulk_update|bulk_delete|deleteMany|updateMany"
+                       r"|insertMany)\b|\.objects\b[\s\S]{0,300}?\)\s*\.(?:delete|update)\(")
+
+
+def in_task_folder(path):
+    if any(part in SCRIPT_DIRS for part in path.split("/")[:-1]):
+        return True
+    padded = "/" + path
+    return any(("/" + frag) in padded for frag in SCRIPT_PATHS)
 RULE_NAMES = ("PRINCIPLES.md", "CLAUDE.md", "AGENTS.md")
 HEADING = re.compile(r"^([A-Z]\d+)\. ")
 
@@ -1250,8 +1266,9 @@ class Repo(object):
         if glob is not None:
             return "data-script", "data_scripts %s" % glob
         if (ext not in TEXT_EXT and ext not in ASSET_EXT and status != "D"
-                and any(part in SCRIPT_DIRS for part in path.split("/")[:-1])):
-            if any(DATA_WRITE.search(t) for _, t in self.changes(path, status)[1]):
+                and in_task_folder(path)):
+            added_text = "\n".join(t for _, t in self.changes(path, status)[1])
+            if DATA_WRITE.search(added_text) or ORM_WRITE.search(added_text):
                 return "data-script", "built-in: data-script"
         if is_rule(path):
             return "rule", "rule file"
@@ -1534,21 +1551,48 @@ def groups_for(repo, changed, kinds):
 
 # ------------------------------------------------------------------ DB CHECK sign
 
-SIGN_WORDS = re.compile(
-    r"\b(?:UPDATE|DELETE|DROP|TRUNCATE|RENAME)\b|\bALTER\s+COLUMN\b|remove_column|drop_table|rename_column"
-    r"|change_column|RemoveField|DeleteModel|AlterField|RenameField|RunSQL|RunPython|op\.drop_|op\.alter_column"
-    r"|dropColumn|dropTable|renameColumn", re.I)
+DB_DANGER = re.compile(
+    r"\b(?:UPDATE|DELETE|DROP|TRUNCATE|RENAME|MODIFY)\b|\bALTER\s+COLUMN\b|\b(?:remove|drop|rename|delete)_\w+"
+    r"|(?-i:\b(?:remove|drop|rename|delete|bulk|change|alter|update)[A-Z]\w*|\b(?:Remove|Drop|Rename|Delete|Alter)[A-Z]\w*)"
+    r"|\bchange_column|\bRunSQL|\bRunPython|\bop\.(?:drop|alter)_|\bupdate_all|\bremove\b", re.I)
+DB_ADD = re.compile(
+    r"\bCREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)\b|\bADD\s+COLUMN\b|\b(?:add_column|add_index|create_table|"
+    r"op\.add_column|op\.create_table|addColumn|createTable|AddField|CreateModel|AddIndex|AddColumn|CreateTable)\b")
+DB_CREATE = re.compile(r"\bCREATE\s+TABLE\b|\b(?:create_table|createTable|CreateTable|CreateModel)\b", re.I)
+DB_BOILER = re.compile(
+    r"^(?:--.*|#.*|//.*|/\*.*|\*.*|\*/|<\?php|['\"]use strict['\"];?|[\]\[(){},;]+|\}\)?;?|end|"
+    r"(?:abstract\s+|public\s+|partial\s+)*class\b.*|(?:public\s+|protected\s+|override\s+)*"
+    r"(?:async\s+)?(?:def|function|void)\s+\w*\(?.*|(?:import|from|require|use|using|package|namespace)\b.*|"
+    r"(?:const\s+|let\s+|var\s+)?\w*(?:dependencies|operations|initial)\s*=\s*[\[(]?.*|"
+    r"(?:module\.)?exports\.\w+\s*=.*|module\.exports\s*=.*|(?:async\s+)?(?:up|down)\s*\(.*|"
+    r"(?:public\s+)?(?:override\s+)?void\s+Up\(.*|"
+    r"migrationBuilder\.\w*(?:Create|Add)\w*\(.*|\(?['\"][\w.-]+['\"],?\s*['\"]?[\w.-]*['\"]?\)?,?)$", re.I)
 
 
 def db_sign(repo, path, status):
-    """Why this migration or schema file needs the owner's sign, or None (adds only)."""
+    """Why this migration or schema file needs the owner's sign, or None (adds only). Unsure = sign."""
     removed, added = repo.changes(path, status)
     if any(t.strip() for _, t in removed):
         return "removed line in %s" % path
+    in_create = False
     for _, text in added:
-        m = SIGN_WORDS.search(text)
+        line = text.strip()
+        if not line:
+            continue
+        m = DB_DANGER.search(line)
         if m:
             return "%s in %s" % (m.group(0).upper() if m.group(0).isalpha() else m.group(0), path)
+        if in_create:
+            if re.match(r"^(?:\)|end\b|\}|\]).*", line) and not line.startswith("),"):
+                in_create = False
+            continue
+        if DB_ADD.search(line):
+            if DB_CREATE.search(line) and not re.search(r"\)\s*;?\s*$", line) or re.search(r"\bdo\s*\|\w+\|\s*$", line):
+                in_create = True
+            continue
+        if DB_BOILER.match(line):
+            continue
+        return "unrecognised line in %s (not an add: the owner decides)" % path
     return None
 
 
@@ -1680,7 +1724,6 @@ def run(argv):
         else:
             triggered["RELATED TESTS"] = "none found | run: -"
         groups = groups_for(repo, changed, kinds)
-        extra["RELATED TESTS"] = ["group %s: %s" % g for g in groups]
 
     guard = []
     if of("code", "style", "text", "rule"):
@@ -1710,8 +1753,12 @@ def run(argv):
         signs.append(("DATA CHECK", of("data-script")))
     if of("deps", "ci"):
         files = of("deps", "ci")
-        triggered["FULL SUITE"] = "%s | run: %s" % (", ".join(files), conf.get("full_cmd") or "-")
-        signs.append(("FULL SUITE", files))
+        every = [cmd for _, cmd in conf.get("groups", [])] or [conf.get("full_cmd") or "-"]
+        triggered["MODULE TESTS"] = "every module (%s) | run: %s" % (", ".join(files), " ; ".join(every))
+        signs.append(("MODULE TESTS", files))
+    elif groups:
+        triggered["MODULE TESTS"] = "%s | run: %s" % (", ".join(m for m, _ in groups),
+                                                     " ; ".join(c for _, c in groups))
     if of("core"):
         triggered["CORE REVIEW"] = ", ".join(of("core"))
     if signs:
