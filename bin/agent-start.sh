@@ -275,10 +275,10 @@ Q8. RAM is at 85%. You need to start a sub-agent.
   C. Wait until RAM drops below 80%
   D. Ask the human
 
-Q9. Another agent is running a heavy test suite. You want to run yours.
-  A. Queue and wait
-  B. Run in parallel
-  C. Run with fewer workers
+Q9. Your test run is heavy by its measured weight, and both heavy-test slots are taken. You:
+  A. Wait: agent-test-run.sh starts it when a slot is free and RAM is more than 50% free
+  B. Run it in parallel anyway
+  C. Call it light and run it now
   D. Skip your tests
 
 Q10. Correct report shape:
