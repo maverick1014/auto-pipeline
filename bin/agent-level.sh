@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# agent-level.sh — the risk type (A-D) of each file and task part of a diff (R8). No agent, no tokens.
-#   ./agent-level.sh check --base <ref> [--declared <A|B|C|D>]   (old 0-4 still read: 0=A 1=B 2,3=C 4=D)
+# agent-level.sh — the check blocks a diff triggers (R8, requirements/check-blocks.md). No agent, no tokens.
+#   ./agent-level.sh check --base <ref> [--scope "<glob>,<glob>"] [--json] [--declared <x>]
 # Diff = working tree of this git repo vs `git merge-base <ref> HEAD` (tracked + untracked, not ignored).
-# stdout: REQUIRED TYPE <types joined by +>, one "<path>: <type> <reason>" per file, one "PART <type>: <paths>" per type,
-#   notes, a RAISE line when a C or D file is above the declared type. A and B files never raise.
-# Exit 0 ok, 1 RAISE, 2 usage or setup error (one stderr line).
-# Core paths (hints only) come from level3_paths and level4_paths in the main repo's agent_repo.conf; C comes from the logic check only.
+# stdout, in this order: BLOCKS: <triggered tool blocks, table order>[, OWNER SIGN]; one "FILE <path>: <kind>[+<kind>] (<reason>)"
+#   per file (kinds: code style text rule asset deps ci migration schema data-script, +core); one detail line per
+#   block (DIFF SCAN findings indented); notes; NOT TRIGGERED; NET (heavy over the check_budget_s); BRIEF PICKS last.
+#   --json: one object {blocks, sign, files, findings, related, guard, net}. --declared is accepted and ignored.
+# Exit 0 ok, 2 usage or setup error (one stderr line, nothing on stdout).
+# The table of blocks: bin/agent_blocks.py. Core paths and the commands come from the main repo's agent_repo.conf.
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
 roots_read

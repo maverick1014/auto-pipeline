@@ -92,6 +92,7 @@ CONSTANTS = {
     "state_warn_lines": 300, "state_header_lines": 40, "state_trim_auto": "on",
     "compact_clear_at": 2, "compact_clear_check_sec": 30, "cleanup_days": 14,
     "docs_keep": "", "owner_order_hours": 24, "owner_order_min_chars": 20,
+    "check_budget_s": 60,
 }
 
 BY_KEY = {s["key"]: s for s in SETTINGS}
@@ -381,6 +382,53 @@ def repo_paths(project_root):
             notes.append("SETTINGS: %s=%s in %s is not valid (%s), left out" % (key, values[key], REPO_FILE, why))
         else:
             found[key] = values[key]
+    return found, notes
+
+
+REPO_V1_SINGLE = ("version", "core_paths", "guard_tests", "build_cmd", "related_cmd", "full_cmd",
+                  "test_config", "data_scripts", "real_data", "build_seconds", "guard_seconds", "build_mb")
+REPO_V1_GLOBS = ("core_paths", "test_config", "data_scripts")
+
+
+def repo_conf(project_root):
+    """(dict, warnings) from <project root>/agent_repo.conf v1. Single keys: core_paths, guard_tests,
+    build_cmd, related_cmd, full_cmd, test_config, data_scripts, real_data, build_seconds, guard_seconds
+    (the last value of a repeated key wins). "groups": [(module, command)] from group.<module>=, in file
+    order. Old level3_paths and level4_paths are read as core paths (joined into core_paths). A bad glob
+    list is left out with one warning. Never raises."""
+    found, notes, groups, old = {}, [], [], []
+    try:
+        with open(os.path.join(project_root, REPO_FILE), "r", encoding="utf-8") as fh:
+            body = fh.read()
+    except Exception:
+        return {"groups": groups}, notes
+    values = {}
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key, value = key.strip(), value.strip()
+        if key.startswith("group.") and len(key) > 6:
+            groups.append((key[6:], value))
+        else:
+            values[key] = value
+    for key in REPO_V1_SINGLE + REPO_KEYS:
+        if key not in values:
+            continue
+        if key in REPO_V1_GLOBS or key in REPO_KEYS:
+            why = _validate_globs(values[key])
+            if why:
+                notes.append("SETTINGS: %s=%s in %s is not valid (%s), left out" % (key, values[key], REPO_FILE, why))
+                continue
+        if key in REPO_KEYS:
+            old.append(values[key])
+        else:
+            found[key] = values[key]
+    core = [i.strip() for v in ([found.get("core_paths", "")] + old) for i in v.split(",") if i.strip()]
+    if core:
+        found["core_paths"] = ",".join(core)
+    found["groups"] = groups
     return found, notes
 
 

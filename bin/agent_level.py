@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""agent_level.py - the risk type of each file and task part of a diff (R8). Python 3.9, stdlib only.
+"""agent_level.py - the check blocks a diff triggers (R8, requirements/check-blocks.md C2). Python 3.9, stdlib only.
 
-Started by agent-level.sh:  agent_level.py <cwd> check --base <ref> [--declared <A-D>]
+Started by agent-level.sh:  agent_level.py <cwd> check --base <ref> [--scope "<globs>"] [--json] [--declared <x>]
+The names and the order of the blocks come from agent_blocks.py (the one table).
 """
 
 import fnmatch
@@ -14,6 +15,7 @@ import sys
 import tokenize
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import agent_blocks  # noqa: E402
 import agent_conf  # noqa: E402
 
 
@@ -58,21 +60,25 @@ def ext_of(path):
     return os.path.splitext(path)[1].lower()
 
 
-def builtin_l4(path):
-    """The kind of the built-in D path, or None (package.json is judged apart)."""
+def builtin_kind(path):
+    """(kind, label) of a built-in path, or None (package.json is judged apart)."""
     name = os.path.basename(path)
     if name in LOCK_NAMES or name.endswith(".lock"):
-        return "lockfile"
+        return "deps", "lockfile"
     if name in PUBSPEC_NAMES:
-        return "pubspec"
+        return "deps", "pubspec"
     if (name.startswith("requirements") and name.endswith(".txt")) or name in DEP_NAMES:
-        return "dependency list"
+        return "deps", "dependency list"
     if any(part in MIGRATION_DIRS for part in path.split("/")[:-1]):
-        return "migration"
-    if (fnmatch.fnmatchcase(name, "schema.*") or fnmatch.fnmatchcase(name, "*.schema.*")
-            or name.endswith(".prisma") or name.endswith(".sql")):
-        return "schema"
+        return "migration", "migration"
+    if is_schema_name(name):
+        return "schema", "schema"
     return None
+
+
+def is_schema_name(name):
+    return (fnmatch.fnmatchcase(name, "schema.*") or fnmatch.fnmatchcase(name, "*.schema.*")
+            or name.endswith(".prisma") or name.endswith(".sql"))
 
 
 def glob_match(glob, path):
@@ -280,29 +286,34 @@ class Checker(object):
         return True
 
     def code(self, path, hunks):
-        """(level, reason) of a modified code file from its -U0 hunks."""
+        """(kinds, reason) of a modified code file from its -U0 hunks."""
         ext = ext_of(path)
         markup = ext in MARKUP_EXT
         if not hunks:
-            return 2, "code change"
+            return "code", "code change"
         if os.path.basename(path) == "package.json":
-            return 2, "code change"
+            return "code", "code change"
         removed = [r for h in hunks for r in h[0]]
         added = [a for h in hunks for a in h[1]]
         if (ext in MOVE_EXT and removed and sorted(removed) == sorted(added) and any(h[0] != h[1] for h in hunks)):
-            return 0, "line move (manager: check responsive)"
+            return "style", "line move (manager: check responsive)"
         found = set()
         for rem, add in hunks:
             if not rem or not add or len(rem) != len(add):
-                return 2, "code change"
+                return "code", "code change"
             for old, new in zip(rem, add):
                 if not self.pair(old, new, markup, found):
-                    return 2, "code change"
+                    return "code", "code change"
         order = ["text change", "colour change", "existing prop value", "new prop value"]
         reasons = [r for r in order if r in found]
         if not reasons:
-            return 0, "whitespace only"
-        return (1 if "new prop value" in found else 0), ", ".join(reasons)
+            return "text", "whitespace only"
+        kinds = []
+        if "text change" in found:
+            kinds.append("text")
+        if found - {"text change"}:
+            kinds.append("style")
+        return "+".join(kinds), ", ".join(reasons)
 
     def comment_shape(self, path):
         """"comment only", "whitespace only" or None: do old and new differ in comments or blanks only?"""
@@ -1102,74 +1113,439 @@ def code_view(segments, own, keep_blank=False, edge=None):
     return lines, [(before[min(ln, len(before) - 1)], t) for ln, t in plain]
 
 
-def component_level(path, status, chk):
-    if status == "A":
-        return 1, "new component file"
-    if status == "D":
-        return 1, "deleted component file"
-    hunks, binary = chk.hunks(path)
-    if not binary:
-        shape = chk.comment_shape(path)
-        if shape:
-            return 0, shape
-        lvl, why = chk.code(path, hunks)
-        if lvl < 2:
-            return lvl, why
-    return 1, "component file"
 
 
-TYPES = "ABCCD"   # old level 0 1 2 3 4 -> type; level 3 is no longer made by a path (C comes from the logic check only)
+# ------------------------------------------------------------------ the kind of a file
+
+CODE_EXT = SLASH_EXT + (".py", ".rb", ".php", ".sh", ".bash", ".zsh", ".cs", ".rs", ".scala", ".ex", ".exs",
+                        ".lua", ".pl", ".vue", ".svelte", ".m", ".mm")
+CI_NAMES = (".gitlab-ci.yml", ".travis.yml", "Jenkinsfile", "azure-pipelines.yml", "bitbucket-pipelines.yml",
+            "pytest.ini", "tox.ini", "conftest.py", "dart_test.yaml")
+CI_GLOBS = ("jest.config.*", "vitest.config.*", "karma.conf.*", "playwright.config.*", "cypress.config.*",
+            ".mocharc*", "phpunit.xml*")
+SCRIPT_DIRS = ("scripts", "script", "oneoff", "datafix", "data-fix", "backfill")
+DATA_WRITE = re.compile(r"\bUPDATE\b.*\bSET\b|\bDELETE\s+FROM\b|\bINSERT\s+INTO\b|\bTRUNCATE\b", re.I)
+RULE_NAMES = ("PRINCIPLES.md", "CLAUDE.md", "AGENTS.md")
+HEADING = re.compile(r"^([A-Z]\d+)\. ")
 
 
-def type_of(level):
-    return TYPES[level]
-
-
-def level_of(path, status, chk):
+def is_ci(path):
     name = os.path.basename(path)
-    if name == "package.json":
-        if package_deps_changed(chk.top, chk.mb, path, status):
-            return 4, "built-in D: package.json deps"
-    else:
-        kind = builtin_l4(path)
-        if kind:
-            return 4, "built-in D: %s" % kind
-    ext = ext_of(path)
-    if ext in STYLE_EXT:
-        return 1, "style file"
-    if ext in ASSET_EXT:
-        return 1, "asset file"
-    if ext in TEXT_EXT:
-        return 0, "text file"
-    if ext in MARKUP_EXT:
-        # a UI component file never raises by itself: B at most (R8); only a path rule above makes it C or D
-        return component_level(path, status, chk)
-    if status == "A":
-        return 2, "new file"
-    if status == "D":
-        return 2, "deleted file"
-    hunks, binary = chk.hunks(path)
-    if binary:
-        return 2, "binary file"
-    shape = chk.comment_shape(path)
-    if shape:
-        return 0, shape
-    return chk.code(path, hunks)
+    if name in CI_NAMES or any(fnmatch.fnmatchcase(name, g) for g in CI_GLOBS):
+        return True
+    parts = path.split("/")
+    return (parts[0] == ".github" and len(parts) > 2 and parts[1] == "workflows") or \
+        (parts[0] == ".circleci" and len(parts) > 1)
+
+
+def is_rule(path):
+    if os.path.basename(path) in RULE_NAMES:
+        return True
+    parts = path.split("/")
+    if parts[0] == "skills" and len(parts) > 1:
+        return True
+    if parts[0] == "agents" and len(parts) == 2 and parts[1].endswith(".md"):
+        return True
+    return parts[0] == ".claude" and len(parts) > 2 and parts[1] in ("skills", "agents")
+
+
+class Repo(object):
+    """Facts of one run: the repo file, the working-tree files, the changed lines of each file."""
+
+    def __init__(self, top, mb, conf):
+        self.top, self.mb, self.conf = top, mb, conf
+        self.chk = Checker(top, mb)
+        self._changes, self._content, self._files = {}, {}, None
+
+    def globs(self, key):
+        return split_globs(self.conf.get(key, ""))
+
+    def content(self, path):
+        if path not in self._content:
+            try:
+                with open(os.path.join(self.top, path), "rb") as fh:
+                    raw = fh.read()
+                self._content[path] = None if b"\0" in raw[:4096] else text_of(raw)
+            except OSError:
+                self._content[path] = None
+        return self._content[path]
+
+    def old_content(self, path):
+        proc = git(self.top, "show", "%s:%s" % (self.mb, path), check=False)
+        return text_of(proc.stdout) if proc.returncode == 0 and b"\0" not in proc.stdout[:4096] else None
+
+    def files(self):
+        """Every file of the working tree (tracked and untracked, not ignored) that still exists."""
+        if self._files is None:
+            names = set()
+            for args in (("ls-files", "-z"), ("ls-files", "--others", "--exclude-standard", "-z")):
+                for item in git(self.top, *args).stdout.split(b"\0"):
+                    item = text_of(item)
+                    if item and os.path.isfile(os.path.join(self.top, item)):
+                        names.add(item)
+            self._files = sorted(names)
+        return self._files
+
+    def changes(self, path, status):
+        """([(old line no, text)], [(new line no, text)]) of the file against the merge base."""
+        key = (path, status)
+        if key in self._changes:
+            return self._changes[key]
+        removed, added = [], []
+        if status == "A":
+            body = self.content(path)
+            added = [(n + 1, t) for n, t in enumerate((body or "").split("\n")[:-1] if body and body.endswith("\n")
+                                                      else (body or "").split("\n"))] if body else []
+        else:
+            proc = git(self.top, "diff", "--no-renames", "--no-color", "--no-ext-diff", "-U0", self.mb, "--", path)
+            old_no = new_no = 0
+            for line in text_of(proc.stdout).split("\n"):
+                m = re.match(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", line)
+                if m:
+                    old_no, new_no = int(m.group(1)), int(m.group(3))
+                    continue
+                if old_no == 0 and new_no == 0:
+                    continue
+                if line.startswith("-"):
+                    removed.append((old_no, line[1:]))
+                    old_no += 1
+                elif line.startswith("+"):
+                    added.append((new_no, line[1:]))
+                    new_no += 1
+        self._changes[key] = (removed, added)
+        return removed, added
+
+    def kinds(self, path, status):
+        """(kinds joined by +, reason) of one changed file."""
+        kinds, why = self._kinds(path, status)
+        if first_glob(self.globs("core_paths"), path) is not None:
+            kinds += "+core"
+        return kinds, why
+
+    def _kinds(self, path, status):
+        name, ext = os.path.basename(path), ext_of(path)
+        if name == "package.json":
+            if package_deps_changed(self.top, self.mb, path, status):
+                return "deps", "built-in: package.json deps"
+        else:
+            built = builtin_kind(path)
+            if built and built[0] == "deps":
+                return "deps", "built-in: %s" % built[1]
+        glob = first_glob(self.globs("test_config"), path)
+        if glob is not None:
+            return "ci", "test_config %s" % glob
+        if is_ci(path):
+            return "ci", "built-in: ci"
+        built = builtin_kind(path)
+        if built and built[0] == "migration":
+            kinds = ["migration"]
+            if is_schema_name(name):
+                kinds.append("schema")
+            if ext in CODE_EXT:
+                kinds.append("code")
+            return "+".join(kinds), "built-in: migration"
+        if built:
+            return built[0], "built-in: %s" % built[1]
+        glob = first_glob(self.globs("data_scripts"), path)
+        if glob is not None:
+            return "data-script", "data_scripts %s" % glob
+        if (ext not in TEXT_EXT and ext not in ASSET_EXT and status != "D"
+                and any(part in SCRIPT_DIRS for part in path.split("/")[:-1])):
+            if any(DATA_WRITE.search(t) for _, t in self.changes(path, status)[1]):
+                return "data-script", "built-in: data-script"
+        if is_rule(path):
+            return "rule", "rule file"
+        if ext in TEXT_EXT:
+            return "text", "text file"
+        if ext in STYLE_EXT:
+            return "style", "style file"
+        if ext in ASSET_EXT:
+            return "asset", "asset file"
+        if ext in MARKUP_EXT:
+            return self.component(path, status)
+        if status == "A":
+            return "code", "new file"
+        if status == "D":
+            return "code", "deleted file"
+        hunks, binary = self.chk.hunks(path)
+        if binary:
+            return "code", "binary file"
+        shape = self.chk.comment_shape(path)
+        if shape:
+            return "text", shape
+        return self.chk.code(path, hunks)
+
+    def component(self, path, status):
+        if status == "A":
+            return "code", "new component file"
+        if status == "D":
+            return "code", "deleted component file"
+        hunks, binary = self.chk.hunks(path)
+        if not binary:
+            shape = self.chk.comment_shape(path)
+            if shape:
+                return "text", shape
+            kinds, why = self.chk.code(path, hunks)
+            if kinds != "code":
+                return kinds, why
+        return "code", "component file"
+
+
+# ------------------------------------------------------------------ DIFF SCAN
+
+TEST_DIRS = ("tests", "test", "__tests__", "spec", "e2e")
+TEST_NAME = re.compile(r"^(test_.*|.*_test\..*|.*\.test\..*|.*\.spec\..*|.*Tests?\.[A-Za-z]+|.*_spec\..*)$")
+SKIP_MARKS = ("unittest.skip", "skipTest(", "pytest.mark.skip", "xit(", "it.skip(", "describe.skip(",
+              "test.skip(", "xdescribe(", "@Disabled")
+SKIP_TRUE = re.compile(r"\bskip:\s*true\b")
+DEBUG_MARKS = (("console.log(", re.compile(r"console\.log\(")), ("debugger", re.compile(r"\bdebugger\b")),
+               ("breakpoint()", re.compile(r"\bbreakpoint\(\)")), ("pdb.set_trace", re.compile(r"pdb\.set_trace")),
+               ("binding.pry", re.compile(r"binding\.pry")), ("var_dump(", re.compile(r"\bvar_dump\(")))
+SECRETS = (("aws access key", re.compile(r"\bA(?:KIA|SIA)[0-9A-Z]{16}\b")),
+           ("private key", re.compile(r"-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----")),
+           ("github token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b")),
+           ("slack token", re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}")),
+           ("google api key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b")),
+           ("api key", re.compile(r"\bsk-[A-Za-z0-9_\-]{20,}")),
+           ("hardcoded credential", re.compile(
+               r"""(?i)\b(?:password|passwd|secret|token|api[_-]?key|private[_-]?key)\w*["']?\s*[:=]\s*["'][^"'\s]{8,}["']""")))
+TEST_DEF = (re.compile(r"^\s*(?:async\s+)?def\s+(test\w*)\s*\("),
+            re.compile(r"""\b(?:it|test|describe)(?:\.\w+)?\s*\(\s*(['"`])(.+?)\1"""))
+
+
+def is_test_file(path):
+    return bool(TEST_NAME.match(os.path.basename(path))) and ext_of(path) in CODE_EXT
+
+
+def in_test_place(path):
+    return is_test_file(path) or any(part in TEST_DIRS for part in path.split("/")[:-1])
+
+
+def secret_file(path):
+    name = os.path.basename(path)
+    return (name.startswith(".env") or path.startswith(".secrets/") or "/.secrets/" in path
+            or name.endswith(".pem") or name.startswith("id_rsa"))
+
+
+def test_names(lines):
+    names = set()
+    for _, text in lines:
+        m = TEST_DEF[0].match(text)
+        if m:
+            names.add(m.group(1))
+            continue
+        m = TEST_DEF[1].search(text)
+        if m:
+            names.add(m.group(2))
+    return names
+
+
+def diff_scan(repo, changed, kinds, scope):
+    out = []
+    for path in sorted(changed):
+        status = changed[path]
+        if scope and first_glob(scope, path) is None:
+            out.append("outside scope: %s" % path)
+        removed, added = repo.changes(path, status)
+        if is_test_file(path):
+            if status == "D":
+                out.append("deleted test: %s" % path)
+            else:
+                gone = test_names(removed) - test_names(added)
+                for name in sorted(gone):
+                    out.append("removed test: %s: %s" % (path, name))
+            for no, text in added:
+                if any(m in text for m in SKIP_MARKS) or SKIP_TRUE.search(text):
+                    out.append("skipped test: %s:%d" % (path, no))
+        if status != "D" and secret_file(path):
+            out.append("secret file: %s" % path)
+        if status != "D":
+            for no, text in added:
+                for kind, rx in SECRETS:
+                    if rx.search(text):
+                        out.append("secret: %s:%d %s" % (path, no, kind))
+                        break
+        if status != "D" and not in_test_place(path) and "code" in kinds[path][0].split("+"):
+            for no, text in added:
+                for mark, rx in DEBUG_MARKS:
+                    if rx.search(text):
+                        out.append("debug leftover: %s:%d %s" % (path, no, mark))
+    return out
+
+
+# ------------------------------------------------------------------ RELATED TESTS and groups
+
+def needle(text):
+    return re.compile(r"(?<![A-Za-z0-9_])" + re.escape(text) + r"(?![A-Za-z0-9_])")
+
+
+def name_needles(path):
+    name = os.path.basename(path)
+    stem = os.path.splitext(name)[0]
+    out = [needle(path), needle(name)]
+    if len(stem) >= 4:
+        out.append(needle(stem))
+    return out
+
+
+def section_codes(repo, path, status):
+    """The section codes (R8, W4 ...) of the headings above each changed line of a rule file."""
+    codes = set()
+
+    def nearest(lines, no):
+        for i in range(min(no, len(lines)) - 1, -1, -1):
+            m = HEADING.match(lines[i])
+            if m:
+                return m.group(1)
+        return None
+
+    new = repo.content(path) if status != "D" else None
+    old = repo.old_content(path) if status != "A" else None
+    if status in ("A", "D"):
+        for body in (new, old):
+            for line in (body or "").split("\n"):
+                m = HEADING.match(line)
+                if m:
+                    codes.add(m.group(1))
+        return codes
+    removed, added = repo.changes(path, status)
+    for lines, items, body in ((new, added, new), (old, removed, old)):
+        if body is None:
+            continue
+        rows = body.split("\n")
+        for no, _ in items:
+            code = nearest(rows, no)
+            if code:
+                codes.add(code)
+    return codes
+
+
+def changed_strings(repo, path, status):
+    """Quoted or markup texts of 4 chars or more that differ between old and new lines of a file."""
+    removed, added = repo.changes(path, status)
+
+    def strings(items):
+        got = set()
+        for _, text in items:
+            for m in re.finditer(r"\"((?:[^\"\\]|\\.)*)\"|'((?:[^'\\]|\\.)*)'|`([^`]*)`", text):
+                got.add(m.group(1) or m.group(2) or m.group(3) or "")
+            for m in MARKUP_TEXT.finditer(text):
+                got.add(m.group(1).strip())
+        return set(s for s in got if len(s) >= 4)
+    a, b = strings(removed), strings(added)
+    return sorted(a ^ b)
+
+
+def fill(cmd, tests):
+    """The related_cmd with {tests} and {modules} filled; the paths are added when it has no slot."""
+    paths = " ".join(tests)
+    modules = " ".join(os.path.splitext(t)[0].replace("/", ".") for t in tests)
+    if "{tests}" not in cmd and "{modules}" not in cmd:
+        return (cmd + " " + paths).strip()
+    return cmd.replace("{tests}", paths).replace("{modules}", modules)
+
+
+def related_tests(repo, changed, kinds):
+    tests = [p for p in repo.files() if is_test_file(p)]
+    found = set()
+    for path in changed:
+        ks = set(kinds[path][0].split("+"))
+        if changed[path] != "D" and is_test_file(path) and ks & {"code", "style", "text"}:
+            found.add(path)
+    for path in sorted(changed):
+        status = changed[path]
+        ks = set(kinds[path][0].split("+")) - {"core"}
+        if not ks & {"code", "style", "text", "rule"} or is_test_file(path):
+            continue
+        if "rule" in ks:
+            codes = sorted(section_codes(repo, path, status))
+            needles = [needle(path)] + [needle(c) for c in codes]
+            for t in tests:
+                body = repo.content(t) or ""
+                if any(n.search(body) for n in needles):
+                    found.add(t)
+            continue
+        if ks == {"style"}:
+            stem = os.path.splitext(os.path.basename(path))[0]
+            for t in tests:
+                if stem and stem in os.path.basename(t):
+                    found.add(t)
+            continue
+        needles = name_needles(path)
+        strings = []
+        if "text" in ks and ext_of(path) not in TEXT_EXT:
+            strings = changed_strings(repo, path, status)
+        for t in tests:
+            body = repo.content(t) or ""
+            if any(n.search(body) for n in needles) or any(s in body for s in strings):
+                found.add(t)
+    return sorted(found)
+
+
+def groups_for(repo, changed, kinds):
+    """[(module, cmd)] of the group.<module> keys whose folder holds a file that names a changed code file."""
+    out = []
+    code_files = [p for p in sorted(changed) if "code" in kinds[p][0].split("+")]
+    if not code_files:
+        return out
+    for module, cmd in repo.conf.get("groups", []):
+        prefix = module.rstrip("/") + "/"
+        members = [p for p in repo.files() if p.startswith(prefix) and ext_of(p) in CODE_EXT + MARKUP_EXT]
+        hit = False
+        for path in code_files:
+            needles = name_needles(path)
+            for m in members:
+                if m == path:
+                    continue
+                body = repo.content(m) or ""
+                if any(n.search(body) for n in needles):
+                    hit = True
+                    break
+            if hit:
+                break
+        if hit:
+            out.append((module, cmd))
+    return out
+
+
+# ------------------------------------------------------------------ DB CHECK sign
+
+SIGN_WORDS = re.compile(
+    r"\b(?:UPDATE|DELETE|DROP|TRUNCATE|RENAME)\b|\bALTER\s+COLUMN\b|remove_column|drop_table|rename_column"
+    r"|change_column|RemoveField|DeleteModel|AlterField|RenameField|RunSQL|RunPython|op\.drop_|op\.alter_column"
+    r"|dropColumn|dropTable|renameColumn", re.I)
+
+
+def db_sign(repo, path, status):
+    """Why this migration or schema file needs the owner's sign, or None (adds only)."""
+    removed, added = repo.changes(path, status)
+    if any(t.strip() for _, t in removed):
+        return "removed line in %s" % path
+    for _, text in added:
+        m = SIGN_WORDS.search(text)
+        if m:
+            return "%s in %s" % (m.group(0).upper() if m.group(0).isalpha() else m.group(0), path)
+    return None
 
 
 # ------------------------------------------------------------------ main
 
-DECLARED = {"A": 0, "B": 1, "C": 2, "D": 4, "0": 0, "1": 1, "2": 2, "3": 2, "4": 4}   # old 0-4 read as types
-RANK = {"A": 0, "B": 1, "C": 2, "D": 3}
+USAGE = 'usage: agent-level.sh check --base <ref> [--scope "<globs>"] [--json] [--declared <x>]'
+BRIEF_LINE = "BRIEF PICKS: %s (dispatch picks them from the brief)" % ", ".join(agent_blocks.BRIEF_NAMES)
+NO_BUILD = "syntax or type check of the touched app (no build_cmd in agent_repo.conf)"
 
 
 def parse(argv):
     if not argv or argv[0] != "check":
-        raise Stop("usage: agent-level.sh check --base <ref> [--declared <A-D>]")
-    base, declared, i = None, None, 1
+        raise Stop(USAGE)
+    base, scope, as_json, declared, i = None, [], False, False, 1
     while i < len(argv):
         opt = argv[i]
-        if opt not in ("--base", "--declared"):
+        if opt == "--json":
+            as_json = True
+            i += 1
+            continue
+        if opt not in ("--base", "--declared", "--scope"):
             raise Stop("unknown argument: %s" % opt)
         if i + 1 >= len(argv):
             raise Stop("%s needs a value" % opt)
@@ -1178,14 +1554,16 @@ def parse(argv):
             if not value:
                 raise Stop("--base needs a ref")
             base = value
+        elif opt == "--scope":
+            scope = split_globs(value)
+            if any(not g for g in scope):
+                raise Stop("--scope: empty item in the globs")
         else:
-            if value not in DECLARED:
-                raise Stop("--declared must be one of A B C D (old 0-4 still read), got: %s" % value)
-            declared = type_of(DECLARED[value])
+            declared = True
         i += 2
     if base is None:
         raise Stop("--base <ref> is required")
-    return base, declared
+    return base, scope, as_json, declared
 
 
 def main_root(top):
@@ -1197,31 +1575,27 @@ def main_root(top):
     return top
 
 
-def core_globs(top):
-    """The core-path hint globs: level3_paths + level4_paths of the main repo's agent_repo.conf."""
-    values, warns = agent_conf.repo_paths(main_root(top))
-    for line in warns:
-        sys.stderr.write(line + "\n")
-    out = []
-    for key in agent_conf.REPO_KEYS:
-        out += split_globs(values.get(key, ""))
-    return out
+def seconds(conf, key):
+    try:
+        return int(conf.get(key, "").strip())
+    except ValueError:
+        return None
 
 
 def run(argv):
     if len(argv) < 1:
-        raise Stop("usage: agent_level.py <cwd> check --base <ref> [--declared <A-D>]")
+        raise Stop("usage: agent_level.py <cwd> check --base <ref> [--scope \"<globs>\"] [--json] [--declared <x>]")
     cwd = argv[0]
-    base, declared = parse(argv[1:])
-
-    notes = []
+    base, scope, as_json, declared = parse(argv[1:])
 
     proc = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"],
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if proc.returncode != 0:
         raise Stop("not in a git repo: %s" % cwd)
     top = text_of(proc.stdout).strip()
-    danger = core_globs(top)
+    conf, warns = agent_conf.repo_conf(main_root(top))
+    for line in warns:
+        sys.stderr.write(line + "\n")
     ok = git(top, "rev-parse", "--verify", "--quiet", base + "^{commit}", check=False)
     if ok.returncode != 0:
         raise Stop("git does not know the ref: %s" % base)
@@ -1239,33 +1613,118 @@ def run(argv):
         if path and not path.endswith("/") and path not in changed:
             changed[path] = "A"
 
-    chk = Checker(top, mb)
-    lines, parts, hints = [], {}, []
+    repo = Repo(top, mb, conf)
+    kinds = {}
     for path in sorted(changed):
-        lvl, why = level_of(path, changed[path], chk)
-        if first_glob(danger, path) is not None:
-            # a hint only (owner 2A): the type stays what the content gives; the manager judges from the brief
-            hints.append("touches core path %s: judge from the brief whether it is D" % path)
-        typ = type_of(lvl)
-        parts.setdefault(typ, []).append(path)
-        lines.append("%s: %s %s" % (path, typ, why))
-    if not changed:
-        notes.insert(0, "no changes")
+        kinds[path] = repo.kinds(path, changed[path])
+    has = {}
+    for path, (ks, _) in kinds.items():
+        for k in ks.split("+"):
+            has.setdefault(k, []).append(path)
 
-    out = ["REQUIRED TYPE %s" % "+".join(sorted(parts) or ["A"])] + lines
-    for typ in sorted(parts):
-        out.append("PART %s: %s" % (typ, ", ".join(parts[typ])))
-    out += hints + notes
-    code = 0
-    if declared is not None:
-        # RAISE only for a C or D file above the declared type; A and B files never raise (R8)
-        high = [t for t in ("C", "D") if RANK[t] > RANK[declared] and t in parts]
-        if high:
-            files = [p for t in high for p in parts[t]]
-            out.append("RAISE: declared %s, needs %s (%s)" % (declared, high[-1], ", ".join(files)))
-            code = 1
+    def of(*names):
+        return sorted(set(p for n in names for p in has.get(n, [])))
+
+    budget = agent_conf.CONSTANTS["check_budget_s"]
+    guard_listed = [g.strip() for g in conf.get("guard_tests", "").split(",") if g.strip()]
+    related_cmd = conf.get("related_cmd", "")
+    triggered = {}      # block -> detail text (after "<BLOCK>: ")
+    extra = {}          # block -> lines after its detail
+    notes, heavy = [], []
+    if declared:
+        notes.append("note: --declared is ignored: levels are gone, blocks only")
+    if not changed:
+        notes.append("no changes")
+
+    findings = diff_scan(repo, changed, kinds, scope)
+    triggered["DIFF SCAN"] = "%d findings" % len(findings)
+
+    built = of("code", "style")
+    if built:
+        n = seconds(conf, "build_seconds")
+        if n is not None and n > budget:
+            heavy.append(("BUILD", n, "nightly or pre-release, queued like a heavy test"))
+        else:
+            triggered["BUILD"] = "%s | run: %s" % (", ".join(built), conf.get("build_cmd") or NO_BUILD)
+
+    related, groups = [], []
+    if of("code", "style", "text", "rule"):
+        related = related_tests(repo, changed, kinds)
+        if related:
+            run_cmd = fill(related_cmd, related) if related_cmd else "-"
+            triggered["RELATED TESTS"] = "%s | run: %s" % (", ".join(related), run_cmd)
+        else:
+            triggered["RELATED TESTS"] = "none found | run: -"
+        groups = groups_for(repo, changed, kinds)
+        extra["RELATED TESTS"] = ["group %s: %s" % g for g in groups]
+
+    guard = []
+    if of("code", "style", "text", "rule"):
+        if not guard_listed:
+            notes.append("GUARD TESTS: none listed in agent_repo.conf (init writes them)")
+        else:
+            n = seconds(conf, "guard_seconds")
+            if n is not None and n > budget:
+                heavy.append(("GUARD TESTS", n, "nightly or pre-release"))
+            else:
+                guard = guard_listed
+                run_cmd = fill(related_cmd, guard) if related_cmd else "-"
+                triggered["GUARD TESTS"] = "%s | run: %s" % (", ".join(guard), run_cmd)
+
+    signs = []
+    db = of("migration", "schema")
+    if db:
+        whys = [(p, db_sign(repo, p, changed[p])) for p in db]
+        yes = [(p, w) for p, w in whys if w]
+        if yes:
+            triggered["DB CHECK"] = "%s | owner signs: yes (%s)" % (", ".join(db), "; ".join(w for _, w in yes))
+            signs.append(("DB CHECK", [p for p, _ in yes]))
+        else:
+            triggered["DB CHECK"] = "%s | owner signs: no (adds only)" % ", ".join(db)
+    if of("data-script"):
+        triggered["DATA CHECK"] = ", ".join(of("data-script"))
+        signs.append(("DATA CHECK", of("data-script")))
+    if of("deps", "ci"):
+        files = of("deps", "ci")
+        triggered["FULL SUITE"] = "%s | run: %s" % (", ".join(files), conf.get("full_cmd") or "-")
+        signs.append(("FULL SUITE", files))
+    if of("core"):
+        triggered["CORE REVIEW"] = ", ".join(of("core"))
+    if signs:
+        order = agent_blocks.NAMES
+        signs.sort(key=lambda s: order.index(s[0]))
+        triggered["OWNER SIGN"] = "; ".join("%s (%s)" % (b, ", ".join(f)) for b, f in signs)
+
+    blocks = [n for n in agent_blocks.TOOL_NAMES if n in triggered]
+    heavy_names = [h[0] for h in heavy]
+    rest = [n for n in agent_blocks.TOOL_NAMES if n not in triggered and n not in heavy_names]
+
+    if as_json:
+        data = {"blocks": blocks, "sign": ["%s (%s)" % (b, ", ".join(f)) for b, f in signs],
+                "files": dict((p, {"kinds": kinds[p][0].split("+"), "reason": kinds[p][1]}) for p in sorted(kinds)),
+                "findings": findings, "related": related, "guard": guard, "net": heavy_names}
+        sys.stdout.write(json.dumps(data, indent=2) + "\n")
+        return 0
+
+    out = ["BLOCKS: %s" % ", ".join(blocks + (["OWNER SIGN"] if signs else []))]
+    for path in sorted(kinds):
+        out.append("FILE %s: %s (%s)" % (path, kinds[path][0], kinds[path][1]))
+    for name in agent_blocks.TOOL_NAMES:
+        if name in triggered:
+            out.append("%s: %s" % (name, triggered[name]))
+            if name == "DIFF SCAN":
+                out += ["  " + f for f in findings]
+            out += extra.get(name, [])
+    if "OWNER SIGN" in triggered:
+        out.append("OWNER SIGN: %s" % triggered["OWNER SIGN"])
+    out += notes
+    if rest:
+        out.append("NOT TRIGGERED: %s" % ", ".join(rest))
+    for name, n, how in heavy:
+        out.append("NET: %s (heavy, %d s over the %d s budget): %s" % (name, n, budget, how))
+    out.append(BRIEF_LINE)
     sys.stdout.write("\n".join(out) + "\n")
-    return code
+    return 0
 
 
 def main():
