@@ -288,10 +288,11 @@ __out = { seats: Object.fromEntries(citizens.map(c => [c.id, loc(c)])), desks: d
           meet: MEET.map(m => [m.x, m.z]), pantry: PANTRY.map(m => [m.x, m.z]) };
 """, {"view": VIEW, "agents": agents, "t2": T2})
         s = out["seats"]
-        self.assertEqual([s["s:h%d" % i] for i in range(3)], [[2.9, -1.6], [4.4, -1.6], [5.9, -1.6]])
-        self.assertEqual(s["s:t0"], [-5.7, -1.3])
-        self.assertEqual(s["s:t4"], [-3.2, 1.6])
-        self.assertEqual(s["s:t8"], [-0.7, 4.5])
+        # city-office-2: seatOf is the chair, in front of the desk (helper desk z + 0.74, manager desk z + 0.78)
+        self.assertEqual([s["s:h%d" % i] for i in range(3)], [[2.9, -0.86], [4.4, -0.86], [5.9, -0.86]])
+        self.assertEqual(s["s:t0"], [-5.7, -0.52])
+        self.assertEqual(s["s:t4"], [-3.2, 2.38])
+        self.assertEqual(s["s:t8"], [-0.7, 5.28])
         meet = [list(m) for m in out["meet"]]
         self.assertGreaterEqual(len(meet), 4)
         for k in ("s:h3", "s:t9", "s:d"):
