@@ -116,7 +116,7 @@ class TestReport(TimeCase):
         out = os.path.join(self.base, "times.tsv")
         r = self.run_tool("--cmd", self.cmd(), "--out", out, "--top", "2", *names)
         lines = r.stdout.splitlines()
-        shown = [n for n in names if any(l.endswith(n) for l in lines)]
+        shown = [n for l in lines for n in names if l.endswith(n)]   # in printed order
         self.assertEqual(shown, [names[4], names[3]])
         summary = [l for l in lines if l.startswith("files ")]
         self.assertEqual(len(summary), 1, r.stdout)
