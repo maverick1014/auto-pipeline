@@ -71,6 +71,8 @@ import time
 import unittest
 
 from tests.scripthelp import ROOT, ScriptCase
+import importlib.util
+from tests.scripthelp import BIN, ROOT
 
 NOW = "2026-10-05 16:00"
 TODAY = NOW.split()[0]
@@ -228,24 +230,6 @@ class EstimateCase(ScriptCase):
 
 
 # ---------------------------------------------------------------- data --what
-
-class TestDataWhat(EstimateCase):
-
-    def setUp(self):
-        super().setUp()
-        self.completed([line("2026-10-01", "t1", "agent-city: one rail | two panels",
-                             type="page", lane="full", mock="yes", est=90, work=80)])
-
-    def test_the_table_gets_a_last_column_what(self):
-        rows = self.lines(self.assertOk(self.af("data", "--what")))
-        self.assertTrue(rows[0].split()[-1] == "what", rows[0])
-        self.assertTrue(rows[1].endswith("agent-city: one rail | two panels"), rows[1])
-
-    def test_without_the_option_the_table_stays_as_it_was(self):
-        rows = self.lines(self.assertOk(self.af("data")))
-        self.assertEqual(rows[0].split()[-1], "guess")   # estimate-blend: guess after adds
-        self.assertNotIn("agent-city", rows[1])
-
 
 # ---------------------------------------------------------------- estimate: inputs
 
@@ -461,27 +445,12 @@ class TestBacktest(EstimateCase):
         out = self.assertOk(self.af("backtest"))
         self.assertEqual(self.lines(out), ["backtest: 10 tasks, needs at least 11"])
 
-    def test_one_row_per_tested_task_in_finish_order(self):
-        self.completed(steady(14))
-        rows = self.task_rows(self.assertOk(self.af("backtest", "--tasks")))
-        self.assertEqual([TASK_ROW.match(r).group(1) for r in rows],
-                         ["script-10", "other-11", "fast-12", "mock-13"])
-
     def test_finish_order_is_the_date_not_the_file_order(self):
         rows = steady(14)
         self.completed([rows[-1]] + rows[:-1])
         out = self.assertOk(self.af("backtest", "--tasks"))
         self.assertEqual([TASK_ROW.match(r).group(1) for r in self.task_rows(out)],
                          ["script-10", "other-11", "fast-12", "mock-13"])
-
-    def test_a_row_never_changes_when_later_tasks_come(self):
-        data = varied(40)
-        self.completed(data[:30])
-        first = self.task_rows(self.assertOk(self.af("backtest", "--tasks")))
-        self.completed(data)
-        later = self.task_rows(self.assertOk(self.af("backtest", "--tasks")))
-        self.assertEqual(len(first), 20)
-        self.assertEqual(later[:20], first)
 
     def test_the_work_of_the_last_task_changes_only_its_own_row(self):
         data = varied(30)
@@ -827,6 +796,580 @@ class TestWiredIn(unittest.TestCase):
                      "agent-file.sh retrain", "data [--what]"):
             with self.subTest(word=word):
                 self.assertTrue(word in head, "the usage block does not name: " + word)
+
+
+KEYS3 = KEYS + ["guess"]
+
+
+BLEND_LINE = re.compile(
+    r"^estimate: (\d+)m work, range (\d+)-(\d+)m \(blend v(\d+), (\d+) past tasks\)$")
+
+
+BLEND_WHY = re.compile(
+    r"^blend: estimator (\d+)m, guess (\d+)m, weight ([0-9.]+), repo (\S+) x(\d+\.\d\d)$")
+
+
+TASK_ROW3 = re.compile(
+    r"^task (\S+) work (\d+) guess (\d+|-) estimator (\d+) \((\d+)-(\d+)\) "
+    r"blend (\d+) \((\d+)-(\d+)\) blend\+repo (\d+) \((\d+)-(\d+)\) rubric (\d+)$")
+
+
+TARGET = re.compile(r"^target within 30% (\d+)%: (?:(\d+)%, gap (\d+) points|met \((\d+)%\))$")
+
+
+WARN_TAIL = " given (the estimator learns less from this line)"
+
+
+METHODS = ("estimator", "blend", "blend+repo", "rubric", "todo est")
+
+
+def mrow(label, has_range=True):
+    rng = r"(\d+)%" if has_range else r"-"
+    return re.compile(r"^%s\s+(\d+)\s+(\d+\.\d)m\s+(\d+)%%\s+%s\s*$" % (re.escape(label), rng))
+
+
+def gblock(**known):
+    return "data " + " ".join("%s=%s" % (k, known.get(k, "-")) for k in KEYS3)
+
+
+def gline(date, name, what, **known):
+    """A finished line of the new shape: the data block ends with guess=."""
+    known.setdefault("repo", "project")
+    return "%s | %s | %s | %s" % (date, name, what, gblock(**known))
+
+
+def alt(n, a, b, mode="guess", start=0):
+    """n tasks that look the same (same facts, same text, names with no word),
+    work a, b, a, b ... The estimator cannot tell them apart; the guess can.
+    mode guess: guess = work, no est. est: an old line, est = work. none: no guess, no est."""
+    rows = []
+    for i in range(start, start + n):
+        w = a if i % 2 == 0 else b
+        if mode == "guess":
+            rows.append(gline(day(i), "t-%02d" % i, "plain work", type="server", lane="full",
+                              mock="no", work=w, wait=0, clock=w, guess=w))
+        elif mode == "est":
+            rows.append(line(day(i), "t-%02d" % i, "plain work", type="server", lane="full",
+                             mock="no", est=w, work=w, wait=0, clock=w))
+        else:
+            rows.append(line(day(i), "t-%02d" % i, "plain work", type="server", lane="full",
+                             mock="no", work=w, wait=0, clock=w))
+    return rows
+
+
+def two_repos(n):
+    """Even: repo project, work 50, guess 50. Odd: repo shop, work 100, guess 50.
+    Same facts and text, so only a per-repo bias can fix the shop tasks."""
+    rows = []
+    for i in range(n):
+        repo, w = ("project", 50) if i % 2 == 0 else ("shop", 100)
+        rows.append(gline(day(i), "r-%02d" % i, "plain work", repo=repo, type="server",
+                          lane="full", mock="no", work=w, wait=0, clock=w, guess=50))
+    return rows
+
+
+def blend_version(**over):
+    v = version(method="blend", k=3, text=0, type=0.5, weight=0.5, repo_bias=False,
+                bias={}, span=[0.8, 1.5])
+    v.update(over)
+    return v
+
+
+class BlendCase(EstimateCase):
+
+    def est(self, *args):
+        """estimate, raw lines."""
+        return self.lines(self.assertOk(self.af("estimate", *args)))
+
+    def rows3(self, out):
+        rows = [r for r in self.lines(out) if r.startswith("task ")]
+        got = [TASK_ROW3.match(r) for r in rows]
+        for r, m in zip(rows, got):
+            self.assertIsNotNone(m, "task row: %r" % r)
+        return got
+
+    def table3(self, out, prefix=""):
+        rows = self.lines(out)
+        found = {}
+        for label in METHODS:
+            want = mrow(prefix + label, label != "todo est")
+            zero = re.compile(r"^%s\s+(0)\s+(-)\s+(-)\s+(-)\s*$" % re.escape(prefix + label))
+            hits = [m for m in (want.match(r) or zero.match(r) for r in rows) if m]
+            self.assertEqual(len(hits), 1, "one %r row in:\n%s" % (prefix + label, out))
+            found[label] = hits[0]
+        return found
+
+    def zero_rows(self, out):
+        return [r for r in self.lines(out) if re.match(r"^big .+\s0\s+-\s+-\s+-\s*$", r)]
+
+    def winner(self, out):
+        w = [r for r in self.lines(out) if r.startswith("winner: ")]
+        self.assertEqual(len(w), 1, out)
+        return w[0][len("winner: "):]
+
+
+def load_conf_module():
+    spec = importlib.util.spec_from_file_location("agent_conf_blend", os.path.join(BIN, "agent_conf.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class TestTodoGuess(BlendCase):
+
+    def todo_text(self):
+        return self.repo.read("agent_todo.txt")
+
+    def test_todo_add_keeps_the_guess_after_est(self):
+        self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70", "--guess", "35"))
+        self.assertEqual(self.todo_text(),
+                         "t1 | big | build it | est 70m | guess 35m | opened %s | by main\n" % NOW)
+
+    def test_the_guess_may_stand_anywhere(self):
+        for args in (("--guess", "35", "t1", "big", "build it", "70"),
+                     ("t1", "--guess", "35", "big", "build it", "70"),
+                     ("t1", "big", "build it", "70", "--guess", "35")):
+            with self.subTest(args=args):
+                self.write("agent_todo.txt", "")
+                self.assertOk(self.af("todo", "add", *args))
+                self.assertEqual(self.todo_text(),
+                                 "t1 | big | build it | est 70m | guess 35m | opened %s | by main\n" % NOW)
+
+    def test_by_still_works(self):
+        self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70", "laptop", "--guess", "35"))
+        self.assertEqual(self.todo_text(),
+                         "t1 | big | build it | est 70m | guess 35m | opened %s | by laptop\n" % NOW)
+
+    def test_a_guess_with_no_est(self):
+        self.assertOk(self.af("todo", "add", "t1", "big", "build it", "--guess", "35"))
+        self.assertEqual(self.todo_text(),
+                         "t1 | big | build it | guess 35m | opened %s | by main\n" % NOW)
+
+    def test_no_guess_is_the_line_as_before(self):
+        self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70"))
+        self.assertEqual(self.todo_text(), "t1 | big | build it | est 70m | opened %s | by main\n" % NOW)
+
+    def test_a_bad_guess_is_refused(self):
+        self.write("agent_todo.txt", "keep | big | x | est 5m | opened %s | by main\n" % NOW)
+        before = self.todo_text()
+        for bad in (("--guess", "0"), ("--guess", "abc"), ("--guess", "-3"), ("--guess", "1.5"),
+                    ("--guess",)):
+            with self.subTest(bad=bad):
+                r = self.af("todo", "add", "t1", "big", "build it", "70", *bad)
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                err = [l for l in r.stderr.splitlines() if l.strip()]
+                self.assertEqual(len(err), 1, r.stderr)
+                self.assertIn("--guess", err[0])
+                self.assertEqual(self.todo_text(), before)
+
+    def done_line(self):
+        rows = [l for l in self.repo.read("agent_completed.txt").splitlines() if l.strip()]
+        self.assertEqual(len(rows), 1, rows)
+        return rows[0]
+
+    def test_todo_done_writes_the_guess_last(self):
+        self.write("agent_todo.txt", "t1 | big | build it | est 70m | guess 35m | opened 2026-10-05 15:00 | by main\n")
+        self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
+        # test-levels (2026-11-20): level= follows guess=, the last key
+        self.assertEqual(self.done_line(), "%s | t1 | build it | %s level=-" % (TODAY, gblock(
+            repo="project", type="script", lane="full", est=70, work=60, clock=60, guess=35)))
+
+    def test_todo_done_with_no_guess_writes_a_dash(self):
+        self.write("agent_todo.txt", "t1 | big | build it | est 70m | opened 2026-10-05 15:00 | by main\n")
+        self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
+        self.assertTrue(self.done_line().endswith(" adds=- guess=- level=-"), self.done_line())
+
+    def test_a_guess_word_in_the_what_is_not_the_guess(self):
+        self.write("agent_todo.txt", "t1 | big | guess 99m is a word here | est 70m | opened 2026-10-05 15:00 | by main\n")
+        self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
+        self.assertTrue(self.done_line().endswith(" guess=- level=-"), self.done_line())
+
+    def test_the_warning_names_the_missing_facts(self):
+        for opts, want in ((("--type", "script", "--lane", "full"), None),
+                           (("--lane", "full"), "todo done: warning: no --type" + WARN_TAIL),
+                           (("--type", "script"), "todo done: warning: no --lane" + WARN_TAIL),
+                           ((), "todo done: warning: no --type --lane" + WARN_TAIL)):
+            with self.subTest(opts=opts):
+                self.write("agent_todo.txt", "t1 | big | build it | est 70m | opened 2026-10-05 15:00 | by main\n")
+                self.write("agent_completed.txt", "")
+                r = self.af("todo", "done", "t1", "--work", "60", *opts)
+                self.assertOk(r)
+                self.assertIn("todo done: t1", r.stdout)
+                self.assertNotIn("warning", r.stdout)
+                warn = [l for l in r.stderr.splitlines() if "warning" in l]
+                self.assertEqual(warn, [want] if want else [], r.stderr)
+                self.assertIn(" | t1 | build it | ", self.done_line())
+                self.assertEqual(self.todo_text().strip(), "")
+
+
+class TestDataGuess(BlendCase):
+
+    def setUp(self):
+        super().setUp()
+        self.completed([
+            gline("2026-10-01", "new-one", "has a guess", type="script", lane="full", mock="no",
+                  est=70, work=60, guess=35),
+            line("2026-10-02", "old-one", "an old data line", type="page", lane="fast", mock="no",
+                 est=10, work=4),
+        ])
+
+    def test_the_table_has_a_guess_column_after_adds(self):
+        rows = [r.split() for r in self.lines(self.assertOk(self.af("data")))]
+        self.assertEqual(rows[0][-2:], ["adds", "guess"])
+        self.assertEqual(rows[1][-1], "35")
+        self.assertEqual(rows[2][-1], "-")
+
+    def test_with_what_the_guess_comes_before_what(self):
+        rows = [r.split() for r in self.lines(self.assertOk(self.af("data", "--what")))]
+        self.assertEqual(rows[0][-3:], ["adds", "guess", "what"])
+        self.assertEqual(rows[1][-4:], ["35", "has", "a", "guess"])
+        self.assertEqual(rows[2][-5:], ["-", "an", "old", "data", "line"])
+
+
+class TestEstimateGuessInputs(BlendCase):
+
+    def setUp(self):
+        super().setUp()
+        self.completed(steady(40))
+
+    def test_a_bad_guess_is_refused(self):
+        for bad in (("--guess", "0"), ("--guess", "x"), ("--guess", "-1"), ("--guess", "2.5")):
+            with self.subTest(bad=bad):
+                r = self.af("estimate", "--lane", "full", "--mock", "no", "--type", "script",
+                            *(bad + ("a script",)))
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertEqual(r.stdout, "")
+                err = [l for l in r.stderr.splitlines() if l.strip()]
+                self.assertEqual(len(err), 1, r.stderr)
+                self.assertIn("--guess", err[0])
+        r = self.af("estimate", "--lane", "full", "--mock", "no", "--type", "script", "a script", "--guess")
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(r.stdout, "")
+        self.assertIn("--guess", r.stderr)
+
+    def test_no_file_says_the_guess_is_not_used(self):
+        rows = self.est("--lane", "full", "--mock", "yes", "--type", "page", "--guess", "35", "a page")
+        self.assertEqual(rows[0], "estimate: 75m work, range 60-90m (rubric v0, 40 past tasks)")
+        self.assertEqual(rows[1], "guess: 35m, not used: v0 is rubric")
+        self.assertEqual(len([r for r in rows if r.startswith("like ")]), 3)
+
+    def test_an_estimator_version_says_the_guess_is_not_used(self):
+        self.model()
+        plain = self.est("--lane", "full", "--mock", "yes", "--type", "page", "a page")
+        rows = self.est("--lane", "full", "--mock", "yes", "--type", "page", "--guess", "35", "a page")
+        self.assertEqual(rows[0], plain[0])
+        self.assertEqual(rows[0], "estimate: 140m work, range 140-140m (estimator v1, 40 past tasks)")
+        self.assertEqual(rows[1], "guess: 35m, not used: v1 is estimator")
+        self.assertEqual(rows[2:], plain[1:])
+
+    def test_a_rubric_version_says_the_guess_is_not_used(self):
+        self.model(versions=[version(method="rubric")])
+        rows = self.est("--lane", "full", "--mock", "yes", "--type", "page", "--guess", "35", "a page")
+        self.assertEqual(rows[1], "guess: 35m, not used: v1 is rubric")
+
+    def test_estimate_with_a_guess_writes_nothing(self):
+        self.model(versions=[blend_version()])
+        before = (self.model_text(), self.repo.read("agent_completed.txt"))
+        self.est("--lane", "full", "--mock", "yes", "--type", "page", "--guess", "35", "a page")
+        self.assertEqual((self.model_text(), self.repo.read("agent_completed.txt")), before)
+
+
+class TestEstimateBlendVersion(BlendCase):
+    """A blend version, hand made. steady(40): the estimator says 140 for the mock kind."""
+
+    MOCK = ("--lane", "full", "--mock", "yes", "--type", "page")
+    WHAT = "new page feature with a clickable mock"
+
+    def setUp(self):
+        super().setUp()
+        self.completed(steady(40))
+
+    def blend(self, guess, **over):
+        self.model(versions=[blend_version(**over)])
+        rows = self.est(*(self.MOCK + ("--guess", str(guess), self.WHAT)))
+        m = BLEND_LINE.match(rows[0])
+        self.assertIsNotNone(m, rows[0])
+        why = BLEND_WHY.match(rows[1])
+        self.assertIsNotNone(why, rows[1])
+        return m, why, rows
+
+    def test_the_geometric_mean_of_estimator_and_guess(self):
+        m, why, rows = self.blend(35)
+        self.assertEqual(rows[0], "estimate: 70m work, range 56-105m (blend v1, 40 past tasks)")
+        self.assertEqual(rows[1], "blend: estimator 140m, guess 35m, weight 0.5, repo project x1.00")
+        self.assertEqual(len([r for r in rows if r.startswith("like ")]), 3)
+
+    def test_the_weight_of_the_version(self):
+        m, why, _ = self.blend(35, weight=0.25)
+        # 140^0.75 x 35^0.25 = 98.99
+        self.assertEqual(m.group(1, 2, 3), ("99", "79", "149"))
+        self.assertEqual(why.group(3), "0.25")
+
+    def test_the_repo_bias_of_this_repo(self):
+        m, why, rows = self.blend(35, repo_bias=True, bias={"project": 1.5, "shop": 0.5})
+        self.assertEqual(m.group(1, 2, 3), ("105", "84", "158"))
+        self.assertEqual(rows[1], "blend: estimator 140m, guess 35m, weight 0.5, repo project x1.50")
+
+    def test_a_repo_not_in_the_bias_gets_none(self):
+        m, why, _ = self.blend(35, repo_bias=True, bias={"shop": 0.5})
+        self.assertEqual((m.group(1), why.group(4, 5)), ("70", ("project", "1.00")))
+
+    def test_bias_off_ignores_the_map(self):
+        m, why, _ = self.blend(35, repo_bias=False, bias={"project": 1.5})
+        self.assertEqual((m.group(1), why.group(5)), ("70", "1.00"))
+
+    def test_the_range_grows_with_the_blend(self):
+        m, _, _ = self.blend(600, span=[0.7, 1.6])
+        # sqrt(140 x 600) = 289.8
+        self.assertEqual(m.group(1, 2, 3), ("290", "203", "464"))
+
+    def test_no_guess_is_the_estimator_of_the_version(self):
+        self.model(versions=[blend_version()])
+        rows = self.est(*(self.MOCK + (self.WHAT,)))
+        self.assertEqual(rows[0], "estimate: 140m work, range 140-140m (estimator v1, 40 past tasks)")
+        self.assertFalse([r for r in rows if r.startswith("blend:") or r.startswith("guess:")], rows)
+
+    def test_a_blend_version_that_does_not_read_is_no_file(self):
+        for bad in (dict(weight="x"), dict(weight=0), dict(weight=1.5), dict(span=[1.5]),
+                    dict(span=[2.0, 1.0]), dict(bias=[1, 2]), dict(bias={"project": "x"}),
+                    dict(repo_bias="yes")):
+            with self.subTest(bad=bad):
+                self.model(versions=[blend_version(**bad)])
+                rows = self.est(*(self.MOCK + ("--guess", "35", self.WHAT)))
+                self.assertTrue(rows[0].endswith("(rubric v0, 40 past tasks)"), rows[0])
+
+    def test_a_blend_version_with_no_weight_does_not_read(self):
+        v = blend_version()
+        del v["weight"]
+        self.model(versions=[v])
+        rows = self.est(*(self.MOCK + ("--guess", "35", self.WHAT)))
+        self.assertTrue(rows[0].endswith("(rubric v0, 40 past tasks)"), rows[0])
+
+
+class TestBacktestBlend(BlendCase):
+
+    def test_the_rows_the_big_rows_the_winner_and_the_target_last(self):
+        self.completed(steady(40))
+        out = self.assertOk(self.af("backtest"))
+        rows = self.lines(out)
+        self.assertTrue(rows[0].startswith("backtest: 40 tasks, 30 tested"), out)
+        t = self.table3(out)
+        big = self.table3(out, "big ")
+        for name in METHODS[:-1]:
+            self.assertEqual(t[name].group(1), "30", name)
+        self.assertIn("work >= 120m: 7 tasks", rows)
+        for name in METHODS:
+            self.assertEqual(big[name].group(1), "7", name)
+        order = [rows.index(r) for r in rows if r.startswith(("method ", "work >= ", "winner: "))]
+        self.assertEqual(order, sorted(order))
+        self.assertTrue(rows[-2].startswith("winner: "), rows)
+        self.assertRegex(rows[-1], TARGET)
+        self.assertFalse([r for r in rows if r.startswith("target 5m")], out)
+
+    def test_no_guess_the_blend_is_the_estimator(self):
+        self.completed(alt(30, 50, 100, "none"))
+        out = self.assertOk(self.af("backtest", "--tasks"))
+        for m in self.rows3(out):
+            self.assertEqual(m.group(3), "-")
+            self.assertEqual(m.group(7, 8, 9), m.group(4, 5, 6), m.group(0))
+            self.assertEqual(m.group(10, 11, 12), m.group(4, 5, 6), m.group(0))
+        t = self.table3(out)
+        for name in ("blend", "blend+repo"):
+            self.assertEqual(t[name].group(1, 2, 3, 4), t["estimator"].group(1, 2, 3, 4), name)
+        self.assertNotIn("blend", self.winner(out))
+
+    def test_the_blend_wins_when_the_guess_knows_more(self):
+        self.completed(alt(30, 50, 100, "guess"))
+        out = self.assertOk(self.af("backtest", "--tasks"))
+        t = self.table3(out)
+        self.assertEqual(t["estimator"].group(3), "0")
+        self.assertEqual(t["blend"].group(3), "100")
+        self.assertIn(self.winner(out), ("blend", "blend+repo"))
+        self.assertEqual(self.lines(out)[-1], "target within 30% 50%: met (100%)")
+        for m in self.rows3(out):
+            self.assertEqual(m.group(3), m.group(2))
+
+    def test_an_old_line_gives_its_todo_est_as_the_guess(self):
+        self.completed(alt(30, 50, 100, "est"))
+        old = self.rows3(self.assertOk(self.af("backtest", "--tasks")))
+        self.completed(alt(30, 50, 100, "guess"))
+        new = self.rows3(self.assertOk(self.af("backtest", "--tasks")))
+        self.assertEqual([m.group(0) for m in old], [m.group(0) for m in new])
+
+    def test_no_est_anywhere_the_todo_est_rows_are_empty(self):
+        self.completed(alt(30, 50, 100, "guess"))
+        rows = self.lines(self.assertOk(self.af("backtest")))
+        self.assertTrue([r for r in rows if re.match(r"^todo est\s+0\s+-\s+-\s+-\s*$", r)], rows)
+        self.assertTrue([r for r in rows if re.match(r"^big todo est\s+0\s+-\s+-\s+-\s*$", r)], rows)
+
+    def test_a_todo_est_of_0_is_no_guess(self):
+        # bounce 2 (task manager): log(0) must never be reached; an est of 0 is no guess
+        rows = alt(30, 50, 100, "est")
+        rows[20] = rows[20].replace(" est=50 ", " est=0 ")
+        self.completed(rows)
+        got = self.rows3(self.assertOk(self.af("backtest", "--tasks")))
+        self.assertEqual(got[10].group(1, 3), ("t-20", "-"))
+        self.assertEqual(got[10].group(7, 8, 9), got[10].group(4, 5, 6))
+
+    def test_the_guess_goes_before_the_todo_est(self):
+        rows = [r.replace(" est=-", " est=999") for r in alt(30, 50, 100, "guess")]
+        self.completed(rows)
+        for m in self.rows3(self.assertOk(self.af("backtest", "--tasks"))):
+            self.assertEqual(m.group(3), m.group(2))
+
+    def test_every_range_holds_its_estimate(self):
+        self.completed(varied(40))
+        for m in self.rows3(self.assertOk(self.af("backtest", "--tasks"))):
+            for est, lo, hi in ((4, 5, 6), (7, 8, 9), (10, 11, 12)):
+                e, l, h = int(m.group(est)), int(m.group(lo)), int(m.group(hi))
+                self.assertTrue(1 <= l <= e <= h, m.group(0))
+
+    def test_a_row_never_changes_when_later_tasks_come(self):
+        data = varied(45)
+        self.completed(data[:32])
+        first = [m.group(0) for m in self.rows3(self.assertOk(self.af("backtest", "--tasks")))]
+        self.completed(data)
+        later = [m.group(0) for m in self.rows3(self.assertOk(self.af("backtest", "--tasks")))]
+        self.assertEqual(len(first), 22)
+        self.assertEqual(later[:22], first)
+
+    def test_the_repo_bias_needs_5_earlier_tasks_of_that_repo(self):
+        self.completed(two_repos(40))
+        out = self.assertOk(self.af("backtest", "--tasks"))
+        shop = [m for m in self.rows3(out) if m.group(2) == "100"]
+        same = [m.group(10) == m.group(7) for m in shop]
+        self.assertEqual(same, [True] * 5 + [False] * (len(shop) - 5))
+        self.assertTrue(all(int(m.group(10)) > int(m.group(7)) for m in shop[5:]))
+        t = self.table3(out)
+        self.assertGreater(int(t["blend+repo"].group(3)), int(t["blend"].group(3)))
+        self.assertEqual(self.winner(out), "blend+repo")
+
+    def test_the_target_is_the_winner_row_against_the_config(self):
+        self.completed(varied(40))
+        out = self.assertOk(self.af("backtest"))
+        t = self.table3(out)
+        p = int(t[self.winner(out)].group(3))
+        m = TARGET.match(self.lines(out)[-1])
+        self.assertIsNotNone(m, out)
+        self.assertEqual(m.group(1), "50")
+        if p >= 50:
+            self.assertEqual(m.group(4), str(p))
+        else:
+            self.assertEqual((m.group(2), m.group(3)), (str(p), str(50 - p)))
+
+
+class TestRetrainBlend(BlendCase):
+
+    def v1(self):
+        out = self.assertOk(self.af("retrain"))
+        v = self.verdicts(out)
+        self.assertEqual(len(v), 1, out)
+        return out, v[0], self.model_json()["versions"][0]
+
+    def test_v1_is_a_blend_when_it_wins(self):
+        self.completed(alt(30, 50, 100, "guess"))
+        out, verdict, ver = self.v1()
+        self.assertTrue(verdict.startswith("estimate retrain: v1 made from 30 tasks: blend (weight 0.5, repo bias "),
+                        verdict)
+        self.assertEqual((ver["method"], ver["weight"]), ("blend", 0.5))
+        self.assertIsInstance(ver["repo_bias"], bool)
+        self.assertIsInstance(ver["bias"], dict)
+        if not ver["repo_bias"]:
+            self.assertEqual(ver["bias"], {})
+        lo, hi = ver["span"]
+        self.assertLessEqual(lo, hi)
+        self.assertIn(ver["k"], (3, 5, 7))
+        t = self.table3(out)
+        for key, label in (("blend", "blend"), ("blend_repo", "blend+repo"),
+                           ("estimator", "estimator"), ("rubric", "rubric")):
+            self.assertEqual(ver["backtest"][key], {"error": float(t[label].group(2)),
+                                                    "within30": int(t[label].group(3)),
+                                                    "inrange": int(t[label].group(4))}, key)
+        self.assertRegex(self.lines(out)[-1], TARGET)
+
+    def test_then_the_estimate_uses_the_blend(self):
+        self.completed(alt(30, 50, 100, "guess"))
+        self.v1()
+        rows = self.est("--lane", "full", "--mock", "no", "--type", "server", "--guess", "50", "plain work")
+        m = BLEND_LINE.match(rows[0])
+        self.assertIsNotNone(m, rows)
+        self.assertEqual(m.group(4, 5), ("1", "30"))
+        self.assertIsNotNone(BLEND_WHY.match(rows[1]), rows)
+
+    def test_the_weight_moves_only_on_a_clear_win(self):
+        self.completed(alt(40, 30, 100, "guess"))
+        _, verdict, ver = self.v1()
+        self.assertEqual((ver["method"], ver["weight"]), ("blend", 0.75), verdict)
+        self.assertTrue(verdict.startswith("estimate retrain: v1 made from 40 tasks: blend (weight 0.75, "),
+                        verdict)
+
+    def test_the_repo_bias_is_kept_when_it_wins(self):
+        self.completed(two_repos(40))
+        _, verdict, ver = self.v1()
+        self.assertIn("repo bias on", verdict)
+        self.assertEqual((ver["method"], ver["repo_bias"]), ("blend", True))
+        self.assertEqual(sorted(ver["bias"]), ["project", "shop"])
+        self.assertGreater(ver["bias"]["shop"], 1.5)
+        self.assertLess(ver["bias"]["project"], 1.0)
+        self.assertEqual(ver["bias"]["shop"], round(ver["bias"]["shop"], 2))
+        rows = self.est("--lane", "full", "--mock", "no", "--type", "server", "--guess", "50", "plain work")
+        self.assertEqual(BLEND_WHY.match(rows[1]).group(4, 5), ("project", "%.2f" % ver["bias"]["project"]))
+
+    def test_no_guess_no_blend(self):
+        self.completed(alt(30, 50, 100, "none"))
+        _, verdict, ver = self.v1()
+        self.assertIn(ver["method"], ("estimator", "rubric"))
+        self.assertNotIn("weight", ver)
+
+    def check_model(self):
+        self.model(current=2, checked=30, date="2026-09-28",
+                   versions=[version(), version(version=2, date="2026-09-20")])
+
+    def test_a_check_switches_to_the_blend_when_its_backtest_beats_the_current(self):
+        self.completed(alt(40, 50, 100, "guess"))
+        self.check_model()
+        out = self.assertOk(self.af("retrain"))
+        v = self.verdicts(out)
+        self.assertEqual(len(v), 1, out)
+        m = re.match(r"^estimate retrain: kept v3 \(backtest on 30 tasks, within 30%: "
+                     r"(blend|blend\+repo) (\d+)%, estimator v2 (\d+)%\)$", v[0])
+        self.assertIsNotNone(m, v[0])
+        self.assertGreater(int(m.group(2)), int(m.group(3)))
+        data = self.model_json()
+        self.assertEqual((data["current"], data["checked_tasks"], data["checked_date"]), (3, 40, TODAY))
+        self.assertEqual([x["version"] for x in data["versions"]], [1, 2, 3])
+        self.assertEqual(data["versions"][2]["method"], "blend")
+        c = data["checks"][-1]
+        self.assertEqual((c["current"], c["kept"], c["new"], c["basis"]), (2, 3, 10, "backtest"))
+        self.assertRegex(self.lines(out)[-1], TARGET)
+
+    def test_a_check_with_no_blend_win_keeps_the_old_rule(self):
+        self.completed(steady(40))
+        self.model(current=1, checked=30, date="2026-09-28", versions=[version(k=3, text=0, type=0.5)])
+        out = self.assertOk(self.af("retrain"))
+        v = self.verdicts(out)
+        self.assertTrue(v[0].startswith("estimate retrain: kept v1 (on the 10 new tasks: "), v[0])
+        data = self.model_json()
+        self.assertEqual([x["method"] for x in data["versions"]], ["estimator"])
+        self.assertEqual(data["checks"][-1]["basis"], "new tasks")
+
+    def test_a_blend_version_is_checked_on_the_new_tasks(self):
+        self.completed(alt(40, 50, 100, "guess"))
+        self.model(current=1, checked=30, date="2026-09-28", versions=[blend_version(span=[0.8, 1.3])])
+        out = self.assertOk(self.af("retrain"))
+        v = self.verdicts(out)
+        self.assertTrue(v[0].startswith("estimate retrain: kept v"), v[0])
+        self.assertIn("on the 10 new tasks: current v1 error ", v[0])
+        self.assertEqual(self.model_json()["checks"][-1]["basis"], "new tasks")
+
+
+class TestEstimateConf(unittest.TestCase):
+    """settings-configure: the estimator numbers are fixed constants."""
+
+    def test_the_constants(self):
+        ac = load_conf_module()
+        self.assertEqual((ac.CONSTANTS["estimate_target_pct"], ac.CONSTANTS["estimate_bias_min"],
+                          ac.CONSTANTS["estimate_big_min"]), (50, 5, 120))
 
 
 if __name__ == "__main__":

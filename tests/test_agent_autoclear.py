@@ -237,12 +237,6 @@ class TestStartWarning(ClearCase):
                 out = self.assertOk(self.hook(source, sid="w-" + source, runtime="plain", handle=None))
                 self.assertIn(self.warn(301), out.splitlines())
 
-    def test_the_limit_is_the_fixed_300(self):
-        # settings-configure: state_warn_lines is a fixed constant (300)
-        self.lines_file(300)
-        out = self.assertOk(self.repo.run("agent-start.sh", env={"AGENT_ROLE": "task-manager"}))
-        self.assertFalse([l for l in out.splitlines() if l.startswith("STATE LONG")], out)
-
     def test_it_still_fits_the_preview(self):
         self.lines_file(1500)
         out = pointer_part(self.assertOk(self.repo.run("agent-start.sh", env={"AGENT_ROLE": "task-manager"})))
@@ -345,8 +339,11 @@ class TestWaiter(ClearCase):
         super().setUp()
         # settings-configure: compact_clear_check_sec is a fixed 30 s; a `sleep` stub on PATH
         # keeps the waiter fast (was: set_conf compact_clear_check_sec 1)
-        # only the waiter's own 30 s pause shrinks (to 1 s); any other sleep stays real
-        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep 1\nexec /bin/sleep "$@"\n')
+        # only the waiter's own 30 s pause shrinks (to 0.3 s; test-slim, was 1 s); any other sleep stays real
+        self.pause(0.3)
+
+    def pause(self, seconds):
+        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep %s\nexec /bin/sleep "$@"\n' % seconds)
 
     def test_the_whole_run_with_a_goal_line(self):
         self.write_state(["ROLE: x", "GOAL: an older goal", "GOAL: " + GOAL, ""])
@@ -445,6 +442,7 @@ class TestWaiter(ClearCase):
     def test_it_pauses_after_each_typed_text(self):
         # finding 7: tui-idle can come back before the pane went busy; a pause of
         # compact_clear_check_sec after each typed text lets the save turn start first
+        self.pause(1)   # three pauses of 1 s: at least 2 s in all
         self.write_state(["ROLE: x", ""])
         t0 = time.time()
         self.assertOk(self.waiter())

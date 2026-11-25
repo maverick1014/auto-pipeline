@@ -91,18 +91,6 @@ KEY = "auto-pipeline@auto-pipeline"
 HOOK_COMMAND = '"${CLAUDE_PLUGIN_ROOT}"/bin/agent-version.sh hook'
 
 
-def read(*parts):
-    with open(os.path.join(ROOT, *parts)) as fh:
-        return fh.read()
-
-
-def section(text, start, end):
-    lines = text.splitlines()
-    begin = next(i for i, l in enumerate(lines) if l.startswith(start))
-    stop = next(i for i in range(begin + 1, len(lines)) if lines[i].startswith(end))
-    return lines[begin:stop]
-
-
 class Versions:
     """Put the test's plugin copy into a version folder, with neighbours."""
 
@@ -336,28 +324,6 @@ class TestHook(Versions, ScriptCase):
         self.assertEqual(self.hook(self.payload()), "")
 
 
-class TestHooksJson(unittest.TestCase):
-    def hooks(self):
-        return json.loads(read("hooks", "hooks.json"))["hooks"]
-
-    def entries(self, event):
-        return [h for e in self.hooks().get(event, []) for h in e.get("hooks", [])
-                if "agent-version.sh" in h.get("command", "")]
-
-    def test_user_prompt_submit_runs_it(self):
-        found = self.entries("UserPromptSubmit")
-        self.assertEqual(len(found), 1, found)
-        self.assertEqual(found[0]["command"], HOOK_COMMAND)
-        self.assertEqual(found[0].get("type"), "command")
-        self.assertLessEqual(found[0].get("timeout", 600), 10)
-
-    def test_no_other_event_runs_it(self):
-        for event in self.hooks():
-            if event != "UserPromptSubmit":
-                with self.subTest(event=event):
-                    self.assertEqual(self.entries(event), [])
-
-
 # ------------------------------------------------------------ 3: start text
 
 class TestStartText(Versions, ScriptCase):
@@ -526,27 +492,6 @@ class TestRetrainGuard(Versions, EstimateCase):
 
 
 # ------------------------------------------------------------ 5: rule, docs, release
-
-class TestRuleAndRelease(unittest.TestCase):
-    def test_one_w16_line(self):
-        lines = [l for l in section(read("PRINCIPLES.md"), "W16. ", "W17. ")
-                 if l.startswith("- ") and "STALE PLUGIN" in l]
-        self.assertEqual(len(lines), 1, "W16: one bullet names STALE PLUGIN")
-        line = lines[0]
-        for word in ("newest", "brief", "restart", "retrain"):
-            self.assertIn(word, line)
-        self.assertLessEqual(len(line), 200, line)
-
-    def test_readme_lists_the_script(self):
-        self.assertIn("bin/agent-version.sh", read("PRINCIPLES.md"))
-
-    def test_the_script_is_executable(self):
-        self.assertTrue(os.access(os.path.join(ROOT, "bin", "agent-version.sh"), os.X_OK))
-
-    def test_release(self):
-        ver = json.loads(read(".claude-plugin", "plugin.json"))["version"]
-        # test-levels (2026-11-20) released 0.36.0 on top: at least 0.35.0, like the other release tests
-        self.assertGreaterEqual(tuple(int(x) for x in ver.split(".")), (0, 35, 0))
 
 
 if __name__ == "__main__":

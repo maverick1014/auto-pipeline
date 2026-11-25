@@ -10,6 +10,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 from scripthelp import ROOT  # noqa: E402
+from scripthelp import ROOT, ScriptCase  # noqa: E402
+import subprocess
+import shutil
+import stat
+import tempfile
 
 
 def read(*parts):
@@ -338,3 +343,312 @@ class TestCloseCaseSkill(unittest.TestCase):
         text = read("PRINCIPLES.md")
         self.assertIn("agent-close-case.sh", text)
         self.assertIn("close-case", text)
+
+
+class TestPrinciplesW15Report(unittest.TestCase):
+    def w15(self):
+        with open(os.path.join(os.path.dirname(HERE), "PRINCIPLES.md")) as fh:
+            text = fh.read()
+        return text[text.index("W15. Watch"):text.index("W16.")].splitlines()
+
+    def test_the_stage_from_the_newest_heartbeat_line(self):
+        hits = [l for l in self.w15() if "HEARTBEAT step" in l and "STAGE line" in l and "main repo" in l]
+        self.assertEqual(len(hits), 1, self.w15())
+        self.assertLess(len(hits[0]), 200)
+
+    def test_a_manager_waiting_for_its_own_run_is_not_a_stall(self):
+        hits = [l for l in self.w15() if "not a stall" in l and "watch_quiet_min" in l and "started" in l]
+        self.assertEqual(len(hits), 1, self.w15())
+        self.assertLess(len(hits[0]), 200)
+
+
+def watch_section(text, start, end):
+    lines = text.splitlines()
+    begin = next(i for i, line in enumerate(lines) if line.startswith(start))
+    stop = next(i for i in range(begin + 1, len(lines)) if lines[i].startswith(end))
+    return "\n".join(lines[begin:stop])
+
+
+class TestPrinciplesW15Watch(unittest.TestCase):
+    def test_principles_watch_rule_names_the_script_and_the_report_block(self):
+        w15 = watch_section(read("PRINCIPLES.md"), "W15. Watch", "W16.")
+        line = next((l for l in w15.splitlines() if "agent-watch.sh" in l), "")
+        self.assertTrue(line, "W15 has no agent-watch.sh line")
+        for word in ("=== REPORT ===", "agent_state.txt", "background",
+                     "another machine"):
+            self.assertIn(word, line)
+
+    def test_dispatch_starts_the_watch_after_the_launch_check(self):
+        text = read("skills", "dispatch", "SKILL.md")
+        steps = watch_section(text, "# /dispatch", "## Board records")
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}/bin/agent-watch.sh", steps)
+        at = steps.index("agent-watch.sh")
+        self.assertLess(steps.index("terminal wait"), at)
+        near = steps[max(0, at - 300):at + 1200]
+        # one-watcher (owner 2026-11-24): one --all watch for every task manager, local and remote, so the
+        # dispatch text no longer names --environment/--shell or "until merged" (tests/test_watch_board.py)
+        for word in ("run_in_background", "--all", "again", "MOCK READY"):
+            self.assertIn(word, near)
+        # SCOPE ADD 1: the screen no longer fires
+        block = steps[at:at + 600]
+        self.assertNotIn("⏺", block)
+        self.assertNotIn("on screen", block)
+
+    def test_dispatch_brief_mock_step_names_mock_ready(self):
+        brief = watch_section(read("skills", "dispatch", "SKILL.md"),
+                        "## Task manager brief", "## Cross-repo brief")
+        mock = next(l for l in brief.splitlines() if l.startswith(" 2 mock"))   # progress-bar: the line now starts with its stage call
+        self.assertIn("MOCK READY", mock)
+        self.assertIn("agent_state.txt", mock)
+
+    def test_dispatch_brief_names_the_report_block(self):
+        brief = watch_section(read("skills", "dispatch", "SKILL.md"),
+                        "## Task manager brief", "## Cross-repo brief")
+        report = next(l for l in brief.splitlines() if l.startswith("REPORT:"))
+        self.assertIn("=== REPORT ===", report)
+        self.assertIn("agent_state.txt", report)
+
+    def test_map_names_the_watch_script(self):
+        self.assertIn("bin/agent-watch.sh", read("PRINCIPLES.md"))
+
+
+CHANGE = "/plugin -> Installed -> auto-pipeline -> Configure"
+
+
+def read_readers(*parts):
+    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
+        return fh.read()
+
+
+class TestSettingsTexts(unittest.TestCase):
+    def test_principles(self):
+        text = read_readers("PRINCIPLES.md")
+        self.assertNotIn("agent.conf", text)
+        self.assertNotIn("auto-pipeline.conf", text)
+        self.assertIn(CHANGE, text)
+        self.assertRegex(text, r"(?i)settings live only in")
+        # owner 1A 2026-11-25: core paths are repo facts in agent_repo.conf, not a setting
+        self.assertIn("agent_repo.conf", text)
+        self.assertRegex(text, r"(?i)16 settings|sixteen settings")
+
+    def test_r8_is_main_s_text(self):
+        # owner 3A 2026-11-25: the level rules are frozen; R8 stays exactly as on main (85b99de)
+        main = subprocess.run(["git", "-C", ROOT, "show", "85b99de:PRINCIPLES.md"],
+                              capture_output=True, text=True).stdout
+        if not main:
+            self.skipTest("85b99de not in this clone")
+        def r8(text):
+            return text[text.index("R8. Risk types"):text.index("## B. Work")]
+        self.assertEqual(r8(read_readers("PRINCIPLES.md")), r8(main))
+
+    def test_readme_has_one_line_where_to_change_settings(self):
+        lines = [l for l in read_readers("README.md").splitlines() if CHANGE in l]
+        self.assertEqual(len(lines), 1)
+        self.assertNotIn("agent.conf", read_readers("README.md"))
+
+    def test_settings_skill(self):
+        text = read_readers("skills", "settings", "SKILL.md")
+        self.assertIn(CHANGE, text)
+        self.assertRegex(text, r"(?i)never changes")
+        self.assertNotRegex(text, r"agent-settings\.sh <key> <value>")
+
+    def test_init_skill_asks_no_setting(self):
+        text = read_readers("skills", "init", "SKILL.md")
+        self.assertNotRegex(text, r"(?i)bypass or all auto|auto update on or off")
+        self.assertNotIn("--mode", text)
+        self.assertNotIn("--auto-update", text)
+        self.assertIn(CHANGE, text)
+
+    def test_plugin_version_is_bumped(self):
+        with open(os.path.join(ROOT, ".claude-plugin", "plugin.json")) as fh:
+            version = json.load(fh)["version"]
+        self.assertGreater(tuple(int(x) for x in version.split(".")), (0, 44, 0))
+
+
+ZSH = shutil.which("zsh")
+
+
+def read_suffix(*parts):
+    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
+        return fh.read()
+
+
+class ZshRun:
+    """Run a launch line in a real zsh (no rc files) with a fake `claude` first
+    on PATH that prints each argument on its own line, then ROLE=$AGENT_ROLE."""
+
+    def __init__(self, base):
+        self.bin = os.path.join(base, "fakebin")
+        os.makedirs(self.bin, exist_ok=True)
+        exe = os.path.join(self.bin, "claude")
+        with open(exe, "w") as fh:
+            fh.write('#!/bin/sh\nfor a in "$@"; do printf "%s\\n" "$a"; done\nprintf "ROLE=%s\\n" "$AGENT_ROLE"\n')
+        os.chmod(exe, os.stat(exe).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    def __call__(self, line):
+        env = dict(os.environ)
+        env["PATH"] = self.bin + os.pathsep + env.get("PATH", "")
+        env.pop("AGENT_ROLE", None)
+        done = subprocess.run([ZSH, "-f", "-c", line], capture_output=True, text=True, env=env,
+                              timeout=30, stdin=subprocess.DEVNULL)
+        return done.returncode, done.stdout.splitlines(), done.stderr
+
+
+class TestTypedLaunchLines(unittest.TestCase):
+    def dispatch(self):
+        return read_suffix("skills", "dispatch", "SKILL.md")
+
+    def test_the_dispatch_line_quotes_the_model(self):
+        lines = [l for l in self.dispatch().splitlines() if "orca terminal create" in l and "claude" in l]
+        self.assertTrue(lines, "the dispatch skill has a typed launch line")
+        for line in lines:
+            with self.subTest(line=line):
+                self.assertIn("--model '<model>'", line)
+
+    def test_the_dispatch_model_comes_from_cli_model(self):
+        text = self.dispatch()
+        self.assertIn("cli-model", text, "<model> is what agent_conf.py cli-model prints, not the raw conf name")
+
+    def cli_model_command(self):
+        """The one backticked `... agent_conf.py cli-model ...` command of the dispatch skill."""
+        found = re.findall(r"`([^`]*agent_conf\.py cli-model[^`]*)`", self.dispatch())
+        self.assertEqual(len(found), 1, found)
+        return found[0]
+
+    @unittest.skipUnless(ZSH, "no zsh on PATH")
+    def test_the_dispatch_cli_model_command_runs_in_zsh(self):
+        """Bounce 1: agent_conf.py has no exec bit and no shebang (needs python3),
+        and an unquoted opus-5.5[1m]:xhigh is a zsh glob."""
+        command = self.cli_model_command().replace("<task_manager value>", "opus-5.5[1m]:xhigh")
+        self.assertNotIn("<", command, command)
+        env = dict(os.environ, CLAUDE_PLUGIN_ROOT=ROOT)
+        done = subprocess.run([ZSH, "-f", "-c", command], capture_output=True, text=True, env=env,
+                              timeout=30, stdin=subprocess.DEVNULL)
+        self.assertEqual((done.returncode, done.stdout), (0, "opus[1m]\n"), done.stderr)
+
+    @unittest.skipUnless(ZSH, "no zsh on PATH")
+    def test_the_dispatch_launch_line_runs_in_zsh(self):
+        """The typed --command, its placeholders filled the way the skill says, runs in zsh."""
+        line = [l for l in self.dispatch().splitlines() if "orca terminal create" in l and "claude" in l][0]
+        inner = re.search(r'--command "([^"]*)"', line).group(1)
+        filled = (inner.replace("<name>", "demo").replace("<model>", "opus[1m]")
+                  .replace("<effort>", "xhigh").replace("<mode>", "auto"))
+        self.assertNotIn("<", filled, filled)
+        base = os.path.realpath(tempfile.mkdtemp(prefix="model_suffix_"))
+        self.addCleanup(shutil.rmtree, base, True)
+        code, out, err = ZshRun(base)(filled)
+        self.assertNotIn("no matches found", err)
+        self.assertEqual((code, out), (0, ["--name", "demo Task Manager", "--model", "opus[1m]", "--effort", "xhigh",
+                                           "--permission-mode", "auto", "ROLE=task-manager"]), err)
+
+    def test_no_unquoted_model_placeholder_anywhere(self):
+        files = [os.path.join(ROOT, "PRINCIPLES.md"), os.path.join(ROOT, "README.md")]
+        for folder in ("skills", "agents"):
+            for top, _dirs, names in os.walk(os.path.join(ROOT, folder)):
+                files += [os.path.join(top, n) for n in names if n.endswith(".md")]
+        for path in files:
+            if not os.path.exists(path):
+                continue
+            with open(path, encoding="utf-8") as fh:
+                for number, line in enumerate(fh, 1):
+                    for match in re.finditer(r"--model[ =](\S+)", line):
+                        word = match.group(1)
+                        if word.startswith("<") or word.startswith("$"):
+                            with self.subTest(file=os.path.relpath(path, ROOT), line=number):
+                                self.fail("unquoted model word %r: write --model '%s'" % (word, word))
+
+
+def read_perm(*parts):
+    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
+        return fh.read()
+
+
+class TestLaunchTextPermission(unittest.TestCase):
+    def test_dispatch_reads_the_setting(self):
+        text = read_perm("skills", "dispatch", "SKILL.md")
+        line = next(l for l in text.splitlines() if "**orca**" in l and "<mode>" in l)
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get permission_mode", line)
+        self.assertIn("--permission-mode <mode>", text)
+
+    def test_w10_helper_line(self):
+        line = next(l for l in read_perm("PRINCIPLES.md").splitlines() if l.startswith("- Open a second session"))
+        self.assertIn("agent-settings.sh get permission_mode", line)
+        self.assertIn("--permission-mode <mode>", line)
+
+    def test_w10_new_terminals_line(self):
+        line = next(l for l in read_perm("PRINCIPLES.md").splitlines() if l.startswith("- New terminals"))
+        self.assertIn("Permission mode", line)
+        self.assertNotIn(".conf", line)
+
+
+def read_update(*parts):
+    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
+        return fh.read()
+
+
+def text(path):
+    with open(path) as fh:
+        return fh.read()
+
+
+class TestReleaseTextAutoUpdate(unittest.TestCase):
+    def test_merge_skill_says_bump_the_version(self):
+        text = read_update("skills", "merge", "SKILL.md")
+        line = next((l for l in text.splitlines() if ".claude-plugin/plugin.json" in l), None)
+        self.assertIsNotNone(line)
+        self.assertIn("version", line)
+        self.assertIn("release", line.lower())
+
+
+HOOK_COMMAND = '"${CLAUDE_PLUGIN_ROOT}"/bin/agent-version.sh hook'
+
+
+def section_version(text, start, end):
+    lines = text.splitlines()
+    begin = next(i for i, l in enumerate(lines) if l.startswith(start))
+    stop = next(i for i in range(begin + 1, len(lines)) if lines[i].startswith(end))
+    return lines[begin:stop]
+
+
+class TestHooksJsonVersion(unittest.TestCase):
+    def hooks(self):
+        return json.loads(read("hooks", "hooks.json"))["hooks"]
+
+    def entries(self, event):
+        return [h for e in self.hooks().get(event, []) for h in e.get("hooks", [])
+                if "agent-version.sh" in h.get("command", "")]
+
+    def test_user_prompt_submit_runs_it(self):
+        found = self.entries("UserPromptSubmit")
+        self.assertEqual(len(found), 1, found)
+        self.assertEqual(found[0]["command"], HOOK_COMMAND)
+        self.assertEqual(found[0].get("type"), "command")
+        self.assertLessEqual(found[0].get("timeout", 600), 10)
+
+    def test_no_other_event_runs_it(self):
+        for event in self.hooks():
+            if event != "UserPromptSubmit":
+                with self.subTest(event=event):
+                    self.assertEqual(self.entries(event), [])
+
+
+class TestRuleAndReleaseVersion(unittest.TestCase):
+    def test_one_w16_line(self):
+        lines = [l for l in section_version(read("PRINCIPLES.md"), "W16. ", "W17. ")
+                 if l.startswith("- ") and "STALE PLUGIN" in l]
+        self.assertEqual(len(lines), 1, "W16: one bullet names STALE PLUGIN")
+        line = lines[0]
+        for word in ("newest", "brief", "restart", "retrain"):
+            self.assertIn(word, line)
+        self.assertLessEqual(len(line), 200, line)
+
+    def test_readme_lists_the_script(self):
+        self.assertIn("bin/agent-version.sh", read("PRINCIPLES.md"))
+
+    def test_the_script_is_executable(self):
+        self.assertTrue(os.access(os.path.join(ROOT, "bin", "agent-version.sh"), os.X_OK))
+
+    def test_release(self):
+        ver = json.loads(read(".claude-plugin", "plugin.json"))["version"]
+        # test-levels (2026-11-20) released 0.36.0 on top: at least 0.35.0, like the other release tests
+        self.assertGreaterEqual(tuple(int(x) for x in ver.split(".")), (0, 35, 0))

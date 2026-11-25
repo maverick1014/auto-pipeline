@@ -7,19 +7,24 @@ and run each script once instead of once per test:
     class TestBoardShowsTheWait(SharedScriptCase):
         script = "agent-file.sh"
 
-        @classmethod
-        def prepare(cls):              # once per class: build, then run
-            cls.repo.set_worktree_lines([...])
-            cls.out = cls.run_ok("agent-file.sh", "board")
+        def fixture(self):             # once, before the first test of the class
+            self.repo.set_worktree_lines([...])
 
         def test_names_the_task(self):
-            self.assertIn("alpha", self.out)
+            out = self.repo.run("agent-file.sh", "board").stdout   # runs once
+            self.assertIn("alpha", out)
 
-The guard: after every test the shared folder (plugin copy and project) must be
-exactly as prepare() left it. A test that changed, added or removed a file
-there fails; it belongs in a ScriptCase class (one repo per test).
+- fixture() is an instance method, so the helpers of an existing case work in it.
+  A classmethod prepare() is there too, for code that has no instance helpers.
+- The shared repo's run() remembers each call (script, args, env, stdin, cwd):
+  the same call in another test returns the same result without a new start.
+- The guard: after every test the shared folder (plugin copy and project) must be
+  exactly as the fixture left it. A test (or a script it ran) that changed, added
+  or removed a file there fails; it belongs in a ScriptCase class.
 """
 
+import hashlib
+import json
 import os
 import unittest
 
@@ -27,18 +32,40 @@ from scripthelp import BIN, ScriptCase, ScriptRepo
 
 
 def tree_state(base):
-    """(path, size, mtime) of every file under base, for the read-only guard."""
+    """(path, size, content hash) of every file under base, for the read-only
+    guard. Content, not mtime: a script that only touches a file changes nothing
+    a later test can see."""
     rows = []
     for folder, dirs, files in os.walk(base):
         dirs.sort()
         for name in sorted(files):
             full = os.path.join(folder, name)
             try:
-                st = os.lstat(full)
+                if os.path.islink(full):
+                    rows.append((os.path.relpath(full, base), -1, os.readlink(full)))
+                    continue
+                with open(full, "rb") as fh:
+                    data = fh.read()
             except OSError:
                 continue
-            rows.append((os.path.relpath(full, base), st.st_size, st.st_mtime_ns))
+            rows.append((os.path.relpath(full, base), len(data), hashlib.sha1(data).hexdigest()))
     return rows
+
+
+def remember_runs(repo):
+    """Make repo.run() answer a repeated call from memory."""
+    real = repo.run
+    seen = {}
+
+    def run(script, *args, **kwargs):
+        key = json.dumps([script, list(args), sorted((kwargs.get("env") or {}).items()),
+                          kwargs.get("stdin"), kwargs.get("cwd")], default=str)
+        if key not in seen:
+            seen[key] = real(script, *args, **kwargs)
+        return seen[key]
+
+    repo.run = run
+    return repo
 
 
 class SharedScriptCase(ScriptCase):
@@ -52,18 +79,21 @@ class SharedScriptCase(ScriptCase):
         super().setUpClass()
         if cls.script and not os.path.exists(os.path.join(BIN, cls.script)):
             raise unittest.SkipTest("bin/%s does not exist" % cls.script)
-        cls.repo = ScriptRepo()
+        cls.repo = remember_runs(ScriptRepo())
         cls.addClassCleanup(cls.repo.cleanup)
+        cls._shared_state = None
         cls.prepare()
-        cls._shared_state = tree_state(cls.repo.base)
 
     @classmethod
     def prepare(cls):
-        """Build the fixture and run the scripts, once. Override."""
+        """Class-level fixture, once. Override, or override fixture()."""
+
+    def fixture(self):
+        """Instance-level fixture, once, before the first test. Override."""
 
     @classmethod
     def run_ok(cls, script, *args, **kwargs):
-        """Run a script once for the class; its stdout, or fail the class."""
+        """Run a script (once) for the class; its stdout, or fail."""
         result = cls.repo.run(script, *args, **kwargs)
         if result.returncode != 0:
             raise AssertionError("%s %s: exit %d\nSTDOUT:\n%s\nSTDERR:\n%s" % (
@@ -72,7 +102,15 @@ class SharedScriptCase(ScriptCase):
 
     def setUp(self):
         # no per-test repo: the class one is self.repo
-        pass
+        cls = type(self)
+        if cls._shared_state is None:
+            before = dict(vars(self))
+            self.fixture()
+            # what the fixture kept on self (paths, names) is there for every test
+            for key, value in vars(self).items():
+                if key not in before or before[key] is not value:
+                    setattr(cls, key, value)
+            cls._shared_state = tree_state(cls.repo.base)
 
     def tearDown(self):
         now = tree_state(self.repo.base)

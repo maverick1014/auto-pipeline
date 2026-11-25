@@ -86,6 +86,10 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from scripthelp import ScriptCase
+import shlex
+import shutil
+import stat
+import subprocess
 
 
 class ResumeCase(ScriptCase):
@@ -783,6 +787,121 @@ class TestAConfWrittenBeforeRuntimeExisted(ResumeCase):
         self.assertEqual(
             self.relaunched_for(self.assertOk(self.resume()), self.path),
             "no, plain mode")
+
+
+class TestResumeRefusesDefault(ScriptCase):
+    script = "agent-resume.sh"
+
+    def command(self):
+        path = self.repo.make_worktree("alpha")
+        self.repo.set_worktree_lines([(path, "alpha", "working")])
+        self.repo.set_panes([])
+        self.assertOk(self.repo.run("agent-resume.sh"))
+        calls = self.repo.create_calls()
+        self.assertEqual(len(calls), 1, calls)
+        return calls[0][calls[0].index("--command") + 1]
+
+    def test_default_relaunches_in_the_setting_default(self):
+        self.repo.set_conf("permission_mode", "default")
+        command = self.command()
+        self.assertTrue(command.endswith("--permission-mode bypassPermissions"), command)
+        self.assertNotIn("default", command)
+
+    def test_dont_ask_reaches_the_relaunch(self):
+        self.repo.set_conf("permission_mode", "dontAsk")
+        self.assertTrue(self.command().endswith("--permission-mode dontAsk"))
+
+
+ZSH = shutil.which("zsh")
+
+
+def flag(words, name):
+    return words[words.index(name) + 1] if name in words else None
+
+
+class ZshRun:
+    """Run a launch line in a real zsh (no rc files) with a fake `claude` first
+    on PATH that prints each argument on its own line, then ROLE=$AGENT_ROLE."""
+
+    def __init__(self, base):
+        self.bin = os.path.join(base, "fakebin")
+        os.makedirs(self.bin, exist_ok=True)
+        exe = os.path.join(self.bin, "claude")
+        with open(exe, "w") as fh:
+            fh.write('#!/bin/sh\nfor a in "$@"; do printf "%s\\n" "$a"; done\nprintf "ROLE=%s\\n" "$AGENT_ROLE"\n')
+        os.chmod(exe, os.stat(exe).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    def __call__(self, line):
+        env = dict(os.environ)
+        env["PATH"] = self.bin + os.pathsep + env.get("PATH", "")
+        env.pop("AGENT_ROLE", None)
+        done = subprocess.run([ZSH, "-f", "-c", line], capture_output=True, text=True, env=env,
+                              timeout=30, stdin=subprocess.DEVNULL)
+        return done.returncode, done.stdout.splitlines(), done.stderr
+
+
+class TestResumeLineRunsInZsh(ScriptCase):
+    script = "agent-resume.sh"
+
+    def command(self, task_manager, module="alpha"):
+        self.repo.clear_calls()
+        path = self.repo.make_worktree(module)
+        self.repo.set_conf("task_manager", task_manager)
+        self.repo.set_conf("permission_mode", "auto")
+        self.repo.set_worktree_lines([(path, module, "working")])
+        self.repo.set_panes([])
+        self.assertOk(self.repo.run("agent-resume.sh"))
+        calls = self.repo.create_calls()
+        self.assertEqual(len(calls), 1, calls)
+        return calls[0][calls[0].index("--command") + 1]
+
+    def test_the_words_keep_the_suffix(self):
+        for spec, want, module in (("opus-5.5[1m]:xhigh", "opus[1m]", "a1"),
+                                   ("claude-opus-5-5[1m]:high", "claude-opus-5-5[1m]", "a2")):
+            with self.subTest(spec=spec):
+                words = shlex.split(self.command(spec, module))
+                self.assertEqual(flag(words, "--model"), want)
+                self.assertEqual(flag(words, "--effort"), spec.rsplit(":", 1)[1])
+
+    @unittest.skipUnless(ZSH, "no zsh on PATH")
+    def test_zsh_runs_the_line_without_a_glob_error(self):
+        run = ZshRun(self.repo.path())
+        for spec, want, effort, module in (("opus-5.5[1m]:xhigh", "opus[1m]", "xhigh", "z1"),
+                                           ("claude-opus-5-5[1m]:high", "claude-opus-5-5[1m]", "high", "z2"),
+                                           ("fable-5.1[1m]:max", "fable[1m]", "max", "z3")):
+            with self.subTest(spec=spec):
+                code, out, err = run(self.command(spec, module))
+                self.assertNotIn("no matches found", err)
+                self.assertEqual((code, out), (0, ["--model", want, "--effort", effort,
+                                                   "--permission-mode", "auto", "ROLE=task-manager"]), err)
+
+    def test_a_plain_model_word_stays_bare(self):
+        command = self.command("opus-5.5:xhigh", "p1")
+        self.assertEqual(command, "AGENT_ROLE=task-manager claude --model opus --effort xhigh --permission-mode auto")
+
+
+class TestResumePermission(ScriptCase):
+    script = "agent-resume.sh"
+
+    def command(self):
+        path = self.repo.make_worktree("alpha")
+        self.repo.set_worktree_lines([(path, "alpha", "working")])
+        self.repo.set_panes([])
+        self.assertOk(self.repo.run("agent-resume.sh"))
+        calls = self.repo.create_calls()
+        self.assertEqual(len(calls), 1, calls)
+        return calls[0][calls[0].index("--command") + 1]
+
+    def test_the_setting(self):
+        self.repo.set_conf("permission_mode", "acceptEdits")
+        self.assertTrue(self.command().endswith("--permission-mode acceptEdits"))
+
+    def test_an_old_user_file_decides_nothing(self):
+        self.repo.set_user_conf("permission_mode=plan\n")
+        self.assertTrue(self.command().endswith("--permission-mode bypassPermissions"))
+
+    def test_nothing_set_is_bypass(self):
+        self.assertTrue(self.command().endswith("--permission-mode bypassPermissions"))
 
 
 if __name__ == "__main__":

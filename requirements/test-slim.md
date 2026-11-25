@@ -69,6 +69,20 @@ The split deals files slowest first to the process with the least seconds so far
 
 | Old file::test | Why it is a duplicate | Twin file::test that still checks it |
 |---|---|---|
+| test_agent_watch.py::TestRuntimeAndArgs.test_plain_is_not_used | single-mode watch with AGENT_RUNTIME=plain: "watch: not used in plain mode", no terminal call; the twin runs the same check for plain and cloud, in single and --all mode | test_agent_watch.py::TestProbe.test_c1_plain_or_cloud_is_not_used_in_both_modes |
+| test_agent_watch.py::TestRuntimeAndArgs.test_cloud_is_not_used | same for AGENT_RUNTIME=cloud: "watch: not used in cloud mode", no terminal call | test_agent_watch.py::TestProbe.test_c1_plain_or_cloud_is_not_used_in_both_modes |
+| test_agent_watch.py::TestScreenNeverFires.test_a_new_done_line_on_screen_does_not_fire | a moving screen with "DONE PASS feat" added: no WATCH SIGNAL, ends WATCH MAX; the twin's first case is the same line, then four more wake words | test_agent_watch.py::TestScreenNeverFires.test_no_screen_word_fires |
+| test_auto_clear.py::TestStartWarning.test_the_limit_is_the_fixed_300 | same 300-line state file, same `agent-start.sh` as task manager; asserts no line starts with STATE LONG, the twin asserts STATE LONG is nowhere in the output | test_agent_autoclear.py::TestStartWarning.test_300_lines_do_not |
+| test_agent_file.py::TestTodoAddBy.test_default_by_is_main | same `todo add` with no by: asserts "\| by main"; the twin asserts the whole line, ending "\| by main" | test_agent_estimate.py::TestTodoGuess.test_no_guess_is_the_line_as_before |
+| test_agent_file.py::TestTodoDrop.test_usage_lists_todo_drop | same bare `agent-file.sh`: exit 2 and "todo drop" in the usage; the twin checks exit 2 and "todo drop" among 10 verbs | test_agent_file.py::TestUsage.test_usage_lists_the_new_commands |
+| test_agent_file_data.py::TestTimeTable.test_dropped_lines_are_skipped | same `time` table; its one assert ("gone" is no row) moved into the twin | test_agent_file.py::TestTimeTable.test_one_row_per_finished_task |
+| test_agent_file_data.py::TestBackfillByName.test_it_sets_the_facts_of_an_old_line | same `backfill d-task`; the twin asserts the whole file, the new d-task line first | test_agent_file.py::TestBackfillByName.test_only_that_line_changes_and_the_order_stays |
+| test_agent_file_data.py::TestDataAllRepos.test_dropped_lines_are_not_rows | same `data`; the twin asserts the exact rows, shop-gone is not among them | test_agent_file.py::TestDataAllRepos.test_this_repo_and_the_city_world_are_read |
+| test_agent_estimate.py::TestDataWhat.test_without_the_option_the_table_stays_as_it_was | `data` without --what: last header cell is guess, no what text; the twin asserts the header ends "adds guess" and the row ends with the guess number | test_agent_estimate.py::TestDataGuess.test_the_table_has_a_guess_column_after_adds |
+| test_agent_estimate.py::TestDataWhat.test_the_table_gets_a_last_column_what | `data --what`: last header cell what, the row ends with the what text; the twin asserts "adds guess what" and the row tails | test_agent_estimate.py::TestDataGuess.test_with_what_the_guess_comes_before_what |
+| test_agent_estimate.py::TestBacktest.test_a_row_never_changes_when_later_tasks_come | rolling `backtest --tasks`: earlier rows stay byte-equal when tasks are added; the twin does the same on 45 tasks in today's row format | test_agent_estimate.py::TestBacktestBlend.test_a_row_never_changes_when_later_tasks_come |
+| test_agent_estimate.py::TestBacktest.test_one_row_per_tested_task_in_finish_order | same 14 lines, same expected order; the twin shuffles the file order and expects the same list | test_agent_estimate.py::TestBacktest.test_finish_order_is_the_date_not_the_file_order |
+| test_agent_estimate_blend.py::TestBacktestBlend.test_the_big_line_is_the_fixed_120 | same `backtest` on 40 steady lines; the twin asserts "work >= 120m: 7 tasks" | test_agent_estimate.py::TestBacktestBlend.test_the_rows_the_big_rows_the_winner_and_the_target_last |
 
 ## Before and after
 

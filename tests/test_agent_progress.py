@@ -105,7 +105,7 @@ if BIN not in sys.path:
 import test_agent_board as tb  # noqa: E402  (the module only: its tests stay in their own module)
 from scripthelp import ROOT  # noqa: E402
 
-NOW = tb.NOW   # "2026-11-02 15:00"
+STAGE_NOW = tb.NOW   # "2026-11-02 15:00"
 STAGES = ["brief", "register", "mock", "tests", "workers", "verify", "push", "report", "e2e", "merge"]
 DEFAULTS = {"stage_brief": "1", "stage_register": "1", "stage_mock": "4", "stage_tests": "20",
             "stage_workers": "40", "stage_verify": "15", "stage_push": "2", "stage_report": "2",
@@ -123,10 +123,10 @@ def read(*parts):
 class StageCase(tb.BoardCase):
     lang = "zh"
 
-    def stage(self, name, *args, now=NOW, cwd=None):
+    def stage(self, name, *args, now=STAGE_NOW, cwd=None):
         return self.af("todo", "stage", name, *args, now=now, cwd=cwd)
 
-    def board_row(self, name, *args, now=NOW, cwd=None):
+    def board_row(self, name, *args, now=STAGE_NOW, cwd=None):
         return self.row(self.rows(*args, now=now, cwd=cwd), task=name)
 
     def progress(self, name, **kw):
@@ -137,119 +137,6 @@ class StageCase(tb.BoardCase):
 
 
 # ---------------------------------------------------------------- todo stage
-
-
-class TestStageRecord(StageCase):
-    def test_the_field_on_the_todo_line(self):
-        self.add("alpha", "the login form", 60, opened="2026-11-02 14:00")
-        before = self.todo_line("alpha")
-        out = self.stage("alpha", "tests", now="2026-11-02 14:10").stdout
-        line = self.todo_line("alpha")
-        self.assertTrue(line.startswith(before), line)
-        self.assertTrue(line.endswith(" | stage tests since 2026-11-02 14:10"), line)
-        self.assertEqual(len(out.strip().splitlines()), 1, out)
-        self.assertTrue(out.startswith("todo stage: alpha -> tests"), out)
-
-    def test_set_again_is_replaced_in_place_once(self):
-        self.add("alpha", "the login form", 60, opened="2026-11-02 14:00")
-        self.stage("alpha", "tests", now="2026-11-02 14:10")
-        self.af("todo", "where", "alpha", "pc2", "/x/alpha")
-        self.stage("alpha", "workers", "1/2", now="2026-11-02 14:30")
-        line = self.todo_line("alpha")
-        self.assertEqual(line.count(" | stage "), 1, line)
-        self.assertIn(" | stage workers 1/2 since 2026-11-02 14:30 | on pc2 /x/alpha", line)
-
-    def test_the_same_value_again_keeps_the_line(self):
-        self.add("alpha", "the login form", 60, opened="2026-11-02 14:00")
-        self.stage("alpha", "workers", "1/2", now="2026-11-02 14:10")
-        before = self.todo_line("alpha")
-        self.stage("alpha", "workers", "1/2", now="2026-11-02 14:40")
-        self.assertEqual(self.todo_line("alpha"), before)
-        self.stage("alpha", "workers", "2/2", now="2026-11-02 14:50")
-        # statusline-vertical: a new slice of the same stage keeps the stage's since
-        self.assertIn(" | stage workers 2/2 since 2026-11-02 14:10", self.todo_line("alpha"))
-
-    def test_wait_where_eta_and_done_still_read_the_line(self):
-        self.add("alpha", "the login form", 120, opened="2026-11-02 13:00")
-        self.stage("alpha", "verify", now="2026-11-02 13:30")
-        self.wait("alpha", "on", "review", now="2026-11-02 14:00")
-        self.af("todo", "where", "alpha", "pc2", "/x/alpha")
-        line = self.todo_line("alpha")
-        self.assertIn(" | stage verify since 2026-11-02 13:30", line)
-        self.assertIn(" | waiting review since 2026-11-02 14:00", line)
-        self.wait("alpha", "off", now="2026-11-02 14:20")
-        self.assertIn(" | stage verify since 2026-11-02 13:30", self.todo_line("alpha"))
-        self.assertIn("work left", self.af("eta", "alpha", "--step", "5").stdout)
-        self.af("todo", "done", "alpha", "--work", "70")
-        done = self.repo.read("agent_completed.txt")
-        self.assertIn(" | alpha | the login form | data ", done)
-        self.assertIn(" est=120 ", done)
-        self.assertIsNone(self.todo_line("alpha"))
-
-    def test_every_stage_word_is_taken(self):
-        self.add("alpha", "the login form", 60)
-        for word in STAGES:
-            with self.subTest(stage=word):
-                self.stage("alpha", word)
-                self.assertIn(" | stage %s since " % word, self.todo_line("alpha"))
-
-    def test_refusals(self):
-        self.add("alpha", "the login form", 60)
-        self.stage("alpha", "tests", now="2026-11-02 14:10")
-        for args in (("todo", "stage"),
-                     ("todo", "stage", "alpha"),
-                     ("todo", "stage", "nobody", "tests"),
-                     ("todo", "stage", "alpha", "coffee"),
-                     ("todo", "stage", "alpha", "Tests"),
-                     ("todo", "stage", "alpha", "tests", "1/2"),
-                     ("todo", "stage", "alpha", "workers", "3/2"),
-                     ("todo", "stage", "alpha", "workers", "0/0"),
-                     ("todo", "stage", "alpha", "workers", "a/b"),
-                     ("todo", "stage", "alpha", "workers", "1"),
-                     ("todo", "stage", "alpha", "workers", "-1/2"),
-                     ("todo", "stage", "alpha", "workers", "1/2", "extra")):
-            with self.subTest(args=args):
-                self.refused(*args)
-
-
-class TestStageInWorktree(StageCase):
-    def setUp(self):
-        super().setUp()
-        self.alpha = self.task_worktree("alpha")
-
-    def test_the_stage_line_in_its_own_state(self):
-        self.add("alpha", "the login form", 60, opened="2026-11-02 14:00")
-        self.stage("alpha", "workers", "1/2", now="2026-11-02 14:30", cwd=self.alpha)
-        self.assertIn(" | stage workers 1/2 since 2026-11-02 14:30", self.todo_line("alpha"))
-        self.assertIn("STAGE alpha: workers 1/2 | since 2026-11-02 14:30\n", self.state_text(self.alpha))
-        self.assertNotIn("STAGE ", self.state_text())
-
-    def test_one_stage_line_replaced_in_place(self):
-        self.add("alpha", "the login form", 60, opened="2026-11-02 14:00")
-        self.state("brief line one\nHEARTBEAT alpha: step 3 of 7\n", folder=self.alpha)
-        self.stage("alpha", "tests", now="2026-11-02 14:10", cwd=self.alpha)
-        self.state("a line after\n", folder=self.alpha)
-        self.stage("alpha", "verify", now="2026-11-02 14:50", cwd=self.alpha)
-        self.assertEqual(self.state_text(self.alpha),
-                         "brief line one\nHEARTBEAT alpha: step 3 of 7\n"
-                         "STAGE alpha: verify | since 2026-11-02 14:50\n"
-                         "a line after\n")
-        self.stage("alpha", "verify", now="2026-11-02 14:55", cwd=self.alpha)
-        self.assertIn("STAGE alpha: verify | since 2026-11-02 14:50\n", self.state_text(self.alpha))
-
-    def test_no_todo_line_here_writes_the_stage_line_only(self):
-        """A task manager on another machine: its todo line is on the laptop."""
-        before = self.repo.read("agent_todo.txt")
-        result = self.stage("alpha", "tests", now="2026-11-02 14:10", cwd=self.alpha)
-        self.assertEqual(result.returncode, 0)
-        self.assertEqual(self.repo.read("agent_todo.txt"), before)
-        self.assertIn("STAGE alpha: tests | since 2026-11-02 14:10\n", self.state_text(self.alpha))
-
-    def test_in_the_main_repo_no_stage_line(self):
-        self.add("alpha", "the login form", 60, opened="2026-11-02 14:00")
-        self.stage("alpha", "e2e", now="2026-11-02 14:10")
-        self.assertIn(" | stage e2e since 2026-11-02 14:10", self.todo_line("alpha"))
-        self.assertNotIn("STAGE ", self.state_text())
 
 
 # ---------------------------------------------------------------- the column
@@ -416,32 +303,12 @@ class TestDoneByEnglish(StageCase):
 # ---------------------------------------------------------------- --self
 
 
-class TestSelfStage(StageCase):
-    def setUp(self):
-        super().setUp()
-        self.alpha = self.task_worktree("alpha")
-
-    def test_its_todo_line_without_a_stage_reads_its_stage_line(self):
-        self.add("alpha", "the login form", 120, opened="2026-11-02 14:00")
-        self.state("STAGE alpha: verify | since 2026-11-02 15:00\n", folder=self.alpha)
-        r = self.board_row("alpha", "--self", cwd=self.alpha)
-        self.assertEqual((r["Progress"], r["Done by"]), ("██████░░░░  66%", "16:00"))
-
-    def test_on_another_machine_its_todo_line_and_stage_come_from_its_state(self):
-        self.state("TODO LINE: alpha | big | the login form | est 60m | opened 2026-11-02 14:30 | by main\n",
-                   folder=self.alpha)
-        self.stage("alpha", "workers", "1/2", now="2026-11-02 14:50", cwd=self.alpha)
-        r = self.board_row("alpha", "--self", cwd=self.alpha)
-        # work 30 < est 60: the estimate, 15:30
-        self.assertEqual((r["Progress"], r["Done by"]), ("████░░░░░░  46%", "15:30"))
-
-
 # ---------------------------------------------------------------- the watch
 
 
 class TestWatch(StageCase):
     def popen(self, *args, cwd=None):
-        env = self.repo._env({"AGENT_FAKE_NOW": NOW, "AGENT_FAKE_HOST": tb.HOST})
+        env = self.repo._env({"AGENT_FAKE_NOW": STAGE_NOW, "AGENT_FAKE_HOST": tb.HOST})
         return subprocess.Popen([self.repo.script_path("agent-file.sh"), "board"] + list(args),
                                 cwd=cwd or self.repo.cwd, env=env, stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -495,7 +362,7 @@ class TestWatch(StageCase):
                      ("--watch", "1.5"), ("--watch", "1", "2")):
             with self.subTest(args=args):
                 result = self.repo.run("agent-file.sh", "board", *args, timeout=15,
-                                       env={"AGENT_FAKE_NOW": NOW, "AGENT_FAKE_HOST": tb.HOST})
+                                       env={"AGENT_FAKE_NOW": STAGE_NOW, "AGENT_FAKE_HOST": tb.HOST})
                 self.assertEqual(result.returncode, 1, (result.stdout, result.stderr))
                 self.assertEqual(len(result.stderr.strip().splitlines()), 1, result.stderr)
 
@@ -517,15 +384,6 @@ class TestWatchEnglish(TestWatch):
 
 # ---------------------------------------------------------------- config
 
-
-class TestConfKeys(unittest.TestCase):
-    """settings-configure: the stage weights and the board numbers are fixed constants."""
-
-    def test_constants(self):
-        import agent_conf
-        for key, value in DEFAULTS.items():
-            with self.subTest(key=key):
-                self.assertEqual(str(agent_conf.CONSTANTS[key]), value)
 
 class TestSettingsWritesWeights(tb.BoardCase):
     script = "agent-settings.sh"

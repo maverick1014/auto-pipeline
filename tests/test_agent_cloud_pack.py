@@ -84,6 +84,7 @@ import sys
 import tempfile
 import time
 import unittest
+from scripthelp import ROOT, ScriptCase  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -921,6 +922,19 @@ class TestOneSentenceInstall(PackCase):
         self.assertIn("PLUGIN: %s" % os.path.join(self.target, PACK), out)
         self.assertIn("QUIZ:", out)
 
+
+def read(*parts):
+    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
+        return fh.read()
+
+
+class TestCloudPackSettings(ScriptCase):
+    script = "agent-cloud-pack.sh"
+
+    def test_the_pack_holds_no_settings_file(self):
+        text = read("bin", "agent-cloud-pack.sh")
+        self.assertNotIn("agent.conf", text)
+        self.assertNotIn("CLAUDE_PLUGIN_OPTION_", text)
 
 
 if __name__ == "__main__":

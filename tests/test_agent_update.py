@@ -541,13 +541,100 @@ class TestStart(ScriptCase):
         self.assertLess(time.time() - t, 20)
 
 
-class TestReleaseText(unittest.TestCase):
-    def test_merge_skill_says_bump_the_version(self):
-        text = read("skills", "merge", "SKILL.md")
-        line = next((l for l in text.splitlines() if ".claude-plugin/plugin.json" in l), None)
-        self.assertIsNotNone(line)
-        self.assertIn("version", line)
-        self.assertIn("release", line.lower())
+ENV = "AUTO_PIPELINE_USER_CONF"
+
+
+class TmpCase(unittest.TestCase):
+    """A temp folder, and a user file that is never the real ~/.claude one."""
+
+    def setUp(self):
+        self.base = os.path.realpath(tempfile.mkdtemp(prefix="five_fixes_"))
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.user = os.path.join(self.base, "u", "auto-pipeline.conf")
+        self.cfg = os.path.join(self.base, "cfg")
+        patcher = mock.patch.dict(os.environ, {ENV: self.user, "CLAUDE_CONFIG_DIR": self.cfg})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def folder(self, name, conf):
+        """settings-configure: CONF (old key=value text) goes into Configure (user level)."""
+        from test_agent_city_add_agent import configure_text
+        path = os.path.join(self.base, name)
+        os.makedirs(path)
+        configure_text(conf)
+        return path
+
+    def write_user(self, text):
+        os.makedirs(os.path.dirname(self.user), exist_ok=True)
+        with open(self.user, "w") as fh:
+            fh.write(text)
+
+
+def text(path):
+    with open(path) as fh:
+        return fh.read()
+
+
+SETTINGS_five = {
+    "model": "opus",
+    "extraKnownMarketplaces": {
+        "auto-pipeline": {"source": {"source": "github", "repo": "maverick1014/auto-pipeline"}},
+    },
+}
+
+
+KNOWN_five = {"auto-pipeline": {"source": {"source": "github", "repo": "maverick1014/auto-pipeline"},
+                           "installLocation": "/x/auto-pipeline"}}
+
+
+BAK = ".bak-auto-pipeline"
+
+
+class TestFirstBackupIsKept(TmpCase):
+    def setUp(self):
+        super().setUp()
+        import agent_update
+        self.u = agent_update
+        self.cdir = os.path.join(self.base, "home", ".claude")
+        self.s = self.write(os.path.join(self.cdir, "settings.json"), SETTINGS_five)
+        self.k = self.write(os.path.join(self.cdir, "plugins", "known_marketplaces.json"), KNOWN_five)
+
+    def write(self, path, data):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as fh:
+            fh.write(json.dumps(data, indent=4) + "\n")   # the user's own style, not ours
+        return path
+
+    def read(self, path):
+        with open(path, "rb") as fh:
+            return fh.read()
+
+    def test_many_flips_keep_the_original(self):
+        originals = {p: self.read(p) for p in (self.s, self.k)}
+        for on in (False, True, False, True, False):
+            self.u.apply_auto_update(on, self.cdir)
+            for path, raw in originals.items():
+                with self.subTest(flip=on, path=path):
+                    self.assertEqual(self.read(path + BAK), raw, "the backup is the file before the first flip")
+        self.assertIs(json.loads(self.read(self.s))["extraKnownMarketplaces"]["auto-pipeline"]["autoUpdate"], False)
+        self.assertIs(json.loads(self.read(self.k))["auto-pipeline"]["autoUpdate"], False)
+
+    def test_an_old_backup_is_never_overwritten(self):
+        for path in (self.s, self.k):
+            with open(path + BAK, "wb") as fh:
+                fh.write(b"older backup\n")
+        lines = self.u.apply_auto_update(False, self.cdir)
+        for path in (self.s, self.k):
+            with self.subTest(path=path):
+                self.assertEqual(self.read(path + BAK), b"older backup\n")
+        self.assertIs(json.loads(self.read(self.s))["extraKnownMarketplaces"]["auto-pipeline"]["autoUpdate"], False)
+        self.assertTrue(any(self.s + BAK in line for line in lines), lines)
+
+    def test_the_first_flip_still_writes_the_backup(self):
+        raw = self.read(self.s)
+        lines = self.u.apply_auto_update(False, self.cdir)
+        self.assertEqual(self.read(self.s + BAK), raw)
+        self.assertTrue(any("autoUpdate set to false" in l and self.s + BAK in l for l in lines), lines)
 
 
 if __name__ == "__main__":

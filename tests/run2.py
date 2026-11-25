@@ -62,10 +62,40 @@ def read_timings(path):
     return out
 
 
-def split(names, timings, n):
+def test_classes(tests_dir, module):
+    """(class name, number of test methods) of the classes defined in a test file."""
+    import ast
+    with open(os.path.join(tests_dir, module + ".py")) as fh:
+        tree = ast.parse(fh.read())
+    classes = {n.name: n for n in tree.body if isinstance(n, ast.ClassDef)}
+
+    def count(c, seen=()):
+        own = sum(1 for m in c.body if isinstance(m, ast.FunctionDef) and m.name.startswith("test"))
+        for b in c.bases:
+            name = getattr(b, "id", None)
+            if name in classes and name not in seen:
+                own += count(classes[name], seen + (name,))
+        return own
+
+    return [(name, count(c)) for name, c in classes.items() if count(c)]
+
+
+def split(names, timings, n, tests_dir=None):
     known = sorted(timings[k] for k in names if k in timings)
     default = known[len(known) // 2] if known else 1.0
     cost = {k: timings.get(k, default) for k in names}
+    # a file bigger than a third of one process's share is dealt out class by class
+    share = sum(cost.values()) / max(1, n)
+    if tests_dir and n > 1:
+        for name in list(names):
+            if cost[name] > share / 3:
+                classes = test_classes(tests_dir, name)
+                total = sum(c for _, c in classes)
+                if len(classes) > 1 and total:
+                    for cname, c in classes:
+                        cost["%s.%s" % (name, cname)] = cost[name] * c / total
+                    del cost[name]
+    names = list(cost)
     groups = [[] for _ in range(n)]
     totals = [0.0] * n
     for name in sorted(names, key=lambda k: -cost[k]):
@@ -78,8 +108,13 @@ def split(names, timings, n):
 def run_unittest(tests_dir, modules, log_path):
     start = time.time()
     with open(log_path, "w") as log:
+        # cwd = the repo root, tests/ on the path: both `import scripthelp` and
+        # `from tests.scripthelp import ...` work, as under `unittest discover -s tests`
+        env = dict(os.environ)
+        env["PYTHONPATH"] = os.pathsep.join([tests_dir] + [p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p])
         code = subprocess.call([sys.executable, "-m", "unittest"] + modules,
-                               cwd=tests_dir, stdout=log, stderr=subprocess.STDOUT)
+                               cwd=os.path.dirname(tests_dir), env=env,
+                               stdout=log, stderr=subprocess.STDOUT)
     with open(log_path) as fh:
         text = fh.read()
     return code, time.time() - start, text
@@ -132,7 +167,7 @@ def main():
             print("FAILED %s: see %s" % (name, os.path.join(logs, name + ".log")))
         return 1 if bad else 0
 
-    groups = split(names, read_timings(os.path.join(tests_dir, "timings.txt")), max(1, args.j))
+    groups = split(names, read_timings(os.path.join(tests_dir, "timings.txt")), max(1, args.j), tests_dir)
 
     def go(i_group):
         i, (mods, est) = i_group
@@ -143,7 +178,7 @@ def main():
     failed = False
     for i, mods, est, (code, secs, text) in results:
         tests, verdict = summary(text)
-        print("process %d: %d files, %d tests, %.0f s (planned %.0f s): %s"
+        print("process %d: %d files or classes, %d tests, %.0f s (planned %.0f s): %s"
               % (i + 1, len(mods), tests, secs, est, verdict))
         if code != 0:
             failed = True
