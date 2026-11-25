@@ -174,15 +174,29 @@ gate() {
   done
 }
 
+# prep <step>: the gate, then ready; when ready took 2 seconds or more (it waited) both run again, until ready
+# returns at once (a --spawned waiter or clear_quiet_min 0: once), so no text is typed a moment after anything but a passing gate and an empty box (C13).
+# rc 1 = the gate had to wait on the way.
+prep() {
+  local w=0 t0
+  while :; do
+    gate || w=1
+    t0=$SECONDS
+    ready "$1"
+    # a spawned task manager (nobody types into it) and a run with no gate are not repeated
+    [ "$SPAWNED" = 1 ] || [ "$quiet_min" -le 0 ] || [ $(( SECONDS - t0 )) -lt 2 ] && break
+  done
+  return $w
+}
+
 while :; do
-  gate
-  ready 1
+  prep 1
   type_text 2 "AUTO CLEAR: save agent_state.txt now (S8), nothing else. /clear comes next."
-  gate && { ready 3; break; }
-  # a human typed during the save prompt: once quiet, back to step 1
+  prep 3 && break
+  # a human typed during the save turn: once quiet, back to step 1
 done
 type_text 4 "/clear"
-ready 5
+prep 5
 read_goal
 if [ -n "$goal" ]; then type_text 6 "/goal $goal"; else type_text 6 "CLEARED: continue from agent_state.txt (S8)."; fi
 add "AUTO CLEAR done"

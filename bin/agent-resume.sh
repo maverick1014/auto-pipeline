@@ -216,9 +216,9 @@ try:
     print(find(json.load(sys.stdin)))
 except Exception:
     print("")' 2>/dev/null) || pane_handle=""
-          if [ -n "$pane_handle" ]; then
-            (cd "$PROJECT_ROOT" && "$PLUGIN_ROOT/bin/agent-room.sh" reserve-pane "$pane_handle" "$room_pane") >/dev/null 2>&1 </dev/null || true
-          fi
+          # no handle in the answer: a name of our own, so the pane still counts until the reservation expires
+          [ -n "$pane_handle" ] || pane_handle="resume-$$-$relaunch_count"
+          (cd "$PROJECT_ROOT" && "$PLUGIN_ROOT/bin/agent-room.sh" reserve-pane "$pane_handle" "$room_pane") >/dev/null 2>&1 </dev/null || true
           relaunched="yes"
         fi
         relaunch_count=$((relaunch_count + 1))

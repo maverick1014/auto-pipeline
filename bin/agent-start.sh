@@ -906,6 +906,34 @@ ROLE_TEXT=$(print_role_and_project; printf 'X'); ROLE_TEXT=${ROLE_TEXT%X}
 if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; } && [ -x "$PLUGIN_ROOT/bin/agent-nightly.sh" ]; then
   if ! python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agent_watchfile as w; sys.exit(0 if w.live(w.read_status(sys.argv[2])) else 1)' "$PLUGIN_ROOT/bin" "$PROJECT_ROOT" 2>/dev/null </dev/null; then
     if ( cd "$PROJECT_ROOT" 2>/dev/null && "$PLUGIN_ROOT/bin/agent-nightly.sh" --due ) >/dev/null 2>&1 </dev/null; then
+      # C18 (section 46): a connected machine (orca environment list) runs it; nothing starts here
+      nl_conn=$(python3 -c '
+import json, subprocess, sys
+try:
+    out = subprocess.run(["orca", "environment", "list", "--json"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                         stdin=subprocess.DEVNULL, timeout=10).stdout.decode(errors="replace")
+    data = json.loads(out)
+except Exception:
+    sys.exit(1)
+def items(o):
+    if isinstance(o, list):
+        return o
+    if isinstance(o, dict):
+        for k in ("environments", "result", "items", "machines"):
+            if k in o:
+                return items(o[k])
+    return []
+bad = ("disconnected", "offline", "down", "unreachable", "error", "false")
+for e in items(data):
+    if not isinstance(e, dict) or not (e.get("name") or e.get("id")):
+        continue
+    state = str(e.get("status", e.get("state", e.get("connected", "")))).lower()
+    if state not in bad:
+        print("yes"); break
+' 2>/dev/null </dev/null) || nl_conn=""
+      if [ "$nl_conn" = yes ]; then
+        NIGHTLY_LINE="NIGHTLY: due: a connected machine runs it (W7): agent-nightly.sh --start there"
+      else
       # C3 (section 43): only with room for the nightly's weight; else one line and nothing starts
       nl_mb=$(cd "$PROJECT_ROOT" 2>/dev/null && python3 -c '
 import os, sys
@@ -920,13 +948,15 @@ print(w[1] if w else 0)' "$PLUGIN_ROOT/bin" 2>/dev/null </dev/null) || nl_mb=0
         nl_host=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
         NIGHTLY_LINE="NIGHTLY: due, no room on $nl_host: start it where there is room (W7): agent-nightly.sh --start"
       fi
+      fi
     fi
   fi
 fi
 
 # check-blocks section 25 (C29): the main manager measures its own pane once, detached, never waited for. The weights
 # key "pane" is what a new pane costs in the memory gate (550 MB until measured).
-if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; } && [ -x "$PLUGIN_ROOT/bin/agent-room.sh" ]; then
+# C17: every session with a pane handle measures its pane (a task manager's too; its reservation is dropped then).
+if { [ -n "${ORCA_TERMINAL_HANDLE:-}" ] || { [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }; }; } && [ -x "$PLUGIN_ROOT/bin/agent-room.sh" ]; then
   ( cd "$PROJECT_ROOT" 2>/dev/null && nohup "$PLUGIN_ROOT/bin/agent-room.sh" measure-pane "${CLAUDE_PID:-$PPID}" >/dev/null 2>&1 </dev/null & ) >/dev/null 2>&1 || true
 fi
 
