@@ -78,7 +78,7 @@ printf 'x = 1\n' > "$R/bin/tool.py"
 printf 'import os, unittest\nclass T(unittest.TestCase):\n    def test_walk(self):\n        list(os.walk("."))\n' > "$R/tests/test_tree.py"
 : > "$R/tests/__init__.py"
 g add -A; g commit -q -m "fix: empty list crashes the report"
-"$P/bin/agent-init.sh" "$R" | grep "agent_repo.conf"
+"$P/bin/agent-init.sh" "$R" | grep -E "agent_repo.conf|working branch|checkout:"; echo "HEAD now: $(git -C "$R" rev-parse --abbrev-ref HEAD)"
 cat "$R/agent_repo.conf"
 
 say "done: everything above ran in $T (delete it when read)"
