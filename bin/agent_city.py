@@ -31,23 +31,19 @@ Three parts, in one file so the server never imports anything but the stdlib:
            Plus small CLI helpers for the governor, used by bin/agent-city.sh:
            gov-answer, gov-pass, gov-pending.
 
-  World    Pure. Territories, growth, town plans and the persisted
-           world.json (requirements/city.md, "Growth" and "Persistence").
-           No files, no clock (save_world/load_world/count_lines are the
-           only functions that touch disk or git). See
-           tests/test_agent_city_world.py for the full contract.
-           python3 agent_city.py demo-world prints the demo view (JSON).
+  World    Territories, floors and the persisted world.json
+           (requirements/city.md, "Office"; tests/test_agent_city_office.py
+           and tests/test_agent_city_office_cleanup.py are the contract).
+           python3 agent_city.py demo-world prints the demo office (JSON).
 
 Python standard library only. Runs on Python 3.8+.
 """
 
 import argparse
-import fnmatch
 import hashlib
 import hmac
 import http.client
 import json
-import math
 import os
 import queue
 import re
@@ -85,6 +81,15 @@ GOV_BUSY_EVENTS = ("PostToolUse", "PreToolUse", "UserPromptSubmit", "PermissionD
 STUCK_NOTIFICATIONS = ("permission_prompt",)   # idle_prompt is not one: it changes nothing
 RESUME_EVENTS = ("PreToolUse", "PostToolUse", "UserPromptSubmit")  # a resting session works again
 MAX_NAMES = 200  # world.json "names": at most this many live citizens, oldest dropped
+
+
+def _is_safe_rel_path(rel):
+    """False for an absolute path, an empty one, or one with a ".."
+    segment: a line's "file" is trusted for nothing beyond a plain path
+    inside the repo (the page shows only its last part)."""
+    if not rel or os.path.isabs(rel):
+        return False
+    return ".." not in rel.replace("\\", "/").split("/")
 
 
 def _trim(value, limit):
@@ -1567,6 +1572,11 @@ A design is one JSON object. These keys are the only ones allowed:
   decor   a list of exactly 3 entries. Each entry is one of these ids, or "none":
             robot conveyor gears chart plants safe cabinets printer bookshelf clock cashier goods menu
             scanner lightbox
+          The three entries are three places on the floor, in this order:
+            1  the south-west corner
+            2  the south middle
+            3  the east wall
+          Put the decor that fits the repo in the place you want. "none" leaves a place empty.
 
 Example:
 {"v": 1, "name": "Cashier style", "why": "A POS repo.",
@@ -1732,8 +1742,8 @@ class CityState:
     """Thread-safe home for the Reducer, asks, health counters and SSE clients."""
 
     def __init__(self, max_agents=40, done_ttl=600, gov_wait_sec=60.0,
-                 decisions_path=None, token="", world_path=None, plans=None, count_fn=None,
-                 balance_fn=None, start_repo=None, chat_path=None, lang="zh", titles=None,
+                 decisions_path=None, token="", world_path=None,
+                 start_repo=None, chat_path=None, lang="zh", titles=None,
                  main_fn=None, listen_grace_sec=15.0, roster_path=None,
                  open_fn=None, kind_fn=None, resources_fn=None, city_dir=None,
                  history_path=None, floors_dir=None, close_fn=None):
@@ -1745,7 +1755,7 @@ class CityState:
         self._max_agents = max_agents
         self._done_ttl = done_ttl
         self.reducers = {}        # identity (str, or None: the start territory) -> Reducer
-        self.terr_chain = {}      # identity -> {"leads", "lead_of", "open"} (leads, offices, relays)
+        self.terr_chain = {}      # identity -> {"leads", "lead_of", "open"} (leads, relays)
         self.gov_state = "idle"   # legacy single-governor scalar, mirrors the last "gov" event seen
         self.lines = 0
         self.clients = []
@@ -1785,22 +1795,13 @@ class CityState:
         self._design_bad_seen = {}  # territory id -> the (size, mtime) a broken file was told at
         self._added_names = {}    # sid -> (identity, name) of a session this city opened that showed up: it holds that name while it lives, bounded (SID_REPO_KEEP)
 
-        # -- world: territories, growth, town plans, persistence ----------
-        self.plans = plans if plans is not None else load_plans()
-        self.count_fn = count_fn or count_lines
-        self.balance_fn = balance_fn if balance_fn is not None else balance_of
-        self.balance_files = {}   # identity -> {"files": ...}["kind"] from the last count (memory only)
+        # -- world: territories, floors, persistence ----------------------
         self.world_path = world_path
         if world_path is None:
             self.world, self.notice = new_world(), None
         else:
-            self.world, self.notice = load_world(world_path, self.plans, lang=self.lang)
-        # city-data: a building from before names has its name now (once; the next start finds it named).
-        named = name_world(self.world, self.lang)
-        self._view_cache = None
-        self._hidden_last = []    # city-layout: the "hidden" list the pages were last told (see _check_hidden_locked)
+            self.world, self.notice = load_world(world_path, lang=self.lang)
         self.last_activity = {}   # identity -> "now" of its last feed_line, this run only
-        self.last_count = {}      # identity -> the recount() "now" it was last counted at
         self.agent_terr = {}      # citizen id -> territory id, for the snapshot's agents
         self.agent_up = {}        # citizen id -> its "up" (parent page id or ""), for the snapshot's agents (city-rail-tree)
         self.gov_terr = ""        # the governor's current territory id
@@ -1808,7 +1809,7 @@ class CityState:
         # Old data is dropped: a territory saved under a "dir:..." identity
         # (no repo -- the old proj fallback) never comes back.
         dropped = [i for i in self.world["territories"] if i.startswith("dir:")]
-        dirty = bool(dropped) or named > 0
+        dirty = bool(dropped)
         if dropped:
             for i in dropped:
                 del self.world["territories"][i]
@@ -1821,30 +1822,6 @@ class CityState:
             print("agent_city: dropped %d territory(ies) with no repo (\"dir:\" identity)"
                   % len(dropped), file=sys.stderr)
 
-        # Offices belong to live leads only: a lead that ended while the
-        # server was down never sends SessionEnd, so a loaded office must
-        # not outlive the restart. A live lead's next line gives it one
-        # again (_assign_office, plan order). Rest place and names persist.
-        # Sites (worktrees) are the same: scan_sites() rediscovers every
-        # live one from agent_worktree.txt on its next tick.
-        for t in self.world["territories"].values():
-            if t.get("offices"):
-                t["offices"] = {}
-                dirty = True
-            if t.get("sites"):
-                t["sites"] = {}
-                dirty = True
-
-        # -- worktree construction sites: memory-only bookkeeping, never
-        # saved to world.json (scan_sites() rebuilds it every run). --------
-        self._site_watch = {}     # identity -> {"wt", "mon" (stat keys), "rows"}
-        self._site_paths = {}     # site id -> its worktree's physical path
-        self._site_by_path = {}   # physical path -> site id, live sites only
-        self._site_heads = {}     # site id -> last known non-empty HEAD sha
-        self._site_terr = {}      # site id -> its territory identity
-        self._lead_last_wt = {}   # lead citizen id -> last "wt" its lines carried
-        self._lead_site = {}      # lead citizen id -> the site id it stands in
-
         # The city is never empty: the dir the server was started from (its
         # git repo, or the plain folder itself) always has a territory, the
         # governor's home until a real one shows up.
@@ -1854,14 +1831,14 @@ class CityState:
         if self.start_repo:
             was_known = self.start_repo in self.world["territories"]
             was_known_start = was_known
-            add_territory(self.world, self.plans, self.start_repo, repo_name(self.start_repo))
+            add_territory(self.world, self.start_repo, repo_name(self.start_repo))
             if not was_known:
                 dirty = True
             self.last_activity[self.start_repo] = 0.0
             self.gov_terr = self.start_terr
 
         # office: the floors. A world with none (an island one, or a fresh one) takes every
-        # territory of its order that is not hidden; names that are no territory are dropped.
+        # territory of its order; names that are no territory are dropped.
         terrs = self.world["territories"]
         saved_floors = self.world.get("floors")
         if isinstance(saved_floors, list):
@@ -1871,7 +1848,7 @@ class CityState:
                     seen.add(i)
                     floors.append(i)
         else:
-            floors = [i for i in self.world["order"] if i in terrs and not terrs[i].get("hidden")]
+            floors = [i for i in self.world["order"] if i in terrs]
         if floors != saved_floors:
             dirty = True
         self.world["floors"] = floors
@@ -1918,17 +1895,15 @@ class CityState:
             if len(self.clients) >= MAX_CLIENTS:
                 return None
             client = _Client()
-            self._start_waiting_shows_locked()
             client.queue.put_nowait(_encode_event(self._snapshot_locked()))
             self.clients.append(client)
             return client
 
     def _snapshot_locked(self):
         """Caller holds self.lock. The {"type": "snapshot"} a new page (or a
-        tap) gets, and every page again when the arrangement changes
-        (set_layout). A hidden territory (city-layout) is cut out of it: its
-        land (layout() leaves it out), people, governors, asks, shows and
-        adding; "hidden" lists what is hidden instead. "hist" (city-data) is
+        tap) gets, and every page again when the floors change (set_floors). A
+        territory that is no floor is cut out of it: its people, governors,
+        asks and adding. "world" is the office view. "hist" (city-data) is
         the history lines of every person it lists, {id: lines}."""
         hidden = self._hidden_terrs_locked()
         agents = []
@@ -1962,90 +1937,30 @@ class CityState:
         # spoke after the page connected but before this snapshot was
         # built (headless E2E: models load for a few seconds first).
         # Live "gov" events keep broadcasting their own territory.
-        # It never names a hidden territory (see _shown_home_locked).
+        # It never names a territory that is no floor: then the first floor.
         home_terr = self.start_terr if self.start_terr else self.gov_terr
         gov = {"state": self.gov_state, "terr": home_terr}
         if home_terr in hidden:
-            gov = self._shown_home_locked()
+            floors = self._floors_locked()
+            gov = {"state": "idle", "terr": floors[0] if floors else ""}
         snap = {"type": "snapshot", "gov": gov, "govs": govs, "agents": agents,
                 "asks": [v for v in (ask.view() for ask in self.open.values()) if v["terr"] not in hidden],
                 "governors": self._fresh_governor_count(),
-                "shows": [x for x in self._shows_view_locked() if x["terr"] not in hidden],
                 "adding": [x for x in self._adding_view_locked() if x["terr"] not in hidden],
                 "world": self._view(),
-                "hidden": self._hidden_view_locked(),
                 "hist": {a["id"]: self.history.lines(a["id"]) for a in agents}}
         if self.notice is not None:
             snap["notice"] = self.notice
         return snap
 
-    # -- city-layout: the owner's arrangement and the hidden repos ------------
+    # -- floors decide what a page hears --------------------------------------
 
     def _hidden_terrs_locked(self):
-        """Caller holds self.lock. The territory ids of the hidden territories
-        (a set; empty when none). Cheap: only a hidden one is hashed."""
+        """Caller holds self.lock. The territory ids of the territories that are no floor
+        (a set; empty when every territory is a floor): the page never hears of them."""
         floors = set(self.world.get("floors", ()))
         return {territory_id(i) for i in self.world["territories"] if i not in floors}
 
-    def _shown_home_locked(self):
-        """Caller holds self.lock. The camera home ("gov" of the snapshot)
-        when the usual one is hidden: the first shown territory (world order)
-        that has a governor, with its governor's state; else the first shown
-        one, "idle" (it has no governor)."""
-        floors = set(self.world.get("floors", ()))
-        shown = [i for i in self.world["order"] if i in self.world["territories"] and i in floors]
-        for identity in shown:
-            reducer = self.reducers.get(identity)
-            if reducer is not None and reducer.gov_sid is not None:
-                return {"state": reducer.gov_state, "terr": territory_id(identity)}
-        return {"state": "idle", "terr": territory_id(shown[0]) if shown else ""}
-
-    def _hidden_view_locked(self):
-        """Caller holds self.lock. The snapshot's "hidden": one entry per
-        hidden territory, in world order: {"id", "name", "people", "wait"}.
-        people = its agents as the snapshot counts them (the Reducer's).
-        wait = those of them that wait for the owner (waiting, stuck, or with
-        an open ask in phase "owner"; each person once), plus 1 when its
-        governor's state is "waiting" or the governor has an open ask in
-        phase "owner"."""
-        out = []
-        floors = set(self.world.get("floors", ()))
-        for identity in self.world["order"]:
-            t = self.world["territories"].get(identity)
-            if t is None or identity in floors:
-                continue
-            terr = territory_id(identity)
-            people = 0
-            wait = set()
-            gov_waits = False
-            reducer = self.reducers.get(identity)
-            agents = reducer.snapshot()["agents"] if reducer is not None else []
-            for a in agents:
-                people += 1
-                if a["waiting"] or a["stuck"]:
-                    wait.add(a["id"])
-            for ask in self.open.values():
-                if ask.phase != "owner" or not ask.repo or territory_id(ask.repo) != terr:
-                    continue
-                if ask.agent == "gov":
-                    gov_waits = True
-                elif any(a["id"] == ask.agent for a in agents):
-                    wait.add(ask.agent)
-            if reducer is not None and reducer.gov_sid is not None and reducer.gov_state == "waiting":
-                gov_waits = True
-            out.append({"id": terr, "name": t["name"], "people": people, "wait": len(wait) + (1 if gov_waits else 0)})
-        return out
-
-    def _check_hidden_locked(self):
-        """Caller holds self.lock. Tell every client the "hidden" list when it
-        changed since it was last told (a person came or left, waits or
-        stopped waiting). Cheap when nothing is hidden: no work at all."""
-        if not self._hidden_last and len(self.world.get("floors", ())) >= len(self.world["territories"]):
-            return
-        now = self._hidden_view_locked()
-        if now != self._hidden_last:
-            self._hidden_last = now
-            self._broadcast({"type": "hidden", "lands": now})
 
     def _event_hidden_locked(self, ev, hidden):
         """Caller holds self.lock. True when EV tells of a territory in HIDDEN
@@ -2075,109 +1990,6 @@ class CityState:
             return to[len("gov:"):]
         return self._chat_page_terr.get(to) or self.agent_terr.get(to)
 
-    def set_layout(self, lands):
-        """The owner's arrangement (city-layout): LANDS, a list of 1..81 dicts
-        {"id": a territory id, "slot": [i, j] (two ints, -4..4), "hidden":
-        true | false} (no other key; "slot" or "hidden" is needed) -> (code,
-        body). 400 {"error": "bad"} for anything else (an id twice too), 404
-        "unknown" for an id that is no territory. All of it is applied
-        together, then the rule is checked on the SHOWN territories: 409
-        "taken" (two on one slot), "sea" (one on the cell just south of a land
-        whose plan has sea), "empty" (none is left). A land shown again with
-        no slot keeps its old one when the rule holds there, else it takes the
-        first free cell a new repo of its plan would get. Nothing changes on a
-        refusal. 200 {"lands": [{"id", "slot", "hidden"}, ...]}: every
-        territory, in world order. world.json is saved before this returns;
-        the pages are told (a fresh snapshot) only when something changed.
-        Nothing is read from LANDS but ids, numbers and the flag."""
-        bad = (400, {"error": "bad"})
-        if not isinstance(lands, list) or not 1 <= len(lands) <= len(SLOTS):
-            return bad
-        asks = {}
-        for land in lands:
-            if not isinstance(land, dict) or not set(land) <= {"id", "slot", "hidden"}:
-                return bad
-            tid = land.get("id")
-            if not isinstance(tid, str) or not re.fullmatch(r"[0-9a-f]{8}", tid) or tid in asks:
-                return bad
-            if "slot" not in land and "hidden" not in land:
-                return bad
-            if "slot" in land:
-                slot = land["slot"]
-                if (not isinstance(slot, list) or len(slot) != 2
-                        or any(type(n) is not int or not -4 <= n <= 4 for n in slot)):
-                    return bad
-            if "hidden" in land and type(land["hidden"]) is not bool:
-                return bad
-            asks[tid] = land
-        with self.lock:
-            known = {territory_id(i): i for i in self.world["territories"]}
-            if any(tid not in known for tid in asks):
-                return 404, {"error": "unknown"}
-            plan_by_id = {p["id"]: p for p in self.plans}
-            now = {i: (list(t["slot"]), bool(t.get("hidden"))) for i, t in self.world["territories"].items()}
-            new = dict(now)
-            again = []      # shown again, no slot named: its slot is settled after the rest
-            for tid, land in asks.items():
-                identity = known[tid]
-                slot, hidden = new[identity]
-                if "slot" in land:
-                    slot = list(land["slot"])
-                if "hidden" in land:
-                    hidden = land["hidden"]
-                    if not hidden and now[identity][1] and "slot" not in land:
-                        again.append(identity)
-                new[identity] = (slot, hidden)
-
-            def shown_records(skip=None):
-                return [{"slot": new[i][0], "plan": self.world["territories"][i]["plan"]}
-                        for i in self.world["order"]
-                        if i in new and i != skip and not new[i][1]]
-
-            def refusal(records):
-                """The rule on shown RECORDS: the answer, or None when it holds."""
-                seen = set()
-                for r in records:
-                    if tuple(r["slot"]) in seen:
-                        return {"error": "taken"}
-                    seen.add(tuple(r["slot"]))
-                for r in records:
-                    if plan_by_id[r["plan"]]["sea"] and (r["slot"][0], r["slot"][1] + 1) in seen:
-                        return {"error": "sea"}
-                return None
-
-            for identity in again:
-                others = shown_records(skip=identity)
-                mine = {"slot": new[identity][0], "plan": self.world["territories"][identity]["plan"]}
-                if refusal(others + [mine]) is not None:
-                    free = _free_slot(others, plan_by_id, plan_by_id[mine["plan"]])
-                    if free is None:
-                        return 409, {"error": "taken"}
-                    new[identity] = (list(free), False)
-            records = shown_records()
-            if not records:
-                return 409, {"error": "empty"}
-            answer = refusal(records)
-            if answer is not None:
-                return 409, answer
-
-            changed = new != now
-            if changed:
-                for identity, (slot, hidden) in new.items():
-                    t = self.world["territories"][identity]
-                    t["slot"] = slot
-                    if hidden:
-                        t["hidden"] = True
-                    else:
-                        t.pop("hidden", None)
-                self._invalidate_view()
-            self._save_world_locked()   # at once, even when nothing moved: the file is the truth
-            if changed:
-                self._broadcast(self._snapshot_locked())
-                self._hidden_last = self._hidden_view_locked()
-            return 200, {"lands": [{"id": territory_id(i), "slot": list(self.world["territories"][i]["slot"]),
-                                    "hidden": bool(self.world["territories"][i].get("hidden"))}
-                                   for i in self.world["order"] if i in self.world["territories"]]}
 
     # -- office: floors and designs (requirements/city.md, "Office") ----------------
 
@@ -2212,7 +2024,6 @@ class CityState:
             self.world["floors"] = [idents[x] for x in ids]
             self._emit_world_locked({"kind": "floors"})
             self._broadcast(self._snapshot_locked())
-            self._hidden_last = self._hidden_view_locked()
             return 200, {"floors": list(ids)}
 
     def _load_designs_locked(self):
@@ -2380,31 +2191,6 @@ class CityState:
         t["reno_asked"] = True
         self._emit_world_locked({"kind": "design", "terr": tid, "by": "file"})
 
-    def _start_waiting_shows_locked(self):
-        """Caller holds self.lock. Any show still waiting (start None) for a
-        page begins now, saved at once."""
-        dirty = False
-        for t in self.world["territories"].values():
-            show = t.get("show")
-            if show is not None and show.get("start") is None:
-                show["start"] = time.time()
-                dirty = True
-        if dirty:
-            self._save_world_locked()
-
-    def _shows_view_locked(self):
-        """Caller holds self.lock. Every show with time left, for the
-        snapshot; a finished show is never sent again."""
-        out = []
-        for identity, t in self.world["territories"].items():
-            show = t.get("show")
-            if show is None or show.get("start") is None:
-                continue
-            left = SHOW_SEC - (time.time() - show["start"])
-            if left > 0:
-                out.append({"terr": territory_id(identity), "from": show["from"],
-                            "to": show["to"], "left": left})
-        return out
 
     def remove_client(self, client):
         with self.lock:
@@ -2541,7 +2327,6 @@ class CityState:
                 else:
                     self._unseat_locked(identity, reducer, sid, tell=True)
             self._save_roster_locked()
-            self._check_hidden_locked()
 
     # -- add agent: the page's button opens one new session -------------------
 
@@ -2859,7 +2644,7 @@ class CityState:
         terr = self._terr_for(identity)
         if identity is not None:
             if identity not in self.world["territories"]:
-                add_territory(self.world, self.plans, identity, repo_name(identity))
+                add_territory(self.world, identity, repo_name(identity))
                 self.world.setdefault("floors", []).append(identity)   # a new company moves in on top
                 self._emit_world_locked()
             self.last_activity[identity] = now
@@ -2954,8 +2739,6 @@ class CityState:
                 self._on_leave(ev["id"], identity, terr)
                 if self._forget_name_locked(ev["id"]):
                     names_dirty = True
-            elif etype == "done":
-                self._maybe_open_rest(identity)
             self._broadcast(ev)
             if etype == "leave":
                 self.agent_terr.pop(ev["id"], None)   # after the event: _broadcast needs it (a hidden land's person)
@@ -2968,15 +2751,6 @@ class CityState:
                 if self._remember_name_locked(title_cid, title, record["task"]):
                     names_dirty = True
                 self._broadcast({"type": "label", "id": title_cid, "label": title, "terr": terr})
-
-        # city-worktrees: remember this lead's last "wt" (may be missing
-        # on an old line -> ""), so a site created later can tell it
-        # took over a live lead's own office (_new_site_locked).
-        if identity is not None and isinstance(sid_field, str) and sid_field:
-            lead_cid = "s:" + sid_field
-            if lead_cid in self._chain_for(identity)["leads"]:
-                wt_field = obj.get("wt")
-                self._lead_last_wt[lead_cid] = wt_field if isinstance(wt_field, str) else ""
 
         gov_seen_dirty = False
         if identity is not None and isinstance(sid_field, str) and sid_field:
@@ -3006,7 +2780,6 @@ class CityState:
                 if obj.get("tool") == "SendMessage" and not relay_closed:
                     self._maybe_talk_locked(obj, identity, terr, reducer)
                 self._maybe_close_from_terminal(obj)
-                self._maybe_build(obj, identity, terr)
             elif ev_name == "SessionEnd":
                 self._forget_governor(obj)
                 if was_gov:
@@ -3025,7 +2798,6 @@ class CityState:
 
         if is_session_line:
             self._save_roster_locked()
-        self._check_hidden_locked()
 
     # -- the roster: the live sessions, kept across a restart --------------
     #
@@ -3167,7 +2939,7 @@ class CityState:
         return territory_id(identity) if identity is not None else self.start_terr
 
     def _chain_for(self, identity):
-        """Caller holds self.lock. This territory's leads/offices/relay
+        """Caller holds self.lock. This territory's leads/relay
         bookkeeping, made on first use."""
         chain = self.terr_chain.get(identity)
         if chain is None:
@@ -3175,52 +2947,28 @@ class CityState:
             self.terr_chain[identity] = chain
         return chain
 
-    def _office_view(self, identity, cid):
-        """Caller holds self.lock. LEAD_CID's office as a world tile, or
-        None: no territory, no plan, or no office held."""
-        if identity is None:
-            return None
-        t = self.world["territories"].get(identity)
-        if t is None:
-            return None
-        local = t.get("offices", {}).get(cid)
-        if local is None:
-            return None
-        ox, oz = t["slot"][0] * CELL, t["slot"][1] * CELL
-        return {"x": ox + local[0], "z": oz + local[1]}
 
     def _decorate_agent(self, a, identity, terr, chain):
         """Caller holds self.lock. A snapshot/spawn agent record, plus
         "terr", "relay" ("lead"|"governor"|""), "lead" (its lead's citizen
-        id, or "") and "office" (a world tile, or None: not a lead, or no
-        office free). Leads/offices/relays need a real territory (a plan):
-        no repo (identity None) -> just "terr", as before this feature.
-        A lead standing in a live worktree site (self._lead_site) uses that
-        site's office tile instead of one of its own (city-worktrees).
-        Every record also carries "up" (city-rail-tree): its spawn's parent
-        page id, "" when unknown."""
+        id, or "") and "office" (always None: the office is the page's own).
+        No repo (identity None) -> just "terr". Every record also carries
+        "up" (city-rail-tree): its spawn's parent page id, "" when unknown."""
         cid = a["id"]
         up = self.agent_up.get(cid, "")
         if identity is None or chain is None:
             return dict(a, terr=terr, up=up)
         relay = ""
-        office = None
         entry = chain["open"].get(cid)
         if entry is not None:
             relay = entry["to"]
         lead = chain["lead_of"].get(cid, "") or ""
-        if cid in chain["leads"]:
-            site_sid = self._lead_site.get(cid)
-            office = self._office_view(identity, site_sid if site_sid is not None else cid)
-        return dict(a, terr=terr, relay=relay, lead=lead, office=office, up=up)
+        return dict(a, terr=terr, relay=relay, lead=lead, office=None, up=up)
 
     def _decorate_spawn(self, ev, obj, identity, terr):
-        """Caller holds self.lock. A task-manager session citizen is a lead
-        (gets an office); a subagent inside a lead's session carries that
-        lead's id. Sets ev["lead"] and ev["office"]. No repo -> untouched.
-        A lead whose spawn line already carries "wt" for a live site stands
-        at that site's office instead of getting one of its own
-        (city-worktrees)."""
+        """Caller holds self.lock. A task-manager session citizen is a lead;
+        a subagent inside a lead's session carries that lead's id. Sets
+        ev["lead"] and ev["office"] (None). No repo -> untouched."""
         if identity is None:
             return
         chain = self._chain_for(identity)
@@ -3229,12 +2977,6 @@ class CityState:
         if not aid_field:
             if ev.get("role") == "task-manager":
                 chain["leads"].add(ev["id"])
-                wt_field = obj.get("wt") if isinstance(obj.get("wt"), str) else ""
-                site_sid = self._site_by_path.get(wt_field) if wt_field else None
-                if site_sid is not None and self._site_terr.get(site_sid) == identity:
-                    self._lead_site[ev["id"]] = site_sid
-                else:
-                    self._assign_office(identity, ev["id"])
         else:
             owner_cid = "s:" + sid_field
             chain["lead_of"][ev["id"]] = owner_cid if owner_cid in chain["leads"] else ""
@@ -3388,45 +3130,6 @@ class CityState:
                 found = page    # the newest live session with this pid
         return found
 
-    def _free_office_spot_locked(self, t):
-        """Caller holds self.lock. T's plan's first office spot no live
-        lead or site already holds, or None."""
-        plan = _plan_by_id(self.plans, t["plan"])
-        if plan is None:
-            return None
-        held = {tuple(v) for v in t.get("offices", {}).values()}
-        for x, z in plan.get("offices", []):
-            if (x, z) not in held:
-                return [x, z]
-        return None
-
-    def _assign_office(self, identity, lead_cid):
-        """Caller holds self.lock. LEAD_CID gets its plan's first office
-        spot no live lead already holds, land while held (bin/agent_city.py
-        layout())."""
-        if identity is None:
-            return
-        t = self.world["territories"].get(identity)
-        if t is None:
-            return
-        offices = t.setdefault("offices", {})
-        if lead_cid in offices:
-            return
-        spot = self._free_office_spot_locked(t)
-        if spot is not None:
-            offices[lead_cid] = spot
-            self._invalidate_view()
-
-    def _maybe_open_rest(self, identity):
-        """Caller holds self.lock. The first done citizen in a territory
-        opens its rest place, for good (world.json, saved at once)."""
-        if identity is None:
-            return
-        t = self.world["territories"].get(identity)
-        if t is None or t.get("rest"):
-            return
-        t["rest"] = True
-        self._emit_world_locked()
 
     def _close_relay(self, chain, cid, by):
         """Caller holds self.lock. Closes CID's open relay, if any; a lead
@@ -3444,20 +3147,15 @@ class CityState:
         return True
 
     def _on_leave(self, cid, identity, terr):
-        """Caller holds self.lock. A citizen gone: frees its office (a
-        lead) and closes its open relay, by "leave"."""
+        """Caller holds self.lock. A citizen gone: a lead that leaves closes
+        its open relay, by "leave"."""
         chain = self.terr_chain.get(identity)
         if chain is None:
             return
         chain["lead_of"].pop(cid, None)
         if cid in chain["leads"]:
             chain["leads"].discard(cid)
-            if identity is not None:
-                t = self.world["territories"].get(identity)
-                if t is not None and cid in t.get("offices", {}):
-                    del t["offices"][cid]
-                    self._invalidate_view()
-        self._close_relay(chain, cid, "leave")
+            self._close_relay(chain, cid, "leave")
 
     def _process_chain(self, obj, identity, terr, reducer, now):
         """Caller holds self.lock. The chain of command (requirements/
@@ -3553,8 +3251,6 @@ class CityState:
         return {"v": 2, "repos": repos, "floors": self._floors_locked(),
                 "designs": {tid: d for tid, d in self._designs.items() if tid in known}, "asked": asked}
 
-    def _invalidate_view(self):
-        self._view_cache = None
 
     def _save_world_locked(self):
         """Caller holds self.lock. Never crashes: a save failure is one line
@@ -3627,302 +3323,12 @@ class CityState:
     def _emit_world_locked(self, change=None):
         """Caller holds self.lock. The world changed: recompute the view,
         broadcast it (with CHANGE, what changed, when given), save at once."""
-        self._invalidate_view()
         ev = {"type": "world", "world": self._view()}
         if change is not None:
             ev["change"] = change
         self._broadcast(ev)
         self._save_world_locked()
 
-    def _build_by(self, reducer, owner, at, role, is_gov):
-        if is_gov:
-            return "governor" if self.lang == "en" else "总督"
-        known = reducer.agents.get(owner)
-        if known is not None:
-            return known["label"]
-        return bare_type(at) or role
-
-    def _plot_xz_locked(self, t, plot):
-        """Caller holds self.lock. World (x, z) of T's plot number PLOT --
-        the same math layout() uses (territory slot * CELL + the plan's
-        local plot coordinates)."""
-        plan = _plan_by_id(self.plans, t["plan"])
-        px, pz, _ = plan["plots"][plot]
-        i, j = t["slot"]
-        return i * CELL + px, j * CELL + pz
-
-    def _owned_building_locked(self, t, owner):
-        """Caller holds self.lock. T's building OWNER counts as owning
-        (its own "owner", or one it was granted by a levelup -- "owners"),
-        else None."""
-        for b in t["buildings"]:
-            owners = b.get("owners")
-            if owners is not None:
-                if owner in owners:
-                    return b
-            elif b.get("owner") == owner:
-                return b
-        return None
-
-    def _add_file_locked(self, b, file_rel):
-        """Caller holds self.lock. FILE_REL goes to the front of B's
-        "files" (newest first), at most 12."""
-        files = b.setdefault("files", [])
-        if file_rel in files:
-            files.remove(file_rel)
-        files.insert(0, file_rel)
-        del files[12:]
-
-    def _touch_locked(self, b, owner, by, terr, add_file=None):
-        """Caller holds self.lock. A touch on building B: ADD_FILE when
-        given, a hist entry (newest first, at most 10), the "touch"
-        broadcast; never a new building."""
-        if add_file is not None:
-            self._add_file_locked(b, add_file)
-        hist = b.setdefault("hist", [])
-        hist.insert(0, {"by": by, "at": time.time()})
-        del hist[10:]
-        self._invalidate_view()
-        self._broadcast({"type": "touch", "terr": terr, "plot": b["plot"], "by": by})
-        self._save_world_locked()
-
-    def _maybe_build(self, obj, identity, terr):
-        """Caller holds self.lock. A PostToolUse line builds, touches or
-        levels up in its agent's territory (requirements/city.md, "Growth"
-        and "Quality"). The building type: a safe "file" decides it via
-        file_kind(file, this repo's rules) mapped to a building (rules ->
-        tower, beauty -> shop, infra -> workshop, knowledge -> library,
-        build -> house; not code -> no building at all -- any "kind" on the
-        line is then ignored); with no "file", an old hook "kind" (test ui
-        script doc other) still builds by the old map (idea-city C4). A
-        "file" already listed on a building here (any owner) is a touch
-        with history; the owner already having a building here adds the
-        file to it (touch); else a new building, or a levelup when its own
-        district is full (the leveling owner then counts as owning that
-        building); no line without "file" (old hook lines) ever touches or
-        levels a building it does not already own -- it stays silent, as
-        before. Never counts code lines. Every building of the district
-        already at level 3: says so (noplot). A new building gets its name
-        here, once (city-data, build()): from its files, else the builder's
-        task (the reducer's, none for the governor), else an address; a touch
-        or a level-up never renames it."""
-        if identity is None:
-            return
-        file_val = obj.get("file")
-        file_rel = file_val if isinstance(file_val, str) and file_val else None
-        if file_rel is not None and not _is_safe_rel_path(file_rel):
-            file_rel = None
-        kind = obj.get("kind") if isinstance(obj.get("kind"), str) else ""
-        if file_rel is not None:
-            rules = parse_rules(self._rules_text_for(identity))["rules"]
-            building_type = FILE_KIND_TYPE.get(file_kind(file_rel, rules))
-        else:
-            building_type = KIND_TYPE.get(kind)
-        if building_type is None:
-            return
-
-        sid = obj.get("sid") if isinstance(obj.get("sid"), str) else ""
-        aid = obj.get("aid") if isinstance(obj.get("aid"), str) else ""
-        at = obj.get("at") if isinstance(obj.get("at"), str) else ""
-        role = obj.get("role") if isinstance(obj.get("role"), str) else ""
-        reducer = self._reducer_for(identity)
-        is_gov = (not aid) and sid != "" and sid == reducer.gov_sid
-        owner = aid or ("s:" + sid)
-        by = self._build_by(reducer, owner, at, role, is_gov)
-        t = self.world["territories"].get(identity)
-        if t is None:
-            return
-
-        if file_rel is not None:
-            for b in t["buildings"]:
-                if file_rel in b.get("files", []):
-                    self._touch_locked(b, owner, by, terr)
-                    return
-
-        owned = self._owned_building_locked(t, owner)
-        if owned is not None:
-            if file_rel is None:
-                return
-            self._touch_locked(owned, owner, by, terr, add_file=file_rel)
-            return
-
-        wt_val = obj.get("wt")
-        wt = wt_val if isinstance(wt_val, str) else ""
-        known = reducer.agents.get(owner)
-        task = known["task"] if known is not None and not is_gov else ""   # city-data: the governor has no task
-        b = build(self.world, self.plans, identity, kind, owner, by, time.time(),
-                  file_rel=file_rel, wt=wt, building_type=building_type, task=task, lang=self.lang)
-        if b is not None:
-            self._invalidate_view()
-            x, z = self._plot_xz_locked(t, b["plot"])
-            self._broadcast({"type": "build", "id": "gov" if is_gov else owner, "terr": terr,
-                              "plot": b["plot"], "btype": b["type"], "x": x, "z": z, "by": b["by"],
-                              "q": b["q"], "home": b["home"], "files": list(b["files"]),
-                              "name": b["name"], "lv": b["lv"]})
-            self._save_world_locked()
-            return
-
-        cand = _level_up_candidate(t["buildings"], building_type)
-        if cand is not None:
-            cand["lv"] = min(3, cand.get("lv", 0) + 1)
-            owners = cand.setdefault("owners", [cand.get("owner")])
-            if owner not in owners:
-                owners.append(owner)
-            if file_rel is not None:
-                self._add_file_locked(cand, file_rel)
-            self._invalidate_view()
-            self._broadcast({"type": "levelup", "terr": terr, "plot": cand["plot"],
-                              "lv": cand["lv"], "by": by})
-            self._save_world_locked()
-            return
-
-        self._broadcast({"type": "noplot", "id": "gov" if is_gov else owner, "terr": terr,
-                          "btype": building_type, "by": by})
-
-    def recount(self, now):
-        """Count every territory that has had a line (this run) since its
-        last count, RECOUNT_SEC or more ago (never counted in this run, but
-        with a line: due at once). A territory only ever loaded from
-        world.json, with no line yet, is never due -- last_activity holds
-        no entry for it until feed_line sees it. count_fn and balance_fn run
-        outside the lock, so a line that arrives while either runs (bumping
-        last_activity past the "now" this count is about to be stamped with)
-        keeps that territory due again next time, instead of losing it.
-        Returns how many territories were counted."""
-        with self.lock:
-            due = [i for i in self.world["territories"]
-                   if i in self.last_activity
-                   and (i not in self.last_count
-                        or (self.last_activity[i] > self.last_count[i]
-                            and (now - self.last_count[i]) >= RECOUNT_SEC))]
-        if not due:
-            return 0
-        counted = {i: self.count_fn(i) for i in due}
-        balances = {i: self.balance_fn(i, self._rules_text_for(i)) for i in due}
-        for i in due:
-            self.requality(i)
-        with self.lock:
-            changed = False
-            for i in due:
-                self.last_count[i] = now
-                t = self.world["territories"].get(i)
-                if t is None:
-                    continue
-                before = (t["lines"], t["peak"])
-                val = counted[i]
-                t["lines"] = val
-                t["peak"] = max(t["peak"], val)
-                if (t["lines"], t["peak"]) != before:
-                    changed = True
-                if self._apply_balance_locked(i, t, balances[i]):
-                    changed = True
-            if changed:
-                self._emit_world_locked()
-        return len(due)
-
-    def requality(self, identity):
-        """Rechecks IDENTITY's buildings against the files on disk
-        (requirements/city.md, "Quality"): a file counts as still there
-        when it is a safe repo-relative path (_is_safe_rel_path: no leaving
-        the repo) that exists in the root checkout or in a live site
-        (worktree) path of that territory. A building with no safely known
-        file at all (no "files" recorded -- an old world.json building or
-        an old hook line without "file" -- or every recorded path unsafe)
-        is left alone entirely, never demolished; one that does have safe
-        files but none of them still exist is demolished; the rest gets
-        combine_quality's worst result across its surviving files
-        (duplicates across the territory's building files, hot_counts of
-        the root) -- a change broadcasts "quality"; a "home" false building
-        whose quality is no longer "poor" moves to its own district's first
-        free open plot ("move"). File reads and the one hot_counts git log
-        run outside the lock, like count_fn; only the resulting edits and
-        broadcasts are locked."""
-        with self.lock:
-            t = self.world["territories"].get(identity)
-            if t is None or not t["buildings"]:
-                return
-            root = os.path.dirname(identity)
-            sites = [p for sid, p in self._site_paths.items()
-                     if self._site_terr.get(sid) == identity]
-            snapshot_files = {b["plot"]: list(b.get("files", [])) for b in t["buildings"]}
-
-        bases = [root] + sites
-        alive_files = {}
-        texts = {}
-        for plot, files in snapshot_files.items():
-            safe = [f for f in files if _is_safe_rel_path(f)]
-            if not safe:
-                # Nothing safely known about this building (no "files"
-                # recorded at all -- an old world.json building or an old
-                # hook line without "file" -- or every recorded path leaves
-                # the repo): leave it alone entirely, never demolished.
-                alive_files[plot] = None
-                continue
-            alive = []
-            for f in safe:
-                text = None
-                for base in bases:
-                    text = _read_text(base, f)
-                    if text is not None:
-                        break
-                if text is None:
-                    continue
-                alive.append(f)
-                if f not in texts:
-                    texts[f] = text
-            alive_files[plot] = alive
-
-        dup_names = duplicates(texts)
-        hot = hot_counts(root)
-
-        with self.lock:
-            t = self.world["territories"].get(identity)
-            if t is None:
-                return
-            terr = territory_id(identity)
-            plan = _plan_by_id(self.plans, t["plan"])
-            changed = False
-            for b in list(t["buildings"]):
-                alive = alive_files.get(b["plot"])
-                if alive is None:
-                    continue  # nothing safely known about it -- never demolished
-                if not alive:
-                    t["buildings"].remove(b)
-                    self._broadcast({"type": "demolish", "terr": terr, "plot": b["plot"]})
-                    changed = True
-                    continue
-                worst = "good"
-                for f in alive:
-                    text = texts.get(f)
-                    base_score = file_quality(text)["score"] if text is not None else "good"
-                    is_dup = f in dup_names
-                    is_hot = (hot.get(f, 0) >= 10 and text is not None
-                              and len(text.splitlines()) >= 300)
-                    combined = combine_quality(base_score, is_dup, is_hot)
-                    if _QUALITY_ORDER.index(combined) > _QUALITY_ORDER.index(worst):
-                        worst = combined
-                if worst != b.get("q", "good"):
-                    b["q"] = worst
-                    self._broadcast({"type": "quality", "terr": terr, "plot": b["plot"], "q": worst})
-                    changed = True
-                if not b.get("home", True) and worst != "poor":
-                    taken = {b2["plot"] for b2 in t["buildings"] if b2 is not b}
-                    target = None
-                    for k in open_plots(plan, t["peak"]):
-                        if k not in taken and plan["plots"][k][2] == b["type"]:
-                            target = k
-                            break
-                    if target is not None:
-                        old_plot = b["plot"]
-                        b["plot"] = target
-                        b["home"] = True
-                        x, z = self._plot_xz_locked(t, target)
-                        self._broadcast({"type": "move", "terr": terr, "from": old_plot,
-                                          "plot": target, "x": x, "z": z, "home": True})
-                        changed = True
-            if changed:
-                self._invalidate_view()
-                self._save_world_locked()
 
     # -- worktrees: construction sites (requirements/city.md, "Worktrees") --
 
@@ -3934,213 +3340,6 @@ class CityState:
             return None
         return (st.st_size, st.st_mtime)
 
-    def scan_sites(self):
-        """Rescans every territory's construction sites: agent_worktree.txt
-        and agent_watch.json (<git dir>), re-read only when their size or mtime
-        changed. Takes self.lock itself -- recount_loop and the tests call
-        it directly, never already holding the lock."""
-        with self.lock:
-            for identity in list(self.world["territories"].keys()):
-                self._scan_site_territory_locked(identity)
-
-    def _scan_site_territory_locked(self, identity):
-        """Caller holds self.lock. IDENTITY carries sites only when it is a
-        "<root>/.git" folder -- the shape the hook's "repo" always has for a
-        real git territory (the start repo or a world territory); a
-        no-repo/plain-folder identity never does."""
-        stripped = identity.rstrip("/")
-        if os.path.basename(stripped) != ".git" or not os.path.isdir(identity):
-            return
-        t = self.world["territories"].get(identity)
-        if t is None:
-            return
-        root = os.path.dirname(stripped)
-        terr = territory_id(identity)
-        watch = self._site_watch.setdefault(identity, {"wt": None, "mon": None, "rows": []})
-        wt_stat = self._stat_key(os.path.join(root, "agent_worktree.txt"))
-        mon_stat = self._stat_key(os.path.join(identity, "agent_watch.json"))
-        if wt_stat != watch["wt"] or mon_stat != watch["mon"]:
-            watch["wt"] = wt_stat
-            watch["mon"] = mon_stat
-            watch["rows"] = read_sites(root, identity)
-
-        known = t.setdefault("sites", {})
-        seen = set()
-        for row in watch["rows"]:
-            path = row["path"]
-            sid = site_id(path)
-            seen.add(sid)
-            self._site_paths[sid] = path
-            self._site_by_path[path] = sid
-            self._site_terr[sid] = identity
-            # Refreshed every scan, files unchanged or not, so a later
-            # "merged" check (once the row is gone) sees the newest commit.
-            head = site_head(path)
-            if head:
-                self._site_heads[sid] = head
-            fields = {"branch": site_branch(path), "module": row["module"],
-                      "status": row["status"], "human": row["human"], "stalled": row["stalled"]}
-            if sid not in known:
-                self._new_site_locked(identity, terr, t, sid, path, fields)
-            elif known[sid] != fields:
-                self._changed_site_locked(identity, terr, t, sid, fields)
-
-        for sid in [s for s in known if s not in seen]:
-            self._gone_site_locked(identity, terr, t, root, sid)
-
-    def _new_site_locked(self, identity, terr, t, sid, path, fields):
-        """Caller holds self.lock. SID just appeared: it takes over a live
-        lead's office when that lead's last line carried "wt" == PATH, else
-        the plan's first free office spot. A world broadcast (the existing
-        _emit_world_locked), then a site event."""
-        offices = t.setdefault("offices", {})
-        chain = self._chain_for(identity)
-        taken_from = None
-        for lead_cid in chain["leads"]:
-            if lead_cid in offices and self._lead_last_wt.get(lead_cid, "") == path:
-                taken_from = lead_cid
-                break
-        if taken_from is not None:
-            offices[sid] = offices.pop(taken_from)
-            self._lead_site[taken_from] = sid
-        else:
-            spot = self._free_office_spot_locked(t)
-            if spot is not None:
-                offices[sid] = spot
-        t.setdefault("sites", {})[sid] = fields
-        self._emit_world_locked()
-        self._site_event_locked(identity, terr, sid, fields)
-
-    def _changed_site_locked(self, identity, terr, t, sid, fields):
-        """Caller holds self.lock. SID's fields changed: one site event, no
-        world broadcast; the cached view is still invalidated so a snapshot
-        built right after (a page connecting) sees the new fields."""
-        t.setdefault("sites", {})[sid] = fields
-        self._invalidate_view()
-        self._site_event_locked(identity, terr, sid, fields)
-        self._save_world_locked()
-
-    def _site_event_locked(self, identity, terr, sid, fields):
-        office = self._office_view(identity, sid) or {"x": None, "z": None}
-        self._broadcast({"type": "site", "terr": terr, "id": sid, "branch": fields["branch"],
-                          "module": fields["module"], "status": fields["status"],
-                          "human": fields["human"], "stalled": fields["stalled"],
-                          "x": office["x"], "z": office["z"]})
-
-    def _gone_site_locked(self, identity, terr, t, root, sid):
-        """Caller holds self.lock. SID's line is gone: "merged" when its
-        last known head is an ancestor of ROOT's checked-out HEAD, else
-        "removed". Its office frees, then a world broadcast."""
-        office = self._office_view(identity, sid) or {"x": None, "z": None}
-        head = self._site_heads.get(sid, "")
-        how = self._merge_check(root, head) if head else "removed"
-        self._broadcast({"type": "site_end", "terr": terr, "id": sid, "how": how,
-                          "x": office["x"], "z": office["z"]})
-        t.get("offices", {}).pop(sid, None)
-        t.get("sites", {}).pop(sid, None)
-        path = self._site_paths.pop(sid, None)
-        if path is not None:
-            self._site_by_path.pop(path, None)
-        self._site_terr.pop(sid, None)
-        self._site_heads.pop(sid, None)
-        self._emit_world_locked()
-
-    @staticmethod
-    def _merge_check(root, head):
-        """"merged" when HEAD is an ancestor of ROOT's checked-out HEAD,
-        else "removed" (also on any git failure). 5s timeout, no stdin: the
-        caller may be holding self.lock, so this stays short-lived."""
-        try:
-            res = subprocess.run(["git", "-C", root, "merge-base", "--is-ancestor", head, "HEAD"],
-                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                  stderr=subprocess.DEVNULL, timeout=5)
-        except (OSError, subprocess.SubprocessError):
-            return "removed"
-        return "merged" if res.returncode == 0 else "removed"
-
-    def _apply_balance_locked(self, identity, t, result):
-        """Caller holds self.lock. Stores balance/rules_bad/files from one
-        balance_fn result, advances the era, and starts (or queues) a show
-        on a raise -- the era event, when a page is open, before the caller's
-        world event. Returns whether anything actually changed."""
-        changed = self.balance_files.get(identity) != result["files"]
-        self.balance_files[identity] = result["files"]
-        if t.get("balance") != result["kinds"]:
-            t["balance"] = result["kinds"]
-            changed = True
-        if t.get("rules_bad") != result["bad"]:
-            t["rules_bad"] = result["bad"]
-            changed = True
-        old_era = t.get("era", "village")
-        new_era = era_for(t["peak"], result["kinds"], old_era)
-        if new_era != old_era:
-            t["era"] = new_era
-            start = time.time() if self.clients else None
-            t["show"] = {"from": old_era, "to": new_era, "start": start}
-            changed = True
-            if self.clients:
-                self._broadcast({"type": "era", "terr": territory_id(identity),
-                                  "from": old_era, "to": new_era, "left": SHOW_SEC})
-        return changed
-
-    def _rules_conf_path(self, identity):
-        """The rules file this repo would use, or None with no world path."""
-        if self.world_path is None:
-            return None
-        return os.path.join(os.path.dirname(self.world_path), "rules",
-                             repo_name(identity) + ".conf")
-
-    def _rules_text_for(self, identity):
-        path = self._rules_conf_path(identity)
-        if not path:
-            return ""
-        try:
-            with open(path, encoding="utf-8") as fh:
-                return fh.read()
-        except OSError:
-            return ""
-
-    def ensure_counted(self, identity):
-        """Count IDENTITY's balance once, outside the lock, unless it is
-        already in memory (from an earlier count, or an earlier call here)."""
-        with self.lock:
-            if identity in self.balance_files:
-                return
-        rules_text = self._rules_text_for(identity)
-        result = self.balance_fn(identity, rules_text)
-        with self.lock:
-            if identity in self.balance_files:
-                return
-            t = self.world["territories"].get(identity)
-            if t is None:
-                self.balance_files[identity] = result["files"]
-                return
-            if self._apply_balance_locked(identity, t, result):
-                self._emit_world_locked()
-
-    def _identity_for_terr(self, terr_id):
-        with self.lock:
-            for i in self.world["territories"]:
-                if territory_id(i) == terr_id:
-                    return i
-        return None
-
-    def balance_api(self, terr_id, kind):
-        """GET /api/balance's body, or None for an unknown territory. Counts
-        IDENTITY once if this process has never counted it."""
-        identity = self._identity_for_terr(terr_id)
-        if identity is None:
-            return None
-        self.ensure_counted(identity)
-        with self.lock:
-            t = self.world["territories"].get(identity)
-            if t is None:
-                return None
-            files = self.balance_files.get(identity, {}).get(kind, [])
-            state = t.get("balance", {}).get(kind, {}).get("state", "missing")
-            return {"terr": terr_id, "kind": kind, "state": state,
-                    "files": files[:500], "total": len(files),
-                    "rules": self._rules_conf_path(identity)}
 
     def _forget_governor(self, obj, only_repo=None):
         """A SessionEnd for a governor's sid forgets it at once: any waiting
@@ -4291,7 +3490,6 @@ class CityState:
 
             self.open[ask_id] = ask
             self._broadcast(dict(ask.view(), type="ask"))
-            self._check_hidden_locked()
             self.cond.notify_all()
             return {"id": ask_id, "phase": ask.phase, "why": ask.why}, 200
 
@@ -4306,7 +3504,6 @@ class CityState:
             self._broadcast({"type": "ask_phase", "id": ask.id, "agent": ask.agent,
                               "kind": ask.kind, "phase": "owner", "why": "timeout",
                               "wait": self.gov_wait_sec, "at": _now_ms()})
-            self._check_hidden_locked()
             self.cond.notify_all()
 
     # -- asks: views --------------------------------------------------------
@@ -4415,7 +3612,6 @@ class CityState:
             self._broadcast({"type": "ask_phase", "id": ask.id, "agent": ask.agent,
                               "kind": ask.kind, "phase": "owner", "why": "pass",
                               "wait": self.gov_wait_sec, "at": _now_ms()})
-            self._check_hidden_locked()
             self._log_decision(ask, "governor", "pass", "", "")
             self.cond.notify_all()
             return 200, {"ok": True}
@@ -4442,7 +3638,6 @@ class CityState:
                           "kind": ask.kind, "tool": ask.tool, "what": ask.what,
                           "by": by, "verb": verb, "text": text, "reason": reason,
                           "at": _now_ms()})
-        self._check_hidden_locked()
         self._log_decision(ask, by, verb, text, reason)
         self.cond.notify_all()
 
@@ -4965,18 +4160,6 @@ class CityHandler(BaseHTTPRequestHandler):
             return self._send_events()
         if path.startswith(ASSET_PREFIX):
             return self._send_asset(path[len(ASSET_PREFIX):], parsed.query)
-        if path == "/api/balance":
-            if not self._check_token():
-                self.close_connection = True
-                return self._json(403, {})
-            qs = parse_qs(parsed.query)
-            kind = _qs1(qs, "kind")
-            if kind not in KINDS:
-                return self._json(400, {})
-            result = self.server.city.balance_api(_qs1(qs, "terr"), kind)
-            if result is None:
-                return self._json(404, {})
-            return self._json(200, result)
         if path == "/api/asks":
             if not self._check_token():
                 self.close_connection = True
@@ -5025,11 +4208,11 @@ class CityHandler(BaseHTTPRequestHandler):
             return self._json(403, {})
         path = urlsplit(self.path).path
         if path not in ("/api/ask", "/api/decide", "/api/closed",
-                         "/api/gov/answer", "/api/gov/pass", "/api/chat/send", "/api/agent/add", "/api/layout",
+                         "/api/gov/answer", "/api/gov/pass", "/api/chat/send", "/api/agent/add",
                          "/api/floors", "/api/design", "/api/designer", "/api/designer/leave"):
             self.close_connection = True
             return self.send_error(404)
-        if path in ("/api/decide", "/api/chat/send", "/api/agent/add", "/api/layout", "/api/floors", "/api/design",
+        if path in ("/api/decide", "/api/chat/send", "/api/agent/add", "/api/floors", "/api/design",
                     "/api/designer", "/api/designer/leave") and self.headers.get("Origin") is None:
             self.close_connection = True
             return self._json(403, {})
@@ -5048,8 +4231,6 @@ class CityHandler(BaseHTTPRequestHandler):
             return self._api_gov_pass()
         if path == "/api/agent/add":
             return self._api_agent_add()
-        if path == "/api/layout":
-            return self._api_layout()
         if path == "/api/floors":
             return self._api_floors()
         if path == "/api/design":
@@ -5138,14 +4319,6 @@ class CityHandler(BaseHTTPRequestHandler):
         code, body = self.server.city.add_agent(obj.get("terr"), time.monotonic(), obj.get("force", False))
         return self._json(code, body)
 
-    def _api_layout(self):
-        obj, err = self._read_body()
-        if err:
-            return self._json(err, {})
-        if any(key != "lands" for key in obj):
-            return self._json(400, {})   # the lands, nothing else: never a path, a name or a command
-        code, body = self.server.city.set_layout(obj.get("lands"))
-        return self._json(code, body)
 
     def _api_floors(self):
         obj, err = self._read_body()
@@ -5504,21 +4677,15 @@ def chat_tail_loop(chat_path, city, stop_event, initial_skip=0):
 
 
 def recount_loop(city, stop_event):
-    """Recount active territories about every RECOUNT_POLL_SEC, with the
-    same clock (time.monotonic()) feed_line gets. Also rescans worktree
-    construction sites (city.scan_sites()) and checks the governor seats
-    (city.check_seats()) and tells the owner of chat messages nobody will take
+    """Every RECOUNT_POLL_SEC, with the same clock (time.monotonic()) feed_line
+    gets: reads the floor files someone else wrote (city.scan_floors()) and
+    checks the governor seats (city.check_seats()) and tells the owner of chat messages nobody will take
     (city.sweep_chat()) and lets go of an add-agent open whose new session
     never came (city.sweep_adding()) and forgets the history of people gone
     more than a day (city.sweep_history(), epoch seconds) every tick: an
     exception there is printed to stderr and never stops the loop. Stops
     with the server."""
     while not stop_event.is_set():
-        city.recount(time.monotonic())
-        try:
-            city.scan_sites()
-        except Exception as exc:
-            print("agent_city: scan_sites failed: %s" % exc, file=sys.stderr)
         try:
             city.scan_floors()
         except Exception as exc:
@@ -6285,49 +5452,13 @@ def cmd_gov_pending(args):
 
 
 # --------------------------------------------------------------------------
-# World: territories, growth, town plans, persistence, code lines
+# World: territories and persistence (requirements/city.md, "Office")
 # --------------------------------------------------------------------------
 #
-# requirements/city.md, "Growth" and "Persistence". Pure (no files, no
-# clock) except save_world/load_world/count_lines, which are the only
-# functions here that touch disk or run git. This is a faithful port of the
-# reference algorithm in mock/city-growth-mock.html (the approved mock),
-# between "WORLD LAYOUT" and "mock UI"; see the CONTRACT docstring at the
-# top of tests/test_agent_city_world.py for the exact shapes. Balance (the
-# 5 kinds' colours, eras) is a later task: "era" is stored but unused here.
+# world.json holds the office keys only: {"v": 1, "territories": {identity:
+# {"name", "reno_asked"?}}, "order", "floors", "names", "gov_seen"}.
 
-CELL, HALF = 22, 11
-# city-ux U7: the content box every plan's plots/offices/rest fit inside
-# (bin/agent-city-plans.json, unchanged). A plan's roads and exits reach
-# further out (up to +-HALF); layout() and trunk() cut those back to this
-# box so no 'r' tile, and no exit, ever lands in the neighbour's gap belt.
-BOX_LO, BOX_HI = -8, 7
-R0, RMAX = 1.9, 8.6
-L0, LCAP = 50, 1000000
-SEA_ROWS = 8
-KIND_TYPE = {"test": "tower", "ui": "shop", "script": "workshop",
-             "doc": "library", "other": "house"}
-# idea-city C4: the server's own map, from a "file"'s file_kind (see KINDS)
-# to a building -- the hook no longer classifies paths.
-FILE_KIND_TYPE = {"rules": "tower", "beauty": "shop", "infra": "workshop",
-                   "knowledge": "library", "build": "house"}
-RECOUNT_SEC = 300
-
-GAP_CH = {"river": "w", "ravine": "k", "pass": "m", "forest": "f"}
-GAPS = {
-    frozenset(("grassland", "mountain")): "pass",
-    frozenset(("desert", "grassland")): "ravine",
-    frozenset(("forest", "grassland")): "forest",
-    frozenset(("coast", "grassland")): "river",
-    frozenset(("desert", "mountain")): "ravine",
-    frozenset(("forest", "mountain")): "pass",
-    frozenset(("coast", "mountain")): "river",
-    frozenset(("desert", "forest")): "river",
-    frozenset(("coast", "desert")): "river",
-    frozenset(("coast", "forest")): "forest",
-}
-
-# -- identity and growth: pure numbers, no per-repo state ------------------
+# -- identity: pure numbers, no per-repo state ------------------------------
 
 def fnv1a(text):
     """32-bit FNV-1a of the UTF-8 bytes of TEXT."""
@@ -6356,887 +5487,20 @@ def repo_name(identity):
     return base
 
 
-# -- worktrees: construction sites (requirements/city.md, "Worktrees") ------
-#
-# One worktree = one construction site inside its repo's territory. These
-# helpers read agent_worktree.txt and the watch status <git dir>/agent_watch.json
-# (bin/agent-file.sh, bin/agent_watch.py) and a linked worktree's own git files, never running
-# git for read_sites/site_id/site_branch/site_head -- see the CONTRACT in
-# tests/test_agent_city_worktrees.py.
-
-def read_sites(root, gitdir=None):
-    """[{"path", "module", "status", "human", "stalled"}], one per
-    non-blank line of <root>/agent_worktree.txt, file order. Missing file
-    -> []. stalled comes from the watch status <root>/.git/agent_watch.json (or
-    GITDIR when given; missing -> none stalled): a task with a non-empty stall."""
-    wt_path = os.path.join(root, "agent_worktree.txt")
-    try:
-        with open(wt_path, encoding="utf-8") as fh:
-            raw_lines = fh.readlines()
-    except OSError:
-        return []
-
-    stalled = set()
-    try:
-        with open(os.path.join(gitdir or os.path.join(root, ".git"), "agent_watch.json"),
-                  encoding="utf-8") as fh:
-            data = json.load(fh)
-        for task in (data.get("tasks") or {}).values():
-            if isinstance(task, dict) and task.get("stall") and task.get("path"):
-                stalled.add(str(task["path"]))
-    except (OSError, ValueError, AttributeError):
-        pass
-
-    out = []
-    for line in raw_lines:
-        if not line.strip():
-            continue
-        fields = [f.strip() for f in line.split("|")]
-        if len(fields) < 3:
-            continue
-        path = fields[0]
-        if fields[1] == "task manager, human-direct":
-            out.append({"path": path, "module": os.path.basename(path.rstrip("/")),
-                        "status": "working", "human": True, "stalled": path in stalled})
-            continue
-        status = fields[2] if fields[2] in ("working", "final", "idle") else "working"
-        out.append({"path": path, "module": fields[1], "status": status,
-                    "human": False, "stalled": path in stalled})
-    return out
-
-
-def site_id(path):
-    return "wt:" + hashlib.sha1(os.path.realpath(path).encode("utf-8")).hexdigest()[:10]
-
-
-def _worktree_git_paths(path):
-    """(gitdir, commondir) for the linked worktree at PATH, read from files
-    only, or None: PATH's ".git" is missing, a folder (the main checkout),
-    or an unreadable/malformed "gitdir: " file."""
-    try:
-        with open(os.path.join(path, ".git"), encoding="utf-8") as fh:
-            line = fh.readline().rstrip("\n")
-    except OSError:
-        return None
-    if not line.startswith("gitdir: "):
-        return None
-    gitdir = line[len("gitdir: "):]
-    if not os.path.isabs(gitdir):
-        gitdir = os.path.join(path, gitdir)
-    gitdir = os.path.normpath(gitdir)
-    common = gitdir
-    try:
-        with open(os.path.join(gitdir, "commondir"), encoding="utf-8") as fh:
-            cline = fh.readline().rstrip("\n")
-        if cline:
-            common = cline if os.path.isabs(cline) else os.path.join(gitdir, cline)
-            common = os.path.normpath(common)
-    except OSError:
-        pass
-    return gitdir, common
-
-
-def _read_head_ref(gitdir):
-    """("ref", "refs/heads/x") or ("sha", sha) from GITDIR/HEAD, or None."""
-    try:
-        with open(os.path.join(gitdir, "HEAD"), encoding="utf-8") as fh:
-            line = fh.readline().strip()
-    except OSError:
-        return None
-    if line.startswith("ref: "):
-        return "ref", line[len("ref: "):]
-    if line:
-        return "sha", line
-    return None
-
-
-def site_branch(path):
-    """The worktree's branch ("feat-a"); a detached HEAD -> its sha's first
-    7 hex; not a linked worktree -> ""."""
-    paths = _worktree_git_paths(path)
-    if paths is None:
-        return ""
-    head = _read_head_ref(paths[0])
-    if head is None:
-        return ""
-    kind, val = head
-    if kind == "sha":
-        return val[:7]
-    if val.startswith("refs/heads/"):
-        return val[len("refs/heads/"):]
-    return ""
-
-
-def site_head(path):
-    """The worktree's HEAD commit, 40 hex, from files only: a loose ref in
-    the common dir, else packed-refs; detached -> the sha itself;
-    unreadable -> ""."""
-    paths = _worktree_git_paths(path)
-    if paths is None:
-        return ""
-    gitdir, common = paths
-    head = _read_head_ref(gitdir)
-    if head is None:
-        return ""
-    kind, val = head
-    if kind == "sha":
-        return val
-    ref = val
-    try:
-        with open(os.path.join(common, *ref.split("/")), encoding="utf-8") as fh:
-            sha = fh.readline().strip()
-        if sha:
-            return sha
-    except OSError:
-        pass
-    try:
-        with open(os.path.join(common, "packed-refs"), encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line or line[0] in "#^":
-                    continue
-                parts = line.split(" ", 1)
-                if len(parts) == 2 and parts[1] == ref:
-                    return parts[0]
-    except OSError:
-        pass
-    return ""
-
-
-def growth(lines):
-    """0..1, log-scaled: fast at first, flat near LCAP. Never negative,
-    never over 1 (a repo past the cap looks the same as the cap)."""
-    return min(1.0, math.log1p(max(0, lines) / L0) / math.log1p(LCAP / L0))
-
-
-def radius(lines):
-    return R0 + (RMAX - R0) * growth(lines)
-
-
-def gap_of(terrain_a, terrain_b):
-    """The mock's GAPS table; same terrain on both sides -> river."""
-    return GAPS.get(frozenset((terrain_a, terrain_b)), "river")
-
-
-# -- deterministic per-repo shape: same identity, same wobble every time ---
-
-def _mulberry32(seed):
-    """mulberry32 PRNG (mock: fast, tiny, good enough for terrain noise).
-    Every op stays inside 32 bits, the same width Math.imul/`>>> 0` hold to
-    in the JS original."""
-    state = seed & 0xFFFFFFFF
-
-    def rnd():
-        nonlocal state
-        state = (state + 0x6D2B79F5) & 0xFFFFFFFF
-        t = state
-        t = ((t ^ (t >> 15)) * (t | 1)) & 0xFFFFFFFF
-        t = (t ^ ((t + (((t ^ (t >> 7)) * (t | 61)) & 0xFFFFFFFF)) & 0xFFFFFFFF)) & 0xFFFFFFFF
-        return ((t ^ (t >> 14)) & 0xFFFFFFFF) / 4294967296.0
-
-    return rnd
-
-
-def _interp_edge(edge, theta):
-    """The plan's 12-point edge (one factor per 30 degrees), smoothly
-    interpolated at angle THETA (radians, +x = 0, growing towards +z)."""
-    a = theta / (2 * math.pi) * 12
-    a = (a % 12 + 12) % 12
-    i = math.floor(a)
-    t = a - i
-    j = (i + 1) % 12
-    s = (1 - math.cos(math.pi * t)) / 2
-    return edge[i] * (1 - s) + edge[j] * s
-
-
-def _shape_of(identity, plan):
-    """A repo-specific wobble on top of the plan's edge: a jittered copy of
-    the edge, plus two random phases for the finer ripple in _mult."""
-    rnd = _mulberry32(fnv1a(identity))
-    edge = [e * (1 + 0.16 * (rnd() - 0.5)) for e in plan["edge"]]
-    return {"edge": edge, "p1": rnd() * 2 * math.pi, "p2": rnd() * 2 * math.pi}
-
-
-def _mult(shape, theta):
-    v = _interp_edge(shape["edge"], theta) * (
-        1 + 0.06 * math.sin(5 * theta + shape["p1"]) + 0.04 * math.sin(8 * theta + shape["p2"]))
-    return max(0.75, min(1.17, v))
-
-
-# -- one plan's fixed geometry ----------------------------------------------
-
-def _road_set(plan):
-    """Plan roads, cut back to the content box (BOX_LO..BOX_HI): a segment
-    that reaches past the box is clipped to it, so no road tile ever lands
-    in the gap belt between neighbours; a segment entirely outside is
-    dropped."""
-    roads = set()
-    for x0, z0, x1, z1 in plan["roads"]:
-        xlo, xhi = max(min(x0, x1), BOX_LO), min(max(x0, x1), BOX_HI)
-        zlo, zhi = max(min(z0, z1), BOX_LO), min(max(z0, z1), BOX_HI)
-        for x in range(xlo, xhi + 1):
-            for z in range(zlo, zhi + 1):
-                roads.add((x, z))
-    return roads
-
-
-def _clip_to_box(pt):
-    """A plan exit cut back to the content box edge (its road is cut the
-    same way by _road_set, so the trunk below still starts on a road)."""
-    x, z = pt
-    return (max(BOX_LO, min(BOX_HI, x)), max(BOX_LO, min(BOX_HI, z)))
-
-
-def _front_of_plot(roads, x, z):
-    for a, b in ((x, z + 1), (x + 1, z), (x - 1, z), (x, z - 1)):
-        if (a, b) in roads:
-            return (a, b)
-    return None
-
-
-def _is_hall(x, z):
-    return -1 <= x <= 0 and -1 <= z <= 0
-
-
-def _plot_need(plan, x, z):
-    """How far radius a plot needs before it opens: distance from the hall,
-    scaled down by how generous the plan's edge is in that direction."""
-    cx, cz = x + 0.5, z + 0.5
-    return (math.hypot(cx, cz) + 0.7) / _interp_edge(plan["edge"], math.atan2(cz, cx))
-
-
-def _open_count(plan, r):
-    """Plots open in plan order at radius R: a running max of need, so once
-    one plot needs more than R every later plot (need only grows) does too."""
-    m = 0.0
-    n = 0
-    for x, z, _ in plan["plots"]:
-        m = max(m, _plot_need(plan, x, z))
-        if m > r:
-            break
-        n += 1
-    return n
-
-
-def open_plots(plan, lines):
-    """Sorted plot indexes open at this size: the first plot of every
-    district PLAN defines (so a fresh territory, 0 lines included, already
-    has room for a first building of every kind), plus the plan-order
-    growth prefix (_open_count)."""
-    first = {}
-    for k, (_, _, d) in enumerate(plan["plots"]):
-        first.setdefault(d, k)
-    n = _open_count(plan, radius(lines))
-    return sorted(set(first.values()) | set(range(n)))
-
-
-def territory_tiles(plan, identity, lines):
-    """{"r", "g", "open", "land"}: the organic land shape (local tile
-    coords) a territory this size has on this plan, for this repo's
-    identity (shape_of makes it repo-specific but repeatable)."""
-    r = radius(lines)
-    shape = _shape_of(identity, plan)
-    roads = _road_set(plan)
-    land = set()
-    for x in range(-HALF, HALF):
-        for z in range(-HALF, HALF):
-            cx, cz = x + 0.5, z + 0.5
-            if _is_hall(x, z) or math.hypot(cx, cz) <= r * _mult(shape, math.atan2(cz, cx)):
-                land.add((x, z))
-    opens = open_plots(plan, lines)
-    for k in opens:
-        x, z, _ = plan["plots"][k]
-        land.add((x, z))
-        front = _front_of_plot(roads, x, z)
-        if front is not None:
-            land.add(front)
-    return {"r": r, "g": growth(lines), "open": len(opens), "land": land}
-
-
-def _plans_file_path():
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent-city-plans.json")
-
-
-def load_plans(path=None):
-    """The 5 hand-made town plans (bin/agent-city-plans.json by default,
-    the same data as the approved mock's #city-plans script)."""
-    with open(path or _plans_file_path(), encoding="utf-8") as fh:
-        return json.load(fh)["plans"]
-
-
-def _plan_by_id(plans, plan_id):
-    for plan in plans:
-        if plan["id"] == plan_id:
-            return plan
-    return None
-
-
-# -- one land, many territories: slots, plans, buildings -------------------
-
-def _slot_angle(cell):
-    i, j = cell
-    a = math.atan2(j, i)
-    return a + 2 * math.pi if a < 0 else a
-
-
-def _build_slots():
-    """Spiral order on a 9x9 grid of cells: ring first (max |i|, |j|), then
-    diamond distance, then angle -- so the search always tries the nearest
-    free cell first."""
-    cells = [(i, j) for i in range(-4, 5) for j in range(-4, 5)]
-    return sorted(cells, key=lambda c: (max(abs(c[0]), abs(c[1])), abs(c[0]) + abs(c[1]), _slot_angle(c)))
-
-
-SLOTS = _build_slots()
-
-
 def new_world():
     return {"v": 1, "territories": {}, "order": []}
 
 
-def _free_slot(territories, plan_by_id, plan):
-    """The first cell in SLOTS order that a land of PLAN may take next to the
-    territory records TERRITORIES (the shown ones: the caller leaves the
-    hidden out), or None. It is no cell of theirs, not the cell just south of
-    a sea plan, it touches one of them (when there is one), and a sea plan
-    takes no cell with one of them just south of it."""
-    occupied = {tuple(t["slot"]) for t in territories}
-    blocked = {(t["slot"][0], t["slot"][1] + 1) for t in territories if plan_by_id[t["plan"]]["sea"]}
-    for i, j in SLOTS:
-        if (i, j) in occupied or (i, j) in blocked:
-            continue
-        if occupied and not any((i + a, j + b) in occupied for a, b in ((1, 0), (-1, 0), (0, 1), (0, -1))):
-            continue
-        if plan["sea"] and (i, j + 1) in occupied:
-            continue
-        return (i, j)
-    return None
-
-
-def add_territory(world, plans, identity, name, lines=0):
-    """A known identity is never moved or replanned (hidden or not): same
-    slot, same plan, lines/peak untouched, whatever LINES is passed this
-    time. A new one is measured against the shown territories alone (city-
-    layout): a hidden territory's slot is free and it is nobody's neighbour."""
+def add_territory(world, identity, name):
+    """A known identity is never changed. A new one is put at the end of the order with a bare
+    record {"name": name}."""
     existing = world["territories"].get(identity)
     if existing is not None:
         return existing
-
-    territories = [t for t in world["territories"].values() if not t.get("hidden")]
-    plan_by_id = {p["id"]: p for p in plans}
-    used_plans = {t["plan"] for t in territories}
-
-    def slot_for(plan):
-        return _free_slot(territories, plan_by_id, plan)
-
-    order_start = fnv1a(identity) % len(plans)
-    pick = None
-    for k in range(len(plans)):
-        p = plans[(order_start + k) % len(plans)]
-        if p["id"] not in used_plans and slot_for(p) is not None:
-            pick = p
-            break
-    if pick is None:
-        for k in range(len(plans)):
-            p = plans[(order_start + k) % len(plans)]
-            if slot_for(p) is not None:
-                pick = p
-                break
-
-    lines_val = lines or 0
-    record = {"name": name, "plan": pick["id"], "slot": list(slot_for(pick)),
-              "lines": lines_val, "peak": lines_val, "buildings": [], "era": "village",
-              "balance": {}, "rules_bad": [], "offices": {}, "rest": False}
+    record = {"name": name}
     world["territories"][identity] = record
     world["order"].append(identity)
     return record
-
-
-# -- city-data: the name of a building (requirements/city.md, Growth, "Building
-# names"; tests/test_agent_city_data.py, N1..N4, is the contract) -----------
-
-NAME_MAX = 24   # a name longer than this is cut to NAME_MAX - 1 characters and "…"
-NAME_COMMON_STEMS = frozenset((
-    "index", "main", "__init__", "init", "mod", "app", "util", "utils", "readme", "test", "tests", "spec",
-    "setup", "conftest", "page", "layout", "route", "view", "style", "styles",
-))   # a file stem (lower case) that names nothing: its folder is used instead
-NAME_COMMON_DIRS = frozenset((
-    "src", "lib", "test", "tests", "bin", "app", "pkg", "internal", "cmd", "web", "docs", "scripts",
-    "components", "pages",
-))   # a folder (lower case) that names nothing: the folder above it is used instead
-NAME_ROLE_WORDS = frozenset(("worker", "task-manager", "fast-lane-deputy", "merge-deputy", "other", "session"))   # a bare role is no task
-NAME_KIND_WORD = {
-    "zh": {"tower": "测试", "shop": "页面", "workshop": "脚本", "library": "文档", "house": "模块"},
-    "en": {"tower": "tests", "shop": "page", "workshop": "script", "library": "docs", "house": "module"},
-}   # building type -> what the building is, after its subject
-NAME_DISTRICT_WORD = {
-    "zh": {"house": "住宅区", "shop": "商业街", "tower": "测试区", "workshop": "工坊区", "library": "图书馆区"},
-    "en": {"house": "Homes", "shop": "Shops", "tower": "Tests", "workshop": "Workshops", "library": "Library"},
-}   # building type -> its district, for a building that has nothing to be named after
-NAME_TASK_ENDING = re.compile(r"\.[A-Za-z0-9]{1,5}$")   # "fix a.py": a file, not a task
-
-
-def _name_cut(text):
-    return text if len(text) <= NAME_MAX else text[:NAME_MAX - 1] + "…"
-
-
-def _name_of_file(path):
-    """What one file points at: its name (no extension, no test_ / _test /
-    .test / .spec), or its folder when that is too common (NAME_COMMON_STEMS),
-    or the folder above a too-common folder (NAME_COMMON_DIRS); "" when none
-    is left. Both "/" and "\\" split the path."""
-    if not isinstance(path, str):
-        return ""
-    parts = [p for p in re.split(r"[/\\]", path) if p not in ("", ".", "..")]
-    if not parts:
-        return ""
-    stem = parts[-1]
-    dot = stem.rfind(".")
-    if dot >= 0:
-        stem = stem[:dot]
-    low = stem.lower()
-    if low.startswith("test_"):
-        stem = stem[len("test_"):]
-    else:
-        for ending in ("_test", ".test", ".spec"):
-            if low.endswith(ending):
-                stem = stem[:-len(ending)]
-                break
-    if stem and stem.lower() not in NAME_COMMON_STEMS:
-        return stem
-    for folder in reversed(parts[:-1]):
-        if folder.lower() not in NAME_COMMON_DIRS:
-            return folder
-    return ""
-
-
-def name_subject(files):
-    """What the building's FILES (newest first) point at: the subject most of
-    them point at, a tie going to the oldest file (the last one); "" when
-    nothing does. Cut to NAME_MAX characters ("…"). Never a "/" or "\\"."""
-    if not isinstance(files, (list, tuple)):
-        return ""
-    counts = {}
-    for path in reversed(files):   # oldest first: the first of the best is the oldest file's
-        subject = _name_of_file(path)
-        if subject:
-            counts[subject] = counts.get(subject, 0) + 1
-    if not counts:
-        return ""
-    best = max(counts.values())
-    for subject, n in counts.items():
-        if n == best:
-            return _name_cut(subject)
-    return ""
-
-
-def _name_of_task(task):
-    """TASK as a name, or "": the text after strip(), cut to NAME_MAX; no
-    path, no file ending (".py") and no bare role word can be a name."""
-    if not isinstance(task, str):
-        return ""
-    text = task.strip()
-    if (not text or "/" in text or "\\" in text or NAME_TASK_ENDING.search(text)
-            or text.lower() in NAME_ROLE_WORDS):
-        return ""
-    return _name_cut(text)
-
-
-def building_name(btype, files, task, plot, lang="zh", taken=()):
-    """The name of a new building, never "" and never the bare type word: its
-    subject and what it is ("checkout 页面"), else the builder's TASK, else
-    its address in the district ("住宅区 5 号", plot + 1). A name that is in
-    TAKEN (the names used in that land) gets " 2", " 3", ... until it is free."""
-    lang = "en" if lang == "en" else "zh"
-    btype = btype if isinstance(btype, str) and btype in NAME_KIND_WORD[lang] else "house"
-    subject = name_subject(files)
-    if subject:
-        base = "%s %s" % (subject, NAME_KIND_WORD[lang][btype])
-    else:
-        base = _name_of_task(task)
-    if not base:
-        number = plot + 1 if isinstance(plot, int) and not isinstance(plot, bool) else 1
-        if lang == "en":
-            base = "%s no. %d" % (NAME_DISTRICT_WORD[lang][btype], number)
-        else:
-            base = "%s %d 号" % (NAME_DISTRICT_WORD[lang][btype], number)
-    used = set(taken)
-    name, n = base, 1
-    while name in used:
-        n += 1
-        name = "%s %d" % (base, n)
-    return name
-
-
-def name_world(world, lang="zh"):
-    """Names every building of WORLD that has no name (no "name" key, None or
-    ""), land by land in the order the buildings are listed; what the land
-    already has (also a building listed later) and what this run gave are
-    taken. A building that has a name is never touched. Returns how many it
-    named (0 the second time). It has no task to name them after: files, else
-    an address."""
-    def has_name(b):
-        return isinstance(b.get("name"), str) and b["name"].strip() != ""
-
-    count = 0
-    territories = world.get("territories") if isinstance(world, dict) else None
-    if not isinstance(territories, dict):
-        return 0
-    for t in territories.values():
-        listed = t.get("buildings") if isinstance(t, dict) else None
-        blds = [b for b in listed if isinstance(b, dict)] if isinstance(listed, list) else []
-        taken = {b["name"] for b in blds if has_name(b)}
-        for b in blds:
-            if has_name(b):
-                continue
-            b["name"] = building_name(b.get("type"), b.get("files"), "", b.get("plot"), lang, taken)
-            taken.add(b["name"])
-            count += 1
-    return count
-
-
-def build(world, plans, identity, kind, owner, by, now, file_rel=None, wt="", building_type=None,
-          task="", lang="zh"):
-    """The first free open plot of KIND's district (or BUILDING_TYPE's, when
-    given -- idea-city C4: the server picks the building straight from a
-    "file", bypassing KIND_TYPE), in plan order. None when the identity is
-    unknown, the kind (or BUILDING_TYPE) is unknown, OWNER already has a
-    building here, or no open plot matching fits. Sized by the territory's
-    peak (not its current lines), so a building already placed is never
-    stranded by code later deleted.
-
-    FILE_REL (repo-relative, city-quality): its content -- read from WT
-    when given, else the repo root = dirname of the "<root>/.git" IDENTITY;
-    unreadable -> "good" -- sets the new building's quality alone
-    (duplicates and hot spots only come with CityState.requality). Poor and
-    wrong_district(FILE_REL) -> the first free open plot of another
-    district in plan order, "home" false; else its own district, "home"
-    true. No FILE_REL (old hook lines): files [], q "good", home true, its
-    own district, as before.
-
-    city-data: the new building has its name at once (building_name(): its
-    file, else TASK -- the builder's -- else an address; LANG zh | en), a name
-    nobody in this land has. It is never changed later."""
-    t = world["territories"].get(identity)
-    if t is None:
-        return None
-    if building_type is None:
-        building_type = KIND_TYPE.get(kind)
-    if not building_type:
-        return None
-    if any(b.get("owner") == owner for b in t["buildings"]):
-        return None
-    plan = _plan_by_id(plans, t["plan"])
-    taken = {b["plot"] for b in t["buildings"]}
-
-    if file_rel and not _is_safe_rel_path(file_rel):
-        file_rel = None
-    files = [file_rel] if file_rel else []
-    q = "good"
-    if file_rel:
-        base = wt if wt else os.path.dirname(identity)
-        text = _read_text(base, file_rel)
-        if text is not None:
-            q = file_quality(text)["score"]
-    home = not (q == "poor" and file_rel and wrong_district(file_rel))
-
-    for k in open_plots(plan, t["peak"]):
-        if k in taken:
-            continue
-        _x, _z, district = plan["plots"][k]
-        matches = (district == building_type) if home else (district != building_type)
-        if matches:
-            b = {"plot": k, "type": building_type, "owner": owner, "owners": [owner], "by": by,
-                 "at": now, "files": files, "hist": [], "q": q, "home": home, "lv": 0,
-                 "name": building_name(building_type, files, task, k, lang,
-                                       {x.get("name") for x in t["buildings"]})}
-            t["buildings"].append(b)
-            return b
-    return None
-
-
-# -- the whole land as a char grid, for the page to draw --------------------
-
-def _trim_depth(a, c):
-    """Outer-edge cut depth (1..3 tiles) with no neighbour on that side,
-    from a noisy wave along the cell's side (A = the global coordinate
-    running along it, C = a per-side phase so all four sides differ).
-    Scaled down for HALF 11 (was 1..6 at HALF 13): the margin between the
-    cell edge and the content box (BOX_LO/BOX_HI) is only 3 tiles now, so a
-    deeper cut would eat the towns."""
-    v = (1.3 + 0.45 * math.sin(a * 0.7 + c) + 0.4 * math.sin(a * 1.7 + 2 * c)
-         + 0.35 * math.sin(a * 3.1 + 3 * c) + 0.3 * math.sin(a * 5.3 + 5 * c))
-    return 1 + max(0, min(2, math.floor(v + 0.5)))
-
-
-def _belt_offset(a, c):
-    """Gap-belt bend (-2..2 tiles) along the same kind of noisy wave."""
-    v = 1.5 * math.sin(a * 0.23 + c) + 0.8 * math.sin(a * 0.61 + 2 * c)
-    return max(-2, min(2, math.floor(v + 0.5)))
-
-
-def _corner_cut(x, z):
-    """Diagonal-corner cut depth (2..6, was 8+-2 at HALF 13): a corner tile
-    is cut when its two edge distances sum to less than this. At HALF 11
-    the content box's own corner sums to 6 (BOX_HI's distance on each side),
-    so 6 is the largest value that still never touches the box."""
-    return 4 + math.floor(2 * math.sin(x * 0.5 + z * 0.3) + 0.5)
-
-
-def layout(world, plans):
-    """The view the page draws: {"cell", "x0", "z0", "w", "h", "rows",
-    "territories", "links"} -- see the CONTRACT in
-    tests/test_agent_city_world.py for the exact shape of each."""
-    plan_by_id = {p["id"]: p for p in plans}
-    # city-layout: a hidden territory is not there at all (the view is the
-    # layout of the world without that record); two records may hold one slot
-    # when at most one of them is shown
-    order = [ident for ident in world["order"]
-             if ident in world["territories"] and not world["territories"][ident].get("hidden")]
-    if not order:
-        return {"cell": CELL, "x0": 0, "z0": 0, "w": 0, "h": 0, "rows": [],
-                "territories": [], "links": []}
-
-    by_slot = {tuple(world["territories"][ident]["slot"]): ident for ident in order}
-    # "n": a territory's place in world["order"], counting every identity of
-    # that list (hidden, or cut away from this view too). The page colours a
-    # repo by it, so a repo keeps its colour when others are hidden or shown.
-    number = {}
-    for k, ident in enumerate(world["order"]):
-        number.setdefault(ident, k)
-
-    x0 = z0 = x1 = z1 = None
-    for ident in order:
-        t = world["territories"][ident]
-        i, j = t["slot"]
-        sea = plan_by_id[t["plan"]]["sea"]
-        cx0, cx1 = i * CELL - HALF, i * CELL + HALF - 1
-        cz0, cz1 = j * CELL - HALF, j * CELL + HALF - 1 + (SEA_ROWS if sea else 0)
-        x0 = cx0 if x0 is None else min(x0, cx0)
-        x1 = cx1 if x1 is None else max(x1, cx1)
-        z0 = cz0 if z0 is None else min(z0, cz0)
-        z1 = cz1 if z1 is None else max(z1, cz1)
-
-    w, h = x1 - x0 + 1, z1 - z0 + 1
-    grid = [[" "] * w for _ in range(h)]
-
-    def get(x, z):
-        row, col = z - z0, x - x0
-        if 0 <= row < h and 0 <= col < w:
-            return grid[row][col]
-        return None
-
-    def set_tile(x, z, c):
-        row, col = z - z0, x - x0
-        if 0 <= row < h and x0 <= x <= x1:
-            grid[row][col] = c
-
-    # -- links: every 4-adjacent pair of cells, once ------------------------
-    links = []
-    for ident in order:
-        t = world["territories"][ident]
-        i, j = t["slot"]
-        for di, dj, side in ((1, 0, "E"), (0, 1, "S")):
-            nb = by_slot.get((i + di, j + dj))
-            if nb is None:
-                continue
-            gap = gap_of(plan_by_id[t["plan"]]["terrain"], plan_by_id[world["territories"][nb]["plan"]]["terrain"])
-            links.append({"a": ident, "b": nb, "side": side, "gap": gap,
-                          "kind": "bridge" if gap in ("river", "ravine") else "road"})
-
-    def link_at(a, b):
-        for l in links:
-            if (l["a"] == a and l["b"] == b) or (l["a"] == b and l["b"] == a):
-                return l
-        return None
-
-    # -- one cell at a time: void cuts, coast sea/beach, bent gap belts -----
-    territories_view = []
-    for ident in order:
-        t = world["territories"][ident]
-        plan = plan_by_id[t["plan"]]
-        i, j = t["slot"]
-        ox, oz = i * CELL, j * CELL
-        nb = {"N": by_slot.get((i, j - 1)), "S": by_slot.get((i, j + 1)),
-              "W": by_slot.get((i - 1, j)), "E": by_slot.get((i + 1, j))}
-
-        def v_belt(bx, z):
-            o = _belt_offset(z, bx * 0.37)
-            return (bx - 1 + o, bx + o)
-
-        def h_belt(bz, x):
-            o = _belt_offset(x, bz * 0.41)
-            return (bz - 1 + o, bz + o)
-
-        for x in range(-HALF, HALF):
-            for z in range(-HALF, HALF):
-                X, Z = ox + x, oz + z
-                kN, kS = z + HALF, HALF - 1 - z
-                kW, kE = x + HALF, HALF - 1 - x
-                tN, tS = _trim_depth(X, 0.7), _trim_depth(X, 2.1)
-                tW, tE = _trim_depth(Z, 1.3), _trim_depth(Z, 3.3)
-                cc = _corner_cut(X, Z)
-                cut = ((not nb["N"] and kN < tN) or (not nb["W"] and kW < tW)
-                       or (not nb["E"] and kE < tE)
-                       or (not plan["sea"] and not nb["S"] and kS < tS)
-                       or (not nb["N"] and not nb["W"] and kN + kW < cc)
-                       or (not nb["N"] and not nb["E"] and kN + kE < cc)
-                       or (not nb["S"] and not nb["W"] and kS + kW < cc)
-                       or (not nb["S"] and not nb["E"] and kS + kE < cc))
-                c = "."
-                sea_ok = ((nb["E"] or kE >= _trim_depth(Z, 6.1) - 1)
-                          and (nb["W"] or kW >= _trim_depth(Z, 6.9) - 1))
-                if plan["sea"] and (kS < tS + 1 or (cut and kS < 9)):
-                    c = "s" if sea_ok else " "
-                elif cut:
-                    c = " "
-                elif plan["sea"] and kS < tS + 3:
-                    c = "b"
-                else:
-                    hit = None
-                    if nb["E"] and X in v_belt(ox + HALF, Z):
-                        hit = nb["E"]
-                    elif nb["W"] and X in v_belt(ox - HALF, Z):
-                        hit = nb["W"]
-                    elif nb["S"] and Z in h_belt(oz + HALF, X):
-                        hit = nb["S"]
-                    elif nb["N"] and Z in h_belt(oz - HALF, X):
-                        hit = nb["N"]
-                    if hit is not None:
-                        c = GAP_CH[link_at(ident, hit)["gap"]]
-                set_tile(X, Z, c)
-
-        if plan["sea"]:
-            for x in range(-HALF, HALF):
-                for z in range(HALF, HALF + SEA_ROWS):
-                    if (z - HALF < 1 + _trim_depth(ox + x, 5.5)
-                            and get(ox + x, oz + z - 1) == "s"
-                            and x + HALF >= _trim_depth(oz + z, 6.9) + z - HALF
-                            and HALF - 1 - x >= _trim_depth(oz + z, 6.1) + z - HALF):
-                        set_tile(ox + x, oz + z, "s")
-
-        tr = territory_tiles(plan, ident, t["peak"])  # peak: land never shrinks
-        roads = _road_set(plan)
-        for x, z in tr["land"]:
-            if get(ox + x, oz + z) == ".":
-                set_tile(ox + x, oz + z, "r" if (x, z) in roads else "g")
-        opens = open_plots(plan, t["peak"])
-        for k in opens:
-            x, z, _ = plan["plots"][k]
-            set_tile(ox + x, oz + z, "P")
-        for x in range(-1, 1):
-            for z in range(-1, 1):
-                set_tile(ox + x, oz + z, "H")
-
-        offices = t.get("offices", {})
-        for lx, lz in offices.values():
-            set_tile(ox + lx, oz + lz, "g")
-        rest_view = None
-        if t.get("rest"):
-            rx, rz = plan["rest"]
-            rest_view = {"x": ox + rx, "z": oz + rz}
-            for dx in (0, 1):
-                for dz in (0, 1):
-                    set_tile(ox + rx + dx, oz + rz + dz, "g")
-
-        plots_view = [{"k": k, "x": ox + plan["plots"][k][0], "z": oz + plan["plots"][k][1],
-                       "d": plan["plots"][k][2]} for k in opens]
-        buildings_view = []
-        for b in t["buildings"]:
-            px, pz, _ = plan["plots"][b["plot"]]
-            buildings_view.append({"plot": b["plot"], "type": b["type"], "by": b["by"],
-                                    "x": ox + px, "z": oz + pz,
-                                    "files": b.get("files", []), "hist": b.get("hist", []),
-                                    "q": b.get("q", "good"), "home": b.get("home", True),
-                                    "lv": b.get("lv", 0), "name": b.get("name", "")})
-        sites = t.get("sites", {})
-        offices_view = [
-            {"lead": ("" if cid in sites else cid), "site": (cid if cid in sites else ""),
-             "x": ox + lx, "z": oz + lz}
-            for cid, (lx, lz) in offices.items()
-        ]
-        sites_view = []
-        for sid, info in sites.items():
-            pos = offices.get(sid)
-            if pos is None:
-                continue
-            sites_view.append({"id": sid, "branch": info.get("branch", ""),
-                               "module": info.get("module", ""), "status": info.get("status", ""),
-                               "human": info.get("human", False), "stalled": info.get("stalled", False),
-                               "x": ox + pos[0], "z": oz + pos[1]})
-
-        era = t.get("era", "village")
-        balance = t.get("balance", {})
-        territories_view.append({
-            "id": territory_id(ident), "name": t["name"], "plan": plan["id"],
-            "terrain": plan["terrain"], "slot": list(t["slot"]), "cx": ox, "cz": oz,
-            "sea": bool(plan["sea"]), "n": number[ident],
-            "lines": t["lines"], "size": growth(t["peak"]), "r": tr["r"], "open": tr["open"],
-            "plots_total": len(plan["plots"]), "plots": plots_view, "buildings": buildings_view,
-            "era": era, "balance": balance,
-            "rules_note": _rules_note(t["name"], t.get("rules_bad", [])),
-            "offices": offices_view, "rest": rest_view, "sites": sites_view,
-        })
-
-    # -- tracks: plan road from the territory out to its exit, across the gap -
-    def trunk(ident, direction):
-        t = world["territories"][ident]
-        plan = plan_by_id[t["plan"]]
-        i, j = t["slot"]
-        ox, oz = i * CELL, j * CELL
-        roads = _road_set(plan)
-        ex = _clip_to_box(plan["exits"][direction])
-        prev = {ex: None}
-        queue_ = deque([ex])
-        hit = None
-        while queue_:
-            x, z = queue_.popleft()
-            c = get(ox + x, oz + z)
-            if c in ("r", "H", "g"):
-                hit = (x, z)
-                break
-            for a, b in ((x + 1, z), (x - 1, z), (x, z + 1), (x, z - 1)):
-                if (a, b) in prev or not (((a, b) in roads) or _is_hall(a, b)):
-                    continue
-                prev[(a, b)] = (x, z)
-                queue_.append((a, b))
-        p = hit
-        while p is not None:
-            if get(ox + p[0], oz + p[1]) == ".":
-                set_tile(ox + p[0], oz + p[1], "t")
-            p = prev.get(p)
-        return (ox + ex[0], oz + ex[1])
-
-    for l in links:
-        A = trunk(l["a"], l["side"])
-        B = trunk(l["b"], "W" if l["side"] == "E" else "N")
-        cross = []
-
-        def lay(x, z):
-            c = get(x, z)
-            if c == ".":
-                set_tile(x, z, "t")
-            elif c in "wkmf":
-                set_tile(x, z, "B" if l["kind"] == "bridge" else "t")
-                cross.append([x, z])
-
-        if l["side"] == "E":
-            for x in range(A[0], B[0] + 1):
-                lay(x, A[1])
-            for z in range(min(A[1], B[1]), max(A[1], B[1]) + 1):
-                lay(B[0], z)
-        else:
-            for z in range(A[1], B[1] + 1):
-                lay(A[0], z)
-            for x in range(min(A[0], B[0]), max(A[0], B[0]) + 1):
-                lay(x, B[1])
-        l["cross"] = cross
-
-    links_view = [{"a": territory_id(l["a"]), "b": territory_id(l["b"]),
-                   "gap": l["gap"], "kind": l["kind"], "cross": l["cross"]} for l in links]
-    return {"cell": CELL, "x0": x0, "z0": z0, "w": w, "h": h,
-            "rows": ["".join(row) for row in grid],
-            "territories": territories_view, "links": links_view}
 
 
 # -- persistence: world.json --------------------------------------------------
@@ -7325,31 +5589,49 @@ def load_roster(path):
     return sorted(out.values(), key=lambda e: e["sid"])
 
 
-def _world_looks_valid(data, plans):
+def _world_looks_valid(data):
+    """A world.json of this shape: v 1, "territories" a dict of dicts, "order" a list. Island keys
+    (plan, slot, buildings ...) are no reason to refuse it: load_world sheds them."""
     if not isinstance(data, dict) or data.get("v") != 1:
         return False
     territories = data.get("territories")
     order = data.get("order")
     if not isinstance(territories, dict) or not isinstance(order, list):
         return False
-    plan_ids = {p["id"] for p in plans}
-    for t in territories.values():
-        if not isinstance(t, dict) or t.get("plan") not in plan_ids:
-            return False
-        slot = t.get("slot")
-        if not isinstance(slot, list) or len(slot) != 2 or not all(isinstance(v, int) for v in slot):
-            return False
-    return True
+    return all(isinstance(t, dict) for t in territories.values())
 
 
-def load_world(path, plans=None, lang="zh"):
+WORLD_KEYS = ("v", "territories", "order", "floors", "names", "gov_seen")
+
+
+def _shed_island(data):
+    """The office keys of DATA only (world.json of the island years loses plans, slots, buildings, eras,
+    offices, sites). Its floors, when it has none, are its order without the hidden territories."""
+    terrs = data["territories"]
+    floors = data.get("floors")
+    if not isinstance(floors, list):
+        floors = [i for i in data["order"] if i in terrs and not terrs[i].get("hidden")]
+    out = {"v": 1, "territories": {}, "order": [i for i in data["order"] if isinstance(i, str)],
+           "floors": floors}
+    for identity, t in terrs.items():
+        name = t.get("name")
+        rec = {"name": name if isinstance(name, str) and name else repo_name(identity)}
+        if t.get("reno_asked") is True:
+            rec["reno_asked"] = True
+        out["territories"][identity] = rec
+    for key in ("names", "gov_seen"):
+        if isinstance(data.get(key), dict):
+            out[key] = data[key]
+    return out
+
+
+def load_world(path, lang="zh"):
     """(world, notice). Missing file -> a fresh world, no notice. Anything
-    else wrong (unreadable, not JSON, not this shape, an unknown plan, a
-    bad slot) -> the file is moved aside untouched, byte for byte, and a
-    fresh world is returned with a notice naming where it went -- Chinese
-    for lang "zh" (default), English (no CJK) for "en" (idea-city C1)."""
-    if plans is None:
-        plans = load_plans()
+    else wrong (unreadable, not JSON, not this shape) -> the file is moved
+    aside untouched, byte for byte, and a fresh world is returned with a
+    notice naming where it went -- Chinese for lang "zh" (default), English
+    (no CJK) for "en". An island world.json loads without any notice: its
+    island keys are shed (see _shed_island) and the next save drops them."""
     try:
         with open(path, "rb") as fh:
             raw = fh.read()
@@ -7362,8 +5644,8 @@ def load_world(path, plans=None, lang="zh"):
     except (UnicodeDecodeError, ValueError):
         pass
 
-    if data is not None and _world_looks_valid(data, plans):
-        return data, None
+    if data is not None and _world_looks_valid(data):
+        return _shed_island(data), None
 
     bad_name = "world.json.bad-" + datetime.now().strftime("%Y%m%d-%H%M%S")
     bad_path = os.path.join(os.path.dirname(path), bad_name)
@@ -7376,644 +5658,6 @@ def load_world(path, plans=None, lang="zh"):
     else:
         notice = "world.json 读不了，已挪到 %s，重新开始一座新城" % bad_name
     return new_world(), notice
-
-
-# -- code lines: what counts as code, cheaply, through git only -------------
-
-_BINARY_EXT = {
-    ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp", ".svg", ".bmp", ".tiff",
-    ".glb", ".gltf", ".obj", ".fbx", ".dae", ".3ds", ".blend",
-    ".woff", ".woff2", ".ttf", ".otf", ".eot",
-    ".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac",
-    ".mp4", ".mov", ".avi", ".mkv", ".webm",
-    ".zip", ".tar", ".gz", ".tgz", ".rar", ".7z", ".bz2", ".xz",
-    ".pdf",
-}
-_LOCK_NAMES = {
-    "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "cargo.lock",
-    "poetry.lock", "gemfile.lock", "go.sum", "composer.lock",
-}
-_BLOCKED_DIRS = {"vendor", "node_modules", "dist", "build", "third_party"}
-
-
-def counts_as_code(path):
-    """False for images, 3D models, fonts, audio, video, archives, pdf,
-    lock files, minified or generated files, and anything under a
-    vendor/node_modules/dist/build/third_party folder. True otherwise."""
-    parts = path.replace("\\", "/").split("/")
-    if any(seg in _BLOCKED_DIRS for seg in parts[:-1]):
-        return False
-    name = parts[-1].lower()
-    if name in _LOCK_NAMES or name.endswith(".lock"):
-        return False
-    if os.path.splitext(name)[1] in _BINARY_EXT:
-        return False
-    if ".min." in name or ".generated." in name:
-        return False
-    if name.endswith(".pb.go") or name.endswith("_pb2.py"):
-        return False
-    return True
-
-
-def count_lines(identity):
-    """Added lines of `git --git-dir=IDENTITY diff --numstat <empty tree>
-    HEAD`, counting only rows counts_as_code keeps (a binary row's "added"
-    is "-", never counted). 0 when IDENTITY is not a git dir, has no
-    commit, or git times out or errors -- runs git only, nothing else. The
-    empty tree id comes from git itself (`hash-object -t tree --stdin` on
-    empty input), so SHA-256 repos (a different empty tree id than SHA-1)
-    count too."""
-    try:
-        empty_tree = subprocess.run(
-            ["git", "--git-dir=" + identity, "hash-object", "-t", "tree", "--stdin"],
-            input="", capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError):
-        return 0
-    if empty_tree.returncode != 0:
-        return 0
-    try:
-        result = subprocess.run(
-            ["git", "--git-dir=" + identity, "diff", "--numstat", empty_tree.stdout.strip(), "HEAD"],
-            capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError):
-        return 0
-    if result.returncode != 0:
-        return 0
-    total = 0
-    for line in result.stdout.splitlines():
-        parts = line.split("\t", 2)
-        if len(parts) != 3:
-            continue
-        added, _removed, path = parts
-        if added == "-" or not counts_as_code(path):
-            continue
-        try:
-            total += int(added)
-        except ValueError:
-            continue
-    return total
-
-
-# --------------------------------------------------------------------------
-# Balance: 5 kinds of code, eras, the era show, versioned assets
-# --------------------------------------------------------------------------
-#
-# requirements/city.md, "Balance". A repo's code is scored in 5 kinds
-# (KINDS); score_balance turns a file list into that score, balance_of gets
-# the file list from git, era_for turns the repo's size into a growth era
-# (kinds never hold it back). See the CONTRACT docstring at the top of
-# tests/test_agent_city_balance.py for the exact shape of each.
-
-KINDS = ("build", "rules", "beauty", "knowledge", "infra")
-KIND_ZH = {"build": "建设", "rules": "规则", "beauty": "美化",
-           "knowledge": "知识", "infra": "基建"}
-ERAS = ("village", "town", "city")
-TOWN_LINES = 2000
-CITY_LINES = 20000
-SHOW_SEC = 60
-
-_RULES_DIRS = {"test", "tests", "__tests__", "spec", "specs", "e2e",
-               "integration_test", "cypress", "playwright", "qa"}
-_INFRA_UNDER = {".github", ".circleci", ".gitlab"}
-_INFRA_DIRS = {"migrations", "migrate", "schema", "prisma", "scripts", "ci", "deploy", "infra"}
-_INFRA_EXACT_NAMES = {"Makefile", "Jenkinsfile", "Procfile", ".gitlab-ci.yml"}
-_INFRA_PREFIXES = ("Dockerfile", "docker-compose")
-_INFRA_EXTS = {".sh", ".bash", ".zsh", ".ps1", ".bat", ".sql", ".tf", ".yml", ".yaml",
-               ".toml", ".ini", ".cfg", ".conf"}
-_KNOWLEDGE_EXTS = {".md", ".mdx", ".rst", ".adoc"}
-_BEAUTY_EXTS = {".jsx", ".tsx", ".vue", ".svelte", ".html", ".css", ".scss", ".sass",
-                ".less", ".styl"}
-_BEAUTY_DIRS = {"components", "widgets", "ui", "views", "screens", "pages", "styles", "theme"}
-_COMPONENT_EXTS = {".jsx", ".tsx", ".vue", ".svelte", ".html"}
-_COMPONENT_DIRS = {"components", "widgets", "ui", "views", "screens", "pages"}
-_MODULE_DROP_DIRS = {"src", "lib", "app", "apps", "packages", "modules", "internal",
-                     "pkg", "cmd", "services"}
-_BUILD_EXTS = {".py", ".js", ".mjs", ".cjs", ".ts", ".go", ".rs", ".java", ".kt", ".kts",
-               ".swift", ".dart", ".rb", ".php", ".c", ".h", ".cc", ".cpp", ".hpp", ".cs",
-               ".m", ".mm", ".scala", ".lua", ".ex", ".exs", ".clj", ".hs", ".erl", ".r",
-               ".jl", ".fs", ".groovy", ".pl"}
-
-
-def _path_parts(path):
-    return path.replace("\\", "/").split("/")
-
-
-def _is_rules_path(path):
-    parts = _path_parts(path)
-    if any(seg in _RULES_DIRS for seg in parts[:-1]):
-        return True
-    name = parts[-1]
-    stem, ext = os.path.splitext(name)
-    if ext == "":
-        return False
-    if stem.startswith("test_") or stem.endswith("_test") or stem.endswith(".test") \
-            or stem.endswith(".spec"):
-        return True
-    if name.endswith("_spec.rb"):
-        return True
-    if stem.endswith("Test") or stem.endswith("Tests"):
-        return True
-    return False
-
-
-def _is_infra_path(path):
-    parts = _path_parts(path)
-    dirs, name = parts[:-1], parts[-1]
-    if any(seg in _INFRA_UNDER for seg in dirs):
-        return True
-    if name in _INFRA_EXACT_NAMES:
-        return True
-    if name.startswith(_INFRA_PREFIXES):
-        return True
-    if os.path.splitext(name)[1].lower() in _INFRA_EXTS:
-        return True
-    if any(seg in _INFRA_DIRS for seg in dirs):
-        return True
-    if os.path.splitext(name)[1].lower() == ".json" and not dirs:
-        return True
-    return False
-
-
-def _is_component(path):
-    ext = os.path.splitext(path)[1].lower()
-    if ext in _COMPONENT_EXTS:
-        return True
-    if ext in _BUILD_EXTS and any(seg in _COMPONENT_DIRS for seg in _path_parts(path)[:-1]):
-        return True
-    return False
-
-
-def _is_beauty_path(path, ext):
-    if ext in _BEAUTY_EXTS:
-        return True
-    if ext in _BUILD_EXTS and any(seg in _BEAUTY_DIRS for seg in _path_parts(path)[:-1]):
-        return True
-    return False
-
-
-def _builtin_kind(path):
-    if _is_rules_path(path):
-        return "rules"
-    if _is_infra_path(path):
-        return "infra"
-    ext = os.path.splitext(path)[1].lower()
-    if ext in _KNOWLEDGE_EXTS:
-        return "knowledge"
-    if _is_beauty_path(path, ext):
-        return "beauty"
-    if ext in _BUILD_EXTS:
-        return "build"
-    return None
-
-
-def file_kind(path, rules=()):
-    """One of KINDS, or None: binaries, vendor, lock and generated files
-    never count, whatever a rule says. Then the first matching repo rule,
-    else the built-in rules (see the CONTRACT)."""
-    if not counts_as_code(path):
-        return None
-    for glob, kind in rules:
-        if fnmatch.fnmatchcase(path, glob):
-            return None if kind == "none" else kind
-    return _builtin_kind(path)
-
-
-def parse_rules(text):
-    """{"rules": [(glob, kind)], "na": [kinds], "bad": [1-based line
-    numbers]}. Blank lines and "# ..." are skipped; anything else that is
-    not a valid "<glob> = <kind>" or "na = <kind>[, <kind> ...]" is bad."""
-    rules, na, bad = [], [], []
-    for i, raw in enumerate(text.splitlines(), 1):
-        line = raw.strip()
-        if line == "" or line.startswith("#"):
-            continue
-        if "=" not in line:
-            bad.append(i)
-            continue
-        left, right = line.split("=", 1)
-        left, right = left.strip(), right.strip()
-        if left == "na":
-            kinds = [k.strip() for k in right.split(",")]
-            if not kinds or any(k not in KINDS for k in kinds):
-                bad.append(i)
-                continue
-            na.extend(kinds)
-        elif right in KINDS or right == "none":
-            rules.append((left, right))
-        else:
-            bad.append(i)
-    return {"rules": rules, "na": na, "bad": bad}
-
-
-def _normalize_test_name(stem):
-    s = stem
-    if s.startswith("test_"):
-        s = s[len("test_"):]
-    else:
-        for suf in ("_spec", "_test", ".spec", ".test", "Tests", "Test"):
-            if s.endswith(suf):
-                s = s[:-len(suf)]
-                break
-    return s.lower().replace("-", "_")
-
-
-def _has_matching_test(source_path, rules_files):
-    src_norm = _normalize_test_name(os.path.splitext(os.path.basename(source_path))[0])
-    for rf_path, _ in rules_files:
-        rf_norm = _normalize_test_name(os.path.splitext(os.path.basename(rf_path))[0])
-        if rf_norm == src_norm or rf_norm.startswith(src_norm + "_"):
-            return True
-    return False
-
-
-def _score_build(build_files):
-    value = sum(n for _, n in build_files)
-    state = "healthy" if value > 0 else "low"
-    return {"state": state, "value": value, "text": "%s 行代码" % format(value, ",")}
-
-
-def _score_rules(rules_files, source_files):
-    if not source_files:
-        return {"state": "healthy", "value": 0.0, "text": "0% 源文件有测试"}
-    matched = sum(1 for p, _ in source_files if _has_matching_test(p, rules_files))
-    value = matched / len(source_files)
-    state = "healthy" if value >= 0.5 else "low"
-    return {"state": state, "value": value, "text": "%d%% 源文件有测试" % round(value * 100)}
-
-
-def _score_beauty(beauty_files, reuse, build_count):
-    comps = [p for p, _ in beauty_files if _is_component(p)]
-    n_comps = len(comps)
-    reuse = reuse or {}
-    mean_reuse = (sum(reuse.get(c, 0) for c in comps) / n_comps) if n_comps else 0.0
-    need = max(3, math.ceil(build_count / 20))
-    state = "healthy" if (n_comps >= need and mean_reuse >= 2.0) else "low"
-    text = "%d 个组件，平均复用 %.1f 次" % (n_comps, mean_reuse)
-    return {"state": state, "value": n_comps, "text": text}
-
-
-def _module_of(path):
-    d = os.path.dirname(path.replace("\\", "/"))
-    if d == "":
-        return "."
-    parts = d.split("/")
-    i = 0
-    while i < len(parts) and parts[i] in _MODULE_DROP_DIRS:
-        i += 1
-    if i == 0 or i == len(parts):
-        return d
-    return "/".join(parts[i:])
-
-
-def _module_has_doc(module, knowledge_files):
-    if module == ".":
-        return any(os.path.dirname(kp.replace("\\", "/")) == "" for kp, _ in knowledge_files)
-    own_name = module.rsplit("/", 1)[-1].lower()
-    for kp, _ in knowledge_files:
-        if _module_of(kp) == module:
-            return True
-        if os.path.splitext(os.path.basename(kp))[0].lower() == own_name:
-            return True
-    return False
-
-
-def _score_knowledge(knowledge_files, source_files):
-    modules = []
-    seen = set()
-    for path, _ in source_files:
-        m = _module_of(path)
-        if m not in seen:
-            seen.add(m)
-            modules.append(m)
-    total = len(modules)
-    if total == 0:
-        return {"state": "healthy", "value": 0.0, "text": "0/0 个模块有文档"}
-    with_doc = sum(1 for m in modules if _module_has_doc(m, knowledge_files))
-    value = with_doc / total
-    state = "healthy" if value >= 0.5 else "low"
-    return {"state": state, "value": value, "text": "%d/%d 个模块有文档" % (with_doc, total)}
-
-
-def _score_infra(infra_files, build_count):
-    n = len(infra_files)
-    need = max(2, math.ceil(build_count / 25))
-    state = "healthy" if n >= need else "low"
-    return {"state": state, "value": n, "text": "%d 个文件" % n}
-
-
-def score_balance(files, rules_text="", reuse=None):
-    """{"kinds", "files", "bad"}: FILES ((path, added lines), ...) scored
-    into the 5 KINDS -- see the CONTRACT for the exact shape."""
-    parsed = parse_rules(rules_text)
-    na_set = set(parsed["na"])
-
-    by_kind = {k: [] for k in KINDS}
-    for path, n in files:
-        k = file_kind(path, parsed["rules"])
-        if k is not None:
-            by_kind[k].append((path, n))
-
-    files_out = {k: sorted(p for p, _ in by_kind[k]) for k in KINDS}
-    build_count = len(by_kind["build"])
-    source_files = by_kind["build"] + [f for f in by_kind["beauty"] if _is_component(f[0])]
-
-    kinds_out = {
-        "build": _score_build(by_kind["build"]),
-        "rules": _score_rules(by_kind["rules"], source_files),
-        "beauty": _score_beauty(by_kind["beauty"], reuse, build_count),
-        "knowledge": _score_knowledge(by_kind["knowledge"], source_files),
-        "infra": _score_infra(by_kind["infra"], build_count),
-    }
-    for k in KINDS:
-        n = len(by_kind[k])
-        entry = kinds_out[k]
-        if k in na_set:
-            entry["state"] = "na"
-            entry["text"] = "这个仓库不用这一类"
-        elif n == 0:
-            entry["state"] = "missing"
-            entry["text"] = "还没有"
-        entry["n"] = n
-
-    return {"kinds": kinds_out, "files": files_out, "bad": parsed["bad"]}
-
-
-def _component_name(path):
-    base = os.path.basename(path)
-    stem = os.path.splitext(base)[0]
-    if stem == "index":
-        return os.path.basename(os.path.dirname(path)) or stem
-    return stem
-
-
-def balance_of(identity, rules_text=""):
-    """score_balance's shape, from git only (diff --numstat for the file
-    list, one grep for component reuse). Never a repo, no commit, a git
-    error or timeout -> every kind "missing", never raises."""
-    try:
-        empty_tree = subprocess.run(
-            ["git", "--git-dir=" + identity, "hash-object", "-t", "tree", "--stdin"],
-            input="", capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError):
-        return score_balance([], rules_text)
-    if empty_tree.returncode != 0:
-        return score_balance([], rules_text)
-    try:
-        diff = subprocess.run(
-            ["git", "--git-dir=" + identity, "diff", "--numstat", empty_tree.stdout.strip(), "HEAD"],
-            capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError):
-        return score_balance([], rules_text)
-    if diff.returncode != 0:
-        return score_balance([], rules_text)
-
-    files = []
-    for line in diff.stdout.splitlines():
-        parts = line.split("\t", 2)
-        if len(parts) != 3:
-            continue
-        added, _removed, path = parts
-        if added == "-":
-            continue
-        try:
-            files.append((path, int(added)))
-        except ValueError:
-            continue
-
-    parsed_rules = parse_rules(rules_text)["rules"]
-    components = {p: _component_name(p) for p, _ in files
-                  if file_kind(p, parsed_rules) == "beauty" and _is_component(p)}
-
-    reuse = {}
-    names = sorted(set(components.values()))
-    if names:
-        args = ["git", "--git-dir=" + identity, "grep", "--no-color", "-I", "-w", "-o"]
-        for name in names:
-            args += ["-e", name]
-        args.append("HEAD")
-        try:
-            grep = subprocess.run(args, capture_output=True, text=True, timeout=10)
-        except (OSError, subprocess.SubprocessError):
-            grep = None
-        word_paths = {}
-        if grep is not None and grep.returncode in (0, 1):
-            for line in grep.stdout.splitlines():
-                parts = line.split(":", 2)
-                if len(parts) != 3:
-                    continue
-                _rev, gpath, word = parts
-                word_paths.setdefault(word, set()).add(gpath)
-        for path, name in components.items():
-            reuse[path] = len(word_paths.get(name, set()) - {path})
-
-    return score_balance(files, rules_text, reuse)
-
-
-def era_for(peak, kinds, current="village"):
-    """The growth era, by size only (requirements/city.md, "Balance", owner
-    2026-09-27): city when PEAK >= CITY_LINES, town when >= TOWN_LINES, else
-    village. The kinds never hold an era back. Never earlier than CURRENT
-    (eras never go back). {} kinds (no count yet) -> CURRENT, unchanged."""
-    if not kinds:
-        return current
-    if peak >= CITY_LINES:
-        computed = "city"
-    elif peak >= TOWN_LINES:
-        computed = "town"
-    else:
-        computed = "village"
-    if current not in ERAS:
-        current = "village"
-    return computed if ERAS.index(computed) > ERAS.index(current) else current
-
-
-def _rules_note(name, bad):
-    if not bad:
-        return ""
-    nums = "、".join(str(n) for n in bad)
-    return "%s.conf 第 %s 行看不懂，已忽略" % (name, nums)
-
-
-# --------------------------------------------------------------------------
-# Quality: file quality, duplicates, hot spots, wrong-district placement
-# --------------------------------------------------------------------------
-#
-# requirements/city.md, "Quality". Measured from the files only, no tools
-# run. See the CONTRACT docstring at the top of
-# tests/test_agent_city_quality.py for the exact shape of each.
-
-_QUALITY_ORDER = ("good", "fair", "poor")
-
-_FN_START_RE = re.compile(r'^\s*(async\s+)?(def|function|func|fn)\b')
-_FN_BRACE_END_RE = re.compile(r'\)\s*\{\s*$')
-_FN_ARROW_END_RE = re.compile(r'\)\s*=>\s*\{\s*$')
-
-
-def _is_safe_rel_path(rel):
-    """False for an absolute path, an empty one, or one with a ".."
-    segment -- never read and never recorded in a building's "files"
-    (requirements/city.md, "Quality": a line's "file" is trusted for
-    nothing beyond a plain path inside the repo)."""
-    if not rel or os.path.isabs(rel):
-        return False
-    return ".." not in rel.replace("\\", "/").split("/")
-
-
-def _read_text(base, rel):
-    """UTF-8 text of BASE/REL, or None when REL is not a safe repo-relative
-    path (_is_safe_rel_path) or it cannot be read (missing, a directory,
-    permission, ...). Never reads outside BASE."""
-    if not _is_safe_rel_path(rel):
-        return None
-    try:
-        with open(os.path.join(base, rel), encoding="utf-8", errors="replace") as fh:
-            return fh.read()
-    except OSError:
-        return None
-
-
-def _line_indent(line):
-    """LINE's leading indent level: spaces counted, a tab worth 4, // 4."""
-    n = 0
-    for ch in line:
-        if ch == " ":
-            n += 1
-        elif ch == "\t":
-            n += 4
-        else:
-            break
-    return n // 4
-
-
-def _is_fn_start(line):
-    return bool(_FN_START_RE.match(line)) or bool(_FN_BRACE_END_RE.search(line)) \
-        or bool(_FN_ARROW_END_RE.search(line))
-
-
-def _fn_length(lines, start):
-    """Lines of the function starting at LINES[START] (1-based, inclusive):
-    when the start line ends with "{", to where the brace depth (opened by
-    that "{") drops back to 0; else to the last later line indented deeper
-    than the start."""
-    stripped = lines[start].rstrip()
-    if stripped.endswith("{"):
-        depth = stripped.count("{") - stripped.count("}")
-        end = start
-        for idx in range(start + 1, len(lines)):
-            depth += lines[idx].count("{") - lines[idx].count("}")
-            end = idx
-            if depth <= 0:
-                break
-        return end - start + 1
-    indent0 = _line_indent(lines[start])
-    end = start
-    for idx in range(start + 1, len(lines)):
-        if _line_indent(lines[idx]) > indent0:
-            end = idx
-    return end - start + 1
-
-
-def file_quality(text):
-    """{"lines", "long_fn", "depth", "score"}: lines; the longest function
-    (a def/function/func/fn line, or one ending in ") {" / ") => {"); the
-    deepest nesting (brace depth or indent level). Good/fair/poor by
-    thresholds."""
-    lines = text.splitlines()
-    max_indent = 0
-    brace_depth = 0
-    max_brace = 0
-    for line in lines:
-        max_indent = max(max_indent, _line_indent(line))
-        for ch in line:
-            if ch == "{":
-                brace_depth += 1
-                max_brace = max(max_brace, brace_depth)
-            elif ch == "}":
-                brace_depth = max(0, brace_depth - 1)
-    long_fn = 0
-    for idx, line in enumerate(lines):
-        if _is_fn_start(line):
-            long_fn = max(long_fn, _fn_length(lines, idx))
-    depth = max(max_indent, max_brace)
-    n = len(lines)
-    if n > 1500 or long_fn > 200 or depth > 8:
-        score = "poor"
-    elif n > 500 or long_fn > 80 or depth > 5:
-        score = "fair"
-    else:
-        score = "good"
-    return {"lines": n, "long_fn": long_fn, "depth": depth, "score": score}
-
-
-def duplicates(texts):
-    """Set of TEXTS keys holding a run of 8 or more consecutive significant
-    lines (stripped; lines under 4 characters skipped, not counted) that
-    also appears elsewhere (another file, or another place in the same
-    file)."""
-    run = 8
-    seen = {}
-    for name, text in texts.items():
-        sig = [ln.strip() for ln in text.splitlines()]
-        sig = [ln for ln in sig if len(ln) >= 4]
-        for i in range(len(sig) - run + 1):
-            window = tuple(sig[i:i + run])
-            seen.setdefault(window, []).append(name)
-    hit = set()
-    for names in seen.values():
-        if len(names) >= 2:
-            hit.update(names)
-    return hit
-
-
-def hot_counts(root, days=90):
-    """{repo-relative path: commits in the last DAYS days touching it}
-    (one `git -C ROOT log`). {} when ROOT is not a git working tree, or git
-    errors or times out."""
-    try:
-        result = subprocess.run(
-            ["git", "-C", root, "log", "--since=%d days ago" % days,
-             "--name-only", "--pretty=format:"],
-            capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError):
-        return {}
-    if result.returncode != 0:
-        return {}
-    counts = {}
-    for line in result.stdout.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        counts[line] = counts.get(line, 0) + 1
-    return counts
-
-
-def combine_quality(score, dup, hot):
-    """SCORE stepped one worse for DUP, one more for HOT, never past
-    "poor"."""
-    idx = _QUALITY_ORDER.index(score) + (1 if dup else 0) + (1 if hot else 0)
-    return _QUALITY_ORDER[min(idx, len(_QUALITY_ORDER) - 1)]
-
-
-def wrong_district(path):
-    """One in three files (stable, from its own repo-relative path) is
-    built in the wrong district when its quality is poor."""
-    return int(hashlib.sha1(path.encode("utf-8")).hexdigest(), 16) % 3 == 0
-
-
-def _level_up_candidate(buildings, building_type):
-    """The BUILDINGS entry of BUILDING_TYPE with the lowest "lv" (ties: the
-    earliest in BUILDINGS, oldest first); None when there is none, or every
-    one is already at level 3."""
-    best = None
-    for b in buildings:
-        if b.get("type") != building_type:
-            continue
-        lv = b.get("lv", 0)
-        if lv >= 3:
-            continue
-        if best is None or lv < best.get("lv", 0):
-            best = b
-    return best
 
 
 def asset_version(folder):
@@ -8034,59 +5678,31 @@ def asset_version(folder):
     return h.hexdigest()
 
 
-# -- demo world: a fixed city for #demo, no files, no clock -----------------
-
-def _demo_entry(state, value, n, text):
-    return {"state": state, "value": value, "n": n, "text": text}
-
+# -- demo world: a fixed office for #demo, no files, no clock -----------------
 
 def demo_world():
-    """At least 3 repos, one small (< 30% grown), one big (> 70% grown), a
-    bridge between two of them, and a few buildings -- the fixed sample the
-    page (and its own #demo panel) can show with no server, no git. Also one
-    village (a kind missing), one town, one city."""
-    plans = load_plans()
-    ids = ["/demo/auto-pipeline/.git", "/demo/v4-plus/.git", "/demo/pos-lite/.git"]
-    names = ["auto-pipeline", "v4-plus", "pos-lite"]
-    lines = [500, 1000000, 20000]
-    world = new_world()
-    for ident, name, n in zip(ids, names, lines):
-        add_territory(world, plans, ident, name, n)
-    build(world, plans, ids[1], "ui", "a1", "worker", 0)
-    build(world, plans, ids[1], "test", "a2", "worker", 0)
-    build(world, plans, ids[2], "other", "a3", "worker", 0)
-
-    village = world["territories"][ids[0]]
-    village["era"] = "village"
-    village["balance"] = {
-        "build": _demo_entry("healthy", 500, 3, "500 行代码"),
-        "rules": _demo_entry("missing", 0, 0, "还没有"),
-        "beauty": _demo_entry("healthy", 2, 2, "2 个组件，平均复用 2.0 次"),
-        "knowledge": _demo_entry("healthy", 1.0, 1, "1/1 个模块有文档"),
-        "infra": _demo_entry("healthy", 2, 2, "2 个文件"),
-    }
-
-    city = world["territories"][ids[1]]
-    city["era"] = "city"
-    city["balance"] = {
-        "build": _demo_entry("healthy", 1000000, 400, "1,000,000 行代码"),
-        "rules": _demo_entry("healthy", 0.8, 320, "80% 源文件有测试"),
-        "beauty": _demo_entry("healthy", 40, 40, "40 个组件，平均复用 3.0 次"),
-        "knowledge": _demo_entry("healthy", 0.9, 36, "36/40 个模块有文档"),
-        "infra": _demo_entry("healthy", 20, 20, "20 个文件"),
-    }
-
-    town = world["territories"][ids[2]]
-    town["era"] = "town"
-    town["balance"] = {
-        "build": _demo_entry("healthy", 20000, 60, "20,000 行代码"),
-        "rules": _demo_entry("low", 0.3, 18, "30% 源文件有测试"),
-        "beauty": _demo_entry("healthy", 6, 8, "6 个组件，平均复用 2.5 次"),
-        "knowledge": _demo_entry("healthy", 0.6, 12, "12/20 个模块有文档"),
-        "infra": _demo_entry("healthy", 4, 4, "4 个文件"),
-    }
-
-    return layout(world, plans)
+    """The demo building as an office view (the shape of CityState._view): 4 repos, 3 floors (the fourth
+    repo is not ticked), 2 designs, one floor with the base look. Deterministic: the page pastes this
+    exact JSON as DEMO_WORLD."""
+    idents = [("/demo/auto-pipeline/.git", "auto-pipeline"), ("/demo/v4-plus/.git", "v4-plus"),
+              ("/demo/v4-office/.git", "v4-office"), ("/demo/v3/.git", "v3")]
+    ids = [territory_id(i) for i, _n in idents]
+    cashier = {"v": 1, "name": "收银台风格", "why": "POS 收银的 repo",
+               "colors": {"accent": "#2E7D6B", "carpet": "#E4DCCB", "manager_floor": "#D9C2A0",
+                          "pantry_floor": "#EEEAE0", "desk": "#EFDAB5", "desk_leg": "#BBA27C",
+                          "chair": "#3E4560", "meeting_rug": "#A9BCE0", "manager_rug": "#C97B66"},
+               "decor": ["cashier", "none", "goods"]}
+    fresh = {"v": 1, "name": "清爽蓝白", "why": "后台办公，干净明亮",
+             "colors": {"accent": "#3B82C4", "carpet": "#E6EEF7", "manager_floor": "#CFDDEE",
+                        "pantry_floor": "#EAF0F6", "desk": "#F4F7FB", "desk_leg": "#9FB3C8",
+                        "chair": "#2F5D8A", "meeting_rug": "#BBD3EC", "manager_rug": "#6F9BC9"},
+               "decor": ["bookshelf", "plants", "clock"]}
+    return {"v": 2,
+            "repos": [{"id": tid, "name": name, "here": True, "n": n}
+                      for n, (tid, (_i, name)) in enumerate(zip(ids, idents))],
+            "floors": ids[:3],
+            "designs": {ids[1]: cashier, ids[2]: fresh},
+            "asked": [ids[1], ids[2]]}
 
 
 # --------------------------------------------------------------------------
