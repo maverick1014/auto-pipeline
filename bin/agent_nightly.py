@@ -482,9 +482,55 @@ def record_misses(root, gitdir, prev, failed, commit, stamp):
             fh.write("\n".join(lines) + "\n")
 
 
+DEP_DIRS = ("node_modules", ".venv", "venv", "vendor", ".dart_tool", "Pods")
+
+
+def dep_places(base, depth=2, rel=""):
+    """Relative paths of the dependency folders under base: top level, and down into plain folders
+    (packages/<x>/node_modules is two folders down)."""
+    found = []
+    here = os.path.join(base, rel)
+    try:
+        names = sorted(os.listdir(here))
+    except OSError:
+        return found
+    for name in names:
+        path = os.path.join(here, name)
+        if name in DEP_DIRS:
+            found.append(os.path.join(rel, name))
+        elif depth > 0 and name != ".git" and os.path.isdir(path) and not os.path.islink(path):
+            found.extend(dep_places(base, depth - 1, os.path.join(rel, name)))
+    return found
+
+
+def link_deps(root, wt):
+    """Symlink the main checkout's dependency folders into the scratch tree (never copies)."""
+    for rel in dep_places(root):
+        src, dst = os.path.join(root, rel), os.path.join(wt, rel)
+        if not os.path.isdir(src) or os.path.lexists(dst):
+            continue
+        try:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            os.symlink(src, dst)
+        except OSError:
+            pass
+
+
+def unlink_deps(wt):
+    """Drop the dependency symlinks first, so removing the scratch tree can never reach the main checkout."""
+    for rel in dep_places(wt):
+        path = os.path.join(wt, rel)
+        if os.path.islink(path):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+
 def drop_scratch(root, wt):
     """Remove the nightly's scratch worktree and its registration, whatever state it is in."""
     if os.path.lexists(wt):
+        unlink_deps(wt)
         git(root, "worktree", "remove", "--force", wt)
         shutil.rmtree(wt, ignore_errors=True)
     git(root, "worktree", "prune")
@@ -519,6 +565,7 @@ def do_run(cwd):
         if added.returncode != 0:
             output, code = "cannot make the scratch worktree: " + added.stdout, 128
         else:
+            link_deps(root, wt)
             res = subprocess.run(cmd, shell=True, cwd=wt, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                  universal_newlines=True, errors="replace")
             output, code = res.stdout, res.returncode
